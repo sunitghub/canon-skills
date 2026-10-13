@@ -1,4 +1,5 @@
 import { handleMarkdownEnter, handleTabIndent } from './editor.js';
+import { KEY as THEME_KEY, derive, effectiveMode, readChoice, setVars, themeById } from './theme-data.js';
 import { fetchVersion, loadData, state } from './board-core.js';
 import { normalizeSearch, whyQueryFromInput } from './board-helpers.js';
 import { renderBoard, showToast } from './board-render.js';
@@ -472,7 +473,17 @@ export function initUi() {
       if (save && !embedded) { try { localStorage.setItem('sprint-check-theme', dark ? 'dark' : 'light'); } catch (e) {} }
     }
 
+    // t-4fa5: an embedded board also takes the shell's third-party theme colours (its board variables); the standalone
+    // board keeps Canon Dark/Light only. Canon is the CSS, so a Canon theme clears them.
+    function applyTheme(t) { if (embedded) setVars(html, t && !t.css ? derive(t).board : null); }
+
     apply(html.getAttribute('data-theme') !== 'light', false);
+    if (embedded) {
+      try {
+        const choice = readChoice(localStorage.getItem(THEME_KEY));
+        applyTheme(themeById(choice[effectiveMode(choice, html.getAttribute('data-theme') !== 'light')]));
+      } catch (e) {}
+    }
     btn.addEventListener('click', () => apply(html.getAttribute('data-theme') === 'light', true));
     // The Cockpit shell pushes live changes (t-a55a). Only the parent window on this origin is believed (t-2758): any
     // other page or frame posting a canon-theme message is ignored.
@@ -480,6 +491,8 @@ export function initUi() {
       if (window.parent === window || e.source !== window.parent || e.origin !== location.origin) return;
       if (e.data && e.data.type === 'canon-theme' && (e.data.theme === 'dark' || e.data.theme === 'light')) {
         apply(e.data.theme === 'dark', false);
+        const t = themeById(e.data.themeId);
+        applyTheme(t && t.mode === e.data.theme ? t : null);
       }
     });
   })();

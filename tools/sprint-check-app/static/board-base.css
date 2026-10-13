@@ -118,7 +118,7 @@
     .branch-name { font-family: "JetBrains Mono", "Fira Code", "JetBrains Mono", ui-monospace, monospace; color: var(--accent); }
     .refresh-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--col-done);
                    transition: background .3s; flex-shrink: 0; }
-    .refresh-dot.mock    { background: #fb923c; }
+    .refresh-dot.mock    { background: var(--th-warn, #fb923c); }
     .refresh-dot.loading { background: var(--col-progress); animation: pulse 1s infinite; }
     .refresh-dot.error   { background: var(--col-discarded); }
     @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.4 } }
@@ -202,7 +202,7 @@
       display: block;
       background: var(--accent-dim);
       border-left: 3px solid var(--accent);
-      border-bottom: 1px solid rgba(124,106,247,0.25);
+      border-bottom: 1px solid var(--th-accent-line, rgba(124,106,247,0.25));
       box-shadow: inset 12px 0 24px -18px var(--accent);
     }
     #s-wip .sidebar-label {
@@ -211,10 +211,10 @@
     }
     .wip-item {
       display: flex; align-items: center; gap: 7px;
-      padding: 6px 0; border-bottom: 1px solid rgba(124,106,247,0.15);
+      padding: 6px 0; border-bottom: 1px solid var(--th-accent-soft, rgba(124,106,247,0.15));
       cursor: pointer; border-radius: var(--radius-sm); transition: background .1s;
     }
-    .wip-item:hover { background: rgba(124,106,247,0.12); }
+    .wip-item:hover { background: var(--th-accent-soft, rgba(124,106,247,0.12)); }
     .wip-item:last-child { border-bottom: none; }
     .wip-id {
       font-family: "JetBrains Mono", "Fira Code", "JetBrains Mono", ui-monospace, monospace;
@@ -226,16 +226,16 @@
     }
     .wip-copy {
       flex-shrink: 0; font-size: 10px; padding: 2px 7px; border-radius: 4px;
-      border: 1px solid rgba(124,106,247,0.4); background: transparent;
+      border: 1px solid var(--th-accent-line, rgba(124,106,247,0.4)); background: transparent;
       color: var(--accent); cursor: pointer; transition: all .15s;
     }
-    .wip-copy:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .wip-copy:hover { background: var(--accent); color: var(--th-on-accent, #fff); border-color: var(--accent); }
     .wip-copy.copied { border-color: var(--col-done); color: var(--col-done); background: transparent; }
 
     .branch-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 12px; color: var(--text-muted); }
     .modified-badge {
       font-size: 11px; padding: 1px 6px;
-      background: rgba(251,146,60,.15); color: #fb923c;
+      background: var(--th-warn-soft, rgba(251,146,60,.15)); color: var(--th-warn, #fb923c);
       border-radius: 10px; margin-left: auto;
     }
     .focus-text { font-size: 13px; color: var(--text); line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }

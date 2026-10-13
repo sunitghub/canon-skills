@@ -3,7 +3,9 @@
 //    anything unreadable (missing, corrupt, a throwing localStorage or matchMedia) means Dark, never an error.
 // 2. cockpit-theme.js readChoice: an old 'dark'/'light' migrates; unknown modes, wrong types and foreign theme ids fall
 //    back to the default; a valid choice survives.
-// 3. The swatches the cards show are Canon's real values from cockpit-shell.css (one owner: the CSS).
+// 3. Canon's entries in theme-data.js match cockpit-shell.css (their swatches and contrast use them; the CSS owns Canon).
+// 4. (t-4fa5) contrast: the WCAG helper, every built-in at AA; derive() sets every variable the CSS needs; no colour in
+//    the CSS ignores the theme; theme-boot.js applies a valid first-paint cache and skips anything else in it.
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
@@ -13,12 +15,13 @@ const STATIC = path.join(__dirname, '..', 'tools', 'sprint-check-app', 'static')
 const BOOT = fs.readFileSync(path.join(STATIC, 'theme-boot.js'), 'utf8');
 
 // boot({ page, stored, search, osDark, storageThrows, mediaThrows }) -> data-theme after the script ran (null = none)
-function boot({ page, stored = {}, search = '', osDark = true, storageThrows = false, mediaThrows = false, preset = null, embedded = false }) {
-  const attrs = {};
+function bootFull({ page, stored = {}, search = '', osDark = true, storageThrows = false, mediaThrows = false, preset = null, embedded = false }) {
+  const attrs = {}, vars = {};
   if (preset !== null) attrs['data-theme'] = preset;
   const html = {
     setAttribute: (k, v) => { attrs[k] = String(v); },
     removeAttribute: (k) => { delete attrs[k]; },
+    style: { setProperty: (k, v) => { vars[k] = v; } },
   };
   const ctx = {
     document: { documentElement: html, currentScript: page ? { getAttribute: (k) => (k === 'data-page' ? page : null) } : null },
@@ -29,8 +32,9 @@ function boot({ page, stored = {}, search = '', osDark = true, storageThrows = f
   };
   ctx.window = {}; ctx.window.parent = embedded ? {} : ctx.window;   // a board in a Cockpit tab has another window as its parent
   vm.runInNewContext(BOOT, ctx);
-  return 'data-theme' in attrs ? attrs['data-theme'] : null;
+  return { theme: 'data-theme' in attrs ? attrs['data-theme'] : null, vars };
 }
+const boot = (o) => bootFull(o).theme;
 
 // ── 1a. shell ───────────────────────────────────────────────────────────────
 const S = (v) => ({ 'canon-theme': v });
@@ -76,23 +80,129 @@ assert.strictEqual(boot({ page: 'board', embedded: false, stored: SB(J({ mode: '
   // the shell's modules read browser globals when they load: install the same lenient stubs the board tests use
   require('./board-script').loadBoard();
   globalThis.addEventListener = () => {};   // cockpit-end.js registers its relay listener when it loads (t-3c9a)
-  const { readChoice, THEMES } = await import(path.join(STATIC, 'cockpit-theme.js'));
+  const { readChoice, THEMES, contrast, derive, ink, cacheFor, CACHE_V } = await import(path.join(STATIC, 'theme-data.js'));
   const D = { mode: 'dark', light: 'canon-light', dark: 'canon-dark' };
   assert.deepStrictEqual(readChoice(null), D, 'nothing saved is the default');
   assert.deepStrictEqual(readChoice('light'), { ...D, mode: 'light' }, 'old "light" migrates');
   assert.deepStrictEqual(readChoice('dark'), D, 'old "dark" migrates');
   assert.deepStrictEqual(readChoice(J({ mode: 'system', light: 'canon-light', dark: 'canon-dark' })), { ...D, mode: 'system' }, 'a valid choice survives');
   assert.deepStrictEqual(readChoice(J({ mode: 'light', light: 'canon-dark', dark: 'nope' })), { ...D, mode: 'light' }, 'a theme of the wrong mode or an unknown id falls back');
+  assert.deepStrictEqual(readChoice(J({ mode: 'dark', light: 'catppuccin-latte', dark: 'nord' })), { mode: 'dark', light: 'catppuccin-latte', dark: 'nord' }, 'a third-party choice survives');
+  assert.deepStrictEqual(readChoice(J({ mode: 'dark', light: 'nord', dark: 'catppuccin-latte' })), D, 'third-party themes of the wrong mode fall back');
   for (const bad of ['{', '[]', 'null', '7', J({ mode: 'sepia' }), J({ mode: ['light'] })]) assert.deepStrictEqual(readChoice(bad), D, `unreadable ${bad} is the default`);
 
   const css = fs.readFileSync(path.join(STATIC, 'cockpit-shell.css'), 'utf8');
   const block = (mode) => { const m = css.match(new RegExp(`html\\[data-theme="${mode}"\\]\\{(--bg:[^}]*)\\}`)); assert.ok(m, `cockpit-shell.css has the ${mode} block`); return m[1]; };
   const value = (decls, name) => { const m = decls.match(new RegExp(`${name}:([^;]+)`)); assert.ok(m, `${name} defined`); return m[1].trim(); };
-  for (const t of THEMES) {
+  const norm = (h) => (h.length === 4 ? '#' + [...h.slice(1)].map(x => x + x).join('') : h).toLowerCase();
+  for (const t of THEMES.filter(t => t.css)) {
     const decls = block(t.mode);
-    const want = ['--bg', '--panel', '--accent', '--col-done', '--col-discarded'].map(n => value(decls, n));
-    assert.deepStrictEqual(t.swatch, want, `${t.name} swatch equals cockpit-shell.css`);
+    for (const [slot, v] of [['bg', '--bg'], ['surface', '--panel'], ['accent', '--accent'], ['ok', '--col-done'], ['bad', '--col-discarded']]) {
+      assert.strictEqual(norm(t.c[slot]), norm(value(decls, v)), `${t.name} ${slot} equals cockpit-shell.css ${v}`);
+    }
   }
-  assert.deepStrictEqual(THEMES.map(t => t.mode).sort(), ['dark', 'light'], 'slice A ships one Canon theme per mode');
-  console.log('sprint-check-theme: ok (theme-boot precedence + fallback for shell and board; readChoice migration; swatches equal cockpit-shell.css)');
+  assert.deepStrictEqual(THEMES.map(t => t.id).sort(), ['canon-dark', 'canon-light', 'catppuccin-latte', 'catppuccin-mocha', 'dracula', 'gruvbox-dark', 'nord', 'tokyo-night'], 'the eight built-ins');
+
+  // ── 4a. contrast ──
+  const near = (a, b, m) => assert.ok(Math.abs(a - b) < 0.01, `${m}: ${a} vs ${b}`);
+  near(contrast('#000000', '#ffffff'), 21, 'black on white');
+  near(contrast('#ffffff', '#ffffff'), 1, 'white on white');
+  near(contrast('#777777', '#ffffff'), 4.48, '#777 on white (WebAIM)');
+  near(contrast('#0000ff', '#ffffff'), 8.59, 'blue on white (WebAIM)');
+  for (const t of THEMES) {
+    const c = t.c;
+    for (const [a, b, floor, what] of [[c.text, c.bg, 4.5, 'text/bg'], [c.muted, c.surface, 4.5, 'muted/surface'], [c.accent, c.bg, 3, 'accent/bg'], [ink(c, c.accent), c.accent, 3, 'on-accent']]) {
+      assert.ok(contrast(a, b) >= floor, `${t.name} ${what} ${contrast(a, b).toFixed(2)} < ${floor}`);
+    }
+  }
+
+  // ── 4b. derive() sets every variable the CSS needs ──
+  const statics = fs.readdirSync(STATIC);
+  const read = (re) => statics.filter(f => re.test(f)).map(f => [f, fs.readFileSync(path.join(STATIC, f), 'utf8')]);
+  const shellCss = read(/^cockpit-.*\.css$/), boardCss = read(/^board-.*\.css$/);
+  const blockNames = (txt, re) => { const out = new Set(); for (const m of txt.matchAll(re)) for (const v of m[1].matchAll(/(--[a-z0-9-]+)\s*:/g)) out.add(v[1]); return out; };
+  const shellNeed = blockNames(css, /html\[data-theme="(?:dark|light)"\]\{([^}]*)\}/g);
+  const baseCss = fs.readFileSync(path.join(STATIC, 'board-base.css'), 'utf8');
+  const boardNeed = blockNames(baseCss, /(?::root|html\[data-theme="light"\])\s*\{([^}]*)\}/g);
+  for (const n of ['--sidebar-w', '--header-h', '--radius', '--radius-sm']) boardNeed.delete(n);   // layout, not colour
+  const thUsed = (files) => { const out = new Set(); for (const [, t] of files) for (const m of t.matchAll(/var\((--th-[a-z0-9-]+)/g)) out.add(m[1]); return out; };
+  for (const n of thUsed(shellCss)) shellNeed.add(n);
+  for (const n of thUsed(boardCss)) boardNeed.add(n);
+  assert.ok(shellNeed.size > 20 && boardNeed.size > 40, `parsed the variables (${shellNeed.size}, ${boardNeed.size})`);
+  for (const t of THEMES.filter(t => !t.css)) {
+    const d = derive(t);
+    for (const n of shellNeed) assert.ok(n in d.shell, `${t.name}: derive() sets the shell's ${n}`);
+    for (const n of boardNeed) assert.ok(n in d.board, `${t.name}: derive() sets the board's ${n}`);
+    for (const p of ['shell', 'board']) assert.ok(Object.keys(d[p]).length <= 120, `${t.name}: ${p} map fits theme-boot's 120-name cap`);
+  }
+
+  // ── 4c. no colour in the CSS ignores the theme ──
+  // A literal colour is allowed only as the fallback of var(--x, …) where derive() sets --x, inside Canon's own theme
+  // blocks, in a shadow or a black overlay, or on this list (identity and the terminal frame, t-2ba3).
+  const ALLOWED = [['board-base.css', '#1A1A1F'], ['board-cockpit.css', 'var(--panel2, #0d131c)'],
+    // the ticket-type dots: fixed category colours, like the donut chart's (board-render.js TYPE_COLORS)
+    ...['--type-dot: #ef4444', '--type-dot: #8b5cf6', '--type-dot: #3b82f6', '--type-dot: #6b7280', '--type-dot: #f97316', 'var(--type-dot, #6b7280)'].map(x => ['board-lanes.css', x])];
+  const setByDerive = new Set([...Object.keys(derive(THEMES.find(t => !t.css)).shell), ...Object.keys(derive(THEMES.find(t => !t.css)).board)]);
+  const COLOR = /#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)/g;
+  function scan(file, text) {
+    const bad = [];
+    let t = text.replace(/\/\*[\s\S]*?\*\//g, m => m.replace(/[^\n]/g, ' '));
+    // Canon's theme blocks are the CSS-owned palette
+    t = t.replace(/(:root|html\[data-theme="(?:dark|light)"\])\s*\{[^}]*\}/g, m => (/--[a-z-]+\s*:/.test(m) && !/[.#][a-z]/i.test(m.split('{')[0].replace(/html\[data-theme="(dark|light)"\]|:root/, '')) ? m.replace(/[^\n]/g, ' ') : m));
+    const lines = t.split('\n');
+    for (const m of t.matchAll(COLOR)) {
+      const before = t.slice(0, m.index), lineNo = before.split('\n').length, line = lines[lineNo - 1];
+      const fb = before.match(/var\((--[a-z0-9-]+)\s*,\s*$/);
+      if (fb && setByDerive.has(fb[1])) continue;
+      // the declaration this colour belongs to, even when it spans lines (a multi-line box-shadow)
+      const decl = before.slice(Math.max(before.lastIndexOf(';'), before.lastIndexOf('{'), before.lastIndexOf('}')) + 1);
+      if (/^\s*(box-shadow|text-shadow)\s*:/.test(decl) || /^rgba\(\s*0\s*,\s*0\s*,\s*0\s*,/.test(m[0])) continue;
+      if (ALLOWED.some(([f, lit]) => f === file && line.includes(lit))) continue;
+      bad.push(`${file}:${lineNo} ${m[0]}`);
+    }
+    return bad;
+  }
+  const found = [...shellCss, ...boardCss].flatMap(([f, t]) => scan(f, t));
+  assert.deepStrictEqual(found, [], 'every CSS colour follows the theme:\n' + found.join('\n'));
+  // the scan must reject a literal in a plain rule, a light-only rule and a per-element variable definition
+  for (const planted of ['.x { color: #123456; }', 'html[data-theme="light"] .x { color: #123456; }', '.col-open { --card-glow: rgba(1,2,3,.4); }', '.x { color: var(--nope, #123456); }']) {
+    assert.strictEqual(scan('planted.css', planted).length, 1, `the scan rejects: ${planted}`);
+  }
+
+  // ── 4d. theme-boot.js applies a valid cache and skips the rest ──
+  const nord = THEMES.find(t => t.id === 'nord'), latte = THEMES.find(t => t.id === 'catppuccin-latte');
+  const choice = { mode: 'dark', light: 'catppuccin-latte', dark: 'nord' };
+  const good = J(cacheFor(choice));
+  const CV = (shell, vars) => ({ 'canon-theme': shell, 'canon-theme-vars': vars });
+  let r = bootFull({ page: 'shell', stored: CV(J(choice), good) });
+  assert.strictEqual(r.theme, 'dark'); assert.strictEqual(r.vars['--bg'], nord.c.bg, 'shell: the cached theme paints first');
+  assert.ok(!('--card-shadow' in r.vars), 'shell: a non-colour value is skipped');
+  r = bootFull({ page: 'board', embedded: true, stored: CV(J(choice), good) });
+  assert.strictEqual(r.vars['--surface'], nord.c.surface, 'embedded board: its board map paints first');
+  r = bootFull({ page: 'board', embedded: false, stored: CV(J(choice), good) });
+  assert.deepStrictEqual(r.vars, {}, 'standalone board: never a cached third-party theme');
+  r = bootFull({ page: 'shell', stored: CV(J({ ...choice, mode: 'system' }), good), osDark: false });
+  assert.strictEqual(r.theme, 'light'); assert.strictEqual(r.vars['--bg'], latte.c.bg, 'System on a light OS paints the light pick');
+  r = bootFull({ page: 'shell', stored: CV(J({ mode: 'dark', light: 'canon-light', dark: 'canon-dark' }), good) });
+  assert.deepStrictEqual(r.vars, {}, 'a Canon choice applies no cached variables');
+  const hostile = (mut) => { const c = JSON.parse(good); mut(c); return J(c); };
+  for (const [what, cache] of [
+    ['old version', hostile(c => { c.v = CACHE_V + 1; })],
+    ['no entry for the id', hostile(c => { delete c.themes.nord; })],
+    ['corrupt JSON', '{"v":1,'],
+    ['array', '[]'], ['null', 'null'], ['huge', 'x'.repeat(70000)],
+    ['map is an array', hostile(c => { c.themes.nord.shell = ['--bg']; })],
+  ]) assert.deepStrictEqual(bootFull({ page: 'shell', stored: CV(J(choice), cache) }).vars, {}, `ignored: ${what}`);
+  for (const [what, k, v] of [['url()', '--bg', 'url(https://x/y)'], ['expression', '--bg', 'expression(alert(1))'], ['breakout', '--bg', 'red;} body{display:none'], ['bad name', '--Bg;x', '#000'], ['number', '--bg', 7], ['named colour', '--bg', 'red']]) {
+    const c = hostile(x => { x.themes.nord.shell = { [k]: v, '--text': '#eceff4' }; });
+    const out = bootFull({ page: 'shell', stored: CV(J(choice), c) }).vars;
+    assert.ok(!(k in out) && out['--text'] === '#eceff4', `skipped ${what}, kept the valid entry`);
+  }
+  const many = hostile(x => { const m = {}; for (let i = 0; i < 500; i++) m['--v' + i] = '#000000'; x.themes.nord.shell = m; });
+  assert.ok(Object.keys(bootFull({ page: 'shell', stored: CV(J(choice), many) }).vars).length <= 120, 'at most 120 names');
+  assert.strictEqual(bootFull({ page: 'shell', stored: CV(J(choice), good), storageThrows: true }).theme, 'dark', 'throwing storage: still dark, no throw');
+  const proto = '{"v":1,"themes":{"nord":{"shell":{"__proto__":{"--bg":"#000000"}}}}}';
+  assert.deepStrictEqual(bootFull({ page: 'shell', stored: CV(J(choice), proto) }).vars, {}, '__proto__ keys are not followed');
+
+  console.log('sprint-check-theme: ok (theme-boot precedence, fallback and cache for shell and board; readChoice migration; Canon equals cockpit-shell.css; AA per built-in; derive completeness; no unthemed CSS colour)');
 })().catch(e => { console.error('FAIL:', e.message); process.exit(1); });
