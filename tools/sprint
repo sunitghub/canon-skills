@@ -596,29 +596,32 @@ _gate_eval_report_consistency() {
 # .claude/agents gets no line), then _ensure_agents_link_gitignored in either order (skills add: mirror first; link_worktree: agents
 # first), or through ensure_gitattributes; the working-tree file must match one result byte for byte. Order, CRs and duplicates therefore count (break-it found a line-set check too loose). A
 # symlink, a deleted file or a failed git call is false.
-_canon_setup_edit_only() {
-  local wroot="$1" graded="$2" path="$3" name="${3##*/}" tmp v ok=1
-  [[ -f "$wroot/$path" && ! -L "$wroot/$path" ]] || return 1
-  tmp="$(mktemp -d)" || return 1
-  if git -C "$tmp" init -q >/dev/null 2>&1 && git -C "$wroot" cat-file --filters "$graded:$path" > "$tmp/prior" 2>/dev/null; then
-    for v in m ma am g; do
-      [[ "$name" == .gitattributes ]] && [[ "$v" != g ]] && continue
-      [[ "$name" == .gitignore ]] && [[ "$v" == g ]] && continue
-      cp "$tmp/prior" "$tmp/$name" || break
-      ( SKILLS_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-        source "$SCRIPT_DIR/skills/lib.sh" && source "$SCRIPT_DIR/skills/project.sh" && source "$SCRIPT_DIR/skills/prompts.sh" || exit 1
-        case "$v" in
-          m) _ensure_mirror_gitignored "$tmp" ;;
-          ma) _ensure_mirror_gitignored "$tmp" && _ensure_agents_link_gitignored "$tmp" ;;
-          am) _ensure_agents_link_gitignored "$tmp" && _ensure_mirror_gitignored "$tmp" ;;
-          g) ensure_gitattributes "$tmp" ;;
-        esac ) >/dev/null 2>&1
-      if cmp -s "$tmp/$name" "$wroot/$path"; then ok=0; break; fi
-    done
-  fi
-  rm -rf "$tmp"
-  return "$ok"
-}
+_canon_setup_edit_only() (   # a subshell, so its EXIT trap removes the scratch repo on any exit without touching the caller's traps
+  wroot="$1" graded="$2" path="$3" name="${3##*/}"
+  case "$name" in
+    .gitignore) variants="m ma am" ;;
+    .gitattributes) variants="g" ;;
+    *) exit 1 ;;
+  esac
+  [[ -f "$wroot/$path" && ! -L "$wroot/$path" ]] || exit 1
+  tmp="$(mktemp -d)" || exit 1
+  trap 'rm -rf "$tmp"' EXIT
+  git -C "$tmp" init -q >/dev/null 2>&1 || exit 1
+  git -C "$wroot" cat-file --filters "$graded:$path" > "$tmp/prior" 2>/dev/null || exit 1
+  for v in $variants; do
+    cp "$tmp/prior" "$tmp/$name" || exit 1
+    ( SKILLS_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+      source "$SCRIPT_DIR/skills/lib.sh" && source "$SCRIPT_DIR/skills/project.sh" && source "$SCRIPT_DIR/skills/prompts.sh" || exit 1
+      case "$v" in
+        m) _ensure_mirror_gitignored "$tmp" ;;
+        ma) _ensure_mirror_gitignored "$tmp" && _ensure_agents_link_gitignored "$tmp" ;;
+        am) _ensure_agents_link_gitignored "$tmp" && _ensure_mirror_gitignored "$tmp" ;;
+        g) ensure_gitattributes "$tmp" ;;
+      esac ) >/dev/null 2>&1 || true   # the byte compare below is the check, not the writer's status
+    cmp -s "$tmp/$name" "$wroot/$path" && exit 0
+  done
+  exit 1
+)
 
 # _gate_eval_report_fresh <id> <tdir> — t-1b74: the report must record the commit the evaluator graded (graded-head:,
 # eval.md step 8), and no tracked file outside the late-doc/artifact paths below may differ from it. Without this a code change made

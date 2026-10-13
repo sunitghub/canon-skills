@@ -1634,10 +1634,16 @@ cg_project="$(make_project)"
     [[ "$out" == *"Sprint completed: $cid"* ]] || fail "t-52f0 case '$1' did not close: $out"
   }
 
-  # canon's lines, uncommitted: the reported case
+  # canon's lines, uncommitted: the reported case. The replay's scratch repo is gone afterwards, refused or not (TMPDIR pinned and empty)
+  cg_tmp="$(mktemp -d)"
   cg_start uncommitted; canon_setup "$PWD"
   [[ "$(git status --porcelain -- .gitignore .gitattributes)" == *" M .gitattributes"*" M .gitignore"* ]] || fail "fixture: registration should leave both files modified: $(git status --porcelain)"
-  cg_closes "canon lines, uncommitted"
+  echo 'secret.js' >> .gitignore; TMPDIR="$cg_tmp" cg_refuses .gitignore "canon lines plus another line, TMPDIR pinned"
+  [ -z "$(ls -A "$cg_tmp")" ] || fail "t-52f0: a refused close left its scratch repo in TMPDIR: $(ls -A "$cg_tmp")"
+  sed -i.bak '/^secret\.js$/d' .gitignore && rm -f .gitignore.bak
+  TMPDIR="$cg_tmp" cg_closes "canon lines, uncommitted"
+  [ -z "$(ls -A "$cg_tmp")" ] || fail "t-52f0: a passing close left its scratch repo in TMPDIR: $(ls -A "$cg_tmp")"
+  rm -rf "$cg_tmp"
   # committed after grading, the same
   git add .gitignore .gitattributes; git commit -qm "canon setup"; git reset -q --hard HEAD~1
   cg_start committed; canon_setup "$PWD"; git add .gitignore .gitattributes; git commit -qm "canon setup"
