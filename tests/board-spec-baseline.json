@@ -651,6 +651,17 @@
       "failed_runs": {
         "webkit": "1/1"
       }
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > cross-project Sessions row (t-2d2e) > shell (t-5a4b): the sprint-skill nudge shows on Scratch and session opens, stays quiet once dismissed",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-5989",
+      "reason": "30 s webkit timeout in a full run (t-2758, 2026-10-13); passed alone 3/3 on the branch and 3/3 on main 2718ef2c in 2.2-2.5 s",
+      "failed_runs": {
+        "webkit": "1/1"
+      }
     }
   ],
   "skipped": []
