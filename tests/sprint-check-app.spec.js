@@ -4489,6 +4489,15 @@ test.describe('cockpit in board (t-ddc8)', () => {
       }
       const icon = await page.locator('#keys-btn svg').boundingBox();
       expect(Math.round(icon.width)).toBe(18);
+      // the popover sits inside .foot: its controls must not inherit the footer buttons' cap (reviewer, t-2758)
+      await page.locator('#theme-btn').click();
+      const sizes = await page.evaluate(() => [...document.querySelectorAll('#theme-pop .thm-card, #theme-pop .thm-seg')].map(el => [el.className, Math.round(el.getBoundingClientRect().width), getComputedStyle(el).maxWidth]));
+      for (const [cls, w, max] of sizes) {
+        expect(max, cls + ' has no inherited cap').toBe('none');
+      }
+      const seg = sizes.find(s => s[0] === 'thm-seg')[1], card = sizes.find(s => s[0] === 'thm-card')[1];
+      expect(card, 'a theme card is wider than the footer cap: ' + card).toBeGreaterThan(120);
+      expect(seg, 'the Mode row spans the popover').toBeGreaterThan(240);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
