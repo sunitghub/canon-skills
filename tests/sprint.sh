@@ -1625,7 +1625,7 @@ cg_project="$(make_project)"
   }
   cg_refused() { cg_refuses "$@"; git checkout -q -- "$1"; }   # ... and the edit is then undone
   cg_closes() { # <case>
-    local out; out="$(env -u CLAUDECODE "$SPRINT" complete 2>&1)"
+    local out; out="$(env -u CLAUDECODE "$SPRINT" complete 2>&1)" || true
     [[ "$out" == *"Sprint completed: $cid"* ]] || fail "t-52f0 case '$1' did not close: $out"
   }
 
@@ -1690,7 +1690,7 @@ cs_top="$(make_project)"
   sid="$("$SPRINT" start "subtree canon setup" | awk '/Sprint started:/ { print $3 }')"
   fr_gate_docs ".tickets/$sid" ".claude/subagent-runs.jsonl" "$(date +%s)-7000" "$(git rev-parse HEAD)"
   canon_setup "$PWD"
-  out="$(env -u CLAUDECODE "$SPRINT" complete 2>&1)"; [[ "$out" == *"Sprint completed: $sid"* ]] || fail "t-52f0 case 'subtree project' did not close: $out"
+  out="$(env -u CLAUDECODE "$SPRINT" complete 2>&1)" || true; [[ "$out" == *"Sprint completed: $sid"* ]] || fail "t-52f0 case 'subtree project' did not close: $out"
 )
 rm -rf "$cs_top"
 
@@ -1705,7 +1705,7 @@ e2e_dir="$(mktemp -d)"
   [[ "$(git status --porcelain -- .gitignore)" == " M .gitignore" ]] || fail "fixture: skills.sh add should leave .gitignore modified: $(git status --porcelain)"
   eid="$("$SPRINT" start "first close after setup" | awk '/Sprint started:/ { print $3 }')"
   mkdir -p .claude; fr_gate_docs ".tickets/$eid" ".claude/subagent-runs.jsonl" "$(date +%s)-7000" "$(git rev-parse HEAD)"
-  out="$(env -u CLAUDECODE "$SPRINT" complete 2>&1)"; [[ "$out" == *"Sprint completed: $eid"* ]] || fail "t-52f0 case 'real skills.sh add' did not close: $out"
+  out="$(env -u CLAUDECODE "$SPRINT" complete 2>&1)" || true; [[ "$out" == *"Sprint completed: $eid"* ]] || fail "t-52f0 case 'real skills.sh add' did not close: $out"
 )
 rm -rf "$e2e_dir"
 
