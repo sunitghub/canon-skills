@@ -456,8 +456,8 @@ export function initUi() {
   (function initTheme() {
     const btn  = document.getElementById('theme-toggle');
     const html = document.documentElement;
-    // t-2758: theme-boot.js already set the theme before the first paint (?theme, then 'sprint-check-theme', then the
-    // OS); this keeps the button and the live changes in step. An embedded board follows the Cockpit shell and never
+    // t-2758: theme-boot.js already set the theme before the first paint (in a Cockpit tab the shell's saved choice, then
+    // ?theme, then 'sprint-check-theme', then the OS); this keeps the button and the live changes in step. An embedded board follows the Cockpit shell and never
     // saves, so it cannot overwrite the standalone board's own choice (both share one origin, so one localStorage).
     const embedded = html.classList.contains('canon-proj-embed');
 

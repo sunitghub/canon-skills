@@ -98,7 +98,7 @@ read_static board "$board"
 board+="$STATIC_BODY"
 [[ "$STATIC_SEEN" == *" /static/board-core.js "* ]] || fail "canon: the board's module imports were not followed (no board-core.js)"
 grep -q "__canonProject" <<<"$board" || fail "canon: the board missing the ?project fetch wrapper"
-# t-2758: the board reads the shell-passed ?theme before first paint, in theme-boot.js (behaviour: tests/theme-boot.js)
+# t-2758: the board reads the shell-passed ?theme before first paint, in theme-boot.js (behaviour: tests/sprint-check-theme.js)
 grep -qF '<script src="/static/theme-boot.js" data-page="board"></script>' "$ROOT/tools/sprint-check-app/app.html" || fail "canon: app.html does not load theme-boot.js for the board"
 grep -qF "get('theme')" "$ROOT/tools/sprint-check-app/static/theme-boot.js" || fail "canon: the board does not honor shell-passed ?theme"
 grep -q "&theme=" <<<"$page" || fail "canon: project iframe src does not carry the shell theme"

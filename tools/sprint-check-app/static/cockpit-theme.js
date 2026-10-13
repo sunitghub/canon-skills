@@ -2,7 +2,7 @@
 // Theme lists only themes of that mode, and under System there is one pick for light and one for dark. The choice is
 // saved as { mode, light, dark } under 'canon-theme' (an older 'dark'/'light' still reads). theme-boot.js applies it
 // before the first paint; this module keeps it in step and tells every open board. Canon Dark/Light are today's CSS
-// (cockpit-shell.css); the swatches below repeat its values and tests/canon.sh keeps them equal.
+// (cockpit-shell.css); the swatches below repeat its values and tests/sprint-check-theme.js keeps them equal.
 import { esc } from './cockpit-core.js';
 
 export const THEMES = [
@@ -73,7 +73,7 @@ export function initTheme() {
       else if (c) choice[c.dataset.for] = c.dataset.id;
       else return;
       // render() rebuilds the popover, which would drop keyboard focus to <body> (break-it): put it back on the same control
-      const again = m ? `[data-mode="${m.dataset.mode}"]` : `[data-id="${c.dataset.id}"][data-for="${c.dataset.for}"]`;
+      const again = m ? `[data-mode="${CSS.escape(m.dataset.mode)}"]` : `[data-id="${CSS.escape(c.dataset.id)}"][data-for="${CSS.escape(c.dataset.for)}"]`;
       save(); apply(); render();
       const el = pop.querySelector(again); if (el) el.focus();
     });

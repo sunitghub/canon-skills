@@ -24,6 +24,7 @@ Any change to `app.html` or `static/` requires Playwright verification — not j
 - Before pressing keys in a frame, wait until that frame's handler exists (`boardKeys` in the board); a key pressed earlier goes nowhere.
 - Mock every new endpoint in the shared page helper so a real daemon or real data never leaks in; assert the stable part of UI strings, not the whole sentence.
 - A menu that closes on `focusout` must exempt pointer clicks: WebKit does not focus a clicked button, so a click inside the menu reports a `focusout` with no `relatedTarget` and the menu closes before the click lands. Run the Tab-away test on webkit (`t-9d93`).
+- A keyboard test that Tabs through buttons needs `Alt+Tab` in WebKit: Safari's default Tab skips buttons (its "Press Tab to highlight each item" setting is off), so plain `Tab` lands on the next text field (t-2758).
 - `expect.poll(fn).toBe(await other())` evaluates the expected value once, up front, so two empty sides pass vacuously. Compute both sides inside the poll, start from a state that differs from the expected one (or await a page-exposed "fetch applied" flag), and prove it with a revert mutant (`t-a205`, `t-4487`).
 - Use `pwd -P` for temp roots on macOS (`mktemp -d` returns a `/var` symlink), and record which board and which data a count came from.
 - A helper that a vm-loaded unit test (the `tests/sprint-check-*.js` pattern) exercises must be self-contained: reusing a top-level `const` makes every case throw.

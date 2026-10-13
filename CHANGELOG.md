@@ -12,6 +12,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 ### Fixed
 - A light-theme user no longer sees a dark first frame when the Cockpit or a board loads (`t-3735`).
 - A board in a Cockpit tab no longer overwrites the standalone board's own saved theme, and a board now accepts a theme change only from the Cockpit window that holds it (`t-2758`).
+- A board that reloads, or is still loading when you change the theme, now shows the current theme, and a second Cockpit window follows a theme change instead of undoing it (`t-2758`).
+- The sidebar footer buttons stop growing on a wide sidebar and stay centred, and the keyboard-shortcuts button is a little larger (`t-2758`).
 
 ## [0.8.0] - 2026-10-13
 
