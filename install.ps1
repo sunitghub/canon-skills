@@ -120,7 +120,10 @@ function Install-CanonFiles($Dest) {
       $url = "https://github.com/sunitghub/canon-skills/releases/download/$ref/canon-$($ref.Substring(1)).zip"
     }
     Write-Host "==> Downloading canon ($ref)"
-    if ($ref -ceq "main") { Write-Host "    Following main: development changes, not checksum-verified. 'canon update --to latest' returns to verified releases." }
+    if ($ref -ceq "main") {
+      Write-Host "    You're on the development version (main): the newest changes, before they're released and without a release's verification."
+      Write-Host "    For the latest release instead, run: canon update --to latest"
+    }
     Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $zip
     if ($expected) {
       $actual = (Get-FileHash -Algorithm SHA256 -Path $zip).Hash.ToLower()

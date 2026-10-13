@@ -116,6 +116,15 @@ update_without_git() {
   exit 1
 }
 
+# t-d744: what an install on the main track is told, in plain words. install.sh and install.ps1 print the same two lines (they run
+# standalone, so they keep their own copy; tests/doc-update-behavior.sh checks the three match). With a label, the first line is
+# `canon version`'s own.
+main_track_note() {
+  if [ -n "${1:-}" ]; then echo "$1 (development version, following main)"
+  else echo "You're on the development version (main): the newest changes, before they're released and without a release's verification."; fi
+  echo "For the latest release instead, run: canon update --to latest"
+}
+
 # t-e3d2: update the canon install, then refresh every Cockpit project. The install is often
 # also a development checkout, so anything but a clean fast-forward on main is refused —
 # never merged or stashed.
@@ -225,7 +234,7 @@ update_cmd() {
   else
     printf 'main\n' > "$marker" 2>/dev/null || true
     if [ "$before" = "$after" ]; then echo "canon is up to date ($after)."; else echo "canon updated $before..$after."; fi
-    echo "canon is following main: development changes, not checksum-verified. 'canon update --to latest' returns to verified releases."
+    main_track_note
   fi
   bash "$SCRIPT_DIR/fetch-daemon.sh" --quiet || echo "canon update: a prebuilt binary is missing or stale (see above); the Cockpit needs it." >&2
   if [ -n "$bak" ]; then
@@ -415,9 +424,9 @@ main() {
   case "${1:-}" in
     help|--help|-h) usage; exit 0 ;;
     version|--version|-V)
-      echo "canon $({ tr -d '[:space:]' < "$SCRIPT_DIR/../VERSION"; } 2>/dev/null || echo unknown)"
-      # t-65c9: say so when this install follows main (development, not verified); the release track is the default and needs no note
-      if [ "$({ tr -d '[:space:]' < "$SCRIPT_DIR/../.canon-track"; } 2>/dev/null)" = main ]; then echo "Following main (development, not checksum-verified). 'canon update --to latest' returns to verified releases."; fi
+      v="canon $({ tr -d '[:space:]' < "$SCRIPT_DIR/../VERSION"; } 2>/dev/null || echo unknown)"
+      # t-65c9: say so when this install follows main; the release track is the default and needs no note
+      if [ "$({ tr -d '[:space:]' < "$SCRIPT_DIR/../.canon-track"; } 2>/dev/null)" = main ]; then main_track_note "$v"; else echo "$v"; fi
       exit 0 ;;
     status|sessions|stop|restart) board_cmd "$@"; exit 0 ;;
     wait) shift; wait_cmd "$@" ;;
