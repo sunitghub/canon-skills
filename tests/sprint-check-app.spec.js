@@ -4359,17 +4359,220 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
     // t-783a: the shell's controls are wired with addEventListener, not inline on*= attributes. Each test below
     // drives a control that no other test clicked through the UI (evidence: .tickets/t-783a/evidence/handler-map.md).
-    test('shell (t-783a): the sidebar theme button flips the shell and its boards, and remembers the choice', async ({ page }) => {
+    // t-2758: the ◐ Theme switcher (themes slice A). Mode decides light or dark, Theme lists only that mode's themes.
+    const boardTheme = board => board.locator('html').evaluate(h => h.getAttribute('data-theme') || 'dark');
+    const saved = page => page.evaluate(() => JSON.parse(localStorage.getItem('canon-theme')));
+    test('shell (t-2758): ◐ Theme opens a popover in the footer; Mode filters Theme; the choice is saved and every board follows', async ({ page }) => {
+      await page.emulateMedia({ colorScheme: 'dark' });
       const board = await openShell(page, []);
       await expect(board.locator('#board')).toBeVisible();
-      const before = await page.evaluate(() => document.documentElement.dataset.theme);
-      const after = before === 'dark' ? 'light' : 'dark';
+      const btn = page.locator('#theme-btn'), pop = page.locator('#theme-pop');
+      await expect(btn).toHaveText('◐ Theme');
+      // placed where "🌙 Dark" was: in the footer, on the row with Help
+      const [b, h, f] = await Promise.all([btn.boundingBox(), page.locator('#help-btn').boundingBox(), page.locator('.foot').boundingBox()]);
+      expect(Math.abs(b.y - h.y)).toBeLessThan(2); expect(b.x).toBeLessThan(h.x);
+      expect(b.x).toBeGreaterThanOrEqual(f.x); expect(b.y + b.height).toBeLessThanOrEqual(f.y + f.height + 1);
+      await expect(pop).toBeHidden();
+      await btn.click();
+      await expect(pop).toBeVisible(); await expect(btn).toHaveAttribute('aria-expanded', 'true');
+      await expect(pop.locator('[data-mode]')).toHaveText(['System', 'Light', 'Dark']);
+      // the popover opens above the footer, inside the window
+      const pb = await pop.boundingBox(); expect(pb.y + pb.height).toBeLessThanOrEqual(b.y); expect(pb.y).toBeGreaterThanOrEqual(0);
+
+      await pop.locator('[data-mode="light"]').click();
+      await expect(pop).toBeVisible();   // stays open while choosing
+      await expect(pop.locator('.thm-card')).toHaveText(['Canon Light']);
+      await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+      await expect(btn).toHaveAttribute('title', 'Canon Light'); await expect(btn).toHaveAttribute('aria-label', 'Theme: Canon Light');
+      expect(await saved(page)).toEqual({ mode: 'light', light: 'canon-light', dark: 'canon-dark' });
+      await expect.poll(() => boardTheme(board)).toBe('light');
+
+      await pop.locator('[data-mode="dark"]').click();
+      await expect(pop.locator('.thm-card')).toHaveText(['Canon Dark']);
+      await expect(btn).toHaveAttribute('title', 'Canon Dark');
+      await expect.poll(() => boardTheme(board)).toBe('dark');
+
+      // System: one pick per side, and the shell and its boards follow the OS live
+      await pop.locator('[data-mode="system"]').click();
+      await expect(pop.locator('.thm-sub')).toHaveText(['When light', 'When dark']);
+      await expect(pop.locator('.thm-card[aria-pressed="true"]')).toHaveText(['Canon Light', 'Canon Dark']);
+      await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+      await page.emulateMedia({ colorScheme: 'light' });
+      await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+      await expect(btn).toHaveAttribute('title', 'Canon Light');
+      await expect.poll(() => boardTheme(board)).toBe('light');
+      expect((await saved(page)).mode).toBe('system');
+
+      // closes on a press outside it (in the shell, and inside a board's frame), on Escape (focus back on the button),
+      // and on the button itself
+      await page.locator('#nav-projects').dispatchEvent('pointerdown');
+      await expect(pop).toBeHidden(); await expect(btn).toHaveAttribute('aria-expanded', 'false');
+      await btn.click(); await expect(pop).toBeVisible();
+      await board.locator('#board').click({ position: { x: 20, y: 20 } });   // into the open board (an iframe)
+      await expect(pop).toBeHidden();
+      await btn.click(); await expect(pop).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(pop).toBeHidden(); await expect(btn).toBeFocused();
+      await btn.click(); await expect(pop).toBeVisible();
+      await btn.click(); await expect(pop).toBeHidden();
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('shell (t-2758): the choice survives a reload, an old saved value migrates, and an embedded board never overwrites the standalone board\'s own choice', async ({ page }) => {
+      const board = await openShell(page, []);
+      await expect(board.locator('#board')).toBeVisible();
+      await page.evaluate(() => { localStorage.setItem('canon-theme', 'light'); localStorage.setItem('sprint-check-theme', 'dark'); });   // a pre-t-2758 shell value
+      await page.reload(); await page.waitForLoadState('networkidle');
+      await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+      await expect(page.locator('#theme-btn')).toHaveAttribute('title', 'Canon Light');
+      const b2 = await page.evaluate(async () => { const { openProject } = await import('/static/cockpit-tabs.js'); openProject('proj-a', 'proj-a'); })
+        .then(() => page.frameLocator('#view-proj-a iframe'));
+      await expect(b2.locator('#board')).toBeVisible();
+      await expect.poll(() => boardTheme(b2)).toBe('light');
+      // the embedded board followed the shell to light but left the standalone board's saved "dark" alone
+      expect(await page.evaluate(() => localStorage.getItem('sprint-check-theme'))).toBe('dark');
+      await page.locator('#theme-btn').click(); await page.locator('#theme-pop [data-mode="dark"]').click();
+      await expect.poll(() => boardTheme(b2)).toBe('dark');
+      expect(await page.evaluate(() => localStorage.getItem('sprint-check-theme'))).toBe('dark');
+      await page.evaluate(() => localStorage.setItem('canon-theme', '{not json'));
+      await page.reload(); await page.waitForLoadState('networkidle');
+      await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');   // unreadable means dark, no error
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('board (t-2758): a canon-theme message is believed only from the parent shell on the same origin', async ({ page }) => {
+      const board = await openShell(page, []);
+      await expect(board.locator('#board')).toBeVisible();
+      await expect.poll(() => boardTheme(board)).toBe(await page.evaluate(() => document.documentElement.dataset.theme));
+      const before = await boardTheme(board), other = before === 'dark' ? 'light' : 'dark';
+      // the right message from the wrong sender: the board itself, and the parent's window on another origin
+      await board.locator('body').evaluate((_, t) => window.postMessage({ type: 'canon-theme', theme: t }, location.origin), other);
+      await board.locator('body').evaluate((_, t) => window.dispatchEvent(new MessageEvent('message', { data: { type: 'canon-theme', theme: t }, origin: 'http://evil.example', source: window.parent })), other);
+      await page.waitForTimeout(150);
+      expect(await boardTheme(board)).toBe(before);
+      // the parent on this origin is believed
+      await page.evaluate(t => document.querySelector('#view-proj-a iframe').contentWindow.postMessage({ type: 'canon-theme', theme: t }, location.origin), other);
+      await expect.poll(() => boardTheme(board)).toBe(other);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('first paint (t-3735, t-2758): a saved light choice is on the page before any module script has run, in the shell and on the board', async ({ page }) => {
+      // hold every module back, so only the blocking theme-boot.js can have set the theme
+      let release; const held = new Promise(r => { release = r; });
+      await page.route(/\/static\/(cockpit|board)-main\.js$/, async r => { await held; await r.continue(); });
+      await page.addInitScript(() => { localStorage.setItem('canon-theme', JSON.stringify({ mode: 'light', light: 'canon-light', dark: 'canon-dark' })); localStorage.setItem('sprint-check-theme', 'light'); });
+      // module scripts hold back DOMContentLoaded, so wait only until the body exists (the <head> script has run)
+      const parsed = () => page.waitForFunction(() => !!document.body);
+      await page.goto(BASE + '/cockpit', { waitUntil: 'commit' }); await parsed();
+      expect(await page.evaluate(() => document.documentElement.dataset.theme)).toBe('light');
+      expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe('rgb(232, 232, 240)');   // the shell's light --bg
+      await page.goto(BASE + '/?standalone=1', { waitUntil: 'commit' }); await parsed();
+      expect(await page.evaluate(() => document.documentElement.getAttribute('data-theme'))).toBe('light');
+      release();
+      await page.waitForLoadState('networkidle');
+      // no fade on load (the board's html transition only runs on a real change)
+      expect(await page.evaluate(() => document.documentElement.getAnimations().length)).toBe(0);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('shell (t-2758): footer buttons stop growing on a wide sidebar and stay centred, and the keyboard button is 36px with an 18px icon', async ({ page }) => {
+      await openShell(page, []);
+      const boxes = async () => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.foot button')].map(b => [b.id, b.getBoundingClientRect().toJSON()])));
+      for (const w of [230, 420]) {   // the default and the widest the divider allows
+        await page.evaluate(async w => { const { setSideWidth } = await import('/static/cockpit-sidebar.js'); setSideWidth(w, false); }, w);
+        const b = await boxes(), foot = await page.locator('.foot').boundingBox();
+        expect(Math.round(b['keys-btn'].width), `keyboard button at ${w}px`).toBe(36);
+        expect(Math.abs(b['theme-btn'].width - b['help-btn'].width), `Theme and Help match at ${w}px`).toBeLessThanOrEqual(1);
+        expect(b['theme-btn'].width, `Theme is capped at ${w}px`).toBeLessThanOrEqual(120.5);
+        const left = b['theme-btn'].x - foot.x, right = foot.x + foot.width - (b['keys-btn'].x + b['keys-btn'].width);
+        expect(Math.abs(left - right), `the group is centred at ${w}px (left ${left}, right ${right})`).toBeLessThanOrEqual(1);
+      }
+      const icon = await page.locator('#keys-btn svg').boundingBox();
+      expect(Math.round(icon.width)).toBe(18);
+      // the popover sits inside .foot: its controls must not inherit the footer buttons' cap (reviewer, t-2758)
       await page.locator('#theme-btn').click();
-      await expect(page.locator('html')).toHaveAttribute('data-theme', after);
-      await expect(page.locator('#theme-btn')).toContainText(after === 'light' ? 'Light' : 'Dark');
-      expect(await page.evaluate(() => localStorage.getItem('canon-theme'))).toBe(after);
-      // The open board follows (the board's dark is "no attribute", t-1543).
-      await expect.poll(() => board.locator('html').evaluate(h => h.getAttribute('data-theme') || 'dark')).toBe(after);
+      const sizes = await page.evaluate(() => [...document.querySelectorAll('#theme-pop .thm-card, #theme-pop .thm-seg')].map(el => [el.className, Math.round(el.getBoundingClientRect().width), getComputedStyle(el).maxWidth]));
+      for (const [cls, w, max] of sizes) {
+        expect(max, cls + ' has no inherited cap').toBe('none');
+      }
+      const seg = sizes.find(s => s[0] === 'thm-seg')[1], card = sizes.find(s => s[0] === 'thm-card')[1];
+      expect(card, 'a theme card is wider than the footer cap: ' + card).toBeGreaterThan(120);
+      expect(seg, 'the Mode row spans the popover').toBeGreaterThan(240);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    // break-it (t-2758): each of these failed against the first build; the fix is named on each line
+    test('board (t-2758): a board that reloads, or loads while the theme changes, shows the current theme, not the one its tab opened with', async ({ page }) => {
+      await page.emulateMedia({ colorScheme: 'dark' });
+      const board = await openShell(page, []);
+      await expect(board.locator('#board')).toBeVisible();
+      await page.locator('#theme-btn').click(); await page.locator('#theme-pop [data-mode="light"]').click(); await page.keyboard.press('Escape');
+      await expect.poll(() => boardTheme(board)).toBe('light');
+      // its src still says &theme=dark; a reload must follow the shell's saved choice instead
+      expect(await page.locator('#view-proj-a iframe').getAttribute('src')).toContain('theme=dark');
+      await board.locator('body').evaluate(() => location.reload());
+      await expect(board.locator('#board')).toBeVisible();
+      expect(await boardTheme(board)).toBe('light');
+      // a board still loading when the theme changes (the message reaches an about:blank frame and is lost)
+      let release; const held = new Promise(r => { release = r; });
+      await page.route(/\/\?project=proj-x/, async r => { await held; await r.fallback(); });
+      await page.evaluate(async () => { const { openProject } = await import('/static/cockpit-tabs.js'); openProject('proj-x', 'proj-x'); });
+      await page.locator('#theme-btn').click(); await page.locator('#theme-pop [data-mode="dark"]').click(); await page.keyboard.press('Escape');
+      release();
+      const late = page.frameLocator('#view-proj-x iframe');
+      await expect(late.locator('#board')).toBeVisible();
+      expect(await boardTheme(late)).toBe('dark');
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('shell (t-2758): the popover works from the keyboard: focus stays on the choice, Tab goes through it, and leaving it closes it', async ({ page, browserName }) => {
+      await openShell(page, []);
+      const TAB = browserName === 'webkit' ? 'Alt+Tab' : 'Tab';   // Safari's default Tab skips buttons; Option+Tab reaches every control
+      const btn = page.locator('#theme-btn'), pop = page.locator('#theme-pop');
+      await btn.focus(); await page.keyboard.press('Enter');
+      await expect(pop).toBeVisible();
+      await page.keyboard.press(TAB); await expect(pop.locator('[data-mode="system"]')).toBeFocused();   // into the popover, before Help
+      await page.keyboard.press(TAB); await expect(pop.locator('[data-mode="light"]')).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+      await expect(pop).toBeVisible();
+      await expect(pop.locator('[data-mode="light"]')).toBeFocused();   // not dropped to <body> by the re-render
+      await page.keyboard.press(TAB); await page.keyboard.press(TAB); await page.keyboard.press('Enter');   // Dark, then the Canon Light card
+      // Tab past the last control leaves the popover: it closes rather than staying open over Help
+      for (let i = 0; i < 4 && await pop.isVisible(); i++) await page.keyboard.press(TAB);
+      await expect(pop).toBeHidden();
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('shell (t-2758): a second Cockpit window follows the choice instead of writing its stale copy back', async ({ page, context }) => {
+      await openShell(page, []);
+      const other = await context.newPage();
+      await other.goto(BASE + '/cockpit'); await other.waitForLoadState('networkidle');
+      await page.locator('#theme-btn').click(); await page.locator('#theme-pop [data-mode="light"]').click();
+      await expect(other.locator('html')).toHaveAttribute('data-theme', 'light');   // the storage event reached it
+      // the other window clicks a control: what it saves must start from the current choice, not its old copy
+      await other.locator('#theme-btn').click(); await other.locator('#theme-pop .thm-card[data-id="canon-light"]').click();
+      expect((await saved(page)).mode).toBe('light');
+      await page.reload(); await page.waitForLoadState('networkidle');
+      await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+      await other.close();
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('board (t-2758): the standalone board keeps its own Dark/Light toggle, which saves, and it is hidden inside the Cockpit', async ({ page }) => {
+      await page.addInitScript(() => localStorage.setItem('sprint-check-theme', 'dark'));
+      await page.goto(BASE + '/?standalone=1'); await page.waitForLoadState('networkidle');
+      const toggle = page.locator('#theme-toggle');
+      await expect(toggle).toBeVisible();
+      await toggle.click();
+      await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+      expect(await page.evaluate(() => localStorage.getItem('sprint-check-theme'))).toBe('light');
+      await toggle.click();
+      expect(await page.evaluate(() => document.documentElement.getAttribute('data-theme'))).toBe(null);
+      expect(await page.evaluate(() => localStorage.getItem('sprint-check-theme'))).toBe('dark');
+      const board = await openShell(page, []);
+      await expect(board.locator('#board')).toBeVisible();
+      await expect(board.locator('#theme-toggle')).toBeHidden();
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 

@@ -552,6 +552,116 @@
       "failed_runs": {
         "webkit": "1/3"
       }
+    },
+    {
+      "title": "board modal > model tier control is disabled for a hand-set value it does not recognize",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-5989",
+      "reason": "30 s webkit load timeout in a full run (t-2758, 2026-10-13); passed alone 2/2 on the branch and 2/2 on main 2718ef2c",
+      "failed_runs": {
+        "webkit": "1/1"
+      }
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > cross-project Sessions row (t-2d2e) > t-d2e1: a quote in a branch name stays inside the New Ticket worktree pill",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-5989",
+      "reason": "30 s webkit load timeout in a full run (t-2758, 2026-10-13); passed alone 2/2 on the branch and 2/2 on main 2718ef2c",
+      "failed_runs": {
+        "webkit": "1/1"
+      }
+    },
+    {
+      "title": "Canon Cockpit Upkeep (t-7ae6) > a run in flight blocks a second one for the same project even after the cards re-render (t-7d8d)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-5989",
+      "reason": "30 s webkit load timeout in a full run (t-2758, 2026-10-13); passed alone 2/2 on the branch and 2/2 on main 2718ef2c",
+      "failed_runs": {
+        "webkit": "1/1"
+      }
+    },
+    {
+      "title": "Canon Cockpit Projects card: Git status icon (t-8d72) > clicking Off confirms first; Cancel sends nothing, Turn on sends one {confirm:true} POST with a busy spinner, then the card turns On",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-5989",
+      "reason": "30 s webkit load timeout in a full run (t-2758, 2026-10-13); passed alone 2/2 on the branch and 2/2 on main 2718ef2c",
+      "failed_runs": {
+        "webkit": "1/1"
+      }
+    },
+    {
+      "title": "ticket modal polish (t-612f) > the Demo/UX switch lives in the header chips row, not the Plan sign-off bar, and still toggles the ticket (t-bb97)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-5989",
+      "reason": "30 s webkit load timeout in a full run (t-2758, 2026-10-13); passed alone 2/2 on the branch and 2/2 on main 2718ef2c",
+      "failed_runs": {
+        "webkit": "1/1"
+      }
+    },
+    {
+      "title": "gherkin scenarios in acceptance (t-6e32) > a ```gherkin block renders as a distinct scenario panel with highlighted keywords, in dark and light (C2/C3/C4)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-5989",
+      "reason": "30 s webkit load timeout in a full run (t-2758, 2026-10-13); passed alone 3/3 on the branch (3.1-3.5 s) and 3/3 on main 2718ef2c with the same .tickets data (3.1-3.3 s)",
+      "failed_runs": {
+        "webkit": "1/1"
+      }
+    },
+    {
+      "title": "board modal > sidebar type legend shows the type_outcome ratio once per type, not repeated on cards (t-5a09)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-5989",
+      "reason": "type name wrapped (42 px, limit 30) in a full run (t-2758, 2026-10-13): the legend column sizes to the longest type on the board, which other tests' tickets can widen; passed alone 3/3 on the branch and 3/3 on main 2718ef2c",
+      "failed_runs": {
+        "webkit": "1/1"
+      }
+    },
+    {
+      "title": "Canon Cockpit Upkeep (t-7ae6) > t-d2e1: a quote in a failed run's output stays inside the Error pill's tooltip",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-5989",
+      "reason": "30 s webkit timeout in a full run (t-2758, 2026-10-13); passed alone 3/3 on the branch and 3/3 on main 2718ef2c in 0.9-1.7 s",
+      "failed_runs": {
+        "webkit": "1/1"
+      }
+    },
+    {
+      "title": "board header and card footer (t-7723) > header order is New, Upkeep, Scratch, CI and New is filled (light)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-5989",
+      "reason": "30 s webkit timeout in a full run (t-2758, 2026-10-13); passed alone 3/3 on the branch and 3/3 on main 2718ef2c in 0.9-1.7 s",
+      "failed_runs": {
+        "webkit": "1/1"
+      }
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > cross-project Sessions row (t-2d2e) > shell (t-5a4b): the sprint-skill nudge shows on Scratch and session opens, stays quiet once dismissed",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-5989",
+      "reason": "30 s webkit timeout in a full run (t-2758, 2026-10-13); passed alone 3/3 on the branch and 3/3 on main 2718ef2c in 2.2-2.5 s",
+      "failed_runs": {
+        "webkit": "1/1"
+      }
     }
   ],
   "skipped": []

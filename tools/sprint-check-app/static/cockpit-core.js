@@ -8,17 +8,6 @@ import { closeTabMenu } from './cockpit-tabs.js';
 // quoted attribute; attribute sinks that used esc() instead of escAttr could be broken out of. escAttr is the same now.
 export function esc(s){const d=document.createElement('div');d.textContent=s==null?'':String(s);return d.innerHTML.replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 export function escAttr(s){return esc(s);}
-function syncThemeBtn(){
-  const b=document.getElementById('theme-btn'); if(!b) return;
-  const light=document.documentElement.dataset.theme==='light';
-  // show the CURRENT theme (icon + label), matching the board's convention
-  b.innerHTML = light ? '&#9728;&#65039; Light' : '&#127769; Dark';
-}
-function toggleTheme(){const h=document.documentElement;h.dataset.theme=h.dataset.theme==='dark'?'light':'dark';try{localStorage.setItem('canon-theme',h.dataset.theme);}catch(e){}
-  syncThemeBtn();
-  // push the new theme into every open project board iframe (t-a55a)
-  document.querySelectorAll('.view iframe').forEach(f=>{try{f.contentWindow.postMessage({type:'canon-theme',theme:h.dataset.theme},location.origin);}catch(e){}});
-}
 export function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2600);}
 
 // ── Reusable canon-styled confirm (t-5849) ─────────────────────────────────
@@ -89,9 +78,6 @@ async function loadHelpVersions(){
 }
 // t-565f: core's load-time code, run once at the end (the module version keeps it in initCore()).
 export function initCore(){
-(function(){try{const t=localStorage.getItem('canon-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}})();
-document.addEventListener('DOMContentLoaded',syncThemeBtn);
-document.addEventListener('DOMContentLoaded',()=>document.getElementById('theme-btn').addEventListener('click',()=>toggleTheme()));
 document.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('cc-ok').addEventListener('click',()=>_ccClose(true));
   document.getElementById('cc-cancel').addEventListener('click',()=>_ccClose(false));
