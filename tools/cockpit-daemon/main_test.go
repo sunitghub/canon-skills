@@ -6643,7 +6643,7 @@ func TestScratchIdleReapNotesDirty(t *testing.T) {
 	s.mu.Unlock()
 	os.WriteFile(filepath.Join(root, "a.txt"), []byte("edited\n"), 0o644)
 	os.WriteFile(filepath.Join(root, "u.txt"), []byte("new\n"), 0o644)
-	s.endIdleScratch(se)
+	s.endIdleScratch(se, "left by the idle auto-end")
 	if !sessionGone(s, st.Session) {
 		t.Fatal("the reaper must end a dirty scratch session now")
 	}
@@ -6665,7 +6665,7 @@ func TestScratchIdleReapNotesDirty(t *testing.T) {
 	se2.cwd = filepath.Join(root, "missing")
 	se2.reaping = true
 	se2.mu.Unlock()
-	s.endIdleScratch(se2)
+	s.endIdleScratch(se2, "left by the idle auto-end")
 	if sessionGone(s, st2.Session) {
 		t.Fatal("a git error must keep the session")
 	}
@@ -7729,5 +7729,421 @@ func TestStartupVersionIsReadOnce(t *testing.T) {
 	t.Chdir(root)
 	if got := startupVersion("")(); got != version {
 		t.Errorf("unknown binary folder: got %q, want the stamped fallback %q", got, version)
+	}
+}
+
+// t-3c9a: Reap now / Kill from the Cockpit shell, through POST /end-session (boot token only).
+
+func endSessionReq(t *testing.T, base, auth string, body map[string]string) (int, string) {
+	t.Helper()
+	b, _ := json.Marshal(body)
+	req, _ := http.NewRequest(http.MethodPost, base+"/end-session", strings.NewReader(string(b)))
+	req.Header.Set("Content-Type", "application/json")
+	if auth != "" {
+		req.Header.Set("Authorization", "Bearer "+auth)
+	}
+	r, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, _ := io.ReadAll(r.Body)
+	r.Body.Close()
+	return r.StatusCode, string(out)
+}
+
+// endBody names a session the way the shell does: what /sessions reported for it.
+func endBody(s *server, sid, mode string) map[string]string {
+	s.mu.Lock()
+	se := s.sessions[sid]
+	s.mu.Unlock()
+	se.mu.Lock()
+	defer se.mu.Unlock()
+	return map[string]string{"session": sid, "ticket": se.ticket, "project_root": se.projectRoot, "mode": mode}
+}
+
+// makeIdle backdates a session's last activity past the 15 s working window, as if it sat at its prompt.
+func makeIdle(s *server, sid string) {
+	s.mu.Lock()
+	se := s.sessions[sid]
+	s.mu.Unlock()
+	se.mu.Lock()
+	se.lastActivity = time.Now().Add(-time.Minute)
+	se.mu.Unlock()
+}
+
+func startTicket(t *testing.T, base string) (sid, tok string) {
+	t.Helper()
+	resp := startSession(t, base, "t-ab12", bootTok)
+	var out struct{ Session, Token string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+	if out.Session == "" {
+		t.Fatal("no session started")
+	}
+	return out.Session, out.Token
+}
+
+// newEndServer is newTestServer that also returns the server; the reaper's own clock is set far out so only
+// /end-session ends anything.
+func newEndServer(t *testing.T, bin string, saveFallback time.Duration) (*server, string) {
+	t.Helper()
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(),
+		idleTimeout: time.Hour, idleTimeoutMain: time.Hour, idleCheckInterval: time.Hour, saveFallback: saveFallback})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	return s, ts.URL
+}
+
+func TestEndSessionNeedsTheBootToken(t *testing.T) {
+	s, base := newEndServer(t, fakeAgentThatIgnores(t), time.Hour)
+	sid, tok := startTicket(t, base)
+	for _, auth := range []string{"", tok, "wrong"} {
+		if code, _ := endSessionReq(t, base, auth, endBody(s, sid, "kill")); code != http.StatusUnauthorized {
+			t.Fatalf("auth %q: want 401, got %d", auth, code)
+		}
+	}
+	if sessionGone(s, sid) {
+		t.Fatal("a refused request ended the session")
+	}
+	if code, body := endSessionReq(t, base, bootTok, endBody(s, sid, "kill")); code != http.StatusOK || !strings.Contains(body, `"mode":"kill"`) {
+		t.Fatalf("boot token: want 200 kill, got %d %s", code, body)
+	}
+	if !sessionGone(s, sid) {
+		t.Fatal("Kill did not end the session")
+	}
+}
+
+func TestEndSessionRefusesWithoutEndingAnything(t *testing.T) {
+	s, base := newEndServer(t, fakeAgentThatIgnores(t), time.Hour)
+	sid, _ := startTicket(t, base)
+	b := func(mode string, edit func(map[string]string)) map[string]string {
+		m := endBody(s, sid, mode)
+		if edit != nil {
+			edit(m)
+		}
+		return m
+	}
+	cases := []struct {
+		name string
+		body map[string]string
+		want int
+	}{
+		{"unknown session", b("kill", func(m map[string]string) { m["session"] = "0000000000000000" }), http.StatusNotFound},
+		{"another ticket", b("kill", func(m map[string]string) { m["ticket"] = "t-zz99" }), http.StatusConflict},
+		{"another project", b("kill", func(m map[string]string) { m["project_root"] = "/elsewhere" }), http.StatusConflict},
+		{"bad mode", b("discard", nil), http.StatusBadRequest},
+		{"reap while working", b("reap", nil), http.StatusConflict}, // just started: output within 15 s
+	}
+	for _, c := range cases {
+		if code, body := endSessionReq(t, base, bootTok, c.body); code != c.want {
+			t.Errorf("%s: want %d, got %d %s", c.name, c.want, code, body)
+		}
+	}
+	makeIdle(s, sid)
+	s.mu.Lock()
+	se := s.sessions[sid]
+	s.mu.Unlock()
+	se.setStatus("needs-you")
+	makeIdle(s, sid)
+	if code, body := endSessionReq(t, base, bootTok, endBody(s, sid, "reap")); code != http.StatusConflict || !strings.Contains(body, "waiting on you") {
+		t.Errorf("reap on needs-you: want 409 waiting on you, got %d %s", code, body)
+	}
+	se.setStatus("running")
+	se.mu.Lock()
+	se.exited = true
+	se.mu.Unlock()
+	if code, _ := endSessionReq(t, base, bootTok, endBody(s, sid, "kill")); code != http.StatusGone {
+		t.Errorf("exited: want 410, got %d", code)
+	}
+	se.mu.Lock()
+	se.exited, se.reaping = false, false
+	se.mu.Unlock()
+	if sessionGone(s, sid) {
+		t.Fatal("a refused request ended the session")
+	}
+}
+
+// Reap now must refuse a Copilot menu the way the reaper does (never type into it).
+func TestReapNowRefusesACopilotMenu(t *testing.T) {
+	bin, recv := fakeAgentOnMenu(t, "copilot-approval-menu.bin")
+	s, ts, sid, _ := startMenuSession(t, bin, config{idleTimeout: time.Hour, idleTimeoutMain: time.Hour, idleCheckInterval: time.Hour, saveFallback: time.Hour})
+	makeIdle(s, sid)
+	if code, body := endSessionReq(t, ts.URL, bootTok, endBody(s, sid, "reap")); code != http.StatusConflict || !strings.Contains(body, "Copilot menu") {
+		t.Fatalf("want 409 Copilot menu, got %d %s", code, body)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if b, _ := os.ReadFile(recv); len(b) != 0 {
+		t.Fatalf("Reap now wrote into a pending menu: %q", b)
+	}
+}
+
+// Reap now on a ticket session saves first: with an agent that never saves it waits (the save fallback), and with
+// one that saves it ends after the marker — it is not a Kill.
+func TestReapNowSavesThenEnds(t *testing.T) {
+	s, base := newEndServer(t, fakeAgentThatIgnores(t), time.Hour)
+	sid, _ := startTicket(t, base)
+	makeIdle(s, sid)
+	if code, body := endSessionReq(t, base, bootTok, endBody(s, sid, "reap")); code != http.StatusAccepted {
+		t.Fatalf("want 202, got %d %s", code, body)
+	}
+	time.Sleep(400 * time.Millisecond)
+	if sessionGone(s, sid) {
+		t.Fatal("Reap now ended a session that never saved before its fallback — it must wait for the save")
+	}
+	if code, _ := endSessionReq(t, base, bootTok, endBody(s, sid, "reap")); code != http.StatusConflict {
+		t.Errorf("a second Reap now while saving: want 409, got %d", code)
+	}
+
+	s2, base2 := newEndServer(t, fakeAgentThatSaves(t), 30*time.Second)
+	sid2, _ := startTicket(t, base2)
+	makeIdle(s2, sid2)
+	if code, body := endSessionReq(t, base2, bootTok, endBody(s2, sid2, "reap")); code != http.StatusAccepted {
+		t.Fatalf("want 202, got %d %s", code, body)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for !sessionGone(s2, sid2) {
+		if time.Now().After(deadline) {
+			t.Fatal("Reap now did not end a session whose agent saved")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	waitSnapshotGone(t, s2, "t-ab12")
+	// killSession registers its change recording before it removes the snapshot entry; taking the lock that removal
+	// held orders that registration before the teardown's Wait (seen only through the file, the race detector can't tell).
+	snapMu.Lock()
+	snapMu.Unlock()
+}
+
+func TestKillEndsATicketSessionWithoutSaving(t *testing.T) {
+	s, base := newEndServer(t, fakeAgentThatSaves(t), 30*time.Second)
+	sid, _ := startTicket(t, base) // working, not idle: Kill doesn't care
+	if code, body := endSessionReq(t, base, bootTok, endBody(s, sid, "kill")); code != http.StatusOK || strings.Contains(body, "note_error") {
+		t.Fatalf("want 200, got %d %s", code, body)
+	}
+	if !sessionGone(s, sid) {
+		t.Fatal("Kill must end the session at once")
+	}
+}
+
+func TestReapNowAndKillNoteScratchLeftovers(t *testing.T) {
+	root, base, s := endGuardProject(t)
+	st := startScratchSession(t, base, "s-aa01", root)
+	os.WriteFile(filepath.Join(root, "a.txt"), []byte("edited\n"), 0o644)
+	makeIdle(s, st.Session)
+	if code, body := endSessionReq(t, base, bootTok, endBody(s, st.Session, "reap")); code != http.StatusAccepted {
+		t.Fatalf("reap scratch: want 202, got %d %s", code, body)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for !sessionGone(s, st.Session) {
+		if time.Now().After(deadline) {
+			t.Fatal("Reap now did not end the scratch session")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	waitSnapshotGone(t, s, "s-aa01")
+	snapMu.Lock()
+	snapMu.Unlock()
+	hand := func() string { b, _ := os.ReadFile(filepath.Join(root, "HANDOFF.md")); return string(b) }
+	if !strings.Contains(hand(), "s-aa01: 1 file changed in the main checkout — left by Reap now") {
+		t.Fatalf("Reap now not noted:\n%s", hand())
+	}
+
+	st2 := startScratchSession(t, base, "s-bb02", root)
+	if code, body := endSessionReq(t, base, bootTok, endBody(s, st2.Session, "kill")); code != http.StatusOK || strings.Contains(body, "note_error") {
+		t.Fatalf("kill scratch: want 200 with no note error, got %d %s", code, body)
+	}
+	if !sessionGone(s, st2.Session) {
+		t.Fatal("Kill did not end the scratch session")
+	}
+	if !strings.Contains(hand(), "s-bb02: 1 file changed in the main checkout — left by Kill") {
+		t.Fatalf("Kill not noted:\n%s", hand())
+	}
+	if b, _ := os.ReadFile(filepath.Join(root, "a.txt")); string(b) != "edited\n" {
+		t.Fatal("Kill must never discard")
+	}
+}
+
+// A note that can't be written must not stop a Kill: the user asked for the session to end. The reply says so.
+func TestKillEndsEvenWhenTheNoteFails(t *testing.T) {
+	root, base, s := endGuardProject(t)
+	other := t.TempDir()
+	if err := os.Symlink(filepath.Join(other, "victim.txt"), filepath.Join(root, "HANDOFF.md")); err != nil {
+		t.Skip("symlinks unavailable:", err)
+	}
+	st := startScratchSession(t, base, "s-cc03", root)
+	os.WriteFile(filepath.Join(root, "a.txt"), []byte("edited\n"), 0o644)
+	code, body := endSessionReq(t, base, bootTok, endBody(s, st.Session, "kill"))
+	if code != http.StatusOK || !strings.Contains(body, "note_error") {
+		t.Fatalf("want 200 with note_error, got %d %s", code, body)
+	}
+	if !sessionGone(s, st.Session) {
+		t.Fatal("a failed note must not keep a killed session")
+	}
+	if _, err := os.Stat(filepath.Join(other, "victim.txt")); err == nil {
+		t.Fatal("the note wrote through a link")
+	}
+}
+
+func TestRelayPageIsGuardedUncachedAndCarriesTheToken(t *testing.T) {
+	_, base := newEndServer(t, fakeAgentThatIgnores(t), time.Hour)
+	r, err := http.Get(base + "/relay")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(r.Body)
+	r.Body.Close()
+	if r.StatusCode != http.StatusOK || r.Header.Get("Cache-Control") != "no-store" {
+		t.Fatalf("want 200 no-store, got %d %q", r.StatusCode, r.Header.Get("Cache-Control"))
+	}
+	if !strings.Contains(string(b), `"`+bootTok+`"`) || strings.Contains(string(b), "__COCKPIT_TOKEN__") {
+		t.Fatal("the relay page must carry the boot token, filled in")
+	}
+	req, _ := http.NewRequest(http.MethodGet, base+"/relay", nil)
+	req.Header.Set("Origin", "http://evil.example")
+	r2, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r2.Body.Close()
+	if r2.StatusCode != http.StatusForbidden {
+		t.Fatalf("a foreign Origin: want 403, got %d", r2.StatusCode)
+	}
+}
+
+// The idle reaper and Reap now share reapBlockedLocked: the reaper must never even start on a needs-you session
+// (se.reaping stays false). TestIdleReapSparesNeedsYouSession can't see this: its 300 ms check ends long before the
+// save fallback would kill the session.
+func TestIdleReaperNeverStartsOnANeedsYouSession(t *testing.T) {
+	bin := fakeAgentThatIgnores(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(),
+		idleTimeout: 50 * time.Millisecond, idleTimeoutMain: 50 * time.Millisecond, idleCheckInterval: 20 * time.Millisecond, saveFallback: time.Hour})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	sid, _ := startTicket(t, ts.URL)
+	s.mu.Lock()
+	se := s.sessions[sid]
+	s.mu.Unlock()
+	se.setStatus("needs-you")
+	time.Sleep(300 * time.Millisecond)
+	se.mu.Lock()
+	reaping := se.reaping
+	se.mu.Unlock()
+	if reaping {
+		t.Fatal("the idle reaper started a save on a session that is waiting on you")
+	}
+}
+
+// t-3c9a break-it: one end, one note. Concurrent Kills, or a Kill while Reap now (or the idle reaper) is already
+// ending a scratch session, must not write the HANDOFF note again.
+func TestKillNotesAScratchSessionOnce(t *testing.T) {
+	root, base, s := endGuardProject(t)
+	count := func(id string) int {
+		b, _ := os.ReadFile(filepath.Join(root, "HANDOFF.md"))
+		return strings.Count(string(b), id+": ")
+	}
+	st := startScratchSession(t, base, "s-dd04", root)
+	os.WriteFile(filepath.Join(root, "a.txt"), []byte("edited\n"), 0o644)
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); endSessionReq(t, base, bootTok, endBody(s, st.Session, "kill")) }()
+	}
+	wg.Wait()
+	if n := count("s-dd04"); n != 1 {
+		t.Errorf("8 concurrent Kills wrote %d notes, want 1", n)
+	}
+
+	st2 := startScratchSession(t, base, "s-ee05", root)
+	makeIdle(s, st2.Session)
+	body := endBody(s, st2.Session, "kill")
+	if code, _ := endSessionReq(t, base, bootTok, endBody(s, st2.Session, "reap")); code != http.StatusAccepted {
+		t.Fatalf("reap: want 202, got %d", code)
+	}
+	endSessionReq(t, base, bootTok, body)
+	deadline := time.Now().Add(5 * time.Second)
+	for !sessionGone(s, st2.Session) && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	waitSnapshotGone(t, s, "s-ee05")
+	snapMu.Lock()
+	snapMu.Unlock()
+	// The reap's own goroutine may still be writing its note after the Kill ended the session: wait for one, then
+	// make sure no second one follows.
+	for deadline := time.Now().Add(3 * time.Second); count("s-ee05") == 0 && time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+	}
+	time.Sleep(300 * time.Millisecond)
+	if n := count("s-ee05"); n != 1 {
+		t.Errorf("Reap now then Kill wrote %d notes, want 1", n)
+	}
+}
+
+// Evaluator (t-3c9a): pin the guards no other test covered.
+func TestEndSessionIsHostOriginGuardedAndPostOnly(t *testing.T) {
+	s, base := newEndServer(t, fakeAgentThatIgnores(t), time.Hour)
+	sid, _ := startTicket(t, base)
+	b, _ := json.Marshal(endBody(s, sid, "kill"))
+	do := func(method string, set func(*http.Request)) int {
+		req, _ := http.NewRequest(method, base+"/end-session", strings.NewReader(string(b)))
+		req.Header.Set("Authorization", "Bearer "+bootTok)
+		set(req)
+		r, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Body.Close()
+		return r.StatusCode
+	}
+	if c := do(http.MethodPost, func(r *http.Request) { r.Header.Set("Origin", "http://evil.example") }); c != http.StatusForbidden {
+		t.Errorf("a foreign Origin with the boot token: want 403, got %d", c)
+	}
+	if c := do(http.MethodPost, func(r *http.Request) { r.Host = "evil.example" }); c != http.StatusForbidden {
+		t.Errorf("a foreign Host with the boot token: want 403, got %d", c)
+	}
+	if c := do(http.MethodGet, func(*http.Request) {}); c != http.StatusMethodNotAllowed {
+		t.Errorf("GET with the boot token: want 405, got %d", c)
+	}
+	if sessionGone(s, sid) {
+		t.Fatal("a refused request ended the session")
+	}
+}
+
+// The /relay page lets project_root be up to 4096 characters; the daemon must read the whole body, not refuse it as
+// malformed (break-it fix 6).
+func TestEndSessionReadsAFullLengthProjectRoot(t *testing.T) {
+	s, base := newEndServer(t, fakeAgentThatIgnores(t), time.Hour)
+	sid, _ := startTicket(t, base)
+	body := endBody(s, sid, "kill")
+	body["project_root"] = "/" + strings.Repeat("x", 4095)
+	if code, text := endSessionReq(t, base, bootTok, body); code != http.StatusConflict {
+		t.Fatalf("a 4096-character project_root: want 409 (read, then not this session's), got %d %s", code, text)
+	}
+}
+
+// A failed note gives its claim back, so a later end (the reaper retrying, or a Kill) still writes it.
+func TestAFailedScratchNoteLeavesTheClaimForALaterEnd(t *testing.T) {
+	root, base, s := endGuardProject(t)
+	st := startScratchSession(t, base, "s-ff06", root)
+	s.mu.Lock()
+	se := s.sessions[st.Session]
+	s.mu.Unlock()
+	hand := filepath.Join(root, "HANDOFF.md")
+	if err := os.Symlink(filepath.Join(t.TempDir(), "elsewhere.md"), hand); err != nil {
+		t.Skip("symlinks unavailable:", err)
+	}
+	if err := s.noteScratchOnce(se, nil, 1, 0, "left by Kill"); err == nil {
+		t.Fatal("the note should fail through a link")
+	}
+	os.Remove(hand)
+	if err := s.noteScratchOnce(se, nil, 1, 0, "left by Kill"); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(hand); !strings.Contains(string(b), "s-ff06: ") {
+		t.Fatalf("after a failed note, a later end wrote nothing:\n%s", b)
 	}
 }

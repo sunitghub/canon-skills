@@ -714,6 +714,11 @@ export function initCockpit() {
       if (typeof d.ticket === 'string' && COCKPIT_TICKET_ID.test(d.ticket)) openTicketWhenLoaded(d.ticket, 20);
       return;
     }
+    if (d.type === 'session-menu-request') {               // t-3c9a: prefix then t. Says which live session this board has open (or none); the shell does the rest
+      const id = cockpitState && !cockpitState._ending && sessionIsLive() ? String(cockpitState.id || '') : '';
+      try { window.parent.postMessage({ source: 'canon-board', type: 'session-menu', tab: SHELL_TAB, id }, location.origin); } catch {}
+      return;
+    }
     if (d.type === 'end-session-request') {                // t-a198: prefix then e. Opens the existing confirmation for a LIVE session; never ends anything itself
       if (cockpitState && !cockpitState._ending && sessionIsLive()) openLeaveConfirm();
       return;
@@ -727,6 +732,10 @@ export function initCockpit() {
     if (d.type === 'focus-search') {                       // t-a198: prefix then /
       const s = document.getElementById('board-search');
       if (s) { s.focus(); s.select(); }
+      return;
+    }
+    if (d.type === 'close-scratch') {                      // t-3c9a (user): Kill / Reap now ended this scratch session from the shell; close its chip. closeTab never ends or contacts the daemon
+      if (typeof d.id === 'string' && SCRATCH_ID.test(d.id) && cockpitTabs[d.id]) closeTab(d.id);
       return;
     }
     if (d.type === 'open-scratch') {                       // t-47f1: shell's "+ Scratch", or a scratch row reopened

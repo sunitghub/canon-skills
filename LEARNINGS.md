@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-12-2026 17:21
+learnings-sweep last run: 10-12-2026 21:56
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-12 | [t-3c9a](.tickets/t-3c9a/learnings.md) | Behaviour tests and break-it fixes passed while four guards (route Host/Origin, POST-only, body cap, a claim give-back) had no test that failed on revert; the evaluator caught it. Mutant every guard you add, including break-it's fixes, before claiming 'each has a regression test' | UNPROMOTED |
 | 2026-10-12 | [t-aca6](.tickets/t-aca6/learnings.md) | Adding a span with an existing class (`ag-s ag-p`) broke 3 strict-mode locators that read `.ag-s` as one element; a new line in a row gets its own class, and the shell test groups run before the full spec catch it in minutes | UNPROMOTED |
 | 2026-10-12 | [t-d2e1](.tickets/t-d2e1/learnings.md) | Making a shared escaper stricter is safe at its sinks but not for code that escapes a whole document first and parses it later: md() escaped the doc before its image pass, so quote-escaping turned `it's.png` into a mangled URL. Before tightening an escaper, list callers that escape-then-parse (and decode what they extract); and a 'none left' sweep must search the whole pattern, not only the same-expression form | UNPROMOTED |
 | 2026-10-12 | [t-565f](.tickets/t-565f/learnings.md) | A check that normalizes something away (indentation, ordering) cannot see a bug in exactly that dimension: the line-multiset move check ignored indentation, so a generator re-indenting a byte-pinned block passed it; only `prefix-keys-parity.sh` in `test.sh` caught it. Pair a normalized check with an exact one on what must not change (here, every string literal byte-equal), and mutate each | UNPROMOTED |

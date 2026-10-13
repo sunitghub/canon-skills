@@ -4240,7 +4240,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const rowHeights = await page.locator('#keys-sheet .keys-table td:last-child').evaluateAll(els => els.map(e => Math.round(e.getBoundingClientRect().height)));
       expect(Math.max(...rowHeights), 'no description wraps onto a second line').toBeLessThanOrEqual(30);
       const keys = await page.locator('#keys-sheet .keys-table kbd').allTextContents();
-      for (const k of ['1', '9', 'f', 'l', 'n', 'b', 'p', 'a', 'x', 'v', '-', 'V', '_', 'o', 's', 'r', 'u', 'e', '/', '?', 'Esc']) expect(keys, `the sheet lists ${k}`).toContain(k);
+      for (const k of ['1', '9', 'f', 'l', 'n', 'b', 'p', 'a', 'x', 'v', '-', 'V', '_', 'o', 's', 'r', 'u', 'e', 't', '/', '?', 'Esc']) expect(keys, `the sheet lists ${k}`).toContain(k);
       const lastRow = await bbox(page, '#keys-sheet .keys-grid > section:first-child .keys-table:last-child tr:last-child'), closeBtn = await bbox(page, '#keys-close');
       expect(closeBtn.y - (lastRow.y + lastRow.height), 'the Close button has room below the last row').toBeGreaterThanOrEqual(16);
       const box = await bbox(page, '#keys-sheet .keys-modal');
@@ -4446,6 +4446,254 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(line).toHaveAttribute('title', /^a-rather-long-project-name-for-t-aca6 \u2014 1h 5m in session \(started .+\)$/);
       await page.evaluate(async () => { (await import('/static/cockpit-sidebar.js')).setSideWidth(420); (await import('/static/cockpit-sessions.js')).renderSessionSurfaces(); });
       await expect(line).toHaveText('a-rather-long-project-name-for-t-aca6 \u00b7 1h 5m in session');   // wide enough again: full form
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    // t-3c9a: Reap now / Kill from the Agents row menu and Admin. The shell frames the daemon's /relay page; here a fake
+    // relay at the stub daemon's address records every message it is sent and answers as the test says.
+    const endRows = () => [
+      { session: 'e1', ticket: 't-aaa1', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', status: 'awaiting-input', state: 'idle', state_secs: 400, idle_secs: 400, idle_limit_secs: 1800, signal: 'hook' },
+      { session: 'e2', ticket: 't-bbb2', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', status: 'running', state: 'working', state_secs: 3, idle_secs: 3, idle_limit_secs: 1800, signal: 'hook' },
+      { session: 'e3', ticket: 's-k2m9', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', status: 'awaiting-input', state: 'idle', state_secs: 900, idle_secs: 900, idle_limit_secs: 1800, signal: 'hook' },
+      { session: 'e4', ticket: 't-ccc3', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', status: 'needs-you', state: 'needs-you', state_secs: 60, idle_secs: 60, idle_limit_secs: 1800, signal: 'hook' },
+    ];
+    const stubRelay = async (page, reply = () => ({ status: 200, text: '{"ok":true,"mode":"kill"}' })) => {
+      const calls = [];
+      await page.exposeBinding('__relayCall', (_src, d) => { calls.push(d); return reply(d); });
+      await page.route(`http://${FAKE_DAEMON_ADDR}/relay`, r => r.fulfill({ status: 200, contentType: 'text/html', body:
+        '<!doctype html><script>addEventListener("message",async e=>{if(e.source!==parent)return;const d=e.data;' +
+        'const r=await window.__relayCall(d);e.source.postMessage({source:"canon-relay",type:"end-session-result",id:d.id,status:r.status,text:r.text},e.origin);});</script>' }));
+      return calls;
+    };
+    const agentRow = (page, id) => page.locator('#ag-list .ag-row', { hasText: id });
+    const menuItems = page => page.locator('#tabmenu button');
+
+    test('t-3c9a: an Agents row opens Open / Reap now / Kill by right-click or Shift+F10; Reap now is off unless idle', async ({ page }) => {
+      await stubRelay(page);
+      await openShell(page, endRows());
+      await page.evaluate(async () => (await import('/static/cockpit-sessions.js')).pollSessions());
+      await agentRow(page, 't-bbb2').click({ button: 'right' });
+      await expect(page.locator('#tabmenu')).toBeVisible();
+      await expect(page.locator('#tabmenu .head')).toContainText('t-bbb2');                 // the menu names its session
+      await expect(page.locator('#tabmenu .head small')).toHaveText('proj-a \u00b7 claude \u00b7 working');
+      await expect(menuItems(page)).toHaveText(['Open', 'Reap nowsave & end', 'Kill…no save']);
+      await expect(menuItems(page).nth(1)).toBeDisabled();
+      await expect(menuItems(page).nth(1)).toHaveAttribute('title', 'Working — the agent isn’t at its prompt');
+      await expect(menuItems(page).nth(2)).toBeEnabled();
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#tabmenu')).toBeHidden();
+      await agentRow(page, 't-ccc3').click({ button: 'right' });
+      await expect(menuItems(page).nth(1)).toHaveAttribute('title', 'Waiting on you — answer it first');
+      await page.mouse.click(700, 500);                                                   // an outside click closes it
+      await expect(page.locator('#tabmenu')).toBeHidden();
+      await agentRow(page, 't-aaa1').focus();
+      await page.keyboard.press('Shift+F10');
+      await expect(menuItems(page).nth(0)).toBeFocused();
+      await expect(menuItems(page).nth(1)).toBeEnabled();                                 // idle: Reap now is on
+      await page.keyboard.press('ArrowDown');
+      await expect(menuItems(page).nth(1)).toBeFocused();
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#tabmenu')).toBeHidden();
+      await expect(agentRow(page, 't-aaa1')).toBeFocused();                               // focus goes back to the row
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('t-3c9a: Kill asks first, opens on Cancel, and sends the session to the relay only on Kill', async ({ page }) => {
+      const calls = await stubRelay(page);
+      await openShell(page, endRows());
+      await page.evaluate(async () => (await import('/static/cockpit-sessions.js')).pollSessions());
+      await agentRow(page, 'Scratch session').click({ button: 'right' });
+      await expect(page.locator('#tabmenu .head')).toContainText('Scratch session \u00b7 s-k2m9');
+      await menuItems(page).nth(2).click();
+      await expect(page.locator('#cconfirm')).toHaveClass(/show/);
+      await expect(page.locator('#cc-title')).toHaveText('Kill “Scratch session”?');
+      await expect(page.locator('#cc-body')).toHaveText('Ends proj-a · claude now, without saving. Uncommitted changes stay in the folder and are noted in HANDOFF.md ## Scratch.');
+      await expect(page.locator('#cc-cancel')).toBeFocused();
+      await page.keyboard.press('Enter');                                                 // Enter presses Cancel
+      await expect(page.locator('#cconfirm')).not.toHaveClass(/show/);
+      await page.waitForTimeout(300);
+      expect(calls).toHaveLength(0);
+      // the project's board records what the shell tells it (a killed scratch session's chip closes; user, t-3c9a)
+      await page.frameLocator('#view-proj-a iframe').locator('body').evaluate(() => {
+        window.__shellMsgs = []; addEventListener('message', e => { if (e.data && e.data.source === 'canon-cockpit-shell') window.__shellMsgs.push(e.data); });
+      });
+      await agentRow(page, 'Scratch session').click({ button: 'right' });
+      await menuItems(page).nth(2).click();
+      await page.locator('#cc-ok').click();
+      await expect(page.locator('#toast')).toHaveText('Killed “Scratch session”.');
+      expect(calls).toHaveLength(1);
+      await expect.poll(() => page.frameLocator('#view-proj-a iframe').locator('body').evaluate(() => window.__shellMsgs.filter(m => m.type === 'close-scratch')))
+        .toEqual([{ source: 'canon-cockpit-shell', type: 'close-scratch', id: 's-k2m9' }]);
+      const { id, ...msg } = calls[0];
+      expect(id).toBeTruthy();
+      expect(msg).toEqual({ source: 'canon-cockpit-shell', type: 'end-session', session: 'e3', ticket: 's-k2m9', project_root: '/tmp/proj-a', mode: 'kill' });
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('t-3c9a: Admin rows offer Reap now (idle only) and Kill; stopped rows keep Resume/Dismiss; a refusal is shown', async ({ page }) => {
+      interruptedStubbed.add(page);
+      await page.route('**/api/cockpit-interrupted', r => r.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify([{ id: 't-zzz9', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', started: '2026-10-12T10:00:00Z', resumable: true, reason: '' }]) }));
+      const calls = await stubRelay(page, d => d.ticket === 't-aaa1' && calls.length > 1
+        ? { status: 409, text: "can't reap now: it is waiting on you\n" } : { status: 202, text: '{"ok":true,"mode":"reap"}' });
+      await openShell(page, endRows());
+      await page.locator('#nav-admin').click();
+      const row = id => page.locator('#ad-sessions tbody tr', { hasText: id });
+      await expect(row('t-aaa1').locator('.ad-end')).toHaveText(['Reap now', 'Kill']);
+      await expect(row('t-bbb2').locator('.ad-end')).toHaveText(['Kill']);
+      await expect(row('t-ccc3').locator('.ad-end')).toHaveText(['Kill']);
+      await expect(row('t-zzz9').locator('.ad-end')).toHaveCount(0);
+      await expect(row('t-zzz9').locator('.intr-btn')).toHaveText(['Resume', 'Dismiss']);
+      await row('t-aaa1').locator('.ad-end', { hasText: 'Reap now' }).click();
+      await expect(page.locator('#cc-title')).toHaveText('Reap “t-aaa1” now?');
+      await expect(page.locator('#cc-body')).toHaveText('Asks proj-a · claude to save its state, then ends it — what the idle reaper would do in 23m.');
+      await expect(page.locator('#cc-ok')).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(page.locator('#toast')).toHaveText('Reaping “t-aaa1”: saving, then ending.');
+      expect(calls.map(c => c.mode)).toEqual(['reap']);
+      await row('t-aaa1').locator('.ad-end', { hasText: 'Reap now' }).click();
+      await page.locator('#cc-ok').click();
+      await expect(page.locator('#toast')).toHaveText('Didn’t reap “t-aaa1”: can\'t reap now: it is waiting on you');
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('t-3c9a: after a daemon restart (the framed relay holds the old token) the shell re-frames it and retries once', async ({ page }) => {
+      let loads = 0;
+      const calls = [];
+      await page.exposeBinding('__relayCall', (_src, d) => { calls.push(d); return d.__boot === 1 ? { status: 401, text: 'unauthorized\n' } : { status: 200, text: '{"ok":true,"mode":"kill"}' }; });
+      await page.route(`http://${FAKE_DAEMON_ADDR}/relay`, r => { loads++; return r.fulfill({ status: 200, contentType: 'text/html', body:
+        `<!doctype html><script>addEventListener("message",async e=>{if(e.source!==parent)return;const d=e.data;` +
+        `const r=await window.__relayCall({...d,__boot:${loads}});e.source.postMessage({source:"canon-relay",type:"end-session-result",id:d.id,status:r.status,text:r.text},e.origin);});</script>` }); });
+      await openShell(page, endRows());
+      await page.locator('#nav-admin').click();
+      const kill = () => page.locator('#ad-sessions tbody tr', { hasText: 't-bbb2' }).locator('.ad-end', { hasText: 'Kill' }).click();
+      await kill();
+      await page.locator('#cc-ok').click();
+      await expect(page.locator('#toast')).toHaveText('Killed “t-bbb2”.');
+      expect(loads, 'the relay was framed again after the 401').toBe(2);
+      expect(calls.map(c => c.__boot)).toEqual([1, 2]);
+      await expect(page.locator('#end-relay')).toHaveCount(1);                              // the stale frame is gone
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('t-3c9a: ctrl+. then t opens the session menu for this tab\'s agent, asking its board which session is open', async ({ page }) => {
+      await stubRelay(page);
+      await openShell(page, endRows());
+      await boardsKeyReady(page, ['proj-a']);
+      await pressPrefix(page, 't');   // the real board answers: no cockpit open, and proj-a has several sessions
+      await expect(page.locator('#toast')).toHaveText('Several agent sessions in proj-a: open one in this tab, or right-click its row under Agents.');
+      await expect(page.locator('#tabmenu')).toBeHidden();
+      // the board's answer naming its open session (as it does with a live cockpit open)
+      const reply = id => page.frameLocator('#view-proj-a iframe').locator('body').evaluate(async (_, id) => {
+        const { SHELL_TAB } = await import('/static/board-core.js');
+        window.parent.postMessage({ source: 'canon-board', type: 'session-menu', tab: SHELL_TAB, id }, location.origin);
+      }, id);
+      await reply('t-aaa1');
+      await expect(page.locator('#tabmenu')).toBeVisible();
+      await expect(page.locator('#tabmenu .head')).toContainText('t-aaa1');                 // named: nothing else on screen says which session
+      await expect(page.locator('#tabmenu .head small')).toHaveText('proj-a \u00b7 claude \u00b7 idle');
+      await expect(page.locator('#tabmenu button').nth(1)).toBeEnabled();                  // t-aaa1 is idle: Reap now is on
+      const tab = await page.locator('.tab.project[data-tab="proj-a"]').boundingBox(), menu = await page.locator('#tabmenu').boundingBox();
+      expect(menu.y).toBeGreaterThanOrEqual(tab.y + tab.height);                           // under the tab
+      await page.locator('#tabmenu button').nth(2).click();
+      await expect(page.locator('#cc-title')).toHaveText('Kill “t-aaa1”?');
+      await page.keyboard.press('Escape');
+      await reply('t-bbb2');
+      await expect(page.locator('#tabmenu button').nth(1)).toBeDisabled();                 // working
+      await page.keyboard.press('Escape');
+      await page.route('**/api/cockpit-sessions', sessionsBody(endRows().filter(r => r.session === 'e2')));   // one session left in proj-a
+      await reply('');
+      await expect(page.locator('#tabmenu')).toBeVisible();
+      await page.keyboard.press('Escape');
+      await page.route('**/api/cockpit-sessions', sessionsBody([]));
+      await reply('');
+      await expect(page.locator('#toast')).toHaveText('No agent session in proj-a.');
+      await page.evaluate(async () => (await import('/static/cockpit-tabs.js')).activateTab('projects'));
+      await pressPrefix(page, 't');
+      await expect(page.locator('#toast')).toHaveText('Open a project tab first — or right-click a row under Agents');
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    // Review: retry only when the request certainly never reached a daemon. A relay whose own fetch failed (status 0)
+    // gets one retry; a relay that never answers may have acted, so the shell must not send again.
+    const relayAnswering = async (page, answer) => {
+      const calls = [];
+      await page.exposeBinding('__relayCall', (_src, d) => { calls.push(d); return answer(calls.length); });
+      await page.route(`http://${FAKE_DAEMON_ADDR}/relay`, r => r.fulfill({ status: 200, contentType: 'text/html', body:
+        '<!doctype html><script>addEventListener("message",async e=>{if(e.source!==parent)return;const d=e.data;const r=await window.__relayCall(d);' +
+        'if(!r)return;e.source.postMessage({source:"canon-relay",type:"end-session-result",id:d.id,status:r.status,text:r.text},e.origin);});</script>' }));
+      return calls;
+    };
+    const killBbb2 = async page => {
+      await page.locator('#nav-admin').click();
+      await page.locator('#ad-sessions tbody tr', { hasText: 't-bbb2' }).locator('.ad-end', { hasText: 'Kill' }).click();
+      await page.locator('#cc-ok').click();
+    };
+    test('t-3c9a: a relay whose own fetch failed is retried once with a fresh frame', async ({ page }) => {
+      const calls = await relayAnswering(page, n => n === 1 ? { status: 0, text: 'the Cockpit daemon did not answer' } : { status: 200, text: '{"ok":true,"mode":"kill"}' });
+      await openShell(page, endRows());
+      await page.frameLocator('#view-proj-a iframe').locator('body').evaluate(() => {
+        window.__shellMsgs = []; addEventListener('message', e => { if (e.data && e.data.source === 'canon-cockpit-shell') window.__shellMsgs.push(e.data); });
+      });
+      await killBbb2(page);
+      await expect(page.locator('#toast')).toHaveText('Killed “t-bbb2”.');
+      expect(calls).toHaveLength(2);
+      await page.waitForTimeout(300);
+      expect(await page.frameLocator('#view-proj-a iframe').locator('body').evaluate(() => window.__shellMsgs.filter(m => m.type === 'close-scratch')), 'a ticket session keeps its cockpit').toEqual([]);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+    test('t-3c9a: a relay that never answers is not sent the request again', async ({ page }) => {
+      test.setTimeout(60_000);
+      const calls = await relayAnswering(page, () => null);
+      await openShell(page, endRows());
+      await killBbb2(page);
+      await expect(page.locator('#toast')).toHaveText(/didn’t answer/, { timeout: 15_000 });
+      await page.waitForTimeout(500);
+      expect(calls, 'the daemon may have acted: no second send').toHaveLength(1);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('t-3c9a: the board closes a scratch chip on close-scratch, and ignores it for a ticket or an unknown id', async ({ page }) => {
+      await stubRelay(page);
+      await openShell(page, endRows());
+      const board = page.frameLocator('#view-proj-a iframe');
+      const send = m => board.locator('body').evaluate((_, m) => window.dispatchEvent(new MessageEvent('message', { data: m, origin: location.origin, source: window.parent })), m);
+      await page.evaluate(async () => { const { openSessionInTab } = await import('/static/cockpit-tabs.js'); openSessionInTab({ proot: '/tmp/proj-a', scratch: 's-k2m9' }); });
+      await expect(board.locator('#ck-tab-strip-topbar .ck-tab-pill[data-tab-id="s-k2m9"]')).toHaveCount(1);
+      // a ticket chip (this repo's own ticket, which openShell's boards serve) must survive a close-scratch naming it
+      await page.evaluate(async () => { const { openSessionInTab } = await import('/static/cockpit-tabs.js'); openSessionInTab({ proot: '/tmp/proj-a', ticket: 't-3c9a' }); });
+      const ticketPill = board.locator('#ck-tab-strip-topbar .ck-tab-pill[data-tab-id="t-3c9a"]');
+      await expect(ticketPill).toHaveCount(1);
+      await send({ source: 'canon-cockpit-shell', type: 'close-scratch', id: 't-3c9a' });        // a ticket, not a scratch id
+      await page.waitForTimeout(300);
+      await expect(ticketPill).toHaveCount(1);
+      await send({ source: 'canon-cockpit-shell', type: 'close-scratch', id: 's-zz99' });        // not open here
+      await page.waitForTimeout(300);
+      await expect(board.locator('#ck-tab-strip-topbar .ck-tab-pill[data-tab-id="s-k2m9"]')).toHaveCount(1);
+      await send({ source: 'canon-cockpit-shell', type: 'close-scratch', id: 's-k2m9' });
+      await expect(board.locator('#ck-tab-strip-topbar .ck-tab-pill[data-tab-id="s-k2m9"]')).toHaveCount(0);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('t-3c9a: after the confirm the shell re-checks the session and sends nothing if it ended or stopped being idle', async ({ page }) => {
+      const calls = await stubRelay(page);
+      await openShell(page, endRows());
+      await page.locator('#nav-admin').click();
+      const row = id => page.locator('#ad-sessions tbody tr', { hasText: id });
+      await row('t-bbb2').locator('.ad-end', { hasText: 'Kill' }).click();
+      await expect(page.locator('#cconfirm')).toHaveClass(/show/);
+      await page.route('**/api/cockpit-sessions', sessionsBody(endRows().filter(r => r.session !== 'e2')));   // it ends while the dialog is open
+      await page.locator('#cc-ok').click();
+      await expect(page.locator('#toast')).toHaveText('“t-bbb2” has already ended.');
+      await page.route('**/api/cockpit-sessions', sessionsBody(endRows()));
+      await page.evaluate(async () => (await import('/static/cockpit-sessions.js')).pollSessions());
+      await row('t-aaa1').locator('.ad-end', { hasText: 'Reap now' }).click();
+      await expect(page.locator('#cconfirm')).toHaveClass(/show/);
+      await page.route('**/api/cockpit-sessions', sessionsBody(endRows().map(r => r.session === 'e1' ? { ...r, state: 'working', state_secs: 1, idle_secs: 1 } : r)));
+      await page.locator('#cc-ok').click();
+      await expect(page.locator('#toast')).toHaveText('Can’t reap “t-aaa1” now: working — the agent isn’t at its prompt.');
+      await page.waitForTimeout(300);
+      expect(calls).toHaveLength(0);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
@@ -10659,6 +10907,76 @@ test.describe('cockpit rendered-output preview (t-8f9d)', () => {
     const msg = await page.evaluate(() => window.__msgs.find(m => m.type === 'preview-file'));
     expect(msg.relpath).toBe('index.html');
     expect(msg.path).toBe(want);
+  });
+
+  // t-3c9a: Kill from the Cockpit shell reaches the REAL daemon through its /relay page and ends the session.
+  async function startReal(request, base) {
+    const r = await request.post(`${base}/session/start`, { headers: { Authorization: `Bearer ${bootToken}` }, data: { ticket: TICKET } });
+    expect(r.status()).toBe(200);
+    return (await r.json()).session;
+  }
+  const liveSids = async (request, base) => (await (await request.get(`${base}/sessions`)).json()).map(x => x.session);
+
+  test('t-3c9a: Kill from the shell ends a real daemon session through /relay', async ({ page, context, request, browserName }) => {
+    if (browserName === 'chromium') await context.grantPermissions(['local-network-access']);
+    const addr = await daemonAddr(), base = `http://${addr}`;
+    const sid = await startReal(request, base);
+    const json = (r, b) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(b) });
+    await page.route('**/api/cockpit', r => json(r, { running: true, addr, launched: false }));
+    await page.route('**/api/cockpit-sessions', async r => json(r, await (await page.request.get(`${base}/sessions`)).json()));
+    await page.route('**/api/cockpit-interrupted', r => json(r, []));
+    await page.route('**/api/projects', r => json(r, [{ id: 'pv', path: work, name: 'pv', description: '', added: '2026-10-12' }]));
+    await page.goto(BASE + '/cockpit');
+    await page.evaluate(async () => (await import('/static/cockpit-sessions.js')).pollSessions());
+    await page.locator('#ag-list .ag-row', { hasText: TICKET }).click({ button: 'right' });
+    await page.locator('#tabmenu button', { hasText: 'Kill' }).click();
+    await page.locator('#cc-ok').click();
+    await expect(page.locator('#toast')).toHaveText(`Killed “${TICKET}”.`, { timeout: 15_000 });
+    expect(await liveSids(request, base)).not.toContain(sid);
+  });
+
+  // The relay acts only on an exact message from its own loopback parent: a foreign parent, a sibling frame and
+  // every wrong shape send nothing; a valid message from the parent does reach /end-session (the observer works).
+  test('t-3c9a: the /relay page ignores a foreign parent, a sibling frame and wrong shapes', async ({ page, context, request, browserName }) => {
+    if (browserName === 'chromium') await context.grantPermissions(['local-network-access']);
+    const addr = await daemonAddr(), base = `http://${addr}`;
+    const sid = await startReal(request, base);
+    const ends = [];
+    page.on('request', rq => { if (rq.url().endsWith('/end-session')) ends.push(rq.frame().parentFrame() ? 'framed' : 'top'); });
+    const good = { source: 'canon-cockpit-shell', type: 'end-session', id: 'x1', session: sid, ticket: TICKET, project_root: work, mode: 'kill' };
+    const host = (extra) => `<!doctype html><iframe id="r" src="${base}/relay"></iframe><iframe id="sib" srcdoc="<p>sibling</p>"></iframe><script>
+      document.getElementById('r').addEventListener('load', function () { window.__ready = true; });${extra || ''}</script>`;
+
+    const relayLoads = [];
+    page.on('response', rs => { if (rs.url() === `${base}/relay`) relayLoads.push(rs.frame().parentFrame() ? new URL(rs.frame().parentFrame().url()).origin : 'top'); });
+    await page.route('http://evil.example/host', r => r.fulfill({ status: 200, contentType: 'text/html', body: host() }));
+    await page.goto('http://evil.example/host');
+    await expect.poll(() => page.evaluate(() => window.__ready === true)).toBe(true);
+    await page.evaluate(m => document.getElementById('r').contentWindow.postMessage(m, '*'), good);   // a valid message, from a foreign origin
+    await page.waitForTimeout(800);
+    expect(ends, 'a non-loopback parent').toEqual([]);
+    // Chromium never loads a loopback page under a public-origin parent (Local Network Access), so there the browser
+    // refuses first; WebKit loads it, so there it is the relay's own origin check that refuses. Pin which, so neither
+    // half of this case can quietly become vacuous.
+    expect(relayLoads, 'which browser loads /relay under a foreign parent').toEqual(browserName === 'chromium' ? [] : ['http://evil.example']);
+
+    await page.route('**/__relay3c9a', r => r.fulfill({ status: 200, contentType: 'text/html', body: host() }));
+    await page.goto(BASE + '/__relay3c9a');
+    await expect.poll(() => page.evaluate(() => window.__ready === true)).toBe(true);
+    await page.evaluate(m => {   // the sibling frame (same loopback origin) posts a valid message to the relay
+      const sib = document.getElementById('sib').contentWindow;
+      sib.eval('parent.document.getElementById("r").contentWindow.postMessage(' + JSON.stringify(m) + ', "*")');
+    }, good);
+    const bad = [{ ...good, source: 'canon-cockpit' }, { ...good, type: 'kill' }, { ...good, mode: 'discard' }, { ...good, id: '' },
+      { ...good, session: 7 }, { ...good, ticket: undefined }, { ...good, project_root: 'x'.repeat(5000) }, 'end-session', null];
+    for (const m of bad) await page.evaluate(m => document.getElementById('r').contentWindow.postMessage(m, '*'), m);
+    await page.waitForTimeout(800);
+    expect(ends, 'a sibling frame or a wrong shape').toEqual([]);
+    expect(await liveSids(request, base)).toContain(sid);
+
+    await page.evaluate(m => document.getElementById('r').contentWindow.postMessage(m, '*'), good);   // the positive control
+    await expect.poll(() => ends.length).toBe(1);
+    await expect.poll(async () => (await liveSids(request, base)).includes(sid)).toBe(false);
   });
 });
 

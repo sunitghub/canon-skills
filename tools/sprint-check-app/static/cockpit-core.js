@@ -23,7 +23,7 @@ export function toast(msg){const t=document.getElementById('toast');t.textConten
 
 // ── Reusable canon-styled confirm (t-5849) ─────────────────────────────────
 // Replaces native confirm()/prompt(). Returns a Promise<bool> (true=OK).
-// opts: {title, body, okLabel, cancelLabel, danger, okOnly, code}.
+// opts: {title, body, okLabel, cancelLabel, danger, okOnly, code, focusCancel}.
 let _ccResolve=null;
 function _ccClose(val){
   const s=document.getElementById('cconfirm');
@@ -36,7 +36,8 @@ function _ccClose(val){
 function _ccKey(e){
   if(!document.getElementById('cconfirm').classList.contains('show')) return;
   if(e.key==='Escape'){ e.stopPropagation(); _ccClose(false); }
-  else if(e.key==='Enter'){ e.stopPropagation(); _ccClose(true); }
+  // t-3c9a: Enter presses the focused button, so a dialog that opens on Cancel (Kill) isn't one keystroke from OK.
+  else if(e.key==='Enter'){ e.stopPropagation(); _ccClose(document.activeElement!==document.getElementById('cc-cancel')); }
 }
 export function cockpitConfirm(opts){
   opts=opts||{};
@@ -53,7 +54,7 @@ export function cockpitConfirm(opts){
   const wrap=document.getElementById('cc-code-wrap'), code=document.getElementById('cc-code');
   if(opts.code){ code.value=opts.code; wrap.style.display=''; } else { code.value=''; wrap.style.display='none'; }
   s.classList.add('show');
-  ok.focus();
+  (opts.focusCancel&&!opts.okOnly?cancel:ok).focus();
   document.addEventListener('keydown',_ccKey,true);
   return new Promise(res=>{ _ccResolve=res; });
 }

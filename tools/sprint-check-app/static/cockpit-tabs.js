@@ -186,24 +186,45 @@ export function openSplit(a,b,dir){
 }
 export function closeSplit(){ split=null; pulseTab=null; saveSplit(); applySplit(); renderTabs(); }
 const tabMenu=document.getElementById('tabmenu');
-export function closeTabMenu(){ if(tabMenu) tabMenu.hidden=true; }
-function openTabMenu(tid,x,y){
+let menuOpener=null;
+export function closeTabMenu(){
+  if(!tabMenu||tabMenu.hidden) return;
+  const back=tabMenu.contains(document.activeElement)?menuOpener:null;
+  tabMenu.hidden=true; menuOpener=null;
+  if(back&&back.isConnected) back.focus();   // Esc from the keyboard returns to the row or tab it opened from
+}
+// t-3c9a: the one shell menu (tabs, Agents rows). items: {label, fn, disabled, hint, title, danger}, {sep:true}, or
+// {head, sub}: a non-focusable heading naming what the menu acts on.
+export function openMenu(items,x,y){
   if(!tabMenu) return;
+  menuOpener=document.activeElement;
   tabMenu.innerHTML='';
-  const canPair=isProjectTab(activeTab)&&tid!==activeTab;
-  const add=(label,fn,disabled)=>{
-    const b=document.createElement('button'); b.type='button'; b.setAttribute('role','menuitem'); b.textContent=label; b.disabled=!!disabled;
-    b.addEventListener('click',()=>{ closeTabMenu(); fn(); }); tabMenu.appendChild(b);
-  };
-  const paired=!!split&&(split.a===tid||split.b===tid);   // already in the split: nothing is added, the direction changes and that pane takes focus
-  const open=dir=>{ if(openSplit(activeTab,tid,dir)&&paired) goTab(tid); };
-  add('Open beside the active tab',()=>open('h'),!canPair);
-  add('Open below the active tab',()=>open('v'),!canPair);
-  if(split) add('Close split',closeSplit);
+  for(const it of items){
+    if(it.sep){ const d=document.createElement('div'); d.className='sep'; tabMenu.appendChild(d); continue; }
+    if(it.head){
+      const d=document.createElement('div'); d.className='head'; d.textContent=it.head; d.title=it.head+(it.sub?'\n'+it.sub:'');
+      if(it.sub){ const s=document.createElement('small'); s.textContent=it.sub; d.appendChild(s); }
+      tabMenu.appendChild(d); continue;
+    }
+    const b=document.createElement('button'); b.type='button'; b.setAttribute('role','menuitem'); b.disabled=!!it.disabled;
+    if(it.danger) b.classList.add('danger');
+    if(it.title) b.title=it.title;
+    const l=document.createElement('span'); l.textContent=it.label; b.appendChild(l);
+    if(it.hint){ const h=document.createElement('span'); h.className='hint'; h.textContent=it.hint; b.appendChild(h); }
+    b.addEventListener('click',()=>{ closeTabMenu(); it.fn(); }); tabMenu.appendChild(b);
+  }
   tabMenu.hidden=false;
   tabMenu.style.left=Math.max(4,Math.min(x,window.innerWidth-tabMenu.offsetWidth-4))+'px';
   tabMenu.style.top=Math.max(4,Math.min(y,window.innerHeight-tabMenu.offsetHeight-4))+'px';
   const first=tabMenu.querySelector('button:not(:disabled)'); if(first) first.focus();
+}
+function openTabMenu(tid,x,y){
+  const canPair=isProjectTab(activeTab)&&tid!==activeTab;
+  const paired=!!split&&(split.a===tid||split.b===tid);   // already in the split: nothing is added, the direction changes and that pane takes focus
+  const open=dir=>{ if(openSplit(activeTab,tid,dir)&&paired) goTab(tid); };
+  const items=[{label:'Open beside the active tab',fn:()=>open('h'),disabled:!canPair},{label:'Open below the active tab',fn:()=>open('v'),disabled:!canPair}];
+  if(split) items.push({label:'Close split',fn:closeSplit});
+  openMenu(items,x,y);
 }
 export function activateTab(id){
   const from=activeTab;
@@ -345,5 +366,13 @@ export function initTabs(){
 })();
 document.getElementById('split-close').addEventListener('click',closeSplit);
 document.addEventListener('pointerdown',e=>{ if(tabMenu&&!tabMenu.hidden&&!tabMenu.contains(e.target)) closeTabMenu(); },true);
+window.addEventListener('blur',()=>closeTabMenu());   // t-3c9a: a click into a board iframe never reaches the pointerdown above
+if(tabMenu) tabMenu.addEventListener('keydown',e=>{   // t-3c9a: arrow keys move between the enabled items
+  if(e.key!=='ArrowDown'&&e.key!=='ArrowUp') return;
+  e.preventDefault();
+  const bs=[...tabMenu.querySelectorAll('button:not(:disabled)')]; if(!bs.length) return;
+  const i=bs.indexOf(document.activeElement), n=bs.length;
+  bs[(i<0?0:i+(e.key==='ArrowDown'?1:n-1))%n].focus();
+});
 document.addEventListener('DOMContentLoaded',()=>document.querySelector('#tabstrip .tab.pinned').addEventListener('click',()=>activateTab('projects')));
 }

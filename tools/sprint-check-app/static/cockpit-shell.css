@@ -98,6 +98,13 @@
   .tabmenu button{display:block;width:100%;text-align:left;background:transparent;border:0;border-radius:6px;color:var(--text);padding:7px 10px;font-size:13px;cursor:pointer}
   .tabmenu button:hover:not(:disabled),.tabmenu button:focus-visible{background:var(--border-muted);outline:none}
   .tabmenu button:disabled{color:var(--text-dim);cursor:default}
+  /* t-3c9a: the Agents row menu: a quiet hint on the right, a separator, Kill in the discard colour */
+  .tabmenu button{display:flex;justify-content:space-between;gap:14px}
+  .tabmenu .hint{color:var(--text-muted);font-size:11.5px}
+  .tabmenu button.danger:not(:disabled){color:var(--col-discarded)}
+  .tabmenu .sep{height:1px;background:var(--border);margin:4px 2px}
+  .tabmenu .head{padding:5px 10px 3px;max-width:300px;font-size:12.5px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tabmenu .head small{display:block;font-size:11.5px;font-weight:400;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis}
   .skill-nudge,.shared-warn{display:flex;align-items:center;gap:12px;padding:9px 16px;background:var(--accent-dim);border-bottom:1px solid var(--accent);color:var(--text);font-size:13px;flex-shrink:0}
   .skill-nudge .sn-msg,.shared-warn .sn-msg{flex:1;min-width:0}
   .skill-nudge .sn-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}

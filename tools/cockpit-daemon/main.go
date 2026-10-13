@@ -112,12 +112,13 @@ type server struct {
 }
 
 type session struct {
-	scratchWT  *scratchWorktree // t-e162: daemon-created worktree to remove on exit if unused
-	title      string           // t-f553: a scratch session's user-given title (sanitized)
-	startClean bool             // t-86fe: its checkout had no uncommitted changes when it started — Discard is offered only then
-	sid        string
-	ticket     string
-	token      string
+	scratchWT    *scratchWorktree // t-e162: daemon-created worktree to remove on exit if unused
+	title        string           // t-f553: a scratch session's user-given title (sanitized)
+	startClean   bool             // t-86fe: its checkout had no uncommitted changes when it started — Discard is offered only then
+	scratchNoted bool             // t-3c9a: its leftovers are already in HANDOFF ## Scratch (guarded by mu); one end, one note
+	sid          string
+	ticket       string
+	token        string
 	// statusToken authorizes ONLY POST /session/<id>/status. Separate from token
 	// because the needs-you hook's credential is reachable by the spawned agent.
 	statusToken string
@@ -281,6 +282,9 @@ func (s *server) handler() http.Handler {
 	mux.HandleFunc("/changes", s.guard(s.handleChangesQuery)) // t-5a4b: read-only, like /sessions
 	mux.HandleFunc("/changes/restore", s.guard(s.handleChangesRestore))
 	mux.HandleFunc("/session/", s.guard(s.handleSession))
+	// t-3c9a: Reap now / Kill from the Cockpit shell. Boot-token gated; only the /relay page holds it.
+	mux.HandleFunc("/end-session", s.guard(s.handleEndSession))
+	mux.HandleFunc("/relay", s.guard(s.handleRelay))
 	return mux
 }
 
@@ -2451,25 +2455,23 @@ func (s *server) reapIdleSessions() {
 		se.mu.Lock()
 		idleFor, idleLimit := time.Since(se.lastActivity), s.idleTimeoutFor(se.projectRoot, se.cwd)
 		idle := idleFor > idleLimit
-		blocked := se.status == "needs-you"
-		exited := se.exited
-		alreadyReaping := se.reaping
-		// t-f91a: a copilot session on a selection menu is waiting on a human, not
-		// abandoned — never write into it (that would answer it), never reap it.
-		if idle && !blocked && !exited && !alreadyReaping && se.menuPendingLocked() {
-			blocked = true
-			se.debugf("idle reap skipped: copilot menu pending")
+		why := ""
+		if idle {
+			why = reapBlockedLocked(se)
+			if why == reapBlockedMenu {
+				se.debugf("idle reap skipped: copilot menu pending")
+			}
 		}
-		if idle && !blocked && !exited && !alreadyReaping {
+		if idle && why == "" {
 			se.reaping = true
 		}
 		se.mu.Unlock()
-		if !idle || blocked || exited || alreadyReaping {
+		if !idle || why != "" {
 			continue
 		}
 		if isScratch(se.ticket) {
 			se.debugf("idle reap: scratch inactive for %s (timeout %s)", idleFor.Round(time.Second), idleLimit)
-			go s.endIdleScratch(se)
+			go s.endIdleScratch(se, "left by the idle auto-end")
 			continue
 		}
 		se.debugf("idle reap: inactive for %s (timeout %s) — starting save-and-end", idleFor.Round(time.Second), idleLimit)
@@ -2477,11 +2479,148 @@ func (s *server) reapIdleSessions() {
 	}
 }
 
+// noteScratchOnce writes a scratch session's HANDOFF note unless another end already has (t-3c9a break-it:
+// concurrent Kills, or a Kill during Reap now / an idle reap, each noted the session again). The claim is taken
+// under se.mu and given back if the write fails, so a failed note never stops a later one.
+func (s *server) noteScratchOnce(se *session, wt *scratchWorktree, total, commits int, why string) error {
+	se.mu.Lock()
+	if se.scratchNoted {
+		se.mu.Unlock()
+		return nil
+	}
+	se.scratchNoted = true
+	se.mu.Unlock()
+	err := noteScratchLeftover(se.projectRoot, scratchNoteLine(se, wt, total, commits, s.noGit(se.projectRoot), why))
+	if err != nil {
+		se.mu.Lock()
+		se.scratchNoted = false
+		se.mu.Unlock()
+	}
+	return err
+}
+
+const reapBlockedMenu = "a Copilot menu is waiting"
+
+// reapBlockedLocked says why a session can't be reaped, or "" when it can (caller holds se.mu). Shared by
+// the idle reaper and Reap now (t-3c9a), so the two can't drift apart.
+func reapBlockedLocked(se *session) string {
+	switch {
+	case se.exited || se.killed:
+		return "it has already ended"
+	case se.reaping:
+		return "it is already being saved and ended"
+	case se.status == "needs-you":
+		return "it is waiting on you"
+	// t-f91a: a copilot session on a selection menu is waiting on a human, not
+	// abandoned — never write into it (that would answer it), never reap it.
+	case se.menuPendingLocked():
+		return reapBlockedMenu
+	}
+	return ""
+}
+
+// handleEndSession serves POST /end-session {session, ticket, project_root, mode} (t-3c9a): Reap now
+// or Kill one session from the Cockpit shell, which reaches it through the /relay page (the boards hold
+// no token, t-ddc8). Boot token only. The ticket and project must match what /sessions reported, so a
+// confirm the user answered about one session can't end another; every check runs under se.mu.
+func (s *server) handleEndSession(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.cfg.token == "" || !secureEqual(bearer(r), s.cfg.token) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var body struct {
+		Session     string `json:"session"`
+		Ticket      string `json:"ticket"`
+		ProjectRoot string `json:"project_root"`
+		Mode        string `json:"mode"`
+	}
+	// 16 KiB: the /relay page lets project_root be up to 4096 characters, plus the rest of the body.
+	if err := json.NewDecoder(io.LimitReader(r.Body, 16<<10)).Decode(&body); err != nil || body.Session == "" || (body.Mode != "reap" && body.Mode != "kill") {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	s.mu.Lock()
+	se := s.sessions[body.Session]
+	s.mu.Unlock()
+	if se == nil {
+		http.Error(w, "no such session", http.StatusNotFound)
+		return
+	}
+	se.mu.Lock()
+	if se.ticket != body.Ticket || se.projectRoot != body.ProjectRoot {
+		se.mu.Unlock()
+		http.Error(w, "that session is no longer the one you chose", http.StatusConflict)
+		return
+	}
+	if se.exited || se.killed {
+		se.mu.Unlock()
+		http.Error(w, "the session has already ended", http.StatusGone)
+		return
+	}
+	if body.Mode == "reap" {
+		why := reapBlockedLocked(se)
+		if state, _, _, _ := sessionStateLocked(se, time.Now()); why == "" && state != "idle" && state != "done" {
+			why = "it is working" // needs-you and a Copilot menu were already refused by reapBlockedLocked
+		}
+		if why != "" {
+			se.mu.Unlock()
+			http.Error(w, "can't reap now: "+why, http.StatusConflict)
+			return
+		}
+		se.reaping = true
+		se.mu.Unlock()
+		se.debugf("reap now: requested from the Cockpit")
+		if isScratch(se.ticket) {
+			go s.endIdleScratch(se, "left by Reap now")
+		} else {
+			go s.saveAndEnd(se)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		json.NewEncoder(w).Encode(map[string]any{"ok": true, "mode": "reap"})
+		return
+	}
+	cwd, wt := se.cwd, se.scratchWT
+	se.mu.Unlock()
+	reply := map[string]any{"ok": true, "mode": "kill"}
+	if isScratch(se.ticket) {
+		// Kill skips the save, not the note: a scratch session's leftovers are kept and noted like the reaper's (user, t-3c9a).
+		_, total, commits, _, err := s.leftovers(se.projectRoot, se.ticket, cwd, wt)
+		if err == nil && (total > 0 || commits > 0) {
+			err = s.noteScratchOnce(se, wt, total, commits, "left by Kill")
+		}
+		if err != nil {
+			reply["note_error"] = "could not note its changes in HANDOFF.md: " + err.Error()
+		}
+	}
+	se.debugf("kill: requested from the Cockpit")
+	s.killSession(se)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(reply)
+}
+
+// handleRelay serves the /relay page (t-3c9a): the Cockpit shell frames it hidden and asks it, by
+// postMessage, to call /end-session with the boot token, which stays in the daemon's own origin.
+func (s *server) handleRelay(w http.ResponseWriter, r *http.Request) {
+	raw, err := webFS.ReadFile("web/relay.html")
+	if err != nil {
+		http.Error(w, "relay page missing", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	io.WriteString(w, strings.ReplaceAll(string(raw), "__COCKPIT_TOKEN__", s.cfg.token))
+}
+
 // endIdleScratch ends an idle scratch session (t-47f1). A scratch session has no ticket
 // to save state into, so there is no save prompt. Anything it leaves behind — uncommitted
 // changes, worktree commits — is kept, never discarded or committed, and noted in
 // HANDOFF.md first (t-86fe); if git or the note fails, the session is kept instead.
-func (s *server) endIdleScratch(se *session) {
+func (s *server) endIdleScratch(se *session, why string) {
 	keep := func(why string, err error) {
 		se.mu.Lock()
 		se.reaping = false
@@ -2497,7 +2636,7 @@ func (s *server) endIdleScratch(se *session) {
 		return
 	}
 	if total > 0 || commits > 0 {
-		if err := noteScratchLeftover(se.projectRoot, scratchNoteLine(se, wt, total, commits, s.noGit(se.projectRoot), "left by the idle auto-end")); err != nil {
+		if err := s.noteScratchOnce(se, wt, total, commits, why); err != nil {
 			keep("could not note its changes in HANDOFF.md", err)
 			return
 		}

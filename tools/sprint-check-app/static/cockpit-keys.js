@@ -5,6 +5,7 @@ import { TICKET_ID_RE, liveTabIds } from './cockpit-sessions.js';
 import { toggleSide } from './cockpit-sidebar.js';
 import { showView } from './cockpit-views.js';
 import { openUpkeepFor } from './cockpit-upkeep.js';
+import { openTabSessionMenu } from './cockpit-end.js';
 import { activeTab, applySplit, closeSplit, closeTab, goTab, isProjectTab, onScratchTabs, openSessionInTab, openSplit, openTabs, prevTab, renderTabs, saveSplit, senderTab, split, splitShown } from './cockpit-tabs.js';
 
   // ── Keyboard prefix (t-a198) ─────────────────────────────────────────────
@@ -78,6 +79,12 @@ function prefixAction(key){
     if(f){ try{ f.contentWindow.postMessage({source:'canon-cockpit-shell',type:'end-session-request'},location.origin); }catch(e){} }
     return;
   }
+  if(key==='t'){   // t-3c9a: the session menu (Reap now / Kill) for this tab's agent; the tab's board says which session is open
+    const f=activeTab!=='projects'&&document.querySelector('#view-'+activeTab+' iframe');
+    if(!f){ toast('Open a project tab first \u2014 or right-click a row under Agents'); return; }
+    try{ f.contentWindow.postMessage({source:'canon-cockpit-shell',type:'session-menu-request'},location.origin); }catch(e){}
+    return;
+  }
   if(key==='x'){ if(activeTab!=='projects') closeTab(activeTab); return; }
   if(key==='/'){
     const f=document.querySelector('#view-'+activeTab+' iframe');
@@ -132,6 +139,7 @@ window.addEventListener('message',function(e){
   if(!pid) return;   // only a project tab's own board
   if(d.type==='scratch-tabs'){ onScratchTabs(d,pid); return; }
   if(d.type==='open-upkeep'){ openUpkeepFor(pid); return; }   // for that tab's project only
+  if(d.type==='session-menu'){ if(pid===activeTab&&!shellDialogOpen()) openTabSessionMenu(pid, typeof d.id==='string'?d.id:''); return; }   // t-3c9a: the reply to prefix then t
   if(d.type==='prefix-armed'||d.type==='prefix-cancel'||d.type==='prefix-key'){   // t-a198: only the visible tab's board speaks
     if(pid!==activeTab||shellDialogOpen()) return;   // a dialog in the shell swallows it, whichever frame had focus
     if(d.type==='prefix-armed'){ showKeyHint(true); return; }
