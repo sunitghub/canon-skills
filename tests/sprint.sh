@@ -1603,6 +1603,109 @@ ng_dir="$(mktemp -d)"
 )
 rm -rf "$ng_dir"
 
+# t-52f0: registering skills edits the project's tracked .gitignore (and .gitattributes) and leaves it uncommitted, so a fresh project's
+# first close was refused as stale. Exactly canon's own setup lines may differ from graded-head; anything else in those files still refuses.
+# The canon edits come from the real writers (tools/skills/project.sh, prompts.sh), never from a copied list.
+canon_setup() { # <project dir>: what skills registration does to the project's .gitignore and .gitattributes
+  ( SKILLS_ROOT="$ROOT"; source "$ROOT/tools/skills/lib.sh"; source "$ROOT/tools/skills/project.sh"; source "$ROOT/tools/skills/prompts.sh"
+    _ensure_mirror_gitignored "$1"; _ensure_agents_link_gitignored "$1"; ensure_gitattributes "$1" ) >/dev/null
+}
+cg_project="$(make_project)"
+(
+  cd "$cg_project"; git config user.email t@example.com; git config user.name test
+  mkdir -p src .claude; echo 'a' > src/app.js; printf 'node_modules/\n' > .gitignore; printf '*.png binary\n' > .gitattributes
+  git add -A >/dev/null && git commit -qm base
+  cg_start() { # <title>: a sprint whose report grades the current HEAD; sets cid
+    cid="$("$SPRINT" start "canon setup $1" | awk '/Sprint started:/ { print $3 }')"
+    fr_gate_docs ".tickets/$cid" ".claude/subagent-runs.jsonl" "$(date +%s)-7000" "$(git rev-parse HEAD)"
+  }
+  cg_refused() { # <file>: the close is refused and names <file>; the edit is then undone
+    local out; out="$(run_fail env -u CLAUDECODE "$SPRINT" complete)"
+    assert_contains "$out" "tracked files changed after the evaluator graded"; assert_contains "$out" "$1"
+    git checkout -q -- "$1"
+  }
+  cg_closes() { assert_contains "$(env -u CLAUDECODE "$SPRINT" complete 2>&1)" "Sprint completed: $cid"; }
+
+  # canon's lines, uncommitted: the reported case
+  cg_start uncommitted; canon_setup "$PWD"
+  [[ "$(git status --porcelain -- .gitignore .gitattributes)" == *" M .gitattributes"*" M .gitignore"* ]] || fail "fixture: registration should leave both files modified: $(git status --porcelain)"
+  cg_closes
+  # committed after grading, the same
+  git add .gitignore .gitattributes; git commit -qm "canon setup"; git reset -q --hard HEAD~1
+  cg_start committed; canon_setup "$PWD"; git add .gitignore .gitattributes; git commit -qm "canon setup"
+  cg_closes
+  git reset -q --hard HEAD~1
+
+  # any other line beside canon's, or instead of them, is refused, in either file
+  cg_start refusals
+  canon_setup "$PWD"; echo 'secret.js' >> .gitignore; cg_refused .gitignore; git checkout -q -- .gitattributes
+  echo 'secret.js' >> .gitignore; cg_refused .gitignore
+  sed -i.bak '/node_modules/d' .gitignore && rm -f .gitignore.bak; cg_refused .gitignore
+  printf '/.claude/skills\nnode_modules/\nnode_modules/\n' > .gitignore; cg_refused .gitignore   # a user line repeated is not canon's
+  git rm -q .gitignore; out="$(run_fail env -u CLAUDECODE "$SPRINT" complete)"; assert_contains "$out" ".gitignore"; git reset -q HEAD .gitignore; git checkout -q -- .gitignore
+  canon_setup "$PWD"; echo '*.js -diff' >> .gitattributes; cg_refused .gitattributes; git checkout -q -- .gitignore
+  # only one line may come back verbatim (the newline fix): lines moved around are a change
+  printf 'node_modules/\na\nb\nc\nd\n' > .gitignore; git add .gitignore; git commit -qm "more ignores"
+  fr_gate_docs ".tickets/$cid" ".claude/subagent-runs.jsonl" "$(date +%s)-7000" "$(git rev-parse HEAD)"
+  printf 'node_modules/\nb\na\nd\nc\n/.claude/skills\n' > .gitignore; cg_refused .gitignore
+  # a git diff that fails, or answers nothing, refuses rather than passing canon's lines unread
+  cg_git="$(mktemp -d)"; export REAL_GIT="$(command -v git)"
+  printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = -U0 ] && { "$REAL_GIT" "$@"; exit 1; }; done\nexec "$REAL_GIT" "$@"\n' > "$cg_git/git"; chmod +x "$cg_git/git"
+  canon_setup "$PWD"; out="$(PATH="$cg_git:$PATH" run_fail env -u CLAUDECODE "$SPRINT" complete)"; assert_contains "$out" ".gitignore"
+  printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = -U0 ] && exit 0; done\nexec "$REAL_GIT" "$@"\n' > "$cg_git/git"
+  out="$(PATH="$cg_git:$PATH" run_fail env -u CLAUDECODE "$SPRINT" complete)"; assert_contains "$out" ".gitignore"
+  git checkout -q -- .gitignore .gitattributes; rm -rf "$cg_git"; unset REAL_GIT
+  if [[ "$(git config core.filemode)" == true ]]; then   # Git for Windows sets it false and sees no mode change at all
+    chmod +x .gitignore; out="$(run_fail env -u CLAUDECODE "$SPRINT" complete)"; assert_contains "$out" ".gitignore"; chmod -x .gitignore
+  fi
+  # a nested .gitignore is not the project's own: canon never writes one, so its lines there are a change
+  mkdir -p sub; printf 'x\n' > sub/.gitignore; git add sub; git commit -qm "nested ignore"
+  fr_gate_docs ".tickets/$cid" ".claude/subagent-runs.jsonl" "$(date +%s)-7000" "$(git rev-parse HEAD)"
+  printf '/.claude/skills\n' >> sub/.gitignore; cg_refused sub/.gitignore
+  cg_closes
+
+  # the older directory-only lines replaced in place, a last line without a newline, and a CRLF .gitattributes
+  printf 'node_modules/\n/.claude/skills/\n/.agents/skills/\n' > .gitignore; printf 'dist' > .gitattributes
+  git add .gitignore .gitattributes; git commit -qm "old canon lines, no final newline"
+  cg_start oldlines; canon_setup "$PWD"
+  [[ "$(cat .gitignore)" == *$'/.claude/skills\n'* && "$(cat .gitignore)" != *'skills/'* ]] || fail "fixture: the old lines should be replaced: $(cat .gitignore)"
+  cg_closes
+  printf 'dist' > .gitignore; printf '*.png binary\r\n' > .gitattributes; git add .gitignore .gitattributes; git commit -qm "crlf attributes"
+  cg_start crlf; canon_setup "$PWD"
+  grep -q $'eol=lf\r$' .gitattributes || fail "fixture: the canon block should follow the file's CRLF"
+  cg_closes
+)
+rm -rf "$cg_project"
+
+# t-52f0: a project inside a larger repository: its own .gitignore (proj/.gitignore from the repository root) is allowed the same lines
+cs_top="$(make_project)"
+(
+  cd "$cs_top"; git config user.email t@example.com; git config user.name test
+  mkdir -p proj/src proj/.claude proj/.tickets; echo 'a' > proj/src/app.js; printf 'x\n' > proj/.gitignore; printf 'y\n' > .gitignore
+  git add -A >/dev/null && git commit -qm base
+  cd proj
+  sid="$("$SPRINT" start "subtree canon setup" | awk '/Sprint started:/ { print $3 }')"
+  fr_gate_docs ".tickets/$sid" ".claude/subagent-runs.jsonl" "$(date +%s)-7000" "$(git rev-parse HEAD)"
+  canon_setup "$PWD"
+  assert_contains "$(env -u CLAUDECODE "$SPRINT" complete 2>&1)" "Sprint completed: $sid"
+)
+rm -rf "$cs_top"
+
+# t-52f0 end to end, the user's path: a fresh project with a tracked .gitignore, registered through the real skills.sh add, closes its first sprint
+e2e_dir="$(mktemp -d)"
+(
+  mkdir -p "$e2e_dir/home" "$e2e_dir/tmp" "$e2e_dir/proj"; touch "$e2e_dir/home/.zshrc"
+  export HOME="$e2e_dir/home" CANON_HOME="$e2e_dir/home/.canon" XDG_CONFIG_HOME="$e2e_dir/home/.config" TMPDIR="$e2e_dir/tmp" SHELL=/bin/zsh SKILLS_SH_NO_TTY=1
+  cd "$e2e_dir/proj"; git init -q; git config user.email t@example.com; git config user.name test
+  printf 'node_modules/\n' > .gitignore; echo 'a' > app.js; git add .gitignore app.js; git commit -qm base
+  "$SKILLS" add sprint "$e2e_dir/proj" >/dev/null 2>&1 || fail "skills.sh add sprint failed in the fixture"
+  [[ "$(git status --porcelain -- .gitignore)" == " M .gitignore" ]] || fail "fixture: skills.sh add should leave .gitignore modified: $(git status --porcelain)"
+  eid="$("$SPRINT" start "first close after setup" | awk '/Sprint started:/ { print $3 }')"
+  mkdir -p .claude; fr_gate_docs ".tickets/$eid" ".claude/subagent-runs.jsonl" "$(date +%s)-7000" "$(git rev-parse HEAD)"
+  assert_contains "$(env -u CLAUDECODE "$SPRINT" complete 2>&1)" "Sprint completed: $eid"
+)
+rm -rf "$e2e_dir"
+
 # t-262a: sprint status --json (same ticket object as `tkt show --json`).
 jp_node() { node -e 'const j=JSON.parse(require("fs").readFileSync(0,"utf8"));const r=(function(j){return eval(process.argv[1])})(j);process.stdout.write(typeof r==="string"?r:JSON.stringify(r))' "$1"; }
 js_project="$(make_project)"

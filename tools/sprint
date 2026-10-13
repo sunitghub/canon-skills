@@ -597,8 +597,46 @@ _gate_eval_report_consistency() {
 # covers a failing verdict, not stale evidence. Untracked files are ignored: a tree always has some, and sprint files are committed
 # before grading (complete.md step 1). The paths below are written after grading by design (complete.md steps 6-8), or are dist/ from
 # older checkouts (the post-commit hook commits nothing now, t-9383); anything else an agent touches after grading is stale.
+# _canon_setup_edit_only <wroot> <graded> <path> — t-52f0: true when the project-root .gitignore or .gitattributes at <path> differs from
+# <graded> only by what canon's own setup writes there: the mirror/agents lines (tools/skills/project.sh _ensure_mirror_gitignored,
+# _ensure_agents_link_gitignored, which also replace the old "…/" forms) or the canon:gitattributes block (tools/skills/prompts.sh
+# ensure_gitattributes). Registration leaves that edit uncommitted, so without this a fresh project's first close was refused. Exact lines
+# only, never the whole file: any other added or removed line, a mode change, a binary, a delete or a failed git call is false. One removed
+# line that comes back verbatim is the newline canon adds to a last line that had none.
+_canon_setup_edit_only() {
+  local wroot="$1" graded="$2" path="$3" d
+  d="$(git -C "$wroot" -c core.quotepath=off diff --no-color --no-ext-diff --no-textconv --no-renames -U0 "$graded" -- "$path" 2>/dev/null)" || return 1
+  printf '%s\n' "$d" | KIND="${path##*/}" awk '
+    BEGIN {
+      if (ENVIRON["KIND"] == ".gitignore") {
+        add["/.claude/skills"]; add["/.agents/skills"]; add["/.claude/agents"]; del["/.claude/skills/"]; del["/.agents/skills/"]
+      } else {
+        add[""]; add["# canon:gitattributes:BEGIN"]; add["*.sh text eol=lf"]; add["# canon:gitattributes:END"]
+        add["# Shell scripts stay LF: bash can'"'"'t run CRLF, and Git for Windows checks out CRLF by default."]
+      }
+    }
+    { sub(/\r$/, "") }
+    /^diff --git / { seen = 1; hunk = 0; next }
+    !hunk && (/^index / || /^--- / || /^\+\+\+ /) { next }
+    /^@@ / { hunk = 1; next }
+    hunk && /^\+/ { a[++na] = substr($0, 2); next }
+    hunk && /^-/ { r[++nr] = substr($0, 2); next }
+    hunk && /^\\ / { next }
+    { bad = 1 }
+    END {
+      if (bad || !seen) exit 1
+      for (i = 1; i <= nr; i++) {
+        if (r[i] in del) continue
+        for (j = 1; j <= na; j++) if (!(j in used) && a[j] == r[i]) break
+        if (j > na || ++pairs > 1) exit 1
+        used[j]
+      }
+      for (j = 1; j <= na; j++) if (!(j in used) && !(a[j] in add)) exit 1
+    }'
+}
+
 _gate_eval_report_fresh() {
-  local id="$1" tdir="$2" report="$tdir/eval-report.md" heads graded changed n shown
+  local id="$1" tdir="$2" report="$tdir/eval-report.md" heads graded changed n shown f
   local late_re='^(\.tickets/|LEARNINGS\.md$|LEARNINGS-archive\.md$|DECISIONS\.md$|DECISIONS-archive\.md$|HANDOFF\.md$|PROMOTED\.md$|AGENTS\.md$|(.+/)?CLAUDE\.md$|\.claude/subagent-runs\.jsonl$|dist/)'
   local wroot proot rel
   # The caller's OWN worktree, not project_root (which maps a linked worktree back to the main checkout): the graded commit and the
@@ -633,6 +671,12 @@ _gate_eval_report_fresh() {
   else
     changed="$(git -C "$wroot" -c core.quotepath=off diff --no-renames --name-only "$graded" -- . 2>/dev/null | grep -vE "$late_re" || true)"
   fi
+  # canon's own setup edit to the project's .gitignore/.gitattributes is not a change after grading (t-52f0); exact lines only.
+  for f in .gitignore .gitattributes; do
+    if [[ $'\n'"$changed"$'\n' == *$'\n'"$f"$'\n'* ]] && _canon_setup_edit_only "$wroot" "$graded" "${rel:+$rel/}$f"; then
+      changed="$(printf '%s\n' "$changed" | grep -vxF "$f" || true)"
+    fi
+  done
   [[ -n "$changed" ]] || return 0
   n="$(printf '%s\n' "$changed" | wc -l | tr -d ' ')"
   shown="$(printf '%s\n' "$changed" | sed -n '1,5p' | tr '\n' ',' | sed 's/,$//; s/,/, /g')"
