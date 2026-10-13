@@ -6,8 +6,21 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-13
+
+You can now end a Cockpit session you aren't attached to, a new project's first sprint closes without tripping over canon's own setup, and installs that follow `main` say so in plain words.
+
+**After updating, restart the Cockpit daemon** (Admin > Restart) so Reap now and Kill are available: `canon update` fetches the new daemon, but a running one stays on the old version until it restarts.
+
+### Added
+- Cockpit: **Reap now** and **Kill** for a session you aren't attached to. Right-click its row under Agents (or Shift+F10, or Ctrl+. then `t` for the active tab's session); Admin's session rows have the same buttons. Reap now saves and ends, as the idle reaper would, and isn't offered while a session needs you, is working or shows a Copilot menu; Kill ends at once without saving. Both ask first, and Kill's dialog opens on Cancel. A scratch session's leftovers are noted in HANDOFF.md and its chip closes (`t-3c9a`).
+
+### Fixed
+- A new project's first `sprint complete` was refused because registering canon's skills edits the project's tracked `.gitignore` (and `.gitattributes`) and leaves the edit uncommitted. The close check now lets those two files through when they are exactly what canon's own setup makes of them, and still refuses any other change in them (`t-52f0`).
+
 ### Changed
 - On the development version (main), the installers, `canon update` and `canon version` now say so in plain words — "You're on the development version (main): the newest changes, before they're released and without a release's verification." — and name the one command for the latest release, `canon update --to latest`. `canon version` reads `canon <version> (development version, following main)`; `canon --help` and `docs/setup.md` use the same words. The old wording ("not checksum-verified", "returns to verified releases") is gone (`t-d744`).
+- `docs/agent-playbook.md`: approval binds to the exact proposal a human reviewed (re-checked before applying, end state verified), and a credential broker keeps tokens out of the agent's sandbox, with the existing hand-off rules as the fallback.
 
 ## [0.6.0] - 2026-10-12
 
