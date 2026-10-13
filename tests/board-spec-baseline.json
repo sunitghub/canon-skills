@@ -618,6 +618,17 @@
       "failed_runs": {
         "webkit": "1/1"
       }
+    },
+    {
+      "title": "board modal > sidebar type legend shows the type_outcome ratio once per type, not repeated on cards (t-5a09)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-5989",
+      "reason": "type name wrapped (42 px, limit 30) in a full run (t-2758, 2026-10-13): the legend column sizes to the longest type on the board, which other tests' tickets can widen; passed alone 3/3 on the branch and 3/3 on main 2718ef2c",
+      "failed_runs": {
+        "webkit": "1/1"
+      }
     }
   ],
   "skipped": []
