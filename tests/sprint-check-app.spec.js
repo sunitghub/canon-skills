@@ -4475,6 +4475,64 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
+    // break-it (t-2758): each of these failed against the first build; the fix is named on each line
+    test('board (t-2758): a board that reloads, or loads while the theme changes, shows the current theme, not the one its tab opened with', async ({ page }) => {
+      await page.emulateMedia({ colorScheme: 'dark' });
+      const board = await openShell(page, []);
+      await expect(board.locator('#board')).toBeVisible();
+      await page.locator('#theme-btn').click(); await page.locator('#theme-pop [data-mode="light"]').click(); await page.keyboard.press('Escape');
+      await expect.poll(() => boardTheme(board)).toBe('light');
+      // its src still says &theme=dark; a reload must follow the shell's saved choice instead
+      expect(await page.locator('#view-proj-a iframe').getAttribute('src')).toContain('theme=dark');
+      await board.locator('body').evaluate(() => location.reload());
+      await expect(board.locator('#board')).toBeVisible();
+      expect(await boardTheme(board)).toBe('light');
+      // a board still loading when the theme changes (the message reaches an about:blank frame and is lost)
+      let release; const held = new Promise(r => { release = r; });
+      await page.route(/\/\?project=proj-x/, async r => { await held; await r.fallback(); });
+      await page.evaluate(async () => { const { openProject } = await import('/static/cockpit-tabs.js'); openProject('proj-x', 'proj-x'); });
+      await page.locator('#theme-btn').click(); await page.locator('#theme-pop [data-mode="dark"]').click(); await page.keyboard.press('Escape');
+      release();
+      const late = page.frameLocator('#view-proj-x iframe');
+      await expect(late.locator('#board')).toBeVisible();
+      expect(await boardTheme(late)).toBe('dark');
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('shell (t-2758): the popover works from the keyboard: focus stays on the choice, Tab goes through it, and leaving it closes it', async ({ page, browserName }) => {
+      await openShell(page, []);
+      const TAB = browserName === 'webkit' ? 'Alt+Tab' : 'Tab';   // Safari's default Tab skips buttons; Option+Tab reaches every control
+      const btn = page.locator('#theme-btn'), pop = page.locator('#theme-pop');
+      await btn.focus(); await page.keyboard.press('Enter');
+      await expect(pop).toBeVisible();
+      await page.keyboard.press(TAB); await expect(pop.locator('[data-mode="system"]')).toBeFocused();   // into the popover, before Help
+      await page.keyboard.press(TAB); await expect(pop.locator('[data-mode="light"]')).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+      await expect(pop).toBeVisible();
+      await expect(pop.locator('[data-mode="light"]')).toBeFocused();   // not dropped to <body> by the re-render
+      await page.keyboard.press(TAB); await page.keyboard.press(TAB); await page.keyboard.press('Enter');   // Dark, then the Canon Light card
+      // Tab past the last control leaves the popover: it closes rather than staying open over Help
+      for (let i = 0; i < 4 && await pop.isVisible(); i++) await page.keyboard.press(TAB);
+      await expect(pop).toBeHidden();
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('shell (t-2758): a second Cockpit window follows the choice instead of writing its stale copy back', async ({ page, context }) => {
+      await openShell(page, []);
+      const other = await context.newPage();
+      await other.goto(BASE + '/cockpit'); await other.waitForLoadState('networkidle');
+      await page.locator('#theme-btn').click(); await page.locator('#theme-pop [data-mode="light"]').click();
+      await expect(other.locator('html')).toHaveAttribute('data-theme', 'light');   // the storage event reached it
+      // the other window clicks a control: what it saves must start from the current choice, not its old copy
+      await other.locator('#theme-btn').click(); await other.locator('#theme-pop .thm-card[data-id="canon-light"]').click();
+      expect((await saved(page)).mode).toBe('light');
+      await page.reload(); await page.waitForLoadState('networkidle');
+      await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+      await other.close();
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     test('board (t-2758): the standalone board keeps its own Dark/Light toggle, which saves, and it is hidden inside the Cockpit', async ({ page }) => {
       await page.addInitScript(() => localStorage.setItem('sprint-check-theme', 'dark'));
       await page.goto(BASE + '/?standalone=1'); await page.waitForLoadState('networkidle');

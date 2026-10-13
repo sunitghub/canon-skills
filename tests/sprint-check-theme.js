@@ -13,7 +13,7 @@ const STATIC = path.join(__dirname, '..', 'tools', 'sprint-check-app', 'static')
 const BOOT = fs.readFileSync(path.join(STATIC, 'theme-boot.js'), 'utf8');
 
 // boot({ page, stored, search, osDark, storageThrows, mediaThrows }) -> data-theme after the script ran (null = none)
-function boot({ page, stored = {}, search = '', osDark = true, storageThrows = false, mediaThrows = false, preset = null }) {
+function boot({ page, stored = {}, search = '', osDark = true, storageThrows = false, mediaThrows = false, preset = null, embedded = false }) {
   const attrs = {};
   if (preset !== null) attrs['data-theme'] = preset;
   const html = {
@@ -27,6 +27,7 @@ function boot({ page, stored = {}, search = '', osDark = true, storageThrows = f
     location: { search },
     URLSearchParams,
   };
+  ctx.window = {}; ctx.window.parent = embedded ? {} : ctx.window;   // a board in a Cockpit tab has another window as its parent
   vm.runInNewContext(BOOT, ctx);
   return 'data-theme' in attrs ? attrs['data-theme'] : null;
 }
@@ -57,6 +58,18 @@ assert.strictEqual(boot({ page: 'board', stored: B('dark'), search: '?project=p&
 assert.strictEqual(boot({ page: 'board', stored: B('light'), search: '?theme=dark' }), null, 'board: ?theme=dark wins too');
 assert.strictEqual(boot({ page: 'board', storageThrows: true, preset: 'light' }), null, 'board: a throwing localStorage is dark');
 assert.strictEqual(boot({ page: null, stored: B('light') }), 'light', 'no data-page is the board');
+// an unreadable saved board value is not "light": it falls back to the OS (break-it: any other value meant light)
+for (const bad of ['garbage', 'Light', ' light', '{"mode":"light"}']) {
+  assert.strictEqual(boot({ page: 'board', stored: B(bad), osDark: true, preset: 'light' }), null, `board: unreadable ${bad} follows a dark OS`);
+  assert.strictEqual(boot({ page: 'board', stored: B(bad), osDark: false }), 'light', `board: unreadable ${bad} follows a light OS`);
+}
+// a board in a Cockpit tab follows the shell's saved choice, which is current on a reload, over the ?theme it was opened with
+const SB = (shell, board) => ({ 'canon-theme': shell, 'sprint-check-theme': board });
+assert.strictEqual(boot({ page: 'board', embedded: true, stored: SB(J({ mode: 'light' }), 'dark'), search: '?project=p&theme=dark' }), 'light', 'embedded board: the shell\'s light beats ?theme=dark');
+assert.strictEqual(boot({ page: 'board', embedded: true, stored: SB(J({ mode: 'dark' }), 'light'), search: '?theme=light', preset: 'light' }), null, 'embedded board: the shell\'s dark beats ?theme=light');
+assert.strictEqual(boot({ page: 'board', embedded: true, stored: SB(J({ mode: 'system' }), null), search: '?theme=dark', osDark: false }), 'light', 'embedded board: the shell\'s System follows the OS');
+assert.strictEqual(boot({ page: 'board', embedded: true, stored: SB('{bad', null), search: '?theme=light' }), 'light', 'embedded board: an unreadable shell choice falls back to ?theme');
+assert.strictEqual(boot({ page: 'board', embedded: false, stored: SB(J({ mode: 'light' }), 'dark'), preset: 'light' }), null, 'standalone board: ignores the shell\'s choice');
 
 // ── 2 + 3. the shell module ────────────────────────────────────────────────
 (async () => {

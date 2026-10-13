@@ -72,8 +72,15 @@ export function initTheme() {
       if (m) choice.mode = m.dataset.mode;
       else if (c) choice[c.dataset.for] = c.dataset.id;
       else return;
+      // render() rebuilds the popover, which would drop keyboard focus to <body> (break-it): put it back on the same control
+      const again = m ? `[data-mode="${m.dataset.mode}"]` : `[data-id="${c.dataset.id}"][data-for="${c.dataset.for}"]`;
       save(); apply(); render();
+      const el = pop.querySelector(again); if (el) el.focus();
     });
+    // keyboard focus leaving the popover and its button closes it (Tab to Help left it open on top, break-it); a press
+    // with no new focus target (WebKit does not focus a clicked button) is left to the pointerdown and blur handlers
+    const leave = e => { if (!pop.hidden && e.relatedTarget && !pop.contains(e.relatedTarget) && !btn.contains(e.relatedTarget)) setOpen(false); };
+    pop.addEventListener('focusout', leave); btn.addEventListener('focusout', leave);
     // a press outside closes it; pointerdown runs before a click inside re-renders the popover (which would detach
     // the clicked element and make it look outside)
     document.addEventListener('pointerdown', e => {
@@ -84,6 +91,11 @@ export function initTheme() {
     window.addEventListener('blur', () => { if (!pop.hidden) setOpen(false); });
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape' && !pop.hidden) { setOpen(false); btn.focus(); }
+    });
+    // another Cockpit window changed the choice: follow it, so a stale copy here can never be written back (break-it)
+    window.addEventListener('storage', e => {
+      if (e.key !== KEY) return;
+      choice = readChoice(e.newValue); apply(); if (!pop.hidden) render();
     });
     try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (choice.mode === 'system') { apply(); if (!pop.hidden) render(); } }); } catch (e) {}
   });
