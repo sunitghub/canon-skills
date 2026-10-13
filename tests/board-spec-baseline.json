@@ -629,6 +629,28 @@
       "failed_runs": {
         "webkit": "1/1"
       }
+    },
+    {
+      "title": "Canon Cockpit Upkeep (t-7ae6) > t-d2e1: a quote in a failed run's output stays inside the Error pill's tooltip",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-5989",
+      "reason": "30 s webkit timeout in a full run (t-2758, 2026-10-13); passed alone 3/3 on the branch and 3/3 on main 2718ef2c in 0.9-1.7 s",
+      "failed_runs": {
+        "webkit": "1/1"
+      }
+    },
+    {
+      "title": "board header and card footer (t-7723) > header order is New, Upkeep, Scratch, CI and New is filled (light)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-5989",
+      "reason": "30 s webkit timeout in a full run (t-2758, 2026-10-13); passed alone 3/3 on the branch and 3/3 on main 2718ef2c in 0.9-1.7 s",
+      "failed_runs": {
+        "webkit": "1/1"
+      }
     }
   ],
   "skipped": []
