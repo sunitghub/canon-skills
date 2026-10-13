@@ -1677,6 +1677,32 @@ cg_project="$(make_project)"
   cg_start crlf; canon_setup "$PWD"
   grep -q $'eol=lf\r$' .gitattributes || fail "fixture: the canon block should follow the file's CRLF"
   cg_closes "ignore without final newline, CRLF attributes"
+
+  # break-it (t-52f0): order decides both files, so one moved line is a change; the newline fix pairs only the last line
+  printf '*.log\n!important.log\n' > .gitignore; printf '*.png binary\n*.png diff\n' > .gitattributes
+  git add .gitignore .gitattributes; git commit -qm "order matters"
+  cg_start breakit
+  printf '!important.log\n*.log\n/.claude/skills\n' > .gitignore; cg_refused .gitignore "one line moved, beside a canon line"
+  printf '*.png diff\n*.png binary\n' > .gitattributes; cg_refused .gitattributes "attributes line moved"
+  # the old directory line may go only when its replacement is there
+  printf '*.log\n!important.log\n/.claude/skills/\n' > .gitignore; git add .gitignore; git commit -qm "old canon line"
+  fr_gate_docs ".tickets/$cid" ".claude/subagent-runs.jsonl" "$(date +%s)-7000" "$(git rev-parse HEAD)"
+  printf '*.log\n!important.log\n' > .gitignore; cg_refused .gitignore "old canon line dropped, nothing in its place"
+  # canon writes its block whole, and never over a *.sh rule the project already has
+  printf '*.png binary\n*.png diff\n*.sh text eol=lf\n' > .gitattributes; cg_refused .gitattributes "a lone canon rule line"
+  printf '*.sh binary\n' > .gitattributes; git add .gitattributes; git commit -qm "own sh rule"
+  fr_gate_docs ".tickets/$cid" ".claude/subagent-runs.jsonl" "$(date +%s)-7000" "$(git rev-parse HEAD)"
+  printf '*.sh binary\n# canon:gitattributes:BEGIN\n# Shell scripts stay LF: bash can'"'"'t run CRLF, and Git for Windows checks out CRLF by default.\n*.sh text eol=lf\n# canon:gitattributes:END\n' > .gitattributes
+  cg_refused .gitattributes "canon block over the project's own *.sh rule"
+  cg_closes "break-it refusals restored"
+  # canon's edit still passes under diff.interHunkContext, and on an attributes file that ends in a bare CR
+  printf '/.claude/skills/\nnode_modules\n' > .gitignore; git add .gitignore; git commit -qm "old line"; git config diff.interHunkContext 1
+  cg_start hunkctx; canon_setup "$PWD"; git checkout -q -- .gitattributes
+  cg_closes "canon edit with diff.interHunkContext set"
+  git config --unset diff.interHunkContext; git add .gitignore; git commit -qm "canon lines"
+  printf '*.txt text\r' > .gitattributes; git add .gitattributes; git commit -qm "bare CR"
+  cg_start barecr; canon_setup "$PWD"
+  cg_closes "canon block on attributes ending in a bare CR"
 )
 rm -rf "$cg_project"
 
