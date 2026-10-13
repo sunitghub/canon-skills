@@ -475,10 +475,13 @@ export function initUi() {
 
     // t-4fa5: an embedded board also takes the shell's third-party theme colours (its board variables); the standalone
     // board keeps Canon Dark/Light only. Canon is the CSS, so a Canon theme clears them.
-    function applyTheme(t) { if (embedded) setVars(html, t && !t.css ? derive(t).board : null); }
+    // "In a Cockpit tab" means framed, as theme-boot.js decides it: the embed class also comes with a top-level
+    // /?standalone=1&project=, which would mix a third-party theme with the board's own mode (break-it)
+    const framed = window.parent !== window;
+    function applyTheme(t) { if (framed) setVars(html, t && !t.css ? derive(t).board : null); }
 
     apply(html.getAttribute('data-theme') !== 'light', false);
-    if (embedded) {
+    if (framed) {
       try {
         const choice = readChoice(localStorage.getItem(THEME_KEY));
         applyTheme(themeById(choice[effectiveMode(choice, html.getAttribute('data-theme') !== 'light')]));

@@ -4479,7 +4479,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
     // the table instead of copying it.
     const themeTable = page => page.evaluate(async () => { const d = await import('/static/theme-data.js'); return d.THEMES.map(t => ({ id: t.id, name: t.name, mode: t.mode, css: !!t.css, c: t.c })); });
     const cssVar = (loc, n) => loc.evaluate((h, n) => getComputedStyle(h).getPropertyValue(n).trim(), n);
-    const inlineVars = loc => loc.evaluate(h => [...h.style].filter(p => p.startsWith('--')).length);
+    // theme variables only: the shell keeps its own inline --side-w, which a theme must leave alone (break-it)
+    const inlineVars = loc => loc.evaluate(async h => { const { THEME_NAME } = await import('/static/theme-data.js'); return [...h.style].filter(p => THEME_NAME.test(p)).length; });
     async function pickTheme(page, t) {
       const pop = page.locator('#theme-pop');
       if (await pop.isHidden()) await page.locator('#theme-btn').click();
@@ -4517,6 +4518,9 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const all = await themeTable(page), nord = all.find(t => t.id === 'nord'), latte = all.find(t => t.id === 'catppuccin-latte');
       const html = page.locator('html'), bhtml = board.locator('html'), pop = page.locator('#theme-pop');
       const store = () => page.evaluate(() => [localStorage.getItem('canon-theme'), localStorage.getItem('canon-theme-vars')]);
+      // break-it: a theme apply or a preview must not wipe the sidebar's own inline width
+      await page.evaluate(async () => { const { setSideWidth } = await import('/static/cockpit-sidebar.js'); setSideWidth(380, true); });
+      const sideW = async () => Math.round((await page.locator('aside.side').boundingBox()).width);
       await page.locator('#theme-btn').click(); await pop.locator('[data-mode="dark"]').click();
       const before = await store();
       await pop.locator('.thm-card[data-id="nord"]').hover();
@@ -4544,11 +4548,21 @@ test.describe('cockpit in board (t-ddc8)', () => {
       expect(await cssVar(html, '--bg')).toBe(latte.c.bg);
       await pop.locator('h4').first().hover();
       await expect(html).toHaveAttribute('data-theme', 'dark');
+      // break-it: under System, clicking the other mode's card then leaving shows the theme in use, not that card
+      await pop.locator('.thm-card[data-id="catppuccin-latte"][data-for="light"]').click();
+      expect((await saved(page)).light).toBe('catppuccin-latte');
+      await page.mouse.move(900, 400);
+      await expect(html).toHaveAttribute('data-theme', 'dark');
+      expect(await cssVar(html, '--bg')).toBe('#1b2330');
       // a click saves
       await pop.locator('.thm-card[data-id="nord"][data-for="dark"]').click();
       expect((await saved(page)).dark).toBe('nord');
       await page.mouse.move(900, 400);
       expect(await cssVar(html, '--bg')).toBe(nord.c.bg);
+      expect(await sideW(), 'the sidebar width survived every apply and preview').toBe(380);
+      await page.reload(); await page.waitForLoadState('networkidle');
+      expect(await cssVar(html, '--bg')).toBe(nord.c.bg);
+      expect(await sideW(), 'and a reload with a third-party theme').toBe(380);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
@@ -4576,6 +4590,10 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.goto(BASE + '/?standalone=1', { waitUntil: 'commit' }); await parsed();
       expect(await page.evaluate(() => [...document.documentElement.style].filter(p => p.startsWith('--')).length)).toBe(0);
       release();
+      // break-it: a top-level board with ?project= (it carries the embed class) keeps Canon after its module ran too
+      await page.goto(BASE + '/?standalone=1&project=nope'); await page.waitForLoadState('networkidle');
+      expect(await page.evaluate(() => document.documentElement.classList.contains('canon-proj-embed'))).toBe(true);
+      expect(await page.evaluate(() => [...document.documentElement.style].filter(p => p.startsWith('--')).length)).toBe(0);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 

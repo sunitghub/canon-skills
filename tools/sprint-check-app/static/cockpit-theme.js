@@ -20,7 +20,7 @@ function show(m, t) {
   });
 }
 // the saved choice; the button names the theme in use
-let previewing = false;
+let previewing = false, restoring = false;
 function apply() {
   const m = effectiveMode(choice, osDark()), t = themeOf(m), btn = document.getElementById('theme-btn');
   previewing = false;
@@ -82,20 +82,20 @@ export function initTheme() {
       // render() rebuilds the popover, which would drop keyboard focus to <body> (break-it): put it back on the same control
       const again = m ? `[data-mode="${CSS.escape(m.dataset.mode)}"]` : `[data-id="${CSS.escape(c.dataset.id)}"][data-for="${CSS.escape(c.dataset.for)}"]`;
       save(); apply(); render();
-      const el = pop.querySelector(again); if (el) el.focus();
+      // putting focus back is not a preview: the click applied the saved choice, and the re-render means the browser
+      // no longer counts the pointer as inside the popover, so leaving would not undo a preview here (break-it)
+      const el = pop.querySelector(again); if (el) { restoring = true; el.focus(); restoring = false; }
     });
     // preview: a card under the pointer or with keyboard focus; anywhere else in the popover, or leaving it, reverts.
     // Only a pointer that really moved counts: choosing System grows the popover upward, which slides a card under a
     // still pointer, and Chromium reports that as hovering it (the shell then previewed a light theme by itself).
-    const over = e => { const c = e.target.closest('.thm-card'); if (c) preview(c.dataset.id); else unpreview(); };
+    const over = e => { if (restoring) return; const c = e.target.closest('.thm-card'); if (c) preview(c.dataset.id); else unpreview(); };
     let at = '';
     pop.addEventListener('pointermove', e => { const xy = e.clientX + ',' + e.clientY; if (xy !== at) { at = xy; over(e); } });
     pop.addEventListener('focusin', over);
-    // leaving with the pointer: the keyboard's card if one has focus (after a click that is the saved one), else the saved
-    pop.addEventListener('pointerleave', () => {
-      const f = pop.contains(document.activeElement) && document.activeElement.closest('.thm-card');
-      if (f) preview(f.dataset.id); else unpreview();
-    });
+    // leaving with the pointer shows the theme in use again. Not the focused card: after a click under System that
+    // card can be the other mode's pick, which is saved but not in use (break-it)
+    pop.addEventListener('pointerleave', unpreview);
     // keyboard focus leaving the popover and its button closes it (Tab to Help left it open on top, break-it); a press
     // with no new focus target (WebKit does not focus a clicked button) is left to the pointerdown and blur handlers
     const leave = e => { if (!pop.hidden && e.relatedTarget && !pop.contains(e.relatedTarget) && !btn.contains(e.relatedTarget)) setOpen(false); };

@@ -198,6 +198,29 @@ assert.strictEqual(boot({ page: 'board', embedded: false, stored: SB(J({ mode: '
     const out = bootFull({ page: 'shell', stored: CV(J(choice), c) }).vars;
     assert.ok(!(k in out) && out['--text'] === '#eceff4', `skipped ${what}, kept the valid entry`);
   }
+  // break-it (t-4fa5): no layout variable, no transparent colour, no Canon id, no entry of the other mode
+  for (const [what, k, v] of [['layout --side-w', '--side-w', '#000000'], ['layout --header-h', '--header-h', '#000000'], ['transparent', '--text', 'rgba(0,0,0,0)'], ['transparent 0.0', '--text', 'rgba(1,2,3, 0.0)']]) {
+    const c = hostile(x => { x.themes.nord.shell = { [k]: v, '--bg': '#2e3440' }; });
+    const out = bootFull({ page: 'shell', stored: CV(J(choice), c) }).vars;
+    assert.ok(!(k in out && out[k] === v) && out['--bg'] === '#2e3440', `skipped ${what}, kept the valid entry`);
+  }
+  const keepRed = hostile(x => { x.themes.nord.shell = { '--bg': 'rgb(255,0,0)', '--text': 'rgba(1,2,3,.5)' }; });
+  assert.deepStrictEqual(bootFull({ page: 'shell', stored: CV(J(choice), keepRed) }).vars, { '--bg': 'rgb(255,0,0)', '--text': 'rgba(1,2,3,.5)' }, 'an opaque rgb() and a half-transparent rgba() are kept');
+  const asCanon = J({ v: CACHE_V, themes: { 'canon-dark': { mode: 'dark', shell: { '--bg': '#ffffff' } } } });
+  assert.deepStrictEqual(bootFull({ page: 'shell', stored: CV(J({ mode: 'dark', light: 'canon-light', dark: 'canon-dark' }), asCanon) }).vars, {}, 'a Canon id never takes a cache');
+  const wrongMode = hostile(x => { x.themes.nord.mode = 'light'; });
+  assert.deepStrictEqual(bootFull({ page: 'shell', stored: CV(J(choice), wrongMode) }).vars, {}, 'an entry of the other mode is ignored');
+  // THEME_NAME: one pattern in theme-data.js and theme-boot.js; every derive() name matches; no layout name does
+  const { THEME_NAME, setVars } = await import(path.join(STATIC, 'theme-data.js'));
+  const bootName = BOOT.match(/var NAME = (\/.*\/);/);
+  assert.ok(bootName && bootName[1] === String(THEME_NAME), 'theme-boot.js carries the same THEME_NAME as theme-data.js');
+  for (const t of THEMES.filter(t => !t.css)) for (const p of ['shell', 'board']) for (const n of Object.keys(derive(t)[p])) assert.ok(THEME_NAME.test(n), `THEME_NAME covers ${n}`);
+  for (const n of ['--side-w', '--sidebar-w', '--header-h', '--radius', '--radius-sm', '--strip-h', '--strip-pad', '--edge', '--mono', '--r', '--ck-preview-w', '--drag-x', '--type-dot', '--card-glow', '--status-color']) assert.ok(!THEME_NAME.test(n), `THEME_NAME rejects ${n}`);
+  // setVars leaves the page's own inline variables alone (the sidebar width)
+  const props = new Map([['--side-w', '380px'], ['--bg', '#000000']]);
+  const el = { style: { [Symbol.iterator]: () => [...props.keys()][Symbol.iterator](), removeProperty: k => props.delete(k), setProperty: (k, v) => props.set(k, v) } };
+  setVars(el, null);
+  assert.deepStrictEqual([...props], [['--side-w', '380px']], 'setVars removes theme variables only');
   const many = hostile(x => { const m = {}; for (let i = 0; i < 500; i++) m['--v' + i] = '#000000'; x.themes.nord.shell = m; });
   assert.ok(Object.keys(bootFull({ page: 'shell', stored: CV(J(choice), many) }).vars).length <= 120, 'at most 120 names');
   assert.strictEqual(bootFull({ page: 'shell', stored: CV(J(choice), good), storageThrows: true }).theme, 'dark', 'throwing storage: still dark, no throw');

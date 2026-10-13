@@ -106,11 +106,15 @@ export const themeById = (id) => THEMES.find(t => t.id === id);
 // (both of them under System, so an OS change between visits still paints right). Canon needs none: its CSS owns it.
 export function cacheFor(choice) {
   const themes = {};
-  for (const m of ['light', 'dark']) { const t = themeById(choice[m]); if (t && !t.css) themes[t.id] = derive(t); }
+  for (const m of ['light', 'dark']) { const t = themeById(choice[m]); if (t && !t.css) themes[t.id] = { mode: t.mode, ...derive(t) }; }
   return { v: CACHE_V, themes };
 }
-// Set a derived map on an element's style, after removing every variable set before (switching back to Canon).
+// The names a theme may set: derive()'s vocabulary and nothing else, so the page's own inline variables (the sidebar's
+// --side-w) are never touched (break-it). theme-boot.js carries the same pattern; tests/sprint-check-theme.js keeps
+// the two equal and checks every derive() name matches and no layout name does.
+export const THEME_NAME = /^--(th-[a-z0-9-]+|bg|panel|panel-border|surface|surface-[a-z]+|border|border-[a-z]+|modal-border|text|text-[a-z]+|accent|accent-dim|glow-tint|card-stat|card-shadow|scrim|amber|badge-fg|col-[a-z-]+|st-[a-z]+|scenario-[a-z]+)$/;
+// Set a derived map on an element's style, after removing the theme variables set before (switching back to Canon).
 export function setVars(el, vars) {
-  for (const p of [...el.style]) if (p.startsWith('--')) el.style.removeProperty(p);
+  for (const p of [...el.style]) if (THEME_NAME.test(p)) el.style.removeProperty(p);
   if (vars) for (const [k, v] of Object.entries(vars)) el.style.setProperty(k, v);
 }
