@@ -616,7 +616,7 @@ _canon_setup_edit_only() {
       }
     }
     { sub(/\r$/, "") }
-    /^diff --git / { seen = 1; hunk = 0; next }
+    /^diff --git / { hunk = 0; next }
     !hunk && (/^index / || /^--- / || /^\+\+\+ /) { next }
     /^@@ / { hunk = 1; next }
     hunk && /^\+/ { a[++na] = substr($0, 2); next }
@@ -624,7 +624,7 @@ _canon_setup_edit_only() {
     hunk && /^\\ / { next }
     { bad = 1 }
     END {
-      if (bad || !seen) exit 1
+      if (bad) exit 1
       for (i = 1; i <= nr; i++) {
         if (r[i] in del) continue
         for (j = 1; j <= na; j++) if (!(j in used) && a[j] == r[i]) break
