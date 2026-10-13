@@ -47,8 +47,8 @@ Usage:
   canon update --to <vX.Y.Z|latest|main>
                            Install that release now (the way back from a bad update; the next
                            plain update moves to the latest again), the latest release, or
-                           main: the development track, not checksum-verified, which a plain
-                           update then keeps following until `--to latest`.
+                           main: the development version (the newest changes, not yet
+                           released), which a plain update keeps following until `--to latest`.
   canon uninstall [--dry-run] [--yes] [--keep-data] [--force]
                            Remove canon from this machine: shows a plan, asks, stops the daemon,
                            cleans every registered project, deletes the Cockpit data (unless

@@ -7,7 +7,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 ## [Unreleased]
 
 ### Changed
-- On the development version (main), the installers, `canon update` and `canon version` now say so in plain words — "You're on the development version (main): the newest changes, before they're released and without a release's verification." — and name the one command for the latest release, `canon update --to latest`. `canon version` reads `canon 0.6.0 (development version, following main)`. The old wording ("not checksum-verified", "returns to verified releases") is gone (`t-d744`).
+- On the development version (main), the installers, `canon update` and `canon version` now say so in plain words — "You're on the development version (main): the newest changes, before they're released and without a release's verification." — and name the one command for the latest release, `canon update --to latest`. `canon version` reads `canon <version> (development version, following main)`; `canon --help` and `docs/setup.md` use the same words. The old wording ("not checksum-verified", "returns to verified releases") is gone (`t-d744`).
 
 ## [0.6.0] - 2026-10-12
 
