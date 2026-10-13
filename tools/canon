@@ -116,9 +116,9 @@ update_without_git() {
   exit 1
 }
 
-# t-d744: what an install on the main track is told, in plain words. install.sh and install.ps1 print the same two lines (they run
-# standalone, so they keep their own copy; tests/doc-update-behavior.sh checks the three match). With a label, the first line is
-# `canon version`'s own.
+# t-d744: what an install on the main track is told, in plain words. install.ps1 prints the same two lines (it downloads the zip and
+# never runs canon update, so it keeps its own copy); install.sh runs canon update and leaves the notice to it (t-bb84).
+# tests/doc-update-behavior.sh checks both. With a label, the first line is `canon version`'s own.
 main_track_note() {
   if [ -n "${1:-}" ]; then echo "$1 (development version, following main)"
   else echo "You're on the development version (main): the newest changes, before they're released and without a release's verification."; fi
