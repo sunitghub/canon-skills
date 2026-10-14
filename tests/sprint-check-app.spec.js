@@ -4523,6 +4523,10 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const sideW = async () => Math.round((await page.locator('aside.side').boundingBox()).width);
       await page.locator('#theme-btn').click(); await pop.locator('[data-mode="dark"]').click();
       const before = await store();
+      // a card arriving under a still pointer (the popover grows when Mode changes) is not a hover: only real pointer
+      // movement previews. A bare pointerover is what the browser sends then.
+      await pop.locator('.thm-card[data-id="nord"]').evaluate(c => c.dispatchEvent(new PointerEvent('pointerover', { bubbles: true })));
+      expect(await cssVar(html, '--bg'), 'no preview without pointer movement').toBe('#1b2330');
       await pop.locator('.thm-card[data-id="nord"]').hover();
       expect(await cssVar(html, '--bg')).toBe(nord.c.bg);
       await expect.poll(() => cssVar(bhtml, '--bg')).toBe(nord.c.bg);
