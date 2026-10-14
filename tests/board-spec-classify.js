@@ -88,7 +88,7 @@ function main(argv) {
   if ((mode !== 'list' && mode !== 'report') || !files.length) { console.error('board-spec-classify: usage: list|report [options] REPORT.json...'); return 2; }
   const reports = files.map((f) => {
     const browser = browserOf(f), report = readJson(f);
-    if (!browser || !report) { console.error(`board-spec-classify: cannot read "${f}" as board-spec-<browser>-run<N>.json`); process.exit(2); }
+    if (!browser || !report || !Array.isArray(report.suites)) { console.error(`board-spec-classify: cannot read "${f}" as board-spec-<browser>-run<N>.json`); process.exit(2); }
     return { browser, records: recordsOf(report) };
   });
   const tests = unlisted(reports, JSON.parse(fs.readFileSync(opt.baseline, 'utf8')));
