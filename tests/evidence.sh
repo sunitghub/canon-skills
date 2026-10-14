@@ -266,7 +266,7 @@ for r in "$out"/board-spec-*-run*.json; do
   if command -v sha256sum >/dev/null 2>&1; then h="$(sha256sum -- "$r" | cut -d' ' -f1)"; else h="$(shasum -a 256 -- "$r" | cut -d' ' -f1)"; fi
   echo "run-board-spec: report ${r##*/} sha256 $h"
 done
-exit 1
+exit "${FAKE_RC:-1}"
 FAKE
 printf 'process.exit(Number(process.env.GUARD_RC || 0));\n' > "$WORK/fakes/board-spec-guard.js"
 D=".tickets/$ID/evidence/full-reports"
@@ -275,7 +275,7 @@ covered_setup() {   # base commit with the fakes and a baseline; reports; the ru
   mkdir -p tests; cp "$WORK/fakes/run-board-spec.sh" "$WORK/fakes/board-spec-guard.js" tests/; echo '{}' > tests/board-spec-baseline.json
   git add tests; git commit -qm fakes
   mkdir -p "$D"; echo '{"r":1}' > "$D/board-spec-chromium-run1.json"; echo '{"r":2}' > "$D/board-spec-webkit-run1.json"
-  ev stamp "$ID" full -- bash tests/run-board-spec.sh --out "$REPO/$D"; assert_eq 1 "$code"
+  ev stamp "$ID" full -- bash tests/run-board-spec.sh --out "$REPO/$D"; assert_eq "${FAKE_RC:-1}" "$code"
   echo '{"flaky":[1]}' > tests/board-spec-baseline.json; git commit -qam "baseline only"
 }
 guard() { ev stamp "$ID" guard -- node tests/board-spec-guard.js "$@"; }
@@ -340,6 +340,26 @@ covered_setup; ev stamp "$ID" a-guard -- node tests/board-spec-guard.js "$D/boar
 covered_setup; ev stamp "$ID" a-guard -- node tests/board-spec-guard.js --partial "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"
   guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"
   ev check "$ID"; assert_contains "$out" "by guard.log over 2 report(s))"   # a.guard's --partial on a full run is refused, guard.log still found
+# the run's own exit: 0 or 1 (the guard's verdict) can be covered; 2 (the runner's own failure) and a missing exit line cannot
+FAKE_RC=0 covered_setup; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; ev check "$ID"; assert_contains "$out" "covered full.log exit=0 ("
+FAKE_RC=2 covered_setup; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; ev check "$ID"
+  assert_contains "$out" "stale full.log exit=2"; [[ "$out" != *"covered full.log"* ]] || fail "evidence: a run that exited 2 was covered: $out"
+covered_setup; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; sed -i.bak '$d' "$ED/full.log"; rm -f "$ED/full.log.bak"
+  ev check "$ID"; assert_contains "$out" "stale full.log exit=?"; [[ "$out" != *"covered full.log"* ]] || fail "evidence: a run with no exit line was covered: $out"
+# the command must BE the runner or the guard, not a command that merely names them (anchors on both line-2 checks)
+covered_setup; ev stamp "$ID" full -- env bash tests/run-board-spec.sh --out "$REPO/$D"; echo '{"f":9}' > tests/board-spec-baseline.json; git commit -qam b9
+  guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; ev check "$ID"
+  [[ "$out" != *"covered full.log"* ]] || fail "evidence: a run log of 'env bash tests/run-board-spec.sh' was covered: $out"
+covered_setup; ev stamp "$ID" guard -- env node tests/board-spec-guard.js "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"
+  want_stale "a guard log of 'env node tests/board-spec-guard.js'"
+# exactly one changed file that is not the baseline: a near-miss name, and an unrelated file
+for other in tests/board-spec-baseline-old.json src/only.txt; do
+  reset_repo; mkdir -p tests; cp "$WORK/fakes/run-board-spec.sh" "$WORK/fakes/board-spec-guard.js" tests/; echo '{}' > tests/board-spec-baseline.json; git add tests; git commit -qm fakes
+  mkdir -p "$D"; echo '{"r":1}' > "$D/board-spec-chromium-run1.json"; echo '{"r":2}' > "$D/board-spec-webkit-run1.json"
+  ev stamp "$ID" full -- bash tests/run-board-spec.sh --out "$REPO/$D"
+  mkdir -p "$(dirname "$other")"; echo x > "$other"; git add "$other"; git commit -qm "only $other"
+  guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; want_stale "a single changed file $other"
+done
 # another fresh exit-0 log listed before the guard log does not end the search
 covered_setup; ev stamp "$ID" a-other -- true; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; want_covered
 # a folder named like a report is refused, not hashed

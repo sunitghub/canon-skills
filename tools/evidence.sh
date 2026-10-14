@@ -11,7 +11,8 @@
 #   fresh <file> exit=<N>      line 1 is exactly `HEAD <sha> <time>` (nothing after the time) and the sha is the graded head or an ancestor with no
 #                              tracked file changed since, committed or not, other than the evidence-neutral paths below
 #   covered <file> exit=<N>    t-a3d7: a tests/run-board-spec.sh log whose reports sit in a folder inside this evidence/ dir, stale only because
-#                              tests/board-spec-baseline.json changed since, and re-judged at the graded head by a fresh exit-0 log of
+#                              tests/board-spec-baseline.json changed since, that ended in exit 0 or 1 (the guard's verdict; 2 is the
+#                              runner's own failure: the tree moved or a process leaked), and re-judged at the graded head by a fresh exit-0 log of
 #                              `node tests/board-spec-guard.js` over exactly those reports, each still matching the sha256 the run log printed
 #   stale <file> exit=<N>      stamped, but older with such changes, an unknown sha, or not an ancestor
 #   unstamped <file> exit=?    anything else: `# HEAD …`, `(uncommitted)`, `+wt`, no line 1, empty, binary, a symlink (never followed)
@@ -187,7 +188,7 @@ for f in "$edir"/*.log; do
   FILES+=("$f"); KINDS+=("$KIND"); CODES+=("$CODE"); LINES+=("$LINE"); BASES+=("$BASEONLY"); STAMPS+=("$STAMP"); SHOWNS+=("$SHOWN")
 done
 for i in "${!FILES[@]}"; do
-  if [[ "${BASES[$i]}" == 1 ]]; then
+  if [[ "${BASES[$i]}" == 1 && "${CODES[$i]}" =~ ^[01]$ ]]; then   # exit 2: the run itself failed, nothing to re-judge
     g="$(covered_by "${FILES[$i]}")"
     if [[ -n "$g" ]]; then
       LINES[$i]="covered $(safe "${FILES[$i]##*/}") exit=${CODES[$i]} (HEAD ${STAMPS[$i]}; only tests/board-spec-baseline.json changed since; re-guarded at ${graded:0:7} by $(safe "${g% *}") over ${g##* } report(s))${SHOWNS[$i]}"
