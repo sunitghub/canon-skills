@@ -399,6 +399,23 @@ grep -qF 'echo "run-board-spec: report dir $OUT"' "$ROOT/tests/run-board-spec.sh
 grep -qF 'echo "run-board-spec: report ${r##*/} sha256 $h"' "$ROOT/tests/run-board-spec.sh" || fail "evidence: tests/run-board-spec.sh no longer prints its report sha256 lines"
 grep -qF 'OUT="$(cd "$OUT" && pwd -P)"' "$ROOT/tests/run-board-spec.sh" || fail "evidence: tests/run-board-spec.sh must print the resolved report dir"
 
+# --- t-2633: a scripts/test.sh --changed run is a partial fast pass, never the stamped evidence --------------------------------------
+reset_repo; mkdir -p scripts; printf 'echo "ran $*"\n' > scripts/test.sh; git add scripts; git commit -qm runner
+for form in "scripts/test.sh --changed" "bash scripts/test.sh --changed main" "bash ./scripts/test.sh --changed" "$REPO/scripts/test.sh --changed"; do
+  # shellcheck disable=SC2086
+  ev stamp "$ID" partial -- $form; assert_eq 125 "$code"; assert_contains "$out" "is a partial run, never a close stamp"
+  [[ ! -e "$ED/partial.log" ]] || fail "evidence: a refused --changed stamp wrote a log ($form)"
+done
+ev stamp "$ID" full -- bash scripts/test.sh; assert_eq 0 "$code"                          # the full run still stamps
+ev stamp "$ID" other -- bash -c 'echo --changed'; assert_eq 0 "$code"                     # --changed without the runner is fine
+C9="$(git rev-parse HEAD)"
+put hand.log "HEAD $C9 $T\n\$ scripts/test.sh --changed\nexit 0\n"; ev check "$ID"
+assert_contains "$out" "stale hand.log exit=0 (HEAD ${C9:0:7}; a scripts/test.sh --changed run is partial, never the close stamp)"
+put hand2.log "HEAD $C9 $T\n\$ bash /x/scripts/test.sh --changed origin/main\nexit 0\n"; ev check "$ID"; assert_contains "$out" "stale hand2.log exit=0"
+put hand3.log "HEAD $C9 $T\n\$ bash scripts/test.sh --changedx\nexit 0\n"; ev check "$ID"; assert_contains "$out" "fresh hand3.log exit=0"      # not the flag
+put hand4.log "HEAD $C9 $T\nnot a command line scripts/test.sh --changed\nexit 0\n"; ev check "$ID"; assert_contains "$out" "fresh hand4.log exit=0"   # line 2 is not a $ command
+reset_repo
+
 # --- the rules the evaluator reads stay in the docs: a later edit cannot drop the independence floor or the budget without failing here ---------------
 need() {   # need <file> <fixed phrase> <what it carries>
   grep -qF -- "$2" "$ROOT/$1" || fail "evidence: $1 no longer says: $3 ('$2')"

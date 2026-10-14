@@ -10,6 +10,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 - `sprint check-evidence <id>`: before the evaluator is dispatched, it checks that every stamped evidence log is fresh at HEAD with exit 0, and names each one to re-stamp or fix, so a stale or failing log no longer costs a failed evaluator run (`t-a3d7`).
 
 ### Changed
+- `scripts/test.sh` prints each suite's time and the 10 slowest, and `--changed [<base>]` runs only the suites a change can reach (a change no suite names runs everything); a `--changed` run is never accepted as evidence (`t-2633`).
 - `evidence.sh check` keeps a log fresh when only close-time docs changed since (`LEARNINGS`, `DECISIONS`, `HANDOFF.md`, `PROMOTED.md`, the subagent log), and counts a full board-spec run as `covered` when only the baseline changed and a stamped guard run re-judged the same reports (`t-a3d7`).
 
 ## [0.9.0] - 2026-10-14
