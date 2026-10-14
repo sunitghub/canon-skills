@@ -856,7 +856,7 @@ cmd_check_evidence() {
       echo "  REFUSE  $(printf '%s' "$name" | LC_ALL=C tr -c 'A-Za-z0-9._-' '?'): a name evidence.sh stamp never writes; rename it, or move it into a subfolder"
     fi
   done
-  if [[ -z "$out" ]]; then
+  if [[ -z "$out" ]] && (( ! bad )); then
     echo "check-evidence: no stamped logs in .tickets/$id/evidence/ (nothing to reuse: the evaluator runs every check itself)"
     exit 0
   fi
