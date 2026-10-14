@@ -4664,7 +4664,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         entry('evil', { ...INK, name: evil }),                                                    // the page refuses it
         entry('css', { ...INK, name: 'Css', colors: { ...INK.colors, bg: 'red;background:url(//x)' } }),   // and this
         { ...entry('forged', INK), id: 'user-other' },                                             // and this
-      ], [{ file: evil + '.json', reason: XSS_ATTR }, { file: 'bad.json', reason: 'not valid JSON' }], '/home/me/' + XSS_ATTR));
+      ], [{ file: evil + '.json', reason: evil }, { file: 'bad.json', reason: 'not valid JSON' }], '/home/me/' + evil));
       const posts = [];
       await page.route('**/api/themes/open', r => { posts.push({ method: r.request().method(), body: r.request().postData() }); return r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true,"created":false,"launched":true}' }); });
       await openShell(page, []);
@@ -4682,8 +4682,9 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const items = pop.locator('.thm-rejected li');
       await expect(items).toHaveText([
         "evil.json: failed the page's own check", "css.json: failed the page's own check", "forged.json: failed the page's own check",
-        evil + '.json: ' + XSS_ATTR, 'bad.json: not valid JSON']);
-      await expect(pop.locator('.thm-note code')).toHaveText('/home/me/' + XSS_ATTR);
+        evil + '.json: ' + evil, 'bad.json: not valid JSON']);
+      // every sink here is text, so the payload is markup (a quote breakout would not show a missing esc)
+      await expect(pop.locator('.thm-note code')).toHaveText('/home/me/' + evil);
       expect(await pop.locator('img').count()).toBe(0);
       expect(await onAttrs(page)).toEqual([]);
       expect(await page.evaluate(() => window.__pwned)).toBeUndefined();

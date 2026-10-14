@@ -249,19 +249,23 @@ for kind in py go; do
   done
   [[ -d "$H3/acc/in" ]] && chmod 755 "$H3/acc/in"
   sleep 0.3; [[ "$(calls "$LOG")" == 7 ]] || fail "$kind: a refused folder launched something"
-  # eight opens at once on a missing folder: exactly one creates it (and seeds it), the others open it
+  # sixteen opens at once on a missing folder, 30 times: each time exactly one creates it (and seeds it), the others
+  # open it (break-it: Go reported created five times of eight)
   H4="$TMP/home-race-$kind"; mkdir -p "$H4"; LOG4="$TMP/open-race-$kind.log"
   start "$kind" "$H4" CANON_OPEN_BIN="$STUB" OPEN_LOG="$LOG4"
-  for i in 1 2 3 4 5 6 7 8; do
-    curl -s -X POST -H 'Content-Type: application/json' -d '{}' "http://127.0.0.1:$PORT/api/themes/open" > "$TMP/race-$kind-$i.json" &
-  done
-  wait
-  python3 - "$TMP" "$kind" <<'PY' || fail "$kind: parallel opens: exactly one must create the folder"
+  for round in $(seq 1 30); do
+    rm -rf "$H4/themes"
+    for i in $(seq 1 16); do
+      curl -s -X POST -H 'Content-Type: application/json' -d '{}' "http://127.0.0.1:$PORT/api/themes/open" > "$TMP/race-$kind-$i.json" &
+    done
+    wait
+    python3 - "$TMP" "$kind" <<'PY' || fail "$kind: parallel opens (round $round): exactly one must create the folder"
 import json, sys
-r = [json.load(open(f'{sys.argv[1]}/race-{sys.argv[2]}-{i}.json')) for i in range(1, 9)]
-assert all(x['ok'] for x in r) and sum(x['created'] for x in r) == 1, r
+r = [json.load(open(f'{sys.argv[1]}/race-{sys.argv[2]}-{i}.json')) for i in range(1, 17)]
+assert all(x['ok'] for x in r) and sum(x['created'] for x in r) == 1, [x.get('created') for x in r]
 PY
-  cmp -s "$H4/themes/example.json" "$SEED/example.json" || fail "$kind: parallel opens: the seed is not intact"
+    cmp -s "$H4/themes/example.json" "$SEED/example.json" || fail "$kind: parallel opens (round $round): the seed is not intact"
+  done
   echo "  open ($kind): seeds once, launches only the folder, refuses foreign Origin/Host and other content types, ignores the body, refuses an unusable path, one creator under a race"
 done
 
