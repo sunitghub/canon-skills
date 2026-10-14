@@ -4597,9 +4597,6 @@ func themeRead(path string) (userTheme, string) {
 	if !st.Mode().IsRegular() {
 		return userTheme{}, "not a regular file"
 	}
-	if st.Size() > themeMaxBytes {
-		return userTheme{}, "larger than 16 KiB"
-	}
 	f, err := os.Open(path)
 	if err != nil {
 		return userTheme{}, "cannot be read"

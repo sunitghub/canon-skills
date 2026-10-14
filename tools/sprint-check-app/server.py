@@ -176,8 +176,6 @@ def _theme_read(path: Path):
         return None, 'symbolic links are not read'
     if not stat.S_ISREG(st.st_mode):
         return None, 'not a regular file'
-    if st.st_size > THEME_MAX_BYTES:
-        return None, 'larger than 16 KiB'
     try:
         fd = os.open(path, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_NONBLOCK', 0))
         with os.fdopen(fd, 'rb') as f:
