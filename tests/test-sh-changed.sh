@@ -41,7 +41,7 @@ mkdir -p tools/app/widgets; echo w > tools/app/widgets/dial.js         # a folde
 printf "fs.readdirSync(path.join(app, 'widgets')).filter(f => /^d/.test(f))\n" > tests/w.js   # names the folder, never the file
 mkdir -p tools/app/panels; echo p > tools/app/panels/knob.js         # reached only through test helpers
 printf "const dir = path.join(app, 'panels');\n" > tests/panel-loader.js   # a JS helper (no suite) that names the folder
-printf "require('./panel-loader.js')\n" > tests/p.js                  # a suite that uses the JS helper
+printf "require('./panel-loader')\n" > tests/p.js                     # a suite that uses the JS helper, required without .js (t-2633 eval 3)
 printf '# panels are listed below (a comment does not count)\npanel_src() {\n  cat "$1"/tools/app/panels/*.js\n}\nother_fn() {\n  echo hi\n}\n' > tests/lib2.sh   # a shell helper
 printf 'source tests/lib2.sh\npanel_src .\n' > tests/q.sh            # calls the function that names the folder
 printf 'source tests/lib2.sh\nother_fn\n' > tests/r.sh                # sources the same helper, calls another function

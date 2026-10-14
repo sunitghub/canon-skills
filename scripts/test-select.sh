@@ -45,7 +45,8 @@ select_init() {
           # board suites reach static/*.js only through tests/board-script.js (t-2633 evaluator run 2)
           git -C "$root" grep -lwF -e "${c##*/}" ${folder:+-e "$folder"} -- tests ':(exclude)*.md' ':(exclude)*.json' 2>/dev/null \
             | grep -vxF -f "$labels" | sed 's/^/helper:/'; } | while IFS= read -r r; do
-          if [[ "$r" == helper:*.sh ]]; then select_helper_terms "$root" "${r#helper:}" "${c##*/}" "$folder"; else select_term "${r#helper:}"; fi
+          if [[ "$r" == helper:*.sh ]]; then select_helper_terms "$root" "${r#helper:}" "${c##*/}" "$folder"
+          else select_term "${r#helper:}"; if [[ "$r" == helper:*.js ]]; then r="${r##*/}"; printf '%s\n' "${r%.js}"; fi; fi   # require('./board-script')
         done || true
       fi; } | select_terms_re > "$SELECT_TERMS.one"
     cat "$SELECT_TERMS.one" >> "$SELECT_TERMS"
