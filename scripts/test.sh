@@ -161,9 +161,9 @@ if (( DRY )) || command -v go >/dev/null 2>&1; then
   suite tools/sprint-headless-json-go go_headless_json
   suite tools/cockpit-daemon go_daemon
 else
-  (( DRY )) || printf '==> %s\n' "tools/sprint-check-go skipped (go absent)"
-  (( DRY )) || printf '==> %s\n' "tools/sprint-headless-json-go skipped (go absent)"
-  (( DRY )) || printf '==> %s\n' "tools/cockpit-daemon skipped (go absent)"
+  printf '==> %s\n' "tools/sprint-check-go skipped (go absent)"
+  printf '==> %s\n' "tools/sprint-headless-json-go skipped (go absent)"
+  printf '==> %s\n' "tools/cockpit-daemon skipped (go absent)"
 fi
 
 if (( DRY )) || command -v node >/dev/null 2>&1; then
@@ -180,7 +180,7 @@ if (( DRY )) || command -v node >/dev/null 2>&1; then
   suite tests/board-spec-classify-unit.js node "$ROOT/tests/board-spec-classify-unit.js"
   suite tests/sprint-check-api-scoping.js node "$ROOT/tests/sprint-check-api-scoping.js"
 else
-  (( DRY )) || printf '==> %s\n' "tests/sprint-check-gherkin.js skipped (node absent)"
+  printf '==> %s\n' "tests/sprint-check-gherkin.js skipped (node absent)"
 fi
 return 0
 }
