@@ -99,7 +99,7 @@ line2_of() { head -c 16384 -- "$1" | LC_ALL=C tr -d '\000' | sed -n '2p' | tr -d
 # the stamp is tests/board-spec-baseline.json, the one case `covered` may lift). Called directly, never in $(...), so the globals survive.
 classify_one() {
   local f="$1" first last sha when cmdline shown full names p list n more
-  BASEONLY=0; CODE="?"
+  BASEONLY=0; CODE="?"; STAMP=""; SHOWN=""
   base="$(safe "${f##*/}")"
   if [[ -L "$f" || ! -f "$f" ]]; then KIND=unstamped; LINE="unstamped $base exit=?"; return 0; fi
   first="$(head -c 512 -- "$f" | LC_ALL=C tr -d '\000' | head -n1 | tr -d '\r')" || first=""   # `|| …`: head exiting early may SIGPIPE a writer, which pipefail would turn into a silent exit
@@ -131,74 +131,68 @@ classify_one() {
     else KIND=fresh; LINE="fresh $base exit=$CODE (HEAD ${sha:0:7}, only .tickets/ and evidence-neutral files changed since, $when)$shown"; fi
     return 0
   fi
-  if [[ ${#names[@]} -eq 1 && "${names[0]}" == tests/board-spec-baseline.json ]] && (( ! wt_dirty )); then BASEONLY=1; fi
+  if [[ ${#names[@]} -eq 1 && "${names[0]}" == tests/board-spec-baseline.json ]]; then BASEONLY=1; fi
   list=""; n=0
   for p in "${names[@]}"; do n=$((n + 1)); if [[ $n -le 5 ]]; then list+="${list:+, }$(safe "$p")"; fi; done
   more=""; if [[ $n -gt 5 ]]; then more=" (+$((n - 5)) more)"; fi
   LINE="stale $base exit=$CODE (HEAD ${sha:0:7}; $n tracked file(s) changed since: $list$more)$shown"
 }
 
-# covered_by <run-log> — t-a3d7: prints the name of a fresh exit-0 guard log that re-judges this run's reports at the graded head, or
-# nothing. Every input is a file an agent can write, so each link is checked, never trusted: the run log must be a run-board-spec
-# log that printed its report folder and one sha256 per report; the folder must be a real directory inside this ticket's evidence/
-# (no symlink anywhere on the way); the reports on disk must be exactly the printed set, unchanged; and the guard log's command must be
-# `node tests/board-spec-guard.js` over exactly those files with no option (a --baseline or --strict would judge something else), except
-# --partial once when the run itself was a --grep run, which is how the runner calls the guard (${GREP:+--partial}).
+# covered_by <run-log> — t-a3d7: prints "<guard log> <report count>" when a fresh exit-0 guard log re-judges this run's reports at the
+# graded head, else nothing. Every input is a file an agent can write, so each link is checked once, never trusted: the run log is a
+# run-board-spec log that printed exactly one report folder and one sha256 per report; the folder is a real directory inside this
+# ticket's evidence/ (the printed path is the resolved one, so no symlinked component); the reports there are exactly the printed set,
+# unchanged, none a symlink; and the guard log runs `node tests/board-spec-guard.js` over exactly those files and nothing else (an
+# option such as --baseline or --strict is not a report, so it fails that), except --partial once when the run was a --grep run, which
+# is how the runner itself calls the guard (${GREP:+--partial}). A dirty tree needs no check here: no guard log is fresh then.
 covered_by() {
-  local run="$1" dir rdir redir recorded actual fpath g gcmd a apath adir got i partial_ok=0 partial_seen
+  local run="$1" dir rdir recorded names actual="" fpath g a apath adir got i partial_ok=0 partial_seen
   local -a args
   [[ "$(line2_of "$run")" =~ ^\$\ (bash\ )?(\./)?tests/run-board-spec\.sh(\ |$) ]] || return 0
   if [[ " $(line2_of "$run") " == *" --grep "* ]]; then partial_ok=1; fi
-  dir="$(LC_ALL=C grep -a -E '^run-board-spec: report dir /' -- "$run" | tail -n1 | sed 's/^run-board-spec: report dir //' | tr -d '\r')" || dir=""
-  [[ -n "$dir" && -d "$dir" && ! -L "$dir" ]] || return 0
+  dir="$(LC_ALL=C grep -a -E '^run-board-spec: report dir ' -- "$run" | sed 's/^run-board-spec: report dir //' | tr -d '\r')" || dir=""
+  [[ -n "$dir" && "$dir" != *$'\n'* ]] || return 0   # exactly one folder line
   rdir="$(cd "$dir" 2>/dev/null && pwd -P)" || return 0
-  redir="$(cd "$edir" && pwd -P)" || return 0
-  [[ "$rdir" == "$redir"/* && "$dir" == "$rdir" ]] || return 0   # inside evidence/, and no symlinked component (the printed path is the resolved one)
+  [[ "$rdir" == "$REDIR"/* && "$dir" == "$rdir" ]] || return 0
   recorded="$(LC_ALL=C grep -a -E '^run-board-spec: report board-spec-[a-z]+-run[0-9]+\.json sha256 [0-9a-f]{64}$' -- "$run" | sed 's/^run-board-spec: report //' | sort)" || recorded=""
-  [[ -n "$recorded" ]] || return 0
-  [[ "$(printf '%s\n' "$recorded" | cut -d' ' -f1 | sort -u | wc -l)" -eq "$(printf '%s\n' "$recorded" | wc -l)" ]] || return 0   # a name printed twice
-  actual=""
+  [[ -n "$recorded" ]] || return 0   # a run with no report re-judges nothing
   for fpath in "$rdir"/board-spec-*-run*.json; do
     [[ -f "$fpath" && ! -L "$fpath" ]] || return 0
     actual+="${fpath##*/} sha256 $(sha256_of "$fpath")"$'\n'
   done
-  [[ "$(printf '%s' "$actual" | sort)" == "$recorded" ]] || return 0
+  [[ "$(printf '%s' "$actual" | sort)" == "$recorded" ]] || return 0   # also refuses a report printed twice
+  names="$(printf '%s\n' "$recorded" | cut -d' ' -f1)"
   for i in "${!FILES[@]}"; do
     [[ "${KINDS[$i]}" == fresh && "${CODES[$i]}" == 0 ]] || continue
-    g="${FILES[$i]}"; gcmd="$(line2_of "$g")"
-    [[ "$gcmd" =~ ^\$\ node\ tests/board-spec-guard\.js\ (.+)$ ]] || continue
-    [[ "${BASH_REMATCH[1]}" != *[\'\"\\\$\`]* ]] || continue   # %q quoting would hide a space or a quote: such a line is not parsed
-    read -r -a args <<< "${BASH_REMATCH[1]}"   # split on spaces without globbing
+    g="${FILES[$i]}"
+    [[ "$(line2_of "$g")" =~ ^\$\ node\ tests/board-spec-guard\.js\ (.+)$ ]] || continue
+    read -r -a args <<< "${BASH_REMATCH[1]}"   # split on spaces without globbing; a %q-quoted path never names a report
     got=""; partial_seen=0
     for a in "${args[@]}"; do
       if [[ "$a" == --partial ]] && (( partial_ok && ! partial_seen )); then partial_seen=1; continue; fi
-      [[ "$a" != -* ]] || { got="x"; break; }
       if [[ "$a" == /* ]]; then apath="$a"; else apath="$root/$a"; fi
-      [[ -f "$apath" && ! -L "$apath" ]] || { got="x"; break; }
       adir="$(cd "$(dirname "$apath")" 2>/dev/null && pwd -P)" || { got="x"; break; }
       [[ "$adir" == "$rdir" ]] || { got="x"; break; }
       got+="${apath##*/}"$'\n'
     done
-    [[ "$got" != x ]] || continue
-    [[ "$(printf '%s' "$got" | sort -u)" == "$(printf '%s\n' "$recorded" | cut -d' ' -f1)" && "$(printf '%s' "$got" | wc -l)" -eq "$(printf '%s\n' "$recorded" | wc -l)" ]] || continue
-    printf '%s' "${g##*/}"; return 0
+    [[ "$got" != x && "$(printf '%s' "$got" | sort)" == "$names" ]] || continue
+    printf '%s %s' "${g##*/}" "$(printf '%s\n' "$names" | wc -l | tr -d ' ')"; return 0
   done
-  return 0
+  return 0   # the caller assigns this under set -e
 }
 
+REDIR="$(cd "$edir" && pwd -P)"
 FILES=(); KINDS=(); CODES=(); LINES=(); BASES=(); STAMPS=(); SHOWNS=()
 for f in "$edir"/*.log; do
   classify_one "$f"
-  FILES+=("$f"); KINDS+=("$KIND"); CODES+=("$CODE"); LINES+=("$LINE"); BASES+=("$BASEONLY"); STAMPS+=("${STAMP-}"); SHOWNS+=("${SHOWN-}")
-  STAMP=""; SHOWN=""
+  FILES+=("$f"); KINDS+=("$KIND"); CODES+=("$CODE"); LINES+=("$LINE"); BASES+=("$BASEONLY"); STAMPS+=("$STAMP"); SHOWNS+=("$SHOWN")
 done
 (( ${#FILES[@]} )) || exit 0   # bash 3.2 treats "${!a[@]}" of an empty array as unbound under set -u
 for i in "${!FILES[@]}"; do
   if [[ "${BASES[$i]}" == 1 ]]; then
     g="$(covered_by "${FILES[$i]}")"
     if [[ -n "$g" ]]; then
-      n="$(LC_ALL=C grep -a -c -E '^run-board-spec: report board-spec-[a-z]+-run[0-9]+\.json sha256 [0-9a-f]{64}$' -- "${FILES[$i]}")" || n=0
-      LINES[$i]="covered $(safe "${FILES[$i]##*/}") exit=${CODES[$i]} (HEAD ${STAMPS[$i]}; only tests/board-spec-baseline.json changed since; re-guarded at ${graded:0:7} by $(safe "$g") over $n report(s))${SHOWNS[$i]}"
+      LINES[$i]="covered $(safe "${FILES[$i]##*/}") exit=${CODES[$i]} (HEAD ${STAMPS[$i]}; only tests/board-spec-baseline.json changed since; re-guarded at ${graded:0:7} by $(safe "${g% *}") over ${g##* } report(s))${SHOWNS[$i]}"
     fi
   fi
   echo "${LINES[$i]}"
