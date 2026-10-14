@@ -123,7 +123,7 @@ export function cacheFor(choice) {
 // Files in $CANON_HOME/themes, listed by GET /api/themes. Both servers check them (server.py, sprint-check-go); the
 // page checks every entry again here before using it, with the same rules and reasons (tests/theme-files-parity.sh
 // holds the three to theme.schema.json). Only checked entries reach derive(), the cards or the cache.
-export const THEME_KEYS = ['bg', 'surface', 'border', 'text', 'body', 'muted', 'accent', 'ok', 'warn', 'bad', 'info', 'term'];
+const THEME_KEYS = ['bg', 'surface', 'border', 'text', 'body', 'muted', 'accent', 'ok', 'warn', 'bad', 'info', 'term'];
 const USER_FILE = /^[a-z0-9][a-z0-9-]{0,29}\.json$/, USER_ID = /^user-[a-z0-9][a-z0-9-]{0,29}$/;
 const USER_NAME = /^[A-Za-z0-9 ._()+-]{1,40}$/, USER_HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);

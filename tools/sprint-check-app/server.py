@@ -289,8 +289,9 @@ def open_themes_folder() -> dict:
     opener = _theme_opener()
     if opener:
         try:
-            subprocess.Popen(opener + [str(d)], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                             stderr=subprocess.DEVNULL, close_fds=True)
+            proc = subprocess.Popen(opener + [str(d)], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL, close_fds=True)
+            threading.Thread(target=proc.wait, daemon=True).start()  # reap it, as Go's cmd.Wait does (reviewer)
             launched = True
         except OSError:
             return {'ok': False, 'error': 'could not open the themes folder'}
