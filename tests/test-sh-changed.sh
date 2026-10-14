@@ -45,9 +45,14 @@ printf "require('./panel-loader.js')\n" > tests/p.js                  # a suite 
 printf '# panels are listed below (a comment does not count)\npanel_src() {\n  cat "$1"/tools/app/panels/*.js\n}\nother_fn() {\n  echo hi\n}\n' > tests/lib2.sh   # a shell helper
 printf 'source tests/lib2.sh\npanel_src .\n' > tests/q.sh            # calls the function that names the folder
 printf 'source tests/lib2.sh\nother_fn\n' > tests/r.sh                # sources the same helper, calls another function
+printf "const d = 'mypanels';\n" > tests/other-loader.js; printf "require('./other-loader.js')\n" > tests/o.js   # mypanels is not the word panels
+mkdir -p tests/r.sh.d; printf 'knob_src() {\n  cat tools/app/panels/knob.js\n}\n' > tests/r.sh.d/lib.sh   # a helper whose path contains a suite name
+printf 'source tests/r.sh.d/lib.sh\nknob_src\n' > tests/k2.sh
+printf 'f3() {\n  echo x\n}\nPANELS=tools/app/panels\n' > tests/lib3.sh   # names the folder at top level, after a function ends
+printf 'source tests/lib3.sh\n' > tests/t3.sh                         # sources it, calls nothing: the helper's own path selects it
 git add -A && git commit -qm base
 BASE="$(git rev-parse HEAD)"
-LABELS="$WORK/labels"; printf '%s\n' tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh tests/g.sh tests/h.sh tests/i.sh tests/j.sh tests/s.sh tests/w.js tests/p.js tests/q.sh tests/r.sh > "$LABELS"
+LABELS="$WORK/labels"; printf '%s\n' tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh tests/g.sh tests/h.sh tests/i.sh tests/j.sh tests/s.sh tests/w.js tests/p.js tests/q.sh tests/r.sh tests/o.js tests/k2.sh tests/t3.sh > "$LABELS"
 
 source "$REPO/scripts/test-select.sh"
 selected() {   # selected <base>: the labels select_suite picks, space-joined, or FULL:<reason>
@@ -72,7 +77,7 @@ assert_eq "tools/sprint-check-go tests/g.sh" "$(selected "$BASE")"              
 reset; echo '// x' >> tools/app/widgets/dial.js
 assert_eq "tests/w.js" "$(selected "$BASE")"                                     # a suite that lists the changed file's folder (t-2633 eval)
 reset; echo '// x' >> tools/app/panels/knob.js
-assert_eq "tests/p.js tests/q.sh" "$(selected "$BASE")"                         # through a JS helper, and through one shell-helper function (t-2633 eval 2)
+assert_eq "tests/p.js tests/q.sh tests/k2.sh tests/t3.sh" "$(selected "$BASE")"   # JS helper, a shell-helper function, a top-level helper line (t-2633 eval 2)
 reset; echo more >> skills/one/SKILL.md
 assert_eq "tests/s.sh" "$(selected "$BASE")"                                     # a shared name a suite only spells as a file name (t-2633 eval)
 reset; echo more >> tools/delta2.sh
@@ -82,20 +87,20 @@ assert_eq "" "$(selected "$BASE")"                                              
 reset; echo more >> tools/zeta.sh
 assert_eq "tests/e.sh" "$(selected "$BASE")"                                     # one level up, by file name only
 reset; echo k > tests/kappa; git add tests/kappa; git commit -qm kappa
-assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh tests/g.sh tests/h.sh tests/i.sh tests/j.sh tests/s.sh tests/w.js tests/p.js tests/q.sh tests/r.sh]" "$(selected "$BASE")"   # tests/kappa is not tests/kappa.js
+assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh tests/g.sh tests/h.sh tests/i.sh tests/j.sh tests/s.sh tests/w.js tests/p.js tests/q.sh tests/r.sh tests/o.js tests/k2.sh tests/t3.sh]" "$(selected "$BASE")"   # tests/kappa is not tests/kappa.js
 reset; echo more >> tools/alpha.sh; select_init "$REPO" "$BASE" "$LABELS"
 if select_suite tests/ghost.sh 2> "$WORK/ghost.err"; then fail "a label with no file was selected"; fi
 assert_eq "" "$(cat "$WORK/ghost.err")"; select_cleanup                         # and no grep error for it
 reset; echo more >> tools/orphan.sh
-assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh tests/g.sh tests/h.sh tests/i.sh tests/j.sh tests/s.sh tests/w.js tests/p.js tests/q.sh tests/r.sh]" "$(selected "$BASE")"   # named by nothing: everything
+assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh tests/g.sh tests/h.sh tests/i.sh tests/j.sh tests/s.sh tests/w.js tests/p.js tests/q.sh tests/r.sh tests/o.js tests/k2.sh tests/t3.sh]" "$(selected "$BASE")"   # named by nothing: everything
 reset; echo more >> tests/not-a-suite.sh
-assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh tests/g.sh tests/h.sh tests/i.sh tests/j.sh tests/s.sh tests/w.js tests/p.js tests/q.sh tests/r.sh]" "$(selected "$BASE")"   # in tests/ but no suite: everything
+assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh tests/g.sh tests/h.sh tests/i.sh tests/j.sh tests/s.sh tests/w.js tests/p.js tests/q.sh tests/r.sh tests/o.js tests/k2.sh tests/t3.sh]" "$(selected "$BASE")"   # in tests/ but no suite: everything
 reset; echo more >> tools/alpha.sh; echo more >> tools/orphan.sh
-assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh tests/g.sh tests/h.sh tests/i.sh tests/j.sh tests/s.sh tests/w.js tests/p.js tests/q.sh tests/r.sh]" "$(selected "$BASE")"   # one unmapped path is enough
+assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh tests/g.sh tests/h.sh tests/i.sh tests/j.sh tests/s.sh tests/w.js tests/p.js tests/q.sh tests/r.sh tests/o.js tests/k2.sh tests/t3.sh]" "$(selected "$BASE")"   # one unmapped path is enough
 reset; echo new > tools/untracked.sh
 assert_eq "" "$(selected "$BASE")"                                               # untracked files are not seen ...
 git add -N tools/untracked.sh
-assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh tests/g.sh tests/h.sh tests/i.sh tests/j.sh tests/s.sh tests/w.js tests/p.js tests/q.sh tests/r.sh]" "$(selected "$BASE")"   # ... until intent-added
+assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh tests/g.sh tests/h.sh tests/i.sh tests/j.sh tests/s.sh tests/w.js tests/p.js tests/q.sh tests/r.sh tests/o.js tests/k2.sh tests/t3.sh]" "$(selected "$BASE")"   # ... until intent-added
 reset
 set +e; out="$(selected not-a-ref 2>&1)"; rc=$?; set -e
 assert_eq 2 "$rc"; assert_contains "$out" "test.sh --changed: 'not-a-ref' is not a commit"
