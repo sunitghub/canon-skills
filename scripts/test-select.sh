@@ -26,17 +26,19 @@ select_init() {
   SELECT_TERMS="$(mktemp "${TMPDIR:-/tmp}/test-select.XXXXXX")"
   [[ -n "$SELECT_CHANGED" ]] || return 0
   while IFS= read -r c; do
-    # The terms for one change: its file name and the names of the tools and scripts that name it (one level up). Names, not paths: a
-    # file's name is in every path that holds it, so a path term would select nothing more.
+    # The terms for one change: its file name, and each tool or script whose code names it (one level up; a doc that names a tool does
+    # not run it). A referrer is matched by its file name when that has an extension (epsilon.sh), else by its path: a bare name such as
+    # `sprint` is in nearly every test. Every term matches as a whole word (select_terms_re).
     { printf '%s\n' "${c##*/}"
-      git -C "$root" grep -lF -e "${c##*/}" -- tools scripts skills agents 2>/dev/null | sed 's#.*/##' || true; } > "$SELECT_TERMS.one"
+      git -C "$root" grep -lF -e "${c##*/}" -- tools scripts agents ':(exclude)*.md' ':(exclude)*.json' 2>/dev/null \
+        | awk -F/ '{ if ($NF ~ /\./) print $NF; else print $0 }' || true; } | select_terms_re > "$SELECT_TERMS.one"
     cat "$SELECT_TERMS.one" >> "$SELECT_TERMS"
     mapped=0
     if grep -qxF -- "$c" "$labels"; then mapped=1; fi   # a changed suite runs itself (a whole line: tests/c is not tests/c.js)
     for d in "${SELECT_GO_DIRS[@]}"; do if [[ "$c" == "$d"/* ]]; then mapped=1; fi; done
     if (( ! mapped )); then   # mapped only when a suite test.sh really runs is selected by it
       while IFS= read -r l; do
-        if [[ -f "$root/$l" ]] && grep -qF -f "$SELECT_TERMS.one" -- "$root/$l"; then mapped=1; break; fi
+        if [[ -f "$root/$l" ]] && grep -qE -f "$SELECT_TERMS.one" -- "$root/$l"; then mapped=1; break; fi
       done < "$labels"
     fi
     if (( ! mapped )); then SELECT_FULL="${SELECT_FULL:+$SELECT_FULL; }$c maps to no suite"; fi
@@ -52,7 +54,10 @@ select_suite() {
     if [[ "$label" == "$d" ]]; then [[ $'\n'"$SELECT_CHANGED" == *$'\n'"$d"/* ]]; return; fi
   done
   [[ -f "$SELECT_ROOT/$label" ]] || return 1   # no grep error for a label with no file
-  grep -qF -f "$SELECT_TERMS" -- "$SELECT_ROOT/$label"   # an empty term file (nothing changed) matches nothing
+  grep -qE -f "$SELECT_TERMS" -- "$SELECT_ROOT/$label"   # an empty term file (nothing changed) matches nothing
 }
+
+# select_terms_re — each term on stdin as a whole-word extended regex: escaped, and not part of a longer name on either side.
+select_terms_re() { sed -e 's/[][\.*^$+?(){}|]/\\&/g' -e 's/^/(^|[^A-Za-z0-9_.-])/' -e 's/$/($|[^A-Za-z0-9_-])/'; }
 
 select_cleanup() { [[ -z "${SELECT_TERMS:-}" ]] || rm -f "$SELECT_TERMS" "$SELECT_TERMS.one"; }

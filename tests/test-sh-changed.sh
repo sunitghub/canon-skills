@@ -8,6 +8,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/tests/helpers.sh"
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/test-sh-changed.XXXXXX")"; trap 'rm -rf "$WORK"' EXIT
+export SPRINT_CHECK_NO_BROWSER=1   # tests/no-browser-in-tests.sh reads any sprint-check-go mention as a board start; none starts here
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 XDG_CONFIG_HOME="$WORK/xdg" LC_ALL=C TMPDIR="$WORK/tmp"; mkdir -p "$TMPDIR"
 REPO="$WORK/repo"; mkdir -p "$REPO" && cd "$REPO"
 git init -q -b main . && git config user.name t && git config user.email t@t
