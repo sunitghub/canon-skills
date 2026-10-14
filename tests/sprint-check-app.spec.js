@@ -4645,6 +4645,13 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await pop.locator('.thm-card[data-id="user-second"]').click();
       expect(await cssVar(html, '--bg')).toBe('#102030');
       await expect.poll(() => cssVar(bhtml, '--bg')).toBe('#102030');
+      // break-it: the file is recoloured; reopening the popover repaints the shell, and the board follows (it kept the
+      // colours it first loaded for an id it already knew)
+      await page.keyboard.press('Escape');
+      list = userList([entry('ink', INK), entry('second', { ...INK, name: 'Second', colors: { ...INK.colors, bg: '#304050' } })]);
+      await page.locator('#theme-btn').click();
+      await expect.poll(() => cssVar(html, '--bg')).toBe('#304050');
+      await expect.poll(() => cssVar(bhtml, '--bg')).toBe('#304050');
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 

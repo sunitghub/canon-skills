@@ -563,6 +563,21 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
+	// t-f889: Open themes folder reads no body, before the shared parse (mirrors server.py: the two parsers disagree
+	// on null, NaN and UTF-16 bodies). A JSON content type is still required (a cross-site page needs a preflight).
+	if path := r.URL.Path; path == "/api/themes/open" {
+		if strings.ToLower(strings.TrimSpace(strings.SplitN(r.Header.Get("Content-Type"), ";", 2)[0])) != "application/json" {
+			sendJSONStatus(w, map[string]any{"ok": false, "error": "expected application/json"}, http.StatusUnsupportedMediaType)
+			return
+		}
+		res := openThemesFolder()
+		status := http.StatusOK
+		if ok, _ := res["ok"].(bool); !ok {
+			status = http.StatusBadRequest
+		}
+		sendJSONStatus(w, res, status)
+		return
+	}
 	var payload map[string]any
 	body, err := io.ReadAll(r.Body)
 	if err != nil || json.Unmarshal(body, &payload) != nil {
@@ -611,16 +626,6 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 	}
 	if path == "/api/admin/model-tiers" {
 		res := saveModelTiers(payload)
-		status := http.StatusOK
-		if ok, _ := res["ok"].(bool); !ok {
-			status = http.StatusBadRequest
-		}
-		sendJSONStatus(w, res, status)
-		return
-	}
-	// t-f889: opens the fixed themes folder; the payload is never read
-	if path == "/api/themes/open" {
-		res := openThemesFolder()
 		status := http.StatusOK
 		if ok, _ := res["ok"].(bool); !ok {
 			status = http.StatusBadRequest
@@ -4597,7 +4602,7 @@ func themeRead(path string) (userTheme, string) {
 	if !st.Mode().IsRegular() {
 		return userTheme{}, "not a regular file"
 	}
-	f, err := os.Open(path)
+	f, err := themeOpen(path)
 	if err != nil {
 		return userTheme{}, "cannot be read"
 	}
@@ -4723,13 +4728,26 @@ func themeOpener() string {
 func openThemesFolder() map[string]any {
 	d := themesDir()
 	created := false
-	if _, err := os.Stat(d); errors.Is(err, os.ErrNotExist) {
-		if err := os.MkdirAll(d, 0o755); err != nil {
+	// absent: create it (another request may win the race: then it simply exists). Any other error (a file in the
+	// way, a link loop, no permission) means it is not a usable folder. Same outcomes as server.py.
+	st, err := os.Stat(d)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return map[string]any{"ok": false, "error": "the themes path is not a folder"}
+	}
+	if err != nil {
+		if os.MkdirAll(filepath.Dir(d), 0o755) != nil {
 			return map[string]any{"ok": false, "error": "could not create the themes folder"}
 		}
-		created = true
+		if err := os.Mkdir(d, 0o755); err == nil {
+			created = true
+		} else if !errors.Is(err, os.ErrExist) {
+			return map[string]any{"ok": false, "error": "could not create the themes folder"}
+		}
+		if st, err = os.Stat(d); err != nil {
+			return map[string]any{"ok": false, "error": "the themes path is not a folder"}
+		}
 	}
-	if st, err := os.Stat(d); err != nil || !st.IsDir() {
+	if !st.IsDir() {
 		return map[string]any{"ok": false, "error": "the themes path is not a folder"}
 	}
 	if created {

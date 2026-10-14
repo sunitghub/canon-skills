@@ -150,6 +150,10 @@ def _themes_dir() -> Path:
 def _theme_no_constants(name):
     raise ValueError(name)  # NaN/Infinity are not JSON (Go and the browser refuse them too)
 
+def _theme_int(text):
+    # no theme value is a number, so its size never matters; int() refuses over 4300 digits, where Go goes on (break-it)
+    return 0
+
 def _theme_check(data):
     """A parsed theme file -> (theme fields, None) or (None, reason)."""
     if not isinstance(data, dict) or set(data) != {'name', 'mode', 'colors'}:
@@ -196,7 +200,7 @@ def _theme_read(path: Path):
     if _theme_too_deep(text):
         return None, 'nested too deeply'
     try:
-        data = json.loads(text, parse_constant=_theme_no_constants)
+        data = json.loads(text, parse_constant=_theme_no_constants, parse_int=_theme_int)
     except ValueError:
         return None, 'not valid JSON'
     return _theme_check(data)
@@ -251,13 +255,28 @@ def open_themes_folder() -> dict:
     fixed: nothing from the request reaches it or the launcher."""
     d = _themes_dir()
     created = False
-    if not d.exists():
+    # absent: create it (another request may win the race: then it simply exists). Any other error (a file in the
+    # way, a link loop, no permission) means it is not a usable folder. Same outcomes as Go's openThemesFolder.
+    try:
+        st = os.stat(d)
+    except FileNotFoundError:
+        st = None
+    except OSError:
+        return {'ok': False, 'error': 'the themes path is not a folder'}
+    if st is None:
         try:
-            d.mkdir(parents=True)
+            d.parent.mkdir(parents=True, exist_ok=True)
+            d.mkdir()
             created = True
+        except FileExistsError:
+            pass
         except OSError:
             return {'ok': False, 'error': 'could not create the themes folder'}
-    if not d.is_dir():
+        try:
+            st = os.stat(d)
+        except OSError:
+            return {'ok': False, 'error': 'the themes path is not a folder'}
+    if not stat.S_ISDIR(st.st_mode):
         return {'ok': False, 'error': 'the themes path is not a folder'}
     if created:
         for name in ('example.json', 'README.md'):
@@ -3632,6 +3651,14 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         if not _origin_ok(self.headers.get('Origin', '')):
             self.send_error(403); return
+        # t-f889: Open themes folder reads no body, before the shared parse: the two servers' parsers disagree on
+        # null, NaN and UTF-16 bodies (break-it), so one launched where the other refused. A JSON content type is still
+        # required, so a cross-site page cannot send it without a CORS preflight.
+        if path == '/api/themes/open':
+            if self.headers.get('Content-Type', '').split(';')[0].strip().lower() != 'application/json':
+                self.send_json({'ok': False, 'error': 'expected application/json'}, status=415); return
+            result = open_themes_folder()
+            self.send_json(result, status=200 if result.get('ok') else 400); return
         try:
             length = int(self.headers.get('Content-Length', 0))
             payload = json.loads(self.rfile.read(length))
@@ -3665,11 +3692,6 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == '/api/admin/model-tiers':
             result = save_model_tiers(payload)
-            self.send_json(result, status=200 if result.get('ok') else 400); return
-
-        # t-f889: opens the fixed themes folder; the payload is never read
-        if path == '/api/themes/open':
-            result = open_themes_folder()
             self.send_json(result, status=200 if result.get('ok') else 400); return
 
         # t-7485/t-96c3: register a canon skill into the tab's project. The target

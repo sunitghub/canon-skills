@@ -94,7 +94,7 @@ for f, r in sorted(verdict.items()):
     if r not in object_stage or r == C.R_FILE:
         continue
     raw = open(os.path.join(d, f), 'rb').read().decode('utf-8')
-    val = json.loads(raw)  # reached the object checks, so it parsed on both servers (no NaN/Infinity)
+    val = json.loads(raw, parse_int=lambda s: 0)  # reached the object checks, so it parsed on both servers (no NaN/Infinity)
     ok = C.schema_ok(schema, val, schema)
     if ok != (r == ''):
         errs.append(f'{f}: schema says {"valid" if ok else "invalid"}, servers say {r or "accepted"!r}')
@@ -212,13 +212,84 @@ for kind in py go; do
   rm -rf "$D"; echo x > "$D"
   [[ "$(post_open "$P" -d '{}')" == 400 ]] || fail "$kind: a file at the themes path must 400"
   sleep 0.3; [[ "$(calls "$LOG")" == 2 ]] || fail "$kind: a refused open launched something"
+  # break-it: the route reads no body, so both servers treat every body alike; it needs a JSON content type
+  rm "$D"; mkdir "$D"
+  for ct in 'text/plain' 'application/x-www-form-urlencoded' 'multipart/form-data; boundary=x' 'application/jsonx'; do
+    code="$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Content-Type: $ct" -d '{}' "http://127.0.0.1:$P/api/themes/open")"
+    [[ "$code" == 415 ]] || fail "$kind: Content-Type '$ct' must 415, got $code"
+  done
+  code="$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type:' -d '{}' "http://127.0.0.1:$P/api/themes/open")"
+  [[ "$code" == 415 ]] || fail "$kind: no Content-Type must 415, got $code"
+  sleep 0.3; [[ "$(calls "$LOG")" == 2 ]] || fail "$kind: a wrong content type launched something"
+  printf '\xff\xfe{\x00}\x00' > "$TMP/utf16.bin"
+  for body in 'null' '{"a":NaN}' '[]' 'not json' "@$TMP/utf16.bin"; do
+    code="$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json; charset=utf-8' --data-binary "$body" "http://127.0.0.1:$P/api/themes/open")"
+    [[ "$code" == 200 ]] || fail "$kind: body $body must be ignored (200), got $code"
+  done
+  wait_calls "$LOG" 7 || fail "$kind: each ignored-body open must launch once ($(calls "$LOG") calls)"
+  [[ "$(grep -c "^arg=$D\$" "$LOG")" == 7 && "$(grep -c '^argc=1$' "$LOG")" == 7 ]] || fail "$kind: a launch got something other than the folder"
   # SPRINT_CHECK_NO_BROWSER=1 without an override: nothing launched (t-269d)
   H2="$TMP/home-nolaunch-$kind"; mkdir -p "$H2"
   start "$kind" "$H2"
   [[ "$(post_open "$PORT" -d '{}')" == 200 ]] || fail "$kind: open without a launcher must still succeed"
   python3 -c "import json; d=json.load(open('$TMP/open.json')); assert d['launched'] is False and d['created'] is True, d" \
     || fail "$kind: SPRINT_CHECK_NO_BROWSER=1 must launch nothing"
-  echo "  open ($kind): seeds once, launches only the folder, refuses foreign Origin/Host"
+  # break-it: a path that cannot be checked or created is refused the same way on both, never a dropped connection
+  H3="$TMP/home-bad-$kind"; mkdir -p "$H3"
+  echo x > "$H3/file-home"                                          # CANON_HOME is a file (ENOTDIR)
+  mkdir -p "$H3/loop"; ln -s themes "$H3/loop/themes"               # themes is a link to itself (ELOOP)
+  homes=("$H3/file-home" "$H3/loop")
+  if [[ "$(id -u)" != 0 ]]; then mkdir -p "$H3/acc/in"; chmod 000 "$H3/acc/in"; homes+=("$H3/acc/in"); else echo "  (root: the no-permission case is skipped)"; fi
+  for h in "${homes[@]}"; do
+    start "$kind" "$h" CANON_OPEN_BIN="$STUB" OPEN_LOG="$LOG"
+    code="$(post_open "$PORT" -d '{}')" || true
+    [[ "$code" == 400 ]] || fail "$kind: CANON_HOME=$h must 400, got '$code'"
+    python3 -c "import json; d=json.load(open('$TMP/open.json')); assert d == {'ok': False, 'error': 'the themes path is not a folder'}, d" \
+      || fail "$kind: CANON_HOME=$h: wrong error $(cat "$TMP/open.json")"
+  done
+  [[ -d "$H3/acc/in" ]] && chmod 755 "$H3/acc/in"
+  sleep 0.3; [[ "$(calls "$LOG")" == 7 ]] || fail "$kind: a refused folder launched something"
+  # eight opens at once on a missing folder: exactly one creates it (and seeds it), the others open it
+  H4="$TMP/home-race-$kind"; mkdir -p "$H4"; LOG4="$TMP/open-race-$kind.log"
+  start "$kind" "$H4" CANON_OPEN_BIN="$STUB" OPEN_LOG="$LOG4"
+  for i in 1 2 3 4 5 6 7 8; do
+    curl -s -X POST -H 'Content-Type: application/json' -d '{}' "http://127.0.0.1:$PORT/api/themes/open" > "$TMP/race-$kind-$i.json" &
+  done
+  wait
+  python3 - "$TMP" "$kind" <<'PY' || fail "$kind: parallel opens: exactly one must create the folder"
+import json, sys
+r = [json.load(open(f'{sys.argv[1]}/race-{sys.argv[2]}-{i}.json')) for i in range(1, 9)]
+assert all(x['ok'] for x in r) and sum(x['created'] for x in r) == 1, r
+PY
+  cmp -s "$H4/themes/example.json" "$SEED/example.json" || fail "$kind: parallel opens: the seed is not intact"
+  echo "  open ($kind): seeds once, launches only the folder, refuses foreign Origin/Host and other content types, ignores the body, refuses an unusable path, one creator under a race"
+done
+
+# ── 5. a theme file swapped for a FIFO between the server's check and its open never hangs a request (break-it) ──
+for kind in py go; do
+  H5="$TMP/home-fifo-$kind"; mkdir -p "$H5/themes"
+  start "$kind" "$H5"; P="$PORT"
+  python3 - "$H5/themes" "$SEED/example.json" 8 <<'PY' &
+import os, sys, time
+d, seed, secs = sys.argv[1], open(sys.argv[2], 'rb').read(), float(sys.argv[3])
+end, n = time.time() + secs, 0
+while time.time() < end:
+    n += 1
+    f, r = os.path.join(d, f'.fifo{n}'), os.path.join(d, f'.reg{n}')
+    os.mkfifo(f); os.replace(f, os.path.join(d, 'race.json'))
+    with open(r, 'wb') as h: h.write(seed)
+    os.replace(r, os.path.join(d, 'race.json'))
+PY
+  SWAP=$!
+  hung=0; tries=0
+  while kill -0 "$SWAP" 2>/dev/null; do
+    tries=$((tries + 1))
+    curl -s -o /dev/null --max-time 2 "http://127.0.0.1:$P/api/themes" || hung=$((hung + 1))
+  done
+  wait "$SWAP" || true
+  [[ "$tries" -gt 50 ]] || fail "$kind: the FIFO stress ran only $tries requests"
+  [[ "$hung" == 0 ]] || fail "$kind: $hung of $tries requests hung on a file swapped for a FIFO"
+  echo "  fifo swap ($kind): $tries requests, none hung"
 done
 
 echo "theme-files-parity: ok"

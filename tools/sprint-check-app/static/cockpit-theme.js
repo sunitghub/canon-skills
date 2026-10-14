@@ -23,7 +23,7 @@ function show(m, t) {
   });
 }
 // the saved choice; the button names the theme in use
-let previewing = false, restoring = false;
+let previewing = false, restoring = false;   // previewing: the id of the card being previewed, or false
 function apply() {
   const m = effectiveMode(choice, osDark()), t = themeOf(m), btn = document.getElementById('theme-btn');
   if (!t) return; // a user theme before the list has loaded: keep what theme-boot.js painted
@@ -34,8 +34,9 @@ function apply() {
 // t-4fa5 (user): hovering or focusing a card shows its theme without saving anything; leaving puts the saved one back
 function preview(id) {
   const t = themeById(id);
-  if (!t) return;
-  previewing = true;
+  // the card already showing: no new message (a board looks a user theme up on each one, t-f889)
+  if (!t || previewing === id) return;
+  previewing = id;
   show(t.mode, t);
 }
 function unpreview() { if (previewing) apply(); }

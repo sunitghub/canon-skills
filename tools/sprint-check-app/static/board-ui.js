@@ -503,9 +503,10 @@ export function initUi() {
         const id = e.data.themeId, mode = e.data.theme;
         const n = ++themeSeq;
         const use = () => { if (n !== themeSeq) return; const t = themeById(id); applyTheme(t && t.mode === mode ? t : null); };
-        // t-f889: a user theme this board has not seen (a file added since it loaded) is looked up again first; the
-        // list is the board's own read of the folder, checked here, never colours from the message
-        if (typeof id === 'string' && id.startsWith('user-') && !themeById(id)) loadUserThemes().then(use); else use();
+        // t-f889: a user theme is looked up again first, so a file added or recoloured since this board loaded shows as
+        // it does on the shell (break-it: a known id kept its first colours); the list is the board's own read of the
+        // folder, checked here, never colours from the message
+        if (typeof id === 'string' && id.startsWith('user-')) loadUserThemes().then(use); else use();
       }
     });
   })();

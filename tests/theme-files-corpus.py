@@ -91,6 +91,11 @@ def build(top):
     case('comment.json', b'/* c */' + pad, R_JSON)
     # object level
     case('bignum.json', b'{"name":1e999,"mode":"dark","colors":{}}', R_NAME)
+    # break-it: Python's int() refuses over 4300 digits where Go reads on; the servers must still agree
+    big = b'1' + b'0' * 5000
+    case('bigint-colour.json', json.dumps(GOOD).encode().replace(b'"#1f2430"', big, 1), 'colors.bg must be #rgb or #rrggbb')
+    case('bigint-top.json', big, R_OBJ)
+    case('bigint-name.json', b'{"name":' + b'9' * 4400 + b',"mode":"dark","colors":{}}', R_NAME)
     case('lone-surrogate.json', b'{"name":"\\ud800","mode":"dark","colors":' + json.dumps(GOOD['colors']).encode() + b'}', R_NAME)
     for n, v in (('null', None), ('array', [GOOD]), ('string', 'x'), ('number', 3), ('true', True)):
         case(f'top-{n}.json', v, R_OBJ)
