@@ -84,7 +84,7 @@ your pick, so fixing the file brings your theme back.
 
 ## Readability
 
-The built-in themes are all held to WCAG AA. Your theme is checked against the same floor: 4.5:1 for text on the
+The default themes are all held to WCAG AA. Your theme is checked against the same floor: 4.5:1 for text on the
 background and for muted text on panels, 3:1 for the accent on the background and for text on the accent. A theme below
 it can still be used; its card says **Low contrast**, and hovering the mark shows which pair failed and its ratio.
 

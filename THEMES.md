@@ -1,8 +1,6 @@
 # Themes
 
-The Cockpit's **◐ Theme** menu, at the bottom of its sidebar, sets the look of the Cockpit and every open board. Pick a
-mode (System follows your computer's light or dark setting) and a theme for it. canon ships eight themes; you can add
-your own.
+The Cockpit's **◐ Theme** menu, at the bottom of its sidebar, sets the look of the Cockpit and every open board.
 
 ## Default themes
 
@@ -17,11 +15,11 @@ your own.
 | Dracula | dark | [Dracula](https://draculatheme.com/spec) (the Dracula specification) | MIT, Copyright (c) 2023 Dracula Theme |
 | Gruvbox Dark | dark | [Gruvbox](https://github.com/morhetz/gruvbox) by Pavel Pertsev (morhetz) (`colors/gruvbox.vim`) | MIT/X11 (README and `package.json`; the repository has no LICENSE file) |
 
-Each third-party theme uses only colours from that project's own published palette, mapped onto canon's 12 colour slots
-(`tools/sprint-check-app/static/theme-data.js`). canon credits each project above; their palettes are used under the
-licences named, and canon does not include their code.
-
 ![The ◐ Theme menu under Mode = System: the light and dark themes, a theme of your own (Example Dark), and the Your own section listing a refused file with its reason and the Open themes folder button](meta/screenshots/theme-menu.png)
+
+Each third-party theme uses only colours from that project's own published palette, mapped onto canon's 12 colour slots
+(`tools/sprint-check-app/static/theme-data.js`). canon credits each project in the table above; their palettes are used under the
+licences named, and canon does not include their code.
 
 ## Readability
 
