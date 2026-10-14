@@ -13,20 +13,28 @@ const path = require('path');
 const TICKET = /^t-[a-z0-9]{4}$/;
 const norm = (s) => String(s).replace(/\\(['"`])/g, '$1').replace(/\s+/g, ' ').trim();
 
-// Walk a Playwright JSON report: { 'suite > test title': status } (the leading file suite is dropped).
-function testsOf(report) {
+// Walk a Playwright JSON report: { 'suite > test title': test record } (the leading file suite is dropped).
+function recordsOf(report) {
   const out = {};
   const walk = (suite, trail) => {
     for (const s of suite.suites || []) walk(s, trail.concat(s.title));
     for (const sp of suite.specs || []) {
-      for (const t of sp.tests || []) out[trail.concat(sp.title).join(' > ')] = t.status;
+      for (const t of sp.tests || []) out[trail.concat(sp.title).join(' > ')] = t;
     }
   };
   for (const s of report.suites || []) walk(s, []);
   return out;
 }
+// { 'suite > test title': status }
+function testsOf(report) {
+  const out = {};
+  for (const [t, rec] of Object.entries(recordsOf(report))) out[t] = rec.status;
+  return out;
+}
 const browserOf = (file) => (/-(chromium|webkit|firefox)-run\d+\.json$/.exec(file) || [])[1] || null;
 const isFailure = (status) => status === 'unexpected' || status === 'flaky' || status === 'timedOut' || status === 'interrupted';
+
+const isListed = (baseline, kind, title, b) => (baseline[kind] || []).some((e) => e.title === title && (e.browsers || []).includes(b));
 
 // reports: [{ browser, run, tests: {title: status} }]; baseline: { failing: [...], flaky: [...] }; specText: the spec source.
 function evaluate({ reports, baseline, specText, partial }) {
@@ -52,7 +60,7 @@ function evaluate({ reports, baseline, specText, partial }) {
     }
     classes[b] = c;
   }
-  const listed = (kind, title, b) => (baseline[kind] || []).some((e) => e.title === title && (e.browsers || []).includes(b));
+  const listed = (kind, title, b) => isListed(baseline, kind, title, b);
   for (const b of browsers) {
     for (const t of classes[b].failing) {
       if (listed('failing', t, b)) continue;
@@ -133,5 +141,5 @@ function main(argv) {
   return violations.length ? 1 : 0;
 }
 
-module.exports = { evaluate, testsOf, browserOf };
+module.exports = { evaluate, testsOf, recordsOf, browserOf, isListed, isFailure };
 if (require.main === module) process.exit(main(process.argv.slice(2)));
