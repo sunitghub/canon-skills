@@ -6,16 +6,15 @@
 # output, and a last line `exit <rc>` (never the command's own output: ours is appended after it). It exits with the command's own code.
 # It refuses, running nothing and writing nothing, with 125 (like `timeout`, so a command's own exit 2 is not mistaken for a refusal) when
 # tracked files are modified (a stamp names the commit that was tested, so the tree must BE that commit; untracked files, .tickets/ and
-# the evidence-neutral close-time docs in tools/evidence-neutral.sh are ignored), and again, writing nothing, if tracked files changed while the command ran.
+# the evidence-neutral close-time docs below are ignored), and again, writing nothing, if tracked files changed while the command ran.
 # check classifies every evidence/*.log (top level only: subfolders hold history) against a graded head (default HEAD), one line each:
 #   fresh <file> exit=<N>      line 1 is exactly `HEAD <sha> <time>` (nothing after the time) and the sha is the graded head or an ancestor with no
-#                              tracked file changed since, committed or not, other than the evidence-neutral paths (evidence-neutral.sh)
+#                              tracked file changed since, committed or not, other than the evidence-neutral paths below
 #   covered <file> exit=<N>    t-a3d7: a tests/run-board-spec.sh log whose reports sit in a folder inside this evidence/ dir, stale only because
 #                              tests/board-spec-baseline.json changed since, that ended in exit 0 or 1 (the guard's verdict; 2 is the
 #                              runner's own failure: the tree moved or a process leaked), and re-judged at the graded head by a fresh exit-0 log of
 #                              `node tests/board-spec-guard.js` over exactly those reports, each still matching the sha256 the run log printed
-#   stale <file> exit=<N>      stamped, but older with such changes, an unknown sha, not an ancestor, or a `scripts/test.sh --changed`
-#                              run (t-2633: a partial fast pass, never the close stamp; stamp refuses one too)
+#   stale <file> exit=<N>      stamped, but older with such changes, an unknown sha, or not an ancestor
 #   unstamped <file> exit=?    anything else: `# HEAD …`, `(uncommitted)`, `+wt`, no line 1, empty, binary, a symlink (never followed)
 # `exit=` is read from the LAST line only. Log content is never echoed beyond the sha, the time and a short sanitized `$` line. A stamp proves
 # freshness, not truth: the evaluator still runs its own floor (eval.md). check exits 0 for any content; 2 for a usage or repository error.
@@ -42,7 +41,11 @@ tdir="${CANON_TICKETS_DIR:-$(tickets_dir)}"   # a plain clone has its own empty 
 [[ -d "$tdir/$id" && ! -L "$tdir/$id" ]] || die "no ticket folder $id under $tdir"
 edir="$tdir/$id/evidence"
 
-source "$SCRIPT_DIR/evidence-neutral.sh"   # NEUTRAL: the evidence-neutral pathspecs (one owner)
+# Evidence-neutral paths (t-a3d7): written at close, and read by no test (tests/evidence.sh greps the suite to prove it), so a change to
+# them cannot change what a stamped command saw. Repo root only. Narrower than the stale-eval guard's late-doc list in tools/sprint on
+# purpose: tests read the root AGENTS.md and CLAUDE.md, and dist/ holds built binaries.
+NEUTRAL=(':(exclude).tickets' ':(exclude,literal)LEARNINGS.md' ':(exclude,literal)LEARNINGS-archive.md' ':(exclude,literal)DECISIONS.md'
+  ':(exclude,literal)DECISIONS-archive.md' ':(exclude,literal)HANDOFF.md' ':(exclude,literal)PROMOTED.md' ':(exclude,literal).claude/subagent-runs.jsonl')
 tracked_dirty() {   # tracked files (worktree or index) differ from HEAD, outside the evidence-neutral paths
   ! git -C "$root" diff --quiet HEAD -- . "${NEUTRAL[@]}" 2>/dev/null
 }
@@ -57,13 +60,6 @@ if [[ "$mode" == stamp ]]; then
   [[ ! -L "$log" ]] || refuse "$log is a symlink"
   [[ ! -e "$log" || -f "$log" ]] || refuse "$log is not a plain file"
   if tracked_dirty; then refuse "tracked files differ from HEAD: commit first, because a stamp names the commit that was tested"; fi
-  saw_test=0   # t-2633: a --changed run of the suite is a partial fast pass; it must never become the stamped test-sh evidence
-  for a in "$@"; do
-    if [[ "$a" == scripts/test.sh || "$a" == */scripts/test.sh ]]; then saw_test=1
-    elif (( saw_test )) && [[ "$a" == --changed ]]; then refuse "scripts/test.sh --changed is a partial run, never a close stamp: stamp the full scripts/test.sh"
-    elif [[ " $a " =~ [\ /]scripts/test\.sh\ (.*[\ ])?--changed[\ \;\&\|] ]]; then   # wrapped in one argument: bash -c '...'
-      refuse "scripts/test.sh --changed is a partial run, never a close stamp: stamp the full scripts/test.sh"; fi
-  done
   head_sha="$(git -C "$root" rev-parse HEAD)"
   mkdir -p "$edir"
   tmp="$(mktemp "$edir/.stamp.XXXXXX")"; trap 'rm -f "$tmp"' EXIT
@@ -75,8 +71,6 @@ if [[ "$mode" == stamp ]]; then
   fi
   if [[ -s "$tmp" && -n "$(tail -c1 "$tmp")" ]]; then printf '\n' >> "$tmp"; fi
   printf 'exit %s\n' "$rc" >> "$tmp"
-  # t-2633: however the command was spelled (quoted flag, `cd scripts && bash test.sh --changed`), a --changed run says so in its output
-  if LC_ALL=C grep -aq '^PARTIAL RUN (--changed)' -- "$tmp"; then refuse "the output is a scripts/test.sh --changed run (PARTIAL RUN), never a close stamp; nothing was written"; fi
   chmod 644 "$tmp"; mv -f "$tmp" "$log"; trap - EXIT   # mktemp makes it 0600; the other logs are 0644
   echo "evidence: wrote $log (HEAD ${head_sha:0:7}, exit $rc)" >&2
   exit "$rc"
@@ -117,13 +111,6 @@ classify_one() {
   cmdline="$(head -c 512 -- "$f" | LC_ALL=C tr -d '\000' | sed -n '2p' | tr -d '\r')" || cmdline=""
   shown=""; if [[ "$cmdline" == '$ '* ]]; then shown=" cmd: $(safe "${cmdline:2:120}")"; fi
   SHOWN="$shown"; STAMP="${sha:0:7}"
-  # a space or a %q-escaped space (\ ) separates the runner from the flag, so `bash -c scripts/test.sh\ --changed` counts too
-  if [[ "$cmdline" == '$ '* && " ${cmdline:2} " =~ [\ /]scripts/test\.sh(\ |\\\ )(.*(\ |\\\ ))?--changed(\ |\\\ |\\;) ]]; then
-    KIND=stale; LINE="stale $base exit=$CODE (HEAD ${sha:0:7}; a scripts/test.sh --changed run is partial, never the close stamp)$shown"; return 0
-  fi
-  if LC_ALL=C grep -aq '^PARTIAL RUN (--changed)' -- "$f"; then
-    KIND=stale; LINE="stale $base exit=$CODE (HEAD ${sha:0:7}; its output is a scripts/test.sh --changed run, never the close stamp)$shown"; return 0
-  fi
   KIND=stale
   full="$(git -C "$root" rev-parse --verify -q "$sha^{commit}" 2>/dev/null)" || { LINE="stale $base exit=$CODE (unknown commit $sha)$shown"; return 0; }
   if [[ "$full" == "$graded" ]]; then

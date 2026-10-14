@@ -11,14 +11,12 @@ export SPRINT_CHECK_NO_BROWSER=1
 # temp project. The pty-simulated prompt tests unset this for their own child.
 export SKILLS_SH_NO_TTY=1
 
-# t-2633: `--changed [<base>]` runs only the suites a change can reach (scripts/test-select.sh), for the builder between commits.
-# It is never the close stamp: evidence.sh refuses to stamp it, and the full run stays the evidence a gate reads.
-CHANGED=0; CHANGED_BASE=""; LIST=0
+# t-2633: `--list` prints every suite label, one per line: the one list of what this script runs (scripts/test-hermetic.sh reads it).
+LIST=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --changed) CHANGED=1; shift; if [[ $# -gt 0 && "$1" != -* ]]; then CHANGED_BASE="$1"; shift; fi ;;
     --list) LIST=1; shift ;;
-    -h|--help) echo "usage: scripts/test.sh [--changed [<base>] | --list]   (base defaults to git merge-base HEAD origin/main; --list prints every suite label, one owner of the list)"; exit 0 ;;
+    -h|--help) echo "usage: scripts/test.sh [--list]   (--list prints every suite label, one per line)"; exit 0 ;;
     *) echo "test.sh: unknown option $1" >&2; exit 2 ;;
   esac
 done
@@ -65,7 +63,7 @@ tests=(
   "$ROOT/tests/skill-eval-scope.sh"
   "$ROOT/tests/evidence.sh"
   "$ROOT/tests/sprint-check-evidence.sh"
-  "$ROOT/tests/test-sh-changed.sh"
+  "$ROOT/tests/test-sh-runner.sh"
   "$ROOT/tests/build-zip-go-package.sh"
   "$ROOT/tests/sprint-check-server.sh"
   "$ROOT/tests/sprint-check-cockpit.sh"
@@ -126,16 +124,15 @@ _new_orphan_servers() {
 }
 
 # suite <label> <command...> — prints the `==> <label>` header, runs the command, records its whole-second wall time (t-2633). In the
-# dry pass it only records the label, so the label list --changed selects from is this same sequence, never a second copy of it.
-TIMES=(); LABELS=(); RAN=0; SKIPPED=0; CURRENT=""; CURRENT_T0=0; DRY=0
+# dry pass it only records the label, so --list prints this same sequence, never a second copy of it.
+TIMES=(); LABELS=(); CURRENT=""; CURRENT_T0=0; DRY=0
 suite() {
   local label="$1"; shift
   if (( DRY )); then LABELS+=("$label"); return 0; fi
-  if (( CHANGED )) && ! select_suite "$label"; then printf '==> %s skipped (--changed)\n' "$label"; SKIPPED=$((SKIPPED + 1)); return 0; fi
   printf '==> %s\n' "$label"
   CURRENT="$label"; CURRENT_T0=$SECONDS
   "$@"
-  TIMES+=("$((SECONDS - CURRENT_T0)) $label"); RAN=$((RAN + 1)); CURRENT=""
+  TIMES+=("$((SECONDS - CURRENT_T0)) $label"); CURRENT=""
 }
 print_timings() {   # an EXIT trap: the run's own exit status stands, whatever this returns
   if [[ -n "$CURRENT" ]]; then TIMES+=("$((SECONDS - CURRENT_T0)) $CURRENT (failed)"); fi
@@ -144,8 +141,6 @@ print_timings() {   # an EXIT trap: the run's own exit status stands, whatever t
     printf '== slowest 10 (s)\n'; printf '%s\n' "${TIMES[@]}" | sort -rn | head -10
     printf '== total %ss for %s suite(s)\n' "$SECONDS" "${#TIMES[@]}"
   fi
-  if (( CHANGED )); then printf 'PARTIAL RUN (--changed): ran %s, skipped %s — not a close stamp\n' "$RAN" "$SKIPPED"; fi
-  if declare -F select_cleanup >/dev/null; then select_cleanup; fi
 }
 go_board() { (cd "$ROOT" && GO111MODULE=off go test ./tools/sprint-check-go); }
 go_headless_json() { (cd "$ROOT" && GO111MODULE=off go test ./tools/sprint-headless-json-go); }
@@ -186,23 +181,6 @@ return 0
 }
 
 if (( LIST )); then DRY=1; run_all; printf '%s\n' "${LABELS[@]}"; exit 0; fi
-if (( CHANGED )); then
-  source "$ROOT/scripts/test-select.sh"
-  if [[ -z "$CHANGED_BASE" ]]; then
-    CHANGED_BASE="$(git -C "$ROOT" merge-base HEAD origin/main 2>/dev/null)" || { echo "test.sh --changed: no origin/main to diff against; pass a base" >&2; exit 2; }
-  fi
-  DRY=1; run_all; DRY=0
-  LABELS_FILE="$(mktemp "${TMPDIR:-/tmp}/test-labels.XXXXXX")"; printf '%s\n' "${LABELS[@]}" > "$LABELS_FILE"
-  rc=0; select_init "$ROOT" "$CHANGED_BASE" "$LABELS_FILE" || rc=$?
-  rm -f "$LABELS_FILE"
-  if (( rc )); then exit "$rc"; fi
-  n_changed="$(printf '%s' "$SELECT_CHANGED" | grep -c . || true)"
-  printf 'PARTIAL RUN (--changed): %s changed path(s) since %s, %s suite(s) known\n' "$n_changed" "${SELECT_BASE:0:8}" "${#LABELS[@]}"
-  if (( SELECT_UNTRACKED )); then echo "test.sh --changed: $SELECT_UNTRACKED untracked path(s) not seen; git add -N a new file to include it"; fi
-  echo "test.sh --changed: a fast pass by text search; a suite that builds paths at run time can be missed, so only the full run is evidence"
-  if [[ -z "$SELECT_CHANGED" ]]; then echo "test.sh --changed: nothing changed outside the evidence-neutral docs; no suite to run (untracked files are not seen: git add -N them)"; select_cleanup; exit 0; fi
-  if [[ -n "$SELECT_FULL" ]]; then echo "test.sh --changed: running every suite: $SELECT_FULL"; fi
-fi
 trap print_timings EXIT
 run_all
 
