@@ -282,6 +282,8 @@ guard() { ev stamp "$ID" guard -- node tests/board-spec-guard.js "$@"; }
 want_covered() { ev check "$ID"; assert_eq 0 "$code"; assert_contains "$out" "covered full.log exit=1 ("; assert_contains "$out" "re-guarded at"; assert_contains "$out" "by guard.log over 2 report(s))"; }
 want_stale() { ev check "$ID"; assert_eq 0 "$code"; assert_contains "$out" "stale full.log exit=1"; [[ "$out" != *"covered full.log"* ]] || fail "evidence: $1: must not be covered: $out"; }
 covered_setup; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; assert_eq 0 "$code"; want_covered
+A="$(sed -n '1s/^HEAD \([0-9a-f]*\) .*/\1/p' "$ED/full.log")"
+assert_contains "$out" "covered full.log exit=1 (HEAD ${A:0:7}; only tests/board-spec-baseline.json changed since; re-guarded at $(git rev-parse --short=7 HEAD) by guard.log over 2 report(s)) cmd: bash tests/run-board-spec.sh --out"
 guard "$REPO/$D/board-spec-webkit-run1.json" "$REPO/$D/board-spec-chromium-run1.json"; want_covered            # absolute paths, any order
 # every refusal, one at a time
 covered_setup; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; echo ' ' >> "$D/board-spec-webkit-run1.json"; want_stale "an edited report"
@@ -338,6 +340,11 @@ covered_setup; ev stamp "$ID" a-guard -- node tests/board-spec-guard.js "$D/boar
 covered_setup; ev stamp "$ID" a-guard -- node tests/board-spec-guard.js --partial "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"
   guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"
   ev check "$ID"; assert_contains "$out" "by guard.log over 2 report(s))"   # a.guard's --partial on a full run is refused, guard.log still found
+# another fresh exit-0 log listed before the guard log does not end the search
+covered_setup; ev stamp "$ID" a-other -- true; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; want_covered
+# a folder named like a report is refused, not hashed
+covered_setup; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; mkdir "$D/board-spec-webkit-run2.json"
+  want_stale "a folder named like a report"; [[ "$out" != *"directory"* ]] || fail "evidence: check tried to read a folder as a report: $out"
 # a guard log kept fresh by an evidence-neutral change still counts
 covered_setup; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; echo h > HANDOFF.md; git add -f HANDOFF.md; git commit -qm handoff
   ev check "$ID"; assert_contains "$out" "fresh guard.log exit=0 (HEAD"; assert_contains "$out" "covered full.log"

@@ -151,8 +151,7 @@ covered_by() {
   [[ "$(line2_of "$run")" =~ ^\$\ (bash\ )?(\./)?tests/run-board-spec\.sh(\ |$) ]] || return 0
   if [[ " $(line2_of "$run") " == *" --grep "* ]]; then partial_ok=1; fi
   dir="$(LC_ALL=C grep -a -E '^run-board-spec: report dir ' -- "$run" | sed 's/^run-board-spec: report dir //' | tr -d '\r')" || dir=""
-  [[ -n "$dir" && "$dir" != *$'\n'* ]] || return 0   # exactly one folder line
-  rdir="$(cd "$dir" 2>/dev/null && pwd -P)" || return 0
+  rdir="$(cd "$dir" 2>/dev/null && pwd -P)" || return 0   # none, or a second folder line, is no real path
   [[ "$rdir" == "$REDIR"/* && "$dir" == "$rdir" ]] || return 0
   recorded="$(LC_ALL=C grep -a -E '^run-board-spec: report board-spec-[a-z]+-run[0-9]+\.json sha256 [0-9a-f]{64}$' -- "$run" | sed 's/^run-board-spec: report //' | sort)" || recorded=""
   [[ -n "$recorded" ]] || return 0   # a run with no report re-judges nothing
@@ -187,7 +186,6 @@ for f in "$edir"/*.log; do
   classify_one "$f"
   FILES+=("$f"); KINDS+=("$KIND"); CODES+=("$CODE"); LINES+=("$LINE"); BASES+=("$BASEONLY"); STAMPS+=("$STAMP"); SHOWNS+=("$SHOWN")
 done
-(( ${#FILES[@]} )) || exit 0   # bash 3.2 treats "${!a[@]}" of an empty array as unbound under set -u
 for i in "${!FILES[@]}"; do
   if [[ "${BASES[$i]}" == 1 ]]; then
     g="$(covered_by "${FILES[$i]}")"
