@@ -706,6 +706,28 @@
       "failed_runs": {
         "webkit": "1/1"
       }
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > after Start, \"Working in:\" reflects the daemon-resolved cwd and warns on a wrong-tree mismatch (t-7590)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-5989",
+      "reason": "30 s webkit page.goto load timeout in a full run (t-f889 at edb294ea, 2026-10-14); passed alone 3/3 on the branch and 3/3 on main 3f183589",
+      "failed_runs": {
+        "webkit": "1/1"
+      }
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > with a long branch name and a narrow window the working note still leaves the Edit hint inside the modal (t-26f9)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-5989",
+      "reason": "30 s webkit page.goto load timeout in a full run (t-f889 at edb294ea, 2026-10-14); passed alone 3/3 on the branch and 3/3 on main 3f183589",
+      "failed_runs": {
+        "webkit": "1/1"
+      }
     }
   ],
   "skipped": []
