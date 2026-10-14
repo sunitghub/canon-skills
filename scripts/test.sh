@@ -11,6 +11,16 @@ export SPRINT_CHECK_NO_BROWSER=1
 # temp project. The pty-simulated prompt tests unset this for their own child.
 export SKILLS_SH_NO_TTY=1
 
+# t-2633: `--list` prints every suite label, one per line: the one list of what this script runs (scripts/test-hermetic.sh reads it).
+LIST=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --list) LIST=1; shift ;;
+    -h|--help) echo "usage: scripts/test.sh [--list]   (--list prints every suite label, one per line)"; exit 0 ;;
+    *) echo "test.sh: unknown option $1" >&2; exit 2 ;;
+  esac
+done
+
 tests=(
   "$ROOT/tests/tkt.sh"
   "$ROOT/tests/ticket-skeleton.sh"
@@ -53,6 +63,7 @@ tests=(
   "$ROOT/tests/skill-eval-scope.sh"
   "$ROOT/tests/evidence.sh"
   "$ROOT/tests/sprint-check-evidence.sh"
+  "$ROOT/tests/test-sh-runner.sh"
   "$ROOT/tests/build-zip-go-package.sh"
   "$ROOT/tests/sprint-check-server.sh"
   "$ROOT/tests/sprint-check-cockpit.sh"
@@ -112,52 +123,66 @@ _new_orphan_servers() {
   return 0
 }
 
+# suite <label> <command...> — prints the `==> <label>` header, runs the command, records its whole-second wall time (t-2633). In the
+# dry pass it only records the label, so --list prints this same sequence, never a second copy of it.
+TIMES=(); LABELS=(); CURRENT=""; CURRENT_T0=0; DRY=0
+suite() {
+  local label="$1"; shift
+  if (( DRY )); then LABELS+=("$label"); return 0; fi
+  printf '==> %s\n' "$label"
+  CURRENT="$label"; CURRENT_T0=$SECONDS
+  "$@"
+  TIMES+=("$((SECONDS - CURRENT_T0)) $label"); CURRENT=""
+}
+print_timings() {   # an EXIT trap: the run's own exit status stands, whatever this returns
+  if [[ -n "$CURRENT" ]]; then TIMES+=("$((SECONDS - CURRENT_T0)) $CURRENT (failed)"); fi
+  if (( ${#TIMES[@]} )); then
+    printf '\n== suite times (s), in run order\n'; printf '%s\n' "${TIMES[@]}"
+    printf '== slowest 10 (s)\n'; printf '%s\n' "${TIMES[@]}" | sort -rn | head -10
+    printf '== total %ss for %s suite(s)\n' "$SECONDS" "${#TIMES[@]}"
+  fi
+}
+go_board() { (cd "$ROOT" && GO111MODULE=off go test ./tools/sprint-check-go); }
+go_headless_json() { (cd "$ROOT" && GO111MODULE=off go test ./tools/sprint-headless-json-go); }
+go_daemon() { (cd "$ROOT/tools/cockpit-daemon" && go test ./...); }
+
+run_all() {
 for test_file in "${tests[@]}"; do
-  printf '==> %s\n' "${test_file#$ROOT/}"
-  bash "$test_file"
+  suite "${test_file#$ROOT/}" bash "$test_file"
 done
 
-if command -v go >/dev/null 2>&1; then
-  printf '==> %s\n' "tools/sprint-check-go"
-  (cd "$ROOT" && GO111MODULE=off go test ./tools/sprint-check-go)
-  printf '==> %s\n' "tools/sprint-headless-json-go"
-  (cd "$ROOT" && GO111MODULE=off go test ./tools/sprint-headless-json-go)
-  printf '==> %s\n' "tools/cockpit-daemon"
-  (cd "$ROOT/tools/cockpit-daemon" && go test ./...)
+if (( DRY )) || command -v go >/dev/null 2>&1; then
+  suite tools/sprint-check-go go_board
+  suite tools/sprint-headless-json-go go_headless_json
+  suite tools/cockpit-daemon go_daemon
 else
   printf '==> %s\n' "tools/sprint-check-go skipped (go absent)"
   printf '==> %s\n' "tools/sprint-headless-json-go skipped (go absent)"
   printf '==> %s\n' "tools/cockpit-daemon skipped (go absent)"
 fi
 
-if command -v node >/dev/null 2>&1; then
-  printf '==> %s\n' "tests/sprint-check-gherkin.js"
-  node "$ROOT/tests/sprint-check-gherkin.js"
-  printf '==> %s\n' "tests/sprint-check-editor.js"
-  node "$ROOT/tests/sprint-check-editor.js"
-  printf '==> %s\n' "tests/sprint-check-seed.js"
-  node "$ROOT/tests/sprint-check-seed.js"
-  printf '==> %s\n' "tests/sprint-check-handoff-state.js"
-  node "$ROOT/tests/sprint-check-handoff-state.js"
-  printf '==> %s\n' "tests/sprint-check-status-badge.js"
-  node "$ROOT/tests/sprint-check-status-badge.js"
-  printf '==> %s\n' "tests/sprint-check-worktree-chip.js"
-  node "$ROOT/tests/sprint-check-worktree-chip.js"
-  printf '==> %s\n' "tests/sprint-check-esc.js"
-  node "$ROOT/tests/sprint-check-esc.js"
-  printf '==> %s\n' "tests/sprint-check-theme.js"
-  node "$ROOT/tests/sprint-check-theme.js"
-  printf '==> %s\n' "tests/prefix-keys.js"
-  node "$ROOT/tests/prefix-keys.js"
-  printf '==> %s\n' "tests/board-spec-guard-unit.js"
-  node "$ROOT/tests/board-spec-guard-unit.js"
-  printf '==> %s\n' "tests/board-spec-classify-unit.js"
-  node "$ROOT/tests/board-spec-classify-unit.js"
-  printf '==> %s\n' "tests/sprint-check-api-scoping.js"
-  node "$ROOT/tests/sprint-check-api-scoping.js"
+if (( DRY )) || command -v node >/dev/null 2>&1; then
+  suite tests/sprint-check-gherkin.js node "$ROOT/tests/sprint-check-gherkin.js"
+  suite tests/sprint-check-editor.js node "$ROOT/tests/sprint-check-editor.js"
+  suite tests/sprint-check-seed.js node "$ROOT/tests/sprint-check-seed.js"
+  suite tests/sprint-check-handoff-state.js node "$ROOT/tests/sprint-check-handoff-state.js"
+  suite tests/sprint-check-status-badge.js node "$ROOT/tests/sprint-check-status-badge.js"
+  suite tests/sprint-check-worktree-chip.js node "$ROOT/tests/sprint-check-worktree-chip.js"
+  suite tests/sprint-check-esc.js node "$ROOT/tests/sprint-check-esc.js"
+  suite tests/sprint-check-theme.js node "$ROOT/tests/sprint-check-theme.js"
+  suite tests/prefix-keys.js node "$ROOT/tests/prefix-keys.js"
+  suite tests/board-spec-guard-unit.js node "$ROOT/tests/board-spec-guard-unit.js"
+  suite tests/board-spec-classify-unit.js node "$ROOT/tests/board-spec-classify-unit.js"
+  suite tests/sprint-check-api-scoping.js node "$ROOT/tests/sprint-check-api-scoping.js"
 else
   printf '==> %s\n' "tests/sprint-check-gherkin.js skipped (node absent)"
 fi
+return 0
+}
+
+if (( LIST )); then DRY=1; run_all; printf '%s\n' "${LABELS[@]}"; exit 0; fi
+trap print_timings EXIT
+run_all
 
 # Give a server that was just killed a few seconds to actually exit before calling it a leak.
 for _ in 1 2 3 4 5; do

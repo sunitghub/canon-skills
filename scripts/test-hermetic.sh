@@ -73,10 +73,10 @@ record() {   # record <name> <rc> <logfile>
   fi
 }
 
-# The suite list is scripts/test.sh's own: the bash array, then the node files; Go packages are fixed below.
+# The suite list is scripts/test.sh's own (`--list`, t-2633): the .sh and .js labels; Go packages are fixed below.
 BASH_SUITES=(); NODE_SUITES=()   # bash 3.2 (macOS) has no mapfile
-while IFS= read -r l; do BASH_SUITES+=("$l"); done < <(awk '/^tests=\(/{f=1;next} /^\)/{f=0} f' "$CL/scripts/test.sh" | grep -o 'tests/[^"]*')
-while IFS= read -r l; do NODE_SUITES+=("$l"); done < <(grep -o 'node "\$ROOT/tests/[^"]*"' "$CL/scripts/test.sh" | sed 's/.*\$ROOT\///;s/"//')
+SUITE_LIST="$(bash "$CL/scripts/test.sh" --list)" || { echo "test-hermetic: scripts/test.sh --list failed" >&2; exit 2; }
+while IFS= read -r l; do case "$l" in *.sh) BASH_SUITES+=("$l") ;; *.js) NODE_SUITES+=("$l") ;; esac; done <<< "$SUITE_LIST"
 [[ "${#BASH_SUITES[@]}" -gt 0 && "${#NODE_SUITES[@]}" -gt 0 ]] || { echo "test-hermetic: could not read the suite list from scripts/test.sh" >&2; exit 2; }
 
 run_all() {
