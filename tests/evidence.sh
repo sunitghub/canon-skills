@@ -407,6 +407,7 @@ for form in "scripts/test.sh --changed" "bash scripts/test.sh --changed main" "b
   [[ ! -e "$ED/partial.log" ]] || fail "evidence: a refused --changed stamp wrote a log ($form)"
 done
 ev stamp "$ID" full -- bash scripts/test.sh; assert_eq 0 "$code"                          # the full run still stamps
+ev stamp "$ID" listed -- bash scripts/test.sh --list; assert_eq 0 "$code"             # another option after the runner is not --changed
 ev stamp "$ID" other -- bash -c 'echo --changed'; assert_eq 0 "$code"                     # --changed without the runner is fine
 C9="$(git rev-parse HEAD)"
 put hand.log "HEAD $C9 $T\n\$ scripts/test.sh --changed\nexit 0\n"; ev check "$ID"

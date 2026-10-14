@@ -139,7 +139,6 @@ suite() {
 }
 print_timings() {
   local rc=$?
-  if (( DRY )); then return 0; fi
   if [[ -n "$CURRENT" ]]; then TIMES+=("$((SECONDS - CURRENT_T0)) $CURRENT (failed)"); fi
   if (( ${#TIMES[@]} )); then
     printf '\n== suite times (s), in run order\n'; printf '%s\n' "${TIMES[@]}"

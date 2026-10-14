@@ -22,9 +22,13 @@ echo 'package main' > tools/sprint-check-go/main.go
 echo orphan > tools/orphan.sh                                        # named by nothing
 echo helper > tests/not-a-suite.sh                                   # in tests/, but not a suite test.sh runs
 echo l > LEARNINGS.md
+printf 'source "$HERE/epsilon.sh"\n' > tests/e.sh                  # names a tool by its file name only
+printf '. "$(dirname "$0")/zeta.sh"  # needs zeta.sh\n' > tools/epsilon.sh   # epsilon names zeta
+printf '# zeta.sh\n' > tools/zeta.sh                                # zeta names itself
+printf 'const g = "gamma.txt";\n' > tests/kappa.js                 # a suite whose name is another path plus an extension
 git add -A && git commit -qm base
 BASE="$(git rev-parse HEAD)"
-LABELS="$WORK/labels"; printf '%s\n' tests/a.sh tests/b.sh tests/c.js tools/sprint-check-go > "$LABELS"
+LABELS="$WORK/labels"; printf '%s\n' tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh > "$LABELS"
 
 source "$REPO/scripts/test-select.sh"
 selected() {   # selected <base>: the labels select_suite picks, space-joined, or FULL:<reason>
@@ -41,52 +45,105 @@ assert_eq "tests/a.sh" "$(selected "$BASE")"                                    
 reset; echo more >> tools/delta.sh
 assert_eq "tests/b.sh" "$(selected "$BASE")"                                     # a working-tree change, one level up
 reset; echo more >> tools/gamma.txt
-assert_eq "tests/c.js" "$(selected "$BASE")"                                     # a base-name mention
+assert_eq "tests/c.js tests/kappa.js" "$(selected "$BASE")"                      # a base-name mention
 reset; echo '// x' >> tests/c.js
 assert_eq "tests/c.js" "$(selected "$BASE")"                                     # a changed suite runs itself
 reset; echo '// x' >> tools/sprint-check-go/main.go
 assert_eq "tools/sprint-check-go" "$(selected "$BASE")"                          # a Go package by its directory
 reset; echo more >> LEARNINGS.md; git commit -qam learnings
 assert_eq "" "$(selected "$BASE")"                                               # evidence-neutral only: nothing to run
+reset; echo more >> tools/zeta.sh
+assert_eq "tests/e.sh" "$(selected "$BASE")"                                     # one level up, by file name only
+reset; echo k > tests/kappa; git add tests/kappa; git commit -qm kappa
+assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh]" "$(selected "$BASE")"   # tests/kappa is not tests/kappa.js
+reset; echo more >> tools/alpha.sh; select_init "$REPO" "$BASE" "$LABELS"
+if select_suite tests/ghost.sh 2> "$WORK/ghost.err"; then fail "a label with no file was selected"; fi
+assert_eq "" "$(cat "$WORK/ghost.err")"; select_cleanup                         # and no grep error for it
 reset; echo more >> tools/orphan.sh
-assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tools/sprint-check-go]" "$(selected "$BASE")"   # named by nothing: everything
+assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh]" "$(selected "$BASE")"   # named by nothing: everything
 reset; echo more >> tests/not-a-suite.sh
-assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tools/sprint-check-go]" "$(selected "$BASE")"   # in tests/ but no suite: everything
+assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh]" "$(selected "$BASE")"   # in tests/ but no suite: everything
 reset; echo more >> tools/alpha.sh; echo more >> tools/orphan.sh
-assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tools/sprint-check-go]" "$(selected "$BASE")"   # one unmapped path is enough
+assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh]" "$(selected "$BASE")"   # one unmapped path is enough
 reset; echo new > tools/untracked.sh
 assert_eq "" "$(selected "$BASE")"                                               # untracked files are not seen ...
 git add -N tools/untracked.sh
-assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tools/sprint-check-go]" "$(selected "$BASE")"   # ... until intent-added
+assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh]" "$(selected "$BASE")"   # ... until intent-added
 reset
 set +e; out="$(selected not-a-ref 2>&1)"; rc=$?; set -e
-assert_eq 2 "$rc"; assert_contains "$out" "'not-a-ref' is not a commit"
+assert_eq 2 "$rc"; assert_contains "$out" "test.sh --changed: 'not-a-ref' is not a commit"
 assert_eq "" "$(ls "$TMPDIR" | grep '^test-select\.' || true)"                  # select_cleanup removes its temp files
 
-# --- the real scripts/test.sh: --list, --changed wiring, the timing table --------------------------------------------------------
+# --- the real scripts/test.sh: --list -------------------------------------------------------------------------------------------
 LIST="$(bash "$ROOT/scripts/test.sh" --list)"
 assert_eq "" "$(printf '%s\n' "$LIST" | sort | uniq -d)"                        # no suite listed twice
-assert_contains "$LIST" "tests/test-sh-changed.sh"
 while IFS= read -r l; do [[ -e "$ROOT/$l" ]] || fail "test.sh --list names $l, which does not exist"; done <<< "$LIST"
+# the dry pass reaches every invocation in the file: the .sh labels are the tests=( array, the .js labels every node line, plus the Go three
+assert_eq "$(awk '/^tests=\(/{f=1;next} /^\)/{f=0} f' "$ROOT/scripts/test.sh" | grep -c 'tests/')" "$(printf '%s\n' "$LIST" | grep -c '\.sh$')"
+assert_eq "$(grep -c '^  suite tests/[^ ]*\.js node "\$ROOT/tests/' "$ROOT/scripts/test.sh")" "$(printf '%s\n' "$LIST" | grep -c '\.js$')"
+for g in tools/sprint-check-go tools/sprint-headless-json-go tools/cockpit-daemon; do assert_contains "$LIST" "$g"; done
+assert_contains "$LIST" "tests/test-sh-changed.sh"
+set +e; out="$(bash "$ROOT/scripts/test.sh" --help 2>&1)"; rc=$?; set -e
+assert_eq 0 "$rc"; assert_contains "$out" "usage: scripts/test.sh [--changed [<base>] | --list]"
 set +e; out="$(bash "$ROOT/scripts/test.sh" --bogus 2>&1)"; rc=$?; set -e; assert_eq 2 "$rc"; assert_contains "$out" "unknown option --bogus"
-set +e; out="$(cd "$REPO" && bash "$ROOT/scripts/test.sh" --changed not-a-ref 2>&1)"; rc=$?; set -e; assert_eq 2 "$rc"
 
-# A copy of the real runner whose suite list is two fakes: one slow, one failing. go and node are kept off PATH so only the fakes run.
-T="$WORK/runner"; mkdir -p "$T/scripts" "$T/tests" "$T/tools" "$WORK/bin"
-cp "$ROOT/scripts/test.sh" "$ROOT/scripts/test-select.sh" "$T/scripts/"; cp "$ROOT/tools/evidence-neutral.sh" "$T/tools/"
-awk '/^tests=\(/{print; print "  \"$ROOT/tests/slow.sh\""; print "  \"$ROOT/tests/bad.sh\""; skip=1; next} skip && /^\)/{skip=0} !skip' \
-  "$ROOT/scripts/test.sh" > "$T/scripts/test.sh"
-printf 'sleep 1\necho slow-ok\n' > "$T/tests/slow.sh"; printf 'echo bad-runs; exit 3\n' > "$T/tests/bad.sh"
-for b in bash sh git sort head tail mktemp grep sed awk cat rm sleep dirname cut wc tr comm ps pgrep uniq basename env; do
+# --- copies of the real runner with fake suites; go and node kept off PATH -----------------------------------------------------------
+mkdir -p "$WORK/bin"
+for b in bash sh git sort head tail mktemp grep sed awk cat rm sleep dirname cut wc tr comm ps pgrep uniq basename env ls; do
   p="$(command -v "$b" 2>/dev/null)" && ln -sf "$p" "$WORK/bin/$b"
 done
+runner_copy() {   # runner_copy <dir> <suite...>: the real test.sh with its tests=( list replaced by the given suites
+  local d="$1"; shift
+  mkdir -p "$d/scripts" "$d/tests" "$d/tools"
+  cp "$ROOT/scripts/test-select.sh" "$d/scripts/"; cp "$ROOT/tools/evidence-neutral.sh" "$d/tools/"
+  { awk '/^tests=\(/{exit} {print}' "$ROOT/scripts/test.sh"; echo 'tests=('; for t in "$@"; do echo "  \"\$ROOT/$t\""; done; echo ')'
+    awk 'f; /^tests=\(/{s=1} s && /^\)/{f=1}' "$ROOT/scripts/test.sh"; } > "$d/scripts/test.sh"
+}
+leftovers() { ls "$TMPDIR" | grep -E '^test-(select|labels)\.' || true; }
+
+# A full run: twelve timed suites, the slowest first, the failing one timed and marked, the run's own exit code kept.
+T="$WORK/runner"; names=(tests/slow.sh); for k in 01 02 03 04 05 06 07 08 09 10; do names+=("tests/t$k.sh"); done; names+=(tests/bad.sh)
+runner_copy "$T" "${names[@]}"
+printf 'sleep 2\necho slow-ok\n' > "$T/tests/slow.sh"; printf 'sleep 1\necho bad-runs; exit 3\n' > "$T/tests/bad.sh"
+for k in 01 02 03 04 05 06 07 08 09 10; do echo 'true' > "$T/tests/t$k.sh"; done
 set +e; out="$(PATH="$WORK/bin" bash "$T/scripts/test.sh" 2>&1)"; rc=$?; set -e
-[[ "$rc" -ne 0 ]] || fail "test.sh: a failing suite must fail the run: $out"
-assert_contains "$out" "==> tests/slow.sh"; assert_contains "$out" "==> tests/bad.sh"; assert_contains "$out" "slow-ok"
-assert_contains "$out" "== suite times (s), in run order"; assert_contains "$out" "tests/bad.sh (failed)"
-assert_contains "$out" "== slowest 10 (s)"
-slow_line="$(printf '%s\n' "$out" | sed -n '/^== slowest 10/,$p' | grep -m1 'tests/slow.sh')"
-[[ "$slow_line" =~ ^[1-9][0-9]*\ tests/slow\.sh$ ]] || fail "test.sh: the slow suite's time is missing or zero: '$slow_line'"
+assert_eq 3 "$rc"                                                                  # the failing suite's own code
+assert_contains "$out" "==> tests/slow.sh"; assert_contains "$out" "slow-ok"; assert_contains "$out" "==> tests/bad.sh"
+assert_contains "$out" "== suite times (s), in run order"; assert_contains "$out" "== total "; assert_contains "$out" "for 12 suite(s)"
+slowest="$(printf '%s\n' "$out" | sed -n '/^== slowest 10 (s)$/,/^== total/p' | sed '1d;$d')"
+assert_eq 10 "$(printf '%s\n' "$slowest" | wc -l | tr -d ' ')"
+[[ "$(printf '%s\n' "$slowest" | head -1)" =~ ^[2-9]\ tests/slow\.sh$ ]] || fail "test.sh: slowest 10 must start with the slow suite: $slowest"
+[[ "$out" =~ (^|$'\n')[1-9][0-9]*\ tests/bad\.sh\ \(failed\) ]] || fail "test.sh: the failing suite's time is missing or zero: $out"
 [[ "$out" != *"PARTIAL RUN"* ]] || fail "test.sh: a full run must not call itself partial"
+
+# --changed end to end, in a git repo with an origin: a.sh names alpha.sh, b.sh names nothing.
+R="$WORK/proj"; runner_copy "$R" tests/a.sh tests/b.sh
+printf 'echo a-ran # alpha.sh\n' > "$R/tests/a.sh"; echo 'echo b-ran' > "$R/tests/b.sh"; echo alpha > "$R/tools/alpha.sh"
+(cd "$R" && git init -q -b main . && git config user.name t && git config user.email t@t && git add -A && git commit -qm base
+ git init -q --bare "$WORK/origin.git" && git remote add origin "$WORK/origin.git" && git push -q origin main)
+RBASE="$(git -C "$R" rev-parse HEAD)"
+tsh() { set +e; out="$(cd "$R" && PATH="$WORK/bin" bash scripts/test.sh "$@" 2>&1)"; rc=$?; set -e; }
+tsh --changed
+assert_eq 0 "$rc"; assert_contains "$out" "PARTIAL RUN (--changed): 0 changed path(s) since ${RBASE:0:8}, 17 suite(s) known"
+assert_contains "$out" "nothing changed outside the evidence-neutral docs; no suite to run"; assert_eq "" "$(leftovers)"
+echo more >> "$R/tools/alpha.sh"; git -C "$R" commit -qam alpha
+tsh --changed
+assert_eq 0 "$rc"; assert_contains "$out" "PARTIAL RUN (--changed): 1 changed path(s) since ${RBASE:0:8}"
+assert_contains "$out" "==> tests/a.sh"$'\n'"a-ran"; assert_contains "$out" "==> tests/b.sh skipped (--changed)"
+[[ "$out" != *"b-ran"* ]] || fail "test.sh --changed ran a suite it skipped"
+assert_contains "$out" "tools/sprint-check-go skipped (go absent)"; assert_contains "$out" "tests/sprint-check-gherkin.js skipped (node absent)"
+assert_contains "$out" "PARTIAL RUN (--changed): ran 1, skipped 1 — not a close stamp"; assert_eq "" "$(leftovers)"
+tsh --changed "$RBASE"; assert_eq 0 "$rc"; assert_contains "$out" "ran 1, skipped 1"     # an explicit base
+tsh --changed HEAD; assert_eq 0 "$rc"; assert_contains "$out" "0 changed path(s)"         # nothing since HEAD
+echo zz > "$R/tools/zz.sh"; git -C "$R" add tools/zz.sh; git -C "$R" commit -qm zz
+tsh --changed
+assert_eq 0 "$rc"; assert_contains "$out" "test.sh --changed: running every suite: tools/zz.sh maps to no suite"
+assert_contains "$out" "a-ran"; assert_contains "$out" "b-ran"; assert_contains "$out" "ran 2, skipped 0"
+tsh --changed --bogus; assert_eq 2 "$rc"; assert_contains "$out" "unknown option --bogus"   # an option is not a base
+tsh --changed not-a-ref; assert_eq 2 "$rc"; assert_contains "$out" "'not-a-ref' is not a commit"
+tsh; assert_eq 0 "$rc"; assert_contains "$out" "a-ran"; assert_contains "$out" "b-ran"; [[ "$out" != *"PARTIAL RUN"* ]] || fail "full run called itself partial"
+git -C "$R" remote remove origin
+tsh --changed; assert_eq 2 "$rc"; assert_contains "$out" "test.sh --changed: no origin/main to diff against; pass a base"
+assert_eq "" "$(leftovers)"
 
 echo "test-sh-changed: ok"
