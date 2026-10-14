@@ -1,0 +1,18 @@
+{
+  "name": "Example Dark",
+  "mode": "dark",
+  "colors": {
+    "bg": "#1f2430",
+    "surface": "#272d3a",
+    "border": "#3a4252",
+    "text": "#eef1f6",
+    "body": "#c4cad6",
+    "muted": "#a3abba",
+    "accent": "#5aa9e6",
+    "ok": "#6cc070",
+    "warn": "#e6b450",
+    "bad": "#ef6b73",
+    "info": "#79b8ff",
+    "term": "#171b24"
+  }
+}

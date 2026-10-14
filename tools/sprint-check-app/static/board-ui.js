@@ -1,5 +1,5 @@
 import { handleMarkdownEnter, handleTabIndent } from './editor.js';
-import { KEY as THEME_KEY, derive, effectiveMode, readChoice, setVars, themeById } from './theme-data.js';
+import { KEY as THEME_KEY, derive, effectiveMode, readChoice, setVars, themeById, themeFor, loadUserThemes } from './theme-data.js';
 import { fetchVersion, loadData, state } from './board-core.js';
 import { normalizeSearch, whyQueryFromInput } from './board-helpers.js';
 import { renderBoard, showToast } from './board-render.js';
@@ -479,14 +479,20 @@ export function initUi() {
     // /?standalone=1&project=, which would mix a third-party theme with the board's own mode (break-it)
     const framed = window.parent !== window;
     function applyTheme(t) { if (framed) setVars(html, t && !t.css ? derive(t).board : null); }
-
-    apply(html.getAttribute('data-theme') !== 'light', false);
-    if (framed) {
+    // the saved choice for the mode shown. t-f889: a user theme needs the folder's list first; until it has loaded,
+    // themeFor() is null and the variables theme-boot.js painted from the cache stay
+    function applySaved() {
       try {
         const choice = readChoice(localStorage.getItem(THEME_KEY));
-        applyTheme(themeById(choice[effectiveMode(choice, html.getAttribute('data-theme') !== 'light')]));
+        const t = themeFor(choice, effectiveMode(choice, html.getAttribute('data-theme') !== 'light'));
+        if (t) applyTheme(t);
       } catch (e) {}
     }
+
+    // every theme message bumps themeSeq; a lookup that finishes after a newer message (or a preview) applies nothing
+    let themeSeq = 0;
+    apply(html.getAttribute('data-theme') !== 'light', false);
+    if (framed) { applySaved(); loadUserThemes().then(() => { if (themeSeq === 0) applySaved(); }); }
     btn.addEventListener('click', () => apply(html.getAttribute('data-theme') === 'light', true));
     // The Cockpit shell pushes live changes (t-a55a). Only the parent window on this origin is believed (t-2758): any
     // other page or frame posting a canon-theme message is ignored.
@@ -494,8 +500,13 @@ export function initUi() {
       if (window.parent === window || e.source !== window.parent || e.origin !== location.origin) return;
       if (e.data && e.data.type === 'canon-theme' && (e.data.theme === 'dark' || e.data.theme === 'light')) {
         apply(e.data.theme === 'dark', false);
-        const t = themeById(e.data.themeId);
-        applyTheme(t && t.mode === e.data.theme ? t : null);
+        const id = e.data.themeId, mode = e.data.theme;
+        const n = ++themeSeq;
+        const use = () => { if (n !== themeSeq) return; const t = themeById(id); applyTheme(t && t.mode === mode ? t : null); };
+        // t-f889: a user theme is looked up again first, so a file added or recoloured since this board loaded shows as
+        // it does on the shell (break-it: a known id kept its first colours); the list is the board's own read of the
+        // folder, checked here, never colours from the message
+        if (typeof id === 'string' && id.startsWith('user-')) loadUserThemes().then(use); else use();
       }
     });
   })();

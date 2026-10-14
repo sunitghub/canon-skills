@@ -71,6 +71,15 @@
   .theme-pop .thm-strip{display:flex;height:16px;border-radius:4px;overflow:hidden;margin-bottom:6px;border:1px solid var(--border)}
   .theme-pop .thm-strip i{flex:1}
   .theme-pop .thm-sub{font-size:11px;color:var(--text-muted);margin:10px 0 6px}
+  /* t-f889: user themes: the Low contrast mark, and the "Your own" section (folder, refused files, Open button) */
+  .theme-pop .thm-low{display:block;margin-top:3px;font-size:10px;color:var(--th-warn-ink, var(--amber))}
+  .theme-pop h4.thm-own{margin-top:14px}
+  .theme-pop .thm-note{color:var(--text-muted);line-height:1.4;margin-bottom:6px;overflow-wrap:anywhere}
+  .theme-pop .thm-note code{font-size:11px;color:var(--text)}
+  .theme-pop .thm-rejected{margin:0 0 8px;padding-left:16px;color:var(--text-muted);overflow-wrap:anywhere}
+  .theme-pop .thm-rejected b{color:var(--text);font-weight:600}
+  .theme-pop .thm-open{width:100%;max-width:none;padding:6px 0;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text);font:inherit;cursor:pointer}
+  .theme-pop .thm-open:hover{border-color:var(--border-hover)}
   .main{overflow:hidden;display:flex;flex-direction:column}
   /* Tab bar: pinned Projects + closable project tabs */
   .tabstrip{display:flex;align-items:center;gap:4px;height:var(--strip-h);padding:var(--strip-pad) 14px 0;border-bottom:1px solid var(--border);background:var(--panel);flex-shrink:0;overflow-x:auto}

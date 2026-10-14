@@ -24,6 +24,7 @@ const UNSCOPED = {
   '/api/admin/model-tiers': 'install-wide model registry',
   '/api/ticket/X/headless-run': 'headless run state lives with the daemon, not a project root',
   '/api/ticket-image': 'only an <img src>; resolveMockupSrc scopes it itself (t-7d83)',
+  '/api/themes': 'install-wide user themes folder, $CANON_HOME/themes (t-f889)',
 };
 
 let fails = 0;

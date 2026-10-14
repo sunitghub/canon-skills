@@ -109,6 +109,194 @@ def save_model_tiers(data) -> dict:
         return {'ok': False, 'error': str(e)}
     return {'ok': True}
 
+# ── User themes (t-f889) ──────────────────────────────────────────────────
+# $CANON_HOME/themes/*.json: files anyone can drop there, so untrusted. Every rule and reason string is mirrored in
+# sprint-check-go/main.go and static/theme-data.js (the page re-checks before use); theme.schema.json documents them
+# and tests/theme-files-parity.sh holds all three to it. Nothing here is read at runtime from the schema.
+THEME_SEED_DIR = Path(__file__).parent / 'theme-seed'
+THEME_KEYS = ('bg', 'surface', 'border', 'text', 'body', 'muted', 'accent', 'ok', 'warn', 'bad', 'info', 'term')
+THEME_FILE_RE = re.compile(r'[a-z0-9][a-z0-9-]{0,29}\.json')
+THEME_NAME_RE = re.compile(r'[A-Za-z0-9 ._()+-]{1,40}')
+THEME_HEX_RE = re.compile(r'#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})')
+THEME_MAX_BYTES = 16384
+THEME_MAX_FILES = 50
+THEME_MAX_DEPTH = 8
+
+def _theme_too_deep(text: str) -> bool:
+    # Brackets outside strings deeper than THEME_MAX_DEPTH (a theme needs 2). Python's parser hits RecursionError on
+    # deep nesting where Go's does not, so both refuse it first, by the same scan (Go: themeTooDeep).
+    depth, in_str, esc = 0, False, False
+    for ch in text:
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == '\\':
+                esc = True
+            elif ch == '"':
+                in_str = False
+        elif ch == '"':
+            in_str = True
+        elif ch in '[{':
+            depth += 1
+            if depth > THEME_MAX_DEPTH:
+                return True
+        elif ch in ']}':
+            depth -= 1
+    return False
+
+def _themes_dir() -> Path:
+    return Path(os.environ.get('CANON_HOME', Path.home() / '.canon')) / 'themes'
+
+def _theme_no_constants(name):
+    raise ValueError(name)  # NaN/Infinity are not JSON (Go and the browser refuse them too)
+
+def _theme_int(text):
+    # no theme value is a number, so its size never matters; int() refuses over 4300 digits, where Go goes on (break-it)
+    return 0
+
+def _theme_check(data):
+    """A parsed theme file -> (theme fields, None) or (None, reason)."""
+    if not isinstance(data, dict) or set(data) != {'name', 'mode', 'colors'}:
+        return None, 'must be an object with exactly name, mode and colors'
+    name, mode, colors = data['name'], data['mode'], data['colors']
+    if not isinstance(name, str) or not THEME_NAME_RE.fullmatch(name):
+        return None, 'name must be 1-40 letters, digits, spaces or . _ ( ) + -'
+    if not isinstance(mode, str) or mode not in ('light', 'dark'):
+        return None, 'mode must be light or dark'
+    if not isinstance(colors, dict) or set(colors) != set(THEME_KEYS):
+        return None, 'colors must have exactly the 12 keys'
+    for k in THEME_KEYS:
+        if not isinstance(colors[k], str) or not THEME_HEX_RE.fullmatch(colors[k]):
+            return None, f'colors.{k} must be #rgb or #rrggbb'
+    return {'name': name, 'mode': mode, 'colors': {k: colors[k] for k in THEME_KEYS}}, None
+
+def _theme_read(path: Path):
+    """One directory entry -> (theme fields, None) or (None, reason). Checks run in a fixed order (parity)."""
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return None, 'cannot be read'
+    if stat.S_ISLNK(st.st_mode):
+        return None, 'symbolic links are not read'
+    if not stat.S_ISREG(st.st_mode):
+        return None, 'not a regular file'
+    try:
+        fd = os.open(path, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_NONBLOCK', 0))
+        with os.fdopen(fd, 'rb') as f:
+            # the file must still be the one lstat saw (swapped for a link or a pipe in between: refused)
+            if not os.path.samestat(st, os.fstat(f.fileno())):
+                return None, 'not a regular file'
+            raw = f.read(THEME_MAX_BYTES + 1)
+    except OSError:
+        return None, 'cannot be read'
+    if len(raw) > THEME_MAX_BYTES:
+        return None, 'larger than 16 KiB'
+    if raw.startswith(b'\xef\xbb\xbf'):
+        return None, 'starts with a byte order mark'
+    try:
+        text = raw.decode('utf-8')
+    except UnicodeDecodeError:
+        return None, 'not valid UTF-8'
+    if _theme_too_deep(text):
+        return None, 'nested too deeply'
+    try:
+        data = json.loads(text, parse_constant=_theme_no_constants, parse_int=_theme_int)
+    except ValueError:
+        return None, 'not valid JSON'
+    return _theme_check(data)
+
+def list_themes() -> dict:
+    d = _themes_dir()
+    out = {'dir': str(d), 'themes': [], 'rejected': []}
+    try:
+        names = os.listdir(d)
+    except FileNotFoundError:
+        return out
+    except OSError:
+        out['error'] = 'the themes folder cannot be read'
+        return out
+    files = []
+    for n in names:
+        try:
+            n.encode('utf-8')  # a name that is not UTF-8 (surrogate-escaped) is skipped, as in Go
+        except UnicodeEncodeError:
+            continue
+        if n.endswith('.json'):
+            files.append(n)
+    for i, n in enumerate(sorted(files)):
+        if i >= THEME_MAX_FILES:
+            out['rejected'].append({'file': n, 'reason': 'too many theme files (at most 50)'})
+            continue
+        if not THEME_FILE_RE.fullmatch(n):
+            out['rejected'].append({'file': n, 'reason': 'file name must be lowercase letters, digits and dashes (at most 30)'})
+            continue
+        theme, reason = _theme_read(d / n)
+        if reason:
+            out['rejected'].append({'file': n, 'reason': reason})
+        else:
+            out['themes'].append({'id': 'user-' + n[:-5], 'file': n, **theme})
+    return out
+
+def _theme_opener() -> list:
+    # CANON_OPEN_BIN replaces the launcher (tests); without it, SPRINT_CHECK_NO_BROWSER=1 launches nothing (t-269d)
+    override = os.environ.get('CANON_OPEN_BIN', '')
+    if override:
+        return [override]
+    if os.environ.get('SPRINT_CHECK_NO_BROWSER') == '1':
+        return []
+    if sys.platform == 'darwin':
+        return ['open']
+    if os.name == 'nt':
+        return ['explorer']
+    return ['xdg-open']
+
+def open_themes_folder() -> dict:
+    """Create the themes folder if absent (seeding example.json and README.md only then) and open it. The path is
+    fixed: nothing from the request reaches it or the launcher."""
+    d = _themes_dir()
+    created = False
+    # absent: create it (another request may win the race: then it simply exists). Any other error (a file in the
+    # way, a link loop, no permission) means it is not a usable folder. Same outcomes as Go's openThemesFolder.
+    try:
+        st = os.stat(d)
+    except FileNotFoundError:
+        st = None
+    except OSError:
+        return {'ok': False, 'error': 'the themes path is not a folder'}
+    if st is None:
+        try:
+            d.parent.mkdir(parents=True, exist_ok=True)
+            d.mkdir()
+            created = True
+        except FileExistsError:
+            pass
+        except OSError:
+            return {'ok': False, 'error': 'could not create the themes folder'}
+        try:
+            st = os.stat(d)
+        except OSError:
+            return {'ok': False, 'error': 'the themes path is not a folder'}
+    if not stat.S_ISDIR(st.st_mode):
+        return {'ok': False, 'error': 'the themes path is not a folder'}
+    if created:
+        for name in ('example.json', 'README.md'):
+            try:
+                with open(d / name, 'xb') as f:  # never overwrite
+                    f.write((THEME_SEED_DIR / name).read_bytes())
+            except OSError:
+                pass
+    launched = False
+    opener = _theme_opener()
+    if opener:
+        try:
+            proc = subprocess.Popen(opener + [str(d)], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL, close_fds=True)
+            threading.Thread(target=proc.wait, daemon=True).start()  # reap it, as Go's cmd.Wait does (reviewer)
+            launched = True
+        except OSError:
+            return {'ok': False, 'error': 'could not open the themes folder'}
+    return {'ok': True, 'dir': str(d), 'created': created, 'launched': launched}
+
 # ── Canon Cockpit project registry (t-9917) ───────────────────────────────
 # One shared registry of projects the Cockpit shell can open. Stored as a JSON
 # array at ~/.canon/cockpit/projects.json — paths + descriptions only, no
@@ -3225,6 +3413,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(registry_list())
         elif path == '/api/admin/model-tiers':
             self.send_json(load_model_tiers())
+        elif path == '/api/themes':
+            self.send_json(list_themes())
         elif re.match(r'^/meta/screenshots/[a-zA-Z0-9_-]+\.(png|gif|jpg|jpeg|webp)$', path):
             img = PROJECT_ROOT / path.lstrip('/')
             self.send_image(img); return
@@ -3462,6 +3652,14 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         if not _origin_ok(self.headers.get('Origin', '')):
             self.send_error(403); return
+        # t-f889: Open themes folder reads no body, before the shared parse: the two servers' parsers disagree on
+        # null, NaN and UTF-16 bodies (break-it), so one launched where the other refused. A JSON content type is still
+        # required, so a cross-site page cannot send it without a CORS preflight.
+        if path == '/api/themes/open':
+            if self.headers.get('Content-Type', '').split(';')[0].strip().lower() != 'application/json':
+                self.send_json({'ok': False, 'error': 'expected application/json'}, status=415); return
+            result = open_themes_folder()
+            self.send_json(result, status=200 if result.get('ok') else 400); return
         try:
             length = int(self.headers.get('Content-Length', 0))
             payload = json.loads(self.rfile.read(length))

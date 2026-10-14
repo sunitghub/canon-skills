@@ -97,17 +97,81 @@ export function readChoice(raw) {
   let c = null;
   try { c = JSON.parse(raw); } catch (e) {}
   if (!c || typeof c !== 'object' || !MODES.includes(c.mode)) return { ...DEFAULT };
-  const pick = (m) => (THEMES.some(t => t.id === c[m] && t.mode === m) ? c[m] : DEFAULT[m]);
+  // a user theme's id is kept even before (or without) its file: themeFor shows Canon until it is there (t-f889, user)
+  const pick = (m) => (THEMES.some(t => t.id === c[m] && t.mode === m) || (typeof c[m] === 'string' && USER_ID.test(c[m])) ? c[m] : DEFAULT[m]);
   return { mode: c.mode, light: pick('light'), dark: pick('dark') };
 }
 export const effectiveMode = (choice, osDark) => (choice.mode === 'system' ? (osDark ? 'dark' : 'light') : choice.mode);
-export const themeById = (id) => THEMES.find(t => t.id === id);
+export const themeById = (id) => THEMES.find(t => t.id === id) || userThemes.find(t => t.id === id);
+// The theme to show for mode m: the pick, or Canon's for that mode when the pick is a user theme whose file is gone,
+// broken or now of the other mode. null while the user themes have not loaded yet: the caller keeps what is painted.
+export function themeFor(choice, m) {
+  const t = themeById(choice[m]);
+  if (t && t.mode === m) return t;
+  if (!userLoaded && USER_ID.test(choice[m])) return null;
+  return themeById(DEFAULT[m]);
+}
 // What theme-boot.js re-applies before the first paint: the derived variables of the choice's third-party themes
 // (both of them under System, so an OS change between visits still paints right). Canon needs none: its CSS owns it.
 export function cacheFor(choice) {
   const themes = {};
-  for (const m of ['light', 'dark']) { const t = themeById(choice[m]); if (t && !t.css) themes[t.id] = { mode: t.mode, ...derive(t) }; }
+  for (const m of ['light', 'dark']) { const t = themeById(choice[m]); if (t && !t.css && t.mode === m) themes[t.id] = { mode: t.mode, ...derive(t) }; }
   return { v: CACHE_V, themes };
+}
+
+// ── User themes (t-f889) ──
+// Files in $CANON_HOME/themes, listed by GET /api/themes. Both servers check them (server.py, sprint-check-go); the
+// page checks every entry again here before using it, with the same rules and reasons (tests/theme-files-parity.sh
+// holds the three to theme.schema.json). Only checked entries reach derive(), the cards or the cache.
+const THEME_KEYS = ['bg', 'surface', 'border', 'text', 'body', 'muted', 'accent', 'ok', 'warn', 'bad', 'info', 'term'];
+const USER_FILE = /^[a-z0-9][a-z0-9-]{0,29}\.json$/, USER_ID = /^user-[a-z0-9][a-z0-9-]{0,29}$/;
+const USER_NAME = /^[A-Za-z0-9 ._()+-]{1,40}$/, USER_HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+const isObj = (o) => !!o && typeof o === 'object' && !Array.isArray(o);
+// a parsed theme file -> '' (valid) or the reason, as the servers word it
+export function checkTheme(o) {
+  if (!isObj(o) || Object.keys(o).length !== 3 || !own(o, 'name') || !own(o, 'mode') || !own(o, 'colors')) return 'must be an object with exactly name, mode and colors';
+  if (typeof o.name !== 'string' || !USER_NAME.test(o.name)) return 'name must be 1-40 letters, digits, spaces or . _ ( ) + -';
+  if (o.mode !== 'light' && o.mode !== 'dark') return 'mode must be light or dark';
+  const c = o.colors;
+  if (!isObj(c) || Object.keys(c).length !== THEME_KEYS.length || !THEME_KEYS.every(k => own(c, k))) return 'colors must have exactly the 12 keys';
+  for (const k of THEME_KEYS) if (typeof c[k] !== 'string' || !USER_HEX.test(c[k])) return `colors.${k} must be #rgb or #rrggbb`;
+  return '';
+}
+const long = (h) => (h.length === 4 ? '#' + [1, 2, 3].map(i => h[i] + h[i]).join('') : h).toLowerCase();
+// one /api/themes entry -> a theme like the built-ins (6-digit colours), or null
+export function validateTheme(e) {
+  if (!isObj(e) || typeof e.file !== 'string' || !USER_FILE.test(e.file) || e.id !== 'user-' + e.file.slice(0, -5)) return null;
+  if (checkTheme({ name: e.name, mode: e.mode, colors: e.colors })) return null;
+  const c = {};
+  for (const k of THEME_KEYS) c[k] = long(e.colors[k]);
+  return { id: e.id, name: e.name, mode: e.mode, user: true, file: e.file, c };
+}
+// the readability floor the built-ins are held to (THEMES.md): the failing pair with the lowest ratio, or null
+export function lowContrast(t) {
+  const c = t.c, pairs = [['text on background', c.text, c.bg, 4.5], ['muted text on panels', c.muted, c.surface, 4.5],
+    ['accent on background', c.accent, c.bg, 3], ['text on the accent', ink(c, c.accent), c.accent, 3]];
+  let worst = null;
+  for (const [what, a, b, min] of pairs) { const r = contrast(a, b); if (r < min && (!worst || r < worst.ratio)) worst = { what, ratio: r, min }; }
+  return worst;
+}
+let userThemes = [], userLoaded = false, userLoading = null;
+export const userThemeList = () => userThemes;
+// fetch and check the list; resolves to { themes, rejected, dir, error }. A failed fetch counts as loaded with no
+// user themes (a saved pick then shows Canon, and stays saved).
+export function loadUserThemes() {
+  if (userLoading) return userLoading;
+  userLoading = fetch('/api/themes').then(r => r.json()).catch(() => null).then(d => {
+    const ok = isObj(d) && Array.isArray(d.themes) && Array.isArray(d.rejected);
+    const themes = [], rejected = [];
+    if (ok) {
+      for (const e of d.themes.slice(0, 50)) { const t = validateTheme(e); if (t) themes.push(t); else rejected.push({ file: isObj(e) && typeof e.file === 'string' ? e.file.slice(0, 80) : '?', reason: 'failed the page\'s own check' }); }
+      for (const r of d.rejected.slice(0, 200)) if (isObj(r) && typeof r.file === 'string' && typeof r.reason === 'string') rejected.push({ file: r.file.slice(0, 80), reason: r.reason.slice(0, 120) });
+    }
+    userThemes = themes; userLoaded = true; userLoading = null;
+    return { themes, rejected, dir: ok && typeof d.dir === 'string' ? d.dir : '', error: !ok ? 'could not read the theme list' : (typeof d.error === 'string' ? d.error : '') };
+  });
+  return userLoading;
 }
 // The names a theme may set: derive()'s vocabulary and nothing else, so the page's own inline variables (the sidebar's
 // --side-w) are never touched (break-it). theme-boot.js carries the same pattern; tests/sprint-check-theme.js keeps
