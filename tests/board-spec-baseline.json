@@ -662,6 +662,17 @@
       "failed_runs": {
         "webkit": "1/1"
       }
+    },
+    {
+      "title": "ticket modal polish (t-612f) > Demo/UX is a green switch and the Codex note is gone",
+      "browsers": [
+        "chromium"
+      ],
+      "ticket": "t-5989",
+      "reason": "30 s chromium timeout in a full run (t-4fa5, 2026-10-14); passed alone 3/3 on the branch and 3/3 on main 45c1ac0c in 5.7-6.1 s",
+      "failed_runs": {
+        "chromium": "1/1"
+      }
     }
   ],
   "skipped": []
