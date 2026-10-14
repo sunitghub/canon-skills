@@ -673,6 +673,17 @@
       "failed_runs": {
         "chromium": "1/1"
       }
+    },
+    {
+      "title": "cockpit leave-session confirm (t-f6b6) > a forged ended message not actually from the iframe is ignored",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-5989",
+      "reason": "30 s webkit timeout in a full run (t-4fa5, 2026-10-14), not an accepted forged message; passed alone 3/3 on the branch and 3/3 on main 45c1ac0c in 2.7-3.0 s",
+      "failed_runs": {
+        "webkit": "1/1"
+      }
     }
   ],
   "skipped": []
