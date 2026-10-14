@@ -695,6 +695,17 @@
       "failed_runs": {
         "webkit": "1/1"
       }
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > cross-project Sessions row (t-2d2e) > t-3c9a: an Agents row opens Open / Reap now / Kill by right-click or Shift+F10; Reap now is off unless idle",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-5989",
+      "reason": "30 s webkit page.goto load timeout in a full run (t-f889, 2026-10-14); passed alone 3/3 on the branch and 3/3 on main 3f183589",
+      "failed_runs": {
+        "webkit": "1/1"
+      }
     }
   ],
   "skipped": []
