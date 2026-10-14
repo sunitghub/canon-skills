@@ -31,7 +31,7 @@ while [ $# -gt 0 ]; do
     --classify) CLASSIFY=1; shift ;;
     --solo-runs) SOLO_RUNS="$2"; shift 2 ;;
     --base) BASE="$2"; shift 2 ;;
-    -h|--help) sed -n '2,20p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    -h|--help) sed -n '2,17p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "run-board-spec: unknown option $1" >&2; exit 2 ;;
   esac
 done
