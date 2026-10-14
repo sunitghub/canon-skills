@@ -125,13 +125,17 @@ RBASE="$(git -C "$R" rev-parse HEAD)"
 tsh() { set +e; out="$(cd "$R" && PATH="$WORK/bin" bash scripts/test.sh "$@" 2>&1)"; rc=$?; set -e; }
 tsh --changed
 assert_eq 0 "$rc"; assert_contains "$out" "PARTIAL RUN (--changed): 0 changed path(s) since ${RBASE:0:8}, 17 suite(s) known"
-assert_contains "$out" "nothing changed outside the evidence-neutral docs; no suite to run"; assert_eq "" "$(leftovers)"
+assert_contains "$out" "test.sh --changed: nothing changed outside the evidence-neutral docs; no suite to run"; assert_eq "" "$(leftovers)"
+tsh --list; assert_eq 0 "$rc"; assert_eq 17 "$(printf '%s\n' "$out" | wc -l | tr -d ' ')"; [[ "$out" != *"==>"* ]] || fail "--list printed a run line: $out"   # go and node absent
 echo more >> "$R/tools/alpha.sh"; git -C "$R" commit -qam alpha
 tsh --changed
 assert_eq 0 "$rc"; assert_contains "$out" "PARTIAL RUN (--changed): 1 changed path(s) since ${RBASE:0:8}"
 assert_contains "$out" "==> tests/a.sh"$'\n'"a-ran"; assert_contains "$out" "==> tests/b.sh skipped (--changed)"
 [[ "$out" != *"b-ran"* ]] || fail "test.sh --changed ran a suite it skipped"
-assert_contains "$out" "tools/sprint-check-go skipped (go absent)"; assert_contains "$out" "tests/sprint-check-gherkin.js skipped (node absent)"
+for skipped_line in "==> tools/sprint-check-go skipped (go absent)" "==> tools/sprint-headless-json-go skipped (go absent)" \
+  "==> tools/cockpit-daemon skipped (go absent)" "==> tests/sprint-check-gherkin.js skipped (node absent)"; do
+  assert_eq 1 "$(printf '%s\n' "$out" | grep -cxF "$skipped_line")"           # once: never from the dry pass
+done
 assert_contains "$out" "PARTIAL RUN (--changed): ran 1, skipped 1 — not a close stamp"; assert_eq "" "$(leftovers)"
 tsh --changed "$RBASE"; assert_eq 0 "$rc"; assert_contains "$out" "ran 1, skipped 1"     # an explicit base
 tsh --changed HEAD; assert_eq 0 "$rc"; assert_contains "$out" "0 changed path(s)"         # nothing since HEAD

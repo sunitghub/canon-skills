@@ -137,8 +137,7 @@ suite() {
   "$@"
   TIMES+=("$((SECONDS - CURRENT_T0)) $label"); RAN=$((RAN + 1)); CURRENT=""
 }
-print_timings() {
-  local rc=$?
+print_timings() {   # an EXIT trap: the run's own exit status stands, whatever this returns
   if [[ -n "$CURRENT" ]]; then TIMES+=("$((SECONDS - CURRENT_T0)) $CURRENT (failed)"); fi
   if (( ${#TIMES[@]} )); then
     printf '\n== suite times (s), in run order\n'; printf '%s\n' "${TIMES[@]}"
@@ -147,7 +146,6 @@ print_timings() {
   fi
   if (( CHANGED )); then printf 'PARTIAL RUN (--changed): ran %s, skipped %s — not a close stamp\n' "$RAN" "$SKIPPED"; fi
   if declare -F select_cleanup >/dev/null; then select_cleanup; fi
-  return "$rc"
 }
 go_board() { (cd "$ROOT" && GO111MODULE=off go test ./tools/sprint-check-go); }
 go_headless_json() { (cd "$ROOT" && GO111MODULE=off go test ./tools/sprint-headless-json-go); }

@@ -403,7 +403,7 @@ grep -qF 'OUT="$(cd "$OUT" && pwd -P)"' "$ROOT/tests/run-board-spec.sh" || fail 
 reset_repo; mkdir -p scripts; printf 'echo "ran $*"\n' > scripts/test.sh; git add scripts; git commit -qm runner
 for form in "scripts/test.sh --changed" "bash scripts/test.sh --changed main" "bash ./scripts/test.sh --changed" "$REPO/scripts/test.sh --changed"; do
   # shellcheck disable=SC2086
-  ev stamp "$ID" partial -- $form; assert_eq 125 "$code"; assert_contains "$out" "is a partial run, never a close stamp"
+  ev stamp "$ID" partial -- $form; assert_eq 125 "$code"; assert_contains "$out" "scripts/test.sh --changed is a partial run, never a close stamp"
   [[ ! -e "$ED/partial.log" ]] || fail "evidence: a refused --changed stamp wrote a log ($form)"
 done
 ev stamp "$ID" full -- bash scripts/test.sh; assert_eq 0 "$code"                          # the full run still stamps
