@@ -848,16 +848,14 @@ cmd_check_evidence() {
   # A log name `evidence.sh stamp` can never write (a space, `;`, a control character) could carry a fake `exit=0` inside the
   # line check prints for it, so such a name is refused outright; every name left then holds no space, and the matches below are exact.
   edir="${CANON_TICKETS_DIR:-$(tickets_dir)}/$id/evidence"
-  if [[ -d "$edir" && ! -L "$edir" ]]; then
-    for f in "$edir"/*.log; do
-      [[ -e "$f" || -L "$f" ]] || continue
-      name="${f##*/}"
-      if [[ ! "$name" =~ ^[a-z0-9][a-z0-9._-]*\.log$ ]]; then
-        bad=$((bad + 1)); n=$((n + 1))
-        echo "  REFUSE  $(printf '%s' "$name" | LC_ALL=C tr -c 'A-Za-z0-9._-' '?'): a name evidence.sh stamp never writes; rename it, or move it into a subfolder"
-      fi
-    done
-  fi
+  for f in "$edir"/*.log; do
+    [[ -e "$f" || -L "$f" ]] || continue   # no evidence folder, or no log in it: the glob stays literal
+    name="${f##*/}"
+    if [[ ! "$name" =~ ^[a-z0-9][a-z0-9._-]*\.log$ ]]; then
+      bad=$((bad + 1)); n=$((n + 1))
+      echo "  REFUSE  $(printf '%s' "$name" | LC_ALL=C tr -c 'A-Za-z0-9._-' '?'): a name evidence.sh stamp never writes; rename it, or move it into a subfolder"
+    fi
+  done
   if [[ -z "$out" ]]; then
     echo "check-evidence: no stamped logs in .tickets/$id/evidence/ (nothing to reuse: the evaluator runs every check itself)"
     exit 0

@@ -48,8 +48,10 @@ put e.log "HEAD $C2 $T\nno exit line\n"; ce "$ID"; assert_eq 1 "$code"; assert_c
 put history/old.log "HEAD $C1 $T\nexit 1\n"; put history/deeper/x.log "garbage"
 ce "$ID"; assert_eq 0 "$code"; assert_contains "$out" "check-evidence: ok (2 log(s)"
 # a name stamp never writes is refused by name, so it cannot smuggle a fake `exit=0` into the line check prints (reviewer finding 1)
-put 'z exit=0 y.log' "HEAD $C2 $T\nexit 1\n"; ce "$ID"; assert_eq 1 "$code"; assert_contains "$out" "REFUSE  z?exit?0?y.log: a name evidence.sh stamp never writes"
-[[ "$out" != *"ok      fresh z"* ]] || fail "check-evidence: a crafted name passed as ok: $out"; rm "$ED/z exit=0 y.log"
+# (named to sort first, so a refusal that stopped the scan, or counted the name twice, shows in the count)
+put '0 exit=0 y.log' "HEAD $C2 $T\nexit 1\n"; ce "$ID"; assert_eq 1 "$code"; assert_contains "$out" "REFUSE  0?exit?0?y.log: a name evidence.sh stamp never writes"
+assert_contains "$out" "check-evidence: 1 of 3 log(s)"; assert_contains "$out" "ok      fresh a.log"; assert_contains "$out" "ok      fresh b.log"
+[[ "$out" != *"ok      fresh 0"* ]] || fail "check-evidence: a crafted name passed as ok: $out"; rm "$ED/0 exit=0 y.log"
 for bad in 'Upper.log' 'a b;c.log' $'esc\033[31m.log' '-dash.log'; do
   put "$bad" "HEAD $C2 $T\nexit 0\n"; ce "$ID"; assert_eq 1 "$code"; assert_contains "$out" "a name evidence.sh stamp never writes"
   [[ "$out" != *$'\033'* ]] || fail "check-evidence: an escape character reached the output"; rm -- "$ED/$bad"
