@@ -842,16 +842,30 @@ cmd_check_review_notes() {
 # `covered`; logs kept for history or produced off-tree belong in a subfolder of evidence/, which check never scans. Read-only.
 # Exit 0 ok, 1 refused (each log named with how to fix it), 2 usage or a failed check.
 cmd_check_evidence() {
-  local id="${1:-}" out line bad=0 n=0
+  local id="${1:-}" out line bad=0 n=0 edir f name
   [[ "$id" =~ ^t-[0-9a-f]{4}$ ]] || { echo "usage: sprint check-evidence <ticket-id>" >&2; exit 2; }
   out="$("$SCRIPT_DIR/evidence.sh" check "$id" 2>&1)" || { echo "check-evidence: evidence.sh check failed: $out" >&2; exit 2; }
+  # A log name `evidence.sh stamp` can never write (a space, `;`, a control character) could carry a fake `exit=0` inside the
+  # line check prints for it, so such a name is refused outright; every name left then holds no space, and the matches below are exact.
+  edir="${CANON_TICKETS_DIR:-$(tickets_dir)}/$id/evidence"
+  if [[ -d "$edir" && ! -L "$edir" ]]; then
+    for f in "$edir"/*.log; do
+      [[ -e "$f" || -L "$f" ]] || continue
+      name="${f##*/}"
+      if [[ ! "$name" =~ ^[a-z0-9][a-z0-9._-]*\.log$ ]]; then
+        bad=$((bad + 1)); n=$((n + 1))
+        echo "  REFUSE  $(printf '%s' "$name" | LC_ALL=C tr -c 'A-Za-z0-9._-' '?'): a name evidence.sh stamp never writes; rename it, or move it into a subfolder"
+      fi
+    done
+  fi
   if [[ -z "$out" ]]; then
     echo "check-evidence: no stamped logs in .tickets/$id/evidence/ (nothing to reuse: the evaluator runs every check itself)"
     exit 0
   fi
   while IFS= read -r line; do
+    [[ "$line" =~ ^[a-z]+\ ([^\ ]+)\  ]] && [[ ! "${BASH_REMATCH[1]}" =~ ^[a-z0-9][a-z0-9._-]*\.log$ ]] && continue   # refused above by name
     n=$((n + 1))
-    if [[ "$line" =~ ^fresh\ [^\ ]+\ exit=0\  || "$line" =~ ^covered\  ]]; then echo "  ok      $line"
+    if [[ "$line" =~ ^fresh\ [a-z0-9][a-z0-9._-]*\.log\ exit=0\ \( || "$line" =~ ^covered\ [a-z0-9][a-z0-9._-]*\.log\ exit=[0-9?]+\ \( ]]; then echo "  ok      $line"
     else bad=$((bad + 1)); echo "  REFUSE  $line"; fi
   done <<< "$out"
   if (( bad )); then

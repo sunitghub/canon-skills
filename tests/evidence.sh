@@ -250,7 +250,7 @@ reset_repo
 for n in LEARNINGS.md LEARNINGS-archive.md DECISIONS.md DECISIONS-archive.md HANDOFF.md PROMOTED.md subagent-runs.jsonl; do
   # tests/subagent-log-cli.sh reads canon's own audit log only to assert the test did NOT write to it, so a gate's real entries cannot
   # change its result; any other reader fails here.
-  hits="$(grep -nE "\\\$\{?(ROOT|REPO_ROOT|CANON_ROOT)\}?/(\.claude/)?${n//./\\.}" "$ROOT"/tests/*.sh "$ROOT"/tests/*.js "$ROOT"/scripts/*.sh 2>/dev/null | grep -v -e '^[^:]*tests/evidence\.sh:' -e '^[^:]*tests/subagent-log-cli\.sh:' || true)"
+  hits="$(grep -nE "(ROOT|REPO_ROOT|CANON_ROOT)[^A-Za-z0-9_]{1,12}(\.claude/)?${n//./\\.}" "$ROOT"/tests/*.sh "$ROOT"/tests/*.js "$ROOT"/scripts/*.sh 2>/dev/null | grep -v -e '^[^:]*tests/evidence\.sh:' -e '^[^:]*tests/subagent-log-cli\.sh:' || true)"
   [[ -z "$hits" ]] || fail "evidence: a test reads the neutral path $n from the repo root, so it cannot be neutral: $hits"
 done
 
@@ -363,7 +363,7 @@ covered_setup; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-ru
 cp "$ED/full.log" "$WORK/full.orig"
 bad=('run-board-spec: report dir ' "run-board-spec: report dir $REPO/$D/.." "run-board-spec: report dir $REPO/$D/../.." 'run-board-spec: report dir /' "run-board-spec: report dir $REPO/.tickets/t-ffff/evidence/full-reports"
      "run-board-spec: report dir $REPO/$D/" "run-board-spec: report dir  $REPO/$D" "run-board-spec: report dir $REPO/./$D" 'run-board-spec: report board-spec-webkit-run1.json sha256 0000000000000000000000000000000000000000000000000000000000000000'
-     'run-board-spec: report ../board-spec-webkit-run1.json sha256 aaaa' "run-board-spec: report dir $(printf 'x%.0s' $(seq 1 3000))" $'run-board-spec: report dir \x01\x02' 'run-board-spec: report dir $(touch /tmp/pwned)')
+     'run-board-spec: report ../board-spec-webkit-run1.json sha256 aaaa' "run-board-spec: report dir $(printf 'x%.0s' $(seq 1 3000))" $'run-board-spec: report dir \x01\x02' "run-board-spec: report dir \$(touch $WORK/pwned)")
 for i in $(seq 1 120); do
   pick="${bad[$((RANDOM % ${#bad[@]}))]}"
   { head -n2 "$WORK/full.orig"; grep -v '^run-board-spec: report dir' "$WORK/full.orig" | sed -n '3,$p'; printf '%s\n' "$pick"; } > "$ED/full.log"
@@ -372,7 +372,7 @@ for i in $(seq 1 120); do
   ev check "$ID"; assert_eq 0 "$code"
   [[ "$out" != *"covered full.log"* ]] || fail "evidence: hostile run log made it covered: $pick"
 done
-[[ ! -e /tmp/pwned ]] || fail "evidence: a report dir line was executed"
+[[ ! -e "$WORK/pwned" ]] || fail "evidence: a report dir line was executed"
 reset_repo
 # the real runner prints exactly the lines check parses
 grep -qF 'echo "run-board-spec: report dir $OUT"' "$ROOT/tests/run-board-spec.sh" || fail "evidence: tests/run-board-spec.sh no longer prints its report dir line"

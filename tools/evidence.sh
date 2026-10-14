@@ -5,8 +5,8 @@
 # stamp runs the command and writes .tickets/<id>/evidence/<name>.log: line 1 `HEAD <sha> <UTC time>`, line 2 `$ <command>`, the combined
 # output, and a last line `exit <rc>` (never the command's own output: ours is appended after it). It exits with the command's own code.
 # It refuses, running nothing and writing nothing, with 125 (like `timeout`, so a command's own exit 2 is not mistaken for a refusal) when
-# tracked files are modified (a stamp names the commit that was tested, so the tree must BE that commit; untracked files and .tickets/ are
-# ignored), and again, writing nothing, if tracked files changed while the command ran.
+# tracked files are modified (a stamp names the commit that was tested, so the tree must BE that commit; untracked files, .tickets/ and
+# the evidence-neutral close-time docs below are ignored), and again, writing nothing, if tracked files changed while the command ran.
 # check classifies every evidence/*.log (top level only: subfolders hold history) against a graded head (default HEAD), one line each:
 #   fresh <file> exit=<N>      line 1 is exactly `HEAD <sha> <time>` (nothing after the time) and the sha is the graded head or an ancestor with no
 #                              tracked file changed since, committed or not, other than the evidence-neutral paths below

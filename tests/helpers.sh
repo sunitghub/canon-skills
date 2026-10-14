@@ -119,6 +119,11 @@ _etime_to_seconds() {
   echo $(( 10#$days*86400 + 10#$hh*3600 + 10#$mm*60 + 10#$ss ))
 }
 
+# How ps shows a `python3 -` stub: as typed, as a versioned or full path, or (t-3f04) as a framework build's re-exec into Python.app,
+# `.../Python.app/Contents/MacOS/Python -`, which Homebrew's Python 3.15 does. Anchored on a path boundary and the lone `-`, so a
+# `python3 script.py` or a `mypython3 -` never matches; the age and cwd gates below still decide what is killed.
+STUB_PROC_RE='(^|/)(python3(\.[0-9]+)?|Python) -$'
+
 # sweep_stale_stub_processes [max_age_seconds] [root] — kills any bare
 # `python3 -` process (t-2a71: the test-stub-daemon pattern spawned by
 # `exec python3 - <<PY ... PY`, indistinguishable from anything else by argv
@@ -133,10 +138,6 @@ _etime_to_seconds() {
 # run's own live stub. On any doubt, this skips rather than kills — a missed
 # sweep just means "still leaked, try again next run" (recoverable); a
 # wrongful kill destroys someone's in-progress work (not recoverable).
-# How ps shows a `python3 -` stub: as typed, as a versioned or full path, or (t-3f04) as a framework build's re-exec into Python.app,
-# `.../Python.app/Contents/MacOS/Python -`, which Homebrew's Python 3.15 does. Anchored on a path boundary and the lone `-`, so a
-# `python3 script.py` or a `mypython3 -` never matches; the age and cwd gates below still decide what is killed.
-STUB_PROC_RE='(^|/)(python3(\.[0-9]+)?|Python) -$'
 sweep_stale_stub_processes() {
   command -v pgrep >/dev/null 2>&1 && command -v lsof >/dev/null 2>&1 || return 0
   local max_age="${1:-300}" root="${2:-$ROOT}"
