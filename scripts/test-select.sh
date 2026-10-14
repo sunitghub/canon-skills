@@ -42,7 +42,7 @@ select_init() {
     cat "$SELECT_TERMS.one" >> "$SELECT_TERMS"
     mapped=0
     if grep -qxF -- "$c" "$labels"; then mapped=1; fi   # a changed suite runs itself (a whole line: tests/c is not tests/c.js)
-    while IFS= read -r d; do if [[ -d "$root/$d" && "$c" == "$d"/* ]]; then mapped=1; fi; done < "$labels"   # a Go package label is its dir
+    while IFS= read -r d; do if [[ "$c" == "$d"/* ]]; then mapped=1; fi; done < "$labels"   # inside a label: the Go package dir
     if (( ! mapped )); then   # mapped only when a suite test.sh really runs is selected by it
       while IFS= read -r l; do
         if [[ -f "$root/$l" ]] && grep -qE -f "$SELECT_TERMS.one" -- "$root/$l"; then mapped=1; break; fi

@@ -61,7 +61,7 @@ if [[ "$mode" == stamp ]]; then
   for a in "$@"; do
     if [[ "$a" == scripts/test.sh || "$a" == */scripts/test.sh ]]; then saw_test=1
     elif (( saw_test )) && [[ "$a" == --changed ]]; then refuse "scripts/test.sh --changed is a partial run, never a close stamp: stamp the full scripts/test.sh"
-    elif [[ " $a " =~ [\ /]scripts/test\.sh[\ \;\&\|](.*[\ ])?--changed[\ \;\&\|] ]]; then   # wrapped in one argument: bash -c '...'
+    elif [[ " $a " =~ [\ /]scripts/test\.sh\ (.*[\ ])?--changed[\ \;\&\|] ]]; then   # wrapped in one argument: bash -c '...'
       refuse "scripts/test.sh --changed is a partial run, never a close stamp: stamp the full scripts/test.sh"; fi
   done
   head_sha="$(git -C "$root" rev-parse HEAD)"
