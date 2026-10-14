@@ -25,13 +25,19 @@ select_init() {
     git -C "$root" -c core.quotepath=off diff --name-only --no-renames HEAD -- . "${NEUTRAL[@]}"; } | sort -u)"
   SELECT_TERMS="$(mktemp "${TMPDIR:-/tmp}/test-select.XXXXXX")"
   [[ -n "$SELECT_CHANGED" ]] || return 0
+  # File names that more than one tracked file has (main.go, README.md): such a name is matched by its path, never alone.
+  git -C "$root" ls-files | awk -F/ '{print $NF}' | sort | uniq -d > "$SELECT_TERMS.dups"
   while IFS= read -r c; do
-    # The terms for one change: its file name, and each tool or script whose code names it (one level up; a doc that names a tool does
-    # not run it). A referrer is matched by its file name when that has an extension (epsilon.sh), else by its path: a bare name such as
-    # `sprint` is in nearly every test. Every term matches as a whole word (select_terms_re).
-    { printf '%s\n' "${c##*/}"
-      git -C "$root" grep -lF -e "${c##*/}" -- tools scripts agents ':(exclude)*.md' ':(exclude)*.json' 2>/dev/null \
-        | awk -F/ '{ if ($NF ~ /\./) print $NF; else print $0 }' || true; } | select_terms_re > "$SELECT_TERMS.one"
+    # The terms for one change: the file, and each tool or script whose code names it (one level up). A doc gets no referrers: code
+    # that names a doc does not run it, and neither does a doc that names a tool (*.md and *.json never count as referrers). Referrers
+    # are found by the bare file name, since code calls a sibling by name ("$SCRIPT_DIR/evidence.sh"); over-including one is safe. Every
+    # term is a file name when that name is unique in the repo and has an extension, else its path (a bare `sprint` or a shared
+    # `main.go` is in too many tests), and matches as a whole word (select_terms_re).
+    { select_term "$c"
+      if [[ "$c" != *.md ]]; then
+        git -C "$root" grep -lF -e "${c##*/}" -- tools scripts agents ':(exclude)*.md' ':(exclude)*.json' 2>/dev/null \
+          | while IFS= read -r r; do select_term "$r"; done || true
+      fi; } | select_terms_re > "$SELECT_TERMS.one"
     cat "$SELECT_TERMS.one" >> "$SELECT_TERMS"
     mapped=0
     if grep -qxF -- "$c" "$labels"; then mapped=1; fi   # a changed suite runs itself (a whole line: tests/c is not tests/c.js)
@@ -57,7 +63,13 @@ select_suite() {
   grep -qE -f "$SELECT_TERMS" -- "$SELECT_ROOT/$label"   # an empty term file (nothing changed) matches nothing
 }
 
+# select_term <path> — the term for a path: its file name when unique in the repo and with an extension, else the path itself.
+select_term() {
+  local n="${1##*/}"
+  if [[ "$n" == *.* ]] && ! grep -qxF -- "$n" "$SELECT_TERMS.dups"; then printf '%s\n' "$n"; else printf '%s\n' "$1"; fi
+}
+
 # select_terms_re — each term on stdin as a whole-word extended regex: escaped, and not part of a longer name on either side.
 select_terms_re() { sed -e 's/[][\.*^$+?(){}|]/\\&/g' -e 's/^/(^|[^A-Za-z0-9_.-])/' -e 's/$/($|[^A-Za-z0-9_-])/'; }
 
-select_cleanup() { [[ -z "${SELECT_TERMS:-}" ]] || rm -f "$SELECT_TERMS" "$SELECT_TERMS.one"; }
+select_cleanup() { [[ -z "${SELECT_TERMS:-}" ]] || rm -f "$SELECT_TERMS" "$SELECT_TERMS.one" "$SELECT_TERMS.dups"; }
