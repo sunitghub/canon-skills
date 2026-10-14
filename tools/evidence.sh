@@ -75,6 +75,8 @@ if [[ "$mode" == stamp ]]; then
   fi
   if [[ -s "$tmp" && -n "$(tail -c1 "$tmp")" ]]; then printf '\n' >> "$tmp"; fi
   printf 'exit %s\n' "$rc" >> "$tmp"
+  # t-2633: however the command was spelled (quoted flag, `cd scripts && bash test.sh --changed`), a --changed run says so in its output
+  if LC_ALL=C grep -aq '^PARTIAL RUN (--changed)' -- "$tmp"; then refuse "the output is a scripts/test.sh --changed run (PARTIAL RUN), never a close stamp; nothing was written"; fi
   chmod 644 "$tmp"; mv -f "$tmp" "$log"; trap - EXIT   # mktemp makes it 0600; the other logs are 0644
   echo "evidence: wrote $log (HEAD ${head_sha:0:7}, exit $rc)" >&2
   exit "$rc"
@@ -118,6 +120,9 @@ classify_one() {
   # a space or a %q-escaped space (\ ) separates the runner from the flag, so `bash -c scripts/test.sh\ --changed` counts too
   if [[ "$cmdline" == '$ '* && " ${cmdline:2} " =~ [\ /]scripts/test\.sh(\ |\\\ )(.*(\ |\\\ ))?--changed(\ |\\\ |\\;) ]]; then
     KIND=stale; LINE="stale $base exit=$CODE (HEAD ${sha:0:7}; a scripts/test.sh --changed run is partial, never the close stamp)$shown"; return 0
+  fi
+  if LC_ALL=C grep -aq '^PARTIAL RUN (--changed)' -- "$f"; then
+    KIND=stale; LINE="stale $base exit=$CODE (HEAD ${sha:0:7}; its output is a scripts/test.sh --changed run, never the close stamp)$shown"; return 0
   fi
   KIND=stale
   full="$(git -C "$root" rev-parse --verify -q "$sha^{commit}" 2>/dev/null)" || { LINE="stale $base exit=$CODE (unknown commit $sha)$shown"; return 0; }

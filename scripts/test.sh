@@ -199,6 +199,7 @@ if (( CHANGED )); then
   n_changed="$(printf '%s' "$SELECT_CHANGED" | grep -c . || true)"
   printf 'PARTIAL RUN (--changed): %s changed path(s) since %s, %s suite(s) known\n' "$n_changed" "${SELECT_BASE:0:8}" "${#LABELS[@]}"
   if (( SELECT_UNTRACKED )); then echo "test.sh --changed: $SELECT_UNTRACKED untracked path(s) not seen; git add -N a new file to include it"; fi
+  echo "test.sh --changed: a fast pass by text search; a suite that builds paths at run time can be missed, so only the full run is evidence"
   if [[ -z "$SELECT_CHANGED" ]]; then echo "test.sh --changed: nothing changed outside the evidence-neutral docs; no suite to run (untracked files are not seen: git add -N them)"; select_cleanup; exit 0; fi
   if [[ -n "$SELECT_FULL" ]]; then echo "test.sh --changed: running every suite: $SELECT_FULL"; fi
 fi

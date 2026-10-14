@@ -35,9 +35,11 @@ printf 'echo the runner is fine\n' > tests/i.sh                      # only the 
 printf 'exec delta2.sh\n' > tools/runner; echo d2 > tools/delta2.sh # tools/runner (no extension) names delta2.sh
 echo a > tools/x/big-alpha.sh; echo a > tools/y/big-alpha.sh        # a shared name that contains the unique name alpha.sh
 printf 'source "$D/alpha.sh"\n' > tests/j.sh                         # names alpha.sh by its (unique) file name only
+mkdir -p skills/one skills/two; echo s > skills/one/SKILL.md; echo s > skills/two/SKILL.md   # a shared name
+printf 'file="$ROOT/skills/$skill/SKILL.md"\n' > tests/s.sh           # builds the path: only the file name is spelled out
 git add -A && git commit -qm base
 BASE="$(git rev-parse HEAD)"
-LABELS="$WORK/labels"; printf '%s\n' tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh tests/g.sh tests/h.sh tests/i.sh tests/j.sh > "$LABELS"
+LABELS="$WORK/labels"; printf '%s\n' tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh tests/g.sh tests/h.sh tests/i.sh tests/j.sh tests/s.sh > "$LABELS"
 
 source "$REPO/scripts/test-select.sh"
 selected() {   # selected <base>: the labels select_suite picks, space-joined, or FULL:<reason>
@@ -58,7 +60,9 @@ assert_eq "tests/c.js tests/kappa.js" "$(selected "$BASE")"                     
 reset; echo '// x' >> tests/c.js
 assert_eq "tests/c.js" "$(selected "$BASE")"                                     # a changed suite runs itself
 reset; echo '// x' >> tools/sprint-check-go/main.go
-assert_eq "tools/sprint-check-go" "$(selected "$BASE")"                          # a Go package by its directory; not the suite naming the other main.go
+assert_eq "tools/sprint-check-go tests/g.sh" "$(selected "$BASE")"               # its Go package, and (safe side) a suite naming any main.go
+reset; echo more >> skills/one/SKILL.md
+assert_eq "tests/s.sh" "$(selected "$BASE")"                                     # a shared name a suite only spells as a file name (t-2633 eval)
 reset; echo more >> tools/delta2.sh
 assert_eq "tests/h.sh" "$(selected "$BASE")"                                     # an extensionless referrer matches by path, not by the word
 reset; echo more >> LEARNINGS.md; git commit -qam learnings
@@ -66,20 +70,20 @@ assert_eq "" "$(selected "$BASE")"                                              
 reset; echo more >> tools/zeta.sh
 assert_eq "tests/e.sh" "$(selected "$BASE")"                                     # one level up, by file name only
 reset; echo k > tests/kappa; git add tests/kappa; git commit -qm kappa
-assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh tests/g.sh tests/h.sh tests/i.sh tests/j.sh]" "$(selected "$BASE")"   # tests/kappa is not tests/kappa.js
+assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh tests/g.sh tests/h.sh tests/i.sh tests/j.sh tests/s.sh]" "$(selected "$BASE")"   # tests/kappa is not tests/kappa.js
 reset; echo more >> tools/alpha.sh; select_init "$REPO" "$BASE" "$LABELS"
 if select_suite tests/ghost.sh 2> "$WORK/ghost.err"; then fail "a label with no file was selected"; fi
 assert_eq "" "$(cat "$WORK/ghost.err")"; select_cleanup                         # and no grep error for it
 reset; echo more >> tools/orphan.sh
-assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh tests/g.sh tests/h.sh tests/i.sh tests/j.sh]" "$(selected "$BASE")"   # named by nothing: everything
+assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh tests/g.sh tests/h.sh tests/i.sh tests/j.sh tests/s.sh]" "$(selected "$BASE")"   # named by nothing: everything
 reset; echo more >> tests/not-a-suite.sh
-assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh tests/g.sh tests/h.sh tests/i.sh tests/j.sh]" "$(selected "$BASE")"   # in tests/ but no suite: everything
+assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh tests/g.sh tests/h.sh tests/i.sh tests/j.sh tests/s.sh]" "$(selected "$BASE")"   # in tests/ but no suite: everything
 reset; echo more >> tools/alpha.sh; echo more >> tools/orphan.sh
-assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh tests/g.sh tests/h.sh tests/i.sh tests/j.sh]" "$(selected "$BASE")"   # one unmapped path is enough
+assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh tests/g.sh tests/h.sh tests/i.sh tests/j.sh tests/s.sh]" "$(selected "$BASE")"   # one unmapped path is enough
 reset; echo new > tools/untracked.sh
 assert_eq "" "$(selected "$BASE")"                                               # untracked files are not seen ...
 git add -N tools/untracked.sh
-assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh tests/g.sh tests/h.sh tests/i.sh tests/j.sh]" "$(selected "$BASE")"   # ... until intent-added
+assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh tests/g.sh tests/h.sh tests/i.sh tests/j.sh tests/s.sh]" "$(selected "$BASE")"   # ... until intent-added
 reset
 set +e; out="$(selected not-a-ref 2>&1)"; rc=$?; set -e
 assert_eq 2 "$rc"; assert_contains "$out" "test.sh --changed: 'not-a-ref' is not a commit"
@@ -142,6 +146,7 @@ echo more >> "$R/tools/alpha.sh"; git -C "$R" commit -qam alpha
 tsh --changed
 assert_eq 0 "$rc"; assert_contains "$out" "PARTIAL RUN (--changed): 1 changed path(s) since ${RBASE:0:8}"
 assert_contains "$out" "==> tests/a.sh"$'\n'"a-ran"; assert_contains "$out" "==> tests/b.sh skipped (--changed)"
+assert_contains "$out" "test.sh --changed: a fast pass by text search; a suite that builds paths at run time can be missed, so only the full run is evidence"
 [[ "$out" != *"b-ran"* ]] || fail "test.sh --changed ran a suite it skipped"
 for skipped_line in "==> tools/sprint-check-go skipped (go absent)" "==> tools/sprint-headless-json-go skipped (go absent)" \
   "==> tools/cockpit-daemon skipped (go absent)" "==> tests/sprint-check-gherkin.js skipped (node absent)"; do

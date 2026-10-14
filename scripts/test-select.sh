@@ -29,12 +29,13 @@ select_init() {
   # File names that more than one tracked file has (main.go, README.md): such a name is matched by its path, never alone.
   git -C "$root" ls-files | awk -F/ '{print $NF}' | sort | uniq -d > "$SELECT_TERMS.dups"
   while IFS= read -r c; do
-    # The terms for one change: the file, and each tool or script whose code names it (one level up). A doc gets no referrers: code
+    # The terms for one change: the file's name, and each tool or script whose code names it (one level up). A doc gets no referrers: code
     # that names a doc does not run it, and neither does a doc that names a tool (*.md and *.json never count as referrers). Referrers
-    # are found by the bare file name, since code calls a sibling by name ("$SCRIPT_DIR/evidence.sh"); over-including one is safe. Every
-    # term is a file name when that name is unique in the repo and has an extension, else its path (a bare `sprint` or a shared
-    # `main.go` is in too many tests), and matches as a whole word (select_terms_re).
-    { select_term "$c"
+    # are found by the bare file name, since code calls a sibling by name ("$SCRIPT_DIR/evidence.sh"); over-including one is safe. A
+    # referrer's term is its file name when that name is unique and has an extension, else its path (a bare `sprint` is in nearly every
+    # test). Every term matches as a whole word (select_terms_re). Known limit: a suite that builds a path from pieces or lists a
+    # directory (path.join(app, 'static') + readdir) is invisible to a text search; the full stamped run is the only evidence.
+    { printf '%s\n' "${c##*/}"   # the changed file by its name, even when shared: tests build such paths ("$ROOT/skills/$s/SKILL.md")
       if [[ "$c" != *.md ]]; then
         git -C "$root" grep -lF -e "${c##*/}" -- tools scripts agents ':(exclude)*.md' ':(exclude)*.json' 2>/dev/null \
           | while IFS= read -r r; do select_term "$r"; done || true

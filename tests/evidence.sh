@@ -400,7 +400,7 @@ grep -qF 'echo "run-board-spec: report ${r##*/} sha256 $h"' "$ROOT/tests/run-boa
 grep -qF 'OUT="$(cd "$OUT" && pwd -P)"' "$ROOT/tests/run-board-spec.sh" || fail "evidence: tests/run-board-spec.sh must print the resolved report dir"
 
 # --- t-2633: a scripts/test.sh --changed run is a partial fast pass, never the stamped evidence --------------------------------------
-reset_repo; mkdir -p scripts; printf 'echo "ran $*"\n' > scripts/test.sh; git add scripts; git commit -qm runner
+reset_repo; mkdir -p scripts; printf 'echo "ran $*"\nif [ "${1-}" = --changed ]; then echo "PARTIAL RUN (--changed): ran 1, skipped 1"; fi\n' > scripts/test.sh; git add scripts; git commit -qm runner
 for form in "scripts/test.sh --changed" "bash scripts/test.sh --changed main" "bash ./scripts/test.sh --changed" "$REPO/scripts/test.sh --changed"; do
   # shellcheck disable=SC2086
   ev stamp "$ID" partial -- $form; assert_eq 125 "$code"; assert_contains "$out" "scripts/test.sh --changed is a partial run, never a close stamp"
@@ -415,6 +415,10 @@ for wrapped in 'scripts/test.sh --changed' 'cd . && scripts/test.sh --changed ma
 done
 ev stamp "$ID" wrapped-ok -- bash -c 'bash scripts/test.sh --changedx'; assert_eq 0 "$code"     # not the flag
 ev stamp "$ID" wrapped-ok2 -- bash -c 'bash scripts/test.sh; echo --changed'; assert_eq 0 "$code"   # the flag belongs to another command
+for spelled in 'cd scripts && bash test.sh --changed' 'bash scripts/test.sh "--changed"' "bash scripts/test.sh	--changed"; do   # the output gives it away (eval finding)
+  ev stamp "$ID" spelled -- bash -c "$spelled"; assert_eq 125 "$code"; assert_contains "$out" "the output is a scripts/test.sh --changed run (PARTIAL RUN)"
+  [[ ! -e "$ED/spelled.log" ]] || fail "evidence: a --changed run spelled '$spelled' wrote a log"
+done
 C9="$(git rev-parse HEAD)"
 put hand.log "HEAD $C9 $T\n\$ scripts/test.sh --changed\nexit 0\n"; ev check "$ID"
 assert_contains "$out" "stale hand.log exit=0 (HEAD ${C9:0:7}; a scripts/test.sh --changed run is partial, never the close stamp)"
@@ -423,6 +427,9 @@ put hand3.log "HEAD $C9 $T\n\$ bash scripts/test.sh --changedx\nexit 0\n"; ev ch
 put hand4.log "HEAD $C9 $T\nnot a command line scripts/test.sh --changed\nexit 0\n"; ev check "$ID"; assert_contains "$out" "fresh hand4.log exit=0"   # line 2 is not a $ command
 put hand5.log "HEAD $C9 $T\n\$ bash -c scripts/test.sh\\\\ --changed\nexit 0\n"; ev check "$ID"; assert_contains "$out" "stale hand5.log exit=0"       # %q-escaped, wrapped
 put hand6.log "HEAD $C9 $T\n\$ bash -c scripts/test.sh\\\\ --list\nexit 0\n"; ev check "$ID"; assert_contains "$out" "fresh hand6.log exit=0"         # wrapped, not --changed
+put hand7.log "HEAD $C9 $T\n\$ bash -c cd\\\\ scripts\\\\ \\\\&\\\\&\\\\ bash\\\\ test.sh\\\\ --changed\nPARTIAL RUN (--changed): ran 1, skipped 1\nexit 0\n"; ev check "$ID"
+assert_contains "$out" "stale hand7.log exit=0 (HEAD ${C9:0:7}; its output is a scripts/test.sh --changed run, never the close stamp)"
+put hand8.log "HEAD $C9 $T\n\$ bash scripts/test.sh\n  PARTIAL RUN (--changed) quoted in a message, not at the start of a line\nexit 0\n"; ev check "$ID"; assert_contains "$out" "fresh hand8.log exit=0"
 reset_repo
 
 # --- the rules the evaluator reads stay in the docs: a later edit cannot drop the independence floor or the budget without failing here ---------------
