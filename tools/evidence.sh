@@ -7,9 +7,12 @@
 # It refuses, running nothing and writing nothing, with 125 (like `timeout`, so a command's own exit 2 is not mistaken for a refusal) when
 # tracked files are modified (a stamp names the commit that was tested, so the tree must BE that commit; untracked files and .tickets/ are
 # ignored), and again, writing nothing, if tracked files changed while the command ran.
-# check classifies every evidence/*.log against a graded head (default HEAD), one line each:
+# check classifies every evidence/*.log (top level only: subfolders hold history) against a graded head (default HEAD), one line each:
 #   fresh <file> exit=<N>      line 1 is exactly `HEAD <sha> <time>` (nothing after the time) and the sha is the graded head or an ancestor with no
-#                              tracked file outside .tickets/ changed since, committed or not (stricter than the stale-eval guard's allow-list)
+#                              tracked file changed since, committed or not, other than the evidence-neutral paths below
+#   covered <file> exit=<N>    t-a3d7: a tests/run-board-spec.sh log whose reports sit in a folder inside this evidence/ dir, stale only because
+#                              tests/board-spec-baseline.json changed since, and re-judged at the graded head by a fresh exit-0 log of
+#                              `node tests/board-spec-guard.js` over exactly those reports, each still matching the sha256 the run log printed
 #   stale <file> exit=<N>      stamped, but older with such changes, an unknown sha, or not an ancestor
 #   unstamped <file> exit=?    anything else: `# HEAD …`, `(uncommitted)`, `+wt`, no line 1, empty, binary, a symlink (never followed)
 # `exit=` is read from the LAST line only. Log content is never echoed beyond the sha, the time and a short sanitized `$` line. A stamp proves
@@ -37,8 +40,13 @@ tdir="${CANON_TICKETS_DIR:-$(tickets_dir)}"   # a plain clone has its own empty 
 [[ -d "$tdir/$id" && ! -L "$tdir/$id" ]] || die "no ticket folder $id under $tdir"
 edir="$tdir/$id/evidence"
 
-tracked_dirty() {   # tracked files (worktree or index) differ from HEAD, outside .tickets/
-  ! git -C "$root" diff --quiet HEAD -- . ':(exclude).tickets' 2>/dev/null
+# Evidence-neutral paths (t-a3d7): written at close, and read by no test (tests/evidence.sh greps the suite to prove it), so a change to
+# them cannot change what a stamped command saw. Repo root only. Narrower than the stale-eval guard's late-doc list in tools/sprint on
+# purpose: tests read the root AGENTS.md and CLAUDE.md, and dist/ holds built binaries.
+NEUTRAL=(':(exclude).tickets' ':(exclude,literal)LEARNINGS.md' ':(exclude,literal)LEARNINGS-archive.md' ':(exclude,literal)DECISIONS.md'
+  ':(exclude,literal)DECISIONS-archive.md' ':(exclude,literal)HANDOFF.md' ':(exclude,literal)PROMOTED.md' ':(exclude,literal).claude/subagent-runs.jsonl')
+tracked_dirty() {   # tracked files (worktree or index) differ from HEAD, outside the evidence-neutral paths
+  ! git -C "$root" diff --quiet HEAD -- . "${NEUTRAL[@]}" 2>/dev/null
 }
 
 if [[ "$mode" == stamp ]]; then
@@ -84,37 +92,112 @@ exit_re='^exit (0|[1-9][0-9]{0,2})$'
 safe() { printf '%s' "$1" | LC_ALL=C tr -c 'A-Za-z0-9._ /=:+,\\-' '?'; }
 
 shopt -s nullglob
-for f in "$edir"/*.log; do
+sha256_of() { if command -v sha256sum >/dev/null 2>&1; then sha256sum -- "$1" | cut -d' ' -f1; else shasum -a 256 -- "$1" | cut -d' ' -f1; fi; }
+line2_of() { head -c 16384 -- "$1" | LC_ALL=C tr -d '\000' | sed -n '2p' | tr -d '\r'; }   # a longer line 2 is cut, so it parses as nothing
+
+# classify_one <file> — sets LINE (the output line), KIND (its first word), CODE and BASEONLY (1 when the only non-neutral tracked change since
+# the stamp is tests/board-spec-baseline.json, the one case `covered` may lift). Called directly, never in $(...), so the globals survive.
+classify_one() {
+  local f="$1" first last sha when cmdline shown full names p list n more
+  BASEONLY=0; CODE="?"
   base="$(safe "${f##*/}")"
-  if [[ -L "$f" || ! -f "$f" ]]; then echo "unstamped $base exit=?"; continue; fi
+  if [[ -L "$f" || ! -f "$f" ]]; then KIND=unstamped; LINE="unstamped $base exit=?"; return 0; fi
   first="$(head -c 512 -- "$f" | LC_ALL=C tr -d '\000' | head -n1 | tr -d '\r')" || first=""   # `|| …`: head exiting early may SIGPIPE a writer, which pipefail would turn into a silent exit
   last="$(tail -c 256 -- "$f" | LC_ALL=C tr -d '\000' | tail -n1 | tr -d '\r')" || last=""
-  code="?"; if [[ "$last" =~ $exit_re ]]; then code="${BASH_REMATCH[1]}"; fi
-  if [[ ! "$first" =~ $stamp_re ]]; then echo "unstamped $base exit=?"; continue; fi
+  if [[ "$last" =~ $exit_re ]]; then CODE="${BASH_REMATCH[1]}"; fi
+  if [[ ! "$first" =~ $stamp_re ]]; then KIND=unstamped; CODE="?"; LINE="unstamped $base exit=?"; return 0; fi
   sha="${BASH_REMATCH[1]}"; when="${BASH_REMATCH[2]}"
   cmdline="$(head -c 512 -- "$f" | LC_ALL=C tr -d '\000' | sed -n '2p' | tr -d '\r')" || cmdline=""
   shown=""; if [[ "$cmdline" == '$ '* ]]; then shown=" cmd: $(safe "${cmdline:2:120}")"; fi
-  full="$(git -C "$root" rev-parse --verify -q "$sha^{commit}" 2>/dev/null)" || { echo "stale $base exit=$code (unknown commit $sha)$shown"; continue; }
+  SHOWN="$shown"; STAMP="${sha:0:7}"
+  KIND=stale
+  full="$(git -C "$root" rev-parse --verify -q "$sha^{commit}" 2>/dev/null)" || { LINE="stale $base exit=$CODE (unknown commit $sha)$shown"; return 0; }
   if [[ "$full" == "$graded" ]]; then
-    if (( wt_dirty )); then echo "stale $base exit=$code (HEAD ${sha:0:7}; tracked files are modified in the working tree since)$shown"
-    else echo "fresh $base exit=$code (HEAD ${sha:0:7} = graded, $when)$shown"; fi
-    continue
+    if (( wt_dirty )); then LINE="stale $base exit=$CODE (HEAD ${sha:0:7}; tracked files are modified in the working tree since)$shown"
+    else KIND=fresh; LINE="fresh $base exit=$CODE (HEAD ${sha:0:7} = graded, $when)$shown"; fi
+    return 0
   fi
   if ! git -C "$root" merge-base --is-ancestor "$full" "$graded" 2>/dev/null; then
-    echo "stale $base exit=$code (HEAD ${sha:0:7} is not an ancestor of ${graded:0:7})$shown"; continue
+    LINE="stale $base exit=$CODE (HEAD ${sha:0:7} is not an ancestor of ${graded:0:7})$shown"; return 0
   fi
-  if ! git -C "$root" diff --name-only -z --no-renames "$full" "$graded" -- . ':(exclude).tickets' > "$nfile" 2>/dev/null; then
-    echo "stale $base exit=$code (HEAD ${sha:0:7}; git could not compare it with ${graded:0:7})$shown"; continue
+  if ! git -C "$root" diff --name-only -z --no-renames "$full" "$graded" -- . "${NEUTRAL[@]}" > "$nfile" 2>/dev/null; then
+    LINE="stale $base exit=$CODE (HEAD ${sha:0:7}; git could not compare it with ${graded:0:7})$shown"; return 0
   fi
   names=(); while IFS= read -r -d '' p; do names+=("$p"); done < "$nfile"
   if [[ ${#names[@]} -eq 0 ]]; then
-    if (( wt_dirty )); then echo "stale $base exit=$code (HEAD ${sha:0:7}; tracked files are modified in the working tree since)$shown"
-    else echo "fresh $base exit=$code (HEAD ${sha:0:7}, only .tickets/ changed since, $when)$shown"; fi
-    continue
+    if (( wt_dirty )); then LINE="stale $base exit=$CODE (HEAD ${sha:0:7}; tracked files are modified in the working tree since)$shown"
+    elif git -C "$root" diff --quiet --no-renames "$full" "$graded" -- . ':(exclude).tickets' 2>/dev/null; then
+      KIND=fresh; LINE="fresh $base exit=$CODE (HEAD ${sha:0:7}, only .tickets/ changed since, $when)$shown"
+    else KIND=fresh; LINE="fresh $base exit=$CODE (HEAD ${sha:0:7}, only .tickets/ and evidence-neutral files changed since, $when)$shown"; fi
+    return 0
   fi
+  if [[ ${#names[@]} -eq 1 && "${names[0]}" == tests/board-spec-baseline.json ]] && (( ! wt_dirty )); then BASEONLY=1; fi
   list=""; n=0
   for p in "${names[@]}"; do n=$((n + 1)); if [[ $n -le 5 ]]; then list+="${list:+, }$(safe "$p")"; fi; done
   more=""; if [[ $n -gt 5 ]]; then more=" (+$((n - 5)) more)"; fi
-  echo "stale $base exit=$code (HEAD ${sha:0:7}; $n tracked file(s) changed since: $list$more)$shown"
+  LINE="stale $base exit=$CODE (HEAD ${sha:0:7}; $n tracked file(s) changed since: $list$more)$shown"
+}
+
+# covered_by <run-log> — t-a3d7: prints the name of a fresh exit-0 guard log that re-judges this run's reports at the graded head, or
+# nothing. Every input is a file an agent can write, so each link is checked, never trusted: the run log must be a run-board-spec
+# log that printed its report folder and one sha256 per report; the folder must be a real directory inside this ticket's evidence/
+# (no symlink anywhere on the way); the reports on disk must be exactly the printed set, unchanged; and the guard log's command must be
+# `node tests/board-spec-guard.js` with no option (a --baseline or --partial would judge something else) over exactly those files.
+covered_by() {
+  local run="$1" dir rdir redir recorded actual fpath g gcmd a apath adir got i
+  local -a args
+  [[ "$(line2_of "$run")" =~ ^\$\ (bash\ )?(\./)?tests/run-board-spec\.sh(\ |$) ]] || return 0
+  dir="$(LC_ALL=C grep -a -E '^run-board-spec: report dir /' -- "$run" | tail -n1 | sed 's/^run-board-spec: report dir //' | tr -d '\r')" || dir=""
+  [[ -n "$dir" && -d "$dir" && ! -L "$dir" ]] || return 0
+  rdir="$(cd "$dir" 2>/dev/null && pwd -P)" || return 0
+  redir="$(cd "$edir" && pwd -P)" || return 0
+  [[ "$rdir" == "$redir"/* && "$dir" == "$rdir" ]] || return 0   # inside evidence/, and no symlinked component (the printed path is the resolved one)
+  recorded="$(LC_ALL=C grep -a -E '^run-board-spec: report board-spec-[a-z]+-run[0-9]+\.json sha256 [0-9a-f]{64}$' -- "$run" | sed 's/^run-board-spec: report //' | sort)" || recorded=""
+  [[ -n "$recorded" ]] || return 0
+  [[ "$(printf '%s\n' "$recorded" | cut -d' ' -f1 | sort -u | wc -l)" -eq "$(printf '%s\n' "$recorded" | wc -l)" ]] || return 0   # a name printed twice
+  actual=""
+  for fpath in "$rdir"/board-spec-*-run*.json; do
+    [[ -f "$fpath" && ! -L "$fpath" ]] || return 0
+    actual+="${fpath##*/} sha256 $(sha256_of "$fpath")"$'\n'
+  done
+  [[ "$(printf '%s' "$actual" | sort)" == "$recorded" ]] || return 0
+  for i in "${!FILES[@]}"; do
+    [[ "${KINDS[$i]}" == fresh && "${CODES[$i]}" == 0 ]] || continue
+    g="${FILES[$i]}"; gcmd="$(line2_of "$g")"
+    [[ "$gcmd" =~ ^\$\ node\ tests/board-spec-guard\.js\ (.+)$ ]] || continue
+    [[ "${BASH_REMATCH[1]}" != *[\'\"\\\$\`]* ]] || continue   # %q quoting would hide a space or a quote: such a line is not parsed
+    read -r -a args <<< "${BASH_REMATCH[1]}"   # split on spaces without globbing
+    got=""
+    for a in "${args[@]}"; do
+      [[ "$a" != -* ]] || { got="x"; break; }
+      if [[ "$a" == /* ]]; then apath="$a"; else apath="$root/$a"; fi
+      [[ -f "$apath" && ! -L "$apath" ]] || { got="x"; break; }
+      adir="$(cd "$(dirname "$apath")" 2>/dev/null && pwd -P)" || { got="x"; break; }
+      [[ "$adir" == "$rdir" ]] || { got="x"; break; }
+      got+="${apath##*/}"$'\n'
+    done
+    [[ "$got" != x ]] || continue
+    [[ "$(printf '%s' "$got" | sort -u)" == "$(printf '%s\n' "$recorded" | cut -d' ' -f1)" && "$(printf '%s' "$got" | wc -l)" -eq "$(printf '%s\n' "$recorded" | wc -l)" ]] || continue
+    printf '%s' "${g##*/}"; return 0
+  done
+  return 0
+}
+
+FILES=(); KINDS=(); CODES=(); LINES=(); BASES=(); STAMPS=(); SHOWNS=()
+for f in "$edir"/*.log; do
+  classify_one "$f"
+  FILES+=("$f"); KINDS+=("$KIND"); CODES+=("$CODE"); LINES+=("$LINE"); BASES+=("$BASEONLY"); STAMPS+=("${STAMP-}"); SHOWNS+=("${SHOWN-}")
+  STAMP=""; SHOWN=""
+done
+(( ${#FILES[@]} )) || exit 0   # bash 3.2 treats "${!a[@]}" of an empty array as unbound under set -u
+for i in "${!FILES[@]}"; do
+  if [[ "${BASES[$i]}" == 1 ]]; then
+    g="$(covered_by "${FILES[$i]}")"
+    if [[ -n "$g" ]]; then
+      n="$(LC_ALL=C grep -a -c -E '^run-board-spec: report board-spec-[a-z]+-run[0-9]+\.json sha256 [0-9a-f]{64}$' -- "${FILES[$i]}")" || n=0
+      LINES[$i]="covered $(safe "${FILES[$i]##*/}") exit=${CODES[$i]} (HEAD ${STAMPS[$i]}; only tests/board-spec-baseline.json changed since; re-guarded at ${graded:0:7} by $(safe "$g") over $n report(s))${SHOWNS[$i]}"
+    fi
+  fi
+  echo "${LINES[$i]}"
 done
 exit 0

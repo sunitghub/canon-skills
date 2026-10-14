@@ -837,6 +837,34 @@ cmd_check_review_notes() {
   echo "review-notes.md: shape ok"
 }
 
+# cmd_check_evidence <id> — t-a3d7: the pre-flight complete.md step 3 runs before dispatching the evaluator. Reads `evidence.sh check`
+# (the one owner of what fresh/covered mean) at HEAD and refuses unless every top-level evidence log is `fresh` with exit 0 or
+# `covered`; logs kept for history or produced off-tree belong in a subfolder of evidence/, which check never scans. Read-only.
+# Exit 0 ok, 1 refused (each log named with how to fix it), 2 usage or a failed check.
+cmd_check_evidence() {
+  local id="${1:-}" out line bad=0 n=0
+  [[ "$id" =~ ^t-[0-9a-f]{4}$ ]] || { echo "usage: sprint check-evidence <ticket-id>" >&2; exit 2; }
+  out="$("$SCRIPT_DIR/evidence.sh" check "$id" 2>&1)" || { echo "check-evidence: evidence.sh check failed: $out" >&2; exit 2; }
+  if [[ -z "$out" ]]; then
+    echo "check-evidence: no stamped logs in .tickets/$id/evidence/ (nothing to reuse: the evaluator runs every check itself)"
+    exit 0
+  fi
+  while IFS= read -r line; do
+    n=$((n + 1))
+    if [[ "$line" =~ ^fresh\ [^\ ]+\ exit=0\  || "$line" =~ ^covered\  ]]; then echo "  ok      $line"
+    else bad=$((bad + 1)); echo "  REFUSE  $line"; fi
+  done <<< "$out"
+  if (( bad )); then
+    echo "check-evidence: $bad of $n log(s) would fail or mislead the evaluator; do not dispatch it yet."
+    echo "  stale      re-stamp at HEAD (evidence.sh stamp, from a plain clone for the full suite)"
+    echo "  exit=N     fix the failure and re-stamp; for a full board spec failing only on new flakes, list them, then stamp"
+    echo "             \`node tests/board-spec-guard.js <the run's --out dir>/board-spec-*-run*.json\` at HEAD (the run log becomes covered)"
+    echo "  unstamped  stamp it, or move a history or off-tree log into a subfolder of evidence/ (never scanned)"
+    exit 1
+  fi
+  echo "check-evidence: ok ($n log(s) fresh with exit 0 or covered)"
+}
+
 # cmd_eval_verdict <id> — records the evaluator's outcome into ticket.md's
 # eval_fail_count field: increments on a fail (or missing/malformed verdict),
 # resets to 0 on pass. Called explicitly by the agent right after reading
@@ -1018,6 +1046,9 @@ Usage:
   sprint check-review-notes <id>  Check review-notes.md's shape with the same rule
                             sprint complete applies (read-only; exit 1 names each
                             problem) — the reviewer runs it before returning
+  sprint check-evidence <id>  Pre-flight before the evaluator: every stamped
+                            evidence log is fresh with exit 0, or covered
+                            (read-only; exit 1 names each log and the fix)
 
 The CLI owns deterministic workflow state. The agent still owns orientation,
 gray-area resolution, impact analysis, implementation, review, and test judgment.
@@ -1037,6 +1068,7 @@ main() {
     suggest-tier) cmd_suggest_tier "$@" ;;
     eval-verdict) cmd_eval_verdict "$@" ;;
     check-review-notes) cmd_check_review_notes "$@" ;;
+    check-evidence) cmd_check_evidence "$@" ;;
     help|--help|-h) cmd_help ;;
     *) echo "Unknown command: $cmd" >&2; cmd_help; exit 1 ;;
   esac
