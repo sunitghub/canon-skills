@@ -415,6 +415,7 @@ for wrapped in 'scripts/test.sh --changed' 'cd . && scripts/test.sh --changed ma
 done
 ev stamp "$ID" wrapped-ok -- bash -c 'bash scripts/test.sh --changedx'; assert_eq 0 "$code"     # not the flag
 ev stamp "$ID" wrapped-ok2 -- bash -c 'bash scripts/test.sh; echo --changed'; assert_eq 0 "$code"   # the flag belongs to another command
+ev stamp "$ID" mentions -- bash -c 'echo "  a doc says PARTIAL RUN (--changed) mid-line"'; assert_eq 0 "$code"   # only a line that starts with it
 for spelled in 'cd scripts && bash test.sh --changed' 'bash scripts/test.sh "--changed"' "bash scripts/test.sh	--changed"; do   # the output gives it away (eval finding)
   ev stamp "$ID" spelled -- bash -c "$spelled"; assert_eq 125 "$code"; assert_contains "$out" "the output is a scripts/test.sh --changed run (PARTIAL RUN)"
   [[ ! -e "$ED/spelled.log" ]] || fail "evidence: a --changed run spelled '$spelled' wrote a log"

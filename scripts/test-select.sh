@@ -37,7 +37,7 @@ select_init() {
     # suite that lists a folder. Known limit: a suite that builds a path from pieces it never spells out is invisible to a text search;
     # the full stamped run is the only evidence.
     { printf '%s\n' "${c##*/}"   # the changed file by its name, even when shared: tests build such paths ("$ROOT/skills/$s/SKILL.md")
-      d="${c%/*}"; if [[ "$c" == */* && "$d" == */* ]]; then printf '%s\n' "${d##*/}"; fi   # its folder below the top level: a suite may list it (readdir(…'static'))
+      d="${c%/*}"; if [[ "$d" == */* ]]; then printf '%s\n' "${d##*/}"; fi   # its folder below the top level: a suite may list it (readdir(…'static'))
       if [[ "$c" != *.md ]]; then
         git -C "$root" grep -lF -e "${c##*/}" -- tools scripts agents ':(exclude)*.md' ':(exclude)*.json' 2>/dev/null \
           | while IFS= read -r r; do select_term "$r"; done || true
