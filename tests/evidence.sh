@@ -289,7 +289,16 @@ covered_setup; echo '{}' > "$D/board-spec-webkit-run2.json"; guard "$D"/board-sp
 covered_setup; rm "$D/board-spec-webkit-run1.json"; guard "$D/board-spec-chromium-run1.json"; want_stale "a missing report"
 covered_setup; guard "$D/board-spec-chromium-run1.json"; want_stale "a guard over a subset"
 covered_setup; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; want_stale "a duplicated guard argument"
-covered_setup; guard --partial "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; want_stale "a guard option"
+covered_setup; guard --partial "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; want_stale "a guard --partial over a full run"
+# a --grep run: the runner itself calls the guard with --partial, so the re-run may too (once, and no other option)
+grep_setup() {
+  covered_setup; ev stamp "$ID" full -- bash tests/run-board-spec.sh --out "$REPO/$D" --grep x
+  git commit -qm "re-stamp needs a later baseline change" --allow-empty; echo '{"flaky":[2]}' > tests/board-spec-baseline.json; git commit -qam "baseline again"
+}
+grep_setup; guard --partial "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; want_covered
+grep_setup; guard "$D/board-spec-chromium-run1.json" --partial "$D/board-spec-webkit-run1.json"; want_covered
+grep_setup; guard --partial --partial "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; want_stale "--partial twice"
+grep_setup; guard --partial --strict "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; want_stale "another option beside --partial"
 covered_setup; guard --baseline x.json "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; want_stale "a guard --baseline"
 covered_setup; GUARD_RC=1 guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; want_stale "a failing guard"
 covered_setup; echo more >> src/a.txt; git commit -qam "and code"; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; want_stale "a second changed file"

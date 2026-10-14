@@ -142,11 +142,13 @@ classify_one() {
 # nothing. Every input is a file an agent can write, so each link is checked, never trusted: the run log must be a run-board-spec
 # log that printed its report folder and one sha256 per report; the folder must be a real directory inside this ticket's evidence/
 # (no symlink anywhere on the way); the reports on disk must be exactly the printed set, unchanged; and the guard log's command must be
-# `node tests/board-spec-guard.js` with no option (a --baseline or --partial would judge something else) over exactly those files.
+# `node tests/board-spec-guard.js` over exactly those files with no option (a --baseline or --strict would judge something else), except
+# --partial once when the run itself was a --grep run, which is how the runner calls the guard (${GREP:+--partial}).
 covered_by() {
-  local run="$1" dir rdir redir recorded actual fpath g gcmd a apath adir got i
+  local run="$1" dir rdir redir recorded actual fpath g gcmd a apath adir got i partial_ok=0 partial_seen
   local -a args
   [[ "$(line2_of "$run")" =~ ^\$\ (bash\ )?(\./)?tests/run-board-spec\.sh(\ |$) ]] || return 0
+  if [[ " $(line2_of "$run") " == *" --grep "* ]]; then partial_ok=1; fi
   dir="$(LC_ALL=C grep -a -E '^run-board-spec: report dir /' -- "$run" | tail -n1 | sed 's/^run-board-spec: report dir //' | tr -d '\r')" || dir=""
   [[ -n "$dir" && -d "$dir" && ! -L "$dir" ]] || return 0
   rdir="$(cd "$dir" 2>/dev/null && pwd -P)" || return 0
@@ -167,8 +169,9 @@ covered_by() {
     [[ "$gcmd" =~ ^\$\ node\ tests/board-spec-guard\.js\ (.+)$ ]] || continue
     [[ "${BASH_REMATCH[1]}" != *[\'\"\\\$\`]* ]] || continue   # %q quoting would hide a space or a quote: such a line is not parsed
     read -r -a args <<< "${BASH_REMATCH[1]}"   # split on spaces without globbing
-    got=""
+    got=""; partial_seen=0
     for a in "${args[@]}"; do
+      if [[ "$a" == --partial ]] && (( partial_ok && ! partial_seen )); then partial_seen=1; continue; fi
       [[ "$a" != -* ]] || { got="x"; break; }
       if [[ "$a" == /* ]]; then apath="$a"; else apath="$root/$a"; fi
       [[ -f "$apath" && ! -L "$apath" ]] || { got="x"; break; }
