@@ -149,6 +149,10 @@ for skipped_line in "==> tools/sprint-check-go skipped (go absent)" "==> tools/s
 done
 assert_contains "$out" "PARTIAL RUN (--changed): ran 1, skipped 1 — not a close stamp"; assert_eq "" "$(leftovers)"
 tsh --changed "$RBASE"; assert_eq 0 "$rc"; assert_contains "$out" "ran 1, skipped 1"     # an explicit base
+[[ "$out" != *"untracked path(s) not seen"* ]] || fail "no untracked file, yet the banner says some"
+echo new > "$R/tools/brand-new.sh"
+tsh --changed "$RBASE"; assert_eq 0 "$rc"; assert_contains "$out" "test.sh --changed: 1 untracked path(s) not seen; git add -N a new file to include it"
+rm "$R/tools/brand-new.sh"
 tsh --changed HEAD; assert_eq 0 "$rc"; assert_contains "$out" "0 changed path(s)"         # nothing since HEAD
 echo zz > "$R/tools/zz.sh"; git -C "$R" add tools/zz.sh; git -C "$R" commit -qm zz
 tsh --changed

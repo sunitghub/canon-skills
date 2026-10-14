@@ -60,7 +60,9 @@ if [[ "$mode" == stamp ]]; then
   saw_test=0   # t-2633: a --changed run of the suite is a partial fast pass; it must never become the stamped test-sh evidence
   for a in "$@"; do
     if [[ "$a" == scripts/test.sh || "$a" == */scripts/test.sh ]]; then saw_test=1
-    elif (( saw_test )) && [[ "$a" == --changed ]]; then refuse "scripts/test.sh --changed is a partial run, never a close stamp: stamp the full scripts/test.sh"; fi
+    elif (( saw_test )) && [[ "$a" == --changed ]]; then refuse "scripts/test.sh --changed is a partial run, never a close stamp: stamp the full scripts/test.sh"
+    elif [[ " $a " =~ [\ /]scripts/test\.sh[\ \;\&\|](.*[\ ])?--changed[\ \;\&\|] ]]; then   # wrapped in one argument: bash -c '...'
+      refuse "scripts/test.sh --changed is a partial run, never a close stamp: stamp the full scripts/test.sh"; fi
   done
   head_sha="$(git -C "$root" rev-parse HEAD)"
   mkdir -p "$edir"
@@ -113,7 +115,8 @@ classify_one() {
   cmdline="$(head -c 512 -- "$f" | LC_ALL=C tr -d '\000' | sed -n '2p' | tr -d '\r')" || cmdline=""
   shown=""; if [[ "$cmdline" == '$ '* ]]; then shown=" cmd: $(safe "${cmdline:2:120}")"; fi
   SHOWN="$shown"; STAMP="${sha:0:7}"
-  if [[ "$cmdline" == '$ '* && " ${cmdline:2} " =~ [\ /]scripts/test\.sh\ (.*\ )?--changed\  ]]; then
+  # a space or a %q-escaped space (\ ) separates the runner from the flag, so `bash -c scripts/test.sh\ --changed` counts too
+  if [[ "$cmdline" == '$ '* && " ${cmdline:2} " =~ [\ /]scripts/test\.sh(\ |\\\ )(.*(\ |\\\ ))?--changed(\ |\\\ |\\;) ]]; then
     KIND=stale; LINE="stale $base exit=$CODE (HEAD ${sha:0:7}; a scripts/test.sh --changed run is partial, never the close stamp)$shown"; return 0
   fi
   KIND=stale

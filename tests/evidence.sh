@@ -409,12 +409,19 @@ done
 ev stamp "$ID" full -- bash scripts/test.sh; assert_eq 0 "$code"                          # the full run still stamps
 ev stamp "$ID" listed -- bash scripts/test.sh --list; assert_eq 0 "$code"             # another option after the runner is not --changed
 ev stamp "$ID" other -- bash -c 'echo --changed'; assert_eq 0 "$code"                     # --changed without the runner is fine
+for wrapped in 'scripts/test.sh --changed' 'cd . && scripts/test.sh --changed main' 'bash scripts/test.sh --list --changed'; do   # reviewer: bash -c '…'
+  ev stamp "$ID" wrapped -- bash -c "$wrapped"; assert_eq 125 "$code"; assert_contains "$out" "scripts/test.sh --changed is a partial run"
+  [[ ! -e "$ED/wrapped.log" ]] || fail "evidence: a wrapped --changed stamp wrote a log ($wrapped)"
+done
+ev stamp "$ID" wrapped-ok -- bash -c 'bash scripts/test.sh --changedx'; assert_eq 0 "$code"     # not the flag
 C9="$(git rev-parse HEAD)"
 put hand.log "HEAD $C9 $T\n\$ scripts/test.sh --changed\nexit 0\n"; ev check "$ID"
 assert_contains "$out" "stale hand.log exit=0 (HEAD ${C9:0:7}; a scripts/test.sh --changed run is partial, never the close stamp)"
 put hand2.log "HEAD $C9 $T\n\$ bash /x/scripts/test.sh --changed origin/main\nexit 0\n"; ev check "$ID"; assert_contains "$out" "stale hand2.log exit=0"
 put hand3.log "HEAD $C9 $T\n\$ bash scripts/test.sh --changedx\nexit 0\n"; ev check "$ID"; assert_contains "$out" "fresh hand3.log exit=0"      # not the flag
 put hand4.log "HEAD $C9 $T\nnot a command line scripts/test.sh --changed\nexit 0\n"; ev check "$ID"; assert_contains "$out" "fresh hand4.log exit=0"   # line 2 is not a $ command
+put hand5.log "HEAD $C9 $T\n\$ bash -c scripts/test.sh\\\\ --changed\nexit 0\n"; ev check "$ID"; assert_contains "$out" "stale hand5.log exit=0"       # %q-escaped, wrapped
+put hand6.log "HEAD $C9 $T\n\$ bash -c scripts/test.sh\\\\ --list\nexit 0\n"; ev check "$ID"; assert_contains "$out" "fresh hand6.log exit=0"         # wrapped, not --changed
 reset_repo
 
 # --- the rules the evaluator reads stay in the docs: a later edit cannot drop the independence floor or the budget without failing here ---------------
