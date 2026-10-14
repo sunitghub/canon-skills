@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-14-2026 07:37
+learnings-sweep last run: 10-14-2026 08:25
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-14 | [t-d695](.tickets/t-d695/learnings.md) | A doc screenshot under `meta/` is silently left out by `git add` (`meta/` is gitignored; referenced shots are force-added), and the reviewer caught that the picture the user asked to sit under the table had a paragraph between them: check a placement request against the rendered order, not the outline. | UNPROMOTED |
 | 2026-10-14 | [t-f889](.tickets/t-f889/learnings.md) | Evidence stamped a few commits before the graded head failed evaluator run 1 (not-run), and listing a flake after a full run makes every stamp stale again: stamp the full spec at the final commit before dispatch, and after a baseline-only change re-run the guard on the saved reports and tell the evaluator what changed (filed as t-a3d7 so a pre-flight check enforces it). | UNPROMOTED |
 | 2026-10-14 | [t-4fa5](.tickets/t-4fa5/learnings.md) | A guard checked only against the spelling it was written for is unverified: the theme cache rejected transparent `rgba(…,0)` but let `rgb(1,2,3,0)` through, and its test planted only `rgba(` (evaluator run 1). | UNPROMOTED |
 | 2026-10-13 | [t-2758](.tickets/t-2758/learnings.md) | A cap on a container's buttons (`.foot button{max-width:120px}`) also hits buttons in a popover nested inside it; when restyling a container's children, check every nested component, not only the ones you meant (reviewer caught the clipped theme cards). | UNPROMOTED |
