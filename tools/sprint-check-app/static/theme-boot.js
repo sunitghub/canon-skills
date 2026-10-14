@@ -36,7 +36,7 @@
     if (!m || typeof m !== 'object' || Array.isArray(m)) return null;
     for (k in m) {
       if (!Object.prototype.hasOwnProperty.call(m, k) || ++n > 120) break;
-      if (NAME.test(k) && typeof m[k] === 'string' && !/^rgba\([^,]+,[^,]+,[^,]+,\s*0*\.?0*\s*\)$/.test(m[k]) &&
+      if (NAME.test(k) && typeof m[k] === 'string' && !/^rgba?\([^,]+,[^,]+,[^,]+,\s*0*\.?0*\s*\)$/.test(m[k]) &&
           /^(#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6}|rgba?\(\s*[0-9.]+\s*,\s*[0-9.]+\s*,\s*[0-9.]+\s*(,\s*[0-9.]+\s*)?\))$/.test(m[k])) out.push([k, m[k]]);
     }
     return out.length ? out : null;

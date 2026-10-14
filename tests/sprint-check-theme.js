@@ -129,6 +129,11 @@ assert.strictEqual(boot({ page: 'board', embedded: false, stored: SB(J({ mode: '
   for (const n of thUsed(shellCss)) shellNeed.add(n);
   for (const n of thUsed(boardCss)) boardNeed.add(n);
   assert.ok(shellNeed.size > 20 && boardNeed.size > 40, `parsed the variables (${shellNeed.size}, ${boardNeed.size})`);
+  // and the other way: every --th-* derive() sets is read by the CSS (no dead variable in the cache; review, eval)
+  const thRead = new Set([...thUsed(shellCss), ...thUsed(boardCss)]);
+  for (const n of Object.keys({ ...derive(THEMES.find(t => !t.css)).shell, ...derive(THEMES.find(t => !t.css)).board })) {
+    if (n.startsWith('--th-')) assert.ok(thRead.has(n), `derive() sets ${n}, which no CSS reads`);
+  }
   for (const t of THEMES.filter(t => !t.css)) {
     const d = derive(t);
     for (const n of shellNeed) assert.ok(n in d.shell, `${t.name}: derive() sets the shell's ${n}`);
@@ -199,7 +204,7 @@ assert.strictEqual(boot({ page: 'board', embedded: false, stored: SB(J({ mode: '
     assert.ok(!(k in out) && out['--text'] === '#eceff4', `skipped ${what}, kept the valid entry`);
   }
   // break-it (t-4fa5): no layout variable, no transparent colour, no Canon id, no entry of the other mode
-  for (const [what, k, v] of [['layout --side-w', '--side-w', '#000000'], ['layout --header-h', '--header-h', '#000000'], ['transparent', '--text', 'rgba(0,0,0,0)'], ['transparent 0.0', '--text', 'rgba(1,2,3, 0.0)']]) {
+  for (const [what, k, v] of [['layout --side-w', '--side-w', '#000000'], ['layout --header-h', '--header-h', '#000000'], ['transparent', '--text', 'rgba(0,0,0,0)'], ['transparent 0.0', '--text', 'rgba(1,2,3, 0.0)'], ['transparent rgb() with alpha', '--text', 'rgb(1,2,3,0)'], ['transparent rgb() 0.0', '--text', 'rgb(1,2,3, 0.0)']]) {
     const c = hostile(x => { x.themes.nord.shell = { [k]: v, '--bg': '#2e3440' }; });
     const out = bootFull({ page: 'shell', stored: CV(J(choice), c) }).vars;
     assert.ok(!(k in out && out[k] === v) && out['--bg'] === '#2e3440', `skipped ${what}, kept the valid entry`);

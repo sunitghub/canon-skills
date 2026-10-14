@@ -58,7 +58,7 @@ export function derive(t) {
     '--th-on-ok-dim': alpha(ink(c, c.ok), 0.65), '--th-on-warn-dim': alpha(ink(c, c.warn), 0.7),
     '--th-knob': dark ? c.text : c.surface, '--th-hover-soft': alpha(c.text, 0.05),
     '--th-accent': c.accent, '--th-accent-soft': alpha(c.accent, 0.12), '--th-accent-line': alpha(c.accent, 0.4),
-    '--th-muted-fill': c.muted, '--th-muted-ink': ink(c, c.muted), '--th-info': c.info, '--th-info-soft': alpha(c.info, 0.1),
+    '--th-muted-fill': c.muted, '--th-muted-ink': ink(c, c.muted), '--th-info-soft': alpha(c.info, 0.1),
   };
   for (const k of ['ok', 'warn', 'bad']) {
     th[`--th-${k}`] = c[k];

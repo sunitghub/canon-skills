@@ -17,7 +17,7 @@ the licences named here; canon does not include their code.
 
 Every theme, Canon included, is held to WCAG AA: at least 4.5:1 for text on the background and for muted text on
 panels, and at least 3:1 for the accent on the background and for text on the accent (AA for large text and UI parts;
-Canon's own accent is 3.96:1 dark and 4.17:1 light). Where a project's natural colour for a slot fell short, canon uses
+Canon's own accent is 3.96:1 dark and 3.82:1 light). Where a project's natural colour for a slot fell short, canon uses
 another colour from the same palette rather than inventing one:
 
 - **Catppuccin Latte:** muted text is Subtext1 (Subtext0 reads 4.06:1 on Mantle), and the panels are Mantle on a Base
