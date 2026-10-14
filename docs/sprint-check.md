@@ -12,7 +12,7 @@ See the [README](../README.md) for the overview. This page walks through each fe
 
 ![sprint-check board — dark mode](../meta/screenshots/board-dark.png)
 
-Toggle between light and dark with the button in the top-right corner. In the Cockpit, **◐ Theme** at the bottom of the sidebar sets it for the shell and every open board: Mode (System, Light or Dark; System follows your computer's setting) and the theme for that mode, with one pick for light and one for dark under System. Hover the button to see the theme in use. The choice is remembered, applied before the page first draws, and does not change the standalone board's own setting.
+Toggle between light and dark with the button in the top-right corner. In the Cockpit, **◐ Theme** at the bottom of the sidebar sets it for the shell and every open board: Mode (System, Light or Dark; System follows your computer's setting) and the theme for that mode, with one pick for light and one for dark under System. Besides Canon Dark and Canon Light it offers Catppuccin Mocha and Latte, Tokyo Night, Nord, Dracula and Gruvbox Dark, each built only from its project's own palette and readable at WCAG AA (credits and licences: [`THEMES.md`](../THEMES.md)). Hovering a theme previews it on the shell and every open board without saving; a click keeps it. Hover the button to see the theme in use. The choice is remembered, applied before the page first draws, and does not change the standalone board's own setting, which keeps Canon Dark and Canon Light.
 
 ## Ticket Detail
 

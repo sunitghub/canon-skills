@@ -5,7 +5,7 @@
      .dstop's own treatment — never solid red at rest, so it reads as "this is the
      destructive one" without shouting by default. */
   .btn.danger{background:var(--panel);color:var(--text-body);border:1px solid var(--border)}
-  .btn.danger:hover{background:var(--col-discarded);border-color:var(--col-discarded);color:#fff}
+  .btn.danger:hover{background:var(--col-discarded);border-color:var(--col-discarded);color:var(--th-on-bad, #fff)}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:16px}
   .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;transition:transform .14s ease,box-shadow .14s ease,border-color .14s ease}
   .card:hover{border-color:var(--accent);transform:translateY(-3px);box-shadow:0 10px 28px -8px rgba(0,0,0,.5),0 0 0 3px var(--accent-dim)}
@@ -23,13 +23,13 @@
   .card .card-divider{height:1px;background:var(--border-muted);margin-top:auto}
   .card .cardbottom{display:flex;align-items:center;gap:10px}
   .card .actions{display:flex;gap:10px;margin-left:auto}
-  .go{width:40px;height:40px;border-radius:9px;border:none;background:var(--col-done);color:#04210f;font-size:19px;font-weight:700;cursor:pointer}
+  .go{width:40px;height:40px;border-radius:9px;border:none;background:var(--col-done);color:var(--th-on-ok, #04210f);font-size:19px;font-weight:700;cursor:pointer}
   .go:hover{filter:brightness(1.08)}
   .dereg{width:40px;height:40px;border-radius:9px;border:1px solid color-mix(in srgb, var(--col-discarded) 45%, transparent);background:transparent;color:var(--col-discarded);font-size:15px;cursor:pointer;transition:background .12s ease,border-color .12s ease,color .12s ease,transform .12s ease}
-  .dereg:hover{color:#fff;background:var(--col-discarded);border-color:var(--col-discarded);transform:translateY(-1px);box-shadow:0 4px 14px -4px var(--col-discarded)}
+  .dereg:hover{color:var(--th-on-bad, #fff);background:var(--col-discarded);border-color:var(--col-discarded);transform:translateY(-1px);box-shadow:0 4px 14px -4px var(--col-discarded)}
   /* A visible + <skill> button means that skill is missing here — red reads "needed". Busy/disabled keeps the accent (below). */
   .regskill{height:32px;padding:0 12px;border-radius:8px;border:1px solid var(--col-discarded);background:transparent;color:var(--col-discarded);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
-  .regskill:hover{background:var(--col-discarded);color:#fff}
+  .regskill:hover{background:var(--col-discarded);color:var(--th-on-bad, #fff)}
   .regskill:disabled{cursor:default;opacity:.55;background:var(--accent-dim);color:var(--accent);border-color:var(--accent)}
   .regskill[aria-busy="true"],.sn-reg[aria-busy="true"]{opacity:1}
   /* t-8d72: Git status icon beside the project name. On = accent, off = muted and clickable, none = faded. */
@@ -84,7 +84,7 @@
   .cmodal .btn:hover{color:var(--text);border-color:var(--border-hover)}
   .cmodal .btn.ghost{color:var(--text-muted)}
   .cmodal .btn.ghost:hover{color:var(--col-discarded);border-color:var(--col-discarded)}
-  .cmodal .btn.primary{background:var(--accent);color:#fff;border:none;font-weight:600}
+  .cmodal .btn.primary{background:var(--accent);color:var(--th-on-accent, #fff);border:none;font-weight:600}
   .cc-code{display:flex;gap:8px;align-items:center;margin:0 0 16px}
   .cc-code input{flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-family:ui-monospace,monospace;font-size:12px}
   .cc-code .btn{flex-shrink:0;font-size:12px;padding:8px 12px}

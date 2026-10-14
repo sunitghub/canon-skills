@@ -4381,14 +4381,14 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
       await pop.locator('[data-mode="light"]').click();
       await expect(pop).toBeVisible();   // stays open while choosing
-      await expect(pop.locator('.thm-card')).toHaveText(['Canon Light']);
+      await expect(pop.locator('.thm-card')).toHaveText(['Canon Light', 'Catppuccin Latte']);   // t-4fa5: the light built-ins
       await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
       await expect(btn).toHaveAttribute('title', 'Canon Light'); await expect(btn).toHaveAttribute('aria-label', 'Theme: Canon Light');
       expect(await saved(page)).toEqual({ mode: 'light', light: 'canon-light', dark: 'canon-dark' });
       await expect.poll(() => boardTheme(board)).toBe('light');
 
       await pop.locator('[data-mode="dark"]').click();
-      await expect(pop.locator('.thm-card')).toHaveText(['Canon Dark']);
+      await expect(pop.locator('.thm-card')).toHaveText(['Canon Dark', 'Catppuccin Mocha', 'Tokyo Night', 'Nord', 'Dracula', 'Gruvbox Dark']);
       await expect(btn).toHaveAttribute('title', 'Canon Dark');
       await expect.poll(() => boardTheme(board)).toBe('dark');
 
@@ -4472,6 +4472,132 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.waitForLoadState('networkidle');
       // no fade on load (the board's html transition only runs on a real change)
       expect(await page.evaluate(() => document.documentElement.getAnimations().length)).toBe(0);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    // t-4fa5: the third-party built-ins. Their colours come from theme-data.js, read in the page, so the test follows
+    // the table instead of copying it.
+    const themeTable = page => page.evaluate(async () => { const d = await import('/static/theme-data.js'); return d.THEMES.map(t => ({ id: t.id, name: t.name, mode: t.mode, css: !!t.css, c: t.c })); });
+    const cssVar = (loc, n) => loc.evaluate((h, n) => getComputedStyle(h).getPropertyValue(n).trim(), n);
+    // theme variables only: the shell keeps its own inline --side-w, which a theme must leave alone (break-it)
+    const inlineVars = loc => loc.evaluate(async h => { const { THEME_NAME } = await import('/static/theme-data.js'); return [...h.style].filter(p => THEME_NAME.test(p)).length; });
+    async function pickTheme(page, t) {
+      const pop = page.locator('#theme-pop');
+      if (await pop.isHidden()) await page.locator('#theme-btn').click();
+      await pop.locator(`[data-mode="${t.mode}"]`).click();
+      await pop.locator(`.thm-card[data-id="${t.id}"]`).click();
+    }
+
+    test('themes (t-4fa5): each built-in recolours the shell and an open board, and Canon clears every theme variable', async ({ page }) => {
+      const board = await openShell(page, []);
+      await expect(board.locator('#board')).toBeVisible();
+      const all = await themeTable(page), html = page.locator('html'), bhtml = board.locator('html');
+      expect(all.filter(t => !t.css).map(t => t.id).sort()).toEqual(['catppuccin-latte', 'catppuccin-mocha', 'dracula', 'gruvbox-dark', 'nord', 'tokyo-night']);
+      for (const t of all.filter(t => !t.css)) {
+        await pickTheme(page, t);
+        await expect(html).toHaveAttribute('data-theme', t.mode);
+        for (const [n, slot] of [['--bg', 'bg'], ['--text', 'text'], ['--accent', 'accent'], ['--col-done', 'ok']]) {
+          expect(await cssVar(html, n), `${t.name} shell ${n}`).toBe(t.c[slot]);
+          await expect.poll(() => cssVar(bhtml, n), `${t.name} board ${n}`).toBe(t.c[slot]);
+        }
+        expect(await cssVar(bhtml, '--surface'), `${t.name} board --surface`).toBe(t.c.surface);
+        expect((await page.evaluate(() => JSON.parse(localStorage.getItem('canon-theme-vars')))).themes[t.id].shell['--bg']).toBe(t.c.bg);
+      }
+      // back to Canon: the CSS owns it again, so no variable is left on either page
+      await pickTheme(page, all.find(t => t.id === 'canon-dark'));
+      expect(await inlineVars(html)).toBe(0);
+      await expect.poll(() => inlineVars(bhtml)).toBe(0);
+      expect(await cssVar(html, '--bg')).toBe('#1b2330');
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('themes (t-4fa5): hovering or focusing a card previews it without saving; leaving, Esc or closing puts the saved theme back', async ({ page }) => {
+      await page.emulateMedia({ colorScheme: 'dark' });
+      const board = await openShell(page, []);
+      await expect(board.locator('#board')).toBeVisible();
+      const all = await themeTable(page), nord = all.find(t => t.id === 'nord'), latte = all.find(t => t.id === 'catppuccin-latte');
+      const html = page.locator('html'), bhtml = board.locator('html'), pop = page.locator('#theme-pop');
+      const store = () => page.evaluate(() => [localStorage.getItem('canon-theme'), localStorage.getItem('canon-theme-vars')]);
+      // break-it: a theme apply or a preview must not wipe the sidebar's own inline width
+      await page.evaluate(async () => { const { setSideWidth } = await import('/static/cockpit-sidebar.js'); setSideWidth(380, true); });
+      const sideW = async () => Math.round((await page.locator('aside.side').boundingBox()).width);
+      await page.locator('#theme-btn').click(); await pop.locator('[data-mode="dark"]').click();
+      const before = await store();
+      // a card arriving under a still pointer (the popover grows when Mode changes) is not a hover: only real pointer
+      // movement previews. A bare pointerover is what the browser sends then.
+      await pop.locator('.thm-card[data-id="nord"]').evaluate(c => c.dispatchEvent(new PointerEvent('pointerover', { bubbles: true })));
+      expect(await cssVar(html, '--bg'), 'no preview without pointer movement').toBe('#1b2330');
+      await pop.locator('.thm-card[data-id="nord"]').hover();
+      expect(await cssVar(html, '--bg')).toBe(nord.c.bg);
+      await expect.poll(() => cssVar(bhtml, '--bg')).toBe(nord.c.bg);
+      await expect(page.locator('#theme-btn')).toHaveAttribute('title', 'Canon Dark');   // the button names the theme in use
+      expect(await store()).toEqual(before);                                                // nothing saved
+      await pop.locator('h4').first().hover();                                               // off the cards
+      expect(await cssVar(html, '--bg')).toBe('#1b2330');
+      await expect.poll(() => inlineVars(bhtml)).toBe(0);
+      await pop.locator('.thm-card[data-id="nord"]').hover();
+      await page.keyboard.press('Escape');
+      await expect(pop).toBeHidden();
+      expect(await cssVar(html, '--bg')).toBe('#1b2330');
+      // keyboard focus previews too
+      await page.locator('#theme-btn').click();
+      await pop.locator('.thm-card[data-id="nord"]').focus();
+      expect(await cssVar(html, '--bg')).toBe(nord.c.bg);
+      await page.locator('#theme-btn').click();                                              // closing reverts
+      expect(await cssVar(html, '--bg')).toBe('#1b2330');
+      // under System a "When light" card previews in light even on a dark OS
+      await page.locator('#theme-btn').click(); await pop.locator('[data-mode="system"]').click();
+      await pop.locator('.thm-card[data-id="catppuccin-latte"][data-for="light"]').hover();
+      await expect(html).toHaveAttribute('data-theme', 'light');
+      expect(await cssVar(html, '--bg')).toBe(latte.c.bg);
+      await pop.locator('h4').first().hover();
+      await expect(html).toHaveAttribute('data-theme', 'dark');
+      // break-it: under System, clicking the other mode's card then leaving shows the theme in use, not that card
+      await pop.locator('.thm-card[data-id="catppuccin-latte"][data-for="light"]').click();
+      expect((await saved(page)).light).toBe('catppuccin-latte');
+      await page.mouse.move(900, 400);
+      await expect(html).toHaveAttribute('data-theme', 'dark');
+      expect(await cssVar(html, '--bg')).toBe('#1b2330');
+      // a click saves
+      await pop.locator('.thm-card[data-id="nord"][data-for="dark"]').click();
+      expect((await saved(page)).dark).toBe('nord');
+      await page.mouse.move(900, 400);
+      expect(await cssVar(html, '--bg')).toBe(nord.c.bg);
+      expect(await sideW(), 'the sidebar width survived every apply and preview').toBe(380);
+      await page.reload(); await page.waitForLoadState('networkidle');
+      expect(await cssVar(html, '--bg')).toBe(nord.c.bg);
+      expect(await sideW(), 'and a reload with a third-party theme').toBe(380);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('first paint (t-4fa5): a saved third-party theme paints from its cache before any module script, on the shell and an embedded board, never on the standalone board', async ({ page }) => {
+      // write a real choice and cache through the module once, then hold every module back
+      await page.goto(BASE + '/cockpit'); await page.waitForLoadState('networkidle');
+      const nordBg = await page.evaluate(async () => {
+        const d = await import('/static/theme-data.js'); const choice = { mode: 'dark', light: 'canon-light', dark: 'nord' };
+        localStorage.setItem('canon-theme', JSON.stringify(choice)); localStorage.setItem('canon-theme-vars', JSON.stringify(d.cacheFor(choice)));
+        return d.themeById('nord').c.bg;
+      });
+      const rgb = h => `rgb(${[1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)).join(', ')})`;
+      let release; const held = new Promise(r => { release = r; });
+      await page.route(/\/static\/(cockpit|board)-main\.js$/, async r => { await held; await r.continue(); });
+      const parsed = () => page.waitForFunction(() => !!document.body);
+      await page.goto(BASE + '/cockpit', { waitUntil: 'commit' }); await parsed();
+      expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(rgb(nordBg));
+      // an embedded board: a same-origin page that frames it
+      await page.goto(BASE + '/api/git', { waitUntil: 'commit' });
+      await page.evaluate(() => { document.body.innerHTML = '<iframe id="b" src="/?project=nope&theme=dark" style="width:800px;height:500px"></iframe>'; });
+      const frame = await (await page.locator('#b').elementHandle()).contentFrame();
+      await frame.waitForFunction(() => !!document.body);
+      expect(await frame.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--bg').trim())).toBe(nordBg);
+      // the standalone board keeps Canon
+      await page.goto(BASE + '/?standalone=1', { waitUntil: 'commit' }); await parsed();
+      expect(await page.evaluate(() => [...document.documentElement.style].filter(p => p.startsWith('--')).length)).toBe(0);
+      release();
+      // break-it: a top-level board with ?project= (it carries the embed class) keeps Canon after its module ran too
+      await page.goto(BASE + '/?standalone=1&project=nope'); await page.waitForLoadState('networkidle');
+      expect(await page.evaluate(() => document.documentElement.classList.contains('canon-proj-embed'))).toBe(true);
+      expect(await page.evaluate(() => [...document.documentElement.style].filter(p => p.startsWith('--')).length)).toBe(0);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 

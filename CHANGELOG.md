@@ -7,7 +7,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 ## [Unreleased]
 
 ### Changed
-- Cockpit: **◐ Theme** replaces the sidebar's Dark/Light button. It opens a small panel with Mode (System, Light or Dark; System follows your computer) and the theme for that mode, one pick for light and one for dark under System; hover the button to see the theme in use. Canon Dark and Canon Light look as before; more themes come in later releases (`t-2758`).
+- Cockpit: **◐ Theme** replaces the sidebar's Dark/Light button. It opens a small panel with Mode (System, Light or Dark; System follows your computer) and the theme for that mode, one pick for light and one for dark under System; hover the button to see the theme in use. Canon Dark and Canon Light look as before (`t-2758`).
+- Cockpit: six more themes, Catppuccin Mocha and Latte, Tokyo Night, Nord, Dracula and Gruvbox Dark, each from its project's own palette and readable at WCAG AA; hover a theme to preview it, click to keep it. The shell and every open board follow, from the first frame. Credits and licences are in `THEMES.md` (`t-4fa5`). The terminal stays dark for now (`t-2ba3`).
 
 ### Fixed
 - A light-theme user no longer sees a dark first frame when the Cockpit or a board loads (`t-3735`).

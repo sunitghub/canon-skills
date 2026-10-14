@@ -159,7 +159,7 @@
     .doc-edit-hint { font-size: 11.5px; color: var(--text-muted); white-space: nowrap; margin-right: 4px; }
     .doc-save-btn {
       padding: 5px 13px; border-radius: 999px; font-size: 12px; font-weight: 600;
-      border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer;
+      border: 1px solid var(--accent); background: var(--accent); color: var(--th-on-accent, #fff); cursor: pointer;
       transition: opacity .1s;
     }
     .doc-save-btn:hover { opacity: .85; }
@@ -212,9 +212,9 @@
     .doc-table td { color: var(--text-body); font-size: 12px; line-height: 1.5; overflow-wrap: break-word; }
     .doc-table tr:hover td { background: var(--surface-hover); }
     .doc-visual-img { max-width: 100%; height: auto; display: block; margin: 10px 0; border-radius: 6px; border: 1px solid var(--border); }
-    .doc-table td.status-pass    { color: #16a34a; font-weight: 600; }
-    .doc-table td.status-fail    { color: #dc2626; font-weight: 600; }
-    .doc-table td.status-partial { color: #d97706; font-weight: 600; }
+    .doc-table td.status-pass    { color: var(--th-ok-ink, #16a34a); font-weight: 600; }
+    .doc-table td.status-fail    { color: var(--th-bad-ink, #dc2626); font-weight: 600; }
+    .doc-table td.status-partial { color: var(--th-warn-ink, #d97706); font-weight: 600; }
     .doc-table td.status-not-run { color: var(--text-muted); }
     .section-jumps {
       display: flex; flex-wrap: wrap; gap: 4px 10px;
@@ -250,7 +250,7 @@
       background: transparent; border: 0;
     }
     .sw-track { position: relative; width: 28px; height: 16px; border-radius: 999px; background: var(--border-hover); flex: none; transition: background .12s; }
-    .sw-knob { position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #fff; transition: left .12s; }
+    .sw-knob { position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--th-knob, #fff); transition: left .12s; }
     .signoff-demo-toggle[aria-checked="true"] .sw-track { background: var(--col-done); }
     .signoff-demo-toggle[aria-checked="true"] .sw-knob { left: 14px; }
     .signoff-demo-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
@@ -278,12 +278,12 @@
       display: inline-flex; align-items: center; justify-content: center;
       border: 1px solid var(--col-done); border-radius: 3px;
       color: var(--col-done); font-size: 10px; line-height: 1; font-weight: 800;
-      background: rgba(74, 222, 128, .12);
+      background: var(--th-ok-soft, rgba(74, 222, 128, .12));
     }
     html[data-theme="light"] .doc-check-marker {
-      color: #15803d;
-      border-color: rgba(22, 163, 74, .55);
-      background: rgba(22, 163, 74, .12);
+      color: var(--th-ok-ink, #15803d);
+      border-color: var(--th-ok-line, rgba(22, 163, 74, .55));
+      background: var(--th-ok-soft, rgba(22, 163, 74, .12));
     }
     .doc-check-marker.open { color: transparent; }
     .doc-check-open {
@@ -291,11 +291,11 @@
     }
     .doc-check-open .doc-check-marker {
       border-color: var(--col-progress);
-      background: rgba(96, 165, 250, .10);
+      background: var(--th-info-soft, rgba(96, 165, 250, .10));
       box-shadow: 0 0 0 2px rgba(96, 165, 250, .08);
     }
     .doc-bullet[data-check-idx] { cursor: pointer; border-radius: 3px; transition: background .1s; }
-    .doc-bullet[data-check-idx]:hover { background: rgba(255,255,255,.04); }
+    .doc-bullet[data-check-idx]:hover { background: var(--th-hover-soft, rgba(255,255,255,.04)); }
     html[data-theme="light"] .doc-bullet[data-check-idx]:hover { background: rgba(0,0,0,.04); }
     .doc-bullet[data-check-idx].toggling { opacity: .55; pointer-events: none; }
     .editor-toolbar {
@@ -372,13 +372,13 @@
     .editor-mirror { position: absolute; left: -9999px; top: 0; visibility: hidden; white-space: pre-wrap; overflow-wrap: break-word; padding: 0; }
     .editor-kb-hint { font-size: 11px; color: var(--text-dim); padding: 3px 2px 0; opacity: .7; }
     .btn-primary {
-      background: var(--accent); border-color: var(--accent); color: #fff;
+      background: var(--accent); border-color: var(--accent); color: var(--th-on-accent, #fff);
     }
     .btn-primary:hover { background: var(--accent); opacity: .85; }
     .modal-empty { color: var(--text-dim); font-style: italic; }
     .acceptance-warning {
-      background: rgba(248,113,113,.09);
-      border: 1px solid rgba(248,113,113,.25);
+      background: var(--th-bad-soft, rgba(248,113,113,.09));
+      border: 1px solid var(--th-bad-line, rgba(248,113,113,.25));
       border-radius: 7px;
       padding: 9px 12px;
       margin-bottom: 14px;
@@ -402,7 +402,7 @@
     .doc-scenario-kw { color: var(--scenario-keyword); font-weight: 600; }
     .doc-scenario-comment { color: var(--text-dim); font-style: italic; }
     .doc-scenario-ref { color: var(--text-muted); font-style: italic; }
-    .doc-scenario-error { color: var(--col-discarded); border-color: rgba(248,113,113,.35); font-style: italic; }
+    .doc-scenario-error { color: var(--col-discarded); border-color: var(--th-bad-line, rgba(248,113,113,.35)); font-style: italic; }
     .doc-scenario-runner {
       display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
       margin: -10px 0 14px; padding: 7px 12px;
@@ -419,10 +419,10 @@
     }
     .eval-run-id {
       display: inline-flex; align-items: center; gap: 6px;
-      background: rgba(34,197,94,.08); border: 1px solid rgba(34,197,94,.25);
+      background: var(--th-ok-soft, rgba(34,197,94,.08)); border: 1px solid var(--th-ok-line, rgba(34,197,94,.25));
       border-radius: 6px; padding: 5px 10px; margin-bottom: 14px;
-      font-size: 11px; color: #16a34a; font-family: monospace;
+      font-size: 11px; color: var(--th-ok-ink, #16a34a); font-family: monospace;
     }
-    html[data-theme="light"] .eval-run-id { background: #f0fdf4; border-color: #86efac; color: #15803d; }
+    html[data-theme="light"] .eval-run-id { background: var(--th-ok-soft, #f0fdf4); border-color: var(--th-ok-line, #86efac); color: var(--th-ok-ink, #15803d); }
     .eval-run-id-label { font-family: inherit; font-weight: 600; color: var(--text-muted); margin-right: 2px; }
 

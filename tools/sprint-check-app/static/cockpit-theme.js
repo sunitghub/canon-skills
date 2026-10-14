@@ -1,45 +1,50 @@
 // t-2758: the shell's "◐ Theme" switcher (themes slice A). Mode decides when it is light or dark (System follows the OS);
 // Theme lists only themes of that mode, and under System there is one pick for light and one for dark. The choice is
 // saved as { mode, light, dark } under 'canon-theme' (an older 'dark'/'light' still reads). theme-boot.js applies it
-// before the first paint; this module keeps it in step and tells every open board. Canon Dark/Light are today's CSS
-// (cockpit-shell.css); the swatches below repeat its values and tests/sprint-check-theme.js keeps them equal.
+// before the first paint; this module keeps it in step and tells every open board. The themes and their colours live
+// in theme-data.js (t-4fa5): Canon Dark/Light are today's CSS, a third-party theme sets its derived variables on <html>.
 import { esc } from './cockpit-core.js';
+import { THEMES, KEY, CACHE_KEY, MODES, readChoice, effectiveMode, themeById, derive, cacheFor, setVars } from './theme-data.js';
 
-export const THEMES = [
-  { id: 'canon-light', name: 'Canon Light', mode: 'light', swatch: ['#e8e8f0', '#fff', '#6c5cf7', '#16a34a', '#dc2626'] },
-  { id: 'canon-dark', name: 'Canon Dark', mode: 'dark', swatch: ['#1b2330', '#232d3c', '#7c6af7', '#4ade80', '#f87171'] },
-];
-const KEY = 'canon-theme', MODES = ['system', 'light', 'dark'];
-const DEFAULT = { mode: 'dark', light: 'canon-light', dark: 'canon-dark' };
 const osDark = () => { try { return matchMedia('(prefers-color-scheme: dark)').matches; } catch (e) { return true; } };
+let choice = readChoice(null);
+const themeOf = (m) => themeById(choice[m]);
 
-// readChoice(raw) -> a valid { mode, light, dark } from whatever is stored; anything unreadable is the default.
-export function readChoice(raw) {
-  if (raw === 'dark' || raw === 'light') return { ...DEFAULT, mode: raw };
-  let c = null;
-  try { c = JSON.parse(raw); } catch (e) {}
-  if (!c || typeof c !== 'object' || !MODES.includes(c.mode)) return { ...DEFAULT };
-  const pick = (m) => (THEMES.some(t => t.id === c[m] && t.mode === m) ? c[m] : DEFAULT[m]);
-  return { mode: c.mode, light: pick('light'), dark: pick('dark') };
-}
-export function effectiveMode(choice) { return choice.mode === 'system' ? (osDark() ? 'dark' : 'light') : choice.mode; }
-
-let choice = { ...DEFAULT };
-const themeOf = (m) => THEMES.find(t => t.id === choice[m]);
-
-function apply() {
-  const m = effectiveMode(choice), t = themeOf(m), btn = document.getElementById('theme-btn');
+// draw theme t in mode m on the shell and every open project board (t-a55a); `theme` keeps its old meaning, so an
+// older board still follows
+function show(m, t) {
   document.documentElement.dataset.theme = m;
-  if (btn) { btn.title = t.name; btn.setAttribute('aria-label', 'Theme: ' + t.name); }
-  // every open project board follows (t-a55a); `theme` keeps its old meaning, so an older board still does
+  setVars(document.documentElement, t.css ? null : derive(t).shell);
   document.querySelectorAll('.view iframe').forEach(f => {
     try { f.contentWindow.postMessage({ type: 'canon-theme', theme: m, themeId: t.id }, location.origin); } catch (e) {}
   });
 }
-function save() { try { localStorage.setItem(KEY, JSON.stringify(choice)); } catch (e) {} }
+// the saved choice; the button names the theme in use
+let previewing = false, restoring = false;
+function apply() {
+  const m = effectiveMode(choice, osDark()), t = themeOf(m), btn = document.getElementById('theme-btn');
+  previewing = false;
+  show(m, t);
+  if (btn) { btn.title = t.name; btn.setAttribute('aria-label', 'Theme: ' + t.name); }
+}
+// t-4fa5 (user): hovering or focusing a card shows its theme without saving anything; leaving puts the saved one back
+function preview(id) {
+  const t = themeById(id);
+  if (!t) return;
+  previewing = true;
+  show(t.mode, t);
+}
+function unpreview() { if (previewing) apply(); }
+// the cache theme-boot.js paints from goes with every save, so it always matches the saved choice
+function save() {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(choice));
+    localStorage.setItem(CACHE_KEY, JSON.stringify(cacheFor(choice)));
+  } catch (e) {}
+}
 
 function card(t, forMode) {
-  const sw = t.swatch.map(c => `<i style="background:${c}"></i>`).join('');
+  const sw = [t.c.bg, t.c.surface, t.c.accent, t.c.ok, t.c.bad].map(c => `<i style="background:${c}"></i>`).join('');
   return `<button type="button" class="thm-card" data-id="${esc(t.id)}" data-for="${forMode}" aria-pressed="${choice[forMode] === t.id}"><span class="thm-strip">${sw}</span>${esc(t.name)}</button>`;
 }
 function group(m) { return `<div class="thm-cards">${THEMES.filter(t => t.mode === m).map(t => card(t, m)).join('')}</div>`; }
@@ -55,13 +60,15 @@ function render() {
 }
 function setOpen(open) {
   const pop = document.getElementById('theme-pop'), btn = document.getElementById('theme-btn');
-  if (open) render();
+  if (open) render(); else unpreview();
   pop.hidden = !open;
   btn.setAttribute('aria-expanded', String(open));
 }
 
 export function initTheme() {
-  try { choice = readChoice(localStorage.getItem(KEY)); } catch (e) { choice = { ...DEFAULT }; }
+  try { choice = readChoice(localStorage.getItem(KEY)); } catch (e) { choice = readChoice(null); }
+  // rewrite the first-paint cache from this version's colours, so an update never paints from an old one
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify(cacheFor(choice))); } catch (e) {}
   document.addEventListener('DOMContentLoaded', () => {
     const btn = document.getElementById('theme-btn'), pop = document.getElementById('theme-pop');
     apply();
@@ -75,8 +82,20 @@ export function initTheme() {
       // render() rebuilds the popover, which would drop keyboard focus to <body> (break-it): put it back on the same control
       const again = m ? `[data-mode="${CSS.escape(m.dataset.mode)}"]` : `[data-id="${CSS.escape(c.dataset.id)}"][data-for="${CSS.escape(c.dataset.for)}"]`;
       save(); apply(); render();
-      const el = pop.querySelector(again); if (el) el.focus();
+      // putting focus back is not a preview: the click applied the saved choice, and the re-render means the browser
+      // no longer counts the pointer as inside the popover, so leaving would not undo a preview here (break-it)
+      const el = pop.querySelector(again); if (el) { restoring = true; el.focus(); restoring = false; }
     });
+    // preview: a card under the pointer or with keyboard focus; anywhere else in the popover, or leaving it, reverts.
+    // Only a pointer that really moved counts: choosing System grows the popover upward, which slides a card under a
+    // still pointer, and Chromium reports that as hovering it (the shell then previewed a light theme by itself).
+    const over = e => { if (restoring) return; const c = e.target.closest('.thm-card'); if (c) preview(c.dataset.id); else unpreview(); };
+    let at = '';
+    pop.addEventListener('pointermove', e => { const xy = e.clientX + ',' + e.clientY; if (xy !== at) { at = xy; over(e); } });
+    pop.addEventListener('focusin', over);
+    // leaving with the pointer shows the theme in use again. Not the focused card: after a click under System that
+    // card can be the other mode's pick, which is saved but not in use (break-it)
+    pop.addEventListener('pointerleave', unpreview);
     // keyboard focus leaving the popover and its button closes it (Tab to Help left it open on top, break-it); a press
     // with no new focus target (WebKit does not focus a clicked button) is left to the pointerdown and blur handlers
     const leave = e => { if (!pop.hidden && e.relatedTarget && !pop.contains(e.relatedTarget) && !btn.contains(e.relatedTarget)) setOpen(false); };

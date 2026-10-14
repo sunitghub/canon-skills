@@ -45,7 +45,7 @@
   .nav a:hover{color:var(--text);background:var(--border-muted)}
   .nav a:hover .ic{color:var(--text);border-color:var(--border-hover)}
   .nav a.active{color:var(--card-stat);font-weight:700;background:linear-gradient(90deg,var(--accent-dim),transparent);border-left-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent-dim),0 2px 12px -4px var(--accent)}
-  .nav a.active .ic{color:#fff;background:var(--accent);border-color:var(--accent);box-shadow:0 2px 10px -2px var(--accent)}
+  .nav a.active .ic{color:var(--th-on-accent, #fff);background:var(--accent);border-color:var(--accent);box-shadow:0 2px 10px -2px var(--accent)}
   .nav a .ic{width:28px;height:28px;display:grid;place-items:center;border-radius:8px;border:1px solid var(--border);background:var(--panel);font-size:15px;color:var(--text-muted);flex-shrink:0;transition:.12s}
   .nav a .badge{margin-left:auto;font-size:10px;background:var(--accent-dim);color:var(--accent);border-radius:9px;padding:1px 7px}
   .spacer{flex:1}
@@ -63,7 +63,7 @@
   .theme-pop .thm-seg{display:flex;gap:4px;margin-bottom:12px}
   .theme-pop .thm-seg button,.theme-pop .thm-card{flex:1 1 0;min-width:0;max-width:none;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text);font:inherit;cursor:pointer}
   .theme-pop .thm-seg button{padding:5px 0}
-  .theme-pop .thm-seg button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+  .theme-pop .thm-seg button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--th-on-accent, #fff)}
   .theme-pop .thm-cards{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .theme-pop .thm-card{padding:8px;text-align:left;border-radius:8px}
   .theme-pop .thm-card:hover,.theme-pop .thm-seg button:hover{border-color:var(--border-hover)}
@@ -81,7 +81,7 @@
   .tab .live{width:6px;height:6px;border-radius:50%;background:var(--col-done);display:none}
   .tab .live.on{display:inline-block;box-shadow:0 0 6px var(--col-done)}
   .tab .tx{width:20px;height:20px;border-radius:5px;display:grid;place-items:center;font-size:13px;color:var(--text-muted);margin-left:4px}
-  .tab .tx:hover{color:var(--col-discarded);background:rgba(248,113,113,.14)}
+  .tab .tx:hover{color:var(--col-discarded);background:var(--th-bad-soft, rgba(248,113,113,.14))}
   .views{flex:1;position:relative;overflow:hidden}
   .view{position:absolute;inset:0;overflow:auto;display:none}
   .view.active{display:block}
@@ -145,11 +145,11 @@
   .drow{display:flex;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--border-muted);font-size:15px}
   .drow .k{color:var(--text-muted)} .drow .v{font-weight:700;font-family:ui-monospace,monospace;color:var(--text)}
   .dbtnrow{display:flex;gap:10px;margin-top:16px}
-  .drestart{flex:1;background:var(--accent);color:#fff;border:none;border-radius:9px;padding:12px;font-size:14px;font-weight:600;cursor:pointer}
+  .drestart{flex:1;background:var(--accent);color:var(--th-on-accent, #fff);border:none;border-radius:9px;padding:12px;font-size:14px;font-weight:600;cursor:pointer}
   .drestart:hover{filter:brightness(1.08)}
   /* t-a30c: neutral at rest so it doesn't compete with Restart for visual weight — turns red only on hover to signal it's destructive. */
   .dstop{flex:1;background:transparent;color:var(--text-muted);border:1px solid var(--border);border-radius:9px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;transition:background .12s ease,border-color .12s ease,color .12s ease}
-  .dstop:hover{background:var(--col-discarded);border-color:var(--col-discarded);color:#fff}
+  .dstop:hover{background:var(--col-discarded);border-color:var(--col-discarded);color:var(--th-on-bad, #fff)}
   .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
   .tile{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
   .tile .n{font-size:24px;font-weight:700;letter-spacing:-.5px}
@@ -163,7 +163,7 @@
   .aswitch{position:relative;width:38px;height:22px;flex-shrink:0}
   .aswitch input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer}
   .aswitch .strack{position:absolute;inset:0;background:var(--border-hover);border-radius:11px;transition:background .15s}
-  .aswitch .sthumb{position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .15s;box-shadow:0 1px 3px rgba(0,0,0,.45)}
+  .aswitch .sthumb{position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:var(--th-knob, #fff);transition:transform .15s;box-shadow:0 1px 3px rgba(0,0,0,.45)}
   .aswitch input:checked+.strack{background:var(--accent)}
   .aswitch input:checked+.strack .sthumb{transform:translateX(16px)}
   .aswitch input:disabled+.strack{opacity:.5;cursor:not-allowed}
