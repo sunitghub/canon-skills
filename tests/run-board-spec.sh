@@ -196,5 +196,13 @@ else
     echo "run-board-spec: guard skipped (--no-guard); reports are in $OUT"
   fi
 fi
+# t-a3d7: name the reports and their sha256 in the output, so a stamped log of this run binds them: evidence.sh check can then count
+# the run as re-judged by a later guard log over the same, unchanged files when only the baseline moved.
+echo "run-board-spec: report dir $OUT"
+for r in "$OUT"/board-spec-*-run*.json; do
+  [ -f "$r" ] || continue
+  if command -v sha256sum >/dev/null 2>&1; then h="$(sha256sum -- "$r" | cut -d' ' -f1)"; else h="$(shasum -a 256 -- "$r" | cut -d' ' -f1)"; fi
+  echo "run-board-spec: report ${r##*/} sha256 $h"
+done
 if [ "$GUARD_STATUS" != 0 ]; then STATUS="$GUARD_STATUS"; fi
 exit "$STATUS"

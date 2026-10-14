@@ -229,6 +229,176 @@ diff <(printf '%s\n' "$out" | awk '{print $1, $2}') "$WORK/expect.txt" > "$WORK/
 while IFS= read -r l; do [[ "$l" =~ ^(fresh|stale|unstamped)\ [A-Za-z0-9._\ /=:+,?-]+\ exit=(\?|[0-9]+)( .*)?$ ]] || fail "evidence: odd output line '$l'"; done <<< "$out"
 reset_repo
 
+# --- t-a3d7: evidence-neutral paths ---------------------------------------------------------------------------------------------
+# A later change to a root close-time doc keeps a log fresh; the docs tests read (AGENTS.md, CLAUDE.md), dist/ and a same-named file in
+# a subfolder do not.
+for n in LEARNINGS.md LEARNINGS-archive.md DECISIONS.md DECISIONS-archive.md HANDOFF.md PROMOTED.md .claude/subagent-runs.jsonl; do
+  reset_repo; put n.log "HEAD $C1 $T\nexit 0\n"
+  mkdir -p "$(dirname "$n")"; echo x > "$n"; git add -f "$n"; git commit -qm "neutral $n"
+  ev check "$ID"; assert_contains "$out" "fresh n.log exit=0 (HEAD ${C1:0:7}, only .tickets/ and evidence-neutral files changed since"
+  echo y >> "$n"; ev check "$ID"; assert_contains "$out" "fresh n.log exit=0"   # uncommitted, at the graded head: still neutral
+  ev stamp "$ID" neutral -- true; assert_eq 0 "$code"                             # and a stamp is not refused over it
+done
+for n in AGENTS.md CLAUDE.md sub/HANDOFF.md sub/CLAUDE.md dist/x LEARNINGS.md.bak .claude/other.jsonl; do
+  reset_repo; put n.log "HEAD $C1 $T\nexit 0\n"
+  mkdir -p "$(dirname "$n")"; echo x > "$n"; git add -f "$n"; git commit -qm "not neutral $n"
+  ev check "$ID"; assert_contains "$out" "stale n.log exit=0 (HEAD ${C1:0:7}; 1 tracked file(s) changed since: $n)"
+done
+reset_repo
+# No test reads a neutral file from the repo root, so exempting them cannot hide a change a stamped command saw. Readers in canon's
+# suite take the repo root from $ROOT (or a ROOT-like variable); a fixture writing its own copy in a temp project does not count.
+for n in LEARNINGS.md LEARNINGS-archive.md DECISIONS.md DECISIONS-archive.md HANDOFF.md PROMOTED.md subagent-runs.jsonl; do
+  # tests/subagent-log-cli.sh reads canon's own audit log only to assert the test did NOT write to it, so a gate's real entries cannot
+  # change its result; any other reader fails here.
+  hits="$(grep -nE "(ROOT|REPO_ROOT|CANON_ROOT)[^A-Za-z0-9_]{1,12}(\.claude/)?${n//./\\.}" "$ROOT"/tests/*.sh "$ROOT"/tests/*.js "$ROOT"/scripts/*.sh 2>/dev/null | grep -v -e '^[^:]*tests/evidence\.sh:' -e '^[^:]*tests/subagent-log-cli\.sh:' || true)"
+  [[ -z "$hits" ]] || fail "evidence: a test reads the neutral path $n from the repo root, so it cannot be neutral: $hits"
+done
+
+# --- t-a3d7: covered ---------------------------------------------------------------------------------------------------------------
+# A full board-spec run whose only later change is the baseline counts as re-judged by a guard log at the graded head over exactly its
+# reports, unchanged. The fakes stand in for the real runner and guard; the real runner's two output lines are pinned below.
+sha_of() { if command -v sha256sum >/dev/null 2>&1; then sha256sum -- "$1" | cut -d' ' -f1; else shasum -a 256 -- "$1" | cut -d' ' -f1; fi; }
+mkdir -p "$WORK/fakes"
+cat > "$WORK/fakes/run-board-spec.sh" <<'FAKE'
+#!/usr/bin/env bash
+out="$2"; echo "board run..."; echo "run-board-spec: report dir $(cd "$out" && pwd -P)"
+for r in "$out"/board-spec-*-run*.json; do
+  if command -v sha256sum >/dev/null 2>&1; then h="$(sha256sum -- "$r" | cut -d' ' -f1)"; else h="$(shasum -a 256 -- "$r" | cut -d' ' -f1)"; fi
+  echo "run-board-spec: report ${r##*/} sha256 $h"
+done
+exit "${FAKE_RC:-1}"
+FAKE
+printf 'process.exit(Number(process.env.GUARD_RC || 0));\n' > "$WORK/fakes/board-spec-guard.js"
+D=".tickets/$ID/evidence/full-reports"
+covered_setup() {   # base commit with the fakes and a baseline; reports; the run log at A; a baseline-only commit B
+  reset_repo
+  mkdir -p tests; cp "$WORK/fakes/run-board-spec.sh" "$WORK/fakes/board-spec-guard.js" tests/; echo '{}' > tests/board-spec-baseline.json
+  git add tests; git commit -qm fakes
+  mkdir -p "$D"; echo '{"r":1}' > "$D/board-spec-chromium-run1.json"; echo '{"r":2}' > "$D/board-spec-webkit-run1.json"
+  ev stamp "$ID" full -- bash tests/run-board-spec.sh --out "$REPO/$D"; assert_eq "${FAKE_RC:-1}" "$code"
+  echo '{"flaky":[1]}' > tests/board-spec-baseline.json; git commit -qam "baseline only"
+}
+guard() { ev stamp "$ID" guard -- node tests/board-spec-guard.js "$@"; }
+want_covered() { ev check "$ID"; assert_eq 0 "$code"; assert_contains "$out" "covered full.log exit=1 ("; assert_contains "$out" "re-guarded at"; assert_contains "$out" "by guard.log over 2 report(s))"; }
+want_stale() { ev check "$ID"; assert_eq 0 "$code"; assert_contains "$out" "stale full.log exit=1"; [[ "$out" != *"covered full.log"* ]] || fail "evidence: $1: must not be covered: $out"; }
+covered_setup; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; assert_eq 0 "$code"; want_covered
+A="$(sed -n '1s/^HEAD \([0-9a-f]*\) .*/\1/p' "$ED/full.log")"
+assert_contains "$out" "covered full.log exit=1 (HEAD ${A:0:7}; only tests/board-spec-baseline.json changed since; re-guarded at $(git rev-parse --short=7 HEAD) by guard.log over 2 report(s)) cmd: bash tests/run-board-spec.sh --out"
+guard "$REPO/$D/board-spec-webkit-run1.json" "$REPO/$D/board-spec-chromium-run1.json"; want_covered            # absolute paths, any order
+# every refusal, one at a time
+covered_setup; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; echo ' ' >> "$D/board-spec-webkit-run1.json"; want_stale "an edited report"
+covered_setup; echo '{}' > "$D/board-spec-webkit-run2.json"; guard "$D"/board-spec-*.json; want_stale "an extra report"
+covered_setup; rm "$D/board-spec-webkit-run1.json"; guard "$D/board-spec-chromium-run1.json"; want_stale "a missing report"
+covered_setup; guard "$D/board-spec-chromium-run1.json"; want_stale "a guard over a subset"
+covered_setup; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; want_stale "a duplicated guard argument"
+covered_setup; guard --partial "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; want_stale "a guard --partial over a full run"
+# a --grep run: the runner itself calls the guard with --partial, so the re-run may too (once, and no other option)
+grep_setup() {
+  covered_setup; ev stamp "$ID" full -- bash tests/run-board-spec.sh --out "$REPO/$D" --grep x
+  git commit -qm "re-stamp needs a later baseline change" --allow-empty; echo '{"flaky":[2]}' > tests/board-spec-baseline.json; git commit -qam "baseline again"
+}
+grep_setup; guard --partial "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; want_covered
+grep_setup; guard "$D/board-spec-chromium-run1.json" --partial "$D/board-spec-webkit-run1.json"; want_covered
+grep_setup; guard --partial --partial "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; want_stale "--partial twice"
+grep_setup; guard --partial --strict "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; want_stale "another option beside --partial"
+covered_setup; guard --baseline x.json "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; want_stale "a guard --baseline"
+covered_setup; GUARD_RC=1 guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; want_stale "a failing guard"
+covered_setup; echo more >> src/a.txt; git commit -qam "and code"; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; want_stale "a second changed file"
+covered_setup; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; echo dirty >> src/a.txt; want_stale "an uncommitted change"; git checkout -q -- src/a.txt
+covered_setup; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"
+  mkdir -p "$WORK/elsewhere"; cp "$D"/*.json "$WORK/elsewhere/"; mv "$D" "$D.moved"; ln -s "$WORK/elsewhere" "$D"; want_stale "a report folder that is a symlink"; rm "$D"; mv "$D.moved" "$D"
+covered_setup; ln -sf "$REPO/$D/board-spec-webkit-run1.json" "$WORK/link.json"; rm "$D/board-spec-webkit-run1.json"; cp "$WORK/link.json" "$D/board-spec-webkit-run1.json" 2>/dev/null || true
+  rm -f "$D/board-spec-webkit-run1.json"; echo '{"r":2}' > "$WORK/real.json"; ln -s "$WORK/real.json" "$D/board-spec-webkit-run1.json"
+  guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; want_stale "a report that is a symlink"
+# the reports outside this ticket's evidence/, and the run log of another command
+reset_repo; mkdir -p tests; cp "$WORK/fakes/run-board-spec.sh" "$WORK/fakes/board-spec-guard.js" tests/; echo '{}' > tests/board-spec-baseline.json; git add tests; git commit -qm fakes
+  mkdir -p out; echo '{"r":1}' > out/board-spec-webkit-run1.json; printf 'out/\n' >> .git/info/exclude
+  ev stamp "$ID" full -- bash tests/run-board-spec.sh --out "$REPO/out"; echo '{"f":1}' > tests/board-spec-baseline.json; git commit -qam baseline
+  ev stamp "$ID" guard -- node tests/board-spec-guard.js out/board-spec-webkit-run1.json; want_stale "reports outside evidence/"
+covered_setup; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"
+  sed -i.bak '2s/.*/$ bash tests\/other.sh --out x/' "$ED/full.log"; rm -f "$ED/full.log.bak"; want_stale "a run log of another command"
+covered_setup; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"
+  { head -n2 "$ED/full.log"; sed -n '3,$p' "$ED/full.log" | grep 'sha256' | head -1; sed -n '3,$p' "$ED/full.log"; } > "$WORK/dup.log"; cp "$WORK/dup.log" "$ED/full.log"; want_stale "a report printed twice"
+covered_setup; mv "$ED/full.log" "$WORK/full.log"; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; mv "$WORK/full.log" "$ED/full.log"
+  git commit -q --allow-empty -m later; sed -i.bak "1s/.*/HEAD $(git rev-parse HEAD~1) $T/" "$ED/guard.log"; rm -f "$ED/guard.log.bak"
+  ev check "$ID"; assert_contains "$out" "fresh guard.log"; assert_contains "$out" "covered full.log"   # a guard stamped at an ancestor with no change since still counts
+  echo more >> src/a.txt; git commit -qam code2; want_stale "a guard log that is itself stale"
+# each refusal again, where only that one check can catch it (t-a3d7 mutant sweep)
+covered_setup; mkdir -p "$WORK/other"; cp "$D"/*.json "$WORK/other/"; guard "$WORK/other/board-spec-chromium-run1.json" "$WORK/other/board-spec-webkit-run1.json"
+  want_stale "a guard over same-named copies in another folder"
+covered_setup; mkdir -p "$ED/../evidence-other"; cp "$D"/*.json "$ED/../evidence-other/"
+  ev stamp "$ID" full -- bash tests/run-board-spec.sh --out "$REPO/.tickets/$ID/evidence-other"; echo '{"f":3}' > tests/board-spec-baseline.json; git commit -qam b3
+  guard ".tickets/$ID/evidence-other/board-spec-chromium-run1.json" ".tickets/$ID/evidence-other/board-spec-webkit-run1.json"; want_stale "a sibling folder named evidence-other"; rm -rf "$ED/../evidence-other"
+covered_setup; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"
+  { sed -n '1,$p' "$ED/full.log" | sed '$d'; echo "run-board-spec: report dir $REPO/$D"; echo "exit 1"; } > "$WORK/two.log"; cp "$WORK/two.log" "$ED/full.log"; want_stale "two report dir lines"
+covered_setup; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"
+  sed -i.bak "s|^run-board-spec: report dir .*|run-board-spec: report dir $REPO/$D/gone|" "$ED/full.log"; rm -f "$ED/full.log.bak"; want_stale "a report dir that does not exist"
+covered_setup; mkdir -p tests/zz; echo z > tests/zz/after.txt; git add tests/zz; git commit -qm "sorts after the baseline"
+  guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; want_stale "a second changed file that sorts after the baseline"
+covered_setup; ev stamp "$ID" a-guard -- node tests/board-spec-guard.js "$D/board-spec-chromium-run1.json"; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"
+  ev check "$ID"; assert_contains "$out" "covered full.log exit=1 ("; assert_contains "$out" "by guard.log over 2 report(s))"   # a bad guard log listed first does not stop the search
+covered_setup; ev stamp "$ID" a-guard -- node tests/board-spec-guard.js --partial "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"
+  guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"
+  ev check "$ID"; assert_contains "$out" "by guard.log over 2 report(s))"   # a.guard's --partial on a full run is refused, guard.log still found
+# the run's own exit: 0 or 1 (the guard's verdict) can be covered; 2 (the runner's own failure) and a missing exit line cannot
+FAKE_RC=0 covered_setup; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; ev check "$ID"; assert_contains "$out" "covered full.log exit=0 ("
+FAKE_RC=2 covered_setup; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; ev check "$ID"
+  assert_contains "$out" "stale full.log exit=2"; [[ "$out" != *"covered full.log"* ]] || fail "evidence: a run that exited 2 was covered: $out"
+covered_setup; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; sed -i.bak '$d' "$ED/full.log"; rm -f "$ED/full.log.bak"
+  ev check "$ID"; assert_contains "$out" "stale full.log exit=?"; [[ "$out" != *"covered full.log"* ]] || fail "evidence: a run with no exit line was covered: $out"
+# the command must BE the runner or the guard, not a command that merely names them (anchors on both line-2 checks)
+covered_setup; ev stamp "$ID" full -- env bash tests/run-board-spec.sh --out "$REPO/$D"; echo '{"f":9}' > tests/board-spec-baseline.json; git commit -qam b9
+  guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; ev check "$ID"
+  [[ "$out" != *"covered full.log"* ]] || fail "evidence: a run log of 'env bash tests/run-board-spec.sh' was covered: $out"
+covered_setup; ev stamp "$ID" guard -- env node tests/board-spec-guard.js "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"
+  want_stale "a guard log of 'env node tests/board-spec-guard.js'"
+# exactly one changed file that is not the baseline: a near-miss name, and an unrelated file
+for other in tests/board-spec-baseline-old.json src/only.txt; do
+  reset_repo; mkdir -p tests; cp "$WORK/fakes/run-board-spec.sh" "$WORK/fakes/board-spec-guard.js" tests/; echo '{}' > tests/board-spec-baseline.json; git add tests; git commit -qm fakes
+  mkdir -p "$D"; echo '{"r":1}' > "$D/board-spec-chromium-run1.json"; echo '{"r":2}' > "$D/board-spec-webkit-run1.json"
+  ev stamp "$ID" full -- bash tests/run-board-spec.sh --out "$REPO/$D"
+  mkdir -p "$(dirname "$other")"; echo x > "$other"; git add "$other"; git commit -qm "only $other"
+  guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; want_stale "a single changed file $other"
+done
+# another fresh exit-0 log listed before the guard log does not end the search
+covered_setup; ev stamp "$ID" a-other -- true; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; want_covered
+# a folder named like a report is refused, not hashed
+covered_setup; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; mkdir "$D/board-spec-webkit-run2.json"
+  want_stale "a folder named like a report"; [[ "$out" != *"directory"* ]] || fail "evidence: check tried to read a folder as a report: $out"
+# a guard log kept fresh by an evidence-neutral change still counts
+covered_setup; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; echo h > HANDOFF.md; git add -f HANDOFF.md; git commit -qm handoff
+  ev check "$ID"; assert_contains "$out" "fresh guard.log exit=0 (HEAD"; assert_contains "$out" "covered full.log"
+# a run with no report at all re-judges nothing
+covered_setup; rm "$D"/*.json; ev stamp "$ID" full -- bash tests/run-board-spec.sh --out "$REPO/$D" --grep x 2>/dev/null || true
+  echo '{"f":4}' > tests/board-spec-baseline.json; git commit -qam b4; ev stamp "$ID" guard -- node tests/board-spec-guard.js --partial; want_stale "no report"
+# an ancestor stamp with only .tickets/ changes since, but an uncommitted tracked edit now, is stale
+reset_repo; put anc.log "HEAD $C1 $T\nexit 0\n"; echo t >> ".tickets/$ID/ticket.md"; git commit -qam tk; echo dirty >> src/a.txt
+  ev check "$ID"; assert_contains "$out" "stale anc.log exit=0 (HEAD ${C1:0:7}; tracked files are modified in the working tree since)"; git checkout -q -- src/a.txt
+# an evidence folder with no log prints nothing and exits 0, under macOS's bash 3.2 as well
+reset_repo; mkdir -p "$ED"; echo x > "$ED/notes.txt"
+for sh in bash /bin/bash; do set +e; out="$(cd "$REPO" && "$sh" "$EV" check "$ID" 2>&1)"; code=$?; set -e; assert_eq 0 "$code"; assert_eq "" "$out"; done
+
+# hostile run logs: random folder lines and report lines never make a log covered, and check never fails
+covered_setup; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"
+cp "$ED/full.log" "$WORK/full.orig"
+bad=('run-board-spec: report dir ' "run-board-spec: report dir $REPO/$D/.." "run-board-spec: report dir $REPO/$D/../.." 'run-board-spec: report dir /' "run-board-spec: report dir $REPO/.tickets/t-ffff/evidence/full-reports"
+     "run-board-spec: report dir $REPO/$D/" "run-board-spec: report dir  $REPO/$D" "run-board-spec: report dir $REPO/./$D" 'run-board-spec: report board-spec-webkit-run1.json sha256 0000000000000000000000000000000000000000000000000000000000000000'
+     'run-board-spec: report ../board-spec-webkit-run1.json sha256 aaaa' "run-board-spec: report dir $(printf 'x%.0s' $(seq 1 3000))" $'run-board-spec: report dir \x01\x02' "run-board-spec: report dir \$(touch $WORK/pwned)")
+for i in $(seq 1 120); do
+  pick="${bad[$((RANDOM % ${#bad[@]}))]}"
+  { head -n2 "$WORK/full.orig"; grep -v '^run-board-spec: report dir' "$WORK/full.orig" | sed -n '3,$p'; printf '%s\n' "$pick"; } > "$ED/full.log"
+  if (( RANDOM % 2 )); then printf 'run-board-spec: report dir %s\n' "$REPO/$D" >> "$ED/full.log.tmp" && sed -i.bak '$d' "$ED/full.log" && rm -f "$ED/full.log.bak" "$ED/full.log.tmp"; fi
+  printf 'exit 1\n' >> "$ED/full.log"
+  ev check "$ID"; assert_eq 0 "$code"
+  [[ "$out" != *"covered full.log"* ]] || fail "evidence: hostile run log made it covered: $pick"
+done
+[[ ! -e "$WORK/pwned" ]] || fail "evidence: a report dir line was executed"
+reset_repo
+# the real runner prints exactly the lines check parses
+grep -qF 'echo "run-board-spec: report dir $OUT"' "$ROOT/tests/run-board-spec.sh" || fail "evidence: tests/run-board-spec.sh no longer prints its report dir line"
+grep -qF 'echo "run-board-spec: report ${r##*/} sha256 $h"' "$ROOT/tests/run-board-spec.sh" || fail "evidence: tests/run-board-spec.sh no longer prints its report sha256 lines"
+grep -qF 'OUT="$(cd "$OUT" && pwd -P)"' "$ROOT/tests/run-board-spec.sh" || fail "evidence: tests/run-board-spec.sh must print the resolved report dir"
+
 # --- the rules the evaluator reads stay in the docs: a later edit cannot drop the independence floor or the budget without failing here ---------------
 need() {   # need <file> <fixed phrase> <what it carries>
   grep -qF -- "$2" "$ROOT/$1" || fail "evidence: $1 no longer says: $3 ('$2')"
@@ -250,5 +420,9 @@ need skills/sprint/reference/eval.md 'Evidence reuse: <n> of <m>' "the report li
 need skills/sprint/reference/start.md 'evidence.sh stamp <id> <name> -- <command>' "the builder writes evidence with the stamp tool"
 need skills/sprint/reference/start.md 'an `(uncommitted)` stamp is never reusable' "an uncommitted stamp is never reusable"
 need skills/sprint/reference/complete.md "the evaluator's elapsed minutes" "the eval row records evaluator minutes"
+need skills/sprint/reference/complete.md 'run `sprint check-evidence <id>`' "the evidence pre-flight before dispatch"
+need skills/sprint/reference/complete.md 'On exit 1, do not dispatch' "a refused pre-flight blocks the dispatch"
+need skills/sprint/reference/eval.md 'A `covered` run log stands in for the full board spec' "covered is reusable"
+need skills/sprint/reference/start.md 'with `--out .tickets/<id>/evidence/<dir>`' "the full spec is stamped with its reports in evidence/"
 
 echo "evidence: ok"

@@ -61,4 +61,13 @@ sweep_stale_stub_processes 0 "$CWD_A"
 sleep 0.3
 kill -0 "$wrong_cwd_pid" 2>/dev/null || fail "expected different-cwd stub to survive the cwd gate, but it's gone: $wrong_cwd_pid"
 
+# t-3f04: the pattern matches every form ps shows a stub as, and nothing else.
+for c in 'python3 -' 'python3.15 -' '/usr/bin/python3 -' '/opt/homebrew/bin/python3 -' \
+  '/opt/homebrew/Cellar/python@3.15/3.15.0/Frameworks/Python.framework/Versions/3.15/Resources/Python.app/Contents/MacOS/Python -'; do
+  printf '%s\n' "$c" | grep -qE "$STUB_PROC_RE" || fail "the stub pattern misses '$c'"
+done
+for c in 'python3 script.py' 'python3 -c x' 'python3 - extra' 'mypython3 -' 'Python' 'python -' 'node -' '/usr/bin/xpython3 -'; do
+  if printf '%s\n' "$c" | grep -qE "$STUB_PROC_RE"; then fail "the stub pattern wrongly matches '$c'"; fi
+done
+
 printf 'helpers-sweep: ok\n'
