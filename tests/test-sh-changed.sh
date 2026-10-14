@@ -27,9 +27,17 @@ printf 'source "$HERE/epsilon.sh"\n' > tests/e.sh                  # names a too
 printf '. "$(dirname "$0")/zeta.sh"  # needs zeta.sh\n' > tools/epsilon.sh   # epsilon names zeta
 printf '# zeta.sh\n' > tools/zeta.sh                                # zeta names itself
 printf 'const g = "gamma.txt";\n' > tests/kappa.js                 # a suite whose name is another path plus an extension
+mkdir -p tools/other tools/x tools/y
+echo 'package other' > tools/other/main.go                           # a second main.go: that name is shared, so it matches by path
+printf 'go vet ./tools/other/main.go\n' > tests/g.sh                 # names the OTHER main.go only
+printf 'bash "$ROOT/tools/runner"\n' > tests/h.sh                    # names an extensionless tool by path
+printf 'echo the runner is fine\n' > tests/i.sh                      # only the word "runner": must not count as naming tools/runner
+printf 'exec delta2.sh\n' > tools/runner; echo d2 > tools/delta2.sh # tools/runner (no extension) names delta2.sh
+echo a > tools/x/big-alpha.sh; echo a > tools/y/big-alpha.sh        # a shared name that contains the unique name alpha.sh
+printf 'source "$D/alpha.sh"\n' > tests/j.sh                         # names alpha.sh by its (unique) file name only
 git add -A && git commit -qm base
 BASE="$(git rev-parse HEAD)"
-LABELS="$WORK/labels"; printf '%s\n' tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh > "$LABELS"
+LABELS="$WORK/labels"; printf '%s\n' tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh tests/g.sh tests/h.sh tests/i.sh tests/j.sh > "$LABELS"
 
 source "$REPO/scripts/test-select.sh"
 selected() {   # selected <base>: the labels select_suite picks, space-joined, or FULL:<reason>
@@ -42,7 +50,7 @@ selected() {   # selected <base>: the labels select_suite picks, space-joined, o
 reset() { git reset -q --hard "$BASE"; git clean -qfd; }
 
 reset; echo more >> tools/alpha.sh; git commit -qam alpha
-assert_eq "tests/a.sh" "$(selected "$BASE")"                                     # a committed change to a tool its suite names
+assert_eq "tests/a.sh tests/j.sh" "$(selected "$BASE")"                          # a committed change; alpha.sh is unique though big-alpha.sh exists
 reset; echo more >> tools/delta.sh
 assert_eq "tests/b.sh" "$(selected "$BASE")"                                     # a working-tree change, one level up
 reset; echo more >> tools/gamma.txt
@@ -50,26 +58,28 @@ assert_eq "tests/c.js tests/kappa.js" "$(selected "$BASE")"                     
 reset; echo '// x' >> tests/c.js
 assert_eq "tests/c.js" "$(selected "$BASE")"                                     # a changed suite runs itself
 reset; echo '// x' >> tools/sprint-check-go/main.go
-assert_eq "tools/sprint-check-go" "$(selected "$BASE")"                          # a Go package by its directory
+assert_eq "tools/sprint-check-go" "$(selected "$BASE")"                          # a Go package by its directory; not the suite naming the other main.go
+reset; echo more >> tools/delta2.sh
+assert_eq "tests/h.sh" "$(selected "$BASE")"                                     # an extensionless referrer matches by path, not by the word
 reset; echo more >> LEARNINGS.md; git commit -qam learnings
 assert_eq "" "$(selected "$BASE")"                                               # evidence-neutral only: nothing to run
 reset; echo more >> tools/zeta.sh
 assert_eq "tests/e.sh" "$(selected "$BASE")"                                     # one level up, by file name only
 reset; echo k > tests/kappa; git add tests/kappa; git commit -qm kappa
-assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh]" "$(selected "$BASE")"   # tests/kappa is not tests/kappa.js
+assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh tests/g.sh tests/h.sh tests/i.sh tests/j.sh]" "$(selected "$BASE")"   # tests/kappa is not tests/kappa.js
 reset; echo more >> tools/alpha.sh; select_init "$REPO" "$BASE" "$LABELS"
 if select_suite tests/ghost.sh 2> "$WORK/ghost.err"; then fail "a label with no file was selected"; fi
 assert_eq "" "$(cat "$WORK/ghost.err")"; select_cleanup                         # and no grep error for it
 reset; echo more >> tools/orphan.sh
-assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh]" "$(selected "$BASE")"   # named by nothing: everything
+assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh tests/g.sh tests/h.sh tests/i.sh tests/j.sh]" "$(selected "$BASE")"   # named by nothing: everything
 reset; echo more >> tests/not-a-suite.sh
-assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh]" "$(selected "$BASE")"   # in tests/ but no suite: everything
+assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh tests/g.sh tests/h.sh tests/i.sh tests/j.sh]" "$(selected "$BASE")"   # in tests/ but no suite: everything
 reset; echo more >> tools/alpha.sh; echo more >> tools/orphan.sh
-assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh]" "$(selected "$BASE")"   # one unmapped path is enough
+assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh tests/g.sh tests/h.sh tests/i.sh tests/j.sh]" "$(selected "$BASE")"   # one unmapped path is enough
 reset; echo new > tools/untracked.sh
 assert_eq "" "$(selected "$BASE")"                                               # untracked files are not seen ...
 git add -N tools/untracked.sh
-assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh]" "$(selected "$BASE")"   # ... until intent-added
+assert_eq "FULL[tests/a.sh tests/b.sh tests/c.js tests/e.sh tests/kappa.js tools/sprint-check-go tests/ghost.sh tests/g.sh tests/h.sh tests/i.sh tests/j.sh]" "$(selected "$BASE")"   # ... until intent-added
 reset
 set +e; out="$(selected not-a-ref 2>&1)"; rc=$?; set -e
 assert_eq 2 "$rc"; assert_contains "$out" "test.sh --changed: 'not-a-ref' is not a commit"
