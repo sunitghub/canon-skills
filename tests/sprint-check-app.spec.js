@@ -31,6 +31,10 @@ test.beforeEach(async ({ context }) => {
       if (!location.search.includes('sbdefault') && localStorage.getItem(k) === null) localStorage.setItem(k, 'false');
     } catch {}
   });
+  // t-f889: no test reads this machine's themes folder or opens it; a test that needs user themes routes them itself
+  // (page routes win over these)
+  await context.route('**/api/themes', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ dir: '/home/me/.canon/themes', themes: [], rejected: [] }) }));
+  await context.route('**/api/themes/open', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, created: false, launched: false }) }));
   await context.route(u => u.pathname === '/', route => {
     const req = route.request();
     const u = new URL(req.url());
@@ -4598,6 +4602,150 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.goto(BASE + '/?standalone=1&project=nope'); await page.waitForLoadState('networkidle');
       expect(await page.evaluate(() => document.documentElement.classList.contains('canon-proj-embed'))).toBe(true);
       expect(await page.evaluate(() => [...document.documentElement.style].filter(p => p.startsWith('--')).length)).toBe(0);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    // t-f889: user themes. The list is routed (the servers' checks have their own test, tests/theme-files-parity.sh);
+    // these tests prove the page checks it again, shows it, and applies it.
+    const INK = { name: 'Example Dark', mode: 'dark', colors: { bg: '#1f2430', surface: '#272d3a', border: '#3a4252', text: '#eef1f6', body: '#c4cad6', muted: '#a3abba', accent: '#5aa9e6', ok: '#6cc070', warn: '#e6b450', bad: '#ef6b73', info: '#79b8ff', term: '#171b24' } };
+    const userList = (themes, rejected = [], dir = '/home/me/.canon/themes') => ({ dir, themes, rejected });
+    const entry = (stem, t) => ({ id: 'user-' + stem, file: stem + '.json', ...t });
+    async function routeThemes(page, get) {
+      await page.route('**/api/themes', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(get()) }));
+    }
+
+    test('user themes (t-f889): a file\'s theme shows under its mode and recolours the shell and an open board; a new file appears on reopening and reaches a loaded board', async ({ page }) => {
+      await page.emulateMedia({ colorScheme: 'dark' });
+      let list = userList([entry('ink', INK)]);
+      await routeThemes(page, () => list);
+      const board = await openShell(page, []);
+      await expect(board.locator('#board')).toBeVisible();
+      const pop = page.locator('#theme-pop'), html = page.locator('html'), bhtml = board.locator('html');
+      await page.locator('#theme-btn').click();
+      await pop.locator('[data-mode="dark"]').click();
+      const card = pop.locator('.thm-card[data-id="user-ink"]');
+      await expect(card).toHaveText('Example Dark');
+      await expect(card.locator('.thm-low')).toHaveCount(0);
+      // its strip: the five colours, set as properties (validated hex), in order
+      expect(await card.locator('.thm-strip i').evaluateAll(is => is.map(i => i.style.getPropertyValue('background-color')))).toEqual(
+        ['rgb(31, 36, 48)', 'rgb(39, 45, 58)', 'rgb(90, 169, 230)', 'rgb(108, 192, 112)', 'rgb(239, 107, 115)']);
+      await card.click();
+      expect(await cssVar(html, '--bg')).toBe('#1f2430');
+      expect(await cssVar(html, '--accent')).toBe('#5aa9e6');
+      await expect.poll(() => cssVar(bhtml, '--bg')).toBe('#1f2430');
+      await expect.poll(() => cssVar(bhtml, '--surface')).toBe('#272d3a');
+      expect((await saved(page)).dark).toBe('user-ink');
+      expect((await page.evaluate(() => JSON.parse(localStorage.getItem('canon-theme-vars')))).themes['user-ink'].board['--bg']).toBe('#1f2430');
+      expect(await page.locator('#theme-btn').getAttribute('title')).toBe('Example Dark');
+      // a file added later: it shows when the popover opens again, and the board (which loaded without it) looks it up
+      await page.keyboard.press('Escape');
+      list = userList([entry('ink', INK), entry('second', { ...INK, name: 'Second', colors: { ...INK.colors, bg: '#102030' } })]);
+      await page.locator('#theme-btn').click();
+      await expect(pop.locator('.thm-card[data-id="user-second"]')).toHaveText('Second');
+      await pop.locator('.thm-card[data-id="user-second"]').click();
+      expect(await cssVar(html, '--bg')).toBe('#102030');
+      await expect.poll(() => cssVar(bhtml, '--bg')).toBe('#102030');
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('user themes (t-f889): Low contrast is marked with its ratio and can still be picked; refused files and hostile entries stay text; Open themes folder posts once', async ({ page }) => {
+      await page.emulateMedia({ colorScheme: 'dark' });
+      const pale = { name: 'Pale', mode: 'light', colors: { ...INK.colors, bg: '#ffffff', surface: '#fafafa', text: '#eeeeee', body: '#dddddd', muted: '#dddddd' } };
+      const evil = '<img src=x onerror="window.__pwned=1">';
+      await routeThemes(page, () => userList([
+        entry('pale', pale),
+        entry('evil', { ...INK, name: evil }),                                                    // the page refuses it
+        entry('css', { ...INK, name: 'Css', colors: { ...INK.colors, bg: 'red;background:url(//x)' } }),   // and this
+        { ...entry('forged', INK), id: 'user-other' },                                             // and this
+      ], [{ file: evil + '.json', reason: XSS_ATTR }, { file: 'bad.json', reason: 'not valid JSON' }], '/home/me/' + XSS_ATTR));
+      const posts = [];
+      await page.route('**/api/themes/open', r => { posts.push({ method: r.request().method(), body: r.request().postData() }); return r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true,"created":false,"launched":true}' }); });
+      await openShell(page, []);
+      const pop = page.locator('#theme-pop');
+      await page.locator('#theme-btn').click();
+      await pop.locator('[data-mode="light"]').click();
+      const card = pop.locator('.thm-card[data-id="user-pale"]');
+      await expect(card.locator('.thm-low')).toHaveText('Low contrast');
+      expect(await card.locator('.thm-low').getAttribute('title')).toMatch(/^text on background: 1\.\d\d:1 \(needs 4\.5:1\)$/);
+      await card.click();
+      expect(await cssVar(page.locator('html'), '--bg')).toBe('#ffffff');
+      // only the valid entry has a card; the others are listed as refused by the page, with the servers' refusals
+      await pop.locator('[data-mode="dark"]').click();
+      expect(await pop.locator('.thm-card[data-id^="user-"]').count()).toBe(0);
+      const items = pop.locator('.thm-rejected li');
+      await expect(items).toHaveText([
+        "evil.json: failed the page's own check", "css.json: failed the page's own check", "forged.json: failed the page's own check",
+        evil + '.json: ' + XSS_ATTR, 'bad.json: not valid JSON']);
+      await expect(pop.locator('.thm-note code')).toHaveText('/home/me/' + XSS_ATTR);
+      expect(await pop.locator('img').count()).toBe(0);
+      expect(await onAttrs(page)).toEqual([]);
+      expect(await page.evaluate(() => window.__pwned)).toBeUndefined();
+      await pop.locator('.thm-open').click();
+      await expect.poll(() => posts.length).toBe(1);
+      expect(posts[0]).toEqual({ method: 'POST', body: '{}' });
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('user themes (t-f889): a saved user theme paints from the cache before its list loads, on the shell and the board; when its file is gone Canon shows and the pick stays', async ({ page }) => {
+      await page.emulateMedia({ colorScheme: 'dark' });
+      let list = userList([entry('ink', INK)]);
+      let release = null;
+      await page.route('**/api/themes', async r => { if (release) await release.wait; return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(list) }); });
+      const board = await openShell(page, []);
+      await expect(board.locator('#board')).toBeVisible();
+      await page.locator('#theme-btn').click(); await page.locator('#theme-pop [data-mode="dark"]').click();
+      await page.locator('#theme-pop .thm-card[data-id="user-ink"]').click(); await page.keyboard.press('Escape');
+      // hold the list: the modules run, and the cached paint must stay on both pages until it arrives
+      let open; release = { wait: new Promise(r => { open = r; }) };
+      await page.reload(); await page.waitForLoadState('domcontentloaded');
+      await page.evaluate(async () => { const { openProject } = await import('/static/cockpit-tabs.js'); openProject('proj-a', 'proj-a'); });
+      const bhtml = page.frameLocator('#view-proj-a iframe').locator('html');
+      await expect(page.frameLocator('#view-proj-a iframe').locator('#board')).toBeVisible();
+      expect(await cssVar(page.locator('html'), '--bg')).toBe('#1f2430');
+      expect(await cssVar(bhtml, '--bg')).toBe('#1f2430');
+      // the module has not dropped the entry from the first-paint cache before the file was read
+      expect((await page.evaluate(() => JSON.parse(localStorage.getItem('canon-theme-vars')))).themes['user-ink']).toBeTruthy();
+      open(); release = null;
+      await expect.poll(() => page.evaluate(async () => (await import('/static/theme-data.js')).userThemeList().length)).toBe(1);
+      expect(await cssVar(page.locator('html'), '--bg')).toBe('#1f2430');
+      // the file is deleted: Canon Dark shows on both, and the saved pick is untouched (fixing the file brings it back)
+      list = userList([]);
+      await page.reload(); await page.waitForLoadState('networkidle');
+      await page.evaluate(async () => { const { openProject } = await import('/static/cockpit-tabs.js'); openProject('proj-a', 'proj-a'); });
+      await expect(page.frameLocator('#view-proj-a iframe').locator('#board')).toBeVisible();
+      await expect.poll(() => inlineVars(page.locator('html'))).toBe(0);
+      await expect.poll(() => inlineVars(bhtml)).toBe(0);
+      expect(await cssVar(page.locator('html'), '--bg')).toBe('#1b2330');
+      expect((await saved(page)).dark).toBe('user-ink');
+      expect((await page.evaluate(() => JSON.parse(localStorage.getItem('canon-theme-vars')))).themes['user-ink']).toBeUndefined();
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('user themes (t-f889): a board that must look up a new user theme never applies it over a later message', async ({ page }) => {
+      await page.emulateMedia({ colorScheme: 'dark' });
+      let list = userList([]), open = null;
+      const held = new Promise(r => { open = r; });
+      await routeThemes(page, () => list);
+      const board = await openShell(page, []);
+      await expect(board.locator('#board')).toBeVisible();
+      // the board's listener is live (it is attached after #board shows): one message it must follow first
+      const post = id => page.evaluate(id => document.querySelector('#view-proj-a iframe').contentWindow.postMessage({ type: 'canon-theme', theme: 'dark', themeId: id }, location.origin), id);
+      const draculaBg = await page.evaluate(async () => (await import('/static/theme-data.js')).themeById('dracula').c.bg);
+      await expect.poll(async () => { await post('dracula'); return cssVar(board.locator('html'), '--bg'); }).toBe(draculaBg);
+      // the board's next lookup is held; the shell then previews a theme the board has not seen, then shows Nord
+      list = userList([entry('ink', INK)]);
+      const frame = page.frame({ url: /project=proj-a/ });
+      await page.route('**/api/themes', async r => { await held; return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(list) }); });
+      await page.evaluate(() => {
+        const f = document.querySelector('#view-proj-a iframe').contentWindow;
+        f.postMessage({ type: 'canon-theme', theme: 'dark', themeId: 'user-ink' }, location.origin);
+        f.postMessage({ type: 'canon-theme', theme: 'dark', themeId: 'nord' }, location.origin);
+      });
+      const nordBg = await page.evaluate(async () => (await import('/static/theme-data.js')).themeById('nord').c.bg);
+      await expect.poll(() => cssVar(board.locator('html'), '--bg')).toBe(nordBg);
+      open();
+      await expect.poll(() => frame.evaluate(async () => (await import('/static/theme-data.js')).userThemeList().length)).toBe(1);
+      expect(await cssVar(board.locator('html'), '--bg')).toBe(nordBg);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 

@@ -232,5 +232,41 @@ assert.strictEqual(boot({ page: 'board', embedded: false, stored: SB(J({ mode: '
   const proto = '{"v":1,"themes":{"nord":{"shell":{"__proto__":{"--bg":"#000000"}}}}}';
   assert.deepStrictEqual(bootFull({ page: 'shell', stored: CV(J(choice), proto) }).vars, {}, '__proto__ keys are not followed');
 
-  console.log('sprint-check-theme: ok (theme-boot precedence, fallback and cache for shell and board; readChoice migration; Canon equals cockpit-shell.css; AA per built-in; derive completeness; no unthemed CSS colour)');
+  // t-f889: user themes. readChoice keeps a well-formed user id it cannot resolve yet; themeFor shows Canon of that mode
+  // once the list has loaded without it (the pick stays saved), and null before (the boot paint stays)
+  const TD = await import(path.join(STATIC, 'theme-data.js'));
+  const uc = TD.readChoice(J({ mode: 'dark', light: 'user-paper', dark: 'user-ink' }));
+  assert.deepStrictEqual(uc, { mode: 'dark', light: 'user-paper', dark: 'user-ink' }, 'readChoice keeps user ids');
+  for (const bad of ['user-', 'user-UP', 'user-a_b', 'user-' + 'a'.repeat(31), 'User-x', 'user-x<b>', 'nord-x']) {
+    assert.strictEqual(TD.readChoice(J({ mode: 'dark', light: 'canon-light', dark: bad })).dark, 'canon-dark', `readChoice drops ${bad}`);
+  }
+  assert.strictEqual(TD.themeFor(uc, 'dark'), null, 'a user pick before the list loads: null (keep the boot paint)');
+  const example = JSON.parse(fs.readFileSync(path.join(STATIC, '..', 'theme-seed', 'example.json'), 'utf8'));
+  const inkT = { mode: 'dark', ...example };
+  const light = { name: 'Paper', mode: 'light', colors: { ...example.colors, bg: '#ffffff', surface: '#fafafa', text: '#eeeeee', muted: '#dddddd' } };
+  global.fetch = async () => ({ json: async () => ({ dir: '/x', themes: [
+    { id: 'user-ink', file: 'ink.json', ...inkT },
+    { id: 'user-paper', file: 'paper.json', ...light },
+    { id: 'user-forged', file: 'other.json', ...inkT },          // id does not match its file: refused by the page
+    { id: 'user-css', file: 'css.json', ...inkT, colors: { ...inkT.colors, bg: 'red;x:url(y)' } },
+  ], rejected: [{ file: 'a.json', reason: 'not valid JSON' }, { file: 5, reason: 'x' }] }) });
+  const st = await TD.loadUserThemes();
+  assert.deepStrictEqual(st.themes.map(t => t.id), ['user-ink', 'user-paper'], 'the page re-checks every entry');
+  assert.deepStrictEqual(st.rejected.map(r => r.file), ['other.json', 'css.json', 'a.json'], 'refused entries are listed, malformed ones dropped');
+  assert.strictEqual(TD.themeFor(uc, 'dark').id, 'user-ink', 'a loaded user theme resolves');
+  assert.strictEqual(TD.themeFor({ ...uc, dark: 'user-paper' }, 'dark').id, 'canon-dark', 'a user theme of the other mode shows Canon');
+  assert.strictEqual(TD.themeFor({ ...uc, dark: 'user-gone' }, 'dark').id, 'canon-dark', 'a missing user theme shows Canon');
+  assert.ok(TD.cacheFor(uc).themes['user-ink'], 'the cache carries a user theme');
+  assert.ok(!TD.cacheFor({ mode: 'dark', light: 'canon-light', dark: 'user-paper' }).themes['user-paper'], 'not one of the wrong mode');
+  // the cached user theme paints on the first frame (boot takes a user- id like any third-party one)
+  assert.ok(Object.keys(bootFull({ page: 'shell', stored: CV(J(uc), J(TD.cacheFor(uc))) }).vars).length > 20, 'boot paints a cached user theme');
+  // Low contrast: the example meets the floor; every built-in does too; a pale text fails with its ratio
+  assert.strictEqual(TD.lowContrast(TD.themeById('user-ink')), null, 'example.json meets the contrast floor');
+  for (const t of THEMES) assert.strictEqual(TD.lowContrast(t), null, `${t.id} meets the floor`);
+  const low = TD.lowContrast(TD.themeById('user-paper'));
+  assert.ok(low && low.what === 'text on background' && low.ratio < 4.5, 'pale text on white is Low contrast');
+  assert.ok(Object.values(TD.themeById('user-ink').c).every(v => /^#[0-9a-f]{6}$/.test(v)), 'colours normalised to #rrggbb');
+  delete global.fetch;
+
+  console.log('sprint-check-theme: ok (theme-boot precedence, fallback and cache for shell and board; readChoice migration; Canon equals cockpit-shell.css; AA per built-in; derive completeness; no unthemed CSS colour; user themes: page re-check, fallback, cache, Low contrast)');
 })().catch(e => { console.error('FAIL:', e.message); process.exit(1); });

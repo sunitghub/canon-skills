@@ -262,6 +262,8 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, registryLoad())
 	case "/api/admin/model-tiers":
 		sendJSON(w, loadModelTiers())
+	case "/api/themes":
+		sendJSON(w, listThemes())
 	case "/api/tickets":
 		root, ok := effectiveRoot(r)
 		if !ok {
@@ -609,6 +611,16 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 	}
 	if path == "/api/admin/model-tiers" {
 		res := saveModelTiers(payload)
+		status := http.StatusOK
+		if ok, _ := res["ok"].(bool); !ok {
+			status = http.StatusBadRequest
+		}
+		sendJSONStatus(w, res, status)
+		return
+	}
+	// t-f889: opens the fixed themes folder; the payload is never read
+	if path == "/api/themes/open" {
+		res := openThemesFolder()
 		status := http.StatusOK
 		if ok, _ := res["ok"].(bool); !ok {
 			status = http.StatusBadRequest
@@ -4489,6 +4501,264 @@ func loadModelTiers() map[string]any {
 		}
 	}
 	return empty
+}
+
+// ── User themes (t-f889) — mirrors server.py's list_themes/open_themes_folder ──
+// $CANON_HOME/themes/*.json: files anyone can drop there, so untrusted. Every rule and reason string matches server.py
+// and static/theme-data.js; tests/theme-files-parity.sh holds all three to theme.schema.json (never read at runtime).
+var (
+	themeKeys   = []string{"bg", "surface", "border", "text", "body", "muted", "accent", "ok", "warn", "bad", "info", "term"}
+	themeFileRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,29}\.json$`)
+	themeNameRe = regexp.MustCompile(`^[A-Za-z0-9 ._()+-]{1,40}$`)
+	themeHexRe  = regexp.MustCompile(`^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$`)
+)
+
+const (
+	themeMaxBytes = 16384
+	themeMaxFiles = 50
+	themeMaxDepth = 8
+)
+
+type userTheme struct {
+	ID     string            `json:"id"`
+	File   string            `json:"file"`
+	Name   string            `json:"name"`
+	Mode   string            `json:"mode"`
+	Colors map[string]string `json:"colors"`
+}
+
+type rejectedTheme struct {
+	File   string `json:"file"`
+	Reason string `json:"reason"`
+}
+
+type themeList struct {
+	Dir      string          `json:"dir"`
+	Themes   []userTheme     `json:"themes"`
+	Rejected []rejectedTheme `json:"rejected"`
+	Error    string          `json:"error,omitempty"`
+}
+
+func themesDir() string {
+	home := os.Getenv("CANON_HOME")
+	if home == "" {
+		h, _ := os.UserHomeDir()
+		home = filepath.Join(h, ".canon")
+	}
+	return filepath.Join(home, "themes")
+}
+
+// themeCheck: a parsed theme file -> the theme, or a reason.
+func themeCheck(data any) (userTheme, string) {
+	obj, ok := data.(map[string]any)
+	_, hasName := obj["name"]
+	_, hasMode := obj["mode"]
+	_, hasColors := obj["colors"]
+	if !ok || len(obj) != 3 || !hasName || !hasMode || !hasColors {
+		return userTheme{}, "must be an object with exactly name, mode and colors"
+	}
+	name, ok := obj["name"].(string)
+	if !ok || !themeNameRe.MatchString(name) {
+		return userTheme{}, "name must be 1-40 letters, digits, spaces or . _ ( ) + -"
+	}
+	mode, ok := obj["mode"].(string)
+	if !ok || (mode != "light" && mode != "dark") {
+		return userTheme{}, "mode must be light or dark"
+	}
+	colors, ok := obj["colors"].(map[string]any)
+	if !ok || len(colors) != len(themeKeys) {
+		return userTheme{}, "colors must have exactly the 12 keys"
+	}
+	for _, k := range themeKeys {
+		if _, has := colors[k]; !has {
+			return userTheme{}, "colors must have exactly the 12 keys"
+		}
+	}
+	out := map[string]string{}
+	for _, k := range themeKeys {
+		v, ok := colors[k].(string)
+		if !ok || !themeHexRe.MatchString(v) {
+			return userTheme{}, "colors." + k + " must be #rgb or #rrggbb"
+		}
+		out[k] = v
+	}
+	return userTheme{Name: name, Mode: mode, Colors: out}, ""
+}
+
+// themeRead: one directory entry -> the theme, or a reason. Checks run in server.py's order.
+func themeRead(path string) (userTheme, string) {
+	st, err := os.Lstat(path)
+	if err != nil {
+		return userTheme{}, "cannot be read"
+	}
+	if st.Mode()&os.ModeSymlink != 0 {
+		return userTheme{}, "symbolic links are not read"
+	}
+	if !st.Mode().IsRegular() {
+		return userTheme{}, "not a regular file"
+	}
+	if st.Size() > themeMaxBytes {
+		return userTheme{}, "larger than 16 KiB"
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return userTheme{}, "cannot be read"
+	}
+	defer f.Close()
+	// the file must still be the one Lstat saw (swapped for a link in between: refused)
+	if fst, err := f.Stat(); err != nil || !os.SameFile(st, fst) {
+		return userTheme{}, "not a regular file"
+	}
+	raw, err := io.ReadAll(io.LimitReader(f, themeMaxBytes+1))
+	if err != nil {
+		return userTheme{}, "cannot be read"
+	}
+	if len(raw) > themeMaxBytes {
+		return userTheme{}, "larger than 16 KiB"
+	}
+	if bytes.HasPrefix(raw, []byte{0xef, 0xbb, 0xbf}) {
+		return userTheme{}, "starts with a byte order mark"
+	}
+	if !utf8.Valid(raw) {
+		return userTheme{}, "not valid UTF-8"
+	}
+	if themeTooDeep(raw) {
+		return userTheme{}, "nested too deeply"
+	}
+	// UseNumber: 1e999 is valid JSON (server.py reads it as inf), not a decode error
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var data any
+	if err := dec.Decode(&data); err != nil {
+		return userTheme{}, "not valid JSON"
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		return userTheme{}, "not valid JSON"
+	}
+	return themeCheck(data)
+}
+
+// themeTooDeep: brackets outside strings deeper than themeMaxDepth; the same scan as server.py's _theme_too_deep
+// (its parser hits RecursionError where Go's does not, so both refuse deep nesting first).
+func themeTooDeep(raw []byte) bool {
+	depth, inStr, esc := 0, false, false
+	for _, ch := range raw {
+		switch {
+		case inStr && esc:
+			esc = false
+		case inStr && ch == '\\':
+			esc = true
+		case inStr && ch == '"':
+			inStr = false
+		case inStr:
+		case ch == '"':
+			inStr = true
+		case ch == '[' || ch == '{':
+			depth++
+			if depth > themeMaxDepth {
+				return true
+			}
+		case ch == ']' || ch == '}':
+			depth--
+		}
+	}
+	return false
+}
+
+func listThemes() themeList {
+	d := themesDir()
+	out := themeList{Dir: d, Themes: []userTheme{}, Rejected: []rejectedTheme{}}
+	entries, err := os.ReadDir(d)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			out.Error = "the themes folder cannot be read"
+		}
+		return out
+	}
+	var files []string
+	for _, e := range entries {
+		n := e.Name()
+		if utf8.ValidString(n) && strings.HasSuffix(n, ".json") {
+			files = append(files, n)
+		}
+	}
+	sort.Strings(files)
+	for i, n := range files {
+		if i >= themeMaxFiles {
+			out.Rejected = append(out.Rejected, rejectedTheme{n, "too many theme files (at most 50)"})
+			continue
+		}
+		if !themeFileRe.MatchString(n) {
+			out.Rejected = append(out.Rejected, rejectedTheme{n, "file name must be lowercase letters, digits and dashes (at most 30)"})
+			continue
+		}
+		t, reason := themeRead(filepath.Join(d, n))
+		if reason != "" {
+			out.Rejected = append(out.Rejected, rejectedTheme{n, reason})
+			continue
+		}
+		t.ID, t.File = "user-"+strings.TrimSuffix(n, ".json"), n
+		out.Themes = append(out.Themes, t)
+	}
+	return out
+}
+
+// themeOpener: CANON_OPEN_BIN replaces the launcher (tests); without it, SPRINT_CHECK_NO_BROWSER=1 launches nothing
+// (t-269d).
+func themeOpener() string {
+	if o := os.Getenv("CANON_OPEN_BIN"); o != "" {
+		return o
+	}
+	if os.Getenv("SPRINT_CHECK_NO_BROWSER") == "1" {
+		return ""
+	}
+	switch runtime.GOOS {
+	case "windows":
+		return "explorer"
+	case "darwin":
+		return "open"
+	}
+	return "xdg-open"
+}
+
+// openThemesFolder creates the themes folder if absent (seeding example.json and README.md only then) and opens it.
+// The path is fixed: nothing from the request reaches it or the launcher.
+func openThemesFolder() map[string]any {
+	d := themesDir()
+	created := false
+	if _, err := os.Stat(d); errors.Is(err, os.ErrNotExist) {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			return map[string]any{"ok": false, "error": "could not create the themes folder"}
+		}
+		created = true
+	}
+	if st, err := os.Stat(d); err != nil || !st.IsDir() {
+		return map[string]any{"ok": false, "error": "the themes path is not a folder"}
+	}
+	if created {
+		seed := filepath.Join(filepath.Dir(appHTML), "theme-seed")
+		for _, name := range []string{"example.json", "README.md"} {
+			data, err := os.ReadFile(filepath.Join(seed, name))
+			if err != nil {
+				continue
+			}
+			// never overwrite
+			if f, err := os.OpenFile(filepath.Join(d, name), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644); err == nil {
+				f.Write(data)
+				f.Close()
+			}
+		}
+	}
+	launched := false
+	if opener := themeOpener(); opener != "" {
+		cmd := exec.Command(opener, d)
+		if err := cmd.Start(); err != nil {
+			return map[string]any{"ok": false, "error": "could not open the themes folder"}
+		}
+		go cmd.Wait()
+		launched = true
+	}
+	return map[string]any{"ok": true, "dir": d, "created": created, "launched": launched}
 }
 
 // t-5df2: edits live in the Cockpit data dir (gitignored); modelTiersPath is the

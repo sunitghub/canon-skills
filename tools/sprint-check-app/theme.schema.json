@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://getcanon.dev/schemas/theme.schema.json",
+  "title": "Canon Cockpit theme",
+  "description": "A user theme in $CANON_HOME/themes/<name>.json (t-f889). Documentation and a test fixture only: no board reads this file at runtime. server.py, sprint-check-go and static/theme-data.js each enforce these rules, and tests/theme-files-parity.sh checks all three against it. File-level rules (not expressible here): file name ^[a-z0-9][a-z0-9-]{0,29}\\.json$, a regular file (no symlink), at most 16384 bytes, UTF-8 without a byte order mark, at most 50 theme files read.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "mode", "colors"],
+  "properties": {
+    "name": { "type": "string", "pattern": "^[A-Za-z0-9 ._()+-]{1,40}$" },
+    "mode": { "enum": ["light", "dark"] },
+    "colors": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bg", "surface", "border", "text", "body", "muted", "accent", "ok", "warn", "bad", "info", "term"],
+      "properties": {
+        "bg": { "$ref": "#/$defs/hex" },
+        "surface": { "$ref": "#/$defs/hex" },
+        "border": { "$ref": "#/$defs/hex" },
+        "text": { "$ref": "#/$defs/hex" },
+        "body": { "$ref": "#/$defs/hex" },
+        "muted": { "$ref": "#/$defs/hex" },
+        "accent": { "$ref": "#/$defs/hex" },
+        "ok": { "$ref": "#/$defs/hex" },
+        "warn": { "$ref": "#/$defs/hex" },
+        "bad": { "$ref": "#/$defs/hex" },
+        "info": { "$ref": "#/$defs/hex" },
+        "term": { "$ref": "#/$defs/hex" }
+      }
+    }
+  },
+  "$defs": {
+    "hex": { "type": "string", "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" }
+  }
+}

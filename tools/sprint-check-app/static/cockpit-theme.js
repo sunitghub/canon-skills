@@ -3,12 +3,15 @@
 // saved as { mode, light, dark } under 'canon-theme' (an older 'dark'/'light' still reads). theme-boot.js applies it
 // before the first paint; this module keeps it in step and tells every open board. The themes and their colours live
 // in theme-data.js (t-4fa5): Canon Dark/Light are today's CSS, a third-party theme sets its derived variables on <html>.
-import { esc } from './cockpit-core.js';
-import { THEMES, KEY, CACHE_KEY, MODES, readChoice, effectiveMode, themeById, derive, cacheFor, setVars } from './theme-data.js';
+import { esc, toast } from './cockpit-core.js';
+import { THEMES, KEY, CACHE_KEY, MODES, readChoice, effectiveMode, themeById, themeFor, derive, cacheFor, setVars,
+  loadUserThemes, userThemeList, lowContrast } from './theme-data.js';
 
 const osDark = () => { try { return matchMedia('(prefers-color-scheme: dark)').matches; } catch (e) { return true; } };
 let choice = readChoice(null);
-const themeOf = (m) => themeById(choice[m]);
+const themeOf = (m) => themeFor(choice, m);
+// t-f889: the last /api/themes result, for the "Your own" section ({ themes, rejected, dir, error }); null until loaded
+let listed = null;
 
 // draw theme t in mode m on the shell and every open project board (t-a55a); `theme` keeps its old meaning, so an
 // older board still follows
@@ -23,6 +26,7 @@ function show(m, t) {
 let previewing = false, restoring = false;
 function apply() {
   const m = effectiveMode(choice, osDark()), t = themeOf(m), btn = document.getElementById('theme-btn');
+  if (!t) return; // a user theme before the list has loaded: keep what theme-boot.js painted
   previewing = false;
   show(m, t);
   if (btn) { btn.title = t.name; btn.setAttribute('aria-label', 'Theme: ' + t.name); }
@@ -43,37 +47,78 @@ function save() {
   } catch (e) {}
 }
 
+// the strip's colours are set by paint() with style.setProperty, never written into the markup (t-f889)
 function card(t, forMode) {
-  const sw = [t.c.bg, t.c.surface, t.c.accent, t.c.ok, t.c.bad].map(c => `<i style="background:${c}"></i>`).join('');
-  return `<button type="button" class="thm-card" data-id="${esc(t.id)}" data-for="${forMode}" aria-pressed="${choice[forMode] === t.id}"><span class="thm-strip">${sw}</span>${esc(t.name)}</button>`;
+  const low = t.user ? lowContrast(t) : null;
+  const tag = low ? `<span class="thm-low" title="${esc(`${low.what}: ${low.ratio.toFixed(2)}:1 (needs ${low.min}:1)`)}">Low contrast</span>` : '';
+  return `<button type="button" class="thm-card" data-id="${esc(t.id)}" data-for="${forMode}" aria-pressed="${choice[forMode] === t.id}"><span class="thm-strip"><i></i><i></i><i></i><i></i><i></i></span>${esc(t.name)}${tag}</button>`;
 }
-function group(m) { return `<div class="thm-cards">${THEMES.filter(t => t.mode === m).map(t => card(t, m)).join('')}</div>`; }
-// Everything below is a fixed string from this file or passes through esc() (t-d2e1), so innerHTML is safe here.
-// Slice C's user themes need their own validation before they reach this (t-f889).
+function group(m) { return `<div class="thm-cards">${[...THEMES, ...userThemeList()].filter(t => t.mode === m).map(t => card(t, m)).join('')}</div>`; }
+function paint(pop) {
+  pop.querySelectorAll('.thm-card').forEach(b => {
+    const t = themeById(b.dataset.id);
+    if (t) b.querySelectorAll('.thm-strip i').forEach((i, n) => i.style.setProperty('background', t.c[['bg', 'surface', 'accent', 'ok', 'bad'][n]]));
+  });
+}
+// t-f889: where user themes come from, the files that were refused and why, and the button that opens the folder
+function own() {
+  if (!listed) return '';
+  const bad = listed.rejected.map(r => `<li><b>${esc(r.file)}</b>: ${esc(r.reason)}</li>`).join('');
+  const err = listed.error ? `<div class="thm-note">${esc(listed.error)}</div>` : '';
+  return `<h4 class="thm-own">Your own</h4><div class="thm-note">Add a theme file to <code>${esc(listed.dir)}</code>; it appears above, under its mode.</div>${err}`
+    + (bad ? `<ul class="thm-rejected" aria-label="Theme files not used">${bad}</ul>` : '')
+    + `<button type="button" class="thm-open" data-open="1">Open themes folder</button>`;
+}
+// Everything below is a fixed string from this file or passes through esc() (t-d2e1), so innerHTML is safe here; user
+// themes reach it only after validateTheme() (theme-data.js), and their colours only through paint().
 function render() {
   const pop = document.getElementById('theme-pop');
   const seg = MODES.map(m => `<button type="button" data-mode="${m}" aria-pressed="${choice.mode === m}">${m[0].toUpperCase() + m.slice(1)}</button>`).join('');
   const themes = choice.mode === 'system'
     ? `<div class="thm-sub">When light</div>${group('light')}<div class="thm-sub">When dark</div>${group('dark')}`
     : group(choice.mode);
-  pop.innerHTML = `<h4>Mode</h4><div class="thm-seg" role="group" aria-label="Mode">${seg}</div><h4>Theme</h4>${themes}`;
+  pop.innerHTML = `<h4>Mode</h4><div class="thm-seg" role="group" aria-label="Mode">${seg}</div><h4>Theme</h4>${themes}${own()}`;
+  paint(pop);
+}
+// re-read the folder: a file added, fixed or removed shows the next time the popover opens. Re-render only when the
+// list changed, so a quick keyboard user does not lose focus to a rebuild for nothing.
+function refresh() {
+  return loadUserThemes().then(st => {
+    const before = JSON.stringify(listed);
+    listed = st;
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify(cacheFor(choice))); } catch (e) {}
+    if (JSON.stringify(listed) === before) return;
+    if (!previewing) apply();
+    const pop = document.getElementById('theme-pop');
+    if (pop && !pop.hidden) render();
+  });
+}
+async function openFolder() {
+  try {
+    const r = await fetch('/api/themes/open', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const res = await r.json();
+    if (!res.ok) { toast(res.error || "Couldn't open the themes folder"); return; }
+    if (res.created) refresh();
+  } catch (e) { toast("Couldn't reach the board"); }
 }
 function setOpen(open) {
   const pop = document.getElementById('theme-pop'), btn = document.getElementById('theme-btn');
-  if (open) render(); else unpreview();
+  if (open) { render(); refresh(); } else unpreview();
   pop.hidden = !open;
   btn.setAttribute('aria-expanded', String(open));
 }
 
 export function initTheme() {
   try { choice = readChoice(localStorage.getItem(KEY)); } catch (e) { choice = readChoice(null); }
-  // rewrite the first-paint cache from this version's colours, so an update never paints from an old one
-  try { localStorage.setItem(CACHE_KEY, JSON.stringify(cacheFor(choice))); } catch (e) {}
+  // the first-paint cache is rewritten from this version's colours once the user themes have loaded (refresh), so an
+  // update never paints from an old one and a user theme's entry is not dropped before its file has been read
   document.addEventListener('DOMContentLoaded', () => {
     const btn = document.getElementById('theme-btn'), pop = document.getElementById('theme-pop');
     apply();
+    refresh();
     btn.addEventListener('click', () => setOpen(pop.hidden));
     pop.addEventListener('click', e => {
+      if (e.target.closest('[data-open]')) { openFolder(); return; }
       const m = e.target.closest('[data-mode]');
       const c = e.target.closest('[data-id]');
       if (m) choice.mode = m.dataset.mode;
