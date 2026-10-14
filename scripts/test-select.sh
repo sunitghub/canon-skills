@@ -33,9 +33,11 @@ select_init() {
     # that names a doc does not run it, and neither does a doc that names a tool (*.md and *.json never count as referrers). Referrers
     # are found by the bare file name, since code calls a sibling by name ("$SCRIPT_DIR/evidence.sh"); over-including one is safe. A
     # referrer's term is its file name when that name is unique and has an extension, else its path (a bare `sprint` is in nearly every
-    # test). Every term matches as a whole word (select_terms_re). Known limit: a suite that builds a path from pieces or lists a
-    # directory (path.join(app, 'static') + readdir) is invisible to a text search; the full stamped run is the only evidence.
+    # test). Every term matches as a whole word (select_terms_re). The changed file's folder name counts too (below the top level), for a
+    # suite that lists a folder. Known limit: a suite that builds a path from pieces it never spells out is invisible to a text search;
+    # the full stamped run is the only evidence.
     { printf '%s\n' "${c##*/}"   # the changed file by its name, even when shared: tests build such paths ("$ROOT/skills/$s/SKILL.md")
+      d="${c%/*}"; if [[ "$c" == */* && "$d" == */* ]]; then printf '%s\n' "${d##*/}"; fi   # its folder below the top level: a suite may list it (readdir(…'static'))
       if [[ "$c" != *.md ]]; then
         git -C "$root" grep -lF -e "${c##*/}" -- tools scripts agents ':(exclude)*.md' ':(exclude)*.json' 2>/dev/null \
           | while IFS= read -r r; do select_term "$r"; done || true
