@@ -79,6 +79,10 @@ const none = tally([{ ran: 0, passed: false }, { ran: 0, passed: false }, { ran:
   ok('a base where the test is missing is not isolated', !nib.candidate && /^not isolated/.test(nib.text), nib);
   ok('a solo report that ran two tests does not count as a pass', tally([{ ran: 2, passed: true }]).passed === 0);
   ok('a missing solo report ran nothing', soloCount(null, 'x').ran === 0);
+  const soloReport = (status) => ({ suites: [{ title: 'tests/sprint-check-app.spec.js', suites: [{ title: 'g', specs: [{ title: 'load', tests: [{ status, results: [] }] }] }] }] });
+  const failedAlone = soloCount(soloReport('unexpected'), 'g > load');
+  ok('a solo run that ran the test and failed it is not a pass', failedAlone.ran === 1 && failedAlone.passed === false, failedAlone);
+  ok('a solo run that ran the test and passed it is a pass', soloCount(soloReport('expected'), 'g > load').passed === true);
 }
 
 // ── the real CLI: list and report, and the entry passes the guard's own validation ──

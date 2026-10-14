@@ -43,12 +43,12 @@ for tool in rsync go node npx git curl python3; do
   command -v "$tool" >/dev/null 2>&1 || { echo "run-board-spec: $tool is required" >&2; exit 2; }
 done
 
-TMP="${TMPDIR:-/tmp}"
-if [ -z "$OUT" ]; then OUT="$(mktemp -d "$TMP/board-spec-out.XXXXXX")"; else mkdir -p "$OUT"; fi
-OUT="$(cd "$OUT" && pwd -P)"
 if [ -n "$BASE" ]; then
   BASE_SHA="$(git -C "$ROOT" rev-parse --short --verify "$BASE^{commit}" 2>/dev/null)" || { echo "run-board-spec: --base $BASE is not a commit" >&2; exit 2; }
 fi
+TMP="${TMPDIR:-/tmp}"
+if [ -z "$OUT" ]; then OUT="$(mktemp -d "$TMP/board-spec-out.XXXXXX")"; else mkdir -p "$OUT"; fi
+OUT="$(cd "$OUT" && pwd -P)"
 COPY="$(mktemp -d "$TMP/board-spec-copy.XXXXXX")"
 COPY="$(cd "$COPY" && pwd -P)"
 BOARD_PID=""; BASE_COPY=""; BASE_PID=""; BASE_PORT=""
