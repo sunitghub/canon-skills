@@ -215,7 +215,7 @@ done
 # ── Check K: the demo-mode policy is deliberately mirrored between SKILL.md
 # (sprint-start, needed to propose demo mode before a ticket exists) and
 # complete.md (close-time, needed to execute the close-path) — separate
-# consumers per efficiency.md's mirrored-docs exception, so lock instead of
+# consumers per efficiency-notes.md's mirrored-docs exception, so lock instead of
 # merging (t-936d). This is what t-8f16's headless/demo contradiction slipped
 # through: Check I only locked the evaluator-floor phrase, not the gate list
 # or the headless carve-out that actually drifted.
@@ -283,5 +283,24 @@ for frag in '`tools/skill-eval-scope.sh`' '`skipped | not a canon checkout`'; do
 done
 grep -qF -- '**Stale references**' "$ROOT/skills/doc-audit/SKILL.md" || fail "doc-mirror-parity: doc-audit lost its Stale references check, moved there from repo-check (t-b215, Check N)"
 grep -qF -- '`bash -n` for shell scripts' "$ROOT/skills/wrapup/gates/reviewer.md" || fail "doc-mirror-parity: code-reviewer lost its syntax check, moved there from repo-check (t-b215, Check N)"
+
+# ── Check O: efficiency.md is the always-loaded minimum and efficiency-notes.md holds its domain rules (t-8837). Every domain the
+# index line in efficiency.md names must be a section of the notes file, or an agent is sent to a section that does not exist; and the
+# lesson-destination rule in skill-setup-std.md and its mirror in promote-learnings (read by a fresh reviewer) name the same two homes.
+EFF="$ROOT/standards/efficiency.md"; NOTES="$ROOT/standards/efficiency-notes.md"
+index="$(grep -F 'Domain rules live in `efficiency-notes.md`' "$EFF")" || fail "doc-mirror-parity: efficiency.md lost its index line to efficiency-notes.md (t-8837, Check O)"
+domains="$(printf '%s\n' "${index#*domain:\*\* }" | tr '·' '\n' | sed 's/^ *//; s/ *\.\{0,1\} *$//' | grep -v '^$')"
+[[ "$(printf '%s\n' "$domains" | grep -c .)" -ge 5 ]] || fail "doc-mirror-parity: could not read the domains from efficiency.md's index line: $index"
+while IFS= read -r d; do
+  grep -qixF -- "## $d" "$NOTES" || fail "doc-mirror-parity: efficiency.md's index names '$d', which is not a section of efficiency-notes.md (t-8837, Check O)"
+done <<< "$domains"
+while IFS= read -r h; do   # and every section of the notes file is reachable from that index (canon-only sections excepted)
+  printf '%s\n' "$domains" | grep -qixF -- "$h" || fail "doc-mirror-parity: efficiency-notes.md section '$h' is not named in efficiency.md's index line (t-8837, Check O)"
+done < <(sed -n 's/^## //p' "$NOTES" | grep -v '^Canon only')
+for f in "$ROOT/standards/skill-setup-std.md" "$ROOT/skills/promote-learnings/SKILL.md"; do
+  for frag in '`standards/efficiency-notes.md`' 'nearly every session'; do
+    grep -qF -- "$frag" "$f" || fail "doc-mirror-parity: ${f#"$ROOT"/} lost '$frag' from the lesson-destination rule (t-8837, Check O)"
+  done
+done
 
 echo "doc-mirror-parity: ok (fallback commands match shared↔security; review.md/eval.md reference shared file; Windows fallback clause present; base-ref commands match shared↔security; required-visual convention present in shared-gate-protocol.md + start.md; citation backtick-escape rule present in shared-gate-protocol.md + eval.md + review.md; scenario-backed grading language present in eval.md + start.md; design-fit tag set matches reviewer.md↔wrapup-gates.md; gate-floor invariant present in SKILL.md + complete.md + how-it-works.md + AGENTS.md; destructive-git-command guardrail present in shared-gate-protocol.md + eval.md + review.md; demo-mode policy phrases match SKILL.md↔complete.md; scratch-copy rule present in shared-gate-protocol.md + eval.md + review.md; pin-the-environment rule present in shared-gate-protocol.md + both agent files + both Codex files)"

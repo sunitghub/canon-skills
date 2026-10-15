@@ -4,7 +4,7 @@
 # `Gate model:` is turned into a `--model` argv for claude in two places that share no
 # runtime: tools/gate-model.sh (bash/awk, used by sprint-headless for CI) and
 # tools/cockpit-daemon/main.go (Go, used by the cockpit daemon). That is the
-# cross-runtime port exception in standards/efficiency.md — keep both, lock them with a
+# cross-runtime port exception in standards/efficiency-notes.md — keep both, lock them with a
 # parity test. This asserts the BASH side against tests/fixtures/gate-model-cases.json;
 # TestParseGateModelFixtures / TestResolveGateModelFixtures assert the GO side against
 # the same file. Either port drifting fails one of the two suites.

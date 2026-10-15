@@ -4,97 +4,58 @@ description: Coding standards, code review feedback, git conventions, behavioral
 category: agent-ops
 tags: [coding, security, git, efficiency, tokens]
 inject: true
-version: 1.0.12
-updated: 2026-10-11
+version: 1.1.0
+updated: 2026-10-15
 ---
 
 # Agent Standards
 
 ## Code
 
-- Prefer editing existing files over creating new ones; add a new file only when the task needs one.
-- Delete dead code you orphan — no commented blocks, no `_unused` renames. Leave pre-existing dead code unless asked.
-- No feature flags or backwards-compat shims — change the code directly.
-- Match the surrounding code's comment density, naming, and idiom — add a comment only where the WHY isn't clear from the code.
-- Don't reformat, rename, or add type hints to adjacent code — fix only what was asked.
-- Inserting a block mid-file: check you aren't landing between an existing comment and the code it describes.
-- Out-of-scope issues found while working: `NOTICED: <what>` — don't fix silently.
-- Never introduce OWASP Top 10 vulnerabilities or commit secrets, credentials, or `.env` files.
+- Prefer editing existing files; add a file only when the task needs one.
+- Delete dead code you orphan (no commented blocks, no `_unused`); leave pre-existing dead code unless asked.
+- No feature flags or backwards-compat shims: change the code directly.
+- Match the surrounding comment density, naming and idiom; comment only where the WHY isn't clear.
+- Don't reformat, rename or add type hints to adjacent code.
+- Out-of-scope issues: write `NOTICED: <what>`; don't fix silently.
+- Never introduce OWASP Top 10 vulnerabilities or commit secrets, credentials or `.env` files.
 - No new dependencies for problems existing tools solve.
-- Test at system boundaries; don't mock what's cheap to integration-test.
-- Passing tests verify code correctness, not feature correctness — test both.
-- A test failing inside a block your diff touches is not automatically pre-existing/unrelated — diff its failing assertion and target string against the base commit byte-for-byte before excluding it from scope.
-- Grade test-count/pass-rate claims (e.g. "121/121 pass") against the actual recomputed total from real command output, not the doc's own summary arithmetic — check specifically for a silently-omitted did-not-run set.
+- Test at system boundaries; don't mock what's cheap to integration-test. Passing tests prove the code, not the feature: test both.
 
 ## Code Review Feedback
 
-Format: `file:line — <problem>. <fix>.` — no hedging prose, no preamble, no restating what the code does. A `[severity: … · confidence: …]` tag on a finding is not hedging — that's calibration, not padding.
-Explain only when the fix isn't self-evident; security/architectural issues get full explanation.
-- Ground review in base code, not the PR diff — the diff biases toward the PR's own framing; base code is what actually exists.
-- Scope to the change — no frontend notes on backend-only work, no unrelated coverage.
-- A committed binary that changed alongside its source file (e.g. a rebuilt `.exe` beside the `.go` it's built from) is scope, not creep, when repo history shows the pairing predates this ticket — check `git log` on the binary's path before flagging a file-list criterion violated for it; disclose it as an ungraded artifact instead of failing the criterion.
+Format: `file:line — <problem>. <fix>.` No hedging, no preamble. A `[severity: … · confidence: …]` tag is calibration, not padding.
+Explain only when the fix isn't self-evident; security and architecture findings get a full explanation.
+- Ground review in the base code, not the PR diff. Scope to the change.
 
 ## Git
 
-- Commits: imperative mood, 50-char target / 72-char hard limit, no trailing period.
-- Type prefix: `feat`, `fix`, `refactor`, `perf`, `docs`, `test`, `chore`, `build`, `ci`, `style`, `revert`.
-- Focus on WHY — no self-referential language ("This commit...", first-person).
-- Prompt changes: log the intent (what failure/behavior it fixes), not just the diff — otherwise regression diagnosis across versions is a day of archaeology.
-- Sprint-backed change: `Closes: t-xxxx` in the commit body — the ticket holds the full reasoning, constraints, and acceptance criteria the commit message can only summarize.
-- Add a body for breaking changes, non-obvious reasoning, or migration instructions.
-- Branches: `feat/short-description`, `fix/short-description`. Never force-push main/master.
-- PRs: one concern each, title under 70 chars, body = summary bullets + test plan.
-- Never `git add -A` — stage specific files.
+- Commits: imperative mood, 50-char target / 72 hard limit, no trailing period; type prefix (`feat`, `fix`, `refactor`, `perf`, `docs`, `test`, `chore`, `build`, `ci`, `style`, `revert`); explain WHY, no "This commit…".
+- Sprint-backed change: `Closes: t-xxxx` in the body. Add a body for breaking changes, non-obvious reasoning or migrations.
+- Branches `feat/…`, `fix/…`; never force-push main. PRs: one concern, title under 70 chars, body = summary + test plan.
+- Never `git add -A`: stage specific files.
 
 ## Triggers
 
-Act on these when you see them — don't wait to be told.
+Act on these when you see them.
 
-- Same fact in multiple files → pick one owner, derive the rest. Exception: deliberately-mirrored docs/prose that must stay self-contained for separate consumers (e.g. gate docs each dispatched to a fresh subagent) — keep the copies, lock them with a parity test (`tests/doc-mirror-parity.sh`) instead of merging.
+- Same fact in several files → one owner, derive the rest. A third copy of the same logic → remove the duplication.
 - One change needs edits in many unrelated places → fix the missing boundary first.
-- Structural edits mixed with behavior changes in one commit → split them.
-- Unclear behavior before touching it → characterize current behavior first.
-- A third copy of the same logic appears → remove the duplication, don't copy again. Exception: same logic ported across incompatible runtimes (bash/Python/Go, etc.) with no shared-code option — keep the ports, lock them with a parity test instead of merging.
-- Tests need excessive setup → the dependency structure is the problem, not the tests.
-- Refactor spreading into unrelated areas → cut back to the smallest change that makes the requested edit safe.
-- Error surfaces without context → preserve diagnostic info at the boundary, don't swallow it.
-- Spec conflicts with existing code → surface it — what each says, the options — and ask; don't silently pick one.
-- Non-trivial decision about to be committed → name what you're asserting and what would falsify it before it stands.
-- Competitor or adjacent-tool analysis changes how canon should operate → capture it in a skill, standard, guide, or tool behavior before wrapup.
-- A workaround, rendering quirk, or undocumented constraint found while fixing → stage it in `HANDOFF.md ## Discoveries` immediately; route it to its permanent home yourself before wrapup (SKILL.md gotcha, `standards/`, DECISIONS.md, or the repo's bug-pattern log if one exists).
-- Under `set -euo pipefail`, `VAR=$(cmd)` exits silently if `cmd` fails — `|| fallback` on the next line never runs. Safe: `VAR=$(cmd) || VAR=fallback` on one line.
-- Under `pipefail`, `! cmd | grep -q x` can pass *without checking*: `grep -q` exits at the first match and SIGPIPEs the writer, so the pipeline reports non-zero even though it matched, and `!` flips that to success. It only fires when the writer still has output buffered, so a small input hides it and a larger one makes it deterministic. Safe: `[ "$(cmd | grep -c x)" -eq 0 ]` — keep it inline; hoisting it to `n=$(cmd | grep -c x)` hits the previous trigger, since `grep -c` exits 1 on *zero* matches.
-- A bare `[[ cond ]] && cmd` as a function's LAST statement returns the `[[ ]]` test's own exit status (1) whenever `cond` is false — under `set -e`, that silently aborts the *caller*, not just skips `cmd`. Easy to miss because the common/expected case (`cond` usually true) never triggers it — it only fires once the false branch becomes reachable, potentially long after the line was written. Safe: wrap in `if`/`fi`, or append `; return 0` / `|| true` after it.
-- Anything a function sets inside `$(func)` (an array append, a recorded PID) dies with the subshell, so a later cleanup trap kills nothing. Guard such helpers with `[[ $BASH_SUBSHELL == 0 ]]` (bash 3.2 has no `BASHPID`).
-- Shell scripts: a function called in a `||`/`&&`/`if` list runs with `set -e` off, so an unchecked `mv`/`chmod` inside it cannot abort; `mv newdir olddir` onto an existing directory nests; `$((08))` is invalid octal (use `10#$n`). Make temp files with `mktemp` outside the work tree (or gitignore them) and remove them with `trap … EXIT`, not by a call on only the branch you tested.
-- A test asserts against a re-implementation of the logic under test → call the production function instead. A locally rebuilt sort key or a hand-copied constant list passes while the real thing is broken.
-- A guard exercised only against inputs it already handles is unverified → feed it the cases it must *reject*. Include spellings it has not seen; a match inside a comment does not count. A "nothing left behind" check (process, file, port) must observe what can leak (record the pid and `kill -0` it): an `lsof` on a stub that never listens passes. Prove it with a mutant that leaks. On macOS `mktemp -d` with no template ignores `TMPDIR`, so a temp-file leak check that pins `TMPDIR` watches an empty directory: give the code a template (`mktemp -d "${TMPDIR:-/tmp}/x.XXXXXX"`).
-- Writing a parser or a gate for an existing artifact family (reports, tickets, logs) → count the shapes across all real instances and read the producer's own template first; run it on a real instance, not only fixtures shaped like the parser.
-- New security/validation/race guard → ship a test that fails when the guard is reverted, and run the revert. Two causes for one symptom → prove each fix necessary by reverting it alone, plus one end-to-end test through the real client path. A revert counts only if the mutant ran and failed on its own assertion; redundant layers mask a lone revert, so test each layer separately. Run reverts only in a scratch copy, never on tracked files. A fixture equal to the default the code would produce anyway (mode 0600 from `mkstemp`) cannot fail on revert. A race fix needs a stress loop (dozens of trials) plus a deterministic test that holds the lock; a read-then-append on a shared file is check-then-act, so lock the pair.
-- A green run where something didn't run proves nothing → treat "command not found", a silent skip, an early exit hidden behind a `grep` filter, or a test file missing from the entrypoint as a failure.
-- Git config leaks into tests → pin `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_NOSYSTEM` and `XDG_CONFIG_HOME`. Worktrees share one hooks directory, so a hook finds its checkout with `git rev-parse --show-toplevel`, never from its own path. Ignore a symlink without a trailing slash (`/x/` matches directories only). Pin `HOME`, `TMPDIR`, `XDG_*`, `CANON_HOME` and any variable a wrapper exports (`CANON_TICKETS_DIR` from `evidence.sh`) too, and reproduce a "passes only on my machine" test under `env -i` or `scripts/test-hermetic.sh`. A test of delete/kill code plants a canary in the pinned dirs.
-- A hostile-input test must match the sink's context: escaped text in `title="…"` needs a quote-breakout payload (`a"onmouseover="x`), not just `<img onerror>`.
-- Widening what a security check allows → re-validate the new value at the point of use; never lean on an earlier check you haven't read, especially for files an agent can write (`.tickets/`).
-- A new check that verifies what an older gate accepts must read every line the gate reads (every `^pass:`, not `head -1`), or an extra line walks past it.
-- A guard that fails closed then falls through → check what the fall-through *writes*: a transient error (git, network) must not overwrite the state the guard protects. Pin it with a file-content assertion.
-- An error must not become a normal-looking result: a failed read is not "absent", a failed `git` call is not "not a repo", and `curl` without `-f` prints an error page as output. Match the one error you expect; let every other one fail.
-- Async lookup before a destructive action → after the `await`, re-check every precondition (identity, status, liveness), not just the one you guarded; test it by gating the request.
-- Command that deletes data or stops processes → its "nothing unsaved" guard lists everywhere git keeps work (dirty tree, unpushed commits on every branch, stash, linked worktrees, skip-worktree edits) and probes each; it refuses when run inside the process it would stop; a prompt between probe and signal is an `await`, so re-verify identity at the signal. Test every rejected spelling.
-- Editing a user-owned structured file (JSON/TOML) with `sed`/`awk` → guard the invariant, not the patterns: a signature of everything outside the edited member plus a validity check, and restore the original on any difference.
-- Moving, changing the contract of, retiring or renaming a file or mechanism → sweep every doc surface by concept and paraphrase (cross-references, anchors, README prose, other skills), not only the known phrase; an exact-phrase grep proves only known spots; for a "nothing else" or "already in docs" claim, state the search scope and run it unrestricted (`git grep`, no file-type globs) and recompute counts. A rename by string also hits identifiers that only share the prefix: classify each hit, list the kept ones in `acceptance.md`, and exclude exactly that list from the evidence grep.
-- Cross-backend equality: parse JSON before comparing (`json.dumps` vs `json.Marshal` differ in whitespace); compare bytes only for files. Aim parity fixtures at text edges (trim sets, lone surrogates, invalid UTF-8). For a user-edited file also use valid-but-wrong shapes (`null`, array, scalar), and CR/CRLF: run one hostile line through both ports (bash stripped every CR, PowerShell only trailing ones).
-- On Windows the Bash tool is Git Bash — unquoted `C:\...` backslashes are escapes (and trip Claude Code's approval prompt). Use forward-slash (`/c/Users/...`) or quoted paths. A suite that has only run on macOS hides host assumptions (real `uname`, `python3`): tests that model a platform stub it (`uname`, `cygpath`), and a skip must be loud. Git Bash spells one directory two ways (`/tmp/x` vs `C:/…/x`): never compare a shell path with a git path or `gitdir:` pointer as strings; use `git rev-parse --show-prefix` and test with a stub that spells it the Windows way.
-- Never `pkill`/`kill` by matching a process name, script path, or command-line pattern shared with anything the user might independently be running (a dev server, an agent daemon, a shared script invoked from elsewhere) — a pattern match can hit the user's own live, unrelated process and kill in-progress work with no undo. Resolve the exact PID first (a lockfile/state-file's recorded PID, the port a service publishes, or `$!` from a process this session itself started) and kill only that PID.
-- Go test with a background goroutine that writes into `t.TempDir()` → teardown waits on the WaitGroup it joins, or `go test` flakes on cleanup; a cached `ok` hides it, so reproduce with `-count=N` and read every failure message.
+- Structural edits mixed with behavior changes → split the commit.
+- Unclear behavior → characterize it before touching it.
+- Tests need excessive setup → the dependency structure is the problem.
+- Refactor spreading into unrelated areas → cut back to the smallest change that makes the edit safe.
+- Error surfaces without context → preserve the diagnostic at the boundary. A failed read, call or command must never look like a normal result.
+- Spec conflicts with existing code → surface both and ask; don't pick silently.
+- Non-trivial decision about to be committed → name what you assert and what would falsify it.
+- A workaround or undocumented constraint found while fixing → note it in `HANDOFF.md ## Discoveries` now; route it to its permanent home before wrapup.
+- A guard is verified only by inputs it must reject and by a revert (in a scratch copy) that makes a test fail. A green run in which something did not run proves nothing.
+- Never `kill`/`pkill` by name or pattern: kill only a PID you recorded or resolved exactly.
+- **Domain rules live in `efficiency-notes.md`, beside this file. Read its section before working in that domain:** editing · duplication exceptions · workarounds found while fixing · shell strict mode and traps · tests, guards and hermetic runs · security checks and gates · destructive commands and user files · renames and doc sweeps · cross-backend parity · Windows / Git Bash · Go tests · commit messages for prompt changes · the always-on context budget.
 
 ## Token Efficiency
 
-- Most token spend is re-reading history, not generating output — verbose replies compound across every future turn. Keep it tight.
-- Before planning: catalog existing files, patterns, and prior implementations. Name what's reusable before writing new code.
-- Read a file before editing it. Grep for callers before modifying a function — and for every reader, sibling, test and fixture when a change moves a field's owner, adds a derived value, removes a control, or fixes one of two parallel helpers.
-- Reference exact file paths and line numbers — don't re-read files already in context.
-- Skip `node_modules`, `.git`, `dist`, `build`, `__pycache__`, `.next` unless asked.
-- Use targeted bash commands — avoid ones that dump large output for a narrow query.
-- Keep CLAUDE.md and AGENTS.md concise — rules, gotchas, non-obvious conventions only.
-- Summarizing or rewriting: preserve code blocks, inline code, paths, URLs, commands, version numbers, and technical terms exactly.
-- In Claude Code, run `/context-check` to audit the always-on context budget; it writes a `context-check-report.md` at the project root (after confirmation). The `/context-check` slash command is Claude Code-specific — under Codex, Pi, or headless runs it does not exist; audit the budget manually there.
+- Most token spend is re-reading history: keep replies tight.
+- Before planning, catalog what exists and name what's reusable. Read a file before editing it; grep for callers (and every reader, sibling, test and fixture) before changing a function or a field's owner.
+- Reference `file:line`; don't re-read files already in context. Skip `node_modules`, `.git`, `dist`, `build`, `__pycache__`, `.next`. Use targeted commands, not large dumps.
+- When summarizing or rewriting, preserve code blocks, inline code, paths, URLs, commands, versions and technical terms exactly.

@@ -174,14 +174,16 @@ for internal in 'tools/sprint-check-app' 'model-tiers.json' 'agents/canon-' 'spa
   if printf '%s\n' "$block" | grep -qF -- "$internal"; then fail "the MODEL-TIERS block carries canon-internal text: $internal"; fi
 done
 
-# Nothing is lost for canon: every line the old block had and the new one dropped is still in canon's AGENTS.md,
-# after the END marker (canon's own sessions load AGENTS.md natively and need it).
+# Nothing is lost for canon: every line the old block had and the new one dropped is still in canon's AGENTS.md after the END marker,
+# or in the doc that now owns it (t-8837 moved the board dropdown paragraph to the board's CLAUDE.md and the Codex note to complete.md,
+# leaving one-line pointers in AGENTS.md).
 old_block="$ROOT/tests/fixtures/model-tiers-old-block.md"
 after_end="$(awk '/<!-- MODEL-TIERS:END -->/{f=1; next} f' "$ROOT/AGENTS.md")"
 while IFS= read -r l; do
   [[ -z "${l//[[:space:]]/}" ]] && continue
   printf '%s\n' "$block" | grep -qxF -- "$l" && continue
-  printf '%s\n' "$after_end" | grep -qxF -- "$l" || fail "a line the old block had was dropped, not moved after END: $l"
+  printf '%s\n' "$after_end" | grep -qxF -- "$l" && continue
+  grep -qxF -- "$l" "$ROOT/tools/sprint-check-app/CLAUDE.md" "$ROOT/skills/sprint/reference/complete.md" || fail "a line the old block had was dropped, not moved after END or to its new home: $l"
 done < "$old_block"
 
 # A project still carrying the old long block gets the short one; the rest of its file is untouched.

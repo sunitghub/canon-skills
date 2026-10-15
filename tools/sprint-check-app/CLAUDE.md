@@ -89,3 +89,11 @@ Its script is native ES modules, with the same rules as the board (t-565f). `coc
 In the shell, ask a pane's `contentDocument.hasFocus()`, not `document.activeElement`: after the shell focuses an iframe by script, a later click into a sibling iframe leaves `activeElement` pointing at the old one (t-416c).
 
 Heading slugs for a child row and for the rendered heading must derive from the same text the reader sees (`textContent`): a heading containing a link or image gives two slugs and the row scrolls nowhere. Test a heading with markup (`t-612f`).
+
+## Gate model dropdown and the Model Tiers registry (moved from AGENTS.md, t-8837)
+
+The board's per-ticket `Gate model:` dropdown (`tools/sprint-check-app/app.html`) reads its live
+option list from `tools/sprint-check-app/model-tiers.json` (Admin > Model Tiers, `t-7e36`) —
+that file is a seeded, editable mirror of the Anthropic models named above, not a replacement for
+this prose; the registry's OpenAI entries run close gates only per ticket, via `Gate model: openai:<id>` under Copilot CLI (`t-ef27`); the Admin OpenAI defaults stay recorded only.
+Since `t-5df2` the board writes Admin edits to `$CANON_HOME/cockpit/model-tiers.json` (default `~/.canon/cockpit/`) and reads it before the tracked file, which stays a read-only seed.
