@@ -220,9 +220,9 @@ WORKER
     s=0; for w in "${SERIAL[@]:-}"; do if [[ "$w" == "${LABELS[$i]}" ]]; then s=1; fi; done
     if (( s )); then echo "$i" >> "$RUN/serial"; else echo "$i" >> "$RUN/batch"; fi
   done
+  set -m   # the batch gets its own process group, so stop_workers can stop every process a suite started, not only the workers
   xargs -P "$JOBS" -n 1 bash "$RUN/worker.sh" < "$RUN/batch" &
-  XARGS_PID=$!
-  FIRST_RC=0; FAILED=()
+  XARGS_PID=$!; set +m
   print_block() {   # print_block <index>: wait for that suite's exit code, then print its block and record its time
     local i="$1" rc t
     while [[ ! -f "$RUN/jobs/$i.rc" ]]; do sleep 0.2; done
@@ -238,14 +238,12 @@ WORKER
   done
   wait "$XARGS_PID" 2>/dev/null || true; XARGS_PID=""
   while IFS= read -r i; do
-    [[ -n "$i" ]] || continue
     bash "$RUN/worker.sh" "$i"; print_block "$i"
   done < "$RUN/serial"
-  rm -rf -- "$RUN"; RUN=""
   return 0
 }
 stop_workers() {   # on any exit: stop a batch still running (an interrupted run) and remove its folder
-  if [[ -n "${XARGS_PID:-}" ]]; then pkill -P "$XARGS_PID" 2>/dev/null || true; kill "$XARGS_PID" 2>/dev/null || true; fi
+  if [[ -n "${XARGS_PID:-}" ]]; then kill -TERM -- "-$XARGS_PID" 2>/dev/null || true; fi
   if [[ -n "${RUN:-}" ]]; then case "$RUN" in */test-sh-run.*) rm -rf -- "$RUN" ;; esac; fi
 }
 

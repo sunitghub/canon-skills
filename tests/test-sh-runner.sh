@@ -87,7 +87,7 @@ assert_eq 0 "$rc"; assert_contains "$out" "dir=$TMPDIR/test-sh-run."; [[ "$out" 
 # --jobs 1: the sequential run stops at the first failure
 set +e; out="$(PATH="$WORK/bin" bash "$X/scripts/test.sh" --jobs 1 2>&1)"; rc=$?; set -e
 assert_eq 4 "$rc"; assert_contains "$out" "B-out"; [[ "$out" != *"C-out"* ]] || fail "--jobs 1 ran past the first failure"
-for bad in "--jobs 0" "--jobs x" "--jobs" "--jobs -1"; do
+for bad in "--jobs 0" "--jobs x" "--jobs" "--jobs -1" "--jobs 5x"; do
   set +e; out="$(PATH="$WORK/bin" bash "$X/scripts/test.sh" $bad 2>&1)"; rc=$?; set -e
   assert_eq 2 "$rc"; assert_contains "$out" "test.sh: --jobs needs a positive number"
 done
@@ -102,10 +102,43 @@ set +e; out="$(PATH="$WORK/bin" bash "$Z/scripts/test.sh" --jobs 4 2>&1)"; rc=$?
 assert_eq 0 "$rc"; assert_contains "$out" "S-alone"; assert_contains "$out" "p1-ok"; assert_contains "$out" "p3-ok"
 assert_contains "$out" "==> tests/sprint-check-gherkin.js skipped (node absent)"$'\n'"==> tests/s.sh"$'\n'"S-alone"   # a SERIAL suite prints after the batch
 
+# the default worker count: the CPU count (nproc), at most 8; a count that is not a number runs one at a time. Each suite records how
+# many suites it saw running at once (it stays ~2 s, so every suite started together is seen).
+C="$WORK/cpus"; cs=(); for k in 01 02 03 04 05 06 07 08 09 10; do cs+=("tests/c$k.sh"); done; runner_copy "$C" "${cs[@]}"; mkdir -p "$WORK/live"
+for k in 01 02 03 04 05 06 07 08 09 10; do
+  printf 'touch "%s/live/%s"; m=0; for _ in 1 2 3 4 5 6 7 8 9 10; do n=$(ls "%s/live" | wc -l); [ "$n" -gt "$m" ] && m=$n; sleep 0.2; done; rm "%s/live/%s"; echo "seen=$m"\n' \
+    "$WORK" "$k" "$WORK" "$WORK" "$k" > "$C/tests/c$k.sh"
+done
+for want in "3 3" "20 8" "abc 1"; do
+  mkdir -p "$WORK/cpu-${want%% *}"; printf '#!/bin/sh\necho %s\n' "${want%% *}" > "$WORK/cpu-${want%% *}/nproc"; chmod +x "$WORK/cpu-${want%% *}/nproc"
+  set +e; out="$(PATH="$WORK/cpu-${want%% *}:$WORK/bin" bash "$C/scripts/test.sh" 2>&1)"; rc=$?; set -e
+  assert_eq 0 "$rc"; assert_eq "${want#* }" "$(printf '%s\n' "$out" | sed -n 's/^seen= *//p' | sort -n | tail -1)"
+done
+# skip lines ahead of other suites (go absent, node present): every later suite still runs
+N="$WORK/node"; runner_copy "$N" tests/a.sh; echo 'echo a-ran' > "$N/tests/a.sh"
+mkdir -p "$WORK/nodebin"; printf '#!/bin/sh\necho "node-ran $(basename "$1")"\n' > "$WORK/nodebin/node"; chmod +x "$WORK/nodebin/node"
+set +e; out="$(PATH="$WORK/nodebin:$WORK/bin" bash "$N/scripts/test.sh" --jobs 4 2>&1)"; rc=$?; set -e
+assert_eq 0 "$rc"; assert_contains "$out" "==> tools/cockpit-daemon skipped (go absent)"$'\n'"==> tests/sprint-check-gherkin.js"$'\n'"node-ran sprint-check-gherkin.js"
+assert_contains "$out" "node-ran sprint-check-api-scoping.js"
+# an interrupted run stops every process its suites started (not only xargs's own workers) and removes its folder
+I="$WORK/int"; runner_copy "$I" tests/a.sh tests/b.sh; mkdir -p "$WORK/int-tmp"
+printf 'sleep 60 & echo $! > "%s/int-child"; echo $$ > "%s/int-suite"; wait\n' "$WORK" "$WORK" > "$I/tests/a.sh"; echo 'true' > "$I/tests/b.sh"
+TMPDIR="$WORK/int-tmp" PATH="$WORK/bin" bash "$I/scripts/test.sh" --jobs 2 > "$WORK/int-out" 2>&1 & ipid=$!
+for _ in $(seq 100); do [[ -s "$WORK/int-suite" ]] && break; sleep 0.1; done
+[[ -s "$WORK/int-suite" ]] || fail "the interrupted run's suite never started: $(cat "$WORK/int-out")"
+kill -TERM "$ipid"; wait "$ipid" 2>/dev/null || true; sleep 1
+left=""
+for f in int-suite int-child; do
+  if kill -0 "$(cat "$WORK/$f")" 2>/dev/null; then kill "$(cat "$WORK/$f")" 2>/dev/null || true; left+=" $f"; fi
+done
+[[ -z "$left" ]] || fail "an interrupted run left suite processes running:$left"
+assert_eq "" "$(ls "$WORK/int-tmp")"                                              # the run folder is removed
+
 # --- the two timing-table gaps t-2633's last evaluator found -----------------------------------------------------------------------
 # a passing sequential run marks nothing failed (CURRENT is cleared after each suite)
 set +e; out="$(PATH="$WORK/bin" bash "$P/scripts/test.sh" --jobs 1 2>&1)"; rc=$?; set -e
 assert_eq 0 "$rc"; [[ "$out" != *"(failed)"* ]] || fail "a passing --jobs 1 run printed a failed row: $out"
+assert_eq 1 "$(printf '%s\n' "$out" | grep -cxF "==> tools/cockpit-daemon skipped (go absent)")"   # the sequential run prints skips too
 # the slowest 10 are sorted, even when the slow suite runs last
 L="$WORK/late"; runner_copy "$L" tests/q1.sh tests/q2.sh tests/q3.sh
 echo 'true' > "$L/tests/q1.sh"; echo 'sleep 1' > "$L/tests/q2.sh"; echo 'sleep 2' > "$L/tests/q3.sh"
