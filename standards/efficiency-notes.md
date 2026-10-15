@@ -82,6 +82,10 @@ The always-on rules are "same fact in several files → one owner" and "a third 
 - Keep CLAUDE.md and AGENTS.md concise — rules, gotchas, non-obvious conventions only.
 - In Claude Code, run `/context-check` to audit the always-on context budget; it writes a `context-check-report.md` at the project root (after confirmation). The `/context-check` slash command is Claude Code-specific — under Codex, Pi, or headless runs it does not exist; audit the budget manually there.
 
+## Canon only: competitor analysis
+
+- Competitor or adjacent-tool analysis changes how canon should operate → capture it in a skill, standard, guide, or tool behavior before wrapup.
+
 ## Workarounds found while fixing
 
 The always-on line keeps the rule; this is its full text.
