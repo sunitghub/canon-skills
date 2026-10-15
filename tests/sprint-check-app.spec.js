@@ -12805,6 +12805,40 @@ function contrastOf(a, b) {
   return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
 }
 
+// t-4064: a header button's hover label must contrast with its hover fill. Upkeep set only the fill, so it inherited
+// the on-accent label from `.create-btn:hover` and read white on pale in light themes.
+test('board header buttons (t-4064): the hover label contrasts with the hover fill in every theme', async ({ page }) => {
+  await page.goto(BASE + '/');
+  await page.waitForLoadState('networkidle');
+  await page.evaluate(() => { document.querySelector('#btn-upkeep').hidden = false; });
+  const themes = await page.evaluate(async () => (await import('/static/theme-data.js')).THEMES.map(t => ({ id: t.id, css: !!t.css, mode: t.mode })));
+  expect(themes.length).toBeGreaterThan(6);
+  const low = [];
+  for (const t of themes) {
+    await page.evaluate(async ({ id, css, mode }) => {
+      const d = await import('/static/theme-data.js'), th = d.THEMES.find(x => x.id === id);
+      document.documentElement.dataset.theme = css ? id.replace('canon-', '') : mode;
+      d.setVars(document.documentElement, css ? null : d.derive(th).board);
+    }, t);
+    for (const sel of ['#btn-create', '#btn-upkeep', '#btn-scratch', '#btn-ci-setup']) {
+      const btn = page.locator(sel);
+      await btn.hover();
+      await expect.poll(() => btn.evaluate(b => b.getAnimations().length)).toBe(0);
+      const got = await btn.evaluate(b => {
+        const num = c => c.match(/[\d.]+/g).map(Number), over = (top, under) => { const a = top[3] ?? 1; return [0, 1, 2].map(i => top[i] * a + under[i] * (1 - a)).concat(1); };
+        const chain = []; for (let e = b; e; e = e.parentElement) chain.push(num(getComputedStyle(e).backgroundColor));
+        let bg = [255, 255, 255, 1]; for (const c of chain.reverse()) bg = over(c, bg);
+        return { color: getComputedStyle(b).color, bg: 'rgb(' + bg.slice(0, 3).join(',') + ')' };
+      });
+      const ratio = contrastOf(got.color, got.bg);
+      if (t.id === 'canon-dark' && sel === '#btn-create') continue;   // t-a236: the brand accent gives white 3.99:1; a brand decision
+      if (ratio < 4.5) low.push(`${t.id} ${sel} ${ratio.toFixed(2)} ${JSON.stringify(got)}`);
+    }
+  }
+  expect(low).toEqual([]);
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
+});
+
 test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
   test('Model Tiers: the provider tabs\' underline stays visible on the light background (t-83c9)', async ({ page }) => {
     await page.goto(BASE + '/cockpit');
