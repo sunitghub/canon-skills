@@ -7,7 +7,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/tests/helpers.sh"
 
-t="${TMPDIR:-/tmp}"; WORK="$(mktemp -d "${t%/}/test-sh-runner.XXXXXX")"; trap 'rm -rf "$WORK"' EXIT
+t="${TMPDIR:-/tmp}"; WORK="$(mktemp -d "${t%/}/test-sh-runner.XXXXXX")"; : > "$WORK/srv-pids"
+trap 'while read -r p; do kill "$p" 2>/dev/null || true; done < "$WORK/srv-pids"; rm -rf "$WORK"' EXIT   # fake servers, by recorded PID
 export SPRINT_CHECK_NO_BROWSER=1   # tests/no-browser-in-tests.sh reads any sprint-check-go mention as a board start; none starts here
 export LC_ALL=C TMPDIR="$WORK/tmp"; mkdir -p "$TMPDIR"
 
@@ -31,7 +32,7 @@ while IFS= read -r l; do grep -qxF "$l" <<< "$LIST" || fail "test.sh: SERIAL nam
 
 # --- copies of the real runner with fake suites; go and node kept off PATH -----------------------------------------------------------
 mkdir -p "$WORK/bin"
-for b in bash sh git sort head tail mktemp grep sed awk cat rm sleep dirname cut wc tr comm ps pgrep uniq basename env ls xargs date mv mkdir touch nproc sysctl pkill kill; do
+for b in bash sh python3 git sort head tail mktemp grep sed awk cat rm sleep dirname cut wc tr comm ps pgrep uniq basename env ls xargs date mv mkdir touch nproc sysctl pkill kill; do
   p="$(command -v "$b" 2>/dev/null)" && ln -sf "$p" "$WORK/bin/$b"
 done
 runner_copy() {   # runner_copy <dir> <suite...>: the real test.sh with its tests=( list replaced by the given suites
@@ -157,5 +158,25 @@ for j in 1 4; do
   assert_eq 0 "$rc"
   assert_eq "tests/q3.sh tests/q2.sh tests/q1.sh" "$(printf '%s\n' "$out" | sed -n '/^== slowest 10 (s)$/,/^== total/p' | sed '1d;$d' | awk '{print $2}' | tr '\n' ' ' | sed 's/ $//')"
 done
+
+# --- t-72e9: the leak check counts only orphaned servers this run started -----------------------------------------------------------
+# A fake board server (its command line matches the real check's pattern) started in a subshell, so it is orphaned at once. A suite
+# that leaks one with the run's own CANON_TEST_RUN fails the run; one with no marker, or another run's, stands for a server started by
+# anything else on the machine (a concurrent board spec, your own board) and must not.
+O="$WORK/orph"; runner_copy "$O" tests/a.sh; mkdir -p "$O/tools/sprint-check-app"; echo 'import time; time.sleep(120)' > "$O/tools/sprint-check-app/server.py"
+leak() {   # leak <env prefix>: a suite line that orphans a fake server under that environment and records its PID
+  printf '( %s python3 "%s/tools/sprint-check-app/server.py" >/dev/null 2>&1 & echo $! >> "%s/srv-pids"; echo $! > "%s/last-pid" )\n' "$1" "$O" "$WORK" "$WORK"
+}
+for j in 1 2; do
+  leak "" > "$O/tests/a.sh"
+  set +e; out="$(PATH="$WORK/bin" bash "$O/scripts/test.sh" --jobs "$j" 2>&1)"; rc=$?; set -e
+  assert_eq 1 "$rc"; assert_contains "$out" "FAIL: the test run left sprint-check servers running (PIDs): $(cat "$WORK/last-pid")"
+  { leak "env -u CANON_TEST_RUN"; leak 'CANON_TEST_RUN="${CANON_TEST_RUN}x"'; } > "$O/tests/a.sh"   # no marker; another run's (a longer value)
+  set +e; out="$(PATH="$WORK/bin" bash "$O/scripts/test.sh" --jobs "$j" 2>&1)"; rc=$?; set -e
+  assert_eq 0 "$rc"; [[ "$out" != *"left sprint-check servers"* ]] || fail "--jobs $j: a server this run did not start failed it: $out"
+done
+assert_eq 6 "$(wc -l < "$WORK/srv-pids" | tr -d ' ')"
+while read -r p; do kill "$p" 2>/dev/null || true; done < "$WORK/srv-pids"; sleep 0.5
+while read -r p; do ! kill -0 "$p" 2>/dev/null || fail "fake server $p still running"; done < "$WORK/srv-pids"
 
 echo "test-sh-runner: ok"
