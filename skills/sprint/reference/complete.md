@@ -8,6 +8,8 @@ hidden: true
 
 # Sprint Complete
 
+The normal close is `complete-checklist.md` (one page); this file is the full protocol and its reasons.
+
 **Trigger:** "sprint complete", "complete the sprint", "ship it"
 
 **Confirmation required.** Before anything, ask:

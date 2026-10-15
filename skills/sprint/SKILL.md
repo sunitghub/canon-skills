@@ -157,11 +157,15 @@ The invariant: job type may *add* a planning step; only structural risk may *red
 
 ## sprint start
 
-Read `skills/sprint/reference/start.md` for the full protocol (steps 1-11).
+Read `skills/sprint/reference/start-checklist.md` first: the normal path on one page. Read
+`skills/sprint/reference/start.md` (the full protocol, steps 1-11) only for a case the checklist's
+"Read the detail when" table names, and only that section.
 
 ## sprint complete
 
-Read `skills/sprint/reference/complete.md` for the full protocol (trigger, confirmation, steps 1-10).
+Read `skills/sprint/reference/complete-checklist.md` first: the normal close on one page. Read
+`skills/sprint/reference/complete.md` (the full protocol, trigger, confirmation, steps 1-10) only for a
+case the checklist's "Read the detail when" table names, and only that section.
 
 ## Planning files
 
