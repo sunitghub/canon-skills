@@ -14,7 +14,10 @@
 # then print each one's error kind, its solo counts and, only for a load timeout that passed every solo run on both, a
 # baseline entry to paste by hand (tests/board-spec-classify.js). The exit status stays the guard's; the baseline is
 # never written.
-# Needs: rsync, go, node, npx (Playwright browsers installed), git, curl, python3. macOS/Linux; ~8 min per browser per run.
+# Every run records the machine's load at start and end in $OUT/machine-load.txt and prints a WARNING when another spec or test.sh
+# run is going or the load exceeds the CPU count: WebKit fails timing-sensitive tests under load (t-5989).
+# Needs: rsync, go, node, npx (Playwright browsers installed), git, curl, python3. macOS/Linux; ~13-18 min per browser per run
+# (the spec is one file, so Playwright runs it on one worker; measured 2026-10-15, t-5989).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
@@ -31,7 +34,7 @@ while [ $# -gt 0 ]; do
     --classify) CLASSIFY=1; shift ;;
     --solo-runs) SOLO_RUNS="$2"; shift 2 ;;
     --base) BASE="$2"; shift 2 ;;
-    -h|--help) sed -n '2,17p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    -h|--help) sed -n '2,20p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "run-board-spec: unknown option $1" >&2; exit 2 ;;
   esac
 done
@@ -51,6 +54,10 @@ if [ -z "$OUT" ]; then OUT="$(mktemp -d "$TMP/board-spec-out.XXXXXX")"; else mkd
 OUT="$(cd "$OUT" && pwd -P)"
 COPY="$(mktemp -d "$TMP/board-spec-copy.XXXXXX")"
 COPY="$(cd "$COPY" && pwd -P)"
+# t-5989: a busy machine (another spec or test.sh run, or load over the CPU count) makes WebKit fail timing-sensitive tests, so every
+# run records its load at start and end in $OUT/machine-load.txt and warns when it is too busy to trust.
+source "$ROOT/tests/machine-load.sh"
+machine_load start "$OUT/machine-load.txt" "$$"
 BOARD_PID=""; BASE_COPY=""; BASE_PID=""; BASE_PORT=""
 
 stop_pid() {
@@ -182,6 +189,7 @@ classify() {
     ${BASE:+--base-ref "$BASE" --base-sha "$BASE_SHA"} "$OUT"/board-spec-*-run*.json || STATUS=2
 }
 
+machine_load end "$OUT/machine-load.txt" "$$"
 STATUS=0; GUARD_STATUS=0
 if [ "$CLASSIFY" = 1 ]; then
   # The boards stay up for the solo reruns; the stop-and-check runs after them.
