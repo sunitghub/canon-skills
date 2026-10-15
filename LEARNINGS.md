@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-15-2026 21:40
+learnings-sweep last run: 10-15-2026 17:44
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-15 | [t-6be9](.tickets/t-6be9/learnings.md) | A flaky-test baseline built from one batch of runs missed tests: two clean-machine strict runs each failed on a different set of unlisted tests (6 of the first 8 never recurred), and a ticked Test Plan line went false after a later decision (keep one test flaky) changed its output, which only the evaluator caught. | UNPROMOTED |
 | 2026-10-15 | [t-8837](.tickets/t-8837/learnings.md) | A fix to an evaluator finding must stay inside the user-approved plan: moving a rule to a new home (CLAUDE.md) to satisfy one criterion broke the approved cut list and failed the next run. And editing a skill's SKILL.md also means re-pinning any hash that guards it (Upkeep's skill-hash manifest), which only the full suite caught. | UNPROMOTED |
 | 2026-10-15 | [t-5989](.tickets/t-5989/learnings.md) | A diagnosis run is only as clean as the machine it ran on: all three "quiet" WebKit runs overlapped another session's full board spec, found only when the new load check flagged it. Record machine load (and other test runs) with every timing-sensitive run before comparing runs; and check a lever exists before testing it (the spec is one file, so Playwright's --workers did nothing). | UNPROMOTED |
 | 2026-10-15 | [t-a5f6](.tickets/t-a5f6/learnings.md) | A stub that ignores its input proves nothing: the fake Python 2 first exited 1 on any code, so dropping the launcher's version-3 test survived; a stub must answer the probe the way the real thing would (evaluate the condition), and a per-candidate timeout bounds total wait only for one candidate (two hanging interpreters take 2x). | UNPROMOTED |
