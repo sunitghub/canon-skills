@@ -6,7 +6,19 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-10-15
+
+Cockpit and board fixes for light themes and Safari, and faster, stricter sprint tooling for whoever builds canon: parallel test runs, generated mutant sweeps, and one-page sprint checklists.
+
+No daemon change: after `canon update`, reload the board and Cockpit pages; no restart needed.
+
+### Fixed
+- Cockpit, light themes: dim labels (`--text-dim`) were unreadable (about 1.6-1.8:1 contrast); they now read as text (`t-38f1`).
+- Board, light themes: the Upkeep button's text was unreadable on hover (`t-4064`).
+- Cockpit, Add Project in Safari: the "Show hidden" checkbox rendered 0 px wide (`t-b5c7`).
+
 ### Added
+- `tests/run-board-spec.sh --classify [--solo-runs N] [--base REF]`: reruns each failure that is not in the baseline alone, on the copy and on a copy of REF, and prints a paste-ready baseline entry only for a load timeout that passed every solo run on both (`t-b860`).
 - `mutant-sweep` (`tools/mutant-sweep`): generates mutants over a sprint's changed shell and JS lines from one fixed operator table (comparison, boolean and off-by-one flips, negation, return/exit codes, sort/unique, dropped `&&`/`||` operand, dropped regex anchor, widened pattern, emptied string, line deletion), runs each mutant's covering test in a throwaway copy, and lists the survivors; a timeout or Ctrl-C stops the test's whole process group and removes every temp folder. The `mutation-test` skill now runs it at `sprint complete` step 1, before the reviewer and evaluator, and triages every survivor (`t-1fac`).
 - `sprint check-evidence <id>`: before the evaluator is dispatched, it checks that every stamped evidence log is fresh at HEAD with exit 0, and names each one to re-stamp or fix, so a stale or failing log no longer costs a failed evaluator run (`t-a3d7`).
 
@@ -17,6 +29,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 - `scripts/test.sh` runs its suites in parallel (`--jobs N`, default the CPU count up to 8): a full run took 212-235 s instead of 802 s on a 10-CPU Mac, still runs every suite, keeps each suite's output under its header in list order, and exits with the first failing suite's code. `--jobs 1` runs them one at a time and stops at the first failure, as before; suites that share state with another run alone after the batch (`t-abb1`).
 - `evidence.sh check` keeps a log fresh when only close-time docs changed since (`LEARNINGS`, `DECISIONS`, `HANDOFF.md`, `PROMOTED.md`, the subagent log), and counts a full board-spec run as `covered` when only the baseline changed and a stamped guard run re-judged the same reports (`t-a3d7`).
 - `scripts/test.sh`'s leaked-server check fails only on a board server that run started and left running (it carries the run's `CANON_TEST_RUN`), so your own board or a board spec running alongside no longer fails a test run, and a leaked server whose parent is still running no longer passes it.
+- The Themes page (`THEMES.md`) opens with the default themes and a screenshot of the ◐ Theme menu (`t-d695`).
 
 ## [0.9.0] - 2026-10-14
 
