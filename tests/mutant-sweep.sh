@@ -100,6 +100,7 @@ assert_contains "$out" "unmapped: other.sh"
 [[ "$out" =~ INVALID\ [1-9] ]] || fail "mutant-sweep: deleting the 'if' line should be INVALID: $out"
 [[ "$out" =~ KILLED\ 0 ]] || fail "mutant-sweep: a test that always passes killed something: $out"
 assert_contains "$(cat "$WORK/report.md")" "| weak.sh:3 | \`cmp: == -> !=@"
+assert_contains "$(cat "$WORK/report.md")" "| weak.sh:3 | \`bool: \\|\\| -> &&@"   # a | in a cell would split the table row
 
 # --- a test with teeth kills every mutant, quoting its FAIL line ---------------------------------------------------------------
 sweep --map strong.sh='bash tests/t-strong.sh'
@@ -122,6 +123,11 @@ bounded "$TOOL" --base nope --map weak.sh="touch '$MARK'"
 assert_eq 2 "$code"; assert_contains "$out" "--base nope is not a commit"
 bounded "$TOOL" --map weak.sh="touch '$MARK'"   # no origin/main here
 assert_eq 2 "$code"; assert_contains "$out" "git merge-base HEAD origin/main failed"
+printf '#!/usr/bin/env bash\necho x\n' > "$WORK/x.sh"   # exists, so only the guard can refuse it
+for bad in ../x.sh "$WORK/x.sh"; do
+  bounded "$TOOL" --base "$BASE" --map "$bad=touch '$MARK'"
+  assert_eq 2 "$code"; assert_contains "$out" "--map file must be inside the project: $bad"
+done
 [[ ! -e "$MARK" ]] || fail "mutant-sweep: a refused sweep ran its test"
 sweep --map weak.sh="echo run >> '$MARK'; exit 3"
 assert_eq 1 "$code"; assert_contains "$out" "baseline fails: echo run"

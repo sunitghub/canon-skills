@@ -378,7 +378,10 @@ def main():
         f, sep, cmd = m.partition('=')
         if not sep or not f or not cmd.strip():
             ap.error(f'--map needs <file>=<test cmd>: {m!r}')
-        maps[os.path.normpath(f)] = cmd
+        f = os.path.normpath(f)
+        if os.path.isabs(f) or f == '..' or f.startswith('..' + os.sep):
+            ap.error(f'--map file must be inside the project: {f}')
+        maps[f] = cmd
 
     r = git('ls-files', '-z', '--cached', '--others', '--exclude-standard')
     files = [x for x in r.stdout.split('\0') if x]
@@ -476,8 +479,9 @@ def main():
             for p in unmapped:
                 fh.write(f'- unmapped: `{p}`\n')
             fh.write('\n| File:line | Mutation | Verdict | Source |\n|---|---|---|---|\n')
+            cell = lambda t: t.replace('|', '\\|')
             for path, i, name, st, why in surv:
-                fh.write(f'| {path}:{i + 1} | `{name}` | SURVIVED | `{srcs[path][i].strip()[:80].replace("|", chr(92) + "|")}` |\n')
+                fh.write(f'| {path}:{i + 1} | `{cell(name)}` | SURVIVED | `{cell(srcs[path][i].strip()[:80])}` |\n')
     return 0
 
 
