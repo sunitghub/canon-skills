@@ -15,10 +15,10 @@ _ml_load1() {   # Linux /proc/loadavg (ML_LOADAVG_FILE overrides it for the unit
 }
 _ml_ncpu() { nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1; }
 _ml_descends() {   # _ml_descends <pid> <ancestor>: 0 when <pid> is <ancestor> or below it
-  local p="$1" n=0
-  while [ -n "$p" ] && [ "$p" != 0 ] && [ "$p" != 1 ] && [ "$n" -lt 50 ]; do
+  local p="$1"
+  while [ -n "$p" ]; do   # ps prints nothing for the parent of PID 0, so the walk ends above the root
     [ "$p" = "$2" ] && return 0
-    p="$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ')"; n=$((n + 1))
+    p="$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ')"
   done
   return 1
 }
