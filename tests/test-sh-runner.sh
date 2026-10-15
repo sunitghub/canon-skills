@@ -167,6 +167,10 @@ O="$WORK/orph"; runner_copy "$O" tests/a.sh; mkdir -p "$O/tools/sprint-check-app
 leak() {   # leak <env prefix>: a suite line that orphans a fake server under that environment and records its PID
   printf '( %s python3 "%s/tools/sprint-check-app/server.py" >/dev/null 2>&1 & echo $! >> "%s/srv-pids"; echo $! > "%s/last-pid" )\n' "$1" "$O" "$WORK" "$WORK"
 }
+echo 'echo "marker=$CANON_TEST_RUN"' > "$O/tests/a.sh"   # each run's own value: set, and not another run's
+m1="$(PATH="$WORK/bin" bash "$O/scripts/test.sh" --jobs 1 2>&1 | sed -n 's/^marker=//p')"
+m2="$(PATH="$WORK/bin" bash "$O/scripts/test.sh" --jobs 1 2>&1 | sed -n 's/^marker=//p')"
+[[ -n "$m1" && -n "$m2" && "$m1" != "$m2" ]] || fail "test.sh: CANON_TEST_RUN must be set and differ per run: '$m1' '$m2'"
 for j in 1 2; do
   leak "" > "$O/tests/a.sh"
   set +e; out="$(PATH="$WORK/bin" bash "$O/scripts/test.sh" --jobs "$j" 2>&1)"; rc=$?; set -e
