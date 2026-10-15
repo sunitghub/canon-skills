@@ -37,21 +37,53 @@ expect() {   # expect <label> <expected output> [args]: the diff the caller made
 # --- what counts -----------------------------------------------------------------------------------------------------------------
 reset_repo; expect "an empty diff" "" "$BASE"
 reset_repo; echo more >> skills/alpha/SKILL.md;              expect "SKILL.md" "run alpha" "$BASE"
-reset_repo; echo more >> skills/alpha/reference/a.md;        expect "a reference file" "run alpha" "$BASE"
-reset_repo; put skills/alpha/gates/g.md; git add -A;         expect "a new tracked gates/ file" "run alpha" "$BASE"
-reset_repo; put skills/alpha/reference/new.md;               expect "an untracked new reference file" "run alpha" "$BASE"
+# t-a1b1: an eval executor reads SKILL.md only, so a doc outside it reaches the evals only when a case names its path. That rests on
+# skill-eval's own executor contract: if it ever hands executors more than SKILL.md, this skip would hide regressions, so pin it here.
+EXEC="$(sed -n '/^   \*\*Executor\*\*/,/^   \*\*Grader\*\*/p' "$ROOT/skills/skill-eval/SKILL.md")"
+assert_contains "$EXEC" "Include the skill's \`SKILL.md\` content verbatim"
+assert_eq 2 "$(grep -c '^   - Include' <<< "$EXEC")"   # SKILL.md and the eval prompt: a third Include line would hand executors more
+assert_contains "$(cat "$ROOT/skills/skill-eval/SKILL.md")" "only the skill content injected — it has no access to the repo"
+DOCS="only docs outside SKILL.md changed; its evals read SKILL.md only"
+reset_repo; echo more >> skills/alpha/reference/a.md;        expect "a reference file" "skip alpha ($DOCS)" "$BASE"
+reset_repo; put skills/alpha/gates/g.md; git add -A;         expect "a new tracked gates/ file" "skip alpha ($DOCS)" "$BASE"
+reset_repo; put skills/alpha/reference/new.md;               expect "an untracked new reference file" "skip alpha ($DOCS)" "$BASE"
 reset_repo; echo more >> skills/beta/SKILL.md;               expect "a skill with no evals.json" "skip beta (no evals/evals.json)" "$BASE"
-reset_repo; echo more >> agents/canon-evaluator.md;          expect "a gate agent" "run sprint" "$BASE"
+reset_repo; put skills/beta/reference/r.md;                  expect "a reference file of a skill with no evals.json" "skip beta (no evals/evals.json)" "$BASE"
+reset_repo; echo more >> agents/canon-evaluator.md;          expect "a gate agent" "skip sprint ($DOCS)" "$BASE"
+reset_repo; echo more >> skills/alpha/evals/evals.json;      expect "evals.json alone" "run alpha" "$BASE"
+reset_repo; echo more >> skills/alpha/evals/evals.json; echo more >> skills/alpha/reference/a.md
+expect "evals.json and a reference file" "run alpha" "$BASE"
+reset_repo; put skills/alpha/evals/evals.json '{"evals":[{"prompt":"follow reference/a.md"}]}'; echo more >> skills/alpha/reference/a.md
+expect "a reference file its evals name" "run alpha" "$BASE"
+reset_repo; put skills/alpha/evals/evals.json '{"evals":[{"prompt":"follow reference/a.md"}]}'; git commit -qam named
+echo more >> skills/alpha/reference/a.md;                    expect "a named reference file, evals.json unchanged" "run alpha" "$(git rev-parse HEAD)"
+reset_repo; put skills/alpha/evals/evals.json '{"evals":[{"prompt":"reference/a.md"}]}'; git commit -qam named
+put $'skills/alpha/reference/x\nreference/a.md'
+expect "a newline name embedding a named path" "skip alpha ($DOCS)" "$(git rev-parse HEAD)"
+reset_repo; put skills/alpha/evals/evals.json '{"evals":[{"prompt":"reference/A.md, reference/b.md, a.md"}]}'; git commit -qam named
+echo more >> skills/alpha/reference/a.md;                    expect "a near-miss name in evals.json" "skip alpha ($DOCS)" "$(git rev-parse HEAD)"
+reset_repo; put skills/sprint/evals/evals.json '{"evals":[{"prompt":"see agents/canon-evaluator.md"}]}'; git commit -qam named
+echo more >> agents/canon-evaluator.md;                      expect "a gate agent sprint's evals name" "run sprint" "$(git rev-parse HEAD)"
 reset_repo; echo more >> skills/alpha/SKILL.md; echo more >> skills/alpha/reference/a.md
-expect "two files in one skill" "run alpha" "$BASE"
+expect "SKILL.md and a reference file" "run alpha" "$BASE"
 reset_repo; echo more >> skills/sprint/SKILL.md; echo more >> skills/beta/SKILL.md; echo more >> skills/alpha/SKILL.md; echo more >> agents/canon-evaluator.md
 expect "several skills, sorted, the agent and the sprint skill once" "run alpha
 skip beta (no evals/evals.json)
 run sprint" "$BASE"
-reset_repo; echo more >> skills/alpha/evals/evals.json; put skills/alpha/evals/history.jsonl; put skills/alpha/evals/notes.md
+reset_repo; echo more >> skills/alpha/reference/a.md; echo more >> skills/sprint/SKILL.md; echo more >> agents/canon-evaluator.md
+expect "a doc-only skill beside a read one" "skip alpha ($DOCS)
+run sprint" "$BASE"
+reset_repo; put skills/xalpha/SKILL.md; put skills/xalpha/evals/evals.json '{"evals":[]}'; git add -A; git commit -qm xalpha
+echo more >> skills/xalpha/SKILL.md; echo more >> skills/alpha/reference/a.md
+expect "a read skill whose name ends in a doc-only skill's name" "skip alpha ($DOCS)
+run xalpha" "$(git rev-parse HEAD)"
+reset_repo; put skills/alpha/SKILL-notes.md;                 expect "a doc whose name starts with SKILL" "skip alpha ($DOCS)" "$BASE"
+reset_repo; put skills/alpha/evals/evals.json.bak; put tools/skills/alpha/evals/evals.json; put tools/agents/x.md; put agents/x.md.bak
+expect "evals.json and agents look-alikes outside their exact paths" "" "$BASE"
+reset_repo; put skills/alpha/evals/history.jsonl; put skills/alpha/evals/notes.md
 put skills/alpha/skill-eval-result.md; put skills/alpha/reference/skill-eval-result.md; put skills/alpha/scripts/s.sh; put agents/sub/x.md
 echo more >> tools/x.sh; echo more >> scripts/y.sh; echo more >> README.md; put skills/alpha/SKILL.md.bak
-expect "evals/, result files, scripts, tools, README, nested agents, SKILL.md.bak" "" "$BASE"
+expect "evals/ other than evals.json, result files, scripts, tools, README, nested agents, SKILL.md.bak" "" "$BASE"
 reset_repo; echo more >> skills/alpha/SKILL.md; git commit -qam "edit"
 expect "a committed change against its base" "run alpha" "$BASE"
 scope; [[ "$code" != 0 ]] || fail "skill-eval-scope: with no origin/main and no base it should refuse"
@@ -72,16 +104,19 @@ assert_contains "$out" "git repository"
 
 # --- hostile paths ---------------------------------------------------------------------------------------------------------------
 reset_repo; put "skills/alpha/reference/a b.md"; put $'skills/alpha/reference/x\nrun evil.md'; put $'skills/alpha/ref\nskip evil2 (no evals/evals.json)/z.md'
-expect "spaces and newlines in file names add no line" "run alpha" "$BASE"
+expect "spaces and newlines in file names add no line" "skip alpha ($DOCS)" "$BASE"
 reset_repo; put skills/Alpha/SKILL.md; put skills/-x/SKILL.md; put skills/al_pha/SKILL.md; put "skills/a b/SKILL.md"; put skills/alpha.md; put skills/x/y
 put skills/.hidden/SKILL.md; put "skills//SKILL.md"; put agents/.md; put Skills/alpha/SKILL.md
 expect "names outside the pattern" "" "$BASE"
 reset_repo; put skills/alpha/evals/../reference/b.md
-expect ".. in a created path is normalised by the file system, not by the tool" "run alpha" "$BASE"
+expect ".. in a created path is normalised by the file system, not by the tool" "skip alpha ($DOCS)" "$BASE"
 reset_repo; ln -s alpha skills/linked 2>/dev/null; ln -s ../alpha/evals skills/beta/evals 2>/dev/null || true
 if [[ -L skills/linked && -L skills/beta/evals ]]; then
   echo more >> skills/beta/SKILL.md; git add -A
   expect "a symlinked skill link, a symlinked evals/ dir" "skip beta (no evals/evals.json)" "$BASE"
+  reset_repo; put skills/gamma/SKILL.md; mkdir -p skills/gamma/evals; ln -s ../../alpha/evals/evals.json skills/gamma/evals/evals.json
+  git add -A; git commit -qm gamma; echo more >> skills/gamma/SKILL.md
+  expect "a symlinked evals.json" "skip gamma (no evals/evals.json)" "$(git rev-parse HEAD)"
 else
   echo "skill-eval-scope: SKIPPED the symlink cases (this system cannot create symlinks)"
 fi
@@ -103,7 +138,8 @@ scope "$BASE"; [[ "$code" == 0 ]] || fail "skill-eval-scope: the random loop cra
 if [[ -n "$out" ]]; then
   prev=""   # the tool sorts by skill name, so the order check is on the name
   while IFS= read -r line; do
-    [[ "$line" =~ ^(run\ ([a-z0-9][a-z0-9-]*)|skip\ ([a-z0-9][a-z0-9-]*)\ \(no\ evals/evals\.json\))$ ]] || fail "skill-eval-scope: odd output line '$line'"
+    [[ "$line" =~ ^(run\ ([a-z0-9][a-z0-9-]*)|skip\ ([a-z0-9][a-z0-9-]*)\ \((no\ evals/evals\.json|only\ docs\ outside\ SKILL\.md\ changed\;\ its\ evals\ read\ SKILL\.md\ only)\))$ ]] \
+      || fail "skill-eval-scope: odd output line '$line'"
     name="${BASH_REMATCH[2]}${BASH_REMATCH[3]}"
     [[ "$name" > "$prev" ]] || fail "skill-eval-scope: output is not sorted and unique at '$line'"; prev="$name"
     grep -qE "^(skills/$name/|agents/[^/]+\.md$)" "$WORK/paths.txt" || fail "skill-eval-scope: named '$name' with no path under it"

@@ -96,8 +96,10 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
 
    **Skill eval (advisory, normal+ tier).** When the sprint edited a skill's instructions or a gate agent, run
    that skill's own evals, so a prompt edit is graded by behaviour and not only by "the line is present". Run
-   `tools/skill-eval-scope.sh` (it diffs against the same base the gates use and prints `run <skill>` or
-   `skip <skill> (no evals/evals.json)` per changed skill; nothing printed means no skill changed). For each `run`
+   `tools/skill-eval-scope.sh` (it diffs against the same base the gates use and prints `run <skill>`,
+   `skip <skill> (no evals/evals.json)`, or `skip <skill> (only docs outside SKILL.md changed; its evals read SKILL.md
+   only)` per changed skill: an executor is given SKILL.md alone, so a reference/gates/agent doc reaches the evals only
+   when a case names its path, t-a1b1; nothing printed means no skill changed). For each `run`
    line, follow `skills/skill-eval/SKILL.md` for that skill yourself, with the sprint-gate instructions there. Do not
    hand the whole skill to one subagent: a subagent cannot spawn the fresh executor and grader subagents each case
    needs (they are dispatched from this session, one pair per case). The run appends the pass rate to
@@ -109,7 +111,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    `_gate_eval_report_fresh` (`tools/sprint`) fails any tracked change made after the evaluator graded, so the new
    line goes into the interim commit below and the gates grade the final tree. Record it in the Wrapup Gates table
    (`ran | sprint 9/10 (was 10/10), wrapup 7/7 (advisory)`, or `skipped | no skill or gate agent changed`, or
-   `skipped | <skill> has no evals.json`). **Canon only, and only in a git checkout:** where `tools/skill-eval-scope.sh`
+   `skipped | <skill> has no evals.json`, or `skipped | sprint: only docs outside SKILL.md changed`). **Canon only, and only in a git checkout:** where `tools/skill-eval-scope.sh`
    does not exist (a consumer project) or there is no git (the scope tool needs it), record `skipped | not a canon checkout` /
    `skipped | no git` and go on.
 
