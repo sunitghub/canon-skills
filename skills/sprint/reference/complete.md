@@ -97,7 +97,9 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
 
 
    **Mutation test (advisory, normal+ tier, t-1fac).** When the sprint changed shell or JS logic files, run the
-   `mutation-test` skill here, before the reviewer and evaluator, so they grade a suite that already has teeth: read
+   `mutation-test` skill here, before the reviewer and evaluator, so they grade a suite that already has teeth. First run
+   `mutant-sweep --check`: exit 3 means no working Python 3 on this machine (none, Windows' Store alias, Python 2), so record
+   `mutation-test | skipped | no python3` and go on without reading the skill (t-a5f6). Otherwise read
    `skills/mutation-test/SKILL.md` and follow it. `mutant-sweep` mutates only the changed lines, in throwaway copies
    (the real tree is never written), and writes `.tickets/<id>/mutation-report.md`; triage every survivor (fix a test,
    delete a redundant check, or mark it equivalent with a reason) and commit any test fix before the interim commit
