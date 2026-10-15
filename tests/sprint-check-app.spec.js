@@ -9760,6 +9760,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
+  // QUARANTINE t-8aa6: fails every run in webkit, the second waitForLoadState('networkidle') below times out at 30 s; see tests/board-spec-baseline.json
   test('the shared poll timer starts once per open tab (not per switch) and clears only when the last tab closes (t-96a8/t-8a2a)', async ({ page }) => {
     const id = `t-cktimer-${Date.now()}`;
     try {

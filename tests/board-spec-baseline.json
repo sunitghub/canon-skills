@@ -1,10 +1,19 @@
 {
   "_about": "t-4469: tests seen failing in five real-data runs per browser (tests/run-board-spec.sh). failing = failed in every run (quarantined: needs a ticket id and a QUARANTINE marker in the spec); flaky = may fail any number of runs, including all runs of one batch (the guard warns; --strict fails): needs a reason and a ticket id; skipped = allowed to be skipped; min_tests = per-browser floor on the number of tests reported (a drop means tests did not run). failed_runs is information only.",
   "min_tests": {
-    "chromium": 351,
-    "webkit": 351
+    "chromium": 471,
+    "webkit": 471
   },
-  "failing": [],
+  "failing": [
+    {
+      "title": "cockpit in board (t-ddc8) > the shared poll timer starts once per open tab (not per switch) and clears only when the last tab closes (t-96a8/t-8a2a)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "Fails every run in webkit (9/9 across three batches at 51b331ef, 2026-10-15): the second page.waitForLoadState('networkidle') (spec line ~9789, right after closeCockpit) times out at 30 s, probably because the hidden tab's own poll keeps the network busy; the setInterval/clearInterval count assertions after it never run in webkit while this is quarantined; passes in chromium; diagnose under t-8aa6"
+    }
+  ],
   "flaky": [
     {
       "title": "Canon Cockpit \"?\" info popovers (t-576f) > the popover stays inside the window and clear of the sidebar at 1100px",
@@ -94,17 +103,6 @@
       "failed_runs": {
         "chromium": "1/5",
         "webkit": "4/5"
-      }
-    },
-    {
-      "title": "cockpit in board (t-ddc8) > the shared poll timer starts once per open tab (not per switch) and clears only when the last tab closes (t-96a8/t-8a2a)",
-      "browsers": [
-        "webkit"
-      ],
-      "ticket": "t-8aa6",
-      "reason": "timing flake seen in some of five real-data runs; cause not yet diagnosed",
-      "failed_runs": {
-        "webkit": "2/5"
       }
     },
     {
@@ -727,6 +725,127 @@
       "reason": "30 s webkit page.goto load timeout in a full run (t-f889 at edb294ea, 2026-10-14); passed alone 3/3 on the branch and 3/3 on main 3f183589",
       "failed_runs": {
         "webkit": "1/1"
+      }
+    },
+    {
+      "title": "board modal > Gate model dropdown offers registry OpenAI models as openai:<id> and writes the pick to plan.md (t-ef27)",
+      "browsers": [
+        "chromium"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "failed in 1 of 9 real-data runs at 51b331ef across three batches (assertion) and passed 3 of 3 solo runs per browser; cause not yet diagnosed",
+      "failed_runs": {
+        "chromium": "1/9"
+      }
+    },
+    {
+      "title": "cockpit leave-session confirm (t-f6b6) > fallback timeout force-ends and warns the save may be incomplete",
+      "browsers": [
+        "chromium"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "failed in 1 of 9 real-data runs at 51b331ef across three batches (load-time timeout); cause not yet diagnosed",
+      "failed_runs": {
+        "chromium": "1/9"
+      }
+    },
+    {
+      "title": "cockpit preview pane (t-b19b) > PREVIEW_FILE loads a sandboxed iframe pointed at the daemon preview endpoint",
+      "browsers": [
+        "chromium"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "failed in 1 of 9 real-data runs at 51b331ef across three batches (assertion) and passed 3 of 3 solo runs per browser; cause not yet diagnosed",
+      "failed_runs": {
+        "chromium": "1/9"
+      }
+    },
+    {
+      "title": "cockpit preview pane (t-b19b) > \"← Board\" then reopening the same tab restores the mounted preview iframe without re-requesting it (t-82f4)",
+      "browsers": [
+        "chromium"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "failed in 1 of 9 real-data runs at 51b331ef across three batches (assertion) and passed 3 of 3 solo runs per browser; cause not yet diagnosed",
+      "failed_runs": {
+        "chromium": "1/9"
+      }
+    },
+    {
+      "title": "cockpit preview pane (t-b19b) > preview pane is resizable and collapse still works (t-bc04)",
+      "browsers": [
+        "chromium"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "failed in 1 of 9 real-data runs at 51b331ef across three batches (load-time timeout); cause not yet diagnosed",
+      "failed_runs": {
+        "chromium": "1/9"
+      }
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > cross-project Sessions row (t-2d2e) > board (t-2758): the standalone board keeps its own Dark/Light toggle, which saves, and it is hidden inside the Cockpit",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "failed in 1 of 9 real-data runs at 51b331ef across three batches (load-time timeout); cause not yet diagnosed",
+      "failed_runs": {
+        "webkit": "1/9"
+      }
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > cross-project Sessions row (t-2d2e) > t-aca6: each Agents row shows the project and time in session; Admin's sub-line ends with the same total",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "failed in 1 of 9 real-data runs at 51b331ef across three batches (load-time timeout); cause not yet diagnosed",
+      "failed_runs": {
+        "webkit": "1/9"
+      }
+    },
+    {
+      "title": "cockpit preview pane (t-b19b) > no live session (e.g. idle Resume, pre-Start) shows a message, not an infinite \"Asking…\"",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "failed in 1 of 9 real-data runs at 51b331ef across three batches (assertion) and passed 3 of 3 solo runs per browser; cause not yet diagnosed",
+      "failed_runs": {
+        "webkit": "1/9"
+      }
+    },
+    {
+      "title": "Canon Cockpit \"?\" info popovers (t-576f) > the popover text says what is true: allowed git/wc, tkt learn/learnings-sweep run automatically, honest Skill Eval limits, chips",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "failed in 1 of 9 real-data runs at 51b331ef across three batches (load-time timeout); cause not yet diagnosed",
+      "failed_runs": {
+        "webkit": "1/9"
+      }
+    },
+    {
+      "title": "Canon Cockpit Projects card: Git status icon (t-8d72) > each card shows On, Off or None from the status, hides itself when it cannot tell, and the old chip is gone",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "failed in 3 of 9 real-data runs at 51b331ef across three batches (load-time timeout); cause not yet diagnosed",
+      "failed_runs": {
+        "webkit": "3/9"
+      }
+    },
+    {
+      "title": "ticket modal polish (t-612f) > the gate reports list as Eval Agent and Review Agent and still open their own files (t-1f22)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "failed in 2 of 9 real-data runs at 51b331ef across three batches (load-time timeout); cause not yet diagnosed",
+      "failed_runs": {
+        "webkit": "2/9"
       }
     }
   ],
