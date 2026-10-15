@@ -12,14 +12,23 @@ export SPRINT_CHECK_NO_BROWSER=1
 export SKILLS_SH_NO_TTY=1
 
 # t-2633: `--list` prints every suite label, one per line: the one list of what this script runs (scripts/test-hermetic.sh reads it).
-LIST=0
+# t-abb1: suites run in parallel, `--jobs N` workers (default: the CPU count, at most 8); `--jobs 1` is the sequential run, which stops
+# at the first failure. A parallel run runs every suite and exits with the first failing suite's code in list order.
+LIST=0; JOBS=""; JOBS_GIVEN=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --list) LIST=1; shift ;;
-    -h|--help) echo "usage: scripts/test.sh [--list]   (--list prints every suite label, one per line)"; exit 0 ;;
+    --jobs) if [[ $# -lt 2 ]]; then echo "test.sh: --jobs needs a positive number" >&2; exit 2; fi; JOBS="$2"; JOBS_GIVEN=1; shift 2 ;;
+    -h|--help) echo "usage: scripts/test.sh [--list] [--jobs N]   (--list prints every suite label, one per line; --jobs 1 runs them one at a time)"; exit 0 ;;
     *) echo "test.sh: unknown option $1" >&2; exit 2 ;;
   esac
 done
+if (( ! JOBS_GIVEN )); then
+  JOBS="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1)"
+  [[ "$JOBS" =~ ^[1-9][0-9]*$ ]] || JOBS=1
+  (( JOBS <= 8 )) || JOBS=8
+elif [[ ! "$JOBS" =~ ^[1-9][0-9]*$ ]]; then echo "test.sh: --jobs needs a positive number" >&2; exit 2
+fi
 
 tests=(
   "$ROOT/tests/tkt.sh"
@@ -126,9 +135,11 @@ _new_orphan_servers() {
 # suite <label> <command...> — prints the `==> <label>` header, runs the command, records its whole-second wall time (t-2633). In the
 # dry pass it only records the label, so --list prints this same sequence, never a second copy of it.
 TIMES=(); LABELS=(); CURRENT=""; CURRENT_T0=0; DRY=0
+PLAN=0; KINDS=(); CMDS=()   # t-abb1: the planning pass records each suite's command for the parallel run, and skip lines in place
 suite() {
   local label="$1"; shift
   if (( DRY )); then LABELS+=("$label"); return 0; fi
+  if (( PLAN )); then LABELS+=("$label"); KINDS+=(suite); CMDS+=("$(printf '%q ' "$@")"); return 0; fi
   printf '==> %s\n' "$label"
   CURRENT="$label"; CURRENT_T0=$SECONDS
   "$@"
@@ -141,6 +152,11 @@ print_timings() {   # an EXIT trap: the run's own exit status stands, whatever t
     printf '== slowest 10 (s)\n'; printf '%s\n' "${TIMES[@]}" | sort -rn | head -10
     printf '== total %ss for %s suite(s)\n' "$SECONDS" "${#TIMES[@]}"
   fi
+}
+# skipped <line> — a `==> <line>` note for a suite whose tool is absent; the parallel run prints it in its place.
+skipped() {
+  if (( PLAN )); then LABELS+=("$1"); KINDS+=(skip); CMDS+=(""); return 0; fi
+  printf '==> %s\n' "$1"
 }
 go_board() { (cd "$ROOT" && GO111MODULE=off go test ./tools/sprint-check-go); }
 go_headless_json() { (cd "$ROOT" && GO111MODULE=off go test ./tools/sprint-headless-json-go); }
@@ -156,9 +172,9 @@ if (( DRY )) || command -v go >/dev/null 2>&1; then
   suite tools/sprint-headless-json-go go_headless_json
   suite tools/cockpit-daemon go_daemon
 else
-  printf '==> %s\n' "tools/sprint-check-go skipped (go absent)"
-  printf '==> %s\n' "tools/sprint-headless-json-go skipped (go absent)"
-  printf '==> %s\n' "tools/cockpit-daemon skipped (go absent)"
+  skipped "tools/sprint-check-go skipped (go absent)"
+  skipped "tools/sprint-headless-json-go skipped (go absent)"
+  skipped "tools/cockpit-daemon skipped (go absent)"
 fi
 
 if (( DRY )) || command -v node >/dev/null 2>&1; then
@@ -175,14 +191,72 @@ if (( DRY )) || command -v node >/dev/null 2>&1; then
   suite tests/board-spec-classify-unit.js node "$ROOT/tests/board-spec-classify-unit.js"
   suite tests/sprint-check-api-scoping.js node "$ROOT/tests/sprint-check-api-scoping.js"
 else
-  printf '==> %s\n' "tests/sprint-check-gherkin.js skipped (node absent)"
+  skipped "tests/sprint-check-gherkin.js skipped (node absent)"
 fi
 return 0
 }
 
+# run_parallel — t-abb1. Plans every suite, starts them through `xargs -P "$JOBS"` (each with its own log, exit-code file and TMPDIR, so
+# a fixed temp name in one suite cannot meet another's), then prints each suite's block in list order as soon as it and every earlier
+# one are done. SERIAL suites run alone after the batch. Sets FIRST_RC to the first failing suite's code in list order.
+SERIAL=(   # --list labels that share state with another suite, each with its reason; filled only from measured collisions
+  # each deletes, on exit, every $ROOT/.canon-cache/skill-eval/ folder it did not see at its start: run alongside each other (or the
+  # board's Go suite, which writes there too), one removes another's live run folder (sprint-check-skill-eval's report 404'd in a stamp)
+  tests/sprint-check-skill-eval.sh
+  tests/sprint-check-skill-eval-go.sh
+  tests/skill-eval-parity.sh
+)
+run_parallel() {
+  local i n s w t
+  PLAN=1; run_all; PLAN=0
+  t="${TMPDIR:-/tmp}"   # macOS's TMPDIR ends in "/": a "//" in a suite's TMPDIR breaks Go tests that string-compare t.TempDir() paths
+  RUN="$(mktemp -d "${t%/}/test-sh-run.XXXXXX")"; mkdir -p "$RUN/jobs" "$RUN/tmp"
+  export ROOT RUN; export -f go_board go_headless_json go_daemon
+  cat > "$RUN/worker.sh" <<'WORKER'
+i="$1"; cmd="$(cat "$RUN/jobs/$i.cmd")"
+export TMPDIR="$RUN/tmp/$i"; mkdir -p "$TMPDIR"
+s=$(date +%s); rc=0
+( eval "$cmd" ) > "$RUN/jobs/$i.log" 2>&1 < /dev/null || rc=$?
+echo "$(( $(date +%s) - s ))" > "$RUN/jobs/$i.time"; echo "$rc" > "$RUN/jobs/$i.rc.part"; mv "$RUN/jobs/$i.rc.part" "$RUN/jobs/$i.rc"
+WORKER
+  n=${#LABELS[@]}; : > "$RUN/batch"; : > "$RUN/serial"
+  for (( i = 0; i < n; i++ )); do
+    [[ "${KINDS[$i]}" == suite ]] || continue
+    printf '%s' "${CMDS[$i]}" > "$RUN/jobs/$i.cmd"
+    s=0; for w in "${SERIAL[@]:-}"; do if [[ "$w" == "${LABELS[$i]}" ]]; then s=1; fi; done
+    if (( s )); then echo "$i" >> "$RUN/serial"; else echo "$i" >> "$RUN/batch"; fi
+  done
+  set -m   # the batch gets its own process group, so stop_workers can stop every process a suite started, not only the workers
+  xargs -P "$JOBS" -n 1 bash "$RUN/worker.sh" < "$RUN/batch" &
+  XARGS_PID=$!; set +m
+  print_block() {   # print_block <index>: wait for that suite's exit code, then print its block and record its time
+    local i="$1" rc t
+    while [[ ! -f "$RUN/jobs/$i.rc" ]]; do sleep 0.2; done
+    rc="$(cat "$RUN/jobs/$i.rc")"; t="$(cat "$RUN/jobs/$i.time")"
+    printf '==> %s\n' "${LABELS[$i]}"; cat "$RUN/jobs/$i.log"
+    if [[ "$rc" == 0 ]]; then TIMES+=("$t ${LABELS[$i]}")
+    else TIMES+=("$t ${LABELS[$i]} (failed)"); FAILED+=("${LABELS[$i]} (exit $rc)"); if (( FIRST_RC == 0 )); then FIRST_RC="$rc"; fi; fi
+  }
+  for (( i = 0; i < n; i++ )); do
+    if [[ "${KINDS[$i]}" == skip ]]; then printf '==> %s\n' "${LABELS[$i]}"; continue; fi
+    if grep -qx "$i" "$RUN/serial"; then continue; fi
+    print_block "$i"
+  done
+  wait "$XARGS_PID" 2>/dev/null || true; XARGS_PID=""
+  while IFS= read -r i; do
+    bash "$RUN/worker.sh" "$i"; print_block "$i"
+  done < "$RUN/serial"
+  return 0
+}
+stop_workers() {   # on any exit: stop a batch still running (an interrupted run) and remove its folder
+  if [[ -n "${XARGS_PID:-}" ]]; then kill -TERM -- "-$XARGS_PID" 2>/dev/null || true; fi
+  if [[ -n "${RUN:-}" ]]; then case "$RUN" in */test-sh-run.*) rm -rf -- "$RUN" ;; esac; fi
+}
+
 if (( LIST )); then DRY=1; run_all; printf '%s\n' "${LABELS[@]}"; exit 0; fi
-trap print_timings EXIT
-run_all
+trap 'stop_workers; print_timings' EXIT
+FIRST_RC=0; FAILED=(); XARGS_PID=""; RUN=""
+if (( JOBS == 1 )); then run_all; else run_parallel; fi
 
 # Give a server that was just killed a few seconds to actually exit before calling it a leak.
 for _ in 1 2 3 4 5; do
@@ -190,9 +264,13 @@ for _ in 1 2 3 4 5; do
   LEAKED_SERVERS="$(_new_orphan_servers)"
   [[ -z "${LEAKED_SERVERS// /}" ]] && break
 done
+if (( ${#FAILED[@]} )); then
+  { printf '\n'; printf 'FAILED: %s\n' "${FAILED[@]}"; } >&2
+fi
 if [[ -n "${LEAKED_SERVERS// /}" ]]; then
   printf '\nFAIL: the test run left sprint-check servers running (PIDs): %s\n' "$LEAKED_SERVERS" >&2
   exit 1
 fi
+if (( FIRST_RC != 0 )); then exit "$FIRST_RC"; fi
 
 printf '\nAll tests passed.\n'
