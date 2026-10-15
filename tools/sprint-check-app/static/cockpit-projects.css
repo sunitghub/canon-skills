@@ -54,7 +54,7 @@
   .modal{width:440px;background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:22px}
   .modal h2{font-size:16px;margin-bottom:16px}
   .modal label{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin:12px 0 5px}
-  .modal input,.modal textarea{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 11px;color:var(--text);font-size:13px;font-family:inherit}
+  .modal input:not([type=checkbox]),.modal textarea{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 11px;color:var(--text);font-size:13px;font-family:inherit}
   .modal textarea{resize:vertical;min-height:52px}
   .modal .err{color:var(--col-discarded);font-size:12px;margin-top:8px;min-height:16px}
   .modal .mfoot{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
