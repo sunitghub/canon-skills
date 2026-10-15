@@ -878,6 +878,110 @@ cmd_learn() {
   echo "Promote keepers into the durable store from a fresh context — not this sprint's author."
 }
 
+# cmd_compact [--older-than DAYS] [--dry-run] — t-2fb6: shrinks old closed tickets' evidence/. .tickets/ is copied by every
+# board-spec run, scratch copy and evaluator clone, and is gitignored, so only the raw board-spec JSON reports are deleted
+# (nothing reads them once a ticket is closed); every other file is packed into evidence.tgz, removed only after the archive
+# lists exactly what was packed. A file cited by path stays loose, so docs, board-embedded images and code comments still resolve.
+_compact_path_re='[^][[:space:]()<>"`|,;*'"'"']+'
+_compact_mb() { awk -v b="$1" 'BEGIN{printf "%.1f", b/1048576}'; }
+_compact_bytes() {   # _compact_bytes <dir> <list>: total size of the listed files, relative to <dir>
+  [[ -s "$2" ]] || { echo 0; return; }
+  (cd "$1" && tr '\n' '\0' < "$2" | xargs -0 cat | wc -c | tr -d ' ')
+}
+
+cmd_compact() {
+  local days=14 dry=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --older-than) days="${2:-}"; shift 2 || { echo "Error: --older-than needs a number of days" >&2; exit 1; } ;;
+      --dry-run)    dry=true; shift ;;
+      *)            echo "Unknown option: $1" >&2; exit 1 ;;
+    esac
+  done
+  [[ "$days" =~ ^[0-9]+$ ]] || { echo "Error: --older-than needs a number of days, got: $days" >&2; exit 1; }
+
+  local dir root tmp
+  dir="$(tickets_dir)"
+  [[ -d "$dir" ]] || { echo "compact: total: no .tickets/ folder, nothing to do"; return 0; }
+  root="$(dirname "$dir")"
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/tkt-compact.XXXXXX")"
+  # shellcheck disable=SC2064  # expand now: $tmp is local and gone by the time tkt exits
+  trap "rm -rf '$tmp'" EXIT
+
+  # Paths cited from outside a ticket: open and in_progress tickets' docs, and tracked repo files. A git error is not
+  # "nothing cited": stop before touching anything.
+  local f st
+  : > "$tmp/global"
+  for f in "$dir"/*/ticket.md; do
+    [[ -f "$f" ]] || continue
+    st="$(get_field "$f" status)"
+    [[ "$st" == open || "$st" == in_progress ]] || continue
+    cat "$(dirname "$f")"/*.md >> "$tmp/global" 2>/dev/null || true
+  done
+  if git -C "$root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    local rc=0
+    git -C "$root" grep -h -o -I -E "[A-Za-z0-9_-]+/evidence/$_compact_path_re" >> "$tmp/global" || rc=$?
+    if (( rc > 1 )); then echo "compact: ERROR: git grep failed (exit $rc); nothing compacted" >&2; exit 2; fi
+  fi
+
+  local label="compact"; $dry && label="compact (dry run)"
+  local n=0 failed=0 tdel=0 tpack=0 tbefore=0 tafter=0 t id del pack kept b_del b_pack b_after
+  for t in "$dir"/*/; do
+    t="${t%/}"; id="$(basename "$t")"
+    [[ -L "$t" || ! -f "$t/ticket.md" ]] && continue
+    st="$(get_field "$t/ticket.md" status)"
+    [[ "$st" == closed || "$st" == cancelled ]] || continue
+    [[ -d "$t/evidence" && ! -L "$t/evidence" && ! -e "$t/evidence.tgz" ]] || continue
+    [[ -n "$(find "$t/ticket.md" -mmin +$(( days * 1440 )))" ]] || continue
+
+    # Cited paths, relative to evidence/: "<id>/evidence/..." anywhere above, or "evidence/..." in this ticket's own docs.
+    { grep -o -E "(^|[^A-Za-z0-9_-])$id/evidence/$_compact_path_re" "$tmp/global" | sed "s#^.*$id/evidence/##" || true
+      cat "$t"/*.md 2>/dev/null | grep -o -E "evidence/$_compact_path_re" | sed 's#^evidence/##' || true
+    } | sed 's/[.:]*$//' | sort -u > "$tmp/cited"
+    # Regular files only (find never follows a symlink); a name with a newline is left alone.
+    (cd "$t" && find evidence -type f ! -name "$(printf '*\n*')") | sed 's#^evidence/##' | sort > "$tmp/all"
+    awk 'FILENAME==ARGV[1]{c[$0]=1; next}
+         { keep=0; for (p in c) if ($0==p || index($0, p "/")==1) keep=1
+           if (keep) print > "'"$tmp/kept"'"
+           else if ($0 ~ /(^|\/)board-spec-[^\/]*-run[^\/]*\.json$/) print > "'"$tmp/del"'"
+           else print > "'"$tmp/pack"'" }' "$tmp/cited" "$tmp/all"
+    for f in kept del pack; do touch "$tmp/$f"; sed -i.bak 's#^#evidence/#' "$tmp/$f"; done
+    del="$(grep -c . "$tmp/del" || true)"; pack="$(grep -c . "$tmp/pack" || true)"; kept="$(grep -c . "$tmp/kept" || true)"
+    if (( del + pack == 0 )); then rm -f "$tmp"/{kept,del,pack}{,.bak}; continue; fi
+    b_del="$(_compact_bytes "$t" "$tmp/del")"; b_pack="$(_compact_bytes "$t" "$tmp/pack")"; b_after=0
+
+    if (( pack > 0 )); then
+      if $dry; then
+        b_after="$(cd "$t" && tr '\n' '\0' < "$tmp/pack" | tar -czf - --null -T - | wc -c | tr -d ' ')"
+      elif (cd "$t" && tr '\n' '\0' < "$tmp/pack" | tar -czf evidence.tgz.tmp --null -T - 2>"$tmp/err") \
+           && (cd "$t" && tar -tzf evidence.tgz.tmp | sort) | cmp -s - <(sort "$tmp/pack") \
+           && mv "$t/evidence.tgz.tmp" "$t/evidence.tgz"; then
+        b_after="$(wc -c < "$t/evidence.tgz" | tr -d ' ')"
+        (cd "$t" && tr '\n' '\0' < "$tmp/pack" | xargs -0 rm -f) \
+          || { echo "compact: WARNING: $id: archive written, but some packed files could not be removed" >&2; failed=$((failed + 1)); }
+      else
+        rm -f "$t/evidence.tgz.tmp"
+        echo "compact: WARNING: $id: packing failed, every file kept loose: $(head -1 "$tmp/err" 2>/dev/null)" >&2
+        failed=$((failed + 1)); pack=0; b_pack=0
+      fi
+    fi
+    if ! $dry && (( del > 0 )) && ! (cd "$t" && tr '\n' '\0' < "$tmp/del" | xargs -0 rm -f); then
+      echo "compact: WARNING: $id: could not delete the board-spec JSON reports" >&2; failed=$((failed + 1))
+    fi
+    $dry || find "$t/evidence" -depth -type d -empty -delete 2>/dev/null || true
+
+    echo "$label: $id: deleted $del board-spec JSON ($(_compact_mb "$b_del") MB), packed $pack files ($(_compact_mb "$b_pack") MB → $(_compact_mb "$b_after") MB)$( (( kept > 0 )) && echo ", kept $kept cited")"
+    n=$((n + 1)); tdel=$((tdel + del)); tpack=$((tpack + pack))
+    tbefore=$((tbefore + b_del + b_pack)); tafter=$((tafter + b_after))
+    rm -f "$tmp"/{kept,del,pack}{,.bak}
+  done
+
+  echo "$label: total: $n tickets older than $days days, deleted $tdel files, packed $tpack files: $(_compact_mb "$tbefore") MB → $(_compact_mb "$tafter") MB (saved $(_compact_mb $((tbefore - tafter))) MB)"
+  (( n > 0 )) && echo "$label: restore one: tar -xzf .tickets/<id>/evidence.tgz -C .tickets/<id>"
+  if (( failed > 0 )); then echo "compact: WARNING: $failed steps failed (see above; their files were kept)" >&2; return 1; fi
+  return 0
+}
+
 cmd_help() {
   cat <<'EOF'
 tkt — minimal ticket system
@@ -922,6 +1026,11 @@ Commands:
                             non-builder moves keepers into the durable store. Writes
                             nothing for a clean sprint; refuses to overwrite an
                             existing candidate without --force.
+  compact [--older-than DAYS] [--dry-run]
+                            Shrink evidence/ of closed or cancelled tickets whose
+                            ticket.md is older than DAYS (default 14): delete raw
+                            board-spec JSON reports, pack the rest into evidence.tgz.
+                            Files cited by path stay loose. sprint complete runs it.
 
 New tickets are stored in .tickets/<id>/ticket.md
 ACTIVE ticket is stored in .tickets/ACTIVE
@@ -947,6 +1056,7 @@ main() {
     show)           cmd_show "$@" ;;
     why)            cmd_why "$@" ;;
     learn)          cmd_learn "$@" ;;
+    compact)        cmd_compact "$@" ;;
     help|--help|-h) cmd_help ;;
     --version|-v)   echo "tkt $VERSION" ;;
     *)              echo "Unknown command: $cmd" >&2; cmd_help; exit 1 ;;

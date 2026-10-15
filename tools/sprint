@@ -816,6 +816,16 @@ cmd_complete() {
 
   TKT_SPRINT_GATE_PASSED=1 "$TKT_BIN" close "$id"
   echo "Sprint completed: $id"
+
+  # t-2fb6: shrink old closed tickets' evidence/ (never this one: it is younger than the cut-off). The close already
+  # happened, so a compact failure only warns.
+  local compact_out compact_rc=0
+  compact_out="$("$TKT_BIN" compact 2>&1)" || compact_rc=$?
+  printf '%s\n' "$compact_out" | grep -E '^compact: (total|WARNING|ERROR)' || true
+  if (( compact_rc != 0 )); then
+    echo "warning: tkt compact exited $compact_rc; the close stands. Run 'tkt compact --dry-run' to see why."
+  fi
+  return 0
 }
 
 # cmd_check_review_notes <id> — t-c38e: the close gate's review-notes.md shape check, run on demand (read-only). The
