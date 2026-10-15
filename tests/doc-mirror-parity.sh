@@ -294,9 +294,9 @@ domains="$(printf '%s\n' "${index#*domain:\*\* }" | tr '·' '\n' | sed 's/^ *//;
 while IFS= read -r d; do
   grep -qixF -- "## $d" "$NOTES" || fail "doc-mirror-parity: efficiency.md's index names '$d', which is not a section of efficiency-notes.md (t-8837, Check O)"
 done <<< "$domains"
-while IFS= read -r h; do   # and every section of the notes file is reachable from that index (canon-only sections excepted)
+while IFS= read -r h; do   # and every section of the notes file is reachable from that index
   printf '%s\n' "$domains" | grep -qixF -- "$h" || fail "doc-mirror-parity: efficiency-notes.md section '$h' is not named in efficiency.md's index line (t-8837, Check O)"
-done < <(sed -n 's/^## //p' "$NOTES" | grep -v '^Canon only')
+done < <(sed -n 's/^## //p' "$NOTES")
 for f in "$ROOT/standards/skill-setup-std.md" "$ROOT/skills/promote-learnings/SKILL.md"; do
   for frag in '`standards/efficiency-notes.md`' 'nearly every session'; do
     grep -qF -- "$frag" "$f" || fail "doc-mirror-parity: ${f#"$ROOT"/} lost '$frag' from the lesson-destination rule (t-8837, Check O)"

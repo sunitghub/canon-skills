@@ -11,6 +11,7 @@ Canon-specific guidance that applies only in this repo. Global instructions are 
 - Fail loudly — surface ambiguity rather than guessing silently.
 - Solve with one agent before building a multi-agent pipeline. Complexity compounds failure.
 - Requirements define intent; code defines reality. The gap between them is where hallucination lives.
+- Competitor or adjacent-tool analysis changes how canon should operate → capture it in a skill, standard, guide, or tool behavior before wrapup. (Moved from efficiency.md in t-8837: it applies only in canon.)
 
 ## Worktrees (Parallel Agents)
 
