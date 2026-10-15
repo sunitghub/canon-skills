@@ -4877,7 +4877,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator('#addModal .browse-btn').click();
       await expect(page.locator('#dirnav')).toBeVisible();
       await expect(page.locator('#dirnav-path')).toHaveText('/home/me');
-      // Through its label: WebKit draws this checkbox 0px wide (t-b5c7), and a label click is what a user does anyway.
+      // Through its label, as a user would click it (the box's own size is pinned by the t-b5c7 test).
       await page.locator('#addModal .dirnav-hidden-lbl').click();                     // re-lists with hidden folders
       await expect(page.locator('#dirnav-hidden')).toBeChecked();
       await expect.poll(() => browse.some(u => /[?&]hidden=1\b/.test(u))).toBe(true);
@@ -14425,4 +14425,26 @@ test.describe('ticket modal polish (t-612f)', () => {
     await input.fill('a long risk sentence that should be readable in full from the tooltip');
     await expect(input).toHaveAttribute('title', 'a long risk sentence that should be readable in full from the tooltip');
   });
+});
+
+// t-b5c7: `.modal input` is for text fields; it also matched the Show hidden checkbox, which WebKit then drew 0px wide.
+test('shell (t-b5c7): the Add Project Show hidden checkbox has a visible box inside its label, and text fields keep their width', async ({ page }) => {
+  await page.route('**/api/browse-dirs*', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ path: '/home/me', parent: '/home', entries: [] }) }));
+  await page.goto(BASE + '/cockpit');
+  await page.waitForLoadState('networkidle');
+  await page.locator('.tab.pinned').click();
+  await page.locator('#add-open').click();
+  await expect(page.locator('#addModal')).toHaveClass(/show/);
+  await page.locator('#addModal .browse-btn').click();
+  await expect(page.locator('#dirnav')).toBeVisible();
+  await expect.poll(() => page.locator('#addModal').evaluate(m => m.getAnimations({ subtree: true }).length)).toBe(0);
+  const box = await page.locator('#dirnav-hidden').boundingBox(), lbl = await page.locator('#addModal .dirnav-hidden-lbl').boundingBox();
+  const path = await page.locator('#addPath').boundingBox(), desc = await page.locator('#addDesc').boundingBox();
+  expect(box.width, 'checkbox width').toBeGreaterThanOrEqual(8);
+  expect(box.height, 'checkbox height').toBeGreaterThanOrEqual(8);
+  expect(box.x, 'checkbox inside its label').toBeGreaterThanOrEqual(lbl.x - 1);
+  expect(box.x + box.width, 'checkbox inside its label').toBeLessThanOrEqual(lbl.x + lbl.width + 1);
+  expect(desc.width, 'the textarea still fills the dialog').toBeGreaterThan(150);
+  expect(path.width, 'the path field is not collapsed').toBeGreaterThan(150);
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
 });
