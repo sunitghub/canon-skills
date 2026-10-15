@@ -203,7 +203,8 @@ SERIAL=()   # --list labels that share state with another suite, each with its r
 run_parallel() {
   local i n s w t rc
   PLAN=1; run_all; PLAN=0
-  RUN="$(mktemp -d "${TMPDIR:-/tmp}/test-sh-run.XXXXXX")"; mkdir -p "$RUN/jobs" "$RUN/tmp"
+  t="${TMPDIR:-/tmp}"   # macOS's TMPDIR ends in "/": a "//" in a suite's TMPDIR breaks Go tests that string-compare t.TempDir() paths
+  RUN="$(mktemp -d "${t%/}/test-sh-run.XXXXXX")"; mkdir -p "$RUN/jobs" "$RUN/tmp"
   export ROOT RUN; export -f go_board go_headless_json go_daemon
   cat > "$RUN/worker.sh" <<'WORKER'
 i="$1"; cmd="$(cat "$RUN/jobs/$i.cmd")"

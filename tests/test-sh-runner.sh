@@ -7,7 +7,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/tests/helpers.sh"
 
-WORK="$(mktemp -d "${TMPDIR:-/tmp}/test-sh-runner.XXXXXX")"; trap 'rm -rf "$WORK"' EXIT
+t="${TMPDIR:-/tmp}"; WORK="$(mktemp -d "${t%/}/test-sh-runner.XXXXXX")"; trap 'rm -rf "$WORK"' EXIT
 export SPRINT_CHECK_NO_BROWSER=1   # tests/no-browser-in-tests.sh reads any sprint-check-go mention as a board start; none starts here
 export LC_ALL=C TMPDIR="$WORK/tmp"; mkdir -p "$TMPDIR"
 
@@ -80,6 +80,10 @@ assert_contains "$out" "C-out"; assert_contains "$out" "E-ok"; assert_contains "
 assert_contains "$out" "FAILED: tests/b.sh (exit 4)"$'\n'"FAILED: tests/d.sh (exit 5)"
 assert_contains "$out" "0 tests/b.sh (failed)"; [[ "$out" != *"tests/c.sh (failed)"* ]] || fail "a passing suite was marked failed"
 assert_eq "" "$(ls "$TMPDIR" | grep '^test-sh-run\.' || true)"                    # the run folder is removed
+# a TMPDIR ending in "/" (macOS's own) gives no suite a "//" path; t.TempDir() keeps it, filepath.Join drops it (cockpit-daemon failed)
+T2="$WORK/slash"; runner_copy "$T2" tests/a.sh tests/b.sh; echo 'echo "dir=$TMPDIR"' > "$T2/tests/a.sh"; echo true > "$T2/tests/b.sh"
+set +e; out="$(TMPDIR="$TMPDIR/" PATH="$WORK/bin" bash "$T2/scripts/test.sh" --jobs 2 2>&1)"; rc=$?; set -e
+assert_eq 0 "$rc"; assert_contains "$out" "dir=$TMPDIR/test-sh-run."; [[ "$out" != *"//"* ]] || fail "a suite's TMPDIR has a //: $out"
 # --jobs 1: the sequential run stops at the first failure
 set +e; out="$(PATH="$WORK/bin" bash "$X/scripts/test.sh" --jobs 1 2>&1)"; rc=$?; set -e
 assert_eq 4 "$rc"; assert_contains "$out" "B-out"; [[ "$out" != *"C-out"* ]] || fail "--jobs 1 ran past the first failure"
