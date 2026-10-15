@@ -694,7 +694,8 @@ Opus` default, scoped only to the two close-gate dispatches below.
 
 9. **Close.** Run `sprint complete` — never write `ticket.md` status directly. If it refuses
    because a required file is missing or checklist items remain unchecked, report the blockers
-   and stop.
+   and stop. After closing it runs `tkt compact` (`t-2fb6`), which shrinks `evidence/` of tickets
+   closed more than 14 days ago and prints one total line; a compact warning never undoes the close.
 
 10. **Commit & Push.** Always run this at the end, once close succeeds — even if no code
     changed (docs and config still need committing). This step owns Commit & Push — wrapup's

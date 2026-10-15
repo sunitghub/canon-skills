@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Added
+- `tkt compact [--older-than DAYS] [--dry-run]` shrinks `.tickets/`, which every board-spec run and scratch copy duplicates: for closed or cancelled tickets older than 14 days it deletes the raw board-spec JSON reports and packs the rest of `evidence/` into `evidence.tgz` (restore: `tar -xzf .tickets/<id>/evidence.tgz -C .tickets/<id>`). Evidence files cited by path stay loose. `sprint complete` runs it after every close; a compact failure only warns (`t-2fb6`).
+
 ### Changed
 - `standards/efficiency.md`, loaded on every turn in every project with canon's standards, is cut from 2,444 to about 690 words: it keeps the rules nearly every session needs, and the domain rules (shell strict mode, tests and guards, security checks, destructive commands, renames, cross-backend parity, Windows / Git Bash, Go tests…) move verbatim to the on-demand `standards/efficiency-notes.md`, named by one index line. `standards/skill-setup-std.md` gains `## Where a lesson goes`, which `promote-learnings` follows (`t-8837`).
 - `tests/run-board-spec.sh` records the machine's load at the start and end of every run (`$OUT/machine-load.txt`) and warns when another board spec or `test.sh` run is going or the load exceeds the CPU count: WebKit fails timing-sensitive tests under contention, so such failures are rerun before they are trusted (`t-5989`).

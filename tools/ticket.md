@@ -29,7 +29,14 @@ tkt gate <id> [eval|full]     # headless gate mode: eval-only vs full (needs ci 
 tkt demo <id> [on|off]        # demo close-path: security-review + evaluator only (Haiku)
 tkt show <id> [--json]        # show full ticket
 tkt learn <id> [--force]      # distill a closed sprint's deviations/findings into an UNPROMOTED .tickets/<id>/learnings.md candidate (proposes, never promotes)
+tkt compact [--older-than DAYS] [--dry-run]  # shrink old closed tickets' evidence/ (default 14 days); sprint complete runs it
 ```
+
+`tkt compact` touches only closed or cancelled tickets whose `ticket.md` is older than DAYS. It deletes the raw
+board-spec JSON reports (`evidence/**/board-spec-*-run*.json`) and packs every other evidence file into
+`evidence.tgz`, removing the loose files only after the archive lists them all. A file cited by path stays loose: in the
+ticket's own docs, in an open or in-progress ticket's docs, or in a tracked repo file. Symlinks are never followed.
+Restore one ticket with `tar -xzf .tickets/<id>/evidence.tgz -C .tickets/<id>`.
 
 After `tkt learn <id>` writes a candidate, the `learnings-sweep` skill (not a `tkt` subcommand —
 see `skills/learnings-sweep/SKILL.md`) upserts one row into root `LEARNINGS.md`, an always-current
