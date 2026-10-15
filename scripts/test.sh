@@ -207,7 +207,7 @@ SERIAL=(   # --list labels that share state with another suite, each with its re
   tests/skill-eval-parity.sh
 )
 run_parallel() {
-  local i n s w t rc
+  local i n s w t
   PLAN=1; run_all; PLAN=0
   t="${TMPDIR:-/tmp}"   # macOS's TMPDIR ends in "/": a "//" in a suite's TMPDIR breaks Go tests that string-compare t.TempDir() paths
   RUN="$(mktemp -d "${t%/}/test-sh-run.XXXXXX")"; mkdir -p "$RUN/jobs" "$RUN/tmp"
