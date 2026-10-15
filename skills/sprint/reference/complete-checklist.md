@@ -8,8 +8,8 @@ hidden: true
 
 # Sprint Complete — checklist
 
-The normal path; every tool named is on PATH. `complete.md` holds each rule's full text and reasons: read only the section the last
-list names for a case that applies.
+The normal path; every tool named is on PATH. `complete.md` holds the full rules: read only the section the
+last list names for a case that applies.
 
 **First** ask "Ready to close sprint `<id>`? This will run wrapup and move the ticket to Done.
 Confirm to proceed." A broad "continue"/"finish" is not close approval.
@@ -21,10 +21,8 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
    - **Mutation test** if shell/JS logic changed: `skills/mutation-test/SKILL.md` (`mutant-sweep --map
      <file>=<test> --report .tickets/<id>/mutation-report.md`); triage every survivor; advisory.
    - **Skill eval** if a skill or gate agent changed: `tools/skill-eval-scope.sh`; for each `run <skill>`
-     follow `skills/skill-eval/SKILL.md` from this session (not one subagent); advisory. Its
-     `history.jsonl` line goes in the interim commit.
-   - **Interim commit** of the sprint's files (specific paths, never `git add -A`) before any gate:
-     the gates diff committed history.
+     follow `skills/skill-eval/SKILL.md` from this session; advisory. Commit its `history.jsonl` line.
+   - **Interim commit** of the sprint's files (specific paths, never `git add -A`) before any gate.
    - **Evidence:** `git clone` the project, check out the final commit, and in the clone run
      `CANON_TICKETS_DIR=<project>/.tickets evidence.sh stamp <id> test-sh -- scripts/test.sh`; re-stamp after
      any tracked change.
@@ -45,8 +43,8 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
    - `fail`, `partial` or `not-run`: surface it, stop. A tracked change after grading needs a fresh
      evaluator (`graded-head:`), except the late docs (`.tickets/`, LEARNINGS, DECISIONS, HANDOFF).
    - Row: `verdict: pass — … (model: <m> — <source>; <N>m)`.
-4. **Tests:** each criterion has a Test Plan line exercising it; each item ✓ with dated evidence. Re-run any
-   "pre-existing failure" the evaluator claims, in the real tree.
+4. **Tests:** each criterion has a Test Plan line exercising it; each item ✓ with dated evidence. Re-run a
+   "pre-existing failure" the evaluator claims in the real tree.
 5. **Acceptance:** every criterion and QA "Tested locally" box truly met.
 6. **DECISIONS.md:** durable choices and why; archive a superseded entry, mark a retired fragment
    `superseded-by: <date>`.
@@ -71,8 +69,7 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
   that report; run tools only in its own `mktemp -d` with `CANON_HOME`, `HOME`, `TMPDIR`,
   `XDG_CONFIG_HOME` pinned inside it; never kill by name or pattern; evaluator only: take the
   `evaluator-run-id` as the very last command. Never pass a changed-files list.
-- A finished gate needs no `TaskStop`. Missing report: save a returned full report verbatim; a bare verdict
-  or no real run-id means re-dispatch.
+- A finished gate needs no `TaskStop`. Missing report: save a returned full report verbatim; else re-dispatch.
 
 ## Read the detail when
 
