@@ -45,6 +45,13 @@ printf '# Plan\nSee .tickets/t-c007/evidence/diag.md.\n' > .tickets/t-c003/plan.
 printf 'map\n' > .tickets/t-c008/evidence/map.md
 mkdir -p tests && printf '# see .tickets/t-c008/evidence/map.md\n' > tests/x.sh
 git add tests/x.sh && git commit -q -m fixture
+# t-c009 cites a folder, a brace pattern and a glob in prose (shapes found in real tickets on the first run).
+mkdir -p .tickets/t-c009/evidence/shots
+printf 'a' > .tickets/t-c009/evidence/shots/a.png
+printf 'x' > .tickets/t-c009/evidence/board-x-dark.png
+printf 'y' > .tickets/t-c009/evidence/board-y-light.png
+printf 'z' > .tickets/t-c009/evidence/board-z-dark.png
+printf '# Acceptance\nShots in `evidence/shots/`, and evidence/board-{x,y}-{dark,light}.png, plus evidence/sub/*.md.\n' > .tickets/t-c009/acceptance.md
 printf 'secret\n' > "$outside/secret.txt"
 ln -s "$outside/secret.txt" .tickets/t-c001/evidence/link
 cp -R .tickets/t-c001/evidence "$outside/c001-before"
@@ -83,6 +90,9 @@ done
 assert_file_exists .tickets/t-c001/evidence/shot.png
 assert_file_exists .tickets/t-c007/evidence/diag.md
 assert_file_exists .tickets/t-c008/evidence/map.md
+for f in shots/a.png board-x-dark.png board-y-light.png sub/note.md; do assert_file_exists ".tickets/t-c009/evidence/$f"; done
+tar -tzf .tickets/t-c009/evidence.tgz | grep -qx 'evidence/board-z-dark.png' || fail "a file no pattern names must still be packed"
+tar -tzf .tickets/t-c009/evidence.tgz | grep -q 'shots/\|board-x\|board-y\|note.md' && fail "a folder-, brace- or glob-cited file was packed"
 [[ -L .tickets/t-c001/evidence/link ]] || fail "the symlink in evidence/ was removed"
 tar -tzf .tickets/t-c001/evidence.tgz | grep -q 'link\|shot.png' && fail "a symlink or a cited file was packed"
 [[ "$(cat "$outside/secret.txt")" == secret ]] || fail "the symlink's target outside .tickets/ changed"
