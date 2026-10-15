@@ -118,17 +118,22 @@ tests=(
 )
 
 # t-8765: a test that backgrounds a board server and doesn't kill it leaks it past the run (a subshell-
-# captured PID once orphaned two servers per run, ~240 across a session). Snapshot the server PIDs first
-# and fail if the run leaves NEW ones — servers already running (a developer's own board) are ignored.
+# captured PID once orphaned two servers per run, ~240 across a session): fail if the run leaves one running.
+# t-72e9: only this run's own. pgrep is machine-wide, so every suite inherits CANON_TEST_RUN and a server
+# counts only if it started with exactly this run's value; one started by anything else (a developer's own
+# board, a concurrent board spec or test run) never does. Every suite has ended by the check, so any server
+# of ours still running is a leak, orphaned or not (a leaked wrapper can still be its parent).
 _server_pids() { { pgrep -f 'sprint-check-app/server\.py|sprint-check-go-bin' 2>/dev/null || true; } | sort -u; }
-SERVERS_BEFORE="$(_server_pids)"
-# pgrep is machine-wide, so a concurrent run's LIVE server (or a build in another worktree) also shows up
-# as "new". A leaked server is an ORPHAN: its test script exited, so it was reparented to PID 1. Only
-# count those; a live server still has its own script as parent.
-_new_orphan_servers() {
+CANON_TEST_RUN="$$.$(date +%s).$RANDOM"; export CANON_TEST_RUN
+_ours() {   # _ours <pid>: the process started with exactly this run's CANON_TEST_RUN (an unreadable one is not ours)
+  if [[ -r "/proc/$1/environ" ]]; then tr '\0' '\n' < "/proc/$1/environ" 2>/dev/null | grep -qxF "CANON_TEST_RUN=$CANON_TEST_RUN"
+  else ps -wwE -o command= -p "$1" 2>/dev/null | tr ' ' '\n' | grep -qxF "CANON_TEST_RUN=$CANON_TEST_RUN"
+  fi
+}
+_leaked_servers() {
   local p
-  for p in $(comm -13 <(printf '%s\n' "$SERVERS_BEFORE") <(_server_pids)); do
-    [[ "$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ')" == 1 ]] && printf '%s ' "$p"
+  for p in $(_server_pids); do
+    if _ours "$p"; then printf '%s ' "$p"; fi
   done
   return 0
 }
@@ -262,7 +267,7 @@ if (( JOBS == 1 )); then run_all; else run_parallel; fi
 # Give a server that was just killed a few seconds to actually exit before calling it a leak.
 for _ in 1 2 3 4 5; do
   sleep 1
-  LEAKED_SERVERS="$(_new_orphan_servers)"
+  LEAKED_SERVERS="$(_leaked_servers)"
   [[ -z "${LEAKED_SERVERS// /}" ]] && break
 done
 if (( ${#FAILED[@]} )); then
