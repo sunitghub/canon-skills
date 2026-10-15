@@ -15,7 +15,7 @@ Any change to `app.html` or `static/` requires Playwright verification — not j
 - Test file: `tests/sprint-check-app.spec.js`
 - Ticket card selector: `.card`; create button: `#btn-create`
 - `npm test` (bash suite) covers non-UI regressions; both must pass before `sprint complete`
-- `scripts/test.sh`'s orphan check fails only on a board server that run itself started and left orphaned (it carries the run's `CANON_TEST_RUN`, t-72e9): your own board, one you started for screenshots, or a board spec run alongside can stay up.
+- `scripts/test.sh`'s orphan check fails only on a board server that run itself started and left running (it carries the run's `CANON_TEST_RUN`, t-72e9): your own board, one you started for screenshots, or a board spec run alongside can stay up.
 - Before moving board code out of a file, `git grep` every reader of that file repo-wide; Go tests in `tools/cockpit-daemon/` read board files too (`t-c58e`).
 - Cockpit UI changes (`app.html` and `static/`, `cockpit.html`, the daemon page): also run the spec with `--browser=webkit` before `sprint complete` — Safari differs (e.g. it reports the shell as `event.source` for a board's message, t-67ab). Stub a daemon on a normal port (`FAKE_DAEMON_ADDR`): WebKit refuses restricted ports like 1 before a route can fulfil them (t-df8e).
 
