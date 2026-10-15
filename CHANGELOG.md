@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-15
+
+Update with `canon update`. No daemon change: nothing to restart.
+
 ### Added
 - `tkt compact [--older-than DAYS] [--dry-run]` shrinks `.tickets/`, which every board-spec run and scratch copy duplicates: for closed or cancelled tickets older than 14 days it deletes the raw board-spec JSON reports and packs the rest of `evidence/` into `evidence.tgz` (restore: `tar -xzf .tickets/<id>/evidence.tgz -C .tickets/<id>`). Evidence files cited by path stay loose. `sprint complete` runs it after every close; a compact failure only warns (`t-2fb6`).
 
