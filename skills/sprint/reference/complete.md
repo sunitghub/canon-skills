@@ -35,7 +35,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
 1. **Wrapup.** Read `skills/wrapup/SKILL.md`, run the wrapup pipeline (code-simplifier, code-reviewer, security-review, repo-check, doc-audit, then refresh docs) over the sprint's changed files — scope varies by gate: wrapup's memory-scoped gates (code-simplifier, code-reviewer) only see "code touched this session", so a multi-session sprint won't get earlier-session files re-checked by those two; security-review derives scope from git instead. `reviewer`/`evaluator` (steps 2-3 below, not part of this pipeline) also diff against `origin/main`, so they cover the full sprint regardless of session boundaries.
 
    **Bugfix tier — lighter wrapup.** For a `Tier: bugfix` sprint (eval-only), run a reduced
-   wrapup: keep `security-review` (a fix can still touch a trust boundary), `repo-check`, and
+   wrapup: keep `security-review` (a fix can still touch a trust boundary), `repo-check` (in a canon checkout), and
    the inline `code-reviewer` (the cheap in-context 8-dimension check — it runs, not skipped);
    `code-simplifier` and `doc-audit` may be skipped — a narrow single-file diff usually already
    meets `wrapup/SKILL.md`'s own existing per-gate criteria for those two ("docs, comments, or

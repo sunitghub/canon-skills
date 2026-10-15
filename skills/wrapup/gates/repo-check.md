@@ -8,7 +8,10 @@ hidden: true
 
 # Repo Check
 
-Called by `wrapup` before the close-time commit (`sprint complete` step 10) when repo surface files changed.
+Called by `wrapup` before the close-time commit (`sprint complete` step 10) when repo surface files changed, **in a
+canon checkout only** (`tools/skill-eval-scope.sh` exists): it checks canon's own surface. Its two generic checks run
+in every project elsewhere: stale references (check 2) in `doc-audit`, syntax checks (check 8) in `code-reviewer`
+(`t-b215`).
 
 ## Scope
 

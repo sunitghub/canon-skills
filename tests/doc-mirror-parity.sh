@@ -271,4 +271,17 @@ for file in "$ROOT/agents/canon-reviewer.md" "$ROOT/agents/canon-evaluator.md" "
 done
 grep -qF -- '**Pin the environment**' "$SHARED" || fail "doc-mirror-parity: shared-gate-protocol.md is missing the '**Pin the environment**' paragraph (t-ce0b, Check M)"
 
+# ── Check N: repo-check runs in a canon checkout only (t-b215). wrapup/SKILL.md's skip names the same canon-checkout test and record line
+# as complete.md's skill-eval skip (one meaning of "canon checkout"), and the two generic checks it no longer runs in user projects live
+# in doc-audit (stale references) and code-reviewer (syntax).
+COMPLETE_MD="$ROOT/skills/sprint/reference/complete.md"
+for frag in '`tools/skill-eval-scope.sh` does not exist' 'skipped | not a canon checkout'; do
+  grep -qF -- "$frag" "$WRAPUP" || fail "doc-mirror-parity: wrapup/SKILL.md's repo-check skip lost '$frag' (t-b215, Check N)"
+done
+for frag in '`tools/skill-eval-scope.sh`' '`skipped | not a canon checkout`'; do
+  grep -qF -- "$frag" "$COMPLETE_MD" || fail "doc-mirror-parity: complete.md's skill-eval skip lost '$frag', the test wrapup's repo-check skip shares (t-b215, Check N)"
+done
+grep -qF -- '**Stale references**' "$ROOT/skills/doc-audit/SKILL.md" || fail "doc-mirror-parity: doc-audit lost its Stale references check, moved there from repo-check (t-b215, Check N)"
+grep -qF -- '`bash -n` for shell scripts' "$ROOT/skills/wrapup/gates/reviewer.md" || fail "doc-mirror-parity: code-reviewer lost its syntax check, moved there from repo-check (t-b215, Check N)"
+
 echo "doc-mirror-parity: ok (fallback commands match shared↔security; review.md/eval.md reference shared file; Windows fallback clause present; base-ref commands match shared↔security; required-visual convention present in shared-gate-protocol.md + start.md; citation backtick-escape rule present in shared-gate-protocol.md + eval.md + review.md; scenario-backed grading language present in eval.md + start.md; design-fit tag set matches reviewer.md↔wrapup-gates.md; gate-floor invariant present in SKILL.md + complete.md + how-it-works.md + AGENTS.md; destructive-git-command guardrail present in shared-gate-protocol.md + eval.md + review.md; demo-mode policy phrases match SKILL.md↔complete.md; scratch-copy rule present in shared-gate-protocol.md + eval.md + review.md; pin-the-environment rule present in shared-gate-protocol.md + both agent files + both Codex files)"
