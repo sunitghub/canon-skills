@@ -7,6 +7,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 ## [Unreleased]
 
 ### Added
+- `mutant-sweep` (`tools/mutant-sweep`): generates mutants over a sprint's changed shell and JS lines from one fixed operator table (comparison, boolean and off-by-one flips, negation, return/exit codes, sort/unique, dropped `&&`/`||` operand, dropped regex anchor, widened pattern, emptied string, line deletion), runs each mutant's covering test in a throwaway copy, and lists the survivors; a timeout or Ctrl-C stops the test's whole process group and removes every temp folder. The `mutation-test` skill now runs it at `sprint complete` step 1, before the reviewer and evaluator, and triages every survivor (`t-1fac`).
 - `sprint check-evidence <id>`: before the evaluator is dispatched, it checks that every stamped evidence log is fresh at HEAD with exit 0, and names each one to re-stamp or fix, so a stale or failing log no longer costs a failed evaluator run (`t-a3d7`).
 
 ### Changed

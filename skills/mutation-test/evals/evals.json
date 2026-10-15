@@ -1,12 +1,12 @@
 {
   "skill_name": "mutation-test",
-  "_note": "Simulation-graded, like the sprint/pr-review evals (DECISIONS 2026-07-16): a clean-context executor cannot run real git/test commands against a live diff, so each prompt supplies the diff/file content inline and the executor reasons about what the skill prescribes. Do not 'fix' these later by trying to make them run git/pytest/npm in a subagent.",
+  "_note": "Simulation-graded, like the sprint/pr-review evals (DECISIONS 2026-07-16): a clean-context executor cannot run real git/test commands or mutant-sweep against a live diff, so each prompt supplies the diff/file content inline and the executor reasons about what the skill prescribes. Do not 'fix' these later by trying to make them run git/pytest/npm in a subagent.",
   "evals": [
     {
       "id": 1,
       "case_type": "control",
-      "prompt": "You are mutation-testing this changed logic file. The suite for it contains only:\n\n```python\n# src/offline.py (changed this sprint)\nlive_only = [\"question A\", \"question B\"]\ndef button_disabled(q):\n    return q in live_only\n```\n```python\n# tests/test_offline.py\ndef test_button():\n    for q in live_only:\n        assert button_disabled(q) == (q in live_only)\n```\nApply your mutation set to src/offline.py and report which mutants survive. Explain what a surviving mutant means.",
-      "expected_output": "The executor applies a mutation (e.g. flips `in` / negates the return / swaps the boolean) to button_disabled, notes the test still passes because the assertion re-derives its expected value from the same `live_only` list it is testing, reports the mutant as SURVIVED, and identifies it as a test that cannot fail. It should note the fix is to state the expectation independently. Advisory only.",
+      "prompt": "You are mutation-testing this changed logic file. Its covering test is only:\n\n```js\n// src/offline.js (changed this sprint)\nexport const liveOnly = [\"question A\", \"question B\"];\nexport const buttonDisabled = (q) => liveOnly.includes(q);\n```\n```js\n// tests/offline.test.js\nfor (const q of liveOnly) {\n  assert.equal(buttonDisabled(q), liveOnly.includes(q));\n}\n```\nApply your mutation set to src/offline.js and report which mutants survive. Explain what a surviving mutant means.",
+      "expected_output": "The executor applies a mutation to src/offline.js (e.g. empties a string constant in `liveOnly`), notes the test still passes because the assertion re-derives its expected value from the same `liveOnly` list it is testing, reports the mutant as SURVIVED, and identifies it as a test that cannot fail. It should note the fix is to state the expectation independently. Advisory only.",
       "expectations": [
         "Applies at least one mutation from the skill's mutation set to the logic file (not the test file)",
         "Identifies that the mutant SURVIVES because the test re-derives its expected value from the code under test",
@@ -29,24 +29,25 @@
     {
       "id": 3,
       "case_type": "compliance",
-      "prompt": "You are about to mutation-test src/pricing.js (changed this sprint). Walk through exactly how you apply a single mutation and what you do after the suite runs, including any cleanup and end-of-run checks.",
-      "expected_output": "The executor describes the exact loop: save original bytes, apply one mutation, run the suite, record killed/survived, then restore the original bytes unconditionally regardless of the suite result, and finally verify the working tree is clean (git status --porcelain empty, restore via git checkout -- if dirty). It should note the run is isolated in a dispatched subagent.",
+      "prompt": "You are mutation-testing this sprint. `git diff --name-only $(git merge-base HEAD origin/main) HEAD` lists `tools/pricing.sh`, `tests/pricing.sh`, and `README.md`; acceptance.md's Test Plan says `bash tests/pricing.sh` covers tools/pricing.sh. Walk through exactly what you run and what you do with its output. The sweep reports `KILLED 31  KILLED(crash) 0  KILLED(timeout) 1  SURVIVED 2  INVALID 4` and lists `tools/pricing.sh:12 cmp: -gt -> -le@9 | [[ $qty -gt 10 ]] && rate=90` and `tools/pricing.sh:20 delete-line | local total`.",
+      "expected_output": "The executor runs mutant-sweep with one --map for tools/pricing.sh (=bash tests/pricing.sh), not for the test file or README, with --report into the ticket's mutation-report.md. It does not edit or restore the real source itself: the tool mutates throwaway copies. It triages each of the two survivors: the -gt flip is a real gap (add a test asserting the quantity-discount boundary, then re-run), while deleting `local total` is likely equivalent if nothing observable changes, recorded with a reason. It reports the run as advisory, not blocking close.",
       "expectations": [
-        "Restores the mutated file unconditionally, whether the suite passed, failed, or errored",
-        "Runs the suite between applying the mutation and restoring",
-        "Ends with a clean-working-tree verification (git status) and restores via git if dirty",
-        "States the run is isolated (fresh subagent), not mutating source in the main session"
+        "Runs mutant-sweep with a --map for tools/pricing.sh to its covering test command, and maps neither the test file nor README.md",
+        "Does not hand-edit or restore the real source file to apply mutants (the tool works on copies)",
+        "Triages every listed survivor: fix a test (for the -gt flip), delete a redundant check, or mark equivalent with a stated reason",
+        "Writes or appends the triage to the ticket's mutation-report.md and reports it as advisory, not blocking close"
       ]
     },
     {
       "id": 4,
       "case_type": "edge",
-      "prompt": "You mutation-tested a Python file src/calc.py. You applied a mutation, ran pytest (it failed — mutant killed), then RESTORED the file to its exact original bytes and confirmed `git status` shows the file clean/unmodified. But when you re-run pytest on the untouched, restored source, it STILL reports the same failure that only makes sense for the mutated version — as if the mutation were still there. What is the likely cause and what do you do?",
-      "expected_output": "The executor recognizes the stale-bytecode gotcha: pytest is executing cached __pycache__/*.pyc compiled from the mutated source, so the restored source isn't what actually ran. It clears the cache (or forces recompilation) and re-verifies against the restored source before trusting any verdict.",
+      "prompt": "You run `mutant-sweep --map tools/release.sh='bash tests/release.sh'` and it stops before any mutant with `baseline fails: bash tests/release.sh (KILLED(crash) exit 128: fatal: not a git repository)`. tests/release.sh passes in your checkout. What does this mean and what do you do?",
+      "expected_output": "The executor recognizes that the covering test fails on the tool's unmutated copy (which has no .git), so every mutant would have looked killed; the tool correctly refused. It does not report the file as fully killed or as passing. It maps a test that does not need the project's git history (or a narrower test), or records the file as not swept with that reason in mutation-report.md. Advisory only.",
       "expectations": [
-        "Identifies stale compiled bytecode / __pycache__ as the likely cause of unreliable verdicts",
-        "Clears the cache or forces recompilation between mutation and suite run",
-        "Re-verifies the mutation is actually live before trusting the survived/killed verdict"
+        "Explains that the test fails on the unmutated copy because the copy has no .git, not because of a mutant",
+        "Does not count the file as killed/protected and does not claim a clean sweep",
+        "Maps a test that does not need git history, or records tools/release.sh as not swept with the reason",
+        "Treats the result as advisory, not blocking close"
       ]
     }
   ]

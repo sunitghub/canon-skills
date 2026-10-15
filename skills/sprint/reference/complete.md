@@ -21,7 +21,7 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
 Steps run in order (2-3 are the fresh-context gates; the rest run in the main session):
 - 1. Wrapup (pipeline gates)
 - 2. Reviewer gate (normal+)
-- 3. Evaluator review (non-trivial tiers — normal, high-risk, bugfix) — advisory mutation-test and break-it may run after
+- 3. Evaluator review (non-trivial tiers — normal, high-risk, bugfix) — advisory break-it may run after
 - 4. Test verification
 - 5. Acceptance check
 - 6. DECISIONS.md
@@ -94,6 +94,15 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    (ticket-id mode; explicit `--model` wins.) See `docs/headless-ci.md` and `DECISIONS.md` 2026-08-06.
 
 
+   **Mutation test (advisory, normal+ tier, t-1fac).** When the sprint changed shell or JS logic files, run the
+   `mutation-test` skill here, before the reviewer and evaluator, so they grade a suite that already has teeth: read
+   `skills/mutation-test/SKILL.md` and follow it. `mutant-sweep` mutates only the changed lines, in throwaway copies
+   (the real tree is never written), and writes `.tickets/<id>/mutation-report.md`; triage every survivor (fix a test,
+   delete a redundant check, or mark it equivalent with a reason) and commit any test fix before the interim commit
+   below. **Advisory only** — it never blocks close and does not replace the evaluator's own mutants. Record it in the
+   Wrapup Gates table (`ran | 92 mutants, 7 survived: 6 equivalent, 1 test added (advisory)`, or
+   `skipped | no logic files changed`, or `skipped | only <language> logic changed (unsupported)`).
+
    **Skill eval (advisory, normal+ tier).** When the sprint edited a skill's instructions or a gate agent, run
    that skill's own evals, so a prompt edit is graded by behaviour and not only by "the line is present". Run
    `tools/skill-eval-scope.sh` (it diffs against the same base the gates use and prints `run <skill>`,
@@ -107,7 +116,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    `.tickets/<id>/skill-eval-<skill>.md`, and never starts the fallback evaluator. **Advisory only:** it never blocks close, and a failing case is triaged like any finding (fix
    the instruction, ticket it, or note it as noise) — never edit `evals.json` to make a case pass. Evals are noisy
    on small models, so read `was K/M` only against the same model (the history line records it). **It runs here,
-   before the reviewer and evaluator, not beside `mutation-test` after them:** `history.jsonl` is a tracked file and
+   before the reviewer and evaluator, not after them:** `history.jsonl` is a tracked file and
    `_gate_eval_report_fresh` (`tools/sprint`) fails any tracked change made after the evaluator graded, so the new
    line goes into the interim commit below and the gates grade the final tree. Record it in the Wrapup Gates table
    (`ran | sprint 9/10 (was 10/10), wrapup 7/7 (advisory)`, or `skipped | no skill or gate agent changed`, or
@@ -534,16 +543,6 @@ Opus` default, scoped only to the two close-gate dispatches below.
    `summary.md`, so the reliance is greppable later — never silently proceed as if the
    verdict were `pass`. Record the eval outcome in the Wrapup Gates table with the Reason
    prefixed `verdict:` (e.g. `verdict: pass` or `verdict: fail — <one-line summary>`).
-
-   **Mutation test (advisory, normal+ tier).** After the binding evaluator, optionally run the
-   `mutation-test` skill as a fresh dispatched subagent to check whether the sprint's tests have
-   teeth — it applies small logic mutations to the changed *logic* files and reports surviving
-   mutants (tests that cannot fail). Read `skills/mutation-test/SKILL.md` and follow it. This is
-   **advisory only** — it never blocks close, and it complements (does not replace) the evaluator.
-   Skip when no logic files changed (docs/config/test-only diffs), and record the outcome in the
-   Wrapup Gates table (`ran | N surviving mutants (advisory)` or `skipped | no logic files
-   changed`). When it runs inside a sprint it writes `.tickets/<id>/mutation-report.md`. No CLI
-   close gate depends on it — see the skill's Promotion path.
 
    **Break-it (advisory, high-risk or untrusted-input sprints).** Optionally dispatch an isolated
    hostile-input subagent on a history-free snapshot of the changed code — read
