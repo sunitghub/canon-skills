@@ -199,7 +199,13 @@ return 0
 # run_parallel — t-abb1. Plans every suite, starts them through `xargs -P "$JOBS"` (each with its own log, exit-code file and TMPDIR, so
 # a fixed temp name in one suite cannot meet another's), then prints each suite's block in list order as soon as it and every earlier
 # one are done. SERIAL suites run alone after the batch. Sets FIRST_RC to the first failing suite's code in list order.
-SERIAL=()   # --list labels that share state with another suite, each with its reason; filled only from measured collisions
+SERIAL=(   # --list labels that share state with another suite, each with its reason; filled only from measured collisions
+  # each deletes, on exit, every $ROOT/.canon-cache/skill-eval/ folder it did not see at its start: run alongside each other (or the
+  # board's Go suite, which writes there too), one removes another's live run folder (sprint-check-skill-eval's report 404'd in a stamp)
+  tests/sprint-check-skill-eval.sh
+  tests/sprint-check-skill-eval-go.sh
+  tests/skill-eval-parity.sh
+)
 run_parallel() {
   local i n s w t rc
   PLAN=1; run_all; PLAN=0

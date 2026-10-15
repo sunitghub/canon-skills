@@ -24,6 +24,11 @@ set +e; out="$(bash "$ROOT/scripts/test.sh" --help 2>&1)"; rc=$?; set -e
 assert_eq 0 "$rc"; assert_contains "$out" "usage: scripts/test.sh [--list]"
 set +e; out="$(bash "$ROOT/scripts/test.sh" --bogus 2>&1)"; rc=$?; set -e; assert_eq 2 "$rc"; assert_contains "$out" "test.sh: unknown option --bogus"
 
+# every SERIAL label is a --list label (a typo would quietly run that suite in the batch)
+serial="$(awk '/^SERIAL=\(/{f=1; next} f && /^\)/{exit} f && !/^ *#/{print $1}' "$ROOT/scripts/test.sh")"
+[[ -n "$serial" ]] || fail "test.sh: SERIAL lists no suite"
+while IFS= read -r l; do grep -qxF "$l" <<< "$LIST" || fail "test.sh: SERIAL names $l, which --list does not"; done <<< "$serial"
+
 # --- copies of the real runner with fake suites; go and node kept off PATH -----------------------------------------------------------
 mkdir -p "$WORK/bin"
 for b in bash sh git sort head tail mktemp grep sed awk cat rm sleep dirname cut wc tr comm ps pgrep uniq basename env ls xargs date mv mkdir touch nproc sysctl pkill kill; do
@@ -93,7 +98,7 @@ for bad in "--jobs 0" "--jobs x" "--jobs" "--jobs -1" "--jobs 5x"; do
 done
 # SERIAL: a listed suite runs alone after the batch; the others mark themselves running while they run
 Z="$WORK/ser"; runner_copy "$Z" tests/p1.sh tests/s.sh tests/p2.sh tests/p3.sh
-sed -i.bak 's|^SERIAL=()|SERIAL=(tests/s.sh)|' "$Z/scripts/test.sh"; rm -f "$Z/scripts/test.sh.bak"
+awk '/^SERIAL=\(/{print "SERIAL=(tests/s.sh)"; f=1} f{if (/^\)/) f=0; next} {print}' "$Z/scripts/test.sh" > "$Z/t" && mv "$Z/t" "$Z/scripts/test.sh"
 grep -q '^SERIAL=(tests/s.sh)' "$Z/scripts/test.sh" || fail "could not set SERIAL in the runner copy"
 mkdir -p "$WORK/running"
 for t in p1 p2 p3; do printf 'touch "%s/running/%s"; sleep 1; rm "%s/running/%s"; echo %s-ok\n' "$WORK" "$t" "$WORK" "$t" "$t" > "$Z/tests/$t.sh"; done
