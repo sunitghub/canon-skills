@@ -6,7 +6,7 @@
 # cockpit daemon needed the same resolution in Go (t-842b). The Go port in
 # tools/cockpit-daemon/main.go mirrors gate_model_resolve exactly; the two are
 # pinned to one fixture set by tests/gate-model-parity.sh (cross-runtime port,
-# per standards/efficiency.md). Change one, change both, or the parity test fails.
+# per standards/efficiency-notes.md). Change one, change both, or the parity test fails.
 
 # gate_model_parse <plan-file> — prints the raw lowercased `Gate model:` value
 # from the Sign-off section's Tier line, or nothing. Scoped to that one section

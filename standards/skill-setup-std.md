@@ -3,8 +3,8 @@ name: skill-setup-std
 description: Validates skill files against canon standards. Use when adding a new skill or auditing existing ones.
 category: agent-ops
 tags: [skills, contributors, conventions]
-version: 1.9.0
-updated: 2026-07-15
+version: 1.10.0
+updated: 2026-10-15
 ---
 
 # Skill Setup Standard
@@ -182,6 +182,20 @@ SKILL.md is a table of contents, not an encyclopedia. Keep it under **500 lines*
 - Keep references **one level deep** from SKILL.md. Nested references (`SKILL.md → A.md → B.md`) cause Claude to partially read files and miss content.
 - For reference files longer than **100 lines**, add a table of contents at the top so Claude can see the full scope even when previewing.
 - Name reference files descriptively (`form-validation-rules.md`, not `doc2.md`).
+
+## Where a lesson goes
+
+A promoted lesson lives in the narrowest file read at the moment a future session would make the mistake (`t-8837`). Ask that question, then pick:
+
+| Destination | When | Test question |
+|---|---|---|
+| `standards/efficiency.md` (always loaded, every project) | applies in nearly every session, whatever the work | Would a session that never touches this domain still need it? |
+| `standards/efficiency-notes.md`, under its domain section | a coding, testing, shell, security or platform rule that bites only in that domain | Can you name the domain in a few words? Then add it there, and add the domain to efficiency.md's index line if it is new. |
+| The workflow step's reference doc, or a skill's `SKILL.md` gotchas | bites at one sprint step or in one skill | Is there exactly one step or skill where it matters? |
+| `critique/canon-learnings.md` | needs its incident to be understood | Does the rule make sense without the story? If not, here. |
+| A skill's `evals/evals.json` | a skill's own instruction let an agent do the wrong thing | Can a prompt reproduce it? |
+
+Keep an always-loaded rule to one line: its cost is paid on every turn. Before adding, grep the destination for the same rule and extend it. `skills/promote-learnings/SKILL.md` step 3 mirrors this table for its fresh reviewer; `tests/doc-mirror-parity.sh` Check O keeps the two in step.
 
 ## Standalone vs. hidden
 

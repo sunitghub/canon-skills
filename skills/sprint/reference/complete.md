@@ -293,6 +293,23 @@ Opus` default, scoped only to the two close-gate dispatches below.
   non-Claude model may shell out to `claude`, switch to the config-default model, and fail) — so
   follow this recipe verbatim rather than deriving one.
 
+**Codex model selection (moved from AGENTS.md, t-8837).**
+
+**Cross-harness note.** Fresh-context dispatch is confirmed working under Codex
+(`spawn_agent`/`wait_agent`/`close_agent`). Per-agent model selection is reconciled, not a flat
+"unsupported": the live-observed `spawn_agent` call (`agent_type: "default"`) has no `model`
+field — that part of the earlier live test holds. But Codex's own docs (learn.chatgpt.com,
+checked 2026-09-22) describe a separate real path — a named custom subagent defined in a
+`~/.codex/agents/*.toml` file with its own `model` field, which beats
+`agents.default_subagent_model` when that named agent type is spawned. So a Haiku-style
+downgrade IS achievable under Codex, but only via a predefined custom agent file, not an ad hoc
+per-spawn choice on the generic `"default"` agent type. Until a custom agent file is actually
+set up and tested live, an explicit `Gate model:` override or full-tier review remains the safe
+default. For a **Pi** session,
+close gates run on the pi session model, full stop — this file's general `review → Opus` tier
+above is **not** the close-gate rule there; see `complete.md`'s pi-dispatch section for the
+harness-scoped recipe.
+
 **Shared gate mechanics (reviewer + evaluator).** Seven rules, stated once:
 
 1. Close confirmation authorizes spawning either subagent — never ask separately.

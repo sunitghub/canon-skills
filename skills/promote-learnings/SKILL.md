@@ -76,11 +76,14 @@ The destinations depend on which project the session is in:
      runs it (`complete.md`'s advisory skill-eval step).
 
    **Choosing between them:** ask "at what moment would a future session make this mistake?" and
-   pick the narrowest home that is read at that moment.
+   pick the narrowest home that is read at that moment (owner: `standards/skill-setup-std.md`
+   `## Where a lesson goes`).
    - Applies to every session whatever it is doing → `CLAUDE.md`/`AGENTS.md`.
-   - Applied while writing code, tests, commits or reviews → `standards/efficiency.md` (the only
-     `standards/` file auto-loaded, via the `~/.claude/CLAUDE.md` import; another `standards/`
-     file is read only on request, so a rule there needs a pointer from where it applies).
+   - Needed in nearly every session, whatever the work → `standards/efficiency.md` (always loaded
+     in every project; keep it to one line).
+   - A coding, testing, shell, security or platform rule that bites only in its domain →
+     `standards/efficiency-notes.md`, under that domain's section (on demand; efficiency.md's
+     index line names each section, so a new domain also gets added there).
    - Only bites at one workflow step or in one skill → that step's reference doc or `SKILL.md`.
    - Needs its incident to be understood (why the obvious fix failed) → `critique/`.
    - A skill's own instruction caused it, and a prompt can reproduce it → that skill's `evals/evals.json`.

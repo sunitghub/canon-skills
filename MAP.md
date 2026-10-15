@@ -12,6 +12,6 @@ Quick orientation for arriving agents. One line per directory.
 | `PRs/` | Tracking notes for external PR review |
 | `scripts/` | Lifecycle shell scripts — `pre-commit-hook-template.sh` (git-native pre-commit hook body), `test.sh` |
 | `skills/` | On-demand agent skills — each in `skills/<name>/SKILL.md`; loaded via `skills.sh add` |
-| `standards/` | Always-injected agent standards — `efficiency.md` (code/git/token rules), `skill-setup-std.md` |
+| `standards/` | Always-injected agent standards — `efficiency.md` (code/git/token rules; its domain rules are in the on-demand `efficiency-notes.md`), `skill-setup-std.md` |
 | `tests/` | Shell + Playwright test suite — `npm test` runs shell suite; `npm run test:ui` runs Playwright |
 | `tools/` | CLI tools and the sprint-check app — `tkt`, `sprint`, `skills.sh`, `canon-dev.sh`, `sprint-check-app/` |
