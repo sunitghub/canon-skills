@@ -128,7 +128,7 @@
     .header-where .header-branch { font-size: 11.5px; }
     .create-btn.upkeep-btn { display: inline-flex; align-items: center; gap: 5px; background: transparent; color: var(--text); border: 1px solid var(--border-hover); }
     .create-btn.upkeep-btn[hidden] { display: none; }
-    .create-btn.upkeep-btn:hover { border-color: var(--accent); background: var(--accent-dim); }
+    .create-btn.upkeep-btn:hover { border-color: var(--accent); background: var(--accent-dim); color: var(--text); }
     .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink:0; }
 
     /* ── Main layout ──────────────────────────── */
