@@ -11,7 +11,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ### Changed
 - `scripts/test.sh` prints each suite's time, the 10 slowest and the total, even when a suite fails; `--list` prints every suite it runs, and `scripts/test-hermetic.sh` now reads that list instead of parsing test.sh (`t-2633`).
-- `scripts/test.sh` runs its suites in parallel (`--jobs N`, default the CPU count up to 8): a full run takes about 3.5 minutes instead of 13-20, still runs every suite, keeps each suite's output under its header in list order, and exits with the first failing suite's code. `--jobs 1` runs them one at a time and stops at the first failure, as before; suites that share state with another run alone after the batch (`t-abb1`).
+- `scripts/test.sh` runs its suites in parallel (`--jobs N`, default the CPU count up to 8): a full run took 212-235 s instead of 802 s on a 10-CPU Mac, still runs every suite, keeps each suite's output under its header in list order, and exits with the first failing suite's code. `--jobs 1` runs them one at a time and stops at the first failure, as before; suites that share state with another run alone after the batch (`t-abb1`).
 - `evidence.sh check` keeps a log fresh when only close-time docs changed since (`LEARNINGS`, `DECISIONS`, `HANDOFF.md`, `PROMOTED.md`, the subagent log), and counts a full board-spec run as `covered` when only the baseline changed and a stamped guard run re-judged the same reports (`t-a3d7`).
 
 ## [0.9.0] - 2026-10-14
