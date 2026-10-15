@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Changed
+- Wrapup's `repo-check` gate runs only in a canon checkout: in your own project it is recorded `skipped | not a canon checkout` without being read, since it checks canon's own surface (skill graph, catalog, the board). Its two checks that apply anywhere moved: `doc-audit` now checks that every path, command and script a changed doc names still exists, and `code-reviewer` runs `bash -n` / `py_compile` on changed files (`t-b215`).
+
 ## [0.9.1] - 2026-10-15
 
 Cockpit and board fixes for light themes and Safari, and faster, stricter sprint tooling for whoever builds canon: parallel test runs, generated mutant sweeps, and one-page sprint checklists.

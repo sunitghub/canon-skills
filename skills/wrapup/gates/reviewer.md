@@ -23,8 +23,11 @@ hidden: true
 1. Determine target: inline session memory, local diff, or remote PR.
 2. For PRs, checkout and read description plus linked tickets.
 3. Review all eight dimensions.
-4. Report every real finding — place each into the severity sections below rather than omitting it; do not drop a finding because it looks low-severity or you are not fully certain. Coverage is the job at the finding stage; ranking and filtering happen in the sections (and downstream, via the human).
-5. For PRs, return to the previous/default branch.
+4. Syntax check on changed files: `bash -n` for shell scripts; for Python, `python3 -m py_compile` only when
+   `python3 -c ''` succeeds, else say it was skipped and why (a Windows machine may have no working `python3`). A
+   failure is a Critical finding.
+5. Report every real finding — place each into the severity sections below rather than omitting it; do not drop a finding because it looks low-severity or you are not fully certain. Coverage is the job at the finding stage; ranking and filtering happen in the sections (and downstream, via the human).
+6. For PRs, return to the previous/default branch.
 
 ## Review Dimensions
 

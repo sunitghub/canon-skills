@@ -34,7 +34,7 @@ Commit & Push belongs to `sprint complete`'s own step 10, not this pipeline — 
 
 **Trivial change** (single-line, doc-only, mechanical rename): skip all steps except Refresh docs (Commit & Push isn't part of this pipeline — see above). This global clause overrides every per-gate skip criterion below — e.g. a single-line rename inside `tools/` skips `repo-check` via this clause even though `repo-check`'s own criteria ("no ... tools ... changed") wouldn't otherwise justify it, since `tools/` did change.
 
-**`Tier: bugfix` and `demo: true`** also override the per-gate criteria below wholesale, the same way — they are defined in `skills/sprint/reference/complete.md`, not here, and this file has no independent knowledge of them: `bugfix` (`complete.md`'s "Bugfix tier — lighter wrapup") keeps `security-review`/`repo-check`/inline `code-reviewer`, may skip `code-simplifier`/`doc-audit`; `demo` (`complete.md`'s "Demo mode") keeps only `security-review`, skips every other gate in this pipeline. Reading this file in isolation without checking `plan.md`'s `Tier:` or `ticket.md`'s `demo:` first will apply the wrong gate set on either path.
+**`Tier: bugfix` and `demo: true`** also override the per-gate criteria below wholesale, the same way — they are defined in `skills/sprint/reference/complete.md`, not here, and this file has no independent knowledge of them: `bugfix` (`complete.md`'s "Bugfix tier — lighter wrapup") keeps `security-review`/`repo-check` (canon checkout only)/inline `code-reviewer`, may skip `code-simplifier`/`doc-audit`; `demo` (`complete.md`'s "Demo mode") keeps only `security-review`, skips every other gate in this pipeline. Reading this file in isolation without checking `plan.md`'s `Tier:` or `ticket.md`'s `demo:` first will apply the wrong gate set on either path.
 
 Before each step, assess and skip if criteria apply — state why in one line, naming which clause justified it (global override or the gate's own criteria) when the two could seem to conflict.
 
@@ -51,6 +51,9 @@ Before each step, assess and skip if criteria apply — state why in one line, n
 - Security-sensitive means: authentication, authorization, DB queries, externally-facing/untrusted input handling (web forms, API payloads, network requests — not trusted local CLI args a single developer runs against their own machine), file I/O, API endpoints, crypto, session management, environment/secret access, MCP server config or agent tool/permission definitions, hardcoded credential/secret access, destructive/irreversible client-side actions (delete-all, bulk clear, cache flush), third-party data egress (adding an analytics/tracking pixel, a third-party script/tag/SDK, or any code that sends PII/credentials/tokens to a third-party endpoint — including from inside an authenticated flow)
 
 ### Skip repo-check if:
+- **Not a canon checkout:** `tools/skill-eval-scope.sh` does not exist (a consumer project). Record
+  `repo-check | skipped | not a canon checkout` and do not read the gate: it checks canon's own surface, and its two
+  generic checks also run in doc-audit (stale references) and code-reviewer (syntax) (`t-b215`).
 - No repo workflow, setup, docs, skills, standards, scripts, or tools changed
 
 ### Skip doc-audit if:
@@ -61,7 +64,7 @@ Before each step, assess and skip if criteria apply — state why in one line, n
 1. Read `skills/wrapup/gates/simplifier.md`, then apply the simplifier to code touched in this session.
 2. Read `skills/wrapup/gates/reviewer.md`, then apply the code-reviewer across all eight dimensions; defer deep security analysis to Step 3.
 3. Read `skills/wrapup/gates/security-review.md`, then apply the security review. Optional scanners can inform the review, but their absence does not skip the gate.
-4. Read `skills/wrapup/gates/repo-check.md`, then apply the repo check. Fix stale references, orphan workflow files, and generated catalog drift before committing.
+4. In a canon checkout only (see Skip Logic): read `skills/wrapup/gates/repo-check.md`, then apply the repo check. Fix stale references, orphan workflow files, and generated catalog drift before committing.
 5. Read `skills/doc-audit/SKILL.md`, then apply the doc audit. Do not write to `doc-findings.md` without explicit confirmation. Fix command accuracy issues before committing. A file this step edits must be listed in `plan.md ## Files` in the same step — the reviewer grades scope against that list, and a close-time doc edit missing from it was flagged in four sprints (`t-b999`, `t-533f`, `t-824e`, `t-bdce`).
 6. Read `tools/handoff.md` — plain relative path inside the canon repo itself, or via `command -v sprint`'s containing directory inside a consumer project where `tools/` isn't symlinked in (or `where sprint` on Windows if `command -v` returns nothing) — then refresh docs:
 

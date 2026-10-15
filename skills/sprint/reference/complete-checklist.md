@@ -16,8 +16,8 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
 
 ## Steps
 
-1. **Wrapup** (`skills/wrapup/SKILL.md`): code-simplifier, code-reviewer (inline), security-review, repo-check,
-   doc-audit, then refresh docs.
+1. **Wrapup** (`skills/wrapup/SKILL.md`): code-simplifier, code-reviewer (inline), security-review, repo-check
+   (canon only), doc-audit, then refresh docs.
    - **Mutation test** if shell/JS logic changed: `skills/mutation-test/SKILL.md` (`mutant-sweep --map
      <file>=<test> --report .tickets/<id>/mutation-report.md`); triage every survivor; advisory.
    - **Skill eval** if a skill or gate agent changed: `tools/skill-eval-scope.sh`; for each `run <skill>`

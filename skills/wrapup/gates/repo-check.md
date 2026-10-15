@@ -8,7 +8,10 @@ hidden: true
 
 # Repo Check
 
-Called by `wrapup` before the close-time commit (`sprint complete` step 10) when repo surface files changed.
+Called by `wrapup` before the close-time commit (`sprint complete` step 10) when repo surface files changed, **in a
+canon checkout only** (`tools/skill-eval-scope.sh` exists): it checks canon's own surface. Its two generic checks run
+in every project elsewhere: stale references (check 2) in `doc-audit`, syntax checks (check 8) in `code-reviewer`
+(`t-b215`).
 
 ## Scope
 
@@ -63,9 +66,9 @@ documentation, setup, or agent behavior.
    `tools/` isn't symlinked in) and include `CATALOG.md` if it changed.
 
 8. **Syntax checks.** Run cheap structural checks for changed executable files:
-   `bash -n` for shell scripts. For Python files, run `python3 -m py_compile` only if `command -v python3`
-   succeeds — some target machines (e.g. Windows without a real Python install) have no
-   working `python3`; report the check as skipped with that reason rather than failing the gate.
+   `bash -n` for shell scripts. For Python files, run `python3 -m py_compile` only if `python3 -c ''`
+   succeeds (not just `command -v`: Windows' Store alias is on PATH but runs no Python) — some target machines
+   have no working `python3`; report the check as skipped with that reason rather than failing the gate.
 
 ## Report
 
