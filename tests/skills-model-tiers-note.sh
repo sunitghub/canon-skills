@@ -175,14 +175,20 @@ for internal in 'tools/sprint-check-app' 'model-tiers.json' 'agents/canon-' 'spa
 done
 
 # Nothing is lost for canon: every line the old block had and the new one dropped is still in canon's AGENTS.md after the END marker,
-# or in the doc that now owns it (t-8837 moved the board dropdown paragraph to the board's CLAUDE.md and the Codex note to complete.md,
-# leaving one-line pointers in AGENTS.md).
+# or in the doc that now owns it (t-8837 moved the board dropdown paragraph to the board's CLAUDE.md, leaving a pointer). The old
+# Codex cross-harness paragraph is the one exception (t-7e5d): complete.md's "Cross-harness caveat" and pi-dispatch bullets already
+# say it, so it counts as covered while AGENTS.md keeps its Cross-harness pointer and complete.md keeps that caveat.
 old_block="$ROOT/tests/fixtures/model-tiers-old-block.md"
 after_end="$(awk '/<!-- MODEL-TIERS:END -->/{f=1; next} f' "$ROOT/AGENTS.md")"
+codex="$(awk '/^\*\*Cross-harness note\.\*\*/{f=1} f && /^[[:space:]]*$/{exit} f' "$old_block")"
+[[ -n "$codex" ]] || fail "could not find the old Codex paragraph in $old_block"
+grep -q '^\*\*Cross-harness note\.\*\*' "$ROOT/AGENTS.md" || fail "AGENTS.md lost its Cross-harness pointer to complete.md (t-7e5d)"
+grep -qF -- '- **Cross-harness caveat.**' "$ROOT/skills/sprint/reference/complete.md" || fail "complete.md lost its Cross-harness caveat, which covers the old Codex note (t-7e5d)"
 while IFS= read -r l; do
   [[ -z "${l//[[:space:]]/}" ]] && continue
   printf '%s\n' "$block" | grep -qxF -- "$l" && continue
   printf '%s\n' "$after_end" | grep -qxF -- "$l" && continue
+  printf '%s\n' "$codex" | grep -qxF -- "$l" && continue   # covered by the pointer + caveat checked above
   grep -qxF -- "$l" "$ROOT/tools/sprint-check-app/CLAUDE.md" "$ROOT/skills/sprint/reference/complete.md" || fail "a line the old block had was dropped, not moved after END or to its new home: $l"
 done < "$old_block"
 
