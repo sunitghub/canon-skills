@@ -393,7 +393,7 @@ def main():
         if path in maps or not os.path.isfile(path) or os.path.islink(path) or is_test_path(path):
             continue
         with open(path, errors='replace') as fh:
-            if lang_of(path, fh.read(4096)) and not any(path in c for c in maps.values()):
+            if lang_of(path, fh.read(4096)):
                 unmapped.append(path)
     for path, cmd in maps.items():
         if not os.path.isfile(path) or os.path.islink(path):

@@ -79,7 +79,7 @@ bounded() {   # bounded <cmd...>: stdout+stderr in $out, exit code in $code; a r
 sweep() { bounded "$TOOL" --base "$BASE" --jobs 4 "$@"; }
 
 # --- only changed lines, every operator family --------------------------------------------------------------------------------
-sweep --map weak.sh=true --map weak.js=true --map x.py=true --report "$WORK/report.md"
+sweep --map weak.sh='true ./other.sh' --map weak.js=true --map x.py=true --report "$WORK/report.md"   # a command naming other.sh does not map it
 [[ "$code" == 0 ]] || fail "mutant-sweep: weak sweep exited $code: $out"
 [[ "$out" != *"weak.sh:2 "* ]] || fail "mutant-sweep: mutated an unchanged line: $out"
 for want in \
