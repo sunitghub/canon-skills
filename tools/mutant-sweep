@@ -8,7 +8,6 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 probe() {   # probe <interpreter>: 0 when it runs Python 3 within 5 s (stdin closed; a probe still running is killed by its PID)
   local pid n=0
-  command -v "$1" >/dev/null 2>&1 || return 1
   "$1" -c 'import sys; sys.exit(0 if sys.version_info[0] == 3 else 1)' </dev/null >/dev/null 2>&1 &
   pid=$!
   while kill -0 "$pid" 2>/dev/null; do
