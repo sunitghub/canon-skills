@@ -70,6 +70,7 @@ tests=(
   "$ROOT/tests/sprint-check-skill-eval-go.sh"
   "$ROOT/tests/skill-eval-parity.sh"
   "$ROOT/tests/skill-eval-scope.sh"
+  "$ROOT/tests/mutant-sweep.sh"
   "$ROOT/tests/evidence.sh"
   "$ROOT/tests/sprint-check-evidence.sh"
   "$ROOT/tests/test-sh-runner.sh"
