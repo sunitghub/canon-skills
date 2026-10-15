@@ -14426,3 +14426,24 @@ test.describe('ticket modal polish (t-612f)', () => {
     await expect(input).toHaveAttribute('title', 'a long risk sentence that should be readable in full from the tooltip');
   });
 });
+
+// t-38f1: the light --text-dim colours real text (brand suffix, Admin labels, Upkeep notes), so it must read on every surface it sits on.
+test('cockpit light theme (t-38f1): --text-dim text reads at 4.5:1 on --bg, --panel and --border-muted', async ({ page }) => {
+  await page.goto(BASE + '/cockpit');
+  await page.waitForLoadState('networkidle');
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'light'; });
+  const got = await page.evaluate(() => {
+    const cs = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+    const probe = document.createElement('i'); document.body.append(probe);
+    const rgb = v => { probe.style.color = v; return getComputedStyle(probe).color; };   // #hex -> rgb(), as contrastOf reads it
+    const out = { dim: rgb(cs('--text-dim')), bg: rgb(cs('--bg')), panel: rgb(cs('--panel')), muted: rgb(cs('--border-muted')), textMuted: rgb(cs('--text-muted')) };
+    probe.remove();
+    const b = document.querySelector('.brand small');
+    out.brand = b && getComputedStyle(b).color;
+    return out;
+  });
+  for (const s of ['bg', 'panel', 'muted']) expect(contrastOf(got.dim, got[s]), `--text-dim on --${s}: ${JSON.stringify(got)}`).toBeGreaterThanOrEqual(4.5);
+  expect(got.brand, '.brand small is in the page').toBeTruthy();
+  expect(contrastOf(got.brand, got.bg), '.brand small label on --bg').toBeGreaterThanOrEqual(4.5);
+  expect(contrastOf(got.dim, got.bg), 'still dimmer than --text-muted').toBeLessThan(contrastOf(got.textMuted, got.bg));
+});
