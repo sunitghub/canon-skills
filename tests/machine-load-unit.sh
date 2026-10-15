@@ -44,4 +44,9 @@ out="$(ML_LOADAVG_FILE="$WORK/none" PATH="$WORK/bin:/usr/bin:/bin" bash -c 'sour
 set -e
 assert_contains "$out" "machine-load: start: load 7.25 on 6 CPUs; other test runs: none"; assert_contains "$out" "WARNING: the machine is busy (load 7.25/6)"
 
+# neither nproc nor sysctl answers: the CPU count falls back to 1, never an empty number
+printf '#!/bin/sh\nexit 1\n' > "$WORK/bin/sysctl"; echo "0.5 1 1 1/1 1" > "$WORK/loadavg"
+out="$(ML_LOADAVG_FILE="$WORK/loadavg" PATH="$WORK/bin:/usr/bin:/bin" bash -c 'source "$1/tests/machine-load.sh"; machine_load start /dev/null 100' _ "$ROOT" 2>&1)"
+assert_eq "machine-load: start: load 0.5 on 1 CPUs; other test runs: none" "$out"
+
 echo "PASS: machine-load-unit"
