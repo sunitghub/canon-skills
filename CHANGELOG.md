@@ -7,6 +7,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 ## [Unreleased]
 
 ### Changed
+- `tests/run-board-spec.sh` records the machine's load at the start and end of every run (`$OUT/machine-load.txt`) and warns when another board spec or `test.sh` run is going or the load exceeds the CPU count: WebKit fails timing-sensitive tests under contention, so such failures are rerun before they are trusted (`t-5989`).
 - `mutant-sweep` checks for a working Python 3 first (`python3`, else `python` when it is Python 3): with none (missing, Windows' Store alias, Python 2) it exits 3 with `skipped — no working python3` instead of a shebang error, and `sprint complete` records `mutation-test | skipped | no python3` without reading the skill. `mutant-sweep --check` runs just that probe (`t-a5f6`).
 - Wrapup's `repo-check` gate runs only in a canon checkout: in your own project it is recorded `skipped | not a canon checkout` without being read, since it checks canon's own surface (skill graph, catalog, the board). Its two checks that apply anywhere moved: `doc-audit` now checks that every path, command and script a changed doc names still exists, and `code-reviewer` runs `bash -n` / `py_compile` on changed files (`t-b215`).
 
