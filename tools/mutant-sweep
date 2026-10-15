@@ -99,7 +99,6 @@ def bounded(line, k, tok):
 def conjunct_drops(line, lo, hi, spans):
     """Drop one operand of a `&&`/`||` chain, within its innermost bracket group."""
     inside = lambda i: any(a <= i < b for a, b in spans)
-    depth, opener = 0, {}
     stack = [lo]
     group = []
     i = lo
@@ -177,7 +176,7 @@ def mutants_for_line(line, lang):
             if k < 0:
                 break
             j = k + 1
-            if inside(k) or not bounded(line, k, old.strip() if old.strip() == old else old):
+            if inside(k) or not bounded(line, k, old):
                 continue
             out.append((f'{fam}: {old.strip() or old} -> {new.strip() or repr(new)}@{k+1}', line[:k] + new + line[k + len(old):]))
     # negation removal
@@ -436,7 +435,7 @@ def main():
         for p in unmapped:
             print(f'unmapped: {p}')
         # the main thread only waits, so a signal never lands between starting a test and recording its group
-        base_futs = {ex.submit(sweep.run, cmd): cmd for cmd in sorted(set(maps.values()))}
+        base_futs = {ex.submit(sweep.run, cmd): cmd for cmd in sorted({t[5] for t in todo})}
         pending = set(base_futs)
         while pending:
             _, pending = wait(pending, timeout=0.5)

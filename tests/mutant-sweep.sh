@@ -126,6 +126,8 @@ assert_eq 2 "$code"; assert_contains "$out" "git merge-base HEAD origin/main fai
 sweep --map weak.sh="echo run >> '$MARK'; exit 3"
 assert_eq 1 "$code"; assert_contains "$out" "baseline fails: echo run"
 assert_eq 1 "$(grep -c . "$MARK")"     # the baseline only, no mutant
+bounded "$TOOL" --base "$(git rev-parse HEAD)" --map weak.sh="touch '$MARK.none'"   # no changed line: no mutant, no baseline
+assert_eq 0 "$code"; [[ ! -e "$MARK.none" ]] || fail "mutant-sweep: ran a baseline with no mutants"
 
 # --- TERM mid-run: every test stopped, temp root removed ------------------------------------------------------------------------
 : > "$PIDS"
