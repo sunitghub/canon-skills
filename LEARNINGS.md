@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-14-2026 18:55
+learnings-sweep last run: 10-14-2026 21:33
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-15 | [t-abb1](.tickets/t-abb1/learnings.md) | An orphaned `local rc` survived splitting run_parallel into a worker heredoc + print_block: the mutant sweep filed its deletion as "equivalent" instead of reading it as a dead declaration; only the advisory reviewer caught it. | UNPROMOTED |
 | 2026-10-14 | [t-2633](.tickets/t-2633/learnings.md) | A heuristic that must never miss (pick the suites a change can break, by text search) failed four evaluator runs, each on a new shape (shared names, folder listings, helpers, extensionless requires, variables): when a criterion means "never misses" and the method cannot be complete, change the method (parallel full runs), not the rules. Also: `bash -n a b c` checks only `a`. | UNPROMOTED |
 | 2026-10-14 | [t-a3d7](.tickets/t-a3d7/learnings.md) | A mutant generator that only swaps operators and deletes lines reports "equivalent" survivors that are real gaps: both evaluators found dropped-conjunct, dropped-anchor and widened-literal mutants it never made, and a reviewer reproduced a crafted file name faking a parsed field (`z exit=0 y.log`). Give the generator those operators, and refuse inputs a parser could misread instead of parsing around them. | UNPROMOTED |
 | 2026-10-14 | [t-b860](.tickets/t-b860/learnings.md) | Hand-picked mutants and all-pass, both-sides-identical CLI fixtures let two evaluator runs fail on unpinned wiring (solo `ran` count, per-run/per-side file reads); a generated sweep (every operator at every occurrence, every line deleted) plus fixtures that fail one run on one side found the rest and a real bug before run 4 passed. Run it before dispatch. | UNPROMOTED |
