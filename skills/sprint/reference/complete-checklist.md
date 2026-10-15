@@ -18,11 +18,12 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
 
 1. **Wrapup** (`skills/wrapup/SKILL.md`): code-simplifier, code-reviewer (inline), security-review, repo-check
    (canon only), doc-audit, then refresh docs.
-   - **Mutation test** if shell/JS logic changed: `skills/mutation-test/SKILL.md` (`mutant-sweep --map
+   - **Mutation test** if shell/JS logic changed: `mutant-sweep --check` (exit 3: `skipped | no python3`);
+     then `skills/mutation-test/SKILL.md` (`mutant-sweep --map
      <file>=<test> --report .tickets/<id>/mutation-report.md`); triage every survivor; advisory.
    - **Skill eval** if a skill or gate agent changed: `tools/skill-eval-scope.sh`; for each `run <skill>`
      follow `skills/skill-eval/SKILL.md` from this session; advisory. Commit its `history.jsonl` line.
-   - **Interim commit** of the sprint's files (specific paths, never `git add -A`) before any gate.
+   - **Interim commit** of the sprint's files (specific paths, no `git add -A`) before any gate.
    - **Evidence:** `git clone` the project, check out the final commit, and in the clone run
      `CANON_TICKETS_DIR=<project>/.tickets evidence.sh stamp <id> test-sh -- scripts/test.sh`; re-stamp after
      any tracked change.

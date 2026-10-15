@@ -156,6 +156,34 @@ done < "$PIDS"
 leftover="$(find "$TMPDIR" -mindepth 1 -maxdepth 1 -name 'mutant-sweep.*')"
 [[ -z "$leftover" ]] || fail "mutant-sweep: temp root left behind: $leftover"
 
+# --- t-a5f6: no working Python 3 is a clean skip (exit 3), never a shebang error or a hang ---------------------------------------------
+SKIP_MSG='mutant-sweep: skipped — no working python3 (record: mutation-test | skipped | no python3)'
+BASH_BIN="$(command -v bash)"
+stubs() {   # stubs <dir>: a PATH folder holding only what the launcher itself needs, and no interpreter
+  mkdir -p "$1"; local b; for b in dirname sleep; do ln -sf "$(command -v "$b")" "$1/$b"; done
+}
+NOPY="$WORK/nopy"; stubs "$NOPY"
+nopy_run() { bounded env PATH="$1" "$BASH_BIN" "$TOOL" "${@:2}"; }
+nopy_run "$NOPY" --base "$BASE" --map weak.sh="touch '$MARK.py'"
+assert_eq 3 "$code"; assert_contains "$out" "$SKIP_MSG"; [[ ! -e "$MARK.py" ]] || fail "mutant-sweep: ran a test with no Python"
+STORE="$WORK/store"; stubs "$STORE"   # Windows' Store alias: on PATH, prints an install prompt, runs no Python
+printf '#!/bin/sh\necho "Python was not found; run without arguments to install from the Microsoft Store."\nexit 9009\n' > "$STORE/python3"
+cp "$STORE/python3" "$STORE/python"; chmod +x "$STORE/python3" "$STORE/python"
+nopy_run "$STORE" --check; assert_eq 3 "$code"; assert_contains "$out" "$SKIP_MSG"
+PY2="$WORK/py2"; stubs "$PY2"   # a Python 2: runs whatever -c code it gets as Python 2 would, so a version-3 test is false, all else true
+printf '#!/bin/sh\ncase "$2" in *"version_info[0] == 3"*) exit 1 ;; esac\nexit 0\n' > "$PY2/python"; chmod +x "$PY2/python"
+nopy_run "$PY2" --check; assert_eq 3 "$code"
+HANG="$WORK/hang"; stubs "$HANG"   # a probe that never returns: killed after 5 s by its PID
+printf '#!/bin/sh\necho $$ > "%s/hang.pid"\nexec sleep 60\n' "$WORK" > "$HANG/python3"; chmod +x "$HANG/python3"
+t0=$SECONDS; nopy_run "$HANG" --check
+assert_eq 3 "$code"; (( SECONDS - t0 < 7 )) || fail "mutant-sweep: a hanging probe took $((SECONDS - t0)) s"
+hp="$(cat "$WORK/hang.pid")"; ! kill -0 "$hp" 2>/dev/null || { kill "$hp"; fail "mutant-sweep: the hung probe $hp outlived the launcher"; }
+FALL="$WORK/fall"; mkdir -p "$FALL"   # python3 broken, python is a real Python 3: the sweep runs on python
+printf '#!/bin/sh\nexit 1\n' > "$FALL/python3"; chmod +x "$FALL/python3"; ln -sf "$(command -v python3)" "$FALL/python"
+bounded env PATH="$FALL:$PATH" "$TOOL" --base "$BASE" --map weak.sh=true
+assert_eq 0 "$code"; assert_contains "$out" "mutant-sweep: base"
+bounded "$TOOL" --check; assert_eq 0 "$code"; assert_eq "" "$out"
+
 # --- the real tree is untouched --------------------------------------------------------------------------------------------------
 assert_eq "$TREE_BEFORE" "$(git status --porcelain; find . -path ./.git -prune -o -type f -print0 | sort -z | xargs -0 shasum)"
 
