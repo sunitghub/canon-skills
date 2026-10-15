@@ -73,6 +73,13 @@ run sprint" "$BASE"
 reset_repo; echo more >> skills/alpha/reference/a.md; echo more >> skills/sprint/SKILL.md; echo more >> agents/canon-evaluator.md
 expect "a doc-only skill beside a read one" "skip alpha ($DOCS)
 run sprint" "$BASE"
+reset_repo; put skills/xalpha/SKILL.md; put skills/xalpha/evals/evals.json '{"evals":[]}'; git add -A; git commit -qm xalpha
+echo more >> skills/xalpha/SKILL.md; echo more >> skills/alpha/reference/a.md
+expect "a read skill whose name ends in a doc-only skill's name" "skip alpha ($DOCS)
+run xalpha" "$(git rev-parse HEAD)"
+reset_repo; put skills/alpha/SKILL-notes.md;                 expect "a doc whose name starts with SKILL" "skip alpha ($DOCS)" "$BASE"
+reset_repo; put skills/alpha/evals/evals.json.bak; put tools/skills/alpha/evals/evals.json; put tools/agents/x.md; put agents/x.md.bak
+expect "evals.json and agents look-alikes outside their exact paths" "" "$BASE"
 reset_repo; put skills/alpha/evals/history.jsonl; put skills/alpha/evals/notes.md
 put skills/alpha/skill-eval-result.md; put skills/alpha/reference/skill-eval-result.md; put skills/alpha/scripts/s.sh; put agents/sub/x.md
 echo more >> tools/x.sh; echo more >> scripts/y.sh; echo more >> README.md; put skills/alpha/SKILL.md.bak
@@ -107,6 +114,9 @@ reset_repo; ln -s alpha skills/linked 2>/dev/null; ln -s ../alpha/evals skills/b
 if [[ -L skills/linked && -L skills/beta/evals ]]; then
   echo more >> skills/beta/SKILL.md; git add -A
   expect "a symlinked skill link, a symlinked evals/ dir" "skip beta (no evals/evals.json)" "$BASE"
+  reset_repo; put skills/gamma/SKILL.md; mkdir -p skills/gamma/evals; ln -s ../../alpha/evals/evals.json skills/gamma/evals/evals.json
+  git add -A; git commit -qm gamma; echo more >> skills/gamma/SKILL.md
+  expect "a symlinked evals.json" "skip gamma (no evals/evals.json)" "$(git rev-parse HEAD)"
 else
   echo "skill-eval-scope: SKIPPED the symlink cases (this system cannot create symlinks)"
 fi
