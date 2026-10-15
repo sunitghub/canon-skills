@@ -127,7 +127,7 @@ SERVERS_BEFORE="$(_server_pids)"
 # count those; a live server still has its own script as parent.
 # t-72e9: and only this run's own. Every suite inherits CANON_TEST_RUN, so a server this run started carries
 # it; an orphan from anything else on the machine (a concurrent board spec, your own board) does not.
-export CANON_TEST_RUN="$$.$(date +%s).$RANDOM"
+CANON_TEST_RUN="$$.$(date +%s).$RANDOM"; export CANON_TEST_RUN
 _ours() {   # _ours <pid>: the process started with exactly this run's CANON_TEST_RUN (an unreadable one is not ours)
   if [[ -r "/proc/$1/environ" ]]; then tr '\0' '\n' < "/proc/$1/environ" 2>/dev/null | grep -qxF "CANON_TEST_RUN=$CANON_TEST_RUN"
   else ps -wwE -o command= -p "$1" 2>/dev/null | tr ' ' '\n' | grep -qxF "CANON_TEST_RUN=$CANON_TEST_RUN"
