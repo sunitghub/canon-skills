@@ -109,10 +109,15 @@ for k in 01 02 03 04 05 06 07 08 09 10; do
   printf 'touch "%s/live/%s"; m=0; for _ in 1 2 3 4 5 6 7 8 9 10; do n=$(ls "%s/live" | wc -l); [ "$n" -gt "$m" ] && m=$n; sleep 0.2; done; rm "%s/live/%s"; echo "seen=$m"\n' \
     "$WORK" "$k" "$WORK" "$WORK" "$k" > "$C/tests/c$k.sh"
 done
-for want in "3 3" "20 8" "abc 1"; do
+for want in "3 3" "20 8"; do
   mkdir -p "$WORK/cpu-${want%% *}"; printf '#!/bin/sh\necho %s\n' "${want%% *}" > "$WORK/cpu-${want%% *}/nproc"; chmod +x "$WORK/cpu-${want%% *}/nproc"
   set +e; out="$(PATH="$WORK/cpu-${want%% *}:$WORK/bin" bash "$C/scripts/test.sh" 2>&1)"; rc=$?; set -e
   assert_eq 0 "$rc"; assert_eq "${want#* }" "$(printf '%s\n' "$out" | sed -n 's/^seen= *//p' | sort -n | tail -1)"
+done
+for v in abc x4 4x; do   # not a whole number: one at a time, so the run stops at the first failure
+  mkdir -p "$WORK/cpu-$v"; printf '#!/bin/sh\necho %s\n' "$v" > "$WORK/cpu-$v/nproc"; chmod +x "$WORK/cpu-$v/nproc"
+  set +e; out="$(PATH="$WORK/cpu-$v:$WORK/bin" bash "$X/scripts/test.sh" 2>&1)"; rc=$?; set -e
+  assert_eq 4 "$rc"; [[ "$out" != *"C-out"* ]] || fail "nproc $v: the run was not one at a time"
 done
 # skip lines ahead of other suites (go absent, node present): every later suite still runs
 N="$WORK/node"; runner_copy "$N" tests/a.sh; echo 'echo a-ran' > "$N/tests/a.sh"
