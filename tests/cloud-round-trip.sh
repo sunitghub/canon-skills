@@ -15,8 +15,15 @@ mkdir "$W/bin"
 cat > "$W/bin/gh" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$STUB_LOG"
+# STUB_CLOUD=1 plays a Claude cloud session: its GitHub proxy refuses GraphQL (t-35d2), so only `gh api` (REST) answers.
+if [[ "${STUB_CLOUD:-}" == 1 && "$1" != api ]]; then
+  echo "HTTP 403: GraphQL is not allowed through this proxy (https://api.github.com/graphql)" >&2; exit 1
+fi
 case "$1 $2" in
   "repo view")    echo "${STUB_VIS:-PRIVATE}" ;;
+  api\ repos/*/issues/*) [[ "${STUB_FAIL:-}" == api ]] && { echo "HTTP 404: Not Found" >&2; exit 1; }
+                  if [[ "${STUB_CRLF:-}" == 1 ]]; then sed 's/$/\r/' "$STUB_BODY"; else cat "$STUB_BODY"; fi ;;
+  api\ repos/*)   v="${STUB_VIS:-PRIVATE}"; echo "$v" | tr '[:upper:]' '[:lower:]' ;;
   "label create") exit 0 ;;
   "label list")   echo canon ;;
   "issue create") while [[ $# -gt 0 ]]; do [[ "$1" == --body-file ]] && cp "$2" "$STUB_BODY"; shift; done
@@ -27,6 +34,8 @@ case "$1 $2" in
 esac
 EOF
 chmod +x "$W/bin/gh"
+# No network in this test: export's anonymous fallback (curl https://github.com/<repo>) must never decide a result here.
+printf '#!/usr/bin/env bash\necho "curl $*" >> "$STUB_LOG"; exit 7\n' > "$W/bin/curl"; chmod +x "$W/bin/curl"
 export PATH="$W/bin:$PATH" STUB_LOG="$W/gh.log" STUB_BODY="$W/issue-body.md"
 : > "$STUB_LOG"
 sec() { awk -v h="## $2" '$0 == h { f = 1; next } f && /^#{1,2} / { exit } f && !/^<!--/ { print }' "$1" | awk 'NF { s = 1 } s'; }
@@ -52,6 +61,12 @@ printf '# Research: x\n\n- Polls every 8 s.\n' > "$d/research.md"
 
 B="$W/cloud"; mkdir "$B" && git -C "$B" init -q && git -C "$B" remote add origin https://github.com/acme/app.git
 cd "$B"
+export STUB_CLOUD=1   # everything the cloud session runs, up to "Back on the laptop", goes through REST only
+# gh cannot read the issue: exit 1, gh's error and the --body-file hint, nothing written.
+rc=0; out="$(STUB_FAIL=api "$TKT" import-issue 57 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "a failing gh api should exit 1, got $rc"
+assert_contains "$out" "HTTP 404: Not Found"; assert_contains "$out" "add --body-file <file>"
+[[ ! -e .tickets/$id ]] || fail "a failed import wrote .tickets/$id"
 "$SPRINT" import-issue 57 > "$W/import.out"
 e="$B/.tickets/$id"
 assert_grep "^github: acme/app#57$" "$e/ticket.md"
@@ -68,11 +83,19 @@ assert_grep '^- \[x\] Plan approved$' "$e/plan.md"            # sprint start kep
 assert_grep '^2. Fix it.$' "$e/plan.md"                        # a top-level "# " line in a section is content, not a part
 assert_grep '^- Polls every 8 s.$' "$e/research.md"
 
+# An issue edited on github.com comes back with CRLF: it imports identical to the LF body, but for the creation time (t-35d2).
+for v in lf crlf; do
+  mkdir "$W/$v" && git -C "$W/$v" init -q && git -C "$W/$v" remote add origin https://github.com/acme/app.git
+  (cd "$W/$v" && STUB_CRLF=$([[ $v == crlf ]] && echo 1 || echo 0) "$TKT" import-issue 57 >/dev/null 2>&1) || fail "import-issue ($v) failed"
+done
+grep -q $'\r' "$W/crlf/.tickets/$id/ticket.md" && fail "a CR reached ticket.md"
+diff -r -I "^created: " "$W/lf/.tickets" "$W/crlf/.tickets" >/dev/null || fail "a CRLF issue body imported differently: $(diff -r "$W/lf/.tickets" "$W/crlf/.tickets" | head -5)"
+
 # --body-file: no gh read at all.
 C="$W/cloud2"; mkdir "$C" && git -C "$C" init -q && git -C "$C" remote add origin https://github.com/acme/app.git
 cd "$C"; : > "$STUB_LOG"
 assert_eq "$id" "$("$TKT" import-issue 57 --body-file "$STUB_BODY" 2>/dev/null)"
-grep -q '^issue view' "$STUB_LOG" && fail "--body-file still read the issue through gh"
+grep -qE '^(issue view|api )' "$STUB_LOG" && fail "--body-file still read the issue through gh"
 # Refusals: no marker; a differing file without --force (and nothing written); --force replaces it.
 grep -v 'canon:ticket' "$STUB_BODY" > "$W/no-marker.md"
 rc=0; out="$("$TKT" import-issue 58 --body-file "$W/no-marker.md" 2>&1)" || rc=$?
@@ -125,6 +148,7 @@ assert_contains "$("$TKT" export "$id")" "commit it on the PR branch"
 assert_eq "1" "$(git --git-dir="$W/origin.git" branch --list "canon-results/*" | grep -c .)"
 
 # Back on the laptop: files byte-for-byte, a local edit kept aside, github: kept, branch deleted, PR head checked.
+unset STUB_CLOUD
 L="$W/laptop2"; git clone -q "$W/origin.git" "$L" 2>/dev/null; cd "$L"
 mkdir -p ".tickets/$id" && cp "$A/$d/ticket.md" "$A/$d/plan.md" ".tickets/$id/"
 export STUB_PR_HEAD; STUB_PR_HEAD="$(git -C "$X" rev-parse HEAD)"

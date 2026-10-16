@@ -1023,8 +1023,9 @@ _gh_origin_repo() {   # _gh_origin_repo <root> <label>: prints origin's GitHub o
 # answers 200, a private one 404). Prints nothing when neither can tell.
 _repo_visibility() {
   local v
-  if command -v gh >/dev/null 2>&1 && v="$(gh repo view "$1" --json visibility --jq .visibility 2>/dev/null)" && [[ -n "$v" ]]; then
-    printf '%s\n' "$v"; return 0
+  # REST (`private`/`public`), not `gh repo view`: export runs in cloud sessions, whose proxy refuses GraphQL (t-35d2).
+  if command -v gh >/dev/null 2>&1 && v="$(gh api "repos/$1" --jq .visibility 2>/dev/null)" && [[ -n "$v" ]]; then
+    printf '%s\n' "$v" | tr '[:lower:]' '[:upper:]'; return 0
   fi
   case "$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "https://github.com/$1" 2>/dev/null)" in
     200) echo PUBLIC ;; 404) echo PRIVATE ;;
@@ -1158,8 +1159,10 @@ cmd_import_issue() {
     tr -d '\r' < "$bodyf" > "$tmp/body" || { echo "import-issue: cannot read $bodyf" >&2; exit 1; }
   else
     [[ -n "$repo" ]] || { echo "import-issue: origin is not a GitHub repo; use --body-file <file>" >&2; exit 1; }
-    local err; err="$(gh issue view "$n" --repo "$repo" --json body --jq .body 2>&1 > "$tmp/body")" \
+    # REST, not `gh issue view`: a Claude cloud session's GitHub proxy refuses GraphQL (t-35d2).
+    local err; err="$(gh api "repos/$repo/issues/$n" --jq .body 2>&1 > "$tmp/raw")" \
       || { echo "import-issue: gh could not read issue #$n on $repo: $err" >&2; echo "  Save the issue's text to a file and add --body-file <file>." >&2; exit 1; }
+    tr -d '\r' < "$tmp/raw" > "$tmp/body"
   fi
   local id hdr type pri title
   id="$(sed -n 's/^<!-- canon:ticket \(t-[a-z0-9]*\) -->$/\1/p' "$tmp/body" | tail -1)"
