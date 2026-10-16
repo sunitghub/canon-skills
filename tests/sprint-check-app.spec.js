@@ -7020,8 +7020,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator(`.card[data-id="${id}"] .card-start`).click();
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
 
-      // The worktree rows have rendered (Main + feat).
-      await expect(page.locator('.ck-worktree-row')).toHaveCount(2);
+      // The worktree rows have rendered (Main + feat, and t-718b's GitHub · new issue place).
+      await expect(page.locator('.ck-worktree-row')).toHaveCount(3);
       // t-470d: on a fresh OPEN start (cockpitState.worktreeCwd === null, nothing
       // picked yet) NO row is selected — the Main row must not falsely highlight.
       // The terminal is correspondingly gated ("Select a worktree above").
@@ -7140,7 +7140,16 @@ test.describe('cockpit in board (t-ddc8)', () => {
       expect(asked).toContain(id);
       // Nothing git-shaped is on screen.
       await expect(page.locator('#s-commits-total')).toBeHidden();
-      expect(await page.locator('.sidebar-content').first().innerText()).not.toMatch(/commit|branch/i);   // visible sidebar text only
+      // Visible sidebar text only, without ticket titles: a real in-progress ticket may be named "…commit…" (t-718b:
+      // a ticket out on GitHub counts as in progress, and t-2194's title begins "Pre-commit").
+      const sidebarText = await page.locator('.sidebar-content').first().evaluate(el => {
+        const titles = [...el.querySelectorAll('.wip-title')].map(t => [t, t.textContent]);
+        titles.forEach(([t]) => { t.textContent = ''; });
+        const text = el.innerText;
+        titles.forEach(([t, v]) => { t.textContent = v; });
+        return text;
+      });
+      expect(sidebarText).not.toMatch(/commit|branch/i);
       // The cockpit's own Changes section, for the open ticket.
       await page.locator('#board-search').fill(id);
       await page.locator(`.card[data-id="${id}"] .card-start`).click();
@@ -8790,7 +8799,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
 
       const box = page.locator('#ck-worktree');
-      await expect(box.locator('.ck-worktree-row .ck-worktree-label')).toHaveText(['Main checkout (current)', 'sprint/free', 'sprint/mine']);
+      await expect(box.locator('.ck-worktree-row .ck-worktree-label')).toHaveText(['Main checkout (current)', 'sprint/free', 'sprint/mine', 'GitHub · new issue']);   // t-718b: the GitHub place
       const group = box.locator('details.ck-worktree-held');
       await expect(group.locator('summary')).toHaveText('2 worktrees unavailable');
       await expect(group).not.toHaveAttribute('open', '');
@@ -8845,7 +8854,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       }
       await box.locator('#ck-worktree-change').click();
       await expect(box.locator('.ck-worktree-full')).toBeVisible();
-      await expect(box.locator('.ck-worktree-row:visible .ck-worktree-label')).toHaveText(['Main checkout (current)', 'sprint/free', 'sprint/mine']);
+      await expect(box.locator('.ck-worktree-row:visible .ck-worktree-label')).toHaveText(['Main checkout (current)', 'sprint/free', 'sprint/mine', 'GitHub · new issue']);   // t-718b: the GitHub place
       await expect(box.locator('#ck-worktree-change')).toHaveCount(0);
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });

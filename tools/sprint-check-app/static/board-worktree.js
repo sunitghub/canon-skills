@@ -554,7 +554,8 @@ async function selectCockpitWorktree(t, cwd) {
     // t-3e58: compare by normalized key, not raw ===. The create-response path
     // and the rendered data-cwd can differ in format on Windows (\ vs /, case,
     // trailing sep), so an exact match misses and the new row never highlights.
-    row.classList.toggle('selected', cockpitPathKey(row.dataset.cwd) === cockpitPathKey(cwd));
+    // t-718b: a GitHub row has no folder (no data-cwd); it must never match Main's '' and light up with it.
+    row.classList.toggle('selected', !row.dataset.github && cockpitPathKey(row.dataset.cwd) === cockpitPathKey(cwd));
   });
   const uncommittedBox = document.getElementById('ck-worktree-uncommitted');   // t-165f
   if (uncommittedBox) uncommittedBox.hidden = cwd === '';
