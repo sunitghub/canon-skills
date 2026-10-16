@@ -144,6 +144,10 @@ grep -qx "pr merge 7 --repo acme/app --merge --delete-branch --match-head-commit
 assert_eq "/" "$(sed -n 's/^cwd //p' "$STUB_LOG")"   # never inside a checkout, so --delete-branch cannot touch local branches
 assert_grep '^merged: mergesha0000000000000000000000000000000000$' "$f"
 grep -q '^pr list' "$STUB_LOG" || fail "the PR was not found by its Fixes line"
+# On a terminal the progress line is rewritten in place (carriage return), every 2 s.
+sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
+out="$(tty_run y "$TKT" merge-pr "$id" --pr 7 --test 'echo tty step; sleep 5' 2>&1)" || fail "tty progress run failed: $out"
+[[ "$out" == *$'\r'"merge-pr: running echo tty step; sleep 5 on main + PR #7… 0m0"*"(tty step)"* ]] || fail "no in-place progress on a terminal: $(printf '%q' "$out")"
 else
   echo "tkt-merge-pr: SKIPPED the prompt cases: no script(1) here for a pseudo-terminal" >&2
   sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; "$TKT" merge-pr "$id" --yes > /dev/null 2>&1 || fail "merge-pr --yes failed"
@@ -155,6 +159,32 @@ sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; git rm -q scripts/test.sh; git
 assert_contains "$out" "No test command (pass --test). Merge PR #7 into main on the gates alone? yes (--yes)"
 grep -q '^pr list' "$STUB_LOG" && fail "--pr still searched for the PR"
 grep -q '^pr merge 7 ' "$STUB_LOG" || fail "--yes did not merge"
+
+# t-bad4: --check runs only the checks that execute nothing, reports, and stops: exit 0 ready, 1 with the reason.
+sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; : > "$STUB_LOG"; rm -f "$W/ran"; before="$(sig)"
+out="$("$TKT" merge-pr "$id" --pr 7 --check --test 'touch "$STUB_W/ran"' 2>&1)" || fail "--check on a ready PR failed: $out"
+assert_contains "$out" "PR #7 (acme/app):"
+assert_contains "$out" "merge-pr: ready: would run touch \"\$STUB_W/ran\" on main + PR #7, then merge (closes #21)"
+[[ ! -e "$W/ran" ]] || fail "--check ran the test command"
+merged && fail "--check merged"; [[ "$(sig)" == "$before" ]] || fail "--check changed ticket.md"
+refuses "--check on a blocked PR" "blocked by a branch rule" STUB_MS=BLOCKED -- --pr 7 --check
+
+# Progress while the tests run: without a terminal a plain line every CANON_PROGRESS_SECONDS, naming the newest log line.
+: > "$STUB_LOG"
+out="$(CANON_PROGRESS_SECONDS=1 "$TKT" merge-pr "$id" --pr 7 --yes --test 'echo step one; sleep 3; echo step two; sleep 2' 2>&1)" || fail "a slow suite run failed: $out"
+assert_contains "$out" "(step one)"; assert_contains "$out" "(step two)"
+assert_contains "$out" "passed in 0m0"
+[[ "$out" != *$'\r'* ]] || fail "progress used carriage returns without a terminal"
+sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
+# An interrupt stops the whole test run, its children included, and merges nothing.
+: > "$STUB_LOG"; rm -f "$W/child.pid"; before="$(sig)"
+"$TKT" merge-pr "$id" --pr 7 --yes --test 'sleep 60 & echo $! > "$STUB_W/child.pid"; wait' > "$W/int.out" 2>&1 & mpid=$!
+for _ in $(seq 50); do [[ -s "$W/child.pid" ]] && break; sleep 0.1; done
+[[ -s "$W/child.pid" ]] || fail "the slow test command never started"
+kill -TERM "$mpid"; rc=0; wait "$mpid" || rc=$?
+[[ "$rc" != 0 ]] || fail "an interrupted merge-pr exited 0"
+sleep 0.5; ! pid_alive "$(cat "$W/child.pid")" || { kill "$(cat "$W/child.pid")" 2>/dev/null; fail "the test command's child outlived the interrupt"; }
+merged && fail "an interrupted merge-pr merged"; [[ "$(sig)" == "$before" ]] || fail "an interrupted merge-pr changed ticket.md"
 
 # gh fails after GitHub merged (the branch delete, say): recorded as merged, with gh's message; no sha → no "null".
 sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"

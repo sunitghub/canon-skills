@@ -1307,18 +1307,47 @@ cmd_sync_issues() {
 # mergeable and clean; it merges into base in a scratch clone. Then one question: run the PR's tests here (they are its
 # code) and merge if they pass. The merge uses --match-head-commit (GitHub refuses if the head moved) and runs from
 # outside any checkout, so --delete-branch never touches the user's local branches.
+# _merge_pr_run_tests <tmp> <cmd> <base> <pr>: runs <cmd> in <tmp>/w, output to <tmp>/test.log, showing progress (t-bad4):
+# on a terminal one line rewritten every 2 s, else a plain line every CANON_PROGRESS_SECONDS (default 30; the board sets
+# it). The command runs in its own process group, so an interrupt stops all of it (recorded group id only).
+_merge_pr_run_tests() {
+  local tmp="$1" cmd="$2" base="$3" pr="$4" every="${CANON_PROGRESS_SECONDS:-30}" tty=false tpid rc=0 start last=0 now line
+  [[ "$every" =~ ^[1-9][0-9]*$ ]] || every=30
+  [[ -t 1 ]] && { tty=true; every=2; }
+  start=$SECONDS
+  set -m
+  ( cd "$tmp/w" && exec bash -c "$cmd" ) < /dev/null > "$tmp/test.log" 2>&1 &
+  tpid=$!
+  set +m
+  # shellcheck disable=SC2064  # expand now: the group id is this run's
+  trap "kill -TERM -- -$tpid 2>/dev/null; exit 130" INT TERM
+  while kill -0 "$tpid" 2>/dev/null; do
+    sleep 1; now=$((SECONDS - start))
+    (( now - last >= every )) || continue; last=$now
+    line="$(tail -n 1 "$tmp/test.log" 2>/dev/null | LC_ALL=C tr -d '\000-\037\177' | cut -c1-60)"
+    if $tty; then printf '\rmerge-pr: running %s on %s + PR #%s… %dm%02ds  (%s)\033[K' "$cmd" "$base" "$pr" $((now / 60)) $((now % 60)) "$line"
+    else printf 'merge-pr: running %s on %s + PR #%s… %dm%02ds  (%s)\n' "$cmd" "$base" "$pr" $((now / 60)) $((now % 60)) "$line"; fi
+  done
+  wait "$tpid" || rc=$?
+  trap - INT TERM
+  now=$((SECONDS - start)); $tty && printf '\r\033[K'
+  [[ $rc == 0 ]] && printf 'merge-pr: %s passed in %dm%02ds\n' "$cmd" $((now / 60)) $((now % 60))
+  return "$rc"
+}
+
 cmd_merge_pr() {
-  local id="" pr="" tcmd="" tset=false yes=false
+  local id="" pr="" tcmd="" tset=false yes=false check=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --pr)   pr="${2:-}"; shift 2 || { echo "Error: --pr needs a number" >&2; exit 1; } ;;
       --test) tcmd="${2:-}"; tset=true; shift 2 || { echo "Error: --test needs a command" >&2; exit 1; } ;;
       --yes)  yes=true; shift ;;
+      --check) check=true; shift ;;
       -*) echo "Unknown option: $1" >&2; exit 1 ;;
       *)  [[ -z "$id" ]] && id="$1"; shift ;;
     esac
   done
-  [[ -n "$id" ]] || { echo "Usage: tkt merge-pr <id> [--pr N] [--test CMD] [--yes]" >&2; exit 1; }
+  [[ -n "$id" ]] || { echo "Usage: tkt merge-pr <id> [--pr N] [--test CMD] [--yes | --check]" >&2; exit 1; }
   [[ -z "$pr" || "$pr" =~ ^[0-9]+$ ]] || { echo "merge-pr: --pr takes a PR number" >&2; exit 1; }
   local file tdir root repo; file="$(find_ticket "$id")"; tdir="$(dirname "$file")"; id="$(get_field "$file" id)"
   root="$(git -C "$tdir" rev-parse --show-toplevel)" || exit 1
@@ -1378,6 +1407,12 @@ cmd_merge_pr() {
   echo "PR #$pr ($repo): $(git -C "$tmp/w" diff --shortstat "o/$base...o/pr" < /dev/null | sed 's/^ *//')"
   git -C "$tmp/w" diff --quiet "o/$base...o/pr" -- scripts/test.sh < /dev/null \
     || echo "  note: this PR changes scripts/test.sh itself, the script that would run"
+  # --check (t-bad4): every check that runs no PR code has passed; report and stop. The board fills its dialog from this.
+  if $check; then
+    if [[ -n "$tcmd" ]]; then echo "merge-pr: ready: would run $tcmd on $base + PR #$pr, then merge${issue:+ (closes #$issue)}"
+    else echo "merge-pr: ready: no test command (pass --test); would merge PR #$pr on the gates alone${issue:+ (closes #$issue)}"; fi
+    return 0
+  fi
   local ask
   if [[ -n "$tcmd" ]]; then ask="Run PR #$pr's code here ($tcmd on $base + PR) and merge into $base if it passes?"
   else ask="No test command (pass --test). Merge PR #$pr into $base on the gates alone?"; fi
@@ -1390,10 +1425,8 @@ cmd_merge_pr() {
   fi
   if [[ -n "$tcmd" ]]; then
     echo "merge-pr: running $tcmd on $base + PR #${pr}…"
-    if ! (cd "$tmp/w" && bash -c "$tcmd") < /dev/null > "$tmp/test.log" 2>&1; then
-      echo "merge-pr: $tcmd failed on $base + PR #$pr; not merging. Last lines:" >&2; tail -30 "$tmp/test.log" >&2; exit 1
-    fi
-    echo "merge-pr: $tcmd passed"
+    _merge_pr_run_tests "$tmp" "$tcmd" "$base" "$pr" \
+      || { echo "merge-pr: $tcmd failed on $base + PR #$pr; not merging. Last lines:" >&2; tail -30 "$tmp/test.log" >&2; exit 1; }
   fi
   # From /, never a checkout: --delete-branch then touches only the branch on GitHub.
   local out note=""
@@ -1570,9 +1603,10 @@ Commands:
                             sprint import-issue in the cloud session).
   sync-issues [--dry-run]   Make a ticket of each open issue on origin labelled canon
                             that no ticket links to (labels set type and pN priority).
-  merge-pr <id> [--pr N] [--test CMD] [--yes]
+  merge-pr <id> [--pr N] [--test CMD] [--yes | --check]
                             Check a cloud ticket's PR (evaluator passed on its head,
                             mergeable, suite green on base + PR) and merge it after a y.
+                            --check: run only the checks that run no PR code, report, stop.
   export <id> [--public]    Send a cloud sprint's .tickets/<id>/ back: with the PR
                             when .tickets/ is tracked, else to canon-results/<id>.
   import-results <id> [--pr N]
