@@ -7,6 +7,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 ## [Unreleased]
 
 ### Added
+- The cloud round trip: in the session, `sprint import-issue N` rebuilds the ticket from a `tkt send-issue` issue and starts its sprint; at the close `tkt export <id>` sends the ticket back (inside the PR when `.tickets/` is committed, otherwise on a `canon-results/<id>` branch); `tkt import-results <id> --pr N` brings it back on your machine, keeping any local edit in `.before-import/` and checking the evaluator graded the PR's head. `tkt send-issue` now keeps `# ` lines inside a ticket's code blocks (`t-554c`).
 - `tkt send-issue <id>` posts a ticket as an issue on your `origin` GitHub repo, laid out like the ticket on the board (Description, Acceptance, Plan and Research, each with every section the board lists), for a Claude cloud session to work on: type `Work on Issue#N` in a session on a "canon" environment. `--dry-run` previews it; a public repo needs `--public`; it records `github: owner/repo#N` in `ticket.md`. `docs/setup.md` › Claude cloud sessions has the one-time environment recipe (`t-a059`).
 
 ### Fixed
