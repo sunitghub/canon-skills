@@ -461,7 +461,7 @@ run_launcher() {
   sleep 0.2
   # the stub records its pid even when it never listens, so a leftover process is caught in every mode
   [[ -s "$WORK/stub.pid" ]] || fail "canon: the stub board never started (mode $mode)"
-  ! kill -0 "$(cat "$WORK/stub.pid")" 2>/dev/null || fail "canon: the stub board (pid $(cat "$WORK/stub.pid"), mode $mode) is still running after the launcher ended"
+  ! pid_alive "$(cat "$WORK/stub.pid")" || fail "canon: the stub board (pid $(cat "$WORK/stub.pid"), mode $mode) is still running after the launcher ended"
 }
 
 for pair in "abc:10" "0:10" "-3:10" "2:2" "12:12" ':10'; do   # the window is a positive integer, else 10 (never raw env into arithmetic)
