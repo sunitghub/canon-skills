@@ -7,8 +7,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 ## [Unreleased]
 
 ### Added
+- `tkt github-status <id> [--json]` says where a ticket sent to GitHub stands: `sent`, `pr-open`, `results-ready` (its results branch is waiting: import it), `results-in` (imported; the evaluator passed on the PR's head) or `merged`. Read-only: one `gh` call and one `git ls-remote` (`t-d271`).
 - `tkt take-back <id> [--close-issue]` brings a ticket sent to GitHub back to this machine (`t-d271`).
-- The board's servers (Python and Go) run the GitHub workflow commands for the coming board UI: send-issue (preview and send), sync-issues (preview and create), import-results, merge-pr (`--check`, and `--yes` as a background job whose progress the page can follow) and take-back, each one `tkt` command in the project. On Windows the Go board runs `tkt` through `tools/tkt.cmd`. The merge job can be stopped, and stops itself after an hour (`t-d271`).
+- The board's servers (Python and Go) run the GitHub workflow commands for the coming board UI: send-issue (preview and send), sync-issues (preview and create), import-results, merge-pr (`--check`, and `--yes` as a background job whose progress the page can follow), take-back and github-status (cached 30 s per ticket), each one `tkt` command in the project. On Windows the Go board runs `tkt` through `tools/tkt.cmd`. The merge job can be stopped, and stops itself after an hour (`t-d271`).
 
 ## [0.12.1] - 2026-10-16
 

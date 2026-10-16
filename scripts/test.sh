@@ -38,6 +38,7 @@ tests=(
   "$ROOT/tests/tkt-sync-issues.sh"
   "$ROOT/tests/tkt-merge-pr.sh"
   "$ROOT/tests/tkt-take-back.sh"
+  "$ROOT/tests/tkt-github-status.sh"
   "$ROOT/tests/sprint-check-github-endpoints.sh"
   "$ROOT/tests/tool-symlinks.sh"
   "$ROOT/tests/ticket-skeleton.sh"

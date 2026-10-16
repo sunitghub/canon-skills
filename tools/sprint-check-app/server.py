@@ -2967,13 +2967,17 @@ def _pr_arg(value):
 _MERGE_RUNS: dict = {}
 _MERGE_LOCK = threading.Lock()
 
-_MERGE_LIMIT = 3600   # seconds: a hung job is stopped, so it cannot block every later start
+# Seconds before a hung job is stopped, so it cannot block every later start. CANON_MERGE_LIMIT_SECONDS is for tests.
+_MERGE_LIMIT = int(os.environ.get('CANON_MERGE_LIMIT_SECONDS') or 3600)
 
 def stop_merge_run(root: Path, ticket_id: str) -> dict:
-    """TERM to tkt: merge-pr traps it, stops its whole test run and merges nothing."""
+    """TERM to tkt: merge-pr traps it while the tests run, stops their whole group and does not merge (a TERM during
+    the final gh pr merge may come too late). A stop sent before the process is registered is kept and applied then."""
     with _MERGE_LOCK:
         st = _MERGE_RUNS.get((str(root), ticket_id))
         proc = st.get('proc') if st else None
+        if st and proc is None and st.get('status') == 'running':
+            st['stop'] = True
     if proc is not None and proc.poll() is None:
         try:
             proc.terminate()
@@ -2989,6 +2993,9 @@ def _run_merge(key: tuple, root: Path, args: list) -> None:
                                 stderr=subprocess.STDOUT, env=env)
         with _MERGE_LOCK:
             _MERGE_RUNS[key]['proc'] = proc
+            stop_now = _MERGE_RUNS[key].get('stop')
+        if stop_now:
+            proc.terminate()
         timer = threading.Timer(_MERGE_LIMIT, lambda: proc.poll() is None and proc.terminate())
         timer.daemon = True
         timer.start()
@@ -3030,6 +3037,27 @@ def get_merge_run_state(root: Path, ticket_id: str) -> dict:
         if st['status'] == 'running':
             result['elapsed'] = time.time() - st['started_at']
     return result
+
+# github-status is what the board polls for each card out on GitHub: cache it per (root, ticket) for 30 s, so any
+# number of open tabs costs one gh call per ticket per 30 s (GitHub's rate limit is per user).
+_STATUS_CACHE: dict = {}
+_STATUS_TTL = 30
+
+def github_status(root: Path, ticket_id: str) -> dict:
+    key = (str(root), ticket_id)
+    with _MERGE_LOCK:
+        hit = _STATUS_CACHE.get(key)
+        if hit and time.time() - hit[0] < _STATUS_TTL:
+            return hit[1]
+    res = run_tkt(root, ['github-status', ticket_id, '--json'], timeout=60)
+    if res['ok']:
+        try:
+            res['status'] = json.loads(res['output'])
+        except ValueError:
+            res = {'ok': False, 'exit_code': res['exit_code'], 'output': res['output']}
+    with _MERGE_LOCK:
+        _STATUS_CACHE[key] = (time.time(), res)
+    return res
 
 def _github_get_cross_site(headers) -> bool:
     """t-d271: the GitHub GET routes run git and gh, so a page on another site must not fire them blind."""
@@ -3671,7 +3699,7 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_error(404); return
                 self.send_json({'content': feat.read_text(encoding='utf-8', errors='replace')})
                 return
-            m = re.match(r'^/api/ticket/(t-[a-z0-9]{4})/github/(send-preview|merge-check|merge)$', path)
+            m = re.match(r'^/api/ticket/(t-[a-z0-9]{4})/github/(send-preview|merge-check|merge|status)$', path)
             if m or path == '/api/github/sync-preview':
                 if _github_get_cross_site(self.headers):
                     self.send_error(403); return
@@ -3687,6 +3715,8 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json(run_tkt(groot, ['send-issue', tid, '--dry-run'])); return
                 if what == 'merge':
                     self.send_json(get_merge_run_state(groot, tid)); return
+                if what == 'status':
+                    self.send_json(github_status(groot, tid)); return
                 pr = _pr_arg(q.get('pr', [''])[0])
                 if pr is None:
                     self.send_error(400); return

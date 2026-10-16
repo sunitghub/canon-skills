@@ -22,6 +22,7 @@ cat > "$W/tkt" <<SH
 printf '%s | %s | progress=%s\n' "\$PWD" "\$*" "\${CANON_PROGRESS_SECONDS:-}" >> "$W/log"
 [[ -e "$W/fail" ]] && { echo "stub failure"; exit 3; }
 [[ "\$*" == *"--pr 99"* ]] && { head -c 3000000 /dev/zero | tr '\\0' x; exit 0; }   # one 3 MB line, no newline
+[[ "\$1" == github-status ]] && { echo '{"id":"t-ab12","stage":"pr-open","pr":24}'; exit 0; }
 case "\$1 \$*" in
   *"--dry-run"*) echo "would do: \$*" ;;
   "merge-pr "*"--yes"*) echo "progress one"; for _ in \$(seq 100); do [[ -e "$W/release" ]] && break; sleep 0.1; done; echo "progress two" ;;
@@ -33,8 +34,8 @@ chmod +x "$W/tkt"
 port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'; }
 PYP="$(port)"; GOP="$(port)"
 mkdir -p "$W/ck"
-SPRINT_CHECK_ROOT="$PROJ" CANON_HOME="$W/c1" COCKPIT_STATE_DIR="$W/ck" TKT_BIN="$W/tkt" python3 "$ROOT/tools/sprint-check-app/server.py" "$PYP" >/dev/null 2>&1 & PIDS+=($!); disown $! 2>/dev/null || true
-SPRINT_CHECK_ROOT="$PROJ" CANON_HOME="$W/c2" COCKPIT_STATE_DIR="$W/ck" TKT_BIN="$W/tkt" SPRINT_CHECK_NO_BROWSER=1 "$GO_BIN" "$GOP" >/dev/null 2>&1 & PIDS+=($!); disown $! 2>/dev/null || true
+SPRINT_CHECK_ROOT="$PROJ" CANON_HOME="$W/c1" COCKPIT_STATE_DIR="$W/ck" TKT_BIN="$W/tkt" CANON_MERGE_LIMIT_SECONDS=6 python3 "$ROOT/tools/sprint-check-app/server.py" "$PYP" >/dev/null 2>&1 & PIDS+=($!); disown $! 2>/dev/null || true
+SPRINT_CHECK_ROOT="$PROJ" CANON_HOME="$W/c2" COCKPIT_STATE_DIR="$W/ck" TKT_BIN="$W/tkt" CANON_MERGE_LIMIT_SECONDS=6 SPRINT_CHECK_NO_BROWSER=1 "$GO_BIN" "$GOP" >/dev/null 2>&1 & PIDS+=($!); disown $! 2>/dev/null || true
 for p in "$PYP" "$GOP"; do for _ in $(seq 50); do curl -s -o /dev/null "http://127.0.0.1:$p/api/tickets" && break; sleep 0.1; done; done
 
 get()  { curl -s -w '\n%{http_code}' "http://127.0.0.1:$1$2"; }
@@ -108,6 +109,16 @@ for P in "$PYP" "$GOP"; do
   for _ in $(seq 100); do s="$(body "$(get "$P" /api/ticket/t-ab12/github/merge)")"; [[ "$(js 'j.status' <<< "$s")" == done ]] && break; sleep 0.1; done
   assert_eq "done|0" "$(js '[j.status,j.exit_code].join("|")' <<< "$s")"
   [[ "$(js 'j.output.length' <<< "$s")" -le 16384 ]] || fail "$srv: the output tail is over 16 KB"
+  # The time limit (6 s here, an hour by default): a job that never ends is stopped and reported done, not running.
+  rm -f "$W/release"; post "$P" /api/ticket/t-ab12/github/merge '{"pr":58}' >/dev/null
+  for _ in $(seq 120); do s="$(body "$(get "$P" /api/ticket/t-ab12/github/merge)")"; [[ "$(js 'j.status' <<< "$s")" == done ]] && break; sleep 0.1; done
+  assert_eq "done|true" "$(js '[j.status, j.exit_code !== 0].join("|")' <<< "$s")"
+  # github-status: the parsed stage, and a second call within 30 s is served from the cache (no second tkt run).
+  : > "$W/log"
+  r="$(get "$P" /api/ticket/t-ab12/github/status)"; assert_eq "true|pr-open|24" "$(body "$r" | js '[j.ok,j.status.stage,j.status.pr].join("|")')"
+  get "$P" /api/ticket/t-ab12/github/status >/dev/null
+  assert_eq "1" "$(grep -c 'github-status t-ab12 --json' "$W/log")"
+  r="$(curl -s -w '\n%{http_code}' -H 'Origin: https://evil.example' "http://127.0.0.1:$P/api/ticket/t-ab12/github/status")"; [[ "$(code "$r")" == 403 ]] || fail "$srv: cross-origin status was $(code "$r")"
   echo "sprint-check-github-endpoints: $srv ok"
 done
 echo "sprint-check-github-endpoints: ok (both servers)"

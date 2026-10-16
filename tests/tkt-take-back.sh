@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# t-d271: tkt take-back brings a ticket sent to GitHub back: github: goes; --close-issue comments then closes the issue
-# first, and a gh failure leaves ticket.md byte-identical; a ticket never sent, or merged, is refused.
+# t-d271: tkt take-back brings a ticket sent to GitHub back: github: goes; --close-issue first closes the issue with a
+# comment in one gh call, and a gh failure leaves ticket.md byte-identical; a ticket never sent, or merged, is refused.
 set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
@@ -35,13 +35,11 @@ out="$("$TKT" take-back "$id" --close-issue)"; assert_contains "$out" "acme/app#
 assert_eq "issue close 57 --repo acme/app --comment Taken back to local by canon ($id). | cwd /" "$(cat "$STUB_LOG")"
 grep -q '^github:' "$f" && fail "github: still there after --close-issue"
 
-# gh fails on either call: exit 1, ticket byte-identical.
-for step in "issue close"; do
-  link; before="$(sig)"; rc=0; out="$(STUB_FAIL="$step" "$TKT" take-back "$id" --close-issue 2>&1)" || rc=$?
-  [[ "$rc" == 1 ]] || fail "a failing gh $step should exit 1"; assert_contains "$out" "HTTP 502"
-  [[ "$(sig)" == "$before" ]] || fail "ticket changed although gh $step failed"
-  awk '!/^github: /' "$f" > "$stub/t" && mv "$stub/t" "$f"
-done
+# gh fails: exit 1, ticket byte-identical.
+link; before="$(sig)"; rc=0; out="$(STUB_FAIL="issue close" "$TKT" take-back "$id" --close-issue 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "a failing gh should exit 1"; assert_contains "$out" "HTTP 502"
+[[ "$(sig)" == "$before" ]] || fail "ticket changed although gh failed"
+awk '!/^github: /' "$f" > "$stub/t" && mv "$stub/t" "$f"
 
 # An unreadable github: line: refused before any gh call, unchanged.
 awk '/^---$/ && ++n == 2 { print "github: not a repo" } { print }' "$f" > "$stub/t" && mv "$stub/t" "$f"

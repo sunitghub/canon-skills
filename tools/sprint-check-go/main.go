@@ -467,7 +467,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			sendJSON(w, map[string]string{"content": string(data)})
 			return
 		}
-		if m := regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/github/(send-preview|merge-check|merge)$`).FindStringSubmatch(path); m != nil || path == "/api/github/sync-preview" {
+		if m := regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/github/(send-preview|merge-check|merge|status)$`).FindStringSubmatch(path); m != nil || path == "/api/github/sync-preview" {
 			// t-d271: these run git and gh, so a page on another site must not fire them blind.
 			if !originOK(r.Header.Get("Origin")) || r.Header.Get("Sec-Fetch-Site") == "cross-site" {
 				http.Error(w, "forbidden", http.StatusForbidden)
@@ -487,6 +487,8 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 				sendJSON(w, runTkt(groot, []string{"send-issue", m[1], "--dry-run"}))
 			case "merge":
 				sendJSON(w, getMergeRunState(groot, m[1]))
+			case "status":
+				sendJSON(w, githubStatus(groot, m[1]))
 			default:
 				pr, ok := prArg(r.URL.Query().Get("pr"))
 				if !ok {
@@ -4333,21 +4335,37 @@ var (
 	mergeRunsMu sync.Mutex
 )
 
-const mergeLimit = time.Hour // a hung job is stopped, so it cannot block every later start
+// mergeLimit: a hung job is stopped, so it cannot block every later start. CANON_MERGE_LIMIT_SECONDS is for tests.
+func mergeLimit() time.Duration {
+	if n, err := strconv.Atoi(os.Getenv("CANON_MERGE_LIMIT_SECONDS")); err == nil && n > 0 {
+		return time.Duration(n) * time.Second
+	}
+	return time.Hour
+}
 
-// stopMergeRun: TERM to tkt (Kill on Windows); merge-pr traps it, stops its whole test run and merges nothing.
+// stopMergeRun: TERM to tkt, which merge-pr traps while the tests run to stop their whole group and not merge (a TERM
+// during the final gh pr merge may come too late). On Windows tkt.cmd starts bash, so the whole tree is ended with
+// taskkill /T /F. A stop sent before the process is registered is kept and applied then. Parity: server.py.
 func stopMergeRun(root, id string) map[string]any {
+	key := mergeKey{root, id}
 	mergeRunsMu.Lock()
-	cmd := mergeCmds[mergeKey{root, id}]
+	cmd := mergeCmds[key]
+	if st, ok := mergeRuns[key]; ok && cmd == nil && st["status"] == "running" {
+		st["stop"] = true
+	}
 	mergeRunsMu.Unlock()
-	if cmd != nil && cmd.Process != nil && cmd.ProcessState == nil {
-		if runtime.GOOS == "windows" {
-			cmd.Process.Kill()
-		} else {
-			cmd.Process.Signal(syscall.SIGTERM)
-		}
+	if cmd != nil && cmd.Process != nil {
+		signalMerge(cmd)
 	}
 	return getMergeRunState(root, id)
+}
+
+func signalMerge(cmd *exec.Cmd) {
+	if runtime.GOOS == "windows" {
+		exec.Command("taskkill", "/T", "/F", "/PID", strconv.Itoa(cmd.Process.Pid)).Run()
+		return
+	}
+	cmd.Process.Signal(syscall.SIGTERM)
 }
 
 // runMerge reads merge-pr's output line by line while it runs, so the board can show its progress lines.
@@ -4370,8 +4388,12 @@ func runMerge(key mergeKey, args []string) {
 	}
 	mergeRunsMu.Lock()
 	mergeCmds[key] = cmd
+	stopNow := mergeRuns[key]["stop"] == true
 	mergeRunsMu.Unlock()
-	timer := time.AfterFunc(mergeLimit, func() { stopMergeRun(key.root, key.id) })
+	if stopNow {
+		signalMerge(cmd)
+	}
+	timer := time.AfterFunc(mergeLimit(), func() { stopMergeRun(key.root, key.id) })
 	// Fixed-size chunks, not lines: one huge line (a \r-redrawn progress bar) can neither stall the reader (a Scanner
 	// stops at its token limit and leaves the pipe full) nor grow memory; only the tail is kept.
 	buf := make([]byte, 4096)
@@ -4408,6 +4430,40 @@ func startMergeRun(root, id string, pr []string) map[string]any {
 	mergeRunsMu.Unlock()
 	go runMerge(key, append([]string{"merge-pr", id, "--yes"}, pr...))
 	return getMergeRunState(root, id)
+}
+
+// githubStatus is what the board polls per card out on GitHub: cached per (root, ticket) for 30 s, so any number of
+// open tabs costs one gh call per ticket per 30 s. Parity with server.py's github_status.
+type statusHit struct {
+	at  time.Time
+	res map[string]any
+}
+
+var statusCache = map[mergeKey]statusHit{}
+
+const statusTTL = 30 * time.Second
+
+func githubStatus(root, id string) map[string]any {
+	key := mergeKey{root, id}
+	mergeRunsMu.Lock()
+	if h, ok := statusCache[key]; ok && time.Since(h.at) < statusTTL {
+		mergeRunsMu.Unlock()
+		return h.res
+	}
+	mergeRunsMu.Unlock()
+	res := runTkt(root, []string{"github-status", id, "--json"})
+	if res["ok"] == true {
+		var st map[string]any
+		if json.Unmarshal([]byte(res["output"].(string)), &st) == nil {
+			res["status"] = st
+		} else {
+			res = map[string]any{"ok": false, "exit_code": res["exit_code"], "output": res["output"]}
+		}
+	}
+	mergeRunsMu.Lock()
+	statusCache[key] = statusHit{time.Now(), res}
+	mergeRunsMu.Unlock()
+	return res
 }
 
 func getMergeRunState(root, id string) map[string]any {

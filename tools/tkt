@@ -1309,6 +1309,13 @@ cmd_sync_issues() {
 # mergeable and clean; it merges into base in a scratch clone. Then one question: run the PR's tests here (they are its
 # code) and merge if they pass. The merge uses --match-head-commit (GitHub refuses if the head moved) and runs from
 # outside any checkout, so --delete-branch never touches the user's local branches.
+# _fixes_prs <repo> <issue> <state>: one "number<TAB>state<TAB>head" line per PR on <repo> whose body says "Fixes #<issue>"
+# (a whole word, any case; state open|closed|merged|all). Exit 1 with gh's message when gh fails.
+_fixes_prs() {
+  gh pr list --repo "$1" --state "$3" --search "Fixes #$2 in:body" --json number,state,headRefOid,body \
+    --jq ".[] | select(.body | test(\"(?i)\\\\bfixes #$2\\\\b\")) | [.number, .state, .headRefOid] | @tsv"
+}
+
 # _merge_pr_run_tests <tmp> <cmd> <base> <pr>: runs <cmd> in <tmp>/w, output to <tmp>/test.log, showing progress (t-bad4):
 # on a terminal one line rewritten every 2 s, else a plain line every CANON_PROGRESS_SECONDS (default 30; the board sets
 # it). The command runs in its own process group, so an interrupt stops all of it (recorded group id only).
@@ -1375,9 +1382,8 @@ cmd_merge_pr() {
   if [[ -z "$pr" ]]; then
     [[ -n "$issue" ]] || { echo "merge-pr: $id has no github: $repo#<n> line to find its PR by; pass --pr N" >&2; exit 1; }
     local found
-    found="$(gh pr list --repo "$repo" --state open --search "Fixes #$issue in:body" --json number,body \
-      --jq ".[] | select(.body | test(\"(?i)\\\\bfixes #$issue\\\\b\")) | .number" 2>&1)" \
-      || { echo "merge-pr: gh could not list PRs on $repo: $found" >&2; exit 1; }
+    found="$(_fixes_prs "$repo" "$issue" open 2>&1)" || { echo "merge-pr: gh could not list PRs on $repo: $found" >&2; exit 1; }
+    found="$(printf '%s\n' "$found" | cut -f1 | grep . || true)"
     [[ "$(printf '%s' "$found" | grep -c .)" == 1 ]] \
       || { echo "merge-pr: $([[ -n "$found" ]] && echo "several open PRs say" || echo "no open PR says") Fixes #$issue on $repo; pass --pr N" >&2; exit 1; }
     pr="$found"
@@ -1452,6 +1458,59 @@ cmd_merge_pr() {
       || echo "merge-pr: note: could not delete canon-results/$id on origin; delete it by hand" >&2
   fi
   echo "Merged PR #$pr into $base${sha:+ ($sha)}$note. Update your checkout: git pull"
+}
+
+# cmd_github_status <id> [--json] — t-d271: where a ticket sent to GitHub stands, for the board to poll. Read-only: one
+# gh call (the PR that says "Fixes #<issue>") and one ls-remote (canon-results/<id>), plus the local ticket. Stages:
+# sent (no PR yet) → pr-open → results-ready (canon-results/<id> is on origin: import it) → results-in (imported, the
+# evaluator passed on the PR's head) → merged. A gh or git failure exits 1 with the reason, never a guessed stage.
+cmd_github_status() {
+  local id="" json=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --json) json=true; shift ;;
+      -*) echo "Unknown option: $1" >&2; exit 1 ;;
+      *)  [[ -z "$id" ]] && id="$1"; shift ;;
+    esac
+  done
+  [[ -n "$id" ]] || { echo "Usage: tkt github-status <id> [--json]" >&2; exit 1; }
+  local file tdir gh repo issue merged root
+  file="$(find_ticket "$id")"; tdir="$(dirname "$file")"; id="$(get_field "$file" id)"
+  gh="$(get_field "$file" github)"; merged="$(get_field "$file" merged)"
+  [[ -n "$gh" ]] || { echo "github-status: $id was not sent to GitHub (no github: line)" >&2; exit 1; }
+  repo="${gh%#*}"; issue="${gh##*#}"
+  [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ && "$issue" =~ ^[0-9]+$ ]] || { echo "github-status: $id has an unreadable github: line ($gh)" >&2; exit 1; }
+  command -v gh >/dev/null 2>&1 || { echo "github-status: needs the GitHub CLI: install gh, then run: gh auth login" >&2; exit 1; }
+  root="$(git -C "$tdir" rev-parse --show-toplevel)" || exit 1
+  local prs err pr="" pst="" phead="" branch=false
+  prs="$(_fixes_prs "$repo" "$issue" all 2>&1)" || { echo "github-status: gh could not list PRs on $repo: $prs" >&2; exit 1; }
+  # Several PRs: the open one if there is exactly one, else the newest (gh lists newest first).
+  if [[ "$(printf '%s\n' "$prs" | grep -c $'\tOPEN\t' || true)" == 1 ]]; then prs="$(printf '%s\n' "$prs" | grep $'\tOPEN\t')"; fi
+  IFS=$'\t' read -r pr pst phead <<< "$(printf '%s\n' "$prs" | grep . | head -1)" || true
+  err="$(git -C "$root" ls-remote --exit-code --heads origin "canon-results/$id" 2>&1)" && branch=true || {
+    [[ $? == 2 ]] || { echo "github-status: could not read origin: $err" >&2; exit 1; }; }
+  local verdict graded match=false stage
+  read -r verdict graded < <(_eval_verdict_head "$tdir")
+  [[ -n "$phead" && "$graded" != - && "$phead" == "$graded"* ]] && match=true
+  if [[ -n "$merged" || "$pst" == MERGED ]]; then stage=merged
+  elif [[ "$verdict" == pass ]] && $match && [[ "$(get_field "$file" status)" == closed ]]; then stage=results-in
+  elif $branch; then stage=results-ready
+  elif [[ -n "$pr" ]]; then stage=pr-open
+  else stage=sent; fi
+  if $json; then
+    printf '{"id":%s,"issue":%s,"stage":%s,"pr":%s,"pr_state":%s,"pr_head":%s,"results_branch":%s,"verdict":%s,"graded_head":%s,"graded_matches_pr":%s,"merged":%s}\n' \
+      "$(json_str "$id")" "$(json_str "$gh")" "$(json_str "$stage")" "$(json_num "$pr" null)" \
+      "$([[ -n "$pst" ]] && json_str "$pst" || echo null)" "$([[ -n "$phead" ]] && json_str "$phead" || echo null)" "$branch" \
+      "$([[ "$verdict" != - ]] && json_str "$verdict" || echo null)" "$([[ "$graded" != - ]] && json_str "$graded" || echo null)" "$match" \
+      "$([[ -n "$merged" ]] && json_str "$merged" || echo null)"
+  else
+    echo "$id · $gh · $stage"
+    [[ -n "$pr" ]] && echo "  PR #$pr ($pst) head $phead"
+    $branch && echo "  canon-results/$id is on origin: tkt import-results $id${pr:+ --pr $pr}"
+    [[ "$verdict" != - ]] && echo "  evaluator: $verdict on ${graded}$($match && echo ' (the PR head)' || echo '')"
+    [[ -n "$merged" ]] && echo "  merged: $merged"
+  fi
+  return 0
 }
 
 # cmd_take_back <id> [--close-issue] — t-d271: a ticket sent to GitHub comes back to this machine: its github: line goes,
@@ -1648,6 +1707,9 @@ Commands:
                             Check a cloud ticket's PR (evaluator passed on its head,
                             mergeable, suite green on base + PR) and merge it after a y.
                             --check: run only the checks that run no PR code, report, stop.
+  github-status <id> [--json]
+                            Where a ticket sent to GitHub stands: sent, pr-open,
+                            results-ready, results-in or merged (read-only).
   take-back <id> [--close-issue]
                             Bring a ticket sent to GitHub back to this machine (clears
                             github:; --close-issue comments on and closes the issue).
@@ -1687,6 +1749,7 @@ main() {
     sync-issues)    cmd_sync_issues "$@" ;;
     merge-pr)       cmd_merge_pr "$@" ;;
     take-back)      cmd_take_back "$@" ;;
+    github-status)  cmd_github_status "$@" ;;
     export)         cmd_export "$@" ;;
     import-results) cmd_import_results "$@" ;;
     help|--help|-h) cmd_help ;;
