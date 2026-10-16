@@ -7,7 +7,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 ## [Unreleased]
 
 ### Added
-- `tkt sync-issues [--dry-run]`: each open issue on your `origin` GitHub repo labelled `canon` that no ticket links to becomes a ticket (type and priority from labels such as `bug` and `p1`; a body in the send-issue layout keeps its Acceptance and Plan). It only reads GitHub, and skips pull requests and issues `tkt send-issue` made. Only collaborators with triage access can add the label, so it decides which issue text becomes a ticket (`t-4cd8`).
+- `tkt sync-issues [--dry-run]`: each open issue on your `origin` GitHub repo labelled `canon` that no ticket links to becomes a ticket (type and priority from labels such as `bug` and `p1`; a body in the send-issue layout keeps its Acceptance and Plan). It only reads GitHub, and skips pull requests and issues `tkt send-issue` made. The label is what admits an issue, so keep it for issues you have read: anyone who can open issues may get it from an issue template, and an author can still edit the text after it is labelled. Run `--dry-run` first (`t-4cd8`).
 
 ### Fixed
 - `tkt send-issue` lost every section of a ticket whose files have Windows (CRLF) line endings, and warned that it had no acceptance criteria (`t-c131`, fixed in a Claude cloud session from issue #19).

@@ -88,6 +88,21 @@ assert_grep '^github: acme/app#16$' "$f"; assert_grep '^type: task$' "$f"
 [[ -z "$(find "$project" -path "$project/.tickets" -prune -o -newer "$stub/list" -type f -print | grep -v '/.git/')" ]] \
   || fail "files written outside .tickets/: $(find "$project" -path "$project/.tickets" -prune -o -newer "$stub/list" -type f -print | grep -v '/.git/')"
 
+# Review findings (t-4cd8): a title's control characters are dropped; a plain body that holds a part heading mid-text
+# keeps every line (the heading demoted to "## "); a structured body still splits.
+printf 'Esc \033[31mred\033[0m title\nIntro line.\n# Plan\nkept after a plan heading\n# Working on this\nkept after working on this\n' > "$stub/issue-21"
+mklist 21:issue:canon
+out21="$("$TKT" sync-issues)"; t21="$(awk '$2 == "#21" { print $1 }' <<< "$out21")"
+f="$project/.tickets/$t21/ticket.md"
+grep -q $'\033' "$f" && fail "an ESC character reached ticket.md"
+grep -q $'\033' <<< "$out21" && fail "an ESC character reached the terminal"
+assert_grep '^# Esc \[31mred\[0m title$' "$f"
+for l in 'Intro line.' '## Plan' 'kept after a plan heading' '## Working on this' 'kept after working on this'; do
+  grep -qxF "$l" "$f" || fail "a plain body lost '$l': $(cat "$f")"
+done
+[[ ! -e "$project/.tickets/$t21/plan.md" ]] || fail "a plain body's '# Plan' line made a plan.md"
+mklist 11:issue:canon,bug,P1 12:issue:canon 13:issue:canon 14:issue:canon 15:pr:canon '16:issue:canon,*'
+
 # A second run creates nothing.
 again="$("$TKT" sync-issues)"
 assert_contains "$again" "sync-issues: 0 created"
@@ -104,6 +119,20 @@ printf '17\tissue\tcanon\tTmV3\teA==\n18\tissue\tcanon\t!!!not-base64\teA==\n' >
 rc=0; err="$("$TKT" sync-issues 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "an undecodable entry should exit 1, got $rc: $err"
 assert_eq "$before" "$(snap)"
+# ...and a bad body after a good title, the same.
+printf '17\tissue\tcanon\tTmV3\t!!!not-base64\n' > "$stub/list"
+rc=0; err="$("$TKT" sync-issues 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "an undecodable body should exit 1, got $rc: $err"
+assert_eq "$before" "$(snap)"
+
+# A project with no .tickets/ yet: a dry run, or a run that fails, creates nothing at all (not even .tickets/).
+bare="$(mktemp -d "${TMPDIR:-/tmp}/tkt-sync-bare.XXXXXX")"; (cd "$bare" && git init -q && git remote add origin https://github.com/acme/app.git)
+mklist 11:issue:canon,bug,P1
+(cd "$bare" && "$TKT" sync-issues --dry-run >/dev/null) || fail "dry run in a bare project failed"
+(cd "$bare" && STUB_FAIL=list "$TKT" sync-issues >/dev/null 2>&1) && fail "a failing listing should exit 1"
+[[ ! -e "$bare/.tickets" ]] || fail "a dry or failed run created .tickets/: $(find "$bare/.tickets")"
+rm -rf "$bare"
+
 git remote set-url origin https://gitlab.com/acme/app.git; : > "$STUB_LOG"
 rc=0; err="$("$TKT" sync-issues 2>&1)" || rc=$?
 [[ "$rc" == 1 && ! -s "$STUB_LOG" ]] || fail "a GitLab origin should exit 1 before any gh call (rc $rc)"
