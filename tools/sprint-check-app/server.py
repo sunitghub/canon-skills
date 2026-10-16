@@ -2931,6 +2931,75 @@ def get_headless_run_state(ticket_id: str) -> dict:
             result['elapsed'] = time.time() - state['started_at']
     return result
 
+# ── GitHub workflow (t-d271): each route runs one tkt command from the project root ─────────
+# The board adds no logic: send-issue, sync-issues, import-results, merge-pr and take-back own every check. TKT_BIN
+# overrides the path (tests point at a stub). Arguments are fixed per route; the only caller values are a ticket id
+# the route pattern already checked, a digits-only PR number and booleans.
+TKT = Path(os.environ.get('TKT_BIN') or Path(__file__).resolve().parent.parent / 'tkt')
+_TKT_TAIL = 16384
+_PR_RE = re.compile(r'^[0-9]{1,9}$')
+
+def run_tkt(root: Path, args: list, timeout: int = 300) -> dict:
+    try:
+        proc = subprocess.run([str(TKT), *args], cwd=root, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                              stderr=subprocess.STDOUT, text=True, timeout=timeout)
+        output, code = proc.stdout, proc.returncode
+    except subprocess.TimeoutExpired:
+        output, code = f'tkt {args[0]} did not finish within {timeout} s', 124
+    except Exception as e:
+        output, code = f'could not run tkt: {e}', 1
+    return {'ok': code == 0, 'exit_code': code, 'output': output[-_TKT_TAIL:]}
+
+def _pr_arg(value):
+    """[] for no PR, ['--pr', n] for a digits-only PR, None for anything else (the caller answers 400)."""
+    if value in (None, ''):
+        return []
+    v = str(value)
+    return ['--pr', v] if _PR_RE.match(v) else None
+
+# merge-pr --yes runs for minutes (the project's tests): a background job per (root, ticket) whose output is read line by
+# line while it runs, so the board can show merge-pr's progress lines. Same double-start guard as _HEADLESS_RUNS.
+_MERGE_RUNS: dict = {}
+_MERGE_LOCK = threading.Lock()
+
+def _run_merge(key: tuple, root: Path, args: list) -> None:
+    code = 1
+    try:
+        env = dict(os.environ, CANON_PROGRESS_SECONDS='5')
+        proc = subprocess.Popen([str(TKT), *args], cwd=root, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, text=True, env=env, bufsize=1)
+        for line in proc.stdout:
+            with _MERGE_LOCK:
+                st = _MERGE_RUNS[key]
+                st['output'] = (st['output'] + line)[-_TKT_TAIL:]
+        code = proc.wait()
+    except Exception as e:
+        with _MERGE_LOCK:
+            _MERGE_RUNS[key]['output'] += f'could not run tkt: {e}\n'
+    with _MERGE_LOCK:
+        _MERGE_RUNS[key]['status'] = 'done'
+        _MERGE_RUNS[key]['exit_code'] = code
+
+def start_merge_run(root: Path, ticket_id: str, pr_args: list) -> dict:
+    key = (str(root), ticket_id)
+    with _MERGE_LOCK:
+        running = _MERGE_RUNS.get(key, {}).get('status') == 'running'
+        if not running:
+            _MERGE_RUNS[key] = {'status': 'running', 'output': '', 'exit_code': None, 'started_at': time.time()}
+    if not running:
+        threading.Thread(target=_run_merge, args=(key, root, ['merge-pr', ticket_id, '--yes', *pr_args]), daemon=True).start()
+    return get_merge_run_state(root, ticket_id)
+
+def get_merge_run_state(root: Path, ticket_id: str) -> dict:
+    with _MERGE_LOCK:
+        st = _MERGE_RUNS.get((str(root), ticket_id))
+        if not st:
+            return {'status': 'idle'}
+        result = {'status': st['status'], 'output': st['output'], 'exit_code': st['exit_code']}
+        if st['status'] == 'running':
+            result['elapsed'] = time.time() - st['started_at']
+    return result
+
 # ── Upkeep (t-7ae6): headless, read-only per-project report runner ─────────
 # Mirrors the _HEADLESS_RUNS thread+subprocess+dict shape above exactly, keyed
 # by (root, skill) instead of ticket id — the only background-job pattern in
@@ -3567,6 +3636,24 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_error(404); return
                 self.send_json({'content': feat.read_text(encoding='utf-8', errors='replace')})
                 return
+            m = re.match(r'^/api/ticket/(t-[a-z0-9]{4})/github/(send-preview|merge-check|merge)$', path)
+            if m or path == '/api/github/sync-preview':
+                q = parse_qs(parsed.query)
+                try:
+                    groot = effective_root(q)
+                except UnknownProject:
+                    self.send_error(400); return
+                if not m:
+                    self.send_json(run_tkt(groot, ['sync-issues', '--dry-run'])); return
+                tid, what = m.group(1), m.group(2)
+                if what == 'send-preview':
+                    self.send_json(run_tkt(groot, ['send-issue', tid, '--dry-run'])); return
+                if what == 'merge':
+                    self.send_json(get_merge_run_state(groot, tid)); return
+                pr = _pr_arg(q.get('pr', [''])[0])
+                if pr is None:
+                    self.send_error(400); return
+                self.send_json(run_tkt(groot, ['merge-pr', tid, '--check', *pr])); return
             m = re.match(r'^/api/ticket/(t-[a-z0-9]{4})/headless-run$', path)
             if m:
                 self.send_json(get_headless_run_state(m.group(1))); return
@@ -3739,6 +3826,22 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(res[1], status=res[0]); return
             ok = write_doc(doc, str(payload.get('content', '')), eroot)
             self.send_json({'ok': ok}); return
+
+        if path == '/api/github/sync':
+            self.send_json(run_tkt(eroot, ['sync-issues'])); return
+        m = re.match(r'^/api/ticket/(t-[a-z0-9]{4})/github/(send|import|merge|take-back)$', path)
+        if m:
+            tid, what = m.group(1), m.group(2)
+            if what == 'send':
+                self.send_json(run_tkt(eroot, ['send-issue', tid] + (['--public'] if payload.get('public') is True else []))); return
+            if what == 'take-back':
+                self.send_json(run_tkt(eroot, ['take-back', tid] + (['--close-issue'] if payload.get('close_issue') is True else []))); return
+            pr = _pr_arg(payload.get('pr'))
+            if pr is None:
+                self.send_error(400); return
+            if what == 'import':
+                self.send_json(run_tkt(eroot, ['import-results', tid, *pr])); return
+            self.send_json(start_merge_run(eroot, tid, pr)); return
 
         m = re.match(r'^/api/ticket/(t-[a-z0-9]{4})/headless-run$', path)
         if m:

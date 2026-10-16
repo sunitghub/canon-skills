@@ -46,6 +46,12 @@ if [[ "$py" != "$go" ]]; then
   exit 1
 fi
 
+# t-d271: the per-ticket GitHub routes are regexes, which the extractor above collapses to /api/ticket: compare
+# their sub-route lists by name.
+gh_subroutes() { grep -oE "github/\((send|import|merge|take-back|send-preview|merge-check)[a-z|-]*\)" "$1" | tr '()|' '\n\n\n' | grep -v '^github/$' | grep . | sort -u; }
+[[ "$(gh_subroutes "$SERVER_PY")" == "$(gh_subroutes "$MAIN_GO")" && -n "$(gh_subroutes "$SERVER_PY")" ]] \
+  || fail "sprint-check-api-parity: the GitHub sub-routes differ: server.py [$(gh_subroutes "$SERVER_PY" | tr '\n' ' ')] main.go [$(gh_subroutes "$MAIN_GO" | tr '\n' ' ')]"
+
 route_count="$(echo "$py" | wc -l | tr -d ' ')"
 
 if ! command -v python3 >/dev/null 2>&1 || ! command -v go >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then

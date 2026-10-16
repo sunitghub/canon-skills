@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/rand"
@@ -466,6 +467,31 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			sendJSON(w, map[string]string{"content": string(data)})
 			return
 		}
+		if m := regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/github/(send-preview|merge-check|merge)$`).FindStringSubmatch(path); m != nil || path == "/api/github/sync-preview" {
+			groot, ok := effectiveRoot(r)
+			if !ok {
+				http.Error(w, "unknown project", http.StatusBadRequest)
+				return
+			}
+			if m == nil {
+				sendJSON(w, runTkt(groot, []string{"sync-issues", "--dry-run"}))
+				return
+			}
+			switch m[2] {
+			case "send-preview":
+				sendJSON(w, runTkt(groot, []string{"send-issue", m[1], "--dry-run"}))
+			case "merge":
+				sendJSON(w, getMergeRunState(groot, m[1]))
+			default:
+				pr, ok := prArg(r.URL.Query().Get("pr"))
+				if !ok {
+					http.Error(w, "bad request", http.StatusBadRequest)
+					return
+				}
+				sendJSON(w, runTkt(groot, append([]string{"merge-pr", m[1], "--check"}, pr...)))
+			}
+			return
+		}
 		if m := regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/headless-run$`).FindStringSubmatch(path); m != nil {
 			sendJSON(w, getHeadlessRunState(m[1]))
 			return
@@ -681,6 +707,40 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		sendJSON(w, map[string]bool{"ok": writeDoc(doc, fmt.Sprint(payload["content"]), eroot)})
+		return
+	}
+	if path == "/api/github/sync" {
+		sendJSON(w, runTkt(eroot, []string{"sync-issues"}))
+		return
+	}
+	if m := regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/github/(send|import|merge|take-back)$`).FindStringSubmatch(path); m != nil {
+		id := m[1]
+		switch m[2] {
+		case "send":
+			args := []string{"send-issue", id}
+			if b, _ := payload["public"].(bool); b {
+				args = append(args, "--public")
+			}
+			sendJSON(w, runTkt(eroot, args))
+			return
+		case "take-back":
+			args := []string{"take-back", id}
+			if b, _ := payload["close_issue"].(bool); b {
+				args = append(args, "--close-issue")
+			}
+			sendJSON(w, runTkt(eroot, args))
+			return
+		}
+		pr, ok := prArg(payload["pr"])
+		if !ok {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		if m[2] == "import" {
+			sendJSON(w, runTkt(eroot, append([]string{"import-results", id}, pr...)))
+			return
+		}
+		sendJSON(w, startMergeRun(eroot, id, pr))
 		return
 	}
 	if m := regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/headless-run$`).FindStringSubmatch(path); m != nil {
@@ -4184,6 +4244,140 @@ func getHeadlessRunState(ticketID string) map[string]any {
 		result["elapsed"] = time.Since(state["started_at"].(time.Time)).Seconds()
 	}
 	return result
+}
+
+// ── GitHub workflow (t-d271): each route runs one tkt command from the project root ─────────
+// Parity with server.py's run_tkt / start_merge_run / get_merge_run_state. The board adds no logic: tkt owns every
+// check. TKT_BIN overrides the path (tests); on Windows tkt.cmd runs the bash script through Git for Windows.
+
+const tktTail = 16384
+
+var prRe = regexp.MustCompile(`^[0-9]{1,9}$`)
+
+func resolveTkt() string {
+	if b := os.Getenv("TKT_BIN"); b != "" {
+		return b
+	}
+	dir := filepath.Dir(sprintHeadless)
+	if runtime.GOOS == "windows" {
+		if c := filepath.Join(dir, "tkt.cmd"); exists(c) {
+			return c
+		}
+	}
+	return filepath.Join(dir, "tkt")
+}
+
+func tailString(s string) string {
+	if len(s) > tktTail {
+		return s[len(s)-tktTail:]
+	}
+	return s
+}
+
+func runTkt(root string, args []string) map[string]any {
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, resolveTkt(), args...)
+	cmd.Dir = root
+	out, err := cmd.CombinedOutput()
+	code := 0
+	if ctx.Err() == context.DeadlineExceeded {
+		out, code = []byte(fmt.Sprintf("tkt %s did not finish within 300 s", args[0])), 124
+	} else if err != nil {
+		if ee, ok := err.(*exec.ExitError); ok {
+			code = ee.ExitCode()
+		} else {
+			out, code = []byte(fmt.Sprintf("could not run tkt: %v", err)), 1
+		}
+	}
+	return map[string]any{"ok": code == 0, "exit_code": code, "output": tailString(string(out))}
+}
+
+// prArg: nil slice + true for no PR, ["--pr", n] for digits, false for anything else (the caller answers 400).
+func prArg(v any) ([]string, bool) {
+	if v == nil {
+		return []string{}, true
+	}
+	s := fmt.Sprint(v)
+	if f, ok := v.(float64); ok {
+		s = strconv.FormatFloat(f, 'f', -1, 64)
+	}
+	if s == "" {
+		return []string{}, true
+	}
+	if !prRe.MatchString(s) {
+		return nil, false
+	}
+	return []string{"--pr", s}, true
+}
+
+type mergeKey struct{ root, id string }
+
+var (
+	mergeRuns   = map[mergeKey]map[string]any{}
+	mergeRunsMu sync.Mutex
+)
+
+// runMerge reads merge-pr's output line by line while it runs, so the board can show its progress lines.
+func runMerge(key mergeKey, args []string) {
+	code := 1
+	cmd := exec.Command(resolveTkt(), args...)
+	cmd.Dir = key.root
+	cmd.Env = append(os.Environ(), "CANON_PROGRESS_SECONDS=5")
+	pipe, err := cmd.StdoutPipe()
+	if err == nil {
+		cmd.Stderr = cmd.Stdout
+		err = cmd.Start()
+	}
+	if err != nil {
+		mergeRunsMu.Lock()
+		mergeRuns[key]["output"] = fmt.Sprintf("could not run tkt: %v\n", err)
+		mergeRuns[key]["status"], mergeRuns[key]["exit_code"] = "done", 1
+		mergeRunsMu.Unlock()
+		return
+	}
+	sc := bufio.NewScanner(pipe)
+	sc.Buffer(make([]byte, 64*1024), 1024*1024)
+	for sc.Scan() {
+		mergeRunsMu.Lock()
+		mergeRuns[key]["output"] = tailString(mergeRuns[key]["output"].(string) + sc.Text() + "\n")
+		mergeRunsMu.Unlock()
+	}
+	if werr := cmd.Wait(); werr == nil {
+		code = 0
+	} else if ee, ok := werr.(*exec.ExitError); ok {
+		code = ee.ExitCode()
+	}
+	mergeRunsMu.Lock()
+	mergeRuns[key]["status"], mergeRuns[key]["exit_code"] = "done", code
+	mergeRunsMu.Unlock()
+}
+
+func startMergeRun(root, id string, pr []string) map[string]any {
+	key := mergeKey{root, id}
+	mergeRunsMu.Lock()
+	if st, ok := mergeRuns[key]; ok && st["status"] == "running" {
+		mergeRunsMu.Unlock()
+		return getMergeRunState(root, id)
+	}
+	mergeRuns[key] = map[string]any{"status": "running", "output": "", "exit_code": nil, "started_at": time.Now()}
+	mergeRunsMu.Unlock()
+	go runMerge(key, append([]string{"merge-pr", id, "--yes"}, pr...))
+	return getMergeRunState(root, id)
+}
+
+func getMergeRunState(root, id string) map[string]any {
+	mergeRunsMu.Lock()
+	defer mergeRunsMu.Unlock()
+	st, ok := mergeRuns[mergeKey{root, id}]
+	if !ok {
+		return map[string]any{"status": "idle"}
+	}
+	res := map[string]any{"status": st["status"], "output": st["output"], "exit_code": st["exit_code"]}
+	if st["status"] == "running" {
+		res["elapsed"] = time.Since(st["started_at"].(time.Time)).Seconds()
+	}
+	return res
 }
 
 // ── Upkeep (t-7ae6): headless, read-only per-project report runner ─────────

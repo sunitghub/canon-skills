@@ -1454,6 +1454,34 @@ cmd_merge_pr() {
   echo "Merged PR #$pr into $base${sha:+ ($sha)}$note. Update your checkout: git pull"
 }
 
+# cmd_take_back <id> [--close-issue] — t-d271: a ticket sent to GitHub comes back to this machine: its github: line goes,
+# so it can be started here again. With --close-issue the issue gets a comment and is closed first; a gh failure leaves
+# the ticket as it was. The cloud branch and any PR are left alone. A merged ticket is done, not taken back.
+cmd_take_back() {
+  local id="" close=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --close-issue) close=true; shift ;;
+      -*) echo "Unknown option: $1" >&2; exit 1 ;;
+      *)  [[ -z "$id" ]] && id="$1"; shift ;;
+    esac
+  done
+  [[ -n "$id" ]] || { echo "Usage: tkt take-back <id> [--close-issue]" >&2; exit 1; }
+  local file gh; file="$(find_ticket "$id")"; id="$(get_field "$file" id)"; gh="$(get_field "$file" github)"
+  [[ -n "$gh" ]] || { echo "take-back: $id was not sent to GitHub (no github: line)" >&2; exit 1; }
+  [[ -z "$(get_field "$file" merged)" ]] || { echo "take-back: $id is merged ($(get_field "$file" merged)); nothing to take back" >&2; exit 1; }
+  if $close; then
+    local repo="${gh%#*}" n="${gh##*#}" out
+    [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ && "$n" =~ ^[0-9]+$ ]] || { echo "take-back: $id has an unreadable github: line ($gh)" >&2; exit 1; }
+    command -v gh >/dev/null 2>&1 || { echo "take-back: needs the GitHub CLI to close $gh: install gh, or drop --close-issue" >&2; exit 1; }
+    out="$(cd / && gh issue comment "$n" --repo "$repo" --body "Taken back to local by canon ($id)." 2>&1)" \
+      || { echo "take-back: gh could not comment on $gh: $out" >&2; exit 1; }
+    out="$(cd / && gh issue close "$n" --repo "$repo" 2>&1)" || { echo "take-back: gh could not close $gh: $out" >&2; exit 1; }
+  fi
+  remove_field "$file" github
+  if $close; then echo "take-back: $id is back on this machine; $gh closed"; else echo "take-back: $id is back on this machine ($gh left open)"; fi
+}
+
 # cmd_export <id> — t-554c: at the close of a cloud sprint, sends .tickets/<id>/ back. A tracked .tickets/ rides in the PR;
 # an ignored one (canon's own) goes to the branch canon-results/<id>, built from a temporary index so the checkout and
 # the real index are never touched, holding only that folder.
@@ -1620,6 +1648,9 @@ Commands:
                             Check a cloud ticket's PR (evaluator passed on its head,
                             mergeable, suite green on base + PR) and merge it after a y.
                             --check: run only the checks that run no PR code, report, stop.
+  take-back <id> [--close-issue]
+                            Bring a ticket sent to GitHub back to this machine (clears
+                            github:; --close-issue comments on and closes the issue).
   export <id> [--public]    Send a cloud sprint's .tickets/<id>/ back: with the PR
                             when .tickets/ is tracked, else to canon-results/<id>.
   import-results <id> [--pr N]
@@ -1655,6 +1686,7 @@ main() {
     import-issue)   cmd_import_issue "$@" ;;
     sync-issues)    cmd_sync_issues "$@" ;;
     merge-pr)       cmd_merge_pr "$@" ;;
+    take-back)      cmd_take_back "$@" ;;
     export)         cmd_export "$@" ;;
     import-results) cmd_import_results "$@" ;;
     help|--help|-h) cmd_help ;;
