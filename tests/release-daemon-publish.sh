@@ -46,6 +46,8 @@ cat > "$STUBS/go" <<'GO'
 #!/usr/bin/env bash
 if [ "${1:-}" = build ] && [ -f go.mod ] && grep -qE '^module (canon/sprint|x/d)' go.mod; then echo "GOTOOLCHAIN=${GOTOOLCHAIN:-} $(tr '\n' ' ' < go.mod)" >> "$GO_LOG"; fi
 [ -z "${SHIM_FORCE_LOCAL:-}" ] || export GOTOOLCHAIN=local
+# SHIM_NOISY_VERSION=1: `go version -m` goes on writing after its first line, as a real module listing does (t-90bc)
+if [ -n "${SHIM_NOISY_VERSION:-}" ] && [ "${1:-}" = version ] && [ "${2:-}" = -m ]; then "$REAL_GO" "$@"; sleep 0.3; seq 1 100000; exit; fi
 exec "$REAL_GO" "$@"
 GO
 chmod +x "$STUBS/go"
@@ -73,6 +75,8 @@ assert_eq 7 "$(printf '%s\n' "$d1" | grep -c .)"; assert_eq "$d1" "$d2"
 before="$(sort "$m")"; run; [[ "$rc" == 0 ]] || fail "second publish failed: $out"
 ! grep -qE ' (create|upload) ' "$STUB_LOG" || fail "a second run created or uploaded something: $(cat "$STUB_LOG")"
 assert_eq "$before" "$(sort "$m")"
+# 2b. t-90bc: the pin check reads only the first line of `go version -m`; a Go still writing after it (SIGPIPE under pipefail) is not an unpinned build
+SHIM_NOISY_VERSION=1 run; [[ "$rc" == 0 ]] || fail "a go that keeps writing after its first version line failed the pin check ($rc): $out"
 # 3. an older release that lacks the Windows daemon asset (the real case: 0e2fd866 shipped without it) gets only that asset
 rm "$FAKE_GH/cockpit-daemon-$kd/cockpit-daemon-windows-amd64.exe"; : > "$m"; printf '# header\n' > "$m"
 run; [[ "$rc" == 0 ]] || fail "adding a missing asset failed: $out"

@@ -140,7 +140,7 @@ for _ in $(seq 100); do [[ -s "$WORK/int-suite" ]] && break; sleep 0.1; done
 kill -TERM "$ipid"; wait "$ipid" 2>/dev/null || true; sleep 1
 left=""
 for f in int-suite int-child; do
-  if kill -0 "$(cat "$WORK/$f")" 2>/dev/null; then kill "$(cat "$WORK/$f")" 2>/dev/null || true; left+=" $f"; fi
+  if pid_alive "$(cat "$WORK/$f")"; then kill "$(cat "$WORK/$f")" 2>/dev/null || true; left+=" $f"; fi
 done
 [[ -z "$left" ]] || fail "an interrupted run left suite processes running:$left"
 assert_eq "" "$(ls "$WORK/int-tmp")"                                              # the run folder is removed
@@ -180,13 +180,15 @@ for j in 1 2; do
     "$O" "$WORK" "$WORK" "$WORK" > "$O/tests/a.sh"
   set +e; out="$(PATH="$WORK/bin" bash "$O/scripts/test.sh" --jobs "$j" 2>&1)"; rc=$?; set -e
   [[ "$(ps -o ppid= -p "$(cat "$WORK/last-pid")" | tr -d ' ')" != 1 ]] || fail "the wrapped fake server was orphaned: the case tests nothing"
-  assert_eq 1 "$rc"; assert_contains "$out" "FAIL: the test run left sprint-check servers running (PIDs): $(cat "$WORK/last-pid")"
+  # the live wrapper (its command line names the server too) is listed beside the server on Linux: the server's PID must be one of them
+  assert_eq 1 "$rc"; assert_contains "$out" "FAIL: the test run left sprint-check servers running (PIDs):"
+  [[ " $(printf '%s\n' "$out" | sed -n 's/^FAIL: the test run left sprint-check servers running (PIDs): //p') " == *" $(cat "$WORK/last-pid") "* ]] || fail "the wrapped fake server $(cat "$WORK/last-pid") was not named as leaked: $out"
   { leak "env -u CANON_TEST_RUN"; leak 'CANON_TEST_RUN="${CANON_TEST_RUN}x"'; } > "$O/tests/a.sh"   # no marker; another run's (a longer value)
   set +e; out="$(PATH="$WORK/bin" bash "$O/scripts/test.sh" --jobs "$j" 2>&1)"; rc=$?; set -e
   assert_eq 0 "$rc"; [[ "$out" != *"left sprint-check servers"* ]] || fail "--jobs $j: a server this run did not start failed it: $out"
 done
 assert_eq 10 "$(wc -l < "$WORK/srv-pids" | tr -d ' ')"
 while read -r p; do kill "$p" 2>/dev/null || true; done < "$WORK/srv-pids"; sleep 0.5
-while read -r p; do ! kill -0 "$p" 2>/dev/null || fail "fake server $p still running"; done < "$WORK/srv-pids"
+while read -r p; do ! pid_alive "$p" || fail "fake server $p still running"; done < "$WORK/srv-pids"
 
 echo "test-sh-runner: ok"

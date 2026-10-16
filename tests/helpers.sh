@@ -21,6 +21,11 @@ SPRINT="$TOOLS_DIR/sprint"
 SKILLS="$ROOT/tools/skills.sh"
 CANON_DEV="$ROOT/tools/canon-dev.sh"
 
+# pid_alive <pid>: running. A zombie (killed but unreaped) is dead: where PID 1 never reaps orphans (a Claude cloud container's
+# process_api), `kill -0` still succeeds on one forever (t-90bc).
+# Where ps has no `-o stat=` (Git Bash on Windows) it prints nothing and this is plain `kill -0`.
+pid_alive() { kill -0 "$1" 2>/dev/null && [[ "$(ps -o stat= -p "$1" 2>/dev/null || true)" != Z* ]]; }
+
 fail() {
   printf 'FAIL: %s\n' "$*" >&2
   exit 1

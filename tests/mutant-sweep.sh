@@ -114,7 +114,7 @@ sweep --timeout 3 --map loop.sh='bash tests/t-loop.sh'
 [[ "$out" =~ KILLED\(timeout\)\ [1-9] ]] || fail "mutant-sweep: the looping mutant was not KILLED(timeout): $out"
 [[ "$(wc -l < "$PIDS")" -ge 2 ]] || fail "mutant-sweep: the loop test recorded no children"
 while read -r pid; do
-  ! kill -0 "$pid" 2>/dev/null || { kill "$pid"; fail "mutant-sweep: test child $pid outlived its mutant"; }
+  ! pid_alive "$pid" || { kill "$pid"; fail "mutant-sweep: test child $pid outlived its mutant"; }
 done < "$PIDS"
 
 # --- refusals run nothing ----------------------------------------------------------------------------------------------------
@@ -151,7 +151,7 @@ set +e; wait "$SWEEP"; code=$?; set -e
 assert_eq 130 "$code"
 assert_contains "$(cat "$WORK/term.out")" "interrupted"
 while read -r pid; do
-  ! kill -0 "$pid" 2>/dev/null || { kill "$pid"; fail "mutant-sweep: test child $pid outlived a TERM'd sweep"; }
+  ! pid_alive "$pid" || { kill "$pid"; fail "mutant-sweep: test child $pid outlived a TERM'd sweep"; }
 done < "$PIDS"
 leftover="$(find "$TMPDIR" -mindepth 1 -maxdepth 1 -name 'mutant-sweep.*')"
 [[ -z "$leftover" ]] || fail "mutant-sweep: temp root left behind: $leftover"
@@ -177,7 +177,7 @@ HANG="$WORK/hang"; stubs "$HANG"   # a probe that never returns: killed after 5 
 printf '#!/bin/sh\necho $$ > "%s/hang.pid"\nexec sleep 60\n' "$WORK" > "$HANG/python3"; chmod +x "$HANG/python3"
 t0=$SECONDS; nopy_run "$HANG" --check
 assert_eq 3 "$code"; (( SECONDS - t0 < 7 )) || fail "mutant-sweep: a hanging probe took $((SECONDS - t0)) s"
-hp="$(cat "$WORK/hang.pid")"; ! kill -0 "$hp" 2>/dev/null || { kill "$hp"; fail "mutant-sweep: the hung probe $hp outlived the launcher"; }
+hp="$(cat "$WORK/hang.pid")"; ! pid_alive "$hp" || { kill "$hp"; fail "mutant-sweep: the hung probe $hp outlived the launcher"; }
 FALL="$WORK/fall"; mkdir -p "$FALL"   # python3 broken, python is a real Python 3: the sweep runs on python
 printf '#!/bin/sh\nexit 1\n' > "$FALL/python3"; chmod +x "$FALL/python3"; ln -sf "$(command -v python3)" "$FALL/python"
 bounded env PATH="$FALL:$PATH" "$TOOL" --base "$BASE" --map weak.sh=true
