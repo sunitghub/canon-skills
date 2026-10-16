@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-16-2026 12:43
+learnings-sweep last run: 10-16-2026 17:55
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-16 | [t-2194](.tickets/t-2194/learnings.md) | A test that appends canon's tools/ to PATH passes in a clean cloud box but runs the installed copy on a dev Mac: the cloud suite was green and merge-pr's Mac run failed; prepend PATH in every test that runs a printed bare command. | UNPROMOTED |
 | 2026-10-16 | [t-b2e5](.tickets/t-b2e5/learnings.md) | When a remote agent cannot run its own gates (plan mode reached its evaluator), the fallback is to move the close to the user's machine, never a report the builder writes or an override; and a fallback path must clean up after itself (the results branch import-results kept). | UNPROMOTED |
 | 2026-10-16 | [t-bad4](.tickets/t-bad4/learnings.md) | A child put in its own process group (so an interrupt can stop all of it) no longer gets the terminal's hang-up: trap HUP with INT and TERM. And under `set -e` a trap's last cleanup command that fails (killing an already-dead group) ends the trap before its message: end each cleanup with `|| true`. | UNPROMOTED |
 | 2026-10-16 | [t-90bc](.tickets/t-90bc/learnings.md) | Tests that ask `kill -0` whether a process is gone are wrong wherever PID 1 does not reap orphans (a Claude cloud container): a zombie answers alive. Count a zombie as dead (`ps -o stat=`), falling back to `kill -0` where ps has no `-o`. And a cloud session that planned in plan mode passes it to its gate agents: the close then has to happen on the Mac. | UNPROMOTED |
