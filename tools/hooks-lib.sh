@@ -38,12 +38,12 @@ _init_git_precommit() {
   local local_hook="$hook.local"
   if [[ -f "$hook" ]] && ! grep -qF "$marker" "$hook" 2>/dev/null; then
     if [[ -e "$local_hook" ]]; then
-      # A foreign hook over canon's while pre-commit.local is taken: a tool re-installed itself.
-      # Report, never move or overwrite (t-2194) — moving again would loop with that tool.
+      # A foreign hook over canon's while pre-commit.local is taken: a tool re-installed itself, or a stale
+      # .local is left over. Report, never move or overwrite (t-2194) — moving again would loop with that tool.
       echo "  [fail]  $hook already exists and is not canon-managed and $local_hook is taken; both left as is."
-      echo "          A tool (husky, lefthook, code-review-graph, ...) probably re-installed its own"
-      echo "          pre-commit over canon's. Merge them by hand, or move"
-      echo "          one aside and re-run: skills.sh refresh $project_dir"
+      echo "          Either a tool (husky, lefthook, code-review-graph, ...) re-installed its own pre-commit"
+      echo "          over canon's, or a stale pre-commit.local is left over. Merge them by hand, or move"
+      echo "          one aside and re-run: skills.sh refresh \"$project_dir\""
       return 1
     fi
     local move_cmd="mv \"$hook\" \"$local_hook\" && skills.sh refresh \"$project_dir\""
