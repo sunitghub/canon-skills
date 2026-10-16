@@ -6,6 +6,13 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-16
+
+The GitHub workflow runs end to end from the command line: issues become tickets (`tkt sync-issues`) or tickets become issues (`tkt send-issue`), a Claude cloud session works them, `tkt import-results` brings the results back and `tkt merge-pr` checks and merges the PR. Update with `canon update`. No daemon change: nothing to restart.
+
+### Changed
+- `docs/setup.md` › Claude cloud sessions: the environment's setup script also installs the Go toolchain canon pins (read from the installed release; network hosts listed) and copies canon's reviewer and evaluator agents, so a cloud sprint can run its close gates and the full suite.
+
 ### Added
 - `tkt sync-issues [--dry-run]`: each open issue on your `origin` GitHub repo labelled `canon` that no ticket links to becomes a ticket (type and priority from labels such as `bug` and `p1`; a body in the send-issue layout keeps its Acceptance and Plan). It only reads GitHub, and skips pull requests and issues `tkt send-issue` made. The label is what admits an issue, so keep it for issues you have read: anyone who can open issues may get it from an issue template, and an author can still edit the text after it is labelled. Run `--dry-run` first (`t-4cd8`).
 
