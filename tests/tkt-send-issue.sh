@@ -33,7 +33,7 @@ id="$("$TKT" create "Board burns a CPU core" -t task -p 1 -d "## Problem
 The board uses a core while idle.")"
 d=".tickets/$id"
 printf '# Acceptance\n\n## Criteria\nThe checklist of behavior that must be true before the sprint can close.\n<!-- Add items -->\n\n- [ ] Idle CPU under 5%%\n  over 60 s\n\n## Test Plan\n- [ ] Measure before and after\n\n## QA\nEdge cases and sign-off.\n- [ ] Tested locally\n\n## Wrapup Gates\n| Gate | Status | Reason |\n|------|--------|--------|\n| eval | ran | pass |\n\n## Results\nAll criteria met on the first run.\n' > "$d/acceptance.md"
-printf '# Plan\n\n## Sign-off\n- [x] Plan approved\n\n## Approach\n1. Profile the idle board.\n2. Fix the hot loop.\n```\n<!-- kept: inside a fence -->\n## not a heading\n```\n<!-- dropped: outside a fence -->\n3. Measure again.\n\n## Files\n`server.py`\n\n## Decisions\n- none\n' > "$d/plan.md"
+printf '# Plan\n\n## Sign-off\n- [x] Plan approved\n\n## Approach\n1. Profile the idle board.\n2. Fix the hot loop.\n```\n<!-- kept: inside a fence -->\n## Files\n```\n<!-- dropped: outside a fence -->\n3. Measure again.\n\n## Files\n`server.py`\n\n## Decisions\n- none\n' > "$d/plan.md"
 printf '# Research: x\n\n- The board polls every 8 s.\n' > "$d/research.md"
 sig() { cksum < "$d/ticket.md"; }
 
@@ -64,8 +64,8 @@ assert_grep '^- \[ \] Idle CPU under 5%$' "$STUB_BODY"
 assert_grep '^  over 60 s$' "$STUB_BODY"
 assert_grep '^1. Profile the idle board.$' "$STUB_BODY"
 # t-8543: a fenced block is kept as written: its comment and its "## " line stay, inside Approach, not a section of their own.
-approach="$(awk '/^## Approach$/ { f = 1; next } /^## Files$/ { f = 0 } f' "$STUB_BODY")"
-assert_eq $'1. Profile the idle board.\n2. Fix the hot loop.\n```\n<!-- kept: inside a fence -->\n## not a heading\n```\n3. Measure again.' "$(printf '%s' "$approach" | awk 'NF { s = 1 } s' | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}')"
+approach="$(awk '/^```/ { fence = !fence } !fence && /^## Approach$/ { f = 1; next } !fence && /^## Files$/ { f = 0 } f' "$STUB_BODY")"
+assert_eq $'1. Profile the idle board.\n2. Fix the hot loop.\n```\n<!-- kept: inside a fence -->\n## Files\n```\n3. Measure again.' "$(printf '%s' "$approach" | awk 'NF { s = 1 } s' | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}')"
 assert_grep '^- The board polls every 8 s.$' "$STUB_BODY"
 assert_grep "^<!-- canon:ticket $id -->\$" "$STUB_BODY"
 grep -q 'The checklist of behavior\|Edge cases and sign-off\|Add items' "$STUB_BODY" && fail "template prompts or comments leaked into the issue"
