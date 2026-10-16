@@ -1302,6 +1302,91 @@ cmd_sync_issues() {
   if $dry; then echo "dry run: $made to create, nothing written"; else echo "sync-issues: $made created"; fi
 }
 
+# cmd_merge_pr <id> [--pr N] [--test CMD] [--yes] — t-4718: checks a cloud ticket's PR and merges it, on the user's machine.
+# Every check comes before any write: the evaluator passed on the PR's very head; the PR is open, from this repo (the
+# suite runs its code here), mergeable and clean; the test command passes on base + PR in a scratch clone. Then it asks,
+# and merges with --match-head-commit (GitHub refuses if the head moved) from outside any checkout, so --delete-branch
+# never touches the user's local branches.
+cmd_merge_pr() {
+  local id="" pr="" tcmd="" tset=false yes=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --pr)   pr="${2:-}"; shift 2 || { echo "Error: --pr needs a number" >&2; exit 1; } ;;
+      --test) tcmd="${2:-}"; tset=true; shift 2 || { echo "Error: --test needs a command" >&2; exit 1; } ;;
+      --yes)  yes=true; shift ;;
+      -*) echo "Unknown option: $1" >&2; exit 1 ;;
+      *)  [[ -z "$id" ]] && id="$1"; shift ;;
+    esac
+  done
+  [[ -n "$id" ]] || { echo "Usage: tkt merge-pr <id> [--pr N] [--test CMD] [--yes]" >&2; exit 1; }
+  [[ -z "$pr" || "$pr" =~ ^[0-9]+$ ]] || { echo "merge-pr: --pr takes a PR number" >&2; exit 1; }
+  local file tdir root repo; file="$(find_ticket "$id")"; tdir="$(dirname "$file")"; id="$(get_field "$file" id)"
+  root="$(git -C "$tdir" rev-parse --show-toplevel)" || exit 1
+  repo="$(_gh_origin_repo "$root" merge-pr)" || exit 1
+  command -v gh >/dev/null 2>&1 || { echo "merge-pr: needs the GitHub CLI: install gh, then run: gh auth login" >&2; exit 1; }
+  local verdict graded; read -r verdict graded < <(_eval_verdict_head "$tdir")
+  [[ "$verdict" == pass && "$graded" != - ]] \
+    || { echo "merge-pr: $id has no passing evaluator verdict with a graded-head (eval-report.md: ${verdict/#-/none}); import the results first" >&2; exit 1; }
+  local issue=""; issue="$(get_field "$file" github)"; [[ "$issue" == "$repo#"* ]] && issue="${issue##*#}" || issue=""
+  if [[ -z "$pr" ]]; then
+    [[ -n "$issue" ]] || { echo "merge-pr: $id has no github: $repo#<n> line to find its PR by; pass --pr N" >&2; exit 1; }
+    local found
+    found="$(gh pr list --repo "$repo" --state open --search "Fixes #$issue in:body" --json number,body \
+      --jq ".[] | select(.body | test(\"(?i)\\\\bfixes #$issue\\\\b\")) | .number" 2>&1)" \
+      || { echo "merge-pr: gh could not list PRs on $repo: $found" >&2; exit 1; }
+    [[ "$(printf '%s' "$found" | grep -c .)" == 1 ]] \
+      || { echo "merge-pr: $([[ -n "$found" ]] && echo "several open PRs say" || echo "no open PR says") Fixes #$issue on $repo; pass --pr N" >&2; exit 1; }
+    pr="$found"
+  fi
+  local info st mg ms head base cross
+  info="$(gh pr view "$pr" --repo "$repo" --json state,mergeable,mergeStateStatus,headRefOid,baseRefName,isCrossRepository \
+    --jq '[.state, .mergeable, .mergeStateStatus, .headRefOid, .baseRefName, .isCrossRepository] | @tsv' 2>&1)" \
+    || { echo "merge-pr: gh could not read PR #$pr on $repo: $info" >&2; exit 1; }
+  IFS=$'\t' read -r st mg ms head base cross <<< "$info"
+  [[ "$st" == OPEN ]] || { echo "merge-pr: PR #$pr is $st, not open" >&2; exit 1; }
+  [[ "$cross" == false ]] || { echo "merge-pr: PR #$pr comes from a fork; its code would run here, so merge it on GitHub after reading it" >&2; exit 1; }
+  [[ "$head" == "$graded"* ]] || { echo "merge-pr: PR #$pr head $head is not the commit the evaluator graded ($graded): re-run the gates on it" >&2; exit 1; }
+  if [[ "$mg" != MERGEABLE || "$ms" != CLEAN ]]; then
+    if [[ "$ms" == BLOCKED ]]; then echo "merge-pr: PR #$pr is blocked by a branch rule (a required review or check): https://github.com/$repo/pull/$pr" >&2
+    else echo "merge-pr: PR #$pr cannot merge cleanly (mergeable: $mg, state: $ms)" >&2; fi
+    exit 1
+  fi
+  # The suite on what main will hold: base + the PR, in a scratch clone.
+  local tmp url; tmp="$(mktemp -d "${TMPDIR:-/tmp}/tkt-merge.XXXXXX")"
+  # shellcheck disable=SC2064  # expand now: $tmp is local
+  trap "rm -rf '$tmp'" EXIT
+  url="$(git -C "$root" remote get-url origin)"
+  # Nothing before the prompt reads the terminal (</dev/null): a typed-ahead answer is the prompt's alone.
+  git clone -q "$root" "$tmp/w" < /dev/null 2>/dev/null \
+    && git -C "$tmp/w" fetch -q "$url" "+refs/heads/$base:refs/remotes/o/$base" "+refs/pull/$pr/head:refs/remotes/o/pr" < /dev/null \
+    || { echo "merge-pr: could not fetch $base and PR #$pr from origin" >&2; exit 1; }
+  [[ "$(git -C "$tmp/w" rev-parse o/pr)" == "$head" ]] || { echo "merge-pr: PR #$pr moved while checking it; run merge-pr again" >&2; exit 1; }
+  git -C "$tmp/w" checkout -q -B merge-pr-check "o/$base" < /dev/null \
+    && git -C "$tmp/w" -c user.name=canon -c user.email=canon@localhost merge -q --no-edit o/pr < /dev/null >/dev/null 2>&1 \
+    || { echo "merge-pr: PR #$pr does not merge into $base here" >&2; exit 1; }
+  if ! $tset && [[ -x "$tmp/w/scripts/test.sh" ]]; then tcmd="scripts/test.sh"; fi
+  if [[ -z "$tcmd" ]]; then
+    echo "merge-pr: no test command (pass --test): merging on the gates alone"
+  else
+    echo "merge-pr: running $tcmd on $base + PR #${pr}…"
+    if ! (cd "$tmp/w" && bash -c "$tcmd") < /dev/null > "$tmp/test.log" 2>&1; then
+      echo "merge-pr: $tcmd failed on $base + PR #$pr; not merging. Last lines:" >&2; tail -30 "$tmp/test.log" >&2; exit 1
+    fi
+    echo "merge-pr: $tcmd passed"
+  fi
+  if ! $yes; then
+    [[ -t 0 ]] || { echo "merge-pr: no terminal to ask on; pass --yes to merge without asking" >&2; exit 1; }
+    local ans; printf 'Merge PR #%s into %s?%s [y/N] ' "$pr" "$base" "${issue:+ This also closes #$issue.}"
+    read -r ans || ans=""
+    [[ "$ans" == y || "$ans" == Y ]] || { echo "merge-pr: not merged"; return 0; }
+  fi
+  local out; out="$(cd "$tmp" && gh pr merge "$pr" --repo "$repo" --merge --delete-branch --match-head-commit "$head" 2>&1)" \
+    || { echo "merge-pr: gh could not merge PR #$pr: $out" >&2; exit 1; }
+  local sha; sha="$(gh pr view "$pr" --repo "$repo" --json mergeCommit --jq '.mergeCommit.oid' 2>/dev/null || true)"
+  set_or_add_field "$file" merged "${sha:-PR #$pr}"
+  echo "Merged PR #$pr into $base${sha:+ ($sha)}. Update your checkout: git pull"
+}
+
 # cmd_export <id> — t-554c: at the close of a cloud sprint, sends .tickets/<id>/ back. A tracked .tickets/ rides in the PR;
 # an ignored one (canon's own) goes to the branch canon-results/<id>, built from a temporary index so the checkout and
 # the real index are never touched, holding only that folder.
@@ -1343,6 +1428,14 @@ cmd_export() {
 # cmd_import_results <id> [--pr N] — t-554c: brings a cloud sprint's .tickets/<id>/ back from canon-results/<id>. Files
 # arrive byte-for-byte; a differing local file is kept in .before-import/; the close already happened in the cloud, so
 # this only reports it. The remote branch is deleted only after the files are written.
+# _eval_verdict_head <ticket dir>: prints "<verdict> <graded-head>" from eval-report.md ("-" for either when absent).
+_eval_verdict_head() {
+  local v g
+  v="$(grep -m1 -E '^(pass|fail):' "$1/eval-report.md" 2>/dev/null | cut -d: -f1 || true)"
+  g="$(sed -n 's/^graded-head: *\([0-9a-f]\{7,40\}\).*/\1/p' "$1/eval-report.md" 2>/dev/null | head -1 || true)"
+  printf '%s %s\n' "${v:--}" "${g:--}"
+}
+
 cmd_import_results() {
   local id="" pr=""
   while [[ $# -gt 0 ]]; do
@@ -1379,10 +1472,10 @@ cmd_import_results() {
   [[ -n "$gh_line" && -z "$(get_field "$tdir/ticket.md" github)" ]] && set_or_add_field "$tdir/ticket.md" github "$gh_line"
   local st verdict graded rc=0
   st="$(get_field "$tdir/ticket.md" status)"
-  verdict="$(grep -m1 -E '^(pass|fail):' "$tdir/eval-report.md" 2>/dev/null | cut -d: -f1 || true)"
-  graded="$(sed -n 's/^graded-head: *\([0-9a-f]\{7,40\}\).*/\1/p' "$tdir/eval-report.md" 2>/dev/null | head -1)"
+  read -r verdict graded < <(_eval_verdict_head "$tdir")
   echo "import-results: $n files into $rel/ ($kept local files kept in $rel/.before-import/)"
   echo "  status: ${st:-unknown}$([[ "$st" == closed ]] || echo '  (expected closed: the cloud sprint did not finish)')"
+  [[ "$verdict" == - ]] && verdict=""; [[ "$graded" == - ]] && graded=""
   echo "  evaluator: ${verdict:-no eval-report.md}  graded-head: ${graded:-none}"
   if [[ -n "$pr" ]]; then
     local prh; prh="$(cd "$root" && gh pr view "$pr" --json headRefOid --jq .headRefOid 2>&1)" || { echo "import-results: gh could not read PR #$pr: $prh" >&2; rc=1; }
@@ -1456,6 +1549,9 @@ Commands:
                             sprint import-issue in the cloud session).
   sync-issues [--dry-run]   Make a ticket of each open issue on origin labelled canon
                             that no ticket links to (labels set type and pN priority).
+  merge-pr <id> [--pr N] [--test CMD] [--yes]
+                            Check a cloud ticket's PR (evaluator passed on its head,
+                            mergeable, suite green on base + PR) and merge it after a y.
   export <id> [--public]    Send a cloud sprint's .tickets/<id>/ back: with the PR
                             when .tickets/ is tracked, else to canon-results/<id>.
   import-results <id> [--pr N]
@@ -1490,6 +1586,7 @@ main() {
     send-issue)     cmd_send_issue "$@" ;;
     import-issue)   cmd_import_issue "$@" ;;
     sync-issues)    cmd_sync_issues "$@" ;;
+    merge-pr)       cmd_merge_pr "$@" ;;
     export)         cmd_export "$@" ;;
     import-results) cmd_import_results "$@" ;;
     help|--help|-h) cmd_help ;;

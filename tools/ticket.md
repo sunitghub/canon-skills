@@ -35,6 +35,7 @@ tkt import-issue <N> [--body-file F]  # in the cloud session: rebuild .tickets/<
 tkt export <id> [--public]          # at the cloud close: send .tickets/<id>/ back (with the PR, or to canon-results/<id>)
 tkt import-results <id> [--pr N]    # on your machine: bring canon-results/<id> back; local edits kept in .before-import/
 tkt sync-issues [--dry-run]         # make a ticket of each open issue labelled canon that no ticket links to (labels: bug|feature|task|chore|epic, p0-p4)
+tkt merge-pr <id> [--pr N] [--test CMD] [--yes]  # on your machine: check a cloud ticket's PR (evaluator passed on its head, own repo, mergeable, suite green on base + PR) and merge it after a y
 ```
 
 `tkt compact` touches only closed or cancelled tickets whose `ticket.md` is older than DAYS. It deletes the raw
