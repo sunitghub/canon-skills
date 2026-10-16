@@ -104,7 +104,8 @@ Claude subscription, with no API key. The ticket goes to your repo as a GitHub i
    session to run `sprint import-issue N`, which rebuilds the ticket (an approved plan stays approved) and starts the
    sprint; you approve and confirm in that session as you would locally, and the close happens there.
 4. At the close the session runs `tkt export <id>`. If your project commits `.tickets/`, the ticket goes back inside
-   the PR. If not, it is pushed to a branch `canon-results/<id>` that is never merged.
+   the PR. If not, it is pushed to a branch `canon-results/<id>` that is never merged. A public repo needs `--public`,
+   as with `send-issue`: the folder holds the ticket's notes and evidence logs.
 5. On your machine, `tkt import-results <id> --pr <PR number>` brings that branch back: every file byte-for-byte, a
    local file that differs kept in `.tickets/<id>/.before-import/`, and a report of the status, the evaluator's verdict
    and whether it graded the PR's head commit. Then it deletes the branch. Review and merge the PR on GitHub.

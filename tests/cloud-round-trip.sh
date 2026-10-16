@@ -16,7 +16,7 @@ cat > "$W/bin/gh" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$STUB_LOG"
 case "$1 $2" in
-  "repo view")    echo PRIVATE ;;
+  "repo view")    echo "${STUB_VIS:-PRIVATE}" ;;
   "label create") exit 0 ;;
   "label list")   echo canon ;;
   "issue create") while [[ $# -gt 0 ]]; do [[ "$1" == --body-file ]] && cp "$2" "$STUB_BODY"; shift; done
@@ -86,6 +86,8 @@ assert_grep '^1. Profile it.$' ".tickets/$id/plan.md"
 # ---- 2. export → import-results ----
 git init -q --bare "$W/origin.git"
 X="$W/cloud-x"; git clone -q "$W/origin.git" "$X" 2>/dev/null; cd "$X"
+# origin looks like GitHub (export checks its visibility); pushes still land in the bare repo.
+git remote set-url origin https://github.com/acme/app.git && git config url."$W/origin.git".pushInsteadOf https://github.com/acme/app.git
 printf '.tickets/\n' > .gitignore && git add .gitignore && git commit -qm init && git push -q origin HEAD:main
 mkdir -p ".tickets/$id/evidence" && cp "$e/ticket.md" "$e/acceptance.md" ".tickets/$id/"
 sed -i.bak 's/^status: in_progress$/status: closed/' ".tickets/$id/ticket.md" && rm ".tickets/$id/ticket.md.bak"
@@ -94,6 +96,10 @@ printf 'cloud plan\n' > ".tickets/$id/plan.md"
 printf '\x00\x01binary\xff' > ".tickets/$id/evidence/report.json"
 printf '/tmp/x\n' > ".tickets/$id/.cockpit-cwd"
 st_before="$(git status --porcelain)"; idx_before="$(git ls-files -s | cksum)"
+# A public repo: refused, nothing pushed.
+rc=0; out="$(STUB_VIS=PUBLIC "$TKT" export "$id" 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "export to a public repo should be refused"; assert_contains "$out" "acme/app is PUBLIC"
+[[ -z "$(git --git-dir="$W/origin.git" branch --list "canon-results/*")" ]] || fail "a refused export pushed a branch"
 out="$("$TKT" export "$id" 2>/dev/null)"
 assert_contains "$out" "pushed .tickets/$id/ to canon-results/$id"
 files="$(git --git-dir="$W/origin.git" ls-tree -r --name-only "canon-results/$id" | tr '\n' ' ')"
@@ -103,6 +109,7 @@ assert_eq "$idx_before" "$(git ls-files -s | cksum)"
 
 # Tracked .tickets/: nothing pushed, told to commit it with the PR.
 T="$W/tracked"; git clone -q "$W/origin.git" "$T" 2>/dev/null; cd "$T"
+git remote set-url origin https://github.com/acme/app.git
 rm -f .gitignore; mkdir -p ".tickets/$id" && cp "$e/ticket.md" ".tickets/$id/"
 assert_contains "$("$TKT" export "$id")" "commit it on the PR branch"
 assert_eq "1" "$(git --git-dir="$W/origin.git" branch --list "canon-results/*" | grep -c .)"
@@ -137,6 +144,22 @@ if [[ "$(id -u)" != 0 ]]; then
 else
   echo "cloud-round-trip: SKIP unwritable-folder case: running as root ignores permissions" >&2
 fi
+
+# A symlink where a ticket file goes (a cloned repo can commit one): nothing is written through it.
+printf 'outside\n' > "$W/outside.txt"
+rm -f ".tickets/$id/plan.md" && ln -s "$W/outside.txt" ".tickets/$id/plan.md"
+cd "$X" && "$TKT" export "$id" >/dev/null 2>&1 && cd "$L"
+rc=0; out="$("$TKT" import-results "$id" 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "import-results through a symlink should be refused"; assert_contains "$out" "refusing to write through a symlink: $id/plan.md"
+assert_eq "outside" "$(cat "$W/outside.txt")"
+[[ -n "$(git --git-dir="$W/origin.git" branch --list "canon-results/$id")" ]] || fail "a refused import deleted the branch"
+cd "$C"; rm -f ".tickets/$id/research.md" && ln -s "$W/outside.txt" ".tickets/$id/research.md"
+rc=0; out="$("$TKT" import-issue 57 --body-file "$STUB_BODY" --force 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "import-issue through a symlink should be refused"; assert_contains "$out" "refusing to write through a symlink"
+assert_eq "outside" "$(cat "$W/outside.txt")"
+cd "$L"; rm -f ".tickets/$id/plan.md"; git --git-dir="$W/origin.git" branch -D "canon-results/$id" >/dev/null
+rc=0; out="$("$TKT" import-results ../etc 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "a non-ticket id should be refused"; assert_contains "$out" "not a ticket id"
 
 # No results branch: a clear refusal.
 rc=0; out="$("$TKT" import-results "$id" 2>&1)" || rc=$?

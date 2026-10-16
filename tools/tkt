@@ -1017,6 +1017,29 @@ _gh_origin_repo() {   # _gh_origin_repo <root> <label>: prints origin's GitHub o
   fi
 }
 
+# _repo_visibility <repo>: PUBLIC or PRIVATE, from gh when it can answer, else from an anonymous request (a public repo
+# answers 200, a private one 404). Prints nothing when neither can tell.
+_repo_visibility() {
+  local v
+  if command -v gh >/dev/null 2>&1 && v="$(gh repo view "$1" --json visibility --jq .visibility 2>/dev/null)" && [[ -n "$v" ]]; then
+    printf '%s\n' "$v"; return 0
+  fi
+  case "$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "https://github.com/$1" 2>/dev/null)" in
+    200) echo PUBLIC ;; 404) echo PRIVATE ;;
+  esac
+}
+
+# _safe_ticket_path <tickets dir> <path>: refuse a path that is, or goes through, a symlink (t-554c). A cloned repo can
+# commit .tickets/<id>/plan.md as a link to a workflow or a dotfile; importing issue text through it would write there.
+_safe_ticket_path() {
+  local base="$1" p="$2"
+  while [[ "$p" == "$base"/* ]]; do
+    [[ -L "$p" ]] && { echo "refusing to write through a symlink: ${p#"$base"/}" >&2; return 1; }
+    p="$(dirname "$p")"
+  done
+  return 0
+}
+
 cmd_send_issue() {
   local id="" dry=false public=false
   while [[ $# -gt 0 ]]; do
@@ -1145,12 +1168,15 @@ cmd_import_issue() {
   # A "# " line inside a fenced code block (a shell comment) is content, not a part.
   awk -v d="$tmp" '/^```/ { fence = !fence } !fence && /^# / { name = substr($0, 3); f = d "/part-" name; printf "" > f; next } name != "" && !/^<!-- canon:ticket / { print >> f }' "$tmp/body"
   part() { local f="$tmp/part-$1"; [[ -f "$f" ]] || return 0; awk 'NF { s = 1 } s' "$f" | awk '{ a[NR] = $0 } END { while (NR && a[NR] == "") NR--; for (i = 1; i <= NR; i++) print a[i] }' | grep -vx '(none yet)' || true; }
-  local tdir="$dir/$id"; mkdir -p "$tdir"
+  local tdir="$dir/$id"
+  _safe_ticket_path "$dir" "$tdir/ticket.md" || exit 1
+  local f; for f in acceptance.md plan.md research.md; do _safe_ticket_path "$dir" "$tdir/$f" || exit 1; done
+  mkdir -p "$tdir"
   local desc acc plan res; desc="$(part Description)"; acc="$(part Acceptance)"; plan="$(part Plan)"; res="$(part Research)"
   [[ -n "$acc" ]] && printf '# Acceptance\n\n<!-- Keep the Ticket line below unchanged. -->\nTicket: `%s`\n\n%s\n' "$id" "$acc" > "$tmp/acceptance.md"
   [[ -n "$plan" ]] && printf '# Plan\n\n<!-- Keep the Ticket line below unchanged. -->\nTicket: `%s`\n\n%s\n' "$id" "$plan" > "$tmp/plan.md"
   [[ -n "$res" ]] && printf '# Research: %s\n\n%s\n' "$id" "$res" > "$tmp/research.md"
-  local f bad=""
+  local bad=""
   for f in acceptance.md plan.md research.md; do
     [[ -f "$tmp/$f" && -f "$tdir/$f" ]] && ! cmp -s "$tmp/$f" "$tdir/$f" && bad="$bad $f"
   done
@@ -1177,12 +1203,23 @@ cmd_import_issue() {
 # an ignored one (canon's own) goes to the branch canon-results/<id>, built from a temporary index so the checkout and
 # the real index are never touched, holding only that folder.
 cmd_export() {
-  local id="${1:-}"; [[ -z "$id" ]] && { echo "Usage: tkt export <id>" >&2; exit 1; }
+  local id="" public=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in --public) public=true; shift ;; -*) echo "Unknown option: $1" >&2; exit 1 ;; *) [[ -z "$id" ]] && id="$1"; shift ;; esac
+  done
+  [[ -z "$id" ]] && { echo "Usage: tkt export <id> [--public]" >&2; exit 1; }
   local file tdir root rel; file="$(find_ticket "$id")"; id="$(get_field "$file" id)"; tdir="$(dirname "$file")"
   root="$(git -C "$tdir" rev-parse --show-toplevel)" || exit 1
   rel=".tickets/$id"
   if ! git -C "$root" check-ignore -q "$rel/ticket.md"; then
     echo "export: .tickets/ is tracked here, so $rel/ goes back with the PR: commit it on the PR branch."; return 0
+  fi
+  # The folder holds notes and evidence logs: like send-issue, a public repo needs --public.
+  local repo vis=""; repo="$(_gh_origin_repo "$root" export 2>/dev/null)" && vis="$(_repo_visibility "$repo")"
+  if [[ "$vis" != PRIVATE ]] && ! $public; then
+    if [[ "$vis" == PUBLIC ]]; then echo "export: $repo is PUBLIC: anyone could read this ticket's notes and evidence on canon-results/$id." >&2
+    else echo "export: could not tell whether origin is public (it is not on GitHub, or gh and github.com did not answer)." >&2; fi
+    echo "  Push it anyway with: tkt export $id --public" >&2; exit 1
   fi
   local idx; idx="$(mktemp "${TMPDIR:-/tmp}/tkt-export-idx.XXXXXX")"; rm -f "$idx"
   # shellcheck disable=SC2064  # expand now: $idx is local
@@ -1208,6 +1245,7 @@ cmd_import_results() {
     esac
   done
   [[ -n "$id" ]] || { echo "Usage: tkt import-results <id> [--pr N]" >&2; exit 1; }
+  [[ "$id" =~ ^t-[a-z0-9]+$ ]] || { echo "import-results: not a ticket id: $id" >&2; exit 1; }
   local dir root rel tdir; dir="$(ensure_tickets_dir)"; root="$(dirname "$dir")"; rel=".tickets/$id"; tdir="$dir/$id"
   git -C "$root" fetch -q origin "refs/heads/canon-results/$id" 2>/dev/null \
     || { echo "import-results: origin has no branch canon-results/$id (did the cloud session run tkt export $id?)" >&2; exit 1; }
@@ -1222,6 +1260,7 @@ cmd_import_results() {
   mkdir -p "$tdir"
   while IFS= read -r -d '' f; do
     f="${f#"$tmp/$rel/"}"
+    _safe_ticket_path "$dir" "$tdir/$f" && _safe_ticket_path "$dir" "$tdir/.before-import/$f" || exit 1
     if [[ -f "$tdir/$f" ]] && ! cmp -s "$tmp/$rel/$f" "$tdir/$f"; then
       mkdir -p "$(dirname "$tdir/.before-import/$f")" && cp -p "$tdir/$f" "$tdir/.before-import/$f" || { echo "import-results: could not back up $f; nothing more written" >&2; exit 1; }
       kept=$((kept + 1))
@@ -1303,7 +1342,7 @@ Commands:
   import-issue <N> [--body-file F] [--force]
                             Rebuild .tickets/<id>/ from a send-issue body (used by
                             sprint import-issue in the cloud session).
-  export <id>               Send a cloud sprint's .tickets/<id>/ back: with the PR
+  export <id> [--public]    Send a cloud sprint's .tickets/<id>/ back: with the PR
                             when .tickets/ is tracked, else to canon-results/<id>.
   import-results <id> [--pr N]
                             Bring canon-results/<id> back (local edits kept in
