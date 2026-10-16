@@ -1165,8 +1165,10 @@ cmd_import_issue() {
   title="$(awk -F' · ' '{ t = $4; for (i = 5; i <= NF; i++) t = t " · " $i; print t }' <<< "$hdr")"
   [[ -n "$title" ]] || title="$id"
   # Split the body into its "# " parts; "(none yet)" means the part was empty.
-  # A "# " line inside a fenced code block (a shell comment) is content, not a part.
-  awk -v d="$tmp" '/^```/ { fence = !fence } !fence && /^# / { name = substr($0, 3); f = d "/part-" name; printf "" > f; next } name != "" && !/^<!-- canon:ticket / { print >> f }' "$tmp/body"
+  # Only the five headings send-issue writes start a part; any other "# " line (a note, a shell comment) is content.
+  awk -v d="$tmp" '/^```/ { fence = !fence }
+    !fence && /^# (Description|Acceptance|Plan|Research|Working on this)$/ { name = substr($0, 3); f = d "/part-" name; printf "" > f; next }
+    name != "" && !/^<!-- canon:ticket / { print >> f }' "$tmp/body"
   part() { local f="$tmp/part-$1"; [[ -f "$f" ]] || return 0; awk 'NF { s = 1 } s' "$f" | awk '{ a[NR] = $0 } END { while (NR && a[NR] == "") NR--; for (i = 1; i <= NR; i++) print a[i] }' | grep -vx '(none yet)' || true; }
   local tdir="$dir/$id"
   _safe_ticket_path "$dir" "$tdir/ticket.md" || exit 1
@@ -1183,7 +1185,15 @@ cmd_import_issue() {
   if [[ -n "$bad" ]] && ! $force; then
     echo "import-issue: .tickets/$id/ already has different:$bad. Re-run with --force to replace them." >&2; exit 1
   fi
-  for f in acceptance.md plan.md research.md; do [[ -f "$tmp/$f" ]] && cp "$tmp/$f" "$tdir/$f"; done
+  # --force keeps what it replaces in .before-import/, as import-results does.
+  for f in acceptance.md plan.md research.md; do
+    [[ -f "$tmp/$f" ]] || continue
+    if [[ -f "$tdir/$f" ]] && ! cmp -s "$tmp/$f" "$tdir/$f"; then
+      _safe_ticket_path "$dir" "$tdir/.before-import/$f" || exit 1
+      mkdir -p "$tdir/.before-import" && cp -p "$tdir/$f" "$tdir/.before-import/$f" || { echo "import-issue: could not back up $f" >&2; exit 1; }
+    fi
+    cp "$tmp/$f" "$tdir/$f"
+  done
   if [[ ! -f "$tdir/ticket.md" ]]; then
     {
       printf -- '---\nid: %s\nstatus: open\ncreated: %s\ntype: %s\npriority: %s\neval_override: false\neval_fail_count: 0\n' \
@@ -1286,7 +1296,11 @@ cmd_import_results() {
     if [[ $rc == 0 && -n "$graded" && "$prh" == "$graded"* ]]; then echo "  PR #$pr head $prh: matches graded-head"
     elif [[ $rc == 0 ]]; then echo "  PR #$pr head $prh does NOT match graded-head ${graded:-none}: the evaluator graded other code" >&2; rc=1; fi
   fi
-  git -C "$root" push -q origin --delete "canon-results/$id" 2>/dev/null || echo "  note: could not delete canon-results/$id on origin; delete it by hand" >&2
+  if [[ "$rc" == 0 ]]; then
+    git -C "$root" push -q origin --delete "canon-results/$id" 2>/dev/null || echo "  note: could not delete canon-results/$id on origin; delete it by hand" >&2
+  else
+    echo "  kept canon-results/$id on origin, since a check failed: fix it and run import-results again" >&2
+  fi
   echo "  Add its LEARNINGS.md row locally (learnings-sweep for $id) if it wrote learnings.md."
   return "$rc"
 }

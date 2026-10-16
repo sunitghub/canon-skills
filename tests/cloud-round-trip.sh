@@ -46,7 +46,7 @@ top -l 1
 - Idle under 5%')"
 d=".tickets/$id"
 printf '# Acceptance\n\n## Criteria\n- [ ] Idle CPU under 5%%\n\n## Test Plan\n- [ ] Measure for 60 s\n\n## QA\n- [ ] Tested locally\n\n## Wrapup Gates\n| Gate | Status | Reason |\n|------|--------|--------|\n| eval | ran | pass |\n' > "$d/acceptance.md"
-printf '# Plan\n\n## Sign-off\nTier: normal\n\n- [x] Plan approved\n\n## Approach\n1. Profile it.\n\n## Files\n`server.py`\n' > "$d/plan.md"
+printf '# Plan\n\n## Sign-off\nTier: normal\n\n- [x] Plan approved\n\n## Approach\n1. Profile it.\n# a note in the plan, not a part\n2. Fix it.\n\n## Files\n`server.py`\n' > "$d/plan.md"
 printf '# Research: x\n\n- Polls every 8 s.\n' > "$d/research.md"
 "$TKT" send-issue "$id" >/dev/null
 
@@ -65,6 +65,7 @@ assert_grep '^# a shell comment, not a heading$' "$e/ticket.md"   # a "# " line 
 for h in Criteria "Test Plan" QA "Wrapup Gates"; do assert_eq "$(sec "$A/$d/acceptance.md" "$h")" "$(sec "$e/acceptance.md" "$h")"; done
 for h in Sign-off Approach Files; do assert_eq "$(sec "$A/$d/plan.md" "$h")" "$(sec "$e/plan.md" "$h")"; done
 assert_grep '^- \[x\] Plan approved$' "$e/plan.md"            # sprint start kept the approved plan
+assert_grep '^2. Fix it.$' "$e/plan.md"                        # a top-level "# " line in a section is content, not a part
 assert_grep '^- Polls every 8 s.$' "$e/research.md"
 
 # --body-file: no gh read at all.
@@ -82,6 +83,7 @@ rc=0; out="$("$TKT" import-issue 57 --body-file "$STUB_BODY" 2>&1)" || rc=$?
 assert_eq "my local plan" "$(cat ".tickets/$id/plan.md")"
 "$TKT" import-issue 57 --body-file "$STUB_BODY" --force >/dev/null 2>&1
 assert_grep '^1. Profile it.$' ".tickets/$id/plan.md"
+assert_eq "my local plan" "$(cat ".tickets/$id/.before-import/plan.md")"   # --force kept what it replaced
 
 # ---- 2. export → import-results ----
 git init -q --bare "$W/origin.git"
@@ -139,6 +141,7 @@ cd "$X" && "$TKT" export "$id" >/dev/null 2>&1 && cd "$L"
 STUB_PR_HEAD=0000000000000000000000000000000000000000
 rc=0; out="$("$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "a PR head that differs from graded-head should exit 1"; assert_contains "$out" "does NOT match graded-head"
+[[ -n "$(git --git-dir="$W/origin.git" branch --list "canon-results/$id")" ]] || fail "a failed --pr check deleted canon-results/$id"
 # An import that cannot write keeps the branch on origin, so nothing is lost.
 if [[ "$(id -u)" != 0 ]]; then
   cd "$X" && "$TKT" export "$id" >/dev/null 2>&1 && cd "$L"
