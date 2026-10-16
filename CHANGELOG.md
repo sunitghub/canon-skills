@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-10-16
+
+Code blocks in tickets now survive `tkt show` and `tkt send-issue`. Update with `canon update`. No daemon change: nothing to restart.
+
 ### Fixed
 - `tkt show` (and `show --json`'s `body`, which `sprint status --json` embeds) dropped every description line starting with `# ` or made of `---`, not just the title: a shell comment in a code block or a Markdown rule vanished. Only the title line is dropped now (`t-8543`).
 - `tkt send-issue` dropped `<!--` lines inside a code block and split a section at a `## ` line inside one; code blocks now reach the issue as written (`t-8543`).
