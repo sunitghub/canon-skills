@@ -87,6 +87,17 @@ grep -q 'no acceptance criteria' "$stub/suffixed.err" && fail "a '## Criteria (d
 assert_eq "## Approach (draft)|## Files|" "$(awk '/^# Plan$/ { f = 1; next } /^# / { f = 0 } f && /^## /' "$STUB_BODY" | tr '\n' '|')"
 assert_eq $'1. Sketch it.\n2. Refine it.' "$(awk '/^## Approach \(draft\)$/ { f = 1; next } /^## / { f = 0 } f && NF' "$STUB_BODY")"
 
+# t-c131: ticket files with CRLF line endings list each section once, under its name with no CR, with its lines.
+id5="$("$TKT" create "Crlf ticket" -t task -p 3)"
+printf '# Acceptance\n\n## Criteria\n- [ ] Works on Windows\n\n## QA\n- [ ] Tested locally\n' | sed 's/$/\r/' > ".tickets/$id5/acceptance.md"
+printf '# Plan\n\n## Approach\n1. Handle CRLF.\n\n## Files\n`b.sh`\n' | sed 's/$/\r/' > ".tickets/$id5/plan.md"
+"$TKT" send-issue "$id5" >/dev/null
+assert_eq "## Criteria|## QA|" "$(awk '/^# Acceptance$/ { f = 1; next } /^# / { f = 0 } f && /^## /' "$STUB_BODY" | tr '\n' '|')"
+assert_eq "## Approach|## Files|" "$(awk '/^# Plan$/ { f = 1; next } /^# / { f = 0 } f && /^## /' "$STUB_BODY" | tr '\n' '|')"
+assert_grep '^- \[ \] Works on Windows$' "$STUB_BODY"
+assert_grep '^1. Handle CRLF.$' "$STUB_BODY"
+[[ "$(grep -c $'\r' "$STUB_BODY" || true)" == 0 ]] || fail "a CR reached the issue body"
+
 # Public repo: refused without --public (ticket unchanged), sent with it.
 id2="$("$TKT" create "Public one" -t bug -p 2)"
 export STUB_VIS=PUBLIC; : > "$STUB_LOG"; before="$(cksum < ".tickets/$id2/ticket.md")"
