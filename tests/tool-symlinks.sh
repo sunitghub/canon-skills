@@ -11,6 +11,9 @@ trap 'rm -rf "$W"' EXIT
 export HOME="$W/home" CANON_HOME="$W/home/.canon" TMPDIR="$W/tmp" XDG_CONFIG_HOME="$W/home/.config"
 mkdir -p "$HOME" "$TMPDIR" "$W/abs" "$W/rel" "$W/chain"
 project="$(make_project)"; cd "$project"
+# upkeep-run reads its hash manifest (beside it) only after the skill file: a skill whose hash cannot match makes it refuse
+# there, before any claude call, naming the manifest it read.
+mkdir -p "$W/fake-root/skills/context-check" && printf 'not the real skill\n' > "$W/fake-root/skills/context-check/SKILL.md"
 
 # tool, then its harmless arguments (each reaches the sibling it loads; tkt ls needs ticket-root.sh and a project).
 cases=(
@@ -21,7 +24,7 @@ cases=(
   "subagent-log.sh --help"
   "sprint-headless"
   "sprint-headless-eval"
-  "upkeep-run"
+  "upkeep-run context-check --root $W/fake-root"
   "mutant-sweep --help"
 )
 # The relative link climbs out of rel/: rel/<t> -> ../canon-tools/<t>, and canon-tools -> the real tools/.
