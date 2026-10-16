@@ -63,6 +63,12 @@ set -e
 assert_contains "$out" "already exists and is not canon-managed"
 assert_eq "$orig" "$(cksum < "$p/.git/hooks/pre-commit")"
 [[ ! -e "$p/.git/hooks/pre-commit.local" ]] || fail "no-tty refusal must not create pre-commit.local"
+# The refusal is a failure status (add itself swallows it, so ask the function).
+set +e
+SKILLS_SH_NO_TTY=1 bash -c 'SKILLS_ROOT="$1"; source "$1/tools/skills/prompts.sh"; source "$1/tools/hooks-lib.sh"; _init_git_precommit "$2"' _ "$ROOT" "$p" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "1" "$rc"
 cmd="$(printf '%s\n' "$out" | grep -E '^ +mv .* && skills\.sh refresh ' | sed -E 's/^ +//')"
 [[ -n "$cmd" ]] || fail "refusal must print the mv && skills.sh refresh command; got: $out"
 
@@ -96,6 +102,21 @@ set +e; ( cd "$p" && .git/hooks/pre-commit >/dev/null 2>&1 ); rc=$?; set -e
 assert_eq "7" "$rc"
 echo 0 > "$p/.git/foreign.rc"
 try_commit "$p" || fail "passing foreign hook must let canon's checks and the commit run"
+
+# A pre-commit.local that is not executable is skipped, like git skips a non-executable hook.
+chmod -x "$p/.git/hooks/pre-commit.local"
+echo 9 > "$p/.git/foreign.rc"
+try_commit "$p" || fail "a non-executable pre-commit.local must not run or block"
+chmod +x "$p/.git/hooks/pre-commit.local"
+echo 0 > "$p/.git/foreign.rc"
+
+# Runs from the repo root even when the commit is made from a subdirectory.
+mkdir -p "$p/sub"
+( cd "$p/sub" && echo z >> g.txt && git add g.txt && git -c user.email=t@t.com -c user.name=t commit -q -m sub >/dev/null 2>&1 ) || fail "commit from a subdirectory failed"
+assert_eq "foreign ran:  pwd=$(cd "$p" && pwd -P)" "$(tail -1 "$p/.git/foreign.log")"
+# Invoked directly from a subdirectory (git itself already runs hooks from the root): canon's own cd.
+( cd "$p/sub" && ../.git/hooks/pre-commit >/dev/null 2>&1 )
+assert_eq "foreign ran:  pwd=$(cd "$p" && pwd -P)" "$(tail -1 "$p/.git/foreign.log")"
 
 # Args forwarded: foreign hook sees the arguments canon's hook gets.
 ( cd "$p" && .git/hooks/pre-commit a1 a2 >/dev/null 2>&1 )

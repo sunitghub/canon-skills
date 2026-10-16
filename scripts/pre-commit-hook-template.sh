@@ -1,10 +1,10 @@
 # ── Chained hook (t-2194) ───────────────────────────────────────────────────
 # A hook that was in place before canon's moves to pre-commit.local; it runs first, always, with the same
 # arguments and stdin, from the repo root. Its non-zero exit fails the commit before any canon check.
+_CHAIN_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || _CHAIN_ROOT=""
+[ -z "$_CHAIN_ROOT" ] || cd "$_CHAIN_ROOT" || exit 1
 _CHAIN_HOOK=$(git rev-parse --git-path hooks/pre-commit.local 2>/dev/null) || _CHAIN_HOOK=""
 if [ -n "$_CHAIN_HOOK" ] && [ -x "$_CHAIN_HOOK" ]; then
-  _CHAIN_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || _CHAIN_ROOT=""
-  [ -z "$_CHAIN_ROOT" ] || cd "$_CHAIN_ROOT" || exit 1
   "$_CHAIN_HOOK" "$@" || exit $?
 fi
 
