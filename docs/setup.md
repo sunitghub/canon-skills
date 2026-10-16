@@ -29,7 +29,7 @@ The Cockpit's agent sessions (Scratch, Start sprint) need the **cockpit daemon**
 ~/.canon/tools/skills.sh init
 ```
 
-Installs a git-native `.git/hooks/pre-commit` (enforcement: ticket-direct-close block, high-risk Sign-off gate, test suite, wrapup reminder) and copies the Pi handoff extension when Pi is installed. Canon installs zero Claude Code hooks in `.claude/settings.json` — `HANDOFF.md` is read explicitly by sprint's `sprint start` step and refreshed explicitly by `wrapup`'s doc-refresh step, not injected by a hook. Re-run if you move the canon folder.
+Installs a git-native `.git/hooks/pre-commit` (enforcement: ticket-direct-close block, high-risk Sign-off gate, test suite, wrapup reminder). If a pre-commit hook from another tool already exists, `skills.sh add` asks before moving it to `.git/hooks/pre-commit.local`; canon's hook then runs it first and fails the commit with its exit code, and removing the hook restores it. With no terminal, or on a no, it changes nothing and prints a `mv … && skills.sh refresh` command that does the same without a prompt. It also copies the Pi handoff extension when Pi is installed. Canon installs zero Claude Code hooks in `.claude/settings.json` — `HANDOFF.md` is read explicitly by sprint's `sprint start` step and refreshed explicitly by `wrapup`'s doc-refresh step, not injected by a hook. Re-run if you move the canon folder.
 
 **Step 3 — Register sprint in your project**
 
