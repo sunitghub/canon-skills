@@ -4,7 +4,7 @@
 # a shebang error, so mutation-test is recorded `skipped | no python3` and the close goes on. `--check` runs only the probe.
 set -uo pipefail
 
-# Resolve symlinks so SCRIPT_DIR points to the real file location.
+# Resolve symlinks so DIR points to the real file location.
 _SOURCE="${BASH_SOURCE[0]}"
 while [ -L "$_SOURCE" ]; do
   _DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
