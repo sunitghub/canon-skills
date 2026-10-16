@@ -73,6 +73,8 @@ function evaluate({ reports, baseline, specText, partial }) {
   for (const b of browsers) {
     for (const t of classes[b].skipped) if (!listed('skipped', t, b)) violations.push(`${b}: "${t}" was skipped in some or all runs and is not listed under skipped in the baseline (a skipped test hides a gap: a precondition, or a serial group that stopped after a failure)`);
     for (const t of classes[b].missing) violations.push(`${b}: "${t}" is missing from some runs (a run that did not report every test)`);
+    // t-fb37: a run in which nothing ran proves nothing, --grep or not.
+    for (const r of reports) if (r.browser === b && !Object.keys(r.tests).length) violations.push(`${b}: ${r.run} reported 0 tests, so nothing ran (no Playwright: missing node_modules? or a --grep that matches no test title?)`);
     const floor = (baseline.min_tests || {})[b];
     if (!partial && floor && classes[b].total < floor) violations.push(`${b}: only ${classes[b].total} tests were reported; the baseline expects at least ${floor} (tests disappeared or did not run)`);
   }
