@@ -1209,6 +1209,11 @@ cmd_export() {
   done
   [[ -z "$id" ]] && { echo "Usage: tkt export <id> [--public]" >&2; exit 1; }
   local file tdir root rel; file="$(find_ticket "$id")"; id="$(get_field "$file" id)"; tdir="$(dirname "$file")"
+  # The id comes from ticket.md, which a cloned repo controls: it must be a ticket id naming this very folder, or
+  # ".tickets/$id" could reach outside .tickets/ and push other files.
+  if [[ ! "$id" =~ ^t-[a-z0-9]+$ || "$(basename "$tdir")" != "$id" || -L "$tdir" ]]; then
+    echo "export: $file does not belong to a ticket folder named by its id; nothing pushed" >&2; exit 1
+  fi
   root="$(git -C "$tdir" rev-parse --show-toplevel)" || exit 1
   rel=".tickets/$id"
   if ! git -C "$root" check-ignore -q "$rel/ticket.md"; then

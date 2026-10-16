@@ -107,6 +107,14 @@ assert_eq ".tickets/$id/acceptance.md .tickets/$id/eval-report.md .tickets/$id/e
 assert_eq "$st_before" "$(git status --porcelain)"
 assert_eq "$idx_before" "$(git ls-files -s | cksum)"
 
+# A ticket.md whose id points outside its folder (a cloned repo controls it): refused, nothing pushed.
+mkdir -p .tickets/t-evil1 && printf -- '---\nid: ../../.git\nstatus: closed\n---\n# x\n' > .tickets/t-evil1/ticket.md
+rc=0; out="$("$TKT" export ../../.git 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "export of a ticket whose id leaves its folder should be refused"
+assert_contains "$out" "does not belong to a ticket folder named by its id"
+[[ -z "$(git --git-dir="$W/origin.git" branch --list 'canon-results/../*' 'canon-results/.git*')" ]] || fail "a refused export pushed a branch"
+rm -rf .tickets/t-evil1
+
 # Tracked .tickets/: nothing pushed, told to commit it with the PR.
 T="$W/tracked"; git clone -q "$W/origin.git" "$T" 2>/dev/null; cd "$T"
 git remote set-url origin https://github.com/acme/app.git
