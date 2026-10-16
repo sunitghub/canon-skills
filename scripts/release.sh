@@ -31,12 +31,15 @@ re='^[0-9]+\.[0-9]+\.[0-9]+$'
 tag="v$version"
 
 # the notes: this version's CHANGELOG section, found by its dated header (`## [0.3.0] - 2026-10-08`, never `[0.3.01]` or `[0.3.0-rc1]`)
-section="$(tr -d '\r' < "$REPO_ROOT/CHANGELOG.md" 2>/dev/null | awk -v ver="$version" '
+# awk reads the file itself: piping into an awk that exits at the next header SIGPIPEs the writer, and under pipefail that
+# failed the whole lookup on a large CHANGELOG (t-fef7).
+section="$(awk -v ver="$version" '
   BEGIN { pre = "## [" ver "] - " }
+  { sub(/\r$/, "") }
   f == 0 && index($0, pre) == 1 && substr($0, length(pre) + 1) ~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9][ \t]*$/ { f = 1; print "FOUND"; next }
   f == 1 && /^## / { exit }
   f == 1 { print }
-')" || section=""
+' "$REPO_ROOT/CHANGELOG.md" 2>/dev/null)" || section=""
 [[ "$section" == FOUND* ]] || die "CHANGELOG.md has no dated '## [$version] - YYYY-MM-DD' section"
 notes="$(printf '%s\n' "${section#FOUND}" | awk 'NF { p = 1 } p { b[++n] = $0 } END { while (n > 0 && b[n] !~ /[^ \t]/) n--; for (i = 1; i <= n; i++) print b[i] }')"
 [ -n "$notes" ] || die "the CHANGELOG.md section for $version is empty"

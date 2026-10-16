@@ -89,6 +89,23 @@ d="$(fresh)"; git -C "$d" "${ident[@]}" tag local-only; : > "$GH_LOG"
 rel "$d" >/dev/null
 assert_eq "v0.3.0" "$(git -C "$d.pub.git" tag)"
 
+# t-fef7: a CHANGELOG far larger than a pipe buffer after the section (the real one passed 26 KB), and a CRLF one, give the
+# same notes. Reading it through `tr | awk` lost the section to SIGPIPE under pipefail.
+for shape in large crlf; do
+  d="$(fresh)"; : > "$GH_LOG"
+  if [[ "$shape" == large ]]; then
+    { printf '%s\n' "$CHANGELOG_OK"; for i in $(seq 1 20000); do printf '## [0.1.%s] - 2026-01-01\n- an older change with enough text to fill the pipe quickly\n' "$i"; done; } > "$d/CHANGELOG.md"
+    [[ "$(wc -c < "$d/CHANGELOG.md")" -gt 1000000 ]] || fail "the large CHANGELOG is under 1 MB"
+  else
+    printf '%s\n' "$CHANGELOG_OK" | sed 's/$/\r/' > "$d/CHANGELOG.md"
+  fi
+  git -C "$d" "${ident[@]}" commit -qam "$shape changelog"; git -C "$d" push -q public main 2>/dev/null
+  set +e; out="$(rel "$d")"; code=$?; set -e
+  [[ "$code" == 0 ]] || fail "release: a $shape CHANGELOG was refused: $out"
+  assert_eq "$EXPECT_NOTES" "$(cat "$GH_NOTES")"
+done
+echo "release: a CHANGELOG over 1 MB, and a CRLF one, give exactly the section"
+
 # The rest of the tree may be dirty: a tag names a commit, so only VERSION and CHANGELOG.md must match HEAD.
 d="$(fresh)"; echo scratch > "$d/untracked.txt"; echo '# local edit' >> "$d/scripts/release.sh"; : > "$GH_LOG"
 set +e; out="$(rel "$d")"; code=$?; set -e
