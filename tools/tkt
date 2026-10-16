@@ -1241,16 +1241,21 @@ cmd_sync_issues() {
   # shellcheck disable=SC2064  # expand now: $tmp is local
   trap "rm -rf '$tmp'" EXIT
   local err
-  err="$(gh api --paginate "repos/$repo/issues?labels=canon&state=open&per_page=100" \
-    --jq '.[] | [.number, (if .pull_request then "pr" else "issue" end), ([.labels[].name] | join(","))] | @tsv' 2>&1 > "$tmp/list")" \
+  # One listing holds each issue's labels, title and body, so the canon label and the text it vouches for are the same
+  # snapshot (no second read that could see an edited body or a removed label). Title and body travel base64-encoded.
+  local q='.[] | select(any(.labels[]; .name == "canon")) | [.number, (if .pull_request then "pr" else "issue" end), ([.labels[].name] | join(",")), (.title | @base64), ((.body // "") | @base64)] | @tsv'
+  err="$(gh api --paginate "repos/$repo/issues?labels=canon&state=open&per_page=100" --jq "$q" 2>&1 > "$tmp/list")" \
     || { echo "sync-issues: gh could not list issues on $repo: $err" >&2; exit 1; }
-  # Read every issue first, so a failure part-way creates nothing.
-  local n kind labels
-  while IFS=$'\t' read -r n kind labels; do
+  # Decode every issue first, so a bad entry part-way creates nothing.
+  local n kind labels t64 b64
+  while IFS=$'\t' read -r n kind labels t64 b64; do
     [[ "$n" =~ ^[0-9]+$ && "$kind" == issue ]] || continue
-    err="$(gh api "repos/$repo/issues/$n" --jq '.title + "\n" + (.body // "")' 2>&1 > "$tmp/raw-$n")" \
-      || { echo "sync-issues: gh could not read issue #$n on $repo: $err" >&2; exit 1; }
-    tr -d '\r' < "$tmp/raw-$n" > "$tmp/issue-$n"
+    # base64 --decode accepts garbage on some platforms (macOS prints nothing), so check the alphabet first.
+    [[ "$t64" =~ ^[A-Za-z0-9+/]+=*$ && "$b64" =~ ^[A-Za-z0-9+/]*=*$ ]] \
+      || { echo "sync-issues: could not decode issue #$n from the listing" >&2; exit 1; }
+    { printf '%s' "$t64" | base64 --decode | tr -d '\r\n'; printf '\n'; printf '%s' "$b64" | base64 --decode | tr -d '\r'; } \
+      > "$tmp/issue-$n" 2>/dev/null && [[ -n "$(head -1 "$tmp/issue-$n")" ]] \
+      || { echo "sync-issues: could not decode issue #$n from the listing" >&2; exit 1; }
     printf '%s\t%s\n' "$n" "$labels" >> "$tmp/todo"
   done < "$tmp/list"
   [[ -f "$tmp/todo" ]] || { echo "sync-issues: no open issues labelled canon on $repo"; return 0; }
