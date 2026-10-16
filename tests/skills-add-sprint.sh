@@ -27,7 +27,17 @@ assert_count 0 "@$ROOT" "$project/CLAUDE.md"
 assert_count 0 "@$ROOT" "$project/AGENTS.md"
 
 # AI-SKILLS table written
-assert_count 1 "| sprint | dev | $ROOT/skills/sprint/SKILL.md |" "$project/AGENTS.md"
+assert_count 1 "| sprint | dev | skills/sprint/SKILL.md |" "$project/AGENTS.md"
+
+# t-97e2: the table names no machine path, so another install path (another machine: a cloud session, a teammate,
+# CI) adding the same skill changes no tracked file. A symlink to this install gives a second SKILLS_ROOT.
+assert_count 0 "$ROOT" "$project/AGENTS.md"
+git -C "$project" add -A && git -C "$project" -c user.email=t@t -c user.name=t commit -qm base
+other="$tmp_home/other-machine"; ln -s "$ROOT" "$other"
+"$other/tools/skills.sh" add sprint "$project" >/dev/null
+[ -z "$(git -C "$project" status --porcelain)" ] || fail "add from a second install path changed tracked files: $(git -C "$project" status --porcelain)"
+assert_contains "$("$SKILLS" status "$project")" "sprint                    [ok]"
+"$SKILLS" add sprint "$project" >/dev/null   # point the gitignored links back at this install for the checks below
 
 # Symlinks created
 [[ -L "$project/.claude/skills" ]] || fail "expected .claude/skills symlink after add"
@@ -38,7 +48,7 @@ assert_count 1 "| sprint | dev | $ROOT/skills/sprint/SKILL.md |" "$project/AGENT
 # Re-add is idempotent
 "$SKILLS" add sprint "$project" >/dev/null
 assert_count 0 "@$ROOT" "$project/CLAUDE.md"
-assert_count 1 "| sprint | dev | $ROOT/skills/sprint/SKILL.md |" "$project/AGENTS.md"
+assert_count 1 "| sprint | dev | skills/sprint/SKILL.md |" "$project/AGENTS.md"
 [[ -L "$project/.claude/skills" ]] || fail "expected .claude/skills symlink after re-add"
 [[ "$(readlink "$project/.claude/skills")" == "$ROOT/skills" ]] || fail ".claude/skills stale after re-add"
 
@@ -46,10 +56,10 @@ status_output="$("$SKILLS" status "$project")"
 assert_contains "$status_output" "sprint                    [ok]"
 
 "$SKILLS" add context-check "$project" >/dev/null
-assert_count 1 "| context-check | agent-ops | $ROOT/skills/context-check/SKILL.md |" "$project/AGENTS.md"
+assert_count 1 "| context-check | agent-ops | skills/context-check/SKILL.md |" "$project/AGENTS.md"
 "$SKILLS" remove context-check "$project" >/dev/null
-assert_count 0 "| context-check | agent-ops | $ROOT/skills/context-check/SKILL.md |" "$project/AGENTS.md"
-assert_count 1 "| sprint | dev | $ROOT/skills/sprint/SKILL.md |" "$project/AGENTS.md"
+assert_count 0 "| context-check | agent-ops | skills/context-check/SKILL.md |" "$project/AGENTS.md"
+assert_count 1 "| sprint | dev | skills/sprint/SKILL.md |" "$project/AGENTS.md"
 [[ -L "$project/.claude/skills" ]] || fail "expected shared .claude/skills symlink to remain while sprint is registered"
 [[ -L "$project/.agents/skills" ]] || fail "expected shared .agents/skills symlink to remain while sprint is registered"
 

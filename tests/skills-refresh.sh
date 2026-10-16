@@ -51,8 +51,13 @@ assert_count 0 "@$ROOT/skills/sprint/SKILL.md" "$project/AGENTS.md"
 assert_count 1 "User content." "$project/CLAUDE.md"
 assert_count 1 "User AGENTS content." "$project/AGENTS.md"
 
-# AI-SKILLS table still present
-assert_count 1 "| sprint | dev | $ROOT/skills/sprint/SKILL.md |" "$project/AGENTS.md"
+# AI-SKILLS table still present, its old absolute row and "Source: <path>" note made portable once (t-97e2)
+assert_count 1 "| sprint | dev | skills/sprint/SKILL.md |" "$project/AGENTS.md"
+assert_count 0 "Source: $ROOT" "$project/AGENTS.md"
+assert_count 1 "Paths are relative to the canon install." "$project/AGENTS.md"
+sum_before="$(cksum < "$project/AGENTS.md")"
+"$SKILLS" refresh "$project" >/dev/null
+assert_eq "$sum_before" "$(cksum < "$project/AGENTS.md")"
 
 # Symlinks created/repaired by refresh (via cmd_add)
 [[ -L "$project/.claude/skills" ]] || fail "expected .claude/skills symlink after refresh"
