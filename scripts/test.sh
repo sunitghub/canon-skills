@@ -33,6 +33,7 @@ fi
 tests=(
   "$ROOT/tests/tkt.sh"
   "$ROOT/tests/tkt-compact.sh"
+  "$ROOT/tests/tkt-send-issue.sh"
   "$ROOT/tests/ticket-skeleton.sh"
   "$ROOT/tests/sprint.sh"
   "$ROOT/tests/ticket-root-worktree.sh"

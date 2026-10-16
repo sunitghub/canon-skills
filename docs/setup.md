@@ -73,6 +73,37 @@ explicitly updates it at close. Keep the content inside `HANDOFF.md`'s `<!-- can
 markers under 80 lines (checked at close time; content you add outside those markers isn't counted).
 Prune stale entries freely — git history preserves everything.
 
+## Claude cloud sessions
+
+You can hand a ticket to a Claude cloud session (Claude desktop's Code tab, or claude.ai/code) that runs on your
+Claude subscription, with no API key. The ticket goes to your repo as a GitHub issue; the session works on it there.
+
+**Once: create a "canon" environment.** In a new session, open *Choose environment*, then *Cloud*:
+
+- **Name:** `canon`
+- **Network access:** *Custom*, with these domains, and tick *Also include default list of common package managers*:
+  `getcanon.dev`, `github.com`, `raw.githubusercontent.com`, `objects.githubusercontent.com`
+- **Setup script** (runs before Claude starts, so every session has canon's latest verified release):
+  ```bash
+  #!/bin/bash
+  set -e
+  curl -fsSL https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.sh | bash
+  for t in canon sprint tkt sprint-check; do ln -sf "$HOME/.canon/tools/$t" /usr/local/bin/$t; done
+  ```
+  The links put the tools on the session's `PATH`; the installer only suggests a shell profile line.
+- No secrets, no environment variables.
+
+**Each ticket:**
+
+1. `tkt send-issue <id> --dry-run` shows the repo (your `origin`, which must be on GitHub), whether it is public, and
+   the issue, laid out like the ticket on the board: Description, Acceptance, Plan and Research, then how to work on it.
+2. `tkt send-issue <id>` creates it (needs `gh auth login`), adds the `canon` label, records `github: owner/repo#N`
+   in `ticket.md`, and prints the line to start with. A public repo is refused unless you add `--public`: anyone
+   could read the ticket's notes.
+3. Start a new session on the `canon` environment and your repo, and type `Work on Issue#N`.
+
+Each session is a fresh machine. Keep the environment; archive old sessions.
+
 ## Tracking `.tickets/` in your project
 
 canon keeps its **own** working `.tickets/` gitignored (they're canon's internal dev tickets, not
@@ -130,6 +161,7 @@ tkt ls                            # list all tickets
 tkt ls --status=in_progress       # filter by status
 tkt show <id>                     # full ticket detail
 tkt reopen <id>                   # reopen a closed ticket
+tkt send-issue <id> --dry-run     # preview a ticket as a GitHub issue (see Claude cloud sessions)
 ```
 
 ### Skill verification

@@ -30,6 +30,7 @@ tkt demo <id> [on|off]        # demo close-path: security-review + evaluator onl
 tkt show <id> [--json]        # show full ticket
 tkt learn <id> [--force]      # distill a closed sprint's deviations/findings into an UNPROMOTED .tickets/<id>/learnings.md candidate (proposes, never promotes)
 tkt compact [--older-than DAYS] [--dry-run]  # shrink old closed tickets' evidence/ (default 14 days); sprint complete runs it
+tkt send-issue <id> [--dry-run] [--public]  # post the ticket as an issue on origin's GitHub repo for a Claude cloud session
 ```
 
 `tkt compact` touches only closed or cancelled tickets whose `ticket.md` is older than DAYS. It deletes the raw
