@@ -77,8 +77,8 @@ for id in t-c001 t-c002 t-c007 t-c008 t-c009; do
   [[ -e ".tickets/$id/evidence/sub/board-spec-chromium-run1.json" ]] && fail "$id: board-spec JSON report not deleted"
   [[ -e ".tickets/$id/evidence/test-sh.log" ]] && fail "$id: packed file left loose"
   [[ -e ".tickets/$id/evidence.tgz.tmp" ]] && fail "$id: temp archive left behind"
-  tar -tzf ".tickets/$id/evidence.tgz" | grep -qx 'evidence/sub/board-spec-chromium.log' || fail "$id: a board-spec log is not a JSON report and must be packed"
-  tar -tzf ".tickets/$id/evidence.tgz" | grep -q 'run1.json' && fail "$id: a deleted JSON report was packed"
+  grep -qx 'evidence/sub/board-spec-chromium.log' <<< "$(tar -tzf ".tickets/$id/evidence.tgz")" || fail "$id: a board-spec log is not a JSON report and must be packed"
+  grep -q 'run1.json' <<< "$(tar -tzf ".tickets/$id/evidence.tgz")" && fail "$id: a deleted JSON report was packed"
 done
 for id in t-c003 t-c004 t-c005 t-c006; do
   [[ -e ".tickets/$id/evidence.tgz" ]] && fail "$id: compacted a ticket it must skip"
@@ -91,10 +91,10 @@ assert_file_exists .tickets/t-c001/evidence/shot.png
 assert_file_exists .tickets/t-c007/evidence/diag.md
 assert_file_exists .tickets/t-c008/evidence/map.md
 for f in shots/a.png board-x-dark.png board-y-light.png sub/note.md; do assert_file_exists ".tickets/t-c009/evidence/$f"; done
-tar -tzf .tickets/t-c009/evidence.tgz | grep -qx 'evidence/board-z-dark.png' || fail "a file no pattern names must still be packed"
-tar -tzf .tickets/t-c009/evidence.tgz | grep -q 'shots/\|board-x\|board-y\|note.md' && fail "a folder-, brace- or glob-cited file was packed"
+grep -qx 'evidence/board-z-dark.png' <<< "$(tar -tzf .tickets/t-c009/evidence.tgz)" || fail "a file no pattern names must still be packed"
+grep -q 'shots/\|board-x\|board-y\|note.md' <<< "$(tar -tzf .tickets/t-c009/evidence.tgz)" && fail "a folder-, brace- or glob-cited file was packed"
 [[ -L .tickets/t-c001/evidence/link ]] || fail "the symlink in evidence/ was removed"
-tar -tzf .tickets/t-c001/evidence.tgz | grep -q 'link\|shot.png' && fail "a symlink or a cited file was packed"
+grep -q 'link\|shot.png' <<< "$(tar -tzf .tickets/t-c001/evidence.tgz)" && fail "a symlink or a cited file was packed"
 [[ "$(cat "$outside/secret.txt")" == secret ]] || fail "the symlink's target outside .tickets/ changed"
 
 # Extracting the archive restores the packed files byte for byte.

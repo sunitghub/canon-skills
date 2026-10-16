@@ -35,13 +35,27 @@ _init_git_precommit() {
     return 1
   fi
 
+  local local_hook="$hook.local"
   if [[ -f "$hook" ]] && ! grep -qF "$marker" "$hook" 2>/dev/null; then
-    echo "  [fail]  $hook already exists and is not canon-managed."
-    echo "          Refusing to overwrite an existing pre-commit hook. To get canon's"
-    echo "          checks (ticket-close guard, high-risk sign-off gate, test suite,"
-    echo "          wrapup reminder), merge the contents of $template into your hook"
-    echo "          by hand, or move your existing hook aside and re-run."
-    return 1
+    if [[ -e "$local_hook" ]]; then
+      # A foreign hook over canon's while pre-commit.local is taken: a tool re-installed itself, or a stale
+      # .local is left over. Report, never move or overwrite (t-2194) — moving again would loop with that tool.
+      echo "  [fail]  $hook already exists and is not canon-managed and $local_hook is taken; both left as is."
+      echo "          Either a tool (husky, lefthook, code-review-graph, ...) re-installed its own pre-commit"
+      echo "          over canon's, or a stale pre-commit.local is left over. Merge them by hand, or move"
+      echo "          one aside and re-run: skills.sh refresh \"$project_dir\""
+      return 1
+    fi
+    local move_cmd="mv \"$hook\" \"$local_hook\" && skills.sh refresh \"$project_dir\""
+    if ! _prompt_move_hook "$hook" "$local_hook"; then
+      echo "  [fail]  $hook already exists and is not canon-managed; left as is."
+      echo "          Refusing to overwrite it. To keep it and add canon's checks (it runs first,"
+      echo "          from pre-commit.local), run:"
+      echo "            $move_cmd"
+      return 1
+    fi
+    mv "$hook" "$local_hook"
+    echo "  [moved]  $hook -> $local_hook (runs before canon's checks)"
   fi
 
   {
@@ -60,6 +74,7 @@ _uninstall_git_precommit() {
   local hook="$project_dir/.git/hooks/pre-commit"
   local marker="# canon-managed-pre-commit-hook"
 
+  local local_hook="$hook.local"
   if [[ ! -f "$hook" ]]; then
     echo "  [skip]  $hook not found"
     return 0
@@ -70,6 +85,10 @@ _uninstall_git_precommit() {
   fi
   rm -f "$hook"
   echo "  [removed]  .git/hooks/pre-commit"
+  if [[ -e "$local_hook" ]]; then
+    mv "$local_hook" "$hook"
+    echo "  [restored]  .git/hooks/pre-commit.local -> pre-commit"
+  fi
 }
 
 _init_pi() {
