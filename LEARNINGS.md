@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-16-2026 02:50
+learnings-sweep last run: 10-16-2026 04:34
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-16 | [t-8543](.tickets/t-8543/learnings.md) | A line filter applied to Markdown (drop `# `, drop `<!--`, stop at `## `) treats content as structure: track code fences and position (only the first `# ` is the title), and keep one fence rule on both sides of a round trip. A revert that survives can mean the test case is unrealistic (a fenced heading no real section shares), not that the guard is redundant. | UNPROMOTED |
 | 2026-10-16 | [t-554c](.tickets/t-554c/learnings.md) | Text from a clone, an issue or a pushed branch is untrusted input to a local command: validate any id before building a path from it, refuse writing through symlinks under the target, and check repo visibility before pushing notes. A round-trip test (writer's real output into the reader) finds format drift both ways: here it exposed a send-side bug. | UNPROMOTED |
 | 2026-10-15 | [t-a059](.tickets/t-a059/learnings.md) | A filter meant to drop template boilerplate must name the boilerplate, not whitelist one content shape: keeping only list items silently dropped table sections (Wrapup Gates). Test a converter against every section shape real files use (lists, tables, prose, code). | UNPROMOTED |
 | 2026-10-15 | [t-97e2](.tickets/t-97e2/learnings.md) | Anything a setup command writes into a committed file must be the same on every machine: an absolute install path in AGENTS.md made every clone (cloud session, teammate, CI) dirty. Test it by running the command again from a second install path and asserting `git status` stays empty. | UNPROMOTED |
@@ -80,7 +81,6 @@ learnings-sweep last run: 10-16-2026 02:50
 | 2026-10-06 | [t-cc30](.tickets/t-cc30/learnings.md) | I wrote "already in docs" for README sections I had not read, and the reviewer found content only the old README held plus four doc links to removed README anchors; before cutting a section, grep each of its distinctive phrases in the docs, and before renaming or removing a heading, grep every repo file for links to its anchor. | `promoted → standards/efficiency.md` |
 | 2026-10-06 | [t-11f4](.tickets/t-11f4/learnings.md) | My "nothing else names this picture" grep used four file-type globs and missed two temp-dir names that a full-text grep found; they were unrelated, but state a search's scope and run it unrestricted when the claim is "nothing else". | `promoted → standards/efficiency.md` |
 | 2026-10-05 | [t-1b74](.tickets/t-1b74/learnings.md) | A git-aware gate must ask the caller's own worktree (`worktree_root`), not `project_root` (which maps a linked worktree to the main checkout), and its tests need a linked worktree and a project subdirectory; a green first run was a false comfort until each fix had a revert mutant | UNPROMOTED |
-| 2026-10-04 | [t-b0e5](.tickets/t-b0e5/learnings.md) | Flip a LEARNINGS row to promoted only when every proposed half has landed in a destination line (or the report explicitly dropped it); a partial flip removes the unapplied half from future review, so keep the row UNPROMOTED and say which half is pending | `promoted → skills/promote-learnings/SKILL.md` |
 | 2026-10-01 | [t-afe2](.tickets/t-afe2/learnings.md) | A hand-blurred screenshot shipped to the public repo with a private project tab still readable, and the guard added to stop that name returning spelled the name itself, so a repo search still found it — audit every image before publishing, and build a banned string from parts so its own guard stays clean. | UNPROMOTED |
 | 2026-09-27 | [t-a381](.tickets/t-a381/learnings.md) | When editing a skill, don't carry forward an unverified factual claim about model behavior from the old text: the draft kept "Fable 5 declines fall back to Opus 4.8", which the live Fable 5 page contradicts. Quote each behavioral claim in research.md and re-fetch the primary page; hedge what the source doesn't say ("earlier models" was an inference). | UNPROMOTED |
 <!-- canon:learnings:END -->
