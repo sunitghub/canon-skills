@@ -101,20 +101,34 @@ Claude subscription, with no API key. The ticket goes to your repo as a GitHub i
     echo "setup: could not install Go ${GOV:-?}; keeping the image's $(go version 2>/dev/null)" >&2
   fi
 
-  for t in canon sprint tkt sprint-check; do
+  for t in canon sprint tkt sprint-check skills.sh evidence.sh gate-snapshot.sh subagent-log.sh mutant-sweep; do
     printf '#!/bin/bash\nexec "$HOME/.canon/tools/%s" "$@"\n' "$t" > "/usr/local/bin/$t"
     chmod +x "/usr/local/bin/$t"
   done
   mkdir -p "$HOME/.claude/agents"
   cp "$HOME/.canon/agents/canon-reviewer.md" "$HOME/.canon/agents/canon-evaluator.md" "$HOME/.claude/agents/" || true
+  git config --global user.name >/dev/null || git config --global user.name "canon cloud session"
+  git config --global user.email >/dev/null || git config --global user.email "noreply@getcanon.dev"
   ```
-  The wrappers put the tools on the session's `PATH`; the installer only suggests a shell profile line. Wrappers work with
+  The wrappers put the tools on the session's `PATH`; the installer only suggests a shell profile line. The close
+  checklist calls `skills.sh`, `evidence.sh`, `gate-snapshot.sh`, `subagent-log.sh` and `mutant-sweep` by bare name,
+  and a refusal can print a bare `skills.sh refresh`, so they get wrappers too. Wrappers work with
   every canon release; symlinks work too from 0.11.2, but before it `sprint` and `tkt` could not find their helpers
   through a link. The last two lines give the session canon's reviewer and evaluator agents, which `sprint complete`
   runs at the close. The session clones your repo itself: the script needs no `git` lines. The Go block installs the
   version canon pins, so a raised pin follows on the next release; if the download fails, the session starts anyway on the
-  image's Go and the setup log says why. Check it in a session with `go version`.
+  image's Go and the setup log says why. Check it in a session with `go version`. The two `git config` lines set an
+  identity only where the image has none.
 - No secrets, no environment variables.
+
+**What to expect in a session** (seen on t-2194, 2026-10-16):
+
+- It runs as root, so tests that make a folder unwritable skip those cases (`tkt-compact`); your machine runs them.
+- The full suite takes about 7 minutes there, and a worker restart can kill it (exit 137). Rerun the stamp.
+- Suites that are timing-sensitive under load (`cockpit-daemon`'s `TestReapNowSavesThenEnds`, `windows-install`) can
+  fail there and pass alone: rerun before treating one as a regression.
+- A test that puts canon's `tools/` on `PATH` must prepend it. The cloud has no other canon, so an appended one passes
+  there and runs your installed copy on your machine (PR #24 failed `merge-pr` this way).
 
 **Each ticket:**
 
@@ -139,11 +153,14 @@ Claude subscription, with no API key. The ticket goes to your repo as a GitHub i
    what the PR changes, asks once, runs your tests (`scripts/test.sh`, or `--test "<command>"`) on your base branch
    plus the PR in a scratch clone, and merges if they pass. `--check` runs the checks only.
 
-**When a cloud sprint cannot close** (its gates cannot run there, for example because of plan mode): have the
-session run `tkt export <id>` without closing, then on your machine run `tkt import-results <id> --pr <N>` (it
-reports no verdict yet, and keeps `canon-results/<id>`), check out the PR's branch, run the evaluator on its head and
-`sprint complete <id>`, switch back to your main branch, and run `tkt merge-pr <id>`, which also deletes
-`canon-results/<id>`.
+**When a cloud sprint cannot close** (its gates cannot run there, for example because of plan mode, or a QA item
+needs your machine): have the session open the PR, run `tkt export <id>` without closing, and push nothing more to
+the branch. Then on your machine run `tkt import-results <id> --pr <N>`, do the QA, and close it from the PR's head:
+a worktree at that commit with a copy of `.tickets/<id>` (a symlink is not followed), `tkt start <id>` there, a fresh
+evaluator, `sprint complete`, then copy the folder back. The evaluator must run on your machine even when the
+cloud's passed: `sprint complete` checks this machine's record of the evaluator run, which `tkt export` cannot carry
+(t-b650). Then `tkt merge-pr <id>`, which also deletes `canon-results/<id>`. A fix pushed to the PR after grading
+needs the evaluator again: `merge-pr` merges only the graded head.
 
 Each session is a fresh machine. Keep the environment; archive old sessions.
 
