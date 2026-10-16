@@ -123,15 +123,27 @@ Claude subscription, with no API key. The ticket goes to your repo as a GitHub i
 2. `tkt send-issue <id>` creates it (needs `gh auth login`), adds the `canon` label, records `github: owner/repo#N`
    in `ticket.md`, and prints the line to start with. A public repo is refused unless you add `--public`: anyone
    could read the ticket's notes.
-3. Start a new session on the `canon` environment and your repo, and type `Work on Issue#N`. The issue tells the
-   session to run `sprint import-issue N`, which rebuilds the ticket (an approved plan stays approved) and starts the
-   sprint; you approve and confirm in that session as you would locally, and the close happens there.
+3. Start a new session on the `canon` environment and your repo, and type only `Work on Issue#N`; answer its plan
+   when it asks. The issue tells the session to run `sprint import-issue N`, which rebuilds the ticket (an approved
+   plan stays approved) and starts the sprint; you approve and confirm in that session as you would locally, and the
+   close happens there. Approve the plan in `plan.md`, not through Claude Code's plan mode: a session that planned
+   in plan mode has been observed to pass it to its reviewer and evaluator, which then cannot run. Archive an older
+   session on the same issue first, so two sessions never push for one ticket.
 4. At the close the session runs `tkt export <id>`. If your project commits `.tickets/`, the ticket goes back inside
    the PR. If not, it is pushed to a branch `canon-results/<id>` that is never merged. A public repo needs `--public`,
    as with `send-issue`: the folder holds the ticket's notes and evidence logs.
 5. On your machine, `tkt import-results <id> --pr <PR number>` brings that branch back: every file byte-for-byte, a
    local file that differs kept in `.tickets/<id>/.before-import/`, and a report of the status, the evaluator's verdict
-   and whether it graded the PR's head commit. Then it deletes the branch. Review and merge the PR on GitHub.
+   and whether it graded the PR's head commit. Then it deletes the branch.
+6. `tkt merge-pr <id>` finishes it: it checks the evaluator passed on the PR's head and GitHub can merge it, shows
+   what the PR changes, asks once, runs your tests (`scripts/test.sh`, or `--test "<command>"`) on your base branch
+   plus the PR in a scratch clone, and merges if they pass. `--check` runs the checks only.
+
+**When a cloud sprint cannot close** (its gates cannot run there, for example because of plan mode): have the
+session run `tkt export <id>` without closing, then on your machine run `tkt import-results <id> --pr <N>` (it
+reports no verdict yet, and keeps `canon-results/<id>`), check out the PR's branch, run the evaluator on its head and
+`sprint complete <id>`, switch back to your main branch, and run `tkt merge-pr <id>`, which also deletes
+`canon-results/<id>`.
 
 Each session is a fresh machine. Keep the environment; archive old sessions.
 

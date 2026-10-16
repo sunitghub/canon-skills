@@ -12,7 +12,7 @@ export HOME="$W/home" XDG_CONFIG_HOME="$W/home/.config" TMPDIR="$W/tmp"; mkdir -
 git config --global init.defaultBranch main
 git config --global user.name test; git config --global user.email test@example.com
 # origin is https://github.com/acme/app.git as far as tkt can tell; pushes land in a bare repo, which also holds the PR ref
-# GitHub would. A git shim (on PATH below) sends a fetch of that URL, or of the remote origin, to the bare repo, so
+# GitHub would. A git shim (on PATH below) sends a fetch or ls-remote of that URL, or of the remote origin, to the bare repo, so
 # `remote get-url` stays real and nothing reaches the network.
 git init -q --bare "$W/origin.git"
 git config --global url."$W/origin.git".pushInsteadOf https://github.com/acme/app.git
@@ -52,7 +52,7 @@ chmod +x "$W/bin/gh"
 REAL_GIT="$(command -v git)"
 cat > "$W/bin/git" <<SH
 #!/usr/bin/env bash
-if [[ " \$* " == *" fetch "* ]]; then a=(); for x in "\$@"; do [[ "\$x" == https://github.com/acme/app.git || "\$x" == origin ]] && x="$W/origin.git"; a+=("\$x"); done; set -- "\${a[@]}"; fi
+if [[ " \$* " == *" fetch "* || " \$* " == *" ls-remote "* ]]; then a=(); for x in "\$@"; do [[ "\$x" == https://github.com/acme/app.git || "\$x" == origin ]] && x="$W/origin.git"; a+=("\$x"); done; set -- "\${a[@]}"; fi
 exec "$REAL_GIT" "\$@"
 SH
 chmod +x "$W/bin/git"
@@ -152,6 +152,22 @@ else
   echo "tkt-merge-pr: SKIPPED the prompt cases: no script(1) here for a pseudo-terminal" >&2
   sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; "$TKT" merge-pr "$id" --yes > /dev/null 2>&1 || fail "merge-pr --yes failed"
 fi
+
+# t-b2e5: after a merge, a canon-results/<id> branch left by a close on this machine is deleted; a refused delete only
+# warns. The bare origin's pre-receive hook refuses deletes while $W/no-delete exists.
+printf '#!/usr/bin/env bash\n[ -e "%s/no-delete" ] && grep -q "^[0-9a-f]* 0\\{40\\} refs/heads/canon-results/" && { echo "delete refused" >&2; exit 1; }\nexit 0\n' "$W" > "$W/origin.git/hooks/pre-receive"
+chmod +x "$W/origin.git/hooks/pre-receive"
+results_branch() { git push -q origin "main:refs/heads/canon-results/$id" 2>/dev/null; }
+has_results() { git ls-remote --heads origin "canon-results/$id" | grep -q .; }
+sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; results_branch; has_results || fail "the test could not create canon-results/$id"
+out="$("$TKT" merge-pr "$id" --pr 7 --yes 2>&1)" || fail "merge-pr failed: $out"
+has_results && fail "merge-pr left canon-results/$id on origin"
+sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
+out="$("$TKT" merge-pr "$id" --pr 7 --yes 2>&1)" || fail "merge-pr failed without a results branch: $out"   # none: fine
+sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; results_branch; touch "$W/no-delete"
+out="$("$TKT" merge-pr "$id" --pr 7 --yes 2>&1)" || fail "a refused branch delete failed the merge: $out"
+assert_contains "$out" "could not delete canon-results/$id on origin"; has_results || fail "the refused delete still deleted"
+rm -f "$W/no-delete"; git push -q origin --delete "canon-results/$id"
 
 # --yes, --pr and no test command: merges on the gates alone and says so.
 sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; git rm -q scripts/test.sh; git commit -qm "no suite"; git push -q origin HEAD:main
