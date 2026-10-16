@@ -53,14 +53,15 @@ assert_contains "$out" "type: Work on Issue#57"
 grep -qx "label create canon --repo acme/app --color 6C5CF7 --description A canon ticket --force" "$STUB_LOG" || fail "label not created: $(cat "$STUB_LOG")"
 grep -qx "issue create --repo acme/app --title $id: Board burns a CPU core --label canon --body-file .*" "$STUB_LOG" || fail "wrong issue create call: $(cat "$STUB_LOG")"
 assert_grep "^github: acme/app#57$" "$d/ticket.md"
-order="$(grep -nE '^## (Problem|Acceptance criteria|Test plan|Plan|Research|Working on this)' "$STUB_BODY" | cut -d: -f2 | tr '\n' '|')"
-assert_eq "## Problem|## Acceptance criteria|## Test plan|## Plan · approved|## Research|## Working on this|" "$order"
+# The issue has the ticket's tree: Description (ticket.md's own sections), Acceptance, Plan (every section but Sign-off), Research.
+order="$(grep -E '^#{1,2} ' "$STUB_BODY" | tr '\n' '|')"
+assert_eq "# Description|## Problem|# Acceptance|## Criteria|## Test plan|# Plan · approved|## Approach|## Files|## Decisions|# Research|# Working on this|" "$order"
 assert_grep '^- \[ \] Idle CPU under 5%$' "$STUB_BODY"
 assert_grep '^  over 60 s$' "$STUB_BODY"
 assert_grep '^1. Profile the idle board.$' "$STUB_BODY"
 assert_grep '^- The board polls every 8 s.$' "$STUB_BODY"
 assert_grep "^<!-- canon:ticket $id -->\$" "$STUB_BODY"
-grep -q 'The checklist of behavior\|Add items\|Tested locally\|Decisions' "$STUB_BODY" && fail "template text or other sections leaked into the issue"
+grep -q 'The checklist of behavior\|Add items\|Tested locally\|Sign-off' "$STUB_BODY" && fail "template text, QA or Sign-off leaked into the issue"
 [[ "$(grep -c '^## Problem$' "$STUB_BODY")" == 1 ]] || fail "the ticket's own Problem heading was doubled"
 
 # Already sent: refused, ticket unchanged, no gh call.
@@ -84,7 +85,7 @@ unset STUB_VIS
 # Missing acceptance, plan and research: "(none yet)", and a warning.
 id3="$("$TKT" create "Bare" -t task -p 3)"
 "$TKT" send-issue "$id3" --dry-run > "$stub/bare" 2> "$stub/bare.err"
-[[ "$(grep -c '^(none yet)$' "$stub/bare")" == 4 ]] || fail "expected 4 '(none yet)' sections: $(cat "$stub/bare")"
+[[ "$(grep -c '^(none yet)$' "$stub/bare")" == 3 ]] || fail "expected Acceptance, Plan and Research to read (none yet): $(cat "$stub/bare")"
 assert_grep "no acceptance criteria" "$stub/bare.err"
 
 # gh fails on create, or is signed out: exit 1, the error shown, ticket byte-identical.

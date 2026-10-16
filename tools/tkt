@@ -1043,27 +1043,36 @@ cmd_send_issue() {
   fi
 
   local acc="$tdir/acceptance.md" plan="$tdir/plan.md" res="$tdir/research.md"
-  local crit tp appr files rbody
+  local crit tp appr psecs rbody
   crit="$(_si_section "$acc" Criteria | _si_items)"
   tp="$(_si_section "$acc" "Test Plan" | _si_items)"
   [[ -z "$crit" ]] && echo "send-issue: warning: $id has no acceptance criteria; the agent will write its own" >&2
   appr=""; [[ -f "$plan" ]] && grep -qE '^- \[x\] Plan approved' "$plan" && appr=" · approved"
-  files="$(_si_section "$plan" Files)"
+  # Every "## " section of plan.md except Sign-off (shown as the "approved" mark), with its own heading; empty ones dropped.
+  psecs=""
+  if [[ -f "$plan" ]]; then
+    local h c
+    while IFS= read -r h; do
+      [[ "$h" == "Sign-off" ]] && continue
+      c="$(_si_section "$plan" "$h")"
+      [[ -n "$c" ]] && psecs+="## $h"$'\n'"$c"$'\n\n'
+    done < <(sed -n 's/^## //p' "$plan" | tr -d '\r')
+  fi
   rbody=""; [[ -f "$res" ]] && rbody="$(awk 'NR == 1 && /^# / { next } { print }' "$res" | awk 'NF { s = 1 } s')"
 
   local body; body="$(mktemp "${TMPDIR:-/tmp}/tkt-issue.XXXXXX")"
   trap "rm -f '$body'" EXIT
+  # The same tree as the ticket on the board: Description, Acceptance, Plan, Research (t-554c reads it back by these headings).
   {
     printf '**%s** · %s · P%s\n\n' "$id" "$(get_field "$file" type)" "$(get_field "$file" priority)"
-    local tb; tb="$(ticket_body "$file" | awk 'NF { s = 1 } s')"
-    # A ticket written from tkt's skeleton already has its own "## Problem" (and Outcome, Constraints) headings.
-    if [[ "$tb" == "## "* ]]; then printf '%s\n' "$tb"; else printf '## Problem\n'; _si_or_none "$tb"; fi
-    printf '\n## Acceptance criteria\n'; _si_or_none "$crit"
-    printf '\n## Test plan\n'; _si_or_none "$tp"
-    printf '\n## Plan%s\n' "$appr"; _si_or_none "$(_si_section "$plan" Approach)"
-    [[ -n "$files" ]] && printf '\nFiles: %s\n' "$files"
-    printf '\n## Research\n'; _si_or_none "$rbody"
-    printf '\n## Working on this\n'
+    printf '# Description\n'; _si_or_none "$(ticket_body "$file" | awk 'NF { s = 1 } s')"
+    printf '\n# Acceptance\n'
+    if [[ -n "$crit$tp" ]]; then
+      printf '## Criteria\n'; _si_or_none "$crit"; printf '\n## Test plan\n'; _si_or_none "$tp"
+    else _si_or_none ""; fi
+    printf '\n# Plan%s\n' "$appr"; if [[ -n "$psecs" ]]; then printf '%s' "${psecs%$'\n'}"; else _si_or_none ""; fi
+    printf '\n# Research\n'; _si_or_none "$rbody"
+    printf '\n# Working on this\n'
     printf 'This repository uses canon. Run `sprint import-issue <this issue number>` to rebuild .tickets/%s/ from the\n' "$id"
     printf 'sections above, open the PR with "Fixes #<this issue number>", and when the sprint closes run `tkt export %s`.\n' "$id"
     printf '\n<!-- canon:ticket %s -->\n' "$id"
@@ -1142,8 +1151,8 @@ Commands:
                             board-spec JSON reports, pack the rest into evidence.tgz.
                             Files cited by path stay loose. sprint complete runs it.
   send-issue <id> [--dry-run] [--public]
-                            Post the ticket as an issue on origin's GitHub repo, in
-                            its sections (Problem, Acceptance, Plan, Research), for a
+                            Post the ticket as an issue on origin's GitHub repo, laid
+                            out like the board (Description, Acceptance, Plan, Research), for a
                             Claude cloud session ("Work on Issue#N"). Records github:.
 
 New tickets are stored in .tickets/<id>/ticket.md

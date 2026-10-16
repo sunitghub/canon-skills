@@ -96,7 +96,7 @@ Claude subscription, with no API key. The ticket goes to your repo as a GitHub i
 **Each ticket:**
 
 1. `tkt send-issue <id> --dry-run` shows the repo (your `origin`, which must be on GitHub), whether it is public, and
-   the issue: the ticket's Problem, Acceptance criteria, Test plan, Plan, Research, and how to work on it.
+   the issue, laid out like the ticket on the board: Description, Acceptance, Plan and Research, then how to work on it.
 2. `tkt send-issue <id>` creates it (needs `gh auth login`), adds the `canon` label, records `github: owner/repo#N`
    in `ticket.md`, and prints the line to start with. A public repo is refused unless you add `--public`: anyone
    could read the ticket's notes.
