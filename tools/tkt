@@ -1474,9 +1474,9 @@ cmd_take_back() {
     local repo="${gh%#*}" n="${gh##*#}" out
     [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ && "$n" =~ ^[0-9]+$ ]] || { echo "take-back: $id has an unreadable github: line ($gh)" >&2; exit 1; }
     command -v gh >/dev/null 2>&1 || { echo "take-back: needs the GitHub CLI to close $gh: install gh, or drop --close-issue" >&2; exit 1; }
-    out="$(cd / && gh issue comment "$n" --repo "$repo" --body "Taken back to local by canon ($id)." 2>&1)" \
-      || { echo "take-back: gh could not comment on $gh: $out" >&2; exit 1; }
-    out="$(cd / && gh issue close "$n" --repo "$repo" 2>&1)" || { echo "take-back: gh could not close $gh: $out" >&2; exit 1; }
+    # One call: closing with the comment, so a retry after a failure never posts the comment twice.
+    out="$(cd / && gh issue close "$n" --repo "$repo" --comment "Taken back to local by canon ($id)." 2>&1)" \
+      || { echo "take-back: gh could not close $gh: $out" >&2; exit 1; }
   fi
   remove_field "$file" github
   if $close; then echo "take-back: $id is back on this machine; $gh closed"; else echo "take-back: $id is back on this machine ($gh left open)"; fi

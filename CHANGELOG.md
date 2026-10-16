@@ -8,7 +8,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ### Added
 - `tkt take-back <id> [--close-issue]` brings a ticket sent to GitHub back to this machine (`t-d271`).
-- The board's servers (Python and Go) run the GitHub workflow commands for the coming board UI: send-issue (preview and send), sync-issues (preview and create), import-results, merge-pr (`--check`, and `--yes` as a background job whose progress the page can follow) and take-back, each one `tkt` command in the project. On Windows the Go board runs `tkt` through the new `tools/tkt.cmd` (`t-d271`).
+- The board's servers (Python and Go) run the GitHub workflow commands for the coming board UI: send-issue (preview and send), sync-issues (preview and create), import-results, merge-pr (`--check`, and `--yes` as a background job whose progress the page can follow) and take-back, each one `tkt` command in the project. On Windows the Go board runs `tkt` through `tools/tkt.cmd`. The merge job can be stopped, and stops itself after an hour (`t-d271`).
 
 ## [0.12.1] - 2026-10-16
 

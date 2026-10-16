@@ -6,7 +6,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/tests/helpers.sh"
-command -v go >/dev/null 2>&1 && command -v curl >/dev/null 2>&1 || { echo "sprint-check-github-endpoints: skipped (needs go and curl)"; exit 0; }
+command -v go >/dev/null 2>&1 && command -v curl >/dev/null 2>&1 && command -v node >/dev/null 2>&1 \
+  || { echo "sprint-check-github-endpoints: skipped (needs go, curl and node)"; exit 0; }
 
 W="$(cd "$(mktemp -d)" && pwd -P)"; GO_BIN="$W/sc-go"; PIDS=()
 cleanup() { for p in ${PIDS[@]+"${PIDS[@]}"}; do kill "$p" 2>/dev/null || true; done; rm -rf "$W"; }
@@ -20,6 +21,7 @@ cat > "$W/tkt" <<SH
 #!/usr/bin/env bash
 printf '%s | %s | progress=%s\n' "\$PWD" "\$*" "\${CANON_PROGRESS_SECONDS:-}" >> "$W/log"
 [[ -e "$W/fail" ]] && { echo "stub failure"; exit 3; }
+[[ "\$*" == *"--pr 99"* ]] && { head -c 3000000 /dev/zero | tr '\\0' x; exit 0; }   # one 3 MB line, no newline
 case "\$1 \$*" in
   *"--dry-run"*) echo "would do: \$*" ;;
   "merge-pr "*"--yes"*) echo "progress one"; for _ in \$(seq 100); do [[ -e "$W/release" ]] && break; sleep 0.1; done; echo "progress two" ;;
@@ -62,12 +64,21 @@ for P in "$PYP" "$GOP"; do
   expect_call "$srv take-back cl"  "$P" "$(post "$P" /api/ticket/t-ab12/github/take-back '{"close_issue":true}')" "take-back t-ab12 --close-issue"
   # A PR that is not digits: 400 and nothing run, on every route that takes one.
   n="$(wc -l < "$W/log")"
-  for bad in '"5x"' '"58; rm -rf /"' '-1' '1.5' '"--yes"'; do
+  expect_call "$srv import 58.0"   "$P" "$(post "$P" /api/ticket/t-ab12/github/import '{"pr":58.0}')" "import-results t-ab12 --pr 58"
+  n="$(wc -l < "$W/log")"
+  for bad in '"5x"' '"58; rm -rf /"' '-1' '1.5' '"--yes"' '"12\n"' 'true' '[1]'; do
     r="$(post "$P" /api/ticket/t-ab12/github/import "{\"pr\":$bad}")"; [[ "$(code "$r")" == 400 ]] || fail "$srv import pr=$bad: HTTP $(code "$r")"
     r="$(post "$P" /api/ticket/t-ab12/github/merge "{\"pr\":$bad}")"; [[ "$(code "$r")" == 400 ]] || fail "$srv merge pr=$bad: HTTP $(code "$r")"
   done
   r="$(get "$P" '/api/ticket/t-ab12/github/merge-check?pr=x9')"; [[ "$(code "$r")" == 400 ]] || fail "$srv merge-check pr=x9: HTTP $(code "$r")"
   r="$(post "$P" /api/ticket/T-AB12/github/send '{}')"; [[ "$(code "$r")" != 200 ]] || fail "$srv accepted a malformed id"
+  # Another site cannot fire these: a foreign Origin, or Sec-Fetch-Site: cross-site, is 403 on GET and POST.
+  r="$(curl -s -w '\n%{http_code}' -H 'Origin: https://evil.example' "http://127.0.0.1:$P/api/ticket/t-ab12/github/merge-check")"; [[ "$(code "$r")" == 403 ]] || fail "$srv: cross-origin GET merge-check was $(code "$r")"
+  r="$(curl -s -w '\n%{http_code}' -H 'Sec-Fetch-Site: cross-site' "http://127.0.0.1:$P/api/github/sync-preview")"; [[ "$(code "$r")" == 403 ]] || fail "$srv: cross-site GET sync-preview was $(code "$r")"
+  r="$(curl -s -w '\n%{http_code}' -X POST -H 'Origin: https://evil.example' -H 'Content-Type: application/json' -d '{}' "http://127.0.0.1:$P/api/ticket/t-ab12/github/send")"; [[ "$(code "$r")" == 403 ]] || fail "$srv: cross-origin POST send was $(code "$r")"
+  # An unknown project is 400, on GET and POST.
+  r="$(get "$P" '/api/ticket/t-ab12/github/send-preview?project=nope')"; [[ "$(code "$r")" == 400 ]] || fail "$srv: unknown project GET was $(code "$r")"
+  r="$(post "$P" '/api/ticket/t-ab12/github/send?project=nope' '{}')"; [[ "$(code "$r")" == 400 ]] || fail "$srv: unknown project POST was $(code "$r")"
   assert_eq "$n" "$(wc -l < "$W/log")"   # none of those ran tkt
   # A failing tkt: ok false, its exit code and output.
   touch "$W/fail"; r="$(post "$P" /api/ticket/t-ab12/github/send '{}')"; rm -f "$W/fail"
@@ -86,6 +97,17 @@ for P in "$PYP" "$GOP"; do
   assert_eq "done|0|true" "$(js '[j.status,j.exit_code,j.output.includes("progress two")].join("|")' <<< "$s")"
   assert_eq "1" "$(grep -c 'merge-pr t-ab12 --yes --pr 58' "$W/log")"   # one job, not two
   assert_eq "$PROJ | merge-pr t-ab12 --yes --pr 58 | progress=5" "$(grep 'merge-pr' "$W/log")"
+  # Stop: TERM ends the running job; it reports done with a failing exit code.
+  rm -f "$W/release"; post "$P" /api/ticket/t-ab12/github/merge '{"pr":58}' >/dev/null
+  for _ in $(seq 50); do [[ "$(body "$(get "$P" /api/ticket/t-ab12/github/merge)" | js 'j.output')" == *"progress one"* ]] && break; sleep 0.1; done
+  post "$P" /api/ticket/t-ab12/github/merge-stop '{}' >/dev/null
+  for _ in $(seq 50); do s="$(body "$(get "$P" /api/ticket/t-ab12/github/merge)")"; [[ "$(js 'j.status' <<< "$s")" == done ]] && break; sleep 0.1; done
+  assert_eq "done|true" "$(js '[j.status, j.exit_code !== 0].join("|")' <<< "$s")"
+  # One 3 MB line with no newline: the job still ends (no reader stall), keeping only the 16 KB tail.
+  post "$P" /api/ticket/t-ab12/github/merge '{"pr":99}' >/dev/null
+  for _ in $(seq 100); do s="$(body "$(get "$P" /api/ticket/t-ab12/github/merge)")"; [[ "$(js 'j.status' <<< "$s")" == done ]] && break; sleep 0.1; done
+  assert_eq "done|0" "$(js '[j.status,j.exit_code].join("|")' <<< "$s")"
+  [[ "$(js 'j.output.length' <<< "$s")" -le 16384 ]] || fail "$srv: the output tail is over 16 KB"
   echo "sprint-check-github-endpoints: $srv ok"
 done
 echo "sprint-check-github-endpoints: ok (both servers)"

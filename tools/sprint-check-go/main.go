@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/rand"
@@ -27,6 +26,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 	"unicode/utf8"
 )
@@ -468,6 +468,11 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if m := regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/github/(send-preview|merge-check|merge)$`).FindStringSubmatch(path); m != nil || path == "/api/github/sync-preview" {
+			// t-d271: these run git and gh, so a page on another site must not fire them blind.
+			if !originOK(r.Header.Get("Origin")) || r.Header.Get("Sec-Fetch-Site") == "cross-site" {
+				http.Error(w, "forbidden", http.StatusForbidden)
+				return
+			}
 			groot, ok := effectiveRoot(r)
 			if !ok {
 				http.Error(w, "unknown project", http.StatusBadRequest)
@@ -713,9 +718,12 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, runTkt(eroot, []string{"sync-issues"}))
 		return
 	}
-	if m := regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/github/(send|import|merge|take-back)$`).FindStringSubmatch(path); m != nil {
+	if m := regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/github/(send|import|merge|merge-stop|take-back)$`).FindStringSubmatch(path); m != nil {
 		id := m[1]
 		switch m[2] {
+		case "merge-stop":
+			sendJSON(w, stopMergeRun(eroot, id))
+			return
 		case "send":
 			args := []string{"send-issue", id}
 			if b, _ := payload["public"].(bool); b {
@@ -4298,9 +4306,15 @@ func prArg(v any) ([]string, bool) {
 	if v == nil {
 		return []string{}, true
 	}
+	if _, isBool := v.(bool); isBool {
+		return nil, false
+	}
 	s := fmt.Sprint(v)
 	if f, ok := v.(float64); ok {
-		s = strconv.FormatFloat(f, 'f', -1, 64)
+		if f != float64(int64(f)) {
+			return nil, false
+		}
+		s = strconv.FormatInt(int64(f), 10)
 	}
 	if s == "" {
 		return []string{}, true
@@ -4315,8 +4329,26 @@ type mergeKey struct{ root, id string }
 
 var (
 	mergeRuns   = map[mergeKey]map[string]any{}
+	mergeCmds   = map[mergeKey]*exec.Cmd{}
 	mergeRunsMu sync.Mutex
 )
+
+const mergeLimit = time.Hour // a hung job is stopped, so it cannot block every later start
+
+// stopMergeRun: TERM to tkt (Kill on Windows); merge-pr traps it, stops its whole test run and merges nothing.
+func stopMergeRun(root, id string) map[string]any {
+	mergeRunsMu.Lock()
+	cmd := mergeCmds[mergeKey{root, id}]
+	mergeRunsMu.Unlock()
+	if cmd != nil && cmd.Process != nil && cmd.ProcessState == nil {
+		if runtime.GOOS == "windows" {
+			cmd.Process.Kill()
+		} else {
+			cmd.Process.Signal(syscall.SIGTERM)
+		}
+	}
+	return getMergeRunState(root, id)
+}
 
 // runMerge reads merge-pr's output line by line while it runs, so the board can show its progress lines.
 func runMerge(key mergeKey, args []string) {
@@ -4336,13 +4368,25 @@ func runMerge(key mergeKey, args []string) {
 		mergeRunsMu.Unlock()
 		return
 	}
-	sc := bufio.NewScanner(pipe)
-	sc.Buffer(make([]byte, 64*1024), 1024*1024)
-	for sc.Scan() {
-		mergeRunsMu.Lock()
-		mergeRuns[key]["output"] = tailString(mergeRuns[key]["output"].(string) + sc.Text() + "\n")
-		mergeRunsMu.Unlock()
+	mergeRunsMu.Lock()
+	mergeCmds[key] = cmd
+	mergeRunsMu.Unlock()
+	timer := time.AfterFunc(mergeLimit, func() { stopMergeRun(key.root, key.id) })
+	// Fixed-size chunks, not lines: one huge line (a \r-redrawn progress bar) can neither stall the reader (a Scanner
+	// stops at its token limit and leaves the pipe full) nor grow memory; only the tail is kept.
+	buf := make([]byte, 4096)
+	for {
+		n, rerr := pipe.Read(buf)
+		if n > 0 {
+			mergeRunsMu.Lock()
+			mergeRuns[key]["output"] = tailString(mergeRuns[key]["output"].(string) + string(buf[:n]))
+			mergeRunsMu.Unlock()
+		}
+		if rerr != nil {
+			break
+		}
 	}
+	timer.Stop()
 	if werr := cmd.Wait(); werr == nil {
 		code = 0
 	} else if ee, ok := werr.(*exec.ExitError); ok {

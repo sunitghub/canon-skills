@@ -2951,28 +2951,59 @@ def run_tkt(root: Path, args: list, timeout: int = 300) -> dict:
     return {'ok': code == 0, 'exit_code': code, 'output': output[-_TKT_TAIL:]}
 
 def _pr_arg(value):
-    """[] for no PR, ['--pr', n] for a digits-only PR, None for anything else (the caller answers 400)."""
-    if value in (None, ''):
+    """[] for no PR, ['--pr', n] for a digits-only PR, None for anything else (the caller answers 400). A whole-number
+    float is accepted as Go's JSON decoder cannot tell 12 from 12.0; fullmatch so "12\\n" is refused, as in Go."""
+    if value is None or value == '':
         return []
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
     v = str(value)
-    return ['--pr', v] if _PR_RE.match(v) else None
+    return ['--pr', v] if _PR_RE.fullmatch(v) else None
 
 # merge-pr --yes runs for minutes (the project's tests): a background job per (root, ticket) whose output is read line by
 # line while it runs, so the board can show merge-pr's progress lines. Same double-start guard as _HEADLESS_RUNS.
 _MERGE_RUNS: dict = {}
 _MERGE_LOCK = threading.Lock()
 
+_MERGE_LIMIT = 3600   # seconds: a hung job is stopped, so it cannot block every later start
+
+def stop_merge_run(root: Path, ticket_id: str) -> dict:
+    """TERM to tkt: merge-pr traps it, stops its whole test run and merges nothing."""
+    with _MERGE_LOCK:
+        st = _MERGE_RUNS.get((str(root), ticket_id))
+        proc = st.get('proc') if st else None
+    if proc is not None and proc.poll() is None:
+        try:
+            proc.terminate()
+        except Exception:
+            pass
+    return get_merge_run_state(root, ticket_id)
+
 def _run_merge(key: tuple, root: Path, args: list) -> None:
     code = 1
     try:
         env = dict(os.environ, CANON_PROGRESS_SECONDS='5')
         proc = subprocess.Popen([str(TKT), *args], cwd=root, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT, text=True, env=env, bufsize=1)
-        for line in proc.stdout:
+                                stderr=subprocess.STDOUT, env=env)
+        with _MERGE_LOCK:
+            _MERGE_RUNS[key]['proc'] = proc
+        timer = threading.Timer(_MERGE_LIMIT, lambda: proc.poll() is None and proc.terminate())
+        timer.daemon = True
+        timer.start()
+        # Fixed-size chunks, not lines: one huge line (a \r-redrawn progress bar) can neither stall the reader nor
+        # grow memory; only the last _TKT_TAIL characters are kept.
+        fd = proc.stdout.fileno()
+        while True:
+            chunk = os.read(fd, 4096)
+            if not chunk:
+                break
             with _MERGE_LOCK:
                 st = _MERGE_RUNS[key]
-                st['output'] = (st['output'] + line)[-_TKT_TAIL:]
+                st['output'] = (st['output'] + chunk.decode('utf-8', errors='replace'))[-_TKT_TAIL:]
         code = proc.wait()
+        timer.cancel()
     except Exception as e:
         with _MERGE_LOCK:
             _MERGE_RUNS[key]['output'] += f'could not run tkt: {e}\n'
@@ -2999,6 +3030,10 @@ def get_merge_run_state(root: Path, ticket_id: str) -> dict:
         if st['status'] == 'running':
             result['elapsed'] = time.time() - st['started_at']
     return result
+
+def _github_get_cross_site(headers) -> bool:
+    """t-d271: the GitHub GET routes run git and gh, so a page on another site must not fire them blind."""
+    return not _origin_ok(headers.get('Origin', '')) or headers.get('Sec-Fetch-Site', '') == 'cross-site'
 
 # ── Upkeep (t-7ae6): headless, read-only per-project report runner ─────────
 # Mirrors the _HEADLESS_RUNS thread+subprocess+dict shape above exactly, keyed
@@ -3638,6 +3673,8 @@ class Handler(BaseHTTPRequestHandler):
                 return
             m = re.match(r'^/api/ticket/(t-[a-z0-9]{4})/github/(send-preview|merge-check|merge)$', path)
             if m or path == '/api/github/sync-preview':
+                if _github_get_cross_site(self.headers):
+                    self.send_error(403); return
                 q = parse_qs(parsed.query)
                 try:
                     groot = effective_root(q)
@@ -3829,11 +3866,13 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == '/api/github/sync':
             self.send_json(run_tkt(eroot, ['sync-issues'])); return
-        m = re.match(r'^/api/ticket/(t-[a-z0-9]{4})/github/(send|import|merge|take-back)$', path)
+        m = re.match(r'^/api/ticket/(t-[a-z0-9]{4})/github/(send|import|merge|merge-stop|take-back)$', path)
         if m:
             tid, what = m.group(1), m.group(2)
             if what == 'send':
                 self.send_json(run_tkt(eroot, ['send-issue', tid] + (['--public'] if payload.get('public') is True else []))); return
+            if what == 'merge-stop':
+                self.send_json(stop_merge_run(eroot, tid)); return
             if what == 'take-back':
                 self.send_json(run_tkt(eroot, ['take-back', tid] + (['--close-issue'] if payload.get('close_issue') is True else []))); return
             pr = _pr_arg(payload.get('pr'))
