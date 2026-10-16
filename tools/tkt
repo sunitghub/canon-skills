@@ -1008,7 +1008,7 @@ cmd_compact() {
 # a public repo needs --public (ticket docs carry paths, notes and decisions); ticket.md changes only after gh succeeds.
 _si_section() {   # _si_section <file> <heading>: the lines under "## <heading>" up to the next "## ", comments dropped, trimmed
   [[ -f "$1" ]] || return 0
-  awk -v h="## $2" '/^```/ { fence = !fence } !fence && ($0 == h || index($0, h " ") == 1) { f = 1; next }
+  awk -v h="## $2" '{ sub(/\r$/, "") } /^```/ { fence = !fence } !fence && ($0 == h || index($0, h " ") == 1) { f = 1; next }
     f && !fence && /^## / { exit } f && !fence && /^<!--/ { next } f { print }' "$1" \
     | awk 'NF { started = 1 } started { buf = buf $0 "\n"; if (NF) { printf "%s", buf; buf = "" } }'
 }
