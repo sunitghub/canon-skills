@@ -1616,3 +1616,28 @@ func TestServeStatic(t *testing.T) {
 		t.Fatalf("bad Host: code=%d, want 403", rec.Code)
 	}
 }
+
+// t-718b: a new merge job must not keep the previous job's command handle: a stop sent before the new process
+// registers would otherwise signal the finished one and be lost. startMergeRun clears it before the job starts.
+func TestStartMergeRunDropsPreviousCmd(t *testing.T) {
+	dir := t.TempDir()
+	stub := filepath.Join(dir, "tkt")
+	if err := os.WriteFile(stub, []byte("#!/bin/sh\nsleep 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TKT_BIN", stub)
+	key := mergeKey{dir, "t-ab12"}
+	old := &exec.Cmd{}
+	mergeRunsMu.Lock()
+	mergeCmds[key] = old
+	mergeRuns[key] = map[string]any{"status": "done", "output": "", "exit_code": 0}
+	mergeRunsMu.Unlock()
+	startMergeRun(dir, "t-ab12", nil)
+	mergeRunsMu.Lock()
+	got := mergeCmds[key]
+	mergeRunsMu.Unlock()
+	if got == old {
+		t.Fatalf("startMergeRun kept the previous job's command handle")
+	}
+	stopMergeRun(dir, "t-ab12")
+}
