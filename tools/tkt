@@ -1003,7 +1003,8 @@ _si_section() {   # _si_section <file> <heading>: the lines under "## <heading>"
   awk -v h="## $2" '$0 == h || index($0, h " ") == 1 { f = 1; next } f && /^## / { exit } f && /^<!--/ { next } f { print }' "$1" \
     | awk 'NF { started = 1 } started { buf = buf $0 "\n"; if (NF) { printf "%s", buf; buf = "" } }'
 }
-_si_items() { grep -E '^[[:space:]]*(- |[0-9]+\. )|^[[:space:]]{2,}[^[:space:]]' || true; }   # list items and their continuations only
+# acceptance.md's one-line section prompts, as `sprint start` writes them (tools/sprint cmd_start); everything else stays.
+_si_drop_prompts() { grep -vxE 'The checklist of behavior that must be true before the sprint can close\.|The commands or checks that prove the criteria work\.|Edge cases and sign-off\.' | awk 'NF { s = 1 } s' || true; }
 _si_or_none() { if [[ -n "$1" ]]; then printf '%s\n' "$1"; else printf '(none yet)\n'; fi; }
 
 cmd_send_issue() {
@@ -1043,20 +1044,20 @@ cmd_send_issue() {
   fi
 
   local acc="$tdir/acceptance.md" plan="$tdir/plan.md" res="$tdir/research.md"
-  # _si_all <file> [items]: every "## " section of <file>, with its own heading, as the board's tree lists it. With
-  # "items", only list items are kept (drops acceptance.md's one-line template prompts). Empty sections are dropped.
+  # _si_all <file> [prompts]: every "## " section of <file>, with its own heading, as the board's tree lists it, tables
+  # and prose included. With "prompts", acceptance.md's template prompt lines are dropped. Empty sections are dropped.
   _si_all() {
     [[ -f "$1" ]] || return 0
     local h c
     while IFS= read -r h; do
-      c="$(_si_section "$1" "$h")"; [[ "${2:-}" == items ]] && c="$(printf '%s\n' "$c" | _si_items)"
+      c="$(_si_section "$1" "$h")"; [[ "${2:-}" == prompts ]] && c="$(printf '%s\n' "$c" | _si_drop_prompts)"
       [[ -n "$c" ]] && printf '## %s\n%s\n\n' "$h" "$c"
     done < <(sed -n 's/^## //p' "$1" | tr -d '\r')
     return 0
   }
   local asecs psecs rbody
-  asecs="$(_si_all "$acc" items)"; psecs="$(_si_all "$plan")"
-  _si_section "$acc" Criteria | _si_items | grep -q . || echo "send-issue: warning: $id has no acceptance criteria; the agent will write its own" >&2
+  asecs="$(_si_all "$acc" prompts)"; psecs="$(_si_all "$plan")"
+  _si_section "$acc" Criteria | _si_drop_prompts | grep -q '^[[:space:]]*- ' || echo "send-issue: warning: $id has no acceptance criteria; the agent will write its own" >&2
   rbody=""; [[ -f "$res" ]] && rbody="$(awk 'NR == 1 && /^# / { next } { print }' "$res" | awk 'NF { s = 1 } s')"
 
   local body; body="$(mktemp "${TMPDIR:-/tmp}/tkt-issue.XXXXXX")"

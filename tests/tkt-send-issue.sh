@@ -32,7 +32,7 @@ git remote add origin https://github.com/acme/app.git
 id="$("$TKT" create "Board burns a CPU core" -t task -p 1 -d "## Problem
 The board uses a core while idle.")"
 d=".tickets/$id"
-printf '# Acceptance\n\n## Criteria\nThe checklist of behavior.\n<!-- Add items -->\n\n- [ ] Idle CPU under 5%%\n  over 60 s\n\n## Test Plan\n- [ ] Measure before and after\n\n## QA\n- [ ] Tested locally\n' > "$d/acceptance.md"
+printf '# Acceptance\n\n## Criteria\nThe checklist of behavior that must be true before the sprint can close.\n<!-- Add items -->\n\n- [ ] Idle CPU under 5%%\n  over 60 s\n\n## Test Plan\n- [ ] Measure before and after\n\n## QA\nEdge cases and sign-off.\n- [ ] Tested locally\n\n## Wrapup Gates\n| Gate | Status | Reason |\n|------|--------|--------|\n| eval | ran | pass |\n\n## Results\nAll criteria met on the first run.\n' > "$d/acceptance.md"
 printf '# Plan\n\n## Sign-off\n- [x] Plan approved\n\n## Approach\n1. Profile the idle board.\n2. Fix the hot loop.\n\n## Files\n`server.py`\n\n## Decisions\n- none\n' > "$d/plan.md"
 printf '# Research: x\n\n- The board polls every 8 s.\n' > "$d/research.md"
 sig() { cksum < "$d/ticket.md"; }
@@ -55,7 +55,9 @@ grep -qx "issue create --repo acme/app --title $id: Board burns a CPU core --lab
 assert_grep "^github: acme/app#57$" "$d/ticket.md"
 # The issue has the ticket's tree as the board lists it: every section of ticket.md, acceptance.md and plan.md, then Research.
 order="$(grep -E '^#{1,2} ' "$STUB_BODY" | tr '\n' '|')"
-assert_eq "# Description|## Problem|# Acceptance|## Criteria|## Test Plan|## QA|# Plan|## Sign-off|## Approach|## Files|## Decisions|# Research|# Working on this|" "$order"
+assert_eq "# Description|## Problem|# Acceptance|## Criteria|## Test Plan|## QA|## Wrapup Gates|## Results|# Plan|## Sign-off|## Approach|## Files|## Decisions|# Research|# Working on this|" "$order"
+assert_grep '^| eval | ran | pass |$' "$STUB_BODY"                     # a table section keeps its rows
+assert_grep '^All criteria met on the first run.$' "$STUB_BODY"     # and a prose section its text
 assert_grep '^- \[ \] Tested locally$' "$STUB_BODY"
 assert_grep '^- \[x\] Plan approved$' "$STUB_BODY"
 assert_grep '^- \[ \] Idle CPU under 5%$' "$STUB_BODY"
@@ -63,7 +65,7 @@ assert_grep '^  over 60 s$' "$STUB_BODY"
 assert_grep '^1. Profile the idle board.$' "$STUB_BODY"
 assert_grep '^- The board polls every 8 s.$' "$STUB_BODY"
 assert_grep "^<!-- canon:ticket $id -->\$" "$STUB_BODY"
-grep -q 'The checklist of behavior\|Add items' "$STUB_BODY" && fail "template prompts or comments leaked into the issue"
+grep -q 'The checklist of behavior\|Edge cases and sign-off\|Add items' "$STUB_BODY" && fail "template prompts or comments leaked into the issue"
 [[ "$(grep -c '^## Problem$' "$STUB_BODY")" == 1 ]] || fail "the ticket's own Problem heading was doubled"
 
 # Already sent: refused, ticket unchanged, no gh call.
