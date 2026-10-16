@@ -18,7 +18,8 @@ git config --global url."$W/origin.git".pushInsteadOf https://github.com/acme/ap
 
 P="$W/project"; git clone -q "$W/origin.git" "$P" 2>/dev/null; cd "$P"
 git remote set-url origin https://github.com/acme/app.git
-mkdir -p scripts; printf '#!/usr/bin/env bash\n[ -e FAIL ] && { echo "suite: 1 failed"; exit 1; }\necho "suite: ok"\n' > scripts/test.sh; chmod +x scripts/test.sh
+# The suite leaves $STUB_W/ran behind, so a test can tell whether the PR's code ran at all.
+mkdir -p scripts; printf '#!/usr/bin/env bash\ntouch "$STUB_W/ran"\n[ -e FAIL ] && { echo "suite: 1 failed"; exit 1; }\necho "suite: ok"\n' > scripts/test.sh; chmod +x scripts/test.sh
 printf '.tickets/\n' > .gitignore; git add -A; git commit -qm base; git push -q origin HEAD:main
 # The PR: one commit on a branch, published as refs/pull/7/head.
 git checkout -q -b claude/pr7; echo change > change.txt; git add change.txt; git commit -qm "the PR"; PRHEAD="$(git rev-parse HEAD)"
@@ -58,9 +59,10 @@ merged() { grep -q '^pr merge' "$STUB_LOG"; }
 
 # refuses <label> <expected message> [env assignments...] -- [merge-pr args...]: exit 1, message, no merge, ticket unchanged.
 refuses() {
-  local label="$1" part="$2"; shift 2; local envs=(); while [[ "$1" != -- ]]; do envs+=("$1"); shift; done; shift
-  : > "$STUB_LOG"; local before; before="$(sig)"; local rc=0 out
+  local label="$1" part="$2"; shift 2; local envs=(); out=""; while [[ "$1" != -- ]]; do envs+=("$1"); shift; done; shift
+  : > "$STUB_LOG"; local before; before="$(sig)"; local rc=0
   out="$(env ${envs[@]+"${envs[@]}"} "$TKT" merge-pr "$id" "$@" < /dev/null 2>&1)" || rc=$?
+  : "${out}"   # left for the caller to read
   [[ "$rc" == 1 ]] || fail "merge-pr should refuse $label (rc $rc): $out"
   assert_contains "$out" "$part"
   merged && fail "merge-pr called gh pr merge although it refused $label"
@@ -87,25 +89,31 @@ echo 7 > "$W/prlist"
 git checkout -q claude/pr7; echo more >> change.txt; git commit -qam more; git push -q -f origin "HEAD:refs/pull/7/head"
 refuses "a PR that moved after the check" "moved while checking it" -- --yes
 git reset -q --hard "$PRHEAD"; git push -q -f origin "HEAD:refs/pull/7/head"; git checkout -q main
-# A red suite on base + PR: refused, with its output.
-git checkout -q claude/pr7; touch FAIL; git add FAIL; git commit -qm red; RED="$(git rev-parse HEAD)"; git push -q -f origin "HEAD:refs/pull/7/head"
+# A red suite on base + PR: refused, with its output. This PR also changes scripts/test.sh, which the summary flags.
+git checkout -q claude/pr7; touch FAIL; echo '# changed' >> scripts/test.sh; git add FAIL scripts/test.sh; git commit -qm red; RED="$(git rev-parse HEAD)"
+git push -q -f origin "HEAD:refs/pull/7/head"
 eval_ok "$RED"; refuses "a red suite" "suite: 1 failed" STUB_HEAD="$RED" -- --yes
+assert_contains "$out" "this PR changes scripts/test.sh itself"
 git reset -q --hard "$PRHEAD"; git push -q -f origin "HEAD:refs/pull/7/head"; git checkout -q main; eval_ok
 # --test overrides the default: a failing command refuses.
 refuses "a failing --test command" "false failed" -- --test false --yes
-# No terminal and no --yes: refused after the checks.
-refuses "no terminal without --yes" "no terminal to ask on" --
+# No terminal and no --yes: refused before any of the PR's code runs.
+rm -f "$W/ran"; refuses "no terminal without --yes" "no terminal to ask on" --
+[[ ! -e "$W/ran" ]] || fail "the PR's tests ran before anyone said yes"
 [[ -z "$(ls "${TMPDIR:-/tmp}" | grep '^tkt-merge\.' || true)" ]] || fail "a scratch clone was left behind"
 
-# The prompt: "n" merges nothing; "y" merges. A pseudo-terminal answers it (script(1): BSD and util-linux spellings).
+# The prompt: "n" runs nothing and merges nothing; "y" runs the tests and merges. A pseudo-terminal answers it (script(1):
+# BSD and util-linux spellings).
 tty_run() { local a="$1"; shift
   # The pipe stays open a while: BSD script sends EOF to the terminal as soon as its input closes, before the prompt reads.
   if script --version >/dev/null 2>&1 < /dev/null; then { printf '%s\n' "$a"; sleep 3; } | script -qec "$(printf '%q ' "$@")" /dev/null
   else { printf '%s\n' "$a"; sleep 3; } | script -q /dev/null "$@"; fi; }
-: > "$STUB_LOG"; before="$(sig)"
+: > "$STUB_LOG"; before="$(sig)"; rm -f "$W/ran"
 out="$(tty_run n "$TKT" merge-pr "$id" 2>&1)" || true
-assert_contains "$out" "Merge PR #7 into main? This also closes #21. [y/N]"
-assert_contains "$out" "merge-pr: not merged"
+assert_contains "$out" "PR #7 (acme/app): 1 file changed"
+assert_contains "$out" "Run PR #7's code here (scripts/test.sh on main + PR) and merge into main if it passes? This also closes #21. [y/N]"
+assert_contains "$out" "merge-pr: nothing run, not merged"
+[[ ! -e "$W/ran" ]] || fail "an n at the prompt still ran the PR's tests"
 merged && fail "an n at the prompt merged"; [[ "$(sig)" == "$before" ]] || fail "an n at the prompt changed ticket.md"
 
 : > "$STUB_LOG"
@@ -121,7 +129,7 @@ grep -q '^pr list' "$STUB_LOG" || fail "the PR was not found by its Fixes line"
 # --yes, --pr and no test command: merges on the gates alone and says so.
 sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; git rm -q scripts/test.sh; git commit -qm "no suite"; git push -q origin HEAD:main
 : > "$STUB_LOG"; out="$("$TKT" merge-pr "$id" --pr 7 --yes 2>&1)" || fail "merge-pr --yes failed: $out"
-assert_contains "$out" "no test command (pass --test): merging on the gates alone"
+assert_contains "$out" "No test command (pass --test). Merge PR #7 into main on the gates alone? yes (--yes)"
 grep -q '^pr list' "$STUB_LOG" && fail "--pr still searched for the PR"
 grep -q '^pr merge 7 ' "$STUB_LOG" || fail "--yes did not merge"
 
