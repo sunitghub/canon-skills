@@ -8,7 +8,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 
 tmp_home="$(mktemp -d)"
 export HOME="$tmp_home"
-export PATH="$PATH:$TOOLS_DIR"
+export PATH="$TOOLS_DIR:$PATH"   # first, so an installed canon on PATH never runs instead of this tree
 trap 'rm -rf "$tmp_home" "${projects[@]:-}"' EXIT
 projects=()
 
