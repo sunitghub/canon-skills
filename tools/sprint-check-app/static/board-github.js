@@ -203,7 +203,6 @@ async function checkAndMerge(t, pr) {
   let chk;
   try { chk = await getJSON(ghApi(t.id, 'merge-check') + prQ); }
   catch (e) { chk = { ok: false, output: String(e.message || e) }; }
-  if (open.gen !== dlgGen || !dlgClose) return;   // cancelled, or another dialog took its place, while the check ran
   if (!chk.ok) {
     updateDialog({ body: 'Not mergeable here. Nothing was run or changed.', pre: chk.output || '', cancel: 'Close' }, open.gen);
     return;
