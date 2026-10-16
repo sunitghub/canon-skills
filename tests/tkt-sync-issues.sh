@@ -101,6 +101,18 @@ for l in 'Intro line.' '## Plan' 'kept after a plan heading' '## Working on this
   grep -qxF "$l" "$f" || fail "a plain body lost '$l': $(cat "$f")"
 done
 [[ ! -e "$project/.tickets/$t21/plan.md" ]] || fail "a plain body's '# Plan' line made a plan.md"
+# C1 controls (UTF-8 \302\233 is CSI) go from the title, raw ESC from the body; a title of only control characters skips
+# that issue alone, and the good issue after it is still made.
+printf 'C1 \302\233 title\nbody \033[2J with esc\tand tab\n' > "$stub/issue-22"; printf '\033\302\233\n' > "$stub/issue-23"
+printf 'After the bad one\nok\n' > "$stub/issue-24"
+mklist 22:issue:canon 23:issue:canon 24:issue:canon
+out22="$("$TKT" sync-issues)"
+f="$project/.tickets/$(awk '$2 == "#22" { print $1 }' <<< "$out22")/ticket.md"
+LC_ALL=C grep -q $'\302\233' "$f" && fail "a C1 control reached ticket.md"
+grep -q $'\033' "$f" && fail "a body ESC reached ticket.md"
+assert_grep $'^body \\[2J with esc\tand tab$' "$f"
+assert_contains "$out22" "skip  #23  no title left once control characters are removed"
+assert_contains "$out22" "#24  After the bad one"
 mklist 11:issue:canon,bug,P1 12:issue:canon 13:issue:canon 14:issue:canon 15:pr:canon '16:issue:canon,*'
 
 # A second run creates nothing.

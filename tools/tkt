@@ -1223,9 +1223,13 @@ cmd_import_issue() {
   printf '%s\n' "$id"
 }
 
-# cmd_sync_issues [--dry-run] — t-4cd8: open issues on origin labelled `canon` (only collaborators with triage access can
-# label, so the label is the trust gate) become tickets. Each is handed to cmd_import_issue as a send-issue-shaped body
+# cmd_sync_issues [--dry-run] — t-4cd8: open issues on origin labelled `canon` become tickets. The label admits an issue;
+# it does not vouch for text edited after labelling, or set by an issue template, so --dry-run comes first. Each is handed to cmd_import_issue as a send-issue-shaped body
 # under an id generated here, so one parser and its path guards serve both directions. Read-only on GitHub, over REST.
+_sync_clean() {   # _sync_clean title|body < text: drops C0 (but a body's tab and newline), DEL and UTF-8 C1 controls
+  LC_ALL=C awk -v mode="$1" '{ gsub(/\302[\200-\237]/, ""); gsub(/[\001-\010\013-\037\177]/, "")
+    if (mode == "title") { gsub(/[\t\n]/, ""); printf "%s", $0 } else print }'
+}
 cmd_sync_issues() {
   local dry=false
   while [[ $# -gt 0 ]]; do
@@ -1253,10 +1257,11 @@ cmd_sync_issues() {
     [[ "$n" =~ ^[0-9]+$ && "$kind" == issue ]] || continue
     # Each decode is checked on its own: a failed title decode must not hide behind the body's status.
     { printf '%s' "$t64" | base64 --decode > "$tmp/t64-$n" && printf '%s' "$b64" | base64 --decode > "$tmp/b64-$n"; } 2>/dev/null \
-      && [[ -n "$(tr -d '\000-\037\177' < "$tmp/t64-$n")" ]] \
       || { echo "sync-issues: could not decode issue #$n from the listing" >&2; exit 1; }
-    # The title lands in ticket.md and on the terminal: no control characters (an ESC sequence could rewrite the screen).
-    { tr -d '\000-\037\177' < "$tmp/t64-$n"; printf '\n'; tr -d '\r' < "$tmp/b64-$n"; } > "$tmp/issue-$n"
+    # Title and body land in ticket.md and on the terminal: no control characters (an ESC sequence can rewrite the
+    # screen), C1 included (UTF-8 \302\200-\237); the body keeps its tabs and newlines.
+    { _sync_clean title < "$tmp/t64-$n"; printf '\n'; _sync_clean body < "$tmp/b64-$n"; } > "$tmp/issue-$n"
+    if [[ -z "$(head -1 "$tmp/issue-$n")" ]]; then echo "skip  #$n  no title left once control characters are removed"; continue; fi
     printf '%s\t%s\n' "$n" "$labels" >> "$tmp/todo"
   done < "$tmp/list"
   [[ -f "$tmp/todo" ]] || { echo "sync-issues: no open issues labelled canon on $repo"; return 0; }
