@@ -1103,7 +1103,7 @@ cmd_send_issue() {
     printf '\n# Working on this\n'
     printf 'This repository uses canon. Run `sprint import-issue <this issue number>` to rebuild .tickets/%s/ from the\n' "$id"
     printf 'sections above and start the sprint (if gh cannot read this issue, save its text to a file and add\n'
-    printf '`--body-file <file>`). Open the PR with "Fixes #<this issue number>", and when the sprint closes run\n'
+    printf '`--body-file <file>`). Open the PR with `Fixes #<this issue number>`, and when the sprint closes run\n'
     printf '`tkt export %s` and push nothing else for it: export prints where the ticket went.\n' "$id"
     printf '\n<!-- canon:ticket %s -->\n' "$id"
   } > "$body"
@@ -1116,11 +1116,14 @@ cmd_send_issue() {
   fi
 
   local out n
-  gh label create canon --repo "$repo" --color 6C5CF7 --description "A canon ticket" --force >/dev/null 2>&1 \
-    || echo "send-issue: warning: could not create the canon label; sending without it" >&2
-  local labels=(--label canon); gh label list --repo "$repo" --search canon --json name --jq '.[].name' 2>/dev/null | grep -qx canon || labels=()
+  # A label just created is not in `gh label list --search` yet (t-1465), so only a failed create asks the search.
+  local labels=(--label canon)
+  if ! gh label create canon --repo "$repo" --color 6C5CF7 --description "A canon ticket" --force >/dev/null 2>&1 \
+    && ! gh label list --repo "$repo" --search canon --json name --jq '.[].name' 2>/dev/null | grep -qx canon; then
+    labels=(); echo "send-issue: warning: could not create the canon label; sending without it" >&2
+  fi
   local url
-  out="$(gh issue create --repo "$repo" --title "$id: $title" "${labels[@]}" --body-file "$body" 2>&1)" \
+  out="$(gh issue create --repo "$repo" --title "$id: $title" ${labels[@]+"${labels[@]}"} --body-file "$body" 2>&1)" \
     || { echo "send-issue: gh issue create failed; $id was not changed: $out" >&2; exit 1; }
   url="$(printf '%s\n' "$out" | grep -Eo 'https://github\.com/[^ ]+/issues/[0-9]+' | tail -1)"
   n="${url##*/}"
