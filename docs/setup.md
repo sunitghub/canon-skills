@@ -92,10 +92,13 @@ Claude subscription, with no API key. The ticket goes to your repo as a GitHub i
     printf '#!/bin/bash\nexec "$HOME/.canon/tools/%s" "$@"\n' "$t" > "/usr/local/bin/$t"
     chmod +x "/usr/local/bin/$t"
   done
+  mkdir -p "$HOME/.claude/agents"
+  cp "$HOME/.canon/agents/canon-reviewer.md" "$HOME/.canon/agents/canon-evaluator.md" "$HOME/.claude/agents/" || true
   ```
   The wrappers put the tools on the session's `PATH`; the installer only suggests a shell profile line. Wrappers work with
   every canon release; symlinks work too from 0.11.2, but before it `sprint` and `tkt` could not find their helpers
-  through a link.
+  through a link. The last two lines give the session canon's reviewer and evaluator agents, which `sprint complete`
+  runs at the close. The session clones your repo itself: the script needs no `git` lines.
 - No secrets, no environment variables.
 
 **Each ticket:**
