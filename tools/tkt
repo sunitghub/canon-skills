@@ -1311,25 +1311,30 @@ cmd_sync_issues() {
 # on a terminal one line rewritten every 2 s, else a plain line every CANON_PROGRESS_SECONDS (default 30; the board sets
 # it). The command runs in its own process group, so an interrupt stops all of it (recorded group id only).
 _merge_pr_run_tests() {
-  local tmp="$1" cmd="$2" base="$3" pr="$4" every="${CANON_PROGRESS_SECONDS:-30}" tty=false tpid rc=0 start last=0 now line
+  local tmp="$1" cmd="$2" base="$3" pr="$4" every="${CANON_PROGRESS_SECONDS:-30}" tty=false tpid="" rc=0 start last=0 now line
+  local shown; shown="$(printf '%s' "$cmd" | cut -c1-40)"; [[ ${#cmd} -gt 40 ]] && shown="${shown}…"
   [[ "$every" =~ ^[1-9][0-9]*$ ]] || every=30
   [[ -t 1 ]] && { tty=true; every=2; }
+  # The trap is in place before the run starts; INT, TERM and HUP (a closed terminal) all stop the whole group: TERM,
+  # then KILL after 2 s. Only the recorded group id is signalled.
+  # shellcheck disable=SC2016  # $tpid is read when the trap fires
+  trap '[[ -n "$tpid" ]] && { kill -TERM -- "-$tpid" 2>/dev/null; for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 -- "-$tpid" 2>/dev/null || break; sleep 0.2; done; kill -KILL -- "-$tpid" 2>/dev/null || true; }
+    printf "\nmerge-pr: stopped; the tests were ended and nothing was merged\n" >&2; exit 130' INT TERM HUP
   start=$SECONDS
   set -m
   ( cd "$tmp/w" && exec bash -c "$cmd" ) < /dev/null > "$tmp/test.log" 2>&1 &
   tpid=$!
   set +m
-  # shellcheck disable=SC2064  # expand now: the group id is this run's
-  trap "kill -TERM -- -$tpid 2>/dev/null; exit 130" INT TERM
   while kill -0 "$tpid" 2>/dev/null; do
-    sleep 1; now=$((SECONDS - start))
+    sleep 0.2; now=$((SECONDS - start))
     (( now - last >= every )) || continue; last=$now
-    line="$(tail -n 1 "$tmp/test.log" 2>/dev/null | LC_ALL=C tr -d '\000-\037\177' | cut -c1-60)"
-    if $tty; then printf '\rmerge-pr: running %s on %s + PR #%s… %dm%02ds  (%s)\033[K' "$cmd" "$base" "$pr" $((now / 60)) $((now % 60)) "$line"
-    else printf 'merge-pr: running %s on %s + PR #%s… %dm%02ds  (%s)\n' "$cmd" "$base" "$pr" $((now / 60)) $((now % 60)) "$line"; fi
+    # The newest line as a terminal would show it: after its last carriage return, escape sequences and controls removed.
+    line="$(tail -n 1 "$tmp/test.log" 2>/dev/null | awk -F'\r' '{ print $NF }' | LC_ALL=C sed $'s/\033\\[[0-9;?]*[A-Za-z]//g' | LC_ALL=C tr -d '\000-\037\177' | cut -c1-50)"
+    if $tty; then printf '\rmerge-pr: running %s on %s + PR #%s… %dm%02ds  (%s)\033[K' "$shown" "$base" "$pr" $((now / 60)) $((now % 60)) "$line"
+    else printf 'merge-pr: running %s on %s + PR #%s… %dm%02ds  (%s)\n' "$shown" "$base" "$pr" $((now / 60)) $((now % 60)) "$line"; fi
   done
   wait "$tpid" || rc=$?
-  trap - INT TERM
+  trap - INT TERM HUP
   now=$((SECONDS - start)); $tty && printf '\r\033[K'
   [[ $rc == 0 ]] && printf 'merge-pr: %s passed in %dm%02ds\n' "$cmd" $((now / 60)) $((now % 60))
   return "$rc"
@@ -1348,6 +1353,7 @@ cmd_merge_pr() {
     esac
   done
   [[ -n "$id" ]] || { echo "Usage: tkt merge-pr <id> [--pr N] [--test CMD] [--yes | --check]" >&2; exit 1; }
+  $yes && $check && { echo "merge-pr: --yes and --check do not go together: --check never runs or merges anything" >&2; exit 1; }
   [[ -z "$pr" || "$pr" =~ ^[0-9]+$ ]] || { echo "merge-pr: --pr takes a PR number" >&2; exit 1; }
   local file tdir root repo; file="$(find_ticket "$id")"; tdir="$(dirname "$file")"; id="$(get_field "$file" id)"
   root="$(git -C "$tdir" rev-parse --show-toplevel)" || exit 1

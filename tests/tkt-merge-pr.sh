@@ -168,23 +168,28 @@ assert_contains "$out" "merge-pr: ready: would run touch \"\$STUB_W/ran\" on mai
 [[ ! -e "$W/ran" ]] || fail "--check ran the test command"
 merged && fail "--check merged"; [[ "$(sig)" == "$before" ]] || fail "--check changed ticket.md"
 refuses "--check on a blocked PR" "blocked by a branch rule" STUB_MS=BLOCKED -- --pr 7 --check
+refuses "--yes with --check" "do not go together" -- --pr 7 --yes --check
 
 # Progress while the tests run: without a terminal a plain line every CANON_PROGRESS_SECONDS, naming the newest log line.
 : > "$STUB_LOG"
-out="$(CANON_PROGRESS_SECONDS=1 "$TKT" merge-pr "$id" --pr 7 --yes --test 'echo step one; sleep 3; echo step two; sleep 2' 2>&1)" || fail "a slow suite run failed: $out"
-assert_contains "$out" "(step one)"; assert_contains "$out" "(step two)"
+out="$(CANON_PROGRESS_SECONDS=1 "$TKT" merge-pr "$id" --pr 7 --yes --test 'echo step one; sleep 3; printf "old\rstep \033[1mtwo\033[0m\n"; sleep 2' 2>&1)" || fail "a slow suite run failed: $out"
+assert_contains "$out" "(step one)"; assert_contains "$out" "(step two)"   # after the last \r, escape sequences removed
 assert_contains "$out" "passed in 0m0"
 [[ "$out" != *$'\r'* ]] || fail "progress used carriage returns without a terminal"
 sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
-# An interrupt stops the whole test run, its children included, and merges nothing.
-: > "$STUB_LOG"; rm -f "$W/child.pid"; before="$(sig)"
-"$TKT" merge-pr "$id" --pr 7 --yes --test 'sleep 60 & echo $! > "$STUB_W/child.pid"; wait' > "$W/int.out" 2>&1 & mpid=$!
-for _ in $(seq 50); do [[ -s "$W/child.pid" ]] && break; sleep 0.1; done
-[[ -s "$W/child.pid" ]] || fail "the slow test command never started"
-kill -TERM "$mpid"; rc=0; wait "$mpid" || rc=$?
-[[ "$rc" != 0 ]] || fail "an interrupted merge-pr exited 0"
-sleep 0.5; ! pid_alive "$(cat "$W/child.pid")" || { kill "$(cat "$W/child.pid")" 2>/dev/null; fail "the test command's child outlived the interrupt"; }
-merged && fail "an interrupted merge-pr merged"; [[ "$(sig)" == "$before" ]] || fail "an interrupted merge-pr changed ticket.md"
+# An interrupt (TERM, or HUP: a closed terminal) stops the whole test run, its children included, says so, merges nothing.
+for sig_name in TERM HUP; do
+  : > "$STUB_LOG"; rm -f "$W/child.pid"; before="$(sig)"
+  "$TKT" merge-pr "$id" --pr 7 --yes --test 'sleep 60 & echo $! > "$STUB_W/child.pid"; wait' > "$W/int.out" 2>&1 & mpid=$!
+  for _ in $(seq 100); do [[ -s "$W/child.pid" ]] && break; sleep 0.1; done
+  [[ -s "$W/child.pid" ]] || fail "the slow test command never started ($sig_name)"
+  kill -"$sig_name" "$mpid"; rc=0; wait "$mpid" || rc=$?
+  [[ "$rc" != 0 ]] || fail "merge-pr exited 0 after $sig_name"
+  for _ in $(seq 20); do pid_alive "$(cat "$W/child.pid")" || break; sleep 0.2; done
+  ! pid_alive "$(cat "$W/child.pid")" || { kill "$(cat "$W/child.pid")" 2>/dev/null; fail "the test command's child outlived $sig_name"; }
+  assert_contains "$(cat "$W/int.out")" "merge-pr: stopped; the tests were ended and nothing was merged"
+  merged && fail "merge-pr merged after $sig_name"; [[ "$(sig)" == "$before" ]] || fail "merge-pr changed ticket.md after $sig_name"
+done
 
 # gh fails after GitHub merged (the branch delete, say): recorded as merged, with gh's message; no sha → no "null".
 sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
