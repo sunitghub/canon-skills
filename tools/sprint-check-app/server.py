@@ -3899,6 +3899,8 @@ class Handler(BaseHTTPRequestHandler):
         m = re.match(r'^/api/ticket/(t-[a-z0-9]{4})/github/(send|import|merge|merge-stop|take-back)$', path)
         if m:
             tid, what = m.group(1), m.group(2)
+            with _MERGE_LOCK:   # t-718b: a write changes the stage; the next status call must not serve the cached one
+                _STATUS_CACHE.pop((str(eroot), tid), None)
             if what == 'send':
                 self.send_json(run_tkt(eroot, ['send-issue', tid] + (['--public'] if payload.get('public') is True else []))); return
             if what == 'merge-stop':

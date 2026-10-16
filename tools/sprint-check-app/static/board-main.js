@@ -10,6 +10,7 @@ import { initWorktree } from './board-worktree.js';
 import { initPanels } from './board-panels.js';
 import { initCreate } from './board-create.js';
 import { initUi } from './board-ui.js';
+import { initGithub } from './board-github.js';
 
 initCore();
 initRender();
@@ -20,3 +21,4 @@ initWorktree();
 initPanels();
 initCreate();
 initUi();
+initGithub();

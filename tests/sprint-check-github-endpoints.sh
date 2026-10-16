@@ -113,11 +113,18 @@ for P in "$PYP" "$GOP"; do
   rm -f "$W/release"; post "$P" /api/ticket/t-ab12/github/merge '{"pr":58}' >/dev/null
   for _ in $(seq 120); do s="$(body "$(get "$P" /api/ticket/t-ab12/github/merge)")"; [[ "$(js 'j.status' <<< "$s")" == done ]] && break; sleep 0.1; done
   assert_eq "done|true" "$(js '[j.status, j.exit_code !== 0].join("|")' <<< "$s")"
+  # t-718b: a stop sent right after a second start reaches the new job (Go cleared the old handle), and a write drops
+  # the ticket's cached status.
+  rm -f "$W/release"; post "$P" /api/ticket/t-ab12/github/merge '{"pr":58}' >/dev/null; post "$P" /api/ticket/t-ab12/github/merge-stop '{}' >/dev/null
+  for _ in $(seq 50); do s="$(body "$(get "$P" /api/ticket/t-ab12/github/merge)")"; [[ "$(js 'j.status' <<< "$s")" == done ]] && break; sleep 0.1; done
+  assert_eq "done|true" "$(js '[j.status, j.exit_code !== 0].join("|")' <<< "$s")"
   # github-status: the parsed stage, and a second call within 30 s is served from the cache (no second tkt run).
   : > "$W/log"
   r="$(get "$P" /api/ticket/t-ab12/github/status)"; assert_eq "true|pr-open|24" "$(body "$r" | js '[j.ok,j.status.stage,j.status.pr].join("|")')"
   get "$P" /api/ticket/t-ab12/github/status >/dev/null
   assert_eq "1" "$(grep -c 'github-status t-ab12 --json' "$W/log")"
+  post "$P" /api/ticket/t-ab12/github/take-back '{}' >/dev/null; get "$P" /api/ticket/t-ab12/github/status >/dev/null
+  assert_eq "2" "$(grep -c 'github-status t-ab12 --json' "$W/log")"   # the write dropped the cache
   r="$(curl -s -w '\n%{http_code}' -H 'Origin: https://evil.example' "http://127.0.0.1:$P/api/ticket/t-ab12/github/status")"; [[ "$(code "$r")" == 403 ]] || fail "$srv: cross-origin status was $(code "$r")"
   echo "sprint-check-github-endpoints: $srv ok"
 done

@@ -167,6 +167,7 @@ export function worktreeRun(t) {
   return (t && t.status === 'open' && d && d.where === 'worktree' && d.status === 'in_progress' && d.branch) ? d : null;
 }
 export function effectiveStatus(t) {
+  if (t && t.status === 'open' && t.github && !t.merged) return 'in_progress';   // t-718b: out on GitHub (status stays open)
   return worktreeRun(t) ? 'in_progress' : (t ? t.status : '');
 }
 

@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="/static/board-dialogs.css">
   <link rel="stylesheet" href="/static/board-cockpit.css">
   <link rel="stylesheet" href="/static/board-scrollbars.css">
+  <link rel="stylesheet" href="/static/board-github.css">
   <script src="/static/theme-boot.js" data-page="board"></script>
 </head>
 <body>
@@ -241,6 +242,8 @@
         <div class="ck-term-msg-wrap">
           <div class="ck-term-msg" id="ck-term-msg"></div>
         </div>
+        <!-- t-718b: shown instead of the terminal for a GitHub place -->
+        <div class="ck-gh-panel" id="ck-gh-panel" hidden></div>
       </div>
       <div class="ck-preview collapsed" id="ck-preview">
         <div class="ck-preview-resize" id="ck-preview-resize" title="Drag to resize"></div>
@@ -304,6 +307,19 @@
   </div>
 </div>
 
+<!-- t-718b: the GitHub dialog (import, Check & merge, take back) -->
+<div id="gh-dialog" class="ck-leave-confirm-overlay" role="dialog" aria-modal="true" aria-labelledby="gh-dialog-title">
+  <div class="ck-leave-confirm gh-dialog-box">
+    <div class="ck-leave-confirm-title" id="gh-dialog-title"></div>
+    <div class="ck-leave-confirm-body" id="gh-dialog-body"></div>
+    <pre class="gh-dialog-pre" id="gh-dialog-pre" hidden></pre>
+    <label class="gh-dialog-check" id="gh-dialog-check-label" hidden><input type="checkbox" id="gh-dialog-check"> <span></span></label>
+    <div class="ck-leave-confirm-actions">
+      <button class="ck-leave-btn ck-leave-btn-save" id="gh-dialog-ok" type="button" hidden>OK</button>
+      <button class="ck-leave-btn ck-leave-btn-cancel" id="gh-dialog-cancel" type="button">Close</button>
+    </div>
+  </div>
+</div>
 <!-- Modal -->
 <div id="modal-overlay">
   <div id="modal">

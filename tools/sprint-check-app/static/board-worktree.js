@@ -3,6 +3,7 @@ import { WT_PREF_MAIN, esc, escAttr, md, worktreeRun } from './board-helpers.js'
 import { showToast } from './board-render.js';
 import { activeIframe, cockpitState, missingTicketMessage, requestPreview, setButtonBusy, setTermMessage } from './board-cockpit.js';
 import { closeCockpit, openCockpitDetails } from './board-cockpit-rail.js';
+import { ghOut, githubPickerRowsHTML, hideGithubPanel, showGithubPanel } from './board-github.js';
 
 // t-ccd6: promise-returning confirm/notice in the board's own style. okOnly = a
 // notice (resolves true on OK, false on Escape). Escape cancels, Enter confirms
@@ -239,6 +240,7 @@ export async function renderCockpitWorktree(t) {
         </div>`).join('')
       + `</details>`;
   }
+  html += githubPickerRowsHTML(t, tab);   // t-718b: GitHub places (busy GitHub #N rows, and GitHub · new issue)
   html += `<div class="ck-worktree-new">
     <button type="button" class="ck-worktree-new-plus" title="Create a worktree for the branch named here (asks to confirm)">+ New</button>
     <input id="ck-worktree-new-input" value="${esc(wtNewDefault)}" spellcheck="false" autocomplete="off">
@@ -295,7 +297,17 @@ export async function renderCockpitWorktree(t) {
   });
 
   const ownKeys = new Set(usable.filter(e => e.own).map(e => cockpitPathKey(e.path)));
-  box.querySelectorAll('.ck-worktree-row').forEach(row => {
+  box.querySelectorAll('.ck-worktree-row[data-github]').forEach(row => {
+    row.addEventListener('click', () => {
+      // t-718b: GitHub is a place with no local session: no worktree is selected and the terminal never mounts.
+      tab.ghPick = true;
+      tab.worktreeCwd = null;
+      box.querySelectorAll('.ck-worktree-row').forEach(r => r.classList.toggle('selected', r === row));
+      updateWorktreeNote();
+      maybeMountCockpitTerminal(t);
+    });
+  });
+  box.querySelectorAll('.ck-worktree-row:not([data-github])').forEach(row => {
     row.addEventListener('click', async () => {
       await selectCockpitWorktree(t, row.dataset.cwd);
       // t-2241: picking the ticket's own worktree collapses the picker to it. Re-check the
@@ -537,6 +549,7 @@ async function selectCockpitWorktree(t, cwd) {
     }
   }
   cockpitState.worktreeCwd = cwd;
+  cockpitState.ghPick = false;   // t-718b: a local place replaces a GitHub pick
   document.querySelectorAll('#ck-worktree .ck-worktree-row').forEach(row => {
     // t-3e58: compare by normalized key, not raw ===. The create-response path
     // and the rendered data-cwd can differ in format on Windows (\ vs /, case,
@@ -643,7 +656,15 @@ export function formatStateAsParagraphs(bullet, t) {
 // ticket regardless of what the board sends.
 export async function maybeMountCockpitTerminal(t) {
   const iframe = activeIframe();
-  if (t.scratch) { await mountCockpitTerminal(t, ''); return; }   // t-47f1: always the main checkout
+  if (t.scratch) { hideGithubPanel(); await mountCockpitTerminal(t, ''); return; }   // t-47f1: always the main checkout
+  // t-718b: a GitHub pick, or a ticket already out on GitHub, never mounts the terminal: the rail shows the GitHub panel.
+  if (cockpitState.ghPick || ghOut(t)) {
+    if (iframe) iframe.style.visibility = 'hidden';
+    setTermMessage('');
+    await showGithubPanel(t, cockpitState);
+    return;
+  }
+  hideGithubPanel();
   if (cockpitState.worktreeCwd === null) {
     iframe.style.visibility = 'hidden';
     setTermMessage(cockpitState.wtPrefPending

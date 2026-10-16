@@ -7,6 +7,7 @@ import { openCockpit, renderSidebarChanges } from './board-cockpit-rail.js';
 import { cockpitForwardSlash, fetchWorktreeLock } from './board-worktree.js';
 import { openCommitPanel } from './board-panels.js';
 import { applySearch, setText } from './board-ui.js';
+import { bindGithubCardButtons, ensureGithubStatus, ghButtonHTML, ghChipHTML, ghOut } from './board-github.js';
 
 // ── Render ────────────────────────────────────────────────────────────────
 
@@ -15,6 +16,7 @@ export function render() {
   renderSidebar();
   renderBoard();
   refreshCockpitSessions();
+  ensureGithubStatus();   // t-718b: a card that just went out on GitHub gets its stage now, not at the next poll
 }
 
 // t-2d2e: same normalization for the row's "Main checkout" test and the
@@ -430,7 +432,8 @@ export function renderBoard() {
     btn.addEventListener('blur', hideHoverTooltip);
   });
 
-  board.querySelectorAll('.card-start').forEach(btn => {
+  bindGithubCardButtons(board);   // t-718b: Open issue / Open PR / Import results / Check & merge, and take back
+  board.querySelectorAll('.card-start:not(.card-gh-btn)').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation();
       if (btn.disabled) return;
@@ -726,7 +729,9 @@ function cardHTML(t, idx) {
   let startBtn = '';
   const run = worktreeRun(t);
   const live = state.cockpitRows.get(t.id);
-  if (live) {
+  if (ghOut(t)) {
+    startBtn = ghButtonHTML(t);   // t-718b: out on GitHub — one stage button instead of Start (one place at a time)
+  } else if (live) {
     startBtn = ckRowState(live) === 'needs-you'
       ? `<button class="card-start answer" data-id="${esc(t.id)}" title="Answer — this session is waiting on you">Answer ▸</button>`
       : `<button class="card-start open" data-id="${esc(t.id)}" title="Open this ticket's live session">Open ▸</button>`;
@@ -752,6 +757,7 @@ function cardHTML(t, idx) {
         ${t.status === 'closed' ? `<button class="card-archive" data-id="${esc(t.id)}" title="Archive this ticket">archive</button>` : ''}
         <p class="card-title">${esc(t.title)}</p>
         ${t.status === 'in_progress' ? `<span class="card-wt-chip" data-id="${esc(t.id)}"></span>` : ''}
+        ${ghChipHTML(t)}
         ${run ? `<div class="card-wt-pref card-wt-run" title="In progress in worktree ${escAttr(run.branch)} (this checkout's copy still says open until the branch merges).">Worktree: ${esc(run.branch)}</div>` : `${worktreePrefLine(t)}
         ${divergenceLine(t)}`}
       </div>

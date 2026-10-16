@@ -1,0 +1,329 @@
+// t-718b: the GitHub workflow on the board. Every action is one route from t-d271, each running one tkt command
+// (send-issue, github-status, import-results, merge-pr --check / --yes, take-back); this module adds no logic of its
+// own beyond choosing which button a card shows. A ticket with a github: line and no merged: line is out on GitHub:
+// it shows in In progress (board-helpers.js effectiveStatus) with a GitHub chip and one stage button instead of Start.
+import { state } from './board-core.js';
+import { esc, escAttr } from './board-helpers.js';
+import { render, showToast } from './board-render.js';
+import { loadData } from './board-core.js';
+
+const POLL_MS = 120000;          // github-status per card out on GitHub; the server caches each for 30 s
+const MERGE_POLL_MS = 2000;
+const statusById = new Map();    // id -> {ok, status?, output, at}
+const mergeById = new Map();     // id -> {status, output, exit_code, elapsed} while a merge job is followed
+let pollTimer = null;
+
+export function ghOut(t) { return !!(t && t.github && !t.merged); }
+
+function ghParts(t) {
+  const m = /^([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)#([0-9]+)$/.exec(String(t.github || ''));
+  return m ? { repo: m[1], issue: m[2] } : null;
+}
+const ghApi = (id, what) => `/api/ticket/${encodeURIComponent(id)}/github/${what}`;
+async function getJSON(url) { const r = await fetch(url); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }
+async function postJSON(url, body) {
+  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+// ── Card: chip and the one stage button ─────────────────────────────────────────────────────────────────────────────
+function stageOf(t) {
+  const s = statusById.get(t.id);
+  if (mergeById.get(t.id)?.status === 'running') return { stage: 'merging' };
+  if (!s) return { stage: 'unknown' };
+  if (!s.ok || !s.status) return { stage: 'error', output: s.output };
+  return s.status;
+}
+function lastLine(text) {
+  const lines = String(text || '').split(/\r?\n|\r/).map(l => l.trim()).filter(Boolean);
+  return lines.length ? lines[lines.length - 1] : '';
+}
+function mmss(sec) { sec = Math.max(0, Math.round(sec || 0)); return `${Math.floor(sec / 60)}m${String(sec % 60).padStart(2, '0')}s`; }
+
+export function ghChipHTML(t) {
+  if (!ghOut(t)) return '';
+  const p = ghParts(t), st = stageOf(t), n = p ? `GitHub #${p.issue}` : 'GitHub';
+  let text = n, title = String(t.github);
+  if (st.stage === 'sent') text += ' · sent';
+  else if (st.stage === 'pr-open') text += ` · PR #${st.pr}`;
+  else if (st.stage === 'results-ready') text += ' · results ready';
+  else if (st.stage === 'results-in') text += ' · results in';
+  else if (st.stage === 'merging') { const m = mergeById.get(t.id); text += ` · merging… ${mmss(m.elapsed)}`; title = lastLine(m.output) || title; }
+  else if (st.stage === 'error') { text += " · can't check"; title = st.output || title; }
+  return `<span class="card-gh-chip" data-id="${esc(t.id)}" title="${escAttr(title)}">${esc(text)}</span>`
+    + `<button class="card-gh-takeback" type="button" data-id="${esc(t.id)}" title="Bring this ticket back to work on it here">take back</button>`;
+}
+
+export function ghButtonHTML(t) {
+  if (!ghOut(t)) return '';
+  const st = stageOf(t);
+  const btn = (action, label, title) =>
+    `<button class="card-start card-gh-btn" type="button" data-id="${esc(t.id)}" data-gh-action="${action}" title="${escAttr(title)}">${esc(label)}</button>`;
+  if (st.stage === 'results-ready') return btn('import', 'Import results', 'Bring the cloud session\'s results back into this ticket');
+  if (st.stage === 'results-in' || st.stage === 'merging') return btn('merge', 'Check & merge', 'Check the PR and merge it after your confirmation');
+  if (st.stage === 'pr-open') return btn('pr', 'Open PR', `Open PR #${st.pr} on GitHub`);
+  return btn('issue', 'Open issue', 'Open the issue on GitHub');
+}
+
+export function bindGithubCardButtons(root) {
+  root.querySelectorAll('.card-gh-btn').forEach(b => b.addEventListener('click', e => {
+    e.stopPropagation();
+    const t = state.tickets.find(x => x.id === b.dataset.id);
+    if (t) ghAction(t, b.dataset.ghAction);
+  }));
+  root.querySelectorAll('.card-gh-takeback').forEach(b => b.addEventListener('click', e => {
+    e.stopPropagation();
+    const t = state.tickets.find(x => x.id === b.dataset.id);
+    if (t) takeBack(t);
+  }));
+}
+
+function openUrl(url) { window.open(url, '_blank', 'noopener'); }
+
+async function ghAction(t, action) {
+  const p = ghParts(t), st = stageOf(t);
+  if (action === 'issue' && p) return openUrl(`https://github.com/${p.repo}/issues/${p.issue}`);
+  if (action === 'pr' && p && st.pr) return openUrl(`https://github.com/${p.repo}/pull/${st.pr}`);
+  if (action === 'import') return importResults(t, st.pr);
+  if (action === 'merge') return checkAndMerge(t, st.pr);
+}
+
+// ── Status polling ──────────────────────────────────────────────────────────────────────────────────────────────────
+async function fetchStatus(t) {
+  try {
+    const res = await getJSON(ghApi(t.id, 'status'));
+    statusById.set(t.id, { ...res, at: Date.now() });
+  } catch (e) {
+    statusById.set(t.id, { ok: false, output: String(e.message || e), at: Date.now() });
+  }
+}
+export async function pollGithub(force) {
+  if (document.hidden && !force) return;   // nothing changes on screen while the page is hidden
+  const out = (state.tickets || []).filter(ghOut);
+  if (!out.length) return;
+  await Promise.all(out.map(fetchStatus));
+  render();
+}
+// A card that just appeared out on GitHub gets its stage at once, not at the next 2-minute tick.
+export function ensureGithubStatus() {
+  const missing = (state.tickets || []).filter(t => ghOut(t) && !statusById.has(t.id));
+  if (!missing.length) return;
+  missing.forEach(t => statusById.set(t.id, { ok: true, status: null, pending: true, at: Date.now() }));
+  Promise.all(missing.map(fetchStatus)).then(render);
+}
+
+// ── The dialog (#gh-dialog): a title, text or output, an optional checkbox, up to two buttons ───────────────────────
+function dialog() {
+  return {
+    el: document.getElementById('gh-dialog'),
+    title: document.getElementById('gh-dialog-title'),
+    body: document.getElementById('gh-dialog-body'),
+    pre: document.getElementById('gh-dialog-pre'),
+    check: document.getElementById('gh-dialog-check'),
+    checkLabel: document.getElementById('gh-dialog-check-label'),
+    ok: document.getElementById('gh-dialog-ok'),
+    cancel: document.getElementById('gh-dialog-cancel'),
+  };
+}
+let dlgClose = null;
+function openDialog({ title, body = '', pre = '', check = '', ok = '', cancel = 'Close' }) {
+  const d = dialog();
+  d.title.textContent = title;
+  d.body.textContent = body;
+  d.pre.textContent = pre; d.pre.hidden = !pre;
+  d.check.checked = false; d.checkLabel.hidden = !check;
+  d.checkLabel.querySelector('span').textContent = check;
+  d.ok.textContent = ok; d.ok.hidden = !ok; d.ok.disabled = false;
+  d.cancel.textContent = cancel;
+  d.el.classList.add('open');
+  return new Promise(resolve => {
+    dlgClose = v => { d.el.classList.remove('open'); dlgClose = null; resolve(v); };
+    d.ok.onclick = () => dlgClose && dlgClose({ ok: true, checked: d.check.checked });
+    d.cancel.onclick = () => dlgClose && dlgClose({ ok: false });
+  });
+}
+function updateDialog(fields) {
+  const d = dialog();
+  if ('title' in fields) d.title.textContent = fields.title;
+  if ('body' in fields) d.body.textContent = fields.body;
+  if ('pre' in fields) { d.pre.textContent = fields.pre; d.pre.hidden = !fields.pre; d.pre.scrollTop = d.pre.scrollHeight; }
+  if ('ok' in fields) { d.ok.textContent = fields.ok; d.ok.hidden = !fields.ok; }
+  if ('okDisabled' in fields) d.ok.disabled = fields.okDisabled;
+  if ('cancel' in fields) d.cancel.textContent = fields.cancel;
+}
+
+// ── Import results ──────────────────────────────────────────────────────────────────────────────────────────────────
+async function importResults(t, pr) {
+  openDialog({ title: `Importing results for ${t.id}…`, pre: 'Running tkt import-results…', cancel: 'Close' });
+  let res;
+  try { res = await postJSON(ghApi(t.id, 'import'), pr ? { pr } : {}); }
+  catch (e) { res = { ok: false, output: String(e.message || e) }; }
+  const noVerdict = /no eval-report\.md|graded-head: none|NOT match graded-head/.test(res.output || '');
+  updateDialog({
+    title: res.ok ? `Results are back in .tickets/${t.id}/` : (noVerdict ? 'Imported, but the cloud sprint did not close' : 'Import failed'),
+    body: res.ok ? 'Next: Check & merge on the card.'
+      : noVerdict ? 'There is no passing evaluator verdict on the PR\'s head, so there is nothing to merge yet. Finish the close on this machine: check out the PR\'s branch, run the evaluator on its head and sprint complete, then Check & merge (docs/setup.md › Claude cloud sessions).'
+      : 'Nothing was changed.',
+    pre: res.output || '',
+  });
+  statusById.delete(t.id);
+  await loadData();
+}
+
+// ── Check & merge ───────────────────────────────────────────────────────────────────────────────────────────────────
+async function checkAndMerge(t, pr) {
+  const prQ = pr ? `?pr=${encodeURIComponent(pr)}` : '';
+  const prB = pr ? { pr } : {};
+  if (mergeById.get(t.id)?.status === 'running') return followMerge(t, prB, true);
+  const open = openDialog({ title: `Check & merge${pr ? ` PR #${pr}` : ''}`, body: 'Running the checks that run none of the PR\'s code…', pre: '', ok: '', cancel: 'Cancel' });
+  let chk;
+  try { chk = await getJSON(ghApi(t.id, 'merge-check') + prQ); }
+  catch (e) { chk = { ok: false, output: String(e.message || e) }; }
+  if (!chk.ok) {
+    updateDialog({ body: 'Not mergeable here. Nothing was run or changed.', pre: chk.output || '', cancel: 'Close' });
+    return;
+  }
+  updateDialog({
+    body: 'Running the tests runs the PR\'s code on this machine. Nothing from the PR runs before you press the button.',
+    pre: chk.output || '', ok: 'Run tests & merge', cancel: 'Cancel',
+  });
+  const choice = await open;
+  if (!choice || !choice.ok) return;
+  try { await postJSON(ghApi(t.id, 'merge'), prB); }
+  catch (e) { showToast(`Could not start the merge: ${e.message || e}`, 'block'); return; }
+  return followMerge(t, prB, true);
+}
+
+async function followMerge(t, prB, show) {
+  if (show) {
+    openDialog({ title: `Checking & merging ${t.id}`, body: 'Running the tests on the base branch + PR…', pre: '', ok: '', cancel: 'Stop' })
+      .then(v => { if (v && !v.ok && mergeById.get(t.id)?.status === 'running') stopMerge(t); });
+  }
+  for (;;) {
+    let st;
+    try { st = await getJSON(ghApi(t.id, 'merge')); } catch { st = null; }
+    if (st) {
+      mergeById.set(t.id, st);
+      if (dlgClose) updateDialog({ body: st.status === 'running' ? `Running… ${mmss(st.elapsed)}  ${lastLine(st.output)}` : '', pre: st.output || '' });
+      render();
+      if (st.status !== 'running') break;
+    }
+    await new Promise(r => setTimeout(r, MERGE_POLL_MS));
+  }
+  const st = mergeById.get(t.id);
+  mergeById.delete(t.id);
+  const merged = st && st.exit_code === 0 && /Merged PR #/.test(st.output || '');
+  const stopped = /stopped; the tests were ended/.test(st?.output || '');
+  if (dlgClose) updateDialog({
+    title: merged ? 'Merged' : stopped ? 'Stopped: nothing was merged' : 'Not merged',
+    body: merged ? 'The PR is merged and the issue closed by its Fixes line. Pull to update your checkout.' : 'Nothing changed on GitHub. See the output.',
+    pre: st?.output || '', ok: '', cancel: 'Close',
+  });
+  statusById.delete(t.id);
+  await loadData();
+}
+
+async function stopMerge(t) {
+  try { await postJSON(ghApi(t.id, 'merge-stop'), {}); } catch {}
+}
+
+// ── Take back ───────────────────────────────────────────────────────────────────────────────────────────────────────
+async function takeBack(t) {
+  const p = ghParts(t);
+  const v = await openDialog({
+    title: `Take ${t.id} back from GitHub?`,
+    body: `It returns to Open so you can start it here. Stop its cloud session first. The cloud branch and any PR stay on GitHub.`,
+    check: p ? `Also close issue #${p.issue} with a comment` : '',
+    ok: 'Take back', cancel: 'Cancel',
+  });
+  if (!v || !v.ok) return;
+  let res;
+  try { res = await postJSON(ghApi(t.id, 'take-back'), { close_issue: !!v.checked }); }
+  catch (e) { res = { ok: false, output: String(e.message || e) }; }
+  if (!res.ok) { await openDialog({ title: 'Could not take it back', body: 'Nothing was changed.', pre: res.output || '' }); return; }
+  statusById.delete(t.id);
+  showToast(`${t.id} is back on this machine`, 'ok');
+  await loadData();
+}
+
+// ── The worktree picker's GitHub rows, and the panel shown instead of the terminal ──────────────────────────────────
+export function githubPickerRowsHTML(t, tab) {
+  if (!t || t.scratch || t.status !== 'open' || ghOut(t)) return '';
+  const busy = (state.tickets || []).filter(x => ghOut(x) && x.id !== t.id);
+  return busy.map(x => {
+    const p = ghParts(x);
+    return `<div class="ck-worktree-held-row ck-gh-busy"><span class="ck-worktree-held-branch">GitHub${p ? ` #${esc(p.issue)}` : ''}</span><span class="ck-worktree-held-why">cloud · busy: ${esc(x.id)}</span></div>`;
+  }).join('') + `<div class="ck-worktree-row ck-gh-row${tab.ghPick ? ' selected' : ''}" data-github="new" title="Sends this ticket as an issue to your repo; a Claude cloud session works it and opens a PR">
+      <div class="ck-worktree-radio"></div>
+      <div class="ck-worktree-labels"><div class="ck-worktree-label">GitHub · new issue</div><div class="ck-worktree-sub">a Claude cloud session works it</div></div>
+    </div>`;
+}
+
+export function hideGithubPanel() {
+  const panel = document.getElementById('ck-gh-panel');
+  if (panel) { panel.hidden = true; panel.innerHTML = ''; }
+}
+
+export async function showGithubPanel(t, tab) {
+  const panel = document.getElementById('ck-gh-panel');
+  if (!panel) return;
+  panel.hidden = false;
+  if (ghOut(t)) {
+    const p = ghParts(t);
+    panel.innerHTML = `<div class="ck-gh-box"><h3>${esc(t.id)} is out on GitHub${p ? ` as issue #${esc(p.issue)}` : ''}</h3>
+      <p>A Claude cloud session works it there; this ticket does not run here until you take it back. Its card shows the next step.</p></div>`;
+    return;
+  }
+  panel.innerHTML = `<div class="ck-gh-box"><h3>Send ${esc(t.id)} to GitHub</h3><p>Loading the preview…</p></div>`;
+  let pv;
+  try { pv = await getJSON(ghApi(t.id, 'send-preview')); }
+  catch (e) { pv = { ok: false, output: String(e.message || e) }; }
+  if (tab && !tab.ghPick) return;   // the user picked another place meanwhile
+  const isPublic = /\(PUBLIC\)/.test(pv.output || '');
+  panel.innerHTML = `<div class="ck-gh-box">
+      <h3>Send ${esc(t.id)} to GitHub</h3>
+      <p>${pv.ok ? 'The issue, exactly as it will be created. Nothing is sent until you press Create issue.' : 'The preview failed, so nothing can be sent yet:'}</p>
+      <pre class="ck-gh-pre" id="ck-gh-preview">${esc(pv.output || '')}</pre>
+      ${isPublic ? `<label class="ck-gh-public"><input type="checkbox" id="ck-gh-public"> This repository is public: anyone could read the ticket's notes. Send anyway.</label>` : ''}
+      <div class="ck-gh-actions"><button type="button" class="ck-gh-create" id="ck-gh-create"${pv.ok ? '' : ' disabled'}>Create issue</button><span class="ck-gh-status" id="ck-gh-status" role="status"></span></div>
+    </div>`;
+  const create = document.getElementById('ck-gh-create');
+  create?.addEventListener('click', async () => {
+    const pub = document.getElementById('ck-gh-public');
+    if (pub && !pub.checked) { document.getElementById('ck-gh-status').textContent = 'Tick the public-repository box first.'; return; }
+    create.disabled = true; create.textContent = 'Sending…';
+    let res;
+    try { res = await postJSON(ghApi(t.id, 'send'), pub ? { public: true } : {}); }
+    catch (e) { res = { ok: false, output: String(e.message || e) }; }
+    if (!res.ok) {
+      create.disabled = false; create.textContent = 'Create issue';
+      document.getElementById('ck-gh-status').textContent = 'Not sent; nothing changed.';
+      document.getElementById('ck-gh-preview').textContent = res.output || '';
+      return;
+    }
+    const n = (/issues\/([0-9]+)/.exec(res.output || '') || [])[1] || '';
+    const url = (/(https:\/\/github\.com\/\S+\/issues\/[0-9]+)/.exec(res.output || '') || [])[1] || '';
+    const line = `Work on Issue#${n}`;
+    panel.innerHTML = `<div class="ck-gh-box ck-gh-sent" id="ck-gh-sent">
+        <h3>Sent ${esc(t.id)} as issue #${esc(n)}</h3>
+        <p>Start a Claude cloud session on the canon environment and type <code>${esc(line)}</code>. The card is in In progress and shows the next step.</p>
+        <div class="ck-gh-actions"><button type="button" class="ck-gh-create" id="ck-gh-copy">Copy</button>${url ? `<button type="button" id="ck-gh-open">Open issue</button>` : ''}<button type="button" id="ck-gh-dismiss">Dismiss</button><span class="ck-gh-status" id="ck-gh-status" role="status"></span></div>
+      </div>`;
+    document.getElementById('ck-gh-copy').addEventListener('click', async () => {
+      const s = document.getElementById('ck-gh-status');
+      try { await navigator.clipboard.writeText(line); s.textContent = 'Copied.'; }
+      catch { s.textContent = `Copy was blocked: select "${line}" above.`; }
+    });
+    document.getElementById('ck-gh-open')?.addEventListener('click', () => openUrl(url));
+    document.getElementById('ck-gh-dismiss').addEventListener('click', hideGithubPanel);
+    statusById.delete(t.id);
+    await loadData();
+  });
+}
+
+export function initGithub() {
+  document.getElementById('gh-dialog')?.addEventListener('keydown', e => { if (e.key === 'Escape' && dlgClose) dlgClose({ ok: false }); });
+  if (!pollTimer) pollTimer = setInterval(() => pollGithub(false), POLL_MS);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) pollGithub(false); });
+}
