@@ -40,7 +40,7 @@ pin_re='^go[0-9]+\.[0-9]+\.[0-9]+$'
 daemon_pin="$(awk '/^toolchain /{print $2}' "$REPO_ROOT/tools/cockpit-daemon/go.mod" 2>/dev/null)" || daemon_pin=""
 [[ "$daemon_pin" =~ $pin_re ]] || { echo "release-daemon: tools/cockpit-daemon/go.mod needs a line 'toolchain goX.Y.Z' naming the Go to build with, e.g. toolchain go1.27.2" >&2; exit 1; }
 check_built() { # <binary> <pin>: the file must say it was built with exactly the pinned Go
-  local got; got="$(go version -m "$1" 2>/dev/null | head -n1)" || got=""
+  local got; got="$(go version -m "$1" 2>/dev/null)" || got=""; got="${got%%$'\n'*}"   # whole output, then its first line: head -n1 in the pipe SIGPIPEs go under pipefail (t-90bc)
   [[ "$got" == "$1: $2" ]] || { echo "release-daemon: $(basename "$1") was built with '${got##*: }', not the pinned $2; nothing was published" >&2; exit 1; }
 }
 
