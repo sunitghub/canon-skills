@@ -82,12 +82,25 @@ Claude subscription, with no API key. The ticket goes to your repo as a GitHub i
 
 - **Name:** `canon`
 - **Network access:** *Custom*, with these domains, and tick *Also include default list of common package managers*:
-  `getcanon.dev`, `github.com`, `raw.githubusercontent.com`, `objects.githubusercontent.com`
+  `getcanon.dev`, `github.com`, `raw.githubusercontent.com`, `objects.githubusercontent.com`, and for Go (canon's tests
+  build its daemon with the Go it pins): `go.dev`, `dl.google.com`, `proxy.golang.org`, `sum.golang.org`
 - **Setup script** (runs before Claude starts, so every session has canon's latest verified release):
   ```bash
   #!/bin/bash
   set -e
   curl -fsSL https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.sh | bash
+
+  # Go: the toolchain canon pins, read from the installed release, so builds and tests match your machine.
+  GOV="$(sed -n 's/^toolchain go//p' "$HOME/.canon/tools/cockpit-daemon/go.mod")"
+  case "$(uname -m)" in x86_64) GOARCH=amd64 ;; aarch64|arm64) GOARCH=arm64 ;; *) GOARCH="" ;; esac
+  if [ -n "$GOV" ] && [ -n "$GOARCH" ] && curl -fsSL -o /tmp/go.tgz "https://go.dev/dl/go${GOV}.linux-${GOARCH}.tar.gz"; then
+    rm -rf /usr/local/go && tar -C /usr/local -xzf /tmp/go.tgz && rm -f /tmp/go.tgz
+    ln -sf /usr/local/go/bin/go /usr/local/bin/go
+    ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt
+  else
+    echo "setup: could not install Go ${GOV:-?}; keeping the image's $(go version 2>/dev/null)" >&2
+  fi
+
   for t in canon sprint tkt sprint-check; do
     printf '#!/bin/bash\nexec "$HOME/.canon/tools/%s" "$@"\n' "$t" > "/usr/local/bin/$t"
     chmod +x "/usr/local/bin/$t"
@@ -98,7 +111,9 @@ Claude subscription, with no API key. The ticket goes to your repo as a GitHub i
   The wrappers put the tools on the session's `PATH`; the installer only suggests a shell profile line. Wrappers work with
   every canon release; symlinks work too from 0.11.2, but before it `sprint` and `tkt` could not find their helpers
   through a link. The last two lines give the session canon's reviewer and evaluator agents, which `sprint complete`
-  runs at the close. The session clones your repo itself: the script needs no `git` lines.
+  runs at the close. The session clones your repo itself: the script needs no `git` lines. The Go block installs the
+  version canon pins, so a raised pin follows on the next release; if the download fails, the session starts anyway on the
+  image's Go and the setup log says why. Check it in a session with `go version`.
 - No secrets, no environment variables.
 
 **Each ticket:**
