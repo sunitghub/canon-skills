@@ -18,7 +18,7 @@ export HOME="$tmp_home"
 export SHELL="/bin/zsh"
 export PATH="$TOOLS_DIR:$PATH"
 
-sprint_row="| sprint | dev | $ROOT/skills/sprint/SKILL.md |"
+sprint_row="| sprint | dev | skills/sprint/SKILL.md |"
 deps=(sprint wrapup learnings-sweep promote-learnings)
 
 assert_linked() {

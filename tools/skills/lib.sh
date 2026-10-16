@@ -49,8 +49,12 @@ skill_row_name() {
   awk -F'|' '{gsub(/[[:space:]]/,"",$2); print $2}' <<< "$1"
 }
 
+# Prints the row's skill file as a full path. Rows store it relative to the canon install (t-97e2); older rows
+# hold an absolute path, which is printed as it is.
 skill_row_path() {
-  awk -F'|' '{gsub(/^[[:space:]]+|[[:space:]]+$/,"",$4); print $4}' <<< "$1"
+  local p
+  p="$(awk -F'|' '{gsub(/^[[:space:]]+|[[:space:]]+$/,"",$4); print $4}' <<< "$1")"
+  case "$p" in ""|/*|[A-Za-z]:*) printf '%s\n' "$p" ;; *) printf '%s\n' "$SKILLS_ROOT/$p" ;; esac
 }
 
 registered_skill_names() {

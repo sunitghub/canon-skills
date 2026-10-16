@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Fixed
+- `skills.sh add` no longer writes the canon install's absolute path into your project's `AGENTS.md` (the Active canon skills table and its note). Rows now name the skill relative to the install (`skills/sprint/SKILL.md`), so a clone on another machine, a teammate's or a Claude cloud session's, no longer comes out with `AGENTS.md` modified. Existing projects are rewritten once on the next `canon update` (`t-97e2`).
+
 ## [0.10.0] - 2026-10-15
 
 Update with `canon update`. No daemon change: nothing to restart.

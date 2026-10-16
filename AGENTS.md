@@ -61,5 +61,5 @@ Tiers "Review & Eval" default, applied unconditionally to every interactive clos
 
 | Skill | Category | Source |
 |-------|----------|--------|
-| sprint | dev | /Users/sunitjoshi/Developer/canon/skills/sprint/SKILL.md |
+| sprint | dev | skills/sprint/SKILL.md |
 <!-- AI-SKILLS:END -->

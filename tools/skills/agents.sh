@@ -6,17 +6,27 @@ set -euo pipefail
 # shellcheck source=tools/skills/lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
+# The block's note names no install path (t-97e2): an absolute one differs on every machine.
+SKILLS_TABLE_NOTE="> Managed by \`skills.sh\` — use \`add\`/\`remove\` to change. Paths are relative to the canon install."
+
 skills_table_upsert() {
   local agents_file="$1" name="$2" skill_row="$3"
   local block_begin="<!-- AI-SKILLS:BEGIN -->"
   local block_end="<!-- AI-SKILLS:END -->"
+
+  # t-97e2: an older block's note ends in "Source: <absolute install path>"; rewrite it once.
+  if [ -f "$agents_file" ] && grep -q '^> Managed by `skills.sh`.*Source: /' "$agents_file"; then
+    awk -v note="$SKILLS_TABLE_NOTE" '/^> Managed by `skills.sh`.*Source: \// { print note; next } { print }' \
+      "$agents_file" > "$agents_file.tmp" && mv "$agents_file.tmp" "$agents_file"
+    echo "  [AGENTS.md]  made the skill block's note portable"
+  fi
 
   if [ ! -f "$agents_file" ] || ! grep -qF "$block_begin" "$agents_file"; then
     {
       echo ""
       echo "$block_begin"
       echo "## Active canon skills"
-      echo "> Managed by \`skills.sh\` — use \`add\`/\`remove\` to change. Source: $SKILLS_ROOT"
+      echo "$SKILLS_TABLE_NOTE"
       echo ""
       echo "| Skill | Category | Source |"
       echo "|-------|----------|--------|"

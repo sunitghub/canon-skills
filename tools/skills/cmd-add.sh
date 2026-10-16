@@ -38,7 +38,7 @@ cmd_add() {
       echo "$inject_line" >> "$inject_target"
       echo "  [AGENTS.md]  added @-import"
     fi
-    skills_table_upsert "$inject_target" "$name" "| $name | $category | $skill_file |"
+    skills_table_upsert "$inject_target" "$name" "| $name | $category | ${skill_file#"$SKILLS_ROOT"/} |"
     ensure_claude_bridge "$project_dir"
     register_project "$project_dir"
     echo ""
@@ -63,7 +63,8 @@ cmd_add() {
   echo "Registering: $name ($category)"
 
   local agents_file="$project_dir/AGENTS.md"
-  local skill_row="| $name | $category | $skill_file |"
+  # t-97e2: relative to the canon install, so another machine (a cloud session, a teammate, CI) writes the same row
+  local skill_row="| $name | $category | ${skill_file#"$SKILLS_ROOT"/} |"
 
   skills_table_upsert "$agents_file" "$name" "$skill_row"
   ensure_claude_bridge "$project_dir"
