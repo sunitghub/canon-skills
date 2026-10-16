@@ -1250,12 +1250,11 @@ cmd_sync_issues() {
   local n kind labels t64 b64
   while IFS=$'\t' read -r n kind labels t64 b64; do
     [[ "$n" =~ ^[0-9]+$ && "$kind" == issue ]] || continue
-    # base64 --decode accepts garbage on some platforms (macOS prints nothing), so check the alphabet first.
-    [[ "$t64" =~ ^[A-Za-z0-9+/]+=*$ && "$b64" =~ ^[A-Za-z0-9+/]*=*$ ]] \
+    # Each decode is checked on its own: a failed title decode must not hide behind the body's status.
+    { printf '%s' "$t64" | base64 --decode > "$tmp/t64-$n" && printf '%s' "$b64" | base64 --decode > "$tmp/b64-$n"; } 2>/dev/null \
+      && [[ -n "$(tr -d '\r\n' < "$tmp/t64-$n")" ]] \
       || { echo "sync-issues: could not decode issue #$n from the listing" >&2; exit 1; }
-    { printf '%s' "$t64" | base64 --decode | tr -d '\r\n'; printf '\n'; printf '%s' "$b64" | base64 --decode | tr -d '\r'; } \
-      > "$tmp/issue-$n" 2>/dev/null && [[ -n "$(head -1 "$tmp/issue-$n")" ]] \
-      || { echo "sync-issues: could not decode issue #$n from the listing" >&2; exit 1; }
+    { tr -d '\r\n' < "$tmp/t64-$n"; printf '\n'; tr -d '\r' < "$tmp/b64-$n"; } > "$tmp/issue-$n"
     printf '%s\t%s\n' "$n" "$labels" >> "$tmp/todo"
   done < "$tmp/list"
   [[ -f "$tmp/todo" ]] || { echo "sync-issues: no open issues labelled canon on $repo"; return 0; }
