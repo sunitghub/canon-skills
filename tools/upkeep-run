@@ -40,7 +40,14 @@
 # clone, which a legitimate committer's own regen step never triggers.
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Resolve symlinks so SCRIPT_DIR points to the real file location.
+_SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$_SOURCE" ]; do
+  _DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
+  _SOURCE="$(readlink "$_SOURCE")"
+  [[ "$_SOURCE" != /* ]] && _SOURCE="$_DIR/$_SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
 HASH_MANIFEST="$SCRIPT_DIR/upkeep-skill-hashes.json"
 
 # Portable sha256 hex of a file — same idiom as gate-cache.sh's

@@ -4,7 +4,14 @@
 # a shebang error, so mutation-test is recorded `skipped | no python3` and the close goes on. `--check` runs only the probe.
 set -uo pipefail
 
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Resolve symlinks so DIR points to the real file location.
+_SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$_SOURCE" ]; do
+  _DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
+  _SOURCE="$(readlink "$_SOURCE")"
+  [[ "$_SOURCE" != /* ]] && _SOURCE="$_DIR/$_SOURCE"
+done
+DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
 
 probe() {   # probe <interpreter>: 0 when it runs Python 3 within 5 s (stdin closed; a probe still running is killed by its PID)
   local pid n=0

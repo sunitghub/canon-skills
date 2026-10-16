@@ -13,7 +13,14 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Resolve symlinks so SCRIPT_DIR points to the real file location.
+_SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$_SOURCE" ]; do
+  _DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
+  _SOURCE="$(readlink "$_SOURCE")"
+  [[ "$_SOURCE" != /* ]] && _SOURCE="$_DIR/$_SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
 source "$SCRIPT_DIR/ticket-root.sh"
 
 AGENT_ID=""
@@ -56,7 +63,7 @@ else
   AGENT_TYPE="$(_json_str agent_type "$INPUT")"
   TRANSCRIPT="$(_json_str transcript_path "$INPUT")"
   SESSION_ID="$(_json_str session_id "$INPUT")"
-  REPO_ROOT="$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel 2>/dev/null || echo "")"
+  REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || echo "")"
 fi
 
 [[ -z "$REPO_ROOT" ]] && exit 0

@@ -88,9 +88,14 @@ Claude subscription, with no API key. The ticket goes to your repo as a GitHub i
   #!/bin/bash
   set -e
   curl -fsSL https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.sh | bash
-  for t in canon sprint tkt sprint-check; do ln -sf "$HOME/.canon/tools/$t" /usr/local/bin/$t; done
+  for t in canon sprint tkt sprint-check; do
+    printf '#!/bin/bash\nexec "$HOME/.canon/tools/%s" "$@"\n' "$t" > "/usr/local/bin/$t"
+    chmod +x "/usr/local/bin/$t"
+  done
   ```
-  The links put the tools on the session's `PATH`; the installer only suggests a shell profile line.
+  The wrappers put the tools on the session's `PATH`; the installer only suggests a shell profile line. Wrappers work with
+  every canon release; symlinks work too from 0.11.2, but before it `sprint` and `tkt` could not find their helpers
+  through a link.
 - No secrets, no environment variables.
 
 **Each ticket:**

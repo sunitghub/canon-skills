@@ -10,6 +10,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 - `tkt send-issue`: the first send to a repo from a Mac failed with `labels[@]: unbound variable` and created no issue. GitHub's label search does not list a label created a second earlier, and macOS's bash 3.2 rejects the empty label list that followed. A label that was just created is now used directly, and a send with no label works on any bash (`t-1465`).
 - `tkt send-issue`: GitHub hid `<this issue number>` in the issue's "Fixes #…" line as an HTML tag; it is now in a code span (`t-1465`).
 - In a Claude cloud session, `sprint import-issue N` failed with a 403 and needed `--body-file`: the session's GitHub proxy refuses GraphQL, which `gh issue view` uses. It now reads the issue over REST (`gh api`), drops the CR characters an issue edited on github.com can carry, and `tkt export`'s public-repo check asks REST too (`t-35d2`).
+- `sprint`, `tkt` and seven other tools (`evidence.sh`, `gate-snapshot.sh`, `subagent-log.sh`, `sprint-headless`, `sprint-headless-eval`, `upkeep-run`, `mutant-sweep`) failed when run through a symlink, such as one in `/usr/local/bin` or `~/bin`: they looked for their helper files beside the link. They now follow the link like `canon` does. The Claude cloud environment recipe in `docs/setup.md` uses wrapper scripts, which work on every release (`t-2785`).
 
 ## [0.11.1] - 2026-10-16
 
