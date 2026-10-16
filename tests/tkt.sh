@@ -488,6 +488,7 @@ json_project="$(make_project)"
   assert_eq "$h_title" "$(printf '%s' "$hshown" | jq_node 'j.title')"
   assert_eq "$h_body" "$(printf '%s' "$hshown" | jq_node 'j.body')"
   assert_json_eq "1" 'j.filter(t=>t.id==="'"$hid"'").length' "$("$TKT" ls --json)"
+  assert_eq "$h_title" "$("$TKT" ls --json | jq_node 'j.filter(t=>t.id==="'"$hid"'")[0].title')"
 
   # t-8543: only the title line is dropped; a `# ` comment in a code block and a `---` rule are content.
   c_body=$'Run:\n```\n# list files\nls\n```\n---\n# Later heading'
@@ -496,7 +497,7 @@ json_project="$(make_project)"
   ctext="$("$TKT" show "$cid")"
   assert_contains "$ctext" "$c_body"
   [[ "$(grep -c 'Code one' <<<"$ctext")" == 1 ]] || fail "the title line was printed in the body too: $ctext"
-  assert_eq "$h_title" "$("$TKT" ls --json | jq_node 'j.filter(t=>t.id==="'"$hid"'")[0].title')"
+
   # Every control character U+0001-U+001F (except newline, which the Description keeps as a line break) survives.
   ctl_title=""; for n in 1 2 3 4 5 6 7 8 11 12 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31; do ctl_title+="$(printf "\\x$(printf '%02x' "$n")")"; done
   cid="$("$TKT" create "c${ctl_title}d")"
