@@ -1223,6 +1223,69 @@ cmd_import_issue() {
   printf '%s\n' "$id"
 }
 
+# cmd_sync_issues [--dry-run] — t-4cd8: open issues on origin labelled `canon` (only collaborators with triage access can
+# label, so the label is the trust gate) become tickets. Each is handed to cmd_import_issue as a send-issue-shaped body
+# under an id generated here, so one parser and its path guards serve both directions. Read-only on GitHub, over REST.
+cmd_sync_issues() {
+  local dry=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --dry-run) dry=true; shift ;;
+      *) echo "Usage: tkt sync-issues [--dry-run]" >&2; exit 1 ;;
+    esac
+  done
+  local dir root repo; dir="$(ensure_tickets_dir)"; root="$(dirname "$dir")"
+  repo="$(_gh_origin_repo "$root" sync-issues)" || exit 1
+  command -v gh >/dev/null 2>&1 || { echo "sync-issues: needs the GitHub CLI: install gh, then run: gh auth login" >&2; exit 1; }
+  local tmp; tmp="$(mktemp -d "${TMPDIR:-/tmp}/tkt-sync.XXXXXX")"
+  # shellcheck disable=SC2064  # expand now: $tmp is local
+  trap "rm -rf '$tmp'" EXIT
+  local err
+  err="$(gh api --paginate "repos/$repo/issues?labels=canon&state=open&per_page=100" \
+    --jq '.[] | [.number, (if .pull_request then "pr" else "issue" end), ([.labels[].name] | join(","))] | @tsv' 2>&1 > "$tmp/list")" \
+    || { echo "sync-issues: gh could not list issues on $repo: $err" >&2; exit 1; }
+  # Read every issue first, so a failure part-way creates nothing.
+  local n kind labels
+  while IFS=$'\t' read -r n kind labels; do
+    [[ "$n" =~ ^[0-9]+$ && "$kind" == issue ]] || continue
+    err="$(gh api "repos/$repo/issues/$n" --jq '.title + "\n" + (.body // "")' 2>&1 > "$tmp/raw-$n")" \
+      || { echo "sync-issues: gh could not read issue #$n on $repo: $err" >&2; exit 1; }
+    tr -d '\r' < "$tmp/raw-$n" > "$tmp/issue-$n"
+    printf '%s\t%s\n' "$n" "$labels" >> "$tmp/todo"
+  done < "$tmp/list"
+  [[ -f "$tmp/todo" ]] || { echo "sync-issues: no open issues labelled canon on $repo"; return 0; }
+  # Which issues tickets already link to: "<owner/repo#N> <id>" per ticket with a github: line.
+  local f g; ticket_files "$dir" | while IFS= read -r f; do
+    g="$(get_field "$f" github)"; [[ -n "$g" ]] && printf '%s %s\n' "$g" "$(get_field "$f" id)"; done > "$tmp/linked" || true
+  local made=0 title type pri l id linked labs
+  while IFS=$'\t' read -r n labels; do
+    title="$(head -1 "$tmp/issue-$n")"; tail -n +2 "$tmp/issue-$n" > "$tmp/body-$n"
+    linked="$(awk -v k="$repo#$n" '$1 == k { print $2; exit }' "$tmp/linked")"
+    if [[ -n "$linked" ]]; then echo "skip  #$n  already $linked"; continue; fi
+    if grep -q '^<!-- canon:ticket ' "$tmp/body-$n"; then echo "skip  #$n  made by tkt send-issue: use tkt import-issue $n"; continue; fi
+    type=task; pri=2
+    IFS=, read -ra labs <<< "$labels"
+    for l in ${labs[@]+"${labs[@]}"}; do
+      l="$(printf '%s' "$l" | tr '[:upper:]' '[:lower:]')"
+      case "$l" in bug|feature|task|chore|epic) type="$l" ;; p[0-4]) pri="${l#p}" ;; esac
+    done
+    if $dry; then printf 'would create  #%s  %s  (%s, P%s)\n' "$n" "$title" "$type" "$pri"; made=$((made + 1)); continue; fi
+    id="$(gen_id)"; while [[ -e "$dir/$id" || -e "$dir/$id.md" ]]; do id="$(gen_id)"; done
+    {
+      printf '**%s** · %s · P%s · %s\n\n' "$id" "$type" "$pri" "$title"
+      # A body already in send-issue's layout keeps its parts; anything else is the Description.
+      awk '/^```/ { fence = !fence } !fence && /^# (Description|Acceptance|Plan|Research)$/ { found = 1 } END { exit !found }' "$tmp/body-$n" \
+        || printf '# Description\n'
+      cat "$tmp/body-$n"
+      printf '\n<!-- canon:ticket %s -->\n' "$id"
+    } > "$tmp/synth-$n"
+    ( cmd_import_issue "$n" --body-file "$tmp/synth-$n" ) > /dev/null 2> "$tmp/err-$n" \
+      || { echo "sync-issues: could not create a ticket for #$n: $(cat "$tmp/err-$n")" >&2; exit 1; }
+    printf '%s  #%s  %s\n' "$id" "$n" "$title"; made=$((made + 1))
+  done < "$tmp/todo"
+  if $dry; then echo "dry run: $made to create, nothing written"; else echo "sync-issues: $made created"; fi
+}
+
 # cmd_export <id> — t-554c: at the close of a cloud sprint, sends .tickets/<id>/ back. A tracked .tickets/ rides in the PR;
 # an ignored one (canon's own) goes to the branch canon-results/<id>, built from a temporary index so the checkout and
 # the real index are never touched, holding only that folder.
@@ -1375,6 +1438,8 @@ Commands:
   import-issue <N> [--body-file F] [--force]
                             Rebuild .tickets/<id>/ from a send-issue body (used by
                             sprint import-issue in the cloud session).
+  sync-issues [--dry-run]   Make a ticket of each open issue on origin labelled canon
+                            that no ticket links to (labels set type and pN priority).
   export <id> [--public]    Send a cloud sprint's .tickets/<id>/ back: with the PR
                             when .tickets/ is tracked, else to canon-results/<id>.
   import-results <id> [--pr N]
@@ -1408,6 +1473,7 @@ main() {
     compact)        cmd_compact "$@" ;;
     send-issue)     cmd_send_issue "$@" ;;
     import-issue)   cmd_import_issue "$@" ;;
+    sync-issues)    cmd_sync_issues "$@" ;;
     export)         cmd_export "$@" ;;
     import-results) cmd_import_results "$@" ;;
     help|--help|-h) cmd_help ;;
