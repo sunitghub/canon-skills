@@ -132,6 +132,14 @@ const failing = { failing: [{ title: TITLE, browsers: ['chromium'], ticket: 't-a
   ok('CLI --strict turns that warning into exit 1', strict.status === 1 && /VIOLATION: \(--strict\)/.test(strict.stdout), strict.stdout);
   ok('CLI exits 2 when the browser cannot be read from the file name', run(w('whatever.json', report({ a: 'expected' }))).status === 2);
 }
+// ── t-fb37: zero tests run must fail ──
+{
+  const none = [1, 2].map((i) => rep('chromium', i, {}));
+  const r = evaluate({ reports: none, baseline: { failing: [], flaky: [] }, specText: '' });
+  ok('a run that reported 0 tests is a violation', v(r).some((x) => /reported 0 tests, so nothing ran/.test(x)), v(r));
+  const p = evaluate({ reports: none, baseline: { failing: [], flaky: [] }, specText: '', partial: true });
+  ok('a 0-test run is a violation under --partial (--grep) too', v(p).some((x) => /reported 0 tests/.test(x)), v(p));
+}
 
 if (fails) { console.log(`\nboard-spec-guard-unit: ${fails} FAILED`); process.exit(1); }
 console.log('board-spec-guard-unit: ok');
