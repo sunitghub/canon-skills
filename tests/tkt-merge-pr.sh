@@ -38,7 +38,9 @@ mkdir "$W/bin"; cat > "$W/bin/gh" <<'SH'
 printf '%s\n' "$*" >> "$STUB_LOG"
 case "$1 $2" in
   "pr list")  cat "$STUB_W/prlist" ;;
-  "pr view")  if [[ "$*" == *mergeCommit* ]]; then [[ -n "${STUB_NO_SHA:-}" ]] || echo "mergesha0000000000000000000000000000000000"; exit 0; fi
+  "pr view")  if [[ "$*" == *mergeCommit* ]]; then   # STUB_NO_SHA: GitHub has no merge commit; gh's --jq then prints "null" unless "// empty"
+                if [[ -z "${STUB_NO_SHA:-}" ]]; then echo "mergesha0000000000000000000000000000000000"; elif [[ "$*" != *"// empty"* ]]; then echo null; fi
+                exit 0; fi
               if [[ "$*" == *"--json state --jq"* ]]; then echo "${STUB_AFTER:-OPEN}"; exit 0; fi
               printf '%s\t%s\t%s\t%s\t%s\t%s\n' "${STUB_STATE:-OPEN}" "${STUB_MG:-MERGEABLE}" "${STUB_MS:-CLEAN}" \
                 "${STUB_HEAD:?}" main "${STUB_CROSS:-false}" ;;
