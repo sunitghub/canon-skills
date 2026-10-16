@@ -335,6 +335,11 @@ Opus` default, scoped only to the two close-gate dispatches below.
    report with `haiku-eval-2026-09-23`); if the returned text is only a verdict, or its line 1
    lacks a `date +%s`-style `<epoch>-<n>` run-id, discard it and re-dispatch a fresh evaluator
    with the same `subagent_type`.
+   **A gate that reports plan mode** (it says plan mode stopped it from running or writing; observed in a Claude
+   cloud session that had planned in plan mode, t-b2e5) has graded nothing: re-dispatching hits the same wall, a
+   report you write is not a gate, and `eval_override` is not a way around it. Stop the close and take the Mac
+   close path in `docs/setup.md` › Claude cloud sessions: `tkt export <id>` without closing, then on the user's
+   machine import, evaluate the PR head, `sprint complete`, `tkt merge-pr`.
 
 7. **Snapshot the repo before AND after every subagent dispatch** with `gate-snapshot.sh` (bare — it is on PATH, same as `sprint`/`tkt`) — a gate is
    read-only by contract (`shared-gate-protocol.md ## Tools`), so any change outside the ticket's own `.tickets/<id>/` files is out-of-scope by definition,

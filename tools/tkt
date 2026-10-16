@@ -1113,6 +1113,8 @@ cmd_send_issue() {
     printf 'sections above and start the sprint (if gh cannot read this issue, save its text to a file and add\n'
     printf '`--body-file <file>`). Open the PR with `Fixes #<this issue number>`, and when the sprint closes run\n'
     printf '`tkt export %s` and push nothing else for it: export prints where the ticket went.\n' "$id"
+    printf 'Plan with canon'"'"'s own approval (write the plan into .tickets/%s/plan.md and ask), not plan mode: plan mode\n' "$id"
+    printf 'has been observed to reach the close gates and stop them.\n'
     printf '\n<!-- canon:ticket %s -->\n' "$id"
   } > "$body"
 
@@ -1444,6 +1446,11 @@ cmd_merge_pr() {
   fi
   local sha; sha="$(gh pr view "$pr" --repo "$repo" --json mergeCommit --jq '.mergeCommit.oid // empty' 2>/dev/null || true)"
   set_or_add_field "$file" merged "${sha:-PR #$pr}"
+  # A close moved to this machine leaves the results branch behind (import-results keeps it while its checks fail).
+  if git -C "$root" ls-remote --exit-code --heads origin "canon-results/$id" >/dev/null 2>&1; then
+    git -C "$root" push -q origin --delete "canon-results/$id" 2>/dev/null \
+      || echo "merge-pr: note: could not delete canon-results/$id on origin; delete it by hand" >&2
+  fi
   echo "Merged PR #$pr into $base${sha:+ ($sha)}$note. Update your checkout: git pull"
 }
 
