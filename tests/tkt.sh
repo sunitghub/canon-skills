@@ -489,6 +489,15 @@ json_project="$(make_project)"
   assert_eq "$h_body" "$(printf '%s' "$hshown" | jq_node 'j.body')"
   assert_json_eq "1" 'j.filter(t=>t.id==="'"$hid"'").length' "$("$TKT" ls --json)"
   assert_eq "$h_title" "$("$TKT" ls --json | jq_node 'j.filter(t=>t.id==="'"$hid"'")[0].title')"
+
+  # t-8543: only the title line is dropped; a `# ` comment in a code block and a `---` rule are content.
+  c_body=$'Run:\n```\n# list files\nls\n```\n---\n# Later heading'
+  cid="$("$TKT" create "Code one" -d "$c_body")"
+  assert_eq "$c_body" "$("$TKT" show "$cid" --json | jq_node 'j.body')"
+  ctext="$("$TKT" show "$cid")"
+  assert_contains "$ctext" "$c_body"
+  [[ "$(grep -c 'Code one' <<<"$ctext")" == 1 ]] || fail "the title line was printed in the body too: $ctext"
+
   # Every control character U+0001-U+001F (except newline, which the Description keeps as a line break) survives.
   ctl_title=""; for n in 1 2 3 4 5 6 7 8 11 12 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31; do ctl_title+="$(printf "\\x$(printf '%02x' "$n")")"; done
   cid="$("$TKT" create "c${ctl_title}d")"
@@ -511,12 +520,12 @@ json_project="$(make_project)"
     assert_json_eq "null" 'j.priority' "$("$TKT" show "$np" --json)"
     assert_json_eq "null" 'j.filter(t=>t.id==="'"$np"'")[0].priority' "$("$TKT" ls --json)"
   done
-  # A "# " line in the body is dropped, exactly as text mode does.
-  printf -- '---\nid: t-hd01\nstatus: open\ntype: task\npriority: 2\ncreated: 2026-01-01T00:00:00Z\n---\n# Title\n\nkept\n# dropped heading\nalso kept\n' > .tickets/t-hd01.md
-  assert_eq $'kept\nalso kept' "$("$TKT" show t-hd01 --json | jq_node 'j.body')"
+  # Only the title line is dropped: a later "# " line is body, in JSON exactly as in text mode (t-8543).
+  printf -- '---\nid: t-hd01\nstatus: open\ntype: task\npriority: 2\ncreated: 2026-01-01T00:00:00Z\n---\n# Title\n\nkept\n# kept heading\nalso kept\n' > .tickets/t-hd01.md
+  assert_eq $'kept\n# kept heading\nalso kept' "$("$TKT" show t-hd01 --json | jq_node 'j.body')"
   hd_text="$("$TKT" show t-hd01)"
-  assert_contains "$hd_text" $'kept\nalso kept'
-  [[ "$hd_text" != *"dropped heading"* ]] || fail "text mode printed a # line from the body"
+  assert_contains "$hd_text" $'kept\n# kept heading\nalso kept'
+  [[ "$hd_text" != *"# Title"* ]] || fail "text mode printed the title line in the body"
 
   # Errors: usage message on stderr, nothing on stdout, exit 1.
   for bad in nosuch "t-"; do

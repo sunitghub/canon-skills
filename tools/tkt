@@ -475,8 +475,9 @@ json_num() {
   else json_str "$1"; fi
 }
 
-# ticket_body <file> — the text below the frontmatter, without `# ` heading lines (the title).
-ticket_body() { awk '/^---$/{fm++; next} fm>=2 && !/^# /{print}' "$1"; }
+# ticket_body <file> — the text below the frontmatter, without its first `# ` line (the title). Every later line, a `# `
+# comment in a code block or a `---` rule included, is content.
+ticket_body() { awk '/^---$/ && fm < 2 { fm++; next } fm >= 2 && !t && /^# / { t = 1; next } fm >= 2 { print }' "$1"; }
 
 cmd_ls() {
   local status_filter="" json=0
@@ -1000,7 +1001,8 @@ cmd_compact() {
 # a public repo needs --public (ticket docs carry paths, notes and decisions); ticket.md changes only after gh succeeds.
 _si_section() {   # _si_section <file> <heading>: the lines under "## <heading>" up to the next "## ", comments dropped, trimmed
   [[ -f "$1" ]] || return 0
-  awk -v h="## $2" '$0 == h || index($0, h " ") == 1 { f = 1; next } f && /^## / { exit } f && /^<!--/ { next } f { print }' "$1" \
+  awk -v h="## $2" '/^```/ { fence = !fence } !fence && ($0 == h || index($0, h " ") == 1) { f = 1; next }
+    f && !fence && /^## / { exit } f && !fence && /^<!--/ { next } f { print }' "$1" \
     | awk 'NF { started = 1 } started { buf = buf $0 "\n"; if (NF) { printf "%s", buf; buf = "" } }'
 }
 # acceptance.md's one-line section prompts, as `sprint start` writes them (tools/sprint cmd_start); everything else stays.
@@ -1080,7 +1082,7 @@ cmd_send_issue() {
     while IFS= read -r h; do
       c="$(_si_section "$1" "$h")"; [[ "${2:-}" == prompts ]] && c="$(printf '%s\n' "$c" | _si_drop_prompts)"
       [[ -n "$c" ]] && printf '## %s\n%s\n\n' "$h" "$c"
-    done < <(sed -n 's/^## //p' "$1" | tr -d '\r')
+    done < <(awk '/^```/ { fence = !fence; next } !fence && sub(/^## /, "")' "$1" | tr -d '\r')
     return 0
   }
   local asecs psecs rbody
@@ -1094,8 +1096,7 @@ cmd_send_issue() {
   # The same tree as the ticket on the board, every section with the board's heading (t-554c reads it back by these headings).
   {
     printf '**%s** · %s · P%s · %s\n\n' "$id" "$(get_field "$file" type)" "$(get_field "$file" priority)" "$title"
-    # Only the title line is skipped: ticket_body drops every "# " line, which would eat a shell comment in a code block.
-    printf '# Description\n'; _si_or_none "$(awk '/^---$/ && fm < 2 { fm++; next } fm >= 2 && !t && /^# / { t = 1; next } fm >= 2 { print }' "$file" | awk 'NF { s = 1 } s')"
+    printf '# Description\n'; _si_or_none "$(ticket_body "$file" | awk 'NF { s = 1 } s')"
     printf '\n# Acceptance\n'; _si_or_none "$asecs"
     printf '\n# Plan\n'; _si_or_none "$psecs"
     printf '\n# Research\n'; _si_or_none "$rbody"
