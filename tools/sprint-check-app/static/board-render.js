@@ -729,12 +729,12 @@ function cardHTML(t, idx) {
   let startBtn = '';
   const run = worktreeRun(t);
   const live = state.cockpitRows.get(t.id);
-  if (ghOut(t)) {
-    startBtn = ghButtonHTML(t);   // t-718b: out on GitHub — one stage button instead of Start (one place at a time)
-  } else if (live) {
+  if (live) {   // a live local session keeps its Answer/Open button, even on a ticket also out on GitHub
     startBtn = ckRowState(live) === 'needs-you'
       ? `<button class="card-start answer" data-id="${esc(t.id)}" title="Answer — this session is waiting on you">Answer ▸</button>`
       : `<button class="card-start open" data-id="${esc(t.id)}" title="Open this ticket's live session">Open ▸</button>`;
+  } else if (ghOut(t)) {
+    startBtn = ghButtonHTML(t);   // t-718b: out on GitHub — one stage button instead of Start (one place at a time)
   } else if (run) {
     startBtn = `<button class="card-start resume" data-id="${esc(t.id)}" title="Resume this sprint — it's in progress in worktree ${escAttr(run.branch)}">▶ Resume</button>`;
   } else if (t.status === 'open') {

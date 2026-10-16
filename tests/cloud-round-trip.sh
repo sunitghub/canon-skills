@@ -70,6 +70,7 @@ assert_contains "$out" "HTTP 404: Not Found"; assert_contains "$out" "add --body
 "$SPRINT" import-issue 57 > "$W/import.out"
 e="$B/.tickets/$id"
 assert_grep "^github: acme/app#57$" "$e/ticket.md"
+grep -q '^runs:' "$e/ticket.md" && fail "the cloud's ticket says runs: (t-718b: there the work is local)"
 assert_grep "^# Board burns a CPU core$" "$e/ticket.md"
 assert_grep "^type: bug$" "$e/ticket.md"
 assert_grep "^priority: 1$" "$e/ticket.md"
@@ -156,6 +157,7 @@ out="$("$TKT" import-results "$id" --pr 58)"
 for f in acceptance.md eval-report.md evidence/report.json plan.md; do cmp -s "$X/.tickets/$id/$f" ".tickets/$id/$f" || fail "$f did not come back byte-for-byte"; done
 cmp -s "$A/$d/plan.md" ".tickets/$id/.before-import/plan.md" || fail "the local plan.md was not kept in .before-import/"
 assert_grep "^github: acme/app#57$" ".tickets/$id/ticket.md"
+assert_grep "^runs: github$" ".tickets/$id/ticket.md"     # t-718b: the laptop's runs: survives the cloud's ticket.md
 assert_contains "$out" "status: closed"
 assert_contains "$out" "evaluator: pass"
 assert_contains "$out" "matches graded-head"

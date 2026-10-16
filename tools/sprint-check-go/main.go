@@ -722,9 +722,15 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 	}
 	if m := regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/github/(send|import|merge|merge-stop|take-back)$`).FindStringSubmatch(path); m != nil {
 		id := m[1]
-		mergeRunsMu.Lock() // t-718b: a write changes the stage; the next status call must not serve the cached one
-		delete(statusCache, mergeKey{eroot, id})
-		mergeRunsMu.Unlock()
+		// t-718b: a write changes the stage, so the next status call must not serve the cached one: dropped before
+		// (a stale hit) and after (a status read during the write cached the old stage).
+		dropStatus := func() {
+			mergeRunsMu.Lock()
+			delete(statusCache, mergeKey{eroot, id})
+			mergeRunsMu.Unlock()
+		}
+		dropStatus()
+		defer dropStatus()
 		switch m[2] {
 		case "merge-stop":
 			sendJSON(w, stopMergeRun(eroot, id))

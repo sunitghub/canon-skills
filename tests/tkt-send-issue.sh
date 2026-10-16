@@ -54,6 +54,7 @@ assert_contains "$out" "type: Work on Issue#57"
 grep -qx "label create canon --repo acme/app --color 6C5CF7 --description A canon ticket --force" "$STUB_LOG" || fail "label not created: $(cat "$STUB_LOG")"
 grep -qx "issue create --repo acme/app --title $id: Board burns a CPU core --label canon --body-file .*" "$STUB_LOG" || fail "wrong issue create call: $(cat "$STUB_LOG")"
 assert_grep "^github: acme/app#57$" "$d/ticket.md"
+assert_grep "^runs: github$" "$d/ticket.md"                          # t-718b: out on GitHub, not just linked
 # The issue has the ticket's tree as the board lists it: every section of ticket.md, acceptance.md and plan.md, then Research.
 order="$(awk '/^```/ { fence = !fence; next } !fence && /^#{1,2} /' "$STUB_BODY" | tr '\n' '|')"
 assert_eq "# Description|## Problem|# Acceptance|## Criteria|## Test Plan|## QA|## Wrapup Gates|## Results|# Plan|## Sign-off|## Approach|## Files|## Decisions|# Research|# Working on this|" "$order"
@@ -86,6 +87,14 @@ rc=0; again="$("$TKT" send-issue "$id" 2>&1)" || rc=$?
 assert_contains "$again" "already sent: acme/app#57"
 [[ "$(writes)" == 0 && "$(sig)" == "$before" ]] || fail "a second send called gh or changed the ticket"
 
+# t-718b: linked only (sync-issues, import-issue, or a take-back that left the issue open): no second issue for it.
+awk '!/^runs: /' "$d/ticket.md" > "$d/t" && mv "$d/t" "$d/ticket.md"
+: > "$STUB_LOG"; before="$(sig)"
+rc=0; again="$("$TKT" send-issue "$id" 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "sending a linked ticket should exit 1, got $rc"
+assert_contains "$again" "already linked to acme/app#57"
+[[ "$(writes)" == 0 && "$(sig)" == "$before" ]] || fail "sending a linked ticket called gh or changed it"
+
 # t-c131: a heading with text after its name is its own section, listed once under its full heading with its lines.
 id4="$("$TKT" create "Suffixed heading" -t task -p 3)"
 printf '# Plan\n\n## Approach (draft)\n1. Sketch it.\n2. Refine it.\n\n## Files\n`a.sh`\n' > ".tickets/$id4/plan.md"
@@ -113,6 +122,9 @@ rc=0; pub="$("$TKT" send-issue "$id2" 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "a public repo should be refused, got $rc"
 assert_contains "$pub" "acme/app is PUBLIC"
 [[ "$(writes)" == 0 && "$(cksum < ".tickets/$id2/ticket.md")" == "$before" ]] || fail "a refused public send called gh or changed the ticket"
+# A dry run previews it without --public (nothing is created; the board asks from the PUBLIC in its repo: line).
+dry="$("$TKT" send-issue "$id2" --dry-run)"; assert_contains "$dry" "repo: acme/app (PUBLIC)"
+[[ "$(writes)" == 0 && "$(cksum < ".tickets/$id2/ticket.md")" == "$before" ]] || fail "a public dry run called gh or changed the ticket"
 "$TKT" send-issue "$id2" --public >/dev/null
 assert_grep "^github: acme/app#57$" ".tickets/$id2/ticket.md"
 unset STUB_VIS

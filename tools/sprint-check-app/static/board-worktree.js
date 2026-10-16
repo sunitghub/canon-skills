@@ -193,7 +193,7 @@ export async function renderCockpitWorktree(t) {
     if (cockpitState.worktreeCwd === null) cockpitState.worktreeCwd = runRow.path;
   } else if (!lock.locked && t.worktree_preference === WT_PREF_MAIN) {
     // t-19d1: the ticket chose Main checkout at New Ticket — preselect it.
-    if (cockpitState.worktreeCwd === null) cockpitState.worktreeCwd = '';
+    if (cockpitState.worktreeCwd === null && !tab.ghPick) cockpitState.worktreeCwd = '';
   } else if (!lock.locked && t.worktree_preference) {
     const match = others.find(e => e.branch === t.worktree_preference && !e.held_by); // t-2241: never preselect a worktree another ticket holds
     if (match) cockpitState.worktreeCwd = match.path;
@@ -206,7 +206,8 @@ export async function renderCockpitWorktree(t) {
   }
   // t-19d1: no preference and the main checkout is the only worktree — there's no real choice to
   // protect (t-cd06/t-470d's explicit pick guards against the WRONG checkout), so preselect Main.
-  if (!lock.locked && !t.worktree_preference && mainEntry && others.length === 0 && cockpitState.worktreeCwd === null) {
+  // A GitHub pick (t-718b) leaves worktreeCwd null on purpose: that is not "nothing picked yet".
+  if (!lock.locked && !t.worktree_preference && mainEntry && others.length === 0 && cockpitState.worktreeCwd === null && !tab.ghPick) {
     cockpitState.worktreeCwd = '';
   }
   tab.wtPrefPending = wtPrefPending;

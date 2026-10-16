@@ -1068,7 +1068,10 @@ cmd_send_issue() {
   tdir="$(dirname "$file")"
   title="$(get_title "$file")"
   local sent; sent="$(get_field "$file" github)"
-  [[ -n "$sent" ]] && { echo "send-issue: $id was already sent: $sent" >&2; exit 1; }
+  [[ -n "$sent" && "$(get_field "$file" runs)" == github ]] && { echo "send-issue: $id was already sent: $sent" >&2; exit 1; }
+  # A github: line without runs: github links an issue this ticket came from (sync-issues, import-issue) or one a
+  # take-back left open: sending again would make a second issue for the same work.
+  [[ -n "$sent" ]] && { echo "send-issue: $id is already linked to $sent; work it here, or close that issue and remove the github: line to send it" >&2; exit 1; }
 
   local root repo
   root="$(dirname "$(tickets_dir)")"
@@ -1076,7 +1079,8 @@ cmd_send_issue() {
   command -v gh >/dev/null 2>&1 || { echo "send-issue: needs the GitHub CLI: install gh, then run: gh auth login" >&2; exit 1; }
   local vis
   vis="$(gh repo view "$repo" --json visibility --jq .visibility 2>&1)" || { echo "send-issue: gh could not read $repo: $vis" >&2; echo "  If you are signed out, run: gh auth login" >&2; exit 1; }
-  if [[ "$vis" == PUBLIC ]] && ! $public; then
+  # A dry run creates nothing, so it previews a public repo too (its repo: line says PUBLIC); the board asks from it (t-718b).
+  if [[ "$vis" == PUBLIC ]] && ! $public && ! $dry; then
     echo "send-issue: $repo is PUBLIC: anyone could read this ticket's problem, plan and notes." >&2
     echo "  Send it anyway with: tkt send-issue $id --public" >&2; exit 1
   fi
@@ -1142,6 +1146,8 @@ cmd_send_issue() {
     echo "  Add 'github: $repo#<number>' to $file by hand." >&2; exit 1
   fi
   set_or_add_field "$file" github "$repo#$n"
+  # t-718b: github: is only the link (sync and import write it too); runs: github says a cloud session has the work.
+  set_or_add_field "$file" runs github
   printf 'Sent %s as %s\nIn a Claude cloud session on %s, type: Work on Issue#%s\n' "$id" "$url" "$repo" "$n"
 }
 
@@ -1513,8 +1519,9 @@ cmd_github_status() {
   return 0
 }
 
-# cmd_take_back <id> [--close-issue] — t-d271: a ticket sent to GitHub comes back to this machine: its github: line goes,
-# so it can be started here again. With --close-issue the issue gets a comment and is closed first; a gh failure leaves
+# cmd_take_back <id> [--close-issue] — t-d271: a ticket sent to GitHub comes back to this machine: its runs: github line
+# goes, so it can be started here again (t-718b). With --close-issue the issue gets a comment and is closed first, and
+# the github: link goes too, so it can be sent afresh; without it the link stays to the open issue. A gh failure leaves
 # the ticket as it was. The cloud branch and any PR are left alone. A merged ticket is done, not taken back.
 cmd_take_back() {
   local id="" close=false
@@ -1527,7 +1534,7 @@ cmd_take_back() {
   done
   [[ -n "$id" ]] || { echo "Usage: tkt take-back <id> [--close-issue]" >&2; exit 1; }
   local file gh; file="$(find_ticket "$id")"; id="$(get_field "$file" id)"; gh="$(get_field "$file" github)"
-  [[ -n "$gh" ]] || { echo "take-back: $id was not sent to GitHub (no github: line)" >&2; exit 1; }
+  [[ -n "$gh" && "$(get_field "$file" runs)" == github ]] || { echo "take-back: $id is not out on GitHub (no runs: github line)" >&2; exit 1; }
   [[ -z "$(get_field "$file" merged)" ]] || { echo "take-back: $id is merged ($(get_field "$file" merged)); nothing to take back" >&2; exit 1; }
   if $close; then
     local repo="${gh%#*}" n="${gh##*#}" out
@@ -1537,7 +1544,8 @@ cmd_take_back() {
     out="$(cd / && gh issue close "$n" --repo "$repo" --comment "Taken back to local by canon ($id)." 2>&1)" \
       || { echo "take-back: gh could not close $gh: $out" >&2; exit 1; }
   fi
-  remove_field "$file" github
+  remove_field "$file" runs
+  $close && remove_field "$file" github
   if $close; then echo "take-back: $id is back on this machine; $gh closed"; else echo "take-back: $id is back on this machine ($gh left open)"; fi
 }
 
@@ -1610,7 +1618,8 @@ cmd_import_results() {
   trap "rm -rf '$tmp'" EXIT
   git -C "$root" archive "$head" "$rel" | tar -x -C "$tmp" || { echo "import-results: could not read canon-results/$id" >&2; exit 1; }
   [[ -f "$tmp/$rel/ticket.md" ]] || { echo "import-results: canon-results/$id has no $rel/ticket.md" >&2; exit 1; }
-  local gh_line=""; [[ -f "$tdir/ticket.md" ]] && gh_line="$(get_field "$tdir/ticket.md" github)"
+  local gh_line="" runs_line=""
+  [[ -f "$tdir/ticket.md" ]] && { gh_line="$(get_field "$tdir/ticket.md" github)"; runs_line="$(get_field "$tdir/ticket.md" runs)"; }
   local f n=0 kept=0
   mkdir -p "$tdir"
   while IFS= read -r -d '' f; do
@@ -1624,6 +1633,7 @@ cmd_import_results() {
     n=$((n + 1))
   done < <(find "$tmp/$rel" -type f -print0)
   [[ -n "$gh_line" && -z "$(get_field "$tdir/ticket.md" github)" ]] && set_or_add_field "$tdir/ticket.md" github "$gh_line"
+  [[ -n "$runs_line" && -z "$(get_field "$tdir/ticket.md" runs)" ]] && set_or_add_field "$tdir/ticket.md" runs "$runs_line"
   local st verdict graded rc=0
   st="$(get_field "$tdir/ticket.md" status)"
   read -r verdict graded < <(_eval_verdict_head "$tdir")
@@ -1697,7 +1707,8 @@ Commands:
   send-issue <id> [--dry-run] [--public]
                             Post the ticket as an issue on origin's GitHub repo, laid
                             out like the board (Description, Acceptance, Plan, Research), for a
-                            Claude cloud session ("Work on Issue#N"). Records github:.
+                            Claude cloud session ("Work on Issue#N"). Records github:
+                            and runs: github.
   import-issue <N> [--body-file F] [--force]
                             Rebuild .tickets/<id>/ from a send-issue body (used by
                             sprint import-issue in the cloud session).
@@ -1712,7 +1723,8 @@ Commands:
                             results-ready, results-in or merged (read-only).
   take-back <id> [--close-issue]
                             Bring a ticket sent to GitHub back to this machine (clears
-                            github:; --close-issue comments on and closes the issue).
+                            runs: github; --close-issue also comments on and closes
+                            the issue and clears github:).
   export <id> [--public]    Send a cloud sprint's .tickets/<id>/ back: with the PR
                             when .tickets/ is tracked, else to canon-results/<id>.
   import-results <id> [--pr N]

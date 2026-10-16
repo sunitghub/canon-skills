@@ -3799,6 +3799,20 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(docs); return
             self.send_error(404)
 
+    def _github_write(self, eroot, tid, what, payload):
+        if what == 'send':
+            self.send_json(run_tkt(eroot, ['send-issue', tid] + (['--public'] if payload.get('public') is True else []))); return
+        if what == 'merge-stop':
+            self.send_json(stop_merge_run(eroot, tid)); return
+        if what == 'take-back':
+            self.send_json(run_tkt(eroot, ['take-back', tid] + (['--close-issue'] if payload.get('close_issue') is True else []))); return
+        pr = _pr_arg(payload.get('pr'))
+        if pr is None:
+            self.send_error(400); return
+        if what == 'import':
+            self.send_json(run_tkt(eroot, ['import-results', tid, *pr])); return
+        self.send_json(start_merge_run(eroot, tid, pr)); return
+
     def do_POST(self):
         if not self._host_ok():
             self.send_error(403); return
@@ -3899,20 +3913,16 @@ class Handler(BaseHTTPRequestHandler):
         m = re.match(r'^/api/ticket/(t-[a-z0-9]{4})/github/(send|import|merge|merge-stop|take-back)$', path)
         if m:
             tid, what = m.group(1), m.group(2)
-            with _MERGE_LOCK:   # t-718b: a write changes the stage; the next status call must not serve the cached one
+            # t-718b: a write changes the stage, so the next status call must not serve the cached one: dropped before
+            # (a stale hit) and after (a status read during the write cached the old stage).
+            with _MERGE_LOCK:
                 _STATUS_CACHE.pop((str(eroot), tid), None)
-            if what == 'send':
-                self.send_json(run_tkt(eroot, ['send-issue', tid] + (['--public'] if payload.get('public') is True else []))); return
-            if what == 'merge-stop':
-                self.send_json(stop_merge_run(eroot, tid)); return
-            if what == 'take-back':
-                self.send_json(run_tkt(eroot, ['take-back', tid] + (['--close-issue'] if payload.get('close_issue') is True else []))); return
-            pr = _pr_arg(payload.get('pr'))
-            if pr is None:
-                self.send_error(400); return
-            if what == 'import':
-                self.send_json(run_tkt(eroot, ['import-results', tid, *pr])); return
-            self.send_json(start_merge_run(eroot, tid, pr)); return
+            try:
+                self._github_write(eroot, tid, what, payload)
+            finally:
+                with _MERGE_LOCK:
+                    _STATUS_CACHE.pop((str(eroot), tid), None)
+            return
 
         m = re.match(r'^/api/ticket/(t-[a-z0-9]{4})/headless-run$', path)
         if m:

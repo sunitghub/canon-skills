@@ -14526,11 +14526,12 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
 
   const made = [];
   test.afterEach(() => { while (made.length) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', made.pop()), { recursive: true, force: true }); });
-  function ghTicket(id, { status = 'open', github = '', merged = '' } = {}) {
+  // runs: github marks a ticket out on GitHub; github: alone is only the issue link (sync-issues, import-issue).
+  function ghTicket(id, { status = 'open', github = '', merged = '', runs = github ? 'github' : '' } = {}) {
     const dir = path.join(PROJECT_ROOT, '.tickets', id);
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, 'ticket.md'), ['---', `id: ${id}`, `status: ${status}`, 'type: task', 'priority: 2',
-      ...(github ? [`github: ${github}`] : []), ...(merged ? [`merged: ${merged}`] : []),
+      ...(github ? [`github: ${github}`] : []), ...(runs ? [`runs: ${runs}`] : []), ...(merged ? [`merged: ${merged}`] : []),
       'created: 2026-10-16T00:00:00Z', '---', '', `# GitHub test ${id}`, ''].join('\n'));
     fs.writeFileSync(path.join(dir, 'acceptance.md'), ['# Acceptance', '', '## Criteria', '- [ ] works', '', '## Test Plan', '- [ ] check', '', '## QA', '- [ ] Tested locally', ''].join('\n'));
     made.push(id);
@@ -14567,6 +14568,21 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
       await expect(card.locator('.card-gh-chip')).toHaveText(chip);
       await expect(card.locator('.card-gh-btn')).toHaveText(btn);
     }
+  });
+
+  test('a ticket only linked to an issue (synced or imported) stays a local Open ticket with Start (t-718b)', async ({ page }) => {
+    const id = `t-gh0-${Date.now()}`;
+    ghTicket(id, { github: 'acme/app#57', runs: '' });
+    const calls = [];
+    await page.route(`**/api/ticket/${id}/github/**`, r => { calls.push(r.request().url()); return json(r, { ok: false, output: '' }); });
+    await openBoard(page, id);
+    const card = page.locator(`.card[data-id="${id}"]`);
+    await expect(page.locator('.column', { has: card }).locator('.col-title, .column-title, h2').first()).toContainText(/open/i);
+    await expect(card.locator('.card-gh-chip')).toHaveCount(0);
+    await expect(card.locator('.card-gh-btn')).toHaveCount(0);
+    await expect(card.locator('.card-start')).toBeVisible();
+    await page.evaluate(async () => (await import('/static/board-github.js')).pollGithub(true));
+    expect(calls).toEqual([]);
   });
 
   test('polling asks only about cards out on GitHub, and not while the page is hidden (t-718b)', async ({ page }) => {
@@ -14698,8 +14714,68 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.locator(`.card[data-id="${id}"] .card-gh-btn`).click();
     await page.locator('#gh-dialog-ok').click();
     await expect(page.locator('#gh-dialog-cancel')).toHaveText('Stop');
+    await page.keyboard.press('Escape');   // a running merge stops only on a click of Stop
+    await expect(page.locator('#gh-dialog')).toHaveClass(/open/);
+    expect(stops).toBe(0);
     await page.locator('#gh-dialog-cancel').click();
     await expect.poll(() => stops).toBe(1);
+  });
+
+  test('a public repo: the preview asks for a tick before Create issue sends with public (t-718b)', async ({ page }) => {
+    const id = `t-gh9-${Date.now()}`;
+    ghTicket(id);
+    const sends = [];
+    await page.route('**/api/worktrees**', r => json(r, [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true }]));
+    await page.route(`**/api/ticket/${id}/github/send-preview`, r => json(r, { ok: true, exit_code: 0, output: 'repo: acme/app (PUBLIC)\ntitle: x\n--- dry run: nothing was created ---' }));
+    await page.route(`**/api/ticket/${id}/github/send`, r => { sends.push(JSON.parse(r.request().postData() || '{}')); return json(r, { ok: true, exit_code: 0, output: `Sent ${id} as https://github.com/acme/app/issues/57` }); });
+    await openBoard(page, id);
+    await page.locator(`.card[data-id="${id}"] .card-start`).click();
+    await page.locator('#ck-worktree .ck-gh-row').click();
+    await expect(page.locator('#ck-gh-public')).toBeVisible();
+    await page.locator('#ck-gh-create').click();
+    await expect(page.locator('#ck-gh-status')).toHaveText('Tick the public-repository box first.');
+    expect(sends).toEqual([]);
+    await page.locator('#ck-gh-public').check();
+    await page.locator('#ck-gh-create').click();
+    await expect(page.locator('#ck-gh-sent')).toContainText('Work on Issue#57');
+    expect(sends).toEqual([{ public: true }]);
+  });
+
+  test('the dialog takes focus, keeps Tab inside, closes on Escape from anywhere and gives focus back (t-718b)', async ({ page }) => {
+    const id = `t-gh10-${Date.now()}`;
+    ghTicket(id, { github: 'acme/app#57' });
+    await routeStatus(page, id, { stage: 'sent' });
+    await openBoard(page, id);
+    const back = page.locator(`.card[data-id="${id}"] .card-gh-takeback`);
+    await back.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#gh-dialog')).toHaveClass(/open/);
+    await expect(page.locator('#gh-dialog-ok')).toBeFocused();
+    for (let i = 0; i < 4; i++) {
+      await page.keyboard.press('Tab');
+      expect(await page.evaluate(() => document.getElementById('gh-dialog').contains(document.activeElement))).toBe(true);
+    }
+    await page.evaluate(() => document.activeElement.blur());
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#gh-dialog')).not.toHaveClass(/open/);
+    await expect(back).toBeFocused();
+  });
+
+  test('a late merge check never fills a dialog opened after it was cancelled (t-718b)', async ({ page }) => {
+    const id = `t-gh11-${Date.now()}`;
+    ghTicket(id, { github: 'acme/app#57' });
+    await routeStatus(page, id, { stage: 'results-in', pr: 58 });
+    let release; const held = new Promise(r => { release = r; });
+    await page.route(`**/api/ticket/${id}/github/merge-check**`, async r => { await held; return json(r, { ok: true, exit_code: 0, output: 'merge-pr: ready' }); });
+    await openBoard(page, id);
+    await page.locator(`.card[data-id="${id}"] .card-gh-btn`).click();
+    await page.locator('#gh-dialog-cancel').click();
+    await page.locator(`.card[data-id="${id}"] .card-gh-takeback`).click();
+    await expect(page.locator('#gh-dialog-title')).toHaveText(`Take ${id} back from GitHub?`);
+    release();
+    await page.waitForResponse(r => r.url().includes('/github/merge-check'));
+    await expect(page.locator('#gh-dialog-ok')).toHaveText('Take back');
+    await expect(page.locator('#gh-dialog-pre')).toBeHidden();
   });
 
   test('Take back asks, can close the issue, and posts once (t-718b)', async ({ page }) => {
@@ -14707,7 +14783,12 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     ghTicket(id, { github: 'acme/app#57' });
     await routeStatus(page, id, { stage: 'sent' });
     const bodies = [];
-    await page.route(`**/api/ticket/${id}/github/take-back`, r => { bodies.push(JSON.parse(r.request().postData() || '{}')); return json(r, { ok: true, exit_code: 0, output: 'take-back: back' }); });
+    await page.route(`**/api/ticket/${id}/github/take-back`, r => {
+      bodies.push(JSON.parse(r.request().postData() || '{}'));
+      const f = path.join(PROJECT_ROOT, '.tickets', id, 'ticket.md');   // what tkt take-back does: runs: github goes
+      fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace(/^runs: github\n/m, ''));
+      return json(r, { ok: true, exit_code: 0, output: 'take-back: back' });
+    });
     await openBoard(page, id);
     await page.locator(`.card[data-id="${id}"] .card-gh-takeback`).click();
     await expect(page.locator('#gh-dialog-title')).toHaveText(`Take ${id} back from GitHub?`);
@@ -14718,5 +14799,9 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.locator('#gh-dialog-ok').click();
     await expect.poll(() => bodies.length).toBe(1);
     expect(bodies[0]).toEqual({ close_issue: true });
+    const card = page.locator(`.card[data-id="${id}"]`);
+    await expect(page.locator('.column', { has: card }).locator('.col-title, .column-title, h2').first()).toContainText(/open/i);
+    await expect(card.locator('.card-gh-chip')).toHaveCount(0);
+    await expect(card.locator('.card-start')).toHaveText(/Start/);
   });
 });

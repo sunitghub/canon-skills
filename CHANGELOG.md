@@ -8,8 +8,12 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ### Added
 - `tkt github-status <id> [--json]` says where a ticket sent to GitHub stands: `sent`, `pr-open`, `results-ready` (its results branch is waiting: import it), `results-in` (imported; the evaluator passed on the PR's head) or `merged`. Read-only: one `gh` call and one `git ls-remote` (`t-d271`).
-- `tkt take-back <id> [--close-issue]` brings a ticket sent to GitHub back to this machine (`t-d271`).
+- `tkt take-back <id> [--close-issue]` brings a ticket sent to GitHub back to this machine (`t-d271`). It clears `runs: github` and keeps the `github:` link to the open issue; `--close-issue` closes the issue and clears the link too (`t-718b`).
+- The board runs the GitHub workflow (`t-718b`). **▶ Start** offers GitHub as a place beside Main and the worktrees: picking it previews the issue and, on **Create issue**, sends it, with no terminal. A ticket out on GitHub sits in In progress with a `GitHub #N · <stage>` chip and one button for the next step: Open issue, Open PR, Import results, or **Check & merge**, which shows the checks and asks once before running the PR's code. Its status is polled every 2 minutes while the page is visible, and **take back** brings it home.
 - The board's servers (Python and Go) run the GitHub workflow commands for the coming board UI: send-issue (preview and send), sync-issues (preview and create), import-results, merge-pr (`--check`, and `--yes` as a background job whose progress the page can follow), take-back and github-status (cached 30 s per ticket), each one `tkt` command in the project. On Windows the Go board runs `tkt` through `tools/tkt.cmd`. The merge job can be stopped, and stops itself after an hour (`t-d271`).
+
+### Changed
+- `tkt send-issue` also writes `runs: github`, which is what marks a ticket out on GitHub; `github:` is only the issue link, which `sync-issues` and `import-issue` write too, so a synced issue stays an ordinary local ticket. `send-issue` refuses a ticket already linked to an issue rather than open a second one, and `--dry-run` previews a public repository (it creates nothing) (`t-718b`).
 
 ## [0.12.1] - 2026-10-16
 
