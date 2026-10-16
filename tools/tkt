@@ -1327,6 +1327,12 @@ cmd_merge_pr() {
   local verdict graded; read -r verdict graded < <(_eval_verdict_head "$tdir")
   [[ "$verdict" == pass && "$graded" != - ]] \
     || { echo "merge-pr: $id has no passing evaluator verdict with a graded-head (eval-report.md: ${verdict/#-/none}); import the results first" >&2; exit 1; }
+  # An irreversible merge rests on this report, so it must be unambiguous, as sprint complete requires: one verdict, one head.
+  local nv ng
+  nv="$(grep -cE '^(pass|fail|partial|not-run):' "$tdir/eval-report.md" || true)"
+  ng="$(sed -n 's/^graded-head: *\([0-9a-f]\{7,40\}\).*/\1/p' "$tdir/eval-report.md" | sort -u | grep -c . || true)"
+  [[ "$nv" == 1 && "$ng" == 1 ]] \
+    || { echo "merge-pr: $id's eval-report.md has $nv verdict lines and $ng graded-heads; one of each is required" >&2; exit 1; }
   local issue=""; issue="$(get_field "$file" github)"; [[ "$issue" == "$repo#"* ]] && issue="${issue##*#}" || issue=""
   [[ "$issue" =~ ^[0-9]+$ ]] || issue=""
   if [[ -z "$pr" ]]; then
@@ -1370,8 +1376,8 @@ cmd_merge_pr() {
   if ! $tset && git -C "$tmp/w" ls-tree "o/$base" -- scripts/test.sh < /dev/null | grep -q '^100755 '; then tcmd="scripts/test.sh"; fi
   # The test command runs the PR's code on this machine, so the question comes first: nothing from the PR runs before a y.
   echo "PR #$pr ($repo): $(git -C "$tmp/w" diff --shortstat "o/$base...o/pr" < /dev/null | sed 's/^ *//')"
-  git -C "$tmp/w" diff --name-only "o/$base...o/pr" < /dev/null | grep -qx 'scripts/test.sh' \
-    && echo "  note: this PR changes scripts/test.sh itself, the script that would run"
+  git -C "$tmp/w" diff --quiet "o/$base...o/pr" -- scripts/test.sh < /dev/null \
+    || echo "  note: this PR changes scripts/test.sh itself, the script that would run"
   local ask
   if [[ -n "$tcmd" ]]; then ask="Run PR #$pr's code here ($tcmd on $base + PR) and merge into $base if it passes?"
   else ask="No test command (pass --test). Merge PR #$pr into $base on the gates alone?"; fi

@@ -81,6 +81,10 @@ rm ".tickets/$id/eval-report.md"
 refuses "no eval-report.md" "no passing evaluator verdict" -- --yes
 eval_ok 0123456789abcdef0123456789abcdef01234567
 refuses "a head the evaluator did not grade" "is not the commit the evaluator graded" -- --yes
+printf 'graded-head: %s\n## Verdict\npass: all met\nfail: one criterion\n' "$PRHEAD" > ".tickets/$id/eval-report.md"
+refuses "two verdict lines" "2 verdict lines and 1 graded-heads" -- --yes
+printf 'graded-head: %s\ngraded-head: %s\npass: all met\n' "$PRHEAD" 0123456789abcdef0123456789abcdef01234567 > ".tickets/$id/eval-report.md"
+refuses "two graded-heads" "1 verdict lines and 2 graded-heads" -- --yes
 eval_ok
 refuses "a closed PR" "is CLOSED, not open" STUB_STATE=CLOSED -- --yes
 refuses "a fork's PR" "comes from a fork" STUB_CROSS=true -- --yes
@@ -116,6 +120,8 @@ before="$(sig)"; rc=0; out="$(STUB_MERGE_FAIL=1 "$TKT" merge-pr "$id" --yes 2>&1
 assert_contains "$out" "gh could not merge PR #7: could not delete branch"
 [[ "$(sig)" == "$before" ]] || fail "a failed merge recorded something in ticket.md"
 
+# The prompt needs a pseudo-terminal from script(1); Git Bash on Windows has none, so those cases skip there, loudly.
+if command -v script >/dev/null 2>&1; then
 # The prompt: "n" runs nothing and merges nothing; "y" runs the tests and merges. A pseudo-terminal answers it (script(1):
 # BSD and util-linux spellings).
 tty_run() { local a="$1"; shift
@@ -138,6 +144,10 @@ grep -qx "pr merge 7 --repo acme/app --merge --delete-branch --match-head-commit
 assert_eq "/" "$(sed -n 's/^cwd //p' "$STUB_LOG")"   # never inside a checkout, so --delete-branch cannot touch local branches
 assert_grep '^merged: mergesha0000000000000000000000000000000000$' "$f"
 grep -q '^pr list' "$STUB_LOG" || fail "the PR was not found by its Fixes line"
+else
+  echo "tkt-merge-pr: SKIPPED the prompt cases: no script(1) here for a pseudo-terminal" >&2
+  sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; "$TKT" merge-pr "$id" --yes > /dev/null 2>&1 || fail "merge-pr --yes failed"
+fi
 
 # --yes, --pr and no test command: merges on the gates alone and says so.
 sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; git rm -q scripts/test.sh; git commit -qm "no suite"; git push -q origin HEAD:main
