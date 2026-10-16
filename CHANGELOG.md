@@ -15,6 +15,7 @@ Send to GitHub works end to end: the first send from a Mac, a Claude cloud sessi
 - `tkt send-issue`: GitHub hid `<this issue number>` in the issue's "Fixes #…" line as an HTML tag; it is now in a code span (`t-1465`).
 - In a Claude cloud session, `sprint import-issue N` failed with a 403 and needed `--body-file`: the session's GitHub proxy refuses GraphQL, which `gh issue view` uses. It now reads the issue over REST (`gh api`), drops the CR characters an issue edited on github.com can carry, and `tkt export`'s public-repo check asks REST too (`t-35d2`).
 - `sprint`, `tkt` and seven other tools (`evidence.sh`, `gate-snapshot.sh`, `subagent-log.sh`, `sprint-headless`, `sprint-headless-eval`, `upkeep-run`, `mutant-sweep`) failed when run through a symlink, such as one in `/usr/local/bin` or `~/bin`: they looked for their helper files beside the link. They now follow the link like `canon` does. The Claude cloud environment recipe in `docs/setup.md` uses wrapper scripts, which work on every release (`t-2785`).
+- `scripts/release.sh` (maintainers): a CHANGELOG larger than a pipe buffer made the release refuse with "no dated section", because the lookup piped the file into an `awk` that stops early; `awk` now reads the file itself (`t-fef7`).
 
 ## [0.11.1] - 2026-10-16
 
