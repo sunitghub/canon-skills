@@ -33,7 +33,7 @@ id="$("$TKT" create "Board burns a CPU core" -t task -p 1 -d "## Problem
 The board uses a core while idle.")"
 d=".tickets/$id"
 printf '# Acceptance\n\n## Criteria\nThe checklist of behavior that must be true before the sprint can close.\n<!-- Add items -->\n\n- [ ] Idle CPU under 5%%\n  over 60 s\n\n## Test Plan\n- [ ] Measure before and after\n\n## QA\nEdge cases and sign-off.\n- [ ] Tested locally\n\n## Wrapup Gates\n| Gate | Status | Reason |\n|------|--------|--------|\n| eval | ran | pass |\n\n## Results\nAll criteria met on the first run.\n' > "$d/acceptance.md"
-printf '# Plan\n\n## Sign-off\n- [x] Plan approved\n\n## Approach\n1. Profile the idle board.\n2. Fix the hot loop.\n\n## Files\n`server.py`\n\n## Decisions\n- none\n' > "$d/plan.md"
+printf '# Plan\n\n## Sign-off\n- [x] Plan approved\n\n## Approach\n1. Profile the idle board.\n2. Fix the hot loop.\n```\n<!-- kept: inside a fence -->\n## not a heading\n```\n<!-- dropped: outside a fence -->\n3. Measure again.\n\n## Files\n`server.py`\n\n## Decisions\n- none\n' > "$d/plan.md"
 printf '# Research: x\n\n- The board polls every 8 s.\n' > "$d/research.md"
 sig() { cksum < "$d/ticket.md"; }
 
@@ -54,7 +54,7 @@ grep -qx "label create canon --repo acme/app --color 6C5CF7 --description A cano
 grep -qx "issue create --repo acme/app --title $id: Board burns a CPU core --label canon --body-file .*" "$STUB_LOG" || fail "wrong issue create call: $(cat "$STUB_LOG")"
 assert_grep "^github: acme/app#57$" "$d/ticket.md"
 # The issue has the ticket's tree as the board lists it: every section of ticket.md, acceptance.md and plan.md, then Research.
-order="$(grep -E '^#{1,2} ' "$STUB_BODY" | tr '\n' '|')"
+order="$(awk '/^```/ { fence = !fence; next } !fence && /^#{1,2} /' "$STUB_BODY" | tr '\n' '|')"
 assert_eq "# Description|## Problem|# Acceptance|## Criteria|## Test Plan|## QA|## Wrapup Gates|## Results|# Plan|## Sign-off|## Approach|## Files|## Decisions|# Research|# Working on this|" "$order"
 assert_grep '^| eval | ran | pass |$' "$STUB_BODY"                     # a table section keeps its rows
 assert_grep '^All criteria met on the first run.$' "$STUB_BODY"     # and a prose section its text
@@ -63,6 +63,9 @@ assert_grep '^- \[x\] Plan approved$' "$STUB_BODY"
 assert_grep '^- \[ \] Idle CPU under 5%$' "$STUB_BODY"
 assert_grep '^  over 60 s$' "$STUB_BODY"
 assert_grep '^1. Profile the idle board.$' "$STUB_BODY"
+# t-8543: a fenced block is kept as written: its comment and its "## " line stay, inside Approach, not a section of their own.
+approach="$(awk '/^## Approach$/ { f = 1; next } /^## Files$/ { f = 0 } f' "$STUB_BODY")"
+assert_eq $'1. Profile the idle board.\n2. Fix the hot loop.\n```\n<!-- kept: inside a fence -->\n## not a heading\n```\n3. Measure again.' "$(printf '%s' "$approach" | awk 'NF { s = 1 } s' | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}')"
 assert_grep '^- The board polls every 8 s.$' "$STUB_BODY"
 assert_grep "^<!-- canon:ticket $id -->\$" "$STUB_BODY"
 grep -q 'The checklist of behavior\|Edge cases and sign-off\|Add items' "$STUB_BODY" && fail "template prompts or comments leaked into the issue"
@@ -101,6 +104,23 @@ for mode in create view; do
   [[ "$(cksum < ".tickets/$id3/ticket.md")" == "$before" ]] || fail "ticket changed although gh failed on $mode"
 done
 unset STUB_FAIL
+
+# No gh on PATH: refused with the install hint, ticket byte-identical. The real gh is hidden by a PATH of links to
+# everything else in the dirs that hold it.
+nogh="$stub/nogh"; mkdir "$nogh"; path_nogh=""
+IFS=: read -ra dirs <<<"$PATH"
+for dir in "${dirs[@]}"; do
+  [[ "$dir" == "$stub" ]] && continue
+  if [[ -x "$dir/gh" ]]; then
+    for f in "$dir"/*; do [[ "${f##*/}" == gh || -e "$nogh/${f##*/}" ]] || ln -s "$f" "$nogh/${f##*/}"; done
+  else path_nogh="$path_nogh:$dir"; fi
+done
+before="$(cksum < ".tickets/$id3/ticket.md")"
+rc=0; ng="$(PATH="$nogh$path_nogh" "$TKT" send-issue "$id3" 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "no gh should exit 1, got $rc: $ng"
+assert_contains "$ng" "send-issue: needs the GitHub CLI"
+[[ "$(cksum < ".tickets/$id3/ticket.md")" == "$before" ]] || fail "ticket changed although gh is missing"
+PATH="$nogh$path_nogh" command -v gh >/dev/null && fail "the test PATH still finds gh"
 
 # Origins: ssh forms parse; anything not on GitHub is refused before any gh call.
 for u in git@github.com:acme/app.git ssh://git@github.com/acme/app; do
