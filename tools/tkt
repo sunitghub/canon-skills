@@ -1007,6 +1007,16 @@ _si_section() {   # _si_section <file> <heading>: the lines under "## <heading>"
 _si_drop_prompts() { grep -vxE 'The checklist of behavior that must be true before the sprint can close\.|The commands or checks that prove the criteria work\.|Edge cases and sign-off\.' | awk 'NF { s = 1 } s' || true; }
 _si_or_none() { if [[ -n "$1" ]]; then printf '%s\n' "$1"; else printf '(none yet)\n'; fi; }
 
+_gh_origin_repo() {   # _gh_origin_repo <root> <label>: prints origin's GitHub owner/repo, or explains why not (exit 1)
+  local url
+  url="$(git -C "$1" remote get-url origin 2>/dev/null)" || { echo "$2: this project has no git remote named origin" >&2; return 1; }
+  if [[ "$url" =~ ^(https://github\.com/|git@github\.com:|ssh://git@github\.com/)([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)$ ]]; then
+    printf '%s\n' "${BASH_REMATCH[2]%.git}"
+  else
+    echo "$2: origin is not a GitHub repo ($url)" >&2; return 1
+  fi
+}
+
 cmd_send_issue() {
   local id="" dry=false public=false
   while [[ $# -gt 0 ]]; do
@@ -1027,14 +1037,9 @@ cmd_send_issue() {
   local sent; sent="$(get_field "$file" github)"
   [[ -n "$sent" ]] && { echo "send-issue: $id was already sent: $sent" >&2; exit 1; }
 
-  local root url repo
+  local root repo
   root="$(dirname "$(tickets_dir)")"
-  url="$(git -C "$root" remote get-url origin 2>/dev/null)" || { echo "send-issue: this project has no git remote named origin" >&2; exit 1; }
-  if [[ "$url" =~ ^(https://github\.com/|git@github\.com:|ssh://git@github\.com/)([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)$ ]]; then
-    repo="${BASH_REMATCH[2]%.git}"
-  else
-    echo "send-issue: origin is not a GitHub repo ($url)" >&2; exit 1
-  fi
+  repo="$(_gh_origin_repo "$root" send-issue)" || exit 1
   command -v gh >/dev/null 2>&1 || { echo "send-issue: needs the GitHub CLI: install gh, then run: gh auth login" >&2; exit 1; }
   local vis
   vis="$(gh repo view "$repo" --json visibility --jq .visibility 2>&1)" || { echo "send-issue: gh could not read $repo: $vis" >&2; echo "  If you are signed out, run: gh auth login" >&2; exit 1; }
@@ -1065,14 +1070,17 @@ cmd_send_issue() {
   trap "rm -f '$body'" EXIT
   # The same tree as the ticket on the board, every section with the board's heading (t-554c reads it back by these headings).
   {
-    printf '**%s** · %s · P%s\n\n' "$id" "$(get_field "$file" type)" "$(get_field "$file" priority)"
-    printf '# Description\n'; _si_or_none "$(ticket_body "$file" | awk 'NF { s = 1 } s')"
+    printf '**%s** · %s · P%s · %s\n\n' "$id" "$(get_field "$file" type)" "$(get_field "$file" priority)" "$title"
+    # Only the title line is skipped: ticket_body drops every "# " line, which would eat a shell comment in a code block.
+    printf '# Description\n'; _si_or_none "$(awk '/^---$/ && fm < 2 { fm++; next } fm >= 2 && !t && /^# / { t = 1; next } fm >= 2 { print }' "$file" | awk 'NF { s = 1 } s')"
     printf '\n# Acceptance\n'; _si_or_none "$asecs"
     printf '\n# Plan\n'; _si_or_none "$psecs"
     printf '\n# Research\n'; _si_or_none "$rbody"
     printf '\n# Working on this\n'
     printf 'This repository uses canon. Run `sprint import-issue <this issue number>` to rebuild .tickets/%s/ from the\n' "$id"
-    printf 'sections above, open the PR with "Fixes #<this issue number>", and when the sprint closes run `tkt export %s`.\n' "$id"
+    printf 'sections above and start the sprint (if gh cannot read this issue, save its text to a file and add\n'
+    printf '`--body-file <file>`). Open the PR with "Fixes #<this issue number>", and when the sprint closes run\n'
+    printf '`tkt export %s` and push nothing else for it: export prints where the ticket went.\n' "$id"
     printf '\n<!-- canon:ticket %s -->\n' "$id"
   } > "$body"
 
@@ -1087,6 +1095,7 @@ cmd_send_issue() {
   gh label create canon --repo "$repo" --color 6C5CF7 --description "A canon ticket" --force >/dev/null 2>&1 \
     || echo "send-issue: warning: could not create the canon label; sending without it" >&2
   local labels=(--label canon); gh label list --repo "$repo" --search canon --json name --jq '.[].name' 2>/dev/null | grep -qx canon || labels=()
+  local url
   out="$(gh issue create --repo "$repo" --title "$id: $title" "${labels[@]}" --body-file "$body" 2>&1)" \
     || { echo "send-issue: gh issue create failed; $id was not changed: $out" >&2; exit 1; }
   url="$(printf '%s\n' "$out" | grep -Eo 'https://github\.com/[^ ]+/issues/[0-9]+' | tail -1)"
@@ -1097,6 +1106,145 @@ cmd_send_issue() {
   fi
   set_or_add_field "$file" github "$repo#$n"
   printf 'Sent %s as %s\nIn a Claude cloud session on %s, type: Work on Issue#%s\n' "$id" "$url" "$repo" "$n"
+}
+
+# cmd_import_issue <N> [--body-file F] [--force] — t-554c: rebuilds .tickets/<id>/ from a `tkt send-issue` body (the
+# board's tree: # Description, # Acceptance, # Plan, # Research), so a cloud session works the same ticket. Prints the id
+# last (sprint import-issue starts it). An existing ticket.md is kept; another differing file is refused without --force.
+cmd_import_issue() {
+  local n="" bodyf="" force=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --body-file) bodyf="${2:-}"; shift 2 || { echo "Error: --body-file needs a file" >&2; exit 1; } ;;
+      --force)     force=true; shift ;;
+      -*) echo "Unknown option: $1" >&2; exit 1 ;;
+      *)  [[ -z "$n" ]] && n="${1#\#}"; shift ;;
+    esac
+  done
+  [[ "$n" =~ ^[0-9]+$ ]] || { echo "Usage: tkt import-issue <issue number> [--body-file <file>] [--force]" >&2; exit 1; }
+  local root repo="" dir; dir="$(ensure_tickets_dir)"; root="$(dirname "$dir")"
+  repo="$(_gh_origin_repo "$root" import-issue 2>/dev/null)" || repo=""
+  local tmp; tmp="$(mktemp -d "${TMPDIR:-/tmp}/tkt-import.XXXXXX")"
+  # shellcheck disable=SC2064  # expand now: $tmp is local
+  trap "rm -rf '$tmp'" EXIT
+  if [[ -n "$bodyf" ]]; then
+    tr -d '\r' < "$bodyf" > "$tmp/body" || { echo "import-issue: cannot read $bodyf" >&2; exit 1; }
+  else
+    [[ -n "$repo" ]] || { echo "import-issue: origin is not a GitHub repo; use --body-file <file>" >&2; exit 1; }
+    local err; err="$(gh issue view "$n" --repo "$repo" --json body --jq .body 2>&1 > "$tmp/body")" \
+      || { echo "import-issue: gh could not read issue #$n on $repo: $err" >&2; echo "  Save the issue's text to a file and add --body-file <file>." >&2; exit 1; }
+  fi
+  local id hdr type pri title
+  id="$(sed -n 's/^<!-- canon:ticket \(t-[a-z0-9]*\) -->$/\1/p' "$tmp/body" | tail -1)"
+  [[ -n "$id" ]] || { echo "import-issue: issue #$n has no canon:ticket marker; it was not made by tkt send-issue" >&2; exit 1; }
+  hdr="$(grep -m1 "^\*\*$id\*\* · " "$tmp/body" || true)"
+  type="$(awk -F' · ' '{print $2}' <<< "$hdr")"; pri="$(awk -F' · ' '{sub(/^P/, "", $3); print $3}' <<< "$hdr")"
+  title="$(awk -F' · ' '{ t = $4; for (i = 5; i <= NF; i++) t = t " · " $i; print t }' <<< "$hdr")"
+  [[ -n "$title" ]] || title="$id"
+  # Split the body into its "# " parts; "(none yet)" means the part was empty.
+  # A "# " line inside a fenced code block (a shell comment) is content, not a part.
+  awk -v d="$tmp" '/^```/ { fence = !fence } !fence && /^# / { name = substr($0, 3); f = d "/part-" name; printf "" > f; next } name != "" && !/^<!-- canon:ticket / { print >> f }' "$tmp/body"
+  part() { local f="$tmp/part-$1"; [[ -f "$f" ]] || return 0; awk 'NF { s = 1 } s' "$f" | awk '{ a[NR] = $0 } END { while (NR && a[NR] == "") NR--; for (i = 1; i <= NR; i++) print a[i] }' | grep -vx '(none yet)' || true; }
+  local tdir="$dir/$id"; mkdir -p "$tdir"
+  local desc acc plan res; desc="$(part Description)"; acc="$(part Acceptance)"; plan="$(part Plan)"; res="$(part Research)"
+  [[ -n "$acc" ]] && printf '# Acceptance\n\n<!-- Keep the Ticket line below unchanged. -->\nTicket: `%s`\n\n%s\n' "$id" "$acc" > "$tmp/acceptance.md"
+  [[ -n "$plan" ]] && printf '# Plan\n\n<!-- Keep the Ticket line below unchanged. -->\nTicket: `%s`\n\n%s\n' "$id" "$plan" > "$tmp/plan.md"
+  [[ -n "$res" ]] && printf '# Research: %s\n\n%s\n' "$id" "$res" > "$tmp/research.md"
+  local f bad=""
+  for f in acceptance.md plan.md research.md; do
+    [[ -f "$tmp/$f" && -f "$tdir/$f" ]] && ! cmp -s "$tmp/$f" "$tdir/$f" && bad="$bad $f"
+  done
+  if [[ -n "$bad" ]] && ! $force; then
+    echo "import-issue: .tickets/$id/ already has different:$bad. Re-run with --force to replace them." >&2; exit 1
+  fi
+  for f in acceptance.md plan.md research.md; do [[ -f "$tmp/$f" ]] && cp "$tmp/$f" "$tdir/$f"; done
+  if [[ ! -f "$tdir/ticket.md" ]]; then
+    {
+      printf -- '---\nid: %s\nstatus: open\ncreated: %s\ntype: %s\npriority: %s\neval_override: false\neval_fail_count: 0\n' \
+        "$id" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${type:-task}" "${pri:-2}"
+      [[ -n "$repo" ]] && printf 'github: %s#%s\n' "$repo" "$n"
+      printf -- '---\n# %s\n' "$title"
+      [[ -n "$desc" ]] && printf '\n%s\n' "$desc"
+    } > "$tdir/ticket.md"
+  elif [[ -n "$repo" && -z "$(get_field "$tdir/ticket.md" github)" ]]; then
+    set_or_add_field "$tdir/ticket.md" github "$repo#$n"
+  fi
+  echo "import-issue: rebuilt .tickets/$id/ from issue #$n" >&2
+  printf '%s\n' "$id"
+}
+
+# cmd_export <id> — t-554c: at the close of a cloud sprint, sends .tickets/<id>/ back. A tracked .tickets/ rides in the PR;
+# an ignored one (canon's own) goes to the branch canon-results/<id>, built from a temporary index so the checkout and
+# the real index are never touched, holding only that folder.
+cmd_export() {
+  local id="${1:-}"; [[ -z "$id" ]] && { echo "Usage: tkt export <id>" >&2; exit 1; }
+  local file tdir root rel; file="$(find_ticket "$id")"; id="$(get_field "$file" id)"; tdir="$(dirname "$file")"
+  root="$(git -C "$tdir" rev-parse --show-toplevel)" || exit 1
+  rel=".tickets/$id"
+  if ! git -C "$root" check-ignore -q "$rel/ticket.md"; then
+    echo "export: .tickets/ is tracked here, so $rel/ goes back with the PR: commit it on the PR branch."; return 0
+  fi
+  local idx; idx="$(mktemp "${TMPDIR:-/tmp}/tkt-export-idx.XXXXXX")"; rm -f "$idx"
+  # shellcheck disable=SC2064  # expand now: $idx is local
+  trap "rm -f '$idx'" EXIT
+  local tree commit
+  (cd "$root" && find "$rel" -type f ! -name '.cockpit-*' -print0 | GIT_INDEX_FILE="$idx" xargs -0 git add -f --) || { echo "export: could not stage $rel" >&2; exit 1; }
+  tree="$(cd "$root" && GIT_INDEX_FILE="$idx" git write-tree)" || exit 1
+  commit="$(git -C "$root" commit-tree "$tree" -m "canon results: $id")" || exit 1
+  git -C "$root" push --force origin "$commit:refs/heads/canon-results/$id" >&2 || { echo "export: push to origin failed" >&2; exit 1; }
+  echo "export: pushed $rel/ to canon-results/$id. On your machine: tkt import-results $id"
+}
+
+# cmd_import_results <id> [--pr N] — t-554c: brings a cloud sprint's .tickets/<id>/ back from canon-results/<id>. Files
+# arrive byte-for-byte; a differing local file is kept in .before-import/; the close already happened in the cloud, so
+# this only reports it. The remote branch is deleted only after the files are written.
+cmd_import_results() {
+  local id="" pr=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --pr) pr="${2:-}"; shift 2 || { echo "Error: --pr needs a number" >&2; exit 1; } ;;
+      -*) echo "Unknown option: $1" >&2; exit 1 ;;
+      *)  [[ -z "$id" ]] && id="$1"; shift ;;
+    esac
+  done
+  [[ -n "$id" ]] || { echo "Usage: tkt import-results <id> [--pr N]" >&2; exit 1; }
+  local dir root rel tdir; dir="$(ensure_tickets_dir)"; root="$(dirname "$dir")"; rel=".tickets/$id"; tdir="$dir/$id"
+  git -C "$root" fetch -q origin "refs/heads/canon-results/$id" 2>/dev/null \
+    || { echo "import-results: origin has no branch canon-results/$id (did the cloud session run tkt export $id?)" >&2; exit 1; }
+  local head; head="$(git -C "$root" rev-parse FETCH_HEAD)"
+  local tmp; tmp="$(mktemp -d "${TMPDIR:-/tmp}/tkt-results.XXXXXX")"
+  # shellcheck disable=SC2064  # expand now: $tmp is local
+  trap "rm -rf '$tmp'" EXIT
+  git -C "$root" archive "$head" "$rel" | tar -x -C "$tmp" || { echo "import-results: could not read canon-results/$id" >&2; exit 1; }
+  [[ -f "$tmp/$rel/ticket.md" ]] || { echo "import-results: canon-results/$id has no $rel/ticket.md" >&2; exit 1; }
+  local gh_line=""; [[ -f "$tdir/ticket.md" ]] && gh_line="$(get_field "$tdir/ticket.md" github)"
+  local f n=0 kept=0
+  mkdir -p "$tdir"
+  while IFS= read -r -d '' f; do
+    f="${f#"$tmp/$rel/"}"
+    if [[ -f "$tdir/$f" ]] && ! cmp -s "$tmp/$rel/$f" "$tdir/$f"; then
+      mkdir -p "$(dirname "$tdir/.before-import/$f")" && cp -p "$tdir/$f" "$tdir/.before-import/$f" || { echo "import-results: could not back up $f; nothing more written" >&2; exit 1; }
+      kept=$((kept + 1))
+    fi
+    mkdir -p "$(dirname "$tdir/$f")" && cp -p "$tmp/$rel/$f" "$tdir/$f" || { echo "import-results: could not write $f" >&2; exit 1; }
+    n=$((n + 1))
+  done < <(find "$tmp/$rel" -type f -print0)
+  [[ -n "$gh_line" && -z "$(get_field "$tdir/ticket.md" github)" ]] && set_or_add_field "$tdir/ticket.md" github "$gh_line"
+  local st verdict graded rc=0
+  st="$(get_field "$tdir/ticket.md" status)"
+  verdict="$(grep -m1 -E '^(pass|fail):' "$tdir/eval-report.md" 2>/dev/null | cut -d: -f1 || true)"
+  graded="$(sed -n 's/^graded-head: *\([0-9a-f]\{7,40\}\).*/\1/p' "$tdir/eval-report.md" 2>/dev/null | head -1)"
+  echo "import-results: $n files into $rel/ ($kept local files kept in $rel/.before-import/)"
+  echo "  status: ${st:-unknown}$([[ "$st" == closed ]] || echo '  (expected closed: the cloud sprint did not finish)')"
+  echo "  evaluator: ${verdict:-no eval-report.md}  graded-head: ${graded:-none}"
+  if [[ -n "$pr" ]]; then
+    local prh; prh="$(cd "$root" && gh pr view "$pr" --json headRefOid --jq .headRefOid 2>&1)" || { echo "import-results: gh could not read PR #$pr: $prh" >&2; rc=1; }
+    if [[ $rc == 0 && -n "$graded" && "$prh" == "$graded"* ]]; then echo "  PR #$pr head $prh: matches graded-head"
+    elif [[ $rc == 0 ]]; then echo "  PR #$pr head $prh does NOT match graded-head ${graded:-none}: the evaluator graded other code" >&2; rc=1; fi
+  fi
+  git -C "$root" push -q origin --delete "canon-results/$id" 2>/dev/null || echo "  note: could not delete canon-results/$id on origin; delete it by hand" >&2
+  echo "  Add its LEARNINGS.md row locally (learnings-sweep for $id) if it wrote learnings.md."
+  return "$rc"
 }
 
 cmd_help() {
@@ -1152,6 +1300,14 @@ Commands:
                             Post the ticket as an issue on origin's GitHub repo, laid
                             out like the board (Description, Acceptance, Plan, Research), for a
                             Claude cloud session ("Work on Issue#N"). Records github:.
+  import-issue <N> [--body-file F] [--force]
+                            Rebuild .tickets/<id>/ from a send-issue body (used by
+                            sprint import-issue in the cloud session).
+  export <id>               Send a cloud sprint's .tickets/<id>/ back: with the PR
+                            when .tickets/ is tracked, else to canon-results/<id>.
+  import-results <id> [--pr N]
+                            Bring canon-results/<id> back (local edits kept in
+                            .before-import/), report status, verdict, graded-head.
 
 New tickets are stored in .tickets/<id>/ticket.md
 ACTIVE ticket is stored in .tickets/ACTIVE
@@ -1179,6 +1335,9 @@ main() {
     learn)          cmd_learn "$@" ;;
     compact)        cmd_compact "$@" ;;
     send-issue)     cmd_send_issue "$@" ;;
+    import-issue)   cmd_import_issue "$@" ;;
+    export)         cmd_export "$@" ;;
+    import-results) cmd_import_results "$@" ;;
     help|--help|-h) cmd_help ;;
     --version|-v)   echo "tkt $VERSION" ;;
     *)              echo "Unknown command: $cmd" >&2; cmd_help; exit 1 ;;

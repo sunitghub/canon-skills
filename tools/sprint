@@ -183,6 +183,16 @@ Agent next steps:
 EOF
 }
 
+# cmd_import_issue <N> [--body-file F] [--force] — t-554c: in a cloud session, rebuilds the ticket a `tkt send-issue`
+# issue carries and starts its sprint. `sprint start` keeps the imported acceptance.md and plan.md (it writes only
+# missing ones), so an approved plan stays approved.
+cmd_import_issue() {
+  local id
+  id="$("$TKT_BIN" import-issue "$@" | tail -1)" || exit 1
+  [[ -n "$id" ]] || exit 1
+  cmd_start "$id"
+}
+
 cmd_current() {
   "$TKT_BIN" current
 }
@@ -1055,6 +1065,9 @@ Usage:
   sprint start "title"      Create a new ticket and start the sprint
   sprint start <ticket-id>  Start the sprint on an existing ticket (no new ticket created)
   sprint continue <ticket-id>  Resume an in_progress ticket (read-only; prints state)
+  sprint import-issue <N> [--body-file F] [--force]
+                            In a cloud session: rebuild the ticket a `tkt send-issue`
+                            issue carries, then start its sprint
   sprint current            Show the active sprint ticket
   sprint status [--json]    Show active ticket and required sprint files; --json:
                             {"active":bool,"ticket":<tkt show --json>,"files":{name:bool}}
@@ -1083,6 +1096,7 @@ main() {
 
   case "$cmd" in
     start) cmd_start "$@" ;;
+    import-issue) cmd_import_issue "$@" ;;
     continue) cmd_continue "$@" ;;
     current) cmd_current ;;
     status) cmd_status "$@" ;;

@@ -100,7 +100,14 @@ Claude subscription, with no API key. The ticket goes to your repo as a GitHub i
 2. `tkt send-issue <id>` creates it (needs `gh auth login`), adds the `canon` label, records `github: owner/repo#N`
    in `ticket.md`, and prints the line to start with. A public repo is refused unless you add `--public`: anyone
    could read the ticket's notes.
-3. Start a new session on the `canon` environment and your repo, and type `Work on Issue#N`.
+3. Start a new session on the `canon` environment and your repo, and type `Work on Issue#N`. The issue tells the
+   session to run `sprint import-issue N`, which rebuilds the ticket (an approved plan stays approved) and starts the
+   sprint; you approve and confirm in that session as you would locally, and the close happens there.
+4. At the close the session runs `tkt export <id>`. If your project commits `.tickets/`, the ticket goes back inside
+   the PR. If not, it is pushed to a branch `canon-results/<id>` that is never merged.
+5. On your machine, `tkt import-results <id> --pr <PR number>` brings that branch back: every file byte-for-byte, a
+   local file that differs kept in `.tickets/<id>/.before-import/`, and a report of the status, the evaluator's verdict
+   and whether it graded the PR's head commit. Then it deletes the branch. Review and merge the PR on GitHub.
 
 Each session is a fresh machine. Keep the environment; archive old sessions.
 
