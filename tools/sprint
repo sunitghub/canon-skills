@@ -3,7 +3,14 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Resolve symlinks so SCRIPT_DIR points to the real file location.
+_SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$_SOURCE" ]; do
+  _DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
+  _SOURCE="$(readlink "$_SOURCE")"
+  [[ "$_SOURCE" != /* ]] && _SOURCE="$_DIR/$_SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
 source "$SCRIPT_DIR/ticket-root.sh"
 source "$SCRIPT_DIR/frontmatter-lib.sh"
 TKT_BIN="$SCRIPT_DIR/tkt"
@@ -341,9 +348,7 @@ _gate_plan_content() {
 
 _gate_visual_embed() {
   local id="$1"
-  local script_dir
-  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  "$script_dir/validate-visuals.sh" "$id" "$2" "$3"
+  "$SCRIPT_DIR/validate-visuals.sh" "$id" "$2" "$3"
 }
 
 # _gate_dispatch_notice <evaluator|reviewer> <file> — the closing lines of every message about a gate report that is
