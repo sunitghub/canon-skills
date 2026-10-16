@@ -1118,7 +1118,9 @@ cmd_send_issue() {
     printf '`--body-file <file>`). Open the PR with `Fixes #<this issue number>`, and when the sprint closes run\n'
     printf '`tkt export %s` and push nothing else for it: export prints where the ticket went.\n' "$id"
     printf 'Plan with canon'"'"'s own approval (write the plan into .tickets/%s/plan.md and ask), not plan mode: plan mode\n' "$id"
-    printf 'has been observed to reach the close gates and stop them.\n'
+    printf 'has been observed to reach the close gates and stop them. Write the plan, then stop and wait for the\n'
+    printf 'user'"'"'s approval before editing any file but the ticket'"'"'s docs under .tickets/%s/. If Acceptance or Plan\n' "$id"
+    printf 'above read "(none yet)", stop and tell the user; do not draft them yourself.\n'
     printf '\n<!-- canon:ticket %s -->\n' "$id"
   } > "$body"
 
@@ -1566,6 +1568,12 @@ cmd_export() {
   fi
   root="$(git -C "$tdir" rev-parse --show-toplevel)" || exit 1
   rel=".tickets/$id"
+  # t-1cf4: warn, never refuse: a cloud close legitimately exports an unclosed ticket, but a blank one must not go unnoticed.
+  if ! _si_section "$tdir/acceptance.md" Criteria | _si_drop_prompts | sed -nE 's/^[[:space:]]*- (\[[ xX]\])?[[:space:]]*//p' | grep -q .; then
+    echo "export: WARNING: $id has no acceptance criteria in acceptance.md; there is nothing to grade." >&2
+  fi
+  grep -qiE '^[[:space:]]*- \[x\] Plan approved' "$tdir/plan.md" 2>/dev/null \
+    || echo "export: WARNING: the plan in $id/plan.md is not approved (its Sign-off box is unticked)." >&2
   if ! git -C "$root" check-ignore -q "$rel/ticket.md"; then
     echo "export: .tickets/ is tracked here, so $rel/ goes back with the PR: commit it on the PR branch."; return 0
   fi

@@ -72,6 +72,11 @@ assert_grep '^- The board polls every 8 s.$' "$STUB_BODY"
 assert_grep "^<!-- canon:ticket $id -->\$" "$STUB_BODY"
 grep -qxF "Plan with canon's own approval (write the plan into .tickets/$id/plan.md and ask), not plan mode: plan mode" "$STUB_BODY" \
   || fail "the issue does not warn against plan mode (t-b2e5)"
+# t-1cf4: the session writes the plan, waits for approval, and stops on "(none yet)" rather than drafting Acceptance or Plan.
+grep -qxF "has been observed to reach the close gates and stop them. Write the plan, then stop and wait for the" "$STUB_BODY" \
+  || fail "the issue does not say to stop and wait for approval (t-1cf4)"
+grep -qxF "above read \"(none yet)\", stop and tell the user; do not draft them yourself." "$STUB_BODY" \
+  || fail "the issue does not say to stop on (none yet) (t-1cf4)"
 # t-1465: GitHub hides a bare <placeholder> as an HTML tag, so in "Working on this" each sits inside a code span.
 work="$(awk '/^# Working on this$/ { f = 1; next } /^<!-- canon:ticket / { f = 0 } f' "$STUB_BODY")"
 assert_contains "$work" '`Fixes #<this issue number>`'
