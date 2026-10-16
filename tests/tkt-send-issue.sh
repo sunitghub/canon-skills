@@ -78,6 +78,15 @@ rc=0; again="$("$TKT" send-issue "$id" 2>&1)" || rc=$?
 assert_contains "$again" "already sent: acme/app#57"
 [[ "$(writes)" == 0 && "$(sig)" == "$before" ]] || fail "a second send called gh or changed the ticket"
 
+# t-c131: a heading with text after its name is its own section, listed once under its full heading with its lines.
+id4="$("$TKT" create "Suffixed heading" -t task -p 3)"
+printf '# Plan\n\n## Approach (draft)\n1. Sketch it.\n2. Refine it.\n\n## Files\n`a.sh`\n' > ".tickets/$id4/plan.md"
+printf '# Acceptance\n\n## Criteria (draft)\n- [ ] Still counts as criteria\n' > ".tickets/$id4/acceptance.md"
+"$TKT" send-issue "$id4" >/dev/null 2> "$stub/suffixed.err"
+grep -q 'no acceptance criteria' "$stub/suffixed.err" && fail "a '## Criteria (draft)' section was not read as the Criteria section"
+assert_eq "## Approach (draft)|## Files|" "$(awk '/^# Plan$/ { f = 1; next } /^# / { f = 0 } f && /^## /' "$STUB_BODY" | tr '\n' '|')"
+assert_eq $'1. Sketch it.\n2. Refine it.' "$(awk '/^## Approach \(draft\)$/ { f = 1; next } /^## / { f = 0 } f && NF' "$STUB_BODY")"
+
 # Public repo: refused without --public (ticket unchanged), sent with it.
 id2="$("$TKT" create "Public one" -t bug -p 2)"
 export STUB_VIS=PUBLIC; : > "$STUB_LOG"; before="$(cksum < ".tickets/$id2/ticket.md")"
