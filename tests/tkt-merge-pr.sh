@@ -8,11 +8,12 @@ source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 
 W="$(mktemp -d "${TMPDIR:-/tmp}/tkt-merge-pr.XXXXXX")"
 trap 'rm -rf "$W"' EXIT
-export HOME="$W/home"; mkdir -p "$HOME"
+export HOME="$W/home" XDG_CONFIG_HOME="$W/home/.config" TMPDIR="$W/tmp"; mkdir -p "$HOME" "$TMPDIR"
 git config --global init.defaultBranch main
 git config --global user.name test; git config --global user.email test@example.com
 # origin is https://github.com/acme/app.git as far as tkt can tell; pushes land in a bare repo, which also holds the PR ref
-# GitHub would. A git shim (on PATH below) sends only a fetch of that URL to the bare repo, so `remote get-url` stays real.
+# GitHub would. A git shim (on PATH below) sends a fetch of that URL, or of the remote origin, to the bare repo, so
+# `remote get-url` stays real and nothing reaches the network.
 git init -q --bare "$W/origin.git"
 git config --global url."$W/origin.git".pushInsteadOf https://github.com/acme/app.git
 
@@ -37,10 +38,11 @@ mkdir "$W/bin"; cat > "$W/bin/gh" <<'SH'
 printf '%s\n' "$*" >> "$STUB_LOG"
 case "$1 $2" in
   "pr list")  cat "$STUB_W/prlist" ;;
-  "pr view")  if [[ "$*" == *mergeCommit* ]]; then echo "mergesha0000000000000000000000000000000000"; exit 0; fi
+  "pr view")  if [[ "$*" == *mergeCommit* ]]; then [[ -n "${STUB_NO_SHA:-}" ]] || echo "mergesha0000000000000000000000000000000000"; exit 0; fi
+              if [[ "$*" == *"--json state --jq"* ]]; then echo "${STUB_AFTER:-OPEN}"; exit 0; fi
               printf '%s\t%s\t%s\t%s\t%s\t%s\n' "${STUB_STATE:-OPEN}" "${STUB_MG:-MERGEABLE}" "${STUB_MS:-CLEAN}" \
                 "${STUB_HEAD:?}" main "${STUB_CROSS:-false}" ;;
-  "pr merge") printf 'cwd %s\n' "$PWD" >> "$STUB_LOG"; exit 0 ;;
+  "pr merge") printf 'cwd %s\n' "$PWD" >> "$STUB_LOG"; [[ -n "${STUB_MERGE_FAIL:-}" ]] && { echo "could not delete branch" >&2; exit 1; }; exit 0 ;;
   *) echo "unexpected gh call: $*" >&2; exit 9 ;;
 esac
 SH
@@ -48,7 +50,7 @@ chmod +x "$W/bin/gh"
 REAL_GIT="$(command -v git)"
 cat > "$W/bin/git" <<SH
 #!/usr/bin/env bash
-if [[ " \$* " == *" fetch "* ]]; then a=(); for x in "\$@"; do [[ "\$x" == https://github.com/acme/app.git ]] && x="$W/origin.git"; a+=("\$x"); done; set -- "\${a[@]}"; fi
+if [[ " \$* " == *" fetch "* ]]; then a=(); for x in "\$@"; do [[ "\$x" == https://github.com/acme/app.git || "\$x" == origin ]] && x="$W/origin.git"; a+=("\$x"); done; set -- "\${a[@]}"; fi
 exec "$REAL_GIT" "\$@"
 SH
 chmod +x "$W/bin/git"
@@ -100,7 +102,17 @@ refuses "a failing --test command" "false failed" -- --test false --yes
 # No terminal and no --yes: refused before any of the PR's code runs.
 rm -f "$W/ran"; refuses "no terminal without --yes" "no terminal to ask on" --
 [[ ! -e "$W/ran" ]] || fail "the PR's tests ran before anyone said yes"
-[[ -z "$(ls "${TMPDIR:-/tmp}" | grep '^tkt-merge\.' || true)" ]] || fail "a scratch clone was left behind"
+[[ -z "$(ls "$TMPDIR" | grep '^tkt-merge\.' || true)" ]] || fail "a scratch clone was left behind"
+# A PR that deletes scripts/test.sh cannot switch the gate off: the default comes from the base branch, so it runs, fails.
+git checkout -q claude/pr7; git rm -q scripts/test.sh; git commit -qm "drop the suite"; NOSUITE="$(git rev-parse HEAD)"
+git push -q -f origin "HEAD:refs/pull/7/head"
+eval_ok "$NOSUITE"; refuses "a PR that deletes scripts/test.sh" "scripts/test.sh failed" STUB_HEAD="$NOSUITE" -- --yes
+git reset -q --hard "$PRHEAD"; git push -q -f origin "HEAD:refs/pull/7/head"; git checkout -q main; eval_ok
+# gh merge fails and GitHub says the PR is still open: a real failure, nothing recorded.
+before="$(sig)"; rc=0; out="$(STUB_MERGE_FAIL=1 "$TKT" merge-pr "$id" --yes 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "a merge GitHub did not make should exit 1, got $rc"
+assert_contains "$out" "gh could not merge PR #7: could not delete branch"
+[[ "$(sig)" == "$before" ]] || fail "a failed merge recorded something in ticket.md"
 
 # The prompt: "n" runs nothing and merges nothing; "y" runs the tests and merges. A pseudo-terminal answers it (script(1):
 # BSD and util-linux spellings).
@@ -121,8 +133,7 @@ out="$(tty_run y "$TKT" merge-pr "$id" 2>&1)" || fail "merge-pr with y failed: $
 assert_contains "$out" "running scripts/test.sh on main + PR #7"
 assert_contains "$out" "Merged PR #7 into main"
 grep -qx "pr merge 7 --repo acme/app --merge --delete-branch --match-head-commit $PRHEAD" "$STUB_LOG" || fail "wrong merge call: $(cat "$STUB_LOG")"
-mcwd="$(sed -n 's/^cwd //p' "$STUB_LOG")"; [[ -n "$mcwd" ]] || fail "the merge ran nowhere"
-(cd "$mcwd" 2>/dev/null && git rev-parse --show-toplevel >/dev/null 2>&1) && fail "gh pr merge ran inside a git checkout ($mcwd)"
+assert_eq "/" "$(sed -n 's/^cwd //p' "$STUB_LOG")"   # never inside a checkout, so --delete-branch cannot touch local branches
 assert_grep '^merged: mergesha0000000000000000000000000000000000$' "$f"
 grep -q '^pr list' "$STUB_LOG" || fail "the PR was not found by its Fixes line"
 
@@ -132,5 +143,18 @@ sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; git rm -q scripts/test.sh; git
 assert_contains "$out" "No test command (pass --test). Merge PR #7 into main on the gates alone? yes (--yes)"
 grep -q '^pr list' "$STUB_LOG" && fail "--pr still searched for the PR"
 grep -q '^pr merge 7 ' "$STUB_LOG" || fail "--yes did not merge"
+
+# gh fails after GitHub merged (the branch delete, say): recorded as merged, with gh's message; no sha → no "null".
+sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
+out="$(STUB_MERGE_FAIL=1 STUB_AFTER=MERGED STUB_NO_SHA=1 "$TKT" merge-pr "$id" --pr 7 --yes 2>&1)" || fail "a merge GitHub made was reported as a failure: $out"
+assert_contains "$out" "Merged PR #7 into main (gh reported: could not delete branch)"
+assert_grep '^merged: PR #7$' "$f"
+
+# t-4718 also fixed import-results: a ticket that comes back without eval-report.md is reported, not a silent exit.
+other="t-0e0e"; X="$W/cloud"; git clone -q "$W/origin.git" "$X" 2>/dev/null
+mkdir -p "$X/.tickets/$other"; printf -- '---\nid: %s\nstatus: closed\ntype: task\npriority: 2\n---\n# Back\n' "$other" > "$X/.tickets/$other/ticket.md"
+git -C "$X" add -f ".tickets/$other/ticket.md" && git -C "$X" commit -qm results && git -C "$X" push -q origin "HEAD:refs/heads/canon-results/$other"
+out="$("$TKT" import-results "$other" 2>&1)" || true
+assert_contains "$out" "evaluator: no eval-report.md  graded-head: none"
 
 echo "tkt-merge-pr: ok"

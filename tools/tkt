@@ -1328,6 +1328,7 @@ cmd_merge_pr() {
   [[ "$verdict" == pass && "$graded" != - ]] \
     || { echo "merge-pr: $id has no passing evaluator verdict with a graded-head (eval-report.md: ${verdict/#-/none}); import the results first" >&2; exit 1; }
   local issue=""; issue="$(get_field "$file" github)"; [[ "$issue" == "$repo#"* ]] && issue="${issue##*#}" || issue=""
+  [[ "$issue" =~ ^[0-9]+$ ]] || issue=""
   if [[ -z "$pr" ]]; then
     [[ -n "$issue" ]] || { echo "merge-pr: $id has no github: $repo#<n> line to find its PR by; pass --pr N" >&2; exit 1; }
     local found
@@ -1357,17 +1358,19 @@ cmd_merge_pr() {
   trap "rm -rf '$tmp'" EXIT
   url="$(git -C "$root" remote get-url origin)"
   # Nothing before the prompt reads the terminal (</dev/null): a typed-ahead answer is the prompt's alone.
-  git clone -q "$root" "$tmp/w" < /dev/null 2>/dev/null \
-    && git -C "$tmp/w" fetch -q "$url" "+refs/heads/$base:refs/remotes/o/$base" "+refs/pull/$pr/head:refs/remotes/o/pr" < /dev/null \
-    || { echo "merge-pr: could not fetch $base and PR #$pr from origin" >&2; exit 1; }
+  local err
+  err="$({ git clone -q "$root" "$tmp/w" \
+    && git -C "$tmp/w" fetch -q "$url" "+refs/heads/$base:refs/remotes/o/$base" "+refs/pull/$pr/head:refs/remotes/o/pr"; } < /dev/null 2>&1)" \
+    || { echo "merge-pr: could not fetch $base and PR #$pr from origin: $err" >&2; exit 1; }
   [[ "$(git -C "$tmp/w" rev-parse o/pr)" == "$head" ]] || { echo "merge-pr: PR #$pr moved while checking it; run merge-pr again" >&2; exit 1; }
   git -C "$tmp/w" checkout -q -B merge-pr-check "o/$base" < /dev/null \
     && git -C "$tmp/w" -c user.name=canon -c user.email=canon@localhost merge -q --no-edit o/pr < /dev/null >/dev/null 2>&1 \
     || { echo "merge-pr: PR #$pr does not merge into $base here" >&2; exit 1; }
-  if ! $tset && [[ -x "$tmp/w/scripts/test.sh" ]]; then tcmd="scripts/test.sh"; fi
+  # The default comes from the base branch, not the merge: a PR that deletes scripts/test.sh must not switch its gate off.
+  if ! $tset && git -C "$tmp/w" ls-tree "o/$base" -- scripts/test.sh < /dev/null | grep -q '^100755 '; then tcmd="scripts/test.sh"; fi
   # The test command runs the PR's code on this machine, so the question comes first: nothing from the PR runs before a y.
-  echo "PR #$pr ($repo): $(git -C "$tmp/w" diff --shortstat "o/$base" o/pr < /dev/null | sed 's/^ *//')"
-  git -C "$tmp/w" diff --name-only "o/$base" o/pr < /dev/null | grep -qx 'scripts/test.sh' \
+  echo "PR #$pr ($repo): $(git -C "$tmp/w" diff --shortstat "o/$base...o/pr" < /dev/null | sed 's/^ *//')"
+  git -C "$tmp/w" diff --name-only "o/$base...o/pr" < /dev/null | grep -qx 'scripts/test.sh' \
     && echo "  note: this PR changes scripts/test.sh itself, the script that would run"
   local ask
   if [[ -n "$tcmd" ]]; then ask="Run PR #$pr's code here ($tcmd on $base + PR) and merge into $base if it passes?"
@@ -1386,11 +1389,17 @@ cmd_merge_pr() {
     fi
     echo "merge-pr: $tcmd passed"
   fi
-  local out; out="$(cd "$tmp" && gh pr merge "$pr" --repo "$repo" --merge --delete-branch --match-head-commit "$head" 2>&1)" \
-    || { echo "merge-pr: gh could not merge PR #$pr: $out" >&2; exit 1; }
-  local sha; sha="$(gh pr view "$pr" --repo "$repo" --json mergeCommit --jq '.mergeCommit.oid' 2>/dev/null || true)"
+  # From /, never a checkout: --delete-branch then touches only the branch on GitHub.
+  local out note=""
+  if ! out="$(cd / && gh pr merge "$pr" --repo "$repo" --merge --delete-branch --match-head-commit "$head" 2>&1)"; then
+    # gh can fail after GitHub merged (deleting the branch, say): what GitHub says decides.
+    [[ "$(gh pr view "$pr" --repo "$repo" --json state --jq .state 2>/dev/null || true)" == MERGED ]] \
+      || { echo "merge-pr: gh could not merge PR #$pr: $out" >&2; exit 1; }
+    note=" (gh reported: $out)"
+  fi
+  local sha; sha="$(gh pr view "$pr" --repo "$repo" --json mergeCommit --jq '.mergeCommit.oid // empty' 2>/dev/null || true)"
   set_or_add_field "$file" merged "${sha:-PR #$pr}"
-  echo "Merged PR #$pr into $base${sha:+ ($sha)}. Update your checkout: git pull"
+  echo "Merged PR #$pr into $base${sha:+ ($sha)}$note. Update your checkout: git pull"
 }
 
 # cmd_export <id> — t-554c: at the close of a cloud sprint, sends .tickets/<id>/ back. A tracked .tickets/ rides in the PR;
@@ -1431,9 +1440,6 @@ cmd_export() {
   echo "export: pushed $rel/ to canon-results/$id. On your machine: tkt import-results $id"
 }
 
-# cmd_import_results <id> [--pr N] — t-554c: brings a cloud sprint's .tickets/<id>/ back from canon-results/<id>. Files
-# arrive byte-for-byte; a differing local file is kept in .before-import/; the close already happened in the cloud, so
-# this only reports it. The remote branch is deleted only after the files are written.
 # _eval_verdict_head <ticket dir>: prints "<verdict> <graded-head>" from eval-report.md ("-" for either when absent).
 _eval_verdict_head() {
   local v g
@@ -1442,6 +1448,9 @@ _eval_verdict_head() {
   printf '%s %s\n' "${v:--}" "${g:--}"
 }
 
+# cmd_import_results <id> [--pr N] — t-554c: brings a cloud sprint's .tickets/<id>/ back from canon-results/<id>. Files
+# arrive byte-for-byte; a differing local file is kept in .before-import/; the close already happened in the cloud, so
+# this only reports it. The remote branch is deleted only after the files are written.
 cmd_import_results() {
   local id="" pr=""
   while [[ $# -gt 0 ]]; do
