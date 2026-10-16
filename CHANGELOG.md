@@ -7,7 +7,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 ## [Unreleased]
 
 ### Added
-- `tkt send-issue <id>` posts a ticket as an issue on your `origin` GitHub repo, laid out like the ticket on the board (Description, Acceptance, Plan, Research, each with its own sections), for a Claude cloud session to work on: type `Work on Issue#N` in a session on a "canon" environment. `--dry-run` previews it; a public repo needs `--public`; it records `github: owner/repo#N` in `ticket.md`. `docs/setup.md` › Claude cloud sessions has the one-time environment recipe (`t-a059`).
+- `tkt send-issue <id>` posts a ticket as an issue on your `origin` GitHub repo, laid out like the ticket on the board (Description, Acceptance, Plan and Research, each with every section the board lists), for a Claude cloud session to work on: type `Work on Issue#N` in a session on a "canon" environment. `--dry-run` previews it; a public repo needs `--public`; it records `github: owner/repo#N` in `ticket.md`. `docs/setup.md` › Claude cloud sessions has the one-time environment recipe (`t-a059`).
 
 ### Fixed
 - `skills.sh add` no longer writes the canon install's absolute path into your project's `AGENTS.md` (the Active canon skills table and its note). Rows now name the skill relative to the install (`skills/sprint/SKILL.md`), so a clone on another machine, a teammate's or a Claude cloud session's, no longer comes out with `AGENTS.md` modified. Existing projects are rewritten once on the next `canon update` (`t-97e2`).

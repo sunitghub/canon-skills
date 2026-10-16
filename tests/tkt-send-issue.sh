@@ -53,15 +53,17 @@ assert_contains "$out" "type: Work on Issue#57"
 grep -qx "label create canon --repo acme/app --color 6C5CF7 --description A canon ticket --force" "$STUB_LOG" || fail "label not created: $(cat "$STUB_LOG")"
 grep -qx "issue create --repo acme/app --title $id: Board burns a CPU core --label canon --body-file .*" "$STUB_LOG" || fail "wrong issue create call: $(cat "$STUB_LOG")"
 assert_grep "^github: acme/app#57$" "$d/ticket.md"
-# The issue has the ticket's tree: Description (ticket.md's own sections), Acceptance, Plan (every section but Sign-off), Research.
+# The issue has the ticket's tree as the board lists it: every section of ticket.md, acceptance.md and plan.md, then Research.
 order="$(grep -E '^#{1,2} ' "$STUB_BODY" | tr '\n' '|')"
-assert_eq "# Description|## Problem|# Acceptance|## Criteria|## Test plan|# Plan · approved|## Approach|## Files|## Decisions|# Research|# Working on this|" "$order"
+assert_eq "# Description|## Problem|# Acceptance|## Criteria|## Test Plan|## QA|# Plan|## Sign-off|## Approach|## Files|## Decisions|# Research|# Working on this|" "$order"
+assert_grep '^- \[ \] Tested locally$' "$STUB_BODY"
+assert_grep '^- \[x\] Plan approved$' "$STUB_BODY"
 assert_grep '^- \[ \] Idle CPU under 5%$' "$STUB_BODY"
 assert_grep '^  over 60 s$' "$STUB_BODY"
 assert_grep '^1. Profile the idle board.$' "$STUB_BODY"
 assert_grep '^- The board polls every 8 s.$' "$STUB_BODY"
 assert_grep "^<!-- canon:ticket $id -->\$" "$STUB_BODY"
-grep -q 'The checklist of behavior\|Add items\|Tested locally\|Sign-off' "$STUB_BODY" && fail "template text, QA or Sign-off leaked into the issue"
+grep -q 'The checklist of behavior\|Add items' "$STUB_BODY" && fail "template prompts or comments leaked into the issue"
 [[ "$(grep -c '^## Problem$' "$STUB_BODY")" == 1 ]] || fail "the ticket's own Problem heading was doubled"
 
 # Already sent: refused, ticket unchanged, no gh call.
