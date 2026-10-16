@@ -35,6 +35,7 @@ tests=(
   "$ROOT/tests/tkt-compact.sh"
   "$ROOT/tests/tkt-send-issue.sh"
   "$ROOT/tests/cloud-round-trip.sh"
+  "$ROOT/tests/tkt-sync-issues.sh"
   "$ROOT/tests/tool-symlinks.sh"
   "$ROOT/tests/ticket-skeleton.sh"
   "$ROOT/tests/sprint.sh"

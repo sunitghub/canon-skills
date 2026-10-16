@@ -34,6 +34,7 @@ tkt send-issue <id> [--dry-run] [--public]  # post the ticket as an issue on ori
 tkt import-issue <N> [--body-file F]  # in the cloud session: rebuild .tickets/<id>/ from that issue (sprint import-issue also starts it)
 tkt export <id> [--public]          # at the cloud close: send .tickets/<id>/ back (with the PR, or to canon-results/<id>)
 tkt import-results <id> [--pr N]    # on your machine: bring canon-results/<id> back; local edits kept in .before-import/
+tkt sync-issues [--dry-run]         # make a ticket of each open issue labelled canon that no ticket links to (labels: bug|feature|task|chore|epic, p0-p4)
 ```
 
 `tkt compact` touches only closed or cancelled tickets whose `ticket.md` is older than DAYS. It deletes the raw
