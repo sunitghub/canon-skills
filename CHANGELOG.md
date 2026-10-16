@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-10-16
+
+`tkt merge-pr` shows progress and can check without running, and cloud sessions are steered away from plan mode, with a documented way to finish one on your machine. Update with `canon update`. No daemon change: nothing to restart.
+
 ### Added
 - `tkt merge-pr` shows progress while the tests run: one line rewritten in place on a terminal (elapsed time and the newest line of the test output), a plain line every 30 s otherwise (`CANON_PROGRESS_SECONDS`). Ctrl-C stops the whole test run. `tkt merge-pr <id> --check` runs only the checks that execute nothing, prints what it would do, and stops: the board's Check & merge dialog will use it (`t-bad4`).
 
