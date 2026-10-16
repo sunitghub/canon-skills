@@ -995,6 +995,103 @@ cmd_compact() {
   return 0
 }
 
+# cmd_send_issue <id> [--dry-run] [--public] — t-a059: posts a ticket as an issue on origin's GitHub repo, laid out in the
+# ticket's own sections, for a Claude cloud session to work on ("Work on Issue#N"). Only origin, never a named repo;
+# a public repo needs --public (ticket docs carry paths, notes and decisions); ticket.md changes only after gh succeeds.
+_si_section() {   # _si_section <file> <heading>: the lines under "## <heading>" up to the next "## ", comments dropped, trimmed
+  [[ -f "$1" ]] || return 0
+  awk -v h="## $2" '$0 == h || index($0, h " ") == 1 { f = 1; next } f && /^## / { exit } f && /^<!--/ { next } f { print }' "$1" \
+    | awk 'NF { started = 1 } started { buf = buf $0 "\n"; if (NF) { printf "%s", buf; buf = "" } }'
+}
+_si_items() { grep -E '^[[:space:]]*(- |[0-9]+\. )|^[[:space:]]{2,}[^[:space:]]' || true; }   # list items and their continuations only
+_si_or_none() { if [[ -n "$1" ]]; then printf '%s\n' "$1"; else printf '(none yet)\n'; fi; }
+
+cmd_send_issue() {
+  local id="" dry=false public=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --dry-run) dry=true; shift ;;
+      --public)  public=true; shift ;;
+      -*) echo "Unknown option: $1" >&2; exit 1 ;;
+      *)  [[ -z "$id" ]] && id="$1"; shift ;;
+    esac
+  done
+  [[ -z "$id" ]] && { echo "Usage: tkt send-issue <id> [--dry-run] [--public]" >&2; exit 1; }
+
+  local file tdir title
+  file="$(find_ticket "$id")"
+  id="$(get_field "$file" id)"
+  tdir="$(dirname "$file")"
+  title="$(get_title "$file")"
+  local sent; sent="$(get_field "$file" github)"
+  [[ -n "$sent" ]] && { echo "send-issue: $id was already sent: $sent" >&2; exit 1; }
+
+  local root url repo
+  root="$(dirname "$(tickets_dir)")"
+  url="$(git -C "$root" remote get-url origin 2>/dev/null)" || { echo "send-issue: this project has no git remote named origin" >&2; exit 1; }
+  if [[ "$url" =~ ^(https://github\.com/|git@github\.com:|ssh://git@github\.com/)([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)$ ]]; then
+    repo="${BASH_REMATCH[2]%.git}"
+  else
+    echo "send-issue: origin is not a GitHub repo ($url)" >&2; exit 1
+  fi
+  command -v gh >/dev/null 2>&1 || { echo "send-issue: needs the GitHub CLI: install gh, then run: gh auth login" >&2; exit 1; }
+  local vis
+  vis="$(gh repo view "$repo" --json visibility --jq .visibility 2>&1)" || { echo "send-issue: gh could not read $repo: $vis" >&2; echo "  If you are signed out, run: gh auth login" >&2; exit 1; }
+  if [[ "$vis" == PUBLIC ]] && ! $public; then
+    echo "send-issue: $repo is PUBLIC: anyone could read this ticket's problem, plan and notes." >&2
+    echo "  Send it anyway with: tkt send-issue $id --public" >&2; exit 1
+  fi
+
+  local acc="$tdir/acceptance.md" plan="$tdir/plan.md" res="$tdir/research.md"
+  local crit tp appr files rbody
+  crit="$(_si_section "$acc" Criteria | _si_items)"
+  tp="$(_si_section "$acc" "Test Plan" | _si_items)"
+  [[ -z "$crit" ]] && echo "send-issue: warning: $id has no acceptance criteria; the agent will write its own" >&2
+  appr=""; [[ -f "$plan" ]] && grep -qE '^- \[x\] Plan approved' "$plan" && appr=" · approved"
+  files="$(_si_section "$plan" Files)"
+  rbody=""; [[ -f "$res" ]] && rbody="$(awk 'NR == 1 && /^# / { next } { print }' "$res" | awk 'NF { s = 1 } s')"
+
+  local body; body="$(mktemp "${TMPDIR:-/tmp}/tkt-issue.XXXXXX")"
+  trap "rm -f '$body'" EXIT
+  {
+    printf '**%s** · %s · P%s\n\n' "$id" "$(get_field "$file" type)" "$(get_field "$file" priority)"
+    local tb; tb="$(ticket_body "$file" | awk 'NF { s = 1 } s')"
+    # A ticket written from tkt's skeleton already has its own "## Problem" (and Outcome, Constraints) headings.
+    if [[ "$tb" == "## "* ]]; then printf '%s\n' "$tb"; else printf '## Problem\n'; _si_or_none "$tb"; fi
+    printf '\n## Acceptance criteria\n'; _si_or_none "$crit"
+    printf '\n## Test plan\n'; _si_or_none "$tp"
+    printf '\n## Plan%s\n' "$appr"; _si_or_none "$(_si_section "$plan" Approach)"
+    [[ -n "$files" ]] && printf '\nFiles: %s\n' "$files"
+    printf '\n## Research\n'; _si_or_none "$rbody"
+    printf '\n## Working on this\n'
+    printf 'This repository uses canon. Run `sprint import-issue <this issue number>` to rebuild .tickets/%s/ from the\n' "$id"
+    printf 'sections above, open the PR with "Fixes #<this issue number>", and when the sprint closes run `tkt export %s`.\n' "$id"
+    printf '\n<!-- canon:ticket %s -->\n' "$id"
+  } > "$body"
+
+  if $dry; then
+    printf 'repo: %s (%s)\ntitle: %s: %s\nlabel: canon\n--- body ---\n' "$repo" "$vis" "$id" "$title"
+    cat "$body"
+    printf -- '--- dry run: nothing was created ---\n'
+    return 0
+  fi
+
+  local out n
+  gh label create canon --repo "$repo" --color 6C5CF7 --description "A canon ticket" --force >/dev/null 2>&1 \
+    || echo "send-issue: warning: could not create the canon label; sending without it" >&2
+  local labels=(--label canon); gh label list --repo "$repo" --search canon --json name --jq '.[].name' 2>/dev/null | grep -qx canon || labels=()
+  out="$(gh issue create --repo "$repo" --title "$id: $title" "${labels[@]}" --body-file "$body" 2>&1)" \
+    || { echo "send-issue: gh issue create failed; $id was not changed: $out" >&2; exit 1; }
+  url="$(printf '%s\n' "$out" | grep -Eo 'https://github\.com/[^ ]+/issues/[0-9]+' | tail -1)"
+  n="${url##*/}"
+  if [[ -z "$url" || ! "$n" =~ ^[0-9]+$ ]]; then
+    echo "send-issue: the issue was created but its number could not be read from: $out" >&2
+    echo "  Add 'github: $repo#<number>' to $file by hand." >&2; exit 1
+  fi
+  set_or_add_field "$file" github "$repo#$n"
+  printf 'Sent %s as %s\nIn a Claude cloud session on %s, type: Work on Issue#%s\n' "$id" "$url" "$repo" "$n"
+}
+
 cmd_help() {
   cat <<'EOF'
 tkt — minimal ticket system
@@ -1044,6 +1141,10 @@ Commands:
                             ticket.md is older than DAYS (default 14): delete raw
                             board-spec JSON reports, pack the rest into evidence.tgz.
                             Files cited by path stay loose. sprint complete runs it.
+  send-issue <id> [--dry-run] [--public]
+                            Post the ticket as an issue on origin's GitHub repo, in
+                            its sections (Problem, Acceptance, Plan, Research), for a
+                            Claude cloud session ("Work on Issue#N"). Records github:.
 
 New tickets are stored in .tickets/<id>/ticket.md
 ACTIVE ticket is stored in .tickets/ACTIVE
@@ -1070,6 +1171,7 @@ main() {
     why)            cmd_why "$@" ;;
     learn)          cmd_learn "$@" ;;
     compact)        cmd_compact "$@" ;;
+    send-issue)     cmd_send_issue "$@" ;;
     help|--help|-h) cmd_help ;;
     --version|-v)   echo "tkt $VERSION" ;;
     *)              echo "Unknown command: $cmd" >&2; cmd_help; exit 1 ;;
