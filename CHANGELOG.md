@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Fixed
+- `tkt send-issue`: the first send to a repo from a Mac failed with `labels[@]: unbound variable` and created no issue. GitHub's label search does not list a label created a second earlier, and macOS's bash 3.2 rejects the empty label list that followed. A label that was just created is now used directly, and a send with no label works on any bash (`t-1465`).
+- `tkt send-issue`: GitHub hid `<this issue number>` in the issue's "Fixes #…" line as an HTML tag; it is now in a code span (`t-1465`).
+
 ## [0.11.1] - 2026-10-16
 
 Code blocks in tickets now survive `tkt show` and `tkt send-issue`. Update with `canon update`. No daemon change: nothing to restart.

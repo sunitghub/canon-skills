@@ -10,14 +10,15 @@ trap 'rm -rf "$project" "$stub"' EXIT
 cd "$project"
 
 # A stub gh that logs every call and plays a repo: STUB_VIS (PRIVATE or PUBLIC), STUB_FAIL=create fails issue create,
-# STUB_FAIL=view fails repo view (signed out). It saves the body it was given.
+# STUB_FAIL=view fails repo view (signed out), STUB_FAIL=label fails label create, STUB_LABEL=empty lists no label
+# (GitHub's label search lags a label created a second earlier). It saves the body it was given.
 cat > "$stub/gh" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$STUB_LOG"
 case "$1 $2" in
   "repo view")    [[ "${STUB_FAIL:-}" == view ]] && { echo "To get started with GitHub CLI, please run: gh auth login" >&2; exit 4; }; echo "${STUB_VIS:-PRIVATE}" ;;
-  "label create") exit 0 ;;
-  "label list")   echo canon ;;
+  "label create") [[ "${STUB_FAIL:-}" == label ]] && { echo "HTTP 403" >&2; exit 1; }; exit 0 ;;
+  "label list")   [[ "${STUB_LABEL:-}" == empty ]] || echo canon ;;
   "issue create") [[ "${STUB_FAIL:-}" == create ]] && { echo "HTTP 502: server error" >&2; exit 1; }
                   while [[ $# -gt 0 ]]; do [[ "$1" == --body-file ]] && cp "$2" "$STUB_BODY"; shift; done
                   echo "https://github.com/acme/app/issues/57" ;;
@@ -68,6 +69,11 @@ approach="$(awk '/^```/ { fence = !fence } !fence && /^## Approach$/ { f = 1; ne
 assert_eq $'1. Profile the idle board.\n2. Fix the hot loop.\n```\n<!-- kept: inside a fence -->\n## Files\n```\n3. Measure again.' "$(printf '%s' "$approach" | awk 'NF { s = 1 } s' | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}')"
 assert_grep '^- The board polls every 8 s.$' "$STUB_BODY"
 assert_grep "^<!-- canon:ticket $id -->\$" "$STUB_BODY"
+# t-1465: GitHub hides a bare <placeholder> as an HTML tag, so in "Working on this" each sits inside a code span.
+work="$(awk '/^# Working on this$/ { f = 1; next } /^<!-- canon:ticket / { f = 0 } f' "$STUB_BODY")"
+assert_contains "$work" '`Fixes #<this issue number>`'
+bare="$(printf '%s\n' "$work" | sed 's/`[^`]*`//g' | grep -o '<[a-z][^>]*>' || true)"
+[[ -z "$bare" ]] || fail "placeholders outside a code span in Working on this: $bare"
 grep -q 'The checklist of behavior\|Edge cases and sign-off\|Add items' "$STUB_BODY" && fail "template prompts or comments leaked into the issue"
 [[ "$(grep -c '^## Problem$' "$STUB_BODY")" == 1 ]] || fail "the ticket's own Problem heading was doubled"
 
@@ -104,6 +110,22 @@ for mode in create view; do
   [[ "$(cksum < ".tickets/$id3/ticket.md")" == "$before" ]] || fail "ticket changed although gh failed on $mode"
 done
 unset STUB_FAIL
+
+# t-1465: the label. A successful create is enough, though the search does not list the new label yet; a failed create
+# with no label listed still sends the issue, without --label (an empty label list must not break bash 3.2's set -u).
+id4="$("$TKT" create "Label lag" -t task -p 3)"
+export STUB_LABEL=empty; : > "$STUB_LOG"
+"$TKT" send-issue "$id4" >/dev/null 2>"$stub/lag.err" || fail "send with a lagging label search failed: $(cat "$stub/lag.err")"
+grep -q "^issue create .* --label canon --body-file " "$STUB_LOG" || fail "a created label was not used: $(cat "$STUB_LOG")"
+grep -q "could not create" "$stub/lag.err" && fail "warned although the label was created"
+id5="$("$TKT" create "No label" -t task -p 3)"
+export STUB_FAIL=label; : > "$STUB_LOG"
+"$TKT" send-issue "$id5" >/dev/null 2>"$stub/nolabel.err" || fail "send without a label failed: $(cat "$stub/nolabel.err")"
+grep -q "^issue create " "$STUB_LOG" || fail "no issue was created without the label: $(cat "$STUB_LOG")"
+grep -q "^issue create .*--label" "$STUB_LOG" && fail "--label passed although the label could not be made: $(cat "$STUB_LOG")"
+assert_grep "could not create the canon label; sending without it" "$stub/nolabel.err"
+assert_grep "^github: acme/app#57$" ".tickets/$id5/ticket.md"
+unset STUB_FAIL STUB_LABEL
 
 # No gh on PATH: refused with the install hint, ticket byte-identical. The real gh is hidden by a PATH of links to
 # everything else in the dirs that hold it.
