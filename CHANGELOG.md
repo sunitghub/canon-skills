@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Added
+- `tkt merge-pr` shows progress while the tests run: one line rewritten in place on a terminal (elapsed time and the newest line of the test output), a plain line every 30 s otherwise (`CANON_PROGRESS_SECONDS`). Ctrl-C stops the whole test run. `tkt merge-pr <id> --check` runs only the checks that execute nothing, prints what it would do, and stops: the board's Check & merge dialog will use it (`t-bad4`).
+
 ## [0.12.0] - 2026-10-16
 
 The GitHub workflow runs end to end from the command line: issues become tickets (`tkt sync-issues`) or tickets become issues (`tkt send-issue`), a Claude cloud session works them, `tkt import-results` brings the results back and `tkt merge-pr` checks and merges the PR. Update with `canon update`. No daemon change: nothing to restart.
