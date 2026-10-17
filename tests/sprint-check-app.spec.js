@@ -7126,6 +7126,14 @@ test.describe('cockpit in board (t-ddc8)', () => {
       writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] c'] });
       await stubCockpit(page);
       await page.route('**/api/git**', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(NOGIT) }));
+      // The sidebar asks about the first three in-progress tickets, and a real ticket out on GitHub counts as in progress (t-718b):
+      // show only this test's own, so the project's real tickets cannot push it out of the first three.
+      await page.route(/\/api\/tickets(\?.*)?$/, async route => {
+        const res = await route.fetch();
+        const list = await res.json();
+        const out = t => t.runs === 'github' && t.github && !t.merged;
+        await route.fulfill({ response: res, json: Array.isArray(list) ? list.filter(t => t.id === id || (t.status !== 'in_progress' && !out(t))) : list });
+      });
       const asked = [];
       await page.route('**/api/cockpit-changes**', route => { asked.push(new URL(route.request().url()).searchParams.get('id')); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(CHANGES) }); });
       await page.goto(BASE);

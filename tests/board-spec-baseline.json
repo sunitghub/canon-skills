@@ -847,6 +847,28 @@
       "failed_runs": {
         "webkit": "2/9"
       }
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > cross-project Sessions row (t-2d2e) > user themes (t-f889): a saved user theme paints from the cache before its list loads, on the shell and the board; when its file is gone Canon shows and the pick stays",
+      "browsers": [
+        "chromium"
+      ],
+      "ticket": "t-5989",
+      "reason": "load flake: failed in 1 of 2 full-spec runs; passes alone 3/3 on chromium and webkit (2026-10-17, t-718b)",
+      "failed_runs": {
+        "chromium": "1/2"
+      }
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > non-git project hides the New Ticket Worktree row; it reappears once git becomes available (t-644a)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-5989",
+      "reason": "load flake: failed in 1 of 2 full-spec runs; passes alone 3/3 on chromium and webkit (2026-10-17, t-718b)",
+      "failed_runs": {
+        "webkit": "1/2"
+      }
     }
   ],
   "skipped": []
