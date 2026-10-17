@@ -194,7 +194,7 @@ export async function renderCockpitWorktree(t) {
   } else if (!lock.locked && t.worktree_preference === WT_PREF_MAIN) {
     // t-19d1: the ticket chose Main checkout at New Ticket — preselect it.
     if (cockpitState.worktreeCwd === null && !tab.ghPick) cockpitState.worktreeCwd = '';
-  } else if (!lock.locked && t.worktree_preference) {
+  } else if (!lock.locked && t.worktree_preference && !tab.ghPick) {   // a GitHub pick selects no worktree row
     const match = others.find(e => e.branch === t.worktree_preference && !e.held_by); // t-2241: never preselect a worktree another ticket holds
     if (match) cockpitState.worktreeCwd = match.path;
     else {

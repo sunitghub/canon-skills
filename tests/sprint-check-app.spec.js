@@ -14649,6 +14649,26 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#ck-gh-create')).toBeEnabled();
   });
 
+  test('a send that fails after the panel was replaced writes nowhere and throws nothing (t-718b)', async ({ page }) => {
+    const id = `t-gh4b-${Date.now()}`;
+    ghTicket(id);
+    const errors = []; page.on('pageerror', e => errors.push(String(e)));
+    let release; const held = new Promise(r => { release = r; });
+    await page.route('**/api/worktrees**', r => json(r, [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true }]));
+    await page.route(`**/api/ticket/${id}/github/send-preview`, r => json(r, { ok: true, exit_code: 0, output: 'repo: acme/app (PRIVATE)' }));
+    await page.route(`**/api/ticket/${id}/github/send`, async r => { await held; await json(r, { ok: false, exit_code: 1, output: 'send-issue: gh could not read acme/app: HTTP 401' }); });
+    await openBoard(page, id);
+    await page.locator(`.card[data-id="${id}"] .card-start`).click();
+    await page.locator('#ck-worktree .ck-gh-row').click();
+    await page.locator('#ck-gh-create').click();
+    await expect(page.locator('#ck-gh-create')).toHaveText('Sending…');
+    await page.evaluate(async () => (await import('/static/board-github.js')).hideGithubPanel());   // the panel is gone, as after a tab switch
+    release();
+    await expect(page.locator('#ck-gh-panel')).toBeEmpty();
+    await page.waitForTimeout(300);
+    expect(errors).toEqual([]);
+  });
+
   test('Import results posts the PR; without a verdict it points to the close on this machine (t-718b)', async ({ page }) => {
     const id = `t-gh5-${Date.now()}`;
     ghTicket(id, { github: 'acme/app#57' });

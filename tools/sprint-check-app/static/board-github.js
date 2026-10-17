@@ -10,6 +10,7 @@ import { loadData } from './board-core.js';
 
 const POLL_MS = 120000;          // github-status per card out on GitHub; the server caches each for 30 s
 const MERGE_POLL_MS = 2000;
+const MERGE_LOST_POLLS = 5;   // failed polls in a row before the merge dialog stops waiting
 const statusById = new Map();    // id -> {ok, status?, output, pending?}
 const mergeById = new Map();     // id -> {status, output, exit_code, elapsed} while a merge job is followed
 let pollTimer = null;
@@ -219,16 +220,22 @@ async function checkAndMerge(t, pr) {
 }
 
 async function followMerge(t, prB, show) {
-  let gen;
+  let gen, finished = false;
   if (show) {
     const shown = openDialog({ title: `Checking & merging ${t.id}`, body: 'Running the tests on the base branch + PR…', pre: '', ok: '', cancel: 'Stop', escape: false });
     gen = shown.gen;
-    shown.then(v => { if (v && !v.ok && mergeById.get(t.id)?.status === 'running') stopMerge(t); });
+    shown.then(v => { if (v && !v.ok && !finished) stopMerge(t); });
   }
-  for (;;) {
+  for (let lost = 0; ;) {
     let st;
     try { st = await getJSON(ghApi(t.id, 'merge')); } catch { st = null; }
+    if (!st && ++lost >= MERGE_LOST_POLLS) {
+      finished = true;
+      if (gen !== undefined) { updateDialog({ title: 'Lost contact', body: 'The board stopped hearing about this merge. It may still be running: check the ticket in a few minutes.', cancel: 'Close' }, gen); if (gen === dlgGen) dlgEscape = true; }
+      return;
+    }
     if (st) {
+      lost = 0;
       mergeById.set(t.id, st);
       if (gen !== undefined) updateDialog({ body: st.status === 'running' ? `Running… ${mmss(st.elapsed)}` : '', pre: st.output || '' }, gen);
       render();
@@ -236,6 +243,7 @@ async function followMerge(t, prB, show) {
     }
     await new Promise(r => setTimeout(r, MERGE_POLL_MS));
   }
+  finished = true;
   const st = mergeById.get(t.id);
   mergeById.delete(t.id);
   const merged = st && st.exit_code === 0 && /Merged PR #/.test(st.output || '');
@@ -319,14 +327,16 @@ export async function showGithubPanel(t, tab) {
   create?.addEventListener('click', async () => {
     const pub = document.getElementById('ck-gh-public');
     if (pub && !pub.checked) { document.getElementById('ck-gh-status').textContent = 'Tick the public-repository box first.'; return; }
+    // Held before the await: a tab switch replaces the panel, and a late failure must not write into the next one.
+    const statusEl = document.getElementById('ck-gh-status'), previewEl = document.getElementById('ck-gh-preview');
     create.disabled = true; create.textContent = 'Sending…';
     let res;
     try { res = await postJSON(ghApi(t.id, 'send'), pub ? { public: true } : {}); }
     catch (e) { res = { ok: false, output: String(e.message || e) }; }
     if (!res.ok) {
       create.disabled = false; create.textContent = 'Create issue';
-      document.getElementById('ck-gh-status').textContent = 'Not sent; nothing changed.';
-      document.getElementById('ck-gh-preview').textContent = res.output || '';
+      statusEl.textContent = 'Not sent; nothing changed.';
+      previewEl.textContent = res.output || '';
       return;
     }
     const n = (/issues\/([0-9]+)/.exec(res.output || '') || [])[1] || '';
