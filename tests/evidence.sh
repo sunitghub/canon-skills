@@ -254,11 +254,18 @@ done
 reset_repo
 # No test reads a neutral file from the repo root, so exempting them cannot hide a change a stamped command saw. Readers in canon's
 # suite take the repo root from $ROOT (or a ROOT-like variable); a fixture writing its own copy in a temp project does not count.
+# The pattern a root reader of neutral file $1 must match: ROOT, a short separator, an optional .claude/ or skills/<..>/evals/ prefix, the name.
+reader_rx() { printf '%s' "(ROOT|REPO_ROOT|CANON_ROOT)[^A-Za-z0-9_]{1,12}(\\.claude/|skills/[^ \"']*evals/)?${1//./\\.}"; }
+# Proof the grep can fail (t-0b14): planted readers of the skill eval history, quoted, globbed and bare, must all match; a fixture's own copy must not.
+for planted in 'cat "$ROOT/skills/sprint/evals/history.jsonl"' 'wc -l "$ROOT"/skills/*/evals/history.jsonl' 'x=$REPO_ROOT/skills/a/evals/history.jsonl' 'cat "$ROOT/history.jsonl"'; do
+  printf '%s\n' "$planted" | grep -qE "$(reader_rx history.jsonl)" || fail "evidence: the root-reader grep misses a planted reader: $planted"
+done
+if printf '%s\n' 'cat "$proj/skills/sprint/evals/history.jsonl"' | grep -qE "$(reader_rx history.jsonl)"; then fail "evidence: the root-reader grep matches a fixture project's own history.jsonl"; fi
 for n in LEARNINGS.md LEARNINGS-archive.md DECISIONS.md DECISIONS-archive.md HANDOFF.md PROMOTED.md subagent-runs.jsonl history.jsonl; do
   # tests/subagent-log-cli.sh reads canon's own audit log only to assert the test did NOT write to it, so a gate's real entries cannot
   # change its result; any other reader fails here. history.jsonl (t-0b14): tools/skill-eval-history.sh, tests/skill-eval-scope.sh and
 # tests/sprint.sh mention it, each read and found to use only a fixture project's copy, never canon's own skills/*/evals/history.jsonl.
-  hits="$(grep -nE "(ROOT|REPO_ROOT|CANON_ROOT)[^A-Za-z0-9_]{1,12}(\.claude/)?${n//./\\.}" "$ROOT"/tests/*.sh "$ROOT"/tests/*.js "$ROOT"/scripts/*.sh 2>/dev/null | grep -v -e '^[^:]*tests/evidence\.sh:' -e '^[^:]*tests/subagent-log-cli\.sh:' || true)"
+  hits="$(grep -nE "$(reader_rx "$n")" "$ROOT"/tests/*.sh "$ROOT"/tests/*.js "$ROOT"/scripts/*.sh 2>/dev/null | grep -v -e '^[^:]*tests/evidence\.sh:' -e '^[^:]*tests/subagent-log-cli\.sh:' || true)"
   [[ -z "$hits" ]] || fail "evidence: a test reads the neutral path $n from the repo root, so it cannot be neutral: $hits"
 done
 
