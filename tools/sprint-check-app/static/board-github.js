@@ -247,9 +247,8 @@ async function followMerge(t, prB, show) {
   const st = mergeById.get(t.id);
   mergeById.delete(t.id);
   const merged = st && st.exit_code === 0 && /Merged PR #/.test(st.output || '');
-  const stopped = /stopped; the tests were ended/.test(st?.output || '');
   if (gen !== undefined) updateDialog({
-    title: merged ? 'Merged' : stopped ? 'Stopped: nothing was merged' : 'Not merged',
+    title: merged ? 'Merged' : 'Not merged',
     body: merged ? 'The PR is merged and the issue closed by its Fixes line. Pull to update your checkout.' : 'Nothing changed on GitHub. See the output.',
     pre: st?.output || '', ok: '', cancel: 'Close',
   }, gen);
@@ -284,7 +283,7 @@ async function takeBack(t) {
 // ── The worktree picker's GitHub rows, and the panel shown instead of the terminal ──────────────────────────────────
 export function githubPickerRowsHTML(t, tab) {
   if (!t || t.scratch || t.status !== 'open' || ghOut(t)) return '';
-  const busy = (state.tickets || []).filter(x => ghOut(x) && x.id !== t.id);
+  const busy = (state.tickets || []).filter(x => ghOut(x));
   return busy.map(x => {
     const p = ghParts(x);
     return `<div class="ck-worktree-held-row ck-gh-busy"><span class="ck-worktree-held-branch">GitHub${p ? ` #${esc(p.issue)}` : ''}</span><span class="ck-worktree-held-why">cloud · busy: ${esc(x.id)}</span></div>`;
