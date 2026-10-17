@@ -239,7 +239,14 @@ for n in LEARNINGS.md LEARNINGS-archive.md DECISIONS.md DECISIONS-archive.md HAN
   echo y >> "$n"; ev check "$ID"; assert_contains "$out" "fresh n.log exit=0"   # uncommitted, at the graded head: still neutral
   ev stamp "$ID" neutral -- true; assert_eq 0 "$code"                             # and a stamp is not refused over it
 done
-for n in AGENTS.md CLAUDE.md sub/HANDOFF.md sub/CLAUDE.md dist/x LEARNINGS.md.bak .claude/other.jsonl; do
+# t-0b14: a skill's eval history is neutral; every other path under skills/ (and a history.jsonl at any other depth) is not.
+n=skills/alpha/evals/history.jsonl
+reset_repo; put n.log "HEAD $C1 $T\nexit 0\n"
+mkdir -p "$(dirname "$n")"; echo x > "$n"; git add -f "$n"; git commit -qm "neutral $n"
+ev check "$ID"; assert_contains "$out" "fresh n.log exit=0 (HEAD ${C1:0:7}, only .tickets/ and evidence-neutral files changed since"
+echo y >> "$n"; ev check "$ID"; assert_contains "$out" "fresh n.log exit=0"
+ev stamp "$ID" neutral -- true; assert_eq 0 "$code"
+for n in AGENTS.md CLAUDE.md sub/HANDOFF.md sub/CLAUDE.md dist/x LEARNINGS.md.bak .claude/other.jsonl skills/alpha/evals/evals.json skills/alpha/SKILL.md skills/alpha/evals/notes.md skills/history.jsonl skills/alpha/history.jsonl skills/alpha/evals/sub/history.jsonl; do
   reset_repo; put n.log "HEAD $C1 $T\nexit 0\n"
   mkdir -p "$(dirname "$n")"; echo x > "$n"; git add -f "$n"; git commit -qm "not neutral $n"
   ev check "$ID"; assert_contains "$out" "stale n.log exit=0 (HEAD ${C1:0:7}; 1 tracked file(s) changed since: $n)"
@@ -247,9 +254,10 @@ done
 reset_repo
 # No test reads a neutral file from the repo root, so exempting them cannot hide a change a stamped command saw. Readers in canon's
 # suite take the repo root from $ROOT (or a ROOT-like variable); a fixture writing its own copy in a temp project does not count.
-for n in LEARNINGS.md LEARNINGS-archive.md DECISIONS.md DECISIONS-archive.md HANDOFF.md PROMOTED.md subagent-runs.jsonl; do
+for n in LEARNINGS.md LEARNINGS-archive.md DECISIONS.md DECISIONS-archive.md HANDOFF.md PROMOTED.md subagent-runs.jsonl history.jsonl; do
   # tests/subagent-log-cli.sh reads canon's own audit log only to assert the test did NOT write to it, so a gate's real entries cannot
-  # change its result; any other reader fails here.
+  # change its result; any other reader fails here. history.jsonl (t-0b14): tools/skill-eval-history.sh, tests/skill-eval-scope.sh and
+# tests/sprint.sh mention it, each read and found to use only a fixture project's copy, never canon's own skills/*/evals/history.jsonl.
   hits="$(grep -nE "(ROOT|REPO_ROOT|CANON_ROOT)[^A-Za-z0-9_]{1,12}(\.claude/)?${n//./\\.}" "$ROOT"/tests/*.sh "$ROOT"/tests/*.js "$ROOT"/scripts/*.sh 2>/dev/null | grep -v -e '^[^:]*tests/evidence\.sh:' -e '^[^:]*tests/subagent-log-cli\.sh:' || true)"
   [[ -z "$hits" ]] || fail "evidence: a test reads the neutral path $n from the repo root, so it cannot be neutral: $hits"
 done

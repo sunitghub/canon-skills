@@ -50,9 +50,11 @@ edir="$tdir/$id/evidence"
 
 # Evidence-neutral paths (t-a3d7): written at close, and read by no test (tests/evidence.sh greps the suite to prove it), so a change to
 # them cannot change what a stamped command saw. Repo root only. Narrower than the stale-eval guard's late-doc list in tools/sprint on
-# purpose: tests read the root AGENTS.md and CLAUDE.md, and dist/ holds built binaries.
+# purpose: tests read the root AGENTS.md and CLAUDE.md, and dist/ holds built binaries. Also skills/<name>/evals/history.jsonl (t-0b14):
+# the skill-eval gate appends a pass rate after the full-suite stamp; the glob is exactly three segments, so evals.json and SKILL.md stay in.
 NEUTRAL=(':(exclude).tickets' ':(exclude,literal)LEARNINGS.md' ':(exclude,literal)LEARNINGS-archive.md' ':(exclude,literal)DECISIONS.md'
-  ':(exclude,literal)DECISIONS-archive.md' ':(exclude,literal)HANDOFF.md' ':(exclude,literal)PROMOTED.md' ':(exclude,literal).claude/subagent-runs.jsonl')
+  ':(exclude,literal)DECISIONS-archive.md' ':(exclude,literal)HANDOFF.md' ':(exclude,literal)PROMOTED.md' ':(exclude,literal).claude/subagent-runs.jsonl'
+  ':(exclude,glob)skills/*/evals/history.jsonl')
 tracked_dirty() {   # tracked files (worktree or index) differ from HEAD, outside the evidence-neutral paths
   ! git -C "$root" diff --quiet HEAD -- . "${NEUTRAL[@]}" 2>/dev/null
 }

@@ -42,6 +42,18 @@ _prompt_or_auto_yes() {
   [[ "$answer" =~ ^[Yy]$ ]]
 }
 
+# _prompt_move_hook <hook> <local> — consent to move a user's own pre-commit hook aside (t-2194).
+# Deliberately ignores SKILLS_SH_ASSUME_YES: that flag auto-applies *recommended* setup actions; relocating a
+# user's own file needs a human's explicit yes. No terminal, a timeout or anything but y means no.
+_prompt_move_hook() {
+  _has_tty || return 1
+  printf "%s is not canon-managed. Move it to %s so canon's hook chains it? [y/N] (auto-skips in 15s) " \
+    "$1" "$(basename "$2")" > /dev/tty
+  local answer
+  _read_tty_answer || { echo "" > /dev/tty; return 1; }
+  [[ "$answer" =~ ^[Yy]$ ]]
+}
+
 offer_tkt_path() {
   local tools_dir="$SKILLS_ROOT/tools"
   local rc_file="$HOME/.zshrc"

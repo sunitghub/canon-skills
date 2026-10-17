@@ -3,8 +3,8 @@ name: skill-setup-std
 description: Validates skill files against canon standards. Use when adding a new skill or auditing existing ones.
 category: agent-ops
 tags: [skills, contributors, conventions]
-version: 1.10.0
-updated: 2026-10-15
+version: 1.10.1
+updated: 2026-10-16
 ---
 
 # Skill Setup Standard
@@ -347,6 +347,8 @@ detection logic in every consumer project that already has the old marker string
 their `AGENTS.md`. New canon-managed blocks use the `canon:<name>:BEGIN/END` convention above.
 A third, now-deprecated pattern (`CANON-STD:<name>:BEGIN/END`) is actively stripped as legacy
 cruft by `skills.sh refresh` — do not reintroduce that naming style either.
+
+Anything a setup command writes into a committed file must be identical on every machine (no absolute install path): an absolute path in `AGENTS.md` made every clone dirty (`t-97e2`). Test it by running the command again from a second install path and asserting `git status` stays empty.
 
 ## MCP tool references
 
