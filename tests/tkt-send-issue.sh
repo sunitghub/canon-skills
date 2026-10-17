@@ -77,6 +77,8 @@ grep -qxF "has been observed to reach the close gates and stop them. Write the p
   || fail "the issue does not say to stop and wait for approval (t-1cf4)"
 grep -qxF "above read \"(none yet)\", stop and tell the user; do not draft them yourself." "$STUB_BODY" \
   || fail "the issue does not say to stop on (none yet) (t-1cf4)"
+grep -qxF "Work on a new branch, never main: push that branch and open a PR. Do not push to main or force-push anything." "$STUB_BODY" \
+  || fail "the issue does not say to work on a branch and never push main (t-1cf4)"
 # t-1465: GitHub hides a bare <placeholder> as an HTML tag, so in "Working on this" each sits inside a code span.
 work="$(awk '/^# Working on this$/ { f = 1; next } /^<!-- canon:ticket / { f = 0 } f' "$STUB_BODY")"
 assert_contains "$work" '`Fixes #<this issue number>`'
