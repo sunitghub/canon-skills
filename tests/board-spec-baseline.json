@@ -869,6 +869,39 @@
       "failed_runs": {
         "webkit": "1/2"
       }
+    },
+    {
+      "title": "board modal > model tier control writes and clears the Gate model suffix on Sign-off",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-5989",
+      "reason": "load flake: failed in 1 of 2 full-spec runs; passes alone 3/3 on webkit (2026-10-17, t-dba9)",
+      "failed_runs": {
+        "webkit": "1/2"
+      }
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > cross-project Sessions row (t-2d2e) > t-aca6: a third line that would be cut off drops \"in session\"; the title keeps everything",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-5989",
+      "reason": "load flake: failed in 1 of 2 full-spec runs; passes alone 3/3 on webkit (2026-10-17, t-dba9)",
+      "failed_runs": {
+        "webkit": "1/2"
+      }
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > a worktree that can't see .tickets shows a warning bubble and mounts no terminal, legible in dark and light (t-e5ff)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-5989",
+      "reason": "load flake: failed in 1 of 2 full-spec runs; passes alone 3/3 on webkit (2026-10-17, t-dba9)",
+      "failed_runs": {
+        "webkit": "1/2"
+      }
     }
   ],
   "skipped": []
