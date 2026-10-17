@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-16-2026 18:35
+learnings-sweep last run: 10-17-2026 15:21
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-17 | [t-1cf4](.tickets/t-1cf4/learnings.md) | A cloud session handed a ticket with no plan skips approval and a guard that asserts only the first line of a multi-line message leaves the rest unproven: assert each clause, and create the deferred follow-up ticket at close, not just a DEFERRED note. | UNPROMOTED |
 | 2026-10-17 | [t-718b](.tickets/t-718b/learnings.md) | Reviewer-caught async UI gaps (late send into a replaced panel, Stop before the first poll, silent poll failures) and guards with no test were found only by a revert sweep: prove every guard by a revert in a scratch copy before the evaluator, or the budget burns on untested guards. | UNPROMOTED |
 | 2026-10-16 | [t-d271](.tickets/t-d271/learnings.md) | A server that follows a child's output must read fixed chunks, not lines: Go's bufio.Scanner stops at its token limit and leaves the pipe full, so the child blocks and the job reads running forever. Read-only routes that run git or gh need the same cross-site refusal as writes, and a stop must reach the whole process tree (taskkill /T on Windows). | UNPROMOTED |
 | 2026-10-16 | [t-fb37](.tickets/t-fb37/learnings.md) | A ticket sent to a cloud session with no plan or criteria came back blank: the session skipped plan approval, rebuilt the ticket with `import-issue`, and its commit lacked the type prefix and `Closes:` line the repo requires. Write and approve the plan before `send-issue`; the close always runs on the Mac. | UNPROMOTED |
