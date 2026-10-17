@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-16-2026 14:17
+learnings-sweep last run: 10-17-2026 14:57
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-17 | [t-718b](.tickets/t-718b/learnings.md) | Reviewer-caught async UI gaps (late send into a replaced panel, Stop before the first poll, silent poll failures) and guards with no test were found only by a revert sweep: prove every guard by a revert in a scratch copy before the evaluator, or the budget burns on untested guards. | UNPROMOTED |
 | 2026-10-16 | [t-d271](.tickets/t-d271/learnings.md) | A server that follows a child's output must read fixed chunks, not lines: Go's bufio.Scanner stops at its token limit and leaves the pipe full, so the child blocks and the job reads running forever. Read-only routes that run git or gh need the same cross-site refusal as writes, and a stop must reach the whole process tree (taskkill /T on Windows). | UNPROMOTED |
 | 2026-10-16 | [t-b2e5](.tickets/t-b2e5/learnings.md) | When a remote agent cannot run its own gates (plan mode reached its evaluator), the fallback is to move the close to the user's machine, never a report the builder writes or an override; and a fallback path must clean up after itself (the results branch import-results kept). | UNPROMOTED |
 | 2026-10-16 | [t-bad4](.tickets/t-bad4/learnings.md) | A child put in its own process group (so an interrupt can stop all of it) no longer gets the terminal's hang-up: trap HUP with INT and TERM. And under `set -e` a trap's last cleanup command that fails (killing an already-dead group) ends the trap before its message: end each cleanup with `|| true`. | UNPROMOTED |
