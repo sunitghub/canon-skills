@@ -331,6 +331,9 @@ export function renderBoard() {
     emptyEl.classList.toggle('visible', Boolean(query) && tickets.length === 0);
     emptyEl.textContent = `No tickets match “${state.query}”.`;
   }
+  // The 8 s poll re-renders every column; a fresh .column-body starts at 0, so keep each scroll offset (t-dba9).
+  const savedScroll = {};
+  board.querySelectorAll('.column-body').forEach(b => { savedScroll[b.dataset.status] = b.scrollTop; });
   board.innerHTML = COLUMNS.map(col => {
     const waiting = t => { const r = state.cockpitRows.get(t.id); return !!r && ckRowState(r) === 'needs-you'; };
     const cards = tickets
@@ -365,6 +368,7 @@ export function renderBoard() {
   }).join('');
 
   state.boardFirstRender = false;
+  board.querySelectorAll('.column-body').forEach(b => { b.scrollTop = savedScroll[b.dataset.status] || 0; });
 
   board.querySelectorAll('.column-add').forEach(btn => btn.addEventListener('click', () => document.getElementById('btn-create').click()));
 

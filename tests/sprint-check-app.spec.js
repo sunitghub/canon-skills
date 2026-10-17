@@ -129,6 +129,25 @@ test.describe('board modal', () => {
     await expect(page.locator('#tour-versions')).toBeVisible();
   });
 
+  test('a column keeps its scroll position across the board refresh (t-dba9)', async ({ page }) => {
+    await page.route('**/api/tickets**', async route => {
+      const resp = await route.fetch();
+      const json = await resp.json();
+      const base = json.find(t => t.status === 'open') || json[0];
+      const pad = Array.from({ length: 60 }, (_, i) => ({ ...base, id: `t-pad${i}`, title: `pad ${i}`, status: 'open', created: `2026-01-01T00:${String(i).padStart(2, '0')}:00Z` }));
+      await route.fulfill({ response: resp, json: [...json.filter(t => !t.id.startsWith('t-pad')), ...pad] });
+    });
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    const body = page.locator('.column-body[data-status="open"]');
+    await expect.poll(() => body.evaluate(el => el.scrollHeight - el.clientHeight)).toBeGreaterThan(300);
+    await body.evaluate(el => { el.scrollTop = 300; el.dataset.stale = '1'; });
+    // refresh: the same call the 8 s poll makes; wait until the column was rebuilt (marker gone)
+    await page.evaluate(async () => (await import('/static/board-core.js')).loadData());
+    await expect.poll(() => page.locator('.column-body[data-status="open"]').evaluate(el => el.dataset.stale || '')).toBe('');
+    expect(await page.locator('.column-body[data-status="open"]').evaluate(el => el.scrollTop)).toBe(300);
+  });
+
   test('sidebar shows total commit count badge next to Recent Commits', async ({ page }) => {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
