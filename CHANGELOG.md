@@ -14,6 +14,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ### Changed
 - `tkt send-issue` also writes `runs: github`, which is what marks a ticket out on GitHub; `github:` is only the issue link, which `sync-issues` and `import-issue` write too, so a synced issue stays an ordinary local ticket. `send-issue` refuses a ticket already linked to an issue rather than open a second one, and `--dry-run` previews a public repository (it creates nothing) (`t-718b`).
+- `tkt send-issue`: the issue's "Working on this" block tells the cloud session to write the plan, stop and wait for approval before editing any file but the ticket's docs, to stop and tell the user if Acceptance or Plan read "(none yet)", and to work on a new branch, push that branch and open a PR, never pushing to main or force-pushing. `tkt export` warns (and still exports) when `acceptance.md` has no criteria or the plan's Sign-off box is unticked (`t-1cf4`).
 
 ## [0.12.1] - 2026-10-16
 
