@@ -14527,11 +14527,12 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   const made = [];
   test.afterEach(() => { while (made.length) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', made.pop()), { recursive: true, force: true }); });
   // runs: github marks a ticket out on GitHub; github: alone is only the issue link (sync-issues, import-issue).
-  function ghTicket(id, { status = 'open', github = '', merged = '', runs = github ? 'github' : '' } = {}) {
+  function ghTicket(id, { status = 'open', github = '', merged = '', runs = github ? 'github' : '', worktreePreference = '' } = {}) {
     const dir = path.join(PROJECT_ROOT, '.tickets', id);
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, 'ticket.md'), ['---', `id: ${id}`, `status: ${status}`, 'type: task', 'priority: 2',
       ...(github ? [`github: ${github}`] : []), ...(runs ? [`runs: ${runs}`] : []), ...(merged ? [`merged: ${merged}`] : []),
+      ...(worktreePreference ? [`worktree_preference: ${worktreePreference}`] : []),
       'created: 2026-10-16T00:00:00Z', '---', '', `# GitHub test ${id}`, ''].join('\n'));
     fs.writeFileSync(path.join(dir, 'acceptance.md'), ['# Acceptance', '', '## Criteria', '- [ ] works', '', '## Test Plan', '- [ ] check', '', '## QA', '- [ ] Tested locally', ''].join('\n'));
     made.push(id);
@@ -14667,6 +14668,122 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#ck-gh-panel')).toBeEmpty();
     await page.waitForTimeout(300);
     expect(errors).toEqual([]);
+  });
+
+  test('the chip never says "can\'t check" while the first status is loading, and shows only a numeric PR (t-718b)', async ({ page }) => {
+    const id = `t-gh8-${Date.now()}`;
+    ghTicket(id, { github: 'acme/app#57' });
+    let release; const held = new Promise(r => { release = r; });
+    let status = { stage: 'sent' };
+    await page.route(`**/api/ticket/${id}/github/status`, async r => { await held; await json(r, { ok: true, exit_code: 0, output: '', status }); });
+    await page.goto(BASE);   // not openBoard: the held status request keeps the network busy
+    await page.locator('#board-search').fill(id);
+    const card = page.locator(`.card[data-id="${id}"]`);
+    await expect(card.locator('.card-gh-chip')).toHaveText('GitHub #57');   // loading: no "can't check" flash
+    await page.locator('#board-search').fill(''); await page.locator('#board-search').fill(id);   // a re-render while the status is on its way
+    await expect(card.locator('.card-gh-chip')).toHaveText('GitHub #57');
+    status = { stage: 'pr-open', pr: '58"><img src=x>' };
+    release();
+    await expect(card.locator('.card-gh-chip')).toHaveText('GitHub #57 · PR open');   // not a number: no PR link or label
+    await expect(card.locator('.card-gh-btn')).toHaveText('Open issue');
+    expect(await card.locator('img').count()).toBe(0);
+  });
+
+  test('a failed merge says Not merged and Take back is hidden only while it runs (t-718b)', async ({ page }) => {
+    const id = `t-gh9-${Date.now()}`;
+    ghTicket(id, { github: 'acme/app#57' });
+    await routeStatus(page, id, { stage: 'results-in', pr: 58 });
+    const job = { status: 'idle', output: '', exit_code: null, elapsed: 0 };
+    await page.route(`**/api/ticket/${id}/github/merge-check**`, r => json(r, { ok: true, exit_code: 0, output: 'merge-pr: ready' }));
+    await page.route(`**/api/ticket/${id}/github/merge`, r => {
+      if (r.request().method() === 'POST') Object.assign(job, { status: 'running', output: 'progress\n', elapsed: 3 });
+      return json(r, job);
+    });
+    await openBoard(page, id);
+    const card = page.locator(`.card[data-id="${id}"]`);
+    await expect(card.locator('.card-gh-takeback')).toHaveCount(1);
+    await card.locator('.card-gh-btn').click();
+    await page.locator('#gh-dialog-ok').click();
+    await expect(card.locator('.card-gh-chip')).toContainText('merging…');
+    await expect(card.locator('.card-gh-takeback')).toHaveCount(0);   // no Take back mid-merge
+    Object.assign(job, { status: 'done', exit_code: 1, output: 'progress\nmerge-pr: scripts/test.sh FAILED on main + PR #58; nothing was merged\n' });
+    await expect(page.locator('#gh-dialog-title')).toHaveText('Not merged');
+    await expect(page.locator('#gh-dialog-pre')).toContainText('nothing was merged');
+    await expect(card.locator('.card-gh-takeback')).toHaveCount(1);
+  });
+
+  test('Stop works before the first merge poll answers; the dialog gives up after five lost polls (t-718b)', async ({ page }) => {
+    test.setTimeout(60000);
+    const id = `t-gh10-${Date.now()}`;
+    ghTicket(id, { github: 'acme/app#57' });
+    await routeStatus(page, id, { stage: 'results-in', pr: 58 });
+    let release; const held = new Promise(r => { release = r; });
+    let stops = 0, mode = 'held';
+    await page.route(`**/api/ticket/${id}/github/merge-check**`, r => json(r, { ok: true, exit_code: 0, output: 'merge-pr: ready' }));
+    await page.route(`**/api/ticket/${id}/github/merge`, async r => {
+      if (r.request().method() === 'POST') return json(r, { ok: true });
+      if (mode === 'held') { await held; return json(r, { status: 'running', output: '', elapsed: 1 }); }
+      return r.fulfill({ status: 500, body: 'down' });
+    });
+    await page.route(`**/api/ticket/${id}/github/merge-stop`, r => { stops++; return json(r, { ok: true }); });
+    await openBoard(page, id);
+    await page.locator(`.card[data-id="${id}"] .card-gh-btn`).click();
+    await page.locator('#gh-dialog-ok').click();
+    await expect(page.locator('#gh-dialog-cancel')).toHaveText('Stop');
+    await page.locator('#gh-dialog-cancel').click();   // the first poll has not answered yet
+    await expect.poll(() => stops).toBe(1);
+    mode = 'down'; release();
+    // A second merge whose polls all fail: the dialog stops waiting and says so.
+    await page.reload(); await page.waitForLoadState('networkidle'); await page.locator('#board-search').fill(id);
+    await page.locator(`.card[data-id="${id}"] .card-gh-btn`).click();
+    await page.locator('#gh-dialog-ok').click();
+    await expect(page.locator('#gh-dialog-title')).toHaveText('Lost contact', { timeout: 30000 });
+    await expect(page.locator('#gh-dialog-cancel')).toHaveText('Close');
+  });
+
+  test('a ticket out on GitHub with a live local session keeps Answer (t-718b)', async ({ page }) => {
+    const id = 't-b711';   // the board only marks cards of ids shaped t-xxxx
+    ghTicket(id, { github: 'acme/app#57' });
+    await routeStatus(page, id, { stage: 'sent' });
+    await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
+    await page.route('**/api/cockpit-sessions', r => json(r, [{ session: 'c1', ticket: id, project_root: PROJECT_ROOT, cwd: PROJECT_ROOT, agent: 'claude', status: 'needs-you', state: 'needs-you', state_secs: 4, idle_secs: 4, idle_limit_secs: 1800, signal: 'hook' }]));
+    await openBoard(page, id);
+    const card = page.locator(`.card[data-id="${id}"]`);
+    await expect(card.locator('.card-start')).toHaveText('Answer ▸');
+    await expect(card.locator('.card-gh-btn')).toHaveCount(0);
+  });
+
+  test('a GitHub pick selects no worktree row, even for a ticket with a worktree preference; a stale preview is dropped (t-718b)', async ({ page }) => {
+    const id = `t-gh12-${Date.now()}`, wtPath = '/tmp/wt-gh12/feat-x';
+    ghTicket(id, { worktreePreference: 'feat-x' });
+    fs.writeFileSync(path.join(PROJECT_ROOT, '.tickets', id, 'plan.md'), ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: low', '', '- [x] Plan approved', '', '## Approach', 'x', ''].join('\n'));
+    let release; const held = new Promise(r => { release = r; });
+    await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
+    await page.route('**/api/worktrees**', r => json(r, [
+      { path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true },
+      { path: wtPath, branch: 'feat-x', is_main: false, tickets_visible: true, ticket_present: true }]));
+    await page.route('**/api/worktree-lock/**', r => json(r, { locked: false, cwd: null, main_dirty: false }));
+    await page.route(`**/api/ticket/${id}/github/send-preview`, async r => { await held; await json(r, { ok: true, exit_code: 0, output: 'repo: acme/app (PRIVATE)' }); });
+    await openBoard(page, id);
+    await page.locator(`.card[data-id="${id}"] .card-start`).click();
+    await expect(page.locator(`.ck-worktree-row[data-cwd="${wtPath}"]`)).toHaveClass(/selected/);   // the preference preselects it
+    await page.locator('#ck-worktree .ck-gh-row').click();
+    await expect(page.locator('#ck-worktree .ck-gh-row')).toHaveClass(/selected/);
+    await expect(page.locator(`.ck-worktree-row[data-cwd="${wtPath}"]`)).not.toHaveClass(/selected/);
+    await page.evaluate(async (tid) => {   // the rail re-renders while the pick stands (a worktree poll, say)
+      const t = (await import('/static/board-core.js')).state.tickets.find(x => x.id === tid);
+      await (await import('/static/board-worktree.js')).renderCockpitWorktree(t);
+    }, id);
+    await expect(page.locator(`.ck-worktree-row[data-cwd="${wtPath}"]`)).not.toHaveClass(/selected/);
+    // The pick changes while the preview is on its way: the late preview must not fill the panel.
+    await page.evaluate(async () => {
+      window.__sawPreview = false;
+      new MutationObserver(() => { if (document.getElementById('ck-gh-preview')) window.__sawPreview = true; }).observe(document.body, { subtree: true, childList: true });
+      (await import('/static/board-cockpit.js')).cockpitState.ghPick = false;
+    });
+    release();
+    await page.waitForTimeout(500);
+    expect(await page.evaluate(() => window.__sawPreview)).toBe(false);
   });
 
   test('Import results posts the PR; without a verdict it points to the close on this machine (t-718b)', async ({ page }) => {
