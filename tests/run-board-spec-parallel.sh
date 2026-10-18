@@ -7,14 +7,18 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 source "$ROOT/tests/helpers.sh"
 t="${TMPDIR:-/tmp}"; WORK="$(mktemp -d "${t%/}/rbsp-test.XXXXXX")"; WORK="$(cd "$WORK" && pwd -P)"
-trap 'pkill -f "spec-parallel-leakmark $WORK" 2>/dev/null || true; rm -rf "$WORK"' EXIT
+kill_leaks() {   # only the PIDs the npx stub recorded for the processes it leaked on purpose
+  if [ -s "$WORK/leakpids" ]; then while read -r p; do kill "$p" 2>/dev/null || true; done < "$WORK/leakpids"; fi
+  : > "$WORK/leakpids"
+}
+trap 'kill_leaks; rm -rf "$WORK"' EXIT
 
 # a fake canon tree holding only the runner, so the copy is tiny and the real tree is never touched
 FAKE="$WORK/root"; mkdir -p "$FAKE/tests" "$FAKE/node_modules" "$WORK/bin" "$WORK/state"
 cp "$ROOT/tests/run-board-spec.sh" "$ROOT/tests/machine-load.sh" "$FAKE/tests/"
 git -C "$FAKE" init -q
 printf '#!/bin/sh\nfor a; do last="$prev"; prev="$a"; done\ncp -a "$last." "$prev" 2>/dev/null || cp -a "$last" "$prev"\n' > "$WORK/bin/rsync"   # rsync -a --exclude.. SRC/ DST/
-printf '#!/bin/sh\nexec sleep 600\n' > "$WORK/bin/go"
+printf '#!/bin/sh\necho "$PWD $COCKPIT_STATE_DIR" >> "$STATE/boards"\nexec sleep 600\n' > "$WORK/bin/go"   # records each board's cockpit state dir
 printf '#!/bin/sh\nexit 0\n' > "$WORK/bin/curl"
 cat > "$WORK/bin/npx" <<'STUB'
 #!/bin/bash
@@ -26,7 +30,7 @@ if [ -n "${RENDEZVOUS:-}" ]; then   # all passes must be running at once, or thi
   for _ in $(seq 1 100); do [ "$(ls "$STATE" | grep -c '^start\.')" -ge "$RENDEZVOUS" ] && break; sleep 0.1; done
   [ "$(ls "$STATE" | grep -c '^start\.')" -ge "$RENDEZVOUS" ] || { echo "no overlap" >> "$STATE/errors"; }
 fi
-[ "${LEAK_BROWSER:-}" = "$b" ] && { bash -c 'sleep 20; :' "spec-parallel-leakmark $STATE" "$PWD" >/dev/null 2>&1 & }
+[ "${LEAK_BROWSER:-}" = "$b" ] && { bash -c 'sleep 20; :' "spec-parallel-leakmark $STATE" "$PWD" >/dev/null 2>&1 & echo "$!" >> "$STATE/../leakpids"; }
 [ "${NOREPORT_BROWSER:-}" = "$b" ] || echo '{"suites":[]}' > "$PLAYWRIGHT_JSON_OUTPUT_NAME"
 exit 0
 STUB
@@ -54,6 +58,10 @@ assert_eq 0 "$rc"; assert_eq "$(names serial)" "$(names par2)"   # same report n
 assert_eq "$SERIAL_SHAS" "$(shas)"                                # same sha256 line shape and order
 assert_eq 4 "$(wc -l < "$WORK/state/calls" | tr -d ' ')"
 assert_eq 2 "$(cut -d' ' -f2 "$WORK/state/calls" | sort -u | wc -l | tr -d ' ')"   # two slots, two copies
+while read -r d sd; do   # each board's cockpit state dir is its own copy's, never the real daemon's $TMPDIR/canon-cockpit-board
+  assert_eq "$d/.spec-cockpit-state" "$sd"
+done < "$WORK/state/boards"
+assert_eq 2 "$(wc -l < "$WORK/state/boards" | tr -d ' ')"
 [ ! -s "$WORK/state/errors" ] || fail "run-board-spec: --parallel 2 did not run the passes at once"
 assert_contains "$out" "4 pass(es) over 2 slot(s)"; assert_contains "$out" "no process left running from the copy"
 assert_contains "$out" "report dir $WORK/out-par2"
@@ -65,10 +73,10 @@ assert_eq 0 "$rc"; assert_contains "$out" "2 pass(es) over 2 slot(s)"
 # a process left in any copy exits 2 (here only the second slot's pass leaks), serial or parallel
 RUN_ENV="LEAK_BROWSER=webkit"; run leakpar --runs 1 --browsers chromium,webkit --parallel 2
 assert_eq 2 "$rc"; assert_contains "$out" "processes from the copy are still running"
-pkill -f "spec-parallel-leakmark $WORK" 2>/dev/null || true
+kill_leaks
 run leakser --runs 1 --browsers chromium,webkit
 assert_eq 2 "$rc"; assert_contains "$out" "processes from the copy are still running"
-pkill -f "spec-parallel-leakmark $WORK" 2>/dev/null || true
+kill_leaks
 
 # a pass with no report exits 2 in a slot too
 RUN_ENV="NOREPORT_BROWSER=webkit"; run noreport --runs 1 --browsers chromium,webkit --parallel 2
