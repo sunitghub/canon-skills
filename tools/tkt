@@ -1153,7 +1153,9 @@ cmd_send_issue() {
   set_or_add_field "$file" github "$repo#$n"
   # t-718b: github: is only the link (sync and import write it too); runs: github says a cloud session has the work.
   set_or_add_field "$file" runs github
-  printf 'Sent %s as %s\nIn a Claude cloud session on %s, type: Work on Issue#%s\n' "$id" "$url" "$repo" "$n"
+  printf 'Sent %s as %s\nIn a Claude cloud session on %s, type:\n' "$id" "$url" "$repo"
+  printf 'Work on Issue#%s. Run canon'"'"'s sprint workflow from `sprint import-issue %s` through the gates to `sprint complete` and `tkt export`. ' "$n" "$n"
+  printf 'Don'"'"'t use plan mode. Work on a new branch, never main: push that branch and open a PR. Do not push to main or force-push anything.\n'
 }
 
 # cmd_import_issue <N> [--body-file F] [--force] — t-554c: rebuilds .tickets/<id>/ from a `tkt send-issue` body (the
