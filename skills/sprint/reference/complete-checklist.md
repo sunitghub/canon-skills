@@ -18,7 +18,7 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
 
 1. **Wrapup** (`skills/wrapup/SKILL.md`): code-simplifier, code-reviewer (inline), security-review, repo-check
    (canon only), doc-audit, then refresh docs.
-   - **Mutation test** if shell/JS logic changed: `mutant-sweep --check` (exit 3: `skipped | no python3`);
+   - **Mutation test** if shell, JS, Python or Go logic changed: `mutant-sweep --check` (exit 3: `skipped | no python3`);
      then `skills/mutation-test/SKILL.md` (`mutant-sweep --map
      <file>=<test> --report .tickets/<id>/mutation-report.md`); triage every survivor; advisory.
    - **Skill eval** if a skill or gate agent changed: `tools/skill-eval-scope.sh`; for each `run <skill>`
