@@ -175,7 +175,12 @@ rc=0; out="$("$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
 rc=0; out="$(STUB_PR_FILES="tools/sprint-check-app/server.js docs/x.md" "$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
 assert_contains "$out" "re-grade needed on this Mac: board change (full board spec), PR head differs from the graded head"
 rc=0; out="$(STUB_PR_FILES="tools/cockpit-daemon/main.go" "$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
-assert_contains "$out" "Go or tools/tkt change (needs a release)"
+assert_contains "$out" "re-grade needed on this Mac: Go change (needs a release), PR head differs from the graded head"
+# tools/tkt is one script, not a release asset: a change to it alone is not a trigger; the board spec file and runner are.
+rc=0; out="$(STUB_PR_FILES="tools/tkt tests/tkt-send-issue.sh" "$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
+assert_contains "$out" "re-grade needed on this Mac: PR head differs from the graded head"
+rc=0; out="$(STUB_PR_FILES="tests/sprint-check-app.spec.js" "$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
+assert_contains "$out" "board change (full board spec)"
 rc=0; out="$(STUB_PR_FILES="tools/evidence.sh tests/evidence.sh" "$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
 assert_contains "$out" "re-grade needed on this Mac: PR head differs from the graded head"
 STUB_PR_HEAD="$(git -C "$X" rev-parse HEAD)"

@@ -155,12 +155,12 @@ Claude subscription, with no API key. The ticket goes to your repo as a GitHub i
    what the PR changes, asks once, runs your tests (`scripts/test.sh`, or `--test "<command>"`) on your base branch
    plus the PR in a scratch clone, and merges if they pass. `--check` runs the checks only.
 
-**Who grades what (t-278d).** For a ticket that is not a board, Go or `tools/tkt` change, the cloud does the whole job: you
+**Who grades what (t-278d).** For a ticket that is not a board or Go change, the cloud does the whole job: you
 approve the plan, it builds, runs the tests, runs a fresh evaluator and stamps the evidence. The Mac only runs
 `tkt import-results <id> --pr <N>` then `tkt merge-pr <id>`, and does **not** rebase: `merge-pr` merges a PR that is
 MERGEABLE and CLEAN on a newer `main` after running `scripts/test.sh` on `main` + the PR, and refuses unless the PR head
-is the graded head. The Mac re-grades only for one of four triggers: a **board** change (the full board spec), a **Go or
-`tools/tkt`** change that needs a release, a **high-risk** ticket, or a **PR head that no longer equals the graded
+is the graded head. The Mac re-grades only for one of four triggers: a **board** change (the board, its spec or its runner: the full board spec), a **Go**
+change that needs a release (the daemon, the Go board, the headless helper), a **high-risk** ticket, or a **PR head that no longer equals the graded
 head**. `import-results` ends with one line saying which of these apply, or "no re-grade needed"; it only advises and
 never changes `merge-pr`. When a re-grade does run a full board spec, stamp its guard under its own name (for example
 `board-spec-guard`) with the run's `--out` folder inside the ticket's `evidence/`; `evidence.sh check` then reports the

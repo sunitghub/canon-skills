@@ -1611,12 +1611,12 @@ _regrade_triggers() {
   local tdir="$1" mismatch="$2" p out="" board=0 gocode=0
   while IFS= read -r p; do
     case "$p" in
-      tools/sprint-check-app/*) board=1 ;;
-      tools/sprint-check-go/*|tools/cockpit-daemon/*|tools/tkt/*) gocode=1 ;;
+      tools/sprint-check-app/*|tests/sprint-check-app.spec.js|tests/run-board-spec.sh|tests/board-spec-*) board=1 ;;
+      tools/sprint-check-go/*|tools/sprint-headless-json-go/*|tools/cockpit-daemon/*) gocode=1 ;;
     esac
   done
   [[ $board == 1 ]] && out+="${out:+, }board change (full board spec)"
-  [[ $gocode == 1 ]] && out+="${out:+, }Go or tools/tkt change (needs a release)"
+  [[ $gocode == 1 ]] && out+="${out:+, }Go change (needs a release)"
   grep -qiE '^Tier:.*Risk: *high' "$tdir/plan.md" 2>/dev/null && out+="${out:+, }high-risk ticket"
   [[ "$mismatch" == 1 ]] && out+="${out:+, }PR head differs from the graded head"
   printf '%s' "$out"
