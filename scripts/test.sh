@@ -42,6 +42,7 @@ tests=(
   "$ROOT/tests/tkt-github-status.sh"
   "$ROOT/tests/sprint-check-github-endpoints.sh"
   "$ROOT/tests/tool-symlinks.sh"
+  "$ROOT/tests/agent-template.sh"
   "$ROOT/tests/ticket-skeleton.sh"
   "$ROOT/tests/sprint.sh"
   "$ROOT/tests/ticket-root-worktree.sh"

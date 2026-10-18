@@ -4,6 +4,10 @@ description: canon's advisory close-gate reviewer. Dispatched by sprint complete
 model: claude-sonnet-5
 effort: high
 tools: Read, Grep, Glob, Bash, execute
+purpose: Advisory close-gate review of a sprint's diff (no implementation history); findings only.
+writes: review-notes.md
+shell: pinned-env
+graded-by: skills/sprint/reference/review.md
 ---
 <!-- canon:agent (managed by skills.sh — refresh overwrites this file; edit canon's agents/ instead) -->
 <!-- One file for Claude Code and Copilot CLI (t-bdce): a full model id works in both (Copilot rejects the
