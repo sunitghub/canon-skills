@@ -35,31 +35,31 @@ EOF
 echo "--- default (no --allowed-tools-file) ---"
 def="$(bash "$EVAL" "$spec" --base-ref HEAD --print-allowed-tools)"
 assert '[ "$def" = "$EXPECT_DEFAULT" ]'                          "default = exact least-privilege list (backward-compatible)"
-assert '! printf "%s\n" "$def" | grep -qxE "Bash|Bash\(bash.*"'  "default has NO general Bash / Bash(bash...) grant"
+assert '! printf "%s\n" "$def" | grep -xE "Bash|Bash\(bash.*" >/dev/null'  "default has NO general Bash / Bash(bash...) grant"
 
 echo "--- config REPLACES list + force-adds mechanism entries ---"
 cfg="$tmp/tools.json"; printf '["Read","Grep","Bash(bash tests/run.sh:*)"]\n' > "$cfg"
 set +e; ext="$(bash "$EVAL" "$spec" --base-ref HEAD --allowed-tools-file "$cfg" --print-allowed-tools 2>/dev/null)"; erc=$?; set -e
 assert '[ "$erc" -eq 0 ]'                                        "config run exits 0"
-assert 'printf "%s\n" "$ext" | grep -qxF "Bash(bash tests/run.sh:*)"' "narrow runner grant present from config"
-assert 'printf "%s\n" "$ext" | grep -qxF "Agent"'                "Agent force-added when omitted by config"
-assert 'printf "%s\n" "$ext" | grep -qxF "Bash(./tools/subagent-log.sh:*)"' "subagent-log allow force-added when omitted"
-assert '! printf "%s\n" "$ext" | grep -qxF "Bash(git diff:*)"'   "config REPLACES the default (git-diff grant gone)"
+assert 'printf "%s\n" "$ext" | grep -xF "Bash(bash tests/run.sh:*)" >/dev/null' "narrow runner grant present from config"
+assert 'printf "%s\n" "$ext" | grep -xF "Agent" >/dev/null'                "Agent force-added when omitted by config"
+assert 'printf "%s\n" "$ext" | grep -xF "Bash(./tools/subagent-log.sh:*)" >/dev/null' "subagent-log allow force-added when omitted"
+assert '! printf "%s\n" "$ext" | grep -xF "Bash(git diff:*)" >/dev/null'   "config REPLACES the default (git-diff grant gone)"
 
 echo "--- malformed / non-array / missing configs fail-closed ---"
 badj="$tmp/bad.json"; printf '{not valid json' > "$badj"
 set +e; bout="$(bash "$EVAL" "$spec" --base-ref HEAD --allowed-tools-file "$badj" --print-allowed-tools 2>&1)"; brc=$?; set -e
 assert '[ "$brc" -ne 0 ]'                                        "malformed JSON exits non-zero"
-assert 'printf "%s" "$bout" | grep -q "invalid JSON"'            "malformed JSON error is clear"
+assert 'printf "%s" "$bout" | grep "invalid JSON" >/dev/null'            "malformed JSON error is clear"
 
 naj="$tmp/na.json"; printf '{"a":1}' > "$naj"
 set +e; nout="$(bash "$EVAL" "$spec" --base-ref HEAD --allowed-tools-file "$naj" --print-allowed-tools 2>&1)"; nrc=$?; set -e
 assert '[ "$nrc" -ne 0 ]'                                        "non-array JSON exits non-zero"
-assert 'printf "%s" "$nout" | grep -q "must be a JSON array"'    "non-array error is clear"
+assert 'printf "%s" "$nout" | grep "must be a JSON array" >/dev/null'    "non-array error is clear"
 
 set +e; mout="$(bash "$EVAL" "$spec" --base-ref HEAD --allowed-tools-file "$tmp/nope.json" --print-allowed-tools 2>&1)"; mrc=$?; set -e
 assert '[ "$mrc" -ne 0 ]'                                        "missing config file exits non-zero"
-assert 'printf "%s" "$mout" | grep -q "not found"'               "missing-file error is clear"
+assert 'printf "%s" "$mout" | grep "not found" >/dev/null'               "missing-file error is clear"
 
 echo "--- a spec with no git repository above it is still refused (a worktree's .git FILE is accepted, nothing is not) ---"
 nogit="$(mktemp -d)"
@@ -67,7 +67,7 @@ printf '# spec\n- [ ] a criterion\n' > "$nogit/spec.md"
 set +e; gout="$(bash "$EVAL" "$nogit/spec.md" --base-ref HEAD --print-allowed-tools 2>&1)"; grc=$?; set -e
 rm -rf "$nogit"
 assert '[ "$grc" -ne 0 ]'                                         "no .git anywhere above the spec exits non-zero"
-assert 'printf "%s" "$gout" | grep -q "could not find a git repository"' "no-.git error is clear"
+assert 'printf "%s" "$gout" | grep "could not find a git repository" >/dev/null' "no-.git error is clear"
 
 echo "--- shipped template parses and equals the default (minus runtime log entry) ---"
 assert 'python3 -c "import json;json.load(open(\"tools/headless-eval-tools.json\"))"' "template is valid JSON"

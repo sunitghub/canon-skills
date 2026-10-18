@@ -10,7 +10,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 src="$(shell_sources "$ROOT")"
 dialog="$(grep -n -i 'project folder' <<<"$src" | head -5)"
 assert_contains "$dialog" "Project folder (absolute path)"
-if grep -i 'project folder' <<<"$src" | grep -qi 'git repo'; then
+if grep -i 'project folder' <<<"$src" | grep -i 'git repo' >/dev/null; then
   fail "Add Project dialog says the folder must be a git repo"
 fi
 

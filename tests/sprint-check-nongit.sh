@@ -65,7 +65,7 @@ assert_eq "$want" "$go"
 
 # The ticket list still works with no git anywhere.
 for port in "$PY_PORT" "$GO_PORT"; do
-  curl -s "http://127.0.0.1:$port/api/tickets" | grep -q '"t-ngit"' || fail "port $port: /api/tickets lost the ticket with no git"
+  curl -s "http://127.0.0.1:$port/api/tickets" | grep '"t-ngit"' >/dev/null || fail "port $port: /api/tickets lost the ticket with no git"
 done
 
 # ── end to end: Start in the plain folder (no git anywhere), the agent writes a file, End; both boards ──

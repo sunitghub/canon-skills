@@ -2371,7 +2371,16 @@ func (se *session) debugf(format string, a ...any) {
 	path := filepath.Join(dir, ".cockpit-debug.log")
 	line := fmt.Sprintf("%s "+format+"\n", append([]any{time.Now().Format(time.RFC3339Nano)}, a...)...)
 	existing, _ := os.ReadFile(path)
-	_ = os.WriteFile(path, appendDebugLogLine(existing, []byte(line), debugLogMaxBytes), 0o600)
+	// t-bcb8: write a sibling and rename it over the log. os.WriteFile truncates first, so a reader
+	// (a user tailing it, or a test right after a kill while the exit goroutines still log) could read it empty.
+	tmp, err := os.CreateTemp(dir, ".cockpit-debug.log.*")
+	if err != nil {
+		return
+	}
+	_, werr := tmp.Write(appendDebugLogLine(existing, []byte(line), debugLogMaxBytes))
+	if cerr := tmp.Close(); werr != nil || cerr != nil || os.Rename(tmp.Name(), path) != nil {
+		os.Remove(tmp.Name())
+	}
 }
 
 // appendDebugLogLine is debugf's pure size-capping logic, split out so it's

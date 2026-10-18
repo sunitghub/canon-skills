@@ -167,7 +167,7 @@ fi
 printf '#!/usr/bin/env bash\n[ -e "%s/no-delete" ] && grep -q "^[0-9a-f]* 0\\{40\\} refs/heads/canon-results/" && { echo "delete refused" >&2; exit 1; }\nexit 0\n' "$W" > "$W/origin.git/hooks/pre-receive"
 chmod +x "$W/origin.git/hooks/pre-receive"
 results_branch() { git push -q origin "main:refs/heads/canon-results/$id" 2>/dev/null; }
-has_results() { git ls-remote --heads origin "canon-results/$id" | grep -q .; }
+has_results() { git ls-remote --heads origin "canon-results/$id" | grep . >/dev/null; }
 sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; results_branch; has_results || fail "the test could not create canon-results/$id"
 out="$("$TKT" merge-pr "$id" --pr 7 --yes 2>&1)" || fail "merge-pr failed: $out"
 has_results && fail "merge-pr left canon-results/$id on origin"

@@ -86,7 +86,7 @@ git checkout -q -- src/a.txt
 ev stamp "$ID" moved -- git commit -q --allow-empty -m moved; assert_eq 125 "$code"
 [[ ! -e "$ED/moved.log" ]] || fail "evidence: wrote a stamp for a command that moved HEAD"
 git reset -q --hard "$C1"
-ls -A "$ED" 2>/dev/null | grep -q '^\.stamp\.' && fail "evidence: left a temp file behind" || true
+ls -A "$ED" 2>/dev/null | grep '^\.stamp\.' >/dev/null && fail "evidence: left a temp file behind" || true
 # symlinks: never write through one
 mkdir -p "$WORK/outside"; echo keep > "$WORK/outside/x.log"; rm -rf "$ED"
 if ln -s "$WORK/outside" "$ED" 2>/dev/null && [[ -L "$ED" ]]; then
@@ -244,7 +244,7 @@ for ((i = 0; i < N; i++)); do
   for ((j = 0; j < n; j++)); do line+="${line:+ }${segs[RANDOM % ${#segs[@]}]}"; done
   [[ $((RANDOM % 3)) == 0 ]] && line="HEAD $C1 $T${line:+ $line}"
   name="r$(printf '%03d' "$i").log"; printf '%s\nexit 0\n' "$line" > "$ED/$name"
-  if printf '%s\n' "$line" | grep -Eq "^HEAD [0-9a-f]{7,40} [0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}(:[0-9]{2})?Z?\$"; then
+  if printf '%s\n' "$line" | grep -E "^HEAD [0-9a-f]{7,40} [0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}(:[0-9]{2})?Z?\$" >/dev/null; then
     sha="$(printf '%s' "$line" | awk '{print $2}')"
     if [[ "$C1" == "$sha"* ]]; then echo "fresh $name" >> "$WORK/expect.txt"; else echo "stale $name" >> "$WORK/expect.txt"; fi   # an unknown sha is stale, not fresh
   else echo "unstamped $name" >> "$WORK/expect.txt"; fi
@@ -284,9 +284,9 @@ reset_repo
 reader_rx() { printf '%s' "(ROOT|REPO_ROOT|CANON_ROOT)[^A-Za-z0-9_]{1,12}(\\.claude/|skills/[^ \"']*evals/)?${1//./\\.}"; }
 # Proof the grep can fail (t-0b14): planted readers of the skill eval history, quoted, globbed and bare, must all match; a fixture's own copy must not.
 for planted in 'cat "$ROOT/skills/sprint/evals/history.jsonl"' 'wc -l "$ROOT"/skills/*/evals/history.jsonl' 'x=$REPO_ROOT/skills/a/evals/history.jsonl' 'cat "$ROOT/history.jsonl"'; do
-  printf '%s\n' "$planted" | grep -qE "$(reader_rx history.jsonl)" || fail "evidence: the root-reader grep misses a planted reader: $planted"
+  printf '%s\n' "$planted" | grep -E "$(reader_rx history.jsonl)" >/dev/null || fail "evidence: the root-reader grep misses a planted reader: $planted"
 done
-if printf '%s\n' 'cat "$proj/skills/sprint/evals/history.jsonl"' | grep -qE "$(reader_rx history.jsonl)"; then fail "evidence: the root-reader grep matches a fixture project's own history.jsonl"; fi
+if printf '%s\n' 'cat "$proj/skills/sprint/evals/history.jsonl"' | grep -E "$(reader_rx history.jsonl)" >/dev/null; then fail "evidence: the root-reader grep matches a fixture project's own history.jsonl"; fi
 for n in LEARNINGS.md LEARNINGS-archive.md DECISIONS.md DECISIONS-archive.md HANDOFF.md PROMOTED.md subagent-runs.jsonl history.jsonl; do
   # tests/subagent-log-cli.sh reads canon's own audit log only to assert the test did NOT write to it, so a gate's real entries cannot
   # change its result; any other reader fails here. history.jsonl (t-0b14): tools/skill-eval-history.sh, tests/skill-eval-scope.sh and

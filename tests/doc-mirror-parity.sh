@@ -73,7 +73,7 @@ fi
 # start checklist that replaces them stays. An unconditional read costs ~390 lines
 # on every sprint start.
 # Anchor the read and its condition to the same line, so the condition can't drift elsewhere.
-grep -F 'Read `tools/ticket.md` (the `tkt`/`sprint` CLI help' "$START" | grep -qF "only if you need a command you don't know" || fail "doc-mirror-parity: start.md step 1's tools/ticket.md read is missing or no longer conditional (t-2595)"
+grep -F 'Read `tools/ticket.md` (the `tkt`/`sprint` CLI help' "$START" | grep -F "only if you need a command you don't know" >/dev/null || fail "doc-mirror-parity: start.md step 1's tools/ticket.md read is missing or no longer conditional (t-2595)"
 grep -qF 'Read `standards/ticket-layout.md` (field contract, doc lifecycle, board rendering rules) only when' "$START" || fail "doc-mirror-parity: start.md step 4's standards/ticket-layout.md read is no longer conditional (t-2595)"
 grep -qF 'create it from the template in `tools/handoff.md` (read that only then' "$START" || fail "doc-mirror-parity: start.md step 5's tools/handoff.md read is no longer conditional (t-2595)"
 grep -qF 'Start checklist' "$START" || fail "doc-mirror-parity: start.md is missing its Start checklist (t-2595)"
@@ -295,7 +295,7 @@ while IFS= read -r d; do
   grep -qixF -- "## $d" "$NOTES" || fail "doc-mirror-parity: efficiency.md's index names '$d', which is not a section of efficiency-notes.md (t-8837, Check O)"
 done <<< "$domains"
 while IFS= read -r h; do   # and every section of the notes file is reachable from that index
-  printf '%s\n' "$domains" | grep -qixF -- "$h" || fail "doc-mirror-parity: efficiency-notes.md section '$h' is not named in efficiency.md's index line (t-8837, Check O)"
+  printf '%s\n' "$domains" | grep -ixF -- "$h" >/dev/null || fail "doc-mirror-parity: efficiency-notes.md section '$h' is not named in efficiency.md's index line (t-8837, Check O)"
 done < <(sed -n 's/^## //p' "$NOTES")
 for f in "$ROOT/standards/skill-setup-std.md" "$ROOT/skills/promote-learnings/SKILL.md"; do
   for frag in '`standards/efficiency-notes.md`' 'nearly every session'; do

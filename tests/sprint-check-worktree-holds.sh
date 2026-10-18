@@ -148,7 +148,7 @@ EOF
   # t-07a8: end to end — a worktree created through the API with a custom (non sprint/<ticket-id>) name gets the
   # skill links, and must be offered, not hidden as "uncommitted changes" the moment it exists.
   local nb="sprint/custom-$kind"
-  curl -s -X POST -H 'Content-Type: application/json' -d "{\"branch\":\"$nb\"}" "$base/api/worktrees" | grep -q '"ok": *true' \
+  curl -s -X POST -H 'Content-Type: application/json' -d "{\"branch\":\"$nb\"}" "$base/api/worktrees" | grep '"ok": *true' >/dev/null \
     || fail "$label: creating $nb through the API failed"
   [[ -e "$WT/sprint-custom-$kind/.claude/skills" ]] || fail "$label: the created worktree got no .claude/skills link (the premise of this check)"
   python3 - "$label" "$nb" "$(curl -s "$base/api/worktrees?ticket=t-mine")" <<'EOF'
