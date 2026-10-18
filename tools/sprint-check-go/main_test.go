@@ -3,6 +3,9 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io/fs"
 	"math/rand"
 	"net/http"
@@ -1640,4 +1643,97 @@ func TestStartMergeRunDropsPreviousCmd(t *testing.T) {
 		t.Fatalf("startMergeRun kept the previous job's command handle")
 	}
 	stopMergeRun(dir, "t-ab12")
+}
+
+// t-1699: a regex compiled inside a function runs on every request or ticket line; only section()'s per-heading cache may compile.
+func TestNoRegexCompileInFuncs(t *testing.T) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "main.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range f.Decls {
+		fn, ok := d.(*ast.FuncDecl)
+		if !ok || fn.Body == nil || fn.Name.Name == "headingLineRe" {
+			continue
+		}
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			sel, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+			if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "regexp" && strings.Contains(sel.Sel.Name, "Compile") {
+				t.Errorf("%s: regexp.%s inside func %s: hoist it to a package-level var", fset.Position(call.Pos()), sel.Sel.Name, fn.Name.Name)
+			}
+			return true
+		})
+	}
+}
+
+// t-1699: the pre-cache section(), kept to prove the cached one returns the same text.
+func oldSection(text, heading string) string {
+	var out []string
+	active := false
+	for _, line := range strings.Split(text, "\n") {
+		if regexp.MustCompile(`^##\s+` + regexp.QuoteMeta(heading) + `\s*$`).MatchString(line) {
+			active = true
+			continue
+		}
+		if active && strings.HasPrefix(line, "## ") {
+			break
+		}
+		if active {
+			out = append(out, line)
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+func TestSectionMatchesOld(t *testing.T) {
+	texts := []string{
+		"# T\n## Criteria\n- [x] a\n## Test Plan\n- [ ] b\n",
+		"## Criteria  \n- [ ] trailing spaces\n##\tTest Plan\t\n- [x] tab\n",
+		"## Criteria\r\n- [ ] crlf\r\n## Sign-off\r\n- [x] ok\r\n",
+		"##Criteria\n- no space after ##\n## Criteria extra\n- longer heading\n",
+		"## a.b*c (x)\nmeta\n## Approach\n\n<!-- c -->\nbody\n",
+		"", "## Wrapup Gates\n| g | ran |\n### sub\nstill in\n## Next\n",
+	}
+	headings := []string{"Criteria", "Test Plan", "Sign-off", "Approach", "Wrapup Gates", "a.b*c (x)", "Criteria extra", "Missing"}
+	for _, txt := range texts {
+		for _, h := range headings {
+			for i := 0; i < 2; i++ { // second pass reads the cached regex
+				if got, want := section(txt, h), oldSection(txt, h); got != want {
+					t.Errorf("section(%q, %q) = %q, want %q", txt, h, got, want)
+				}
+			}
+		}
+	}
+}
+
+// t-1699: go test -bench BenchmarkParseTicket -benchmem -run '^$' ./tools/sprint-check-go
+func BenchmarkParseTicket(b *testing.B) {
+	dir := b.TempDir()
+	td := filepath.Join(dir, "t-abcd")
+	if err := os.MkdirAll(td, 0o755); err != nil {
+		b.Fatal(err)
+	}
+	for name, body := range map[string]string{
+		"ticket.md":     "---\nid: t-abcd\nstatus: in_progress\ntype: task\npriority: 1\n---\n# A ticket\n\nBody.\n",
+		"acceptance.md": "# Acceptance\n\n## Criteria\n" + strings.Repeat("- [x] C criterion text\n", 8) + "\n## Test Plan\n" + strings.Repeat("- [ ] T step\n", 8) + "\n## QA\n- [ ] Tested locally\n\n## Wrapup Gates\n| g | ran | (model: sonnet) |\n",
+		"plan.md":       "# Plan\n\n## Sign-off\n- [x] Plan approved\n\n## Approach\n" + strings.Repeat("Step line.\n", 20) + "\n## Files\n- a.go\n",
+	} {
+		if err := os.WriteFile(filepath.Join(td, name), []byte(body), 0o644); err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := parseTicket(filepath.Join(td, "ticket.md")); err != nil {
+			b.Fatal(err)
+		}
+	}
 }
