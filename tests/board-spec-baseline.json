@@ -946,6 +946,50 @@
       "failed_runs": {
         "webkit": "1/1 full run, 0/5 solo"
       }
+    },
+    {
+      "title": "cockpit leave-session confirm (t-f6b6) > Save & End resolves immediately if the session already ended while the modal sat open (t-8efc)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-1699",
+      "reason": "timing flake: a 30 s test timeout (no assertion failed) in a t-1699 full two-browser stamp; passed 5/5 run alone on the branch; .tickets/t-1699/evidence/classify/classify-final2-webkit.log",
+      "failed_runs": {
+        "webkit": "1/1 full run, 0/5 solo"
+      }
+    },
+    {
+      "title": "Canon Cockpit Skill Eval card (t-23d8) > t-d2e1: a hostile check status stays text in the Skill Eval rows (no tag, no handler)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-1699",
+      "reason": "timing flake: a 30 s test timeout (no assertion failed) in a t-1699 full two-browser stamp; passed 5/5 run alone on the branch; .tickets/t-1699/evidence/classify/classify-final2-webkit.log",
+      "failed_runs": {
+        "webkit": "1/1 full run, 0/5 solo"
+      }
+    },
+    {
+      "title": "board header and card footer (t-7723) > a hand-edited priority with a quote cannot add an attribute to the footer",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-1699",
+      "reason": "timing flake: a 30 s test timeout (no assertion failed) in a t-1699 full two-browser stamp; passed 5/5 run alone on the branch; .tickets/t-1699/evidence/classify/classify-final2-webkit.log",
+      "failed_runs": {
+        "webkit": "1/1 full run, 0/5 solo"
+      }
+    },
+    {
+      "title": "GitHub workflow on the board (t-718b) > Check & merge: a failing Stop request throws nothing (t-718b)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-1699",
+      "reason": "timing flake: a 30 s test timeout (no assertion failed) in a t-1699 full two-browser stamp; passed 5/5 run alone on the branch; .tickets/t-1699/evidence/classify/classify-final2-webkit.log",
+      "failed_runs": {
+        "webkit": "1/1 full run, 0/5 solo"
+      }
     }
   ],
   "skipped": []
