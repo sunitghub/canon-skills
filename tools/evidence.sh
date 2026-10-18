@@ -2,8 +2,10 @@
 # evidence.sh — builder evidence a gate can check instead of re-running (t-e3cd).
 #   evidence.sh stamp <ticket-id> <name> -- <command...>
 #   evidence.sh check <ticket-id> [<graded-head>]
-# stamp runs the command and writes .tickets/<id>/evidence/<name>.log: line 1 `HEAD <sha> <UTC time>`, line 2 `$ <command>`, the combined
-# output, and a last line `exit <rc>` (never the command's own output: ours is appended after it). It exits with the command's own code.
+# stamp runs the command and writes .tickets/<id>/evidence/<name>.log: line 1 `HEAD <sha> <UTC time>`, line 2 `$ <command>`, line 3
+# `# on <uname -srm>; bash <x.y.z>` (t-a83a: the machine, never its hostname; the bash running this script, which a `bash <script>` command
+# also uses, not a shebang's own interpreter), the combined output, and a last line `exit <rc>` (never the command's own output: ours is
+# appended after it). It exits with the command's own code.
 # It refuses, running nothing and writing nothing, with 125 (like `timeout`, so a command's own exit 2 is not mistaken for a refusal) when
 # tracked files are modified (a stamp names the commit that was tested, so the tree must BE that commit; untracked files, .tickets/ and
 # the evidence-neutral close-time docs below are ignored), and again, writing nothing, if tracked files changed while the command ran.
@@ -17,7 +19,8 @@
 #   stale <file> exit=<N>      stamped, but older with such changes, an unknown sha, or not an ancestor
 #   unstamped <file> exit=?    anything else: `# HEAD …`, `(uncommitted)`, `+wt`, no line 1, empty, binary, a symlink (never followed)
 #   (t-278d) a log stale only for the baseline but not covered gets a `  hint:` line after it with the covered recipe.
-# `exit=` is read from the LAST line only. Log content is never echoed beyond the sha, the time and a short sanitized `$` line. A stamp proves
+# `exit=` is read from the LAST line only. Log content is never echoed beyond the sha, the time, a short sanitized `$` line and, before it,
+# ` on: <os>, bash <x.y.z>` from a line 3 `# on …` (sanitized; absent for an older log, whose line is then unchanged). A stamp proves
 # freshness, not truth: the evaluator still runs its own floor (eval.md). check exits 0 for any content; 2 for a usage or repository error.
 # CANON_TICKETS_DIR (optional) names the .tickets/ directory to use, for a stamp taken in a plain clone, whose own .tickets/ is not the project's.
 set -euo pipefail
@@ -74,7 +77,9 @@ if [[ "$mode" == stamp ]]; then
   mkdir -p "$edir"
   tmp="$(mktemp "$edir/.stamp.XXXXXX")"; trap 'rm -f "$tmp"' EXIT
   cmd_text="$(printf '%q ' "$@")"; cmd_text="${cmd_text% }"   # %q keeps the quoting, so two commands that differ only in quoting give different lines
-  printf 'HEAD %s %s\n$ %s\n' "$head_sha" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$cmd_text" > "$tmp"
+  os="$(uname -srm 2>/dev/null)" || os=unknown
+  printf 'HEAD %s %s\n$ %s\n# on %s; bash %s.%s.%s\n' "$head_sha" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$cmd_text" "${os:-unknown}" \
+    "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}" "${BASH_VERSINFO[2]}" > "$tmp"
   set +e; "$@" < /dev/null >> "$tmp" 2>&1; rc=$?; set -e
   if tracked_dirty || [[ "$(git -C "$root" rev-parse HEAD)" != "$head_sha" ]]; then
     refuse "tracked files or HEAD changed while the command ran, so the stamp would name a tree that was not tested; nothing was written"
@@ -109,7 +114,7 @@ line2_of() { head -c 16384 -- "$1" | LC_ALL=C tr -d '\000' | sed -n '2p' | tr -d
 # classify_one <file> — sets LINE (the output line), KIND (its first word), CODE and BASEONLY (1 when the only non-neutral tracked change since
 # the stamp is tests/board-spec-baseline.json, the one case `covered` may lift). Called directly, never in $(...), so the globals survive.
 classify_one() {
-  local f="$1" first last sha when cmdline shown full names p list n more
+  local f="$1" first last sha when cmdline osline shown full names p list n more
   BASEONLY=0; CODE="?"; STAMP=""; SHOWN=""
   base="$(safe "${f##*/}")"
   if [[ -L "$f" || ! -f "$f" ]]; then KIND=unstamped; LINE="unstamped $base exit=?"; return 0; fi
@@ -120,6 +125,8 @@ classify_one() {
   sha="${BASH_REMATCH[1]}"; when="${BASH_REMATCH[2]}"
   cmdline="$(head -c 512 -- "$f" | LC_ALL=C tr -d '\000' | sed -n '2p' | tr -d '\r')" || cmdline=""
   shown=""; if [[ "$cmdline" == '$ '* ]]; then shown=" cmd: $(safe "${cmdline:2:120}")"; fi
+  osline="$(head -c 1024 -- "$f" | LC_ALL=C tr -d '\000' | sed -n '3p' | tr -d '\r')" || osline=""   # t-a83a; an old log has none
+  if [[ "$osline" == '# on '* ]]; then osline="${osline:5:80}"; shown=" on: $(safe "${osline//; /, }")$shown"; fi
   SHOWN="$shown"; STAMP="${sha:0:7}"
   KIND=stale
   full="$(git -C "$root" rev-parse --verify -q "$sha^{commit}" 2>/dev/null)" || { LINE="stale $base exit=$CODE (unknown commit $sha)$shown"; return 0; }

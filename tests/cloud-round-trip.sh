@@ -121,6 +121,11 @@ sed -i.bak 's/^status: in_progress$/status: closed/' ".tickets/$id/ticket.md" &&
 printf 'graded-head: %s\n## Verdict\npass: all criteria met\n' "$(git rev-parse HEAD)" > ".tickets/$id/eval-report.md"
 printf 'cloud plan\n' > ".tickets/$id/plan.md"
 printf '\x00\x01binary\xff' > ".tickets/$id/evidence/report.json"
+# t-a83a: evidence stamped on another OS (twice), on this machine's, with a hostile line 3, and in a subfolder (not read)
+for n in a b; do printf 'HEAD 0 T\n$ true\n# on Plan9 4.0 mips; bash 5.2.0\nexit 0\n' > ".tickets/$id/evidence/plan9-$n.log"; done
+printf 'HEAD 0 T\n$ true\n# on %s; bash 3.2.57\nexit 0\n' "$(uname -srm)" > ".tickets/$id/evidence/here.log"
+printf 'HEAD 0 T\n$ true\n# on Evil\x1b[2J\x07 1.0 \xc2\x9b%s; bash 5\r\nexit 0\n' "$(head -c 3000 /dev/zero | tr '\0' x)" > ".tickets/$id/evidence/hostile.log"
+mkdir -p ".tickets/$id/evidence/old" && printf 'HEAD 0 T\n$ true\n# on Hidden 1 x; bash 5\nexit 0\n' > ".tickets/$id/evidence/old/hidden.log"
 printf '/tmp/x\n' > ".tickets/$id/.cockpit-cwd"
 st_before="$(git status --porcelain)"; idx_before="$(git ls-files -s | cksum)"
 # A public repo: refused, nothing pushed.
@@ -130,7 +135,7 @@ rc=0; out="$(STUB_VIS=PUBLIC "$TKT" export "$id" 2>&1)" || rc=$?
 out="$("$TKT" export "$id" 2>/dev/null)"
 assert_contains "$out" "pushed .tickets/$id/ to canon-results/$id"
 files="$(git --git-dir="$W/origin.git" ls-tree -r --name-only "canon-results/$id" | tr '\n' ' ')"
-assert_eq ".tickets/$id/acceptance.md .tickets/$id/eval-report.md .tickets/$id/evidence/report.json .tickets/$id/plan.md .tickets/$id/ticket.md " "$files"
+assert_eq ".tickets/$id/acceptance.md .tickets/$id/eval-report.md .tickets/$id/evidence/here.log .tickets/$id/evidence/hostile.log .tickets/$id/evidence/old/hidden.log .tickets/$id/evidence/plan9-a.log .tickets/$id/evidence/plan9-b.log .tickets/$id/evidence/report.json .tickets/$id/plan.md .tickets/$id/ticket.md " "$files"
 assert_eq "$st_before" "$(git status --porcelain)"
 assert_eq "$idx_before" "$(git ls-files -s | cksum)"
 
@@ -176,6 +181,14 @@ assert_grep "^runs: github$" ".tickets/$id/ticket.md"     # t-718b: the laptop's
 assert_contains "$out" "status: closed"
 assert_contains "$out" "evaluator: pass"
 assert_contains "$out" "matches graded-head"
+# t-a83a: one line per foreign OS, sanitized and capped; this machine's OS and subfolders say nothing
+assert_contains "$out" "  evidence ran on: Plan9 4.0 mips (this machine: $(uname -srm))"
+assert_eq 1 "$(printf '%s\n' "$out" | grep -c 'evidence ran on: Plan9')"
+assert_eq 2 "$(printf '%s\n' "$out" | grep -c 'evidence ran on: ')"
+hl="$(printf '%s\n' "$out" | grep 'evidence ran on: Evil')"
+[[ "$hl" != *[^A-Za-z0-9._\ /=:+,?\(\)-]* ]] || fail "import-results echoed a raw byte: $(printf '%q' "$hl")"
+[[ "$hl" == "  evidence ran on: Evil??2J? 1.0 ??xxx"* && ${#hl} -lt 160 ]] || fail "import-results did not sanitize or cap line 3: $(printf '%q' "$hl")"
+[[ "$out" != *Hidden* && "$out" != *"evidence ran on: $(uname -s) "* ]] || fail "import-results named a subfolder log or this machine's OS"
 # t-278d: the closing line names the re-grade triggers (advice only). Docs and non-Go tools: none; the board: its trigger.
 assert_contains "$out" "no re-grade needed"
 [[ -z "$(git --git-dir="$W/origin.git" branch --list "canon-results/$id")" ]] || fail "canon-results/$id was not deleted"

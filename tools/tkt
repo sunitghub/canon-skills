@@ -1635,6 +1635,24 @@ _regrade_line() {
   if [[ -n "$t" ]]; then echo "  re-grade needed on this Mac: $t"; else echo "  re-grade: no re-grade needed (tkt merge-pr, no rebase)"; fi
 }
 
+# _evidence_os_lines <ticket-dir> — t-a83a: one line per distinct OS named by an imported evidence log's line 3 (`# on <uname -srm>; …`,
+# written by evidence.sh stamp) whose kernel name differs from this machine's, since an OS-only failure would not show in that log.
+# The text comes from a pushed branch: only the allowlisted characters are printed, at most 80.
+_evidence_os_lines() {
+  local tdir="$1" f os here kern seen=$'\n'
+  here="$(uname -srm 2>/dev/null)" || here=unknown; kern="${here%% *}"
+  for f in "$tdir"/evidence/*.log; do
+    [[ -f "$f" && ! -L "$f" ]] || continue
+    os="$(head -c 1024 -- "$f" | LC_ALL=C tr -d '\000' | sed -n '3p' | tr -d '\r')" || os=""
+    [[ "$os" == '# on '* ]] || continue
+    os="${os#'# on '}"; os="${os%%;*}"; os="$(printf '%s' "${os:0:80}" | LC_ALL=C tr -c 'A-Za-z0-9._ /=:+,-' '?')"
+    [[ -n "$os" && "${os%% *}" != "$kern" && "$seen" != *$'\n'"$os"$'\n'* ]] || continue
+    seen+="$os"$'\n'
+    echo "  evidence ran on: $os (this machine: $here)"
+  done
+  return 0
+}
+
 # cmd_import_results <id> [--pr N] — t-554c: brings a cloud sprint's .tickets/<id>/ back from canon-results/<id>. Files
 # arrive byte-for-byte; a differing local file is kept in .before-import/; the close already happened in the cloud, so
 # this only reports it. The remote branch is deleted only after the files are written.
@@ -1687,6 +1705,7 @@ cmd_import_results() {
     elif [[ $rc == 0 ]]; then echo "  PR #$pr head $prh does NOT match graded-head ${graded:-none}: the evaluator graded other code" >&2; rc=1; fi
   fi
   _regrade_line "$root" "$tdir" "$pr" "$rc"   # t-278d: advises only; never changes rc
+  _evidence_os_lines "$tdir"                  # t-a83a: advises only; never changes rc
   if [[ "$rc" == 0 ]]; then
     git -C "$root" push -q origin --delete "canon-results/$id" 2>/dev/null || echo "  note: could not delete canon-results/$id on origin; delete it by hand" >&2
   else
