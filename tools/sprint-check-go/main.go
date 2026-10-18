@@ -226,7 +226,7 @@ func handleDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	if m := regexp.MustCompile(`^/api/projects/([0-9a-f]{12})$`).FindStringSubmatch(r.URL.Path); m != nil {
+	if m := apiProjectRe.FindStringSubmatch(r.URL.Path); m != nil {
 		sendJSON(w, registryRemove(m[1]))
 		return
 	}
@@ -381,7 +381,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, map[string]string{"version": canonVersion(), "commit": commit, "daemon": daemonVersion()})
 	case "/api/worktrees":
 		wtTicket := r.URL.Query().Get("ticket")
-		if !regexp.MustCompile(`^t-[a-z0-9]{4}$`).MatchString(wtTicket) {
+		if !ticketCommitIDRe.MatchString(wtTicket) {
 			wtTicket = ""
 		}
 		root, ok := effectiveRoot(r)
@@ -405,11 +405,11 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			sendJSON(w, ticketCommitPlan(tid, root))
 			return
 		}
-		if regexp.MustCompile(`^/meta/screenshots/[A-Za-z0-9_-]+\.(png|gif|jpg|jpeg|webp)$`).MatchString(path) {
+		if screenshotPathRe.MatchString(path) {
 			serveFile(w, filepath.Join(projectRoot, filepath.FromSlash(strings.TrimPrefix(path, "/"))), mime.TypeByExtension(filepath.Ext(path)))
 			return
 		}
-		if m := regexp.MustCompile(`^/api/commit/([0-9a-f]{4,40})$`).FindStringSubmatch(path); m != nil {
+		if m := apiCommitRe.FindStringSubmatch(path); m != nil {
 			root, ok := effectiveRoot(r)
 			if !ok {
 				http.Error(w, "unknown project", http.StatusBadRequest)
@@ -418,7 +418,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			sendJSON(w, loadCommit(m[1], root))
 			return
 		}
-		if m := regexp.MustCompile(`^/api/doc/(.+)$`).FindStringSubmatch(path); m != nil {
+		if m := apiDocRe.FindStringSubmatch(path); m != nil {
 			root, ok := effectiveRoot(r)
 			if !ok {
 				http.Error(w, "unknown project", http.StatusBadRequest)
@@ -432,7 +432,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			sendJSON(w, map[string]string{"content": content, "etag": etag})
 			return
 		}
-		if m := regexp.MustCompile(`^/api/ticket-image/(t-[a-z0-9]{4})/(.+)$`).FindStringSubmatch(path); m != nil {
+		if m := apiTicketImageRe.FindStringSubmatch(path); m != nil {
 			root, rok := effectiveRoot(r)
 			if !rok {
 				http.Error(w, "unknown project", http.StatusBadRequest)
@@ -447,7 +447,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			serveFile(w, p, mime.TypeByExtension(filepath.Ext(p)))
 			return
 		}
-		if m := regexp.MustCompile(`^/api/ticket-feature/(t-[a-z0-9]{4})/(.+)$`).FindStringSubmatch(path); m != nil {
+		if m := apiTicketFeatureRe.FindStringSubmatch(path); m != nil {
 			root, rok := effectiveRoot(r)
 			if !rok {
 				http.Error(w, "unknown project", http.StatusBadRequest)
@@ -467,7 +467,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			sendJSON(w, map[string]string{"content": string(data)})
 			return
 		}
-		if m := regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/github/(send-preview|merge-check|merge|status)$`).FindStringSubmatch(path); m != nil || path == "/api/github/sync-preview" {
+		if m := apiGitHubGetRe.FindStringSubmatch(path); m != nil || path == "/api/github/sync-preview" {
 			// t-d271: these run git and gh, so a page on another site must not fire them blind.
 			if !originOK(r.Header.Get("Origin")) || r.Header.Get("Sec-Fetch-Site") == "cross-site" {
 				http.Error(w, "forbidden", http.StatusForbidden)
@@ -499,7 +499,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
-		if m := regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/headless-run$`).FindStringSubmatch(path); m != nil {
+		if m := apiHeadlessRunRe.FindStringSubmatch(path); m != nil {
 			sendJSON(w, getHeadlessRunState(m[1]))
 			return
 		}
@@ -564,7 +564,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			sendJSON(w, getUpkeepReport(root, skill))
 			return
 		}
-		if m := regexp.MustCompile(`^/api/worktree-lock/(t-[a-z0-9]{4})$`).FindStringSubmatch(path); m != nil {
+		if m := apiWorktreeLockRe.FindStringSubmatch(path); m != nil {
 			root, ok := effectiveRoot(r)
 			if !ok {
 				http.Error(w, "unknown project", http.StatusBadRequest)
@@ -573,7 +573,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			sendJSON(w, worktreeLockStatus(m[1], root))
 			return
 		}
-		if m := regexp.MustCompile(`^/api/cockpit-docs/(t-[a-z0-9]{4})$`).FindStringSubmatch(path); m != nil {
+		if m := apiCockpitDocsRe.FindStringSubmatch(path); m != nil {
 			cwd := r.URL.Query().Get("cwd")
 			if cwd == "" {
 				http.Error(w, "cwd required", http.StatusBadRequest)
@@ -679,7 +679,7 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, registerSkill(eroot, skill))
 		return
 	}
-	if m := regexp.MustCompile(`^/api/ticket/([^/]+)/status$`).FindStringSubmatch(path); m != nil {
+	if m := apiTicketStatusRe.FindStringSubmatch(path); m != nil {
 		if handled, st, res := writeLiveTicket(m[1], "status", payload, eroot); handled { // t-8be2: a bound ticket's fields live in its worktree
 			sendJSONStatus(w, res, st)
 			return
@@ -687,7 +687,7 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, map[string]bool{"ok": writeStatus(m[1], fmt.Sprint(payload["status"]), eroot)})
 		return
 	}
-	if m := regexp.MustCompile(`^/api/ticket/([^/]+)/body$`).FindStringSubmatch(path); m != nil {
+	if m := apiTicketBodyRe.FindStringSubmatch(path); m != nil {
 		if handled, st, res := writeLiveTicket(m[1], "body", payload, eroot); handled {
 			sendJSONStatus(w, res, st)
 			return
@@ -695,11 +695,11 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, map[string]bool{"ok": writeBody(m[1], fmt.Sprint(payload["body"]), eroot)})
 		return
 	}
-	if m := regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/visual$`).FindStringSubmatch(path); m != nil {
+	if m := apiTicketVisualRe.FindStringSubmatch(path); m != nil {
 		sendJSON(w, writeVisual(m[1], stringValue(payload, "filename", ""), stringValue(payload, "data", ""), eroot))
 		return
 	}
-	if m := regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/demo$`).FindStringSubmatch(path); m != nil {
+	if m := apiTicketDemoRe.FindStringSubmatch(path); m != nil {
 		if handled, st, res := writeLiveTicket(m[1], "demo", payload, eroot); handled {
 			sendJSONStatus(w, res, st)
 			return
@@ -707,7 +707,7 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, map[string]bool{"ok": writeDemo(m[1], boolValue(payload["demo"]), eroot)})
 		return
 	}
-	if m := regexp.MustCompile(`^/api/doc/(.+)$`).FindStringSubmatch(path); m != nil {
+	if m := apiDocRe.FindStringSubmatch(path); m != nil {
 		doc := unescape(m[1])
 		if handled, st, res := writeLiveDoc(doc, payload, eroot); handled { // t-26f9: a bound ticket's docs are written in its worktree, guarded by base_hash
 			sendJSONStatus(w, res, st)
@@ -720,7 +720,7 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, runTkt(eroot, []string{"sync-issues"}))
 		return
 	}
-	if m := regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/github/(send|import|merge|merge-stop|take-back)$`).FindStringSubmatch(path); m != nil {
+	if m := apiGitHubPostRe.FindStringSubmatch(path); m != nil {
 		id := m[1]
 		// t-718b: a write changes the stage, so the next status call must not serve the cached one: dropped before
 		// (a stale hit) and after (a status read during the write cached the old stage).
@@ -762,7 +762,7 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, startMergeRun(eroot, id, pr))
 		return
 	}
-	if m := regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/headless-run$`).FindStringSubmatch(path); m != nil {
+	if m := apiHeadlessRunRe.FindStringSubmatch(path); m != nil {
 		baseRef := fmt.Sprint(payload["base_ref"])
 		if !baseRefRe.MatchString(baseRef) {
 			http.Error(w, "bad request", http.StatusBadRequest)
@@ -847,8 +847,8 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		sendJSONStatus(w, result, status)
 		return
 	}
-	if m := regexp.MustCompile(`^/api/worktree-unlock/([^/]+)$`).FindStringSubmatch(path); m != nil {
-		if !regexp.MustCompile(`^t-[a-z0-9]{4}$`).MatchString(m[1]) {
+	if m := apiWorktreeUnlockRe.FindStringSubmatch(path); m != nil {
+		if !ticketCommitIDRe.MatchString(m[1]) {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
@@ -932,10 +932,8 @@ func parseTicket(path string) (ticket, error) {
 		t["models_used"] = []string{}
 		if acc, err := os.ReadFile(filepath.Join(filepath.Dir(path), "acceptance.md")); err == nil {
 			accText := string(acc)
-			cb := regexp.MustCompile(`(?m)^\s*[-*]\s+\[[ xX]\]\s+\S`)
-			unchecked := regexp.MustCompile(`(?m)^\s*[-*]\s+\[ \]\s+\S`)
-			t["acceptance_has_items"] = cb.MatchString(section(accText, "Criteria")) && cb.MatchString(section(accText, "Test Plan"))
-			t["acceptance_unchecked"] = unchecked.MatchString(accText)
+			t["acceptance_has_items"] = checkboxItemRe.MatchString(section(accText, "Criteria")) && checkboxItemRe.MatchString(section(accText, "Test Plan"))
+			t["acceptance_unchecked"] = uncheckedItemRe.MatchString(accText)
 			t["models_used"] = modelsUsed(section(accText, "Wrapup Gates"))
 		}
 		t["plan_has_approach"] = nil
@@ -959,6 +957,75 @@ func parseTicket(path string) (ticket, error) {
 	}
 	t["docs"] = docs
 	return t, nil
+}
+
+// t-1699: /api/tickets (and every /api/doc, through liveForDocFull) re-read and re-parsed every ticket on each
+// poll, so board CPU grew with the number of tickets (1124 tickets: ~77 % mean under a spec run). A parse is reused
+// while the mtime and size of everything parseTicket reads are unchanged: ticket.md, acceptance.md, plan.md, and the
+// folder, whose mtime moves when a doc is added, removed or renamed (the docs list). A write that keeps both mtime
+// and size is missed until the next change.
+type ticketCacheEntry struct {
+	key string
+	t   ticket
+}
+
+var ticketCache sync.Map // ticket.md path -> ticketCacheEntry
+
+func ticketCacheKey(path string) (string, bool) {
+	dir := filepath.Dir(path)
+	var b strings.Builder
+	for i, f := range []string{path, dir, filepath.Join(dir, "acceptance.md"), filepath.Join(dir, "plan.md")} {
+		st, err := os.Stat(f)
+		if err != nil {
+			if i < 2 || !errors.Is(err, os.ErrNotExist) {
+				return "", false // the ticket or its folder is unreadable, or a doc errs: parse fresh, cache nothing
+			}
+			b.WriteString("-|")
+			continue
+		}
+		fmt.Fprintf(&b, "%d:%d|", st.ModTime().UnixNano(), st.Size())
+	}
+	return b.String(), true
+}
+
+// cloneTicket copies the top-level map: callers (loadTickets, the overlays) only set keys, never edit nested values.
+func cloneTicket(t ticket) ticket {
+	c := make(ticket, len(t)+4)
+	for k, v := range t {
+		c[k] = v
+	}
+	return c
+}
+
+func parseTicketCached(path string) (ticket, error) {
+	key, ok := ticketCacheKey(path)
+	if ok {
+		if e, hit := ticketCache.Load(path); hit && e.(ticketCacheEntry).key == key {
+			return cloneTicket(e.(ticketCacheEntry).t), nil
+		}
+	}
+	t, err := parseTicket(path)
+	if err != nil || !ok {
+		ticketCache.Delete(path)
+		return t, err
+	}
+	ticketCache.Store(path, ticketCacheEntry{key: key, t: cloneTicket(t)})
+	return t, nil
+}
+
+// evictTicketCache drops entries under td whose ticket is no longer listed (deleted or moved).
+func evictTicketCache(td string, listed []string) {
+	keep := make(map[string]bool, len(listed))
+	for _, p := range listed {
+		keep[p] = true
+	}
+	prefix := td + string(os.PathSeparator)
+	ticketCache.Range(func(k, _ any) bool {
+		if p := k.(string); strings.HasPrefix(p, prefix) && !keep[p] {
+			ticketCache.Delete(p)
+		}
+		return true
+	})
 }
 
 func ticketPaths(root string) []string {
@@ -988,7 +1055,7 @@ func ticketPaths(root string) []string {
 	files, _ := filepath.Glob(filepath.Join(td, "*.md"))
 	for _, f := range files {
 		stem := strings.TrimSuffix(filepath.Base(f), filepath.Ext(f))
-		if seen[stem] || regexp.MustCompile(`^.+-(blueprint|acceptance|plan|decisions|qa|notes)$`).MatchString(stem) {
+		if seen[stem] || docSuffixRe.MatchString(stem) {
 			continue
 		}
 		paths = append(paths, f)
@@ -1039,11 +1106,13 @@ func loadTickets(root string) []ticket {
 	// the frontend's renderHeader crashes on `null.filter(...)` when zero
 	// tickets exist, which aborts the whole board render (t-626d).
 	tickets := []ticket{}
-	for _, p := range ticketPaths(root) {
-		if t, err := parseTicket(p); err == nil {
+	paths := ticketPaths(root)
+	for _, p := range paths {
+		if t, err := parseTicketCached(p); err == nil {
 			tickets = append(tickets, t)
 		}
 	}
+	evictTicketCache(ticketsDirForRoot(root), paths)
 	outcomeStats := typeOutcomeStats(tickets)
 	for _, t := range tickets {
 		status, _ := t["status"].(string)
@@ -1084,7 +1153,7 @@ func loadHandoff(root string) map[string]any {
 	}
 	text := string(raw)
 	focus := ""
-	if m := regexp.MustCompile(`(?s)##\s+Current Focus\s*\n+(.+?)(?:\n##|\z)`).FindStringSubmatch(text); m != nil {
+	if m := currentFocusRe.FindStringSubmatch(text); m != nil {
 		lines := []string{}
 		for _, line := range strings.Split(strings.TrimSpace(m[1]), "\n") {
 			line = strings.TrimSpace(line)
@@ -1153,7 +1222,7 @@ func loadCommit(hash string, root string) map[string]any {
 	}
 	files := nonEmpty(strings.Split(runGitIn(root, "diff-tree", "--no-commit-id", "-r", "--name-only", hash), "\n"))
 	related := map[string]bool{}
-	for _, m := range regexp.MustCompile(`\b([A-Za-z]+-[a-z0-9]{3,})\b`).FindAllStringSubmatch(msg, -1) {
+	for _, m := range ticketRefGroupRe.FindAllStringSubmatch(msg, -1) {
 		related[m[1]] = true
 	}
 	for _, f := range files {
@@ -1240,7 +1309,7 @@ func loadWhy(file string, root string) map[string]any {
 	}
 	ids := []string{}
 	seen := map[string]bool{}
-	for _, m := range regexp.MustCompile(`\b[A-Za-z]+-[a-z0-9]{3,}\b`).FindAllString(subjects, -1) {
+	for _, m := range ticketRefRe.FindAllString(subjects, -1) {
 		if known[m] && !seen[m] {
 			ids = append(ids, m)
 			seen[m] = true
@@ -1324,7 +1393,7 @@ func capWithMore(items []string, maxN int) ([]string, int) {
 
 func writeStatus(id, status string, root string) bool {
 	ok := replaceTicket(id, root, func(text string) string {
-		return regexp.MustCompile(`(?m)^(status:\s*)(\S+)$`).ReplaceAllString(text, "${1}"+status)
+		return statusFieldRe.ReplaceAllString(text, "${1}"+status)
 	})
 	if ok {
 		updateActive(canonicalTicketID(id, root), status, root)
@@ -1763,7 +1832,7 @@ func legacyDocTarget(docFile string, root string) (string, bool) {
 	if filepath.Ext(safe) != ".md" {
 		return "", false
 	}
-	if m := regexp.MustCompile(`^([A-Za-z]+-[A-Za-z0-9]+)-(.+)\.md$`).FindStringSubmatch(safe); m != nil {
+	if m := ticketDocNameRe.FindStringSubmatch(safe); m != nil {
 		folderTicket := filepath.Join(td, m[1], "ticket.md")
 		if exists(folderTicket) {
 			return filepath.Join(td, m[1], m[2]+".md"), true
@@ -1772,12 +1841,57 @@ func legacyDocTarget(docFile string, root string) (string, bool) {
 	return filepath.Join(td, safe), true
 }
 
+// t-1699: compiled once at start-up, not on every request or ticket line.
+var (
+	apiProjectRe        = regexp.MustCompile(`^/api/projects/([0-9a-f]{12})$`)
+	screenshotPathRe    = regexp.MustCompile(`^/meta/screenshots/[A-Za-z0-9_-]+\.(png|gif|jpg|jpeg|webp)$`)
+	apiCommitRe         = regexp.MustCompile(`^/api/commit/([0-9a-f]{4,40})$`)
+	apiDocRe            = regexp.MustCompile(`^/api/doc/(.+)$`)
+	apiTicketImageRe    = regexp.MustCompile(`^/api/ticket-image/(t-[a-z0-9]{4})/(.+)$`)
+	apiTicketFeatureRe  = regexp.MustCompile(`^/api/ticket-feature/(t-[a-z0-9]{4})/(.+)$`)
+	apiGitHubGetRe      = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/github/(send-preview|merge-check|merge|status)$`)
+	apiHeadlessRunRe    = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/headless-run$`)
+	apiWorktreeLockRe   = regexp.MustCompile(`^/api/worktree-lock/(t-[a-z0-9]{4})$`)
+	apiCockpitDocsRe    = regexp.MustCompile(`^/api/cockpit-docs/(t-[a-z0-9]{4})$`)
+	apiTicketStatusRe   = regexp.MustCompile(`^/api/ticket/([^/]+)/status$`)
+	apiTicketBodyRe     = regexp.MustCompile(`^/api/ticket/([^/]+)/body$`)
+	apiTicketVisualRe   = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/visual$`)
+	apiTicketDemoRe     = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/demo$`)
+	apiGitHubPostRe     = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/github/(send|import|merge|merge-stop|take-back)$`)
+	apiWorktreeUnlockRe = regexp.MustCompile(`^/api/worktree-unlock/([^/]+)$`)
+	checkboxItemRe      = regexp.MustCompile(`(?m)^\s*[-*]\s+\[[ xX]\]\s+\S`)
+	uncheckedItemRe     = regexp.MustCompile(`(?m)^\s*[-*]\s+\[ \]\s+\S`)
+	docSuffixRe         = regexp.MustCompile(`^.+-(blueprint|acceptance|plan|decisions|qa|notes)$`)
+	currentFocusRe      = regexp.MustCompile(`(?s)##\s+Current Focus\s*\n+(.+?)(?:\n##|\z)`)
+	ticketRefGroupRe    = regexp.MustCompile(`\b([A-Za-z]+-[a-z0-9]{3,})\b`)
+	ticketRefRe         = regexp.MustCompile(`\b[A-Za-z]+-[a-z0-9]{3,}\b`)
+	statusFieldRe       = regexp.MustCompile(`(?m)^(status:\s*)(\S+)$`)
+	ticketDocNameRe     = regexp.MustCompile(`^([A-Za-z]+-[A-Za-z0-9]+)-(.+)\.md$`)
+	htmlCommentRe       = regexp.MustCompile(`(?s)<!--.*?-->`)
+	checkedItemRe       = regexp.MustCompile(`(?m)^\s*[-*]\s+\[[xX]\]\s+\S`)
+	decisionsSectionRe  = regexp.MustCompile(`(?ms)^##\s+Decisions\s*$([\s\S]*)`)
+	wordRe              = regexp.MustCompile(`[a-z]{4,}`)
+	pathSepRe           = regexp.MustCompile(`[\\/]+`)
+)
+
+// headingLineRes caches section()'s `^##\s+<heading>\s*$` per heading: callers pass a handful of constant headings.
+var headingLineRes sync.Map
+
+func headingLineRe(heading string) *regexp.Regexp {
+	if re, ok := headingLineRes.Load(heading); ok {
+		return re.(*regexp.Regexp)
+	}
+	re, _ := headingLineRes.LoadOrStore(heading, regexp.MustCompile(`^##\s+`+regexp.QuoteMeta(heading)+`\s*$`))
+	return re.(*regexp.Regexp)
+}
+
 func section(text, heading string) string {
 	lines := strings.Split(text, "\n")
 	active := false
 	var out []string
+	headingRe := headingLineRe(heading)
 	for _, line := range lines {
-		if regexp.MustCompile(`^##\s+` + regexp.QuoteMeta(heading) + `\s*$`).MatchString(line) {
+		if headingRe.MatchString(line) {
 			active = true
 			continue
 		}
@@ -1792,7 +1906,7 @@ func section(text, heading string) string {
 }
 
 func usefulText(text string) bool {
-	text = regexp.MustCompile(`(?s)<!--.*?-->`).ReplaceAllString(text, "")
+	text = htmlCommentRe.ReplaceAllString(text, "")
 	for _, line := range strings.Split(text, "\n") {
 		if strings.TrimSpace(line) != "" {
 			return true
@@ -1802,7 +1916,7 @@ func usefulText(text string) bool {
 }
 
 func sectionHasCheckedItem(text, heading string) bool {
-	return regexp.MustCompile(`(?m)^\s*[-*]\s+\[[xX]\]\s+\S`).MatchString(section(text, heading))
+	return checkedItemRe.MatchString(section(text, heading))
 }
 
 func modelsUsed(acceptanceText string) []string {
@@ -1840,7 +1954,7 @@ func planDecision(ticketPath string) string {
 	if err != nil {
 		return ""
 	}
-	m := regexp.MustCompile(`(?ms)^##\s+Decisions\s*$([\s\S]*)`).FindStringSubmatch(string(raw))
+	m := decisionsSectionRe.FindStringSubmatch(string(raw))
 	if m == nil {
 		return ""
 	}
@@ -1855,7 +1969,7 @@ func planDecision(ticketPath string) string {
 
 func keywordSet(text string, stop map[string]bool) map[string]bool {
 	words := map[string]bool{}
-	for _, word := range regexp.MustCompile(`[a-z]{4,}`).FindAllString(strings.ToLower(text), -1) {
+	for _, word := range wordRe.FindAllString(strings.ToLower(text), -1) {
 		if !stop[word] {
 			words[word] = true
 		}
@@ -5442,7 +5556,7 @@ var syncedMarkers = [][2]string{{"mobile documents", "iCloud Drive"}, {"cloudsto
 	{"dropbox", "Dropbox"}, {"onedrive", "OneDrive"}, {"google drive", "Google Drive"}, {"my drive", "Google Drive"}}
 
 func syncedService(path string) any {
-	for _, seg := range regexp.MustCompile(`[\\/]+`).Split(strings.ToLower(path), -1) {
+	for _, seg := range pathSepRe.Split(strings.ToLower(path), -1) {
 		for _, m := range syncedMarkers {
 			if strings.HasPrefix(seg, m[0]) {
 				return m[1]
