@@ -97,6 +97,19 @@ for bad in "--jobs 0" "--jobs x" "--jobs" "--jobs -1" "--jobs 5x"; do
   set +e; out="$(PATH="$WORK/bin" bash "$X/scripts/test.sh" $bad 2>&1)"; rc=$?; set -e
   assert_eq 2 "$rc"; assert_contains "$out" "test.sh: --jobs needs a positive number"
 done
+# t-b792: the suites named in LONGEST start first, whatever their place in list order; each still runs once and prints in list order
+L2="$WORK/longest"; runner_copy "$L2" tests/a.sh tests/b.sh tests/c.sh tests/canon-update.sh tests/sprint.sh
+mkdir -p "$L2/mark"
+for t in a b c; do printf 'echo %s >> "$MARK/order"; echo %s-out\n' "$t" "$t" > "$L2/tests/$t.sh"; done
+printf 'echo canon-update >> "$MARK/order"; sleep 1; echo cu-out\n' > "$L2/tests/canon-update.sh"
+printf 'echo sprint >> "$MARK/order"; sleep 1; echo sp-out\n' > "$L2/tests/sprint.sh"
+set +e; out="$(MARK="$L2/mark" PATH="$WORK/bin" bash "$L2/scripts/test.sh" --jobs 2 2>&1)"; rc=$?; set -e
+assert_eq 0 "$rc"
+first2="$(head -n 2 "$L2/mark/order" | sort | tr '\n' ' ')"
+assert_eq "canon-update sprint " "$first2"                                         # the two LONGEST suites started before a, b and c
+assert_eq 5 "$(wc -l < "$L2/mark/order" | tr -d ' ')"                              # every suite ran, once
+heads="$(printf '%s\n' "$out" | grep '^==> tests/' | tr '\n' ' ')"
+assert_eq "==> tests/a.sh ==> tests/b.sh ==> tests/c.sh ==> tests/canon-update.sh ==> tests/sprint.sh " "$heads"   # printed in list order
 # SERIAL: a listed suite runs alone after the batch; the others mark themselves running while they run
 Z="$WORK/ser"; runner_copy "$Z" tests/p1.sh tests/s.sh tests/p2.sh tests/p3.sh
 awk '/^SERIAL=\(/{print "SERIAL=(tests/s.sh)"; f=1} f{if (/^\)/) f=0; next} {print}' "$Z/scripts/test.sh" > "$Z/t" && mv "$Z/t" "$Z/scripts/test.sh"

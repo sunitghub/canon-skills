@@ -225,8 +225,14 @@ SERIAL=(   # --list labels that share state with another suite, each with its re
   tests/sprint-check-skill-eval-go.sh
   tests/skill-eval-parity.sh
 )
+# Suites started first (t-b792): xargs starts the batch in file order, so a slow suite that sits late in list order starts late and sets the
+# wall time (test-sh-runner.sh was 53rd and started about a minute in). Longest first, from the `== slowest 10` block of a full run; a stale
+# entry costs speed only. Printing, --list and the exit code stay in list order.
+LONGEST=(tests/test-sh-runner.sh tools/cockpit-daemon tests/canon-update.sh tests/sprint-check-live-docs.sh tests/canon-uninstall.sh
+  tests/sprint.sh tests/evidence.sh)
 run_parallel() {
-  local i n s w t
+  local i n s w t hit
+  local -a B=()
   PLAN=1; run_all; PLAN=0
   t="${TMPDIR:-/tmp}"   # macOS's TMPDIR ends in "/": a "//" in a suite's TMPDIR breaks Go tests that string-compare t.TempDir() paths
   RUN="$(mktemp -d "${t%/}/test-sh-run.XXXXXX")"; mkdir -p "$RUN/jobs" "$RUN/tmp"
@@ -243,7 +249,14 @@ WORKER
     [[ "${KINDS[$i]}" == suite ]] || continue
     printf '%s' "${CMDS[$i]}" > "$RUN/jobs/$i.cmd"
     s=0; for w in "${SERIAL[@]:-}"; do if [[ "$w" == "${LABELS[$i]}" ]]; then s=1; fi; done
-    if (( s )); then echo "$i" >> "$RUN/serial"; else echo "$i" >> "$RUN/batch"; fi
+    if (( s )); then echo "$i" >> "$RUN/serial"; else B+=("$i"); fi
+  done
+  for w in "${LONGEST[@]}"; do
+    for i in ${B[@]+"${B[@]}"}; do if [[ "${LABELS[$i]}" == "$w" ]]; then echo "$i" >> "$RUN/batch"; fi; done
+  done
+  for i in ${B[@]+"${B[@]}"}; do
+    hit=0; for w in "${LONGEST[@]}"; do if [[ "${LABELS[$i]}" == "$w" ]]; then hit=1; fi; done
+    if (( ! hit )); then echo "$i" >> "$RUN/batch"; fi
   done
   set -m   # the batch gets its own process group, so stop_workers can stop every process a suite started, not only the workers
   xargs -P "$JOBS" -n 1 bash "$RUN/worker.sh" < "$RUN/batch" &
