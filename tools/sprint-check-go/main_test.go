@@ -1701,6 +1701,7 @@ func TestSectionMatchesOld(t *testing.T) {
 		"##Criteria\n- no space after ##\n## Criteria extra\n- longer heading\n",
 		"## a.b*c (x)\nmeta\n## Approach\n\n<!-- c -->\nbody\n",
 		"", "## Wrapup Gates\n| g | ran |\n### sub\nstill in\n## Next\n",
+		"text ## Criteria\n- [ ] mid-line heading is not a heading\n## Criteria\n- [x] real\n",
 	}
 	headings := []string{"Criteria", "Test Plan", "Sign-off", "Approach", "Wrapup Gates", "a.b*c (x)", "Criteria extra", "Missing"}
 	for _, txt := range texts {
@@ -1806,6 +1807,54 @@ func TestTicketCacheSeesEdits(t *testing.T) {
 	}
 	if _, hit := ticketCache.Load(tm); hit {
 		t.Fatal("deleted ticket's cache entry was not evicted")
+	}
+	// every deleted ticket is evicted, not only the first one the scan meets
+	var gone []string
+	for _, id := range []string{"t-c1b1", "t-c1b2", "t-c1b3"} {
+		p := filepath.Join(ticketsDir, id, "ticket.md")
+		writeFile(t, p, "---\nid: "+id+"\nstatus: open\n---\n# E\n")
+		gone = append(gone, p)
+	}
+	cacheTicket(t, root, "t-c1b1")
+	for _, p := range gone {
+		if err := os.RemoveAll(filepath.Dir(p)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cacheTicket(t, root, "t-c1b1")
+	for _, p := range gone {
+		if _, hit := ticketCache.Load(p); hit {
+			t.Fatalf("deleted ticket %s was not evicted", p)
+		}
+	}
+}
+
+// A ticket that stats but cannot be read is skipped, never listed as an empty ticket, and is read again once readable.
+func TestTicketCacheUnreadableTicket(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a 0000 file; this test needs a normal user")
+	}
+	root := setupTestProject(t)
+	tm := filepath.Join(ticketsDir, "t-c3c3", "ticket.md")
+	writeFile(t, tm, "---\nid: t-c3c3\nstatus: open\n---\n# Readable\n")
+	if tk := cacheTicket(t, root, "t-c3c3"); tk == nil {
+		t.Fatal("ticket not listed while readable")
+	}
+	writeFile(t, tm, "---\nid: t-c3c3\nstatus: open\n---\n# Locked out\n")
+	if err := os.Chmod(tm, 0); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(tm, 0o644)
+	for _, tk := range loadTickets(root) {
+		if tk == nil || tk["id"] == "t-c3c3" {
+			t.Fatalf("an unreadable ticket was listed: %v", tk)
+		}
+	}
+	if err := os.Chmod(tm, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if tk := cacheTicket(t, root, "t-c3c3"); tk == nil || tk["title"] != "Locked out" {
+		t.Fatalf("ticket not read again once readable: %v", tk)
 	}
 }
 
