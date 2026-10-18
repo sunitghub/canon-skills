@@ -2,7 +2,7 @@
 # run-board-spec — t-4469: run the full board Playwright spec (tests/sprint-check-app.spec.js) the one reproducible way.
 #
 #   tests/run-board-spec.sh [--runs N] [--browsers chromium,webkit] [--out DIR] [--grep PATTERN] [--strict] [--no-guard] [--keep]
-#                           [--classify [--solo-runs N] [--base REF]] [--parallel N]
+#                           [--classify [--solo-runs N] [--base REF]]
 #
 # Why a copy: the spec writes and deletes tickets under its project root, so it must never run against canon's own
 # tree. Why not an empty repo: several tests expect a populated board, and the timing differs from real use (an empty
@@ -14,11 +14,6 @@
 # then print each one's error kind, its solo counts and, only for a load timeout that passed every solo run on both, a
 # baseline entry to paste by hand (tests/board-spec-classify.js). The exit status stays the guard's; the baseline is
 # never written.
-# --parallel N (t-2992, default 1 = the serial loop, unchanged): run the (browser, run) passes N at a time. Each of the min(N, passes)
-# slots gets its own copy of the tree, its own board and port and its own SPRINT_CHECK_TEST_ROOT, and runs its share of the passes one
-# after another, so tests that write and delete tickets cannot collide across slots. The reports, their names, the guard, the
-# tree-unchanged and leaked-process checks (every copy's board by recorded PID) and the sha256 lines are the same as serial.
-# Not with --classify. Load matters: stamp it only after a measurement shows no new WebKit flakes (t-5989).
 # Every run records the machine's load at start and end in $OUT/machine-load.txt and prints a WARNING when another spec or test.sh
 # run is going or the load exceeds the CPU count: WebKit fails timing-sensitive tests under load (t-5989).
 # Needs: rsync, go, node, npx (Playwright browsers installed), git, curl, python3. macOS/Linux; ~13-18 min per browser per run
@@ -26,7 +21,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-RUNS=3; BROWSERS="chromium,webkit"; OUT=""; GREP=""; STRICT=""; GUARD=1; KEEP=0; CLASSIFY=0; SOLO_RUNS=3; BASE=""; PARALLEL=1
+RUNS=3; BROWSERS="chromium,webkit"; OUT=""; GREP=""; STRICT=""; GUARD=1; KEEP=0; CLASSIFY=0; SOLO_RUNS=3; BASE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --runs) RUNS="$2"; shift 2 ;;
@@ -39,15 +34,12 @@ while [ $# -gt 0 ]; do
     --classify) CLASSIFY=1; shift ;;
     --solo-runs) SOLO_RUNS="$2"; shift 2 ;;
     --base) BASE="$2"; shift 2 ;;
-    --parallel) PARALLEL="$2"; shift 2 ;;
-    -h|--help) sed -n '2,25p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    -h|--help) sed -n '2,20p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "run-board-spec: unknown option $1" >&2; exit 2 ;;
   esac
 done
 case "$RUNS" in ''|*[!0-9]*|0) echo "run-board-spec: --runs needs a positive number" >&2; exit 2 ;; esac
 case "$SOLO_RUNS" in ''|*[!0-9]*|0) echo "run-board-spec: --solo-runs needs a positive number" >&2; exit 2 ;; esac
-case "$PARALLEL" in ''|*[!0-9]*|0) echo "run-board-spec: --parallel needs a positive number" >&2; exit 2 ;; esac
-if [ "$PARALLEL" -gt 1 ] && [ "$CLASSIFY" = 1 ]; then echo "run-board-spec: --parallel cannot be combined with --classify" >&2; exit 2; fi
 if [ -n "$BASE" ] && [ "$CLASSIFY" = 0 ]; then echo "run-board-spec: --base needs --classify" >&2; exit 2; fi
 if [ "$CLASSIFY" = 1 ] && [ "$GUARD" = 0 ]; then echo "run-board-spec: --classify needs the guard (drop --no-guard)" >&2; exit 2; fi
 for tool in rsync go node npx git curl python3; do
@@ -67,7 +59,6 @@ COPY="$(cd "$COPY" && pwd -P)"
 source "$ROOT/tests/machine-load.sh"
 machine_load start "$OUT/machine-load.txt" "$$"
 BOARD_PID=""; BASE_COPY=""; BASE_PID=""; BASE_PORT=""
-XCOPY=(); XPID=(); XPORT=()   # --parallel: the extra slots' copies, boards and ports (slot 0 is $COPY/$BOARD_PID/$PORT)
 
 stop_pid() {
   if [ -n "$1" ]; then
@@ -76,13 +67,11 @@ stop_pid() {
   fi
 }
 cleanup() {
-  local pid d
   stop_pid "$BOARD_PID"
   stop_pid "$BASE_PID"
-  for pid in ${XPID[@]+"${XPID[@]}"}; do stop_pid "$pid"; done
   # Only ever remove the directories this script made, and only under their own names.
   if [ "$KEEP" = 0 ]; then
-    for d in "$COPY" "$BASE_COPY" ${XCOPY[@]+"${XCOPY[@]}"}; do
+    for d in "$COPY" "$BASE_COPY"; do
       if [ -n "$d" ] && [ "$d" != "$ROOT" ]; then
         case "$d" in */board-spec-copy.*|*/board-spec-base.*) rm -rf -- "$d" ;; esac
       fi
@@ -126,66 +115,33 @@ wait_board "$PORT"
 echo "run-board-spec: board from the copy on port $PORT; $RUNS run(s) of: $BROWSERS; reports go to $OUT"
 
 IFS=',' read -r -a BLIST <<< "$BROWSERS"
-run_pass() { # copy port browser run
-  local report="$OUT/board-spec-$3-run$4.json"
-  echo "run-board-spec: $3 run $4/$RUNS"
-  (cd "$1" && PLAYWRIGHT_JSON_OUTPUT_NAME="$report" SPRINT_CHECK_BASE="http://127.0.0.1:$2" SPRINT_CHECK_TEST_ROOT="$1" \
-    npx playwright test tests/sprint-check-app.spec.js --browser="$3" --reporter=json,line ${GREP:+--grep "$GREP"} >"$OUT/board-spec-$3-run$4.log" 2>&1) || true
-  [ -s "$report" ]
-}
-if [ "$PARALLEL" = 1 ]; then
-  for b in "${BLIST[@]}"; do
-    for n in $(seq 1 "$RUNS"); do
-      run_pass "$COPY" "$PORT" "$b" "$n" || { echo "run-board-spec: no JSON report for $b run $n (see $OUT/board-spec-$b-run$n.log)" >&2; exit 2; }
-    done
+for b in "${BLIST[@]}"; do
+  for n in $(seq 1 "$RUNS"); do
+    report="$OUT/board-spec-$b-run$n.json"
+    echo "run-board-spec: $b run $n/$RUNS"
+    (cd "$COPY" && PLAYWRIGHT_JSON_OUTPUT_NAME="$report" SPRINT_CHECK_BASE="http://127.0.0.1:$PORT" SPRINT_CHECK_TEST_ROOT="$COPY" \
+      npx playwright test tests/sprint-check-app.spec.js --browser="$b" --reporter=json,line ${GREP:+--grep "$GREP"} >"$OUT/board-spec-$b-run$n.log" 2>&1) || true
+    [ -s "$report" ] || { echo "run-board-spec: no JSON report for $b run $n (see $OUT/board-spec-$b-run$n.log)" >&2; exit 2; }
   done
-else
-  PASSES=()
-  for b in "${BLIST[@]}"; do for n in $(seq 1 "$RUNS"); do PASSES+=("$b:$n"); done; done
-  SLOTS=$PARALLEL; [ "$SLOTS" -le "${#PASSES[@]}" ] || SLOTS=${#PASSES[@]}
-  SCOPY=("$COPY"); SPORT=("$PORT")
-  for ((i = 1; i < SLOTS; i++)); do
-    c="$(mktemp -d "$TMP/board-spec-copy.XXXXXX")"; c="$(cd "$c" && pwd -P)"; XCOPY+=("$c")
-    echo "run-board-spec: slot $i: copying the working tree (incl. .tickets) to $c"
-    rsync -a --exclude node_modules --exclude test-results --exclude playwright-report "$ROOT/" "$c/"
-    ln -s "$ROOT/node_modules" "$c/node_modules"
-    start_board "$c"; XPID+=("$STARTED_PID"); XPORT+=("$STARTED_PORT")
-    wait_board "$STARTED_PORT"
-    SCOPY+=("$c"); SPORT+=("$STARTED_PORT")
-  done
-  echo "run-board-spec: --parallel $PARALLEL: ${#PASSES[@]} pass(es) over $SLOTS slot(s)"
-  SPIDS=()
-  for ((s = 0; s < SLOTS; s++)); do
-    (
-      for ((i = s; i < ${#PASSES[@]}; i += SLOTS)); do
-        pb="${PASSES[$i]%%:*}"; pn="${PASSES[$i]##*:}"
-        run_pass "${SCOPY[$s]}" "${SPORT[$s]}" "$pb" "$pn" || { echo "run-board-spec: no JSON report for $pb run $pn (see $OUT/board-spec-$pb-run$pn.log)" >&2; exit 2; }
-      done
-    ) &
-    SPIDS+=("$!")
-  done
-  SLOT_FAIL=0
-  for pid in "${SPIDS[@]}"; do wait "$pid" || SLOT_FAIL=1; done
-  [ "$SLOT_FAIL" = 0 ] || exit 2
-fi
+done
 
 # Stop the boards, then prove nothing of ours is left and canon's own tree did not move. Sets STATUS to 2 on a problem.
 stop_and_check() {
   local pid
-  for pid in "$BOARD_PID" "$BASE_PID" ${XPID[@]+"${XPID[@]}"}; do
+  for pid in "$BOARD_PID" "$BASE_PID"; do
     [ -n "$pid" ] || continue
     stop_pid "$pid"
     wait "$pid" 2>/dev/null || true
   done
-  BOARD_PID=""; BASE_PID=""; XPID=()
+  BOARD_PID=""; BASE_PID=""
   sleep 1
   local d p left="" listen
-  for d in "$COPY" "$BASE_COPY" ${XCOPY[@]+"${XCOPY[@]}"}; do
+  for d in "$COPY" "$BASE_COPY"; do
     [ -n "$d" ] || continue
     left="$left"$'\n'"$(ps -axo pid,command | grep -F "$d" | grep -v grep | grep -v "run-board-spec" || true)"
   done
   if command -v lsof >/dev/null 2>&1; then
-    for p in "$PORT" "$BASE_PORT" ${XPORT[@]+"${XPORT[@]}"}; do
+    for p in "$PORT" "$BASE_PORT"; do
       [ -n "$p" ] || continue
       listen="$(lsof -nP -iTCP:"$p" -sTCP:LISTEN -t 2>/dev/null || true)"
       [ -z "$listen" ] || left="$left"$'\n'"listener on port $p: pid $listen"
