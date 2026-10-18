@@ -913,6 +913,39 @@
       "failed_runs": {
         "webkit": "1/1 full run, 0/6 solo"
       }
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > a Demo toggle on a bound ticket keeps the page current, so the next Description save is not stale (t-8be2)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-1699",
+      "reason": "timing flake: failed in a t-1699 full two-browser stamp started at load 5.27, passed 5/5 run alone on the branch (classify on branch + base, then 4 runs); .tickets/t-1699/evidence/classify/classify-final-webkit.log; fully stubbed in the browser (page.route serves /api/tickets, /api/doc and the POSTs), so the board server's data path is not involved",
+      "failed_runs": {
+        "webkit": "1/1 full run, 0/5 solo"
+      }
+    },
+    {
+      "title": "Canon Cockpit Admin > Model Tiers editing (t-294b) > picking a default model saves it at once (t-783a)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-1699",
+      "reason": "timing flake: failed in a t-1699 full two-browser stamp started at load 5.27, passed 5/5 run alone on the branch (classify on branch + base, then 4 runs); .tickets/t-1699/evidence/classify/classify-final-webkit.log",
+      "failed_runs": {
+        "webkit": "1/1 full run, 0/5 solo"
+      }
+    },
+    {
+      "title": "ticket modal editor (t-a205) > the image button uploads the chosen file and inserts its markdown at the caret; a failed upload says so",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-1699",
+      "reason": "timing flake: failed in a t-1699 full two-browser stamp started at load 5.27, passed 5/5 run alone on the branch (classify on branch + base, then 4 runs); .tickets/t-1699/evidence/classify/classify-final-webkit.log",
+      "failed_runs": {
+        "webkit": "1/1 full run, 0/5 solo"
+      }
     }
   ],
   "skipped": []
