@@ -1455,11 +1455,11 @@ cmd_merge_pr() {
     _merge_pr_run_tests "$tmp" "$tcmd" "$base" "$pr" \
       || {
         # t-6b90: name the failing suites and keep the full log ($tmp is removed on exit); the tail alone is a timings table.
-        local kept="${TMPDIR:-/tmp}/tkt-merge-$id-pr$pr.log" failing
+        local kept failing
         echo "merge-pr: $tcmd failed on $base + PR #$pr; not merging." >&2
         failing="$(grep -E '^(FAILED|FAIL)' "$tmp/test.log" | head -20 || true)"
         [[ -z "$failing" ]] || printf 'Failing:\n%s\n' "$failing" >&2
-        if cp "$tmp/test.log" "$kept" 2>/dev/null; then echo "Full log kept at: $kept" >&2; fi
+        if kept="$(mktemp "${TMPDIR:-/tmp}/tkt-merge-$id-pr$pr.XXXXXX")" && cat "$tmp/test.log" > "$kept"; then echo "Full log kept at: $kept" >&2; fi
         echo "Last lines:" >&2; tail -30 "$tmp/test.log" >&2; exit 1; }
   fi
   # From /, never a checkout: --delete-branch then touches only the branch on GitHub.
