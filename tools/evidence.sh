@@ -125,8 +125,8 @@ classify_one() {
   sha="${BASH_REMATCH[1]}"; when="${BASH_REMATCH[2]}"
   cmdline="$(head -c 512 -- "$f" | LC_ALL=C tr -d '\000' | sed -n '2p' | tr -d '\r')" || cmdline=""
   shown=""; if [[ "$cmdline" == '$ '* ]]; then shown=" cmd: $(safe "${cmdline:2:120}")"; fi
-  osline="$(head -c 1024 -- "$f" | LC_ALL=C tr -d '\000' | sed -n '3p' | tr -d '\r')" || osline=""   # t-a83a; an old log has none
-  if [[ "$osline" == '# on '* ]]; then osline="${osline:5:80}"; shown=" on: $(safe "${osline//; /, }")$shown"; fi
+  osline="$(head -c 16384 -- "$f" | LC_ALL=C tr -d '\000' | sed -n '3p' | tr -d '\r')" || osline=""   # t-a83a; an old log has none. Bound as line2_of: a long line 2 must not cut it
+  if [[ "$osline" == '# on '* && "${osline:5}" =~ [^[:space:]] ]]; then osline="${osline:5:80}"; shown=" on: $(safe "${osline//; /, }")$shown"; fi
   SHOWN="$shown"; STAMP="${sha:0:7}"
   KIND=stale
   full="$(git -C "$root" rev-parse --verify -q "$sha^{commit}" 2>/dev/null)" || { LINE="stale $base exit=$CODE (unknown commit $sha)$shown"; return 0; }

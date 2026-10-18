@@ -1643,10 +1643,10 @@ _evidence_os_lines() {
   here="$(uname -srm 2>/dev/null)" || here=unknown; kern="${here%% *}"
   for f in "$tdir"/evidence/*.log; do
     [[ -f "$f" && ! -L "$f" ]] || continue
-    os="$(head -c 1024 -- "$f" | LC_ALL=C tr -d '\000' | sed -n '3p' | tr -d '\r')" || os=""
+    os="$(head -c 16384 -- "$f" | LC_ALL=C tr -d '\000' | sed -n '3p' | tr -d '\r')" || os=""   # as evidence.sh: a long line 2 must not cut line 3
     [[ "$os" == '# on '* ]] || continue
     os="${os#'# on '}"; os="${os%%;*}"; os="$(printf '%s' "${os:0:80}" | LC_ALL=C tr -c 'A-Za-z0-9._ /=:+,-' '?')"
-    [[ -n "$os" && "${os%% *}" != "$kern" && "$seen" != *$'\n'"$os"$'\n'* ]] || continue
+    [[ "$os" =~ [^[:space:]] && "${os%% *}" != "$kern" && "$seen" != *$'\n'"$os"$'\n'* ]] || continue
     seen+="$os"$'\n'
     echo "  evidence ran on: $os (this machine: $here)"
   done

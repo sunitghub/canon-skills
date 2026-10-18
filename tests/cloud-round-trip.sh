@@ -124,7 +124,8 @@ printf '\x00\x01binary\xff' > ".tickets/$id/evidence/report.json"
 # t-a83a: evidence stamped on another OS (twice), on this machine's, with a hostile line 3, and in a subfolder (not read)
 for n in 1 2; do printf 'HEAD 0 T\n$ true\n# on Plan9 4.0 mips; bash 5.2.0\nexit 0\n' > ".tickets/$id/evidence/a$n.log"; done   # sorted first, so a dedupe that sees only the latest OS fails
 printf 'HEAD 0 T\n$ true\nPlan8 output on line 3\nexit 0\n' > ".tickets/$id/evidence/oldfmt.log"   # an older log: line 3 is output, never an OS
-printf 'HEAD 0 T\n$ true\n# on \nexit 0\n' > ".tickets/$id/evidence/empty.log"
+printf 'HEAD 0 T\n$ true\n# on    ; bash 5\nexit 0\n' > ".tickets/$id/evidence/empty.log"   # blank OS: no note
+printf 'HEAD 0 T\n$ %s\n# on Haiku R1 x86; bash 5\nexit 0\n' "$(head -c 3000 /dev/zero | tr '\0' y)" > ".tickets/$id/evidence/longcmd.log"   # line 3 read past a long line 2
 printf 'HEAD 0 T\n$ true\n# on %s; bash 3.2.57\nexit 0\n' "$(uname -srm)" > ".tickets/$id/evidence/here.log"
 printf 'HEAD 0 T\n$ true\n# on Evil\x1b[2J\x07 1.0 \xc2\x9b%s; bash 5\r\nexit 0\n' "$(head -c 3000 /dev/zero | tr '\0' x)" > ".tickets/$id/evidence/hostile.log"
 mkdir -p ".tickets/$id/evidence/old" && printf 'HEAD 0 T\n$ true\n# on Hidden 1 x; bash 5\nexit 0\n' > ".tickets/$id/evidence/old/hidden.log"
@@ -137,7 +138,7 @@ rc=0; out="$(STUB_VIS=PUBLIC "$TKT" export "$id" 2>&1)" || rc=$?
 out="$("$TKT" export "$id" 2>/dev/null)"
 assert_contains "$out" "pushed .tickets/$id/ to canon-results/$id"
 files="$(git --git-dir="$W/origin.git" ls-tree -r --name-only "canon-results/$id" | tr '\n' ' ')"
-assert_eq ".tickets/$id/acceptance.md .tickets/$id/eval-report.md .tickets/$id/evidence/a1.log .tickets/$id/evidence/a2.log .tickets/$id/evidence/empty.log .tickets/$id/evidence/here.log .tickets/$id/evidence/hostile.log .tickets/$id/evidence/old/hidden.log .tickets/$id/evidence/oldfmt.log .tickets/$id/evidence/report.json .tickets/$id/plan.md .tickets/$id/ticket.md " "$files"
+assert_eq ".tickets/$id/acceptance.md .tickets/$id/eval-report.md .tickets/$id/evidence/a1.log .tickets/$id/evidence/a2.log .tickets/$id/evidence/empty.log .tickets/$id/evidence/here.log .tickets/$id/evidence/hostile.log .tickets/$id/evidence/longcmd.log .tickets/$id/evidence/old/hidden.log .tickets/$id/evidence/oldfmt.log .tickets/$id/evidence/report.json .tickets/$id/plan.md .tickets/$id/ticket.md " "$files"
 assert_eq "$st_before" "$(git status --porcelain)"
 assert_eq "$idx_before" "$(git ls-files -s | cksum)"
 
@@ -188,7 +189,7 @@ assert_contains "$out" "matches graded-head"
 # t-a83a: one line per foreign OS, sanitized and capped; this machine's OS and subfolders say nothing
 assert_contains "$out" "  evidence ran on: Plan9 4.0 mips (this machine: $(uname -srm))"
 assert_eq 1 "$(printf '%s\n' "$out" | grep -c 'evidence ran on: Plan9')"
-assert_eq 2 "$(printf '%s\n' "$out" | grep -c 'evidence ran on: ')"
+assert_eq 3 "$(printf '%s\n' "$out" | grep -c 'evidence ran on: ')"; assert_contains "$out" "  evidence ran on: Haiku R1 x86 (this machine: "
 hl="$(printf '%s\n' "$out" | grep 'evidence ran on: Evil')"
 [[ "$hl" != *[^A-Za-z0-9._\ /=:+,?\(\)-]* ]] || fail "import-results echoed a raw byte: $(printf '%q' "$hl")"
 [[ "$hl" == "  evidence ran on: Evil??2J? 1.0 ??xxx"* && ${#hl} -lt 160 ]] || fail "import-results did not sanitize or cap line 3: $(printf '%q' "$hl")"

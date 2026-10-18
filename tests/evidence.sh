@@ -135,6 +135,11 @@ for l3 in '# on Linux\x1b[31m 6.8\x07; bash 5' '# on Linux 6.8 x86_64; bash 5.2.
   [[ "$out" != *[^A-Za-z0-9._\ /=:+,\\?\(\)-]* ]] || fail "evidence: hostile line 3 leaked a byte: $(printf '%q' "$out")"
   [[ ${#out} -lt 260 ]] || fail "evidence: line 3 was not capped: ${#out} chars"
 done
+for l3 in '# on ' '# on    '; do   # review: an empty OS shows nothing, as in import-results
+  put h.log "HEAD $C1 $T\n\$ true\n$l3\nexit 0\n"; ev check "$ID"; [[ "$out" != *" on: "* ]] || fail "evidence: an empty # on line was shown: $out"
+done
+longcmd="$(head -c 3000 /dev/zero | tr '\0' y)"   # review: line 3 is read past a long line 2 (same bound as line2_of)
+put h.log "HEAD $C1 $T\n\$ $longcmd\n# on Linux 6.8 x86_64; bash 5.2.37\nexit 0\n"; ev check "$ID"; assert_contains "$out" " on: Linux 6.8 x86_64, bash 5.2.37 cmd: yyy"
 put h.log "HEAD $C1 $T\n\$ true\n# onion\nexit 0\n"; ev check "$ID"; [[ "$out" != *" on: "* ]] || fail "evidence: a line 3 not starting \`# on \` was shown: $out"
 put h.log "HEAD $C1 $T\n\$ true\n# on Linux 6.8 x86_64; bash 5.2.0\r\nexit 0\n"; ev check "$ID"
 assert_contains "$out" ") on: Linux 6.8 x86_64, bash 5.2.0 cmd: true"
