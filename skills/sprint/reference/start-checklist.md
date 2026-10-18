@@ -33,6 +33,8 @@ names for a case that applies.
      `evidence.sh stamp <id> <name> -- <command>` on a clean tracked tree.
 7. **plan.md:** `## Approach` (lean, re-read after every compaction), `## Files`, `## Decisions` (answer
    each ticket open question or write `carried forward: <question>`), and the tier with a one-line reason.
+   Name the `standards/efficiency-notes.md` sections this ticket touches and read only those; name the number
+   it moves and its target, or say why there is none.
 8. **Perspective check:** one question each as user, security and architect; put any concern in the brief.
 9. **Brief:** one-sentence goal; tier and reason; every applicable DECISIONS entry, conflicts called out;
    files; impact or "normal tier — no high-risk triggers found"; human checkpoint; criteria and Test Plan
