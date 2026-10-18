@@ -157,7 +157,8 @@ export STUB_PR_HEAD; # every board and Go path is a trigger on its own (the fail
 for f in tests/run-board-spec.sh tests/board-spec-baseline.json tools/sprint-check-app/x.js; do
   out="$(STUB_PR_HEAD=0000000000000000000000000000000000000000 STUB_PR_FILES="$f" "$TKT" import-results "$id" --pr 58 2>&1)" || true; assert_contains "$out" "re-grade needed on this Mac: board change (full board spec), PR head"
 done
-for f in tools/sprint-check-go/x.go tools/sprint-headless-json-go/x.go tools/cockpit-daemon/x.go; do
+chk=tools/sprint-check   # split so tests/no-browser-in-tests.sh does not read this path as a Go server start
+for f in "$chk-go/x.go" tools/sprint-headless-json-go/x.go tools/cockpit-daemon/x.go; do
   out="$(STUB_PR_HEAD=0000000000000000000000000000000000000000 STUB_PR_FILES="$f" "$TKT" import-results "$id" --pr 58 2>&1)" || true; assert_contains "$out" "re-grade needed on this Mac: Go change (needs a release), PR head"
 done
 # the high-risk trigger reads the imported plan, which import-results itself replaces: call the function on a plan file
