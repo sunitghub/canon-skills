@@ -53,7 +53,7 @@ assert_grep '"agent_id":"plain1","agent_type":"reviewer","transcript_path":""}$'
 
 # ── A bad cost value fails loudly and writes nothing ─────────────────────────
 rows_before="$(wc -l < "$log")"
-for bad in "--tokens 12k" "--tool-uses -1" "--minutes 1e3" "--minutes 01.5" "--outcome partial" "--tier a\"b"; do
+for bad in "--tokens 12k" "--tool-uses -1" "--minutes 1e3" "--minutes 01.5" "--outcome partial" "--tier a\"b" "--ticket .." "--ticket ../x"; do
   set +e
   # shellcheck disable=SC2086  # split on purpose: flag and value
   (cd "$project" && "$SUBAGENT_LOG" --agent-id bad1 $bad 2>"$project/bad-err"); rc=$?
