@@ -153,7 +153,20 @@ assert_eq "1" "$(git --git-dir="$W/origin.git" branch --list "canon-results/*" |
 unset STUB_CLOUD
 L="$W/laptop2"; git clone -q "$W/origin.git" "$L" 2>/dev/null; cd "$L"
 mkdir -p ".tickets/$id" && cp "$A/$d/ticket.md" "$A/$d/plan.md" ".tickets/$id/"
-export STUB_PR_HEAD; STUB_PR_HEAD="$(git -C "$X" rev-parse HEAD)"
+export STUB_PR_HEAD; # every board and Go path is a trigger on its own (the failed check keeps the branch, so the head still mismatches); a high-risk plan is one too
+for f in tests/run-board-spec.sh tests/board-spec-baseline.json tools/sprint-check-app/x.js; do
+  out="$(STUB_PR_HEAD=0000000000000000000000000000000000000000 STUB_PR_FILES="$f" "$TKT" import-results "$id" --pr 58 2>&1)" || true; assert_contains "$out" "re-grade needed on this Mac: board change (full board spec), PR head"
+done
+for f in tools/sprint-check-go/x.go tools/sprint-headless-json-go/x.go tools/cockpit-daemon/x.go; do
+  out="$(STUB_PR_HEAD=0000000000000000000000000000000000000000 STUB_PR_FILES="$f" "$TKT" import-results "$id" --pr 58 2>&1)" || true; assert_contains "$out" "re-grade needed on this Mac: Go change (needs a release), PR head"
+done
+# the high-risk trigger reads the imported plan, which import-results itself replaces: call the function on a plan file
+eval "$(sed -n '/^_regrade_triggers() {/,/^}/p' "$TKT")"
+mkdir -p "$W/hr"; printf '## Sign-off\nTier: normal | Risk: high\n' > "$W/hr/plan.md"
+assert_eq "high-risk ticket" "$(printf 'docs/x.md\n' | _regrade_triggers "$W/hr" 0)"
+printf '## Sign-off\nTier: normal | Risk: low\n' > "$W/hr/plan.md"
+assert_eq "" "$(printf 'docs/x.md\n' | _regrade_triggers "$W/hr" 0)"
+STUB_PR_HEAD="$(git -C "$X" rev-parse HEAD)"
 out="$("$TKT" import-results "$id" --pr 58)"
 for f in acceptance.md eval-report.md evidence/report.json plan.md; do cmp -s "$X/.tickets/$id/$f" ".tickets/$id/$f" || fail "$f did not come back byte-for-byte"; done
 cmp -s "$A/$d/plan.md" ".tickets/$id/.before-import/plan.md" || fail "the local plan.md was not kept in .before-import/"
@@ -173,16 +186,16 @@ rc=0; out="$("$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
 [[ -n "$(git --git-dir="$W/origin.git" branch --list "canon-results/$id")" ]] || fail "a failed --pr check deleted canon-results/$id"
 # t-278d: triggers by what the PR touches. The branch is kept after a failed check, so import-results can run again on it.
 rc=0; out="$(STUB_PR_FILES="tools/sprint-check-app/server.js docs/x.md" "$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
-assert_contains "$out" "re-grade needed on this Mac: board change (full board spec), PR head differs from the graded head"
+assert_contains "$out" "re-grade needed on this Mac: board change (full board spec), PR head not confirmed as the graded head"
 rc=0; out="$(STUB_PR_FILES="tools/cockpit-daemon/main.go" "$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
-assert_contains "$out" "re-grade needed on this Mac: Go change (needs a release), PR head differs from the graded head"
+assert_contains "$out" "re-grade needed on this Mac: Go change (needs a release), PR head not confirmed as the graded head"
 # tools/tkt is one script, not a release asset: a change to it alone is not a trigger; the board spec file and runner are.
 rc=0; out="$(STUB_PR_FILES="tools/tkt tests/tkt-send-issue.sh" "$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
-assert_contains "$out" "re-grade needed on this Mac: PR head differs from the graded head"
+assert_contains "$out" "re-grade needed on this Mac: PR head not confirmed as the graded head"
 rc=0; out="$(STUB_PR_FILES="tests/sprint-check-app.spec.js" "$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
 assert_contains "$out" "board change (full board spec)"
 rc=0; out="$(STUB_PR_FILES="tools/evidence.sh tests/evidence.sh" "$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
-assert_contains "$out" "re-grade needed on this Mac: PR head differs from the graded head"
+assert_contains "$out" "re-grade needed on this Mac: PR head not confirmed as the graded head"
 STUB_PR_HEAD="$(git -C "$X" rev-parse HEAD)"
 out="$(STUB_PR_FILES="tools/evidence.sh tests/evidence.sh" "$TKT" import-results "$id" --pr 58 2>&1)"
 assert_contains "$out" "no re-grade needed"

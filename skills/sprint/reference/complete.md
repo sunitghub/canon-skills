@@ -335,12 +335,6 @@ Opus` default, scoped only to the two close-gate dispatches below.
    report with `haiku-eval-2026-09-23`); if the returned text is only a verdict, or its line 1
    lacks a `date +%s`-style `<epoch>-<n>` run-id, discard it and re-dispatch a fresh evaluator
    with the same `subagent_type`.
-   **Cloud tickets and the Mac (t-278d).** A non-board, non-Go ticket is planned (user-approved),
-   built, tested, graded by a fresh evaluator and stamped in the cloud. The Mac runs `tkt import-results` then
-   `tkt merge-pr` and does not rebase or re-grade: `merge-pr` merges a MERGEABLE+CLEAN PR on a newer main after its own
-   `scripts/test.sh` run, and only the graded head. Re-grade on the Mac only for: a board change (the board, its spec or runner: full board spec), a Go
-   change that needs a release (the daemon, the Go board, the headless helper), a high-risk ticket, or a PR head that differs from the graded head.
-   `tkt import-results` prints which apply. The gates are unchanged; the evaluator stays binding.
 
    **A gate that reports plan mode** (it says plan mode stopped it from running or writing; observed in a Claude
    cloud session that had planned in plan mode, t-b2e5) has graded nothing: re-dispatching hits the same wall, a
@@ -372,6 +366,13 @@ Opus` default, scoped only to the two close-gate dispatches below.
    corruption/discard detection ran for that dispatch (the same no-baseline fallback shape as `shared-gate-protocol.md ## Base-ref derivation`). **Known
    limits:** the content of untracked files and anything outside the repository are not compared (new untracked paths are), and the tool detects, it does
    not prevent: a sandbox or read-only checkout for the gate would.
+
+**Cloud tickets and the Mac (t-278d).** A non-board, non-Go ticket is planned (user-approved),
+built, tested, graded by a fresh evaluator and stamped in the cloud. The Mac runs `tkt import-results` then
+`tkt merge-pr` and does not rebase or re-grade: `merge-pr` merges a MERGEABLE+CLEAN PR on a newer main after its own
+`scripts/test.sh` run, and only the graded head. Re-grade on the Mac only for: a board change (the board, its spec or runner: full board spec), a Go
+change that needs a release (the daemon, the Go board, the headless helper), a high-risk ticket, or a PR head that differs from the graded head.
+`tkt import-results` prints which apply. The gates are unchanged; the evaluator stays binding.
 
 2. **Reviewer gate (normal+ tier).** Skip only if `plan.md`'s `## Sign-off` section's `Tier:`
    field value itself is `trivial` **or** `bugfix` (anchored to that field, so the word appearing

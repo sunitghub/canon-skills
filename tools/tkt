@@ -1618,7 +1618,7 @@ _regrade_triggers() {
   [[ $board == 1 ]] && out+="${out:+, }board change (full board spec)"
   [[ $gocode == 1 ]] && out+="${out:+, }Go change (needs a release)"
   grep -qiE '^Tier:.*Risk: *high' "$tdir/plan.md" 2>/dev/null && out+="${out:+, }high-risk ticket"
-  [[ "$mismatch" == 1 ]] && out+="${out:+, }PR head differs from the graded head"
+  [[ "$mismatch" == 1 ]] && out+="${out:+, }PR head not confirmed as the graded head"
   printf '%s' "$out"
 }
 
