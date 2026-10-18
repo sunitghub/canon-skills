@@ -16,9 +16,10 @@ trap 'kill_leaks; rm -rf "$WORK"' EXIT
 # a fake canon tree holding only the runner, so the copy is tiny and the real tree is never touched
 FAKE="$WORK/root"; mkdir -p "$FAKE/tests" "$FAKE/node_modules" "$WORK/bin" "$WORK/state"
 cp "$ROOT/tests/run-board-spec.sh" "$ROOT/tests/machine-load.sh" "$FAKE/tests/"
+echo 'console.log("board-spec-guard: 1 violation(s)"); process.exit(1)' > "$FAKE/tests/board-spec-guard.js"   # a guard that always fails
 git -C "$FAKE" init -q
 printf '#!/bin/sh\nfor a; do last="$prev"; prev="$a"; done\ncp -a "$last." "$prev" 2>/dev/null || cp -a "$last" "$prev"\n' > "$WORK/bin/rsync"   # rsync -a --exclude.. SRC/ DST/
-printf '#!/bin/sh\necho "$PWD $COCKPIT_STATE_DIR" >> "$STATE/boards"\nexec sleep 600\n' > "$WORK/bin/go"   # records each board's cockpit state dir
+printf '#!/bin/sh\necho "$PWD $COCKPIT_STATE_DIR $COCKPIT_DAEMON_BIN" >> "$STATE/boards"\nexec sleep 600\n' > "$WORK/bin/go"   # records each board's cockpit state dir and daemon bin
 printf '#!/bin/sh\nexit 0\n' > "$WORK/bin/curl"
 cat > "$WORK/bin/npx" <<'STUB'
 #!/bin/bash
@@ -40,7 +41,7 @@ run() {   # run <name> <args...> [env via RUN_ENV]: sets out (stdout+stderr), rc
   local name="$1"; shift
   rm -rf "$WORK/state"/*; mkdir -p "$WORK/out-$name"
   set +e
-  out="$(env STATE="$WORK/state" TMPDIR="$WORK" PATH="$WORK/bin:$PATH" ${RUN_ENV:-} bash "$FAKE/tests/run-board-spec.sh" --no-guard --out "$WORK/out-$name" "$@" 2>&1)"; rc=$?
+  out="$(env STATE="$WORK/state" TMPDIR="$WORK" PATH="$WORK/bin:$PATH" ${RUN_ENV:-} bash "$FAKE/tests/run-board-spec.sh" ${RUN_GUARD---no-guard} --out "$WORK/out-$name" "$@" 2>&1)"; rc=$?
   set -e
 }
 names() { (cd "$WORK/out-$1" && ls board-spec-*.json | tr '\n' ' '); }
@@ -58,8 +59,9 @@ assert_eq 0 "$rc"; assert_eq "$(names serial)" "$(names par2)"   # same report n
 assert_eq "$SERIAL_SHAS" "$(shas)"                                # same sha256 line shape and order
 assert_eq 4 "$(wc -l < "$WORK/state/calls" | tr -d ' ')"
 assert_eq 2 "$(cut -d' ' -f2 "$WORK/state/calls" | sort -u | wc -l | tr -d ' ')"   # two slots, two copies
-while read -r d sd; do   # each board's cockpit state dir is its own copy's, never the real daemon's $TMPDIR/canon-cockpit-board
-  assert_eq "$d/.spec-cockpit-state" "$sd"
+while read -r d sd bin; do   # each board's cockpit state dir is its own copy's, never the real daemon's $TMPDIR/canon-cockpit-board,
+  assert_eq "$d/.spec-cockpit-state" "$sd"   # and its daemon bin names no file, so it never launches a daemon that outlives it
+  assert_eq "$d/.spec-no-daemon" "$bin"; [ ! -e "$bin" ] || fail "run-board-spec: the spec board's daemon bin exists: $bin"
 done < "$WORK/state/boards"
 assert_eq 2 "$(wc -l < "$WORK/state/boards" | tr -d ' ')"
 [ ! -s "$WORK/state/errors" ] || fail "run-board-spec: --parallel 2 did not run the passes at once"
@@ -76,6 +78,12 @@ assert_eq 2 "$rc"; assert_contains "$out" "processes from the copy are still run
 kill_leaks
 run leakser --runs 1 --browsers chromium,webkit
 assert_eq 2 "$rc"; assert_contains "$out" "processes from the copy are still running"
+kill_leaks
+
+# a leak still exits 2 when the guard fails too (exit 1)
+RUN_ENV="LEAK_BROWSER=webkit" RUN_GUARD=""; run leakguard --runs 1 --browsers chromium,webkit --parallel 2
+unset RUN_GUARD
+assert_contains "$out" "board-spec-guard:"; assert_eq 2 "$rc"
 kill_leaks
 
 # a pass with no report exits 2 in a slot too
