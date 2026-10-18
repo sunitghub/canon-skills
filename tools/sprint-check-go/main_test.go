@@ -3,6 +3,9 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io/fs"
 	"math/rand"
 	"net/http"
@@ -1640,4 +1643,309 @@ func TestStartMergeRunDropsPreviousCmd(t *testing.T) {
 		t.Fatalf("startMergeRun kept the previous job's command handle")
 	}
 	stopMergeRun(dir, "t-ab12")
+}
+
+// t-1699: a regex compiled inside a function runs on every request or ticket line; only section()'s per-heading cache may compile.
+func TestNoRegexCompileInFuncs(t *testing.T) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "main.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range f.Decls {
+		fn, ok := d.(*ast.FuncDecl)
+		if !ok || fn.Body == nil || fn.Name.Name == "headingLineRe" {
+			continue
+		}
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			sel, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+			if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "regexp" && strings.Contains(sel.Sel.Name, "Compile") {
+				t.Errorf("%s: regexp.%s inside func %s: hoist it to a package-level var", fset.Position(call.Pos()), sel.Sel.Name, fn.Name.Name)
+			}
+			return true
+		})
+	}
+}
+
+// t-1699: the pre-cache section(), kept to prove the cached one returns the same text.
+func oldSection(text, heading string) string {
+	var out []string
+	active := false
+	for _, line := range strings.Split(text, "\n") {
+		if regexp.MustCompile(`^##\s+` + regexp.QuoteMeta(heading) + `\s*$`).MatchString(line) {
+			active = true
+			continue
+		}
+		if active && strings.HasPrefix(line, "## ") {
+			break
+		}
+		if active {
+			out = append(out, line)
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+func TestSectionMatchesOld(t *testing.T) {
+	texts := []string{
+		"# T\n## Criteria\n- [x] a\n## Test Plan\n- [ ] b\n",
+		"## Criteria  \n- [ ] trailing spaces\n##\tTest Plan\t\n- [x] tab\n",
+		"## Criteria\r\n- [ ] crlf\r\n## Sign-off\r\n- [x] ok\r\n",
+		"##Criteria\n- no space after ##\n## Criteria extra\n- longer heading\n",
+		"## a.b*c (x)\nmeta\n## Approach\n\n<!-- c -->\nbody\n",
+		"", "## Wrapup Gates\n| g | ran |\n### sub\nstill in\n## Next\n",
+		"text ## Criteria\n- [ ] mid-line heading is not a heading\n## Criteria\n- [x] real\n",
+	}
+	headings := []string{"Criteria", "Test Plan", "Sign-off", "Approach", "Wrapup Gates", "a.b*c (x)", "Criteria extra", "Missing"}
+	for _, txt := range texts {
+		for _, h := range headings {
+			for i := 0; i < 2; i++ { // second pass reads the cached regex
+				if got, want := section(txt, h), oldSection(txt, h); got != want {
+					t.Errorf("section(%q, %q) = %q, want %q", txt, h, got, want)
+				}
+			}
+		}
+	}
+}
+
+// t-1699: go test -bench BenchmarkParseTicket -benchmem -run '^$' ./tools/sprint-check-go
+func BenchmarkParseTicket(b *testing.B) {
+	dir := b.TempDir()
+	td := filepath.Join(dir, "t-abcd")
+	if err := os.MkdirAll(td, 0o755); err != nil {
+		b.Fatal(err)
+	}
+	for name, body := range map[string]string{
+		"ticket.md":     "---\nid: t-abcd\nstatus: in_progress\ntype: task\npriority: 1\n---\n# A ticket\n\nBody.\n",
+		"acceptance.md": "# Acceptance\n\n## Criteria\n" + strings.Repeat("- [x] C criterion text\n", 8) + "\n## Test Plan\n" + strings.Repeat("- [ ] T step\n", 8) + "\n## QA\n- [ ] Tested locally\n\n## Wrapup Gates\n| g | ran | (model: sonnet) |\n",
+		"plan.md":       "# Plan\n\n## Sign-off\n- [x] Plan approved\n\n## Approach\n" + strings.Repeat("Step line.\n", 20) + "\n## Files\n- a.go\n",
+	} {
+		if err := os.WriteFile(filepath.Join(td, name), []byte(body), 0o644); err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := parseTicket(filepath.Join(td, "ticket.md")); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// t-1699: the parsed-ticket cache must never show a stale card after any input of parseTicket changes.
+func cacheTicket(t *testing.T, root, id string) ticket {
+	t.Helper()
+	for _, tk := range loadTickets(root) {
+		if tk["id"] == id {
+			return tk
+		}
+	}
+	return nil
+}
+
+func bumpMtime(t *testing.T, path string, by time.Duration) {
+	t.Helper()
+	st, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, st.ModTime().Add(by), st.ModTime().Add(by)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTicketCacheSeesEdits(t *testing.T) {
+	root := setupTestProject(t)
+	dir := filepath.Join(ticketsDir, "t-c1a1")
+	tm := filepath.Join(dir, "ticket.md")
+	writeFile(t, tm, "---\nid: t-c1a1\nstatus: open\ntype: task\n---\n# Title one\n")
+	writeFile(t, filepath.Join(dir, "acceptance.md"), "## Criteria\n- [ ] a\n## Test Plan\n- [ ] b\n")
+	writeFile(t, filepath.Join(dir, "plan.md"), "## Sign-off\n- [ ] Plan approved\n## Approach\nx\n")
+	if tk := cacheTicket(t, root, "t-c1a1"); tk["status"] != "open" || tk["plan_approved"] != false || tk["acceptance_unchecked"] != true {
+		t.Fatalf("initial load: %v", tk)
+	}
+	writeFile(t, tm, "---\nid: t-c1a1\nstatus: in_progress\ntype: task\n---\n# Title one\n")
+	if tk := cacheTicket(t, root, "t-c1a1"); tk["status"] != "in_progress" {
+		t.Fatalf("ticket.md edit not seen: %v", tk["status"])
+	}
+	writeFile(t, filepath.Join(dir, "acceptance.md"), "## Criteria\n- [x] a\n## Test Plan\n- [x] b\n")
+	bumpMtime(t, filepath.Join(dir, "acceptance.md"), 2*time.Second) // same size: do not rely on two writes landing on different clock ticks
+	if tk := cacheTicket(t, root, "t-c1a1"); tk["acceptance_unchecked"] != false || tk["acceptance_has_items"] != true {
+		t.Fatalf("acceptance.md edit not seen: %v %v", tk["acceptance_unchecked"], tk["acceptance_has_items"])
+	}
+	writeFile(t, filepath.Join(dir, "plan.md"), "## Sign-off\n- [x] Plan approved\n## Approach\nx\n")
+	bumpMtime(t, filepath.Join(dir, "plan.md"), 2*time.Second)
+	if tk := cacheTicket(t, root, "t-c1a1"); tk["plan_approved"] != true {
+		t.Fatalf("plan.md edit not seen: %v", tk["plan_approved"])
+	}
+	writeFile(t, filepath.Join(dir, "notes.md"), "n\n")
+	if tk := cacheTicket(t, root, "t-c1a1"); !strings.Contains(fmt.Sprint(tk["docs"]), "notes.md") {
+		t.Fatalf("added doc not listed: %v", tk["docs"])
+	}
+	if err := os.Remove(filepath.Join(dir, "plan.md")); err != nil {
+		t.Fatal(err)
+	}
+	if tk := cacheTicket(t, root, "t-c1a1"); tk["plan_approved"] != nil {
+		t.Fatalf("removed plan.md still read: %v", tk["plan_approved"])
+	}
+	// same size, new content: the mtime alone must invalidate
+	writeFile(t, tm, "---\nid: t-c1a1\nstatus: in_progress\ntype: task\n---\n# Title two\n")
+	bumpMtime(t, tm, 2*time.Second)
+	if tk := cacheTicket(t, root, "t-c1a1"); tk["title"] != "Title two" {
+		t.Fatalf("same-size edit not seen: %v", tk["title"])
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+	if tk := cacheTicket(t, root, "t-c1a1"); tk != nil {
+		t.Fatalf("deleted ticket still listed: %v", tk)
+	}
+	if _, hit := ticketCache.Load(tm); hit {
+		t.Fatal("deleted ticket's cache entry was not evicted")
+	}
+	// every deleted ticket is evicted, not only the first one the scan meets
+	var gone []string
+	for _, id := range []string{"t-c1b1", "t-c1b2", "t-c1b3"} {
+		p := filepath.Join(ticketsDir, id, "ticket.md")
+		writeFile(t, p, "---\nid: "+id+"\nstatus: open\n---\n# E\n")
+		gone = append(gone, p)
+	}
+	cacheTicket(t, root, "t-c1b1")
+	for _, p := range gone {
+		if err := os.RemoveAll(filepath.Dir(p)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cacheTicket(t, root, "t-c1b1")
+	for _, p := range gone {
+		if _, hit := ticketCache.Load(p); hit {
+			t.Fatalf("deleted ticket %s was not evicted", p)
+		}
+	}
+}
+
+// A ticket that stats but cannot be read is skipped, never listed as an empty ticket, and is read again once readable.
+func TestTicketCacheUnreadableTicket(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs a mode-0000 file to be unreadable: not on Windows, not as root")
+	}
+	root := setupTestProject(t)
+	tm := filepath.Join(ticketsDir, "t-c3c3", "ticket.md")
+	writeFile(t, tm, "---\nid: t-c3c3\nstatus: open\n---\n# Readable\n")
+	if tk := cacheTicket(t, root, "t-c3c3"); tk == nil {
+		t.Fatal("ticket not listed while readable")
+	}
+	writeFile(t, tm, "---\nid: t-c3c3\nstatus: open\n---\n# Locked out\n")
+	if err := os.Chmod(tm, 0); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(tm, 0o644)
+	for _, tk := range loadTickets(root) {
+		if tk == nil || tk["id"] == "t-c3c3" {
+			t.Fatalf("an unreadable ticket was listed: %v", tk)
+		}
+	}
+	if err := os.Chmod(tm, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if tk := cacheTicket(t, root, "t-c3c3"); tk == nil || tk["title"] != "Locked out" {
+		t.Fatalf("ticket not read again once readable: %v", tk)
+	}
+}
+
+// The cache is used at all (a pure re-parse would pass TestTicketCacheSeesEdits too), and a caller's edits never reach it.
+func TestTicketCacheReusesAndCopies(t *testing.T) {
+	root := setupTestProject(t)
+	tm := filepath.Join(ticketsDir, "t-c2b2", "ticket.md")
+	writeFile(t, tm, "---\nid: t-c2b2\nstatus: open\n---\n# Kept\n")
+	first := cacheTicket(t, root, "t-c2b2") // a miss: parsed and stored
+	first["status"], first["injected"] = "hacked", true
+	hit := cacheTicket(t, root, "t-c2b2") // a hit
+	if hit["status"] != "open" || hit["injected"] != nil {
+		t.Fatalf("a caller's edit of a fresh parse reached the cache: %v", hit)
+	}
+	hit["status"] = "hacked-again"
+	if tk := cacheTicket(t, root, "t-c2b2"); tk["status"] != "open" {
+		t.Fatalf("a caller's edit of a cache hit reached the cache: %v", tk["status"])
+	}
+	// a size change alone (mtime restored) must invalidate
+	st0, _ := os.Stat(tm)
+	writeFile(t, tm, "---\nid: t-c2b2\nstatus: open\n---\n# Kept longer\n")
+	if err := os.Chtimes(tm, st0.ModTime(), st0.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	if tk := cacheTicket(t, root, "t-c2b2"); tk["title"] != "Kept longer" {
+		t.Fatalf("size-only change not seen: %v", tk["title"])
+	}
+	writeFile(t, tm, "---\nid: t-c2b2\nstatus: open\n---\n# Kept\n")
+	st, _ := os.Stat(tm)
+	writeFile(t, tm, "---\nid: t-c2b2\nstatus: open\n---\n# Kxpt\n") // same size
+	if err := os.Chtimes(tm, st.ModTime(), st.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	bumpMtime(t, filepath.Dir(tm), 3*time.Second) // ticket.md's mtime and size are restored; only the folder moved
+	if tk := cacheTicket(t, root, "t-c2b2"); tk["title"] != "Kxpt" {
+		t.Fatalf("folder mtime change did not invalidate: %v", tk["title"])
+	}
+	// now nothing moves: a content change hidden behind identical mtime+size is served from the cache (documented limit)
+	st, _ = os.Stat(tm)
+	dst, _ := os.Stat(filepath.Dir(tm))
+	writeFile(t, tm, "---\nid: t-c2b2\nstatus: open\n---\n# Kzzt\n")
+	_ = os.Chtimes(tm, st.ModTime(), st.ModTime())
+	_ = os.Chtimes(filepath.Dir(tm), dst.ModTime(), dst.ModTime())
+	if tk := cacheTicket(t, root, "t-c2b2"); tk["title"] != "Kxpt" {
+		t.Fatalf("unchanged stat key re-parsed (no cache in use?): %v", tk["title"])
+	}
+}
+
+func TestTicketCacheConcurrentLoads(t *testing.T) {
+	root := setupTestProject(t)
+	for i := 0; i < 20; i++ {
+		writeFile(t, filepath.Join(ticketsDir, fmt.Sprintf("t-r%03d", i), "ticket.md"), fmt.Sprintf("---\nid: t-r%03d\nstatus: open\n---\n# R\n", i))
+	}
+	var wg sync.WaitGroup
+	for g := 0; g < 8; g++ {
+		wg.Add(1)
+		go func(g int) {
+			defer wg.Done()
+			for i := 0; i < 30; i++ {
+				if g == 0 {
+					writeFile(t, filepath.Join(ticketsDir, fmt.Sprintf("t-r%03d", i%20), "ticket.md"), fmt.Sprintf("---\nid: t-r%03d\nstatus: in_progress\n---\n# R%d\n", i%20, i))
+				}
+				for _, tk := range loadTickets(root) {
+					tk["type_outcome"] = g // callers write keys; must not race with other loads
+				}
+			}
+		}(g)
+	}
+	wg.Wait()
+	if n := len(loadTickets(root)); n != 20 {
+		t.Fatalf("want 20 tickets, got %d", n)
+	}
+}
+
+// t-1699: go test -bench BenchmarkLoadTickets -benchmem -run '^$' ./tools/sprint-check-go
+func BenchmarkLoadTickets(b *testing.B) {
+	root := b.TempDir()
+	projectRoot, ticketsDir = root, filepath.Join(root, ".tickets")
+	for i := 0; i < 200; i++ {
+		d := filepath.Join(ticketsDir, fmt.Sprintf("t-%04x", i))
+		_ = os.MkdirAll(d, 0o755)
+		_ = os.WriteFile(filepath.Join(d, "ticket.md"), []byte(fmt.Sprintf("---\nid: t-%04x\nstatus: closed\ntype: task\n---\n# T\n\nBody.\n", i)), 0o644)
+		_ = os.WriteFile(filepath.Join(d, "acceptance.md"), []byte("## Criteria\n"+strings.Repeat("- [x] c\n", 8)+"## Test Plan\n- [x] t\n## Wrapup Gates\n| g | (model: sonnet) |\n"), 0o644)
+		_ = os.WriteFile(filepath.Join(d, "plan.md"), []byte("## Sign-off\n- [x] ok\n## Approach\n"+strings.Repeat("Step.\n", 20)), 0o644)
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if n := len(loadTickets(root)); n != 200 {
+			b.Fatal(n)
+		}
+	}
 }
