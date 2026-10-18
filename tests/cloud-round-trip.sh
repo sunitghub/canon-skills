@@ -122,7 +122,9 @@ printf 'graded-head: %s\n## Verdict\npass: all criteria met\n' "$(git rev-parse 
 printf 'cloud plan\n' > ".tickets/$id/plan.md"
 printf '\x00\x01binary\xff' > ".tickets/$id/evidence/report.json"
 # t-a83a: evidence stamped on another OS (twice), on this machine's, with a hostile line 3, and in a subfolder (not read)
-for n in a b; do printf 'HEAD 0 T\n$ true\n# on Plan9 4.0 mips; bash 5.2.0\nexit 0\n' > ".tickets/$id/evidence/plan9-$n.log"; done
+for n in 1 2; do printf 'HEAD 0 T\n$ true\n# on Plan9 4.0 mips; bash 5.2.0\nexit 0\n' > ".tickets/$id/evidence/a$n.log"; done   # sorted first, so a dedupe that sees only the latest OS fails
+printf 'HEAD 0 T\n$ true\nPlan8 output on line 3\nexit 0\n' > ".tickets/$id/evidence/oldfmt.log"   # an older log: line 3 is output, never an OS
+printf 'HEAD 0 T\n$ true\n# on \nexit 0\n' > ".tickets/$id/evidence/empty.log"
 printf 'HEAD 0 T\n$ true\n# on %s; bash 3.2.57\nexit 0\n' "$(uname -srm)" > ".tickets/$id/evidence/here.log"
 printf 'HEAD 0 T\n$ true\n# on Evil\x1b[2J\x07 1.0 \xc2\x9b%s; bash 5\r\nexit 0\n' "$(head -c 3000 /dev/zero | tr '\0' x)" > ".tickets/$id/evidence/hostile.log"
 mkdir -p ".tickets/$id/evidence/old" && printf 'HEAD 0 T\n$ true\n# on Hidden 1 x; bash 5\nexit 0\n' > ".tickets/$id/evidence/old/hidden.log"
@@ -135,7 +137,7 @@ rc=0; out="$(STUB_VIS=PUBLIC "$TKT" export "$id" 2>&1)" || rc=$?
 out="$("$TKT" export "$id" 2>/dev/null)"
 assert_contains "$out" "pushed .tickets/$id/ to canon-results/$id"
 files="$(git --git-dir="$W/origin.git" ls-tree -r --name-only "canon-results/$id" | tr '\n' ' ')"
-assert_eq ".tickets/$id/acceptance.md .tickets/$id/eval-report.md .tickets/$id/evidence/here.log .tickets/$id/evidence/hostile.log .tickets/$id/evidence/old/hidden.log .tickets/$id/evidence/plan9-a.log .tickets/$id/evidence/plan9-b.log .tickets/$id/evidence/report.json .tickets/$id/plan.md .tickets/$id/ticket.md " "$files"
+assert_eq ".tickets/$id/acceptance.md .tickets/$id/eval-report.md .tickets/$id/evidence/a1.log .tickets/$id/evidence/a2.log .tickets/$id/evidence/empty.log .tickets/$id/evidence/here.log .tickets/$id/evidence/hostile.log .tickets/$id/evidence/old/hidden.log .tickets/$id/evidence/oldfmt.log .tickets/$id/evidence/report.json .tickets/$id/plan.md .tickets/$id/ticket.md " "$files"
 assert_eq "$st_before" "$(git status --porcelain)"
 assert_eq "$idx_before" "$(git ls-files -s | cksum)"
 
@@ -172,6 +174,8 @@ mkdir -p "$W/hr"; printf '## Sign-off\nTier: normal | Risk: high\n' > "$W/hr/pla
 assert_eq "high-risk ticket" "$(printf 'docs/x.md\n' | _regrade_triggers "$W/hr" 0)"
 printf '## Sign-off\nTier: normal | Risk: low\n' > "$W/hr/plan.md"
 assert_eq "" "$(printf 'docs/x.md\n' | _regrade_triggers "$W/hr" 0)"
+mkdir -p ".tickets/$id/evidence" "$W/outside" && printf 'HEAD 0 T\n$ true\n# on Linked 1 x; bash 5\nexit 0\n' > "$W/outside/l.log"
+ln -sf "$W/outside/l.log" ".tickets/$id/evidence/zz-link.log"; mkdir -p ".tickets/$id/evidence/dir.log"   # never followed / not a file
 STUB_PR_HEAD="$(git -C "$X" rev-parse HEAD)"
 out="$("$TKT" import-results "$id" --pr 58)"
 for f in acceptance.md eval-report.md evidence/report.json plan.md; do cmp -s "$X/.tickets/$id/$f" ".tickets/$id/$f" || fail "$f did not come back byte-for-byte"; done
@@ -189,6 +193,7 @@ hl="$(printf '%s\n' "$out" | grep 'evidence ran on: Evil')"
 [[ "$hl" != *[^A-Za-z0-9._\ /=:+,?\(\)-]* ]] || fail "import-results echoed a raw byte: $(printf '%q' "$hl")"
 [[ "$hl" == "  evidence ran on: Evil??2J? 1.0 ??xxx"* && ${#hl} -lt 160 ]] || fail "import-results did not sanitize or cap line 3: $(printf '%q' "$hl")"
 [[ "$out" != *Hidden* && "$out" != *"evidence ran on: $(uname -s) "* ]] || fail "import-results named a subfolder log or this machine's OS"
+[[ "$out" != *Linked* && "$out" != *Plan8* && "$out" != *"evidence ran on:  ("* ]] || fail "import-results read a symlink, an older log's output line or an empty # on line: $out"
 # t-278d: the closing line names the re-grade triggers (advice only). Docs and non-Go tools: none; the board: its trigger.
 assert_contains "$out" "no re-grade needed"
 [[ -z "$(git --git-dir="$W/origin.git" branch --list "canon-results/$id")" ]] || fail "canon-results/$id was not deleted"
