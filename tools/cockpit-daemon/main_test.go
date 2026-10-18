@@ -7778,9 +7778,9 @@ func endBody(s *server, sid, mode string) map[string]string {
 	return map[string]string{"session": sid, "ticket": se.ticket, "project_root": se.projectRoot, "mode": mode}
 }
 
-// makeIdle backdates a session's last activity past the 15 s working window, as if it sat at its prompt.
-// makeIdle backdates the session's idle clock. t-bcb8: only once the agent's first output has arrived: output resets
-// the clock, so under load a late READY landed after the backdate and Reap now answered 409 "it is working".
+// makeIdle backdates a session's last activity past the 15 s working window, as if it sat at its prompt. t-bcb8: only once
+// the agent's first output has arrived: output resets the clock, so under load a late READY landed after the backdate
+// and Reap now answered 409 "it is working".
 func makeIdle(t *testing.T, s *server, sid string) {
 	t.Helper()
 	s.mu.Lock()
