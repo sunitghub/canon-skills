@@ -37,9 +37,20 @@ out="$("$SPRINT" gate-cost --last 4)"
 assert_contains "$out" "last 4 measured run(s)"
 assert_eq "reviewer normal 2 55000 60000 7.0 9.0 50%" "$(row reviewer normal | tr -s ' ')"
 
-set +e
-"$SPRINT" gate-cost --last 0 2>/dev/null; rc=$?
-set -e
-assert_eq 1 "$rc"
+assert_contains "$out" "gate       tier     runs    tok-med  tok-worst  min-med min-worst fail/budget"
+
+# A row without a type or tier groups under "-".
+"$SUBAGENT_LOG" --agent-id x1 --tokens 1000
+out="$("$SPRINT" gate-cost --last 1)"
+assert_eq "- - 1 1000 1000 - - 0%" "$(row - - | tr -s ' ')"
+
+for bad in "--last 0" "--last x" "--last" "--bogus"; do
+  set +e
+  # shellcheck disable=SC2086  # split on purpose
+  "$SPRINT" gate-cost $bad >/dev/null 2>&1; rc=$?
+  set -e
+  assert_eq 1 "$rc"
+done
+assert_eq "Usage: sprint gate-cost [--last N]" "$("$SPRINT" gate-cost --help)"
 
 printf 'sprint-gate-cost: ok\n'
