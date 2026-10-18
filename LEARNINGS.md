@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-17-2026 20:55
+learnings-sweep last run: 10-18-2026 07:30
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-18 | [t-1583](.tickets/t-1583/learnings.md) | A criterion that needs a live run in a harness you cannot authenticate (Copilot) fails the binding evaluator however sound the inference: word such a criterion to what is checkable, or get the waiver before grading. | UNPROMOTED |
 | 2026-10-18 | [t-278d](.tickets/t-278d/learnings.md) | A guard test for a trigger list must delete each pattern in turn: the reviewer found board, Go and high-risk entries that no test touched; and a test file that names a Go server path trips tests/no-browser-in-tests.sh. | UNPROMOTED |
 | 2026-10-18 | [t-b792](.tickets/t-b792/learnings.md) | A speed-up measured on a run that failed early is meaningless: the new check also matched a skipped-suite header, failed the 188 s suite at 14 s and showed a 195 s total; check the exit code and the suite times before quoting a timing, and a check that matches headers must match exact ones. | UNPROMOTED |
 | 2026-10-17 | [t-0b14](.tickets/t-0b14/learnings.md) | A "no test reads this path" grep proves nothing unless it is shown to fail: the cloud's pattern allowed 12 characters after ROOT and could not match skills/<name>/evals/history.jsonl; plant readers and require the scan to catch them. | UNPROMOTED |
