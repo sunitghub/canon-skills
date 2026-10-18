@@ -5,6 +5,7 @@ learnings-sweep last run: 10-18-2026 07:30
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-18 | [t-169e](.tickets/t-169e/learnings.md) | A criterion whose measured count is zero is satisfied only by the plan's decision, not by evidence: say so in the plan, as the cloud session did. | UNPROMOTED |
 | 2026-10-18 | [t-67c5](.tickets/t-67c5/learnings.md) | When one string is printed in two places (the issue body and send-issue's own start line), the reviewer finds the copy you forgot: grep every reader of the old wording first, and assert the printed line whole. | UNPROMOTED |
 | 2026-10-18 | [t-1583](.tickets/t-1583/learnings.md) | A criterion that needs a live run in a harness you cannot authenticate (Copilot) fails the binding evaluator however sound the inference: word such a criterion to what is checkable, or get the waiver before grading. | UNPROMOTED |
 | 2026-10-18 | [t-278d](.tickets/t-278d/learnings.md) | A guard test for a trigger list must delete each pattern in turn: the reviewer found board, Go and high-risk entries that no test touched; and a test file that names a Go server path trips tests/no-browser-in-tests.sh. | UNPROMOTED |
