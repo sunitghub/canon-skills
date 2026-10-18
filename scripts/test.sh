@@ -71,6 +71,7 @@ tests=(
   "$ROOT/tests/post-commit-worktree.sh"
   "$ROOT/tests/prefix-keys-parity.sh"
   "$ROOT/tests/subagent-log-cli.sh"
+  "$ROOT/tests/sprint-gate-cost.sh"
   "$ROOT/tests/disposable-cred.sh"
   "$ROOT/tests/skills-std.sh"
   "$ROOT/tests/install-target.sh"

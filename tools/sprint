@@ -1062,6 +1062,55 @@ cmd_suggest_tier() {
   fi
 }
 
+# cmd_gate_cost [--last N] — t-5ef3: one screen of close-gate cost from .claude/subagent-runs.jsonl. Only rows that
+# carry `tokens` (subagent-log.sh --tokens …) count; older rows have no numbers and are skipped, not read as zero.
+# Groups the last N measured runs by gate type × tier. Read-only; plain awk (no python, for Git Bash).
+cmd_gate_cost() {
+  local last=30
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --last) last="${2:-}"; shift 2 || { echo "Error: --last requires a value" >&2; exit 1; } ;;
+      -h|--help) echo "Usage: sprint gate-cost [--last N]"; return 0 ;;
+      *) echo "Error: unknown argument: $1" >&2; exit 1 ;;
+    esac
+  done
+  [[ "$last" =~ ^[1-9][0-9]*$ ]] || { echo "Error: --last must be a positive whole number" >&2; exit 1; }
+  local jsonl
+  jsonl="$(project_root)/.claude/subagent-runs.jsonl"
+  [[ -f "$jsonl" ]] || { echo "No gate runs logged: $jsonl not found."; return 0; }
+  awk -v last="$last" '
+    function field(name,   m) {
+      if (match($0, "\"" name "\"[[:space:]]*:[[:space:]]*\"[^\"]*\"")) { m = substr($0, RSTART, RLENGTH); sub(/^[^:]*:[[:space:]]*"/, "", m); sub(/"$/, "", m); return m }
+      if (match($0, "\"" name "\"[[:space:]]*:[[:space:]]*[0-9.]+")) { m = substr($0, RSTART, RLENGTH); sub(/^[^:]*:[[:space:]]*/, "", m); return m }
+      return ""
+    }
+    function median(list,   a, n, i, j, t) {
+      n = split(list, a, " ")
+      for (i = 2; i <= n; i++) { t = a[i] + 0; for (j = i - 1; j >= 1 && a[j] + 0 > t; j--) a[j + 1] = a[j]; a[j + 1] = t }
+      return (n % 2) ? a[(n + 1) / 2] + 0 : (a[n / 2] + a[n / 2 + 1]) / 2
+    }
+    { tok = field("tokens"); if (tok == "") next
+      n++; T[n] = tok; M[n] = field("minutes"); O[n] = field("outcome")
+      ty = field("agent_type"); ti = field("tier"); G[n] = (ty == "" ? "-" : ty) "\t" (ti == "" ? "-" : ti) }
+    END {
+      if (n == 0) { print "No measured gate runs yet: log them with subagent-log.sh --tokens N --minutes M --tool-uses K."; exit }
+      start = (n > last) ? n - last + 1 : 1
+      for (i = start; i <= n; i++) {
+        g = G[i]; if (!(g in C)) order[++ng] = g
+        C[g]++; TL[g] = TL[g] " " T[i]; if (T[i] + 0 > TW[g]) TW[g] = T[i] + 0
+        if (M[i] != "") { MC[g]++; ML[g] = ML[g] " " M[i]; if (M[i] + 0 > MW[g]) MW[g] = M[i] + 0 }
+        if (O[i] == "fail" || O[i] == "budget") F[g]++
+      }
+      printf "Close-gate cost, last %d measured run(s):\n", n - start + 1
+      printf "%-10s %-8s %4s %10s %10s %8s %9s %11s\n", "gate", "tier", "runs", "tok-med", "tok-worst", "min-med", "min-worst", "fail/budget"
+      for (k = 1; k <= ng; k++) {
+        g = order[k]; split(g, p, "\t")
+        mm = MC[g] ? sprintf("%.1f", median(ML[g])) : "-"; mw = MC[g] ? sprintf("%.1f", MW[g]) : "-"
+        printf "%-10s %-8s %4d %10d %10d %8s %9s %10d%%\n", p[1], p[2], C[g], median(TL[g]), TW[g], mm, mw, int(100 * F[g] / C[g] + 0.5)
+      }
+    }' "$jsonl"
+}
+
 cmd_help() {
   cat <<'EOF'
 sprint — canon workflow spine
@@ -1086,6 +1135,9 @@ Usage:
   sprint check-review-notes <id>  Check review-notes.md's shape with the same rule
                             sprint complete applies (read-only; exit 1 names each
                             problem) — the reviewer runs it before returning
+  sprint gate-cost [--last N]  Close-gate cost from .claude/subagent-runs.jsonl: the
+                            last N (30) measured runs by gate type × tier — median and
+                            worst tokens and minutes, % fail or budget stop (read-only)
   sprint check-evidence <id>  Pre-flight before the evaluator: every stamped
                             evidence log is fresh with exit 0, or covered
                             (read-only; exit 1 names each log and the fix)
@@ -1110,6 +1162,7 @@ main() {
     eval-verdict) cmd_eval_verdict "$@" ;;
     check-review-notes) cmd_check_review_notes "$@" ;;
     check-evidence) cmd_check_evidence "$@" ;;
+    gate-cost) cmd_gate_cost "$@" ;;
     help|--help|-h) cmd_help ;;
     *) echo "Unknown command: $cmd" >&2; cmd_help; exit 1 ;;
   esac
