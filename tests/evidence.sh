@@ -300,6 +300,13 @@ covered_setup; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-ru
 A="$(sed -n '1s/^HEAD \([0-9a-f]*\) .*/\1/p' "$ED/full.log")"
 assert_contains "$out" "covered full.log exit=1 (HEAD ${A:0:7}; only tests/board-spec-baseline.json changed since; re-guarded at $(git rev-parse --short=7 HEAD) by guard.log over 2 report(s)) cmd: bash tests/run-board-spec.sh --out"
 guard "$REPO/$D/board-spec-webkit-run1.json" "$REPO/$D/board-spec-chromium-run1.json"; want_covered            # absolute paths, any order
+# t-278d: the hint's recipe (guard under its own name, reports inside evidence/) is accepted; the old way (the run's own log name) is not.
+covered_setup; ev check "$ID"; assert_contains "$out" "hint: to cover it"; assert_contains "$out" "evidence.sh stamp $ID board-spec-guard -- node tests/board-spec-guard.js"
+ev stamp "$ID" board-spec-guard -- node tests/board-spec-guard.js "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; assert_eq 0 "$code"
+ev check "$ID"; assert_contains "$out" "covered full.log exit=1 ("; assert_contains "$out" "by board-spec-guard.log over 2 report(s))"
+[[ "$out" != *"hint:"* ]] || fail "evidence: a covered run should carry no hint: $out"
+covered_setup; ev stamp "$ID" full -- node tests/board-spec-guard.js "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"
+ev check "$ID"; [[ "$out" != *"covered full.log"* ]] || fail "evidence: stamping the guard under the run's own name must not cover: $out"
 # every refusal, one at a time
 covered_setup; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; echo ' ' >> "$D/board-spec-webkit-run1.json"; want_stale "an edited report"
 covered_setup; echo '{}' > "$D/board-spec-webkit-run2.json"; guard "$D"/board-spec-*.json; want_stale "an extra report"

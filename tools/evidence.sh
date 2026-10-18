@@ -16,6 +16,7 @@
 #                              `node tests/board-spec-guard.js` over exactly those reports, each still matching the sha256 the run log printed
 #   stale <file> exit=<N>      stamped, but older with such changes, an unknown sha, or not an ancestor
 #   unstamped <file> exit=?    anything else: `# HEAD …`, `(uncommitted)`, `+wt`, no line 1, empty, binary, a symlink (never followed)
+#   (t-278d) a log stale only for the baseline but not covered gets a `  hint:` line after it with the covered recipe.
 # `exit=` is read from the LAST line only. Log content is never echoed beyond the sha, the time and a short sanitized `$` line. A stamp proves
 # freshness, not truth: the evaluator still runs its own floor (eval.md). check exits 0 for any content; 2 for a usage or repository error.
 # CANON_TICKETS_DIR (optional) names the .tickets/ directory to use, for a stamp taken in a plain clone, whose own .tickets/ is not the project's.
@@ -201,6 +202,9 @@ for i in "${!FILES[@]}"; do
     g="$(covered_by "${FILES[$i]}")"
     if [[ -n "$g" ]]; then
       LINES[$i]="covered $(safe "${FILES[$i]##*/}") exit=${CODES[$i]} (HEAD ${STAMPS[$i]}; only tests/board-spec-baseline.json changed since; re-guarded at ${graded:0:7} by $(safe "${g% *}") over ${g##* } report(s))${SHOWNS[$i]}"
+    elif [[ "$(line2_of "${FILES[$i]}")" =~ ^\$\ (bash\ )?(\./)?tests/run-board-spec\.sh(\ |$) ]]; then
+      # t-278d: the recipe, so the next stamp neither overwrites the run's log nor leaves its reports outside evidence/.
+      LINES[$i]+=$'\n'"  hint: to cover it, keep the run's --out folder inside .tickets/$id/evidence/, then stamp the guard under its OWN name, never this log's (that overwrites it): evidence.sh stamp $id board-spec-guard -- node tests/board-spec-guard.js <those reports>"
     fi
   fi
   echo "${LINES[$i]}"
