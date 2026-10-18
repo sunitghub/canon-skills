@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-17-2026 19:06
+learnings-sweep last run: 10-17-2026 20:22
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-18 | [t-b792](.tickets/t-b792/learnings.md) | A speed-up measured on a run that failed early is meaningless: the new check also matched a skipped-suite header, failed the 188 s suite at 14 s and showed a 195 s total; check the exit code and the suite times before quoting a timing, and a check that matches headers must match exact ones. | UNPROMOTED |
 | 2026-10-17 | [t-0b14](.tickets/t-0b14/learnings.md) | A "no test reads this path" grep proves nothing unless it is shown to fail: the cloud's pattern allowed 12 characters after ROOT and could not match skills/<name>/evals/history.jsonl; plant readers and require the scan to catch them. | UNPROMOTED |
 | 2026-10-17 | [t-dba9](.tickets/t-dba9/learnings.md) | Re-stamping a board-spec guard under the run's own log name overwrites the full-run log, so the evaluator cannot reuse either: stamp the guard under its own name and keep the run's reports inside the ticket's evidence/ folder (the covered flow). | UNPROMOTED |
 | 2026-10-17 | [t-1cf4](.tickets/t-1cf4/learnings.md) | A cloud session handed a ticket with no plan skips approval and a guard that asserts only the first line of a multi-line message leaves the rest unproven: assert each clause, and create the deferred follow-up ticket at close, not just a DEFERRED note. | UNPROMOTED |
