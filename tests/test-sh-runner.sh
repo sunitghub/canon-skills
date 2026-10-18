@@ -194,7 +194,7 @@ for j in 1 2; do
   set +e; out="$(PATH="$WORK/bin" bash "$O/scripts/test.sh" --jobs "$j" 2>&1)"; rc=$?; set -e
   assert_eq 1 "$rc"; assert_contains "$out" "FAIL: the test run left sprint-check servers running (PIDs): $(cat "$WORK/last-pid")"
   # not orphaned: a leaked wrapper still waits on it, so its parent is not PID 1; it is still this run's leak
-  printf '( sh -c '"'"'python3 "%s/tools/sprint-check-app/server.py" >/dev/null 2>&1 & echo $! >> "%s/srv-pids"; echo $! > "%s/last-pid"; wait'"'"' & echo $! >> "%s/srv-pids" )\n' \
+  printf '( sh -c '"'"'python3 "%s/tools/sprint-check-app/server.py" >/dev/null 2>&1 & echo $! >> "%s/srv-pids"; echo $! > "%s/last-pid"; wait'"'"' >/dev/null 2>&1 & echo $! >> "%s/srv-pids" )\n' \
     "$O" "$WORK" "$WORK" "$WORK" > "$O/tests/a.sh"
   set +e; out="$(PATH="$WORK/bin" bash "$O/scripts/test.sh" --jobs "$j" 2>&1)"; rc=$?; set -e
   [[ "$(ps -o ppid= -p "$(cat "$WORK/last-pid")" | tr -d ' ')" != 1 ]] || fail "the wrapped fake server was orphaned: the case tests nothing"
