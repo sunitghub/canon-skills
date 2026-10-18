@@ -20,7 +20,7 @@ git config --global url."$W/origin.git".pushInsteadOf https://github.com/acme/ap
 P="$W/project"; git clone -q "$W/origin.git" "$P" 2>/dev/null; cd "$P"
 git remote set-url origin https://github.com/acme/app.git
 # The suite leaves $STUB_W/ran behind, so a test can tell whether the PR's code ran at all.
-mkdir -p scripts; printf '#!/usr/bin/env bash\ntouch "$STUB_W/ran"\n[ -e FAIL ] && { echo "suite: 1 failed"; exit 1; }\necho "suite: ok"\n' > scripts/test.sh; chmod +x scripts/test.sh
+mkdir -p scripts; printf '#!/usr/bin/env bash\ntouch "$STUB_W/ran"\n[ -e FAIL ] && { echo "suite: 1 failed"; echo "FAILED: stub-suite (exit 1)"; echo "slowest: table"; exit 1; }\necho "suite: ok"\n' > scripts/test.sh; chmod +x scripts/test.sh
 printf '.tickets/\n' > .gitignore; git add -A; git commit -qm base; git push -q origin HEAD:main
 # The PR: one commit on a branch, published as refs/pull/7/head.
 git checkout -q -b claude/pr7; echo change > change.txt; git add change.txt; git commit -qm "the PR"; PRHEAD="$(git rev-parse HEAD)"
@@ -102,9 +102,16 @@ git checkout -q claude/pr7; touch FAIL; echo '# changed' >> scripts/test.sh; git
 git push -q -f origin "HEAD:refs/pull/7/head"
 eval_ok "$RED"; refuses "a red suite" "suite: 1 failed" STUB_HEAD="$RED" -- --yes
 assert_contains "$out" "this PR changes scripts/test.sh itself"
+# t-6b90: the failing suite is named before the tail, and the full log is kept.
+assert_contains "$out" "Failing:"; assert_contains "$out" "FAILED: stub-suite (exit 1)"
+[[ "${out%%FAILED: stub-suite*}" != *"Last lines:"* ]] || fail "FAILED line came after the tail: $out"
+klog="$(printf '%s\n' "$out" | sed -n 's/^Full log kept at: //p')"; [[ "$klog" == "$TMPDIR/tkt-merge-$id-pr7."* ]] || fail "no kept-log path in: $out"
+grep -q 'slowest: table' "$klog" || fail "kept log is missing the full output"; rm -f "$klog"
 git reset -q --hard "$PRHEAD"; git push -q -f origin "HEAD:refs/pull/7/head"; git checkout -q main; eval_ok
 # --test overrides the default: a failing command refuses.
 refuses "a failing --test command" "false failed" -- --test false --yes
+[[ "$out" != *"Failing:"* ]] || fail "a failure with no FAILED lines printed a Failing: header: $out"
+assert_contains "$out" "Full log kept at:"; rm -f "$TMPDIR"/tkt-merge-*
 # No terminal and no --yes: refused before any of the PR's code runs.
 rm -f "$W/ran"; refuses "no terminal without --yes" "no terminal to ask on" --
 [[ ! -e "$W/ran" ]] || fail "the PR's tests ran before anyone said yes"
@@ -137,7 +144,9 @@ assert_contains "$out" "merge-pr: nothing run, not merged"
 merged && fail "an n at the prompt merged"; [[ "$(sig)" == "$before" ]] || fail "an n at the prompt changed ticket.md"
 
 : > "$STUB_LOG"
+rm -f "$TMPDIR"/tkt-merge-*
 out="$(tty_run y "$TKT" merge-pr "$id" 2>&1)" || fail "merge-pr with y failed: $out"
+[[ -z "$(ls "$TMPDIR" | grep '^tkt-merge-.*-pr[0-9]*\.' || true)" ]] || fail "a passing run kept a log"
 assert_contains "$out" "running scripts/test.sh on main + PR #7"
 assert_contains "$out" "Merged PR #7 into main"
 grep -qx "pr merge 7 --repo acme/app --merge --delete-branch --match-head-commit $PRHEAD" "$STUB_LOG" || fail "wrong merge call: $(cat "$STUB_LOG")"

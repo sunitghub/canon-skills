@@ -35,7 +35,7 @@ tkt import-issue <N> [--body-file F]  # in the cloud session: rebuild .tickets/<
 tkt export <id> [--public]          # at the cloud close: send .tickets/<id>/ back (with the PR, or to canon-results/<id>)
 tkt import-results <id> [--pr N]    # on your machine: bring canon-results/<id> back; local edits kept in .before-import/
 tkt sync-issues [--dry-run]         # make a ticket of each open issue labelled canon that no ticket links to (labels: bug|feature|task|chore|epic, p0-p4)
-tkt merge-pr <id> [--pr N] [--test CMD] [--yes | --check]  # on your machine: check a cloud ticket's PR (evaluator passed on its head, own repo, mergeable, suite green on base + PR) and merge it after a y; --check reports readiness without running anything; progress shows while the tests run (CANON_PROGRESS_SECONDS without a terminal, default 30)
+tkt merge-pr <id> [--pr N] [--test CMD] [--yes | --check]  # on your machine: check a cloud ticket's PR (evaluator passed on its head, own repo, mergeable, suite green on base + PR) and merge it after a y; --check reports readiness without running anything; progress shows while the tests run (CANON_PROGRESS_SECONDS without a terminal, default 30); a red run names the FAILED/FAIL lines and keeps the full log (path printed)
 tkt github-status <id> [--json]      # where a ticket sent to GitHub stands: sent, pr-open, results-ready, results-in or merged (read-only; what the board polls)
 tkt take-back <id> [--close-issue]   # bring a ticket sent to GitHub back to this machine (clears runs: github; --close-issue also closes the issue and clears github:)
 ```
