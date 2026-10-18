@@ -154,7 +154,25 @@ Claude subscription, with no API key. The ticket goes to your repo as a GitHub i
    and whether it graded the PR's head commit. Then it deletes the branch.
 6. `tkt merge-pr <id>` finishes it: it checks the evaluator passed on the PR's head and GitHub can merge it, shows
    what the PR changes, asks once, runs your tests (`scripts/test.sh`, or `--test "<command>"`) on your base branch
-   plus the PR in a scratch clone, and merges if they pass. `--check` runs the checks only.
+   plus the PR in a scratch clone, and merges if they pass. `--check` runs the checks only. With no terminal to ask
+   on (an agent running it for you), it refuses unless given `--yes`, which skips only the question, never the checks.
+
+**Letting Claude Code run the merge.** In auto mode, Claude Code blocks a merge as "Merge Without Review" even after
+you said yes in chat. To let it run `merge-pr` for you, allow the command once, with `/permissions` › Allow or in the
+project's `.claude/settings.local.json` (personal, gitignored; `~/.claude/settings.json` for every project):
+
+```json
+{ "permissions": { "allow": ["Bash(tkt merge-pr *)", "Bash(gh pr merge *)"] } }
+```
+
+`Bash(tkt merge-pr *)` is the safer rule: `merge-pr` merges only the graded head after your tests pass. Allow
+`Bash(gh pr merge *)` only if you also want it to merge a PR that has no canon ticket (it checks nothing). A
+compound command (`gh pr merge 42 && git push …`) is matched one part at a time, so each part needs its own rule.
+
+**A cloud session that pushed a branch but opened no PR.** The session's report names `canon-results/<id>`; the
+evaluator's `graded-head:` in that branch's `eval-report.md` is the commit to merge. Find its branch
+(`git branch -r --contains <graded-head>`), open the PR from your machine (`gh pr create --head <branch>`), then
+continue at step 5 with that PR number.
 
 **Who grades what (t-278d).** For a ticket that is not a board or Go change, the cloud does the whole job: you
 approve the plan, it builds, runs the tests, runs a fresh evaluator and stamps the evidence. The Mac only runs
