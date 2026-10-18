@@ -8,6 +8,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/tests/helpers.sh"
 TOOL="$ROOT/tools/mutant-sweep"
 command -v node >/dev/null || fail "mutant-sweep: node not found (needed for the JS cases)"
+HAVE_GO=0; command -v gofmt >/dev/null && HAVE_GO=1   # the Go cases need gofmt (t-a3ef)
 
 T="${TMPDIR:-/tmp}"; WORK="$(mktemp -d "${T%/}/mutant-sweep-test.XXXXXX")"
 PIDS="$WORK/pids"; TESTS="$WORK/tests"; : > "$PIDS"; : > "$TESTS"
@@ -29,7 +30,11 @@ put strong.sh '#!/usr/bin/env bash'
 put weak.js 'const old = (a) => a === 1;'
 put loop.sh '#!/usr/bin/env bash'
 put other.sh '#!/usr/bin/env bash'
-put x.py 'x = 1'
+put x.rb 'x = 1'
+put weak.py 'import re'
+put weak.go 'package main
+
+import "os"'
 git add -A && git commit -q -m base
 BASE="$(git rev-parse HEAD)"
 
@@ -61,7 +66,62 @@ echo \$\$ >> '$TESTS'
 sleep 300 & echo \$! >> '$PIDS'
 bash ./loop.sh stop"
 echo 'echo hi' >> other.sh
-echo 'y = 2' >> x.py
+echo 'y = 2' >> x.rb
+cat >> weak.py <<'EOF'
+def f(a, b, xs, d, m):
+    if a == 1 and not b or m is not None and a in d:
+        return sorted(set(xs))
+    # if a == 1 and not b
+    msg = "a == b and not c"
+    if a <= 2 and m == None:
+        return 0
+    return a < 3 or False
+    return re.match("^ab$", msg)
+    return xs.sort()
+def g(a):
+    """
+    a == 1 and not b
+    """
+    return a
+def h(a):
+    s = """x \
+b == 1
+"""
+    return a == 2
+def k(a):
+    b = a == 3
+    """
+    a == 3 and not b
+    """
+    return a
+EOF
+cat >> weak.go <<'EOF'
+func f(err error, p *int, n int) int {
+	if err != nil && n < 3 {
+		return 1
+	}
+	// if err != nil && n < 3
+	s := "p == nil"
+	if p == nil || n >= 2 {
+		return 0
+	}
+	ok := true
+	ok = !ok
+	var (
+		k = s
+	)
+	os.Exit(1)
+	return 2
+}
+
+/*
+if n == 1 && err != nil {
+*/
+func r(p *int, ch chan int, n int) {
+	*p = n < 3
+	v := <-ch
+}
+EOF
 git add -A && git commit -q -m change
 
 TREE_BEFORE="$(git status --porcelain; find . -path ./.git -prune -o -type f -print0 | sort -z | xargs -0 shasum)"
@@ -79,7 +139,7 @@ bounded() {   # bounded <cmd...>: stdout+stderr in $out, exit code in $code; a r
 sweep() { bounded "$TOOL" --base "$BASE" --jobs 4 "$@"; }
 
 # --- only changed lines, every operator family --------------------------------------------------------------------------------
-sweep --map weak.sh='true ./other.sh' --map weak.js=true --map x.py=true --report "$WORK/report.md"   # a command naming other.sh does not map it
+sweep --map weak.sh='true ./other.sh' --map weak.js=true --map weak.py=true --map weak.go=true --map x.rb=true --report "$WORK/report.md"   # a command naming other.sh does not map it
 [[ "$code" == 0 ]] || fail "mutant-sweep: weak sweep exited $code: $out"
 [[ "$out" != *"weak.sh:2 "* ]] || fail "mutant-sweep: mutated an unchanged line: $out"
 for want in \
@@ -95,7 +155,35 @@ for want in \
   'weak.js:2 bool: false -> true@' 'weak.js:2 drop-conjunct: left of &&@'; do
   assert_contains "$out" "$want"
 done
-assert_contains "$out" "unsupported: x.py"
+assert_contains "$out" "unsupported: x.rb"
+# Python and Go (t-a3ef): one fixture line per family; a comment line, a docstring or block-comment body and the operators
+# inside a string yield nothing, and a mutant that does not parse is INVALID (never listed as a survivor).
+for want in \
+  'weak.py:3 cmp: == -> !=@' 'weak.py:3 bool: and -> or@' 'weak.py:3 bool: or -> and@' 'weak.py:3 negation: drop not@' \
+  'weak.py:3 identity: is not -> is@' 'weak.py:3 membership: in -> not in@' 'weak.py:3 const: None -> False@' \
+  'weak.py:4 sort: drop sorted()@' 'weak.py:4 sort: drop set()@' 'weak.py:4 return-value: sorted(set(xs)) -> None@' \
+  'weak.py:6 empty-string: "a == b and not c"@' 'weak.py:7 cmp: <= -> >@' 'weak.py:7 off-by-one: <= -> <@' \
+  'weak.py:8 code: return 0 -> return 1@' 'weak.py:9 bool: False -> True@' 'weak.py:10 drop-anchor: ^@' 'weak.py:10 drop-anchor: $@' \
+  "weak.py:11 sort: .sort() -> ''@" 'weak.py:21 cmp: == -> !=@' 'weak.py:23 cmp: == -> !=@'; do
+  assert_contains "$out" "$want"
+done
+for none in 'weak.py:5 ' 'weak.py:6 cmp' 'weak.py:6 bool' 'weak.py:6 negation' 'weak.py:14 ' 'weak.py:19 ' 'weak.py:25 ' 'weak.py:2 delete-line'; do
+  [[ "$out" != *"$none"* ]] || fail "mutant-sweep: '$none' should generate nothing (comment, string, docstring or INVALID): $out"
+done
+if (( HAVE_GO )); then
+  for want in \
+    'weak.go:5 err: err != nil -> err == nil@' 'weak.go:5 bool: && -> ||@' 'weak.go:5 cmp: < -> >=@' 'weak.go:5 off-by-one: < -> <=@' \
+    'weak.go:6 code: return 1 -> return 0@' 'weak.go:9 empty-string: "p == nil"@' \
+    'weak.go:10 nil: == nil -> != nil@' 'weak.go:10 bool: || -> &&@' 'weak.go:10 cmp: >= -> <@' 'weak.go:11 code: return 0 -> return 1@' \
+    'weak.go:13 bool: true -> false@' 'weak.go:14 negation: drop !@' 'weak.go:18 code: Exit(1) -> Exit(0)@' 'weak.go:26 cmp: < -> >=@'; do
+    assert_contains "$out" "$want"
+  done
+  for none in 'weak.go:8 ' 'weak.go:9 cmp' 'weak.go:9 nil' 'weak.go:15 delete-line' 'weak.go:22 ' 'weak.go:23 ' 'weak.go:27 cmp'; do
+    [[ "$out" != *"$none"* ]] || fail "mutant-sweep: '$none' should generate nothing (comment, string, block comment or INVALID): $out"
+  done
+else
+  echo "SKIP: mutant-sweep Go cases (no gofmt)"
+fi
 assert_contains "$out" "unmapped: other.sh"
 [[ "$out" =~ INVALID\ [1-9] ]] || fail "mutant-sweep: deleting the 'if' line should be INVALID: $out"
 [[ "$out" =~ KILLED\ 0 ]] || fail "mutant-sweep: a test that always passes killed something: $out"

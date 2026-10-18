@@ -26,19 +26,21 @@ failed evaluator runs). Run it from the project root:
 mutant-sweep --map <logic file>=<test command> [--map ...] --report .tickets/<id>/mutation-report.md
 ```
 
-- **Logic files only.** Map production shell/JS files from the sprint diff; never docs, config,
+- **Logic files only.** Map production shell, JS, Python and Go files from the sprint diff; never docs, config,
   generated files or the tests themselves (mutating a test proves nothing). If the diff changed no
   logic file, report "no logic files changed" and stop.
 - **One `--map` per changed logic file**, naming the test command that covers it: take it from
   `acceptance.md ## Test Plan` and the tests changed alongside. The tool never guesses: a changed
-  shell/JS file with no `--map` is listed `unmapped`, so a gap shows instead of passing silently.
+  shell, JS, Python or Go file with no `--map` is listed `unmapped`, so a gap shows instead of passing silently.
 - **Scope = changed lines.** Only lines added or changed since `git merge-base HEAD origin/main`
   (`--base <ref>` to override) are mutated. A failed merge-base exits 2 and runs nothing.
-- **Shell and JS only** (`bash -n` / `node --check` drop mutants that do not parse, reported
-  `INVALID`); any other mapped file is listed `unsupported`.
+- **Shell, JS, Python and Go** (`bash -n` / `node --check` / `python3 -m py_compile` / `gofmt -e` drop mutants
+  that do not parse, reported `INVALID`, never counted as survivors); any other mapped file is listed `unsupported`.
+  A Go file's `--map` test should be the narrowest package test (`go test ./<pkg>/ -run <Name>`): a mutant that
+  does not type-check fails that test and is KILLED(crash).
 - **Operators** (one fixed table in the tool, applied at every occurrence): comparison and
-  `&&`/`||` flips, off-by-one, `true`/`false`, negation removal, return/exit codes, sort/unique
-  removal, a dropped `&&`/`||` operand, a dropped regex anchor, a widened pattern, an emptied
+  `&&`/`||`/`and`/`or` flips, off-by-one, `true`/`false`/`None`, `is`/`in` and `err != nil` flips, negation removal, return/exit codes, sort/unique
+  removal (`sorted()`/`set()` too), a dropped `&&`/`||` operand, a dropped regex anchor, a widened pattern, an emptied
   string constant, and whole-line deletion.
 - **Isolation.** Every mutant runs in a fresh copy of the project (tracked + untracked files, no
   `.git`) with its own `TMPDIR`, `CANON_HOME` and `XDG_CONFIG_HOME`; the real tree is never written.

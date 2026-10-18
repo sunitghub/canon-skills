@@ -96,7 +96,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    (ticket-id mode; explicit `--model` wins.) See `docs/headless-ci.md` and `DECISIONS.md` 2026-08-06.
 
 
-   **Mutation test (advisory, normal+ tier, t-1fac).** When the sprint changed shell or JS logic files, run the
+   **Mutation test (advisory, normal+ tier, t-1fac).** When the sprint changed shell, JS, Python or Go logic files, run the
    `mutation-test` skill here, before the reviewer and evaluator, so they grade a suite that already has teeth. First run
    `mutant-sweep --check`: exit 3 means no working Python 3 on this machine (none, Windows' Store alias, Python 2), so record
    `mutation-test | skipped | no python3` and go on without reading the skill (t-a5f6). Otherwise read

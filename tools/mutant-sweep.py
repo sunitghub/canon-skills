@@ -5,7 +5,7 @@ Usage: mutant-sweep [--base <ref>] [--jobs N] [--timeout S] [--report <md>] --ma
 
 Applies every operator in OPS at every occurrence on the lines added or changed since <base>
 (default: git merge-base HEAD origin/main) in each mapped file, then runs that file's test command
-on a fresh copy of the project, one mutant per copy. Shell and JS only. Advisory: exit 0 after a
+on a fresh copy of the project, one mutant per copy. Shell, JS, Python and Go. Advisory: exit 0 after a
 sweep, 1 when a test fails unmutated (baseline), 2 on a usage or base-ref error. The real tree is
 never written: copies, their TMPDIR/CANON_HOME/XDG_CONFIG_HOME and every test's process group
 live under one temp root that is removed on exit, timeout or interrupt.
@@ -24,21 +24,28 @@ from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 # (family, old, new, languages). Symbolic operators match only when no other operator character
 # touches them, so `==` is not found inside `===`, `<=` or `=>`.
 OPS = [
-    ('cmp', '==', '!=', 'sh js'), ('cmp', '!=', '==', 'sh js'),
+    ('cmp', '==', '!=', 'sh js py go'), ('cmp', '!=', '==', 'sh js py go'),
     ('cmp', '===', '!==', 'js'), ('cmp', '!==', '===', 'js'),
     ('cmp', ' -eq ', ' -ne ', 'sh'), ('cmp', ' -ne ', ' -eq ', 'sh'),
     ('cmp', ' -lt ', ' -ge ', 'sh'), ('cmp', ' -ge ', ' -lt ', 'sh'),
     ('cmp', ' -gt ', ' -le ', 'sh'), ('cmp', ' -le ', ' -gt ', 'sh'),
-    ('cmp', '<', '>=', 'js'), ('cmp', '>=', '<', 'js'), ('cmp', '>', '<=', 'js'), ('cmp', '<=', '>', 'js'),
+    ('cmp', '<', '>=', 'js py go'), ('cmp', '>=', '<', 'js py go'), ('cmp', '>', '<=', 'js py go'), ('cmp', '<=', '>', 'js py go'),
     ('off-by-one', ' -lt ', ' -le ', 'sh'), ('off-by-one', ' -le ', ' -lt ', 'sh'),
     ('off-by-one', ' -gt ', ' -ge ', 'sh'), ('off-by-one', ' -ge ', ' -gt ', 'sh'),
-    ('off-by-one', '<', '<=', 'js'), ('off-by-one', '<=', '<', 'js'),
-    ('off-by-one', '>', '>=', 'js'), ('off-by-one', '>=', '>', 'js'),
-    ('bool', '&&', '||', 'sh js'), ('bool', '||', '&&', 'sh js'),
-    ('bool', 'true', 'false', 'sh js'), ('bool', 'false', 'true', 'sh js'),
-    ('code', 'return 0', 'return 1', 'sh'), ('code', 'return 1', 'return 0', 'sh'),
-    ('code', 'exit 0', 'exit 1', 'sh'), ('code', 'exit(0)', 'exit(1)', 'js'),
-    ('sort', 'sort -u', 'sort', 'sh'), ('sort', '.sort()', '', 'js'),
+    ('off-by-one', '<', '<=', 'js py go'), ('off-by-one', '<=', '<', 'js py go'),
+    ('off-by-one', '>', '>=', 'js py go'), ('off-by-one', '>=', '>', 'js py go'),
+    ('bool', '&&', '||', 'sh js go'), ('bool', '||', '&&', 'sh js go'),
+    ('bool', ' and ', ' or ', 'py'), ('bool', ' or ', ' and ', 'py'),
+    ('bool', 'true', 'false', 'sh js go'), ('bool', 'false', 'true', 'sh js go'),
+    ('bool', 'True', 'False', 'py'), ('bool', 'False', 'True', 'py'), ('const', 'None', 'False', 'py'),
+    ('identity', ' is not ', ' is ', 'py'), ('identity', ' is ', ' is not ', 'py'),
+    ('membership', ' not in ', ' in ', 'py'), ('membership', ' in ', ' not in ', 'py'),
+    ('nil', '!= nil', '== nil', 'go'), ('nil', '== nil', '!= nil', 'go'),
+    ('err', 'err != nil', 'err == nil', 'go'), ('err', 'err == nil', 'err != nil', 'go'),
+    ('code', 'return 0', 'return 1', 'sh py go'), ('code', 'return 1', 'return 0', 'sh py go'),
+    ('code', 'exit 0', 'exit 1', 'sh'), ('code', 'exit(0)', 'exit(1)', 'js py'),
+    ('code', 'Exit(0)', 'Exit(1)', 'go'), ('code', 'Exit(1)', 'Exit(0)', 'go'),
+    ('sort', 'sort -u', 'sort', 'sh'), ('sort', '.sort()', '', 'js py'),
 ]
 SYM = set('=!<>&|')
 WORD = re.compile(r'\w')
@@ -49,14 +56,23 @@ FAIL_LINE = re.compile(r'^\s*(FAIL\b|not ok\b|✗|✘)')
 def lang_of(path, text):
     if path.endswith(('.js', '.mjs', '.cjs')):
         return 'js'
+    if path.endswith('.go'):
+        return 'go'
     first = text.split('\n', 1)[0]
+    if path.endswith('.py') or re.match(r'#!.*\bpython[0-9.]*\b', first):
+        return 'py'
     if path.endswith('.sh') or re.match(r'#!.*\b(bash|sh)\b', first):
         return 'sh'
     return None
 
 
 def string_spans(line, lang):
-    pat = r'"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'' if lang == 'js' else r'"(?:[^"\\]|\\.)*"|\'[^\']*\''
+    if lang == 'py':
+        pat = r'"""(?:[^\\]|\\.)*?"""|\'\'\'(?:[^\\]|\\.)*?\'\'\'|"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\''
+    elif lang == 'go':
+        pat = r'"(?:[^"\\]|\\.)*"|`[^`]*`|\'(?:[^\'\\]|\\.)+\''
+    else:
+        pat = r'"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'' if lang == 'js' else r'"(?:[^"\\]|\\.)*"|\'[^\']*\''
     if lang == 'js':
         pat += r'|`(?:[^`\\]|\\.)*`'
     return [(m.start(), m.end()) for m in re.finditer(pat, line)]
@@ -65,22 +81,72 @@ def string_spans(line, lang):
 def code_end(line, lang, spans):
     """Index where a trailing comment starts (outside strings), else len(line)."""
     inside = lambda i: any(a <= i < b for a, b in spans)
-    if lang == 'js':
-        for m in re.finditer(r'//', line):
+    if lang in ('js', 'go'):
+        for m in re.finditer(r'//|/\*', line):
             if not inside(m.start()) and (m.start() == 0 or line[m.start() - 1] != ':'):
                 return m.start()
     else:
         for m in re.finditer(r'#', line):
             i = m.start()
-            if not inside(i) and (i == 0 or line[i - 1] in ' \t;'):
+            if not inside(i) and (lang == 'py' or i == 0 or line[i - 1] in ' \t;'):
                 return i
     return len(line)
 
 
 def is_comment(stripped, lang):
+    if lang == 'go':
+        return stripped.startswith(('//', '/*')) or re.match(r'\*(\s|/|$)', stripped) is not None   # `*p = x` is code
     if lang == 'js':
         return stripped.startswith(('//', '/*', '*'))
     return stripped.startswith('#')
+
+
+def blind_lines(src, lang):
+    """0-based lines that open, sit inside or close a multi-line string or block comment: never mutated."""
+    if lang not in ('py', 'go'):
+        return set()
+    text = '\n'.join(src)
+    skip, line, i, n = set(), 0, 0, len(text)
+    cur = start = None
+    while i < n:
+        c = text[i]
+        if cur:
+            if lang == 'py' and c == '\\':
+                line += text[i + 1:i + 2] == '\n'
+                i += 2
+                continue
+            if text.startswith(cur, i):
+                i += len(cur)
+                if start != line:
+                    skip.update(range(start, line + 1))
+                cur = None
+                continue
+            line += c == '\n'
+            i += 1
+            continue
+        if c == '\n':
+            line += 1
+        elif (lang == 'py' and c == '#') or (lang == 'go' and text.startswith('//', i)):
+            j = text.find('\n', i)
+            i = n if j < 0 else j
+            continue
+        elif lang == 'go' and text.startswith('/*', i):
+            cur, start, i = '*/', line, i + 2
+            continue
+        elif lang == 'go' and c == '`':
+            cur, start, i = '`', line, i + 1
+            continue
+        elif lang == 'py' and text.startswith(('"""', "'''"), i):
+            cur, start, i = text[i:i + 3], line, i + 3
+            continue
+        elif c in '"\'':
+            j = i + 1
+            while j < n and text[j] not in (c, '\n'):
+                j += 2 if text[j] == '\\' else 1
+            i = j + 1
+            continue
+        i += 1
+    return skip
 
 
 def bounded(line, k, tok):
@@ -178,13 +244,37 @@ def mutants_for_line(line, lang):
             j = k + 1
             if inside(k) or not bounded(line, k, old):
                 continue
+            if lang == 'go' and old[0] == '<' and line[k + len(old):k + len(old) + 1] == '-':
+                continue   # a channel receive, not a comparison
             out.append((f'{fam}: {old.strip() or old} -> {new.strip() or repr(new)}@{k+1}', line[:k] + new + line[k + len(old):]))
     # negation removal
-    neg = r'(?:^\s*|\[\[ |\bif |\bwhile |; |&& |\|\| )(! )' if lang == 'sh' else r'(!)(?=[\w(!$])'
-    for m in re.finditer(neg, line[:hi]):
-        k = m.start(1)
-        if not inside(k) and (lang == 'sh' or not k or line[k - 1] not in SYM):
-            out.append((f'negation: drop !@{k+1}', line[:k] + line[m.end(1):]))
+    if lang == 'py':
+        for m in re.finditer(r'(?<!\w)not (?!in\b)', line[:hi]):
+            k = m.start()
+            if not inside(k) and not line[:k].endswith('is '):
+                out.append((f'negation: drop not@{k+1}', line[:k] + line[m.end():]))
+    else:
+        neg = r'(?:^\s*|\[\[ |\bif |\bwhile |; |&& |\|\| )(! )' if lang == 'sh' else r'(!)(?=[\w(!$])'
+        for m in re.finditer(neg, line[:hi]):
+            k = m.start(1)
+            if not inside(k) and (lang == 'sh' or not k or line[k - 1] not in SYM):
+                out.append((f'negation: drop !@{k+1}', line[:k] + line[m.end(1):]))
+    if lang == 'py':
+        m = re.match(r'(\s*)return (?!None\s*$)(\S.*?)\s*$', line[:hi])
+        if m and not inside(m.start(2)):
+            out.append((f'return-value: {m.group(2)[:20]} -> None@{m.start(2)+1}', line[:m.start(2)] + 'None' + line[m.end(2):]))
+        for m in re.finditer(r'\b(sorted|set)\(', line[:hi]):
+            if inside(m.start()):
+                continue
+            depth, j = 1, m.end()
+            while j < hi and depth:
+                if not inside(j):
+                    depth += (line[j] in '([{') - (line[j] in ')]}')
+                    if depth == 1 and line[j] == ',':
+                        break
+                j += 1
+            if depth == 0:
+                out.append((f'sort: drop {m.group(1)}()@{m.start()+1}', line[:m.start()] + line[m.end():j - 1] + line[j:]))
     if lang == 'sh':
         for m in re.finditer(r'\bexit ([1-9]\d*)\b', line[:hi]):
             if not inside(m.start()):
@@ -207,12 +297,15 @@ def mutants_for_line(line, lang):
     for a, b in spans:
         if b > hi:
             continue
-        body = line[a + 1:b - 1]
-        q = line[a]
+        n = 3 if line[a:a + 3] in ('"""', "'''") else 1
+        body = line[a + n:b - n]
+        q = line[a:a + n]
+        if lang == 'go' and q == "'":
+            continue   # a rune literal cannot be empty
         if body.startswith('^'):
-            out.append((f'drop-anchor: ^@{a+2}', line[:a + 1] + body[1:] + line[b - 1:]))
+            out.append((f'drop-anchor: ^@{a+n+1}', line[:a + n] + body[1:] + line[b - n:]))
         if body.endswith('$') and not body.endswith('\\$') and len(body) > 1:
-            out.append((f'drop-anchor: $@{b-1}', line[:b - 2] + line[b - 1:]))
+            out.append((f'drop-anchor: $@{b-n}', line[:b - n - 1] + line[b - n:]))
         if body:
             out.append((f'empty-string: {q}{body[:20]}{q}@{a+1}', line[:a] + q + q + line[b:]))
     if lang == 'sh':
@@ -232,7 +325,12 @@ def mutants_for_line(line, lang):
             if m.group(3):
                 out.append((f'drop-anchor: $@{m.start(3)+1}', line[:m.start(3)] + line[m.end(3):]))
     out.extend(conjunct_drops(line, 0, hi, spans))
-    return out
+    if lang in ('sh', 'js'):
+        return out
+    seen = {}   # py/go: two rows can yield the same text; keep the first position, the later (more specific) name
+    for name, new in out:
+        seen[new] = name
+    return [(name, new) for new, name in seen.items()]
 
 
 def git(*args, cwd=None):
@@ -254,7 +352,7 @@ def changed_lines(base, path, untracked):
 
 def is_test_path(p):
     parts = p.split('/')
-    return any(x in ('tests', 'test', '__tests__', 'spec') for x in parts[:-1]) or re.search(r'\.(test|spec)\.\w+$', parts[-1])
+    return any(x in ('tests', 'test', '__tests__', 'spec') for x in parts[:-1]) or re.search(r'\.(test|spec)\.\w+$|_test\.(go|py)$|^test_\w+\.py$', parts[-1])
 
 
 class Sweep:
@@ -292,7 +390,8 @@ class Sweep:
                 f = os.path.join(work, path)
                 with open(f, 'w') as fh:
                     fh.write(new_text)
-                check = ['bash', '-n', f] if lang == 'sh' else ['node', '--check', f]
+                check = {'sh': ['bash', '-n', f], 'js': ['node', '--check', f], 'py': [sys.executable, '-m', 'py_compile', f],
+                         'go': ['gofmt', '-e', f]}[lang]
                 if subprocess.run(check, capture_output=True).returncode:
                     return ('INVALID', '')
             env = dict(self.env_base, TMPDIR=os.path.join(d, 'tmp'), CANON_HOME=os.path.join(d, 'canon-home'),
@@ -407,10 +506,14 @@ def main():
         if lang == 'js' and not shutil.which('node'):
             unsupported.append(path + ' (node not found)')
             continue
+        if lang == 'go' and not shutil.which('gofmt'):
+            unsupported.append(path + ' (gofmt not found)')
+            continue
         want = changed_lines(base, path, untracked) if path in changed else set()
         src = text.split('\n')
+        blind = blind_lines(src, lang)
         for i, line in enumerate(src):
-            if want is not None and i + 1 not in want:
+            if (want is not None and i + 1 not in want) or i in blind:
                 continue
             if not line.strip() or is_comment(line.strip(), lang):
                 continue
@@ -421,6 +524,8 @@ def main():
 
     env = dict(os.environ)
     root = tempfile.mkdtemp(prefix='mutant-sweep.')
+    if any(t[4] == 'go' for t in todo):
+        env['GOCACHE'] = os.path.join(root, 'gocache')   # one cache for the sweep's builds (go's cache is safe for parallel use), gone with the root
     sweep = Sweep(root, top, files, env, a.timeout)
 
     def on_signal(sig, _frm):
