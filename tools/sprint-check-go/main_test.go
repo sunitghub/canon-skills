@@ -1776,10 +1776,12 @@ func TestTicketCacheSeesEdits(t *testing.T) {
 		t.Fatalf("ticket.md edit not seen: %v", tk["status"])
 	}
 	writeFile(t, filepath.Join(dir, "acceptance.md"), "## Criteria\n- [x] a\n## Test Plan\n- [x] b\n")
+	bumpMtime(t, filepath.Join(dir, "acceptance.md"), 2*time.Second) // same size: do not rely on two writes landing on different clock ticks
 	if tk := cacheTicket(t, root, "t-c1a1"); tk["acceptance_unchecked"] != false || tk["acceptance_has_items"] != true {
 		t.Fatalf("acceptance.md edit not seen: %v %v", tk["acceptance_unchecked"], tk["acceptance_has_items"])
 	}
 	writeFile(t, filepath.Join(dir, "plan.md"), "## Sign-off\n- [x] Plan approved\n## Approach\nx\n")
+	bumpMtime(t, filepath.Join(dir, "plan.md"), 2*time.Second)
 	if tk := cacheTicket(t, root, "t-c1a1"); tk["plan_approved"] != true {
 		t.Fatalf("plan.md edit not seen: %v", tk["plan_approved"])
 	}
@@ -1831,8 +1833,8 @@ func TestTicketCacheSeesEdits(t *testing.T) {
 
 // A ticket that stats but cannot be read is skipped, never listed as an empty ticket, and is read again once readable.
 func TestTicketCacheUnreadableTicket(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("root reads a 0000 file; this test needs a normal user")
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs a mode-0000 file to be unreadable: not on Windows, not as root")
 	}
 	root := setupTestProject(t)
 	tm := filepath.Join(ticketsDir, "t-c3c3", "ticket.md")

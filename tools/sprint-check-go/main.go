@@ -381,7 +381,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, map[string]string{"version": canonVersion(), "commit": commit, "daemon": daemonVersion()})
 	case "/api/worktrees":
 		wtTicket := r.URL.Query().Get("ticket")
-		if !ticketIDRe.MatchString(wtTicket) {
+		if !ticketCommitIDRe.MatchString(wtTicket) {
 			wtTicket = ""
 		}
 		root, ok := effectiveRoot(r)
@@ -848,7 +848,7 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if m := apiWorktreeUnlockRe.FindStringSubmatch(path); m != nil {
-		if !ticketIDRe.MatchString(m[1]) {
+		if !ticketCommitIDRe.MatchString(m[1]) {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
@@ -932,10 +932,8 @@ func parseTicket(path string) (ticket, error) {
 		t["models_used"] = []string{}
 		if acc, err := os.ReadFile(filepath.Join(filepath.Dir(path), "acceptance.md")); err == nil {
 			accText := string(acc)
-			cb := checkboxItemRe
-			unchecked := uncheckedItemRe
-			t["acceptance_has_items"] = cb.MatchString(section(accText, "Criteria")) && cb.MatchString(section(accText, "Test Plan"))
-			t["acceptance_unchecked"] = unchecked.MatchString(accText)
+			t["acceptance_has_items"] = checkboxItemRe.MatchString(section(accText, "Criteria")) && checkboxItemRe.MatchString(section(accText, "Test Plan"))
+			t["acceptance_unchecked"] = uncheckedItemRe.MatchString(accText)
 			t["models_used"] = modelsUsed(section(accText, "Wrapup Gates"))
 		}
 		t["plan_has_approach"] = nil
@@ -1846,7 +1844,6 @@ func legacyDocTarget(docFile string, root string) (string, bool) {
 // t-1699: compiled once at start-up, not on every request or ticket line.
 var (
 	apiProjectRe        = regexp.MustCompile(`^/api/projects/([0-9a-f]{12})$`)
-	ticketIDRe          = regexp.MustCompile(`^t-[a-z0-9]{4}$`)
 	screenshotPathRe    = regexp.MustCompile(`^/meta/screenshots/[A-Za-z0-9_-]+\.(png|gif|jpg|jpeg|webp)$`)
 	apiCommitRe         = regexp.MustCompile(`^/api/commit/([0-9a-f]{4,40})$`)
 	apiDocRe            = regexp.MustCompile(`^/api/doc/(.+)$`)
