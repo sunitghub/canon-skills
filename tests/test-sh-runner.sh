@@ -108,7 +108,7 @@ assert_eq 0 "$rc"
 first2="$(head -n 2 "$L2/mark/order" | sort | tr '\n' ' ')"
 assert_eq "canon-update sprint " "$first2"                                         # the two LONGEST suites started before a, b and c
 assert_eq 5 "$(wc -l < "$L2/mark/order" | tr -d ' ')"                              # every suite ran, once
-heads="$(printf '%s\n' "$out" | grep '^==> tests/' | tr '\n' ' ')"
+heads="$(printf '%s\n' "$out" | grep -E '^==> tests/[a-z-]+\.sh$' | tr '\n' ' ')"   # exact suite headers: the "skipped (node absent)" line is not one
 assert_eq "==> tests/a.sh ==> tests/b.sh ==> tests/c.sh ==> tests/canon-update.sh ==> tests/sprint.sh " "$heads"   # printed in list order
 # SERIAL: a listed suite runs alone after the batch; the others mark themselves running while they run
 Z="$WORK/ser"; runner_copy "$Z" tests/p1.sh tests/s.sh tests/p2.sh tests/p3.sh
