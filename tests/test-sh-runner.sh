@@ -30,6 +30,11 @@ serial="$(awk '/^SERIAL=\(/{f=1; next} f && /^\)/{exit} f && !/^ *#/{print $1}' 
 [[ -n "$serial" ]] || fail "test.sh: SERIAL lists no suite"
 while IFS= read -r l; do grep -qxF "$l" <<< "$LIST" || fail "test.sh: SERIAL names $l, which --list does not"; done <<< "$serial"
 
+# every LONGEST label is a --list label (t-b792): a renamed suite would quietly lose its early start
+longest="$(sed -n '/^LONGEST=(/,/)$/p' "$ROOT/scripts/test.sh" | sed -e 's/^LONGEST=(//' -e 's/)$//' | tr -s ' ' '\n' | grep . || true)"
+[[ -n "$longest" ]] || fail "test.sh: LONGEST lists no suite"
+while IFS= read -r l; do grep -qxF "$l" <<< "$LIST" || fail "test.sh: LONGEST names $l, which --list does not"; done <<< "$longest"
+
 # --- copies of the real runner with fake suites; go and node kept off PATH -----------------------------------------------------------
 mkdir -p "$WORK/bin"
 for b in bash sh python3 git sort head tail mktemp grep sed awk cat rm sleep dirname cut wc tr comm ps pgrep uniq basename env ls xargs date mv mkdir touch nproc sysctl pkill kill; do
