@@ -1113,15 +1113,17 @@ cmd_send_issue() {
     printf '\n# Plan\n'; _si_or_none "$psecs"
     printf '\n# Research\n'; _si_or_none "$rbody"
     printf '\n# Working on this\n'
-    printf 'This repository uses canon. Run `sprint import-issue <this issue number>` to rebuild .tickets/%s/ from the\n' "$id"
-    printf 'sections above and start the sprint (if gh cannot read this issue, save its text to a file and add\n'
-    printf '`--body-file <file>`). Open the PR with `Fixes #<this issue number>`, and when the sprint closes run\n'
-    printf '`tkt export %s` and push nothing else for it: export prints where the ticket went.\n' "$id"
-    printf 'Plan with canon'"'"'s own approval (write the plan into .tickets/%s/plan.md and ask), not plan mode: plan mode\n' "$id"
-    printf 'has been observed to reach the close gates and stop them. Write the plan, then stop and wait for the\n'
-    printf 'user'"'"'s approval before editing any file but the ticket'"'"'s docs under .tickets/%s/. If Acceptance or Plan\n' "$id"
-    printf 'above read "(none yet)", stop and tell the user; do not draft them yourself.\n'
-    printf 'Work on a new branch, never main: push that branch and open a PR. Do not push to main or force-push anything.\n'
+    printf 'This repository uses canon. Work in this order:\n\n'
+    printf '1. Run `sprint import-issue <this issue number>` first: it rebuilds .tickets/%s/ from the sections above and starts the\n' "$id"
+    printf '   sprint. Edit no file before it has run. If gh cannot read this issue, save its text to a file and add `--body-file <file>`.\n'
+    printf '2. Plan with canon'"'"'s own approval, not plan mode: plan mode has been observed to reach the close gates and stop them.\n'
+    printf '   Write the plan into .tickets/%s/plan.md, then stop and wait for the user'"'"'s approval before editing any file but the\n' "$id"
+    printf '   ticket'"'"'s docs. If Acceptance or Plan above read "(none yet)", stop and tell the user; do not draft them yourself.\n'
+    printf '3. Work on a new branch, never main: push that branch and open a PR with `Fixes #<this issue number>`. Do not push to main or force-push anything.\n'
+    printf '4. Build it and run the tests; tick each acceptance item only when it is true.\n'
+    printf '5. Run `sprint complete`: a fresh reviewer and a fresh evaluator are dispatched, and neither is skipped or written by hand.\n'
+    printf '6. Run `tkt export %s` and push nothing else for it: export prints where the ticket went.\n' "$id"
+    printf '\nIf a step cannot be done, say so in the PR description; do not skip it silently.\n'
     printf '\n<!-- canon:ticket %s -->\n' "$id"
   } > "$body"
 

@@ -70,15 +70,27 @@ approach="$(awk '/^```/ { fence = !fence } !fence && /^## Approach$/ { f = 1; ne
 assert_eq $'1. Profile the idle board.\n2. Fix the hot loop.\n```\n<!-- kept: inside a fence -->\n## Files\n```\n3. Measure again.' "$(printf '%s' "$approach" | awk 'NF { s = 1 } s' | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}')"
 assert_grep '^- The board polls every 8 s.$' "$STUB_BODY"
 assert_grep "^<!-- canon:ticket $id -->\$" "$STUB_BODY"
-grep -qxF "Plan with canon's own approval (write the plan into .tickets/$id/plan.md and ask), not plan mode: plan mode" "$STUB_BODY" \
-  || fail "the issue does not warn against plan mode (t-b2e5)"
-# t-1cf4: the session writes the plan, waits for approval, and stops on "(none yet)" rather than drafting Acceptance or Plan.
-grep -qxF "has been observed to reach the close gates and stop them. Write the plan, then stop and wait for the" "$STUB_BODY" \
-  || fail "the issue does not say to stop and wait for approval (t-1cf4)"
-grep -qxF "above read \"(none yet)\", stop and tell the user; do not draft them yourself." "$STUB_BODY" \
-  || fail "the issue does not say to stop on (none yet) (t-1cf4)"
-grep -qxF "Work on a new branch, never main: push that branch and open a PR. Do not push to main or force-push anything." "$STUB_BODY" \
-  || fail "the issue does not say to work on a branch and never push main (t-1cf4)"
+# t-67c5: "Working on this" is a numbered list in work order; each line is asserted whole (t-b2e5 plan mode, t-1cf4 approval and branch).
+grep -qxF "1. Run \`sprint import-issue <this issue number>\` first: it rebuilds .tickets/$id/ from the sections above and starts the" "$STUB_BODY" \
+  || fail "the issue lacks the import first line (t-67c5)"
+grep -qxF "   sprint. Edit no file before it has run. If gh cannot read this issue, save its text to a file and add \`--body-file <file>\`." "$STUB_BODY" \
+  || fail "the issue lacks the import: edit nothing before it line (t-67c5)"
+grep -qxF "2. Plan with canon's own approval, not plan mode: plan mode has been observed to reach the close gates and stop them." "$STUB_BODY" \
+  || fail "the issue lacks the plan mode warning line (t-67c5)"
+grep -qxF "   Write the plan into .tickets/$id/plan.md, then stop and wait for the user's approval before editing any file but the" "$STUB_BODY" \
+  || fail "the issue lacks the wait for approval line (t-67c5)"
+grep -qxF "   ticket's docs. If Acceptance or Plan above read \"(none yet)\", stop and tell the user; do not draft them yourself." "$STUB_BODY" \
+  || fail "the issue lacks the stop on (none yet) line (t-67c5)"
+grep -qxF "3. Work on a new branch, never main: push that branch and open a PR with \`Fixes #<this issue number>\`. Do not push to main or force-push anything." "$STUB_BODY" \
+  || fail "the issue lacks the branch, never main line (t-67c5)"
+grep -qxF "4. Build it and run the tests; tick each acceptance item only when it is true." "$STUB_BODY" \
+  || fail "the issue lacks the build and test line (t-67c5)"
+grep -qxF "5. Run \`sprint complete\`: a fresh reviewer and a fresh evaluator are dispatched, and neither is skipped or written by hand." "$STUB_BODY" \
+  || fail "the issue lacks the gates line (t-67c5)"
+grep -qxF "6. Run \`tkt export $id\` and push nothing else for it: export prints where the ticket went." "$STUB_BODY" \
+  || fail "the issue lacks the export line (t-67c5)"
+grep -qxF "If a step cannot be done, say so in the PR description; do not skip it silently." "$STUB_BODY" \
+  || fail "the issue lacks the closing line line (t-67c5)"
 # t-1465: GitHub hides a bare <placeholder> as an HTML tag, so in "Working on this" each sits inside a code span.
 work="$(awk '/^# Working on this$/ { f = 1; next } /^<!-- canon:ticket / { f = 0 } f' "$STUB_BODY")"
 assert_contains "$work" '`Fixes #<this issue number>`'

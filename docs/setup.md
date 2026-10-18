@@ -137,8 +137,8 @@ Claude subscription, with no API key. The ticket goes to your repo as a GitHub i
 2. `tkt send-issue <id>` creates it (needs `gh auth login`), adds the `canon` label, records `github: owner/repo#N`
    in `ticket.md`, and prints the line to start with. A public repo is refused unless you add `--public`: anyone
    could read the ticket's notes.
-3. Start a new session on the `canon` environment and your repo, and type `Work on Issue#N`; answer its plan
-   when it asks. The issue tells the session to work on a new branch, never `main`, to push that branch and open a PR,
+3. Start a new session on the `canon` environment and your repo and type: "Work on Issue#N. Run canon's sprint workflow from `sprint import-issue N` through the gates to `sprint complete` and `tkt export`. Don't use plan mode. Work on a new branch, never main: push that branch and open a PR. Do not push to main or force-push anything." Answer its plan
+   when it asks. The issue lists the same steps in order. The issue tells the session to work on a new branch, never `main`, to push that branch and open a PR,
    and never to push `main` or force-push: a private repo on a free GitHub plan cannot enforce that with a branch
    rule, so the issue text is the only guard (t-1cf4). It also tells it to run `sprint import-issue N`,
    which rebuilds the ticket (an approved plan stays approved) and starts the sprint; you approve and confirm in that session as you would locally, and the
