@@ -961,6 +961,75 @@ func parseTicket(path string) (ticket, error) {
 	return t, nil
 }
 
+// t-1699: /api/tickets (and every /api/doc, through liveForDocFull) re-read and re-parsed every ticket on each
+// poll, so board CPU grew with the number of tickets (1124 tickets: ~77 % mean under a spec run). A parse is reused
+// while the mtime and size of everything parseTicket reads are unchanged: ticket.md, acceptance.md, plan.md, and the
+// folder, whose mtime moves when a doc is added, removed or renamed (the docs list). A write that keeps both mtime
+// and size is missed until the next change.
+type ticketCacheEntry struct {
+	key string
+	t   ticket
+}
+
+var ticketCache sync.Map // ticket.md path -> ticketCacheEntry
+
+func ticketCacheKey(path string) (string, bool) {
+	dir := filepath.Dir(path)
+	var b strings.Builder
+	for i, f := range []string{path, dir, filepath.Join(dir, "acceptance.md"), filepath.Join(dir, "plan.md")} {
+		st, err := os.Stat(f)
+		if err != nil {
+			if i < 2 || !errors.Is(err, os.ErrNotExist) {
+				return "", false // the ticket or its folder is unreadable, or a doc errs: parse fresh, cache nothing
+			}
+			b.WriteString("-|")
+			continue
+		}
+		fmt.Fprintf(&b, "%d:%d|", st.ModTime().UnixNano(), st.Size())
+	}
+	return b.String(), true
+}
+
+// cloneTicket copies the top-level map: callers (loadTickets, the overlays) only set keys, never edit nested values.
+func cloneTicket(t ticket) ticket {
+	c := make(ticket, len(t)+4)
+	for k, v := range t {
+		c[k] = v
+	}
+	return c
+}
+
+func parseTicketCached(path string) (ticket, error) {
+	key, ok := ticketCacheKey(path)
+	if ok {
+		if e, hit := ticketCache.Load(path); hit && e.(ticketCacheEntry).key == key {
+			return cloneTicket(e.(ticketCacheEntry).t), nil
+		}
+	}
+	t, err := parseTicket(path)
+	if err != nil || !ok {
+		ticketCache.Delete(path)
+		return t, err
+	}
+	ticketCache.Store(path, ticketCacheEntry{key: key, t: cloneTicket(t)})
+	return t, nil
+}
+
+// evictTicketCache drops entries under td whose ticket is no longer listed (deleted or moved).
+func evictTicketCache(td string, listed []string) {
+	keep := make(map[string]bool, len(listed))
+	for _, p := range listed {
+		keep[p] = true
+	}
+	prefix := td + string(os.PathSeparator)
+	ticketCache.Range(func(k, _ any) bool {
+		if p := k.(string); strings.HasPrefix(p, prefix) && !keep[p] {
+			ticketCache.Delete(p)
+		}
+		return true
+	})
+}
+
 func ticketPaths(root string) []string {
 	td := ticketsDirForRoot(root)
 	if st, err := os.Stat(td); err != nil || !st.IsDir() {
@@ -1039,11 +1108,13 @@ func loadTickets(root string) []ticket {
 	// the frontend's renderHeader crashes on `null.filter(...)` when zero
 	// tickets exist, which aborts the whole board render (t-626d).
 	tickets := []ticket{}
-	for _, p := range ticketPaths(root) {
-		if t, err := parseTicket(p); err == nil {
+	paths := ticketPaths(root)
+	for _, p := range paths {
+		if t, err := parseTicketCached(p); err == nil {
 			tickets = append(tickets, t)
 		}
 	}
+	evictTicketCache(ticketsDirForRoot(root), paths)
 	outcomeStats := typeOutcomeStats(tickets)
 	for _, t := range tickets {
 		status, _ := t["status"].(string)

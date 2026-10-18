@@ -1737,3 +1737,149 @@ func BenchmarkParseTicket(b *testing.B) {
 		}
 	}
 }
+
+// t-1699: the parsed-ticket cache must never show a stale card after any input of parseTicket changes.
+func cacheTicket(t *testing.T, root, id string) ticket {
+	t.Helper()
+	for _, tk := range loadTickets(root) {
+		if tk["id"] == id {
+			return tk
+		}
+	}
+	return nil
+}
+
+func bumpMtime(t *testing.T, path string, by time.Duration) {
+	t.Helper()
+	st, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, st.ModTime().Add(by), st.ModTime().Add(by)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTicketCacheSeesEdits(t *testing.T) {
+	root := setupTestProject(t)
+	dir := filepath.Join(ticketsDir, "t-c1a1")
+	tm := filepath.Join(dir, "ticket.md")
+	writeFile(t, tm, "---\nid: t-c1a1\nstatus: open\ntype: task\n---\n# Title one\n")
+	writeFile(t, filepath.Join(dir, "acceptance.md"), "## Criteria\n- [ ] a\n## Test Plan\n- [ ] b\n")
+	writeFile(t, filepath.Join(dir, "plan.md"), "## Sign-off\n- [ ] Plan approved\n## Approach\nx\n")
+	if tk := cacheTicket(t, root, "t-c1a1"); tk["status"] != "open" || tk["plan_approved"] != false || tk["acceptance_unchecked"] != true {
+		t.Fatalf("initial load: %v", tk)
+	}
+	writeFile(t, tm, "---\nid: t-c1a1\nstatus: in_progress\ntype: task\n---\n# Title one\n")
+	if tk := cacheTicket(t, root, "t-c1a1"); tk["status"] != "in_progress" {
+		t.Fatalf("ticket.md edit not seen: %v", tk["status"])
+	}
+	writeFile(t, filepath.Join(dir, "acceptance.md"), "## Criteria\n- [x] a\n## Test Plan\n- [x] b\n")
+	if tk := cacheTicket(t, root, "t-c1a1"); tk["acceptance_unchecked"] != false || tk["acceptance_has_items"] != true {
+		t.Fatalf("acceptance.md edit not seen: %v %v", tk["acceptance_unchecked"], tk["acceptance_has_items"])
+	}
+	writeFile(t, filepath.Join(dir, "plan.md"), "## Sign-off\n- [x] Plan approved\n## Approach\nx\n")
+	if tk := cacheTicket(t, root, "t-c1a1"); tk["plan_approved"] != true {
+		t.Fatalf("plan.md edit not seen: %v", tk["plan_approved"])
+	}
+	writeFile(t, filepath.Join(dir, "notes.md"), "n\n")
+	if tk := cacheTicket(t, root, "t-c1a1"); !strings.Contains(fmt.Sprint(tk["docs"]), "notes.md") {
+		t.Fatalf("added doc not listed: %v", tk["docs"])
+	}
+	if err := os.Remove(filepath.Join(dir, "plan.md")); err != nil {
+		t.Fatal(err)
+	}
+	if tk := cacheTicket(t, root, "t-c1a1"); tk["plan_approved"] != nil {
+		t.Fatalf("removed plan.md still read: %v", tk["plan_approved"])
+	}
+	// same size, new content: the mtime alone must invalidate
+	writeFile(t, tm, "---\nid: t-c1a1\nstatus: in_progress\ntype: task\n---\n# Title two\n")
+	bumpMtime(t, tm, 2*time.Second)
+	if tk := cacheTicket(t, root, "t-c1a1"); tk["title"] != "Title two" {
+		t.Fatalf("same-size edit not seen: %v", tk["title"])
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+	if tk := cacheTicket(t, root, "t-c1a1"); tk != nil {
+		t.Fatalf("deleted ticket still listed: %v", tk)
+	}
+	if _, hit := ticketCache.Load(tm); hit {
+		t.Fatal("deleted ticket's cache entry was not evicted")
+	}
+}
+
+// The cache is used at all (a pure re-parse would pass TestTicketCacheSeesEdits too), and a caller's edits never reach it.
+func TestTicketCacheReusesAndCopies(t *testing.T) {
+	root := setupTestProject(t)
+	tm := filepath.Join(ticketsDir, "t-c2b2", "ticket.md")
+	writeFile(t, tm, "---\nid: t-c2b2\nstatus: open\n---\n# Kept\n")
+	first := cacheTicket(t, root, "t-c2b2")
+	first["status"], first["injected"] = "hacked", true
+	if tk := cacheTicket(t, root, "t-c2b2"); tk["status"] != "open" || tk["injected"] != nil {
+		t.Fatalf("a caller's edit reached the cache: %v", tk)
+	}
+	st, _ := os.Stat(tm)
+	writeFile(t, tm, "---\nid: t-c2b2\nstatus: open\n---\n# Kxpt\n") // same size
+	if err := os.Chtimes(tm, st.ModTime(), st.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	bumpMtime(t, filepath.Dir(tm), 3*time.Second) // ticket.md's mtime and size are restored; only the folder moved
+	if tk := cacheTicket(t, root, "t-c2b2"); tk["title"] != "Kxpt" {
+		t.Fatalf("folder mtime change did not invalidate: %v", tk["title"])
+	}
+	// now nothing moves: a content change hidden behind identical mtime+size is served from the cache (documented limit)
+	st, _ = os.Stat(tm)
+	dst, _ := os.Stat(filepath.Dir(tm))
+	writeFile(t, tm, "---\nid: t-c2b2\nstatus: open\n---\n# Kzzt\n")
+	_ = os.Chtimes(tm, st.ModTime(), st.ModTime())
+	_ = os.Chtimes(filepath.Dir(tm), dst.ModTime(), dst.ModTime())
+	if tk := cacheTicket(t, root, "t-c2b2"); tk["title"] != "Kxpt" {
+		t.Fatalf("unchanged stat key re-parsed (no cache in use?): %v", tk["title"])
+	}
+}
+
+func TestTicketCacheConcurrentLoads(t *testing.T) {
+	root := setupTestProject(t)
+	for i := 0; i < 20; i++ {
+		writeFile(t, filepath.Join(ticketsDir, fmt.Sprintf("t-r%03d", i), "ticket.md"), fmt.Sprintf("---\nid: t-r%03d\nstatus: open\n---\n# R\n", i))
+	}
+	var wg sync.WaitGroup
+	for g := 0; g < 8; g++ {
+		wg.Add(1)
+		go func(g int) {
+			defer wg.Done()
+			for i := 0; i < 30; i++ {
+				if g == 0 {
+					writeFile(t, filepath.Join(ticketsDir, fmt.Sprintf("t-r%03d", i%20), "ticket.md"), fmt.Sprintf("---\nid: t-r%03d\nstatus: in_progress\n---\n# R%d\n", i%20, i))
+				}
+				for _, tk := range loadTickets(root) {
+					tk["type_outcome"] = g // callers write keys; must not race with other loads
+				}
+			}
+		}(g)
+	}
+	wg.Wait()
+	if n := len(loadTickets(root)); n != 20 {
+		t.Fatalf("want 20 tickets, got %d", n)
+	}
+}
+
+// t-1699: go test -bench BenchmarkLoadTickets -benchmem -run '^$' ./tools/sprint-check-go
+func BenchmarkLoadTickets(b *testing.B) {
+	root := b.TempDir()
+	projectRoot, ticketsDir = root, filepath.Join(root, ".tickets")
+	for i := 0; i < 200; i++ {
+		d := filepath.Join(ticketsDir, fmt.Sprintf("t-%04x", i))
+		_ = os.MkdirAll(d, 0o755)
+		_ = os.WriteFile(filepath.Join(d, "ticket.md"), []byte(fmt.Sprintf("---\nid: t-%04x\nstatus: closed\ntype: task\n---\n# T\n\nBody.\n", i)), 0o644)
+		_ = os.WriteFile(filepath.Join(d, "acceptance.md"), []byte("## Criteria\n"+strings.Repeat("- [x] c\n", 8)+"## Test Plan\n- [x] t\n## Wrapup Gates\n| g | (model: sonnet) |\n"), 0o644)
+		_ = os.WriteFile(filepath.Join(d, "plan.md"), []byte("## Sign-off\n- [x] ok\n## Approach\n"+strings.Repeat("Step.\n", 20)), 0o644)
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if n := len(loadTickets(root)); n != 200 {
+			b.Fatal(n)
+		}
+	}
+}
