@@ -83,6 +83,17 @@ def g(a):
     a == 1 and not b
     """
     return a
+def h(a):
+    s = """x \
+b == 1
+"""
+    return a == 2
+def k(a):
+    b = a == 3
+    """
+    a == 3 and not b
+    """
+    return a
 EOF
 cat >> weak.go <<'EOF'
 func f(err error, p *int, n int) int {
@@ -106,6 +117,10 @@ func f(err error, p *int, n int) int {
 /*
 if n == 1 && err != nil {
 */
+func r(p *int, ch chan int, n int) {
+	*p = n < 3
+	v := <-ch
+}
 EOF
 git add -A && git commit -q -m change
 
@@ -149,10 +164,10 @@ for want in \
   'weak.py:4 sort: drop sorted()@' 'weak.py:4 sort: drop set()@' 'weak.py:4 return-value: sorted(set(xs)) -> None@' \
   'weak.py:6 empty-string: "a == b and not c"@' 'weak.py:7 cmp: <= -> >@' 'weak.py:7 off-by-one: <= -> <@' \
   'weak.py:8 code: return 0 -> return 1@' 'weak.py:9 bool: False -> True@' 'weak.py:10 drop-anchor: ^@' 'weak.py:10 drop-anchor: $@' \
-  "weak.py:11 sort: .sort() -> ''@"; do
+  "weak.py:11 sort: .sort() -> ''@" 'weak.py:21 cmp: == -> !=@' 'weak.py:23 cmp: == -> !=@'; do
   assert_contains "$out" "$want"
 done
-for none in 'weak.py:5 ' 'weak.py:6 cmp' 'weak.py:6 bool' 'weak.py:6 negation' 'weak.py:14 ' 'weak.py:2 delete-line'; do
+for none in 'weak.py:5 ' 'weak.py:6 cmp' 'weak.py:6 bool' 'weak.py:6 negation' 'weak.py:14 ' 'weak.py:19 ' 'weak.py:25 ' 'weak.py:2 delete-line'; do
   [[ "$out" != *"$none"* ]] || fail "mutant-sweep: '$none' should generate nothing (comment, string, docstring or INVALID): $out"
 done
 if (( HAVE_GO )); then
@@ -160,10 +175,10 @@ if (( HAVE_GO )); then
     'weak.go:5 err: err != nil -> err == nil@' 'weak.go:5 bool: && -> ||@' 'weak.go:5 cmp: < -> >=@' 'weak.go:5 off-by-one: < -> <=@' \
     'weak.go:6 code: return 1 -> return 0@' 'weak.go:9 empty-string: "p == nil"@' \
     'weak.go:10 nil: == nil -> != nil@' 'weak.go:10 bool: || -> &&@' 'weak.go:10 cmp: >= -> <@' 'weak.go:11 code: return 0 -> return 1@' \
-    'weak.go:13 bool: true -> false@' 'weak.go:14 negation: drop !@' 'weak.go:18 code: Exit(1) -> Exit(0)@'; do
+    'weak.go:13 bool: true -> false@' 'weak.go:14 negation: drop !@' 'weak.go:18 code: Exit(1) -> Exit(0)@' 'weak.go:26 cmp: < -> >=@'; do
     assert_contains "$out" "$want"
   done
-  for none in 'weak.go:8 ' 'weak.go:9 cmp' 'weak.go:9 nil' 'weak.go:15 delete-line' 'weak.go:22 ' 'weak.go:23 '; do
+  for none in 'weak.go:8 ' 'weak.go:9 cmp' 'weak.go:9 nil' 'weak.go:15 delete-line' 'weak.go:22 ' 'weak.go:23 ' 'weak.go:27 cmp'; do
     [[ "$out" != *"$none"* ]] || fail "mutant-sweep: '$none' should generate nothing (comment, string, block comment or INVALID): $out"
   done
 else

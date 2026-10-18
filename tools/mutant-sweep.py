@@ -94,7 +94,9 @@ def code_end(line, lang, spans):
 
 
 def is_comment(stripped, lang):
-    if lang in ('js', 'go'):
+    if lang == 'go':
+        return stripped.startswith(('//', '/*')) or re.match(r'\*(\s|/|$)', stripped) is not None   # `*p = x` is code
+    if lang == 'js':
         return stripped.startswith(('//', '/*', '*'))
     return stripped.startswith('#')
 
@@ -110,6 +112,7 @@ def blind_lines(src, lang):
         c = text[i]
         if cur:
             if lang == 'py' and c == '\\':
+                line += text[i + 1:i + 2] == '\n'
                 i += 2
                 continue
             if text.startswith(cur, i):
@@ -241,6 +244,8 @@ def mutants_for_line(line, lang):
             j = k + 1
             if inside(k) or not bounded(line, k, old):
                 continue
+            if lang == 'go' and old[0] == '<' and line[k + len(old):k + len(old) + 1] == '-':
+                continue   # a channel receive, not a comparison
             out.append((f'{fam}: {old.strip() or old} -> {new.strip() or repr(new)}@{k+1}', line[:k] + new + line[k + len(old):]))
     # negation removal
     if lang == 'py':

@@ -31,7 +31,7 @@ mutant-sweep --map <logic file>=<test command> [--map ...] --report .tickets/<id
   logic file, report "no logic files changed" and stop.
 - **One `--map` per changed logic file**, naming the test command that covers it: take it from
   `acceptance.md ## Test Plan` and the tests changed alongside. The tool never guesses: a changed
-  shell/JS file with no `--map` is listed `unmapped`, so a gap shows instead of passing silently.
+  shell, JS, Python or Go file with no `--map` is listed `unmapped`, so a gap shows instead of passing silently.
 - **Scope = changed lines.** Only lines added or changed since `git merge-base HEAD origin/main`
   (`--base <ref>` to override) are mutated. A failed merge-base exits 2 and runs nothing.
 - **Shell, JS, Python and Go** (`bash -n` / `node --check` / `python3 -m py_compile` / `gofmt -e` drop mutants
