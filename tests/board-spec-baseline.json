@@ -902,6 +902,17 @@
       "failed_runs": {
         "webkit": "1/2"
       }
+    },
+    {
+      "title": "GitHub workflow on the board (t-718b) > Check & merge: Cancel at the confirm runs nothing; a merge that cannot start says so (t-718b)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-1699",
+      "reason": "timing flake: failed in the t-1699 full two-browser stamp, passed 6/6 run alone on the branch (1 classify on branch + base, 5 more runs); .tickets/t-1699/evidence/classify-t718b-cancel.log",
+      "failed_runs": {
+        "webkit": "1/1 full run, 0/6 solo"
+      }
     }
   ],
   "skipped": []
