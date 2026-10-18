@@ -1814,11 +1814,26 @@ func TestTicketCacheReusesAndCopies(t *testing.T) {
 	root := setupTestProject(t)
 	tm := filepath.Join(ticketsDir, "t-c2b2", "ticket.md")
 	writeFile(t, tm, "---\nid: t-c2b2\nstatus: open\n---\n# Kept\n")
-	first := cacheTicket(t, root, "t-c2b2")
+	first := cacheTicket(t, root, "t-c2b2") // a miss: parsed and stored
 	first["status"], first["injected"] = "hacked", true
-	if tk := cacheTicket(t, root, "t-c2b2"); tk["status"] != "open" || tk["injected"] != nil {
-		t.Fatalf("a caller's edit reached the cache: %v", tk)
+	hit := cacheTicket(t, root, "t-c2b2") // a hit
+	if hit["status"] != "open" || hit["injected"] != nil {
+		t.Fatalf("a caller's edit of a fresh parse reached the cache: %v", hit)
 	}
+	hit["status"] = "hacked-again"
+	if tk := cacheTicket(t, root, "t-c2b2"); tk["status"] != "open" {
+		t.Fatalf("a caller's edit of a cache hit reached the cache: %v", tk["status"])
+	}
+	// a size change alone (mtime restored) must invalidate
+	st0, _ := os.Stat(tm)
+	writeFile(t, tm, "---\nid: t-c2b2\nstatus: open\n---\n# Kept longer\n")
+	if err := os.Chtimes(tm, st0.ModTime(), st0.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	if tk := cacheTicket(t, root, "t-c2b2"); tk["title"] != "Kept longer" {
+		t.Fatalf("size-only change not seen: %v", tk["title"])
+	}
+	writeFile(t, tm, "---\nid: t-c2b2\nstatus: open\n---\n# Kept\n")
 	st, _ := os.Stat(tm)
 	writeFile(t, tm, "---\nid: t-c2b2\nstatus: open\n---\n# Kxpt\n") // same size
 	if err := os.Chtimes(tm, st.ModTime(), st.ModTime()); err != nil {
