@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-18-2026 07:30
+learnings-sweep last run: 10-18-2026 11:00
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-18 | [t-a3ef](.tickets/t-a3ef/learnings.md) | A fixture authored with the code is only a regression lock: the reviewer's continuation-line fixture was proven by failing it against the unfixed code, and a guard that is output-equivalent (the Go `<-` check) cannot be killed by any fixture, so say so. | UNPROMOTED |
 | 2026-10-18 | [t-169e](.tickets/t-169e/learnings.md) | A criterion whose measured count is zero is satisfied only by the plan's decision, not by evidence: say so in the plan, as the cloud session did. | UNPROMOTED |
 | 2026-10-18 | [t-67c5](.tickets/t-67c5/learnings.md) | When one string is printed in two places (the issue body and send-issue's own start line), the reviewer finds the copy you forgot: grep every reader of the old wording first, and assert the printed line whole. | UNPROMOTED |
 | 2026-10-18 | [t-1583](.tickets/t-1583/learnings.md) | A criterion that needs a live run in a harness you cannot authenticate (Copilot) fails the binding evaluator however sound the inference: word such a criterion to what is checkable, or get the waiver before grading. | UNPROMOTED |
