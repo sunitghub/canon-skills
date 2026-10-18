@@ -167,7 +167,7 @@ EOF
     || fail "$label: committed set wrong:\n$committed"
   [[ "$(git -C "$repo" log -1 --format=%s)" == "chore: add ticket t-ab12" ]] || fail "$label: wrong commit message"
   [[ "$(git -C "$repo" diff --cached --name-only)" == "staged.txt" ]] || fail "$label: unrelated staged work was swept in or unstaged"
-  git -C "$repo" status --porcelain -- .tickets/t-ab12/cockpit-sessions.md | grep -q '^??' || fail "$label: optional runtime log was committed though unchecked"
+  git -C "$repo" status --porcelain -- .tickets/t-ab12/cockpit-sessions.md | grep '^??' >/dev/null || fail "$label: optional runtime log was committed though unchecked"
 
   # Nothing required left → POST 409; a modified required file → "update" message.
   res="$(post_commit "$port" t-ab12 '[".tickets/t-ab12/cockpit-sessions.md"]')"

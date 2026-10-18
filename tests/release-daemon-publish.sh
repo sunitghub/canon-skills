@@ -29,7 +29,7 @@ echo "$*" >> "$STUB_LOG"
 [ "$1" = release ] || exit 2; sub="$2"; shift 2
 case "$sub" in
   view) tag="$1"; [ -d "$FAKE_GH/$tag" ] || exit 1
-        if printf '%s ' "$@" | grep -q -- '--json'; then ls "$FAKE_GH/$tag"; fi ;;
+        if printf '%s ' "$@" | grep -- '--json' >/dev/null; then ls "$FAKE_GH/$tag"; fi ;;
   create) tag="$1"; shift; mkdir -p "$FAKE_GH/$tag"
           while [ $# -gt 0 ]; do case "$1" in --repo|--target|--title|--notes) shift 2 ;; *) cp "$1" "$FAKE_GH/$tag/"; shift ;; esac; done ;;
   upload) tag="$1"; f="$2"; [ ! -e "$FAKE_GH/$tag/$(basename "$f")" ] || { echo "asset exists" >&2; exit 1; }; cp "$f" "$FAKE_GH/$tag/" ;;

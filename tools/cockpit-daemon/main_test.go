@@ -4615,6 +4615,15 @@ func TestDebugLoggingWritesLifecycleEventsWhenEnabled(t *testing.T) {
 	if !strings.Contains(content, "kill invoked") {
 		t.Fatalf("missing kill lifecycle line: %q", content)
 	}
+	// t-bcb8: waitExit logs last; let it finish before t.TempDir's cleanup removes the ticket dir under it.
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		if b, _ := os.ReadFile(logPath); strings.Contains(string(b), "wait returned") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the session never logged its wait line after the kill")
+		}
+	}
 }
 
 // TestAppendDebugLogLineTruncatesToTail: the pure size-capping logic keeps
@@ -7932,6 +7941,22 @@ func TestReapNowAndKillNoteScratchLeftovers(t *testing.T) {
 	root, base, s := endGuardProject(t)
 	st := startScratchSession(t, base, "s-aa01", root)
 	os.WriteFile(filepath.Join(root, "a.txt"), []byte("edited\n"), 0o644)
+	// t-bcb8: the fake agent's READY is output, and output resets the idle clock: under load it landed after
+	// makeIdle and Reap now answered 409 "it is working". Backdate only once it has arrived.
+	s.mu.Lock()
+	se := s.sessions[st.Session]
+	s.mu.Unlock()
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		se.mu.Lock()
+		ready := strings.Contains(string(se.buf), "READY")
+		se.mu.Unlock()
+		if ready {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the scratch agent never printed READY")
+		}
+	}
 	makeIdle(s, st.Session)
 	if code, body := endSessionReq(t, base, bootTok, endBody(s, st.Session, "reap")); code != http.StatusAccepted {
 		t.Fatalf("reap scratch: want 202, got %d %s", code, body)

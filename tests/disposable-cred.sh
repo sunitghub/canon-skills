@@ -80,8 +80,8 @@ assert '! grep -qF "$SECRET" "$tmp/cmd-env.txt"'                     "(d) provis
 assert '! grep -q "^CRED_PROVISION_CMD=" "$tmp/cmd-env.txt"'         "(d) command cannot mint (no CRED_PROVISION_CMD)"
 assert '! grep -q "^CRED_REVOKE_CMD=" "$tmp/cmd-env.txt"'            "(d) command cannot revoke (no CRED_REVOKE_CMD)"
 assert '! grep -q "^LEAKME=" "$tmp/cmd-env.txt"'                     "(d) an UNLISTED decoy var is dropped (allowlist, not denylist)"
-assert '! printf "%s" "$out1" | grep -qF "$SECRET"'                  "(e) provisioning secret never printed"
-assert '! printf "%s" "$out1" | grep -qF "$issued1"'                 "(e) handle value not printed"
+assert '! printf "%s" "$out1" | grep -F "$SECRET" >/dev/null'                  "(e) provisioning secret never printed"
+assert '! printf "%s" "$out1" | grep -F "$issued1" >/dev/null'                 "(e) handle value not printed"
 assert '[ -f "$ISSUED_LOG.saw" ]'                                    "boundary is at the command, not the provisioner (provisioner saw the secret)"
 
 echo "--- failing command: revoke via trap + status propagates ---"
@@ -111,7 +111,7 @@ assert '[ "$rc_noprov" -eq 2 ]'                                      "(f) missin
 assert '[ "$rc_nocmd" -eq 2 ]'                                       "(f) missing command => exit 2"
 assert '[ "$rc_empty" -eq 1 ]'                                       "(f) empty handle => exit 1"
 assert '[ "$rc_rf" -eq 3 ]'                                          "(f) revoke failure => exit 3"
-assert 'printf "%s" "$out_rf" | grep -q "orphaned credential"'       "(f) revoke failure is surfaced loudly"
+assert 'printf "%s" "$out_rf" | grep "orphaned credential" >/dev/null'       "(f) revoke failure is surfaced loudly"
 
 echo "--- portability: no GNU-only %3N ---"
 assert '[ "$(awk "/%3N/ && \$0 !~ /^[[:space:]]*#/ {n++} END{print n+0}" "$TOOL")" -eq 0 ]' "(h) no GNU-only %3N in the tool"

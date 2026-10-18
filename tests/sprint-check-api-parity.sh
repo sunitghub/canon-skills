@@ -366,7 +366,7 @@ if not isinstance(py_total, int) or py_total != 2:
 PY
 # t-d218: is_git is true for a git repo (the board's rail gate keys off it, not total_commits) — both backends.
 for be in "server.py:$py_git" "main.go:$go_git"; do
-  printf '%s' "${be#*:}" | grep -q '"is_git": *true' || fail "sprint-check-api-parity: FAIL — ${be%%:*} /api/git lacks is_git: true"
+  printf '%s' "${be#*:}" | grep '"is_git": *true' >/dev/null || fail "sprint-check-api-parity: FAIL — ${be%%:*} /api/git lacks is_git: true"
 done
 
 
@@ -1305,7 +1305,7 @@ for pair in "$PY_PORT:$PY_CANON" "$GO_PORT:$GO_CANON"; do
   [[ "$(tiers_post "$port" "$edited")" == 200 ]] || fail "sprint-check-api-parity: FAIL — port $port rejected a valid model-tiers save"
   [[ -f "$user_file" ]] || fail "sprint-check-api-parity: FAIL — port $port did not write $user_file"
   [[ "$(shasum "$SEED_TIERS" | cut -d' ' -f1)" == "$seed_sha" ]] || fail "sprint-check-api-parity: FAIL — port $port save changed the tracked seed"
-  tiers_json "$port" | grep -q probe-zz || fail "sprint-check-api-parity: FAIL — port $port GET did not return the data-dir copy"
+  tiers_json "$port" | grep probe-zz >/dev/null || fail "sprint-check-api-parity: FAIL — port $port GET did not return the data-dir copy"
   saved_sha="$(shasum "$user_file" | cut -d' ' -f1)"
   for bad in '{"models":"x","defaults":{}}' '[]' 'null' '{"reset":"yes"}' '{"reset":true,"x":1}' '{"reset":false}' \
              '{"models":{"anthropic":[{"id":"../x"}]},"defaults":{}}'; do

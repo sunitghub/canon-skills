@@ -79,7 +79,7 @@ run_checks() {
 
   # 2. Lock to the worktree → bound; GET reads the live copy with an etag; POST is guarded by base_hash.
   echo "$wt" > "$repo/.tickets/t-lv01/.cockpit-cwd"
-  getdoc plan.md | grep -q 'live approach' || fail "$label: GET plan.md should return the worktree copy"
+  getdoc plan.md | grep 'live approach' >/dev/null || fail "$label: GET plan.md should return the worktree copy"
   sha() { shasum -a 256 "$1" | cut -d' ' -f1; }
   etag_of() { curl -s "$base/api/doc/t-lv01/$1" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("etag","<none>"))'; }
   post() { curl -s -o "$TMP/$kind/post.json" -w '%{http_code}' -X POST -H 'Content-Type: application/json' --data-binary "$2" "$base/api/doc/$1"; }

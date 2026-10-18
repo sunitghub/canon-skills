@@ -43,7 +43,7 @@ CC_OPEN_LOG="$WORK/open.log"; : > "$CC_OPEN_LOG"
 # Run the launcher; because the port is in use it must hit the single-instance
 # branch (print "already running", open URL, exit 0) WITHOUT starting a server.
 out="$(CC_OPEN_LOG="$CC_OPEN_LOG" PATH="$STUBDIR:$PATH" "$ROOT/tools/canon" "$PORT" 2>&1)" || true
-echo "$out" | grep -qi "already running" || fail "canon: expected single-instance 'already running' message, got: $out"
+echo "$out" | grep -i "already running" >/dev/null || fail "canon: expected single-instance 'already running' message, got: $out"
 
 # still exactly one listener on the port (the launcher didn't bind a second)
 n="$(lsof -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | sort -u | wc -l | tr -d ' ')"
