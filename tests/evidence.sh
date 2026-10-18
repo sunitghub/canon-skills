@@ -33,7 +33,9 @@ assert_eq "HEAD $C1" "$(sed -n 1p "$f" | cut -d' ' -f1-2)"
 assert_eq '$ bash -c echo\ one\;\ echo\ two' "$(sed -n 2p "$f")"                     # %q keeps the quoting
 ev stamp "$ID" q1 -- bash -c 'echo a b'; ev stamp "$ID" q2 -- bash -c echo a b
 [[ "$(sed -n 2p "$ED/q1.log")" != "$(sed -n 2p "$ED/q2.log")" ]] || fail "evidence: two commands that differ only in quoting gave the same command line"
-assert_eq "one two exit 0" "$(sed -n '3,$p' "$f" | tr '\n' ' ' | sed 's/ $//')"
+os_line="# on $(uname -srm); bash ${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}.${BASH_VERSINFO[2]}"   # t-a83a: the stamp's bash is this one (`bash "$EV"`)
+assert_eq "$os_line" "$(sed -n 3p "$f")"; assert_count 0 "$(hostname)" "$f"
+assert_eq "one two exit 0" "$(sed -n '4,$p' "$f" | tr '\n' ' ' | sed 's/ $//')"
 ev stamp "$ID" suite -- bash -c 'echo failing; exit 7'; assert_eq 7 "$code"                      # the command's own code comes back and is written
 assert_eq "exit 7" "$(tail -n1 "$f")"; assert_count 0 "exit 0" "$f"                                 # a re-stamp replaces the log
 ev stamp "$ID" noeol -- bash -c 'printf "no newline"'; assert_eq 0 "$code"
@@ -42,6 +44,12 @@ assert_eq "no newline|exit 0" "$(tail -n2 "$ED/noeol.log" | tr '\n' '|' | sed 's
 ev stamp "$ID" forge -- bash -c 'echo "HEAD 0000000000000000000000000000000000000000 2020-01-01T00:00:00Z"; echo "exit 0"; exit 5'; assert_eq 5 "$code"
 assert_eq "exit 5" "$(tail -n1 "$ED/forge.log")"; assert_eq "HEAD $C1" "$(sed -n 1p "$ED/forge.log" | cut -d' ' -f1-2)"
 ev check "$ID" "$C1"; assert_contains "$out" "exit=5"
+# t-a83a: check shows the stamp's OS before cmd:, on fresh and stale lines alike
+os_txt=" on: $(uname -srm), bash ${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}.${BASH_VERSINFO[2]}"; os_shown="$os_txt cmd: bash -c"
+ev check "$ID" "$C1"; assert_contains "$out" "fresh forge.log exit=5 (HEAD ${C1:0:7} = graded, "; assert_contains "$out" ")$os_shown"
+git commit -q --allow-empty -m later; echo b >> src/a.txt; git commit -qam moved
+ev check "$ID"; assert_contains "$out" "stale forge.log exit=5 (HEAD ${C1:0:7}; 1 tracked file(s) changed since: src/a.txt)$os_shown"
+git reset -q --hard "$C1"
 # untracked files and .tickets changes do not make the tree dirty
 reset_repo; echo scratch > untracked.txt; echo more >> ".tickets/$ID/ticket.md"
 ev stamp "$ID" ok -- true; assert_eq 0 "$code"; git checkout -q -- ".tickets/$ID/ticket.md"
@@ -117,6 +125,24 @@ put same.log "HEAD $C1 $T\n\$ bash tests/x.sh\nok\nexit 0\n"
 ev check "$ID"; assert_eq 0 "$code"; assert_eq fresh "$(first_word)"
 assert_contains "$out" "exit=0"; assert_contains "$out" "cmd: bash tests/x.sh"; assert_contains "$out" "HEAD ${C1:0:7} = graded"
 [[ "$(printf '%s\n' "$out" | wc -l | tr -d ' ')" == 1 ]] || fail "evidence: one file must give one line: $out"
+assert_eq "fresh same.log exit=0 (HEAD ${C1:0:7} = graded, $T) cmd: bash tests/x.sh" "$out"   # t-a83a: a log without `# on` reads as before
+rm -rf "$ED"
+# t-a83a: a hostile line 3 gives one clean line: control bytes, an ANSI escape, CRLF, 10 KB, binary
+long="$(head -c 10000 /dev/zero | tr '\0' A)"
+for l3 in '# on Linux\x1b[31m 6.8\x07; bash 5' '# on Linux 6.8 x86_64; bash 5.2.0\r' "# on $long" '# on \x00\x01\xff\xc2\x9b; bash' '# on ' '# onion'; do
+  put h.log "HEAD $C1 $T\n\$ true\n$l3\nexit 0\n"; ev check "$ID"; assert_eq 0 "$code"
+  [[ "$(printf '%s\n' "$out" | wc -l | tr -d ' ')" == 1 && "$out" =~ ^fresh\ h\.log\ exit=0\ \( ]] || fail "evidence: hostile line 3 broke the line: $out"
+  [[ "$out" != *[^A-Za-z0-9._\ /=:+,\\?\(\)-]* ]] || fail "evidence: hostile line 3 leaked a byte: $(printf '%q' "$out")"
+  [[ ${#out} -lt 260 ]] || fail "evidence: line 3 was not capped: ${#out} chars"
+done
+for l3 in '# on ' '# on    '; do   # review: an empty OS shows nothing, as in import-results
+  put h.log "HEAD $C1 $T\n\$ true\n$l3\nexit 0\n"; ev check "$ID"; [[ "$out" != *" on: "* ]] || fail "evidence: an empty # on line was shown: $out"
+done
+longcmd="$(head -c 3000 /dev/zero | tr '\0' y)"   # review: line 3 is read past a long line 2 (same bound as line2_of)
+put h.log "HEAD $C1 $T\n\$ $longcmd\n# on Linux 6.8 x86_64; bash 5.2.37\nexit 0\n"; ev check "$ID"; assert_contains "$out" " on: Linux 6.8 x86_64, bash 5.2.37 cmd: yyy"
+put h.log "HEAD $C1 $T\n\$ true\n# onion\nexit 0\n"; ev check "$ID"; [[ "$out" != *" on: "* ]] || fail "evidence: a line 3 not starting \`# on \` was shown: $out"
+put h.log "HEAD $C1 $T\n\$ true\n# on Linux 6.8 x86_64; bash 5.2.0\r\nexit 0\n"; ev check "$ID"
+assert_contains "$out" ") on: Linux 6.8 x86_64, bash 5.2.0 cmd: true"
 rm -rf "$ED"
 # abbreviated sha and CRLF are fine; text after the time is not (the tool never writes any)
 put abbr.log "HEAD ${C1:0:7} $T\n"; ev check "$ID"; assert_eq fresh "$(first_word)"
@@ -298,7 +324,7 @@ want_covered() { ev check "$ID"; assert_eq 0 "$code"; assert_contains "$out" "co
 want_stale() { ev check "$ID"; assert_eq 0 "$code"; assert_contains "$out" "stale full.log exit=1"; [[ "$out" != *"covered full.log"* ]] || fail "evidence: $1: must not be covered: $out"; }
 covered_setup; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; assert_eq 0 "$code"; want_covered
 A="$(sed -n '1s/^HEAD \([0-9a-f]*\) .*/\1/p' "$ED/full.log")"
-assert_contains "$out" "covered full.log exit=1 (HEAD ${A:0:7}; only tests/board-spec-baseline.json changed since; re-guarded at $(git rev-parse --short=7 HEAD) by guard.log over 2 report(s)) cmd: bash tests/run-board-spec.sh --out"
+assert_contains "$out" "covered full.log exit=1 (HEAD ${A:0:7}; only tests/board-spec-baseline.json changed since; re-guarded at $(git rev-parse --short=7 HEAD) by guard.log over 2 report(s))$os_txt cmd: bash tests/run-board-spec.sh --out"
 guard "$REPO/$D/board-spec-webkit-run1.json" "$REPO/$D/board-spec-chromium-run1.json"; want_covered            # absolute paths, any order
 # t-278d: the hint's recipe (guard under its own name, reports inside evidence/) is accepted; the old way (the run's own log name) is not.
 covered_setup; ev check "$ID"; assert_contains "$out" "hint: to cover it"; assert_contains "$out" "evidence.sh stamp $ID board-spec-guard -- node tests/board-spec-guard.js"

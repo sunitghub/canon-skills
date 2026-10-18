@@ -163,7 +163,9 @@ MERGEABLE and CLEAN on a newer `main` after running `scripts/test.sh` on `main` 
 is the graded head. The Mac re-grades only for one of four triggers: a **board** change (the board, its spec or its runner: the full board spec), a **Go**
 change that needs a release (the daemon, the Go board, the headless helper), a **high-risk** ticket, or a **PR head that no longer equals the graded
 head**. `import-results` ends with one line saying which of these apply, or "no re-grade needed"; it only advises and
-never changes `merge-pr`. When a re-grade does run a full board spec, stamp its guard under its own name (for example
+never changes `merge-pr`. Each evidence log records the machine it ran on (line 3, `# on <uname -srm>; bash <version>`);
+when the cloud's logs name another OS than the Mac's, `import-results` adds `evidence ran on: Linux … (this machine: Darwin …)`,
+since an OS-only failure (bash 3.2 vs 5, BSD vs GNU tools) would not show in them; `merge-pr`'s run on the Mac covers that. When a re-grade does run a full board spec, stamp its guard under its own name (for example
 `board-spec-guard`) with the run's `--out` folder inside the ticket's `evidence/`; `evidence.sh check` then reports the
 run `covered` (stamping the guard under the run's own log name overwrites that log).
 

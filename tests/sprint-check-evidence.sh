@@ -29,6 +29,10 @@ ce "$ID"; assert_eq 0 "$code"; assert_contains "$out" "no stamped logs"
 # fresh exit 0 only: ok
 put a.log "HEAD $C1 $T\n\$ bash tests/x.sh\nexit 0\n"; put b.log "HEAD $C1 $T\nexit 0\n"
 ce "$ID"; assert_eq 0 "$code"; assert_contains "$out" "check-evidence: ok (2 log(s) fresh with exit 0 or covered)"; assert_count 0 "REFUSE" <(printf '%s' "$out")
+# t-a83a: a stamp's `# on` line 3 puts " on: …" in check's line; still ok
+put os.log "HEAD $C1 $T\n\$ bash tests/x.sh\n# on Linux 6.8.0 x86_64; bash 5.2.21\nexit 0\n"
+ce "$ID"; assert_eq 0 "$code"; assert_contains "$out" "ok      fresh os.log exit=0 (HEAD ${C1:0:7} = graded, $T) on: Linux 6.8.0 x86_64, bash 5.2.21 cmd:"
+assert_contains "$out" "check-evidence: ok (3 log(s)"; rm "$ED/os.log"
 # each kind of bad log refuses on its own, named, with the fix hints
 put c.log "HEAD $C1 $T\nexit 3\n"; ce "$ID"; assert_eq 1 "$code"; assert_contains "$out" "REFUSE  fresh c.log exit=3"; assert_contains "$out" "1 of 3 log(s)"
 assert_contains "$out" "fix the failure and re-stamp; for a full board spec failing only on new flakes, list them, then stamp"
