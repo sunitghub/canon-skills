@@ -4,6 +4,10 @@ description: canon's binding close-gate evaluator. Dispatched by sprint complete
 model: claude-sonnet-5
 effort: high
 tools: Read, Grep, Glob, Bash, execute
+purpose: Binding close-gate evaluation of a sprint's diff against its acceptance criteria.
+writes: eval-report.md
+shell: pinned-env
+graded-by: skills/sprint/reference/eval.md
 ---
 <!-- canon:agent (managed by skills.sh — refresh overwrites this file; edit canon's agents/ instead) -->
 <!-- One file for Claude Code and Copilot CLI (t-bdce): a full model id works in both (Copilot rejects the
