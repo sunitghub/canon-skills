@@ -1604,6 +1604,33 @@ _eval_verdict_head() {
   printf '%s %s\n' "${v:--}" "${g:--}"
 }
 
+# _regrade_triggers <ticket-dir> <head-mismatch 0|1> — t-278d: reads changed paths on stdin; prints the Mac re-grade triggers that
+# apply, comma-separated, or nothing. A board change (full board spec), a Go change (daemon or sprint-check-go: needs a release),
+# a high-risk plan, or a PR head that is not the graded one. Everything else merges via merge-pr with no re-grade.
+_regrade_triggers() {
+  local tdir="$1" mismatch="$2" p out="" board=0 gocode=0
+  while IFS= read -r p; do
+    case "$p" in
+      tools/sprint-check-app/*) board=1 ;;
+      tools/sprint-check-go/*|tools/cockpit-daemon/*|tools/tkt/*) gocode=1 ;;
+    esac
+  done
+  [[ $board == 1 ]] && out+="${out:+, }board change (full board spec)"
+  [[ $gocode == 1 ]] && out+="${out:+, }Go or tools/tkt change (needs a release)"
+  grep -qiE '^Tier:.*Risk: *high' "$tdir/plan.md" 2>/dev/null && out+="${out:+, }high-risk ticket"
+  [[ "$mismatch" == 1 ]] && out+="${out:+, }PR head differs from the graded head"
+  printf '%s' "$out"
+}
+
+# _regrade_line <root> <ticket-dir> <pr> <rc> — the one closing line of import-results (t-278d).
+_regrade_line() {
+  local root="$1" tdir="$2" pr="$3" rc="$4" files t
+  if [[ -z "$pr" ]]; then echo "  re-grade: unknown (pass --pr N to see which re-grade triggers apply)"; return 0; fi
+  files="$(cd "$root" && gh pr diff "$pr" --name-only 2>/dev/null)" || { echo "  re-grade: unknown (gh could not list PR #$pr's files)"; return 0; }
+  t="$(printf '%s\n' "$files" | _regrade_triggers "$tdir" "$([[ "$rc" == 0 ]] && echo 0 || echo 1)")"
+  if [[ -n "$t" ]]; then echo "  re-grade needed on this Mac: $t"; else echo "  re-grade: no re-grade needed (tkt merge-pr, no rebase)"; fi
+}
+
 # cmd_import_results <id> [--pr N] — t-554c: brings a cloud sprint's .tickets/<id>/ back from canon-results/<id>. Files
 # arrive byte-for-byte; a differing local file is kept in .before-import/; the close already happened in the cloud, so
 # this only reports it. The remote branch is deleted only after the files are written.
@@ -1655,6 +1682,7 @@ cmd_import_results() {
     if [[ $rc == 0 && -n "$graded" && "$prh" == "$graded"* ]]; then echo "  PR #$pr head $prh: matches graded-head"
     elif [[ $rc == 0 ]]; then echo "  PR #$pr head $prh does NOT match graded-head ${graded:-none}: the evaluator graded other code" >&2; rc=1; fi
   fi
+  _regrade_line "$root" "$tdir" "$pr" "$rc"   # t-278d: advises only; never changes rc
   if [[ "$rc" == 0 ]]; then
     git -C "$root" push -q origin --delete "canon-results/$id" 2>/dev/null || echo "  note: could not delete canon-results/$id on origin; delete it by hand" >&2
   else

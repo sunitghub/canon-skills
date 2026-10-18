@@ -30,6 +30,7 @@ case "$1 $2" in
                   echo "https://github.com/acme/app/issues/57" ;;
   "issue view")   cat "$STUB_BODY" ;;
   "pr view")      echo "${STUB_PR_HEAD:?}" ;;
+  "pr diff")      printf '%s\n' ${STUB_PR_FILES:-docs/x.md} ;;
   *) echo "unexpected gh call: $*" >&2; exit 9 ;;
 esac
 EOF
@@ -161,6 +162,8 @@ assert_grep "^runs: github$" ".tickets/$id/ticket.md"     # t-718b: the laptop's
 assert_contains "$out" "status: closed"
 assert_contains "$out" "evaluator: pass"
 assert_contains "$out" "matches graded-head"
+# t-278d: the closing line names the re-grade triggers (advice only). Docs and non-Go tools: none; the board: its trigger.
+assert_contains "$out" "no re-grade needed"
 [[ -z "$(git --git-dir="$W/origin.git" branch --list "canon-results/$id")" ]] || fail "canon-results/$id was not deleted"
 # A PR head the evaluator did not grade: exit 1.
 cd "$X" && "$TKT" export "$id" >/dev/null 2>&1 && cd "$L"
@@ -168,6 +171,16 @@ STUB_PR_HEAD=0000000000000000000000000000000000000000
 rc=0; out="$("$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "a PR head that differs from graded-head should exit 1"; assert_contains "$out" "does NOT match graded-head"
 [[ -n "$(git --git-dir="$W/origin.git" branch --list "canon-results/$id")" ]] || fail "a failed --pr check deleted canon-results/$id"
+# t-278d: triggers by what the PR touches. The branch is kept after a failed check, so import-results can run again on it.
+rc=0; out="$(STUB_PR_FILES="tools/sprint-check-app/server.js docs/x.md" "$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
+assert_contains "$out" "re-grade needed on this Mac: board change (full board spec), PR head differs from the graded head"
+rc=0; out="$(STUB_PR_FILES="tools/cockpit-daemon/main.go" "$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
+assert_contains "$out" "Go or tools/tkt change (needs a release)"
+rc=0; out="$(STUB_PR_FILES="tools/evidence.sh tests/evidence.sh" "$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
+assert_contains "$out" "re-grade needed on this Mac: PR head differs from the graded head"
+STUB_PR_HEAD="$(git -C "$X" rev-parse HEAD)"
+out="$(STUB_PR_FILES="tools/evidence.sh tests/evidence.sh" "$TKT" import-results "$id" --pr 58 2>&1)"
+assert_contains "$out" "no re-grade needed"
 # An import that cannot write keeps the branch on origin, so nothing is lost.
 if [[ "$(id -u)" != 0 ]]; then
   cd "$X" && "$TKT" export "$id" >/dev/null 2>&1 && cd "$L"
