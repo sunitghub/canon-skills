@@ -11,15 +11,18 @@ export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 XDG_CONFIG_HOME="$WORK/
 ident=(-c user.email=t@example.com -c user.name=test)
 refute_contains() { [[ "$1" != *"$2"* ]] || fail "expected output NOT to contain '$2'; got: $1"; }
 
-# A throwaway checkout: the script under test, a manifest, a committed daemon source file, VERSION.
-R="$WORK/repo"; mkdir -p "$R/tools/cockpit-daemon"
-cp "$ROOT/tools/fetch-daemon.sh" "$R/tools/"
-printf 'package main\n' > "$R/tools/cockpit-daemon/main.go"; printf 'module x\n\ngo 1.26.5\n' > "$R/tools/cockpit-daemon/go.mod"; echo 0.3.0 > "$R/VERSION"
-# t-15d8: the board is the second required macOS/Linux component. The same files give it the same tree key and stamp, so one
-# stub asset and one manifest hash serve both, and every case below runs through both components.
-cp -R "$R/tools/cockpit-daemon" "$R/tools/sprint-check-go"
+# A throwaway checkout: the script under test (+ tools/src-key.sh, which names the keys), a manifest, the Go module's sources, VERSION.
+# t-8020: the daemon and the board are one module (tools/canon-go) with a key each; t-15d8: the board is the second required
+# macOS/Linux component, so every case below runs through both. Each gets its own stamped asset; the stub curl serves the board's
+# whenever a case asks for the good daemon asset, so a case names one asset and both components follow it.
+R="$WORK/repo"; M="$R/tools/canon-go"; mkdir -p "$R/tools/cockpit-daemon" "$M/cmd/cockpit-daemon" "$M/cmd/sprint-check" "$M/internal/daemon" "$M/internal/board" "$M/internal/common"
+cp "$ROOT/tools/fetch-daemon.sh" "$ROOT/tools/src-key.sh" "$R/tools/"; cp "$ROOT/tools/cockpit-daemon/.gitignore" "$R/tools/cockpit-daemon/"   # tracked, as in canon: the folder only holds the built daemon
+printf 'module x\n\ngo 1.26.5\n' > "$M/go.mod"; : > "$M/go.sum"; echo 0.3.0 > "$R/VERSION"
+for d in cmd/cockpit-daemon cmd/sprint-check internal/daemon internal/board internal/common; do printf 'package x // %s\n' "$d" > "$M/$d/x.go"; done
 git -C "$R" init -q -b main; git -C "$R" "${ident[@]}" add -A; git -C "$R" "${ident[@]}" commit -qm seed
-full="$(git -C "$R" rev-parse HEAD:tools/cockpit-daemon)"; key="${full:0:12}"; stamp="${full:0:8}"
+srckey() { bash -c 'source "$1/tools/src-key.sh"; canon_src_key "$1" "$2"' _ "$1" "$2"; }
+full="$(srckey "$R" cockpit-daemon)"; key="${full:0:12}"; stamp="${full:0:8}"
+fullb="$(srckey "$R" sprint-check)"; keyb="${fullb:0:12}"; stampb="${fullb:0:8}"
 BIN="$R/tools/cockpit-daemon/cockpit-daemon"; BBIN="$R/tools/sprint-check-bin/sprint-check"; MARK="$WORK/executed"
 
 # The "daemon": prints a version with the commit stamp; leaves a marker when run for anything but --version.
@@ -27,6 +30,7 @@ make_asset() { # <path> <stamp>
   printf '#!/bin/sh\n[ "$1" = --version ] && { echo "0.3.0 (%s)"; exit 0; }\ntouch "%s"\n' "$2" "$MARK" > "$1"; chmod +x "$1"
 }
 GOOD="$WORK/good"; make_asset "$GOOD" "$stamp"; GOODSHA="$(shasum -a 256 "$GOOD" | awk '{print $1}')"
+GOODB="$WORK/goodb"; make_asset "$GOODB" "$stampb"; GOODSHAB="$(shasum -a 256 "$GOODB" | awk '{print $1}')"
 
 STUBS="$WORK/stubs"; mkdir -p "$STUBS"
 cat > "$STUBS/uname" <<'EOF'
@@ -37,8 +41,9 @@ cat > "$STUBS/curl" <<'EOF'
 #!/bin/sh
 echo "$*" >> "$STUB_LOG"
 [ "${STUB_CURL_RC:-0}" = 0 ] || exit "$STUB_CURL_RC"
-while [ $# -gt 0 ]; do [ "$1" = -o ] && out="$2"; shift; done
-cp "$STUB_ASSET" "$out"
+url=""; while [ $# -gt 0 ]; do [ "$1" = -o ] && out="$2"; url="$1"; shift; done
+asset="$STUB_ASSET"; case "$url" in */sprint-check-*) [ "$STUB_ASSET" = "$STUB_GOOD" ] && asset="$STUB_GOODB" ;; esac
+cp "$asset" "$out"
 EOF
 mkdir -p "$WORK/gostub"
 cat > "$WORK/gostub/go" <<'EOF'
@@ -51,10 +56,10 @@ printf '#!/bin/sh\n[ "$1" = --version ] && { echo "0.3.0 (built)"; exit 0; }\nto
 EOF
 chmod +x "$STUBS"/* "$WORK/gostub/go"
 BASEPATH="/usr/bin:/bin"   # no go on it
-export STUB_LOG="$WORK/curl.log" STUB_MARK="$MARK"
+export STUB_LOG="$WORK/curl.log" STUB_MARK="$MARK" STUB_GOOD="$GOOD" STUB_GOODB="$GOODB"
 
 manifest() { # <sha> [target]   (writes the manifest the clone carries)
-  printf '# header\n%s %s %s\n%s sprint-check-%s %s\n' "$key" "${2:-darwin-arm64}" "$1" "$key" "${2:-darwin-arm64}" "$1" > "$R/tools/cockpit-daemon.sha256"
+  printf '# header\n%s %s %s\n%s sprint-check-%s %s\n' "$key" "${2:-darwin-arm64}" "$1" "$keyb" "${2:-darwin-arm64}" "$GOODSHAB" > "$R/tools/cockpit-daemon.sha256"
 }
 fetch() { # env vars via caller; sets out, rc
   rm -f "$MARK"; : > "$STUB_LOG"
@@ -69,9 +74,9 @@ fetch; [[ "$rc" == 0 ]] || fail "matching download failed ($rc): $out"
 assert_contains "$out" "fetched darwin-arm64 $key, sha256 verified"
 assert_contains "$(cat "$STUB_LOG")" "releases/download/cockpit-daemon-$key/cockpit-daemon-darwin-arm64"
 cmp -s "$BIN" "$GOOD" || fail "installed file differs from the download"; [[ -x "$BIN" ]] || fail "installed file is not executable"
-assert_contains "$out" "fetched sprint-check-darwin-arm64 $key, sha256 verified"   # t-15d8: the board, same release flow
-assert_contains "$(cat "$STUB_LOG")" "releases/download/sprint-check-$key/sprint-check-darwin-arm64"
-cmp -s "$BBIN" "$GOOD" || fail "the board was not installed at tools/sprint-check-bin/sprint-check"; [[ -x "$BBIN" ]] || fail "the board is not executable"
+assert_contains "$out" "fetched sprint-check-darwin-arm64 $keyb, sha256 verified"   # t-15d8: the board, same release flow
+assert_contains "$(cat "$STUB_LOG")" "releases/download/sprint-check-$keyb/sprint-check-darwin-arm64"
+cmp -s "$BBIN" "$GOODB" || fail "the board was not installed at tools/sprint-check-bin/sprint-check"; [[ -x "$BBIN" ]] || fail "the board is not executable"
 [[ ! -e "$MARK" ]] || fail "the fetch executed the binary"; no_leftovers
 # 2. second run: already current, no download
 fetch; [[ "$rc" == 0 ]]; assert_contains "$out" "up to date"; [[ ! -s "$STUB_LOG" ]] || fail "an up-to-date daemon was downloaded again"
@@ -120,7 +125,7 @@ reset; printf '%s darwin-arm64 %s\n' "$key" "${GOODSHA:0:63}" > "$R/tools/cockpi
 # 7. platform mapping, including every spelling of the CPU, and an unsupported CPU; Windows (Git Bash) is covered by tests/fetch-win-binaries.sh
 for spec in "Darwin arm64 darwin-arm64" "Darwin x86_64 darwin-amd64" "Linux aarch64 linux-arm64" "Linux x86_64 linux-amd64" "Linux amd64 linux-amd64"; do
   set -- $spec; reset; manifest "$GOODSHA" "$3"; export STUB_ASSET="$GOOD" STUB_OS="$1" STUB_ARCH="$2"; fetch
-  [[ "$rc" == 0 ]] || fail "$spec failed ($rc): $out"; assert_contains "$(cat "$STUB_LOG")" "cockpit-daemon-$3"; assert_contains "$(cat "$STUB_LOG")" "sprint-check-$key/sprint-check-$3"
+  [[ "$rc" == 0 ]] || fail "$spec failed ($rc): $out"; assert_contains "$(cat "$STUB_LOG")" "cockpit-daemon-$3"; assert_contains "$(cat "$STUB_LOG")" "sprint-check-$keyb/sprint-check-$3"
 done
 reset; export STUB_ARCH=riscv64; fetch; [[ "$rc" == 1 ]]; assert_contains "$out" "no prebuilt binaries for CPU 'riscv64'"
 reset; export STUB_OS=MINGW64_NT-10.0; fetch; [[ "$rc" == 1 && ! -s "$STUB_LOG" ]] || fail "Windows with no released binaries must fail without downloading (t-9383; the real cases are in tests/fetch-win-binaries.sh): $out"
@@ -143,9 +148,9 @@ reset; manifest "$GOODSHA"; make_asset "$WORK/bad" deadbeef; export STUB_ASSET="
 reset; manifest "$GOODSHA"; export STUB_ASSET="$GOOD"; mkdir -p "$BIN"; fetch   # the destination is a directory: the verified file cannot be installed
 [[ "$rc" == 1 ]] || fail "an install that failed must not exit 0: $out"; refute_contains "$out" "fetched darwin"; rmdir "$BIN" 2>/dev/null || rm -rf "$BIN"; no_leftovers
 # a leftover temp file (a fetch killed mid-way) must not make the clone look dirty: it is ignored, or canon update would refuse
-cp "$ROOT/tools/cockpit-daemon/.gitignore" "$R/tools/cockpit-daemon/.gitignore"; touch "$R/tools/cockpit-daemon/.cockpit-daemon.AbC123"
-[[ -z "$(git -C "$R" status --porcelain -- tools/cockpit-daemon | grep -v '\.gitignore')" ]] || fail "a leftover fetch temp file shows in git status: $(git -C "$R" status --porcelain)"
-rm -f "$R/tools/cockpit-daemon/.cockpit-daemon.AbC123" "$R/tools/cockpit-daemon/.gitignore"; reset
+touch "$R/tools/cockpit-daemon/.cockpit-daemon.AbC123"
+[[ -z "$(git -C "$R" status --porcelain -- tools/cockpit-daemon)" ]] || fail "a leftover fetch temp file shows in git status: $(git -C "$R" status --porcelain)"
+rm -f "$R/tools/cockpit-daemon/.cockpit-daemon.AbC123"; reset
 
 # 8. not a git checkout: say so, do not guess a name
 cp -R "$R" "$WORK/nogit"; rm -rf "$WORK/nogit/.git"
@@ -160,29 +165,32 @@ grep -qF 'CANON_FETCH_NO_BUILD=1 bash "$SCRIPT_DIR/fetch-daemon.sh" --quiet' "$R
 # macOS/Linux every start, building an unreleased change (tests/cockpit-launch-lib.sh runs both)
 assert_eq 2 "$(grep -c 'fetch-daemon.sh' "$ROOT/tools/cockpit-launch-lib.sh")"
 msg='cockpit daemon binary not found; run `canon update` to fetch it'
-grep -qF "$msg" "$ROOT/tools/sprint-check-go/main.go" || fail "the board must say how to fetch a missing daemon"
+grep -qF "$msg" "$ROOT/tools/canon-go/internal/board/main.go" || fail "the board must say how to fetch a missing daemon"
 
 # 10. every module in the daemon's go.mod has a section in THIRD-PARTY-NOTICES.md (the notice travels with the binary)
 mods=0
 while read -r path ver; do
   mods=$((mods + 1)); grep -qF "## $path $ver" "$ROOT/THIRD-PARTY-NOTICES.md" || fail "THIRD-PARTY-NOTICES.md has no section for $path $ver"
-done < <(sed 's|// indirect||; s|^require ||' "$ROOT/tools/cockpit-daemon/go.mod" | awk 'NF==2 && $1 ~ /^[a-z0-9.-]+\.[a-z]+\// && $2 ~ /^v[0-9]/ {print $1, $2}')
+done < <(sed 's|// indirect||; s|^require ||' "$ROOT/tools/canon-go/go.mod" | awk 'NF==2 && $1 ~ /^[a-z0-9.-]+\.[a-z]+\// && $2 ~ /^v[0-9]/ {print $1, $2}')
 [[ "$mods" -ge 5 ]] || fail "expected the daemon's five modules, saw $mods"
 # 10b. every third-party .js/.css file the daemon embeds under web/vendor/ is named, by path, in THIRD-PARTY-NOTICES.md (t-70e4: xterm shipped without a notice)
 vend=0
-for f in "$ROOT"/tools/cockpit-daemon/web/vendor/*.js "$ROOT"/tools/cockpit-daemon/web/vendor/*.css; do
+for f in "$ROOT"/tools/canon-go/internal/daemon/web/vendor/*.js "$ROOT"/tools/canon-go/internal/daemon/web/vendor/*.css; do
   [[ -e "$f" ]] || continue
   vend=$((vend + 1)); grep -qF "web/vendor/$(basename "$f")\`" "$ROOT/THIRD-PARTY-NOTICES.md" || fail "THIRD-PARTY-NOTICES.md does not name vendored file web/vendor/$(basename "$f")"
 done
 [[ "$vend" -ge 3 ]] || fail "expected the three vendored xterm files, saw $vend"
 
 # 11. release-daemon.sh --dry-run: builds four targets, prints the manifest lines, publishes and writes nothing; refuses a dirty daemon dir
-RR="$WORK/rel"; mkdir -p "$RR/scripts" "$RR/tools"; cp -R "$R/tools/cockpit-daemon" "$RR/tools/"; cp "$R/VERSION" "$RR/"; cp "$ROOT/scripts/release-daemon.sh" "$RR/scripts/"; cp "$ROOT/THIRD-PARTY-NOTICES.md" "$RR/"
-printf 'module x\n\ngo 1.26.5\n\ntoolchain %s\n' "$(go env GOVERSION)" > "$RR/tools/cockpit-daemon/go.mod"   # t-7efe: the release script builds with the go.mod toolchain line and refuses without one
-printf '# header\n' > "$RR/tools/cockpit-daemon.sha256"; rm -f "$RR/tools/cockpit-daemon/cockpit-daemon"
-for d in sprint-check-go sprint-headless-json-go; do mkdir -p "$RR/tools/$d"; printf 'package main\n\nvar version, commit string\n\nfunc main() {}\n' > "$RR/tools/$d/main.go"; go env GOVERSION > "$RR/tools/$d/GO_TOOLCHAIN"; done   # t-9383: the two Windows exes' sources; t-7efe: each pins the Go it builds with (the local one here, so no download)
+RR="$WORK/rel"; RM="$RR/tools/canon-go"; mkdir -p "$RR/scripts" "$RR/tools/sprint-headless-json-go" "$RM/cmd/cockpit-daemon" "$RM/cmd/sprint-check" "$RM/internal/daemon" "$RM/internal/board" "$RM/internal/common"
+cp "$R/VERSION" "$RR/"; cp "$ROOT/scripts/release-daemon.sh" "$RR/scripts/"; cp "$ROOT/tools/src-key.sh" "$RR/tools/"; cp "$ROOT/THIRD-PARTY-NOTICES.md" "$RR/"
+printf 'module x\n\ngo 1.26.5\n\ntoolchain %s\n' "$(go env GOVERSION)" > "$RM/go.mod"; : > "$RM/go.sum"   # t-7efe: the release script builds with the go.mod toolchain line and refuses without one
+for d in "$RM/cmd/cockpit-daemon" "$RM/cmd/sprint-check" "$RR/tools/sprint-headless-json-go"; do printf 'package main\n\nvar version, commit string\n\nfunc main() {}\n' > "$d/main.go"; done
+for d in internal/daemon internal/board internal/common; do printf 'package x\n' > "$RM/$d/x.go"; done
+go env GOVERSION > "$RR/tools/sprint-headless-json-go/GO_TOOLCHAIN"   # t-9383: the headless helper's pin (the local Go here, so no download)
+printf '# header\n' > "$RR/tools/cockpit-daemon.sha256"
 git -C "$RR" init -q -b main; git -C "$RR" "${ident[@]}" add -A; git -C "$RR" "${ident[@]}" commit -qm seed
-rkey="$(git -C "$RR" rev-parse HEAD:tools/cockpit-daemon | cut -c1-12)"
+rkey="$(srckey "$RR" cockpit-daemon | cut -c1-12)"
 cat > "$WORK/gostub/gh" <<'EOF'
 #!/bin/sh
 echo "$*" >> "$STUB_LOG"
@@ -193,7 +201,7 @@ for t in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64; do assert_contains "
 for t in windows-amd64 sprint-check-windows-amd64 sprint-headless-json-windows-amd64; do assert_contains "$out" " $t "; done   # t-9383
 for t in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64; do assert_contains "$out" " sprint-check-$t "; done   # t-15d8
 assert_contains "$out" "dry run"; [[ ! -s "$STUB_LOG" ]] || fail "dry run called gh"; assert_eq "# header" "$(cat "$RR/tools/cockpit-daemon.sha256")"
-echo dirty >> "$RR/tools/cockpit-daemon/main.go"
+echo dirty >> "$RM/internal/daemon/x.go"
 set +e; out="$(PATH="$WORK/gostub:$STUBS:$BASEPATH" bash "$RR/scripts/release-daemon.sh" --dry-run 2>&1)"; rc=$?; set -e
 [[ "$rc" == 1 ]]; assert_contains "$out" "uncommitted changes"
 

@@ -30,7 +30,7 @@ function goBoardBin() {
   fs.mkdirSync(path.join(layout, 'tools', 'sprint-check-bin'), { recursive: true });
   fs.symlinkSync(path.join(__dirname, '..', 'tools', 'sprint-check-app'), path.join(layout, 'tools', 'sprint-check-app'));
   const out = path.join(layout, 'tools', 'sprint-check-bin', 'sprint-check');
-  execFileSync('go', ['build', '-o', out, './tools/sprint-check-go'], { cwd: path.join(__dirname, '..'), env: { ...process.env, GO111MODULE: 'off' }, stdio: 'ignore' });
+  execFileSync('go', ['build', '-o', out, './cmd/sprint-check'], { cwd: path.join(__dirname, '..', 'tools', 'canon-go'), stdio: 'ignore' });
   goBoardBinPath = out;
   return out;
 }
@@ -10608,7 +10608,7 @@ test.describe('session sub-tabs (t-8a2a)', () => {
   }
 
   // Mirrors the real daemon-served terminal page's own #killBtn contract
-  // (tools/cockpit-daemon/web/cockpit.html) closely enough to exercise it:
+  // (tools/canon-go/internal/daemon/web/cockpit.html) closely enough to exercise it:
   // a real POST to /session/<sid>/kill on click, plus the same status/ended
   // postMessage contract every other fake cockpit page in this file speaks.
   function fakeCockpitPageWithKill(sid, { initialStatus = 'running' } = {}) {
@@ -11339,7 +11339,7 @@ test.describe('cockpit preview pane (t-b19b)', () => {
 // the t-8fbc fix (path-segment token) lets relative sibling assets load.
 test.describe('cockpit rendered-output preview (t-8f9d)', () => {
   const os = require('os');
-  const DAEMON_SRC = path.join(PROJECT_ROOT, 'tools', 'cockpit-daemon');
+  const DAEMON_SRC = path.join(PROJECT_ROOT, 'tools', 'canon-go');   // t-8020: build ./cmd/cockpit-daemon in the module
   const TICKET = 't-pv01';
   const hasGo = (() => {
     try { execFileSync('go', ['version'], { stdio: 'ignore' }); return true; } catch { return false; }
@@ -11386,7 +11386,7 @@ test.describe('cockpit rendered-output preview (t-8f9d)', () => {
 
     // Build and spawn the REAL daemon on an ephemeral loopback port.
     daemonBin = path.join(work, 'cockpit-daemon-test');
-    execFileSync('go', ['build', '-o', daemonBin, '.'], { cwd: DAEMON_SRC, stdio: 'inherit' });
+    execFileSync('go', ['build', '-o', daemonBin, './cmd/cockpit-daemon'], { cwd: DAEMON_SRC, stdio: 'inherit' });
     stateDir = path.join(work, 'state');
     bootToken = 'test-boot-token-t8f9d';
     daemonProc = spawn(daemonBin, ['-addr', '127.0.0.1:0'], {
@@ -11579,7 +11579,7 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
   // Anchor to the canon repo (this spec lives in <repo>/tests) rather than
   // PROJECT_ROOT — under SPRINT_CHECK_TEST_ROOT the board root is a fixture dir
   // that has no tools/cockpit-daemon, which would make the build cwd invalid.
-  const DAEMON_SRC = path.join(__dirname, '..', 'tools', 'cockpit-daemon');
+  const DAEMON_SRC = path.join(__dirname, '..', 'tools', 'canon-go');   // t-8020: build ./cmd/cockpit-daemon in the module
   test.describe.configure({ timeout: 120_000 });
 
   let work, daemonBin, bootToken, goOk = false;
@@ -11592,7 +11592,7 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
     catch { goOk = false; return; }
     work = fs.mkdtempSync(path.join(os.tmpdir(), 'ck-stale-'));
     daemonBin = path.join(work, 'cockpit-daemon-test');
-    execFileSync('go', ['build', '-o', daemonBin, '.'], { cwd: DAEMON_SRC, stdio: 'inherit' });
+    execFileSync('go', ['build', '-o', daemonBin, './cmd/cockpit-daemon'], { cwd: DAEMON_SRC, stdio: 'inherit' });
     bootToken = 'test-boot-token-t74d6';
     // A real ticket dir so the busy-state test can start a session (the daemon
     // refuses /session/start for a ticket that doesn't physically exist).

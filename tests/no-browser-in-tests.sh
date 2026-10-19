@@ -3,7 +3,7 @@
 # SPRINT_CHECK_NO_BROWSER=1 (t-269d).
 #
 # The Go server opens the developer's real browser at startup (`open`/`xdg-open`,
-# tools/sprint-check-go/main.go) unless that variable is set. Two scripts forgot it and every
+# tools/canon-go/internal/board/main.go) unless that variable is set. Two scripts forgot it and every
 # suite run opened real tabs pointing at ports that died seconds later (~26 accumulated in one
 # session). scripts/test.sh exports the variable for the suite; this keeps each start safe when a
 # script is run by hand, and fails when a NEW start lacks it.
@@ -11,7 +11,7 @@
 # Per start, not per file: a start counts as safe when the variable is on that line, on one of the
 # few lines above it (the env-var continuation style several scripts use), or exported earlier in the
 # file. Comment lines never count, and `go build`, `cp` and `command -v` lines and plain path assignments are not starts. A start
-# is recognised by the binary spellings below ($GO_BIN, /sc-go, /sprint-check-go, `go run …/sprint-check-go`) and, since t-15d8,
+# is recognised by the binary spellings below ($GO_BIN, /sc-go, `go run …/cmd/sprint-check`, t-8020) and, since t-15d8,
 # by any variable the file assigns from build_board (tests/helpers.sh), whatever its name; the pattern is checked for staleness below.
 set -euo pipefail
 
@@ -35,7 +35,7 @@ scan() {
       skip = ($0 ~ /go build|go test|rm -|dirname|mktemp|GO_BIN=|\[\[|(^|[^A-Za-z])cp |command -v go/) ||
              ($0 ~ /^[[:space:]]*[A-Za-z_]+="[^"]*"[[:space:]]*$/) ||   # a pure path assignment is not a start
              ($0 ~ /main\.go/)
-      start = !skip && (viaVar || $0 ~ /(\$\{?GO_BIN\}?|\/sc-go|\/sprint-check-go|go run [.\/]*tools\/sprint-check-go)/)
+      start = !skip && (viaVar || $0 ~ /(\$\{?GO_BIN\}?|\/sc-go|go run [.\/]*cmd\/sprint-check)/)
     }
     start {
       print "START " file

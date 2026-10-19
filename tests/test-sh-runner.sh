@@ -9,7 +9,7 @@ source "$ROOT/tests/helpers.sh"
 
 t="${TMPDIR:-/tmp}"; WORK="$(mktemp -d "${t%/}/test-sh-runner.XXXXXX")"; : > "$WORK/srv-pids"
 trap 'while read -r p; do kill "$p" 2>/dev/null || true; done < "$WORK/srv-pids"; rm -rf "$WORK"' EXIT   # fake servers, by recorded PID
-export SPRINT_CHECK_NO_BROWSER=1   # tests/no-browser-in-tests.sh reads any sprint-check-go mention as a board start; none starts here
+export SPRINT_CHECK_NO_BROWSER=1   # tests/no-browser-in-tests.sh reads a board binary spelling as a start; none starts here
 export LC_ALL=C TMPDIR="$WORK/tmp"; mkdir -p "$TMPDIR"
 
 # --- --list ---------------------------------------------------------------------------------------------------------------------
@@ -19,7 +19,7 @@ while IFS= read -r l; do [[ -e "$ROOT/$l" ]] || fail "test.sh --list names $l, w
 # the dry pass reaches every invocation in the file: the .sh labels are the tests=( array, the .js labels every node line, plus the Go three
 assert_eq "$(awk '/^tests=\(/{f=1;next} /^\)/{f=0} f' "$ROOT/scripts/test.sh" | grep -c 'tests/')" "$(printf '%s\n' "$LIST" | grep -c '\.sh$')"
 assert_eq "$(grep -c '^  suite tests/[^ ]*\.js node "\$ROOT/tests/' "$ROOT/scripts/test.sh")" "$(printf '%s\n' "$LIST" | grep -c '\.js$')"
-for g in tools/sprint-check-go tools/sprint-headless-json-go tools/cockpit-daemon; do assert_contains "$LIST" "$g"; done
+for g in tools/canon-go/internal/board tools/sprint-headless-json-go tools/canon-go/internal/daemon; do assert_contains "$LIST" "$g"; done
 assert_contains "$LIST" "tests/test-sh-runner.sh"
 set +e; out="$(bash "$ROOT/scripts/test.sh" --help 2>&1)"; rc=$?; set -e
 assert_eq 0 "$rc"; assert_contains "$out" "usage: scripts/test.sh [--list]"
@@ -66,8 +66,8 @@ P="$WORK/pass"; runner_copy "$P" tests/a.sh tests/b.sh
 echo 'echo a-ran' > "$P/tests/a.sh"; echo 'echo b-ran' > "$P/tests/b.sh"
 set +e; out="$(PATH="$WORK/bin" bash "$P/scripts/test.sh" 2>&1)"; rc=$?; set -e
 assert_eq 0 "$rc"; assert_contains "$out" "a-ran"; assert_contains "$out" "b-ran"; assert_contains "$out" "All tests passed."
-for skipped_line in "==> tools/sprint-check-go skipped (go absent)" "==> tools/sprint-headless-json-go skipped (go absent)" \
-  "==> tools/cockpit-daemon skipped (go absent)" "==> tests/sprint-check-gherkin.js skipped (node absent)"; do
+for skipped_line in "==> tools/canon-go/internal/board skipped (go absent)" "==> tools/sprint-headless-json-go skipped (go absent)" \
+  "==> tools/canon-go/internal/daemon skipped (go absent)" "==> tests/sprint-check-gherkin.js skipped (node absent)"; do
   assert_eq 1 "$(printf '%s\n' "$out" | grep -cxF "$skipped_line")"
 done
 set +e; out="$(PATH="$WORK/bin" bash "$P/scripts/test.sh" --list 2>&1)"; rc=$?; set -e
@@ -147,7 +147,7 @@ done
 N="$WORK/node"; runner_copy "$N" tests/a.sh; echo 'echo a-ran' > "$N/tests/a.sh"
 mkdir -p "$WORK/nodebin"; printf '#!/bin/sh\necho "node-ran $(basename "$1")"\n' > "$WORK/nodebin/node"; chmod +x "$WORK/nodebin/node"
 set +e; out="$(PATH="$WORK/nodebin:$WORK/bin" bash "$N/scripts/test.sh" --jobs 4 2>&1)"; rc=$?; set -e
-assert_eq 0 "$rc"; assert_contains "$out" "==> tools/cockpit-daemon skipped (go absent)"$'\n'"==> tests/sprint-check-gherkin.js"$'\n'"node-ran sprint-check-gherkin.js"
+assert_eq 0 "$rc"; assert_contains "$out" "==> tools/canon-go/internal/daemon skipped (go absent)"$'\n'"==> tests/sprint-check-gherkin.js"$'\n'"node-ran sprint-check-gherkin.js"
 assert_contains "$out" "node-ran sprint-check-api-scoping.js"
 # an interrupted run stops every process its suites started (not only xargs's own workers) and removes its folder
 I="$WORK/int"; runner_copy "$I" tests/a.sh tests/b.sh; mkdir -p "$WORK/int-tmp"
@@ -167,7 +167,7 @@ assert_eq "" "$(ls "$WORK/int-tmp")"                                            
 # a passing sequential run marks nothing failed (CURRENT is cleared after each suite)
 set +e; out="$(PATH="$WORK/bin" bash "$P/scripts/test.sh" --jobs 1 2>&1)"; rc=$?; set -e
 assert_eq 0 "$rc"; [[ "$out" != *"(failed)"* ]] || fail "a passing --jobs 1 run printed a failed row: $out"
-assert_eq 1 "$(printf '%s\n' "$out" | grep -cxF "==> tools/cockpit-daemon skipped (go absent)")"   # the sequential run prints skips too
+assert_eq 1 "$(printf '%s\n' "$out" | grep -cxF "==> tools/canon-go/internal/daemon skipped (go absent)")"   # the sequential run prints skips too
 # the slowest 10 are sorted, even when the slow suite runs last
 L="$WORK/late"; runner_copy "$L" tests/q1.sh tests/q2.sh tests/q3.sh
 echo 'true' > "$L/tests/q1.sh"; echo 'sleep 1' > "$L/tests/q2.sh"; echo 'sleep 2' > "$L/tests/q3.sh"

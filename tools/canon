@@ -6,7 +6,7 @@
 #
 # Unlike `sprint-check` (one board per project, per cwd), canon is
 # project-agnostic: it serves the shell + the project registry, and you open
-# projects from within it. See tools/sprint-check-go/main.go registry*.
+# projects from within it. See tools/canon-go/internal/board/main.go registry*.
 
 set -euo pipefail
 

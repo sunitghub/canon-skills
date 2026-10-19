@@ -87,9 +87,9 @@ shell_sources() {
 # a suite that silently stopped testing the board would still pass.
 build_board() {
   local out="$1/sprint-check-bin/sprint-check"
-  command -v go >/dev/null 2>&1 || fail "build_board: go is required to build the board (tools/sprint-check-go)"
+  command -v go >/dev/null 2>&1 || fail "build_board: go is required to build the board (tools/canon-go)"
   mkdir -p "$1/sprint-check-bin"
-  (cd "$ROOT" && GO111MODULE=off go build -o "$out" ./tools/sprint-check-go) || fail "build_board: go build of tools/sprint-check-go failed"
+  (cd "$ROOT/tools/canon-go" && go build -o "$out" ./cmd/sprint-check) || fail "build_board: go build of tools/canon-go/cmd/sprint-check failed"
   printf '%s\n' "$out"
 }
 

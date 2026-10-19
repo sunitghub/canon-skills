@@ -4,22 +4,27 @@
 # assets a release lacks, never overwrite one, verify every asset by downloading it back, and write the manifest last, newest
 # line last. Real Go cross-builds of tiny stub packages, so the build flags and paths are exercised for real.
 set -euo pipefail
-export SPRINT_CHECK_NO_BROWSER=1   # no board starts here; tests/no-browser-in-tests.sh matches the tools/sprint-check-go source path
+export SPRINT_CHECK_NO_BROWSER=1   # no board starts here; tests/no-browser-in-tests.sh matches a board binary spelling
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 command -v go >/dev/null 2>&1 || { echo "release-daemon-publish: go absent: skipped"; exit 0; }
 WORK="$(cd "$(mktemp -d)" && pwd -P)"; trap 'rm -rf "$WORK"' EXIT
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 XDG_CONFIG_HOME="$WORK/xdg"
 ident=(-c user.email=t@example.com -c user.name=test)
 
-R="$WORK/repo"; mkdir -p "$R/scripts" "$R/tools/cockpit-daemon" "$R/tools/sprint-check-go" "$R/tools/sprint-headless-json-go"
-cp "$ROOT/scripts/release-daemon.sh" "$R/scripts/"; cp "$ROOT/THIRD-PARTY-NOTICES.md" "$R/"; echo 0.3.0 > "$R/VERSION"
+# t-8020: the daemon and the board are one module (tools/canon-go, cmd/cockpit-daemon and cmd/sprint-check); the headless helper
+# is still a legacy package with its own GO_TOOLCHAIN. Keys come from tools/src-key.sh.
+R="$WORK/repo"; M="$R/tools/canon-go"
+mkdir -p "$R/scripts" "$R/tools/sprint-headless-json-go" "$M/cmd/sprint-check" "$M/cmd/cockpit-daemon" "$M/internal/board" "$M/internal/daemon" "$M/internal/common"
+cp "$ROOT/scripts/release-daemon.sh" "$R/scripts/"; cp "$ROOT/tools/src-key.sh" "$R/tools/"; cp "$ROOT/THIRD-PARTY-NOTICES.md" "$R/"; echo 0.3.0 > "$R/VERSION"
 LV="$(go env GOVERSION)"   # the local Go: pins equal to it need no download in a hermetic test
-printf 'module x/d\n\ngo 1.21\n\ntoolchain %s\n' "$LV" > "$R/tools/cockpit-daemon/go.mod"
-for d in cockpit-daemon sprint-check-go sprint-headless-json-go; do printf 'package main\n\nvar version, commit string\n\nfunc main() { println(version, commit) }\n' > "$R/tools/$d/main.go"; done
-for d in sprint-check-go sprint-headless-json-go; do echo "$LV" > "$R/tools/$d/GO_TOOLCHAIN"; done
+printf 'module canon\n\ngo 1.21\n\ntoolchain %s\n' "$LV" > "$M/go.mod"; : > "$M/go.sum"
+for d in "$M/cmd/sprint-check" "$M/cmd/cockpit-daemon" "$R/tools/sprint-headless-json-go"; do printf 'package main\n\nvar version, commit string\n\nfunc main() { println(version, commit) }\n' > "$d/main.go"; done
+for d in internal/board internal/daemon internal/common; do printf 'package x\n' > "$M/$d/x.go"; done
+echo "$LV" > "$R/tools/sprint-headless-json-go/GO_TOOLCHAIN"
 printf '# header\n' > "$R/tools/cockpit-daemon.sha256"
 git -C "$R" init -q -b main; git -C "$R" "${ident[@]}" add -A; git -C "$R" "${ident[@]}" commit -qm seed
-kd="$(git -C "$R" rev-parse HEAD:tools/cockpit-daemon | cut -c1-12)"; kb="$(git -C "$R" rev-parse HEAD:tools/sprint-check-go | cut -c1-12)"; kh="$(git -C "$R" rev-parse HEAD:tools/sprint-headless-json-go | cut -c1-12)"
+key() { bash -c 'source "$1/tools/src-key.sh"; canon_src_key "$1" "$2"' _ "$R" "$1" | cut -c1-12; }
+kd="$(key cockpit-daemon)"; kb="$(key sprint-check)"; kh="$(key sprint-headless-json)"
 
 # The fake gh: releases are directories under $FAKE_GH.
 STUBS="$WORK/stubs"; mkdir -p "$STUBS" "$WORK/gh"; export FAKE_GH="$WORK/gh" STUB_LOG="$WORK/gh.log"
@@ -44,7 +49,7 @@ chmod +x "$STUBS/gh"
 export REAL_GO="$(command -v go)" GO_LOG="$WORK/go.log"
 cat > "$STUBS/go" <<'GO'
 #!/usr/bin/env bash
-if [ "${1:-}" = build ] && [ -f go.mod ] && grep -qE '^module (canon/sprint|x/d)' go.mod; then echo "GOTOOLCHAIN=${GOTOOLCHAIN:-} $(tr '\n' ' ' < go.mod)" >> "$GO_LOG"; fi
+if [ "${1:-}" = build ] && [ -f go.mod ] && grep -qE '^module canon' go.mod; then echo "GOTOOLCHAIN=${GOTOOLCHAIN:-} $(tr '\n' ' ' < go.mod)" >> "$GO_LOG"; fi
 [ -z "${SHIM_FORCE_LOCAL:-}" ] || export GOTOOLCHAIN=local
 # SHIM_NOISY_VERSION=1: `go version -m` goes on writing after its first line, as a real module listing does (t-90bc)
 if [ -n "${SHIM_NOISY_VERSION:-}" ] && [ "${1:-}" = version ] && [ "${2:-}" = -m ]; then "$REAL_GO" "$@"; sleep 0.3; seq 1 100000; exit; fi
@@ -71,11 +76,12 @@ for pair in "darwin-arm64:Mach-O 64-bit executable arm64" "darwin-amd64:Mach-O 6
 done
 host="$(uname -s | tr 'A-Z' 'a-z')-$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')"
 if [[ -f "$FAKE_GH/sprint-check-$kb/sprint-check-$host" ]]; then
-  assert_contains "$("$FAKE_GH/sprint-check-$kb/sprint-check-$host" 2>&1)" "$(git -C "$R" rev-parse HEAD:tools/sprint-check-go | cut -c1-8)"
+  assert_contains "$("$FAKE_GH/sprint-check-$kb/sprint-check-$host" 2>&1)" "${kb:0:8}"
 fi
-# the legacy builds ask for the pinned toolchain and write the pin into the staged go.mod (not the installed Go: t-7efe)
-for mod in sprint-check sprint-headless-json; do grep -q "^GOTOOLCHAIN=$LV module canon/$mod  go ${LV#go} \$" "$GO_LOG" || fail "the $mod build did not use the pinned toolchain: $(cat "$GO_LOG")"; done
-[[ "$(grep -c "^GOTOOLCHAIN=$LV module x/d " "$GO_LOG")" == 5 ]] || fail "the five daemon builds must each set GOTOOLCHAIN to go.mod's toolchain line: $(cat "$GO_LOG")"
+# the legacy (headless) build asks for its pin and writes it into the staged go.mod; the ten module builds (five daemon, five board)
+# each set GOTOOLCHAIN to the module's toolchain line (not the installed Go: t-7efe)
+grep -q "^GOTOOLCHAIN=$LV module canon/sprint-headless-json  go ${LV#go} \$" "$GO_LOG" || fail "the headless build did not use its pin: $(cat "$GO_LOG")"
+[[ "$(grep -c "^GOTOOLCHAIN=$LV module canon  go 1.21  toolchain $LV " "$GO_LOG")" == 10 ]] || fail "the ten module builds must each set GOTOOLCHAIN to go.mod's toolchain line: $(cat "$GO_LOG")"
 # 1b. t-0859: the bytes do not depend on VERSION (the stub prints `version`, so a build that still stamped it would differ):
 # two dry runs of the same source with different VERSION files print the same hash for every target
 dry() { (cd "$R" && PATH="$STUBS:$PATH" bash scripts/release-daemon.sh --dry-run 2>&1 | grep -v '^release-daemon:'); }
@@ -110,39 +116,41 @@ rm -rf "$FAKE_GH"/*; export FAKE_GH_SERVE_BAD=1; run; unset FAKE_GH_SERVE_BAD
 [[ "$rc" == 1 ]] || fail "a tampered download must stop the run: $out"; assert_eq "# header" "$(cat "$m")"
 # 6. the newest line is last: a re-release with new source replaces the old line for that target and appends the new one at the end
 rm -rf "$FAKE_GH"/*; run; [[ "$rc" == 0 ]]
-echo "// v2" >> "$R/tools/sprint-check-go/main.go"; git -C "$R" "${ident[@]}" commit -qam "board v2"
-kb2="$(git -C "$R" rev-parse HEAD:tools/sprint-check-go | cut -c1-12)"; run; [[ "$rc" == 0 ]] || fail "re-release failed: $out"
+echo "// v2" >> "$M/internal/board/x.go"; git -C "$R" "${ident[@]}" commit -qam "board v2"
+kb2="$(key sprint-check)"; run; [[ "$rc" == 0 ]] || fail "re-release failed: $out"
+# t-8020: a board-only change re-releases the board, not the daemon (one module, two keys)
+assert_eq "$kd" "$(key cockpit-daemon)"; assert_eq 1 "$(grep -c " windows-amd64 " "$m")"; ! grep -q "release create cockpit-daemon-" "$STUB_LOG" || fail "a board-only change created a daemon release"
 assert_eq "$kb2 sprint-check-windows-amd64" "$(grep ' sprint-check-windows-amd64 ' "$m" | tail -1 | awk '{print $1" "$2}')"
 assert_eq 2 "$(grep -c ' sprint-check-windows-amd64 ' "$m")"   # the old key's line stays (older installs still resolve it), the new one is last
 # 7. dirty source is refused, as before
 echo "// dirty" >> "$R/tools/sprint-headless-json-go/main.go"; run; [[ "$rc" == 1 ]]; assert_contains "$out" "uncommitted changes"
 # 8. every go build in the release script carries -trimpath (without it the bytes depend on the checkout path; tests/build-zip-go-package.sh guards the stamping, this guards the flag)
 builds="$(grep -c 'go build' "$ROOT/scripts/release-daemon.sh")"; trim="$(grep 'go build' "$ROOT/scripts/release-daemon.sh" | grep -c -- '-trimpath')"
-[[ "$builds" -ge 3 && "$builds" == "$trim" ]] || fail "release-daemon.sh: $builds go build lines, $trim with -trimpath"
+[[ "$builds" -ge 2 && "$builds" == "$trim" ]] || fail "release-daemon.sh: $builds go build lines, $trim with -trimpath"
 # 9. a missing, malformed or unbuildable GO_TOOLCHAIN stops the run before anything is published or written
 git -C "$R" "${ident[@]}" checkout -q -- tools/sprint-headless-json-go; rm -rf "$FAKE_GH"/*; printf '# header\n' > "$m"
 for bad in "" "1.27.2" "go1.27"; do
-  printf '%s\n' "$bad" > "$R/tools/sprint-check-go/GO_TOOLCHAIN"; git -C "$R" "${ident[@]}" commit -qam "pin: '$bad'"
+  printf '%s\n' "$bad" > "$R/tools/sprint-headless-json-go/GO_TOOLCHAIN"; git -C "$R" "${ident[@]}" commit -qam "pin: '$bad'"
   run; [[ "$rc" == 1 ]] || fail "GO_TOOLCHAIN '$bad' must stop the run (rc=$rc): $out"
   assert_eq "# header" "$(cat "$m")"; ! grep -qE ' (create|upload) ' "$STUB_LOG" || fail "GO_TOOLCHAIN '$bad': something was published"
   assert_contains "$out" "must name the Go toolchain"
 done
 # 9b. every built binary is checked against its pin: a script that ignored the pin, or an exported GOTOOLCHAIN=local, publishes nothing
-echo go1.21.5 > "$R/tools/sprint-check-go/GO_TOOLCHAIN"; git -C "$R" "${ident[@]}" commit -qam "board pin 1.21.5"
+echo go1.21.5 > "$R/tools/sprint-headless-json-go/GO_TOOLCHAIN"; git -C "$R" "${ident[@]}" commit -qam "helper pin 1.21.5"
 rm -rf "$FAKE_GH"/*; printf '# header\n' > "$m"
-k1="$(git -C "$R" rev-parse HEAD:tools/sprint-check-go)"; echo go1.21.6 > "$R/tools/sprint-check-go/GO_TOOLCHAIN"; git -C "$R" "${ident[@]}" commit -qam "board pin 1.21.6"
-[[ "$k1" != "$(git -C "$R" rev-parse HEAD:tools/sprint-check-go)" ]] || fail "raising a pin must change the source folder's tree hash (a new release key)"
+k1="$(key sprint-headless-json)"; echo go1.21.6 > "$R/tools/sprint-headless-json-go/GO_TOOLCHAIN"; git -C "$R" "${ident[@]}" commit -qam "helper pin 1.21.6"
+[[ "$k1" != "$(key sprint-headless-json)" ]] || fail "raising a pin must change the component's key (a new release)"
 SHIM_FORCE_LOCAL=1 run; [[ "$rc" == 1 ]] || fail "a binary not built with its pin must stop the run (rc=$rc): $out"
 assert_contains "$out" "was built with '$LV', not the pinned go1.21.6"; assert_eq "# header" "$(cat "$m")"; ! grep -qE ' (create|upload) ' "$STUB_LOG" || fail "something was published"
-grep -q "^GOTOOLCHAIN=go1.21.6 module canon/sprint-check  go 1.21.6 \$" "$GO_LOG" || fail "the board build must be asked for its pin, with a go.mod of that version: $(cat "$GO_LOG")"
-echo "$LV" > "$R/tools/sprint-check-go/GO_TOOLCHAIN"; git -C "$R" "${ident[@]}" commit -qam "board pin back"
-# 9c. the daemon: a go.mod without a toolchain line is refused, and so is a daemon built with other than that toolchain
-cp "$R/tools/cockpit-daemon/go.mod" "$WORK/d.go.mod"; printf 'module x/d\n\ngo 1.21\n' > "$R/tools/cockpit-daemon/go.mod"; git -C "$R" "${ident[@]}" commit -qam "daemon without toolchain"
+grep -q "^GOTOOLCHAIN=go1.21.6 module canon/sprint-headless-json  go 1.21.6 \$" "$GO_LOG" || fail "the helper build must be asked for its pin, with a go.mod of that version: $(cat "$GO_LOG")"
+echo "$LV" > "$R/tools/sprint-headless-json-go/GO_TOOLCHAIN"; git -C "$R" "${ident[@]}" commit -qam "helper pin back"
+# 9c. the module (daemon and board): a go.mod without a toolchain line is refused, and so is a binary built with other than that toolchain
+cp "$M/go.mod" "$WORK/d.go.mod"; printf 'module canon\n\ngo 1.21\n' > "$M/go.mod"; git -C "$R" "${ident[@]}" commit -qam "module without toolchain"
 run; [[ "$rc" == 1 ]] || fail "a daemon go.mod with no toolchain line must stop the run (rc=$rc): $out"; assert_contains "$out" "toolchain goX.Y.Z"
-printf 'module x/d\n\ngo 1.21\n\ntoolchain go1.21.5\n' > "$R/tools/cockpit-daemon/go.mod"; git -C "$R" "${ident[@]}" commit -qam "daemon toolchain 1.21.5"
+printf 'module canon\n\ngo 1.21\n\ntoolchain go1.21.5\n' > "$M/go.mod"; git -C "$R" "${ident[@]}" commit -qam "module toolchain 1.21.5"
 SHIM_FORCE_LOCAL=1 run; [[ "$rc" == 1 ]] || fail "a daemon not built with its toolchain must stop the run (rc=$rc): $out"; assert_contains "$out" "not the pinned go1.21.5"; assert_eq "# header" "$(cat "$m")"
-cp "$WORK/d.go.mod" "$R/tools/cockpit-daemon/go.mod"; git -C "$R" "${ident[@]}" commit -qam "daemon toolchain back"
-# 10. the pins agree: the daemon's go.mod toolchain line and both GO_TOOLCHAIN files in the real tree name one version (one owner would be better, but go.mod cannot read a file)
-dv="$(awk '/^toolchain /{print $2}' "$ROOT/tools/cockpit-daemon/go.mod")"; [[ "$dv" =~ ^go[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "tools/cockpit-daemon/go.mod has no toolchain line ('$dv')"
-for d in sprint-check-go sprint-headless-json-go; do assert_eq "$dv" "$(tr -d ' \t\n\r' < "$ROOT/tools/$d/GO_TOOLCHAIN")"; done
+cp "$WORK/d.go.mod" "$M/go.mod"; git -C "$R" "${ident[@]}" commit -qam "module toolchain back"
+# 10. the pins agree: the module's go.mod toolchain line and the headless helper's GO_TOOLCHAIN in the real tree name one version
+dv="$(awk '/^toolchain /{print $2}' "$ROOT/tools/canon-go/go.mod")"; [[ "$dv" =~ ^go[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "tools/canon-go/go.mod has no toolchain line ('$dv')"
+assert_eq "$dv" "$(tr -d ' \t\n\r' < "$ROOT/tools/sprint-headless-json-go/GO_TOOLCHAIN")"
 echo "release-daemon-publish: ok (creates, adds only missing assets, never overwrites, verifies by download, manifest last and newest-last; bytes free of VERSION; existing releases recorded as published)"

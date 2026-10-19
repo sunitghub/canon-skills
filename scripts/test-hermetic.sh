@@ -94,14 +94,12 @@ run_all() {
     record "$t" "$rc" "$log"
   done
   if command -v go >/dev/null 2>&1; then
-    for g in tools/sprint-check-go tools/sprint-headless-json-go; do
-      log="$W/logs/go_$(basename "$g").log"; rc=0
-      pinned_b 600 env GO111MODULE=off go test -count=1 "./$g" > "$log" 2>&1 || rc=$?
-      record "go $g" "$rc" "$log"
-    done
-    log="$W/logs/go_cockpit-daemon.log"; rc=0
-    (cd tools/cockpit-daemon && pinned_b 900 go test -count=1 ./... > "$log" 2>&1) || rc=$?
-    record "go tools/cockpit-daemon" "$rc" "$log"
+    log="$W/logs/go_sprint-headless-json-go.log"; rc=0
+    pinned_b 600 env GO111MODULE=off go test -count=1 ./tools/sprint-headless-json-go > "$log" 2>&1 || rc=$?
+    record "go tools/sprint-headless-json-go" "$rc" "$log"
+    log="$W/logs/go_canon-go.log"; rc=0   # t-8020: the board and the daemon are one module
+    (cd tools/canon-go && pinned_b 900 go test -count=1 ./... > "$log" 2>&1) || rc=$?
+    record "go tools/canon-go" "$rc" "$log"
   else
     echo "go absent: skipped" > "$W/logs/go.log"; record "go suites" 0 "$W/logs/go.log"
   fi

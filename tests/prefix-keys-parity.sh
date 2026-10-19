@@ -22,7 +22,7 @@ if grep -qE "ArrowLeft|ArrowRight" "$board"; then fail "board must not bind Arro
 files=(
   "$shell"
   "$board"
-  "$ROOT/tools/cockpit-daemon/web/cockpit.html"
+  "$ROOT/tools/canon-go/internal/daemon/web/cockpit.html"
 )
 ref=""
 for f in "${files[@]}"; do

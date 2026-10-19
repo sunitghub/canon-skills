@@ -2,16 +2,19 @@
 # check-binaries-released (t-9383): scripts/check-binaries-released.sh is the push guard — red whenever a binary's source changed
 # without its release, green when every component's newest manifest line names the current source tree.
 set -euo pipefail
-export SPRINT_CHECK_NO_BROWSER=1   # no board starts here; tests/no-browser-in-tests.sh matches the tools/sprint-check-go source path
+export SPRINT_CHECK_NO_BROWSER=1   # no board starts here; tests/no-browser-in-tests.sh matches a board binary spelling
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 WORK="$(cd "$(mktemp -d)" && pwd -P)"; trap 'rm -rf "$WORK"' EXIT
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 XDG_CONFIG_HOME="$WORK/xdg"
 ident=(-c user.email=t@example.com -c user.name=test)
-R="$WORK/repo"; mkdir -p "$R/scripts" "$R/tools/cockpit-daemon" "$R/tools/sprint-check-go" "$R/tools/sprint-headless-json-go"
-cp "$ROOT/scripts/check-binaries-released.sh" "$R/scripts/"
-for d in cockpit-daemon sprint-check-go sprint-headless-json-go; do echo "package main // $d" > "$R/tools/$d/main.go"; done
+# t-8020: the board and the daemon are one module (tools/canon-go); tools/src-key.sh names what each key covers
+R="$WORK/repo"; M="$R/tools/canon-go"; mkdir -p "$R/scripts" "$R/tools/sprint-headless-json-go" "$M/cmd/sprint-check" "$M/cmd/cockpit-daemon" "$M/internal/board" "$M/internal/daemon" "$M/internal/common"
+cp "$ROOT/scripts/check-binaries-released.sh" "$R/scripts/"; cp "$ROOT/tools/src-key.sh" "$R/tools/"
+printf 'module canon\n' > "$M/go.mod"; : > "$M/go.sum"
+for d in cmd/sprint-check cmd/cockpit-daemon internal/board internal/daemon internal/common; do echo "package x // $d" > "$M/$d/x.go"; done
+echo "package main // headless" > "$R/tools/sprint-headless-json-go/main.go"
 git -C "$R" init -q -b main; git -C "$R" "${ident[@]}" add -A; git -C "$R" "${ident[@]}" commit -qm seed
-key() { git -C "$R" rev-parse "HEAD:$1" | cut -c1-12; }
+key() { bash -c 'source "$1/tools/src-key.sh"; canon_src_key "$1" "$2"' _ "$R" "$1" | cut -c1-12; }
 sha() { printf 'a%.0s' {1..64}; }
 write_manifest() { # <daemon key> <board key> <headless key>
   { for t in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 windows-amd64; do echo "$1 $t $(sha)"; done
@@ -19,19 +22,19 @@ write_manifest() { # <daemon key> <board key> <headless key>
 }
 run() { set +e; out="$(bash "$R/scripts/check-binaries-released.sh" "$@" 2>&1)"; rc=$?; set -e; }
 
-write_manifest "$(key tools/cockpit-daemon)" "$(key tools/sprint-check-go)" "$(key tools/sprint-headless-json-go)"
+write_manifest "$(key cockpit-daemon)" "$(key sprint-check)" "$(key sprint-headless-json)"
 run; [[ "$rc" == 0 ]] || fail "a fully released tree must pass: $out"; assert_contains "$out" "ok            windows-amd64"
 
 # a source change without its release: red, and it names the component
-echo "// change" >> "$R/tools/sprint-check-go/main.go"; git -C "$R" "${ident[@]}" commit -qam "board changed"
+echo "// change" >> "$M/internal/board/x.go"; git -C "$R" "${ident[@]}" commit -qam "board changed"
 run; [[ "$rc" == 1 ]] || fail "an unreleased board change must fail: $out"
 for t in windows-amd64 darwin-arm64 darwin-amd64 linux-amd64 linux-arm64; do assert_contains "$out" "NOT RELEASED  sprint-check-$t"; done; [[ "$out" != *"NOT RELEASED  windows-amd64"* ]] || fail "the daemon was named though it did not change: $out"
 # a newer line is the one that counts: add the board's new key last
-for t in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 windows-amd64; do echo "$(key tools/sprint-check-go) sprint-check-$t $(sha)"; done >> "$R/tools/cockpit-daemon.sha256"; run; [[ "$rc" == 0 ]] || fail "the newest line for the target must be used: $out"
+for t in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 windows-amd64; do echo "$(key sprint-check) sprint-check-$t $(sha)"; done >> "$R/tools/cockpit-daemon.sha256"; run; [[ "$rc" == 0 ]] || fail "the newest line for the target must be used: $out"
 # the OLD key appended after the new one makes the newest line stale again
 echo "111111111111 sprint-check-windows-amd64 $(sha)" >> "$R/tools/cockpit-daemon.sha256"; run; [[ "$rc" == 1 ]] || fail "a stale newest line must fail: $out"
 # a missing line, a CRLF manifest (still fine), an empty manifest
-write_manifest "$(key tools/cockpit-daemon)" "$(key tools/sprint-check-go)" "$(key tools/sprint-headless-json-go)"
+write_manifest "$(key cockpit-daemon)" "$(key sprint-check)" "$(key sprint-headless-json)"
 sed -i.bak 's/$/\r/' "$R/tools/cockpit-daemon.sha256"; rm "$R/tools/cockpit-daemon.sha256.bak"; run; [[ "$rc" == 0 ]] || fail "CRLF manifest must pass: $out"
 : > "$R/tools/cockpit-daemon.sha256"; run; [[ "$rc" == 1 ]] || fail "an empty manifest must fail: $out"; assert_contains "$out" "missing"
 
@@ -44,11 +47,11 @@ f="$STUB_DIR/$(basename "$url")"; [ -f "$f" ] || exit 22; cp "$f" "$out"
 EOF2
 chmod +x "$STUBS/curl"
 printf 'binary' > "$WORK/b"; goodsha="$(shasum -a 256 "$WORK/b" | awk '{print $1}')"
-{ for t in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64; do echo "$(key tools/cockpit-daemon) $t $goodsha"; cp "$WORK/b" "$STUB_DIR/cockpit-daemon-$t"; done
-  echo "$(key tools/cockpit-daemon) windows-amd64 $goodsha"; cp "$WORK/b" "$STUB_DIR/cockpit-daemon-windows-amd64.exe"
-  echo "$(key tools/sprint-check-go) sprint-check-windows-amd64 $goodsha"; cp "$WORK/b" "$STUB_DIR/sprint-check-windows-amd64.exe"
-  for t in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64; do echo "$(key tools/sprint-check-go) sprint-check-$t $goodsha"; cp "$WORK/b" "$STUB_DIR/sprint-check-$t"; done
-  echo "$(key tools/sprint-headless-json-go) sprint-headless-json-windows-amd64 $goodsha"; cp "$WORK/b" "$STUB_DIR/sprint-headless-json-windows-amd64.exe"; } > "$R/tools/cockpit-daemon.sha256"
+{ for t in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64; do echo "$(key cockpit-daemon) $t $goodsha"; cp "$WORK/b" "$STUB_DIR/cockpit-daemon-$t"; done
+  echo "$(key cockpit-daemon) windows-amd64 $goodsha"; cp "$WORK/b" "$STUB_DIR/cockpit-daemon-windows-amd64.exe"
+  echo "$(key sprint-check) sprint-check-windows-amd64 $goodsha"; cp "$WORK/b" "$STUB_DIR/sprint-check-windows-amd64.exe"
+  for t in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64; do echo "$(key sprint-check) sprint-check-$t $goodsha"; cp "$WORK/b" "$STUB_DIR/sprint-check-$t"; done
+  echo "$(key sprint-headless-json) sprint-headless-json-windows-amd64 $goodsha"; cp "$WORK/b" "$STUB_DIR/sprint-headless-json-windows-amd64.exe"; } > "$R/tools/cockpit-daemon.sha256"
 set +e; out="$(PATH="$STUBS:$PATH" bash "$R/scripts/check-binaries-released.sh" --download 2>&1)"; rc=$?; set -e
 [[ "$rc" == 0 ]] || fail "good assets must pass --download: $out"; assert_contains "$out" "asset downloaded, sha256 matches"
 printf 'tampered' > "$STUB_DIR/sprint-check-windows-amd64.exe"

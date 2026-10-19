@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # skill-eval-parity (t-b9a7) — Skill Eval's checks and generator exist twice: the CLIs (tools/skill-check,
-# tools/plugin-eval-gen) and the Go board (tools/sprint-check-go/skilleval.go). This locks them together:
+# tools/plugin-eval-gen) and the Go board (tools/canon-go/internal/board/skilleval.go). This locks them together:
 # the board's /api/skill-eval/check answers {ok: true, skill_dir, **<skill-check's JSON>} (what the Python
 # board returned, t-15d8) for the fixture corpus plus a seeded fuzz that aims at the known runtime gaps, and
 # for every check-passing skill the Go-generated eval plugin is identical (diff -r) to plugin-eval-gen's.

@@ -3,7 +3,7 @@
 # its SHA-256 equals the committed manifest line, and never touches an exe that is already there when something fails.
 # Everything runs in a throwaway repo with stub curl/uname; each "exe" is a script that leaves a marker if it is ever executed.
 set -euo pipefail
-export SPRINT_CHECK_NO_BROWSER=1   # no board starts here; tests/no-browser-in-tests.sh matches the tools/sprint-check-go source path
+export SPRINT_CHECK_NO_BROWSER=1   # no board starts here; tests/no-browser-in-tests.sh matches a board binary spelling
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 
 WORK="$(cd "$(mktemp -d)" && pwd -P)"
@@ -12,15 +12,16 @@ export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 XDG_CONFIG_HOME="$WORK/
 ident=(-c user.email=t@example.com -c user.name=test)
 refute_contains() { [[ "$1" != *"$2"* ]] || fail "expected output NOT to contain '$2'; got: $1"; }
 
-R="$WORK/repo"; mkdir -p "$R/tools/cockpit-daemon" "$R/tools/sprint-check-go" "$R/tools/sprint-headless-json-go"
-cp "$ROOT/tools/fetch-daemon.sh" "$R/tools/"
-for d in cockpit-daemon sprint-check-go sprint-headless-json-go; do printf 'package main\n// %s\n' "$d" > "$R/tools/$d/main.go"; done
-printf 'module x\n\ngo 1.26.5\n' > "$R/tools/cockpit-daemon/go.mod"; echo 0.3.0 > "$R/VERSION"
+# t-8020: the daemon and the board are one module (tools/canon-go); tools/src-key.sh names each binary's key
+R="$WORK/repo"; M="$R/tools/canon-go"; mkdir -p "$R/tools/sprint-headless-json-go" "$M/cmd/cockpit-daemon" "$M/cmd/sprint-check" "$M/internal/daemon" "$M/internal/board" "$M/internal/common"
+cp "$ROOT/tools/fetch-daemon.sh" "$ROOT/tools/src-key.sh" "$R/tools/"
+for d in cmd/cockpit-daemon cmd/sprint-check internal/daemon internal/board internal/common; do printf 'package x\n// %s\n' "$d" > "$M/$d/x.go"; done
+printf 'package main\n' > "$R/tools/sprint-headless-json-go/main.go"
+printf 'module x\n\ngo 1.26.5\n' > "$M/go.mod"; : > "$M/go.sum"; echo 0.3.0 > "$R/VERSION"
 git -C "$R" init -q -b main; git -C "$R" "${ident[@]}" add -A; git -C "$R" "${ident[@]}" commit -qm seed
 printf '/tools/*-win.exe\n' >> "$R/.git/info/exclude"   # as the repo's own .gitignore does: a fetched exe is not a dirty tree
-k_d="$(git -C "$R" rev-parse HEAD:tools/cockpit-daemon | cut -c1-12)"
-k_b="$(git -C "$R" rev-parse HEAD:tools/sprint-check-go | cut -c1-12)"
-k_h="$(git -C "$R" rev-parse HEAD:tools/sprint-headless-json-go | cut -c1-12)"
+srckey() { bash -c 'source "$1/tools/src-key.sh"; canon_src_key "$1" "$2"' _ "$R" "$1" | cut -c1-12; }
+k_d="$(srckey cockpit-daemon)"; k_b="$(srckey sprint-check)"; k_h="$(srckey sprint-headless-json)"
 MARK="$WORK/executed"
 D="$R/tools/cockpit-daemon-win.exe"; B="$R/tools/sprint-check-win.exe"; H="$R/tools/sprint-headless-json-win.exe"
 
@@ -123,7 +124,7 @@ set +e; out="$(PATH="$STUBS:/usr/bin:/bin" bash "$Z/tools/fetch-daemon.sh" 2>&1)
 assert_contains "$(cat "$STUB_LOG")" "cockpit-daemon-$k_d/cockpit-daemon-windows-amd64.exe"; refute_contains "$(cat "$STUB_LOG")" "111111111111"
 cmp -s "$Z/tools/sprint-check-win.exe" "$A/sprint-check-windows-amd64.exe" || fail "zip install did not get the board exe"
 # 6b. a git checkout whose source tree differs from every manifest line is "not released yet": it never fetches an exe for different source
-echo "// changed" >> "$R/tools/sprint-check-go/main.go"; git -C "$R" "${ident[@]}" commit -qam "board source changed"
+echo "// changed" >> "$M/internal/board/x.go"; git -C "$R" "${ident[@]}" commit -qam "board source changed"
 manifest; clean; run_fetch
 [[ "$rc" == 1 ]] || fail "a changed board source with an old manifest must refuse (rc=$rc): $out"
 assert_contains "$out" "not released yet"; [[ ! -e "$B" ]] || fail "an exe for different source was installed"; assert_contains "$out" "fetched windows-amd64 $k_d"

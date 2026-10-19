@@ -1713,7 +1713,7 @@ func TestSectionMatchesOld(t *testing.T) {
 	}
 }
 
-// t-1699: go test -bench BenchmarkParseTicket -benchmem -run '^$' ./tools/sprint-check-go
+// t-1699: go test -bench BenchmarkParseTicket -benchmem -run '^$' ./internal/board   # in tools/canon-go
 func BenchmarkParseTicket(b *testing.B) {
 	dir := b.TempDir()
 	td := filepath.Join(dir, "t-abcd")
@@ -1929,7 +1929,7 @@ func TestTicketCacheConcurrentLoads(t *testing.T) {
 	}
 }
 
-// t-1699: go test -bench BenchmarkLoadTickets -benchmem -run '^$' ./tools/sprint-check-go
+// t-1699: go test -bench BenchmarkLoadTickets -benchmem -run '^$' ./internal/board   # in tools/canon-go
 func BenchmarkLoadTickets(b *testing.B) {
 	root := b.TempDir()
 	projectRoot, ticketsDir = root, filepath.Join(root, ".tickets")

@@ -74,7 +74,7 @@ _is_dir_link "$WTP/.agents/skills" && fail "project-local skills dir was wrongly
 rm -rf "$WTP"
 
 # ── 5. The board's own worktree link (replace a committed mirror, keep a no-marker dir) is
-# TestLinkSkillsIntoWorktreeReplacesCommittedMirror in tools/sprint-check-go (t-15d8). ──
+# TestLinkSkillsIntoWorktreeReplacesCommittedMirror in tools/canon-go/internal/board (t-15d8). ──
 
 # ── 6. t-c433: git must not list the mirror as untracked — as symlinks (macOS/Linux) or real dirs (Windows) ──
 mirror_listed() { git -C "$1" status --porcelain --untracked-files=all | grep -E '^\?\? \.(claude|agents)/skills' || true; }

@@ -30,7 +30,7 @@ printf 'draft\n' > "$PROJ/notes.md"
 free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'; }
 GO_PORT="$(free_port)"
 GO_BIN="$(build_board "$BIN_DIR")"
-(cd "$ROOT/tools/cockpit-daemon" && go build -o "$BIN_DIR/cockpit-daemon" .)
+(cd "$ROOT/tools/canon-go" && go build -o "$BIN_DIR/cockpit-daemon" ./cmd/cockpit-daemon)
 
 # An empty PATH directory: no git for the boards or the daemon (a PM's machine).
 NOGIT_PATH="$BIN_DIR/empty"; mkdir -p "$NOGIT_PATH"

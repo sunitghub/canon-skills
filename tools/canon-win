@@ -19,4 +19,4 @@ fi
 
 PORT="${1:-${CANON_COCKPIT_PORT:-8899}}"
 cd "$ROOT"
-exec env GO111MODULE=off go run ./tools/sprint-check-go "$PORT"
+cd tools/canon-go && exec go run ./cmd/sprint-check "$PORT"

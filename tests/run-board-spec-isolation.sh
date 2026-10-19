@@ -14,12 +14,12 @@ kill_leaks() {   # only the PIDs the npx stub recorded for the processes it leak
 trap 'kill_leaks; rm -rf "$WORK"' EXIT
 
 # a fake canon tree holding only the runner, so the copy is tiny and the real tree is never touched
-FAKE="$WORK/root"; mkdir -p "$FAKE/tests" "$FAKE/node_modules" "$WORK/bin" "$WORK/state"
+FAKE="$WORK/root"; mkdir -p "$FAKE/tests" "$FAKE/tools/canon-go" "$FAKE/node_modules" "$WORK/bin" "$WORK/state"   # t-8020: the runner starts the board from tools/canon-go
 cp "$ROOT/tests/run-board-spec.sh" "$ROOT/tests/machine-load.sh" "$FAKE/tests/"
 echo 'console.log("board-spec-guard: 1 violation(s)"); process.exit(1)' > "$FAKE/tests/board-spec-guard.js"   # a guard that always fails
 git -C "$FAKE" init -q
 printf '#!/bin/sh\nfor a; do last="$prev"; prev="$a"; done\ncp -a "$last." "$prev" 2>/dev/null || cp -a "$last" "$prev"\n' > "$WORK/bin/rsync"   # rsync -a --exclude.. SRC/ DST/
-printf '#!/bin/sh\necho "$PWD $COCKPIT_STATE_DIR $COCKPIT_DAEMON_BIN" >> "$STATE/boards"\nexec sleep 600\n' > "$WORK/bin/go"   # records the board's env
+printf '#!/bin/sh\necho "$SPRINT_CHECK_ROOT $COCKPIT_STATE_DIR $COCKPIT_DAEMON_BIN" >> "$STATE/boards"\nexec sleep 600\n' > "$WORK/bin/go"   # records the board's env (its root is the copy)
 printf '#!/bin/sh\nexit 0\n' > "$WORK/bin/curl"
 cat > "$WORK/bin/npx" <<'STUB'
 #!/bin/bash

@@ -12,4 +12,4 @@ if ! command -v go >/dev/null 2>&1; then
 fi
 
 cd "$ROOT"
-exec env GO111MODULE=off go run ./tools/sprint-check-go "$@"
+cd tools/canon-go && exec go run ./cmd/sprint-check "$@"
