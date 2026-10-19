@@ -6,6 +6,13 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-19
+
+The board is one Go program on every OS: macOS and Linux no longer run a Python board, and `server.py` is gone. The board is now a checksummed download beside the daemon, like Windows already had. Also new: the board drives the GitHub workflow (send an issue, check and merge its PR), and gate runs log their model. Update with `canon update`, then press **Restart Daemon** in Admin (the daemon changed since 0.12.1; a running one stays on the old version).
+
+### Removed
+- `tools/sprint-check-app/server.py`, the Python board. Python is no longer needed to run the board on macOS or Linux (it stays optional for `sprint-headless` JSON and `skills.sh` settings merges) (`t-15d8`).
+
 ### Added
 - `subagent-log.sh --model <id>` records the model a gate run was dispatched on (the one the orchestrator resolved, not one read from the transcript), and `sprint gate-cost` groups by gate, tier and model, showing `-` for a row without one. The id is checked (`[A-Za-z0-9._:/-]`, at most 80 characters) and a row without the flag is unchanged. The close recipes pass it (`t-3a14`).
 - `mutant-sweep` also sweeps Python (`.py` or a python shebang, checked with `python3 -m py_compile`) and Go (`.go`, checked with `gofmt -e`) files, from the same operator table: and/or, not, is/is not, in/not in, None/True/False, comparison and off-by-one, return values and codes, `sorted()`/`set()`/`.sort()` removal, emptied strings and dropped anchors; Go adds `err != nil`, `!= nil` and `os.Exit` codes. Comments, docstrings, block comments and the inside of strings are never mutated, and a mutant that does not parse is `INVALID`, not a survivor. Shell and JS output and exit codes are unchanged (`t-a3ef`).
@@ -15,6 +22,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 - The board's servers (Python and Go) run the GitHub workflow commands for the coming board UI: send-issue (preview and send), sync-issues (preview and create), import-results, merge-pr (`--check`, and `--yes` as a background job whose progress the page can follow), take-back and github-status (cached 30 s per ticket), each one `tkt` command in the project. On Windows the Go board runs `tkt` through `tools/tkt.cmd`. The merge job can be stopped, and stops itself after an hour (`t-d271`).
 
 ### Changed
+- The board on macOS and Linux is the Go board, `tools/sprint-check-bin/sprint-check`, fetched from the release (`sprint-check-<key>`, darwin-arm64/amd64 and linux-amd64/arm64) and checked against `tools/cockpit-daemon.sha256` before it runs; `canon` checks it at every start and, on a checkout with Go, builds a committed but unreleased board from source. The daemon the board starts now runs in its own session (a Ctrl-C in the `canon` terminal no longer reaches it), and board git calls never wait on a credential prompt (`t-15d8`).
 - `tkt send-issue` writes the issue's "Working on this" as six numbered steps (import first, plan, branch, build, gates, export) instead of one paragraph, so a cloud session cannot read past the pipeline (`t-67c5`). Issues already sent keep their wording.
 - `scripts/test.sh` starts its seven slowest suites first (`LONGEST`, from a full run's `== slowest 10`), so the 188 s suite no longer starts a minute in: a full run took 215 s instead of 251 s (median of three clean-clone runs each). Output order, `--list`, the SERIAL suites and the exit code are unchanged (`t-b792`).
 - `tkt send-issue` also writes `runs: github`, which is what marks a ticket out on GitHub; `github:` is only the issue link, which `sync-issues` and `import-issue` write too, so a synced issue stays an ordinary local ticket. `send-issue` refuses a ticket already linked to an issue rather than open a second one, and `--dry-run` previews a public repository (it creates nothing) (`t-718b`).
