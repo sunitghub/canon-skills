@@ -241,6 +241,9 @@ OTHER="$(past .tickets/t-0th3/plan.md)"
 refuses "another ticket's folder after grading" "since then it changes .tickets/t-0th3/plan.md" STUB_HEAD="$OTHER" -- --pr 7 --yes
 DOT="$(past ".tickets/$id/.cockpit-cwd")"
 refuses "a dotfile in the ticket's folder after grading" "since then it changes .tickets/$id/.cockpit-cwd" STUB_HEAD="$DOT" -- --pr 7 --yes
+git checkout -q -B past "$PRHEAD"; ln -s AGENTS.md LEARNINGS.md; git add LEARNINGS.md; git commit -qm "symlink after grading"
+git push -qf origin "HEAD:refs/pull/7/head"; LINK="$(git rev-parse HEAD)"; git checkout -q main
+refuses "a symlink under an allowed name after grading" "LEARNINGS.md (symlink or submodule)" STUB_HEAD="$LINK" -- --pr 7 --yes
 git push -qf origin "$PRHEAD:refs/pull/7/head"
 
 # t-4718 also fixed import-results: a ticket that comes back without eval-report.md is reported, not a silent exit.

@@ -64,16 +64,19 @@ worktree_root() {
   (cd "$PWD" && pwd -P)
 }
 
-# Late docs written after the evaluator grades that a merge may carry unreviewed (t-fdb1): records no agent obeys. One owner:
-# tools/sprint's stale-eval gate (t-1b74) builds its wider list from this one; merge-pr and import-results add only the merged
-# ticket's own folder (late_docs_delta). The agent-read late docs (AGENTS.md, CLAUDE.md, PROMOTED.md, HANDOFF.md, DECISIONS.md)
-# and other tickets' folders are not here: a cloud branch's unreviewed edit to them would be instructions in main.
+# Late docs written after the evaluator grades that a merge may carry unreviewed (t-fdb1): the learnings sweep's two files, which
+# the cloud commits after its gates (complete.md step 8). One owner for these names: tools/sprint's stale-eval gate (t-1b74) builds
+# its wider list from them; merge-pr and import-results add only the merged ticket's own folder (late_docs_delta). Residual risk,
+# accepted: every sprint start reads LEARNINGS.md (start.md), so an unreviewed row from a cloud branch reaches agents; merge-pr
+# names the files before it asks. The always-loaded and start-read docs (AGENTS.md, CLAUDE.md, PROMOTED.md, HANDOFF.md,
+# DECISIONS.md) and other tickets' folders are not here.
 MERGE_SAFE_LATE_ALT='LEARNINGS\.md$|LEARNINGS-archive\.md$'
 
 # late_docs_delta <git-dir> <graded> <head> <ticket-id> — t-fdb1: prints the files changed from graded to head, one per line.
 # Returns 0 when head descends from graded and every file is a merge-safe late doc or sits in .tickets/<ticket-id>/ (no dotfile
-# component; an empty delta included), 1 when a file is not (they are the ones printed), 2 when graded is not an ancestor of head,
-# the id is not a plain ticket id, or git cannot tell (prints the reason). A rename counts both paths.
+# component; an empty delta included), 1 when a file is not, or any changed path becomes a symlink or a submodule (they are the
+# ones printed), 2 when graded is not an ancestor of head, the id is not a plain ticket id, or git cannot tell (prints the reason).
+# A rename counts both paths.
 late_docs_delta() {
   local dir="$1" graded="$2" head="$3" id="$4" files other
   [[ "$id" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "not a ticket id: $id"; return 2; }
@@ -82,6 +85,11 @@ late_docs_delta() {
   files="$(git -C "$dir" -c core.quotepath=off diff --no-renames --name-only "$graded" "$head" 2>&1)" \
     || { echo "git could not list the files from ${graded:0:7} to ${head:0:7}: $files"; return 2; }
   other="$(printf '%s\n' "$files" | grep . | grep -vE "^($MERGE_SAFE_LATE_ALT|\\.tickets/$id/([^./][^/]*/)*[^./][^/]*$)" || true)"
+  # A name is not the content: a symlink (120000) or submodule (160000) under an allowed name points somewhere else.
+  local raw; raw="$(git -C "$dir" -c core.quotepath=off diff --raw --no-renames "$graded" "$head" 2>&1)" \
+    || { echo "git could not list the file modes from ${graded:0:7} to ${head:0:7}: $raw"; return 2; }
+  other+="$(printf '%s\n' "$raw" | awk -F'\t' '{ split($1, m, " "); if (m[2] == "120000" || m[2] == "160000") print "\n" $2 " (symlink or submodule)" }')"
+  other="$(printf '%s\n' "$other" | grep . || true)"
   if [[ -n "$other" ]]; then printf '%s\n' "$other"; return 1; fi
   printf '%s\n' "$files" | grep . || true
 }
