@@ -6362,6 +6362,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
+    // QUARANTINE t-e493: fails every run in chromium on main too (1c34c0b6, 0/3 solo): an unexpected btn-gh-sync in the path bar; see tests/board-spec-baseline.json
     test('upkeep (t-67ab): the board path bar — branch under the path, no counts, + New · Upkeep · Scratch · CI on the right (order since t-7723)', async ({ page }) => {
       await upkeepStatus(page);
       const board = await openShell(page, []);
@@ -7046,6 +7047,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
+  // QUARANTINE t-e493: fails every run on main too (1c34c0b6, 0/3 solo): 2 .ck-worktree-row, expected 3; see tests/board-spec-baseline.json
   test('a fresh OPEN cockpit selects no worktree row until one is picked (t-470d)', async ({ page }) => {
     const id = `t-ck470d-${Date.now()}`;
     try {
@@ -8841,6 +8843,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }));
   }
 
+  // QUARANTINE t-e493: fails every run on main too (1c34c0b6, 0/3 solo); the rail shows one fewer worktree row; see tests/board-spec-baseline.json
   test('rail lists only Main, own and free worktrees; held ones collapse with owner + reason and cannot be picked (t-2241)', async ({ page }) => {
     const id = `t-wth-r-${Date.now()}`;
     try {
@@ -8885,6 +8888,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
+  // QUARANTINE t-e493: fails every run on main too (1c34c0b6, 0/3 solo); the rail shows one fewer worktree row; see tests/board-spec-baseline.json
   test('once its own worktree is selected the rail shows just that row + Change worktree (t-2241)', async ({ page }) => {
     const id = `t-wth-o-${Date.now()}`;
     try {
