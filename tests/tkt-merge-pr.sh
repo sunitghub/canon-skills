@@ -44,7 +44,9 @@ case "$1 $2" in
               if [[ "$*" == *"--json state --jq"* ]]; then echo "${STUB_AFTER:-OPEN}"; exit 0; fi
               printf '%s\t%s\t%s\t%s\t%s\t%s\n' "${STUB_STATE:-OPEN}" "${STUB_MG:-MERGEABLE}" "${STUB_MS:-CLEAN}" \
                 "${STUB_HEAD:?}" main "${STUB_CROSS:-false}" ;;
-  "pr merge") printf 'cwd %s\n' "$PWD" >> "$STUB_LOG"; [[ -n "${STUB_MERGE_FAIL:-}" ]] && { echo "could not delete branch" >&2; exit 1; }; exit 0 ;;
+  "pr merge") printf 'cwd %s\n' "$PWD" >> "$STUB_LOG"; [[ -n "${STUB_MERGE_FAIL:-}" ]] && { echo "could not delete branch" >&2; exit 1; }
+              # STUB_MERGE_PUSH: GitHub's merge moves main on origin (here: to the PR head, a fast-forward of the base).
+              [[ -n "${STUB_MERGE_PUSH:-}" ]] && git --git-dir="$STUB_W/origin.git" update-ref refs/heads/main "$STUB_HEAD"; exit 0 ;;
   *) echo "unexpected gh call: $*" >&2; exit 9 ;;
 esac
 SH
@@ -245,6 +247,29 @@ git checkout -q -B past "$PRHEAD"; ln -s AGENTS.md LEARNINGS.md; git add LEARNIN
 git push -qf origin "HEAD:refs/pull/7/head"; LINK="$(git rev-parse HEAD)"; git checkout -q main
 refuses "a symlink under an allowed name after grading" "LEARNINGS.md (symlink or submodule)" STUB_HEAD="$LINK" -- --pr 7 --yes
 git push -qf origin "$PRHEAD:refs/pull/7/head"
+
+# t-24b1: after the merge, local main catches up with origin's, fast-forward only, or is left alone with the reason.
+BASE="$(git rev-parse "$PRHEAD^")"
+ff_merge() {   # origin main back at the base, the ticket unmerged; one merge-pr --yes whose merge moves origin main
+  git --git-dir="$W/origin.git" update-ref refs/heads/main "$BASE"
+  sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
+  STUB_MERGE_PUSH=1 "$TKT" merge-pr "$id" --pr 7 --yes --test true 2>&1
+}
+git checkout -q main; git reset -q --hard "$BASE"
+out="$(ff_merge)"; assert_contains "$out" "Local main: ${BASE:0:8} -> ${PRHEAD:0:8} (fast-forward)"
+assert_eq "$PRHEAD" "$(git rev-parse main)"; [[ "$(git status --porcelain --untracked-files=no)" == "" ]] || fail "the fast-forward left changes"
+git reset -q --hard "$BASE"; echo dirty >> .gitignore                      # a dirty tree: left alone
+out="$(ff_merge)"; assert_contains "$out" "Local main: uncommitted changes here; left at ${BASE:0:8}. Update it by hand: git pull"
+assert_eq "$BASE" "$(git rev-parse main)"; assert_grep '^dirty$' .gitignore; git checkout -q .gitignore
+git checkout -q -b side                                                    # main checked out nowhere: the ref moves
+out="$(ff_merge)"; assert_contains "$out" "Local main: ${BASE:0:8} -> ${PRHEAD:0:8} (fast-forward)"
+assert_eq "$PRHEAD" "$(git rev-parse main)"; assert_eq side "$(git branch --show-current)"
+git branch -qf main "$BASE"; git worktree add -q "$W/wt" main              # main checked out in another worktree: left alone
+out="$(ff_merge)"; assert_contains "$out" "Local main: checked out in $(cd "$W/wt" && pwd -P); left at ${BASE:0:8}. Update it there: git pull"
+assert_eq "$BASE" "$(git rev-parse main)"; git worktree remove -f "$W/wt"
+git checkout -q main; echo local > local.txt; git add local.txt; git commit -qm "local only"; LOCAL="$(git rev-parse HEAD)"
+out="$(ff_merge)"; assert_contains "$out" "Local main: has commits origin/main lacks, not a fast-forward; left at ${LOCAL:0:8}"
+assert_eq "$LOCAL" "$(git rev-parse main)"; git reset -q --hard "$BASE"
 
 # t-4718 also fixed import-results: a ticket that comes back without eval-report.md is reported, not a silent exit.
 other="t-0e0e"; X="$W/cloud"; git clone -q "$W/origin.git" "$X" 2>/dev/null

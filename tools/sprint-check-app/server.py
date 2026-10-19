@@ -3816,6 +3816,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(run_tkt(eroot, ['send-issue', tid] + (['--public'] if payload.get('public') is True else []))); return
         if what == 'merge-stop':
             self.send_json(stop_merge_run(eroot, tid)); return
+        if what == 'open-pr':
+            self.send_json(run_tkt(eroot, ['open-pr', tid])); return
         if what == 'take-back':
             self.send_json(run_tkt(eroot, ['take-back', tid] + (['--close-issue'] if payload.get('close_issue') is True else []))); return
         pr = _pr_arg(payload.get('pr'))
@@ -3922,7 +3924,9 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == '/api/github/sync':
             self.send_json(run_tkt(eroot, ['sync-issues'])); return
-        m = re.match(r'^/api/ticket/(t-[a-z0-9]{4})/github/(send|import|merge|merge-stop|take-back)$', path)
+        if path == '/api/github/push-main':   # t-24b1: the merged dialog's push to the canon.mirror remotes, after its confirm
+            self.send_json(run_tkt(eroot, ['push-main'])); return
+        m = re.match(r'^/api/ticket/(t-[a-z0-9]{4})/github/(send|import|merge|merge-stop|take-back|open-pr)$', path)
         if m:
             tid, what = m.group(1), m.group(2)
             # t-718b: a write changes the stage, so the next status call must not serve the cached one: dropped before

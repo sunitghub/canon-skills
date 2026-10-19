@@ -17,6 +17,12 @@ mkdir "$W/bin"; cat > "$W/bin/gh" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$STUB_LOG"
 [[ -n "${STUB_FAIL:-}" ]] && { echo "HTTP 401: Bad credentials" >&2; exit 1; }
+# t-24b1: the session-branch search. graphql prints what --jq would (default branch, then candidates); compare prints
+# true/false from cmp; a pr list --head prints the PR count from headprs.
+[[ "$1 $2" == "api graphql" && -n "${STUB_GQLFAIL:-}" ]] && { echo "HTTP 502: graphql" >&2; exit 1; }
+[[ "$1 $2" == "api graphql" ]] && { cat "$STUB_W/graphql" 2>/dev/null || echo main; exit 0; }
+[[ "$1 $2" == "api repos/acme/app/compare/"* ]] && { cat "$STUB_W/cmp" 2>/dev/null || echo false; exit 0; }
+[[ "$1 $2" == "pr list" && " $* " == *" --head "* ]] && { cat "$STUB_W/headprs" 2>/dev/null || echo 0; exit 0; }
 [[ "$1 $2" == "pr list" ]] && { cat "$STUB_W/prs"; exit 0; }
 echo "unexpected gh call: $*" >&2; exit 9
 SH
@@ -51,4 +57,22 @@ git remote set-url origin "$W/origin.git"
 id2="$("$TKT" create "Local only")"; rc=0; out="$("$TKT" github-status "$id2" 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "an unsent ticket should exit 1"; assert_contains "$out" "was not sent to GitHub"
 assert_contains "$("$TKT" github-status "$id")" "$id · acme/app#23 ·"
+# t-24b1: a branch the session pushed without a PR (#41). Only while the stage would be "sent".
+printf '' > "$W/prs"; sed -i.bak 's/^status: closed$/status: open/' "$f" && rm -f "$f.bak" ".tickets/$id/eval-report.md"
+bs() { "$TKT" github-status "$id" --json | node -e 'const j=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write([j.stage,j.branch,JSON.stringify(j.mirrors)].join("|"))'; }
+printf 'main\nclaude/brave-x1\n' > "$W/graphql"; echo true > "$W/cmp"; echo 0 > "$W/headprs"
+: > "$W/log";                                   assert_eq "branch|claude/brave-x1|[]" "$(bs)"
+grep -q '^api repos/acme/app/compare/main...claude/brave-x1 ' "$W/log" || fail "the candidate was not compared with the default branch: $(cat "$W/log")"
+grep -q '^pr list --repo acme/app --head claude/brave-x1 --state all' "$W/log" || fail "the candidate's PRs were not checked: $(cat "$W/log")"
+assert_contains "$("$TKT" github-status "$id")" "claude/brave-x1 is on origin with no PR: tkt open-pr $id"
+echo false > "$W/cmp";                          assert_eq "sent||[]" "$(bs)"     # its commit naming the id is on main
+echo true > "$W/cmp"; echo 1 > "$W/headprs";    assert_eq "sent||[]" "$(bs)"     # it already has a PR (any state)
+echo 0 > "$W/headprs"; printf '24\tOPEN\t%s\n' "$HEAD7" > "$W/prs"
+: > "$W/log";                                   assert_eq "pr-open||[]" "$(bs)"   # a Fixes PR exists: no branch search
+! grep -q '^api graphql' "$W/log" || fail "searched for a session branch with a PR open"
+printf '' > "$W/prs"; rc=0; out="$(STUB_GQLFAIL=1 "$TKT" github-status "$id" 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "a gh failure in the branch search should exit 1, not read as no branch"; assert_contains "$out" "HTTP 502: graphql"
+# Mirrors come from git config canon.mirror, in order.
+git config --add canon.mirror public; git config --add canon.mirror backup
+assert_eq "branch|claude/brave-x1|[\"public\",\"backup\"]" "$(bs)"
 echo "tkt-github-status: ok"

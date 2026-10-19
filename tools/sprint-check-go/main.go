@@ -724,6 +724,10 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, runTkt(eroot, []string{"sync-issues"}))
 		return
 	}
+	if path == "/api/github/push-main" { // t-24b1: the merged dialog's push to the canon.mirror remotes, after its confirm
+		sendJSON(w, runTkt(eroot, []string{"push-main"}))
+		return
+	}
 	if m := apiGitHubPostRe.FindStringSubmatch(path); m != nil {
 		id := m[1]
 		// t-718b: a write changes the stage, so the next status call must not serve the cached one: dropped before
@@ -745,6 +749,9 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 				args = append(args, "--public")
 			}
 			sendJSON(w, runTkt(eroot, args))
+			return
+		case "open-pr":
+			sendJSON(w, runTkt(eroot, []string{"open-pr", id}))
 			return
 		case "take-back":
 			args := []string{"take-back", id}
@@ -1861,7 +1868,7 @@ var (
 	apiTicketBodyRe     = regexp.MustCompile(`^/api/ticket/([^/]+)/body$`)
 	apiTicketVisualRe   = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/visual$`)
 	apiTicketDemoRe     = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/demo$`)
-	apiGitHubPostRe     = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/github/(send|import|merge|merge-stop|take-back)$`)
+	apiGitHubPostRe     = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/github/(send|import|merge|merge-stop|take-back|open-pr)$`)
 	apiWorktreeUnlockRe = regexp.MustCompile(`^/api/worktree-unlock/([^/]+)$`)
 	checkboxItemRe      = regexp.MustCompile(`(?m)^\s*[-*]\s+\[[ xX]\]\s+\S`)
 	uncheckedItemRe     = regexp.MustCompile(`(?m)^\s*[-*]\s+\[ \]\s+\S`)
