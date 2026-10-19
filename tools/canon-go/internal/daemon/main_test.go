@@ -1,6 +1,6 @@
 //go:build !windows
 
-package main
+package daemon
 
 import (
 	"bufio"
@@ -1163,7 +1163,7 @@ type gateModelCase struct{ Name, Plan, Parse, Expect string }
 
 func loadGateModelFixtures(t *testing.T) []gateModelCase {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join("..", "..", "tests", "fixtures", "gate-model-cases.json"))
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "tests", "fixtures", "gate-model-cases.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5308,7 +5308,7 @@ func TestSaveRefusedContractAcrossPages(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The board's code is app.html plus its static/board-*.js scripts (t-c58e).
-	app := filepath.Join("..", "sprint-check-app")
+	app := filepath.Join("..", "..", "..", "sprint-check-app")
 	files, err := filepath.Glob(filepath.Join(app, "static", "board-*.js"))
 	if err != nil || len(files) == 0 {
 		t.Fatalf("no board scripts under %s (err %v)", filepath.Join(app, "static"), err)

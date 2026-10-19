@@ -1,4 +1,4 @@
-package main
+package board
 
 import (
 	"encoding/json"
@@ -1218,7 +1218,7 @@ func TestGetUpkeepReportRejectsPathOutsideReports(t *testing.T) {
 // TestUpkeepModelIDCases (t-be1f): the model string reaches `claude --model`, so it must be a plain model id.
 // The good/bad cases live in tests/fixtures/model-id-cases.json, shared with the bash and Python tests.
 func TestUpkeepModelIDCases(t *testing.T) {
-	raw, err := os.ReadFile("../../tests/fixtures/model-id-cases.json")
+	raw, err := os.ReadFile("../../../../tests/fixtures/model-id-cases.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1307,8 +1307,7 @@ func TestSkillEvalStateSaveIsSerialized(t *testing.T) {
 // t-b9a7: canon's own skills are refused even when the selected project contains canon, and an
 // unverifiable canon root refuses everything (fail closed) instead of disabling that check.
 func TestValidateSkillDirRefusesCanon(t *testing.T) {
-	wd, _ := os.Getwd()
-	canon := filepath.Dir(filepath.Dir(wd)) // tools/sprint-check-go → repo root
+	canon := canonRoot(t)
 	saved := appHTML
 	defer func() { appHTML = saved }()
 	appHTML = filepath.Join(canon, "tools", "sprint-check-app", "app.html")
@@ -1387,8 +1386,7 @@ func TestRunSkillEvalExitCodes(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the stub claude is a bash script")
 	}
-	wd, _ := os.Getwd()
-	canon := filepath.Dir(filepath.Dir(wd))
+	canon := canonRoot(t)
 	savedHTML, savedTimeout := appHTML, skillEvalRunTimeout
 	defer func() { appHTML, skillEvalRunTimeout = savedHTML, savedTimeout }()
 	appHTML = filepath.Join(canon, "tools", "sprint-check-app", "app.html")
@@ -2040,4 +2038,16 @@ func TestRegistryNameIsBasenameAndRemoveKeepsDir(t *testing.T) {
 	if fi, err := os.Stat(filepath.Join(proj, ".git")); err != nil || !fi.IsDir() {
 		t.Fatal("deregister must not touch the project folder")
 	}
+}
+
+// canonRoot is the repo root above this package (tools/canon-go/internal/board, t-8020); it fails the test when the
+// folder there is not canon, so a wrong depth cannot pass by accident.
+func canonRoot(t *testing.T) string {
+	t.Helper()
+	wd, _ := os.Getwd()
+	root := filepath.Join(wd, "..", "..", "..", "..")
+	if _, err := os.Stat(filepath.Join(root, "tools", "skills.sh")); err != nil {
+		t.Fatalf("%s is not the canon root: %v", root, err)
+	}
+	return filepath.Clean(root)
 }

@@ -1,7 +1,8 @@
-package main
+package board
 
 import (
 	"bytes"
+	"canon/internal/common"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -92,13 +93,7 @@ func canonVersion() string {
 }
 
 // versionString renders "<semver> (<sha>)" when a real commit is stamped.
-func versionString() string {
-	v := canonVersion()
-	if commit != "" && commit != "dev" {
-		return v + " (" + commit + ")"
-	}
-	return v
-}
+func versionString() string { return common.VersionString(canonVersion(), commit) }
 
 // daemonVersion returns the cockpit-daemon binary's build id via `--version`,
 // or "" if the binary isn't resolved or can't report one. Best-effort — a
@@ -114,21 +109,24 @@ func daemonVersion() string {
 	return strings.TrimSpace(string(out))
 }
 
-func main() {
-	if len(os.Args) > 1 {
-		switch os.Args[1] {
+// Run is the board's entry point (cmd/sprint-check, t-8020): args are the command-line arguments after the program
+// name; the result is the exit code. buildVersion and buildCommit are the -X stamps cmd/sprint-check carries.
+func Run(buildVersion, buildCommit string, args []string) int {
+	version, commit = buildVersion, buildCommit
+	if len(args) > 0 {
+		switch args[0] {
 		case "help", "--help", "-h":
 			usage()
-			return
+			return 0
 		case "version", "--version", "-v":
 			fmt.Println(versionString())
-			return
+			return 0
 		}
 	}
 
 	port := 8423
-	if len(os.Args) > 1 {
-		if p, err := strconv.Atoi(os.Args[1]); err == nil {
+	if len(args) > 0 {
+		if p, err := strconv.Atoi(args[0]); err == nil {
 			port = p
 		}
 	}
@@ -136,8 +134,8 @@ func main() {
 		port++
 	}
 
-	cwd := mustGetwd()
-	projectRoot = findProjectRoot(envOr("SPRINT_CHECK_ROOT", cwd))
+	cwd := common.Getwd()
+	projectRoot = findProjectRoot(common.EnvOr("SPRINT_CHECK_ROOT", cwd))
 	exe, _ := os.Executable()
 	toolsDir = filepath.Dir(exe)
 	if strings.HasSuffix(filepath.ToSlash(toolsDir), "/sprint-check-bin") {
@@ -180,8 +178,9 @@ func main() {
 
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }
 
 func usage() {
@@ -333,7 +332,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, cockpitDiscover())
 	case "/api/cockpit-changes": // t-5a4b
 		id := r.URL.Query().Get("id")
-		if !sessionIDRe.MatchString(id) {
+		if !common.SessionIDRe.MatchString(id) {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
@@ -347,7 +346,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		sessions := cockpitSessions()
 		if sid := q.Get("id"); sid != "" { // t-180d: one session (canon wait); root= narrows it to one project
-			if !sessionIDRe.MatchString(sid) {
+			if !common.SessionIDRe.MatchString(sid) {
 				http.Error(w, "bad request", http.StatusBadRequest)
 				return
 			}
@@ -4014,8 +4013,6 @@ func cockpitSessionsText(sessions []map[string]any) string {
 // snapshot into interrupted.json at start and never touches it again; the board owns it
 // from there (list + dismiss), with no daemon token.
 
-var sessionIDRe = regexp.MustCompile(`^[ts]-[a-z0-9]{4}$`)
-
 var interruptedMu sync.Mutex
 
 func interruptedPath() string { return filepath.Join(cockpitStateDir(), "interrupted.json") }
@@ -4060,7 +4057,7 @@ func cockpitInterrupted() []map[string]any {
 			str[k] = v
 			e[k] = v
 		}
-		if !sessionIDRe.MatchString(str["id"]) || str["project_root"] == "" || live[str["id"]+"\x00"+str["project_root"]] {
+		if !common.SessionIDRe.MatchString(str["id"]) || str["project_root"] == "" || live[str["id"]+"\x00"+str["project_root"]] {
 			continue
 		}
 		reason := interruptedReason(str["id"], str["project_root"], str["cwd"])
@@ -4072,7 +4069,7 @@ func cockpitInterrupted() []map[string]any {
 }
 
 func cockpitInterruptedDismiss(id string) map[string]any {
-	if !sessionIDRe.MatchString(id) {
+	if !common.SessionIDRe.MatchString(id) {
 		return map[string]any{"ok": false, "error": "invalid session id"}
 	}
 	interruptedMu.Lock()
@@ -5506,7 +5503,9 @@ func registeredSkills(root string) []string {
 	return names
 }
 
-func skillsShPath() string { return envOr("SKILLS_SH_BIN", filepath.Join(toolsDir, "skills.sh")) }
+func skillsShPath() string {
+	return common.EnvOr("SKILLS_SH_BIN", filepath.Join(toolsDir, "skills.sh"))
+}
 
 // registerSkill registers the fixed literal `sprint` skill into `root` via a
 // non-interactive, timeout-bounded `bash skills.sh add sprint <root>` (argv list,
@@ -5690,18 +5689,6 @@ func trackChanges(root string, confirm any) map[string]any {
 		return rollback(err)
 	}
 	return map[string]any{"ok": true, "commit": sha}
-}
-
-func envOr(name, fallback string) string {
-	if v := os.Getenv(name); v != "" {
-		return v
-	}
-	return fallback
-}
-
-func mustGetwd() string {
-	wd, _ := os.Getwd()
-	return wd
 }
 
 func exists(path string) bool {

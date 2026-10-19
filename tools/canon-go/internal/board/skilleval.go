@@ -1,4 +1,4 @@
-package main
+package board
 
 // t-b9a7: Skill Eval in the Go board (what Windows runs) — a port of tools/skill-check,
 // tools/plugin-eval-gen --skill-dir and server.py's Skill Eval run/state/report, so the feature

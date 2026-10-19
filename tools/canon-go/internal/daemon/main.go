@@ -18,9 +18,10 @@
 // flag, and nothing is ever written into the target project — the session's hook
 // config rides in on --settings, which merges with (does not replace) whatever
 // that project already configures.
-package main
+package daemon
 
 import (
+	"canon/internal/common"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -60,10 +61,9 @@ var webFS embed.FS
 
 var ticketRe = regexp.MustCompile(`^t-[a-z0-9]{4}$`)
 
-// sessionIDRe is what /cockpit and /session/start accept: a ticket id, or a scratch
+// common.SessionIDRe is what /cockpit and /session/start accept: a ticket id, or a scratch
 // session id (t-47f1: "s-" + 4 lowercase alphanumerics, minted by the board) for an
 // agent started without a ticket. Validated before any file-path or argv use.
-var sessionIDRe = regexp.MustCompile(`^[ts]-[a-z0-9]{4}$`)
 
 // isScratch reports whether a (validated) session id is a scratch session (t-47f1).
 func isScratch(id string) bool { return strings.HasPrefix(id, "s-") }
@@ -186,7 +186,7 @@ func newServer(cfg config) *server {
 		cfg.sessionReapTTL = 15 * time.Minute
 	}
 	if cfg.stateDir == "" {
-		cfg.stateDir = envOr("COCKPIT_STATE_DIR", defaultStateDir())
+		cfg.stateDir = common.EnvOr("COCKPIT_STATE_DIR", defaultStateDir())
 	}
 	if cfg.idleTimeout <= 0 {
 		cfg.idleTimeout = 5 * time.Minute
@@ -303,7 +303,7 @@ func (s *server) handleCockpit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ticket := r.URL.Query().Get("ticket")
-	if !sessionIDRe.MatchString(ticket) {
+	if !common.SessionIDRe.MatchString(ticket) {
 		ticket = ""
 	}
 	// embed=1 trims the daemon page's own chrome (brand + ticket input) when the
@@ -427,7 +427,7 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
-	if !sessionIDRe.MatchString(body.Ticket) {
+	if !common.SessionIDRe.MatchString(body.Ticket) {
 		http.Error(w, "invalid ticket id", http.StatusBadRequest)
 		return
 	}
@@ -914,12 +914,12 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	inProgress := s.ticketStatusIn(projectRoot, ticket) == "in_progress"
 	switch kind {
 	case "pi":
-		program = envOr("COCKPIT_PI_BIN", "pi")
+		program = common.EnvOr("COCKPIT_PI_BIN", "pi")
 		// Resume (pi -c) when the ticket is already in_progress; else a fresh
 		// positional "sprint start <ticket>". Option B — see agentSpawnArgs.
 		args = agentSpawnArgs("pi", ticket, inProgress, false, "", "", "")
 	case "copilot":
-		program = envOr("COCKPIT_COPILOT_BIN", "copilot")
+		program = common.EnvOr("COCKPIT_COPILOT_BIN", "copilot")
 		copilotSessionID, resuming := s.resolveCopilotSessionIDIn(projectRoot, ticket)
 		copilotResuming = resuming
 		copilotGate = s.gateModelIn(projectRoot, ticket)
@@ -1688,7 +1688,7 @@ func (s *server) handleChangesQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.URL.Query().Get("id")
-	if !sessionIDRe.MatchString(id) {
+	if !common.SessionIDRe.MatchString(id) {
 		http.Error(w, "invalid id", http.StatusBadRequest)
 		return
 	}
@@ -1736,7 +1736,7 @@ func (s *server) handleChangesRestore(w http.ResponseWriter, r *http.Request) {
 		Root string `json:"root"`
 		ID   string `json:"id"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body); err != nil || !sessionIDRe.MatchString(body.ID) {
+	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body); err != nil || !common.SessionIDRe.MatchString(body.ID) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
@@ -4498,13 +4498,7 @@ var commit = "dev"
 // versionString renders the human build id: "<semver> (<sha>)" when a real
 // commit is stamped, else just the semver/`dev`. tools/fetch-daemon.sh reads the
 // "(<sha>)" part, so keep that shape.
-func versionString() string {
-	v := canonVersion()
-	if commit != "" && commit != "dev" {
-		return v + " (" + commit + ")"
-	}
-	return v
-}
+func versionString() string { return common.VersionString(canonVersion(), commit) }
 
 // canonVersion is the semantic version of the canon install this binary runs
 // from (t-0859), else the stamped `version`, else "dev". It is read once, at
@@ -4582,25 +4576,32 @@ func executableMtime() int64 {
 	return st.ModTime().Unix()
 }
 
-func main() {
-	versionFlag := flag.Bool("version", false, "print build version and exit")
-	addr := flag.String("addr", envOr("COCKPIT_ADDR", "127.0.0.1:8455"), "loopback bind address")
-	flag.Parse()
+// Run is the daemon's entry point (cmd/cockpit-daemon, t-8020): args are the command-line arguments after the program
+// name; the result is the exit code. buildVersion and buildCommit are the -X stamps cmd/cockpit-daemon carries. Its own
+// FlagSet, not the global one, so the flags parse from args whatever the caller.
+func Run(buildVersion, buildCommit string, args []string) int {
+	version, commit = buildVersion, buildCommit
+	fs := flag.NewFlagSet("cockpit-daemon", flag.ContinueOnError)
+	versionFlag := fs.Bool("version", false, "print build version and exit")
+	addr := fs.String("addr", common.EnvOr("COCKPIT_ADDR", "127.0.0.1:8455"), "loopback bind address")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
 	if *versionFlag {
 		fmt.Println(versionString())
-		return
+		return 0
 	}
 	execMtime = executableMtime()
 
 	if !strings.HasPrefix(*addr, "127.0.0.1:") && !strings.HasPrefix(*addr, "localhost:") && !strings.HasPrefix(*addr, "[::1]:") {
 		fmt.Fprintln(os.Stderr, "refusing non-loopback bind:", *addr)
-		os.Exit(2)
+		return 2
 	}
 	cfg := config{
 		addr:              *addr,
-		token:             envOr("COCKPIT_TOKEN", randToken()),
-		sprintBin:         envOr("COCKPIT_SPRINT_BIN", "claude"),
-		projectRoot:       envOr("COCKPIT_PROJECT_ROOT", mustGetwd()),
+		token:             common.EnvOr("COCKPIT_TOKEN", randToken()),
+		sprintBin:         common.EnvOr("COCKPIT_SPRINT_BIN", "claude"),
+		projectRoot:       common.EnvOr("COCKPIT_PROJECT_ROOT", common.Getwd()),
 		idleTimeout:       envDurationOr("COCKPIT_IDLE_TIMEOUT", 0),
 		idleTimeoutMain:   envDurationOr("COCKPIT_IDLE_TIMEOUT_MAIN", 0),
 		idleCheckInterval: envDurationOr("COCKPIT_IDLE_CHECK_INTERVAL", 0),
@@ -4610,7 +4611,7 @@ func main() {
 	ln, err := net.Listen("tcp", cfg.addr)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "listen:", err)
-		os.Exit(1)
+		return 1
 	}
 	// The requested addr may carry port 0; the hook's callback URL needs the real
 	// one the listener bound.
@@ -4638,8 +4639,9 @@ func main() {
 	srv := &http.Server{Handler: s.handler()}
 	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }
 
 // writeStateFile hands the board the daemon's addr + boot token via a 0600
@@ -4665,13 +4667,6 @@ func defaultStateDir() string {
 	return filepath.Join(os.TempDir(), "canon-cockpit")
 }
 
-func envOr(k, def string) string {
-	if v := os.Getenv(k); v != "" {
-		return v
-	}
-	return def
-}
-
 // envDurationOr reads a Go duration string (e.g. "10s", "2m") from the named
 // env var, falling back to def (0 means "let newServer apply its own
 // default") on an unset or malformed value. t-cd06: lets an operator
@@ -4689,5 +4684,3 @@ func envDurationOr(k string, def time.Duration) time.Duration {
 	}
 	return d
 }
-
-func mustGetwd() string { d, _ := os.Getwd(); return d }
