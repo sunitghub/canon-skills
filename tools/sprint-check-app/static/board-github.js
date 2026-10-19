@@ -339,7 +339,10 @@ function openAdminGithub() {
   window.parent.postMessage({ source: 'canon-board', type: 'open-admin-github', tab: SHELL_TAB }, location.origin);
 }
 export function bindGithubPickerRows(box) {
-  box.querySelectorAll('.ck-gh-setup').forEach(row => row.addEventListener('click', openAdminGithub));
+  box.querySelectorAll('.ck-gh-setup').forEach(row => {
+    row.addEventListener('click', openAdminGithub);
+    row.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openAdminGithub(); } });
+  });
   // The picker builds its rows before an await: an answer that landed in between found no row to redraw, so redraw now.
   if (doctorFor && (doctor.state === 'ready' || doctor.state === 'bad') && box.querySelector('.ck-gh-checking')) renderCockpitWorktree(doctorFor);
 }

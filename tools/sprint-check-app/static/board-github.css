@@ -11,6 +11,10 @@
 }
 .card-gh-takeback:hover, .card-gh-takeback:focus-visible { color: var(--text); }
 .ck-gh-busy { opacity: .7; }
+/* t-24b1: "GitHub · set up first" is a link to Admin › GitHub, not a held place */
+.ck-gh-setup { cursor: pointer; border-style: solid; }
+.ck-gh-setup .ck-worktree-held-why { color: var(--accent); }
+.ck-gh-setup:hover, .ck-gh-setup:focus-visible { border-color: var(--accent); outline: none; }
 .ck-gh-row .ck-worktree-label { color: var(--accent); }
 .ck-gh-panel {
   position: absolute; inset: 0; overflow: auto; padding: 24px; display: flex; justify-content: center;
