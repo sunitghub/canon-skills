@@ -10,6 +10,13 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/tests/helpers.sh"
 
+# t-15d8: ensureCockpit, the one place the board starts the daemon, detaches it (detachDaemon: Setsid on Unix) before cmd.Start()
+# (TestDetachDaemonStartsOwnSession covers the helper; this covers the call). A shell check, not a Go test: a file in
+# tools/sprint-check-go changes the board's release key.
+ens="$(awk '/^func ensureCockpit\(/{f=1} f&&/^}/{print; exit} f' "${CK_MAIN_GO:-$ROOT/tools/sprint-check-go/main.go}")"
+d="$(printf '%s\n' "$ens" | grep -n 'detachDaemon(cmd)' | head -1 | cut -d: -f1 || true)"; st="$(printf '%s\n' "$ens" | grep -n 'cmd.Start()' | head -1 | cut -d: -f1 || true)"
+[[ -n "$d" && -n "$st" && "$d" -lt "$st" ]] || fail "ensureCockpit must call detachDaemon(cmd) before cmd.Start() (lines: detach '$d', start '$st')"
+
 if ! command -v python3 >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
   echo "sprint-check-cockpit: python3/curl absent — skipped"
   exit 0
