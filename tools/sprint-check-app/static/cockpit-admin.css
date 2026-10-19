@@ -126,3 +126,27 @@
   .ad-open:hover,.ad-end:hover{border-color:var(--accent);color:var(--text)}
   .ad-end.kill:hover{border-color:var(--col-discarded);color:var(--col-discarded)}   /* t-3c9a: Kill reads as the discard action */
   .ad-open.answer{border-color:var(--st-need);color:var(--st-need)}
+  /* Admin > GitHub (t-90a3): the doctor's checks and the cloud recipe */
+  .gh-wrap{margin-bottom:16px;display:flex;flex-direction:column;gap:10px}
+  .gh-head{display:flex;align-items:center;gap:10px}
+  .gh-head select{font:inherit;font-size:12.5px;color:var(--text);background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:4px 8px}
+  .gh-lede{margin:0 14px;max-width:80ch}
+  .gh-lede code,.gh-card code{font-family:'JetBrains Mono','Fira Code',ui-monospace,monospace;font-size:11.5px;color:var(--accent)}
+  .gh-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+  .gh-row{display:grid;grid-template-columns:10px minmax(0,1fr) auto;gap:10px;align-items:start;padding:6px 0;border-top:1px solid var(--border-muted)}
+  .gh-row:first-child{border-top:0}
+  .gh-row>i{width:9px;height:9px;border-radius:50%;margin-top:5px;background:var(--col-done)}
+  .gh-row.gh-warn>i{background:var(--amber)}
+  .gh-row.gh-bad>i{background:var(--col-discarded)}
+  .gh-row b{display:block;color:var(--text);font-size:13px}
+  .gh-row span{color:var(--text-muted);font-size:12px}
+  .gh-row pre{margin:4px 0 0;white-space:pre-wrap;font-size:11.5px;color:var(--text-body)}
+  .gh-fix{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+  .gh-fix a{color:var(--accent);font-size:12px}
+  .gh-actions{display:flex;justify-content:flex-start}
+  .gh-steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px;color:var(--text-body);font-size:12.5px}
+  .gh-steps b{color:var(--text)}
+  .gh-steps .btn{margin-left:6px}
+  .gh-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+  .gh-chips code{border:1px solid var(--border);border-radius:6px;padding:1px 6px}
+  @media (max-width:640px){.gh-row{grid-template-columns:10px minmax(0,1fr)}.gh-fix{grid-column:2;justify-content:flex-start}}

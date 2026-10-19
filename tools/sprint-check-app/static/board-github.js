@@ -381,6 +381,27 @@ function showSent(panel, t, tab) {
 }
 
 // While the dialog is open: Escape closes it (unless a merge is running), and Tab stays among its controls.
+// ── Sync from GitHub (t-90a3): the dry run first, then one sync on Create ──────────────────────────────────────────
+const SYNC_WARNING = 'The label admits an issue; it does not vouch for it. An author can edit the text after it is labelled, and an issue template can apply the label. Read the issues before creating them.';
+async function syncFromGithub() {
+  const shown = openDialog({ title: 'Sync from GitHub', pre: 'Running tkt sync-issues --dry-run…', ok: 'Create tickets', cancel: 'Cancel' });
+  updateDialog({ okDisabled: true }, shown.gen);
+  let res;
+  try { res = await getJSON('/api/github/sync-preview'); }
+  catch (e) { res = { ok: false, output: String(e.message || e) }; }
+  const n = res.ok ? +((/dry run: (\d+) to create/.exec(res.output || '') || [])[1] || 0) : 0;
+  updateDialog({
+    body: res.ok ? (n ? SYNC_WARNING : 'Nothing to create.') : 'The preview failed; nothing was written.',
+    pre: res.output || '', ok: `Create ${n} ticket${n === 1 ? '' : 's'}`, okDisabled: !n,
+  }, shown.gen);
+  if (!(await shown).ok) return;
+  const run = openDialog({ title: 'Sync from GitHub', pre: 'Running tkt sync-issues…', cancel: 'Close' });
+  try { res = await postJSON('/api/github/sync', {}); }
+  catch (e) { res = { ok: false, output: String(e.message || e) }; }
+  updateDialog({ body: res.ok ? '' : 'Sync failed.', pre: res.output || '' }, run.gen);
+  await loadData();
+}
+
 function dialogKeys(e) {
   if (!dlgClose) return;
   const d = dialog();
@@ -395,6 +416,7 @@ function dialogKeys(e) {
 
 export function initGithub() {
   document.addEventListener('keydown', dialogKeys, true);
+  document.getElementById('btn-gh-sync').addEventListener('click', syncFromGithub);
   if (!pollTimer) pollTimer = setInterval(() => pollGithub(false), POLL_MS);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) pollGithub(false); });
 }

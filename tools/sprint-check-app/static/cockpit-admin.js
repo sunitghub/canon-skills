@@ -2,7 +2,7 @@
 // load-time code is initAdmin(), which cockpit-main.js runs in order once every module has loaded.
 import { cockpitConfirm, esc, escAttr, toast } from './cockpit-core.js';
 import { SCRATCH_ICON, TICKET_ID_RE, _projKey, dismissInterrupted, fmtDur, interrupted, intrProj, intrSince, onNotifyToggleChange, renderNotifySetting, renderSessionSurfaces, resumeInterrupted, sessionTime, sessionView, setLastSessions, ticketTitle } from './cockpit-sessions.js';
-import { openSessionInTab, openTabs } from './cockpit-tabs.js';
+import { activeTab, isProjectTab, openSessionInTab, openTabs } from './cockpit-tabs.js';
 import { getProjects } from './cockpit-projects.js';
 import { canKill, canReap, confirmEnd } from './cockpit-end.js';
 
@@ -108,6 +108,51 @@ export async function loadAdmin(){
   // Active projects = projects currently open in a tab (shell state).
   document.getElementById('ad-tile-active').textContent = openTabs.length;
   mtLoad();
+  ghLoad(false);
+}
+
+// ── Admin > GitHub (t-90a3) ─────────────────────────────────────────────
+// Renders `tkt github-doctor --json` for one project, via GET /api/github/doctor (both boards). The doctor owns every
+// title, detail and fix shown here (the worktree picker's GitHub row, t-24b1, reads the same JSON); this only lays it out.
+// gh runs per check, so it loads when Admin first opens or the project changes, and on Check again, never on a poll.
+let ghPid=null, ghDoctor=null, ghGen=0;
+function ghPickProject(){
+  const sel=document.getElementById('ad-gh-project'), projects=getProjects();
+  const want=sel.value||(isProjectTab(activeTab)?activeTab:'')||(projects[0]&&projects[0].id)||'';
+  sel.innerHTML=projects.map(p=>`<option value="${escAttr(p.id)}">${esc(p.name)}</option>`).join('');
+  if(projects.some(p=>p.id===want)) sel.value=want;
+  return sel.value;
+}
+async function ghLoad(force){
+  const pid=ghPickProject();
+  if(!pid || (!force && pid===ghPid)) return;
+  ghPid=pid; const gen=++ghGen;
+  document.getElementById('ad-gh-count').textContent='Checks \u00b7 checking\u2026';
+  let res;
+  try{ const r=await fetch('/api/github/doctor?project='+encodeURIComponent(pid)); res=r.ok?await r.json():{ok:false,output:'HTTP '+r.status}; }
+  catch(e){ res={ok:false,output:String(e.message||e)}; }
+  if(gen!==ghGen) return;
+  ghDoctor=res.ok&&res.doctor?res.doctor:null;
+  ghRender(res);
+}
+function ghRender(res){
+  const box=document.getElementById('ad-gh-checks'), count=document.getElementById('ad-gh-count');
+  if(!ghDoctor){ count.textContent='Checks'; document.getElementById('ad-gh-copy-domains').disabled=document.getElementById('ad-gh-copy-script').disabled=true; box.innerHTML=`<div class="gh-row gh-bad"><i></i><div><b>Could not run the checks</b><pre>${esc(res.output||'')}</pre></div></div>`; return; }
+  const checks=ghDoctor.checks||[];
+  count.textContent=`Checks \u00b7 ${checks.filter(c=>c.status!=='bad').length} of ${checks.length} ready`;
+  box.innerHTML=checks.map(c=>{
+    const f=c.fix||{};
+    const fix=f.cmd?`<code>${esc(f.cmd)}</code><button type="button" class="btn" data-gh-copy="${escAttr(f.cmd)}">Copy</button>`
+      :f.url?`<a href="${escAttr(f.url)}" target="_blank" rel="noopener">${esc(f.url)} \u2197</a>`:'';
+    return `<div class="gh-row gh-${escAttr(c.status)}" data-check="${escAttr(c.id)}"><i></i><div><b>${esc(c.title)}</b><span>${esc(c.detail||'')}</span></div><div class="gh-fix">${fix}</div></div>`;
+  }).join('');
+  const cloud=ghDoctor.cloud||{};
+  document.getElementById('ad-gh-copy-domains').disabled=!(cloud.domains||[]).length;
+  document.getElementById('ad-gh-copy-script').disabled=!cloud.setup_script;
+  document.getElementById('ad-gh-domains').innerHTML=(cloud.domains||[]).map(d=>`<code>${esc(d)}</code>`).join('');
+}
+function ghCopy(text){
+  try{ navigator.clipboard.writeText(text); toast('Copied'); }catch(e){ toast('Copy failed'); }
 }
 
 // ── Admin > Model Tiers (t-7e36) ────────────────────────────────────────
@@ -345,5 +390,10 @@ document.addEventListener('DOMContentLoaded',()=>{
   if(db) db.addEventListener('change',onDebugToggleChange);
   const nt=document.getElementById('ad-notify-toggle');
   if(nt){ nt.addEventListener('change',onNotifyToggleChange); renderNotifySetting(); }
+  document.getElementById('ad-gh-project').addEventListener('change',()=>ghLoad(true));
+  document.getElementById('ad-gh-recheck').addEventListener('click',()=>ghLoad(true));
+  document.getElementById('ad-gh-checks').addEventListener('click',e=>{ const b=e.target.closest('[data-gh-copy]'); if(b) ghCopy(b.dataset.ghCopy); });
+  document.getElementById('ad-gh-copy-domains').addEventListener('click',()=>ghCopy(((ghDoctor&&ghDoctor.cloud&&ghDoctor.cloud.domains)||[]).join('\n')));
+  document.getElementById('ad-gh-copy-script').addEventListener('click',()=>ghCopy((ghDoctor&&ghDoctor.cloud&&ghDoctor.cloud.setup_script)||''));
 });
 }
