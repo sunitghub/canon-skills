@@ -3230,12 +3230,14 @@ var ticketCommitIDRe = regexp.MustCompile(`^t-[a-z0-9]{4}$`)
 const otherDirtyCap = 20
 
 // gitOutIn is runGitIn without the trim (porcelain lines start with a space)
-// and with the exit status, which runGitIn discards.
+// and with the exit status, which runGitIn discards. GIT_TERMINAL_PROMPT=0: the
+// board has no terminal, so a credential prompt must fail, not hang.
 func gitOutIn(root string, timeout time.Duration, args ...string) (string, string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = root
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errb
@@ -4293,6 +4295,7 @@ func ensureCockpit() map[string]any {
 		env = append(env, "COCKPIT_SPRINT_BIN="+cockpitSprintBin)
 	}
 	cmd.Env = env
+	detachDaemon(cmd)
 	if err := cmd.Start(); err != nil {
 		return map[string]any{"running": false, "addr": nil, "error": err.Error()}
 	}

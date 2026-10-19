@@ -1949,3 +1949,40 @@ func BenchmarkLoadTickets(b *testing.B) {
 		}
 	}
 }
+
+// t-15d8 (ported from board-branch-divergence.sh's server.py case): the divergence scan reads a worktree ticket
+// only through plain folders; a linked ticket folder, ticket.md or .tickets is refused.
+func TestScanTicketSafeRefusesLinks(t *testing.T) {
+	base := t.TempDir()
+	elsewhere := filepath.Join(base, "elsewhere")
+	if err := os.MkdirAll(filepath.Join(elsewhere, "t-zzzz"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(elsewhere, "t-zzzz", "ticket.md"), []byte("status: open\n"), 0o644)
+	mk := func(wt string) string {
+		p := filepath.Join(base, wt)
+		os.MkdirAll(filepath.Join(p, ".tickets"), 0o755)
+		return p
+	}
+	plain := mk("plain")
+	os.MkdirAll(filepath.Join(plain, ".tickets", "t-aaaa"), 0o755)
+	os.WriteFile(filepath.Join(plain, ".tickets", "t-aaaa", "ticket.md"), []byte("status: open\n"), 0o644)
+	if !scanTicketSafe(plain, "t-aaaa") {
+		t.Fatal("a plain worktree ticket must be readable")
+	}
+	dirLink := mk("dirlink")
+	if err := os.Symlink(filepath.Join(elsewhere, "t-zzzz"), filepath.Join(dirLink, ".tickets", "t-aaaa")); err != nil {
+		t.Skip("symlinks unavailable:", err)
+	}
+	fileLink := mk("filelink")
+	os.MkdirAll(filepath.Join(fileLink, ".tickets", "t-aaaa"), 0o755)
+	os.Symlink(filepath.Join(elsewhere, "t-zzzz", "ticket.md"), filepath.Join(fileLink, ".tickets", "t-aaaa", "ticket.md"))
+	treeLink := filepath.Join(base, "treelink")
+	os.MkdirAll(treeLink, 0o755)
+	os.Symlink(filepath.Join(plain, ".tickets"), filepath.Join(treeLink, ".tickets"))
+	for wt, what := range map[string]string{dirLink: "ticket folder", fileLink: "ticket.md", treeLink: ".tickets"} {
+		if scanTicketSafe(wt, "t-aaaa") {
+			t.Errorf("a linked %s must be refused", what)
+		}
+	}
+}
