@@ -255,7 +255,7 @@ sed -i.bak 's/^status: closed$/status: in_progress/' "$X/.tickets/$id/ticket.md"
 cd "$X" && "$TKT" export "$id" >/dev/null 2>&1 && cd "$L"
 lid="$("$TKT" create "Local sprint" -t task)"; "$TKT" start "$lid" >/dev/null
 out="$("$TKT" import-results "$id")"
-assert_contains "$out" "status: open (cloud: in_progress)"
+assert_contains "$out" "status: open (cloud: in_progress)  (expected closed: the cloud sprint did not finish)"
 assert_grep "^status: open$" ".tickets/$id/ticket.md"
 assert_grep "^cloud_status: in_progress$" ".tickets/$id/ticket.md"
 assert_eq "$lid" "$("$TKT" current | awk '{print $1}')"
