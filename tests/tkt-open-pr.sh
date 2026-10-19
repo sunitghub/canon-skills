@@ -53,7 +53,9 @@ touch "$W/gqlfail"; rm -f "$W/create"; rc=0; out="$("$TKT" open-pr "$id" 2>&1)" 
 assert_eq 1 "$rc"; assert_contains "$out" "HTTP 502: graphql"; [[ ! -e "$W/create" ]] || fail "opened a PR after a failed search"; rm -f "$W/gqlfail"
 # Usage and an unreadable github: line are refused before any gh call.
 : > "$W/log"; rc=0; "$TKT" open-pr >/dev/null 2>&1 || rc=$?; assert_eq 1 "$rc"
-sed -i.bak 's|^github: acme/app#23$|github: acme app#x|' "$f" && rm -f "$f.bak"
-rc=0; out="$("$TKT" open-pr "$id" 2>&1)" || rc=$?; assert_eq 1 "$rc"; assert_contains "$out" "unreadable github: line"
+for bad in 'acme app#23' 'acme/app#x'; do   # each half refused on its own: the repo goes into gh's argv
+  sed -i.bak "s|^github: .*\$|github: $bad|" "$f" && rm -f "$f.bak"
+  rc=0; out="$("$TKT" open-pr "$id" 2>&1)" || rc=$?; assert_eq 1 "$rc"; assert_contains "$out" "unreadable github: line ($bad)"
+done
 [[ ! -s "$W/log" ]] || fail "called gh before refusing: $(cat "$W/log")"
 echo "tkt-open-pr: ok"
