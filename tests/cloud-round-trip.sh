@@ -260,7 +260,7 @@ assert_grep "^status: open$" ".tickets/$id/ticket.md"
 assert_grep "^cloud_status: in_progress$" ".tickets/$id/ticket.md"
 assert_eq "$lid" "$("$TKT" current | awk '{print $1}')"
 rc=0; out="$("$SPRINT" complete 2>&1)" || rc=$?
-[[ "$out" != *"multiple in-progress"* ]] || fail "sprint complete saw the imported ticket as in progress: $out"
+[[ "$rc" == 1 && "$out" != *"multiple in-progress"* ]] || fail "sprint complete saw the imported ticket as in progress (rc $rc): $out"
 assert_contains "$out" "$lid"
 # The close-from-worktree flow: tkt start still makes it the one in progress (here, with the local one reopened).
 "$TKT" reopen "$lid" >/dev/null; "$TKT" start "$id" >/dev/null
