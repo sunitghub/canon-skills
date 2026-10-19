@@ -60,3 +60,25 @@ func TestGitOutInDisablesTerminalPrompt(t *testing.T) {
 		t.Fatalf("GIT_TERMINAL_PROMPT seen by git = %q, want 0", out)
 	}
 }
+
+// t-15d8: ensureCockpit, the one place the board starts the daemon, detaches it before starting it (a test of the helper
+// alone passes even if the call is dropped).
+func TestEnsureCockpitDetachesBeforeStart(t *testing.T) {
+	src, err := os.ReadFile("main.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(src)
+	i := strings.Index(s, "func ensureCockpit(")
+	if i < 0 {
+		t.Fatal("ensureCockpit not found in main.go")
+	}
+	body := s[i:]
+	if j := strings.Index(body[1:], "\nfunc "); j >= 0 {
+		body = body[:j+1]
+	}
+	d, st := strings.Index(body, "detachDaemon(cmd)"), strings.Index(body, "cmd.Start()")
+	if d < 0 || st < 0 || d > st {
+		t.Fatalf("ensureCockpit must call detachDaemon(cmd) before cmd.Start() (detach at %d, start at %d)", d, st)
+	}
+}

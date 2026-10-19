@@ -80,8 +80,9 @@ assert_eq "fetch args=--quiet nobuild=1" "$(cat "$tmp/fetchlog")"
 assert_eq "started" "$(cat "$tmp/started2")"
 for iw in 0 1; do
   rm -f "$fake/sprint-check-win.exe" "$fake/sprint-check-bin/sprint-check" "$tmp/fetchlog"; printf '#!/usr/bin/env bash\necho x >> "%s/fetchlog"\nexit 1\n' "$tmp" > "$fake/fetch-daemon.sh"
-  out="$(IW="$iw" bash -c 'source "$1/cockpit-launch-lib.sh"; _is_windows() { return "$IW"; }; start_cockpit_server 4321' _ "$fake" 2>&1 || true)"
+  out="$(IW="$iw" bash -c 'source "$1/cockpit-launch-lib.sh"; _is_windows() { return "$IW"; }; start_cockpit_server 4321; echo "rc=$? pid=${SERVER_PID:-}"' _ "$fake" 2>&1 || true)"
   assert_contains "$out" "run canon update"; assert_eq 1 "$(wc -l < "$tmp/fetchlog" | tr -d ' ')"
+  assert_contains "$out" "rc=1 pid="   # the callers (canon, sprint-check) stop on it: `start_cockpit_server … || exit 1`; no board was started
 done
 
 printf 'cockpit-launch-lib: ok\n'

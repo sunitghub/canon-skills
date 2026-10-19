@@ -63,6 +63,16 @@ m="$R/tools/cockpit-daemon.sha256"
 assert_eq 11 "$(grep -vc '^#' "$m")"
 for want in "$kd windows-amd64 " "$kb sprint-check-windows-amd64 " "$kb sprint-check-darwin-arm64 " "$kb sprint-check-linux-amd64 " "$kh sprint-headless-json-windows-amd64 " "$kd darwin-arm64 "; do grep -q "^$want" "$m" || fail "manifest lacks a line for $want"; done
 want="$(shasum -a 256 "$FAKE_GH/sprint-check-$kb/sprint-check-windows-amd64.exe" | awk '{print $1}')"; grep -q "^$kb sprint-check-windows-amd64 $want\$" "$m" || fail "the manifest hash is not the published asset's hash"
+# t-15d8: each Unix board asset is built for its own target (a wrong GOOS/GOARCH would publish another platform's binary under
+# this name) and carries the board's commit stamp (fetch-daemon's VERSION_CHECK reads it; no stamp = a re-download at every start)
+assert_contains "$(file -b "$FAKE_GH/sprint-check-$kb/sprint-check-windows-amd64.exe")" "PE32+ executable"   # not the loop's last Unix target
+for pair in "darwin-arm64:Mach-O 64-bit executable arm64" "darwin-amd64:Mach-O 64-bit executable x86_64" "linux-amd64:ELF 64-bit LSB executable, x86-64" "linux-arm64:ELF 64-bit LSB executable, ARM aarch64"; do
+  assert_contains "$(file -b "$FAKE_GH/sprint-check-$kb/sprint-check-${pair%%:*}")" "${pair#*:}"
+done
+host="$(uname -s | tr 'A-Z' 'a-z')-$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')"
+if [[ -f "$FAKE_GH/sprint-check-$kb/sprint-check-$host" ]]; then
+  assert_contains "$("$FAKE_GH/sprint-check-$kb/sprint-check-$host" 2>&1)" "$(git -C "$R" rev-parse HEAD:tools/sprint-check-go | cut -c1-8)"
+fi
 # the legacy builds ask for the pinned toolchain and write the pin into the staged go.mod (not the installed Go: t-7efe)
 for mod in sprint-check sprint-headless-json; do grep -q "^GOTOOLCHAIN=$LV module canon/$mod  go ${LV#go} \$" "$GO_LOG" || fail "the $mod build did not use the pinned toolchain: $(cat "$GO_LOG")"; done
 [[ "$(grep -c "^GOTOOLCHAIN=$LV module x/d " "$GO_LOG")" == 5 ]] || fail "the five daemon builds must each set GOTOOLCHAIN to go.mod's toolchain line: $(cat "$GO_LOG")"

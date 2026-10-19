@@ -25,7 +25,7 @@ run; [[ "$rc" == 0 ]] || fail "a fully released tree must pass: $out"; assert_co
 # a source change without its release: red, and it names the component
 echo "// change" >> "$R/tools/sprint-check-go/main.go"; git -C "$R" "${ident[@]}" commit -qam "board changed"
 run; [[ "$rc" == 1 ]] || fail "an unreleased board change must fail: $out"
-assert_contains "$out" "NOT RELEASED  sprint-check-windows-amd64"; assert_contains "$out" "NOT RELEASED  sprint-check-darwin-arm64"; [[ "$out" != *"NOT RELEASED  windows-amd64"* ]] || fail "the daemon was named though it did not change: $out"
+for t in windows-amd64 darwin-arm64 darwin-amd64 linux-amd64 linux-arm64; do assert_contains "$out" "NOT RELEASED  sprint-check-$t"; done; [[ "$out" != *"NOT RELEASED  windows-amd64"* ]] || fail "the daemon was named though it did not change: $out"
 # a newer line is the one that counts: add the board's new key last
 for t in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 windows-amd64; do echo "$(key tools/sprint-check-go) sprint-check-$t $(sha)"; done >> "$R/tools/cockpit-daemon.sha256"; run; [[ "$rc" == 0 ]] || fail "the newest line for the target must be used: $out"
 # the OLD key appended after the new one makes the newest line stale again
