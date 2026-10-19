@@ -54,7 +54,7 @@ chmod +x "$W/bin/gh"
 REAL_GIT="$(command -v git)"
 cat > "$W/bin/git" <<SH
 #!/usr/bin/env bash
-[[ -n "\${STUB_FF_FETCH_FAIL:-}" && " \$* " == *" fetch -q origin main "* ]] && { echo "fatal: unable to access origin" >&2; exit 128; }
+[[ -n "\${STUB_FF_FETCH_FAIL:-}" && " \$* " == *" fetch -q origin refs/heads/main "* ]] && { echo "fatal: unable to access origin" >&2; exit 128; }
 if [[ " \$* " == *" fetch "* || " \$* " == *" ls-remote "* ]]; then a=(); for x in "\$@"; do [[ "\$x" == https://github.com/acme/app.git || "\$x" == origin ]] && x="$W/origin.git"; a+=("\$x"); done; set -- "\${a[@]}"; fi
 exec "$REAL_GIT" "\$@"
 SH

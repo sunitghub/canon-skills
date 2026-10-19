@@ -62,9 +62,10 @@ assert_contains "$("$TKT" github-status "$id")" "$id · acme/app#23 ·"
 # t-24b1: a branch the session pushed without a PR (#41). Only while the stage would be "sent".
 printf '' > "$W/prs"; sed -i.bak 's/^status: closed$/status: open/' "$f" && rm -f "$f.bak" ".tickets/$id/eval-report.md"
 bs() { "$TKT" github-status "$id" --json | node -e 'const j=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write([j.stage,j.branch,JSON.stringify(j.mirrors)].join("|"))'; }
-printf 'main\nclaude/brave-x1\n' > "$W/graphql"; echo true > "$W/cmp"; echo 0 > "$W/headprs"
+printf 'main\n--repo=evil/x\nclaude/brave-x1\n' > "$W/graphql"; echo true > "$W/cmp"; echo 0 > "$W/headprs"   # a name that reads as an option is skipped
 : > "$W/log";                                   assert_eq "branch|claude/brave-x1|[]" "$(bs)"
 grep -q '^api repos/acme/app/compare/main...claude/brave-x1 ' "$W/log" || fail "the candidate was not compared with the default branch: $(cat "$W/log")"
+! grep -q -- '--repo=evil' "$W/log" || fail "a branch name that reads as an option reached gh: $(cat "$W/log")"
 grep -q '^pr list --repo acme/app --head claude/brave-x1 --state all' "$W/log" || fail "the candidate's PRs were not checked: $(cat "$W/log")"
 # The search asks about this repo and this ticket (the stub cannot run --jq, so the arguments are checked instead).
 gq="$(grep '^api graphql ' "$W/log")"; assert_contains "$gq" "-f o=acme -f n=app --jq"; assert_contains "$gq" "test(\"\\\\b$id\\\\b\")"

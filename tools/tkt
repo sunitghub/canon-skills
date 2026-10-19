@@ -1573,12 +1573,17 @@ cmd_merge_pr() {
   _ff_local_base "$root" "$base"
 }
 
+# _branch_ok <name> — t-24b1: a branch name read from GitHub or a remote goes on git and gh command lines only when
+# git accepts it as a branch name and it cannot be read as an option.
+_branch_ok() { [[ -n "$1" && "$1" != -* ]] && git check-ref-format --branch "$1" >/dev/null 2>&1; }
+
 # _ff_local_base <root> <branch> — t-24b1: after a merge, move the local <branch> to origin's, fast-forward only. Never a
 # merge, rebase, reset or force: when it cannot (dirty tree, checked out in another worktree, local commits origin lacks),
 # it changes nothing and says why. Checked out here: `merge --ff-only`; checked out nowhere: a compare-and-swap of the ref.
 _ff_local_base() {
   local root="$1" b="$2" old new wt here
-  git -C "$root" fetch -q origin "$b" 2>/dev/null || { echo "Local $b: could not fetch origin/$b; update it by hand: git pull"; return 0; }
+  _branch_ok "$b" || { echo "Local branch: the base branch name ($b) is not usable; update it by hand: git pull"; return 0; }
+  git -C "$root" fetch -q origin "refs/heads/$b" 2>/dev/null || { echo "Local $b: could not fetch origin/$b; update it by hand: git pull"; return 0; }
   new="$(git -C "$root" rev-parse FETCH_HEAD)"
   old="$(git -C "$root" rev-parse -q --verify "refs/heads/$b")" || { echo "Local $b: none here; nothing to update"; return 0; }
   [[ "$old" == "$new" ]] && { echo "Local $b: already at ${new:0:8}"; return 0; }
@@ -1674,8 +1679,9 @@ _session_branch() {
   list="$(cd / && gh api graphql -f query="$q" -f o="${repo%%/*}" -f n="${repo#*/}" --jq '.data.repository | .defaultBranchRef.name as $d | $d, (.refs.nodes[] | select(.name != $d and (.name | startswith("canon-results/") | not)) | select(any(.target.history.nodes[]?; .message | test("\\b'"$id"'\\b"))) | .name)' 2>&1)" \
     || { echo "gh could not list branches on $repo: $list" >&2; return 1; }
   def="$(head -1 <<< "$list")"
+  _branch_ok "$def" || { echo "GitHub named an unusable default branch on $repo ($def)" >&2; return 1; }
   while IFS= read -r b; do
-    [[ -n "$b" ]] || continue
+    _branch_ok "$b" || continue
     ahead="$(cd / && gh api "repos/$repo/compare/$def...$b" --jq '[.commits[].commit.message] | any(test("\\b'"$id"'\\b"))' 2>&1)" \
       || { echo "gh could not compare $b with $def on $repo: $ahead" >&2; return 1; }
     [[ "$ahead" == true ]] || continue
@@ -1719,7 +1725,8 @@ cmd_push_main() {
   mirrors="$(git -C "$root" config --get-all canon.mirror 2>/dev/null || true)"
   [[ -n "$mirrors" ]] || { echo "push-main: no mirrors named (git config canon.mirror <remote>); nothing pushed"; return 0; }
   b="$(git -C "$root" ls-remote --symref origin HEAD 2>/dev/null | awk '$1 == "ref:" { sub("refs/heads/", "", $2); print $2; exit }' || true)"; b="${b:-main}"
-  git -C "$root" fetch -q origin "$b" 2>/dev/null || { echo "push-main: could not fetch origin/$b; nothing pushed" >&2; exit 1; }
+  _branch_ok "$b" || { echo "push-main: origin's default branch has an unusable name ($b); nothing pushed" >&2; exit 1; }
+  git -C "$root" fetch -q origin "refs/heads/$b" 2>/dev/null || { echo "push-main: could not fetch origin/$b; nothing pushed" >&2; exit 1; }
   sha="$(git -C "$root" rev-parse FETCH_HEAD)"
   while IFS= read -r m; do
     [[ -n "$m" ]] || continue
