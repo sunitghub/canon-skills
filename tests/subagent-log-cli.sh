@@ -47,8 +47,8 @@ mkdir -p "$project/.tickets/t-cost"
 printf '## Sign-off\nTier: **Normal** | Risk: low\n' > "$project/.tickets/t-cost/plan.md"
 (cd "$project" && "$SUBAGENT_LOG" --agent-id cost1 --agent-type evaluator --tokens 0099000 --minutes 12.5 --tool-uses 40 --ticket t-cost --outcome budget)
 assert_count 1 '"agent_id":"cost1","agent_type":"evaluator","transcript_path":"","tokens":99000,"minutes":12.5,"tool_uses":40,"ticket":"t-cost","tier":"normal","outcome":"budget"}' "$log"
-# An explicit --tier wins over plan.md's.
-(cd "$project" && "$SUBAGENT_LOG" --agent-id cost2 --tokens 1 --ticket t-cost --tier bugfix)
+# An explicit --tier wins over plan.md's, lowercased like it so gate-cost groups them together.
+(cd "$project" && "$SUBAGENT_LOG" --agent-id cost2 --tokens 1 --ticket t-cost --tier Bugfix)
 assert_count 1 '"agent_id":"cost2","agent_type":"","transcript_path":"","tokens":1,"ticket":"t-cost","tier":"bugfix"}' "$log"
 # Without the flags the row keeps its old shape exactly.
 (cd "$project" && "$SUBAGENT_LOG" --agent-id plain1 --agent-type reviewer)
@@ -56,7 +56,7 @@ assert_grep '"agent_id":"plain1","agent_type":"reviewer","transcript_path":""}$'
 
 # ── A bad cost value fails loudly and writes nothing ─────────────────────────
 rows_before="$(wc -l < "$log")"
-for bad in "--tokens 12k" "--tool-uses -1" "--minutes 1e3" "--minutes 01.5" "--outcome partial" "--tier a\"b" "--ticket .." "--ticket ../x"; do
+for bad in "--tokens 12k" "--tool-uses -1" "--minutes 1e3" "--minutes 01.5" "--outcome partial" "--tier a\"b" "--ticket .." "--ticket ../x" "--tokens" "--outcome"; do
   set +e
   # shellcheck disable=SC2086  # split on purpose: flag and value
   (cd "$project" && "$SUBAGENT_LOG" --agent-id bad1 $bad 2>"$project/bad-err"); rc=$?

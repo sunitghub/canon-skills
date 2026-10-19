@@ -330,7 +330,9 @@ Opus` default, scoped only to the two close-gate dispatches below.
    `--ticket <id>` (the tier is read from plan.md) and `--outcome pass|fail|budget` (reviewer
    YES → pass, NO → fail; evaluator `pass` → pass, anything else → fail). A dispatch that dies
    on its budget is logged too, `--outcome budget`. Omit a number the hand-back does not give,
-   never guess one. `sprint gate-cost` summarizes these rows.
+   never guess one. In Claude Code the totals are in the background task's completion notice
+   (`<usage>`), which can arrive after the agent's report: wait for it before logging.
+   `sprint gate-cost` summarizes these rows.
 
 6. **If a subagent's Bash file-writing is refused outright** (permission boundary, not
    heredoc failure), **or the expected report file is missing after dispatch** (the subagent

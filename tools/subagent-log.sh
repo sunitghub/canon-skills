@@ -50,18 +50,20 @@ if [[ $# -gt 0 ]]; then
     usage
     exit 0
   fi
+  # A t-5ef3 flag with no value is an error, not "not given": the hand-back totals must land or fail.
+  _need() { [[ $1 -ge 2 ]] || { echo "subagent-log.sh: $2 needs a value" >&2; usage; exit 1; }; }
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --agent-id) AGENT_ID="${2:-}"; shift; shift 2>/dev/null || true ;;
       --agent-type) AGENT_TYPE="${2:-}"; shift; shift 2>/dev/null || true ;;
       --session-id) SESSION_ID="${2:-}"; shift; shift 2>/dev/null || true ;;
       --transcript-path) TRANSCRIPT="${2:-}"; shift; shift 2>/dev/null || true ;;
-      --tokens) TOKENS="${2:-}"; shift; shift 2>/dev/null || true ;;
-      --minutes) MINUTES="${2:-}"; shift; shift 2>/dev/null || true ;;
-      --tool-uses) TOOL_USES="${2:-}"; shift; shift 2>/dev/null || true ;;
-      --ticket) TICKET="${2:-}"; shift; shift 2>/dev/null || true ;;
-      --tier) TIER="${2:-}"; shift; shift 2>/dev/null || true ;;
-      --outcome) OUTCOME="${2:-}"; shift; shift 2>/dev/null || true ;;
+      --tokens) _need $# "$1"; TOKENS="$2"; shift 2 ;;
+      --minutes) _need $# "$1"; MINUTES="$2"; shift 2 ;;
+      --tool-uses) _need $# "$1"; TOOL_USES="$2"; shift 2 ;;
+      --ticket) _need $# "$1"; TICKET="$2"; shift 2 ;;
+      --tier) _need $# "$1"; TIER="$2"; shift 2 ;;
+      --outcome) _need $# "$1"; OUTCOME="$2"; shift 2 ;;
       *) echo "subagent-log.sh: unrecognized argument: $1" >&2; usage; exit 1 ;;
     esac
   done
@@ -80,8 +82,9 @@ if [[ $# -gt 0 ]]; then
   REPO_ROOT="$(project_root)"
   # Tier is recorded now, not read later: a ticket's dir goes away on export.
   if [[ -z "$TIER" && -n "$TICKET" && -f "$REPO_ROOT/.tickets/$TICKET/plan.md" ]]; then
-    TIER="$(sed 's/\*//g' "$REPO_ROOT/.tickets/$TICKET/plan.md" | sed -nE 's/^[[:space:]]*[Tt]ier[[:space:]]*:[[:space:]]*([A-Za-z]+).*/\1/p' | head -1 | tr '[:upper:]' '[:lower:]')"
+    TIER="$(sed 's/\*//g' "$REPO_ROOT/.tickets/$TICKET/plan.md" | sed -nE 's/^[[:space:]]*[Tt]ier[[:space:]]*:[[:space:]]*([A-Za-z]+).*/\1/p' | head -1)"
   fi
+  TIER="$(printf '%s' "$TIER" | tr '[:upper:]' '[:lower:]')"   # one spelling per tier, so gate-cost groups them
 else
   # Hook payload arrives on stdin as JSON
   INPUT="$(cat)"
