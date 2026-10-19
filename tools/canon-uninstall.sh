@@ -192,7 +192,7 @@ probe_all() {
     blockers="$blockers$SESSIONS live agent session(s) are running in the Cockpit; stopping the daemon ends them. Save & End them in the Cockpit first, or re-run with --force."$'\n'
   fi
   if [ "$BOARD_STATUS" = foreign ]; then
-    blockers="$blockers""port $PORT is held by a process that is not this install's board (${BOARD_FOREIGN}); it is not touched. Stop it yourself, or point CANON_COCKPIT_PORT at this install's port.$(_is_windows && echo ' (On Windows only the Go board, sprint-check-win.exe, is recognised as the board of this install; a Python board must be closed by hand.)' || true)"$'\n'
+    blockers="$blockers""port $PORT is held by a process that is not this install's board (${BOARD_FOREIGN}); it is not touched. Stop it yourself, or point CANON_COCKPIT_PORT at this install's port."$'\n'
   fi
   # Running inside the Cockpit (a Scratch terminal is a child of the daemon): stopping it would kill this very command half-way.
   local anc p; anc=" $(ancestor_pids | tr '\n' ' ') "

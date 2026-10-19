@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # sprint-check-worktree-holds (t-2241) — /api/worktrees marks which worktrees
-# another ticket still needs (`held_by`), identically in server.py and main.go,
+# another ticket still needs (`held_by`) in the Go board (t-15d8: the only board),
 # and never hides the requesting ticket's own worktree (`own`). One fresh repo
 # with a worktree per state: bound + in progress, reserved by an open ticket's
 # preference, dirty, unmerged, runtime-noise-only, and free. Also checks the
@@ -20,7 +20,6 @@ fi
 # covers .claude/ or .agents/ would make them pass vacuously). git also reads $XDG_CONFIG_HOME/git/ignore,
 # independent of any config file, so point that at an empty dir too; the servers inherit all of this.
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
-SERVER_PY="$ROOT/tools/sprint-check-app/server.py"
 GO_BIN=""
 PIDS=()
 TMP="$(mktemp -d)"
@@ -33,15 +32,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if command -v go >/dev/null 2>&1; then
-  # Built into a miniature install (tools/ + skills beside it) because the Go backend finds the skills
-  # it links into new worktrees (t-07a8) relative to its own tools/ directory.
-  GO_LAYOUT="$(mktemp -d)"
-  mkdir -p "$GO_LAYOUT/tools"
-  ln -s "$ROOT/skills" "$GO_LAYOUT/skills"; ln -s "$ROOT/tools/sprint-check-app" "$GO_LAYOUT/tools/sprint-check-app"
-  GO_BIN="$GO_LAYOUT/tools/sprint-check-go-bin"
-  (cd "$ROOT" && GO111MODULE=off go build -o "$GO_BIN" ./tools/sprint-check-go)
-fi
+# Built into a miniature install (tools/ + skills beside it) because the Go backend finds the skills
+# it links into new worktrees (t-07a8) relative to its own tools/ directory.
+GO_LAYOUT="$(mktemp -d)"
+mkdir -p "$GO_LAYOUT/tools"
+ln -s "$ROOT/skills" "$GO_LAYOUT/skills"; ln -s "$ROOT/tools/sprint-check-app" "$GO_LAYOUT/tools/sprint-check-app"
+GO_BIN="$(build_board "$GO_LAYOUT/tools")"
 
 ticket() { # dir id status [preference]
   mkdir -p "$1/.tickets/$2"
@@ -95,13 +91,8 @@ free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",
 run_checks() {
   local kind="$1" label="$2" port base
   port="$(free_port)"
-  if [[ "$kind" == py ]]; then
-    SPRINT_CHECK_ROOT="$REPO" CANON_HOME="$TMP/$kind-canon" COCKPIT_STATE_DIR="$TMP/$kind-ck" COCKPIT_DAEMON_BIN=/usr/bin/false \
-      python3 "$SERVER_PY" "$port" >/dev/null 2>&1 &
-  else
-    SPRINT_CHECK_ROOT="$REPO" CANON_HOME="$TMP/$kind-canon" COCKPIT_STATE_DIR="$TMP/$kind-ck" COCKPIT_DAEMON_BIN=/usr/bin/false SPRINT_CHECK_NO_BROWSER=1 \
-      "$GO_BIN" "$port" >/dev/null 2>&1 &
-  fi
+  SPRINT_CHECK_ROOT="$REPO" CANON_HOME="$TMP/$kind-canon" COCKPIT_STATE_DIR="$TMP/$kind-ck" COCKPIT_DAEMON_BIN=/usr/bin/false SPRINT_CHECK_NO_BROWSER=1 \
+    TMPDIR="$TMP" "$GO_BIN" "$port" >/dev/null 2>&1 &
   PIDS+=("$!"); disown "$!" 2>/dev/null || true
   base="http://127.0.0.1:$port"
   for _ in $(seq 1 50); do curl -s -o /dev/null "$base/api/git" && break; sleep 0.1; done
@@ -161,10 +152,5 @@ EOF
   echo "  $label: worktree holds ok"
 }
 
-run_checks py server.py
-if [[ -n "$GO_BIN" ]]; then
-  run_checks go main.go
-else
-  echo "  main.go: go absent — Go half skipped"
-fi
+run_checks go main.go
 echo "sprint-check-worktree-holds: ok"

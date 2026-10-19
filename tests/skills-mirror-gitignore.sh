@@ -73,32 +73,8 @@ _is_dir_link "$WTP/.agents/skills" && fail "project-local skills dir was wrongly
 [ "$(cat "$WTP/.agents/skills/myproj/thing.md")" = "PROJECT-LOCAL" ] || fail "project-local content lost"
 rm -rf "$WTP"
 
-# ── 5. Python board parity: server.py _link_skills_into_worktree replaces a
-# committed mirror (resolves to the REAL canon skills via __file__) and preserves
-# a no-marker dir. Mirrors project.sh + sprint-check-go. ──
-if command -v python3 >/dev/null 2>&1; then
-  WTPY="$(mktemp -d)"
-  git -C "$WTPY" init -q; git -C "$WTPY" config user.email t@t; git -C "$WTPY" config user.name t
-  mkdir -p "$WTPY/.agents/skills/sprint" "$WTPY/.claude/skills/myproj"
-  echo "STALE" > "$WTPY/.agents/skills/sprint/SKILL.md"        # committed mirror (marker) -> replace
-  echo "KEEP"  > "$WTPY/.claude/skills/myproj/x.md"            # committed, no marker      -> preserve
-  git -C "$WTPY" add -A && git -C "$WTPY" commit -qm "mixed"
-  SERVER_PY="$ROOT/tools/sprint-check-app/server.py"
-  python3 - "$SERVER_PY" "$WTPY" <<'PY'
-import sys, importlib.util, pathlib
-spec = importlib.util.spec_from_file_location("scserver", sys.argv[1])
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
-m._link_skills_into_worktree(pathlib.Path(sys.argv[2]))
-PY
-  [ -L "$WTPY/.agents/skills" ] || fail "py: committed mirror not replaced with a symlink"
-  grep -q "name: sprint" "$WTPY/.agents/skills/sprint/SKILL.md" || fail "py: replaced mirror does not resolve to current canon (real skills)"
-  [ "$(cat "$WTPY/.agents/skills/sprint/SKILL.md")" != "STALE" ] || fail "py: mirror still stale after replace"
-  [ -L "$WTPY/.claude/skills" ] && fail "py: no-marker project-local dir wrongly replaced with a link"
-  [ "$(cat "$WTPY/.claude/skills/myproj/x.md")" = "KEEP" ] || fail "py: project-local content lost"
-  rm -rf "$WTPY"
-else
-  echo "skills-mirror-gitignore: python3 absent — skipped Python board parity (part 5)"
-fi
+# ── 5. The board's own worktree link (replace a committed mirror, keep a no-marker dir) is
+# TestLinkSkillsIntoWorktreeReplacesCommittedMirror in tools/sprint-check-go (t-15d8). ──
 
 # ── 6. t-c433: git must not list the mirror as untracked — as symlinks (macOS/Linux) or real dirs (Windows) ──
 mirror_listed() { git -C "$1" status --porcelain --untracked-files=all | grep -E '^\?\? \.(claude|agents)/skills' || true; }

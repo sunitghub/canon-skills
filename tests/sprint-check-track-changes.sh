@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# sprint-check-track-changes (t-d538) — GET/POST /api/track-changes behave identically in
-# server.py and main.go: a registered non-git folder gets `git init` + a .gitignore-only first
+# sprint-check-track-changes (t-d538) — GET/POST /api/track-changes in the Go board
+# (t-15d8: the only board): a registered non-git folder gets `git init` + a .gitignore-only first
 # commit; every refusal (existing .git dir or file, no/unknown project, missing confirm, already
 # git, nested repo, git missing) leaves the folder untouched; a failed commit rolls back only what
 # the call created; an existing .gitignore is never overwritten; synced folders are flagged.
@@ -15,16 +15,15 @@ if ! command -v python3 >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1 || 
   exit 0
 fi
 
-SERVER_PY="$ROOT/tools/sprint-check-app/server.py"
-PY3="$(command -v python3)"
 GO_BIN=""
+BOARD_TMP="$(mktemp -d)"
 PIDS=()
 DIRS=()
 cleanup() {
   local p leaked=""
   for p in "${PIDS[@]:-}"; do [[ -n "$p" ]] && kill "$p" 2>/dev/null || true; done
   for d in "${DIRS[@]:-}"; do [[ -n "$d" ]] && rm -rf "$d"; done
-  [[ -n "$GO_BIN" ]] && rm -rf "$(dirname "$GO_BIN")"
+  rm -rf "$BOARD_TMP"
   # t-8765: a server that survives its own test's kill is a leak — say so and fail.
   for _ in 1 2 3 4 5 6 7 8 9 10; do
     leaked=""
@@ -40,10 +39,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if command -v go >/dev/null 2>&1; then
-  GO_BIN="$(mktemp -d)/sprint-check-go-bin"
-  (cd "$ROOT" && GO111MODULE=off go build -o "$GO_BIN" ./tools/sprint-check-go)
-fi
+GO_BIN="$(build_board "$BOARD_TMP")"
 
 free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'; }
 
@@ -55,22 +51,17 @@ new_dir() {
   DIRS+=("$NEW_DIR")
 }
 
-# start_server <py|go> <default-root> <home> [path-override] → sets SERVER_PORT. Not via $(...) (t-8765).
+# start_server <go> <default-root> <home> [path-override] → sets SERVER_PORT. Not via $(...) (t-8765).
 # git reads its global config ONLY from $home/.gitconfig (t-c8be): the rollback case plants a hook there, and a
 # caller's own GIT_CONFIG_GLOBAL / ~/.gitconfig must neither hide it nor leak in.
 start_server() {
   local kind="$1" dflt="$2" home="$3" path_env="${4:-$PATH}" port
   [[ "$BASH_SUBSHELL" == 0 ]] || { echo "FAIL: $FUNCNAME called in a subshell — its state would be lost (t-8765)" >&2; kill -TERM "$$"; exit 1; }
   port="$(free_port)"
-  if [[ "$kind" == py ]]; then
-    PATH="$path_env" HOME="$home" CANON_HOME="$home/.canon" SPRINT_CHECK_NO_BROWSER=1 SPRINT_CHECK_ROOT="$dflt" \
-      GIT_CONFIG_GLOBAL="$home/.gitconfig" GIT_CONFIG_NOSYSTEM=1 XDG_CONFIG_HOME="$home/.config" \
-      "$PY3" "$SERVER_PY" "$port" >/dev/null 2>&1 &
-  else
-    PATH="$path_env" HOME="$home" CANON_HOME="$home/.canon" SPRINT_CHECK_NO_BROWSER=1 SPRINT_CHECK_ROOT="$dflt" \
-      GIT_CONFIG_GLOBAL="$home/.gitconfig" GIT_CONFIG_NOSYSTEM=1 XDG_CONFIG_HOME="$home/.config" \
-      "$GO_BIN" "$port" >/dev/null 2>&1 &
-  fi
+  PATH="$path_env" HOME="$home" CANON_HOME="$home/.canon" SPRINT_CHECK_NO_BROWSER=1 SPRINT_CHECK_ROOT="$dflt" \
+    GIT_CONFIG_GLOBAL="$home/.gitconfig" GIT_CONFIG_NOSYSTEM=1 XDG_CONFIG_HOME="$home/.config" \
+    COCKPIT_STATE_DIR="$home/ck" COCKPIT_DAEMON_BIN=/usr/bin/false TMPDIR="$BOARD_TMP" \
+    "$GO_BIN" "$port" >/dev/null 2>&1 &
   PIDS+=("$!")
   disown "$!" 2>/dev/null || true
   for _ in $(seq 1 50); do
@@ -118,8 +109,10 @@ for dp,dns,fns in sorted(os.walk(sys.argv[1])):
 ' "$1"
 }
 
-EXPECTED_IGNORE="$(python3 -c "import importlib.util,sys; s=importlib.util.spec_from_file_location('s', sys.argv[1]); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); sys.stdout.write(m.TRACK_CHANGES_GITIGNORE)" "$SERVER_PY" 2>/dev/null)"
-[[ -n "$EXPECTED_IGNORE" ]] || fail "could not read TRACK_CHANGES_GITIGNORE from server.py"
+# The default .gitignore, written out here as the expected bytes (t-15d8); main.go's
+# trackChangesGitignore must say the same. $(...) drops the final newline, as it does for the file read below.
+EXPECTED_IGNORE="$(printf '%s\n' '# Added by canon when this folder started tracking changes.' .DS_Store Thumbs.db desktop.ini \
+  node_modules/ .venv/ __pycache__/ dist/ build/ '*.mp4' '*.mov' '*.zip')"
 
 check_backend() {
   local kind="$1" home dflt port proj r code body snap
@@ -251,14 +244,8 @@ check_no_git() {
   assert_eq "400" "${r%% *}"; assert_contains "${r#* }" "Version history needs Git, which isn't installed"; assert_eq "$snap" "$(snapshot "$proj")"
 }
 
-check_backend py
-check_no_git py
-if [[ -n "$GO_BIN" ]]; then
-  check_backend go
-  check_no_git go
-  assert_eq "$py_KEYS" "$go_KEYS"
-  cmp -s "$py_IGNORE" "$go_IGNORE" || fail "default .gitignore differs between backends"
-  echo "sprint-check-track-changes: ok (both backends; JSON keys and .gitignore identical)"
-else
-  echo "sprint-check-track-changes: ok (python only — go absent)"
-fi
+check_backend go
+check_no_git go
+# the JSON key sets of GET, a successful POST and a refusal (compared py == go before t-15d8; now explicit)
+assert_eq "git_available,ok,synced,tracking|commit,ok|error,ok" "$go_KEYS"
+echo "sprint-check-track-changes: ok"

@@ -26,7 +26,7 @@ Install these before running anything canon-related.
 |---|---|---|
 | git | All steps | Pre-installed on macOS; `sudo apt install git` on Ubuntu |
 | Node.js ≥ 16 | CLI test suite | `brew install node` / `nvm install --lts` |
-| Python 3 | `sprint-check` board | Pre-installed on macOS; `sudo apt install python3` on Ubuntu |
+| Python 3 | Optional: `sprint-headless` JSON, `skills.sh` settings merges (not the board) | Pre-installed on macOS; `sudo apt install python3` on Ubuntu |
 | Claude Code | Agent walkthrough only | `npm install -g @anthropic-ai/claude-code` |
 
 **Verify nothing bleeds in from your host:**

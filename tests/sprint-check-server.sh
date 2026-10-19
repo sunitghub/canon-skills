@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# sprint-check-server — Host allowlist + no cross-origin CORS on the board API
+# sprint-check-server — Host allowlist + no cross-origin CORS on the board API, the ticket list's computed fields and
+# the ACTIVE marker (the Go board, t-15d8)
 
 set -euo pipefail
 
@@ -11,7 +12,6 @@ if ! command -v python3 >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; th
   exit 0
 fi
 
-SERVER="$ROOT/tools/sprint-check-app/server.py"
 WORK="$(mktemp -d)"
 PID=""
 cleanup() { [[ -n "$PID" ]] && kill "$PID" 2>/dev/null || true; rm -rf "$WORK"; }
@@ -102,7 +102,9 @@ EOF
 
 PORT="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
 
-SPRINT_CHECK_ROOT="$WORK" python3 "$SERVER" "$PORT" >/dev/null 2>&1 &
+BOARD="$(build_board "$WORK/bin")"
+SPRINT_CHECK_ROOT="$WORK" CANON_HOME="$WORK/canon-home" COCKPIT_STATE_DIR="$WORK/state" SPRINT_CHECK_NO_BROWSER=1 TMPDIR="$WORK" \
+  "$BOARD" "$PORT" >/dev/null 2>&1 &
 PID=$!
 disown "$PID" 2>/dev/null || true   # silence the shell's job-kill notice on cleanup
 

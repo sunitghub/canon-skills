@@ -115,7 +115,7 @@ this file is the public-facing shortlist.
     badge on the card, `summary.md` states "closed in Demo mode (security-review + evaluator, Haiku)",
     Wrapup Gates rows read `skipped | demo mode`. A demo close must never look like a full close.
   - **Reuse existing machinery.** Frontmatter `demo: true` (`tkt`-owned, absent=false), `tkt demo
-    <id> [on|off]`, parsed into ticket JSON with server.py↔main.go parity — mirror the `ci`/`gate`
+    <id> [on|off]`, parsed into ticket JSON by the board (main.go) — mirror the `ci`/`gate`
     (`t-4e57`) pattern exactly. Model: `demo` implies `Gate model: haiku` unless an explicit value is
     set (explicit wins). This forces Haiku on *any* diff — distinct from the structural low-risk
     downgrade.

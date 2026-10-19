@@ -32,6 +32,8 @@ SH
 chmod +x "$STUBDIR/open"
 export SC_OPEN_LOG="$WORK/open.log"; : > "$SC_OPEN_LOG"
 export CANON_HOME="$WORK/.canon"
+# t-15d8: the Go board built from this checkout; SPRINT_CHECK_BIN keeps the launcher from fetching into the real tools/
+export SPRINT_CHECK_BIN="$(build_board "$WORK/bin")" SPRINT_CHECK_NO_BROWSER=1 COCKPIT_STATE_DIR="$WORK/state"
 
 SRV_PID=""
 cleanup() { [[ -n "$SRV_PID" ]] && kill "$SRV_PID" 2>/dev/null || true; rm -rf "$WORK"; }

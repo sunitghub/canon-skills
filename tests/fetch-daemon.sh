@@ -15,9 +15,12 @@ refute_contains() { [[ "$1" != *"$2"* ]] || fail "expected output NOT to contain
 R="$WORK/repo"; mkdir -p "$R/tools/cockpit-daemon"
 cp "$ROOT/tools/fetch-daemon.sh" "$R/tools/"
 printf 'package main\n' > "$R/tools/cockpit-daemon/main.go"; printf 'module x\n\ngo 1.26.5\n' > "$R/tools/cockpit-daemon/go.mod"; echo 0.3.0 > "$R/VERSION"
+# t-15d8: the board is the second required macOS/Linux component. The same files give it the same tree key and stamp, so one
+# stub asset and one manifest hash serve both, and every case below runs through both components.
+cp -R "$R/tools/cockpit-daemon" "$R/tools/sprint-check-go"
 git -C "$R" init -q -b main; git -C "$R" "${ident[@]}" add -A; git -C "$R" "${ident[@]}" commit -qm seed
 full="$(git -C "$R" rev-parse HEAD:tools/cockpit-daemon)"; key="${full:0:12}"; stamp="${full:0:8}"
-BIN="$R/tools/cockpit-daemon/cockpit-daemon"; MARK="$WORK/executed"
+BIN="$R/tools/cockpit-daemon/cockpit-daemon"; BBIN="$R/tools/sprint-check-bin/sprint-check"; MARK="$WORK/executed"
 
 # The "daemon": prints a version with the commit stamp; leaves a marker when run for anything but --version.
 make_asset() { # <path> <stamp>
@@ -51,14 +54,14 @@ BASEPATH="/usr/bin:/bin"   # no go on it
 export STUB_LOG="$WORK/curl.log" STUB_MARK="$MARK"
 
 manifest() { # <sha> [target]   (writes the manifest the clone carries)
-  printf '# header\n%s %s %s\n' "$key" "${2:-darwin-arm64}" "$1" > "$R/tools/cockpit-daemon.sha256"
+  printf '# header\n%s %s %s\n%s sprint-check-%s %s\n' "$key" "${2:-darwin-arm64}" "$1" "$key" "${2:-darwin-arm64}" "$1" > "$R/tools/cockpit-daemon.sha256"
 }
 fetch() { # env vars via caller; sets out, rc
   rm -f "$MARK"; : > "$STUB_LOG"
   set +e; out="$(PATH="${FETCH_PATH:-$STUBS:$BASEPATH}" bash "$R/tools/fetch-daemon.sh" 2>&1)"; rc=$?; set -e
 }
-reset() { rm -rf "$R/tools/cockpit-daemon/cockpit-daemon" "$R"/tools/cockpit-daemon/.cockpit-daemon.*; unset STUB_ASSET STUB_CURL_RC STUB_GO_FAIL STUB_OS STUB_ARCH FETCH_PATH 2>/dev/null || true; }
-no_leftovers() { [[ -z "$(ls -A "$R/tools/cockpit-daemon" | grep '^\.cockpit-daemon\.' || true)" ]] || fail "temp file left behind: $(ls -A "$R/tools/cockpit-daemon")"; }
+reset() { rm -rf "$R/tools/cockpit-daemon/cockpit-daemon" "$R"/tools/cockpit-daemon/.cockpit-daemon.* "$R/tools/sprint-check-bin"; unset STUB_ASSET STUB_CURL_RC STUB_GO_FAIL STUB_OS STUB_ARCH FETCH_PATH 2>/dev/null || true; }
+no_leftovers() { [[ -z "$(ls -A "$R/tools/cockpit-daemon" "$R/tools/sprint-check-bin" 2>/dev/null | grep '^\.\(cockpit-daemon\|sprint-check\)\.' || true)" ]] || fail "temp file left behind: $(ls -A "$R/tools/cockpit-daemon" "$R/tools/sprint-check-bin" 2>/dev/null)"; }
 
 # 1. a download that matches is installed, named by the daemon commit and target, and never executed
 reset; manifest "$GOODSHA"; export STUB_ASSET="$GOOD"
@@ -66,6 +69,9 @@ fetch; [[ "$rc" == 0 ]] || fail "matching download failed ($rc): $out"
 assert_contains "$out" "fetched darwin-arm64 $key, sha256 verified"
 assert_contains "$(cat "$STUB_LOG")" "releases/download/cockpit-daemon-$key/cockpit-daemon-darwin-arm64"
 cmp -s "$BIN" "$GOOD" || fail "installed file differs from the download"; [[ -x "$BIN" ]] || fail "installed file is not executable"
+assert_contains "$out" "fetched sprint-check-darwin-arm64 $key, sha256 verified"   # t-15d8: the board, same release flow
+assert_contains "$(cat "$STUB_LOG")" "releases/download/sprint-check-$key/sprint-check-darwin-arm64"
+cmp -s "$BBIN" "$GOOD" || fail "the board was not installed at tools/sprint-check-bin/sprint-check"; [[ -x "$BBIN" ]] || fail "the board is not executable"
 [[ ! -e "$MARK" ]] || fail "the fetch executed the binary"; no_leftovers
 # 2. second run: already current, no download
 fetch; [[ "$rc" == 0 ]]; assert_contains "$out" "up to date"; [[ ! -s "$STUB_LOG" ]] || fail "an up-to-date daemon was downloaded again"
@@ -82,7 +88,7 @@ for bad in wrong html truncated empty; do
   export STUB_ASSET="$WORK/bad"; fetch
   [[ "$rc" == 1 ]] || fail "$bad download should fail, got $rc: $out"
   assert_contains "$out" "does not match its checksum"; assert_contains "$out" "Next:"
-  [[ ! -e "$BIN" ]] || fail "$bad download was installed"; [[ ! -e "$MARK" ]] || fail "$bad download was executed"; no_leftovers
+  [[ ! -e "$BIN" && ! -e "$BBIN" ]] || fail "$bad download was installed"; [[ ! -e "$MARK" ]] || fail "$bad download was executed"; no_leftovers
 done
 
 # 4. a bad download never replaces a daemon that is already there (stale: different stamp)
@@ -93,7 +99,8 @@ export STUB_ASSET="$GOOD"; fetch; [[ "$rc" == 0 ]]; cmp -s "$BIN" "$GOOD" || fai
 
 # 5. download fails: build from source when go exists, with its own message; with no go, say what to do
 reset; manifest "$GOODSHA"; export STUB_CURL_RC=22 STUB_ASSET="$GOOD" FETCH_PATH="$WORK/gostub:$STUBS:$BASEPATH"
-fetch; [[ "$rc" == 0 ]] || fail "fallback build failed ($rc): $out"; assert_contains "$out" "built from source"; [[ -x "$BIN" ]] || fail "fallback build not installed"
+fetch; [[ "$rc" == 0 ]] || fail "fallback build failed ($rc): $out"; assert_contains "$out" "built from source"; [[ -x "$BIN" && -x "$BBIN" ]] || fail "fallback build not installed"
+assert_contains "$out" "sprint-check: built from source"   # t-15d8: an unreleased board change runs from source on a machine with Go
 reset; manifest "$GOODSHA"; export STUB_CURL_RC=22 STUB_ASSET="$GOOD"; fetch
 [[ "$rc" == 1 ]] || fail "no download and no go should exit 1"; assert_contains "$out" "download failed"; assert_contains "$out" "Go is not installed"; assert_contains "$out" "Next:"; [[ ! -e "$BIN" ]]
 reset; manifest "$GOODSHA"; export STUB_CURL_RC=22 STUB_GO_FAIL=1 FETCH_PATH="$WORK/gostub:$STUBS:$BASEPATH"; fetch
@@ -113,9 +120,9 @@ reset; printf '%s darwin-arm64 %s\n' "$key" "${GOODSHA:0:63}" > "$R/tools/cockpi
 # 7. platform mapping, including every spelling of the CPU, and an unsupported CPU; Windows (Git Bash) is covered by tests/fetch-win-binaries.sh
 for spec in "Darwin arm64 darwin-arm64" "Darwin x86_64 darwin-amd64" "Linux aarch64 linux-arm64" "Linux x86_64 linux-amd64" "Linux amd64 linux-amd64"; do
   set -- $spec; reset; manifest "$GOODSHA" "$3"; export STUB_ASSET="$GOOD" STUB_OS="$1" STUB_ARCH="$2"; fetch
-  [[ "$rc" == 0 ]] || fail "$spec failed ($rc): $out"; assert_contains "$(cat "$STUB_LOG")" "cockpit-daemon-$3"
+  [[ "$rc" == 0 ]] || fail "$spec failed ($rc): $out"; assert_contains "$(cat "$STUB_LOG")" "cockpit-daemon-$3"; assert_contains "$(cat "$STUB_LOG")" "sprint-check-$key/sprint-check-$3"
 done
-reset; export STUB_ARCH=riscv64; fetch; [[ "$rc" == 1 ]]; assert_contains "$out" "no prebuilt daemon for CPU 'riscv64'"
+reset; export STUB_ARCH=riscv64; fetch; [[ "$rc" == 1 ]]; assert_contains "$out" "no prebuilt binaries for CPU 'riscv64'"
 reset; export STUB_OS=MINGW64_NT-10.0; fetch; [[ "$rc" == 1 && ! -s "$STUB_LOG" ]] || fail "Windows with no released binaries must fail without downloading (t-9383; the real cases are in tests/fetch-win-binaries.sh): $out"
 reset
 
@@ -147,10 +154,13 @@ set +e; out="$(PATH="$STUBS:$BASEPATH" bash "$WORK/nogit/tools/fetch-daemon.sh" 
 
 # 9. who calls it, and the resolvers say the same thing
 assert_eq 1 "$(grep -c 'fetch-daemon.sh' "$ROOT/install.sh")"
-assert_eq 3 "$(grep -c 'fetch-daemon.sh' "$ROOT/tools/canon")"   # canon update; canon at start for a missing unix daemon and for a missing Windows exe (t-9383)
-grep -qF 'CANON_FETCH_NO_BUILD=1 bash "$SCRIPT_DIR/fetch-daemon.sh" --quiet' "$ROOT/tools/canon" || fail "canon at start must call the fetch with CANON_FETCH_NO_BUILD=1 so launching the board never compiles"
+assert_eq 2 "$(grep -c 'fetch-daemon.sh' "$ROOT/tools/canon")"   # canon update; canon at start for a missing Windows exe (t-9383)
+grep -qF 'CANON_FETCH_NO_BUILD=1 bash "$SCRIPT_DIR/fetch-daemon.sh" --quiet' "$ROOT/tools/canon" || fail "canon at start on Windows must call the fetch with CANON_FETCH_NO_BUILD=1 (no Go there to build with)"
+# t-15d8: start_cockpit_server owns the start-time fetch for canon and sprint-check: on Windows a missing exe, never built; on
+# macOS/Linux every start, building an unreleased change (tests/cockpit-launch-lib.sh runs both)
+assert_eq 2 "$(grep -c 'fetch-daemon.sh' "$ROOT/tools/cockpit-launch-lib.sh")"
 msg='cockpit daemon binary not found; run `canon update` to fetch it'
-grep -qF "$msg" "$ROOT/tools/sprint-check-app/server.py" && grep -qF "$msg" "$ROOT/tools/sprint-check-go/main.go" || fail "the two boards must give the same missing-daemon message"
+grep -qF "$msg" "$ROOT/tools/sprint-check-go/main.go" || fail "the board must say how to fetch a missing daemon"
 
 # 10. every module in the daemon's go.mod has a section in THIRD-PARTY-NOTICES.md (the notice travels with the binary)
 mods=0
@@ -181,6 +191,7 @@ chmod +x "$WORK/gostub/gh"; : > "$STUB_LOG"
 out="$(PATH="$WORK/gostub:$STUBS:$BASEPATH" bash "$RR/scripts/release-daemon.sh" --dry-run 2>&1)" || fail "release dry run failed: $out"
 for t in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64; do assert_contains "$out" "$rkey $t "; done
 for t in windows-amd64 sprint-check-windows-amd64 sprint-headless-json-windows-amd64; do assert_contains "$out" " $t "; done   # t-9383
+for t in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64; do assert_contains "$out" " sprint-check-$t "; done   # t-15d8
 assert_contains "$out" "dry run"; [[ ! -s "$STUB_LOG" ]] || fail "dry run called gh"; assert_eq "# header" "$(cat "$RR/tools/cockpit-daemon.sha256")"
 echo dirty >> "$RR/tools/cockpit-daemon/main.go"
 set +e; out="$(PATH="$WORK/gostub:$STUBS:$BASEPATH" bash "$RR/scripts/release-daemon.sh" --dry-run 2>&1)"; rc=$?; set -e

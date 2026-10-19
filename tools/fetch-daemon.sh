@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # fetch-daemon.sh — put verified prebuilt binaries where canon expects them (t-60f7, t-9383).
-#   macOS and Linux: the cockpit daemon at tools/cockpit-daemon/cockpit-daemon.
+#   macOS and Linux: the cockpit daemon at tools/cockpit-daemon/cockpit-daemon and the board server at
+#   tools/sprint-check-bin/sprint-check (t-15d8: the Go board is the only board).
 #   Windows (Git Bash): the daemon, the board server and the headless JSON helper at tools/*-win.exe — they are
 #   no longer committed, so a checkout or a zip install has only the source until this runs.
 # Every binary is gitignored. This downloads the one published by scripts/release-daemon.sh and moves it into place only
@@ -10,8 +11,9 @@
 # possible it builds from source when Go is new enough, else says what to do. Called by install.sh, install.ps1,
 # `canon update` and `canon`.
 # Usage: fetch-daemon.sh [--quiet]     exit 0 = every required binary is in place, 1 = one could not be provided.
-# Required: the daemon (and, on Windows, the board). The headless helper only warns.
-# CANON_FETCH_NO_BUILD=1 skips the build-from-source fallback (canon uses it at start so launching the board never compiles).
+# Required: the daemon and the board. The headless helper (Windows) only warns.
+# CANON_FETCH_NO_BUILD=1 skips the build-from-source fallback (canon on Windows uses it at start). On macOS/Linux canon
+# lets it build, so a committed but unreleased board or daemon change runs from source on a machine with Go (t-15d8).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -35,7 +37,7 @@ if [ "$os" != windows ]; then
   case "$(uname -m)" in
     arm64|aarch64) arch=arm64 ;;
     x86_64|amd64) arch=amd64 ;;
-    *) die "no prebuilt daemon for CPU '$(uname -m)'. Build it: cd tools/cockpit-daemon && go build -o cockpit-daemon ." ;;
+    *) die "no prebuilt binaries for CPU '$(uname -m)'. Build them: cd tools/cockpit-daemon && go build -o cockpit-daemon . ; cd ../.. && GO111MODULE=off go build -o tools/sprint-check-bin/sprint-check ./tools/sprint-check-go" ;;
   esac
 fi
 
@@ -54,7 +56,7 @@ trap cleanup EXIT
 
 # Per-component settings, set by the loop at the bottom:
 #   SRC (source folder under the repo), TARGET (manifest column 2), ASSET (file name in the release), TAG (release prefix),
-#   DEST (absolute path the binary must land at), VERSION_CHECK (1 = the binary prints its commit stamp: macOS/Linux daemon).
+#   DEST (absolute path the binary must land at), VERSION_CHECK (1 = the binary prints its commit stamp: macOS/Linux daemon and board).
 SRC=""; TARGET=""; ASSET=""; TAG=""; DEST=""; VERSION_CHECK=0; NEXT=""
 key=""; full=""; stamp=""; fail_reason=""
 
@@ -155,7 +157,8 @@ if [ "$os" = windows ]; then
 sprint-check-win|tools/sprint-check-go|sprint-check-windows-amd64|sprint-check-windows-amd64.exe|sprint-check|tools/sprint-check-win.exe|1|0
 sprint-headless-json-win|tools/sprint-headless-json-go|sprint-headless-json-windows-amd64|sprint-headless-json-windows-amd64.exe|sprint-headless-json|tools/sprint-headless-json-win.exe|0|0"
 else
-  COMPONENTS="cockpit-daemon|tools/cockpit-daemon|$os-$arch|cockpit-daemon-$os-$arch|cockpit-daemon|tools/cockpit-daemon/cockpit-daemon|1|1"
+  COMPONENTS="cockpit-daemon|tools/cockpit-daemon|$os-$arch|cockpit-daemon-$os-$arch|cockpit-daemon|tools/cockpit-daemon/cockpit-daemon|1|1
+sprint-check|tools/sprint-check-go|sprint-check-$os-$arch|sprint-check-$os-$arch|sprint-check|tools/sprint-check-bin/sprint-check|1|1"
 fi
 
 rc=0
@@ -163,8 +166,10 @@ while IFS='|' read -r LABEL SRC TARGET ASSET TAG rel required VERSION_CHECK; do
   [ -n "$LABEL" ] || continue
   DEST="$REPO/$rel"
   if [ "$os" = windows ]; then NEXT="run canon update (or the installer again) once online"
+  elif [ "$SRC" = tools/cockpit-daemon ]; then NEXT="install Go (brew install go, or https://go.dev/dl) and run: canon update
+  or build it by hand: cd \"$DAEMON_DIR\" && go build -o cockpit-daemon ."
   else NEXT="install Go (brew install go, or https://go.dev/dl) and run: canon update
-  or build it by hand: cd \"$DAEMON_DIR\" && go build -o cockpit-daemon ."; fi
+  or build it by hand: cd \"$REPO\" && GO111MODULE=off go build -o $rel ./$SRC"; fi
   if ! fetch_one; then
     if [ "$required" = 1 ]; then rc=1; fi
   fi

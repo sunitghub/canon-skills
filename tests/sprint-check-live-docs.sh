@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # sprint-check-live-docs (t-e78b, t-26f9) — for a ticket bound to a worktree, the board
 # reads its sprint docs from that worktree's copy and (t-26f9) may write them there,
-# guarded by the etag it read (base_hash), identically in server.py and main.go. The
+# guarded by the etag it read (base_hash), in the Go board (t-15d8: the only board). The
 # binding comes from the agent-writable .cockpit-cwd lock (or an in-progress worktree
 # copy), so a lock naming anything but a registered worktree of this repo must be
 # ignored, and every write is re-validated: allowlisted doc names compared raw, no
@@ -17,22 +17,17 @@ if ! command -v python3 >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1 || 
   exit 0
 fi
 
-SERVER_PY="$ROOT/tools/sprint-check-app/server.py"
 GO_BIN=""
 PIDS=()
 TMP="$(mktemp -d)"
 cleanup() {
   for p in "${PIDS[@]:-}"; do [[ -n "$p" ]] && kill "$p" 2>/dev/null || true; done
   rm -rf "$TMP"
-  [[ -n "$GO_BIN" ]] && rm -rf "$(dirname "$GO_BIN")"
   return 0
 }
 trap cleanup EXIT
 
-if command -v go >/dev/null 2>&1; then
-  GO_BIN="$(mktemp -d)/sprint-check-go-bin"
-  (cd "$ROOT" && GO111MODULE=off go build -o "$GO_BIN" ./tools/sprint-check-go)
-fi
+GO_BIN="$(build_board "$TMP/bin")"
 
 free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'; }
 fm() { printf -- '---\nid: %s\nstatus: %s\ntype: task\npriority: 2\n---\n# %s\n' "$1" "$2" "$1"; }
@@ -57,13 +52,8 @@ run_checks() {
   printf 'decoy\n' > "$TMP/$kind/outside/.tickets/t-lv01/plan.md"
 
   port="$(free_port)"
-  if [[ "$kind" == py ]]; then
-    SPRINT_CHECK_ROOT="$repo" CANON_HOME="$TMP/$kind/canon" COCKPIT_STATE_DIR="$TMP/$kind/ck" COCKPIT_DAEMON_BIN=/usr/bin/false SPRINT_CHECK_DIVERGENCE_TTL=0 \
-      python3 "$SERVER_PY" "$port" >/dev/null 2>&1 &
-  else
-    SPRINT_CHECK_ROOT="$repo" CANON_HOME="$TMP/$kind/canon" COCKPIT_STATE_DIR="$TMP/$kind/ck" COCKPIT_DAEMON_BIN=/usr/bin/false SPRINT_CHECK_DIVERGENCE_TTL=0 SPRINT_CHECK_NO_BROWSER=1 \
-      "$GO_BIN" "$port" >/dev/null 2>&1 &
-  fi
+  SPRINT_CHECK_ROOT="$repo" CANON_HOME="$TMP/$kind/canon" COCKPIT_STATE_DIR="$TMP/$kind/ck" COCKPIT_DAEMON_BIN=/usr/bin/false SPRINT_CHECK_DIVERGENCE_TTL=0 SPRINT_CHECK_NO_BROWSER=1 \
+    "$GO_BIN" "$port" >/dev/null 2>&1 &
   PIDS+=("$!"); disown "$!" 2>/dev/null || true
   base="http://127.0.0.1:$port"
   for _ in $(seq 1 50); do curl -s -o /dev/null "$base/api/git" && break; sleep 0.1; done
@@ -290,7 +280,7 @@ PY
     [[ "$code" == 500 && "$(pj code)" == read_failed ]] || fail "$label: an unreadable doc must not count as absent (500 read_failed), got $code"
     [[ "$(cat "$wt/.tickets/t-lv01/research.md" | head -c 6)" != bypass ]] || fail "$label: an unreadable doc was overwritten through base_hash 'absent'"
   fi
-  # The replacement keeps the file's mode. 0640, not 0600: both backends create their temp file at 0600, so only real
+  # The replacement keeps the file's mode. 0640, not 0600: the board creates its temp file at 0600, so only real
   # preservation yields 0640 (Windows has no such modes, so this is a POSIX check).
   chmod 640 "$wt/.tickets/t-lv01/research.md"
   e="$(etag_of research.md)"
@@ -333,10 +323,5 @@ writes="$(board_sources "$ROOT" | grep -n 'postWrite(`/api/doc' || true)"
 [[ "$(grep -c . <<<"$writes")" -eq 2 ]] || fail "expected exactly 2 direct doc write sites in the board, got: $writes"
 [[ -z "$(grep -v base_hash <<<"$writes")" ]] || fail "a doc write site in the board sends no base_hash: $(grep -v base_hash <<<"$writes")"
 
-run_checks py server.py
-if [[ -n "$GO_BIN" ]]; then
-  run_checks go main.go
-else
-  echo "  main.go: go absent — Go half skipped"
-fi
+run_checks go main.go
 echo "sprint-check-live-docs: ok"

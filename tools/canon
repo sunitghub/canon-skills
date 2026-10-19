@@ -6,7 +6,7 @@
 #
 # Unlike `sprint-check` (one board per project, per cwd), canon is
 # project-agnostic: it serves the shell + the project registry, and you open
-# projects from within it. See tools/sprint-check-app/server.py registry_*.
+# projects from within it. See tools/sprint-check-go/main.go registry*.
 
 set -euo pipefail
 
@@ -18,7 +18,6 @@ while [ -L "$_SOURCE" ]; do
   [[ "$_SOURCE" != /* ]] && _SOURCE="$_DIR/$_SOURCE"
 done
 SCRIPT_DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
-SERVER="$SCRIPT_DIR/sprint-check-app/server.py"
 # shellcheck source=cockpit-launch-lib.sh
 source "$SCRIPT_DIR/cockpit-launch-lib.sh"
 
@@ -449,19 +448,10 @@ main() {
     exit 0
   fi
 
-  # t-60f7: a clone has no daemon binary until it is fetched; try once, never block the board on it
-  # The unix daemon is gitignored, and (t-9383) so are the Windows exes: fetch whatever is missing, never block the board on it.
-  if _is_windows; then
-    if [[ ! -f "$SCRIPT_DIR/cockpit-daemon-win.exe" || ! -f "$SCRIPT_DIR/sprint-check-win.exe" ]]; then
-      CANON_FETCH_NO_BUILD=1 bash "$SCRIPT_DIR/fetch-daemon.sh" --quiet >&2 || echo "canon: a prebuilt binary is missing; agent sessions or the board may not start until it is fetched (canon update)." >&2
-    fi
-  elif [[ ! -x "$SCRIPT_DIR/cockpit-daemon/cockpit-daemon" && -z "${COCKPIT_DAEMON_BIN:-}" ]]; then
-    CANON_FETCH_NO_BUILD=1 bash "$SCRIPT_DIR/fetch-daemon.sh" --quiet >&2 || echo "canon: starting without the daemon; agent sessions will not start until it is fetched (canon update)." >&2
-  fi
-
-  if [[ ! -f "$SERVER" ]]; then
-    echo "Error: server.py not found at $SERVER" >&2
-    exit 1
+  # t-60f7/t-9383: the binaries are gitignored release assets. On Windows fetch a missing one here (never building); on
+  # macOS/Linux start_cockpit_server fetches the board and the daemon at every start (t-15d8).
+  if _is_windows && [[ ! -f "$SCRIPT_DIR/cockpit-daemon-win.exe" || ! -f "$SCRIPT_DIR/sprint-check-win.exe" ]]; then
+    CANON_FETCH_NO_BUILD=1 bash "$SCRIPT_DIR/fetch-daemon.sh" --quiet >&2 || echo "canon: a prebuilt binary is missing; agent sessions or the board may not start until it is fetched (canon update)." >&2
   fi
 
   start_cockpit_server "$port" || exit 1

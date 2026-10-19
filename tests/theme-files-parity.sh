@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# theme-files-parity (t-f889) — user themes in $CANON_HOME/themes are untrusted files, checked by three ports with no
-# shared code: server.py, sprint-check-go and the page's checkTheme()/validateTheme() (static/theme-data.js). This test
-# holds them to each other and to theme.schema.json:
-#   1. a fixed corpus (tests/theme-files-corpus.py build): both servers' GET /api/themes are equal, every file gets its
-#      expected reason, the schema's verdict matches on every file that parses to JSON, and the page's checkTheme()
+# theme-files-parity (t-f889) — user themes in $CANON_HOME/themes are untrusted files, checked by two ports with no
+# shared code: the board (sprint-check-go; t-15d8: the Python board was the third) and the page's
+# checkTheme()/validateTheme() (static/theme-data.js). This test holds them to each other and to theme.schema.json:
+#   1. a fixed corpus (tests/theme-files-corpus.py build): every file gets its expected reason from the board's
+#      GET /api/themes, the schema's verdict matches on every file that parses to JSON, and the page's checkTheme()
 #      gives the same reason for every file that reaches the object checks;
 #   2. 51 files: the 51st is refused; a symlinked themes folder is read;
-#   3. a seeded fuzz (THEME_FUZZ_N files, default 350, 50 per round): the three agree on every file, no 5xx;
+#   3. a seeded fuzz (THEME_FUZZ_N files, default 350, 50 per round): board, schema and page agree on every file, no 5xx;
 #   4. POST /api/themes/open with a stub launcher: seeds only a folder it creates, never overwrites, launches exactly
 #      the folder path, ignores the body, refuses a foreign Origin/Host, launches nothing under SPRINT_CHECK_NO_BROWSER.
 
@@ -15,11 +15,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/tests/helpers.sh"
 
-for tool in python3 curl go node; do
-  command -v "$tool" >/dev/null 2>&1 || fail "theme-files-parity: $tool not found (all four are needed; nothing was checked)"
+for tool in python3 curl node; do
+  command -v "$tool" >/dev/null 2>&1 || fail "theme-files-parity: $tool not found (all three are needed; nothing was checked)"
 done
 
-SERVER_PY="$ROOT/tools/sprint-check-app/server.py"
 CORPUS="$ROOT/tests/theme-files-corpus.py"
 THEME_DATA="$ROOT/tools/sprint-check-app/static/theme-data.js"
 SCHEMA="$ROOT/tools/sprint-check-app/theme.schema.json"
@@ -34,44 +33,36 @@ cleanup() {
 }
 trap cleanup EXIT
 
-GO_BIN="$TMP/sprint-check-go-bin"
-(cd "$ROOT" && GO111MODULE=off go build -o "$GO_BIN" ./tools/sprint-check-go)
+GO_BIN="$(build_board "$TMP")"
 mkdir -p "$TMP/proj/.tickets" "$TMP/ck"
 
 free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'; }
 
-# start <py|go> <canon_home> [VAR=value ...] -> prints the port; the PID is recorded here, not in a subshell
+# start <canon_home> [VAR=value ...] -> sets PORT; the PID is recorded here, not in a subshell
 PORT=""
 start() {
-  local kind="$1" home="$2"; shift 2
+  local home="$1"; shift
   PORT="$(free_port)"
-  if [[ "$kind" == py ]]; then
-    env SPRINT_CHECK_ROOT="$TMP/proj" CANON_HOME="$home" COCKPIT_STATE_DIR="$TMP/ck" COCKPIT_DAEMON_BIN=/usr/bin/false \
-      SPRINT_CHECK_NO_BROWSER=1 "$@" python3 "$SERVER_PY" "$PORT" >/dev/null 2>&1 &
-  else
-    (cd "$ROOT" && exec env SPRINT_CHECK_ROOT="$TMP/proj" CANON_HOME="$home" COCKPIT_STATE_DIR="$TMP/ck" COCKPIT_DAEMON_BIN=/usr/bin/false \
-      SPRINT_CHECK_NO_BROWSER=1 "$@" "$GO_BIN" "$PORT") >/dev/null 2>&1 &
-  fi
+  (cd "$ROOT" && exec env SPRINT_CHECK_ROOT="$TMP/proj" CANON_HOME="$home" COCKPIT_STATE_DIR="$TMP/ck" COCKPIT_DAEMON_BIN=/usr/bin/false \
+    SPRINT_CHECK_NO_BROWSER=1 TMPDIR="$TMP" "$@" "$GO_BIN" "$PORT") >/dev/null 2>&1 &
   PIDS+=("$!")
   disown "$!" 2>/dev/null || true
   local i
   for i in $(seq 1 100); do curl -s -o /dev/null "http://127.0.0.1:$PORT/api/themes" && return 0; sleep 0.1; done
-  fail "theme-files-parity: $kind server did not start"
+  fail "theme-files-parity: the board did not start"
 }
 
-# compare <label> <py json file> <go json file> [expected json file] — parity, expectations, schema, and the page
+# compare <label> <board json file> [expected json file] — expectations, schema, and the page
 compare() {
-  python3 - "$1" "$2" "$3" "${4:-}" "$CORPUS" "$SCHEMA" "$THEME_DATA" <<'PY'
+  python3 - "$1" "$2" "${3:-}" "$CORPUS" "$SCHEMA" "$THEME_DATA" <<'PY'
 import importlib.util, json, os, subprocess, sys
-label, py_f, go_f, exp_f, corpus, schema_f, theme_data = sys.argv[1:8]
+label, go_f, exp_f, corpus, schema_f, theme_data = sys.argv[1:7]
 spec = importlib.util.spec_from_file_location('corpus', corpus); C = importlib.util.module_from_spec(spec); spec.loader.exec_module(C)
-py, go = json.load(open(py_f)), json.load(open(go_f))
+go = json.load(open(go_f))
 errs = []
-if py != go:
-    errs.append(f'server.py and main.go differ:\n  py={json.dumps(py, sort_keys=True)[:3000]}\n  go={json.dumps(go, sort_keys=True)[:3000]}')
-d = py['dir']
-verdict = {t['file']: '' for t in py['themes']}
-verdict.update({r['file']: r['reason'] for r in py['rejected']})
+d = go['dir']
+verdict = {t['file']: '' for t in go['themes']}
+verdict.update({r['file']: r['reason'] for r in go['rejected']})
 if exp_f:
     exp = json.load(open(exp_f))
     for f, want in exp.items():
@@ -94,19 +85,19 @@ for f, r in sorted(verdict.items()):
     if r not in object_stage or r == C.R_FILE:
         continue
     raw = open(os.path.join(d, f), 'rb').read().decode('utf-8')
-    val = json.loads(raw, parse_int=lambda s: 0)  # reached the object checks, so it parsed on both servers (no NaN/Infinity)
+    val = json.loads(raw, parse_int=lambda s: 0)  # reached the object checks, so the board parsed it (no NaN/Infinity)
     ok = C.schema_ok(schema, val, schema)
     if ok != (r == ''):
-        errs.append(f'{f}: schema says {"valid" if ok else "invalid"}, servers say {r or "accepted"!r}')
+        errs.append(f'{f}: schema says {"valid" if ok else "invalid"}, the board says {r or "accepted"!r}')
     cases.append({'file': f, 'raw': raw, 'want': r})
-entries = py['themes']
+entries = go['themes']
 node = subprocess.run(['node', '--input-type=module', '-e', '''
 import { readFileSync } from 'node:fs';
 const m = await import(process.argv[1]);
 const { cases, entries } = JSON.parse(readFileSync(0, 'utf8'));
 const out = [];
-for (const c of cases) { let got; try { got = m.checkTheme(JSON.parse(c.raw)); } catch (e) { got = 'THROW ' + e.message; } if (got !== c.want) out.push(`${c.file}: page says ${JSON.stringify(got)}, servers ${JSON.stringify(c.want)}`); }
-for (const e of entries) { const t = m.validateTheme(e); if (!t) out.push(`${e.file}: page refused a server-accepted entry`); else if (!Object.values(t.c).every(v => /^#[0-9a-f]{6}$/.test(v))) out.push(`${e.file}: not normalised`); }
+for (const c of cases) { let got; try { got = m.checkTheme(JSON.parse(c.raw)); } catch (e) { got = 'THROW ' + e.message; } if (got !== c.want) out.push(`${c.file}: page says ${JSON.stringify(got)}, board ${JSON.stringify(c.want)}`); }
+for (const e of entries) { const t = m.validateTheme(e); if (!t) out.push(`${e.file}: page refused a board-accepted entry`); else if (!Object.values(t.c).every(v => /^#[0-9a-f]{6}$/.test(v))) out.push(`${e.file}: not normalised`); }
 console.log(JSON.stringify(out));
 ''', theme_data], input=json.dumps({'cases': cases, 'entries': entries}), capture_output=True, text=True)
 if node.returncode != 0:
@@ -115,7 +106,7 @@ else:
     errs += json.loads(node.stdout)
 if errs:
     print(f'theme-files-parity: FAIL ({label})'); print('\n'.join('  ' + e for e in errs[:60])); sys.exit(1)
-print(f'  {label}: {len(verdict)} files, {len(py["themes"])} accepted, {len(cases)} checked by the page and the schema')
+print(f'  {label}: {len(verdict)} files, {len(go["themes"])} accepted, {len(cases)} checked by the page and the schema')
 PY
 }
 
@@ -124,33 +115,30 @@ get() { curl -s -o "$2" -w '%{http_code}' "http://127.0.0.1:$1/api/themes"; }
 # ── 1. fixed corpus ──
 HOME_C="$TMP/home-corpus"; mkdir -p "$HOME_C"
 python3 "$CORPUS" build "$TMP/corpus" > "$TMP/expected-all.json"
-start py "$HOME_C"; PY_PORT="$PORT"
-start go "$HOME_C"; GO_PORT="$PORT"
+start "$HOME_C"; GO_PORT="$PORT"
 for b in $(python3 -c "import json,sys; print(' '.join(sorted(json.load(open(sys.argv[1])))))" "$TMP/expected-all.json"); do
   mv "$TMP/corpus/$b" "$HOME_C/themes"
   python3 -c "import json,sys; print(json.dumps(json.load(open(sys.argv[1]))[sys.argv[2]]))" "$TMP/expected-all.json" "$b" > "$TMP/expected.json"
-  [[ "$(get "$PY_PORT" "$TMP/py.json")" == 200 ]] || fail "theme-files-parity: server.py /api/themes not 200"
-  [[ "$(get "$GO_PORT" "$TMP/go.json")" == 200 ]] || fail "theme-files-parity: main.go /api/themes not 200"
-  compare "corpus $b" "$TMP/py.json" "$TMP/go.json" "$TMP/expected.json"
+  [[ "$(get "$GO_PORT" "$TMP/go.json")" == 200 ]] || fail "theme-files-parity: /api/themes not 200"
+  compare "corpus $b" "$TMP/go.json" "$TMP/expected.json"
   mv "$HOME_C/themes" "$TMP/corpus/$b"
 done
 
 # ── 2. the 50-file limit; a symlinked folder; an absent folder (nothing created) ──
 rm -rf "$HOME_C/themes"; python3 "$CORPUS" many "$HOME_C/themes"
-get "$PY_PORT" "$TMP/py.json" >/dev/null; get "$GO_PORT" "$TMP/go.json" >/dev/null
+get "$GO_PORT" "$TMP/go.json" >/dev/null
 python3 -c "import json; exp = {f't{i:02d}.json': '' for i in range(50)}; exp['t50.json'] = 'too many theme files (at most 50)'; print(json.dumps(exp))" > "$TMP/expected.json"
-compare "51 files" "$TMP/py.json" "$TMP/go.json" "$TMP/expected.json"
+compare "51 files" "$TMP/go.json" "$TMP/expected.json"
 mv "$HOME_C/themes" "$TMP/real-themes"; ln -s "$TMP/real-themes" "$HOME_C/themes"
-get "$PY_PORT" "$TMP/py.json" >/dev/null; get "$GO_PORT" "$TMP/go.json" >/dev/null
-compare "symlinked folder" "$TMP/py.json" "$TMP/go.json" "$TMP/expected.json"
+get "$GO_PORT" "$TMP/go.json" >/dev/null
+compare "symlinked folder" "$TMP/go.json" "$TMP/expected.json"
 rm "$HOME_C/themes"
-get "$PY_PORT" "$TMP/py.json" >/dev/null; get "$GO_PORT" "$TMP/go.json" >/dev/null
-python3 - "$TMP/py.json" "$TMP/go.json" "$HOME_C/themes" <<'PY' || fail "theme-files-parity: an absent folder must list nothing and create nothing"
+get "$GO_PORT" "$TMP/go.json" >/dev/null
+python3 - "$TMP/go.json" "$HOME_C/themes" <<'PY' || fail "theme-files-parity: an absent folder must list nothing and create nothing"
 import json, os, sys
-for f in sys.argv[1:3]:
-    d = json.load(open(f))
-    assert d['themes'] == [] and d['rejected'] == [] and 'error' not in d, d
-assert not os.path.lexists(sys.argv[3])
+d = json.load(open(sys.argv[1]))
+assert d['themes'] == [] and d['rejected'] == [] and 'error' not in d, d
+assert not os.path.lexists(sys.argv[2])
 PY
 echo "  absent folder: empty lists, nothing created"
 
@@ -161,12 +149,11 @@ round=0
 while IFS= read -r batch; do
   rm -rf "$HOME_C/themes"; mkdir -p "$HOME_C/themes"
   for f in $batch; do cp "$TMP/fuzz/$f" "$HOME_C/themes/"; done
-  [[ "$(get "$PY_PORT" "$TMP/py.json")" == 200 ]] || fail "theme-files-parity: server.py failed on fuzz round $round"
-  [[ "$(get "$GO_PORT" "$TMP/go.json")" == 200 ]] || fail "theme-files-parity: main.go failed on fuzz round $round"
-  compare "fuzz round $round" "$TMP/py.json" "$TMP/go.json"
+  [[ "$(get "$GO_PORT" "$TMP/go.json")" == 200 ]] || fail "theme-files-parity: the board failed on fuzz round $round"
+  compare "fuzz round $round" "$TMP/go.json"
   round=$((round + 1))
 done < <(ls "$TMP/fuzz" | sort | paste -d' ' $(printf -- '- %.0s' $(seq 1 50)))
-echo "  fuzz: $N files (seed $SEED_N) in $round rounds, all three agree"
+echo "  fuzz: $N files (seed $SEED_N) in $round rounds, board, schema and page agree"
 
 # ── 4. Open themes folder ──
 STUB="$TMP/open-stub.sh"
@@ -180,10 +167,10 @@ post_open() { curl -s -o "$TMP/open.json" -w '%{http_code}' -X POST -H 'Content-
 calls() { if [[ -f "$1" ]]; then grep -c '^argc=' "$1"; else echo 0; fi; }
 wait_calls() { local i; for i in $(seq 1 50); do [[ "$(calls "$1")" == "$2" ]] && return 0; sleep 0.1; done; return 1; }
 
-for kind in py go; do
+for kind in go; do
   H="$TMP/home-open-$kind"; LOG="$TMP/open-$kind.log"
   mkdir -p "$H"
-  start "$kind" "$H" CANON_OPEN_BIN="$STUB" OPEN_LOG="$LOG"; P="$PORT"
+  start "$H" CANON_OPEN_BIN="$STUB" OPEN_LOG="$LOG"; P="$PORT"
   D="$(cd "$H" && pwd -P)/themes"
   [[ "$(post_open "$P" -H 'Origin: http://localhost' -d '{}')" == 200 ]] || fail "$kind: open must succeed: $(cat "$TMP/open.json")"
   python3 -c "import json,sys; d=json.load(open('$TMP/open.json')); assert d['ok'] and d['created'] is True and d['launched'] is True, d" \
@@ -212,7 +199,7 @@ for kind in py go; do
   rm -rf "$D"; echo x > "$D"
   [[ "$(post_open "$P" -d '{}')" == 400 ]] || fail "$kind: a file at the themes path must 400"
   sleep 0.3; [[ "$(calls "$LOG")" == 2 ]] || fail "$kind: a refused open launched something"
-  # break-it: the route reads no body, so both servers treat every body alike; it needs a JSON content type
+  # break-it: the route reads no body, so every body is treated alike; it needs a JSON content type
   rm "$D"; mkdir "$D"
   for ct in 'text/plain' 'application/x-www-form-urlencoded' 'multipart/form-data; boundary=x' 'application/jsonx'; do
     code="$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Content-Type: $ct" -d '{}' "http://127.0.0.1:$P/api/themes/open")"
@@ -230,18 +217,18 @@ for kind in py go; do
   [[ "$(grep -c "^arg=$D\$" "$LOG")" == 7 && "$(grep -c '^argc=1$' "$LOG")" == 7 ]] || fail "$kind: a launch got something other than the folder"
   # SPRINT_CHECK_NO_BROWSER=1 without an override: nothing launched (t-269d)
   H2="$TMP/home-nolaunch-$kind"; mkdir -p "$H2"
-  start "$kind" "$H2"
+  start "$H2"
   [[ "$(post_open "$PORT" -d '{}')" == 200 ]] || fail "$kind: open without a launcher must still succeed"
   python3 -c "import json; d=json.load(open('$TMP/open.json')); assert d['launched'] is False and d['created'] is True, d" \
     || fail "$kind: SPRINT_CHECK_NO_BROWSER=1 must launch nothing"
-  # break-it: a path that cannot be checked or created is refused the same way on both, never a dropped connection
+  # break-it: a path that cannot be checked or created is refused, never a dropped connection
   H3="$TMP/home-bad-$kind"; mkdir -p "$H3"
   echo x > "$H3/file-home"                                          # CANON_HOME is a file (ENOTDIR)
   mkdir -p "$H3/loop"; ln -s themes "$H3/loop/themes"               # themes is a link to itself (ELOOP)
   homes=("$H3/file-home" "$H3/loop")
   if [[ "$(id -u)" != 0 ]]; then mkdir -p "$H3/acc/in"; chmod 000 "$H3/acc/in"; homes+=("$H3/acc/in"); else echo "  (root: the no-permission case is skipped)"; fi
   for h in "${homes[@]}"; do
-    start "$kind" "$h" CANON_OPEN_BIN="$STUB" OPEN_LOG="$LOG"
+    start "$h" CANON_OPEN_BIN="$STUB" OPEN_LOG="$LOG"
     code="$(post_open "$PORT" -d '{}')" || true
     [[ "$code" == 400 ]] || fail "$kind: CANON_HOME=$h must 400, got '$code'"
     python3 -c "import json; d=json.load(open('$TMP/open.json')); assert d == {'ok': False, 'error': 'the themes path is not a folder'}, d" \
@@ -252,7 +239,7 @@ for kind in py go; do
   # sixteen opens at once on a missing folder, 30 times: each time exactly one creates it (and seeds it), the others
   # open it (break-it: Go reported created five times of eight)
   H4="$TMP/home-race-$kind"; mkdir -p "$H4"; LOG4="$TMP/open-race-$kind.log"
-  start "$kind" "$H4" CANON_OPEN_BIN="$STUB" OPEN_LOG="$LOG4"
+  start "$H4" CANON_OPEN_BIN="$STUB" OPEN_LOG="$LOG4"
   for round in $(seq 1 30); do
     rm -rf "$H4/themes"
     for i in $(seq 1 16); do
@@ -270,9 +257,9 @@ PY
 done
 
 # ── 5. a theme file swapped for a FIFO between the server's check and its open never hangs a request (break-it) ──
-for kind in py go; do
+for kind in go; do
   H5="$TMP/home-fifo-$kind"; mkdir -p "$H5/themes"
-  start "$kind" "$H5"; P="$PORT"
+  start "$H5"; P="$PORT"
   python3 - "$H5/themes" "$SEED/example.json" 8 <<'PY' &
 import os, sys, time
 d, seed, secs = sys.argv[1], open(sys.argv[2], 'rb').read(), float(sys.argv[3])

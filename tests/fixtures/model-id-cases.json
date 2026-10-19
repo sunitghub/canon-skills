@@ -1,5 +1,5 @@
 {
- "_comment": "Owner of the model-id rule's test cases (t-be1f). Every implementation (tools/upkeep-run bash, server.py, sprint-check-go) must accept `good` and refuse `bad`. Empty means the default and is handled before the rule.",
+ "_comment": "Owner of the model-id rule's test cases (t-be1f). Every implementation (tools/upkeep-run bash, sprint-check-go) must accept `good` and refuse `bad`. Empty means the default and is handled before the rule.",
  "good": [
   "claude-haiku-4-5-20251001",
   "claude-sonnet-5",

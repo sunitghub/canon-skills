@@ -1,26 +1,23 @@
 #!/usr/bin/env bash
-# sprint-check-skill-eval-go (t-b9a7) — the Go board's Skill Eval guards, over HTTP, against the
-# Python board: every refusal (path escapes, symlinks and other non-regular entries, bad names,
-# confirm_cost, model ids, failing checks, trust warnings, hostile case ids) must answer exactly as
-# server.py does, a fuzz of wrong-typed bodies must never start a run, and the Go run path (stub
-# claude, no spend) must pass the right argv, clamp the cost cap, persist state, refuse a second
-# run while one is going, and serve only its own report. Needs no jq and no Python at runtime on
-# the Go side; the "inside canon" refusal is covered by main_test.go.
+# sprint-check-skill-eval-go (t-b9a7) — the Go board's Skill Eval guards, over HTTP: every refusal
+# (path escapes, symlinks and other non-regular entries, bad names, confirm_cost, model ids, failing
+# checks, trust warnings, hostile case ids) answers with its exact text (t-15d8: pinned here, no
+# longer compared with the Python board), a fuzz of wrong-typed bodies never starts a run, and the
+# run path (stub claude, no spend) passes the right argv, clamps the cost cap, persists state,
+# refuses a second run while one is going, and serves only its own report. The "inside canon"
+# refusal is covered by main_test.go.
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/tests/helpers.sh"
 
-if ! command -v python3 >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1 || ! command -v go >/dev/null 2>&1; then
-  echo "sprint-check-skill-eval-go: python3/curl/go absent — skipped"
-  exit 0
-fi
+command -v python3 >/dev/null 2>&1 || fail "sprint-check-skill-eval-go: python3 is required (the HTTP driver below)"
+command -v curl >/dev/null 2>&1 || fail "sprint-check-skill-eval-go: curl is required"
 
 WORK="$(mktemp -d)"; WORK="$(cd "$WORK" && pwd -P)"
 CACHE="$ROOT/.canon-cache/skill-eval"
 BEFORE="$(ls "$CACHE" 2>/dev/null || true)"
-GO_BIN="$WORK/bin/sprint-check-go-bin"
 PIDS=()
 cleanup() {
   local p leaked=""
@@ -41,7 +38,7 @@ cleanup() {
 trap cleanup EXIT
 
 mkdir -p "$WORK/bin" "$WORK/home"
-(cd "$ROOT" && GO111MODULE=off go build -o "$GO_BIN" ./tools/sprint-check-go)
+GO_BIN="$(build_board "$WORK/bin")"
 
 PROJ="$WORK/proj"; OUT="$WORK/outside"; S="$PROJ/.claude/skills"
 mkdir -p "$S" "$OUT"
@@ -72,27 +69,21 @@ SH
 chmod +x "$STUB"; : > "$WORK/stub-args"
 
 free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'; }
-start_server() {  # <py|go> → sets SERVER_PORT; not via $(...) (t-8765)
+start_server() {  # → sets SERVER_PORT; not via $(...) (t-8765)
   [[ "$BASH_SUBSHELL" == 0 ]] || { echo "FAIL: $FUNCNAME called in a subshell (t-8765)" >&2; kill -TERM "$$"; exit 1; }
   local port; port="$(free_port)"
-  if [[ "$1" == py ]]; then
-    HOME="$WORK/home" CANON_HOME="$WORK/home/.canon" SPRINT_CHECK_NO_BROWSER=1 SPRINT_CHECK_ROOT="$PROJ" \
-      python3 "$ROOT/tools/sprint-check-app/server.py" "$port" >/dev/null 2>&1 &
-  else
-    (cd "$ROOT" && exec env HOME="$WORK/home" CANON_HOME="$WORK/home/.canon" SPRINT_CHECK_NO_BROWSER=1 \
-      SPRINT_CHECK_ROOT="$PROJ" SKILL_EVAL_CLAUDE_BIN="$STUB" "$GO_BIN" "$port") >/dev/null 2>&1 &
-  fi
+  (cd "$ROOT" && exec env HOME="$WORK/home" CANON_HOME="$WORK/home/.canon" SPRINT_CHECK_NO_BROWSER=1 TMPDIR="$WORK" \
+    SPRINT_CHECK_ROOT="$PROJ" SKILL_EVAL_CLAUDE_BIN="$STUB" "$GO_BIN" "$port") >/dev/null 2>&1 &
   PIDS+=("$!")
   disown "$!" 2>/dev/null || true
   for _ in $(seq 1 60); do curl -s -o /dev/null "http://127.0.0.1:$port/api/git" && break; sleep 0.1; done
   SERVER_PORT="$port"
 }
-start_server py; PY_PORT="$SERVER_PORT"
-start_server go; GO_PORT="$SERVER_PORT"
+start_server; GO_PORT="$SERVER_PORT"
 
-python3 - "$PY_PORT" "$GO_PORT" "$PROJ" "$OUT" "$WORK" "$ROOT" <<'PY'
+python3 - "$GO_PORT" "$PROJ" "$OUT" "$WORK" "$ROOT" <<'PY'
 import hashlib, json, os, random, shutil, sys, time, urllib.error, urllib.parse, urllib.request
-py, go, proj, out, work, root = sys.argv[1:7]
+go, proj, out, work, root = sys.argv[1:6]
 S = os.path.join(proj, ".claude", "skills")
 def call(port, method, path, body=None):
     data = None if body is None else (body if isinstance(body, bytes) else json.dumps(body).encode())
@@ -105,15 +96,15 @@ def call(port, method, path, body=None):
 def j(port, method, path, body=None):
     code, raw, _ = call(port, method, path, body)
     return code, (json.loads(raw) if raw[:1] in (b"{", b"[") else raw)
-def same(method, path, body=None):
-    a, b = j(py, method, path, body), j(go, method, path, body)
-    assert a == b, f"{method} {path} {body!r}\n  python: {a}\n  go:     {b}"
-    return b[1]
+def same(method, path, body=None):   # a JSON answer with 200; every caller asserts its exact content
+    code, r = j(go, method, path, body)
+    assert code == 200 and isinstance(r, dict), f"{method} {path} {body!r}: {code} {r!r}"
+    return r
 chk = lambda p: same("POST", "/api/skill-eval/check", {"skill_dir": p})
 run = lambda p, **kw: same("POST", "/api/skill-eval/run", {"skill_dir": p, **kw})
 args = lambda: open(os.path.join(work, "stub-args")).read()
 
-# ── refusals: identical text on both boards ──
+# ── refusals: their exact text ──
 for p, want in [(os.path.join(out, "sneaky"), "skill folder must be inside the selected project"),
                 (os.path.join(S, "escape"), "skill folder must be inside the selected project"),
                 (proj, "skill folder must be inside the selected project"),
@@ -144,7 +135,7 @@ for i in range(250):
     body = {"skill_dir": random.choice(paths), "model": random.choice(weird), "allow_trust": random.choice(weird),
             "max_cost_usd": random.choice(weird), "confirm_cost": random.choice([w for w in weird if w is not True])}
     body = {k: v for k, v in body.items() if random.random() < .9}
-    same("POST", "/api/skill-eval/run", body)
+    r = same("POST", "/api/skill-eval/run", body); assert r.get("ok") is False and r.get("error"), (body, r)
     code, _ = j(go, "POST", "/api/skill-eval/check", {"skill_dir": random.choice(paths)}); assert code == 200
 for raw in (b"[]", b"null", b'"x"', b"{", b"\xff", b'{"skill_dir": NaN}', b'{"confirm_cost": true, "max_cost_usd": 1e400}', b"[" * 5000):
     code, r = j(go, "POST", "/api/skill-eval/run", raw)   # a bare 400, or (`null` → empty payload) a JSON refusal
@@ -188,7 +179,7 @@ assert j(go, "POST", "/api/skill-eval/run", {"skill_dir": G, "confirm_cost": Tru
 wait(); open(os.path.join(work, "stub-sleep"), "w").write("0")
 
 # a report path outside this run's own cache dir is never served (hand-edited state, another run's
-# dir). "fresh" never runs, so its state comes only from the file (a live run would win, as in server.py).
+# dir). "fresh" never runs, so its state comes only from the file (a live run would win).
 F = os.path.join(S, "fresh"); shutil.copytree(os.path.join(S, "good"), F); qf = "?skill_dir=" + urllib.parse.quote(F)
 other = os.path.join(root, ".canon-cache", "skill-eval", "0" * 12, "evals", "results", "x"); os.makedirs(other, exist_ok=True)
 open(os.path.join(other, "report.html"), "w").write("<html>other</html>")
@@ -212,5 +203,5 @@ for _ in range(200):
     time.sleep(0.05)
 assert os.listdir(outr) == [], "state was written through a project-controlled .reports link"
 os.unlink(os.path.join(proj, ".reports"))
-print("sprint-check-skill-eval-go: ok (refusals match server.py; fuzz started nothing; run path, cost clamp, busy, report checked)")
+print("sprint-check-skill-eval-go: ok (refusal texts pinned; fuzz refused and started nothing; run path, cost clamp, busy, report checked)")
 PY

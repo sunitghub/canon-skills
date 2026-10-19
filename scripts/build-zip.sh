@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # ── Binary: tools/cockpit-daemon/cockpit-daemon (native host build) ────────
-# t-af51 follow-up: server.py's _resolve_cockpit_daemon() runs THIS binary
+# t-af51 follow-up: the board's resolveCockpitDaemon() runs THIS binary
 # directly on macOS/Linux (the Windows exes are fetched release assets, not built
 # here) — without a stamped rebuild here, a plain `go build` leaves
 # main.commit at its zero-value "dev" default, so the Admin Versions panel

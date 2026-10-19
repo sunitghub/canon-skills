@@ -4,8 +4,8 @@
 # "$SCRIPT_DIR/cockpit-launch-lib.sh"`.
 #
 # t-55c1: nothing here may require Python. On Windows canon may assume only Git for Windows, so the
-# port check, browser open and project registration are bash/coreutils/curl only, and the server
-# itself falls back to the Go sprint-check-win.exe when there's no working Python.
+# port check, browser open and project registration are bash/coreutils/curl only. t-15d8: the server
+# is the Go board on every OS (board_bin).
 
 # shellcheck source=tools/platform-lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/platform-lib.sh"
@@ -39,27 +39,32 @@ open_browser() {
   fi
 }
 
-# start_cockpit_server <port> — background the board server; sets SERVER_PID. Python's server.py
-# where a working Python exists (unchanged); on Windows without one, the Go sprint-check-win.exe, the
-# same parity-tested server canon-win.cmd runs (t-55c1). The caller opens the browser.
+# board_bin — the board server this install runs: <install>/$(board_rel_path), or SPRINT_CHECK_BIN when set (a test's build).
+board_bin() {
+  if [[ -n "${SPRINT_CHECK_BIN:-}" ]]; then echo "$SPRINT_CHECK_BIN"; return; fi
+  echo "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/$(board_rel_path)"
+}
+
+# start_cockpit_server <port> — background the Go board (t-15d8: every OS, no Python); sets SERVER_PID. The caller opens the browser.
+# The binary is fetched, not committed (t-9383): on Windows only when missing and never built; on macOS/Linux at every start, which
+# is a stamp check when current and builds an unreleased board or daemon change from source where Go is installed. SPRINT_CHECK_BIN
+# skips the fetch.
 start_cockpit_server() {
-  local port="$1" dir
+  local port="$1" dir bin
   dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  if _is_windows && ! have_python; then
-    local exe="$dir/sprint-check-win.exe"
-    # t-9383: the exe is fetched, not committed: try once, quietly and without building, before giving up.
-    if [[ ! -f "$exe" ]]; then
-      CANON_FETCH_NO_BUILD=1 bash "$dir/fetch-daemon.sh" --quiet >&2 || true
+  bin="$(board_bin)"
+  if [[ -z "${SPRINT_CHECK_BIN:-}" ]]; then
+    if _is_windows; then
+      [[ -f "$bin" ]] || CANON_FETCH_NO_BUILD=1 bash "$dir/fetch-daemon.sh" --quiet >&2 || true
+    else
+      bash "$dir/fetch-daemon.sh" --quiet >&2 || true
     fi
-    if [[ ! -f "$exe" ]]; then
-      echo "Error: no working Python and no $exe — run canon update (or the installer again) to fetch it." >&2
-      return 1
-    fi
-    echo "No Python here — starting the Go board server (sprint-check-win.exe)." >&2
-    SPRINT_CHECK_NO_BROWSER=1 "$exe" "$port" &
-  else
-    python3 "$dir/sprint-check-app/server.py" "$port" &
   fi
+  if [[ ! -f "$bin" ]]; then
+    echo "Error: no board server at $bin — run canon update (or the installer again) to fetch it." >&2
+    return 1
+  fi
+  SPRINT_CHECK_NO_BROWSER=1 "$bin" "$port" &
   SERVER_PID=$!
 }
 
@@ -93,7 +98,7 @@ _json_escape() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
 # cockpit_register_project <cockpit_port> <abs_path> -> prints registry id on
 # stdout, or nothing on failure (caller falls back to the bare /cockpit URL).
 # Idempotent: an already-registered path is looked up rather than re-added.
-# Parses the board's own JSON (both backends: `"key": "v"` or `"key":"v"`) with sed/awk, no Python.
+# Parses the board's own JSON (`"key":"v"`, or with a space after the colon) with sed/awk, no Python.
 cockpit_register_project() {
   local port="$1" path="$2"
   command -v curl >/dev/null 2>&1 || return 1

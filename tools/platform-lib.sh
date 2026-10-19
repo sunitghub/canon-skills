@@ -22,3 +22,10 @@ have_python() {
   out="$("$py" -c 'print(1)' 2>/dev/null | tr -d '\r')" || return 1
   [ "$out" = "1" ]
 }
+
+# board_rel_path — the board server binary, relative to a canon install (t-15d8: the Go board on every OS). The one owner of
+# this path: cockpit-launch-lib.sh starts it and cockpit-stop-lib.sh recognises the running board by it. tools/fetch-daemon.sh's
+# component table names the same destination (it runs standalone, without this file).
+board_rel_path() {
+  if _is_windows; then echo tools/sprint-check-win.exe; else echo tools/sprint-check-bin/sprint-check; fi
+}

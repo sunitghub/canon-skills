@@ -1,25 +1,23 @@
 #!/usr/bin/env bash
-# skill-eval-parity (t-b9a7) — Skill Eval is implemented twice: server.py (tools/skill-check +
-# tools/plugin-eval-gen) and the Go board (tools/sprint-check-go/skilleval.go, what Windows runs).
-# This locks them together: /api/skill-eval/check answers byte-identically (after json.loads) on
-# both boards for the fixture corpus plus a seeded fuzz that aims at the known runtime gaps, and
-# for every check-passing skill the Go-generated eval plugin is identical (diff -r) to
-# plugin-eval-gen's. Not gated on jq for the /check comparison: the Go side needs none.
+# skill-eval-parity (t-b9a7) — Skill Eval's checks and generator exist twice: the CLIs (tools/skill-check,
+# tools/plugin-eval-gen) and the Go board (tools/sprint-check-go/skilleval.go). This locks them together:
+# the board's /api/skill-eval/check answers {ok: true, skill_dir, **<skill-check's JSON>} (what the Python
+# board returned, t-15d8) for the fixture corpus plus a seeded fuzz that aims at the known runtime gaps, and
+# for every check-passing skill the Go-generated eval plugin is identical (diff -r) to plugin-eval-gen's.
+# Not gated on jq for the /check comparison.
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/tests/helpers.sh"
 
-if ! command -v python3 >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1 || ! command -v go >/dev/null 2>&1; then
-  echo "skill-eval-parity: python3/curl/go absent — skipped"
-  exit 0
-fi
+# python3 runs tools/skill-check (the oracle) and the fuzz generator; go builds the board (build_board fails without it).
+command -v python3 >/dev/null 2>&1 || fail "skill-eval-parity: python3 is required (tools/skill-check is a Python CLI)"
+command -v curl >/dev/null 2>&1 || fail "skill-eval-parity: curl is required"
 
 WORK="$(mktemp -d)"; WORK="$(cd "$WORK" && pwd -P)"
 CACHE="$ROOT/.canon-cache/skill-eval"
 BEFORE="$(ls "$CACHE" 2>/dev/null || true)"
-GO_BIN="$WORK/bin/sprint-check-go-bin"
 PIDS=()
 cleanup() {
   local p leaked=""
@@ -40,7 +38,7 @@ cleanup() {
 trap cleanup EXIT
 
 mkdir -p "$WORK/bin" "$WORK/home" "$WORK/proj/skills"
-(cd "$ROOT" && GO111MODULE=off go build -o "$GO_BIN" ./tools/sprint-check-go)
+GO_BIN="$(build_board "$WORK/bin")"
 PROJ="$WORK/proj"
 cp -R "$ROOT/tests/fixtures/skill-check/." "$PROJ/skills/"
 
@@ -56,25 +54,20 @@ chmod +x "$STUB"
 
 free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'; }
 
-# start_server <py|go> → sets SERVER_PORT. Not via $(...): PIDS must be updated in this shell (t-8765).
+# start_server → sets SERVER_PORT. Not via $(...): PIDS must be updated in this shell (t-8765).
 start_server() {
   [[ "$BASH_SUBSHELL" == 0 ]] || { echo "FAIL: $FUNCNAME called in a subshell (t-8765)" >&2; kill -TERM "$$"; exit 1; }
   local port; port="$(free_port)"
-  if [[ "$1" == py ]]; then
-    HOME="$WORK/home" CANON_HOME="$WORK/home/.canon" SPRINT_CHECK_NO_BROWSER=1 SPRINT_CHECK_ROOT="$PROJ" \
-      python3 "$ROOT/tools/sprint-check-app/server.py" "$port" >/dev/null 2>&1 &
-  else
-    # cwd = canon root: a temp-built binary finds app.html (and so canon's root) from there.
-    (cd "$ROOT" && exec env HOME="$WORK/home" CANON_HOME="$WORK/home/.canon" SPRINT_CHECK_NO_BROWSER=1 \
-      SPRINT_CHECK_ROOT="$PROJ" SKILL_EVAL_CLAUDE_BIN="$STUB" "$GO_BIN" "$port") >/dev/null 2>&1 &
-  fi
+  # cwd = canon root: a temp-built binary finds app.html (and so canon's root) from there.
+  (cd "$ROOT" && exec env HOME="$WORK/home" CANON_HOME="$WORK/home/.canon" SPRINT_CHECK_NO_BROWSER=1 TMPDIR="$WORK" \
+    SPRINT_CHECK_ROOT="$PROJ" SKILL_EVAL_CLAUDE_BIN="$STUB" "$GO_BIN" "$port") >/dev/null 2>&1 &
   PIDS+=("$!")
   disown "$!" 2>/dev/null || true
   for _ in $(seq 1 60); do curl -s -o /dev/null "http://127.0.0.1:$port/api/git" && break; sleep 0.1; done
   SERVER_PORT="$port"
 }
 
-# Seeded fuzz corpus: each skill aims at one or more places where Python and Go text handling differ.
+# Seeded fuzz corpus: each skill aims at one or more places where Python (skill-check) and Go text handling differ.
 python3 - "$PROJ/skills" <<'PY'
 import json, os, random, sys
 root = sys.argv[1]
@@ -150,12 +143,11 @@ for i in range(260):
         with open(os.path.join(d, "evals", "evals.json"), "wb") as f: f.write(evals_json(i))
 PY
 
-start_server py; PY_PORT="$SERVER_PORT"
-start_server go; GO_PORT="$SERVER_PORT"
+start_server; GO_PORT="$SERVER_PORT"
 
-python3 - "$PY_PORT" "$GO_PORT" "$PROJ/skills" "$ROOT" <<'PY'
+python3 - "$GO_PORT" "$PROJ/skills" "$ROOT" <<'PY'
 import hashlib, json, os, shutil, subprocess, sys, time, urllib.parse, urllib.request
-py, go, skills, root = sys.argv[1:5]
+go, skills, root = sys.argv[1:4]
 def post(port, path, body):
     req = urllib.request.Request(f"http://127.0.0.1:{port}{path}", data=json.dumps(body).encode(), method="POST",
                                  headers={"Content-Type": "application/json"})
@@ -165,11 +157,16 @@ def get(port, path):
     with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=30) as r:
         return json.loads(r.read())
 canon = lambda v: json.dumps(v, sort_keys=True, ensure_ascii=False)
+def oracle(d):   # what /check must answer: skill-check's JSON under {ok: true}; skill_dir is the board's resolved path
+    r = subprocess.run([sys.executable, os.path.join(root, "tools", "skill-check"), d], capture_output=True, text=True, timeout=30)
+    return {"ok": True, **json.loads(r.stdout)}
 names = sorted(os.listdir(skills))
 mismatch, passing = [], []
 for n in names:
     d = os.path.join(skills, n)
-    a, b = post(py, "/api/skill-eval/check", {"skill_dir": d}), post(go, "/api/skill-eval/check", {"skill_dir": d})
+    a, b = oracle(d), post(go, "/api/skill-eval/check", {"skill_dir": d})
+    if b.pop("skill_dir", None) != os.path.realpath(d):
+        mismatch.append((n, "skill_dir is not the resolved folder")); continue
     if canon(a) != canon(b):
         ra = {c["id"]: c for c in a.get("checks", [])}; rb = {c["id"]: c for c in b.get("checks", [])}
         diff = [(k, ra.get(k), rb.get(k)) for k in sorted(set(ra) | set(rb)) if ra.get(k) != rb.get(k)]
@@ -179,7 +176,7 @@ for n in names:
 if mismatch:
     for n, d in mismatch[:8]:
         print("CHECK MISMATCH", n, json.dumps(d, ensure_ascii=False)[:900], file=sys.stderr)
-    sys.exit(f"skill-eval-parity: {len(mismatch)} of {len(names)} skills differ between server.py and the Go board")
+    sys.exit(f"skill-eval-parity: {len(mismatch)} of {len(names)} skills differ between tools/skill-check and the Go board")
 print(f"skill-eval-parity: /check identical for {len(names)} skills ({len(passing)} pass every check)")
 
 # Generator: plugin-eval-gen (bash + jq) vs the Go board's run (stub claude) — same tree.

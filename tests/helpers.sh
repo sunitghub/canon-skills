@@ -82,6 +82,17 @@ shell_sources() {
   done
 }
 
+# build_board <dir> — build the Go board from this checkout to <dir>/sprint-check-bin/sprint-check and print that path (t-15d8: the only
+# board). The same file name as an install's, so scripts/test.sh's leak check sees every test board. No Go is a failure, never a skip:
+# a suite that silently stopped testing the board would still pass.
+build_board() {
+  local out="$1/sprint-check-bin/sprint-check"
+  command -v go >/dev/null 2>&1 || fail "build_board: go is required to build the board (tools/sprint-check-go)"
+  mkdir -p "$1/sprint-check-bin"
+  (cd "$ROOT" && GO111MODULE=off go build -o "$out" ./tools/sprint-check-go) || fail "build_board: go build of tools/sprint-check-go failed"
+  printf '%s\n' "$out"
+}
+
 make_project() {
   local dir
   dir="$(mktemp -d)"
@@ -173,7 +184,7 @@ run_fail() {
 # plan approval, no Sign-off section) and t-ready (approved plan) — the
 # minimal pair that exercises acceptance_has_items/plan_has_approach/
 # plan_approved computation. Shared by sprint-check-server.sh and
-# sprint-check-api-parity.sh so both test against one fixture definition.
+# sprint-check-api.sh so both test against one fixture definition.
 build_tickets_fixture() {
   local dir="$1"
   mkdir -p "$dir/.tickets/t-placeholder" "$dir/.tickets/t-ready"

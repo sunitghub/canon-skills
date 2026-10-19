@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tests/cockpit-launch-lib.sh — t-55c1: the Cockpit launcher helpers (tools/cockpit-launch-lib.sh) work with
-# no Python: port check via bash /dev/tcp, project registration parsed with sed/awk against BOTH backends,
-# and start_cockpit_server hands off to the Go sprint-check-win.exe on Windows without a working Python.
+# no Python: port check via bash /dev/tcp, project registration parsed with sed/awk against the Go board, and
+# start_cockpit_server starts the Go board on every OS (t-15d8).
 
 set -euo pipefail
 
@@ -33,62 +33,56 @@ check_backend() {   # <label> <port>: register twice (new, then already-register
     || fail "$label: two paths got the same id"
 }
 
-# --- Python backend ------------------------------------------------------------------------------
-if command -v python3 >/dev/null 2>&1; then
-  py_port="$(free_port)"
-  ( cd "$proj" && CANON_HOME="$tmp/canon-py" SPRINT_CHECK_NO_BROWSER=1 exec python3 "$ROOT/tools/sprint-check-app/server.py" "$py_port" ) >/dev/null 2>&1 &
-  pids+=($!); wait_up "$py_port"
-  check_backend python "$py_port"
+# --- the Go board (compact JSON) -----------------------------------------------------------------
+board="$(build_board "$tmp/gobin")"
+go_port="$(free_port)"
+( cd "$proj" && CANON_HOME="$tmp/canon-go" COCKPIT_STATE_DIR="$tmp/ck" COCKPIT_DAEMON_BIN=/usr/bin/false SPRINT_CHECK_NO_BROWSER=1 TMPDIR="$tmp" \
+    exec "$board" "$go_port" ) >/dev/null 2>&1 &
+pids+=($!); wait_up "$go_port"
+check_backend go "$go_port"
 
-  # _port_in_use without lsof/ss (Git Bash): bash /dev/tcp.
-  PATH="/bin:/usr/bin" lib _port_in_use "$py_port" || fail "/dev/tcp: listening port reported free"
-  if PATH="/bin:/usr/bin" lib _port_in_use "$(free_port)"; then fail "/dev/tcp: free port reported in use"; fi
-fi
+# _port_in_use without lsof/ss (Git Bash): bash /dev/tcp.
+PATH="/bin:/usr/bin" lib _port_in_use "$go_port" || fail "/dev/tcp: listening port reported free"
+if PATH="/bin:/usr/bin" lib _port_in_use "$(free_port)"; then fail "/dev/tcp: free port reported in use"; fi
 
-# --- Go backend (same API, compact JSON) ----------------------------------------------------------
-if command -v go >/dev/null 2>&1; then
-  mkdir -p "$tmp/gobin"
-  ( cd "$ROOT" && GO111MODULE=off go build -o "$tmp/gobin/sprint-check-go" ./tools/sprint-check-go ) >/dev/null 2>&1 \
-    || fail "go build of sprint-check-go failed"
-  go_port="$(free_port)"
-  ( cd "$proj" && CANON_HOME="$tmp/canon-go" SPRINT_CHECK_NO_BROWSER=1 exec "$tmp/gobin/sprint-check-go" "$go_port" ) >/dev/null 2>&1 &
-  pids+=($!); wait_up "$go_port"
-  check_backend go "$go_port"
-fi
-
-# --- start_cockpit_server: which server starts ------------------------------------------------
-fake="$tmp/faketools"; mkdir -p "$fake/sprint-check-app"
+# --- start_cockpit_server: the Go board on every OS (t-15d8), at board_rel_path ------------------------------
+fake="$tmp/fakeinst/tools"; mkdir -p "$fake/sprint-check-bin"
 cp "$ROOT/tools/cockpit-launch-lib.sh" "$ROOT/tools/platform-lib.sh" "$fake/"
-printf '#!/usr/bin/env bash\necho "exe port=$1 nobrowser=${SPRINT_CHECK_NO_BROWSER:-}" > "%s/started"\n' "$tmp" > "$fake/sprint-check-win.exe"
-chmod +x "$fake/sprint-check-win.exe"
-pybin="$tmp/pybin"; mkdir -p "$pybin"
-printf '#!/usr/bin/env bash\necho "python $*" > "%s/started"\n' "$tmp" > "$pybin/python3"; chmod +x "$pybin/python3"
-started() {  # <is_windows 0|1> <have_python 0|1>
-  rm -f "$tmp/started"
-  IW="$1" HP="$2" PATH="$pybin:$PATH" bash -c 'source "$1/cockpit-launch-lib.sh"
-    _is_windows() { return "$IW"; }; have_python() { return "$HP"; }
+stub_board() { # <path>: a board that records how it was started
+  printf '#!/usr/bin/env bash\necho "board $0 port=$1 nobrowser=${SPRINT_CHECK_NO_BROWSER:-}" > "%s/started"\n' "$tmp" > "$1"; chmod +x "$1"
+}
+printf '#!/usr/bin/env bash\necho "fetch args=$* nobuild=${CANON_FETCH_NO_BUILD:-}" >> "%s/fetchlog"\n' "$tmp" > "$fake/fetch-daemon.sh"
+started() {  # <is_windows 0|1>
+  rm -f "$tmp/started" "$tmp/fetchlog"
+  IW="$1" bash -c 'source "$1/cockpit-launch-lib.sh"; _is_windows() { return "$IW"; }
     start_cockpit_server 4321; wait "$SERVER_PID"' _ "$fake" >/dev/null 2>&1
   cat "$tmp/started"
 }
-assert_eq "exe port=4321 nobrowser=1" "$(started 0 1)"                          # Windows, no Python
-assert_eq "python $fake/sprint-check-app/server.py 4321" "$(started 0 0)"       # Windows with Python
-assert_eq "python $fake/sprint-check-app/server.py 4321" "$(started 1 1)"       # macOS/Linux
-rm "$fake/sprint-check-win.exe"
-out="$(bash -c 'source "$1/cockpit-launch-lib.sh"; _is_windows() { return 0; }; have_python() { return 1; }; start_cockpit_server 4321' _ "$fake" 2>&1 || true)"
-assert_contains "$out" "run canon update"
-# t-9383: the exe is fetched, not committed: a missing exe triggers ONE quiet, no-build fetch; a fetch that provides it lets the board start
+stub_board "$fake/sprint-check-win.exe"; stub_board "$fake/sprint-check-bin/sprint-check"
+assert_eq "board $fake/sprint-check-win.exe port=4321 nobrowser=1" "$(started 0)"                 # Windows
+[[ ! -e "$tmp/fetchlog" ]] || fail "Windows: an exe that is already there must not be re-fetched"
+assert_eq "board $fake/sprint-check-bin/sprint-check port=4321 nobrowser=1" "$(started 1)"        # macOS/Linux
+assert_eq "fetch args=--quiet nobuild=" "$(cat "$tmp/fetchlog")"   # every start; builds an unreleased change from source
+# no python3 is run on any path: a python3 on PATH that records itself is never called
+pybin="$tmp/pybin"; mkdir -p "$pybin"; printf '#!/usr/bin/env bash\necho ran > "%s/python-ran"\n' "$tmp" > "$pybin/python3"; chmod +x "$pybin/python3"
+for iw in 0 1; do PATH="$pybin:$PATH" started "$iw" >/dev/null; done
+[[ ! -e "$tmp/python-ran" ]] || fail "start_cockpit_server ran python3"
+# SPRINT_CHECK_BIN: that binary, and no fetch
+stub_board "$tmp/testboard"; rm -f "$tmp/started" "$tmp/fetchlog"
+SPRINT_CHECK_BIN="$tmp/testboard" bash -c 'source "$1/cockpit-launch-lib.sh"; _is_windows() { return 1; }; start_cockpit_server 4321; wait "$SERVER_PID"' _ "$fake" >/dev/null 2>&1
+assert_eq "board $tmp/testboard port=4321 nobrowser=1" "$(cat "$tmp/started")"; [[ ! -e "$tmp/fetchlog" ]] || fail "SPRINT_CHECK_BIN must skip the fetch"
+# Windows, exe missing: ONE quiet no-build fetch; a fetch that provides it lets the board start; one that fails says what to do
+rm -f "$fake/sprint-check-win.exe"
 printf '#!/usr/bin/env bash\necho "fetch args=$* nobuild=${CANON_FETCH_NO_BUILD:-}" >> "%s/fetchlog"\nprintf "#!/usr/bin/env bash\\necho started > \\"%s/started2\\"\\n" > "$(dirname "$0")/sprint-check-win.exe"; chmod +x "$(dirname "$0")/sprint-check-win.exe"\n' "$tmp" "$tmp" > "$fake/fetch-daemon.sh"
 rm -f "$tmp/fetchlog" "$tmp/started2"
-bash -c 'source "$1/cockpit-launch-lib.sh"; _is_windows() { return 0; }; have_python() { return 1; }; start_cockpit_server 4321; wait "$SERVER_PID"' _ "$fake" >/dev/null 2>&1 || true
+bash -c 'source "$1/cockpit-launch-lib.sh"; _is_windows() { return 0; }; start_cockpit_server 4321; wait "$SERVER_PID"' _ "$fake" >/dev/null 2>&1 || true
 assert_eq "fetch args=--quiet nobuild=1" "$(cat "$tmp/fetchlog")"
 assert_eq "started" "$(cat "$tmp/started2")"
-# a fetch that fails leaves the old message, and the fetch is tried only once per start
-rm -f "$fake/sprint-check-win.exe" "$tmp/fetchlog"; printf '#!/usr/bin/env bash\necho x >> "%s/fetchlog"\nexit 1\n' "$tmp" > "$fake/fetch-daemon.sh"
-out="$(bash -c 'source "$1/cockpit-launch-lib.sh"; _is_windows() { return 0; }; have_python() { return 1; }; start_cockpit_server 4321' _ "$fake" 2>&1 || true)"
-assert_contains "$out" "run canon update"; assert_eq 1 "$(wc -l < "$tmp/fetchlog" | tr -d ' ')"
-# an exe that is already there is never re-fetched
-printf '#!/usr/bin/env bash\nexit 0\n' > "$fake/sprint-check-win.exe"; chmod +x "$fake/sprint-check-win.exe"; rm -f "$tmp/fetchlog"
-bash -c 'source "$1/cockpit-launch-lib.sh"; _is_windows() { return 0; }; have_python() { return 1; }; start_cockpit_server 4321; wait "$SERVER_PID"' _ "$fake" >/dev/null 2>&1 || true
-[[ ! -e "$tmp/fetchlog" ]] || fail "an existing exe triggered a fetch"
+for iw in 0 1; do
+  rm -f "$fake/sprint-check-win.exe" "$fake/sprint-check-bin/sprint-check" "$tmp/fetchlog"; printf '#!/usr/bin/env bash\necho x >> "%s/fetchlog"\nexit 1\n' "$tmp" > "$fake/fetch-daemon.sh"
+  out="$(IW="$iw" bash -c 'source "$1/cockpit-launch-lib.sh"; _is_windows() { return "$IW"; }; start_cockpit_server 4321; echo "rc=$? pid=${SERVER_PID:-}"' _ "$fake" 2>&1 || true)"
+  assert_contains "$out" "run canon update"; assert_eq 1 "$(wc -l < "$tmp/fetchlog" | tr -d ' ')"
+  assert_contains "$out" "rc=1 pid="   # the callers (canon, sprint-check) stop on it: `start_cockpit_server … || exit 1`; no board was started
+done
 
 printf 'cockpit-launch-lib: ok\n'

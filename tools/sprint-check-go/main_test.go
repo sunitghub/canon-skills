@@ -823,8 +823,8 @@ func TestRegistryAddListRemove(t *testing.T) {
 	}
 }
 
-// TestRegistryJSONShapeMatchesPython pins the on-disk JSON so it stays
-// byte-identical to server.py's json.dumps(indent=2)+"\n" (parity contract).
+// TestRegistryJSONShapeMatchesPython pins the on-disk JSON to the layout
+// earlier installs (the Python board) wrote, which tools/canon and the daemon read.
 func TestRegistryJSONShapeMatchesPython(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("CANON_HOME", filepath.Join(home, ".canon"))
@@ -1947,5 +1947,97 @@ func BenchmarkLoadTickets(b *testing.B) {
 		if n := len(loadTickets(root)); n != 200 {
 			b.Fatal(n)
 		}
+	}
+}
+
+// t-15d8 (ported from board-branch-divergence.sh's server.py case): the divergence scan reads a worktree ticket
+// only through plain folders; a linked ticket folder, ticket.md or .tickets is refused.
+func TestScanTicketSafeRefusesLinks(t *testing.T) {
+	base := t.TempDir()
+	elsewhere := filepath.Join(base, "elsewhere")
+	if err := os.MkdirAll(filepath.Join(elsewhere, "t-zzzz"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(elsewhere, "t-zzzz", "ticket.md"), []byte("status: open\n"), 0o644)
+	mk := func(wt string) string {
+		p := filepath.Join(base, wt)
+		os.MkdirAll(filepath.Join(p, ".tickets"), 0o755)
+		return p
+	}
+	plain := mk("plain")
+	os.MkdirAll(filepath.Join(plain, ".tickets", "t-aaaa"), 0o755)
+	os.WriteFile(filepath.Join(plain, ".tickets", "t-aaaa", "ticket.md"), []byte("status: open\n"), 0o644)
+	if !scanTicketSafe(plain, "t-aaaa") {
+		t.Fatal("a plain worktree ticket must be readable")
+	}
+	dirLink := mk("dirlink")
+	if err := os.Symlink(filepath.Join(elsewhere, "t-zzzz"), filepath.Join(dirLink, ".tickets", "t-aaaa")); err != nil {
+		t.Skip("symlinks unavailable:", err)
+	}
+	fileLink := mk("filelink")
+	os.MkdirAll(filepath.Join(fileLink, ".tickets", "t-aaaa"), 0o755)
+	os.Symlink(filepath.Join(elsewhere, "t-zzzz", "ticket.md"), filepath.Join(fileLink, ".tickets", "t-aaaa", "ticket.md"))
+	treeLink := filepath.Join(base, "treelink")
+	os.MkdirAll(treeLink, 0o755)
+	os.Symlink(filepath.Join(plain, ".tickets"), filepath.Join(treeLink, ".tickets"))
+	for wt, what := range map[string]string{dirLink: "ticket folder", fileLink: "ticket.md", treeLink: ".tickets"} {
+		if scanTicketSafe(wt, "t-aaaa") {
+			t.Errorf("a linked %s must be refused", what)
+		}
+	}
+}
+
+// t-15d8 (ported from tests/sprint-check-cockpit.sh's Python resolver case, t-e40a): COCKPIT_DAEMON_BIN wins; else the
+// first candidate that exists; with none, the first candidate (the path `canon update` will create).
+func TestResolveCockpitDaemonOverrideAndFallback(t *testing.T) {
+	td := filepath.Join(t.TempDir(), "tools")
+	root := t.TempDir()
+	t.Setenv("COCKPIT_DAEMON_BIN", "")
+	cands := cockpitDaemonCandidates(td, root, runtime.GOOS)
+	if got := resolveCockpitDaemon(td, root); got != cands[0] {
+		t.Fatalf("no binary anywhere: got %s, want the first candidate %s", got, cands[0])
+	}
+	later := cands[len(cands)-1]
+	os.MkdirAll(filepath.Dir(later), 0o755)
+	os.WriteFile(later, nil, 0o755)
+	if got := resolveCockpitDaemon(td, root); got != later {
+		t.Fatalf("only %s exists: got %s", later, got)
+	}
+	t.Setenv("COCKPIT_DAEMON_BIN", "/tmp/stub-daemon")
+	if got := resolveCockpitDaemon(td, root); got != "/tmp/stub-daemon" {
+		t.Fatalf("override must win, got %s", got)
+	}
+}
+
+// t-15d8 (ported from tests/sprint-check-skill-eval.sh's Python case): the Skill Eval busy guard is keyed by the
+// resolved project root, so a symlinked spelling of the same project cannot start a second run.
+func TestSkillEvalKeyResolvesSymlinkedRoot(t *testing.T) {
+	proj := filepath.Join(t.TempDir(), "proj")
+	os.MkdirAll(proj, 0o755)
+	link := filepath.Join(t.TempDir(), "projlink")
+	if err := os.Symlink(proj, link); err != nil {
+		t.Skip("symlinks unavailable:", err)
+	}
+	if a, b := skillEvalKey(proj, "/s/good"), skillEvalKey(link, "/s/good"); a != b {
+		t.Fatalf("a symlinked project root gave another busy key: %q vs %q", a, b)
+	}
+}
+
+// t-15d8 (ported from tests/registry.sh, which drove the Python board's registry): a project's name is its folder's
+// basename, and deregistering is registry-only, never touching the project folder.
+func TestRegistryNameIsBasenameAndRemoveKeepsDir(t *testing.T) {
+	t.Setenv("CANON_HOME", filepath.Join(t.TempDir(), ".canon"))
+	proj := filepath.Join(t.TempDir(), "myproj")
+	os.MkdirAll(filepath.Join(proj, ".git"), 0o755)
+	res := registryAdd(proj, "my project")
+	p, ok := res["project"].(registryProject)
+	if !ok || p.Name != "myproj" {
+		t.Fatalf("name should be the folder's basename, got %v", res)
+	}
+	if r := registryRemove(p.ID); r["removed"] != true {
+		t.Fatalf("remove: %v", r)
+	}
+	if fi, err := os.Stat(filepath.Join(proj, ".git")); err != nil || !fi.IsDir() {
+		t.Fatal("deregister must not touch the project folder")
 	}
 }

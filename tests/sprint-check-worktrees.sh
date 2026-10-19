@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # sprint-check-worktrees (t-cd06) — /api/worktrees (list + create) behaves
-# identically in server.py and main.go: lists `git worktree list --porcelain`
+# in the Go board (t-15d8: the only board): lists `git worktree list --porcelain`
 # verbatim, creates a sibling `<repo>-worktrees/<branch>` checkout, falls back
 # to a plain checkout when the branch already exists, and rejects a malformed
 # branch name with 400 before any `git worktree add` runs. Also covers the
@@ -16,13 +16,11 @@ if ! command -v python3 >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1 || 
   exit 0
 fi
 
-SERVER_PY="$ROOT/tools/sprint-check-app/server.py"
 GO_BIN=""
-PY_PID=""; GO_PID=""
+GO_PID=""
 cleanup() {
-  [[ -n "$PY_PID" ]] && kill "$PY_PID" 2>/dev/null || true
   [[ -n "$GO_PID" ]] && kill "$GO_PID" 2>/dev/null || true
-  [[ -n "$GO_BIN" ]] && rm -rf "$(dirname "$GO_BIN")"
+  [[ -n "$GO_BIN" ]] && rm -rf "$(dirname "$(dirname "$GO_BIN")")"
   rm -rf "$WORK" "$WORK-worktrees"
 }
 trap cleanup EXIT
@@ -54,20 +52,8 @@ echo 'not matched by any pattern' > "$WORK/config/other.json"
 git -C "$WORK" add .gitignore
 git -C "$WORK" commit -q -m gitignore
 
-if command -v go >/dev/null 2>&1; then
-  GO_BIN="$(mktemp -d)/sprint-check-go-bin"
-  (cd "$ROOT" && GO111MODULE=off go build -o "$GO_BIN" ./tools/sprint-check-go)
-fi
-
-PY_PORT="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
-SPRINT_CHECK_ROOT="$WORK" python3 "$SERVER_PY" "$PY_PORT" >/dev/null 2>&1 &
-PY_PID=$!
-disown "$PY_PID" 2>/dev/null || true
-
-for _ in $(seq 1 50); do
-  curl -s -o /dev/null "http://127.0.0.1:$PY_PORT/api/git" && break
-  sleep 0.1
-done
+GO_BIN="$(build_board "$(mktemp -d)")"
+BOARD_TMP="$(dirname "$(dirname "$GO_BIN")")"
 
 run_checks() {
   local port="$1" label="$2"
@@ -200,7 +186,7 @@ assert d['main_dirty'] is True, ('a real change must be dirty', d)
   rm -f "$WORK/real-change.txt" "$WORK/.tickets/ACTIVE"
 
   # t-fe3c: POST /api/worktree-unlock/<id> clears the lock (deletes .cockpit-cwd),
-  # is idempotent, and 400s a malformed id — identically on both backends.
+  # is idempotent, and 400s a malformed id.
   # (do_POST/handlePost require a JSON body on every POST, so send {}.)
   local unlock_json
   unlock_json="$(curl -s -X POST "http://127.0.0.1:$port/api/worktree-unlock/t-lok1" -H 'Content-Type: application/json' -d '{}')"
@@ -217,7 +203,7 @@ assert d['main_dirty'] is True, ('a real change must be dirty', d)
   unlock_bad="$(curl -s -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$port/api/worktree-unlock/not-an-id" -H 'Content-Type: application/json' -d '{}')"
   [[ "$unlock_bad" == "400" ]] || fail "$label: unlock with malformed id must 400, got $unlock_bad"
 
-  # t-99fa: GET /api/version returns {version, daemon} on BOTH backends (shape parity).
+  # t-99fa: GET /api/version returns {version, daemon}.
   local ver_json
   ver_json="$(curl -s "http://127.0.0.1:$port/api/version")"
   python3 -c "
@@ -262,25 +248,17 @@ assert others and all(e.get('tickets_visible') is False for e in others), ('non-
   git -C "$WORK" worktree prune >/dev/null 2>&1 || true
 }
 
-run_checks "$PY_PORT" "server.py"
-
-kill "$PY_PID" 2>/dev/null || true
-PY_PID=""
-
-if [[ -n "$GO_BIN" ]]; then
-  GO_PORT="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
-  SPRINT_CHECK_NO_BROWSER=1 SPRINT_CHECK_ROOT="$WORK" "$GO_BIN" "$GO_PORT" >/dev/null 2>&1 &
-  GO_PID=$!
-  disown "$GO_PID" 2>/dev/null || true
-  for _ in $(seq 1 50); do
-    curl -s -o /dev/null "http://127.0.0.1:$GO_PORT/api/git" && break
-    sleep 0.1
-  done
-  run_checks "$GO_PORT" "main.go"
-  kill "$GO_PID" 2>/dev/null || true
-  GO_PID=""
-else
-  echo "sprint-check-worktrees: go absent — main.go backend skipped"
-fi
+GO_PORT="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
+SPRINT_CHECK_NO_BROWSER=1 SPRINT_CHECK_ROOT="$WORK" CANON_HOME="$BOARD_TMP/canon" COCKPIT_STATE_DIR="$BOARD_TMP/ck" COCKPIT_DAEMON_BIN=/usr/bin/false \
+  TMPDIR="$BOARD_TMP" "$GO_BIN" "$GO_PORT" >/dev/null 2>&1 &
+GO_PID=$!
+disown "$GO_PID" 2>/dev/null || true
+for _ in $(seq 1 50); do
+  curl -s -o /dev/null "http://127.0.0.1:$GO_PORT/api/git" && break
+  sleep 0.1
+done
+run_checks "$GO_PORT" "main.go"
+kill "$GO_PID" 2>/dev/null || true
+GO_PID=""
 
 printf 'sprint-check-worktrees: ok\n'

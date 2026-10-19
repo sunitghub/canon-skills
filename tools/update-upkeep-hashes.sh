@@ -15,7 +15,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 MANIFEST="$ROOT/tools/upkeep-skill-hashes.json"
 
-# Fixed list — mirrors server.py/main.go's own UPKEEP_SKILLS constant and
+# Fixed list — mirrors main.go's own upkeepSkills list and
 # tools/upkeep-run's case statement. Adding a fifth built-in skill means
 # updating all of these together, not just this one.
 SKILLS=(context-check context-doctor dead-code-cleanup promote-learnings)

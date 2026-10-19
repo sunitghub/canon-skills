@@ -141,8 +141,8 @@ export function renderHeader() {
   document.getElementById('h-project').title = git?.root || '';
   state.gitRoot = cockpitForwardSlash(git?.root) || '';
   // t-644a: the board's own established non-git tell — total_commits is only
-  // a number when `git rev-list --count HEAD` actually succeeded (server.py's
-  // load_git); already used above for the commits-total badge. Reused here to
+  // a number when `git rev-list --count HEAD` actually succeeded (the board's
+  // git summary); already used above for the commits-total badge. Reused here to
   // gate every worktree-preference surface (modal row, rail accordion, board
   // chip) live, not cached at registration — reappears the moment git init
   // happens and this project's header next re-renders.

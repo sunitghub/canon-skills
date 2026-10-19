@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# why-cap — tkt why and both board /api/why implementations cap matched
+# why-cap — tkt why and the board's /api/why (the Go board, t-15d8) cap matched
 # tickets to the latest 10 (git-log order, most-recent-first) and report a
 # "more" count when truncated, instead of unbounded output for high-churn
 # files. Also covers the basename fallback: an exact-path miss searches all
@@ -15,13 +15,11 @@ source "$ROOT/tests/helpers.sh"
 # ── Build a fixture: 13 commits/tickets touching one shared file ────────────
 
 WORK="$(mktemp -d)"
-GO_BIN="$(mktemp -d)/sprint-check-go-bin"
-PY_PID=""
+BOARD_TMP="$(mktemp -d)"
 GO_PID=""
 cleanup() {
-  [[ -n "$PY_PID" ]] && kill "$PY_PID" 2>/dev/null || true
   [[ -n "$GO_PID" ]] && kill "$GO_PID" 2>/dev/null || true
-  rm -rf "$WORK" "$(dirname "$GO_BIN")"
+  rm -rf "$WORK" "$BOARD_TMP"
 }
 trap cleanup EXIT
 
@@ -113,28 +111,22 @@ fi
 out_none="$(cd "$WORK" && "$ROOT/tools/tkt" why totally-not-a-real-file.js)"
 assert_contains "$out_none" "No git history found for: totally-not-a-real-file.js"
 
-if ! command -v python3 >/dev/null 2>&1 || ! command -v go >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
-  echo "why-cap: ok (CLI cap verified; board API parity skipped — python3/go/curl not all present)"
+if ! command -v python3 >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
+  echo "why-cap: ok (CLI cap verified; board API skipped — python3/curl not both present)"
   exit 0
 fi
 
-# ── Both board /api/why implementations: identical capped result + more ─────
+# ── The board's /api/why: capped result + more ──────────────────────────────
 
 free_port() {
   python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'
 }
 
-PY_PORT="$(free_port)"
 GO_PORT="$(free_port)"
+GO_BIN="$(build_board "$BOARD_TMP")"
 
-mkdir -p "$(dirname "$GO_BIN")"
-(cd "$ROOT" && GO111MODULE=off go build -o "$GO_BIN" ./tools/sprint-check-go)
-
-SPRINT_CHECK_ROOT="$WORK" python3 "$ROOT/tools/sprint-check-app/server.py" "$PY_PORT" >/dev/null 2>&1 &
-PY_PID=$!
-disown "$PY_PID" 2>/dev/null || true
-
-SPRINT_CHECK_ROOT="$WORK" SPRINT_CHECK_NO_BROWSER=1 "$GO_BIN" "$GO_PORT" >/dev/null 2>&1 &
+SPRINT_CHECK_ROOT="$WORK" CANON_HOME="$BOARD_TMP/canon" COCKPIT_STATE_DIR="$BOARD_TMP/ck" COCKPIT_DAEMON_BIN=/usr/bin/false SPRINT_CHECK_NO_BROWSER=1 \
+  TMPDIR="$BOARD_TMP" "$GO_BIN" "$GO_PORT" >/dev/null 2>&1 &
 GO_PID=$!
 disown "$GO_PID" 2>/dev/null || true
 
@@ -146,115 +138,51 @@ wait_for_port() {
   done
   return 1
 }
-wait_for_port "$PY_PORT" || fail "server.py did not start on port $PY_PORT"
 wait_for_port "$GO_PORT" || fail "main.go did not start on port $GO_PORT"
 
-py_json="$(curl -s "http://127.0.0.1:$PY_PORT/api/why?file=shared.js")"
-go_json="$(curl -s "http://127.0.0.1:$GO_PORT/api/why?file=shared.js")"
+why() { curl -s "http://127.0.0.1:$GO_PORT/api/why?file=$1"; }
 
-python3 - "$py_json" "$go_json" <<'PY'
-import json
-import sys
-
-py = json.loads(sys.argv[1])
-go = json.loads(sys.argv[2])
-
-if py.get("more") != 3 or go.get("more") != 3:
-    print(f"why-cap: FAIL — expected more=3 on both, got server.py={py.get('more')!r} main.go={go.get('more')!r}")
-    sys.exit(1)
-
-py_ids = [r["id"] for r in py.get("results", [])]
-go_ids = [r["id"] for r in go.get("results", [])]
-
-if len(py_ids) != 10 or len(go_ids) != 10:
-    print(f"why-cap: FAIL — expected 10 results on both, got server.py={len(py_ids)} main.go={len(go_ids)}")
-    sys.exit(1)
-
-if py_ids != go_ids:
-    print(f"why-cap: FAIL — server.py and main.go returned different capped id order")
-    print(f"  server.py: {py_ids}")
-    print(f"  main.go:   {go_ids}")
-    sys.exit(1)
+# the latest 10 in git-log order, most recent first (was checked as py == go before t-15d8)
+python3 - "$(why shared.js)" <<'PY'
+import json, sys
+go = json.loads(sys.argv[1])
+ids = [r["id"] for r in go.get("results", [])]
+want = ["t-mmm3", "t-lll2", "t-kkk1", "t-jjj0", "t-iii9", "t-hhh8", "t-ggg7", "t-fff6", "t-eee5", "t-ddd4"]
+assert go.get("more") == 3, f"why-cap: FAIL — expected more=3, got {go.get('more')!r}"
+assert ids == want, f"why-cap: FAIL — capped ids/order: got {ids}, want {want}"
 PY
 
-# ── Regression on the board APIs too: a file touched by 1 ticket → more=0 ───
+# ── Regression on the board API too: a file touched by 1 ticket → more=0 ───
 
-py_small_json="$(curl -s "http://127.0.0.1:$PY_PORT/api/why?file=lonely.js")"
-go_small_json="$(curl -s "http://127.0.0.1:$GO_PORT/api/why?file=lonely.js")"
-
-python3 - "$py_small_json" "$go_small_json" <<'PY'
-import json
-import sys
-
-py = json.loads(sys.argv[1])
-go = json.loads(sys.argv[2])
-
-if py.get("more") != 0 or go.get("more") != 0:
-    print(f"why-cap: FAIL — expected more=0 on both for a 1-ticket file, got server.py={py.get('more')!r} main.go={go.get('more')!r}")
-    sys.exit(1)
+python3 - "$(why lonely.js)" <<'PY'
+import json, sys
+go = json.loads(sys.argv[1])
+assert go.get("more") == 0, f"why-cap: FAIL — expected more=0 for a 1-ticket file, got {go.get('more')!r}"
 PY
 
-# ── Both board APIs: basename fallback parity (unique + ambiguous + none) ───
+# ── The board API: basename fallback (unique + ambiguous + none) ────────────
 
-py_unique_json="$(curl -s "http://127.0.0.1:$PY_PORT/api/why?file=unique.js")"
-go_unique_json="$(curl -s "http://127.0.0.1:$GO_PORT/api/why?file=unique.js")"
-py_full_json="$(curl -s "http://127.0.0.1:$PY_PORT/api/why?file=nested/dir/unique.js")"
-
-python3 - "$py_unique_json" "$go_unique_json" "$py_full_json" <<'PY'
-import json
-import sys
-
-py_basename, go_basename, py_full = (json.loads(a) for a in sys.argv[1:4])
-
-for label, resp in (("server.py", py_basename), ("main.go", go_basename)):
-    if resp.get("file") != "unique.js":
-        print(f"why-cap: FAIL — {label} basename fallback must echo the typed query in 'file', got {resp.get('file')!r}")
-        sys.exit(1)
-
-if [r["id"] for r in py_basename.get("results", [])] != [r["id"] for r in py_full.get("results", [])]:
-    print("why-cap: FAIL — server.py basename fallback result differs from querying the full path directly")
-    sys.exit(1)
-
-if [r["id"] for r in py_basename.get("results", [])] != [r["id"] for r in go_basename.get("results", [])]:
-    print("why-cap: FAIL — server.py and main.go basename fallback returned different results")
-    sys.exit(1)
+python3 - "$(why unique.js)" "$(why nested/dir/unique.js)" <<'PY'
+import json, sys
+basename, full = (json.loads(a) for a in sys.argv[1:3])
+assert basename.get("file") == "unique.js", f"why-cap: FAIL — basename fallback must echo the typed query in 'file', got {basename.get('file')!r}"
+assert basename.get("results"), "why-cap: FAIL — basename fallback returned no results"
+assert [r["id"] for r in basename["results"]] == [r["id"] for r in full.get("results", [])], \
+    "why-cap: FAIL — basename fallback result differs from querying the full path directly"
 PY
 
-py_ambiguous_json="$(curl -s "http://127.0.0.1:$PY_PORT/api/why?file=dup.js")"
-go_ambiguous_json="$(curl -s "http://127.0.0.1:$GO_PORT/api/why?file=dup.js")"
-
-python3 - "$py_ambiguous_json" "$go_ambiguous_json" <<'PY'
-import json
-import sys
-
-py, go = (json.loads(a) for a in sys.argv[1:3])
-
-for label, resp in (("server.py", py), ("main.go", go)):
-    if not resp.get("results"):
-        print(f"why-cap: FAIL — {label} ambiguous basename should auto-resolve and return results")
-        sys.exit(1)
-    if not resp.get("resolved_path"):
-        print(f"why-cap: FAIL — {label} ambiguous basename should include resolved_path")
-        sys.exit(1)
-    alts = resp.get("alternatives", [])
-    if not alts:
-        print(f"why-cap: FAIL — {label} ambiguous basename should include alternatives")
-        sys.exit(1)
+python3 - "$(why dup.js)" <<'PY'
+import json, sys
+resp = json.loads(sys.argv[1])
+assert resp.get("results"), "why-cap: FAIL — ambiguous basename should auto-resolve and return results"
+assert resp.get("resolved_path"), "why-cap: FAIL — ambiguous basename should include resolved_path"
+assert resp.get("alternatives"), "why-cap: FAIL — ambiguous basename should include alternatives"
 PY
 
-py_none_json="$(curl -s "http://127.0.0.1:$PY_PORT/api/why?file=totally-not-a-real-file.js")"
-go_none_json="$(curl -s "http://127.0.0.1:$GO_PORT/api/why?file=totally-not-a-real-file.js")"
-
-python3 - "$py_none_json" "$go_none_json" <<'PY'
-import json
-import sys
-
-py, go = (json.loads(a) for a in sys.argv[1:3])
-
-for label, resp in (("server.py", py), ("main.go", go)):
-    if "No git history found" not in resp.get("message", ""):
-        print(f"why-cap: FAIL — {label} no-match message regressed: {resp.get('message')!r}")
-        sys.exit(1)
+python3 - "$(why totally-not-a-real-file.js)" <<'PY'
+import json, sys
+resp = json.loads(sys.argv[1])
+assert "No git history found" in resp.get("message", ""), f"why-cap: FAIL — no-match message regressed: {resp.get('message')!r}"
 PY
 
-echo "why-cap: ok (tkt why caps to 10 + '+3 more, older'; server.py/main.go /api/why identical, capped to 10, more=3; both correctly report more=0 for a 1-ticket file; basename fallback verified unique/ambiguous/none across tkt, server.py, main.go)"
+echo "why-cap: ok (tkt why caps to 10 + '+3 more, older'; the board's /api/why capped to 10 in git-log order, more=3; more=0 for a 1-ticket file; basename fallback verified unique/ambiguous/none across tkt and the board)"

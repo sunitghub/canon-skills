@@ -163,7 +163,7 @@ runb --dry-run; assert_eq 0 "$rc"; assert_contains "$out" "BLOCKED: something an
 
 # ── t-70a2: the command stops THIS install's Cockpit board and daemon itself, found by recorded pid / port and verified against the install ───────
 # Real throwaway processes under a fake install: a daemon stub (argv0 = <install>/tools/cockpit-daemon/cockpit-daemon, writes daemon.json with its own pid,
-# removes it on SIGTERM), a board stub (python listening on a free port, started as <install>/tools/sprint-check-app/server.py) under a launcher stub
+# removes it on SIGTERM), the real Go board built from this checkout at <install>/$(board_rel_path) (t-15d8; the path cockpit-stop-lib.sh recognises) under a launcher stub
 # (argv0 "bash <install>/tools/canon") that exits when the board dies.
 killlist=()
 trap 'for p in ${killlist[@]+"${killlist[@]}"}; do kill -9 "$p" 2>/dev/null || true; done; cleanup' EXIT
@@ -185,18 +185,18 @@ while True:
 PY
 cat > "$WORK/lstub.sh" <<'SH'
 #!/usr/bin/env bash
-# lstub.sh <server.py> <port>: a launcher that runs the board and exits when it dies
-python3 "$1" "$2" & b=$!
+# lstub.sh <board> <port>: a launcher that runs the board and exits when it dies
+SPRINT_CHECK_NO_BROWSER=1 "$1" "$2" & b=$!
 trap 'kill "$b" 2>/dev/null; exit 0' TERM
 wait "$b"
 SH
 mk_live() { # <install> <state dir> <port> [daemon mode]  sets DPID BPID LPID (board and launcher only when a port is given)
   local inst="$1" state="$2" port="$3" mode="${4:-}"
-  mkdir -p "$inst/tools/sprint-check-app"; cp "$WORK/bstub.py" "$inst/tools/sprint-check-app/server.py"
+  mkdir -p "$inst/tools/sprint-check-bin"; cp "$BOARD" "$inst/tools/sprint-check-bin/sprint-check"
   ( exec -a "$inst/tools/cockpit-daemon/cockpit-daemon" bash "$WORK/dstub.sh" "$state" $mode ) & DPID=$!; killlist+=("$DPID")
   BPID=""; LPID=""
   if [ -n "$port" ]; then
-    ( exec -a "bash $inst/tools/canon" bash "$WORK/lstub.sh" "$inst/tools/sprint-check-app/server.py" "$port" ) & LPID=$!; killlist+=("$LPID")
+    ( export CANON_HOME="$WORK/board-home" COCKPIT_STATE_DIR="$state"; exec -a "bash $inst/tools/canon" bash "$WORK/lstub.sh" "$inst/tools/sprint-check-bin/sprint-check" "$port" ) & LPID=$!; killlist+=("$LPID")
     for _ in $(seq 1 50); do curl -s -o /dev/null --max-time 1 "http://127.0.0.1:$port/" && break; sleep 0.1; done
     BPID="$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t | head -1)"; killlist+=("$BPID")
   fi
@@ -208,6 +208,7 @@ runl() { # <inst> <h> <port> <TMPDIR> args...  (a live-process run: real curl/ps
   set +e; out="$(HOME="$h" TMPDIR="$t" CANON_COCKPIT_PORT="$port" CANON_STOP_WAIT=3 CANON_HOME= "$inst/tools/canon" uninstall "$@" </dev/null 2>&1)"; rc=$?; set -e
 }
 if command -v lsof >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
+  BOARD="$(build_board "$WORK/board")"
   # 1. board + launcher + daemon, no sessions: stopped by the command, runtime state removed, install removed
   inst="$WORK/L1"; h="$WORK/hL1"; t="$WORK/tL1"; mkdir -p "$t"; mk_install "$inst"; mk_home "$h" "$inst"; mk_project "$WORK/pL1" "$h"
   port="$(free_port)"; mk_live "$inst" "$t/canon-cockpit-board" "$port"
@@ -241,8 +242,8 @@ if command -v lsof >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
   assert_contains "$out" "a daemon of another install is still using it"; kill "$other" 2>/dev/null || true
   # 4b. a listener on the port that is NOT this install's board: refuse, never signal
   inst="$WORK/L5"; h="$WORK/hL5"; t="$WORK/tL5"; mkdir -p "$t"; mk_install "$inst"; mk_home "$h" "$inst"; port="$(free_port)"
-  mkdir -p "$WORK/foreign"; cp "$WORK/bstub.py" "$WORK/foreign/server.py"
-  ( exec python3 "$WORK/foreign/server.py" "$port" ) & fb=$!; killlist+=("$fb"); for _ in $(seq 1 50); do curl -s -o /dev/null --max-time 1 "http://127.0.0.1:$port/" && break; sleep 0.1; done
+  mkdir -p "$WORK/foreign"; cp "$WORK/bstub.py" "$WORK/foreign/listener.py"
+  ( exec python3 "$WORK/foreign/listener.py" "$port" ) & fb=$!; killlist+=("$fb"); for _ in $(seq 1 50); do curl -s -o /dev/null --max-time 1 "http://127.0.0.1:$port/" && break; sleep 0.1; done
   before="$(digest "$inst"; digest "$h")"; runl "$inst" "$h" "$port" "$t" --yes
   assert_eq 1 "$rc"; assert_contains "$out" "is not this install's board"; alive "$fb" || fail "a foreign listener was signalled"; assert_eq "$before" "$(digest "$inst"; digest "$h")"; kill "$fb" 2>/dev/null || true
   # 5. a daemon that ignores SIGTERM: reported by pid, nothing deleted, no SIGKILL

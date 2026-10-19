@@ -20,7 +20,7 @@ CANON_STOP_WAIT=$((10#$CANON_STOP_WAIT))                              # '08' is 
 BOARD_STATUS=none; BOARD_PID=""; BOARD_FOREIGN=""; LAUNCHER_PID=""
 DAEMON_STATUS=none; DAEMON_PID=""; DAEMON_FOREIGN_DIRS=""; SESSIONS=0
 
-# Every place a daemon or board may keep its runtime state: the board's dir (server.py `_cockpit_state_dir`: <tmp>/canon-cockpit-board), an
+# Every place a daemon or board may keep its runtime state: the board's dir (the Go board's `cockpitStateDir`: <tmp>/canon-cockpit-board), an
 # explicit COCKPIT_STATE_DIR, and the daemon's own default (main.go `defaultStateDir`).
 cockpit_state_dirs() {
   local tmp="${TMPDIR:-${TEMP:-/tmp}}"
@@ -60,12 +60,12 @@ _is_our_daemon() { # <ident>
   case "$1" in "$INSTALL/tools/cockpit-daemon/cockpit-daemon"|"$INSTALL/tools/cockpit-daemon/cockpit-daemon "*) return 0 ;; esac
   return 1
 }
-_is_our_board() { # <ident>
+_is_our_board() { # <ident>  (the path is board_rel_path's, t-15d8)
   if _is_windows; then
     local w; w="$(_win_install)"
-    [ "$(printf '%s' "$1" | tr 'A-Z' 'a-z')" = "$(printf '%s' "$w" | tr 'A-Z' 'a-z')\\tools\\sprint-check-win.exe" ]; return
+    [ "$(printf '%s' "$1" | tr 'A-Z' 'a-z')" = "$(printf '%s\\%s' "$w" "$(board_rel_path | tr / '\\')" | tr 'A-Z' 'a-z')" ]; return
   fi
-  case "$1" in *" $INSTALL/tools/sprint-check-app/server.py"|*" $INSTALL/tools/sprint-check-app/server.py "*) return 0 ;; esac
+  case "$1" in "$INSTALL/$(board_rel_path)"|"$INSTALL/$(board_rel_path) "*) return 0 ;; esac
   return 1
 }
 _foreign_uses() { case $'\n'"$DAEMON_FOREIGN_DIRS" in *$'\n'"$1"$'\n'*) return 0 ;; esac; return 1; }
@@ -86,7 +86,7 @@ probe_daemon() {
   done < <(cockpit_state_dirs | awk '!seen[$0]++')
 }
 
-# The board: whatever listens on its port. Ours only if its command line is this install's server.py (or, on Windows, its exe).
+# The board: whatever listens on its port. Ours only if its command line is this install's board binary (board_rel_path).
 probe_board() {
   BOARD_STATUS=none; BOARD_PID=""; BOARD_FOREIGN=""; LAUNCHER_PID=""
   local pids="" p ident

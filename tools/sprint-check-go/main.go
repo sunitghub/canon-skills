@@ -507,7 +507,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			sendJSON(w, getHeadlessRunState(m[1]))
 			return
 		}
-		// t-b9a7: Skill Eval (skilleval.go) — same routes and shapes as server.py.
+		// t-b9a7: Skill Eval (skilleval.go).
 		if path == "/api/skill-eval/status" || path == "/api/skill-eval/report" || path == "/api/skill-eval/report.html" {
 			root, ok := effectiveRoot(r)
 			if !ok {
@@ -1415,7 +1415,7 @@ func writeStatus(id, status string, root string) bool {
 // writeDemo toggles the boolean `demo` frontmatter field on an existing ticket. ON ensures a
 // `demo: true` line (appended as the last frontmatter field); OFF removes any `demo:` line
 // (absent = false, matching `tkt demo`). Returns true if the ticket exists (idempotent).
-// Kept byte-for-byte identical to server.py's write_demo — parity-tested (t-64a0).
+// t-64a0: the byte layout is pinned by tests/sprint-check-api.sh.
 func writeDemo(id string, want bool, root string) bool {
 	path := findTicketPath(id, root)
 	if path == "" {
@@ -1499,8 +1499,7 @@ func writeDoc(docFile, content string, root string) bool {
 	return os.WriteFile(p, []byte(strings.TrimSpace(content)+"\n"), 0644) == nil
 }
 
-// Must stay behaviorally identical to server.py's write_visual (t-626d) —
-// enforced by tests/sprint-check-api-parity.sh, not shared code.
+// t-626d: behaviour pinned by tests/sprint-check-api.sh.
 const maxVisualBytes = 8 * 1024 * 1024
 
 // dedupeVisualName returns a collision-free filename under .tickets/<id>/visuals/,
@@ -1556,7 +1555,7 @@ func writeVisual(ticketID, filename, dataB64 string, root string) map[string]any
 }
 
 // t-b0c9: the intent skeleton a ticket starts with when a create request carries no body. Same text as tools/tkt
-// ticket_skeleton, the board's TYPE_TEMPLATES and server.py; tests/ticket-skeleton.sh keeps the four identical.
+// ticket_skeleton and the board's TYPE_TEMPLATES; tests/ticket-skeleton.sh keeps the three identical.
 const skeletonRest = "## Outcome\n<!-- What is true when this is done? -->\n\n" +
 	"## Constraints\n<!-- Limits the solution must respect. -->\n\n" +
 	"## Open questions\n<!-- Anything to decide before planning. The plan answers or carries forward each one. -->\n"
@@ -1756,9 +1755,7 @@ func readDocWithEtag(docFile string, root string) (string, string, bool) {
 	return string(raw), etag, err == nil
 }
 
-// Must stay behaviorally identical to server.py's _safe_ticket_doc
-// (tools/sprint-check-app/server.py) — enforced by tests/sprint-check-api-parity.sh,
-// not shared code. Change one, change the other, then re-run that test.
+// Behaviour pinned by tests/sprint-check-api.sh: re-run it after a change.
 func safeTicketDoc(docFile string, exts ...string) (string, bool) {
 	return safeTicketDocIn(docFile, "", exts...)
 }
@@ -2015,8 +2012,7 @@ func openBrowser(u string) {
 	_ = cmd.Start()
 }
 
-// t-cd06: mirrors server.py's list_worktrees/create_worktree for API parity
-// (tests/sprint-check-api-parity.sh) between the two board-server implementations.
+// t-cd06: the worktree list/create API, pinned by tests/sprint-check-worktrees.sh and tests/sprint-check-api.sh.
 
 func validBranchName(name string) bool {
 	return name != "" && baseRefRe.MatchString(name) && !strings.HasPrefix(name, "-") && !strings.Contains(name, "..")
@@ -2248,7 +2244,7 @@ func annotateBranchDivergence(tickets []ticket, root string) {
 		}
 	}
 	// Prefer a live worktree over a branch, then a terminal status, then branch name —
-	// the same order as server.py's min() key, so both backends pick the same entry.
+	// a stable order, so every call picks the same entry.
 	better := func(a, b divergenceCand) bool {
 		if (a.where == "worktree") != (b.where == "worktree") {
 			return a.where == "worktree"
@@ -2585,7 +2581,7 @@ func writeLiveDoc(docFile string, payload map[string]any, root string) (handled 
 }
 
 // ── Writing a worktree-bound ticket's own fields from the board (t-8be2) ───
-// Mirrors server.py's write_live_ticket, parity-tested by tests/sprint-check-live-ticket.sh. The worktree copy owns a
+// Tested by tests/sprint-check-live-ticket.sh. The worktree copy owns a
 // bound ticket's status, Description and Demo too. status/demo are single-field edits of the bytes on disk at that
 // moment; a body save is guarded by base_hash like a doc. ACTIVE follows tkt's per-checkout file.
 var liveTicketNames = map[string]bool{"ticket.md": true}
@@ -2818,8 +2814,7 @@ func liveForDocFull(docFile, root string) (string, string, string, bool) {
 }
 
 // ── Worktree holds (t-2241) ───────────────────────────────────────────────
-// Mirrors server.py's _annotate_worktree_holds (parity-tested by
-// tests/sprint-check-worktree-holds.sh): which non-main worktrees another ticket
+// Tested by tests/sprint-check-worktree-holds.sh: which non-main worktrees another ticket
 // still needs — bound via .cockpit-cwd and not done ("in progress"), chosen by an
 // open ticket's worktree_preference ("reserved"), dirty ignoring runtime noise
 // ("uncommitted changes"), or unmerged ("branch not merged"). The requesting
@@ -3027,8 +3022,7 @@ func annotateWorktreeHolds(entries []map[string]any, ticketID, root string) {
 // 400) when cwd is not a real registered worktree — the board never reads an
 // arbitrary client-supplied directory (same trust model as the daemon's
 // resolveSpawnCwd). Read-only; each doc path is contained under <cwd>/.tickets.
-// Must stay behaviorally identical to server.py's cockpit_docs — see
-// tests/sprint-check-api-parity.sh.
+// Behaviour pinned by tests/sprint-check-api.sh.
 func cockpitDocs(ticketID, cwd string) (map[string]any, bool) {
 	cwdReal, err := filepath.EvalSymlinks(cwd)
 	if err != nil {
@@ -3221,7 +3215,7 @@ func createWorktree(branch, root string) map[string]any {
 }
 
 // ── Commit a ticket before branching (t-d254) ────────────────────────────
-// Mirrors server.py's ticket_commit_plan/ticket_commit (parity-tested): GET
+// Tested by tests/sprint-check-ticket-commit.sh: GET
 // classifies the ticket's uncommitted files, POST commits a chosen subset
 // path-scoped (`--only`), re-deriving eligibility itself rather than trusting
 // the client's list.
@@ -3230,12 +3224,14 @@ var ticketCommitIDRe = regexp.MustCompile(`^t-[a-z0-9]{4}$`)
 const otherDirtyCap = 20
 
 // gitOutIn is runGitIn without the trim (porcelain lines start with a space)
-// and with the exit status, which runGitIn discards.
+// and with the exit status, which runGitIn discards. GIT_TERMINAL_PROMPT=0: the
+// board has no terminal, so a credential prompt must fail, not hang.
 func gitOutIn(root string, timeout time.Duration, args ...string) (string, string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = root
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errb
@@ -3712,8 +3708,7 @@ func resolveCanonGateTemplate(toolsDir, root string, extraRoots ...string) strin
 // cockpit-daemon (which owns the PTY) and the frontend iframes its /cockpit
 // page. The board reads only the daemon's addr from the 0600 daemon.json; the
 // token stays daemon-side. The spawn argv is fixed — no board/user input is
-// interpolated. Must stay behaviorally identical to server.py's cockpit_*
-// helpers — parity-tested by tests/sprint-check-api-parity.sh.
+// interpolated. Behaviour pinned by tests/sprint-check-api.sh.
 
 // resolveCockpitDaemon finds the cockpit-daemon binary. COCKPIT_DAEMON_BIN
 // overrides (used by tests to point at a stub); otherwise the first existing of
@@ -4293,6 +4288,7 @@ func ensureCockpit() map[string]any {
 		env = append(env, "COCKPIT_SPRINT_BIN="+cockpitSprintBin)
 	}
 	cmd.Env = env
+	detachDaemon(cmd)
 	if err := cmd.Start(); err != nil {
 		return map[string]any{"running": false, "addr": nil, "error": err.Error()}
 	}
@@ -4710,7 +4706,7 @@ func runUpkeep(root, skill, model string) {
 	})
 }
 
-// Same model-id rule as server.py's _MODEL_RE and tools/upkeep-run; tests/fixtures/model-id-cases.json locks all three.
+// Same model-id rule as tools/upkeep-run; tests/fixtures/model-id-cases.json locks both.
 var upkeepModelRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:\[\]-]{0,63}$`)
 
 func validUpkeepModel(model string) bool { return upkeepModelRe.MatchString(model) }
@@ -4864,10 +4860,10 @@ func sendJSONStatus(w http.ResponseWriter, data any, status int) {
 }
 
 // ── Canon Cockpit project registry (t-9917) ───────────────────────────────
-// Byte-for-byte mirror of server.py's registry: ~/.canon/cockpit/projects.json,
+// The project registry: ~/.canon/cockpit/projects.json,
 // a JSON array of {id,path,name,description,added}. id = first 12 hex of
 // sha256(resolved abs path). Field order pinned via the struct tags below to
-// match server.py's json.dumps order so parity byte-compares hold. Paths +
+// keep the layout earlier installs wrote (tools/canon and the daemon read it). Paths +
 // descriptions only, no secrets (DECISIONS t-06cc: no encryption).
 
 type registryProject struct {
@@ -4911,7 +4907,7 @@ func registrySave(entries []registryProject) error {
 	if err := os.MkdirAll(d, 0o700); err != nil {
 		return err
 	}
-	// Match server.py's json.dumps(ensure_ascii=False, indent=2)+"\n" byte-for-byte.
+	// The layout earlier installs wrote: 2-space indent, non-ASCII kept, trailing newline.
 	// json.MarshalIndent HTML-escapes & < > (→ \u0026 …); Python does not, so a
 	// path/description containing those chars would diverge (t-9917 review finding).
 	// json.Encoder with SetEscapeHTML(false) + SetIndent produces the literal chars.
@@ -4952,8 +4948,8 @@ func loadModelTiers() map[string]any {
 }
 
 // ── User themes (t-f889) — mirrors server.py's list_themes/open_themes_folder ──
-// $CANON_HOME/themes/*.json: files anyone can drop there, so untrusted. Every rule and reason string matches server.py
-// and static/theme-data.js; tests/theme-files-parity.sh holds all three to theme.schema.json (never read at runtime).
+// $CANON_HOME/themes/*.json: files anyone can drop there, so untrusted. Every rule and reason string matches
+// static/theme-data.js; tests/theme-files-parity.sh holds both to theme.schema.json (never read at runtime).
 var (
 	themeKeys   = []string{"bg", "surface", "border", "text", "body", "muted", "accent", "ok", "warn", "bad", "info", "term"}
 	themeFileRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,29}\.json$`)
@@ -5083,7 +5079,7 @@ func themeRead(path string) (userTheme, string) {
 	return themeCheck(data)
 }
 
-// themeTooDeep: brackets outside strings deeper than themeMaxDepth; the same scan as server.py's _theme_too_deep
+// themeTooDeep: brackets outside strings deeper than themeMaxDepth
 // (its parser hits RecursionError where Go's does not, so both refuse deep nesting first).
 func themeTooDeep(raw []byte) bool {
 	depth, inStr, esc := 0, false, false
@@ -5172,7 +5168,7 @@ func openThemesFolder() map[string]any {
 	d := themesDir()
 	created := false
 	// absent: create it (another request may win the race: then it simply exists). Any other error (a file in the
-	// way, a link loop, no permission) means it is not a usable folder. Same outcomes as server.py.
+	// way, a link loop, no permission) means it is not a usable folder.
 	st, err := os.Stat(d)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return map[string]any{"ok": false, "error": "the themes path is not a folder"}
@@ -5719,11 +5715,10 @@ func setDefault(t ticket, key string, value any) {
 	}
 }
 
-// t-1f22: the two gate reports are named for who writes them; server.py's _doc_name must match.
+// t-1f22: the two gate reports are named for who writes them.
 var docNameOverrides = map[string]string{"eval-report": "Eval Agent", "review-notes": "Review Agent"}
 
 // t-1f22: the working docs first, then the two gate reports one after another (review, then eval), then the rest by name.
-// server.py's _doc_order must match.
 var docOrder = []string{"acceptance", "plan", "research", "review-notes", "eval-report"}
 
 func docRank(path string) int {

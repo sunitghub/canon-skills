@@ -3,7 +3,7 @@
 # in tools/cockpit-daemon.sha256 (t-60f7, t-9383). Maintainer step: run it after the source is committed and before the manifest
 # (and the commit that carries it) is pushed to public, because installs verify what they download against it.
 #   cockpit-daemon  macOS + Linux (4 targets) and Windows amd64   release cockpit-daemon-<key of tools/cockpit-daemon>
-#   board           Windows amd64   (tools/sprint-check-win.exe)           release sprint-check-<key of tools/sprint-check-go>
+#   board           macOS + Linux (4 targets, t-15d8) and Windows amd64 (tools/sprint-check-win.exe)   release sprint-check-<key of tools/sprint-check-go>
 #   headless helper Windows amd64   (tools/sprint-headless-json-win.exe)   release sprint-headless-json-<key of its source>
 # Every build uses -trimpath -buildvcs=false, so the same source gives the same bytes at any checkout path. A release that exists
 # keeps its assets (a published asset is never overwritten); missing ones are added. No build carries VERSION (t-0859): the
@@ -59,18 +59,22 @@ lines="$lines$key_d windows-amd64 $(sha256_of "$out/cockpit-daemon-windows-amd64
 # The board and the headless helper are legacy packages (no go.mod, stdlib only). GOPATH-mode builds leak the checkout path
 # into the binary even with -trimpath (live-checked: three checkouts gave three hashes), so build them as a module from a
 # staged copy of their sources: same code, a fixed module path, and the same bytes anywhere.
-build_legacy() { # <source dir under the repo> <module name> <commit stamp> <output file>
-  local stage pin
+build_legacy() { # <source dir under the repo> <module name> <commit stamp> <output file> [<goos-goarch>, default windows-amd64]
+  local stage pin t="${5:-windows-amd64}"
   pin="$(tr -d ' \t\n\r' < "$REPO_ROOT/$1/GO_TOOLCHAIN" 2>/dev/null)" || pin=""
   [[ "$pin" =~ $pin_re ]] || { echo "release-daemon: $1/GO_TOOLCHAIN must name the Go toolchain to build with, e.g. go1.27.2" >&2; exit 1; }
   stage="$(mktemp -d)"
   find "$REPO_ROOT/$1" -maxdepth 1 -name '*.go' ! -name '*_test.go' -exec cp {} "$stage/" \;
   printf 'module canon/%s\n\ngo %s\n' "$2" "${pin#go}" > "$stage/go.mod"
-  ( cd "$stage" && GOTOOLCHAIN="$pin" GOFLAGS=-mod=mod CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false \
+  ( cd "$stage" && GOTOOLCHAIN="$pin" GOFLAGS=-mod=mod CGO_ENABLED=0 GOOS="${t%-*}" GOARCH="${t#*-}" go build -trimpath -buildvcs=false \
       -ldflags "-s -w -X main.commit=$3" -o "$4" . )
   rm -rf "$stage"
   check_built "$4" "$pin"
 }
+for t in $UNIX_TARGETS; do   # t-15d8: the Go board is the only board on macOS/Linux too
+  build_legacy tools/sprint-check-go sprint-check "${full_b:0:8}" "$out/sprint-check-$t" "$t"
+  lines="$lines$key_b sprint-check-$t $(sha256_of "$out/sprint-check-$t")"$'\n'
+done
 build_legacy tools/sprint-check-go sprint-check "${full_b:0:8}" "$out/sprint-check-windows-amd64.exe"
 lines="$lines$key_b sprint-check-windows-amd64 $(sha256_of "$out/sprint-check-windows-amd64.exe")"$'\n'
 build_legacy tools/sprint-headless-json-go sprint-headless-json "${full_h:0:8}" "$out/sprint-headless-json-windows-amd64.exe"
@@ -100,7 +104,7 @@ publish() {
   done
 }
 publish "cockpit-daemon-$key_d" "$full_d" "$out"/cockpit-daemon-darwin-* "$out"/cockpit-daemon-linux-* "$out/cockpit-daemon-windows-amd64.exe"
-publish "sprint-check-$key_b" "$full_b" "$out/sprint-check-windows-amd64.exe"
+publish "sprint-check-$key_b" "$full_b" "$out"/sprint-check-darwin-* "$out"/sprint-check-linux-* "$out/sprint-check-windows-amd64.exe"
 publish "sprint-headless-json-$key_h" "$full_h" "$out/sprint-headless-json-windows-amd64.exe"
 
 # Prove what users will download: fetch every asset back and record its hash. An asset of a release created in this run
@@ -125,6 +129,7 @@ record() { # <key> <target> <tag> <asset> <existed 0|1>
 }
 for t in $UNIX_TARGETS; do record "$key_d" "$t" "cockpit-daemon-$key_d" "cockpit-daemon-$t" "$ex_d"; done
 record "$key_d" windows-amd64 "cockpit-daemon-$key_d" cockpit-daemon-windows-amd64.exe "$ex_d"
+for t in $UNIX_TARGETS; do record "$key_b" "sprint-check-$t" "sprint-check-$key_b" "sprint-check-$t" "$ex_b"; done
 record "$key_b" sprint-check-windows-amd64 "sprint-check-$key_b" sprint-check-windows-amd64.exe "$ex_b"
 record "$key_h" sprint-headless-json-windows-amd64 "sprint-headless-json-$key_h" sprint-headless-json-windows-amd64.exe "$ex_h"
 

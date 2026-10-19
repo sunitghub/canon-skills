@@ -47,3 +47,5 @@ examples/
 /.claude/agents
 # The Windows exes are release assets fetched by tools/fetch-daemon.sh, never committed (t-9383).
 /tools/*-win.exe
+# The macOS/Linux board binary, fetched the same way (t-15d8).
+/tools/sprint-check-bin/

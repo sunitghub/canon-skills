@@ -19,7 +19,7 @@ git clone --depth 1 https://github.com/sunitghub/canon-skills.git ~/.canon
 
 The one-line installer makes the same shallow clone (`--depth 1`): about 20 MB, not the roughly 415 MB of full history. `canon update` keeps working on it. For the full history of `main`, run `git -C ~/.canon fetch --unshallow`; other branches are not fetched by a shallow clone (`git -C ~/.canon remote set-branches origin '*'` then `git -C ~/.canon fetch` adds them).
 
-The Cockpit's agent sessions (Scratch, Start sprint) need the **cockpit daemon**, a small Go program. A clone has only its source, so the one-line installer, `canon update` and the first `canon` run fetch the prebuilt binary for your Mac or Linux machine from a canon-skills release and run it only after its SHA-256 matches `tools/cockpit-daemon.sha256`. If the download is unavailable they build it from source when Go 1.26.5 or newer is installed (`brew install go`), otherwise they print what to do. After a manual `git clone` or `git pull`, run `canon update` to fetch or refresh it. On Windows the same fetch provides `cockpit-daemon-win.exe`, `sprint-check-win.exe` (the board when there is no Python) and `sprint-headless-json-win.exe`: the installer and `canon update` download them, check each against `tools/cockpit-daemon.sha256`, and keep the ones you already have if a download fails (they are no longer committed). Third-party licenses for the modules compiled into the daemon are in `THIRD-PARTY-NOTICES.md`.
+The Cockpit's board and its agent sessions (Scratch, Start sprint) are two small Go programs: the **board** (`tools/sprint-check-bin/sprint-check`) and the **cockpit daemon**. A clone has only their source, so the one-line installer, `canon update` and every `canon` start fetch the prebuilt binaries for your Mac or Linux machine from a canon-skills release and run it only after its SHA-256 matches `tools/cockpit-daemon.sha256`. If the download is unavailable (or the source is a committed change not yet released) they build it from source when Go 1.26.5 or newer is installed (`brew install go`), otherwise they print what to do. After a manual `git clone` or `git pull`, run `canon update` to fetch or refresh it. On Windows the same fetch provides `cockpit-daemon-win.exe`, `sprint-check-win.exe` (the board) and `sprint-headless-json-win.exe`: the installer and `canon update` download them, check each against `tools/cockpit-daemon.sha256`, and keep the ones you already have if a download fails (they are no longer committed). Third-party licenses for the modules compiled into the daemon are in `THIRD-PARTY-NOTICES.md`.
 
 **Custom location.** `CANON_HOME=/path/to/dir bash <(curl -fsSL https://getcanon.dev/install.sh)` installs to that folder instead of `~/.canon`.
 
@@ -57,7 +57,7 @@ canon uninstall --dry-run    # print the plan, change nothing
 canon uninstall              # print the plan, ask, then remove
 ```
 
-Tested on macOS and, on Windows 11, from PowerShell (full removal and `--keep-data`). cmd (`canon.cmd`) and Git Bash run the same bash script but were not tested on a real machine; Linux follows the macOS path and is untested. The macOS and Linux Cockpit stop (board, daemon, runtime state) is verified on a Mac with throwaway processes and the real daemon binary; on Windows it is stop-by-path (only the Go board, `sprint-check-win.exe`, is recognised; a Python board is refused as unidentified) and was exercised only against stubs until a VM run. Options: `--yes` skips the prompt (with no terminal and no `--yes` it only prints the plan and exits 2), `--keep-data` keeps the Cockpit data (`~/.canon/cockpit`: project registrations and the restore snapshots of projects without git) and your skills registrations, `--force` also ends live agent sessions (without it, running sessions make the uninstall refuse and name how many).
+Tested on macOS and, on Windows 11, from PowerShell (full removal and `--keep-data`). cmd (`canon.cmd`) and Git Bash run the same bash script but were not tested on a real machine; Linux follows the macOS path and is untested. The macOS and Linux Cockpit stop (board, daemon, runtime state) is verified on a Mac with throwaway processes and the real daemon binary; on Windows it is stop-by-path (only this install's `sprint-check-win.exe` is recognised as its board) and was exercised only against stubs until a VM run. Options: `--yes` skips the prompt (with no terminal and no `--yes` it only prints the plan and exits 2), `--keep-data` keeps the Cockpit data (`~/.canon/cockpit`: project registrations and the restore snapshots of projects without git) and your skills registrations, `--force` also ends live agent sessions (without it, running sessions make the uninstall refuse and name how many).
 
 What it does, in order: stops this install's Cockpit daemon and board (found by the pid and port they record and checked against this install, never by name; it refuses while agent sessions are live unless `--force`, and signals with SIGTERM only (on Windows `Stop-Process`, which cannot be graceful), so a process that will not exit is reported and nothing is deleted), runs `skills.sh uninstall` for every project registered with skills.sh or the Cockpit (git pre-commit hook, legacy Claude Code hooks, skill and agent symlinks, canon imports, the Pi handoff extension, `~/.config/canon`), removes empty `.claude/` and `.agents/` folders it leaves, deletes the Cockpit data, the daemon's runtime state in the temp folder (`canon-cockpit-board`, one per machine, so a reinstall shows no stale "session was running" banner; a second canon install whose daemon is running keeps its own) and the install folder, and on Windows removes `<install>\tools` from your user PATH (the old PATH value is printed first; a PowerShell helper deletes the folder after the command exits and writes its result to a log).
 
@@ -352,8 +352,8 @@ A first install that cannot verify a release installs nothing; `CANON_REF=main` 
 | Claude Code / Codex / Pi | At least one | running the agent |
 | Git | Yes | clone/update canon |
 | Bash | Yes | CLI tools (`sprint`, `tkt`, `skills.sh`) |
-| Python 3 | `sprint-check` on macOS/Linux | the board — Windows uses the Go binary, no Python needed |
-| curl | macOS/Linux | fetching the prebuilt cockpit daemon (agent sessions) on install and `canon update`; checked against a SHA-256 in the clone before it runs. Go 1.26.5+ is only a fallback that builds it when the download is unavailable |
+| Python 3 | Optional, macOS/Linux | `sprint-headless` JSON and `skills.sh` settings merges; the board needs none (t-15d8) |
+| curl | macOS/Linux | fetching the prebuilt board and cockpit daemon on install, `canon update` and `canon`; checked against a SHA-256 in the clone before they run. Go 1.26.5+ is only a fallback that builds them when the download is unavailable |
 
 **Windows 11 — no WSL, no git clone needed.** In PowerShell, run the one-liner. It offers to install Git for Windows (for its bash) with winget if missing, fetches canon as a zip into `%USERPROFILE%\.canon`, and adds `tools\` to your user PATH; re-running updates in place and keeps `cockpit\`:
 
@@ -371,7 +371,7 @@ Already have a clone? Install [Git for Windows](https://git-scm.com/download/win
 In a **Git Bash** window the same tools work too, but use the script names: `skills.sh refresh`, not `skills refresh` (Git Bash doesn't run `.cmd` files, and `tools/skills` is a folder). See **[fresh-machine-test.md → Windows 11](fresh-machine-test.md#windows-11)** for the full setup.
 
 **Git for Windows is the only dependency on Windows.** canon never requires Python there:
-- `canon` and `sprint-check` start the Go `sprint-check-win.exe` when there's no working Python. It is fetched and checksum-verified (not part of the repo); if it is missing, `canon` tries one quiet fetch before telling you to run `canon update`.
+- `canon` and `sprint-check` start the Go board, `sprint-check-win.exe`, as on every OS. It is fetched and checksum-verified (not part of the repo); if it is missing, `canon` tries one quiet fetch before telling you to run `canon update`.
 - `skills.sh` edits `.claude/settings.json` (the permission and deny rules) with Windows' built-in PowerShell.
 - `sprint`, `tkt` and the pre-commit hook use only bash.
 
@@ -379,7 +379,6 @@ canon never *runs* a `python3` found under `…\AppData\Local\Microsoft\WindowsA
 
 ### Windows: what's different
 
-- **The board runs the Go binary** (`sprint-check-win.exe`) unless a working Python is found, so a few board features behave differently from macOS/Linux.
 - **Command names depend on the shell:** PowerShell and cmd use the `.cmd` wrappers (`skills refresh`), Git Bash needs the script names (`skills.sh refresh`).
 
 Adding or removing a Windows gap? Update this list in the same change.

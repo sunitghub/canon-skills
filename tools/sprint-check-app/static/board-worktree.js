@@ -585,8 +585,8 @@ export function cockpitPathKey(p) {
 // lowercasing/trailing-slash-stripping, both wrong for something that will
 // actually be sent as a path). Worktree cwd values are already forward-slash
 // by construction (git worktree list --porcelain's own output format,
-// server.py:578); state.gitRoot (Main checkout) is the one source that isn't
-// — it comes from Python's str(Path), native OS separators on Windows. The
+// the board's worktree list); state.gitRoot (Main checkout) is the one source that isn't
+// — the board reports it with native OS separators on Windows. The
 // daemon's cwdPrefillRe (main.go, t-7590) deliberately assumes every cwd it
 // receives is already forward-slashed; this is what keeps that true.
 export function cockpitForwardSlash(p) {
