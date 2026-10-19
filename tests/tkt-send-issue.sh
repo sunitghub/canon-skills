@@ -148,6 +148,25 @@ assert_grep '^- \[ \] Works on Windows$' "$STUB_BODY"
 assert_grep '^1. Handle CRLF.$' "$STUB_BODY"
 [[ "$(grep -c $'\r' "$STUB_BODY" || true)" == 0 ]] || fail "a CR reached the issue body"
 
+# t-093a: the Description keeps text before the first heading, a filled section's lines in order, and a section whose
+# only text is a fenced block (a "## " line and a comment inside a fence are content); a comment-only section goes.
+id6="$("$TKT" create "Fenced description" -t task -p 3 -d "Seen on the Mac.
+
+## Problem
+Line one.
+Line two.
+
+## Repro
+\`\`\`
+## not a heading
+<!-- a comment in the log -->
+\`\`\`
+
+## Constraints
+<!-- Limits the solution must respect. -->")"
+desc="$("$TKT" send-issue "$id6" --dry-run 2>/dev/null | awk '/^# Description$/ { f = 1; next } /^# Acceptance$/ { f = 0 } f')"
+assert_eq $'Seen on the Mac.\n\n## Problem\nLine one.\nLine two.\n\n## Repro\n```\n## not a heading\n<!-- a comment in the log -->\n```' "$(printf '%s' "$desc" | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}')"
+
 # Public repo: refused without --public (ticket unchanged), sent with it.
 id2="$("$TKT" create "Public one" -t bug -p 2)"
 export STUB_VIS=PUBLIC; : > "$STUB_LOG"; before="$(cksum < ".tickets/$id2/ticket.md")"
