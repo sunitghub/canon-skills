@@ -280,7 +280,7 @@ PY
     [[ "$code" == 500 && "$(pj code)" == read_failed ]] || fail "$label: an unreadable doc must not count as absent (500 read_failed), got $code"
     [[ "$(cat "$wt/.tickets/t-lv01/research.md" | head -c 6)" != bypass ]] || fail "$label: an unreadable doc was overwritten through base_hash 'absent'"
   fi
-  # The replacement keeps the file's mode. 0640, not 0600: both backends create their temp file at 0600, so only real
+  # The replacement keeps the file's mode. 0640, not 0600: the board creates its temp file at 0600, so only real
   # preservation yields 0640 (Windows has no such modes, so this is a POSIX check).
   chmod 640 "$wt/.tickets/t-lv01/research.md"
   e="$(etag_of research.md)"

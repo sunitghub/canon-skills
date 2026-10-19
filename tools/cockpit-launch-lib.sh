@@ -98,7 +98,7 @@ _json_escape() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
 # cockpit_register_project <cockpit_port> <abs_path> -> prints registry id on
 # stdout, or nothing on failure (caller falls back to the bare /cockpit URL).
 # Idempotent: an already-registered path is looked up rather than re-added.
-# Parses the board's own JSON (both backends: `"key": "v"` or `"key":"v"`) with sed/awk, no Python.
+# Parses the board's own JSON (`"key":"v"`, or with a space after the colon) with sed/awk, no Python.
 cockpit_register_project() {
   local port="$1" path="$2"
   command -v curl >/dev/null 2>&1 || return 1

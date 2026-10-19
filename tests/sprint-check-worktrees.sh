@@ -186,7 +186,7 @@ assert d['main_dirty'] is True, ('a real change must be dirty', d)
   rm -f "$WORK/real-change.txt" "$WORK/.tickets/ACTIVE"
 
   # t-fe3c: POST /api/worktree-unlock/<id> clears the lock (deletes .cockpit-cwd),
-  # is idempotent, and 400s a malformed id — identically on both backends.
+  # is idempotent, and 400s a malformed id.
   # (do_POST/handlePost require a JSON body on every POST, so send {}.)
   local unlock_json
   unlock_json="$(curl -s -X POST "http://127.0.0.1:$port/api/worktree-unlock/t-lok1" -H 'Content-Type: application/json' -d '{}')"
@@ -203,7 +203,7 @@ assert d['main_dirty'] is True, ('a real change must be dirty', d)
   unlock_bad="$(curl -s -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$port/api/worktree-unlock/not-an-id" -H 'Content-Type: application/json' -d '{}')"
   [[ "$unlock_bad" == "400" ]] || fail "$label: unlock with malformed id must 400, got $unlock_bad"
 
-  # t-99fa: GET /api/version returns {version, daemon} on BOTH backends (shape parity).
+  # t-99fa: GET /api/version returns {version, daemon}.
   local ver_json
   ver_json="$(curl -s "http://127.0.0.1:$port/api/version")"
   python3 -c "
