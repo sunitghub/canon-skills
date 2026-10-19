@@ -41,6 +41,8 @@ tests=(
   "$ROOT/tests/tkt-merge-pr.sh"
   "$ROOT/tests/tkt-take-back.sh"
   "$ROOT/tests/tkt-github-status.sh"
+  "$ROOT/tests/tkt-open-pr.sh"
+  "$ROOT/tests/tkt-push-main.sh"
   "$ROOT/tests/sprint-check-github-endpoints.sh"
   "$ROOT/tests/tool-symlinks.sh"
   "$ROOT/tests/agent-template.sh"

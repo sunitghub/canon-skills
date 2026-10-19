@@ -14550,6 +14550,12 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   let native = [];
   test.beforeEach(async ({ page }) => { native = []; page.on('dialog', d => { native.push(d.message()); d.dismiss(); }); });
   test.afterEach(() => { expect(native).toEqual([]); });
+  // t-24b1: the picker's GitHub row reads the doctor; ready by default here, so no test runs gh. A test routes it again to
+  // change that (the later route wins).
+  test.beforeEach(async ({ page }) => {
+    await page.route('**/api/github/doctor**', r => r.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ ok: true, exit_code: 0, output: '', doctor: { checks: [{ id: 'gh', status: 'ok', title: 'Signed in to GitHub', detail: '' }], cloud: { domains: [], setup_script: '' } } }) }));
+  });
 
   const made = [];
   test.afterEach(() => { while (made.length) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', made.pop()), { recursive: true, force: true }); });
@@ -15013,6 +15019,128 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(chip).toHaveText('GitHub #57 · results ready');
   });
 
+  // Prod path: the worktree picker's GitHub row, gated by GET /api/github/doctor (t-90a3's checks).
+  test('the GitHub row reads the doctor: checking, then set up first (n of m ready), never a place to pick (t-24b1)', async ({ page }) => {
+    const id = `t-gh24r-${Date.now()}`;
+    ghTicket(id);
+    let release; const answered = new Promise(r => { release = r; });
+    await page.route('**/api/github/doctor**', async r => { await answered; return json(r, { ok: true, exit_code: 0, output: '', doctor: { checks: [
+      { id: 'gh', status: 'bad', title: 'gh is installed, but not signed in', detail: '', fix: { cmd: 'gh auth login' } },
+      { id: 'origin', status: 'ok', title: 'Repository found, and private', detail: '' },
+      { id: 'tests', status: 'warn', title: 'No test command', detail: '' }], cloud: { domains: [], setup_script: '' } } }); });
+    let previews = 0;
+    await page.route(`**/api/ticket/${id}/github/send-preview`, r => { previews++; return json(r, { ok: true, exit_code: 0, output: '' }); });
+    await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
+    await page.route('**/api/worktrees**', r => json(r, [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true }]));
+    await openBoard(page, id);
+    await page.locator(`.card[data-id="${id}"] .card-start`).click();
+    await expect(page.locator('#ck-worktree .ck-gh-checking')).toContainText('GitHub · checking…');
+    await expect(page.locator('#ck-worktree [data-github]')).toHaveCount(0);
+    release();
+    const setup = page.locator('#ck-worktree .ck-gh-setup');
+    await expect(setup).toContainText('GitHub · set up first (2 of 3 ready)');
+    await expect(page.locator('#ck-worktree [data-github]')).toHaveCount(0);
+    await setup.click();   // a standalone board has no shell to open Admin: it says what to run instead
+    await expect(page.locator('#drop-toast')).toContainText('tkt github-doctor');
+    await expect(page.locator('#ck-gh-panel')).toBeHidden();
+    expect(previews).toBe(0);
+  });
+
+  // Prod path: the same row when the doctor cannot answer (server error): never counted as ready.
+  test('the GitHub row says the checks could not run when the doctor read fails (t-24b1)', async ({ page }) => {
+    const id = `t-gh24f-${Date.now()}`;
+    ghTicket(id);
+    await page.route('**/api/github/doctor**', r => r.fulfill({ status: 500, body: 'down' }));
+    await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
+    await page.route('**/api/worktrees**', r => json(r, [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true }]));
+    await openBoard(page, id);
+    await page.locator(`.card[data-id="${id}"] .card-start`).click();
+    await expect(page.locator('#ck-worktree .ck-gh-setup')).toContainText('GitHub · set up first (the checks could not run)');
+    await expect(page.locator('#ck-worktree [data-github]')).toHaveCount(0);
+  });
+
+  // Prod path: a board's "set up first" message to the Cockpit shell, which opens Admin › GitHub for that board's project.
+  test('the shell opens Admin › GitHub for the board that asked, and ignores a message from no board (t-24b1)', async ({ page }) => {
+    const projects = [
+      { id: 'proj-a', path: '/tmp/proj-a', name: 'proj-a', description: '', added: '2026-09-26' },
+      { id: 'proj-b', path: '/tmp/proj-b', name: 'proj-b', description: '', added: '2026-09-26' },
+    ];
+    const asked = [];
+    await page.route('**/api/projects', r => json(r, projects));
+    await page.route('**/api/github/doctor**', r => { asked.push(new URL(r.request().url()).searchParams.get('project')); return json(r, { ok: true, exit_code: 0, output: '', doctor: { checks: [], cloud: { domains: [], setup_script: '' } } }); });
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    await page.evaluate(async () => (await import('/static/cockpit-tabs.js')).openProject('proj-b', 'proj-b'));
+    const tok = await page.evaluate(() => new URL(document.querySelector('#view-proj-b iframe').src).searchParams.get('tab'));
+    await page.evaluate(() => window.postMessage({ source: 'canon-board', type: 'open-admin-github' }, location.origin));   // no tab: nothing
+    await page.waitForTimeout(300);
+    await expect(page.locator('#view-admin')).not.toHaveClass(/active/);
+    await page.evaluate(t => window.postMessage({ source: 'canon-board', type: 'open-admin-github', tab: t }, location.origin), tok);
+    await expect(page.locator('#view-admin')).toHaveClass(/active/);
+    await expect(page.locator('#ad-gh-project')).toHaveValue('proj-b');
+    await expect.poll(() => asked.filter(p => p === 'proj-b').length).toBeGreaterThan(0);
+  });
+
+  // Prod path: a card whose session pushed a branch with no PR (github-status stage "branch"), and its Open PR button.
+  test('a session branch with no PR shows Open PR; it asks, names the branch, and opens once (t-24b1)', async ({ page }) => {
+    const id = `t-gh24b-${Date.now()}`;
+    ghTicket(id, { github: 'acme/app#57' });
+    const stat = await routeStatus(page, id, { stage: 'branch', branch: 'claude/brave-x1' });
+    const posts = [];
+    await page.route(`**/api/ticket/${id}/github/open-pr`, r => { posts.push(r.request().method()); stat.status = { stage: 'pr-open', pr: 31 };
+      return json(r, { ok: true, exit_code: 0, output: 'Opened a PR from claude/brave-x1 into main: https://github.com/acme/app/pull/31\n' }); });
+    await openBoard(page, id);
+    const chip = page.locator(`.card[data-id="${id}"] .card-gh-chip`), btn = page.locator(`.card[data-id="${id}"] .card-gh-btn`);
+    await expect(chip).toHaveText('GitHub #57 · branch, no PR');
+    await expect(btn).toHaveText('Open PR');
+    await btn.click();
+    await expect(page.locator('#gh-dialog-body')).toContainText('on acme/app from claude/brave-x1 into its default branch, with "Fixes #57"');
+    await page.locator('#gh-dialog-cancel').click();
+    expect(posts).toEqual([]);
+    await btn.click();
+    await page.locator('#gh-dialog-ok').click();
+    await expect(page.locator('#gh-dialog-title')).toHaveText('PR opened');
+    await expect(page.locator('#gh-dialog-pre')).toContainText('pull/31');
+    expect(posts).toEqual(['POST']);
+    await page.locator('#gh-dialog-cancel').click();
+    await expect(chip).toHaveText('GitHub #57 · PR #31');
+  });
+
+  // Prod path: the merged dialog's push to the canon.mirror remotes (tkt push-main), offered only when some are named.
+  test('Check & merge offers Push main only with canon.mirror remotes, naming them, and pushes once on the click (t-24b1)', async ({ page }) => {
+    const id = `t-gh24m-${Date.now()}`;
+    const pushes = [];
+    await page.route('**/api/github/push-main**', r => { pushes.push(r.request().method()); return json(r, { ok: true, exit_code: 0, output: 'public: main 1111aaaa -> 2222bbbb\n  to undo: git push public 1111aaaa:refs/heads/main\n' }); });
+    const { job, stat, button } = await mergeFlow(page, id);
+    const mergedOut = 'Merged PR #58 into main (abc).\nLocal main: 1111aaaa -> 2222bbbb (fast-forward)\n';
+    const mergeOnce = async () => {
+      Object.assign(job, { status: 'idle', output: '', exit_code: null });
+      await expect(page.locator('#gh-dialog')).not.toHaveClass(/open/);   // the last dialog is gone before the card is clicked
+      await button.click();
+      await expect(page.locator('#gh-dialog')).toHaveClass(/open/);
+      await expect(page.locator('#gh-dialog-ok')).not.toHaveText(/Push main/);
+      await page.locator('#gh-dialog-ok').click();
+      Object.assign(job, { status: 'done', exit_code: 0, output: mergedOut });
+      await expect(page.locator('#gh-dialog-title')).toHaveText('Merged');
+    };
+    await mergeOnce();   // no mirrors: no offer
+    await expect(page.locator('#gh-dialog-ok')).toBeHidden();
+    await page.locator('#gh-dialog-cancel').click();
+    stat.status = { stage: 'results-in', pr: 58, mirrors: ['public'] };
+    await page.evaluate(async () => (await import('/static/board-github.js')).pollGithub(true));
+    await mergeOnce();
+    await expect(page.locator('#gh-dialog-ok')).toHaveText('Push main to public');
+    await expect(page.locator('#gh-dialog-body')).toContainText('Also push main to public');
+    await page.locator('#gh-dialog-cancel').click();   // Close: nothing pushed
+    expect(pushes).toEqual([]);
+    await page.evaluate(async () => (await import('/static/board-github.js')).pollGithub(true));
+    await mergeOnce();
+    await page.locator('#gh-dialog-ok').click();
+    await expect(page.locator('#gh-dialog-title')).toHaveText('Pushed');
+    await expect(page.locator('#gh-dialog-pre')).toContainText('to undo: git push public');
+    expect(pushes).toEqual(['POST']);
+  });
+
   // Prod path: the header's Sync from GitHub button (tkt sync-issues through t-d271's two routes).
   test('Sync from GitHub previews the dry run, creates on Create only, and disables Create when there is nothing to make (t-90a3)', async ({ page }) => {
     let preview = { ok: true, exit_code: 0, output: 'would create  #61  Export tasks as CSV  (feature, P2)\nwould create  #62  Dark mode flickers  (bug, P1)\nskip  #57  already t-3b90\ndry run: 2 to create, nothing written\n' };
@@ -15226,7 +15354,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#gh-dialog-body')).toContainText('Running… 0m05s');
     await expect(page.locator(`.card[data-id="${id}"] .card-gh-chip`)).toContainText('merging…');
     expect(mergePosts).toEqual([{ pr: 58 }]);
-    Object.assign(job, { status: 'done', exit_code: 0, output: job.output + 'merge-pr: scripts/test.sh passed in 4m11s\nMerged PR #58 into main (424987f9). Update your checkout: git pull\n' });
+    Object.assign(job, { status: 'done', exit_code: 0, output: job.output + 'merge-pr: scripts/test.sh passed in 4m11s\nMerged PR #58 into main (424987f9).\nLocal main: 1111aaaa -> 424987f9 (fast-forward)\n' });
     await expect(page.locator('#gh-dialog-title')).toHaveText('Merged');
     await expect(page.locator('#gh-dialog-pre')).toContainText('Merged PR #58 into main');
   });

@@ -1569,7 +1569,38 @@ cmd_merge_pr() {
     git -C "$root" push -q origin --delete "canon-results/$id" 2>/dev/null \
       || echo "merge-pr: note: could not delete canon-results/$id on origin; delete it by hand" >&2
   fi
-  echo "Merged PR #$pr into $base${sha:+ ($sha)}$note. Update your checkout: git pull"
+  echo "Merged PR #$pr into $base${sha:+ ($sha)}$note."
+  _ff_local_base "$root" "$base"
+}
+
+# _branch_ok <name> — t-24b1: a branch name read from GitHub or a remote goes on git and gh command lines only when
+# git accepts it as a branch name and it cannot be read as an option.
+_branch_ok() { [[ -n "$1" && "$1" != -* ]] && git check-ref-format --branch "$1" >/dev/null 2>&1; }
+
+# _ff_local_base <root> <branch> — t-24b1: after a merge, move the local <branch> to origin's, fast-forward only. Never a
+# merge, rebase, reset or force: when it cannot (dirty tree, checked out in another worktree, local commits origin lacks),
+# it changes nothing and says why. Checked out here: `merge --ff-only`; checked out nowhere: a compare-and-swap of the ref.
+_ff_local_base() {
+  local root="$1" b="$2" old new wt here
+  _branch_ok "$b" || { echo "Local branch: the base branch name ($b) is not usable; update it by hand: git pull"; return 0; }
+  git -C "$root" fetch -q origin "refs/heads/$b" 2>/dev/null || { echo "Local $b: could not fetch origin/$b; update it by hand: git pull"; return 0; }
+  new="$(git -C "$root" rev-parse FETCH_HEAD)"
+  old="$(git -C "$root" rev-parse -q --verify "refs/heads/$b")" || { echo "Local $b: none here; nothing to update"; return 0; }
+  [[ "$old" == "$new" ]] && { echo "Local $b: already at ${new:0:8}"; return 0; }
+  git -C "$root" merge-base --is-ancestor "$old" "$new" \
+    || { echo "Local $b: has commits origin/$b lacks, not a fast-forward; left at ${old:0:8}. Update it by hand: git pull"; return 0; }
+  wt="$(git -C "$root" worktree list --porcelain | awk -v r="branch refs/heads/$b" '/^worktree /{ w = substr($0, 10) } $0 == r { print w; exit }')"
+  here="$(git -C "$root" rev-parse --show-toplevel)"
+  if [[ -z "$wt" ]]; then
+    git -C "$root" update-ref "refs/heads/$b" "$new" "$old"
+  elif [[ "$(cd "$wt" && pwd -P)" == "$(cd "$here" && pwd -P)" ]]; then
+    [[ -z "$(git -C "$root" status --porcelain --untracked-files=no)" ]] \
+      || { echo "Local $b: uncommitted changes here; left at ${old:0:8}. Update it by hand: git pull"; return 0; }
+    git -C "$root" merge -q --ff-only "$new" || { echo "Local $b: git refused the fast-forward; left at ${old:0:8}. Update it by hand: git pull"; return 0; }
+  else
+    echo "Local $b: checked out in $wt; left at ${old:0:8}. Update it there: git pull"; return 0
+  fi
+  echo "Local $b: ${old:0:8} -> ${new:0:8} (fast-forward)"
 }
 
 # cmd_github_status <id> [--json] — t-d271: where a ticket sent to GitHub stands, for the board to poll. Read-only: one
@@ -1609,20 +1640,108 @@ cmd_github_status() {
   elif $branch; then stage=results-ready
   elif [[ -n "$pr" ]]; then stage=pr-open
   else stage=sent; fi
+  # t-24b1: no PR and no results branch yet: did the session push a branch and stop short of a PR (#41)?
+  local sb="" def="" sbout
+  if [[ "$stage" == sent ]]; then
+    sbout="$(_session_branch "$repo" "$id")" || { echo "github-status: could not look for a session branch on $repo" >&2; exit 1; }
+    read -r sb def <<< "$sbout" || true
+    [[ -n "$sb" ]] && stage=branch
+  fi
+  local mirrors m mj="" sep=""
+  mirrors="$(git -C "$root" config --get-all canon.mirror 2>/dev/null || true)"
+  while IFS= read -r m; do [[ -n "$m" ]] && { mj+="$sep$(json_str "$m")"; sep=,; }; done <<< "$mirrors"
   if $json; then
-    printf '{"id":%s,"issue":%s,"stage":%s,"pr":%s,"pr_state":%s,"pr_head":%s,"results_branch":%s,"verdict":%s,"graded_head":%s,"graded_matches_pr":%s,"merged":%s}\n' \
+    printf '{"id":%s,"issue":%s,"stage":%s,"pr":%s,"pr_state":%s,"pr_head":%s,"results_branch":%s,"branch":%s,"mirrors":[%s],"verdict":%s,"graded_head":%s,"graded_matches_pr":%s,"merged":%s}\n' \
       "$(json_str "$id")" "$(json_str "$gh")" "$(json_str "$stage")" "$(json_num "$pr" null)" \
       "$([[ -n "$pst" ]] && json_str "$pst" || echo null)" "$([[ -n "$phead" ]] && json_str "$phead" || echo null)" "$branch" \
+      "$([[ -n "$sb" ]] && json_str "$sb" || echo null)" "$mj" \
       "$([[ "$verdict" != - ]] && json_str "$verdict" || echo null)" "$([[ "$graded" != - ]] && json_str "$graded" || echo null)" "$match" \
       "$([[ -n "$merged" ]] && json_str "$merged" || echo null)"
   else
     echo "$id · $gh · $stage"
     [[ -n "$pr" ]] && echo "  PR #$pr ($pst) head $phead"
     $branch && echo "  canon-results/$id is on origin: tkt import-results $id${pr:+ --pr $pr}"
+    [[ -n "$sb" ]] && echo "  $sb is on origin with no PR: tkt open-pr $id"
     [[ "$verdict" != - ]] && echo "  evaluator: $verdict on ${graded}$($match && echo ' (the PR head)' || echo '')"
     [[ -n "$merged" ]] && echo "  merged: $merged"
   fi
   return 0
+}
+
+# _session_branch <owner/repo> <id> — t-24b1: the branch a cloud session pushed for <id> without opening a PR (#41), as
+# "<branch> <default branch>", or nothing. The cloud names its own branches (claude/...), so a branch is found by a commit
+# naming the id (canon's Closes: rule): one GraphQL read of the newest 100 heads' last 30 messages, then the candidate is
+# confirmed by a commit ahead of the default branch that names it, and by having no PR in any state. A gh failure is
+# exit 1 with gh's words on stderr, never "no branch".
+_session_branch() {
+  local repo="$1" id="$2" q list def b ahead prs
+  q='query($o:String!,$n:String!){repository(owner:$o,name:$n){defaultBranchRef{name} refs(refPrefix:"refs/heads/",first:100,orderBy:{field:TAG_COMMIT_DATE,direction:DESC}){nodes{name target{... on Commit{history(first:30){nodes{message}}}}}}}}'
+  list="$(cd / && gh api graphql -f query="$q" -f o="${repo%%/*}" -f n="${repo#*/}" --jq '.data.repository | .defaultBranchRef.name as $d | $d, (.refs.nodes[] | select(.name != $d and (.name | startswith("canon-results/") | not)) | select(any(.target.history.nodes[]?; .message | test("\\b'"$id"'\\b"))) | .name)' 2>&1)" \
+    || { echo "gh could not list branches on $repo: $list" >&2; return 1; }
+  def="$(head -1 <<< "$list")"
+  _branch_ok "$def" || { echo "GitHub named an unusable default branch on $repo ($def)" >&2; return 1; }
+  while IFS= read -r b; do
+    _branch_ok "$b" || continue
+    ahead="$(cd / && gh api "repos/$repo/compare/$def...$b" --jq '[.commits[].commit.message] | any(test("\\b'"$id"'\\b"))' 2>&1)" \
+      || { echo "gh could not compare $b with $def on $repo: $ahead" >&2; return 1; }
+    [[ "$ahead" == true ]] || continue
+    prs="$(cd / && gh pr list --repo "$repo" --head "$b" --state all --json number --jq length 2>&1)" \
+      || { echo "gh could not list PRs for $b on $repo: $prs" >&2; return 1; }
+    [[ "$prs" == 0 ]] && { printf '%s %s\n' "$b" "$def"; return 0; }
+  done < <(tail -n +2 <<< "$list")
+  return 0
+}
+
+# cmd_open_pr <id> — t-24b1: open the PR a cloud session did not, from the branch _session_branch finds, with "Fixes #N"
+# so import-results and merge-pr find it. Refuses, creating nothing, when there is no such branch.
+cmd_open_pr() {
+  local id="${1:-}"
+  [[ -n "$id" && $# -eq 1 ]] || { echo "Usage: tkt open-pr <id>" >&2; exit 1; }
+  local file gh repo issue out b def title
+  file="$(find_ticket "$id")"; id="$(get_field "$file" id)"; gh="$(get_field "$file" github)"
+  [[ -n "$gh" ]] || { echo "open-pr: $id was not sent to GitHub (no github: line)" >&2; exit 1; }
+  repo="${gh%#*}"; issue="${gh##*#}"
+  [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ && "$issue" =~ ^[0-9]+$ ]] || { echo "open-pr: $id has an unreadable github: line ($gh)" >&2; exit 1; }
+  command -v gh >/dev/null 2>&1 || { echo "open-pr: needs the GitHub CLI: install gh, then run: gh auth login" >&2; exit 1; }
+  out="$(_session_branch "$repo" "$id" 2>&1)" || { echo "open-pr: $out" >&2; exit 1; }
+  read -r b def <<< "$out" || true
+  [[ -n "$b" ]] || { echo "open-pr: no branch on $repo has a commit naming $id that is not on its default branch and has no PR; nothing opened" >&2; exit 1; }
+  title="$(get_title "$file")"
+  out="$(cd / && gh pr create --repo "$repo" --base "$def" --head "$b" --title "$id: $title" \
+    --body "Fixes #$issue"$'\n\n'"Opened by canon (tkt open-pr): the cloud session pushed $b without a PR." 2>&1)" \
+    || { echo "open-pr: gh could not open a PR from $b: $out" >&2; exit 1; }
+  echo "Opened a PR from $b into $def: $(tail -1 <<< "$out")"
+}
+
+# cmd_push_main — t-24b1: push origin's default branch, as GitHub has it now, to each remote named by `git config
+# canon.mirror` (opt-in; a fork's upstream is never assumed). Origin's, not the local branch: a local main that is ahead
+# (unmerged commits), behind or diverged never decides what a mirror publishes. A plain push, never forced: a mirror that
+# is ahead or diverged is reported. Prints each moved mirror's previous sha and the command that puts it back. Exit 1
+# when any push failed.
+cmd_push_main() {
+  [[ $# -eq 0 ]] || { echo "Usage: tkt push-main" >&2; exit 1; }
+  local root mirrors m b sha old out rc=0
+  root="$(dirname "$(tickets_dir)")"; root="$(git -C "$root" rev-parse --show-toplevel)" || exit 1
+  mirrors="$(git -C "$root" config --get-all canon.mirror 2>/dev/null || true)"
+  [[ -n "$mirrors" ]] || { echo "push-main: no mirrors named (git config canon.mirror <remote>); nothing pushed"; return 0; }
+  b="$(git -C "$root" ls-remote --symref origin HEAD 2>/dev/null | awk '$1 == "ref:" { sub("refs/heads/", "", $2); print $2; exit }' || true)"; b="${b:-main}"
+  _branch_ok "$b" || { echo "push-main: origin's default branch has an unusable name ($b); nothing pushed" >&2; exit 1; }
+  git -C "$root" fetch -q origin "refs/heads/$b" 2>/dev/null || { echo "push-main: could not fetch origin/$b; nothing pushed" >&2; exit 1; }
+  sha="$(git -C "$root" rev-parse FETCH_HEAD)"
+  while IFS= read -r m; do
+    [[ -n "$m" ]] || continue
+    if [[ "$m" == origin ]]; then echo "$m: skipped (origin is not a mirror)"; continue; fi
+    git -C "$root" remote get-url "$m" >/dev/null 2>&1 || { echo "$m: no such remote" >&2; rc=1; continue; }
+    old="$(git -C "$root" ls-remote "$m" "refs/heads/$b" 2>/dev/null | cut -f1)"
+    if [[ "$old" == "$sha" ]]; then echo "$m: $b already at ${sha:0:8}"; continue; fi
+    if out="$(git -C "$root" push -q "$m" "$sha:refs/heads/$b" 2>&1)"; then
+      echo "$m: $b ${old:+${old:0:8} -> }${sha:0:8}"
+      [[ -n "$old" ]] && echo "  to undo: git push $m $old:refs/heads/$b --force-with-lease=refs/heads/$b:$sha"
+    else
+      echo "$m: rejected, nothing forced: $(tail -1 <<< "$out")" >&2; rc=1
+    fi
+  done <<< "$mirrors"
+  return $rc
 }
 
 # cmd_take_back <id> [--close-issue] — t-d271: a ticket sent to GitHub comes back to this machine: its runs: github line
@@ -1889,6 +2008,10 @@ Commands:
                             sprint import-issue in the cloud session).
   sync-issues [--dry-run]   Make a ticket of each open issue on origin labelled canon
                             that no ticket links to (labels set type and pN priority).
+  open-pr <id>              Open the PR a cloud session did not: from its pushed branch
+                            (a commit naming <id>), with "Fixes #N".
+  push-main                 Push origin's default branch to each git config canon.mirror
+                            remote (opt-in; never forced; prints how to undo).
   github-doctor [--json]    Read-only GitHub readiness checks (gh signed in, origin and
                             its visibility, test command) and the cloud recipe.
   merge-pr <id> [--pr N] [--test CMD] [--yes | --check]
@@ -1937,6 +2060,8 @@ main() {
     import-issue)   cmd_import_issue "$@" ;;
     sync-issues)    cmd_sync_issues "$@" ;;
     github-doctor)  cmd_github_doctor "$@" ;;
+    open-pr)        cmd_open_pr "$@" ;;
+    push-main)      cmd_push_main "$@" ;;
     merge-pr)       cmd_merge_pr "$@" ;;
     take-back)      cmd_take_back "$@" ;;
     github-status)  cmd_github_status "$@" ;;

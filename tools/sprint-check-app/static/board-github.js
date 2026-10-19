@@ -6,7 +6,7 @@ import { state } from './board-core.js';
 import { closeTab, cockpitState } from './board-cockpit.js';
 import { esc, escAttr } from './board-helpers.js';
 import { render, showToast } from './board-render.js';
-import { loadData } from './board-core.js';
+import { loadData, SHELL_TAB } from './board-core.js';
 
 const POLL_MS = 120000;          // github-status per card out on GitHub; the server caches each for 30 s
 const MERGE_POLL_MS = 2000;
@@ -52,6 +52,7 @@ export function ghChipHTML(t) {
   let text = n, title = String(t.github);
   if (st.stage === 'sent') text += ' · sent';
   else if (st.stage === 'pr-open') text += prOf(st) ? ` · PR #${prOf(st)}` : ' · PR open';
+  else if (st.stage === 'branch') { text += ' · branch, no PR'; title = `${st.branch} is on GitHub with no PR`; }
   else if (st.stage === 'results-ready') text += ' · results ready';
   else if (st.stage === 'results-in') text += ' · results in';
   else if (st.stage === 'merging') { const m = mergeById.get(t.id); text += ` · merging… ${mmss(m.elapsed)}`; title = lastLine(m.output) || title; }
@@ -68,6 +69,7 @@ export function ghButtonHTML(t) {
   if (st.stage === 'results-ready') return btn('import', 'Import results', 'Bring the cloud session\'s results back into this ticket');
   if (st.stage === 'results-in' || st.stage === 'merging') return btn('merge', 'Check & merge', 'Check the PR and merge it after your confirmation');
   if (st.stage === 'pr-open' && prOf(st)) return btn('pr', 'Open PR', `Open PR #${prOf(st)} on GitHub`);
+  if (st.stage === 'branch') return btn('open-pr', 'Open PR', `The session pushed ${st.branch} without a PR: open one`);
   return btn('issue', 'Open issue', 'Open the issue on GitHub');
 }
 
@@ -92,6 +94,24 @@ async function ghAction(t, action) {
   if (action === 'pr' && p && pr) return openUrl(`https://github.com/${p.repo}/pull/${pr}`);
   if (action === 'import') return importResults(t, pr);
   if (action === 'merge') return checkAndMerge(t, pr);
+  if (action === 'open-pr' && p) return openPr(t, p, st);
+}
+
+// ── Open PR (t-24b1): a session pushed its branch and stopped short of a PR ─────────────────────────────────────────
+async function openPr(t, p, st) {
+  const ask = openDialog({
+    title: `Open a PR for ${t.id}?`,
+    body: `Opens a pull request on ${p.repo} from ${st.branch} into its default branch, with "Fixes #${p.issue}", so Import results and Check & merge can find it.`,
+    ok: 'Open PR', cancel: 'Cancel',
+  });
+  if (!(await ask).ok) return;
+  const run = openDialog({ title: `Opening a PR for ${t.id}…`, pre: 'Running tkt open-pr…', cancel: 'Close' });
+  let res;
+  try { res = await postJSON(ghApi(t.id, 'open-pr'), {}); }
+  catch (e) { res = { ok: false, output: String(e.message || e) }; }
+  updateDialog({ title: res.ok ? 'PR opened' : 'No PR opened', body: res.ok ? '' : 'Nothing was created on GitHub.', pre: res.output || '' }, run.gen);
+  statusById.delete(t.id);
+  await pollGithub(true);
 }
 
 // ── Status polling ──────────────────────────────────────────────────────────────────────────────────────────────────
@@ -220,9 +240,10 @@ async function checkAndMerge(t, pr) {
 }
 
 async function followMerge(t, prB, show) {
-  let gen, finished = false;
+  let gen, finished = false, shown = null;
+  const mirrors = (statusById.get(t.id)?.status?.mirrors || []).filter(m => typeof m === 'string' && m);
   if (show) {
-    const shown = openDialog({ title: `Checking & merging ${t.id}`, body: 'Running the tests on the base branch + PR…', pre: '', ok: '', cancel: 'Stop', escape: false });
+    shown = openDialog({ title: `Checking & merging ${t.id}`, body: 'Running the tests on the base branch + PR…', pre: '', ok: '', cancel: 'Stop', escape: false });
     gen = shown.gen;
     shown.then(v => { if (v && !v.ok && !finished) stopMerge(t); });
   }
@@ -247,14 +268,26 @@ async function followMerge(t, prB, show) {
   const st = mergeById.get(t.id);
   mergeById.delete(t.id);
   const merged = st && st.exit_code === 0 && /Merged PR #/.test(st.output || '');
+  // t-24b1: merge-pr fast-forwards local main itself (its last line says how); the canon.mirror remotes are offered here,
+  // named, and pushed only on this click.
+  const offer = merged && mirrors.length ? `Push main to ${mirrors.join(', ')}` : '';
   if (gen !== undefined) updateDialog({
     title: merged ? 'Merged' : 'Not merged',
-    body: merged ? 'The PR is merged and the issue closed by its Fixes line. Pull to update your checkout.' : 'Nothing changed on GitHub. See the output.',
-    pre: st?.output || '', ok: '', cancel: 'Close',
+    body: merged ? `The PR is merged and the issue closed by its Fixes line.${offer ? ` Also push main to ${mirrors.join(', ')} (git config canon.mirror)?` : ''}` : 'Nothing changed on GitHub. See the output.',
+    pre: st?.output || '', ok: offer, cancel: 'Close',
   }, gen);
   if (gen !== undefined && gen === dlgGen) dlgEscape = true;
+  if (offer && shown) shown.then(v => { if (v && v.ok) pushMain(mirrors); });
   statusById.delete(t.id);
   await loadData();
+}
+
+async function pushMain(mirrors) {
+  const run = openDialog({ title: `Pushing main to ${mirrors.join(', ')}…`, pre: 'Running tkt push-main…', cancel: 'Close' });
+  let res;
+  try { res = await postJSON('/api/github/push-main', {}); }
+  catch (e) { res = { ok: false, output: String(e.message || e) }; }
+  updateDialog({ title: res.ok ? 'Pushed' : 'Not every mirror was pushed', body: res.ok ? '' : 'Nothing was forced. See the output.', pre: res.output || '' }, run.gen);
 }
 
 async function stopMerge(t) {
@@ -280,6 +313,65 @@ async function takeBack(t) {
   await loadData();
 }
 
+// ── Readiness (t-24b1): the picker's GitHub row reads t-90a3's doctor, the one source of the checks ─────────────────
+const DOCTOR_RETRY_MS = 30000;
+let doctor = { state: 'unknown' };   // unknown | pending | ready | bad | failed; ready and bad carry n (not bad) of m checks
+let doctorAt = 0;
+let place = null;   // { tab, onPick } of the picker that drew the row, so the answer can replace just that row
+function ensureDoctor() {
+  if (doctor.state === 'ready' || doctor.state === 'pending') return;
+  if ((doctor.state === 'bad' || doctor.state === 'failed') && Date.now() - doctorAt < DOCTOR_RETRY_MS) return;
+  doctor = { state: 'pending' }; doctorAt = Date.now();
+  getJSON('/api/github/doctor').then(res => {
+    const checks = res && res.ok && res.doctor && Array.isArray(res.doctor.checks) ? res.doctor.checks : null;
+    const n = checks ? checks.filter(c => c && c.status !== 'bad').length : 0, m = checks ? checks.length : 0;
+    doctor = { state: !m ? 'failed' : n === m ? 'ready' : 'bad', n, m };   // no checks at all: the read failed
+  }, () => { doctor = { state: 'failed', n: 0, m: 0 }; }).then(swapPlaceRow);
+}
+// The answer replaces only the "checking…" row, never the whole picker: a redraw could land after a GitHub pick and
+// rebuild the send panel mid-send.
+function swapPlaceRow() {
+  const el = document.getElementById('ck-gh-place');
+  if (!el || !el.classList.contains('ck-gh-checking') || !place) return;
+  el.outerHTML = githubPlaceRowHTML(place.tab);
+  bindPlaceRow();
+}
+function openAdminGithub() {
+  if (window.parent === window) { showToast('GitHub is not set up for this project: run tkt github-doctor in a terminal'); return; }
+  window.parent.postMessage({ source: 'canon-board', type: 'open-admin-github', tab: SHELL_TAB }, location.origin);
+}
+function bindPlaceRow() {
+  const el = document.getElementById('ck-gh-place');
+  if (!el || !place) return;
+  if (el.classList.contains('ck-gh-setup')) {
+    el.addEventListener('click', openAdminGithub);
+    el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openAdminGithub(); } });
+  } else if (el.dataset.github) {
+    const onPick = place.onPick;
+    el.addEventListener('click', () => onPick(el));
+  }
+}
+// The picker calls this once its rows are in the page; onPick(row) is what picking the GitHub place does there.
+export function bindGithubPickerRows(box, tab, onPick) {
+  place = { tab, onPick };
+  bindPlaceRow();
+  swapPlaceRow();   // an answer that landed while the picker was still building its rows
+}
+function githubPlaceRowHTML(tab) {
+  ensureDoctor();
+  if (doctor.state === 'unknown' || doctor.state === 'pending') {
+    return `<div class="ck-worktree-held-row ck-gh-checking" id="ck-gh-place"><span class="ck-worktree-held-branch">GitHub · checking…</span><span class="ck-worktree-held-why">reading the GitHub checks</span></div>`;
+  }
+  if (doctor.state === 'bad' || doctor.state === 'failed') {
+    const what = doctor.state === 'bad' ? `set up first (${doctor.n} of ${doctor.m} ready)` : 'set up first (the checks could not run)';
+    return `<div class="ck-worktree-held-row ck-gh-setup" id="ck-gh-place" role="button" tabindex="0" title="Opens Admin › GitHub, which lists what to fix"><span class="ck-worktree-held-branch">GitHub · ${what}</span><span class="ck-worktree-held-why">open Admin › GitHub</span></div>`;
+  }
+  return `<div class="ck-worktree-row ck-gh-row${tab.ghPick ? ' selected' : ''}" id="ck-gh-place" data-github="new" title="Sends this ticket as an issue to your repo; a Claude cloud session works it and opens a PR">
+      <div class="ck-worktree-radio"></div>
+      <div class="ck-worktree-labels"><div class="ck-worktree-label">GitHub · new issue</div><div class="ck-worktree-sub">a Claude cloud session works it</div></div>
+    </div>`;
+}
+
 // ── The worktree picker's GitHub rows, and the panel shown instead of the terminal ──────────────────────────────────
 export function githubPickerRowsHTML(t, tab) {
   if (!t || t.scratch || t.status !== 'open' || ghOut(t)) return '';
@@ -289,10 +381,7 @@ export function githubPickerRowsHTML(t, tab) {
   return busy.map(x => {
     const p = ghParts(x);
     return `<div class="ck-worktree-held-row ck-gh-busy"><span class="ck-worktree-held-branch">GitHub${p ? ` #${esc(p.issue)}` : ''}</span><span class="ck-worktree-held-why">cloud · busy: ${esc(x.id)}</span></div>`;
-  }).join('') + `<div class="ck-worktree-row ck-gh-row${tab.ghPick ? ' selected' : ''}" data-github="new" title="Sends this ticket as an issue to your repo; a Claude cloud session works it and opens a PR">
-      <div class="ck-worktree-radio"></div>
-      <div class="ck-worktree-labels"><div class="ck-worktree-label">GitHub · new issue</div><div class="ck-worktree-sub">a Claude cloud session works it</div></div>
-    </div>`;
+  }).join('') + githubPlaceRowHTML(tab);
 }
 
 export function hideGithubPanel() {

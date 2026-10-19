@@ -115,10 +115,13 @@ export async function loadAdmin(){
 // Renders `tkt github-doctor --json` for one project, via GET /api/github/doctor (both boards). The doctor owns every
 // title, detail and fix shown here (the worktree picker's GitHub row, t-24b1, reads the same JSON); this only lays it out.
 // gh runs per check, so it loads when Admin first opens or the project changes, and on Check again, never on a poll.
-let ghPid=null, ghDoctor=null, ghGen=0;
+let ghPid=null, ghDoctor=null, ghGen=0, ghWant='';
+// t-24b1: a board's "GitHub · set up first" row asks for its own project's checks, read afresh.
+export function openAdminGithub(pid){ ghWant=pid; ghPid=null; }
 function ghPickProject(){
   const sel=document.getElementById('ad-gh-project'), projects=getProjects();
-  const want=sel.value||(isProjectTab(activeTab)?activeTab:'')||(projects[0]&&projects[0].id)||'';
+  const want=ghWant||sel.value||(isProjectTab(activeTab)?activeTab:'')||(projects[0]&&projects[0].id)||'';
+  ghWant='';
   sel.innerHTML=projects.map(p=>`<option value="${escAttr(p.id)}">${esc(p.name)}</option>`).join('');
   if(projects.some(p=>p.id===want)) sel.value=want;
   return sel.value;
