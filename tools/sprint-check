@@ -15,7 +15,6 @@ while [ -L "$_SOURCE" ]; do
   [[ "$_SOURCE" != /* ]] && _SOURCE="$_DIR/$_SOURCE"
 done
 SCRIPT_DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
-SERVER="$SCRIPT_DIR/sprint-check-app/server.py"
 # shellcheck source=cockpit-launch-lib.sh
 source "$SCRIPT_DIR/cockpit-launch-lib.sh"
 
@@ -84,11 +83,6 @@ main() {
     echo "Opening this project in the running Canon Cockpit (port $port)." >&2
     open_project_tab "$port" "$root"
     exit 0
-  fi
-
-  if [[ ! -f "$SERVER" ]]; then
-    echo "Error: server.py not found at $SERVER" >&2
-    exit 1
   fi
 
   # No cockpit instance running yet — start it (same foreground lifecycle as

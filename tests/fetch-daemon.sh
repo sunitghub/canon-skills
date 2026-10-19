@@ -154,10 +154,13 @@ set +e; out="$(PATH="$STUBS:$BASEPATH" bash "$WORK/nogit/tools/fetch-daemon.sh" 
 
 # 9. who calls it, and the resolvers say the same thing
 assert_eq 1 "$(grep -c 'fetch-daemon.sh' "$ROOT/install.sh")"
-assert_eq 3 "$(grep -c 'fetch-daemon.sh' "$ROOT/tools/canon")"   # canon update; canon at start for a missing unix daemon and for a missing Windows exe (t-9383)
-grep -qF 'CANON_FETCH_NO_BUILD=1 bash "$SCRIPT_DIR/fetch-daemon.sh" --quiet' "$ROOT/tools/canon" || fail "canon at start must call the fetch with CANON_FETCH_NO_BUILD=1 so launching the board never compiles"
+assert_eq 2 "$(grep -c 'fetch-daemon.sh' "$ROOT/tools/canon")"   # canon update; canon at start for a missing Windows exe (t-9383)
+grep -qF 'CANON_FETCH_NO_BUILD=1 bash "$SCRIPT_DIR/fetch-daemon.sh" --quiet' "$ROOT/tools/canon" || fail "canon at start on Windows must call the fetch with CANON_FETCH_NO_BUILD=1 (no Go there to build with)"
+# t-15d8: start_cockpit_server owns the start-time fetch for canon and sprint-check: on Windows a missing exe, never built; on
+# macOS/Linux every start, building an unreleased change (tests/cockpit-launch-lib.sh runs both)
+assert_eq 2 "$(grep -c 'fetch-daemon.sh' "$ROOT/tools/cockpit-launch-lib.sh")"
 msg='cockpit daemon binary not found; run `canon update` to fetch it'
-grep -qF "$msg" "$ROOT/tools/sprint-check-app/server.py" && grep -qF "$msg" "$ROOT/tools/sprint-check-go/main.go" || fail "the two boards must give the same missing-daemon message"
+grep -qF "$msg" "$ROOT/tools/sprint-check-go/main.go" || fail "the board must say how to fetch a missing daemon"
 
 # 10. every module in the daemon's go.mod has a section in THIRD-PARTY-NOTICES.md (the notice travels with the binary)
 mods=0

@@ -60,12 +60,12 @@ _is_our_daemon() { # <ident>
   case "$1" in "$INSTALL/tools/cockpit-daemon/cockpit-daemon"|"$INSTALL/tools/cockpit-daemon/cockpit-daemon "*) return 0 ;; esac
   return 1
 }
-_is_our_board() { # <ident>
+_is_our_board() { # <ident>  (the path is board_rel_path's, t-15d8)
   if _is_windows; then
     local w; w="$(_win_install)"
-    [ "$(printf '%s' "$1" | tr 'A-Z' 'a-z')" = "$(printf '%s' "$w" | tr 'A-Z' 'a-z')\\tools\\sprint-check-win.exe" ]; return
+    [ "$(printf '%s' "$1" | tr 'A-Z' 'a-z')" = "$(printf '%s\\%s' "$w" "$(board_rel_path | tr / '\\')" | tr 'A-Z' 'a-z')" ]; return
   fi
-  case "$1" in *" $INSTALL/tools/sprint-check-app/server.py"|*" $INSTALL/tools/sprint-check-app/server.py "*) return 0 ;; esac
+  case "$1" in "$INSTALL/$(board_rel_path)"|"$INSTALL/$(board_rel_path) "*) return 0 ;; esac
   return 1
 }
 _foreign_uses() { case $'\n'"$DAEMON_FOREIGN_DIRS" in *$'\n'"$1"$'\n'*) return 0 ;; esac; return 1; }

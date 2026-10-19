@@ -12,7 +12,6 @@ source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 allowlist='
 tools/skills/prompts.sh|9|settings merges: python branch only when _settings_backend=python; else powershell.exe or a visible skip
 tools/platform-lib.sh|1|have_python itself: never executes a WindowsApps alias, requires print(1) to output 1
-tools/cockpit-launch-lib.sh|1|server.py start only when have_python; on Windows without it, sprint-check-win.exe
 tools/sprint-headless|3|non-Windows branch; Windows uses the committed Go JSON helper exe
 tools/sprint-headless-eval|5|non-Windows JSON branch + the Linux-CI-only --allowed-tools-file option (fails loudly)
 '

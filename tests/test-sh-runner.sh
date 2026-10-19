@@ -181,9 +181,11 @@ done
 # A fake board server (its command line matches the real check's pattern), started in a subshell so it is orphaned at once, or under a
 # wrapper that outlives the suite. A suite that leaks one with the run's own CANON_TEST_RUN fails the run; one with no marker, or another
 # run's, stands for a server started by anything else on the machine (a concurrent board spec, your own board) and must not.
-O="$WORK/orph"; runner_copy "$O" tests/a.sh; mkdir -p "$O/tools/sprint-check-app"; echo 'import time; time.sleep(120)' > "$O/tools/sprint-check-app/server.py"
+# t-15d8: the real Go board on port 0 (a random free port). Not a relabelled `sleep`: macOS hides the environment of Apple's own
+# binaries from ps -E, so the run marker could never be read and every leak would pass.
+O="$WORK/orph"; runner_copy "$O" tests/a.sh; FAKE_BOARD="$(build_board "$O/tools")"
 leak() {   # leak <env prefix>: a suite line that orphans a fake server under that environment and records its PID
-  printf '( %s python3 "%s/tools/sprint-check-app/server.py" >/dev/null 2>&1 & echo $! >> "%s/srv-pids"; echo $! > "%s/last-pid" )\n' "$1" "$O" "$WORK" "$WORK"
+  printf '( %s SPRINT_CHECK_NO_BROWSER=1 "%s" 0 >/dev/null 2>&1 & echo $! >> "%s/srv-pids"; echo $! > "%s/last-pid" )\n' "$1" "$FAKE_BOARD" "$WORK" "$WORK"
 }
 echo 'echo "marker=$CANON_TEST_RUN"' > "$O/tests/a.sh"   # each run's own value: set, and not another run's
 m1="$(PATH="$WORK/bin" bash "$O/scripts/test.sh" --jobs 1 2>&1 | sed -n 's/^marker=//p')"
@@ -194,8 +196,8 @@ for j in 1 2; do
   set +e; out="$(PATH="$WORK/bin" bash "$O/scripts/test.sh" --jobs "$j" 2>&1)"; rc=$?; set -e
   assert_eq 1 "$rc"; assert_contains "$out" "FAIL: the test run left sprint-check servers running (PIDs): $(cat "$WORK/last-pid")"
   # not orphaned: a leaked wrapper still waits on it, so its parent is not PID 1; it is still this run's leak
-  printf '( sh -c '"'"'python3 "%s/tools/sprint-check-app/server.py" >/dev/null 2>&1 & echo $! >> "%s/srv-pids"; echo $! > "%s/last-pid"; wait'"'"' >/dev/null 2>&1 & echo $! >> "%s/srv-pids" )\n' \
-    "$O" "$WORK" "$WORK" "$WORK" > "$O/tests/a.sh"
+  printf '( sh -c '"'"'SPRINT_CHECK_NO_BROWSER=1 "%s" 0 >/dev/null 2>&1 & echo $! >> "%s/srv-pids"; echo $! > "%s/last-pid"; wait'"'"' >/dev/null 2>&1 & echo $! >> "%s/srv-pids" )\n' \
+    "$FAKE_BOARD" "$WORK" "$WORK" "$WORK" > "$O/tests/a.sh"
   set +e; out="$(PATH="$WORK/bin" bash "$O/scripts/test.sh" --jobs "$j" 2>&1)"; rc=$?; set -e
   [[ "$(ps -o ppid= -p "$(cat "$WORK/last-pid")" | tr -d ' ')" != 1 ]] || fail "the wrapped fake server was orphaned: the case tests nothing"
   # the live wrapper (its command line names the server too) is listed beside the server on Linux: the server's PID must be one of them

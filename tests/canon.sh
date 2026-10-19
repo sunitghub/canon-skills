@@ -417,12 +417,14 @@ for body, want in cases:
 PY
 
 # ── t-302d: the browser opens only once the board answers /api/version ────────
-# A copy of the launcher with a stub server.py (starts answering after STUB_DELAY, or exits at once, or never
-# listens) and a stub opener that records whether the port answered AT THE MOMENT it was called.
-LT="$WORK/launch-tools"; mkdir -p "$LT/sprint-check-app" "$WORK/ostub"
+# A copy of the launcher with a stub board, reached through SPRINT_CHECK_BIN as a test build is (t-15d8; starts answering
+# after STUB_DELAY, or exits at once, or never listens) and a stub opener that records whether the port answered AT THE
+# MOMENT it was called.
+LT="$WORK/launch-tools"; mkdir -p "$LT" "$WORK/ostub"
 cp "$ROOT/tools/canon" "$ROOT/tools/cockpit-launch-lib.sh" "$ROOT/tools/platform-lib.sh" "$LT/"
 echo 0.0.0 > "$WORK/VERSION"
-cat > "$LT/sprint-check-app/server.py" <<'PY'
+cat > "$WORK/board-stub" <<'PY'
+#!/usr/bin/env python3
 import http.server, os, sys, time
 port = int(sys.argv[1]); mode = os.environ.get('STUB_MODE', 'serve')
 open(os.environ['STUB_PIDFILE'], 'w').write(str(os.getpid()))
@@ -435,6 +437,7 @@ class H(http.server.BaseHTTPRequestHandler):
     def log_message(self, *a): pass
 http.server.HTTPServer(('127.0.0.1', port), H).serve_forever()
 PY
+chmod +x "$WORK/board-stub"
 for o in open xdg-open; do
   cat > "$WORK/ostub/$o" <<'SH'
 #!/usr/bin/env bash
@@ -450,7 +453,7 @@ run_launcher() {
   local mode="$1" delay="$2" wait="$3" lp lpid
   lp="$(free_port)"; : > "$WORK/open2.log"; rm -f "$WORK/stub.pid"
   STUB_PIDFILE="$WORK/stub.pid" CC_PORT="$lp" CC_OPEN_LOG="$WORK/open2.log" STUB_MODE="$mode" STUB_DELAY="$delay" CANON_BOARD_WAIT_SECS="$wait" \
-    COCKPIT_DAEMON_BIN=/bin/true PATH="$WORK/ostub:$PATH" "$LT/canon" "$lp" >"$WORK/launch.out" 2>&1 &
+    COCKPIT_DAEMON_BIN=/bin/true SPRINT_CHECK_BIN="$WORK/board-stub" PATH="$WORK/ostub:$PATH" "$LT/canon" "$lp" >"$WORK/launch.out" 2>&1 &
   lpid=$!
   if [[ "$mode" == serve ]]; then   # the launcher blocks after opening: wait for the opener, then stop it
     for _ in $(seq 1 120); do [[ -s "$WORK/open2.log" ]] && break; sleep 0.1; done
