@@ -3777,7 +3777,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     // The real xterm, the real snippet and the real wiring lines (cut out of the daemon page itself), in an iframe like the
     // board's rail: only the prefix and the key after it are withheld from term.onData; ctrl+c and friends reach it.
     test('keyboard prefix (t-a198): in a real xterm only the prefix chord is withheld; ctrl+c, ctrl+d and typing reach the terminal', async ({ page }) => {
-      const web = path.join(__dirname, '..', 'tools', 'cockpit-daemon', 'web');
+      const web = path.join(__dirname, '..', 'tools', 'canon-go', 'internal', 'daemon', 'web');
       const daemonPage = fs.readFileSync(path.join(web, 'cockpit.html'), 'utf8');
       const a = daemonPage.indexOf('  // t-a198: the prefix key.');
       const endMarker = '    term.attachCustomKeyEventHandler(function (ev) { return !prefixKeys.handle(ev); });\n  }\n';
