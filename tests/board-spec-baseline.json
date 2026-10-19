@@ -512,12 +512,14 @@
     {
       "title": "cockpit leave-session confirm (t-f6b6) > Save & End waits for the ended reply before tearing down",
       "browsers": [
-        "chromium"
+        "chromium",
+        "webkit"
       ],
       "ticket": "t-8aa6",
       "reason": "failed in a full chromium run on the t-bb97 branch (unrelated surface: leave-session confirm); 1 of 2 solo runs also failed then passed on retry, so it is timing-flaky (2026-10-09)",
       "failed_runs": {
-        "chromium": "1 of 1 full run (t-bb97); 1 flaky of 2 alone"
+        "chromium": "1 of 1 full run (t-bb97); 1 flaky of 2 alone",
+        "webkit": "1 of 1 full run (t-8020, under load); 2 of 2 alone passed"
       }
     },
     {
@@ -1090,6 +1092,50 @@
       "reason": "webkit timing flake: failed in a full t-15d8 run under load (2026-10-19), passed when rerun in the --grep classify run; cause not yet diagnosed",
       "failed_runs": {
         "webkit": "1/2"
+      }
+    },
+    {
+      "title": "Canon Cockpit Upkeep (t-7ae6) > the report header folds and unfolds the report (t-783a)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-e493",
+      "reason": "webkit timing flake: failed in a full t-8020 run under load (2026-10-19), passed 2/2 alone (--grep rerun); cause not yet diagnosed",
+      "failed_runs": {
+        "webkit": "1/3"
+      }
+    },
+    {
+      "title": "Canon Cockpit help > Versions: the cockpit-daemon row (t-4487) > the stamped row fits on one line (390px, light)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-e493",
+      "reason": "webkit timing flake: failed in a full t-8020 run under load (2026-10-19), passed 2/2 alone (--grep rerun); cause not yet diagnosed",
+      "failed_runs": {
+        "webkit": "1/3"
+      }
+    },
+    {
+      "title": "GitHub workflow on the board (t-718b) > a GitHub pick selects no worktree row, even for a ticket with a worktree preference; a stale preview is dropped (t-718b)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-e493",
+      "reason": "webkit timing flake: failed in a full t-8020 run under load (2026-10-19), passed 2/2 alone (--grep rerun); cause not yet diagnosed",
+      "failed_runs": {
+        "webkit": "1/3"
+      }
+    },
+    {
+      "title": "GitHub workflow on the board (t-718b) > Check & merge offers Push main only with canon.mirror remotes, naming them, and pushes once on the click (t-24b1)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-e493",
+      "reason": "webkit timing flake: failed in a full t-8020 run under load (2026-10-19), passed 2/2 alone (--grep rerun); cause not yet diagnosed",
+      "failed_runs": {
+        "webkit": "1/3"
       }
     }
   ],
