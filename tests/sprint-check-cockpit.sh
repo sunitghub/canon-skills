@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # sprint-check-cockpit — /api/cockpit (t-ddc8): discover + launch-on-demand in
-# BOTH server.py and main.go, identically. The board never owns a PTY — it
+# the Go board (t-15d8: the only one). The board never owns a PTY — it
 # discovers/launches the cockpit-daemon and reads only its addr. Uses a STUB
 # daemon (COCKPIT_DAEMON_BIN) so no real agent is ever spawned, mirroring
-# sprint-check-api-parity.sh's stub approach for sprint-headless.
+# sprint-check-api.sh's stub approach for sprint-headless.
 
 set -euo pipefail
 
@@ -15,57 +15,22 @@ if ! command -v python3 >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; th
   exit 0
 fi
 
-# t-e40a: _resolve_cockpit_daemon must prefer the shipped tools/cockpit-daemon-win.exe
-# on Windows (nt), keep the Unix path on posix, and honor COCKPIT_DAEMON_BIN first.
-# Parity with sprint-check-go's cockpitDaemonCandidates (covered by TestCockpitDaemonCandidates).
-# t-9383: the exe is fetched, not committed, so the resolver is exercised against a fixture tools/ tree built here (a leftover dev build
-# or a fetched exe in the real checkout must not decide the result): neither file, the dev build only, and both.
-python3 - "$ROOT" <<'PY'
-import sys, os, shutil, tempfile
-tmp = tempfile.mkdtemp()
-try:
-    tools = os.path.join(tmp, "tools"); app = os.path.join(tools, "sprint-check-app")
-    os.makedirs(app); os.makedirs(os.path.join(tools, "cockpit-daemon"))
-    shutil.copy(os.path.join(sys.argv[1], "tools", "sprint-check-app", "server.py"), app)
-    sys.path.insert(0, app)
-    import server
-    win = os.path.join(tools, "cockpit-daemon-win.exe"); dev = os.path.join(tools, "cockpit-daemon", "cockpit-daemon.exe")
-    unix = os.path.join(tools, "cockpit-daemon", "cockpit-daemon")
-    real = lambda p: os.path.realpath(p)
-    # neither exists: nt names the fetched exe's path (what `canon update` will create), posix the built binary
-    assert real(server._resolve_cockpit_daemon(os_name="nt")) == real(win), server._resolve_cockpit_daemon(os_name="nt")
-    assert real(server._resolve_cockpit_daemon(os_name="posix")) == real(unix)
-    # a dev build only: nt falls back to it
-    open(dev, "w").close()
-    assert real(server._resolve_cockpit_daemon(os_name="nt")) == real(dev), "dev build fallback"
-    # both: the fetched exe wins; posix never picks an .exe
-    open(win, "w").close()
-    assert real(server._resolve_cockpit_daemon(os_name="nt")) == real(win), "the fetched exe must be preferred over a dev build"
-    assert not server._resolve_cockpit_daemon(os_name="posix").endswith("-win.exe")
-    os.environ["COCKPIT_DAEMON_BIN"] = "/tmp/stub-daemon"
-    try:
-        assert server._resolve_cockpit_daemon(os_name="nt") == "/tmp/stub-daemon", "override must win"
-    finally:
-        del os.environ["COCKPIT_DAEMON_BIN"]
-finally:
-    shutil.rmtree(tmp, ignore_errors=True)
-print("sprint-check-cockpit: daemon-resolver (t-e40a, fixture tree) ok")
-PY
+# t-e40a: the daemon resolver (Windows exe first, dev-build fallback, COCKPIT_DAEMON_BIN override) is pinned by
+# TestCockpitDaemonCandidates and TestResolveCockpitDaemonOverrideAndFallback in tools/sprint-check-go (t-15d8).
 
 # t-2a71: reap any stub daemon leaked by a prior run this script's own
 # trap-on-EXIT couldn't reach (e.g. the process was SIGKILLed, or its parent
 # shell never ran its exit machinery at all) — before creating this run's own.
 sweep_stale_stub_processes
 
-SERVER_PY="$ROOT/tools/sprint-check-app/server.py"
 WORK="$(mktemp -d)"
-GO_BIN=""
-PY_PID=""; GO_PID=""; PY_PID2=""; GO_PID2=""
-PY_SD=""; PY_SD2=""; GO_SD=""; GO_SD2=""
+GO_PID=""; GO_PID2=""
+GO_SD=""; GO_SD2=""
+export CANON_HOME="$WORK/canon-home"
 
 # kill_stub_daemon <state-dir> — resolves the stub cockpit-daemon's PID from
 # its own published daemon.json {addr} and kills it directly (t-677f). The
-# daemon is spawned detached by server.py/main.go (start_new_session=True),
+# daemon is spawned detached by the board (Setsid),
 # so this script never gets a `$!` for it, and its real argv is bare
 # `python3 -` (heredoc-fed stdin script) — `pkill -f "$WORK"` can never match
 # that, since the unique tempdir path is only visible to the process via the
@@ -88,16 +53,11 @@ kill_stub_daemon() {
 }
 
 cleanup() {
-  [[ -n "$PY_PID" ]] && kill "$PY_PID" 2>/dev/null || true
   [[ -n "$GO_PID" ]] && kill "$GO_PID" 2>/dev/null || true
-  [[ -n "$PY_PID2" ]] && kill "$PY_PID2" 2>/dev/null || true
   [[ -n "$GO_PID2" ]] && kill "$GO_PID2" 2>/dev/null || true
   # kill each stub daemon http server this test spawned, by resolved PID
-  kill_stub_daemon "$PY_SD"
-  kill_stub_daemon "$PY_SD2"
   kill_stub_daemon "$GO_SD"
   kill_stub_daemon "$GO_SD2"
-  [[ -n "$GO_BIN" ]] && rm -rf "$(dirname "$GO_BIN")"
   rm -rf "$WORK"
 }
 trap cleanup EXIT
@@ -214,44 +174,22 @@ assert_override_passthrough() {
   [[ "$sprintbin_env" == "$OVERRIDE_VALUE" ]] || fail "sprint-check-cockpit: FAIL — $label override launch set COCKPIT_SPRINT_BIN=[$sprintbin_env], want [$OVERRIDE_VALUE]"
 }
 
-# ── server.py ───────────────────────────────────────────────────────────────
-PY_PORT="$(free_port)"; PY_SD="$WORK/state-py"
-SPRINT_CHECK_ROOT="$WORK" COCKPIT_STATE_DIR="$PY_SD" COCKPIT_DAEMON_BIN="$STUB" \
-  python3 "$SERVER_PY" "$PY_PORT" >/dev/null 2>&1 &
-PY_PID=$!; disown "$PY_PID" 2>/dev/null || true
-wait_ready "$PY_PORT" || fail "sprint-check-cockpit: server.py did not start"
-exercise "server.py" "http://127.0.0.1:$PY_PORT" "$PY_SD"
+# ── the Go board ─────────────────────────────────────────────────────────────
+GO_BIN="$(build_board "$WORK/bin")"
+GO_PORT="$(free_port)"; GO_SD="$WORK/state-go"
+SPRINT_CHECK_ROOT="$WORK" SPRINT_CHECK_NO_BROWSER=1 COCKPIT_STATE_DIR="$GO_SD" COCKPIT_DAEMON_BIN="$STUB" \
+  "$GO_BIN" "$GO_PORT" >/dev/null 2>&1 &
+GO_PID=$!; disown "$GO_PID" 2>/dev/null || true
+wait_ready "$GO_PORT" || fail "sprint-check-cockpit: the board did not start"
+exercise "board" "http://127.0.0.1:$GO_PORT" "$GO_SD"
 
-# server.py, override case: COCKPIT_SPRINT_BIN already set in the launching env
-PY_PORT2="$(free_port)"; PY_SD2="$WORK/state-py-override"; mkdir -p "$PY_SD2"
-SPRINT_CHECK_ROOT="$WORK" COCKPIT_STATE_DIR="$PY_SD2" COCKPIT_DAEMON_BIN="$STUB" COCKPIT_SPRINT_BIN="$OVERRIDE_VALUE" \
-  python3 "$SERVER_PY" "$PY_PORT2" >/dev/null 2>&1 &
-PY_PID2=$!; disown "$PY_PID2" 2>/dev/null || true
-wait_ready "$PY_PORT2" || fail "sprint-check-cockpit: server.py (override) did not start"
-curl -s -X POST "http://127.0.0.1:$PY_PORT2/api/cockpit" -d '{}' >/dev/null
-assert_override_passthrough "server.py" "$PY_SD2"
-
-# ── main.go (parity) ─────────────────────────────────────────────────────────
-if command -v go >/dev/null 2>&1; then
-  GO_BIN="$(mktemp -d)/sprint-check-go-bin"
-  (cd "$ROOT" && GO111MODULE=off go build -o "$GO_BIN" ./tools/sprint-check-go)
-  GO_PORT="$(free_port)"; GO_SD="$WORK/state-go"
-  SPRINT_CHECK_ROOT="$WORK" SPRINT_CHECK_NO_BROWSER=1 COCKPIT_STATE_DIR="$GO_SD" COCKPIT_DAEMON_BIN="$STUB" \
-    "$GO_BIN" "$GO_PORT" >/dev/null 2>&1 &
-  GO_PID=$!; disown "$GO_PID" 2>/dev/null || true
-  wait_ready "$GO_PORT" || fail "sprint-check-cockpit: main.go did not start"
-  exercise "main.go" "http://127.0.0.1:$GO_PORT" "$GO_SD"
-
-  # main.go, override case: COCKPIT_SPRINT_BIN already set in the launching env
-  GO_PORT2="$(free_port)"; GO_SD2="$WORK/state-go-override"; mkdir -p "$GO_SD2"
-  SPRINT_CHECK_ROOT="$WORK" SPRINT_CHECK_NO_BROWSER=1 COCKPIT_STATE_DIR="$GO_SD2" COCKPIT_DAEMON_BIN="$STUB" COCKPIT_SPRINT_BIN="$OVERRIDE_VALUE" \
-    "$GO_BIN" "$GO_PORT2" >/dev/null 2>&1 &
-  GO_PID2=$!; disown "$GO_PID2" 2>/dev/null || true
-  wait_ready "$GO_PORT2" || fail "sprint-check-cockpit: main.go (override) did not start"
-  curl -s -X POST "http://127.0.0.1:$GO_PORT2/api/cockpit" -d '{}' >/dev/null
-  assert_override_passthrough "main.go" "$GO_SD2"
-else
-  echo "sprint-check-cockpit: go absent — main.go parity portion skipped"
-fi
+# override case: COCKPIT_SPRINT_BIN already set in the launching env
+GO_PORT2="$(free_port)"; GO_SD2="$WORK/state-go-override"; mkdir -p "$GO_SD2"
+SPRINT_CHECK_ROOT="$WORK" SPRINT_CHECK_NO_BROWSER=1 COCKPIT_STATE_DIR="$GO_SD2" COCKPIT_DAEMON_BIN="$STUB" COCKPIT_SPRINT_BIN="$OVERRIDE_VALUE" \
+  "$GO_BIN" "$GO_PORT2" >/dev/null 2>&1 &
+GO_PID2=$!; disown "$GO_PID2" 2>/dev/null || true
+wait_ready "$GO_PORT2" || fail "sprint-check-cockpit: the board (override) did not start"
+curl -s -X POST "http://127.0.0.1:$GO_PORT2/api/cockpit" -d '{}' >/dev/null
+assert_override_passthrough "board" "$GO_SD2"
 
 printf 'sprint-check-cockpit: ok\n'

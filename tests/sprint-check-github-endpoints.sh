@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# t-d271: the GitHub workflow routes in BOTH servers run exactly one tkt command each (a stub via TKT_BIN logs its
+# t-d271: the GitHub workflow routes in the Go board (t-15d8: the only board) run exactly one tkt command each (a stub via TKT_BIN logs its
 # argv, cwd and environment), refuse a bad PR before running anything, and the merge job shows output while it runs,
-# keeps one job per ticket, and ends with the exit code. Both servers give the same shapes.
+# keeps one job per ticket, and ends with the exit code.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/tests/helpers.sh"
-command -v go >/dev/null 2>&1 && command -v curl >/dev/null 2>&1 && command -v node >/dev/null 2>&1 \
-  || { echo "sprint-check-github-endpoints: skipped (needs go, curl and node)"; exit 0; }
+command -v curl >/dev/null 2>&1 && command -v node >/dev/null 2>&1 \
+  || { echo "sprint-check-github-endpoints: skipped (needs curl and node)"; exit 0; }
 
-W="$(cd "$(mktemp -d)" && pwd -P)"; GO_BIN="$W/sc-go"; PIDS=()
+W="$(cd "$(mktemp -d)" && pwd -P)"; PIDS=()
 cleanup() { for p in ${PIDS[@]+"${PIDS[@]}"}; do kill "$p" 2>/dev/null || true; done; rm -rf "$W"; }
 trap cleanup EXIT
 PROJ="$W/proj"; mkdir -p "$PROJ/.tickets/t-ab12" && (cd "$PROJ" && git init -q)
@@ -32,13 +32,12 @@ case "\$1 \$*" in
 esac
 SH
 chmod +x "$W/tkt"
-(cd "$ROOT" && GO111MODULE=off go build -o "$GO_BIN" ./tools/sprint-check-go)
+GO_BIN="$(build_board "$W/bin")"
 port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'; }
-PYP="$(port)"; GOP="$(port)"
+GOP="$(port)"
 mkdir -p "$W/ck"
-SPRINT_CHECK_ROOT="$PROJ" CANON_HOME="$W/c1" COCKPIT_STATE_DIR="$W/ck" TKT_BIN="$W/tkt" CANON_MERGE_LIMIT_SECONDS=6 python3 "$ROOT/tools/sprint-check-app/server.py" "$PYP" >/dev/null 2>&1 & PIDS+=($!); disown $! 2>/dev/null || true
-SPRINT_CHECK_ROOT="$PROJ" CANON_HOME="$W/c2" COCKPIT_STATE_DIR="$W/ck" TKT_BIN="$W/tkt" CANON_MERGE_LIMIT_SECONDS=6 SPRINT_CHECK_NO_BROWSER=1 "$GO_BIN" "$GOP" >/dev/null 2>&1 & PIDS+=($!); disown $! 2>/dev/null || true
-for p in "$PYP" "$GOP"; do for _ in $(seq 50); do curl -s -o /dev/null "http://127.0.0.1:$p/api/tickets" && break; sleep 0.1; done; done
+SPRINT_CHECK_ROOT="$PROJ" CANON_HOME="$W/c2" COCKPIT_STATE_DIR="$W/ck" TKT_BIN="$W/tkt" CANON_MERGE_LIMIT_SECONDS=6 SPRINT_CHECK_NO_BROWSER=1 TMPDIR="$W" "$GO_BIN" "$GOP" >/dev/null 2>&1 & PIDS+=($!); disown $! 2>/dev/null || true
+for _ in $(seq 50); do curl -s -o /dev/null "http://127.0.0.1:$GOP/api/tickets" && break; sleep 0.1; done
 
 get()  { curl -s -w '\n%{http_code}' "http://127.0.0.1:$1$2"; }
 post() { curl -s -w '\n%{http_code}' -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' -d "$3" "http://127.0.0.1:$1$2"; }
@@ -51,8 +50,8 @@ expect_call() { # <name> <port> <response> <argv> [progress]
   assert_eq "true|0" "$(body "$3" | js '[j.ok,j.exit_code].join("|")')"
 }
 
-for P in "$PYP" "$GOP"; do
-  srv=$([[ $P == "$PYP" ]] && echo py || echo go); : > "$W/log"
+for P in "$GOP"; do
+  srv=go; : > "$W/log"
   expect_call "$srv send-preview" "$P" "$(get "$P" /api/ticket/t-ab12/github/send-preview)" "send-issue t-ab12 --dry-run"
   expect_call "$srv send"          "$P" "$(post "$P" /api/ticket/t-ab12/github/send '{}')" "send-issue t-ab12"
   expect_call "$srv send public"   "$P" "$(post "$P" /api/ticket/t-ab12/github/send '{"public":true}')" "send-issue t-ab12 --public"
@@ -141,4 +140,4 @@ for P in "$PYP" "$GOP"; do
   r="$(curl -s -w '\n%{http_code}' -H 'Origin: https://evil.example' "http://127.0.0.1:$P/api/ticket/t-ab12/github/status")"; [[ "$(code "$r")" == 403 ]] || fail "$srv: cross-origin status was $(code "$r")"
   echo "sprint-check-github-endpoints: $srv ok"
 done
-echo "sprint-check-github-endpoints: ok (both servers)"
+echo "sprint-check-github-endpoints: ok"

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# board-origin-guard (t-957a) — the board's CSRF guard on writes. Both backends
-# (server.py, sprint-check-go) must reject a POST/DELETE whose Origin merely
+# board-origin-guard (t-957a) — the board's CSRF guard on writes. The Go board
+# (t-15d8: the only board) must reject a POST/DELETE whose Origin merely
 # STARTS WITH a loopback origin (http://127.0.0.1.attacker.example), and still
 # accept exact loopback origins with or without a port, and no Origin at all.
 # Requests are sent as text/plain — the cross-site "simple request" shape that
@@ -16,22 +16,16 @@ if ! command -v python3 >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; th
   exit 0
 fi
 
-SERVER_PY="$ROOT/tools/sprint-check-app/server.py"
-GO_BIN=""
 PIDS=()
 TMP="$(mktemp -d)"
 cleanup() {
   for p in "${PIDS[@]:-}"; do [[ -n "$p" ]] && kill "$p" 2>/dev/null || true; done
   rm -rf "$TMP"
-  [[ -n "$GO_BIN" ]] && rm -rf "$(dirname "$GO_BIN")"
   return 0
 }
 trap cleanup EXIT
 
-if command -v go >/dev/null 2>&1; then
-  GO_BIN="$(mktemp -d)/sprint-check-go-bin"
-  (cd "$ROOT" && GO111MODULE=off go build -o "$GO_BIN" ./tools/sprint-check-go)
-fi
+GO_BIN="$(build_board "$TMP/bin")"
 
 free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'; }
 
@@ -54,13 +48,8 @@ run_checks() {
   printf -- '---\nid: t-aa11\nstatus: open\ntype: task\npriority: 2\n---\n# Origin guard fixture\n' > "$work/.tickets/t-aa11/ticket.md"
   port="$(free_port)"
   # Isolated registry (CANON_HOME) and cockpit state; no daemon, no browser.
-  if [[ "$kind" == py ]]; then
-    SPRINT_CHECK_ROOT="$work" CANON_HOME="$canon" COCKPIT_STATE_DIR="$TMP/$kind-ck" COCKPIT_DAEMON_BIN=/usr/bin/false \
-      python3 "$SERVER_PY" "$port" >/dev/null 2>&1 &
-  else
-    SPRINT_CHECK_ROOT="$work" CANON_HOME="$canon" COCKPIT_STATE_DIR="$TMP/$kind-ck" COCKPIT_DAEMON_BIN=/usr/bin/false SPRINT_CHECK_NO_BROWSER=1 \
-      "$GO_BIN" "$port" >/dev/null 2>&1 &
-  fi
+  SPRINT_CHECK_ROOT="$work" CANON_HOME="$canon" COCKPIT_STATE_DIR="$TMP/$kind-ck" COCKPIT_DAEMON_BIN=/usr/bin/false SPRINT_CHECK_NO_BROWSER=1 \
+    TMPDIR="$TMP" "$GO_BIN" "$port" >/dev/null 2>&1 &
   PIDS+=("$!")
   disown "$!" 2>/dev/null || true
   base="http://127.0.0.1:$port"
@@ -101,10 +90,5 @@ run_checks() {
   echo "  $label: origin guard ok"
 }
 
-run_checks py server.py
-if [[ -n "$GO_BIN" ]]; then
-  run_checks go main.go
-else
-  echo "  main.go: go absent — Go half skipped"
-fi
+run_checks go main.go
 echo "board-origin-guard: ok"

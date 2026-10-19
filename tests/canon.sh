@@ -26,8 +26,9 @@ PY
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"; [[ -n "${SRV:-}" ]] && kill "$SRV" 2>/dev/null || true' EXIT
 
-# occupy the port with the real server
-CANON_HOME="$WORK/.canon" SPRINT_CHECK_ROOT="$ROOT" python3 "$ROOT/tools/sprint-check-app/server.py" "$PORT" >/dev/null 2>&1 &
+# occupy the port with the real server (the Go board, t-15d8)
+BOARD="$(build_board "$WORK/bin")"
+CANON_HOME="$WORK/.canon" COCKPIT_STATE_DIR="$WORK/state" SPRINT_CHECK_NO_BROWSER=1 SPRINT_CHECK_ROOT="$ROOT" "$BOARD" "$PORT" >/dev/null 2>&1 &
 SRV=$!
 for i in $(seq 1 50); do curl -s -o /dev/null "http://127.0.0.1:$PORT/api/projects" && break; sleep 0.1; done
 
@@ -370,51 +371,8 @@ nudge_true_count="$(grep -c "nudge:true" <<<"$page")"
 grep -qE "registerSkill\(id, *name, *proj\.path" <<<"$page" || fail "canon: nudge Register button must reuse registerSkill(id,name,path,'sprint')"
 grep -qF "bar.remove(); v.classList.remove('has-nudge')" <<<"$page" || fail "canon: nudge Dismiss/Register-success must remove the banner and has-nudge class"
 
-# t-824e: server.py passes the daemon's reaper timeouts through running_build; an older daemon → 0.
-# Mirrors TestCockpitRunningBuildPassesReaperTimeouts (tools/sprint-check-go).
-python3 - "$ROOT/tools/sprint-check-app" <<'PY' || fail "canon: running_build must pass idle_timeout_secs / idle_timeout_main_secs through (0 when absent)"
-import http.server, json, sys, threading
-sys.path.insert(0, sys.argv[1])
-import server
-for body, want in [
-    ({'version': 'v', 'exe_mtime': 1, 'uptime_secs': 2, 'debug_enabled': True, 'idle_timeout_secs': 300, 'idle_timeout_main_secs': 1800}, (300, 1800)),
-    ({'version': 'v', 'exe_mtime': 1, 'uptime_secs': 2, 'debug_enabled': False}, (0, 0)),
-]:
-    class H(http.server.BaseHTTPRequestHandler):
-        def do_GET(self):
-            data = json.dumps(body).encode()
-            self.send_response(200); self.send_header('Content-Length', str(len(data))); self.end_headers(); self.wfile.write(data)
-        def log_message(self, *a): pass
-    srv = http.server.HTTPServer(('127.0.0.1', 0), H)
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-    got = server._cockpit_running_build('127.0.0.1:%d' % srv.server_address[1])
-    srv.shutdown()
-    assert got and (got['idle_timeout_secs'], got['idle_timeout_main_secs']) == want and got['version'] == 'v', got
-PY
-
-# t-4487: running_build carries the daemon's build stamp (`commit`) so Help > Versions can show `0.3.0 (0e2fd866)`; "" for an older
-# daemon, a non-string, null, odd text (spaces, markup, a lone surrogate) or an oversized value, and never an exception. Mirrors TestCockpitRunningBuildPassesCommit.
-python3 - "$ROOT/tools/sprint-check-app" <<'PY' || fail "canon: running_build must pass the daemon's commit through (\"\" when absent or not a string)"
-import http.server, json, sys, threading
-sys.path.insert(0, sys.argv[1])
-import server
-cases = [({'version': '0.3.0', 'commit': '0e2fd866'}, '0e2fd866'), ({'version': '0.3.0'}, ''), ({'version': '0.3.0', 'commit': None}, ''),
-         ({'version': '0.3.0', 'commit': 12345}, ''), ({'version': '0.3.0', 'commit': ['a']}, ''), ({'version': '0.3.0', 'commit': {'x': 1}}, ''),
-         ({'version': '0.3.0', 'commit': 'é' * 100}, ''), ({'version': '0.3.0', 'commit': 'a' * 100}, ''), ({'version': '0.3.0', 'commit': 'a' * 64}, 'a' * 64),
-         ({'version': '0.3.0', 'commit': '\ud800ab'}, ''), ({'version': '0.3.0', 'commit': 'a b'}, ''), ({'version': '0.3.0', 'commit': '<b>x</b>'}, ''),
-         ({'version': 'dev', 'commit': 'dev'}, 'dev')]
-for body, want in cases:
-    class H(http.server.BaseHTTPRequestHandler):
-        def do_GET(self):
-            data = json.dumps(body).encode()
-            self.send_response(200); self.send_header('Content-Length', str(len(data))); self.end_headers(); self.wfile.write(data)
-        def log_message(self, *a): pass
-    srv = http.server.HTTPServer(('127.0.0.1', 0), H)
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-    got = server._cockpit_running_build('127.0.0.1:%d' % srv.server_address[1])
-    srv.shutdown()
-    assert got is not None and got['commit'] == want and got['version'] == body['version'], (body, got)
-PY
+# t-824e / t-4487: the board's running_build (reaper timeouts, the daemon's commit stamp) is pinned by
+# TestCockpitRunningBuildPassesReaperTimeouts and TestCockpitRunningBuildPassesCommit in tools/sprint-check-go (t-15d8).
 
 # ── t-302d: the browser opens only once the board answers /api/version ────────
 # A copy of the launcher with a stub board, reached through SPRINT_CHECK_BIN as a test build is (t-15d8; starts answering

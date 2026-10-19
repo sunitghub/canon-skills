@@ -1,25 +1,23 @@
 #!/usr/bin/env bash
 # board-branch-divergence — t-6328. With `.tickets/` tracked in git, a ticket
 # whose status differs on a live worktree or an unmerged branch gets a
-# `branch_divergence` field in /api/tickets, identically from server.py and
-# main.go. Real git fixture, both backends.
+# `branch_divergence` field in /api/tickets (the Go board, t-15d8: the only one).
+# Real git fixture.
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/tests/helpers.sh"
 
-command -v python3 >/dev/null 2>&1 && command -v go >/dev/null 2>&1 && command -v curl >/dev/null 2>&1 \
-  && command -v git >/dev/null 2>&1 || { echo "board-branch-divergence: skipped (python3/go/curl/git not all present)"; exit 0; }
+command -v python3 >/dev/null 2>&1 && command -v curl >/dev/null 2>&1 \
+  && command -v git >/dev/null 2>&1 || { echo "board-branch-divergence: skipped (python3/curl/git not all present)"; exit 0; }
 
 WORK="$(mktemp -d)"
 BIN_DIR="$(mktemp -d)"
-PY_PID=""; GO_PID=""; LP_PID=""; LG_PID=""
+GO_PID=""; LG_PID=""; NG_PID=""; CG_PID=""; IG_PID=""
+export COCKPIT_STATE_DIR="$WORK/state" SPRINT_CHECK_NO_BROWSER=1
 cleanup() {
-  [[ -n "$PY_PID" ]] && kill "$PY_PID" 2>/dev/null || true
-  [[ -n "$GO_PID" ]] && kill "$GO_PID" 2>/dev/null || true
-  [[ -n "$LP_PID" ]] && kill "$LP_PID" 2>/dev/null || true   # t-9c87: the link-fixture servers must not outlive a failed check
-  [[ -n "$LG_PID" ]] && kill "$LG_PID" 2>/dev/null || true
+  for p in "$GO_PID" "$LG_PID" "$NG_PID" "$CG_PID" "$IG_PID"; do [[ -n "$p" ]] && kill "$p" 2>/dev/null || true; done   # t-9c87: no server outlives a failed check
   rm -rf "$WORK" "$BIN_DIR" "${WORK}-worktrees"
 }
 trap cleanup EXIT
@@ -52,20 +50,15 @@ git checkout -q -- .tickets/t-wtre/ticket.md
 (cd "${WORK}-worktrees/sprint-t-wtre" && mk_ticket t-wtre in_progress)
 
 free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'; }
-PY_PORT="$(free_port)"; GO_PORT="$(free_port)"
-(cd "$ROOT" && GO111MODULE=off go build -o "$BIN_DIR/sc-go" ./tools/sprint-check-go)
+GO_PORT="$(free_port)"
+SC_GO="$(build_board "$BIN_DIR")"
+wait_port() { local ok=""; for _ in $(seq 1 50); do curl -s -o /dev/null "http://127.0.0.1:$1/api/tickets" && ok=1 && break; sleep 0.1; done; [[ -n "$ok" ]] || fail "server on port $1 did not start"; }
 
 export SPRINT_CHECK_DIVERGENCE_TTL=0
-SPRINT_CHECK_ROOT="$REPO" CANON_HOME="$WORK/canon-py" python3 "$ROOT/tools/sprint-check-app/server.py" "$PY_PORT" >/dev/null 2>&1 &
-PY_PID=$!
-disown "$PY_PID" 2>/dev/null || true
-SPRINT_CHECK_ROOT="$REPO" CANON_HOME="$WORK/canon-go" SPRINT_CHECK_NO_BROWSER=1 "$BIN_DIR/sc-go" "$GO_PORT" >/dev/null 2>&1 &
+SPRINT_CHECK_ROOT="$REPO" CANON_HOME="$WORK/canon-go" "$SC_GO" "$GO_PORT" >/dev/null 2>&1 &
 GO_PID=$!
 disown "$GO_PID" 2>/dev/null || true
-for port in "$PY_PORT" "$GO_PORT"; do
-  ok=""; for _ in $(seq 1 50); do curl -s -o /dev/null "http://127.0.0.1:$port/api/tickets" && ok=1 && break; sleep 0.1; done
-  [[ -n "$ok" ]] || fail "server on port $port did not start"
-done
+wait_port "$GO_PORT"
 
 div() { # port id -> compact JSON of branch_divergence or NONE
   curl -s "http://127.0.0.1:$1/api/tickets" | python3 -c '
@@ -76,10 +69,9 @@ print(json.dumps(d,sort_keys=True) if d is not None else "NONE")' "$2"
 }
 
 check() { # id expected
-  local py go
-  py="$(div "$PY_PORT" "$1")"; go="$(div "$GO_PORT" "$1")"
-  [[ "$py" == "$2" ]] || fail "server.py branch_divergence for $1: expected '$2', got '$py'"
-  [[ "$go" == "$2" ]] || fail "main.go branch_divergence for $1: expected '$2', got '$go'"
+  local go
+  go="$(div "$GO_PORT" "$1")"
+  [[ "$go" == "$2" ]] || fail "branch_divergence for $1: expected '$2', got '$go'"
 }
 
 # t-2241: `dirty` — t-wtre's edit is uncommitted, so "merged" alone would mislead.
@@ -95,33 +87,26 @@ check t-brch NONE
 # Non-git root: no field, no error.
 NOGIT="$WORK/nogit"; mkdir -p "$NOGIT" && (cd "$NOGIT" && mk_ticket t-ngit open)
 NG_PORT="$(free_port)"
-SPRINT_CHECK_ROOT="$NOGIT" CANON_HOME="$WORK/canon-ng" python3 "$ROOT/tools/sprint-check-app/server.py" "$NG_PORT" >/dev/null 2>&1 &
+SPRINT_CHECK_ROOT="$NOGIT" CANON_HOME="$WORK/canon-ng" "$SC_GO" "$NG_PORT" >/dev/null 2>&1 &
 NG_PID=$!
 disown "$NG_PID" 2>/dev/null || true
-for _ in $(seq 1 50); do curl -s -o /dev/null "http://127.0.0.1:$NG_PORT/api/tickets" && break; sleep 0.1; done
+wait_port "$NG_PORT"
 assert_eq NONE "$(div "$NG_PORT" t-ngit)"
 kill "$NG_PID" 2>/dev/null || true
 
 # TTL cache (here 60s): the scan of OTHER checkouts is cached (the comparison against main stays
-# live), so deleting the branch inside the window still returns the cached answer — both backends.
+# live), so deleting the branch inside the window still returns the cached answer.
 sed -i.bak 's/^status: closed/status: open/' .tickets/t-brch/ticket.md && rm -f .tickets/t-brch/ticket.md.bak
-CP_PORT="$(free_port)"; CG_PORT="$(free_port)"
-SPRINT_CHECK_DIVERGENCE_TTL=60 SPRINT_CHECK_ROOT="$REPO" CANON_HOME="$WORK/canon-cp" python3 "$ROOT/tools/sprint-check-app/server.py" "$CP_PORT" >/dev/null 2>&1 &
-CP_PID=$!; disown "$CP_PID" 2>/dev/null || true
-SPRINT_CHECK_DIVERGENCE_TTL=60 SPRINT_CHECK_ROOT="$REPO" CANON_HOME="$WORK/canon-cg" SPRINT_CHECK_NO_BROWSER=1 "$BIN_DIR/sc-go" "$CG_PORT" >/dev/null 2>&1 &
+CG_PORT="$(free_port)"
+SPRINT_CHECK_DIVERGENCE_TTL=60 SPRINT_CHECK_ROOT="$REPO" CANON_HOME="$WORK/canon-cg" "$SC_GO" "$CG_PORT" >/dev/null 2>&1 &
 CG_PID=$!; disown "$CG_PID" 2>/dev/null || true
-for port in "$CP_PORT" "$CG_PORT"; do
-  for _ in $(seq 1 50); do curl -s -o /dev/null "http://127.0.0.1:$port/api/tickets" && break; sleep 0.1; done
-  [[ "$(div "$port" t-brch)" != NONE ]] || fail "cache test: expected divergence for t-brch on port $port"
-done
+wait_port "$CG_PORT"
+[[ "$(div "$CG_PORT" t-brch)" != NONE ]] || fail "cache test: expected divergence for t-brch"
 git branch -q -D sprint/t-brch
-for port in "$CP_PORT" "$CG_PORT"; do
-  [[ "$(div "$port" t-brch)" != NONE ]] || fail "cache test: divergence should still be served from cache inside the TTL on port $port"
-done
+[[ "$(div "$CG_PORT" t-brch)" != NONE ]] || fail "cache test: divergence should still be served from cache inside the TTL"
 # ...and with the cache disabled the same deletion is seen immediately.
-[[ "$(div "$PY_PORT" t-brch)" == NONE ]] || fail "TTL=0 server should see the deleted branch immediately"
-[[ "$(div "$GO_PORT" t-brch)" == NONE ]] || fail "TTL=0 Go server should see the deleted branch immediately"
-kill "$CP_PID" "$CG_PID" 2>/dev/null || true
+[[ "$(div "$GO_PORT" t-brch)" == NONE ]] || fail "TTL=0 server should see the deleted branch immediately"
+kill "$CG_PID" 2>/dev/null || true
 
 # Branch cap: 10 unmerged branches each close a distinct ticket -> only the first 8 are scanned.
 for i in 0 1 2 3 4 5 6 7 8 9; do
@@ -135,7 +120,6 @@ count_flagged() {
 import json,sys
 print(sum(1 for t in json.load(sys.stdin) if t["id"].startswith("t-cap") and "branch_divergence" in t))'
 }
-assert_eq 8 "$(count_flagged "$PY_PORT")"
 assert_eq 8 "$(count_flagged "$GO_PORT")"
 
 # `.tickets/` gitignored: the scan is skipped outright, even if a branch force-added a differing copy.
@@ -144,16 +128,12 @@ git init -q -b main . && git config user.email t@t.com && git config user.name t
 echo ".tickets/" > .gitignore && git add .gitignore && git commit -q -m base
 git checkout -q -b b1 && mk_ticket t-ign closed && git add -f .tickets && git commit -q -m "force-add closed"
 git checkout -q main && rm -rf .tickets && mk_ticket t-ign open
-IP_PORT="$(free_port)"; IG_PORT="$(free_port)"
-SPRINT_CHECK_ROOT="$IGN" CANON_HOME="$WORK/canon-ip" python3 "$ROOT/tools/sprint-check-app/server.py" "$IP_PORT" >/dev/null 2>&1 &
-IP_PID=$!; disown "$IP_PID" 2>/dev/null || true
-SPRINT_CHECK_ROOT="$IGN" CANON_HOME="$WORK/canon-ig" SPRINT_CHECK_NO_BROWSER=1 "$BIN_DIR/sc-go" "$IG_PORT" >/dev/null 2>&1 &
+IG_PORT="$(free_port)"
+SPRINT_CHECK_ROOT="$IGN" CANON_HOME="$WORK/canon-ig" "$SC_GO" "$IG_PORT" >/dev/null 2>&1 &
 IG_PID=$!; disown "$IG_PID" 2>/dev/null || true
-for port in "$IP_PORT" "$IG_PORT"; do
-  for _ in $(seq 1 50); do curl -s -o /dev/null "http://127.0.0.1:$port/api/tickets" && break; sleep 0.1; done
-  assert_eq NONE "$(div "$port" t-ign)"
-done
-kill "$IP_PID" "$IG_PID" 2>/dev/null || true
+wait_port "$IG_PORT"
+assert_eq NONE "$(div "$IG_PORT" t-ign)"
+kill "$IG_PID" 2>/dev/null || true
 
 # t-9c87: a worktree whose ticket folder, ticket.md or .tickets is a symlink (a junction on Windows) must not have its
 # status read through the link: the board would show a status out of a file outside the worktree. Own repo, so the
@@ -170,47 +150,21 @@ rm -f  "${WORK}-worktrees/lnkb/.tickets/t-lnkb/ticket.md" && ln -s "$OUT/b.md" "
 rm -rf "${WORK}-worktrees/lnkc/.tickets"             && ln -s "$OUT/tix" "${WORK}-worktrees/lnkc/.tickets"
 (cd "${WORK}-worktrees/lnkp" && mk_ticket t-lnkp in_progress)
 if [[ -L "${WORK}-worktrees/lnka/.tickets/t-lnka" && -L "${WORK}-worktrees/lnkb/.tickets/t-lnkb/ticket.md" && -L "${WORK}-worktrees/lnkc/.tickets" ]]; then
-  LP_PORT="$(free_port)"; LG_PORT="$(free_port)"
-  SPRINT_CHECK_ROOT="$LNK" CANON_HOME="$WORK/canon-lp" python3 "$ROOT/tools/sprint-check-app/server.py" "$LP_PORT" >/dev/null 2>&1 &
-  LP_PID=$!; disown "$LP_PID" 2>/dev/null || true
-  SPRINT_CHECK_ROOT="$LNK" CANON_HOME="$WORK/canon-lg" SPRINT_CHECK_NO_BROWSER=1 "$BIN_DIR/sc-go" "$LG_PORT" >/dev/null 2>&1 &
+  LG_PORT="$(free_port)"
+  SPRINT_CHECK_ROOT="$LNK" CANON_HOME="$WORK/canon-lg" "$SC_GO" "$LG_PORT" >/dev/null 2>&1 &
   LG_PID=$!; disown "$LG_PID" 2>/dev/null || true
-  for port in "$LP_PORT" "$LG_PORT"; do
-    for _ in $(seq 1 50); do curl -s -o /dev/null "http://127.0.0.1:$port/api/tickets" && break; sleep 0.1; done
-  done
-  lcheck() { # id expected, against the link-fixture servers
-    local py go
-    py="$(div "$LP_PORT" "$1")"; go="$(div "$LG_PORT" "$1")"
-    [[ "$py" == "$2" ]] || fail "server.py branch_divergence for $1 (links): expected '$2', got '$py'"
-    [[ "$go" == "$2" ]] || fail "main.go branch_divergence for $1 (links): expected '$2', got '$go'"
+  wait_port "$LG_PORT"
+  lcheck() { # id expected, against the link-fixture server
+    local go
+    go="$(div "$LG_PORT" "$1")"
+    [[ "$go" == "$2" ]] || fail "branch_divergence for $1 (links): expected '$2', got '$go'"
   }
   lcheck t-lnkp '{"branch": "sprint/lnkp", "dirty": true, "merged": true, "status": "in_progress", "where": "worktree"}'   # control
   lcheck t-lnka NONE   # ticket folder is a link
   lcheck t-lnkb NONE   # ticket.md is a link
   lcheck t-lnkc NONE   # .tickets is a link
-  # Windows: before Python 3.12 Path.is_symlink() is False for a junction, and _path_key's "resolved folder" comparison
-  # resolves both sides, so only the reparse-point attribute of lstat can refuse one. Simulate exactly that (a POSIX symlink
-  # stands in for the junction: is_symlink blind, lstat flagging FILE_ATTRIBUTE_REPARSE_POINT) for all three link variants.
-  CANON_HOME="$WORK/canon-imp" python3 - "$ROOT/tools/sprint-check-app/server.py" "${WORK}-worktrees" <<'PYEOF' || fail "server.py _scan_ticket_safe does not refuse a linked ticket when is_symlink is blind (Windows junction)"
-import importlib.util, os, pathlib, stat, sys, types
-spec = importlib.util.spec_from_file_location("scsrv", sys.argv[1]); srv = importlib.util.module_from_spec(spec); spec.loader.exec_module(srv)
-wts = sys.argv[2]
-real_lstat = os.lstat
-def junction_lstat(p, *a, **k):
-    st = real_lstat(p, *a, **k)
-    if not stat.S_ISLNK(st.st_mode):
-        return st
-    fake = types.SimpleNamespace(**{n: getattr(st, n) for n in dir(st) if n.startswith('st_')})
-    fake.st_mode = stat.S_IFDIR | 0o755
-    fake.st_file_attributes = stat.FILE_ATTRIBUTE_REPARSE_POINT   # what Windows reports for a junction
-    return fake
-pathlib.Path.is_symlink = lambda self: False
-os.lstat = junction_lstat
-assert srv._scan_ticket_safe(wts + '/lnkp', 't-lnkp') is True, 'a plain worktree ticket must still be readable'
-for wt, tid, what in (('lnka', 't-lnka', 'ticket folder'), ('lnkb', 't-lnkb', 'ticket.md'), ('lnkc', 't-lnkc', '.tickets')):
-    assert srv._scan_ticket_safe(wts + '/' + wt, tid) is False, f'a linked {what} must be refused when is_symlink cannot see it'
-PYEOF
-  kill "$LP_PID" "$LG_PID" 2>/dev/null || true
+  # the scan's own link refusal (Lstat sees a symlink or junction) is TestScanTicketSafeRefusesLinks in main_test.go (t-15d8)
+  kill "$LG_PID" 2>/dev/null || true
 else
   echo "board-branch-divergence: link cases skipped (this filesystem cannot create symlinks)"
 fi
@@ -229,8 +183,7 @@ count_wc() {
 import json,sys
 print(sum(1 for t in json.load(sys.stdin) if t["id"].startswith("t-wc") and "branch_divergence" in t))'
 }
-assert_eq 7 "$(count_wc "$PY_PORT")"
 assert_eq 7 "$(count_wc "$GO_PORT")"
 check t-wtre '{"branch": "sprint/t-wtre", "dirty": true, "merged": true, "status": "in_progress", "where": "worktree"}'
 
-echo "board-branch-divergence: ok (unmerged branch, live worktree, unchanged, merged, main-catches-up, non-git, TTL cache, 8-branch cap, 8-worktree cap, gitignored-tickets skip, linked worktree tickets not read — server.py == main.go)"
+echo "board-branch-divergence: ok (unmerged branch, live worktree, unchanged, merged, main-catches-up, non-git, TTL cache, 8-branch cap, 8-worktree cap, gitignored-tickets skip, linked worktree tickets not read)"

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ticket-skeleton (t-b0c9): a new ticket starts from the same intent skeleton (Problem / Outcome / Constraints / Open questions,
 # bugs also Expected / Actual, hints as HTML comments) whichever way it is created: `tkt create` without -d, the board's New
-# ticket form (TYPE_TEMPLATES in static/board-core.js), and a create request with no body to server.py or the Go board. The four
-# copies must be identical for every type; -d text and an empty body are kept as given. The board's Plan and Acceptance doc
+# ticket form (TYPE_TEMPLATES in static/board-core.js), and a create request with no body to the Go board (t-15d8: the only
+# board). The three copies must be identical for every type; -d text and an empty body are kept as given. The board's Plan and Acceptance doc
 # templates must equal what `sprint start` writes.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -12,7 +12,7 @@ command -v node >/dev/null && command -v python3 >/dev/null && command -v curl >
 TMP="$(mktemp -d)"; PIDS=(); GO_BIN=""
 cleanup() {
   for p in "${PIDS[@]:-}"; do [[ -n "$p" ]] && kill "$p" 2>/dev/null || true; done
-  rm -rf "$TMP"; [[ -n "$GO_BIN" ]] && rm -rf "$(dirname "$GO_BIN")"
+  rm -rf "$TMP"
   return 0
 }
 trap cleanup EXIT
@@ -45,20 +45,13 @@ done
 id="$(cd "$proj" && "$TKT" create "given" -d "just this")"; assert_eq "just this" "$(body_of "$proj/.tickets/$id/ticket.md")"
 id="$(cd "$proj" && "$TKT" create "empty" -d "")"; assert_eq "" "$(body_of "$proj/.tickets/$id/ticket.md")"
 
-# 2. both servers: no body (absent or null) gets the skeleton for the type; an empty or given body is kept
-if command -v go >/dev/null 2>&1; then
-  GO_BIN="$(mktemp -d)/sprint-check-go-bin"; (cd "$ROOT" && GO111MODULE=off go build -o "$GO_BIN" ./tools/sprint-check-go)
-fi
+# 2. the board: no body (absent or null) gets the skeleton for the type; an empty or given body is kept
+GO_BIN="$(build_board "$TMP/bin")"
 free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'; }
-for kind in py go; do
-  [[ "$kind" == go && -z "$GO_BIN" ]] && fail "ticket-skeleton: go is required to check the Go board"
+for kind in go; do
   repo="$TMP/$kind"; mkdir -p "$repo/.tickets"; git -C "$repo" init -q
   port="$(free_port)"
-  if [[ "$kind" == py ]]; then
-    SPRINT_CHECK_ROOT="$repo" COCKPIT_STATE_DIR="$TMP/$kind-ck" COCKPIT_DAEMON_BIN=/usr/bin/false python3 "$ROOT/tools/sprint-check-app/server.py" "$port" >/dev/null 2>&1 &
-  else
-    SPRINT_CHECK_ROOT="$repo" COCKPIT_STATE_DIR="$TMP/$kind-ck" COCKPIT_DAEMON_BIN=/usr/bin/false SPRINT_CHECK_NO_BROWSER=1 "$GO_BIN" "$port" >/dev/null 2>&1 &
-  fi
+  SPRINT_CHECK_ROOT="$repo" COCKPIT_STATE_DIR="$TMP/$kind-ck" COCKPIT_DAEMON_BIN=/usr/bin/false SPRINT_CHECK_NO_BROWSER=1 TMPDIR="$TMP" "$GO_BIN" "$port" >/dev/null 2>&1 &
   PIDS+=("$!"); disown "$!" 2>/dev/null || true
   base="http://127.0.0.1:$port"
   for _ in $(seq 1 50); do curl -s -o /dev/null "$base/api/git" && break; sleep 0.1; done
@@ -81,4 +74,4 @@ for doc in plan acceptance; do
 done
 grep -qF "## Open questions" "$sp/.tickets/$sid/plan.md" || fail "ticket-skeleton: plan.md's Decisions comment does not mention the ticket's open questions"
 
-echo "ticket-skeleton: ok (tkt, the board form, server.py and the Go board give one skeleton per type; -d and empty bodies kept; plan/acceptance templates match sprint start)"
+echo "ticket-skeleton: ok (tkt, the board form and the Go board give one skeleton per type; -d and empty bodies kept; plan/acceptance templates match sprint start)"

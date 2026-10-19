@@ -16,6 +16,35 @@ async function shots5a4b(page, name, locator) {
   }
 }
 const PROJECT_ROOT = process.env.SPRINT_CHECK_TEST_ROOT || process.cwd();
+
+// t-15d8: a test that needs its own board starts the Go board (the only board), built once per worker into a miniature
+// install: <tmp>/tools/sprint-check-bin/sprint-check (the name an install uses, so test.sh's leak check sees it) beside a
+// link to this checkout's tools/sprint-check-app, which the board finds relative to its own binary.
+let goBoardBinPath = '';
+const goBoardTemps = [];   // removed when the worker exits
+process.on('exit', () => { for (const d of goBoardTemps) { try { fs.rmSync(d, { recursive: true, force: true }); } catch {} } });
+function goBoardBin() {
+  if (goBoardBinPath) return goBoardBinPath;
+  const layout = fs.mkdtempSync(path.join(require('os').tmpdir(), 'spec-board-'));
+  goBoardTemps.push(layout);
+  fs.mkdirSync(path.join(layout, 'tools', 'sprint-check-bin'), { recursive: true });
+  fs.symlinkSync(path.join(__dirname, '..', 'tools', 'sprint-check-app'), path.join(layout, 'tools', 'sprint-check-app'));
+  const out = path.join(layout, 'tools', 'sprint-check-bin', 'sprint-check');
+  execFileSync('go', ['build', '-o', out, './tools/sprint-check-go'], { cwd: path.join(__dirname, '..'), env: { ...process.env, GO111MODULE: 'off' }, stdio: 'ignore' });
+  goBoardBinPath = out;
+  return out;
+}
+// spawnGoBoard(port, {cwd, env, stdio}): the board on its own throwaway Cockpit state, never launching a daemon (see
+// tests/run-board-spec.sh start_board: the default state dir is the user's real Cockpit).
+function spawnGoBoard(port, { cwd, env = {}, stdio = 'ignore' }) {
+  const state = fs.mkdtempSync(path.join(require('os').tmpdir(), 'spec-board-state-'));
+  goBoardTemps.push(state);
+  return spawn(goBoardBin(), [String(port)], {
+    cwd,
+    env: { ...process.env, COCKPIT_STATE_DIR: state, COCKPIT_DAEMON_BIN: path.join(state, 'no-daemon'), SPRINT_CHECK_NO_BROWSER: '1', ...env },
+    stdio,
+  });
+}
 // t-df8e: stubbed daemon address. Not port 1 — WebKit refuses restricted ports before a route can fulfil them.
 const FAKE_DAEMON_ADDR = '127.0.0.1:59999';
 
@@ -703,7 +732,7 @@ test.describe('board modal', () => {
       status: 200, contentType: 'application/json',
       body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR }),
     }));
-    // t-1da3: server.py's load_git() returns str(Path) -- native OS separators,
+    // t-1da3: the board's /api/git root is a native path -- native OS separators,
     // backslashes on Windows -- unlike worktree cwd values (git worktree list
     // --porcelain's own forward-slashed output). The daemon's cwdPrefillRe
     // (t-7590) deliberately assumes every cwd it receives is already
@@ -1970,10 +1999,9 @@ test.describe('board modal', () => {
       });
 
       const serverLog = fs.openSync(path.join(fixtureDir, 'server.log'), 'a');
-      const canonRoot = path.join(__dirname, '..');
-      serverProcess = spawn('python3', [path.join(canonRoot, 'tools', 'sprint-check-app', 'server.py'), String(port)], {
+      serverProcess = spawnGoBoard(port, {
         cwd: fixtureDir,
-        env: { ...process.env, SPRINT_CHECK_ROOT: fixtureDir },
+        env: { SPRINT_CHECK_ROOT: fixtureDir },
         stdio: ['ignore', serverLog, serverLog],
       });
       const dedicatedBase = `http://127.0.0.1:${port}`;
@@ -2866,7 +2894,7 @@ test.describe('board modal', () => {
   });
 
   test.describe('headless grading trigger (t-200b)', () => {
-    // These tests need `server.py` to invoke a stub instead of the real
+    // These tests need the board to invoke a stub instead of the real
     // `claude -p`-driving tools/sprint-headless. Point a *dedicated* server
     // (own process, own SPRINT_HEADLESS_BIN env) at a throwaway temp file
     // instead of overwriting the real tools/sprint-headless in place — the
@@ -2887,10 +2915,9 @@ test.describe('board modal', () => {
           srv.close(() => resolve(p));
         });
       });
-      headlessServerProcess = spawn('python3', [path.join(PROJECT_ROOT, 'tools', 'sprint-check-app', 'server.py'), String(port)], {
+      headlessServerProcess = spawnGoBoard(port, {
         cwd: PROJECT_ROOT,
-        env: { ...process.env, SPRINT_HEADLESS_BIN: STUB_PATH },
-        stdio: 'ignore',
+        env: { SPRINT_CHECK_ROOT: PROJECT_ROOT, SPRINT_HEADLESS_BIN: STUB_PATH },
       });
       headlessBase = `http://127.0.0.1:${port}`;
       await expect.poll(async () => {
@@ -13178,9 +13205,7 @@ test.describe('project-scoped ticket assets (t-7d83)', () => {
         const srv = net.createServer();
         srv.listen(0, '127.0.0.1', () => { const p = srv.address().port; srv.close(() => resolve(p)); });
       });
-      proc = spawn('python3', [path.join(__dirname, '..', 'tools', 'sprint-check-app', 'server.py'), String(port)], {
-        cwd: defaultRoot, env: { ...process.env, SPRINT_CHECK_ROOT: defaultRoot, CANON_HOME: canonHome }, stdio: 'ignore',
-      });
+      proc = spawnGoBoard(port, { cwd: defaultRoot, env: { SPRINT_CHECK_ROOT: defaultRoot, CANON_HOME: canonHome } });
       const base = `http://127.0.0.1:${port}`;
       await expect.poll(async () => { try { return (await page.request.get(`${base}/api/tickets`)).status(); } catch { return 0; } }, { timeout: 8000 }).toBe(200);
       const add = await page.request.post(`${base}/api/projects`, { headers: { Origin: 'http://localhost' }, data: { path: otherRoot, description: 't7d83' } });

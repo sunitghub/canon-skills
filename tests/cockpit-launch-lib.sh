@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tests/cockpit-launch-lib.sh — t-55c1: the Cockpit launcher helpers (tools/cockpit-launch-lib.sh) work with
-# no Python: port check via bash /dev/tcp, project registration parsed with sed/awk against BOTH backends,
-# and start_cockpit_server hands off to the Go sprint-check-win.exe on Windows without a working Python.
+# no Python: port check via bash /dev/tcp, project registration parsed with sed/awk against the Go board, and
+# start_cockpit_server starts the Go board on every OS (t-15d8).
 
 set -euo pipefail
 
@@ -33,28 +33,17 @@ check_backend() {   # <label> <port>: register twice (new, then already-register
     || fail "$label: two paths got the same id"
 }
 
-# --- Python backend ------------------------------------------------------------------------------
-if command -v python3 >/dev/null 2>&1; then
-  py_port="$(free_port)"
-  ( cd "$proj" && CANON_HOME="$tmp/canon-py" SPRINT_CHECK_NO_BROWSER=1 exec python3 "$ROOT/tools/sprint-check-app/server.py" "$py_port" ) >/dev/null 2>&1 &
-  pids+=($!); wait_up "$py_port"
-  check_backend python "$py_port"
+# --- the Go board (compact JSON) -----------------------------------------------------------------
+board="$(build_board "$tmp/gobin")"
+go_port="$(free_port)"
+( cd "$proj" && CANON_HOME="$tmp/canon-go" COCKPIT_STATE_DIR="$tmp/ck" COCKPIT_DAEMON_BIN=/usr/bin/false SPRINT_CHECK_NO_BROWSER=1 TMPDIR="$tmp" \
+    exec "$board" "$go_port" ) >/dev/null 2>&1 &
+pids+=($!); wait_up "$go_port"
+check_backend go "$go_port"
 
-  # _port_in_use without lsof/ss (Git Bash): bash /dev/tcp.
-  PATH="/bin:/usr/bin" lib _port_in_use "$py_port" || fail "/dev/tcp: listening port reported free"
-  if PATH="/bin:/usr/bin" lib _port_in_use "$(free_port)"; then fail "/dev/tcp: free port reported in use"; fi
-fi
-
-# --- Go backend (same API, compact JSON) ----------------------------------------------------------
-if command -v go >/dev/null 2>&1; then
-  mkdir -p "$tmp/gobin"
-  ( cd "$ROOT" && GO111MODULE=off go build -o "$tmp/gobin/sprint-check-go" ./tools/sprint-check-go ) >/dev/null 2>&1 \
-    || fail "go build of sprint-check-go failed"
-  go_port="$(free_port)"
-  ( cd "$proj" && CANON_HOME="$tmp/canon-go" SPRINT_CHECK_NO_BROWSER=1 exec "$tmp/gobin/sprint-check-go" "$go_port" ) >/dev/null 2>&1 &
-  pids+=($!); wait_up "$go_port"
-  check_backend go "$go_port"
-fi
+# _port_in_use without lsof/ss (Git Bash): bash /dev/tcp.
+PATH="/bin:/usr/bin" lib _port_in_use "$go_port" || fail "/dev/tcp: listening port reported free"
+if PATH="/bin:/usr/bin" lib _port_in_use "$(free_port)"; then fail "/dev/tcp: free port reported in use"; fi
 
 # --- start_cockpit_server: the Go board on every OS (t-15d8), at board_rel_path ------------------------------
 fake="$tmp/fakeinst/tools"; mkdir -p "$fake/sprint-check-bin"

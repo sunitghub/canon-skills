@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # sprint-check-ticket-commit (t-d254) — GET/POST /api/ticket-commit/<id> behave
-# identically in server.py and main.go, each against its own fresh git repo:
+# in the Go board (t-15d8: the only board), against fresh git repos:
 # classification (required / recommended / optional / other_dirty), a commit of
 # exactly the chosen eligible paths (unrelated staged work stays staged),
 # rejection of forged or incomplete path lists with HEAD unchanged, blocked
@@ -16,15 +16,15 @@ if ! command -v python3 >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1 || 
   exit 0
 fi
 
-SERVER_PY="$ROOT/tools/sprint-check-app/server.py"
 GO_BIN=""
 PIDS=()
 DIRS=()
+TMP="$(mktemp -d)"
 cleanup() {
   local p leaked=""
   for p in "${PIDS[@]:-}"; do [[ -n "$p" ]] && kill "$p" 2>/dev/null || true; done
   for d in "${DIRS[@]:-}"; do [[ -n "$d" ]] && rm -rf "$d" "$d-worktrees"; done
-  [[ -n "$GO_BIN" ]] && rm -rf "$(dirname "$GO_BIN")"
+  rm -rf "$TMP"
   # t-8765: a server that survives its own test's kill is a leak — say so and fail, never leave it silently.
   for _ in 1 2 3 4 5 6 7 8 9 10; do
     leaked=""
@@ -40,10 +40,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if command -v go >/dev/null 2>&1; then
-  GO_BIN="$(mktemp -d)/sprint-check-go-bin"
-  (cd "$ROOT" && GO111MODULE=off go build -o "$GO_BIN" ./tools/sprint-check-go)
-fi
+GO_BIN="$(build_board "$TMP/bin")"
 
 free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'; }
 
@@ -57,11 +54,8 @@ start_server() {
   # `if`/`&&` set -e would not stop the parent — the SIGTERM makes the parent run its EXIT trap and stop.
   [[ "$BASH_SUBSHELL" == 0 ]] || { echo "FAIL: $FUNCNAME called in a subshell — its state would be lost (t-8765)" >&2; kill -TERM "$$"; exit 1; }
   port="$(free_port)"
-  if [[ "$kind" == py ]]; then
-    SPRINT_CHECK_ROOT="$repo" python3 "$SERVER_PY" "$port" >/dev/null 2>&1 &
-  else
-    SPRINT_CHECK_NO_BROWSER=1 SPRINT_CHECK_ROOT="$repo" "$GO_BIN" "$port" >/dev/null 2>&1 &
-  fi
+  SPRINT_CHECK_NO_BROWSER=1 SPRINT_CHECK_ROOT="$repo" CANON_HOME="$TMP/canon" COCKPIT_STATE_DIR="$TMP/ck" COCKPIT_DAEMON_BIN=/usr/bin/false TMPDIR="$TMP" \
+    "$GO_BIN" "$port" >/dev/null 2>&1 &
   PIDS+=("$!")
   disown "$!" 2>/dev/null || true   # no "Terminated" job noise when cleanup kills it
   for _ in $(seq 1 50); do
@@ -248,12 +242,7 @@ EOF
   echo "  $label: ticket-commit ok"
 }
 
-run_checks py server.py
-if [[ -n "$GO_BIN" ]]; then
-  run_checks go main.go
-else
-  echo "  main.go: go absent — Go half skipped"
-fi
+run_checks go main.go
 # The bookkeeping itself must have worked: a subshell-captured start_server would leave both empty.
 [[ ${#PIDS[@]} -gt 0 && ${#DIRS[@]} -gt 0 ]] || { echo "FAIL: no server PIDs / repo dirs recorded — start_server/new_repo ran in a subshell (t-8765)" >&2; exit 1; }
 echo "sprint-check-ticket-commit: ok"

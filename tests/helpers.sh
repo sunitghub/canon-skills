@@ -184,7 +184,7 @@ run_fail() {
 # plan approval, no Sign-off section) and t-ready (approved plan) — the
 # minimal pair that exercises acceptance_has_items/plan_has_approach/
 # plan_approved computation. Shared by sprint-check-server.sh and
-# sprint-check-api-parity.sh so both test against one fixture definition.
+# sprint-check-api.sh so both test against one fixture definition.
 build_tickets_fixture() {
   local dir="$1"
   mkdir -p "$dir/.tickets/t-placeholder" "$dir/.tickets/t-ready"

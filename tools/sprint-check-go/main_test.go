@@ -1986,3 +1986,58 @@ func TestScanTicketSafeRefusesLinks(t *testing.T) {
 		}
 	}
 }
+
+// t-15d8 (ported from tests/sprint-check-cockpit.sh's Python resolver case, t-e40a): COCKPIT_DAEMON_BIN wins; else the
+// first candidate that exists; with none, the first candidate (the path `canon update` will create).
+func TestResolveCockpitDaemonOverrideAndFallback(t *testing.T) {
+	td := filepath.Join(t.TempDir(), "tools")
+	root := t.TempDir()
+	t.Setenv("COCKPIT_DAEMON_BIN", "")
+	cands := cockpitDaemonCandidates(td, root, runtime.GOOS)
+	if got := resolveCockpitDaemon(td, root); got != cands[0] {
+		t.Fatalf("no binary anywhere: got %s, want the first candidate %s", got, cands[0])
+	}
+	later := cands[len(cands)-1]
+	os.MkdirAll(filepath.Dir(later), 0o755)
+	os.WriteFile(later, nil, 0o755)
+	if got := resolveCockpitDaemon(td, root); got != later {
+		t.Fatalf("only %s exists: got %s", later, got)
+	}
+	t.Setenv("COCKPIT_DAEMON_BIN", "/tmp/stub-daemon")
+	if got := resolveCockpitDaemon(td, root); got != "/tmp/stub-daemon" {
+		t.Fatalf("override must win, got %s", got)
+	}
+}
+
+// t-15d8 (ported from tests/sprint-check-skill-eval.sh's Python case): the Skill Eval busy guard is keyed by the
+// resolved project root, so a symlinked spelling of the same project cannot start a second run.
+func TestSkillEvalKeyResolvesSymlinkedRoot(t *testing.T) {
+	proj := filepath.Join(t.TempDir(), "proj")
+	os.MkdirAll(proj, 0o755)
+	link := filepath.Join(t.TempDir(), "projlink")
+	if err := os.Symlink(proj, link); err != nil {
+		t.Skip("symlinks unavailable:", err)
+	}
+	if a, b := skillEvalKey(proj, "/s/good"), skillEvalKey(link, "/s/good"); a != b {
+		t.Fatalf("a symlinked project root gave another busy key: %q vs %q", a, b)
+	}
+}
+
+// t-15d8 (ported from tests/registry.sh, which drove the Python board's registry): a project's name is its folder's
+// basename, and deregistering is registry-only, never touching the project folder.
+func TestRegistryNameIsBasenameAndRemoveKeepsDir(t *testing.T) {
+	t.Setenv("CANON_HOME", filepath.Join(t.TempDir(), ".canon"))
+	proj := filepath.Join(t.TempDir(), "myproj")
+	os.MkdirAll(filepath.Join(proj, ".git"), 0o755)
+	res := registryAdd(proj, "my project")
+	p, ok := res["project"].(registryProject)
+	if !ok || p.Name != "myproj" {
+		t.Fatalf("name should be the folder's basename, got %v", res)
+	}
+	if r := registryRemove(p.ID); r["removed"] != true {
+		t.Fatalf("remove: %v", r)
+	}
+	if fi, err := os.Stat(filepath.Join(proj, ".git")); err != nil || !fi.IsDir() {
+		t.Fatal("deregister must not touch the project folder")
+	}
+}

@@ -242,8 +242,8 @@ if command -v lsof >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
   assert_contains "$out" "a daemon of another install is still using it"; kill "$other" 2>/dev/null || true
   # 4b. a listener on the port that is NOT this install's board: refuse, never signal
   inst="$WORK/L5"; h="$WORK/hL5"; t="$WORK/tL5"; mkdir -p "$t"; mk_install "$inst"; mk_home "$h" "$inst"; port="$(free_port)"
-  mkdir -p "$WORK/foreign"; cp "$WORK/bstub.py" "$WORK/foreign/server.py"
-  ( exec python3 "$WORK/foreign/server.py" "$port" ) & fb=$!; killlist+=("$fb"); for _ in $(seq 1 50); do curl -s -o /dev/null --max-time 1 "http://127.0.0.1:$port/" && break; sleep 0.1; done
+  mkdir -p "$WORK/foreign"; cp "$WORK/bstub.py" "$WORK/foreign/listener.py"
+  ( exec python3 "$WORK/foreign/listener.py" "$port" ) & fb=$!; killlist+=("$fb"); for _ in $(seq 1 50); do curl -s -o /dev/null --max-time 1 "http://127.0.0.1:$port/" && break; sleep 0.1; done
   before="$(digest "$inst"; digest "$h")"; runl "$inst" "$h" "$port" "$t" --yes
   assert_eq 1 "$rc"; assert_contains "$out" "is not this install's board"; alive "$fb" || fail "a foreign listener was signalled"; assert_eq "$before" "$(digest "$inst"; digest "$h")"; kill "$fb" 2>/dev/null || true
   # 5. a daemon that ignores SIGTERM: reported by pid, nothing deleted, no SIGKILL

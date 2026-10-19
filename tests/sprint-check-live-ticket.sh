@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # sprint-check-live-ticket (t-8be2) — for a ticket bound to a worktree, the board shows that worktree copy's
 # status, title, Description and Demo (t-26f9 did the docs) and writes status/demo/body THERE, never to main's
-# ticket.md, identically in server.py and main.go. A body save is guarded by the etag it read (base_hash); status
+# ticket.md (the Go board, t-15d8: the only board). A body save is guarded by the etag it read (base_hash); status
 # and demo are single-field edits of the current bytes. The binding comes from the agent-writable .cockpit-cwd
 # lock, so every write re-validates its target (registered worktree, plain folders, no symlinks, size cap, atomic
 # rename) and ACTIVE follows tkt's per-checkout file.
@@ -16,7 +16,6 @@ if ! command -v python3 >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1 || 
   exit 0
 fi
 
-SERVER_PY="$ROOT/tools/sprint-check-app/server.py"
 TKT_BIN="$ROOT/tools/tkt"
 GO_BIN=""
 PIDS=()
@@ -24,15 +23,11 @@ TMP="$(mktemp -d)"
 cleanup() {
   for p in "${PIDS[@]:-}"; do [[ -n "$p" ]] && kill "$p" 2>/dev/null || true; done
   rm -rf "$TMP"
-  [[ -n "$GO_BIN" ]] && rm -rf "$(dirname "$GO_BIN")"
   return 0
 }
 trap cleanup EXIT
 
-if command -v go >/dev/null 2>&1; then
-  GO_BIN="$(mktemp -d)/sprint-check-go-bin"
-  (cd "$ROOT" && GO111MODULE=off go build -o "$GO_BIN" ./tools/sprint-check-go)
-fi
+GO_BIN="$(build_board "$TMP/bin")"
 
 free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'; }
 fm() { printf -- '---\nid: %s\nstatus: %s\ntype: task\npriority: 2\n---\n# %s\n' "$1" "$2" "$1"; }
@@ -56,13 +51,8 @@ run_checks() {
   echo "$out" > "$repo/.tickets/t-lv03/.cockpit-cwd"
 
   port="$(free_port)"
-  if [[ "$kind" == py ]]; then
-    SPRINT_CHECK_ROOT="$repo" CANON_HOME="$TMP/$kind/canon" COCKPIT_STATE_DIR="$TMP/$kind/ck" COCKPIT_DAEMON_BIN=/usr/bin/false SPRINT_CHECK_DIVERGENCE_TTL=0 \
-      python3 "$SERVER_PY" "$port" >/dev/null 2>&1 &
-  else
-    SPRINT_CHECK_ROOT="$repo" CANON_HOME="$TMP/$kind/canon" COCKPIT_STATE_DIR="$TMP/$kind/ck" COCKPIT_DAEMON_BIN=/usr/bin/false SPRINT_CHECK_DIVERGENCE_TTL=0 SPRINT_CHECK_NO_BROWSER=1 \
-      "$GO_BIN" "$port" >/dev/null 2>&1 &
-  fi
+  SPRINT_CHECK_ROOT="$repo" CANON_HOME="$TMP/$kind/canon" COCKPIT_STATE_DIR="$TMP/$kind/ck" COCKPIT_DAEMON_BIN=/usr/bin/false SPRINT_CHECK_DIVERGENCE_TTL=0 SPRINT_CHECK_NO_BROWSER=1 \
+    "$GO_BIN" "$port" >/dev/null 2>&1 &
   PIDS+=("$!"); disown "$!" 2>/dev/null || true
   base="http://127.0.0.1:$port"
   for _ in $(seq 1 50); do curl -s -o /dev/null "$base/api/git" && break; sleep 0.1; done
@@ -307,10 +297,5 @@ writes="$(board_sources "$ROOT" | grep -n 'postWrite(`/api/ticket/${[a-zA-Z.]*}/
 [[ "$(grep -c . <<<"$writes")" -eq 2 ]] || fail "expected exactly 2 body write sites in the board, got: $writes"
 [[ -z "$(grep -v base_hash <<<"$writes")" ]] || fail "a body write site in the board sends no base_hash: $(grep -v base_hash <<<"$writes")"
 
-run_checks py server.py
-if [[ -n "$GO_BIN" ]]; then
-  run_checks go main.go
-else
-  echo "  main.go: go absent — Go half skipped"
-fi
+run_checks go main.go
 echo "sprint-check-live-ticket: ok"

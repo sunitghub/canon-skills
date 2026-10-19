@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # sprint-check-interrupted — /api/cockpit-interrupted + /api/cockpit-interrupted-dismiss
-# (t-d9e6) in BOTH server.py and main.go, identically: sessions the daemon left in
+# (t-d9e6) in the Go board (t-15d8: the only board): sessions the daemon left in
 # interrupted.json are listed with resumable/reason (ticket gone or closed, cwd gone,
 # scratch), minus any live again (a stub daemon answers /sessions), hostile ids skipped;
 # dismiss rewrites the file 0600, rejects a bad id, and removes the file when empty.
@@ -16,9 +16,9 @@ if ! command -v python3 >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; th
 fi
 
 WORK="$(mktemp -d)"
-STUB_PID=""; PY_PID=""; GO_PID=""
+STUB_PID=""; GO_PID=""
 cleanup() {
-  for p in "$PY_PID" "$GO_PID" "$STUB_PID"; do [[ -n "$p" ]] && kill "$p" 2>/dev/null || true; done
+  for p in "$GO_PID" "$STUB_PID"; do [[ -n "$p" ]] && kill "$p" 2>/dev/null || true; done
   rm -rf "$WORK"
 }
 trap cleanup EXIT
@@ -57,26 +57,14 @@ json.dump([e("t-ok01"), e("t-cls1"), e("t-gon1"), e("t-cwd1", proj + "/gone"), e
 PY
 }
 
-PY_SD="$WORK/sd-py"; GO_SD="$WORK/sd-go"; seed "$PY_SD"; seed "$GO_SD"
-PY_PORT="$(free_port)"
-SPRINT_CHECK_ROOT="$PROJ" CANON_HOME="$WORK/canon-py" COCKPIT_STATE_DIR="$PY_SD" COCKPIT_DAEMON_BIN=/nonexistent \
-  python3 "$ROOT/tools/sprint-check-app/server.py" "$PY_PORT" >/dev/null 2>&1 &
-PY_PID=$!; disown "$PY_PID" 2>/dev/null || true
-wait_for "http://127.0.0.1:$PY_PORT/api/cockpit-interrupted" || fail "sprint-check-interrupted: server.py did not start"
-BACKENDS=("server.py|$PY_PORT|$PY_SD")
-
-if command -v go >/dev/null 2>&1; then
-  GO_BIN="$WORK/sprint-check-go"
-  (cd "$ROOT" && GO111MODULE=off go build -o "$GO_BIN" ./tools/sprint-check-go)
-  GO_PORT="$(free_port)"
-  SPRINT_CHECK_ROOT="$PROJ" CANON_HOME="$WORK/canon-go" SPRINT_CHECK_NO_BROWSER=1 COCKPIT_STATE_DIR="$GO_SD" COCKPIT_DAEMON_BIN=/nonexistent \
-    "$GO_BIN" "$GO_PORT" >/dev/null 2>&1 &
-  GO_PID=$!; disown "$GO_PID" 2>/dev/null || true
-  wait_for "http://127.0.0.1:$GO_PORT/api/cockpit-interrupted" || fail "sprint-check-interrupted: main.go did not start"
-  BACKENDS+=("main.go|$GO_PORT|$GO_SD")
-else
-  echo "sprint-check-interrupted: go absent — main.go portion skipped"
-fi
+GO_SD="$WORK/sd-go"; seed "$GO_SD"
+GO_BIN="$(build_board "$WORK/bin")"
+GO_PORT="$(free_port)"
+SPRINT_CHECK_ROOT="$PROJ" CANON_HOME="$WORK/canon-go" SPRINT_CHECK_NO_BROWSER=1 COCKPIT_STATE_DIR="$GO_SD" COCKPIT_DAEMON_BIN=/nonexistent \
+  TMPDIR="$WORK" "$GO_BIN" "$GO_PORT" >/dev/null 2>&1 &
+GO_PID=$!; disown "$GO_PID" 2>/dev/null || true
+wait_for "http://127.0.0.1:$GO_PORT/api/cockpit-interrupted" || fail "sprint-check-interrupted: main.go did not start"
+BACKENDS=("main.go|$GO_PORT|$GO_SD")
 
 summary() {   # id:resumable:reason-start, one per line, sorted
   python3 -c '
@@ -86,12 +74,12 @@ for e in sorted(json.load(sys.stdin), key=lambda e: e["id"]):
 }
 expected="$(printf '%s\n' 's-scr1:False:scratch' 't-cls1:False:ticket' 't-cwd1:False:working' 't-gon1:False:ticket' 't-ok01:True:')"
 
-outputs=()
 for b in "${BACKENDS[@]}"; do
   IFS='|' read -r name port sd <<<"$b"
   got="$(curl -s "http://127.0.0.1:$port/api/cockpit-interrupted" | summary)"
   assert_eq "$expected" "$got"
-  outputs+=("$(curl -s "http://127.0.0.1:$port/api/cockpit-interrupted" | python3 -c 'import json,sys;print(json.dumps(sorted(json.load(sys.stdin),key=lambda e:e["id"]),sort_keys=True))')")
+  # each entry's key set (was pinned by comparing py == go before t-15d8)
+  assert_eq "agent cwd id project_root reason resumable started" "$(curl -s "http://127.0.0.1:$port/api/cockpit-interrupted" | python3 -c 'import json,sys;print(" ".join(sorted(set().union(*[e.keys() for e in json.load(sys.stdin)]))))')"
 
   post() { curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' -d "$1" "http://127.0.0.1:$port/api/cockpit-interrupted-dismiss"; }
   assert_eq "400" "$(post '{"id":"t-../x"}')"
@@ -106,7 +94,4 @@ for b in "${BACKENDS[@]}"; do
   echo "sprint-check-interrupted: $name ok"
 done
 
-if [[ ${#outputs[@]} -eq 2 ]]; then
-  assert_eq "${outputs[0]}" "${outputs[1]}"
-fi
-echo "sprint-check-interrupted: ok (list reasons, live filter, hostile ids, dismiss + 0600, server.py and main.go identical)"
+echo "sprint-check-interrupted: ok (list reasons, live filter, hostile ids, dismiss + 0600, entry keys)"

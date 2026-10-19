@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# canon-cli — `canon status|sessions|stop|restart` (t-03a8) against BOTH board servers
-# (server.py and sprint-check-go) with a stub daemon: text and --json output, identical
-# text from both backends, control characters neutralised, busy stop/restart refused
+# canon-cli — `canon status|sessions|stop|restart` (t-03a8) against the Go board
+# (t-15d8: the only board) with a stub daemon: text and --json output, control characters neutralised, busy stop/restart refused
 # without --force, board-down messages and exit codes, and no token in any output.
 
 set -euo pipefail
@@ -56,13 +55,8 @@ SESSIONS='[{"session":"sx1","ticket":"t-d9e6","project_root":"/work/canon","cwd"
 start_board() {   # start_board <name> <state-dir> → sets PORT
   local name="$1" sd="$2"
   PORT="$(free_port)"
-  if [[ "$name" == server.py ]]; then
-    SPRINT_CHECK_ROOT="$WORK" CANON_HOME="$WORK/home-py" COCKPIT_STATE_DIR="$sd" COCKPIT_DAEMON_BIN=/nonexistent \
-      python3 "$ROOT/tools/sprint-check-app/server.py" "$PORT" >/dev/null 2>&1 &
-  else
-    SPRINT_CHECK_ROOT="$WORK" CANON_HOME="$WORK/home-go" SPRINT_CHECK_NO_BROWSER=1 COCKPIT_STATE_DIR="$sd" COCKPIT_DAEMON_BIN=/nonexistent \
-      "$GO_BIN" "$PORT" >/dev/null 2>&1 &
-  fi
+  SPRINT_CHECK_ROOT="$WORK" CANON_HOME="$WORK/home-go" SPRINT_CHECK_NO_BROWSER=1 COCKPIT_STATE_DIR="$sd" COCKPIT_DAEMON_BIN=/nonexistent \
+    TMPDIR="$WORK" "$GO_BIN" "$PORT" >/dev/null 2>&1 &
   local pid=$!; disown "$pid" 2>/dev/null || true; PIDS+=("$pid")
   wait_for "http://127.0.0.1:$PORT/api/version" || fail "canon-cli: $name did not start"
 }
@@ -70,14 +64,7 @@ start_board() {   # start_board <name> <state-dir> → sets PORT
 run() { CANON_COCKPIT_PORT="$PORT" "$CANON" "$@"; }
 no_token() { [[ "$1" != *"$TOKEN"* ]] || fail "canon-cli: a token appeared in canon output"; }
 
-BACKENDS=(server.py)
-if command -v go >/dev/null 2>&1; then
-  GO_BIN="$WORK/sprint-check-go"
-  (cd "$ROOT" && GO111MODULE=off go build -ldflags "-X main.version=$(tr -d ' \t\n\r' < "$ROOT/VERSION")" -o "$GO_BIN" ./tools/sprint-check-go)
-  BACKENDS+=(main.go)
-else
-  echo "canon-cli: go absent — main.go portion skipped"
-fi
+GO_BIN="$(build_board "$WORK/bin")"
 
 # The Windows wrappers run this same script (they can't run here; t-03a8's VM check covers them).
 grep -qF 'set "SCRIPT=%~dp0canon"' "$ROOT/tools/canon.cmd" || fail "canon-cli: tools/canon.cmd must run tools/canon"
@@ -116,8 +103,7 @@ for c in status sessions; do
   [[ "$out" != *"<html"* && "$out" != *"<!DOCTYPE"* ]] || fail "canon-cli: a stale board's error page was printed as output"
 done
 
-texts=()
-for b in "${BACKENDS[@]}"; do
+for b in main.go; do
   sd="$WORK/sd-$b"
   stub_daemon "$sd" "$SESSIONS"
   start_board "$b" "$sd"
@@ -134,7 +120,6 @@ for b in "${BACKENDS[@]}"; do
   [[ "$tbl" != *$'\x1b'* ]] || fail "canon-cli: an escape sequence reached the terminal"
   raw="$(curl -s "http://127.0.0.1:$PORT/api/cockpit-sessions")"
   assert_eq "$raw" "$(run sessions --json)"
-  texts+=("$tbl"$'\n'"$(sed -E 's/up [0-9]+[smhd]( [0-9]+[mh])?/up N/; s/127\.0\.0\.1:[0-9]+/127.0.0.1:PORT/' <<<"$st")")
 
   # t-180d: canon wait — the stub's session list changes under it.
   row() { printf '{"session":"sw%s","ticket":"t-wt01","project_root":"%s","cwd":"%s","agent":"claude","state":"%s","state_secs":3,"signal":"hook","title":""}' "$1" "$2" "$2" "$3"; }
@@ -163,7 +148,11 @@ for b in "${BACKENDS[@]}"; do
   done
   assert_eq "400" "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/api/cockpit-sessions?id=t-../x&format=state")"
   setsess "$(row 1 /work/a working)"
-  texts+=("$(curl -s "http://127.0.0.1:$PORT/api/cockpit-sessions?id=t-wt01&format=state")|$(curl -s "http://127.0.0.1:$PORT/api/cockpit-sessions?id=t-zz99&format=state")|$(curl -s "http://127.0.0.1:$PORT/api/cockpit-sessions?id=t-wt01&root=/WORK/a/&format=text")")
+  # format=state: the live state, "exited" for a ticket with no session; root matches case- and trailing-slash-insensitively
+  # (these were compared py == go before t-15d8; now explicit)
+  assert_eq "working" "$(curl -s "http://127.0.0.1:$PORT/api/cockpit-sessions?id=t-wt01&format=state")"
+  assert_eq "exited" "$(curl -s "http://127.0.0.1:$PORT/api/cockpit-sessions?id=t-zz99&format=state")"
+  assert_contains "$(curl -s "http://127.0.0.1:$PORT/api/cockpit-sessions?id=t-wt01&root=/WORK/a/&format=text")" "t-wt01  working  "
   printf '%s' "$SESSIONS" > "$sd/stub-sessions.json"
 
   # Busy: stop/restart refuse without --force and name the count.
@@ -181,8 +170,4 @@ for b in "${BACKENDS[@]}"; do
   echo "canon-cli: $b ok"
 done
 
-if [[ ${#texts[@]} -eq 4 ]]; then
-  assert_eq "${texts[0]}" "${texts[2]}"
-  assert_eq "${texts[1]}" "${texts[3]}"
-fi
-echo "canon-cli: ok (status/sessions text + --json, wait (reach/timeout/exited/list/--json/--project/bad input), both backends identical, escapes neutralised, busy refusal, --force stop, board down, no token)"
+echo "canon-cli: ok (status/sessions text + --json, wait (reach/timeout/exited/list/--json/--project/bad input), escapes neutralised, busy refusal, --force stop, board down, no token)"
