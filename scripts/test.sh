@@ -85,6 +85,7 @@ tests=(
   "$ROOT/tests/mutant-sweep.sh"
   "$ROOT/tests/sprint-checklists.sh"
   "$ROOT/tests/machine-load-unit.sh"
+  "$ROOT/tests/run-board-spec-isolation.sh"
   "$ROOT/tests/evidence.sh"
   "$ROOT/tests/sprint-check-evidence.sh"
   "$ROOT/tests/test-sh-runner.sh"

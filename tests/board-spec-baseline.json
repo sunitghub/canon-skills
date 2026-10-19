@@ -990,6 +990,39 @@
       "failed_runs": {
         "webkit": "1/1 full run, 0/5 solo"
       }
+    },
+    {
+      "title": "project-scoped ticket assets (t-7d83) > end to end: a plan image in a second project loads in that project's Cockpit tab (was a 404)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-2992",
+      "reason": "load flake: failed 1 of 2 runs in t-2992's serial two-browser stamp (start load 6.67 on 10 CPUs, right after test.sh); passed run alone on the branch; .tickets/t-2992/evidence/classify/classify-webkit.log",
+      "failed_runs": {
+        "webkit": "1/2 full runs, 0/1 solo"
+      }
+    },
+    {
+      "title": "ticket modal polish (t-612f) > a new ticket shows Acceptance, Plan and Research as ghost nodes; the pane explains and offers + Acceptance; Cancel writes nothing, Save creates the file (t-bb97)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-2992",
+      "reason": "load flake: failed 1 of 2 runs in t-2992's serial two-browser stamp (start load 6.67 on 10 CPUs, right after test.sh); passed run alone on the branch; .tickets/t-2992/evidence/classify/classify-webkit.log",
+      "failed_runs": {
+        "webkit": "1/2 full runs, 0/1 solo"
+      }
+    },
+    {
+      "title": "GitHub workflow on the board (t-718b) > Start offers GitHub places; picking GitHub mounts no terminal, previews, sends and hands back a message (t-718b)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-2992",
+      "reason": "load flake: failed 1 of 2 runs in t-2992's serial two-browser stamp (start load 6.67 on 10 CPUs, right after test.sh); passed run alone on the branch; .tickets/t-2992/evidence/classify/classify-webkit.log",
+      "failed_runs": {
+        "webkit": "1/2 full runs, 0/1 solo"
+      }
     }
   ],
   "skipped": []
