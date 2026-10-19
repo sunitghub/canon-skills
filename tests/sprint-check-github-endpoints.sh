@@ -23,6 +23,7 @@ printf '%s | %s | progress=%s\n' "\$PWD" "\$*" "\${CANON_PROGRESS_SECONDS:-}" >>
 [[ -e "$W/fail" ]] && { echo "stub failure"; exit 3; }
 [[ "\$*" == *"--pr 99"* ]] && { head -c 3000000 /dev/zero | tr '\\0' x; exit 0; }   # one 3 MB line, no newline
 [[ "\$1" == github-status ]] && { echo '{"id":"t-ab12","stage":"pr-open","pr":24}'; exit 0; }
+[[ "\$1" == github-doctor && -e "$W/badjson" ]] && { echo "not json"; exit 0; }
 [[ "\$1" == github-doctor ]] && { echo '{"checks":[{"id":"gh","status":"bad","title":"t","detail":"d","fix":{"url":"u"}}],"cloud":{"domains":[],"setup_script":""}}'; exit 0; }
 case "\$1 \$*" in
   *"--dry-run"*) echo "would do: \$*" ;;
@@ -60,6 +61,8 @@ for P in "$PYP" "$GOP"; do
   expect_call "$srv sync"          "$P" "$(post "$P" /api/github/sync '{}')" "sync-issues"
   r="$(get "$P" /api/github/doctor)"; expect_call "$srv doctor" "$P" "$r" "github-doctor --json"   # t-90a3: Admin › GitHub's checks
   assert_eq "gh|bad|u" "$(body "$r" | js '[j.doctor.checks[0].id, j.doctor.checks[0].status, j.doctor.checks[0].fix.url].join("|")')"
+  touch "$W/badjson"; r="$(get "$P" /api/github/doctor)"; rm -f "$W/badjson"   # output that is not JSON is a failure, not a doctor
+  assert_eq "false|undefined|not json" "$(body "$r" | js '[j.ok, typeof j.doctor, j.output.trim()].join("|")')"
   expect_call "$srv import"        "$P" "$(post "$P" /api/ticket/t-ab12/github/import '{"pr":58}')" "import-results t-ab12 --pr 58"
   expect_call "$srv import str"    "$P" "$(post "$P" /api/ticket/t-ab12/github/import '{"pr":"58"}')" "import-results t-ab12 --pr 58"
   expect_call "$srv import no pr"  "$P" "$(post "$P" /api/ticket/t-ab12/github/import '{}')" "import-results t-ab12"

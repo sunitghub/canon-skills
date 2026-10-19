@@ -10,7 +10,6 @@ project="$(make_project)"
 W="$(mktemp -d "${TMPDIR:-/tmp}/tkt-github-doctor.XXXXXX")"
 trap 'rm -rf "$project" "$W"' EXIT
 cd "$project"
-git -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
 
 # A stub gh that logs every call: STUB_GH=out fails `auth status`; STUB_VIS is the repo's visibility. curl is stubbed so
 # the visibility fallback never reaches the network. nogh/ is PATH with every gh removed: the "not installed" case.
@@ -20,8 +19,8 @@ cat > "$W/bin/gh" <<'EOF'
 printf '%s\n' "$*" >> "$STUB_LOG"
 case "$1 $2" in
   "auth status") [[ "${STUB_GH:-}" == out ]] && exit 1; exit 0 ;;
-  "api user")    echo octo ;;
-  "api repos/"*) [[ "${STUB_GH:-}" == out ]] && exit 1; echo "${STUB_VIS:-private}" ;;
+  "api user")    [[ "${STUB_GH:-}" == nouser ]] && exit 1; echo octo ;;
+  "api repos/"*) [[ "${STUB_GH:-}" == out || "${STUB_VIS:-}" == none ]] && exit 1; echo "${STUB_VIS:-private}" ;;
   *) echo "unexpected gh call: $*" >&2; exit 9 ;;
 esac
 EOF
@@ -41,24 +40,24 @@ export STUB_LOG="$W/log"
 doctor() { "$TKT" github-doctor --json; }
 # field <json> <python expression over d>: the expressions are this file's own literals, never input.
 field() { python3 -c 'import json,sys; d=json.loads(sys.argv[1]); print(eval(sys.argv[2]))' "$1" "$2"; }
-check() { field "$1" "'|'.join([c['status'], c.get('fix',{}).get('cmd',''), c.get('fix',{}).get('url','')]) if (c := next(c for c in d['checks'] if c['id'] == '$2')) else ''"; }
+# check <json> <id>: "status|title|fix cmd|fix url", and "nofix" in place of the fix fields when the check has no fix key.
+check() { field "$1" "'|'.join([c['status'], c['title']] + ([c['fix'].get('cmd',''), c['fix'].get('url','')] if 'fix' in c else ['nofix'])) if (c := next(c for c in d['checks'] if c['id'] == '$2')) else ''"; }
 before="$(git status --porcelain; git for-each-ref)"
 
-# Not installed; no origin; no scripts/test.sh.
+# Not installed; no origin; no commit yet, so no scripts/test.sh.
 out="$(PATH="$NOGH_PATH" "$TKT" github-doctor --json)"
-assert_eq "bad||https://github.com/cli/cli" "$(check "$out" gh)"
-assert_eq "GitHub CLI (gh) is not installed" "$(field "$out" "d['checks'][0]['title']")"
-assert_eq "bad|git remote add origin https://github.com/<owner>/<repo>.git|" "$(check "$out" origin)"
+assert_eq "bad|GitHub CLI (gh) is not installed||https://github.com/cli/cli" "$(check "$out" gh)"
+assert_eq "bad|No GitHub repository for this project|git remote add origin https://github.com/<owner>/<repo>.git|" "$(check "$out" origin)"
 assert_contains "$(field "$out" "d['checks'][1]['detail']")" "no git remote named origin"
-assert_eq "warn||" "$(check "$out" tests)"
+assert_eq "warn|No test command|nofix" "$(check "$out" tests)"
+git -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
 assert_contains "$(field "$out" "d['checks'][2]['detail']")" "merges on the gates alone"
 
 # Installed but signed out; a non-GitHub origin.
 git remote add origin https://gitlab.com/acme/app.git
 out="$(PATH="$W/bin:$PATH" STUB_GH=out doctor)"
-assert_eq "bad|gh auth login|" "$(check "$out" gh)"
-assert_eq "gh is installed, but not signed in" "$(field "$out" "d['checks'][0]['title']")"
-assert_eq "bad|git remote add origin https://github.com/<owner>/<repo>.git|" "$(check "$out" origin)"
+assert_eq "bad|gh is installed, but not signed in|gh auth login|" "$(check "$out" gh)"
+assert_eq "bad|No GitHub repository for this project|git remote add origin https://github.com/<owner>/<repo>.git|" "$(check "$out" origin)"
 assert_contains "$(field "$out" "d['checks'][1]['detail']")" "https://gitlab.com/acme/app.git"
 
 # Signed in; a private GitHub origin; an executable scripts/test.sh committed.
@@ -67,18 +66,26 @@ mkdir -p scripts; printf '#!/bin/sh\n' > scripts/test.sh; chmod +x scripts/test.
 git add scripts/test.sh; git -c user.name=t -c user.email=t@t commit -q -m tests
 before="$(git status --porcelain; git for-each-ref)"; : > "$STUB_LOG"
 out="$(PATH="$W/bin:$PATH" doctor)"
-assert_eq "ok||" "$(check "$out" gh)"; assert_eq "Signed in as octo." "$(field "$out" "d['checks'][0]['detail']")"
-assert_eq "ok||" "$(check "$out" origin)"; assert_eq "Issues go to acme/app (origin, private)." "$(field "$out" "d['checks'][1]['detail']")"
-assert_eq "ok||" "$(check "$out" tests)"
+assert_eq "ok|Signed in to GitHub|nofix" "$(check "$out" gh)"; assert_eq "Signed in as octo." "$(field "$out" "d['checks'][0]['detail']")"
+assert_eq "ok|Repository found, and private|nofix" "$(check "$out" origin)"; assert_eq "Issues go to acme/app (origin, private)." "$(field "$out" "d['checks'][1]['detail']")"
+assert_eq "ok|Check & merge test command: scripts/test.sh|nofix" "$(check "$out" tests)"
 # Read-only: only these gh reads ran, and the repo is as it was.
 assert_eq "auth status|api user --jq .login|api repos/acme/app --jq .visibility" "$(paste -sd'|' "$STUB_LOG")"
 assert_eq "$before" "$(git status --porcelain; git for-each-ref)"
+# The plain form: one line per check, no fix line for a check without one, and no JSON after it.
+plain="$(PATH="$W/bin:$PATH" "$TKT" github-doctor)"
+assert_eq "ok    Repository found, and private — Issues go to acme/app (origin, private)." "$(sed -n 2p <<< "$plain")"
+[[ "$plain" != *"fix:"* && "$plain" != *'{"checks"'* ]] || fail "plain output of an all-ok doctor: $plain"
+# A gh that cannot name the account, and one that cannot read the repo (curl gives no answer either): still exit 0.
+out="$(PATH="$W/bin:$PATH" STUB_GH=nouser STUB_VIS=none doctor)"
+assert_eq "ok|Signed in to GitHub|nofix" "$(check "$out" gh)"; assert_eq "" "$(field "$out" "d['checks'][0]['detail']")"
+assert_eq "warn|Repository found; visibility unknown|nofix" "$(check "$out" origin)"
 
 # Public origin: a warning naming --public. A scripts/test.sh that is not executable is no test command.
 chmod -x scripts/test.sh; git -c user.name=t -c user.email=t@t commit -q -am 'not executable'
 out="$(PATH="$W/bin:$PATH" STUB_VIS=public doctor)"
-assert_eq "warn||" "$(check "$out" origin)"; assert_contains "$(field "$out" "d['checks'][1]['detail']")" "Send needs --public"
-assert_eq "warn||" "$(check "$out" tests)"
+assert_eq "warn|Repository found, and public|nofix" "$(check "$out" origin)"; assert_contains "$(field "$out" "d['checks'][1]['detail']")" "Send needs --public"
+assert_eq "warn|No test command|nofix" "$(check "$out" tests)"
 
 # The cloud recipe is docs/setup.md's setup-script block, byte for byte, and its domains; no docs gives empty values.
 want="$(python3 - "$CANON/docs/setup.md" <<'EOF'
@@ -97,4 +104,6 @@ assert_eq "[]|" "$(field "$out" "str(d['cloud']['domains']) + '|' + d['cloud']['
 # Exits 0 when checks fail, and the plain form shows each fix.
 rc=0; plain="$(PATH="$NOGH_PATH" "$TKT" github-doctor)" || rc=$?
 assert_eq 0 "$rc"; assert_contains "$plain" "fix: https://github.com/cli/cli"
+assert_contains "$plain" "bad   GitHub CLI (gh) is not installed — Every GitHub step runs gh as you."
+rc=0; "$TKT" github-doctor --jsn >/dev/null 2>&1 || rc=$?; assert_eq 1 "$rc"
 echo "tkt-github-doctor: ok"
