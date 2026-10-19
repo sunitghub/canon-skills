@@ -3,7 +3,7 @@
 // own beyond choosing which button a card shows. A ticket with runs: github (and its github: link, no merged: line) is
 // out on GitHub: it shows in In progress (board-helpers.js effectiveStatus) with a GitHub chip and one stage button instead of Start.
 import { state } from './board-core.js';
-import { cockpitState } from './board-cockpit.js';
+import { closeTab, cockpitState } from './board-cockpit.js';
 import { esc, escAttr } from './board-helpers.js';
 import { render, showToast } from './board-render.js';
 import { loadData } from './board-core.js';
@@ -283,7 +283,9 @@ async function takeBack(t) {
 // ── The worktree picker's GitHub rows, and the panel shown instead of the terminal ──────────────────────────────────
 export function githubPickerRowsHTML(t, tab) {
   if (!t || t.scratch || t.status !== 'open' || ghOut(t)) return '';
-  const busy = (state.tickets || []).filter(x => ghOut(x));
+  // A closed or cancelled ticket is not busy in the cloud: one closed by hand never gets merged: (t-093a). ghOut() stays
+  // true for it, because a closed, imported ticket still needs its Check & merge button.
+  const busy = (state.tickets || []).filter(x => ghOut(x) && x.status !== 'closed' && x.status !== 'cancelled');
   return busy.map(x => {
     const p = ghParts(x);
     return `<div class="ck-worktree-held-row ck-gh-busy"><span class="ck-worktree-held-branch">GitHub${p ? ` #${esc(p.issue)}` : ''}</span><span class="ck-worktree-held-why">cloud · busy: ${esc(x.id)}</span></div>`;
@@ -315,10 +317,16 @@ export async function showGithubPanel(t, tab) {
   catch (e) { pv = { ok: false, output: String(e.message || e) }; }
   if (tab && (tab !== cockpitState || !tab.ghPick)) return;   // another tab, or another place, was picked meanwhile
   const isPublic = /\(PUBLIC\)/.test(pv.output || '');
+  // t-093a: send-issue's warnings (no criteria, no plan) are a note above the preview, in the CLI's own words; they don't block.
+  const WARN = /^send-issue: warning: /;
+  const outLines = String(pv.output || '').split(/\r?\n/);
+  const warns = outLines.filter(l => WARN.test(l)).map(l => l.replace(WARN, ''));
+  const preview = outLines.filter(l => !WARN.test(l)).join('\n');
   panel.innerHTML = `<div class="ck-gh-box">
       <h3>Send ${esc(t.id)} to GitHub</h3>
       <p>${pv.ok ? 'The issue, exactly as it will be created. Nothing is sent until you press Create issue.' : 'The preview failed, so nothing can be sent yet:'}</p>
-      <pre class="ck-gh-pre" id="ck-gh-preview">${esc(pv.output || '')}</pre>
+      ${warns.length ? `<div class="ck-gh-note" id="ck-gh-note" role="note">${warns.map(w => `<p>${esc(w)}</p>`).join('')}</div>` : ''}
+      <pre class="ck-gh-pre" id="ck-gh-preview">${esc(preview)}</pre>
       ${isPublic ? `<label class="ck-gh-public"><input type="checkbox" id="ck-gh-public"> This repository is public: anyone could read the ticket's notes. Send anyway.</label>` : ''}
       <div class="ck-gh-actions"><button type="button" class="ck-gh-create" id="ck-gh-create"${pv.ok ? '' : ' disabled'}>Create issue</button><span class="ck-gh-status" id="ck-gh-status" role="status"></span></div>
     </div>`;
@@ -340,28 +348,36 @@ export async function showGithubPanel(t, tab) {
     }
     const n = (/issues\/([0-9]+)/.exec(res.output || '') || [])[1] || '';
     const url = (/(https:\/\/github\.com\/\S+\/issues\/[0-9]+)/.exec(res.output || '') || [])[1] || '';
-    if (tab) tab.ghSent = { id: t.id, n, url };
-    if (!tab || tab === cockpitState) showSent(panel, t, tab || { ghSent: { id: t.id, n, url } });
+    // The start line is the one send-issue prints after "type:" (t-093a): the CLI owns its text, the board only shows it.
+    const outL = String(res.output || '').split(/\r?\n/);
+    const at = outL.findIndex(l => /type:\s*$/.test(l));
+    const line = at >= 0 ? (outL[at + 1] || '').trim() : '';
+    if (tab) tab.ghSent = { id: t.id, n, url, line };
+    if (!tab || tab === cockpitState) showSent(panel, t, tab || { ghSent: { id: t.id, n, url, line } });
     statusById.delete(t.id);
     await loadData();
   });
 }
 
 function showSent(panel, t, tab) {
-  const { n, url } = tab.ghSent;
-  const line = `Work on Issue#${n}`;
+  const { n, url, line } = tab.ghSent;
   panel.innerHTML = `<div class="ck-gh-box ck-gh-sent" id="ck-gh-sent">
       <h3>Sent ${esc(t.id)} as issue #${esc(n)}</h3>
-      <p>Start a Claude cloud session on the canon environment and type <code>${esc(line)}</code>. The card is in In progress and shows the next step.</p>
-      <div class="ck-gh-actions"><button type="button" class="ck-gh-create" id="ck-gh-copy">Copy</button>${url ? `<button type="button" id="ck-gh-open">Open issue</button>` : ''}<button type="button" id="ck-gh-dismiss">Dismiss</button><span class="ck-gh-status" id="ck-gh-status" role="status"></span></div>
+      ${line ? `<p>Start a Claude cloud session on the canon environment and type:</p><pre class="ck-gh-pre ck-gh-prompt" id="ck-gh-prompt">${esc(line)}</pre>` : `<p>Start a Claude cloud session on the canon environment and point it at issue #${esc(n)}.</p>`}
+      <p>The card is in In progress and shows the next step.</p>
+      <div class="ck-gh-actions">${line ? `<button type="button" class="ck-gh-create" id="ck-gh-copy">Copy prompt</button>` : ''}${url ? `<button type="button" id="ck-gh-open">Open issue</button>` : ''}<button type="button" id="ck-gh-dismiss">Close tab</button><span class="ck-gh-status" id="ck-gh-status" role="status"></span></div>
     </div>`;
-  document.getElementById('ck-gh-copy').addEventListener('click', async () => {
+  document.getElementById('ck-gh-copy')?.addEventListener('click', async () => {
     const s = document.getElementById('ck-gh-status');
     try { await navigator.clipboard.writeText(line); s.textContent = 'Copied.'; }
     catch { s.textContent = `Copy was blocked: select "${line}" above.`; }
   });
   document.getElementById('ck-gh-open')?.addEventListener('click', () => openUrl(url));
-  document.getElementById('ck-gh-dismiss').addEventListener('click', () => { tab.ghSent = null; hideGithubPanel(); });
+  // The work is in the cloud now, so the tab has nothing left to show: close it (closeTab never ends a session).
+  document.getElementById('ck-gh-dismiss').addEventListener('click', () => {
+    tab.ghSent = null; hideGithubPanel();
+    if (tab.id) closeTab(tab.id);
+  });
 }
 
 // While the dialog is open: Escape closes it (unless a merge is running), and Tab stays among its controls.
