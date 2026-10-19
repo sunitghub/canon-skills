@@ -249,6 +249,24 @@ cd "$L"; rm -f ".tickets/$id/plan.md"; git --git-dir="$W/origin.git" branch -D "
 rc=0; out="$("$TKT" import-results ../etc 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "a non-ticket id should be refused"; assert_contains "$out" "not a ticket id"
 
+# t-1cf5: an unfinished cloud sprint comes back open (cloud_status keeps in_progress), so a local sprint in this
+# checkout still closes: sprint complete resolves the local ticket, not "multiple in-progress tickets".
+sed -i.bak 's/^status: closed$/status: in_progress/' "$X/.tickets/$id/ticket.md" && rm "$X/.tickets/$id/ticket.md.bak"
+cd "$X" && "$TKT" export "$id" >/dev/null 2>&1 && cd "$L"
+lid="$("$TKT" create "Local sprint" -t task)"; "$TKT" start "$lid" >/dev/null
+out="$("$TKT" import-results "$id")"
+assert_contains "$out" "status: open (cloud: in_progress)  (expected closed: the cloud sprint did not finish)"
+assert_grep "^status: open$" ".tickets/$id/ticket.md"
+assert_grep "^cloud_status: in_progress$" ".tickets/$id/ticket.md"
+assert_eq "$lid" "$("$TKT" current | awk '{print $1}')"
+rc=0; out="$("$SPRINT" complete 2>&1)" || rc=$?
+[[ "$rc" == 1 && "$out" != *"multiple in-progress"* ]] || fail "sprint complete saw the imported ticket as in progress (rc $rc): $out"
+assert_contains "$out" "$lid"
+# The close-from-worktree flow: tkt start still makes it the one in progress (here, with the local one reopened).
+"$TKT" reopen "$lid" >/dev/null; "$TKT" start "$id" >/dev/null
+assert_eq "$id" "$("$TKT" current | awk '{print $1}')"
+"$TKT" reopen "$id" >/dev/null
+
 # No results branch: a clear refusal.
 rc=0; out="$("$TKT" import-results "$id" 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "importing with no results branch should exit 1"; assert_contains "$out" "has no branch canon-results/$id"

@@ -395,6 +395,10 @@ wt_project="$(make_project)"
   set -e
   [[ "$err_rc" -eq 2 ]] || fail "expected rc 2 for same-worktree double in_progress, got $err_rc"
   assert_contains "$err_out" "multiple in-progress tickets bound to this worktree"
+  # t-1cf5: names each competing id and a fix that works (tkt reopen), not tkt start
+  assert_contains "$err_out" "$same_a"
+  assert_contains "$err_out" "$same_b"
+  assert_contains "$err_out" "run 'tkt reopen <id>' on all but the one you are working on"
 )
 
 rm -rf "$wt_project" "$wt_project-worktrees"
