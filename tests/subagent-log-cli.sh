@@ -63,7 +63,7 @@ assert_grep '"agent_id":"mod2","agent_type":"","transcript_path":"","model":"ope
 assert_grep '"agent_id":"same1","agent_type":"evaluator","transcript_path":"","tokens":5,"ticket":"t-cost","tier":"normal","outcome":"pass"}$' "$log"
 
 # ── A bad cost value fails loudly and writes nothing ─────────────────────────
-rows_before="$(wc -l < "$log")"
+rows_before="$(wc -l < "$log" | tr -d " ")"
 for bad in "--tokens 12k" "--tool-uses -1" "--minutes 1e3" "--minutes 01.5" "--outcome partial" "--tier a\"b" "--ticket .." "--ticket ../x" "--tokens" "--outcome"; do
   set +e
   # shellcheck disable=SC2086  # split on purpose: flag and value
@@ -71,7 +71,7 @@ for bad in "--tokens 12k" "--tool-uses -1" "--minutes 1e3" "--minutes 01.5" "--o
   set -e
   assert_eq 1 "$rc"
 done
-assert_eq "$rows_before" "$(wc -l < "$log")"
+assert_eq "$rows_before" "$(wc -l < "$log" | tr -d " ")"
 
 # ── t-3a14: a hostile or empty --model is refused and appends nothing ────────
 long_model="$(printf 'm%.0s' $(seq 81))"
@@ -88,7 +88,7 @@ set -e
 assert_eq 1 "$rc"
 assert_count 1 'subagent-log.sh: --model needs a value' "$project/bad-err"
 (cd "$project" && "$SUBAGENT_LOG" --agent-id max80 --model "${long_model:1}")
-assert_eq "$((rows_before + 1))" "$(wc -l < "$log")"
+assert_eq "$((rows_before + 1))" "$(wc -l < "$log" | tr -d " ")"
 assert_count 0 '"agent_id":"bad2"' "$log"
 
 err_file="$project/subagent-log-err"
