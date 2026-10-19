@@ -26,6 +26,12 @@ printf '# Plan\n\n## Sign-off\n- [x] Plan approved\n' > "$d/plan.md"
 out="$("$TKT" export "$id" 2>&1)"
 [[ "$out" != *WARNING* ]] || fail "a complete ticket warned: $out"
 
+# t-093a: a numbered criterion counts as one.
+printf '# Acceptance\n\n## Criteria\n1. It works\n' > "$d/acceptance.md"
+out="$("$TKT" export "$id" 2>&1)"
+[[ "$out" != *"no acceptance"* ]] || fail "a numbered criterion was not counted: $out"
+printf '# Acceptance\n\n## Criteria\n- [ ] It works\n' > "$d/acceptance.md"
+
 # Each warning stands alone.
 printf '# Plan\n\n## Sign-off\n- [ ] Plan approved\n' > "$d/plan.md"
 out="$("$TKT" export "$id" 2>&1)"
