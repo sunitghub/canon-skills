@@ -1336,6 +1336,69 @@ cmd_sync_issues() {
   if $dry; then echo "dry run: $made to create, nothing written"; else echo "sync-issues: $made created"; fi
 }
 
+# cmd_github_doctor [--json] — t-90a3: is this project ready for the GitHub workflow? Read-only, always exits 0. The one
+# readiness source: the board's Admin › GitHub card and the worktree picker's GitHub row (t-24b1) render its JSON as is.
+# `gh auth status` counts by exit code only: its text can show a masked token and scopes.
+cmd_github_doctor() {
+  local json=false
+  case "${1:-}" in --json) json=true ;; "") ;; *) echo "Usage: tkt github-doctor [--json]" >&2; exit 1 ;; esac
+  local root; root="$(dirname "$(tickets_dir)")"
+  local ids=() sts=() titles=() details=() fixk=() fixv=()
+  _gd() { ids+=("$1"); sts+=("$2"); titles+=("$3"); details+=("$4"); fixk+=("${5:-}"); fixv+=("${6:-}"); }
+  local login
+  if ! command -v gh >/dev/null 2>&1; then
+    _gd gh bad "GitHub CLI (gh) is not installed" "Every GitHub step runs gh as you. Install it, then check again; signing in comes next." url https://github.com/cli/cli
+  elif ! gh auth status >/dev/null 2>&1; then
+    _gd gh bad "gh is installed, but not signed in" "Sign in yourself in a terminal; canon never sees your token." cmd "gh auth login"
+  else
+    login="$(gh api user --jq .login 2>/dev/null)" || login=""
+    _gd gh ok "Signed in to GitHub" "${login:+Signed in as $login.}"
+  fi
+  local repo err vis
+  if repo="$(_gh_origin_repo "$root" origin 2>&1)"; then
+    vis="$(_repo_visibility "$repo")"
+    case "$vis" in
+      PRIVATE) _gd origin ok "Repository found, and private" "Issues go to $repo (origin, private)." ;;
+      PUBLIC)  _gd origin warn "Repository found, and public" "Issues go to $repo (origin, public). Send needs --public: tickets carry paths, notes and decisions." ;;
+      *)       _gd origin warn "Repository found; visibility unknown" "Issues go to $repo (origin). GitHub did not say whether it is public; Send asks again." ;;
+    esac
+  else
+    err="${repo#origin: }"
+    _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: ${err}." cmd "git remote add origin https://github.com/<owner>/<repo>.git"
+  fi
+  local tree; tree="$(git -C "$root" ls-tree HEAD -- scripts/test.sh 2>/dev/null)" || tree=""
+  if [[ "$tree" == 100755* ]]; then
+    _gd tests ok "Check & merge test command: scripts/test.sh" "Before merging, Check & merge runs it on main + the PR in a scratch clone, after you confirm."
+  else
+    _gd tests warn "No test command" "No executable scripts/test.sh: Check & merge merges on the gates alone and says so (or pass --test)."
+  fi
+  # The cloud recipe's one owner is docs/setup.md beside this tool; a missing section gives empty values.
+  local doc="$SCRIPT_DIR/../docs/setup.md" domains="" script=""
+  if [[ -f "$doc" ]]; then
+    domains="$(awk '/^## /{on = ($0 == "## Claude cloud sessions")} on && /^- \*\*Network access:\*\*/{d=1} on && /^- \*\*Setup script\*\*/{d=0} d' "$doc" \
+      | grep -oE '`[a-z0-9.-]+\.[a-z]+`' | tr -d '`')" || domains=""
+    script="$(awk '/^## /{on = ($0 == "## Claude cloud sessions")} on && /^- \*\*Setup script\*\*/{s=1; next} s && /^  ```bash$/{b=1; next} b && /^  ```$/{exit} b{sub(/^  /, ""); print}' "$doc")"
+  fi
+  local i n=${#ids[@]}
+  if ! $json; then
+    for ((i = 0; i < n; i++)); do
+      printf '%-5s %s%s\n' "${sts[i]}" "${titles[i]}" "${details[i]:+ — ${details[i]}}"
+      [[ -n "${fixk[i]}" ]] && printf '      fix: %s\n' "${fixv[i]}"
+    done
+    return 0
+  fi
+  local out='{"checks":[' sep=''
+  for ((i = 0; i < n; i++)); do
+    out+="$sep{\"id\":$(json_str "${ids[i]}"),\"status\":$(json_str "${sts[i]}"),\"title\":$(json_str "${titles[i]}"),\"detail\":$(json_str "${details[i]}")"
+    [[ -n "${fixk[i]}" ]] && out+=",\"fix\":{$(json_str "${fixk[i]}"):$(json_str "${fixv[i]}")}"
+    out+='}'; sep=','
+  done
+  out+='],"cloud":{"domains":['; sep=''
+  local d; while IFS= read -r d; do [[ -n "$d" ]] && { out+="$sep$(json_str "$d")"; sep=','; }; done <<< "$domains"
+  out+="],\"setup_script\":$(json_str "$script")}}"
+  printf '%s\n' "$out"
+}
+
 # cmd_merge_pr <id> [--pr N] [--test CMD] [--yes] — t-4718: checks a cloud ticket's PR and merges it, on the user's machine.
 # Checks that run no PR code come first: the evaluator passed on the PR's very head; the PR is open, from this repo,
 # mergeable and clean; it merges into base in a scratch clone. Then one question: run the PR's tests here (they are its
@@ -1826,6 +1889,8 @@ Commands:
                             sprint import-issue in the cloud session).
   sync-issues [--dry-run]   Make a ticket of each open issue on origin labelled canon
                             that no ticket links to (labels set type and pN priority).
+  github-doctor [--json]    Read-only GitHub readiness checks (gh signed in, origin and
+                            its visibility, test command) and the cloud recipe.
   merge-pr <id> [--pr N] [--test CMD] [--yes | --check]
                             Check a cloud ticket's PR (evaluator passed on its head,
                             mergeable, suite green on base + PR) and merge it after a y.
@@ -1871,6 +1936,7 @@ main() {
     send-issue)     cmd_send_issue "$@" ;;
     import-issue)   cmd_import_issue "$@" ;;
     sync-issues)    cmd_sync_issues "$@" ;;
+    github-doctor)  cmd_github_doctor "$@" ;;
     merge-pr)       cmd_merge_pr "$@" ;;
     take-back)      cmd_take_back "$@" ;;
     github-status)  cmd_github_status "$@" ;;

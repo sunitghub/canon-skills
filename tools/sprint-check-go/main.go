@@ -467,7 +467,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			sendJSON(w, map[string]string{"content": string(data)})
 			return
 		}
-		if m := apiGitHubGetRe.FindStringSubmatch(path); m != nil || path == "/api/github/sync-preview" {
+		if m := apiGitHubGetRe.FindStringSubmatch(path); m != nil || path == "/api/github/sync-preview" || path == "/api/github/doctor" {
 			// t-d271: these run git and gh, so a page on another site must not fire them blind.
 			if !originOK(r.Header.Get("Origin")) || r.Header.Get("Sec-Fetch-Site") == "cross-site" {
 				http.Error(w, "forbidden", http.StatusForbidden)
@@ -476,6 +476,10 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			groot, ok := effectiveRoot(r)
 			if !ok {
 				http.Error(w, "unknown project", http.StatusBadRequest)
+				return
+			}
+			if path == "/api/github/doctor" {
+				sendJSON(w, githubDoctor(groot))
 				return
 			}
 			if m == nil {
@@ -4587,6 +4591,20 @@ func githubStatus(root, id string) map[string]any {
 	mergeRunsMu.Lock()
 	statusCache[key] = statusHit{time.Now(), res}
 	mergeRunsMu.Unlock()
+	return res
+}
+
+// githubDoctor: t-90a3's readiness checks for Admin › GitHub, parsed into "doctor". Parity with server.py's github_doctor.
+func githubDoctor(root string) map[string]any {
+	res := runTkt(root, []string{"github-doctor", "--json"})
+	if res["ok"] == true {
+		var d map[string]any
+		if json.Unmarshal([]byte(res["output"].(string)), &d) == nil {
+			res["doctor"] = d
+		} else {
+			res = map[string]any{"ok": false, "exit_code": res["exit_code"], "output": res["output"]}
+		}
+	}
 	return res
 }
 
