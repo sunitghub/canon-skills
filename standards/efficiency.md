@@ -4,8 +4,8 @@ description: Coding standards, code review feedback, git conventions, behavioral
 category: agent-ops
 tags: [coding, security, git, efficiency, tokens]
 inject: true
-version: 1.1.0
-updated: 2026-10-15
+version: 1.1.1
+updated: 2026-10-19
 ---
 
 # Agent Standards
@@ -20,7 +20,7 @@ updated: 2026-10-15
 - Out-of-scope issues: write `NOTICED: <what>`; don't fix silently.
 - Never introduce OWASP Top 10 vulnerabilities or commit secrets, credentials or `.env` files.
 - No new dependencies for problems existing tools solve.
-- Test at system boundaries; don't mock what's cheap to integration-test. Passing tests prove the code, not the feature: test both.
+- Test at system boundaries; don't mock what's cheap to integration-test. Passing tests prove the code, not the feature: test both. Every test names the prod path it protects (owner: `skills/sprint/reference/start-checklist.md` step 6).
 
 ## Code Review Feedback
 

@@ -13,7 +13,7 @@ const IMPORTANT_SKILLS=['efficiency','sprint'];
 // Per-skill confirm() copy for the register action (co-located with the list).
 const REG_SKILL_DETAIL={
   sprint:'wires the sprint workflow into the project — updates AGENTS.md/CLAUDE.md, installs a git pre-commit hook, creates .tickets/, and links the skills dir',
-  efficiency:'adds canon’s coding/efficiency standards to the project — updates AGENTS.md/CLAUDE.md and links the skills dir'
+  efficiency:'is optional (sprint doesn’t need it): it adds canon’s coding and git conventions for all agent work — updates AGENTS.md/CLAUDE.md and links the skills dir'
 };
 let knownIds=new Set();     // registered project ids (for restore filtering)
 
@@ -53,7 +53,7 @@ export async function load(){
           <div class="card-divider"></div>
           <div class="cardbottom">
             <div class="regbtns" data-reg="${escAttr(p.id)}" aria-live="polite" style="display:none">
-              ${IMPORTANT_SKILLS.map(sk=>`<button class="regskill" data-skill="${sk}" title="Not set up in this project yet — click to register the ${sk} skill" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}" data-path="${escAttr(p.path)}" style="display:none">+ ${sk}</button>`).join('')}
+              ${IMPORTANT_SKILLS.map(sk=>`<button class="regskill" data-skill="${sk}" title="Not set up in this project yet — click to register the ${sk} skill" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}" data-path="${escAttr(p.path)}" style="display:none">+ ${sk}${sk==='efficiency'?' (optional)':''}</button>`).join('')}
             </div>
             <div class="actions">
               <button class="scratchbtn" title="Start an agent in this project with no ticket" data-scratch="${escAttr(p.id)}">${SCRATCH_ICON}Scratch</button>
