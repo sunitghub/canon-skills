@@ -1429,7 +1429,7 @@ cmd_merge_pr() {
   # step 8); read from the fetched objects, so a non-ancestor or a git failure refuses.
   if [[ "$head" != "$graded"* ]]; then
     local late lrc=0
-    late="$(late_docs_delta "$tmp/w" "$graded" "$head")" || lrc=$?
+    late="$(late_docs_delta "$tmp/w" "$graded" "$head" "$id")" || lrc=$?
     case "$lrc" in
       0) echo "merge-pr: PR #$pr head is graded-head plus late docs only: $(printf '%s\n' "$late" | grep . | paste -sd, - | sed 's/,/, /g')" ;;
       1) echo "merge-pr: PR #$pr head $head is not the commit the evaluator graded ($graded); since then it changes $(printf '%s\n' "$late" | sed -n '1,5p' | paste -sd, - | sed 's/,/, /g'): re-run the gates on it" >&2; exit 1 ;;
@@ -1732,7 +1732,7 @@ cmd_import_results() {
       # t-fdb1: the cloud's learnings sweep lands after grading; a delta of merge-safe late docs only still counts as the graded code.
       local late="" lrc=2
       if [[ -n "$graded" ]] && git -C "$root" fetch -q origin "refs/pull/$pr/head" < /dev/null 2>/dev/null; then
-        late="$(late_docs_delta "$root" "$graded" "$prh")" && lrc=0 || lrc=$?
+        late="$(late_docs_delta "$root" "$graded" "$prh" "$id")" && lrc=0 || lrc=$?
       fi
       if [[ $lrc == 0 ]]; then echo "  PR #$pr head $prh: graded-head plus late docs only: $(printf '%s\n' "$late" | grep . | paste -sd, - | sed 's/,/, /g')"
       else echo "  PR #$pr head $prh does NOT match graded-head ${graded:-none}: the evaluator graded other code${late:+ ($(printf '%s\n' "$late" | sed -n '1,5p' | paste -sd, - | sed 's/,/, /g'))}" >&2; rc=1; fi

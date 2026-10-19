@@ -65,21 +65,23 @@ worktree_root() {
 }
 
 # Late docs written after the evaluator grades that a merge may carry unreviewed (t-fdb1): records no agent obeys. One owner:
-# tools/sprint's stale-eval gate (t-1b74) builds its wider list from this one; merge-pr and import-results use it as is. The
-# agent-read late docs (AGENTS.md, CLAUDE.md, PROMOTED.md, HANDOFF.md, DECISIONS.md) are not here: a cloud branch's unreviewed
-# edit to them would be instructions in main.
-MERGE_SAFE_LATE_ALT='\.tickets/|LEARNINGS\.md$|LEARNINGS-archive\.md$'
+# tools/sprint's stale-eval gate (t-1b74) builds its wider list from this one; merge-pr and import-results add only the merged
+# ticket's own folder (late_docs_delta). The agent-read late docs (AGENTS.md, CLAUDE.md, PROMOTED.md, HANDOFF.md, DECISIONS.md)
+# and other tickets' folders are not here: a cloud branch's unreviewed edit to them would be instructions in main.
+MERGE_SAFE_LATE_ALT='LEARNINGS\.md$|LEARNINGS-archive\.md$'
 
-# late_docs_delta <git-dir> <graded> <head> — t-fdb1: prints the files changed from graded to head, one per line. Returns 0 when
-# head descends from graded and every file is a merge-safe late doc (an empty delta included), 1 when a file is not (they are the
-# ones printed), 2 when graded is not an ancestor of head or git cannot tell (prints the reason). A rename counts both paths.
+# late_docs_delta <git-dir> <graded> <head> <ticket-id> — t-fdb1: prints the files changed from graded to head, one per line.
+# Returns 0 when head descends from graded and every file is a merge-safe late doc or sits in .tickets/<ticket-id>/ (no dotfile
+# component; an empty delta included), 1 when a file is not (they are the ones printed), 2 when graded is not an ancestor of head,
+# the id is not a plain ticket id, or git cannot tell (prints the reason). A rename counts both paths.
 late_docs_delta() {
-  local dir="$1" graded="$2" head="$3" files other
+  local dir="$1" graded="$2" head="$3" id="$4" files other
+  [[ "$id" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "not a ticket id: $id"; return 2; }
   git -C "$dir" merge-base --is-ancestor "$graded" "$head" 2>/dev/null \
     || { echo "graded-head ${graded:0:7} is not an ancestor of ${head:0:7}"; return 2; }
   files="$(git -C "$dir" -c core.quotepath=off diff --no-renames --name-only "$graded" "$head" 2>&1)" \
     || { echo "git could not list the files from ${graded:0:7} to ${head:0:7}: $files"; return 2; }
-  other="$(printf '%s\n' "$files" | grep . | grep -vE "^($MERGE_SAFE_LATE_ALT)" || true)"
+  other="$(printf '%s\n' "$files" | grep . | grep -vE "^($MERGE_SAFE_LATE_ALT|\\.tickets/$id/([^./][^/]*/)*[^./][^/]*$)" || true)"
   if [[ -n "$other" ]]; then printf '%s\n' "$other"; return 1; fi
   printf '%s\n' "$files" | grep . || true
 }

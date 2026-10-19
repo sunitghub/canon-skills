@@ -224,7 +224,7 @@ assert_grep '^merged: PR #7$' "$f"
 
 # t-fdb1: a head past graded-head merges only when what came after is merge-safe late docs (the cloud's learnings sweep).
 past() {   # past <file>...: one commit on top of the graded PR head touching those files, published as PR #7's head; prints its sha
-  git checkout -q -B "past-$1" "$PRHEAD"; local x; for x in "$@"; do mkdir -p "$(dirname "$x")"; echo "$x" > "$x"; git add -f "$x"; done
+  git checkout -q -B past "$PRHEAD"; local x; for x in "$@"; do mkdir -p "$(dirname "$x")"; echo "$x" > "$x"; git add -f "$x"; done
   git commit -qm "after grading"; git push -qf origin "HEAD:refs/pull/7/head"; git rev-parse HEAD; git checkout -q main
 }
 sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; eval_ok "$PRHEAD"
@@ -237,6 +237,10 @@ CODE="$(past LEARNINGS.md tools/x.sh)"
 refuses "a code file after grading" "since then it changes tools/x.sh: re-run the gates on it" STUB_HEAD="$CODE" -- --pr 7 --yes
 AGENTREAD="$(past CLAUDE.md)"
 refuses "an agent-read late doc after grading" "since then it changes CLAUDE.md" STUB_HEAD="$AGENTREAD" -- --pr 7 --yes
+OTHER="$(past .tickets/t-0th3/plan.md)"
+refuses "another ticket's folder after grading" "since then it changes .tickets/t-0th3/plan.md" STUB_HEAD="$OTHER" -- --pr 7 --yes
+DOT="$(past ".tickets/$id/.cockpit-cwd")"
+refuses "a dotfile in the ticket's folder after grading" "since then it changes .tickets/$id/.cockpit-cwd" STUB_HEAD="$DOT" -- --pr 7 --yes
 git push -qf origin "$PRHEAD:refs/pull/7/head"
 
 # t-4718 also fixed import-results: a ticket that comes back without eval-report.md is reported, not a silent exit.
