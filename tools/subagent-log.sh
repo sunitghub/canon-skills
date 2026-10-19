@@ -5,9 +5,11 @@
 # Primary usage — explicit CLI call, made by the orchestrating agent right after
 # a reviewer/evaluator subagent completes (see skills/sprint/reference/complete.md):
 #   tools/subagent-log.sh --agent-id <id> [--agent-type reviewer|evaluator]
-#     [--tokens N --minutes M --tool-uses K] [--ticket <id>] [--tier <tier>] [--outcome pass|fail|budget]
+#     [--tokens N --minutes M --tool-uses K] [--ticket <id>] [--tier <tier>] [--outcome pass|fail|budget] [--model <id>]
 # The cost fields (t-5ef3) come from the harness's hand-back for that run; each is written only when given,
 # so a row without them keeps the old shape. `sprint gate-cost` summarizes the rows that carry them.
+# --model (t-3a14) records the model the orchestrator resolved and dispatched, not one verified from the transcript;
+# leave it out when the model is unknown.
 #
 # Legacy usage — Claude Code SubagentStop hook payload on stdin (no longer
 # registered by `skills.sh add`/`init`, kept for any pre-existing install that
@@ -36,11 +38,14 @@ TOOL_USES=""
 TICKET=""
 TIER=""
 OUTCOME=""
+MODEL=""
+MODEL_SET=0
 
 usage() {
   cat >&2 <<'EOF'
 Usage: subagent-log.sh --agent-id <id> [--agent-type reviewer|evaluator] [--session-id <id>] [--transcript-path <path>]
                        [--tokens N] [--minutes M] [--tool-uses K] [--ticket <id>] [--tier <tier>] [--outcome pass|fail|budget]
+                       [--model <id>]
        echo '{"agent_id":"...","agent_type":"..."}' | subagent-log.sh   (legacy hook payload)
 EOF
 }
@@ -64,6 +69,7 @@ if [[ $# -gt 0 ]]; then
       --ticket) _need $# "$1"; TICKET="$2"; shift 2 ;;
       --tier) _need $# "$1"; TIER="$2"; shift 2 ;;
       --outcome) _need $# "$1"; OUTCOME="$2"; shift 2 ;;
+      --model) _need $# "$1"; MODEL="$2"; MODEL_SET=1; shift 2 ;;
       *) echo "subagent-log.sh: unrecognized argument: $1" >&2; usage; exit 1 ;;
     esac
   done
@@ -79,6 +85,8 @@ if [[ $# -gt 0 ]]; then
   [[ -z "$OUTCOME" || "$OUTCOME" =~ ^(pass|fail|budget)$ ]] || _bad "--outcome must be pass, fail or budget, got '$OUTCOME'"
   [[ -z "$TICKET" || "$TICKET" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]] || _bad "--ticket takes a ticket id, got '$TICKET'"
   [[ -z "$TIER" || "$TIER" =~ ^[A-Za-z]+$ ]] || _bad "--tier takes one word, got '$TIER'"
+  # Given means non-empty: the id goes into the JSON line, so it must not carry a quote, space or brace.
+  [[ $MODEL_SET -eq 0 || ( "$MODEL" =~ ^[A-Za-z0-9._:/-]+$ && ${#MODEL} -le 80 ) ]] || _bad "--model takes a model id ([A-Za-z0-9._:/-], at most 80 chars), got '$MODEL'"
   REPO_ROOT="$(project_root)"
   # Tier is recorded now, not read later: a ticket's dir goes away on export.
   if [[ -z "$TIER" && -n "$TICKET" && -f "$REPO_ROOT/.tickets/$TICKET/plan.md" ]]; then
@@ -110,6 +118,7 @@ EXTRA=""
 [[ -n "$TICKET" ]] && EXTRA+=",\"ticket\":\"$TICKET\""
 [[ -n "$TIER" ]] && EXTRA+=",\"tier\":\"$TIER\""
 [[ -n "$OUTCOME" ]] && EXTRA+=",\"outcome\":\"$OUTCOME\""
+[[ -n "$MODEL" ]] && EXTRA+=",\"model\":\"$MODEL\""
 printf '{"ts":"%s","session_id":"%s","agent_id":"%s","agent_type":"%s","transcript_path":"%s"%s}\n' \
   "$TS" "$SESSION_ID" "$AGENT_ID" "$AGENT_TYPE" "$TRANSCRIPT" "$EXTRA" >> "$LOG"
 

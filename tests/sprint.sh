@@ -546,10 +546,11 @@ assert_gate_notice "$jsonl_absent_output" eval-report.md evaluator
 
 # Provide a matching entry — now it can close
 # entry ts 30 min after run epoch (2001-09-09T02:16:40Z) = within window. A malformed line ahead of it
-# (t-c94f) must not stop the valid one from matching — the accept decision is unchanged.
+# (t-c94f) must not stop the valid one from matching — the accept decision is unchanged. The matching row
+# carries the cost fields and a model (t-3a14), as subagent-log.sh writes them; the match ignores them.
 cat > ".claude/subagent-runs.jsonl" <<'EOF'
 {"timestamp":1000000100,"agent_id":"hand-written","agent_type":"evaluator"}
-{"ts":"2001-09-09T02:16:40Z","session_id":"s1","agent_id":"agent-real2","agent_type":"general-purpose","transcript_path":"/tmp/eval2.jsonl"}
+{"ts":"2001-09-09T02:16:40Z","session_id":"s1","agent_id":"agent-real2","agent_type":"general-purpose","transcript_path":"/tmp/eval2.jsonl","tokens":5,"outcome":"pass","model":"claude-sonnet-5"}
 EOF
 complete_output="$("$SPRINT" complete)"
 assert_contains "$complete_output" "Sprint completed: $fresh_id"

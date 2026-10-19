@@ -53,6 +53,14 @@ take; rm keep.txt; differs "keep.txt"; git checkout -q keep.txt
 take; echo 'edit' >> src/app.js; differs "src/app.js"; git checkout -q src/app.js
 take; echo '{"y":2}' > .claude/subagent-runs.jsonl; differs "audit log"; echo '{}' > .claude/subagent-runs.jsonl
 
+# t-3a14: a subagent-log.sh append is reported the same with or without --model (the field changes nothing gate-snapshot sees)
+take; "$ROOT/tools/subagent-log.sh" --agent-id snap1 --agent-type evaluator --tokens 5 >/dev/null; plain_out="$(run_fail "$TOOL" post "$snap")"
+echo '{}' > .claude/subagent-runs.jsonl
+take; "$ROOT/tools/subagent-log.sh" --agent-id snap2 --agent-type evaluator --tokens 5 --model claude-sonnet-5 >/dev/null; model_out="$(run_fail "$TOOL" post "$snap")"
+assert_grep '"model":"claude-sonnet-5"}$' .claude/subagent-runs.jsonl
+echo '{}' > .claude/subagent-runs.jsonl
+assert_contains "$plain_out" "audit log"; assert_eq "$plain_out" "$model_out"
+
 # a file that was already modified before the dispatch: a further edit (same porcelain line) is still seen
 echo 'pre-existing edit' >> src/app.js
 take; echo 'second edit' >> src/app.js; differs "uncommitted content"

@@ -332,6 +332,9 @@ Opus` default, scoped only to the two close-gate dispatches below.
    on its budget is logged too, `--outcome budget`. Omit a number the hand-back does not give,
    never guess one. In Claude Code the totals are in the background task's completion notice
    (`<usage>`), which can arrive after the agent's report: wait for it before logging.
+   Pass `--model <id>` too (t-3a14): the model this dispatch resolved to and passed (the Admin
+   default, the ticket's `Gate model:`, or the agent's floor), not one read back from the report.
+   Leave it out when the model is unknown; never write a guessed one.
    `sprint gate-cost` summarizes these rows.
 
 6. **If a subagent's Bash file-writing is refused outright** (permission boundary, not

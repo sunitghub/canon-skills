@@ -32,14 +32,14 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
    - No push to `origin/main` from first dispatch until both gates report.
 2. **Reviewer** (advisory). Model check below, then `gate-snapshot.sh pre .tickets/<id>/gate-snapshot.txt`;
    `Agent` with `subagent_type: "canon-reviewer"`; after: `gate-snapshot.sh post …` (any difference: stop,
-   show the user the PRE recovery hash), `subagent-log.sh --agent-id reviewer-<id> --agent-type reviewer` + cost flags (complete.md),
+   show the user the PRE recovery hash), `subagent-log.sh --agent-id reviewer-<id> --agent-type reviewer` + cost flags and `--model` (complete.md),
    `sprint check-review-notes <id>` (`shape refused`: re-dispatch). Row: `verdict: YES|NO — …
    (model: <m> — <source>)`. A NO is surfaced, not blocking.
 3. **Evaluator** (binding). `sprint check-evidence <id>` must be ok; `eval_fail_count` below 3; snapshot
    pre; `Agent` with `subagent_type: "canon-evaluator"`; snapshot post. Then:
    - Line 1 `evaluator-run-id: <epoch>-<n>`: run `date +%s`; skew over 300 s → discard, re-dispatch. Never
      write a run-id yourself.
-   - `subagent-log.sh --agent-id <run-id> --agent-type evaluator` + cost flags, then `sprint eval-verdict <id>`
+   - `subagent-log.sh --agent-id <run-id> --agent-type evaluator` + cost flags and `--model`, then `sprint eval-verdict <id>`
      (also on pass).
    - `fail`, `partial` or `not-run`: surface it, stop. A tracked change after grading needs a fresh
      evaluator (`graded-head:`), except the late docs (`.tickets/`, LEARNINGS, DECISIONS, HANDOFF).
