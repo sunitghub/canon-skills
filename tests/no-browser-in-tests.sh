@@ -10,10 +10,9 @@
 #
 # Per start, not per file: a start counts as safe when the variable is on that line, on one of the
 # few lines above it (the env-var continuation style several scripts use), or exported earlier in the
-# file. Comment lines never count, and `go build` lines and plain path assignments are not starts. Known limit: a start is
-# recognised by the binary spellings below ($GO_BIN, /sc-go, /sprint-check-go, `go run …/sprint-check-go`);
-# a script that invents a new variable name for the binary would be missed, which is why the pattern
-# is checked for staleness below.
+# file. Comment lines never count, and `go build`, `cp` and `command -v` lines and plain path assignments are not starts. A start
+# is recognised by the binary spellings below ($GO_BIN, /sc-go, /sprint-check-go, `go run …/sprint-check-go`) and, since t-15d8,
+# by any variable the file assigns from build_board (tests/helpers.sh), whatever its name; the pattern is checked for staleness below.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -26,12 +25,17 @@ SELF="$(basename "${BASH_SOURCE[0]}")"
 scan() {
   awk -v file="$(basename "$1")" '
     /^[[:space:]]*#/ { next }
-    /export SPRINT_CHECK_NO_BROWSER=1/ { exported = 1 }
+    /^[[:space:]]*export ([A-Za-z_][A-Za-z_0-9]*=[^ ]* )*SPRINT_CHECK_NO_BROWSER=1/ { exported = 1 }   # also one of several names on an export line
+    # t-15d8: NAME="$(build_board ...)" makes $NAME the board binary from here on
+    match($0, /[A-Za-z_][A-Za-z_0-9]*="\$\(build_board/) { v = substr($0, RSTART, RLENGTH); sub(/=.*/, "", v); boards[v] = 1; assigned = 1 }
     {
-      skip = ($0 ~ /go build|go test|rm -|dirname|mktemp|GO_BIN=|\[\[/) ||
+      viaVar = 0
+      if (!assigned) for (b in boards) if (index($0, "$" b) || index($0, "${" b "}")) { viaVar = 1; break }
+      assigned = 0
+      skip = ($0 ~ /go build|go test|rm -|dirname|mktemp|GO_BIN=|\[\[|(^|[^A-Za-z])cp |command -v go/) ||
              ($0 ~ /^[[:space:]]*[A-Za-z_]+="[^"]*"[[:space:]]*$/) ||   # a pure path assignment is not a start
              ($0 ~ /main\.go/)
-      start = !skip && ($0 ~ /(\$\{?GO_BIN\}?|\/sc-go|\/sprint-check-go|go run [.\/]*tools\/sprint-check-go)/)
+      start = !skip && (viaVar || $0 ~ /(\$\{?GO_BIN\}?|\/sc-go|\/sprint-check-go|go run [.\/]*tools\/sprint-check-go)/)
     }
     start {
       print "START " file
