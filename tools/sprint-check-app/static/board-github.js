@@ -380,7 +380,6 @@ function showSent(panel, t, tab) {
   });
 }
 
-// While the dialog is open: Escape closes it (unless a merge is running), and Tab stays among its controls.
 // ── Sync from GitHub (t-90a3): the dry run first, then one sync on Create ──────────────────────────────────────────
 const SYNC_WARNING = 'The label admits an issue; it does not vouch for it. An author can edit the text after it is labelled, and an issue template can apply the label. Read the issues before creating them.';
 async function syncFromGithub() {
@@ -402,6 +401,7 @@ async function syncFromGithub() {
   await loadData();
 }
 
+// While the dialog is open: Escape closes it (unless a merge is running), and Tab stays among its controls.
 function dialogKeys(e) {
   if (!dlgClose) return;
   const d = dialog();

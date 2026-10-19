@@ -143,7 +143,7 @@ function ghRender(res){
   box.innerHTML=checks.map(c=>{
     const f=c.fix||{};
     const fix=f.cmd?`<code>${esc(f.cmd)}</code><button type="button" class="btn" data-gh-copy="${escAttr(f.cmd)}">Copy</button>`
-      :f.url?`<a href="${escAttr(f.url)}" target="_blank" rel="noopener">${esc(f.url)} \u2197</a>`:'';
+      :/^https:\/\//.test(f.url||'')?`<a href="${escAttr(f.url)}" target="_blank" rel="noopener">${esc(f.url)} \u2197</a>`:'';
     return `<div class="gh-row gh-${escAttr(c.status)}" data-check="${escAttr(c.id)}"><i></i><div><b>${esc(c.title)}</b><span>${esc(c.detail||'')}</span></div><div class="gh-fix">${fix}</div></div>`;
   }).join('');
   const cloud=ghDoctor.cloud||{};
@@ -152,7 +152,7 @@ function ghRender(res){
   document.getElementById('ad-gh-domains').innerHTML=(cloud.domains||[]).map(d=>`<code>${esc(d)}</code>`).join('');
 }
 function ghCopy(text){
-  try{ navigator.clipboard.writeText(text); toast('Copied'); }catch(e){ toast('Copy failed'); }
+  try{ navigator.clipboard.writeText(text).then(()=>toast('Copied'),()=>toast('Copy failed')); }catch(e){ toast('Copy failed'); }
 }
 
 // ── Admin > Model Tiers (t-7e36) ────────────────────────────────────────
