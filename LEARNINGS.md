@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-19-2026 17:24
+learnings-sweep last run: 10-19-2026 15:48
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-19 | [t-15d8](.tickets/t-15d8/learnings.md) | A test file inside a released Go package's folder changes its release key (the tree hash of `tools/sprint-check-go`): a new Go test there needs a new binary release, so t-15d8 moved its call-site check to a shell check outside the folder; check `git rev-parse HEAD:<folder>` before committing. Also: macOS hides Apple binaries' environment from `ps -E`, so a relabelled `sleep` can never carry a run marker. | UNPROMOTED |
 | 2026-10-19 | [t-3a14](.tickets/t-3a14/learnings.md) | A recipe line is not enough to change an orchestrator's habit: t-3a14 logged the reviewer's gate run on its report, before the `<usage>` notice, exactly as t-5ef3 had, though complete.md step 5 now says to wait; an unpromoted lesson repeats. Also cosmetic: gate-cost's fixed 18-char model column misaligns ids up to the 80 the validator allows. | UNPROMOTED |
 | 2026-10-19 | [t-f151](.tickets/t-f151/learnings.md) | A pipefail `grep -q` race only shows when the writer is still writing as grep exits: on the Mac's small environment the old `_ours` missed 0/1000, with a 128 KB environment (a busy container's) 1000/1000. A loop that cannot fail on the old code proves nothing about the fix: size the input until the old code fails, then show the new one does not. | UNPROMOTED |
 | 2026-10-19 | [t-24b1](.tickets/t-24b1/learnings.md) | A test can encode the bug it should catch: push-main's first test had local main ahead of origin and asserted the mirror received it, so pushing unmerged commits to the install target passed; the reviewer's repro flipped it. When a command publishes, assert that what it sends equals the source of truth (origin's merged head), never the local copy. | UNPROMOTED |
