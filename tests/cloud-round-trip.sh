@@ -219,6 +219,22 @@ assert_contains "$out" "re-grade needed on this Mac: PR head not confirmed as th
 STUB_PR_HEAD="$(git -C "$X" rev-parse HEAD)"
 out="$(STUB_PR_FILES="tools/evidence.sh tests/evidence.sh" "$TKT" import-results "$id" --pr 58 2>&1)"
 assert_contains "$out" "no re-grade needed"
+# t-fdb1: a head past graded-head by the cloud's learnings sweep counts as the graded code; a code commit after grading does not.
+cd "$X" && "$TKT" export "$id" >/dev/null 2>&1 && git checkout -q -b sweep && printf 'row\n' > LEARNINGS.md && git add LEARNINGS.md \
+  && git commit -qm sweep && git push -qf origin "HEAD:refs/pull/58/head" && cd "$L"
+STUB_PR_HEAD="$(git -C "$X" rev-parse HEAD)"
+rc=0; out="$(STUB_PR_FILES="LEARNINGS.md" "$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
+[[ "$rc" == 0 ]] || fail "a late-docs-only head after grading should import with rc 0: $out"
+assert_contains "$out" "PR #58 head $STUB_PR_HEAD: graded-head plus late docs only: LEARNINGS.md"
+assert_contains "$out" "no re-grade needed"
+[[ -z "$(git --git-dir="$W/origin.git" branch --list "canon-results/$id")" ]] || fail "a late-docs-only import kept canon-results/$id"
+cd "$X" && "$TKT" export "$id" >/dev/null 2>&1 && mkdir -p tools && printf 'x\n' > tools/x.sh && git add tools/x.sh \
+  && git commit -qm code && git push -qf origin "HEAD:refs/pull/58/head" && git checkout -q main && cd "$L"
+STUB_PR_HEAD="$(git -C "$X" rev-parse sweep)"
+rc=0; out="$(STUB_PR_FILES="LEARNINGS.md tools/x.sh" "$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "a code commit after grading should exit 1: $out"
+assert_contains "$out" "does NOT match graded-head"; assert_contains "$out" "(tools/x.sh)"
+[[ -n "$(git --git-dir="$W/origin.git" branch --list "canon-results/$id")" ]] || fail "a code delta deleted canon-results/$id"
 # An import that cannot write keeps the branch on origin, so nothing is lost.
 if [[ "$(id -u)" != 0 ]]; then
   cd "$X" && "$TKT" export "$id" >/dev/null 2>&1 && cd "$L"
