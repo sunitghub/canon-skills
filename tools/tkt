@@ -1024,12 +1024,12 @@ _has_criteria() {
   [[ -n "${items//[[:space:]]/}" ]]
 }
 # _si_description <ticket.md>: the ticket body without "## " sections that hold only HTML comments (the empty template).
+# No fence tracking: a fence's own ``` lines are content, so a section holding a fenced block is always kept whole.
 _si_description() {
   ticket_body "$1" | awk '
-    /^```/ { fence = !fence }
-    !fence && /^## / { flush(); head = $0; body = ""; keep = 0; next }
-    { if (head == "") { pre = pre $0 "\n"; next } body = body $0 "\n"; if (fence || ($0 !~ /^[[:space:]]*$/ && $0 !~ /^[[:space:]]*<!--.*-->[[:space:]]*$/)) keep = 1 }
-    function flush() { if (head != "" && keep) out = out head "\n" body; head = "" }
+    /^## / { flush(); head = $0; body = ""; keep = 0; next }
+    { if (head == "") { pre = pre $0 "\n"; next } body = body $0 "\n"; if ($0 !~ /^[[:space:]]*$/ && $0 !~ /^[[:space:]]*<!--.*-->[[:space:]]*$/) keep = 1 }
+    function flush() { if (keep) out = out head "\n" body; head = "" }
     END { flush(); printf "%s%s", pre, out }' | awk 'NF { s = 1 } s'
 }
 
