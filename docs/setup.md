@@ -78,6 +78,10 @@ Prune stale entries freely — git history preserves everything.
 You can hand a ticket to a Claude cloud session (Claude desktop's Code tab, or claude.ai/code) that runs on your
 Claude subscription, with no API key. The ticket goes to your repo as a GitHub issue; the session works on it there.
 
+Before the first send, the board's Admin › GitHub (or `tkt github-doctor`) checks that gh is installed and signed in and
+that origin is a GitHub repo, and has Copy buttons for the recipe below. Issues labelled `canon` come in with the board's
+header button **Sync from GitHub** (`tkt sync-issues`).
+
 **Once: create a "canon" environment.** In a new session, open *Choose environment*, then *Cloud*:
 
 - **Name:** `canon`

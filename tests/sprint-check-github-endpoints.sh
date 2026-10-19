@@ -23,6 +23,8 @@ printf '%s | %s | progress=%s\n' "\$PWD" "\$*" "\${CANON_PROGRESS_SECONDS:-}" >>
 [[ -e "$W/fail" ]] && { echo "stub failure"; exit 3; }
 [[ "\$*" == *"--pr 99"* ]] && { head -c 3000000 /dev/zero | tr '\\0' x; exit 0; }   # one 3 MB line, no newline
 [[ "\$1" == github-status ]] && { echo '{"id":"t-ab12","stage":"pr-open","pr":24}'; exit 0; }
+[[ "\$1" == github-doctor && -e "$W/badjson" ]] && { echo "not json"; exit 0; }
+[[ "\$1" == github-doctor ]] && { echo '{"checks":[{"id":"gh","status":"bad","title":"t","detail":"d","fix":{"url":"u"}}],"cloud":{"domains":[],"setup_script":""}}'; exit 0; }
 case "\$1 \$*" in
   *"--dry-run"*) echo "would do: \$*" ;;
   "merge-pr "*"--yes"*) echo "progress one"; for _ in \$(seq 100); do [[ -e "$W/release" ]] && break; sleep 0.1; done; echo "progress two" ;;
@@ -57,6 +59,10 @@ for P in "$PYP" "$GOP"; do
   expect_call "$srv send public?"  "$P" "$(post "$P" /api/ticket/t-ab12/github/send '{"public":"yes"}')" "send-issue t-ab12"   # only a real true
   expect_call "$srv sync-preview"  "$P" "$(get "$P" /api/github/sync-preview)" "sync-issues --dry-run"
   expect_call "$srv sync"          "$P" "$(post "$P" /api/github/sync '{}')" "sync-issues"
+  r="$(get "$P" /api/github/doctor)"; expect_call "$srv doctor" "$P" "$r" "github-doctor --json"   # t-90a3: Admin › GitHub's checks
+  assert_eq "gh|bad|u" "$(body "$r" | js '[j.doctor.checks[0].id, j.doctor.checks[0].status, j.doctor.checks[0].fix.url].join("|")')"
+  touch "$W/badjson"; r="$(get "$P" /api/github/doctor)"; rm -f "$W/badjson"   # output that is not JSON is a failure, not a doctor
+  assert_eq "false|undefined|not json" "$(body "$r" | js '[j.ok, typeof j.doctor, j.output.trim()].join("|")')"
   expect_call "$srv import"        "$P" "$(post "$P" /api/ticket/t-ab12/github/import '{"pr":58}')" "import-results t-ab12 --pr 58"
   expect_call "$srv import str"    "$P" "$(post "$P" /api/ticket/t-ab12/github/import '{"pr":"58"}')" "import-results t-ab12 --pr 58"
   expect_call "$srv import no pr"  "$P" "$(post "$P" /api/ticket/t-ab12/github/import '{}')" "import-results t-ab12"
@@ -76,10 +82,12 @@ for P in "$PYP" "$GOP"; do
   # Another site cannot fire these: a foreign Origin, or Sec-Fetch-Site: cross-site, is 403 on GET and POST.
   r="$(curl -s -w '\n%{http_code}' -H 'Origin: https://evil.example' "http://127.0.0.1:$P/api/ticket/t-ab12/github/merge-check")"; [[ "$(code "$r")" == 403 ]] || fail "$srv: cross-origin GET merge-check was $(code "$r")"
   r="$(curl -s -w '\n%{http_code}' -H 'Sec-Fetch-Site: cross-site' "http://127.0.0.1:$P/api/github/sync-preview")"; [[ "$(code "$r")" == 403 ]] || fail "$srv: cross-site GET sync-preview was $(code "$r")"
+  r="$(curl -s -w '\n%{http_code}' -H 'Origin: https://evil.example' "http://127.0.0.1:$P/api/github/doctor")"; [[ "$(code "$r")" == 403 ]] || fail "$srv: cross-origin GET doctor was $(code "$r")"
   r="$(curl -s -w '\n%{http_code}' -X POST -H 'Origin: https://evil.example' -H 'Content-Type: application/json' -d '{}' "http://127.0.0.1:$P/api/ticket/t-ab12/github/send")"; [[ "$(code "$r")" == 403 ]] || fail "$srv: cross-origin POST send was $(code "$r")"
   # An unknown project is 400, on GET and POST.
   r="$(get "$P" '/api/ticket/t-ab12/github/send-preview?project=nope')"; [[ "$(code "$r")" == 400 ]] || fail "$srv: unknown project GET was $(code "$r")"
   r="$(post "$P" '/api/ticket/t-ab12/github/send?project=nope' '{}')"; [[ "$(code "$r")" == 400 ]] || fail "$srv: unknown project POST was $(code "$r")"
+  r="$(get "$P" '/api/github/doctor?project=nope')"; [[ "$(code "$r")" == 400 ]] || fail "$srv: unknown project doctor was $(code "$r")"
   assert_eq "$n" "$(wc -l < "$W/log")"   # none of those ran tkt
   # A failing tkt: ok false, its exit code and output.
   touch "$W/fail"; r="$(post "$P" /api/ticket/t-ab12/github/send '{}')"; rm -f "$W/fail"

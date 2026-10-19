@@ -3059,6 +3059,16 @@ def github_status(root: Path, ticket_id: str) -> dict:
         _STATUS_CACHE[key] = (time.time(), res)
     return res
 
+def github_doctor(root: Path) -> dict:
+    """t-90a3: the readiness checks Admin › GitHub shows, parsed into 'doctor'. Parity with main.go's githubDoctor."""
+    res = run_tkt(root, ['github-doctor', '--json'], timeout=60)
+    if res['ok']:
+        try:
+            res['doctor'] = json.loads(res['output'])
+        except ValueError:
+            res = {'ok': False, 'exit_code': res['exit_code'], 'output': res['output']}
+    return res
+
 def _github_get_cross_site(headers) -> bool:
     """t-d271: the GitHub GET routes run git and gh, so a page on another site must not fire them blind."""
     return not _origin_ok(headers.get('Origin', '')) or headers.get('Sec-Fetch-Site', '') == 'cross-site'
@@ -3700,7 +3710,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({'content': feat.read_text(encoding='utf-8', errors='replace')})
                 return
             m = re.match(r'^/api/ticket/(t-[a-z0-9]{4})/github/(send-preview|merge-check|merge|status)$', path)
-            if m or path == '/api/github/sync-preview':
+            if m or path == '/api/github/sync-preview' or path == '/api/github/doctor':
                 if _github_get_cross_site(self.headers):
                     self.send_error(403); return
                 q = parse_qs(parsed.query)
@@ -3708,6 +3718,8 @@ class Handler(BaseHTTPRequestHandler):
                     groot = effective_root(q)
                 except UnknownProject:
                     self.send_error(400); return
+                if path == '/api/github/doctor':
+                    self.send_json(github_doctor(groot)); return
                 if not m:
                     self.send_json(run_tkt(groot, ['sync-issues', '--dry-run'])); return
                 tid, what = m.group(1), m.group(2)

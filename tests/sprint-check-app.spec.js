@@ -15013,6 +15013,101 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(chip).toHaveText('GitHub #57 · results ready');
   });
 
+  // Prod path: the header's Sync from GitHub button (tkt sync-issues through t-d271's two routes).
+  test('Sync from GitHub previews the dry run, creates on Create only, and disables Create when there is nothing to make (t-90a3)', async ({ page }) => {
+    let preview = { ok: true, exit_code: 0, output: 'would create  #61  Export tasks as CSV  (feature, P2)\nwould create  #62  Dark mode flickers  (bug, P1)\nskip  #57  already t-3b90\ndry run: 2 to create, nothing written\n' };
+    const posts = [];
+    let reloads = 0;
+    await page.route('**/api/github/sync-preview**', r => json(r, preview));
+    await page.route(u => u.pathname === '/api/github/sync', r => { posts.push(r.request().method()); return json(r, { ok: true, exit_code: 0, output: 't-aa01  #61  Export tasks as CSV\nt-aa02  #62  Dark mode flickers\nsync-issues: 2 created\n' }); });
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    page.on('request', q => { if (new URL(q.url()).pathname === '/api/tickets') reloads++; });
+    const dlg = page.locator('#gh-dialog'), ok = page.locator('#gh-dialog-ok');
+
+    await page.locator('#btn-gh-sync').click();
+    await expect(page.locator('#gh-dialog-pre')).toContainText('would create  #61  Export tasks as CSV');
+    await expect(page.locator('#gh-dialog-body')).toContainText('The label admits an issue; it does not vouch for it.');
+    await expect(ok).toHaveText('Create 2 tickets');
+    await expect(ok).toBeEnabled();
+    await page.locator('#gh-dialog-cancel').click();
+    await expect(dlg).not.toHaveClass(/open/);
+    expect(posts).toEqual([]);
+
+    await page.locator('#btn-gh-sync').click();
+    await expect(ok).toHaveText('Create 2 tickets');
+    const before = reloads;
+    await ok.click();
+    await expect(page.locator('#gh-dialog-pre')).toContainText('sync-issues: 2 created');
+    expect(posts).toEqual(['POST']);
+    await expect.poll(() => reloads).toBeGreaterThan(before);
+    await page.locator('#gh-dialog-cancel').click();
+
+    preview = { ok: true, exit_code: 0, output: 'skip  #57  already t-3b90\ndry run: 0 to create, nothing written\n' };
+    await page.locator('#btn-gh-sync').click();
+    await expect(ok).toHaveText('Create 0 tickets');
+    await expect(ok).toBeDisabled();
+    await expect(page.locator('#gh-dialog-body')).toHaveText('Nothing to create.');
+    await page.locator('#gh-dialog-cancel').click();
+
+    preview = { ok: false, exit_code: 1, output: 'sync-issues: origin is not a GitHub repo (https://gitlab.com/a/b.git)\n' };
+    await page.locator('#btn-gh-sync').click();
+    await expect(page.locator('#gh-dialog-pre')).toContainText('origin is not a GitHub repo');
+    await expect(ok).toBeDisabled();
+    await page.locator('#gh-dialog-cancel').click();
+    expect(posts).toEqual(['POST']);
+
+    // A split-pane-wide board: the button drops its label, so it adds only an icon to the header.
+    await page.setViewportSize({ width: 640, height: 600 });
+    await expect(page.locator('#btn-gh-sync .gh-sync-lbl')).toBeHidden();
+    expect((await page.locator('#btn-gh-sync').boundingBox()).width).toBeLessThan(50);
+  });
+
+  // Prod path: Admin › GitHub, rendering GET /api/github/doctor (tkt github-doctor) for the chosen project.
+  test('Admin GitHub shows the doctor checks with their fixes, rechecks, and copies the recipe (t-90a3)', async ({ page }) => {
+    const projects = [
+      { id: 'proj-a', path: '/tmp/proj-a', name: 'proj-a', description: '', added: '2026-09-26' },
+      { id: 'proj-b', path: '/tmp/proj-b', name: 'proj-b', description: '', added: '2026-09-26' },
+    ];
+    const calls = [];
+    const doctor = { checks: [
+      { id: 'gh', status: 'bad', title: 'GitHub CLI (gh) is not installed', detail: 'Every GitHub step runs gh as you.', fix: { url: 'https://github.com/cli/cli' } },
+      { id: 'origin', status: 'bad', title: 'No GitHub repository for this project', detail: 'no git remote named origin.', fix: { cmd: 'git remote add origin https://github.com/<owner>/<repo>.git' } },
+      { id: 'tests', status: 'warn', title: 'No test command', detail: 'merges on the gates alone' },
+    ], cloud: { domains: ['getcanon.dev', 'github.com'], setup_script: '#!/bin/bash\nset -e\necho setup\n' } };
+    await page.addInitScript(() => { window.__copied = []; navigator.clipboard.writeText = t => { window.__copied.push(t); return Promise.resolve(); }; });
+    await page.route('**/api/projects', r => json(r, projects));
+    await page.route('**/api/github/doctor**', r => { calls.push(new URL(r.request().url()).searchParams.get('project')); return json(r, { ok: true, exit_code: 0, output: '', doctor }); });
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    await page.locator('#nav-admin').click();
+
+    const rows = page.locator('#ad-gh-checks .gh-row');
+    await expect(rows).toHaveCount(3);
+    await expect(page.locator('#ad-gh-count')).toHaveText('Checks · 1 of 3 ready');
+    expect(calls).toEqual(['proj-a']);
+    await expect(rows.nth(0).locator('a')).toHaveAttribute('href', 'https://github.com/cli/cli');
+    await expect(rows.nth(0)).toHaveClass(/gh-bad/);
+    await expect(rows.nth(2)).toHaveClass(/gh-warn/);
+    await rows.nth(1).locator('[data-gh-copy]').click();
+    await expect.poll(() => page.evaluate(() => window.__copied.at(-1))).toBe('git remote add origin https://github.com/<owner>/<repo>.git');
+    await page.locator('#ad-gh-copy-script').click();
+    await expect.poll(() => page.evaluate(() => window.__copied.at(-1))).toBe('#!/bin/bash\nset -e\necho setup\n');
+    await page.locator('#ad-gh-copy-domains').click();
+    await expect.poll(() => page.evaluate(() => window.__copied.at(-1))).toBe('getcanon.dev\ngithub.com');
+    await expect(page.locator('#ad-gh')).toContainText('it never pushes to main. On a free private repo GitHub cannot enforce this, so the prompt is the safeguard.');
+
+    // Reopening Admin runs gh again only on Check again or another project.
+    // The reopen's fetch (if any) is sent before Check again's, so once Check again has rendered both are counted.
+    await page.locator('#nav-projects').click(); await page.locator('#nav-admin').click();
+    doctor.checks[0] = { id: 'gh', status: 'ok', title: 'Signed in to GitHub', detail: 'Signed in as octo.' };
+    await page.locator('#ad-gh-recheck').click();
+    await expect(page.locator('#ad-gh-count')).toHaveText('Checks · 2 of 3 ready');
+    expect(calls).toEqual(['proj-a', 'proj-a']);
+    await page.locator('#ad-gh-project').selectOption('proj-b');
+    await expect.poll(() => calls).toEqual(['proj-a', 'proj-a', 'proj-b']);
+  });
+
   test('no GitHub place for a ticket already in progress or already out; the panel says so (t-718b)', async ({ page }) => {
     const live = `t-gh24-${Date.now()}`, out = `t-gh25-${Date.now()}`;
     ghTicket(live, { status: 'in_progress' }); ghTicket(out, { github: 'acme/app#57' });
