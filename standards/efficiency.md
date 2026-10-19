@@ -4,8 +4,8 @@ description: Coding standards, code review feedback, git conventions, behavioral
 category: agent-ops
 tags: [coding, security, git, efficiency, tokens]
 inject: true
-version: 1.1.0
-updated: 2026-10-15
+version: 1.1.1
+updated: 2026-10-19
 ---
 
 # Agent Standards
