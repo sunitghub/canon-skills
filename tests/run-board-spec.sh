@@ -94,10 +94,12 @@ rsync -a --exclude node_modules --exclude test-results --exclude playwright-repo
 ln -s "$ROOT/node_modules" "$COPY/node_modules"
 
 # Start the Go board from copy $1; sets STARTED_PORT and STARTED_PID. Called directly, never in $(...), so the PID it
-# records survives for cleanup.
+# records survives for cleanup. COCKPIT_STATE_DIR too: its default ($TMPDIR/canon-cockpit-board) is the real Cockpit daemon's, and a
+# board that finds the user's live daemon there fails the leave-session tests (t-2992). COCKPIT_DAEMON_BIN names no file, so the
+# board never launches a daemon of its own: one would outlive it (detached by design) and fail the same tests later in the run.
 start_board() {
   STARTED_PORT="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
-  (cd "$1" && CANON_HOME="$1/.spec-canon-home" SPRINT_CHECK_ROOT="$1" SPRINT_CHECK_NO_BROWSER=1 GO111MODULE=off exec go run ./tools/sprint-check-go "$STARTED_PORT" >/dev/null 2>&1) &
+  (cd "$1" && CANON_HOME="$1/.spec-canon-home" COCKPIT_STATE_DIR="$1/.spec-cockpit-state" COCKPIT_DAEMON_BIN="$1/.spec-no-daemon" SPRINT_CHECK_ROOT="$1" SPRINT_CHECK_NO_BROWSER=1 GO111MODULE=off exec go run ./tools/sprint-check-go "$STARTED_PORT" >/dev/null 2>&1) &
   STARTED_PID=$!
 }
 wait_board() {
@@ -212,5 +214,6 @@ for r in "$OUT"/board-spec-*-run*.json; do
   if command -v sha256sum >/dev/null 2>&1; then h="$(sha256sum -- "$r" | cut -d' ' -f1)"; else h="$(shasum -a 256 -- "$r" | cut -d' ' -f1)"; fi
   echo "run-board-spec: report ${r##*/} sha256 $h"
 done
-if [ "$GUARD_STATUS" != 0 ]; then STATUS="$GUARD_STATUS"; fi
+# A leaked process or a moved tree (2) outranks the guard's 1, or listing the flakes later would make the run look covered.
+if [ "$GUARD_STATUS" != 0 ] && [ "$STATUS" = 0 ]; then STATUS="$GUARD_STATUS"; fi
 exit "$STATUS"

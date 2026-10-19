@@ -31,7 +31,7 @@ for row in "Made by the installers at v0.4.0 or later" "A Windows zip install" "
 # a help text or a comment cannot satisfy it (the first version of this check passed with the real guard deleted because the help text said the same).
 refusal() {   # refusal <doc words> <file> <how the code prints: a fixed prefix on the line> <code text>
   need "the refusal '$1'" "$1"
-  grep -F -- "$3" "$2" | grep -qF -- "$4" || fail "doc-update-behavior: the docs name the refusal '$1' but no '$3' line in $(basename "$2") prints '$4'"
+  grep -F -- "$3" "$2" | grep -F -- "$4" >/dev/null || fail "doc-update-behavior: the docs name the refusal '$1' but no '$3' line in $(basename "$2") prints '$4'"
 }
 PRINT='echo "canon update:'
 refusal "has no release" "$MANIFEST" 'die "' "lists no release I can read"
@@ -56,7 +56,7 @@ next="$(sed -n '/^main_track_note() {/,/^}/p' "$CANON" | sed -n 's/.*echo "\(For
 for f in "${DOC_UPDATE_PS1:-$ROOT/install.ps1}"; do
   for line in "$note" "$next"; do
     # a whole statement line, so the words in a comment or another string do not count
-    sed 's/^[[:space:]]*//' "$f" | grep -qxF -e "echo \"$line\"" -e "Write-Host \"    $line\"" && continue
+    sed 's/^[[:space:]]*//' "$f" | grep -xF -e "echo \"$line\"" -e "Write-Host \"    $line\"" >/dev/null && continue
     fail "doc-update-behavior: $f does not print tools/canon's main-track line word for word: $line"
   done
 done

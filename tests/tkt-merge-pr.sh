@@ -167,7 +167,7 @@ fi
 printf '#!/usr/bin/env bash\n[ -e "%s/no-delete" ] && grep -q "^[0-9a-f]* 0\\{40\\} refs/heads/canon-results/" && { echo "delete refused" >&2; exit 1; }\nexit 0\n' "$W" > "$W/origin.git/hooks/pre-receive"
 chmod +x "$W/origin.git/hooks/pre-receive"
 results_branch() { git push -q origin "main:refs/heads/canon-results/$id" 2>/dev/null; }
-has_results() { git ls-remote --heads origin "canon-results/$id" | grep -q .; }
+has_results() { git ls-remote --heads origin "canon-results/$id" | grep . >/dev/null; }
 sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; results_branch; has_results || fail "the test could not create canon-results/$id"
 out="$("$TKT" merge-pr "$id" --pr 7 --yes 2>&1)" || fail "merge-pr failed: $out"
 has_results && fail "merge-pr left canon-results/$id on origin"
@@ -221,6 +221,30 @@ sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
 out="$(STUB_MERGE_FAIL=1 STUB_AFTER=MERGED STUB_NO_SHA=1 "$TKT" merge-pr "$id" --pr 7 --yes 2>&1)" || fail "a merge GitHub made was reported as a failure: $out"
 assert_contains "$out" "Merged PR #7 into main (gh reported: could not delete branch)"
 assert_grep '^merged: PR #7$' "$f"
+
+# t-fdb1: a head past graded-head merges only when what came after is merge-safe late docs (the cloud's learnings sweep).
+past() {   # past <file>...: one commit on top of the graded PR head touching those files, published as PR #7's head; prints its sha
+  git checkout -q -B past "$PRHEAD"; local x; for x in "$@"; do mkdir -p "$(dirname "$x")"; echo "$x" > "$x"; git add -f "$x"; done
+  git commit -qm "after grading"; git push -qf origin "HEAD:refs/pull/7/head"; git rev-parse HEAD; git checkout -q main
+}
+sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; eval_ok "$PRHEAD"
+LATE="$(past LEARNINGS.md LEARNINGS-archive.md ".tickets/$id/summary.md")"; : > "$STUB_LOG"
+out="$(STUB_HEAD="$LATE" "$TKT" merge-pr "$id" --pr 7 --yes 2>&1)" || fail "a late-docs-only head was refused: $out"
+assert_contains "$out" "merge-pr: PR #7 head is graded-head plus late docs only: .tickets/$id/summary.md, LEARNINGS-archive.md, LEARNINGS.md"
+grep -qx "pr merge 7 --repo acme/app --merge --delete-branch --match-head-commit $LATE" "$STUB_LOG" || fail "late-docs merge not pinned to its head: $(cat "$STUB_LOG")"
+sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
+CODE="$(past LEARNINGS.md tools/x.sh)"
+refuses "a code file after grading" "since then it changes tools/x.sh: re-run the gates on it" STUB_HEAD="$CODE" -- --pr 7 --yes
+AGENTREAD="$(past CLAUDE.md)"
+refuses "an agent-read late doc after grading" "since then it changes CLAUDE.md" STUB_HEAD="$AGENTREAD" -- --pr 7 --yes
+OTHER="$(past .tickets/t-0th3/plan.md)"
+refuses "another ticket's folder after grading" "since then it changes .tickets/t-0th3/plan.md" STUB_HEAD="$OTHER" -- --pr 7 --yes
+DOT="$(past ".tickets/$id/.cockpit-cwd")"
+refuses "a dotfile in the ticket's folder after grading" "since then it changes .tickets/$id/.cockpit-cwd" STUB_HEAD="$DOT" -- --pr 7 --yes
+git checkout -q -B past "$PRHEAD"; ln -s AGENTS.md LEARNINGS.md; git add LEARNINGS.md; git commit -qm "symlink after grading"
+git push -qf origin "HEAD:refs/pull/7/head"; LINK="$(git rev-parse HEAD)"; git checkout -q main
+refuses "a symlink under an allowed name after grading" "LEARNINGS.md (symlink or submodule)" STUB_HEAD="$LINK" -- --pr 7 --yes
+git push -qf origin "$PRHEAD:refs/pull/7/head"
 
 # t-4718 also fixed import-results: a ticket that comes back without eval-report.md is reported, not a silent exit.
 other="t-0e0e"; X="$W/cloud"; git clone -q "$W/origin.git" "$X" 2>/dev/null

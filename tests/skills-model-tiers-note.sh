@@ -168,10 +168,10 @@ block="$(canon_block "$ROOT/AGENTS.md")"
 lines="$(printf '%s\n' "$block" | wc -l | tr -d ' ')"
 [[ "$lines" -le 14 ]] || fail "the MODEL-TIERS block is $lines lines (max 14): canon-internal prose belongs after the END marker"
 for needle in '## Model Tiers' '`explore` → Haiku' '`plan creation` → Fable or Opus' '`implement` → Haiku/Sonnet' '`review` / `grill` → Opus' 'skills/sprint/reference/complete.md'; do
-  printf '%s\n' "$block" | grep -qF -- "$needle" || fail "the MODEL-TIERS block lost '$needle'"
+  printf '%s\n' "$block" | grep -F -- "$needle" >/dev/null || fail "the MODEL-TIERS block lost '$needle'"
 done
 for internal in 'tools/sprint-check-app' 'model-tiers.json' 'agents/canon-' 'spawn_agent' 'Cross-harness' 'Gate model' 't-7e36' 't-ef27' 't-c774' 'North-star' 'Close-gate effort' 'pi session'; do
-  if printf '%s\n' "$block" | grep -qF -- "$internal"; then fail "the MODEL-TIERS block carries canon-internal text: $internal"; fi
+  if printf '%s\n' "$block" | grep -F -- "$internal" >/dev/null; then fail "the MODEL-TIERS block carries canon-internal text: $internal"; fi
 done
 
 # Nothing is lost for canon: every line the old block had and the new one dropped is still in canon's AGENTS.md after the END marker,
@@ -186,9 +186,9 @@ grep -q '^\*\*Cross-harness note\.\*\*' "$ROOT/AGENTS.md" || fail "AGENTS.md los
 grep -qF -- '- **Cross-harness caveat.**' "$ROOT/skills/sprint/reference/complete.md" || fail "complete.md lost its Cross-harness caveat, which covers the old Codex note (t-7e5d)"
 while IFS= read -r l; do
   [[ -z "${l//[[:space:]]/}" ]] && continue
-  printf '%s\n' "$block" | grep -qxF -- "$l" && continue
-  printf '%s\n' "$after_end" | grep -qxF -- "$l" && continue
-  printf '%s\n' "$codex" | grep -qxF -- "$l" && continue   # covered by the pointer + caveat checked above
+  printf '%s\n' "$block" | grep -xF -- "$l" >/dev/null && continue
+  printf '%s\n' "$after_end" | grep -xF -- "$l" >/dev/null && continue
+  printf '%s\n' "$codex" | grep -xF -- "$l" >/dev/null && continue   # covered by the pointer + caveat checked above
   grep -qxF -- "$l" "$ROOT/tools/sprint-check-app/CLAUDE.md" "$ROOT/skills/sprint/reference/complete.md" || fail "a line the old block had was dropped, not moved after END or to its new home: $l"
 done < "$old_block"
 

@@ -11,17 +11,17 @@ CMD="$ROOT/install.cmd"
 code() { grep -hv '^\s*#' "$@"; }
 
 # Never change the machine/user execution policy, never depend on Python.
-if code "$PS1" | grep -qi 'Set-ExecutionPolicy'; then fail "install.ps1 sets an execution policy"; fi
-if code "$CMD" | grep -qi 'Set-ExecutionPolicy'; then fail "install.cmd sets an execution policy"; fi
-if code "$PS1" "$CMD" | grep -qiE 'python'; then fail "installer depends on python"; fi
-code "$CMD" | grep -q -- '-ExecutionPolicy Bypass' || fail "install.cmd lost its process-scoped bypass"
+if code "$PS1" | grep -i 'Set-ExecutionPolicy' >/dev/null; then fail "install.ps1 sets an execution policy"; fi
+if code "$CMD" | grep -i 'Set-ExecutionPolicy' >/dev/null; then fail "install.cmd sets an execution policy"; fi
+if code "$PS1" "$CMD" | grep -iE 'python' >/dev/null; then fail "installer depends on python"; fi
+code "$CMD" | grep -- '-ExecutionPolicy Bypass' >/dev/null || fail "install.cmd lost its process-scoped bypass"
 
 # Only HTTPS canon-skills / git-scm URLs, and the one release manifest (t-34f1); no git clone.
 while read -r url; do
   [[ "$url" == https://github.com/sunitghub/canon-skills/* || "$url" == https://raw.githubusercontent.com/sunitghub/canon-skills/* || "$url" == https://git-scm.com/* || "$url" == https://getcanon.dev/releases.txt ]] \
     || fail "unexpected URL in installer: $url"
 done < <(code "$PS1" "$CMD" | grep -oE 'https?://[^" ]+')
-if code "$PS1" | grep -qE 'git +clone'; then fail "install.ps1 uses git clone"; fi
+if code "$PS1" | grep -E 'git +clone' >/dev/null; then fail "install.ps1 uses git clone"; fi
 
 # t-34f1: a release zip is verified against the published manifest BEFORE it is extracted, and the manifest is read before anything is downloaded.
 # PowerShell cannot run here (the Windows VM checks the behavior); this pins the order and the absence of any bypass.
@@ -29,18 +29,18 @@ lnum() { grep -n "^[^#]*$1" "$PS1" | head -1 | cut -d: -f1; }   # first line whe
 [[ -n "$(lnum 'Get-CanonReleaseSha256 \$ref')" && -n "$(lnum 'Get-FileHash')" && -n "$(lnum 'ExtractToDirectory')" ]] || fail "install.ps1 lost its manifest check or the extraction"
 [[ "$(lnum 'Get-CanonReleaseSha256 \$ref')" -lt "$(lnum 'Invoke-WebRequest -UseBasicParsing -Uri \$url')" ]] || fail "install.ps1 reads the manifest after it downloads the zip"
 [[ "$(lnum 'Get-FileHash')" -lt "$(lnum 'ExtractToDirectory')" ]] || fail "install.ps1 extracts the zip before it checks its SHA-256"
-code "$PS1" | grep -qE 'cne \$expected' && code "$PS1" | grep -q 'does not match the published checksum' || fail "install.ps1 does not refuse a zip whose SHA-256 differs from the manifest"
-if code "$PS1" | grep -qiE 'CANON_(INSECURE|SKIP|NO_?VERIFY|UNVERIFIED)'; then fail "install.ps1 has a way to skip verification"; fi
+code "$PS1" | grep -E 'cne \$expected' >/dev/null && code "$PS1" | grep 'does not match the published checksum' >/dev/null || fail "install.ps1 does not refuse a zip whose SHA-256 differs from the manifest"
+if code "$PS1" | grep -iE 'CANON_(INSECURE|SKIP|NO_?VERIFY|UNVERIFIED)' >/dev/null; then fail "install.ps1 has a way to skip verification"; fi
 
 # Update in place must never delete user data: no /MIR or /PURGE, and cockpit + .git excluded.
-if code "$PS1" | grep -qiE 'robocopy.*(/MIR|/PURGE)'; then fail "robocopy would delete files under ~\\.canon"; fi
-code "$PS1" | grep -qE 'robocopy .*/XD cockpit \.git' || fail "robocopy does not exclude cockpit and .git"
+if code "$PS1" | grep -iE 'robocopy.*(/MIR|/PURGE)' >/dev/null; then fail "robocopy would delete files under ~\\.canon"; fi
+code "$PS1" | grep -E 'robocopy .*/XD cockpit \.git' >/dev/null || fail "robocopy does not exclude cockpit and .git"
 
 # A running canon locks its .exe files: the installer must ask first, and robocopy must not retry forever.
-code "$PS1" | grep -q "daemon is running. Run 'canon stop'" || fail "installer does not stop when the daemon is running (it owns live sessions)"
-code "$PS1" | grep -q 'Stop-Process -Id' || fail "installer does not close the running board server before copying"
-if code "$PS1" | grep -qiE 'Stop-Process +-Name|taskkill|pkill'; then fail "installer kills by name instead of by exact PID"; fi
-code "$PS1" | grep -qE 'robocopy .*/R:[0-9]+ /W:[0-9]+' || fail "robocopy has no retry limit (hangs on a locked file)"
+code "$PS1" | grep "daemon is running. Run 'canon stop'" >/dev/null || fail "installer does not stop when the daemon is running (it owns live sessions)"
+code "$PS1" | grep 'Stop-Process -Id' >/dev/null || fail "installer does not close the running board server before copying"
+if code "$PS1" | grep -iE 'Stop-Process +-Name|taskkill|pkill' >/dev/null; then fail "installer kills by name instead of by exact PID"; fi
+code "$PS1" | grep -E 'robocopy .*/R:[0-9]+ /W:[0-9]+' >/dev/null || fail "robocopy has no retry limit (hangs on a locked file)"
 
 # A stopped install must tell `canon update` (it would otherwise refresh projects after a failed install).
 [[ "$(code "$PS1" | grep -c 'CanonInstallFailed = \$true')" -ge 2 ]] || fail "a failed or declined install does not set CanonInstallFailed"
@@ -53,21 +53,21 @@ winget_line="$(grep -n '^\s*winget install' "$PS1" | head -1 | cut -d: -f1)"
 grep -q 'CANON_YES' "$PS1" || fail "CANON_YES does not skip the prompt"
 
 # Under `| iex`, exit would close the user's window.
-if code "$PS1" | grep -qE '^\s*exit\b'; then fail "install.ps1 uses exit (closes the window under | iex)"; fi
+if code "$PS1" | grep -E '^\s*exit\b' >/dev/null; then fail "install.ps1 uses exit (closes the window under | iex)"; fi
 
 # Finish-mode PATH logic still adds tools\ to the user PATH without duplicating.
-code "$PS1" | grep -q 'SetEnvironmentVariable("PATH", $nextUserPath, "User")' || fail "finish mode no longer sets the user PATH"
-code "$PS1" | grep -q "notcontains \$ToolsPath" || fail "finish mode no longer guards against duplicate PATH entries"
+code "$PS1" | grep 'SetEnvironmentVariable("PATH", $nextUserPath, "User")' >/dev/null || fail "finish mode no longer sets the user PATH"
+code "$PS1" | grep "notcontains \$ToolsPath" >/dev/null || fail "finish mode no longer guards against duplicate PATH entries"
 
 # install.cmd fetches install.ps1 when it is not beside it.
-code "$CMD" | grep -q 'curl.exe' || fail "install.cmd does not download install.ps1 when missing"
+code "$CMD" | grep 'curl.exe' >/dev/null || fail "install.cmd does not download install.ps1 when missing"
 
 # t-65c9: with no CANON_REF the installer follows the remembered track, else the latest VERIFIED release; main is only ever the opt-in. The latest release is
 # resolved (and the manifest read) before anything is downloaded; the track is written with .NET and read back (the VM once showed a positional Set-Content writing nothing).
-code "$PS1" | grep -q 'Get-CanonLatestRelease' || fail "install.ps1 cannot resolve the latest release"
+code "$PS1" | grep 'Get-CanonLatestRelease' >/dev/null || fail "install.ps1 cannot resolve the latest release"
 [[ "$(lnum 'Get-CanonLatestRelease }')" -lt "$(lnum 'Get-CanonReleaseSha256 \$ref')" ]] || fail "install.ps1 does not resolve the latest release before it verifies and downloads it"
-code "$PS1" | grep -qE '\$ref = if \(\$env:CANON_REF\) \{ \$env:CANON_REF \} else \{ "main" \}' && fail "install.ps1 still defaults to main"
-code "$PS1" | grep -q '\.canon-track' && code "$PS1" | grep -q 'WriteAllText(\$trackFile' && code "$PS1" | grep -q 'Could not record the update track' || fail "install.ps1 does not record the track with .NET and read it back"
-code "$PS1" | grep -qE 'cmatch .\^v\(0\|\[1-9\]\[0-9\]\{0,5\}\)' || fail "install.ps1's latest-release line rule drifted from tools/release-manifest.sh (the oracle in tests/release-manifest.sh reads it)"
+code "$PS1" | grep -E '\$ref = if \(\$env:CANON_REF\) \{ \$env:CANON_REF \} else \{ "main" \}' >/dev/null && fail "install.ps1 still defaults to main"
+code "$PS1" | grep '\.canon-track' >/dev/null && code "$PS1" | grep 'WriteAllText(\$trackFile' >/dev/null && code "$PS1" | grep 'Could not record the update track' >/dev/null || fail "install.ps1 does not record the track with .NET and read it back"
+code "$PS1" | grep -E 'cmatch .\^v\(0\|\[1-9\]\[0-9\]\{0,5\}\)' >/dev/null || fail "install.ps1's latest-release line rule drifted from tools/release-manifest.sh (the oracle in tests/release-manifest.sh reads it)"
 
 printf 'windows-install: ok\n'

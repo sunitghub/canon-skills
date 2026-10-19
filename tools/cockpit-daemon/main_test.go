@@ -4615,6 +4615,15 @@ func TestDebugLoggingWritesLifecycleEventsWhenEnabled(t *testing.T) {
 	if !strings.Contains(content, "kill invoked") {
 		t.Fatalf("missing kill lifecycle line: %q", content)
 	}
+	// t-bcb8: waitExit logs last; let it finish before t.TempDir's cleanup removes the ticket dir under it.
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		if b, _ := os.ReadFile(logPath); strings.Contains(string(b), "wait returned") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the session never logged its wait line after the kill")
+		}
+	}
 }
 
 // TestAppendDebugLogLineTruncatesToTail: the pure size-capping logic keeps
@@ -6830,8 +6839,11 @@ func TestSessionSnapshotAgentExitRemoves(t *testing.T) {
 
 // t-d9e6: a forced /shutdown (the stale-daemon replace) keeps its sessions for resume too.
 func TestShutdownForceKeepsSnapshot(t *testing.T) {
+	// t-bcb8: wait for the stub before restoring. The handler starts it only after the reply is flushed, so a test that
+	// returned on the reply put the real os.Exit back first and the handler then called it (panic: os.Exit during test).
 	oldExit := shutdownExit
-	shutdownExit = func() {}
+	called := make(chan struct{}, 1)
+	shutdownExit = func() { called <- struct{}{} }
 	defer func() { shutdownExit = oldExit }()
 	bin, _, _ := fakeSprint(t)
 	_, base, s := newTestServerWithAddr(t, bin)
@@ -6849,6 +6861,11 @@ func TestShutdownForceKeepsSnapshot(t *testing.T) {
 	}
 	if got := snapIDs(t, s.snapshotPath()); strings.Join(got, ",") != "t-ab12" {
 		t.Fatalf("a forced shutdown must keep its session for resume: %v", got)
+	}
+	select {
+	case <-called:
+	case <-time.After(2 * time.Second):
+		t.Fatal("shutdownExit not called after a forced shutdown")
 	}
 }
 
@@ -7761,11 +7778,25 @@ func endBody(s *server, sid, mode string) map[string]string {
 	return map[string]string{"session": sid, "ticket": se.ticket, "project_root": se.projectRoot, "mode": mode}
 }
 
-// makeIdle backdates a session's last activity past the 15 s working window, as if it sat at its prompt.
-func makeIdle(s *server, sid string) {
+// makeIdle backdates a session's last activity past the 15 s working window, as if it sat at its prompt. t-bcb8: only once
+// the agent's first output has arrived: output resets the clock, so under load a late READY landed after the backdate
+// and Reap now answered 409 "it is working".
+func makeIdle(t *testing.T, s *server, sid string) {
+	t.Helper()
 	s.mu.Lock()
 	se := s.sessions[sid]
 	s.mu.Unlock()
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		se.mu.Lock()
+		started := len(se.buf) > 0
+		se.mu.Unlock()
+		if started {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("session %s printed nothing to wait for before going idle", sid)
+		}
+	}
 	se.mu.Lock()
 	se.lastActivity = time.Now().Add(-time.Minute)
 	se.mu.Unlock()
@@ -7842,12 +7873,12 @@ func TestEndSessionRefusesWithoutEndingAnything(t *testing.T) {
 			t.Errorf("%s: want %d, got %d %s", c.name, c.want, code, body)
 		}
 	}
-	makeIdle(s, sid)
+	makeIdle(t, s, sid)
 	s.mu.Lock()
 	se := s.sessions[sid]
 	s.mu.Unlock()
 	se.setStatus("needs-you")
-	makeIdle(s, sid)
+	makeIdle(t, s, sid)
 	if code, body := endSessionReq(t, base, bootTok, endBody(s, sid, "reap")); code != http.StatusConflict || !strings.Contains(body, "waiting on you") {
 		t.Errorf("reap on needs-you: want 409 waiting on you, got %d %s", code, body)
 	}
@@ -7870,7 +7901,7 @@ func TestEndSessionRefusesWithoutEndingAnything(t *testing.T) {
 func TestReapNowRefusesACopilotMenu(t *testing.T) {
 	bin, recv := fakeAgentOnMenu(t, "copilot-approval-menu.bin")
 	s, ts, sid, _ := startMenuSession(t, bin, config{idleTimeout: time.Hour, idleTimeoutMain: time.Hour, idleCheckInterval: time.Hour, saveFallback: time.Hour})
-	makeIdle(s, sid)
+	makeIdle(t, s, sid)
 	if code, body := endSessionReq(t, ts.URL, bootTok, endBody(s, sid, "reap")); code != http.StatusConflict || !strings.Contains(body, "Copilot menu") {
 		t.Fatalf("want 409 Copilot menu, got %d %s", code, body)
 	}
@@ -7885,7 +7916,7 @@ func TestReapNowRefusesACopilotMenu(t *testing.T) {
 func TestReapNowSavesThenEnds(t *testing.T) {
 	s, base := newEndServer(t, fakeAgentThatIgnores(t), time.Hour)
 	sid, _ := startTicket(t, base)
-	makeIdle(s, sid)
+	makeIdle(t, s, sid)
 	if code, body := endSessionReq(t, base, bootTok, endBody(s, sid, "reap")); code != http.StatusAccepted {
 		t.Fatalf("want 202, got %d %s", code, body)
 	}
@@ -7899,7 +7930,7 @@ func TestReapNowSavesThenEnds(t *testing.T) {
 
 	s2, base2 := newEndServer(t, fakeAgentThatSaves(t), 30*time.Second)
 	sid2, _ := startTicket(t, base2)
-	makeIdle(s2, sid2)
+	makeIdle(t, s2, sid2)
 	if code, body := endSessionReq(t, base2, bootTok, endBody(s2, sid2, "reap")); code != http.StatusAccepted {
 		t.Fatalf("want 202, got %d %s", code, body)
 	}
@@ -7932,7 +7963,7 @@ func TestReapNowAndKillNoteScratchLeftovers(t *testing.T) {
 	root, base, s := endGuardProject(t)
 	st := startScratchSession(t, base, "s-aa01", root)
 	os.WriteFile(filepath.Join(root, "a.txt"), []byte("edited\n"), 0o644)
-	makeIdle(s, st.Session)
+	makeIdle(t, s, st.Session)
 	if code, body := endSessionReq(t, base, bootTok, endBody(s, st.Session, "reap")); code != http.StatusAccepted {
 		t.Fatalf("reap scratch: want 202, got %d %s", code, body)
 	}
@@ -8060,7 +8091,7 @@ func TestKillNotesAScratchSessionOnce(t *testing.T) {
 	}
 
 	st2 := startScratchSession(t, base, "s-ee05", root)
-	makeIdle(s, st2.Session)
+	makeIdle(t, s, st2.Session)
 	body := endBody(s, st2.Session, "kill")
 	if code, _ := endSessionReq(t, base, bootTok, endBody(s, st2.Session, "reap")); code != http.StatusAccepted {
 		t.Fatalf("reap: want 202, got %d", code)

@@ -219,6 +219,22 @@ assert_contains "$out" "re-grade needed on this Mac: PR head not confirmed as th
 STUB_PR_HEAD="$(git -C "$X" rev-parse HEAD)"
 out="$(STUB_PR_FILES="tools/evidence.sh tests/evidence.sh" "$TKT" import-results "$id" --pr 58 2>&1)"
 assert_contains "$out" "no re-grade needed"
+# t-fdb1: a head past graded-head by the cloud's learnings sweep counts as the graded code; a code commit after grading does not.
+cd "$X" && "$TKT" export "$id" >/dev/null 2>&1 && git checkout -q -b sweep && printf 'row\n' > LEARNINGS.md && git add LEARNINGS.md \
+  && git commit -qm sweep && git push -qf origin "HEAD:refs/pull/58/head" && cd "$L"
+STUB_PR_HEAD="$(git -C "$X" rev-parse HEAD)"
+rc=0; out="$(STUB_PR_FILES="LEARNINGS.md" "$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
+[[ "$rc" == 0 ]] || fail "a late-docs-only head after grading should import with rc 0: $out"
+assert_contains "$out" "PR #58 head $STUB_PR_HEAD: graded-head plus late docs only: LEARNINGS.md"
+assert_contains "$out" "no re-grade needed"
+[[ -z "$(git --git-dir="$W/origin.git" branch --list "canon-results/$id")" ]] || fail "a late-docs-only import kept canon-results/$id"
+cd "$X" && "$TKT" export "$id" >/dev/null 2>&1 && mkdir -p tools && printf 'x\n' > tools/x.sh && git add tools/x.sh \
+  && git commit -qm code && git push -qf origin "HEAD:refs/pull/58/head" && git checkout -q main && cd "$L"
+STUB_PR_HEAD="$(git -C "$X" rev-parse sweep)"
+rc=0; out="$(STUB_PR_FILES="LEARNINGS.md tools/x.sh" "$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "a code commit after grading should exit 1: $out"
+assert_contains "$out" "does NOT match graded-head"; assert_contains "$out" "(tools/x.sh)"
+[[ -n "$(git --git-dir="$W/origin.git" branch --list "canon-results/$id")" ]] || fail "a code delta deleted canon-results/$id"
 # An import that cannot write keeps the branch on origin, so nothing is lost.
 if [[ "$(id -u)" != 0 ]]; then
   cd "$X" && "$TKT" export "$id" >/dev/null 2>&1 && cd "$L"
@@ -248,6 +264,24 @@ assert_eq "outside" "$(cat "$W/outside.txt")"
 cd "$L"; rm -f ".tickets/$id/plan.md"; git --git-dir="$W/origin.git" branch -D "canon-results/$id" >/dev/null
 rc=0; out="$("$TKT" import-results ../etc 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "a non-ticket id should be refused"; assert_contains "$out" "not a ticket id"
+
+# t-1cf5: an unfinished cloud sprint comes back open (cloud_status keeps in_progress), so a local sprint in this
+# checkout still closes: sprint complete resolves the local ticket, not "multiple in-progress tickets".
+sed -i.bak 's/^status: closed$/status: in_progress/' "$X/.tickets/$id/ticket.md" && rm "$X/.tickets/$id/ticket.md.bak"
+cd "$X" && "$TKT" export "$id" >/dev/null 2>&1 && cd "$L"
+lid="$("$TKT" create "Local sprint" -t task)"; "$TKT" start "$lid" >/dev/null
+out="$("$TKT" import-results "$id")"
+assert_contains "$out" "status: open (cloud: in_progress)  (expected closed: the cloud sprint did not finish)"
+assert_grep "^status: open$" ".tickets/$id/ticket.md"
+assert_grep "^cloud_status: in_progress$" ".tickets/$id/ticket.md"
+assert_eq "$lid" "$("$TKT" current | awk '{print $1}')"
+rc=0; out="$("$SPRINT" complete 2>&1)" || rc=$?
+[[ "$rc" == 1 && "$out" != *"multiple in-progress"* ]] || fail "sprint complete saw the imported ticket as in progress (rc $rc): $out"
+assert_contains "$out" "$lid"
+# The close-from-worktree flow: tkt start still makes it the one in progress (here, with the local one reopened).
+"$TKT" reopen "$lid" >/dev/null; "$TKT" start "$id" >/dev/null
+assert_eq "$id" "$("$TKT" current | awk '{print $1}')"
+"$TKT" reopen "$id" >/dev/null
 
 # No results branch: a clear refusal.
 rc=0; out="$("$TKT" import-results "$id" 2>&1)" || rc=$?

@@ -151,7 +151,8 @@ Claude subscription, with no API key. The ticket goes to your repo as a GitHub i
    as with `send-issue`: the folder holds the ticket's notes and evidence logs.
 5. On your machine, `tkt import-results <id> --pr <PR number>` brings that branch back: every file byte-for-byte, a
    local file that differs kept in `.tickets/<id>/.before-import/`, and a report of the status, the evaluator's verdict
-   and whether it graded the PR's head commit. Then it deletes the branch.
+   and whether it graded the PR's head commit. Then it deletes the branch. A ticket the cloud left `in_progress` comes
+   back `open` (see "When a cloud sprint cannot close" below).
 6. `tkt merge-pr <id>` finishes it: it checks the evaluator passed on the PR's head and GitHub can merge it, shows
    what the PR changes, asks once, runs your tests (`scripts/test.sh`, or `--test "<command>"`) on your base branch
    plus the PR in a scratch clone, and merges if they pass. `--check` runs the checks only. With no terminal to ask
@@ -178,7 +179,10 @@ continue at step 5 with that PR number.
 approve the plan, it builds, runs the tests, runs a fresh evaluator and stamps the evidence. The Mac only runs
 `tkt import-results <id> --pr <N>` then `tkt merge-pr <id>`, and does **not** rebase: `merge-pr` merges a PR that is
 MERGEABLE and CLEAN on a newer `main` after running `scripts/test.sh` on `main` + the PR, and refuses unless the PR head
-is the graded head. The Mac re-grades only for one of four triggers: a **board** change (the board, its spec or its runner: the full board spec), a **Go**
+is the graded head, or the graded head plus only `LEARNINGS.md`, `LEARNINGS-archive.md` or that ticket's own `.tickets/<id>/` changes (the
+learnings sweep the cloud commits after its gates, t-fdb1), none of them a symlink. `merge-pr` names those files before it
+asks; read the `LEARNINGS.md` row, since every sprint start reads that file. Any other change after grading, `AGENTS.md`,
+`CLAUDE.md`, `HANDOFF.md`, `DECISIONS.md` and `PROMOTED.md` included (agents load them as instructions), still needs a re-grade. The Mac re-grades only for one of four triggers: a **board** change (the board, its spec or its runner: the full board spec), a **Go**
 change that needs a release (the daemon, the Go board, the headless helper), a **high-risk** ticket, or a **PR head that no longer equals the graded
 head**. `import-results` ends with one line saying which of these apply, or "no re-grade needed"; it only advises and
 never changes `merge-pr`. Each evidence log records the machine it ran on (line 3, `# on <uname -srm>; bash <version>`);
@@ -189,7 +193,9 @@ run `covered` (stamping the guard under the run's own log name overwrites that l
 
 **When a cloud sprint cannot close** (its gates cannot run there, for example because of plan mode, or a QA item
 needs your machine): have the session open the PR, run `tkt export <id>` without closing, and push nothing more to
-the branch. Then on your machine run `tkt import-results <id> --pr <N>`, do the QA, and close it from the PR's head:
+the branch. Then on your machine run `tkt import-results <id> --pr <N>`: an unfinished ticket comes back `open`, with
+`cloud_status: in_progress` recording what the cloud left, so it never blocks a local sprint's close in this checkout
+(t-1cf5). Do the QA, and close it from the PR's head:
 a worktree at that commit with a copy of `.tickets/<id>` (a symlink is not followed), `tkt start <id>` there, a fresh
 evaluator, `sprint complete`, then copy the folder back. The evaluator must run on your machine even when the
 cloud's passed: `sprint complete` checks this machine's record of the evaluator run, which `tkt export` cannot carry
