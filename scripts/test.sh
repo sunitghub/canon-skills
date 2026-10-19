@@ -140,9 +140,10 @@ tests=(
 # of ours still running is a leak, orphaned or not (a leaked wrapper can still be its parent).
 _server_pids() { { pgrep -f 'sprint-check-app/server\.py|sprint-check-go-bin' 2>/dev/null || true; } | sort -u; }
 CANON_TEST_RUN="$$.$(date +%s).$RANDOM"; export CANON_TEST_RUN
+# t-f151: grep, not grep -q: under pipefail an early-exiting grep -q SIGPIPEs tr and reports a found marker as a miss (43/1000 under load).
 _ours() {   # _ours <pid>: the process started with exactly this run's CANON_TEST_RUN (an unreadable one is not ours)
-  if [[ -r "/proc/$1/environ" ]]; then tr '\0' '\n' < "/proc/$1/environ" 2>/dev/null | grep -qxF "CANON_TEST_RUN=$CANON_TEST_RUN"
-  else ps -wwE -o command= -p "$1" 2>/dev/null | tr ' ' '\n' | grep -qxF "CANON_TEST_RUN=$CANON_TEST_RUN"
+  if [[ -r "/proc/$1/environ" ]]; then tr '\0' '\n' < "/proc/$1/environ" 2>/dev/null | grep -xF "CANON_TEST_RUN=$CANON_TEST_RUN" >/dev/null
+  else ps -wwE -o command= -p "$1" 2>/dev/null | tr ' ' '\n' | grep -xF "CANON_TEST_RUN=$CANON_TEST_RUN" >/dev/null
   fi
 }
 _leaked_servers() {
