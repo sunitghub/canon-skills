@@ -1707,24 +1707,27 @@ cmd_open_pr() {
   echo "Opened a PR from $b into $def: $(tail -1 <<< "$out")"
 }
 
-# cmd_push_main — t-24b1: push the local default branch to each remote named by `git config canon.mirror` (opt-in; a
-# fork's upstream is never assumed). A plain push, never forced: a mirror that is ahead or diverged is reported. Prints
-# each moved mirror's previous sha and the command that puts it back. Exit 1 when any push failed.
+# cmd_push_main — t-24b1: push origin's default branch, as GitHub has it now, to each remote named by `git config
+# canon.mirror` (opt-in; a fork's upstream is never assumed). Origin's, not the local branch: a local main that is ahead
+# (unmerged commits), behind or diverged never decides what a mirror publishes. A plain push, never forced: a mirror that
+# is ahead or diverged is reported. Prints each moved mirror's previous sha and the command that puts it back. Exit 1
+# when any push failed.
 cmd_push_main() {
   [[ $# -eq 0 ]] || { echo "Usage: tkt push-main" >&2; exit 1; }
   local root mirrors m b sha old out rc=0
   root="$(dirname "$(tickets_dir)")"; root="$(git -C "$root" rev-parse --show-toplevel)" || exit 1
   mirrors="$(git -C "$root" config --get-all canon.mirror 2>/dev/null || true)"
   [[ -n "$mirrors" ]] || { echo "push-main: no mirrors named (git config canon.mirror <remote>); nothing pushed"; return 0; }
-  b="$(git -C "$root" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null || true)"; b="${b#origin/}"; b="${b:-main}"
-  sha="$(git -C "$root" rev-parse -q --verify "refs/heads/$b")" || { echo "push-main: no local $b" >&2; exit 1; }
+  b="$(git -C "$root" ls-remote --symref origin HEAD 2>/dev/null | awk '$1 == "ref:" { sub("refs/heads/", "", $2); print $2; exit }' || true)"; b="${b:-main}"
+  git -C "$root" fetch -q origin "$b" 2>/dev/null || { echo "push-main: could not fetch origin/$b; nothing pushed" >&2; exit 1; }
+  sha="$(git -C "$root" rev-parse FETCH_HEAD)"
   while IFS= read -r m; do
     [[ -n "$m" ]] || continue
     if [[ "$m" == origin ]]; then echo "$m: skipped (origin is not a mirror)"; continue; fi
     git -C "$root" remote get-url "$m" >/dev/null 2>&1 || { echo "$m: no such remote" >&2; rc=1; continue; }
     old="$(git -C "$root" ls-remote "$m" "refs/heads/$b" 2>/dev/null | cut -f1)"
     if [[ "$old" == "$sha" ]]; then echo "$m: $b already at ${sha:0:8}"; continue; fi
-    if out="$(git -C "$root" push -q "$m" "refs/heads/$b:refs/heads/$b" 2>&1)"; then
+    if out="$(git -C "$root" push -q "$m" "$sha:refs/heads/$b" 2>&1)"; then
       echo "$m: $b ${old:+${old:0:8} -> }${sha:0:8}"
       [[ -n "$old" ]] && echo "  to undo: git push $m $old:refs/heads/$b --force-with-lease=refs/heads/$b:$sha"
     else
@@ -2000,7 +2003,7 @@ Commands:
                             that no ticket links to (labels set type and pN priority).
   open-pr <id>              Open the PR a cloud session did not: from its pushed branch
                             (a commit naming <id>), with "Fixes #N".
-  push-main                 Push the local default branch to each git config canon.mirror
+  push-main                 Push origin's default branch to each git config canon.mirror
                             remote (opt-in; never forced; prints how to undo).
   github-doctor [--json]    Read-only GitHub readiness checks (gh signed in, origin and
                             its visibility, test command) and the cloud recipe.

@@ -7,7 +7,6 @@ import { closeTab, cockpitState } from './board-cockpit.js';
 import { esc, escAttr } from './board-helpers.js';
 import { render, showToast } from './board-render.js';
 import { loadData, SHELL_TAB } from './board-core.js';
-import { renderCockpitWorktree } from './board-worktree.js';
 
 const POLL_MS = 120000;          // github-status per card out on GitHub; the server caches each for 30 s
 const MERGE_POLL_MS = 2000;
@@ -314,52 +313,66 @@ async function takeBack(t) {
   await loadData();
 }
 
-// ── The worktree picker's GitHub rows, and the panel shown instead of the terminal ──────────────────────────────────
 // ── Readiness (t-24b1): the picker's GitHub row reads t-90a3's doctor, the one source of the checks ─────────────────
 const DOCTOR_RETRY_MS = 30000;
-let doctor = { state: 'unknown' };   // unknown | pending | ready | bad; ready and bad carry n (not bad) of m checks
+let doctor = { state: 'unknown' };   // unknown | pending | ready | bad | failed; ready and bad carry n (not bad) of m checks
 let doctorAt = 0;
-let doctorFor = null;   // the ticket whose picker drew the "checking…" row
-function ensureDoctor(t) {
-  doctorFor = t;
-  if (doctor.state === 'pending' || doctor.state === 'ready') return;
-  if (doctor.state === 'bad' && Date.now() - doctorAt < DOCTOR_RETRY_MS) return;
+let place = null;   // { tab, onPick } of the picker that drew the row, so the answer can replace just that row
+function ensureDoctor() {
+  if (doctor.state === 'ready' || doctor.state === 'pending') return;
+  if ((doctor.state === 'bad' || doctor.state === 'failed') && Date.now() - doctorAt < DOCTOR_RETRY_MS) return;
   doctor = { state: 'pending' }; doctorAt = Date.now();
   getJSON('/api/github/doctor').then(res => {
     const checks = res && res.ok && res.doctor && Array.isArray(res.doctor.checks) ? res.doctor.checks : null;
     const n = checks ? checks.filter(c => c && c.status !== 'bad').length : 0, m = checks ? checks.length : 0;
-    doctor = { state: checks && n === m ? 'ready' : 'bad', n, m };
-  }, () => { doctor = { state: 'bad', n: 0, m: 0 }; }).then(() => {
-    // The picker drew a "checking…" row for t: draw it again with the answer, if it still shows one.
-    if (t && document.querySelector('.ck-gh-checking')) renderCockpitWorktree(t);
-  });
+    doctor = { state: !m ? 'failed' : n === m ? 'ready' : 'bad', n, m };   // no checks at all: the read failed
+  }, () => { doctor = { state: 'failed', n: 0, m: 0 }; }).then(swapPlaceRow);
+}
+// The answer replaces only the "checking…" row, never the whole picker: a redraw could land after a GitHub pick and
+// rebuild the send panel mid-send.
+function swapPlaceRow() {
+  const el = document.getElementById('ck-gh-place');
+  if (!el || !el.classList.contains('ck-gh-checking') || !place) return;
+  el.outerHTML = githubPlaceRowHTML(place.tab);
+  bindPlaceRow();
 }
 function openAdminGithub() {
   if (window.parent === window) { showToast('GitHub is not set up for this project: run tkt github-doctor in a terminal'); return; }
   window.parent.postMessage({ source: 'canon-board', type: 'open-admin-github', tab: SHELL_TAB }, location.origin);
 }
-export function bindGithubPickerRows(box) {
-  box.querySelectorAll('.ck-gh-setup').forEach(row => {
-    row.addEventListener('click', openAdminGithub);
-    row.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openAdminGithub(); } });
-  });
-  // The picker builds its rows before an await: an answer that landed in between found no row to redraw, so redraw now.
-  if (doctorFor && (doctor.state === 'ready' || doctor.state === 'bad') && box.querySelector('.ck-gh-checking')) renderCockpitWorktree(doctorFor);
+function bindPlaceRow() {
+  const el = document.getElementById('ck-gh-place');
+  if (!el || !place) return;
+  if (el.classList.contains('ck-gh-setup')) {
+    el.addEventListener('click', openAdminGithub);
+    el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openAdminGithub(); } });
+  } else if (el.dataset.github) {
+    const onPick = place.onPick;
+    el.addEventListener('click', () => onPick(el));
+  }
 }
-function githubPlaceRowHTML(t, tab) {
-  ensureDoctor(t);
+// The picker calls this once its rows are in the page; onPick(row) is what picking the GitHub place does there.
+export function bindGithubPickerRows(box, tab, onPick) {
+  place = { tab, onPick };
+  bindPlaceRow();
+  swapPlaceRow();   // an answer that landed while the picker was still building its rows
+}
+function githubPlaceRowHTML(tab) {
+  ensureDoctor();
   if (doctor.state === 'unknown' || doctor.state === 'pending') {
-    return `<div class="ck-worktree-held-row ck-gh-checking"><span class="ck-worktree-held-branch">GitHub · checking…</span><span class="ck-worktree-held-why">reading the GitHub checks</span></div>`;
+    return `<div class="ck-worktree-held-row ck-gh-checking" id="ck-gh-place"><span class="ck-worktree-held-branch">GitHub · checking…</span><span class="ck-worktree-held-why">reading the GitHub checks</span></div>`;
   }
-  if (doctor.state === 'bad') {
-    return `<div class="ck-worktree-held-row ck-gh-setup" role="button" tabindex="0" title="Opens Admin › GitHub, which lists what to fix"><span class="ck-worktree-held-branch">GitHub · set up first (${doctor.n} of ${doctor.m} ready)</span><span class="ck-worktree-held-why">open Admin › GitHub</span></div>`;
+  if (doctor.state === 'bad' || doctor.state === 'failed') {
+    const what = doctor.state === 'bad' ? `set up first (${doctor.n} of ${doctor.m} ready)` : 'set up first (the checks could not run)';
+    return `<div class="ck-worktree-held-row ck-gh-setup" id="ck-gh-place" role="button" tabindex="0" title="Opens Admin › GitHub, which lists what to fix"><span class="ck-worktree-held-branch">GitHub · ${what}</span><span class="ck-worktree-held-why">open Admin › GitHub</span></div>`;
   }
-  return `<div class="ck-worktree-row ck-gh-row${tab.ghPick ? ' selected' : ''}" data-github="new" title="Sends this ticket as an issue to your repo; a Claude cloud session works it and opens a PR">
+  return `<div class="ck-worktree-row ck-gh-row${tab.ghPick ? ' selected' : ''}" id="ck-gh-place" data-github="new" title="Sends this ticket as an issue to your repo; a Claude cloud session works it and opens a PR">
       <div class="ck-worktree-radio"></div>
       <div class="ck-worktree-labels"><div class="ck-worktree-label">GitHub · new issue</div><div class="ck-worktree-sub">a Claude cloud session works it</div></div>
     </div>`;
 }
 
+// ── The worktree picker's GitHub rows, and the panel shown instead of the terminal ──────────────────────────────────
 export function githubPickerRowsHTML(t, tab) {
   if (!t || t.scratch || t.status !== 'open' || ghOut(t)) return '';
   // A closed or cancelled ticket is not busy in the cloud: one closed by hand never gets merged: (t-093a). ghOut() stays
@@ -368,7 +381,7 @@ export function githubPickerRowsHTML(t, tab) {
   return busy.map(x => {
     const p = ghParts(x);
     return `<div class="ck-worktree-held-row ck-gh-busy"><span class="ck-worktree-held-branch">GitHub${p ? ` #${esc(p.issue)}` : ''}</span><span class="ck-worktree-held-why">cloud · busy: ${esc(x.id)}</span></div>`;
-  }).join('') + githubPlaceRowHTML(t, tab);
+  }).join('') + githubPlaceRowHTML(tab);
 }
 
 export function hideGithubPanel() {

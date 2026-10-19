@@ -1,45 +1,50 @@
 #!/usr/bin/env bash
-# tkt push-main (t-24b1): the merged dialog's "Push main to …". It pushes the local default branch only to remotes named
-# by git config canon.mirror (never origin, never an unlisted remote such as a fork's upstream), never forces, and prints
-# a command that puts a moved mirror back. All remotes are local bare repos.
+# tkt push-main (t-24b1): the merged dialog's "Push main to …". It pushes origin's default branch (what GitHub merged),
+# never the local branch, only to remotes named by git config canon.mirror (never origin, never an unlisted remote such
+# as a fork's upstream), never forces, and prints a command that puts a moved mirror back. All remotes are local bare repos.
 set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 
 W="$(cd "$(mktemp -d)" && pwd -P)"; trap 'rm -rf "$W"' EXIT
 export HOME="$W/home" XDG_CONFIG_HOME="$W/home/.config"; mkdir -p "$HOME"
-git config --global user.name t; git config --global user.email t@e; git config --global init.defaultBranch main
+git config --global user.name t; git config --global user.email t@e; git config --global init.defaultBranch trunk
 for r in origin public upstream; do git init -q --bare "$W/$r.git"; done
 P="$W/p"; git clone -q "$W/origin.git" "$P" 2>/dev/null; cd "$P"
-printf '.tickets/\n' > .gitignore; git add .gitignore; git commit -qm one; git push -q origin HEAD:main
-git remote set-head origin main
+printf '.tickets/\n' > .gitignore; git add .gitignore; git commit -qm one; git push -q origin HEAD:trunk
 git remote add public "$W/public.git"; git remote add upstream "$W/upstream.git"
-git push -q public main; git push -q upstream main; OLD="$(git rev-parse main)"
-echo two > two.txt; git add two.txt; git commit -qm two; NEW="$(git rev-parse main)"   # local main is ahead of all three
-at() { git --git-dir="$W/$1.git" rev-parse -q --verify refs/heads/main || echo none; }
+git push -q public trunk; git push -q upstream trunk; OLD="$(git rev-parse trunk)"
+# GitHub merged a PR: origin's trunk moves on. Local trunk is behind it and holds a commit that was never merged.
+M="$W/merge"; git clone -q "$W/origin.git" "$M" 2>/dev/null
+(cd "$M" && echo merged > merged.txt && git add merged.txt && git commit -qm merged && git push -q origin HEAD:trunk)
+NEW="$(git --git-dir="$W/origin.git" rev-parse trunk)"
+echo local > local.txt; git add local.txt; git commit -qm "local only"; LOCAL="$(git rev-parse trunk)"
+at() { git --git-dir="$W/$1.git" rev-parse -q --verify refs/heads/trunk || echo none; }
 
 # No mirrors named: nothing pushed.
 out="$("$TKT" push-main)"; assert_contains "$out" "no mirrors named"
-assert_eq "$OLD|$OLD|$OLD" "$(at origin)|$(at public)|$(at upstream)"
+assert_eq "$NEW|$OLD|$OLD" "$(at origin)|$(at public)|$(at upstream)"
 
-# public named: only public moves; the undo line is printed and puts it back.
+# public named: it gets origin's trunk (the default branch read from origin, not assumed "main"), never the local-only
+# commit; upstream and origin do not move; the undo line puts public back.
 git config --add canon.mirror public
-out="$("$TKT" push-main)"; assert_contains "$out" "public: main ${OLD:0:8} -> ${NEW:0:8}"
-assert_eq "$OLD|$NEW|$OLD" "$(at origin)|$(at public)|$(at upstream)"
+out="$("$TKT" push-main)"; assert_contains "$out" "public: trunk ${OLD:0:8} -> ${NEW:0:8}"
+assert_eq "$NEW|$NEW|$OLD" "$(at origin)|$(at public)|$(at upstream)"
+git --git-dir="$W/public.git" cat-file -e "$LOCAL" 2>/dev/null && fail "the local-only commit reached the mirror"
 undo="$(sed -n 's/^  to undo: //p' <<< "$out")"
-assert_eq "git push public $OLD:refs/heads/main --force-with-lease=refs/heads/main:$NEW" "$undo"
+assert_eq "git push public $OLD:refs/heads/trunk --force-with-lease=refs/heads/trunk:$NEW" "$undo"
 eval "$undo" 2>/dev/null; assert_eq "$OLD" "$(at public)"
-"$TKT" push-main >/dev/null; out="$("$TKT" push-main)"; assert_contains "$out" "public: main already at ${NEW:0:8}"
+"$TKT" push-main >/dev/null; out="$("$TKT" push-main)"; assert_contains "$out" "public: trunk already at ${NEW:0:8}"
 
-# A mirror with no main yet gets it, with nothing to undo to.
+# A mirror with no trunk yet gets it, with nothing to undo to.
 git init -q --bare "$W/fresh.git"; git remote add fresh "$W/fresh.git"; git config --add canon.mirror fresh
-out="$("$TKT" push-main)"; assert_contains "$out" "fresh: main ${NEW:0:8}"; [[ "$(grep -c 'to undo: git push fresh' <<< "$out" || true)" == 0 ]] || fail "an undo line for a mirror that had no main"
+out="$("$TKT" push-main)"; assert_contains "$out" "fresh: trunk ${NEW:0:8}"; [[ "$(grep -c 'to undo: git push fresh' <<< "$out" || true)" == 0 ]] || fail "an undo line for a mirror that had no trunk"
 assert_eq "$NEW" "$(at fresh)"; git config --unset canon.mirror fresh
 rc=0; "$TKT" push-main extra >/dev/null 2>&1 || rc=$?; assert_eq 1 "$rc"
 
-# A mirror that has a commit main lacks: rejected, reported, not forced; exit 1.
-X="$W/x"; git clone -q "$W/public.git" "$X" 2>/dev/null; (cd "$X" && echo m > m.txt && git add m.txt && git commit -qm mirror-only && git push -q origin HEAD:main)
-AHEAD="$(at public)"; echo three > three.txt; git add three.txt; git commit -qm three
+# A mirror that has a commit origin lacks: rejected, reported, not forced; exit 1.
+X="$W/x"; git clone -q "$W/public.git" "$X" 2>/dev/null; (cd "$X" && echo m > m.txt && git add m.txt && git commit -qm mirror-only && git push -q origin HEAD:trunk)
+AHEAD="$(at public)"
 rc=0; out="$("$TKT" push-main 2>&1)" || rc=$?
 assert_eq 1 "$rc"; assert_contains "$out" "public: rejected, nothing forced"; assert_eq "$AHEAD" "$(at public)"
 
@@ -47,5 +52,10 @@ assert_eq 1 "$rc"; assert_contains "$out" "public: rejected, nothing forced"; as
 git config --unset-all canon.mirror; git config --add canon.mirror origin; git config --add canon.mirror nope
 rc=0; out="$("$TKT" push-main 2>&1)" || rc=$?
 assert_eq 1 "$rc"; assert_contains "$out" "origin: skipped (origin is not a mirror)"; assert_contains "$out" "nope: no such remote"
-assert_eq "$OLD" "$(at origin)"
+assert_eq "$NEW" "$(at origin)"
+
+# origin cannot be read: nothing pushed, exit 1.
+git config --unset-all canon.mirror; git config --add canon.mirror upstream; git remote set-url origin "$W/gone.git"
+rc=0; out="$("$TKT" push-main 2>&1)" || rc=$?
+assert_eq 1 "$rc"; assert_contains "$out" "could not fetch origin"; assert_eq "$OLD" "$(at upstream)"
 echo "tkt-push-main: ok"

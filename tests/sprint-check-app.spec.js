@@ -15046,6 +15046,19 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     expect(previews).toBe(0);
   });
 
+  // Prod path: the same row when the doctor cannot answer (server error): never counted as ready.
+  test('the GitHub row says the checks could not run when the doctor read fails (t-24b1)', async ({ page }) => {
+    const id = `t-gh24f-${Date.now()}`;
+    ghTicket(id);
+    await page.route('**/api/github/doctor**', r => r.fulfill({ status: 500, body: 'down' }));
+    await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
+    await page.route('**/api/worktrees**', r => json(r, [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true }]));
+    await openBoard(page, id);
+    await page.locator(`.card[data-id="${id}"] .card-start`).click();
+    await expect(page.locator('#ck-worktree .ck-gh-setup')).toContainText('GitHub · set up first (the checks could not run)');
+    await expect(page.locator('#ck-worktree [data-github]')).toHaveCount(0);
+  });
+
   // Prod path: a board's "set up first" message to the Cockpit shell, which opens Admin › GitHub for that board's project.
   test('the shell opens Admin › GitHub for the board that asked, and ignores a message from no board (t-24b1)', async ({ page }) => {
     const projects = [
@@ -15102,7 +15115,11 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     const mergedOut = 'Merged PR #58 into main (abc).\nLocal main: 1111aaaa -> 2222bbbb (fast-forward)\n';
     const mergeOnce = async () => {
       Object.assign(job, { status: 'idle', output: '', exit_code: null });
-      await button.click(); await page.locator('#gh-dialog-ok').click();
+      await expect(page.locator('#gh-dialog')).not.toHaveClass(/open/);   // the last dialog is gone before the card is clicked
+      await button.click();
+      await expect(page.locator('#gh-dialog')).toHaveClass(/open/);
+      await expect(page.locator('#gh-dialog-ok')).not.toHaveText(/Push main/);
+      await page.locator('#gh-dialog-ok').click();
       Object.assign(job, { status: 'done', exit_code: 0, output: mergedOut });
       await expect(page.locator('#gh-dialog-title')).toHaveText('Merged');
     };
@@ -15337,7 +15354,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#gh-dialog-body')).toContainText('Running… 0m05s');
     await expect(page.locator(`.card[data-id="${id}"] .card-gh-chip`)).toContainText('merging…');
     expect(mergePosts).toEqual([{ pr: 58 }]);
-    Object.assign(job, { status: 'done', exit_code: 0, output: job.output + 'merge-pr: scripts/test.sh passed in 4m11s\nMerged PR #58 into main (424987f9). Update your checkout: git pull\n' });
+    Object.assign(job, { status: 'done', exit_code: 0, output: job.output + 'merge-pr: scripts/test.sh passed in 4m11s\nMerged PR #58 into main (424987f9).\nLocal main: 1111aaaa -> 424987f9 (fast-forward)\n' });
     await expect(page.locator('#gh-dialog-title')).toHaveText('Merged');
     await expect(page.locator('#gh-dialog-pre')).toContainText('Merged PR #58 into main');
   });

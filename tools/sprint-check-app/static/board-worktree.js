@@ -298,16 +298,14 @@ export async function renderCockpitWorktree(t) {
   });
 
   const ownKeys = new Set(usable.filter(e => e.own).map(e => cockpitPathKey(e.path)));
-  bindGithubPickerRows(box);   // t-24b1: "set up first" opens Admin › GitHub; it is not a place to pick
-  box.querySelectorAll('.ck-worktree-row[data-github]').forEach(row => {
-    row.addEventListener('click', () => {
-      // t-718b: GitHub is a place with no local session: no worktree is selected and the terminal never mounts.
-      tab.ghPick = true;
-      tab.worktreeCwd = null;
-      box.querySelectorAll('.ck-worktree-row').forEach(r => r.classList.toggle('selected', r === row));
-      updateWorktreeNote();
-      maybeMountCockpitTerminal(t);
-    });
+  // t-24b1: the GitHub place row may still read "checking…"; board-github binds it, now or once the doctor answers.
+  bindGithubPickerRows(box, tab, row => {
+    // t-718b: GitHub is a place with no local session: no worktree is selected and the terminal never mounts.
+    tab.ghPick = true;
+    tab.worktreeCwd = null;
+    box.querySelectorAll('.ck-worktree-row').forEach(r => r.classList.toggle('selected', r === row));
+    updateWorktreeNote();
+    maybeMountCockpitTerminal(t);
   });
   box.querySelectorAll('.ck-worktree-row:not([data-github])').forEach(row => {
     row.addEventListener('click', async () => {
