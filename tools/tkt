@@ -1662,8 +1662,8 @@ _evidence_os_lines() {
 }
 
 # cmd_import_results <id> [--pr N] — t-554c: brings a cloud sprint's .tickets/<id>/ back from canon-results/<id>. Files
-# arrive byte-for-byte; a differing local file is kept in .before-import/; the close already happened in the cloud, so
-# this only reports it. The remote branch is deleted only after the files are written.
+# arrive byte-for-byte (but an in_progress ticket.md comes back open, t-1cf5); a differing local file is kept in
+# .before-import/; the close already happened in the cloud, so this only reports it. The remote branch is deleted only after the files are written.
 cmd_import_results() {
   local id="" pr=""
   while [[ $# -gt 0 ]]; do

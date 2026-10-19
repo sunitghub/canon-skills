@@ -151,7 +151,8 @@ Claude subscription, with no API key. The ticket goes to your repo as a GitHub i
    as with `send-issue`: the folder holds the ticket's notes and evidence logs.
 5. On your machine, `tkt import-results <id> --pr <PR number>` brings that branch back: every file byte-for-byte, a
    local file that differs kept in `.tickets/<id>/.before-import/`, and a report of the status, the evaluator's verdict
-   and whether it graded the PR's head commit. Then it deletes the branch.
+   and whether it graded the PR's head commit. Then it deletes the branch. A ticket the cloud left `in_progress` comes
+   back `open` (see "When a cloud sprint cannot close" below).
 6. `tkt merge-pr <id>` finishes it: it checks the evaluator passed on the PR's head and GitHub can merge it, shows
    what the PR changes, asks once, runs your tests (`scripts/test.sh`, or `--test "<command>"`) on your base branch
    plus the PR in a scratch clone, and merges if they pass. `--check` runs the checks only. With no terminal to ask
