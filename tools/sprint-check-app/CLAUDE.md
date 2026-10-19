@@ -12,8 +12,8 @@ Any change to `app.html` or `static/` requires Playwright verification — not j
 - A run much slower than usual (about 13 min per browser run) fills the guard with timeout violations: compare run durations against the baseline before chasing them, then alternate base and branch on just the suspects (`--grep`) in a quiet window (`t-9b2d`).
 - **A baseline from one batch of runs misses tests** (`t-6be9`): two clean-machine strict runs each failed on a different set of unlisted tests, and 6 of the first 8 never recurred. Build `flaky` from more than one batch and record machine load with each run.
 - **A GET route that runs git or gh is a side-effecting route** (`t-d271`): give it the same cross-site (Origin) refusal as the POSTs.
-- Run the spec by hand against a board you started yourself: `npm run test:ui` (the board must already be running — `npm run sprint-check`; port 8423 is the default, `SPRINT_CHECK_BASE` overrides). `tests/sprint-check-go-ui.sh` runs a subset on an empty repo; `npm test` runs neither.
-- Start server: `npm run sprint-check` (auto-selects a free port starting at 8423)
+- Run the spec by hand against a board you started yourself: `npm run test:ui` (start one with `go run ./tools/sprint-check-go 8423`; `SPRINT_CHECK_BASE` overrides the default `http://localhost:8423`). `tests/sprint-check-go-ui.sh` runs a subset on an empty repo; `npm test` runs neither.
+- The board is the Go board on every OS (t-15d8; `server.py` is gone). Uncommitted edits: `go run ./tools/sprint-check-go <port>`. `canon` on macOS/Linux builds a committed but unreleased board from source (needs Go), and `scripts/release-daemon.sh` publishes the binaries before the push (`scripts/check-binaries-released.sh` checks it). Tests build it with `build_board` (`tests/helpers.sh`).
 - Test file: `tests/sprint-check-app.spec.js`
 - Ticket card selector: `.card`; create button: `#btn-create`
 - `npm test` (bash suite) covers non-UI regressions; both must pass before `sprint complete`
@@ -29,7 +29,7 @@ Any change to `app.html` or `static/` requires Playwright verification — not j
 - Mock every new endpoint in the shared page helper so a real daemon or real data never leaks in; assert the stable part of UI strings, not the whole sentence.
 - A menu that closes on `focusout` must exempt pointer clicks: WebKit does not focus a clicked button, so a click inside the menu reports a `focusout` with no `relatedTarget` and the menu closes before the click lands. Run the Tab-away test on webkit (`t-9d93`).
 - Themes (t-4fa5): `static/theme-data.js` owns the themes (12 colours each), `derive()` (a theme -> the shell's and the board's variables) and the saved choice; both pages import it. Canon Dark/Light are the CSS; a third-party theme sets its variables inline on `<html>`. A colour in CSS that must follow the theme is `var(--th-<name>, <Canon colour>)`: Canon never sets `--th-*`, so it keeps its colour, and `derive()` must set every `--th-*` the CSS reads. A new literal colour fails `tests/sprint-check-theme.js` (its scan lists the few allowed ones).
-- User themes (t-f889): `$CANON_HOME/themes/*.json` are untrusted files. `server.py`, `sprint-check-go` and `theme-data.js`'s `checkTheme()`/`validateTheme()` each check them with the same rules and reason strings; change all three together, plus `theme.schema.json` and `docs/custom-themes.md`, and run `tests/theme-files-parity.sh` (corpus, fuzz, Open themes folder with a stub `CANON_OPEN_BIN`). The spec's `beforeEach` routes `/api/themes` and `/api/themes/open` to empty stubs, so no test reads this machine's folder or opens it; route them per test.
+- User themes (t-f889): `$CANON_HOME/themes/*.json` are untrusted files. `sprint-check-go` and `theme-data.js`'s `checkTheme()`/`validateTheme()` each check them with the same rules and reason strings; change both together, plus `theme.schema.json` and `docs/custom-themes.md`, and run `tests/theme-files-parity.sh` (corpus, fuzz, Open themes folder with a stub `CANON_OPEN_BIN`). The spec's `beforeEach` routes `/api/themes` and `/api/themes/open` to empty stubs, so no test reads this machine's folder or opens it; route them per test.
 - A keyboard test that Tabs through buttons needs `Alt+Tab` in WebKit: Safari's default Tab skips buttons (its "Press Tab to highlight each item" setting is off), so plain `Tab` lands on the next text field (t-2758).
 - `expect.poll(fn).toBe(await other())` evaluates the expected value once, up front, so two empty sides pass vacuously. Compute both sides inside the poll, start from a state that differs from the expected one (or await a page-exposed "fetch applied" flag), and prove it with a revert mutant (`t-a205`, `t-4487`).
 - Use `pwd -P` for temp roots on macOS (`mktemp -d` returns a `/var` symlink), and record which board and which data a count came from.
@@ -40,11 +40,11 @@ Any change to `app.html` or `static/` requires Playwright verification — not j
 
 ## Board root redirect (t-5716)
 
-A top-level browser visit to `/` (`Sec-Fetch-Dest: document`) redirects to `/cockpit` (`/cockpit#open=<id>` with `?project=`), in both servers. The spec's `beforeEach` route adds `?standalone=1` to top-level `/` navigations so existing tests reach the board; set `realLanding = true` in a test that needs the real redirect. iframes and header-less clients (curl) are served the board as before.
+A top-level browser visit to `/` (`Sec-Fetch-Dest: document`) redirects to `/cockpit` (`/cockpit#open=<id>` with `?project=`). The spec's `beforeEach` route adds `?standalone=1` to top-level `/` navigations so existing tests reach the board; set `realLanding = true` in a test that needs the real redirect. iframes and header-less clients (curl) are served the board as before.
 
 ## Port
 
-The server starts on `127.0.0.1:8423` and auto-increments if that port is busy. The URL is printed to the terminal on startup.
+The Go board starts on `127.0.0.1:8423` (the `canon` and `sprint-check` launchers pass 8899) and moves to the next free port if that one is busy. The URL is printed to the terminal on startup.
 
 ## Toggleable Badges
 
@@ -52,13 +52,13 @@ Put a badge's initial hidden state in an inline `style="display:none"` HTML attr
 
 ## Drop Gates
 
-Client-side drop gates in the board's scripts (`static/board-*.js`) depend on server-computed fields from `server.py`. When writing acceptance criteria for a gate, name the exact server field — not just the user-visible behavior. "Blocked when `acceptance_unchecked` is true" is testable; "blocked when acceptance has unchecked items" is ambiguous and can mask a wrong field being used (see t-0b5c).
+Client-side drop gates in the board's scripts (`static/board-*.js`) depend on server-computed fields from the Go board (`tools/sprint-check-go`). When writing acceptance criteria for a gate, name the exact server field — not just the user-visible behavior. "Blocked when `acceptance_unchecked` is true" is testable; "blocked when acceptance has unchecked items" is ambiguous and can mask a wrong field being used (see t-0b5c).
 
 ## Stubbing external binaries in tests
 
 Never swap a real script under `tools/` in place to stub it for a test (a same-process
 `finally`/`trap` restore can't survive an uncatchable kill mid-test — see `t-1781`). Point
-`server.py`/`main.go` at a temp stub via an env-var override instead — `COCKPIT_DAEMON_BIN`,
+`main.go` at a temp stub via an env-var override instead — `COCKPIT_DAEMON_BIN`,
 `SPRINT_HEADLESS_BIN`, `SPRINT_HEADLESS_EVAL_BIN` are the existing pattern to follow for any
 new one.
 
@@ -68,7 +68,7 @@ Grep for an id prefix before using it — the cockpit rail already owns `ck-tc-*
 
 ## Architecture
 
-`app.html` (markup only) plus `static/` (CSS and scripts), served by a Python stdlib HTTP server (`server.py`) and the Go board, both at `GET /static/<name>` (flat lowercase `.css`/`.js` names only). No build step (`t-9b2d`, `t-c58e`, `t-1543`):
+`app.html` (markup only) plus `static/` (CSS and scripts), served by the Go board (`tools/sprint-check-go`) at `GET /static/<name>` (flat lowercase `.css`/`.js` names only). No build step (`t-9b2d`, `t-c58e`, `t-1543`):
 - CSS lives in `static/board-*.css`, linked in cascade order; edit the file for the section, never add a `<style>` back.
 - The script is native ES modules. `app.html` loads only `static/board-main.js`, plus one exception: the classic, blocking `static/theme-boot.js` in `<head>` (t-2758, amends t-1543), which sets the saved theme (and a third-party theme's cached variables, validated) before the first paint and defines nothing. Never add another `<script>` or a `window` bridge. The board's code is `static/board-{core,helpers,render,modal,docs,cockpit,cockpit-rail,worktree,panels,create,ui,github}.js` plus `static/editor.js`. Put new code in the module for its section and `import` what it uses from the others (`./board-x.js`).
 - A module only declares: no top-level statement runs at load, because an import cycle evaluates files out of order and would read another file's `let`/`const` before it exists. Load-time code (listeners, boot calls) goes in that file's exported `init<File>()`, which `board-main.js` calls in the order above.
@@ -76,12 +76,12 @@ Grep for an id prefix before using it — the cockpit rail already owns `ck-tc-*
 - Nothing is a global any more. Playwright reaches board code with `await import('/static/board-<x>.js')` inside `page.evaluate` (the page's own module instance), never `window.<name>`; read a reassigned `let` through the namespace (`(await import(...)).cockpitState`) so it stays live.
 - Grep tests read `board_sources` (`tests/helpers.sh`), not `app.html` alone. Node unit tests load the board's exports through `tests/board-script.js` (Node `require()` of the modules, stub globals, Node 22.12+) or import a module directly (`tests/sprint-check-editor.js`). `static/package.json` marks the folder as ES modules for Node; the boards never serve it.
 
-`server.py` exposes:
+The board exposes (among others):
 - `GET /api/tickets` — all tickets except `archived`; add `?all=1` to include archived
 - `POST /api/ticket/<id>/status` — update ticket status
 - `GET /api/handoff`, `/api/git`, `/api/why?file=<path>` — sidebar data
 
-Per-ticket doc tabs (Description/Decisions/Acceptance/Plan/...) are **generated generically** from any `*.md` file in `.tickets/<id>/` except `ticket.md` — the tab name is the filename title-cased (`server.py`'s `_doc_name`, `sprint-check-go/main.go`'s `docName`, kept in parity by `tests/sprint-check-api-parity.sh`). Only `eval-report.md` and `review-notes.md` are special-cased: they show as "Eval Agent" / "Review Agent" and sort right after Acceptance, Plan and Research, Review before Eval (t-1f22); every other file is listed by name after them, so writing a new `.tickets/<id>/foo-bar.md` file still produces a "Foo Bar" tab with zero board code changes (t-022f).
+Per-ticket doc tabs (Description/Decisions/Acceptance/Plan/...) are **generated generically** from any `*.md` file in `.tickets/<id>/` except `ticket.md` — the tab name is the filename title-cased (`sprint-check-go/main.go`'s `docName`, pinned by `tests/sprint-check-api.sh`). Only `eval-report.md` and `review-notes.md` are special-cased: they show as "Eval Agent" / "Review Agent" and sort right after Acceptance, Plan and Research, Review before Eval (t-1f22); every other file is listed by name after them, so writing a new `.tickets/<id>/foo-bar.md` file still produces a "Foo Bar" tab with zero board code changes (t-022f).
 
 The Cockpit shell (`cockpit.html`, served at `/cockpit`) follows the same split (t-783a). Its CSS lives in `static/cockpit-{shell,admin,upkeep,projects}.css`, linked in cascade order, so never add a `<style>` back. Its controls are wired with `addEventListener`: static markup in a `DOMContentLoaded` block beside the section's code, and generated HTML right after the `innerHTML` that builds it. Never add an inline `on*=` handler: a spec test fails on any, and modules can't serve globals to attributes.
 Its script is native ES modules, with the same rules as the board (t-565f). `cockpit.html` loads only `static/cockpit-main.js` (and the same `static/theme-boot.js` in `<head>`, t-2758), which runs each module's `init<Section>()` in the old order. The modules are `static/cockpit-{core,theme,sessions,sidebar,keys,views,upkeep,skill-eval,admin,tabs,projects,end}.js`; each only declares, and there are no shell globals. State another module writes gets an owner function (`getProjects()`, `setLastSessions()`, `setUpkeepPane()`). The spec reaches shell code with `await import('/static/cockpit-<x>.js')` inside `page.evaluate`. Test suites read the shell through `shell_sources` (`tests/helpers.sh`), and `board_sources` excludes the `cockpit-*` files.

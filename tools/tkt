@@ -203,8 +203,8 @@ current_id() {
 }
 
 # t-b0c9: the body a new ticket starts with when no description is given. The same text lives in the board's
-# TYPE_TEMPLATES (static/board-core.js), server.py and sprint-check-go (they run where this script cannot be called);
-# tests/ticket-skeleton.sh keeps the four identical. The hints are HTML comments, which the board does not render.
+# TYPE_TEMPLATES (static/board-core.js) and sprint-check-go (they run where this script cannot be called);
+# tests/ticket-skeleton.sh keeps the three identical. The hints are HTML comments, which the board does not render.
 ticket_skeleton() {
   if [[ "$1" == bug ]]; then
     printf '%s\n' "## Problem" "<!-- What is broken, and for whom? -->" "" "## Expected" "<!-- What should happen. -->" "" \
@@ -233,7 +233,7 @@ cmd_create() {
   [[ -z "$title" ]] && { echo "Error: title required" >&2; exit 1; }
 
   # t-354b: maintenance skills (csv) — allowlisted to the three repo-hygiene
-  # skills, order-preserving dedupe (parity with server.py/sprint-check-go).
+  # skills, order-preserving dedupe (parity with sprint-check-go).
   local skills_line="" picked=() _s _parts=()
   if [[ -n "$skills" ]]; then
     IFS=',' read -ra _parts <<< "$skills"   # split on comma; IFS restored after

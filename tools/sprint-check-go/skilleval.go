@@ -744,7 +744,7 @@ var (
 func skillEvalNow() float64 { return float64(time.Now().UnixNano()) / 1e9 }
 
 // canonRootDir: canon's repo root, from the resolved app.html (…/tools/sprint-check-app/app.html),
-// so a binary built elsewhere (tests, tools/sprint-check-win.exe) finds the same root as server.py.
+// so a binary built elsewhere (tests, tools/sprint-check-win.exe) finds the same root as one in tools/.
 // "" when that directory isn't canon — callers then refuse (fail closed), since the "inside
 // canon" refusal and the eval cache both depend on it.
 func canonRootDir() string {

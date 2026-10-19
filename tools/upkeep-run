@@ -68,7 +68,7 @@ SKILL="${1:-}"
 [[ -z "$SKILL" || "$SKILL" == --* ]] && { echo "Usage: upkeep-run <skill> --root <path> [--model <id>]" >&2; exit 1; }
 shift
 
-# Fixed allowlist — mirrors server.py/main.go's own UPKEEP_SKILLS constant.
+# Fixed allowlist — mirrors main.go's own upkeepSkills list.
 # Never trust a caller-supplied skill name past this point.
 case "$SKILL" in
   context-check|context-doctor|dead-code-cleanup|promote-learnings) ;;
@@ -84,7 +84,7 @@ while [[ $# -gt 0 ]]; do
     *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
 done
-# Reaches `claude --model`. Same rule as server.py and sprint-check-go; tests/fixtures/model-id-cases.json locks the three.
+# Reaches `claude --model`. Same rule as sprint-check-go; tests/fixtures/model-id-cases.json locks both.
 model_re='^[A-Za-z0-9][]A-Za-z0-9._:[-]{0,63}$'
 [[ "$MODEL" =~ $model_re ]] || { echo "Error: --model must be a plain model id (letters, digits, . _ : [ ] -), not '$MODEL'." >&2; exit 1; }
 [[ -z "$ROOT" ]] && { echo "Error: --root <project-root> is required." >&2; exit 1; }

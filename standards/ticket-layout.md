@@ -116,7 +116,7 @@ asking the agent ("run review/eval on haiku") or by hand-editing the line direct
 
 ## Board Rendering Rules
 
-The board (`sprint-check-app`) derives all rendering from the ticket JSON produced by `server.py`.
+The board (`sprint-check-app`) derives all rendering from the ticket JSON produced by the Go board (`tools/sprint-check-go`).
 
 | Ticket state | Board column | Doc tabs | Readiness indicator |
 |---|---|---|---|

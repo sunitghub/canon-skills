@@ -302,7 +302,7 @@ async function mtSetDefault(sel){
   if(await mtSave()) toast('Default updated');
 }
 
-const MT_ID_RE=/^[A-Za-z0-9._-]+$/; // mirrors server.py's MODEL_ID_RE / main.go's modelIDRe
+const MT_ID_RE=/^[A-Za-z0-9._-]+$/; // mirrors main.go's modelIDRe
 
 async function mtAddModel(){
   mtData.models[mtProvider]=mtData.models[mtProvider]||[];
