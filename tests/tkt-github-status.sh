@@ -21,6 +21,8 @@ printf '%s\n' "$*" >> "$STUB_LOG"
 # true/false from cmp; a pr list --head prints the PR count from headprs.
 [[ "$1 $2" == "api graphql" && -n "${STUB_GQLFAIL:-}" ]] && { echo "HTTP 502: graphql" >&2; exit 1; }
 [[ "$1 $2" == "api graphql" ]] && { cat "$STUB_W/graphql" 2>/dev/null || echo main; exit 0; }
+[[ "$1 $2" == "api repos/acme/app/compare/"* && -n "${STUB_CMPFAIL:-}" ]] && { echo "HTTP 502: compare" >&2; exit 1; }
+[[ "$1 $2" == "pr list" && " $* " == *" --head "* && -n "${STUB_HEADFAIL:-}" ]] && { echo "HTTP 502: head prs" >&2; exit 1; }
 [[ "$1 $2" == "api repos/acme/app/compare/"* ]] && { cat "$STUB_W/cmp" 2>/dev/null || echo false; exit 0; }
 [[ "$1 $2" == "pr list" && " $* " == *" --head "* ]] && { cat "$STUB_W/headprs" 2>/dev/null || echo 0; exit 0; }
 [[ "$1 $2" == "pr list" ]] && { cat "$STUB_W/prs"; exit 0; }
@@ -64,14 +66,22 @@ printf 'main\nclaude/brave-x1\n' > "$W/graphql"; echo true > "$W/cmp"; echo 0 > 
 : > "$W/log";                                   assert_eq "branch|claude/brave-x1|[]" "$(bs)"
 grep -q '^api repos/acme/app/compare/main...claude/brave-x1 ' "$W/log" || fail "the candidate was not compared with the default branch: $(cat "$W/log")"
 grep -q '^pr list --repo acme/app --head claude/brave-x1 --state all' "$W/log" || fail "the candidate's PRs were not checked: $(cat "$W/log")"
+# The search asks about this repo and this ticket (the stub cannot run --jq, so the arguments are checked instead).
+gq="$(grep '^api graphql ' "$W/log")"; assert_contains "$gq" "-f o=acme -f n=app --jq"; assert_contains "$gq" "test(\"\\\\b$id\\\\b\")"
+assert_contains "$(grep '^api repos/acme/app/compare/' "$W/log")" "test(\"\\\\b$id\\\\b\")"
 assert_contains "$("$TKT" github-status "$id")" "claude/brave-x1 is on origin with no PR: tkt open-pr $id"
 echo false > "$W/cmp";                          assert_eq "sent||[]" "$(bs)"     # its commit naming the id is on main
+[[ "$("$TKT" github-status "$id")" != *"with no PR"* ]] || fail "the plain form named a branch for a sent ticket"
 echo true > "$W/cmp"; echo 1 > "$W/headprs";    assert_eq "sent||[]" "$(bs)"     # it already has a PR (any state)
 echo 0 > "$W/headprs"; printf '24\tOPEN\t%s\n' "$HEAD7" > "$W/prs"
 : > "$W/log";                                   assert_eq "pr-open||[]" "$(bs)"   # a Fixes PR exists: no branch search
 ! grep -q '^api graphql' "$W/log" || fail "searched for a session branch with a PR open"
 printf '' > "$W/prs"; rc=0; out="$(STUB_GQLFAIL=1 "$TKT" github-status "$id" 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "a gh failure in the branch search should exit 1, not read as no branch"; assert_contains "$out" "HTTP 502: graphql"
+for v in STUB_CMPFAIL STUB_HEADFAIL; do
+  rc=0; out="$(env "$v=1" "$TKT" github-status "$id" 2>&1)" || rc=$?
+  [[ "$rc" == 1 ]] || fail "$v: a gh failure while checking the candidate should exit 1, not read as no branch"; assert_contains "$out" "HTTP 502"
+done
 # Mirrors come from git config canon.mirror, in order.
 git config --add canon.mirror public; git config --add canon.mirror backup
 assert_eq "branch|claude/brave-x1|[\"public\",\"backup\"]" "$(bs)"

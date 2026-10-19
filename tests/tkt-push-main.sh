@@ -31,6 +31,12 @@ assert_eq "git push public $OLD:refs/heads/main --force-with-lease=refs/heads/ma
 eval "$undo" 2>/dev/null; assert_eq "$OLD" "$(at public)"
 "$TKT" push-main >/dev/null; out="$("$TKT" push-main)"; assert_contains "$out" "public: main already at ${NEW:0:8}"
 
+# A mirror with no main yet gets it, with nothing to undo to.
+git init -q --bare "$W/fresh.git"; git remote add fresh "$W/fresh.git"; git config --add canon.mirror fresh
+out="$("$TKT" push-main)"; assert_contains "$out" "fresh: main ${NEW:0:8}"; [[ "$(grep -c 'to undo: git push fresh' <<< "$out" || true)" == 0 ]] || fail "an undo line for a mirror that had no main"
+assert_eq "$NEW" "$(at fresh)"; git config --unset canon.mirror fresh
+rc=0; "$TKT" push-main extra >/dev/null 2>&1 || rc=$?; assert_eq 1 "$rc"
+
 # A mirror that has a commit main lacks: rejected, reported, not forced; exit 1.
 X="$W/x"; git clone -q "$W/public.git" "$X" 2>/dev/null; (cd "$X" && echo m > m.txt && git add m.txt && git commit -qm mirror-only && git push -q origin HEAD:main)
 AHEAD="$(at public)"; echo three > three.txt; git add three.txt; git commit -qm three

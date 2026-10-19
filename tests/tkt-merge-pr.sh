@@ -54,6 +54,7 @@ chmod +x "$W/bin/gh"
 REAL_GIT="$(command -v git)"
 cat > "$W/bin/git" <<SH
 #!/usr/bin/env bash
+[[ -n "\${STUB_FF_FETCH_FAIL:-}" && " \$* " == *" fetch -q origin main "* ]] && { echo "fatal: unable to access origin" >&2; exit 128; }
 if [[ " \$* " == *" fetch "* || " \$* " == *" ls-remote "* ]]; then a=(); for x in "\$@"; do [[ "\$x" == https://github.com/acme/app.git || "\$x" == origin ]] && x="$W/origin.git"; a+=("\$x"); done; set -- "\${a[@]}"; fi
 exec "$REAL_GIT" "\$@"
 SH
@@ -270,6 +271,12 @@ assert_eq "$BASE" "$(git rev-parse main)"; git worktree remove -f "$W/wt"
 git checkout -q main; echo local > local.txt; git add local.txt; git commit -qm "local only"; LOCAL="$(git rev-parse HEAD)"
 out="$(ff_merge)"; assert_contains "$out" "Local main: has commits origin/main lacks, not a fast-forward; left at ${LOCAL:0:8}"
 assert_eq "$LOCAL" "$(git rev-parse main)"; git reset -q --hard "$BASE"
+# The merge happened, so merge-pr exits 0 whatever the local branch could do (ff_merge runs under set -e).
+git reset -q --hard "$PRHEAD"; out="$(ff_merge)"; assert_contains "$out" "Local main: already at ${PRHEAD:0:8}"
+git reset -q --hard "$BASE"; out="$(STUB_FF_FETCH_FAIL=1 ff_merge)"; assert_contains "$out" "Local main: could not fetch origin/main; update it by hand: git pull"
+assert_eq "$BASE" "$(git rev-parse main)"
+git checkout -q -B side; git branch -qD main; out="$(ff_merge)"; assert_contains "$out" "Local main: none here; nothing to update"
+git checkout -q -B main "$BASE"
 
 # t-4718 also fixed import-results: a ticket that comes back without eval-report.md is reported, not a silent exit.
 other="t-0e0e"; X="$W/cloud"; git clone -q "$W/origin.git" "$X" 2>/dev/null

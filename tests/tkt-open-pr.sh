@@ -20,7 +20,7 @@ mkdir "$W/bin"; cat > "$W/bin/gh" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$STUB_W/log"
 case "$1 $2" in
-  "api graphql") cat "$STUB_W/graphql" ;;
+  "api graphql") [[ -e "$STUB_W/gqlfail" ]] && { echo "HTTP 502: graphql" >&2; exit 1; }; cat "$STUB_W/graphql" ;;
   "api repos/"*) echo true ;;
   "pr list")     echo 0 ;;
   "pr create")   [[ -e "$STUB_W/fail" ]] && { echo "HTTP 422: no commits between" >&2; exit 1; }
@@ -48,4 +48,12 @@ assert_eq 1 "$rc"; assert_contains "$out" "HTTP 422: no commits between"; rm -f 
 # Not sent to GitHub: refused before any gh call.
 id2="$("$TKT" create "Local")"; : > "$W/log"; rc=0; out="$("$TKT" open-pr "$id2" 2>&1)" || rc=$?
 assert_eq 1 "$rc"; assert_contains "$out" "was not sent to GitHub"; [[ ! -s "$W/log" ]] || fail "called gh for an unsent ticket"
+# A failed search: exit 1 with gh's words, nothing created.
+touch "$W/gqlfail"; rm -f "$W/create"; rc=0; out="$("$TKT" open-pr "$id" 2>&1)" || rc=$?
+assert_eq 1 "$rc"; assert_contains "$out" "HTTP 502: graphql"; [[ ! -e "$W/create" ]] || fail "opened a PR after a failed search"; rm -f "$W/gqlfail"
+# Usage and an unreadable github: line are refused before any gh call.
+: > "$W/log"; rc=0; "$TKT" open-pr >/dev/null 2>&1 || rc=$?; assert_eq 1 "$rc"
+sed -i.bak 's|^github: acme/app#23$|github: acme app#x|' "$f" && rm -f "$f.bak"
+rc=0; out="$("$TKT" open-pr "$id" 2>&1)" || rc=$?; assert_eq 1 "$rc"; assert_contains "$out" "unreadable github: line"
+[[ ! -s "$W/log" ]] || fail "called gh before refusing: $(cat "$W/log")"
 echo "tkt-open-pr: ok"
