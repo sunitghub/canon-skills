@@ -222,6 +222,23 @@ out="$(STUB_MERGE_FAIL=1 STUB_AFTER=MERGED STUB_NO_SHA=1 "$TKT" merge-pr "$id" -
 assert_contains "$out" "Merged PR #7 into main (gh reported: could not delete branch)"
 assert_grep '^merged: PR #7$' "$f"
 
+# t-fdb1: a head past graded-head merges only when what came after is merge-safe late docs (the cloud's learnings sweep).
+past() {   # past <file>...: one commit on top of the graded PR head touching those files, published as PR #7's head; prints its sha
+  git checkout -q -B "past-$1" "$PRHEAD"; local x; for x in "$@"; do mkdir -p "$(dirname "$x")"; echo "$x" > "$x"; git add -f "$x"; done
+  git commit -qm "after grading"; git push -qf origin "HEAD:refs/pull/7/head"; git rev-parse HEAD; git checkout -q main
+}
+sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; eval_ok "$PRHEAD"
+LATE="$(past LEARNINGS.md LEARNINGS-archive.md ".tickets/$id/summary.md")"; : > "$STUB_LOG"
+out="$(STUB_HEAD="$LATE" "$TKT" merge-pr "$id" --pr 7 --yes 2>&1)" || fail "a late-docs-only head was refused: $out"
+assert_contains "$out" "merge-pr: PR #7 head is graded-head plus late docs only: .tickets/$id/summary.md, LEARNINGS-archive.md, LEARNINGS.md"
+grep -qx "pr merge 7 --repo acme/app --merge --delete-branch --match-head-commit $LATE" "$STUB_LOG" || fail "late-docs merge not pinned to its head: $(cat "$STUB_LOG")"
+sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
+CODE="$(past LEARNINGS.md tools/x.sh)"
+refuses "a code file after grading" "since then it changes tools/x.sh: re-run the gates on it" STUB_HEAD="$CODE" -- --pr 7 --yes
+AGENTREAD="$(past CLAUDE.md)"
+refuses "an agent-read late doc after grading" "since then it changes CLAUDE.md" STUB_HEAD="$AGENTREAD" -- --pr 7 --yes
+git push -qf origin "$PRHEAD:refs/pull/7/head"
+
 # t-4718 also fixed import-results: a ticket that comes back without eval-report.md is reported, not a silent exit.
 other="t-0e0e"; X="$W/cloud"; git clone -q "$W/origin.git" "$X" 2>/dev/null
 mkdir -p "$X/.tickets/$other"; printf -- '---\nid: %s\nstatus: closed\ntype: task\npriority: 2\n---\n# Back\n' "$other" > "$X/.tickets/$other/ticket.md"

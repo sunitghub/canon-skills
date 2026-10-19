@@ -1409,7 +1409,6 @@ cmd_merge_pr() {
   IFS=$'\t' read -r st mg ms head base cross <<< "$info"
   [[ "$st" == OPEN ]] || { echo "merge-pr: PR #$pr is $st, not open" >&2; exit 1; }
   [[ "$cross" == false ]] || { echo "merge-pr: PR #$pr comes from a fork; its code would run here, so merge it on GitHub after reading it" >&2; exit 1; }
-  [[ "$head" == "$graded"* ]] || { echo "merge-pr: PR #$pr head $head is not the commit the evaluator graded ($graded): re-run the gates on it" >&2; exit 1; }
   if [[ "$mg" != MERGEABLE || "$ms" != CLEAN ]]; then
     if [[ "$ms" == BLOCKED ]]; then echo "merge-pr: PR #$pr is blocked by a branch rule (a required review or check): https://github.com/$repo/pull/$pr" >&2
     else echo "merge-pr: PR #$pr cannot merge cleanly (mergeable: $mg, state: $ms)" >&2; fi
@@ -1426,6 +1425,17 @@ cmd_merge_pr() {
     && git -C "$tmp/w" fetch -q "$url" "+refs/heads/$base:refs/remotes/o/$base" "+refs/pull/$pr/head:refs/remotes/o/pr"; } < /dev/null 2>&1)" \
     || { echo "merge-pr: could not fetch $base and PR #$pr from origin: $err" >&2; exit 1; }
   [[ "$(git -C "$tmp/w" rev-parse o/pr)" == "$head" ]] || { echo "merge-pr: PR #$pr moved while checking it; run merge-pr again" >&2; exit 1; }
+  # t-fdb1: a head past graded-head passes only when what came after is merge-safe late docs (the cloud's learnings sweep, complete.md
+  # step 8); read from the fetched objects, so a non-ancestor or a git failure refuses.
+  if [[ "$head" != "$graded"* ]]; then
+    local late lrc=0
+    late="$(late_docs_delta "$tmp/w" "$graded" "$head")" || lrc=$?
+    case "$lrc" in
+      0) echo "merge-pr: PR #$pr head is graded-head plus late docs only: $(printf '%s\n' "$late" | grep . | paste -sd, - | sed 's/,/, /g')" ;;
+      1) echo "merge-pr: PR #$pr head $head is not the commit the evaluator graded ($graded); since then it changes $(printf '%s\n' "$late" | sed -n '1,5p' | paste -sd, - | sed 's/,/, /g'): re-run the gates on it" >&2; exit 1 ;;
+      *) echo "merge-pr: PR #$pr head $head is not the commit the evaluator graded ($graded): $late; re-run the gates on it" >&2; exit 1 ;;
+    esac
+  fi
   git -C "$tmp/w" checkout -q -B merge-pr-check "o/$base" < /dev/null \
     && git -C "$tmp/w" -c user.name=canon -c user.email=canon@localhost merge -q --no-edit o/pr < /dev/null >/dev/null 2>&1 \
     || { echo "merge-pr: PR #$pr does not merge into $base here" >&2; exit 1; }
@@ -1718,7 +1728,15 @@ cmd_import_results() {
   if [[ -n "$pr" ]]; then
     local prh; prh="$(cd "$root" && gh pr view "$pr" --json headRefOid --jq .headRefOid 2>&1)" || { echo "import-results: gh could not read PR #$pr: $prh" >&2; rc=1; }
     if [[ $rc == 0 && -n "$graded" && "$prh" == "$graded"* ]]; then echo "  PR #$pr head $prh: matches graded-head"
-    elif [[ $rc == 0 ]]; then echo "  PR #$pr head $prh does NOT match graded-head ${graded:-none}: the evaluator graded other code" >&2; rc=1; fi
+    elif [[ $rc == 0 ]]; then
+      # t-fdb1: the cloud's learnings sweep lands after grading; a delta of merge-safe late docs only still counts as the graded code.
+      local late="" lrc=2
+      if [[ -n "$graded" ]] && git -C "$root" fetch -q origin "refs/pull/$pr/head" < /dev/null 2>/dev/null; then
+        late="$(late_docs_delta "$root" "$graded" "$prh")" && lrc=0 || lrc=$?
+      fi
+      if [[ $lrc == 0 ]]; then echo "  PR #$pr head $prh: graded-head plus late docs only: $(printf '%s\n' "$late" | grep . | paste -sd, - | sed 's/,/, /g')"
+      else echo "  PR #$pr head $prh does NOT match graded-head ${graded:-none}: the evaluator graded other code${late:+ ($(printf '%s\n' "$late" | sed -n '1,5p' | paste -sd, - | sed 's/,/, /g'))}" >&2; rc=1; fi
+    fi
   fi
   _regrade_line "$root" "$tdir" "$pr" "$rc"   # t-278d: advises only; never changes rc
   _evidence_os_lines "$tdir"                  # t-a83a: advises only; never changes rc
