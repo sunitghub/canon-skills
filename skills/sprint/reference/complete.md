@@ -325,6 +325,14 @@ Opus` default, scoped only to the two close-gate dispatches below.
    evaluator's own `evaluator-run-id`. Do not stall or switch dispatch modes hunting for a
    token — a `Plan`-type foreground `Agent` call may expose none (reproduced in canon
    `t-9a75` and a separate Windows project `t-6cd0`).
+   **Also pass the run's cost** (t-5ef3): `--tokens N --minutes M --tool-uses K` from the
+   harness's hand-back for that dispatch (its total tokens, tool uses and duration), plus
+   `--ticket <id>` (the tier is read from plan.md) and `--outcome pass|fail|budget` (reviewer
+   YES → pass, NO → fail; evaluator `pass` → pass, anything else → fail). A dispatch that dies
+   on its budget is logged too, `--outcome budget`. Omit a number the hand-back does not give,
+   never guess one. In Claude Code the totals are in the background task's completion notice
+   (`<usage>`), which can arrive after the agent's report: wait for it before logging.
+   `sprint gate-cost` summarizes these rows.
 
 6. **If a subagent's Bash file-writing is refused outright** (permission boundary, not
    heredoc failure), **or the expected report file is missing after dispatch** (the subagent
@@ -439,7 +447,7 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    Gates table with the Reason prefixed `verdict:` (e.g. `verdict: YES` or `verdict: NO — <one-line summary>`).
 
    **Log the subagent run.** Immediately after the reviewer subagent completes (and after `gate-snapshot.sh post`, step 7), run
-   `subagent-log.sh --agent-id <id> --agent-type reviewer` (bare — it's on PATH, same as
+   `subagent-log.sh --agent-id <id> --agent-type reviewer <cost flags, (5)>` (bare — it's on PATH, same as
    `sprint`/`tkt`). This writes to the same `.claude/subagent-runs.jsonl` audit trail as the
    evaluator's own log call (step 3) — required now that no `SubagentStop` hook does this
    automatically. `_gate_eval_report` (step 3) matches by timestamp only, not `agent_type` or
@@ -523,7 +531,7 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    plausible-looking fabrication too, which the after-the-fact ±60min jsonl-window check below
    cannot; the 300s threshold value itself is unchanged by t-a29b, only what it measures). Once
    verified, run
-   `subagent-log.sh --agent-id <evaluator-run-id> --agent-type evaluator` (bare — it's on
+   `subagent-log.sh --agent-id <evaluator-run-id> --agent-type evaluator <cost flags, (5)>` (bare — it's on
    PATH, same as `sprint`/`tkt`). `sprint complete`'s close gate (`_gate_eval_report`)
    hard-fails if `.claude/subagent-runs.jsonl` doesn't exist, or exists but has no entry within
    ±60 minutes of that `evaluator-run-id` — this CLI call is what satisfies that check now that
