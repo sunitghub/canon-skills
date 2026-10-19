@@ -244,7 +244,7 @@ for i in range(250):
     except Exception as e:
         bad.append((i, name, 'no answer', repr(e)[:120])); continue
     cases += 1
-    if status >= 500 or status not in (200, 301, 400, 403, 404, 405, 409):
+    if status >= 500 or status not in (200, 301, 307, 400, 403, 404, 405, 409):   # 307: the router's redirect for an unclean path in a module build (t-8020); like 301, no write
         bad.append((i, name, 'status', status, text[:120]))
     if 'Traceback' in text or 'panic:' in text or 'goroutine' in text:
         bad.append((i, name, 'leaked', text[:120]))

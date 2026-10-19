@@ -69,7 +69,7 @@ type ticket map[string]any
 
 // version is the build id, stamped via -ldflags "-X main.version=<sha>" by
 // scripts/build-zip.sh (short SHA of the last commit touching
-// tools/sprint-check-go). A plain `go build` leaves it "dev". t-99fa.
+// the board's sources, tools/src-key.sh). A plain `go build` leaves it "dev". t-99fa.
 // t-5c20: `main.version` now carries the semantic version (repo-root VERSION);
 // the SHA moved to `main.commit`. canonVersion() prefers the runtime VERSION
 // file (present in a canon install) and falls back to the stamped value.
@@ -423,7 +423,12 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "unknown project", http.StatusBadRequest)
 				return
 			}
-			content, etag, dok := readDocWithEtag(unescape(m[1]), root)
+			doc := unescape(m[1])
+			if hasDotDotSegment(doc) {
+				http.Error(w, "bad doc path", http.StatusBadRequest)
+				return
+			}
+			content, etag, dok := readDocWithEtag(doc, root)
 			if !dok {
 				http.NotFound(w, r)
 				return
@@ -712,6 +717,10 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 	}
 	if m := apiDocRe.FindStringSubmatch(path); m != nil {
 		doc := unescape(m[1])
+		if hasDotDotSegment(doc) {
+			sendJSONStatus(w, map[string]any{"ok": false, "error": "bad doc path"}, http.StatusBadRequest)
+			return
+		}
 		if handled, st, res := writeLiveDoc(doc, payload, eroot); handled { // t-26f9: a bound ticket's docs are written in its worktree, guarded by base_hash
 			sendJSONStatus(w, res, st)
 			return
@@ -1752,6 +1761,18 @@ func readDocWithEtag(docFile string, root string) (string, string, bool) {
 		etag = docEtag(raw)
 	}
 	return string(raw), etag, err == nil
+}
+
+// hasDotDotSegment: a decoded doc path with a ".." segment (t-8020). Go's router used to answer such a path with a 301 to the
+// cleaned one before a handler saw it, but only under the pre-1.22 router a build without a go.mod gets; a module build
+// (every release) passes `t-x/..%2Fplan.md` through, so the doc routes refuse it themselves.
+func hasDotDotSegment(doc string) bool {
+	for _, seg := range strings.Split(strings.ReplaceAll(doc, "\\", "/"), "/") {
+		if seg == ".." {
+			return true
+		}
+	}
+	return false
 }
 
 // Behaviour pinned by tests/sprint-check-api.sh: re-run it after a change.
