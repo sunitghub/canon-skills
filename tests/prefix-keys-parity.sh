@@ -14,6 +14,11 @@ trap 'rm -f "$board" "$shell"' EXIT
 board_sources "$ROOT" > "$board"
 shell_sources "$ROOT" > "$shell"
 
+# The ticket modal moves a ticket only through its explicit buttons: no Back/Done column moves, no arrow-key binding (from
+# the retired tests/sprint-check-app.sh, t-dd2f). The shell's arrow keys resize panes, so only the board is checked.
+if grep -qE "act-prev|act-next|← → Esc" "$board"; then fail "ticket modal should not expose Back/Done status column movement"; fi
+if grep -qE "ArrowLeft|ArrowRight" "$board"; then fail "board must not bind ArrowLeft/ArrowRight (the ticket modal uses explicit nav buttons)"; fi
+
 files=(
   "$shell"
   "$board"
