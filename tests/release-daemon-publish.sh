@@ -57,11 +57,11 @@ assets() { ls "$FAKE_GH/$1" 2>/dev/null | LC_ALL=C sort | tr '\n' ' '; }
 # 1. a first release creates three releases with the right assets, verifies them, and writes the manifest
 run; [[ "$rc" == 0 ]] || fail "first publish failed ($rc): $out"
 assert_eq "THIRD-PARTY-NOTICES.md cockpit-daemon-darwin-amd64 cockpit-daemon-darwin-arm64 cockpit-daemon-linux-amd64 cockpit-daemon-linux-arm64 cockpit-daemon-windows-amd64.exe " "$(assets "cockpit-daemon-$kd")"
-assert_eq "THIRD-PARTY-NOTICES.md sprint-check-windows-amd64.exe " "$(assets "sprint-check-$kb")"
+assert_eq "THIRD-PARTY-NOTICES.md sprint-check-darwin-amd64 sprint-check-darwin-arm64 sprint-check-linux-amd64 sprint-check-linux-arm64 sprint-check-windows-amd64.exe " "$(assets "sprint-check-$kb")"   # t-15d8
 assert_eq "THIRD-PARTY-NOTICES.md sprint-headless-json-windows-amd64.exe " "$(assets "sprint-headless-json-$kh")"
 m="$R/tools/cockpit-daemon.sha256"
-assert_eq 7 "$(grep -vc '^#' "$m")"
-for want in "$kd windows-amd64 " "$kb sprint-check-windows-amd64 " "$kh sprint-headless-json-windows-amd64 " "$kd darwin-arm64 "; do grep -q "^$want" "$m" || fail "manifest lacks a line for $want"; done
+assert_eq 11 "$(grep -vc '^#' "$m")"
+for want in "$kd windows-amd64 " "$kb sprint-check-windows-amd64 " "$kb sprint-check-darwin-arm64 " "$kb sprint-check-linux-amd64 " "$kh sprint-headless-json-windows-amd64 " "$kd darwin-arm64 "; do grep -q "^$want" "$m" || fail "manifest lacks a line for $want"; done
 want="$(shasum -a 256 "$FAKE_GH/sprint-check-$kb/sprint-check-windows-amd64.exe" | awk '{print $1}')"; grep -q "^$kb sprint-check-windows-amd64 $want\$" "$m" || fail "the manifest hash is not the published asset's hash"
 # the legacy builds ask for the pinned toolchain and write the pin into the staged go.mod (not the installed Go: t-7efe)
 for mod in sprint-check sprint-headless-json; do grep -q "^GOTOOLCHAIN=$LV module canon/$mod  go ${LV#go} \$" "$GO_LOG" || fail "the $mod build did not use the pinned toolchain: $(cat "$GO_LOG")"; done
@@ -70,7 +70,7 @@ for mod in sprint-check sprint-headless-json; do grep -q "^GOTOOLCHAIN=$LV modul
 # two dry runs of the same source with different VERSION files print the same hash for every target
 dry() { (cd "$R" && PATH="$STUBS:$PATH" bash scripts/release-daemon.sh --dry-run 2>&1 | grep -v '^release-daemon:'); }
 d1="$(dry)"; echo 9.9.9 > "$R/VERSION"; d2="$(dry)"; echo 0.3.0 > "$R/VERSION"
-assert_eq 7 "$(printf '%s\n' "$d1" | grep -c .)"; assert_eq "$d1" "$d2"
+assert_eq 11 "$(printf '%s\n' "$d1" | grep -c .)"; assert_eq "$d1" "$d2"
 # 2. the same source again: nothing is uploaded or created, the manifest is the same set of lines
 before="$(sort "$m")"; run; [[ "$rc" == 0 ]] || fail "second publish failed: $out"
 ! grep -qE ' (create|upload) ' "$STUB_LOG" || fail "a second run created or uploaded something: $(cat "$STUB_LOG")"
@@ -88,7 +88,7 @@ run; [[ "$rc" == 0 ]] || fail "a differing asset in an existing release must not
 assert_contains "$out" "warning: sprint-check-windows-amd64.exe on sprint-check-$kb (an existing release) differs from this build"
 pub="$(shasum -a 256 "$FAKE_GH/sprint-check-$kb/sprint-check-windows-amd64.exe" | awk '{print $1}')"
 grep -q "^$kb sprint-check-windows-amd64 $pub\$" "$m" || fail "the manifest must record the published asset's hash: $(cat "$m")"
-assert_eq 7 "$(grep -vc '^#' "$m")"
+assert_eq 11 "$(grep -vc '^#' "$m")"
 ! grep -q 'release upload .*sprint-check-windows-amd64.exe' "$STUB_LOG" || fail "an existing asset was overwritten"
 # 4b. ...but a manifest line that names another hash for that key and target is the authority: the run stops, the manifest is unchanged
 printf '# header\n%s sprint-check-windows-amd64 %064d\n' "$kb" 0 > "$m"; before="$(cat "$m")"

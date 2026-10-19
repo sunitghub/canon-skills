@@ -45,6 +45,10 @@ tools/cockpit-daemon|darwin-amd64|cockpit-daemon|cockpit-daemon-darwin-amd64
 tools/cockpit-daemon|linux-amd64|cockpit-daemon|cockpit-daemon-linux-amd64
 tools/cockpit-daemon|linux-arm64|cockpit-daemon|cockpit-daemon-linux-arm64
 tools/cockpit-daemon|windows-amd64|cockpit-daemon|cockpit-daemon-windows-amd64.exe
+tools/sprint-check-go|sprint-check-darwin-arm64|sprint-check|sprint-check-darwin-arm64
+tools/sprint-check-go|sprint-check-darwin-amd64|sprint-check|sprint-check-darwin-amd64
+tools/sprint-check-go|sprint-check-linux-amd64|sprint-check|sprint-check-linux-amd64
+tools/sprint-check-go|sprint-check-linux-arm64|sprint-check|sprint-check-linux-arm64
 tools/sprint-check-go|sprint-check-windows-amd64|sprint-check|sprint-check-windows-amd64.exe
 tools/sprint-headless-json-go|sprint-headless-json-windows-amd64|sprint-headless-json|sprint-headless-json-windows-amd64.exe
 LIST
