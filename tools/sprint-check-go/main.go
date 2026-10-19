@@ -4860,10 +4860,10 @@ func sendJSONStatus(w http.ResponseWriter, data any, status int) {
 }
 
 // ── Canon Cockpit project registry (t-9917) ───────────────────────────────
-// Byte-for-byte mirror of server.py's registry: ~/.canon/cockpit/projects.json,
+// The project registry: ~/.canon/cockpit/projects.json,
 // a JSON array of {id,path,name,description,added}. id = first 12 hex of
 // sha256(resolved abs path). Field order pinned via the struct tags below to
-// match server.py's json.dumps order so parity byte-compares hold. Paths +
+// keep the layout earlier installs wrote (tools/canon and the daemon read it). Paths +
 // descriptions only, no secrets (DECISIONS t-06cc: no encryption).
 
 type registryProject struct {
@@ -4907,7 +4907,7 @@ func registrySave(entries []registryProject) error {
 	if err := os.MkdirAll(d, 0o700); err != nil {
 		return err
 	}
-	// Match server.py's json.dumps(ensure_ascii=False, indent=2)+"\n" byte-for-byte.
+	// The layout earlier installs wrote: 2-space indent, non-ASCII kept, trailing newline.
 	// json.MarshalIndent HTML-escapes & < > (→ \u0026 …); Python does not, so a
 	// path/description containing those chars would diverge (t-9917 review finding).
 	// json.Encoder with SetEscapeHTML(false) + SetIndent produces the literal chars.
@@ -4948,8 +4948,8 @@ func loadModelTiers() map[string]any {
 }
 
 // ── User themes (t-f889) — mirrors server.py's list_themes/open_themes_folder ──
-// $CANON_HOME/themes/*.json: files anyone can drop there, so untrusted. Every rule and reason string matches server.py
-// and static/theme-data.js; tests/theme-files-parity.sh holds all three to theme.schema.json (never read at runtime).
+// $CANON_HOME/themes/*.json: files anyone can drop there, so untrusted. Every rule and reason string matches
+// static/theme-data.js; tests/theme-files-parity.sh holds both to theme.schema.json (never read at runtime).
 var (
 	themeKeys   = []string{"bg", "surface", "border", "text", "body", "muted", "accent", "ok", "warn", "bad", "info", "term"}
 	themeFileRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,29}\.json$`)
@@ -5715,11 +5715,10 @@ func setDefault(t ticket, key string, value any) {
 	}
 }
 
-// t-1f22: the two gate reports are named for who writes them; server.py's _doc_name must match.
+// t-1f22: the two gate reports are named for who writes them.
 var docNameOverrides = map[string]string{"eval-report": "Eval Agent", "review-notes": "Review Agent"}
 
 // t-1f22: the working docs first, then the two gate reports one after another (review, then eval), then the rest by name.
-// server.py's _doc_order must match.
 var docOrder = []string{"acceptance", "plan", "research", "review-notes", "eval-report"}
 
 func docRank(path string) int {

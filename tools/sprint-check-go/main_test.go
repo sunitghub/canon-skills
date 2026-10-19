@@ -823,8 +823,8 @@ func TestRegistryAddListRemove(t *testing.T) {
 	}
 }
 
-// TestRegistryJSONShapeMatchesPython pins the on-disk JSON so it stays
-// byte-identical to server.py's json.dumps(indent=2)+"\n" (parity contract).
+// TestRegistryJSONShapeMatchesPython pins the on-disk JSON to the layout
+// earlier installs (the Python board) wrote, which tools/canon and the daemon read.
 func TestRegistryJSONShapeMatchesPython(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("CANON_HOME", filepath.Join(home, ".canon"))
