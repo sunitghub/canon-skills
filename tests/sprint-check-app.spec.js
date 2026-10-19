@@ -14636,26 +14636,34 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('Start offers GitHub places; picking GitHub mounts no terminal, previews, sends and hands back a message (t-718b)', async ({ page }) => {
-    const id = `t-gh3-${Date.now()}`, busy = `t-gh3b-${Date.now()}`;
+    const id = `t-gh3-${Date.now()}`, busy = `t-gh3b-${Date.now()}`, done = `t-gh3c-${Date.now()}`;
     ghTicket(id); ghTicket(busy, { github: 'acme/app#61' });
+    ghTicket(done, { github: 'acme/app#41', status: 'closed' });   // t-093a: closed by hand, never merged: not busy
+    await routeStatus(page, done, { stage: 'sent' });
     await routeStatus(page, busy, { stage: 'sent' });
     let cockpitPosts = 0, sendBody = null;
     await page.route('**/api/cockpit', r => { cockpitPosts++; return json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }); });
     await page.route('**/api/worktrees**', r => json(r, [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true }]));
-    await page.route(`**/api/ticket/${id}/github/send-preview`, r => json(r, { ok: true, exit_code: 0, output: 'repo: acme/app (PRIVATE)\ntitle: ' + id + ': GitHub test\n--- body ---\n# Description\n--- dry run: nothing was created ---' }));
-    await page.route(`**/api/ticket/${id}/github/send`, r => { sendBody = JSON.parse(r.request().postData() || '{}'); return json(r, { ok: true, exit_code: 0, output: `Sent ${id} as https://github.com/acme/app/issues/57\nIn a Claude cloud session on acme/app, type: Work on Issue#57` }); });
+    await page.route(`**/api/ticket/${id}/github/send-preview`, r => json(r, { ok: true, exit_code: 0, output: 'repo: acme/app (PRIVATE)\ntitle: ' + id + ': GitHub test\n--- body ---\n# Description\nsend-issue: warning: ' + id + ' has no plan (plan.md ## Approach is empty): the session will draft it and wait for your approval\n--- dry run: nothing was created ---' }));
+    const prompt = `Work on Issue#57 for ticket ${id}. Read its section "Working on this" thoroughly before starting and follow it step by step. Work on a new branch, never main.`;
+    await page.route(`**/api/ticket/${id}/github/send`, r => { sendBody = JSON.parse(r.request().postData() || '{}'); return json(r, { ok: true, exit_code: 0, output: `Sent ${id} as https://github.com/acme/app/issues/57\nIn a Claude cloud session on acme/app, type:\n${prompt}` }); });
     await openBoard(page, id);
     await page.locator(`.card[data-id="${id}"] .card-start`).click();
     await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
     await expect(page.locator('#ck-worktree .ck-gh-busy', { hasText: busy })).toContainText('GitHub #61');
+    await expect(page.locator('#ck-worktree .ck-gh-busy', { hasText: done })).toHaveCount(0);
     await page.locator('#ck-worktree .ck-gh-row').click();
     await expect(page.locator('#ck-worktree .ck-gh-row')).toHaveClass(/selected/);
     await expect(page.locator('#ck-gh-panel')).toBeVisible();
     await expect(page.locator('#ck-gh-preview')).toContainText('repo: acme/app (PRIVATE)');
+    // t-093a: the CLI's warning is a note above the preview, not a block, and it is not repeated inside the preview.
+    await expect(page.locator('#ck-gh-note')).toHaveText(`${id} has no plan (plan.md ## Approach is empty): the session will draft it and wait for your approval`);
+    await expect(page.locator('#ck-gh-preview')).not.toContainText('send-issue: warning');
+    await expect(page.locator('#ck-gh-create')).toBeEnabled();
     expect(cockpitPosts).toBe(0);
     await page.locator('#ck-gh-create').click();
     await expect(page.locator('#ck-gh-sent')).toContainText(`Sent ${id} as issue #57`);
-    await expect(page.locator('#ck-gh-sent')).toContainText('Work on Issue#57');
+    await expect(page.locator('#ck-gh-prompt')).toHaveText(prompt);   // the line send-issue printed, verbatim
     await page.evaluate(async (tid) => {   // the panel is shown again (a tab switch): the sent message is kept, not the preview
       const { cockpitState } = await import('/static/board-cockpit.js');
       const t = (await import('/static/board-core.js')).state.tickets.find(x => x.id === tid);
@@ -14664,8 +14672,13 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#ck-gh-sent')).toBeVisible();
     expect(sendBody).toEqual({});
     expect(cockpitPosts).toBe(0);
+    // t-093a: the work is in the cloud, so the button closes the ticket's tab and the board shows again.
+    await expect(page.locator('#ck-gh-dismiss')).toHaveText('Close tab');
+    await expect(page.locator(`#ck-tab-strip-topbar .ck-tab-pill[data-tab-id="${id}"]`)).toHaveCount(1);
     await page.locator('#ck-gh-dismiss').click();
     await expect(page.locator('#ck-gh-panel')).toBeHidden();
+    await expect(page.locator(`#ck-tab-strip-topbar .ck-tab-pill[data-tab-id="${id}"]`)).toHaveCount(0);
+    await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/);
   });
 
   test('a failed send shows the reason and changes nothing (t-718b)', async ({ page }) => {
@@ -15156,7 +15169,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     const sends = [];
     await page.route('**/api/worktrees**', r => json(r, [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true }]));
     await page.route(`**/api/ticket/${id}/github/send-preview`, r => json(r, { ok: true, exit_code: 0, output: 'repo: acme/app (PUBLIC)\ntitle: x\n--- dry run: nothing was created ---' }));
-    await page.route(`**/api/ticket/${id}/github/send`, r => { sends.push(JSON.parse(r.request().postData() || '{}')); return json(r, { ok: true, exit_code: 0, output: `Sent ${id} as https://github.com/acme/app/issues/57` }); });
+    await page.route(`**/api/ticket/${id}/github/send`, r => { sends.push(JSON.parse(r.request().postData() || '{}')); return json(r, { ok: true, exit_code: 0, output: `Sent ${id} as https://github.com/acme/app/issues/57\nIn a Claude cloud session on acme/app, type:\nWork on Issue#57 for ticket ${id}.` }); });
     await openBoard(page, id);
     await page.locator(`.card[data-id="${id}"] .card-start`).click();
     await page.locator('#ck-worktree .ck-gh-row').click();

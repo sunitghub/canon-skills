@@ -1016,6 +1016,22 @@ _si_section() {   # _si_section <file> <heading>: the lines under "## <heading>"
 # acceptance.md's one-line section prompts, as `sprint start` writes them (tools/sprint cmd_start); everything else stays.
 _si_drop_prompts() { grep -vxE 'The checklist of behavior that must be true before the sprint can close\.|The commands or checks that prove the criteria work\.|Edge cases and sign-off\.' | awk 'NF { s = 1 } s' || true; }
 _si_or_none() { if [[ -n "$1" ]]; then printf '%s\n' "$1"; else printf '(none yet)\n'; fi; }
+# _has_criteria <acceptance.md>: 0 when ## Criteria holds at least one item, a "- " bullet or a "1." numbered line, with text
+# after any checkbox. Captured, not piped into `grep -q`: under pipefail an early exit reads as "none" (t-bcb8).
+_has_criteria() {
+  local items
+  items="$(_si_section "$1" Criteria | _si_drop_prompts | sed -nE 's/^[[:space:]]*(-|[0-9]+[.)])[[:space:]]+(\[[ xX]\])?[[:space:]]*//p')"
+  [[ -n "${items//[[:space:]]/}" ]]
+}
+# _si_description <ticket.md>: the ticket body without "## " sections that hold only HTML comments (the empty template).
+# No fence tracking: a fence's own ``` lines are content, so a section holding a fenced block is always kept whole.
+_si_description() {
+  ticket_body "$1" | awk '
+    /^## / { flush(); head = $0; body = ""; keep = 0; next }
+    { if (head == "") { pre = pre $0 "\n"; next } body = body $0 "\n"; if ($0 !~ /^[[:space:]]*$/ && $0 !~ /^[[:space:]]*<!--.*-->[[:space:]]*$/) keep = 1 }
+    function flush() { if (keep) out = out head "\n" body; head = "" }
+    END { flush(); printf "%s%s", pre, out }' | awk 'NF { s = 1 } s'
+}
 
 _gh_origin_repo() {   # _gh_origin_repo <root> <label>: prints origin's GitHub owner/repo, or explains why not (exit 1)
   local url
@@ -1100,7 +1116,8 @@ cmd_send_issue() {
   }
   local asecs psecs rbody
   asecs="$(_si_all "$acc" prompts)"; psecs="$(_si_all "$plan")"
-  _si_section "$acc" Criteria | _si_drop_prompts | grep -q '^[[:space:]]*- ' || echo "send-issue: warning: $id has no acceptance criteria; the agent will write its own" >&2
+  _has_criteria "$acc" || echo "send-issue: warning: $id has no acceptance criteria: the session will draft them and wait for your approval" >&2
+  [[ -n "$(_si_section "$plan" Approach)" ]] || echo "send-issue: warning: $id has no plan (plan.md ## Approach is empty): the session will draft it and wait for your approval" >&2
   rbody=""; [[ -f "$res" ]] && rbody="$(awk 'NR == 1 && /^# / { next } { print }' "$res" | awk 'NF { s = 1 } s')"
 
   local body; body="$(mktemp "${TMPDIR:-/tmp}/tkt-issue.XXXXXX")"
@@ -1109,7 +1126,7 @@ cmd_send_issue() {
   # The same tree as the ticket on the board, every section with the board's heading (t-554c reads it back by these headings).
   {
     printf '**%s** · %s · P%s · %s\n\n' "$id" "$(get_field "$file" type)" "$(get_field "$file" priority)" "$title"
-    printf '# Description\n'; _si_or_none "$(ticket_body "$file" | awk 'NF { s = 1 } s')"
+    printf '# Description\n'; _si_or_none "$(_si_description "$file")"
     printf '\n# Acceptance\n'; _si_or_none "$asecs"
     printf '\n# Plan\n'; _si_or_none "$psecs"
     printf '\n# Research\n'; _si_or_none "$rbody"
@@ -1118,12 +1135,14 @@ cmd_send_issue() {
     printf '1. Run `sprint import-issue <this issue number>` first: it rebuilds .tickets/%s/ from the sections above and starts the\n' "$id"
     printf '   sprint. Edit no file before it has run. If gh cannot read this issue, save its text to a file and add `--body-file <file>`.\n'
     printf '2. Plan with canon'"'"'s own approval, not plan mode: plan mode has been observed to reach the close gates and stop them.\n'
-    printf '   Write the plan into .tickets/%s/plan.md, then stop and wait for the user'"'"'s approval before editing any file but the\n' "$id"
-    printf '   ticket'"'"'s docs. If Acceptance or Plan above read "(none yet)", stop and tell the user; do not draft them yourself.\n'
+    printf '   If Acceptance or Plan above read "(none yet)", draft them the way `sprint start` does (.tickets/%s/acceptance.md and\n' "$id"
+    printf '   plan.md). Then stop and wait for the user'"'"'s approval of the plan before editing anything else.\n'
     printf '3. Work on a new branch, never main: push that branch and open a PR with `Fixes #<this issue number>`. Do not push to main or force-push anything.\n'
     printf '4. Build it and run the tests; tick each acceptance item only when it is true.\n'
     printf '5. Run `sprint complete`: a fresh reviewer and a fresh evaluator are dispatched, and neither is skipped or written by hand.\n'
     printf '6. Run `tkt export %s` and push nothing else for it: export prints where the ticket went.\n' "$id"
+    printf '7. Then stop. Do not merge the PR, watch it, or act on CI results or review comments: the merge happens on the user'"'"'s machine\n'
+    printf '   (`tkt import-results`, then `tkt merge-pr`). Reply with the PR number and the import command, and say you are done.\n'
     printf '\nIf a step cannot be done, say so in the PR description; do not skip it silently.\n'
     printf '\n<!-- canon:ticket %s -->\n' "$id"
   } > "$body"
@@ -1155,8 +1174,7 @@ cmd_send_issue() {
   # t-718b: github: is only the link (sync and import write it too); runs: github says a cloud session has the work.
   set_or_add_field "$file" runs github
   printf 'Sent %s as %s\nIn a Claude cloud session on %s, type:\n' "$id" "$url" "$repo"
-  printf 'Work on Issue#%s. Run canon'"'"'s sprint workflow from `sprint import-issue %s` through the gates to `sprint complete` and `tkt export`. ' "$n" "$n"
-  printf 'Don'"'"'t use plan mode. Work on a new branch, never main: push that branch and open a PR. Do not push to main or force-push anything.\n'
+  printf 'Work on Issue#%s for ticket %s. Read its section "Working on this" thoroughly before starting and follow it step by step. Work on a new branch, never main.\n' "$n" "$id"
 }
 
 # cmd_import_issue <N> [--body-file F] [--force] — t-554c: rebuilds .tickets/<id>/ from a `tkt send-issue` body (the
@@ -1592,7 +1610,7 @@ cmd_export() {
   root="$(git -C "$tdir" rev-parse --show-toplevel)" || exit 1
   rel=".tickets/$id"
   # t-1cf4: warn, never refuse: a cloud close legitimately exports an unclosed ticket, but a blank one must not go unnoticed.
-  if ! _si_section "$tdir/acceptance.md" Criteria | _si_drop_prompts | sed -nE 's/^[[:space:]]*- (\[[ xX]\])?[[:space:]]*//p' | grep -q .; then
+  if ! _has_criteria "$tdir/acceptance.md"; then
     echo "export: WARNING: $id has no acceptance criteria in acceptance.md; there is nothing to grade." >&2
   fi
   grep -qiE '^[[:space:]]*- \[x\] Plan approved' "$tdir/plan.md" 2>/dev/null \

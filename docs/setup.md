@@ -137,13 +137,16 @@ Claude subscription, with no API key. The ticket goes to your repo as a GitHub i
 2. `tkt send-issue <id>` creates it (needs `gh auth login`), adds the `canon` label, records `github: owner/repo#N`
    in `ticket.md`, and prints the line to start with. A public repo is refused unless you add `--public`: anyone
    could read the ticket's notes.
-3. Start a new session on the `canon` environment and your repo and paste the prompt `send-issue` printed, which reads:
-   "Work on Issue#N. Run canon's sprint workflow from `sprint import-issue N` through the gates to `sprint complete`
-   and `tkt export`. Don't use plan mode. Work on a new branch, never main: push that branch and open a PR. Do not
-   push to main or force-push anything." The branch rule is in the prompt and the issue because a private repo on a
-   free GitHub plan cannot enforce it with a branch rule, so the text is the only guard (t-1cf4). The issue lists the
-   steps in order; `sprint import-issue N` rebuilds the ticket (an approved plan stays approved) and starts the
-   sprint; you approve and confirm in that session as you would locally, and the close happens there. Approve the plan in `plan.md`, not through Claude Code's plan mode: a session that planned
+3. Start a new session on the `canon` environment and your repo and paste the prompt `send-issue` printed (the board's
+   Send panel shows the same line with a Copy prompt button), which reads: "Work on Issue#N for ticket <id>. Read its
+   section "Working on this" thoroughly before starting and follow it step by step. Work on a new branch, never main."
+   The branch rule is in the prompt and the issue because a private repo on a free GitHub plan cannot enforce it with a
+   branch rule, so the text is the only guard (t-1cf4). The issue's "Working on this" lists the steps in order;
+   `sprint import-issue N` rebuilds the ticket (an approved plan stays approved) and starts the sprint; you approve and
+   confirm in that session as you would locally, and the close happens there. A ticket sent without acceptance criteria
+   or a plan is not a dead end: `send-issue` warns, and the session drafts both the way `sprint start` does, then waits
+   for your approval (t-093a). After `tkt export` the session stops and replies with the PR number and the import
+   command; it does not watch the PR or act on CI or review comments, since the merge happens on your machine. Approve the plan in `plan.md`, not through Claude Code's plan mode: a session that planned
    in plan mode has been observed to pass it to its reviewer and evaluator, which then cannot run. Archive an older
    session on the same issue first, so two sessions never push for one ticket.
 4. At the close the session runs `tkt export <id>`. If your project commits `.tickets/`, the ticket goes back inside

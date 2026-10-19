@@ -31,7 +31,10 @@ writes() { grep -cE '^(issue create|label create)' "$STUB_LOG" || true; }
 
 git remote add origin https://github.com/acme/app.git
 id="$("$TKT" create "Board burns a CPU core" -t task -p 1 -d "## Problem
-The board uses a core while idle.")"
+The board uses a core while idle.
+
+## Outcome
+<!-- What is true when this is done? -->")"
 d=".tickets/$id"
 printf '# Acceptance\n\n## Criteria\nThe checklist of behavior that must be true before the sprint can close.\n<!-- Add items -->\n\n- [ ] Idle CPU under 5%%\n  over 60 s\n\n## Test Plan\n- [ ] Measure before and after\n\n## QA\nEdge cases and sign-off.\n- [ ] Tested locally\n\n## Wrapup Gates\n| Gate | Status | Reason |\n|------|--------|--------|\n| eval | ran | pass |\n\n## Results\nAll criteria met on the first run.\n' > "$d/acceptance.md"
 printf '# Plan\n\n## Sign-off\n- [x] Plan approved\n\n## Approach\n1. Profile the idle board.\n2. Fix the hot loop.\n```\n<!-- kept: inside a fence -->\n## Files\n```\n<!-- dropped: outside a fence -->\n3. Measure again.\n\n## Files\n`server.py`\n\n## Decisions\n- none\n' > "$d/plan.md"
@@ -40,8 +43,9 @@ sig() { cksum < "$d/ticket.md"; }
 
 # --dry-run: repo, visibility, title and body; no writing call.
 : > "$STUB_LOG"
-dry="$("$TKT" send-issue "$id" --dry-run)"
+dry="$("$TKT" send-issue "$id" --dry-run 2>"$stub/dry.err")"
 assert_contains "$dry" "repo: acme/app (PRIVATE)"
+[[ ! -s "$stub/dry.err" ]] || fail "a ticket with criteria and an approach warned: $(cat "$stub/dry.err")"
 assert_contains "$dry" "title: $id: Board burns a CPU core"
 assert_contains "$dry" "dry run: nothing was created"
 [[ "$(writes)" == 0 ]] || fail "--dry-run made a writing gh call: $(cat "$STUB_LOG")"
@@ -50,9 +54,10 @@ assert_contains "$dry" "dry run: nothing was created"
 : > "$STUB_LOG"
 out="$("$TKT" send-issue "$id")"
 assert_contains "$out" "Sent $id as https://github.com/acme/app/issues/57"
-# t-67c5: the printed start line is the whole standing prompt, on its own line, ready to paste.
-printed="Work on Issue#57. Run canon's sprint workflow from \`sprint import-issue 57\` through the gates to \`sprint complete\` and \`tkt export\`. Don't use plan mode. Work on a new branch, never main: push that branch and open a PR. Do not push to main or force-push anything."
-printf '%s\n' "$out" | grep -xF "$printed" >/dev/null || fail "send-issue did not print the full standing prompt: $out"
+# t-093a: the printed start line names the issue and the ticket, points at "Working on this" and keeps the branch rule; the
+# board copies this line, so it is the prompt's one owner.
+printed="Work on Issue#57 for ticket $id. Read its section \"Working on this\" thoroughly before starting and follow it step by step. Work on a new branch, never main."
+printf '%s\n' "$out" | grep -xF "$printed" >/dev/null || fail "send-issue did not print the start line: $out"
 grep -qx "label create canon --repo acme/app --color 6C5CF7 --description A canon ticket --force" "$STUB_LOG" || fail "label not created: $(cat "$STUB_LOG")"
 grep -qx "issue create --repo acme/app --title $id: Board burns a CPU core --label canon --body-file .*" "$STUB_LOG" || fail "wrong issue create call: $(cat "$STUB_LOG")"
 assert_grep "^github: acme/app#57$" "$d/ticket.md"
@@ -79,10 +84,11 @@ grep -qxF "   sprint. Edit no file before it has run. If gh cannot read this iss
   || fail "the issue lacks the import: edit nothing before it line (t-67c5)"
 grep -qxF "2. Plan with canon's own approval, not plan mode: plan mode has been observed to reach the close gates and stop them." "$STUB_BODY" \
   || fail "the issue lacks the plan mode warning line (t-67c5)"
-grep -qxF "   Write the plan into .tickets/$id/plan.md, then stop and wait for the user's approval before editing any file but the" "$STUB_BODY" \
-  || fail "the issue lacks the wait for approval line (t-67c5)"
-grep -qxF "   ticket's docs. If Acceptance or Plan above read \"(none yet)\", stop and tell the user; do not draft them yourself." "$STUB_BODY" \
-  || fail "the issue lacks the stop on (none yet) line (t-67c5)"
+# t-093a: a blank Acceptance or Plan is drafted the way sprint start does, then the session waits for approval.
+grep -qxF "   If Acceptance or Plan above read \"(none yet)\", draft them the way \`sprint start\` does (.tickets/$id/acceptance.md and" "$STUB_BODY" \
+  || fail "the issue lacks the draft on (none yet) line (t-093a)"
+grep -qxF "   plan.md). Then stop and wait for the user's approval of the plan before editing anything else." "$STUB_BODY" \
+  || fail "the issue lacks the wait for approval line (t-093a)"
 grep -qxF "3. Work on a new branch, never main: push that branch and open a PR with \`Fixes #<this issue number>\`. Do not push to main or force-push anything." "$STUB_BODY" \
   || fail "the issue lacks the branch, never main line (t-67c5)"
 grep -qxF "4. Build it and run the tests; tick each acceptance item only when it is true." "$STUB_BODY" \
@@ -91,6 +97,11 @@ grep -qxF "5. Run \`sprint complete\`: a fresh reviewer and a fresh evaluator ar
   || fail "the issue lacks the gates line (t-67c5)"
 grep -qxF "6. Run \`tkt export $id\` and push nothing else for it: export prints where the ticket went." "$STUB_BODY" \
   || fail "the issue lacks the export line (t-67c5)"
+# t-093a: the list ends by telling the session to stop, so it does not offer to watch the PR.
+grep -qxF "7. Then stop. Do not merge the PR, watch it, or act on CI results or review comments: the merge happens on the user's machine" "$STUB_BODY" \
+  || fail "the issue lacks the stop step (t-093a)"
+grep -qxF "   (\`tkt import-results\`, then \`tkt merge-pr\`). Reply with the PR number and the import command, and say you are done." "$STUB_BODY" \
+  || fail "the issue lacks the stop step's second line (t-093a)"
 grep -qxF "If a step cannot be done, say so in the PR description; do not skip it silently." "$STUB_BODY" \
   || fail "the issue lacks the closing line line (t-67c5)"
 # t-1465: GitHub hides a bare <placeholder> as an HTML tag, so in "Working on this" each sits inside a code span.
@@ -100,6 +111,7 @@ bare="$(printf '%s\n' "$work" | sed 's/`[^`]*`//g' | grep -o '<[a-z][^>]*>' || t
 [[ -z "$bare" ]] || fail "placeholders outside a code span in Working on this: $bare"
 grep -q 'The checklist of behavior\|Edge cases and sign-off\|Add items' "$STUB_BODY" && fail "template prompts or comments leaked into the issue"
 [[ "$(grep -c '^## Problem$' "$STUB_BODY")" == 1 ]] || fail "the ticket's own Problem heading was doubled"
+grep -q '^## Outcome$' "$STUB_BODY" && fail "a Description section holding only a comment reached the issue (t-093a)"
 
 # Already sent: refused, ticket unchanged, no gh call.
 : > "$STUB_LOG"; before="$(sig)"
@@ -136,6 +148,25 @@ assert_grep '^- \[ \] Works on Windows$' "$STUB_BODY"
 assert_grep '^1. Handle CRLF.$' "$STUB_BODY"
 [[ "$(grep -c $'\r' "$STUB_BODY" || true)" == 0 ]] || fail "a CR reached the issue body"
 
+# t-093a: the Description keeps text before the first heading, a filled section's lines in order, and a section whose
+# only text is a fenced block (a "## " line and a comment inside a fence are content); a comment-only section goes.
+id6="$("$TKT" create "Fenced description" -t task -p 3 -d "Seen on the Mac.
+
+## Problem
+Line one.
+Line two.
+
+## Repro
+\`\`\`
+## not a heading
+<!-- a comment in the log -->
+\`\`\`
+
+## Constraints
+<!-- Limits the solution must respect. -->")"
+desc="$("$TKT" send-issue "$id6" --dry-run 2>/dev/null | awk '/^# Description$/ { f = 1; next } /^# Acceptance$/ { f = 0 } f')"
+assert_eq $'Seen on the Mac.\n\n## Problem\nLine one.\nLine two.\n\n## Repro\n```\n## not a heading\n<!-- a comment in the log -->\n```' "$(printf '%s' "$desc" | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}')"
+
 # Public repo: refused without --public (ticket unchanged), sent with it.
 id2="$("$TKT" create "Public one" -t bug -p 2)"
 export STUB_VIS=PUBLIC; : > "$STUB_LOG"; before="$(cksum < ".tickets/$id2/ticket.md")"
@@ -153,8 +184,17 @@ unset STUB_VIS
 # Missing acceptance, plan and research: "(none yet)", and a warning.
 id3="$("$TKT" create "Bare" -t task -p 3)"
 "$TKT" send-issue "$id3" --dry-run > "$stub/bare" 2> "$stub/bare.err"
-[[ "$(grep -c '^(none yet)$' "$stub/bare")" == 3 ]] || fail "expected Acceptance, Plan and Research to read (none yet): $(cat "$stub/bare")"
-assert_grep "no acceptance criteria" "$stub/bare.err"
+# t-093a: the template body is all comment-only sections, so the Description reads (none yet) too; both warnings say the
+# session drafts and waits (the issue's step 2).
+[[ "$(grep -c '^(none yet)$' "$stub/bare")" == 4 ]] || fail "expected Description, Acceptance, Plan and Research to read (none yet): $(cat "$stub/bare")"
+assert_grep "has no acceptance criteria: the session will draft them and wait for your approval" "$stub/bare.err"
+assert_grep "has no plan .plan.md ## Approach is empty.: the session will draft it and wait for your approval" "$stub/bare.err"
+# Numbered criteria count; an Approach with text silences the plan warning.
+printf '# Acceptance\n\n## Criteria\n1. The board idles under 5%%\n' > ".tickets/$id3/acceptance.md"
+printf '# Plan\n\n## Approach\nProfile, then fix.\n' > ".tickets/$id3/plan.md"
+"$TKT" send-issue "$id3" --dry-run >/dev/null 2> "$stub/num.err"
+[[ ! -s "$stub/num.err" ]] || fail "numbered criteria or a written approach still warned: $(cat "$stub/num.err")"
+rm ".tickets/$id3/acceptance.md" ".tickets/$id3/plan.md"
 
 # gh fails on create, or is signed out: exit 1, the error shown, ticket byte-identical.
 for mode in create view; do

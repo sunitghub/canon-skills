@@ -27,6 +27,12 @@
   background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; color: var(--text);
 }
 .gh-dialog-pre { max-height: 40vh; margin-top: 10px; }
+.ck-gh-prompt { max-height: none; font-size: 12.5px; }
+/* t-093a: send-issue's warnings, shown as a note (the send is not blocked); the same warn tokens as the board's toasts. */
+.ck-gh-note { border: 1px solid var(--th-warn-line, rgba(251,191,36,.35)); background: var(--th-warn-soft, rgba(251,191,36,.07)); border-radius: 8px; padding: 8px 12px; }
+.ck-gh-box .ck-gh-note p { color: var(--th-warn-ink, #fbbf24); font-size: 12.5px; }
+html[data-theme="light"] .ck-gh-note { border-color: var(--th-warn-line, #d97706); background: var(--th-warn-soft, #fef3c7); }
+html[data-theme="light"] .ck-gh-box .ck-gh-note p { color: var(--th-warn-ink, #92400e); }
 .ck-gh-public, .gh-dialog-check { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; color: var(--text); }
 .gh-dialog-check { margin-top: 10px; }
 .gh-dialog-check[hidden], .gh-dialog-pre[hidden] { display: none; }
