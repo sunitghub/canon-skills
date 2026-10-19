@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-19-2026 11:40
+learnings-sweep last run: 10-19-2026 17:24
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-19 | [t-3a14](.tickets/t-3a14/learnings.md) | A recipe line is not enough to change an orchestrator's habit: t-3a14 logged the reviewer's gate run on its report, before the `<usage>` notice, exactly as t-5ef3 had, though complete.md step 5 now says to wait; an unpromoted lesson repeats. Also cosmetic: gate-cost's fixed 18-char model column misaligns ids up to the 80 the validator allows. | UNPROMOTED |
 | 2026-10-19 | [t-f151](.tickets/t-f151/learnings.md) | A pipefail `grep -q` race only shows when the writer is still writing as grep exits: on the Mac's small environment the old `_ours` missed 0/1000, with a 128 KB environment (a busy container's) 1000/1000. A loop that cannot fail on the old code proves nothing about the fix: size the input until the old code fails, then show the new one does not. | UNPROMOTED |
 | 2026-10-19 | [t-24b1](.tickets/t-24b1/learnings.md) | A test can encode the bug it should catch: push-main's first test had local main ahead of origin and asserted the mirror received it, so pushing unmerged commits to the install target passed; the reviewer's repro flipped it. When a command publishes, assert that what it sends equals the source of truth (origin's merged head), never the local copy. | UNPROMOTED |
 | 2026-10-19 | [t-90a3](.tickets/t-90a3/learnings.md) | A test that builds a PATH dir of symlinks to real tools and then `cp`s a stub onto one of those names writes through the link into the real binary (the doctor test's first draft aimed at /usr/bin/curl; only SIP stopped it): place stubs before linking, and skip their names when linking. | UNPROMOTED |

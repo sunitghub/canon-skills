@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# t-5ef3: `sprint gate-cost` groups the last N measured gate runs by gate type × tier.
+# t-5ef3: `sprint gate-cost` groups the last N measured gate runs by gate type × tier (× model, t-3a14).
 set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
@@ -26,23 +26,35 @@ assert_contains "$out" "No measured gate runs yet"
 
 out="$("$SPRINT" gate-cost)"
 assert_contains "$out" "last 5 measured run(s)"
-row() { printf '%s\n' "$out" | awk -v g="$1" -v t="$2" '$1 == g && $2 == t'; }
-# gate tier runs tok-med tok-worst min-med min-worst fail/budget
-assert_eq "reviewer normal 3 50000 60000 5.0 9.0 33%" "$(row reviewer normal | tr -s ' ')"
-assert_eq "evaluator normal 1 99000 99000 26.0 26.0 100%" "$(row evaluator normal | tr -s ' ')"
-assert_eq "evaluator bugfix 1 45000 45000 - - 0%" "$(row evaluator bugfix | tr -s ' ')"
+row() { printf '%s\n' "$out" | awk -v g="$1" -v t="$2" -v m="${3:--}" '$1 == g && $2 == t && $3 == m'; }
+# gate tier model runs tok-med tok-worst min-med min-worst fail/budget
+assert_eq "reviewer normal - 3 50000 60000 5.0 9.0 33%" "$(row reviewer normal | tr -s ' ')"
+assert_eq "evaluator normal - 1 99000 99000 26.0 26.0 100%" "$(row evaluator normal | tr -s ' ')"
+assert_eq "evaluator bugfix - 1 45000 45000 - - 0%" "$(row evaluator bugfix | tr -s ' ')"
 
 # --last keeps only the newest N measured runs; an even count takes the mean of the middle two.
 out="$("$SPRINT" gate-cost --last 4)"
 assert_contains "$out" "last 4 measured run(s)"
-assert_eq "reviewer normal 2 55000 60000 7.0 9.0 50%" "$(row reviewer normal | tr -s ' ')"
+assert_eq "reviewer normal - 2 55000 60000 7.0 9.0 50%" "$(row reviewer normal | tr -s ' ')"
 
-assert_contains "$out" "gate       tier     runs    tok-med  tok-worst  min-med min-worst fail/budget"
+assert_contains "$out" "gate       tier     model              runs    tok-med  tok-worst  min-med min-worst fail/budget"
 
 # A row without a type or tier groups under "-".
 "$SUBAGENT_LOG" --agent-id x1 --tokens 1000
 out="$("$SPRINT" gate-cost --last 1)"
-assert_eq "- - 1 1000 1000 - - 0%" "$(row - - | tr -s ' ')"
+assert_eq "- - - 1 1000 1000 - - 0%" "$(row - - | tr -s ' ')"
+
+# t-3a14: the model splits a gate x tier group; a row without one shows "-", never a guess; token-less rows still skip.
+"$SUBAGENT_LOG" --agent-id m1 --agent-type evaluator --tokens 30000 --tier normal --model claude-sonnet-5
+"$SUBAGENT_LOG" --agent-id m2 --agent-type evaluator --tokens 50000 --tier normal --model claude-sonnet-5 --outcome fail
+"$SUBAGENT_LOG" --agent-id m3 --agent-type evaluator --tokens 70000 --tier normal --model claude-opus-5
+"$SUBAGENT_LOG" --agent-id m4 --agent-type evaluator --tokens 20000 --tier normal
+"$SUBAGENT_LOG" --agent-id m5 --agent-type evaluator --tier normal --model claude-sonnet-5
+out="$("$SPRINT" gate-cost --last 4)"
+assert_contains "$out" "last 4 measured run(s)"
+assert_eq "evaluator normal claude-sonnet-5 2 40000 50000 - - 50%" "$(row evaluator normal claude-sonnet-5 | tr -s ' ')"
+assert_eq "evaluator normal claude-opus-5 1 70000 70000 - - 0%" "$(row evaluator normal claude-opus-5 | tr -s ' ')"
+assert_eq "evaluator normal - 1 20000 20000 - - 0%" "$(row evaluator normal | tr -s ' ')"
 
 for bad in "--last 0" "--last x" "--last" "--bogus"; do
   set +e

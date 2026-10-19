@@ -1064,7 +1064,7 @@ cmd_suggest_tier() {
 
 # cmd_gate_cost [--last N] — t-5ef3: one screen of close-gate cost from .claude/subagent-runs.jsonl. Only rows that
 # carry `tokens` (subagent-log.sh --tokens …) count; older rows have no numbers and are skipped, not read as zero.
-# Groups the last N measured runs by gate type × tier. Read-only; plain awk (no python, for Git Bash).
+# Groups the last N measured runs by gate type × tier × model (t-3a14; `-` when the row has none). Read-only; plain awk (no python, for Git Bash).
 cmd_gate_cost() {
   local last=30
   while [[ $# -gt 0 ]]; do
@@ -1091,7 +1091,8 @@ cmd_gate_cost() {
     }
     { tok = field("tokens"); if (tok == "") next
       n++; T[n] = tok; M[n] = field("minutes"); O[n] = field("outcome")
-      ty = field("agent_type"); ti = field("tier"); G[n] = (ty == "" ? "-" : ty) "\t" (ti == "" ? "-" : ti) }
+      ty = field("agent_type"); ti = field("tier"); mo = field("model")
+      G[n] = (ty == "" ? "-" : ty) "\t" (ti == "" ? "-" : ti) "\t" (mo == "" ? "-" : mo) }
     END {
       if (n == 0) { print "No measured gate runs yet: log them with subagent-log.sh --tokens N --minutes M --tool-uses K."; exit }
       start = (n > last) ? n - last + 1 : 1
@@ -1102,11 +1103,11 @@ cmd_gate_cost() {
         if (O[i] == "fail" || O[i] == "budget") F[g]++
       }
       printf "Close-gate cost, last %d measured run(s):\n", n - start + 1
-      printf "%-10s %-8s %4s %10s %10s %8s %9s %11s\n", "gate", "tier", "runs", "tok-med", "tok-worst", "min-med", "min-worst", "fail/budget"
+      printf "%-10s %-8s %-18s %4s %10s %10s %8s %9s %11s\n", "gate", "tier", "model", "runs", "tok-med", "tok-worst", "min-med", "min-worst", "fail/budget"
       for (k = 1; k <= ng; k++) {
         g = order[k]; split(g, p, "\t")
         mm = MC[g] ? sprintf("%.1f", median(ML[g])) : "-"; mw = MC[g] ? sprintf("%.1f", MW[g]) : "-"
-        printf "%-10s %-8s %4d %10d %10d %8s %9s %10d%%\n", p[1], p[2], C[g], median(TL[g]), TW[g], mm, mw, int(100 * F[g] / C[g] + 0.5)
+        printf "%-10s %-8s %-18s %4d %10d %10d %8s %9s %10d%%\n", p[1], p[2], p[3], C[g], median(TL[g]), TW[g], mm, mw, int(100 * F[g] / C[g] + 0.5)
       }
     }' "$jsonl"
 }
