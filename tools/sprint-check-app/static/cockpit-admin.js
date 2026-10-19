@@ -133,6 +133,7 @@ async function ghLoad(force){
   catch(e){ res={ok:false,output:String(e.message||e)}; }
   if(gen!==ghGen) return;
   ghDoctor=res.ok&&res.doctor?res.doctor:null;
+  if(!ghDoctor) ghPid=null;   // a failed read is tried again the next time Admin opens
   ghRender(res);
 }
 function ghRender(res){

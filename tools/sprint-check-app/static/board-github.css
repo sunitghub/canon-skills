@@ -45,3 +45,5 @@ html[data-theme="light"] .ck-gh-box .ck-gh-note p { color: var(--th-warn-ink, #9
 .ck-gh-actions button:disabled { opacity: .5; cursor: default; }
 .ck-gh-status { font-size: 12px; color: var(--text-muted); }
 .gh-dialog-box { max-width: min(760px, 92vw); }
+    /* t-90a3: a narrow board (a split pane) shows only the icon, so the header's last buttons stay inside it */
+    @media (max-width: 760px) { .gh-sync-lbl { display: none; } }

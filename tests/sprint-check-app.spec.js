@@ -15056,6 +15056,11 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(ok).toBeDisabled();
     await page.locator('#gh-dialog-cancel').click();
     expect(posts).toEqual(['POST']);
+
+    // A split-pane-wide board: the button drops its label, so it adds only an icon to the header.
+    await page.setViewportSize({ width: 640, height: 600 });
+    await expect(page.locator('#btn-gh-sync .gh-sync-lbl')).toBeHidden();
+    expect((await page.locator('#btn-gh-sync').boundingBox()).width).toBeLessThan(50);
   });
 
   // Prod path: Admin › GitHub, rendering GET /api/github/doctor (tkt github-doctor) for the chosen project.
