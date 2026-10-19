@@ -28,13 +28,15 @@ names for a case that applies.
    - `## Criteria`: binary conditions naming the exact field, value or output. Never cite `summary.md` or
      `eval-report.md`, which do not exist when the evaluator grades. A gitignored file
      (`DECISIONS.md`) is named as such, with "read it directly".
-   - `## Test Plan`: a command or check per criterion. Each path, variant or theme a line names is graded on
-     its own. Evidence lives in `.tickets/<id>/evidence/`, written with
+   - `## Test Plan`: a command or check per criterion. Each line names the prod path it protects (a shipped
+     command, a board or daemon route a user hits, the release, or a close gate); a test with no prod path, or
+     one that repeats another, is not added. Each path, variant or theme a line names is graded on its own.
+     Evidence lives in `.tickets/<id>/evidence/`, written with
      `evidence.sh stamp <id> <name> -- <command>` on a clean tracked tree.
 7. **plan.md:** `## Approach` (lean, re-read after every compaction), `## Files`, `## Decisions` (answer
    each ticket open question or write `carried forward: <question>`), and the tier with a one-line reason.
-   Name the `standards/efficiency-notes.md` sections this ticket touches and read only those; name the number
-   it moves and its target, or say why there is none.
+   If the project registered efficiency, name the `standards/efficiency-notes.md` sections this ticket
+   touches and read only those. Name the number it moves and its target, or say why there is none.
 8. **Perspective check:** one question each as user, security and architect; put any concern in the brief.
 9. **Brief:** one-sentence goal; tier and reason; every applicable DECISIONS entry, conflicts called out;
    files; impact or "normal tier — no high-risk triggers found"; human checkpoint; criteria and Test Plan

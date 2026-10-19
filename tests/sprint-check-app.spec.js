@@ -11856,7 +11856,7 @@ test.describe('Canon Cockpit Upkeep (t-7ae6)', () => {
     await expect(page.locator('#toast')).toContainText('Registered sprint in proj-a');
     await expect(sprint).toBeHidden();      // reloaded: sprint is now registered
     await expect(eff).toBeEnabled();
-    await expect(eff).toHaveText('+ efficiency');
+    await expect(eff).toHaveText('+ efficiency (optional)');
   });
 
   test('after an error, a failed request, or unsupported, the register buttons come back (t-7d8d)', async ({ page }) => {
@@ -11872,7 +11872,7 @@ test.describe('Canon Cockpit Upkeep (t-7ae6)', () => {
         await expect(sprint).toBeEnabled();  // restored before the manual-command dialog, not behind it
         await page.locator('#cc-ok').click();
       }
-      for (const [b, label] of [[sprint, '+ sprint'], [eff, '+ efficiency']]) {
+      for (const [b, label] of [[sprint, '+ sprint'], [eff, '+ efficiency (optional)']]) {
         await expect(b).toBeEnabled();
         await expect(b).toHaveText(label);
         expect(await b.getAttribute('aria-busy')).toBeNull();

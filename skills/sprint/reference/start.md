@@ -150,7 +150,7 @@ Start checklist — rules that need no reference read (each owned by the step na
      `python dsl_runner.py …`) and in `eval.md`/`complete.md` (shown as `node dsl_runner.js …`)
      are language-agnostic illustrations of *a runner command*, not a language
      mandate; use Python (`discount.py` + `python dsl_runner.py`) only when the user asks for it.
-   - `plan.md` — files to inspect, files to create/modify, step-by-step build plan under `## Approach`. For `type: bug` tickets, structure the plan around the five incident stages (Surface/Trace/Isolate/Resolve/Harden). Write `## Approach` per `standards/efficiency.md`'s Token Efficiency section from this first draft, not just when trimming the whole doc for its ~500-word budget at close — it's re-read on every compaction/context reset, so lean prose pays off for the rest of the ticket's lifetime.
+   - `plan.md` — files to inspect, files to create/modify, step-by-step build plan under `## Approach`. For `type: bug` tickets, structure the plan around the five incident stages (Surface/Trace/Isolate/Resolve/Harden). Write `## Approach` lean (short bullets, `file:line` references, nothing restated from the ticket; plus `standards/efficiency.md`'s Token Efficiency section if the project registered efficiency) from this first draft, not just when trimming the whole doc for its ~500-word budget at close — it's re-read on every compaction/context reset, so lean prose pays off for the rest of the ticket's lifetime.
    - **Visual reference artifacts.** Visual reference (pasted image, or a file path
      from the user — including an absolute host path like `C:\...\Mockup-1.jpg`) as
      sprint direction:

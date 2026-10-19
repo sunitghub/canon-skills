@@ -726,10 +726,11 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
     wrapup's own refresh-docs step, so it is already current by the time this step commits.)
     - List all modified and untracked files (`git status`). Stage only the files relevant to
       this session's work — never `git add -A`.
-    - Draft a commit message per `standards/efficiency.md`'s Git conventions: imperative mood,
-      type prefix, 50-char target / 72-char hard limit, no trailing period. Every sprint-backed
-      commit includes `Closes: t-xxxx` in the body — this step always has the ticket ID in
-      hand. Add more body for breaking changes or non-obvious reasoning.
+    - Draft a commit message: imperative mood, type prefix, 50-char target / 72-char hard
+      limit, no trailing period (plus `standards/efficiency.md`'s Git conventions if the
+      project registered efficiency). Every sprint-backed commit includes `Closes: t-xxxx` in
+      the body — this step always has the ticket ID in hand. Add more body for breaking
+      changes or non-obvious reasoning.
     - Show the staged files and commit message. Ask: **"Commit and push? (y to proceed)"**
     - On yes: commit, then push to the current branch's remote. Report the pushed ref.
     - If criticals from the review pipeline are unresolved: warn before asking — do not block,
