@@ -20,32 +20,29 @@ no_trap_ran() { ! ls "$traps"/ran-* >/dev/null 2>&1 || fail "$1: ran $(ls "$trap
 
 proj="$tmp/proj"; mkdir -p "$proj/.claude"
 settings="$proj/.claude/settings.json"
-run() {  # <is_windows 0|1> <function> — no Python, the traps first on PATH
+run() {  # <function> — no Python, the traps first on PATH (one path on every OS since t-b62a: no Windows branch left)
   SKILLS_SH_ASSUME_YES=1 PATH="$traps:$PATH" bash -c '
     source "$1/tools/skills/project.sh"; source "$1/tools/skills/prompts.sh"
-    if [ "$2" = 1 ]; then _is_windows() { return 0; }; else _is_windows() { return 1; }; fi
-    "$3" "$4"' _ "$ROOT" "$1" "$2" "$proj"
+    "$2" "$3"' _ "$ROOT" "$1" "$proj"
 }
 
-for win in 0 1; do
-  rm -f "$settings"; printf '{"model": "opus", "permissions": {"ask": ["X"]}}' > "$settings"
-  out="$(run "$win" offer_install_deny_rules)"
-  assert_contains "$out" "added install deny rules"
-  for r in "Bash(brew install:*)" "Bash(winget install:*)"; do grep -qF "\"$r\"" "$settings" || fail "windows=$win: $r not written"; done
-  grep -q '"model": "opus"' "$settings" && grep -q '"ask"' "$settings" || fail "windows=$win: other keys lost: $(cat "$settings")"
-  out="$(run "$win" offer_subagent_log_permission)"
-  assert_contains "$out" "added Bash(subagent-log.sh:*)"
-  # Already present: silent, and the file stays byte-for-byte the same.
-  before="$(cat "$settings")"
-  assert_eq "" "$(run "$win" offer_install_deny_rules)"
-  assert_eq "" "$(run "$win" offer_subagent_log_permission)"
-  assert_eq "$before" "$(cat "$settings")"
-  no_trap_ran "windows=$win"
-done
+printf '{"model": "opus", "permissions": {"ask": ["X"]}}' > "$settings"
+out="$(run offer_install_deny_rules)"
+assert_contains "$out" "added install deny rules"
+for r in "Bash(brew install:*)" "Bash(winget install:*)"; do grep -qF "\"$r\"" "$settings" || fail "$r not written"; done
+grep -q '"model": "opus"' "$settings" && grep -q '"ask"' "$settings" || fail "other keys lost: $(cat "$settings")"
+out="$(run offer_subagent_log_permission)"
+assert_contains "$out" "added Bash(subagent-log.sh:*)"
+# Already present: silent, and the file stays byte-for-byte the same.
+before="$(cat "$settings")"
+assert_eq "" "$(run offer_install_deny_rules)"
+assert_eq "" "$(run offer_subagent_log_permission)"
+assert_eq "$before" "$(cat "$settings")"
+no_trap_ran "add"
 
 # Inside a stdin-fed loop, as skills refresh runs it: the helper must not eat the loop's input (both skills seen, nothing re-added).
 before="$(cat "$settings")"
-out="$(printf 'efficiency\nsprint\n' | { n=0; while read -r _skill; do run 0 offer_install_deny_rules; n=$((n + 1)); done; echo "loops=$n"; })"
+out="$(printf 'efficiency\nsprint\n' | { n=0; while read -r _skill; do run offer_install_deny_rules; n=$((n + 1)); done; echo "loops=$n"; })"
 assert_eq "loops=2" "$out"
 assert_eq "$before" "$(cat "$settings")"
 
@@ -62,20 +59,20 @@ grep -qF '"Bash(brew install:*)"' "$settings" || fail "remove sprint dropped the
 # An invalid file or a symlinked one: refused, nothing written.
 printf '{"permissions": ' > "$settings"
 for fn in offer_install_deny_rules offer_subagent_log_permission; do
-  out="$(run 0 "$fn")"; assert_contains "$out" "not valid JSON"
+  out="$(run "$fn")"; assert_contains "$out" "not valid JSON"
 done
 assert_eq '{"permissions": ' "$(cat "$settings")"
 printf '{"a": 1}' > "$tmp/elsewhere.json"; rm -f "$settings"; ln -s "$tmp/elsewhere.json" "$settings"
-out="$(run 0 offer_install_deny_rules)"; assert_contains "$out" "symlink"
+out="$(run offer_install_deny_rules)"; assert_contains "$out" "symlink"
 assert_eq '{"a": 1}' "$(cat "$tmp/elsewhere.json")"; [[ -L "$settings" ]] || fail "the settings symlink was replaced"
 rm -f "$settings"
 
 # No board binary yet, or an older one (it would take `settings` for a port and serve forever): a visible skip, never a hang.
-printf '#!/bin/sh\n[ "$1" = --help ] && { echo "sprint-check-win — local kanban dashboard"; exit 0; }\nsleep 600\n' > "$tmp/old-board"
+printf '#!/bin/sh\n[ "$1" = --help ] && { echo "sprint-check-win — local kanban dashboard"; exit 0; }\nsleep 20\n' > "$tmp/old-board"
 chmod +x "$tmp/old-board"
 for b in "$tmp/no-such-board" "$tmp/old-board"; do
   for fn in offer_install_deny_rules offer_subagent_log_permission; do
-    out="$(SPRINT_CHECK_BIN="$b" run 0 "$fn")"
+    out="$(SPRINT_CHECK_BIN="$b" run "$fn")"
     assert_contains "$out" "run canon update"
     [[ "$out" != *"[fail]"* && "$out" != *"[ok]"* ]] || fail "$fn with board $b went on past the skip: $out"
   done

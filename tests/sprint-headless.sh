@@ -246,7 +246,7 @@ rm -f "$SUMMARY_FILE"
 # "run canon update", and the claude stub is never called.
 STUB_CALLED_DIR="$(mktemp -d)"
 printf '#!/bin/sh\ntouch "%s/called"\nexit 0\n' "$STUB_CALLED_DIR" > "$STUB_CALLED_DIR/claude"; chmod +x "$STUB_CALLED_DIR/claude"
-printf '#!/bin/sh\n[ "$1" = --help ] && { echo "sprint-check-win — local kanban dashboard"; exit 0; }\nsleep 600\n' > "$BIN_DIR/old-board"; chmod +x "$BIN_DIR/old-board"
+printf '#!/bin/sh\n[ "$1" = --help ] && { echo "sprint-check-win — local kanban dashboard"; exit 0; }\nsleep 20\n' > "$BIN_DIR/old-board"; chmod +x "$BIN_DIR/old-board"
 for tool in "$SPRINT_HEADLESS" "$ROOT/tools/sprint-headless-eval"; do
   for board in "$BIN_DIR/no-such-board" "$BIN_DIR/old-board"; do
     set +e
