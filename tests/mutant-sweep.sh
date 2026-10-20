@@ -19,6 +19,7 @@ reap() {   # a broken tool can leave its tests running: stop exactly the pids (a
 trap 'reap; rm -rf "$WORK"' EXIT
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 XDG_CONFIG_HOME="$WORK/xdg" CANON_HOME="$WORK/canon-home"
 export TMPDIR="$WORK/tmp"; mkdir -p "$TMPDIR"     # the tool's temp root lands here, so a leak is visible
+export HOME="$WORK/real-home"; mkdir -p "$HOME/.canon"   # the "real" home the tool must leave alone (t-eb40)
 REPO="$WORK/repo"
 mkdir -p "$REPO/tests" && cd "$REPO"
 git init -q -b main . && git config user.name t && git config user.email t@t
@@ -271,6 +272,16 @@ printf '#!/bin/sh\nexit 1\n' > "$FALL/python3"; chmod +x "$FALL/python3"; ln -sf
 bounded env PATH="$FALL:$PATH" "$TOOL" --base "$BASE" --map weak.sh=true
 assert_eq 0 "$code"; assert_contains "$out" "mutant-sweep: base"
 bounded "$TOOL" --check; assert_eq 0 "$code"; assert_eq "" "$out"
+
+# --- t-eb40: HOME is pinned per mutant, and the canary names a leak into the real ~/.canon ----------------------------------------
+sweep --map strong.sh='echo x > "$HOME/leak"; bash tests/t-strong.sh'
+[[ "$code" == 0 ]] || fail "mutant-sweep: HOME sweep exited $code: $out"
+[[ ! -e "$HOME/leak" ]] || fail "mutant-sweep: a mutant wrote into the real HOME"
+assert_contains "$out" "canary: real ~/.canon untouched"
+sweep --map strong.sh="pwd >> '$HOME/.canon/events.jsonl'; bash tests/t-strong.sh" --report "$WORK/leak.md"   # bypasses HOME, as t-f182's did
+assert_eq 4 "$code"; assert_contains "$out" "mutant-sweep: LEAK $HOME/.canon/events.jsonl"
+assert_contains "$(cat "$WORK/leak.md")" "Canary: LEAK"
+rm -f "$HOME/.canon/events.jsonl"
 
 # --- the real tree is untouched --------------------------------------------------------------------------------------------------
 assert_eq "$TREE_BEFORE" "$(git status --porcelain; find . -path ./.git -prune -o -type f -print0 | sort -z | xargs -0 shasum)"

@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Fixed
+- `mutant-sweep` no longer lets a mutant write into your real home (`t-eb40`): each mutant's test now runs with `HOME` pinned inside its temp copy too, with the Go and Playwright caches passed through. After every sweep a canary scans the real `~/.canon` for the sweep's temp path; a hit prints `mutant-sweep: LEAK <file>` and exits 4. Found when a mutant wrote 11 fixture events into `~/.canon/events` (`t-f182`).
+
 ## [0.17.0] - 2026-10-20
 
 The event log now covers close gates and Cockpit sessions too: when a gate starts, how it ends, why a close was refused, and when an agent session needs you, ends or is saved (docs/plugins.md). Update with `canon update`. Both the board and the daemon changed: press **Restart Daemon** in Admin (Save & End running agent sessions first: a restart ends them), then stop the running board (Ctrl+C in the terminal running `canon`, or close its window) and run `canon` again.
