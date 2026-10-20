@@ -119,7 +119,22 @@ want="$(snap "$P" a)"
 assert_eq "$want" "$(CANON_HOME="$W/not-a-dir/home" snap "$P" b)"
 (cd "$P" && CANON_HOME="$W/not-a-dir/home" "$TKT" start "$id60" >/dev/null && CANON_HOME="$W/not-a-dir/home" "$TKT" close "$id60" --no-sprint >/dev/null) \
   || fail "tkt start/close failed with an unusable events folder"
-# Permissions too, where they apply (root ignores them): neither today's file nor a new one can be written.
+# sprint start, and the board's create and status routes, behave the same with an unusable events folder
+P4="$W/proj4"; mkproj "$P4"; P5="$W/proj5"; mkproj "$P5"
+o_ok="$(cd "$P4" && "$SPRINT" start "Observer sprint" 2>&1 | sed 's/t-[a-z0-9]\{4\}/ID/g; s#'"$P4"'#ROOT#g')"
+o_bad="$(cd "$P5" && CANON_HOME="$W/not-a-dir/home" "$SPRINT" start "Observer sprint" 2>&1 | sed 's/t-[a-z0-9]\{4\}/ID/g; s#'"$P5"'#ROOT#g')"
+assert_eq "$o_ok" "$o_bad"
+port2="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
+SPRINT_CHECK_ROOT="$P5" CANON_HOME="$W/not-a-dir/home" COCKPIT_STATE_DIR="$W/ck2" COCKPIT_DAEMON_BIN=/usr/bin/false "$SPRINT_CHECK_BIN" "$port2" >/dev/null 2>&1 &
+PIDS+=("$!")
+base2="http://127.0.0.1:$port2"
+for _ in $(seq 1 100); do curl -s -o /dev/null "$base2/api/git" && break; sleep 0.1; done
+oid="$(curl -s -X POST -H 'Content-Type: application/json' -d '{"title":"Board without events","type":"task","priority":2}' "$base2/api/tickets" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+[[ -f "$P5/.tickets/$oid/ticket.md" ]] || fail "the board did not create a ticket with an unusable events folder"
+assert_eq True "$(curl -s -X POST -H 'Content-Type: application/json' -d '{"status":"in_progress"}' "$base2/api/ticket/$oid/status" | python3 -c 'import json,sys; print(json.load(sys.stdin)["ok"])')"
+grep -q '^status: in_progress' "$P5/.tickets/$oid/ticket.md" || fail "the board's status move did not land with an unusable events folder"
+
+
 if [[ "$(id -u)" != 0 ]]; then
   chmod 400 "$EV"/*.jsonl; chmod 500 "$EV"
   assert_eq "$want" "$(snap "$P" e)"
