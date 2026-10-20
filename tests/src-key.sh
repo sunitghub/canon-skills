@@ -28,7 +28,7 @@ rc=0; out="$(key sprint-headless-json)" || rc=$?; [[ "$rc" == 1 && -z "$out" ]] 
 
 # own sources move only their own key: every path of each binary, one commit at a time
 b="$b0"; d="$d0"
-for p in internal/board internal/events cmd/sprint-check; do
+for p in internal/board cmd/sprint-check; do
   commit "$p"; nb="$(key sprint-check)"; nd="$(key cockpit-daemon)"
   [[ "$nb" != "$b" ]] || fail "a change in $p must re-key the board"; [[ "$nd" == "$d" ]] || fail "a change in $p re-keyed the daemon"; b="$nb"
 done
@@ -40,6 +40,8 @@ b2="$b"; d2="$d"
 # shared sources move both
 commit internal/common; b3="$(key sprint-check)"; d3="$(key cockpit-daemon)"
 [[ "$b3" != "$b2" && "$d3" != "$d2" ]] || fail "a change in internal/common must re-key both"
+commit internal/events; b3e="$(key sprint-check)"; d3e="$(key cockpit-daemon)"   # t-8854: the daemon emits events too
+[[ "$b3e" != "$b3" && "$d3e" != "$d3" ]] || fail "a change in internal/events must re-key both"; b3="$b3e"; d3="$d3e"
 echo "go 1.26.5" >> "$M/go.mod"; git -C "$R" "${ident[@]}" commit -qam go.mod; [[ "$(key sprint-check)" != "$b3" && "$(key cockpit-daemon)" != "$d3" ]] || fail "a go.mod change must re-key both"
 # an unrelated file moves nothing
 b4="$(key sprint-check)"; d4="$(key cockpit-daemon)"; echo x > "$R/README.md"; git -C "$R" add README.md; git -C "$R" "${ident[@]}" commit -qm readme

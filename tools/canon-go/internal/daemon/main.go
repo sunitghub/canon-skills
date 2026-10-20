@@ -22,6 +22,7 @@ package daemon
 
 import (
 	"canon/internal/common"
+	"canon/internal/events"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -2252,6 +2253,11 @@ func (se *session) readLoop() {
 	bufLen := len(se.buf)
 	se.mu.Unlock()
 	se.debugf("exit killed=%v buf_len=%d", killed, bufLen)
+	reason := "exited"
+	if killed {
+		reason = "killed"
+	}
+	se.emit("session.exited", map[string]string{"reason": reason})
 	se.markDone()
 	se.cleanup()
 	if !killed && se.onNaturalExit != nil {
@@ -2804,7 +2810,7 @@ func (s *server) saveAndEnd(se *session) {
 			}
 			if found {
 				ended("marker")
-				s.endSaved(se) // claude fast path: the clean sentinel line
+				s.endSaved(se, "marker") // claude fast path: the clean sentinel line
 				return
 			}
 			// t-2c9e: file-settle — a watched state file changed vs baseline,
@@ -2821,7 +2827,7 @@ func (s *server) saveAndEnd(se *session) {
 			}
 			if sawChange && time.Since(lastChange) >= s.cfg.saveQuiesce {
 				ended("file-settle")
-				s.endSaved(se)
+				s.endSaved(se, "file-settle")
 				return
 			}
 		}
@@ -2906,10 +2912,11 @@ func stampsEqual(a, b map[string]fileStamp) bool {
 // endSaved broadcasts a "saved" SSE frame so an attached client ends promptly,
 // then tears the session down. Best-effort: a brief pause lets the stream flush
 // the frame before killSession closes the PTY and drops subscribers.
-func (s *server) endSaved(se *session) {
+func (s *server) endSaved(se *session, by string) {
 	se.mu.Lock()
 	se.broadcastLocked(frame{event: "saved"})
 	se.mu.Unlock()
+	se.emit("session.saved", map[string]string{"by": by})
 	time.Sleep(100 * time.Millisecond)
 	s.killSession(se)
 }
@@ -4347,8 +4354,8 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request, se *sessio
 // when nothing changed, so a chatty hook can't flood the stream.
 func (se *session) setStatus(status string) {
 	se.mu.Lock()
-	defer se.mu.Unlock()
 	if se.status == status || se.exited {
+		se.mu.Unlock()
 		return
 	}
 	se.status = status
@@ -4356,6 +4363,20 @@ func (se *session) setStatus(status string) {
 	// Same critical section as the assignment: two concurrent callers can't
 	// interleave into a stream order that disagrees with se.status.
 	se.broadcastLocked(frame{event: "status", data: []byte(status)})
+	se.mu.Unlock()
+	if status == "needs-you" {
+		se.emit("session.needs_you", nil) // t-8854: after the move, outside the lock
+	}
+}
+
+// emit records one session event (t-8854) in the session's project. Observer-only: never under se.mu (a slow disk must
+// not hold a session), and the result is ignored. sid, ticket and agent are read-only after spawn().
+func (se *session) emit(kind string, extra map[string]string) {
+	data := map[string]string{"session": se.sid, "ticket": se.ticket, "agent": se.agent}
+	for k, v := range extra {
+		data[k] = v
+	}
+	events.Emit(events.Home(), kind, "daemon", se.projectRoot, data)
 }
 
 // ── gate model ─────────────────────────────────────────────────────────────

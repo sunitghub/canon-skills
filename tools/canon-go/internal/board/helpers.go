@@ -7,7 +7,7 @@
 //	sprint-check settings <status|add|remove> <settings.json> <allow|deny> <rule>...
 //	                                               permissions rules in .claude/settings.json (tools/skills/prompts.sh)
 //	sprint-check skill-check <skill-dir>           the Skill Eval checks as JSON (was tools/skill-check)
-//	sprint-check event <kind> --project <dir> --source <tkt|sprint> key=value...
+//	sprint-check event <kind> --project <dir> --source <name> key=value...   (sources: internal/events)
 //	                                               one event line (t-f182); always exits 0, prints nothing
 package board
 

@@ -175,4 +175,43 @@ MH="$W/mid"
 for ts in 2026-10-19T23:59:59.500Z 2026-10-20T00:00:00.500Z; do CANON_HOME="$MH" CANON_EVENTS_CLOCK="$ts" "$SPRINT_CHECK_BIN" event ticket.closed --source tkt --project "$P" ticket=t-mid; done
 assert_eq "2026-10-19.jsonl 2026-10-20.jsonl" "$(ls "$MH/events" | grep jsonl | tr '\n' ' ' | sed 's/ $//')"
 
+# 8. close gates (t-8854): gate.started from `gate-snapshot.sh pre --role`, gate.finished from subagent-log.sh with the report's
+# verdict, gate.rejected from the check commands; and each tool behaves the same with an unusable events folder
+G="$W/gates"; mkproj "$G"; gid="$(cd "$G" && "$TKT" create "Gated")"; gt="$G/.tickets/$gid"
+printf '# A\n\n- [x] c\n' > "$gt/acceptance.md"; printf '# P\n' > "$gt/plan.md"; sed -i.bak 's/^eval_fail_count: 0$/eval_fail_count: 2/' "$gt/ticket.md"; rm -f "$gt/ticket.md.bak"
+git -C "$G" add -A; git -C "$G" -c user.email=t@t -c user.name=t commit -qm gated
+(cd "$G" && "$ROOT/tools/gate-snapshot.sh" pre ".tickets/$gid/gate-snapshot.txt" --role reviewer >/dev/null)
+docs="$(cat "$gt/acceptance.md" "$gt/plan.md" | shasum -a 256 | cut -c1-12)"
+assert_contains "$(event_line gate.started "$gid")" '"data":{"attempt":"3","docs":"'"$docs"'","role":"reviewer","ticket":"'"$gid"'"}'
+assert_contains "$(event_line gate.started "$gid")" '"source":"gate-snapshot"'
+rc=0; (cd "$G" && "$ROOT/tools/gate-snapshot.sh" pre ".tickets/$gid/gate-snapshot.txt" --role judge >/dev/null 2>&1) || rc=$?
+assert_eq 2 "$rc"
+printf '# Review\n\n## Verdict\n\nNO\n' > "$gt/review-notes.md"
+(cd "$G" && "$ROOT/tools/subagent-log.sh" --agent-id reviewer-x --agent-type reviewer --ticket "$gid" --tokens 1200 --minutes 2.5 --model claude-sonnet-5-5 >/dev/null)
+assert_contains "$(event_line gate.finished "$gid")" '"data":{"minutes":"2.5","model":"claude-sonnet-5-5","role":"reviewer","ticket":"'"$gid"'","tokens":"1200","verdict":"NO"}'
+(cd "$G" && "$ROOT/tools/subagent-log.sh" --agent-id 123-4 --agent-type evaluator --ticket "$gid" >/dev/null)
+assert_contains "$(event_line gate.finished "$gid")" '"verdict":"unknown"'   # no eval-report.md yet
+printf 'evaluator-run-id: 1-2\n\npartial: half done\n' > "$gt/eval-report.md"
+(cd "$G" && "$ROOT/tools/subagent-log.sh" --agent-id 123-5 --agent-type evaluator --ticket "$gid" --outcome fail >/dev/null)
+assert_contains "$(event_line gate.finished "$gid")" '"role":"evaluator","ticket":"'"$gid"'","tokens":"","verdict":"partial"'
+(cd "$G" && "$ROOT/tools/subagent-log.sh" --agent-id plain --agent-type general-purpose --ticket "$gid" >/dev/null)
+[[ "$(cat "$EV"/*.jsonl | grep -c '"kind":"gate.finished"')" == 3 ]] || fail "a non-gate subagent run made a gate.finished event"
+(cd "$G" && "$SPRINT" check-review-notes "$gid" >/dev/null 2>&1) || true
+assert_contains "$(event_line gate.rejected "$gid")" '"reason":"review_shape","role":"reviewer"'
+mkdir -p "$gt/evidence"; printf 'not a stamped log\n' > "$gt/evidence/x.log"
+(cd "$G" && "$SPRINT" check-evidence "$gid" >/dev/null 2>&1) || true
+assert_contains "$(event_line gate.rejected "$gid")" '"reason":"stale_evidence","role":"evaluator"'
+n_before="$(cat "$EV"/*.jsonl | wc -l | tr -d ' ')"
+for tool in pre log review evidence; do
+  case $tool in
+    pre) cmd=("$ROOT/tools/gate-snapshot.sh" pre ".tickets/$gid/gate-snapshot.txt" --role evaluator) ;;
+    log) cmd=("$ROOT/tools/subagent-log.sh" --agent-id 9-9 --agent-type evaluator --ticket "$gid") ;;
+    review) cmd=("$SPRINT" check-review-notes "$gid") ;;
+    evidence) cmd=("$SPRINT" check-evidence "$gid") ;;
+  esac
+  a_rc=0; a="$(cd "$G" && "${cmd[@]}" 2>&1)" || a_rc=$?
+  b_rc=0; b="$(cd "$G" && CANON_HOME="$W/not-a-dir/home" "${cmd[@]}" 2>&1)" || b_rc=$?
+  assert_eq "$a_rc:$(sed 's/[0-9a-f]\{40\}/H/g' <<<"$a")" "$b_rc:$(sed 's/[0-9a-f]\{40\}/H/g' <<<"$b")"
+done
+
 echo "events: ok (tkt, sprint and board writers; parity; 60 KB body kept out; observer-only; 16 writers; day files)"

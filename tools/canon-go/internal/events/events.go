@@ -43,10 +43,17 @@ var kinds = map[string][]field{
 	"ticket.closed":         {{"ticket", 64}},
 	"sprint.started":        {{"ticket", 64}},
 	"sprint.completed":      {{"ticket", 64}},
+	// t-8854: close gates and Cockpit sessions
+	"gate.started":      {{"ticket", 64}, {"role", 16}, {"attempt", 4}, {"docs", 12}},
+	"gate.finished":     {{"ticket", 64}, {"role", 16}, {"verdict", 16}, {"model", 80}, {"tokens", 12}, {"minutes", 8}},
+	"gate.rejected":     {{"ticket", 64}, {"role", 16}, {"reason", 32}},
+	"session.needs_you": {{"session", 64}, {"ticket", 64}, {"agent", 16}},
+	"session.exited":    {{"session", 64}, {"ticket", 64}, {"agent", 16}, {"reason", 16}},
+	"session.saved":     {{"session", 64}, {"ticket", 64}, {"agent", 16}, {"by", 16}},
 }
 
 // Sources are the programs that write events.
-var sources = map[string]bool{"tkt": true, "sprint": true, "board": true}
+var sources = map[string]bool{"tkt": true, "sprint": true, "board": true, "gate-snapshot": true, "subagent-log": true, "daemon": true}
 
 const projectMax = 1024
 

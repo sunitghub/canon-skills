@@ -148,7 +148,7 @@ func TestHomeAndKinds(t *testing.T) {
 	if got := Home(); got != "/pinned" {
 		t.Errorf("Home() with CANON_HOME = %q", got)
 	}
-	want := "sprint.completed sprint.started ticket.closed ticket.created ticket.status_changed"
+	want := "gate.finished gate.rejected gate.started session.exited session.needs_you session.saved sprint.completed sprint.started ticket.closed ticket.created ticket.status_changed"
 	if got := strings.Join(Kinds(), " "); got != want {
 		t.Errorf("kinds %q, want %q", got, want)
 	}

@@ -699,6 +699,11 @@ _gate_eval_report_fresh() {
   return 1
 }
 
+# _gate_reject <id> <ticket dir> <role> <reason> — a gate.rejected event (t-8854) for a refusal just printed. Observer-only.
+_gate_reject() {
+  canon_event gate.rejected sprint "$(dirname "$(dirname "$2")")" "ticket=$1" "role=$3" "reason=$4"
+}
+
 _gate_eval_report() {
   local id="$1" tdir="$2"
   local plan="$tdir/plan.md"
@@ -708,13 +713,13 @@ _gate_eval_report() {
   if _acceptance_section "Sign-off" "$plan" 2>/dev/null | sed 's/\*//g' | grep -qiE '^[[:space:]]*tier[[:space:]]*:[[:space:]]*trivial\b'; then
     return 0
   fi
-  _gate_eval_report_exists      "$id" "$tdir" || return 1
-  _gate_eval_report_authentic   "$id" "$tdir" || return 1
-  _gate_eval_report_transcript  "$id" "$tdir" || return 1
-  _gate_eval_report_verdict     "$id" "$tdir" || return 1
-  _gate_eval_report_consistency "$id" "$tdir" || return 1
-  _gate_eval_report_model       "$id" "$tdir" || return 1
-  _gate_eval_report_fresh       "$id" "$tdir" || return 1
+  _gate_eval_report_exists      "$id" "$tdir" || { _gate_reject "$id" "$tdir" evaluator missing_report; return 1; }
+  _gate_eval_report_authentic   "$id" "$tdir" || { _gate_reject "$id" "$tdir" evaluator unverified_run; return 1; }
+  _gate_eval_report_transcript  "$id" "$tdir" || { _gate_reject "$id" "$tdir" evaluator missing_transcript; return 1; }
+  _gate_eval_report_verdict     "$id" "$tdir" || { _gate_reject "$id" "$tdir" evaluator verdict_not_pass; return 1; }
+  _gate_eval_report_consistency "$id" "$tdir" || { _gate_reject "$id" "$tdir" evaluator report_inconsistent; return 1; }
+  _gate_eval_report_model       "$id" "$tdir" || { _gate_reject "$id" "$tdir" evaluator report_model; return 1; }
+  _gate_eval_report_fresh       "$id" "$tdir" || { _gate_reject "$id" "$tdir" evaluator graded_head_stale; return 1; }
 }
 
 # _gate_review_notes_model <id> <tdir> — HARD RULE (t-072d): if the advisory
@@ -828,8 +833,8 @@ cmd_complete() {
   _gate_visual_embed        "$id" "$tdir/plan.md" "$acceptance" || exit 1
   _gate_plan_signoff        "$id" "$tdir/plan.md"        || exit 1
   _gate_eval_report         "$id" "$tdir"                || exit 1
-  _gate_review_notes_model  "$id" "$tdir"                || exit 1
-  _gate_review_notes_shape  "$id" "$tdir"                || exit 1
+  _gate_review_notes_model  "$id" "$tdir"                || { _gate_reject "$id" "$tdir" reviewer review_model; exit 1; }
+  _gate_review_notes_shape  "$id" "$tdir"                || { _gate_reject "$id" "$tdir" reviewer review_shape; exit 1; }
 
   TKT_SPRINT_GATE_PASSED=1 "$TKT_BIN" close "$id"
   canon_event sprint.completed sprint "$(project_root)" "ticket=$id"
@@ -860,6 +865,7 @@ cmd_check_review_notes() {
     echo "review-notes.md: shape refused — the same check sprint complete runs (t-de16):"
     printf '%s\n' "$problems"
     echo "Fix the report per review.md's template: 'Changed files:' with paths, then one line per concern — a finding, or 'none — checked <what>, <path>:<line>' (the word 'checked' and a path:line on that same line)."
+    _gate_reject "$id" "$(dirname "$report")" reviewer review_shape
     exit 1
   fi
   echo "review-notes.md: shape ok"
@@ -900,6 +906,7 @@ cmd_check_evidence() {
     echo "  exit=N     fix the failure and re-stamp; for a full board spec failing only on new flakes, list them, then stamp"
     echo "             \`node tests/board-spec-guard.js <the run's --out dir>/board-spec-*-run*.json\` at HEAD (the run log becomes covered)"
     echo "  unstamped  stamp it, or move a history or off-tree log into a subfolder of evidence/ (never scanned)"
+    _gate_reject "$id" "$(dirname "$edir")" evaluator stale_evidence
     exit 1
   fi
   echo "check-evidence: ok ($n log(s) fresh with exit 0 or covered)"

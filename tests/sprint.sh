@@ -389,6 +389,7 @@ EOF
 # eval-report.md gate — missing report should block
 missing_eval_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$missing_eval_output" "eval-report.md is missing"
+assert_contains "$(event_line gate.rejected "$id")" '"reason":"missing_report"'   # t-8854: each refusal is a gate.rejected event
 assert_gate_notice "$missing_eval_output" eval-report.md evaluator
 assert_contains "$missing_eval_output" "Tier: trivial"
 assert_contains "$missing_eval_output" "four not-trivial triggers"
@@ -408,6 +409,7 @@ fail: criterion 1 not met
 EOF
 fail_eval_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$fail_eval_output" "eval-report.md verdict is not pass"
+assert_contains "$(event_line gate.rejected "$id")" '"reason":"verdict_not_pass"'
 assert_gate_notice "$fail_eval_output" eval-report.md evaluator   # t-0231: the message that invites flipping fail: to pass: by hand
 
 # eval-report.md missing evaluator-run-id should block
@@ -643,6 +645,7 @@ pass: all criteria met
 EOF
 model_missing_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$model_missing_output" "eval-report.md is missing the 'Model:' line"
+assert_contains "$(event_line gate.rejected "$model_id")" '"reason":"report_model"'
 assert_gate_notice "$model_missing_output" eval-report.md evaluator
 
 # add the Model line → eval-report gate satisfied (no review-notes.md yet → its gate is a no-op)
@@ -1467,6 +1470,7 @@ fr_project="$(make_project)"
   echo 'b' >> src/app.js; git add src/app.js; git commit -qm "code after grading"
   out="$(run_fail env -u CLAUDECODE "$SPRINT" complete)"
   assert_contains "$out" "tracked files changed after the evaluator graded"; assert_contains "$out" "src/app.js"; assert_contains "$out" "re-dispatch a fresh evaluator"
+  assert_contains "$(event_line gate.rejected "$fid")" '"reason":"graded_head_stale"'
   assert_gate_notice "$out" eval-report.md evaluator
   sed -i.bak 's/^eval_override: false/eval_override: true/' ".tickets/$fid/ticket.md" && rm -f ".tickets/$fid/ticket.md.bak"
   printf '\nwaived 2026-01-01 test\n' >> ".tickets/$fid/acceptance.md"

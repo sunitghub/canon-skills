@@ -23,20 +23,20 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
      <file>=<test> --report .tickets/<id>/mutation-report.md`); triage every survivor; advisory.
    - **Skill eval** if a skill or gate agent changed: `tools/skill-eval-scope.sh`; for each `run <skill>`
      follow `skills/skill-eval/SKILL.md` from this session; advisory. Commit its `history.jsonl` line.
-   - **Interim commit** of the sprint's files (specific paths, no `git add -A`) before any gate.
+   - **Interim commit** (specific paths, no `git add -A`) before any gate.
    - **Evidence:** in a `git clone` of the final commit, run
      `CANON_TICKETS_DIR=<project>/.tickets evidence.sh stamp <id> test-sh -- scripts/test.sh`; re-stamp after
      any tracked change.
    - `## Wrapup Gates` in `acceptance.md`: a row per gate, `ran`/`skipped` plus evidence;
      `reviewer` and `code-reviewer` are separate rows.
    - No push to `origin/main` from first dispatch until both gates report.
-2. **Reviewer** (advisory). Model check below, then `gate-snapshot.sh pre .tickets/<id>/gate-snapshot.txt`;
+2. **Reviewer** (advisory). Model check below, then `gate-snapshot.sh pre .tickets/<id>/gate-snapshot.txt --role reviewer`;
    `Agent` with `subagent_type: "canon-reviewer"`; after: `gate-snapshot.sh post …` (any difference: stop,
    show the PRE recovery hash), `subagent-log.sh --agent-id reviewer-<id> --agent-type reviewer` + cost flags, `--model` (complete.md),
    `sprint check-review-notes <id>` (`shape refused`: re-dispatch). Row: `verdict: YES|NO — …
    (model: <m> — <source>)`. A NO is surfaced, not blocking.
 3. **Evaluator** (binding). `sprint check-evidence <id>` must be ok; `eval_fail_count` below 3; snapshot
-   pre; `Agent` with `subagent_type: "canon-evaluator"`; snapshot post. Then:
+   pre (`--role evaluator`); `Agent` with `subagent_type: "canon-evaluator"`; snapshot post. Then:
    - Line 1 `evaluator-run-id: <epoch>-<n>`: run `date +%s`; skew over 300 s → discard, re-dispatch. Never
      write a run-id yourself.
    - `subagent-log.sh --agent-id <run-id> --agent-type evaluator` + cost flags, `--model`, then `sprint eval-verdict <id>`
