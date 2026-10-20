@@ -114,16 +114,24 @@ line="$(grep -h "\"$id60\"" "$EV"/*.jsonl | grep '"ticket.created"')"
 # 5. observer-only: an unwritable events folder, no board, or an older board — same exit code, output and ticket file
 snap() { (cd "$1" && "$TKT" create "Same $2" -p 3 | sed 's/t-[a-z0-9]*/ID/'; echo "rc=$?"); }
 want="$(snap "$P" a)"
-chmod 400 "$EV"/*.jsonl; chmod 500 "$EV"   # neither today's file nor a new one can be written
-assert_eq "$want" "$(snap "$P" b)"
-(cd "$P" && "$TKT" start "$id60" >/dev/null && "$TKT" close "$id60" --no-sprint >/dev/null) || fail "tkt start/close failed with an unwritable events folder"
-chmod 700 "$EV"; chmod 600 "$EV"/*.jsonl
+# Unusable for everyone, root included: CANON_HOME under a regular file, so every write fails "not a directory".
+: > "$W/not-a-dir"
+assert_eq "$want" "$(CANON_HOME="$W/not-a-dir/home" snap "$P" b)"
+(cd "$P" && CANON_HOME="$W/not-a-dir/home" "$TKT" start "$id60" >/dev/null && CANON_HOME="$W/not-a-dir/home" "$TKT" close "$id60" --no-sprint >/dev/null) \
+  || fail "tkt start/close failed with an unusable events folder"
+# Permissions too, where they apply (root ignores them): neither today's file nor a new one can be written.
+if [[ "$(id -u)" != 0 ]]; then
+  chmod 400 "$EV"/*.jsonl; chmod 500 "$EV"
+  assert_eq "$want" "$(snap "$P" e)"
+  chmod 700 "$EV"; chmod 600 "$EV"/*.jsonl
+fi
 assert_eq "$want" "$(SPRINT_CHECK_BIN="$W/no-board" snap "$P" c)"
 printf '#!/bin/sh\n[ "$1" = --help ] && { echo "sprint-check-win (headless-json only)"; exit 0; }\nsleep 20\n' > "$W/old-board"; chmod +x "$W/old-board"
 start=$SECONDS; assert_eq "$want" "$(SPRINT_CHECK_BIN="$W/old-board" snap "$P" d)"
 (( SECONDS - start < 10 )) || fail "an older board without \`event\` held tkt up"
-[[ "$(grep -l 'Same b' "$P"/.tickets/*/ticket.md | wc -l | tr -d ' ')" == 1 ]] || fail "the ticket was not written with an unwritable events folder"
-for f in "$EV"/*.jsonl; do ! grep -q 'Same b\|Same c\|Same d' "$f" || fail "an event was written although it could not or should not be"; done
+[[ "$(grep -l 'Same b' "$P"/.tickets/*/ticket.md | wc -l | tr -d ' ')" == 1 ]] || fail "the ticket was not written with an unusable events folder"
+for f in "$EV"/*.jsonl; do ! grep -q 'Same b\|Same c\|Same d\|Same e' "$f" || fail "an event was written although it could not or should not be"; done
+[[ -f "$W/not-a-dir" && ! -s "$W/not-a-dir" ]] || fail "the file standing in for CANON_HOME was written to"
 # a bad call to the writer is refused, noted, and still exits 0 with no output: an unknown kind, no kind, a bare word,
 # a dangling --project
 n0="$(cat "$EV"/*.jsonl | wc -l | tr -d ' ')"
