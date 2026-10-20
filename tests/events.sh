@@ -55,6 +55,9 @@ ticket.status_changed tkt $id open>in_progress
 ticket.status_changed tkt $id in_progress>closed
 ticket.closed tkt $id" "$(events)"
 assert_eq "data id kind project schema source ts | priority ticket title type | 1 16 $P" "$(shape ticket.created tkt)"
+# a no-op move (start on an in-progress ticket) is not a change: no event, from tkt as from the board
+nop="$(cd "$P" && "$TKT" create "No-op")"; (cd "$P" && "$TKT" start "$nop" >/dev/null && "$TKT" start "$nop" >/dev/null)
+assert_eq 1 "$(events ticket.status_changed | grep -c " $nop ")"
 
 # 2. sprint start (with a title) and the events it causes
 P2="$W/proj2"; mkproj "$P2"

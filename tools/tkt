@@ -318,8 +318,10 @@ cmd_set_status() {
   else
     clear_active_if "$id"
   fi
-  canon_event ticket.status_changed tkt "$(project_root)" "ticket=$id" "from=$from" "to=$new_status"
-  [[ "$new_status" == closed ]] && canon_event ticket.closed tkt "$(project_root)" "ticket=$id"
+  if [[ "$from" != "$new_status" ]]; then   # a no-op (start on an in-progress ticket) is not a change, as on the board
+    canon_event ticket.status_changed tkt "$(project_root)" "ticket=$id" "from=$from" "to=$new_status"
+    [[ "$new_status" == closed ]] && canon_event ticket.closed tkt "$(project_root)" "ticket=$id"
+  fi
   printf "%s: %s\n" "$id" "$new_status"
 }
 
