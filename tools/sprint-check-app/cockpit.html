@@ -154,7 +154,7 @@
                 <div class="setting-k">GitHub workflow &middot; works today, needs only <code>gh</code></div>
                 <ol class="gh-steps">
                   <li><b>Send.</b> A ticket goes to your repo as an issue (&#9654; Start &rsaquo; GitHub &middot; new issue in the worktree picker, <code>tkt send-issue</code>), or an issue labelled <code>canon</code> comes in as a ticket (Sync from GitHub, <code>tkt sync-issues</code>).</li>
-                  <li><b>Work.</b> A Claude cloud session works it on your subscription: it works on a new branch, pushes it and opens a PR.</li>
+                  <li><b>Work.</b> An agent's cloud session works it on your subscription: it works on a new branch, pushes it and opens a PR.</li>
                   <li><b>Guard.</b> The issue tells the session never to push <code>main</code> or force-push. A private repo on a free GitHub plan cannot enforce that with a branch rule, so this text is the only guard.</li>
                   <li><b>Return.</b> After it exports, the session stops; it never merges. Its results come back with Import results (<code>tkt import-results</code>).</li>
                   <li><b>Merge.</b> The PR lands with Check &amp; merge (<code>tkt merge-pr</code>).</li>
