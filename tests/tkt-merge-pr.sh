@@ -205,6 +205,12 @@ assert_contains "$out" "(step one)"; assert_contains "$out" "(step two)"   # aft
 assert_contains "$out" "passed in 0m0"
 [[ "$out" != *$'\r'* ]] || fail "progress used carriage returns without a terminal"
 sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
+# t-a36b: merge-pr's own pacing variable never reaches the code under test (the board sets it; a suite's stub may log it).
+: > "$STUB_LOG"; rm -f "$W/progress-env"
+CANON_PROGRESS_SECONDS=1 "$TKT" merge-pr "$id" --pr 7 --yes --test 'echo "${CANON_PROGRESS_SECONDS-unset}" > "$STUB_W/progress-env"' >/dev/null 2>&1 \
+  || fail "a run with CANON_PROGRESS_SECONDS set failed"
+assert_eq "unset" "$(cat "$W/progress-env" 2>/dev/null)"
+sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
 # An interrupt (TERM, or HUP: a closed terminal) stops the whole test run, its children included, says so, merges nothing.
 for sig_name in TERM HUP; do
   : > "$STUB_LOG"; rm -f "$W/child.pid"; before="$(sig)"

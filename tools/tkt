@@ -1496,7 +1496,8 @@ _merge_pr_run_tests() {
     printf "\nmerge-pr: stopped; the tests were ended and nothing was merged\n" >&2; exit 130' INT TERM HUP
   start=$SECONDS
   set -m
-  ( cd "$tmp/w" && exec bash -c "$cmd" ) < /dev/null > "$tmp/test.log" 2>&1 &
+  # t-a36b: CANON_PROGRESS_SECONDS paces merge-pr itself (the board sets it); the code under test must not see it.
+  ( cd "$tmp/w" && unset CANON_PROGRESS_SECONDS && exec bash -c "$cmd" ) < /dev/null > "$tmp/test.log" 2>&1 &
   tpid=$!
   set +m
   while kill -0 "$tpid" 2>/dev/null; do
