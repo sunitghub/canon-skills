@@ -7,10 +7,13 @@
 //	sprint-check settings <status|add|remove> <settings.json> <allow|deny> <rule>...
 //	                                               permissions rules in .claude/settings.json (tools/skills/prompts.sh)
 //	sprint-check skill-check <skill-dir>           the Skill Eval checks as JSON (was tools/skill-check)
+//	sprint-check event <kind> --project <dir> --source <tkt|sprint> key=value...
+//	                                               one event line (t-f182); always exits 0, prints nothing
 package board
 
 import (
 	"bytes"
+	"canon/internal/events"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -56,6 +59,9 @@ func runHelper(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 		return 0, true
 	case "skill-check":
 		return skillCheckCLI(args[1:], stdout, stderr), true
+	case "event":
+		emitEventCLI(args[1:])
+		return 0, true // observer-only: an event never changes the caller's outcome
 	}
 	return 0, false
 }
@@ -434,3 +440,32 @@ func cliCanonRoot() string {
 
 // isCanonRoot: canon's own checkout or install, marked by tools/src-key.sh (t-8020's release-key owner).
 func isCanonRoot(dir string) bool { return isRegularFile(filepath.Join(dir, "tools", "src-key.sh")) }
+
+// emitEventCLI is the shell tools' event writer: `event <kind> --project <dir> --source <name> key=value...`. A bad
+// argument is noted in events/emit-errors.log like any other failure; nothing is printed.
+func emitEventCLI(args []string) {
+	home := events.Home()
+	if len(args) == 0 {
+		events.Emit(home, "", "", "", nil) // notes the missing kind
+		return
+	}
+	kind, project, source := args[0], "", ""
+	data := map[string]string{}
+	for i := 1; i < len(args); i++ {
+		switch a := args[i]; {
+		case (a == "--project" || a == "--source") && i+1 < len(args):
+			if a == "--project" {
+				project = args[i+1]
+			} else {
+				source = args[i+1]
+			}
+			i++
+		case strings.Contains(a, "="):
+			k, v, _ := strings.Cut(a, "=")
+			data[k] = v
+		default:
+			data[a] = "" // an argument that is not key=value is an unknown field: refused by the schema
+		}
+	}
+	events.Emit(home, kind, source, project, data)
+}

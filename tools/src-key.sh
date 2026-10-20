@@ -11,7 +11,7 @@ canon_component_paths() {
   local m=tools/canon-go
   case "$1" in
     cockpit-daemon) echo "$m/go.mod $m/go.sum $m/cmd/cockpit-daemon $m/internal/daemon $m/internal/common" ;;
-    sprint-check) echo "$m/go.mod $m/go.sum $m/cmd/sprint-check $m/internal/board $m/internal/common" ;;
+    sprint-check) echo "$m/go.mod $m/go.sum $m/cmd/sprint-check $m/internal/board $m/internal/common $m/internal/events" ;;
     *) return 1 ;;
   esac
 }

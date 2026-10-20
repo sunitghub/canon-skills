@@ -15,6 +15,7 @@ done
 SCRIPT_DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
 source "$SCRIPT_DIR/ticket-root.sh"
 source "$SCRIPT_DIR/frontmatter-lib.sh"
+source "$SCRIPT_DIR/platform-lib.sh"   # canon_event (t-f182)
 
 VERSION="1.0.0"
 
@@ -280,14 +281,16 @@ cmd_create() {
     [[ -n "$description" ]] && printf "\n%s\n" "$description"
   } > "$file"
 
+  canon_event ticket.created tkt "$(project_root)" "ticket=$id" "title=$title" "type=$type" "priority=$priority"
   echo "$id"
 }
 
 cmd_set_status() {
   local id="${1:-}" new_status="$2"
   [[ -z "$id" ]] && { echo "Error: ticket ID required" >&2; exit 1; }
-  local file
+  local file from
   file="$(find_ticket "$id")"
+  from="$(get_field "$file" status)" || from=""
   set_field "$file" status "$new_status"
   id="$(get_field "$file" id)"
   # CLI close marker (t-dec8): the pre-commit hook distinguishes a legitimate CLI close
@@ -314,6 +317,10 @@ cmd_set_status() {
     fi
   else
     clear_active_if "$id"
+  fi
+  if [[ "$from" != "$new_status" ]]; then   # a no-op (start on an in-progress ticket) is not a change, as on the board
+    canon_event ticket.status_changed tkt "$(project_root)" "ticket=$id" "from=$from" "to=$new_status"
+    [[ "$new_status" == closed ]] && canon_event ticket.closed tkt "$(project_root)" "ticket=$id"
   fi
   printf "%s: %s\n" "$id" "$new_status"
 }
@@ -1250,6 +1257,7 @@ cmd_import_issue() {
       printf -- '---\n# %s\n' "$title"
       [[ -n "$desc" ]] && printf '\n%s\n' "$desc"
     } > "$tdir/ticket.md"
+    canon_event ticket.created tkt "$root" "ticket=$id" "title=$title" "type=${type:-task}" "priority=${pri:-2}"
   elif [[ -n "$repo" && -z "$(get_field "$tdir/ticket.md" github)" ]]; then
     set_or_add_field "$tdir/ticket.md" github "$repo#$n"
   fi
@@ -1919,6 +1927,7 @@ cmd_import_results() {
     set_field "$tdir/ticket.md" status open && set_or_add_field "$tdir/ticket.md" cloud_status in_progress \
       || { echo "import-results: could not set $id to open" >&2; exit 1; }
     cst=" (cloud: in_progress)"; st=open
+    canon_event ticket.status_changed tkt "$(dirname "$dir")" "ticket=$id" from=in_progress to=open
   fi
   read -r verdict graded < <(_eval_verdict_head "$tdir")
   echo "import-results: $n files into $rel/ ($kept local files kept in $rel/.before-import/)"

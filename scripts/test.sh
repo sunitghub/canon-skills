@@ -10,6 +10,9 @@ export SPRINT_CHECK_NO_BROWSER=1
 # t-2d74: skills.sh prompts through /dev/tty, so a run from a real terminal stopped for a 15s prompt per
 # temp project. The pty-simulated prompt tests unset this for their own child.
 export SKILLS_SH_NO_TTY=1
+# t-f182: tkt, sprint and the board append events to $CANON_HOME/events; a test run never writes into the user's own log.
+# One folder for the run, unless the caller pinned one (a test that needs the default sets CANON_HOME= for its child).
+if [[ -z "${CANON_HOME:-}" ]]; then CANON_HOME="$(mktemp -d "${TMPDIR:-/tmp}/canon-test-home.XXXXXX")"; export CANON_HOME; fi
 
 # t-2633: `--list` prints every suite label, one per line: the one list of what this script runs (scripts/test-hermetic.sh reads it).
 # t-abb1: suites run in parallel, `--jobs N` workers (default: the CPU count, at most 8); `--jobs 1` is the sequential run, which stops
@@ -103,6 +106,7 @@ tests=(
   "$ROOT/tests/fetch-win-binaries.sh"
   "$ROOT/tests/check-binaries-released.sh"
   "$ROOT/tests/src-key.sh"
+  "$ROOT/tests/events.sh"
   "$ROOT/tests/release-daemon-publish.sh"
   "$ROOT/tests/release.sh"
   "$ROOT/tests/release-zip.sh"
@@ -183,7 +187,7 @@ skipped() {
   if (( PLAN )); then LABELS+=("$1"); KINDS+=(skip); CMDS+=(""); return 0; fi
   printf '==> %s\n' "$1"
 }
-go_board() { (cd "$ROOT/tools/canon-go" && go test ./cmd/... ./internal/board ./internal/common); }   # t-8020: one module
+go_board() { (cd "$ROOT/tools/canon-go" && go test ./cmd/... ./internal/board ./internal/common ./internal/events); }   # t-8020: one module
 go_daemon() { (cd "$ROOT/tools/canon-go" && go test ./internal/daemon); }
 
 run_all() {

@@ -15,10 +15,10 @@ refute_contains() { [[ "$1" != *"$2"* ]] || fail "expected output NOT to contain
 # t-8020: the daemon and the board are one module (tools/canon-go) with a key each; t-15d8: the board is the second required
 # macOS/Linux component, so every case below runs through both. Each gets its own stamped asset; the stub curl serves the board's
 # whenever a case asks for the good daemon asset, so a case names one asset and both components follow it.
-R="$WORK/repo"; M="$R/tools/canon-go"; mkdir -p "$R/tools/cockpit-daemon" "$M/cmd/cockpit-daemon" "$M/cmd/sprint-check" "$M/internal/daemon" "$M/internal/board" "$M/internal/common"
+R="$WORK/repo"; M="$R/tools/canon-go"; mkdir -p "$R/tools/cockpit-daemon" "$M/cmd/cockpit-daemon" "$M/cmd/sprint-check" "$M/internal/daemon" "$M/internal/board" "$M/internal/common" "$M/internal/events"
 cp "$ROOT/tools/fetch-daemon.sh" "$ROOT/tools/src-key.sh" "$R/tools/"; cp "$ROOT/tools/cockpit-daemon/.gitignore" "$R/tools/cockpit-daemon/"   # tracked, as in canon: the folder only holds the built daemon
 printf 'module x\n\ngo 1.26.5\n' > "$M/go.mod"; : > "$M/go.sum"; echo 0.3.0 > "$R/VERSION"
-for d in cmd/cockpit-daemon cmd/sprint-check internal/daemon internal/board internal/common; do printf 'package x // %s\n' "$d" > "$M/$d/x.go"; done
+for d in cmd/cockpit-daemon cmd/sprint-check internal/daemon internal/board internal/common internal/events; do printf 'package x // %s\n' "$d" > "$M/$d/x.go"; done
 git -C "$R" init -q -b main; git -C "$R" "${ident[@]}" add -A; git -C "$R" "${ident[@]}" commit -qm seed
 srckey() { bash -c 'source "$1/tools/src-key.sh"; canon_src_key "$1" "$2"' _ "$1" "$2"; }
 full="$(srckey "$R" cockpit-daemon)"; key="${full:0:12}"; stamp="${full:0:8}"
@@ -185,11 +185,11 @@ done
 [[ "$vend" -ge 3 ]] || fail "expected the three vendored xterm files, saw $vend"
 
 # 11. release-daemon.sh --dry-run: builds four targets, prints the manifest lines, publishes and writes nothing; refuses a dirty daemon dir
-RR="$WORK/rel"; RM="$RR/tools/canon-go"; mkdir -p "$RR/scripts" "$RM/cmd/cockpit-daemon" "$RM/cmd/sprint-check" "$RM/internal/daemon" "$RM/internal/board" "$RM/internal/common"
+RR="$WORK/rel"; RM="$RR/tools/canon-go"; mkdir -p "$RR/scripts" "$RM/cmd/cockpit-daemon" "$RM/cmd/sprint-check" "$RM/internal/daemon" "$RM/internal/board" "$RM/internal/common" "$RM/internal/events"
 cp "$R/VERSION" "$RR/"; cp "$ROOT/scripts/release-daemon.sh" "$RR/scripts/"; cp "$ROOT/tools/src-key.sh" "$RR/tools/"; cp "$ROOT/THIRD-PARTY-NOTICES.md" "$RR/"
 printf 'module x\n\ngo 1.26.5\n\ntoolchain %s\n' "$(go env GOVERSION)" > "$RM/go.mod"; : > "$RM/go.sum"   # t-7efe: the release script builds with the go.mod toolchain line and refuses without one
 for d in "$RM/cmd/cockpit-daemon" "$RM/cmd/sprint-check"; do printf 'package main\n\nvar version, commit string\n\nfunc main() {}\n' > "$d/main.go"; done
-for d in internal/daemon internal/board internal/common; do printf 'package x\n' > "$RM/$d/x.go"; done
+for d in internal/daemon internal/board internal/common internal/events; do printf 'package x\n' > "$RM/$d/x.go"; done
 printf '# header\n' > "$RR/tools/cockpit-daemon.sha256"
 git -C "$RR" init -q -b main; git -C "$RR" "${ident[@]}" add -A; git -C "$RR" "${ident[@]}" commit -qm seed
 rkey="$(srckey "$RR" cockpit-daemon | cut -c1-12)"

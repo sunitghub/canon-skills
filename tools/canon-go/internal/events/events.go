@@ -1,0 +1,225 @@
+// Package events is canon's event stream, schema v1 (t-f182): one JSON line per event in a dated file,
+// $CANON_HOME/events/YYYY-MM-DD.jsonl (UTC). It is the only writer: the board calls Emit directly, and the shell tools
+// (tkt, sprint) reach it through `sprint-check event`, because bash's `printf >>` tears lines longer than about 1 KB
+// when several writers append at once (.tickets/t-f182/evidence/spike). Each event is one open, one O_APPEND write
+// and one close, so no descriptor is ever held across midnight.
+//
+// Observer-only: emitting never blocks, delays or fails the change it describes. Callers emit after their own write
+// succeeded and ignore the result; a failure is noted in events/emit-errors.log, best effort.
+//
+// v1 is additive-only from here on: t-0b89 (read API), t-4c09 (audit) and t-4381 read these fields.
+package events
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+	"time"
+	"unicode/utf8"
+)
+
+// Schema is the version every event carries.
+const Schema = 1
+
+// RetentionDays is how long a day file is kept; the first write of a new day deletes older ones.
+const RetentionDays = 90
+
+type field struct {
+	name string
+	max  int // runes; a longer value is cut, never copied whole
+}
+
+// kinds is the v1 schema: each kind's data fields and their limits. Nothing outside this table is ever written.
+var kinds = map[string][]field{
+	"ticket.created":        {{"ticket", 64}, {"title", 200}, {"type", 16}, {"priority", 4}},
+	"ticket.status_changed": {{"ticket", 64}, {"from", 32}, {"to", 32}},
+	"ticket.closed":         {{"ticket", 64}},
+	"sprint.started":        {{"ticket", 64}},
+	"sprint.completed":      {{"ticket", 64}},
+}
+
+// Sources are the programs that write events.
+var sources = map[string]bool{"tkt": true, "sprint": true, "board": true}
+
+const projectMax = 1024
+
+var dayFileRe = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2})\.jsonl$`)
+
+// Kinds lists the v1 kinds, sorted (docs and tests).
+func Kinds() []string {
+	out := make([]string, 0, len(kinds))
+	for k := range kinds {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// Home is canon's per-user folder: $CANON_HOME, else ~/.canon.
+func Home() string {
+	if h := os.Getenv("CANON_HOME"); h != "" {
+		return h
+	}
+	if h, err := os.UserHomeDir(); err == nil {
+		return filepath.Join(h, ".canon")
+	}
+	return ""
+}
+
+// now is the event clock: CANON_EVENTS_CLOCK (RFC 3339, tests only) or the real time.
+func now() time.Time {
+	if c := os.Getenv("CANON_EVENTS_CLOCK"); c != "" {
+		if t, err := time.Parse(time.RFC3339Nano, c); err == nil {
+			return t.UTC()
+		}
+	}
+	return time.Now().UTC()
+}
+
+type line struct {
+	Schema  int               `json:"schema"`
+	ID      string            `json:"id"`
+	TS      string            `json:"ts"`
+	Kind    string            `json:"kind"`
+	Source  string            `json:"source"`
+	Project string            `json:"project"`
+	Data    map[string]string `json:"data"`
+}
+
+// Line builds one event line (no newline), refusing an unknown kind, source or field. Values are cut to their limit.
+func Line(kind, source, project string, data map[string]string, at time.Time) ([]byte, error) {
+	fields, ok := kinds[kind]
+	if !ok {
+		return nil, fmt.Errorf("unknown event kind %q", kind)
+	}
+	if !sources[source] {
+		return nil, fmt.Errorf("unknown event source %q", source)
+	}
+	allowed := map[string]int{}
+	for _, f := range fields {
+		allowed[f.name] = f.max
+	}
+	out := map[string]string{}
+	for k, v := range data {
+		max, ok := allowed[k]
+		if !ok {
+			return nil, fmt.Errorf("event %s has no field %q", kind, k)
+		}
+		out[k] = cut(v, max)
+	}
+	var id [8]byte
+	if _, err := rand.Read(id[:]); err != nil {
+		return nil, err
+	}
+	b, err := json.Marshal(line{Schema, hex.EncodeToString(id[:]), at.Format("2006-01-02T15:04:05.000Z"), kind, source, cut(project, projectMax), out})
+	if err != nil {
+		return nil, err
+	}
+	return b, nil
+}
+
+// cut keeps at most max runes of valid UTF-8 (invalid bytes become U+FFFD, as json.Marshal would make them).
+func cut(s string, max int) string {
+	if !utf8.ValidString(s) {
+		s = strings.ToValidUTF8(s, "�")
+	}
+	if utf8.RuneCountInString(s) <= max {
+		return s
+	}
+	r := []rune(s)
+	return string(r[:max])
+}
+
+// Emit appends one event to home/events/<UTC day>.jsonl. The caller ignores the error (observer-only); Emit itself
+// notes it in emit-errors.log.
+func Emit(home, kind, source, project string, data map[string]string) error {
+	err := emit(home, kind, source, project, data)
+	if err != nil {
+		noteFailure(home, err)
+	}
+	return err
+}
+
+func emit(home, kind, source, project string, data map[string]string) error {
+	if home == "" {
+		return errors.New("no CANON_HOME and no home folder")
+	}
+	at := now()
+	b, err := Line(kind, source, project, data, at)
+	if err != nil {
+		return err
+	}
+	dir := filepath.Join(home, "events")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	path := filepath.Join(dir, at.Format("2006-01-02")+".jsonl")
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0)
+	newDay := false
+	if errors.Is(err, os.ErrNotExist) {
+		f, err = os.OpenFile(path, os.O_WRONLY|os.O_APPEND|os.O_CREATE|os.O_EXCL, 0o600)
+		newDay = err == nil
+		if errors.Is(err, os.ErrExist) { // another writer made today's file first
+			f, err = os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0)
+		}
+	}
+	if err != nil {
+		return err
+	}
+	_, werr := f.Write(append(b, '\n')) // one write: whole under concurrent appends
+	cerr := f.Close()
+	if newDay {
+		prune(dir, at)
+	}
+	if werr != nil {
+		return werr
+	}
+	return cerr
+}
+
+// prune deletes day files older than RetentionDays before at. Only names shaped like a day file are touched.
+func prune(dir string, at time.Time) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	oldest := at.AddDate(0, 0, -RetentionDays).Format("2006-01-02")
+	for _, e := range entries {
+		m := dayFileRe.FindStringSubmatch(e.Name())
+		if m == nil || !e.Type().IsRegular() {
+			continue
+		}
+		if _, err := time.Parse("2006-01-02", m[1]); err != nil {
+			continue
+		}
+		if m[1] < oldest {
+			os.Remove(filepath.Join(dir, e.Name()))
+		}
+	}
+}
+
+const errorsLogMax = 1 << 20
+
+// noteFailure appends one line to events/emit-errors.log, best effort; it stops growing at 1 MB.
+func noteFailure(home string, err error) {
+	if home == "" {
+		return
+	}
+	path := filepath.Join(home, "events", "emit-errors.log")
+	if st, serr := os.Stat(path); serr == nil && st.Size() > errorsLogMax {
+		return
+	}
+	f, ferr := os.OpenFile(path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o600)
+	if ferr != nil {
+		return
+	}
+	fmt.Fprintf(f, "%s %s\n", time.Now().UTC().Format(time.RFC3339), strings.ReplaceAll(err.Error(), "\n", " "))
+	f.Close()
+}

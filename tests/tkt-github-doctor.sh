@@ -97,7 +97,7 @@ EOF
 )"
 assert_eq "$want" "$(field "$out" "d['cloud']['setup_script']")"
 assert_eq "True" "$(field "$out" "'getcanon.dev' in d['cloud']['domains'] and 'sum.golang.org' in d['cloud']['domains']")"
-mkdir -p "$W/canon/tools"; cp "$CANON/tools/tkt" "$CANON/tools/ticket-root.sh" "$CANON/tools/frontmatter-lib.sh" "$W/canon/tools/"
+mkdir -p "$W/canon/tools"; cp "$CANON/tools/tkt" "$CANON/tools/ticket-root.sh" "$CANON/tools/frontmatter-lib.sh" "$CANON/tools/platform-lib.sh" "$W/canon/tools/"
 out="$(PATH="$W/bin:$PATH" "$W/canon/tools/tkt" github-doctor --json)"
 assert_eq "[]|" "$(field "$out" "str(d['cloud']['domains']) + '|' + d['cloud']['setup_script']")"
 

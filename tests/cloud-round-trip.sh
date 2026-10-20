@@ -4,6 +4,7 @@
 set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
+use_fresh_board "$(mktemp -d)"   # t-f182: tkt's events go through the board binary
 
 W="$(mktemp -d "${TMPDIR:-/tmp}/cloud-round-trip.XXXXXX")"
 trap 'rm -rf "$W"' EXIT
@@ -76,6 +77,8 @@ assert_grep "^# Board burns a CPU core$" "$e/ticket.md"
 assert_grep "^type: bug$" "$e/ticket.md"
 assert_grep "^priority: 1$" "$e/ticket.md"
 assert_grep "^status: in_progress$" "$e/ticket.md"            # sprint import-issue started it
+assert_contains "$(event_line ticket.created "$id")" "\"project\":\"$(cd "$B" && pwd -P)\""   # t-f182: import-issue's own event (the newest for this id), not the sender's
+assert_contains "$(event_line ticket.created "$id")" '"title":"Board burns a CPU core"'
 assert_contains "$(cat "$W/import.out")" "Sprint started: $id"
 for h in Problem Outcome; do assert_eq "$(sec "$A/$d/ticket.md" "$h")" "$(sec "$e/ticket.md" "$h")"; done
 assert_grep '^# a shell comment, not a heading$' "$e/ticket.md"   # a "# " line inside a code fence stays content
@@ -273,6 +276,7 @@ out="$("$TKT" import-results "$id")"
 assert_contains "$out" "status: open (cloud: in_progress)  (expected closed: the cloud sprint did not finish)"
 assert_grep "^status: open$" ".tickets/$id/ticket.md"
 assert_grep "^cloud_status: in_progress$" ".tickets/$id/ticket.md"
+assert_contains "$(event_line ticket.status_changed "$id")" '"from":"in_progress","ticket":"'"$id"'","to":"open"'   # t-f182
 assert_eq "$lid" "$("$TKT" current | awk '{print $1}')"
 rc=0; out="$("$SPRINT" complete 2>&1)" || rc=$?
 [[ "$rc" == 1 && "$out" != *"multiple in-progress"* ]] || fail "sprint complete saw the imported ticket as in progress (rc $rc): $out"
