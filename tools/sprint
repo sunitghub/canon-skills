@@ -775,9 +775,9 @@ _review_notes_shape_problems() {
   for label in "${REVIEW_BUCKETS[@]}"; do
     grep -qE "^[[:space:]]*[-*]?[[:space:]]*${label}:[[:space:]]*[^[:space:]]" "$report" || echo "  - no line for the \"$label\" triage bucket"
   done
-  # The verdict (first word under `## Verdict`) must match Act On: YES exactly when every Act On line is `none`.
+  # The verdict (first word under `## Verdict`, bold stripped) must match Act On: YES exactly when every Act On line is `none`.
   local verdict act
-  verdict="$(awk '/^##[[:space:]]+Verdict/ { f=1; next } f && /[^[:space:]]/ { sub(/\r$/, ""); print toupper($1); exit }' "$report")"
+  verdict="$(awk '/^##[[:space:]]+Verdict/ { f=1; next } f && /[^[:space:]]/ { sub(/\r$/, ""); gsub(/\*/, ""); print toupper($1); exit }' "$report")"
   act="$(grep -E "^[[:space:]]*[-*]?[[:space:]]*Act On:[[:space:]]*[^[:space:]]" "$report" | sed -E 's/^[[:space:]]*[-*]?[[:space:]]*Act On:[[:space:]]*//; s/\r$//' | tr '[:upper:]' '[:lower:]')" || true
   if [[ -n "$act" ]]; then
     if grep -qvE '^none([^[:alnum:]_]|$)' <<< "$act"; then
