@@ -148,7 +148,7 @@ func TestHomeAndKinds(t *testing.T) {
 	if got := Home(); got != "/pinned" {
 		t.Errorf("Home() with CANON_HOME = %q", got)
 	}
-	want := "gate.finished gate.rejected gate.started session.exited session.needs_you session.saved sprint.completed sprint.started ticket.closed ticket.created ticket.status_changed"
+	want := "close.confirmed context.threshold gate.finished gate.rejected gate.started github.merged github.results_imported github.sent github.synced integrity.restored log.pruned plan.approved plan.written session.exited session.needs_you session.saved setting.changed sprint.completed sprint.started ticket.closed ticket.created ticket.status_changed wrapup.gate_finished wrapup.gate_started"
 	if got := strings.Join(Kinds(), " "); got != want {
 		t.Errorf("kinds %q, want %q", got, want)
 	}
@@ -181,11 +181,26 @@ func TestKindFieldsAndSources(t *testing.T) {
 		"sprint.started":        {"ticket"},
 		"sprint.completed":      {"ticket"},
 		"gate.started":          {"ticket", "role", "attempt", "docs"},
-		"gate.finished":         {"ticket", "role", "verdict", "model", "tokens", "minutes"},
+		"gate.finished":         {"ticket", "role", "verdict", "model", "tokens", "minutes", "tier"},
 		"gate.rejected":         {"ticket", "role", "reason"},
 		"session.needs_you":     {"session", "ticket", "agent"},
-		"session.exited":        {"session", "ticket", "agent", "reason"},
+		"session.exited":        {"session", "ticket", "agent", "reason", "models", "peak_context_pct", "tokens_new", "turns"},
 		"session.saved":         {"session", "ticket", "agent", "by"},
+		// t-4c09 audit kinds
+		"plan.approved":           {"ticket", "tier"},
+		"close.confirmed":         {"ticket", "tier"},
+		"github.sent":             {"ticket", "issue"},
+		"github.results_imported": {"ticket", "pr"},
+		"github.merged":           {"ticket", "pr"},
+		"github.synced":           {"count"},
+		"setting.changed":         {"name", "old", "new"},
+		"integrity.restored":      {"item", "count"},
+		"context.threshold":       {"session", "ticket", "agent", "pct"},
+		"log.pruned":              {"from", "to", "files", "last_seal"},
+		// t-5ef8 sprint progress card
+		"plan.written":         {"ticket", "tier"},
+		"wrapup.gate_started":  {"ticket", "gate"},
+		"wrapup.gate_finished": {"ticket", "gate", "result"},
 	} {
 		data := map[string]string{}
 		for _, f := range fields {

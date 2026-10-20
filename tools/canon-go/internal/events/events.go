@@ -45,11 +45,29 @@ var kinds = map[string][]field{
 	"sprint.completed":      {{"ticket", 64}},
 	// t-8854: close gates and Cockpit sessions
 	"gate.started":      {{"ticket", 64}, {"role", 16}, {"attempt", 4}, {"docs", 12}},
-	"gate.finished":     {{"ticket", 64}, {"role", 16}, {"verdict", 16}, {"model", 80}, {"tokens", 12}, {"minutes", 8}},
+	"gate.finished":     {{"ticket", 64}, {"role", 16}, {"verdict", 16}, {"model", 80}, {"tokens", 12}, {"minutes", 8}, {"tier", 16}},
 	"gate.rejected":     {{"ticket", 64}, {"role", 16}, {"reason", 32}},
 	"session.needs_you": {{"session", 64}, {"ticket", 64}, {"agent", 16}},
-	"session.exited":    {{"session", 64}, {"ticket", 64}, {"agent", 16}, {"reason", 16}},
-	"session.saved":     {{"session", 64}, {"ticket", 64}, {"agent", 16}, {"by", 16}},
+	"session.exited": {{"session", 64}, {"ticket", 64}, {"agent", 16}, {"reason", 16},
+		{"models", 120}, {"peak_context_pct", 4}, {"tokens_new", 12}, {"turns", 6}},
+	"session.saved": {{"session", 64}, {"ticket", 64}, {"agent", 16}, {"by", 16}},
+	// t-4c09: audit kinds. Ids, numbers and names of non-secret settings only: a sealed day cannot be edited, and a
+	// reader treats the log as untrusted input. No PR or issue title, no imported result text, no token or URL.
+	"plan.approved":           {{"ticket", 64}, {"tier", 16}},
+	"close.confirmed":         {{"ticket", 64}, {"tier", 16}},
+	"github.sent":             {{"ticket", 64}, {"issue", 12}},
+	"github.results_imported": {{"ticket", 64}, {"pr", 12}},
+	"github.merged":           {{"ticket", 64}, {"pr", 12}},
+	"github.synced":           {{"count", 8}},
+	"setting.changed":         {{"name", 48}, {"old", 64}, {"new", 64}},
+	"integrity.restored":      {{"item", 64}, {"count", 8}},
+	"context.threshold":       {{"session", 64}, {"ticket", 64}, {"agent", 16}, {"pct", 4}},
+	"log.pruned":              {{"from", 10}, {"to", 10}, {"files", 6}, {"last_seal", 64}},
+	// t-5ef8: the sprint progress card. "Build" has no kind: it is the time after plan.approved and before the first
+	// wrapup.gate_started. gate names are the Wrapup Gates table rows (code-simplifier, repo-check, ...).
+	"plan.written":         {{"ticket", 64}, {"tier", 16}},
+	"wrapup.gate_started":  {{"ticket", 64}, {"gate", 32}},
+	"wrapup.gate_finished": {{"ticket", 64}, {"gate", 32}, {"result", 16}},
 }
 
 // Sources are the programs that write events.
