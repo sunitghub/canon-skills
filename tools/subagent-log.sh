@@ -27,6 +27,7 @@ while [ -L "$_SOURCE" ]; do
 done
 SCRIPT_DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
 source "$SCRIPT_DIR/ticket-root.sh"
+source "$SCRIPT_DIR/platform-lib.sh"   # canon_event (t-8854)
 
 AGENT_ID=""
 AGENT_TYPE=""
@@ -125,4 +126,18 @@ printf '{"ts":"%s","session_id":"%s","agent_id":"%s","agent_type":"%s","transcri
 # Prune to last 500 lines (~75KB cap)
 if [[ "$(wc -l < "$LOG")" -gt 500 ]]; then
   tail -n 500 "$LOG" > "${LOG}.tmp" && mv "${LOG}.tmp" "$LOG"
+fi
+
+# t-8854: a close gate's run is also a gate.finished event, with the verdict its own report states (unknown if none yet).
+# Observer-only: canon_event never fails and never prints.
+if [[ -n "$TICKET" && ( "$AGENT_TYPE" == reviewer || "$AGENT_TYPE" == evaluator ) ]]; then
+  _tdir="$REPO_ROOT/.tickets/$TICKET" _verdict=unknown
+  if [[ "$AGENT_TYPE" == reviewer && -f "$_tdir/review-notes.md" ]]; then
+    _verdict="$(awk '/^## Verdict/ { on = 1; next } on && NF { print $1; exit }' "$_tdir/review-notes.md" | tr -d '*')"
+  elif [[ "$AGENT_TYPE" == evaluator && -f "$_tdir/eval-report.md" ]]; then
+    _verdict="$(sed -nE 's/^(pass|fail|partial|not-run):.*/\1/p' "$_tdir/eval-report.md" | head -1)"
+  fi
+  [[ "$_verdict" =~ ^(YES|NO|pass|fail|partial|not-run)$ ]] || _verdict=unknown
+  canon_event gate.finished subagent-log "$REPO_ROOT" "ticket=$TICKET" "role=$AGENT_TYPE" "verdict=$_verdict" \
+    "model=$MODEL" "tokens=$TOKENS" "minutes=$MINUTES"
 fi

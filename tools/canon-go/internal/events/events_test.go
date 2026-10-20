@@ -148,7 +148,7 @@ func TestHomeAndKinds(t *testing.T) {
 	if got := Home(); got != "/pinned" {
 		t.Errorf("Home() with CANON_HOME = %q", got)
 	}
-	want := "sprint.completed sprint.started ticket.closed ticket.created ticket.status_changed"
+	want := "gate.finished gate.rejected gate.started session.exited session.needs_you session.saved sprint.completed sprint.started ticket.closed ticket.created ticket.status_changed"
 	if got := strings.Join(Kinds(), " "); got != want {
 		t.Errorf("kinds %q, want %q", got, want)
 	}
@@ -167,5 +167,40 @@ func TestErrorsLogCap(t *testing.T) {
 	Emit(home, "ticket.nope", "tkt", "/p", nil)
 	if st, _ := os.Stat(log); st.Size() != errorsLogMax+1 {
 		t.Errorf("a full log grew to %d", st.Size())
+	}
+}
+
+// Protects the v1 contract in docs/plugins.md: each kind takes exactly its documented fields, and every documented
+// source is accepted (t-8854's kinds; a dropped or renamed field would break t-0b89/t-4c09 readers).
+func TestKindFieldsAndSources(t *testing.T) {
+	at := time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC)
+	for kind, fields := range map[string][]string{
+		"ticket.created":        {"ticket", "title", "type", "priority"},
+		"ticket.status_changed": {"ticket", "from", "to"},
+		"ticket.closed":         {"ticket"},
+		"sprint.started":        {"ticket"},
+		"sprint.completed":      {"ticket"},
+		"gate.started":          {"ticket", "role", "attempt", "docs"},
+		"gate.finished":         {"ticket", "role", "verdict", "model", "tokens", "minutes"},
+		"gate.rejected":         {"ticket", "role", "reason"},
+		"session.needs_you":     {"session", "ticket", "agent"},
+		"session.exited":        {"session", "ticket", "agent", "reason"},
+		"session.saved":         {"session", "ticket", "agent", "by"},
+	} {
+		data := map[string]string{}
+		for _, f := range fields {
+			data[f] = "x"
+		}
+		if _, err := Line(kind, "tkt", "/p", data, at); err != nil {
+			t.Errorf("%s with its documented fields: %v", kind, err)
+		}
+		if _, err := Line(kind, "tkt", "/p", map[string]string{"extra": "x"}, at); err == nil {
+			t.Errorf("%s accepted an undocumented field", kind)
+		}
+	}
+	for _, src := range []string{"tkt", "sprint", "board", "gate-snapshot", "subagent-log", "daemon"} {
+		if _, err := Line("ticket.closed", src, "/p", nil, at); err != nil {
+			t.Errorf("source %s refused: %v", src, err)
+		}
 	}
 }

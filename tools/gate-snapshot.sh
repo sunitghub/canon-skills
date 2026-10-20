@@ -29,10 +29,13 @@ while [ -L "$_SOURCE" ]; do
 done
 SCRIPT_DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
 source "$SCRIPT_DIR/ticket-root.sh"
+source "$SCRIPT_DIR/platform-lib.sh"   # canon_event (t-8854)
 
-mode="${1:-}"; file="${2:-}"
-if [[ ( "$mode" != pre && "$mode" != post ) || -z "$file" ]]; then
-  echo "Usage: gate-snapshot.sh pre|post <snapshot-file>" >&2
+mode="${1:-}"; file="${2:-}"; role=""
+# t-8854: `pre … --role reviewer|evaluator` names the gate about to run, for the gate.started event (optional).
+if [[ "$mode" == pre && "${3:-}" == --role ]]; then role="${4:-}"; [[ "$role" == reviewer || "$role" == evaluator ]] || role="?"; fi
+if [[ ( "$mode" != pre && "$mode" != post ) || -z "$file" || "$role" == "?" ]]; then
+  echo "Usage: gate-snapshot.sh pre <snapshot-file> [--role reviewer|evaluator] | post <snapshot-file>" >&2
   exit 2
 fi
 
@@ -71,6 +74,19 @@ snapshot() {
 
 field() { sed -n "s/^$2=//p" "$1" | head -1; }   # <file> <key>
 
+# emit_gate_started — gate.started for the ticket whose folder holds the snapshot file (.tickets/<id>/…): its role, the
+# attempt (eval_fail_count + 1) and a hash of acceptance.md + plan.md. Observer-only; nothing for a file outside a ticket.
+emit_gate_started() {
+  local tdir id fails docs
+  tdir="$(cd "$(dirname "$file")" 2>/dev/null && pwd -P)" || return 0
+  id="$(basename "$tdir")"
+  [[ "$(basename "$(dirname "$tdir")")" == .tickets && -f "$tdir/ticket.md" ]] || return 0
+  fails="$(sed -n 's/^eval_fail_count:[[:space:]]*//p' "$tdir/ticket.md" | head -1)"
+  [[ "$fails" =~ ^[0-9]+$ ]] || fails=0
+  docs="$(cat "$tdir/acceptance.md" "$tdir/plan.md" 2>/dev/null | digest | cut -c1-12)"
+  canon_event gate.started gate-snapshot "$(dirname "$(dirname "$tdir")")" "ticket=$id" "role=$role" "attempt=$((fails + 1))" "docs=$docs"
+}
+
 if [[ "$mode" == pre ]]; then
   stash="$(git -C "$root" stash create 2>/dev/null || true)"
   stash_note=""
@@ -85,6 +101,7 @@ if [[ "$mode" == pre ]]; then
   else
     echo "gate-snapshot: recovery: nothing to recover, the tree has no uncommitted tracked changes."
   fi
+  emit_gate_started
   exit 0
 fi
 

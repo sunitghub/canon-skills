@@ -808,6 +808,7 @@ func TestSessionReapedAfterNaturalExitTTL(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
+	waitEvent(t, out.Session, "session.exited", map[string]string{"reason": "exited"}) // t-8854
 }
 
 func TestConstantTimeAuthEdgeCases(t *testing.T) {
@@ -940,6 +941,7 @@ func TestNeedsYouStatus(t *testing.T) {
 		t.Fatalf("needs-you: want 204, got %d", got)
 	}
 	waitFor(t, buf, "status=needs-you", 3*time.Second)
+	waitEvent(t, out.Session, "session.needs_you", map[string]string{"ticket": "t-ab12"}) // t-8854: written by the move into needs-you itself
 
 	// A newly attached stream learns the pending status from the replay.
 	ctx2, cancel2 := context.WithCancel(context.Background())
@@ -960,6 +962,10 @@ func TestNeedsYouStatus(t *testing.T) {
 	// waitFor("status=running") would already be satisfied by the replay frame the
 	// stream emits on attach, and so would pass even if input cleared nothing.
 	waitForAfter(t, buf, "status=needs-you", "status=running", 3*time.Second)
+	waitEvent(t, out.Session, "session.needs_you", map[string]string{"ticket": "t-ab12"}) // t-8854
+	if n := countEvents(out.Session, "session.needs_you"); n != 1 { // only the move into needs-you, never running
+		t.Errorf("%d session.needs_you events, want 1", n)
+	}
 }
 
 // waitForAfter waits for `want` to appear at some point after the first
@@ -2155,6 +2161,8 @@ func TestIdleReapKillsIdleSessionAfterSaveMarker(t *testing.T) {
 		if !stillThere {
 			// t-d9e6: reaped on purpose — not offered after a restart.
 			waitSnapshotGone(t, s, "t-ab12")
+			waitEvent(t, out.Session, "session.saved", map[string]string{"by": "marker"}) // t-8854
+			waitEvent(t, out.Session, "session.exited", map[string]string{"reason": "killed"})
 			return // reaped — success
 		}
 		time.Sleep(20 * time.Millisecond)
@@ -2260,6 +2268,7 @@ func TestSaveAndEndFileSettleEndsSession(t *testing.T) {
 		if !stillThere {
 			// t-d9e6: ended on purpose — not offered after a restart.
 			waitSnapshotGone(t, s, "t-ab12")
+			waitEvent(t, out.Session, "session.saved", map[string]string{"by": "file-settle"}) // t-8854
 			return // ended via file-settle — success
 		}
 		time.Sleep(20 * time.Millisecond)

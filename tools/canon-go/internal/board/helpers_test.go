@@ -10,13 +10,14 @@ import (
 
 // TestMain pins CANON_HOME (t-f182): board code emits events into $CANON_HOME/events, and a test must never write the
 // developer's own log (an unpinned run once left eleven fixture events in ~/.canon/events). A test that needs its own
-// CANON_HOME still sets it with t.Setenv.
+// CANON_HOME or HOME still sets it with t.Setenv.
 func TestMain(m *testing.M) {
 	home, err := os.MkdirTemp("", "canon-home-")
 	if err != nil {
 		panic(err)
 	}
 	os.Setenv("CANON_HOME", home)
+	os.Setenv("HOME", home) // and HOME: code that ignored CANON_HOME (a t-f182 sweep mutant did) would fall back to ~/.canon
 	code := m.Run()
 	os.RemoveAll(home)
 	os.Exit(code)
