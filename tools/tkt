@@ -1413,7 +1413,8 @@ cmd_github_doctor() {
   if [[ "$tree" == 100755* ]]; then
     _gd tests ok "Check & merge test command: scripts/test.sh" "Before merging, Check & merge runs it on main + the PR in a scratch clone, after you confirm."
   else
-    _gd tests warn "No test command" "No executable scripts/test.sh: Check & merge merges on the gates alone and says so (or pass --test)."
+    # t-9641: say what the command is for, that it is optional, and both ways to add one
+    _gd tests warn "No test command (optional)" "Check & merge can run your tests on main and the PR before it merges. This project has no executable scripts/test.sh, so it merges on the gates alone. To test first, either add scripts/test.sh and make it executable (chmod +x), or run tkt merge-pr <id> --test \"<your test command>\"."
   fi
   # The cloud recipe's one owner is docs/setup.md beside this tool; a missing section gives empty values.
   local doc="$SCRIPT_DIR/../docs/setup.md" domains="" script=""

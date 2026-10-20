@@ -49,9 +49,10 @@ out="$(PATH="$NOGH_PATH" "$TKT" github-doctor --json)"
 assert_eq "bad|GitHub CLI (gh) is not installed||https://github.com/cli/cli" "$(check "$out" gh)"
 assert_eq "bad|No GitHub repository for this project|git remote add origin https://github.com/<owner>/<repo>.git|" "$(check "$out" origin)"
 assert_contains "$(field "$out" "d['checks'][1]['detail']")" "no git remote named origin"
-assert_eq "warn|No test command|nofix" "$(check "$out" tests)"
+assert_eq "warn|No test command (optional)|nofix" "$(check "$out" tests)"
 git -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
 assert_contains "$(field "$out" "d['checks'][2]['detail']")" "merges on the gates alone"
+assert_contains "$(field "$out" "d['checks'][2]['detail']")" 'run tkt merge-pr <id> --test "<your test command>"'   # t-9641: both ways to add one
 
 # Installed but signed out; a non-GitHub origin.
 git remote add origin https://gitlab.com/acme/app.git
@@ -85,7 +86,7 @@ assert_eq "warn|Repository found; visibility unknown|nofix" "$(check "$out" orig
 chmod -x scripts/test.sh; git -c user.name=t -c user.email=t@t commit -q -am 'not executable'
 out="$(PATH="$W/bin:$PATH" STUB_VIS=public doctor)"
 assert_eq "warn|Repository found, and public|nofix" "$(check "$out" origin)"; assert_contains "$(field "$out" "d['checks'][1]['detail']")" "Send needs --public"
-assert_eq "warn|No test command|nofix" "$(check "$out" tests)"
+assert_eq "warn|No test command (optional)|nofix" "$(check "$out" tests)"
 
 # The cloud recipe is docs/setup.md's setup-script block, byte for byte, and its domains; no docs gives empty values.
 want="$(python3 - "$CANON/docs/setup.md" <<'EOF'
