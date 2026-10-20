@@ -12,20 +12,19 @@ export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 XDG_CONFIG_HOME="$WORK/
 ident=(-c user.email=t@example.com -c user.name=test)
 
 R="$WORK/repo"; M="$R/tools/canon-go"
-mkdir -p "$R/tools/sprint-headless-json-go" "$M/cmd/sprint-check" "$M/cmd/cockpit-daemon" "$M/internal/board" "$M/internal/daemon" "$M/internal/common"
+mkdir -p "$M/cmd/sprint-check" "$M/cmd/cockpit-daemon" "$M/internal/board" "$M/internal/daemon" "$M/internal/common"
 cp "$ROOT/tools/src-key.sh" "$R/tools/"
 printf 'module canon\n' > "$M/go.mod"; : > "$M/go.sum"
 for d in cmd/sprint-check cmd/cockpit-daemon internal/board internal/daemon internal/common; do echo "package x // $d" > "$M/$d/x.go"; done
-echo "package main" > "$R/tools/sprint-headless-json-go/main.go"
 git -C "$R" init -q -b main; git -C "$R" "${ident[@]}" add -A; git -C "$R" "${ident[@]}" commit -qm seed
 key() { bash -c 'source "$1/tools/src-key.sh"; canon_src_key "$1" "$2" ${3:+"$3"}' _ "${R2:-$R}" "$@"; }
 commit() { echo "// $1" >> "$M/$1/x.go" 2>/dev/null || echo "// $1" >> "$M/$1"; git -C "$R" "${ident[@]}" commit -qam "$1"; }
 
-b0="$(key sprint-check)"; d0="$(key cockpit-daemon)"; h0="$(key sprint-headless-json)"
+b0="$(key sprint-check)"; d0="$(key cockpit-daemon)"
 [[ "$b0" =~ ^[0-9a-f]{40}$ && "$d0" =~ ^[0-9a-f]{40}$ ]] || fail "keys must be 40 hex: board '$b0' daemon '$d0'"
 [[ "$b0" != "$d0" ]] || fail "the board and the daemon must not share a key"
-# a one-path component keeps its folder's tree hash (the headless helper's released keys stay valid)
-assert_eq "$(git -C "$R" rev-parse HEAD:tools/sprint-headless-json-go)" "$h0"
+# t-b62a: the headless helper is retired (the board binary does its job), so no script can name a key for it
+rc=0; out="$(key sprint-headless-json)" || rc=$?; [[ "$rc" == 1 && -z "$out" ]] || fail "a retired component must have no key: rc=$rc '$out'"
 
 # own sources move only their own key: every path of each binary, one commit at a time
 b="$b0"; d="$d0"

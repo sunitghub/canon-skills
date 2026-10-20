@@ -2,16 +2,16 @@
 # fetch-daemon.sh — put verified prebuilt binaries where canon expects them (t-60f7, t-9383).
 #   macOS and Linux: the cockpit daemon at tools/cockpit-daemon/cockpit-daemon and the board server at
 #   tools/sprint-check-bin/sprint-check (t-15d8: the Go board is the only board).
-#   Windows (Git Bash): the daemon, the board server and the headless JSON helper at tools/*-win.exe — they are
-#   no longer committed, so a checkout or a zip install has only the source until this runs.
+#   Windows (Git Bash): the daemon and the board server at tools/*-win.exe — they are no longer committed, so a checkout or a
+#   zip install has only the source until this runs. (t-b62a: the board binary's helpers replaced the headless JSON helper.)
 # Every binary is gitignored. This downloads the one published by scripts/release-daemon.sh and moves it into place only
 # after its SHA-256 equals the line for <source key> <target> in tools/cockpit-daemon.sha256 (read from the install itself).
-# The key is the git tree hash of the component's source folder; an install with no .git (a Windows zip install) uses the
+# The key is tools/src-key.sh's hash of the component's sources; an install with no .git (a Windows zip install) uses the
 # newest manifest line for the target instead. A failure never touches a binary that is already in place. If no download is
 # possible it builds from source when Go is new enough, else says what to do. Called by install.sh, install.ps1,
 # `canon update` and `canon`.
 # Usage: fetch-daemon.sh [--quiet]     exit 0 = every required binary is in place, 1 = one could not be provided.
-# Required: the daemon and the board. The headless helper (Windows) only warns.
+# Both are required.
 # CANON_FETCH_NO_BUILD=1 skips the build-from-source fallback (canon on Windows uses it at start). On macOS/Linux canon
 # lets it build, so a committed but unreleased board or daemon change runs from source on a machine with Go (t-15d8).
 set -euo pipefail
@@ -107,11 +107,7 @@ build_from_source() {
   mkdir -p "$(dirname "$DEST")"
   tmp="$(mktemp "$(dirname "$DEST")/.$(basename "$DEST").XXXXXX")"
   local ok=1 ldflags="-X main.version=$semver -X main.commit=$stamp"
-  if [ "$COMP" = sprint-headless-json ]; then   # the headless helper is still a legacy (no go.mod) package built from the repo root
-    ( cd "$REPO" && GO111MODULE=off GOTOOLCHAIN=local go build -buildvcs=false -ldflags "$ldflags" -o "$tmp" ./tools/sprint-headless-json-go ) >/dev/null 2>&1 || ok=0
-  else
-    ( cd "$MODULE_DIR" && GOTOOLCHAIN=local go build -buildvcs=false -ldflags "$ldflags" -o "$tmp" "./cmd/$COMP" ) >/dev/null 2>&1 || ok=0
-  fi
+  ( cd "$MODULE_DIR" && GOTOOLCHAIN=local go build -buildvcs=false -ldflags "$ldflags" -o "$tmp" "./cmd/$COMP" ) >/dev/null 2>&1 || ok=0
   if [ "$ok" = 1 ]; then
     install_tmp || return 1
     say "built from source ($stamp)"
@@ -156,8 +152,7 @@ fetch_one() {
 # The component list: label|component (tools/src-key.sh)|manifest target|release asset|release prefix|destination|required|version-check
 if [ "$os" = windows ]; then
   COMPONENTS="cockpit-daemon|cockpit-daemon|windows-amd64|cockpit-daemon-windows-amd64.exe|cockpit-daemon|tools/cockpit-daemon-win.exe|1|0
-sprint-check-win|sprint-check|sprint-check-windows-amd64|sprint-check-windows-amd64.exe|sprint-check|tools/sprint-check-win.exe|1|0
-sprint-headless-json-win|sprint-headless-json|sprint-headless-json-windows-amd64|sprint-headless-json-windows-amd64.exe|sprint-headless-json|tools/sprint-headless-json-win.exe|0|0"
+sprint-check-win|sprint-check|sprint-check-windows-amd64|sprint-check-windows-amd64.exe|sprint-check|tools/sprint-check-win.exe|1|0"
 else
   COMPONENTS="cockpit-daemon|cockpit-daemon|$os-$arch|cockpit-daemon-$os-$arch|cockpit-daemon|tools/cockpit-daemon/cockpit-daemon|1|1
 sprint-check|sprint-check|sprint-check-$os-$arch|sprint-check-$os-$arch|sprint-check|tools/sprint-check-bin/sprint-check|1|1"

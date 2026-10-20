@@ -8,25 +8,24 @@ WORK="$(cd "$(mktemp -d)" && pwd -P)"; trap 'rm -rf "$WORK"' EXIT
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 XDG_CONFIG_HOME="$WORK/xdg"
 ident=(-c user.email=t@example.com -c user.name=test)
 # t-8020: the board and the daemon are one module (tools/canon-go); tools/src-key.sh names what each key covers
-R="$WORK/repo"; M="$R/tools/canon-go"; mkdir -p "$R/scripts" "$R/tools/sprint-headless-json-go" "$M/cmd/sprint-check" "$M/cmd/cockpit-daemon" "$M/internal/board" "$M/internal/daemon" "$M/internal/common"
+R="$WORK/repo"; M="$R/tools/canon-go"; mkdir -p "$R/scripts" "$M/cmd/sprint-check" "$M/cmd/cockpit-daemon" "$M/internal/board" "$M/internal/daemon" "$M/internal/common"
 cp "$ROOT/scripts/check-binaries-released.sh" "$R/scripts/"; cp "$ROOT/tools/src-key.sh" "$R/tools/"
 printf 'module canon\n' > "$M/go.mod"; : > "$M/go.sum"
 for d in cmd/sprint-check cmd/cockpit-daemon internal/board internal/daemon internal/common; do echo "package x // $d" > "$M/$d/x.go"; done
-echo "package main // headless" > "$R/tools/sprint-headless-json-go/main.go"
 git -C "$R" init -q -b main; git -C "$R" "${ident[@]}" add -A; git -C "$R" "${ident[@]}" commit -qm seed
 key() { bash -c 'source "$1/tools/src-key.sh"; canon_src_key "$1" "$2"' _ "$R" "$1" | cut -c1-12; }
 sha() { printf 'a%.0s' {1..64}; }
-write_manifest() { # <daemon key> <board key> <headless key>
+write_manifest() { # <daemon key> <board key>
   { for t in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 windows-amd64; do echo "$1 $t $(sha)"; done
-    for t in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 windows-amd64; do echo "$2 sprint-check-$t $(sha)"; done; echo "$3 sprint-headless-json-windows-amd64 $(sha)"; } > "$R/tools/cockpit-daemon.sha256"
+    for t in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 windows-amd64; do echo "$2 sprint-check-$t $(sha)"; done; } > "$R/tools/cockpit-daemon.sha256"
 }
 run() { set +e; out="$(bash "$R/scripts/check-binaries-released.sh" "$@" 2>&1)"; rc=$?; set -e; }
 
-write_manifest "$(key cockpit-daemon)" "$(key sprint-check)" "$(key sprint-headless-json)"
+write_manifest "$(key cockpit-daemon)" "$(key sprint-check)"
 run; [[ "$rc" == 0 ]] || fail "a fully released tree must pass: $out"; assert_contains "$out" "ok            windows-amd64"
-# every target is checked: with no release lines at all, each of the eleven is named (a dropped row would go unchecked)
+# every target is checked: with no release lines at all, each of the ten is named (a dropped row would go unchecked)
 cp "$R/tools/cockpit-daemon.sha256" "$WORK/full.sha256"; printf '# header\n' > "$R/tools/cockpit-daemon.sha256"; run
-for t in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 windows-amd64 sprint-check-darwin-arm64 sprint-check-darwin-amd64 sprint-check-linux-amd64 sprint-check-linux-arm64 sprint-check-windows-amd64 sprint-headless-json-windows-amd64; do
+for t in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 windows-amd64 sprint-check-darwin-arm64 sprint-check-darwin-amd64 sprint-check-linux-amd64 sprint-check-linux-arm64 sprint-check-windows-amd64; do
   assert_contains "$out" "NOT RELEASED  $t"
 done
 cp "$WORK/full.sha256" "$R/tools/cockpit-daemon.sha256"
@@ -40,7 +39,7 @@ for t in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 windows-amd64; do ech
 # the OLD key appended after the new one makes the newest line stale again
 echo "111111111111 sprint-check-windows-amd64 $(sha)" >> "$R/tools/cockpit-daemon.sha256"; run; [[ "$rc" == 1 ]] || fail "a stale newest line must fail: $out"
 # a missing line, a CRLF manifest (still fine), an empty manifest
-write_manifest "$(key cockpit-daemon)" "$(key sprint-check)" "$(key sprint-headless-json)"
+write_manifest "$(key cockpit-daemon)" "$(key sprint-check)"
 sed -i.bak 's/$/\r/' "$R/tools/cockpit-daemon.sha256"; rm "$R/tools/cockpit-daemon.sha256.bak"; run; [[ "$rc" == 0 ]] || fail "CRLF manifest must pass: $out"
 : > "$R/tools/cockpit-daemon.sha256"; run; [[ "$rc" == 1 ]] || fail "an empty manifest must fail: $out"; assert_contains "$out" "missing"
 
@@ -56,8 +55,7 @@ printf 'binary' > "$WORK/b"; goodsha="$(shasum -a 256 "$WORK/b" | awk '{print $1
 { for t in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64; do echo "$(key cockpit-daemon) $t $goodsha"; cp "$WORK/b" "$STUB_DIR/cockpit-daemon-$t"; done
   echo "$(key cockpit-daemon) windows-amd64 $goodsha"; cp "$WORK/b" "$STUB_DIR/cockpit-daemon-windows-amd64.exe"
   echo "$(key sprint-check) sprint-check-windows-amd64 $goodsha"; cp "$WORK/b" "$STUB_DIR/sprint-check-windows-amd64.exe"
-  for t in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64; do echo "$(key sprint-check) sprint-check-$t $goodsha"; cp "$WORK/b" "$STUB_DIR/sprint-check-$t"; done
-  echo "$(key sprint-headless-json) sprint-headless-json-windows-amd64 $goodsha"; cp "$WORK/b" "$STUB_DIR/sprint-headless-json-windows-amd64.exe"; } > "$R/tools/cockpit-daemon.sha256"
+  for t in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64; do echo "$(key sprint-check) sprint-check-$t $goodsha"; cp "$WORK/b" "$STUB_DIR/sprint-check-$t"; done; } > "$R/tools/cockpit-daemon.sha256"
 set +e; out="$(PATH="$STUBS:$PATH" bash "$R/scripts/check-binaries-released.sh" --download 2>&1)"; rc=$?; set -e
 [[ "$rc" == 0 ]] || fail "good assets must pass --download: $out"; assert_contains "$out" "asset downloaded, sha256 matches"
 printf 'tampered' > "$STUB_DIR/sprint-check-windows-amd64.exe"
@@ -65,5 +63,5 @@ set +e; out="$(PATH="$STUBS:$PATH" bash "$R/scripts/check-binaries-released.sh" 
 [[ "$rc" == 1 ]] || fail "a tampered asset must fail --download: $out"; assert_contains "$out" "BAD ASSET     sprint-check-windows-amd64"
 rm -f "$STUB_DIR/cockpit-daemon-linux-arm64"
 set +e; out="$(PATH="$STUBS:$PATH" bash "$R/scripts/check-binaries-released.sh" --download 2>&1)"; rc=$?; set -e
-[[ "$rc" == 1 ]]; assert_contains "$out" "BAD ASSET     linux-arm64"
+[[ "$rc" == 1 ]] || fail "a missing asset must fail --download: $out"; assert_contains "$out" "BAD ASSET     linux-arm64"
 echo "check-binaries-released: ok (green when released, red naming the component, newest line wins, CRLF ok, --download catches a missing or tampered asset)"

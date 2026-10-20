@@ -184,7 +184,6 @@ skipped() {
   printf '==> %s\n' "$1"
 }
 go_board() { (cd "$ROOT/tools/canon-go" && go test ./cmd/... ./internal/board ./internal/common); }   # t-8020: one module
-go_headless_json() { (cd "$ROOT" && GO111MODULE=off go test ./tools/sprint-headless-json-go); }
 go_daemon() { (cd "$ROOT/tools/canon-go" && go test ./internal/daemon); }
 
 run_all() {
@@ -194,11 +193,9 @@ done
 
 if (( DRY )) || command -v go >/dev/null 2>&1; then
   suite tools/canon-go/internal/board go_board
-  suite tools/sprint-headless-json-go go_headless_json
   suite tools/canon-go/internal/daemon go_daemon
 else
   skipped "tools/canon-go/internal/board skipped (go absent)"
-  skipped "tools/sprint-headless-json-go skipped (go absent)"
   skipped "tools/canon-go/internal/daemon skipped (go absent)"
 fi
 
@@ -242,7 +239,7 @@ run_parallel() {
   PLAN=1; run_all; PLAN=0
   t="${TMPDIR:-/tmp}"   # macOS's TMPDIR ends in "/": a "//" in a suite's TMPDIR breaks Go tests that string-compare t.TempDir() paths
   RUN="$(mktemp -d "${t%/}/test-sh-run.XXXXXX")"; mkdir -p "$RUN/jobs" "$RUN/tmp"
-  export ROOT RUN; export -f go_board go_headless_json go_daemon
+  export ROOT RUN; export -f go_board go_daemon
   cat > "$RUN/worker.sh" <<'WORKER'
 i="$1"; cmd="$(cat "$RUN/jobs/$i.cmd")"
 export TMPDIR="$RUN/tmp/$i"; mkdir -p "$TMPDIR"

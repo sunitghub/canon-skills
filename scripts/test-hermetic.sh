@@ -94,9 +94,6 @@ run_all() {
     record "$t" "$rc" "$log"
   done
   if command -v go >/dev/null 2>&1; then
-    log="$W/logs/go_sprint-headless-json-go.log"; rc=0
-    pinned_b 600 env GO111MODULE=off go test -count=1 ./tools/sprint-headless-json-go > "$log" 2>&1 || rc=$?
-    record "go tools/sprint-headless-json-go" "$rc" "$log"
     log="$W/logs/go_canon-go.log"; rc=0   # t-8020: the board and the daemon are one module
     (cd tools/canon-go && pinned_b 900 go test -count=1 ./... > "$log" 2>&1) || rc=$?
     record "go tools/canon-go" "$rc" "$log"

@@ -6,7 +6,7 @@
 
 - Claude Code CLI (`claude`) installed and authenticated on the CI runner (an `ANTHROPIC_API_KEY` secret, or whatever auth method your `claude` install uses).
 - `git`, `bash`, and `awk` available on the runner — `tools/sprint-headless` shells out to all three.
-- **Parsing `claude -p`'s JSON output:** on Windows, `tools/sprint-headless` uses the `tools/sprint-headless-json-win.exe` binary that the installer and `canon update` fetch (checksum-verified, not committed) and needs nothing further once it is there. Everywhere else (macOS, Linux, CI runners), it shells out to `python3` — make sure that's on the runner's `PATH`.
+- **Parsing `claude -p`'s JSON output:** `tools/sprint-headless` and `tools/sprint-headless-eval` use canon's board binary (`sprint-check headless-json`), which the installer and `canon update` fetch on every OS (checksum-verified, not committed). No Python is needed. They check the binary before calling `claude -p`, so a missing one fails fast with "run canon update" instead of after a paid run.
 
 ## What It Does, and Doesn't Do
 

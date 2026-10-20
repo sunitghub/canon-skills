@@ -13,6 +13,7 @@ tmp_home="$(mktemp -d)"
 export HOME="$tmp_home"
 export PATH="$PATH:$TOOLS_DIR"
 trap 'rm -rf "$tmp_home"' EXIT
+use_fresh_board "$tmp_home/board"   # t-b62a: the settings rules are written by the board binary's helper
 
 run_with_tty() {
   # $1: command string, $2: answer to feed on the simulated tty.

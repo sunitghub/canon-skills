@@ -10,6 +10,7 @@ tmp_home="$(mktemp -d)"
 export HOME="$tmp_home"
 dirs=("$tmp_home")
 trap 'rm -rf "${dirs[@]}"' EXIT
+use_fresh_board "$tmp_home/board"   # t-b62a: the settings rules are written by the board binary's helper
 newp() { local d; d="$(make_project)"; dirs+=("$d"); printf '# Agents\n' > "$d/AGENTS.md"; printf '%s\n' "$d"; }
 fm() { awk -v k="$2" 'NR==1{next} /^---/{exit} index($0, k": ")==1 {print substr($0, length(k)+3)}' "$1"; }
 # lib <project> <skills_root> <function>: call one skills.sh function with the given SKILLS_ROOT.
@@ -177,20 +178,27 @@ assert_eq "" "$out"
 out="$(PATH="$crbin:$PATH" lib "$p11" "$ROOT" offer_subagent_log_permission </dev/null 2>&1)"
 assert_eq "" "$out"
 
-# Windows without Python: the Microsoft Store placeholder python3 exists but does nothing (exit 0, no
-# output). Both settings merges must skip honestly, never print a false [ok], and never write.
+# t-b62a: Python is never consulted. A placeholder python3 (the Microsoft Store alias does nothing, or installs Python) first on
+# PATH changes nothing: both rules are written by the board binary, and the placeholder never runs.
 stubbin="$(mktemp -d)"; dirs+=("$stubbin")
-printf '#!/usr/bin/env bash\nexit 0\n' > "$stubbin/python3"; chmod +x "$stubbin/python3"
+printf '#!/usr/bin/env bash\ntouch "%s/ran"\nexit 0\n' "$stubbin" > "$stubbin/python3"; chmod +x "$stubbin/python3"
 p12="$(newp)"
 for fn in offer_install_deny_rules offer_subagent_log_permission; do
   out="$(PATH="$stubbin:$PATH" SKILLS_SH_ASSUME_YES=1 lib "$p12" "$ROOT" "$fn" 2>&1)"
-  assert_contains "$out" "which isn't available here"
-  [[ "$out" != *"[ok]"* ]] || fail "$fn reported [ok] with a placeholder python3: $out"
+  assert_contains "$out" "[ok]"
 done
-[[ ! -e "$p12/.claude/settings.json" ]] || fail "settings.json written without a working python"
-# ...and refresh surfaces the skip (it contains "left as is").
-"$SKILLS" add sprint "$p12" >/dev/null 2>&1 || true
-out="$(PATH="$stubbin:$PATH" SKILLS_SH_ASSUME_YES=1 "$SKILLS" refresh "$p12" 2>&1)"
-assert_contains "$out" "which isn't available here"
+grep -qF '"Bash(brew install:*)"' "$p12/.claude/settings.json" && grep -qF '"Bash(subagent-log.sh:*)"' "$p12/.claude/settings.json" \
+  || fail "the rules were not written with a placeholder python3: $(cat "$p12/.claude/settings.json")"
+[[ ! -e "$stubbin/ran" ]] || fail "a settings edit ran python3"
+# With no board binary yet, both skip honestly (never a false [ok], never a write), and `skills.sh add sprint` says so.
+p13="$(newp)"
+for fn in offer_install_deny_rules offer_subagent_log_permission; do
+  out="$(SPRINT_CHECK_BIN="$p13/no-board" SKILLS_SH_ASSUME_YES=1 lib "$p13" "$ROOT" "$fn" 2>&1)"
+  assert_contains "$out" "run canon update"
+  [[ "$out" != *"[ok]"* ]] || fail "$fn reported [ok] with no board binary: $out"
+done
+[[ ! -e "$p13/.claude/settings.json" ]] || fail "settings.json written without a board binary"
+out="$(SPRINT_CHECK_BIN="$p13/no-board" SKILLS_SH_ASSUME_YES=1 "$SKILLS" add sprint "$p13" 2>&1)" || fail "skills add sprint failed with no board binary: $out"
+assert_contains "$out" "run canon update"
 
 printf 'skills-agents: ok\n'

@@ -14,6 +14,9 @@ assert() { if eval "$1"; then ok "$2"; else bad "$2"; fi; }
 
 tmp="$(mktemp -d "$repo_root/.cotest.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
+# t-b62a: the tool parses JSON with the board binary's helpers; a fresh build, not the fetched one (which may be older).
+source "$repo_root/tests/helpers.sh"
+use_fresh_board "$tmp"
 
 spec="$tmp/acc.md"
 cat > "$spec" <<'EOF'

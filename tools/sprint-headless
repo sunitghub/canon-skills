@@ -23,6 +23,7 @@ SCRIPT_DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
 source "$SCRIPT_DIR/ticket-root.sh"
 source "$SCRIPT_DIR/gate-cache.sh"
 source "$SCRIPT_DIR/gate-model.sh"
+source "$SCRIPT_DIR/platform-lib.sh"
 
 ID="${1:-}"
 [[ -z "$ID" || "$ID" == --* ]] && { echo "Usage: sprint-headless <ticket-id> --base-ref <ref> [--cache|--no-cache]" >&2; exit 1; }
@@ -43,6 +44,9 @@ while [[ $# -gt 0 ]]; do
     *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
 done
+
+# The board binary parses claude -p's JSON (t-b62a: it replaced python3); check it runs before anything is paid for.
+BOARD="$(board_helper_bin)" || exit 1
 
 # Caching is opt-in (see gate-cache.sh): explicit --cache/--no-cache wins, else
 # CANON_GATE_CACHE=1 enables it. Default (nothing set) = off, fully fresh grading.
@@ -233,39 +237,8 @@ else
     exit 1
   fi
 
-  # On Windows, python3 isn't bundled with Git for Windows — use the fetched
-  # Go binary (canon update, t-9383) instead when running there and present; every other platform
-  # (and Windows with the binary absent, e.g. an older checkout) keeps using
-  # python3 unchanged. Never try to exec the Windows PE binary on macOS/Linux —
-  # it would just fail with "cannot execute binary file".
-  IS_WINDOWS=0
-  case "$(uname -s)" in
-    MINGW*|MSYS*|CYGWIN*) IS_WINDOWS=1 ;;
-  esac
-  JSON_HELPER="$SCRIPT_DIR/sprint-headless-json-win.exe"
-
-  if [[ "$IS_WINDOWS" -eq 1 && -f "$JSON_HELPER" ]]; then
-    PARSED="$(echo "$RESULT_JSON" | "$JSON_HELPER")"
-  elif command -v python3 >/dev/null 2>&1; then
-    PARSED="$(echo "$RESULT_JSON" | python3 -c '
-import json, sys
-try:
-    d = json.load(sys.stdin)
-except Exception:
-    print("PARSE_ERROR\t\t")
-    sys.exit(0)
-is_error = d.get("is_error", True)
-session_id = d.get("session_id", "unknown")
-result = d.get("result", "").replace(chr(10), chr(2))
-print(str(is_error) + chr(9) + str(session_id) + chr(9) + result)
-')"
-  else
-    echo "Error: python3 is required to parse claude -p's output (on Windows, $JSON_HELPER is used instead if present — it wasn't found; run canon update to fetch it). Hard-failing." >&2
-    exit 1
-  fi
-  IS_ERROR="$(echo "$PARSED" | cut -f1)"
-  SESSION_ID="$(echo "$PARSED" | cut -f2)"
-  RESULT_TEXT="$(echo "$PARSED" | cut -f3- | tr '\002' '\n')"
+  # --- Parse JSON output (the board binary's headless-json, t-b62a) ---
+  headless_parse "$BOARD" <<< "$RESULT_JSON"
 
   "$SCRIPT_DIR/subagent-log.sh" --agent-id "headless-$SESSION_ID" --agent-type headless-orchestrator 2>/dev/null || true
 
@@ -301,7 +274,7 @@ extract_report() {
   local tag="$1"
   # Plain-text delimiter search on already-unescaped $RESULT_TEXT — no real
   # JSON parsing, so this is portable to awk without the escaping risk that
-  # keeps the is_error/session_id/result parse above on python3/Go.
+  # keeps the is_error/session_id/result parse above in Go (the board binary).
   awk -v start="@@@CANON_HEADLESS_REPORT:${tag}@@@" -v end="@@@CANON_HEADLESS_REPORT:/${tag}@@@" '
     $0 == end {
       if (started) { found_end = 1 }

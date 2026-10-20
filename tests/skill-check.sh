@@ -1,22 +1,26 @@
 #!/usr/bin/env bash
-# skill-check — tools/skill-check gates a later paid `claude plugin eval` run. Runs the
-# real tool against fixtures; the reject cases feed it inputs it must fail or refuse.
+# skill-check — `sprint-check skill-check` (the board binary; t-b62a retired the Python tools/skill-check) gates a later
+# paid `claude plugin eval` run. Runs the real binary against fixtures; the reject cases feed it inputs it must fail or refuse.
 # Fixtures are copied outside the repo because the tool refuses paths inside canon.
 
 set -euo pipefail
+export SPRINT_CHECK_NO_BROWSER=1   # the board binary runs here (skill-check); tests/no-browser-in-tests.sh matches its spelling
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/tests/helpers.sh"
 
-# Guarded skip: in scripts/test.sh's mandatory list, so a missing python3 must not abort the suite.
+# Guarded skip: in scripts/test.sh's mandatory list, so a missing python3 (this test's JSON reader and fuzz generator) must not
+# abort the suite.
 if ! command -v python3 >/dev/null 2>&1; then
   echo "skill-check: python3 absent — skipped"
   exit 0
 fi
 
-TOOL="$ROOT/tools/skill-check"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
+BOARD="$(build_board "$TMP/bin")"
+TOOL="$TMP/bin/skill-check"   # a one-word command, as the fuzz below passes it on
+printf '#!/bin/sh\nexec "%s" skill-check "$@"\n' "$BOARD" > "$TOOL"; chmod +x "$TOOL"
 cp -R "$ROOT/tests/fixtures/skill-check/." "$TMP/"
 
 # status <json> <check-id> -> pass|warn|fail|absent

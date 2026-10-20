@@ -14,25 +14,10 @@ source "$ROOT/tests/helpers.sh"
 SPRINT_HEADLESS="$ROOT/tools/sprint-headless"
 
 WORK="$(mktemp -d)"
-FAKE_WIN_EXE="$ROOT/tools/sprint-headless-json-win.exe"
-BACKED_UP_WIN_EXE=0
-# Trap-guaranteed, not just sequential cleanup: an assertion failure
-# (fail()/assert_contains exit on the spot under set -e) mid-mutation must
-# not leave the real win.exe corrupted in the working tree.
-# Also called directly right after the mutating test below, on the success
-# path, so the real binary isn't left swapped for the rest of the run.
-restore_win_exe_stub() {
-  if [[ "$BACKED_UP_WIN_EXE" -eq 1 && -f "$FAKE_WIN_EXE.orig-test-backup" ]]; then
-    mv -f "$FAKE_WIN_EXE.orig-test-backup" "$FAKE_WIN_EXE"
-  elif [[ "$BACKED_UP_WIN_EXE" -eq 2 ]]; then
-    rm -f "$FAKE_WIN_EXE"
-  fi
-}
-cleanup() {
-  rm -rf "$WORK"
-  restore_win_exe_stub
-}
-trap cleanup EXIT
+BIN_DIR="$(mktemp -d)"
+trap 'rm -rf "$WORK" "$BIN_DIR"' EXIT
+# t-b62a: claude -p's JSON is parsed by the board binary's headless-json; a fresh build, not the fetched one (which may be older).
+use_fresh_board "$BIN_DIR"
 
 git -C "$WORK" init -q
 git -C "$WORK" config user.email t@t.com
@@ -256,31 +241,23 @@ assert_contains "$(cat "$SUMMARY_FILE")" "HEADLESS_VERDICT: PASS"
 assert_contains "$(cat "$SUMMARY_FILE")" "Verdict: YES"
 rm -f "$SUMMARY_FILE"
 
-# ── 11. Windows JSON-parse binary present but not on Windows: never exec'd ──
-# uname on this test runner is never MINGW/MSYS/CYGWIN, so the IS_WINDOWS
-# gate in sprint-headless must keep using python3 and never attempt to run
-# the checked-in Windows PE binary — a non-executable stub in its place
-# proves it: if sprint-headless ever tried to exec it, this would hard-fail
-# instead of the well-formed-response path succeeding as in case 8.
-# BACKED_UP_WIN_EXE/FAKE_WIN_EXE are declared at the top of this file so
-# cleanup()'s EXIT trap can restore the real binary even if an assertion
-# below fails mid-test (set -e exits immediately, skipping any restore
-# written as plain sequential code after it).
-
-rm -f "$WORK/.tickets/t-aaaa/review-notes.md" "$WORK/.tickets/t-aaaa/eval-report.md"
-if [[ -f "$FAKE_WIN_EXE" ]]; then
-  cp "$FAKE_WIN_EXE" "$FAKE_WIN_EXE.orig-test-backup"
-  BACKED_UP_WIN_EXE=1
-else
-  BACKED_UP_WIN_EXE=2
-fi
-printf 'not a real executable' > "$FAKE_WIN_EXE"
-
-(cd "$WORK" && PATH="$STUB_OK_DIR:$PATH" run_ok "$SPRINT_HEADLESS" t-aaaa --base-ref HEAD >/dev/null)
-review_notes="$(cat "$WORK/.tickets/t-aaaa/review-notes.md")"
-assert_contains "$review_notes" "Verdict: YES"
-
-restore_win_exe_stub
+# ── 11. The board binary is checked before claude -p is paid for (t-b62a) ──
+# Missing, or older than these tools (it takes an unknown word for a port and would serve forever): exit 1 with
+# "run canon update", and the claude stub is never called.
+STUB_CALLED_DIR="$(mktemp -d)"
+printf '#!/bin/sh\ntouch "%s/called"\nexit 0\n' "$STUB_CALLED_DIR" > "$STUB_CALLED_DIR/claude"; chmod +x "$STUB_CALLED_DIR/claude"
+printf '#!/bin/sh\n[ "$1" = --help ] && { echo "sprint-check-win — local kanban dashboard"; exit 0; }\nsleep 20\n' > "$BIN_DIR/old-board"; chmod +x "$BIN_DIR/old-board"
+for tool in "$SPRINT_HEADLESS" "$ROOT/tools/sprint-headless-eval"; do
+  for board in "$BIN_DIR/no-such-board" "$BIN_DIR/old-board"; do
+    set +e
+    out="$(cd "$WORK" && SPRINT_CHECK_BIN="$board" PATH="$STUB_CALLED_DIR:$PATH" "$tool" t-aaaa --base-ref HEAD 2>&1)"; rc=$?
+    set -e
+    [[ "$rc" == 1 ]] || fail "$(basename "$tool") with board $board: expected exit 1, got $rc: $out"
+    assert_contains "$out" "run canon update"
+    [[ ! -e "$STUB_CALLED_DIR/called" ]] || fail "$(basename "$tool") called claude although the board binary ($board) cannot parse its output"
+  done
+done
+rm -rf "$STUB_CALLED_DIR"
 
 # ── 12. Adversarial content through awk extract_report: no injection, no mangling ─
 
@@ -662,4 +639,4 @@ git -C "$WORK" tag -d cachebase >/dev/null 2>&1 || true
 
 rm -rf "$STUB_OK_DIR" "$STUB_BAD_DIR"
 
-echo "sprint-headless: ok (guard rails: not-ci-eligible, uncommitted docs, unapproved plan, no-resolvable-base-ref all hard-fail; invocation error hard-fails with a clear message; canon-repo and consumer-project skills layouts both resolve, neither-layout case fails closed; well-formed relay persists correct per-gate content with no section-swap; malformed relay skips that file with a warning and leaves HEADLESS_VERDICT/exit-code unaffected; GITHUB_STEP_SUMMARY receives the full result text; a present-but-non-Windows sprint-headless-json-win.exe is never exec'd; adversarial content (quotes, backticks, \$HOME, backslashes) survives extract_report unmangled; model plumbing: Gate model:/--model reaches claude, session/absent passes none, invalid hard-fails before dispatch; sprint-headless-eval ticket-id mode grades .tickets/<id>/acceptance.md into the ticket folder excluding ## QA, base-ref defaults origin/main→main with explicit override + clear no-default error, spec-file mode still works; verdict cache is opt-in via --cache/--no-cache/CANON_GATE_CACHE, a HIT on an unchanged diff reuses the verdict without calling claude and says so loudly, a changed diff misses, FAIL is cached and reused, and caching is off by default)"
+echo "sprint-headless: ok (guard rails: not-ci-eligible, uncommitted docs, unapproved plan, no-resolvable-base-ref all hard-fail; invocation error hard-fails with a clear message; canon-repo and consumer-project skills layouts both resolve, neither-layout case fails closed; well-formed relay persists correct per-gate content with no section-swap; malformed relay skips that file with a warning and leaves HEADLESS_VERDICT/exit-code unaffected; GITHUB_STEP_SUMMARY receives the full result text; a missing or older board binary stops the run before claude is called; adversarial content (quotes, backticks, \$HOME, backslashes) survives extract_report unmangled; model plumbing: Gate model:/--model reaches claude, session/absent passes none, invalid hard-fails before dispatch; sprint-headless-eval ticket-id mode grades .tickets/<id>/acceptance.md into the ticket folder excluding ## QA, base-ref defaults origin/main→main with explicit override + clear no-default error, spec-file mode still works; verdict cache is opt-in via --cache/--no-cache/CANON_GATE_CACHE, a HIT on an unchanged diff reuses the verdict without calling claude and says so loudly, a changed diff misses, FAIL is cached and reused, and caching is off by default)"

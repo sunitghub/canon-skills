@@ -39,12 +39,6 @@ open_browser() {
   fi
 }
 
-# board_bin — the board server this install runs: <install>/$(board_rel_path), or SPRINT_CHECK_BIN when set (a test's build).
-board_bin() {
-  if [[ -n "${SPRINT_CHECK_BIN:-}" ]]; then echo "$SPRINT_CHECK_BIN"; return; fi
-  echo "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/$(board_rel_path)"
-}
-
 # start_cockpit_server <port> — background the Go board (t-15d8: every OS, no Python); sets SERVER_PID. The caller opens the browser.
 # The binary is fetched, not committed (t-9383): on Windows only when missing and never built; on macOS/Linux at every start, which
 # is a stamp check when current and builds an unreleased board or daemon change from source where Go is installed. SPRINT_CHECK_BIN

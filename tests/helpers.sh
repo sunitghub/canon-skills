@@ -93,6 +93,12 @@ build_board() {
   printf '%s\n' "$out"
 }
 
+# use_fresh_board <dir> — build the board into <dir> and export SPRINT_CHECK_BIN to it (t-b62a: skills.sh's settings edits and
+# sprint-headless run the board binary's helpers, and the fetched binary may be older than the tools under test).
+use_fresh_board() {
+  SPRINT_CHECK_BIN="$(build_board "$1")"; export SPRINT_CHECK_BIN
+}
+
 make_project() {
   local dir
   dir="$(mktemp -d)"

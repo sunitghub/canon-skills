@@ -6,6 +6,13 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Changed
+- canon no longer runs Python anywhere you use it (`t-b62a`). The board binary gained helper commands (`headless-json`, `json-strings`, `settings`, `skill-check`) that replace the inline `python3` in `sprint-headless`, `sprint-headless-eval` and `skills.sh`, Windows' `settings-merge.ps1`, and the Python `tools/skill-check` (now `sprint-check skill-check`). `sprint-headless-json-win.exe` is retired; an old copy left in `tools/` is harmless.
+- `sprint-headless` and `sprint-headless-eval` check the board binary before calling `claude -p`, so a missing one fails before a paid run, not after it.
+
+### Fixed
+- On macOS and Linux without `python3`, `skills.sh add sprint` skipped the install deny rules (close gates could then run `brew`/`apt install`). It now writes them on every OS, keeping the rest of `.claude/settings.json` as it was (key order and values); a symlinked settings file is refused.
+
 ## [0.14.0] - 2026-10-19
 
 The board and the cockpit daemon now build from one Go module, `tools/canon-go`, and each is still released on its own, so a fix to one no longer re-releases the other. Update with `canon update`, then press **Restart Daemon** in Admin (both binaries changed since 0.13.0; a running daemon stays on the old version). Claude cloud environments: copy the setup script in again (see below).
