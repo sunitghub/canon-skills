@@ -1648,7 +1648,8 @@ _ff_local_base() {
 }
 
 # cmd_github_status <id> [--json] — t-d271: where a ticket sent to GitHub stands, for the board to poll. Read-only: one
-# gh call (the PR that says "Fixes #<issue>") and one ls-remote (canon-results/<id>), plus the local ticket. Stages:
+# gh call (the PR that says "Fixes #<issue>") and one ls-remote (canon-results/<id>), plus the local ticket; t-c8d4 adds one
+# object fetch of the PR head, only when a passed, closed ticket's PR head is past graded-head and not local yet. Stages:
 # sent (no PR yet) → pr-open → results-ready (canon-results/<id> is on origin: import it) → results-in (imported, the
 # evaluator passed on the PR's head) → merged. A gh or git failure exits 1 with the reason, never a guessed stage.
 cmd_github_status() {
@@ -1682,7 +1683,8 @@ cmd_github_status() {
   # t-c8d4: merge-pr's rule (t-fdb1): a head that is graded-head plus merge-safe late docs only is the graded code too. The fetch
   # runs only when that head is not local yet (import-results usually fetched it), so the board's poll stays cheap.
   local late=false lerr
-  if [[ "$verdict" == pass && -n "$phead" && "$graded" != - ]] && ! $match && [[ -z "$merged" && "$pst" != MERGED ]] \
+  if [[ "$verdict" == pass && "$pr" =~ ^[0-9]+$ && "$phead" =~ ^[0-9a-f]{40}$ && "$graded" != - ]] && ! $match \
+    && [[ -z "$merged" && "$pst" != MERGED ]] \
     && [[ "$(get_field "$file" status)" == closed ]]; then
     if ! git -C "$root" cat-file -e "$phead^{commit}" 2>/dev/null; then
       lerr="$(git -C "$root" fetch -q origin "refs/pull/$pr/head" < /dev/null 2>&1)" \
