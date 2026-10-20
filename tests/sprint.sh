@@ -755,7 +755,10 @@ grep -v '^Noted:' "$rn" > "$rn.tmp" && mv "$rn.tmp" "$rn"
 assert_contains "$(run_fail "$SPRINT" check-review-notes "$model_id")" 'no line for the "Noted" triage bucket'
 assert_contains "$(run_fail "$SPRINT" complete)" 'no line for the "Noted" triage bucket'
 good_review "tools/sprint, tests/sprint.sh" "none — checked plan.md Files vs diff, plan.md:20"
-sed -i 's/^Act On: none$/Act On: tools\/sprint:12 — wrong exit code [severity: high · confidence: high]/' "$rn"
+grep -v '^Act On:' "$rn" > "$rn.tmp" && mv "$rn.tmp" "$rn"
+assert_contains "$(run_fail "$SPRINT" check-review-notes "$model_id")" 'no line for the "Act On" triage bucket'
+good_review "tools/sprint, tests/sprint.sh" "none — checked plan.md Files vs diff, plan.md:20"
+sed -i 's/^Act On: none$/Act On: tools\/sprint:12 — none of the callers check the exit code [severity: high · confidence: high]/' "$rn"
 assert_contains "$(run_fail "$SPRINT" check-review-notes "$model_id")" 'the verdict is YES but `Act On:` lists a finding'
 sed -i 's/^YES$/NO/' "$rn"
 assert_contains "$("$SPRINT" check-review-notes "$model_id")" 'shape ok'
