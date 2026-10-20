@@ -75,7 +75,8 @@ for rel in "sprint-check:$kb" "cockpit-daemon:$kd"; do   # t-8020: the daemon's 
   assert_contains "$(file -b "$FAKE_GH/$p-$k/$p-windows-amd64.exe")" "PE32+ executable"   # not the loop's last Unix target
   grep -qaF "${k:0:8}" "$FAKE_GH/$p-$k/$p-windows-amd64.exe" || fail "$p-windows-amd64.exe lacks its commit stamp ${k:0:8}"   # cannot run it here
   for pair in "darwin-arm64:Mach-O 64-bit executable arm64" "darwin-amd64:Mach-O 64-bit executable x86_64" "linux-amd64:ELF 64-bit LSB executable, x86-64" "linux-arm64:ELF 64-bit LSB executable, ARM aarch64"; do
-    assert_contains "$(file -b "$FAKE_GH/$p-$k/$p-${pair%%:*}")" "${pair#*:}"
+    # t-67a6: file 5.45 (Linux) words Mach-O as "Mach-O 64-bit arm64 executable"; macOS's says "executable arm64"
+    assert_contains "$(file -b "$FAKE_GH/$p-$k/$p-${pair%%:*}" | sed -E 's/Mach-O 64-bit (arm64|x86_64) executable/Mach-O 64-bit executable \1/')" "${pair#*:}"
   done
   if [[ -f "$FAKE_GH/$p-$k/$p-$host" ]]; then
     assert_contains "$("$FAKE_GH/$p-$k/$p-$host" 2>&1)" "${k:0:8}"
