@@ -1679,8 +1679,19 @@ cmd_github_status() {
   local verdict graded match=false stage
   read -r verdict graded < <(_eval_verdict_head "$tdir")
   [[ -n "$phead" && "$graded" != - && "$phead" == "$graded"* ]] && match=true
+  # t-c8d4: merge-pr's rule (t-fdb1): a head that is graded-head plus merge-safe late docs only is the graded code too. The fetch
+  # runs only when that head is not local yet (import-results usually fetched it), so the board's poll stays cheap.
+  local late=false lerr
+  if [[ "$verdict" == pass && -n "$phead" && "$graded" != - ]] && ! $match && [[ -z "$merged" && "$pst" != MERGED ]] \
+    && [[ "$(get_field "$file" status)" == closed ]]; then
+    if ! git -C "$root" cat-file -e "$phead^{commit}" 2>/dev/null; then
+      lerr="$(git -C "$root" fetch -q origin "refs/pull/$pr/head" < /dev/null 2>&1)" \
+        || { echo "github-status: could not fetch PR #$pr's head from origin: $lerr" >&2; exit 1; }
+    fi
+    late_docs_delta "$root" "$graded" "$phead" "$id" >/dev/null && late=true
+  fi
   if [[ -n "$merged" || "$pst" == MERGED ]]; then stage=merged
-  elif [[ "$verdict" == pass ]] && $match && [[ "$(get_field "$file" status)" == closed ]]; then stage=results-in
+  elif [[ "$verdict" == pass ]] && { $match || $late; } && [[ "$(get_field "$file" status)" == closed ]]; then stage=results-in
   elif $branch; then stage=results-ready
   elif [[ -n "$pr" ]]; then stage=pr-open
   else stage=sent; fi
@@ -1706,7 +1717,7 @@ cmd_github_status() {
     [[ -n "$pr" ]] && echo "  PR #$pr ($pst) head $phead"
     $branch && echo "  canon-results/$id is on origin: tkt import-results $id${pr:+ --pr $pr}"
     [[ -n "$sb" ]] && echo "  $sb is on origin with no PR: tkt open-pr $id"
-    [[ "$verdict" != - ]] && echo "  evaluator: $verdict on ${graded}$($match && echo ' (the PR head)' || echo '')"
+    [[ "$verdict" != - ]] && echo "  evaluator: $verdict on ${graded}$($match && echo ' (the PR head)' || { $late && echo ' (the PR head plus late docs)'; } || echo '')"
     [[ -n "$merged" ]] && echo "  merged: $merged"
   fi
   return 0
