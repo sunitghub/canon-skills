@@ -471,22 +471,23 @@ def home_caches():
 
 
 def canary(real_home, root, max_files=2000, max_bytes=5 << 20):
-    """Files under the real ~/.canon that name the sweep root: anything a mutant wrote there carries that path."""
+    """Files under the real ~/.canon that name the sweep root: anything a mutant wrote there carries that path.
+    .git and node_modules are skipped, so a checkout's objects never use up the file budget before events/."""
     needles = {root.encode(), os.path.realpath(root).encode()}   # macOS: /var/... is /private/var/... to getcwd
     hits, seen = [], 0
     for dirpath, dirs, names in os.walk(os.path.join(real_home, '.canon')):
-        dirs.sort()
+        dirs[:] = sorted(x for x in dirs if x not in ('.git', 'node_modules'))
         for n in sorted(names):
             f = os.path.join(dirpath, n)
             if seen >= max_files:
                 return hits
-            if os.path.islink(f) or not os.path.isfile(f) or os.path.getsize(f) >= max_bytes:
-                continue
-            seen += 1
             try:
+                if os.path.islink(f) or not os.path.isfile(f) or os.path.getsize(f) >= max_bytes:
+                    continue
+                seen += 1
                 with open(f, 'rb') as fh:
                     data = fh.read()
-            except OSError:
+            except OSError:   # a real writer can remove or rotate a file mid-scan
                 continue
             if b'\0' not in data and any(x in data for x in needles):
                 hits.append(f)
