@@ -74,6 +74,11 @@ for P in "$GOP"; do
     ev cccccccccccccccc 2026-10-19T11:00:00.000Z "$PROJ" '<img src=x>'; } > "$W/c2/events/2026-10-19.jsonl"
   r="$(get "$P" /api/github/intake)"
   assert_eq '2026-10-19T09:00:00.000Z|2' "$(body "$r" | js '[j.last_synced.ts, j.last_synced.count].join("|")')"
+  # A short non-digit count passes the reader's schema and length checks, so the route's digits check must refuse it (t-9641
+  # eval: the long <img> count above never reaches that check). Until t-f053 the route shows null, not the older event.
+  ev dddddddddddddddd 2026-10-19T12:00:00.000Z "$PROJ" abc >> "$W/c2/events/2026-10-19.jsonl"
+  r="$(get "$P" /api/github/intake)"
+  assert_eq "null" "$(body "$r" | js 'JSON.stringify(j.last_synced)')"
   touch "$W/badjson"; r="$(get "$P" /api/github/intake)"; rm -f "$W/badjson"
   assert_eq "false|undefined|not json" "$(body "$r" | js '[j.ok, typeof j.intake, j.output.trim()].join("|")')"
   r="$(curl -s -w '\n%{http_code}' -H 'Origin: https://evil.example' "http://127.0.0.1:$P/api/github/intake")"; [[ "$(code "$r")" == 403 ]] || fail "$srv: cross-origin GET intake was $(code "$r")"
