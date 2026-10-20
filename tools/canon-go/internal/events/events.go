@@ -11,6 +11,7 @@
 package events
 
 import (
+	"bufio"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -247,4 +248,119 @@ func noteFailure(home string, err error) {
 	}
 	fmt.Fprintf(f, "%s %s\n", time.Now().UTC().Format(time.RFC3339), strings.ReplaceAll(err.Error(), "\n", " "))
 	f.Close()
+}
+
+// Event is one line read back from the stream.
+type Event struct {
+	ID      string
+	TS      time.Time
+	Kind    string
+	Source  string
+	Project string
+	Data    map[string]string
+}
+
+// lineMax caps a line Latest will parse: a writer cuts every value, so a longer line was not written by Emit.
+const lineMax = 64 << 10
+
+// Latest is the newest event of kind for project (t-9641: Factory's "Last synced"), searching day files newest first
+// within RetentionDays, or false. Anyone who can append to the folder can write a line, so each one is checked against
+// the v1 schema and skipped when it fails; only regular files named like a day file are read (no symlinks).
+// A minimal reader until t-0b89's read API.
+func Latest(home, kind, project string) (Event, bool) {
+	if home == "" {
+		return Event{}, false
+	}
+	dir := filepath.Join(home, "events")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return Event{}, false
+	}
+	var days []string
+	for _, e := range entries {
+		if dayFileRe.MatchString(e.Name()) && e.Type().IsRegular() {
+			days = append(days, e.Name())
+		}
+	}
+	sort.Sort(sort.Reverse(sort.StringSlice(days)))
+	if len(days) > RetentionDays+1 {
+		days = days[:RetentionDays+1]
+	}
+	for _, name := range days {
+		if ev, ok := latestIn(filepath.Join(dir, name), kind, project); ok {
+			return ev, true
+		}
+	}
+	return Event{}, false
+}
+
+// latestIn is the last valid matching line of one day file (append order). An over-long line is skipped whole.
+func latestIn(path, kind, project string) (Event, bool) {
+	f, err := os.Open(path)
+	if err != nil {
+		return Event{}, false
+	}
+	defer f.Close()
+	var found Event
+	ok := false
+	r := bufio.NewReaderSize(f, 4096)
+	var buf []byte
+	long := false
+	for {
+		chunk, err := r.ReadSlice('\n')
+		if !long && len(buf)+len(chunk) <= lineMax {
+			buf = append(buf, chunk...)
+		} else {
+			long, buf = true, buf[:0]
+		}
+		if err == bufio.ErrBufferFull {
+			continue
+		}
+		if !long {
+			if ev, good := parseLine(buf, kind, project); good {
+				found, ok = ev, true
+			}
+		}
+		buf, long = buf[:0], false
+		if err != nil {
+			return found, ok
+		}
+	}
+}
+
+// parseLine checks one line against the v1 schema: known kind and source, only that kind's fields within their limits,
+// a parseable ts, and the wanted kind and project.
+func parseLine(b []byte, kind, project string) (Event, bool) {
+	var l struct {
+		Schema  json.RawMessage   `json:"schema"`
+		ID      string            `json:"id"`
+		TS      string            `json:"ts"`
+		Kind    string            `json:"kind"`
+		Source  string            `json:"source"`
+		Project string            `json:"project"`
+		Data    map[string]string `json:"data"`
+	}
+	if json.Unmarshal(b, &l) != nil || string(l.Schema) != "1" || l.Kind != kind || l.Project != project || !sources[l.Source] {
+		return Event{}, false
+	}
+	fields, known := kinds[l.Kind]
+	if !known || len(l.ID) != 16 {
+		return Event{}, false
+	}
+	for k, v := range l.Data {
+		allowed := false
+		for _, f := range fields {
+			if f.name == k && utf8.RuneCountInString(v) <= f.max {
+				allowed = true
+			}
+		}
+		if !allowed {
+			return Event{}, false
+		}
+	}
+	ts, err := time.Parse(time.RFC3339Nano, l.TS)
+	if err != nil {
+		return Event{}, false
+	}
+	return Event{l.ID, ts.UTC(), l.Kind, l.Source, l.Project, l.Data}, true
 }

@@ -480,7 +480,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			sendJSON(w, map[string]string{"content": string(data)})
 			return
 		}
-		if m := apiGitHubGetRe.FindStringSubmatch(path); m != nil || path == "/api/github/sync-preview" || path == "/api/github/doctor" {
+		if m := apiGitHubGetRe.FindStringSubmatch(path); m != nil || path == "/api/github/sync-preview" || path == "/api/github/doctor" || path == "/api/github/intake" {
 			// t-d271: these run git and gh, so a page on another site must not fire them blind.
 			if !originOK(r.Header.Get("Origin")) || r.Header.Get("Sec-Fetch-Site") == "cross-site" {
 				http.Error(w, "forbidden", http.StatusForbidden)
@@ -493,6 +493,10 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			}
 			if path == "/api/github/doctor" {
 				sendJSON(w, githubDoctor(groot))
+				return
+			}
+			if path == "/api/github/intake" {
+				sendJSON(w, githubIntake(groot))
 				return
 			}
 			if m == nil {
@@ -4652,7 +4656,7 @@ func githubStatus(root, id string) map[string]any {
 	return res
 }
 
-// githubDoctor: t-90a3's readiness checks for Admin › GitHub, parsed into "doctor". Parity with server.py's github_doctor.
+// githubDoctor: t-90a3's readiness checks for Factory › GitHub (t-9641), parsed into "doctor".
 func githubDoctor(root string) map[string]any {
 	res := runTkt(root, []string{"github-doctor", "--json"})
 	if res["ok"] == true {
@@ -4662,6 +4666,27 @@ func githubDoctor(root string) map[string]any {
 		} else {
 			res = map[string]any{"ok": false, "exit_code": res["exit_code"], "output": res["output"]}
 		}
+	}
+	return res
+}
+
+var digitsRe = regexp.MustCompile(`^[0-9]{1,8}$`)
+
+// githubIntake: Factory › GitHub's Intake box (t-9641). "intake" is `tkt sync-issues --dry-run --json` (the issues
+// labelled canon that no ticket links to yet); "last_synced" is the newest github.synced event for this project, or nil.
+// Event lines are untrusted: a count that is not digits is not shown.
+func githubIntake(root string) map[string]any {
+	res := runTkt(root, []string{"sync-issues", "--dry-run", "--json"})
+	if res["ok"] == true {
+		var d map[string]any
+		if json.Unmarshal([]byte(res["output"].(string)), &d) != nil {
+			return map[string]any{"ok": false, "exit_code": res["exit_code"], "output": res["output"]}
+		}
+		res = map[string]any{"ok": true, "exit_code": 0, "intake": d}
+	}
+	res["last_synced"] = nil
+	if ev, ok := events.Latest(events.Home(), "github.synced", resolvedOrAbs(root)); ok && digitsRe.MatchString(ev.Data["count"]) {
+		res["last_synced"] = map[string]any{"ts": ev.TS.Format("2006-01-02T15:04:05.000Z"), "count": ev.Data["count"]}
 	}
 	return res
 }

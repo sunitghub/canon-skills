@@ -219,3 +219,68 @@ func TestKindFieldsAndSources(t *testing.T) {
 		}
 	}
 }
+
+// Protects Factory > GitHub's "Last synced" (GET /api/github/intake, t-9641): Latest picks the newest valid matching line
+// across day files and skips everything a writer other than Emit could leave there.
+func TestLatestPicksNewestValidLine(t *testing.T) {
+	home := t.TempDir()
+	dir := filepath.Join(home, "events")
+	os.MkdirAll(dir, 0o700)
+	ok := func(id, ts, project, count string) string {
+		return `{"schema":1,"id":"` + id + `","ts":"` + ts + `","kind":"github.synced","source":"tkt","project":"` + project + `","data":{"count":"` + count + `"}}`
+	}
+	write := func(name string, lines ...string) {
+		os.WriteFile(filepath.Join(dir, name), []byte(strings.Join(lines, "\n")+"\n"), 0o600)
+	}
+	write("2026-10-18.jsonl", ok("aaaaaaaaaaaaaaaa", "2026-10-18T09:00:00.000Z", "/p", "1"))
+	write("2026-10-19.jsonl",
+		ok("bbbbbbbbbbbbbbbb", "2026-10-19T09:00:00.000Z", "/p", "2"),
+		ok("cccccccccccccccc", "2026-10-19T10:00:00.000Z", "/other", "9"), // another project
+		`{"schema":1,"id":"dddddddddddddddd","ts":"2026-10-19T11:00:00.000Z","kind":"github.sent","source":"tkt","project":"/p","data":{"ticket":"t-a","issue":"1"}}`,
+		`{"schema":2,"id":"eeeeeeeeeeeeeeee","ts":"2026-10-19T12:00:00.000Z","kind":"github.synced","source":"tkt","project":"/p","data":{"count":"7"}}`,
+		`{"schema":1,"id":"ffffffffffffffff","ts":"2026-10-19T12:00:00.000Z","kind":"github.synced","source":"tkt","project":"/p","data":{"count":"7","title":"<script>"}}`,
+		`{"schema":1,"id":"gggggggggggggggg","ts":"not a time","kind":"github.synced","source":"tkt","project":"/p","data":{"count":"7"}}`,
+		`{"schema":1,"id":"hhhhhhhhhhhhhhhh","ts":"2026-10-19T12:00:00.000Z","kind":"github.synced","source":"cron","project":"/p","data":{"count":"7"}}`,
+		`{"schema":1,"id":"iiiiiiiiiiiiiiii","ts":"2026-10-19T12:00:00.000Z","kind":"github.synced","source":"tkt","project":"/p","data":{"count":7}}`,
+		`not json at all`,
+		`{"schema":1,"id":"jjjjjjjjjjjjjjjj","ts":"2026-10-19T12:00:00.000Z","kind":"github.synced","source":"tkt","project":"/p","data":{"count":"`+strings.Repeat("9", 70000)+`"}}`,
+	)
+	// Newer, but not readable as a day file: a symlink and a name that is not a day.
+	os.WriteFile(filepath.Join(home, "elsewhere.jsonl"), []byte(ok("kkkkkkkkkkkkkkkk", "2026-10-20T09:00:00.000Z", "/p", "5")+"\n"), 0o600)
+	os.Symlink(filepath.Join(home, "elsewhere.jsonl"), filepath.Join(dir, "2026-10-20.jsonl"))
+	write("2026-10-21.jsonl.gz", ok("llllllllllllllll", "2026-10-21T09:00:00.000Z", "/p", "6"))
+	write("latest.jsonl", ok("mmmmmmmmmmmmmmmm", "2026-10-22T09:00:00.000Z", "/p", "8"))
+
+	ev, found := Latest(home, "github.synced", "/p")
+	if !found || ev.ID != "bbbbbbbbbbbbbbbb" || ev.Data["count"] != "2" || !ev.TS.Equal(time.Date(2026, 10, 19, 9, 0, 0, 0, time.UTC)) {
+		t.Fatalf("Latest = %+v, %v; want the 10-19 09:00 line", ev, found)
+	}
+	if _, found := Latest(home, "github.synced", "/nowhere"); found {
+		t.Error("found an event for a project with none")
+	}
+	if _, found := Latest(filepath.Join(home, "missing"), "github.synced", "/p"); found {
+		t.Error("found an event in a missing home")
+	}
+}
+
+// Protects the same route against a day file full of junk: no panic, no match, for a few hundred malformed lines.
+func TestLatestSurvivesMalformedLines(t *testing.T) {
+	home := t.TempDir()
+	dir := filepath.Join(home, "events")
+	os.MkdirAll(dir, 0o700)
+	shapes := []string{`null`, `[]`, `{}`, `{"schema":"1"}`, `{"schema":1,"data":[]}`, `{"schema":1,"data":{"count":null}}`,
+		`{"schema":1,"data":{"count":{"x":1}}}`, `{"schema":NaN}`, "\x00\x01\xff\xfe", "{\"schema\":1\r\n", strings.Repeat("[", 5000),
+		`{"schema":1,"id":"aaaaaaaaaaaaaaaa","ts":"2026-10-19T12:00:00Z","kind":"github.synced","source":"tkt","project":"/p","data":{"count":"1"},"data":"x"}`}
+	var b strings.Builder
+	for i := 0; i < 400; i++ {
+		b.WriteString(shapes[i%len(shapes)])
+		if i%7 == 0 {
+			b.WriteString(strings.Repeat("x", i*300))
+		}
+		b.WriteString("\n")
+	}
+	os.WriteFile(filepath.Join(dir, "2026-10-19.jsonl"), []byte(b.String()), 0o600)
+	if ev, found := Latest(home, "github.synced", "/p"); found {
+		t.Fatalf("a malformed line matched: %+v", ev)
+	}
+}

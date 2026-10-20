@@ -34,8 +34,8 @@ tkt send-issue <id> [--dry-run] [--public]  # post the ticket as an issue on ori
 tkt import-issue <N> [--body-file F]  # in the cloud session: rebuild .tickets/<id>/ from that issue (sprint import-issue also starts it)
 tkt export <id> [--public]          # at the cloud close: send .tickets/<id>/ back (with the PR, or to canon-results/<id>)
 tkt import-results <id> [--pr N]    # on your machine: bring canon-results/<id> back; local edits kept in .before-import/
-tkt sync-issues [--dry-run]         # make a ticket of each open issue labelled canon that no ticket links to (labels: bug|feature|task|chore|epic, p0-p4)
-tkt github-doctor [--json]          # read-only GitHub readiness: gh installed and signed in, origin (public/private), test command; the cloud recipe (board: Admin › GitHub)
+tkt sync-issues [--dry-run [--json]] # make a ticket of each open issue labelled canon that no ticket links to (labels: bug|feature|task|chore|epic, p0-p4); --json: the dry run as one object (Factory › GitHub's Intake)
+tkt github-doctor [--json]          # read-only GitHub readiness: gh installed and signed in, origin (public/private), test command; the cloud recipe (Cockpit: Factory › GitHub)
 tkt merge-pr <id> [--pr N] [--test CMD] [--yes | --check]  # on your machine: check a cloud ticket's PR (evaluator passed on its head, own repo, mergeable, suite green on base + PR) and merge it after a y, then fast-forward the local base branch; --check reports readiness without running anything; progress shows while the tests run (CANON_PROGRESS_SECONDS without a terminal, default 30); a red run names the FAILED/FAIL lines and keeps the full log (path printed)
 tkt github-status <id> [--json]      # where a ticket sent to GitHub stands: sent, branch (pushed, no PR), pr-open, results-ready, results-in or merged, plus the canon.mirror remotes (read-only; what the board polls)
 tkt open-pr <id>                     # open the PR a cloud session did not, from its pushed branch (a commit naming <id>), with "Fixes #N"

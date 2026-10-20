@@ -1272,14 +1272,18 @@ _sync_clean() {   # _sync_clean title|body < text: drops C0 (but a body's tab an
   LC_ALL=C awk -v mode="$1" '{ gsub(/\302[\200-\237]/, ""); gsub(/[\001-\010\013-\037\177]/, "")
     if (mode == "title") { gsub(/[\t\n]/, ""); printf "%s", $0 } else print }'
 }
+# --dry-run --json (t-9641): one object {repo, label, waiting: [{issue, title, type, priority}], skipped: [{issue, reason}]}
+# for Factory > GitHub's Intake box. A completed real run emits github.synced with the count made (0 included).
 cmd_sync_issues() {
-  local dry=false
+  local dry=false json=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --dry-run) dry=true; shift ;;
-      *) echo "Usage: tkt sync-issues [--dry-run]" >&2; exit 1 ;;
+      --json) json=true; shift ;;
+      *) echo "Usage: tkt sync-issues [--dry-run [--json]]" >&2; exit 1 ;;
     esac
   done
+  if $json && ! $dry; then echo "Usage: tkt sync-issues [--dry-run [--json]] (--json needs --dry-run)" >&2; exit 1; fi
   # tickets_dir, not ensure_tickets_dir: a dry run, or a run that fails before its first ticket, writes nothing.
   local dir root repo; dir="$(tickets_dir)"; root="$(dirname "$dir")"
   repo="$(_gh_origin_repo "$root" sync-issues)" || exit 1
@@ -1303,10 +1307,15 @@ cmd_sync_issues() {
     # Title and body land in ticket.md and on the terminal: no control characters (an ESC sequence can rewrite the
     # screen), C1 included (UTF-8 \302\200-\237); the body keeps its tabs and newlines.
     { _sync_clean title < "$tmp/t64-$n"; printf '\n'; _sync_clean body < "$tmp/b64-$n"; } > "$tmp/issue-$n"
-    if [[ -z "$(head -1 "$tmp/issue-$n")" ]]; then echo "skip  #$n  no title left once control characters are removed"; continue; fi
+    if [[ -z "$(head -1 "$tmp/issue-$n")" ]]; then _sync_skip "$n" "no title left once control characters are removed"; continue; fi
     printf '%s\t%s\n' "$n" "$labels" >> "$tmp/todo"
   done < "$tmp/list"
-  [[ -f "$tmp/todo" ]] || { echo "sync-issues: no open issues labelled canon on $repo"; return 0; }
+  if [[ ! -f "$tmp/todo" ]]; then
+    if $json; then _sync_json "$repo" "$tmp"; return 0; fi
+    echo "sync-issues: no open issues labelled canon on $repo"
+    $dry || canon_event github.synced tkt "$root" "count=0"
+    return 0
+  fi
   # Which issues tickets already link to: "<owner/repo#N> <id>" per ticket with a github: line.
   local f g; : > "$tmp/linked"; [[ -d "$dir" ]] && ticket_files "$dir" | while IFS= read -r f; do
     g="$(get_field "$f" github)"; [[ -n "$g" ]] && printf '%s %s\n' "$g" "$(get_field "$f" id)"; done > "$tmp/linked" || true
@@ -1314,14 +1323,15 @@ cmd_sync_issues() {
   while IFS=$'\t' read -r n labels; do
     title="$(head -1 "$tmp/issue-$n")"; tail -n +2 "$tmp/issue-$n" > "$tmp/body-$n"
     linked="$(awk -v k="$repo#$n" '$1 == k { print $2; exit }' "$tmp/linked")"
-    if [[ -n "$linked" ]]; then echo "skip  #$n  already $linked"; continue; fi
-    if grep -q '^<!-- canon:ticket ' "$tmp/body-$n"; then echo "skip  #$n  made by tkt send-issue: use tkt import-issue $n"; continue; fi
+    if [[ -n "$linked" ]]; then _sync_skip "$n" "already $linked"; continue; fi
+    if grep -q '^<!-- canon:ticket ' "$tmp/body-$n"; then _sync_skip "$n" "made by tkt send-issue: use tkt import-issue $n"; continue; fi
     type=task; pri=2
     IFS=, read -ra labs <<< "$labels"
     for l in ${labs[@]+"${labs[@]}"}; do
       l="$(printf '%s' "$l" | tr '[:upper:]' '[:lower:]')"
       case "$l" in bug|feature|task|chore|epic) type="$l" ;; p[0-4]) pri="${l#p}" ;; esac
     done
+    if $json; then printf '%s\t%s\t%s\t%s\n' "$n" "$type" "$pri" "$title" >> "$tmp/waiting"; made=$((made + 1)); continue; fi
     if $dry; then printf 'would create  #%s  %s  (%s, P%s)\n' "$n" "$title" "$type" "$pri"; made=$((made + 1)); continue; fi
     dir="$(ensure_tickets_dir)"
     id="$(gen_id)"; while [[ -e "$dir/$id" || -e "$dir/$id.md" ]]; do id="$(gen_id)"; done
@@ -1341,11 +1351,36 @@ cmd_sync_issues() {
       || { echo "sync-issues: could not create a ticket for #$n: $(cat "$tmp/err-$n")" >&2; exit 1; }
     printf '%s  #%s  %s\n' "$id" "$n" "$title"; made=$((made + 1))
   done < "$tmp/todo"
-  if $dry; then echo "dry run: $made to create, nothing written"; else echo "sync-issues: $made created"; fi
+  if $json; then _sync_json "$repo" "$tmp"; return 0; fi
+  if $dry; then echo "dry run: $made to create, nothing written"; else
+    echo "sync-issues: $made created"
+    canon_event github.synced tkt "$root" "count=$made"
+  fi
+}
+# _sync_skip <issue> <reason>: a skipped issue, printed, or kept for --json (the caller's $json and $tmp).
+_sync_skip() {
+  if $json; then printf '%s\t%s\n' "$1" "$2" >> "$tmp/skipped"; else echo "skip  #$1  $2"; fi
+}
+# _sync_json <repo> <tmp>: the --dry-run --json object from <tmp>/waiting and <tmp>/skipped (tab-separated, issue first).
+_sync_json() {
+  local sep="" n type pri title reason
+  printf '{"repo":%s,"label":"canon","waiting":[' "$(json_str "$1")"
+  if [[ -f "$2/waiting" ]]; then
+    while IFS=$'\t' read -r n type pri title; do
+      printf '%s{"issue":%s,"title":%s,"type":%s,"priority":%s}' "$sep" "$n" "$(json_str "$title")" "$(json_str "$type")" "$pri"; sep=,
+    done < "$2/waiting"
+  fi
+  printf '],"skipped":['; sep=""
+  if [[ -f "$2/skipped" ]]; then
+    while IFS=$'\t' read -r n reason; do
+      printf '%s{"issue":%s,"reason":%s}' "$sep" "$n" "$(json_str "$reason")"; sep=,
+    done < "$2/skipped"
+  fi
+  printf ']}\n'
 }
 
 # cmd_github_doctor [--json] — t-90a3: is this project ready for the GitHub workflow? Read-only, always exits 0. The one
-# readiness source: the board's Admin › GitHub card and the worktree picker's GitHub row (t-24b1) render its JSON as is.
+# readiness source: the Cockpit's Factory › GitHub card and the worktree picker's GitHub row (t-24b1) render its JSON as is.
 # `gh auth status` counts by exit code only: its text can show a masked token and scopes.
 cmd_github_doctor() {
   local json=false
@@ -2015,7 +2050,8 @@ Commands:
   import-issue <N> [--body-file F] [--force]
                             Rebuild .tickets/<id>/ from a send-issue body (used by
                             sprint import-issue in the cloud session).
-  sync-issues [--dry-run]   Make a ticket of each open issue on origin labelled canon
+  sync-issues [--dry-run [--json]]
+                            Make a ticket of each open issue on origin labelled canon
                             that no ticket links to (labels set type and pN priority).
   open-pr <id>              Open the PR a cloud session did not: from its pushed branch
                             (a commit naming <id>), with "Fixes #N".
