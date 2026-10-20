@@ -6763,6 +6763,10 @@ func TestScratchEndGuardDiscardWaitsForAgent(t *testing.T) {
 	s.mu.Lock()
 	se := s.sessions[st.Session]
 	s.mu.Unlock()
+	// t-67a6: the shipped daemon keeps its real-time defaults; tests shorten them only through cfg.
+	if s.cfg.resumeGrace != 6*time.Second || s.cfg.exitDrain != 2*time.Second || s.cfg.scratchReapWait != 5*time.Second {
+		t.Fatalf("default timers changed: resumeGrace=%v exitDrain=%v scratchReapWait=%v, want 6s 2s 5s", s.cfg.resumeGrace, s.cfg.exitDrain, s.cfg.scratchReapWait)
+	}
 	realKill := killProc
 	killProc, s.cfg.scratchReapWait = func(*pty.Cmd) {}, 300*time.Millisecond
 	t.Cleanup(func() { killProc = realKill; killProcess(se.cmd) })
