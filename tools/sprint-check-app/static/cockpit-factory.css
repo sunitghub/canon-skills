@@ -49,3 +49,8 @@
   .metarow.fac-row{cursor:pointer}
   .metarow.fac-row:hover .v{text-decoration:underline}
   .metarow.fac-row .v.muted{color:var(--text-muted);font-weight:400}
+  /* Cloud environment: one sub-tab per provider (Claude today; Codex can join), the shared footer outside the panel */
+  .fac-subtabs{display:flex;gap:4px;margin-bottom:-1px;position:relative}
+  .fac-subtab{font:inherit;font-size:12px;font-weight:600;padding:5px 14px;border:1px solid var(--border);border-bottom-color:transparent;border-radius:8px 8px 0 0;background:transparent;color:var(--text-muted);cursor:default}
+  .fac-subtab.active{color:var(--text);background:var(--bg)}
+  .fac-subpanel{border:1px solid var(--border);border-radius:0 8px 8px 8px;background:var(--bg);padding:12px 14px}

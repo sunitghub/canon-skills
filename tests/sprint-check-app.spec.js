@@ -15303,6 +15303,12 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#fac-tab-gh')).toHaveAttribute('aria-selected', 'true');
     await expect(page.locator('#fac-gh')).toBeVisible();
     await expect(page.locator('#fac-tab-line .fac-planned')).toHaveText(/planned/i);
+    // Cloud environment: a Claude sub-tab holds the steps; the shared footer sits outside its panel.
+    await expect(page.locator('#fac-cloud .fac-subtab')).toHaveText(['Claude']);
+    await expect(page.locator('#fac-cloud-tab-claude')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#fac-cloud-claude #fac-gh-copy-domains')).toHaveCount(1);
+    await expect(page.locator('#fac-cloud > .setting-d').first()).toHaveText('A recipe, not a check: canon cannot see your cloud environments.');
+    await expect(page.locator('#fac-cloud-claude .setting-d')).toHaveCount(0);
     await page.locator('#fac-tab-line').click();
     await expect(page.locator('#fac-line')).toBeVisible();
     await expect(page.locator('#fac-gh')).toBeHidden();

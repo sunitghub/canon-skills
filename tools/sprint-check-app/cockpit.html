@@ -183,15 +183,20 @@
                 <div class="setting-d">A different flag belongs to the planned Agentic factory: <code>factory: true</code> on a ticket means run the line on it. <code>canon</code> only makes a ticket.</div>
                 <div class="gh-actions"><button type="button" class="btn primary" id="fac-in-board" title="Sync from GitHub is a button on this project's board">Open board &rsaquo;</button></div>
               </div>
-              <div class="gh-card">
-                <div class="setting-k">Cloud environment &middot; set up once, in Claude</div>
+              <div class="gh-card" id="fac-cloud">
+                <div class="setting-k">Cloud environment &middot; set up once</div>
+                <div class="fac-subtabs" role="tablist" aria-label="Cloud provider">
+                  <button type="button" class="fac-subtab active" role="tab" id="fac-cloud-tab-claude" aria-selected="true" aria-controls="fac-cloud-claude">Claude</button>
+                </div>
+                <div class="fac-subpanel" id="fac-cloud-claude" role="tabpanel" aria-labelledby="fac-cloud-tab-claude">
                 <ol class="gh-steps">
                   <li><b>Create the environment.</b> In Claude (desktop &rsaquo; Code, or claude.ai/code): New session &rsaquo; Choose environment &rsaquo; Cloud. Name it <code>canon</code>.</li>
                   <li><b>Network access: Custom</b>, and tick <i>Also include default list of common package managers</i>. <button type="button" class="btn primary" id="fac-gh-copy-domains">Copy domains</button><div class="gh-chips" id="fac-gh-domains"></div></li>
                   <li><b>Setup script</b>: installs canon's latest verified release, the Go version it pins, its commands and both gate agents. <button type="button" class="btn primary" id="fac-gh-copy-script">Copy setup script</button></li>
                   <li><b>Secrets:</b> none.</li>
                 </ol>
-                <div class="setting-d">A recipe, not a check: canon cannot see your Claude environments.</div>
+                </div>
+                <div class="setting-d">A recipe, not a check: canon cannot see your cloud environments.</div>
                 <div class="setting-d">Full recipe: <code>docs/setup.md</code> &rsaquo; Claude cloud sessions.</div>
               </div>
             </div>
