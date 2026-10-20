@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-20-2026 16:32
+learnings-sweep last run: 10-20-2026 18:27
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-20 | [t-9955](.tickets/t-9955/learnings.md) | Check that a spec mutant run actually ran a test before trusting "survived" (or "passed"): two page mutants looked alive because the new test had never been written, and a --grep that matches nothing passes green | UNPROMOTED |
 | 2026-10-20 | [t-9641](.tickets/t-9641/learnings.md) | Before dispatching the evaluator on a sprint that adds guards, mutate each guard once yourself: two evaluator fails came from guards no test could reach (a long junk value dropped by an earlier cap, a dry-run branch never run empty), and a 19-mutant builder sweep found five more | UNPROMOTED |
 | 2026-10-20 | [t-eb40](.tickets/t-eb40/learnings.md) | A canary bounded by a file count must skip what sorts first and can't be a write target: a developer's ~/.canon is a git checkout whose .git objects would use up the 2,000-file budget before events/ was scanned. Also: the sweep's own survivors showed a "no leak" test proves nothing about pass-through (dropping GOMODCACHE survived until the test asserted the value). | UNPROMOTED |
 | 2026-10-20 | [t-8854](.tickets/t-8854/learnings.md) | Put every acceptance-named change on the branch before the evaluator, even one meant for the release commit: a CHANGELOG note deferred to the version heading failed evaluator attempt 1. Also: a test that waits for "an event exists" passed a mutant that emitted it on the wrong transition; assert right after the transition that must cause it. | UNPROMOTED |
