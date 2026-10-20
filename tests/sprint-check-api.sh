@@ -26,7 +26,7 @@ go_routes() {
 # be an edit here too, never a silent change.
 want_routes="/api/admin/model-tiers /api/browse-dirs /api/ci-workflow /api/cockpit /api/cockpit-changes /api/cockpit-debug
 /api/cockpit-docs /api/cockpit-interrupted /api/cockpit-interrupted-dismiss /api/cockpit-restart /api/cockpit-sessions
-/api/cockpit-status /api/cockpit-stop /api/commit /api/doc /api/git /api/github/doctor /api/github/push-main /api/github/sync
+/api/cockpit-status /api/cockpit-stop /api/commit /api/doc /api/git /api/github/doctor /api/github/intake /api/github/push-main /api/github/sync
 /api/github/sync-preview /api/handoff /api/project-stats /api/projects /api/register-skill /api/skill-eval/check
 /api/skill-eval/report /api/skill-eval/report.html /api/skill-eval/run /api/skill-eval/status /api/themes /api/themes/open
 /api/ticket /api/ticket-feature /api/ticket-image /api/tickets /api/track-changes /api/upkeep/report /api/upkeep/run
