@@ -49,9 +49,20 @@ out="$(printf 'efficiency\nsprint\n' | { n=0; while read -r _skill; do run 0 off
 assert_eq "loops=2" "$out"
 assert_eq "$before" "$(cat "$settings")"
 
+# `skills.sh remove sprint` asks on the terminal, then removes only the subagent-log rule. A real pseudo-terminal from `script`
+# (macOS and util-linux spell it differently); stdin stays open a while so the answer, not an EOF, is what the prompt reads.
+pty() { if script -q /dev/null true </dev/null >/dev/null 2>&1; then script -q /dev/null "$@"; else script -qec "$(printf '%q ' "$@")" /dev/null; fi; }
+grep -qF '"Bash(subagent-log.sh:*)"' "$settings" || fail "setup: the subagent-log rule should be present"
+{ printf 'y\n'; sleep 3; } | PATH="$traps:$PATH" pty bash -c 'source "$1/tools/skills/project.sh"; source "$1/tools/skills/prompts.sh"
+  offer_remove_subagent_log_permission "$2"' _ "$ROOT" "$proj" >/dev/null 2>&1 || true
+! grep -qF '"Bash(subagent-log.sh:*)"' "$settings" || fail "remove sprint kept the subagent-log rule: $(cat "$settings")"
+grep -qF '"Bash(brew install:*)"' "$settings" || fail "remove sprint dropped the install deny rules: $(cat "$settings")"
+
 # An invalid file or a symlinked one: refused, nothing written.
 printf '{"permissions": ' > "$settings"
-out="$(run 0 offer_install_deny_rules)"; assert_contains "$out" "not valid JSON"
+for fn in offer_install_deny_rules offer_subagent_log_permission; do
+  out="$(run 0 "$fn")"; assert_contains "$out" "not valid JSON"
+done
 assert_eq '{"permissions": ' "$(cat "$settings")"
 printf '{"a": 1}' > "$tmp/elsewhere.json"; rm -f "$settings"; ln -s "$tmp/elsewhere.json" "$settings"
 out="$(run 0 offer_install_deny_rules)"; assert_contains "$out" "symlink"
@@ -62,10 +73,16 @@ rm -f "$settings"
 printf '#!/bin/sh\n[ "$1" = --help ] && { echo "sprint-check-win — local kanban dashboard"; exit 0; }\nsleep 600\n' > "$tmp/old-board"
 chmod +x "$tmp/old-board"
 for b in "$tmp/no-such-board" "$tmp/old-board"; do
-  out="$(SPRINT_CHECK_BIN="$b" run 0 offer_install_deny_rules)"
-  assert_contains "$out" "run canon update"
+  for fn in offer_install_deny_rules offer_subagent_log_permission; do
+    out="$(SPRINT_CHECK_BIN="$b" run 0 "$fn")"
+    assert_contains "$out" "run canon update"
+    [[ "$out" != *"[fail]"* && "$out" != *"[ok]"* ]] || fail "$fn with board $b went on past the skip: $out"
+  done
   [[ ! -e "$settings" ]] || fail "settings.json written without a usable board ($b)"
 done
+# With no SPRINT_CHECK_BIN, the board is the install's own: tools/sprint-check-bin/sprint-check, or tools/sprint-check-win.exe on Windows.
+assert_eq "$ROOT/tools/sprint-check-bin/sprint-check" "$(env -u SPRINT_CHECK_BIN bash -c 'source "$1/tools/platform-lib.sh"; _is_windows() { return 1; }; board_bin' _ "$ROOT")"
+assert_eq "$ROOT/tools/sprint-check-win.exe" "$(env -u SPRINT_CHECK_BIN bash -c 'source "$1/tools/platform-lib.sh"; _is_windows() { return 0; }; board_bin' _ "$ROOT")"
 no_trap_ran "invalid/symlink/no board"
 
 # --- end to end with the traps first on PATH: skills add + refresh write the rules; the tkt/sprint flow runs ---------------

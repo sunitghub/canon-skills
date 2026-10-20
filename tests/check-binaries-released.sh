@@ -63,5 +63,5 @@ set +e; out="$(PATH="$STUBS:$PATH" bash "$R/scripts/check-binaries-released.sh" 
 [[ "$rc" == 1 ]] || fail "a tampered asset must fail --download: $out"; assert_contains "$out" "BAD ASSET     sprint-check-windows-amd64"
 rm -f "$STUB_DIR/cockpit-daemon-linux-arm64"
 set +e; out="$(PATH="$STUBS:$PATH" bash "$R/scripts/check-binaries-released.sh" --download 2>&1)"; rc=$?; set -e
-[[ "$rc" == 1 ]]; assert_contains "$out" "BAD ASSET     linux-arm64"
+[[ "$rc" == 1 ]] || fail "a missing asset must fail --download: $out"; assert_contains "$out" "BAD ASSET     linux-arm64"
 echo "check-binaries-released: ok (green when released, red naming the component, newest line wins, CRLF ok, --download catches a missing or tampered asset)"

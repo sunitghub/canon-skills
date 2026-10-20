@@ -194,6 +194,65 @@ func TestEditSettings(t *testing.T) {
 	}
 }
 
+// The edge cases the t-b62a mutation sweep found untested: rule text kept literally, a list emptied beside another, the file's
+// mode kept, and every error path reported without a write.
+func TestEditSettingsEdges(t *testing.T) {
+	dir := t.TempDir()
+	read := func(p string) string { b, _ := os.ReadFile(p); return string(b) }
+
+	// & < > in a rule are written as typed (json.Marshal would escape them as &…), and a 0640 file stays 0640
+	p := filepath.Join(dir, "lit.json")
+	os.WriteFile(p, []byte(`{}`), 0o640)
+	if w, err := editSettings("add", p, "allow", []string{"Bash(a && b > c < d)"}); w != "ok" || err != nil {
+		t.Fatalf("add: %q %v", w, err)
+	}
+	if !strings.Contains(read(p), `"Bash(a && b > c < d)"`) {
+		t.Errorf("rule text escaped: %s", read(p))
+	}
+	if st, _ := os.Stat(p); st.Mode().Perm() != 0o640 {
+		t.Errorf("mode 0640 became %v", st.Mode().Perm())
+	}
+
+	// removing the last allow rule keeps the deny list (and permissions)
+	p = filepath.Join(dir, "both.json")
+	os.WriteFile(p, []byte(`{"permissions": {"allow": ["R"], "deny": ["X"]}}`), 0o644)
+	if w, _ := editSettings("remove", p, "allow", []string{"R"}); w != "ok" || read(p) != "{\n  \"permissions\": {\n    \"deny\": [\n      \"X\"\n    ]\n  }\n}\n" {
+		t.Errorf("remove last allow beside deny: %q %s", w, read(p))
+	}
+
+	// errors: a bad list name; a directory, an unreadable file or a path under a file at the settings path; a read-only folder
+	if w, err := editSettings("status", p, "ask", []string{"R"}); w != "" || err == nil {
+		t.Errorf("bad list: %q %v", w, err)
+	}
+	sub := filepath.Join(dir, "adir")
+	os.Mkdir(sub, 0o755)
+	if w, _ := editSettings("add", sub, "deny", []string{"R"}); w != "invalid" {
+		t.Errorf("a directory: %q", w)
+	}
+	if w, err := editSettings("add", filepath.Join(p, "x.json"), "deny", []string{"R"}); w != "" || err == nil {
+		t.Errorf("a path under a regular file: %q %v", w, err)
+	}
+	if os.Geteuid() != 0 { // root reads and writes regardless of mode
+		locked := filepath.Join(dir, "locked.json")
+		os.WriteFile(locked, []byte(`{}`), 0o000)
+		if w, err := editSettings("add", locked, "deny", []string{"R"}); w != "" || err == nil {
+			t.Errorf("an unreadable file: %q %v", w, err)
+		}
+		ro := filepath.Join(dir, "ro")
+		os.Mkdir(ro, 0o755)
+		f := filepath.Join(ro, "settings.json")
+		os.WriteFile(f, []byte(`{"a":1}`), 0o644)
+		os.Chmod(ro, 0o555)
+		defer os.Chmod(ro, 0o755)
+		if w, err := editSettings("add", f, "deny", []string{"R"}); w != "" || err == nil || read(f) != `{"a":1}` {
+			t.Errorf("a read-only folder: %q %v, file now %s", w, err, read(f))
+		}
+		if left, _ := os.ReadDir(ro); len(left) != 1 {
+			t.Errorf("a failed write left files: %v", left)
+		}
+	}
+}
+
 // Protects the dispatch: a helper word never starts the board, and bad usage exits 2.
 func TestRunHelperUsage(t *testing.T) {
 	var out, errb bytes.Buffer

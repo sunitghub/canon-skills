@@ -103,7 +103,7 @@ done
 reset; manifest "$GOODSHA"; make_asset "$BIN" "00000000"; before="$(cksum < "$BIN")"; export STUB_ASSET="$WORK/bad"; fetch
 [[ "$rc" == 1 ]] || fail "stale daemon + bad download should exit 1"; assert_eq "$before" "$(cksum < "$BIN")"; no_leftovers
 # and a good download does replace the stale one
-export STUB_ASSET="$GOOD"; fetch; [[ "$rc" == 0 ]]; cmp -s "$BIN" "$GOOD" || fail "a stale daemon was not replaced by the verified download"
+export STUB_ASSET="$GOOD"; fetch; [[ "$rc" == 0 ]] || fail "replacing a stale daemon failed ($rc): $out"; cmp -s "$BIN" "$GOOD" || fail "a stale daemon was not replaced by the verified download"
 
 # 5. download fails: build from source when go exists, with its own message; with no go, say what to do
 reset; manifest "$GOODSHA"; export STUB_CURL_RC=22 STUB_ASSET="$GOOD" FETCH_PATH="$WORK/gostub:$STUBS:$BASEPATH"
@@ -112,7 +112,7 @@ assert_contains "$out" "sprint-check: built from source"   # t-15d8: an unreleas
 reset; manifest "$GOODSHA"; export STUB_CURL_RC=22 STUB_ASSET="$GOOD"; fetch
 [[ "$rc" == 1 ]] || fail "no download and no go should exit 1"; assert_contains "$out" "download failed"; assert_contains "$out" "Go is not installed"; assert_contains "$out" "Next:"; [[ ! -e "$BIN" ]]
 reset; manifest "$GOODSHA"; export STUB_CURL_RC=22 STUB_GO_FAIL=1 FETCH_PATH="$WORK/gostub:$STUBS:$BASEPATH"; fetch
-[[ "$rc" == 1 ]]; assert_contains "$out" "building from source failed"; assert_contains "$out" "needs Go 1.26.5"; no_leftovers
+[[ "$rc" == 1 ]] || fail "a failed source build must exit 1 ($rc): $out"; assert_contains "$out" "building from source failed"; assert_contains "$out" "needs Go 1.26.5"; no_leftovers
 
 # 6. no manifest line for this daemon commit (not released): never download, fall through
 reset; printf '# header\n' > "$R/tools/cockpit-daemon.sha256"; export STUB_ASSET="$GOOD"; fetch
@@ -130,7 +130,7 @@ for spec in "Darwin arm64 darwin-arm64" "Darwin x86_64 darwin-amd64" "Linux aarc
   set -- $spec; reset; manifest "$GOODSHA" "$3"; export STUB_ASSET="$GOOD" STUB_OS="$1" STUB_ARCH="$2"; fetch
   [[ "$rc" == 0 ]] || fail "$spec failed ($rc): $out"; assert_contains "$(cat "$STUB_LOG")" "cockpit-daemon-$3"; assert_contains "$(cat "$STUB_LOG")" "sprint-check-$keyb/sprint-check-$3"
 done
-reset; export STUB_ARCH=riscv64; fetch; [[ "$rc" == 1 ]]; assert_contains "$out" "no prebuilt binaries for CPU 'riscv64'"
+reset; export STUB_ARCH=riscv64; fetch; [[ "$rc" == 1 ]] || fail "an unknown CPU must exit 1 ($rc): $out"; assert_contains "$out" "no prebuilt binaries for CPU 'riscv64'"
 reset; export STUB_OS=MINGW64_NT-10.0; fetch; [[ "$rc" == 1 && ! -s "$STUB_LOG" ]] || fail "Windows with no released binaries must fail without downloading (t-9383; the real cases are in tests/fetch-win-binaries.sh): $out"
 reset
 
@@ -158,7 +158,7 @@ rm -f "$R/tools/cockpit-daemon/.cockpit-daemon.AbC123"; reset
 # 8. not a git checkout: say so, do not guess a name
 cp -R "$R" "$WORK/nogit"; rm -rf "$WORK/nogit/.git"
 set +e; out="$(PATH="$STUBS:$BASEPATH" bash "$WORK/nogit/tools/fetch-daemon.sh" 2>&1)"; rc=$?; set -e
-[[ "$rc" == 1 ]]; assert_contains "$out" "is not a git checkout"
+[[ "$rc" == 1 ]] || fail "a copy with no .git must exit 1 ($rc): $out"; assert_contains "$out" "is not a git checkout"
 
 # 9. who calls it, and the resolvers say the same thing
 assert_eq 1 "$(grep -c 'fetch-daemon.sh' "$ROOT/install.sh")"
@@ -206,6 +206,6 @@ for t in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64; do assert_contains "
 assert_contains "$out" "dry run"; [[ ! -s "$STUB_LOG" ]] || fail "dry run called gh"; assert_eq "# header" "$(cat "$RR/tools/cockpit-daemon.sha256")"
 echo dirty >> "$RM/internal/daemon/x.go"
 set +e; out="$(PATH="$WORK/gostub:$STUBS:$BASEPATH" bash "$RR/scripts/release-daemon.sh" --dry-run 2>&1)"; rc=$?; set -e
-[[ "$rc" == 1 ]]; assert_contains "$out" "uncommitted changes"
+[[ "$rc" == 1 ]] || fail "a dirty source must stop the release dry run ($rc): $out"; assert_contains "$out" "uncommitted changes"
 
 echo "fetch-daemon: ok (verify before run, no leftovers, existing daemon kept, fallback build, platform map, callers, notices, release dry run)"

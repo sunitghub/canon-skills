@@ -247,13 +247,15 @@ rm -f "$SUMMARY_FILE"
 STUB_CALLED_DIR="$(mktemp -d)"
 printf '#!/bin/sh\ntouch "%s/called"\nexit 0\n' "$STUB_CALLED_DIR" > "$STUB_CALLED_DIR/claude"; chmod +x "$STUB_CALLED_DIR/claude"
 printf '#!/bin/sh\n[ "$1" = --help ] && { echo "sprint-check-win — local kanban dashboard"; exit 0; }\nsleep 600\n' > "$BIN_DIR/old-board"; chmod +x "$BIN_DIR/old-board"
-for board in "$BIN_DIR/no-such-board" "$BIN_DIR/old-board"; do
-  set +e
-  out="$(cd "$WORK" && SPRINT_CHECK_BIN="$board" PATH="$STUB_CALLED_DIR:$PATH" "$SPRINT_HEADLESS" t-aaaa --base-ref HEAD 2>&1)"; rc=$?
-  set -e
-  [[ "$rc" == 1 ]] || fail "sprint-headless with board $board: expected exit 1, got $rc: $out"
-  assert_contains "$out" "run canon update"
-  [[ ! -e "$STUB_CALLED_DIR/called" ]] || fail "sprint-headless called claude although the board binary ($board) cannot parse its output"
+for tool in "$SPRINT_HEADLESS" "$ROOT/tools/sprint-headless-eval"; do
+  for board in "$BIN_DIR/no-such-board" "$BIN_DIR/old-board"; do
+    set +e
+    out="$(cd "$WORK" && SPRINT_CHECK_BIN="$board" PATH="$STUB_CALLED_DIR:$PATH" "$tool" t-aaaa --base-ref HEAD 2>&1)"; rc=$?
+    set -e
+    [[ "$rc" == 1 ]] || fail "$(basename "$tool") with board $board: expected exit 1, got $rc: $out"
+    assert_contains "$out" "run canon update"
+    [[ ! -e "$STUB_CALLED_DIR/called" ]] || fail "$(basename "$tool") called claude although the board binary ($board) cannot parse its output"
+  done
 done
 rm -rf "$STUB_CALLED_DIR"
 

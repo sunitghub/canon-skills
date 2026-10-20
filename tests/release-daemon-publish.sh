@@ -118,7 +118,7 @@ printf '# header\n' > "$m"
 rm -rf "$FAKE_GH"/*; export FAKE_GH_SERVE_BAD=1; run; unset FAKE_GH_SERVE_BAD
 [[ "$rc" == 1 ]] || fail "a tampered download must stop the run: $out"; assert_eq "# header" "$(cat "$m")"
 # 6. the newest line is last: a re-release with new source replaces the old line for that target and appends the new one at the end
-rm -rf "$FAKE_GH"/*; run; [[ "$rc" == 0 ]]
+rm -rf "$FAKE_GH"/*; run; [[ "$rc" == 0 ]] || fail "publishing to an empty release store failed ($rc): $out"
 echo "// v2" >> "$M/internal/board/x.go"; git -C "$R" "${ident[@]}" commit -qam "board v2"
 kb2="$(key sprint-check)"; run; [[ "$rc" == 0 ]] || fail "re-release failed: $out"
 # t-8020: a board-only change re-releases the board, not the daemon (one module, two keys)
@@ -126,7 +126,7 @@ assert_eq "$kd" "$(key cockpit-daemon)"; assert_eq 1 "$(grep -c " windows-amd64 
 assert_eq "$kb2 sprint-check-windows-amd64" "$(grep ' sprint-check-windows-amd64 ' "$m" | tail -1 | awk '{print $1" "$2}')"
 assert_eq 2 "$(grep -c ' sprint-check-windows-amd64 ' "$m")"   # the old key's line stays (older installs still resolve it), the new one is last
 # 7. dirty source is refused, as before
-echo "// dirty" >> "$M/internal/board/x.go"; run; [[ "$rc" == 1 ]]; assert_contains "$out" "uncommitted changes"
+echo "// dirty" >> "$M/internal/board/x.go"; run; [[ "$rc" == 1 ]] || fail "a dirty source must stop the release (rc=$rc): $out"; assert_contains "$out" "uncommitted changes"
 # 8. every go build in the release script carries -trimpath (without it the bytes depend on the checkout path; tests/build-zip-go-package.sh guards the stamping, this guards the flag)
 builds="$(grep -c 'go build' "$ROOT/scripts/release-daemon.sh")"; trim="$(grep 'go build' "$ROOT/scripts/release-daemon.sh" | grep -c -- '-trimpath')"
 [[ "$builds" -ge 1 && "$builds" == "$trim" ]] || fail "release-daemon.sh: $builds go build lines, $trim with -trimpath"
