@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# skill-eval-parity (t-b9a7) — Skill Eval's checks and generator exist twice: the CLIs (tools/skill-check,
-# tools/plugin-eval-gen) and the Go board (tools/canon-go/internal/board/skilleval.go). This locks them together:
-# the board's /api/skill-eval/check answers {ok: true, skill_dir, **<skill-check's JSON>} (what the Python
-# board returned, t-15d8) for the fixture corpus plus a seeded fuzz that aims at the known runtime gaps, and
-# for every check-passing skill the Go-generated eval plugin is identical (diff -r) to plugin-eval-gen's.
+# skill-eval-parity (t-b9a7, t-b62a) — Skill Eval's checks have two surfaces, the command line (`sprint-check skill-check`, which
+# replaced the Python tools/skill-check; its own behaviour is pinned by tests/skill-check.sh) and the board's
+# /api/skill-eval/check; its generator exists twice, tools/plugin-eval-gen and the Go board. This locks them together: /check
+# answers {ok: true, skill_dir, **<the CLI's JSON>} for the fixture corpus plus a seeded fuzz aimed at the known text-handling
+# gaps, and for every check-passing skill the Go-generated eval plugin is identical (diff -r) to plugin-eval-gen's.
 # Not gated on jq for the /check comparison.
 
 set -euo pipefail
@@ -11,8 +11,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/tests/helpers.sh"
 
-# python3 runs tools/skill-check (the oracle) and the fuzz generator; go builds the board (build_board fails without it).
-command -v python3 >/dev/null 2>&1 || fail "skill-eval-parity: python3 is required (tools/skill-check is a Python CLI)"
+# python3 runs this test's fuzz generator and comparison; go builds the board (build_board fails without it).
+command -v python3 >/dev/null 2>&1 || fail "skill-eval-parity: python3 is required (this test's fuzz and comparison)"
 command -v curl >/dev/null 2>&1 || fail "skill-eval-parity: curl is required"
 
 WORK="$(mktemp -d)"; WORK="$(cd "$WORK" && pwd -P)"
@@ -67,7 +67,7 @@ start_server() {
   SERVER_PORT="$port"
 }
 
-# Seeded fuzz corpus: each skill aims at one or more places where Python (skill-check) and Go text handling differ.
+# Seeded fuzz corpus: each skill aims at a place where Python and Go text handling differed when the checks were ported (t-b9a7).
 python3 - "$PROJ/skills" <<'PY'
 import json, os, random, sys
 root = sys.argv[1]
@@ -145,9 +145,9 @@ PY
 
 start_server; GO_PORT="$SERVER_PORT"
 
-python3 - "$GO_PORT" "$PROJ/skills" "$ROOT" <<'PY'
+python3 - "$GO_PORT" "$PROJ/skills" "$ROOT" "$GO_BIN" <<'PY'
 import hashlib, json, os, shutil, subprocess, sys, time, urllib.parse, urllib.request
-go, skills, root = sys.argv[1:4]
+go, skills, root, go_bin = sys.argv[1:5]
 def post(port, path, body):
     req = urllib.request.Request(f"http://127.0.0.1:{port}{path}", data=json.dumps(body).encode(), method="POST",
                                  headers={"Content-Type": "application/json"})
@@ -157,8 +157,8 @@ def get(port, path):
     with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=30) as r:
         return json.loads(r.read())
 canon = lambda v: json.dumps(v, sort_keys=True, ensure_ascii=False)
-def oracle(d):   # what /check must answer: skill-check's JSON under {ok: true}; skill_dir is the board's resolved path
-    r = subprocess.run([sys.executable, os.path.join(root, "tools", "skill-check"), d], capture_output=True, text=True, timeout=30)
+def oracle(d):   # what /check must answer: the CLI's JSON under {ok: true}; skill_dir is the board's resolved path
+    r = subprocess.run([go_bin, "skill-check", d], capture_output=True, text=True, timeout=30, cwd=root)
     return {"ok": True, **json.loads(r.stdout)}
 names = sorted(os.listdir(skills))
 mismatch, passing = [], []
@@ -176,7 +176,7 @@ for n in names:
 if mismatch:
     for n, d in mismatch[:8]:
         print("CHECK MISMATCH", n, json.dumps(d, ensure_ascii=False)[:900], file=sys.stderr)
-    sys.exit(f"skill-eval-parity: {len(mismatch)} of {len(names)} skills differ between tools/skill-check and the Go board")
+    sys.exit(f"skill-eval-parity: {len(mismatch)} of {len(names)} skills differ between `sprint-check skill-check` and /api/skill-eval/check")
 print(f"skill-eval-parity: /check identical for {len(names)} skills ({len(passing)} pass every check)")
 
 # Generator: plugin-eval-gen (bash + jq) vs the Go board's run (stub claude) — same tree.

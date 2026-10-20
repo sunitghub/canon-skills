@@ -171,53 +171,21 @@ offer_remove_model_tiers_note() {
   fi
 }
 
-# Shared by offer_subagent_log_permission/offer_remove_subagent_log_permission — echoes
-# "present", "absent", or "invalid" (malformed JSON) for the given rule in
-# permissions.allow. Caller is responsible for checking `have_python` first.
-_subagent_log_rule_status() {
-  local settings="$1" rule="$2"
-  [ -f "$settings" ] || { echo "absent"; return 0; }
-  python3 - "$settings" "$rule" <<'PYEOF'
-import json, sys
-try:
-    with open(sys.argv[1]) as f:
-        data = json.load(f)
-except Exception:
-    print("invalid")
-    sys.exit(0)
-allow = data.get("permissions", {}).get("allow", [])
-print("present" if sys.argv[2] in allow else "absent")
-PYEOF
+# _settings <status|add|remove> <settings.json> <allow|deny> <rule>... — one word: present | absent (status), ok (add/remove) or
+# invalid, from the board binary's `settings` helper (t-b62a: it replaced five python3 snippets and Windows' settings-merge.ps1, so
+# every OS edits the same way). It keeps every other key, their order and their text, and never writes an invalid or symlinked
+# file (t-f01d: _init_claude once overwrote a user's settings.json). No output (a crash, an unwritable file) reads as invalid.
+# stdin is /dev/null: skills refresh runs this inside `while read … done <<< "$skills"`.
+_settings() {
+  local w; w="$("$CANON_BOARD" settings "$@" </dev/null 2>/dev/null)" || w=""
+  printf '%s\n' "${w:-invalid}"
 }
 
-# Adds a Bash permission rule for tools/subagent-log.sh (invoked bare via PATH, per
-# skills/sprint/reference/complete.md) so sprint close stops repeatedly prompting for it —
-# reported on Windows but not actually OS-specific. JSON-aware (python3, already a hard
-# dependency — see tools/sprint's eval-gate matching) read-modify-write, never sed/awk text
-# surgery on this file: t-f01d's incident (_init_claude used to `cat > settings.json`
-# unconditionally, destroying pre-existing permissions/model/hooks) means any write here
-# must never touch unrelated keys.
-# Which JSON engine edits .claude/settings.json: python3 where it really works; else, on Windows (Git for
-# Windows only — no Python, t-55c1), Windows' own powershell.exe running settings-merge.ps1; else none.
-_settings_backend() {
-  if have_python; then echo python
-  elif _is_windows && command -v powershell.exe >/dev/null 2>&1; then echo powershell
-  else echo none
-  fi
-}
-
-# _ps_settings <status|add|remove> <settings.json> <allow|deny> <rule>... — prints one word
-# (present/absent, ok, invalid). -EncodedCommand (UTF-16LE base64) sidesteps .ps1 execution policy;
-# inputs travel as env vars, so paths and rules need no quoting. stdin is /dev/null: skills refresh runs
-# this inside `while read … done <<< "$skills"`, and PowerShell 5.1 reads a redirected stdin into its own
-# output, so "present" came back polluted and every refresh re-asked (live on the Windows VM, t-55c1).
-_ps_settings() {
-  local mode="$1" settings="$2" key="$3" enc winpath
-  shift 3
-  winpath="$(cygpath -w "$settings" 2>/dev/null || printf '%s' "$settings")"
-  enc="$(iconv -f UTF-8 -t UTF-16LE "$(dirname "${BASH_SOURCE[0]}")/settings-merge.ps1" | base64 | tr -d '\n')"
-  CANON_SETTINGS="$winpath" CANON_KEY="$key" CANON_MODE="$mode" CANON_RULES="$(printf '%s\n' "$@")" \
-    powershell.exe -NoProfile -NonInteractive -EncodedCommand "$enc" </dev/null 2>/dev/null | tr -d '\r'
+# _settings_ready <what> — sets CANON_BOARD for _settings, or prints a visible skip (returns 1) when the board binary isn't fetched.
+_settings_ready() {
+  CANON_BOARD="$(board_helper_bin 2>/dev/null)" && return 0
+  echo "  [skip]  $1: canon's board binary isn't here yet — run canon update, then run this again"
+  return 1
 }
 
 # t-c774: close gates keep Bash (git, tests, report write), so a tool list can't stop a gate installing
@@ -229,43 +197,12 @@ CANON_INSTALL_DENY_RULES=(
   "Bash(choco install:*)" "Bash(winget install:*)"
 )
 
-# prints: present | missing | invalid  (invalid = not JSON, or permissions/deny of the wrong type)
-_deny_rules_status() {
-  python3 - "$1" "${CANON_INSTALL_DENY_RULES[@]}" <<'PYEOF'
-import json, sys
-path, rules = sys.argv[1], sys.argv[2:]
-try:
-    with open(path) as f:
-        data = json.load(f)
-except FileNotFoundError:
-    print("missing"); sys.exit()
-except Exception:
-    print("invalid"); sys.exit()
-perms = data.get("permissions", {}) if isinstance(data, dict) else None
-deny = perms.get("deny", []) if isinstance(perms, dict) else None
-if not isinstance(deny, list):
-    print("invalid"); sys.exit()
-print("present" if all(r in deny for r in rules) else "missing")
-PYEOF
-}
-
 offer_install_deny_rules() {
-  local project_dir="$1" settings="$1/.claude/settings.json" status backend
-  backend="$(_settings_backend)"
-  if [ "$backend" = none ]; then
-    echo "  [skip]  install deny rules need Python (or PowerShell on Windows), which isn't available here — left as is"
-    return 0
-  fi
-  # A crash while reading the file counts as invalid; under set -e a bare failing $(...) would abort add/refresh.
-  # tr -d '\r': native Windows Python prints "present\r\n", and $(...) strips only the \n (t-c774).
-  if [ "$backend" = python ]; then
-    status="$(_deny_rules_status "$settings" | tr -d '\r')" || status=invalid
-  else
-    status="$(_ps_settings status "$settings" deny "${CANON_INSTALL_DENY_RULES[@]}")" || status=invalid
-    [ -n "$status" ] || status=invalid
-  fi
+  local project_dir="$1" settings="$1/.claude/settings.json" status
+  _settings_ready "install deny rules" || return 0
+  status="$(_settings status "$settings" deny "${CANON_INSTALL_DENY_RULES[@]}")"
   if [ "$status" = "invalid" ]; then
-    echo "  [fail]  $settings is not valid JSON (or permissions/deny has the wrong type) — install deny rules not added"
+    echo "  [fail]  $settings is not valid JSON (or permissions/deny has the wrong type, or it is a symlink) — install deny rules not added"
     return 0
   fi
   [ "$status" = "present" ] && return 0
@@ -274,38 +211,7 @@ offer_install_deny_rules() {
     return 0
   fi
   mkdir -p "$(dirname "$settings")"
-  if [ "$backend" = powershell ]; then
-    if [ "$(_ps_settings add "$settings" deny "${CANON_INSTALL_DENY_RULES[@]}" || true)" = ok ]; then
-      echo "  [ok]     $settings — added install deny rules"
-    else
-      echo "  [fail]   could not update $settings — left untouched"
-    fi
-    return 0
-  fi
-  if python3 - "$settings" "${CANON_INSTALL_DENY_RULES[@]}" <<'PYEOF'
-import json, sys
-path, rules = sys.argv[1], sys.argv[2:]
-try:
-    with open(path) as f:
-        data = json.load(f)
-except FileNotFoundError:
-    data = {}
-if not isinstance(data, dict):
-    sys.exit(1)
-perms = data.setdefault("permissions", {})
-if not isinstance(perms, dict):
-    sys.exit(1)
-deny = perms.setdefault("deny", [])
-if not isinstance(deny, list):
-    sys.exit(1)
-for r in rules:
-    if r not in deny:
-        deny.append(r)
-with open(path, "w") as f:
-    json.dump(data, f, indent=2)
-    f.write("\n")
-PYEOF
-  then
+  if [ "$(_settings add "$settings" deny "${CANON_INSTALL_DENY_RULES[@]}")" = ok ]; then
     echo "  [ok]     $settings — added install deny rules"
   else
     echo "  [fail]   could not update $settings — left untouched"
@@ -313,26 +219,18 @@ PYEOF
   return 0
 }
 
+# Adds a Bash permission rule for tools/subagent-log.sh (invoked bare via PATH, per skills/sprint/reference/complete.md) so sprint
+# close stops repeatedly prompting for it — reported on Windows but not actually OS-specific.
 offer_subagent_log_permission() {
   local project_dir="$1"
   local settings="$project_dir/.claude/settings.json"
   local rule="Bash(subagent-log.sh:*)"
+  local status
 
-  local backend status
-  backend="$(_settings_backend)"
-  if [ "$backend" = none ]; then
-    echo "  [skip]  the subagent-log.sh permission rule needs Python (or PowerShell on Windows), which isn't available here — left as is"
-    return 0
-  fi
-
-  if [ "$backend" = python ]; then
-    status="$(_subagent_log_rule_status "$settings" "$rule" | tr -d '\r')"   # Windows Python: "present\r"
-  else
-    status="$(_ps_settings status "$settings" allow "$rule" || true)"
-    [ -n "$status" ] || status=invalid
-  fi
+  _settings_ready "the subagent-log.sh permission rule" || return 0
+  status="$(_settings status "$settings" allow "$rule")"
   if [ "$status" = "invalid" ]; then
-    echo "  [fail]  $settings is not valid JSON — skipping subagent-log.sh permission check"
+    echo "  [fail]  $settings is not valid JSON (or a symlink) — skipping subagent-log.sh permission check"
     return 0
   fi
   [ "$status" = "present" ] && return 0
@@ -343,33 +241,7 @@ offer_subagent_log_permission() {
   fi
 
   mkdir -p "$(dirname "$settings")"
-  if [ "$backend" = powershell ]; then
-    if [ "$(_ps_settings add "$settings" allow "$rule" || true)" = ok ]; then
-      echo "  [ok]     $settings — added $rule"
-    else
-      echo "  [fail]   could not update $settings — left untouched"
-    fi
-    return 0
-  fi
-  if python3 - "$settings" "$rule" <<'PYEOF'
-import json, sys
-path, rule = sys.argv[1], sys.argv[2]
-try:
-    with open(path) as f:
-        data = json.load(f)
-except FileNotFoundError:
-    data = {}
-except Exception:
-    sys.exit(1)
-perms = data.setdefault("permissions", {})
-allow = perms.setdefault("allow", [])
-if rule not in allow:
-    allow.append(rule)
-with open(path, "w") as f:
-    json.dump(data, f, indent=2)
-    f.write("\n")
-PYEOF
-  then
+  if [ "$(_settings add "$settings" allow "$rule")" = ok ]; then
     echo "  [ok]     $settings — added $rule"
   else
     echo "  [fail]   could not update $settings — left untouched"
@@ -382,16 +254,8 @@ offer_remove_subagent_log_permission() {
   local rule="Bash(subagent-log.sh:*)"
 
   [ -f "$settings" ] || return 0
-  local backend status
-  backend="$(_settings_backend)"
-  [ "$backend" != none ] || return 0
-
-  if [ "$backend" = python ]; then
-    status="$(_subagent_log_rule_status "$settings" "$rule" | tr -d '\r')"   # Windows Python: "present\r"
-  else
-    status="$(_ps_settings status "$settings" allow "$rule" || true)"
-  fi
-  [ "$status" = "present" ] || return 0
+  CANON_BOARD="$(board_helper_bin 2>/dev/null)" || return 0
+  [ "$(_settings status "$settings" allow "$rule")" = "present" ] || return 0
 
   if ! _has_tty; then
     return 0
@@ -401,28 +265,11 @@ offer_remove_subagent_log_permission() {
   _read_tty_answer || { echo "" > /dev/tty; return 0; }
   [[ "$answer" =~ ^[Yy]$ ]] || return 0
 
-  if [ "$backend" = powershell ]; then
-    _ps_settings remove "$settings" allow "$rule" >/dev/null || true
+  if [ "$(_settings remove "$settings" allow "$rule")" = ok ]; then
     echo "  $settings — removed subagent-log.sh permission rule." > /dev/tty
-    return 0
+  else
+    echo "  $settings — could not remove the subagent-log.sh permission rule; left as is." > /dev/tty
   fi
-  python3 - "$settings" "$rule" <<'PYEOF'
-import json, sys
-path, rule = sys.argv[1], sys.argv[2]
-with open(path) as f:
-    data = json.load(f)
-perms = data.get("permissions")
-if isinstance(perms, dict) and isinstance(perms.get("allow"), list) and rule in perms["allow"]:
-    perms["allow"].remove(rule)
-    if not perms["allow"]:
-        del perms["allow"]
-    if not perms:
-        del data["permissions"]
-with open(path, "w") as f:
-    json.dump(data, f, indent=2)
-    f.write("\n")
-PYEOF
-  echo "  $settings — removed subagent-log.sh permission rule." > /dev/tty
 }
 
 ensure_sprint_project_marker() {

@@ -14,7 +14,7 @@ if ! declare -F _init_claude &>/dev/null; then
   # shellcheck source=tools/hooks-lib.sh
   source "$(dirname "${BASH_SOURCE[0]}")/../hooks-lib.sh"
 fi
-if ! declare -F have_python &>/dev/null; then
+if ! declare -F board_bin &>/dev/null; then
   # shellcheck source=tools/platform-lib.sh
   source "$(dirname "${BASH_SOURCE[0]}")/../platform-lib.sh"
 fi

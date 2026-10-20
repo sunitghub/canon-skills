@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# tests/windows-no-python.sh — t-55c1: canon on a Windows machine that has only Git for Windows.
-# End users have no Python; python3 may be missing, a do-nothing Store placeholder, or the Python install
-# manager's alias, which installs Python when run. canon must detect all three without ever running an alias.
+# tests/windows-no-python.sh — t-55c1, t-b62a: canon on a machine with no Python (a Windows machine with only Git for Windows,
+# or macOS/Linux without python3). The settings.json rules go through the board binary's `settings` helper on every OS, so
+# they are written with no Python and no PowerShell. A python3 or powershell.exe that runs is a test failure: each fake
+# leaves a marker. Protects `skills.sh add|refresh sprint` and the tkt/sprint flow on such a machine.
 
 set -euo pipefail
 
@@ -9,118 +10,78 @@ source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-probe() { PATH="$1:$PATH" bash -c 'source "$1/tools/skills/lib.sh"; have_python' _ "$ROOT"; }
+use_fresh_board "$tmp/bin"
 
-# A python3 that records every run and would "work" (prints 1) — the install manager after it has
-# installed Python. Under WindowsApps it must never be executed.
-recording_python3() {
-  mkdir -p "$1"
-  printf '#!/usr/bin/env bash\ntouch "%s/ran"\necho 1\n' "$1" > "$1/python3"
-  chmod +x "$1/python3"
-}
+# Traps: a placeholder python3 (the Windows Store alias does nothing, or installs Python) and a powershell.exe.
+traps="$tmp/traps"; mkdir -p "$traps"
+for t in python3 python powershell.exe; do printf '#!/usr/bin/env bash\ntouch "%s/ran-%s"\nexit 0\n' "$traps" "$t" > "$traps/$t"; done
+chmod +x "$traps"/*
+no_trap_ran() { ! ls "$traps"/ran-* >/dev/null 2>&1 || fail "$1: ran $(ls "$traps" | grep ran-)"; }
 
-# --- 0. never execute a WindowsApps python3 (live: running it installed Python 3.14.7) ------------
-wa="$tmp/Users/x/AppData/Local/Microsoft/WindowsApps"
-recording_python3 "$wa"
-if probe "$wa"; then fail "have_python accepted a WindowsApps python3"; fi
-[[ ! -e "$wa/ran" ]] || fail "have_python executed a WindowsApps python3 (it can install Python)"
-
-# Case-insensitive, as Windows paths are.
-wa2="$tmp/users/x/APPDATA/local/MICROSOFT/windowsapps"
-recording_python3 "$wa2"
-if probe "$wa2"; then fail "have_python accepted an upper/lower-case WindowsApps python3"; fi
-[[ ! -e "$wa2/ran" ]] || fail "have_python executed a mixed-case WindowsApps python3"
-
-# Control: the same recorder elsewhere IS run and accepted, so the checks above can fail.
-ok="$tmp/opt/python/bin"
-recording_python3 "$ok"
-probe "$ok" || fail "have_python rejected a working python3 outside WindowsApps"
-[[ -e "$ok/ran" ]] || fail "control: a normal python3 should have been executed"
-
-# Do-nothing placeholder (exit 0, no output) outside WindowsApps: executed but rejected.
-stub="$tmp/stub"; mkdir -p "$stub"; printf '#!/usr/bin/env bash\nexit 0\n' > "$stub/python3"; chmod +x "$stub/python3"
-if probe "$stub"; then fail "have_python accepted a do-nothing python3"; fi
-
-# --- settings.json merges on Windows without Python go through powershell.exe ----------------------
-# A fake powershell.exe: logs mode/key/rule count and the decoded -EncodedCommand, answers like real
-# PowerShell (CRLF), with the status answer taken from $PS_STATUS.
-fakeps="$tmp/fakeps"; mkdir -p "$fakeps"
-cat > "$fakeps/powershell.exe" <<'PS'
-#!/usr/bin/env bash
-enc=""; while [ $# -gt 0 ]; do [ "$1" = "-EncodedCommand" ] && enc="$2"; shift; done
-printf '%s\n' "$enc" | base64 -d 2>/dev/null | iconv -f UTF-16LE -t UTF-8 > "$PS_LOG.script"
-n="$(printf '%s' "$CANON_RULES" | grep -c .)"
-echo "$CANON_MODE $CANON_KEY rules=$n settings=$CANON_SETTINGS" >> "$PS_LOG"
-case "$CANON_MODE" in status) printf '%s\r\n' "${PS_STATUS:-absent}" ;; *) printf 'ok\r\n' ;; esac
-PS
-chmod +x "$fakeps/powershell.exe"
 proj="$tmp/proj"; mkdir -p "$proj/.claude"
-psrun() {  # <function> — Windows, no Python, fake powershell.exe first on PATH
-  PS_LOG="$tmp/ps.log" SKILLS_SH_ASSUME_YES=1 PATH="$fakeps:$PATH" bash -c '
+settings="$proj/.claude/settings.json"
+run() {  # <is_windows 0|1> <function> — no Python, the traps first on PATH
+  SKILLS_SH_ASSUME_YES=1 PATH="$traps:$PATH" bash -c '
     source "$1/tools/skills/project.sh"; source "$1/tools/skills/prompts.sh"
-    _is_windows() { return 0; }; have_python() { return 1; }
-    "$2" "$3"' _ "$ROOT" "$1" "$proj"
+    if [ "$2" = 1 ]; then _is_windows() { return 0; }; else _is_windows() { return 1; }; fi
+    "$3" "$4"' _ "$ROOT" "$1" "$2" "$proj"
 }
 
-rm -f "$tmp/ps.log"; out="$(psrun offer_install_deny_rules)"
-assert_contains "$out" "[ok]"
-assert_contains "$out" "added install deny rules"
-assert_eq "status deny rules=7 settings=$proj/.claude/settings.json" "$(sed -n 1p "$tmp/ps.log")"
-assert_eq "add deny rules=7 settings=$proj/.claude/settings.json" "$(sed -n 2p "$tmp/ps.log")"
-cmp -s "$tmp/ps.log.script" "$ROOT/tools/skills/settings-merge.ps1" || fail "EncodedCommand is not settings-merge.ps1"
-
-rm -f "$tmp/ps.log"; out="$(psrun offer_subagent_log_permission)"
-assert_contains "$out" "added Bash(subagent-log.sh:*)"
-assert_eq "add allow rules=1 settings=$proj/.claude/settings.json" "$(sed -n 2p "$tmp/ps.log")"
-
-# Already present (PowerShell's CRLF "present\r\n"): silent, no add.
-rm -f "$tmp/ps.log"; out="$(PS_STATUS=present psrun offer_install_deny_rules)"
-assert_eq "" "$out"
-[ "$(grep -c '^add' "$tmp/ps.log")" -eq 0 ] || fail "added rules that were already present"
-
-# Inside a stdin-fed loop, as skills refresh runs it: a real PowerShell 5.1 echoes redirected stdin into
-# its output. This fake does too, so the status only stays "present" if canon closes powershell's stdin.
-cp "$fakeps/powershell.exe" "$fakeps/ps.clean"
-cat > "$fakeps/powershell.exe" <<'PS'
-#!/usr/bin/env bash
-[ -t 0 ] || cat                      # like PS 5.1: consume and echo whatever stdin holds
-exec "$(dirname "$0")/ps.clean" "$@" </dev/null
-PS
-chmod +x "$fakeps/powershell.exe"
-rm -f "$tmp/ps.log"
-out="$(printf 'efficiency\nsprint\n' | { while read -r _skill; do PS_STATUS=present psrun offer_install_deny_rules; done; })"
-assert_eq "" "$out"
-[ "$(grep -c '^add' "$tmp/ps.log" 2>/dev/null || true)" -eq 0 ] || fail "re-added present rules inside a stdin-fed loop (refresh)"
-cp "$fakeps/ps.clean" "$fakeps/powershell.exe"
-
-# invalid file, or powershell failing with no output: refused, nothing written.
-for st in invalid ""; do
-  rm -f "$tmp/ps.log"; out="$(PS_STATUS="$st" psrun offer_install_deny_rules)"
-  [ -n "$st" ] || { printf '#!/usr/bin/env bash\nexit 1\n' > "$fakeps/powershell.exe"; out="$(psrun offer_install_deny_rules)"; }
-  assert_contains "$out" "not valid JSON"
+for win in 0 1; do
+  rm -f "$settings"; printf '{"model": "opus", "permissions": {"ask": ["X"]}}' > "$settings"
+  out="$(run "$win" offer_install_deny_rules)"
+  assert_contains "$out" "added install deny rules"
+  for r in "Bash(brew install:*)" "Bash(winget install:*)"; do grep -qF "\"$r\"" "$settings" || fail "windows=$win: $r not written"; done
+  grep -q '"model": "opus"' "$settings" && grep -q '"ask"' "$settings" || fail "windows=$win: other keys lost: $(cat "$settings")"
+  out="$(run "$win" offer_subagent_log_permission)"
+  assert_contains "$out" "added Bash(subagent-log.sh:*)"
+  # Already present: silent, and the file stays byte-for-byte the same.
+  before="$(cat "$settings")"
+  assert_eq "" "$(run "$win" offer_install_deny_rules)"
+  assert_eq "" "$(run "$win" offer_subagent_log_permission)"
+  assert_eq "$before" "$(cat "$settings")"
+  no_trap_ran "windows=$win"
 done
 
-# Neither Python nor PowerShell (e.g. Linux without Python): honest skip.
-out="$(SKILLS_SH_ASSUME_YES=1 PATH="/usr/bin:/bin" bash -c 'source "$1/tools/skills/project.sh"; source "$1/tools/skills/prompts.sh"
-  _is_windows() { return 1; }; have_python() { return 1; }; offer_install_deny_rules "$2"' _ "$ROOT" "$proj")"
-assert_contains "$out" "which isn't available here"
+# Inside a stdin-fed loop, as skills refresh runs it: the helper must not eat the loop's input (both skills seen, nothing re-added).
+before="$(cat "$settings")"
+out="$(printf 'efficiency\nsprint\n' | { n=0; while read -r _skill; do run 0 offer_install_deny_rules; n=$((n + 1)); done; echo "loops=$n"; })"
+assert_eq "loops=2" "$out"
+assert_eq "$before" "$(cat "$settings")"
 
-# --- end-to-end with a do-nothing python3 first on PATH (the placeholder case) ----------------------
+# An invalid file or a symlinked one: refused, nothing written.
+printf '{"permissions": ' > "$settings"
+out="$(run 0 offer_install_deny_rules)"; assert_contains "$out" "not valid JSON"
+assert_eq '{"permissions": ' "$(cat "$settings")"
+printf '{"a": 1}' > "$tmp/elsewhere.json"; rm -f "$settings"; ln -s "$tmp/elsewhere.json" "$settings"
+out="$(run 0 offer_install_deny_rules)"; assert_contains "$out" "symlink"
+assert_eq '{"a": 1}' "$(cat "$tmp/elsewhere.json")"; [[ -L "$settings" ]] || fail "the settings symlink was replaced"
+rm -f "$settings"
+
+# No board binary yet, or an older one (it would take `settings` for a port and serve forever): a visible skip, never a hang.
+printf '#!/bin/sh\n[ "$1" = --help ] && { echo "sprint-check-win — local kanban dashboard"; exit 0; }\nsleep 600\n' > "$tmp/old-board"
+chmod +x "$tmp/old-board"
+for b in "$tmp/no-such-board" "$tmp/old-board"; do
+  out="$(SPRINT_CHECK_BIN="$b" run 0 offer_install_deny_rules)"
+  assert_contains "$out" "run canon update"
+  [[ ! -e "$settings" ]] || fail "settings.json written without a usable board ($b)"
+done
+no_trap_ran "invalid/symlink/no board"
+
+# --- end to end with the traps first on PATH: skills add + refresh write the rules; the tkt/sprint flow runs ---------------
 flow="$tmp/flow"; mkdir -p "$flow"; git -C "$flow" init -q; printf '# Agents\n' > "$flow/AGENTS.md"
-nop="$tmp/nop"; mkdir -p "$nop"; printf '#!/usr/bin/env bash\nexit 0\n' > "$nop/python3"; chmod +x "$nop/python3"
-fp() { HOME="$tmp/fhome" PATH="$nop:$ROOT/tools:$PATH" "$@"; }
+fp() { SKILLS_SH_ASSUME_YES=1 HOME="$tmp/fhome" PATH="$traps:$ROOT/tools:$PATH" "$@"; }
 mkdir -p "$tmp/fhome"
-out="$(fp "$SKILLS" add sprint "$flow" 2>&1)" || fail "skills add sprint failed with a placeholder python3: $out"
-[[ "$out" != *"[ok]"*"settings.json"* ]] || fail "false [ok] on settings.json with a placeholder python3: $out"
-assert_contains "$out" "which isn't available here"
-out="$(fp "$SKILLS" refresh "$flow" 2>&1)" || fail "skills refresh failed with a placeholder python3: $out"
-[[ ! -e "$flow/.claude/settings.json" ]] || ! grep -q "subagent-log" "$flow/.claude/settings.json" \
-  || fail "settings.json written without a working python"
+out="$(fp "$SKILLS" add sprint "$flow" 2>&1)" || fail "skills add sprint failed with no Python: $out"
+grep -qF '"Bash(brew install:*)"' "$flow/.claude/settings.json" || fail "skills add sprint did not write the install deny rules: $out"
+grep -qF '"Bash(subagent-log.sh:*)"' "$flow/.claude/settings.json" || fail "skills add sprint did not write the subagent-log rule: $out"
+out="$(fp "$SKILLS" refresh "$flow" 2>&1)" || fail "skills refresh failed with no Python: $out"
 ( cd "$flow" && id="$(fp tkt create "flow check" 2>/dev/null | tail -1)" && [ -n "$id" ] && fp tkt start "$id" >/dev/null 2>&1 ) \
-  || fail "tkt create/start failed with a placeholder python3"
+  || fail "tkt create/start failed with no Python"
 flow2="$tmp/flow2"; mkdir -p "$flow2"; git -C "$flow2" init -q     # sprint start refuses while another ticket is active
-( cd "$flow2" && fp sprint start "flow sprint" >/dev/null 2>&1 ) || fail "sprint start failed with a placeholder python3"
+( cd "$flow2" && fp sprint start "flow sprint" >/dev/null 2>&1 ) || fail "sprint start failed with no Python"
 [ "$(ls "$flow/.tickets" | grep -c '^t-')" -ge 1 ] && [ "$(ls "$flow2/.tickets" | grep -c '^t-')" -ge 1 ] \
   || fail "tickets not created in the flow"
+no_trap_ran "end to end"
 
 printf 'windows-no-python: ok\n'

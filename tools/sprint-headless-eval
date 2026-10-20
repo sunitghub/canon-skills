@@ -29,6 +29,7 @@ SCRIPT_DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
 source "$SCRIPT_DIR/ticket-root.sh"
 source "$SCRIPT_DIR/frontmatter-lib.sh"
 source "$SCRIPT_DIR/gate-cache.sh"
+source "$SCRIPT_DIR/platform-lib.sh"
 
 # --- Argument parsing ---
 
@@ -92,6 +93,9 @@ while [[ $# -gt 0 ]]; do
     *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
 done
+
+# The board binary parses claude -p's JSON (t-b62a: it replaced python3); check it runs before anything is paid for.
+BOARD="$(board_helper_bin)" || exit 1
 
 # Caching is opt-in (see gate-cache.sh): explicit --cache/--no-cache wins, else
 # CANON_GATE_CACHE=1 enables it. Default (nothing set) = off, fully fresh grading.
@@ -252,21 +256,8 @@ resolve_allowed_tools() {
     return 0
   fi
   [[ -f "$ALLOWED_TOOLS_FILE" ]] || { echo "Error: --allowed-tools-file not found: $ALLOWED_TOOLS_FILE" >&2; exit 1; }
-  command -v python3 >/dev/null 2>&1 || { echo "Error: python3 is required to parse --allowed-tools-file." >&2; exit 1; }
   local parsed
-  parsed="$(python3 -c '
-import json, sys
-try:
-    d = json.load(open(sys.argv[1]))
-except Exception as e:
-    sys.stderr.write("Error: invalid JSON in --allowed-tools-file: %s\n" % e); sys.exit(2)
-if not isinstance(d, list) or not all(isinstance(x, str) for x in d):
-    sys.stderr.write("Error: --allowed-tools-file must be a JSON array of strings.\n"); sys.exit(2)
-for x in d:
-    if "\n" in x:
-        sys.stderr.write("Error: tool entries must not contain newlines.\n"); sys.exit(2)
-    print(x)
-' "$ALLOWED_TOOLS_FILE")" || exit 1
+  parsed="$("$BOARD" json-strings "$ALLOWED_TOOLS_FILE")" || exit 1
   while IFS= read -r line; do
     [[ -n "$line" ]] && ALLOWED_TOOLS+=("$line")
   done <<< "$parsed"
@@ -365,35 +356,7 @@ else
 
   # --- Parse JSON output ---
 
-  IS_WINDOWS=0
-  case "$(uname -s)" in
-    MINGW*|MSYS*|CYGWIN*) IS_WINDOWS=1 ;;
-  esac
-  JSON_HELPER="$SCRIPT_DIR/sprint-headless-json-win.exe"
-
-  if [[ "$IS_WINDOWS" -eq 1 && -f "$JSON_HELPER" ]]; then
-    PARSED="$(echo "$RESULT_JSON" | "$JSON_HELPER")"
-  elif command -v python3 >/dev/null 2>&1; then
-    PARSED="$(echo "$RESULT_JSON" | python3 -c '
-import json, sys
-try:
-    d = json.load(sys.stdin)
-except Exception:
-    print("PARSE_ERROR\t\t")
-    sys.exit(0)
-is_error = d.get("is_error", True)
-session_id = d.get("session_id", "unknown")
-result = d.get("result", "").replace(chr(10), chr(2))
-print(str(is_error) + chr(9) + str(session_id) + chr(9) + result)
-')"
-  else
-    echo "Error: python3 is required to parse claude -p's output (on Windows, $JSON_HELPER is used instead if present; run canon update to fetch it). Hard-failing." >&2
-    exit 1
-  fi
-
-  IS_ERROR="$(echo "$PARSED" | cut -f1)"
-  SESSION_ID="$(echo "$PARSED" | cut -f2)"
-  RESULT_TEXT="$(echo "$PARSED" | cut -f3- | tr '\002' '\n')"
+  headless_parse "$BOARD" <<< "$RESULT_JSON"
 
   "$SCRIPT_DIR/subagent-log.sh" --agent-id "headless-eval-$SESSION_ID" --agent-type headless-eval-orchestrator 2>/dev/null || true
 

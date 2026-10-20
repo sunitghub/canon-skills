@@ -13,6 +13,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 tmp_home="$(mktemp -d)"
 export HOME="$tmp_home"
 trap 'rm -rf "$tmp_home"' EXIT
+use_fresh_board "$tmp_home/board"   # t-b62a: the settings rules are written by the board binary's helper
 
 # --- C1/C2: ensure_claude_bridge (both sprint and efficiency reach it) ------
 
