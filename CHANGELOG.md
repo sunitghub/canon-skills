@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-10-20
+
+canon now keeps an event log: every ticket and sprint change becomes one line in `~/.canon/events/`, so plugins and scripts can follow along (docs/plugins.md). Update with `canon update`, then stop the running board (Ctrl+C in the terminal running `canon`, or close its window) and run `canon` again. The daemon did not change: don't restart it, and agent sessions keep running. Claude cloud environments: copy the setup script from docs/setup.md again if yours still reads `tools/cockpit-daemon/go.mod`.
+
 ### Added
 - An event stream (`t-f182`): `tkt`, `sprint` and the board record ticket and sprint changes as one JSON line each in `~/.canon/events/<UTC day>.jsonl`, so plugins and scripts can follow along without polling. Schema v1 (`ticket.created`, `ticket.status_changed`, `ticket.closed`, `sprint.started`, `sprint.completed`) is documented in [docs/plugins.md](docs/plugins.md). Writing an event never changes what a command does; files older than 90 days are deleted.
 
