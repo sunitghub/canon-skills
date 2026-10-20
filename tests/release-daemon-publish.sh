@@ -70,14 +70,18 @@ for want in "$kd windows-amd64 " "$kb sprint-check-windows-amd64 " "$kb sprint-c
 want="$(shasum -a 256 "$FAKE_GH/sprint-check-$kb/sprint-check-windows-amd64.exe" | awk '{print $1}')"; grep -q "^$kb sprint-check-windows-amd64 $want\$" "$m" || fail "the manifest hash is not the published asset's hash"
 # t-15d8: each Unix board asset is built for its own target (a wrong GOOS/GOARCH would publish another platform's binary under
 # this name) and carries the board's commit stamp (fetch-daemon's VERSION_CHECK reads it; no stamp = a re-download at every start)
-assert_contains "$(file -b "$FAKE_GH/sprint-check-$kb/sprint-check-windows-amd64.exe")" "PE32+ executable"   # not the loop's last Unix target
-for pair in "darwin-arm64:Mach-O 64-bit executable arm64" "darwin-amd64:Mach-O 64-bit executable x86_64" "linux-amd64:ELF 64-bit LSB executable, x86-64" "linux-arm64:ELF 64-bit LSB executable, ARM aarch64"; do
-  assert_contains "$(file -b "$FAKE_GH/sprint-check-$kb/sprint-check-${pair%%:*}")" "${pair#*:}"
-done
 host="$(uname -s | tr 'A-Z' 'a-z')-$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')"
-if [[ -f "$FAKE_GH/sprint-check-$kb/sprint-check-$host" ]]; then
-  assert_contains "$("$FAKE_GH/sprint-check-$kb/sprint-check-$host" 2>&1)" "${kb:0:8}"
-fi
+for rel in "sprint-check:$kb" "cockpit-daemon:$kd"; do   # t-8020: the daemon's assets come from the same build_module, so the same checks
+  p="${rel%%:*}"; k="${rel#*:}"
+  assert_contains "$(file -b "$FAKE_GH/$p-$k/$p-windows-amd64.exe")" "PE32+ executable"   # not the loop's last Unix target
+  grep -qaF "${k:0:8}" "$FAKE_GH/$p-$k/$p-windows-amd64.exe" || fail "$p-windows-amd64.exe lacks its commit stamp ${k:0:8}"   # cannot run it here
+  for pair in "darwin-arm64:Mach-O 64-bit executable arm64" "darwin-amd64:Mach-O 64-bit executable x86_64" "linux-amd64:ELF 64-bit LSB executable, x86-64" "linux-arm64:ELF 64-bit LSB executable, ARM aarch64"; do
+    assert_contains "$(file -b "$FAKE_GH/$p-$k/$p-${pair%%:*}")" "${pair#*:}"
+  done
+  if [[ -f "$FAKE_GH/$p-$k/$p-$host" ]]; then
+    assert_contains "$("$FAKE_GH/$p-$k/$p-$host" 2>&1)" "${k:0:8}"
+  fi
+done
 # the legacy (headless) build asks for its pin and writes it into the staged go.mod; the ten module builds (five daemon, five board)
 # each set GOTOOLCHAIN to the module's toolchain line (not the installed Go: t-7efe)
 grep -q "^GOTOOLCHAIN=$LV module canon/sprint-headless-json  go ${LV#go} \$" "$GO_LOG" || fail "the headless build did not use its pin: $(cat "$GO_LOG")"

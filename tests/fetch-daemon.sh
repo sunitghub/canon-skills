@@ -50,8 +50,11 @@ cat > "$WORK/gostub/go" <<'EOF'
 #!/bin/sh
 [ "$1" = env ] && { echo go1.99.0; exit 0; }
 [ "$1" = version ] && { echo "$3: $(sed -n 's/^# toolchain=//p' "$3")"; exit 0; }   # t-7efe: release-daemon.sh checks each binary with `go version -m`; the stub's binaries record the GOTOOLCHAIN they were built with
-while [ $# -gt 0 ]; do [ "$1" = -o ] && out="$2"; shift; done
+while [ $# -gt 0 ]; do [ "$1" = -o ] && out="$2"; [ "$1" = -ldflags ] && ld="$2"; pkg="$1"; shift; done
 [ "${STUB_GO_FAIL:-0}" = 0 ] || exit 1
+# t-8020: like the real go, build only a package that exists from here (./cmd/<component> in the module), stamped with its commit
+[ -d "$pkg" ] && [ -n "$out" ] || { echo "go stub: no package $pkg in $PWD" >&2; exit 1; }
+case "$ld" in *"-X main.commit="?*) ;; *) echo "go stub: no commit stamp" >&2; exit 1 ;; esac
 printf '#!/bin/sh\n[ "$1" = --version ] && { echo "0.3.0 (built)"; exit 0; }\ntouch "%s"\n# toolchain=%s\n' "$STUB_MARK" "${GOTOOLCHAIN:-}" > "$out"
 EOF
 chmod +x "$STUBS"/* "$WORK/gostub/go"

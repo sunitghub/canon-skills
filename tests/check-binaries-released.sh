@@ -24,6 +24,12 @@ run() { set +e; out="$(bash "$R/scripts/check-binaries-released.sh" "$@" 2>&1)";
 
 write_manifest "$(key cockpit-daemon)" "$(key sprint-check)" "$(key sprint-headless-json)"
 run; [[ "$rc" == 0 ]] || fail "a fully released tree must pass: $out"; assert_contains "$out" "ok            windows-amd64"
+# every target is checked: with no release lines at all, each of the eleven is named (a dropped row would go unchecked)
+cp "$R/tools/cockpit-daemon.sha256" "$WORK/full.sha256"; printf '# header\n' > "$R/tools/cockpit-daemon.sha256"; run
+for t in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 windows-amd64 sprint-check-darwin-arm64 sprint-check-darwin-amd64 sprint-check-linux-amd64 sprint-check-linux-arm64 sprint-check-windows-amd64 sprint-headless-json-windows-amd64; do
+  assert_contains "$out" "NOT RELEASED  $t"
+done
+cp "$WORK/full.sha256" "$R/tools/cockpit-daemon.sha256"
 
 # a source change without its release: red, and it names the component
 echo "// change" >> "$M/internal/board/x.go"; git -C "$R" "${ident[@]}" commit -qam "board changed"
