@@ -123,6 +123,9 @@ func Run(buildVersion, buildCommit string, args []string) int {
 			return 0
 		}
 	}
+	if code, ok := runHelper(args, os.Stdin, os.Stdout, os.Stderr); ok {
+		return code
+	}
 
 	port := 8423
 	if len(args) > 0 {
@@ -190,6 +193,10 @@ Usage:
   sprint-check-win        Open the dashboard for the current project
   sprint-check-win <port> Open the dashboard on a specific port
   sprint-check-win --help Show this help
+
+Helpers (used by canon's shell tools; see helpers.go):
+  headless-json, json-strings <file>, skill-check <skill-dir>,
+  settings <status|add|remove> <settings.json> <allow|deny> <rule>...
 
 The dashboard reads .tickets/, HANDOFF.md, and git history from the current
 project. It starts a local Go HTTP server and opens the board in your default

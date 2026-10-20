@@ -1,0 +1,211 @@
+package board
+
+import (
+	"bytes"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// Protects tools/sprint-headless and tools/sprint-headless-eval: they read this line with cut (t-b62a; the
+// cases came from the retired tools/sprint-headless-json-go).
+func TestFormatHeadlessResult(t *testing.T) {
+	for _, tc := range []struct{ name, input, want string }{
+		{"plain success", `{"is_error":false,"session_id":"abc-123","result":"hello"}`, "False\tabc-123\thello"},
+		{"is_error missing reads True", `{"session_id":"abc-123","result":"hello"}`, "True\tabc-123\thello"},
+		{"is_error null reads True", `{"is_error":null,"session_id":"s","result":"r"}`, "True\ts\tr"},
+		{"session_id and result missing", `{"is_error":false}`, "False\tunknown\t"},
+		{"quotes and backslashes", `{"is_error":true,"session_id":"s1","result":"line1\nline2 \"quoted\" back\\slash"}`, "True\ts1\tline1\x02line2 \"quoted\" back\\slash"},
+		{"newlines as \\x02", `{"is_error":true,"session_id":"s1","result":"a\nb\nc"}`, "True\ts1\ta\x02b\x02c"},
+		{"\\u escape decoded", `{"is_error":false,"session_id":"s1","result":"café"}`, "False\ts1\tcafé"},
+		{"not JSON", `not json`, "PARSE_ERROR\t\t"},
+		{"empty", ``, "PARSE_ERROR\t\t"},
+		{"truncated", `{"is_error":false,"session_id":`, "PARSE_ERROR\t\t"},
+		{"not an object", `[1,2]`, "PARSE_ERROR\t\t"},
+	} {
+		if got := formatHeadlessResult([]byte(tc.input)); got != tc.want {
+			t.Errorf("%s: got %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+// Protects sprint-headless-eval --allowed-tools-file.
+func TestJSONStrings(t *testing.T) {
+	dir := t.TempDir()
+	for _, tc := range []struct {
+		name, content, out, errText string
+		code                        int
+	}{
+		{"list", `["Read", "Bash(git log:*)", "Grep"]`, "Read\nBash(git log:*)\nGrep\n", "", 0},
+		{"empty list", `[]`, "", "", 0},
+		{"bad JSON", `["Read",`, "", "invalid JSON in --allowed-tools-file", 2},
+		{"object", `{"a":1}`, "", "must be a JSON array of strings", 2},
+		{"non-string", `["Read", 3]`, "", "must be a JSON array of strings", 2},
+		{"newline", `["Read", "a\nb"]`, "", "must not contain newlines", 2},
+	} {
+		f := filepath.Join(dir, tc.name+".json")
+		os.WriteFile(f, []byte(tc.content), 0o644)
+		var out, errb bytes.Buffer
+		code := jsonStrings(f, &out, &errb)
+		if code != tc.code || out.String() != tc.out || !strings.Contains(errb.String(), tc.errText) {
+			t.Errorf("%s: code %d out %q err %q", tc.name, code, out.String(), errb.String())
+		}
+	}
+}
+
+// Protects `skills.sh add|remove sprint` (tools/skills/prompts.sh): the permission rules it writes into a
+// user's .claude/settings.json, and that nothing else in that file changes (t-f01d).
+func TestEditSettings(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, content string) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	read := func(p string) string { b, _ := os.ReadFile(p); return string(b) }
+	run := func(mode, p, key string, rules ...string) string {
+		w, err := editSettings(mode, p, key, rules)
+		if err != nil && w != "invalid" {
+			t.Fatalf("%s %s: %v", mode, p, err)
+		}
+		return w
+	}
+
+	// add keeps key order, other keys' text (number literal, unicode, & in a rule) and the file's mode
+	user := `{"model": "opus", "n": 1.50, "env": {"Z": "é & <x>"}, "permissions": {"ask": ["X"], "allow": ["Bash(a && b)"]}, "hooks": {}}`
+	p := write("user.json", user)
+	if w := run("add", p, "deny", "Bash(brew install:*)", "Bash(apt install:*)"); w != "ok" {
+		t.Fatalf("add: %q", w)
+	}
+	want := `{
+  "model": "opus",
+  "n": 1.50,
+  "env": {
+    "Z": "é & <x>"
+  },
+  "permissions": {
+    "ask": [
+      "X"
+    ],
+    "allow": [
+      "Bash(a && b)"
+    ],
+    "deny": [
+      "Bash(brew install:*)",
+      "Bash(apt install:*)"
+    ]
+  },
+  "hooks": {}
+}
+`
+	if got := read(p); got != want {
+		t.Fatalf("add rewrote other keys:\n%s", got)
+	}
+	if st, _ := os.Stat(p); st.Mode().Perm() != 0o600 {
+		t.Errorf("mode changed to %v", st.Mode().Perm())
+	}
+	if w := run("status", p, "deny", "Bash(brew install:*)", "Bash(apt install:*)"); w != "present" {
+		t.Errorf("status after add: %q", w)
+	}
+	if w := run("status", p, "deny", "Bash(brew install:*)", "Bash(choco install:*)"); w != "absent" {
+		t.Errorf("status with one missing: %q", w)
+	}
+	before := read(p)
+	run("add", p, "deny", "Bash(brew install:*)")
+	if read(p) != before {
+		t.Error("adding a present rule changed the file")
+	}
+
+	// remove drops the rule, then an emptied list, then an emptied permissions; other keys stay
+	p = write("rm.json", `{"a": 1, "permissions": {"allow": ["Bash(subagent-log.sh:*)", "Read"]}}`)
+	run("remove", p, "allow", "Bash(subagent-log.sh:*)")
+	if got := read(p); got != "{\n  \"a\": 1,\n  \"permissions\": {\n    \"allow\": [\n      \"Read\"\n    ]\n  }\n}\n" {
+		t.Errorf("remove one: %s", got)
+	}
+	run("remove", p, "allow", "Read")
+	if got := read(p); got != "{\n  \"a\": 1\n}\n" {
+		t.Errorf("remove last: %s", got)
+	}
+
+	// a missing file: status absent, remove ok without creating it, add creates it
+	missing := filepath.Join(dir, "missing.json")
+	if run("status", missing, "allow", "R") != "absent" || run("remove", missing, "allow", "R") != "ok" {
+		t.Error("missing file: wrong status/remove")
+	}
+	if _, err := os.Stat(missing); err == nil {
+		t.Error("remove created a missing file")
+	}
+	if run("add", missing, "allow", "R") != "ok" || read(missing) != "{\n  \"permissions\": {\n    \"allow\": [\n      \"R\"\n    ]\n  }\n}\n" {
+		t.Errorf("add to a missing file: %s", read(missing))
+	}
+	// no permissions key: status absent, remove ok and the file untouched
+	p = write("noperm.json", `{"model":"x"}`)
+	if run("status", p, "deny", "R") != "absent" || run("remove", p, "deny", "R") != "ok" || read(p) != `{"model":"x"}` {
+		t.Error("no permissions: wrong result or file changed")
+	}
+	// a BOM (Windows PowerShell 5.1) is read and not written back
+	p = write("bom.json", "\xef\xbb\xbf{\"permissions\":{\"allow\":[\"R\"]}}")
+	if run("status", p, "allow", "R") != "present" {
+		t.Error("BOM file: status")
+	}
+	run("add", p, "allow", "S")
+	if strings.HasPrefix(read(p), "\xef\xbb\xbf") {
+		t.Error("BOM written back")
+	}
+
+	// invalid shapes: reported, never written
+	for name, content := range map[string]string{
+		"notjson":   `{"permissions": `,
+		"array":     `[1]`,
+		"perms-str": `{"permissions": "x"}`,
+		"list-obj":  `{"permissions": {"deny": {"a": 1}}}`,
+		"list-null": `{"permissions": {"deny": null}}`,
+		"trailing":  `{"a":1} {"b":2}`,
+		"nan":       `{"a": NaN}`,
+	} {
+		p := write(name+".json", content)
+		for _, mode := range []string{"status", "add", "remove"} {
+			if w := run(mode, p, "deny", "R"); w != "invalid" {
+				t.Errorf("%s %s: %q", name, mode, w)
+			}
+			if read(p) != content {
+				t.Errorf("%s %s: file was written", name, mode)
+			}
+		}
+	}
+
+	// a symlinked settings file is refused, and neither the link nor its target changes
+	target := write("target.json", `{"a":1}`)
+	link := filepath.Join(dir, "link.json")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skip("no symlinks here")
+	}
+	if w := run("add", link, "deny", "R"); w != "invalid" || read(target) != `{"a":1}` {
+		t.Errorf("symlink: %q, target now %s", w, read(target))
+	}
+	if fi, _ := os.Lstat(link); fi.Mode()&os.ModeSymlink == 0 {
+		t.Error("the link was replaced")
+	}
+	if leftovers, _ := filepath.Glob(filepath.Join(dir, ".*")); len(leftovers) > 0 {
+		t.Errorf("temp files left: %v", leftovers)
+	}
+}
+
+// Protects the dispatch: a helper word never starts the board, and bad usage exits 2.
+func TestRunHelperUsage(t *testing.T) {
+	var out, errb bytes.Buffer
+	if _, handled := runHelper([]string{"8423"}, nil, &out, &errb); handled {
+		t.Error("a port number was taken as a helper")
+	}
+	for _, args := range [][]string{{"json-strings"}, {"settings", "add"}, {"skill-check"}} {
+		if code, handled := runHelper(args, nil, &out, &errb); !handled || code != 2 {
+			t.Errorf("%v: code %d handled %v", args, code, handled)
+		}
+	}
+	if code, _ := runHelper([]string{"settings", "frob", "x.json", "deny", "R"}, nil, &out, &errb); code != 1 {
+		t.Errorf("bad mode: code %d", code)
+	}
+}

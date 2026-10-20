@@ -1,6 +1,7 @@
 package board
 
-// t-b9a7: Skill Eval in the Go board (what Windows runs) — a port of tools/skill-check,
+// t-b9a7: Skill Eval in the Go board (what Windows runs) — a port of the former Python tools/skill-check
+// (its command line is now `sprint-check skill-check`, helpers.go),
 // tools/plugin-eval-gen --skill-dir and server.py's Skill Eval run/state/report, so the feature
 // needs no Python, bash or jq. Same logic in two runtimes: tests/skill-eval-parity.sh compares
 // /check output byte-for-byte and the generated plugin tree with diff -r. Where Python's text
@@ -33,7 +34,7 @@ import (
 
 const (
 	skillEvalDefaultModel = "claude-haiku-4-5-20251001"
-	skillJSONMaxDepth     = 64        // same as tools/skill-check MAX_DEPTH
+	skillJSONMaxDepth     = 64        // the Python tools/skill-check's MAX_DEPTH (t-b9a7)
 	skillJSONMaxNumberLen = 100       // same as MAX_NUMBER_LEN
 	skillSafeInt          = 1<<53 - 1 // same as SAFE_INT
 	skillEvalWalkCap      = 20000
@@ -347,7 +348,7 @@ func jsonIntText(n json.Number) string {
 	return v.String()
 }
 
-// ── Checks (tools/skill-check) ──────────────────────────────────────────────
+// ── Checks (`sprint-check skill-check`) ──────────────────────────────────────────────
 
 type skillCheckRow struct {
 	ID       string `json:"id"`
@@ -749,7 +750,7 @@ func skillEvalNow() float64 { return float64(time.Now().UnixNano()) / 1e9 }
 // canon" refusal and the eval cache both depend on it.
 func canonRootDir() string {
 	root := resolvedOrAbs(filepath.Dir(filepath.Dir(filepath.Dir(appHTML))))
-	if !isRegularFile(filepath.Join(root, "tools", "skill-check")) {
+	if !isCanonRoot(root) {
 		return ""
 	}
 	return root
