@@ -15336,7 +15336,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#fac-in-wait img')).toHaveCount(0);
     expect(await page.evaluate(() => window.__xss)).toBeUndefined();
     await expect(page.locator('#fac-in-last')).toContainText('2 tickets made');
-    await expect(page.locator('#fac-intake button, #fac-intake [id*="sync"]')).toHaveText(['Sync from GitHub is on the board ›']);   // no second Sync
+    await expect(page.locator('#fac-intake button, #fac-intake [id*="sync"]')).toHaveText(['Open board ›']);   // no second Sync: a link to the board, where Sync lives
 
     intake = { ok: true, exit_code: 0, intake: { repo: 'acme/app', label: 'canon', waiting: [], skipped: [] }, last_synced: null };
     await page.locator('#fac-gh-recheck').click();
