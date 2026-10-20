@@ -102,6 +102,11 @@ use_fresh_board() {
   SPRINT_CHECK_BIN="$(build_board "$1")"; export SPRINT_CHECK_BIN
 }
 
+# event_line <kind> <ticket>: the newest event of that kind for that ticket in $CANON_HOME/events (t-f182), or nothing.
+event_line() {
+  cat "$CANON_HOME"/events/*.jsonl 2>/dev/null | grep -F "\"kind\":\"$1\"" | grep -F "\"ticket\":\"$2\"" | tail -1 || true
+}
+
 make_project() {
   local dir
   dir="$(mktemp -d)"

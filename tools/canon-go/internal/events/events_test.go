@@ -79,7 +79,8 @@ func TestDayFilesAndRetention(t *testing.T) {
 	home := t.TempDir()
 	dir := filepath.Join(home, "events")
 	os.MkdirAll(dir, 0o700)
-	for _, keep := range []string{"2026-07-23.jsonl", "notes.txt", "emit-errors.log"} { // 89 days before 10-20: kept
+	// 2026-07-22 is exactly 90 days before 10-20: kept; look-alike names are never touched, however old they look
+	for _, keep := range []string{"2026-07-22.jsonl", "2026-07-23.jsonl", "notes.txt", "emit-errors.log", "x2001-01-01.jsonl", "2001-01-01.jsonl.bak", "2001-13-45.jsonl"} {
 		os.WriteFile(filepath.Join(dir, keep), []byte(""), 0o600)
 	}
 	os.WriteFile(filepath.Join(dir, "2026-07-21.jsonl"), []byte(""), 0o600) // 91 days: deleted
@@ -89,7 +90,8 @@ func TestDayFilesAndRetention(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for name, want := range map[string]bool{"2026-07-21.jsonl": false, "2026-07-23.jsonl": true, "notes.txt": true, "2026-10-19.jsonl": true, "2026-10-20.jsonl": true} {
+	for name, want := range map[string]bool{"2026-07-21.jsonl": false, "2026-07-22.jsonl": true, "2026-07-23.jsonl": true, "notes.txt": true,
+		"x2001-01-01.jsonl": true, "2001-01-01.jsonl.bak": true, "2001-13-45.jsonl": true, "2026-10-19.jsonl": true, "2026-10-20.jsonl": true} {
 		if _, err := os.Stat(filepath.Join(dir, name)); (err == nil) != want {
 			t.Errorf("%s present=%v, want %v", name, err == nil, want)
 		}
@@ -132,5 +134,38 @@ func TestEmitFailsQuietly(t *testing.T) {
 	}
 	if err := Emit("", "ticket.closed", "tkt", "/p", nil); err == nil {
 		t.Error("no home reported success")
+	}
+}
+
+// Protects where events go when CANON_HOME is unset, and that every documented kind is in the table (docs/plugins.md).
+func TestHomeAndKinds(t *testing.T) {
+	t.Setenv("CANON_HOME", "")
+	t.Setenv("HOME", "/somewhere")
+	if got := Home(); got != filepath.Join("/somewhere", ".canon") {
+		t.Errorf("Home() = %q", got)
+	}
+	t.Setenv("CANON_HOME", "/pinned")
+	if got := Home(); got != "/pinned" {
+		t.Errorf("Home() with CANON_HOME = %q", got)
+	}
+	want := "sprint.completed sprint.started ticket.closed ticket.created ticket.status_changed"
+	if got := strings.Join(Kinds(), " "); got != want {
+		t.Errorf("kinds %q, want %q", got, want)
+	}
+}
+
+// Protects emit-errors.log from growing without bound when events keep failing.
+func TestErrorsLogCap(t *testing.T) {
+	home := t.TempDir()
+	os.MkdirAll(filepath.Join(home, "events"), 0o700)
+	log := filepath.Join(home, "events", "emit-errors.log")
+	Emit(home, "ticket.nope", "tkt", "/p", nil)
+	if b, _ := os.ReadFile(log); !strings.Contains(string(b), `unknown event kind "ticket.nope"`) {
+		t.Fatalf("failure not noted: %q", b)
+	}
+	os.WriteFile(log, make([]byte, errorsLogMax+1), 0o600)
+	Emit(home, "ticket.nope", "tkt", "/p", nil)
+	if st, _ := os.Stat(log); st.Size() != errorsLogMax+1 {
+		t.Errorf("a full log grew to %d", st.Size())
 	}
 }

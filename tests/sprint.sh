@@ -3,6 +3,7 @@
 set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
+use_fresh_board "$(mktemp -d)"   # t-f182: sprint complete's event goes through the board binary
 
 # t-b2a9: every message about a missing or unverifiable gate report says a fresh subagent writes it and the file is never hand-made.
 assert_gate_notice() { # <output> <file> <evaluator|reviewer>
@@ -554,6 +555,7 @@ cat > ".claude/subagent-runs.jsonl" <<'EOF'
 EOF
 complete_output="$("$SPRINT" complete)"
 assert_contains "$complete_output" "Sprint completed: $fresh_id"
+assert_contains "$(event_line sprint.completed "$fresh_id")" '"source":"sprint"'   # t-f182: after the close, never before
 assert_grep "^status: closed$" ".tickets/$fresh_id/ticket.md"
 assert_grep "^status: closed$" ".tickets/$id/ticket.md"
 [[ ! -f .tickets/ACTIVE ]] || fail "expected ACTIVE to be cleared after sprint complete"

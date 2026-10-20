@@ -75,6 +75,32 @@ assert_eq "${t_shape%%|*|*}" "${b_shape%%|*|*}"   # parity: same top-level keys
 assert_eq "$(cut -d'|' -f2 <<<"$t_shape")" "$(cut -d'|' -f2 <<<"$b_shape")"   # and the same data keys
 [[ "$(shape ticket.status_changed board | cut -d'|' -f2)" == "$(shape ticket.status_changed tkt | cut -d'|' -f2)" ]] || fail "status_changed differs between tkt and the board"
 
+# 3b. the board closes (status_changed and closed), keeps a title on one line, and a worktree-bound ticket's move
+# (written into the worktree's copy) is recorded too, with the main project as `project`
+curl -s -o /dev/null -X POST -H 'Content-Type: application/json' -d '{"status":"closed"}' "$base/api/ticket/$bid/status"
+assert_contains "$(event_line ticket.status_changed "$bid")" '"from":"in_progress","ticket":"'"$bid"'","to":"closed"'
+assert_contains "$(event_line ticket.closed "$bid")" '"source":"board"'
+nid="$(curl -s -X POST -H 'Content-Type: application/json' -d '{"title":"two\nlines","type":"task","priority":2}' "$base/api/tickets" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+assert_contains "$(event_line ticket.created "$nid")" '"title":"two lines"'
+wid="$(cd "$P" && "$TKT" create "Bound one")"
+git -C "$P" add -A && git -C "$P" -c user.email=t@t -c user.name=t commit -qm bound
+git -C "$P" worktree add -q -b "sprint/$wid" "$W/wt-$wid"
+echo "$W/wt-$wid" > "$P/.tickets/$wid/.cockpit-cwd"
+curl -s -o /dev/null -X POST -H 'Content-Type: application/json' -d '{"status":"in_progress"}' "$base/api/ticket/$wid/status"
+grep -q '^status: in_progress' "$W/wt-$wid/.tickets/$wid/ticket.md" || fail "setup: the bound move did not land in the worktree"
+assert_contains "$(event_line ticket.status_changed "$wid")" '"from":"open","ticket":"'"$wid"'","to":"in_progress"'
+assert_contains "$(event_line ticket.status_changed "$wid")" "\"project\":\"$P\""
+
+# 3c. from a subfolder, tkt and sprint still name the project's root
+mkdir -p "$P2/src/deep"
+sub="$(cd "$P2/src/deep" && "$TKT" create "From a subfolder")"
+(cd "$P2/src/deep" && "$TKT" start "$sub" >/dev/null && "$TKT" close "$sub" --no-sprint >/dev/null)
+for k in ticket.created ticket.status_changed ticket.closed; do assert_contains "$(event_line "$k" "$sub")" "\"project\":\"$P2\""; done
+P3="$W/proj3"; mkproj "$P3"; mkdir -p "$P3/src"
+(cd "$P3/src" && "$SPRINT" start "Deep sprint" >/dev/null)
+s3="$(cd "$P3" && "$TKT" list 2>/dev/null | awk 'NR==1{print $1}')"
+assert_contains "$(event_line sprint.started "$s3")" "\"project\":\"$P3\""
+
 # 4. a 60 KB description stays out of the event
 big="$(head -c 60000 /dev/zero | tr '\0' d)"
 id60="$(cd "$P" && "$TKT" create "Big one" -d "$big")"
@@ -95,9 +121,18 @@ start=$SECONDS; assert_eq "$want" "$(SPRINT_CHECK_BIN="$W/old-board" snap "$P" d
 (( SECONDS - start < 10 )) || fail "an older board without \`event\` held tkt up"
 [[ "$(grep -l 'Same b' "$P"/.tickets/*/ticket.md | wc -l | tr -d ' ')" == 1 ]] || fail "the ticket was not written with an unwritable events folder"
 for f in "$EV"/*.jsonl; do ! grep -q 'Same b\|Same c\|Same d' "$f" || fail "an event was written although it could not or should not be"; done
-# a bad call to the writer is refused, noted, and still exits 0 with no output
-out="$("$SPRINT_CHECK_BIN" event ticket.deleted --source tkt --project "$P" ticket=t-x)"; rc=$?
-assert_eq "0:" "$rc:$out"; assert_contains "$(cat "$EV/emit-errors.log")" 'unknown event kind "ticket.deleted"'
+# a bad call to the writer is refused, noted, and still exits 0 with no output: an unknown kind, no kind, a bare word,
+# a dangling --project
+n0="$(cat "$EV"/*.jsonl | wc -l | tr -d ' ')"
+for args in "ticket.deleted --source tkt --project $P ticket=t-x" "" "ticket.closed --source tkt --project $P t-bare" "ticket.closed --source tkt ticket=t-y --project"; do
+  # shellcheck disable=SC2086
+  out="$("$SPRINT_CHECK_BIN" event $args)"; rc=$?
+  assert_eq "0:" "$rc:$out"
+done
+assert_eq "$n0" "$(cat "$EV"/*.jsonl | wc -l | tr -d ' ')"
+errs="$(cat "$EV/emit-errors.log")"
+assert_contains "$errs" 'unknown event kind "ticket.deleted"'; assert_contains "$errs" 'unknown event kind ""'
+assert_contains "$errs" 'has no field "t-bare"'; assert_contains "$errs" 'has no field "--project"'
 
 # 6. 16 writer processes at once: whole lines, none lost
 CH="$W/conc"; writers=(); for w in $(seq 1 16); do

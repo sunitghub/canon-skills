@@ -1686,7 +1686,7 @@ func createTicket(title, typ, status string, priority int, body string, ci bool,
 	text := fmt.Sprintf("---\nid: %s\ntitle: %s\nstatus: %s\ntype: %s\npriority: %d\ncreated: %s\n%s%s%s%s%s%s\n---\n\n%s\n", id, strings.ReplaceAll(title, "\n", " "), status, typ, priority, time.Now().UTC().Format("2006-01-02T15:04:05Z"), ciLine, gateLine, demoLine, skillsLine, wtLine, evalLine, strings.TrimSpace(body))
 	path := filepath.Join(dir, "ticket.md")
 	if os.WriteFile(path, []byte(text), 0644) == nil {
-		emitEvent("ticket.created", root, map[string]string{"ticket": id, "title": strings.ReplaceAll(title, "\n", " "), "type": typ, "priority": strconv.Itoa(priority)})
+		emitEvent("ticket.created", root, map[string]string{"ticket": id, "title": title, "type": typ, "priority": strconv.Itoa(priority)})
 	}
 	t, _ := parseTicket(path)
 	return t
