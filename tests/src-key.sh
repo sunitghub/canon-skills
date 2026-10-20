@@ -12,10 +12,10 @@ export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 XDG_CONFIG_HOME="$WORK/
 ident=(-c user.email=t@example.com -c user.name=test)
 
 R="$WORK/repo"; M="$R/tools/canon-go"
-mkdir -p "$M/cmd/sprint-check" "$M/cmd/cockpit-daemon" "$M/internal/board" "$M/internal/daemon" "$M/internal/common"
+mkdir -p "$M/cmd/sprint-check" "$M/cmd/cockpit-daemon" "$M/internal/board" "$M/internal/daemon" "$M/internal/common" "$M/internal/events"
 cp "$ROOT/tools/src-key.sh" "$R/tools/"
 printf 'module canon\n' > "$M/go.mod"; : > "$M/go.sum"
-for d in cmd/sprint-check cmd/cockpit-daemon internal/board internal/daemon internal/common; do echo "package x // $d" > "$M/$d/x.go"; done
+for d in cmd/sprint-check cmd/cockpit-daemon internal/board internal/daemon internal/common internal/events; do echo "package x // $d" > "$M/$d/x.go"; done
 git -C "$R" init -q -b main; git -C "$R" "${ident[@]}" add -A; git -C "$R" "${ident[@]}" commit -qm seed
 key() { bash -c 'source "$1/tools/src-key.sh"; canon_src_key "$1" "$2" ${3:+"$3"}' _ "${R2:-$R}" "$@"; }
 commit() { echo "// $1" >> "$M/$1/x.go" 2>/dev/null || echo "// $1" >> "$M/$1"; git -C "$R" "${ident[@]}" commit -qam "$1"; }
@@ -28,7 +28,7 @@ rc=0; out="$(key sprint-headless-json)" || rc=$?; [[ "$rc" == 1 && -z "$out" ]] 
 
 # own sources move only their own key: every path of each binary, one commit at a time
 b="$b0"; d="$d0"
-for p in internal/board cmd/sprint-check; do
+for p in internal/board internal/events cmd/sprint-check; do
   commit "$p"; nb="$(key sprint-check)"; nd="$(key cockpit-daemon)"
   [[ "$nb" != "$b" ]] || fail "a change in $p must re-key the board"; [[ "$nd" == "$d" ]] || fail "a change in $p re-keyed the daemon"; b="$nb"
 done
@@ -47,7 +47,7 @@ assert_eq "$b4" "$(key sprint-check)"; assert_eq "$d4" "$(key cockpit-daemon)"
 # the same in a shallow clone, and for an older rev
 git clone -q --depth 1 "file://$R" "$WORK/shallow"; R2="$WORK/shallow"; cp "$ROOT/tools/src-key.sh" "$R2/tools/"
 assert_eq "$b4" "$(key sprint-check)"; unset R2
-assert_eq "$b0" "$(key sprint-check HEAD~7)"
+assert_eq "$b0" "$(key sprint-check HEAD~8)"   # the seed commit, before the 8 commits above
 # unknown component, or a path missing from the commit: nothing printed, exit 1
 set +e; out="$(key nope)"; rc=$?; set -e; assert_eq 1 "$rc"; assert_eq "" "$out"
 git -C "$R" rm -rq tools/canon-go/internal/common; git -C "$R" "${ident[@]}" commit -qm "drop common"

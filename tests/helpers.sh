@@ -6,6 +6,9 @@ set -euo pipefail
 # doesn't traverse a symlinked path component (t-2a71: sweep_stale_stub_processes
 # below compares against this as its default root).
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+# t-f182: tkt, sprint and the board append events to $CANON_HOME/events; a test never writes into the user's own log
+# (scripts/test.sh pins one for the run; a test run on its own gets its own).
+if [[ -z "${CANON_HOME:-}" ]]; then CANON_HOME="$(mktemp -d)"; export CANON_HOME; fi
 # t-0231: under Claude Code, `sprint complete` checks the harness's own subagent transcripts (which an agent cannot write)
 # behind eval-report.md. Tests build fake gate reports with made-up run-ids, so they must never see a real Claude Code
 # environment: no CLAUDECODE, and a config root that does not exist (the check then fails open). A test that exercises the

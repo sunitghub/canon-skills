@@ -40,3 +40,20 @@ headless_parse() {
   SESSION_ID="$(printf '%s\n' "$parsed" | cut -f2)"
   RESULT_TEXT="$(printf '%s\n' "$parsed" | cut -f3- | tr '\002' '\n')"
 }
+
+# canon_event <kind> <source> <project dir> key=value... — one event line (t-f182) through the board binary, after the write it
+# describes succeeded. Observer-only: never prints, never fails, never waits on a missing or older board (it is skipped).
+# The board is checked once per shell (_CANON_EVENT_BOARD: a path, or "-" for none), through its --help: a board from
+# before t-f182 has the other helpers but not `event`, and would take the word for a port and serve forever.
+canon_event() {
+  local root b h
+  if [ -z "${_CANON_EVENT_BOARD:-}" ]; then
+    _CANON_EVENT_BOARD=-
+    b="$(board_bin)"; h="$("$b" --help 2>/dev/null)" || h=""
+    case "$h" in *"event <kind>"*) _CANON_EVENT_BOARD="$b" ;; esac
+  fi
+  [ "$_CANON_EVENT_BOARD" != - ] || return 0
+  root="$(cd "$3" 2>/dev/null && pwd -P)" || root="$3"
+  "$_CANON_EVENT_BOARD" event "$1" --source "$2" --project "$root" "${@:4}" </dev/null >/dev/null 2>&1 || true
+  return 0
+}

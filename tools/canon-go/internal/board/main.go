@@ -3,6 +3,7 @@ package board
 import (
 	"bytes"
 	"canon/internal/common"
+	"canon/internal/events"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -197,6 +198,7 @@ Usage:
 Helpers (used by canon's shell tools; see helpers.go):
   headless-json, json-strings <file>, skill-check <skill-dir>,
   settings <status|add|remove> <settings.json> <allow|deny> <rule>...
+  event <kind> --project <dir> --source <tkt|sprint> key=value...
 
 The dashboard reads .tickets/, HANDOFF.md, and git history from the current
 project. It starts a local Go HTTP server and opens the board in your default
@@ -1418,13 +1420,31 @@ func capWithMore(items []string, maxN int) ([]string, int) {
 }
 
 func writeStatus(id, status string, root string) bool {
+	from := ""
 	ok := replaceTicket(id, root, func(text string) string {
+		if m := statusFieldRe.FindStringSubmatch(text); m != nil {
+			from = m[2]
+		}
 		return statusFieldRe.ReplaceAllString(text, "${1}"+status)
 	})
 	if ok {
 		updateActive(canonicalTicketID(id, root), status, root)
+		emitStatusChanged(canonicalTicketID(id, root), from, status, root)
 	}
 	return ok
+}
+
+// emitEvent records one event (t-f182) after the write it describes succeeded. Observer-only: the result is ignored.
+func emitEvent(kind, root string, data map[string]string) {
+	events.Emit(events.Home(), kind, "board", resolvedOrAbs(root), data)
+}
+
+// emitStatusChanged records a status move, and ticket.closed as well when it moves to closed.
+func emitStatusChanged(id, from, to, root string) {
+	emitEvent("ticket.status_changed", root, map[string]string{"ticket": id, "from": from, "to": to})
+	if to == "closed" {
+		emitEvent("ticket.closed", root, map[string]string{"ticket": id})
+	}
 }
 
 // writeDemo toggles the boolean `demo` frontmatter field on an existing ticket. ON ensures a
@@ -1661,7 +1681,9 @@ func createTicket(title, typ, status string, priority int, body string, ci bool,
 	evalLine := "eval_override: false"
 	text := fmt.Sprintf("---\nid: %s\ntitle: %s\nstatus: %s\ntype: %s\npriority: %d\ncreated: %s\n%s%s%s%s%s%s\n---\n\n%s\n", id, strings.ReplaceAll(title, "\n", " "), status, typ, priority, time.Now().UTC().Format("2006-01-02T15:04:05Z"), ciLine, gateLine, demoLine, skillsLine, wtLine, evalLine, strings.TrimSpace(body))
 	path := filepath.Join(dir, "ticket.md")
-	os.WriteFile(path, []byte(text), 0644)
+	if os.WriteFile(path, []byte(text), 0644) == nil {
+		emitEvent("ticket.created", root, map[string]string{"ticket": id, "title": strings.ReplaceAll(title, "\n", " "), "type": typ, "priority": strconv.Itoa(priority)})
+	}
 	t, _ := parseTicket(path)
 	return t
 }
@@ -2687,7 +2709,7 @@ func writeLiveTicket(id, kind string, payload map[string]any, root string) (hand
 	if derr != nil {
 		return fail(derr.status, derr.code, derr.msg)
 	}
-	var newStatus, newBody, active string
+	var newStatus, oldStatus, newBody, active string
 	switch kind {
 	case "status":
 		var isStr bool
@@ -2737,6 +2759,7 @@ func writeLiveTicket(id, kind string, payload map[string]any, root string) (hand
 		found := false
 		for i, ln := range lines {
 			if sm := liveStatusLineRe.FindStringSubmatch(ln); sm != nil {
+				oldStatus = sm[2]
 				lines[i] = sm[1] + newStatus + sm[3]
 				found = true
 				break
@@ -2771,6 +2794,9 @@ func writeLiveTicket(id, kind string, payload map[string]any, root string) (hand
 	}
 	if werr != nil {
 		return fail(http.StatusInternalServerError, "write_failed", "couldn't save ticket.md — is another program holding it open? Try again")
+	}
+	if kind == "status" && updated != text {
+		emitStatusChanged(id, oldStatus, newStatus, root)
 	}
 	out := map[string]any{"ok": true, "etag": docEtag(data)}
 	if kind != "body" {

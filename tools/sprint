@@ -13,6 +13,7 @@ done
 SCRIPT_DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
 source "$SCRIPT_DIR/ticket-root.sh"
 source "$SCRIPT_DIR/frontmatter-lib.sh"
+source "$SCRIPT_DIR/platform-lib.sh"   # canon_event (t-f182)
 TKT_BIN="$SCRIPT_DIR/tkt"
 
 ticket_dir_for() {
@@ -150,6 +151,7 @@ EOF
     echo "[sprint] WARNING: no scripts/test.sh found — test gate will not run at commit."
   fi
 
+  canon_event sprint.started sprint "$(project_root)" "ticket=$id"
   cat <<EOF
 Sprint started: $id
 Ticket: $tdir/ticket.md
@@ -830,6 +832,7 @@ cmd_complete() {
   _gate_review_notes_shape  "$id" "$tdir"                || exit 1
 
   TKT_SPRINT_GATE_PASSED=1 "$TKT_BIN" close "$id"
+  canon_event sprint.completed sprint "$(project_root)" "ticket=$id"
   echo "Sprint completed: $id"
 
   # t-2fb6: shrink old closed tickets' evidence/ (never this one: it is younger than the cut-off). The close already
