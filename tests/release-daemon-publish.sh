@@ -150,7 +150,7 @@ grep -q "^GOTOOLCHAIN=go1.21.6 module canon/sprint-headless-json  go 1.21.6 \$" 
 echo "$LV" > "$R/tools/sprint-headless-json-go/GO_TOOLCHAIN"; git -C "$R" "${ident[@]}" commit -qam "helper pin back"
 # 9c. the module (daemon and board): a go.mod without a toolchain line is refused, and so is a binary built with other than that toolchain
 cp "$M/go.mod" "$WORK/d.go.mod"; printf 'module canon\n\ngo 1.21\n' > "$M/go.mod"; git -C "$R" "${ident[@]}" commit -qam "module without toolchain"
-run; [[ "$rc" == 1 ]] || fail "a daemon go.mod with no toolchain line must stop the run (rc=$rc): $out"; assert_contains "$out" "toolchain goX.Y.Z"
+run; [[ "$rc" == 1 ]] || fail "a module go.mod with no toolchain line must stop the run (rc=$rc): $out"; assert_contains "$out" "toolchain goX.Y.Z"
 printf 'module canon\n\ngo 1.21\n\ntoolchain go1.21.5\n' > "$M/go.mod"; git -C "$R" "${ident[@]}" commit -qam "module toolchain 1.21.5"
 SHIM_FORCE_LOCAL=1 run; [[ "$rc" == 1 ]] || fail "a daemon not built with its toolchain must stop the run (rc=$rc): $out"; assert_contains "$out" "not the pinned go1.21.5"; assert_eq "# header" "$(cat "$m")"
 cp "$WORK/d.go.mod" "$M/go.mod"; git -C "$R" "${ident[@]}" commit -qam "module toolchain back"

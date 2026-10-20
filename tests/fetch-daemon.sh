@@ -170,7 +170,7 @@ assert_eq 2 "$(grep -c 'fetch-daemon.sh' "$ROOT/tools/cockpit-launch-lib.sh")"
 msg='cockpit daemon binary not found; run `canon update` to fetch it'
 grep -qF "$msg" "$ROOT/tools/canon-go/internal/board/main.go" || fail "the board must say how to fetch a missing daemon"
 
-# 10. every module in the daemon's go.mod has a section in THIRD-PARTY-NOTICES.md (the notice travels with the binary)
+# 10. every module in tools/canon-go/go.mod has a section in THIRD-PARTY-NOTICES.md (the notice travels with the binary)
 mods=0
 while read -r path ver; do
   mods=$((mods + 1)); grep -qF "## $path $ver" "$ROOT/THIRD-PARTY-NOTICES.md" || fail "THIRD-PARTY-NOTICES.md has no section for $path $ver"

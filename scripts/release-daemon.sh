@@ -42,8 +42,8 @@ out="$(mktemp -d)"; chk=""; trap 'rm -rf "$out" "$chk"' EXIT
 sha256_of() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'; else shasum -a 256 "$1" | awk '{print $1}'; fi; }
 
 pin_re='^go[0-9]+\.[0-9]+\.[0-9]+$'
-daemon_pin="$(awk '/^toolchain /{print $2}' "$MODULE/go.mod" 2>/dev/null)" || daemon_pin=""
-[[ "$daemon_pin" =~ $pin_re ]] || { echo "release-daemon: tools/canon-go/go.mod needs a line 'toolchain goX.Y.Z' naming the Go to build with, e.g. toolchain go1.27.2" >&2; exit 1; }
+module_pin="$(awk '/^toolchain /{print $2}' "$MODULE/go.mod" 2>/dev/null)" || module_pin=""
+[[ "$module_pin" =~ $pin_re ]] || { echo "release-daemon: tools/canon-go/go.mod needs a line 'toolchain goX.Y.Z' naming the Go to build with, e.g. toolchain go1.27.2" >&2; exit 1; }
 check_built() { # <binary> <pin>: the file must say it was built with exactly the pinned Go
   local got; got="$(go version -m "$1" 2>/dev/null)" || got=""; got="${got%%$'\n'*}"   # whole output, then its first line: head -n1 in the pipe SIGPIPEs go under pipefail (t-90bc)
   [[ "$got" == "$1: $2" ]] || { echo "release-daemon: $(basename "$1") was built with '${got##*: }', not the pinned $2; nothing was published" >&2; exit 1; }
@@ -52,9 +52,9 @@ check_built() { # <binary> <pin>: the file must say it was built with exactly th
 # Build everything first; nothing is published until every build has worked.
 lines=""   # <key> <target> <sha256>
 build_module() { # <cmd name> <commit stamp> <goos-goarch> <output file>: one binary from the canon-go module, with its pin
-  ( cd "$MODULE" && GOTOOLCHAIN="$daemon_pin" CGO_ENABLED=0 GOOS="${3%-*}" GOARCH="${3#*-}" go build -trimpath -buildvcs=false \
+  ( cd "$MODULE" && GOTOOLCHAIN="$module_pin" CGO_ENABLED=0 GOOS="${3%-*}" GOARCH="${3#*-}" go build -trimpath -buildvcs=false \
       -ldflags "-s -w -X main.commit=$2" -o "$4" "./cmd/$1" )
-  check_built "$4" "$daemon_pin"
+  check_built "$4" "$module_pin"
 }
 for t in $UNIX_TARGETS; do
   build_module cockpit-daemon "${full_d:0:8}" "$t" "$out/cockpit-daemon-$t"
