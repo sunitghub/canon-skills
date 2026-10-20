@@ -3,8 +3,11 @@
   #view-factory{padding:24px 30px}
   .fac-wrap{max-width:760px}
   .gh-wrap[hidden]{display:none}
-  .fac-tabs .mt-tab{background:transparent;border:0;border-bottom:2px solid transparent;font-family:inherit}
-  .fac-tabs .mt-tab.active{border-bottom-color:var(--accent)}
+  /* own classes, styled like Model Tiers' provider tabs (.mt-tab): a shared class made Admin's selectors match these too */
+  .fac-tabs{display:flex;gap:4px;border-bottom:1px solid var(--border-muted);margin-bottom:12px}
+  html[data-theme="light"] .fac-tabs{border-bottom-color:var(--border)}
+  .fac-tab{padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--text-muted);background:transparent;border:0;border-bottom:2px solid transparent;cursor:pointer;font-family:inherit}
+  .fac-tab.active{color:var(--text);border-bottom-color:var(--accent)}
   .fac-planned{margin-left:6px;font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--border-hover);border-radius:999px;padding:1px 7px;color:var(--text-muted)}
   .fac-proj{flex:1;min-width:0}
   .fac-proj b{color:var(--text)}
