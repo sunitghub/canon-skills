@@ -4,6 +4,7 @@ set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 use_fresh_board "$(mktemp -d)"   # t-f182: sprint complete's event goes through the board binary
+last_rejected() { cat "$CANON_HOME"/events/*.jsonl 2>/dev/null | grep -F '"kind":"gate.rejected"' | tail -1 || true; }   # t-8854
 
 # t-b2a9: every message about a missing or unverifiable gate report says a fresh subagent writes it and the file is never hand-made.
 assert_gate_notice() { # <output> <file> <evaluator|reviewer>
@@ -441,6 +442,7 @@ pass: all criteria met
 EOF
 jsonl_nomatch_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$jsonl_nomatch_output" "no matching subagent entry"
+assert_contains "$(last_rejected)" '"reason":"unverified_run"'
 assert_gate_notice "$jsonl_nomatch_output" eval-report.md evaluator
 # t-c94f: a well-formed but out-of-window entry gets the plain message — no malformed-entry hint.
 [[ "$jsonl_nomatch_output" == *"no ISO"* ]] && fail "out-of-window ISO entry must not trigger the malformed hint: $jsonl_nomatch_output"
@@ -664,6 +666,7 @@ YES
 EOF
 review_missing_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$review_missing_output" "review-notes.md is missing the 'Model:' line"
+assert_contains "$(last_rejected)" '"reason":"review_model","role":"reviewer"'
 assert_gate_notice "$review_missing_output" review-notes.md reviewer
 
 # t-de16: the reviewer's passes must be SHOWN. A bare "No findings. / YES" report — the
@@ -1165,6 +1168,7 @@ pass: all criteria met
 EOF
 notrun_verdict_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$notrun_verdict_output" "verdict is 'pass:' but a status row is graded 'not-run' or 'partial'"
+assert_contains "$(last_rejected)" '"reason":"report_inconsistent"'
 assert_gate_notice "$notrun_verdict_output" eval-report.md evaluator   # t-0231: invites editing the rows or the verdict
 
 # T2: pass: verdict + a `partial` status row → blocked
@@ -1335,6 +1339,7 @@ tx_cfg="$(mktemp -d)"
   report "$rid" "pass: all criteria met"
   out="$(run_fail "$SPRINT" complete)"
   assert_contains "$out" "no canon-evaluator transcript"
+  assert_contains "$(last_rejected)" '"reason":"missing_transcript"'
   assert_contains "$out" "$rid"
   assert_gate_notice "$out" eval-report.md evaluator
   # (b) the run-id is real but belongs to another ticket's run: the ticket id is not in the transcript.

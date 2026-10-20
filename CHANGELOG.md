@@ -7,7 +7,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 ## [Unreleased]
 
 ### Added
-- The event stream records close gates and Cockpit sessions too (`t-8854`): `gate.started`, `gate.finished` (with the verdict, model and tokens), `gate.rejected` (with a reason code), `session.needs_you`, `session.exited` and `session.saved`. See [docs/plugins.md](docs/plugins.md). The close checklist passes `--role reviewer|evaluator` to `gate-snapshot.sh pre`.
+- The event stream records close gates and Cockpit sessions too (`t-8854`): `gate.started`, `gate.finished` (with the verdict, model and tokens), `gate.rejected` (with a reason code), `session.needs_you`, `session.exited` and `session.saved`. See [docs/plugins.md](docs/plugins.md). The close checklist passes `--role reviewer|evaluator` to `gate-snapshot.sh pre`. The cockpit daemon changed (it writes the session events): after `canon update`, press **Restart Daemon** in Admin, which ends running agent sessions (Save & End them first), or the old daemon keeps running without them.
 
 ## [0.16.0] - 2026-10-20
 
