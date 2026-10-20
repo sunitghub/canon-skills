@@ -15376,6 +15376,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#fac-in-wait .fac-skipped')).toHaveText('2 already tickets: #68 (t-eb40), #69 (<b>made by tkt send-issue</b>)');
     await expect(page.locator('#fac-in-wait .fac-skipped b')).toHaveCount(0);   // reasons are text
     await expect(page.locator('#fac-cloud-claude .fac-domains-note')).toContainText("Add your own stack's domains");
+    await expect(page.locator('#fac-cloud-claude')).toContainText('(and, for a Go project, the Go version canon pins)');   // reviewer: not every project gets Go
     intake = { ...intake, intake: { ...intake.intake, skipped: [] } };
     await page.locator('#fac-gh-recheck').click();
     await expect(page.locator('#fac-in-wait')).toHaveText('No open issue labelled canon is waiting.');

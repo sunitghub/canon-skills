@@ -1461,6 +1461,7 @@ cmd_cloud_env() {
   case "${1:-}" in --json) json=true ;; "") ;; *) echo "Usage: tkt cloud-env [--json]" >&2; exit 1 ;; esac
   local root flag=() kind="every project"; root="$(dirname "$(tickets_dir)")"
   if $json; then _cloud_env_json "$root"; printf '\n'; return 0; fi
+  [[ -f "$SCRIPT_DIR/cloud-env.sh" ]] || { echo "cloud-env: $SCRIPT_DIR/cloud-env.sh is missing; run canon update to restore canon's tools" >&2; exit 1; }
   if _cloud_env_go "$root"; then flag=(--go); kind="a Go project: base plus Go"; fi
   printf '# Network access: Custom, with these domains (%s); add your own stack'"'"'s domains yourself\n' "$kind"
   bash "$SCRIPT_DIR/cloud-env.sh" domains ${flag[@]+"${flag[@]}"}

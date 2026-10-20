@@ -36,6 +36,12 @@ assert_contains "$txt" "# Network access: Custom, with these domains (a Go proje
 assert_contains "$txt" "sum.golang.org"
 assert_eq "$go" "$(sed -n '/^# Setup script$/,$p' <<< "$txt" | tail -n +2)"
 rc=0; "$TKT" cloud-env --yaml >/dev/null 2>&1 || rc=$?; assert_eq 1 "$rc"
+# A tools/ copy without cloud-env.sh: text mode says what is missing and exits 1 (not 127); --json gives empty values.
+part="$(mktemp -d)"; cp "$ROOT/tools/tkt" "$ROOT/tools/ticket-root.sh" "$ROOT/tools/frontmatter-lib.sh" "$ROOT/tools/platform-lib.sh" "$part/"
+rc=0; err="$("$part/tkt" cloud-env 2>&1 >/dev/null)" || rc=$?
+assert_eq 1 "$rc"; assert_contains "$err" "cloud-env.sh is missing; run canon update"
+assert_eq '{"go":true,"domains":[],"setup_script":""}' "$("$part/tkt" cloud-env --json 2>/dev/null)"
+rm -rf "$part"
 
 # docs/setup.md shows the full (--go) recipe: the script block byte for byte and the same domain list.
 doc="$ROOT/docs/setup.md"
