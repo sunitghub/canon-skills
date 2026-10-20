@@ -105,7 +105,7 @@ async function intakeLoad(pid, gen){
   }
   intakeWaiting('Checking…');
   let res;
-  try{ const r=await fetch('/api/github/intake?project='+encodeURIComponent(pid)); res=r.ok?await r.json():{ok:false,output:'HTTP '+r.status}; }
+  try{ const r=await fetch('/api/github/intake?project='+encodeURIComponent(pid)); res=r.ok?await r.json():{ok:false,output:'HTTP '+r.status,old:r.status===404}; }
   catch(e){ res={ok:false,output:String(e.message||e)}; }
   if(gen!==ghGen) return;
   const ls=res&&res.last_synced;
@@ -114,7 +114,8 @@ async function intakeLoad(pid, gen){
     last.textContent=(isNaN(when)?ls.ts:when.toLocaleString())+' · '+n+' ticket'+(n===1?'':'s')+' made';
   } else last.textContent='never';
   const d=res&&res.ok&&res.intake;
-  if(!d){ intakeWaiting(`<pre>${esc((res&&res.output)||'')}</pre>`); return; }
+  // a 404 is a board started before this route existed (the page files are newer than the running binary)
+  if(!d){ intakeWaiting(res&&res.old?'This board is older than the page. Restart <code>canon</code> (Ctrl+C, then <code>canon</code>) to read the waiting issues.':`<pre>${esc((res&&res.output)||'')}</pre>`); return; }
   repo.textContent=String(d.repo||'—')+' (origin)';
   const w=Array.isArray(d.waiting)?d.waiting:[];
   intakeWaiting(!w.length?'No open issue labelled <code>canon</code> is waiting.'

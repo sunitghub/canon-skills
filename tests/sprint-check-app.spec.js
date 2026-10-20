@@ -15348,6 +15348,13 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.locator('#fac-gh-recheck').click();
     await expect(page.locator('#fac-in-wait')).toContainText('Unavailable until the checks above pass');
     expect(intakeCalls).toBe(before);   // no gh run behind a failing check
+
+    // A board binary older than the page has no intake route (404): say to restart, not "HTTP 404".
+    doctor.checks[1] = { id: 'origin', status: 'ok', title: 'Repository found', detail: '' };
+    await page.unroute('**/api/github/intake**');
+    await page.route('**/api/github/intake**', r => r.fulfill({ status: 404, body: 'not found' }));
+    await page.locator('#fac-gh-recheck').click();
+    await expect(page.locator('#fac-in-wait')).toContainText('This board is older than the page. Restart canon');
   });
 
   // Prod path: the Projects card's Factory row (t-9641), from each project's cached doctor.

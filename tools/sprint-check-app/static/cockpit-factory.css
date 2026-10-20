@@ -3,6 +3,7 @@
   #view-factory{padding:24px 30px}
   .fac-wrap{max-width:760px}
   .gh-wrap[hidden]{display:none}
+  .fac-wrap .setting-d{max-width:none}   /* the shell's 440px suits Admin's setting rows, not these full-width cards */
   /* own classes, styled like Model Tiers' provider tabs (.mt-tab): a shared class made Admin's selectors match these too */
   .fac-tabs{display:flex;gap:4px;border-bottom:1px solid var(--border-muted);margin-bottom:12px}
   html[data-theme="light"] .fac-tabs{border-bottom-color:var(--border)}
