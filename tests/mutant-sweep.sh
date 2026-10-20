@@ -20,6 +20,8 @@ trap 'reap; rm -rf "$WORK"' EXIT
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 XDG_CONFIG_HOME="$WORK/xdg" CANON_HOME="$WORK/canon-home"
 export TMPDIR="$WORK/tmp"; mkdir -p "$TMPDIR"     # the tool's temp root lands here, so a leak is visible
 export HOME="$WORK/real-home"; mkdir -p "$HOME/.canon"   # the "real" home the tool must leave alone (t-eb40)
+echo 0.17.0 > "$HOME/.canon/VERSION"   # an innocent file: only a file naming the sweep root is a leak
+MODCACHE=""; command -v go >/dev/null && MODCACHE="$(go env GOMODCACHE)"   # resolved under the "real" HOME; mutants must get it
 REPO="$WORK/repo"
 mkdir -p "$REPO/tests" && cd "$REPO"
 git init -q -b main . && git config user.name t && git config user.email t@t
@@ -274,7 +276,7 @@ assert_eq 0 "$code"; assert_contains "$out" "mutant-sweep: base"
 bounded "$TOOL" --check; assert_eq 0 "$code"; assert_eq "" "$out"
 
 # --- t-eb40: HOME is pinned per mutant, and the canary names a leak into the real ~/.canon ----------------------------------------
-sweep --map strong.sh='echo x > "$HOME/leak"; bash tests/t-strong.sh'
+sweep --map strong.sh="echo x > \"\$HOME/leak\"; [[ -z '$MODCACHE' || \"\$GOMODCACHE\" == '$MODCACHE' ]] || { echo 'FAIL: GOMODCACHE'; exit 1; }; bash tests/t-strong.sh"
 [[ "$code" == 0 ]] || fail "mutant-sweep: HOME sweep exited $code: $out"
 [[ ! -e "$HOME/leak" ]] || fail "mutant-sweep: a mutant wrote into the real HOME"
 assert_contains "$out" "canary: real ~/.canon untouched"
