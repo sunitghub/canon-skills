@@ -1714,7 +1714,7 @@ func fakeCopilotDeadResumeDelayedOutput(t *testing.T) (bin string) {
 	script := "#!/bin/sh\n" +
 		"case \"$*\" in\n" +
 		"  *--resume=*)\n" +
-		"    sleep 0.5\n" +
+		"    sleep 1\n" +
 		"    printf 'Error: No session, task, or name matched .\\n'\n" +
 		"    exit 1\n" +
 		"    ;;\n" +
@@ -1738,7 +1738,7 @@ func TestHandleStartRecoversFromDelayedDeadCopilotResume(t *testing.T) {
 	t.Setenv("COPILOT_HOME", copilotHome)
 	t.Setenv("COCKPIT_COPILOT_BIN", bin)
 	// t-67a6: window and delay scaled together from 6s/3s, so the text still lands halfway through the window.
-	s := newServer(config{token: bootTok, projectRoot: root, stateDir: t.TempDir(), resumeGrace: time.Second})
+	s := newServer(config{token: bootTok, projectRoot: root, stateDir: t.TempDir(), resumeGrace: 2 * time.Second})
 	ts := httptest.NewServer(s.handler())
 	t.Cleanup(ts.Close)
 	t.Cleanup(func() { killAllSessions(s) })
