@@ -51,10 +51,11 @@ assert_eq "$before" "$(cat "$settings")"
 
 # `skills.sh remove sprint` asks on the terminal, then removes only the subagent-log rule. A real pseudo-terminal from `script`
 # (macOS and util-linux spell it differently); stdin stays open a while so the answer, not an EOF, is what the prompt reads.
+# SKILLS_SH_NO_TTY (scripts/test.sh exports it so no suite prompts) is cleared for this one deliberate terminal.
 pty() { if script -q /dev/null true </dev/null >/dev/null 2>&1; then script -q /dev/null "$@"; else script -qec "$(printf '%q ' "$@")" /dev/null; fi; }
 grep -qF '"Bash(subagent-log.sh:*)"' "$settings" || fail "setup: the subagent-log rule should be present"
-{ printf 'y\n'; sleep 3; } | PATH="$traps:$PATH" pty bash -c 'source "$1/tools/skills/project.sh"; source "$1/tools/skills/prompts.sh"
-  offer_remove_subagent_log_permission "$2"' _ "$ROOT" "$proj" >/dev/null 2>&1 || true
+{ printf 'y\n'; sleep 3; } | ( unset SKILLS_SH_NO_TTY; PATH="$traps:$PATH" pty bash -c 'source "$1/tools/skills/project.sh"; source "$1/tools/skills/prompts.sh"
+  offer_remove_subagent_log_permission "$2"' _ "$ROOT" "$proj" ) >/dev/null 2>&1 || true
 ! grep -qF '"Bash(subagent-log.sh:*)"' "$settings" || fail "remove sprint kept the subagent-log rule: $(cat "$settings")"
 grep -qF '"Bash(brew install:*)"' "$settings" || fail "remove sprint dropped the install deny rules: $(cat "$settings")"
 
