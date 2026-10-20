@@ -13,7 +13,10 @@ PIDS=()
 cleanup() { for p in "${PIDS[@]:-}"; do [[ -n "$p" ]] && kill "$p" 2>/dev/null || true; done; chmod -R u+w "$W" 2>/dev/null; rm -rf "$W"; }
 trap cleanup EXIT
 use_fresh_board "$W/bin"
-export CANON_HOME="$W/home" GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+# HOME too, not only CANON_HOME: a writer that ignored CANON_HOME (a mutant did, in the t-f182 sweep) would fall back to
+# ~/.canon and write the user's own log. Set after the board is built (the Go build cache lives under HOME on macOS).
+mkdir -p "$W/userhome"
+export CANON_HOME="$W/home" HOME="$W/userhome" GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 EV="$CANON_HOME/events"
 TKT="$ROOT/tools/tkt"; SPRINT="$ROOT/tools/sprint"
 mkproj() { mkdir -p "$1/.tickets"; git -C "$1" init -q; git -C "$1" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init; }
