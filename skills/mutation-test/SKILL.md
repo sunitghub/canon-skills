@@ -43,7 +43,8 @@ mutant-sweep --map <logic file>=<test command> [--map ...] --report .tickets/<id
   removal (`sorted()`/`set()` too), a dropped `&&`/`||` operand, a dropped regex anchor, a widened pattern, an emptied
   string constant, and whole-line deletion.
 - **Isolation.** Every mutant runs in a fresh copy of the project (tracked + untracked files, no
-  `.git`) with its own `TMPDIR`, `CANON_HOME` and `XDG_CONFIG_HOME`; the real tree is never written.
+  `.git`) with its own `HOME`, `TMPDIR`, `CANON_HOME` and `XDG_CONFIG_HOME`; the real tree is never written.
+  Caches that default under HOME (`GOMODCACHE`, `GOPATH`, `GOCACHE`, `PLAYWRIGHT_BROWSERS_PATH`) are passed through.
   Each test runs in its own process group, killed after it exits or times out (`--timeout`, default
   300 s); Ctrl-C/TERM stops every test and removes the temp root. So it runs inline, not in a
   dispatched subagent.
@@ -52,7 +53,12 @@ mutant-sweep --map <logic file>=<test command> [--map ...] --report .tickets/<id
   false kills. Map a test that does not need git history, or note the file as not swept.
 
 Verdicts: `KILLED` (the test failed with a `FAIL`/`not ok` line, quoted), `KILLED(crash)` (failed
-without one), `KILLED(timeout)`, `SURVIVED`, `INVALID`. The tool exits 0 after a sweep.
+without one), `KILLED(timeout)`, `SURVIVED`, `INVALID`. The tool exits 0 after a sweep (4 if the canary below finds a leak).
+
+**Canary.** After the sweep the tool scans the real `~/.canon` for the sweep's temp path (anything a
+mutant wrote there carries it). Clean: `canary: real ~/.canon untouched`. A hit prints
+`mutant-sweep: LEAK <file>` and exits 4 (after the report): a mutant escaped its pins. Remove the
+leaked lines from that file before closing, and note it in the report.
 
 ## Triage every survivor
 
