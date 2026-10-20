@@ -1407,7 +1407,13 @@ cmd_github_doctor() {
     esac
   else
     err="${repo#origin: }"
-    _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: ${err}." cmd "git remote add origin https://github.com/<owner>/<repo>.git"
+    if git -C "$root" remote get-url origin >/dev/null 2>&1; then
+      _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: ${err}." cmd "git remote add origin https://github.com/<owner>/<repo>.git"
+    else
+      # t-9955: no origin at all is usually a project that has never been on GitHub: create it private (on a free plan the issue's
+      # "never push main" text is the only guard) and connect it in one step.
+      _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: ${err}. No repo on GitHub yet? This creates one, private, and connects it. Already have a repo on GitHub? Run git remote add origin https://github.com/<owner>/<repo>.git" cmd "gh repo create $(basename "$root") --private --source=. --remote=origin --push"
+    fi
   fi
   local tree; tree="$(git -C "$root" ls-tree HEAD -- scripts/test.sh 2>/dev/null)" || tree=""
   if [[ "$tree" == 100755* ]]; then
@@ -1415,13 +1421,6 @@ cmd_github_doctor() {
   else
     # t-9641: say what the command is for, that it is optional, and both ways to add one
     _gd tests warn "No test command (optional)" "Check & merge can run your tests on main and the PR before it merges. This project has no executable scripts/test.sh, so it merges on the gates alone. To test first, either add scripts/test.sh and make it executable (chmod +x), or run tkt merge-pr <id> --test \"<your test command>\"."
-  fi
-  # The cloud recipe's one owner is docs/setup.md beside this tool; a missing section gives empty values.
-  local doc="$SCRIPT_DIR/../docs/setup.md" domains="" script=""
-  if [[ -f "$doc" ]]; then
-    domains="$(awk '/^## /{on = ($0 == "## Claude cloud sessions")} on && /^- \*\*Network access:\*\*/{d=1} on && /^- \*\*Setup script\*\*/{d=0} d' "$doc" \
-      | grep -oE '`[a-z0-9.-]+\.[a-z]+`' | tr -d '`')" || domains=""
-    script="$(awk '/^## /{on = ($0 == "## Claude cloud sessions")} on && /^- \*\*Setup script\*\*/{s=1; next} s && /^  ```bash$/{b=1; next} b && /^  ```$/{exit} b{sub(/^  /, ""); print}' "$doc")"
   fi
   local i n=${#ids[@]}
   if ! $json; then
@@ -1437,10 +1436,36 @@ cmd_github_doctor() {
     [[ -n "${fixk[i]}" ]] && out+=",\"fix\":{$(json_str "${fixk[i]}"):$(json_str "${fixv[i]}")}"
     out+='}'; sep=','
   done
-  out+='],"cloud":{"domains":['; sep=''
-  local d; while IFS= read -r d; do [[ -n "$d" ]] && { out+="$sep$(json_str "$d")"; sep=','; }; done <<< "$domains"
-  out+="],\"setup_script\":$(json_str "$script")}}"
+  out+="],\"cloud\":$(_cloud_env_json "$root")}"   # t-9955: this project's recipe, the same as tkt cloud-env --json
   printf '%s\n' "$out"
+}
+
+# t-9955: the cloud environment recipe for one project, from tools/cloud-env.sh (its one owner). A project that tracks a go.mod
+# anywhere (canon itself: tools/canon-go/go.mod) gets the Go domains and toolchain block too.
+_cloud_env_go() { [[ -n "$(git -C "$1" ls-files -- go.mod '*/go.mod' 2>/dev/null | head -1)" ]]; }
+_cloud_env_json() {   # _cloud_env_json <root>: {"go":bool,"domains":[...],"setup_script":"..."}
+  local go=false flag=() d sep='' out
+  if _cloud_env_go "$1"; then go=true; flag=(--go); fi
+  # an install without the recipe file (an older or partial copy of tools/) gives empty values, never an error
+  [[ -f "$SCRIPT_DIR/cloud-env.sh" ]] || { printf '{"go":%s,"domains":[],"setup_script":""}' "$go"; return 0; }
+  out="{\"go\":$go,\"domains\":["
+  while IFS= read -r d; do out+="$sep$(json_str "$d")"; sep=','; done < <(bash "$SCRIPT_DIR/cloud-env.sh" domains ${flag[@]+"${flag[@]}"})
+  out+="],\"setup_script\":$(json_str "$(bash "$SCRIPT_DIR/cloud-env.sh" script ${flag[@]+"${flag[@]}"})")}"
+  printf '%s' "$out"
+}
+
+# cmd_cloud_env [--json] — t-9955: print this project's Claude cloud environment recipe, ready to paste into the environment
+# dialog: the allowed domains (one per line), then the setup script. --json: the doctor's `cloud` object.
+cmd_cloud_env() {
+  local json=false
+  case "${1:-}" in --json) json=true ;; "") ;; *) echo "Usage: tkt cloud-env [--json]" >&2; exit 1 ;; esac
+  local root flag=() kind="every project"; root="$(dirname "$(tickets_dir)")"
+  if $json; then _cloud_env_json "$root"; printf '\n'; return 0; fi
+  if _cloud_env_go "$root"; then flag=(--go); kind="a Go project: base plus Go"; fi
+  printf '# Network access: Custom, with these domains (%s); add your own stack'"'"'s domains yourself\n' "$kind"
+  bash "$SCRIPT_DIR/cloud-env.sh" domains ${flag[@]+"${flag[@]}"}
+  printf '\n# Setup script\n'
+  bash "$SCRIPT_DIR/cloud-env.sh" script ${flag[@]+"${flag[@]}"}
 }
 
 # cmd_merge_pr <id> [--pr N] [--test CMD] [--yes] — t-4718: checks a cloud ticket's PR and merges it, on the user's machine.
@@ -2060,6 +2085,8 @@ Commands:
                             remote (opt-in; never forced; prints how to undo).
   github-doctor [--json]    Read-only GitHub readiness checks (gh signed in, origin and
                             its visibility, test command) and the cloud recipe.
+  cloud-env [--json]        This project's Claude cloud environment recipe: allowed domains,
+                            then the setup script (tools/cloud-env.sh; Go projects get the Go part).
   merge-pr <id> [--pr N] [--test CMD] [--yes | --check]
                             Check a cloud ticket's PR (evaluator passed on its head,
                             mergeable, suite green on base + PR) and merge it after a y.
@@ -2106,6 +2133,7 @@ main() {
     import-issue)   cmd_import_issue "$@" ;;
     sync-issues)    cmd_sync_issues "$@" ;;
     github-doctor)  cmd_github_doctor "$@" ;;
+    cloud-env)      cmd_cloud_env "$@" ;;
     open-pr)        cmd_open_pr "$@" ;;
     push-main)      cmd_push_main "$@" ;;
     merge-pr)       cmd_merge_pr "$@" ;;

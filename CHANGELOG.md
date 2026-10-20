@@ -8,9 +8,12 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ### Added
 - A **Factory** page in the Cockpit sidebar, between Projects and Admin (`t-9641`). It is per project, with two tabs. **GitHub** holds the GitHub setup that used to be in Admin (the checks and the Cloud environment recipe), plus an **Intake** box: the `canon` label, the repo, when the project last synced and which labelled issues are waiting. **Agentic factory** says the line is planned and off. Each Projects card gains a Factory row (`GitHub ready · agentic off`, `GitHub needs setup`, or `Not set up`) that opens the page for that project.
+- `tkt cloud-env` prints this project's Claude cloud environment recipe, ready to paste: the allowed domains, then the setup script (`t-9955`). A Go project, and canon itself, also gets the Go domains and toolchain step; other projects get only what canon needs. The recipe's one source is `tools/cloud-env.sh`, and Factory › GitHub's Copy buttons use it.
 - `tkt sync-issues --dry-run --json` prints the dry run as one JSON object (`repo`, `label`, `waiting`, `skipped`). A completed `tkt sync-issues` writes a `github.synced` event with the number of tickets it made.
 
 ### Changed
+- Factory › GitHub, for a project with no GitHub repo yet, offers `gh repo create <folder> --private --source=. --remote=origin --push` (`t-9955`). Intake also names labelled issues that are already tickets, and the Cloud environment box says to add your own stack's domains.
+- The board card's GitHub buttons say what they do: **Issue ↗** and **PR ↗** open GitHub, and **Create PR** creates the PR a cloud session did not (they were all "Open …", `t-9955`).
 - The board's **Sync from GitHub** button is greyed out until the GitHub checks pass (no GitHub origin included). Its tooltip points to Factory › GitHub. The worktree picker's "GitHub · set up first" row opens Factory › GitHub instead of Admin.
 
 ### Fixed

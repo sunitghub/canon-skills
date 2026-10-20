@@ -40,6 +40,7 @@ tests=(
   "$ROOT/tests/cloud-round-trip.sh"
   "$ROOT/tests/tkt-export-warn.sh"
   "$ROOT/tests/tkt-github-doctor.sh"
+  "$ROOT/tests/cloud-env.sh"
   "$ROOT/tests/tkt-sync-issues.sh"
   "$ROOT/tests/tkt-merge-pr.sh"
   "$ROOT/tests/tkt-take-back.sh"
