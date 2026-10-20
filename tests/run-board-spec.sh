@@ -99,7 +99,7 @@ ln -s "$ROOT/node_modules" "$COPY/node_modules"
 # board never launches a daemon of its own: one would outlive it (detached by design) and fail the same tests later in the run.
 start_board() {
   STARTED_PORT="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
-  (cd "$1" && CANON_HOME="$1/.spec-canon-home" COCKPIT_STATE_DIR="$1/.spec-cockpit-state" COCKPIT_DAEMON_BIN="$1/.spec-no-daemon" SPRINT_CHECK_ROOT="$1" SPRINT_CHECK_NO_BROWSER=1 GO111MODULE=off exec go run ./tools/sprint-check-go "$STARTED_PORT" >/dev/null 2>&1) &
+  (cd "$1/tools/canon-go" && CANON_HOME="$1/.spec-canon-home" COCKPIT_STATE_DIR="$1/.spec-cockpit-state" COCKPIT_DAEMON_BIN="$1/.spec-no-daemon" SPRINT_CHECK_ROOT="$1" SPRINT_CHECK_NO_BROWSER=1 exec go run ./cmd/sprint-check "$STARTED_PORT" >/dev/null 2>&1) &
   STARTED_PID=$!
 }
 wait_board() {

@@ -95,7 +95,7 @@ header button **Sync from GitHub** (`tkt sync-issues`).
   curl -fsSL https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.sh | bash
 
   # Go: the toolchain canon pins, read from the installed release, so builds and tests match your machine.
-  GOV="$(sed -n 's/^toolchain go//p' "$HOME/.canon/tools/cockpit-daemon/go.mod")"
+  GOV="$(sed -n 's/^toolchain go//p' "$HOME/.canon/tools/canon-go/go.mod")"
   case "$(uname -m)" in x86_64) GOARCH=amd64 ;; aarch64|arm64) GOARCH=arm64 ;; *) GOARCH="" ;; esac
   if [ -n "$GOV" ] && [ -n "$GOARCH" ] && curl -fsSL -o /tmp/go.tgz "https://go.dev/dl/go${GOV}.linux-${GOARCH}.tar.gz"; then
     rm -rf /usr/local/go && tar -C /usr/local -xzf /tmp/go.tgz && rm -f /tmp/go.tgz

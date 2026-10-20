@@ -102,6 +102,7 @@ tests=(
   "$ROOT/tests/fetch-daemon.sh"
   "$ROOT/tests/fetch-win-binaries.sh"
   "$ROOT/tests/check-binaries-released.sh"
+  "$ROOT/tests/src-key.sh"
   "$ROOT/tests/release-daemon-publish.sh"
   "$ROOT/tests/release.sh"
   "$ROOT/tests/release-zip.sh"
@@ -182,9 +183,9 @@ skipped() {
   if (( PLAN )); then LABELS+=("$1"); KINDS+=(skip); CMDS+=(""); return 0; fi
   printf '==> %s\n' "$1"
 }
-go_board() { (cd "$ROOT" && GO111MODULE=off go test ./tools/sprint-check-go); }
+go_board() { (cd "$ROOT/tools/canon-go" && go test ./cmd/... ./internal/board ./internal/common); }   # t-8020: one module
 go_headless_json() { (cd "$ROOT" && GO111MODULE=off go test ./tools/sprint-headless-json-go); }
-go_daemon() { (cd "$ROOT/tools/cockpit-daemon" && go test ./...); }
+go_daemon() { (cd "$ROOT/tools/canon-go" && go test ./internal/daemon); }
 
 run_all() {
 for test_file in "${tests[@]}"; do
@@ -192,13 +193,13 @@ for test_file in "${tests[@]}"; do
 done
 
 if (( DRY )) || command -v go >/dev/null 2>&1; then
-  suite tools/sprint-check-go go_board
+  suite tools/canon-go/internal/board go_board
   suite tools/sprint-headless-json-go go_headless_json
-  suite tools/cockpit-daemon go_daemon
+  suite tools/canon-go/internal/daemon go_daemon
 else
-  skipped "tools/sprint-check-go skipped (go absent)"
+  skipped "tools/canon-go/internal/board skipped (go absent)"
   skipped "tools/sprint-headless-json-go skipped (go absent)"
-  skipped "tools/cockpit-daemon skipped (go absent)"
+  skipped "tools/canon-go/internal/daemon skipped (go absent)"
 fi
 
 if (( DRY )) || command -v node >/dev/null 2>&1; then
@@ -233,7 +234,7 @@ SERIAL=(   # --list labels that share state with another suite, each with its re
 # Suites started first (t-b792): xargs starts the batch in file order, so a slow suite that sits late in list order starts late and sets the
 # wall time (test-sh-runner.sh was 53rd and started about a minute in). Longest first, from the `== slowest 10` block of a full run; a stale
 # entry costs speed only. Printing, --list and the exit code stay in list order.
-LONGEST=(tests/test-sh-runner.sh tools/cockpit-daemon tests/canon-update.sh tests/sprint-check-live-docs.sh tests/canon-uninstall.sh
+LONGEST=(tests/test-sh-runner.sh tools/canon-go/internal/daemon tests/canon-update.sh tests/sprint-check-live-docs.sh tests/canon-uninstall.sh
   tests/sprint.sh tests/evidence.sh)
 run_parallel() {
   local i n s w t hit

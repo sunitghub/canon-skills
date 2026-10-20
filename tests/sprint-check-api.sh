@@ -10,7 +10,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/tests/helpers.sh"
 
-MAIN_GO="$ROOT/tools/sprint-check-go/main.go"
+MAIN_GO="$ROOT/tools/canon-go/internal/board/main.go"
 
 # The /api/ route set, read from main.go's dispatch:
 #   exact:  case "/api/foo":  or  path == "/api/foo"

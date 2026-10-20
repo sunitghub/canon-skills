@@ -1,4 +1,4 @@
-module canon/cockpit-daemon
+module canon
 
 go 1.26.5
 

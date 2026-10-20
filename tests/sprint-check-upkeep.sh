@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # sprint-check-upkeep (t-1776, t-be1f): the Upkeep run path. The board's resolver (.cmd wrapper first on Windows, the bash
 # script elsewhere, UPKEEP_RUN_BIN first), the persisted and bounded failed-run output and the model-id rule are Go unit
-# tests in tools/sprint-check-go (TestResolveUpkeepRunBin, TestUpkeepRunBinCandidates,
+# tests in tools/canon-go/internal/board (TestResolveUpkeepRunBin, TestUpkeepRunBinCandidates,
 # TestRunUpkeepPersistsAndSurfacesBoundedOutput, TestUpkeepModelIDCases; t-15d8). Here: the bash runner's own model check,
 # and the board's /api/upkeep/run handler over HTTP.
 

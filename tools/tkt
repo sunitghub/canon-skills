@@ -1834,7 +1834,7 @@ _regrade_triggers() {
   while IFS= read -r p; do
     case "$p" in
       tools/sprint-check-app/*|tests/sprint-check-app.spec.js|tests/run-board-spec.sh|tests/board-spec-*) board=1 ;;
-      tools/sprint-check-go/*|tools/sprint-headless-json-go/*|tools/cockpit-daemon/*) gocode=1 ;;
+      tools/canon-go/*|tools/sprint-headless-json-go/*) gocode=1 ;;
     esac
   done
   [[ $board == 1 ]] && out+="${out:+, }board change (full board spec)"

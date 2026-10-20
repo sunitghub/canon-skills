@@ -108,9 +108,11 @@ run_checks() {
   }
   local pe; pe="$(etag_of plan.md)"
   for bad in ticket.md 'plan.md.' 'plan.md%20' 'plan.md::%24DATA' 'plan.md%3Ax' 'TICKET~1.MD' 'NUL.md' 'C%3Aplan.md' '..%2Fplan.md' 'sub%2Fplan.md' '%5Cplan.md' 'notes.md' 'plan.txt'; do
-    # A `..` path segment never reaches the handler in Go: its router answers 301 to the cleaned path (no write either way).
-    refuse "t-lv01/$bad" "{\"content\":\"x\",\"base_hash\":\"$pe\"}" "$([[ "$bad" == ..* ]] && echo '400|301' || echo 400)" "doc name '$bad'"
+    refuse "t-lv01/$bad" "{\"content\":\"x\",\"base_hash\":\"$pe\"}" 400 "doc name '$bad'"
   done
+  # t-8020: the board refuses a `..` doc segment itself (a module build's router passes an escaped one through), on read too
+  code="$(curl -s -o /dev/null -w '%{http_code}' "$base/api/doc/t-lv01/..%2Fplan.md")"
+  [[ "$code" == 400 ]] || fail "$label: GET of a '..' doc path must be 400, got $code"
   [[ "$(head -c 200 "$wt/.tickets/t-lv01/ticket.md" | grep -c 'in_progress')" == 1 ]] || fail "$label: ticket.md was changed"
   for badc in '[1,2]' '7' 'null' '{"a":1}'; do
     refuse t-lv01/plan.md "{\"content\":$badc,\"base_hash\":\"$pe\"}" 400 "content $badc"
@@ -244,7 +246,7 @@ for i in range(250):
     except Exception as e:
         bad.append((i, name, 'no answer', repr(e)[:120])); continue
     cases += 1
-    if status >= 500 or status not in (200, 301, 400, 403, 404, 405, 409):
+    if status >= 500 or status not in (200, 301, 307, 400, 403, 404, 405, 409):   # 307: the router's redirect for an unclean path in a module build (t-8020); like 301, no write
         bad.append((i, name, 'status', status, text[:120]))
     if 'Traceback' in text or 'panic:' in text or 'goroutine' in text:
         bad.append((i, name, 'leaked', text[:120]))

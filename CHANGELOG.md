@@ -6,6 +6,12 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Changed
+- The board and the cockpit daemon are one Go module, `tools/canon-go` (one `go.mod`, one pinned Go), still built as two programs with the same names and places. Each is released under its own key, so a board-only fix no longer re-releases the daemon (`t-8020`). **Claude cloud environments:** copy the setup script from `docs/setup.md` (or Admin › GitHub) into your environment again; it now reads the Go pin from `tools/canon-go/go.mod`.
+
+### Fixed
+- The board refuses a doc path with a `..` segment (`/api/doc/t-x/..%2Fplan.md`) with 400. Release builds had answered 200 and written `.tickets/plan.md`, inside the tickets folder but outside the ticket (`t-8020`).
+
 ## [0.13.0] - 2026-10-19
 
 The board is one Go program on every OS: macOS and Linux no longer run a Python board, and `server.py` is gone. The board is now a checksummed download beside the daemon, like Windows already had. Also new: the board drives the GitHub workflow (send an issue, check and merge its PR), and gate runs log their model. Update with `canon update`, then press **Restart Daemon** in Admin (the daemon changed since 0.12.1; a running one stays on the old version).

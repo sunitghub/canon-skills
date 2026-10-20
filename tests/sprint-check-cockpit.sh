@@ -12,8 +12,8 @@ source "$ROOT/tests/helpers.sh"
 
 # t-15d8: ensureCockpit, the one place the board starts the daemon, detaches it (detachDaemon: Setsid on Unix) before cmd.Start()
 # (TestDetachDaemonStartsOwnSession covers the helper; this covers the call). A shell check, not a Go test: a file in
-# tools/sprint-check-go changes the board's release key.
-ens="$(awk '/^func ensureCockpit\(/{f=1} f&&/^}/{print; exit} f' "${CK_MAIN_GO:-$ROOT/tools/sprint-check-go/main.go}")"
+# the board's sources (tools/src-key.sh) changes the board's release key.
+ens="$(awk '/^func ensureCockpit\(/{f=1} f&&/^}/{print; exit} f' "${CK_MAIN_GO:-$ROOT/tools/canon-go/internal/board/main.go}")"
 d="$(printf '%s\n' "$ens" | grep -n 'detachDaemon(cmd)' | head -1 | cut -d: -f1 || true)"; st="$(printf '%s\n' "$ens" | grep -n 'cmd.Start()' | head -1 | cut -d: -f1 || true)"
 [[ -n "$d" && -n "$st" && "$d" -lt "$st" ]] || fail "ensureCockpit must call detachDaemon(cmd) before cmd.Start() (lines: detach '$d', start '$st')"
 
@@ -23,7 +23,7 @@ if ! command -v python3 >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; th
 fi
 
 # t-e40a: the daemon resolver (Windows exe first, dev-build fallback, COCKPIT_DAEMON_BIN override) is pinned by
-# TestCockpitDaemonCandidates and TestResolveCockpitDaemonOverrideAndFallback in tools/sprint-check-go (t-15d8).
+# TestCockpitDaemonCandidates and TestResolveCockpitDaemonOverrideAndFallback in tools/canon-go/internal/board (t-15d8).
 
 # t-2a71: reap any stub daemon leaked by a prior run this script's own
 # trap-on-EXIT couldn't reach (e.g. the process was SIGKILLed, or its parent

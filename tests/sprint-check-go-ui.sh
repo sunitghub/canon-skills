@@ -21,10 +21,11 @@ git -C "$WORK" init -q
 
 PORT="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
 
+BOARD="$(build_board "$WORK/bin")"
+# Started from the repo root: the board finds tools/sprint-check-app/app.html under its working directory (the project, $WORK, has none).
 (
   cd "$ROOT"
-  SPRINT_CHECK_ROOT="$WORK" SPRINT_CHECK_NO_BROWSER=1 GO111MODULE=off \
-    go run ./tools/sprint-check-go "$PORT" >/dev/null 2>&1
+  SPRINT_CHECK_ROOT="$WORK" SPRINT_CHECK_NO_BROWSER=1 exec "$BOARD" "$PORT" >/dev/null 2>&1
 ) &
 PID=$!
 disown "$PID" 2>/dev/null || true

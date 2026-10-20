@@ -19,13 +19,15 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # Gitignored (tools/cockpit-daemon/.gitignore) — native binaries aren't
 # portable across platforms/architectures, so this stays local-only.
 if command -v go >/dev/null 2>&1; then
-  CDV="$(git -C "$REPO_ROOT" log -1 --format=%h -- tools/cockpit-daemon 2>/dev/null || echo dev)"
+  # shellcheck source=tools/src-key.sh
+  source "$REPO_ROOT/tools/src-key.sh"
+  CDV="$(canon_src_key "$REPO_ROOT" cockpit-daemon 2>/dev/null | cut -c1-8)"; CDV="${CDV:-dev}"   # t-8020: the release stamp form
   SEMVER="$(tr -d ' \t\n\r' < "$REPO_ROOT/VERSION" 2>/dev/null || echo dev)"   # for the message only
   GOEXE="$(go env GOEXE)"
-  ( cd "$REPO_ROOT/tools/cockpit-daemon" && go build \
+  ( cd "$REPO_ROOT/tools/canon-go" && go build \
       -buildvcs=false \
       -ldflags "-X main.commit=$CDV" \
-      -o "$REPO_ROOT/tools/cockpit-daemon/cockpit-daemon$GOEXE" . )
+      -o "$REPO_ROOT/tools/cockpit-daemon/cockpit-daemon$GOEXE" ./cmd/cockpit-daemon )
   echo "dist: cockpit-daemon$GOEXE (native) rebuilt [v$SEMVER ($CDV)]"
 else
   echo "dist: cockpit-daemon (native) skipped (go absent)"

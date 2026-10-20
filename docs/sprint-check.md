@@ -253,7 +253,7 @@ sprint agent without leaving the browser — no second terminal.
 - **Cockpit mode:** the kanban lanes collapse to a left ticket rail and an
   embedded terminal takes the center. The board never owns
   a PTY — it discovers a running `cockpit-daemon` via `daemon.json`, or
-  launches one on demand (`/api/cockpit` in `tools/sprint-check-go/main.go`),
+  launches one on demand (`/api/cockpit` in `tools/canon-go/internal/board/main.go`),
   with no secret ever passed via argv. **Esc / "← Board"** returns to the
   kanban view; only one sprint may be active at a time, so Start is disabled
   on other cards while a session is live. The rail can collapse to a 44px icon

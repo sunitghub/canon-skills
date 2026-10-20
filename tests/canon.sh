@@ -372,7 +372,7 @@ grep -qE "registerSkill\(id, *name, *proj\.path" <<<"$page" || fail "canon: nudg
 grep -qF "bar.remove(); v.classList.remove('has-nudge')" <<<"$page" || fail "canon: nudge Dismiss/Register-success must remove the banner and has-nudge class"
 
 # t-824e / t-4487: the board's running_build (reaper timeouts, the daemon's commit stamp) is pinned by
-# TestCockpitRunningBuildPassesReaperTimeouts and TestCockpitRunningBuildPassesCommit in tools/sprint-check-go (t-15d8).
+# TestCockpitRunningBuildPassesReaperTimeouts and TestCockpitRunningBuildPassesCommit in tools/canon-go/internal/board (t-15d8).
 
 # ── t-302d: the browser opens only once the board answers /api/version ────────
 # A copy of the launcher with a stub board, reached through SPRINT_CHECK_BIN as a test build is (t-15d8; starts answering

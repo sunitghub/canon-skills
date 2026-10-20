@@ -18,7 +18,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO="$(cd "$SCRIPT_DIR/.." && pwd -P)"
-DAEMON_DIR="$REPO/tools/cockpit-daemon"
+MODULE_DIR="$REPO/tools/canon-go"   # t-8020: the board and the daemon are one Go module (cmd/sprint-check, cmd/cockpit-daemon)
+# shellcheck source=tools/src-key.sh
+source "$SCRIPT_DIR/src-key.sh"   # canon_src_key: what each binary's release key is built from
 MANIFEST="$SCRIPT_DIR/cockpit-daemon.sha256"
 RELEASE_BASE="${CANON_DAEMON_RELEASE_BASE:-https://github.com/sunitghub/canon-skills/releases/download}"
 quiet=0; [ "${1:-}" = --quiet ] && quiet=1
@@ -37,7 +39,7 @@ if [ "$os" != windows ]; then
   case "$(uname -m)" in
     arm64|aarch64) arch=arm64 ;;
     x86_64|amd64) arch=amd64 ;;
-    *) die "no prebuilt binaries for CPU '$(uname -m)'. Build them: cd tools/cockpit-daemon && go build -o cockpit-daemon . ; cd ../.. && GO111MODULE=off go build -o tools/sprint-check-bin/sprint-check ./tools/sprint-check-go" ;;
+    *) die "no prebuilt binaries for CPU '$(uname -m)'. Build them: cd tools/canon-go && go build -o ../cockpit-daemon/cockpit-daemon ./cmd/cockpit-daemon && go build -o ../sprint-check-bin/sprint-check ./cmd/sprint-check" ;;
   esac
 fi
 
@@ -55,9 +57,9 @@ cleanup() { [ -z "$tmp" ] || rm -f -- "$tmp"; }
 trap cleanup EXIT
 
 # Per-component settings, set by the loop at the bottom:
-#   SRC (source folder under the repo), TARGET (manifest column 2), ASSET (file name in the release), TAG (release prefix),
+#   COMP (component name for tools/src-key.sh: its key and its sources), TARGET (manifest column 2), ASSET (file name in the release), TAG (release prefix),
 #   DEST (absolute path the binary must land at), VERSION_CHECK (1 = the binary prints its commit stamp: macOS/Linux daemon and board).
-SRC=""; TARGET=""; ASSET=""; TAG=""; DEST=""; VERSION_CHECK=0; NEXT=""
+COMP=""; TARGET=""; ASSET=""; TAG=""; DEST=""; VERSION_CHECK=0; NEXT=""
 key=""; full=""; stamp=""; fail_reason=""
 
 # Move the finished temp file into place. mv into an existing directory would "succeed" by nesting the file, so refuse that explicitly.
@@ -105,16 +107,16 @@ build_from_source() {
   mkdir -p "$(dirname "$DEST")"
   tmp="$(mktemp "$(dirname "$DEST")/.$(basename "$DEST").XXXXXX")"
   local ok=1 ldflags="-X main.version=$semver -X main.commit=$stamp"
-  if [ "$SRC" = tools/cockpit-daemon ]; then
-    ( cd "$DAEMON_DIR" && GOTOOLCHAIN=local go build -buildvcs=false -ldflags "$ldflags" -o "$tmp" . ) >/dev/null 2>&1 || ok=0
-  else   # the board and the headless helper are legacy (no go.mod) packages built from the repo root
-    ( cd "$REPO" && GO111MODULE=off GOTOOLCHAIN=local go build -buildvcs=false -ldflags "$ldflags" -o "$tmp" "./$SRC" ) >/dev/null 2>&1 || ok=0
+  if [ "$COMP" = sprint-headless-json ]; then   # the headless helper is still a legacy (no go.mod) package built from the repo root
+    ( cd "$REPO" && GO111MODULE=off GOTOOLCHAIN=local go build -buildvcs=false -ldflags "$ldflags" -o "$tmp" ./tools/sprint-headless-json-go ) >/dev/null 2>&1 || ok=0
+  else
+    ( cd "$MODULE_DIR" && GOTOOLCHAIN=local go build -buildvcs=false -ldflags "$ldflags" -o "$tmp" "./cmd/$COMP" ) >/dev/null 2>&1 || ok=0
   fi
   if [ "$ok" = 1 ]; then
     install_tmp || return 1
     say "built from source ($stamp)"
   else
-    local need; need="$(awk '/^go /{print $2}' "$REPO/$SRC/go.mod" 2>/dev/null)" || need=""
+    local need; need="$(awk '/^go /{print $2}' "$MODULE_DIR/go.mod" 2>/dev/null)" || need=""
     fail_reason="$fail_reason; and building from source failed${need:+ (needs Go $need or newer, found $(go env GOVERSION 2>/dev/null || echo none))}"
     return 1
   fi
@@ -123,16 +125,16 @@ build_from_source() {
 # fetch_one: provide one binary. Returns 0 when it is in place, 1 with a message on stderr otherwise. Never touches DEST on failure.
 fetch_one() {
   fail_reason=""
-  # The key is the git tree hash of the source folder: the same in a shallow or partial clone and after a history rewrite,
-  # unlike the last commit that touched it.
-  full="$(git -C "$REPO" rev-parse -q --verify "HEAD:$SRC" 2>/dev/null)" || full=""
+  # The key comes from the git trees of the component's sources (tools/src-key.sh): the same in a shallow or partial clone and
+  # after a history rewrite, unlike the last commit that touched them.
+  full="$(canon_src_key "$REPO" "$COMP")" || full=""
   if [ -z "$full" ] && [ "$os" = windows ]; then
     # A zip install has no .git: the newest manifest line for this target names what was released with this copy of the tools.
     full="$(manifest_lines | awk -v t="$TARGET" '$2==t {k=$1} END{print k}')" || full=""
     case "$full" in *[!0-9a-f]*) full="" ;; esac
   fi
   if [ -z "$full" ]; then
-    echo "$LABEL: $REPO is not a git checkout with the $SRC source, so the matching binary cannot be named. Reinstall: curl -fsSL https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.sh | bash" >&2
+    echo "$LABEL: $REPO is not a git checkout with the $COMP source, so the matching binary cannot be named. Reinstall: curl -fsSL https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.sh | bash" >&2
     return 1
   fi
   key="${full:0:12}"; stamp="${full:0:8}"
@@ -151,25 +153,23 @@ fetch_one() {
   return 1
 }
 
-# The component list: label|source folder|manifest target|release asset|release prefix|destination|required|version-check
+# The component list: label|component (tools/src-key.sh)|manifest target|release asset|release prefix|destination|required|version-check
 if [ "$os" = windows ]; then
-  COMPONENTS="cockpit-daemon|tools/cockpit-daemon|windows-amd64|cockpit-daemon-windows-amd64.exe|cockpit-daemon|tools/cockpit-daemon-win.exe|1|0
-sprint-check-win|tools/sprint-check-go|sprint-check-windows-amd64|sprint-check-windows-amd64.exe|sprint-check|tools/sprint-check-win.exe|1|0
-sprint-headless-json-win|tools/sprint-headless-json-go|sprint-headless-json-windows-amd64|sprint-headless-json-windows-amd64.exe|sprint-headless-json|tools/sprint-headless-json-win.exe|0|0"
+  COMPONENTS="cockpit-daemon|cockpit-daemon|windows-amd64|cockpit-daemon-windows-amd64.exe|cockpit-daemon|tools/cockpit-daemon-win.exe|1|0
+sprint-check-win|sprint-check|sprint-check-windows-amd64|sprint-check-windows-amd64.exe|sprint-check|tools/sprint-check-win.exe|1|0
+sprint-headless-json-win|sprint-headless-json|sprint-headless-json-windows-amd64|sprint-headless-json-windows-amd64.exe|sprint-headless-json|tools/sprint-headless-json-win.exe|0|0"
 else
-  COMPONENTS="cockpit-daemon|tools/cockpit-daemon|$os-$arch|cockpit-daemon-$os-$arch|cockpit-daemon|tools/cockpit-daemon/cockpit-daemon|1|1
-sprint-check|tools/sprint-check-go|sprint-check-$os-$arch|sprint-check-$os-$arch|sprint-check|tools/sprint-check-bin/sprint-check|1|1"
+  COMPONENTS="cockpit-daemon|cockpit-daemon|$os-$arch|cockpit-daemon-$os-$arch|cockpit-daemon|tools/cockpit-daemon/cockpit-daemon|1|1
+sprint-check|sprint-check|sprint-check-$os-$arch|sprint-check-$os-$arch|sprint-check|tools/sprint-check-bin/sprint-check|1|1"
 fi
 
 rc=0
-while IFS='|' read -r LABEL SRC TARGET ASSET TAG rel required VERSION_CHECK; do
+while IFS='|' read -r LABEL COMP TARGET ASSET TAG rel required VERSION_CHECK; do
   [ -n "$LABEL" ] || continue
   DEST="$REPO/$rel"
   if [ "$os" = windows ]; then NEXT="run canon update (or the installer again) once online"
-  elif [ "$SRC" = tools/cockpit-daemon ]; then NEXT="install Go (brew install go, or https://go.dev/dl) and run: canon update
-  or build it by hand: cd \"$DAEMON_DIR\" && go build -o cockpit-daemon ."
   else NEXT="install Go (brew install go, or https://go.dev/dl) and run: canon update
-  or build it by hand: cd \"$REPO\" && GO111MODULE=off go build -o $rel ./$SRC"; fi
+  or build it by hand: cd \"$MODULE_DIR\" && go build -o \"$DEST\" ./cmd/$COMP"; fi
   if ! fetch_one; then
     if [ "$required" = 1 ]; then rc=1; fi
   fi

@@ -133,7 +133,7 @@ After the report:
 - **Go `Test*` functions are called by the test runner via naming convention, not by any textual
   reference** — `func TestFoo(t *testing.T)` matches the exported-func pattern (uppercase start)
   and will show zero other references, since nothing ever calls it by name in source. Live-checked
-  against canon's own `tools/cockpit-daemon/main_test.go`: `TestPreviewRootFor` has exactly one
+  against canon's own `tools/canon-go/internal/daemon/main_test.go`: `TestPreviewRootFor` has exactly one
   match repo-wide — its own declaration. Always exclude `^func Test[A-Z]` (and `^func Benchmark[A-Z]`
   / `^func Example[A-Z]`) from Go candidates before counting references, rather than relying on
   the entry-point low-confidence filter to catch them — they aren't entry-point files, they're a

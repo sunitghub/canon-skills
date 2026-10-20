@@ -18,5 +18,5 @@ if ! command -v go >/dev/null 2>&1; then
 fi
 
 PORT="${1:-${CANON_COCKPIT_PORT:-8899}}"
-cd "$ROOT"
-exec env GO111MODULE=off go run ./tools/sprint-check-go "$PORT"
+cd "$ROOT/tools/canon-go"   # the module; the board still roots at the checkout, as when it ran from $ROOT (t-8020)
+SPRINT_CHECK_ROOT="${SPRINT_CHECK_ROOT:-$ROOT}" exec go run ./cmd/sprint-check "$PORT"

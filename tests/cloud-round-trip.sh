@@ -165,8 +165,7 @@ export STUB_PR_HEAD; # every board and Go path is a trigger on its own (the fail
 for f in tests/run-board-spec.sh tests/board-spec-baseline.json tools/sprint-check-app/x.js; do
   out="$(STUB_PR_HEAD=0000000000000000000000000000000000000000 STUB_PR_FILES="$f" "$TKT" import-results "$id" --pr 58 2>&1)" || true; assert_contains "$out" "re-grade needed on this Mac: board change (full board spec), PR head"
 done
-chk=tools/sprint-check   # split so tests/no-browser-in-tests.sh does not read this path as a Go server start
-for f in "$chk-go/x.go" tools/sprint-headless-json-go/x.go tools/cockpit-daemon/x.go; do
+for f in tools/canon-go/internal/board/x.go tools/canon-go/go.mod tools/sprint-headless-json-go/x.go; do   # t-8020: the board+daemon module
   out="$(STUB_PR_HEAD=0000000000000000000000000000000000000000 STUB_PR_FILES="$f" "$TKT" import-results "$id" --pr 58 2>&1)" || true; assert_contains "$out" "re-grade needed on this Mac: Go change (needs a release), PR head"
 done
 # the high-risk trigger reads the imported plan, which import-results itself replaces: call the function on a plan file
@@ -207,7 +206,7 @@ rc=0; out="$("$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
 # t-278d: triggers by what the PR touches. The branch is kept after a failed check, so import-results can run again on it.
 rc=0; out="$(STUB_PR_FILES="tools/sprint-check-app/server.js docs/x.md" "$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
 assert_contains "$out" "re-grade needed on this Mac: board change (full board spec), PR head not confirmed as the graded head"
-rc=0; out="$(STUB_PR_FILES="tools/cockpit-daemon/main.go" "$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
+rc=0; out="$(STUB_PR_FILES="tools/canon-go/internal/daemon/main.go" "$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
 assert_contains "$out" "re-grade needed on this Mac: Go change (needs a release), PR head not confirmed as the graded head"
 # tools/tkt is one script, not a release asset: a change to it alone is not a trigger; the board spec file and runner are.
 rc=0; out="$(STUB_PR_FILES="tools/tkt tests/tkt-send-issue.sh" "$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?

@@ -59,7 +59,7 @@ chmod +x "$STUB"
 # t-15d8: the function-level checks (path gate, refusals, model ids, hostile case ids, the run fuzz, argv, cost clamp,
 # report containment, .reports link) are the Go board's: tests/sprint-check-skill-eval-go.sh over HTTP, and
 # TestValidateSkillDirRefusesCanon, TestRunSkillEvalExitCodes, TestSkillEvalStateSaveIsSerialized and
-# TestSkillEvalKeyResolvesSymlinkedRoot in tools/sprint-check-go. This suite keeps the HTTP gate and what only it checked.
+# TestSkillEvalKeyResolvesSymlinkedRoot in tools/canon-go/internal/board. This suite keeps the HTTP gate and what only it checked.
 # HTTP layer: same Host/Origin gate as every other write; the endpoint refuses escapes.
 PORT="$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()')"
 BOARD="$(build_board "$WORK/bin")"

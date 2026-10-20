@@ -1,4 +1,4 @@
-package main
+package daemon
 
 // t-5a4b: "what changed" without git. A project folder that isn't a git repository (the norm for
 // PMs and designers) has no diff to show, so the daemon takes a BASELINE of the folder when a
