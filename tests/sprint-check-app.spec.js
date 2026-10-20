@@ -3533,6 +3533,17 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }));
   }
 
+  // t-e493: GitHub set up, so the worktree picker's "GitHub · new issue" place is a row to pick (t-24b1 gates it on
+  // GET /api/github/doctor). The runner pins HOME, so the real doctor never reports gh signed in.
+  async function githubDoctorReady(page) {
+    await page.route('**/api/github/doctor**', route => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ ok: true, exit_code: 0, output: '', doctor: { checks: [
+        { id: 'gh', status: 'ok', title: 'gh signed in', detail: '' },
+        { id: 'origin', status: 'ok', title: 'Repository found, and private', detail: '' }], cloud: { domains: [], setup_script: '' } } }),
+    }));
+  }
+
   function writeTicket(id, status, { acceptanceCriteria = null, plan = null, ci = false, demo = false, worktreePreference = '' } = {}) {
     const dir = path.join(PROJECT_ROOT, '.tickets', id);
     fs.mkdirSync(dir, { recursive: true });
@@ -6362,8 +6373,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    // QUARANTINE t-e493: fails every run in chromium on main too (1c34c0b6, 0/3 solo): an unexpected btn-gh-sync in the path bar; see tests/board-spec-baseline.json
-    test('upkeep (t-67ab): the board path bar — branch under the path, no counts, + New · Upkeep · Scratch · CI on the right (order since t-7723)', async ({ page }) => {
+    test('upkeep (t-67ab): the board path bar — branch under the path, no counts, + New · Sync · Upkeep · Scratch · CI on the right (order since t-90a3)', async ({ page }) => {
       await upkeepStatus(page);
       const board = await openShell(page, []);
       await expect(board.locator('#btn-upkeep')).toBeVisible();
@@ -6372,8 +6382,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const box = async sel => board.locator(sel).boundingBox();
       const proj = await box('#h-project'), branch = await box('#h-branch');
       expect(branch.y).toBeGreaterThan(proj.y + proj.height / 2);   // on the line below the path
-      expect(await board.locator('.header-right button:visible').evaluateAll(bs => bs.slice(0, 4).map(b => b.id)))
-        .toEqual(['btn-create', 'btn-upkeep', 'btn-scratch', 'btn-ci-setup']);
+      expect(await board.locator('.header-right button:visible').evaluateAll(bs => bs.slice(0, 5).map(b => b.id)))
+        .toEqual(['btn-create', 'btn-gh-sync', 'btn-upkeep', 'btn-scratch', 'btn-ci-setup']);   // t-90a3 put Sync from GitHub after + New
       const right = await box('.header-right'), up = await box('#btn-upkeep');
       expect(up.x).toBeGreaterThan(proj.x + proj.width);   // the buttons sit to the right of the path
       await board.locator('#header').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-67ab', 'visuals', 'path-bar.png') });
@@ -7047,12 +7057,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
-  // QUARANTINE t-e493: fails every run on main too (1c34c0b6, 0/3 solo): 2 .ck-worktree-row, expected 3; see tests/board-spec-baseline.json
   test('a fresh OPEN cockpit selects no worktree row until one is picked (t-470d)', async ({ page }) => {
     const id = `t-ck470d-${Date.now()}`;
     try {
       writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'] });
       await stubCockpit(page);
+      await githubDoctorReady(page);
       // Main + one other worktree, both able to see the ticket. The point of the
       // test is the SELECTION state, not visibility gating.
       await page.route('**/api/worktrees**', route => route.fulfill({
@@ -8843,12 +8853,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }));
   }
 
-  // QUARANTINE t-e493: fails every run on main too (1c34c0b6, 0/3 solo); the rail shows one fewer worktree row; see tests/board-spec-baseline.json
   test('rail lists only Main, own and free worktrees; held ones collapse with owner + reason and cannot be picked (t-2241)', async ({ page }) => {
     const id = `t-wth-r-${Date.now()}`;
     try {
       writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN });
       await stubWorktrees2241(page);
+      await githubDoctorReady(page);
       await page.goto(BASE);
       await page.waitForLoadState('networkidle');
       await page.locator('#board-search').fill(id);
@@ -8888,12 +8898,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
-  // QUARANTINE t-e493: fails every run on main too (1c34c0b6, 0/3 solo); the rail shows one fewer worktree row; see tests/board-spec-baseline.json
   test('once its own worktree is selected the rail shows just that row + Change worktree (t-2241)', async ({ page }) => {
     const id = `t-wth-o-${Date.now()}`;
     try {
       writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN });
       await stubWorktrees2241(page);
+      await githubDoctorReady(page);
       await page.goto(BASE);
       await page.waitForLoadState('networkidle');
       await page.locator('#board-search').fill(id);
