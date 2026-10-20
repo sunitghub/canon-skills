@@ -15,7 +15,7 @@ Universal instructions for AI coding agents. Loaded natively by Claude Code, Pi,
 - If multiple interpretations exist, present them — don't pick silently.
 - Never end a turn after only stating a next action: do it. The exceptions are canon's approval checkpoints (`sprint start`'s plan approval, `sprint complete`'s close confirmation), where stopping is required.
 - Be concise in output, thorough in reasoning.
-- Test before declaring done.
+- Test before declaring done, with only the tests that matter: add or keep a test only when it protects a prod path (a shipped command, a board or daemon route, the release or a close gate) and names it, never for an unused feature or to repeat another test (`skills/sprint/reference/start-checklist.md` step 6). While building, run only the suites that cover the change; run the full suite once, for the stamp.
 - Editing `tools/sprint-check-app/` (the board)? Read `tools/sprint-check-app/CLAUDE.md` first — board-specific gotchas (Cockpit fetch scoping, id prefixes, Playwright setup). Harnesses don't all load a nested CLAUDE.md on their own.
 
 ## Standards
