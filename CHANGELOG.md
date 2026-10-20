@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-10-20
+
+canon no longer needs Python anywhere you use it: the board program does the JSON work that `python3` did, so a Mac or Linux machine without Python now gets the install deny rules, and headless runs need nothing beyond canon's own programs. Update with `canon update`, then run `canon restart` (the board changed; the daemon did not, so agent sessions keep running).
+
 ### Changed
 - canon no longer runs Python anywhere you use it (`t-b62a`). The board binary gained helper commands (`headless-json`, `json-strings`, `settings`, `skill-check`) that replace the inline `python3` in `sprint-headless`, `sprint-headless-eval` and `skills.sh`, Windows' `settings-merge.ps1`, and the Python `tools/skill-check` (now `sprint-check skill-check`). `sprint-headless-json-win.exe` is retired; an old copy left in `tools/` is harmless.
 - `sprint-headless` and `sprint-headless-eval` check the board binary before calling `claude -p`, so a missing one fails before a paid run, not after it.
