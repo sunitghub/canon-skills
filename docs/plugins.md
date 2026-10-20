@@ -1,9 +1,9 @@
 # Building on canon: the event stream
 
-canon records what happens to tickets and sprints as events, one JSON object per line, so a plugin, a status-bar
+canon records what happens to tickets, sprints, close gates and Cockpit sessions as events, one JSON object per line, so a plugin, a status-bar
 widget or a script can follow along without polling the board. This page is the contract for **schema v1**
-(`t-f182`). More event kinds are coming (gate and session events next; a read API, `t-0b89`, after that). v1 only
-ever gains fields or kinds: nothing listed here is renamed or removed.
+(`t-f182`, `t-8854`). A read API (`t-0b89`) comes next. v1 only ever gains fields or kinds: nothing listed here is
+renamed or removed.
 
 ## Where events are
 
@@ -27,7 +27,7 @@ ever gains fields or kinds: nothing listed here is renamed or removed.
 | `id` | 16 hex characters, random; unique per event |
 | `ts` | when it was written, RFC 3339 UTC with milliseconds |
 | `kind` | one of the kinds below |
-| `source` | the program that wrote it: `tkt`, `sprint` or `board` |
+| `source` | the program that wrote it: `tkt`, `sprint`, `board`, `gate-snapshot`, `subagent-log` or `daemon` |
 | `project` | the project's root folder, an absolute path (symlinks resolved) |
 | `data` | only the fields listed for the kind; every value is a string |
 
@@ -40,6 +40,12 @@ ever gains fields or kinds: nothing listed here is renamed or removed.
 | `ticket.closed` | `ticket` | together with the `status_changed` to `closed` |
 | `sprint.started` | `ticket` | `sprint start` |
 | `sprint.completed` | `ticket` | `sprint complete`, after the ticket is closed |
+| `gate.started` | `ticket`, `role` (`reviewer`/`evaluator`, empty if not given), `attempt` (the evaluator's failed attempts so far + 1), `docs` (12 hex: the hash of the ticket's acceptance.md and plan.md) | `gate-snapshot.sh pre … --role <role>`, right before a close gate runs |
+| `gate.finished` | `ticket`, `role`, `verdict` (`YES`/`NO` for the reviewer; `pass`/`fail`/`partial`/`not-run` for the evaluator; `unknown` if its report has none), `model`, `tokens`, `minutes` | `subagent-log.sh`, after a gate's run is logged |
+| `gate.rejected` | `ticket`, `role`, `reason` | a close refusal: `missing_report`, `unverified_run`, `missing_transcript`, `verdict_not_pass`, `report_inconsistent`, `report_model`, `graded_head_stale` (evaluator); `review_model`, `review_shape` (reviewer); `stale_evidence` (`sprint check-evidence`) |
+| `session.needs_you` | `session`, `ticket`, `agent` | a Cockpit agent session starts waiting for you |
+| `session.exited` | `session`, `ticket`, `agent`, `reason` (`exited` on its own, or `killed` by the Cockpit) | a session ends |
+| `session.saved` | `session`, `ticket`, `agent`, `by` (`marker` or `file-settle`) | Save & End saved the session's state |
 
 An event never carries a ticket's description, documents or session text. Each field has a length limit, and longer
 values are cut.
