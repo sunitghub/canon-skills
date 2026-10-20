@@ -53,7 +53,7 @@ mutant-sweep --map <logic file>=<test command> [--map ...] --report .tickets/<id
   false kills. Map a test that does not need git history, or note the file as not swept.
 
 Verdicts: `KILLED` (the test failed with a `FAIL`/`not ok` line, quoted), `KILLED(crash)` (failed
-without one), `KILLED(timeout)`, `SURVIVED`, `INVALID`. The tool exits 0 after a sweep.
+without one), `KILLED(timeout)`, `SURVIVED`, `INVALID`. The tool exits 0 after a sweep (4 if the canary below finds a leak).
 
 **Canary.** After the sweep the tool scans the real `~/.canon` for the sweep's temp path (anything a
 mutant wrote there carries it). Clean: `canary: real ~/.canon untouched`. A hit prints
