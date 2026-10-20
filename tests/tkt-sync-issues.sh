@@ -183,7 +183,9 @@ rm -rf "$bare"
 # Nothing labelled: --json gives empty lists; a real run still records a sync with count 0.
 : > "$stub/list"
 assert_eq '{"repo":"acme/app","label":"canon","waiting":[],"skipped":[]}' "$("$TKT" sync-issues --dry-run --json)"
-n0="$(synced)"; "$TKT" sync-issues >/dev/null
+n0="$(synced)"; "$TKT" sync-issues --dry-run >/dev/null
+assert_eq "$n0" "$(synced)"   # t-9641 eval: a dry run with nothing labelled records no sync (the board's preview runs it)
+"$TKT" sync-issues >/dev/null
 assert_eq $((n0 + 1)) "$(synced)"
 
 git remote set-url origin https://gitlab.com/acme/app.git; : > "$STUB_LOG"

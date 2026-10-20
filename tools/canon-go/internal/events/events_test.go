@@ -244,6 +244,8 @@ func TestLatestPicksNewestValidLine(t *testing.T) {
 		`{"schema":1,"id":"iiiiiiiiiiiiiiii","ts":"2026-10-19T12:00:00.000Z","kind":"github.synced","source":"tkt","project":"/p","data":{"count":7}}`,
 		`not json at all`,
 		`{"schema":1,"id":"jjjjjjjjjjjjjjjj","ts":"2026-10-19T12:00:00.000Z","kind":"github.synced","source":"tkt","project":"/p","data":{"count":"`+strings.Repeat("9", 70000)+`"}}`,
+		// valid in every field, but padded past the 64 KiB line cap with a key json.Unmarshal ignores: still skipped (t-9641)
+		`{"schema":1,"id":"kkkkkkkkkkkkkkk1","ts":"2026-10-19T13:00:00.000Z","kind":"github.synced","source":"tkt","project":"/p","data":{"count":"4"},"pad":"`+strings.Repeat("x", 70000)+`"}`,
 	)
 	// Newer, but not readable as a day file: a symlink and a name that is not a day.
 	os.WriteFile(filepath.Join(home, "elsewhere.jsonl"), []byte(ok("kkkkkkkkkkkkkkkk", "2026-10-20T09:00:00.000Z", "/p", "5")+"\n"), 0o600)
@@ -255,11 +257,39 @@ func TestLatestPicksNewestValidLine(t *testing.T) {
 	if !found || ev.ID != "bbbbbbbbbbbbbbbb" || ev.Data["count"] != "2" || !ev.TS.Equal(time.Date(2026, 10, 19, 9, 0, 0, 0, time.UTC)) {
 		t.Fatalf("Latest = %+v, %v; want the 10-19 09:00 line", ev, found)
 	}
+	// t-9641 eval: the last valid line of a day wins (append order), and lines with a short id or a field over its limit are skipped.
+	write("2026-10-17.jsonl",
+		ok("cccccccccccccccc", "2026-10-17T08:00:00.000Z", "/q", "1"),
+		ok("dddddddddddddddd", "2026-10-17T09:00:00.000Z", "/q", "2"),
+		ok("short", "2026-10-17T10:00:00.000Z", "/q", "3"),
+		ok("eeeeeeeeeeeeeeee", "2026-10-17T11:00:00.000Z", "/q", "123456789"))
+	if ev, found := Latest(home, "github.synced", "/q"); !found || ev.ID != "dddddddddddddddd" {
+		t.Fatalf("Latest(/q) = %+v, %v; want the last valid line, dddd…", ev, found)
+	}
 	if _, found := Latest(home, "github.synced", "/nowhere"); found {
 		t.Error("found an event for a project with none")
 	}
 	if _, found := Latest(filepath.Join(home, "missing"), "github.synced", "/p"); found {
 		t.Error("found an event in a missing home")
+	}
+}
+
+// Protects the intake route's read cost: only the newest RetentionDays+1 day files are read, so an event older than that is not found.
+func TestLatestReadsOnlyRetainedDays(t *testing.T) {
+	home := t.TempDir()
+	dir := filepath.Join(home, "events")
+	os.MkdirAll(dir, 0o700)
+	day := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < RetentionDays+2; i++ {
+		d := day.AddDate(0, 0, i).Format("2006-01-02")
+		line := ""
+		if i == 0 { // only the oldest file holds a match, and it is past the cap
+			line = `{"schema":1,"id":"aaaaaaaaaaaaaaaa","ts":"` + d + `T09:00:00.000Z","kind":"github.synced","source":"tkt","project":"/p","data":{"count":"1"}}`
+		}
+		os.WriteFile(filepath.Join(dir, d+".jsonl"), []byte(line+"\n"), 0o600)
+	}
+	if ev, found := Latest(home, "github.synced", "/p"); found {
+		t.Fatalf("read a day file past the retention cap: %+v", ev)
 	}
 }
 
