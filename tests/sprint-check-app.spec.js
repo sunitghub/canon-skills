@@ -14629,10 +14629,10 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     const card = page.locator(`.card[data-id="${id}"]`);
     await expect(page.locator('.column', { has: card }).locator('.col-title, .column-title, h2').first()).toContainText(/progress/i);
     await expect(card.locator('.card-gh-chip')).toHaveText('GitHub #57 · sent');
-    await expect(card.locator('.card-gh-btn')).toHaveText('Open issue');
+    await expect(card.locator('.card-gh-btn')).toHaveText('Issue ↗');   // t-9955: goes to GitHub, changes nothing
     await expect(card.locator('.card-start:not(.card-gh-btn)')).toHaveCount(0);
     for (const [stage, extra, chip, btn] of [
-      ['pr-open', { pr: 58 }, 'GitHub #57 · PR #58', 'Open PR'],
+      ['pr-open', { pr: 58 }, 'GitHub #57 · PR #58', 'PR ↗'],
       ['results-ready', { pr: 58 }, 'GitHub #57 · results ready', 'Import results'],
       ['results-in', { pr: 58 }, 'GitHub #57 · results in', 'Check & merge'],
     ]) {
@@ -14780,7 +14780,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     status = { stage: 'pr-open', pr: '58"><img src=x>' };
     release();
     await expect(card.locator('.card-gh-chip')).toHaveText('GitHub #57 · PR open');   // not a number: no PR link or label
-    await expect(card.locator('.card-gh-btn')).toHaveText('Open issue');
+    await expect(card.locator('.card-gh-btn')).toHaveText('Issue ↗');   // t-9955: goes to GitHub, changes nothing
     expect(await card.locator('img').count()).toBe(0);
   });
 
@@ -15129,8 +15129,8 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect.poll(() => asked.filter(p => p === 'proj-b').length).toBeGreaterThan(0);
   });
 
-  // Prod path: a card whose session pushed a branch with no PR (github-status stage "branch"), and its Open PR button.
-  test('a session branch with no PR shows Open PR; it asks, names the branch, and opens once (t-24b1)', async ({ page }) => {
+  // Prod path: a card whose session pushed a branch with no PR (github-status stage "branch"), and its Create PR button (t-9955).
+  test('a session branch with no PR shows Create PR; it asks, names the branch, and opens once (t-24b1)', async ({ page }) => {
     const id = `t-gh24b-${Date.now()}`;
     ghTicket(id, { github: 'acme/app#57' });
     const stat = await routeStatus(page, id, { stage: 'branch', branch: 'claude/brave-x1' });
@@ -15140,14 +15140,14 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await openBoard(page, id);
     const chip = page.locator(`.card[data-id="${id}"] .card-gh-chip`), btn = page.locator(`.card[data-id="${id}"] .card-gh-btn`);
     await expect(chip).toHaveText('GitHub #57 · branch, no PR');
-    await expect(btn).toHaveText('Open PR');
+    await expect(btn).toHaveText('Create PR');
     await btn.click();
     await expect(page.locator('#gh-dialog-body')).toContainText('on acme/app from claude/brave-x1 into its default branch, with "Fixes #57"');
     await page.locator('#gh-dialog-cancel').click();
     expect(posts).toEqual([]);
     await btn.click();
     await page.locator('#gh-dialog-ok').click();
-    await expect(page.locator('#gh-dialog-title')).toHaveText('PR opened');
+    await expect(page.locator('#gh-dialog-title')).toHaveText('PR created');
     await expect(page.locator('#gh-dialog-pre')).toContainText('pull/31');
     expect(posts).toEqual(['POST']);
     await page.locator('#gh-dialog-cancel').click();
@@ -15308,7 +15308,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#fac-cloud-tab-claude')).toHaveAttribute('aria-selected', 'true');
     await expect(page.locator('#fac-cloud-claude #fac-gh-copy-domains')).toHaveCount(1);
     await expect(page.locator('#fac-cloud > .setting-d').first()).toHaveText('A recipe, not a check: canon cannot see your cloud environments.');
-    await expect(page.locator('#fac-cloud-claude .setting-d')).toHaveCount(0);
+    await expect(page.locator('#fac-cloud-claude .setting-d:not(.fac-domains-note)')).toHaveCount(0);   // the footer lines; t-9955's domains note belongs with the chips
     await page.locator('#fac-tab-line').click();
     await expect(page.locator('#fac-line')).toBeVisible();
     await expect(page.locator('#fac-gh')).toBeHidden();
@@ -15361,6 +15361,25 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.route('**/api/github/intake**', r => r.fulfill({ status: 404, body: 'not found' }));
     await page.locator('#fac-gh-recheck').click();
     await expect(page.locator('#fac-in-wait')).toContainText('This board is older than the page. Restart canon');
+  });
+
+  // Prod path: Factory › GitHub's Intake (labelled issues already tickets) and Cloud environment (domains note), t-9955.
+  test('Factory Intake names labelled issues that are already tickets, and the domains note shows (t-9955)', async ({ page }) => {
+    await page.route('**/api/projects', r => json(r, [{ id: 'proj-a', path: '/tmp/proj-a', name: 'proj-a', description: '', added: '2026-09-26' }]));
+    await page.route('**/api/github/doctor**', r => json(r, { ok: true, exit_code: 0, output: '', doctor: { checks: [{ id: 'gh', status: 'ok', title: 'Signed in', detail: '' }], cloud: { go: false, domains: ['getcanon.dev'], setup_script: '#!/bin/bash' } } }));
+    let intake = { ok: true, exit_code: 0, last_synced: null, intake: { repo: 'acme/app', label: 'canon', waiting: [], skipped: [
+      { issue: 68, reason: 'already t-eb40' }, { issue: 69, reason: '<b>made by tkt send-issue</b>' }] } };
+    await page.route('**/api/github/intake**', r => json(r, intake));
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    await page.locator('#nav-factory').click();
+    await expect(page.locator('#fac-in-wait .fac-skipped')).toHaveText('2 already tickets: #68 (t-eb40), #69 (<b>made by tkt send-issue</b>)');
+    await expect(page.locator('#fac-in-wait .fac-skipped b')).toHaveCount(0);   // reasons are text
+    await expect(page.locator('#fac-cloud-claude .fac-domains-note')).toContainText("Add your own stack's domains");
+    intake = { ...intake, intake: { ...intake.intake, skipped: [] } };
+    await page.locator('#fac-gh-recheck').click();
+    await expect(page.locator('#fac-in-wait')).toHaveText('No open issue labelled canon is waiting.');
+    await expect(page.locator('#fac-in-wait .fac-skipped')).toHaveCount(0);
   });
 
   // Prod path: the Projects card's Factory row (t-9641), from each project's cached doctor.

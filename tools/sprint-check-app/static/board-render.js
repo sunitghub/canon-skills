@@ -436,7 +436,7 @@ export function renderBoard() {
     btn.addEventListener('blur', hideHoverTooltip);
   });
 
-  bindGithubCardButtons(board);   // t-718b: Open issue / Open PR / Import results / Check & merge, and take back
+  bindGithubCardButtons(board);   // t-718b: Issue ↗ / PR ↗ / Create PR / Import results / Check & merge, and take back
   board.querySelectorAll('.card-start:not(.card-gh-btn)').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation();

@@ -68,9 +68,11 @@ export function ghButtonHTML(t) {
     `<button class="card-start card-gh-btn" type="button" data-id="${esc(t.id)}" data-gh-action="${action}" title="${escAttr(title)}">${esc(label)}</button>`;
   if (st.stage === 'results-ready') return btn('import', 'Import results', 'Bring the cloud session\'s results back into this ticket');
   if (st.stage === 'results-in' || st.stage === 'merging') return btn('merge', 'Check & merge', 'Check the PR and merge it after your confirmation');
-  if (st.stage === 'pr-open' && prOf(st)) return btn('pr', 'Open PR', `Open PR #${prOf(st)} on GitHub`);
-  if (st.stage === 'branch') return btn('open-pr', 'Open PR', `The session pushed ${st.branch} without a PR: open one`);
-  return btn('issue', 'Open issue', 'Open the issue on GitHub');
+  // t-9955: "↗" goes to GitHub and changes nothing; Create PR is the one that makes something.
+  if (st.stage === 'pr-open' && prOf(st)) return btn('pr', 'PR ↗', `PR #${prOf(st)} on GitHub`);
+  if (st.stage === 'branch') return btn('open-pr', 'Create PR', `The session pushed ${st.branch} without a PR: create one`);
+  const p = ghParts(t);
+  return btn('issue', 'Issue ↗', p ? `Issue #${p.issue} on GitHub` : 'The issue on GitHub');
 }
 
 export function bindGithubCardButtons(root) {
@@ -97,19 +99,19 @@ async function ghAction(t, action) {
   if (action === 'open-pr' && p) return openPr(t, p, st);
 }
 
-// ── Open PR (t-24b1): a session pushed its branch and stopped short of a PR ─────────────────────────────────────────
+// ── Create PR (t-24b1, label t-9955): a session pushed its branch and stopped short of a PR ─────────────────────────────────────────
 async function openPr(t, p, st) {
   const ask = openDialog({
-    title: `Open a PR for ${t.id}?`,
+    title: `Create a PR for ${t.id}?`,
     body: `Opens a pull request on ${p.repo} from ${st.branch} into its default branch, with "Fixes #${p.issue}", so Import results and Check & merge can find it.`,
-    ok: 'Open PR', cancel: 'Cancel',
+    ok: 'Create PR', cancel: 'Cancel',
   });
   if (!(await ask).ok) return;
-  const run = openDialog({ title: `Opening a PR for ${t.id}…`, pre: 'Running tkt open-pr…', cancel: 'Close' });
+  const run = openDialog({ title: `Creating a PR for ${t.id}…`, pre: 'Running tkt open-pr…', cancel: 'Close' });
   let res;
   try { res = await postJSON(ghApi(t.id, 'open-pr'), {}); }
   catch (e) { res = { ok: false, output: String(e.message || e) }; }
-  updateDialog({ title: res.ok ? 'PR opened' : 'No PR opened', body: res.ok ? '' : 'Nothing was created on GitHub.', pre: res.output || '' }, run.gen);
+  updateDialog({ title: res.ok ? 'PR created' : 'No PR created', body: res.ok ? '' : 'Nothing was created on GitHub.', pre: res.output || '' }, run.gen);
   statusById.delete(t.id);
   await pollGithub(true);
 }
@@ -469,7 +471,7 @@ function showSent(panel, t, tab) {
       <h3>Sent ${esc(t.id)} as issue #${esc(n)}</h3>
       ${line ? `<p>Start a Claude cloud session on the canon environment and type:</p><pre class="ck-gh-pre ck-gh-prompt" id="ck-gh-prompt">${esc(line)}</pre>` : `<p>Start a Claude cloud session on the canon environment and point it at issue #${esc(n)}.</p>`}
       <p>The card is in In progress and shows the next step.</p>
-      <div class="ck-gh-actions">${line ? `<button type="button" class="ck-gh-create" id="ck-gh-copy">Copy prompt</button>` : ''}${url ? `<button type="button" id="ck-gh-open">Open issue</button>` : ''}<button type="button" id="ck-gh-dismiss">Close tab</button><span class="ck-gh-status" id="ck-gh-status" role="status"></span></div>
+      <div class="ck-gh-actions">${line ? `<button type="button" class="ck-gh-create" id="ck-gh-copy">Copy prompt</button>` : ''}${url ? `<button type="button" id="ck-gh-open" title="Issue #${esc(n)} on GitHub">Issue ↗</button>` : ''}<button type="button" id="ck-gh-dismiss">Close tab</button><span class="ck-gh-status" id="ck-gh-status" role="status"></span></div>
     </div>`;
   document.getElementById('ck-gh-copy')?.addEventListener('click', async () => {
     const s = document.getElementById('ck-gh-status');
