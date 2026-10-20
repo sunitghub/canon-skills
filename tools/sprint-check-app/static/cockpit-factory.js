@@ -73,14 +73,15 @@ async function ghLoad(force){
 }
 function ghRender(res){
   const box=document.getElementById('fac-gh-checks'), count=document.getElementById('fac-gh-count');
-  if(!ghDoctor){ count.textContent='Checks'; document.getElementById('fac-gh-copy-domains').disabled=document.getElementById('fac-gh-copy-script').disabled=true; box.innerHTML=`<div class="gh-row gh-bad"><i></i><div><b>Could not run the checks</b><pre>${esc(res.output||'')}</pre></div></div>`; return; }
+  if(!ghDoctor){ count.textContent='Checks'; document.getElementById('fac-gh-copy-domains').disabled=document.getElementById('fac-gh-copy-script').disabled=true; box.innerHTML=`<div class="gh-row gh-bad"><i></i><em class="gh-n"></em><div><b>Could not run the checks</b><pre>${esc(res.output||'')}</pre></div></div>`; return; }
   const checks=ghDoctor.checks||[];
   count.textContent=`Checks · ${checks.filter(c=>c.status!=='bad').length} of ${checks.length} ready`;
-  box.innerHTML=checks.map(c=>{
+  box.innerHTML=checks.map((c,i)=>{
     const f=c.fix||{};
-    const fix=f.cmd?`<code>${esc(f.cmd)}</code><button type="button" class="btn" data-gh-copy="${escAttr(f.cmd)}">Copy</button>`
-      :/^https:\/\//.test(f.url||'')?`<a href="${escAttr(f.url)}" target="_blank" rel="noopener">${esc(f.url)} ↗</a>`:'';
-    return `<div class="gh-row gh-${escAttr(c.status)}" data-check="${escAttr(c.id)}"><i></i><div><b>${esc(c.title)}</b><span>${esc(c.detail||'')}</span></div><div class="gh-fix">${fix}</div></div>`;
+    const fix=f.cmd?`<code>${esc(f.cmd)}</code><button type="button" class="btn primary" data-gh-copy="${escAttr(f.cmd)}">Copy</button>`
+      :/^https:\/\//.test(f.url||'')?`<a href="${escAttr(f.url)}" target="_blank" rel="noopener">${esc(f.url)} \u2197</a>`:'';
+    // numbered like the steps below; the fix sits under the text so a long command never squeezes the title
+    return `<div class="gh-row gh-${escAttr(c.status)}" data-check="${escAttr(c.id)}"><i></i><em class="gh-n">${i+1}.</em><div><b>${esc(c.title)}</b><span>${esc(c.detail||'')}</span>${fix?`<div class="gh-fix">${fix}</div>`:''}</div></div>`;
   }).join('');
   const cloud=ghDoctor.cloud||{};
   document.getElementById('fac-gh-copy-domains').disabled=!(cloud.domains||[]).length;
