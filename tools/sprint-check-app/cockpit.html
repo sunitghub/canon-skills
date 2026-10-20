@@ -152,17 +152,28 @@
               <div class="gh-head"><span class="setting-d fac-proj" id="fac-gh-proj"></span><select id="fac-gh-project" aria-label="Project"></select></div>
               <div class="gh-card">
                 <div class="setting-k">GitHub workflow &middot; works today, needs only <code>gh</code></div>
-                <p class="setting-d gh-lede">A ticket goes to your repo as an issue (&#9654; Start &rsaquo; GitHub &middot; new issue in the worktree picker, <code>tkt send-issue</code>), or an issue labelled <code>canon</code> comes in as a ticket (Sync from GitHub, <code>tkt sync-issues</code>). A Claude cloud session works it on your subscription. The issue tells the session to work on a new branch, push it and open a PR, and never to push <code>main</code> or force-push: a private repo on a free GitHub plan cannot enforce that with a branch rule, so this text is the only guard. After it exports, the session stops; it never merges. Its results come back with Import results (<code>tkt import-results</code>) and the PR lands with Check &amp; merge (<code>tkt merge-pr</code>).</p>
+                <ol class="gh-steps">
+                  <li><b>Send.</b> A ticket goes to your repo as an issue (&#9654; Start &rsaquo; GitHub &middot; new issue in the worktree picker, <code>tkt send-issue</code>), or an issue labelled <code>canon</code> comes in as a ticket (Sync from GitHub, <code>tkt sync-issues</code>).</li>
+                  <li><b>Work.</b> A Claude cloud session works it on your subscription: it works on a new branch, pushes it and opens a PR.</li>
+                  <li><b>Guard.</b> The issue tells the session never to push <code>main</code> or force-push. A private repo on a free GitHub plan cannot enforce that with a branch rule, so this text is the only guard.</li>
+                  <li><b>Return.</b> After it exports, the session stops; it never merges. Its results come back with Import results (<code>tkt import-results</code>).</li>
+                  <li><b>Merge.</b> The PR lands with Check &amp; merge (<code>tkt merge-pr</code>).</li>
+                </ol>
               </div>
               <div class="gh-card">
                 <div class="setting-k" id="fac-gh-count">Checks</div>
                 <div class="setting-d">Canon never stores a GitHub token or logs you in. It runs <code>gh</code> as you, reads the answers, and tells you the command to run yourself.</div>
                 <div id="fac-gh-checks"></div>
-                <div class="gh-actions"><button type="button" class="btn" id="fac-gh-recheck">Check again</button></div>
+                <div class="gh-actions"><button type="button" class="btn primary" id="fac-gh-recheck">Check again</button></div>
               </div>
               <div class="gh-card" id="fac-intake">
                 <div class="setting-k">Intake &middot; issues become tickets</div>
-                <div class="setting-d">Press Sync from GitHub on the board (<code>tkt sync-issues</code>) to make a ticket of each open issue on origin that carries the label below. Sync only reads GitHub and creates local tickets, and a preview comes first: the label admits an issue but does not vouch for text edited after it was labelled.</div>
+                <ol class="gh-steps">
+                  <li><b>Label</b> an open issue on origin with the label below.</li>
+                  <li><b>Sync.</b> Press Sync from GitHub on the board (<code>tkt sync-issues</code>). A preview comes first.</li>
+                  <li><b>Tickets.</b> Each labelled issue that no ticket links to yet becomes a local ticket. Sync only reads GitHub.</li>
+                </ol>
+                <div class="setting-d">The label admits an issue but does not vouch for text edited after it was labelled: read the preview.</div>
                 <dl class="fac-kv">
                   <dt>Label</dt><dd><code>canon</code> &middot; admits an issue as a ticket</dd>
                   <dt>Repository</dt><dd id="fac-in-repo">&mdash;</dd>
@@ -170,17 +181,18 @@
                   <dt>Waiting</dt><dd id="fac-in-wait">&mdash;</dd>
                 </dl>
                 <div class="setting-d">A different flag belongs to the planned Agentic factory: <code>factory: true</code> on a ticket means run the line on it. <code>canon</code> only makes a ticket.</div>
-                <div class="gh-actions"><button type="button" class="btn" id="fac-in-board">Sync from GitHub is on the board &rsaquo;</button></div>
+                <div class="gh-actions"><button type="button" class="btn primary" id="fac-in-board">Sync from GitHub is on the board &rsaquo;</button></div>
               </div>
               <div class="gh-card">
                 <div class="setting-k">Cloud environment &middot; set up once, in Claude</div>
                 <ol class="gh-steps">
                   <li><b>Create the environment.</b> In Claude (desktop &rsaquo; Code, or claude.ai/code): New session &rsaquo; Choose environment &rsaquo; Cloud. Name it <code>canon</code>.</li>
-                  <li><b>Network access: Custom</b>, and tick <i>Also include default list of common package managers</i>. <button type="button" class="btn" id="fac-gh-copy-domains">Copy domains</button><div class="gh-chips" id="fac-gh-domains"></div></li>
-                  <li><b>Setup script</b>: installs canon's latest verified release, the Go version it pins, its commands and both gate agents. <button type="button" class="btn" id="fac-gh-copy-script">Copy setup script</button></li>
+                  <li><b>Network access: Custom</b>, and tick <i>Also include default list of common package managers</i>. <button type="button" class="btn primary" id="fac-gh-copy-domains">Copy domains</button><div class="gh-chips" id="fac-gh-domains"></div></li>
+                  <li><b>Setup script</b>: installs canon's latest verified release, the Go version it pins, its commands and both gate agents. <button type="button" class="btn primary" id="fac-gh-copy-script">Copy setup script</button></li>
                   <li><b>Secrets:</b> none.</li>
                 </ol>
-                <div class="setting-d">A recipe, not a check: canon cannot see your Claude environments. Full recipe: <code>docs/setup.md</code> &rsaquo; Claude cloud sessions.</div>
+                <div class="setting-d">A recipe, not a check: canon cannot see your Claude environments.</div>
+                <div class="setting-d">Full recipe: <code>docs/setup.md</code> &rsaquo; Claude cloud sessions.</div>
               </div>
             </div>
             <div class="gh-wrap" id="fac-line" role="tabpanel" aria-labelledby="fac-tab-line" hidden>

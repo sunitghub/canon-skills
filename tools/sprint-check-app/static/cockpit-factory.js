@@ -54,7 +54,7 @@ function ghPickProject(){
   sel.innerHTML=projects.map(p=>`<option value="${escAttr(p.id)}">${esc(p.name)}</option>`).join('');
   if(projects.some(p=>p.id===want)) sel.value=want;
   const p=projects.find(x=>x.id===sel.value);
-  document.getElementById('fac-gh-proj').innerHTML=p?`Project <b>${esc(p.name)}</b> · <code>${esc(p.path)}</code> · these settings apply to this project only`:'No project registered.';
+  document.getElementById('fac-gh-proj').innerHTML=p?`Project <b>${esc(p.name)}</b> · <code>${esc(p.path)}</code><span class="fac-proj-note">These settings apply to this project only.</span>`:'No project registered.';
   return sel.value;
 }
 async function ghLoad(force){

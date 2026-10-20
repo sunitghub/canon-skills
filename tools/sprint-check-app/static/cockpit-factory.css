@@ -8,6 +8,7 @@
   .fac-planned{margin-left:6px;font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--border-hover);border-radius:999px;padding:1px 7px;color:var(--text-muted)}
   .fac-proj{flex:1;min-width:0}
   .fac-proj b{color:var(--text)}
+  .fac-proj-note{display:block;margin-top:2px}
   .fac-proj code{font-family:'JetBrains Mono','Fira Code',ui-monospace,monospace;font-size:11.5px}
   .fac-kv{display:grid;grid-template-columns:96px minmax(0,1fr);gap:6px 14px;margin:2px 0;padding-left:12px;border-left:3px solid var(--accent);font-size:12.5px}
   .fac-kv dt{color:var(--text-muted)}
@@ -19,8 +20,7 @@
   .gh-wrap{margin-bottom:16px;display:flex;flex-direction:column;gap:10px}
   .gh-head{display:flex;align-items:center;gap:10px}
   .gh-head select{font:inherit;font-size:12.5px;color:var(--text);background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:4px 8px}
-  .gh-lede{margin:0;max-width:80ch}
-  .gh-lede code,.gh-card code{font-family:'JetBrains Mono','Fira Code',ui-monospace,monospace;font-size:11.5px;color:var(--accent)}
+  .gh-card code{font-family:'JetBrains Mono','Fira Code',ui-monospace,monospace;font-size:11.5px;color:var(--accent)}
   .gh-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
   .gh-row{display:grid;grid-template-columns:10px minmax(0,1fr) auto;gap:10px;align-items:start;padding:6px 0;border-top:1px solid var(--border-muted)}
   .gh-row:first-child{border-top:0}
@@ -35,7 +35,8 @@
   .gh-actions{display:flex;justify-content:flex-start}
   .gh-steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px;color:var(--text-body);font-size:12.5px}
   .gh-steps b{color:var(--text)}
-  .gh-steps .btn{margin-left:6px}
+  .gh-steps .btn{display:flex;width:fit-content;margin:6px 0 0}
+  .gh-card .gh-steps{max-width:80ch}
   .gh-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
   .gh-chips code{border:1px solid var(--border);border-radius:6px;padding:1px 6px}
   @media (max-width:640px){.gh-row{grid-template-columns:10px minmax(0,1fr)}.gh-fix{grid-column:2;justify-content:flex-start}}

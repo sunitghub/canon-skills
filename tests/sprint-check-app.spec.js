@@ -15082,6 +15082,8 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     release();
     const setup = page.locator('#ck-worktree .ck-gh-setup');
     await expect(setup).toContainText('GitHub · set up first (2 of 3 ready)');
+    await expect(setup.locator('.ck-worktree-held-why')).toHaveText('open Factory › GitHub');   // t-9641
+    await expect(setup).toHaveAttribute('title', 'Opens Factory › GitHub, which lists what to fix');
     await expect(page.locator('#ck-worktree [data-github]')).toHaveCount(0);
     await setup.click();   // a standalone board has no shell to open Factory: it says what to run instead
     await expect(page.locator('#drop-toast')).toContainText('tkt github-doctor');
@@ -15272,7 +15274,8 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect.poll(() => page.evaluate(() => window.__copied.at(-1))).toBe('#!/bin/bash\nset -e\necho setup\n');
     await page.locator('#fac-gh-copy-domains').click();
     await expect.poll(() => page.evaluate(() => window.__copied.at(-1))).toBe('getcanon.dev\ngithub.com');
-    await expect(page.locator('#fac-gh')).toContainText('never to push main or force-push: a private repo on a free GitHub plan cannot enforce that with a branch rule, so this text is the only guard');
+    await expect(page.locator('#fac-gh')).toContainText('A private repo on a free GitHub plan cannot enforce that with a branch rule, so this text is the only guard.');
+    await expect(page.locator('#fac-gh-proj .fac-proj-note')).toHaveText('These settings apply to this project only.');
 
     // Reopening Factory runs gh again only on Check again, never for a project already read this load.
     // The reopen's fetch (if any) is sent before Check again's, so once Check again has rendered both are counted.
