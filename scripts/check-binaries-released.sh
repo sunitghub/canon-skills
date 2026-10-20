@@ -52,6 +52,5 @@ sprint-check|sprint-check-darwin-amd64|sprint-check|sprint-check-darwin-amd64
 sprint-check|sprint-check-linux-amd64|sprint-check|sprint-check-linux-amd64
 sprint-check|sprint-check-linux-arm64|sprint-check|sprint-check-linux-arm64
 sprint-check|sprint-check-windows-amd64|sprint-check|sprint-check-windows-amd64.exe
-sprint-headless-json|sprint-headless-json-windows-amd64|sprint-headless-json|sprint-headless-json-windows-amd64.exe
 LIST
 exit "$bad"

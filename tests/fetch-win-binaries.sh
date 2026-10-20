@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# fetch-win-binaries (t-9383): on Windows (Git Bash) tools/fetch-daemon.sh puts the three exes at tools/*-win.exe, each only after
+# fetch-win-binaries (t-9383): on Windows (Git Bash) tools/fetch-daemon.sh puts the daemon and board exes at tools/*-win.exe, each only after
 # its SHA-256 equals the committed manifest line, and never touches an exe that is already there when something fails.
 # Everything runs in a throwaway repo with stub curl/uname; each "exe" is a script that leaves a marker if it is ever executed.
 set -euo pipefail
@@ -13,15 +13,15 @@ ident=(-c user.email=t@example.com -c user.name=test)
 refute_contains() { [[ "$1" != *"$2"* ]] || fail "expected output NOT to contain '$2'; got: $1"; }
 
 # t-8020: the daemon and the board are one module (tools/canon-go); tools/src-key.sh names each binary's key
-R="$WORK/repo"; M="$R/tools/canon-go"; mkdir -p "$R/tools/sprint-headless-json-go" "$M/cmd/cockpit-daemon" "$M/cmd/sprint-check" "$M/internal/daemon" "$M/internal/board" "$M/internal/common"
+R="$WORK/repo"; M="$R/tools/canon-go"; mkdir -p "$M/cmd/cockpit-daemon" "$M/cmd/sprint-check" "$M/internal/daemon" "$M/internal/board" "$M/internal/common"
 cp "$ROOT/tools/fetch-daemon.sh" "$ROOT/tools/src-key.sh" "$R/tools/"
 for d in cmd/cockpit-daemon cmd/sprint-check internal/daemon internal/board internal/common; do printf 'package x\n// %s\n' "$d" > "$M/$d/x.go"; done
-printf 'package main\n' > "$R/tools/sprint-headless-json-go/main.go"
 printf 'module x\n\ngo 1.26.5\n' > "$M/go.mod"; : > "$M/go.sum"; echo 0.3.0 > "$R/VERSION"
 git -C "$R" init -q -b main; git -C "$R" "${ident[@]}" add -A; git -C "$R" "${ident[@]}" commit -qm seed
 printf '/tools/*-win.exe\n' >> "$R/.git/info/exclude"   # as the repo's own .gitignore does: a fetched exe is not a dirty tree
 srckey() { bash -c 'source "$1/tools/src-key.sh"; canon_src_key "$1" "$2"' _ "$R" "$1" | cut -c1-12; }
-k_d="$(srckey cockpit-daemon)"; k_b="$(srckey sprint-check)"; k_h="$(srckey sprint-headless-json)"
+k_d="$(srckey cockpit-daemon)"; k_b="$(srckey sprint-check)"
+k_h=381471fa46a0   # t-b62a: the retired headless helper's last key; real manifests keep its lines, and the fetch must ignore them
 MARK="$WORK/executed"
 D="$R/tools/cockpit-daemon-win.exe"; B="$R/tools/sprint-check-win.exe"; H="$R/tools/sprint-headless-json-win.exe"
 
@@ -49,7 +49,7 @@ EOF2
 chmod +x "$STUBS"/*
 export STUB_LOG="$WORK/curl.log" STUB_ASSETS="$A"
 
-manifest() { # writes the manifest the install carries (all three good lines unless overridden by args)
+manifest() { # writes the manifest the install carries (good lines unless overridden by args, plus the retired helper's)
   printf '# header\n%s windows-amd64 %s\n%s sprint-check-windows-amd64 %s\n%s sprint-headless-json-windows-amd64 %s\n' \
     "$k_d" "${1:-$sd}" "$k_b" "${2:-$sb}" "$k_h" "${3:-$sh_}" > "$R/tools/cockpit-daemon.sha256"
 }
@@ -60,31 +60,30 @@ run_fetch() { # [script-dir]; sets out, rc
 clean() { rm -f "$D" "$B" "$H" "$R"/tools/.*-win.exe.*; rm -rf "$D" "$B" "$H"; unset STUB_CURL_RC || true; }
 no_leftovers() { [[ -z "$(ls -A "$R/tools" | grep -E '^\..*-win\.exe\.' || true)" ]] || fail "temp file left behind: $(ls -A "$R/tools")"; }
 
-# 1. all three arrive at their fixed paths, verified, named by key and target, never executed
+# 1. both arrive at their fixed paths, verified, named by key and target, never executed; the retired helper is not fetched
 clean; manifest; run_fetch
 [[ "$rc" == 0 ]] || fail "good fetch failed ($rc): $out"
-cmp -s "$D" "$A/cockpit-daemon-windows-amd64.exe" && cmp -s "$B" "$A/sprint-check-windows-amd64.exe" && cmp -s "$H" "$A/sprint-headless-json-windows-amd64.exe" || fail "installed files differ from the assets"
+cmp -s "$D" "$A/cockpit-daemon-windows-amd64.exe" && cmp -s "$B" "$A/sprint-check-windows-amd64.exe" || fail "installed files differ from the assets"
+[[ ! -e "$H" ]] || fail "the retired headless helper was fetched"
 assert_contains "$out" "fetched windows-amd64 $k_d, sha256 verified"
 assert_contains "$out" "fetched sprint-check-windows-amd64 $k_b, sha256 verified"
-assert_contains "$out" "fetched sprint-headless-json-windows-amd64 $k_h, sha256 verified"
 log="$(cat "$STUB_LOG")"
 assert_contains "$log" "releases/download/cockpit-daemon-$k_d/cockpit-daemon-windows-amd64.exe"
 assert_contains "$log" "releases/download/sprint-check-$k_b/sprint-check-windows-amd64.exe"
-assert_contains "$log" "releases/download/sprint-headless-json-$k_h/sprint-headless-json-windows-amd64.exe"
+refute_contains "$log" "sprint-headless-json"
 [[ ! -e "$MARK" ]] || fail "the fetch executed a binary"; no_leftovers
 # 2. second run: current by hash, nothing downloaded
 run_fetch; [[ "$rc" == 0 ]]; [[ ! -s "$STUB_LOG" ]] || fail "current binaries were downloaded again"; assert_contains "$out" "up to date"
 
-# 3. bad downloads for each component: existing exe byte-identical, no leftovers; the board and daemon are required (exit 1), the helper only warns (exit 0)
+# 3. bad downloads for each component: existing exe byte-identical, no leftovers; both are required (exit 1)
 printf '<html>404</html>' > "$WORK/html"; head -c 20 "$A/sprint-check-windows-amd64.exe" > "$WORK/trunc"; : > "$WORK/empty"
 mk "$WORK/wrong" other
-for comp in daemon board headless; do
+for comp in daemon board; do
   for bad in html trunc empty wrong; do
     clean; manifest
     case "$comp" in
       daemon) f="$A/cockpit-daemon-windows-amd64.exe"; dest="$D"; want=1 ;;
       board) f="$A/sprint-check-windows-amd64.exe"; dest="$B"; want=1 ;;
-      headless) f="$A/sprint-headless-json-windows-amd64.exe"; dest="$H"; want=0 ;;
     esac
     cp "$f" "$WORK/keep"; cp "$WORK/$bad" "$f"                       # the release now serves a bad file
     printf 'OLD-%s' "$comp" > "$dest"; before="$(cksum < "$dest")"      # an exe is already in place
@@ -134,7 +133,7 @@ git -C "$R" reset -q --hard HEAD~1
 clean; manifest; mkdir -p "$B"; run_fetch; [[ "$rc" == 1 ]] || fail "directory destination must fail: $out"; refute_contains "$out" "fetched sprint-check-windows-amd64"; no_leftovers; rm -rf "$B"
 
 # 7b. the source-build fallback (Go present, download unavailable): a failing build leaves no temp file in tools/ (git would call the clone
-# dirty and canon update would refuse) and keeps an existing exe; a working build installs all three. Stub go: -o <file> gets a marker script.
+# dirty and canon update would refuse) and keeps an existing exe; a working build installs both. Stub go: -o <file> gets a marker script.
 mkdir -p "$WORK/gostub"
 cat > "$WORK/gostub/go" <<'EOF2'
 #!/bin/sh
@@ -152,7 +151,7 @@ dirty="$(git -C "$R" status --porcelain tools | grep -v 'tools/cockpit-daemon.sh
 [[ -z "$dirty" ]] || fail "a failed build left files that git sees: $dirty"
 unset STUB_GO_FAIL; clean; manifest; export STUB_CURL_RC=22; run_fetch_go
 [[ "$rc" == 0 ]] || fail "working source builds must provide the exes (got $rc): $out"
-[[ -f "$D" && -f "$B" && -f "$H" ]] || fail "a working build did not install all three exes"; assert_contains "$out" "built from source"; no_leftovers
+[[ -f "$D" && -f "$B" && ! -e "$H" ]] || fail "a working build did not install the two exes (and only those)"; assert_contains "$out" "built from source"; no_leftovers
 unset STUB_CURL_RC STUB_GO_FAIL; clean
 
 # 8. malformed manifests, a few hundred random lines: never an install, never a crash
@@ -178,4 +177,4 @@ PY
   no_leftovers
 done
 
-echo "fetch-win-binaries: ok (three exes verified into place, kept on every failure, zip install by newest line, unreleased source refused, 200 malformed manifests)"
+echo "fetch-win-binaries: ok (both exes verified into place, the retired helper ignored, kept on every failure, zip install by newest line, unreleased source refused, 200 malformed manifests)"

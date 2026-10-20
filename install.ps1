@@ -162,7 +162,7 @@ function Install-CanonFiles($Dest) {
   }
 }
 
-# t-9383: the board, daemon and headless-helper exes are release assets, not part of the zip. tools\fetch-daemon.sh (run by Git Bash,
+# t-9383: the board and daemon exes are release assets, not part of the zip. tools\fetch-daemon.sh (run by Git Bash,
 # which canon needs anyway) downloads each one and moves it into place only after its SHA-256 matches tools\cockpit-daemon.sha256;
 # a failure leaves any exe that is already there untouched. Returns $false only when the board or the daemon exe is still missing.
 function Install-CanonBinaries($Dest) {
@@ -177,9 +177,6 @@ function Install-CanonBinaries($Dest) {
   }
   $board = Test-Path (Join-Path $Dest "tools\sprint-check-win.exe")
   $daemon = Test-Path (Join-Path $Dest "tools\cockpit-daemon-win.exe")
-  if (-not (Test-Path (Join-Path $Dest "tools\sprint-headless-json-win.exe"))) {
-    Write-Warning "sprint-headless-json-win.exe was not fetched; headless runs (sprint-headless) need it. Run canon update to retry."
-  }
   if (-not ($board -and $daemon)) {
     Write-Host ""
     Write-Host "canon needs its board and daemon programs and could not get them (see above). Check your internet connection, then run this again:"

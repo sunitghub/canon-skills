@@ -19,7 +19,7 @@ while IFS= read -r l; do [[ -e "$ROOT/$l" ]] || fail "test.sh --list names $l, w
 # the dry pass reaches every invocation in the file: the .sh labels are the tests=( array, the .js labels every node line, plus the Go three
 assert_eq "$(awk '/^tests=\(/{f=1;next} /^\)/{f=0} f' "$ROOT/scripts/test.sh" | grep -c 'tests/')" "$(printf '%s\n' "$LIST" | grep -c '\.sh$')"
 assert_eq "$(grep -c '^  suite tests/[^ ]*\.js node "\$ROOT/tests/' "$ROOT/scripts/test.sh")" "$(printf '%s\n' "$LIST" | grep -c '\.js$')"
-for g in tools/canon-go/internal/board tools/sprint-headless-json-go tools/canon-go/internal/daemon; do assert_contains "$LIST" "$g"; done
+for g in tools/canon-go/internal/board tools/canon-go/internal/daemon; do assert_contains "$LIST" "$g"; done
 assert_contains "$LIST" "tests/test-sh-runner.sh"
 set +e; out="$(bash "$ROOT/scripts/test.sh" --help 2>&1)"; rc=$?; set -e
 assert_eq 0 "$rc"; assert_contains "$out" "usage: scripts/test.sh [--list]"
@@ -66,12 +66,12 @@ P="$WORK/pass"; runner_copy "$P" tests/a.sh tests/b.sh
 echo 'echo a-ran' > "$P/tests/a.sh"; echo 'echo b-ran' > "$P/tests/b.sh"
 set +e; out="$(PATH="$WORK/bin" bash "$P/scripts/test.sh" 2>&1)"; rc=$?; set -e
 assert_eq 0 "$rc"; assert_contains "$out" "a-ran"; assert_contains "$out" "b-ran"; assert_contains "$out" "All tests passed."
-for skipped_line in "==> tools/canon-go/internal/board skipped (go absent)" "==> tools/sprint-headless-json-go skipped (go absent)" \
+for skipped_line in "==> tools/canon-go/internal/board skipped (go absent)" \
   "==> tools/canon-go/internal/daemon skipped (go absent)" "==> tests/sprint-check-gherkin.js skipped (node absent)"; do
   assert_eq 1 "$(printf '%s\n' "$out" | grep -cxF "$skipped_line")"
 done
 set +e; out="$(PATH="$WORK/bin" bash "$P/scripts/test.sh" --list 2>&1)"; rc=$?; set -e
-assert_eq 0 "$rc"; assert_eq 17 "$(printf '%s\n' "$out" | wc -l | tr -d ' ')"; [[ "$out" != *"==>"* ]] || fail "--list printed a run line: $out"
+assert_eq 0 "$rc"; assert_eq 16 "$(printf '%s\n' "$out" | wc -l | tr -d ' ')"; [[ "$out" != *"==>"* ]] || fail "--list printed a run line: $out"
 
 # --- t-abb1: the parallel run -----------------------------------------------------------------------------------------------------
 X="$WORK/par"; runner_copy "$X" tests/a.sh tests/b.sh tests/c.sh tests/d.sh tests/e.sh tests/f.sh

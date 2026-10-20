@@ -185,12 +185,11 @@ done
 [[ "$vend" -ge 3 ]] || fail "expected the three vendored xterm files, saw $vend"
 
 # 11. release-daemon.sh --dry-run: builds four targets, prints the manifest lines, publishes and writes nothing; refuses a dirty daemon dir
-RR="$WORK/rel"; RM="$RR/tools/canon-go"; mkdir -p "$RR/scripts" "$RR/tools/sprint-headless-json-go" "$RM/cmd/cockpit-daemon" "$RM/cmd/sprint-check" "$RM/internal/daemon" "$RM/internal/board" "$RM/internal/common"
+RR="$WORK/rel"; RM="$RR/tools/canon-go"; mkdir -p "$RR/scripts" "$RM/cmd/cockpit-daemon" "$RM/cmd/sprint-check" "$RM/internal/daemon" "$RM/internal/board" "$RM/internal/common"
 cp "$R/VERSION" "$RR/"; cp "$ROOT/scripts/release-daemon.sh" "$RR/scripts/"; cp "$ROOT/tools/src-key.sh" "$RR/tools/"; cp "$ROOT/THIRD-PARTY-NOTICES.md" "$RR/"
 printf 'module x\n\ngo 1.26.5\n\ntoolchain %s\n' "$(go env GOVERSION)" > "$RM/go.mod"; : > "$RM/go.sum"   # t-7efe: the release script builds with the go.mod toolchain line and refuses without one
-for d in "$RM/cmd/cockpit-daemon" "$RM/cmd/sprint-check" "$RR/tools/sprint-headless-json-go"; do printf 'package main\n\nvar version, commit string\n\nfunc main() {}\n' > "$d/main.go"; done
+for d in "$RM/cmd/cockpit-daemon" "$RM/cmd/sprint-check"; do printf 'package main\n\nvar version, commit string\n\nfunc main() {}\n' > "$d/main.go"; done
 for d in internal/daemon internal/board internal/common; do printf 'package x\n' > "$RM/$d/x.go"; done
-go env GOVERSION > "$RR/tools/sprint-headless-json-go/GO_TOOLCHAIN"   # t-9383: the headless helper's pin (the local Go here, so no download)
 printf '# header\n' > "$RR/tools/cockpit-daemon.sha256"
 git -C "$RR" init -q -b main; git -C "$RR" "${ident[@]}" add -A; git -C "$RR" "${ident[@]}" commit -qm seed
 rkey="$(srckey "$RR" cockpit-daemon | cut -c1-12)"
@@ -201,7 +200,8 @@ EOF
 chmod +x "$WORK/gostub/gh"; : > "$STUB_LOG"
 out="$(PATH="$WORK/gostub:$STUBS:$BASEPATH" bash "$RR/scripts/release-daemon.sh" --dry-run 2>&1)" || fail "release dry run failed: $out"
 for t in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64; do assert_contains "$out" "$rkey $t "; done
-for t in windows-amd64 sprint-check-windows-amd64 sprint-headless-json-windows-amd64; do assert_contains "$out" " $t "; done   # t-9383
+for t in windows-amd64 sprint-check-windows-amd64; do assert_contains "$out" " $t "; done   # t-9383
+[[ "$out" != *sprint-headless-json* ]] || fail "the retired headless helper is still released: $out"   # t-b62a
 for t in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64; do assert_contains "$out" " sprint-check-$t "; done   # t-15d8
 assert_contains "$out" "dry run"; [[ ! -s "$STUB_LOG" ]] || fail "dry run called gh"; assert_eq "# header" "$(cat "$RR/tools/cockpit-daemon.sha256")"
 echo dirty >> "$RM/internal/daemon/x.go"
