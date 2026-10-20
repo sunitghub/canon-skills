@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-19
+
+The board and the cockpit daemon now build from one Go module, `tools/canon-go`, and each is still released on its own, so a fix to one no longer re-releases the other. Update with `canon update`, then press **Restart Daemon** in Admin (both binaries changed since 0.13.0; a running daemon stays on the old version). Claude cloud environments: copy the setup script in again (see below).
+
 ### Changed
 - The board and the cockpit daemon are one Go module, `tools/canon-go` (one `go.mod`, one pinned Go), still built as two programs with the same names and places. Each is released under its own key, so a board-only fix no longer re-releases the daemon (`t-8020`). **Claude cloud environments:** copy the setup script from `docs/setup.md` (or Admin › GitHub) into your environment again; it now reads the Go pin from `tools/canon-go/go.mod`.
 
