@@ -99,6 +99,9 @@ type config struct {
 	registryFile      string        // t-5a4b: projects.json path override (tests); default $CANON_HOME|~/.canon /cockpit/projects.json
 	changesHome       string        // t-5a4b: override of canon's per-user cockpit dir (tests); default $CANON_HOME|~/.canon /cockpit
 	saveQuiesce       time.Duration // t-2c9e: after a watched state file changes, conclude "saved" once writes quiesce for this long (default 2s) — mtime-bump != save-complete, so this debounce avoids killing mid-multi-file-write
+	resumeGrace       time.Duration // t-67a6: copilot --resume grace window (default copilotResumeGraceWindow); tests shorten it
+	exitDrain         time.Duration // t-67a6: waitExit's drain grace (default exitDrainGrace); tests shorten it
+	scratchReapWait   time.Duration // t-67a6: Discard/Restore's wait for the killed agent (default endScratchReapWait); tests shorten it
 }
 
 type server struct {
@@ -203,6 +206,15 @@ func newServer(cfg config) *server {
 	}
 	if cfg.saveQuiesce <= 0 {
 		cfg.saveQuiesce = 2 * time.Second
+	}
+	if cfg.resumeGrace <= 0 {
+		cfg.resumeGrace = copilotResumeGraceWindow
+	}
+	if cfg.exitDrain <= 0 {
+		cfg.exitDrain = exitDrainGrace
+	}
+	if cfg.scratchReapWait <= 0 {
+		cfg.scratchReapWait = endScratchReapWait
 	}
 	s := &server{cfg: cfg, sessions: map[string]*session{}}
 	s.startIdleReaper()
@@ -995,7 +1007,7 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	s.snapshotAdd(se)
 	se.bg.Add(2)
 	go func() { defer se.bg.Done(); se.readLoop() }()
-	go func() { defer se.bg.Done(); se.waitExit(c.Wait, exitDrainGrace) }() // reaps the child (no zombie) and ends readLoop on Windows
+	go func() { defer se.bg.Done(); se.waitExit(c.Wait, s.cfg.exitDrain) }() // reaps the child (no zombie) and ends readLoop on Windows
 	return se, nil
 }
 
@@ -1771,7 +1783,7 @@ func (s *server) restoreAndReport(w http.ResponseWriter, root, id string) {
 var killProc = killProcess
 
 // endScratchReapWait bounds how long Discard waits for the killed agent to be gone.
-var endScratchReapWait = 5 * time.Second
+const endScratchReapWait = 5 * time.Second
 
 // discardChanges undoes staged and unstaged edits to tracked files and deletes untracked
 // files in dir. Never -x: ignored files (build output, .env) stay.
@@ -1828,12 +1840,12 @@ func (s *server) handleEndScratch(w http.ResponseWriter, r *http.Request, se *se
 			select {
 			case <-se.reaped:
 				gone = true
-			case <-time.After(endScratchReapWait):
+			case <-time.After(s.cfg.scratchReapWait):
 			}
 		}
 		if !gone {
 			reason, errMsg = "Discard skipped (the agent did not stop in time), kept", "the agent did not stop in time — nothing was discarded"
-			se.debugf("discard skipped: agent not reaped within %s", endScratchReapWait)
+			se.debugf("discard skipped: agent not reaped within %s", s.cfg.scratchReapWait)
 		} else if err := discardChanges(cwd); err != nil {
 			reason, errMsg = "Discard failed ("+err.Error()+"), kept", err.Error()
 			se.debugf("discard failed: %v", err)
@@ -1847,7 +1859,7 @@ func (s *server) handleEndScratch(w http.ResponseWriter, r *http.Request, se *se
 			select {
 			case <-se.reaped:
 				gone = true
-			case <-time.After(endScratchReapWait):
+			case <-time.After(s.cfg.scratchReapWait):
 			}
 		}
 		switch {
@@ -2028,10 +2040,12 @@ func (s *server) killSession(se *session) {
 	se.closePty()
 	se.markDone()
 	se.cleanup()
+	// t-5a4b: what changed, kept for the board. t-67a6: counted in s.recording before the entry
+	// goes, so whoever sees the session gone and waits on s.recording waits for this record too.
+	s.recordChangesAsync(se)
 	s.mu.Lock()
 	delete(s.sessions, se.sid)
 	s.mu.Unlock()
-	s.recordChangesAsync(se) // t-5a4b: what changed, kept for the board
 	if !s.shuttingDown.Load() {
 		s.snapshotRemove(se.sid) // ended on purpose (Save & End, Kill, reap, End, adopt)
 	}
@@ -4195,7 +4209,7 @@ const (
 // spawn path.
 func (s *server) recoverCopilotResumeIfFailed(se *session, ticket, cwd, projectRoot string) (*session, error) {
 	se.debugf("resume-check started")
-	deadline := time.Now().Add(copilotResumeGraceWindow)
+	deadline := time.Now().Add(s.cfg.resumeGrace)
 	for time.Now().Before(deadline) {
 		se.mu.Lock()
 		exited := se.exited

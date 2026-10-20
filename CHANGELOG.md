@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Changed
+- The cockpit daemon's Go tests run in about a third of the time (`t-67a6`: 101 s to 36 s on Linux), so every close and merge waits less. The slow tests run in parallel, shorten the Copilot resume grace, exit drain and scratch reap wait through new per-daemon settings, and poll instead of sleeping. The daemon behaves the same: every default is unchanged, so no restart is needed.
+
 ## [0.17.0] - 2026-10-20
 
 The event log now covers close gates and Cockpit sessions too: when a gate starts, how it ends, why a close was refused, and when an agent session needs you, ends or is saved (docs/plugins.md). Update with `canon update`. Both the board and the daemon changed: press **Restart Daemon** in Admin (Save & End running agent sessions first: a restart ends them), then stop the running board (Ctrl+C in the terminal running `canon`, or close its window) and run `canon` again.

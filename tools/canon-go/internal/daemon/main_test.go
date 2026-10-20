@@ -113,7 +113,7 @@ func killAllSessions(s *server) {
 		se.killed = true
 		se.mu.Unlock()
 		killProcess(se.cmd)
-		se.pty.Close()
+		se.closePty() // once-guarded: waitExit may be closing it too (go-pty's Close is not concurrency-safe)
 		se.markDone()
 		se.cleanup()
 	}
@@ -726,6 +726,7 @@ func waitForSessionExited(t *testing.T, base, sid, token string, timeout time.Du
 }
 
 func TestClosedPTYReturns410(t *testing.T) {
+	t.Parallel()
 	bin := fakeSprintQuickExit(t)
 	_, base := newTestServer(t, bin)
 
@@ -761,6 +762,7 @@ func TestClosedPTYReturns410(t *testing.T) {
 }
 
 func TestSessionReapedAfterNaturalExitTTL(t *testing.T) {
+	t.Parallel()
 	bin := fakeSprintQuickExit(t)
 	root := t.TempDir()
 	seedTicketDir(t, root, "t-ab12")
@@ -1268,6 +1270,7 @@ func TestResolveGateModelNoPlan(t *testing.T) {
 // rejected one does not). Value-level semantics are covered exhaustively by the
 // fixture tests above; these are the end-to-end paths through spawn().
 func TestSpawnModelFlag(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, tierLine string
 		wantLeading    []string // leading argv elements before --session-id, if any
@@ -1697,7 +1700,7 @@ func TestHandleStartRecoversBeforeExitIsObserved(t *testing.T) {
 
 // fakeCopilotDeadResumeDelayedOutput simulates the live-measured Windows gap
 // (t-a4ed): a dead --resume attempt whose failure text doesn't land until
-// partway through the grace window — writes nothing for 3s (matching the real
+// partway through the grace window — writes nothing for half of it (matching the real
 // live capture, where a dead resume spent its first ~2s producing only a
 // TUI-init escape burst before the actual error text appeared around 2.9s in,
 // likely a real network round-trip to GitHub's backend) before printing the
@@ -1711,7 +1714,7 @@ func fakeCopilotDeadResumeDelayedOutput(t *testing.T) (bin string) {
 	script := "#!/bin/sh\n" +
 		"case \"$*\" in\n" +
 		"  *--resume=*)\n" +
-		"    sleep 3\n" +
+		"    sleep 0.5\n" +
 		"    printf 'Error: No session, task, or name matched .\\n'\n" +
 		"    exit 1\n" +
 		"    ;;\n" +
@@ -1734,7 +1737,8 @@ func TestHandleStartRecoversFromDelayedDeadCopilotResume(t *testing.T) {
 	copilotHome := t.TempDir()
 	t.Setenv("COPILOT_HOME", copilotHome)
 	t.Setenv("COCKPIT_COPILOT_BIN", bin)
-	s := newServer(config{token: bootTok, projectRoot: root, stateDir: t.TempDir()})
+	// t-67a6: window and delay scaled together from 6s/3s, so the text still lands halfway through the window.
+	s := newServer(config{token: bootTok, projectRoot: root, stateDir: t.TempDir(), resumeGrace: time.Second})
 	ts := httptest.NewServer(s.handler())
 	t.Cleanup(ts.Close)
 	t.Cleanup(func() { killAllSessions(s) })
@@ -1768,7 +1772,7 @@ func TestHandleStartDoesNotRetryHealthyCopilotResume(t *testing.T) {
 	copilotHome := t.TempDir()
 	t.Setenv("COPILOT_HOME", copilotHome)
 	t.Setenv("COCKPIT_COPILOT_BIN", bin)
-	s := newServer(config{token: bootTok, projectRoot: root, stateDir: t.TempDir()})
+	s := newServer(config{token: bootTok, projectRoot: root, stateDir: t.TempDir(), resumeGrace: time.Second}) // t-67a6: scaled from the 6s default
 	ts := httptest.NewServer(s.handler())
 	t.Cleanup(ts.Close)
 	t.Cleanup(func() { killAllSessions(s) })
@@ -1789,8 +1793,8 @@ func TestHandleStartDoesNotRetryHealthyCopilotResume(t *testing.T) {
 	// A healthy resume never exits, so the grace-check must run the FULL
 	// window before giving up and returning it — proves the wait actually
 	// happened (not skipped), while still returning the original session.
-	if elapsed < copilotResumeGraceWindow {
-		t.Fatalf("expected the full %v grace window for a still-running resume, took %v", copilotResumeGraceWindow, elapsed)
+	if elapsed < s.cfg.resumeGrace {
+		t.Fatalf("expected the full %v grace window for a still-running resume, took %v", s.cfg.resumeGrace, elapsed)
 	}
 	got, err := os.ReadFile(idPath)
 	if err != nil {
@@ -2103,6 +2107,7 @@ func fakeAgentThatIgnores(t *testing.T) (bin string) {
 }
 
 func TestIdleReapSparesNeedsYouSession(t *testing.T) {
+	t.Parallel()
 	bin := fakeAgentThatIgnores(t)
 	root := t.TempDir()
 	seedTicketDir(t, root, "t-ab12")
@@ -2136,6 +2141,7 @@ func TestIdleReapSparesNeedsYouSession(t *testing.T) {
 }
 
 func TestIdleReapKillsIdleSessionAfterSaveMarker(t *testing.T) {
+	t.Parallel()
 	bin := fakeAgentThatSaves(t)
 	root := t.TempDir()
 	seedTicketDir(t, root, "t-ab12")
@@ -2171,6 +2177,7 @@ func TestIdleReapKillsIdleSessionAfterSaveMarker(t *testing.T) {
 }
 
 func TestIdleReapFallbackKillsWhenMarkerNeverAppears(t *testing.T) {
+	t.Parallel()
 	bin := fakeAgentThatIgnores(t)
 	root := t.TempDir()
 	seedTicketDir(t, root, "t-ab12")
@@ -2229,6 +2236,7 @@ func fakeAgentThatTouches(t *testing.T) (bin string) {
 // well before the fallback. saveFallback is set large so a pass can only come
 // from file-settle, not the fallback timer.
 func TestSaveAndEndFileSettleEndsSession(t *testing.T) {
+	t.Parallel()
 	bin := fakeAgentThatTouches(t)
 	root := t.TempDir()
 	seedTicketDir(t, root, "t-ab12")
@@ -2506,6 +2514,7 @@ func TestSaveAndEndDoesNotFalsePositiveOnStaleLoginMention(t *testing.T) {
 // proving the scoping guard is real, not decorative. saveFallback is small
 // (2s) so the test finishes quickly, ending via the normal fallback path.
 func TestSaveAndEndDoesNotShortCircuitNonCopilotAgent(t *testing.T) {
+	t.Parallel()
 	bin := fakeAgentStuckUnauthenticated(t)
 	root := t.TempDir()
 	seedTicketDir(t, root, "t-ab12")
@@ -2637,6 +2646,7 @@ func fakeAgentThatWritesBurst(t *testing.T) (bin string) {
 // debounce must keep the session ALIVE (a mid-write kill would truncate a
 // multi-file save). The session may end only AFTER writes quiesce.
 func TestSaveAndEndDebounceHoldsThroughContinuedWrites(t *testing.T) {
+	t.Parallel()
 	bin := fakeAgentThatWritesBurst(t)
 	root := t.TempDir()
 	seedTicketDir(t, root, "t-ab12")
@@ -2724,6 +2734,7 @@ func fakeAgentWithStaleMarker(t *testing.T) (bin string) {
 }
 
 func TestIdleReapIgnoresMarkerPredatingTheSavePrompt(t *testing.T) {
+	t.Parallel()
 	bin := fakeAgentWithStaleMarker(t)
 	root := t.TempDir()
 	seedTicketDir(t, root, "t-ab12")
@@ -2784,6 +2795,7 @@ func TestIdleReapIgnoresMarkerPredatingTheSavePrompt(t *testing.T) {
 // original implementation only checked activity BEFORE starting the
 // sequence, never during the wait for the save marker/fallback).
 func TestIdleReapAbortsWhenHumanReturnsMidSave(t *testing.T) {
+	t.Parallel()
 	bin := fakeAgentThatIgnores(t)
 	root := t.TempDir()
 	seedTicketDir(t, root, "t-ab12")
@@ -3652,6 +3664,7 @@ func TestEnvDurationOr(t *testing.T) {
 // proving the tiering actually keys off cwd, not just leaving the timeout
 // unconditionally longer for everyone.
 func TestIdleReapUsesShorterTimeoutForWorktreeThanMainCheckout(t *testing.T) {
+	t.Parallel()
 	bin := fakeAgentThatIgnores(t)
 	root := t.TempDir()
 	seedTicketDir(t, root, "t-ab12")
@@ -5127,6 +5140,19 @@ func postSaveAndEnd(t *testing.T, base, sid, tok string) (int, string) {
 	return r.StatusCode, string(b)
 }
 
+// waitBytes polls recv until the fake agent has received something, or d passes (t-67a6: a
+// fixed sleep then a read). A negative check gets twice saveAndEnd's 300ms text-then-Enter gap.
+func waitBytes(recv string, d time.Duration) []byte {
+	deadline := time.Now().Add(d)
+	for {
+		b, _ := os.ReadFile(recv)
+		if len(b) > 0 || !time.Now().Before(deadline) {
+			return b
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 func startMenuSession(t *testing.T, bin string, cfg config) (*server, *httptest.Server, string, string) {
 	t.Helper()
 	root := t.TempDir()
@@ -5147,23 +5173,41 @@ func startMenuSession(t *testing.T, bin string, cfg config) (*server, *httptest.
 	s.mu.Lock()
 	se := s.sessions[out.Session]
 	s.mu.Unlock()
-	// Wait for the WHOLE fixture: the size check alone (>500) passed while the menu's footer,
+	// Wait for the WHOLE fixture: a size check alone (>500) passed while the menu's footer,
 	// the last thing drawn, was still in flight, so a check racing it saw no menu and Save & End
-	// ran its full 30s fallback (an intermittent failure under load). Stable = unchanged for 300ms.
+	// ran its full 30s fallback (an intermittent failure under load). t-67a6: the PTY only adds
+	// bytes (\n -> \r\n), so the buffer holding at least the fixture's length means all of it
+	// landed; the old >500 floor also never held for the 309-byte command menu (a 5s wait).
+	want := menuFixtureLen(t, bin)
 	deadline := time.Now().Add(5 * time.Second)
-	last, stableSince := -1, time.Now()
 	for time.Now().Before(deadline) {
 		se.mu.Lock()
 		n := len(se.buf)
 		se.mu.Unlock()
-		if n != last {
-			last, stableSince = n, time.Now()
-		} else if n > 500 && time.Since(stableSince) > 300*time.Millisecond {
+		if n >= want {
 			break
 		}
-		time.Sleep(20 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 	}
 	return s, ts, out.Session, out.Token
+}
+
+// menuFixtureLen is the byte size of the fixture a fakeAgentOnMenu script replays.
+func menuFixtureLen(t *testing.T, bin string) int {
+	t.Helper()
+	script, err := os.ReadFile(bin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile(`(?m)^cat '([^']+)'$`).FindSubmatch(script)
+	if m == nil {
+		t.Fatalf("no fixture in %s", bin)
+	}
+	fi, err := os.Stat(string(m[1]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return int(fi.Size())
 }
 
 // The safety property: with a real approval menu on screen, Save & End answers 409 and
@@ -5189,8 +5233,7 @@ func TestSaveAndEndNeverTypesIntoCopilotMenu(t *testing.T) {
 			if status != tc.wantStatus {
 				t.Fatalf("save-and-end status = %d (%s), want %d", status, body, tc.wantStatus)
 			}
-			time.Sleep(1500 * time.Millisecond) // long enough for the prompt (300ms gap + Enter) to land if it were sent
-			b, _ := os.ReadFile(recv)
+			b := waitBytes(recv, 600*time.Millisecond) // long enough for the prompt (300ms gap + Enter) to land if it were sent
 			if got := len(b) > 0; got != tc.wantBytes {
 				t.Fatalf("PTY received %d bytes (%q), wantBytes=%v", len(b), b, tc.wantBytes)
 			}
@@ -5259,8 +5302,7 @@ func TestIdleReaperSkipsCopilotOnMenu(t *testing.T) {
 					break
 				}
 			}
-			time.Sleep(700 * time.Millisecond) // a wrongly-sent prompt would have landed by now
-			b, _ := os.ReadFile(recv)
+			b := waitBytes(recv, 600*time.Millisecond) // a wrongly-sent prompt would have landed by now
 			if got := len(b) > 0; got != tc.reaped {
 				t.Fatalf("PTY received %d bytes, reaped=%v want %v", len(b), got, tc.reaped)
 			}
@@ -5295,8 +5337,7 @@ func saveAndEndRefusesMenu(t *testing.T, fixture string) {
 	se.reaping = true // as the caller sets it before launching saveAndEnd
 	se.mu.Unlock()
 	s.saveAndEnd(se)
-	time.Sleep(1200 * time.Millisecond)
-	if b, _ := os.ReadFile(recv); len(b) != 0 {
+	if b := waitBytes(recv, 600*time.Millisecond); len(b) != 0 {
 		t.Fatalf("saveAndEnd wrote %d bytes into a pending menu: %q", len(b), b)
 	}
 	se.mu.Lock()
@@ -5700,6 +5741,7 @@ func TestIdleTimeoutForUsesSessionProject(t *testing.T) {
 // t-824e: a session the hook marked awaiting-input (finished, at the prompt) is reaped on the normal
 // timer; only needs-you is exempt (TestIdleReapSparesNeedsYouSession).
 func TestIdleReapReapsAwaitingInputSession(t *testing.T) {
+	t.Parallel()
 	bin := fakeAgentThatSaves(t)
 	root := t.TempDir()
 	seedTicketDir(t, root, "t-ab12")
@@ -6045,6 +6087,7 @@ func TestScratchRefusesWorktreeCwd(t *testing.T) {
 // t-47f1: an idle scratch session is ended with no save prompt. t-86fe: one with
 // uncommitted changes is ended too, its changes kept and noted in HANDOFF.md.
 func TestIdleReapScratch(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name  string
 		dirty bool
@@ -6100,6 +6143,7 @@ func TestIdleReapScratch(t *testing.T) {
 // t-e162: later scratch sessions get their own scratch/<n> worktree; it is removed on
 // exit only when nothing was done in it.
 func TestScratchWorktrees(t *testing.T) {
+	t.Parallel()
 	bin, _, _ := fakeSprint(t)
 	root := t.TempDir()
 	initGitRepo(t, root)
@@ -6279,6 +6323,7 @@ func TestScratchTitle(t *testing.T) {
 }
 
 func TestScratchPromote(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	recv := filepath.Join(dir, "received.bin")
 	bin := filepath.Join(dir, "fake-agent.sh")
@@ -6400,6 +6445,7 @@ func TestScratchAdopt(t *testing.T) {
 }
 
 func TestScratchAdoptKeepsWorktree(t *testing.T) {
+	t.Parallel()
 	bin, _, _ := fakeSprint(t)
 	root := t.TempDir()
 	initGitRepo(t, root)
@@ -6717,9 +6763,9 @@ func TestScratchEndGuardDiscardWaitsForAgent(t *testing.T) {
 	s.mu.Lock()
 	se := s.sessions[st.Session]
 	s.mu.Unlock()
-	realKill, realWait := killProc, endScratchReapWait
-	killProc, endScratchReapWait = func(*pty.Cmd) {}, 300*time.Millisecond
-	t.Cleanup(func() { killProc, endScratchReapWait = realKill, realWait; killProcess(se.cmd) })
+	realKill := killProc
+	killProc, s.cfg.scratchReapWait = func(*pty.Cmd) {}, 300*time.Millisecond
+	t.Cleanup(func() { killProc = realKill; killProcess(se.cmd) })
 	os.WriteFile(filepath.Join(root, "a.txt"), []byte("edited\n"), 0o644)
 	code, body := postSession(t, base, st, "end-scratch", `{"discard":true}`)
 	if code != http.StatusOK || !strings.Contains(body, "did not stop") {
@@ -6831,6 +6877,7 @@ func TestRotateInterruptedMergesAndExpires(t *testing.T) {
 }
 
 func TestSessionSnapshotAgentExitRemoves(t *testing.T) {
+	t.Parallel()
 	root, base, s := endGuardProject(t)
 	bin := filepath.Join(t.TempDir(), "quick-agent.sh")
 	os.WriteFile(bin, []byte("#!/bin/sh\nsleep 0.3\nexit 0\n"), 0o755)
@@ -7087,7 +7134,7 @@ func TestNonGitSessionTracksChangesForEveryAgentKind(t *testing.T) {
 				reg := filepath.Join(t.TempDir(), "projects.json")
 				writeRegistry(t, reg, root)
 				home := t.TempDir()
-				s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: t.TempDir(), stateDir: t.TempDir(), registryFile: reg, changesHome: home})
+				s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: t.TempDir(), stateDir: t.TempDir(), registryFile: reg, changesHome: home, exitDrain: 100 * time.Millisecond})
 				ts := httptest.NewServer(s.handler())
 				t.Cleanup(ts.Close)
 				t.Cleanup(func() { killAllSessions(s) })
@@ -7259,6 +7306,7 @@ func TestSharedFlagOnlyForSessionsSharingAFolderWithoutGit(t *testing.T) {
 // The idle reaper judges a folder without git by the snapshot: it ends the session, and what the
 // agent changed is noted (not thrown away).
 func TestIdleReapScratchWithoutGit(t *testing.T) {
+	t.Parallel()
 	bin := writingAgent(t, false)
 	root := t.TempDir()
 	reg := filepath.Join(t.TempDir(), "projects.json")
@@ -7674,7 +7722,7 @@ func TestCopilotResumesAWorktreeBoundTicketWithASession(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeCopilotSessionState(t, home, sid)
-	s := newServer(config{token: bootTok, projectRoot: root, stateDir: t.TempDir()})
+	s := newServer(config{token: bootTok, projectRoot: root, stateDir: t.TempDir(), resumeGrace: 50 * time.Millisecond}) // the grace window isn't under test
 	ts := httptest.NewServer(s.handler())
 	t.Cleanup(ts.Close)
 	t.Cleanup(func() { killAllSessions(s) })
@@ -7923,6 +7971,7 @@ func TestReapNowRefusesACopilotMenu(t *testing.T) {
 // Reap now on a ticket session saves first: with an agent that never saves it waits (the save fallback), and with
 // one that saves it ends after the marker — it is not a Kill.
 func TestReapNowSavesThenEnds(t *testing.T) {
+	t.Parallel()
 	s, base := newEndServer(t, fakeAgentThatIgnores(t), time.Hour)
 	sid, _ := startTicket(t, base)
 	makeIdle(t, s, sid)
@@ -8057,6 +8106,7 @@ func TestRelayPageIsGuardedUncachedAndCarriesTheToken(t *testing.T) {
 // (se.reaping stays false). TestIdleReapSparesNeedsYouSession can't see this: its 300 ms check ends long before the
 // save fallback would kill the session.
 func TestIdleReaperNeverStartsOnANeedsYouSession(t *testing.T) {
+	t.Parallel()
 	bin := fakeAgentThatIgnores(t)
 	root := t.TempDir()
 	seedTicketDir(t, root, "t-ab12")
@@ -8082,6 +8132,7 @@ func TestIdleReaperNeverStartsOnANeedsYouSession(t *testing.T) {
 // t-3c9a break-it: one end, one note. Concurrent Kills, or a Kill while Reap now (or the idle reaper) is already
 // ending a scratch session, must not write the HANDOFF note again.
 func TestKillNotesAScratchSessionOnce(t *testing.T) {
+	t.Parallel()
 	root, base, s := endGuardProject(t)
 	count := func(id string) int {
 		b, _ := os.ReadFile(filepath.Join(root, "HANDOFF.md"))
