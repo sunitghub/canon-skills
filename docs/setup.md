@@ -78,9 +78,10 @@ Prune stale entries freely — git history preserves everything.
 You can hand a ticket to a Claude cloud session (Claude desktop's Code tab, or claude.ai/code) that runs on your
 Claude subscription, with no API key. The ticket goes to your repo as a GitHub issue; the session works on it there.
 
-Before the first send, the board's Admin › GitHub (or `tkt github-doctor`) checks that gh is installed and signed in and
-that origin is a GitHub repo, and has Copy buttons for the recipe below. Issues labelled `canon` come in with the board's
-header button **Sync from GitHub** (`tkt sync-issues`).
+Before the first send, the Cockpit's Factory › GitHub (or `tkt github-doctor`) checks that gh is installed and signed in
+and that origin is a GitHub repo, and has Copy buttons for the recipe below. Issues labelled `canon` come in with the
+board's header button **Sync from GitHub** (`tkt sync-issues`), which stays greyed out until those checks pass. Factory ›
+GitHub's Intake box shows the issues waiting (`tkt sync-issues --dry-run --json`) and when the project last synced.
 
 **Once: create a "canon" environment.** In a new session, open *Choose environment*, then *Cloud*:
 
@@ -172,7 +173,7 @@ header button **Sync from GitHub** (`tkt sync-issues`).
 On the board these are one button per card stage: Open issue, Open PR, Import results, Check & merge, then the push. A
 session that pushed its branch without opening a PR shows "branch, no PR" and an **Open PR** button (`tkt open-pr <id>`),
 which opens it with `Fixes #N` after you confirm. The worktree picker's "GitHub · new issue" row reads the readiness
-checks first and, when something is missing, reads "GitHub · set up first (n of m ready)" and opens Admin › GitHub.
+checks first and, when something is missing, reads "GitHub · set up first (n of m ready)" and opens Factory › GitHub.
 
 **Letting Claude Code run the merge.** In auto mode, Claude Code blocks a merge as "Merge Without Review" even after
 you said yes in chat. To let it run `merge-pr` for you, allow the command once, with `/permissions` › Allow or in the

@@ -4,6 +4,7 @@ import { cockpitConfirm, esc, escAttr, openHelp, toast } from './cockpit-core.js
 import { GIT_ICON, SCRATCH_ICON, renderSessionSurfaces, startScratch, startSessionPoll } from './cockpit-sessions.js';
 import { showView } from './cockpit-views.js';
 import { fillCardBranchUpkeep, openUpkeepFor } from './cockpit-upkeep.js';
+import { fillCardFactory, openFactoryGithub } from './cockpit-factory.js';
 import { closeTab, openProject, openTabs, restoreTabs, updateActiveCount } from './cockpit-tabs.js';
 
 // t-96c3: the "important" onboarding skills the card offers to register, in
@@ -49,6 +50,7 @@ export async function load(){
             <div class="metarow" data-f="stopped-row" hidden><span class="k">Stopped</span><span class="v" data-f="stopped"></span></div>
             <div class="metarow"><span class="k">Branch</span><span class="v mono" data-f="branch">…</span></div>
             <div class="metarow upk-row" data-upkeep="${escAttr(p.id)}" title="Open this project's Upkeep"><span class="k">Upkeep</span><span class="v" data-f="upkeep">…</span></div>
+            <div class="metarow fac-row" data-factory="${escAttr(p.id)}" title="Open this project's Factory"><span class="k">Factory</span><span class="v" data-f="factory">…</span></div>
           </div>
           <div class="card-divider"></div>
           <div class="cardbottom">
@@ -69,6 +71,7 @@ export async function load(){
   grid.querySelectorAll('.scratchbtn').forEach(b=>b.addEventListener('click',()=>startScratch(b.dataset.scratch)));
   grid.querySelectorAll('.go').forEach(b=>b.addEventListener('click',()=>openProject(b.dataset.open,b.dataset.name,{nudge:true})));
   grid.querySelectorAll('.upk-row').forEach(r=>r.addEventListener('click',()=>openUpkeepFor(r.dataset.upkeep)));
+  grid.querySelectorAll('.fac-row').forEach(r=>r.addEventListener('click',()=>openFactoryGithub(r.dataset.factory)));
   grid.querySelectorAll('.regskill').forEach(b=>b.addEventListener('click',()=>registerSkill(b.dataset.id,b.dataset.name,b.dataset.path,b.dataset.skill,b)));
   grid.querySelectorAll('.gitstate').forEach(b=>b.addEventListener('click',()=>{ if(b.classList.contains('is-off')) trackChanges(b.dataset.id,b.dataset.name,b); }));
   projects.forEach(p=>fillCardStats(p.id));
@@ -79,6 +82,7 @@ async function fillCardStats(id){
   const el=document.querySelector('.meta[data-stats="'+(window.CSS&&CSS.escape?CSS.escape(id):id)+'"]');
   if(!el) return;
   fillCardBranchUpkeep(id,el);
+  fillCardFactory(id,el);
   const up=el.querySelector('[data-f="updated"]'), ct=el.querySelector('[data-f="count"]'), sk=el.querySelector('[data-f="skills"]');
   try{
     const r=await fetch('/api/project-stats?project='+encodeURIComponent(id));

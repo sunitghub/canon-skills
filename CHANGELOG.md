@@ -6,6 +6,13 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Added
+- A **Factory** page in the Cockpit sidebar, between Projects and Admin (`t-9641`). It is per project, with two tabs. **GitHub** holds the GitHub setup that used to be in Admin (the checks and the Cloud environment recipe), plus an **Intake** box: the `canon` label, the repo, when the project last synced and which labelled issues are waiting. **Agentic factory** says the line is planned and off. Each Projects card gains a Factory row (`GitHub ready · agentic off`, `GitHub needs setup`, or `Not set up`) that opens the page for that project.
+- `tkt sync-issues --dry-run --json` prints the dry run as one JSON object (`repo`, `label`, `waiting`, `skipped`). A completed `tkt sync-issues` writes a `github.synced` event with the number of tickets it made.
+
+### Changed
+- The board's **Sync from GitHub** button is greyed out until the GitHub checks pass (no GitHub origin included). Its tooltip points to Factory › GitHub. The worktree picker's "GitHub · set up first" row opens Factory › GitHub instead of Admin.
+
 ### Fixed
 - `mutant-sweep` no longer lets a mutant write into your real home (`t-eb40`): each mutant's test now runs with `HOME` pinned inside its temp copy too, with the Go and Playwright caches passed through. After every sweep a canary scans the real `~/.canon` for the sweep's temp path; a hit prints `mutant-sweep: LEAK <file>` and exits 4. Found when a mutant wrote 11 fixture events into `~/.canon/events` (`t-f182`).
 

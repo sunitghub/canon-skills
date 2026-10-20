@@ -326,7 +326,22 @@ function ensureDoctor() {
     const checks = res && res.ok && res.doctor && Array.isArray(res.doctor.checks) ? res.doctor.checks : null;
     const n = checks ? checks.filter(c => c && c.status !== 'bad').length : 0, m = checks ? checks.length : 0;
     doctor = { state: !m ? 'failed' : n === m ? 'ready' : 'bad', n, m };   // no checks at all: the read failed
-  }, () => { doctor = { state: 'failed', n: 0, m: 0 }; }).then(swapPlaceRow);
+  }, () => { doctor = { state: 'failed', n: 0, m: 0 }; }).then(() => { swapPlaceRow(); paintSyncButton(); });
+  paintSyncButton();
+}
+// t-9641: Sync from GitHub is greyed out until the checks pass (no GitHub origin included); the tooltip says where to fix
+// it. The doctor runs once per board load (ensureDoctor at init), and again only when the picker asks after the retry
+// window: never on a timer.
+let syncTitle = '';
+function paintSyncButton() {
+  const b = document.getElementById('btn-gh-sync');
+  if (!b) return;
+  if (!syncTitle) syncTitle = b.title;
+  const ready = doctor.state === 'ready';
+  b.disabled = !ready;
+  b.title = ready ? syncTitle
+    : doctor.state === 'unknown' || doctor.state === 'pending' ? 'Checking GitHub…'
+    : 'Set up GitHub first: Cockpit › Factory › GitHub';
 }
 // The answer replaces only the "checking…" row, never the whole picker: a redraw could land after a GitHub pick and
 // rebuild the send panel mid-send.
@@ -336,16 +351,16 @@ function swapPlaceRow() {
   el.outerHTML = githubPlaceRowHTML(place.tab);
   bindPlaceRow();
 }
-function openAdminGithub() {
+function openFactoryGithub() {
   if (window.parent === window) { showToast('GitHub is not set up for this project: run tkt github-doctor in a terminal'); return; }
-  window.parent.postMessage({ source: 'canon-board', type: 'open-admin-github', tab: SHELL_TAB }, location.origin);
+  window.parent.postMessage({ source: 'canon-board', type: 'open-factory-github', tab: SHELL_TAB }, location.origin);
 }
 function bindPlaceRow() {
   const el = document.getElementById('ck-gh-place');
   if (!el || !place) return;
   if (el.classList.contains('ck-gh-setup')) {
-    el.addEventListener('click', openAdminGithub);
-    el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openAdminGithub(); } });
+    el.addEventListener('click', openFactoryGithub);
+    el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openFactoryGithub(); } });
   } else if (el.dataset.github) {
     const onPick = place.onPick;
     el.addEventListener('click', () => onPick(el));
@@ -364,7 +379,7 @@ function githubPlaceRowHTML(tab) {
   }
   if (doctor.state === 'bad' || doctor.state === 'failed') {
     const what = doctor.state === 'bad' ? `set up first (${doctor.n} of ${doctor.m} ready)` : 'set up first (the checks could not run)';
-    return `<div class="ck-worktree-held-row ck-gh-setup" id="ck-gh-place" role="button" tabindex="0" title="Opens Admin › GitHub, which lists what to fix"><span class="ck-worktree-held-branch">GitHub · ${what}</span><span class="ck-worktree-held-why">open Admin › GitHub</span></div>`;
+    return `<div class="ck-worktree-held-row ck-gh-setup" id="ck-gh-place" role="button" tabindex="0" title="Opens Factory › GitHub, which lists what to fix"><span class="ck-worktree-held-branch">GitHub · ${what}</span><span class="ck-worktree-held-why">open Factory › GitHub</span></div>`;
   }
   return `<div class="ck-worktree-row ck-gh-row${tab.ghPick ? ' selected' : ''}" id="ck-gh-place" data-github="new" title="Sends this ticket as an issue to your repo; a Claude cloud session works it and opens a PR">
       <div class="ck-worktree-radio"></div>
@@ -506,6 +521,7 @@ function dialogKeys(e) {
 export function initGithub() {
   document.addEventListener('keydown', dialogKeys, true);
   document.getElementById('btn-gh-sync').addEventListener('click', syncFromGithub);
+  ensureDoctor();   // t-9641: the Sync button's state
   if (!pollTimer) pollTimer = setInterval(() => pollGithub(false), POLL_MS);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) pollGithub(false); });
 }

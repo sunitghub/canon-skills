@@ -11,7 +11,7 @@
 }
 .card-gh-takeback:hover, .card-gh-takeback:focus-visible { color: var(--text); }
 .ck-gh-busy { opacity: .7; }
-/* t-24b1: "GitHub · set up first" is a link to Admin › GitHub, not a held place */
+/* t-24b1: "GitHub · set up first" is a link to Factory › GitHub (t-9641), not a held place */
 .ck-gh-setup { cursor: pointer; border-style: solid; }
 .ck-gh-setup .ck-worktree-held-why { color: var(--accent); }
 .ck-gh-setup:hover, .ck-gh-setup:focus-visible { border-color: var(--accent); outline: none; }
@@ -51,3 +51,5 @@ html[data-theme="light"] .ck-gh-box .ck-gh-note p { color: var(--th-warn-ink, #9
 .gh-dialog-box { max-width: min(760px, 92vw); }
     /* t-90a3: a narrow board (a split pane) shows only the icon, so the header's last buttons stay inside it */
     @media (max-width: 760px) { .gh-sync-lbl { display: none; } }
+/* t-9641: Sync from GitHub greyed out until the GitHub checks pass (its title says where to fix it) */
+#btn-gh-sync:disabled, #btn-gh-sync:disabled:hover { opacity: .45; cursor: not-allowed; background: transparent; color: var(--text-muted); }

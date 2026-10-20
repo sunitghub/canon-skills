@@ -238,10 +238,10 @@ export function activateTab(id){
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   const v=document.getElementById('view-'+id) || document.getElementById('view-projects');
   v.classList.add('active');
-  // activating any tab means we're in the Projects workspace, not Admin/Upkeep (t-5dc2, t-7ae6)
-  const np=document.getElementById('nav-projects'), na=document.getElementById('nav-admin');
+  // activating any tab means we're in the Projects workspace, not Admin/Factory/Upkeep (t-5dc2, t-7ae6, t-9641)
+  const np=document.getElementById('nav-projects');
   if(np) np.classList.add('active');
-  if(na) na.classList.remove('active');
+  ['nav-admin','nav-factory'].forEach(n=>{ const a=document.getElementById(n); if(a) a.classList.remove('active'); });
   renderTabs();
   saveTabs();
   applySplit();

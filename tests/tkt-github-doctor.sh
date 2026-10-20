@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tkt github-doctor (t-90a3): the readiness checks Admin › GitHub and the worktree picker's GitHub row (t-24b1) render.
+# tkt github-doctor (t-90a3): the readiness checks Factory › GitHub (t-9641) and the worktree picker's GitHub row (t-24b1) render.
 # Each gh / origin / test-command state gives its status and fix, the cloud recipe is docs/setup.md's, and nothing changes.
 set -euo pipefail
 

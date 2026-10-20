@@ -1,0 +1,45 @@
+/* t-9641: the Cockpit shell's Factory page (per project). GitHub: the doctor's checks, Intake and the cloud recipe,
+   moved from Admin (t-90a3). */
+  #view-factory{padding:24px 30px}
+  .fac-wrap{max-width:760px}
+  .gh-wrap[hidden]{display:none}
+  .fac-tabs .mt-tab{background:transparent;border:0;border-bottom:2px solid transparent;font-family:inherit}
+  .fac-tabs .mt-tab.active{border-bottom-color:var(--accent)}
+  .fac-planned{margin-left:6px;font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--border-hover);border-radius:999px;padding:1px 7px;color:var(--text-muted)}
+  .fac-proj{flex:1;min-width:0}
+  .fac-proj b{color:var(--text)}
+  .fac-proj code{font-family:'JetBrains Mono','Fira Code',ui-monospace,monospace;font-size:11.5px}
+  .fac-kv{display:grid;grid-template-columns:96px minmax(0,1fr);gap:6px 14px;margin:2px 0;padding-left:12px;border-left:3px solid var(--accent);font-size:12.5px}
+  .fac-kv dt{color:var(--text-muted)}
+  .fac-kv dd{margin:0;color:var(--text);overflow-wrap:anywhere}
+  .fac-kv code,.fac-off code{font-family:'JetBrains Mono','Fira Code',ui-monospace,monospace;font-size:11.5px;color:var(--accent)}
+  .fac-wait{margin:4px 0 0;padding-left:18px}
+  .fac-off{font-size:12.5px;color:var(--text-body)}
+  .fac-off b{color:var(--text)}
+  .gh-wrap{margin-bottom:16px;display:flex;flex-direction:column;gap:10px}
+  .gh-head{display:flex;align-items:center;gap:10px}
+  .gh-head select{font:inherit;font-size:12.5px;color:var(--text);background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:4px 8px}
+  .gh-lede{margin:0;max-width:80ch}
+  .gh-lede code,.gh-card code{font-family:'JetBrains Mono','Fira Code',ui-monospace,monospace;font-size:11.5px;color:var(--accent)}
+  .gh-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+  .gh-row{display:grid;grid-template-columns:10px minmax(0,1fr) auto;gap:10px;align-items:start;padding:6px 0;border-top:1px solid var(--border-muted)}
+  .gh-row:first-child{border-top:0}
+  .gh-row>i{width:9px;height:9px;border-radius:50%;margin-top:5px;background:var(--col-done)}
+  .gh-row.gh-warn>i{background:var(--amber)}
+  .gh-row.gh-bad>i{background:var(--col-discarded)}
+  .gh-row b{display:block;color:var(--text);font-size:13px}
+  .gh-row span{color:var(--text-muted);font-size:12px}
+  .gh-row pre{margin:4px 0 0;white-space:pre-wrap;font-size:11.5px;color:var(--text-body)}
+  .gh-fix{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+  .gh-fix a{color:var(--accent);font-size:12px}
+  .gh-actions{display:flex;justify-content:flex-start}
+  .gh-steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px;color:var(--text-body);font-size:12.5px}
+  .gh-steps b{color:var(--text)}
+  .gh-steps .btn{margin-left:6px}
+  .gh-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+  .gh-chips code{border:1px solid var(--border);border-radius:6px;padding:1px 6px}
+  @media (max-width:640px){.gh-row{grid-template-columns:10px minmax(0,1fr)}.gh-fix{grid-column:2;justify-content:flex-start}}
+  /* the Projects card's Factory row, a link like Upkeep's */
+  .metarow.fac-row{cursor:pointer}
+  .metarow.fac-row:hover .v{text-decoration:underline}
+  .metarow.fac-row .v.muted{color:var(--text-muted);font-weight:400}
