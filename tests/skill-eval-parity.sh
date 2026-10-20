@@ -7,6 +7,7 @@
 # Not gated on jq for the /check comparison.
 
 set -euo pipefail
+export SPRINT_CHECK_NO_BROWSER=1   # the board binary runs here (skill-check); tests/no-browser-in-tests.sh matches its spelling
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/tests/helpers.sh"

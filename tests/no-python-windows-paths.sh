@@ -18,7 +18,7 @@ while IFS= read -r f; do
   case "$f" in
     *.sh|*.ps1|*.cmd) files+=("$f") ;;
     *.*) ;;
-    *) [ -x "$ROOT/$f" ] && head -c 2 "$ROOT/$f" | grep -q '#!' && files+=("$f") ;;
+    *) [ -x "$ROOT/$f" ] && [[ "$(head -c 2 "$ROOT/$f")" == '#!' ]] && files+=("$f") ;;
   esac
 done < <(git -C "$ROOT" ls-files tools scripts install.sh install.ps1 | grep -v '^tools/canon-go/')
 [ "${#files[@]}" -gt 40 ] || fail "no-python-windows-paths: only ${#files[@]} scripts found — the file list is broken"
@@ -30,14 +30,14 @@ count_python() {  # non-comment lines that invoke python3 / python / py -
 bad=0
 for f in "${files[@]}"; do
   n="$(count_python "$f")"
-  head -n 1 "$ROOT/$f" | grep -qE '^#!.*python' && n="$n (a Python script)"
+  [[ "$(head -n 1 "$ROOT/$f")" =~ ^\#!.*python ]] && n="$n (a Python script)"
   if [ "$n" != 0 ]; then
     echo "no-python-windows-paths: $f has $n line(s) that run Python: use the board binary's helpers (tools/platform-lib.sh board_helper_bin)" >&2
     bad=1
   fi
 done
 for f in tools/sprint-headless tools/sprint-headless-eval tools/skills/prompts.sh tools/platform-lib.sh; do   # the files t-b62a cleared
-  printf '%s\n' "${files[@]}" | grep -qx "$f" || fail "no-python-windows-paths: $f is not scanned"
+  grep -qx "$f" <<<"$(printf '%s\n' "${files[@]}")" || fail "no-python-windows-paths: $f is not scanned"
 done
 [ "$bad" -eq 0 ] || fail "python use in shipped scripts (see above)"
 
