@@ -17,6 +17,7 @@ use_fresh_board "$W/bin"
 # ~/.canon and write the user's own log. Set after the board is built (the Go build cache lives under HOME on macOS).
 mkdir -p "$W/userhome"
 export CANON_HOME="$W/home" HOME="$W/userhome" GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+unset CANON_TICKETS_DIR   # a stamp from a clone exports it (the real project's .tickets); these projects use their own
 EV="$CANON_HOME/events"
 TKT="$ROOT/tools/tkt"; SPRINT="$ROOT/tools/sprint"
 mkproj() { mkdir -p "$1/.tickets"; git -C "$1" init -q; git -C "$1" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init; }
