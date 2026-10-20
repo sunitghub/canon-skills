@@ -941,6 +941,7 @@ func TestNeedsYouStatus(t *testing.T) {
 		t.Fatalf("needs-you: want 204, got %d", got)
 	}
 	waitFor(t, buf, "status=needs-you", 3*time.Second)
+	waitEvent(t, out.Session, "session.needs_you", map[string]string{"ticket": "t-ab12"}) // t-8854: written by the move into needs-you itself
 
 	// A newly attached stream learns the pending status from the replay.
 	ctx2, cancel2 := context.WithCancel(context.Background())
@@ -962,6 +963,9 @@ func TestNeedsYouStatus(t *testing.T) {
 	// stream emits on attach, and so would pass even if input cleared nothing.
 	waitForAfter(t, buf, "status=needs-you", "status=running", 3*time.Second)
 	waitEvent(t, out.Session, "session.needs_you", map[string]string{"ticket": "t-ab12"}) // t-8854
+	if n := countEvents(out.Session, "session.needs_you"); n != 1 { // only the move into needs-you, never running
+		t.Errorf("%d session.needs_you events, want 1", n)
+	}
 }
 
 // waitForAfter waits for `want` to appear at some point after the first

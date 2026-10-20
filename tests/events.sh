@@ -201,6 +201,24 @@ assert_contains "$(event_line gate.rejected "$gid")" '"reason":"review_shape","r
 mkdir -p "$gt/evidence"; printf 'not a stamped log\n' > "$gt/evidence/x.log"
 (cd "$G" && "$SPRINT" check-evidence "$gid" >/dev/null 2>&1) || true
 assert_contains "$(event_line gate.rejected "$gid")" '"reason":"stale_evidence","role":"evaluator"'
+# run from a subfolder, each gate tool still names the project root; a snapshot outside any ticket emits nothing; a verdict
+# that is not one of the known words reads unknown; a non-numeric eval_fail_count counts as 0
+mkdir -p "$G/src/deep"
+(cd "$G/src/deep" && "$ROOT/tools/gate-snapshot.sh" pre "../../.tickets/$gid/gate-snapshot.txt" --role evaluator >/dev/null)
+assert_contains "$(event_line gate.started "$gid")" "\"project\":\"$G\""
+printf '# Review\n\n## Verdict\n\nMaybe\n' > "$gt/review-notes.md"
+(cd "$G/src/deep" && "$ROOT/tools/subagent-log.sh" --agent-id reviewer-y --agent-type reviewer --ticket "$gid" >/dev/null)
+assert_contains "$(event_line gate.finished "$gid")" '"verdict":"unknown"'; assert_contains "$(event_line gate.finished "$gid")" "\"project\":\"$G\""
+(cd "$G/src/deep" && "$SPRINT" check-review-notes "$gid" >/dev/null 2>&1) || true
+assert_contains "$(event_line gate.rejected "$gid")" "\"project\":\"$G\""
+(cd "$G/src/deep" && "$SPRINT" check-evidence "$gid" >/dev/null 2>&1) || true
+assert_contains "$(event_line gate.rejected "$gid")" '"reason":"stale_evidence"'; assert_contains "$(event_line gate.rejected "$gid")" "\"project\":\"$G\""
+n0="$(cat "$EV"/*.jsonl | grep -c '"kind":"gate.started"')"
+(cd "$G" && "$ROOT/tools/gate-snapshot.sh" pre "$W/loose-snapshot.txt" --role reviewer >/dev/null)
+assert_eq "$n0" "$(cat "$EV"/*.jsonl | grep -c '"kind":"gate.started"')"
+sed -i.bak 's/^eval_fail_count: 2$/eval_fail_count: lots/' "$gt/ticket.md"; rm -f "$gt/ticket.md.bak"
+(cd "$G" && "$ROOT/tools/gate-snapshot.sh" pre ".tickets/$gid/gate-snapshot.txt" --role reviewer >/dev/null)
+assert_contains "$(event_line gate.started "$gid")" '"attempt":"1"'
 n_before="$(cat "$EV"/*.jsonl | wc -l | tr -d ' ')"
 for tool in pre log review evidence; do
   case $tool in

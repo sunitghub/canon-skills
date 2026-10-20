@@ -56,3 +56,22 @@ func waitEvent(t *testing.T, session, kind string, want map[string]string) {
 		time.Sleep(50 * time.Millisecond)
 	}
 }
+
+// countEvents counts kind events for session (t-8854).
+func countEvents(session, kind string) int {
+	n := 0
+	files, _ := filepath.Glob(filepath.Join(os.Getenv("CANON_HOME"), "events", "*.jsonl"))
+	for _, f := range files {
+		b, _ := os.ReadFile(f)
+		for _, line := range strings.Split(string(b), "\n") {
+			var e struct {
+				Kind string
+				Data map[string]string
+			}
+			if json.Unmarshal([]byte(line), &e) == nil && e.Kind == kind && e.Data["session"] == session {
+				n++
+			}
+		}
+	}
+	return n
+}
