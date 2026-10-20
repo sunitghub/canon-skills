@@ -758,15 +758,15 @@ good_review "tools/sprint, tests/sprint.sh" "none — checked plan.md Files vs d
 grep -v '^Act On:' "$rn" > "$rn.tmp" && mv "$rn.tmp" "$rn"
 assert_contains "$(run_fail "$SPRINT" check-review-notes "$model_id")" 'no line for the "Act On" triage bucket'
 good_review "tools/sprint, tests/sprint.sh" "none — checked plan.md Files vs diff, plan.md:20"
-sed -i 's/^Act On: none$/Act On: tools\/sprint:12 — none of the callers check the exit code [severity: high · confidence: high]/' "$rn"
+sed -i.bak 's/^Act On: none$/Act On: tools\/sprint:12 — none of the callers check the exit code [severity: high · confidence: high]/' "$rn" && rm -f "$rn.bak"
 assert_contains "$(run_fail "$SPRINT" check-review-notes "$model_id")" 'the verdict is YES but `Act On:` lists a finding'
-sed -i 's/^YES$/**YES**/' "$rn"
+sed -i.bak 's/^YES$/**YES**/' "$rn" && rm -f "$rn.bak"
 assert_contains "$(run_fail "$SPRINT" check-review-notes "$model_id")" 'the verdict is YES but `Act On:` lists a finding'
-sed -i 's/^\*\*YES\*\*$/YES/' "$rn"
-sed -i 's/^YES$/NO/' "$rn"
+sed -i.bak 's/^\*\*YES\*\*$/YES/' "$rn" && rm -f "$rn.bak"
+sed -i.bak 's/^YES$/NO/' "$rn" && rm -f "$rn.bak"
 assert_contains "$("$SPRINT" check-review-notes "$model_id")" 'shape ok'
 good_review "tools/sprint, tests/sprint.sh" "none — checked plan.md Files vs diff, plan.md:20"
-sed -i 's/^YES$/NO/' "$rn"
+sed -i.bak 's/^YES$/NO/' "$rn" && rm -f "$rn.bak"
 assert_contains "$(run_fail "$SPRINT" check-review-notes "$model_id")" 'the verdict is NO but `Act On: none`'
 # a well-formed report passes; a missing one is refused
 good_review "tools/sprint, tests/sprint.sh" "none — checked plan.md Files vs diff, plan.md:20"
