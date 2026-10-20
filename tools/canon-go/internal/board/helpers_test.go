@@ -8,6 +8,20 @@ import (
 	"testing"
 )
 
+// TestMain pins CANON_HOME (t-f182): board code emits events into $CANON_HOME/events, and a test must never write the
+// developer's own log (an unpinned run once left eleven fixture events in ~/.canon/events). A test that needs its own
+// CANON_HOME still sets it with t.Setenv.
+func TestMain(m *testing.M) {
+	home, err := os.MkdirTemp("", "canon-home-")
+	if err != nil {
+		panic(err)
+	}
+	os.Setenv("CANON_HOME", home)
+	code := m.Run()
+	os.RemoveAll(home)
+	os.Exit(code)
+}
+
 // Protects tools/sprint-headless and tools/sprint-headless-eval: they read this line with cut (t-b62a; the
 // cases came from the retired tools/sprint-headless-json-go).
 func TestFormatHeadlessResult(t *testing.T) {

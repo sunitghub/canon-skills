@@ -1436,7 +1436,11 @@ func writeStatus(id, status string, root string) bool {
 
 // emitEvent records one event (t-f182) after the write it describes succeeded. Observer-only: the result is ignored.
 func emitEvent(kind, root string, data map[string]string) {
-	events.Emit(events.Home(), kind, "board", resolvedOrAbs(root), data)
+	abs, err := filepath.Abs(root) // a relative root ("." in tests) would resolve to itself
+	if err != nil {
+		abs = root
+	}
+	events.Emit(events.Home(), kind, "board", resolvedOrAbs(abs), data)
 }
 
 // emitStatusChanged records a status move, and ticket.closed as well when it moves to closed.
