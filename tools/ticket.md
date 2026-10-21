@@ -40,7 +40,7 @@ tkt cloud-env [--json]              # this project's Claude cloud environment re
 tkt merge-pr <id> [--pr N] [--test CMD] [--yes | --check]  # on your machine: check a cloud ticket's PR (evaluator passed on its head, own repo, mergeable, suite green on base + PR) and merge it after a y, then fast-forward the local base branch; --check reports readiness without running anything; progress shows while the tests run (CANON_PROGRESS_SECONDS without a terminal, default 30); a red run names the FAILED/FAIL lines and keeps the full log (path printed)
 tkt github-status <id> [--json]      # where a ticket sent to GitHub stands: sent, branch (pushed, no PR), pr-open, results-ready, results-in or merged, plus the canon.mirror remotes (read-only apart from fetching a PR head past graded-head that is not local yet; what the board polls)
 tkt open-pr <id>                     # open the PR a cloud session did not, from its pushed branch (a commit naming <id>), with "Fixes #N"
-tkt push-main                        # push origin's default branch (what GitHub merged, never the local one) to each `git config canon.mirror` remote (opt-in, never forced; prints how to undo)
+tkt push-main                        # push origin's default branch (what GitHub merged, never the local one) to each `git config canon.mirror` remote (opt-in, never forced; prints how to undo); in canon it refuses a commit whose binaries are not released (`scripts/check-binaries-released.sh --rev`)
 tkt take-back <id> [--close-issue]   # bring a ticket sent to GitHub back to this machine (clears runs: github; --close-issue also closes the issue and clears github:)
 ```
 

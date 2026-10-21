@@ -6,12 +6,27 @@
 # Not part of scripts/test.sh on purpose: it is red between a source commit and its release, which is the state it exists to catch.
 #   scripts/check-binaries-released.sh              exit 0 = every component is released at HEAD, 1 = names what is not
 #   scripts/check-binaries-released.sh --download   also download every asset and compare its SHA-256 with the manifest line
+#   scripts/check-binaries-released.sh --rev <sha>  judge that commit (its keys and its manifest) instead of the checkout; exit 2 on a usage error
 set -euo pipefail
 
 REPO_ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 MANIFEST="$REPO_ROOT/tools/cockpit-daemon.sha256"
 RELEASE_BASE="${CANON_DAEMON_RELEASE_BASE:-https://github.com/sunitghub/canon-skills/releases/download}"
-download=0; [ "${1:-}" = --download ] && download=1
+download=0; rev=HEAD
+# t-b6b6: --rev <sha> judges that commit (its source keys and its manifest), not the checkout; tkt push-main passes origin's commit.
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --download) download=1; shift ;;
+    --rev) [ -n "${2:-}" ] || { echo "Usage: check-binaries-released.sh [--download] [--rev <commit>]" >&2; exit 2; }; rev="$2"; shift 2 ;;
+    *) echo "Usage: check-binaries-released.sh [--download] [--rev <commit>]" >&2; exit 2 ;;
+  esac
+done
+if [ "$rev" = HEAD ]; then
+  manifest="$(cat "$MANIFEST")"
+else
+  git -C "$REPO_ROOT" rev-parse -q --verify "$rev^{commit}" >/dev/null || { echo "check-binaries-released: no such commit: $rev" >&2; exit 2; }
+  manifest="$(git -C "$REPO_ROOT" show "$rev:tools/cockpit-daemon.sha256" 2>/dev/null)" || { echo "check-binaries-released: $rev has no tools/cockpit-daemon.sha256" >&2; exit 2; }
+fi
 
 # shellcheck source=tools/src-key.sh
 source "$REPO_ROOT/tools/src-key.sh"
@@ -21,16 +36,16 @@ bad=0
 # component (tools/src-key.sh) | manifest target | release prefix | asset file name
 while IFS='|' read -r src target prefix asset; do
   [ -n "$src" ] || continue
-  full="$(canon_src_key "$REPO_ROOT" "$src")" || full=""
+  full="$(canon_src_key "$REPO_ROOT" "$src" "$rev")" || full=""
   key="${full:0:12}"
-  newest="$(tr -d '\r' < "$MANIFEST" | awk -v t="$target" '$2==t {k=$1} END{print k}')"
-  if [ -z "$key" ]; then echo "NOT RELEASED  $target: the $src source is not in this checkout's HEAD" >&2; bad=1; continue; fi
+  newest="$(printf '%s\n' "$manifest" | tr -d '\r' | awk -v t="$target" '$2==t {k=$1} END{print k}')"
+  if [ -z "$key" ]; then echo "NOT RELEASED  $target: the $src source is not in $rev" >&2; bad=1; continue; fi
   if [ "$newest" != "$key" ]; then
     echo "NOT RELEASED  $target: $src is at $key but the newest manifest line is ${newest:-missing}; run scripts/release-daemon.sh and commit the manifest" >&2
     bad=1; continue
   fi
   if [ "$download" = 1 ]; then
-    want="$(tr -d '\r' < "$MANIFEST" | awk -v k="$key" -v t="$target" '$1==k && $2==t {print $3; exit}')"
+    want="$(printf '%s\n' "$manifest" | tr -d '\r' | awk -v k="$key" -v t="$target" '$1==k && $2==t {print $3; exit}')"
     tmp="$(mktemp)"
     if curl -fsSL --connect-timeout 10 --max-time 180 -o "$tmp" "$RELEASE_BASE/$prefix-$key/$asset" 2>/dev/null && [ "$(sha256_of "$tmp")" = "$want" ]; then
       echo "ok            $target ($key): asset downloaded, sha256 matches the manifest"

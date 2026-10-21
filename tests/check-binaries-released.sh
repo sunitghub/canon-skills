@@ -64,4 +64,16 @@ set +e; out="$(PATH="$STUBS:$PATH" bash "$R/scripts/check-binaries-released.sh" 
 rm -f "$STUB_DIR/cockpit-daemon-linux-arm64"
 set +e; out="$(PATH="$STUBS:$PATH" bash "$R/scripts/check-binaries-released.sh" --download 2>&1)"; rc=$?; set -e
 [[ "$rc" == 1 ]] || fail "a missing asset must fail --download: $out"; assert_contains "$out" "BAD ASSET     linux-arm64"
-echo "check-binaries-released: ok (green when released, red naming the component, newest line wins, CRLF ok, --download catches a missing or tampered asset)"
+# t-b6b6: --rev judges a commit by ITS keys and ITS manifest (tkt push-main passes origin's commit), not the checkout.
+write_manifest "$(key cockpit-daemon)" "$(key sprint-check)"
+git -C "$R" "${ident[@]}" add tools/cockpit-daemon.sha256; git -C "$R" "${ident[@]}" commit -qm released; REL="$(git -C "$R" rev-parse HEAD)"
+echo "package x // changed" > "$M/internal/daemon/x.go"; git -C "$R" "${ident[@]}" commit -qam "daemon change, not released"; LAG="$(git -C "$R" rev-parse HEAD)"
+run --rev "$REL"; [[ "$rc" == 0 ]] || fail "--rev at the released commit must pass: $out"
+run --rev "$LAG"; [[ "$rc" == 1 ]] || fail "--rev at an unreleased commit must fail: $out"; assert_contains "$out" "NOT RELEASED  linux-amd64: cockpit-daemon"
+write_manifest "$(key cockpit-daemon)" "$(key sprint-check)"   # the checkout's manifest is current now, uncommitted
+run; [[ "$rc" == 0 ]] || fail "the checkout with a current (uncommitted) manifest passes: $out"
+run --rev "$LAG"; [[ "$rc" == 1 ]] || fail "--rev must read the manifest at the commit, not the checkout's: $out"
+run --rev; [[ "$rc" == 2 ]] || fail "--rev with no commit is a usage error: $out"
+run --rev nosuchcommit; [[ "$rc" == 2 ]] || fail "an unknown commit is an error: $out"; assert_contains "$out" "no such commit"
+run --bogus; [[ "$rc" == 2 ]] || fail "an unknown option is a usage error: $out"
+echo "check-binaries-released: ok (green when released, red naming the component, newest line wins, CRLF ok, --download catches a missing or tampered asset, --rev judges a commit's own keys and manifest)"
