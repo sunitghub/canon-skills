@@ -1798,11 +1798,6 @@ cmd_open_pr() {
   echo "Opened a PR from $b into $def: $(tail -1 <<< "$out")"
 }
 
-# cmd_push_main — t-24b1: push origin's default branch, as GitHub has it now, to each remote named by `git config
-# canon.mirror` (opt-in; a fork's upstream is never assumed). Origin's, not the local branch: a local main that is ahead
-# (unmerged commits), behind or diverged never decides what a mirror publishes. A plain push, never forced: a mirror that
-# is ahead or diverged is reported. Prints each moved mirror's previous sha and the command that puts it back. Exit 1
-# when any push failed.
 # _release_guard <root> <sha> <who> <label> <update-to> — t-b6b6, t-4ea4: the one release check before a commit reaches a
 # canon.mirror remote. A project that ships prebuilt binaries (canon: the check script and its manifest are in that commit)
 # publishes a commit only once its binaries are released, or an install following main finds no checksum for the new build.
@@ -1833,6 +1828,11 @@ cmd_release_check() {
   _release_guard "$root" "$sha" "pre-push" "${sha:0:8}" "origin's main" || exit 1
 }
 
+# cmd_push_main — t-24b1: push origin's default branch, as GitHub has it now, to each remote named by `git config
+# canon.mirror` (opt-in; a fork's upstream is never assumed). Origin's, not the local branch: a local main that is ahead
+# (unmerged commits), behind or diverged never decides what a mirror publishes. A plain push, never forced: a mirror that
+# is ahead or diverged is reported. Prints each moved mirror's previous sha and the command that puts it back. Exit 1
+# when any push failed.
 cmd_push_main() {
   [[ $# -eq 0 ]] || { echo "Usage: tkt push-main" >&2; exit 1; }
   local root mirrors m b sha old out rc=0

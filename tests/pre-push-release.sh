@@ -43,6 +43,17 @@ assert_contains "$out" "refused the push to public (t-4ea4)"
 assert_eq "$before" "$(at public)"; pushed public "$UNREL" && fail "the unreleased commit's objects reached public"
 # ...on any branch, not only main
 rc=0; git push public main:refs/heads/side >/dev/null 2>&1 || rc=$?; [[ "$rc" != 0 ]] || fail "an unreleased commit reached a public branch"
+# ...by URL too: `git push <url-of-public>` hands the URL, not the name (reviewer, t-4ea4)
+rc=0; git push "$W/public.git" main >/dev/null 2>&1 || rc=$?; [[ "$rc" != 0 ]] || fail "a push to public by URL skipped the check"
+assert_eq "$before" "$(at public)"
+# ...and in a multi-ref push the unreleased ref is caught even after a released one, even if the check reads stdin
+# (a check that ate the hook's ref lines would leave later refs unchecked)
+printf '%s\n' 'cat >/dev/null' > scripts/stdin-eater; sed -i.bak '2r scripts/stdin-eater' scripts/check-binaries-released.sh; rm -f scripts/*.bak scripts/stdin-eater
+git branch -q okref "$before"
+rc=0; git push public okref:refs/heads/okref main:refs/heads/side >/dev/null 2>&1 || rc=$?
+[[ "$rc" != 0 ]] || fail "the second (unreleased) ref of a multi-ref push slipped through"
+pushed public "$UNREL" && fail "the unreleased commit reached public in a multi-ref push"
+git checkout -q -- scripts/check-binaries-released.sh 2>/dev/null || git show HEAD:scripts/check-binaries-released.sh > scripts/check-binaries-released.sh
 # 2. origin is not a mirror: the same commit goes there
 git push -q origin main; assert_eq "$UNREL" "$(at origin)"
 # 3. once released, the push goes through

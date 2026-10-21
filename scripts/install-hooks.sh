@@ -31,13 +31,20 @@ echo "  [ok]    post-commit hook installed → $POST_COMMIT"
 PRE_PUSH="$HOOKS_DIR/pre-push"
 cat > "$PRE_PUSH" << 'HOOK'
 #!/usr/bin/env bash
-remote="$1"
+remote="$1" url="$2"
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-git config --get-all canon.mirror 2>/dev/null | grep -qxF -- "$remote" || exit 0
+# A mirror by name, or by its URL (`git push <url-of-public> main` hands the URL as both arguments).
+mirror=""
+while IFS= read -r m; do
+  [[ -n "$m" ]] || continue
+  if [[ "$remote" == "$m" || "$url" == "$(git remote get-url "$m" 2>/dev/null || true)" ]]; then mirror="$m"; break; fi
+done < <(git config --get-all canon.mirror 2>/dev/null || true)
+[[ -n "$mirror" ]] || exit 0
 while read -r _lref lsha _rref _rsha; do
   [[ -n "$lsha" && ! "$lsha" =~ ^0+$ ]] || continue
-  if ! bash "$REPO_ROOT/tools/tkt" release-check "$lsha"; then
-    echo "pre-push: refused the push to $remote (t-4ea4): publish with 'tkt push-main' once released, or 'git push --no-verify' to override on purpose" >&2
+  # </dev/null: the ref lines are this loop's stdin; a child that read it would leave later refs unchecked
+  if ! bash "$REPO_ROOT/tools/tkt" release-check "$lsha" </dev/null; then
+    echo "pre-push: refused the push to $mirror (t-4ea4): publish with 'tkt push-main' once released, or 'git push --no-verify' to override on purpose" >&2
     exit 1
   fi
 done
