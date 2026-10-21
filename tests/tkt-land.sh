@@ -101,6 +101,8 @@ mk() { id="$("$TKT" create "Cloud ticket" -t bug)"; f=".tickets/$id/ticket.md"; 
 mk acme/app#23; refuses "a --pr that is not a number" "takes a PR number" -- --pr 5x
 mk;             refuses "a ticket with no github line" "no github:" --
 mk acme/app#23; printf '7\n8\n' > "$W/prlist"; refuses "several open PRs" "several open PRs" --; echo 7 > "$W/prlist"
+refuses "a PR that moved while fetching" "moved while fetching" STUB_HEAD=0123456789abcdef0123456789abcdef01234567 --
+refuses "a PR ref origin does not have" "could not fetch PR #99" -- --pr 99
 mkdir -p "$WT"; refuses "a taken worktree path" "already exists" --; rmdir "$WT"
 git branch "land/$id"; refuses "a taken branch name" "already exists" --; git branch -q -D "land/$id"
 
