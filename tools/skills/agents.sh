@@ -25,8 +25,15 @@ skills_table_upsert() {
   fi
 
   # t-5c4b: a block without the current platforms line gains it once, under its note (an older wording is replaced).
+  # Only lines inside the block are touched: a "> Platforms:" line of the user's own outside it stays.
   if [ -f "$agents_file" ] && grep -qF "$block_begin" "$agents_file" && ! grep -qxF "$PLATFORMS_NOTE" "$agents_file"; then
-    awk -v pn="$PLATFORMS_NOTE" '/^> Platforms:/ { next } { print } /^> Managed by `skills.sh`/ && !done { print pn; done = 1 }' \
+    awk -v pn="$PLATFORMS_NOTE" -v b="$block_begin" -v e="$block_end" '
+      $0 == b { inblk = 1 }
+      inblk && /^> Platforms:/ { next }
+      inblk && $0 == e && !done { print pn; done = 1 }
+      { print }
+      inblk && /^> Managed by `skills.sh`/ && !done { print pn; done = 1 }
+      $0 == e { inblk = 0 }' \
       "$agents_file" > "$agents_file.tmp" && mv "$agents_file.tmp" "$agents_file"
     echo "  [AGENTS.md]  added the platforms line to the skill block"
   fi

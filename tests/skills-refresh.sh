@@ -66,6 +66,12 @@ sed -i.bak 's/^> Platforms:.*/> Platforms: old wording./' "$project/AGENTS.md" &
 "$SKILLS" refresh "$project" >/dev/null
 assert_count 0 "old wording" "$project/AGENTS.md"
 assert_count 1 "> Platforms: on Windows canon's commands run in Git Bash" "$project/AGENTS.md"
+# ...but a "> Platforms:" line of the user's own, outside the block, is kept
+printf '\n> Platforms: user note.\n' >> "$project/AGENTS.md"
+sed -i.bak 's/^> Platforms: on Windows.*/> Platforms: old wording./' "$project/AGENTS.md" && rm -f "$project/AGENTS.md.bak"
+"$SKILLS" refresh "$project" >/dev/null
+assert_count 1 "> Platforms: user note." "$project/AGENTS.md"
+assert_count 1 "> Platforms: on Windows canon's commands run in Git Bash" "$project/AGENTS.md"
 
 # Symlinks created/repaired by refresh (via cmd_add)
 [[ -L "$project/.claude/skills" ]] || fail "expected .claude/skills symlink after refresh"
