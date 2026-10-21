@@ -969,14 +969,6 @@ cmd_check_evidence() {
   echo "check-evidence: ok ($n log(s) fresh with exit 0 or covered)"
 }
 
-# cmd_eval_verdict <id> — records the evaluator's outcome into ticket.md's
-# eval_fail_count field: increments on a fail (or missing/malformed verdict),
-# resets to 0 on pass. Called explicitly by the agent right after reading
-# eval-report.md (complete.md step 3), the same pattern as subagent-log.sh's
-# explicit post-dispatch call — not a hook, so it works whether or not the
-# orchestrating agent goes on to invoke `sprint complete` itself. Prints the
-# resulting count and a retry-budget-exhausted notice at 3, but never blocks
-# on its own — _gate_eval_report_verdict (cmd_complete) is the actual close gate.
 # cmd_relay_report <id> [evaluator|reviewer] — t-ff14: a read-only `Plan` fallback gate cannot write its report, and the main
 # session must not type one (Claude Code's auto mode refuses that as a bypassed gate). This copies the report, byte for
 # byte, from the harness's own transcript of the newest matching dispatch (Plan, or the canon agent itself) into its file:
@@ -1016,6 +1008,14 @@ cmd_relay_report() {
   echo "relay-report: wrote $tdir/$dest from $found ($(sed -nE 's/.*"agentType"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/p' "${found%.jsonl}.meta.json" | head -1))"
 }
 
+# cmd_eval_verdict <id> — records the evaluator's outcome into ticket.md's
+# eval_fail_count field: increments on a fail (or missing/malformed verdict),
+# resets to 0 on pass. Called explicitly by the agent right after reading
+# eval-report.md (complete.md step 3), the same pattern as subagent-log.sh's
+# explicit post-dispatch call — not a hook, so it works whether or not the
+# orchestrating agent goes on to invoke `sprint complete` itself. Prints the
+# resulting count and a retry-budget-exhausted notice at 3, but never blocks
+# on its own — _gate_eval_report_verdict (cmd_complete) is the actual close gate.
 cmd_eval_verdict() {
   local id="${1:-}"
   [[ -z "$id" ]] && { echo "Error: ticket ID required" >&2; exit 1; }
