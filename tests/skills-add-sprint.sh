@@ -16,7 +16,8 @@ export PATH="$TOOLS_DIR:$PATH"
 printf '# Claude\n' > "$project/CLAUDE.md"
 printf '# Agents\n' > "$project/AGENTS.md"
 
-"$SKILLS" add sprint "$project" >/dev/null
+out="$("$SKILLS" add sprint "$project" 2>&1)"
+[[ "$out" != *"added the platforms line"* ]] || fail "a new block claimed to add the platforms line to an existing one"   # t-5c4b
 
 assert_dir_exists "$project/.tickets"
 assert_file_exists "$project/CLAUDE.md"

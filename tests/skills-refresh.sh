@@ -39,7 +39,8 @@ EOF
 mkdir -p "$tmp_home/.config/canon"
 printf '%s\n' "$project" > "$tmp_home/.config/canon/projects"
 
-"$SKILLS" refresh "$project" >/dev/null
+out="$("$SKILLS" refresh "$project" 2>&1)"
+assert_contains "$out" "added the platforms line"   # t-5c4b: the block had none
 
 # Legacy @-imports pruned
 assert_count 0 "@$ROOT/standards/efficiency.md" "$project/CLAUDE.md"
@@ -59,8 +60,9 @@ assert_count 1 "Paths are relative to the canon install." "$project/AGENTS.md"
 assert_count 1 "> Platforms: on Windows canon's commands run in Git Bash" "$project/AGENTS.md"
 [[ "$(grep -A1 '^> Managed by `skills.sh`' "$project/AGENTS.md" | tail -1)" == "> Platforms:"* ]] || fail "the platforms line is not under the note"
 sum_before="$(cksum < "$project/AGENTS.md")"
-"$SKILLS" refresh "$project" >/dev/null
+out="$("$SKILLS" refresh "$project" 2>&1)"
 assert_eq "$sum_before" "$(cksum < "$project/AGENTS.md")"
+[[ "$out" != *"added the platforms line"* ]] || fail "a refresh of a block that has the line claimed to add it"
 # ...and an older wording of the line is replaced, never kept beside the new one
 sed -i.bak 's/^> Platforms:.*/> Platforms: old wording./' "$project/AGENTS.md" && rm -f "$project/AGENTS.md.bak"
 "$SKILLS" refresh "$project" >/dev/null
@@ -72,6 +74,11 @@ sed -i.bak 's/^> Platforms: on Windows.*/> Platforms: old wording./' "$project/A
 "$SKILLS" refresh "$project" >/dev/null
 assert_count 1 "> Platforms: user note." "$project/AGENTS.md"
 assert_count 1 "> Platforms: on Windows canon's commands run in Git Bash" "$project/AGENTS.md"
+# ...and a block whose note line is gone still gains it once, inside the block (before its end)
+sed -i.bak -e '/^> Managed by `skills.sh`/d' -e '/^> Platforms: on Windows/d' "$project/AGENTS.md" && rm -f "$project/AGENTS.md.bak"
+"$SKILLS" refresh "$project" >/dev/null
+assert_count 1 "> Platforms: on Windows canon's commands run in Git Bash" "$project/AGENTS.md"
+[[ "$(sed -n '/<!-- AI-SKILLS:BEGIN -->/,/<!-- AI-SKILLS:END -->/p' "$project/AGENTS.md")" == *"> Platforms: on Windows"* ]] || fail "the platforms line landed outside the block"
 
 # Symlinks created/repaired by refresh (via cmd_add)
 [[ -L "$project/.claude/skills" ]] || fail "expected .claude/skills symlink after refresh"
