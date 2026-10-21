@@ -82,7 +82,7 @@ BEGIN {
     f = files[i]; first = ""; ln = 0; lang = ""
     lower = tolower(f)
     for (k = 1; k <= nskip; k++) if (substr(lower, length(lower) - length(skipext[k]) + 1) == skipext[k]) skipped[skipext[k]]++
-    while ((getline s < f) > 0) {
+    while ((getline s < ("./" f)) > 0) {   # "./": gawk reads a file named "-" or "/dev/stdin" as stdin
       sub(/\r$/, "", s)   # CRLF checkouts (Git for Windows autocrlf) would hide the shebang
       if (++ln == 1) { first = s; lang = lang_of(f, first); if (lang == "") break; scanned[lang] = 1 }
       n = decl(lang, s)
@@ -92,13 +92,13 @@ BEGIN {
       centry[nc] = is_entry(f, lang, first, cexp[nc])
       byname[n] = byname[n] " " nc
     }
-    close(f)
+    close("./" f)
   }
 
   # Pass 2: code references — every identifier on a non-comment line, minus the declaration line itself.
   for (i = 1; i <= nf; i++) {
     f = files[i]; ln = 0; t = is_test(f)
-    while ((getline s < f) > 0) {
+    while ((getline s < ("./" f)) > 0) {
       ln++; sub(/\r$/, "", s)
       if (s ~ /^[ \t]*(#|\/\/|\/\*|\*)/) continue
       gsub(/[^A-Za-z0-9_$]+/, " ", s)
@@ -115,7 +115,7 @@ BEGIN {
         }
       }
     }
-    close(f)
+    close("./" f)
   }
 
   for (c = 1; c <= nc; c++) {

@@ -92,6 +92,7 @@ printf '#!/usr/bin/env bash\r\ncrlf_dead() { :; }\r\n' > tools/crlf
 cafe=$'static/caf\303\251'; mkdir -p "$cafe" && printf 'used_from_cafe\n' > "$cafe/call.sh"
 # The same name declared twice: grep cannot tell the copies apart, so a call keeps both live.
 printf 'used_from_cafe() { :; }\ndup_fn() { :; }\n' > tools/cafe-lib.sh
+printf '#!/usr/bin/env bash\nnot_stdin() { :; }\n' > ./-   # a file named "-" is read, not stdin
 git add -A
 
 mkdir "$W/tmp"
@@ -108,6 +109,7 @@ DEAD helperInMain -
 DEAD ExportedInMain entry
 DEAD py_dead -
 DEAD kw_dead -
+DEAD not_stdin -
 DEAD init_dead entry
 DEAD run_dead entry
 DEAD idxDead entry
