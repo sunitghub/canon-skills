@@ -6261,12 +6261,9 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const css = (loc, prop) => loc.evaluate((el, p) => getComputedStyle(el)[p], prop);
       const dismiss = banner.locator('.intr-row[data-id="t-cc33"] [data-act="dismiss"]');
       const resume = banner.locator('.intr-row[data-id="t-d9e6"] [data-act="resume"]');
-      await dismiss.hover();
-      await expect.poll(() => css(dismiss, 'borderColor')).toBe('rgb(230, 235, 242)');
-      await expect.poll(() => css(dismiss, 'backgroundColor')).toBe('rgb(42, 53, 71)');
-      await resume.hover();
-      await expect.poll(() => css(resume, 'backgroundColor')).toBe('rgba(124, 106, 247, 0.14)');
-      await page.mouse.move(0, 0);
+      // t-e523: Dismiss is a plain secondary button, Resume a sub-action (buttons.css)
+      await expectRole(page, dismiss, 'b-neutral');
+      await expectRole(page, resume, 'b-accent');
       await page.keyboard.press('Shift');
       await dismiss.focus();
       expect(await css(dismiss, 'outlineStyle')).toBe('solid');
