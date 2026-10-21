@@ -1,6 +1,6 @@
 ---
 name: reviewer
-description: Review completed sprint work for code quality, scope, and standards violations from a clean context — advisory gate at sprint close; verdict YES (clean) or NO (findings)
+description: Review completed sprint work for code quality, scope, and standards violations from a clean context — advisory gate at sprint close; findings triaged into Act On / Consider / Noted / Dismissed; verdict YES (nothing in Act On) or NO
 category: dev
 tags: [quality, review, sprint]
 hidden: true
@@ -80,6 +80,13 @@ Dead code: <finding, or `none — checked <what>, <file:line>`>
 Unnecessary complexity: <finding, or `none — checked <what>, <file:line>`>
 Standards violations: <finding, or `none — checked <what>, <file:line>`>
 
+## Triage
+
+Act On: <file:line — one-line why, or `none`>
+Consider: <file:line — one-line why, or `none`>
+Noted: <file:line — one-line why, or `none`>
+Dismissed: <file:line — one-line why, or `none`>
+
 ## Verdict
 
 YES
@@ -87,9 +94,15 @@ YES
 
    Every step-4 concern gets at least one line, so each pass is visible. A finding is `<Concern>: file:line — <issue> [severity: high|med|low · confidence: high|med|low]` (repeat the label for more than one). "None" must show what you checked and where, with a `file:line` — a bare "No findings." is rejected at close. **`sprint complete` blocks a `review-notes.md` with no path in `Changed files:`, a missing or empty concern line, or a `none` line without `checked` and a `file:line` (t-de16).**
 
-   If there are findings, change `YES` to `NO`.
+   **Triage every finding (t-f13a).** Put each finding from `## Findings` in exactly one bucket, as `file:line — <one-line why>` (repeat the label for more than one; `none` when a bucket is empty):
+   - **Act On** — blocks: a correctness, security or maintainability problem to fix before merge.
+   - **Consider** — value vs cost unclear; the user decides.
+   - **Noted** — valid, but not for this sprint.
+   - **Dismissed** — on a second look, wrong or missing context (say which).
 
-   **Check the shape before you return (t-c38e).** Run `sprint check-review-notes <id>`: it applies exactly the rule `sprint complete` enforces (a `Changed files:` line with a path; every concern label on its own line; every `none` line containing the word `checked` and a `path:line`). If it says `shape refused`, rewrite the lines it names and run it again; return only after it prints `shape ok`.
+   The verdict follows the triage: `YES` when `Act On: none`, otherwise `NO`.
+
+   **Check the shape before you return (t-c38e).** Run `sprint check-review-notes <id>`: it applies exactly the rule `sprint complete` enforces (a `Changed files:` line with a path; every concern label on its own line; every `none` line containing the word `checked` and a `path:line`; every triage bucket on its own line; a verdict that matches `Act On`). If it says `shape refused`, rewrite the lines it names and run it again; return only after it prints `shape ok`.
 
    Return the verdict line (`YES` or `NO`) in your response to the caller. When the caller records this in the Wrapup Gates table, the Reason must be prefixed `verdict:` (e.g. `verdict: YES` or `verdict: NO — <one-line summary>`).
 

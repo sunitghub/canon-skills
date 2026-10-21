@@ -91,6 +91,15 @@ while IFS= read -r label; do
   grep -qF "$label:" "$ROOT/skills/sprint/reference/review.md" || fail "doc-mirror-parity: review.md's report template is missing the '$label:' concern line that tools/sprint requires at close (t-de16)"
 done < <(grep -oE '"[^"]+"' <<<"$concerns_line" | tr -d '"')
 [[ "$concern_count" -ge 5 ]] || fail "doc-mirror-parity: expected >= 5 review concern labels in tools/sprint, found $concern_count (t-de16)"
+# t-f13a: the same for the triage buckets (REVIEW_BUCKETS).
+buckets_line="$(grep -m1 '^REVIEW_BUCKETS=' "$ROOT/tools/sprint")" || fail "doc-mirror-parity: tools/sprint has no REVIEW_BUCKETS array (t-f13a)"
+bucket_count=0
+while IFS= read -r label; do
+  [[ -n "$label" ]] || continue
+  bucket_count=$((bucket_count + 1))
+  grep -qF "$label:" "$ROOT/skills/sprint/reference/review.md" || fail "doc-mirror-parity: review.md's report template is missing the '$label:' triage line that tools/sprint requires at close (t-f13a)"
+done < <(grep -oE '"[^"]+"' <<<"$buckets_line" | tr -d '"')
+[[ "$bucket_count" -eq 4 ]] || fail "doc-mirror-parity: expected 4 triage buckets in tools/sprint, found $bucket_count (t-f13a)"
 
 # ── Check D: base-ref branching commands must match between
 # shared-gate-protocol.md and security-review.md.
