@@ -1559,6 +1559,7 @@ cmd_merge_pr() {
   ng="$(sed -n 's/^graded-head: *\([0-9a-f]\{7,40\}\).*/\1/p' "$tdir/eval-report.md" | sort -u | grep -c . || true)"
   [[ "$nv" == 1 && "$ng" == 1 ]] \
     || { echo "merge-pr: $id's eval-report.md has $nv verdict lines and $ng graded-heads; one of each is required" >&2; exit 1; }
+  local issue=""; issue="$(get_field "$file" github)"; [[ "$issue" == "$repo#"* && "${issue##*#}" =~ ^[0-9]+$ ]] && issue="${issue##*#}" || issue=""
   pr="$(_resolve_pr merge-pr "$file" "$repo" "$pr")" || exit 1
   local info st mg ms head base cross
   info="$(gh pr view "$pr" --repo "$repo" --json state,mergeable,mergeStateStatus,headRefOid,baseRefName,isCrossRepository \

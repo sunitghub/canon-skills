@@ -93,5 +93,5 @@ out="$("$TKT" land "$id" --finish < /dev/null 2>&1)"; assert_contains "$out" "tk
 git show-ref --verify --quiet "refs/heads/land/$id" && fail "branch land/$id still there"
 [[ "$(tr -d '[:space:]' < ".tickets/$id/.cockpit-cwd")" == "$P" ]] || fail ".cockpit-cwd not restored to the earlier binding"
 [[ ! -e ".tickets/$id/.cockpit-cwd.before-land" ]] || fail "saved binding left behind"
-git ls-remote origin 2>/dev/null | grep -q "land/" && fail "land pushed a branch"
+[[ "$(git ls-remote origin 2>/dev/null)" != *"land/"* ]] || fail "land pushed a branch"
 echo "tkt land: ok"
