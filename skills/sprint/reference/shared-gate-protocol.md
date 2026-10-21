@@ -92,7 +92,8 @@ smaller chunks, that won't help a permission refusal. Do not ask for or accept b
 access (e.g. a re-dispatch as `general-purpose`) to work around it — that defeats the whole
 reason this gate runs as a restricted type (`canon-reviewer`/`canon-evaluator`, or its `Plan` fallback) in the first place. Instead, include your full report,
 verbatim, in the exact format specified in the calling protocol, in your final text response
-to the caller. The orchestrating agent will save it itself.
+to the caller. The orchestrating agent relays it into the file with `sprint relay-report`, which copies it from the
+harness transcript (t-ff14).
 
 ## Self-serve visual verification (no Node/Playwright required)
 

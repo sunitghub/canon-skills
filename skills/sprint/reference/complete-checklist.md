@@ -71,7 +71,7 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
   that report; run tools only in its own `mktemp -d` with `CANON_HOME`, `HOME`, `TMPDIR`,
   `XDG_CONFIG_HOME` pinned inside it; never kill by name or pattern; evaluator only: take the
   `evaluator-run-id` as the very last command. Never pass a changed-files list.
-- A finished gate needs no `TaskStop`. Missing report: save the returned report verbatim, else re-dispatch.
+- A finished gate needs no `TaskStop`. Missing report: `sprint relay-report <id> [reviewer]`, else re-dispatch.
 
 ## Read the detail when
 

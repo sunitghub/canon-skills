@@ -197,6 +197,16 @@ printf 'evaluator-run-id: 1-2\n\npartial: half done\n' > "$gt/eval-report.md"
 assert_contains "$(event_line gate.finished "$gid")" '"role":"evaluator","ticket":"'"$gid"'","tokens":"","verdict":"partial"'
 (cd "$G" && "$ROOT/tools/subagent-log.sh" --agent-id plain --agent-type general-purpose --ticket "$gid" >/dev/null)
 [[ "$(cat "$EV"/*.jsonl | grep -c '"kind":"gate.finished"')" == 3 ]] || fail "a non-gate subagent run made a gate.finished event"
+# t-ff14: under Claude Code, an evaluator's gate.finished names the agent type of the harness transcript holding its run-id
+# (a fallback shows as general-purpose), and leaves the field out when no transcript holds it.
+FX="$(mktemp -d)"; mkdir -p "$FX/projects/-p/s1/subagents"
+printf '{"agentType": "general-purpose"}\n' > "$FX/projects/-p/s1/subagents/agent-a1.meta.json"
+printf 'evaluator-run-id: 777-1\n' > "$FX/projects/-p/s1/subagents/agent-a1.jsonl"
+(cd "$G" && CLAUDECODE=1 CLAUDE_CONFIG_DIR="$FX" "$ROOT/tools/subagent-log.sh" --agent-id 777-1 --agent-type evaluator --ticket "$gid" >/dev/null)
+assert_contains "$(event_line gate.finished "$gid")" '"agent":"general-purpose"'
+(cd "$G" && CLAUDECODE=1 CLAUDE_CONFIG_DIR="$FX" "$ROOT/tools/subagent-log.sh" --agent-id 777-2 --agent-type evaluator --ticket "$gid" >/dev/null)
+[[ "$(event_line gate.finished "$gid")" != *'"agent"'* ]] || fail "gate.finished named an agent with no transcript behind it"
+rm -rf "$FX"
 (cd "$G" && "$SPRINT" check-review-notes "$gid" >/dev/null 2>&1) || true
 assert_contains "$(event_line gate.rejected "$gid")" '"reason":"review_shape","role":"reviewer"'
 mkdir -p "$gt/evidence"; printf 'not a stamped log\n' > "$gt/evidence/x.log"

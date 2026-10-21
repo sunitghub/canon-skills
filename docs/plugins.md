@@ -38,10 +38,10 @@ renamed or removed.
 | `ticket.created` | `ticket`, `title` (at most 200 characters), `type`, `priority` | `tkt create`, `tkt import-issue` and `sync-issues`, `sprint start "<title>"`, the board's **+ New** |
 | `ticket.status_changed` | `ticket`, `from`, `to` | `tkt start`, `close`, `archive` and other status changes, a status move on the board, `tkt import-results` setting an in-progress ticket back to open |
 | `ticket.closed` | `ticket` | together with the `status_changed` to `closed` |
-| `sprint.started` | `ticket` | `sprint start` |
+| `sprint.started` | `ticket`, `gate_agents` (`ok`, or `missing` when canon's gate agents are not loaded in the Claude Code session; absent when it cannot tell, t-ff14) | `sprint start` |
 | `sprint.completed` | `ticket` | `sprint complete`, after the ticket is closed |
 | `gate.started` | `ticket`, `role` (`reviewer`/`evaluator`, empty if not given), `attempt` (the evaluator's failed attempts so far + 1), `docs` (12 hex: the hash of the ticket's acceptance.md and plan.md) | `gate-snapshot.sh pre … --role <role>`, right before a close gate runs |
-| `gate.finished` | `ticket`, `role`, `verdict` (`YES`/`NO` for the reviewer; `pass`/`fail`/`partial`/`not-run` for the evaluator; `unknown` if its report has none), `model`, `tokens`, `minutes`, `tier` | `subagent-log.sh`, after a gate's run is logged |
+| `gate.finished` | `ticket`, `role`, `verdict` (`YES`/`NO` for the reviewer; `pass`/`fail`/`partial`/`not-run` for the evaluator; `unknown` if its report has none), `model`, `tokens`, `minutes`, `tier`, `agent` (the evaluator transcript's agent type: `canon-evaluator`, or `Plan` on the fallback; absent when none is found, t-ff14) | `subagent-log.sh`, after a gate's run is logged |
 | `gate.rejected` | `ticket`, `role`, `reason` | a close refusal: `missing_report`, `unverified_run`, `missing_transcript`, `verdict_not_pass`, `report_inconsistent`, `report_model`, `graded_head_stale` (evaluator); `review_model`, `review_shape` (reviewer); `stale_evidence` (`sprint check-evidence`) |
 | `session.needs_you` | `session`, `ticket`, `agent` | a Cockpit agent session starts waiting for you |
 | `session.exited` | `session`, `ticket`, `agent`, `reason` (`exited` on its own, or `killed` by the Cockpit), `models`, `peak_context_pct`, `tokens_new`, `turns` | a session ends |

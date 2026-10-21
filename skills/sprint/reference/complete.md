@@ -169,7 +169,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    For the `reviewer`/`eval` rows, always suffix the reason with `(model: <model> — <source>)` —
    the value and source applied by the model-tier check below: an explicit `Gate model:` value,
    the Admin Review & Eval default's alias, `claude-sonnet-5` (the `canon-*` definition floor) when both
-   fall through, or the exact session model id (e.g. `claude-sonnet-5`) on the `Plan` fallback;
+   fall through, or the exact session model id (e.g. `claude-sonnet-5`) on the fallback;
    never a paraphrase. Records which tier ran and why. On the `eval` row, also put the evaluator's elapsed minutes after the source (`; 12m`, from the dispatch
    result's duration or the gap between dispatch and report), so evaluator runtime is no longer unrecorded (`t-e3cd`); the report's `Evidence reuse:` line says what was reused.
 
@@ -239,7 +239,7 @@ Opus` default, scoped only to the two close-gate dispatches below.
   low-risk classification (git-diff-based allowlist check), now fully retired.
 - **Fail-safe for the Admin default — never a silent downgrade, never a dispatch error.** Treat
   the Admin-default step as absent and fall through to the gate definition's model floor
-  (`claude-sonnet-5` in `agents/canon-*.md`, `t-c774`/`t-bdce`; on the `Plan` fallback, the session model) if **any** of: the file
+  (`claude-sonnet-5` in `agents/canon-*.md`, `t-c774`/`t-bdce`; on the fallback, the session model) if **any** of: the file
   is missing or unreadable; `defaults.eval.anthropic` is absent; its `id` has no matching entry
   in `models.anthropic`; or the entry's `alias` is not one the Agent tool's `model:` param
   accepts (`fable`, `opus`, `sonnet`, `haiku` — Admin lets a user add models with arbitrary
@@ -250,13 +250,13 @@ Opus` default, scoped only to the two close-gate dispatches below.
   (`t-c774`). Any other value → pass it verbatim as `model` on both reviewer
   and evaluator `Agent` calls. Without one: the resolved Admin default's alias → pass it as
   `model`; if that step also fell through (fail-safe), omit `model` so the definition's floor
-  applies (`claude-sonnet-5`; the session model only on the `Plan` fallback). Check once; both gates share the result — their verdicts (YES/NO, pass/fail) stay
+  applies (`claude-sonnet-5`; the session model only on the fallback). Check once; both gates share the result — their verdicts (YES/NO, pass/fail) stay
   separate from this check. **Name the source, not just the value**, wherever this result is
   recorded (Wrapup Gates table, `summary.md`) — `Admin Review & Eval default`, `Gate model
   override` (including `Gate model: session`, recorded as `Gate model override — session`, and
   `Gate model: openai:<id>` under Copilot, recorded as `Gate model override, OpenAI`; its fallback is
   recorded as `fallback: openai:<id> <reason>`), `demo
-  mode`, `definition floor` (the fail-safe fallthrough; `session` on the `Plan` fallback) — so a later reader can tell an admin-wide setting from a
+  mode`, `definition floor` (the fail-safe fallthrough; `session` on the fallback) — so a later reader can tell an admin-wide setting from a
   per-ticket decision, the same loudness convention `Gate model:`/`demo` already follow.
 - **The dispatch stays mandatory at every tier** — this check only picks the model, never
   removes the reviewer/evaluator dispatch. Unlike the retired low-risk check, the Admin default
@@ -346,8 +346,10 @@ Opus` default, scoped only to the two close-gate dispatches below.
 6. **If a subagent's Bash file-writing is refused outright** (permission boundary, not
    heredoc failure), **or the expected report file is missing after dispatch** (the subagent
    returned without writing it): do not retry or re-dispatch with a broader-permission
-   `subagent_type`. If the returned text is a full report, save it yourself **verbatim** —
-   never compose a report from a bare verdict. For the evaluator, never write or edit
+   `subagent_type`. If the returned text is a full report, run `sprint relay-report <id>` (add
+   `reviewer` for the reviewer): it copies the report byte for byte from the harness's own transcript
+   of the dispatch (t-ff14), so the main session never types a gate report (Claude Code's auto mode
+   refuses that as a bypassed gate). Never compose a report from a bare verdict. For the evaluator, never write or edit
    `evaluator-run-id` yourself (live-reproduced on Windows/Haiku: an orchestrator wrote its own
    report with `haiku-eval-2026-09-23`); if the returned text is only a verdict, or its line 1
    lacks a `date +%s`-style `<epoch>-<n>` run-id, discard it and re-dispatch a fresh evaluator
@@ -433,10 +435,12 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    before. Bash stays available for git and for writing the report via `cat >>`; if a harness
    refuses file-modifying Bash, the subagent relays its report in-response per
    `shared-gate-protocol.md ## Report-writing safety`.
-   **Fallback:** if the dispatch fails because the agent type isn't found (a project not yet
-   refreshed, or Codex/Pi), re-dispatch once with `subagent_type: "Plan"`, which also excludes
-   Edit, Write and Agent. Append `(fallback: Plan)` to that gate's Wrapup Gates reason, so the
-   missing effort setting is visible, never silent. Prompt must instruct it to:
+   **Fallback:** if the dispatch fails because the agent type isn't found (a project not yet refreshed,
+   Codex/Pi, or a Claude Code session started outside the project or before `skills.sh add` linked
+   `.claude/agents`: `sprint start` warns about those, t-ff14), re-dispatch once with
+   `subagent_type: "Plan"`, which also excludes Edit, Write and Agent. It returns its report;
+   `sprint relay-report <id>` (mechanics rule 6) writes it. Append `(fallback: Plan)` to that gate's
+   Wrapup Gates reason, so the missing effort setting is visible, never silent. Prompt must instruct it to:
    - Read `skills/sprint/reference/review.md` and follow the review protocol
    - Record its model designation per the shared gate mechanics above
    - Write findings to `.tickets/<id>/review-notes.md` and return the verdict line

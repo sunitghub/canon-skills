@@ -44,6 +44,8 @@ If prompted to add canon tools to PATH, answer `y`, then run the printed `source
 
 `skills.sh add` writes skill registration to `AGENTS.md` (the file Codex and Pi read natively). Claude Code reads `CLAUDE.md` instead, so `add` also creates `CLAUDE.md` with a single `@AGENTS.md` import the first time you register a skill — bridging the two so Claude Code actually sees what's registered. If `CLAUDE.md` already exists without that import, `add` prompts before appending it rather than touching your existing content silently.
 
+**Start Claude Code in the project folder, after `add`.** `add` also links canon's close-gate agents (`canon-reviewer`, `canon-evaluator`) into `.claude/agents/`, and Claude Code loads agents only when a session starts, from the folder it starts in. A session already running, or started in another folder, closes on a fallback instead; `sprint start` warns when that is the case and names the folder to restart in.
+
 **Open the Cockpit**
 
 Run `canon`. It opens the Cockpit at `http://127.0.0.1:8899/cockpit`; a second run focuses the same window. To use another port, run `canon <port>` or set `CANON_COCKPIT_PORT`.

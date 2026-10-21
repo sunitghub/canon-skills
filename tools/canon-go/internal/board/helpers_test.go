@@ -283,3 +283,43 @@ func TestRunHelperUsage(t *testing.T) {
 		t.Errorf("bad mode: code %d", code)
 	}
 }
+
+// t-ff14: `sprint relay-report` relays a read-only gate's report from its harness transcript, byte for byte. Prod path: the
+// close of a sprint whose gates ran on the Plan fallback.
+func TestTranscriptReport(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name string, lines ...string) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	run := func(path, prefix string) (string, int) {
+		var out, errb bytes.Buffer
+		code := transcriptReport(path, prefix, &out, &errb)
+		return out.String(), code
+	}
+	long := strings.Repeat("x", 200000) // a transcript line can hold a whole tool result
+	both := write("both.jsonl",
+		`{"type":"user","message":{"content":"`+long+`"}}`,
+		`not json`,
+		`{"type":"assistant","message":{"content":[{"type":"text","text":"evaluator-run-id: 1-text\npass: from text"}]}}`,
+		`{"type":"assistant","message":{"content":[{"type":"tool_use","name":"SubagentHandback","input":{"message":"Notes.\nevaluator-run-id: 2-handback\npass: from handback\n\n"}}]}}`,
+		`{"type":"assistant","message":{"content":[{"type":"text","text":"Done."}]}}`)
+	if got, code := run(both, "evaluator-run-id:"); code != 0 || got != "evaluator-run-id: 2-handback\npass: from handback\n" {
+		t.Fatalf("hand-back first, cut at the prefix, one trailing newline: %d %q", code, got)
+	}
+	textOnly := write("text.jsonl", `{"type":"assistant","message":{"content":[{"type":"text","text":"Intro\n# Review Notes\nYES"}]}}`)
+	if got, code := run(textOnly, "# Review Notes"); code != 0 || got != "# Review Notes\nYES\n" {
+		t.Fatalf("last text when there is no hand-back: %d %q", code, got)
+	}
+	// the prefix must start a line: mid-line text does not count, and no match prints nothing with exit 1
+	mid := write("mid.jsonl", `{"type":"assistant","message":{"content":[{"type":"text","text":"see evaluator-run-id: 3"}]}}`)
+	if got, code := run(mid, "evaluator-run-id:"); code != 1 || got != "" {
+		t.Fatalf("a mid-line prefix relayed: %d %q", code, got)
+	}
+	if _, code := run(filepath.Join(dir, "missing.jsonl"), "x"); code != 1 {
+		t.Fatalf("a missing transcript did not fail")
+	}
+}

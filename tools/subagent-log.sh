@@ -138,6 +138,14 @@ if [[ -n "$TICKET" && ( "$AGENT_TYPE" == reviewer || "$AGENT_TYPE" == evaluator 
     _verdict="$(sed -nE 's/^(pass|fail|partial|not-run):.*/\1/p' "$_tdir/eval-report.md" | head -1)"
   fi
   [[ "$_verdict" =~ ^(YES|NO|pass|fail|partial|not-run)$ ]] || _verdict=unknown
+  # t-ff14: which agent really ran the evaluator (canon-evaluator, or a general-purpose/Plan fallback), from the harness's own
+  # transcript holding its run-id (the agent id here), never from what the caller says. Absent when none is found.
+  _agent=""
+  if [[ "$AGENT_TYPE" == evaluator && -n "${CLAUDECODE:-}" ]]; then
+    _cfg="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}"
+    _tx="$(find "$_cfg/projects/" -path '*/subagents/agent-*.jsonl' -type f -mmin -180 -exec grep -lF -e "evaluator-run-id: $AGENT_ID" {} + 2>/dev/null | head -1 || true)"   # grep exits 1 on non-matching files
+    [[ -n "$_tx" && -f "${_tx%.jsonl}.meta.json" ]] && _agent="$(sed -nE 's/.*"agentType"[[:space:]]*:[[:space:]]*"([A-Za-z0-9-]{1,32})".*/\1/p' "${_tx%.jsonl}.meta.json" | head -1)"
+  fi
   canon_event gate.finished subagent-log "$REPO_ROOT" "ticket=$TICKET" "role=$AGENT_TYPE" "verdict=$_verdict" \
-    "model=$MODEL" "tokens=$TOKENS" "minutes=$MINUTES"
+    "model=$MODEL" "tokens=$TOKENS" "minutes=$MINUTES" ${_agent:+"agent=$_agent"}
 fi

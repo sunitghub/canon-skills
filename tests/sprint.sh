@@ -1408,6 +1408,35 @@ tx_cfg="$(mktemp -d)"
   out="$(run_fail "$SPRINT" complete)"; assert_contains "$out" "no canon-evaluator transcript"
   transcript real Plan "Read skills/sprint/reference/eval.md" "evaluator-run-id: $rid3" "$gid" "pass: all criteria met"
   assert_contains "$("$SPRINT" complete 2>&1)" "Sprint completed"
+  # (i2) t-ff14: a read-only Plan fallback cannot write its report, and the main session must not type one: `sprint
+  # relay-report` copies it byte for byte from the harness transcript (its SubagentHandback message), and the close then
+  # verifies it as usual. A general-purpose transcript, or a Plan one that never read eval.md, is never relayed.
+  gate_ticket relay; rid6="$now-6666"; rm -f ".tickets/$gid/eval-report.md" "$tx_cfg"/projects/-proj/sess1/subagents/agent-*
+  jtranscript() { # <name> <agentType> <tool-input text>: Claude Code's real shape, the report in a SubagentHandback call
+    local d="$tx_cfg/projects/-proj/sess1/subagents" body; mkdir -p "$d"
+    printf '{"agentType": "%s"}\n' "$2" > "$d/agent-$1.meta.json"
+    body="$(printf '%s' "$3" | awk '{ gsub(/\\/,"\\\\"); gsub(/"/,"\\\""); printf "%s%s", (NR > 1 ? "\\n" : ""), $0 }')"
+    { printf '{"type":"user","message":{"content":"Read skills/sprint/reference/eval.md for %s"}}\n' "$gid"
+      printf '{"type":"assistant","message":{"content":[{"type":"text","text":"Here is the report."}]}}\n'
+      printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"SubagentHandback","input":{"message":"Notes first.\\n%s"}}]}}\n' "$body"
+    } > "$d/agent-$1.jsonl"
+  }
+  rel="$(printf 'evaluator-run-id: %s\nModel: test-model\n## Verdict\npass: all criteria met' "$rid6")"
+  jtranscript gp general-purpose "$rel"
+  out="$(run_fail "$SPRINT" relay-report "$gid")"; assert_contains "$out" "no evaluator transcript for $gid"
+  [[ ! -f ".tickets/$gid/eval-report.md" ]] || fail "relay-report wrote a report from a general-purpose transcript"
+  rm -f "$tx_cfg"/projects/-proj/sess1/subagents/agent-*
+  jtranscript pl Plan "$rel"
+  out="$("$SPRINT" relay-report "$gid")"; assert_contains "$out" "relay-report: wrote"; assert_contains "$out" "(Plan)"
+  assert_eq "$rel" "$(cat ".tickets/$gid/eval-report.md")"   # byte for byte, from the run-id line on
+  # a reviewer's report relays the same way, from its own heading (its last text message here, no hand-back call)
+  d="$tx_cfg/projects/-proj/sess1/subagents"; printf '{"agentType": "Plan"}\n' > "$d/agent-rv.meta.json"
+  printf '{"type":"user","message":{"content":"Read skills/sprint/reference/review.md for %s"}}\n{"type":"assistant","message":{"content":[{"type":"text","text":"# Review Notes\\n\\nTicket: `%s`\\n\\n## Verdict\\nYES"}]}}\n' "$gid" "$gid" > "$d/agent-rv.jsonl"
+  "$SPRINT" relay-report "$gid" reviewer >/dev/null
+  assert_eq "# Review Notes" "$(head -1 ".tickets/$gid/review-notes.md")"
+  rm -f ".tickets/$gid/review-notes.md"   # this fixture's notes lack the close's required shape; the relay is what is tested
+  assert_contains "$("$SPRINT" complete 2>&1)" "Sprint completed"
+  rm -f "$tx_cfg"/projects/-proj/sess1/subagents/agent-*
   # (j) a symlinked projects dir is searched as well as recognised
   gate_ticket symlinked; rid4="$now-4444"; report "$rid4" "pass: all criteria met"
   sym_real="$(mktemp -d)"; sym_cfg="$(mktemp -d)"; ln -s "$sym_real" "$sym_cfg/projects"

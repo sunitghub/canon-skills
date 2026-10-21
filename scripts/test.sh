@@ -115,6 +115,7 @@ tests=(
   "$ROOT/tests/sprint-check-upkeep.sh"
   "$ROOT/tests/upkeep-skill-hash-parity.sh"
   "$ROOT/tests/dead-code-scan.sh"
+  "$ROOT/tests/sprint-gate-agents.sh"
   "$ROOT/tests/sprint-check-worktrees.sh"
   "$ROOT/tests/sprint-check-ticket-commit.sh"
   "$ROOT/tests/sprint-check-track-changes.sh"

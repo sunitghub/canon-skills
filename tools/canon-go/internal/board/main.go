@@ -199,6 +199,7 @@ Helpers (used by canon's shell tools; see helpers.go):
   headless-json, json-strings <file>, skill-check <skill-dir>,
   settings <status|add|remove> <settings.json> <allow|deny> <rule>...
   event <kind> --project <dir> --source <name> key=value...
+  transcript-report <agent-transcript.jsonl> <first-line-prefix>
 
 The dashboard reads .tickets/, HANDOFF.md, and git history from the current
 project. It starts a local Go HTTP server and opens the board in your default

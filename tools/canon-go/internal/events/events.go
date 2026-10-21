@@ -42,11 +42,11 @@ var kinds = map[string][]field{
 	"ticket.created":        {{"ticket", 64}, {"title", 200}, {"type", 16}, {"priority", 4}},
 	"ticket.status_changed": {{"ticket", 64}, {"from", 32}, {"to", 32}},
 	"ticket.closed":         {{"ticket", 64}},
-	"sprint.started":        {{"ticket", 64}},
+	"sprint.started":        {{"ticket", 64}, {"gate_agents", 8}}, // t-ff14: ok | missing; absent when it could not tell
 	"sprint.completed":      {{"ticket", 64}},
 	// t-8854: close gates and Cockpit sessions
 	"gate.started":      {{"ticket", 64}, {"role", 16}, {"attempt", 4}, {"docs", 12}},
-	"gate.finished":     {{"ticket", 64}, {"role", 16}, {"verdict", 16}, {"model", 80}, {"tokens", 12}, {"minutes", 8}, {"tier", 16}},
+	"gate.finished":     {{"ticket", 64}, {"role", 16}, {"verdict", 16}, {"model", 80}, {"tokens", 12}, {"minutes", 8}, {"tier", 16}, {"agent", 32}}, // t-ff14: agent = the transcript's agentType
 	"gate.rejected":     {{"ticket", 64}, {"role", 16}, {"reason", 32}},
 	"session.needs_you": {{"session", 64}, {"ticket", 64}, {"agent", 16}},
 	"session.exited": {{"session", 64}, {"ticket", 64}, {"agent", 16}, {"reason", 16},

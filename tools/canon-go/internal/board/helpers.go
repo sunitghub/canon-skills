@@ -9,9 +9,11 @@
 //	sprint-check skill-check <skill-dir>           the Skill Eval checks as JSON (was tools/skill-check)
 //	sprint-check event <kind> --project <dir> --source <name> key=value...   (sources: internal/events)
 //	                                               one event line (t-f182); always exits 0, prints nothing
+//	sprint-check transcript-report <transcript> <prefix>   a gate's report from its subagent transcript (t-ff14)
 package board
 
 import (
+	"bufio"
 	"bytes"
 	"canon/internal/events"
 	"encoding/json"
@@ -62,6 +64,12 @@ func runHelper(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 	case "event":
 		emitEventCLI(args[1:])
 		return 0, true // observer-only: an event never changes the caller's outcome
+	case "transcript-report":
+		if len(args) != 3 {
+			fmt.Fprintln(stderr, "usage: sprint-check transcript-report <agent-transcript.jsonl> <first-line-prefix>")
+			return 2, true
+		}
+		return transcriptReport(args[1], args[2], stdout, stderr), true
 	}
 	return 0, false
 }
@@ -468,4 +476,76 @@ func emitEventCLI(args []string) {
 		}
 	}
 	events.Emit(home, kind, source, project, data)
+}
+
+// transcriptReport prints a gate's report from the harness's own transcript of the subagent (t-ff14), so a read-only
+// fallback gate's report reaches its file without the main session retyping it (`sprint relay-report`). The report is the
+// agent's last SubagentHandback message, else its last assistant text, from the first line that starts with prefix
+// (`evaluator-run-id:` or `# Review Notes`) to the end. Exit 1, printing nothing, when no such text exists.
+func transcriptReport(path, prefix string, stdout, stderr io.Writer) int {
+	f, err := os.Open(path)
+	if err != nil {
+		fmt.Fprintln(stderr, "sprint-check transcript-report:", err)
+		return 1
+	}
+	defer f.Close()
+	var handback, text string
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 1<<20), 64<<20) // a transcript line holds whole tool results
+	for sc.Scan() {
+		var line struct {
+			Type    string `json:"type"`
+			Message struct {
+				Content json.RawMessage `json:"content"`
+			} `json:"message"`
+		}
+		if json.Unmarshal(sc.Bytes(), &line) != nil || line.Type != "assistant" {
+			continue
+		}
+		var parts []struct {
+			Type  string `json:"type"`
+			Text  string `json:"text"`
+			Name  string `json:"name"`
+			Input struct {
+				Message string `json:"message"`
+			} `json:"input"`
+		}
+		if json.Unmarshal(line.Message.Content, &parts) != nil {
+			continue
+		}
+		for _, p := range parts {
+			switch {
+			case p.Type == "tool_use" && p.Name == "SubagentHandback" && p.Input.Message != "":
+				handback = p.Input.Message
+			case p.Type == "text" && p.Text != "":
+				text = p.Text
+			}
+		}
+	}
+	if err := sc.Err(); err != nil {
+		fmt.Fprintln(stderr, "sprint-check transcript-report:", err)
+		return 1
+	}
+	for _, msg := range []string{handback, text} {
+		if i := reportStart(msg, prefix); i >= 0 {
+			fmt.Fprint(stdout, strings.TrimRight(msg[i:], "\n")+"\n")
+			return 0
+		}
+	}
+	return 1
+}
+
+// reportStart is the offset of the first line of msg that starts with prefix, or -1.
+func reportStart(msg, prefix string) int {
+	for i := 0; i < len(msg); {
+		if strings.HasPrefix(msg[i:], prefix) {
+			return i
+		}
+		j := strings.IndexByte(msg[i:], '\n')
+		if j < 0 {
+			return -1
+		}
+		i += j + 1
+	}
+	return -1
 }

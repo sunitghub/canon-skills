@@ -151,7 +151,8 @@ EOF
     echo "[sprint] WARNING: no scripts/test.sh found — test gate will not run at commit."
   fi
 
-  canon_event sprint.started sprint "$(project_root)" "ticket=$id"
+  _gate_agents_check "$root"
+  canon_event sprint.started sprint "$(project_root)" "ticket=$id" ${GATE_AGENTS:+"gate_agents=$GATE_AGENTS"}
   cat <<EOF
 Sprint started: $id
 Ticket: $tdir/ticket.md
@@ -161,6 +162,44 @@ Agent next steps:
 2. Fill in acceptance.md — add criteria and test-plan checklist items.
 3. Fill in plan.md — write the approach, then wait for explicit approval before coding.
 EOF
+}
+
+# _gate_agents_check <root> — t-ff14: are canon's gate agents loaded in this Claude Code session? Claude Code loads agents
+# once, from the folder the session started in (and the user's own agents folder), so a session started elsewhere, or
+# before `skills.sh add` linked <project>/.claude/agents, closes without them and falls back. The session's transcript
+# (<config>/projects/*/<CLAUDE_CODE_SESSION_ID>.jsonl) records that start folder as its first "cwd" and the start time
+# as its first "timestamp" (the transcript's own folder follows the session's current folder, so it cannot be used).
+# Warns, never blocks; silent outside Claude Code or when the transcript is not found (fails open, like the close check).
+# Sets GATE_AGENTS to ok, missing, or empty when it could not tell.
+_gate_agents_check() {
+  GATE_AGENTS=""
+  [[ -n "${CLAUDECODE:-}" && -n "${CLAUDE_CODE_SESSION_ID:-}" ]] || return 0
+  local root="$1" cfg="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}" t start start_ts start_epoch ref why="" f fix=""
+  # every lookup ends `|| true`: under set -e + pipefail an empty find/grep would end `sprint start` itself
+  t="$(find "$cfg/projects/" -maxdepth 2 -name "$CLAUDE_CODE_SESSION_ID.jsonl" -type f 2>/dev/null | head -1 || true)"
+  [[ -n "$t" ]] || return 0
+  start="$(grep -m1 -o '"cwd":"[^"]*"' "$t" | sed 's/^"cwd":"//; s/"$//; s#\\\\#/#g' || true)"
+  [[ -n "$start" ]] || return 0
+  start_ts="$(grep -m1 -o '"timestamp":"[^"]*"' "$t" | sed 's/^"timestamp":"//; s/"$//; s/\.[0-9]*Z$/Z/' || true)"
+  f=""
+  for f in "$start/.claude/agents/canon-evaluator.md" "$cfg/agents/canon-evaluator.md"; do [[ -f "$f" ]] && break; f=""; done
+  if [[ -z "$f" ]]; then
+    why="it started in $start, where no canon-evaluator agent is found (nor in $cfg/agents)"
+  elif [[ -n "$start_ts" ]]; then
+    start_epoch="$(date -u -d "$start_ts" +%s 2>/dev/null || date -j -u -f "%Y-%m-%dT%H:%M:%SZ" "$start_ts" +%s 2>/dev/null)" || start_epoch=""
+    if [[ -n "$start_epoch" ]]; then
+      ref="$(mktemp)"
+      touch -t "$(date -r "$start_epoch" +%Y%m%d%H%M.%S 2>/dev/null || date -d "@$start_epoch" +%Y%m%d%H%M.%S)" "$ref" 2>/dev/null
+      [[ -n "$(find "$(dirname "$f")" -maxdepth 0 -newer "$ref" 2>/dev/null || true)" ]] && why="canon's gate agents were added after it started"
+      rm -f "$ref"
+    fi
+  fi
+  if [[ -z "$why" ]]; then GATE_AGENTS=ok; return 0; fi
+  GATE_AGENTS=missing
+  [[ -f "$root/.claude/agents/canon-evaluator.md" ]] || fix=" (run 'skills.sh refresh' there first, so it links the agents)"
+  echo "[sprint] WARNING: canon's gate agents are not loaded in this Claude Code session: $why."
+  echo "  The close's reviewer and evaluator need them; without them it falls back to general-purpose agents."
+  echo "  Fix: end this session and start Claude Code again in $root$fix."
 }
 
 cmd_continue() {
@@ -175,6 +214,7 @@ cmd_continue() {
     exit 1
   fi
   tdir="$(ticket_dir_for "$id")"
+  _gate_agents_check "$(project_root)"
   echo "Continuing sprint: $id"
   echo "Status: $status"
   echo "Ticket: $tdir/ticket.md"
@@ -937,6 +977,45 @@ cmd_check_evidence() {
 # orchestrating agent goes on to invoke `sprint complete` itself. Prints the
 # resulting count and a retry-budget-exhausted notice at 3, but never blocks
 # on its own — _gate_eval_report_verdict (cmd_complete) is the actual close gate.
+# cmd_relay_report <id> [evaluator|reviewer] — t-ff14: a read-only `Plan` fallback gate cannot write its report, and the main
+# session must not type one (Claude Code's auto mode refuses that as a bypassed gate). This copies the report, byte for
+# byte, from the harness's own transcript of the newest matching dispatch (Plan, or the canon agent itself) into its file:
+# the transcript's SubagentHandback message (else last text) from `evaluator-run-id:` / `# Review Notes` on. The close
+# check still verifies the evaluator's report against that same transcript. Refuses when no transcript holds it.
+cmd_relay_report() {
+  local id="${1:-}" role="${2:-evaluator}" tdir cfg marker proto agents dest f meta report found=""
+  [[ -n "$id" ]] || { echo "Usage: sprint relay-report <id> [evaluator|reviewer]" >&2; exit 1; }
+  case "$role" in
+    evaluator) marker="evaluator-run-id:" proto="reference/eval.md" agents="canon-evaluator|Plan" dest="eval-report.md" ;;
+    reviewer)  marker="# Review Notes"    proto="reference/review.md" agents="canon-reviewer|Plan" dest="review-notes.md" ;;
+    *) echo "Usage: sprint relay-report <id> [evaluator|reviewer]" >&2; exit 1 ;;
+  esac
+  tdir="$(ticket_dir_for "$id")"
+  [[ -d "$tdir" ]] || { echo "relay-report: no ticket folder for $id" >&2; exit 1; }
+  cfg="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}"
+  # An older board binary takes an unknown first word for a port and would start serving: ask --help first (board_helper_bin).
+  local board; board="$(board_bin)"
+  case "$("$board" --help 2>/dev/null || true)" in
+    *transcript-report*) ;;
+    *) echo "relay-report: the installed board binary predates relay-report; run 'canon update' (or build the board), then retry" >&2; exit 1 ;;
+  esac
+  # newest first, within the last 3 hours: the dispatch just finished
+  while IFS= read -r f; do
+    [[ -n "$f" ]] || continue
+    meta="${f%.jsonl}.meta.json"
+    [[ -f "$meta" ]] && grep -qE "\"agentType\"[[:space:]]*:[[:space:]]*\"($agents)\"" "$meta" || continue
+    grep -qF -e "$proto" "$f" && grep -qF -e "$id" "$f" || continue
+    report="$("$board" transcript-report "$f" "$marker" 2>/dev/null)" || continue
+    found="$f"; break
+  done < <(find "$cfg/projects/" -path '*/subagents/agent-*.jsonl' -type f -mmin -180 -exec ls -t {} + 2>/dev/null)
+  if [[ -z "$found" ]]; then
+    echo "relay-report: no $role transcript for $id (a Plan or canon-$role dispatch in the last 3 hours that read $proto and returned a report starting '$marker'). Dispatch the $role again." >&2
+    exit 1
+  fi
+  printf '%s\n' "$report" > "$tdir/$dest"
+  echo "relay-report: wrote $tdir/$dest from $found ($(sed -nE 's/.*"agentType"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/p' "${found%.jsonl}.meta.json" | head -1))"
+}
+
 cmd_eval_verdict() {
   local id="${1:-}"
   [[ -z "$id" ]] && { echo "Error: ticket ID required" >&2; exit 1; }
@@ -1160,6 +1239,9 @@ Usage:
   sprint eval-verdict <id>  Record the evaluator's pass/fail into ticket.md's
                             eval_fail_count (internal — called by complete.md
                             step 3, not run directly)
+  sprint relay-report <id> [evaluator|reviewer]  Copy a read-only (Plan) gate's report
+                            from the harness transcript into its file, byte for byte
+                            (the main session never types a gate report)
   sprint check-review-notes <id>  Check review-notes.md's shape with the same rule
                             sprint complete applies (read-only; exit 1 names each
                             problem) — the reviewer runs it before returning
@@ -1188,6 +1270,7 @@ main() {
     complete) cmd_complete ;;
     suggest-tier) cmd_suggest_tier "$@" ;;
     eval-verdict) cmd_eval_verdict "$@" ;;
+    relay-report) cmd_relay_report "$@" ;;
     check-review-notes) cmd_check_review_notes "$@" ;;
     check-evidence) cmd_check_evidence "$@" ;;
     gate-cost) cmd_gate_cost "$@" ;;
