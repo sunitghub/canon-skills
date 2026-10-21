@@ -23,7 +23,7 @@ names for a case that applies.
 4. **Context:** `DECISIONS.md`: scan every live entry for a constraint or conflict, skipping fragments
    marked `superseded-by:`; `HANDOFF.md`; `LEARNINGS.md`; closed tickets that touched the files you will
    change.
-5. **Research:** inspect the files and callers; write a few bullets in `research.md` before the approach.
+5. **Research:** inspect the files and callers; confirm the ticket's premise in the code (the bug reproduces, the thing is missing); write a few bullets in `research.md` before the approach.
 6. **acceptance.md:**
    - `## Criteria`: binary conditions naming the exact field, value or output. Never cite `summary.md` or
      `eval-report.md`, which do not exist when the evaluator grades. A gitignored file

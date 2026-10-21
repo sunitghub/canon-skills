@@ -3,8 +3,8 @@ name: skill-setup-std
 description: Validates skill files against canon standards. Use when adding a new skill or auditing existing ones.
 category: agent-ops
 tags: [skills, contributors, conventions]
-version: 1.10.1
-updated: 2026-10-16
+version: 1.10.2
+updated: 2026-10-21
 ---
 
 # Skill Setup Standard
@@ -101,6 +101,8 @@ Match the specificity of your instructions to how fragile the task is.
 - **High freedom** (prose steps): use when multiple approaches are valid and context drives the decision. Example: code review, research synthesis.
 - **Medium freedom** (pseudocode or parameterized scripts): use when a preferred pattern exists but some variation is fine.
 - **Low freedom** (exact commands, no parameters): use when the operation is fragile, irreversible, or must follow a precise sequence. Example: database migrations, release steps.
+
+A skill whose job covers every item of a large set (every file, every symbol) runs a script for the loop: a model following prose samples the set (`t-271a`).
 
 A useful mental model: if failure on this step corrupts state or blocks others, give low freedom. If many paths lead to the same good outcome, give high freedom.
 
@@ -238,6 +240,8 @@ Length is a smell, not a limit: a leaf skill that runs long is usually doing mor
 ## Content guidelines
 
 **No time-sensitive information.** Don't write "before August 2025, use the old API." Put legacy behavior in a collapsible "Old patterns" section instead — it provides context without cluttering the main flow.
+
+**Verify model-behaviour claims at the source.** A factual claim about how a model behaves is quoted from its primary page in `research.md`, re-fetched now; don't carry old text forward, and hedge what the source does not say (`t-a381`).
 
 **Consistent terminology.** Pick one term per concept and use it throughout. Mixing "endpoint" / "URL" / "route" / "path" forces the agent to infer equivalence instead of following instructions. Inconsistency is a common source of agent errors.
 

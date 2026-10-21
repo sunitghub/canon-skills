@@ -126,6 +126,7 @@ Populate the Issues table with any `candidate for ref/split`, `too few evals`, f
 
 ## Gotchas
 
+- A new case is run once against the pre-change skill. If it passes there (the prompt handed the executor the facts to discover), rewrite it until it separates the two (`t-e17d`).
 - The executor runs in a clean context with only the skill content injected — it has no access to the repo. Expectations like "appended to HANDOFF.md" can only be graded `pass` if the executor explicitly describes taking that action. Grade conservatively; `partial` beats an unsupported `pass`.
 - Skills with heavy CLI dependencies (e.g., sprint, which calls `./tools/sprint`) cannot be fully executed in a subagent — the executor will simulate the steps. This is still useful for catching missing steps, wrong output format, or logic errors. Note the limitation in findings when it applies.
 - If `evals.json` exists but has zero test cases, report it as a finding and stop — the fallback evaluator only fires when the file is entirely absent, not when it exists but is empty.

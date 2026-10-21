@@ -109,6 +109,7 @@ used a docs-only allowlist for this; `skills/sprint/reference/complete.md` retir
 
 ## Gotchas
 
+- **A moved file mutates every moved line.** The sweep diffs with `--no-renames`, so a rename counts all its lines as changed (10,727 mutants for a Go move): map only files with real edits, and hand-mutate the `git diff -M` diff of moved files (`t-8020`).
 - **A survivor on a line the diff did not change cannot appear** — only changed lines are mutated.
   A guard the sprint relies on but did not touch needs its own revert test.
 - **Slow tests.** Every mutant runs its mapped command once; map the narrowest test that covers the

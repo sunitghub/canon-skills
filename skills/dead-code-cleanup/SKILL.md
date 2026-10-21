@@ -177,6 +177,7 @@ After the report:
 
 ## Gotchas
 
+- **`evals.json` is source text.** A real symbol named in an eval prompt counts as a reference, so a scan finds it live. A skill whose job covers every item of a large set hands the loop to a script: models following prose sample the set (Haiku found 0 of 3) (`t-271a`).
 - **Dynamic dispatch and reflection** (`getattr(obj, name)`, `eval`, string-keyed routing
   tables) call a symbol by name at runtime — grep finds zero static references even though the
   symbol is live. Treat any candidate near a router/registry/dispatch table with suspicion; ask
