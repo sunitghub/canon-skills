@@ -181,6 +181,7 @@ mkdir -p ".tickets/$id/evidence" "$W/outside" && printf 'HEAD 0 T\n$ true\n# on 
 ln -sf "$W/outside/l.log" ".tickets/$id/evidence/zz-link.log"; mkdir -p ".tickets/$id/evidence/dir.log"   # never followed / not a file
 STUB_PR_HEAD="$(git -C "$X" rev-parse HEAD)"
 out="$("$TKT" import-results "$id" --pr 58)"
+[[ "$out" != *"next: tkt land"* ]] || fail "a closed ticket should print no next: line (t-b650): $out"
 for f in acceptance.md eval-report.md evidence/report.json plan.md; do cmp -s "$X/.tickets/$id/$f" ".tickets/$id/$f" || fail "$f did not come back byte-for-byte"; done
 cmp -s "$A/$d/plan.md" ".tickets/$id/.before-import/plan.md" || fail "the local plan.md was not kept in .before-import/"
 assert_grep "^github: acme/app#57$" ".tickets/$id/ticket.md"
@@ -274,10 +275,19 @@ cd "$X" && "$TKT" export "$id" >/dev/null 2>&1 && cd "$L"
 lid="$("$TKT" create "Local sprint" -t task)"; "$TKT" start "$lid" >/dev/null
 out="$("$TKT" import-results "$id")"
 assert_contains "$out" "status: open (cloud: in_progress)  (expected closed: the cloud sprint did not finish)"
+assert_contains "$out" "  next: tkt land $id"; assert_contains "$out" "the cloud's evaluator run record cannot travel"   # t-b650
 assert_grep "^status: open$" ".tickets/$id/ticket.md"
 assert_grep "^cloud_status: in_progress$" ".tickets/$id/ticket.md"
 assert_contains "$(event_line ticket.status_changed "$id")" '"from":"in_progress","ticket":"'"$id"'","to":"open"'   # t-f182
 assert_eq "$lid" "$("$TKT" current | awk '{print $1}')"
+# t-b650: the same unfinished ticket imported with --pr names it in the step; a pass report says the cloud's pass will not do.
+cd "$X" && "$TKT" export "$id" >/dev/null 2>&1 && cd "$L"
+out="$("$TKT" import-results "$id" --pr 58 2>&1)" || true
+assert_contains "$out" "  next: tkt land $id --pr 58"
+assert_contains "$out" "so its pass will not satisfy the local close"
+rm -f "$X/.tickets/$id/eval-report.md" ".tickets/$id/eval-report.md"; cd "$X" && "$TKT" export "$id" >/dev/null 2>&1 && cd "$L"
+out="$("$TKT" import-results "$id" 2>&1)" || true
+assert_contains "$out" "  next: tkt land $id"; assert_contains "$out" "and no report is all that came back"
 rc=0; out="$("$SPRINT" complete 2>&1)" || rc=$?
 [[ "$rc" == 1 && "$out" != *"multiple in-progress"* ]] || fail "sprint complete saw the imported ticket as in progress (rc $rc): $out"
 assert_contains "$out" "$lid"

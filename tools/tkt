@@ -2127,6 +2127,12 @@ cmd_import_results() {
   echo "  status: ${st:-unknown}$cst$([[ "$st" == closed ]] || echo '  (expected closed: the cloud sprint did not finish)')"
   [[ "$verdict" == - ]] && verdict=""; [[ "$graded" == - ]] && graded=""
   echo "  evaluator: ${verdict:-no eval-report.md}  graded-head: ${graded:-none}"
+  # t-b650: the cloud's evaluator run record (.claude/subagent-runs.jsonl, the harness transcript) cannot travel, so a ticket
+  # the cloud did not close is closed here, in a worktree at the PR head, with its own evaluator run.
+  if [[ "$st" != closed ]]; then
+    echo "  next: tkt land $id${pr:+ --pr $pr}"
+    echo "    run the evaluator and sprint complete in that worktree: the cloud's evaluator run record cannot travel,$([[ "$verdict" == pass ]] && echo " so its pass will not satisfy the local close" || echo " and ${verdict:-no report} is all that came back")"
+  fi
   if [[ -n "$pr" ]]; then
     local prh; prh="$(cd "$root" && gh pr view "$pr" --json headRefOid --jq .headRefOid 2>&1)" || { echo "import-results: gh could not read PR #$pr: $prh" >&2; rc=1; }
     if [[ $rc == 0 && -n "$graded" && "$prh" == "$graded"* ]]; then echo "  PR #$pr head $prh: matches graded-head"
