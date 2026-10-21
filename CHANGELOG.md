@@ -12,6 +12,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 - `tkt sync-issues --dry-run --json` prints the dry run as one JSON object (`repo`, `label`, `waiting`, `skipped`). A completed `tkt sync-issues` writes a `github.synced` event with the number of tickets it made.
 
 ### Changed
+- The cockpit daemon's Go tests run in about a third of the time (`t-67a6`: 101 s to 36 s on Linux), so every close and merge waits less. The slow tests run in parallel, shorten the Copilot resume grace, exit drain and scratch reap wait through new per-daemon settings, and poll instead of sleeping. The daemon behaves the same: every default is unchanged, so no restart is needed.
 - Factory › GitHub, for a project with no GitHub repo yet, offers `gh repo create <folder> --private --source=. --remote=origin --push` (`t-9955`). Intake also names labelled issues that are already tickets, and the Cloud environment box says to add your own stack's domains.
 - The board card's GitHub buttons say what they do: **Issue ↗** and **PR ↗** open GitHub, and **Create PR** creates the PR a cloud session did not (they were all "Open …", `t-9955`).
 - The board's **Sync from GitHub** button is greyed out until the GitHub checks pass (no GitHub origin included). Its tooltip points to Factory › GitHub. The worktree picker's "GitHub · set up first" row opens Factory › GitHub instead of Admin.

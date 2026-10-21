@@ -62,6 +62,7 @@ func TestSameTicketSecondStartAttaches(t *testing.T) {
 // ticket has exited, the next /session/start must spawn fresh, not attach to
 // the dead one -- the normal, unchanged path.
 func TestSameTicketAfterExitSpawnsFresh(t *testing.T) {
+	t.Parallel()
 	bin := fakeSprintQuickExit(t)
 	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: t.TempDir(), stateDir: t.TempDir()})
 	seedTicketDir(t, s.cfg.projectRoot, "t-ab12")
