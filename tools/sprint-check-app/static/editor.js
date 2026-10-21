@@ -1,6 +1,6 @@
-// Doc-editor key helpers (t-9b2d: moved verbatim out of app.html). The board modules import them (t-1543).
+// Doc-editor key helpers (t-9b2d: moved verbatim out of app.html). board-ui.js imports handleMarkdownEnter and handleTabIndent (t-1543).
 
-export function continuationPrefix(line) {
+function continuationPrefix(line) {
   let match = line.match(/^(\s*)-\s+\[([ xX])\]\s+(.*)$/);
   if (match) return { prefix: `${match[1]}- [${match[2]}] `, content: match[3] };
 

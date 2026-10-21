@@ -3,14 +3,9 @@ import { readiness } from './board-render.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
-// t-d2e1: esc() escapes quotes too, so its output is safe in text AND in a quoted attribute (it used to leave
-// `"` alone, and attribute sinks that used it instead of escAttr could be broken out of). escAttr is the same now.
-export function esc(s) {
-  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-}
-export function escAttr(s) {
-  return esc(s);
-}
+// esc/escAttr live in html-escape.js (shared with the Cockpit shell); re-exported so importers keep one path.
+import { esc, escAttr } from './html-escape.js';
+export { esc, escAttr };
 // The inverse of esc(), for text md() has already escaped (only the five entities esc() produces).
 function unescapeHtml(s) {
   return s.replace(/&(amp|lt|gt|quot|#39);/g, (_, e) => ({ amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" })[e]);

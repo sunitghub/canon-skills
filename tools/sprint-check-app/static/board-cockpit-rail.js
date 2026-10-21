@@ -554,7 +554,7 @@ export function handoffNextSteps(raw, ticketId, isActive) {
 // Renders this ticket's HANDOFF.md state bullet, if any — a fresh fetch each
 // call (not the page-load-cached state.handoff) so it reflects a save the
 // live agent just made, not a stale snapshot from when the cockpit opened.
-export async function renderCockpitState(t) {
+async function renderCockpitState(t) {
   const box = document.getElementById('ck-state');
   let raw = '';
   const wdHandoff = (cockpitState.worktreeDocs || {}).handoff; // t-1357: worktree HANDOFF wins

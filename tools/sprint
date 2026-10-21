@@ -51,12 +51,6 @@ EOF
   fi
 }
 
-write_if_missing() {
-  local file="$1" content="$2"
-  [[ -f "$file" ]] && return 0
-  printf "%s\n" "$content" > "$file"
-}
-
 cmd_start() {
   local arg="${1:-}"
   [[ -z "$arg" ]] && { echo "Usage: sprint start \"title\" | sprint start <ticket-id>" >&2; exit 1; }

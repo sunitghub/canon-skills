@@ -298,7 +298,6 @@ done
 # --- t-a3d7: covered ---------------------------------------------------------------------------------------------------------------
 # A full board-spec run whose only later change is the baseline counts as re-judged by a guard log at the graded head over exactly its
 # reports, unchanged. The fakes stand in for the real runner and guard; the real runner's two output lines are pinned below.
-sha_of() { if command -v sha256sum >/dev/null 2>&1; then sha256sum -- "$1" | cut -d' ' -f1; else shasum -a 256 -- "$1" | cut -d' ' -f1; fi; }
 mkdir -p "$WORK/fakes"
 cat > "$WORK/fakes/run-board-spec.sh" <<'FAKE'
 #!/usr/bin/env bash

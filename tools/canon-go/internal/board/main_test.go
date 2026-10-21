@@ -168,9 +168,9 @@ created: 2026-06-27
 `)
 	writeFile(t, filepath.Join(ticketsDir, "t-abcd", "acceptance.md"), "legacy mapped acceptance\n")
 
-	content, ok := readDoc("t-abcd-acceptance.md", "")
+	content, _, ok := readDocWithEtag("t-abcd-acceptance.md", "")
 	if !ok || content != "legacy mapped acceptance\n" {
-		t.Fatalf("readDoc legacy fallback = (%q, %v)", content, ok)
+		t.Fatalf("readDocWithEtag legacy fallback = (%q, %v)", content, ok)
 	}
 	if !writeDoc("t-abcd-plan.md", "legacy mapped plan", "") {
 		t.Fatal("writeDoc returned false")
@@ -383,7 +383,7 @@ func TestSafeTicketDocRejectsSymlinkEscape(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, ok := safeTicketDoc("t-symv/visuals/evil.png", ".png"); ok {
+	if _, ok := safeTicketDocIn("t-symv/visuals/evil.png", "", ".png"); ok {
 		t.Fatal("safeTicketDoc accepted a symlink escaping ticketsDir")
 	}
 }
@@ -393,7 +393,7 @@ func TestSafeTicketDocAcceptsLegitimateNestedPath(t *testing.T) {
 	realFile := filepath.Join(ticketsDir, "t-legt", "visuals", "real.png")
 	writeFile(t, realFile, "\x89PNG\r\n\x1a\n")
 
-	p, ok := safeTicketDoc("t-legt/visuals/real.png", ".png")
+	p, ok := safeTicketDocIn("t-legt/visuals/real.png", "", ".png")
 	if !ok {
 		t.Fatal("safeTicketDoc rejected a legitimate nested real file")
 	}
@@ -408,13 +408,13 @@ func TestSafeTicketDocFeatureExtScoping(t *testing.T) {
 	setupTestProject(t)
 	realFile := filepath.Join(ticketsDir, "t-feat", "features", "spec.feature")
 	writeFile(t, realFile, "Scenario: x\n  Given a\n")
-	if p, ok := safeTicketDoc("t-feat/features/spec.feature", ".feature"); !ok || p != realFile {
+	if p, ok := safeTicketDocIn("t-feat/features/spec.feature", "", ".feature"); !ok || p != realFile {
 		t.Fatalf("safeTicketDoc rejected a legitimate nested .feature (ok=%v p=%q)", ok, p)
 	}
 
 	tm := filepath.Join(ticketsDir, "t-feat", "ticket.md")
 	writeFile(t, tm, "---\nid: t-feat\n---\n")
-	if _, ok := safeTicketDoc("t-feat/ticket.md", ".feature"); ok {
+	if _, ok := safeTicketDocIn("t-feat/ticket.md", "", ".feature"); ok {
 		t.Fatal("safeTicketDoc accepted a non-.feature path under the .feature extension")
 	}
 
@@ -423,7 +423,7 @@ func TestSafeTicketDocFeatureExtScoping(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(ticketsDir, "t-feat", "features", "evil.feature")); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := safeTicketDoc("t-feat/features/evil.feature", ".feature"); ok {
+	if _, ok := safeTicketDocIn("t-feat/features/evil.feature", "", ".feature"); ok {
 		t.Fatal("safeTicketDoc accepted a symlink .feature escaping ticketsDir")
 	}
 }
@@ -434,7 +434,7 @@ func TestSafeTicketDocAllowsFreshWriteWithNonexistentLeaf(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	p, ok := safeTicketDoc("t-newf/plan.md")
+	p, ok := safeTicketDocIn("t-newf/plan.md", "")
 	if !ok {
 		t.Fatal("safeTicketDoc rejected a fresh write to a not-yet-created file")
 	}
@@ -455,7 +455,7 @@ func TestSafeTicketDocRejectsSymlinkEscapeTwoLevelsUpWithNonexistentLeaf(t *test
 		t.Fatal(err)
 	}
 
-	if _, ok := safeTicketDoc("evil-symlink-dir/newticket/newfile.md"); ok {
+	if _, ok := safeTicketDocIn("evil-symlink-dir/newticket/newfile.md", ""); ok {
 		t.Fatal("safeTicketDoc accepted a path through an existing symlinked ancestor two levels up, with a nonexistent leaf and parent")
 	}
 }
@@ -476,7 +476,7 @@ func TestSafeTicketDocRejectsDanglingSymlinkAtLeaf(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, ok := safeTicketDoc("t-dang/evil.md"); ok {
+	if _, ok := safeTicketDocIn("t-dang/evil.md", ""); ok {
 		t.Fatal("safeTicketDoc accepted a dangling symlink whose target lies outside ticketsDir")
 	}
 }
@@ -487,7 +487,7 @@ func TestSafeTicketDocAllowsFreshWriteThroughRealExistingParent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	p, ok := safeTicketDoc("t-deep/sub/brandnew.md")
+	p, ok := safeTicketDocIn("t-deep/sub/brandnew.md", "")
 	if !ok {
 		t.Fatal("safeTicketDoc rejected a fresh write through a real, existing, non-symlinked parent chain")
 	}

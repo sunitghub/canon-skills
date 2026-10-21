@@ -24,16 +24,6 @@ find_skill() {
   return 1
 }
 
-skill_slug() {
-  local f="$1" base
-  base=$(basename "$f")
-  if [ "$base" = "SKILL.md" ]; then
-    basename "$(dirname "$f")"
-  else
-    echo "${base%.md}"
-  fi
-}
-
 resolve_deps() {
   local file="$1" dep_str
   dep_str=$(fm_field "$file" depends)

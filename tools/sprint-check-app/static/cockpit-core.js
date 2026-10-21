@@ -4,10 +4,9 @@ import { hideCloseWarn } from './cockpit-sessions.js';
 import { toggleKeysSheet } from './cockpit-keys.js';
 import { closeTabMenu } from './cockpit-tabs.js';
 
-// t-d2e1: esc() escapes quotes too (text-node serialization alone does not), so its output is safe in text AND in a
-// quoted attribute; attribute sinks that used esc() instead of escAttr could be broken out of. escAttr is the same now.
-export function esc(s){const d=document.createElement('div');d.textContent=s==null?'':String(s);return d.innerHTML.replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
-export function escAttr(s){return esc(s);}
+// esc/escAttr live in html-escape.js (shared with the board); re-exported so importers keep one path.
+import { esc, escAttr } from './html-escape.js';
+export { esc, escAttr };
 export function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2600);}
 
 // ── Reusable canon-styled confirm (t-5849) ─────────────────────────────────

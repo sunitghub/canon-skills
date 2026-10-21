@@ -26,7 +26,7 @@ function checksOf(res){ return res&&res.ok&&res.doctor&&Array.isArray(res.doctor
 
 // The Projects card's Factory row (t-9641): "GitHub ready · agentic off ›", "GitHub needs setup · …", or muted
 // "Not set up" when the project has no GitHub origin. The agentic line is not built yet, so it always reads off.
-export function factoryRow(res){
+function factoryRow(res){
   const checks=checksOf(res);
   if(!checks) return {text:'GitHub · could not check ›', muted:true};
   if(checks.some(c=>c.id==='origin'&&c.status==='bad')) return {text:'Not set up', muted:true};
