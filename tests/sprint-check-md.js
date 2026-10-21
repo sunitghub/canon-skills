@@ -31,6 +31,9 @@ const item = md('- _item_');
 ok('italic right after and before a tag (inside a bullet)', item.includes('<span><em>item</em></span>'), item);
 const eq = md('a=_b_ and _c_=d');
 ok('= is not a word edge for _italic_', eq === 'a=_b_ and _c_=d', eq);
+const noImg = md('![a](http://evil.example/x.png)', undefined, { images: false });
+ok('images: false keeps an image as text (an Upkeep report never loads a remote <img>)', !noImg.includes('<img') && noImg.includes('http://evil.example/x.png'), noImg);
+ok('a ticket doc still renders its images', md('![a](visuals/a.png)', 't-abcd').includes('<img'));
 const gt = md('a > b');
 ok('a > that does not start the line is text', gt === 'a &gt; b', gt);
 

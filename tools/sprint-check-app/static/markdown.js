@@ -104,7 +104,8 @@ export function renderFeatureRefPlaceholder(body) {
 }
 
 // Minimal markdown: headers, bold, _italic_, inline code, > quotes, checklist items, bullet lists, images
-export function md(raw, ticketId) {
+// opts.images === false (t-43ba): `![alt](src)` stays text — for LLM-written reports, which must not load a remote image.
+export function md(raw, ticketId, opts = {}) {
   if (!raw) return '';
   // Pre-stamp each checkbox line with its source position using a null-byte
   // marker that survives esc() and sortChecklistRuns(), so the rendered index
@@ -147,7 +148,8 @@ export function md(raw, ticketId) {
     .replace(/^# (.+)$/gm,  '<strong class="doc-heading-1">$1</strong>')
     .replace(/^## (.+)$/gm, '<strong class="doc-heading-2">$1</strong>')
     .replace(/^### (.+)$/gm,'<strong class="doc-heading-3">$1</strong>')
-    .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_, alt, src) => {
+    .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (m, alt, src) => {
+      if (opts.images === false) return m;
       // t-d2e1: md() escaped the whole doc above, so the path is decoded back to its real characters before it is
       // URL-encoded, then escaped once for the attribute (it's.png, a&b.png). alt is already escaped text.
       const raw = unescapeHtml(src);

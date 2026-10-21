@@ -12261,7 +12261,7 @@ test.describe('Canon Cockpit Upkeep (t-7ae6)', () => {
     await stubUpkeep(page, {
       status: { status: 'done', report_path: '/tmp/proj-a/.reports/dead-code-cleanup_x.md', finished_at: Date.now() / 1000 },
       report: { ok: true, path: '/tmp/proj-a/.reports/dead-code-cleanup_x.md',
-        content: '# Dead code\n\n_Scope: whole repo. Generated: 2026-10-21._\n\n> Advisory only — nothing was modified.\n> Second line with `a_b_c`.\nAfter the quote, a > b.\n' },
+        content: '# Dead code\n\n_Scope: whole repo. Generated: 2026-10-21._\n\n> Advisory only — nothing was modified.\n> Second line with `a_b_c`.\nAfter the quote, a > b.\n\n![pixel](http://127.0.0.1:9/x.png)\n' },
     });
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
@@ -12275,7 +12275,9 @@ test.describe('Canon Cockpit Upkeep (t-7ae6)', () => {
     await expect(page.locator('#up-rp-body')).not.toContainText('> Advisory');
     await expect(page.locator('#up-rp-body blockquote')).toContainText('Second line');
     await expect(page.locator('#up-rp-body blockquote')).not.toContainText('> Second');      // its own line, not joined text
-    await expect(page.locator('#up-rp-body p').last()).toHaveText('After the quote, a > b.');   // a mid-line > is text; the quote ends
+    await expect(page.locator('#up-rp-body p').nth(-2)).toHaveText('After the quote, a > b.');   // a mid-line > is text; the quote ends
+    await expect(page.locator('#up-rp-body img')).toHaveCount(0);                                   // a report (LLM output) never loads a remote image
+    await expect(page.locator('#up-rp-body p').last()).toHaveText('![pixel](http://127.0.0.1:9/x.png)');
   });
 
   test('upkeep (t-43ba) picker from registry, Ran on, Running hover', async ({ page }) => {

@@ -5,7 +5,7 @@ import { showView } from './cockpit-views.js';
 import { seRender, seReset } from './cockpit-skill-eval.js';
 import { activateTab, activeTab, applySplit, openProject, setUpkeepPane } from './cockpit-tabs.js';
 import { getProjects } from './cockpit-projects.js';
-import { md } from './markdown.js';
+import { md as mdRender } from './markdown.js';
 
 // ── Views: Projects vs Admin vs Upkeep (t-5dc2, t-7ae6) ───────────────────
 // t-67ab: the card's Branch and Upkeep rows (how many of the checks have never run).
@@ -36,7 +36,7 @@ const UPKEEP_SKILLS = [
 // skills/sprint/reference/complete.md and the plugin-evals doc; keep it in step with them. ──
 const UP_HOW='Click Run and the board starts <code>upkeep-run</code>, which launches a fresh, headless <code>claude -p</code> session against this project. The skill\'s own SKILL.md is checked against a pinned hash first, so a tampered copy is refused. It reads the repo and writes one Markdown report under the project\'s <code>.reports/</code>; you read it here with View report.';
 const UP_NOT='It does not edit your code or config, runs no arbitrary shell commands, and never auto-executes the report\'s Next Steps. Its tools are limited to reading (plus read-only git and wc) and writing the one report; the single-file limit itself is enforced by the prompt, not by the tool.';
-const UP_COST='One headless Claude session on your account, which can take many tool turns: Haiku 4.5 by default, Sonnet 5 if you pick it. On a subscription it counts against your plan usage.';
+const UP_COST='One headless Claude session on your account, which can take many tool turns, on the model you pick on the card (its list and default are set in Admin › Model Tiers). On a subscription it counts against your plan usage.';
 const UP_HELP={
   'skill-eval':{title:'Skill Eval',
     lead:"Checks that a skill folder ships evals and follows Anthropic's skill-authoring rules, then measures the skill with and without it.",
@@ -293,11 +293,13 @@ export function upToggleCollapse(){ document.getElementById('up-detail').classLi
 // Upkeep's report blocks (title skip, `**Key:**` meta row, tables with status
 // chips, - lists with the amber callout under a "Findings" heading). Every piece
 // of text, and each `> ` quote line, goes through the board's one renderer, md()
-// (static/markdown.js, t-43ba) — there is no second inline renderer here.
+// (static/markdown.js, t-43ba) — there is no second inline renderer here. A report is
+// LLM output, so md() renders its images as text, never as a remote <img>.
 function upRenderReport(raw){
   if(!raw) return '<div class="up-empty">Empty report.</div>';
   const lines=raw.split(/\r?\n/);
   let html=''; let inFindings=false; let inList=false; let inMeta=false; let skippedTitle=false;
+  const md=t=>mdRender(t, undefined, { images: false });
   const closeList=()=>{ if(inList){ html+='</ul>'; inList=false; } };
   const closeMeta=()=>{ if(inMeta){ html+='</div>'; inMeta=false; } };
   const isTableRow=l=>/^\s*\|.*\|\s*$/.test(l);
