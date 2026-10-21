@@ -78,16 +78,21 @@ Prune stale entries freely — git history preserves everything.
 You can hand a ticket to a Claude cloud session (Claude desktop's Code tab, or claude.ai/code) that runs on your
 Claude subscription, with no API key. The ticket goes to your repo as a GitHub issue; the session works on it there.
 
-Before the first send, the board's Admin › GitHub (or `tkt github-doctor`) checks that gh is installed and signed in and
-that origin is a GitHub repo, and has Copy buttons for the recipe below. Issues labelled `canon` come in with the board's
-header button **Sync from GitHub** (`tkt sync-issues`).
+Before the first send, the Cockpit's Factory › GitHub (or `tkt github-doctor`) checks that gh is installed and signed in
+and that origin is a GitHub repo, and has Copy buttons for the recipe below. Issues labelled `canon` come in with the
+board's header button **Sync from GitHub** (`tkt sync-issues`), which stays greyed out until those checks pass. Factory ›
+GitHub's Intake box shows the issues waiting (`tkt sync-issues --dry-run --json`) and when the project last synced.
 
-**Once: create a "canon" environment.** In a new session, open *Choose environment*, then *Cloud*:
+**Once: create a "canon" environment.** In a new session, open *Choose environment*, then *Cloud*. `tkt cloud-env` prints
+this project's recipe ready to paste (the Cockpit's Factory › GitHub has Copy buttons for it); its one source is
+`tools/cloud-env.sh`. Below is the full recipe; a project that is not written in Go leaves out the Go domains and the
+script's Go block:
 
 - **Name:** `canon`
 - **Network access:** *Custom*, with these domains, and tick *Also include default list of common package managers*:
-  `getcanon.dev`, `github.com`, `raw.githubusercontent.com`, `objects.githubusercontent.com`, and for Go (canon's tests
-  build its daemon with the Go it pins): `go.dev`, `dl.google.com`, `proxy.golang.org`, `sum.golang.org`
+  `getcanon.dev`, `github.com`, `raw.githubusercontent.com`, `objects.githubusercontent.com`, and for Go projects and
+  canon itself (canon's tests build its daemon with the Go it pins): `go.dev`, `dl.google.com`, `proxy.golang.org`,
+  `sum.golang.org`. Add your own stack's domains (an npm or PyPI mirror, for example) yourself.
 - **Setup script** (runs before Claude starts, so every session has canon's latest verified release):
   ```bash
   #!/bin/bash
@@ -169,10 +174,10 @@ header button **Sync from GitHub** (`tkt sync-issues`).
    `git config --add canon.mirror <remote>`; `tkt push-main` (or the board's "Push main to …" after a merge) pushes only
    those, never forced, and prints how to undo each push.
 
-On the board these are one button per card stage: Open issue, Open PR, Import results, Check & merge, then the push. A
-session that pushed its branch without opening a PR shows "branch, no PR" and an **Open PR** button (`tkt open-pr <id>`),
+On the board these are one button per card stage: Issue ↗, PR ↗, Import results, Check & merge, then the push. A
+session that pushed its branch without opening a PR shows "branch, no PR" and a **Create PR** button (`tkt open-pr <id>`),
 which opens it with `Fixes #N` after you confirm. The worktree picker's "GitHub · new issue" row reads the readiness
-checks first and, when something is missing, reads "GitHub · set up first (n of m ready)" and opens Admin › GitHub.
+checks first and, when something is missing, reads "GitHub · set up first (n of m ready)" and opens Factory › GitHub.
 
 **Letting Claude Code run the merge.** In auto mode, Claude Code blocks a merge as "Merge Without Review" even after
 you said yes in chat. To let it run `merge-pr` for you, allow the command once, with `/permissions` › Allow or in the

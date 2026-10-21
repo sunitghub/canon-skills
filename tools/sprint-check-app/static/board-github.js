@@ -68,9 +68,11 @@ export function ghButtonHTML(t) {
     `<button class="card-start card-gh-btn" type="button" data-id="${esc(t.id)}" data-gh-action="${action}" title="${escAttr(title)}">${esc(label)}</button>`;
   if (st.stage === 'results-ready') return btn('import', 'Import results', 'Bring the cloud session\'s results back into this ticket');
   if (st.stage === 'results-in' || st.stage === 'merging') return btn('merge', 'Check & merge', 'Check the PR and merge it after your confirmation');
-  if (st.stage === 'pr-open' && prOf(st)) return btn('pr', 'Open PR', `Open PR #${prOf(st)} on GitHub`);
-  if (st.stage === 'branch') return btn('open-pr', 'Open PR', `The session pushed ${st.branch} without a PR: open one`);
-  return btn('issue', 'Open issue', 'Open the issue on GitHub');
+  // t-9955: "↗" goes to GitHub and changes nothing; Create PR is the one that makes something.
+  if (st.stage === 'pr-open' && prOf(st)) return btn('pr', 'PR ↗', `PR #${prOf(st)} on GitHub`);
+  if (st.stage === 'branch') return btn('open-pr', 'Create PR', `The session pushed ${st.branch} without a PR: create one`);
+  const p = ghParts(t);
+  return btn('issue', 'Issue ↗', p ? `Issue #${p.issue} on GitHub` : 'The issue on GitHub');
 }
 
 export function bindGithubCardButtons(root) {
@@ -97,19 +99,19 @@ async function ghAction(t, action) {
   if (action === 'open-pr' && p) return openPr(t, p, st);
 }
 
-// ── Open PR (t-24b1): a session pushed its branch and stopped short of a PR ─────────────────────────────────────────
+// ── Create PR (t-24b1, label t-9955): a session pushed its branch and stopped short of a PR ─────────────────────────────────────────
 async function openPr(t, p, st) {
   const ask = openDialog({
-    title: `Open a PR for ${t.id}?`,
+    title: `Create a PR for ${t.id}?`,
     body: `Opens a pull request on ${p.repo} from ${st.branch} into its default branch, with "Fixes #${p.issue}", so Import results and Check & merge can find it.`,
-    ok: 'Open PR', cancel: 'Cancel',
+    ok: 'Create PR', cancel: 'Cancel',
   });
   if (!(await ask).ok) return;
-  const run = openDialog({ title: `Opening a PR for ${t.id}…`, pre: 'Running tkt open-pr…', cancel: 'Close' });
+  const run = openDialog({ title: `Creating a PR for ${t.id}…`, pre: 'Running tkt open-pr…', cancel: 'Close' });
   let res;
   try { res = await postJSON(ghApi(t.id, 'open-pr'), {}); }
   catch (e) { res = { ok: false, output: String(e.message || e) }; }
-  updateDialog({ title: res.ok ? 'PR opened' : 'No PR opened', body: res.ok ? '' : 'Nothing was created on GitHub.', pre: res.output || '' }, run.gen);
+  updateDialog({ title: res.ok ? 'PR created' : 'No PR created', body: res.ok ? '' : 'Nothing was created on GitHub.', pre: res.output || '' }, run.gen);
   statusById.delete(t.id);
   await pollGithub(true);
 }
@@ -326,7 +328,22 @@ function ensureDoctor() {
     const checks = res && res.ok && res.doctor && Array.isArray(res.doctor.checks) ? res.doctor.checks : null;
     const n = checks ? checks.filter(c => c && c.status !== 'bad').length : 0, m = checks ? checks.length : 0;
     doctor = { state: !m ? 'failed' : n === m ? 'ready' : 'bad', n, m };   // no checks at all: the read failed
-  }, () => { doctor = { state: 'failed', n: 0, m: 0 }; }).then(swapPlaceRow);
+  }, () => { doctor = { state: 'failed', n: 0, m: 0 }; }).then(() => { swapPlaceRow(); paintSyncButton(); });
+  paintSyncButton();
+}
+// t-9641: Sync from GitHub is greyed out until the checks pass (no GitHub origin included); the tooltip says where to fix
+// it. The doctor runs once per board load (ensureDoctor at init), and again only when the picker asks after the retry
+// window: never on a timer.
+let syncTitle = '';
+function paintSyncButton() {
+  const b = document.getElementById('btn-gh-sync');
+  if (!b) return;
+  if (!syncTitle) syncTitle = b.title;
+  const ready = doctor.state === 'ready';
+  b.disabled = !ready;
+  b.title = ready ? syncTitle
+    : doctor.state === 'unknown' || doctor.state === 'pending' ? 'Checking GitHub…'
+    : 'Set up GitHub first: Cockpit › Factory › GitHub';
 }
 // The answer replaces only the "checking…" row, never the whole picker: a redraw could land after a GitHub pick and
 // rebuild the send panel mid-send.
@@ -336,16 +353,16 @@ function swapPlaceRow() {
   el.outerHTML = githubPlaceRowHTML(place.tab);
   bindPlaceRow();
 }
-function openAdminGithub() {
+function openFactoryGithub() {
   if (window.parent === window) { showToast('GitHub is not set up for this project: run tkt github-doctor in a terminal'); return; }
-  window.parent.postMessage({ source: 'canon-board', type: 'open-admin-github', tab: SHELL_TAB }, location.origin);
+  window.parent.postMessage({ source: 'canon-board', type: 'open-factory-github', tab: SHELL_TAB }, location.origin);
 }
 function bindPlaceRow() {
   const el = document.getElementById('ck-gh-place');
   if (!el || !place) return;
   if (el.classList.contains('ck-gh-setup')) {
-    el.addEventListener('click', openAdminGithub);
-    el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openAdminGithub(); } });
+    el.addEventListener('click', openFactoryGithub);
+    el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openFactoryGithub(); } });
   } else if (el.dataset.github) {
     const onPick = place.onPick;
     el.addEventListener('click', () => onPick(el));
@@ -364,7 +381,7 @@ function githubPlaceRowHTML(tab) {
   }
   if (doctor.state === 'bad' || doctor.state === 'failed') {
     const what = doctor.state === 'bad' ? `set up first (${doctor.n} of ${doctor.m} ready)` : 'set up first (the checks could not run)';
-    return `<div class="ck-worktree-held-row ck-gh-setup" id="ck-gh-place" role="button" tabindex="0" title="Opens Admin › GitHub, which lists what to fix"><span class="ck-worktree-held-branch">GitHub · ${what}</span><span class="ck-worktree-held-why">open Admin › GitHub</span></div>`;
+    return `<div class="ck-worktree-held-row ck-gh-setup" id="ck-gh-place" role="button" tabindex="0" title="Opens Factory › GitHub, which lists what to fix"><span class="ck-worktree-held-branch">GitHub · ${what}</span><span class="ck-worktree-held-why">open Factory › GitHub</span></div>`;
   }
   return `<div class="ck-worktree-row ck-gh-row${tab.ghPick ? ' selected' : ''}" id="ck-gh-place" data-github="new" title="Sends this ticket as an issue to your repo; a Claude cloud session works it and opens a PR">
       <div class="ck-worktree-radio"></div>
@@ -454,7 +471,7 @@ function showSent(panel, t, tab) {
       <h3>Sent ${esc(t.id)} as issue #${esc(n)}</h3>
       ${line ? `<p>Start a Claude cloud session on the canon environment and type:</p><pre class="ck-gh-pre ck-gh-prompt" id="ck-gh-prompt">${esc(line)}</pre>` : `<p>Start a Claude cloud session on the canon environment and point it at issue #${esc(n)}.</p>`}
       <p>The card is in In progress and shows the next step.</p>
-      <div class="ck-gh-actions">${line ? `<button type="button" class="ck-gh-create" id="ck-gh-copy">Copy prompt</button>` : ''}${url ? `<button type="button" id="ck-gh-open">Open issue</button>` : ''}<button type="button" id="ck-gh-dismiss">Close tab</button><span class="ck-gh-status" id="ck-gh-status" role="status"></span></div>
+      <div class="ck-gh-actions">${line ? `<button type="button" class="ck-gh-create" id="ck-gh-copy">Copy prompt</button>` : ''}${url ? `<button type="button" id="ck-gh-open" title="Issue #${esc(n)} on GitHub">Issue ↗</button>` : ''}<button type="button" id="ck-gh-dismiss">Close tab</button><span class="ck-gh-status" id="ck-gh-status" role="status"></span></div>
     </div>`;
   document.getElementById('ck-gh-copy')?.addEventListener('click', async () => {
     const s = document.getElementById('ck-gh-status');
@@ -506,6 +523,7 @@ function dialogKeys(e) {
 export function initGithub() {
   document.addEventListener('keydown', dialogKeys, true);
   document.getElementById('btn-gh-sync').addEventListener('click', syncFromGithub);
+  ensureDoctor();   // t-9641: the Sync button's state
   if (!pollTimer) pollTimer = setInterval(() => pollGithub(false), POLL_MS);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) pollGithub(false); });
 }

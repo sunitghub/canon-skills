@@ -12,7 +12,7 @@ git init -q --bare "$W/origin.git"; P="$W/p"; git clone -q "$W/origin.git" "$P" 
 printf '.tickets/\n' > .gitignore; git add .gitignore; git commit -qm init; git push -q origin HEAD:main
 id="$("$TKT" create "Out on GitHub")"; f=".tickets/$id/ticket.md"
 awk '/^---$/ && ++n == 2 { print "github: acme/app#23" } { print }' "$f" > "$W/t" && mv "$W/t" "$f"
-HEAD7=0123456789abcdef0123456789abcdef01234567
+HEAD7="$(git rev-parse HEAD)"   # a real local commit: github-status reads the commits after a graded head (t-c8d4)
 mkdir "$W/bin"; cat > "$W/bin/gh" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$STUB_LOG"
@@ -43,6 +43,23 @@ sed -i.bak 's/^status: open$/status: closed/' "$f" && rm -f "$f.bak"
 # A verdict on another head is not results-in.
 printf 'evaluator-run-id: 1-1\ngraded-head: ffffffffffffffffffffffffffffffffffffffff\npass: all met\n' > ".tickets/$id/eval-report.md"
                                                 assert_eq "pr-open|24|OPEN|false|pass|false" "$(st)"
+# t-c8d4: graded-head plus late docs only (the cloud's learnings sweep) is results-in, as merge-pr accepts it; a code change
+# after the graded head is not. The commits are made in another clone, so github-status has to fetch the PR head.
+git clone -q "$W/origin.git" "$W/c" 2>/dev/null
+echo a > "$W/c/src.txt"; git -C "$W/c" add src.txt; git -C "$W/c" commit -qm graded; G="$(git -C "$W/c" rev-parse HEAD)"
+echo row > "$W/c/LEARNINGS.md"; git -C "$W/c" add LEARNINGS.md; git -C "$W/c" commit -qm sweep; L="$(git -C "$W/c" rev-parse HEAD)"
+git -C "$W/c" push -q origin "$L:refs/pull/24/head"
+printf 'evaluator-run-id: 1-1\ngraded-head: %s\npass: all met\n' "$G" > ".tickets/$id/eval-report.md"
+printf '24\tOPEN\t%s\n' "$L" > "$W/prs";       assert_eq "results-in|24|OPEN|false|pass|false" "$(st)"
+assert_contains "$("$TKT" github-status "$id")" "(the PR head plus late docs)"
+echo b > "$W/c/src.txt"; git -C "$W/c" commit -qam code; X="$(git -C "$W/c" rev-parse HEAD)"
+git -C "$W/c" push -q origin "+$X:refs/pull/24/head"
+printf '24\tOPEN\t%s\n' "$X" > "$W/prs";       assert_eq "pr-open|24|OPEN|false|pass|false" "$(st)"
+# A head that is not local and cannot be fetched exits 1, never a guessed stage.
+git -C "$W/c" push -q origin --delete refs/pull/24/head
+printf '24\tOPEN\t%s\n' 0123456789abcdef0123456789abcdef01234567 > "$W/prs"; rc=0; out="$("$TKT" github-status "$id" 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "an unfetchable PR head should exit 1"; assert_contains "$out" "could not fetch PR #24's head"
+printf 'evaluator-run-id: 1-1\ngraded-head: ffffffffffffffffffffffffffffffffffffffff\npass: all met\n' > ".tickets/$id/eval-report.md"
 # Merged: by GitHub's PR state, or by the ticket's merged: line.
 printf '24\tMERGED\t%s\n' "$HEAD7" > "$W/prs";  assert_eq "merged|24|MERGED|false|pass|false" "$(st)"
 printf '24\tCLOSED\t%s\n25\tOPEN\t%s\n' "$HEAD7" "$HEAD7" > "$W/prs"; assert_eq "25" "$(st | cut -d'|' -f2)"   # the open one wins

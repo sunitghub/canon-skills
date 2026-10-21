@@ -1049,7 +1049,7 @@
       }
     },
     {
-      "title": "GitHub workflow on the board (t-718b) > Admin GitHub shows the doctor checks with their fixes, rechecks, and copies the recipe (t-90a3)",
+      "title": "GitHub workflow on the board (t-718b) > Factory GitHub shows the doctor checks with their fixes, rechecks, and copies the recipe (t-90a3)",
       "browsers": [
         "webkit"
       ],
@@ -1101,6 +1101,39 @@
       "reason": "webkit timing flake: failed in a full t-8020 run under load (2026-10-19), passed 2/2 alone (--grep rerun); cause not yet diagnosed",
       "failed_runs": {
         "webkit": "1/3"
+      }
+    },
+    {
+      "title": "cockpit leave-session confirm (t-f6b6) > leaving while running shows the confirm dialog with Save & End and Cancel (no Leave running)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8627",
+      "reason": "webkit load flake: failed once in t-9955's full run (2026-10-20, 399b8240), then passed 3/3 alone (--grep --runs 3) at load 5-7 on 10 CPUs; not near t-9955's change",
+      "failed_runs": {
+        "webkit": "1/1"
+      }
+    },
+    {
+      "title": "Canon Cockpit Projects card: Git status icon (t-8d72) > a failed request re-enables the icon and shows the error; On and None do nothing when clicked; a synced folder is warned about",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8627",
+      "reason": "webkit load flake: failed once in t-9955's full run (2026-10-20, 399b8240), then passed 3/3 alone (--grep --runs 3) at load 5-7 on 10 CPUs; not near t-9955's change",
+      "failed_runs": {
+        "webkit": "1/1"
+      }
+    },
+    {
+      "title": "ticket modal polish (t-612f) > with Demo/UX on and a model picked, tier, Risk, model and the hint stay on one row in the default dialog (t-887e, t-bb97)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8627",
+      "reason": "webkit load flake: failed once in t-9955's full run (2026-10-20, 399b8240), then passed 3/3 alone (--grep --runs 3) at load 5-7 on 10 CPUs; not near t-9955's change",
+      "failed_runs": {
+        "webkit": "1/1"
       }
     }
   ],

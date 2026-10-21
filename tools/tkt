@@ -1272,14 +1272,18 @@ _sync_clean() {   # _sync_clean title|body < text: drops C0 (but a body's tab an
   LC_ALL=C awk -v mode="$1" '{ gsub(/\302[\200-\237]/, ""); gsub(/[\001-\010\013-\037\177]/, "")
     if (mode == "title") { gsub(/[\t\n]/, ""); printf "%s", $0 } else print }'
 }
+# --dry-run --json (t-9641): one object {repo, label, waiting: [{issue, title, type, priority}], skipped: [{issue, reason}]}
+# for Factory > GitHub's Intake box. A completed real run emits github.synced with the count made (0 included).
 cmd_sync_issues() {
-  local dry=false
+  local dry=false json=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --dry-run) dry=true; shift ;;
-      *) echo "Usage: tkt sync-issues [--dry-run]" >&2; exit 1 ;;
+      --json) json=true; shift ;;
+      *) echo "Usage: tkt sync-issues [--dry-run [--json]]" >&2; exit 1 ;;
     esac
   done
+  if $json && ! $dry; then echo "Usage: tkt sync-issues [--dry-run [--json]] (--json needs --dry-run)" >&2; exit 1; fi
   # tickets_dir, not ensure_tickets_dir: a dry run, or a run that fails before its first ticket, writes nothing.
   local dir root repo; dir="$(tickets_dir)"; root="$(dirname "$dir")"
   repo="$(_gh_origin_repo "$root" sync-issues)" || exit 1
@@ -1303,10 +1307,15 @@ cmd_sync_issues() {
     # Title and body land in ticket.md and on the terminal: no control characters (an ESC sequence can rewrite the
     # screen), C1 included (UTF-8 \302\200-\237); the body keeps its tabs and newlines.
     { _sync_clean title < "$tmp/t64-$n"; printf '\n'; _sync_clean body < "$tmp/b64-$n"; } > "$tmp/issue-$n"
-    if [[ -z "$(head -1 "$tmp/issue-$n")" ]]; then echo "skip  #$n  no title left once control characters are removed"; continue; fi
+    if [[ -z "$(head -1 "$tmp/issue-$n")" ]]; then _sync_skip "$n" "no title left once control characters are removed"; continue; fi
     printf '%s\t%s\n' "$n" "$labels" >> "$tmp/todo"
   done < "$tmp/list"
-  [[ -f "$tmp/todo" ]] || { echo "sync-issues: no open issues labelled canon on $repo"; return 0; }
+  if [[ ! -f "$tmp/todo" ]]; then
+    if $json; then _sync_json "$repo" "$tmp"; return 0; fi
+    echo "sync-issues: no open issues labelled canon on $repo"
+    $dry || canon_event github.synced tkt "$root" "count=0"
+    return 0
+  fi
   # Which issues tickets already link to: "<owner/repo#N> <id>" per ticket with a github: line.
   local f g; : > "$tmp/linked"; [[ -d "$dir" ]] && ticket_files "$dir" | while IFS= read -r f; do
     g="$(get_field "$f" github)"; [[ -n "$g" ]] && printf '%s %s\n' "$g" "$(get_field "$f" id)"; done > "$tmp/linked" || true
@@ -1314,14 +1323,15 @@ cmd_sync_issues() {
   while IFS=$'\t' read -r n labels; do
     title="$(head -1 "$tmp/issue-$n")"; tail -n +2 "$tmp/issue-$n" > "$tmp/body-$n"
     linked="$(awk -v k="$repo#$n" '$1 == k { print $2; exit }' "$tmp/linked")"
-    if [[ -n "$linked" ]]; then echo "skip  #$n  already $linked"; continue; fi
-    if grep -q '^<!-- canon:ticket ' "$tmp/body-$n"; then echo "skip  #$n  made by tkt send-issue: use tkt import-issue $n"; continue; fi
+    if [[ -n "$linked" ]]; then _sync_skip "$n" "already $linked"; continue; fi
+    if grep -q '^<!-- canon:ticket ' "$tmp/body-$n"; then _sync_skip "$n" "made by tkt send-issue: use tkt import-issue $n"; continue; fi
     type=task; pri=2
     IFS=, read -ra labs <<< "$labels"
     for l in ${labs[@]+"${labs[@]}"}; do
       l="$(printf '%s' "$l" | tr '[:upper:]' '[:lower:]')"
       case "$l" in bug|feature|task|chore|epic) type="$l" ;; p[0-4]) pri="${l#p}" ;; esac
     done
+    if $json; then printf '%s\t%s\t%s\t%s\n' "$n" "$type" "$pri" "$title" >> "$tmp/waiting"; made=$((made + 1)); continue; fi
     if $dry; then printf 'would create  #%s  %s  (%s, P%s)\n' "$n" "$title" "$type" "$pri"; made=$((made + 1)); continue; fi
     dir="$(ensure_tickets_dir)"
     id="$(gen_id)"; while [[ -e "$dir/$id" || -e "$dir/$id.md" ]]; do id="$(gen_id)"; done
@@ -1341,11 +1351,36 @@ cmd_sync_issues() {
       || { echo "sync-issues: could not create a ticket for #$n: $(cat "$tmp/err-$n")" >&2; exit 1; }
     printf '%s  #%s  %s\n' "$id" "$n" "$title"; made=$((made + 1))
   done < "$tmp/todo"
-  if $dry; then echo "dry run: $made to create, nothing written"; else echo "sync-issues: $made created"; fi
+  if $json; then _sync_json "$repo" "$tmp"; return 0; fi
+  if $dry; then echo "dry run: $made to create, nothing written"; else
+    echo "sync-issues: $made created"
+    canon_event github.synced tkt "$root" "count=$made"
+  fi
+}
+# _sync_skip <issue> <reason>: a skipped issue, printed, or kept for --json (the caller's $json and $tmp).
+_sync_skip() {
+  if $json; then printf '%s\t%s\n' "$1" "$2" >> "$tmp/skipped"; else echo "skip  #$1  $2"; fi
+}
+# _sync_json <repo> <tmp>: the --dry-run --json object from <tmp>/waiting and <tmp>/skipped (tab-separated, issue first).
+_sync_json() {
+  local sep="" n type pri title reason
+  printf '{"repo":%s,"label":"canon","waiting":[' "$(json_str "$1")"
+  if [[ -f "$2/waiting" ]]; then
+    while IFS=$'\t' read -r n type pri title; do
+      printf '%s{"issue":%s,"title":%s,"type":%s,"priority":%s}' "$sep" "$n" "$(json_str "$title")" "$(json_str "$type")" "$pri"; sep=,
+    done < "$2/waiting"
+  fi
+  printf '],"skipped":['; sep=""
+  if [[ -f "$2/skipped" ]]; then
+    while IFS=$'\t' read -r n reason; do
+      printf '%s{"issue":%s,"reason":%s}' "$sep" "$n" "$(json_str "$reason")"; sep=,
+    done < "$2/skipped"
+  fi
+  printf ']}\n'
 }
 
 # cmd_github_doctor [--json] — t-90a3: is this project ready for the GitHub workflow? Read-only, always exits 0. The one
-# readiness source: the board's Admin › GitHub card and the worktree picker's GitHub row (t-24b1) render its JSON as is.
+# readiness source: the Cockpit's Factory › GitHub card and the worktree picker's GitHub row (t-24b1) render its JSON as is.
 # `gh auth status` counts by exit code only: its text can show a masked token and scopes.
 cmd_github_doctor() {
   local json=false
@@ -1372,20 +1407,20 @@ cmd_github_doctor() {
     esac
   else
     err="${repo#origin: }"
-    _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: ${err}." cmd "git remote add origin https://github.com/<owner>/<repo>.git"
+    if git -C "$root" remote get-url origin >/dev/null 2>&1; then
+      _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: ${err}." cmd "git remote add origin https://github.com/<owner>/<repo>.git"
+    else
+      # t-9955: no origin at all is usually a project that has never been on GitHub: create it private (on a free plan the issue's
+      # "never push main" text is the only guard) and connect it in one step.
+      _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: ${err}. No repo on GitHub yet? This creates one, private, and connects it. Already have a repo on GitHub? Run git remote add origin https://github.com/<owner>/<repo>.git" cmd "gh repo create $(basename "$root") --private --source=. --remote=origin --push"
+    fi
   fi
   local tree; tree="$(git -C "$root" ls-tree HEAD -- scripts/test.sh 2>/dev/null)" || tree=""
   if [[ "$tree" == 100755* ]]; then
     _gd tests ok "Check & merge test command: scripts/test.sh" "Before merging, Check & merge runs it on main + the PR in a scratch clone, after you confirm."
   else
-    _gd tests warn "No test command" "No executable scripts/test.sh: Check & merge merges on the gates alone and says so (or pass --test)."
-  fi
-  # The cloud recipe's one owner is docs/setup.md beside this tool; a missing section gives empty values.
-  local doc="$SCRIPT_DIR/../docs/setup.md" domains="" script=""
-  if [[ -f "$doc" ]]; then
-    domains="$(awk '/^## /{on = ($0 == "## Claude cloud sessions")} on && /^- \*\*Network access:\*\*/{d=1} on && /^- \*\*Setup script\*\*/{d=0} d' "$doc" \
-      | grep -oE '`[a-z0-9.-]+\.[a-z]+`' | tr -d '`')" || domains=""
-    script="$(awk '/^## /{on = ($0 == "## Claude cloud sessions")} on && /^- \*\*Setup script\*\*/{s=1; next} s && /^  ```bash$/{b=1; next} b && /^  ```$/{exit} b{sub(/^  /, ""); print}' "$doc")"
+    # t-9641: say what the command is for, that it is optional, and both ways to add one
+    _gd tests warn "No test command (optional)" "Check & merge can run your tests on main and the PR before it merges. This project has no executable scripts/test.sh, so it merges on the gates alone. To test first, either add scripts/test.sh and make it executable (chmod +x), or run tkt merge-pr <id> --test \"<your test command>\"."
   fi
   local i n=${#ids[@]}
   if ! $json; then
@@ -1401,10 +1436,37 @@ cmd_github_doctor() {
     [[ -n "${fixk[i]}" ]] && out+=",\"fix\":{$(json_str "${fixk[i]}"):$(json_str "${fixv[i]}")}"
     out+='}'; sep=','
   done
-  out+='],"cloud":{"domains":['; sep=''
-  local d; while IFS= read -r d; do [[ -n "$d" ]] && { out+="$sep$(json_str "$d")"; sep=','; }; done <<< "$domains"
-  out+="],\"setup_script\":$(json_str "$script")}}"
+  out+="],\"cloud\":$(_cloud_env_json "$root")}"   # t-9955: this project's recipe, the same as tkt cloud-env --json
   printf '%s\n' "$out"
+}
+
+# t-9955: the cloud environment recipe for one project, from tools/cloud-env.sh (its one owner). A project that tracks a go.mod
+# anywhere (canon itself: tools/canon-go/go.mod) gets the Go domains and toolchain block too.
+_cloud_env_go() { [[ -n "$(git -C "$1" ls-files -- go.mod '*/go.mod' 2>/dev/null | head -1)" ]]; }
+_cloud_env_json() {   # _cloud_env_json <root>: {"go":bool,"domains":[...],"setup_script":"..."}
+  local go=false flag=() d sep='' out
+  if _cloud_env_go "$1"; then go=true; flag=(--go); fi
+  # an install without the recipe file (an older or partial copy of tools/) gives empty values, never an error
+  [[ -f "$SCRIPT_DIR/cloud-env.sh" ]] || { printf '{"go":%s,"domains":[],"setup_script":""}' "$go"; return 0; }
+  out="{\"go\":$go,\"domains\":["
+  while IFS= read -r d; do out+="$sep$(json_str "$d")"; sep=','; done < <(bash "$SCRIPT_DIR/cloud-env.sh" domains ${flag[@]+"${flag[@]}"})
+  out+="],\"setup_script\":$(json_str "$(bash "$SCRIPT_DIR/cloud-env.sh" script ${flag[@]+"${flag[@]}"})")}"
+  printf '%s' "$out"
+}
+
+# cmd_cloud_env [--json] — t-9955: print this project's Claude cloud environment recipe, ready to paste into the environment
+# dialog: the allowed domains (one per line), then the setup script. --json: the doctor's `cloud` object.
+cmd_cloud_env() {
+  local json=false
+  case "${1:-}" in --json) json=true ;; "") ;; *) echo "Usage: tkt cloud-env [--json]" >&2; exit 1 ;; esac
+  local root flag=() kind="every project"; root="$(dirname "$(tickets_dir)")"
+  if $json; then _cloud_env_json "$root"; printf '\n'; return 0; fi
+  [[ -f "$SCRIPT_DIR/cloud-env.sh" ]] || { echo "cloud-env: $SCRIPT_DIR/cloud-env.sh is missing; run canon update to restore canon's tools" >&2; exit 1; }
+  if _cloud_env_go "$root"; then flag=(--go); kind="a Go project: base plus Go"; fi
+  printf '# Network access: Custom, with these domains (%s); add your own stack'"'"'s domains yourself\n' "$kind"
+  bash "$SCRIPT_DIR/cloud-env.sh" domains ${flag[@]+"${flag[@]}"}
+  printf '\n# Setup script\n'
+  bash "$SCRIPT_DIR/cloud-env.sh" script ${flag[@]+"${flag[@]}"}
 }
 
 # cmd_merge_pr <id> [--pr N] [--test CMD] [--yes] — t-4718: checks a cloud ticket's PR and merges it, on the user's machine.
@@ -1434,7 +1496,8 @@ _merge_pr_run_tests() {
     printf "\nmerge-pr: stopped; the tests were ended and nothing was merged\n" >&2; exit 130' INT TERM HUP
   start=$SECONDS
   set -m
-  ( cd "$tmp/w" && exec bash -c "$cmd" ) < /dev/null > "$tmp/test.log" 2>&1 &
+  # t-a36b: CANON_PROGRESS_SECONDS paces merge-pr itself (the board sets it); the code under test must not see it.
+  ( cd "$tmp/w" && unset CANON_PROGRESS_SECONDS && exec bash -c "$cmd" ) < /dev/null > "$tmp/test.log" 2>&1 &
   tpid=$!
   set +m
   while kill -0 "$tpid" 2>/dev/null; do
@@ -1612,7 +1675,8 @@ _ff_local_base() {
 }
 
 # cmd_github_status <id> [--json] — t-d271: where a ticket sent to GitHub stands, for the board to poll. Read-only: one
-# gh call (the PR that says "Fixes #<issue>") and one ls-remote (canon-results/<id>), plus the local ticket. Stages:
+# gh call (the PR that says "Fixes #<issue>") and one ls-remote (canon-results/<id>), plus the local ticket; t-c8d4 adds one
+# object fetch of the PR head, only when a passed, closed ticket's PR head is past graded-head and not local yet. Stages:
 # sent (no PR yet) → pr-open → results-ready (canon-results/<id> is on origin: import it) → results-in (imported, the
 # evaluator passed on the PR's head) → merged. A gh or git failure exits 1 with the reason, never a guessed stage.
 cmd_github_status() {
@@ -1643,8 +1707,20 @@ cmd_github_status() {
   local verdict graded match=false stage
   read -r verdict graded < <(_eval_verdict_head "$tdir")
   [[ -n "$phead" && "$graded" != - && "$phead" == "$graded"* ]] && match=true
+  # t-c8d4: merge-pr's rule (t-fdb1): a head that is graded-head plus merge-safe late docs only is the graded code too. The fetch
+  # runs only when that head is not local yet (import-results usually fetched it), so the board's poll stays cheap.
+  local late=false lerr
+  if [[ "$verdict" == pass && "$pr" =~ ^[0-9]+$ && "$phead" =~ ^[0-9a-f]{40}$ && "$graded" != - ]] && ! $match \
+    && [[ -z "$merged" && "$pst" != MERGED ]] \
+    && [[ "$(get_field "$file" status)" == closed ]]; then
+    if ! git -C "$root" cat-file -e "$phead^{commit}" 2>/dev/null; then
+      lerr="$(git -C "$root" fetch -q origin "refs/pull/$pr/head" < /dev/null 2>&1)" \
+        || { echo "github-status: could not fetch PR #$pr's head from origin: $lerr" >&2; exit 1; }
+    fi
+    late_docs_delta "$root" "$graded" "$phead" "$id" >/dev/null && late=true
+  fi
   if [[ -n "$merged" || "$pst" == MERGED ]]; then stage=merged
-  elif [[ "$verdict" == pass ]] && $match && [[ "$(get_field "$file" status)" == closed ]]; then stage=results-in
+  elif [[ "$verdict" == pass ]] && { $match || $late; } && [[ "$(get_field "$file" status)" == closed ]]; then stage=results-in
   elif $branch; then stage=results-ready
   elif [[ -n "$pr" ]]; then stage=pr-open
   else stage=sent; fi
@@ -1670,7 +1746,7 @@ cmd_github_status() {
     [[ -n "$pr" ]] && echo "  PR #$pr ($pst) head $phead"
     $branch && echo "  canon-results/$id is on origin: tkt import-results $id${pr:+ --pr $pr}"
     [[ -n "$sb" ]] && echo "  $sb is on origin with no PR: tkt open-pr $id"
-    [[ "$verdict" != - ]] && echo "  evaluator: $verdict on ${graded}$($match && echo ' (the PR head)' || echo '')"
+    [[ "$verdict" != - ]] && echo "  evaluator: $verdict on ${graded}$($match && echo ' (the PR head)' || { $late && echo ' (the PR head plus late docs)'; } || echo '')"
     [[ -n "$merged" ]] && echo "  merged: $merged"
   fi
   return 0
@@ -2015,7 +2091,8 @@ Commands:
   import-issue <N> [--body-file F] [--force]
                             Rebuild .tickets/<id>/ from a send-issue body (used by
                             sprint import-issue in the cloud session).
-  sync-issues [--dry-run]   Make a ticket of each open issue on origin labelled canon
+  sync-issues [--dry-run [--json]]
+                            Make a ticket of each open issue on origin labelled canon
                             that no ticket links to (labels set type and pN priority).
   open-pr <id>              Open the PR a cloud session did not: from its pushed branch
                             (a commit naming <id>), with "Fixes #N".
@@ -2023,6 +2100,8 @@ Commands:
                             remote (opt-in; never forced; prints how to undo).
   github-doctor [--json]    Read-only GitHub readiness checks (gh signed in, origin and
                             its visibility, test command) and the cloud recipe.
+  cloud-env [--json]        This project's Claude cloud environment recipe: allowed domains,
+                            then the setup script (tools/cloud-env.sh; Go projects get the Go part).
   merge-pr <id> [--pr N] [--test CMD] [--yes | --check]
                             Check a cloud ticket's PR (evaluator passed on its head,
                             mergeable, suite green on base + PR) and merge it after a y.
@@ -2069,6 +2148,7 @@ main() {
     import-issue)   cmd_import_issue "$@" ;;
     sync-issues)    cmd_sync_issues "$@" ;;
     github-doctor)  cmd_github_doctor "$@" ;;
+    cloud-env)      cmd_cloud_env "$@" ;;
     open-pr)        cmd_open_pr "$@" ;;
     push-main)      cmd_push_main "$@" ;;
     merge-pr)       cmd_merge_pr "$@" ;;

@@ -697,6 +697,11 @@ Visual regression: none — checked no UI files changed, tools/sprint:1
 Dead code: none — checked no code orphaned by the gate, tools/sprint:470
 Unnecessary complexity: none — checked one function, tools/sprint:463
 Standards violations: none — checked efficiency.md, tools/sprint:470
+## Triage
+Act On: none
+Consider: $2
+Noted: none
+Dismissed: none
 ## Verdict
 YES
 EOF
@@ -744,6 +749,25 @@ gate_lines="$(run_fail "$SPRINT" complete | grep -E '^  - ' || true)"
 check_lines="$(run_fail "$SPRINT" check-review-notes "$model_id" | grep -E '^  - ' || true)"
 [ "$(printf '%s\n' "$gate_lines" | grep -c .)" -eq 2 ] || fail "expected 2 problem lines from sprint complete, got: $gate_lines"
 assert_eq "$gate_lines" "$check_lines"
+# t-f13a: every triage bucket needs a line, and the verdict must match Act On (YES exactly when `Act On: none`)
+good_review "tools/sprint, tests/sprint.sh" "none — checked plan.md Files vs diff, plan.md:20"
+grep -v '^Noted:' "$rn" > "$rn.tmp" && mv "$rn.tmp" "$rn"
+assert_contains "$(run_fail "$SPRINT" check-review-notes "$model_id")" 'no line for the "Noted" triage bucket'
+assert_contains "$(run_fail "$SPRINT" complete)" 'no line for the "Noted" triage bucket'
+good_review "tools/sprint, tests/sprint.sh" "none — checked plan.md Files vs diff, plan.md:20"
+grep -v '^Act On:' "$rn" > "$rn.tmp" && mv "$rn.tmp" "$rn"
+assert_contains "$(run_fail "$SPRINT" check-review-notes "$model_id")" 'no line for the "Act On" triage bucket'
+good_review "tools/sprint, tests/sprint.sh" "none — checked plan.md Files vs diff, plan.md:20"
+sed -i.bak 's/^Act On: none$/Act On: tools\/sprint:12 — none of the callers check the exit code [severity: high · confidence: high]/' "$rn" && rm -f "$rn.bak"
+assert_contains "$(run_fail "$SPRINT" check-review-notes "$model_id")" 'the verdict is YES but `Act On:` lists a finding'
+sed -i.bak 's/^YES$/**YES**/' "$rn" && rm -f "$rn.bak"
+assert_contains "$(run_fail "$SPRINT" check-review-notes "$model_id")" 'the verdict is YES but `Act On:` lists a finding'
+sed -i.bak 's/^\*\*YES\*\*$/YES/' "$rn" && rm -f "$rn.bak"
+sed -i.bak 's/^YES$/NO/' "$rn" && rm -f "$rn.bak"
+assert_contains "$("$SPRINT" check-review-notes "$model_id")" 'shape ok'
+good_review "tools/sprint, tests/sprint.sh" "none — checked plan.md Files vs diff, plan.md:20"
+sed -i.bak 's/^YES$/NO/' "$rn" && rm -f "$rn.bak"
+assert_contains "$(run_fail "$SPRINT" check-review-notes "$model_id")" 'the verdict is NO but `Act On: none`'
 # a well-formed report passes; a missing one is refused
 good_review "tools/sprint, tests/sprint.sh" "none — checked plan.md Files vs diff, plan.md:20"
 assert_contains "$("$SPRINT" check-review-notes "$model_id")" 'shape ok'

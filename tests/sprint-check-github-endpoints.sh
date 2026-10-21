@@ -24,6 +24,8 @@ printf '%s | %s | progress=%s\n' "\$PWD" "\$*" "\${CANON_PROGRESS_SECONDS:-}" >>
 [[ "\$*" == *"--pr 99"* ]] && { head -c 3000000 /dev/zero | tr '\\0' x; exit 0; }   # one 3 MB line, no newline
 [[ "\$1" == github-status ]] && { echo '{"id":"t-ab12","stage":"pr-open","pr":24}'; exit 0; }
 [[ "\$1" == github-doctor && -e "$W/badjson" ]] && { echo "not json"; exit 0; }
+[[ "\$*" == "sync-issues --dry-run --json" && -e "$W/badjson" ]] && { echo "not json"; exit 0; }
+[[ "\$*" == "sync-issues --dry-run --json" ]] && { echo '{"repo":"acme/app","label":"canon","waiting":[{"issue":63,"title":"<b>x</b>","type":"task","priority":2}],"skipped":[]}'; exit 0; }
 [[ "\$1" == github-doctor ]] && { echo '{"checks":[{"id":"gh","status":"bad","title":"t","detail":"d","fix":{"url":"u"}}],"cloud":{"domains":[],"setup_script":""}}'; exit 0; }
 case "\$1 \$*" in
   *"--dry-run"*) echo "would do: \$*" ;;
@@ -36,7 +38,8 @@ GO_BIN="$(build_board "$W/bin")"
 port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'; }
 GOP="$(port)"
 mkdir -p "$W/ck"
-SPRINT_CHECK_ROOT="$PROJ" CANON_HOME="$W/c2" COCKPIT_STATE_DIR="$W/ck" TKT_BIN="$W/tkt" CANON_MERGE_LIMIT_SECONDS=6 SPRINT_CHECK_NO_BROWSER=1 TMPDIR="$W" "$GO_BIN" "$GOP" >/dev/null 2>&1 & PIDS+=($!); disown $! 2>/dev/null || true
+mkdir -p "$W/home"
+SPRINT_CHECK_ROOT="$PROJ" CANON_HOME="$W/c2" HOME="$W/home" COCKPIT_STATE_DIR="$W/ck" TKT_BIN="$W/tkt" CANON_MERGE_LIMIT_SECONDS=6 SPRINT_CHECK_NO_BROWSER=1 TMPDIR="$W" "$GO_BIN" "$GOP" >/dev/null 2>&1 & PIDS+=($!); disown $! 2>/dev/null || true
 for _ in $(seq 50); do curl -s -o /dev/null "http://127.0.0.1:$GOP/api/tickets" && break; sleep 0.1; done
 
 get()  { curl -s -w '\n%{http_code}' "http://127.0.0.1:$1$2"; }
@@ -58,10 +61,33 @@ for P in "$GOP"; do
   expect_call "$srv send public?"  "$P" "$(post "$P" /api/ticket/t-ab12/github/send '{"public":"yes"}')" "send-issue t-ab12"   # only a real true
   expect_call "$srv sync-preview"  "$P" "$(get "$P" /api/github/sync-preview)" "sync-issues --dry-run"
   expect_call "$srv sync"          "$P" "$(post "$P" /api/github/sync '{}')" "sync-issues"
-  r="$(get "$P" /api/github/doctor)"; expect_call "$srv doctor" "$P" "$r" "github-doctor --json"   # t-90a3: Admin › GitHub's checks
+  r="$(get "$P" /api/github/doctor)"; expect_call "$srv doctor" "$P" "$r" "github-doctor --json"   # t-90a3: Factory › GitHub's checks (t-9641)
   assert_eq "gh|bad|u" "$(body "$r" | js '[j.doctor.checks[0].id, j.doctor.checks[0].status, j.doctor.checks[0].fix.url].join("|")')"
   touch "$W/badjson"; r="$(get "$P" /api/github/doctor)"; rm -f "$W/badjson"   # output that is not JSON is a failure, not a doctor
   assert_eq "false|undefined|not json" "$(body "$r" | js '[j.ok, typeof j.doctor, j.output.trim()].join("|")')"
+  # t-9641: Factory › GitHub's Intake: the dry run as JSON, plus the newest github.synced for this project (untrusted lines skipped).
+  r="$(get "$P" /api/github/intake)"; expect_call "$srv intake" "$P" "$r" "sync-issues --dry-run --json"
+  assert_eq "acme/app|63|<b>x</b>|null" "$(body "$r" | js '[j.intake.repo, j.intake.waiting[0].issue, j.intake.waiting[0].title, JSON.stringify(j.last_synced)].join("|")')"
+  mkdir -p "$W/c2/events"
+  ev() { printf '{"schema":1,"id":"%s","ts":"%s","kind":"github.synced","source":"tkt","project":"%s","data":{"count":"%s"}}\n' "$@"; }
+  { ev aaaaaaaaaaaaaaaa 2026-10-19T09:00:00.000Z "$PROJ" 2; ev bbbbbbbbbbbbbbbb 2026-10-19T10:00:00.000Z "$W/other" 5
+    ev cccccccccccccccc 2026-10-19T11:00:00.000Z "$PROJ" '<img src=x>'; } > "$W/c2/events/2026-10-19.jsonl"
+  r="$(get "$P" /api/github/intake)"
+  assert_eq '2026-10-19T09:00:00.000Z|2' "$(body "$r" | js '[j.last_synced.ts, j.last_synced.count].join("|")')"
+  # A short non-digit count passes the reader's schema and length checks, so the route's digits check must refuse it (t-9641
+  # eval: the long <img> count above never reaches that check). Until t-f053 the route shows null, not the older event.
+  ev dddddddddddddddd 2026-10-19T12:00:00.000Z "$PROJ" abc >> "$W/c2/events/2026-10-19.jsonl"
+  r="$(get "$P" /api/github/intake)"
+  assert_eq "null" "$(body "$r" | js 'JSON.stringify(j.last_synced)')"
+  touch "$W/badjson"; r="$(get "$P" /api/github/intake)"; rm -f "$W/badjson"
+  assert_eq "false|undefined|not json" "$(body "$r" | js '[j.ok, typeof j.intake, j.output.trim()].join("|")')"
+  r="$(curl -s -w '\n%{http_code}' -H 'Origin: https://evil.example' "http://127.0.0.1:$P/api/github/intake")"; [[ "$(code "$r")" == 403 ]] || fail "$srv: cross-origin GET intake was $(code "$r")"
+  r="$(curl -s -w '\n%{http_code}' -H 'Sec-Fetch-Site: cross-site' "http://127.0.0.1:$P/api/github/intake")"; [[ "$(code "$r")" == 403 ]] || fail "$srv: cross-site GET intake was $(code "$r")"
+  r="$(get "$P" '/api/github/intake?project=nope')"; [[ "$(code "$r")" == 400 ]] || fail "$srv: unknown project intake was $(code "$r")"
+  for m in GET OPTIONS; do
+    h="$(curl -s -o /dev/null -D - -X "$m" -H 'Origin: http://localhost' "http://127.0.0.1:$P/api/github/intake")"
+    grep -qi '^access-control-allow' <<< "$h" && fail "$srv: $m intake sent a CORS header: $h"
+  done
   expect_call "$srv import"        "$P" "$(post "$P" /api/ticket/t-ab12/github/import '{"pr":58}')" "import-results t-ab12 --pr 58"
   expect_call "$srv import str"    "$P" "$(post "$P" /api/ticket/t-ab12/github/import '{"pr":"58"}')" "import-results t-ab12 --pr 58"
   expect_call "$srv import no pr"  "$P" "$(post "$P" /api/ticket/t-ab12/github/import '{}')" "import-results t-ab12"

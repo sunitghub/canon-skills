@@ -8,6 +8,13 @@ source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 project="$(make_project)"
 stub="$(mktemp -d "${TMPDIR:-/tmp}/tkt-sync.XXXXXX")"
 trap 'rm -rf "$project" "$stub"' EXIT
+# t-9641: a real sync emits github.synced through the board binary. Build it from this tree (an installed one may not know
+# the kind) and keep every event in this run's own home: CANON_HOME and HOME both, so a broken override cannot reach ~/.canon.
+use_fresh_board "$stub"
+export CANON_HOME="$stub/canon-home" HOME="$stub/home"; mkdir -p "$HOME"
+# jx <python expr over d>: the expression on the JSON read from stdin, compact JSON (a str prints raw).
+jx() { python3 -c 'import json,sys; d=json.load(sys.stdin); v=eval(sys.argv[1]); print(v if isinstance(v,str) else json.dumps(v,separators=(",",":"),ensure_ascii=False))' "$1"; }
+synced() { cat "$CANON_HOME"/events/*.jsonl 2>/dev/null | grep -cF '"kind":"github.synced"' || true; }
 cd "$project"
 git remote add origin https://github.com/acme/app.git
 
@@ -63,10 +70,30 @@ assert_contains "$dry" "dry run: 3 to create, nothing written"
 [[ "$dry" != *"#15"* ]] || fail "a pull request was listed: $dry"
 assert_eq "$before" "$(snap)"
 
+# --dry-run --json (t-9641, Factory > GitHub's Intake): the same answer as one object, nothing written, no event.
+json="$("$TKT" sync-issues --dry-run --json)"
+[[ "$(printf '%s\n' "$json" | wc -l | tr -d ' ')" == 1 ]] || fail "--json printed more than one line: $json"
+assert_eq "$(printf '%s' "$json" | jx '{"repo":d["repo"],"label":d["label"]}')" '{"repo":"acme/app","label":"canon"}'
+assert_eq "$(printf '%s' "$json" | jx '[[w["issue"],w["type"],w["priority"]] for w in d["waiting"]]')" '[[11,"bug",1],[12,"task",2],[16,"task",2]]'
+assert_eq "$(printf '%s' "$json" | jx 'd["waiting"][2]["title"]')" '../../etc/passwd · bug · P0'
+assert_eq "$(printf '%s' "$json" | jx '[k["issue"] for k in d["skipped"]]')" '[13,14]'
+assert_contains "$(printf '%s' "$json" | jx 'd["skipped"][0]["reason"]')" "already $linked"
+assert_eq "$before" "$(snap)"
+assert_eq 0 "$(synced)"
+rc=0; err="$("$TKT" sync-issues --json 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "--json without --dry-run should exit 1, got $rc"
+assert_contains "$err" "--json needs --dry-run"
+assert_eq "$before" "$(snap)"
+
 # The run: three tickets, linked to their issues, typed from labels; only GET reads on GitHub.
 : > "$STUB_LOG"
 out="$("$TKT" sync-issues)"
 assert_contains "$out" "sync-issues: 3 created"
+# t-9641: one github.synced for the run, for this project, with the count made.
+assert_eq 1 "$(synced)"
+ev="$(cat "$CANON_HOME"/events/*.jsonl | grep -F '"kind":"github.synced"' | tail -1)"
+assert_eq "$(printf '%s' "$ev" | jx '[d["source"],d["data"]["count"]]')" '["tkt","3"]'
+assert_eq "$(printf '%s' "$ev" | jx 'd["project"]')" "$(cd "$project" && pwd -P)"
 grep -v '^api ' "$STUB_LOG" && fail "a gh call other than api: $(cat "$STUB_LOG")"
 grep -qE -- '(-X|--method)' "$STUB_LOG" && fail "a non-GET gh api call: $(cat "$STUB_LOG")"
 grep -qv 'issues?labels=canon' "$STUB_LOG" && fail "a gh read other than the one listing: $(cat "$STUB_LOG")"
@@ -115,17 +142,25 @@ assert_contains "$out22" "skip  #23  no title left once control characters are r
 assert_contains "$out22" "#24  After the bad one"
 mklist 11:issue:canon,bug,P1 12:issue:canon 13:issue:canon 14:issue:canon 15:pr:canon '16:issue:canon,*'
 
-# A second run creates nothing.
+# A second run creates nothing, and still records that it ran (count 0).
+n0="$(synced)"
 again="$("$TKT" sync-issues)"
 assert_contains "$again" "sync-issues: 0 created"
+assert_eq $((n0 + 1)) "$(synced)"
+assert_eq '"0"' "$(cat "$CANON_HOME"/events/*.jsonl | grep -F '"kind":"github.synced"' | tail -1 | jx 'json.dumps(d["data"]["count"])')"
 assert_contains "$again" "skip  #11  already $t11"
 
 # gh failing, or an origin not on GitHub: exit 1, the reason, nothing written.
 printf 'New\nx\n' > "$stub/issue-17"; mklist 17:issue:canon; before="$(snap)"
+n0="$(synced)"
 rc=0; err="$(STUB_FAIL=list "$TKT" sync-issues 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "gh failing should exit 1, got $rc"
 assert_contains "$err" "sync-issues: gh could not list issues"
 assert_eq "$before" "$(snap)"
+assert_eq "$n0" "$(synced)"   # a failed run records no sync
+# ...and --json: the reason on stderr, nothing on stdout.
+rc=0; out="$(STUB_FAIL=list "$TKT" sync-issues --dry-run --json 2>/dev/null)" || rc=$?
+[[ "$rc" == 1 && -z "$out" ]] || fail "a failing listing under --json should exit 1 with no stdout (rc $rc): $out"
 # A listing entry that does not decode: exit 1 before any ticket is made, even for the good entry before it.
 printf '17\tissue\tcanon\tTmV3\teA==\n18\tissue\tcanon\t!!!not-base64\teA==\n' > "$stub/list"
 rc=0; err="$("$TKT" sync-issues 2>&1)" || rc=$?
@@ -144,6 +179,14 @@ mklist 11:issue:canon,bug,P1
 (cd "$bare" && STUB_FAIL=list "$TKT" sync-issues >/dev/null 2>&1) && fail "a failing listing should exit 1"
 [[ ! -e "$bare/.tickets" ]] || fail "a dry or failed run created .tickets/: $(find "$bare/.tickets")"
 rm -rf "$bare"
+
+# Nothing labelled: --json gives empty lists; a real run still records a sync with count 0.
+: > "$stub/list"
+assert_eq '{"repo":"acme/app","label":"canon","waiting":[],"skipped":[]}' "$("$TKT" sync-issues --dry-run --json)"
+n0="$(synced)"; "$TKT" sync-issues --dry-run >/dev/null
+assert_eq "$n0" "$(synced)"   # t-9641 eval: a dry run with nothing labelled records no sync (the board's preview runs it)
+"$TKT" sync-issues >/dev/null
+assert_eq $((n0 + 1)) "$(synced)"
 
 git remote set-url origin https://gitlab.com/acme/app.git; : > "$STUB_LOG"
 rc=0; err="$("$TKT" sync-issues 2>&1)" || rc=$?

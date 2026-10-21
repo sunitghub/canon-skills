@@ -439,11 +439,12 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    Check whether `.tickets/<id>/review-notes.md` exists after dispatch; if not, save the
    returned report text yourself.
 
-   Verdict is `YES` (clean) or `NO` (findings present). The reviewer verdict is **advisory, not
+   Verdict is `YES` (nothing in Act On) or `NO` (an Act On finding). The reviewer verdict is **advisory, not
    blocking** — surface findings to the user, record them in `review-notes.md`, then continue. Only the
    report's *shape* is enforced at close (`_gate_review_notes_shape`, t-de16): a `Changed files:` line
    with a path and one line per `review.md` step-4 concern (a finding, or `none — checked <what>,
-   <file:line>`); a bare "No findings." is rejected — re-dispatch the reviewer if so. Do not wait for close to find
+   <file:line>`), then a `## Triage` line per bucket (`Act On`, `Consider`, `Noted`, `Dismissed`, t-f13a) with a
+   verdict that matches it (`YES` exactly when `Act On: none`), so a `NO` arrives already sorted; a bare "No findings." is rejected — re-dispatch the reviewer if so. Do not wait for close to find
    out: right after the reviewer returns, run `sprint check-review-notes <id>` (the same check, read-only, t-c38e); on
    `shape refused`, re-dispatch a fresh reviewer then, naming the problems it printed.
    The evaluator (step 3) owns the binding gate. Record the reviewer outcome in the Wrapup

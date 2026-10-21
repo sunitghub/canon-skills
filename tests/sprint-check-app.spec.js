@@ -14629,10 +14629,10 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     const card = page.locator(`.card[data-id="${id}"]`);
     await expect(page.locator('.column', { has: card }).locator('.col-title, .column-title, h2').first()).toContainText(/progress/i);
     await expect(card.locator('.card-gh-chip')).toHaveText('GitHub #57 · sent');
-    await expect(card.locator('.card-gh-btn')).toHaveText('Open issue');
+    await expect(card.locator('.card-gh-btn')).toHaveText('Issue ↗');   // t-9955: goes to GitHub, changes nothing
     await expect(card.locator('.card-start:not(.card-gh-btn)')).toHaveCount(0);
     for (const [stage, extra, chip, btn] of [
-      ['pr-open', { pr: 58 }, 'GitHub #57 · PR #58', 'Open PR'],
+      ['pr-open', { pr: 58 }, 'GitHub #57 · PR #58', 'PR ↗'],
       ['results-ready', { pr: 58 }, 'GitHub #57 · results ready', 'Import results'],
       ['results-in', { pr: 58 }, 'GitHub #57 · results in', 'Check & merge'],
     ]) {
@@ -14780,7 +14780,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     status = { stage: 'pr-open', pr: '58"><img src=x>' };
     release();
     await expect(card.locator('.card-gh-chip')).toHaveText('GitHub #57 · PR open');   // not a number: no PR link or label
-    await expect(card.locator('.card-gh-btn')).toHaveText('Open issue');
+    await expect(card.locator('.card-gh-btn')).toHaveText('Issue ↗');   // t-9955: goes to GitHub, changes nothing
     expect(await card.locator('img').count()).toBe(0);
   });
 
@@ -15071,15 +15071,21 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.route(`**/api/ticket/${id}/github/send-preview`, r => { previews++; return json(r, { ok: true, exit_code: 0, output: '' }); });
     await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
     await page.route('**/api/worktrees**', r => json(r, [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true }]));
-    await openBoard(page, id);
+    // Not openBoard: the board asks for the doctor at load (t-9641, the Sync button), and the held answer keeps the
+    // network busy, so wait for the card instead of networkidle.
+    await page.goto(BASE);
+    await page.locator('#board-search').fill(id);
+    await expect(page.locator(`.card[data-id="${id}"]`)).toBeVisible();
     await page.locator(`.card[data-id="${id}"] .card-start`).click();
     await expect(page.locator('#ck-worktree .ck-gh-checking')).toContainText('GitHub · checking…');
     await expect(page.locator('#ck-worktree [data-github]')).toHaveCount(0);
     release();
     const setup = page.locator('#ck-worktree .ck-gh-setup');
     await expect(setup).toContainText('GitHub · set up first (2 of 3 ready)');
+    await expect(setup.locator('.ck-worktree-held-why')).toHaveText('open Factory › GitHub');   // t-9641
+    await expect(setup).toHaveAttribute('title', 'Opens Factory › GitHub, which lists what to fix');
     await expect(page.locator('#ck-worktree [data-github]')).toHaveCount(0);
-    await setup.click();   // a standalone board has no shell to open Admin: it says what to run instead
+    await setup.click();   // a standalone board has no shell to open Factory: it says what to run instead
     await expect(page.locator('#drop-toast')).toContainText('tkt github-doctor');
     await expect(page.locator('#ck-gh-panel')).toBeHidden();
     expect(previews).toBe(0);
@@ -15098,8 +15104,8 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#ck-worktree [data-github]')).toHaveCount(0);
   });
 
-  // Prod path: a board's "set up first" message to the Cockpit shell, which opens Admin › GitHub for that board's project.
-  test('the shell opens Admin › GitHub for the board that asked, and ignores a message from no board (t-24b1)', async ({ page }) => {
+  // Prod path: a board's "set up first" message to the Cockpit shell, which opens Factory › GitHub for that board's project (t-9641).
+  test('the shell opens Factory › GitHub for the board that asked, and ignores a message from no board (t-24b1)', async ({ page }) => {
     const projects = [
       { id: 'proj-a', path: '/tmp/proj-a', name: 'proj-a', description: '', added: '2026-09-26' },
       { id: 'proj-b', path: '/tmp/proj-b', name: 'proj-b', description: '', added: '2026-09-26' },
@@ -15111,17 +15117,20 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.waitForLoadState('networkidle');
     await page.evaluate(async () => (await import('/static/cockpit-tabs.js')).openProject('proj-b', 'proj-b'));
     const tok = await page.evaluate(() => new URL(document.querySelector('#view-proj-b iframe').src).searchParams.get('tab'));
-    await page.evaluate(() => window.postMessage({ source: 'canon-board', type: 'open-admin-github' }, location.origin));   // no tab: nothing
+    await page.evaluate(() => window.postMessage({ source: 'canon-board', type: 'open-factory-github' }, location.origin));   // no tab: nothing
     await page.waitForTimeout(300);
-    await expect(page.locator('#view-admin')).not.toHaveClass(/active/);
-    await page.evaluate(t => window.postMessage({ source: 'canon-board', type: 'open-admin-github', tab: t }, location.origin), tok);
-    await expect(page.locator('#view-admin')).toHaveClass(/active/);
-    await expect(page.locator('#ad-gh-project')).toHaveValue('proj-b');
+    await expect(page.locator('#view-factory')).not.toHaveClass(/active/);
+    await page.evaluate(t => window.postMessage({ source: 'canon-board', type: 'open-factory-github', tab: t }, location.origin), tok);
+    await expect(page.locator('#view-factory')).toHaveClass(/active/);
+    await expect(page.locator('#nav-factory')).toHaveClass(/active/);
+    await expect(page.locator('#fac-gh')).toBeVisible();
+    await expect(page.locator('#fac-gh-project')).toHaveValue('proj-b');
+    await expect(page.locator('#fac-gh-proj')).toContainText('proj-b');
     await expect.poll(() => asked.filter(p => p === 'proj-b').length).toBeGreaterThan(0);
   });
 
-  // Prod path: a card whose session pushed a branch with no PR (github-status stage "branch"), and its Open PR button.
-  test('a session branch with no PR shows Open PR; it asks, names the branch, and opens once (t-24b1)', async ({ page }) => {
+  // Prod path: a card whose session pushed a branch with no PR (github-status stage "branch"), and its Create PR button (t-9955).
+  test('a session branch with no PR shows Create PR; it asks, names the branch, and opens once (t-24b1)', async ({ page }) => {
     const id = `t-gh24b-${Date.now()}`;
     ghTicket(id, { github: 'acme/app#57' });
     const stat = await routeStatus(page, id, { stage: 'branch', branch: 'claude/brave-x1' });
@@ -15131,14 +15140,14 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await openBoard(page, id);
     const chip = page.locator(`.card[data-id="${id}"] .card-gh-chip`), btn = page.locator(`.card[data-id="${id}"] .card-gh-btn`);
     await expect(chip).toHaveText('GitHub #57 · branch, no PR');
-    await expect(btn).toHaveText('Open PR');
+    await expect(btn).toHaveText('Create PR');
     await btn.click();
     await expect(page.locator('#gh-dialog-body')).toContainText('on acme/app from claude/brave-x1 into its default branch, with "Fixes #57"');
     await page.locator('#gh-dialog-cancel').click();
     expect(posts).toEqual([]);
     await btn.click();
     await page.locator('#gh-dialog-ok').click();
-    await expect(page.locator('#gh-dialog-title')).toHaveText('PR opened');
+    await expect(page.locator('#gh-dialog-title')).toHaveText('PR created');
     await expect(page.locator('#gh-dialog-pre')).toContainText('pull/31');
     expect(posts).toEqual(['POST']);
     await page.locator('#gh-dialog-cancel').click();
@@ -15230,8 +15239,8 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     expect((await page.locator('#btn-gh-sync').boundingBox()).width).toBeLessThan(50);
   });
 
-  // Prod path: Admin › GitHub, rendering GET /api/github/doctor (tkt github-doctor) for the chosen project.
-  test('Admin GitHub shows the doctor checks with their fixes, rechecks, and copies the recipe (t-90a3)', async ({ page }) => {
+  // Prod path: Factory › GitHub (t-9641; was Admin's), rendering GET /api/github/doctor (tkt github-doctor) for the chosen project.
+  test('Factory GitHub shows the doctor checks with their fixes, rechecks, and copies the recipe (t-90a3)', async ({ page }) => {
     const projects = [
       { id: 'proj-a', path: '/tmp/proj-a', name: 'proj-a', description: '', added: '2026-09-26' },
       { id: 'proj-b', path: '/tmp/proj-b', name: 'proj-b', description: '', added: '2026-09-26' },
@@ -15247,32 +15256,179 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.route('**/api/github/doctor**', r => { calls.push(new URL(r.request().url()).searchParams.get('project')); return json(r, { ok: true, exit_code: 0, output: '', doctor }); });
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
-    await page.locator('#nav-admin').click();
+    // The Projects cards read each project's checks once, one at a time (t-9641); Factory reuses them.
+    await expect.poll(() => calls).toEqual(['proj-a', 'proj-b']);
+    await page.locator('#nav-factory').click();
+    await expect(page.locator('#view-admin #fac-gh, #view-admin .gh-wrap')).toHaveCount(0);   // no GitHub section left in Admin
 
-    const rows = page.locator('#ad-gh-checks .gh-row');
+    const rows = page.locator('#fac-gh-checks .gh-row');
     await expect(rows).toHaveCount(3);
-    await expect(page.locator('#ad-gh-count')).toHaveText('Checks · 1 of 3 ready');
-    expect(calls).toEqual(['proj-a']);
+    await expect(page.locator('#fac-gh-count')).toHaveText('Checks · 1 of 3 ready');
+    expect(calls).toEqual(['proj-a', 'proj-b']);
     await expect(rows.nth(0).locator('a')).toHaveAttribute('href', 'https://github.com/cli/cli');
     await expect(rows.nth(0)).toHaveClass(/gh-bad/);
     await expect(rows.nth(2)).toHaveClass(/gh-warn/);
     await rows.nth(1).locator('[data-gh-copy]').click();
     await expect.poll(() => page.evaluate(() => window.__copied.at(-1))).toBe('git remote add origin https://github.com/<owner>/<repo>.git');
-    await page.locator('#ad-gh-copy-script').click();
+    await page.locator('#fac-gh-copy-script').click();
     await expect.poll(() => page.evaluate(() => window.__copied.at(-1))).toBe('#!/bin/bash\nset -e\necho setup\n');
-    await page.locator('#ad-gh-copy-domains').click();
+    await page.locator('#fac-gh-copy-domains').click();
     await expect.poll(() => page.evaluate(() => window.__copied.at(-1))).toBe('getcanon.dev\ngithub.com');
-    await expect(page.locator('#ad-gh')).toContainText('it never pushes to main. On a free private repo GitHub cannot enforce this, so the prompt is the safeguard.');
+    await expect(page.locator('#fac-gh')).toContainText('A private repo on a free GitHub plan cannot enforce that with a branch rule, so this text is the only guard.');
+    await expect(page.locator('#fac-gh-proj .fac-proj-note')).toHaveText('These settings apply to this project only.');
 
-    // Reopening Admin runs gh again only on Check again or another project.
+    // Reopening Factory runs gh again only on Check again, never for a project already read this load.
     // The reopen's fetch (if any) is sent before Check again's, so once Check again has rendered both are counted.
-    await page.locator('#nav-projects').click(); await page.locator('#nav-admin').click();
+    await page.locator('#nav-projects').click(); await page.locator('#nav-factory').click();
     doctor.checks[0] = { id: 'gh', status: 'ok', title: 'Signed in to GitHub', detail: 'Signed in as octo.' };
-    await page.locator('#ad-gh-recheck').click();
-    await expect(page.locator('#ad-gh-count')).toHaveText('Checks · 2 of 3 ready');
-    expect(calls).toEqual(['proj-a', 'proj-a']);
-    await page.locator('#ad-gh-project').selectOption('proj-b');
-    await expect.poll(() => calls).toEqual(['proj-a', 'proj-a', 'proj-b']);
+    await page.locator('#fac-gh-recheck').click();
+    await expect(page.locator('#fac-gh-count')).toHaveText('Checks · 2 of 3 ready');
+    expect(calls).toEqual(['proj-a', 'proj-b', 'proj-a']);
+    await page.locator('#fac-gh-project').selectOption('proj-b');
+    await expect(page.locator('#fac-gh-count')).toHaveText('Checks · 1 of 3 ready');   // proj-b's cached answer
+    expect(calls).toEqual(['proj-a', 'proj-b', 'proj-a']);
+  });
+
+  // Prod path: the Cockpit sidebar's Factory entry and its two tabs (t-9641).
+  test('Factory sits between Projects and Admin; its tabs switch and Agentic factory is a planned notice (t-9641)', async ({ page }) => {
+    await page.route('**/api/projects', r => json(r, [{ id: 'proj-a', path: '/tmp/proj-a', name: 'proj-a', description: '', added: '2026-09-26' }]));
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    expect(await page.locator('.side .nav a').evaluateAll(a => a.map(x => x.id))).toEqual(['nav-projects', 'nav-factory', 'nav-admin']);
+    await page.locator('#nav-factory').click();
+    await expect(page.locator('#view-factory')).toHaveClass(/active/);
+    await expect(page.locator('#nav-factory')).toHaveClass(/active/);
+    await expect(page.locator('#nav-admin')).not.toHaveClass(/active/);
+    await expect(page.locator('#nav-projects')).not.toHaveClass(/active/);
+    await expect(page.locator('#fac-tab-gh')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#fac-gh')).toBeVisible();
+    await expect(page.locator('#fac-tab-line .fac-planned')).toHaveText(/planned/i);
+    // Cloud environment: a Claude sub-tab holds the steps; the shared footer sits outside its panel.
+    await expect(page.locator('#fac-cloud .fac-subtab')).toHaveText(['Claude']);
+    await expect(page.locator('#fac-cloud-tab-claude')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#fac-cloud-claude #fac-gh-copy-domains')).toHaveCount(1);
+    await expect(page.locator('#fac-cloud > .setting-d').first()).toHaveText('A recipe, not a check: canon cannot see your cloud environments.');
+    await expect(page.locator('#fac-cloud-claude .setting-d:not(.fac-domains-note)')).toHaveCount(0);   // the footer lines; t-9955's domains note belongs with the chips
+    await page.locator('#fac-tab-line').click();
+    await expect(page.locator('#fac-line')).toBeVisible();
+    await expect(page.locator('#fac-gh')).toBeHidden();
+    for (const t of ['Planned · not built yet', 't-347a', 't-47f4', 't-f279', 't-074e', 'Factory: Off']) await expect(page.locator('#fac-line')).toContainText(t);
+    await expect(page.locator('#fac-line input, #fac-line select, #fac-line button')).toHaveCount(0);
+    await page.locator('#fac-tab-line').press('ArrowLeft');
+    await expect(page.locator('#fac-tab-gh')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#fac-tab-gh')).toBeFocused();
+    await page.locator('#nav-admin').click();
+    await expect(page.locator('#nav-factory')).not.toHaveClass(/active/);
+    await expect(page.locator('#view-factory')).not.toHaveClass(/active/);
+  });
+
+  // Prod path: Factory › GitHub's Intake box, rendering GET /api/github/intake (tkt sync-issues --dry-run --json + github.synced).
+  test('Factory Intake lists waiting issues as text, shows last synced, and is unavailable when the checks fail (t-9641)', async ({ page }) => {
+    await page.route('**/api/projects', r => json(r, [{ id: 'proj-a', path: '/tmp/proj-a', name: 'proj-a', description: '', added: '2026-09-26' }]));
+    const doctor = { checks: [{ id: 'gh', status: 'ok', title: 'Signed in', detail: '' }, { id: 'origin', status: 'ok', title: 'Repository found', detail: '' }] };
+    await page.route('**/api/github/doctor**', r => json(r, { ok: true, exit_code: 0, output: '', doctor }));
+    let intake = { ok: true, exit_code: 0, intake: { repo: 'acme/app', label: 'canon', skipped: [], waiting: [
+      { issue: 63, title: '<img src=x onerror="window.__xss=1">', type: 'task', priority: 2 },
+      { issue: 64, title: 'Docs: a "quoted" title', type: 'bug', priority: 1 } ] }, last_synced: { ts: '2026-10-19T09:00:00.000Z', count: '2' } };
+    let intakeCalls = 0;
+    await page.route('**/api/github/intake**', r => { intakeCalls++; return json(r, intake); });
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    await page.locator('#nav-factory').click();
+    await expect(page.locator('#fac-in-repo')).toHaveText('acme/app (origin)');
+    await expect(page.locator('#fac-in-wait')).toContainText('2 open issues labelled canon');
+    await expect(page.locator('#fac-in-wait')).toContainText('#63 <img src=x onerror="window.__xss=1">');
+    await expect(page.locator('#fac-in-wait')).toContainText('#64 Docs: a "quoted" title');
+    await expect(page.locator('#fac-in-wait img')).toHaveCount(0);
+    expect(await page.evaluate(() => window.__xss)).toBeUndefined();
+    await expect(page.locator('#fac-in-last')).toContainText('2 tickets made');
+    await expect(page.locator('#fac-intake button, #fac-intake [id*="sync"]')).toHaveText(['Open board ›']);   // no second Sync: a link to the board, where Sync lives
+
+    intake = { ok: true, exit_code: 0, intake: { repo: 'acme/app', label: 'canon', waiting: [], skipped: [] }, last_synced: null };
+    await page.locator('#fac-gh-recheck').click();
+    await expect(page.locator('#fac-in-wait')).toHaveText('No open issue labelled canon is waiting.');
+    await expect(page.locator('#fac-in-last')).toHaveText('never');
+
+    doctor.checks[1] = { id: 'origin', status: 'bad', title: 'No GitHub repository', detail: '' };
+    const before = intakeCalls;
+    await page.locator('#fac-gh-recheck').click();
+    await expect(page.locator('#fac-in-wait')).toContainText('Unavailable until the checks above pass');
+    expect(intakeCalls).toBe(before);   // no gh run behind a failing check
+
+    // A board binary older than the page has no intake route (404): say to restart, not "HTTP 404".
+    doctor.checks[1] = { id: 'origin', status: 'ok', title: 'Repository found', detail: '' };
+    await page.unroute('**/api/github/intake**');
+    await page.route('**/api/github/intake**', r => r.fulfill({ status: 404, body: 'not found' }));
+    await page.locator('#fac-gh-recheck').click();
+    await expect(page.locator('#fac-in-wait')).toContainText('This board is older than the page. Restart canon');
+  });
+
+  // Prod path: Factory › GitHub's Intake (labelled issues already tickets) and Cloud environment (domains note), t-9955.
+  test('Factory Intake names labelled issues that are already tickets, and the domains note shows (t-9955)', async ({ page }) => {
+    await page.route('**/api/projects', r => json(r, [{ id: 'proj-a', path: '/tmp/proj-a', name: 'proj-a', description: '', added: '2026-09-26' }]));
+    await page.route('**/api/github/doctor**', r => json(r, { ok: true, exit_code: 0, output: '', doctor: { checks: [{ id: 'gh', status: 'ok', title: 'Signed in', detail: '' }], cloud: { go: false, domains: ['getcanon.dev'], setup_script: '#!/bin/bash' } } }));
+    let intake = { ok: true, exit_code: 0, last_synced: null, intake: { repo: 'acme/app', label: 'canon', waiting: [], skipped: [
+      { issue: 68, reason: 'already t-eb40' }, { issue: 69, reason: '<b>made by tkt send-issue</b>' }] } };
+    await page.route('**/api/github/intake**', r => json(r, intake));
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    await page.locator('#nav-factory').click();
+    await expect(page.locator('#fac-in-wait .fac-skipped')).toHaveText('2 already tickets: #68 (t-eb40), #69 (<b>made by tkt send-issue</b>)');
+    await expect(page.locator('#fac-in-wait .fac-skipped b')).toHaveCount(0);   // reasons are text
+    await expect(page.locator('#fac-cloud-claude .fac-domains-note')).toContainText("Add your own stack's domains");
+    await expect(page.locator('#fac-cloud-claude')).toContainText('(and, for a Go project, the Go version canon pins)');   // reviewer: not every project gets Go
+    intake = { ...intake, intake: { ...intake.intake, skipped: [] } };
+    await page.locator('#fac-gh-recheck').click();
+    await expect(page.locator('#fac-in-wait')).toHaveText('No open issue labelled canon is waiting.');
+    await expect(page.locator('#fac-in-wait .fac-skipped')).toHaveCount(0);
+  });
+
+  // Prod path: the Projects card's Factory row (t-9641), from each project's cached doctor.
+  test('Projects card Factory row reads ready, needs setup or Not set up, and opens Factory for that project (t-9641)', async ({ page }) => {
+    const projects = ['a', 'b', 'c'].map(x => ({ id: 'proj-' + x, path: '/tmp/proj-' + x, name: 'proj-' + x, description: '', added: '2026-09-26' }));
+    const checks = {
+      'proj-a': [{ id: 'gh', status: 'ok' }, { id: 'origin', status: 'ok' }, { id: 'tests', status: 'warn' }],
+      'proj-b': [{ id: 'gh', status: 'bad' }, { id: 'origin', status: 'ok' }],
+      'proj-c': [{ id: 'gh', status: 'ok' }, { id: 'origin', status: 'bad' }],
+    };
+    await page.route('**/api/projects', r => json(r, projects));
+    await page.route('**/api/github/doctor**', r => json(r, { ok: true, exit_code: 0, output: '', doctor: { checks: checks[new URL(r.request().url()).searchParams.get('project')].map(c => ({ title: c.id, detail: '', ...c })) } }));
+    await page.goto(BASE + '/cockpit');
+    const row = id => page.locator(`.meta[data-stats="${id}"] [data-f="factory"]`);
+    await expect(row('proj-a')).toHaveText('GitHub ready · agentic off ›');
+    await expect(row('proj-b')).toHaveText('GitHub needs setup · agentic off ›');
+    await expect(row('proj-c')).toHaveText('Not set up');
+    await expect(row('proj-c')).toHaveClass(/muted/);
+    await expect(row('proj-a')).not.toHaveClass(/muted/);
+    await page.locator('.fac-row[data-factory="proj-b"]').click();
+    await expect(page.locator('#view-factory')).toHaveClass(/active/);
+    await expect(page.locator('#fac-gh-project')).toHaveValue('proj-b');
+    await expect(page.locator('#fac-gh-count')).toHaveText('Checks · 1 of 2 ready');
+  });
+
+  // Prod path: the board header's Sync from GitHub button, gated by GET /api/github/doctor (t-9641).
+  test('Sync from GitHub is greyed out until the GitHub checks pass (t-9641)', async ({ page }) => {
+    let release, answer = { ok: true, exit_code: 0, output: '', doctor: { checks: [{ id: 'origin', status: 'bad', title: 'No GitHub repository', detail: '' }] } };
+    const held = new Promise(r => { release = r; });
+    await page.route('**/api/github/doctor**', async r => { await held; return json(r, answer); });
+    await page.goto(BASE);
+    const b = page.locator('#btn-gh-sync');
+    await expect(b).toBeDisabled();
+    await expect(b).toHaveAttribute('title', 'Checking GitHub…');
+    release();
+    await expect(b).toHaveAttribute('title', 'Set up GitHub first: Cockpit › Factory › GitHub');
+    await expect(b).toBeDisabled();
+    await page.unroute('**/api/github/doctor**');
+    await page.route('**/api/github/doctor**', r => r.fulfill({ status: 500, body: 'down' }));
+    await page.reload();
+    await expect(b).toHaveAttribute('title', 'Set up GitHub first: Cockpit › Factory › GitHub');
+    await expect(b).toBeDisabled();
+    await page.unroute('**/api/github/doctor**');
+    answer = { ok: true, exit_code: 0, output: '', doctor: { checks: [{ id: 'gh', status: 'ok', title: 't', detail: '' }, { id: 'tests', status: 'warn', title: 't', detail: '' }] } };
+    await page.route('**/api/github/doctor**', r => json(r, answer));
+    await page.reload();
+    await expect(b).toBeEnabled();
+    await expect(b).toHaveAttribute('title', /^Sync from GitHub: make a ticket/);
   });
 
   test('no GitHub place for a ticket already in progress or already out; the panel says so (t-718b)', async ({ page }) => {

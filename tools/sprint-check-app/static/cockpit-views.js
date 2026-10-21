@@ -2,6 +2,7 @@
 // load-time code is initViews(), which cockpit-main.js runs in order once every module has loaded.
 import { loadUpkeep } from './cockpit-upkeep.js';
 import { loadAdmin } from './cockpit-admin.js';
+import { loadFactory } from './cockpit-factory.js';
 import { activateTab, activeTab, applySplit, setUpkeepPane, splitShown } from './cockpit-tabs.js';
 
 export function showView(v){
@@ -20,21 +21,26 @@ export function showView(v){
     document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
     document.getElementById('nav-projects').classList.remove('active');
     document.getElementById('nav-admin').classList.toggle('active',v==='admin');
+    document.getElementById('nav-factory').classList.toggle('active',v==='factory');
   }
   if(v==='admin'){
     document.getElementById('view-admin').classList.add('active');
     loadAdmin();
+  } else if(v==='factory'){   // t-9641: per-project GitHub setup, full size like Admin
+    document.getElementById('view-factory').classList.add('active');
+    loadFactory();
   } else if(v==='upkeep'){
     if(!inSplit) document.getElementById('view-upkeep').classList.add('active');
     loadUpkeep();
   }
-  applySplit();   // t-416c: Admin shows full size and suspends the split
+  applySplit();   // t-416c: Admin (and Factory, t-9641) shows full size and suspends the split
 }
 // t-565f: views's load-time code, run once at the end (the module version keeps it in initViews()).
 export function initViews(){
 
 document.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('nav-projects').addEventListener('click',()=>showView('projects'));
+  document.getElementById('nav-factory').addEventListener('click',()=>showView('factory'));
   document.getElementById('nav-admin').addEventListener('click',()=>showView('admin'));
 });
 }

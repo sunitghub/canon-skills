@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tkt github-doctor (t-90a3): the readiness checks Admin › GitHub and the worktree picker's GitHub row (t-24b1) render.
+# tkt github-doctor (t-90a3): the readiness checks Factory › GitHub (t-9641) and the worktree picker's GitHub row (t-24b1) render.
 # Each gh / origin / test-command state gives its status and fix, the cloud recipe is docs/setup.md's, and nothing changes.
 set -euo pipefail
 
@@ -47,11 +47,14 @@ before="$(git status --porcelain; git for-each-ref)"
 # Not installed; no origin; no commit yet, so no scripts/test.sh.
 out="$(PATH="$NOGH_PATH" "$TKT" github-doctor --json)"
 assert_eq "bad|GitHub CLI (gh) is not installed||https://github.com/cli/cli" "$(check "$out" gh)"
-assert_eq "bad|No GitHub repository for this project|git remote add origin https://github.com/<owner>/<repo>.git|" "$(check "$out" origin)"
+# t-9955: no origin at all offers to create the repo, private, named after the folder; the detail keeps the remote-add way.
+assert_eq "bad|No GitHub repository for this project|gh repo create $(basename "$project") --private --source=. --remote=origin --push|" "$(check "$out" origin)"
 assert_contains "$(field "$out" "d['checks'][1]['detail']")" "no git remote named origin"
-assert_eq "warn|No test command|nofix" "$(check "$out" tests)"
+assert_contains "$(field "$out" "d['checks'][1]['detail']")" "Already have a repo on GitHub? Run git remote add origin https://github.com/<owner>/<repo>.git"
+assert_eq "warn|No test command (optional)|nofix" "$(check "$out" tests)"
 git -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
 assert_contains "$(field "$out" "d['checks'][2]['detail']")" "merges on the gates alone"
+assert_contains "$(field "$out" "d['checks'][2]['detail']")" 'run tkt merge-pr <id> --test "<your test command>"'   # t-9641: both ways to add one
 
 # Installed but signed out; a non-GitHub origin.
 git remote add origin https://gitlab.com/acme/app.git
@@ -85,21 +88,16 @@ assert_eq "warn|Repository found; visibility unknown|nofix" "$(check "$out" orig
 chmod -x scripts/test.sh; git -c user.name=t -c user.email=t@t commit -q -am 'not executable'
 out="$(PATH="$W/bin:$PATH" STUB_VIS=public doctor)"
 assert_eq "warn|Repository found, and public|nofix" "$(check "$out" origin)"; assert_contains "$(field "$out" "d['checks'][1]['detail']")" "Send needs --public"
-assert_eq "warn|No test command|nofix" "$(check "$out" tests)"
+assert_eq "warn|No test command (optional)|nofix" "$(check "$out" tests)"
 
-# The cloud recipe is docs/setup.md's setup-script block, byte for byte, and its domains; no docs gives empty values.
-want="$(python3 - "$CANON/docs/setup.md" <<'EOF'
-import sys
-t = open(sys.argv[1]).read().split('\n## Claude cloud sessions\n', 1)[1].split('\n## ', 1)[0]
-blk = t.split('**Setup script**', 1)[1].split('  ```bash\n', 1)[1].split('\n  ```\n', 1)[0]
-print('\n'.join(l[2:] for l in blk.split('\n')))
-EOF
-)"
-assert_eq "$want" "$(field "$out" "d['cloud']['setup_script']")"
-assert_eq "True" "$(field "$out" "'getcanon.dev' in d['cloud']['domains'] and 'sum.golang.org' in d['cloud']['domains']")"
+# t-9955: the cloud recipe is this project's `tkt cloud-env --json`, from tools/cloud-env.sh: no go.mod here, so the base only.
+assert_eq "$("$TKT" cloud-env --json)" "$(field "$out" "json.dumps(d['cloud'], separators=(',', ':'))")"
+assert_eq "False|4|False" "$(field "$out" "'|'.join(map(str, [d['cloud']['go'], len(d['cloud']['domains']), 'GOV=' in d['cloud']['setup_script']]))")"
+# An install with no tools/cloud-env.sh gives empty values, never an error.
 mkdir -p "$W/canon/tools"; cp "$CANON/tools/tkt" "$CANON/tools/ticket-root.sh" "$CANON/tools/frontmatter-lib.sh" "$CANON/tools/platform-lib.sh" "$W/canon/tools/"
-out="$(PATH="$W/bin:$PATH" "$W/canon/tools/tkt" github-doctor --json)"
+out="$(PATH="$W/bin:$PATH" "$W/canon/tools/tkt" github-doctor --json 2>"$W/err")"
 assert_eq "[]|" "$(field "$out" "str(d['cloud']['domains']) + '|' + d['cloud']['setup_script']")"
+[[ ! -s "$W/err" ]] || fail "a tools/ copy without cloud-env.sh printed errors: $(cat "$W/err")"
 
 # Exits 0 when checks fail, and the plain form shows each fix.
 rc=0; plain="$(PATH="$NOGH_PATH" "$TKT" github-doctor)" || rc=$?

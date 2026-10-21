@@ -6,9 +6,12 @@ Usage: mutant-sweep [--base <ref>] [--jobs N] [--timeout S] [--report <md>] --ma
 Applies every operator in OPS at every occurrence on the lines added or changed since <base>
 (default: git merge-base HEAD origin/main) in each mapped file, then runs that file's test command
 on a fresh copy of the project, one mutant per copy. Shell, JS, Python and Go. Advisory: exit 0 after a
-sweep, 1 when a test fails unmutated (baseline), 2 on a usage or base-ref error. The real tree is
-never written: copies, their TMPDIR/CANON_HOME/XDG_CONFIG_HOME and every test's process group
-live under one temp root that is removed on exit, timeout or interrupt.
+sweep, 1 when a test fails unmutated (baseline), 2 on a usage or base-ref error, 4 when the canary finds a
+leak. The real tree is never written: copies, their HOME/TMPDIR/CANON_HOME/XDG_CONFIG_HOME and every
+test's process group live under one temp root that is removed on exit, timeout or interrupt. Caches that
+default under HOME (GOMODCACHE, GOPATH, GOCACHE, PLAYWRIGHT_BROWSERS_PATH) are resolved from the real
+environment and passed through. Canary (t-eb40): after the sweep, the real ~/.canon is scanned for the
+temp root's path; a hit is printed as `mutant-sweep: LEAK <file>` and exits 4, after the report.
 """
 import argparse
 import os
@@ -383,7 +386,7 @@ class Sweep:
             d = os.path.join(self.root, f'm{self.n}')
         try:
             work = os.path.join(d, 'r')
-            for sub in ('tmp', 'canon-home', 'xdg'):
+            for sub in ('home', 'tmp', 'canon-home', 'xdg'):
                 os.makedirs(os.path.join(d, sub))
             self.copy(work)
             if path is not None:
@@ -394,7 +397,7 @@ class Sweep:
                          'go': ['gofmt', '-e', f]}[lang]
                 if subprocess.run(check, capture_output=True).returncode:
                     return ('INVALID', '')
-            env = dict(self.env_base, TMPDIR=os.path.join(d, 'tmp'), CANON_HOME=os.path.join(d, 'canon-home'),
+            env = dict(self.env_base, HOME=os.path.join(d, 'home'), TMPDIR=os.path.join(d, 'tmp'), CANON_HOME=os.path.join(d, 'canon-home'),
                        XDG_CONFIG_HOME=os.path.join(d, 'xdg'))
             log = os.path.join(d, 'out.log')
             with open(log, 'wb') as out:
@@ -443,7 +446,56 @@ class Sweep:
                 self._kill(g)
 
 
+def home_caches():
+    """Cache locations that default under HOME, resolved from the real environment before HOME is pinned."""
+    out = {}
+    if shutil.which('go'):
+        keys = ['GOMODCACHE', 'GOPATH', 'GOCACHE']
+        try:
+            r = subprocess.run(['go', 'env'] + keys, capture_output=True, text=True, timeout=30)
+            vals = r.stdout.split('\n') if r.returncode == 0 else []
+        except (OSError, subprocess.TimeoutExpired):
+            vals = []
+        out.update({k: v.strip() for k, v in zip(keys, vals) if v.strip()})
+    pw = os.environ.get('PLAYWRIGHT_BROWSERS_PATH')
+    if not pw:
+        local = os.environ.get('LOCALAPPDATA', '')
+        for c in (os.path.expanduser('~/Library/Caches/ms-playwright'), os.path.expanduser('~/.cache/ms-playwright'),
+                  os.path.join(local, 'ms-playwright') if local else ''):
+            if c and os.path.isdir(c):
+                pw = c
+                break
+    if pw:
+        out['PLAYWRIGHT_BROWSERS_PATH'] = pw
+    return out
+
+
+def canary(real_home, root, max_files=2000, max_bytes=5 << 20):
+    """Files under the real ~/.canon that name the sweep root: anything a mutant wrote there carries that path.
+    .git and node_modules are skipped, so a checkout's objects never use up the file budget before events/."""
+    needles = {root.encode(), os.path.realpath(root).encode()}   # macOS: /var/... is /private/var/... to getcwd
+    hits, seen = [], 0
+    for dirpath, dirs, names in os.walk(os.path.join(real_home, '.canon')):
+        dirs[:] = sorted(x for x in dirs if x not in ('.git', 'node_modules'))
+        for n in sorted(names):
+            f = os.path.join(dirpath, n)
+            if seen >= max_files:
+                return hits
+            try:
+                if os.path.islink(f) or not os.path.isfile(f) or os.path.getsize(f) >= max_bytes:
+                    continue
+                seen += 1
+                with open(f, 'rb') as fh:
+                    data = fh.read()
+            except OSError:   # a real writer can remove or rotate a file mid-scan
+                continue
+            if b'\0' not in data and any(x in data for x in needles):
+                hits.append(f)
+    return hits
+
+
 def main():
+    real_home = os.path.expanduser('~')   # read at launch, before anything pins HOME
     ap = argparse.ArgumentParser(prog='mutant-sweep', description='Generated mutants over changed lines (advisory).')
     ap.add_argument('--base')
     ap.add_argument('--jobs', type=int, default=min(os.cpu_count() or 1, 8))
@@ -522,7 +574,7 @@ def main():
                     continue
                 todo.append((path, i, name, '\n'.join(src[:i] + [new] + src[i + 1:]), lang, cmd))
 
-    env = dict(os.environ)
+    env = dict(os.environ, **home_caches())
     root = tempfile.mkdtemp(prefix='mutant-sweep.')
     if any(t[4] == 'go' for t in todo):
         env['GOCACHE'] = os.path.join(root, 'gocache')   # one cache for the sweep's builds (go's cache is safe for parallel use), gone with the root
@@ -576,9 +628,12 @@ def main():
     surv = [x for x in results if x[3] == 'SURVIVED']
     for path, i, name, st, why in surv:
         print(f'{path}:{i + 1} {name} | {srcs[path][i].strip()[:100]}')
+    leaks = canary(real_home, root)
     if a.report:
         with open(a.report, 'w') as fh:
             fh.write('# Mutation Report\n\n' + f'Base `{base[:12]}`. ' + ', '.join(f'{k} {v}' for k, v in counts.items()) + '.\n\n')
+            fh.write('Each mutant ran in its own copy with HOME, TMPDIR, CANON_HOME and XDG_CONFIG_HOME pinned inside it. Canary: '
+                     + (', '.join(f'LEAK `{f}`' for f in leaks) if leaks else 'real ~/.canon untouched') + '.\n\n')
             for p in unsupported:
                 fh.write(f'- unsupported: `{p}`\n')
             for p in unmapped:
@@ -587,6 +642,11 @@ def main():
             cell = lambda t: t.replace('|', '\\|')
             for path, i, name, st, why in surv:
                 fh.write(f'| {path}:{i + 1} | `{cell(name)}` | SURVIVED | `{cell(srcs[path][i].strip()[:80])}` |\n')
+    for f in leaks:
+        print(f'mutant-sweep: LEAK {f} names the sweep root {root}', file=sys.stderr)
+    if leaks:
+        return 4
+    print('canary: real ~/.canon untouched')
     return 0
 
 

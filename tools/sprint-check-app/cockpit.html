@@ -14,6 +14,7 @@
 <link rel="stylesheet" href="/static/cockpit-admin.css">
 <link rel="stylesheet" href="/static/cockpit-upkeep.css">
 <link rel="stylesheet" href="/static/cockpit-projects.css">
+<link rel="stylesheet" href="/static/cockpit-factory.css">
 <script src="/static/theme-boot.js" data-page="shell"></script>
 </head>
 <body>
@@ -29,8 +30,9 @@
 <circle cx="45.1" cy="41.2" r="3.6"/></g></svg> Canon Cockpit <small id="ver"></small></div>
       <div class="navlabel">Workspace</div>
       <nav class="nav">
-        <a id="nav-projects" class="active"><span class="ic">&#9638;</span> Projects <span class="badge" id="pcount">0</span></a>
-        <a id="nav-admin"><span class="ic">&#9881;</span> Admin <span class="badge nav-bubble" id="admin-bubble" hidden></span></a>
+        <a id="nav-projects" class="active"><span class="ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/></svg></span> Projects <span class="badge" id="pcount">0</span></a>
+        <a id="nav-factory"><span class="ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 20.5V10.5l6 3.5v-3.5l6 3.5V5h4.5v15.5z"/><path d="M7 17.5h1.5M12 17.5h1.5M16.5 17.5h1"/></svg></span> Factory</a>
+        <a id="nav-admin"><span class="ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="6.6"/><path d="M12 5.4V3M12 18.6V21M5.4 12H3M18.6 12H21M16.7 7.3l1.7-1.7M16.7 16.7l1.7 1.7M7.3 16.7l-1.7 1.7M7.3 7.3L5.6 5.6"/></svg></span> Admin <span class="badge nav-bubble" id="admin-bubble" hidden></span></a>
       </nav>
       <div class="navlabel ag-label" id="ag-label"><span>Agents</span><span>by project</span></div>
       <div class="agents" id="ag-list"></div>
@@ -137,23 +139,72 @@
               <div class="mt-tabs" id="mt-tabs"></div>
               <div class="mt-grid" id="mt-grid"></div>
             </div>
-            <div class="gh-wrap" id="ad-gh">
-              <div class="gh-head"><div class="slabel">GitHub</div><select id="ad-gh-project" aria-label="Project to check"></select></div>
-              <p class="setting-d gh-lede">Send to GitHub and Sync from GitHub run <code>gh</code> as you; canon stores no GitHub token. A cloud session works on a branch and opens a PR; it never pushes to <code>main</code>. On a free private repo GitHub cannot enforce this, so the prompt is the safeguard.</p>
+          </div>
+        </section>
+        <section id="view-factory" class="view">
+          <div class="admin-wrap fac-wrap">
+            <h1 class="admin-h1">Factory</h1>
+            <div class="fac-tabs" role="tablist" aria-label="Factory sections">
+              <button type="button" class="fac-tab active" role="tab" id="fac-tab-gh" data-fac-tab="gh" aria-selected="true" aria-controls="fac-gh">GitHub</button>
+              <button type="button" class="fac-tab" role="tab" id="fac-tab-line" data-fac-tab="line" aria-selected="false" aria-controls="fac-line" tabindex="-1">Agentic factory <span class="fac-planned">Planned</span></button>
+            </div>
+            <div class="gh-wrap" id="fac-gh" role="tabpanel" aria-labelledby="fac-tab-gh">
+              <div class="gh-head"><span class="setting-d fac-proj" id="fac-gh-proj"></span><select id="fac-gh-project" aria-label="Project"></select></div>
               <div class="gh-card">
-                <div class="setting-k" id="ad-gh-count">Checks</div>
-                <div id="ad-gh-checks"></div>
-                <div class="gh-actions"><button type="button" class="btn" id="ad-gh-recheck">Check again</button></div>
+                <div class="setting-k">GitHub workflow &middot; works today, needs only <code>gh</code></div>
+                <ol class="gh-steps">
+                  <li><b>Send.</b> A ticket goes to your repo as an issue (&#9654; Start &rsaquo; GitHub &middot; new issue in the worktree picker, <code>tkt send-issue</code>), or an issue labelled <code>canon</code> comes in as a ticket (Sync from GitHub, <code>tkt sync-issues</code>).</li>
+                  <li><b>Work.</b> An agent's cloud session works it on your subscription: it works on a new branch, pushes it and opens a PR.</li>
+                  <li><b>Guard.</b> The issue tells the session never to push <code>main</code> or force-push. A private repo on a free GitHub plan cannot enforce that with a branch rule, so this text is the only guard.</li>
+                  <li><b>Return.</b> After it exports, the session stops; it never merges. Its results come back with Import results (<code>tkt import-results</code>).</li>
+                  <li><b>Merge.</b> The PR lands with Check &amp; merge (<code>tkt merge-pr</code>).</li>
+                </ol>
               </div>
               <div class="gh-card">
-                <div class="setting-k">Cloud environment &middot; set up once, in Claude</div>
+                <div class="setting-k" id="fac-gh-count">Checks</div>
+                <div class="setting-d">Canon never stores a GitHub token or logs you in. It runs <code>gh</code> as you, reads the answers, and tells you the command to run yourself.</div>
+                <div id="fac-gh-checks"></div>
+                <div class="gh-actions"><button type="button" class="btn primary" id="fac-gh-recheck">Check again</button></div>
+              </div>
+              <div class="gh-card" id="fac-intake">
+                <div class="setting-k">Intake &middot; issues become tickets</div>
+                <ol class="gh-steps">
+                  <li><b>Label</b> an open issue on origin with the label below.</li>
+                  <li><b>Sync.</b> Press Sync from GitHub on the board (<code>tkt sync-issues</code>). A preview comes first.</li>
+                  <li><b>Tickets.</b> Each labelled issue that no ticket links to yet becomes a local ticket. Sync only reads GitHub.</li>
+                </ol>
+                <div class="setting-d">The label admits an issue but does not vouch for text edited after it was labelled: read the preview.</div>
+                <dl class="fac-kv">
+                  <dt>Label</dt><dd><code>canon</code> &middot; admits an issue as a ticket</dd>
+                  <dt>Repository</dt><dd id="fac-in-repo">&mdash;</dd>
+                  <dt>Last synced</dt><dd id="fac-in-last">&mdash;</dd>
+                  <dt>Waiting</dt><dd id="fac-in-wait">&mdash;</dd>
+                </dl>
+                <div class="setting-d">A different flag belongs to the planned Agentic factory: <code>factory: true</code> on a ticket means run the line on it. <code>canon</code> only makes a ticket.</div>
+                <div class="gh-actions"><button type="button" class="btn primary" id="fac-in-board" title="Sync from GitHub is a button on this project's board">Open board &rsaquo;</button></div>
+              </div>
+              <div class="gh-card" id="fac-cloud">
+                <div class="setting-k">Cloud environment &middot; set up once</div>
+                <div class="fac-subtabs" role="tablist" aria-label="Cloud provider">
+                  <button type="button" class="fac-subtab active" role="tab" id="fac-cloud-tab-claude" aria-selected="true" aria-controls="fac-cloud-claude">Claude</button>
+                </div>
+                <div class="fac-subpanel" id="fac-cloud-claude" role="tabpanel" aria-labelledby="fac-cloud-tab-claude">
                 <ol class="gh-steps">
                   <li><b>Create the environment.</b> In Claude (desktop &rsaquo; Code, or claude.ai/code): New session &rsaquo; Choose environment &rsaquo; Cloud. Name it <code>canon</code>.</li>
-                  <li><b>Network access: Custom</b>, and tick <i>Also include default list of common package managers</i>. <button type="button" class="btn" id="ad-gh-copy-domains">Copy domains</button><div class="gh-chips" id="ad-gh-domains"></div></li>
-                  <li><b>Setup script</b>: installs canon's latest verified release, the Go version it pins, its commands and both gate agents. <button type="button" class="btn" id="ad-gh-copy-script">Copy setup script</button></li>
+                  <li><b>Network access: Custom</b>, and tick <i>Also include default list of common package managers</i>. <button type="button" class="btn primary" id="fac-gh-copy-domains">Copy domains</button><div class="gh-chips" id="fac-gh-domains"></div><div class="setting-d fac-domains-note">These are canon's (the Go ones only for a Go project). Add your own stack's domains, an npm or PyPI mirror for example, yourself.</div></li>
+                  <li><b>Setup script</b>: installs canon's latest verified release, its commands and both gate agents (and, for a Go project, the Go version canon pins). <button type="button" class="btn primary" id="fac-gh-copy-script">Copy setup script</button></li>
                   <li><b>Secrets:</b> none.</li>
                 </ol>
-                <div class="setting-d">A recipe, not a check: canon cannot see your Claude environments. Full recipe: <code>docs/setup.md</code> &rsaquo; Claude cloud sessions.</div>
+                </div>
+                <div class="setting-d">A recipe, not a check: canon cannot see your cloud environments.</div>
+                <div class="setting-d">Full recipe: <code>docs/setup.md</code> &rsaquo; Claude cloud sessions.</div>
+              </div>
+            </div>
+            <div class="gh-wrap" id="fac-line" role="tabpanel" aria-labelledby="fac-tab-line" hidden>
+              <div class="gh-card">
+                <div class="setting-k">Planned &middot; not built yet</div>
+                <div class="setting-d">The line needs the plugin APIs first: <code>t-347a</code> Plugin API v1 and <code>t-47f4</code> factory plugin API. Then <code>t-f279</code> runs one ticket through the line locally, and <code>t-074e</code> builds this page's settings.</div>
+                <div class="fac-off"><b>Factory: Off.</b> The board and Cockpit look exactly as they do today.</div>
               </div>
             </div>
           </div>
@@ -311,7 +362,7 @@
       <p>Register a project folder with <b>+ Add Project</b>; each card shows when it was updated and its ticket count. Click the green <b>&#8250;</b> to open a project in a tab.</p>
 
       <div class="help-sect">Two projects at once</div>
-      <p>Right-click a project tab to open it <b>beside</b> or <b>below</b> the tab you are on. Drag the divider (or focus it and use the arrow keys) to resize, double-click it to reset. <kbd>ctrl+.</kbd> then <kbd>v</kbd> (beside) or <kbd>-</kbd> (below) does the same with the tab you came from (<kbd>shift</kbd> for the next tab in the strip); <kbd>o</kbd> moves to the other pane, <kbd>s</kbd> swaps them, <kbd>r</kbd> switches beside and below, and <kbd>u</kbd> closes the split. Projects and Admin still show full size; Upkeep opens inside its project's pane.</p>
+      <p>Right-click a project tab to open it <b>beside</b> or <b>below</b> the tab you are on. Drag the divider (or focus it and use the arrow keys) to resize, double-click it to reset. <kbd>ctrl+.</kbd> then <kbd>v</kbd> (beside) or <kbd>-</kbd> (below) does the same with the tab you came from (<kbd>shift</kbd> for the next tab in the strip); <kbd>o</kbd> moves to the other pane, <kbd>s</kbd> swaps them, <kbd>r</kbd> switches beside and below, and <kbd>u</kbd> closes the split. Projects, Factory and Admin still show full size; Upkeep opens inside its project's pane.</p>
 
       <div class="help-sect">Tabs</div>
       <p>Open projects become folder-named tabs beside the pinned <b>Projects</b> tab; close a tab with its <b>&#10005;</b>.</p>
