@@ -67,6 +67,8 @@ export function ghButtonHTML(t) {
   const st = stageOf(t);
   const btn = (action, label, title) =>
     `<button class="card-start card-gh-btn" type="button" data-id="${esc(t.id)}" data-gh-action="${action}" title="${escAttr(title)}">${esc(label)}</button>`;
+  // t-c259: imported, not closed, PR open: the close finishes here, in a worktree at the PR head.
+  if (st.land) return btn('land', 'Close here', 'Make a worktree at the PR head to run the gates in (tkt land)');
   if (st.stage === 'results-ready') return btn('import', 'Import results', 'Bring the cloud session\'s results back into this ticket');
   if (st.stage === 'results-in' || st.stage === 'merging') return btn('merge', 'Check & merge', 'Check the PR and merge it after your confirmation');
   // t-9955: "↗" goes to GitHub and changes nothing; Create PR is the one that makes something.
@@ -98,6 +100,24 @@ async function ghAction(t, action) {
   if (action === 'import') return importResults(t, pr);
   if (action === 'merge') return checkAndMerge(t, pr);
   if (action === 'open-pr' && p) return openPr(t, p, st);
+  if (action === 'land') return closeHere(t, pr);
+}
+
+// ── Close here (t-c259): a cloud PR whose gates did not pass on its head is closed on this machine ───────────────────────────────────
+async function closeHere(t, pr) {
+  const ask = openDialog({
+    title: `Close ${t.id} here?`,
+    body: `Creates a worktree on land/${t.id} at ${pr ? `PR #${pr}'s` : 'the PR\'s'} head and starts the ticket there. Nothing is pushed or merged. Run the evaluator and sprint complete in that worktree, then tkt land ${t.id} --finish and Check & merge.`,
+    ok: 'Create worktree', cancel: 'Cancel',
+  });
+  if (!(await ask).ok) return;
+  const run = openDialog({ title: `Preparing ${t.id}…`, pre: 'Running tkt land…', cancel: 'Close', escape: false });
+  let res;
+  try { res = await postJSON(ghApi(t.id, 'land'), pr ? { pr } : {}); }
+  catch (e) { res = { ok: false, output: String(e.message || e) }; }
+  updateDialog({ title: res.ok ? 'Worktree ready' : 'Nothing was changed', body: '', pre: res.output || '', escape: true }, run.gen);
+  statusById.delete(t.id);
+  await loadData();
 }
 
 // ── Create PR (t-24b1, label t-9955): a session pushed its branch and stopped short of a PR ─────────────────────────────────────────
@@ -228,7 +248,7 @@ async function importResults(t, pr) {
   updateDialog({
     title: res.ok ? `Results are back in .tickets/${t.id}/` : (noVerdict ? 'Imported, but the cloud sprint did not close' : 'Import failed'),
     body: res.ok ? 'Next: Check & merge on the card.'
-      : noVerdict ? 'There is no passing evaluator verdict on the PR\'s head, so there is nothing to merge yet. Finish the close on this machine: check out the PR\'s branch, run the evaluator on its head and sprint complete, then Check & merge (docs/setup.md › Claude cloud sessions).'
+      : noVerdict ? 'There is no passing evaluator verdict on the PR\'s head, so there is nothing to merge yet. Finish the close on this machine: Close here on the card (tkt land) makes a worktree at the PR\'s head to run the evaluator and sprint complete in, then Check & merge (docs/setup.md › Claude cloud sessions).'
       : 'Nothing was changed.',
     pre: res.output || '', escape: true,
   }, shown.gen);

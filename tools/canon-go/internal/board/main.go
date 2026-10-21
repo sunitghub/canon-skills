@@ -775,6 +775,14 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		case "open-pr":
 			sendJSON(w, runTkt(eroot, []string{"open-pr", id}))
 			return
+		case "land":
+			pr, ok := prArg(payload["pr"])
+			if !ok {
+				http.Error(w, "bad request", http.StatusBadRequest)
+				return
+			}
+			sendJSON(w, runTkt(eroot, append([]string{"land", id}, pr...)))
+			return
 		case "take-back":
 			args := []string{"take-back", id}
 			if b, _ := payload["close_issue"].(bool); b {
@@ -1914,7 +1922,7 @@ var (
 	apiTicketBodyRe     = regexp.MustCompile(`^/api/ticket/([^/]+)/body$`)
 	apiTicketVisualRe   = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/visual$`)
 	apiTicketDemoRe     = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/demo$`)
-	apiGitHubPostRe     = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/github/(send|import|merge|merge-stop|take-back|open-pr)$`)
+	apiGitHubPostRe     = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/github/(send|import|merge|merge-stop|take-back|open-pr|land)$`)
 	apiWorktreeUnlockRe = regexp.MustCompile(`^/api/worktree-unlock/([^/]+)$`)
 	checkboxItemRe      = regexp.MustCompile(`(?m)^\s*[-*]\s+\[[ xX]\]\s+\S`)
 	uncheckedItemRe     = regexp.MustCompile(`(?m)^\s*[-*]\s+\[ \]\s+\S`)

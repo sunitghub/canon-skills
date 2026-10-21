@@ -1484,6 +1484,21 @@ _fixes_prs() {
 # _merge_pr_run_tests <tmp> <cmd> <base> <pr>: runs <cmd> in <tmp>/w, output to <tmp>/test.log, showing progress (t-bad4):
 # on a terminal one line rewritten every 2 s, else a plain line every CANON_PROGRESS_SECONDS (default 30; the board sets
 # it). The command runs in its own process group, so an interrupt stops all of it (recorded group id only).
+# _resolve_pr <label> <ticket-file> <repo> <pr> — prints the PR number: <pr> if given, else the one open PR saying
+# "Fixes #<n>" for the ticket's github: line. Explains and returns 1 otherwise.
+_resolve_pr() {
+  local label="$1" file="$2" repo="$3" pr="$4" issue found
+  [[ -n "$pr" ]] && { printf '%s\n' "$pr"; return 0; }
+  issue="$(get_field "$file" github)"; [[ "$issue" == "$repo#"* ]] && issue="${issue##*#}" || issue=""
+  [[ "$issue" =~ ^[0-9]+$ ]] || issue=""
+  [[ -n "$issue" ]] || { echo "$label: the ticket has no github: $repo#<n> line to find its PR by; pass --pr N" >&2; return 1; }
+  found="$(_fixes_prs "$repo" "$issue" open 2>&1)" || { echo "$label: gh could not list PRs on $repo: $found" >&2; return 1; }
+  found="$(printf '%s\n' "$found" | cut -f1 | grep . || true)"
+  [[ "$(printf '%s' "$found" | grep -c .)" == 1 ]] \
+    || { echo "$label: $([[ -n "$found" ]] && echo "several open PRs say" || echo "no open PR says") Fixes #$issue on $repo; pass --pr N" >&2; return 1; }
+  printf '%s\n' "$found"
+}
+
 _merge_pr_run_tests() {
   local tmp="$1" cmd="$2" base="$3" pr="$4" every="${CANON_PROGRESS_SECONDS:-30}" tty=false tpid="" rc=0 start last=0 now line
   local shown; shown="$(printf '%s' "$cmd" | cut -c1-40)"; [[ ${#cmd} -gt 40 ]] && shown="${shown}…"
@@ -1544,17 +1559,7 @@ cmd_merge_pr() {
   ng="$(sed -n 's/^graded-head: *\([0-9a-f]\{7,40\}\).*/\1/p' "$tdir/eval-report.md" | sort -u | grep -c . || true)"
   [[ "$nv" == 1 && "$ng" == 1 ]] \
     || { echo "merge-pr: $id's eval-report.md has $nv verdict lines and $ng graded-heads; one of each is required" >&2; exit 1; }
-  local issue=""; issue="$(get_field "$file" github)"; [[ "$issue" == "$repo#"* ]] && issue="${issue##*#}" || issue=""
-  [[ "$issue" =~ ^[0-9]+$ ]] || issue=""
-  if [[ -z "$pr" ]]; then
-    [[ -n "$issue" ]] || { echo "merge-pr: $id has no github: $repo#<n> line to find its PR by; pass --pr N" >&2; exit 1; }
-    local found
-    found="$(_fixes_prs "$repo" "$issue" open 2>&1)" || { echo "merge-pr: gh could not list PRs on $repo: $found" >&2; exit 1; }
-    found="$(printf '%s\n' "$found" | cut -f1 | grep . || true)"
-    [[ "$(printf '%s' "$found" | grep -c .)" == 1 ]] \
-      || { echo "merge-pr: $([[ -n "$found" ]] && echo "several open PRs say" || echo "no open PR says") Fixes #$issue on $repo; pass --pr N" >&2; exit 1; }
-    pr="$found"
-  fi
+  pr="$(_resolve_pr merge-pr "$file" "$repo" "$pr")" || exit 1
   local info st mg ms head base cross
   info="$(gh pr view "$pr" --repo "$repo" --json state,mergeable,mergeStateStatus,headRefOid,baseRefName,isCrossRepository \
     --jq '[.state, .mergeable, .mergeStateStatus, .headRefOid, .baseRefName, .isCrossRepository] | @tsv' 2>&1)" \
@@ -1732,16 +1737,19 @@ cmd_github_status() {
     read -r sb def <<< "$sbout" || true
     [[ -n "$sb" ]] && stage=branch
   fi
+  # t-c259: imported (a local eval-report.md), not closed, PR open: the card offers "Close here" (tkt land).
+  local land=false
+  [[ "$pst" == OPEN && "$stage" != results-in && "$(get_field "$file" status)" == open && -f "$tdir/eval-report.md" ]] && land=true
   local mirrors m mj="" sep=""
   mirrors="$(git -C "$root" config --get-all canon.mirror 2>/dev/null || true)"
   while IFS= read -r m; do [[ -n "$m" ]] && { mj+="$sep$(json_str "$m")"; sep=,; }; done <<< "$mirrors"
   if $json; then
-    printf '{"id":%s,"issue":%s,"stage":%s,"pr":%s,"pr_state":%s,"pr_head":%s,"results_branch":%s,"branch":%s,"mirrors":[%s],"verdict":%s,"graded_head":%s,"graded_matches_pr":%s,"merged":%s}\n' \
+    printf '{"id":%s,"issue":%s,"stage":%s,"pr":%s,"pr_state":%s,"pr_head":%s,"results_branch":%s,"branch":%s,"mirrors":[%s],"verdict":%s,"graded_head":%s,"graded_matches_pr":%s,"merged":%s,"land":%s}\n' \
       "$(json_str "$id")" "$(json_str "$gh")" "$(json_str "$stage")" "$(json_num "$pr" null)" \
       "$([[ -n "$pst" ]] && json_str "$pst" || echo null)" "$([[ -n "$phead" ]] && json_str "$phead" || echo null)" "$branch" \
       "$([[ -n "$sb" ]] && json_str "$sb" || echo null)" "$mj" \
       "$([[ "$verdict" != - ]] && json_str "$verdict" || echo null)" "$([[ "$graded" != - ]] && json_str "$graded" || echo null)" "$match" \
-      "$([[ -n "$merged" ]] && json_str "$merged" || echo null)"
+      "$([[ -n "$merged" ]] && json_str "$merged" || echo null)" "$land"
   else
     echo "$id · $gh · $stage"
     [[ -n "$pr" ]] && echo "  PR #$pr ($pst) head $phead"
@@ -1858,6 +1866,72 @@ cmd_push_main() {
     fi
   done <<< "$mirrors"
   return $rc
+}
+
+# cmd_land <id> [--pr N] | <id> --finish — t-c259: closes an imported cloud ticket here. The gates need an agent, so two
+# phases. Prepare: a linked worktree on land/<id> at the PR head, the ticket (one shared .tickets/, t-cd06) started and bound
+# to it (.cockpit-cwd), so `sprint complete` run there passes the freshness gate. --finish: after that close, unbinds the
+# ticket and removes the worktree and branch (git's own refusal on uncommitted work stands; nothing is forced), then points
+# at merge-pr. Never pushes or merges.
+cmd_land() {
+  local id="" pr="" finish=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --pr) pr="${2:-}"; shift 2 || { echo "Error: --pr needs a number" >&2; exit 1; } ;;
+      --finish) finish=true; shift ;;
+      -*) echo "Unknown option: $1" >&2; exit 1 ;;
+      *)  [[ -z "$id" ]] && id="$1"; shift ;;
+    esac
+  done
+  [[ -n "$id" ]] || { echo "Usage: tkt land <id> [--pr N] | tkt land <id> --finish" >&2; exit 1; }
+  [[ -z "$pr" || "$pr" =~ ^[0-9]+$ ]] || { echo "land: --pr takes a PR number" >&2; exit 1; }
+  local file tdir root; file="$(find_ticket "$id")"; tdir="$(dirname "$file")"; id="$(get_field "$file" id)"
+  [[ "$(basename "$file")" == ticket.md ]] || { echo "land: $id is a legacy flat ticket; nothing to bind a worktree to" >&2; exit 1; }
+  root="$(dirname "$(tickets_dir)")"; root="$(git -C "$root" rev-parse --show-toplevel)" || exit 1
+  local wt branch="land/$id"
+  wt="$(dirname "$root")/$(basename "$root")-worktrees/land-$id"
+  local verdict graded; read -r verdict graded < <(_eval_verdict_head "$tdir")
+  if $finish; then
+    [[ -f "$tdir/.cockpit-cwd" && "$(_ticket_cwd_binding "$file")" == "$(_normalize_path "$wt")" ]] \
+      || { echo "land: $id is not bound to $wt; run tkt land $id first" >&2; exit 1; }
+    [[ "$(get_field "$file" status)" == closed ]] \
+      || { echo "land: $id is not closed yet; run sprint complete in $wt, then tkt land $id --finish" >&2; exit 1; }
+    local whead; whead="$(git -C "$wt" rev-parse HEAD)" || exit 1
+    [[ "$verdict" == pass && "$graded" != - && "$whead" == "$graded"* ]] \
+      || { echo "land: $id has no passing evaluator verdict graded on the worktree head ${whead:0:8} (eval-report.md: ${verdict/#-/none} ${graded/#-/none}); worktree kept" >&2; exit 1; }
+    git -C "$root" worktree remove "$wt" < /dev/null 2>&1 || { echo "land: git would not remove $wt (uncommitted work?); worktree kept" >&2; exit 1; }
+    git -C "$root" branch -q -d "$branch" < /dev/null 2>/dev/null || git -C "$root" branch -q -D "$branch" < /dev/null
+    if [[ -f "$tdir/.cockpit-cwd.before-land" ]]; then mv "$tdir/.cockpit-cwd.before-land" "$tdir/.cockpit-cwd"; else rm -f "$tdir/.cockpit-cwd"; fi
+    echo "land: $id closed here; worktree and $branch removed"
+    echo "  next: tkt merge-pr $id"
+    return 0
+  fi
+  [[ "$(get_field "$file" status)" == open ]] || { echo "land: $id is $(get_field "$file" status), not open; import its results first (tkt import-results $id)" >&2; exit 1; }
+  local repo; repo="$(_gh_origin_repo "$root" land)" || exit 1
+  command -v gh >/dev/null 2>&1 || { echo "land: needs the GitHub CLI: install gh, then run: gh auth login" >&2; exit 1; }
+  pr="$(_resolve_pr land "$file" "$repo" "$pr")" || exit 1
+  local info st head cross
+  info="$(gh pr view "$pr" --repo "$repo" --json state,headRefOid,isCrossRepository --jq '[.state, .headRefOid, .isCrossRepository] | @tsv' 2>&1)" \
+    || { echo "land: gh could not read PR #$pr on $repo: $info" >&2; exit 1; }
+  IFS=$'\t' read -r st head cross <<< "$info"
+  [[ "$st" == OPEN ]] || { echo "land: PR #$pr is $st, not open" >&2; exit 1; }
+  [[ "$cross" == false ]] || { echo "land: PR #$pr comes from a fork; its code would run here, so close it on GitHub after reading it" >&2; exit 1; }
+  if [[ "$verdict" == pass && "$graded" != - && "$head" == "$graded"* ]]; then
+    echo "land: $id already has a passing verdict on PR #$pr's head; nothing to close here: tkt merge-pr $id" >&2; exit 1
+  fi
+  [[ ! -e "$wt" ]] || { echo "land: $wt already exists; remove it (git worktree remove) or finish that close" >&2; exit 1; }
+  git -C "$root" show-ref --verify --quiet "refs/heads/$branch" && { echo "land: branch $branch already exists" >&2; exit 1; }
+  git -C "$root" fetch -q origin "refs/pull/$pr/head" < /dev/null 2>/dev/null || { echo "land: could not fetch PR #$pr from origin" >&2; exit 1; }
+  [[ "$(git -C "$root" rev-parse FETCH_HEAD)" == "$head" ]] || { echo "land: PR #$pr moved while fetching it; run land again" >&2; exit 1; }
+  mkdir -p "$(dirname "$wt")" && git -C "$root" worktree add -q -b "$branch" "$wt" "$head" < /dev/null \
+    || { echo "land: could not create the worktree at $wt" >&2; exit 1; }
+  [[ -f "$tdir/.cockpit-cwd" ]] && mv "$tdir/.cockpit-cwd" "$tdir/.cockpit-cwd.before-land"
+  printf '%s\n' "$(_normalize_path "$wt")" > "$tdir/.cockpit-cwd"
+  set_field "$file" status in_progress && set_active "$id"
+  canon_event ticket.status_changed tkt "$root" "ticket=$id" from=open to=in_progress
+  echo "land: $id at PR #$pr head ${head:0:8}"
+  echo "  worktree: $wt (branch $branch)"
+  echo "  next: in that worktree run the evaluator and sprint complete $id, then: tkt land $id --finish"
 }
 
 # cmd_take_back <id> [--close-issue] — t-d271: a ticket sent to GitHub comes back to this machine: its runs: github line
@@ -2140,6 +2214,9 @@ Commands:
                             Check a cloud ticket's PR (evaluator passed on its head,
                             mergeable, suite green on base + PR) and merge it after a y.
                             --check: run only the checks that run no PR code, report, stop.
+  land <id> [--pr N] | land <id> --finish
+                            Close an imported cloud ticket here: a worktree at the PR head,
+                            the ticket bound to it; --finish after sprint complete removes it.
   github-status <id> [--json]
                             Where a ticket sent to GitHub stands: sent, pr-open,
                             results-ready, results-in or merged (read-only).
@@ -2187,6 +2264,7 @@ main() {
     push-main)      cmd_push_main "$@" ;;
     release-check)  cmd_release_check "$@" ;;
     merge-pr)       cmd_merge_pr "$@" ;;
+    land)           cmd_land "$@" ;;
     take-back)      cmd_take_back "$@" ;;
     github-status)  cmd_github_status "$@" ;;
     export)         cmd_export "$@" ;;

@@ -43,6 +43,13 @@ sed -i.bak 's/^status: open$/status: closed/' "$f" && rm -f "$f.bak"
 # A verdict on another head is not results-in.
 printf 'evaluator-run-id: 1-1\ngraded-head: ffffffffffffffffffffffffffffffffffffffff\npass: all met\n' > ".tickets/$id/eval-report.md"
                                                 assert_eq "pr-open|24|OPEN|false|pass|false" "$(st)"
+# t-c259: imported (eval-report.md here), still open, PR open: land is offered; closed, or no report, it is not.
+land() { "$TKT" github-status "$id" --json | node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(0,"utf8")).land))'; }
+assert_eq false "$(land)"
+sed -i.bak 's/^status: closed$/status: open/' "$f" && rm -f "$f.bak";  assert_eq true "$(land)"
+mv ".tickets/$id/eval-report.md" "$W/er";                              assert_eq false "$(land)"
+mv "$W/er" ".tickets/$id/eval-report.md"
+sed -i.bak 's/^status: open$/status: closed/' "$f" && rm -f "$f.bak"
 # t-c8d4: graded-head plus late docs only (the cloud's learnings sweep) is results-in, as merge-pr accepts it; a code change
 # after the graded head is not. The commits are made in another clone, so github-status has to fetch the PR head.
 git clone -q "$W/origin.git" "$W/c" 2>/dev/null

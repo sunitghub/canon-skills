@@ -15551,6 +15551,32 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#gh-dialog-ok')).toBeHidden();
   });
 
+  test('Close here: shown for an imported, unclosed ticket; confirming posts the PR to land (t-c259)', async ({ page }) => {
+    const id = `t-gh30-${Date.now()}`;
+    ghTicket(id, { github: 'acme/app#57' });
+    await routeStatus(page, id, { stage: 'results-ready', pr: 58, land: true });
+    const bodies = [];
+    await page.route(`**/api/ticket/${id}/github/land`, r => { bodies.push(JSON.parse(r.request().postData() || '{}')); return json(r, { ok: true, exit_code: 0, output: `land: ${id} at PR #58 head 9c41e2a2\n  worktree: /w/land-${id}` }); });
+    await openBoard(page, id);
+    const btn = page.locator(`.card[data-id="${id}"] .card-gh-btn`);
+    await expect(btn).toHaveText('Close here');
+    await btn.click();
+    await expect(page.locator('#gh-dialog-title')).toHaveText(`Close ${id} here?`);
+    expect(bodies).toEqual([]);
+    await page.locator('#gh-dialog-ok').click();
+    await expect(page.locator('#gh-dialog-title')).toHaveText('Worktree ready');
+    await expect(page.locator('#gh-dialog-pre')).toContainText(`worktree: /w/land-${id}`);
+    expect(bodies).toEqual([{ pr: 58 }]);
+  });
+
+  test('Close here is absent without land: Import results and Check & merge stay as they were (t-c259)', async ({ page }) => {
+    const id = `t-gh31-${Date.now()}`;
+    ghTicket(id, { github: 'acme/app#57' });
+    await routeStatus(page, id, { stage: 'results-ready', pr: 58 });
+    await openBoard(page, id);
+    await expect(page.locator(`.card[data-id="${id}"] .card-gh-btn`)).toHaveText('Import results');
+  });
+
   test('Check & merge: the checks first, one confirm, progress while running, then merged (t-718b)', async ({ page }) => {
     const id = `t-gh6-${Date.now()}`;
     ghTicket(id, { github: 'acme/app#57' });

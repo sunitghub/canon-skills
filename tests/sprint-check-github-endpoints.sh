@@ -94,6 +94,9 @@ for P in "$GOP"; do
   expect_call "$srv merge-check"   "$P" "$(get "$P" '/api/ticket/t-ab12/github/merge-check?pr=58')" "merge-pr t-ab12 --check --pr 58"
   expect_call "$srv take-back"     "$P" "$(post "$P" /api/ticket/t-ab12/github/take-back '{}')" "take-back t-ab12"
   expect_call "$srv open-pr"       "$P" "$(post "$P" /api/ticket/t-ab12/github/open-pr '{}')" "open-pr t-ab12"          # t-24b1
+  expect_call "$srv land"          "$P" "$(post "$P" /api/ticket/t-ab12/github/land '{"pr":58}')" "land t-ab12 --pr 58"      # t-c259
+  expect_call "$srv land no pr"    "$P" "$(post "$P" /api/ticket/t-ab12/github/land '{}')" "land t-ab12"
+  r="$(post "$P" /api/ticket/t-ab12/github/land '{"pr":"--finish"}')"; [[ "$(code "$r")" == 400 ]] || fail "$srv land pr=--finish: HTTP $(code "$r")"
   expect_call "$srv push-main"     "$P" "$(post "$P" /api/github/push-main '{}')" "push-main"                            # t-24b1
   expect_call "$srv take-back cl"  "$P" "$(post "$P" /api/ticket/t-ab12/github/take-back '{"close_issue":true}')" "take-back t-ab12 --close-issue"
   # A PR that is not digits: 400 and nothing run, on every route that takes one.
@@ -111,7 +114,7 @@ for P in "$GOP"; do
   r="$(curl -s -w '\n%{http_code}' -H 'Sec-Fetch-Site: cross-site' "http://127.0.0.1:$P/api/github/sync-preview")"; [[ "$(code "$r")" == 403 ]] || fail "$srv: cross-site GET sync-preview was $(code "$r")"
   r="$(curl -s -w '\n%{http_code}' -H 'Origin: https://evil.example' "http://127.0.0.1:$P/api/github/doctor")"; [[ "$(code "$r")" == 403 ]] || fail "$srv: cross-origin GET doctor was $(code "$r")"
   r="$(curl -s -w '\n%{http_code}' -X POST -H 'Origin: https://evil.example' -H 'Content-Type: application/json' -d '{}' "http://127.0.0.1:$P/api/ticket/t-ab12/github/send")"; [[ "$(code "$r")" == 403 ]] || fail "$srv: cross-origin POST send was $(code "$r")"
-  for w in /api/ticket/t-ab12/github/open-pr /api/github/push-main; do
+  for w in /api/ticket/t-ab12/github/open-pr /api/ticket/t-ab12/github/land /api/github/push-main; do
     r="$(curl -s -w '\n%{http_code}' -X POST -H 'Origin: https://evil.example' -H 'Content-Type: application/json' -d '{}' "http://127.0.0.1:$P$w")"; [[ "$(code "$r")" == 403 ]] || fail "$srv: cross-origin POST $w was $(code "$r")"
   done
   # An unknown project is 400, on GET and POST.

@@ -43,6 +43,7 @@ tests=(
   "$ROOT/tests/cloud-env.sh"
   "$ROOT/tests/tkt-sync-issues.sh"
   "$ROOT/tests/tkt-merge-pr.sh"
+  "$ROOT/tests/tkt-land.sh"
   "$ROOT/tests/tkt-take-back.sh"
   "$ROOT/tests/tkt-github-status.sh"
   "$ROOT/tests/tkt-open-pr.sh"
