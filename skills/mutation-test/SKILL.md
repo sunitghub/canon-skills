@@ -94,7 +94,8 @@ evidence.sh stamp <id> mutant-sweep -- mutant-sweep --map <logic file>=<test com
 ```
 
 The log in `.tickets/<id>/evidence/mutant-sweep.log` names the commit that was swept; re-stamp after any later tracked
-change. A sweep with survivors still exits 0. A leak (exit 4) or a failed merge-base (exit 2) leaves a non-zero log, and
+change. The re-run rewrites `mutation-report.md`, so append the `## Triage` section again after it (`.tickets/` is
+evidence-neutral: editing the report does not make the stamp stale). A sweep with survivors still exits 0. A leak (exit 4) or a failed merge-base (exit 2) leaves a non-zero log, and
 `sprint check-evidence` refuses to let the evaluator run until it is fixed and re-stamped.
 
 ## Promotion path (out of scope here)

@@ -106,7 +106,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    survivor (fix a test, delete a redundant check, or mark it equivalent with a reason) and commit any test fix in the
    interim commit below. Then, on that clean commit, stamp the final sweep into `evidence/`:
    `evidence.sh stamp <id> mutant-sweep -- mutant-sweep --map <file>=<test> [--map …] --report .tickets/<id>/mutation-report.md`
-   (re-stamp after any later tracked change). Survivors still exit 0; a canary leak (exit 4) or a failed merge-base (exit 2)
+   (re-stamp after any later tracked change; the re-run rewrites the report, so append the triage again). Survivors still exit 0; a canary leak (exit 4) or a failed merge-base (exit 2)
    leaves a non-zero log, which `sprint check-evidence` refuses before step 3, so fix it first. **Non-binding** — it never
    blocks `sprint complete` and does not replace the evaluator's own mutants — **but not skippable without a reason**:
    record it in the Wrapup Gates table before the evaluator is dispatched, as `ran | 92 mutants, 7 survived: 6
