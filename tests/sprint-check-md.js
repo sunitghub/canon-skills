@@ -27,6 +27,8 @@ const code = md('`_not italic_`');
 ok('a code span that is wholly _x_ stays literal', code === '<code class="doc-code">_not italic_</code>', code);
 const snake = md('upkeep_runs_json and a_b.png');
 ok('snake_case words stay literal', snake === 'upkeep_runs_json and a_b.png', snake);
+const item = md('- _item_');
+ok('italic right after and before a tag (inside a bullet)', item.includes('<span><em>item</em></span>'), item);
 const gt = md('a > b');
 ok('a > that does not start the line is text', gt === 'a &gt; b', gt);
 

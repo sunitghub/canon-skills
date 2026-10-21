@@ -832,11 +832,7 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		}
 		model := stringValue(payload, "model", "")
 		if model == "" {
-			model = upkeepDefaultModel()
-		}
-		if model == "" {
-			sendJSON(w, map[string]any{"ok": false, "error": "no Upkeep default model: model-tiers.json has no upkeep.default"})
-			return
+			model = upkeepDefaultModel() // "" (no registry default) is refused by startUpkeepRun's model-id check
 		}
 		sendJSON(w, startUpkeepRun(eroot, skill, model))
 		return

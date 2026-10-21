@@ -12261,7 +12261,7 @@ test.describe('Canon Cockpit Upkeep (t-7ae6)', () => {
     await stubUpkeep(page, {
       status: { status: 'done', report_path: '/tmp/proj-a/.reports/dead-code-cleanup_x.md', finished_at: Date.now() / 1000 },
       report: { ok: true, path: '/tmp/proj-a/.reports/dead-code-cleanup_x.md',
-        content: '# Dead code\n\n_Scope: whole repo. Generated: 2026-10-21._\n\n> Advisory only — nothing was modified.\n> Second line with `a_b_c`.\n' },
+        content: '# Dead code\n\n_Scope: whole repo. Generated: 2026-10-21._\n\n> Advisory only — nothing was modified.\n> Second line with `a_b_c`.\nAfter the quote, a > b.\n' },
     });
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
@@ -12273,6 +12273,9 @@ test.describe('Canon Cockpit Upkeep (t-7ae6)', () => {
     await expect(page.locator('#up-rp-body blockquote code')).toHaveText('a_b_c');   // an underscore in a code span stays literal
     await expect(page.locator('#up-rp-body')).not.toContainText('_Scope');
     await expect(page.locator('#up-rp-body')).not.toContainText('> Advisory');
+    await expect(page.locator('#up-rp-body blockquote')).toContainText('Second line');
+    await expect(page.locator('#up-rp-body blockquote')).not.toContainText('> Second');      // its own line, not joined text
+    await expect(page.locator('#up-rp-body p').last()).toHaveText('After the quote, a > b.');   // a mid-line > is text; the quote ends
   });
 
   test('upkeep (t-43ba) picker from registry, Ran on, Running hover', async ({ page }) => {
@@ -12284,7 +12287,8 @@ test.describe('Canon Cockpit Upkeep (t-7ae6)', () => {
     await page.route('**/api/admin/model-tiers', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(TIERS) }));
     const done = { status: 'done', report_path: '/tmp/r.md', finished_at: Date.now() / 1000 };
     const bySkill = { 'context-check': { ...done, model: 'claude-sonnet-5' }, 'context-doctor': done,
-      'dead-code-cleanup': { status: 'running', report_path: '', elapsed: 1, model: 'claude-haiku-5-5' } };
+      'dead-code-cleanup': { status: 'running', report_path: '', elapsed: 1, model: 'claude-haiku-5-5' },
+      'promote-learnings': { ...done, model: 'claude-unlisted-9' } };
     await page.route('**/api/projects', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(PROJECTS) }));
     await page.route('**/api/upkeep/status*', route => {
       const skill = new URL(route.request().url()).searchParams.get('skill');
@@ -12300,6 +12304,21 @@ test.describe('Canon Cockpit Upkeep (t-7ae6)', () => {
     await expect(page.locator('#up-card-context-doctor .rc-when')).toContainText('Last run');
     await expect(page.locator('#up-card-context-doctor .rc-when')).not.toContainText('Ran on');   // no model recorded: no label
     await expect(page.locator('#up-card-dead-code-cleanup .up-status.run')).toHaveAttribute('title', 'Running on Haiku 5.5');
+    await expect(page.locator('#up-card-promote-learnings .rc-when')).toContainText('Ran on claude-unlisted-9');   // not in the registry: its id
+    await page.locator('#up-card-context-doctor .up-run').click();
+    await expect(page.locator('#cc-body')).toContainText('Claude Sonnet 5.5');                       // the confirm names the picked model
+    await page.locator('#cc-cancel').click();
+  });
+
+  test('upkeep (t-43ba) registry unavailable: the picker offers the server default', async ({ page }) => {
+    await page.route('**/api/admin/model-tiers', route => route.fulfill({ status: 500, body: 'x' }));
+    await stubUpkeep(page, { status: { status: 'done', report_path: '/tmp/r.md', finished_at: Date.now() / 1000, model: 'claude-sonnet-5' } });
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    await openUpkeepView(page);
+    await expect(page.locator('#up-model-context-check option')).toHaveText(['Default']);
+    await expect(page.locator('#up-model-context-check')).toHaveValue('');
+    await expect(page.locator('#up-card-context-check .rc-when')).toContainText('Ran on claude-sonnet-5');
   });
 
   test('t-d2e1: a quote in a failed run\'s output stays inside the Error pill\'s tooltip', async ({ page }) => {

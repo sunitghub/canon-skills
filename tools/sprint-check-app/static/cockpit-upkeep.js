@@ -174,9 +174,8 @@ export function openUpkeepFor(pid){
 // labels from its Anthropic names; nothing here names a model. Read once per loadUpkeep().
 let upTiers=null;
 async function upLoadTiers(){
-  if(upTiers) return upTiers;
+  if(upTiers) return;
   try{ const r=await fetch('/api/admin/model-tiers'); if(r.ok) upTiers=await r.json(); }catch(e){}
-  return upTiers||{};
 }
 export function upModelLabel(id){
   const m=(((upTiers||{}).models||{}).anthropic||[]).find(x=>x.id===id);
@@ -260,7 +259,7 @@ function upCardHTML(s, st){
 async function upRun(skill){
   const modelEl=document.getElementById('up-model-'+skill);
   const model=modelEl ? modelEl.value : '';   // '' → the server runs the registry's Upkeep default
-  const modelLabel=upModelLabel(model||((upTiers||{}).upkeep||{}).default||'');
+  const modelLabel=model ? upModelLabel(model) : 'default model';
   const proj=getProjects().find(p=>p.id===upProjectId);
   const ok=await cockpitConfirm({
     title:'Run '+skill+'?',
