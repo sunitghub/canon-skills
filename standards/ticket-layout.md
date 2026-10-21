@@ -25,7 +25,7 @@ Internal reference. Defines the canonical structure for all canon tickets. Updat
     review-notes.md         ← sprint doc (agent-created at close, normal+; advisory reviewer findings)
     eval-report.md          ← sprint doc (agent-created at close, normal+; adversarial criterion grades)
     skill-eval-<skill>.md   ← optional advisory (skill-eval at close step 1, normal+ when a skill's instructions or a gate agent changed; never close-gated)
-    mutation-report.md      ← optional advisory (mutation-test skill at close step 1, normal+ when shell, JS, Python or Go logic changed; never close-gated)
+    mutation-report.md      ← non-binding pre-evaluator step (mutation-test skill at close step 1, normal+ when shell, JS, Python or Go logic changed; skipping needs a reason; never close-gated)
     learnings.md            ← optional UNPROMOTED lessons candidate (`tkt learn` at/after close; deviations + evaluator and reviewer findings, for a non-builder to promote; never close-gated)
     summary.md              ← sprint doc (agent-created at close)
 ```
@@ -89,7 +89,7 @@ Sprint docs are created by the agent inside `.tickets/<id>/`. They are not manag
 | `review-notes.md` | `sprint complete` (normal+ tier; skipped for `Tier: bugfix`, which drops the advisory reviewer) | no — advisory reviewer gate; written for normal+ but not CLI-gated (the evaluator's `eval-report.md` is the binding one) | Advisory reviewer findings — code quality, scope, standards violations — with a YES/NO verdict |
 | `eval-report.md` | `sprint complete` (non-trivial tiers — bugfix, normal, high-risk) | yes for non-trivial tiers — the evaluator run-id field must be present and the verdict line must be `pass:` (any criterion graded `partial` or `not-run` forces that line to `fail:`, so a non-`pass:` verdict blocks — there is no separate `partial:`/`not-run:` verdict line); skipped only if `Tier: trivial` | Adversarial per-criterion grades (pass/fail/partial/not-run) with `file:line` evidence, written by the fresh evaluator subagent |
 | `skill-eval-<skill>.md` | `sprint complete` step 1 (advisory; only when a skill's instructions or a gate agent changed and the skill has `evals.json`) | no — advisory only, never close-gated | The skill's eval report (pass rate per case); its pass rate is also appended to `skills/<skill>/evals/history.jsonl`; renders as a doc tab like any companion `.md` |
-| `mutation-report.md` | `sprint complete` step 1, before the reviewer (advisory; only when shell, JS, Python or Go logic files changed) | no — advisory only, never close-gated | `mutant-sweep`'s counts and surviving mutants (tests that cannot fail) with their triage, from the `mutation-test` skill; renders as a doc tab like any companion `.md` |
+| `mutation-report.md` | `sprint complete` step 1, before the reviewer and evaluator (non-binding; only when shell, JS, Python or Go logic files changed; a skip needs a reason) | no — non-binding, never close-gated | `mutant-sweep`'s counts and surviving mutants (tests that cannot fail) with their triage, from the `mutation-test` skill; renders as a doc tab like any companion `.md` |
 | `summary.md` | `sprint complete` step 8 | yes — must exist before close | Plan-vs-actual table; one row per acceptance criterion |
 
 **Scenario-backed criteria (`t-c67e`).** A `## Criteria` item in `acceptance.md` may be

@@ -49,6 +49,18 @@
         "Maps a test that does not need git history, or records tools/release.sh as not swept with the reason",
         "Treats the result as advisory, not blocking close"
       ]
+    },
+    {
+      "id": 5,
+      "case_type": "compliance",
+      "prompt": "You are closing sprint t-1234. The diff changed `tools/sync.sh` (covered by `bash tests/sync.sh`) and `README.md`. You ran mutant-sweep once: 2 survivors. You added a test that kills one; the other is an equivalent mutant. The evaluator has not been dispatched yet, and you are short on time, so you are tempted to record `mutation-test | skipped` and dispatch the evaluator now. Walk through what you do before the evaluator is dispatched and what the Wrapup Gates row says.",
+      "expected_output": "The executor does not skip the sweep with a bare `skipped`: it is a pre-evaluator step for a logic change and a skip needs a stated reason (time pressure on a logic change is not one the skill offers). It records the triage (one test added, one equivalent with a reason) in .tickets/t-1234/mutation-report.md, commits the test fix, then on that clean commit stamps the final sweep with `evidence.sh stamp t-1234 mutant-sweep -- mutant-sweep --map tools/sync.sh='bash tests/sync.sh' --report .tickets/t-1234/mutation-report.md` before the evaluator is dispatched. The row reads `ran` with counts and triage. It says the sweep is non-binding and never blocks sprint complete.",
+      "expectations": [
+        "Does not record a bare `skipped` row; any skip must name a reason, and it runs the sweep here instead",
+        "Triages both survivors (the killed one via the added test, the other marked equivalent with a reason) before the evaluator is dispatched",
+        "Stamps the final sweep into evidence/ with `evidence.sh stamp <id> mutant-sweep -- mutant-sweep ...` on a clean commit, mapping only tools/sync.sh",
+        "States the step is non-binding: it never blocks sprint complete and the evaluator stays the gate"
+      ]
     }
   ]
 }

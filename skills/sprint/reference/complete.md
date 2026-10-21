@@ -96,16 +96,22 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    (ticket-id mode; explicit `--model` wins.) See `docs/headless-ci.md` and `DECISIONS.md` 2026-08-06.
 
 
-   **Mutation test (advisory, normal+ tier, t-1fac).** When the sprint changed shell, JS, Python or Go logic files, run the
-   `mutation-test` skill here, before the reviewer and evaluator, so they grade a suite that already has teeth. First run
-   `mutant-sweep --check`: exit 3 means no working Python 3 on this machine (none, Windows' Store alias, Python 2), so record
-   `mutation-test | skipped | no python3` and go on without reading the skill (t-a5f6). Otherwise read
-   `skills/mutation-test/SKILL.md` and follow it. `mutant-sweep` mutates only the changed lines, in throwaway copies
-   (the real tree is never written), and writes `.tickets/<id>/mutation-report.md`; triage every survivor (fix a test,
-   delete a redundant check, or mark it equivalent with a reason) and commit any test fix before the interim commit
-   below. **Advisory only** — it never blocks close and does not replace the evaluator's own mutants. Record it in the
-   Wrapup Gates table (`ran | 92 mutants, 7 survived: 6 equivalent, 1 test added (advisory)`, or
-   `skipped | no logic files changed`, or `skipped | only <language> logic changed (unsupported)`).
+   **Mutation sweep (pre-evaluator, non-binding, normal+ tier, t-1fac, t-087c).** When the sprint changed shell, JS, Python
+   or Go logic files, run the `mutation-test` skill here, before the reviewer and evaluator, so they grade a suite that
+   already has teeth: evaluators failed sprints on guards no test could catch that a builder sweep finds in minutes
+   (t-9641, t-b860). First run `mutant-sweep --check`: exit 3 means no working Python 3 on this machine (none, Windows'
+   Store alias, Python 2), so record `mutation-test | skipped | no python3` and go on without reading the skill (t-a5f6).
+   Otherwise read `skills/mutation-test/SKILL.md` and follow it. `mutant-sweep` mutates only the changed lines, in
+   throwaway copies (the real tree is never written), and writes `.tickets/<id>/mutation-report.md`; kill or triage every
+   survivor (fix a test, delete a redundant check, or mark it equivalent with a reason) and commit any test fix in the
+   interim commit below. Then, on that clean commit, stamp the final sweep into `evidence/`:
+   `evidence.sh stamp <id> mutant-sweep -- mutant-sweep --map <file>=<test> [--map …] --report .tickets/<id>/mutation-report.md`
+   (re-stamp after any later tracked change; the re-run rewrites the report, so append the triage again). Survivors still exit 0; a canary leak (exit 4) or a failed merge-base (exit 2)
+   leaves a non-zero log, which `sprint check-evidence` refuses before step 3, so fix it first. **Non-binding** — it never
+   blocks `sprint complete` and does not replace the evaluator's own mutants — **but not skippable without a reason**:
+   record it in the Wrapup Gates table before the evaluator is dispatched, as `ran | 92 mutants, 7 survived: 6
+   equivalent, 1 test added`, or `mutation-test | skipped | <reason>` — `no logic files changed`, `no python3`,
+   `only <language> logic changed (unsupported)`, `demo mode`, or another stated reason. A bare `skipped` is not a reason.
 
    **Skill eval (advisory, normal+ tier).** When the sprint edited a skill's instructions or a gate agent, run
    that skill's own evals, so a prompt edit is graded by behaviour and not only by "the line is present". Run
@@ -147,7 +153,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    | doc-audit | ran | README updated |
    | eval | ran | verdict: pass — eval-report.md written (model: sonnet — Admin Review & Eval default; 12m) |
    | skill-eval | skipped | advisory — no skill or gate agent changed |
-   | mutation-test | skipped | advisory — no logic files changed |
+   | mutation-test | skipped | no logic files changed |
    | break-it | skipped | advisory — not high-risk, no untrusted-input surface |
    ```
 

@@ -312,4 +312,12 @@ for f in "$ROOT/standards/skill-setup-std.md" "$ROOT/skills/promote-learnings/SK
   done
 done
 
+
+# ── Check P: the mutation sweep is a non-binding pre-evaluator step (t-087c). The checklist, complete.md and the mutation-test skill
+# each name the evidence stamp and the skip-needs-a-reason row, so one cannot drop either while the others keep it.
+for f in "$ROOT/skills/sprint/reference/complete-checklist.md" "$COMPLETE" "$ROOT/skills/mutation-test/SKILL.md"; do
+  for frag in 'evidence.sh stamp <id> mutant-sweep -- mutant-sweep' 'mutation-test | skipped | <reason>' 'not skippable without a reason'; do
+    grep -qF -- "$frag" "$f" || fail "doc-mirror-parity: ${f#"$ROOT"/} lost '$frag' from the pre-evaluator mutation sweep (t-087c, Check P)"
+  done
+done
 echo "doc-mirror-parity: ok (fallback commands match shared↔security; review.md/eval.md reference shared file; Windows fallback clause present; base-ref commands match shared↔security; required-visual convention present in shared-gate-protocol.md + start.md; citation backtick-escape rule present in shared-gate-protocol.md + eval.md + review.md; scenario-backed grading language present in eval.md + start.md; design-fit tag set matches reviewer.md↔wrapup-gates.md; gate-floor invariant present in SKILL.md + complete.md + how-it-works.md + AGENTS.md; destructive-git-command guardrail present in shared-gate-protocol.md + eval.md + review.md; demo-mode policy phrases match SKILL.md↔complete.md; scratch-copy rule present in shared-gate-protocol.md + eval.md + review.md; pin-the-environment rule present in shared-gate-protocol.md + both agent files + both Codex files)"
