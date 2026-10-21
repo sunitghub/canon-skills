@@ -51,12 +51,12 @@
     {
       "id": 5,
       "case_type": "edge",
-      "prompt": "Scan for dead code. `tools/build` is an extensionless `#!/usr/bin/env bash` script that declares `write_if_missing() {`; the only other mention of `write_if_missing` anywhere is in `CHANGELOG.md`.",
-      "expected_output": "Scans the extensionless Bash script, ignores the CHANGELOG mention as a doc reference, and reports `write_if_missing` as a high-confidence dead candidate — not downgraded to low confidence for the shebang.",
+      "prompt": "Scan for dead code. `tools/build` is an extensionless `#!/usr/bin/env bash` script that declares `ensure_file() {`; the only other mention of `ensure_file` anywhere is in `CHANGELOG.md`.",
+      "expected_output": "Scans the extensionless Bash script, ignores the CHANGELOG mention as a doc reference, and reports `ensure_file` as a high-confidence dead candidate — not downgraded to low confidence for the shebang.",
       "expectations": [
         "Treats the extensionless shebang script as Bash and scans its function declarations",
         "Does not count the CHANGELOG.md mention as a reference",
-        "Reports `write_if_missing` as dead with high confidence, not low"
+        "Reports `ensure_file` as dead with high confidence, not low"
       ]
     },
     {
