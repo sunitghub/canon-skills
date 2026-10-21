@@ -94,4 +94,17 @@ git show-ref --verify --quiet "refs/heads/land/$id" && fail "branch land/$id sti
 [[ "$(tr -d '[:space:]' < ".tickets/$id/.cockpit-cwd")" == "$P" ]] || fail ".cockpit-cwd not restored to the earlier binding"
 [[ ! -e ".tickets/$id/.cockpit-cwd.before-land" ]] || fail "saved binding left behind"
 [[ "$(git ls-remote origin 2>/dev/null)" != *"land/"* ]] || fail "land pushed a branch"
+
+# Commits made in the worktree are not on the PR yet: finish removes the worktree but keeps land/<id> (nothing is lost).
+id="$("$TKT" create "Second cloud ticket" -t bug)"; f=".tickets/$id/ticket.md"; WT="$W/project-worktrees/land-$id"
+awk '/^---$/ && ++n == 2 { print "github: acme/app#22" } { print }' "$f" > "$W/t" && mv "$W/t" "$f"
+printf 'graded-head: %s\npass: all met\n' "$PRHEAD" > ".tickets/$id/eval-report.md"; rm ".tickets/$id/eval-report.md"
+"$TKT" land "$id" < /dev/null >/dev/null 2>&1 || fail "second land failed"
+echo more > "$WT/g.txt"; git -C "$WT" add g.txt; git -C "$WT" commit -qm "fix found while closing"; NEWHEAD="$(git -C "$WT" rev-parse HEAD)"
+printf 'graded-head: %s\npass: all met\n' "$NEWHEAD" > ".tickets/$id/eval-report.md"
+sed -i.bak 's/^status: .*/status: closed/' "$f"
+out="$("$TKT" land "$id" --finish < /dev/null 2>&1)"; assert_contains "$out" "land/$id kept"
+[[ ! -e "$WT" ]] || fail "worktree still there"
+[[ "$(git rev-parse "refs/heads/land/$id")" == "$NEWHEAD" ]] || fail "the commit made in the worktree was lost"
+[[ ! -e ".tickets/$id/.land-head" ]] || fail ".land-head left behind"
 echo "tkt land: ok"

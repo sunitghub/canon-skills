@@ -1887,6 +1887,7 @@ cmd_land() {
   [[ -n "$id" ]] || { echo "Usage: tkt land <id> [--pr N] | tkt land <id> --finish" >&2; exit 1; }
   [[ -z "$pr" || "$pr" =~ ^[0-9]+$ ]] || { echo "land: --pr takes a PR number" >&2; exit 1; }
   local file tdir root; file="$(find_ticket "$id")"; tdir="$(dirname "$file")"; id="$(get_field "$file" id)"
+  [[ "$id" =~ ^t-[a-z0-9]+$ ]] || { echo "land: not a ticket id: $id" >&2; exit 1; }
   [[ "$(basename "$file")" == ticket.md ]] || { echo "land: $id is a legacy flat ticket; nothing to bind a worktree to" >&2; exit 1; }
   root="$(dirname "$(tickets_dir)")"; root="$(git -C "$root" rev-parse --show-toplevel)" || exit 1
   local wt branch="land/$id"
@@ -1901,9 +1902,14 @@ cmd_land() {
     [[ "$verdict" == pass && "$graded" != - && "$whead" == "$graded"* ]] \
       || { echo "land: $id has no passing evaluator verdict graded on the worktree head ${whead:0:8} (eval-report.md: ${verdict/#-/none} ${graded/#-/none}); worktree kept" >&2; exit 1; }
     git -C "$root" worktree remove "$wt" < /dev/null 2>&1 || { echo "land: git would not remove $wt (uncommitted work?); worktree kept" >&2; exit 1; }
-    git -C "$root" branch -q -d "$branch" < /dev/null 2>/dev/null || git -C "$root" branch -q -D "$branch" < /dev/null
+    # The branch is deleted only when it holds nothing but the PR head it started from: commits made here that are not on the
+    # PR yet would otherwise be lost (branch -D, since the PR is unmerged, so branch -d never accepts it).
+    local kept=""
+    if [[ "$whead" == "$(tr -d '[:space:]' < "$tdir/.land-head" 2>/dev/null)" ]]; then git -C "$root" branch -q -D "$branch" < /dev/null
+    else kept="; $branch kept: it has commits beyond the PR head (push them to the PR branch, then git branch -D $branch)"; fi
+    rm -f "$tdir/.land-head"
     if [[ -f "$tdir/.cockpit-cwd.before-land" ]]; then mv "$tdir/.cockpit-cwd.before-land" "$tdir/.cockpit-cwd"; else rm -f "$tdir/.cockpit-cwd"; fi
-    echo "land: $id closed here; worktree and $branch removed"
+    echo "land: $id closed here; worktree removed$kept"
     echo "  next: tkt merge-pr $id"
     return 0
   fi
@@ -1926,6 +1932,7 @@ cmd_land() {
   [[ "$(git -C "$root" rev-parse FETCH_HEAD)" == "$head" ]] || { echo "land: PR #$pr moved while fetching it; run land again" >&2; exit 1; }
   mkdir -p "$(dirname "$wt")" && git -C "$root" worktree add -q -b "$branch" "$wt" "$head" < /dev/null \
     || { echo "land: could not create the worktree at $wt" >&2; exit 1; }
+  printf '%s\n' "$head" > "$tdir/.land-head"
   [[ -f "$tdir/.cockpit-cwd" ]] && mv "$tdir/.cockpit-cwd" "$tdir/.cockpit-cwd.before-land"
   printf '%s\n' "$(_normalize_path "$wt")" > "$tdir/.cockpit-cwd"
   set_field "$file" status in_progress && set_active "$id"
