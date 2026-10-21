@@ -2823,19 +2823,26 @@ func TestIdleReapAbortsWhenHumanReturnsMidSave(t *testing.T) {
 	json.NewDecoder(resp.Body).Decode(&out)
 	resp.Body.Close()
 
-	// Wait for the reaper to fire and enter its save-and-wait window, then
-	// confirm it's mid-sequence.
-	time.Sleep(1500 * time.Millisecond)
+	// Wait for the reaper to fire and enter its save-and-wait window (normally ~1-1.4s in). t-67a6: poll for it rather than
+	// sleep a fixed 1.5s, which a loaded machine (the faster, more parallel suite) could overshoot or undershoot; every later
+	// time in this test is measured from the moment it was seen.
 	s.mu.Lock()
 	se, ok := s.sessions[out.Session]
 	s.mu.Unlock()
 	if !ok {
 		t.Fatal("session already gone before the human could respond")
 	}
-	se.mu.Lock()
-	reaping := se.reaping
-	se.mu.Unlock()
-	if !reaping {
+	var reapSeen time.Time
+	for deadline := time.Now().Add(4 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		se.mu.Lock()
+		reaping := se.reaping
+		se.mu.Unlock()
+		if reaping {
+			reapSeen = time.Now()
+			break
+		}
+	}
+	if reapSeen.IsZero() {
 		t.Fatal("reaper never entered the save-and-wait sequence")
 	}
 
@@ -2851,10 +2858,9 @@ func TestIdleReapAbortsWhenHumanReturnsMidSave(t *testing.T) {
 		t.Fatalf("input: want 204, got %d", ir.StatusCode)
 	}
 
-	// Confirm the session survives past what would have been the ORIGINAL
-	// fallback kill (~t=5.4-5.8s) and before a legitimate second idle cycle's
-	// own deadline could plausibly fire (~t=6.5s+) — see comment above.
-	time.Sleep(4500 * time.Millisecond)
+	// Confirm the session survives past what would have been the ORIGINAL fallback kill (reap start + saveFallback 4s) and
+	// before a legitimate second idle cycle's own deadline could fire (input + ~1s idle + 4s fallback): check at reap start + 4.5s.
+	time.Sleep(time.Until(reapSeen.Add(4500 * time.Millisecond)))
 	s.mu.Lock()
 	_, stillThere := s.sessions[out.Session]
 	s.mu.Unlock()
