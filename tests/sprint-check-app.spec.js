@@ -15738,7 +15738,8 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.locator('#nav-admin').click();
     const acts = page.locator('.mt-grid .mt-card').first().locator('.mt-card-actions');
     const edit = acts.locator('.mt-edit'), remove = acts.locator('.b-danger');
-    expect(Math.abs((await edit.boundingBox()).height - (await remove.boundingBox()).height)).toBeLessThan(2);
+    const shape = loc => loc.evaluate(e => { const c = getComputedStyle(e); return [c.paddingLeft, c.paddingTop, c.borderTopLeftRadius, c.fontSize]; });
+    expect(await shape(remove)).toEqual(await shape(edit));   // (a height check cannot see it: the flex row stretches both)
     await expectRole(page, edit, 'b-neutral');
     await expectRole(page, remove, 'b-danger');
     const missing = await page.evaluate(roles => [...document.querySelectorAll('.btn, .help-close, .dstop, .splitclose, .mt-card-actions button, .mt-card-actions a')]
