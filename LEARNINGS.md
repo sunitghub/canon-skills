@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-21-2026 17:13
+learnings-sweep last run: 10-21-2026 20:08
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-21 | [t-43ba](.tickets/t-43ba/learnings.md) | Reviewer caught what the sprint's own grep missed: moving a model list into the registry left the old labels in help-popover copy (`UP_COST`) and a page-grep test that pinned them, so "no model hard-coded in the file" needs a test that greps the file for model names, not just the picker. | UNPROMOTED |
 | 2026-10-21 | [t-c259](.tickets/t-c259/learnings.md) | A flag that supplies a fact can bypass the check that fact stood for, and a cleanup that deletes must prove nothing unpushed is lost: `tkt land --pr N` made a worktree for a never-imported ticket (the evaluator's fail, fixed by requiring `github:` + plan.md), and `--finish`'s `branch -D` would have dropped commits not on the PR (the review's catch, now kept via `.land-head`) | UNPROMOTED |
 | 2026-10-21 | [t-21f7](.tickets/t-21f7/learnings.md) | A test fixture must be the real thing it names: t-12f8's "worktree" case was a plain folder, so no test could tell a worktree from an unrelated folder, and the warning's rule drifted to "name the start folder" for both; a real `git worktree add` in the fixture pins the difference. Also, a mutation survivor can mean dead code, not a missing test (`-n` on a value `cd ""` never leaves empty). | UNPROMOTED |
 | 2026-10-21 | [t-5c4b](.tickets/t-5c4b/learnings.md) | A managed-block rewrite must touch only lines inside the block and compare without a trailing \r: t-5c4b's awk deleted every `> Platforms:` line in the user's AGENTS.md and, on CRLF files (Git for Windows, the ticket's own audience), never matched the markers yet printed "added" on every refresh; the cloud build passed its tests because none had a user line outside the block or a CRLF file. | UNPROMOTED |
