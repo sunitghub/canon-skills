@@ -21,11 +21,12 @@ const themeColor = (page, v, fallback = '') => page.evaluate(([name, fb]) => { c
 // t-e523: a button's colours, and that it shows its buttons.css role at rest and under the pointer
 const colors = (loc) => loc.evaluate(e => { const s = getComputedStyle(e); return { color: s.color, border: s.borderTopColor, fill: s.backgroundColor }; });
 async function expectRole(page, loc, role) {
-  const red = await themeColor(page, '--col-discarded'), clear = 'rgba(0, 0, 0, 0)';
+  const red = await themeColor(page, '--col-discarded');
   const hover = {
-    'b-neutral': { color: await themeColor(page, '--text'), border: await themeColor(page, '--border-hover'), fill: clear },
-    'b-danger': { color: red, border: red, fill: clear },
-    'b-close': { color: red, border: red, fill: clear },   // Close, Cancel, ✕: the same red outline
+    // an outline role leaves the background to the button's own rule; only a filling role sets it
+    'b-neutral': { color: await themeColor(page, '--text'), border: await themeColor(page, '--border-hover') },
+    'b-danger': { color: red, border: red },
+    'b-close': { color: red, border: red },   // Close, Cancel, ✕: the same red outline
     'b-danger-main': { color: await themeColor(page, '--th-on-bad', '#fff'), border: red, fill: red },   // a main danger action fills red
     'b-accent': { color: await themeColor(page, '--text'), border: await themeColor(page, '--accent'), fill: await themeColor(page, '--accent-dim') },
   }[role];
@@ -34,7 +35,7 @@ async function expectRole(page, loc, role) {
   await expect.poll(async () => { const c = await colors(loc); return { color: c.color, border: c.border }; })
     .toEqual({ color: await themeColor(page, '--text-body'), border: await themeColor(page, '--border') });
   await loc.hover();
-  await expect.poll(() => colors(loc)).toEqual(hover);
+  await expect.poll(async () => { const c = await colors(loc); if (!('fill' in hover)) delete c.fill; return c; }).toEqual(hover);
   await page.mouse.move(0, 0);
 }
 
