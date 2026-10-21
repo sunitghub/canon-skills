@@ -306,7 +306,8 @@ func TestTranscriptReport(t *testing.T) {
 		`not json`,
 		`{"type":"assistant","message":{"content":[{"type":"text","text":"evaluator-run-id: 1-text\npass: from text"}]}}`,
 		`{"type":"assistant","message":{"content":[{"type":"tool_use","name":"SubagentHandback","input":{"message":"Notes.\nevaluator-run-id: 2-handback\npass: from handback\n\n"}}]}}`,
-		`{"type":"assistant","message":{"content":[{"type":"text","text":"Done."}]}}`)
+		// a later text that also holds a report: the hand-back still wins (it is what the harness delivered)
+		`{"type":"assistant","message":{"content":[{"type":"text","text":"evaluator-run-id: 3-later-text\npass: draft"}]}}`)
 	if got, code := run(both, "evaluator-run-id:"); code != 0 || got != "evaluator-run-id: 2-handback\npass: from handback\n" {
 		t.Fatalf("hand-back first, cut at the prefix, one trailing newline: %d %q", code, got)
 	}
