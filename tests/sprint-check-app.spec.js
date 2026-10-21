@@ -15826,7 +15826,10 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   test('the GitHub dialog ignores a click outside it, and Escape while a step runs (t-e523)', async ({ page }) => {
     let release;
     const held = new Promise(r => { release = r; });
-    await page.route('**/api/github/sync-preview**', async r => { await held; return json(r, { ok: true, exit_code: 0, output: 'dry run: 0 to create, nothing written\n' }); });
+    let preview = 'dry run: 0 to create, nothing written\n';
+    await page.route('**/api/github/sync-preview**', async r => { await held; return json(r, { ok: true, exit_code: 0, output: preview }); });
+    let releaseSync; const syncHeld = new Promise(r => { releaseSync = r; });
+    await page.route(u => u.pathname === '/api/github/sync', async r => { await syncHeld; return json(r, { ok: true, exit_code: 0, output: 'sync-issues: 1 created\n' }); });
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
     const dlg = page.locator('#gh-dialog');
@@ -15840,6 +15843,18 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#gh-dialog-body')).toHaveText('Nothing to create.');
     await page.mouse.click(5, 5);
     await expect(dlg).toHaveClass(/open/);              // done, and still only its own buttons or Escape close it
+    await page.keyboard.press('Escape');
+    await expect(dlg).not.toHaveClass(/open/);
+    // the sync itself (after Create): Escape waits for it too
+    preview = 'would create  #61  Export tasks as CSV  (feature, P2)\ndry run: 1 to create, nothing written\n';
+    await page.locator('#btn-gh-sync').click();
+    await page.locator('#gh-dialog-ok', { hasText: 'Create 1 ticket' }).click();
+    await expect(page.locator('#gh-dialog-pre')).toHaveText('Running tkt sync-issues…');
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(200);
+    await expect(dlg).toHaveClass(/open/);
+    releaseSync();
+    await expect(page.locator('#gh-dialog-pre')).toContainText('1 created');
     await page.keyboard.press('Escape');
     await expect(dlg).not.toHaveClass(/open/);
   });
