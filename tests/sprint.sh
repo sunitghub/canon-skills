@@ -1426,7 +1426,16 @@ tx_cfg="$(mktemp -d)"
   out="$(run_fail "$SPRINT" relay-report "$gid")"; assert_contains "$out" "no evaluator transcript for $gid"
   [[ ! -f ".tickets/$gid/eval-report.md" ]] || fail "relay-report wrote a report from a general-purpose transcript"
   rm -f "$tx_cfg"/projects/-proj/sess1/subagents/agent-*
+  # a Plan agent that never read the evaluator protocol is not an evaluator
+  jtranscript np Plan "$rel"; sed -i.bak 's#reference/eval.md#reference/other.md#' "$tx_cfg/projects/-proj/sess1/subagents/agent-np.jsonl"
+  out="$(run_fail "$SPRINT" relay-report "$gid")"; assert_contains "$out" "no evaluator transcript for $gid"
+  rm -f "$tx_cfg"/projects/-proj/sess1/subagents/agent-*
+  # an older board binary takes an unknown first word for a port and would start serving: relay asks --help first and refuses
+  old_board="$(mktemp -d)/sprint-check"; printf '#!/bin/sh\n[ "$1" = --help ] && { echo "usage: sprint-check <port>"; exit 0; }\nsleep 30\n' > "$old_board"; chmod +x "$old_board"
   jtranscript pl Plan "$rel"
+  t0=$SECONDS; out="$(SPRINT_CHECK_BIN="$old_board" run_fail "$SPRINT" relay-report "$gid")"
+  assert_contains "$out" "predates relay-report"; (( SECONDS - t0 < 10 )) || fail "relay-report ran an old board instead of refusing"
+  [[ ! -f ".tickets/$gid/eval-report.md" ]] || fail "relay-report wrote a report through an old board"
   out="$("$SPRINT" relay-report "$gid")"; assert_contains "$out" "relay-report: wrote"; assert_contains "$out" "(Plan)"
   assert_eq "$rel" "$(cat ".tickets/$gid/eval-report.md")"   # byte for byte, from the run-id line on
   # a reviewer's report relays the same way, from its own heading (its last text message here, no hand-back call)
