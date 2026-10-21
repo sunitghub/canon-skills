@@ -72,9 +72,17 @@ The always-on rules are "same fact in several files → one owner" and "a third 
 
 - Cross-backend equality: parse JSON before comparing (`json.dumps` vs `json.Marshal` differ in whitespace); compare bytes only for files. Aim parity fixtures at text edges (trim sets, lone surrogates, invalid UTF-8). For a user-edited file also use valid-but-wrong shapes (`null`, array, scalar), and CR/CRLF: run one hostile line through both ports (bash stripped every CR, PowerShell only trailing ones).
 
-## Windows / Git Bash
+## Platforms
 
-- On Windows the Bash tool is Git Bash — unquoted `C:\...` backslashes are escapes (and trip Claude Code's approval prompt). Use forward-slash (`/c/Users/...`) or quoted paths. A suite that has only run on macOS hides host assumptions (real `uname`, `python3`): tests that model a platform stub it (`uname`, `cygpath`), and a skip must be loud. Git Bash spells one directory two ways (`/tmp/x` vs `C:/…/x`): never compare a shell path with a git path or `gitdir:` pointer as strings; use `git rev-parse --show-prefix` and test with a stub that spells it the Windows way.
+canon runs on four: every session's AGENTS.md carries a one-line pointer here (tools/skills/agents.sh, t-5c4b).
+
+- **Windows: Git Bash only.** canon's commands run in Git Bash, never PowerShell or cmd (a `.cmd` wrapper runs bash for you).
+  The Bash tool is Git Bash: unquoted `C:\...` backslashes are escapes (and trip Claude Code's approval prompt). Use forward-slash (`/c/Users/...`) or quoted paths. A suite that has only run on macOS hides host assumptions (real `uname`, `python3`): tests that model a platform stub it (`uname`, `cygpath`), and a skip must be loud. Git Bash spells one directory two ways (`/tmp/x` vs `C:/…/x`): never compare a shell path with a git path or `gitdir:` pointer as strings; use `git rev-parse --show-prefix` and test with a stub that spells it the Windows way.
+- **macOS:** bash 3.2 and BSD tools: `sed -i ''`, `date -j -f`, `stat -f`, `touch -t`; write portable forms with a GNU
+  fallback (`date -u -d … 2>/dev/null || date -j -u -f …`). `wc -w` counts differently from GNU's (t-35a7).
+- **Linux:** GNU coreutils and bash 5; the reference for CI.
+- **Claude cloud container:** Linux, running as root, so `chmod` cannot make a folder unwritable (point a test at a path
+  under a regular file instead); set it up with `tkt cloud-env` (domains, setup script).
 
 ## Go
 

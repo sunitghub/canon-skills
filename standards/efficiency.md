@@ -51,7 +51,7 @@ Act on these when you see them.
 - A workaround or undocumented constraint found while fixing → note it in `HANDOFF.md ## Discoveries` now; route it to its permanent home before wrapup.
 - A guard is verified only by inputs it must reject and by a revert (in a scratch copy) that makes a test fail. A green run in which something did not run proves nothing.
 - Never `kill`/`pkill` by name or pattern: kill only a PID you recorded or resolved exactly.
-- **Domain rules live in `efficiency-notes.md`, beside this file. Read its section before working in that domain:** editing · duplication exceptions · workarounds found while fixing · shell strict mode and traps · tests, guards and hermetic runs · security checks and gates · destructive commands and user files · renames and doc sweeps · cross-backend parity · Windows / Git Bash · Go · commit messages for prompt changes · the always-on context budget · canon only: competitor analysis.
+- **Domain rules live in `efficiency-notes.md`, beside this file. Read its section before working in that domain:** editing · duplication exceptions · workarounds found while fixing · shell strict mode and traps · tests, guards and hermetic runs · security checks and gates · destructive commands and user files · renames and doc sweeps · cross-backend parity · platforms · Go · commit messages for prompt changes · the always-on context budget · canon only: competitor analysis.
 
 ## Token Efficiency
 

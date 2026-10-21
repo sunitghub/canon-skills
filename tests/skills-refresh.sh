@@ -55,9 +55,17 @@ assert_count 1 "User AGENTS content." "$project/AGENTS.md"
 assert_count 1 "| sprint | dev | skills/sprint/SKILL.md |" "$project/AGENTS.md"
 assert_count 0 "Source: $ROOT" "$project/AGENTS.md"
 assert_count 1 "Paths are relative to the canon install." "$project/AGENTS.md"
+# t-5c4b: an existing block gains the platforms line once, under its note (the cksum check below proves a second refresh adds none)
+assert_count 1 "> Platforms: on Windows canon's commands run in Git Bash" "$project/AGENTS.md"
+[[ "$(grep -A1 '^> Managed by `skills.sh`' "$project/AGENTS.md" | tail -1)" == "> Platforms:"* ]] || fail "the platforms line is not under the note"
 sum_before="$(cksum < "$project/AGENTS.md")"
 "$SKILLS" refresh "$project" >/dev/null
 assert_eq "$sum_before" "$(cksum < "$project/AGENTS.md")"
+# ...and an older wording of the line is replaced, never kept beside the new one
+sed -i.bak 's/^> Platforms:.*/> Platforms: old wording./' "$project/AGENTS.md" && rm -f "$project/AGENTS.md.bak"
+"$SKILLS" refresh "$project" >/dev/null
+assert_count 0 "old wording" "$project/AGENTS.md"
+assert_count 1 "> Platforms: on Windows canon's commands run in Git Bash" "$project/AGENTS.md"
 
 # Symlinks created/repaired by refresh (via cmd_add)
 [[ -L "$project/.claude/skills" ]] || fail "expected .claude/skills symlink after refresh"
@@ -89,7 +97,9 @@ line_before="$(grep -nxF "@$ROOT/standards/efficiency.md" "$inj/AGENTS.md" | cut
 out="$("$SKILLS" refresh "$inj" 2>&1)"
 [[ "$out" != *"legacy @-import: @$ROOT/standards/efficiency.md"* ]] || fail "registered efficiency import was pruned"
 [ "$(grep -cxF "@$ROOT/standards/efficiency.md" "$inj/AGENTS.md")" -eq 1 ] || fail "efficiency import missing or duplicated"
-assert_eq "$line_before" "$(grep -nxF "@$ROOT/standards/efficiency.md" "$inj/AGENTS.md" | cut -d: -f1)"
+# kept in place: still the line right after the block (t-5c4b's platforms line, added inside the block, shifts it down by one)
+assert_eq "$((line_before + 1))" "$(grep -nxF "@$ROOT/standards/efficiency.md" "$inj/AGENTS.md" | cut -d: -f1)"
+assert_eq "<!-- AI-SKILLS:END -->" "$(grep -B1 -xF "@$ROOT/standards/efficiency.md" "$inj/AGENTS.md" | head -1)"
 
 # Same file with CRLF endings (Windows): the import is kept, not pruned, and neither it nor
 # @PROMOTED.md is duplicated across two refreshes.

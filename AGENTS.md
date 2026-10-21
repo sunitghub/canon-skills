@@ -58,6 +58,7 @@ Tiers "Review & Eval" default, applied unconditionally to every interactive clos
 <!-- AI-SKILLS:BEGIN -->
 ## Active canon skills
 > Managed by `skills.sh` — use `add`/`remove` to change.
+> Platforms: on Windows canon's commands run in Git Bash, never PowerShell or cmd. Details: standards/efficiency-notes.md › Platforms (canon install).
 
 | Skill | Category | Source |
 |-------|----------|--------|

@@ -28,6 +28,12 @@ assert_count 0 "@$ROOT" "$project/AGENTS.md"
 
 # AI-SKILLS table written
 assert_count 1 "| sprint | dev | skills/sprint/SKILL.md |" "$project/AGENTS.md"
+# t-5c4b: the block carries the platforms line every session loads, right under its note, and the section it points to exists
+pline="$(grep '^> Platforms:' "$project/AGENTS.md" || true)"
+assert_contains "$pline" "on Windows canon's commands run in Git Bash, never PowerShell or cmd"
+[[ "$(grep -A1 '^> Managed by `skills.sh`' "$project/AGENTS.md" | tail -1)" == "$pline" ]] || fail "the platforms line is not under the block's note"
+sect="$(sed -n 's/.*efficiency-notes.md › \([A-Za-z ]*\) (canon install).*/\1/p' <<< "$pline")"
+grep -qx "## $sect" "$ROOT/standards/efficiency-notes.md" || fail "the platforms line points at a section efficiency-notes.md does not have: '$sect'"
 
 # t-97e2: the table names no machine path, so another install path (another machine: a cloud session, a teammate,
 # CI) adding the same skill changes no tracked file. A symlink to this install gives a second SKILLS_ROOT.

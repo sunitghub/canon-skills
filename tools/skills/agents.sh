@@ -8,6 +8,9 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 # The block's note names no install path (t-97e2): an absolute one differs on every machine.
 SKILLS_TABLE_NOTE="> Managed by \`skills.sh\` — use \`add\`/\`remove\` to change. Paths are relative to the canon install."
+# t-5c4b: every session loads AGENTS.md (Claude Code through CLAUDE.md, Codex, pi, cloud sessions), so this one line is how
+# each of them knows the platform rule; the details stay in standards/efficiency-notes.md, read on demand.
+PLATFORMS_NOTE="> Platforms: on Windows canon's commands run in Git Bash, never PowerShell or cmd. Details: standards/efficiency-notes.md › Platforms (canon install)."
 
 skills_table_upsert() {
   local agents_file="$1" name="$2" skill_row="$3"
@@ -21,12 +24,20 @@ skills_table_upsert() {
     echo "  [AGENTS.md]  made the skill block's note portable"
   fi
 
+  # t-5c4b: a block without the current platforms line gains it once, under its note (an older wording is replaced).
+  if [ -f "$agents_file" ] && grep -qF "$block_begin" "$agents_file" && ! grep -qxF "$PLATFORMS_NOTE" "$agents_file"; then
+    awk -v pn="$PLATFORMS_NOTE" '/^> Platforms:/ { next } { print } /^> Managed by `skills.sh`/ && !done { print pn; done = 1 }' \
+      "$agents_file" > "$agents_file.tmp" && mv "$agents_file.tmp" "$agents_file"
+    echo "  [AGENTS.md]  added the platforms line to the skill block"
+  fi
+
   if [ ! -f "$agents_file" ] || ! grep -qF "$block_begin" "$agents_file"; then
     {
       echo ""
       echo "$block_begin"
       echo "## Active canon skills"
       echo "$SKILLS_TABLE_NOTE"
+      echo "$PLATFORMS_NOTE"
       echo ""
       echo "| Skill | Category | Source |"
       echo "|-------|----------|--------|"
