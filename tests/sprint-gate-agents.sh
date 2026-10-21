@@ -44,6 +44,7 @@ rm -rf "$CFG/agents"
 # 4. agents linked after the session started (skills.sh add inside a running session)
 newp; agents "$P" "$now"; session "$P" $(( now - 3600 ))
 out="$(start late)"; assert_contains "$out" "canon's gate agents were added after it started"
+[[ "$out" != *"skills.sh refresh"* ]] || fail "refresh hint shown though the start folder has the agents: $out"
 # 5. the project has no agents at all: the fix says to refresh first
 newp; session "$P" $(( now - 3600 ))
 out="$(start noagents)"; assert_contains "$out" "run 'skills.sh refresh' there first"
