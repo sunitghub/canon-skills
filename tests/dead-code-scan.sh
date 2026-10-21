@@ -28,10 +28,12 @@ used_here() { :; }
 used_here
 # ensure_file is legacy
 lib_helper x
+dup_fn
 EOF
 cat > tools/lib.sh <<'EOF'
 lib_helper() { :; }
 test_only_fn() { :; }
+dup_fn() { :; }
 function kw_dead {
   :
 }
@@ -88,7 +90,8 @@ printf 'fn x() {}\n' > src/lib.rs
 # A CRLF checkout (Git for Windows autocrlf) is still Bash; a non-ASCII path is still read.
 printf '#!/usr/bin/env bash\r\ncrlf_dead() { :; }\r\n' > tools/crlf
 cafe=$'static/caf\303\251'; mkdir -p "$cafe" && printf 'used_from_cafe\n' > "$cafe/call.sh"
-printf 'used_from_cafe() { :; }\n' > tools/cafe-lib.sh
+# The same name declared twice: grep cannot tell the copies apart, so a call keeps both live.
+printf 'used_from_cafe() { :; }\ndup_fn() { :; }\n' > tools/cafe-lib.sh
 git add -A
 
 mkdir "$W/tmp"
