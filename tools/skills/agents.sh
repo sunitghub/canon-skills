@@ -26,16 +26,23 @@ skills_table_upsert() {
 
   # t-5c4b: a block without the current platforms line gains it once, under its note (an older wording is replaced).
   # Only lines inside the block are touched: a "> Platforms:" line of the user's own outside it stays.
-  if [ -f "$agents_file" ] && grep -qF "$block_begin" "$agents_file" && ! grep -qxF "$PLATFORMS_NOTE" "$agents_file"; then
+  # A CRLF file (Git for Windows) is compared without its \r and gets the line with one.
+  if [ -f "$agents_file" ] && grep -qF "$block_begin" "$agents_file" && ! tr -d '\r' < "$agents_file" | grep -qxF "$PLATFORMS_NOTE"; then
     awk -v pn="$PLATFORMS_NOTE" -v b="$block_begin" -v e="$block_end" '
-      $0 == b { inblk = 1 }
-      inblk && /^> Platforms:/ { next }
-      inblk && $0 == e && !done { print pn; done = 1 }
+      { l = $0; cr = sub(/\r$/, "", l) ? "\r" : "" }
+      l == b { inblk = 1 }
+      inblk && l ~ /^> Platforms:/ { next }
+      inblk && l == e && !done { print pn cr; done = 1 }
       { print }
-      inblk && /^> Managed by `skills.sh`/ && !done { print pn; done = 1 }
-      $0 == e { inblk = 0 }' \
-      "$agents_file" > "$agents_file.tmp" && mv "$agents_file.tmp" "$agents_file"
-    echo "  [AGENTS.md]  added the platforms line to the skill block"
+      inblk && l ~ /^> Managed by `skills.sh`/ && !done { print pn cr; done = 1 }
+      l == e { inblk = 0 }' \
+      "$agents_file" > "$agents_file.tmp"
+    if cmp -s "$agents_file.tmp" "$agents_file"; then
+      rm -f "$agents_file.tmp"
+    else
+      mv "$agents_file.tmp" "$agents_file"
+      echo "  [AGENTS.md]  added the platforms line to the skill block"
+    fi
   fi
 
   if [ ! -f "$agents_file" ] || ! grep -qF "$block_begin" "$agents_file"; then

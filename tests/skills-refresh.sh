@@ -122,6 +122,15 @@ out="$("$SKILLS" refresh "$inj" 2>&1)"
 "$SKILLS" refresh "$inj" >/dev/null 2>&1
 [ "$(tr -d '\r' < "$inj/AGENTS.md" | grep -cxF "@$ROOT/standards/efficiency.md")" -eq 1 ] || fail "CRLF: efficiency import duplicated"
 [ "$(tr -d '\r' < "$inj/AGENTS.md" | grep -cxF "@PROMOTED.md")" -eq 1 ] || fail "CRLF: @PROMOTED.md duplicated"
+# t-5c4b: a CRLF block without the platforms line gains it once, CRLF-ended, and a second refresh neither changes nor claims it
+sed -i.bak '/^> Platforms:/d' "$inj/AGENTS.md" && rm -f "$inj/AGENTS.md.bak"
+out="$("$SKILLS" refresh "$inj" 2>&1)"
+assert_contains "$out" "added the platforms line"
+[ "$(grep -c $'^> Platforms: on Windows.*\r$' "$inj/AGENTS.md")" -eq 1 ] || fail "CRLF: the platforms line is missing, duplicated or not CRLF-ended"
+sum_before="$(cksum < "$inj/AGENTS.md")"
+out="$("$SKILLS" refresh "$inj" 2>&1)"
+assert_eq "$sum_before" "$(cksum < "$inj/AGENTS.md")"
+[[ "$out" != *"added the platforms line"* ]] || fail "CRLF: a refresh of a block that has the line claimed to add it"
 
 
 printf 'skills-refresh: ok\n'
