@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-21-2026 14:03
+learnings-sweep last run: 10-21-2026 14:26
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-21 | [t-21f7](.tickets/t-21f7/learnings.md) | A test fixture must be the real thing it names: t-12f8's "worktree" case was a plain folder, so no test could tell a worktree from an unrelated folder, and the warning's rule drifted to "name the start folder" for both; a real `git worktree add` in the fixture pins the difference. Also, a mutation survivor can mean dead code, not a missing test (`-n` on a value `cd ""` never leaves empty). | UNPROMOTED |
 | 2026-10-21 | [t-5c4b](.tickets/t-5c4b/learnings.md) | A managed-block rewrite must touch only lines inside the block and compare without a trailing \r: t-5c4b's awk deleted every `> Platforms:` line in the user's AGENTS.md and, on CRLF files (Git for Windows, the ticket's own audience), never matched the markers yet printed "added" on every refresh; the cloud build passed its tests because none had a user line outside the block or a CRLF file. | UNPROMOTED |
 | 2026-10-21 | [t-12f8](.tickets/t-12f8/learnings.md) | Check a ticket's premise in the code before building: t-12f8's main fix (link .claude/agents in worktrees) already existed (project.sh:203), the reviewer of t-ff14 had misread it. Its one code change then generalised a message for the rare case and broke the common one (a session started outside the project now told to restart in the wrong folder, t-21f7), and the test was edited to match: when a test's expectation changes, ask which user that changes the answer for. | UNPROMOTED |
 | 2026-10-21 | [t-4ea4](.tickets/t-4ea4/learnings.md) | A guard that lives in one command protects only that command: the release check sat in tkt push-main while releasing.md said `git push public main`, and an agent followed the docs. Put a gate where every route passes (a pre-push hook) and make the docs name the guarded route; the reviewer then found two more routes around the hook (push by URL, a stdin-reading child in a multi-ref push). | UNPROMOTED |
