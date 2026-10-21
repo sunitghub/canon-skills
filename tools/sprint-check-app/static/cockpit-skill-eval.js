@@ -2,7 +2,7 @@
 // load-time code is initSkillEval(), which cockpit-main.js runs in order once every module has loaded.
 import { cockpitConfirm, esc, escAttr } from './cockpit-core.js';
 import { _normPath } from './cockpit-sessions.js';
-import { UPKEEP_MODEL_LABELS, upFmtWhen, upHelpBtn, upHelpSync, upProjectId, upToggleCollapse } from './cockpit-upkeep.js';
+import { upFmtWhen, upModelLabel, upHelpBtn, upHelpSync, upProjectId, upToggleCollapse } from './cockpit-upkeep.js';
 import { getProjects } from './cockpit-projects.js';
 
 // ── Skill Eval (t-23d8): free checks on a picked skill folder, then the paid plugin eval ──
@@ -168,7 +168,7 @@ function seStartPoll(){
 async function seRun(){
   const modelEl=document.getElementById('se-model');
   const model=modelEl?modelEl.value:'claude-haiku-4-5-20251001';
-  const label=UPKEEP_MODEL_LABELS[model]||model;
+  const label=upModelLabel(model);
   const name=se.dir.split(/[\\/]/).pop();
   const ok=await cockpitConfirm({
     title:'Run plugin eval on '+name+'?',

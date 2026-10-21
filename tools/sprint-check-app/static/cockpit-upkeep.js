@@ -5,6 +5,7 @@ import { showView } from './cockpit-views.js';
 import { seRender, seReset } from './cockpit-skill-eval.js';
 import { activateTab, activeTab, applySplit, openProject, setUpkeepPane } from './cockpit-tabs.js';
 import { getProjects } from './cockpit-projects.js';
+import { md } from './markdown.js';
 
 // ── Views: Projects vs Admin vs Upkeep (t-5dc2, t-7ae6) ───────────────────
 // t-67ab: the card's Branch and Upkeep rows (how many of the checks have never run).
@@ -151,6 +152,7 @@ export async function loadUpkeep(){
   const proj=getProjects().find(p=>p.id===upProjectId);
   document.getElementById('up-proj').textContent=proj?proj.name:'';
   if(!proj){ document.getElementById('up-grid').innerHTML='<span class="up-empty">Open a project, then its Upkeep button.</span>'; return; }
+  upTiers=null;
   await upRenderGrid();
   seRender();
 }
@@ -168,6 +170,25 @@ export function openUpkeepFor(pid){
   showView('upkeep');
 }
 
+// t-43ba: Upkeep's models and default come from the Admin › Model Tiers registry (`upkeep` in model-tiers.json),
+// labels from its Anthropic names; nothing here names a model. Read once per loadUpkeep().
+let upTiers=null;
+async function upLoadTiers(){
+  if(upTiers) return upTiers;
+  try{ const r=await fetch('/api/admin/model-tiers'); if(r.ok) upTiers=await r.json(); }catch(e){}
+  return upTiers||{};
+}
+export function upModelLabel(id){
+  const m=(((upTiers||{}).models||{}).anthropic||[]).find(x=>x.id===id);
+  return m&&m.name ? m.name.replace(/^Claude /,'') : id;
+}
+function upModelOptions(){
+  const u=(upTiers||{}).upkeep||{};
+  const ids=Array.isArray(u.models)?u.models:[];
+  if(!ids.length) return '<option value="">Default</option>';
+  return ids.map(id=>`<option value="${escAttr(id)}"${id===u.default?' selected':''}>${esc(upModelLabel(id))}</option>`).join('');
+}
+
 async function upFetchState(skill){
   try{
     const r=await fetch('/api/upkeep/status?project='+encodeURIComponent(upProjectId)+'&skill='+encodeURIComponent(skill));
@@ -177,7 +198,7 @@ async function upFetchState(skill){
 }
 
 export async function upRenderGrid(){
-  const states=await Promise.all(UPKEEP_SKILLS.map(s=>upFetchState(s.id)));
+  const [states]=await Promise.all([Promise.all(UPKEEP_SKILLS.map(s=>upFetchState(s.id))), upLoadTiers()]);
   // Ascending by last-run: never-run sorts first (oldest/most-overdue), then
   // by finished_at ascending; a currently-running item sorts by its own
   // started-at proxy (now, so it lands near the "recent" end).
@@ -199,7 +220,7 @@ export async function upRenderGrid(){
 }
 
 function upStatusPill(st){
-  if(st.status==='running') return '<span class="up-status run">Running…</span>';
+  if(st.status==='running') return `<span class="up-status run"${st.model?` title="Running on ${escAttr(upModelLabel(st.model))}"`:''}>Running…</span>`;
   if(st.status==='error'){
     // t-1776: surface the failure's own output as a tooltip — the whole
     // point of persisting it was so a failure is diagnosable from the
@@ -213,12 +234,13 @@ function upStatusPill(st){
 
 function upCardHTML(s, st){
   const when=upFmtWhen(st.finished_at);
-  const whenLine = st.status==='running' ? 'Running…' : (when ? 'Last run — '+esc(when) : 'Last run — never');
+  const ranOn = st.model && when ? ' · Ran on '+upModelLabel(st.model) : '';
+  const whenLine = st.status==='running' ? 'Running…' : (when ? 'Last run — '+when+ranOn : 'Last run — never');
   const running = st.status==='running';
   const agentSel = `<select class="rc-select" title="Agent"${running?' disabled':''}>`
     + '<option>Claude</option><option disabled>Pi (soon)</option><option disabled>Copilot (soon)</option></select>';
   const modelSel = `<select class="rc-select" id="up-model-${s.id}" title="Model"${running?' disabled':''}>`
-    + '<option value="claude-haiku-4-5-20251001" selected>Haiku 4.5</option><option value="claude-sonnet-5">Sonnet 5</option></select>';
+    + upModelOptions() + '</select>';
   const runBtn = st.status==='idle' || !st.report_path
     ? `<button class="btn b-primary up-run"${running?' disabled':''}>&#9654; Run</button>`
     : `<button class="btn b-neutral up-run"${running?' disabled':''}>&#8635; Run again</button>
@@ -235,12 +257,10 @@ function upCardHTML(s, st){
     </div>`;
 }
 
-export const UPKEEP_MODEL_LABELS={'claude-haiku-4-5-20251001':'Haiku 4.5','claude-sonnet-5':'Sonnet 5'};
-
 async function upRun(skill){
   const modelEl=document.getElementById('up-model-'+skill);
-  const model=modelEl ? modelEl.value : 'claude-haiku-4-5-20251001';
-  const modelLabel=UPKEEP_MODEL_LABELS[model]||model;
+  const model=modelEl ? modelEl.value : '';   // '' → the server runs the registry's Upkeep default
+  const modelLabel=upModelLabel(model||((upTiers||{}).upkeep||{}).default||'');
   const proj=getProjects().find(p=>p.id===upProjectId);
   const ok=await cockpitConfirm({
     title:'Run '+skill+'?',
@@ -271,19 +291,17 @@ function upStartPoll(skill){
 
 export function upToggleCollapse(){ document.getElementById('up-detail').classList.toggle('open'); }
 
-// Minimal markdown-ish renderer scoped to Upkeep's own report shape (# / ##
-// headers, `code` spans, - bullet lists) — not a general parser. List items
-// under a "Findings" heading get the amber callout treatment; everything
-// else is heading/paragraph/code only. Deliberately narrower than the board's
-// md() (static/board-helpers.js) (which also handles checkboxes/gherkin/feature-refs for ticket docs —
-// a different, larger job this view doesn't need).
+// Upkeep's report blocks (title skip, `**Key:**` meta row, tables with status
+// chips, - lists with the amber callout under a "Findings" heading). Every piece
+// of text, and each `> ` quote line, goes through the board's one renderer, md()
+// (static/markdown.js, t-43ba) — there is no second inline renderer here.
 function upRenderReport(raw){
   if(!raw) return '<div class="up-empty">Empty report.</div>';
   const lines=raw.split(/\r?\n/);
   let html=''; let inFindings=false; let inList=false; let inMeta=false; let skippedTitle=false;
   const closeList=()=>{ if(inList){ html+='</ul>'; inList=false; } };
   const closeMeta=()=>{ if(inMeta){ html+='</div>'; inMeta=false; } };
-  const inline=t=>esc(t).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
+  const inline=t=>md(t);
   const isTableRow=l=>/^\s*\|.*\|\s*$/.test(l);
   const isTableSep=l=>/^\s*\|[\s|:-]+\|\s*$/.test(l);
   const splitRow=l=>l.trim().replace(/^\|/,'').replace(/\|$/,'').split('|').map(c=>c.trim());
@@ -334,6 +352,10 @@ function upRenderReport(raw){
       html+=`<li>${inline(li[1])}</li>`; continue;
     }
     closeList();
+    if(/^>/.test(line)){   // a run of > lines is one quote
+      let j=i; while(j<lines.length && /^>/.test(lines[j])) j++;
+      html+=md(lines.slice(i,j).join('\n')); i=j-1; continue;
+    }
     if(line.trim()) html+=`<p>${inline(line)}</p>`;
   }
   closeList(); closeMeta();

@@ -12257,6 +12257,51 @@ test.describe('Canon Cockpit Upkeep (t-7ae6)', () => {
     await expect(page.locator('#up-detail')).toHaveClass(/open/);
   });
 
+  test('upkeep (t-43ba) report renders italic and quotes through md()', async ({ page }) => {
+    await stubUpkeep(page, {
+      status: { status: 'done', report_path: '/tmp/proj-a/.reports/dead-code-cleanup_x.md', finished_at: Date.now() / 1000 },
+      report: { ok: true, path: '/tmp/proj-a/.reports/dead-code-cleanup_x.md',
+        content: '# Dead code\n\n_Scope: whole repo. Generated: 2026-10-21._\n\n> Advisory only — nothing was modified.\n> Second line with `a_b_c`.\n' },
+    });
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    await openUpkeepView(page);
+    await page.locator('#up-card-context-check button:has-text("View report")').click();
+    await expect(page.locator('#up-rp-body em')).toHaveText('Scope: whole repo. Generated: 2026-10-21.');
+    await expect(page.locator('#up-rp-body blockquote')).toHaveCount(1);   // adjacent > lines are one quote
+    await expect(page.locator('#up-rp-body blockquote')).toContainText('Advisory only');
+    await expect(page.locator('#up-rp-body blockquote code')).toHaveText('a_b_c');   // an underscore in a code span stays literal
+    await expect(page.locator('#up-rp-body')).not.toContainText('_Scope');
+    await expect(page.locator('#up-rp-body')).not.toContainText('> Advisory');
+  });
+
+  test('upkeep (t-43ba) picker from registry, Ran on, Running hover', async ({ page }) => {
+    const TIERS = { defaults: { eval: {}, light: {} },
+      models: { anthropic: [
+        { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5' }, { id: 'claude-haiku-5-5', name: 'Claude Haiku 5.5' },
+        { id: 'claude-sonnet-5-5', name: 'Claude Sonnet 5.5' }, { id: 'claude-sonnet-5', name: 'Claude Sonnet 5' }], openai: [] },
+      upkeep: { default: 'claude-sonnet-5-5', models: ['claude-haiku-5-5', 'claude-sonnet-5-5'] } };
+    await page.route('**/api/admin/model-tiers', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(TIERS) }));
+    const done = { status: 'done', report_path: '/tmp/r.md', finished_at: Date.now() / 1000 };
+    const bySkill = { 'context-check': { ...done, model: 'claude-sonnet-5' }, 'context-doctor': done,
+      'dead-code-cleanup': { status: 'running', report_path: '', elapsed: 1, model: 'claude-haiku-5-5' } };
+    await page.route('**/api/projects', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(PROJECTS) }));
+    await page.route('**/api/upkeep/status*', route => {
+      const skill = new URL(route.request().url()).searchParams.get('skill');
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(bySkill[skill] || { status: 'idle', report_path: '' }) });
+    });
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    await openUpkeepView(page);
+    const sel = page.locator('#up-model-context-check');
+    await expect(sel.locator('option')).toHaveText(['Haiku 5.5', 'Sonnet 5.5']);   // the registry's upkeep.models, its names
+    await expect(sel).toHaveValue('claude-sonnet-5-5');                             // the registry's upkeep.default
+    await expect(page.locator('#up-card-context-check .rc-when')).toContainText('Ran on Sonnet 5');
+    await expect(page.locator('#up-card-context-doctor .rc-when')).toContainText('Last run');
+    await expect(page.locator('#up-card-context-doctor .rc-when')).not.toContainText('Ran on');   // no model recorded: no label
+    await expect(page.locator('#up-card-dead-code-cleanup .up-status.run')).toHaveAttribute('title', 'Running on Haiku 5.5');
+  });
+
   test('t-d2e1: a quote in a failed run\'s output stays inside the Error pill\'s tooltip', async ({ page }) => {
     const output = `boom ${XSS_ATTR} and it's <b>done</b>`;
     await stubUpkeep(page, { status: { status: 'error', report_path: '', output, finished_at: Date.now() / 1000 } });
@@ -12599,8 +12644,8 @@ test.describe('Canon Cockpit "?" info popovers (t-576f)', () => {
     await expect(page.locator('.scrim.show')).toHaveCount(0);
     const sel = page.locator('#up-model-context-check');
     await expect(sel).toBeEnabled();
-    await sel.selectOption('claude-sonnet-5');                       // selectOption sends no click, so the popover stays open
-    await expect(sel).toHaveValue('claude-sonnet-5');
+    await sel.selectOption('claude-haiku-5-5');                      // selectOption sends no click, so the popover stays open
+    await expect(sel).toHaveValue('claude-haiku-5-5');
     await expect(pop(page, 'promote-learnings')).toBeVisible();      // the page was usable while it was open, and it is still open
   });
 
