@@ -1,6 +1,6 @@
 ---
 name: dead-code-cleanup
-description: Scans a repo for likely-unreferenced top-level symbols (JS/TS exports, Python def/class, Go exported func), reports them as removal candidates, and writes a structured `dead-code-report.md` (summary + high/low-confidence candidate tables). Use when asked to find dead code, unused exports, or unreferenced functions, or to clean up a codebase. Advisory-first — never deletes without explicit confirmation.
+description: Scans a repo for likely-unreferenced top-level symbols (JS/TS exports, Python def/class, Go func, Bash functions), reports dead, test-only and over-exported ones as candidates, and writes a structured `dead-code-report.md` (summary + candidate tables, including languages it skipped). Use when asked to find dead code, unused exports, or unreferenced functions, or to clean up a codebase. Advisory-first — never deletes without explicit confirmation.
 category: dev
 tags: [cleanup, code-quality, dead-code, verification]
 ---
@@ -27,26 +27,75 @@ review/eval gates like any other change — this skill never bypasses them.
 
 ## The scan (follow exactly)
 
-1. **Extract candidate declarations.** Grep-based, one pattern set per extension present in
+**Run the scanner first.** Steps 1–3 are implemented by canon's `dead-code-scan.sh` (Bash, git and
+awk only, so it runs in Git Bash on Windows): `bash ~/.canon/tools/dead-code-scan.sh [<path>...]`
+(in the canon repo itself, `bash tools/dead-code-scan.sh`). It prints one tab-separated row per
+candidate — `class  file:line  symbol  lang  entry  refs`, class `DEAD`/`TESTONLY`/`OVEREXP` — then
+`# scanned:`, `# skipped:` and `# checked:` lines; it exits 2 outside a git repo. It reads tracked
+files only (commit or `git add` new code first). Copy `# scanned:` and `# skipped:` into the
+Summary's `Languages scanned`/`Languages skipped` rows as printed — a language with no candidates
+was still scanned. Its rows are the
+candidate list: report **every** row, never a sample, and do not re-derive them by hand — a model
+checking hundreds of symbols one grep at a time skips most of them. Your part is the judgment the
+script cannot make: the entry points and dynamic dispatch in step 3 and the Gotchas. Only if the
+script is missing, follow steps 1–3 by hand and say in the report that the scan was manual and may
+be incomplete.
+
+1. **Extract candidate declarations.** Grep-based, one pattern set per language present in
    scope:
-   - JS/TS (`.js`, `.ts`, `.jsx`, `.tsx`): `export (function|const|class) <Name>`
+   - JS/TS (`.js`, `.ts`, `.jsx`, `.tsx`): `export [async] (function|const|class) <Name>` (an *export*)
    - Python (`.py`): top-level `def <name>` / `class <Name>` not prefixed with `_`
-   - Go (`.go`): `func <Name>(` where `<Name>` starts with an uppercase letter (exported),
-     excluding `Test*`/`Benchmark*`/`Example*` (test-runner convention, not a static reference —
-     see Gotchas)
+   - Go (`.go`): top-level `func <Name>(` — exported (uppercase start, an *export*) and unexported
+     (lowercase start) alike. Exclude `main`, `init`, and `Test*`/`Benchmark*`/`Example*`
+     (runtime/test-runner convention, not a static reference — see Gotchas). Methods
+     (`func (r T) Name(`) are not candidates: interface satisfaction calls them without a name.
+   - Bash (`.sh`, `.bash`, and extensionless files whose first line is a `sh`/`bash` shebang, e.g.
+     `#!/usr/bin/env bash`): top-level `<name>() {` or `function <name>` declarations
 
-   Skip any extension not in this list — do not guess a pattern for an unfamiliar language.
+   Skip any language not in this list — do not guess a pattern for an unfamiliar language. But
+   never skip silently: count the files in scope with one of these common source extensions —
+   `.cs .rs .java .kt .rb .php .swift .c .h .cpp .scala .lua .ps1` — and report each extension
+   found, with its file count, under `Languages skipped` (step 4). Data and doc files (`.md`,
+   `.json`, `.yml`, …) are not source and are never listed.
 
-2. **Count references.** For each candidate symbol, `grep -rnw` the symbol across the scope,
-   excluding the declaration's own line. Zero other matches anywhere in scope → dead-code
-   candidate.
+2. **Count code references.** For each candidate symbol, `grep -rnw` the symbol across the scope,
+   excluding the declaration's own line. Only a **code reference** counts. Drop a match when:
+   - it is in a doc file: `*.md`, `*.txt`, `CHANGELOG*`, or anything under `.tickets/` or
+     `.reports/` (mentions in prose, tickets, changelogs and earlier reports never keep code alive);
+   - its line is comment-only — its first non-space characters are `#`, `//`, `/*` or `*` (a
+     shebang line counts as a comment).
 
-3. **Classify confidence.**
-   - **High** — zero other references, and the declaring file is not an entry-point pattern.
-   - **Low** — zero other references, but the declaring file matches an entry-point pattern:
+   Then sort the remaining code references by where they are:
+   - **test** — in a test file: anything under `tests/`, `test/` or `__tests__/`, or named
+     `*.test.*`, `*.spec.*`, `*_test.go`, `test_*.py` or `*_test.py`;
+   - **own file** — in the declaring file itself;
+   - **other** — any other non-test file.
+
+3. **Classify.** Each candidate lands in at most one class:
+   - **Dead** — no code reference at all.
+   - **Test-only** — code references exist, but only in test files (the production code is
+     reachable only from its tests).
+   - **Over-exported** — an *export* (JS/TS export or exported Go func) whose only code references
+     are in its own file — no other file and no test uses it: live code, but the export (or Go
+     capital letter) is unneeded. A test that imports the export needs it, so that is live.
+   - Otherwise live — not reported. For a non-export (Python, unexported Go, Bash), a call in its
+     own file is a normal use and makes it live.
+
+   A candidate declared **in a test file** can only be Dead: a test helper used by tests is live,
+   never Test-only or Over-exported.
+
+   Then set confidence on Dead rows (a Test-only or Over-exported row in an entry-point file
+   just says so in its Reason):
+   - **High** — the declaring file is not an entry-point pattern.
+   - **Low** — the declaring file matches an entry-point pattern:
      `index.*`, `__init__.py`, `main.go`, `cli.*`, or any file a `package.json`/shebang/build
      config names directly. These are likely public API surface or process entry points invoked
      by name from outside grep's reach — flag them, don't bury them, but don't recommend removal.
+     **Exception — Bash functions and unexported Go funcs never take the downgrade:** a Bash
+     function can only be called from its own script or a file that `source`s it, and an unexported
+     Go func only from its own package; grep sees all of those, so they stay High. The scanner's
+     `entry` column applies the filename and shebang patterns and this exception; check the
+     `package.json`/build-config case yourself.
 
 4. **Report.** The scan itself edits no file. Print the Summary inline, then — **confirm-first**,
    mirroring `context-check`/`context-doctor` — write a structured `dead-code-report.md` at the
@@ -62,9 +111,12 @@ review/eval gates like any other change — this skill never bypasses them.
 
    | Metric | Count |
    |---|---|
-   | High-confidence candidates | N |
-   | Low-confidence (entry-point) | M |
-   | Languages scanned | js, py, go |
+   | High-confidence dead | N |
+   | Low-confidence dead (entry-point) | M |
+   | Test-only callers | T |
+   | Over-exported | O |
+   | Languages scanned | js, py, go, sh |
+   | Languages skipped | .rs (12 files), .cs (3 files) — or `none` |
 
    > Advisory only — nothing removed. Confirm candidates to remove; removals go through the sprint's gates.
 
@@ -72,7 +124,7 @@ review/eval gates like any other change — this skill never bypasses them.
 
    | File:line | Symbol | Kind | Reason |
    |---|---|---|---|
-   | src/foo.js:12 | oldHelper | function | no references found in scope |
+   | src/foo.js:12 | oldHelper | function | no code references in scope |
 
    ## Low-confidence — verify manually
 
@@ -80,14 +132,28 @@ review/eval gates like any other change — this skill never bypasses them.
    |---|---|---|---|
    | cli/index.py:1 | main | function | entry-point file — likely invoked by name |
 
+   ## Test-only callers
+
+   | File:line | Symbol | Kind | Reason |
+   |---|---|---|---|
+   | src/fmt.py:40 | legacy_format | function | called only from tests/test_fmt.py |
+
+   ## Over-exported
+
+   | File:line | Symbol | Kind | Reason |
+   |---|---|---|---|
+   | src/view.js:29 | rowFor | function | exported, used only in its own file — drop the export |
+
    ## Caveats
 
    - Dynamic dispatch/reflection, barrel re-exports, string-only references, CLI entry points, and
      test-runner conventions can hide real callers — spot-check before removing (see Gotchas).
+   - Languages skipped were not scanned at all: zero candidates says nothing about them.
    ```
 
-   Render `None.` under a candidate section with no rows. If **both** tables are empty, still write
-   the report (both `None.`) and say so — a clean result, not a no-op. The `Kind` column is the
+   Render `None.` under a candidate section with no rows. If **all** tables are empty, still write
+   the report (all `None.`) and say so — a clean result, not a no-op — and name any languages
+   skipped in that sentence, so a clean result never hides an unscanned codebase. The `Kind` column is the
    declaration type (`function`/`class`/…); confidence is expressed by which table a row lands in.
 
 ## Confirm-then-remove loop
@@ -115,18 +181,24 @@ After the report:
   tables) call a symbol by name at runtime — grep finds zero static references even though the
   symbol is live. Treat any candidate near a router/registry/dispatch table with suspicion; ask
   before removing.
-- **String-only references** — a symbol name mentioned only in docs, a skill's own prose, a YAML
-  config, or a CI workflow file counts as a reference for this heuristic's purposes (the grep
-  pattern is name-based, not import-graph-based) but can still hide a real caller `grep -w`
-  missed due to word-boundary quirks (e.g. template-literal interpolation). Spot-check a sample
-  of "zero reference" results before trusting the count at scale.
+- **String-only references** — a mention in docs, tickets, CHANGELOG, earlier reports or a
+  comment is dropped (step 2): it never keeps code alive. A mention in a YAML config or CI
+  workflow still counts — it may be a real call (`run: tools/foo.sh`). The pattern is name-based,
+  not import-graph-based, so `grep -w` can also miss a real caller to word-boundary quirks (e.g.
+  template-literal interpolation, a Bash function name containing `-`). Spot-check a sample of
+  Dead results before trusting the count at scale.
+- **Bash string-built calls** — `"cmd_$sub"` or `$handler "$@"` calls a function whose name grep
+  never sees whole. A static `case` dispatch (`start) cmd_start "$@" ;;`) is a normal reference.
+  Before reporting a Bash function Dead, check its file for a variable used as a command name; if
+  one exists and the function's name fits the prefix, move it to Low-confidence.
 - **Barrel/re-export files** (`export * from './foo'`) make a symbol look referenced by the
   barrel file itself even when nothing imports it *from* the barrel — this heuristic will
   under-report in that case, not over-report; treat "zero candidates" from a heavily-barrelled
   codebase with caution.
-- **Test-only fixtures** (helpers used only inside `*.test.*`/`*_test.*` files) will show a
-  reference and won't be flagged — correct behavior, since the code is still reachable from the
-  test suite, but worth knowing if the goal is trimming test-only cruft too (out of scope here).
+- **Test-only callers** — production code reachable only from its tests is its own class, not
+  live: the tests keep it compiling, nothing ships through it. Remove the code and its tests
+  together, or keep it if the test pins a contract a future caller needs. Helpers declared inside
+  test files are not reported unless Dead (step 3).
 - **CLI entry points invoked only by name** from `package.json` `bin`/`scripts`, a shebang, or a
   Makefile are real usages grep won't see as a symbol reference — this is exactly what the
   low-confidence entry-point classification exists to catch; don't loosen that filter.

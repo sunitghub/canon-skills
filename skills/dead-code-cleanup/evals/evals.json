@@ -5,9 +5,10 @@
       "id": 1,
       "case_type": "control",
       "prompt": "Find dead code in this repo and report candidates for removal.",
-      "expected_output": "Runs a grep-based scan for unreferenced JS/Python/Go top-level declarations, prints a Summary inline, and (confirm-first) writes a structured `dead-code-report.md` at the repo root with a `## Summary` table, separate `## High-confidence candidates` and `## Low-confidence — verify manually` tables, and a `## Caveats` section — asking which candidates to remove rather than deleting anything.",
+      "expected_output": "Runs canon's `dead-code-scan.sh` for unreferenced JS/Python/Go/Bash top-level declarations, prints a Summary inline, and (confirm-first) writes a structured `dead-code-report.md` at the repo root with a `## Summary` table, separate `## High-confidence candidates` and `## Low-confidence — verify manually` tables, and a `## Caveats` section — asking which candidates to remove rather than deleting anything.",
       "expectations": [
         "Does not edit or delete any existing file during the scan step",
+        "Runs the dead-code-scan.sh scanner and reports every row it prints rather than sampling or re-deriving candidates by hand",
         "Produces a structured report with a Summary table plus separate high-confidence and low-confidence candidate tables (file:line, symbol, kind, reason)",
         "Offers to write dead-code-report.md confirm-first (asks before writing / overwriting the report file), matching context-check/context-doctor",
         "Ends by asking the user to confirm which candidates (if any) to remove",
@@ -46,6 +47,51 @@
         "Does not silently edit files with no active sprint context",
         "If it proceeds, frames the removal as part of the current sprint's diff, not a separate standalone close process",
         "Surfaces the working-tree state before applying the removal (uncommitted-change awareness) and offers commit-first / proceed-anyway / cancel rather than hard-blocking on a dirty tree"
+      ]
+    },
+    {
+      "id": 5,
+      "case_type": "edge",
+      "prompt": "Scan for dead code. `tools/build` is an extensionless `#!/usr/bin/env bash` script that declares `ensure_file() {`; the only other mention of `ensure_file` anywhere is in `CHANGELOG.md`.",
+      "expected_output": "Scans the extensionless Bash script, ignores the CHANGELOG mention as a doc reference, and reports `ensure_file` as a high-confidence dead candidate — not downgraded to low confidence for the shebang.",
+      "expectations": [
+        "Treats the extensionless shebang script as Bash and scans its function declarations",
+        "Does not count the CHANGELOG.md mention as a reference",
+        "Reports `ensure_file` as dead with high confidence, not low"
+      ]
+    },
+    {
+      "id": 6,
+      "case_type": "edge",
+      "prompt": "Scan for dead code. `src/fmt.py` declares `def legacy_format(...)`; the only call to it is in `tests/test_fmt.py`.",
+      "expected_output": "Reports `legacy_format` under a separate Test-only callers section, neither treating it as live nor as dead.",
+      "expectations": [
+        "Reports `legacy_format` in a Test-only callers table/section",
+        "Does not list it as a dead (high- or low-confidence) candidate",
+        "Does not treat the test call as making it live and leave it out of the report"
+      ]
+    },
+    {
+      "id": 7,
+      "case_type": "edge",
+      "prompt": "Scan for dead code. `static/view.js` has `export function rowFor(res)`, called once at line 38 of the same file; no other file mentions `rowFor`.",
+      "expected_output": "Reports `rowFor` under an Over-exported section — live code whose export is unneeded — rather than leaving it out because of the same-file call.",
+      "expectations": [
+        "Reports `rowFor` in an Over-exported table/section",
+        "Says the function is used only in its own file and the export can be dropped",
+        "Does not recommend deleting the function itself"
+      ]
+    },
+    {
+      "id": 8,
+      "case_type": "boundary",
+      "prompt": "Scan this repo for dead code. It contains `src/lib.rs`, `src/main.rs` and a few `.md` docs, and no JS, Python, Go or Bash files.",
+      "expected_output": "Does not invent a Rust pattern; reports `.rs (2 files)` under `Languages skipped` in the Summary and says the clean result does not cover the skipped Rust code.",
+      "expectations": [
+        "Does not scan the Rust files with a guessed pattern",
+        "Lists `.rs` with its file count under Languages skipped",
+        "States that zero candidates says nothing about the skipped language",
+        "Does not list `.md` as a skipped language"
       ]
     }
   ]
