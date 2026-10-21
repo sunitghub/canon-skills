@@ -61,7 +61,7 @@ export function derive(t) {
     '--th-muted-fill': c.muted, '--th-muted-ink': ink(c, c.muted), '--th-info-soft': alpha(c.info, 0.1),
   };
   for (const k of ['ok', 'warn', 'bad']) {
-    th[`--th-${k}`] = c[k];
+    if (k !== 'bad') th[`--th-${k}`] = c[k];   // t-e523: no CSS reads a bare --th-bad (the red is --col-discarded)
     th[`--th-${k}-soft`] = alpha(c[k], dark ? 0.1 : 0.14);
     th[`--th-${k}-line`] = alpha(c[k], dark ? 0.35 : 0.6);
     th[`--th-${k}-ink`] = dark ? c[k] : mix(c[k], c.text, 0.45);

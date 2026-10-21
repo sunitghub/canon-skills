@@ -119,7 +119,8 @@ assert.strictEqual(boot({ page: 'board', embedded: false, stored: SB(J({ mode: '
   // ── 4b. derive() sets every variable the CSS needs ──
   const statics = fs.readdirSync(STATIC);
   const read = (re) => statics.filter(f => re.test(f)).map(f => [f, fs.readFileSync(path.join(STATIC, f), 'utf8')]);
-  const shellCss = read(/^cockpit-.*\.css$/), boardCss = read(/^board-.*\.css$/);
+  // t-e523: buttons.css is linked by both pages, so it counts as each page's CSS
+  const shellCss = read(/^(cockpit-.*|buttons)\.css$/), boardCss = read(/^(board-.*|buttons)\.css$/);
   const blockNames = (txt, re) => { const out = new Set(); for (const m of txt.matchAll(re)) for (const v of m[1].matchAll(/(--[a-z0-9-]+)\s*:/g)) out.add(v[1]); return out; };
   const shellNeed = blockNames(css, /html\[data-theme="(?:dark|light)"\]\{([^}]*)\}/g);
   const baseCss = fs.readFileSync(path.join(STATIC, 'board-base.css'), 'utf8');

@@ -75,7 +75,7 @@ export function renderTabs(){
     el.addEventListener('contextmenu',ev=>{ ev.preventDefault(); openTabMenu(t.id,ev.clientX,ev.clientY); });
     el.dataset.tab=t.id;
     const liveCls = liveTabIds.has(t.id) ? (needsTabIds.has(t.id) ? ' on needs' : ' on') : '';
-    el.innerHTML='<span class="live'+liveCls+'"></span> '+esc(t.name)+' <span class="tx" title="Close tab">&#10005;</span>';
+    el.innerHTML='<span class="live'+liveCls+'"></span> '+esc(t.name)+' <span class="tx b-neutral" title="Close tab">&#10005;</span>';
     el.addEventListener('click',(ev)=>{ if(ev.target.classList.contains('tx')){closeTab(t.id);} else if(split&&splitShown()){goTab(t.id);} else {activateTab(t.id);} });
     (t.id===paneB?document.getElementById('panebar'):strip).appendChild(el);
   }
@@ -94,7 +94,7 @@ export function ensureView(id,name){
     const tok=[...crypto.getRandomValues(new Uint8Array(16))].map(b=>b.toString(16).padStart(2,'0')).join('');
     tabTokens.set(tok,id);
     f.src='/?project='+encodeURIComponent(id)+'&theme='+currentTheme()+'&tab='+tok;
-    f.title=name||id;
+    f.setAttribute('aria-label',name||id);   // t-e523: a title would show as a tooltip over the whole board
     f.addEventListener('load',()=>{ delete paneSent[id]; sendPaneState(); });   // t-416c: a board that loads late still learns its pane state
     v.appendChild(f);
     views.appendChild(v);
@@ -207,7 +207,7 @@ export function openMenu(items,x,y){
       tabMenu.appendChild(d); continue;
     }
     const b=document.createElement('button'); b.type='button'; b.setAttribute('role','menuitem'); b.disabled=!!it.disabled;
-    if(it.danger) b.classList.add('danger');
+    if(it.danger) b.classList.add('b-danger');
     if(it.title) b.title=it.title;
     const l=document.createElement('span'); l.textContent=it.label; b.appendChild(l);
     if(it.hint){ const h=document.createElement('span'); h.className='hint'; h.textContent=it.hint; b.appendChild(h); }
@@ -272,7 +272,7 @@ async function maybeNudgeSkill(id,name,quiet){
   const msg=document.createElement('span'); msg.className='sn-msg';
   msg.textContent='This project doesn’t have the canon “sprint” skill registered.';
   const actions=document.createElement('span'); actions.className='sn-actions'; actions.setAttribute('aria-live','polite');
-  const reg=document.createElement('button'); reg.className='btn primary sn-reg'; reg.textContent='Register sprint';
+  const reg=document.createElement('button'); reg.className='btn b-primary sn-reg'; reg.textContent='Register sprint';
   const x=document.createElement('button'); x.className='sn-x'; x.title='Dismiss'; x.textContent='✕';
   actions.appendChild(reg); actions.appendChild(x);
   bar.appendChild(msg); bar.appendChild(actions);

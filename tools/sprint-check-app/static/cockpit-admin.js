@@ -29,7 +29,7 @@ export function renderAdminSessions(views){
       `<td class="reap">${esc(v.reaper||'\u2014')}</td>`+
       `<td><div class="acts"><button class="ad-open${v.state==='needs-you'?' answer':''}" data-i="${i}">${v.state==='needs-you'?'Answer':'Open'}</button>`+
       (canReap(v)?`<button class="ad-end" data-end="reap" data-i="${i}" title="Do now what the idle reaper would do">Reap now</button>`:'')+
-      (canKill(v)?`<button class="ad-end kill" data-end="kill" data-i="${i}" title="End now, without saving">Kill</button>`:'')+`</div></td></tr>`;
+      (canKill(v)?`<button class="ad-end kill b-danger" data-end="kill" data-i="${i}" title="End now, without saving">Kill</button>`:'')+`</div></td></tr>`;
     }).join('')+
     interrupted.map(e=>{
       const proj=intrProj(e), pid=(proj||{}).id||'';
@@ -183,13 +183,13 @@ function mtRender(){
         ${aliasRow}
         <div class="mt-card-price"><span>Input/MTok</span><span>$${esc(m.input_price)}</span></div>
         <div class="mt-card-price"><span>Output/MTok</span><span>$${esc(m.output_price)}</span></div>
-        <div class="mt-card-actions"><button type="button" class="mt-edit"${mtEditing?' disabled':''} aria-label="Edit ${escAttr(m.name)}">Edit</button><a class="danger">Remove</a></div>
+        <div class="mt-card-actions"><button type="button" class="mt-edit"${mtEditing?' disabled':''} aria-label="Edit ${escAttr(m.name)}">Edit</button><a class="b-danger">Remove</a></div>
       </div>`;
   }).join('') + `<div class="mt-add-card">+ Add ${esc(MT_PROVIDER_LABEL[mtProvider])} model</div>`;
   // t-783a: wired after each render; the ids come back from data-id, so no JS sits inside an attribute.
   grid.querySelectorAll('.mt-card:not(.editing)').forEach(card=>{
     card.querySelector('.mt-edit').addEventListener('click',()=>mtStartEdit(card.dataset.id));
-    card.querySelector('.danger').addEventListener('click',()=>mtRemoveModel(card.dataset.id));
+    card.querySelector('.b-danger').addEventListener('click',()=>mtRemoveModel(card.dataset.id));
   });
   const editing=grid.querySelector('.mt-card.editing');
   if(editing){

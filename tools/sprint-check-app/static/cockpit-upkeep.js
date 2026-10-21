@@ -220,9 +220,9 @@ function upCardHTML(s, st){
   const modelSel = `<select class="rc-select" id="up-model-${s.id}" title="Model"${running?' disabled':''}>`
     + '<option value="claude-haiku-4-5-20251001" selected>Haiku 4.5</option><option value="claude-sonnet-5">Sonnet 5</option></select>';
   const runBtn = st.status==='idle' || !st.report_path
-    ? `<button class="btn primary up-run"${running?' disabled':''}>&#9654; Run</button>`
-    : `<button class="btn up-run"${running?' disabled':''}>&#8635; Run again</button>
-         <button class="btn primary up-view">View report</button>`;
+    ? `<button class="btn b-primary up-run"${running?' disabled':''}>&#9654; Run</button>`
+    : `<button class="btn b-neutral up-run"${running?' disabled':''}>&#8635; Run again</button>
+         <button class="btn b-primary up-view">View report</button>`;
   return `<div class="rcard" id="up-card-${s.id}" data-help="${s.id}">
       <div class="rc-when mono">${esc(whenLine)}</div>
       <div class="rc-top">

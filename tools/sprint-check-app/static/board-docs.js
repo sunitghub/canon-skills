@@ -600,7 +600,7 @@ function renderGhostPane(t) {
   const dt = DOC_TYPES.find(d => d.slug === modalState.ghost);
   const bodyEl = document.getElementById('m-body');
   if (!dt) { bodyEl.innerHTML = ''; return; }
-  bodyEl.innerHTML = `<div class="doc-ghost-pane"><h3>No ${esc(dt.name)} yet</h3><p>${esc(dt.hint)}</p><button type="button" class="btn btn-primary" id="btn-ghost-add">+ ${esc(dt.name)}</button></div>`;
+  bodyEl.innerHTML = `<div class="doc-ghost-pane"><h3>No ${esc(dt.name)} yet</h3><p>${esc(dt.hint)}</p><button type="button" class="btn b-primary" id="btn-ghost-add">+ ${esc(dt.name)}</button></div>`;
   document.getElementById('btn-ghost-add').addEventListener('click', () => startGhostEdit(t, dt.slug));
 }
 
@@ -796,7 +796,7 @@ export function refreshModalActions(t) {
   dv.hidden = !info;
   const locked = t.status === 'closed' || t.status === 'cancelled';
   document.getElementById('m-actions').innerHTML = locked ? '' : `
-    <button class="btn btn-danger" id="act-discard" title="Move this ticket to Discarded when the work is abandoned or no longer needed.">Discard ticket ✕</button>
+    <button class="btn b-danger" id="act-discard" title="Move this ticket to Discarded when the work is abandoned or no longer needed.">Discard ticket ✕</button>
   `;
   document.getElementById('act-discard')?.addEventListener('click', () => {
     if (confirm('Discard this ticket? Use Discard only when the work is abandoned or no longer needed.')) {

@@ -1505,8 +1505,9 @@ _merge_pr_run_tests() {
     (( now - last >= every )) || continue; last=$now
     # The newest line as a terminal would show it: after its last carriage return, escape sequences and controls removed.
     line="$(tail -n 1 "$tmp/test.log" 2>/dev/null | awk -F'\r' '{ print $NF }' | LC_ALL=C sed $'s/\033\\[[0-9;?]*[A-Za-z]//g' | LC_ALL=C tr -d '\000-\037\177' | cut -c1-50)"
-    if $tty; then printf '\rmerge-pr: running %s on %s + PR #%s… %dm%02ds  (%s)\033[K' "$shown" "$base" "$pr" $((now / 60)) $((now % 60)) "$line"
-    else printf 'merge-pr: running %s on %s + PR #%s… %dm%02ds  (%s)\n' "$shown" "$base" "$pr" $((now / 60)) $((now % 60)) "$line"; fi
+    [[ -n "$line" ]] && line="  ($line)"   # t-e523: no empty "()" before the test log has a line
+    if $tty; then printf '\rmerge-pr: running %s on %s + PR #%s… %dm%02ds%s\033[K' "$shown" "$base" "$pr" $((now / 60)) $((now % 60)) "$line"
+    else printf 'merge-pr: running %s on %s + PR #%s… %dm%02ds%s\n' "$shown" "$base" "$pr" $((now / 60)) $((now % 60)) "$line"; fi
   done
   wait "$tpid" || rc=$?
   trap - INT TERM HUP

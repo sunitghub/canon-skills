@@ -52,7 +52,7 @@ export function showStaleEditNotice(t) {
     card.parentNode.insertBefore(n, card);
   }
   n.innerHTML = `⚠ This ${isDoc ? 'doc' : 'description'} changed since you opened it (the agent may have edited it). Your text is kept. `
-    + '<button type="button" class="doc-cancel-btn" id="stale-reload">Reload theirs</button> '
+    + '<button type="button" class="doc-cancel-btn b-neutral" id="stale-reload">Reload theirs</button> '
     + '<button type="button" class="doc-save-btn" id="stale-overwrite">Overwrite with mine</button>';
   n.querySelector('#stale-reload').onclick = async () => {
     const cur = await fetchCur();

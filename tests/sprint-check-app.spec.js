@@ -16,6 +16,8 @@ async function shots5a4b(page, name, locator) {
   }
 }
 const PROJECT_ROOT = process.env.SPRINT_CHECK_TEST_ROOT || process.cwd();
+// The computed rgb() of a theme variable in the page's current theme (t-e523: one probe, not one per test).
+const themeColor = (page, v) => page.evaluate(name => { const e = document.createElement('span'); e.style.color = `var(${name})`; document.body.append(e); const c = getComputedStyle(e).color; e.remove(); return c; }, v);
 
 // t-15d8: a test that needs its own board starts the Go board (the only board), built once per worker into a miniature
 // install: <tmp>/tools/sprint-check-bin/sprint-check (the name an install uses, so test.sh's leak check sees it) beside a
@@ -4953,7 +4955,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator('#add-open').click();
       await page.locator('#addPath').fill('/home/me/code');
       await page.locator('#addDesc').fill('demo');
-      await page.locator('#addModal .mfoot .btn.primary').click();
+      await page.locator('#addModal .mfoot .btn.b-primary').click();
       await expect.poll(() => added.length).toBe(1);
       expect(added[0]).toEqual({ path: '/home/me/code', description: 'demo' });
       await expect(page.locator('#addModal')).not.toHaveClass(/show/);
@@ -11859,14 +11861,12 @@ test.describe('Canon Cockpit Upkeep (t-7ae6)', () => {
     const sprint = regBtn(page, 'sprint'), eff = regBtn(page, 'efficiency');
     await expect(sprint).toBeVisible();
     await expect(page.locator('.regbtns[data-reg="proj-a"]')).toHaveAttribute('aria-live', 'polite');
-    // A visible + <skill> button means the skill is missing: idle border is the theme's red.
+    // A visible + <skill> button means the skill is missing. t-e523: registering deletes nothing, so it is a neutral
+    // button (buttons.css .b-neutral), not red.
     for (const theme of ['dark', 'light']) {
       await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
-      const red = await page.evaluate(() => {
-        const probe = document.createElement('span'); probe.style.color = 'var(--col-discarded)'; document.body.appendChild(probe);
-        const c = getComputedStyle(probe).color; probe.remove(); return c;
-      });
-      expect(await sprint.evaluate(e => getComputedStyle(e).borderTopColor)).toBe(red);
+      const neutral = await themeColor(page, '--border');
+      expect(await sprint.evaluate(e => getComputedStyle(e).borderTopColor)).toBe(neutral);
       await page.locator('.regbtns[data-reg="proj-a"]').screenshot({ path: path.join(require('os').tmpdir(), `canon-regskill-needed-${theme}.png`) });
     }
     await sprint.click();
@@ -11883,10 +11883,7 @@ test.describe('Canon Cockpit Upkeep (t-7ae6)', () => {
     const seen = new Set();
     for (const theme of ['dark', 'light']) {
       await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
-      const accent = await page.evaluate(() => {   // --accent resolved to rgb() the same way the spinner's colour is
-        const probe = document.createElement('span'); probe.style.color = 'var(--accent)'; document.body.appendChild(probe);
-        const c = getComputedStyle(probe).color; probe.remove(); return c;
-      });
+      const accent = await themeColor(page, '--accent');   // resolved to rgb() the same way the spinner's colour is
       const spin = await sprint.locator('.reg-spin').evaluate(e => getComputedStyle(e).borderTopColor);
       expect(spin).toBe(accent);
       seen.add(spin);
@@ -13055,7 +13052,7 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
       await page.goto(BASE + '/cockpit');
       await page.waitForLoadState('networkidle');
       await page.locator('#nav-admin').click();
-      await page.locator('.mt-grid .mt-card', { hasText: 'New Model' }).locator('.danger').click();
+      await page.locator('.mt-grid .mt-card', { hasText: 'New Model' }).locator('.b-danger').click();
       await expect(page.locator('#cconfirm')).toHaveClass(/show/);
       await page.locator('#cc-ok').click(); // confirm the Remove dialog
       await expect(page.locator('.mt-grid .mt-card')).toHaveCount(seeded);
@@ -14301,7 +14298,7 @@ test.describe('ticket modal polish (t-612f)', () => {
     expect(await look(a)).toEqual(await look(b));                                           // same as an unselected neighbour
     await page.keyboard.press('Tab');                                                       // keyboard modality, then focus the card
     await page.locator(`.card[data-id="${a}"]`).focus();
-    const accent = await page.evaluate(() => { const p = document.createElement('i'); p.style.color = 'var(--accent)'; document.body.appendChild(p); const c = getComputedStyle(p).color; p.remove(); return c; });
+    const accent = await themeColor(page, '--accent');
     await expect.poll(async () => (await look(a)).b).toBe(accent);                         // the border fades in, so poll
     const f = await look(a);
     expect(f.s).not.toBe('none');
@@ -15663,5 +15660,162 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('.column', { has: card }).locator('.col-title, .column-title, h2').first()).toContainText(/open/i);
     await expect(card.locator('.card-gh-chip')).toHaveCount(0);
     await expect(card.locator('.card-start')).toHaveText(/Start/);
+  });
+
+  // ── t-e523: one rule per button role (static/buttons.css), and the GitHub dialog's log, progress line, size and closing ──
+  // Prod path: every Close/Cancel/Stop on the board and the Cockpit shell, and the board's GitHub dialog.
+  const ROLES = ['b-neutral', 'b-danger', 'b-primary'];
+  // a button's colours at rest or under the pointer
+  const colors = (loc) => loc.evaluate(e => { const s = getComputedStyle(e); return { color: s.color, border: s.borderTopColor }; });
+  async function expectRole(page, loc, role) {
+    const want = role === 'b-danger' ? await themeColor(page, '--col-discarded') : await themeColor(page, '--text');
+    const wantBorder = role === 'b-danger' ? want : await themeColor(page, '--border-hover');
+    await page.mouse.move(0, 0);   // a click just before can leave the pointer where this button now is
+    // both roles are neutral at rest: body text and the theme's border (a `border: 1px solid` shorthand would reset it)
+    await expect.poll(() => colors(loc)).toEqual({ color: await themeColor(page, '--text-body'), border: await themeColor(page, '--border') });
+    await loc.hover();
+    await expect.poll(() => colors(loc)).toEqual({ color: want, border: wantBorder });
+    await page.mouse.move(0, 0);
+  }
+
+  test('Close and Cancel share the neutral hover, Stop the red one, in Canon Dark and Light (t-e523)', async ({ page }) => {
+    const id = `t-gh-e523a-${Date.now()}`;
+    const { job, button } = await mergeFlow(page, id);
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+      await button.click();
+      await expect(page.locator('#gh-dialog-ok')).toHaveText('Run tests & merge');
+      await expectRole(page, page.locator('#gh-dialog-cancel'), 'b-neutral');   // Cancel
+      await page.locator('#gh-dialog-ok').click();
+      await expect(page.locator('#gh-dialog-cancel')).toHaveText('Stop');
+      await expect(page.locator('#gh-dialog-cancel')).toHaveClass(/\bb-danger\b/);
+      await expectRole(page, page.locator('#gh-dialog-cancel'), 'b-danger');    // Stop
+      Object.assign(job, { status: 'done', exit_code: 1, output: 'failed\n' });
+      await expect(page.locator('#gh-dialog-cancel')).toHaveText('Close');
+      await expect(page.locator('#gh-dialog-cancel')).not.toHaveClass(/\bb-danger\b/);
+      await expectRole(page, page.locator('#gh-dialog-cancel'), 'b-neutral');   // Close
+      await page.locator('#gh-dialog-cancel').click();
+      Object.assign(job, { status: 'idle', output: '', exit_code: null });
+    }
+    // every converted board button carries exactly one role, so none falls back to an uncoloured border
+    const missing = await page.evaluate(roles => [...document.querySelectorAll('.btn, .ck-leave-btn, .modal-close, .doc-cancel-btn')]
+      .filter(e => roles.filter(r => e.classList.contains(r)).length !== 1).map(e => e.id || e.className), ROLES);
+    expect(missing).toEqual([]);
+  });
+
+  test('the Cockpit shell uses the same roles: Cancel neutral, a danger confirm red only on hover (t-e523)', async ({ page }) => {
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+      await page.evaluate(async () => { const { cockpitConfirm } = await import('/static/cockpit-core.js'); cockpitConfirm({ title: 'Stop it?', okLabel: 'Stop', danger: true }); });
+      await expect(page.locator('#cconfirm')).toHaveClass(/show/);
+      await expect(page.locator('#cc-ok')).toHaveClass(/\bb-danger\b/);
+      await expectRole(page, page.locator('#cc-cancel'), 'b-neutral');
+      await expectRole(page, page.locator('#cc-ok'), 'b-danger');
+      await page.locator('#cc-cancel').click();
+      await expect(page.locator('#cconfirm')).not.toHaveClass(/show/);
+    }
+    const missing = await page.evaluate(roles => [...document.querySelectorAll('.btn, .help-close, .dstop')]
+      .filter(e => roles.filter(r => e.classList.contains(r)).length !== 1).map(e => e.id || e.className), ROLES);
+    expect(missing).toEqual([]);
+  });
+
+  test('the merge log shows 16 lines, follows new output unless scrolled up, and keeps one live progress line (t-e523)', async ({ page }) => {
+    const id = `t-gh-e523b-${Date.now()}`;
+    const { job, button } = await mergeFlow(page, id);
+    const pre = page.locator('#gh-dialog-pre');
+    const lines = n => Array.from({ length: n }, (_, i) => `line ${i + 1}`).join('\n');
+    const tick = s => `merge-pr: running scripts/test.sh on main + PR #58… 0m${String(s).padStart(2, '0')}s  (suite ${s}: ok)`;
+    await button.click();
+    await page.locator('#gh-dialog-ok').click();
+    Object.assign(job, { output: `${lines(40)}\n${tick(5)}\n${tick(10)}\n` });
+    await expect(pre).toContainText('line 40');
+    const box = await pre.evaluate(e => { const s = getComputedStyle(e); return { h: e.clientHeight, sh: e.scrollHeight, lh: parseFloat(s.lineHeight), oy: s.overflowY }; });
+    expect(box.oy).toBe('scroll');
+    expect(box.sh).toBeGreaterThan(box.h);
+    expect(box.h).toBeLessThanOrEqual(16 * box.lh + 22);
+    expect(box.h).toBeGreaterThan(14 * box.lh);
+    // one live progress line: the newest of a run of them, everything else kept in order
+    await expect(pre).toContainText(tick(10));
+    await expect(pre).not.toContainText(tick(5));
+    const atBottom = () => pre.evaluate(e => e.scrollTop + e.clientHeight >= e.scrollHeight - 4);
+    await expect.poll(atBottom).toBe(true);
+    // scrolled up: new output does not pull the view down
+    await pre.evaluate(e => { e.scrollTop = 0; });
+    Object.assign(job, { output: `${lines(60)}\n${tick(15)}\n` });
+    await expect(pre).toContainText('line 60');
+    expect(await pre.evaluate(e => e.scrollTop)).toBe(0);
+    // back at the bottom: it follows again
+    await pre.evaluate(e => { e.scrollTop = e.scrollHeight; });
+    Object.assign(job, { output: `${lines(80)}\n${tick(20)}\n` });
+    await expect(pre).toContainText('line 80');
+    await expect.poll(atBottom).toBe(true);
+    await expect(pre).toContainText(tick(20));
+    await expect(pre).not.toContainText(tick(15));
+  });
+
+  test('the GitHub dialog moves by its title, resizes from its corner, and opens at its default place again (t-e523)', async ({ page }) => {
+    await page.route('**/api/github/sync-preview**', r => json(r, { ok: true, exit_code: 0, output: Array.from({ length: 40 }, (_, i) => `skip  #${i}  already t-0000`).join('\n') + '\ndry run: 0 to create, nothing written\n' }));
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    const box = page.locator('#gh-dialog-box'), pre = page.locator('#gh-dialog-pre');
+    await page.locator('#btn-gh-sync').click();
+    await expect(page.locator('#gh-dialog-body')).toHaveText('Nothing to create.');
+    const start = await box.boundingBox(), preStart = await pre.boundingBox();
+    const title = await page.locator('#gh-dialog-title').boundingBox();
+    await page.mouse.move(title.x + 20, title.y + title.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(title.x + 100, title.y + title.height / 2 + 40, { steps: 5 });
+    await page.mouse.up();
+    const moved = await box.boundingBox();
+    expect(Math.round(moved.x - start.x)).toBe(80);
+    expect(Math.round(moved.y - start.y)).toBe(40);
+    const corner = await page.locator('#gh-dialog-box .modal-resize-handle').boundingBox();
+    await page.mouse.move(corner.x + corner.width / 2, corner.y + corner.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(corner.x + corner.width / 2 + 60, corner.y + corner.height / 2 + 120, { steps: 5 });
+    await page.mouse.up();
+    const grown = await box.boundingBox(), preGrown = await pre.boundingBox();
+    expect(grown.width).toBeGreaterThan(moved.width + 40);
+    expect(grown.height).toBeGreaterThan(moved.height + 80);
+    expect(preGrown.height).toBeGreaterThan(preStart.height + 60);   // the log takes the new room
+    await page.locator('#gh-dialog-cancel').click();
+    await page.locator('#btn-gh-sync').click();
+    await expect(page.locator('#gh-dialog-body')).toHaveText('Nothing to create.');
+    const again = await box.boundingBox();
+    expect([Math.round(again.x), Math.round(again.y), Math.round(again.width), Math.round(again.height)])
+      .toEqual([Math.round(start.x), Math.round(start.y), Math.round(start.width), Math.round(start.height)]);
+  });
+
+  test('the GitHub dialog ignores a click outside it, and Escape while a step runs (t-e523)', async ({ page }) => {
+    let release;
+    const held = new Promise(r => { release = r; });
+    await page.route('**/api/github/sync-preview**', async r => { await held; return json(r, { ok: true, exit_code: 0, output: 'dry run: 0 to create, nothing written\n' }); });
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    const dlg = page.locator('#gh-dialog');
+    await page.locator('#btn-gh-sync').click();
+    await expect(dlg).toHaveClass(/open/);
+    await page.keyboard.press('Escape');               // the dry run is still running
+    await page.mouse.click(5, 5);                       // the overlay, outside the box
+    await page.waitForTimeout(200);
+    await expect(dlg).toHaveClass(/open/);
+    release();
+    await expect(page.locator('#gh-dialog-body')).toHaveText('Nothing to create.');
+    await page.mouse.click(5, 5);
+    await expect(dlg).toHaveClass(/open/);              // done, and still only its own buttons or Escape close it
+    await page.keyboard.press('Escape');
+    await expect(dlg).not.toHaveClass(/open/);
+  });
+
+  test('a board tab names its project with aria-label, not a title tooltip (t-e523)', async ({ page }) => {
+    await page.route('**/api/projects', r => json(r, [{ id: 'proj-e523', path: '/tmp/proj-e523', name: 'proj-e523', description: '', added: '2026-10-21' }]));
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    await page.evaluate(async () => { const { openProject } = await import('/static/cockpit-tabs.js'); openProject('proj-e523', 'proj-e523'); });
+    const frame = page.locator('#view-proj-e523 iframe');
+    await expect(frame).toHaveAttribute('aria-label', 'proj-e523');
+    expect(await frame.getAttribute('title')).toBeNull();
   });
 });

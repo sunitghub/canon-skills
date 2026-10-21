@@ -144,7 +144,7 @@ export function renderTabStrip() {
     return `<span class="ck-tab-pill${id === activeTabId ? ' active' : ''}" data-tab-id="${esc(id)}">`
       + (needsYou ? '<span class="ck-tab-pill-needsyou" title="Agent is waiting on you"></span>' : '')
       + `<span class="ck-tab-pill-id">${esc(label)}</span>`
-      + `<button class="ck-tab-pill-close" data-tab-id="${esc(id)}" title="Close tab (session stays running)" type="button">×</button>`
+      + `<button class="ck-tab-pill-close b-neutral" data-tab-id="${esc(id)}" title="Close tab (session stays running)" type="button">×</button>`
       + `</span>`;
   }).join('');
   for (const containerId of ['ck-tab-strip', 'ck-tab-strip-topbar']) {

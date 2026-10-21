@@ -30,7 +30,15 @@
   font-family: var(--mono, monospace); font-size: 11.5px; line-height: 1.5;
   background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; color: var(--text);
 }
-.gh-dialog-pre { max-height: 40vh; margin-top: 10px; }
+.gh-dialog-pre { max-height: calc(16 * 1.5em + 22px); margin-top: 10px; overflow-y: scroll; }   /* t-e523: 16 lines, then scroll */
+/* t-e523: the dialog moves by its title and resizes from its corner (board-panels.js); a resized dialog's log takes the room */
+#gh-dialog-box {
+  position: relative; display: flex; flex-direction: column; max-height: calc(100vh - 32px);
+  transform: translate(var(--drag-x, 0px), var(--drag-y, 0px));
+}
+#gh-dialog-title { cursor: move; }
+#gh-dialog-box[style*="height"] .gh-dialog-pre { max-height: none; flex: 1 1 auto; min-height: 0; }
+#gh-dialog-box[style*="width"] { max-width: none; }
 .ck-gh-prompt { max-height: none; font-size: 12.5px; }
 /* t-093a: send-issue's warnings, shown as a note (the send is not blocked); the same warn tokens as the board's toasts. */
 .ck-gh-note { border: 1px solid var(--th-warn-line, rgba(251,191,36,.35)); background: var(--th-warn-soft, rgba(251,191,36,.07)); border-radius: 8px; padding: 8px 12px; }

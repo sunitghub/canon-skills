@@ -31,10 +31,7 @@
       color: var(--text); font-size: 12px; font-weight: 600; cursor: pointer;
       transition: background .1s, border-color .1s;
     }
-    .btn:hover    { background: var(--surface-hover); border-color: var(--border-hover); }
     .btn:disabled { opacity: .3; cursor: not-allowed; }
-    .btn-danger   { color: var(--th-bad, #f87171); }
-    .btn-danger:hover { background: var(--th-bad-soft, rgba(248,113,113,.1)); border-color: var(--th-bad-line, rgba(248,113,113,.3)); }
 
     .theme-toggle {
       width: 28px; height: 28px; border-radius: 6px;

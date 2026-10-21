@@ -211,6 +211,12 @@ CANON_PROGRESS_SECONDS=1 "$TKT" merge-pr "$id" --pr 7 --yes --test 'echo "${CANO
   || fail "a run with CANON_PROGRESS_SECONDS set failed"
 assert_eq "unset" "$(cat "$W/progress-env" 2>/dev/null)"
 sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
+# t-e523: before the test log has a line, the progress line ends at the time, with no empty "()".
+: > "$STUB_LOG"
+out="$(CANON_PROGRESS_SECONDS=1 "$TKT" merge-pr "$id" --pr 7 --yes --test 'sleep 2' 2>&1)" || fail "a silent suite run failed: $out"
+assert_contains "$out" "merge-pr: running sleep 2 on main + PR #7… 0m0"
+[[ "$out" != *"()"* ]] || fail "an empty test log printed (): $out"
+sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
 # An interrupt (TERM, or HUP: a closed terminal) stops the whole test run, its children included, says so, merges nothing.
 for sig_name in TERM HUP; do
   : > "$STUB_LOG"; rm -f "$W/child.pid"; before="$(sig)"

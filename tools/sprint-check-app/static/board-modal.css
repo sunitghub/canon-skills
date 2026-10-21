@@ -68,11 +68,9 @@
     }
     .modal-close {
       width: 28px; height: 28px; border-radius: 6px;
-      border: 1px solid var(--border); background: transparent;
       cursor: pointer; display: flex; align-items: center; justify-content: center;
-      color: var(--text-muted); font-size: 14px; transition: background .1s; flex-shrink: 0;
+      font-size: 14px; flex-shrink: 0;
     }
-    .modal-close:hover { background: var(--surface-raised); color: var(--text); }
 
     .modal-meta {
       display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
@@ -165,10 +163,8 @@
     .doc-save-btn:hover { opacity: .85; }
     .doc-cancel-btn {
       padding: 5px 13px; border-radius: 999px; font-size: 12px; font-weight: 600;
-      border: 1px solid var(--border); background: transparent;
-      color: var(--text-muted); cursor: pointer; transition: background .1s, color .1s;
+      cursor: pointer;
     }
-    .doc-cancel-btn:hover { background: var(--surface-hover); color: var(--text); }
     .doc-locked-badge {
       font-size: 11px; color: var(--text-body);
       display: flex; align-items: center; gap: 5px;
@@ -371,10 +367,6 @@
     }
     .editor-mirror { position: absolute; left: -9999px; top: 0; visibility: hidden; white-space: pre-wrap; overflow-wrap: break-word; padding: 0; }
     .editor-kb-hint { font-size: 11px; color: var(--text-dim); padding: 3px 2px 0; opacity: .7; }
-    .btn-primary {
-      background: var(--accent); border-color: var(--accent); color: var(--th-on-accent, #fff);
-    }
-    .btn-primary:hover { background: var(--accent); opacity: .85; }
     .modal-empty { color: var(--text-dim); font-style: italic; }
     .acceptance-warning {
       background: var(--th-bad-soft, rgba(248,113,113,.09));

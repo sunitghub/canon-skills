@@ -78,7 +78,7 @@ function ghRender(res){
   count.textContent=`Checks · ${checks.filter(c=>c.status!=='bad').length} of ${checks.length} ready`;
   box.innerHTML=checks.map((c,i)=>{
     const f=c.fix||{};
-    const fix=f.cmd?`<code>${esc(f.cmd)}</code><button type="button" class="btn primary" data-gh-copy="${escAttr(f.cmd)}">Copy</button>`
+    const fix=f.cmd?`<code>${esc(f.cmd)}</code><button type="button" class="btn b-primary" data-gh-copy="${escAttr(f.cmd)}">Copy</button>`
       :/^https:\/\//.test(f.url||'')?`<a href="${escAttr(f.url)}" target="_blank" rel="noopener">${esc(f.url)} \u2197</a>`:'';
     // numbered like the steps below; the fix sits under the text so a long command never squeezes the title
     return `<div class="gh-row gh-${escAttr(c.status)}" data-check="${escAttr(c.id)}"><i></i><em class="gh-n">${i+1}.</em><div><b>${esc(c.title)}</b><span>${esc(c.detail||'')}</span>${fix?`<div class="gh-fix">${fix}</div>`:''}</div></div>`;

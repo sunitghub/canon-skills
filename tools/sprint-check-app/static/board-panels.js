@@ -108,9 +108,9 @@ export function resetPanelResize(panel) {
   panel.style.height = '';
 }
 
-function makePanelDraggable(panelId) {
+function makePanelDraggable(panelId, headerSelector = '.modal-header') {
   const panel = document.getElementById(panelId);
-  const header = panel?.querySelector('.modal-header');
+  const header = panel?.querySelector(headerSelector);
   if (!panel || !header) return;
 
   const sideHandles = [...(panel.querySelectorAll('.modal-side-drag') || [])];
@@ -340,6 +340,8 @@ export function initPanels() {
   makePanelDraggable('create-modal');
   makePanelResizable('modal');
   makePanelResizable('create-modal');
+  makePanelDraggable('gh-dialog-box', '#gh-dialog-title');   // t-e523: the GitHub dialog moves by its title
+  makePanelResizable('gh-dialog-box');
 
   // Delegated handler — fires once, lives on #m-body permanently
   document.getElementById('m-body').addEventListener('click', async e => {

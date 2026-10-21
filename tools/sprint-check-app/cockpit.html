@@ -15,6 +15,7 @@
 <link rel="stylesheet" href="/static/cockpit-upkeep.css">
 <link rel="stylesheet" href="/static/cockpit-projects.css">
 <link rel="stylesheet" href="/static/cockpit-factory.css">
+<link rel="stylesheet" href="/static/buttons.css">
 <script src="/static/theme-boot.js" data-page="shell"></script>
 </head>
 <body>
@@ -57,7 +58,7 @@
         <div id="panebar" class="panebar"></div>
         <div id="split-handle" role="separator" tabindex="0" aria-label="Resize the split panes" aria-orientation="vertical" aria-valuemin="50" aria-valuemax="50" aria-valuenow="50"></div>
         <section id="view-projects" class="view active">
-          <div class="projbar"><h2>Projects</h2><span class="n" id="ncount"></span><span class="sp"></span><button class="btn primary" id="add-open">+ Add Project</button></div>
+          <div class="projbar"><h2>Projects</h2><span class="n" id="ncount"></span><span class="sp"></span><button class="btn b-primary" id="add-open">+ Add Project</button></div>
           <div id="grid" class="grid"></div>
         </section>
         <section id="view-admin" class="view">
@@ -81,7 +82,7 @@
                 <div class="drow"><span class="k">Daemon Uptime</span><span class="v" id="ad-uptime">—</span></div>
                 <div class="dhint" id="ad-daemon-hint">—</div>
                 <div class="dbtnrow">
-                  <button class="dstop" id="ad-stop">&#9632; Stop Daemon</button>
+                  <button class="dstop b-danger" id="ad-stop">&#9632; Stop Daemon</button>
                   <button class="drestart" id="ad-restart">&#8635; Restart Daemon</button>
                 </div>
               </div>
@@ -164,7 +165,7 @@
                 <div class="setting-k" id="fac-gh-count">Checks</div>
                 <div class="setting-d">Canon never stores a GitHub token or logs you in. It runs <code>gh</code> as you, reads the answers, and tells you the command to run yourself.</div>
                 <div id="fac-gh-checks"></div>
-                <div class="gh-actions"><button type="button" class="btn primary" id="fac-gh-recheck">Check again</button></div>
+                <div class="gh-actions"><button type="button" class="btn b-primary" id="fac-gh-recheck">Check again</button></div>
               </div>
               <div class="gh-card" id="fac-intake">
                 <div class="setting-k">Intake &middot; issues become tickets</div>
@@ -181,7 +182,7 @@
                   <dt>Waiting</dt><dd id="fac-in-wait">&mdash;</dd>
                 </dl>
                 <div class="setting-d">A different flag belongs to the planned Agentic factory: <code>factory: true</code> on a ticket means run the line on it. <code>canon</code> only makes a ticket.</div>
-                <div class="gh-actions"><button type="button" class="btn primary" id="fac-in-board" title="Sync from GitHub is a button on this project's board">Open board &rsaquo;</button></div>
+                <div class="gh-actions"><button type="button" class="btn b-primary" id="fac-in-board" title="Sync from GitHub is a button on this project's board">Open board &rsaquo;</button></div>
               </div>
               <div class="gh-card" id="fac-cloud">
                 <div class="setting-k">Cloud environment &middot; set up once</div>
@@ -191,8 +192,8 @@
                 <div class="fac-subpanel" id="fac-cloud-claude" role="tabpanel" aria-labelledby="fac-cloud-tab-claude">
                 <ol class="gh-steps">
                   <li><b>Create the environment.</b> In Claude (desktop &rsaquo; Code, or claude.ai/code): New session &rsaquo; Choose environment &rsaquo; Cloud. Name it <code>canon</code>.</li>
-                  <li><b>Network access: Custom</b>, and tick <i>Also include default list of common package managers</i>. <button type="button" class="btn primary" id="fac-gh-copy-domains">Copy domains</button><div class="gh-chips" id="fac-gh-domains"></div><div class="setting-d fac-domains-note">These are canon's (the Go ones only for a Go project). Add your own stack's domains, an npm or PyPI mirror for example, yourself.</div></li>
-                  <li><b>Setup script</b>: installs canon's latest verified release, its commands and both gate agents (and, for a Go project, the Go version canon pins). <button type="button" class="btn primary" id="fac-gh-copy-script">Copy setup script</button></li>
+                  <li><b>Network access: Custom</b>, and tick <i>Also include default list of common package managers</i>. <button type="button" class="btn b-primary" id="fac-gh-copy-domains">Copy domains</button><div class="gh-chips" id="fac-gh-domains"></div><div class="setting-d fac-domains-note">These are canon's (the Go ones only for a Go project). Add your own stack's domains, an npm or PyPI mirror for example, yourself.</div></li>
+                  <li><b>Setup script</b>: installs canon's latest verified release, its commands and both gate agents (and, for a Go project, the Go version canon pins). <button type="button" class="btn b-primary" id="fac-gh-copy-script">Copy setup script</button></li>
                   <li><b>Secrets:</b> none.</li>
                 </ol>
                 </div>
@@ -244,7 +245,7 @@
     <label>Project folder (absolute path)</label>
     <div class="pathrow">
       <input id="addPath" placeholder="/Users/you/Developer/my-project" autocomplete="off">
-      <button type="button" class="btn browse-btn" id="add-browse">Browse…</button>
+      <button type="button" class="btn b-neutral browse-btn" id="add-browse">Browse…</button>
     </div>
     <div class="dirnav" id="dirnav" style="display:none">
       <div class="dirnav-head">
@@ -252,7 +253,7 @@
       </div>
       <div class="dirnav-controls">
         <label class="dirnav-hidden-lbl"><input type="checkbox" id="dirnav-hidden"> Show hidden</label>
-        <button type="button" class="btn dirnav-use" id="add-use-dir">Use this folder</button>
+        <button type="button" class="btn b-neutral dirnav-use" id="add-use-dir">Use this folder</button>
       </div>
       <div class="dirnav-list" id="dirnav-list"></div>
     </div>
@@ -260,8 +261,8 @@
     <textarea id="addDesc" placeholder="What is this project?"></textarea>
     <div class="err" id="addErr"></div>
     <div class="mfoot">
-      <button class="btn" id="add-cancel">Cancel</button>
-      <button class="btn primary" id="add-submit">Add Project</button>
+      <button class="btn b-neutral" id="add-cancel">Cancel</button>
+      <button class="btn b-primary" id="add-submit">Add Project</button>
     </div>
   </div>
 </div>
@@ -275,9 +276,9 @@
     <h2>Agent still running in this tab</h2>
     <p id="closeWarnMsg">This tab has a live agent session. Closing it will end the session. Save the sprint state first, or keep working.</p>
     <div class="cfoot">
-      <button class="btn" id="cw-keep">Keep working</button>
-      <button class="btn ghost" id="cw-end">End without saving</button>
-      <button class="btn primary" id="cw-save">Save &amp; End</button>
+      <button class="btn b-neutral" id="cw-keep">Keep working</button>
+      <button class="btn b-danger" id="cw-end">End without saving</button>
+      <button class="btn b-primary" id="cw-save">Save &amp; End</button>
     </div>
   </div>
 </div>
@@ -319,7 +320,7 @@
         </table>
       </section>
     </div>
-    <div class="cfoot"><button class="btn" id="keys-close">Close</button></div>
+    <div class="cfoot"><button class="btn b-neutral" id="keys-close">Close</button></div>
   </div>
 </div>
 <div class="keyhint" id="keyhint" role="status" aria-live="polite"></div>
@@ -335,11 +336,11 @@
     <p id="cc-body"></p>
     <div class="cc-code" id="cc-code-wrap" style="display:none">
       <input id="cc-code" readonly>
-      <button type="button" class="btn" id="cc-copy">Copy</button>
+      <button type="button" class="btn b-neutral" id="cc-copy">Copy</button>
     </div>
     <div class="cfoot">
-      <button type="button" class="btn ghost" id="cc-cancel">Cancel</button>
-      <button type="button" class="btn primary" id="cc-ok">OK</button>
+      <button type="button" class="btn b-neutral" id="cc-cancel">Cancel</button>
+      <button type="button" class="btn b-primary" id="cc-ok">OK</button>
     </div>
   </div>
 </div>
@@ -352,7 +353,7 @@
         <div class="help-title">Canon Cockpit</div>
         <div class="help-sub">one window for every canon project · local · no account</div>
       </div>
-      <button class="help-close" id="help-close" title="Close">&#10005;</button>
+      <button class="help-close b-neutral" id="help-close" title="Close">&#10005;</button>
     </div>
     <div class="help-body">
       <div class="help-sect">One window</div>

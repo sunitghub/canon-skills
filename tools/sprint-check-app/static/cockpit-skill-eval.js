@@ -41,7 +41,7 @@ function seResult(st){
   const cases=(m.cases||[]).map(c=>`<div class="se-case"><div class="id mono">${esc(c.name)}</div><div>`
     +`<div class="se-bar" title="with the skill"><i class="w" style="width:${Math.round((c.with||0)*100)}%"></i><span>${num(c.with)}</span></div>`
     +`<div class="se-bar" title="without the skill"><i class="b" style="width:${Math.round((c.without||0)*100)}%"></i><span>${num(c.without)}</span></div></div></div>`).join('');
-  const link=st.report_path?`<a class="btn" href="/api/skill-eval/report.html?${seQuery()}" target="_blank" rel="noopener">Open full report</a>`:'';
+  const link=st.report_path?`<a class="btn b-neutral" href="/api/skill-eval/report.html?${seQuery()}" target="_blank" rel="noopener">Open full report</a>`:'';
   const when=upFmtWhen(st.finished_at);
   return `<div class="se-tiles">`
     +`<div class="se-tile"><div class="k">With the skill</div><div class="v">${pct(m.overallScore)}</div></div>`
@@ -73,17 +73,17 @@ export function seRender(){
   let h=`<div class="rc-top"><div class="rc-icon">&#9878;</div><div class="rc-head"><div class="rc-title">Skill Eval</div>`
     +`<p class="rc-desc">Check that a skill ships evals and follows Anthropic's authoring rules, then measure it with and without the skill.</p></div>${upHelpBtn('skill-eval')}</div>`;
   if(se.avail===false){
-    el.innerHTML=h+`<div class="se-pick"><button class="btn" disabled>Browse…</button></div>`
+    el.innerHTML=h+`<div class="se-pick"><button class="btn b-neutral" disabled>Browse…</button></div>`
       +`<div class="se-note">Skill Eval isn't available in this build of the board (the Go build used on Windows). See README → Windows: what's different.</div>`;
     upHelpSync();
     return;
   }
-  h+=`<div class="se-pick"><button class="btn se-browse">Browse…</button>`
+  h+=`<div class="se-pick"><button class="btn b-neutral se-browse">Browse…</button>`
     +`<span class="se-path">${se.dir?esc(se.dir):'Pick a skill folder inside '+esc(proj?proj.name:'the project')+' (the folder that contains SKILL.md)'}</span></div>`;
   if(se.open){
     h+=`<div class="dirnav"><div class="dirnav-head"><span class="dirnav-path" title="${escAttr(se.cwd)}">${esc(se.cwd||'…')}</span></div>`
       +`<div class="dirnav-controls"><label class="dirnav-hidden-lbl"><input type="checkbox" class="se-hidden" ${se.hidden?'checked':''}> Show hidden</label>`
-      +`<button class="btn dirnav-use se-use">Use this folder</button></div><div class="dirnav-list" id="se-list"></div></div>`;
+      +`<button class="btn b-neutral dirnav-use se-use">Use this folder</button></div><div class="dirnav-list" id="se-list"></div></div>`;
   }
   if(se.err) h+=`<div class="se-err">${esc(se.err)}</div>`;
   if(c){
@@ -99,7 +99,7 @@ export function seRender(){
       h+=`<div class="se-note">Fix the failing check${(w1==='fail'&&w2==='fail')?'s':''} above to unlock this stage. Nothing has been run or spent.</div>`;
     }else{
       h+=`<div class="rc-config"><select class="rc-select" id="se-model" title="Model"${running?' disabled':''}><option value="claude-haiku-4-5-20251001" selected>Haiku 4.5</option><option value="claude-sonnet-5">Sonnet 5</option></select>`
-        +`<button class="btn primary se-run"${(running||(trust.length&&!se.trust))?' disabled':''}>${running?'Running…':(se.run&&se.run.status==='done'?'&#8635; Run again':'&#9654; Run plugin eval')}</button>`
+        +`<button class="btn b-primary se-run"${(running||(trust.length&&!se.trust))?' disabled':''}>${running?'Running…':(se.run&&se.run.status==='done'?'&#8635; Run again':'&#9654; Run plugin eval')}</button>`
         +((trust.length&&!se.trust&&!running)?'<span class="se-note">Tick the box below to enable Run.</span>':'')+'</div>';
       if(trust.length) h+=`<label class="se-note se-ack"><input type="checkbox" class="se-trust" ${se.trust?'checked':''}> This skill runs hooks or shell commands (${esc(trust.map(t=>t.id).join(', '))}). I have reviewed them and want to run it anyway.</label>`;
       if(se.run&&se.run.status==='done') h+='<div style="margin-top:12px">'+seResult(se.run)+'</div>';

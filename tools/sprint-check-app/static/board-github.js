@@ -7,6 +7,7 @@ import { closeTab, cockpitState } from './board-cockpit.js';
 import { esc, escAttr } from './board-helpers.js';
 import { render, showToast } from './board-render.js';
 import { loadData, SHELL_TAB } from './board-core.js';
+import { resetPanelDrag, resetPanelResize } from './board-panels.js';
 
 const POLL_MS = 120000;          // github-status per card out on GitHub; the server caches each for 30 s
 const MERGE_POLL_MS = 2000;
@@ -107,11 +108,11 @@ async function openPr(t, p, st) {
     ok: 'Create PR', cancel: 'Cancel',
   });
   if (!(await ask).ok) return;
-  const run = openDialog({ title: `Creating a PR for ${t.id}…`, pre: 'Running tkt open-pr…', cancel: 'Close' });
+  const run = openDialog({ title: `Creating a PR for ${t.id}…`, pre: 'Running tkt open-pr…', cancel: 'Close', escape: false });
   let res;
   try { res = await postJSON(ghApi(t.id, 'open-pr'), {}); }
   catch (e) { res = { ok: false, output: String(e.message || e) }; }
-  updateDialog({ title: res.ok ? 'PR created' : 'No PR created', body: res.ok ? '' : 'Nothing was created on GitHub.', pre: res.output || '' }, run.gen);
+  updateDialog({ title: res.ok ? 'PR created' : 'No PR created', body: res.ok ? '' : 'Nothing was created on GitHub.', pre: res.output || '', escape: true }, run.gen);
   statusById.delete(t.id);
   await pollGithub(true);
 }
@@ -151,25 +152,28 @@ function dialog() {
     checkLabel: document.getElementById('gh-dialog-check-label'),
     ok: document.getElementById('gh-dialog-ok'),
     cancel: document.getElementById('gh-dialog-cancel'),
+    box: document.getElementById('gh-dialog-box'),
   };
 }
 let dlgClose = null;
 let dlgGen = 0;          // which openDialog() the dialog shows: a late answer for an older one must not fill it
-let dlgEscape = true;    // a running merge stops only on a click of Stop, never on Escape
+let dlgEscape = true;    // t-e523: while a step runs, Escape does nothing; only the dialog's own buttons close it
+let dlgFollow = true;    // the log follows new output until the user scrolls up, and again once they scroll back down
 let dlgReturn = null;    // where focus goes back to when the dialog closes
 // Returns a promise of the choice; .gen is this dialog's number for updateDialog.
 function openDialog({ title, body = '', pre = '', check = '', ok = '', cancel = 'Close', escape = true }) {
   const d = dialog();
-  if (!d.el.classList.contains('open')) dlgReturn = document.activeElement;
+  if (!d.el.classList.contains('open')) { dlgReturn = document.activeElement; resetPanelDrag(d.box); resetPanelResize(d.box); }
   const gen = ++dlgGen;
   dlgEscape = escape;
+  dlgFollow = true;
   d.title.textContent = title;
   d.body.textContent = body;
-  d.pre.textContent = pre; d.pre.hidden = !pre;
+  d.pre.textContent = oneProgressLine(pre); d.pre.hidden = !pre; d.pre.scrollTop = d.pre.scrollHeight;
   d.check.checked = false; d.checkLabel.hidden = !check;
   d.checkLabel.querySelector('span').textContent = check;
   d.ok.textContent = ok; d.ok.hidden = !ok; d.ok.disabled = false;
-  d.cancel.textContent = cancel;
+  setCancel(d, cancel);
   d.el.classList.add('open');
   const done = new Promise(resolve => {
     dlgClose = v => {
@@ -190,18 +194,31 @@ function updateDialog(fields, gen) {
   const d = dialog();
   if ('title' in fields) d.title.textContent = fields.title;
   if ('body' in fields) d.body.textContent = fields.body;
-  if ('pre' in fields) { d.pre.textContent = fields.pre; d.pre.hidden = !fields.pre; d.pre.scrollTop = d.pre.scrollHeight; }
+  if ('pre' in fields) { d.pre.textContent = oneProgressLine(fields.pre); d.pre.hidden = !fields.pre; if (dlgFollow) d.pre.scrollTop = d.pre.scrollHeight; }
   if ('ok' in fields) {
     d.ok.textContent = fields.ok; d.ok.hidden = !fields.ok;
     if (fields.ok) d.ok.focus(); else if (document.activeElement === d.ok || !d.el.contains(document.activeElement)) d.cancel.focus();
   }
   if ('okDisabled' in fields) d.ok.disabled = fields.okDisabled;
-  if ('cancel' in fields) d.cancel.textContent = fields.cancel;
+  if ('cancel' in fields) setCancel(d, fields.cancel);
+  if ('escape' in fields) dlgEscape = fields.escape;
+}
+// Stop ends a running step (red on hover); Close and Cancel only close the dialog (buttons.css, t-e523).
+function setCancel(d, label) {
+  d.cancel.textContent = label;
+  d.cancel.classList.toggle('b-danger', label === 'Stop');
+  d.cancel.classList.toggle('b-neutral', label !== 'Stop');
+}
+// merge-pr prints a progress line every few seconds; the dialog shows only the newest of a run of them (t-e523).
+const PROGRESS = /^merge-pr: running .*… \d+m\d\ds/;
+export function oneProgressLine(text) {
+  const lines = String(text).split('\n');
+  return lines.filter((l, i) => !(PROGRESS.test(l) && PROGRESS.test(lines[i + 1] || ''))).join('\n');
 }
 
 // ── Import results ──────────────────────────────────────────────────────────────────────────────────────────────────
 async function importResults(t, pr) {
-  const shown = openDialog({ title: `Importing results for ${t.id}…`, pre: 'Running tkt import-results…', cancel: 'Close' });
+  const shown = openDialog({ title: `Importing results for ${t.id}…`, pre: 'Running tkt import-results…', cancel: 'Close', escape: false });
   let res;
   try { res = await postJSON(ghApi(t.id, 'import'), pr ? { pr } : {}); }
   catch (e) { res = { ok: false, output: String(e.message || e) }; }
@@ -211,7 +228,7 @@ async function importResults(t, pr) {
     body: res.ok ? 'Next: Check & merge on the card.'
       : noVerdict ? 'There is no passing evaluator verdict on the PR\'s head, so there is nothing to merge yet. Finish the close on this machine: check out the PR\'s branch, run the evaluator on its head and sprint complete, then Check & merge (docs/setup.md › Claude cloud sessions).'
       : 'Nothing was changed.',
-    pre: res.output || '',
+    pre: res.output || '', escape: true,
   }, shown.gen);
   statusById.delete(t.id);
   await loadData();
@@ -222,17 +239,17 @@ async function checkAndMerge(t, pr) {
   const prQ = pr ? `?pr=${encodeURIComponent(pr)}` : '';
   const prB = pr ? { pr } : {};
   if (mergeById.get(t.id)?.status === 'running') return followMerge(t, prB, true);
-  const open = openDialog({ title: `Check & merge${pr ? ` PR #${pr}` : ''}`, body: 'Running the checks that run none of the PR\'s code…', pre: '', ok: '', cancel: 'Cancel' });
+  const open = openDialog({ title: `Check & merge${pr ? ` PR #${pr}` : ''}`, body: 'Running the checks that run none of the PR\'s code…', pre: '', ok: '', cancel: 'Cancel', escape: false });
   let chk;
   try { chk = await getJSON(ghApi(t.id, 'merge-check') + prQ); }
   catch (e) { chk = { ok: false, output: String(e.message || e) }; }
   if (!chk.ok) {
-    updateDialog({ body: 'Not mergeable here. Nothing was run or changed.', pre: chk.output || '', cancel: 'Close' }, open.gen);
+    updateDialog({ body: 'Not mergeable here. Nothing was run or changed.', pre: chk.output || '', cancel: 'Close', escape: true }, open.gen);
     return;
   }
   updateDialog({
     body: 'Running the tests runs the PR\'s code on this machine. Nothing from the PR runs before you press the button.',
-    pre: chk.output || '', ok: 'Run tests & merge', cancel: 'Cancel',
+    pre: chk.output || '', ok: 'Run tests & merge', cancel: 'Cancel', escape: true,
   }, open.gen);
   const choice = await open;
   if (!choice || !choice.ok) return;
@@ -254,7 +271,7 @@ async function followMerge(t, prB, show) {
     try { st = await getJSON(ghApi(t.id, 'merge')); } catch { st = null; }
     if (!st && ++lost >= MERGE_LOST_POLLS) {
       finished = true;
-      if (gen !== undefined) { updateDialog({ title: 'Lost contact', body: 'The board stopped hearing about this merge. It may still be running: check the ticket in a few minutes.', cancel: 'Close' }, gen); if (gen === dlgGen) dlgEscape = true; }
+      if (gen !== undefined) { updateDialog({ title: 'Lost contact', body: 'The board stopped hearing about this merge. It may still be running: check the ticket in a few minutes.', cancel: 'Close', escape: true }, gen); }
       return;
     }
     if (st) {
@@ -276,20 +293,19 @@ async function followMerge(t, prB, show) {
   if (gen !== undefined) updateDialog({
     title: merged ? 'Merged' : 'Not merged',
     body: merged ? `The PR is merged and the issue closed by its Fixes line.${offer ? ` Also push main to ${mirrors.join(', ')} (git config canon.mirror)?` : ''}` : 'Nothing changed on GitHub. See the output.',
-    pre: st?.output || '', ok: offer, cancel: 'Close',
+    pre: st?.output || '', ok: offer, cancel: 'Close', escape: true,
   }, gen);
-  if (gen !== undefined && gen === dlgGen) dlgEscape = true;
   if (offer && shown) shown.then(v => { if (v && v.ok) pushMain(mirrors); });
   statusById.delete(t.id);
   await loadData();
 }
 
 async function pushMain(mirrors) {
-  const run = openDialog({ title: `Pushing main to ${mirrors.join(', ')}…`, pre: 'Running tkt push-main…', cancel: 'Close' });
+  const run = openDialog({ title: `Pushing main to ${mirrors.join(', ')}…`, pre: 'Running tkt push-main…', cancel: 'Close', escape: false });
   let res;
   try { res = await postJSON('/api/github/push-main', {}); }
   catch (e) { res = { ok: false, output: String(e.message || e) }; }
-  updateDialog({ title: res.ok ? 'Pushed' : 'Not every mirror was pushed', body: res.ok ? '' : 'Nothing was forced. See the output.', pre: res.output || '' }, run.gen);
+  updateDialog({ title: res.ok ? 'Pushed' : 'Not every mirror was pushed', body: res.ok ? '' : 'Nothing was forced. See the output.', pre: res.output || '', escape: true }, run.gen);
 }
 
 async function stopMerge(t) {
@@ -489,7 +505,7 @@ function showSent(panel, t, tab) {
 // ── Sync from GitHub (t-90a3): the dry run first, then one sync on Create ──────────────────────────────────────────
 const SYNC_WARNING = 'The label admits an issue; it does not vouch for it. An author can edit the text after it is labelled, and an issue template can apply the label. Read the issues before creating them.';
 async function syncFromGithub() {
-  const shown = openDialog({ title: 'Sync from GitHub', pre: 'Running tkt sync-issues --dry-run…', ok: 'Create tickets', cancel: 'Cancel' });
+  const shown = openDialog({ title: 'Sync from GitHub', pre: 'Running tkt sync-issues --dry-run…', ok: 'Create tickets', cancel: 'Cancel', escape: false });
   updateDialog({ okDisabled: true }, shown.gen);
   let res;
   try { res = await getJSON('/api/github/sync-preview'); }
@@ -497,13 +513,13 @@ async function syncFromGithub() {
   const n = res.ok ? +((/dry run: (\d+) to create/.exec(res.output || '') || [])[1] || 0) : 0;
   updateDialog({
     body: res.ok ? (n ? SYNC_WARNING : 'Nothing to create.') : 'The preview failed; nothing was written.',
-    pre: res.output || '', ok: `Create ${n} ticket${n === 1 ? '' : 's'}`, okDisabled: !n,
+    pre: res.output || '', ok: `Create ${n} ticket${n === 1 ? '' : 's'}`, okDisabled: !n, escape: true,
   }, shown.gen);
   if (!(await shown).ok) return;
-  const run = openDialog({ title: 'Sync from GitHub', pre: 'Running tkt sync-issues…', cancel: 'Close' });
+  const run = openDialog({ title: 'Sync from GitHub', pre: 'Running tkt sync-issues…', cancel: 'Close', escape: false });
   try { res = await postJSON('/api/github/sync', {}); }
   catch (e) { res = { ok: false, output: String(e.message || e) }; }
-  updateDialog({ body: res.ok ? '' : 'Sync failed.', pre: res.output || '' }, run.gen);
+  updateDialog({ body: res.ok ? '' : 'Sync failed.', pre: res.output || '', escape: true }, run.gen);
   await loadData();
 }
 
@@ -522,6 +538,8 @@ function dialogKeys(e) {
 
 export function initGithub() {
   document.addEventListener('keydown', dialogKeys, true);
+  const pre = document.getElementById('gh-dialog-pre');
+  pre.addEventListener('scroll', () => { dlgFollow = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 4; });
   document.getElementById('btn-gh-sync').addEventListener('click', syncFromGithub);
   ensureDoctor();   // t-9641: the Sync button's state
   if (!pollTimer) pollTimer = setInterval(() => pollGithub(false), POLL_MS);

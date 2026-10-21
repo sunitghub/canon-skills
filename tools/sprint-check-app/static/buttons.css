@@ -1,0 +1,14 @@
+/* t-e523: the one owner of button colour roles, linked last by app.html and cockpit.html. A button's size and shape stay
+   with its own rule; its colours come from one of these. Red means it stops or deletes something; neutral means it only
+   closes. Theme variables only (tests/sprint-check-theme.js scans this file for both pages). */
+/* The shape every role button shares; :where adds no specificity, so a button's own rule can still drop the border or
+   change the background (an icon-only close, the board's raised .btn). */
+:where(.b-neutral, .b-danger, .b-primary) { border-width: 1px; border-style: solid; }
+:where(.b-neutral, .b-danger) { background: transparent; }
+/* neutral and danger look the same at rest; only the hover tells them apart */
+.b-neutral, .b-danger { color: var(--text-body); border-color: var(--border); }
+.b-neutral:hover:not(:disabled) { color: var(--text); border-color: var(--border-hover); }
+.b-danger:hover:not(:disabled) { color: var(--col-discarded); border-color: var(--col-discarded); }
+.b-primary { background: var(--accent); border-color: var(--accent); color: var(--th-on-accent, #fff); }
+.b-primary:hover:not(:disabled) { filter: brightness(1.08); }
+.b-primary:disabled { filter: none; }

@@ -28,7 +28,6 @@
   .mt-card-actions{display:flex;justify-content:flex-end;gap:10px;font-size:10.5px}
   .mt-card-actions a{color:var(--text-muted);cursor:pointer;text-decoration:none}
   .mt-card-actions a:hover{color:var(--text)}
-  .mt-card-actions a.danger:hover{color:var(--col-discarded)}
   /* t-294b: cards are read-only until Edit; inputs only in edit mode. */
   .mt-card-actions button{font:inherit;font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text-muted);cursor:pointer}
   .mt-card-actions button:hover:not(:disabled){color:var(--text);border-color:var(--border-hover)}
@@ -124,5 +123,4 @@
   .ad-table .stcell{display:flex;align-items:center;gap:6px;font-weight:600}
   .ad-open,.ad-end{border:1px solid var(--border);background:var(--panel);color:var(--text-body);border-radius:7px;padding:4px 10px;font-size:11.5px;font-weight:600;cursor:pointer}
   .ad-open:hover,.ad-end:hover{border-color:var(--accent);color:var(--text)}
-  .ad-end.kill:hover{border-color:var(--col-discarded);color:var(--col-discarded)}   /* t-3c9a: Kill reads as the discard action */
   .ad-open.answer{border-color:var(--st-need);color:var(--st-need)}

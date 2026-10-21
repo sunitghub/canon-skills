@@ -36,7 +36,7 @@ export function cockpitConfirm(opts){
   document.getElementById('cc-body').textContent=opts.body||'';
   const ok=document.getElementById('cc-ok'), cancel=document.getElementById('cc-cancel');
   ok.textContent=opts.okLabel||'OK';
-  ok.className='btn '+(opts.danger?'danger':'primary');
+  ok.className='btn '+(opts.danger?'b-danger':'b-primary');
   cancel.textContent=opts.cancelLabel||'Cancel';
   cancel.style.display=opts.okOnly?'none':'';
   // optional read-only copyable command field (replaces the old prompt())

@@ -4,8 +4,6 @@
      here and restyled per user direction: neutral at rest / red on hover, matching
      .dstop's own treatment — never solid red at rest, so it reads as "this is the
      destructive one" without shouting by default. */
-  .btn.danger{background:var(--panel);color:var(--text-body);border:1px solid var(--border)}
-  .btn.danger:hover{background:var(--col-discarded);border-color:var(--col-discarded);color:var(--th-on-bad, #fff)}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:16px}
   .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;transition:transform .14s ease,box-shadow .14s ease,border-color .14s ease}
   .card:hover{border-color:var(--accent);transform:translateY(-3px);box-shadow:0 10px 28px -8px rgba(0,0,0,.5),0 0 0 3px var(--accent-dim)}
@@ -25,11 +23,9 @@
   .card .actions{display:flex;gap:10px;margin-left:auto}
   .go{width:40px;height:40px;border-radius:9px;border:none;background:var(--col-done);color:var(--th-on-ok, #04210f);font-size:19px;font-weight:700;cursor:pointer}
   .go:hover{filter:brightness(1.08)}
-  .dereg{width:40px;height:40px;border-radius:9px;border:1px solid color-mix(in srgb, var(--col-discarded) 45%, transparent);background:transparent;color:var(--col-discarded);font-size:15px;cursor:pointer;transition:background .12s ease,border-color .12s ease,color .12s ease,transform .12s ease}
-  .dereg:hover{color:var(--th-on-bad, #fff);background:var(--col-discarded);border-color:var(--col-discarded);transform:translateY(-1px);box-shadow:0 4px 14px -4px var(--col-discarded)}
+  .dereg{width:40px;height:40px;border-radius:9px;font-size:15px;cursor:pointer}
   /* A visible + <skill> button means that skill is missing here — red reads "needed". Busy/disabled keeps the accent (below). */
-  .regskill{height:32px;padding:0 12px;border-radius:8px;border:1px solid var(--col-discarded);background:transparent;color:var(--col-discarded);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
-  .regskill:hover{background:var(--col-discarded);color:var(--th-on-bad, #fff)}
+  .regskill{height:32px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
   .regskill:disabled{cursor:default;opacity:.55;background:var(--accent-dim);color:var(--accent);border-color:var(--accent)}
   .regskill[aria-busy="true"],.sn-reg[aria-busy="true"]{opacity:1}
   /* t-8d72: Git status icon beside the project name. On = accent, off = muted and clickable, none = faded. */
@@ -80,11 +76,8 @@
   .cmodal h2{font-size:16px;margin-bottom:8px}
   .cmodal p{font-size:13px;color:var(--text-body);margin-bottom:18px;line-height:1.5}
   .cmodal .cfoot{display:flex;gap:9px;justify-content:center;flex-wrap:wrap}
-  .cmodal .btn{border-radius:8px;padding:9px 14px;font-size:12.5px;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--text-body)}
-  .cmodal .btn:hover{color:var(--text);border-color:var(--border-hover)}
-  .cmodal .btn.ghost{color:var(--text-muted)}
-  .cmodal .btn.ghost:hover{color:var(--col-discarded);border-color:var(--col-discarded)}
-  .cmodal .btn.primary{background:var(--accent);color:var(--th-on-accent, #fff);border:none;font-weight:600}
+  .cmodal .btn{border-radius:8px;padding:9px 14px;font-size:12.5px;cursor:pointer}
+  .cmodal .btn.b-primary{border:none;font-weight:600}
   .cc-code{display:flex;gap:8px;align-items:center;margin:0 0 16px}
   .cc-code input{flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-family:ui-monospace,monospace;font-size:12px}
   .cc-code .btn{flex-shrink:0;font-size:12px;padding:8px 12px}
@@ -115,8 +108,7 @@
   .help-head{display:flex;align-items:flex-start;gap:10px;padding:20px 22px 14px;border-bottom:1px solid var(--border)}
   .help-title{font-size:17px;font-weight:700}
   .help-sub{font-size:12px;color:var(--text-muted);margin-top:2px}
-  .help-close{margin-left:auto;width:30px;height:30px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text-muted);cursor:pointer;font-size:13px;flex-shrink:0}
-  .help-close:hover{color:var(--text);border-color:var(--border-hover)}
+  .help-close{margin-left:auto;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:13px;flex-shrink:0}
   .help-body{padding:16px 22px;overflow:auto}
   .help-sect{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);font-weight:700;margin:16px 0 5px}
   .help-sect:first-child{margin-top:0}

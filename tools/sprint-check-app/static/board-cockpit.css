@@ -34,21 +34,13 @@
     .ck-leave-confirm-body { font-size: 13px; color: var(--text-body); line-height: 1.5; }
     .ck-leave-confirm-status { font-size: 12px; color: var(--text-muted); margin-top: 10px; min-height: 16px; }
     .ck-leave-confirm-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
-    .ck-leave-btn { border-radius: 8px; padding: 9px 12px; font-size: 13px; font-weight: 600; cursor: pointer; border: 0; }
-    .ck-leave-btn-save { background: var(--accent); color: var(--th-on-accent, #fff); }
+    .ck-leave-btn { border-radius: 8px; padding: 9px 12px; font-size: 13px; font-weight: 600; cursor: pointer; }   /* t-e523: border and colours from buttons.css */
     .ck-leave-btn-save:disabled { background: var(--surface-raised); color: var(--text-muted); cursor: not-allowed; }
-    .ck-leave-btn-cancel { background: transparent; color: var(--text-muted); }
-    .ck-leave-btn-cancel:hover { color: var(--text); }
     .ck-leave-btn-cancel:disabled { opacity: .4; cursor: not-allowed; }
-    .ck-leave-btn-cancel:disabled:hover { color: var(--text-muted); }
-    .ck-leave-btn-skip { background: transparent; color: var(--text-muted); border: 1px solid var(--border); }
-    .ck-leave-btn-skip:hover { color: var(--col-discarded); border-color: var(--col-discarded); }
     .ck-leave-btn-skip:disabled { opacity: .4; cursor: not-allowed; }
-    .ck-leave-btn-discard { background: transparent; color: var(--col-discarded); border: 1px solid var(--col-discarded); }   /* t-86fe */
-    .ck-leave-btn-discard.armed { background: var(--col-discarded); color: var(--th-on-bad, #fff); }
+    .ck-leave-btn-discard.armed, .ck-leave-btn-discard.armed:hover { background: var(--col-discarded); border-color: var(--col-discarded); color: var(--th-on-bad, #fff); }   /* t-86fe: the second click */
     .ck-leave-files { margin: 8px 0 0; padding-left: 18px; max-height: 220px; overflow: auto; font-family: var(--mono, ui-monospace, monospace); font-size: 11.5px; }
     .ck-leave-files li { overflow-wrap: anywhere; }
-    .ck-leave-btn-skip:disabled:hover { color: var(--text-muted); border-color: var(--border); }
     /* t-d254: commit-the-ticket-first dialog (reuses the leave-confirm overlay). */
     #ck-tcommit .ck-leave-confirm { max-width: 520px; }
     /* t-ccd6: the board's own confirm/notice dialog (replaces browser alert/confirm in the worktree flow). */
@@ -147,9 +139,8 @@
     .ck-tab-pill-close {
       display: flex; align-items: center; justify-content: center;
       width: 16px; height: 16px; border-radius: 50%; border: 0; background: transparent;
-      color: var(--text-dim); font-size: 13px; line-height: 1; cursor: pointer; flex-shrink: 0;
+      font-size: 13px; line-height: 1; cursor: pointer; flex-shrink: 0;
     }
-    .ck-tab-pill-close:hover { background: var(--surface-hover); color: var(--col-discarded); }
     .ck-end-session {
       background: var(--surface-raised); color: var(--text-muted); border: 1px solid var(--border);
       border-radius: 8px; padding: 5px 10px; font-size: 12px; font-weight: 600; cursor: pointer;

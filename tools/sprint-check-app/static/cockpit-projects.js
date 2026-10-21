@@ -55,11 +55,11 @@ export async function load(){
           <div class="card-divider"></div>
           <div class="cardbottom">
             <div class="regbtns" data-reg="${escAttr(p.id)}" aria-live="polite" style="display:none">
-              ${IMPORTANT_SKILLS.map(sk=>`<button class="regskill" data-skill="${sk}" title="Not set up in this project yet — click to register the ${sk} skill" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}" data-path="${escAttr(p.path)}" style="display:none">+ ${sk}${sk==='efficiency'?' (optional)':''}</button>`).join('')}
+              ${IMPORTANT_SKILLS.map(sk=>`<button class="regskill b-neutral" data-skill="${sk}" title="Not set up in this project yet — click to register the ${sk} skill" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}" data-path="${escAttr(p.path)}" style="display:none">+ ${sk}${sk==='efficiency'?' (optional)':''}</button>`).join('')}
             </div>
             <div class="actions">
               <button class="scratchbtn" title="Start an agent in this project with no ticket" data-scratch="${escAttr(p.id)}">${SCRATCH_ICON}Scratch</button>
-              <button class="dereg" title="Deregister" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}">&#10005;</button>
+              <button class="dereg b-danger" title="Deregister" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}">&#10005;</button>
               <button class="go" title="Open project" data-open="${escAttr(p.id)}" data-name="${escAttr(p.name)}">&#8250;</button>
             </div>
           </div>
