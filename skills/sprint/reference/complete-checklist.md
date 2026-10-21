@@ -18,9 +18,11 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
 
 1. **Wrapup** (`skills/wrapup/SKILL.md`): code-simplifier, code-reviewer (inline), security-review, repo-check
    (canon only), doc-audit, then refresh docs.
-   - **Mutation test** if shell, JS, Python or Go logic changed: `mutant-sweep --check` (exit 3: `skipped | no python3`);
-     then `skills/mutation-test/SKILL.md` (`mutant-sweep --map
-     <file>=<test> --report .tickets/<id>/mutation-report.md`); triage every survivor; advisory.
+   - **Mutation sweep (pre-evaluator)** if shell, JS, Python or Go logic changed: `mutant-sweep --check` (exit 3:
+     `skipped | no python3`); then `skills/mutation-test/SKILL.md`; kill or triage every survivor; after the interim commit
+     stamp the final sweep: `evidence.sh stamp <id> mutant-sweep -- mutant-sweep --map <file>=<test> --report
+     .tickets/<id>/mutation-report.md`. Non-binding (the evaluator stays the gate), but not skippable without a reason:
+     the row reads `ran | <counts and triage>` or `mutation-test | skipped | <reason>`.
    - **Skill eval** if a skill or gate agent changed: `tools/skill-eval-scope.sh`; for each `run <skill>`
      follow `skills/skill-eval/SKILL.md` from this session; advisory. Commit its `history.jsonl` line.
    - **Interim commit** (specific paths, no `git add -A`) before any gate.
@@ -35,7 +37,8 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
    show the PRE recovery hash), `subagent-log.sh --agent-id reviewer-<id> --agent-type reviewer` + cost flags, `--model` (complete.md),
    `sprint check-review-notes <id>` (`shape refused`: re-dispatch). Row: `verdict: YES|NO — …
    (model: <m> — <source>)`. A NO is surfaced, not blocking.
-3. **Evaluator** (binding). `sprint check-evidence <id>` must be ok; `eval_fail_count` below 3; snapshot
+3. **Evaluator** (binding). The `mutation-test` row reads `ran` or `skipped` with a reason; `sprint check-evidence <id>`
+   must be ok (a sweep that leaked or failed fails it); `eval_fail_count` below 3; snapshot
    pre (`--role evaluator`); `Agent` with `subagent_type: "canon-evaluator"`; snapshot post. Then:
    - Line 1 `evaluator-run-id: <epoch>-<n>`: run `date +%s`; skew over 300 s → discard, re-dispatch. Never
      write a run-id yourself.

@@ -1,6 +1,6 @@
 ---
 name: mutation-test
-description: Generates mutants over a sprint's changed lines (mutant-sweep) and triages every survivor — a surviving mutant is a test that cannot fail. Use when asked to mutation-test, check whether tests have teeth, or find tests that pass no matter what the code does. Advisory, not a close gate.
+description: Generates mutants over a sprint's changed lines (mutant-sweep) and triages every survivor — a surviving mutant is a test that cannot fail. Use when asked to mutation-test, check whether tests have teeth, or find tests that pass no matter what the code does. A non-binding pre-evaluator step at sprint close for logic changes, not a close gate.
 category: dev
 tags: [testing, quality, mutation-testing, verification]
 hidden: true
@@ -12,7 +12,10 @@ Operationalizes canon's thesis that **"the tests pass" is a claim that needs its
 Break the code on purpose: flip a boolean, negate a conditional, delete a statement — then run the
 suite. If nothing fails, the test was decoration. A surviving mutant is a **test that cannot fail.**
 
-This is **advisory, not a gate.** It reports surviving mutants; it never blocks `sprint complete`.
+At sprint close this is a **pre-evaluator step for shell, JS, Python or Go logic changes** (t-087c): run it, kill or
+triage every survivor, record the result in `evidence/`, then the evaluator is dispatched. It is **non-binding, not a
+gate**: it reports surviving mutants and never blocks `sprint complete`. But it is not skippable without a reason: the
+Wrapup Gates row reads `ran | …` or `mutation-test | skipped | <reason>`.
 It **complements, does not replace, the fresh-context evaluator**: the evaluator checks acceptance
 criteria against the code; mutation-test checks whether the tests protecting that code have teeth.
 
@@ -78,12 +81,25 @@ Append the triage under the tool's table in `.tickets/<id>/mutation-report.md`:
 - tools/foo.sh:55 `delete-line` — equivalent: the `if` above already returns 0.
 ```
 
-If zero mutants survive, say so — that is a passing signal, not a no-op. Advisory only: it never
+If zero mutants survive, say so — that is a passing signal, not a no-op. Non-binding: it never
 blocks close.
+
+## Record it in evidence/
+
+Once every survivor is killed or triaged and any test fix is committed, re-run the final sweep through the evidence stamp,
+on that clean commit, before the evaluator is dispatched:
+
+```bash
+evidence.sh stamp <id> mutant-sweep -- mutant-sweep --map <logic file>=<test command> [--map ...] --report .tickets/<id>/mutation-report.md
+```
+
+The log in `.tickets/<id>/evidence/mutant-sweep.log` names the commit that was swept; re-stamp after any later tracked
+change. A sweep with survivors still exits 0. A leak (exit 4) or a failed merge-base (exit 2) leaves a non-zero log, and
+`sprint check-evidence` refuses to let the evaluator run until it is fixed and re-stamped.
 
 ## Promotion path (out of scope here)
 
-This skill ships advisory-first by design. Promoting it to a **close gate** is deliberately
+This skill runs before the evaluator but stays non-binding by design. Promoting it to a **binding close gate** is deliberately
 deferred: do it only once the false-positive rate is known from real runs, and only for
 logic-bearing changes — gated by a structural path check (the close-gate model tier once
 used a docs-only allowlist for this; `skills/sprint/reference/complete.md` retired it in
