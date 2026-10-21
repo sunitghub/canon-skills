@@ -68,12 +68,17 @@ func ExportedInMain() {}
 EOF
 printf 'def py_dead():\n    pass\n\ndef _private():\n    pass\n' > app/util.py
 printf 'fn x() {}\n' > src/lib.rs
+# A CRLF checkout (Git for Windows autocrlf) is still Bash; a non-ASCII path is still read.
+printf '#!/usr/bin/env bash\r\ncrlf_dead() { :; }\r\n' > tools/crlf
+cafe=$'static/caf\303\251'; mkdir -p "$cafe" && printf 'used_from_cafe\n' > "$cafe/call.sh"
+printf 'used_from_cafe() { :; }\n' > tools/cafe-lib.sh
 git add -A
 
 out="$(bash "$SCAN")"
 got="$(grep -v '^#' <<<"$out" | awk -F'\t' '{ print $1, $3, $5 }' | sort)"
 want="$(sort <<'EOF'
 DEAD ensure_file -
+DEAD crlf_dead -
 DEAD helper_in_test -
 DEAD unusedLower -
 DEAD helperInMain -
@@ -108,9 +113,9 @@ printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$@" > "%s/claude-args.log"\nexit 0
 chmod +x "$W/fakebin/claude"
 PATH="$W/fakebin:$PATH" "$ROOT/tools/upkeep-run" dead-code-cleanup --root "$U" >/dev/null 2>&1 || true
 assert_file_exists "$W/claude-args.log"
-grep -qxF "Bash(bash $ROOT/tools/dead-code-scan.sh)" "$W/claude-args.log" || fail "upkeep-run: scan command not in --allowedTools"
+grep -qxF "Bash(bash '$ROOT/tools/dead-code-scan.sh')" "$W/claude-args.log" || fail "upkeep-run: scan command not in --allowedTools"
 [[ "$(grep -c '^Bash(bash' "$W/claude-args.log")" == 1 ]] || fail "upkeep-run: more than the one scan command allowed"
-grep -qF "Run its scanner as exactly this command, with no arguments: bash $ROOT/tools/dead-code-scan.sh" "$W/claude-args.log" \
+grep -qF "Run its scanner as exactly this command, with no arguments: bash '$ROOT/tools/dead-code-scan.sh'" "$W/claude-args.log" \
   || fail "upkeep-run: prompt does not name the scan command"
 
 echo "dead-code-scan: ok"

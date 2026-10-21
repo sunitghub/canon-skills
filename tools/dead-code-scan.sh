@@ -20,7 +20,8 @@ trap 'rm -f "$list"' EXIT
 
 # Tracked text files (git grep -I skips binaries) minus vendored/built dirs and docs. Docs are never read:
 # a mention in prose, a ticket, a changelog or an earlier report keeps no code alive.
-git grep -I -l -e '' -- "$@" 2>/dev/null \
+# core.quotePath=false: a quoted non-ASCII path cannot be opened, and its calls would go unseen.
+git -c core.quotePath=false grep -I -l -e '' -- "$@" 2>/dev/null \
   | grep -vE '(^|/)(node_modules|\.git|dist|build|__pycache__|vendor)/' \
   | grep -vE '\.(md|txt)$|(^|/)CHANGELOG[^/]*$|^\.tickets/|^\.reports/' > "$list" || true
 
@@ -82,6 +83,7 @@ BEGIN {
     lower = tolower(f)
     for (k = 1; k <= nskip; k++) if (substr(lower, length(lower) - length(skipext[k]) + 1) == skipext[k]) skipped[skipext[k]]++
     while ((getline s < f) > 0) {
+      sub(/\r$/, "", s)   # CRLF checkouts (Git for Windows autocrlf) would hide the shebang
       if (++ln == 1) { first = s; lang = lang_of(f, first); if (lang == "") break; scanned[lang] = 1 }
       n = decl(lang, s)
       if (n == "") continue
@@ -97,7 +99,7 @@ BEGIN {
   for (i = 1; i <= nf; i++) {
     f = files[i]; ln = 0; t = is_test(f)
     while ((getline s < f) > 0) {
-      ln++
+      ln++; sub(/\r$/, "", s)
       if (s ~ /^[ \t]*(#|\/\/|\/\*|\*)/) continue
       gsub(/[^A-Za-z0-9_$]+/, " ", s)
       m = split(s, tok, " ")

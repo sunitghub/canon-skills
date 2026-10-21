@@ -31,7 +31,10 @@ review/eval gates like any other change — this skill never bypasses them.
 awk only, so it runs in Git Bash on Windows): `bash ~/.canon/tools/dead-code-scan.sh [<path>...]`
 (in the canon repo itself, `bash tools/dead-code-scan.sh`). It prints one tab-separated row per
 candidate — `class  file:line  symbol  lang  entry  refs`, class `DEAD`/`TESTONLY`/`OVEREXP` — then
-`# scanned:`, `# skipped:` and `# checked:` lines; it exits 2 outside a git repo. Its rows are the
+`# scanned:`, `# skipped:` and `# checked:` lines; it exits 2 outside a git repo. It reads tracked
+files only (commit or `git add` new code first). Copy `# scanned:` and `# skipped:` into the
+Summary's `Languages scanned`/`Languages skipped` rows as printed — a language with no candidates
+was still scanned. Its rows are the
 candidate list: report **every** row, never a sample, and do not re-derive them by hand — a model
 checking hundreds of symbols one grep at a time skips most of them. Your part is the judgment the
 script cannot make: the entry points and dynamic dispatch in step 3 and the Gotchas. Only if the

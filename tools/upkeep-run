@@ -116,7 +116,7 @@ case "$SKILL" in
     SKILL_TASK="Read the skill instructions at skills/promote-learnings/SKILL.md and follow them."
     ;;
   dead-code-cleanup)
-    SCAN_CMD="bash $SCRIPT_DIR/dead-code-scan.sh"
+    SCAN_CMD="bash '$SCRIPT_DIR/dead-code-scan.sh'"   # quoted: a Windows home can hold a space
     SKILL_TASK="Read the skill instructions at skills/$SKILL/SKILL.md and follow them. Run its scanner as exactly this command, with no arguments: $SCAN_CMD"
     EXTRA_TOOLS=("Bash($SCAN_CMD)")
     ;;
