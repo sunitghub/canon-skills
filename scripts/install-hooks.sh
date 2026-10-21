@@ -23,3 +23,25 @@ bash "$REPO_ROOT/scripts/build-zip.sh" || true
 HOOK
 chmod +x "$POST_COMMIT"
 echo "  [ok]    post-commit hook installed → $POST_COMMIT"
+
+# ── pre-push: nothing reaches a canon.mirror remote (public) before its binaries are released (t-4ea4) ─────────
+# `tkt push-main` already checks (t-b6b6); this covers every other route (a plain `git push public`, an agent's push).
+# Each pushed commit goes through the same guard (`tkt release-check`); a deletion pushes nothing and is skipped.
+# `git push --no-verify` is the deliberate override (docs/releasing.md).
+PRE_PUSH="$HOOKS_DIR/pre-push"
+cat > "$PRE_PUSH" << 'HOOK'
+#!/usr/bin/env bash
+remote="$1"
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+git config --get-all canon.mirror 2>/dev/null | grep -qxF -- "$remote" || exit 0
+while read -r _lref lsha _rref _rsha; do
+  [[ -n "$lsha" && ! "$lsha" =~ ^0+$ ]] || continue
+  if ! bash "$REPO_ROOT/tools/tkt" release-check "$lsha"; then
+    echo "pre-push: refused the push to $remote (t-4ea4): publish with 'tkt push-main' once released, or 'git push --no-verify' to override on purpose" >&2
+    exit 1
+  fi
+done
+exit 0
+HOOK
+chmod +x "$PRE_PUSH"
+echo "  [ok]    pre-push hook installed → $PRE_PUSH"

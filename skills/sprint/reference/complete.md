@@ -746,7 +746,8 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
       the body — this step always has the ticket ID in hand. Add more body for breaking
       changes or non-obvious reasoning.
     - Show the staged files and commit message. Ask: **"Commit and push? (y to proceed)"**
-    - On yes: commit, then push to the current branch's remote. Report the pushed ref.
+    - On yes: commit, then push to the current branch's remote. Report the pushed ref. In canon, `public` is pushed only
+      with `tkt push-main`, never `git push public` (it and the pre-push hook refuse unreleased binaries, t-4ea4).
     - If criticals from the review pipeline are unresolved: warn before asking — do not block,
       but make the risk explicit.
     - **Releases (t-30fc).** A push is not a release. When this sprint bumped `VERSION` (and added its dated `CHANGELOG.md`

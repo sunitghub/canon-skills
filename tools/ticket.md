@@ -41,6 +41,7 @@ tkt merge-pr <id> [--pr N] [--test CMD] [--yes | --check]  # on your machine: ch
 tkt github-status <id> [--json]      # where a ticket sent to GitHub stands: sent, branch (pushed, no PR), pr-open, results-ready, results-in or merged, plus the canon.mirror remotes (read-only apart from fetching a PR head past graded-head that is not local yet; what the board polls)
 tkt open-pr <id>                     # open the PR a cloud session did not, from its pushed branch (a commit naming <id>), with "Fixes #N"
 tkt push-main                        # push origin's default branch (what GitHub merged, never the local one) to each `git config canon.mirror` remote (opt-in, never forced; prints how to undo); in canon it refuses a commit whose binaries are not released (`scripts/check-binaries-released.sh --rev`)
+tkt release-check <sha>              # exit 1 when <sha> ships binaries not yet released; canon's pre-push hook (scripts/install-hooks.sh) runs it for every push to a canon.mirror remote (t-4ea4)
 tkt take-back <id> [--close-issue]   # bring a ticket sent to GitHub back to this machine (clears runs: github; --close-issue also closes the issue and clears github:)
 ```
 

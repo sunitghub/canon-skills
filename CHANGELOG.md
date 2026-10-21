@@ -22,6 +22,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 - The board's **Sync from GitHub** button is greyed out until the GitHub checks pass (no GitHub origin included). Its tooltip points to Factory › GitHub. The worktree picker's "GitHub · set up first" row opens Factory › GitHub instead of Admin.
 
 ### Fixed
+- Nothing reaches canon-skills before its binaries are released, whichever way it is pushed (`t-4ea4`). `scripts/install-hooks.sh` adds a pre-push hook: a push to a `canon.mirror` remote (`public`) runs the same check as `tkt push-main` (now one function, also `tkt release-check <sha>`), so a plain `git push public` of an unreleased commit is refused. The release steps (`docs/releasing.md`, the close checklist) now say `public` goes only through `tkt push-main`; they used to say `git push public main`.
 - **Push main to public** (`tkt push-main`) no longer publishes a commit whose daemon or board binaries are not released yet (`t-b6b6`): it checks origin's commit with `scripts/check-binaries-released.sh --rev` and says to run `scripts/release-daemon.sh` first. Other projects push as before.
 - `mutant-sweep` no longer lets a mutant write into your real home (`t-eb40`): each mutant's test now runs with `HOME` pinned inside its temp copy too, with the Go and Playwright caches passed through. After every sweep a canary scans the real `~/.canon` for the sweep's temp path; a hit prints `mutant-sweep: LEAK <file>` and exits 4. Found when a mutant wrote 11 fixture events into `~/.canon/events` (`t-f182`).
 
