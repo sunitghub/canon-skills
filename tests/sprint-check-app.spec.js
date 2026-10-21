@@ -25,6 +25,7 @@ async function expectRole(page, loc, role) {
   const hover = {
     'b-neutral': { color: await themeColor(page, '--text'), border: await themeColor(page, '--border-hover'), fill: clear },
     'b-danger': { color: red, border: red, fill: clear },
+    'b-close': { color: red, border: red, fill: clear },   // Close, Cancel, ✕: the same red outline
     'b-danger-main': { color: await themeColor(page, '--th-on-bad', '#fff'), border: red, fill: red },   // a main danger action fills red
     'b-accent': { color: await themeColor(page, '--text'), border: await themeColor(page, '--accent'), fill: await themeColor(page, '--accent-dim') },
   }[role];
@@ -15683,15 +15684,15 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
 
   // ── t-e523: one rule per button role (static/buttons.css), and the GitHub dialog's log, progress line, size and closing ──
   // Prod path: every Close/Cancel/Stop on the board and the Cockpit shell, and the board's GitHub dialog.
-  const ROLES = ['b-neutral', 'b-danger', 'b-danger-main', 'b-accent', 'b-primary'];
-  test('Close and Cancel share the neutral hover, Stop fills red, in Canon Dark and Light (t-e523)', async ({ page }) => {
+  const ROLES = ['b-neutral', 'b-close', 'b-danger', 'b-danger-main', 'b-accent', 'b-primary'];
+  test('Close and Cancel show a red outline on hover, Stop fills red, in Canon Dark and Light (t-e523)', async ({ page }) => {
     const id = `t-gh-e523a-${Date.now()}`;
     const { job, button } = await mergeFlow(page, id);
     for (const theme of ['dark', 'light']) {
       await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
       await button.click();
       await expect(page.locator('#gh-dialog-ok')).toHaveText('Run tests & merge');
-      await expectRole(page, page.locator('#gh-dialog-cancel'), 'b-neutral');   // Cancel
+      await expectRole(page, page.locator('#gh-dialog-cancel'), 'b-close');   // Cancel
       await page.locator('#gh-dialog-ok').click();
       await expect(page.locator('#gh-dialog-cancel')).toHaveText('Stop');
       await expect(page.locator('#gh-dialog-cancel')).toHaveClass(/\bb-danger-main\b/);
@@ -15699,7 +15700,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
       Object.assign(job, { status: 'done', exit_code: 1, output: 'failed\n' });
       await expect(page.locator('#gh-dialog-cancel')).toHaveText('Close');
       await expect(page.locator('#gh-dialog-cancel')).not.toHaveClass(/\bb-danger-main\b/);
-      await expectRole(page, page.locator('#gh-dialog-cancel'), 'b-neutral');   // Close
+      await expectRole(page, page.locator('#gh-dialog-cancel'), 'b-close');   // Close
       await page.locator('#gh-dialog-cancel').click();
       Object.assign(job, { status: 'idle', output: '', exit_code: null });
     }
@@ -15722,7 +15723,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     }
   });
 
-  test('the Cockpit shell uses the same roles: Cancel neutral, a danger confirm fills red only on hover (t-e523)', async ({ page }) => {
+  test('the Cockpit shell uses the same roles: Cancel a red outline, a danger confirm fills red, only on hover (t-e523)', async ({ page }) => {
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
     for (const theme of ['dark', 'light']) {
@@ -15730,7 +15731,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
       await page.evaluate(async () => { const { cockpitConfirm } = await import('/static/cockpit-core.js'); cockpitConfirm({ title: 'Stop it?', okLabel: 'Stop', danger: true }); });
       await expect(page.locator('#cconfirm')).toHaveClass(/show/);
       await expect(page.locator('#cc-ok')).toHaveClass(/\bb-danger-main\b/);
-      await expectRole(page, page.locator('#cc-cancel'), 'b-neutral');
+      await expectRole(page, page.locator('#cc-cancel'), 'b-close');
       await expectRole(page, page.locator('#cc-ok'), 'b-danger-main');   // the dialog's main action fills red
       await page.locator('#cc-cancel').click();
       await expect(page.locator('#cconfirm')).not.toHaveClass(/show/);

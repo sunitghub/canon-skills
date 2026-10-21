@@ -203,12 +203,12 @@ function updateDialog(fields, gen) {
   if ('cancel' in fields) setCancel(d, fields.cancel);
   if ('escape' in fields) dlgEscape = fields.escape;
 }
-// Stop ends a running step and is then the dialog's main action (fills red on hover); Close and Cancel only close the
-// dialog (buttons.css, t-e523).
+// Stop ends a running step and is then the dialog's main action (fills red on hover); Close and Cancel only close it
+// (red outline on hover). buttons.css, t-e523.
 function setCancel(d, label) {
   d.cancel.textContent = label;
   d.cancel.classList.toggle('b-danger-main', label === 'Stop');
-  d.cancel.classList.toggle('b-neutral', label !== 'Stop');
+  d.cancel.classList.toggle('b-close', label !== 'Stop');
 }
 // merge-pr prints "running …" once, then again with the time every few seconds; the dialog shows only the newest of a
 // run of them (t-e523).

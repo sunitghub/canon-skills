@@ -75,7 +75,7 @@ export function renderTabs(){
     el.addEventListener('contextmenu',ev=>{ ev.preventDefault(); openTabMenu(t.id,ev.clientX,ev.clientY); });
     el.dataset.tab=t.id;
     const liveCls = liveTabIds.has(t.id) ? (needsTabIds.has(t.id) ? ' on needs' : ' on') : '';
-    el.innerHTML='<span class="live'+liveCls+'"></span> '+esc(t.name)+' <span class="tx b-neutral" title="Close tab">&#10005;</span>';
+    el.innerHTML='<span class="live'+liveCls+'"></span> '+esc(t.name)+' <span class="tx b-close" title="Close tab">&#10005;</span>';
     el.addEventListener('click',(ev)=>{ if(ev.target.classList.contains('tx')){closeTab(t.id);} else if(split&&splitShown()){goTab(t.id);} else {activateTab(t.id);} });
     (t.id===paneB?document.getElementById('panebar'):strip).appendChild(el);
   }

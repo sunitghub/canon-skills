@@ -278,7 +278,7 @@
         <button class="ck-leave-btn ck-leave-btn-save b-primary" id="ck-leave-save" type="button">Save &amp; End</button>
         <button class="ck-leave-btn ck-leave-btn-skip b-danger" id="ck-leave-skip" type="button">End without saving</button>
         <button class="ck-leave-btn ck-leave-btn-discard b-danger" id="ck-leave-discard" type="button" hidden>Discard changes, end</button>
-        <button class="ck-leave-btn ck-leave-btn-cancel b-neutral" id="ck-leave-cancel" type="button">Cancel</button>
+        <button class="ck-leave-btn ck-leave-btn-cancel b-close" id="ck-leave-cancel" type="button">Cancel</button>
       </div>
     </div>
   </div>
@@ -289,7 +289,7 @@
       <div class="ck-leave-confirm-body" id="app-dialog-body"></div>
       <div class="ck-leave-confirm-actions">
         <button class="ck-leave-btn ck-leave-btn-save b-primary" id="app-dialog-ok" type="button">OK</button>
-        <button class="ck-leave-btn ck-leave-btn-cancel b-neutral" id="app-dialog-cancel" type="button">Cancel</button>
+        <button class="ck-leave-btn ck-leave-btn-cancel b-close" id="app-dialog-cancel" type="button">Cancel</button>
       </div>
     </div>
   </div>
@@ -303,7 +303,7 @@
       <div class="ck-leave-confirm-status" id="ck-tcm-status" role="alert"></div>
       <div class="ck-leave-confirm-actions">
         <button class="ck-leave-btn ck-leave-btn-save b-primary" id="ck-tcm-commit" type="button">Commit &amp; create worktree</button>
-        <button class="ck-leave-btn ck-leave-btn-cancel b-neutral" id="ck-tcm-cancel" type="button">Cancel</button>
+        <button class="ck-leave-btn ck-leave-btn-cancel b-close" id="ck-tcm-cancel" type="button">Cancel</button>
       </div>
     </div>
   </div>
@@ -318,7 +318,7 @@
     <label class="gh-dialog-check" id="gh-dialog-check-label" hidden><input type="checkbox" id="gh-dialog-check"> <span></span></label>
     <div class="ck-leave-confirm-actions">
       <button class="ck-leave-btn ck-leave-btn-save b-primary" id="gh-dialog-ok" type="button" hidden>OK</button>
-      <button class="ck-leave-btn ck-leave-btn-cancel b-neutral" id="gh-dialog-cancel" type="button">Close</button>
+      <button class="ck-leave-btn ck-leave-btn-cancel b-close" id="gh-dialog-cancel" type="button">Close</button>
     </div>
     <div class="modal-resize-handle" title="Resize dialog" aria-label="Resize dialog"></div>
   </div>
@@ -332,7 +332,7 @@
       <span class="modal-id" id="m-id"></span>
       <span id="m-type"></span>
       <div class="modal-title" id="m-title"></div>
-      <button class="modal-close b-neutral" id="btn-close">✕</button>
+      <button class="modal-close b-close" id="btn-close">✕</button>
     </div>
     <div class="modal-meta" id="m-meta"></div>
     <div class="modal-headless" id="m-headless"></div>
@@ -406,7 +406,7 @@
     <div class="modal-header">
       <span class="modal-id" id="co-hash"></span>
       <div class="modal-title" id="co-subject"></div>
-      <button class="modal-close b-neutral" id="commit-close">✕</button>
+      <button class="modal-close b-close" id="commit-close">✕</button>
     </div>
     <div class="commit-detail-meta" id="co-meta"></div>
     <div class="commit-detail-body">
@@ -424,9 +424,9 @@
       <div class="modal-title">New Ticket</div>
       <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
         <button class="doc-save-btn" style="margin-left:0" id="c-submit">Create →</button>
-        <button class="doc-cancel-btn b-neutral" id="c-cancel">Cancel</button>
+        <button class="doc-cancel-btn b-close" id="c-cancel">Cancel</button>
       </div>
-      <button class="modal-close b-neutral" id="create-close">✕</button>
+      <button class="modal-close b-close" id="create-close">✕</button>
     </div>
     <div class="create-body">
       <input id="c-title" class="create-input" placeholder="What needs to be done?" autocomplete="off" spellcheck="true">
@@ -500,7 +500,7 @@
         <div class="tour-title">sprint-check</div>
         <div class="tour-subtitle">local kanban · no hosted server · no account</div>
       </div>
-      <button class="modal-close b-neutral" id="tour-close">✕</button>
+      <button class="modal-close b-close" id="tour-close">✕</button>
     </div>
     <div class="tour-body">
 

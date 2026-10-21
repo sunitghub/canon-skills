@@ -52,7 +52,7 @@
     <main class="main">
       <div id="tabstrip" class="tabstrip">
         <div class="tab pinned active" data-tab="projects">&#9638; Projects</div>
-        <button type="button" id="split-close" class="splitclose b-neutral" hidden title="Back to one project (ctrl+. then u)" aria-label="Close split view">&#10005; Close split</button>
+        <button type="button" id="split-close" class="splitclose b-close" hidden title="Back to one project (ctrl+. then u)" aria-label="Close split view">&#10005; Close split</button>
       </div>
       <div id="views" class="views">
         <div id="panebar" class="panebar"></div>
@@ -261,7 +261,7 @@
     <textarea id="addDesc" placeholder="What is this project?"></textarea>
     <div class="err" id="addErr"></div>
     <div class="mfoot">
-      <button class="btn b-neutral" id="add-cancel">Cancel</button>
+      <button class="btn b-close" id="add-cancel">Cancel</button>
       <button class="btn b-primary" id="add-submit">Add Project</button>
     </div>
   </div>
@@ -320,7 +320,7 @@
         </table>
       </section>
     </div>
-    <div class="cfoot"><button class="btn b-neutral" id="keys-close">Close</button></div>
+    <div class="cfoot"><button class="btn b-close" id="keys-close">Close</button></div>
   </div>
 </div>
 <div class="keyhint" id="keyhint" role="status" aria-live="polite"></div>
@@ -339,7 +339,7 @@
       <button type="button" class="btn b-neutral" id="cc-copy">Copy</button>
     </div>
     <div class="cfoot">
-      <button type="button" class="btn b-neutral" id="cc-cancel">Cancel</button>
+      <button type="button" class="btn b-close" id="cc-cancel">Cancel</button>
       <button type="button" class="btn b-primary" id="cc-ok">OK</button>
     </div>
   </div>
@@ -353,7 +353,7 @@
         <div class="help-title">Canon Cockpit</div>
         <div class="help-sub">one window for every canon project · local · no account</div>
       </div>
-      <button class="help-close b-neutral" id="help-close" title="Close">&#10005;</button>
+      <button class="help-close b-close" id="help-close" title="Close">&#10005;</button>
     </div>
     <div class="help-body">
       <div class="help-sect">One window</div>
