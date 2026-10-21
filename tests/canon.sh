@@ -283,7 +283,7 @@ grep -qF "ckLeaveSaveAndEnd" <<<"$board" || fail "canon: shell→board listener 
 # ── t-7485 + t-96c3: per-project Skills line + register (efficiency/sprint) ────
 grep -qF 'data-f="skills"' <<<"$page" || fail "canon: card missing the Skills meta row (data-f=\"skills\")"
 grep -qE "s\.skills|\.skills" <<<"$page" || fail "canon: fillCardStats must read the project-stats skills field"
-grep -qF 'class="regskill"' <<<"$page" || fail "canon: missing the Register-skill button"
+grep -qE 'class="regskill[ "]' <<<"$page" || fail "canon: missing the Register-skill button"   # t-e523: it also carries a buttons.css role
 # t-96c3: the register buttons are generated from a single IMPORTANT_SKILLS source
 grep -qE "const IMPORTANT_SKILLS *= *\['efficiency', *'sprint'\]" <<<"$page" || fail "canon: register buttons must derive from IMPORTANT_SKILLS=['efficiency','sprint']"
 grep -qF "IMPORTANT_SKILLS.map(" <<<"$page" || fail "canon: register buttons must be generated from IMPORTANT_SKILLS (DRY, not hardcoded)"
@@ -300,7 +300,8 @@ grep -qE 'class="k">Added<.*class="k">Updated<.*class="k">Total Tickets<.*class=
 # t-96c3: subtle divider between meta and actions + larger action buttons + red X border
 grep -qF 'class="card-divider"' <<<"$page" || fail "canon: card missing the divider between meta and actions"
 grep -qE "\.go\{[^}]*width:40px" <<<"$page" || fail "canon: action buttons should be enlarged (40px)"
-grep -qE "\.dereg\{[^}]*col-discarded" <<<"$page" || fail "canon: the ✕ (dereg) should carry a red border at rest"
+# t-e523 (user, 2026-10-21): Deregister is a main danger action: neutral at rest, solid red on hover (buttons.css .b-danger-main)
+grep -qF 'class="dereg b-danger-main"' <<<"$page" || fail "canon: the ✕ (dereg) should be a .b-danger-main button"
 
 # ── t-65b0: board blue-grey dark theme + embed rail hide + card fold-in ─
 board_flat="$(printf '%s' "$board" | tr '\n' ' ')"
