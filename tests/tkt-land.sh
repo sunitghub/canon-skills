@@ -22,7 +22,7 @@ git push -q origin "HEAD:refs/pull/7/head"; git checkout -q main
 
 id="$("$TKT" create "Cloud ticket" -t bug)"; f=".tickets/$id/ticket.md"
 awk '/^---$/ && ++n == 2 { print "github: acme/app#21" } { print }' "$f" > "$W/t" && mv "$W/t" "$f"
-WT="$W/project-worktrees/land-$id"
+WT="$W/project-worktrees/land-$id"; echo plan > ".tickets/$id/plan.md"
 
 mkdir "$W/bin"; cat > "$W/bin/gh" <<'SH'
 #!/usr/bin/env bash
@@ -69,7 +69,7 @@ refuses "a ticket that is not open" "not open" --
 grep -q '^status: open' "$f" || fail "test setup: ticket not reopened"
 
 # Prepare.
-out="$("$TKT" land "$id" < /dev/null 2>&1)"; assert_contains "$out" "worktree: $WT"
+out="$("$TKT" land "$id" < /dev/null 2>&1)"; assert_contains "$out" "worktree: $WT"; assert_contains "$out" "sprint complete $id, then: tkt land $id --finish"
 [[ "$(git -C "$WT" rev-parse HEAD)" == "$PRHEAD" ]] || fail "worktree is not at the PR head"
 [[ "$(git -C "$WT" rev-parse --abbrev-ref HEAD)" == "land/$id" ]] || fail "worktree is not on land/$id"
 grep -q '^status: in_progress' "$f" || fail "ticket not in_progress"
@@ -97,9 +97,13 @@ git show-ref --verify --quiet "refs/heads/land/$id" && fail "branch land/$id sti
 
 # Refusals that need their own open ticket: a bad --pr, no way to find the PR, a taken worktree path or branch name.
 mk() { id="$("$TKT" create "Cloud ticket" -t bug)"; f=".tickets/$id/ticket.md"; WT="$W/project-worktrees/land-$id"
+  echo plan > ".tickets/$id/plan.md"
   [[ -z "${1:-}" ]] || { awk -v g="$1" '/^---$/ && ++n == 2 { print "github: " g } { print }' "$f" > "$W/t" && mv "$W/t" "$f"; }; }
 mk acme/app#23; refuses "a --pr that is not a number" "takes a PR number" -- --pr 5x
-mk;             refuses "a ticket with no github line" "no github:" --
+mk;             refuses "a ticket with no github line" "was not imported" -- --pr 7
+mk acme/app#23; rm ".tickets/$id/plan.md"; refuses "a ticket whose results were not imported" "tkt import-results" -- --pr 7
+out="$("$TKT" land t-zzzz < /dev/null 2>&1)" && fail "land accepted an unknown ticket"; assert_contains "$out" "t-zzzz"
+mk other/repo#5; refuses "a github line for another repo" "line to find its PR by" --
 mk acme/app#23; printf '7\n8\n' > "$W/prlist"; refuses "several open PRs" "several open PRs" --; echo 7 > "$W/prlist"
 refuses "a PR that moved while fetching" "moved while fetching" STUB_HEAD=0123456789abcdef0123456789abcdef01234567 --
 refuses "a PR ref origin does not have" "could not fetch PR #99" -- --pr 99
@@ -108,7 +112,7 @@ git branch "land/$id"; refuses "a taken branch name" "already exists" --; git br
 
 # Commits made in the worktree are not on the PR yet: finish removes the worktree but keeps land/<id> (nothing is lost).
 id="$("$TKT" create "Second cloud ticket" -t bug)"; f=".tickets/$id/ticket.md"; WT="$W/project-worktrees/land-$id"
-awk '/^---$/ && ++n == 2 { print "github: acme/app#22" } { print }' "$f" > "$W/t" && mv "$W/t" "$f"
+awk '/^---$/ && ++n == 2 { print "github: acme/app#22" } { print }' "$f" > "$W/t" && mv "$W/t" "$f"; echo plan > ".tickets/$id/plan.md"
 # A failing verdict on the PR head does not stop land: only a passing one does.
 printf 'graded-head: %s\nfail: one criterion\n' "$PRHEAD" > ".tickets/$id/eval-report.md"
 "$TKT" land "$id" < /dev/null >/dev/null 2>&1 || fail "second land failed"

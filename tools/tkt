@@ -1914,6 +1914,9 @@ cmd_land() {
     return 0
   fi
   [[ "$(get_field "$file" status)" == open ]] || { echo "land: $id is $(get_field "$file" status), not open; import its results first (tkt import-results $id)" >&2; exit 1; }
+  # Imported = sent to GitHub (github: line) and its sprint files are here (import-results brings plan.md); --pr cannot stand in for that.
+  [[ -n "$(get_field "$file" github)" && -f "$tdir/plan.md" ]] \
+    || { echo "land: $id was not imported from a GitHub sprint (no github: line or no plan.md here); run tkt import-results $id first" >&2; exit 1; }
   local repo; repo="$(_gh_origin_repo "$root" land)" || exit 1
   command -v gh >/dev/null 2>&1 || { echo "land: needs the GitHub CLI: install gh, then run: gh auth login" >&2; exit 1; }
   pr="$(_resolve_pr land "$file" "$repo" "$pr")" || exit 1

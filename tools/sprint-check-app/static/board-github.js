@@ -248,7 +248,7 @@ async function importResults(t, pr) {
   updateDialog({
     title: res.ok ? `Results are back in .tickets/${t.id}/` : (noVerdict ? 'Imported, but the cloud sprint did not close' : 'Import failed'),
     body: res.ok ? 'Next: Check & merge on the card.'
-      : noVerdict ? 'There is no passing evaluator verdict on the PR\'s head, so there is nothing to merge yet. Finish the close on this machine: Close here on the card (tkt land) makes a worktree at the PR\'s head to run the evaluator and sprint complete in, then Check & merge (docs/setup.md › Claude cloud sessions).'
+      : noVerdict ? 'There is no passing evaluator verdict on the PR\'s head, so there is nothing to merge yet. Finish the close on this machine: tkt land (Close here on the card, once the results include an eval-report) makes a worktree at the PR\'s head to run the evaluator and sprint complete in, then Check & merge (docs/setup.md › Claude cloud sessions).'
       : 'Nothing was changed.',
     pre: res.output || '', escape: true,
   }, shown.gen);
