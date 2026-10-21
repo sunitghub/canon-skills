@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-21-2026 11:35
+learnings-sweep last run: 10-21-2026 18:40
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-21 | [t-4ea4](.tickets/t-4ea4/learnings.md) | A guard that lives in one command protects only that command: the release check sat in tkt push-main while releasing.md said `git push public main`, and an agent followed the docs. Put a gate where every route passes (a pre-push hook) and make the docs name the guarded route; the reviewer then found two more routes around the hook (push by URL, a stdin-reading child in a multi-ref push). | UNPROMOTED |
 | 2026-10-21 | [t-ff14](.tickets/t-ff14/learnings.md) | A builder's 12/12 mutation sweep missed three guard clauses the evaluator then deleted without a test failing (relay time window, ticket-name match, a field cap): list every new guard clause before sweeping and mutate each one, not the ones that came to mind. | UNPROMOTED |
 | 2026-10-21 | [t-e523](.tickets/t-e523/learnings.md) | A Test Plan line like "screenshots of each converted button" needs a script that checks its own coverage against the named list: two evaluator fails came from hand-picked shots (half the buttons, then five more), and a staged class swap showed a stale look. Also: a flex row stretches every child to one height, so a height check cannot see a missing padding rule (mutant M20 survived); compare padding and radius. | UNPROMOTED |
 | 2026-10-21 | [t-087c](.tickets/t-087c/learnings.md) | Reviewer (low): the new doc-mirror-parity Check P is missing from the script's final echo summary, and one over-long line breaks the wrapping of complete.md's mutation paragraph | UNPROMOTED |
