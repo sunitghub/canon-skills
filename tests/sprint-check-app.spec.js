@@ -18,6 +18,18 @@ async function shots5a4b(page, name, locator) {
 const PROJECT_ROOT = process.env.SPRINT_CHECK_TEST_ROOT || process.cwd();
 // The computed rgb() of a theme variable in the page's current theme (t-e523: one probe, not one per test).
 const themeColor = (page, v) => page.evaluate(name => { const e = document.createElement('span'); e.style.color = `var(${name})`; document.body.append(e); const c = getComputedStyle(e).color; e.remove(); return c; }, v);
+// t-e523: a button's colours, and that it shows its buttons.css role at rest and under the pointer
+const colors = (loc) => loc.evaluate(e => { const s = getComputedStyle(e); return { color: s.color, border: s.borderTopColor }; });
+async function expectRole(page, loc, role) {
+  const want = role === 'b-danger' ? await themeColor(page, '--col-discarded') : await themeColor(page, '--text');
+  const wantBorder = role === 'b-danger' ? want : await themeColor(page, '--border-hover');
+  await page.mouse.move(0, 0);   // a click just before can leave the pointer where this button now is
+  // both roles are neutral at rest: body text and the theme's border (a `border: 1px solid` shorthand would reset it)
+  await expect.poll(() => colors(loc)).toEqual({ color: await themeColor(page, '--text-body'), border: await themeColor(page, '--border') });
+  await loc.hover();
+  await expect.poll(() => colors(loc)).toEqual({ color: want, border: wantBorder });
+  await page.mouse.move(0, 0);
+}
 
 // t-15d8: a test that needs its own board starts the Go board (the only board), built once per worker into a miniature
 // install: <tmp>/tools/sprint-check-bin/sprint-check (the name an install uses, so test.sh's leak check sees it) beside a
@@ -11867,6 +11879,7 @@ test.describe('Canon Cockpit Upkeep (t-7ae6)', () => {
       await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
       const neutral = await themeColor(page, '--border');
       expect(await sprint.evaluate(e => getComputedStyle(e).borderTopColor)).toBe(neutral);
+      await expectRole(page, sprint, 'b-neutral');   // and no red on hover either
       await page.locator('.regbtns[data-reg="proj-a"]').screenshot({ path: path.join(require('os').tmpdir(), `canon-regskill-needed-${theme}.png`) });
     }
     await sprint.click();
@@ -15665,19 +15678,6 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   // ── t-e523: one rule per button role (static/buttons.css), and the GitHub dialog's log, progress line, size and closing ──
   // Prod path: every Close/Cancel/Stop on the board and the Cockpit shell, and the board's GitHub dialog.
   const ROLES = ['b-neutral', 'b-danger', 'b-primary'];
-  // a button's colours at rest or under the pointer
-  const colors = (loc) => loc.evaluate(e => { const s = getComputedStyle(e); return { color: s.color, border: s.borderTopColor }; });
-  async function expectRole(page, loc, role) {
-    const want = role === 'b-danger' ? await themeColor(page, '--col-discarded') : await themeColor(page, '--text');
-    const wantBorder = role === 'b-danger' ? want : await themeColor(page, '--border-hover');
-    await page.mouse.move(0, 0);   // a click just before can leave the pointer where this button now is
-    // both roles are neutral at rest: body text and the theme's border (a `border: 1px solid` shorthand would reset it)
-    await expect.poll(() => colors(loc)).toEqual({ color: await themeColor(page, '--text-body'), border: await themeColor(page, '--border') });
-    await loc.hover();
-    await expect.poll(() => colors(loc)).toEqual({ color: want, border: wantBorder });
-    await page.mouse.move(0, 0);
-  }
-
   test('Close and Cancel share the neutral hover, Stop the red one, in Canon Dark and Light (t-e523)', async ({ page }) => {
     const id = `t-gh-e523a-${Date.now()}`;
     const { job, button } = await mergeFlow(page, id);
