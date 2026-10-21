@@ -87,7 +87,7 @@ done
 # t-43ba: no --model → the board's own Upkeep default, upkeep.default in the Model Tiers seed (sed, not python: Windows).
 if [[ -z "$MODEL" ]]; then
   TIERS="$SCRIPT_DIR/sprint-check-app/model-tiers.json"
-  MODEL="$(sed -n '/^  "upkeep": {/,/^  }/s/^ *"default": *"\([^"]*\)".*/\1/p' "$TIERS" 2>/dev/null | head -n 1)"
+  MODEL="$(sed -n '/^  "upkeep": {/,/^  }/s/^ *"default": *"\([^"]*\)".*/\1/p' "$TIERS" 2>/dev/null | head -n 1 || true)"
   [[ -n "$MODEL" ]] || { echo "Error: no --model given and '$TIERS' has no upkeep.default." >&2; exit 1; }
 fi
 # Reaches `claude --model`. Same rule as sprint-check-go; tests/fixtures/model-id-cases.json locks both.

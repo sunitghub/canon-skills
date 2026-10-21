@@ -301,16 +301,15 @@ function upRenderReport(raw){
   let html=''; let inFindings=false; let inList=false; let inMeta=false; let skippedTitle=false;
   const closeList=()=>{ if(inList){ html+='</ul>'; inList=false; } };
   const closeMeta=()=>{ if(inMeta){ html+='</div>'; inMeta=false; } };
-  const inline=t=>md(t);
   const isTableRow=l=>/^\s*\|.*\|\s*$/.test(l);
   const isTableSep=l=>/^\s*\|[\s|:-]+\|\s*$/.test(l);
   const splitRow=l=>l.trim().replace(/^\|/,'').replace(/\|$/,'').split('|').map(c=>c.trim());
   const statusCell=c=>{
     const m=c.match(/^(?:❌|✗|🔴)\s*(.*)/); // ✗, ❌, 🔴
-    if(m) return `<span class="up-status-chip bad">${inline(m[1]||'Missing')}</span>`;
+    if(m) return `<span class="up-status-chip bad">${md(m[1]||'Missing')}</span>`;
     const ok=c.match(/^(?:✅|✓|🟢)\s*(.*)/); // ✓, ✅, 🟢
-    if(ok) return `<span class="up-status-chip ok">${inline(ok[1]||'OK')}</span>`;
-    return inline(c);
+    if(ok) return `<span class="up-status-chip ok">${md(ok[1]||'OK')}</span>`;
+    return md(c);
   };
   for(let i=0;i<lines.length;i++){
     const line=lines[i];
@@ -335,28 +334,28 @@ function upRenderReport(raw){
         if(!isTableRow(lines[j])) break;
         body+='<tr>'+splitRow(lines[j]).map(c=>`<td>${statusCell(c)}</td>`).join('')+'</tr>';
       }
-      html+='<div class="up-table-wrap"><table><thead><tr>'+head.map(c=>`<th>${inline(c)}</th>`).join('')+'</tr></thead><tbody>'+body+'</tbody></table></div>';
+      html+='<div class="up-table-wrap"><table><thead><tr>'+head.map(c=>`<th>${md(c)}</th>`).join('')+'</tr></thead><tbody>'+body+'</tbody></table></div>';
       i=j-1; continue;
     }
     if(metaLine){
       if(!inMeta){ closeList(); html+='<div class="up-meta">'; inMeta=true; }
-      html+=`<span class="um"><b>${inline(metaLine[1])}</b>${inline(metaLine[2])}</span>`; continue;
+      html+=`<span class="um"><b>${md(metaLine[1])}</b>${md(metaLine[2])}</span>`; continue;
     }
     closeMeta();
     if(/^-{3,}\s*$/.test(line.trim())){ closeList(); html+='<hr>'; continue; }
-    if(h1){ closeList(); inFindings=false; html+=`<h3>${inline(h1[1])}</h3>`; continue; }
-    if(h2){ closeList(); inFindings=/findings/i.test(h2[1]); html+=`<h3>${inline(h2[1])}</h3>`; continue; }
-    if(h3){ closeList(); html+=`<h4>${inline(h3[1])}</h4>`; continue; }
+    if(h1){ closeList(); inFindings=false; html+=`<h3>${md(h1[1])}</h3>`; continue; }
+    if(h2){ closeList(); inFindings=/findings/i.test(h2[1]); html+=`<h3>${md(h2[1])}</h3>`; continue; }
+    if(h3){ closeList(); html+=`<h4>${md(h3[1])}</h4>`; continue; }
     if(li){
       if(!inList){ html+=`<ul class="${inFindings?'up-findings':''}">`; inList=true; }
-      html+=`<li>${inline(li[1])}</li>`; continue;
+      html+=`<li>${md(li[1])}</li>`; continue;
     }
     closeList();
     if(/^>/.test(line)){   // a run of > lines is one quote
       let j=i; while(j<lines.length && /^>/.test(lines[j])) j++;
       html+=md(lines.slice(i,j).join('\n')); i=j-1; continue;
     }
-    if(line.trim()) html+=`<p>${inline(line)}</p>`;
+    if(line.trim()) html+=`<p>${md(line)}</p>`;
   }
   closeList(); closeMeta();
   return html;

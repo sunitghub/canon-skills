@@ -46,6 +46,13 @@ assert not (Path(workdir) / "claude-invocations.log").exists(), "claude was invo
 print("sprint-check-upkeep: model id (t-be1f) ok in the bash runner")
 PY
 
+# t-43ba: an install with no registry to read the default from says so (pipefail once made it exit 2 with no message).
+mkdir -p "$WORKDIR/noreg/tools"
+cp "$ROOT/tools/upkeep-run" "$ROOT/tools/upkeep-skill-hashes.json" "$WORKDIR/noreg/tools/"
+mkdir -p "$WORKDIR/noreg-root/skills/context-check" && cp "$ROOT/skills/context-check/SKILL.md" "$WORKDIR/noreg-root/skills/context-check/"
+set +e; err="$(bash "$WORKDIR/noreg/tools/upkeep-run" context-check --root "$WORKDIR/noreg-root" 2>&1)"; rc=$?; set -e
+assert_eq 1 "$rc"; assert_contains "$err" "has no upkeep.default"
+
 # The handlers apply the empty-model default BEFORE the rule (an empty string is not a model id but must still run),
 # and a refused model is reported to the caller. The Go board, stub upkeep-run that logs its argv.
 BOARD="$(build_board "$WORKDIR/bin")"
