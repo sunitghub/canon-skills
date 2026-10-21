@@ -42,6 +42,7 @@ tkt github-status <id> [--json]      # where a ticket sent to GitHub stands: sen
 tkt open-pr <id>                     # open the PR a cloud session did not, from its pushed branch (a commit naming <id>), with "Fixes #N"
 tkt push-main                        # push origin's default branch (what GitHub merged, never the local one) to each `git config canon.mirror` remote (opt-in, never forced; prints how to undo); in canon it refuses a commit whose binaries are not released (`scripts/check-binaries-released.sh --rev`)
 tkt release-check <sha>              # exit 1 when <sha> ships binaries not yet released; canon's pre-push hook (scripts/install-hooks.sh) runs it for every push to a canon.mirror remote (t-4ea4)
+tkt land <id> [--pr N]            # close an imported cloud ticket here: a worktree at the PR head with the ticket bound to it; after sprint complete there, `tkt land <id> --finish` removes it (never pushes or merges)
 tkt take-back <id> [--close-issue]   # bring a ticket sent to GitHub back to this machine (clears runs: github; --close-issue also closes the issue and clears github:)
 ```
 

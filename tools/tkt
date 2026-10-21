@@ -1481,9 +1481,6 @@ _fixes_prs() {
     --jq ".[] | select(.body | test(\"(?i)\\\\bfixes #$2\\\\b\")) | [.number, .state, .headRefOid] | @tsv"
 }
 
-# _merge_pr_run_tests <tmp> <cmd> <base> <pr>: runs <cmd> in <tmp>/w, output to <tmp>/test.log, showing progress (t-bad4):
-# on a terminal one line rewritten every 2 s, else a plain line every CANON_PROGRESS_SECONDS (default 30; the board sets
-# it). The command runs in its own process group, so an interrupt stops all of it (recorded group id only).
 # _resolve_pr <label> <ticket-file> <repo> <pr> — prints the PR number: <pr> if given, else the one open PR saying
 # "Fixes #<n>" for the ticket's github: line. Explains and returns 1 otherwise.
 _resolve_pr() {
@@ -1499,6 +1496,9 @@ _resolve_pr() {
   printf '%s\n' "$found"
 }
 
+# _merge_pr_run_tests <tmp> <cmd> <base> <pr>: runs <cmd> in <tmp>/w, output to <tmp>/test.log, showing progress (t-bad4):
+# on a terminal one line rewritten every 2 s, else a plain line every CANON_PROGRESS_SECONDS (default 30; the board sets
+# it). The command runs in its own process group, so an interrupt stops all of it (recorded group id only).
 _merge_pr_run_tests() {
   local tmp="$1" cmd="$2" base="$3" pr="$4" every="${CANON_PROGRESS_SECONDS:-30}" tty=false tpid="" rc=0 start last=0 now line
   local shown; shown="$(printf '%s' "$cmd" | cut -c1-40)"; [[ ${#cmd} -gt 40 ]] && shown="${shown}…"

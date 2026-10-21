@@ -113,7 +113,6 @@ awk '/^---$/ && ++n == 2 { print "github: acme/app#22" } { print }' "$f" > "$W/t
 printf 'graded-head: %s\nfail: one criterion\n' "$PRHEAD" > ".tickets/$id/eval-report.md"
 "$TKT" land "$id" < /dev/null >/dev/null 2>&1 || fail "second land failed"
 echo more > "$WT/g.txt"; git -C "$WT" add g.txt; git -C "$WT" commit -qm "fix found while closing"; NEWHEAD="$(git -C "$WT" rev-parse HEAD)"
-printf 'graded-head: %s\npass: all met\n' "$NEWHEAD" > ".tickets/$id/eval-report.md"
 sed -i.bak 's/^status: .*/status: closed/' "$f"
 printf 'graded-head: %s\nfail: one criterion\n' "$NEWHEAD" > ".tickets/$id/eval-report.md"
 refuses "finish with a failing verdict on the worktree head" "no passing evaluator verdict" -- --finish
