@@ -3,7 +3,8 @@
 # one symbol per case: dead Bash in an extensionless shebang script (its only other mentions in a doc, a CHANGELOG and a
 # comment), a Bash helper called through `source`, a test-only caller, an over-export, an export used in its own file
 # that a test also imports (live: the test needs the export), unexported
-# Go, Go in main.go, Python, and a .rs file it must list as skipped. Also: tools/upkeep-run hands the headless dispatch
+# Go and Go init, Go in main.go, Python, test files outside tests/, each entry-point pattern, CRLF and non-ASCII paths,
+# and .cs/.rs files it must list as skipped; plus a pathspec, an empty scope and a run from a subdirectory. Also: tools/upkeep-run hands the headless dispatch
 # exactly that scan command. Protects the shipped dead-code-cleanup scan and `upkeep-run dead-code-cleanup`.
 
 set -euo pipefail
@@ -31,6 +32,9 @@ EOF
 cat > tools/lib.sh <<'EOF'
 lib_helper() { :; }
 test_only_fn() { :; }
+function kw_dead {
+  :
+}
 EOF
 cat > tests/t.sh <<'EOF'
 source ../tools/lib.sh
@@ -39,6 +43,8 @@ helper_in_test() { :; }
 used_test_helper() { :; }
 used_test_helper
 EOF
+printf 'test_only_fn\n' > tests/t2.sh
+printf '#!/usr/bin/env python3\nnot_bash() {\n' > tools/pyrun
 printf '# Changelog\n- ensure_file was kept\n' > CHANGELOG.md
 printf 'Call ensure_file to make a file.\n' > docs/notes.md
 cat > static/view.js <<'EOF'
@@ -50,15 +56,21 @@ const v = rowFor(ownAndTest(1));
 EOF
 printf "import { shared } from './view.js';\nshared(1);\n" > static/app.js
 printf "import { tested, ownAndTest } from '../static/view.js';\n" > tests/view.test.js
+printf 'export function idxDead() {}\n' > static/index.js
+printf 'export function cliDead() {}\n' > static/cli.js
+printf 'export function fmtTested() {}\n' > static/fmt.js
+printf "import { fmtTested } from './fmt.js';\n" > static/fmt.spec.js
 cat > pkg/a.go <<'EOF'
 package pkg
 
 func unusedLower() {}
 func usedLower()   {}
 func Exported()    { usedLower() }
+func init()        {}
+func goTestOnly()  {}
 EOF
 printf 'package pkg\n\nvar _ = Exported\n' > pkg/b.go
-printf 'package pkg\n\nfunc TestThing(t *T) {}\n' > pkg/a_test.go
+printf 'package pkg\n\nfunc TestThing(t *T) { goTestOnly() }\n' > pkg/a_test.go
 cat > cmd/main.go <<'EOF'
 package main
 
@@ -66,7 +78,12 @@ func main()           {}
 func helperInMain()   {}
 func ExportedInMain() {}
 EOF
-printf 'def py_dead():\n    pass\n\ndef _private():\n    pass\n' > app/util.py
+printf 'def py_dead():\n    pass\n\ndef _private():\n    pass\n\ndef py_tested():\n    pass\n\ndef py_tested2():\n    pass\n\nclass Helper:\n    pass\n\nh = Helper()\n' > app/util.py
+printf 'py_tested()\n' > app/test_util.py
+printf 'py_tested2()\n' > app/util2_test.py
+printf 'def init_dead():\n    pass\n' > app/__init__.py
+printf '#!/usr/bin/env python3\ndef run_dead():\n    pass\n' > app/run.py
+printf 'class Main {}\n' > src/Main.cs
 printf 'fn x() {}\n' > src/lib.rs
 # A CRLF checkout (Git for Windows autocrlf) is still Bash; a non-ASCII path is still read.
 printf '#!/usr/bin/env bash\r\ncrlf_dead() { :; }\r\n' > tools/crlf
@@ -74,7 +91,10 @@ cafe=$'static/caf\303\251'; mkdir -p "$cafe" && printf 'used_from_cafe\n' > "$ca
 printf 'used_from_cafe() { :; }\n' > tools/cafe-lib.sh
 git add -A
 
-out="$(bash "$SCAN")"
+mkdir "$W/tmp"
+out="$(TMPDIR="$W/tmp" bash "$SCAN")"
+[[ -z "$(ls -A "$W/tmp")" ]] || fail "dead-code-scan: left a temp file behind"
+assert_eq "$out" "$(cd tools && bash "$SCAN")" "dead-code-scan: same result from a subdirectory"
 got="$(grep -v '^#' <<<"$out" | awk -F'\t' '{ print $1, $3, $5 }' | sort)"
 want="$(sort <<'EOF'
 DEAD ensure_file -
@@ -84,20 +104,33 @@ DEAD unusedLower -
 DEAD helperInMain -
 DEAD ExportedInMain entry
 DEAD py_dead -
+DEAD kw_dead -
+DEAD init_dead entry
+DEAD run_dead entry
+DEAD idxDead entry
+DEAD cliDead entry
 TESTONLY test_only_fn -
 TESTONLY tested -
+TESTONLY fmtTested -
+TESTONLY goTestOnly -
+TESTONLY py_tested -
+TESTONLY py_tested2 -
 OVEREXP rowFor -
 EOF
 )"
 assert_eq "$want" "$got" "dead-code-scan: candidate rows"
-assert_contains "$out" "$(printf 'DEAD\ttools/build:3\tensure_file\tsh')" "dead-code-scan: file:line and lang"
-assert_contains "$out" "$(printf 'TESTONLY\ttools/lib.sh:2\ttest_only_fn\tsh\t-\ttests/t.sh')" "dead-code-scan: test-only refs name the test file"
+assert_contains "$out" "$(printf 'DEAD\ttools/build:3\tensure_file\tsh\t-\t-\n')" "dead-code-scan: file:line and lang"
+assert_contains "$out" "$(printf 'TESTONLY\ttools/lib.sh:2\ttest_only_fn\tsh\t-\ttests/t.sh tests/t2.sh\n')" "dead-code-scan: test-only refs name the test file"
 assert_contains "$out" "# scanned: js,py,go,sh" "dead-code-scan: scanned languages"
-assert_contains "$out" "# skipped: .rs=1" "dead-code-scan: an unscanned source language is named, with its file count"
+assert_contains "$out" "# skipped: .cs=1 .rs=1" "dead-code-scan: an unscanned source language is named, with its file count"
 
 # A pathspec narrows the scope, references included: outside static/, the test that imports `tested` is not seen.
 scoped="$(bash "$SCAN" static)"
-assert_eq "$(printf 'DEAD tested\nOVEREXP rowFor\nOVEREXP ownAndTest')" "$(grep -v '^#' <<<"$scoped" | awk -F'\t' '{ print $1, $3 }')" "dead-code-scan: pathspec scope"
+assert_eq "$(printf 'DEAD cliDead\nDEAD idxDead\nDEAD tested\nOVEREXP ownAndTest\nOVEREXP rowFor\nTESTONLY fmtTested')" \
+  "$(grep -v '^#' <<<"$scoped" | awk -F'\t' '{ print $1, $3 }' | sort)" "dead-code-scan: pathspec scope"
+
+# A scope with no source: no rows, and every summary line still printed.
+assert_eq "$(printf '# scanned: none\n# skipped: none\n# checked: 0 declarations')" "$(bash "$SCAN" docs)" "dead-code-scan: empty scope"
 
 # Outside a git repo: refuse, never scan an unbounded path.
 mkdir "$W/plain"
