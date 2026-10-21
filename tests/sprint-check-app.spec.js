@@ -15174,7 +15174,8 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   test('Check & merge offers Push main only with canon.mirror remotes, naming them, and pushes once on the click (t-24b1)', async ({ page }) => {
     const id = `t-gh24m-${Date.now()}`;
     const pushes = [];
-    await page.route('**/api/github/push-main**', r => { pushes.push(r.request().method()); return json(r, { ok: true, exit_code: 0, output: 'public: main 1111aaaa -> 2222bbbb\n  to undo: git push public 1111aaaa:refs/heads/main\n' }); });
+    let release; const held = new Promise(r => { release = r; });   // t-e523: the push answers only when the test says
+    await page.route('**/api/github/push-main**', async r => { pushes.push(r.request().method()); await held; return json(r, { ok: true, exit_code: 0, output: 'public: main 1111aaaa -> 2222bbbb\n  to undo: git push public 1111aaaa:refs/heads/main\n' }); });
     const { job, stat, button } = await mergeFlow(page, id);
     const mergedOut = 'Merged PR #58 into main (abc).\nLocal main: 1111aaaa -> 2222bbbb (fast-forward)\n';
     const mergeOnce = async () => {
@@ -15200,6 +15201,11 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.evaluate(async () => (await import('/static/board-github.js')).pollGithub(true));
     await mergeOnce();
     await page.locator('#gh-dialog-ok').click();
+    await expect(page.locator('#gh-dialog-title')).toHaveText(/^Pushing main to public/);
+    await page.keyboard.press('Escape');   // t-e523: Escape does not close a running push
+    await page.waitForTimeout(200);
+    await expect(page.locator('#gh-dialog')).toHaveClass(/open/);
+    release();
     await expect(page.locator('#gh-dialog-title')).toHaveText('Pushed');
     await expect(page.locator('#gh-dialog-pre')).toContainText('to undo: git push public');
     expect(pushes).toEqual(['POST']);
@@ -15836,6 +15842,34 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(dlg).toHaveClass(/open/);              // done, and still only its own buttons or Escape close it
     await page.keyboard.press('Escape');
     await expect(dlg).not.toHaveClass(/open/);
+  });
+
+  test('Escape waits while Import results, Create PR and the merge check run, then closes (t-e523)', async ({ page }) => {
+    for (const [stage, extra, route, method, first] of [
+      ['results-ready', { pr: 58 }, 'import', 'POST', null],
+      ['branch', { branch: 'claude/x-1' }, 'open-pr', 'POST', 'Create PR'],   // its question first, then the run
+      ['results-in', { pr: 58 }, 'merge-check', 'GET', null],
+    ]) {
+      const id = `t-gh-e523esc-${route}-${Date.now()}`;
+      ghTicket(id, { github: 'acme/app#57' });
+      await routeStatus(page, id, { stage, ...extra });
+      let release; const held = new Promise(r => { release = r; });
+      await page.route(`**/api/ticket/${id}/github/${route}**`, async r => {
+        if (r.request().method() !== method) return r.fallback();
+        await held; return json(r, { ok: false, exit_code: 1, output: 'stopped\n' });
+      });
+      await openBoard(page, id);
+      await page.locator(`.card[data-id="${id}"] .card-gh-btn`).click();
+      if (first) await page.locator('#gh-dialog-ok', { hasText: first }).click();
+      const body = await page.locator('#gh-dialog-body').textContent();
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(200);
+      await expect(page.locator('#gh-dialog'), `${route}: Escape while running`).toHaveClass(/open/);
+      release();
+      await expect(page.locator('#gh-dialog-body')).not.toHaveText(body);   // the step answered
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#gh-dialog'), `${route}: Escape once done`).not.toHaveClass(/open/);
+    }
   });
 
   test('a board tab names its project with aria-label, not a title tooltip (t-e523)', async ({ page }) => {
