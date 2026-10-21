@@ -155,5 +155,12 @@
         ]
       }
     ]
+  },
+  "upkeep": {
+    "default": "claude-sonnet-5-5",
+    "models": [
+      "claude-haiku-5-5",
+      "claude-sonnet-5-5"
+    ]
   }
 }

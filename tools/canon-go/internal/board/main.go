@@ -832,7 +832,7 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		}
 		model := stringValue(payload, "model", "")
 		if model == "" {
-			model = "claude-haiku-4-5-20251001"
+			model = upkeepDefaultModel() // "" (no registry default) is refused by startUpkeepRun's model-id check
 		}
 		sendJSON(w, startUpkeepRun(eroot, skill, model))
 		return
@@ -4787,7 +4787,7 @@ func startUpkeepRun(root, skill, model string) map[string]any {
 		state["busy"] = true
 		return state
 	}
-	upkeepRuns[key] = map[string]any{"status": "running", "output": "", "exit_code": nil, "started_at": time.Now()}
+	upkeepRuns[key] = map[string]any{"status": "running", "output": "", "exit_code": nil, "started_at": time.Now(), "model": model}
 	upkeepRunsMu.Unlock()
 	go runUpkeep(root, skill, model)
 	state := getUpkeepRunState(root, skill)
@@ -4810,7 +4810,7 @@ func getUpkeepRunState(root, skill string) map[string]any {
 		result := map[string]any{
 			"status": state["status"], "exit_code": state["exit_code"],
 			"report_path": state["report_path"], "finished_at": state["finished_at"],
-			"output": out,
+			"model": state["model"], "output": out,
 		}
 		if state["status"] == "running" {
 			result["elapsed"] = time.Since(state["started_at"].(time.Time)).Seconds()
@@ -4994,6 +4994,7 @@ func loadModelTiers() map[string]any {
 		"defaults": map[string]any{"eval": map[string]any{}, "light": map[string]any{}},
 		"models":   map[string]any{"anthropic": []any{}, "openai": []any{}},
 	}
+	var found []map[string]any
 	for _, p := range []string{modelTiersUserFile(), modelTiersPath} {
 		data, err := os.ReadFile(p)
 		if err != nil {
@@ -5001,10 +5002,27 @@ func loadModelTiers() map[string]any {
 		}
 		var parsed map[string]any
 		if json.Unmarshal(data, &parsed) == nil && parsed != nil {
-			return parsed
+			found = append(found, parsed)
 		}
 	}
-	return empty
+	if len(found) == 0 {
+		return empty
+	}
+	// t-43ba: Upkeep's models and default live in the seed; a user file saved before them takes the seed's.
+	if _, ok := found[0]["upkeep"]; !ok && len(found) > 1 {
+		if u, ok := found[len(found)-1]["upkeep"]; ok {
+			found[0]["upkeep"] = u
+		}
+	}
+	return found[0]
+}
+
+// upkeepDefaultModel is the registry's upkeep.default (t-43ba): the one Upkeep default, which the board's picker
+// selects and tools/upkeep-run falls back to. "" when the registry has none.
+func upkeepDefaultModel() string {
+	u, _ := loadModelTiers()["upkeep"].(map[string]any)
+	id, _ := u["default"].(string)
+	return id
 }
 
 // ── User themes (t-f889) — mirrors server.py's list_themes/open_themes_folder ──

@@ -155,5 +155,8 @@ grep -qxF "Bash(bash '$ROOT/tools/dead-code-scan.sh')" "$W/claude-args.log" || f
 [[ "$(grep -c '^Bash(bash' "$W/claude-args.log")" == 1 ]] || fail "upkeep-run: more than the one scan command allowed"
 grep -qF "Run its scanner as exactly this command, with no arguments: bash '$ROOT/tools/dead-code-scan.sh'" "$W/claude-args.log" \
   || fail "upkeep-run: prompt does not name the scan command"
+# t-43ba: with no --model, upkeep-run runs the registry's one Upkeep default (the board's picker default too).
+want_model="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["upkeep"]["default"])' "$ROOT/tools/sprint-check-app/model-tiers.json")"
+assert_eq "$want_model" "$(grep -A1 -xF -- '--model' "$W/claude-args.log" | tail -n 1)" "upkeep-run: fallback model is the registry's upkeep.default"
 
 echo "dead-code-scan: ok"

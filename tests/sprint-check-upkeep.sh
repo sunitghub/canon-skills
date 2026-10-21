@@ -46,6 +46,13 @@ assert not (Path(workdir) / "claude-invocations.log").exists(), "claude was invo
 print("sprint-check-upkeep: model id (t-be1f) ok in the bash runner")
 PY
 
+# t-43ba: an install with no registry to read the default from says so (pipefail once made it exit 2 with no message).
+mkdir -p "$WORKDIR/noreg/tools"
+cp "$ROOT/tools/upkeep-run" "$ROOT/tools/upkeep-skill-hashes.json" "$WORKDIR/noreg/tools/"
+mkdir -p "$WORKDIR/noreg-root/skills/context-check" && cp "$ROOT/skills/context-check/SKILL.md" "$WORKDIR/noreg-root/skills/context-check/"
+set +e; err="$(bash "$WORKDIR/noreg/tools/upkeep-run" context-check --root "$WORKDIR/noreg-root" 2>&1)"; rc=$?; set -e
+assert_eq 1 "$rc"; assert_contains "$err" "has no upkeep.default"
+
 # The handlers apply the empty-model default BEFORE the rule (an empty string is not a model id but must still run),
 # and a refused model is reported to the caller. The Go board, stub upkeep-run that logs its argv.
 BOARD="$(build_board "$WORKDIR/bin")"
@@ -60,15 +67,19 @@ if true; then
   for _ in $(seq 1 50); do curl -s -o /dev/null "http://127.0.0.1:$PORT/api/git" && break; sleep 0.1; done
   up_post() { curl -s -X POST -H 'Content-Type: application/json' -d "$1" "http://127.0.0.1:$PORT/api/upkeep/run"; }
   up_wait() { for _ in $(seq 1 100); do [[ "$(curl -s "http://127.0.0.1:$PORT/api/upkeep/status?skill=context-check" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("status"))')" != "running" ]] && return 0; sleep 0.05; done; return 1; }
+  # t-43ba: the empty-model default is the registry's upkeep.default (model-tiers.json), not a constant in the board.
+  want_default="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["upkeep"]["default"])' "$ROOT/tools/sprint-check-app/model-tiers.json")"
   body="$(up_post '{"skill":"context-check","model":""}')"; up_wait
   assert_eq True "$(python3 -c 'import json,sys;print(json.loads(sys.argv[1]).get("ok"))' "$body")"
-  assert_contains "$(cat "$WORKDIR/upkeep-invocations.log")" "--model claude-haiku-4-5-20251001"
+  assert_contains "$(cat "$WORKDIR/upkeep-invocations.log")" "--model $want_default"
   : > "$WORKDIR/upkeep-invocations.log"
   body="$(up_post '{"skill":"context-check"}')"; up_wait                       # model omitted: same default
-  assert_contains "$(cat "$WORKDIR/upkeep-invocations.log")" "--model claude-haiku-4-5-20251001"
+  assert_contains "$(cat "$WORKDIR/upkeep-invocations.log")" "--model $want_default"
   : > "$WORKDIR/upkeep-invocations.log"
   body="$(up_post '{"skill":"context-check","model":"claude-sonnet-5"}')"; up_wait
   assert_contains "$(cat "$WORKDIR/upkeep-invocations.log")" "--model claude-sonnet-5"
+  # t-43ba: the status of a run made by this board process names its model (the card's "Ran on", the Running hover).
+  assert_eq claude-sonnet-5 "$(curl -s "http://127.0.0.1:$PORT/api/upkeep/status?skill=context-check" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("model"))')"
   : > "$WORKDIR/upkeep-invocations.log"
   body="$(up_post '{"skill":"context-check","model":"--allow-tools"}')"
   assert_contains "$body" "model must be a plain model id"

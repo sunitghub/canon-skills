@@ -76,7 +76,7 @@ case "$SKILL" in
 esac
 
 ROOT=""
-MODEL="claude-haiku-4-5-20251001"   # Haiku 4.5 default (t-7ae6 grill: report-only work stays cheap)
+MODEL=""   # set by --model; else the registry's upkeep.default below (t-43ba: the one Upkeep default)
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --root) ROOT="${2:-}"; shift 2 ;;
@@ -84,6 +84,12 @@ while [[ $# -gt 0 ]]; do
     *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
 done
+# t-43ba: no --model → the board's own Upkeep default, upkeep.default in the Model Tiers seed (sed, not python: Windows).
+if [[ -z "$MODEL" ]]; then
+  TIERS="$SCRIPT_DIR/sprint-check-app/model-tiers.json"
+  MODEL="$(sed -n '/^  "upkeep": {/,/^  }/s/^ *"default": *"\([^"]*\)".*/\1/p' "$TIERS" 2>/dev/null | head -n 1 || true)"
+  [[ -n "$MODEL" ]] || { echo "Error: no --model given and '$TIERS' has no upkeep.default." >&2; exit 1; }
+fi
 # Reaches `claude --model`. Same rule as sprint-check-go; tests/fixtures/model-id-cases.json locks both.
 model_re='^[A-Za-z0-9][]A-Za-z0-9._:[-]{0,63}$'
 [[ "$MODEL" =~ $model_re ]] || { echo "Error: --model must be a plain model id (letters, digits, . _ : [ ] -), not '$MODEL'." >&2; exit 1; }
