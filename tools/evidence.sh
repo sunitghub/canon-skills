@@ -117,9 +117,11 @@ quarantine_only_diff() {
   local out line inhunk=0
   out="$(git -C "$root" diff -U0 --no-renames "$1" "$2" -- tests/sprint-check-app.spec.js 2>/dev/null)" || return 1
   while IFS= read -r line; do
+    if (( ! inhunk )); then   # headers come only before the first hunk; after it `--- x` is a removed line `-- x`
+      case "$line" in "diff --git "*|"index "*|"--- "*|"+++ "*|"") continue ;; esac
+    fi
     case "$line" in
-      "@@ "*) inhunk=1; continue ;;
-      "diff --git "*|"index "*|"--- "*|"+++ "*|"") (( inhunk )) || continue ;;&   # headers come only before the first hunk; after it `--- x` is a removed line `-- x`
+      "@@ "*) inhunk=1 ;;
       +*|-*) [[ "${line:1}" =~ ^[[:space:]]*//[[:space:]]*QUARANTINE[[:space:]]+t-[a-z0-9]{4}[[:space:]]*: ]] || return 1 ;;
       *) return 1 ;;
     esac
