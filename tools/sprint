@@ -196,10 +196,10 @@ _gate_agents_check() {
   fi
   if [[ -z "$why" ]]; then GATE_AGENTS=ok; return 0; fi
   GATE_AGENTS=missing
-  [[ -f "$root/.claude/agents/canon-evaluator.md" ]] || fix=" (run 'skills.sh refresh' there first, so it links the agents)"
+  [[ -f "$start/.claude/agents/canon-evaluator.md" ]] || fix=" (run 'skills.sh refresh' there first, so it links the agents)"
   echo "[sprint] WARNING: canon's gate agents are not loaded in this Claude Code session: $why."
   echo "  The close's reviewer and evaluator need them; without them it falls back to general-purpose agents."
-  echo "  Fix: end this session and start Claude Code again in $root$fix."
+  echo "  Fix: end this session and start Claude Code again in $start$fix."
 }
 
 cmd_continue() {

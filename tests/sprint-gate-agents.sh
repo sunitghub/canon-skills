@@ -34,7 +34,7 @@ assert_contains "$(last_started)" '"gate_agents":"ok"'
 newp; agents "$P" $(( now - 86400 )); session "$OTHER" $(( now - 3600 ))
 out="$(start elsewhere)"
 assert_contains "$out" "WARNING: canon's gate agents are not loaded in this Claude Code session: it started in $OTHER"
-assert_contains "$out" "start Claude Code again in $P."
+assert_contains "$out" "start Claude Code again in $OTHER (run 'skills.sh refresh' there first"
 assert_contains "$(last_started)" '"gate_agents":"missing"'
 # 3. ...but the user's own agents folder counts
 newp; mkdir -p "$CFG/agents"; printf -- '<!-- canon:agent -->\n' > "$CFG/agents/canon-evaluator.md"; at "$CFG/agents" $(( now - 86400 ))
@@ -44,9 +44,19 @@ rm -rf "$CFG/agents"
 # 4. agents linked after the session started (skills.sh add inside a running session)
 newp; agents "$P" "$now"; session "$P" $(( now - 3600 ))
 out="$(start late)"; assert_contains "$out" "canon's gate agents were added after it started"
+[[ "$out" != *"skills.sh refresh"* ]] || fail "refresh hint shown though the start folder has the agents: $out"
 # 5. the project has no agents at all: the fix says to refresh first
 newp; session "$P" $(( now - 3600 ))
 out="$(start noagents)"; assert_contains "$out" "run 'skills.sh refresh' there first"
+# 5b. started in a worktree with no agents: the fix line names that worktree, not the project
+newp; WT="$W/wt"; mkdir -p "$WT"; agents "$P" $(( now - 86400 )); session "$WT" $(( now - 3600 ))
+out="$(start worktree)"; assert_contains "$out" "start Claude Code again in $WT (run"
+# 5c. a transcript with no "cwd" line: silent, no gate_agents field
+newp; rm -rf "$CFG/projects"; mkdir -p "$CFG/projects/-x"
+printf '{"type":"mode","sessionId":"%s"}\n{"timestamp":"%s","type":"user"}\n' "$SID" "$(iso "$now")" > "$CFG/projects/-x/$SID.jsonl"
+out="$(start nocwd)"; [[ "$out" != *"WARNING: canon's gate agents"* ]] || fail "warned with no cwd line: $out"
+[[ "$(last_started)" != *gate_agents* ]] || fail "gate_agents written with no cwd line"
+session "$P" $(( now - 3600 ))
 # 6. sprint continue warns the same way
 id="$(printf '%s\n' "$out" | awk '/Sprint started:/ { print $3 }')"
 out="$(cd "$P" && "$ROOT/tools/sprint" continue "$id" 2>&1)"; assert_contains "$out" "WARNING: canon's gate agents"

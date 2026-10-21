@@ -124,6 +124,13 @@ git -C "$p5" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
 git -C "$p5" worktree add -q "$p5-wt" -b wt >/dev/null 2>&1; dirs+=("$p5-wt")
 "$SKILLS" link-worktree "$p5-wt" >/dev/null
 assert_eq "$ROOT/agents" "$(readlink "$p5-wt/.claude/agents")"
+git -C "$p5-wt" check-ignore -q .claude/agents || fail "worktree agents link not ignored"
+# a worktree with its own real agents folder keeps it: canon's files are copied in, a user's file is left alone
+git -C "$p5" worktree add -q "$p5-wt2" -b wt2 >/dev/null 2>&1; dirs+=("$p5-wt2")
+mkdir -p "$p5-wt2/.claude/agents"; echo mine > "$p5-wt2/.claude/agents/canon-reviewer.md"
+"$SKILLS" link-worktree "$p5-wt2" >/dev/null
+[ ! -L "$p5-wt2/.claude/agents" ] || fail "user-owned agents folder replaced by a link"
+assert_eq mine "$(cat "$p5-wt2/.claude/agents/canon-reviewer.md")"
 
 # --- 7. system-installer deny rules ------------------------------------------------------------
 rules_expected=7
