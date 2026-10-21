@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-21-2026 18:40
+learnings-sweep last run: 10-21-2026 19:30
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-21 | [t-12f8](.tickets/t-12f8/learnings.md) | Check a ticket's premise in the code before building: t-12f8's main fix (link .claude/agents in worktrees) already existed (project.sh:203), the reviewer of t-ff14 had misread it. Its one code change then generalised a message for the rare case and broke the common one (a session started outside the project now told to restart in the wrong folder, t-21f7), and the test was edited to match: when a test's expectation changes, ask which user that changes the answer for. | UNPROMOTED |
 | 2026-10-21 | [t-4ea4](.tickets/t-4ea4/learnings.md) | A guard that lives in one command protects only that command: the release check sat in tkt push-main while releasing.md said `git push public main`, and an agent followed the docs. Put a gate where every route passes (a pre-push hook) and make the docs name the guarded route; the reviewer then found two more routes around the hook (push by URL, a stdin-reading child in a multi-ref push). | UNPROMOTED |
 | 2026-10-21 | [t-ff14](.tickets/t-ff14/learnings.md) | A builder's 12/12 mutation sweep missed three guard clauses the evaluator then deleted without a test failing (relay time window, ticket-name match, a field cap): list every new guard clause before sweeping and mutate each one, not the ones that came to mind. | UNPROMOTED |
 | 2026-10-21 | [t-e523](.tickets/t-e523/learnings.md) | A Test Plan line like "screenshots of each converted button" needs a script that checks its own coverage against the named list: two evaluator fails came from hand-picked shots (half the buttons, then five more), and a staged class swap showed a stale look. Also: a flex row stretches every child to one height, so a height check cannot see a missing padding rule (mutant M20 survived); compare padding and radius. | UNPROMOTED |
