@@ -27,8 +27,8 @@ export function renderAdminSessions(views){
       `<td class="sess"><div class="s1" title="${escAttr(title)}">${v.ticket?`<span class="ag-id">${esc(v.ticket)}</span>${esc(title)}`:(v.scratch?`${SCRATCH_ICON}${esc(v.scrTitle||'Scratch session')}`:'no ticket')}</div>`+
       `<div class="s2" title="${escAttr(v.proot+' \u00b7 '+v.agent+' \u00b7 '+v.cwd+inSession)}">${esc((v.projName||v.name)+' \u00b7 '+v.agent+' \u00b7 '+dir+inSession)}</div></td>`+
       `<td class="reap">${esc(v.reaper||'\u2014')}</td>`+
-      `<td><div class="acts"><button class="ad-open${v.state==='needs-you'?' answer':''}" data-i="${i}">${v.state==='needs-you'?'Answer':'Open'}</button>`+
-      (canReap(v)?`<button class="ad-end" data-end="reap" data-i="${i}" title="Do now what the idle reaper would do">Reap now</button>`:'')+
+      `<td><div class="acts"><button class="ad-open b-accent${v.state==='needs-you'?' answer':''}" data-i="${i}">${v.state==='needs-you'?'Answer':'Open'}</button>`+
+      (canReap(v)?`<button class="ad-end b-danger" data-end="reap" data-i="${i}" title="Do now what the idle reaper would do">Reap now</button>`:'')+
       (canKill(v)?`<button class="ad-end kill b-danger" data-end="kill" data-i="${i}" title="End now, without saving">Kill</button>`:'')+`</div></td></tr>`;
     }).join('')+
     interrupted.map(e=>{
@@ -40,7 +40,7 @@ export function renderAdminSessions(views){
       `<td><span class="stcell"><span class="sdot"></span>stopped</span></td>`+
       `<td class="sess" colspan="2"><div class="s1" title="${escAttr(e.project_root)}">${who}<span class="s1meta">${esc(meta)}</span></div>`+
       (e.resumable!==true&&e.reason?`<div class="s3">${esc('Can\u2019t resume: '+e.reason)}</div>`:'')+`</td>`+
-      `<td><div class="acts">${e.resumable===true?`<button class="intr-btn primary" data-act="resume" data-id="${escAttr(e.id)}">Resume</button>`:''}<button class="intr-btn" data-act="dismiss" data-id="${escAttr(e.id)}">Dismiss</button></div></td></tr>`;
+      `<td><div class="acts">${e.resumable===true?`<button class="intr-btn b-accent" data-act="resume" data-id="${escAttr(e.id)}">Resume</button>`:''}<button class="intr-btn b-neutral" data-act="dismiss" data-id="${escAttr(e.id)}">Dismiss</button></div></td></tr>`;
     }).join('')+
     '</tbody></table></div>';
   box.querySelectorAll('.ad-open').forEach(b=>b.addEventListener('click',()=>openSessionInTab(views[+b.dataset.i])));
@@ -185,7 +185,7 @@ function mtRender(){
         <div class="mt-card-price"><span>Output/MTok</span><span>$${esc(m.output_price)}</span></div>
         <div class="mt-card-actions"><button type="button" class="mt-edit"${mtEditing?' disabled':''} aria-label="Edit ${escAttr(m.name)}">Edit</button><a class="b-danger">Remove</a></div>
       </div>`;
-  }).join('') + `<div class="mt-add-card">+ Add ${esc(MT_PROVIDER_LABEL[mtProvider])} model</div>`;
+  }).join('') + `<div class="mt-add-card b-accent">+ Add ${esc(MT_PROVIDER_LABEL[mtProvider])} model</div>`;
   // t-783a: wired after each render; the ids come back from data-id, so no JS sits inside an attribute.
   grid.querySelectorAll('.mt-card:not(.editing)').forEach(card=>{
     card.querySelector('.mt-edit').addEventListener('click',()=>mtStartEdit(card.dataset.id));

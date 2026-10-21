@@ -755,7 +755,7 @@ function cardHTML(t, idx) {
         ${typeBadge(t.type)}
         ${ciBadge(t)}
         ${demoBadge(t)}
-        ${String(t.ci) === 'true' ? `<button class="ci-run-btn${t.headless_running ? ' running' : ''}" data-id="${esc(t.id)}" aria-label="Run headless grading"><svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M4 2.5v11l9-5.5z"/></svg></button>` : ''}
+        ${String(t.ci) === 'true' ? `<button class="ci-run-btn b-accent${t.headless_running ? ' running' : ''}" data-id="${esc(t.id)}" aria-label="Run headless grading"><svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M4 2.5v11l9-5.5z"/></svg></button>` : ''}
       </div>
       <div class="card-body">
         ${t.status === 'closed' ? `<button class="card-archive" data-id="${esc(t.id)}" title="Archive this ticket">archive</button>` : ''}

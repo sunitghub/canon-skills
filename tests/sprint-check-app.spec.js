@@ -17,17 +17,23 @@ async function shots5a4b(page, name, locator) {
 }
 const PROJECT_ROOT = process.env.SPRINT_CHECK_TEST_ROOT || process.cwd();
 // The computed rgb() of a theme variable in the page's current theme (t-e523: one probe, not one per test).
-const themeColor = (page, v) => page.evaluate(name => { const e = document.createElement('span'); e.style.color = `var(${name})`; document.body.append(e); const c = getComputedStyle(e).color; e.remove(); return c; }, v);
+const themeColor = (page, v, fallback = '') => page.evaluate(([name, fb]) => { const e = document.createElement('span'); e.style.color = fb ? `var(${name}, ${fb})` : `var(${name})`; document.body.append(e); const c = getComputedStyle(e).color; e.remove(); return c; }, [v, fallback]);
 // t-e523: a button's colours, and that it shows its buttons.css role at rest and under the pointer
-const colors = (loc) => loc.evaluate(e => { const s = getComputedStyle(e); return { color: s.color, border: s.borderTopColor }; });
+const colors = (loc) => loc.evaluate(e => { const s = getComputedStyle(e); return { color: s.color, border: s.borderTopColor, fill: s.backgroundColor }; });
 async function expectRole(page, loc, role) {
-  const want = role === 'b-danger' ? await themeColor(page, '--col-discarded') : await themeColor(page, '--text');
-  const wantBorder = role === 'b-danger' ? want : await themeColor(page, '--border-hover');
+  const red = await themeColor(page, '--col-discarded'), clear = 'rgba(0, 0, 0, 0)';
+  const hover = {
+    'b-neutral': { color: await themeColor(page, '--text'), border: await themeColor(page, '--border-hover'), fill: clear },
+    'b-danger': { color: red, border: red, fill: clear },
+    'b-danger-main': { color: await themeColor(page, '--th-on-bad', '#fff'), border: red, fill: red },   // a main danger action fills red
+    'b-accent': { color: await themeColor(page, '--text'), border: await themeColor(page, '--accent'), fill: await themeColor(page, '--accent-dim') },
+  }[role];
   await page.mouse.move(0, 0);   // a click just before can leave the pointer where this button now is
-  // both roles are neutral at rest: body text and the theme's border (a `border: 1px solid` shorthand would reset it)
-  await expect.poll(() => colors(loc)).toEqual({ color: await themeColor(page, '--text-body'), border: await themeColor(page, '--border') });
+  // every role but primary is neutral at rest: body text and the theme's border (a `border: 1px solid` shorthand would reset it)
+  await expect.poll(async () => { const c = await colors(loc); return { color: c.color, border: c.border }; })
+    .toEqual({ color: await themeColor(page, '--text-body'), border: await themeColor(page, '--border') });
   await loc.hover();
-  await expect.poll(() => colors(loc)).toEqual({ color: want, border: wantBorder });
+  await expect.poll(() => colors(loc)).toEqual(hover);
   await page.mouse.move(0, 0);
 }
 
@@ -11873,13 +11879,13 @@ test.describe('Canon Cockpit Upkeep (t-7ae6)', () => {
     const sprint = regBtn(page, 'sprint'), eff = regBtn(page, 'efficiency');
     await expect(sprint).toBeVisible();
     await expect(page.locator('.regbtns[data-reg="proj-a"]')).toHaveAttribute('aria-live', 'polite');
-    // A visible + <skill> button means the skill is missing. t-e523: registering deletes nothing, so it is a neutral
-    // button (buttons.css .b-neutral), not red.
+    // A visible + <skill> button means the skill is missing. t-e523: registering deletes nothing, so it is a sub-action
+    // (buttons.css .b-accent), not red.
     for (const theme of ['dark', 'light']) {
       await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
       const neutral = await themeColor(page, '--border');
       expect(await sprint.evaluate(e => getComputedStyle(e).borderTopColor)).toBe(neutral);
-      await expectRole(page, sprint, 'b-neutral');   // and no red on hover either
+      await expectRole(page, sprint, 'b-accent');   // a sub-action: the accent on its border on hover, never red
       await page.locator('.regbtns[data-reg="proj-a"]').screenshot({ path: path.join(require('os').tmpdir(), `canon-regskill-needed-${theme}.png`) });
     }
     await sprint.click();
@@ -15677,8 +15683,8 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
 
   // ── t-e523: one rule per button role (static/buttons.css), and the GitHub dialog's log, progress line, size and closing ──
   // Prod path: every Close/Cancel/Stop on the board and the Cockpit shell, and the board's GitHub dialog.
-  const ROLES = ['b-neutral', 'b-danger', 'b-primary'];
-  test('Close and Cancel share the neutral hover, Stop the red one, in Canon Dark and Light (t-e523)', async ({ page }) => {
+  const ROLES = ['b-neutral', 'b-danger', 'b-danger-main', 'b-accent', 'b-primary'];
+  test('Close and Cancel share the neutral hover, Stop fills red, in Canon Dark and Light (t-e523)', async ({ page }) => {
     const id = `t-gh-e523a-${Date.now()}`;
     const { job, button } = await mergeFlow(page, id);
     for (const theme of ['dark', 'light']) {
@@ -15688,35 +15694,48 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
       await expectRole(page, page.locator('#gh-dialog-cancel'), 'b-neutral');   // Cancel
       await page.locator('#gh-dialog-ok').click();
       await expect(page.locator('#gh-dialog-cancel')).toHaveText('Stop');
-      await expect(page.locator('#gh-dialog-cancel')).toHaveClass(/\bb-danger\b/);
-      await expectRole(page, page.locator('#gh-dialog-cancel'), 'b-danger');    // Stop
+      await expect(page.locator('#gh-dialog-cancel')).toHaveClass(/\bb-danger-main\b/);
+      await expectRole(page, page.locator('#gh-dialog-cancel'), 'b-danger-main');   // Stop: the running dialog's main action
       Object.assign(job, { status: 'done', exit_code: 1, output: 'failed\n' });
       await expect(page.locator('#gh-dialog-cancel')).toHaveText('Close');
-      await expect(page.locator('#gh-dialog-cancel')).not.toHaveClass(/\bb-danger\b/);
+      await expect(page.locator('#gh-dialog-cancel')).not.toHaveClass(/\bb-danger-main\b/);
       await expectRole(page, page.locator('#gh-dialog-cancel'), 'b-neutral');   // Close
       await page.locator('#gh-dialog-cancel').click();
       Object.assign(job, { status: 'idle', output: '', exit_code: null });
     }
     // every converted board button carries exactly one role, so none falls back to an uncoloured border
-    const missing = await page.evaluate(roles => [...document.querySelectorAll('.btn, .ck-leave-btn, .modal-close, .doc-cancel-btn')]
+    const missing = await page.evaluate(roles => [...document.querySelectorAll('.btn, .ck-leave-btn, .modal-close, .doc-cancel-btn, .create-btn')]
       .filter(e => roles.filter(r => e.classList.contains(r)).length !== 1).map(e => e.id || e.className), ROLES);
     expect(missing).toEqual([]);
   });
 
-  test('the Cockpit shell uses the same roles: Cancel neutral, a danger confirm red only on hover (t-e523)', async ({ page }) => {
+  test('the board header: + New is the filled main action; Sync, Upkeep, Scratch and CI are sub-actions (t-e523)', async ({ page }) => {
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await page.evaluate(() => { document.getElementById('btn-upkeep').hidden = false; });
+    await expect(page.locator('#btn-create')).toHaveClass(/\bb-primary\b/);
+    await expect(page.locator('#btn-ci-setup')).not.toHaveAttribute('style');   // its look comes from the stylesheets
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+      expect(await page.locator('#btn-create').evaluate(e => getComputedStyle(e).backgroundColor)).toBe(await themeColor(page, '--accent'));   // filled
+      for (const sel of ['#btn-gh-sync', '#btn-upkeep', '#btn-scratch', '#btn-ci-setup']) await expectRole(page, page.locator(sel), 'b-accent');
+    }
+  });
+
+  test('the Cockpit shell uses the same roles: Cancel neutral, a danger confirm fills red only on hover (t-e523)', async ({ page }) => {
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
     for (const theme of ['dark', 'light']) {
       await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
       await page.evaluate(async () => { const { cockpitConfirm } = await import('/static/cockpit-core.js'); cockpitConfirm({ title: 'Stop it?', okLabel: 'Stop', danger: true }); });
       await expect(page.locator('#cconfirm')).toHaveClass(/show/);
-      await expect(page.locator('#cc-ok')).toHaveClass(/\bb-danger\b/);
+      await expect(page.locator('#cc-ok')).toHaveClass(/\bb-danger-main\b/);
       await expectRole(page, page.locator('#cc-cancel'), 'b-neutral');
-      await expectRole(page, page.locator('#cc-ok'), 'b-danger');
+      await expectRole(page, page.locator('#cc-ok'), 'b-danger-main');   // the dialog's main action fills red
       await page.locator('#cc-cancel').click();
       await expect(page.locator('#cconfirm')).not.toHaveClass(/show/);
     }
-    const missing = await page.evaluate(roles => [...document.querySelectorAll('.btn, .help-close, .dstop')]
+    const missing = await page.evaluate(roles => [...document.querySelectorAll('.btn, .help-close, .dstop, .splitclose')]
       .filter(e => roles.filter(r => e.classList.contains(r)).length !== 1).map(e => e.id || e.className), ROLES);
     expect(missing).toEqual([]);
   });
@@ -15729,7 +15748,8 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     const tick = s => `merge-pr: running scripts/test.sh on main + PR #58… 0m${String(s).padStart(2, '0')}s  (suite ${s}: ok)`;
     await button.click();
     await page.locator('#gh-dialog-ok').click();
-    Object.assign(job, { output: `${lines(40)}\n${tick(5)}\n${tick(10)}\n` });
+    const first = 'merge-pr: running scripts/test.sh on main + PR #58…';   // printed once before the timed lines
+    Object.assign(job, { output: `${lines(40)}\n${first}\n${tick(5)}\n${tick(10)}\n` });
     await expect(pre).toContainText('line 40');
     const box = await pre.evaluate(e => { const s = getComputedStyle(e); return { h: e.clientHeight, sh: e.scrollHeight, lh: parseFloat(s.lineHeight), oy: s.overflowY }; });
     expect(box.oy).toBe('scroll');
@@ -15739,6 +15759,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     // one live progress line: the newest of a run of them, everything else kept in order
     await expect(pre).toContainText(tick(10));
     await expect(pre).not.toContainText(tick(5));
+    expect((await pre.textContent()).split('\n').filter(l => l.startsWith('merge-pr: running')).length).toBe(1);
     const atBottom = () => pre.evaluate(e => e.scrollTop + e.clientHeight >= e.scrollHeight - 4);
     await expect.poll(atBottom).toBe(true);
     // scrolled up: new output does not pull the view down

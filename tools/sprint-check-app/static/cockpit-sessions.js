@@ -120,7 +120,7 @@ function fillInterrupted(box,list,pid){
   head.append(el('span','',n+' session'+(n===1?' was':'s were')+' running when the daemon stopped'));
   const resumable=list.filter(e=>e.resumable===true);
   if(resumable.length>1){
-    const all=el('button','intr-btn primary','Resume all');
+    const all=el('button','intr-btn b-accent','Resume all');
     all.dataset.act='resume-all';
     all.addEventListener('click',async()=>{ for(const e of resumable) await resumeInterrupted(e); });
     head.append(all);
@@ -136,10 +136,10 @@ function fillInterrupted(box,list,pid){
     if(e.resumable!==true && e.reason) what.append(el('span','intr-reason','Can\u2019t resume: '+e.reason));
     row.append(what);
     if(e.resumable===true){
-      const b=el('button','intr-btn primary','Resume'); b.dataset.act='resume';
+      const b=el('button','intr-btn b-accent','Resume'); b.dataset.act='resume';
       b.addEventListener('click',()=>resumeInterrupted(e)); row.append(b);
     }
-    const d=el('button','intr-btn','Dismiss'); d.dataset.act='dismiss';
+    const d=el('button','intr-btn b-neutral','Dismiss'); d.dataset.act='dismiss';
     d.title='Hides it here \u2014 Admin keeps it until you dismiss it there.';
     d.addEventListener('click',()=>hideInterrupted(e)); row.append(d);
     box.append(row);

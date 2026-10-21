@@ -58,17 +58,13 @@
     /* ── Create ticket button ────────────────────── */
     .create-btn {
       height: 28px; padding: 0 13px; border-radius: 6px; font-size: 12px; font-weight: 500;
-      border: 1px solid var(--accent); background: var(--accent-dim);
-      color: var(--accent); cursor: pointer; flex-shrink: 0;
-      transition: background .1s, color .1s;
-    }
-    .create-btn:hover { background: var(--accent); color: var(--th-on-accent, #fff); }
-    .create-btn.primary-btn { background: var(--accent); color: var(--th-on-accent, #fff); font-weight: 600; }
-    .create-btn.primary-btn:hover { filter: brightness(1.08); }
-    .create-btn.scratch-btn { border-style: dashed; border-color: var(--text-muted); background: transparent; color: var(--text); }   /* t-e162 */
+      cursor: pointer; flex-shrink: 0;
+    }   /* t-e523: colours from buttons.css (+ New .b-primary, the rest .b-accent) */
+    .create-btn.primary-btn { font-weight: 600; }
+    .create-btn.scratch-btn { border-style: dashed; }   /* t-e162; colours from buttons.css .b-accent (t-e523) */
     .create-btn.scratch-btn { display: inline-flex; align-items: center; gap: 5px; }
     .scr-ico { width: 15px; height: 15px; flex-shrink: 0; vertical-align: -3px; }   /* t-f553: scribble + pencil */
-    .create-btn.scratch-btn:hover { border-color: var(--accent); background: var(--accent-dim); color: var(--text); }
+    .create-btn.ci-setup-btn { font-weight: 700; letter-spacing: -.3px; }
 
     /* ── Create modal ────────────────────────────── */
     #create-overlay {

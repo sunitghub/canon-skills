@@ -203,14 +203,16 @@ function updateDialog(fields, gen) {
   if ('cancel' in fields) setCancel(d, fields.cancel);
   if ('escape' in fields) dlgEscape = fields.escape;
 }
-// Stop ends a running step (red on hover); Close and Cancel only close the dialog (buttons.css, t-e523).
+// Stop ends a running step and is then the dialog's main action (fills red on hover); Close and Cancel only close the
+// dialog (buttons.css, t-e523).
 function setCancel(d, label) {
   d.cancel.textContent = label;
-  d.cancel.classList.toggle('b-danger', label === 'Stop');
+  d.cancel.classList.toggle('b-danger-main', label === 'Stop');
   d.cancel.classList.toggle('b-neutral', label !== 'Stop');
 }
-// merge-pr prints a progress line every few seconds; the dialog shows only the newest of a run of them (t-e523).
-const PROGRESS = /^merge-pr: running .*… \d+m\d\ds/;
+// merge-pr prints "running …" once, then again with the time every few seconds; the dialog shows only the newest of a
+// run of them (t-e523).
+const PROGRESS = /^merge-pr: running .*…/;
 export function oneProgressLine(text) {
   const lines = String(text).split('\n');
   return lines.filter((l, i) => !(PROGRESS.test(l) && PROGRESS.test(lines[i + 1] || ''))).join('\n');

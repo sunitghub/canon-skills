@@ -401,10 +401,8 @@
     .ci-run-btn {
       font-size: 9px; width: 18px; height: 18px; padding: 0; border-radius: 4px;
       display: flex; align-items: center; justify-content: center;
-      border: 1px solid var(--border); background: var(--surface); color: var(--text-muted);
       cursor: pointer; position: relative; z-index: 1; flex-shrink: 0;
     }
-    .ci-run-btn:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
     .ci-run-btn.running { color: var(--col-progress); border-color: var(--col-progress); animation: pulse 1s infinite; }
 
     .modal-headless:empty { display: none; }

@@ -116,8 +116,7 @@
   .views.split-v .panebar{left:0;right:0;top:calc(var(--r)*100% + 3px)}
   .views.split-h .view.pane2{top:var(--strip-h)}
   .views.split-v .view.pane2{height:calc((1 - var(--r))*100% - 3px - var(--strip-h))}
-  .splitclose{margin-left:auto;position:sticky;right:0;flex-shrink:0;background:var(--panel);color:var(--text-muted);border:1px solid var(--border);border-radius:6px;padding:3px 9px;font-size:12px;cursor:pointer}
-  .splitclose:hover,.splitclose:focus-visible{color:var(--text);border-color:var(--accent);outline:none}
+  .splitclose{margin-left:auto;position:sticky;right:0;flex-shrink:0;background:var(--panel);border-radius:6px;padding:3px 9px;font-size:12px;cursor:pointer}
   .splitclose[hidden]{display:none}
   .tabmenu{position:fixed;z-index:70;min-width:230px;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:4px;box-shadow:0 8px 24px rgba(0,0,0,.35)}
   .tabmenu[hidden]{display:none}
