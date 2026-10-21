@@ -29,6 +29,8 @@ const snake = md('upkeep_runs_json and a_b.png');
 ok('snake_case words stay literal', snake === 'upkeep_runs_json and a_b.png', snake);
 const item = md('- _item_');
 ok('italic right after and before a tag (inside a bullet)', item.includes('<span><em>item</em></span>'), item);
+const eq = md('a=_b_ and _c_=d');
+ok('= is not a word edge for _italic_', eq === 'a=_b_ and _c_=d', eq);
 const gt = md('a > b');
 ok('a > that does not start the line is text', gt === 'a &gt; b', gt);
 
