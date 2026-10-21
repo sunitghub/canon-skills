@@ -107,9 +107,18 @@ mkdir -p "$REPORTS_DIR"
 TS="$(date -u +%Y-%m-%dT%H-%M-%SZ)"
 REPORT_PATH="$REPORTS_DIR/${SKILL}_${TS}.md"
 
+# t-271a: dead-code-cleanup's scan is a script (a model sampled candidates and missed most). It is this
+# canon install's own tools/ copy, beside the hash manifest, never one from the less-trusted --root; the
+# one extra tool is that exact command, no arguments.
+EXTRA_TOOLS=()
 case "$SKILL" in
   promote-learnings)
     SKILL_TASK="Read the skill instructions at skills/promote-learnings/SKILL.md and follow them."
+    ;;
+  dead-code-cleanup)
+    SCAN_CMD="bash $SCRIPT_DIR/dead-code-scan.sh"
+    SKILL_TASK="Read the skill instructions at skills/$SKILL/SKILL.md and follow them. Run its scanner as exactly this command, with no arguments: $SCAN_CMD"
+    EXTRA_TOOLS=("Bash($SCAN_CMD)")
     ;;
   *)
     SKILL_TASK="Read the skill instructions at skills/$SKILL/SKILL.md and follow them."
@@ -151,7 +160,7 @@ RESULT_JSON="$(claude -p "$PROMPT" \
   --output-format json \
   --permission-mode dontAsk \
   --model "$MODEL" \
-  --allowedTools "Read" "Grep" "Glob" "LS" "Write" "Bash(git diff:*)" "Bash(git log:*)" "Bash(git status:*)" "Bash(wc:*)")"
+  --allowedTools "Read" "Grep" "Glob" "LS" "Write" "Bash(git diff:*)" "Bash(git log:*)" "Bash(git status:*)" "Bash(wc:*)" ${EXTRA_TOOLS[@]+"${EXTRA_TOOLS[@]}"})"
 INVOKE_STATUS=$?
 set -e
 

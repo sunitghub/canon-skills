@@ -27,9 +27,20 @@ review/eval gates like any other change — this skill never bypasses them.
 
 ## The scan (follow exactly)
 
+**Run the scanner first.** Steps 1–3 are implemented by canon's `dead-code-scan.sh` (Bash, git and
+awk only, so it runs in Git Bash on Windows): `bash ~/.canon/tools/dead-code-scan.sh [<path>...]`
+(in the canon repo itself, `bash tools/dead-code-scan.sh`). It prints one tab-separated row per
+candidate — `class  file:line  symbol  lang  entry  refs`, class `DEAD`/`TESTONLY`/`OVEREXP` — then
+`# scanned:`, `# skipped:` and `# checked:` lines; it exits 2 outside a git repo. Its rows are the
+candidate list: report **every** row, never a sample, and do not re-derive them by hand — a model
+checking hundreds of symbols one grep at a time skips most of them. Your part is the judgment the
+script cannot make: the entry points and dynamic dispatch in step 3 and the Gotchas. Only if the
+script is missing, follow steps 1–3 by hand and say in the report that the scan was manual and may
+be incomplete.
+
 1. **Extract candidate declarations.** Grep-based, one pattern set per language present in
    scope:
-   - JS/TS (`.js`, `.ts`, `.jsx`, `.tsx`): `export (function|const|class) <Name>` (an *export*)
+   - JS/TS (`.js`, `.ts`, `.jsx`, `.tsx`): `export [async] (function|const|class) <Name>` (an *export*)
    - Python (`.py`): top-level `def <name>` / `class <Name>` not prefixed with `_`
    - Go (`.go`): top-level `func <Name>(` — exported (uppercase start, an *export*) and unexported
      (lowercase start) alike. Exclude `main`, `init`, and `Test*`/`Benchmark*`/`Example*`
@@ -61,8 +72,9 @@ review/eval gates like any other change — this skill never bypasses them.
    - **Dead** — no code reference at all.
    - **Test-only** — code references exist, but only in test files (the production code is
      reachable only from its tests).
-   - **Over-exported** — an *export* (JS/TS export or exported Go func) whose only non-test code
-     references are in its own file: live code, but the export (or Go capital letter) is unneeded.
+   - **Over-exported** — an *export* (JS/TS export or exported Go func) whose only code references
+     are in its own file — no other file and no test uses it: live code, but the export (or Go
+     capital letter) is unneeded. A test that imports the export needs it, so that is live.
    - Otherwise live — not reported. For a non-export (Python, unexported Go, Bash), a call in its
      own file is a normal use and makes it live.
 
@@ -76,9 +88,11 @@ review/eval gates like any other change — this skill never bypasses them.
      `index.*`, `__init__.py`, `main.go`, `cli.*`, or any file a `package.json`/shebang/build
      config names directly. These are likely public API surface or process entry points invoked
      by name from outside grep's reach — flag them, don't bury them, but don't recommend removal.
-     **Exception — Bash functions never take the shebang downgrade:** a Bash function can only be
-     called from its own script or a file that `source`s it, and grep sees both, so a shebang
-     script's function with no code reference is High.
+     **Exception — Bash functions and unexported Go funcs never take the downgrade:** a Bash
+     function can only be called from its own script or a file that `source`s it, and an unexported
+     Go func only from its own package; grep sees all of those, so they stay High. The scanner's
+     `entry` column applies the filename and shebang patterns and this exception; check the
+     `package.json`/build-config case yourself.
 
 4. **Report.** The scan itself edits no file. Print the Summary inline, then — **confirm-first**,
    mirroring `context-check`/`context-doctor` — write a structured `dead-code-report.md` at the
