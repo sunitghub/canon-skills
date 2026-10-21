@@ -963,8 +963,13 @@ assert_grep "^status: in_progress$" ".tickets/$existing_id/ticket.md"
 
 # partial ID resolution
 partial_ticket_id="$("$TKT" create "partial id test ticket" -t task -p 3)"
-partial="${partial_ticket_id#t-}"
-partial="${partial:0:3}"
+# tkt matches ids by substring, so 3 chars of a random id can hit another ticket: widen until unique (t-11de)
+partial_len=3
+until "$TKT" show "${partial_ticket_id:2:$partial_len}" >/dev/null 2>&1; do
+  (( partial_len < ${#partial_ticket_id} - 2 )) || fail "tkt show cannot resolve $partial_ticket_id even by its full hex"
+  partial_len=$((partial_len + 1))
+done
+partial="${partial_ticket_id:2:$partial_len}"
 partial_output="$("$SPRINT" start "$partial")"
 assert_contains "$partial_output" "Sprint started: $partial_ticket_id"
 "$TKT" close "$partial_ticket_id" --no-sprint >/dev/null
