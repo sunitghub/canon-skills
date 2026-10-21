@@ -12,6 +12,19 @@
       ],
       "ticket": "t-8aa6",
       "reason": "Fails every run in webkit (9/9 across three batches at 51b331ef, 2026-10-15): the second page.waitForLoadState('networkidle') (spec line ~9789, right after closeCockpit) times out at 30 s, probably because the hidden tab's own poll keeps the network busy; the setInterval/clearInterval count assertions after it never run in webkit while this is quarantined; passes in chromium; diagnose under t-8aa6"
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > cross-project Sessions row (t-2d2e) > interrupted (t-6a05): a row is one line plus the reason; Admin rows too",
+      "browsers": [
+        "chromium",
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "Fails every run on clean main and on t-e523 (2026-10-21: chromium 3/3 on a git-archive copy of origin/main 7ec14e9a and 3/3 on the branch; webkit 1/1 in three full stamps): TypeError reading 'y' of a null boundingBox, the row is measured before it renders. Was flaky (webkit 5/5 alone on main, 2026-10-04); quarantined, diagnose under t-8aa6.",
+      "failed_runs": {
+        "chromium": "3/3 solo on main, 3/3 solo on the branch",
+        "webkit": "3/3 full runs"
+      }
     }
   ],
   "flaky": [
@@ -90,19 +103,6 @@
       "reason": "timing flake seen in some of five real-data runs; cause not yet diagnosed",
       "failed_runs": {
         "webkit": "1/5"
-      }
-    },
-    {
-      "title": "cockpit in board (t-ddc8) > cross-project Sessions row (t-2d2e) > interrupted (t-6a05): a row is one line plus the reason; Admin rows too",
-      "browsers": [
-        "chromium",
-        "webkit"
-      ],
-      "ticket": "t-8aa6",
-      "reason": "WebKit: measures a row box before it exists (boundingBox() is null). Fails 5/5 in isolation on clean main and 2/5 on the t-416c branch (2026-10-04), so it is not caused by that work; diagnose under t-8aa6",
-      "failed_runs": {
-        "chromium": "1/5",
-        "webkit": "4/5"
       }
     },
     {

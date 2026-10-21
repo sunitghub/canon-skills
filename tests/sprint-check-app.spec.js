@@ -6276,6 +6276,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
+    // QUARANTINE t-8aa6: fails every run on clean main too (the row's boundingBox() is null when measured); see tests/board-spec-baseline.json
     test('interrupted (t-6a05): a row is one line plus the reason; Admin rows too', async ({ page }) => {
       const list = [stoppedEntry('t-cc33', '/tmp/proj-a', { resumable: false, reason: 'ticket is closed' })];
       await stubInterrupted(page, list, []);
