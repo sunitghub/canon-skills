@@ -320,4 +320,13 @@ for f in "$ROOT/skills/sprint/reference/complete-checklist.md" "$COMPLETE" "$ROO
     grep -qF -- "$frag" "$f" || fail "doc-mirror-parity: ${f#"$ROOT"/} lost '$frag' from the pre-evaluator mutation sweep (t-087c, Check P)"
   done
 done
+# ── Check Q: the Plan fallback is relayed, never typed (t-ff14). The checklist, complete.md and shared-gate-protocol.md each name
+# `sprint relay-report`; the checklist and complete.md also name the Plan fallback and that the main session never types a report.
+for f in "$ROOT/skills/sprint/reference/complete-checklist.md" "$COMPLETE" "$SHARED"; do
+  grep -qF -- 'sprint relay-report' "$f" || fail "doc-mirror-parity: ${f#"$ROOT"/} lost 'sprint relay-report' from the Plan fallback (t-ff14, Check Q)"
+done
+for f in "$ROOT/skills/sprint/reference/complete-checklist.md" "$COMPLETE"; do
+  grep -qF -- '`Plan`' "$f" || fail "doc-mirror-parity: ${f#"$ROOT"/} does not name the \`Plan\` fallback (t-ff14, Check Q)"
+  grep -qiF -- 'never types' "$f" || fail "doc-mirror-parity: ${f#"$ROOT"/} lost 'never types' (the main session never types a gate report) (t-ff14, Check Q)"
+done
 echo "doc-mirror-parity: ok (fallback commands match shared↔security; review.md/eval.md reference shared file; Windows fallback clause present; base-ref commands match shared↔security; required-visual convention present in shared-gate-protocol.md + start.md; citation backtick-escape rule present in shared-gate-protocol.md + eval.md + review.md; scenario-backed grading language present in eval.md + start.md; design-fit tag set matches reviewer.md↔wrapup-gates.md; gate-floor invariant present in SKILL.md + complete.md + how-it-works.md + AGENTS.md; destructive-git-command guardrail present in shared-gate-protocol.md + eval.md + review.md; demo-mode policy phrases match SKILL.md↔complete.md; scratch-copy rule present in shared-gate-protocol.md + eval.md + review.md; pin-the-environment rule present in shared-gate-protocol.md + both agent files + both Codex files)"

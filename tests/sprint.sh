@@ -1430,6 +1430,14 @@ tx_cfg="$(mktemp -d)"
   jtranscript np Plan "$rel"; sed -i.bak 's#reference/eval.md#reference/other.md#' "$tx_cfg/projects/-proj/sess1/subagents/agent-np.jsonl"
   out="$(run_fail "$SPRINT" relay-report "$gid")"; assert_contains "$out" "no evaluator transcript for $gid"
   rm -f "$tx_cfg"/projects/-proj/sess1/subagents/agent-*
+  # a Plan transcript that never names this ticket is another ticket's gate; one older than 3 hours is not the dispatch just finished
+  jtranscript nt Plan "$rel"; sed -i.bak "s#$gid#t-other#g" "$tx_cfg/projects/-proj/sess1/subagents/agent-nt.jsonl"
+  out="$(run_fail "$SPRINT" relay-report "$gid")"; assert_contains "$out" "no evaluator transcript for $gid"
+  rm -f "$tx_cfg"/projects/-proj/sess1/subagents/agent-*
+  jtranscript old Plan "$rel"; touch -t 200001010000 "$tx_cfg/projects/-proj/sess1/subagents/agent-old.jsonl"
+  out="$(run_fail "$SPRINT" relay-report "$gid")"; assert_contains "$out" "no evaluator transcript for $gid"
+  [[ ! -f ".tickets/$gid/eval-report.md" ]] || fail "relay-report wrote a report from a transcript older than 3 hours"
+  rm -f "$tx_cfg"/projects/-proj/sess1/subagents/agent-*
   # an older board binary takes an unknown first word for a port and would start serving: relay asks --help first and refuses
   old_board="$(mktemp -d)/sprint-check"; printf '#!/bin/sh\n[ "$1" = --help ] && { echo "usage: sprint-check <port>"; exit 0; }\nsleep 30\n' > "$old_board"; chmod +x "$old_board"
   jtranscript pl Plan "$rel"

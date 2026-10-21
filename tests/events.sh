@@ -207,6 +207,13 @@ assert_contains "$(event_line gate.finished "$gid")" '"agent":"general-purpose"'
 (cd "$G" && CLAUDECODE=1 CLAUDE_CONFIG_DIR="$FX" "$ROOT/tools/subagent-log.sh" --agent-id 777-2 --agent-type evaluator --ticket "$gid" >/dev/null)
 [[ "$(event_line gate.finished "$gid")" != *'"agent"'* ]] || fail "gate.finished named an agent with no transcript behind it"
 rm -rf "$FX"
+# t-ff14: the two new fields are cut at their limits (agent 32, gate_agents 8), never copied whole
+long="$(head -c 40 /dev/zero | tr '\0' a)"
+CANON_HOME="$W/cap" "$SPRINT_CHECK_BIN" event gate.finished --source sprint --project "$P" "ticket=t-cap" "agent=$long"
+CANON_HOME="$W/cap" "$SPRINT_CHECK_BIN" event sprint.started --source sprint --project "$P" "ticket=t-cap" "gate_agents=$long"
+assert_contains "$(cat "$W/cap"/events/*.jsonl)" "\"agent\":\"$(printf %.32s "$long")\""
+assert_contains "$(cat "$W/cap"/events/*.jsonl)" "\"gate_agents\":\"$(printf %.8s "$long")\""
+[[ "$(cat "$W/cap"/events/*.jsonl)" != *"$(printf %.33s "$long")"* ]] || fail "an event field was copied past its limit"
 (cd "$G" && "$SPRINT" check-review-notes "$gid" >/dev/null 2>&1) || true
 assert_contains "$(event_line gate.rejected "$gid")" '"reason":"review_shape","role":"reviewer"'
 mkdir -p "$gt/evidence"; printf 'not a stamped log\n' > "$gt/evidence/x.log"
