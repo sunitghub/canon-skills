@@ -196,10 +196,15 @@ _gate_agents_check() {
   fi
   if [[ -z "$why" ]]; then GATE_AGENTS=ok; return 0; fi
   GATE_AGENTS=missing
-  [[ -f "$start/.claude/agents/canon-evaluator.md" ]] || fix=" (run 'skills.sh refresh' there first, so it links the agents)"
+  # t-21f7: restart where this project's code is: the start folder when it is the project or one of its worktrees (same
+  # git common dir, t-12f8), else the project. Both sides are git paths, so they compare as strings on Git Bash too.
+  local dir="$root" common
+  common="$(cd "$root" && cd "$(git rev-parse --git-common-dir 2>/dev/null)" && pwd -P || true)"
+  [[ -n "$common" && "$(cd "$start" 2>/dev/null && cd "$(git rev-parse --git-common-dir 2>/dev/null)" && pwd -P || true)" == "$common" ]] && dir="$start"
+  [[ -f "$dir/.claude/agents/canon-evaluator.md" ]] || fix=" (run 'skills.sh refresh' there first, so it links the agents)"
   echo "[sprint] WARNING: canon's gate agents are not loaded in this Claude Code session: $why."
   echo "  The close's reviewer and evaluator need them; without them it falls back to general-purpose agents."
-  echo "  Fix: end this session and start Claude Code again in $start$fix."
+  echo "  Fix: end this session and start Claude Code again in $dir$fix."
 }
 
 cmd_continue() {

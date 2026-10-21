@@ -34,7 +34,7 @@ assert_contains "$(last_started)" '"gate_agents":"ok"'
 newp; agents "$P" $(( now - 86400 )); session "$OTHER" $(( now - 3600 ))
 out="$(start elsewhere)"
 assert_contains "$out" "WARNING: canon's gate agents are not loaded in this Claude Code session: it started in $OTHER"
-assert_contains "$out" "start Claude Code again in $OTHER (run 'skills.sh refresh' there first"
+assert_contains "$out" "start Claude Code again in $P."   # the project, not the outside start folder (t-21f7); no refresh hint: $P has the agents
 assert_contains "$(last_started)" '"gate_agents":"missing"'
 # 3. ...but the user's own agents folder counts
 newp; mkdir -p "$CFG/agents"; printf -- '<!-- canon:agent -->\n' > "$CFG/agents/canon-evaluator.md"; at "$CFG/agents" $(( now - 86400 ))
@@ -45,11 +45,12 @@ rm -rf "$CFG/agents"
 newp; agents "$P" "$now"; session "$P" $(( now - 3600 ))
 out="$(start late)"; assert_contains "$out" "canon's gate agents were added after it started"
 [[ "$out" != *"skills.sh refresh"* ]] || fail "refresh hint shown though the start folder has the agents: $out"
-# 5. the project has no agents at all: the fix says to refresh first
-newp; session "$P" $(( now - 3600 ))
-out="$(start noagents)"; assert_contains "$out" "run 'skills.sh refresh' there first"
+# 5. started outside, the project has no agents at all: the fix names the project and says to refresh first
+newp; session "$OTHER" $(( now - 3600 ))
+out="$(start noagents)"; assert_contains "$out" "start Claude Code again in $P (run 'skills.sh refresh' there first"
 # 5b. started in a worktree with no agents: the fix line names that worktree, not the project
-newp; WT="$W/wt"; mkdir -p "$WT"; agents "$P" $(( now - 86400 )); session "$WT" $(( now - 3600 ))
+newp; git -C "$P" commit -q --allow-empty -m init; WT="$W/wt"; git -C "$P" worktree add -q "$WT"
+agents "$P" $(( now - 86400 )); session "$WT" $(( now - 3600 ))
 out="$(start worktree)"; assert_contains "$out" "start Claude Code again in $WT (run"
 # 5c. a transcript with no "cwd" line: silent, no gate_agents field
 newp; rm -rf "$CFG/projects"; mkdir -p "$CFG/projects/-x"
