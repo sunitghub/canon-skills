@@ -95,14 +95,29 @@ git show-ref --verify --quiet "refs/heads/land/$id" && fail "branch land/$id sti
 [[ ! -e ".tickets/$id/.cockpit-cwd.before-land" ]] || fail "saved binding left behind"
 [[ "$(git ls-remote origin 2>/dev/null)" != *"land/"* ]] || fail "land pushed a branch"
 
+# Refusals that need their own open ticket: a bad --pr, no way to find the PR, a taken worktree path or branch name.
+mk() { id="$("$TKT" create "Cloud ticket" -t bug)"; f=".tickets/$id/ticket.md"; WT="$W/project-worktrees/land-$id"
+  [[ -z "${1:-}" ]] || { awk -v g="$1" '/^---$/ && ++n == 2 { print "github: " g } { print }' "$f" > "$W/t" && mv "$W/t" "$f"; }; }
+mk acme/app#23; refuses "a --pr that is not a number" "takes a PR number" -- --pr 5x
+mk;             refuses "a ticket with no github line" "no github:" --
+mk acme/app#23; printf '7\n8\n' > "$W/prlist"; refuses "several open PRs" "several open PRs" --; echo 7 > "$W/prlist"
+mkdir -p "$WT"; refuses "a taken worktree path" "already exists" --; rmdir "$WT"
+git branch "land/$id"; refuses "a taken branch name" "already exists" --; git branch -q -D "land/$id"
+
 # Commits made in the worktree are not on the PR yet: finish removes the worktree but keeps land/<id> (nothing is lost).
 id="$("$TKT" create "Second cloud ticket" -t bug)"; f=".tickets/$id/ticket.md"; WT="$W/project-worktrees/land-$id"
 awk '/^---$/ && ++n == 2 { print "github: acme/app#22" } { print }' "$f" > "$W/t" && mv "$W/t" "$f"
-printf 'graded-head: %s\npass: all met\n' "$PRHEAD" > ".tickets/$id/eval-report.md"; rm ".tickets/$id/eval-report.md"
+# A failing verdict on the PR head does not stop land: only a passing one does.
+printf 'graded-head: %s\nfail: one criterion\n' "$PRHEAD" > ".tickets/$id/eval-report.md"
 "$TKT" land "$id" < /dev/null >/dev/null 2>&1 || fail "second land failed"
 echo more > "$WT/g.txt"; git -C "$WT" add g.txt; git -C "$WT" commit -qm "fix found while closing"; NEWHEAD="$(git -C "$WT" rev-parse HEAD)"
 printf 'graded-head: %s\npass: all met\n' "$NEWHEAD" > ".tickets/$id/eval-report.md"
 sed -i.bak 's/^status: .*/status: closed/' "$f"
+printf 'graded-head: %s\nfail: one criterion\n' "$NEWHEAD" > ".tickets/$id/eval-report.md"
+refuses "finish with a failing verdict on the worktree head" "no passing evaluator verdict" -- --finish
+rm ".tickets/$id/eval-report.md"
+refuses "finish with no eval-report.md" "no passing evaluator verdict" -- --finish
+printf 'graded-head: %s\npass: all met\n' "$NEWHEAD" > ".tickets/$id/eval-report.md"
 out="$("$TKT" land "$id" --finish < /dev/null 2>&1)"; assert_contains "$out" "land/$id kept"
 [[ ! -e "$WT" ]] || fail "worktree still there"
 [[ "$(git rev-parse "refs/heads/land/$id")" == "$NEWHEAD" ]] || fail "the commit made in the worktree was lost"

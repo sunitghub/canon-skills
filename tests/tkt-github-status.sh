@@ -48,7 +48,8 @@ land() { "$TKT" github-status "$id" --json | node -e 'process.stdout.write(Strin
 assert_eq false "$(land)"
 sed -i.bak 's/^status: closed$/status: open/' "$f" && rm -f "$f.bak";  assert_eq true "$(land)"
 mv ".tickets/$id/eval-report.md" "$W/er";                              assert_eq false "$(land)"
-mv "$W/er" ".tickets/$id/eval-report.md"
+printf '24\tMERGED\t%s\n' "$HEAD7" > "$W/prs"; mv "$W/er" ".tickets/$id/eval-report.md"; assert_eq false "$(land)"
+printf '24\tOPEN\t%s\n' "$HEAD7" > "$W/prs"
 sed -i.bak 's/^status: open$/status: closed/' "$f" && rm -f "$f.bak"
 # t-c8d4: graded-head plus late docs only (the cloud's learnings sweep) is results-in, as merge-pr accepts it; a code change
 # after the graded head is not. The commits are made in another clone, so github-status has to fetch the PR head.
