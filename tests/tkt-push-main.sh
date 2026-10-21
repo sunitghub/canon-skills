@@ -51,8 +51,12 @@ case "$m" in *LAG*) echo "NOT RELEASED  linux-amd64: cockpit-daemon is at abc bu
 exit 0'
 (cd "$M" && git pull -q origin trunk && mkdir -p scripts tools && printf '%s\n' "$stub" > scripts/check-binaries-released.sh \
   && echo LAG > tools/cockpit-daemon.sha256 && git add scripts tools && git commit -qm "daemon change, not released" && git push -q origin HEAD:trunk)
-mkdir -p scripts && printf '%s\n' "$stub" > scripts/check-binaries-released.sh   # this checkout's copy (untracked), as in canon
 UNREL="$(git --git-dir="$W/origin.git" rev-parse trunk)"; before="$(at public)"
+# Fail closed (reviewer, t-b6b6): origin's commit ships binaries but this checkout cannot run the check: refuse, push nothing.
+rc=0; out="$("$TKT" push-main 2>&1)" || rc=$?
+assert_eq 1 "$rc"; assert_contains "$out" "this checkout has no scripts/check-binaries-released.sh to verify them; nothing pushed"
+assert_eq "$before" "$(at public)"
+mkdir -p scripts && printf '%s\n' "$stub" > scripts/check-binaries-released.sh   # this checkout's copy (untracked), as in canon
 rc=0; out="$("$TKT" push-main 2>&1)" || rc=$?
 assert_eq 1 "$rc"; assert_contains "$out" "push-main: ${UNREL:0:8} (origin/trunk) is not released yet; nothing pushed"
 assert_contains "$out" "NOT RELEASED  linux-amd64"; assert_contains "$out" "run scripts/release-daemon.sh"
@@ -60,7 +64,7 @@ assert_eq "$before" "$(at public)"
 (cd "$M" && echo OK > tools/cockpit-daemon.sha256 && git commit -qam "record the release" && git push -q origin HEAD:trunk)
 REL="$(git --git-dir="$W/origin.git" rev-parse trunk)"
 out="$("$TKT" push-main)"; assert_contains "$out" "public: trunk ${before:0:8} -> ${REL:0:8}"
-rm -rf scripts; NEW="$REL"
+NEW="$REL"   # the checkout keeps its check script: origin now ships binaries, so later cases need it
 
 # A mirror that has a commit origin lacks: rejected, reported, not forced; exit 1.
 X="$W/x"; git clone -q "$W/public.git" "$X" 2>/dev/null; (cd "$X" && echo m > m.txt && git add m.txt && git commit -qm mirror-only && git push -q origin HEAD:trunk)

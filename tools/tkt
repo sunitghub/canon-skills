@@ -1815,8 +1815,11 @@ cmd_push_main() {
   # t-b6b6: a project that ships prebuilt binaries (canon: the release guard and its manifest are in that commit) publishes a commit
   # only once its binaries are released: an install following main would otherwise find no checksum for the new build.
   if git -C "$root" cat-file -e "$sha:scripts/check-binaries-released.sh" 2>/dev/null \
-     && git -C "$root" cat-file -e "$sha:tools/cockpit-daemon.sha256" 2>/dev/null && [[ -f "$root/scripts/check-binaries-released.sh" ]]; then
+     && git -C "$root" cat-file -e "$sha:tools/cockpit-daemon.sha256" 2>/dev/null; then
     local why
+    # Fail closed: origin's commit says binaries must be released, so a checkout that cannot run the check must not push.
+    [[ -f "$root/scripts/check-binaries-released.sh" ]] || {
+      echo "push-main: ${sha:0:8} (origin/$b) ships binaries, but this checkout has no scripts/check-binaries-released.sh to verify them; nothing pushed (update this checkout to origin/$b)" >&2; exit 1; }
     if ! why="$(bash "$root/scripts/check-binaries-released.sh" --rev "$sha" 2>&1 >/dev/null)"; then
       echo "push-main: ${sha:0:8} (origin/$b) is not released yet; nothing pushed:" >&2
       printf '%s\n' "$why" | grep . | sed 's/^/  /' >&2
