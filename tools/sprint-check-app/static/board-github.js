@@ -213,7 +213,7 @@ function setCancel(d, label) {
 // merge-pr prints "running …" once, then again with the time every few seconds; the dialog shows only the newest of a
 // run of them (t-e523).
 const PROGRESS = /^merge-pr: running .*…/;
-export function oneProgressLine(text) {
+function oneProgressLine(text) {
   const lines = String(text).split('\n');
   return lines.filter((l, i) => !(PROGRESS.test(l) && PROGRESS.test(lines[i + 1] || ''))).join('\n');
 }

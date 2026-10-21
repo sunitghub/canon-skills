@@ -1752,11 +1752,6 @@ func findTicketPath(id string, root string) string {
 	return ""
 }
 
-func readDoc(docFile string, root string) (string, bool) {
-	content, _, ok := readDocWithEtag(docFile, root)
-	return content, ok
-}
-
 // readDocWithEtag also returns the etag a write must echo back as base_hash. For a bound ticket it describes the
 // WORKTREE file (sha256 of its bytes, or "absent"), even when the text shown falls back to main's copy, so saving
 // an edit of a doc the worktree does not have yet works; "" means the doc is not writable from the board.
@@ -1814,10 +1809,6 @@ func hasDotDotSegment(doc string) bool {
 }
 
 // Behaviour pinned by tests/sprint-check-api.sh: re-run it after a change.
-func safeTicketDoc(docFile string, exts ...string) (string, bool) {
-	return safeTicketDocIn(docFile, "", exts...)
-}
-
 func safeTicketDoc2(docFile string, root string) (string, bool) {
 	return safeTicketDocIn(docFile, root)
 }
@@ -2377,7 +2368,7 @@ func listWorktreesBase(ticketID, root string) []map[string]any {
 	// t-e5ff: parity with server.py — a git worktree materializes only tracked
 	// files, so when `.tickets/` is gitignored a non-main worktree can't see any
 	// ticket dir. `git check-ignore .tickets` prints the path when ignored, empty
-	// otherwise (runGit ignores exit status); a non-git dir yields empty ->
+	// otherwise (runGitIn ignores exit status); a non-git dir yields empty ->
 	// treated as visible so the common single-checkout case is never blocked.
 	ticketsIgnored := runGitIn(root, "check-ignore", ".tickets") != ""
 	for _, e := range entries {
@@ -2430,13 +2421,7 @@ func registeredWorktrees(root string) []map[string]any {
 	return out
 }
 
-// liveWorktree returns (<wt>/.tickets/<id> resolved, branch, true) for a bound ticket.
-func liveWorktree(t ticket, root string, wts []map[string]any) (string, string, bool) {
-	dir, branch, _, ok := liveWorktreeFull(t, root, wts)
-	return dir, branch, ok
-}
-
-// liveWorktreeFull is liveWorktree plus the bound worktree's own path (t-26f9: the write path re-checks the
+// liveWorktreeFull returns (<wt>/.tickets/<id> resolved, branch, the bound worktree's own path, true) for a bound ticket (t-26f9: the write path re-checks the
 // unresolved .tickets and ticket folders under it).
 func liveWorktreeFull(t ticket, root string, wts []map[string]any) (string, string, string, bool) {
 	tid, _ := t["id"].(string)
@@ -2848,13 +2833,8 @@ func annotateLiveDocs(tickets []ticket, root string) {
 	}
 }
 
-// liveForDoc computes a doc's ticket binding exactly like /api/tickets (full
+// liveForDocFull computes a doc's ticket binding exactly like /api/tickets (full
 // load + divergence, so the TTL-cached scan is never seeded with a partial set).
-func liveForDoc(docFile, root string) (string, string, bool) {
-	dir, branch, _, ok := liveForDocFull(docFile, root)
-	return dir, branch, ok
-}
-
 func liveForDocFull(docFile, root string) (string, string, string, bool) {
 	root = rootOr(root)
 	parts := strings.Split(filepath.ToSlash(filepath.Clean(filepath.FromSlash(docFile))), "/")
@@ -3624,15 +3604,6 @@ func copyWorktreeIncludeFiles(dest, root string) []string {
 		}
 	}
 	return copied
-}
-
-func runGit(args ...string) string {
-	cmd := exec.Command("git", args...)
-	cmd.Dir = projectRoot
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	_ = cmd.Run()
-	return strings.TrimSpace(out.String())
 }
 
 func portInUse(port int) bool {
