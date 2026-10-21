@@ -114,11 +114,12 @@ line2_of() { head -c 16384 -- "$1" | LC_ALL=C tr -d '\000' | sed -n '2p' | tr -d
 # quarantine_only_diff <from> <to> — t-7f5f: 0 when every added or removed line of the board spec between the two commits is a
 # `// QUARANTINE t-xxxx: reason` comment (checked line by line on -U0), else 1. Any other line, or a diff git cannot produce, is 1.
 quarantine_only_diff() {
-  local out line
+  local out line inhunk=0
   out="$(git -C "$root" diff -U0 --no-renames "$1" "$2" -- tests/sprint-check-app.spec.js 2>/dev/null)" || return 1
   while IFS= read -r line; do
     case "$line" in
-      "diff --git "*|"index "*|"--- "*|"+++ "*|"@@ "*|"") continue ;;
+      "@@ "*) inhunk=1; continue ;;
+      "diff --git "*|"index "*|"--- "*|"+++ "*|"") (( inhunk )) || continue ;;&   # headers come only before the first hunk; after it `--- x` is a removed line `-- x`
       +*|-*) [[ "${line:1}" =~ ^[[:space:]]*//[[:space:]]*QUARANTINE[[:space:]]+t-[a-z0-9]{4}[[:space:]]*: ]] || return 1 ;;
       *) return 1 ;;
     esac
@@ -127,7 +128,7 @@ quarantine_only_diff() {
 }
 
 # classify_one <file> — sets LINE (the output line), KIND (its first word), CODE and BASEONLY (1 when the only non-neutral tracked change since
-# the stamp is tests/board-spec-baseline.json, the one case `covered` may lift). Called directly, never in $(...), so the globals survive.
+# the stamp is tests/board-spec-baseline.json, optionally with QUARANTINE-comment-only edits to the spec (t-7f5f): the one case `covered` may lift). Called directly, never in $(...), so the globals survive.
 classify_one() {
   local f="$1" first last sha when cmdline osline shown full names p list n more
   BASEONLY=0; SPECQ=0; CODE="?"; STAMP=""; SHOWN=""

@@ -313,7 +313,7 @@ D=".tickets/$ID/evidence/full-reports"
 covered_setup() {   # base commit with the fakes and a baseline; reports; the run log at A; a baseline-only commit B
   reset_repo
   mkdir -p tests; cp "$WORK/fakes/run-board-spec.sh" "$WORK/fakes/board-spec-guard.js" tests/; echo '{}' > tests/board-spec-baseline.json
-  printf 'test("a", () => {});\n// QUARANTINE t-aaaa: old\ntest("b", () => {});\n' > tests/sprint-check-app.spec.js
+  printf 'test("a", () => {});\n// QUARANTINE t-aaaa: old\ntest("b", () => {});\n-- x;\n' > tests/sprint-check-app.spec.js
   git add tests; git commit -qm fakes
   mkdir -p "$D"; echo '{"r":1}' > "$D/board-spec-chromium-run1.json"; echo '{"r":2}' > "$D/board-spec-webkit-run1.json"
   ev stamp "$ID" full -- bash tests/run-board-spec.sh --out "$REPO/$D"; assert_eq "${FAKE_RC:-1}" "$code"
@@ -381,6 +381,7 @@ qcase stale "QUARANTINE without a ticket id" '3i\
 // QUARANTINE: flaky'
 qcase stale "a whitespace-only line" '3i\
  '
+qcase stale "a removed line that looks like a header" '/^-- x;$/d'
 qcase stale "a comment replacing a QUARANTINE line" '2s/.*/\/\/ note: gone/'
 qcase stale "baseline, spec and another file" '3i\
 // QUARANTINE t-b1c2: flaky' src/a.txt
