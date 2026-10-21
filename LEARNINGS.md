@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-21-2026 14:26
+learnings-sweep last run: 10-21-2026 17:13
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-21 | [t-c259](.tickets/t-c259/learnings.md) | A flag that supplies a fact can bypass the check that fact stood for, and a cleanup that deletes must prove nothing unpushed is lost: `tkt land --pr N` made a worktree for a never-imported ticket (the evaluator's fail, fixed by requiring `github:` + plan.md), and `--finish`'s `branch -D` would have dropped commits not on the PR (the review's catch, now kept via `.land-head`) | UNPROMOTED |
 | 2026-10-21 | [t-21f7](.tickets/t-21f7/learnings.md) | A test fixture must be the real thing it names: t-12f8's "worktree" case was a plain folder, so no test could tell a worktree from an unrelated folder, and the warning's rule drifted to "name the start folder" for both; a real `git worktree add` in the fixture pins the difference. Also, a mutation survivor can mean dead code, not a missing test (`-n` on a value `cd ""` never leaves empty). | UNPROMOTED |
 | 2026-10-21 | [t-5c4b](.tickets/t-5c4b/learnings.md) | A managed-block rewrite must touch only lines inside the block and compare without a trailing \r: t-5c4b's awk deleted every `> Platforms:` line in the user's AGENTS.md and, on CRLF files (Git for Windows, the ticket's own audience), never matched the markers yet printed "added" on every refresh; the cloud build passed its tests because none had a user line outside the block or a CRLF file. | UNPROMOTED |
 | 2026-10-21 | [t-12f8](.tickets/t-12f8/learnings.md) | Check a ticket's premise in the code before building: t-12f8's main fix (link .claude/agents in worktrees) already existed (project.sh:203), the reviewer of t-ff14 had misread it. Its one code change then generalised a message for the rare case and broke the common one (a session started outside the project now told to restart in the wrong folder, t-21f7), and the test was edited to match: when a test's expectation changes, ask which user that changes the answer for. | UNPROMOTED |
