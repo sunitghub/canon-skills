@@ -313,6 +313,7 @@ D=".tickets/$ID/evidence/full-reports"
 covered_setup() {   # base commit with the fakes and a baseline; reports; the run log at A; a baseline-only commit B
   reset_repo
   mkdir -p tests; cp "$WORK/fakes/run-board-spec.sh" "$WORK/fakes/board-spec-guard.js" tests/; echo '{}' > tests/board-spec-baseline.json
+  printf 'test("a", () => {});\n// QUARANTINE t-aaaa: old\ntest("b", () => {});\n' > tests/sprint-check-app.spec.js
   git add tests; git commit -qm fakes
   mkdir -p "$D"; echo '{"r":1}' > "$D/board-spec-chromium-run1.json"; echo '{"r":2}' > "$D/board-spec-webkit-run1.json"
   ev stamp "$ID" full -- bash tests/run-board-spec.sh --out "$REPO/$D"; assert_eq "${FAKE_RC:-1}" "$code"
@@ -357,6 +358,32 @@ covered_setup; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-ru
 covered_setup; ln -sf "$REPO/$D/board-spec-webkit-run1.json" "$WORK/link.json"; rm "$D/board-spec-webkit-run1.json"; cp "$WORK/link.json" "$D/board-spec-webkit-run1.json" 2>/dev/null || true
   rm -f "$D/board-spec-webkit-run1.json"; echo '{"r":2}' > "$WORK/real.json"; ln -s "$WORK/real.json" "$D/board-spec-webkit-run1.json"
   guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; want_stale "a report that is a symlink"
+# t-7f5f: a quarantine also edits the spec, but only its `// QUARANTINE t-xxxx:` comment lines; that alone keeps the run covered
+SPEC=tests/sprint-check-app.spec.js
+qcase() {   # qcase <covered|stale> <label> <spec sed script, or "-" for none> [extra file]
+  covered_setup; [[ "$3" == - ]] || sed -i.bak "$3" "$SPEC"; rm -f "$SPEC.bak"; [[ -z "${4-}" ]] || echo x >> "$4"
+  git commit -q --allow-empty -am "quarantine" 2>/dev/null || true; guard "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"
+  if [[ "$1" == covered ]]; then want_covered; else want_stale "$2"; fi
+}
+qcase covered "comment add" '3i\
+// QUARANTINE t-b1c2: flaky'
+ev check "$ID"; assert_contains "$out" "only tests/board-spec-baseline.json and QUARANTINE comment lines in tests/sprint-check-app.spec.js changed since"
+qcase covered "comment add and remove" '2d;3i\
+  // QUARANTINE t-b1c2 : flaky'
+qcase covered "baseline only" -
+ev check "$ID"; assert_contains "$out" "only tests/board-spec-baseline.json changed since"
+qcase stale "a code line" '3i\
+test("c", () => {});'
+assert_contains "$out" "2 tracked file(s) changed since"
+qcase stale "a plain comment" '3i\
+// flaky, see later'
+qcase stale "QUARANTINE without a ticket id" '3i\
+// QUARANTINE: flaky'
+qcase stale "a whitespace-only line" '3i\
+ '
+qcase stale "a comment replacing a QUARANTINE line" '2s/.*/\/\/ note: gone/'
+qcase stale "baseline, spec and another file" '3i\
+// QUARANTINE t-b1c2: flaky' src/a.txt
 # the reports outside this ticket's evidence/, and the run log of another command
 reset_repo; mkdir -p tests; cp "$WORK/fakes/run-board-spec.sh" "$WORK/fakes/board-spec-guard.js" tests/; echo '{}' > tests/board-spec-baseline.json; git add tests; git commit -qm fakes
   mkdir -p out; echo '{"r":1}' > out/board-spec-webkit-run1.json; printf 'out/\n' >> .git/info/exclude
