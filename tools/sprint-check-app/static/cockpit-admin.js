@@ -183,7 +183,7 @@ function mtRender(){
         ${aliasRow}
         <div class="mt-card-price"><span>Input/MTok</span><span>$${esc(m.input_price)}</span></div>
         <div class="mt-card-price"><span>Output/MTok</span><span>$${esc(m.output_price)}</span></div>
-        <div class="mt-card-actions"><button type="button" class="mt-edit"${mtEditing?' disabled':''} aria-label="Edit ${escAttr(m.name)}">Edit</button><a class="b-danger">Remove</a></div>
+        <div class="mt-card-actions"><button type="button" class="mt-edit b-neutral"${mtEditing?' disabled':''} aria-label="Edit ${escAttr(m.name)}">Edit</button><a class="b-danger">Remove</a></div>
       </div>`;
   }).join('') + `<div class="mt-add-card b-accent">+ Add ${esc(MT_PROVIDER_LABEL[mtProvider])} model</div>`;
   // t-783a: wired after each render; the ids come back from data-id, so no JS sits inside an attribute.
@@ -214,7 +214,7 @@ function mtEditCard(m,badge,hasAlias){
       ${hasAlias?f('alias','Gate-model alias',m.alias||''):''}
       <div class="mt-field-row">${f('input_price','Input $/MTok',m.input_price,'number')}${f('output_price','Output $/MTok',m.output_price,'number')}</div>
       <div class="mt-card-err" role="alert"></div>
-      <div class="mt-card-actions"><button type="button" class="mt-cancel">Cancel</button><button type="button" class="mt-save">Save</button></div>
+      <div class="mt-card-actions"><button type="button" class="mt-cancel b-close">Cancel</button><button type="button" class="mt-save b-primary">Save</button></div>
     </div>`;
 }
 function mtStartEdit(id){

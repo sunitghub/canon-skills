@@ -35,7 +35,7 @@
     .ck-leave-confirm-status { font-size: 12px; color: var(--text-muted); margin-top: 10px; min-height: 16px; }
     .ck-leave-confirm-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
     .ck-leave-btn { border-radius: 8px; padding: 9px 12px; font-size: 13px; font-weight: 600; cursor: pointer; }   /* t-e523: border and colours from buttons.css */
-    .ck-leave-btn-save:disabled { background: var(--surface-raised); color: var(--text-muted); cursor: not-allowed; }
+    .ck-leave-btn-save:disabled { background: var(--surface-raised); border-color: var(--border); color: var(--text-muted); cursor: not-allowed; }
     .ck-leave-btn-cancel:disabled { opacity: .4; cursor: not-allowed; }
     .ck-leave-btn-skip:disabled { opacity: .4; cursor: not-allowed; }
     .ck-leave-btn-discard.armed, .ck-leave-btn-discard.armed:hover { background: var(--col-discarded); border-color: var(--col-discarded); color: var(--th-on-bad, #fff); }   /* t-86fe: the second click */

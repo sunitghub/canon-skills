@@ -15734,7 +15734,14 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
       await page.locator('#cc-cancel').click();
       await expect(page.locator('#cconfirm')).not.toHaveClass(/show/);
     }
-    const missing = await page.evaluate(roles => [...document.querySelectorAll('.btn, .help-close, .dstop, .splitclose')]
+    // Admin › Model Tiers: Edit and Remove share one shape (Remove is a link and once had no padding), each with its role
+    await page.locator('#nav-admin').click();
+    const acts = page.locator('.mt-grid .mt-card').first().locator('.mt-card-actions');
+    const edit = acts.locator('.mt-edit'), remove = acts.locator('.b-danger');
+    expect(Math.abs((await edit.boundingBox()).height - (await remove.boundingBox()).height)).toBeLessThan(2);
+    await expectRole(page, edit, 'b-neutral');
+    await expectRole(page, remove, 'b-danger');
+    const missing = await page.evaluate(roles => [...document.querySelectorAll('.btn, .help-close, .dstop, .splitclose, .mt-card-actions button, .mt-card-actions a')]
       .filter(e => roles.filter(r => e.classList.contains(r)).length !== 1).map(e => e.id || e.className), ROLES);
     expect(missing).toEqual([]);
   });
