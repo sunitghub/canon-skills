@@ -49,4 +49,22 @@ printf '#!/bin/sh\nexit 1\n' > "$WORK/bin/sysctl"; echo "0.5 1 1 1/1 1" > "$WORK
 out="$(ML_LOADAVG_FILE="$WORK/loadavg" PATH="$WORK/bin:/usr/bin:/bin" bash -c 'source "$1/tests/machine-load.sh"; machine_load start /dev/null 100' _ "$ROOT" 2>&1)"
 assert_eq "machine-load: start: load 0.5 on 1 CPUs; other test runs: none" "$out"
 
+# t-8627: machine_wait_quiet: a run does not start on a busy machine. sleep is a stub that counts, and can calm the load after N waits.
+printf '#!/bin/sh\necho 4\n' > "$WORK/bin/nproc"; : > "$WORK/pgrep.out"
+printf '#!/bin/sh\nn=$(cat "%s/slept" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "%s/slept"\n[ "$n" -ge "$(cat "%s/calm-after")" ] && echo "1.0 1 1 1/1 1" > "%s/loadavg"\nexit 0\n' "$WORK" "$WORK" "$WORK" "$WORK" > "$WORK/bin/sleep"
+chmod +x "$WORK/bin/sleep"
+wait_quiet() {   # wait_quiet <load> <calm-after sleeps> <max secs>: sets out and rc
+  echo "$1 1 1 1/1 1" > "$WORK/loadavg"; echo "$2" > "$WORK/calm-after"; rm -f "$WORK/slept" "$WORK/wait.txt"
+  set +e
+  out="$(ML_WAIT_POLL=15 ML_WAIT_MAX="$3" PATH="$WORK/bin:$PATH" bash -c 'source "$1/tests/machine-load.sh"; machine_wait_quiet "$2" 100' _ "$ROOT" "$WORK/wait.txt" 2>&1)"; rc=$?
+  set -e
+}
+wait_quiet 1.0 99 60
+assert_eq 0 "$rc"; assert_eq "" "$out"; [[ ! -e "$WORK/slept" ]] || fail "machine_wait_quiet slept on a calm machine"
+wait_quiet 9.0 2 60   # busy, calm after two waits: waits, then starts
+assert_eq 0 "$rc"; assert_eq 2 "$(cat "$WORK/slept")"
+assert_contains "$out" "busy (load 9.0/4): waiting up to 60s"; assert_contains "$out" "quiet after 30s"
+assert_eq "$out" "$(cat "$WORK/wait.txt")"   # what it says is also recorded
+wait_quiet 9.0 99 45   # busy throughout: gives up after the maximum and says so
+assert_eq 1 "$rc"; assert_eq 3 "$(cat "$WORK/slept")"; assert_contains "$out" "still busy after 45s (load 9.0/4); not starting"
 echo "PASS: machine-load-unit"
