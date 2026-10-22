@@ -218,11 +218,11 @@ run `covered` (stamping the guard under the run's own log name overwrites that l
 needs your machine): have the session open the PR, run `tkt export <id>` without closing, and push nothing more to
 the branch. Then on your machine run `tkt import-results <id> --pr <N>`: an unfinished ticket comes back `open`, with
 `cloud_status: in_progress` recording what the cloud left, so it never blocks a local sprint's close in this checkout
-(t-1cf5). Do the QA, and close it from the PR's head: `tkt land <id>` (or **Close here** on the card) makes a
+(t-1cf5). Do the QA, and close it from the PR's head: `tkt land <id>` (or **Continue here** on the card) makes a
 worktree `<project>-worktrees/land-<id>` on branch `land/<id>` at the PR head and starts the ticket there (`.tickets/`
 is shared, so nothing is copied). In that worktree run a fresh evaluator and `sprint complete`, then `tkt land <id>
 --finish` removes the worktree and branch; it refuses until the ticket is closed with a passing verdict graded on that
-worktree's head, and never pushes or merges. `import-results` prints that step for an unfinished ticket (`next: tkt land <id>`). The evaluator must run on your machine even when the
+worktree's head, and never pushes or merges (the card's **Finish** runs it). When Check & merge fails because the suite fails on this machine, **Fix here** (`tkt land <id> --fix`) makes the worktree even though the cloud's verdict passes: fix and commit there, run `sprint complete`, finish, and push the commits to the PR branch yourself. `import-results` prints that step for an unfinished ticket (`next: tkt land <id>`). The evaluator must run on your machine even when the
 cloud's passed: `sprint complete` checks this machine's record of the evaluator run, which `tkt export` cannot carry
 (t-b650). Then `tkt merge-pr <id>`, which also deletes `canon-results/<id>`. A fix pushed to the PR after grading
 needs the evaluator again: `merge-pr` merges only the graded head.

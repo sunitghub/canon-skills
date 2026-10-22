@@ -781,7 +781,23 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "bad request", http.StatusBadRequest)
 				return
 			}
-			sendJSON(w, runTkt(eroot, append([]string{"land", id}, pr...)))
+			args := append([]string{"land", id}, pr...)
+			// t-6623: finish and fix are booleans; anything else is a bad request, never a flag built from a payload.
+			for _, flag := range []string{"finish", "fix"} {
+				v, present := payload[flag]
+				if !present {
+					continue
+				}
+				on, isBool := v.(bool)
+				if !isBool {
+					http.Error(w, "bad request", http.StatusBadRequest)
+					return
+				}
+				if on {
+					args = append(args, "--"+flag)
+				}
+			}
+			sendJSON(w, runTkt(eroot, args))
 			return
 		case "take-back":
 			args := []string{"take-back", id}

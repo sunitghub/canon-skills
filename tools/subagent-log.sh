@@ -88,6 +88,10 @@ if [[ $# -gt 0 ]]; then
   [[ -z "$TIER" || "$TIER" =~ ^[A-Za-z]+$ ]] || _bad "--tier takes one word, got '$TIER'"
   # Given means non-empty: the id goes into the JSON line, so it must not carry a quote, space or brace.
   [[ $MODEL_SET -eq 0 || ( "$MODEL" =~ ^[A-Za-z0-9._:/-]+$ && ${#MODEL} -le 80 ) ]] || _bad "--model takes a model id ([A-Za-z0-9._:/-], at most 80 chars), got '$MODEL'"
+  # t-0b61: a gate row logged before Claude Code's <usage> notice arrives has no tokens. Warn, never refuse.
+  if [[ -z "$TOKENS" && -n "${CLAUDECODE:-}" && ( "$AGENT_TYPE" == reviewer || "$AGENT_TYPE" == evaluator ) ]]; then
+    echo "subagent-log.sh: no --tokens: in Claude Code the totals come in the background task's <usage> notice; wait for it, then log (never guess a number)" >&2
+  fi
   REPO_ROOT="$(project_root)"
   # Tier is recorded now, not read later: a ticket's dir goes away on export.
   if [[ -z "$TIER" && -n "$TICKET" && -f "$REPO_ROOT/.tickets/$TICKET/plan.md" ]]; then

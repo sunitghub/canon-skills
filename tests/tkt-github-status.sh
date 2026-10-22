@@ -51,6 +51,14 @@ mv ".tickets/$id/eval-report.md" "$W/er";                              assert_eq
 printf '24\tMERGED\t%s\n' "$HEAD7" > "$W/prs"; mv "$W/er" ".tickets/$id/eval-report.md"; assert_eq false "$(land)"
 printf '24\tOPEN\t%s\n' "$HEAD7" > "$W/prs"
 sed -i.bak 's/^status: open$/status: closed/' "$f" && rm -f "$f.bak"
+# t-6623: landed is the land worktree's path once tkt land made it (.land-head and the directory), else null.
+landed() { "$TKT" github-status "$id" --json | node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(0,"utf8")).landed))'; }
+LWT="$(cd "$(git rev-parse --show-toplevel)/.." && pwd -P)/$(basename "$(git rev-parse --show-toplevel)")-worktrees/land-$id"
+assert_eq null "$(landed)"
+echo "$HEAD7" > ".tickets/$id/.land-head"; assert_eq null "$(landed)"
+mkdir -p "$LWT"; assert_eq "$LWT" "$(landed)"
+rm ".tickets/$id/.land-head"; assert_eq null "$(landed)"   # a directory alone is not a land worktree
+rm -rf "$LWT"; assert_eq null "$(landed)"
 # t-c8d4: graded-head plus late docs only (the cloud's learnings sweep) is results-in, as merge-pr accepts it; a code change
 # after the graded head is not. The commits are made in another clone, so github-status has to fetch the PR head.
 git clone -q "$W/origin.git" "$W/c" 2>/dev/null
