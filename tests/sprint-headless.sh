@@ -400,17 +400,6 @@ write_plan 'Tier: normal | Risk: fixture'
 (cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_ok "$SPRINT_HEADLESS" t-mdl1 --base-ref HEAD >/dev/null)
 assert_no_model_arg
 
-# 14c2. t-30bf: a graded project with its own skills/sprint and a planted tools/subagent-log.sh must never get that
-# script allowed or named: the orchestrator runs the install's subagent-log.sh (the attacker layout of the 2026-10-22 scan).
-mkdir -p "$WORK/tools"; printf '#!/bin/sh\necho planted\n' > "$WORK/tools/subagent-log.sh"; chmod +x "$WORK/tools/subagent-log.sh"
-INSTALL_TOOLS="$(cd -P "$ROOT/tools" && pwd)"
-: > "$CAP_ARGS"
-(cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_ok "$SPRINT_HEADLESS" t-mdl1 --base-ref HEAD >/dev/null)
-grep -qxF "<<ARG>>Bash($INSTALL_TOOLS/subagent-log.sh:*)" "$CAP_ARGS" || fail "t-30bf: sprint-headless must allow the install's subagent-log.sh"
-grep -qF "run: $INSTALL_TOOLS/subagent-log.sh" "$CAP_ARGS" || fail "t-30bf: sprint-headless prompt must name the install's subagent-log.sh"
-if grep -qF "./tools/subagent-log.sh" "$CAP_ARGS"; then fail "t-30bf: sprint-headless must not allow or name the graded project's ./tools/subagent-log.sh"; fi
-rm -rf "$WORK/tools"
-
 # 14d. Invalid Gate model → hard-fail before claude, no dispatch
 write_plan 'Tier: normal | Risk: fixture | Gate model: bad;model'
 : > "$CAP_ARGS"
@@ -447,6 +436,27 @@ assert_model_arg haiku
 : > "$CAP_ARGS"
 (cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_ok "$SPRINT_HEADLESS_EVAL" specs/x.md --base-ref HEAD >/dev/null)
 assert_no_model_arg
+
+# 14f2. t-30bf: which subagent-log.sh the orchestrator may run. A graded project with its own skills/sprint and a planted
+# tools/subagent-log.sh (the 2026-10-22 scan's attacker layout) gets the install's copy in the allow list and the prompt,
+# for both gates; only a project whose tools/ IS this install keeps the relative ./tools path.
+INSTALL_TOOLS="$(cd -P "$ROOT/tools" && pwd)"
+write_plan 'Tier: normal | Risk: fixture'
+check_log_path() {  # check_log_path <label> <expected path> <forbidden substring or ""> -- <gate> <args...>
+  local label="$1" want="$2" deny="$3"; shift 4
+  : > "$CAP_ARGS"
+  (cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_ok "$@" >/dev/null)
+  grep -qxF "<<ARG>>Bash($want:*)" "$CAP_ARGS" || fail "t-30bf $label: allow list must hold Bash($want:*)"
+  grep -qF "run: $want --agent-id" "$CAP_ARGS" || fail "t-30bf $label: prompt must run $want"
+  if [[ -n "$deny" ]] && grep -qF "$deny" "$CAP_ARGS"; then fail "t-30bf $label: must not allow or name $deny"; fi
+}
+mkdir -p "$WORK/tools"; printf '#!/bin/sh\necho planted\n' > "$WORK/tools/subagent-log.sh"; chmod +x "$WORK/tools/subagent-log.sh"
+check_log_path "outside project, sprint-headless" "$INSTALL_TOOLS/subagent-log.sh" "./tools/subagent-log.sh" -- "$SPRINT_HEADLESS" t-mdl1 --base-ref HEAD
+check_log_path "outside project, sprint-headless-eval" "$INSTALL_TOOLS/subagent-log.sh" "./tools/subagent-log.sh" -- "$SPRINT_HEADLESS_EVAL" specs/x.md --base-ref HEAD
+rm -rf "$WORK/tools"; ln -s "$INSTALL_TOOLS" "$WORK/tools"
+check_log_path "install as project, sprint-headless" "./tools/subagent-log.sh" "" -- "$SPRINT_HEADLESS" t-mdl1 --base-ref HEAD
+check_log_path "install as project, sprint-headless-eval" "./tools/subagent-log.sh" "" -- "$SPRINT_HEADLESS_EVAL" specs/x.md --base-ref HEAD
+rm -f "$WORK/tools"
 
 # 14g. sprint-headless-eval --model invalid → hard-fail before claude
 : > "$CAP_ARGS"
