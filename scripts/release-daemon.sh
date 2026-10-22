@@ -84,7 +84,7 @@ publish() {
   fi
   have="$(gh release view "$tag" --repo "$RELEASE_REPO" --json assets -q '.assets[].name')"
   for f in "$@"; do
-    printf '%s\n' "$have" | grep -qx "$(basename "$f")" || gh release upload "$tag" "$f" --repo "$RELEASE_REPO"
+    grep -qx "$(basename "$f")" <<<"$have" || gh release upload "$tag" "$f" --repo "$RELEASE_REPO"
   done
 }
 publish "cockpit-daemon-$key_d" "$full_d" "$out"/cockpit-daemon-darwin-* "$out"/cockpit-daemon-linux-* "$out/cockpit-daemon-windows-amd64.exe"

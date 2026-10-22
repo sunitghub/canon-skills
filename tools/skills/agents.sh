@@ -27,7 +27,7 @@ skills_table_upsert() {
   # t-5c4b: a block without the current platforms line gains it once, under its note (an older wording is replaced).
   # Only lines inside the block are touched: a "> Platforms:" line of the user's own outside it stays.
   # A CRLF file (Git for Windows) is compared without its \r and gets the line with one.
-  if [ -f "$agents_file" ] && grep -qF "$block_begin" "$agents_file" && ! tr -d '\r' < "$agents_file" | grep -qxF "$PLATFORMS_NOTE"; then
+  if [ -f "$agents_file" ] && grep -qF "$block_begin" "$agents_file" && [ "$(tr -d '\r' < "$agents_file" | grep -cxF "$PLATFORMS_NOTE")" -eq 0 ]; then
     awk -v pn="$PLATFORMS_NOTE" -v b="$block_begin" -v e="$block_end" '
       { l = $0; cr = sub(/\r$/, "", l) ? "\r" : "" }
       l == b { inblk = 1 }

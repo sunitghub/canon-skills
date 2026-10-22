@@ -800,7 +800,7 @@ cmd_learn() {
       infind && /^##[[:space:]]/ { infind=0 }
       infind { print }
     ' "$evalr" | sed -e 's/\r$//' -e '/./,$!d')"
-    if printf '%s' "$findings" | grep -qiE '^[[:space:]]*no findings\.?[[:space:]]*$'; then
+    if grep -qiE '^[[:space:]]*no findings\.?[[:space:]]*$' <<<"$findings"; then
       findings=""
     fi
   fi
@@ -1690,7 +1690,7 @@ _ff_local_base() {
   [[ "$old" == "$new" ]] && { echo "Local $b: already at ${new:0:8}"; return 0; }
   git -C "$root" merge-base --is-ancestor "$old" "$new" \
     || { echo "Local $b: has commits origin/$b lacks, not a fast-forward; left at ${old:0:8}. Update it by hand: git pull"; return 0; }
-  wt="$(git -C "$root" worktree list --porcelain | awk -v r="branch refs/heads/$b" '/^worktree /{ w = substr($0, 10) } $0 == r { print w; exit }')"
+  wt="$(git -C "$root" worktree list --porcelain | awk -v r="branch refs/heads/$b" '/^worktree /{ w = substr($0, 10) } $0 == r { print w }')"
   here="$(git -C "$root" rev-parse --show-toplevel)"
   if [[ -z "$wt" ]]; then
     git -C "$root" update-ref "refs/heads/$b" "$new" "$old"
