@@ -38,7 +38,8 @@ mkdir "$W/bin"; cat > "$W/bin/gh" <<'SH'
 printf '%s\n' "$*" >> "$STUB_LOG"
 case "$1 $2" in
   "pr list")  cat "$STUB_W/prlist" ;;
-  "pr view")  if [[ "$*" == *mergeCommit* ]]; then   # STUB_NO_SHA: GitHub has no merge commit; gh's --jq then prints "null" unless "// empty"
+  "pr view")  [[ -n "${STUB_VIEW_FAIL:-}" && "$*" != *mergeCommit* ]] && { echo "HTTP 502" >&2; exit 1; }
+              if [[ "$*" == *mergeCommit* ]]; then   # STUB_NO_SHA: GitHub has no merge commit; gh's --jq then prints "null" unless "// empty"
                 if [[ -z "${STUB_NO_SHA:-}" ]]; then echo "mergesha0000000000000000000000000000000000"; elif [[ "$*" != *"// empty"* ]]; then echo null; fi
                 exit 0; fi
               if [[ "$*" == *"--json state --jq"* ]]; then echo "${STUB_AFTER:-OPEN}"; exit 0; fi
@@ -321,3 +322,6 @@ for pair in "CONFLICTING DIRTY" "MERGEABLE BLOCKED"; do
   refuses "a $pair PR without waiting" "merge-pr: PR #7" STUB_SCRIPT="$W/script" -- --yes
   [[ "$(reads)" == 1 && ! -e "$W/sleeps" ]] || fail "$pair should read once and not sleep"
 done
+# A gh failure on the read is still a refusal, not a wait.
+rm -f "$W/reads" "$W/sleeps"
+refuses "a PR gh cannot read" "gh could not read PR #7 on acme/app: HTTP 502" STUB_VIEW_FAIL=1 -- --yes
