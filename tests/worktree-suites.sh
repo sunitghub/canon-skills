@@ -68,4 +68,17 @@ for dir in "$W/wt" "$W/canon"; do
   assert_eq "$before_status" "$(git -C "$dir" status --porcelain)"
 done
 
+# The shipped hook installers, run from the worktree, reach the common hooks dir instead of skipping "not a git repo" (t-80fc).
+common_hooks="$(git_common_dir "$W/wt")/hooks"
+assert_eq "$W/canon/.git/hooks" "$common_hooks"
+rm -f "$common_hooks/pre-commit" "$common_hooks/pre-push" "$common_hooks/post-commit"
+out="$(cd "$W/wt" && bash scripts/install-hooks.sh 2>&1)"
+if [[ "$out" == *"not found"* ]]; then fail "install-hooks.sh skipped in a linked worktree: $out"; fi
+[[ -x "$common_hooks/pre-push" ]] || fail "install-hooks.sh from the worktree did not install pre-push into $common_hooks"
+out="$(cd "$W/wt" && bash tools/skills.sh add sprint "$W/wt" 2>&1)" || fail "skills.sh add sprint failed in the worktree: $(printf '%s' "$out" | tail -3)"
+if [[ "$out" == *"not a git repo"* ]]; then fail "skills.sh add skipped the pre-commit hook in a linked worktree"; fi
+assert_grep "canon-managed-pre-commit-hook" "$common_hooks/pre-commit"
+(cd "$W/wt" && bash tools/skills.sh remove sprint "$W/wt" >/dev/null 2>&1) || fail "skills.sh remove sprint failed in the worktree"
+[[ ! -e "$common_hooks/pre-commit" ]] || fail "skills.sh remove from the worktree left the common pre-commit hook"
+
 printf 'worktree-suites: ok\n'

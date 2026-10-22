@@ -235,4 +235,18 @@ assert_file_exists "$remove_project/.git/hooks/pre-commit"
 "$SKILLS" remove sprint "$remove_project" >/dev/null
 [[ ! -f "$remove_project/.git/hooks/pre-commit" ]] || fail "expected .git/hooks/pre-commit to be removed by skills.sh remove"
 
+# ── A linked worktree (.git is a FILE): add, status and remove use the common hooks dir (t-80fc) ──
+wt_main="$(make_project)"; wt_tree="$(mktemp -d)"; rm -rf "$wt_tree"
+trap 'rm -rf "$project" "$conflict_project" "$behavior_project" "$leak_root" "$nogit_project" "$remove_project" "$wt_main" "$wt_tree"' EXIT
+git -C "$wt_main" -c user.email=t@t -c user.name=t commit -q --allow-empty -m seed
+git -C "$wt_main" worktree add -q "$wt_tree"
+[[ -f "$wt_tree/.git" ]] || fail "expected the linked worktree to have a .git FILE"
+wt_hook="$(git_common_dir "$wt_tree")/hooks/pre-commit"
+wt_out="$("$SKILLS" add sprint "$wt_tree" 2>&1)"
+if [[ "$wt_out" == *"not a git repo"* ]]; then fail "skills.sh add skipped the hook in a linked worktree"; fi
+assert_grep "canon-managed-pre-commit-hook" "$wt_hook"
+assert_contains "$("$SKILLS" status "$wt_tree" 2>&1)" "pre-commit (git)          [ok]"
+"$SKILLS" remove sprint "$wt_tree" >/dev/null
+[[ ! -f "$wt_hook" ]] || fail "expected skills.sh remove from a worktree to remove the common pre-commit hook"
+
 printf 'git-precommit-hook: ok\n'
