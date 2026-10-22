@@ -1,4 +1,4 @@
-# CI security: govulncheck
+# CI security: govulncheck and vendored code
 
 `.github/workflows/govulncheck.yml` (`t-b525`) scans the Go daemon module, `tools/canon-go`, with
 [govulncheck](https://go.dev/doc/security/vuln/). It reports only vulnerabilities the code can reach, and it
@@ -41,3 +41,71 @@ govulncheck ./...
 
 It needs `vuln.go.dev`. Where that host is blocked but Google Cloud Storage is not, the same database is at
 `govulncheck -db https://storage.googleapis.com/go-vulndb ./...`.
+
+# Vendored third-party code: new versions and advisories
+
+The daemon embeds three files it copies from npm rather than installing: `xterm.js` and `xterm.css` (xterm 5.3.0) and
+`xterm-addon-fit.js` (0.8.0), in `tools/canon-go/internal/daemon/web/vendor/`. With no `package.json` or lockfile,
+neither `npm audit` nor Dependabot can see them (`t-93ff`). Three pieces cover them:
+
+- **`tools/vendored.tsv`**, the manifest: one row per file with `file`, `package` (as published when vendored), `track`
+  (the package that now carries new releases: xterm moved to `@xterm/xterm` and `@xterm/addon-fit`), `version`,
+  `upstream`, `license`, `sha256` and `why`. It sits outside `web/vendor/`, so the embedded files and the daemon's source
+  key do not change when the manifest does.
+- **`tests/vendored-manifest.sh`** (in `scripts/test.sh`): every vendored file has a row and every row a file, each
+  file's SHA-256 matches its row (nobody edits a vendored file by hand), and `THIRD-PARTY-NOTICES.md` has a
+  `## <package> <version>` heading for each row.
+- **`scripts/check-vendored.sh`**, the report: for each vendored package it asks the npm registry for the latest
+  version of the `track` package, and asks [OSV](https://osv.dev) (`api.osv.dev/v1/query`, ecosystem `npm`) for the
+  advisories that affect the **vendored** package and version. OSV does the version matching, so there is no range
+  arithmetic here and no token is needed.
+
+## When it runs
+
+`.github/workflows/vendored-updates.yml` runs it weekly (Monday 06:41 UTC, a different minute from govulncheck) and on
+demand (Actions › vendored-updates › Run workflow). Like govulncheck it has `permissions: contents: read`, uses no
+secrets and no token, and opens no issue, PR or commit; `tests/ci-security-config.sh` now holds every workflow file to
+those rules. The job fails only when an advisory affects a vendored version, or when a lookup failed: a lookup that
+fails never reads as "no advisories". GitHub's own email for a failed scheduled run is the alert.
+
+The workflow also runs on the public mirror, canon-skills. **GitHub pauses scheduled workflows on a public repository
+after 60 days without repository activity**; a push re-enables them, or re-enable the workflow from the Actions tab.
+
+## Run it locally
+
+```bash
+scripts/check-vendored.sh            # print the table; exit 0 clean, 1 advisory, 2 a lookup failed
+scripts/check-vendored.sh --summary  # also append it to $GITHUB_STEP_SUMMARY when that is set (the workflow uses this)
+```
+
+It needs only `bash` and `curl`, on macOS, Linux and Git Bash. It uses `jq` when present and a grep/sed fallback when not
+(`VENDORED_NO_JQ=1` forces the fallback); both decide "affected or not" the same way, and only the severity and fixed-in
+columns are best-effort without `jq`. It needs `registry.npmjs.org` and `api.osv.dev`.
+
+## Reading the job summary
+
+One row per vendored package: the package (and the package it moved to), the vendored and latest versions, how far
+behind (`N major`, `N minor`, `N patch` or `up to date`), the advisories on the vendored version as
+`<id> (<severity>, fixed in <version>)`, and the upstream release notes. A list under the table names each newer version,
+each advisory and each failed lookup, and the last line is the verdict: `ok` (newer versions are information) or `FAIL`.
+
+## What we do with a finding
+
+- **A security advisory on a vendored version** becomes a P0 ticket the same day: upgrade to the fixed version, or show
+  why the advisory cannot reach canon's use of the file.
+- **A newer version with a performance or feature gain** becomes a ticket we weigh, like any other upgrade (the xterm 6
+  upgrade has its own ticket).
+- **Nothing is upgraded or merged automatically.** The report never opens issues or PRs, and there is no Dependabot
+  config (`t-8493`).
+
+## Bumping a vendored file
+
+In a sprint:
+
+1. Replace the file in `web/vendor/` with the published one (from the package's npm tarball).
+2. `scripts/check-vendored.sh --sha <file>` prints its SHA-256; put it, the new version (and `package`, if it moved) in
+   the file's row of `tools/vendored.tsv`. The script never edits a file itself.
+3. Update the file's `## <package> <version>` heading and license text in `THIRD-PARTY-NOTICES.md`, and the `integrity`
+   hash in `tools/canon-go/internal/daemon/web/cockpit.html`.
+4. Run `bash tests/vendored-manifest.sh` and `bash tests/fetch-daemon.sh`. The embedded files move the daemon's source
+   key, so the change needs a daemon release.
