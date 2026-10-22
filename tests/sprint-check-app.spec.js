@@ -14552,7 +14552,7 @@ test.describe('ticket modal polish (t-612f)', () => {
   });
 
   test('a ticket with github.md shows a GitHub node whose body renders the trail (t-1dec)', async ({ page }) => {
-    const sfx = Date.now().toString(36).slice(-3), id = `t-g${sfx}`;
+    const id = newTicketId(PROJECT_ROOT);
     writeTicket(id);
     fs.writeFileSync(path.join(PROJECT_ROOT, '.tickets', id, 'github.md'),
       '# GitHub\n\n## 2026-10-22T00:00:00Z — sent\nissue: https://github.com/acme/app/issues/1\nrepo: acme/app\n\n## 2026-10-22T01:00:00Z — merged\nPR: #2\nGITHUB-TRAIL-MARK\n');
