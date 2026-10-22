@@ -461,7 +461,11 @@ export function githubPickerRowsHTML(t, tab) {
   }).join('') + githubPlaceRowHTML(tab);
 }
 
+// t-8627: a preview answer that arrives after a later call (or a hide) must not write: each call takes a number, and only the latest may.
+let ghPanelGen = 0;
+
 export function hideGithubPanel() {
+  ghPanelGen++;
   const panel = document.getElementById('ck-gh-panel');
   if (panel) { panel.hidden = true; panel.innerHTML = ''; }
 }
@@ -469,6 +473,7 @@ export function hideGithubPanel() {
 export async function showGithubPanel(t, tab) {
   const panel = document.getElementById('ck-gh-panel');
   if (!panel) return;
+  const gen = ++ghPanelGen;
   panel.hidden = false;
   if (tab && tab.ghSent && tab.ghSent.id === t.id) return showSent(panel, t, tab);   // kept across tab switches until dismissed
   if (ghOut(t)) {
@@ -481,6 +486,7 @@ export async function showGithubPanel(t, tab) {
   let pv;
   try { pv = await getJSON(ghApi(t.id, 'send-preview')); }
   catch (e) { pv = { ok: false, output: String(e.message || e) }; }
+  if (gen !== ghPanelGen) return;   // a later call (the Sent panel, a tab switch) or a hide owns the panel now
   if (tab && (tab !== cockpitState || !tab.ghPick)) return;   // another tab, or another place, was picked meanwhile
   const isPublic = /\(PUBLIC\)/.test(pv.output || '');
   // t-093a: send-issue's warnings (no criteria, no plan) are a note above the preview, in the CLI's own words; they don't block.
