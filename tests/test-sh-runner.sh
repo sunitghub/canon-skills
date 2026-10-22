@@ -71,7 +71,7 @@ for skipped_line in "==> tools/canon-go/internal/board skipped (go absent)" \
   assert_eq 1 "$(printf '%s\n' "$out" | grep -cxF "$skipped_line")"
 done
 set +e; out="$(PATH="$WORK/bin" bash "$P/scripts/test.sh" --list 2>&1)"; rc=$?; set -e
-assert_eq 0 "$rc"; assert_eq 17 "$(printf '%s\n' "$out" | wc -l | tr -d ' ')"; [[ "$out" != *"==>"* ]] || fail "--list printed a run line: $out"
+assert_eq 0 "$rc"; assert_eq 18 "$(printf '%s\n' "$out" | wc -l | tr -d ' ')"; [[ "$out" != *"==>"* ]] || fail "--list printed a run line: $out"
 
 # --- t-abb1: the parallel run -----------------------------------------------------------------------------------------------------
 X="$WORK/par"; runner_copy "$X" tests/a.sh tests/b.sh tests/c.sh tests/d.sh tests/e.sh tests/f.sh
