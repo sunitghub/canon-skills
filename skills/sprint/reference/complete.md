@@ -282,15 +282,27 @@ Opus` default, scoped only to the two close-gate dispatches below.
 - **pi dispatch (harness-scoped) — encode, don't reconstruct.** pi has **no built-in
   sub-agents** (by design), so dispatch each fresh-context gate as a `pi -p` subprocess from
   Bash:
-  `pi -p --no-session --no-context-files --no-skills --no-prompt-templates --model "<current session model>" --exclude-tools edit,write "<gate prompt>"`.
+  `pi -p --no-session --no-context-files --no-skills --no-prompt-templates --no-extensions --no-mcp --tools read,bash,grep,find,ls --model "<provider>/<current session model>" "<gate prompt>"`.
   `-p`/`--print` is fresh — it does not load prior session memory (verified: a bare `pi -p`
   reports `memory=no`) — and `--no-session` keeps it ephemeral. The **model MUST be passed
   explicitly and set to the current pi session model**: a bare `pi -p` runs on pi's
   *config-default* model (verified: it reported `claude-opus-4-6…` regardless of a `kimi-k3`
   interactive session), and pi exposes no `PI_MODEL`/`PI_PROVIDER` env to read it from — so the
-  dispatching agent supplies its own current model. `--exclude-tools edit,write` gives the
-  read-only + Bash profile the gate contract requires (built-in tool names are lowercase:
-  `read,bash,edit,write,grep,find,ls`). The **hardened flags `--no-context-files --no-skills --no-prompt-templates` keep the `pi -p` gate hermetic** — it must not auto-load the project's context files, skills, or prompt templates: a fresh gate that inherited the project's own skills (including this `sprint` skill) would let it *reconstruct* the intended behavior instead of independently grading what shipped, defeating the no-implementation-history / no-project-context contract (these three flags are the hardened form observed in kimi's live VM dispatch — re-verify live on the VM, there is no pi in the evaluator here). **Also pass an explicit `Base ref: <fork-point>` in the gate prompt's Inputs** (the empty-diff/drift hazard and the fork-point recovery are documented in `shared-gate-protocol.md ## Base-ref derivation`) rather than relying on the subagent's own `git merge-base HEAD origin/main`: a `pi -p` subprocess derives its base ref live, so an `origin/main` advance mid-run can converge merge-base to HEAD and empty the diff (the t-3864 hazard) — an explicit fork-point base ref avoids it. Record that same model on the `eval`/`reviewer` row.
+  dispatching agent supplies its own current model, as `provider/model`: a bare name such as
+  `kimi-k3` is refused when more than one authenticated provider offers it (t-294e, verified on Pi 1.2.0).
+  `--tools read,bash,grep,find,ls` is an allowlist of built-in names (lowercase), the
+  read-only-by-prompt + Bash profile the gate contract requires; `bash` can still write, so read-only stays a
+  prompt rule, as for the Claude gates. An allowlist replaces the old `--exclude-tools edit,write`, which never
+  removed a tool an extension adds or overrides (an extension can replace `read` or `bash` under the same
+  name, as Pi's own `ssh.ts` example does). **`--no-extensions --no-mcp` are required, not optional:** without
+  them every installed extension (e.g. `pi-subagents`, which starts full agents with their own tools) and, on Pi 1.0.4+,
+  MCP and `codemode` load into the gate, so it is neither read-only nor hermetic. `--no-extensions` also drops
+  `pi-cc-header` (a startup header, no tools, no auth); verified live that the model call still works without it
+  (`github-copilot/claude-haiku-5.5`; the same `opencode-go` credential failure with and without extensions is a
+  stale key, not a flag effect). If a provider ever needs an extension to authenticate, load only that one back
+  with `-e <path from pi list>` after reading its `registerTool` calls to confirm it overrides no tool.
+  **Minimum Pi 1.0.4** (`--no-mcp`): on an older Pi, or one that rejects a flag, the gate does not run: stop and
+  report it; never fall back to the old flags. The **hardened flags `--no-context-files --no-skills --no-prompt-templates` keep the `pi -p` gate hermetic** — it must not auto-load the project's context files, skills, or prompt templates: a fresh gate that inherited the project's own skills (including this `sprint` skill) would let it *reconstruct* the intended behavior instead of independently grading what shipped, defeating the no-implementation-history / no-project-context contract (these three flags are the hardened form observed in kimi's live VM dispatch — re-verify live on the VM, there is no pi in the evaluator here). **Also pass an explicit `Base ref: <fork-point>` in the gate prompt's Inputs** (the empty-diff/drift hazard and the fork-point recovery are documented in `shared-gate-protocol.md ## Base-ref derivation`) rather than relying on the subagent's own `git merge-base HEAD origin/main`: a `pi -p` subprocess derives its base ref live, so an `origin/main` advance mid-run can converge merge-base to HEAD and empty the diff (the t-3864 hazard) — an explicit fork-point base ref avoids it. Record that same model on the `eval`/`reviewer` row.
   **Never** run a pi session's gate by shelling out to the `claude` CLI or onto a different model.
   This rule is **harness-scoped**: for a pi session the close gates run on the **pi session
   model**, full stop — `AGENTS.md`'s general `review → Opus` tier is **not** the close-gate rule

@@ -132,6 +132,7 @@ tests=(
   "$ROOT/tests/canon.sh"
   "$ROOT/tests/no-browser-in-tests.sh"
   "$ROOT/tests/pipefail-grep-q.sh"
+  "$ROOT/tests/pi-gate-recipe.sh"
   "$ROOT/tests/sprint-check-delegate.sh"
   "$ROOT/tests/doc-mirror-parity.sh"
   "$ROOT/tests/doc-update-behavior.sh"
