@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-22-2026 16:42
+learnings-sweep last run: 10-22-2026 20:17
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-22 | [t-fcb3](.tickets/t-fcb3/learnings.md) | A gate rule that names a pattern as a finding (CI `permissions:`/unpinned actions) collided with the same gate's "no hardening" exclusion; the reviewer caught it and a behaviour check reproduced it, so new gate rules need their condition for being a finding stated next to them. | UNPROMOTED |
 | 2026-10-22 | [t-8f48](.tickets/t-8f48/learnings.md) | Under `set -e` a bare `v="$(cmd)"` with a failing cmd exits silently: `tkt worktree-reset` died with no output when `origin/HEAD` was unset, a fallback the hand-written tests never reached; mutation-sweep survivors on that line led to the test that exposed it. | UNPROMOTED |
 | 2026-10-22 | [t-b525](.tickets/t-b525/learnings.md) | A self-checking guard test's summary line hardcoded its plant count ("14 planted breaks") instead of printing the counter it already kept, so adding a plant would make it lie silently; print the counter. | UNPROMOTED |
 | 2026-10-22 | [t-f053](.tickets/t-f053/learnings.md) | A scratch copy made with `git archive` has no `.git`, so git/worktree tests fail identically on branch and base; use `git clone` + `git checkout` for copies that run tests. | `promoted → skills/sprint/reference/eval.md` |
