@@ -83,13 +83,15 @@ scanner step as interactive-only.
 
 1. Use available scanner output as leads when relevant; otherwise proceed manually.
 2. Trace data flow end-to-end before flagging.
-3. Confirm attacker-controlled input reaches the vulnerable pattern.
+3. Confirm attacker-controlled input reaches the vulnerable pattern, and name the attacker: the lower-trust principal, its starting capability, and the boundary it crosses.
 4. Check for validation, sanitization, or framework mitigations.
-5. Report only with exploitability evidence.
+5. Refute before reporting: try to disprove each candidate from the source (a guard upstream, a test, a caller that never passes attacker input). A refuted candidate goes under `## Out of Scope` with the reason.
+6. Search for variants: for each surviving finding, look for the same root cause in sibling paths (other handlers, routes, scripts, workflows), and compare sibling controls for equivalence, not just presence. Reading outside the diff is allowed for this; report only what the diff introduces or touches.
+7. Report only with exploitability evidence.
 
 ## Vulnerability Categories
 
-Injection, XSS, authorization bypass, weak crypto, unsafe deserialization, SSRF, CSRF, file security, broken auth, business logic flaws, API security, misconfiguration, error leaks, sensitive logs, agent/MCP security (permission scope, tool over-provisioning, MCP server config exposure), secrets (hardcoded credentials, API keys, tokens), third-party data egress (a diff that adds an analytics/tracking pixel, a third-party script/tag/SDK inclusion, or code that sends PII, credentials, or session tokens to a third-party endpoint — flag when it can carry sensitive data out of an **authenticated/legitimate** flow, since access control at sign-in does not prevent it; the pattern must be diff-visible and the sensitive-data path concrete, per the HIGH/MEDIUM bar).
+Injection, XSS, authorization bypass, weak crypto, unsafe deserialization, SSRF, CSRF, file security, broken auth, business logic flaws, API security, misconfiguration, error leaks, sensitive logs, agent/MCP security (permission scope, tool over-provisioning, MCP server config exposure; prompt injection alone is not a finding — require a code-level boundary failure, such as injected text reaching a tool, permission or secret that causes real impact; a guardrail prompt is not a security boundary; tool or MCP metadata guides the model but grants no capability — only the enforced allowlist or permission mode does; an approval must bind to the exact action approved, so attacker content cannot run a different action under it), CI and supply chain (CI config is authorization code: `pull_request_target` or `workflow_run` running PR code, a missing or wide `permissions:` block, actions not pinned to a commit SHA, untrusted PR, issue or comment text reaching a `run:` step via `${{ }}` or reaching an agent that holds a secret or write access; a known-vulnerable or unpinned dependency is a finding only with a reachable path from attacker influence to a build or runtime that consumes it), secrets (hardcoded credentials, API keys, tokens), third-party data egress (a diff that adds an analytics/tracking pixel, a third-party script/tag/SDK inclusion, or code that sends PII, credentials, or session tokens to a third-party endpoint — flag when it can carry sensitive data out of an **authenticated/legitimate** flow, since access control at sign-in does not prevent it; the pattern must be diff-visible and the sensitive-data path concrete, per the HIGH/MEDIUM bar).
 
 ## Action Endpoint Patterns
 
@@ -120,7 +122,9 @@ Detection by framework:
 - **Critical** — direct exploit, severe impact, no auth required
 - **High** — exploitable with some conditions, significant impact
 - **Medium** — requires specific conditions, moderate impact
-- **Low** — defense-in-depth gap, minimal direct impact
+- **Low** — exploitable, minimal direct impact
+
+Severity cannot exceed the impact the evidence demonstrates; a worst case you did not trace does not raise it. If another control already blocks the attack, the missing extra layer is a hardening note under `## Out of Scope`, not a finding.
 
 ## Report Format
 
@@ -130,6 +134,7 @@ Detection by framework:
 ### [SEVERITY] Title
 - **Location**: `file:line — \`quoted vulnerable snippet\`` — the exact line(s) containing the pattern
 - **Pattern**: what the vulnerable code does
+- **Attacker**: the lower-trust principal, its starting capability, and the boundary it crosses
 - **Evidence**: why attacker input reaches it
 - **Impact**: what an attacker can do
 - **Fix**: concrete remediation
@@ -138,5 +143,5 @@ Detection by framework:
 Issues where input source is unclear.
 
 ## Out of Scope
-Patterns reviewed and ruled out (briefly).
+Patterns reviewed and ruled out, refuted candidates with the reason, and hardening notes (briefly).
 ```
