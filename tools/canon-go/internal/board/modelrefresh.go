@@ -38,7 +38,7 @@ var (
 // as the input and output price per million tokens (a "from" in front flags the price as a floor).
 func parseDocsPage(provider, page string) []found {
 	text := tagRe.ReplaceAllString(page, " ")
-	text = strings.NewReplacer("&nbsp;", " ", "&amp;", "&", "&#36;", "$").Replace(text)
+	text = strings.NewReplacer("&nbsp;", " ", "&#36;", "$").Replace(text)
 	re := claudeIDRe
 	if provider == "openai" {
 		re = gptIDRe
@@ -200,7 +200,7 @@ func buildProposal(doc map[string]any, finds []found) proposal {
 		var b *reg
 		for i := range all {
 			r := &all[i]
-			if r.prov != prov || r.legacy || r.line != line || r.line == "" || (below != nil && !versionLess(r.ver, below)) {
+			if r.prov != prov || r.legacy || r.line != line || (below != nil && !versionLess(r.ver, below)) {
 				continue
 			}
 			if b == nil || versionLess(b.ver, r.ver) {
@@ -297,8 +297,7 @@ func refreshSources(doc map[string]any, only int, fetchO fetchOpts) (map[string]
 		}
 		s, _ := raw.(map[string]any)
 		kind, prov, u := fmt.Sprint(s["kind"]), fmt.Sprint(s["provider"]), fmt.Sprint(s["url"])
-		o := fetchO
-		o.headers = nil
+		o := fetchO // a copy: the key header below is set on this source's request only
 		if kind == "api" {
 			key := os.Getenv(map[string]string{"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY"}[prov])
 			if key == "" {

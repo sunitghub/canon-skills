@@ -41,6 +41,15 @@ func TestFetchDefaultTimeoutAndEdgePaths(t *testing.T) {
 	if _, err := guardedGet(context.Background(), "https://ok.test/", slow); err == nil || time.Since(start) > 1500*time.Millisecond {
 		t.Errorf("the default timeout should apply: %v after %v", err, time.Since(start))
 	}
+	// ...and a fast answer under the default timeout succeeds (a default of zero would expire at once)
+	fast := stub(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.Write([]byte("fast"))
+	})
+	fast.timeout = 0
+	if b, err := guardedGet(context.Background(), "https://ok.test/", fast); err != nil || string(b) != "fast" {
+		t.Errorf("the default timeout must leave room to answer: %q %v", b, err)
+	}
 	// a literal public IP in the URL is dialled as it is (the resolver is not asked)
 	ok := stub(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
@@ -57,8 +66,8 @@ func TestFetchDefaultTimeoutAndEdgePaths(t *testing.T) {
 	if _, err := guardedGet(context.Background(), "https://nohost.test/", none); err == nil || !strings.Contains(err.Error(), "no such host") {
 		t.Errorf("a failing resolver: %v", err)
 	}
-	none.resolve = resolveTo(map[string][]string{"empty.test": {}})
-	if _, err := guardedGet(context.Background(), "https://empty.test/", none); err == nil || !strings.Contains(err.Error(), "no such host") && !strings.Contains(err.Error(), "did not resolve") {
+	none.resolve = func(context.Context, string) ([]net.IP, error) { return []net.IP{}, nil }
+	if _, err := guardedGet(context.Background(), "https://empty.test/", none); err == nil || !strings.Contains(err.Error(), "empty.test did not resolve") {
 		t.Errorf("an empty answer: %v", err)
 	}
 	// the request names what it accepts, and a failed request shows the cause, not the client's wrapper
@@ -216,6 +225,13 @@ func TestVersionAndNameHelpers(t *testing.T) {
 	if line, ver, ok := lineAndVersion("claude-haiku-4-5-20251001"); !ok || line != "haiku" || len(ver) != 2 {
 		t.Errorf("a dated id drops its date: %s %v", line, ver)
 	}
+	// only a trailing date is a date: one in the middle stays part of the version
+	if _, ver, ok := lineAndVersion("claude-haiku-20251001-5"); !ok || len(ver) != 2 || ver[0] != 20251001 {
+		t.Errorf("a date in the middle is not stripped: %v %v", ver, ok)
+	}
+	if got := displayName("claude-haiku-20251001-5"); got != "Claude Haiku 20251001.5" {
+		t.Errorf("displayName keeps a date that is not at the end: %q", got)
+	}
 }
 
 func TestParsersEdgeCases(t *testing.T) {
@@ -226,6 +242,13 @@ func TestParsersEdgeCases(t *testing.T) {
 	}
 	if got := parseDocsPage("anthropic", `<p>claude-opus-5-5 &#36;4 and &#36;20</p><p>a&nbsp;claude-fable-5-1&nbsp;&amp;</p>`); len(got) != 2 || got[0].In != 4 || got[0].Out != 20 {
 		t.Errorf("entities: %+v", got)
+	}
+	// a tag or an entity between two cells separates them: the id must not swallow the next cell's digits
+	if got := parseDocsPage("anthropic", `<td>claude-opus-5-5</td><td>5</td>`); len(got) != 1 || got[0].ID != "claude-opus-5-5" {
+		t.Errorf("a tag separates: %+v", got)
+	}
+	if got := parseDocsPage("anthropic", `claude-opus-5-5&nbsp;4`); len(got) != 1 || got[0].ID != "claude-opus-5-5" {
+		t.Errorf("an entity separates: %+v", got)
 	}
 	api, err := parseModelsAPI("openai", []byte(`{"data":[{"id":"gpt-6.1-sol"},{"id":"claude-opus-5-5"},{"id":"xgpt-6-sol"},{"id":"gpt-6-sol-beta-x"},{"id":"gpt-6-luna","display_name":"Luna"}]}`))
 	if err != nil || len(api) != 2 || api[0].ID != "gpt-6.1-sol" || api[0].Name != "GPT-6.1 Sol" || api[1].Name != "Luna" {
@@ -245,9 +268,9 @@ func TestBuildProposalOrderLegacyAndCustomEntries(t *testing.T) {
 	m := doc["models"].(map[string]any)
 	m["anthropic"] = append(m["anthropic"].([]any),
 		map[string]any{"id": "claude-haiku-5-5", "name": "Claude Haiku 5.5"},
-		map[string]any{"id": "claude-sonnet-5-4", "name": "Claude Sonnet 5.4", "legacy": true}, // legacy: never a replacement target, never listed
-		map[string]any{"id": "custom-model", "name": "Custom"},                                 // no line: skipped
-		map[string]any{"id": "claude-opus-5-5-fast", "name": "Opus fast"})                      // a lookalike that is not a model id shape
+		map[string]any{"id": "claude-sonnet-5-5-1", "name": "Claude Sonnet 5.5.1", "legacy": true}, // legacy and higher than the active 5.5: never a target, never listed
+		map[string]any{"id": "custom-model", "name": "Custom"},                                     // no line: skipped
+		map[string]any{"id": "claude-opus-5-5-fast", "name": "Opus fast"})                          // a lookalike that is not a model id shape
 	m["openai"] = append(m["openai"].([]any), map[string]any{"id": "gpt-6.1-sol", "name": "GPT-6.1 Sol"})
 	p := buildProposal(doc, []found{
 		{Provider: "anthropic", ID: "claude-sonnet-5-6", Name: "Claude Sonnet 5.6"}, {Provider: "anthropic", ID: "claude-aaa-1", Name: "A"},
@@ -261,7 +284,7 @@ func TestBuildProposalOrderLegacyAndCustomEntries(t *testing.T) {
 	}
 	for _, e := range p.Add {
 		if e.ID == "claude-sonnet-5-6" && e.Replaces != "claude-sonnet-5-5" {
-			t.Errorf("5.6 replaces 5.5, not the legacy 5.4: %+v", e)
+			t.Errorf("5.6 replaces the active 5.5, not the legacy 5.5.1: %+v", e)
 		}
 		if e.ID == "gpt-6.2-sol" && e.Replaces != "gpt-6.1-sol" {
 			t.Errorf("sol 6.2 replaces 6.1: %+v", e)
@@ -275,7 +298,7 @@ func TestBuildProposalOrderLegacyAndCustomEntries(t *testing.T) {
 		t.Errorf("retire list sorted, no legacy or custom entries: %v", olds)
 	}
 	for _, c := range p.Current {
-		if strings.Contains(c, "5.4") || c == "Custom" {
+		if strings.Contains(c, "5.5.1") || c == "Custom" {
 			t.Errorf("a legacy or line-less entry must not be listed current: %v", p.Current)
 		}
 	}
@@ -289,7 +312,7 @@ func TestBuildProposalOrderLegacyAndCustomEntries(t *testing.T) {
 	}
 	// a registry entry of another provider with the same line word is not a candidate
 	d3 := proposalDoc()
-	d3["models"].(map[string]any)["openai"] = append(d3["models"].(map[string]any)["openai"].([]any), map[string]any{"id": "gpt-6-haiku", "name": "GPT-6 Haiku"})
+	d3["models"].(map[string]any)["openai"] = append(d3["models"].(map[string]any)["openai"].([]any), map[string]any{"id": "gpt-4.9-haiku", "name": "GPT-4.9 Haiku"})
 	e := buildProposal(d3, []found{{Provider: "anthropic", ID: "claude-haiku-5-9", Name: "H"}}).Add[0]
 	if e.Replaces != "claude-haiku-4-5-20251001" {
 		t.Errorf("only the same provider's line counts: %+v", e)
@@ -317,6 +340,9 @@ func TestApplyProposalEntryShapeAndBoundaries(t *testing.T) {
 	g := entry(t, doc, "gpt-6.2-sol")
 	if _, has := g["alias"]; has || g["output_price"] != 10.0 {
 		t.Errorf("an OpenAI entry carries no alias key: %v", g)
+	}
+	if err := applyProposal(proposalDoc(), []map[string]any{{"id": "m-0", "provider": "openai", "name": "free", "input_price": 0.0, "output_price": 0.0}}, nil); err != nil {
+		t.Errorf("a price of zero is a price: %v", err)
 	}
 	if err := applyProposal(proposalDoc(), []map[string]any{{"id": "m-3", "provider": "openai", "name": "x", "input_price": 1.0, "output_price": -0.5}}, nil); err == nil || err.Error() != "a price cannot be negative" {
 		t.Errorf("a negative output price: %v", err)
@@ -403,7 +429,7 @@ func TestRefreshSourcesProviderPathsAndMerge(t *testing.T) {
 	if auth["/docs"] != "" || xkey["/docs"] != "" {
 		t.Errorf("a docs source never carries a key: %q %q", auth["/docs"], xkey["/docs"])
 	}
-	if !st[0].OK || !st[1].OK || st[2].OK || st[2].Status != "the answer is not a model list" || st[0].Found != 1 {
+	if len(st) != 3 || !st[0].OK || !st[1].OK || st[2].OK || st[2].Status != "the answer is not a model list" || st[0].Found != 1 {
 		t.Errorf("statuses: %+v", st)
 	}
 	// found twice (API without a price, docs with one): the priced copy is kept whichever came first
@@ -411,6 +437,14 @@ func TestRefreshSourcesProviderPathsAndMerge(t *testing.T) {
 	if len(add) != 1 || !add[0].PriceKnow || add[0].In != 2 || add[0].Replaces != "gpt-6-sol" {
 		t.Errorf("merged find: %+v", add)
 	}
+	// the other order: the priced copy first, the unpriced one second must not overwrite it
+	orig := doc["sources"].([]any)
+	doc["sources"] = []any{orig[1], orig[0], orig[2]}
+	res2, _ := refreshSources(doc, -1, o)
+	if add2 := res2["proposal"].(proposal).Add; len(add2) != 1 || !add2[0].PriceKnow || add2[0].In != 2 {
+		t.Errorf("merge keeps the priced copy in either order: %+v", add2)
+	}
+	doc["sources"] = orig
 	hits = map[string]int{}
 	_, only := refreshSources(doc, 0, o)
 	if len(only) != 1 || only[0].Index != 0 || hits["/openai-api"] != 1 || hits["/docs"] != 0 {

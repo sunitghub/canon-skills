@@ -205,6 +205,9 @@ func TestRefreshSourcesNeverLeaksAKey(t *testing.T) {
 	if gotKey != key || gotVer == "" {
 		t.Errorf("the key should go to the API source: %q %q", gotKey, gotVer)
 	}
+	if st[1].OK || st[2].OK || st[3].OK || !st[0].OK {
+		t.Errorf("only the source that was read is ok: %+v", st)
+	}
 	if st[0].Status != "checked just now" || st[0].Found != 1 || st[1].Status != "key not set" || !strings.Contains(st[2].Status, "refused: ") || !strings.Contains(st[3].Status, "carries a key") {
 		t.Errorf("statuses: %+v", st)
 	}
