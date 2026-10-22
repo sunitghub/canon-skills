@@ -251,8 +251,8 @@ fi
 
 # --- Persist to cache on a MISS (both PASS and FAIL are cached) ---
 if [[ "$CACHE_ON" -eq 1 && "$CACHE_HIT" -eq 0 ]]; then
-  if echo "$RESULT_TEXT" | grep -q '^HEADLESS_VERDICT: PASS$'; then CACHE_VERDICT=PASS
-  elif echo "$RESULT_TEXT" | grep -q '^HEADLESS_VERDICT: FAIL$'; then CACHE_VERDICT=FAIL
+  if grep -q '^HEADLESS_VERDICT: PASS$' <<<"$RESULT_TEXT"; then CACHE_VERDICT=PASS
+  elif grep -q '^HEADLESS_VERDICT: FAIL$' <<<"$RESULT_TEXT"; then CACHE_VERDICT=FAIL
   else CACHE_VERDICT=""; fi
   if [[ -n "$CACHE_VERDICT" ]]; then
     printf '%s' "$RESULT_TEXT" | gate_cache_put "$ROOT" "$CACHE_KEY" "$CACHE_VERDICT" "${SESSION_ID:-unknown}" "$MODEL" "$GATESET"
@@ -309,9 +309,9 @@ else
   echo "Warning: could not extract the evaluator's report from headless output — eval-report.md not persisted." >&2
 fi
 
-if echo "$RESULT_TEXT" | grep -q '^HEADLESS_VERDICT: PASS$'; then
+if grep -q '^HEADLESS_VERDICT: PASS$' <<<"$RESULT_TEXT"; then
   exit 0
-elif echo "$RESULT_TEXT" | grep -q '^HEADLESS_VERDICT: FAIL$'; then
+elif grep -q '^HEADLESS_VERDICT: FAIL$' <<<"$RESULT_TEXT"; then
   exit 1
 else
   echo "Error: no HEADLESS_VERDICT line found in output. Hard-failing (ambiguous result)." >&2

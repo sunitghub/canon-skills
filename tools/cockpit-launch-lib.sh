@@ -15,7 +15,8 @@ _port_in_use() {
   if command -v lsof >/dev/null 2>&1; then
     lsof -iTCP:"$port" -sTCP:LISTEN -t >/dev/null 2>&1
   elif command -v ss >/dev/null 2>&1; then
-    ss -ltn 2>/dev/null | grep -q ":${port}[^0-9]"
+    local listeners; listeners="$(ss -ltn 2>/dev/null)" || listeners=""   # captured first: grep -q exiting early SIGPIPEs a long ss listing under pipefail
+    grep -q ":${port}[^0-9]" <<<"$listeners"
   else
     # Git Bash has neither lsof nor ss. Bash's own /dev/tcp connects only if something is listening.
     (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null

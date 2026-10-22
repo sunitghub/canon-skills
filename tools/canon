@@ -148,7 +148,7 @@ update_cmd() {
   local dirty; dirty="$(git -C "$repo" status --porcelain)"
   if [ -n "$dirty" ]; then
     echo "canon update: $repo has uncommitted changes — commit or stash them first. Nothing was changed." >&2
-    printf '%s\n' "$dirty" | head -10 | sed 's/^/  /' >&2
+    printf '%s\n' "$dirty" | sed -n '1,10s/^/  /p' >&2
     exit 1
   fi
   local branch before after pinned="" marker="$repo/.canon-track" track=release legacy=0 was_on="" hint=""
