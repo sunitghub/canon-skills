@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"regexp"
 	"sort"
@@ -316,6 +317,11 @@ func refreshSources(doc map[string]any, only int, fetchO fetchOpts) (map[string]
 		kind, prov, u := fmt.Sprint(s["kind"]), fmt.Sprint(s["provider"]), fmt.Sprint(s["url"])
 		o := fetchO // a copy: the key header below is set on this source's request only
 		if kind == "api" {
+			// The registry file can be written outside the validated save path, so the host is checked again before a key goes anywhere.
+			if pu, err := url.Parse(u); err != nil || !strings.EqualFold(pu.Hostname(), apiHost[prov]) {
+				st = append(st, sourceStatus{i, "refused: an api source must be " + apiHost[prov], false, 0})
+				continue
+			}
 			key := os.Getenv(map[string]string{"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY"}[prov])
 			if key == "" {
 				st = append(st, sourceStatus{i, "key not set", false, 0})
@@ -363,6 +369,22 @@ func redactKey(msg string) string {
 // recordChecks writes when each source that Refresh visited was checked and how it went into the saved source itself (checked_at, last_ok,
 // last_status), so the Sources panel can still say "checked 3 h ago" after a reload. This is bookkeeping about the check, not a registry change:
 // models, aliases and defaults are untouched.
+func sourceURL(raw any) string { m, _ := raw.(map[string]any); return fmt.Sprint(m["url"]) }
+
+// recordOnFresh: the fetches took seconds, so the check times go on the registry as it is now, not on the copy loaded before them, which
+// would write back an edit made meanwhile. Only a source that is still the one that was fetched (same address at the same place) is recorded.
+func recordOnFresh(fetched []any, st []sourceStatus, now time.Time) map[string]any {
+	fresh := loadModelTiers()
+	cur, kept := anySlice(fresh["sources"]), []sourceStatus{}
+	for _, s := range st {
+		if s.Index < len(fetched) && s.Index < len(cur) && sourceURL(fetched[s.Index]) == sourceURL(cur[s.Index]) {
+			kept = append(kept, s)
+		}
+	}
+	recordChecks(fresh, kept, now)
+	return fresh
+}
+
 func recordChecks(doc map[string]any, st []sourceStatus, now time.Time) {
 	srcs, _ := doc["sources"].([]any)
 	for _, s := range st {

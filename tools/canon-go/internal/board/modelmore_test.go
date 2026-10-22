@@ -418,9 +418,9 @@ func TestRefreshSourcesProviderPathsAndMerge(t *testing.T) {
 	})
 	doc := proposalDoc()
 	doc["sources"] = []any{
-		map[string]any{"url": "https://ok.test/openai-api", "kind": "api", "provider": "openai"},
+		map[string]any{"url": "https://api.openai.com/openai-api", "kind": "api", "provider": "openai"},
 		map[string]any{"url": "https://ok.test/docs", "kind": "docs", "provider": "openai"},
-		map[string]any{"url": "https://ok.test/badjson", "kind": "api", "provider": "openai"},
+		map[string]any{"url": "https://api.openai.com/badjson", "kind": "api", "provider": "openai"},
 	}
 	res, st := refreshSources(doc, -1, o)
 	if auth["/openai-api"] != "Bearer sk-openai-0123456789" || xkey["/openai-api"] != "" {
@@ -519,5 +519,32 @@ func TestMergeFindsAndRecordChecksBounds(t *testing.T) {
 	srcs := doc["sources"].([]any)
 	if srcs[0].(map[string]any)["last_status"] != "x" || srcs[1].(map[string]any)["last_status"] != "y" {
 		t.Errorf("first and last source: %v", srcs)
+	}
+}
+
+// t-d40b review: a Refresh takes seconds; a change saved meanwhile must survive it, and a source that was edited meanwhile gets no check time.
+func TestRecordOnFreshKeepsAChangeMadeDuringTheFetch(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CANON_HOME", dir)
+	old := modelTiersPath
+	modelTiersPath = filepath.Join(dir, "seed.json")
+	defer func() { modelTiersPath = old }()
+	src := func(u string) map[string]any { return map[string]any{"url": u, "kind": "docs", "provider": "openai"} }
+	fetched := []any{src("https://a.example/m"), src("https://b.example/m")}
+	doc := regDoc()
+	doc["sources"] = []any{src("https://a.example/m"), src("https://c.example/m")} // the second was replaced during the fetch
+	doc["models"].(map[string]any)["openai"] = []any{}                             // and a model was removed
+	raw, _ := json.Marshal(doc)
+	if err := os.WriteFile(modelTiersPath, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
+	fresh := recordOnFresh(fetched, []sourceStatus{{0, "checked just now", true, 2}, {1, "checked just now", true, 2}}, at)
+	if len(anySlice(fresh["models"].(map[string]any)["openai"])) != 0 {
+		t.Error("the removal made during the fetch was written back")
+	}
+	s := anySlice(fresh["sources"])
+	if s[0].(map[string]any)["checked_at"] == nil || s[1].(map[string]any)["checked_at"] != nil {
+		t.Errorf("only the unchanged source gets a check time: %v", s)
 	}
 }

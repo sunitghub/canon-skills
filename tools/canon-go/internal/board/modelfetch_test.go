@@ -35,7 +35,7 @@ func stub(t *testing.T, h http.HandlerFunc) fetchOpts {
 	srv := httptest.NewTLSServer(h)
 	t.Cleanup(srv.Close)
 	return fetchOpts{
-		resolve:   resolveTo(map[string][]string{"ok.test": {"8.8.8.8"}, "evil.test": {"10.0.0.5"}}),
+		resolve:   resolveTo(map[string][]string{"ok.test": {"8.8.8.8"}, "evil.test": {"10.0.0.5"}, "api.anthropic.com": {"8.8.8.8"}, "api.openai.com": {"8.8.8.8"}}),
 		testDial:  srv.Listener.Addr().String(),
 		tlsConfig: &tls.Config{InsecureSkipVerify: true},
 		timeout:   3 * time.Second,

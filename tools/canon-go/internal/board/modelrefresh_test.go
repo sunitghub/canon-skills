@@ -180,6 +180,23 @@ func TestModelSourcesValidation(t *testing.T) {
 }
 
 // The refresh reads only saved sources, reports a refusal as one line, skips a Models API source without its key, and never lets a key out.
+// t-d40b review: the registry file can be written outside the validated save path, so refreshSources re-checks that an api source
+// names the provider's own host before it attaches the key.
+func TestRefreshSourcesKeyOnlyGoesToTheProvidersHost(t *testing.T) {
+	t.Setenv("ANTHROPIC_API_KEY", "sk-test-secret-1234567890")
+	hit := false
+	o := stub(t, func(w http.ResponseWriter, r *http.Request) { hit = true })
+	doc := proposalDoc()
+	doc["sources"] = []any{
+		map[string]any{"url": "https://ok.test/v1/models", "kind": "api", "provider": "anthropic"},
+		map[string]any{"url": "https://api.openai.com/v1/models", "kind": "api", "provider": "anthropic"},
+	}
+	_, st := refreshSources(doc, -1, o)
+	if hit || st[0].OK || st[1].OK || !strings.Contains(st[0].Status, "must be api.anthropic.com") || !strings.Contains(st[1].Status, "must be api.anthropic.com") {
+		t.Errorf("a key must not be sent to another host (hit=%v): %+v", hit, st)
+	}
+}
+
 func TestRefreshSourcesNeverLeaksAKey(t *testing.T) {
 	const key = "sk-test-secret-1234567890"
 	t.Setenv("ANTHROPIC_API_KEY", key)
@@ -196,10 +213,10 @@ func TestRefreshSourcesNeverLeaksAKey(t *testing.T) {
 	})
 	doc := proposalDoc()
 	doc["sources"] = []any{
-		map[string]any{"url": "https://ok.test/v1/models", "kind": "api", "provider": "anthropic"},
-		map[string]any{"url": "https://ok.test/v1/models", "kind": "api", "provider": "openai"}, // no OPENAI_API_KEY: skipped
-		map[string]any{"url": "https://evil.test/models", "kind": "docs", "provider": "openai"}, // resolves private: refused
-		map[string]any{"url": "https://ok.test/redir", "kind": "api", "provider": "anthropic"},  // a redirect on a keyed request: refused
+		map[string]any{"url": "https://api.anthropic.com/v1/models", "kind": "api", "provider": "anthropic"},
+		map[string]any{"url": "https://api.openai.com/v1/models", "kind": "api", "provider": "openai"},   // no OPENAI_API_KEY: skipped
+		map[string]any{"url": "https://evil.test/models", "kind": "docs", "provider": "openai"},          // resolves private: refused
+		map[string]any{"url": "https://api.anthropic.com/redir", "kind": "api", "provider": "anthropic"}, // a redirect on a keyed request: refused
 	}
 	res, st := refreshSources(doc, -1, o)
 	if gotKey != key || gotVer == "" {

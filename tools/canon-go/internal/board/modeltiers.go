@@ -198,6 +198,9 @@ func modelTiersConsistent(data map[string]any) bool {
 	return true
 }
 
+// apiHost is the one host a provider's Models API source may name: the key is attached to it and to nothing else.
+var apiHost = map[string]string{"anthropic": "api.anthropic.com", "openai": "api.openai.com"}
+
 func anySlice(v any) []any { l, _ := v.([]any); return l }
 
 // modelSourcesValid: each saved source is an https address of a known kind and provider, and a Models API source can only be the
@@ -211,7 +214,6 @@ func modelSourcesValid(data map[string]any) bool {
 	if !ok {
 		return false
 	}
-	apiHost := map[string]string{"anthropic": "api.anthropic.com", "openai": "api.openai.com"}
 	for _, e := range list {
 		s, ok := e.(map[string]any)
 		if !ok {
