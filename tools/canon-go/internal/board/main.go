@@ -5799,8 +5799,8 @@ func setDefault(t ticket, key string, value any) {
 	}
 }
 
-// t-1f22: the two gate reports are named for who writes them.
-var docNameOverrides = map[string]string{"eval-report": "Eval Agent", "review-notes": "Review Agent"}
+// t-1f22: the two gate reports are named for who writes them; t-1dec: github.md is the GitHub trail, not "Github".
+var docNameOverrides = map[string]string{"eval-report": "Eval Agent", "review-notes": "Review Agent", "github": "GitHub"}
 
 // t-1f22: the working docs first, then the two gate reports one after another (review, then eval), then the rest by name.
 var docOrder = []string{"acceptance", "plan", "research", "review-notes", "eval-report"}

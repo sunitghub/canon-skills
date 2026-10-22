@@ -14551,6 +14551,20 @@ test.describe('ticket modal polish (t-612f)', () => {
     await expect(page.locator('#m-body')).toContainText('EVAL-BODY-MARK');
   });
 
+  test('a ticket with github.md shows a GitHub node whose body renders the trail (t-1dec)', async ({ page }) => {
+    const sfx = Date.now().toString(36).slice(-3), id = `t-g${sfx}`;
+    writeTicket(id);
+    fs.writeFileSync(path.join(PROJECT_ROOT, '.tickets', id, 'github.md'),
+      '# GitHub\n\n## 2026-10-22T00:00:00Z — sent\nissue: https://github.com/acme/app/issues/1\nrepo: acme/app\n\n## 2026-10-22T01:00:00Z — merged\nPR: #2\nGITHUB-TRAIL-MARK\n');
+    await openModalFor(page, id);
+    const names = await page.locator('#m-docs > .doc-node > .doc-tab').evaluateAll(els => els.map(e => e.textContent.trim()));
+    expect(names).toContain('GitHub');
+    expect(names).not.toContain('Github');
+    await page.locator('#m-docs .doc-tab', { hasText: 'GitHub' }).click();
+    await expect(page.locator('#m-body')).toContainText('GITHUB-TRAIL-MARK');
+    await expect(page.locator('#m-body')).toContainText('issue: https://github.com/acme/app/issues/1');
+  });
+
   test('the Demo/UX switch lives in the header chips row, not the Plan sign-off bar, and still toggles the ticket (t-bb97)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT);
     writeTicket(id);

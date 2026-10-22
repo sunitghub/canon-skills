@@ -85,6 +85,10 @@ and that origin is a GitHub repo, and has Copy buttons for the recipe below. Iss
 board's header button **Sync from GitHub** (`tkt sync-issues`), which stays greyed out until those checks pass. Factory ›
 GitHub's Intake box shows the issues waiting (`tkt sync-issues --dry-run --json`) and when the project last synced.
 
+A ticket that went to GitHub keeps its trail in `.tickets/<id>/github.md`: `tkt send-issue`, `tkt import-results` and
+`tkt merge-pr` each append a dated entry (issue, PR, graded head, merge commit or refusal reason), and the board shows it
+as the ticket's **GitHub** tab.
+
 **Once: create a "canon" environment.** In a new session, open *Choose environment*, then *Cloud*. `tkt cloud-env` prints
 this project's recipe ready to paste (the Cockpit's Factory › GitHub has Copy buttons for it); its one source is
 `tools/cloud-env.sh`. Below is the full recipe; a project that is not written in Go leaves out the Go domains and the

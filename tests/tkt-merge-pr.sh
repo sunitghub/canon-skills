@@ -84,17 +84,25 @@ refuses() {
 # Refusals, one check each.
 printf 'graded-head: %s\nfail: one criterion\n' "$PRHEAD" > ".tickets/$id/eval-report.md"
 refuses "a failing verdict" "no passing evaluator verdict" -- --yes
+[[ ! -e ".tickets/$id/github.md" ]] || fail "a refusal before the PR was read wrote the GitHub trail (t-1dec)"
 rm ".tickets/$id/eval-report.md"
 refuses "no eval-report.md" "no passing evaluator verdict" -- --yes
 eval_ok 0123456789abcdef0123456789abcdef01234567
 refuses "a head the evaluator did not grade" "is not the commit the evaluator graded" -- --yes
+# t-1dec: that refusal came after the PR was read, so it is the trail's first block (the refusals above came before).
+gt=".tickets/$id/github.md"; assert_eq "# GitHub" "$(head -1 "$gt")"; assert_eq 1 "$(grep -c '^## ' "$gt")"
+assert_grep '^## .* — refused$' "$gt"; assert_grep '^reason: PR head .* is not the graded-head ' "$gt"
 printf 'graded-head: %s\n## Verdict\npass: all met\nfail: one criterion\n' "$PRHEAD" > ".tickets/$id/eval-report.md"
 refuses "two verdict lines" "2 verdict lines and 1 graded-heads" -- --yes
 printf 'graded-head: %s\ngraded-head: %s\npass: all met\n' "$PRHEAD" 0123456789abcdef0123456789abcdef01234567 > ".tickets/$id/eval-report.md"
 refuses "two graded-heads" "1 verdict lines and 2 graded-heads" -- --yes
 eval_ok
 refuses "a closed PR" "is CLOSED, not open" STUB_STATE=CLOSED -- --yes
+# t-1dec: a refusal after the PR was read is one `refused` block on the ticket's GitHub trail.
+assert_eq 2 "$(grep -c '^## ' "$gt")"; assert_contains "$(tail -n 3 "$gt")" "reason: PR is CLOSED, not open"
 refuses "a fork's PR" "comes from a fork" STUB_CROSS=true -- --yes
+assert_eq 3 "$(grep -c '^## ' "$gt")"; assert_contains "$(tail -n 3 "$gt")" "PR: #7"
+cp "$gt" "$W/trail.before"
 refuses "a PR that cannot merge" "cannot merge cleanly" STUB_MG=CONFLICTING STUB_MS=DIRTY -- --yes
 refuses "a blocked PR" "blocked by a branch rule" STUB_MS=BLOCKED -- --yes
 : > "$W/prlist"; refuses "no PR saying Fixes #21" "no open PR says Fixes #21" -- --yes
@@ -122,6 +130,7 @@ assert_contains "$out" "Full log kept at:"; rm -f "$TMPDIR"/tkt-merge-*
 # No terminal and no --yes: refused before any of the PR's code runs.
 rm -f "$W/ran"; refuses "no terminal without --yes" "no terminal to ask on" --
 [[ ! -e "$W/ran" ]] || fail "the PR's tests ran before anyone said yes"
+assert_contains "$(tail -n 3 "$gt")" "reason: no terminal to ask on"   # t-1dec: this refusal came after the PR was read, so it is on the trail
 [[ -z "$(ls "$TMPDIR" | grep '^tkt-merge\.' || true)" ]] || fail "a scratch clone was left behind"
 # A PR that deletes scripts/test.sh cannot switch the gate off: the default comes from the base branch, so it runs, fails.
 git checkout -q claude/pr7; git rm -q scripts/test.sh; git commit -qm "drop the suite"; NOSUITE="$(git rev-parse HEAD)"
@@ -199,7 +208,11 @@ assert_contains "$out" "PR #7 (acme/app):"
 assert_contains "$out" "merge-pr: ready: would run touch \"\$STUB_W/ran\" on main + PR #7, then merge (closes #21)"
 [[ ! -e "$W/ran" ]] || fail "--check ran the test command"
 merged && fail "--check merged"; [[ "$(sig)" == "$before" ]] || fail "--check changed ticket.md"
+n_before="$(grep -c '^## ' "$gt")"; "$TKT" merge-pr "$id" --pr 7 --check >/dev/null 2>&1
+assert_eq "$n_before" "$(grep -c '^## ' "$gt")"   # t-1dec: --check appends nothing
+n_before="$(grep -c '^## ' "$gt")"
 refuses "--check on a blocked PR" "blocked by a branch rule" STUB_MS=BLOCKED -- --pr 7 --check
+assert_eq "$n_before" "$(grep -c '^## ' "$gt")"   # t-1dec: a --check refusal appends nothing either
 refuses "--yes with --check" "do not go together" -- --pr 7 --yes --check
 
 # Progress while the tests run: without a terminal a plain line every CANON_PROGRESS_SECONDS, naming the newest log line.
@@ -240,6 +253,21 @@ sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
 out="$(STUB_MERGE_FAIL=1 STUB_AFTER=MERGED STUB_NO_SHA=1 "$TKT" merge-pr "$id" --pr 7 --yes 2>&1)" || fail "a merge GitHub made was reported as a failure: $out"
 assert_contains "$out" "Merged PR #7 into main (gh reported: could not delete branch)"
 assert_grep '^merged: PR #7$' "$f"
+# t-1dec: a merge is a `merged` block (PR, merge commit, base), appended after the earlier ones, which stay byte-identical.
+assert_contains "$(awk '/^## .* — merged$/ { b = "" } { b = b $0 "\n" } END { printf "%s", b }' "$gt")" "PR: #7"
+assert_contains "$(tail -n 5 "$gt")" "base: main"
+assert_eq "$(cat "$W/trail.before")" "$(head -n "$(wc -l < "$W/trail.before")" "$gt")"
+# A github.md that is a symlink is never written through.
+mv "$gt" "$W/trail.real"; ln -s "$W/trail.real" "$gt"; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
+cp "$W/trail.real" "$W/trail.sym.before"
+out="$("$TKT" merge-pr "$id" --pr 7 --yes 2>&1)" || fail "a symlinked github.md failed the merge: $out"
+assert_contains "$out" "warning: could not write the GitHub trail"; cmp -s "$W/trail.real" "$W/trail.sym.before" || fail "the trail was written through a symlink"
+rm -f "$gt"; mv "$W/trail.real" "$gt"; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
+# A trail that cannot be written (a directory in its place; root ignores permissions) warns once; the merge still succeeds.
+rm -f "$gt"; mkdir "$gt"; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
+out="$("$TKT" merge-pr "$id" --pr 7 --yes 2>&1)" || fail "an unwritable github.md failed the merge: $out"
+assert_contains "$out" "Merged PR #7 into main"; assert_eq 1 "$(printf '%s\n' "$out" | grep -c '^warning: could not write the GitHub trail')"
+rmdir "$gt"; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
 
 # t-fdb1: a head past graded-head merges only when what came after is merge-safe late docs (the cloud's learnings sweep).
 past() {   # past <file>...: one commit on top of the graded PR head touching those files, published as PR #7's head; prints its sha

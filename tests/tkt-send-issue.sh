@@ -49,6 +49,7 @@ assert_contains "$dry" "repo: acme/app (PRIVATE)"
 assert_contains "$dry" "title: $id: Board burns a CPU core"
 assert_contains "$dry" "dry run: nothing was created"
 [[ "$(writes)" == 0 ]] || fail "--dry-run made a writing gh call: $(cat "$STUB_LOG")"
+[[ ! -e ".tickets/$id/github.md" ]] || fail "--dry-run wrote the GitHub trail (t-1dec)"
 
 # Send: exact calls, body in the ticket's sections and order, github: recorded only after success.
 : > "$STUB_LOG"
@@ -174,10 +175,12 @@ rc=0; pub="$("$TKT" send-issue "$id2" 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "a public repo should be refused, got $rc"
 assert_contains "$pub" "acme/app is PUBLIC"
 [[ "$(writes)" == 0 && "$(cksum < ".tickets/$id2/ticket.md")" == "$before" ]] || fail "a refused public send called gh or changed the ticket"
+[[ ! -e ".tickets/$id2/github.md" ]] || fail "a refused send wrote the GitHub trail (t-1dec)"
 # A dry run previews it without --public (nothing is created; the board asks from the PUBLIC in its repo: line).
 dry="$("$TKT" send-issue "$id2" --dry-run)"; assert_contains "$dry" "repo: acme/app (PUBLIC)"
 [[ "$(writes)" == 0 && "$(cksum < ".tickets/$id2/ticket.md")" == "$before" ]] || fail "a public dry run called gh or changed the ticket"
 "$TKT" send-issue "$id2" --public >/dev/null
+assert_grep '^## .* — sent$' ".tickets/$id2/github.md"   # t-1dec: only a real send starts the trail
 assert_grep "^github: acme/app#57$" ".tickets/$id2/ticket.md"
 unset STUB_VIS
 

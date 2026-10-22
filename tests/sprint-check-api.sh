@@ -121,6 +121,7 @@ EOF
 # t-1f22: the gate reports list under their writer's name on both servers (display-only; the file field is unchanged).
 printf '# Eval Report\n' > "$WORK/.tickets/t-model/eval-report.md"
 printf '# Review Notes\n' > "$WORK/.tickets/t-model/review-notes.md"
+printf '# GitHub\n\n## 2026-10-22T00:00:00Z — sent\nissue: https://github.com/acme/app/issues/1\n' > "$WORK/.tickets/t-model/github.md"   # t-1dec
 cat > "$WORK/.tickets/t-model/acceptance.md" <<'EOF'
 # Acceptance
 
@@ -277,10 +278,14 @@ if not n["t-ocopen"].get("type_outcome"):
 docs = {d["file"]: d["name"] for d in n["t-model"]["docs"]}
 want = {"t-model/eval-report.md": "Eval Agent", "t-model/review-notes.md": "Review Agent", "t-model/acceptance.md": "Acceptance"}
 order = [d["file"] for d in n["t-model"]["docs"]]
-if order != ["t-model/acceptance.md", "t-model/review-notes.md", "t-model/eval-report.md"]:
+if order != ["t-model/acceptance.md", "t-model/review-notes.md", "t-model/eval-report.md", "t-model/github.md"]:
     print(f"sprint-check-api: FAIL — t-1f22 doc order: {order!r}"); sys.exit(1)
 if {f: docs.get(f) for f in want} != want:
     print(f"sprint-check-api: FAIL — t-1f22 doc names: want {want!r}, got {docs!r}"); sys.exit(1)
+# t-1dec: a ticket's github.md (the trail tkt appends to) lists as GitHub, not Github.
+gh_doc = [d for d in n["t-model"]["docs"] if d["file"] == "t-model/github.md"]
+if len(gh_doc) != 1 or gh_doc[0]["name"] != "GitHub":
+    print(f"sprint-check-api: FAIL — t-1dec github.md doc: {gh_doc!r}, want one named 'GitHub'"); sys.exit(1)
 PY
 
 # ── /api/git (t-9cde, t-d218) ────────────────────────────────────────────────
