@@ -6216,11 +6216,15 @@ test.describe('cockpit in board (t-ddc8)', () => {
       expect(Math.abs(metaBox.y - idBox.y)).toBeLessThan(idBox.height);          // id and meta share a line
       expect(reasonBox.y).toBeGreaterThan(idBox.y + idBox.height - 1);            // the reason is below
       await page.evaluate(async () => { const { showView } = await import('/static/cockpit-views.js'); return ( showView('admin')); });
-      const s1 = page.locator('#ad-sessions tr[data-id="t-cc33"] .s1');
-      await expect(s1).toBeVisible();
-      const nameBox = await s1.boundingBox(), metaA = await s1.locator('.s1meta').boundingBox();
-      expect(Math.abs(metaA.y - nameBox.y)).toBeLessThan(nameBox.height);
-      expect(await y(page.locator('#ad-sessions tr[data-id="t-cc33"] .s3'))).toBeGreaterThan(nameBox.y + nameBox.height - 1);
+      // t-8627: the table renders twice (the ticket titles arrive a few ms after the first paint and replace the rows), so a box read from a
+      // handle located before the second render comes back null. One read of the rows as they are, retried until they hold still.
+      await expect.poll(() => page.evaluate(() => {
+        const r = document.querySelector('#ad-sessions tr[data-id="t-cc33"]');
+        const b = sel => { const e = r && r.querySelector(sel); return e && e.getBoundingClientRect(); };
+        const name = b('.s1'), meta = b('.s1meta'), why = b('.s3');
+        if (!name || !meta || !why || !name.height) return null;
+        return { metaOnNameLine: Math.abs(meta.y - name.y) < name.height, reasonBelow: why.y > name.y + name.height - 1 };
+      })).toEqual({ metaOnNameLine: true, reasonBelow: true });
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
