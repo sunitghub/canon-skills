@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync, spawn } = require('child_process');
 const net = require('net');
+const { newTicketId, claimTicketId, adoptBoardTicket, removeTestTicket } = require('./board-spec-ids');
 
 const BASE = process.env.SPRINT_CHECK_BASE || 'http://localhost:8423';
 // t-5a4b: acceptance visuals — light and dark, written under the ticket folder (gitignored in canon).
@@ -44,7 +45,7 @@ async function expectRole(page, loc, role) {
 // link to this checkout's tools/sprint-check-app, which the board finds relative to its own binary.
 let goBoardBinPath = '';
 const goBoardTemps = [];   // removed when the worker exits
-process.on('exit', () => { for (const d of goBoardTemps) { try { fs.rmSync(d, { recursive: true, force: true }); } catch {} } });
+process.on('exit', () => { for (const d of goBoardTemps) { try { fs.rmSync(/* non-ticket */ d, { recursive: true, force: true }); } catch {} } });
 function goBoardBin() {
   if (goBoardBinPath) return goBoardBinPath;
   const layout = fs.mkdtempSync(path.join(require('os').tmpdir(), 'spec-board-'));
@@ -213,7 +214,7 @@ test.describe('board modal', () => {
     // Uses its own fixture ticket rather than "the first/newest card" —
     // that assumption broke once a later-created ticket in this same repo
     // happened to have no docs (see doc-less coverage in the test below).
-    const id = `t-desc-tab-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'desc-tab');
 
     try {
       const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
@@ -247,12 +248,12 @@ test.describe('board modal', () => {
       expect(withDocsTabs.map(t => t.trim())).toContain('Description');
       await page.keyboard.press('Escape');
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('clicking an in-progress card opens the ticket modal', async ({ page }) => {
-    const id = `t-click-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'click');
     const title = `Click open ${Date.now()}`;
 
     try {
@@ -281,12 +282,12 @@ test.describe('board modal', () => {
       await expect(page.locator('#m-title')).toHaveText(title);
       await expect.poll(() => page.evaluate(() => window.__sprintCheckOpenModalCount || 0)).toBe(1);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('the card menu copies the id and the .tickets/<id> folder path (t-9d93)', async ({ page }) => {
-    const id = `t-copy-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'copy');
     const title = `Copy folder ${Date.now()}`;
 
     try {
@@ -331,12 +332,12 @@ test.describe('board modal', () => {
       // Using the menu must not have opened the ticket modal.
       await expect(page.locator('#m-id')).not.toHaveText(id);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('a signed-off ticket shows the ready dot and label, no flag', async ({ page }) => {
-    const id = `t-ready-pop-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ready-pop');
     const title = `Ready popover ${Date.now()}`;
 
     try {
@@ -402,12 +403,12 @@ test.describe('board modal', () => {
         expect(st.labelColor, theme).toBe(theme === 'light' ? st.darker : st.done);
       }
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('plan approach without sign-off is not ready', async ({ page }) => {
-    const id = `t-needs-signoff-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'needs-signoff');
     const title = `Needs signoff ${Date.now()}`;
 
     try {
@@ -456,12 +457,12 @@ test.describe('board modal', () => {
       await expect(flag).toBeVisible();
       await expect(flag).toHaveAttribute('aria-label', /needs signoff/);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('unchecked QA box blocks ready even with filled Criteria and Test Plan', async ({ page }) => {
-    const id = `t-unchecked-qa-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'unchecked-qa');
     const title = `Unchecked QA ${Date.now()}`;
 
     try {
@@ -513,16 +514,16 @@ test.describe('board modal', () => {
       await expect(flag).toBeVisible();
       await expect(flag).toHaveAttribute('aria-label', /unchecked items/);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('editing docs works for quoted numeric ticket ids', async ({ page }) => {
-    const id = '001';
+    const id = claimTicketId(PROJECT_ROOT, '001');   // the test is about a numeric id
     const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
 
     try {
-      fs.rmSync(ticketDir, { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
       fs.mkdirSync(ticketDir, { recursive: true });
       fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
         '---',
@@ -584,7 +585,7 @@ test.describe('board modal', () => {
       await expect(page.locator('#m-body')).toContainText('Updated criterion');
       expect(fs.readFileSync(path.join(ticketDir, 'acceptance.md'), 'utf8')).toContain(`Ticket: \`${id}\``);
     } finally {
-      fs.rmSync(ticketDir, { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
@@ -603,7 +604,7 @@ test.describe('board modal', () => {
 
       const card = page.locator('.card', { hasText: title });
       await expect(card).toBeVisible();
-      createdId = await card.getAttribute('data-id') || '';
+      createdId = adoptBoardTicket(PROJECT_ROOT, await card.getAttribute('data-id') || '', title);
 
       // Write acceptance.md so the ticket has at least one doc
       const ticketDir = path.join(PROJECT_ROOT, '.tickets', createdId);
@@ -621,7 +622,7 @@ test.describe('board modal', () => {
       await expect(page.locator('#m-body')).not.toBeEmpty();
     } finally {
       if (createdId) {
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, createdId);
       }
     }
   });
@@ -871,7 +872,7 @@ test.describe('board modal', () => {
 
       const card = page.locator('.card', { hasText: title });
       await expect(card).toBeVisible();
-      createdId = await card.getAttribute('data-id') || '';
+      createdId = adoptBoardTicket(PROJECT_ROOT, await card.getAttribute('data-id') || '', title);
       await card.click();
 
       await expect(page.locator('#m-docs .doc-tab:not(.doc-ghost)')).toHaveCount(1);   // only Description; Acceptance, Plan and Research are ghosts (t-bb97)
@@ -882,7 +883,7 @@ test.describe('board modal', () => {
       await expect(page.locator('#m-docs .doc-child')).toHaveText(['Context', 'Notes']);   // the Description's own sections, as for any doc
     } finally {
       if (createdId) {
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, createdId);
       }
     }
   });
@@ -906,7 +907,7 @@ test.describe('board modal', () => {
 
       const card = page.locator('.card', { hasText: title });
       await expect(card).toBeVisible();
-      createdId = await card.getAttribute('data-id') || '';
+      createdId = adoptBoardTicket(PROJECT_ROOT, await card.getAttribute('data-id') || '', title);
       expect(fs.readFileSync(path.join(PROJECT_ROOT, '.tickets', createdId, 'ticket.md'), 'utf8')).toContain('## Open questions\n<!-- ');
       await card.click();
       await expect(page.locator('#m-docs .doc-child')).toHaveText(['Problem', 'Expected', 'Actual', 'Outcome', 'Constraints', 'Open questions']);
@@ -915,7 +916,7 @@ test.describe('board modal', () => {
       await expect(page.locator('#m-body')).not.toContainText('What is broken');
       await expect(page.locator('#m-body')).not.toContainText('Anything to decide before planning');
     } finally {
-      if (createdId) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
+      if (createdId) removeTestTicket(PROJECT_ROOT, createdId);
     }
   });
 
@@ -938,7 +939,7 @@ test.describe('board modal', () => {
       await page.locator('#c-submit').click();
       const firstCard = page.locator('.card', { hasText: first });
       await expect(firstCard).toBeVisible();
-      createdIds.push(await firstCard.getAttribute('data-id') || '');
+      createdIds.push(adoptBoardTicket(PROJECT_ROOT, await firstCard.getAttribute('data-id') || '', first));
 
       // Reopen — the Create button must not be stuck disabled from the last submit
       await page.locator('#btn-create').click();
@@ -950,10 +951,10 @@ test.describe('board modal', () => {
       await page.locator('#c-submit').click();
       const secondCard = page.locator('.card', { hasText: second });
       await expect(secondCard).toBeVisible();
-      createdIds.push(await secondCard.getAttribute('data-id') || '');
+      createdIds.push(adoptBoardTicket(PROJECT_ROOT, await secondCard.getAttribute('data-id') || '', second));
     } finally {
       for (const id of createdIds) {
-        if (id) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+        if (id) removeTestTicket(PROJECT_ROOT, id);
       }
     }
   });
@@ -1008,14 +1009,14 @@ test.describe('board modal', () => {
 
       const card = page.locator('.card', { hasText: title });
       await expect(card).toBeVisible();
-      createdId = await card.getAttribute('data-id') || '';
+      createdId = adoptBoardTicket(PROJECT_ROOT, await card.getAttribute('data-id') || '', title);
 
       // The created ticket.md carries both ci: true and gate: eval
       const tm = fs.readFileSync(path.join(PROJECT_ROOT, '.tickets', createdId, 'ticket.md'), 'utf8');
       expect(tm).toMatch(/^ci: true$/m);
       expect(tm).toMatch(/^gate: eval$/m);
     } finally {
-      if (createdId) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
+      if (createdId) removeTestTicket(PROJECT_ROOT, createdId);
     }
   });
 
@@ -1040,7 +1041,7 @@ test.describe('board modal', () => {
 
       const card = page.locator('.card', { hasText: title });
       await expect(card).toBeVisible();
-      createdId = await card.getAttribute('data-id') || '';
+      createdId = adoptBoardTicket(PROJECT_ROOT, await card.getAttribute('data-id') || '', title);
 
       // Frontmatter carries demo: true
       const tm = fs.readFileSync(path.join(PROJECT_ROOT, '.tickets', createdId, 'ticket.md'), 'utf8');
@@ -1050,7 +1051,7 @@ test.describe('board modal', () => {
       await expect(card.locator('.demo-badge')).toBeVisible();
       await expect(card.locator('.demo-badge')).toHaveText('DEMO/UX');   // t-d0c4: the board says Demo/UX, like the Plan switch
     } finally {
-      if (createdId) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
+      if (createdId) removeTestTicket(PROJECT_ROOT, createdId);
     }
   });
 
@@ -1063,10 +1064,10 @@ test.describe('board modal', () => {
     // artifact, not a regression in the fix under test (verified against real board data,
     // which stays single-line at this dot design).
     const type = `t${stamp.toString(36).slice(-4)}`;
-    const cleanId = `t-oc-clean-${stamp}`;
-    const reworkId = `t-oc-rework-${stamp}`;
-    const openId = `t-oc-open-${stamp}`;
-    const openId2 = `t-oc-open2-${stamp}`;
+    const cleanId = newTicketId(PROJECT_ROOT, 'oc-clean');
+    const reworkId = newTicketId(PROJECT_ROOT, 'oc-rework');
+    const openId = newTicketId(PROJECT_ROOT, 'oc-open');
+    const openId2 = newTicketId(PROJECT_ROOT, 'oc-open2');
     const ids = [cleanId, reworkId, openId, openId2];
 
     const writeTicket = (id, status, extraFrontmatter = '') => {
@@ -1128,7 +1129,7 @@ test.describe('board modal', () => {
       // single line is 21px in production (verified against real board data); a wrap is ~42px
       expect(typeBox.height).toBeLessThan(30);
     } finally {
-      for (const id of ids) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      for (const id of ids) removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
@@ -1146,7 +1147,7 @@ test.describe('board modal', () => {
       await page.locator('#btn-ci-setup').click();
       await expect(page.locator('#drop-toast')).toContainText('already exists');
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.github'), { recursive: true, force: true });
+      fs.rmSync(/* non-ticket */ path.join(PROJECT_ROOT, '.github'), { recursive: true, force: true });
     }
   });
 
@@ -1166,7 +1167,7 @@ test.describe('board modal', () => {
 
       const card = page.locator('.card', { hasText: title });
       await expect(card).toBeVisible();
-      createdId = await card.getAttribute('data-id') || '';
+      createdId = adoptBoardTicket(PROJECT_ROOT, await card.getAttribute('data-id') || '', title);
 
       // Write research.md directly so the board can pick it up
       const ticketDir = path.join(PROJECT_ROOT, '.tickets', createdId);
@@ -1186,7 +1187,7 @@ test.describe('board modal', () => {
       await expect(page.locator('#m-docs .doc-tab', { hasText: 'Research' })).toBeVisible();
     } finally {
       if (createdId) {
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, createdId);
       }
     }
   });
@@ -1206,7 +1207,7 @@ test.describe('board modal', () => {
 
       const card = page.locator('.card', { hasText: title });
       await expect(card).toBeVisible();
-      createdId = await card.getAttribute('data-id') || '';
+      createdId = adoptBoardTicket(PROJECT_ROOT, await card.getAttribute('data-id') || '', title);
       await card.click();
 
       // Research is creatable through its ghost node (t-bb97)
@@ -1214,7 +1215,7 @@ test.describe('board modal', () => {
       await expect(page.locator('#btn-ghost-add')).toHaveText('+ Research');
     } finally {
       if (createdId) {
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, createdId);
       }
     }
   });
@@ -1234,7 +1235,7 @@ test.describe('board modal', () => {
 
       const card = page.locator('.card', { hasText: title });
       await expect(card).toBeVisible();
-      createdId = await card.getAttribute('data-id') || '';
+      createdId = adoptBoardTicket(PROJECT_ROOT, await card.getAttribute('data-id') || '', title);
       await card.click();
       await expect(page.locator('#modal-overlay')).toHaveClass(/open/);
 
@@ -1259,14 +1260,14 @@ test.describe('board modal', () => {
       expect(planContent).toContain('pasted plan content');
     } finally {
       if (createdId) {
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, createdId);
       }
     }
   });
 
   test('archive button: Done card can be archived; archived ticket appears in search but not board columns', async ({ page }) => {
     const title = `Archive test ${Date.now()}`;
-    const createdId = `t-arch-${Date.now()}`;
+    const createdId = newTicketId(PROJECT_ROOT, 'arch');
 
     try {
       const ticketDir = path.join(PROJECT_ROOT, '.tickets', createdId);
@@ -1318,14 +1319,14 @@ test.describe('board modal', () => {
       await page.waitForTimeout(300);
       await expect(page.locator('#board-search-count')).toContainText('1');
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, createdId);
     }
   });
 
   test('CI badge: shown for ci: true, absent for ci: false/unset', async ({ page }) => {
     const stamp = Date.now();
-    const onId = `t-cion-${stamp}`;
-    const offId = `t-cioff-${stamp}`;
+    const onId = newTicketId(PROJECT_ROOT, 'cion');
+    const offId = newTicketId(PROJECT_ROOT, 'cioff');
 
     try {
       for (const [id, ci] of [[onId, 'ci: true'], [offId, null]]) {
@@ -1362,14 +1363,14 @@ test.describe('board modal', () => {
       await expect(offCard).toBeVisible({ timeout: 8000 });
       await expect(offCard.locator('.ci-badge')).toHaveCount(0);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', onId), { recursive: true, force: true });
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', offId), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, onId);
+      removeTestTicket(PROJECT_ROOT, offId);
     }
   });
 
   test('search finds a ticket by model mention in acceptance.md, not just title/body', async ({ page }) => {
     const stamp = Date.now();
-    const createdId = `t-model-${stamp}`;
+    const createdId = newTicketId(PROJECT_ROOT, 'model');
     const title = `Model search test ${stamp}`;
 
     try {
@@ -1424,17 +1425,17 @@ test.describe('board modal', () => {
       await page.waitForTimeout(300);
       await expect(page.locator(`.card[data-id="${createdId}"]`)).not.toBeVisible();
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, createdId);
     }
   });
 
   test('modal next and previous stay in the same status lane sorted by newest first', async ({ page }) => {
     const stamp = Date.now();
     const tickets = [
-      { id: `t-nav-old-${stamp}`, title: `Nav old ${stamp}`, status: 'closed', created: '2026-01-01T00:00:00Z' },
-      { id: `t-nav-mid-${stamp}`, title: `Nav mid ${stamp}`, status: 'closed', created: '2026-02-01T00:00:00Z' },
-      { id: `t-nav-new-${stamp}`, title: `Nav new ${stamp}`, status: 'closed', created: '2026-03-01T00:00:00Z' },
-      { id: `t-nav-open-${stamp}`, title: `Nav open ${stamp}`, status: 'open', created: '2026-04-01T00:00:00Z' },
+      { id: newTicketId(PROJECT_ROOT, 'nav-old'), title: `Nav old ${stamp}`, status: 'closed', created: '2026-01-01T00:00:00Z' },
+      { id: newTicketId(PROJECT_ROOT, 'nav-mid'), title: `Nav mid ${stamp}`, status: 'closed', created: '2026-02-01T00:00:00Z' },
+      { id: newTicketId(PROJECT_ROOT, 'nav-new'), title: `Nav new ${stamp}`, status: 'closed', created: '2026-03-01T00:00:00Z' },
+      { id: newTicketId(PROJECT_ROOT, 'nav-open'), title: `Nav open ${stamp}`, status: 'open', created: '2026-04-01T00:00:00Z' },
     ];
 
     try {
@@ -1469,7 +1470,7 @@ test.describe('board modal', () => {
       await page.waitForLoadState('networkidle');
 
       await page.locator('#board-search').fill(`Nav mid ${stamp}`);
-      await page.locator(`.col-done .card[data-id="t-nav-mid-${stamp}"]`).click();
+      await page.locator(`.col-done .card[data-id="${tickets[1].id}"]`).click();
       await expect(page.locator('#m-title')).toHaveText(`Nav mid ${stamp}`);
 
       await page.locator('#btn-ticket-prev').click();
@@ -1484,13 +1485,13 @@ test.describe('board modal', () => {
       await expect(page.locator('#m-title')).not.toHaveText(`Nav open ${stamp}`);
     } finally {
       for (const ticket of tickets) {
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', ticket.id), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, ticket.id);
       }
     }
   });
 
   test('visual image referenced via markdown renders inline in the doc', async ({ page }) => {
-    const id = `t-${Math.random().toString(36).slice(2, 6).padEnd(4, '0')}`;
+    const id = newTicketId(PROJECT_ROOT);
     const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
 
     try {
@@ -1547,7 +1548,7 @@ test.describe('board modal', () => {
       // Raw markdown syntax must not leak through as literal text once rendered.
       await expect(page.locator('#m-body')).not.toContainText('![Chosen visual]');
     } finally {
-      fs.rmSync(ticketDir, { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
@@ -1570,7 +1571,7 @@ test.describe('board modal', () => {
 
       const card = page.locator('.card', { hasText: title });
       await expect(card).toBeVisible();
-      createdId = await card.getAttribute('data-id') || '';
+      createdId = adoptBoardTicket(PROJECT_ROOT, await card.getAttribute('data-id') || '', title);
       expect(createdId).toBeTruthy();
 
       const ticketMd = path.join(PROJECT_ROOT, '.tickets', createdId, 'ticket.md');
@@ -1587,7 +1588,7 @@ test.describe('board modal', () => {
       await expect(img).toHaveAttribute('src', `/api/ticket-image/${createdId}/visuals/pasted-1.png`);
       await expect.poll(() => img.evaluate(el => el.naturalWidth)).toBeGreaterThan(0);
     } finally {
-      if (createdId) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
+      if (createdId) removeTestTicket(PROJECT_ROOT, createdId);
     }
   });
 
@@ -1612,13 +1613,13 @@ test.describe('board modal', () => {
 
       const card = page.locator('.card', { hasText: title });
       await expect(card).toBeVisible();
-      createdId = await card.getAttribute('data-id') || '';
+      createdId = adoptBoardTicket(PROJECT_ROOT, await card.getAttribute('data-id') || '', title);
 
       const visualsDir = path.join(PROJECT_ROOT, '.tickets', createdId, 'visuals');
       await expect.poll(() => fs.existsSync(visualsDir) ? fs.readdirSync(visualsDir).sort() : [])
         .toEqual(['pasted-1.png', 'pasted-2.png']);
     } finally {
-      if (createdId) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
+      if (createdId) removeTestTicket(PROJECT_ROOT, createdId);
     }
   });
 
@@ -1638,7 +1639,7 @@ test.describe('board modal', () => {
 
       const card = page.locator('.card', { hasText: title });
       await expect(card).toBeVisible();
-      createdId = await card.getAttribute('data-id') || '';
+      createdId = adoptBoardTicket(PROJECT_ROOT, await card.getAttribute('data-id') || '', title);
 
       await card.click();
       await expect(page.locator('#modal-overlay')).toHaveClass(/open/);
@@ -1658,12 +1659,12 @@ test.describe('board modal', () => {
       expect(ticketBody).toMatch(/!\[pasted-1\]\(visuals\/pasted-1\.png\)/);
       expect(fs.existsSync(path.join(PROJECT_ROOT, '.tickets', createdId, 'visuals', 'pasted-1.png'))).toBe(true);
     } finally {
-      if (createdId) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
+      if (createdId) removeTestTicket(PROJECT_ROOT, createdId);
     }
   });
 
   test('pasting an image into a companion doc (plan.md) edit mode inserts a real embed (t-626d)', async ({ page }) => {
-    const id = `t-${Math.random().toString(36).slice(2, 6).padEnd(4, '0')}`;
+    const id = newTicketId(PROJECT_ROOT);
     const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
 
     try {
@@ -1702,7 +1703,7 @@ test.describe('board modal', () => {
       expect(planContent).toMatch(/!\[pasted-1\]\(visuals\/pasted-1\.png\)/);
       expect(fs.existsSync(path.join(ticketDir, 'visuals', 'pasted-1.png'))).toBe(true);
     } finally {
-      fs.rmSync(ticketDir, { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
@@ -1727,7 +1728,7 @@ test.describe('board modal', () => {
 
       const card = page.locator('.card', { hasText: title });
       await expect(card).toBeVisible();
-      createdId = await card.getAttribute('data-id') || '';
+      createdId = adoptBoardTicket(PROJECT_ROOT, await card.getAttribute('data-id') || '', title);
 
       const ticketMd = path.join(PROJECT_ROOT, '.tickets', createdId, 'ticket.md');
       await expect.poll(() => fs.existsSync(ticketMd) ? fs.readFileSync(ticketMd, 'utf8') : '')
@@ -1736,7 +1737,7 @@ test.describe('board modal', () => {
       expect(ticketBody).not.toContain('pending:1');
       expect(fs.existsSync(path.join(PROJECT_ROOT, '.tickets', createdId, 'visuals'))).toBe(false);
     } finally {
-      if (createdId) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
+      if (createdId) removeTestTicket(PROJECT_ROOT, createdId);
     }
   });
 
@@ -1759,7 +1760,7 @@ test.describe('board modal', () => {
   });
 
   test('a crafted ticket-image path is rejected, not served', async ({ request }) => {
-    const id = `t-${Math.random().toString(36).slice(2, 6).padEnd(4, '0')}`;
+    const id = newTicketId(PROJECT_ROOT);
     const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
 
     try {
@@ -1786,12 +1787,12 @@ test.describe('board modal', () => {
       const missing = await request.get(`${BASE}/api/ticket-image/${id}/visuals/does-not-exist.png`);
       expect(missing.status()).toBe(404);
     } finally {
-      fs.rmSync(ticketDir, { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('a quote-breaking visual src cannot inject a live HTML attribute', async ({ page }) => {
-    const id = `t-${Math.random().toString(36).slice(2, 6).padEnd(4, '0')}`;
+    const id = newTicketId(PROJECT_ROOT);
     const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
 
     try {
@@ -1835,12 +1836,12 @@ test.describe('board modal', () => {
       const fired = await page.evaluate(() => window.__xss_fired);
       expect(fired).toBeUndefined();
     } finally {
-      fs.rmSync(ticketDir, { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('markdown syntax shown as an inline-code example stays literal, real syntax still renders', async ({ page }) => {
-    const id = `t-${Math.random().toString(36).slice(2, 6).padEnd(4, '0')}`;
+    const id = newTicketId(PROJECT_ROOT);
     const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
 
     try {
@@ -1911,12 +1912,12 @@ test.describe('board modal', () => {
       await expect(body.locator('table.doc-table')).toBeVisible();
       await expect(body.locator('table.doc-table td.status-pass')).toBeVisible();
     } finally {
-      fs.rmSync(ticketDir, { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('backslash-escaped nested backticks in a citation stay literal, no broken image', async ({ page }) => {
-    const id = `t-${Math.random().toString(36).slice(2, 6).padEnd(4, '0')}`;
+    const id = newTicketId(PROJECT_ROOT);
     const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
 
     try {
@@ -1975,7 +1976,7 @@ test.describe('board modal', () => {
 
       await expect(body.locator('img.doc-visual-img')).toHaveCount(0);
     } finally {
-      fs.rmSync(ticketDir, { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
@@ -2045,7 +2046,7 @@ test.describe('board modal', () => {
       await expect(page.locator('.why-result-more')).toHaveText('+3 more, older');
     } finally {
       if (serverProcess) serverProcess.kill();
-      fs.rmSync(fixtureDir, { recursive: true, force: true });
+      fs.rmSync(/* non-ticket */ fixtureDir, { recursive: true, force: true });
     }
   });
 
@@ -2083,7 +2084,7 @@ test.describe('board modal', () => {
   });
 
   test('t-d2e1: text with quotes still displays the quotes (card title and doc paragraph)', async ({ page }) => {
-    const id = `t-q${Date.now().toString(36).slice(-3)}`;
+    const id = newTicketId(PROJECT_ROOT);
     const dir = path.join(PROJECT_ROOT, '.tickets', id);
     const title = `It's a "quoted" title`;
     try {
@@ -2100,7 +2101,7 @@ test.describe('board modal', () => {
       await expect(page.locator('#modal-overlay')).toContainText(`She said "don't" here.`);
       expect(await page.locator('#modal-overlay').innerText()).not.toMatch(/&quot;|&#39;/);
     } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
@@ -2131,7 +2132,7 @@ test.describe('board modal', () => {
   });
 
   test('model tier control is disabled until Sign-off has a real Tier line', async ({ page }) => {
-    const id = `t-model-tier-unfilled-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'model-tier-unfilled');
 
     try {
       const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
@@ -2179,12 +2180,12 @@ test.describe('board modal', () => {
       await expect(risk).toHaveValue('');
       await expect(risk).toHaveAttribute('placeholder', /blast radius/);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('Gate model dropdown offers registry OpenAI models as openai:<id> and writes the pick to plan.md (t-ef27)', async ({ page }) => {
-    const id = freshTicketId();   // valid t-xxxx shape, and never an existing ticket (the test rmSyncs .tickets/<id>)
+    const id = newTicketId(PROJECT_ROOT);
     const planPath = path.join(PROJECT_ROOT, '.tickets', id, 'plan.md');
     try {
       const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
@@ -2251,21 +2252,13 @@ test.describe('board modal', () => {
       await expect(hint).toHaveCount(0);
     } finally {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   // t-8c73: overlapping renderModalBody calls each injected their own .section-jumps bar and
   // Sign-off controls once their fetch resolved, so .model-tier-select resolved to 2 elements
   // (the flake behind two tests). Renders are now idempotent and a stale one is ignored.
-  // A valid t-xxxx id (the demo toggle POSTs to /api/ticket/<id>/demo) that is NOT an existing ticket:
-  // the tests write and later rmSync .tickets/<id>, so a collision with a real ticket would destroy it.
-  function freshTicketId() {
-    for (;;) {
-      const id = 't-' + Math.random().toString(36).slice(2, 6).padEnd(4, '0');
-      if (/^t-[a-z0-9]{4}$/.test(id) && !fs.existsSync(path.join(PROJECT_ROOT, '.tickets', id))) return id;
-    }
-  }
 
   async function openPlanTabFor(page, id) {
     const dir = path.join(PROJECT_ROOT, '.tickets', id);
@@ -2295,7 +2288,7 @@ test.describe('board modal', () => {
   }
 
   test('overlapping renders leave exactly one Sign-off control set (t-8c73)', async ({ page }) => {
-    const id = freshTicketId();
+    const id = newTicketId(PROJECT_ROOT);
     try {
       await serveDocsFromDisk(page);
       await openPlanTabFor(page, id);
@@ -2309,12 +2302,12 @@ test.describe('board modal', () => {
       await expect(page.locator('.signoff-controls')).toHaveCount(1);
       await expect(page.locator('.model-tier-select')).toHaveCount(1);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('a stale doc response never overwrites a newer render (t-8c73)', async ({ page }) => {
-    const id = freshTicketId();
+    const id = newTicketId(PROJECT_ROOT);
     try {
       // Hold the FIRST plan.md fetch; the user then switches to Acceptance; the held response lands last.
       let release;
@@ -2332,12 +2325,12 @@ test.describe('board modal', () => {
       await expect(page.locator('.signoff-controls')).toHaveCount(0);
     } finally {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('signoff Tier dropdown renders bugfix as a first-class option', async ({ page }) => {
-    const id = `t-signoff-tier-bugfix-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'signoff-tier-bugfix');
 
     try {
       const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
@@ -2380,12 +2373,12 @@ test.describe('board modal', () => {
       await expect(tier).toHaveValue('bugfix');
       await expect(tier.locator('option[value="bugfix"]')).toHaveText('Bugfix');
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('signoff Tier/Risk form writes the base line and enables Model tier after', async ({ page }) => {
-    const id = `t-signoff-base-write-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'signoff-base-write');
 
     try {
       const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
@@ -2434,12 +2427,12 @@ test.describe('board modal', () => {
       // After the re-render, Model tier should now be enabled.
       await expect(page.locator('.model-tier-select')).toBeEnabled();
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('selecting a Tier with Risk empty warns instead of silently dropping the change', async ({ page }) => {
-    const id = `t-signoff-tier-warn-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'signoff-tier-warn');
 
     try {
       const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
@@ -2499,7 +2492,7 @@ test.describe('board modal', () => {
       await expect(risk).not.toHaveClass(/signoff-risk-input--needs-value/);
       await expect(page.locator('.model-tier-select')).toBeEnabled();
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
@@ -2518,7 +2511,7 @@ test.describe('board modal', () => {
       await page.locator('#c-submit').click();
       const card = page.locator('.card', { hasText: title });
       await expect(card).toBeVisible();
-      id = await card.getAttribute('data-id') || '';
+      id = adoptBoardTicket(PROJECT_ROOT, await card.getAttribute('data-id') || '', title);
 
       // Seed a plan.md so the Plan tab renders the signoff controls (incl. the Demo toggle).
       const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
@@ -2554,12 +2547,12 @@ test.describe('board modal', () => {
       await expect(page.locator('.signoff-demo-toggle')).toHaveAttribute('aria-checked', 'false');
       await expect(page.locator(`.card[data-id="${id}"] .demo-badge`)).toHaveCount(0);
     } finally {
-      if (id) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      if (id) removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('signoff form pre-fills from an existing parseable Tier/Risk/Gate model line and preserves the suffix on Tier change', async ({ page }) => {
-    const id = `t-signoff-prefill-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'signoff-prefill');
 
     try {
       const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
@@ -2608,12 +2601,12 @@ test.describe('board modal', () => {
         fs.readFileSync(path.join(ticketDir, 'plan.md'), 'utf8')
       ).toContain('Tier: normal | Risk: foo | Gate model: haiku\n\n- [x] Plan approved');
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('signoff form does not render for an unrecognized Tier value, Model tier stays independent', async ({ page }) => {
-    const id = `t-signoff-trivial-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'signoff-trivial');
 
     try {
       const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
@@ -2656,12 +2649,12 @@ test.describe('board modal', () => {
       await expect(page.locator('.model-tier-select')).toBeEnabled();
       await expect(page.locator('#m-body')).toContainText('Tier: trivial | Risk: one-liner downgrade reason');
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('signoff form preserves an unrecognized Gate model value when Risk changes', async ({ page }) => {
-    const id = `t-signoff-preserve-custom-model-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'signoff-preserve-custom-model');
 
     try {
       const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
@@ -2707,12 +2700,12 @@ test.describe('board modal', () => {
         fs.readFileSync(path.join(ticketDir, 'plan.md'), 'utf8')
       ).toContain('Tier: normal | Risk: bar | Gate model: session');
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('signoff Tier/Risk controls are disabled on a closed ticket', async ({ page }) => {
-    const id = `t-signoff-closed-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'signoff-closed');
 
     try {
       const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
@@ -2751,12 +2744,12 @@ test.describe('board modal', () => {
       await expect(page.locator('.signoff-tier-select')).toBeDisabled();
       await expect(page.locator('.signoff-risk-input')).toBeDisabled();
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('model tier control writes and clears the Gate model suffix on Sign-off', async ({ page }) => {
-    const id = `t-model-tier-write-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'model-tier-write');
 
     try {
       const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
@@ -2817,12 +2810,12 @@ test.describe('board modal', () => {
       ).toContain('Tier: normal | Risk: low blast radius\n');
       expect(fs.readFileSync(path.join(ticketDir, 'plan.md'), 'utf8')).not.toContain('Gate model');
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('model tier control is disabled for a hand-set value it does not recognize', async ({ page }) => {
-    const id = `t-model-tier-custom-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'model-tier-custom');
 
     try {
       const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
@@ -2865,12 +2858,12 @@ test.describe('board modal', () => {
       // Must not have been silently reset to Default in the file.
       expect(fs.readFileSync(path.join(ticketDir, 'plan.md'), 'utf8')).toContain('Gate model: session');
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('model tier control is disabled on a closed ticket', async ({ page }) => {
-    const id = `t-model-tier-closed-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'model-tier-closed');
 
     try {
       const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
@@ -2911,7 +2904,7 @@ test.describe('board modal', () => {
       await expect(select).toBeDisabled();
       await expect(select).toHaveAttribute('title', /closed/);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
@@ -2949,7 +2942,7 @@ test.describe('board modal', () => {
 
     test.afterAll(() => {
       if (headlessServerProcess) headlessServerProcess.kill();
-      fs.rmSync(STUB_PATH, { force: true });
+      fs.rmSync(/* non-ticket */ STUB_PATH, { force: true });
     });
 
     function installStub(scriptBody) {
@@ -2966,7 +2959,7 @@ test.describe('board modal', () => {
     }
 
     test('trigger, poll, and show a PASS verdict with real output', async ({ page }) => {
-      const id = 't-hlp1';
+      const id = newTicketId(PROJECT_ROOT);
       ciTicket(id);
       installStub([
         '#!/usr/bin/env bash', 'sleep 1', 'echo "stub pass output"', 'echo "HEADLESS_VERDICT: PASS"', 'exit 0', '',
@@ -2985,12 +2978,12 @@ test.describe('board modal', () => {
         await page.locator('.headless-view-output').click();
         await expect(page.locator('.headless-output')).toContainText('stub pass output');
       } finally {
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, id);
       }
     });
 
     test('a claude -p failure surfaces its real error text, not a generic message', async ({ page }) => {
-      const id = 't-hlf1';
+      const id = newTicketId(PROJECT_ROOT);
       ciTicket(id);
       installStub([
         '#!/usr/bin/env bash',
@@ -3009,12 +3002,12 @@ test.describe('board modal', () => {
         await page.locator('.headless-view-output').click();
         await expect(page.locator('.headless-output')).toContainText('claude -p invocation failed');
       } finally {
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, id);
       }
     });
 
     test('elapsed time increases while a slow run is in progress', async ({ page }) => {
-      const id = 't-hle1';
+      const id = newTicketId(PROJECT_ROOT);
       ciTicket(id);
       installStub([
         '#!/usr/bin/env bash', 'sleep 8', 'echo "HEADLESS_VERDICT: PASS"', 'exit 0', '',
@@ -3034,12 +3027,12 @@ test.describe('board modal', () => {
         expect(laterText).not.toBe(firstText);
         expect(laterText).toContain('Running');
       } finally {
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, id);
       }
     });
 
     test('a second trigger while one is running does not start a second subprocess', async ({ page }) => {
-      const id = 't-hld1';
+      const id = newTicketId(PROJECT_ROOT);
       ciTicket(id);
       installStub([
         '#!/usr/bin/env bash',
@@ -3072,12 +3065,12 @@ test.describe('board modal', () => {
           : [];
         expect(markers.length).toBe(1);
       } finally {
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, id);
       }
     });
 
     test('step flow (t-1262): idle/running/done states, click-to-expand descriptions', async ({ page }) => {
-      const id = 't-hls1';
+      const id = newTicketId(PROJECT_ROOT);
       ciTicket(id);
       installStub([
         '#!/usr/bin/env bash', 'sleep 2', 'echo "stub output"', 'echo "HEADLESS_VERDICT: PASS"', 'exit 0', '',
@@ -3113,12 +3106,12 @@ test.describe('board modal', () => {
         await expect(steps.nth(2)).toHaveClass(/done/, { timeout: 10000 });
         await expect(steps.nth(1)).toHaveClass(/done/);
       } finally {
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, id);
       }
     });
 
     test('step flow shows a fail-colored final step on a FAIL verdict', async ({ page }) => {
-      const id = 't-hls2';
+      const id = newTicketId(PROJECT_ROOT);
       ciTicket(id);
       installStub([
         '#!/usr/bin/env bash', 'echo "stub fail output"', 'echo "HEADLESS_VERDICT: FAIL"', 'exit 1',
@@ -3134,12 +3127,12 @@ test.describe('board modal', () => {
         await page.locator('#m-headless-run').click();
         await expect(page.locator('#m-headless .headless-step').nth(2)).toHaveClass(/fail/, { timeout: 10000 });
       } finally {
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, id);
       }
     });
 
     test('card-level Run button shows a custom tooltip, not the native title attribute', async ({ page }) => {
-      const id = 't-hls3';
+      const id = newTicketId(PROJECT_ROOT);
       ciTicket(id);
       try {
         await page.goto(headlessBase);
@@ -3154,12 +3147,12 @@ test.describe('board modal', () => {
         await page.mouse.move(0, 0);
         await expect(page.locator('#hover-tooltip')).not.toHaveClass(/visible/);
       } finally {
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, id);
       }
     });
 
     test('card-level run button pulses while a run is in progress, and clears after it completes (t-dd51)', async ({ page }) => {
-      const id = 't-hlr1';
+      const id = newTicketId(PROJECT_ROOT);
       ciTicket(id);
       installStub([
         '#!/usr/bin/env bash', 'sleep 12', 'echo "HEADLESS_VERDICT: PASS"', 'exit 0', '',
@@ -3178,7 +3171,7 @@ test.describe('board modal', () => {
         await expect(runBtn).toHaveClass(/running/, { timeout: 20000 });
         await expect(runBtn).not.toHaveClass(/running/, { timeout: 20000 });
       } finally {
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, id);
       }
     });
   });
@@ -3238,7 +3231,7 @@ test.describe('gherkin scenarios in acceptance (t-6e32)', () => {
   }
 
   test('a ```gherkin block renders as a distinct scenario panel with highlighted keywords, in dark and light (C2/C3/C4)', async ({ page }) => {
-    const id = `t-gk-render-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gk-render');
     try {
       makeTicket(id, DISCOUNT_ACCEPTANCE);
       await openAcceptance(page, id);
@@ -3275,12 +3268,12 @@ test.describe('gherkin scenarios in acceptance (t-6e32)', () => {
       const lightKw = await panel.locator('.doc-scenario-kw').first().evaluate(el => getComputedStyle(el).color);
       expect(lightKw).toBe('rgb(156, 47, 128)');
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('scenario step text is escaped — a <script> in a step cannot inject markup (security)', async ({ page }) => {
-    const id = `t-gk-xss-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gk-xss');
     try {
       makeTicket(id, [
         '# Acceptance', '', '## Criteria', '- [ ] **x**', '```gherkin',
@@ -3292,12 +3285,12 @@ test.describe('gherkin scenarios in acceptance (t-6e32)', () => {
       expect(await page.evaluate(() => window.__gkxss)).toBeUndefined();
       await expect(page.locator('#m-body .doc-scenario')).toContainText('<script>window.__gkxss=true</script>');
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('toolbar Scenario button inserts a checkbox + ```gherkin skeleton (C1)', async ({ page }) => {
-    const id = `t-gk-insert-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gk-insert');
     try {
       makeTicket(id, DISCOUNT_ACCEPTANCE);
       await openAcceptance(page, id);
@@ -3324,12 +3317,12 @@ test.describe('gherkin scenarios in acceptance (t-6e32)', () => {
       expect(val).toContain('Then ');
       expect(val).not.toContain('<details>');
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('a malformed ```gherkin block blocks save; a well-formed one saves (C5)', async ({ page }) => {
-    const id = `t-gk-valid-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gk-valid');
     try {
       makeTicket(id, DISCOUNT_ACCEPTANCE);
       await openAcceptance(page, id);
@@ -3378,7 +3371,7 @@ test.describe('gherkin scenarios in acceptance (t-6e32)', () => {
       expect(dialogs.length).toBe(dialogCountAfterMalformed);
       await expect(page.locator('#m-body .doc-scenario')).toBeVisible();
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 });
@@ -3432,8 +3425,8 @@ test.describe('ticket-scoped feature reference (t-f89a)', () => {
   }
 
   test('a ```gherkin-file reference renders the ticket-local .feature as a scenario panel (A3)', async ({ page }) => {
-    const id = `t-fr-ok-${Date.now()}`.slice(0, 24);
-    const tid = `t-fr${Math.random().toString(36).slice(2, 4)}`;
+    const id = newTicketId(PROJECT_ROOT, 'fr-ok').slice(0, 24);
+    const tid = newTicketId(PROJECT_ROOT);
     try {
       makeRefTicket(tid, 'features/discount.feature');
       await openAcceptance(page, tid);
@@ -3444,12 +3437,12 @@ test.describe('ticket-scoped feature reference (t-f89a)', () => {
       await expect(page.locator('#m-body')).not.toContainText('Could not load');
       await expect(page.locator('#m-body .doc-scenario-error')).toHaveCount(0);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', tid), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, tid);
     }
   });
 
   test('a ```gherkin-file block with a runner: line renders a non-executable resolved-command label (t-6f8e)', async ({ page }) => {
-    const tid = `t-fn${Math.random().toString(36).slice(2, 4)}`;
+    const tid = newTicketId(PROJECT_ROOT);
     try {
       makeRefTicket(tid, 'features/discount.feature', { runner: 'python dsl_runner.py' });
       await openAcceptance(page, tid);
@@ -3464,12 +3457,12 @@ test.describe('ticket-scoped feature reference (t-f89a)', () => {
       await expect(page.locator('#m-body')).not.toContainText('runner: python');
       await expect(page.locator('#m-body .doc-scenario-error')).toHaveCount(0);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', tid), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, tid);
     }
   });
 
   test('a path-only ```gherkin-file block renders no runner label (t-6f8e backward-compat)', async ({ page }) => {
-    const tid = `t-fp${Math.random().toString(36).slice(2, 4)}`;
+    const tid = newTicketId(PROJECT_ROOT);
     try {
       makeRefTicket(tid, 'features/discount.feature');
       await openAcceptance(page, tid);
@@ -3477,12 +3470,12 @@ test.describe('ticket-scoped feature reference (t-f89a)', () => {
       await expect(panel.locator('.doc-scenario-kw', { hasText: /^Scenario$/ })).toHaveCount(3, { timeout: 5000 });
       await expect(page.locator('#m-body .doc-scenario-runner')).toHaveCount(0);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', tid), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, tid);
     }
   });
 
   test('a reference to a missing .feature shows a legible error state, not a blank panel (A3/A4)', async ({ page }) => {
-    const tid = `t-fx${Math.random().toString(36).slice(2, 4)}`;
+    const tid = newTicketId(PROJECT_ROOT);
     try {
       makeRefTicket(tid, 'features/missing.feature', { withFile: false });
       await openAcceptance(page, tid);
@@ -3498,12 +3491,12 @@ test.describe('ticket-scoped feature reference (t-f89a)', () => {
       expect(lightBg).toBe('rgb(244, 241, 251)');
       expect(lightBg).not.toBe(darkBg);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', tid), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, tid);
     }
   });
 
   test('an invalid (traversal) reference path renders an inline invalid-reference state, never fetches escape (A2)', async ({ page }) => {
-    const tid = `t-fv${Math.random().toString(36).slice(2, 4)}`;
+    const tid = newTicketId(PROJECT_ROOT);
     try {
       makeRefTicket(tid, 'features/../../secret.feature', { withFile: false });
       await openAcceptance(page, tid);
@@ -3511,12 +3504,12 @@ test.describe('ticket-scoped feature reference (t-f89a)', () => {
       await expect(err).toBeVisible({ timeout: 5000 });
       await expect(err).toContainText('Invalid feature reference');
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', tid), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, tid);
     }
   });
 
   test('toolbar "Scenario from file" button inserts a ```gherkin-file skeleton (A5)', async ({ page }) => {
-    const tid = `t-ft${Math.random().toString(36).slice(2, 4)}`;
+    const tid = newTicketId(PROJECT_ROOT);
     try {
       makeRefTicket(tid, 'features/discount.feature');
       await openAcceptance(page, tid);
@@ -3534,7 +3527,7 @@ test.describe('ticket-scoped feature reference (t-f89a)', () => {
       expect(val).toContain('runner: python dsl_runner.py');
       expect(val).toMatch(/- \[ \] \*\*Scenario name\*\*/);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', tid), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, tid);
     }
   });
 });
@@ -3585,7 +3578,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
   }
 
   test('Cockpit sessions panel lists sessions across projects; clicking a row opens that session (t-391a)', async ({ page }) => {
-    const idA = `t-cspan-${Date.now()}`;
+    const idA = newTicketId(PROJECT_ROOT, 'cspan');
     try {
       writeTicket(idA, 'in_progress', {
         acceptanceCriteria: ['- [ ] a criterion'],
@@ -3617,13 +3610,13 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await panel.locator(`.cockpit-session-row[data-ticket="${idA}"]`).click();
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', idA), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, idA);
     }
   });
 
   // t-2d2e: a Sessions row for ANOTHER project must not silently no-op.
   test.describe('cross-project Sessions row (t-2d2e)', () => {
-    const XID = 't-zz2d';
+    const XID = claimTicketId(PROJECT_ROOT, 't-zz2d');   // the hostile-id probes below spell this id out
     const sessionsBody = rows => route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rows) });
     const row = (ticket, project_root) => ({ session: 's1', ticket, project_root, cwd: project_root, agent: 'claude', status: 'running', started: '2026-09-26T00:00:00Z' });
 
@@ -3650,7 +3643,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
         expect(await page.evaluate(() => window.__posted)).toBe(0);
       } finally {
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', XID), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, XID);
       }
     });
 
@@ -5298,7 +5291,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     });
 
     test('t-d2e1: a quote in a worktree path stays inside the worktree row data-cwd', async ({ page }) => {
-      const id = `t-x${Date.now().toString(36).slice(-3)}`;
+      const id = newTicketId(PROJECT_ROOT);
       const wtPath = `/tmp/wt/${XSS_ATTR}`;
       try {
         writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] c'], worktreePreference: XSS_ATTR });
@@ -5318,13 +5311,13 @@ test.describe('cockpit in board (t-ddc8)', () => {
         expect(await row.getAttribute('data-cwd')).toBe(wtPath);                         // data-cwd round-trips
         expect(await onAttrs(page)).toEqual([]);
       } finally {
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, id);
         await page.unrouteAll({ behavior: 'ignoreErrors' });
       }
     });
 
     test('t-d2e1: a quote in the locked worktree path stays inside the rail\'s "Running in" tooltip', async ({ page }) => {
-      const id = `t-x${Date.now().toString(36).slice(-3)}`;
+      const id = newTicketId(PROJECT_ROOT);
       const wtPath = `/tmp/wt/${XSS_ATTR}`;
       try {
         writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] c'] });
@@ -5342,13 +5335,13 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await expect(lockLine).toHaveAttribute('title', wtPath);                           // the rail's lock tooltip round-trips
         expect(await onAttrs(page)).toEqual([]);
       } finally {
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, id);
         await page.unrouteAll({ behavior: 'ignoreErrors' });
       }
     });
 
     test('t-d2e1: a quote in the saved worktree preference stays inside the new-worktree input', async ({ page }) => {
-      const id = `t-x${Date.now().toString(36).slice(-3)}`;
+      const id = newTicketId(PROJECT_ROOT);
       try {
         writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], worktreePreference: XSS_ATTR });
         await stubCockpit(page);
@@ -5362,7 +5355,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await expect(page.locator('#ck-worktree-new-input')).toHaveValue(XSS_ATTR);       // value= round-trips
         expect(await onAttrs(page)).toEqual([]);
       } finally {
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, id);
         await page.unrouteAll({ behavior: 'ignoreErrors' });
       }
     });
@@ -5524,7 +5517,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await expect(page.frameLocator('#view-proj-x iframe').locator('#cockpit-overlay')).toHaveClass(/open/, { timeout: 8000 });
       } finally {
         await page.unrouteAll({ behavior: 'ignoreErrors' });   // the 5s board poll may still be mid-route
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', XID), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, XID);
       }
     });
 
@@ -5575,7 +5568,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.evaluate(id => document.querySelector('#view-proj-a iframe').contentWindow.postMessage({ source: 'canon-cockpit-shell', type: 'open-ticket', ticket: id }, location.origin), XID);
       await expect(board.locator('#cockpit-overlay')).toHaveClass(/open/, { timeout: 8000 });
       await page.unrouteAll({ behavior: 'ignoreErrors' });
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', XID), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, XID);
     });
 
     // t-824e: every shell surface reads the daemon's per-session state. Two projects, a mix of
@@ -5630,7 +5623,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         expect(await page.evaluate(() => window.__pwned)).toBe(0);
       } finally {
         await page.unrouteAll({ behavior: 'ignoreErrors' });
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', XID), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, XID);
       }
     });
 
@@ -5832,7 +5825,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     });
 
     // t-28ec: board cards carry their session's state; Herdr colours; desktop notification in the shell.
-    const Q = { need: 't-q1n1', work: 't-q1w2', idle: 't-q1i3', done: 't-q1d4', old: 't-q1o5', other: 't-q1x6' };
+    const Q = Object.fromEntries(['need', 'work', 'idle', 'done', 'old', 'other'].map(k => [k, newTicketId(PROJECT_ROOT)]));
     const cardRows = () => [
       { session: 'c1', ticket: Q.need, project_root: PROJECT_ROOT, cwd: PROJECT_ROOT, agent: 'claude', status: 'needs-you', state: 'needs-you', state_secs: 42, idle_secs: 42, idle_limit_secs: 1800, signal: 'hook' },
       { session: 'c2', ticket: Q.work, project_root: PROJECT_ROOT, cwd: PROJECT_ROOT, agent: 'claude', status: 'running', state: 'working', state_secs: 3, idle_secs: 3, idle_limit_secs: 1800, signal: 'hook' },
@@ -5918,7 +5911,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
       } finally {
         await page.unrouteAll({ behavior: 'ignoreErrors' });
-        for (const id of Object.values(Q)) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+        for (const id of Object.values(Q)) removeTestTicket(PROJECT_ROOT, id);
       }
     });
 
@@ -6608,7 +6601,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     const recordSeen = page => page.evaluate(() => { window.__termSeen = []; window.addEventListener('message', e => { if (e.data && e.data.type === '__seen') window.__termSeen.push(e.data.msg); }); });
 
     test('promote (t-f553): editable title with hover, Promote → Continue as the ticket opens its cockpit', async ({ page }) => {
-      const tid = 't-q9pr';
+      const tid = newTicketId(PROJECT_ROOT);
       writeTicket(tid, 'open');
       try {
         await stubCockpit(page);
@@ -6649,7 +6642,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await expect(page.locator('#ck-promote')).toBeHidden();   // a ticket session has no Promote
       } finally {
         await page.unrouteAll({ behavior: 'ignoreErrors' });
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', tid), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, tid);
       }
     });
 
@@ -6809,7 +6802,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     });
 
     test('promote (t-f553): End asks to save as a ticket; Save adopts and ends without opening it; a hostile id is inert', async ({ page }) => {
-      const tid = 't-q9ps';
+      const tid = newTicketId(PROJECT_ROOT);
       writeTicket(tid, 'open');
       try {
         await stubCockpit(page);
@@ -6846,7 +6839,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         expect(await page.evaluate(() => window.__pwned)).toBe(0);
       } finally {
         await page.unrouteAll({ behavior: 'ignoreErrors' });
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', tid), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, tid);
       }
     });
 
@@ -6864,7 +6857,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
   });
 
   test('collapse toggle is top-anchored + STATUS shows HANDOFF Next Steps (t-6ecc)', async ({ page }) => {
-    const id = `t-6ecc-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, '6ecc');
     try {
       writeTicket(id, 'in_progress', {
         acceptanceCriteria: ['- [ ] a criterion'],
@@ -6897,12 +6890,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#ck-state')).toContainText('Next steps');
       await expect(page.locator('#ck-state')).toContainText('sprint complete');
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('Resume on an in-progress card enters cockpit mode; acceptance renders; Esc returns', async ({ page }) => {
-    const id = `t-ckres-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ckres');
     try {
       writeTicket(id, 'in_progress', {
         acceptanceCriteria: ['- [ ] First cockpit criterion'],
@@ -6932,12 +6925,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.keyboard.press('Escape');
       await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('a worktree that can\'t see .tickets shows a warning bubble and mounts no terminal, legible in dark and light (t-e5ff)', async ({ page }) => {
-    const id = `t-ckwt-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ckwt');
     const blockedCwd = '/tmp/wt-e5ff/feat-x';
     try {
       writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'] });
@@ -6982,12 +6975,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       expect(darkBg).not.toBe(lightBg);
       expect(darkBg).not.toBe('rgba(0, 0, 0, 0)'); // not transparent in dark
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('after Start, "Working in:" reflects the daemon-resolved cwd and warns on a wrong-tree mismatch (t-7590)', async ({ page }) => {
-    const id = `t-ckcwd-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ckcwd');
     const wtPath = '/tmp/wt-7590/verify2';
     try {
       writeTicket(id, 'in_progress', {
@@ -7028,12 +7021,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(warn).toContainText(PROJECT_ROOT);
       await expect(warn).toContainText('not the worktree you selected');
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('a newly-created worktree row auto-selects even when create-response and list paths differ in format (t-3e58)', async ({ page }) => {
-    const id = `t-ck3e58-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ck3e58');
     // The daemon materializes Windows-style backslash paths in the POST create
     // response, while `git worktree list` (GET) reports forward slashes — same
     // dir, different format. Reproduced here on any OS to exercise the string
@@ -7073,12 +7066,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       // and nothing else is left selected
       await expect(page.locator('.ck-worktree-row.selected')).toHaveCount(1);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('a fresh OPEN cockpit selects no worktree row until one is picked (t-470d)', async ({ page }) => {
-    const id = `t-ck470d-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ck470d');
     try {
       writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'] });
       await stubCockpit(page);
@@ -7116,7 +7109,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       // "Select a worktree above" message is gone (worktreeCwd is now '').
       await expect(page.locator('#ck-term-msg')).not.toContainText('Select a worktree above');
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
@@ -7137,7 +7130,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
   }
 
   test('a git repo with no commits yet shows the WORKTREE rail and Start is not stuck (t-d218)', async ({ page }) => {
-    const id = `t-ckd218-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ckd218');
     try {
       writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'] });
       await stubCockpit(page);
@@ -7149,12 +7142,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('.ck-worktree-row[data-cwd=""]')).toHaveClass(/selected/);   // only Main exists -> preselected
       await expect(page.locator('#ck-term-msg')).not.toContainText('Select a worktree above');
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('a non-git project has no WORKTREE section and the terminal is not gated (t-d218)', async ({ page }) => {
-    const id = `t-ckngit-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ckngit');
     try {
       writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'] });
       await stubCockpit(page);
@@ -7164,13 +7157,13 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#ck-worktree-section')).toBeHidden();
       await expect(page.locator('#ck-term-msg')).not.toContainText('Select a worktree above');
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   // --- t-5a4b (was t-d538's gate): a project with no git opens the terminal directly and shows no git-derived surfaces ---
   test('a non-git project opens the terminal directly, with no Track-changes gate and no git surfaces (t-5a4b)', async ({ page }) => {
-    const id = `t-ckd538-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ckd538');
     try {
       writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'] });
       await stubCockpit(page);
@@ -7187,7 +7180,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       for (const sel of ['#h-branch', '.header-branch .git-only', '.sidebar-section.git-only']) for (const el of await page.locator(sel).all()) await expect(el).toBeHidden();
       await page.locator('#cockpit-overlay').screenshot({ path: path.join(require('os').tmpdir(), 'canon-5a4b-cockpit-nongit.png') });
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
@@ -7199,7 +7192,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     ...Array.from({ length: 5 }, (_, i) => ({ status: 'added', path: `notes/n${i}.md`, size: 1 })) ] };
 
   test('a project without git shows Changes since you started in the sidebar and the cockpit (t-5a4b)', async ({ page }) => {
-    const id = `t-ck5a4b-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ck5a4b');
     try {
       writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] c'] });
       await stubCockpit(page);
@@ -7245,12 +7238,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator('#ck-changes-section').scrollIntoViewIfNeeded();
       await shots5a4b(page, 'changes-panel-cockpit', page.locator('#ck-changes-section'));
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('a git project never shows the Changes panel or asks for changes (t-5a4b)', async ({ page }) => {
-    const id = `t-ck5a4c-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ck5a4c');
     try {
       writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] c'] });
       await stubCockpit(page);
@@ -7265,7 +7258,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.waitForTimeout(500);
       expect(asked).toBe(0);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
@@ -7286,16 +7279,16 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator('#c-submit').click();
       const card = page.locator('.card', { hasText: title });
       await expect(card).toBeVisible();
-      createdId = await card.getAttribute('data-id') || '';
+      createdId = adoptBoardTicket(PROJECT_ROOT, await card.getAttribute('data-id') || '', title);
       expect(fs.readFileSync(path.join(PROJECT_ROOT, '.tickets', createdId, 'ticket.md'), 'utf8')).toContain('worktree_preference: main-checkout');
       await expect(card.locator('.card-wt-pref')).toHaveText('Worktree: Main checkout');
     } finally {
-      if (createdId) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
+      if (createdId) removeTestTicket(PROJECT_ROOT, createdId);
     }
   });
 
   test('New Ticket\'s Main checkout choice (main-checkout) shows on the card and preselects Main even with other worktrees (t-19d1)', async ({ page }) => {
-    const id = `t-ckmain-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ckmain');
     try {
       writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], worktreePreference: 'main-checkout' });
       await stubCockpit(page);
@@ -7316,12 +7309,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('.ck-worktree-row.selected')).toHaveCount(1);
       await expect(page.locator('#ck-term-msg')).not.toContainText('Select a worktree above');
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('an open ticket in progress in a worktree sits in IN PROGRESS with Resume and a worktree chip, and Resume preselects that worktree (t-19d1)', async ({ page }) => {
-    const id = `t-ckwtrun-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ckwtrun'), ipId = newTicketId(PROJECT_ROOT, 'ckwtrun-ip');
     try {
       writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'] });
       await stubCockpit(page);
@@ -7346,7 +7339,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await card.screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-19d1', 'visuals', `card-wt-run-${theme}.png`) });
       }
       // Modal prev/next walk the card's lane (IN PROGRESS), not main's raw `open` status.
-      writeTicket(`${id}-ip`, 'in_progress');
+      writeTicket(ipId, 'in_progress');
       await page.reload();
       await page.waitForLoadState('networkidle');
       await page.locator('#board-search').fill(id);
@@ -7363,12 +7356,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       // Display only: main's ticket.md still says open.
       expect(fs.readFileSync(path.join(PROJECT_ROOT, '.tickets', id, 'ticket.md'), 'utf8')).toContain('status: open');
     } finally {
-      for (const t of [id, `${id}-ip`]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', t), { recursive: true, force: true });
+      for (const t of [id, ipId]) removeTestTicket(PROJECT_ROOT, t);
     }
   });
 
   test('card age: a full ISO created reads "just now"; a legacy date-only created reads in days, never hours (t-19d1)', async ({ page }) => {
-    const iso = `t-ckageI-${Date.now()}`, dateOnly = `t-ckageD-${Date.now()}`;
+    const iso = newTicketId(PROJECT_ROOT, 'ckageI'), dateOnly = newTicketId(PROJECT_ROOT, 'ckageD');
     try {
       writeTicket(iso, 'open'); writeTicket(dateOnly, 'open');
       const today = new Date(); const ymd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
@@ -7388,7 +7381,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator(`.card[data-id="${dateOnly}"] .card-footer`)).toContainText('today');
       await expect(page.locator(`.card[data-id="${dateOnly}"] .card-footer`)).not.toContainText(/\dh ago/);
     } finally {
-      for (const t of [iso, dateOnly]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', t), { recursive: true, force: true });
+      for (const t of [iso, dateOnly]) removeTestTicket(PROJECT_ROOT, t);
     }
   });
 
@@ -7427,7 +7420,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
   });
 
   test('a locked in_progress ticket selects the Main row and shows its friendly label even when the persisted lock path differs only in slash format (t-f15b, Windows)', async ({ page }) => {
-    const id = `t-ckf15b-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ckf15b');
     // Simulate the daemon's native-OS-separator lock path (Windows backslashes)
     // for the SAME directory /api/worktrees reports with forward slashes — the
     // exact mismatch a raw === comparison misses (t-f15b). No existing test
@@ -7464,12 +7457,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#ck-state')).toContainText('Running in: Main checkout (current)');
       await expect(page.locator('#ck-state')).not.toContainText(winStyleLock);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('a symlinked cwd does not raise a false "Working in" mismatch warning, but a genuine wrong-tree still does (t-eed3)', async ({ page }) => {
-    const id = `t-cksym-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'cksym');
     const selWt = '/tmp/wt-eed3/x';               // board's selected worktree (unresolved, e.g. macOS /tmp)
     const resolvedWt = '/private/tmp/wt-eed3/x';   // daemon EvalSymlinks'd actual + requested (same real dir)
     try {
@@ -7520,12 +7513,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#ck-worktree-note .ck-worktree-warn')).toBeVisible();
       await expect(page.locator('#ck-worktree-note .ck-worktree-warn')).toContainText('not the worktree you selected');
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('cockpit ticket context is not duplicated: rail card is canonical; topbar shows it only when the rail is collapsed (t-4272)', async ({ page }) => {
-    const id = `t-ckdedup-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ckdedup');
     try {
       writeTicket(id, 'in_progress', {
         acceptanceCriteria: ['- [ ] c'],
@@ -7556,12 +7549,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#ck-status')).toBeVisible();
       await expect(page.locator('#ck-title')).toBeVisible();
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('cockpit rail shows the WORKTREE plan/acceptance when the session runs in a worktree (t-1357)', async ({ page }) => {
-    const id = `t-ckwd-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ckwd');
     const wtPath = '/tmp/wt-1357/sprint-x';
     try {
       writeTicket(id, 'in_progress', {
@@ -7607,12 +7600,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator('#m-docs .doc-tab', { hasText: 'Acceptance' }).click();
       await expect(page.locator('#m-body')).toContainText('worktree-only criterion');
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('the Unlock button and confirm name the locked worktree branch (t-816e)', async ({ page }) => {
-    const id = `t-ckul816-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ckul816');
     const lockedCwd = '/tmp/wt-816e/feat-unlockme';
     try {
       writeTicket(id, 'in_progress', {
@@ -7652,12 +7645,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       expect(msg).toContain('locked to');
       expect(msg).toContain('fresh session');
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('a locked ticket shows an Unlock button; cancel keeps the lock, confirm clears it and re-renders (t-fe3c)', async ({ page }) => {
-    const id = `t-ckul-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ckul');
     try {
       writeTicket(id, 'in_progress', {
         acceptanceCriteria: ['- [ ] c'],
@@ -7711,7 +7704,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#ck-worktree-unlock')).toHaveCount(0);
       expect(unlockPosts).toBe(1);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
@@ -7758,7 +7751,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     const ONE_LINE = { '#ck-back': 42, '#ck-id': 22, '#ck-status': 22, '#ck-state-chip': 28, '#ck-end-session': 36, '#ck-tab-strip-topbar': 32 };
 
     test('collapsed rail: every control lies inside the bar and the window, nothing wraps (t-b91f)', async ({ page }) => {
-      const id = `t-b91fa-${Date.now()}`;
+      const id = newTicketId(PROJECT_ROOT, 'b91fa');
       try {
         await openBar(page, id, { collapse: true });
         for (const w of [1280, 1024, 900]) {
@@ -7787,12 +7780,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
           }
         }
       } finally {
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, id);
       }
     });
 
     test('long text gives way with an ellipsis, the title keeps a tooltip, End Session is reachable (t-b91f)', async ({ page }) => {
-      const id = `t-b91fb-${Date.now()}`;
+      const id = newTicketId(PROJECT_ROOT, 'b91fb');
       try {
         await openBar(page, id, { collapse: true });
         await page.setViewportSize({ width: 900, height: 720 });
@@ -7805,12 +7798,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
         // (pressing it with no live session closes the cockpit).
         await page.locator('#ck-end-session').click({ trial: true });
       } finally {
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, id);
       }
     });
 
     test('collapsed rail: the id shows once (the pill) and the title drops on narrow widths (t-614c)', async ({ page }) => {
-      const id = `t-614ca-${Date.now()}`;
+      const id = newTicketId(PROJECT_ROOT, '614ca');
       try {
         await openBar(page, id, { collapse: true });
         const pill = page.locator('#ck-tab-strip-topbar .ck-tab-pill-id').first();
@@ -7829,12 +7822,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await page.evaluate(() => { document.getElementById('ck-tab-strip-topbar').hidden = true; });
         await expect(page.locator('#ck-id'), 'no pills, so the id text is shown').toBeVisible();
       } finally {
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, id);
       }
     });
 
     test('expanded rail: id, status and title stay hidden and the rest still fits (t-b91f)', async ({ page }) => {
-      const id = `t-b91fc-${Date.now()}`;
+      const id = newTicketId(PROJECT_ROOT, 'b91fc');
       try {
         await openBar(page, id, { collapse: false });
         for (const w of [1280, 900]) {
@@ -7847,7 +7840,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
           }
         }
       } finally {
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, id);
       }
     });
   });
@@ -7901,7 +7894,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
 
     test('one-step switch: picking another worktree for a locked ticket asks once, then unlocks and selects it (t-ccd6)', async ({ page }) => {
-      const id = `t-ccd6a-${Date.now()}`;
+      const id = newTicketId(PROJECT_ROOT, 'ccd6a');
       try {
         const { state, otherCwd } = await openLockedRail(page, id, { mainDirty: true });
         await page.locator(`.ck-worktree-row[data-cwd="${otherCwd}"]`).click();
@@ -7926,12 +7919,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await expect(page.locator('#app-dialog.open')).toHaveCount(0);
         expect(state.unlockPosts).toBe(1);
       } finally {
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, id);
       }
     });
 
     test('an unlocked in-progress ticket gets one styled carry-over confirm before it is locked to a worktree (t-ccd6)', async ({ page }) => {
-      const id = `t-ccd6g-${Date.now()}`;
+      const id = newTicketId(PROJECT_ROOT, 'ccd6g');
       try {
         const { state, otherCwd } = await openLockedRail(page, id, { locked: false, mainDirty: true });
         await page.locator(`.ck-worktree-row[data-cwd="${otherCwd}"]`).click();
@@ -7946,12 +7939,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await expect(page.locator(`.ck-worktree-row[data-cwd="${otherCwd}"]`)).toHaveClass(/selected/);
         expect(state.unlockPosts).toBe(0);
       } finally {
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, id);
       }
     });
 
     test('the switch dialog words the uncommitted-changes warning for every main_dirty value (t-ccd6)', async ({ page }) => {
-      const id = `t-ccd6b-${Date.now()}`;
+      const id = newTicketId(PROJECT_ROOT, 'ccd6b');
       try {
         const wanted = { false: 'future uncommitted work in the main checkout will not be shared', null: 'uncommitted work does not carry over between checkouts' };
         for (const dirty of [false, null]) {
@@ -7962,12 +7955,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
           await page.unroute('**/api/worktrees**'); await page.unroute('**/api/worktree-lock/**'); await page.unroute('**/api/worktree-unlock/**'); await page.unroute('**/api/cockpit');
         }
       } finally {
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, id);
       }
     });
 
     test('creating a worktree for a locked ticket ends in the switch dialog naming the new branch (t-ccd6)', async ({ page }) => {
-      const id = `t-ccd6c-${Date.now()}`;
+      const id = newTicketId(PROJECT_ROOT, 'ccd6c');
       try {
         const { state } = await openLockedRail(page, id, { mainDirty: false });
         await page.locator('#ck-worktree-new-input').fill('sprint/created-one');
@@ -7982,12 +7975,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await expect(page.locator('#app-dialog.open')).toHaveCount(0);
         expect(state.unlockPosts).toBe(1);
       } finally {
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, id);
       }
     });
 
     test('a failed unlock shows a styled notice with the reason and changes nothing (t-ccd6)', async ({ page }) => {
-      const id = `t-ccd6d-${Date.now()}`;
+      const id = newTicketId(PROJECT_ROOT, 'ccd6d');
       try {
         const { otherCwd } = await openLockedRail(page, id);
         await page.unroute('**/api/worktree-unlock/**');
@@ -8005,12 +7998,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await page.locator('#app-dialog-ok').click();
         await expect(page.locator(`.ck-worktree-row[data-cwd="${otherCwd}"]`)).not.toHaveClass(/selected/);
       } finally {
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, id);
       }
     });
 
     test('the dialog is inert for hostile names, keyboard-operable, and returns focus (t-ccd6)', async ({ page }) => {
-      const id = `t-ccd6e-${Date.now()}`;
+      const id = newTicketId(PROJECT_ROOT, 'ccd6e');
       const evil = '<img src=x onerror=window.__pwn=1> a"b';
       try {
         const { state, otherCwd } = await openLockedRail(page, id, { extraWorktrees: [{ path: '/tmp/wt-ccd6/evil', branch: evil, is_main: false, tickets_visible: true }] });
@@ -8045,12 +8038,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await page.keyboard.press('Enter');   // Enter on the focused OK button confirms
         await expect.poll(() => state.unlockPosts).toBe(1);
       } finally {
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, id);
       }
     });
 
     test('the dialog lies inside the viewport in both themes at desktop and phone width (t-ccd6)', async ({ page }) => {
-      const id = `t-ccd6f-${Date.now()}`;
+      const id = newTicketId(PROJECT_ROOT, 'ccd6f');
       try {
         const longBranch = 'feature/' + 'a-very-long-branch-name-'.repeat(6);
         await openLockedRail(page, id, { extraWorktrees: [{ path: '/tmp/wt-ccd6/long', branch: longBranch, is_main: false, tickets_visible: true }] });
@@ -8073,12 +8066,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
           await page.locator('#app-dialog-cancel').click();
         }
       } finally {
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, id);
       }
     });
 
     test('a failed create (server error or network drop) shows a styled notice and re-arms + New (t-ccd6)', async ({ page }) => {
-      const id = `t-ccd6h-${Date.now()}`;
+      const id = newTicketId(PROJECT_ROOT, 'ccd6h');
       try {
         await openLockedRail(page, id);
         let mode = 'server';
@@ -8108,12 +8101,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
           await expect(page.locator('.ck-worktree-new-plus')).toBeEnabled();
         }
       } finally {
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, id);
       }
     });
 
     test('a stale worktree entry (folder gone) is a styled notice that creates nothing (t-ccd6)', async ({ page }) => {
-      const id = `t-ccd6i-${Date.now()}`;
+      const id = newTicketId(PROJECT_ROOT, 'ccd6i');
       try {
         const { state } = await openLockedRail(page, id, { extraWorktrees: [{ path: '/tmp/wt-ccd6/gone', branch: 'sprint/gone', is_main: false, tickets_visible: true, held_by: { ticket: '', reason: 'folder missing' } }] });
         await page.locator('#ck-worktree-new-input').fill('sprint/gone');
@@ -8122,13 +8115,13 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await page.locator('#app-dialog-ok').click();
         expect(state.created).toBeNull();
       } finally {
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, id);
       }
     });
   });
 
   test('while locked, picking a different worktree asks to switch and Cancel keeps the lock (t-9203, t-ccd6)', async ({ page }) => {
-    const id = `t-ck92-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ck92');
     const lockedCwd = '/tmp/wt-9203/feat-x';
     try {
       writeTicket(id, 'in_progress', {
@@ -8167,12 +8160,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       // The Main row must NOT become the selection — the effective cwd stays the lock.
       await expect(page.locator('.ck-worktree-row[data-cwd=""]')).not.toHaveClass(/selected/);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('a ticket locked to a worktree that lacks it mounts no terminal even with Main selected; unlock + pick Main mounts it (t-2a1c)', async ({ page }) => {
-    const id = `t-ckep-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ckep');
     // The user's exact scenario: .tickets/ un-ignored but uncommitted, so the
     // worktree is check-ignore "visible" (tickets_visible:true) yet physically
     // lacks .tickets/<id> (ticket_present:false); the ticket is locked to it.
@@ -8228,7 +8221,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#ck-iframe')).toHaveAttribute('src', /\/cockpit\?ticket=.*embed=1/);
       await expect(page.locator('#ck-iframe')).toHaveCSS('visibility', 'visible');
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
@@ -8251,11 +8244,11 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator('#c-submit').click();
       const card = page.locator('.card', { hasText: title });
       await expect(card).toBeVisible();
-      createdId = await card.getAttribute('data-id') || '';
+      createdId = adoptBoardTicket(PROJECT_ROOT, await card.getAttribute('data-id') || '', title);
       const raw = fs.readFileSync(path.join(PROJECT_ROOT, '.tickets', createdId, 'ticket.md'), 'utf8');
       expect(raw).toContain('worktree_preference: sprint/feat-644a');
     } finally {
-      if (createdId) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
+      if (createdId) removeTestTicket(PROJECT_ROOT, createdId);
     }
   });
 
@@ -8285,16 +8278,16 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator('#c-submit').click();
       const card = page.locator('.card', { hasText: 'Fix login bug on Safari and Chrome' });
       await expect(card).toBeVisible();
-      createdId = await card.getAttribute('data-id') || '';
+      createdId = adoptBoardTicket(PROJECT_ROOT, await card.getAttribute('data-id') || '', 'Fix login bug on Safari and Chrome');
       const raw = fs.readFileSync(path.join(PROJECT_ROOT, '.tickets', createdId, 'ticket.md'), 'utf8');
       expect(raw).toContain('worktree_preference: sprint/my-custom-name');
     } finally {
-      if (createdId) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
+      if (createdId) removeTestTicket(PROJECT_ROOT, createdId);
     }
   });
 
   test('rail pre-fill: worktree_preference matching an existing worktree pre-selects its radio (t-644a)', async ({ page }) => {
-    const id = `t-wtpre-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'wtpre');
     const wtPath = '/tmp/wt-644a/feat-x';
     try {
       writeTicket(id, 'in_progress', {
@@ -8323,7 +8316,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       // matching worktree_preference pre-selects, not Main.
       await expect(page.locator(`.ck-worktree-row[data-cwd="${wtPath}"]`)).toHaveClass(/selected/);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
@@ -8331,7 +8324,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
   test('worktree preference (t-15ee): open card chip + modal item only when a choice was made; hostile names stay inert', async ({ page }) => {
     const stamp = Date.now();
-    const withId = `t-wtp-a-${stamp}`, noneId = `t-wtp-b-${stamp}`, progId = `t-wtp-c-${stamp}`, evilId = `t-wtp-d-${stamp}`;
+    const withId = newTicketId(PROJECT_ROOT, 'wtp-a'), noneId = newTicketId(PROJECT_ROOT, 'wtp-b'), progId = newTicketId(PROJECT_ROOT, 'wtp-c'), evilId = newTicketId(PROJECT_ROOT, 'wtp-d');
     const evil = '<img src=x onerror=1> a" onmouseover="window.__pwn=1';
     try {
       writeTicket(withId, 'open', { worktreePreference: 'sprint/wt-15ee' });
@@ -8374,7 +8367,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#m-meta .meta-item', { hasText: 'Worktree' }).locator('img')).toHaveCount(0);
       expect(await page.evaluate(() => window.__pwn)).toBeUndefined();
     } finally {
-      for (const id of [withId, noneId, progId, evilId]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      for (const id of [withId, noneId, progId, evilId]) removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
@@ -8400,7 +8393,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
   }
 
   test('worktree preference (t-15ee): rail arms "+ New" for an explicit choice, names it, and still needs the confirm', async ({ page }) => {
-    const id = `t-wtp-r-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'wtp-r');
     const posts = [];
     try {
       writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN, worktreePreference: 'sprint/wt-15ee' });
@@ -8422,13 +8415,13 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect.poll(() => posts.length).toBe(1);
       expect(JSON.parse(posts[0])).toEqual({ branch: 'sprint/wt-15ee' });
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('worktree preference (t-15ee): edge cases — existing worktree, main branch, unlocked in_progress, hostile name in the rail', async ({ page }) => {
     const stamp = Date.now();
-    const existId = `t-wtp-e-${stamp}`, mainId = `t-wtp-m-${stamp}`, progId = `t-wtp-p-${stamp}`, evilId = `t-wtp-h-${stamp}`;
+    const existId = newTicketId(PROJECT_ROOT, 'wtp-e'), mainId = newTicketId(PROJECT_ROOT, 'wtp-m'), progId = newTicketId(PROJECT_ROOT, 'wtp-p'), evilId = newTicketId(PROJECT_ROOT, 'wtp-h');
     const evil = '<img src=x onerror=1> a" b';
     const posts = [];
     const wtPath = '/tmp/wt-15ee/existing';
@@ -8480,12 +8473,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#ck-term-msg img')).toHaveCount(0);
       expect(posts).toHaveLength(0);
     } finally {
-      for (const id of [existId, mainId, progId, evilId]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      for (const id of [existId, mainId, progId, evilId]) removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('+ New creates the untouched default suggestion after a confirm, by click or Enter (t-29cc)', async ({ page }) => {
-    const id = `t-wtp-n-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'wtp-n');
     const posts = [];
     try {
       writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN });
@@ -8513,12 +8506,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect.poll(() => posts.length).toBe(1);
       expect(JSON.parse(posts[0])).toEqual({ branch: `sprint/${id}` });
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('+ New stays disabled for the main branch and an existing worktree, for click and Enter alike (t-29cc)', async ({ page }) => {
-    const id = `t-wtp-x-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'wtp-x');
     const posts = [];
     let dialogs = 0;
     page.on('dialog', d => { dialogs++; d.dismiss(); });
@@ -8565,7 +8558,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       expect(dialogs).toBe(0); // t-ccd6: never a native dialog
       await expect(page.locator('#app-dialog.open')).toHaveCount(0);   // and no create confirm ever opened
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
@@ -8614,7 +8607,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
   });
 
   test('a committed ticket with local edits says so truthfully; a never-committed one and an older server keep the old sentence (t-b59d)', async ({ page }) => {
-    const id = `t-b59d-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'b59d');
     const log = [];
     try {
       writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN });
@@ -8638,12 +8631,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator(`.card[data-id="${id}"] .card-start`).click();
       await expect(page.locator('#ck-worktree-uncommitted')).toContainText(`${id} isn't committed yet`);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('with the Main checkout row selected the "isn\'t committed yet" box is hidden, and + New still offers the commit (t-165f)', async ({ page }) => {
-    const id = `t-165f-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, '165f');
     const log = [];
     try {
       writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN });
@@ -8657,12 +8650,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#ck-tcommit')).toHaveClass(/open/);
       await page.locator('#ck-tcm-cancel').click();
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('picking Main hides the "isn\'t committed yet" box that showed while nothing was picked (t-165f)', async ({ page }) => {
-    const id = `t-165f-pick-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, '165f-pick');
     const log = [];
     try {
       writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN });
@@ -8675,12 +8668,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator('.ck-worktree-row[data-cwd="/tmp/wt-165f/other"]').click();
       await expect(page.locator('#ck-worktree-uncommitted')).toBeVisible();
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('uncommitted ticket: rail warns, + New opens the grouped commit dialog, Commit & create commits then creates (t-d254)', async ({ page }) => {
-    const id = `t-wtp-c-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'wtp-c');
     const log = [];
     try {
       writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN });
@@ -8718,12 +8711,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       expect(log[1]).toBe('worktrees:' + JSON.stringify({ branch: `sprint/${id}` }));
       await expect(dlg).not.toHaveClass(/open/);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('commit dialog: Cancel, a failed commit, and no create-without-committing escape (t-d254)', async ({ page }) => {
-    const id = `t-wtp-k-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'wtp-k');
     const log = [];
     try {
       writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN });
@@ -8753,12 +8746,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       expect(log.filter(l => l.startsWith('worktrees:'))).toHaveLength(0);
       expect(log.filter(l => l.startsWith('commit:'))).toHaveLength(1); // only the failed attempt
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('slow repo: Commit & create and + New show a spinner while each step runs (t-d254)', async ({ page }) => {
-    const id = `t-wtp-s-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'wtp-s');
     let releaseCommit, releaseWorktree;
     const commitGate = new Promise(r => { releaseCommit = r; });
     const worktreeGate = new Promise(r => { releaseWorktree = r; });
@@ -8810,7 +8803,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('.ck-worktree-new-plus')).toHaveText('+ New');
     } finally {
       releaseCommit(); releaseWorktree();
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
@@ -8833,7 +8826,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
   });
 
   test('only optional files uncommitted: no warning, + New keeps the plain confirm (t-d254)', async ({ page }) => {
-    const id = `t-wtp-o-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'wtp-o');
     const log = [];
     try {
       writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN });
@@ -8846,7 +8839,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#ck-tcommit')).not.toHaveClass(/open/);
       expect(log).toHaveLength(0);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
@@ -8874,7 +8867,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
   }
 
   test('rail lists only Main, own and free worktrees; held ones collapse with owner + reason and cannot be picked (t-2241)', async ({ page }) => {
-    const id = `t-wth-r-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'wth-r');
     try {
       writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN });
       await stubWorktrees2241(page);
@@ -8914,12 +8907,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       expect(await dialogText(page)).toContain('"sprint/bnd" is in use by t-bnd1 (in progress)');
       await page.locator('#app-dialog-ok').click();
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('once its own worktree is selected the rail shows just that row + Change worktree (t-2241)', async ({ page }) => {
-    const id = `t-wth-o-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'wth-o');
     try {
       writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN });
       await stubWorktrees2241(page);
@@ -8945,7 +8938,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(box.locator('.ck-worktree-row:visible .ck-worktree-label')).toHaveText(['Main checkout (current)', 'sprint/free', 'sprint/mine', 'GitHub · new issue']);   // t-718b: the GitHub place
       await expect(box.locator('#ck-worktree-change')).toHaveCount(0);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
@@ -9299,7 +9292,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
   }
 
   test('a card move that the server refuses stays in its column and says why (t-1940)', async ({ page }) => {
-    const id = 't-mv40';
+    const id = newTicketId(PROJECT_ROOT);
     await page.route('**/api/tickets**', route => route.request().method() === 'GET'
       ? route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([T1940(id)]) }) : route.fallback());
     const seen = await scriptedPosts(page, `**/api/ticket/${id}/status`, ['html403', '409', 'abort', 'okfalse', 'ok']);
@@ -9329,7 +9322,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
   });
 
   test('modal writes keep or revert their UI on failure: doc save, checkbox, demo, new doc, create ticket (t-1940)', async ({ page }) => {
-    const id = 't-mw40';
+    const id = newTicketId(PROJECT_ROOT);
     await page.route('**/api/tickets**', route => route.request().method() === 'GET'
       ? route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([T1940(id, { docs: [
           { name: 'Acceptance', file: `${id}/acceptance.md` }, { name: 'Plan', file: `${id}/plan.md` }] })]) }) : route.fallback());
@@ -9373,7 +9366,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     // Edit fetches the doc and fills the textarea when it lands; typing earlier gets overwritten.
     await expect(area).toHaveValue(/first item/);
     // Valid acceptance (both sections), so the board's own validation passes and the POST is sent.
-    await area.fill('# Acceptance\n\nTicket: `t-mw40`\n\n## Criteria\n\n- [ ] typed but not saved\n\n## Test Plan\n\n- [ ] a check\n\n## QA\n\n- [ ] Tested locally\n');
+    await area.fill(`# Acceptance\n\nTicket: \`${id}\`\n\n## Criteria\n\n- [ ] typed but not saved\n\n## Test Plan\n\n- [ ] a check\n\n## QA\n\n- [ ] Tested locally\n`);
     await page.locator('#btn-save-top').click();
     await expect(toast).toContainText("Couldn't save this doc");
     await expect(area).toBeVisible();
@@ -9417,8 +9410,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
   });
 
   test('IN PROGRESS card shows a read-only worktree chip when bound; empty when unbound (t-644a)', async ({ page }) => {
-    const boundId = `t-wtchip-a-${Date.now()}`;
-    const unboundId = `t-wtchip-b-${Date.now()}`;
+    const boundId = newTicketId(PROJECT_ROOT, 'wtchip-a');
+    const unboundId = newTicketId(PROJECT_ROOT, 'wtchip-b');
     const wtPath = '/tmp/wt-644a/chip-x';
     try {
       writeTicket(boundId, 'in_progress');
@@ -9443,15 +9436,15 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator(`.card[data-id="${boundId}"] .card-wt-chip`)).toHaveText('chip-x');
       await expect(page.locator(`.card[data-id="${unboundId}"] .card-wt-chip`)).toHaveText('');
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', boundId), { recursive: true, force: true });
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', unboundId), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, boundId);
+      removeTestTicket(PROJECT_ROOT, unboundId);
     }
   });
 
   test('worktree chip names the branch when the lock and /api/worktrees disagree on separators and case (t-44b0)', async ({ page }) => {
-    const wtId = `t-wtwin-a-${Date.now()}`;
-    const mainId = `t-wtwin-b-${Date.now()}`;
-    const goneId = `t-wtwin-c-${Date.now()}`;
+    const wtId = newTicketId(PROJECT_ROOT, 'wtwin-a');
+    const mainId = newTicketId(PROJECT_ROOT, 'wtwin-b');
+    const goneId = newTicketId(PROJECT_ROOT, 'wtwin-c');
     try {
       for (const id of [wtId, mainId, goneId]) writeTicket(id, 'in_progress');
       await page.route('**/api/worktrees**', route => route.fulfill({
@@ -9480,7 +9473,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(chip(mainId)).toHaveText('main');
       await expect(chip(goneId)).toHaveText('gone');
     } finally {
-      for (const id of [wtId, mainId, goneId]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      for (const id of [wtId, mainId, goneId]) removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
@@ -9510,7 +9503,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
   });
 
   test('non-git project hides the rail worktree accordion and the board chip (t-644a)', async ({ page }) => {
-    const id = `t-wtnogit-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'wtnogit');
     try {
       writeTicket(id, 'in_progress', {
         acceptanceCriteria: ['- [ ] c'],
@@ -9530,15 +9523,15 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
       await expect(page.locator('#ck-worktree-section')).toBeHidden();
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('card affordance is status-gated: Start on open, Resume on in-progress, none on closed', async ({ page }) => {
     const stamp = Date.now();
-    const openId = `t-ckopen-${stamp}`;
-    const progId = `t-ckprog-${stamp}`;
-    const doneId = `t-ckdone-${stamp}`;
+    const openId = newTicketId(PROJECT_ROOT, 'ckopen');
+    const progId = newTicketId(PROJECT_ROOT, 'ckprog');
+    const doneId = newTicketId(PROJECT_ROOT, 'ckdone');
     try {
       writeTicket(openId, 'open');
       writeTicket(progId, 'in_progress');
@@ -9555,12 +9548,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator('#board-search').fill(doneId);
       await expect(page.locator(`.card[data-id="${doneId}"] .card-start`)).toHaveCount(0);
     } finally {
-      for (const id of [openId, progId, doneId]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      for (const id of [openId, progId, doneId]) removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('Start stays visible on a card that is both ci:true and demo:true (card-head has no slack for a 6th badge)', async ({ page }) => {
-    const id = `t-ckoverf-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ckoverf');
     try {
       writeTicket(id, 'open', { ci: true, demo: true });
       await page.goto(BASE);
@@ -9578,14 +9571,14 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const btnBox = await startBtn.boundingBox();
       expect(btnBox.x + btnBox.width).toBeLessThanOrEqual(cardBox.x + cardBox.width + 1);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('per-worktree tickets (t-644a/t-01a4): Start on an open card stays enabled while another ticket is in progress', async ({ page }) => {
     const stamp = Date.now();
-    const openId = `t-ck1open-${stamp}`;
-    const progId = `t-ck1prog-${stamp}`;
+    const openId = newTicketId(PROJECT_ROOT, 'ck1open');
+    const progId = newTicketId(PROJECT_ROOT, 'ck1prog');
     try {
       writeTicket(openId, 'open');
       writeTicket(progId, 'in_progress');
@@ -9600,12 +9593,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(startBtn).toBeEnabled();
       await expect(startBtn).not.toHaveClass(/disabled/);
     } finally {
-      for (const id of [openId, progId]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      for (const id of [openId, progId]) removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('focus toggle collapses the ticket rail to maximize the terminal', async ({ page }) => {
-    const id = `t-ckfocus-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ckfocus');
     try {
       writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] Something'] });
       await stubCockpit(page);
@@ -9619,12 +9612,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator('#ck-rail-toggle').click();
       await expect(page.locator('#cockpit')).toHaveClass(/rail-collapsed/);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('rail is drag-resizable, and collapse still reaches 44px after a manual resize', async ({ page }) => {
-    const id = `t-ckresize-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ckresize');
     try {
       writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] Something'] });
       await stubCockpit(page);
@@ -9660,7 +9653,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         expect((await rail.boundingBox()).width).toBeGreaterThan(before + 60);
       }).toPass({ timeout: 2000 });
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
@@ -9691,7 +9684,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
   });
 
   test('Status section renders this ticket\'s HANDOFF.md bullet, below Ticket details', async ({ page }) => {
-    const id = `t-ckstate-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ckstate');
     try {
       writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] a criterion'] });
       await stubCockpit(page);
@@ -9711,12 +9704,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       expect(detailsFirst).toBe(true);
       await expect(page.locator('#ck-state-section')).not.toHaveClass(/collapsed/);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('Status section shows a hint when this ticket has no HANDOFF.md bullet', async ({ page }) => {
-    const id = `t-cknostate-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'cknostate');
     try {
       writeTicket(id, 'in_progress');
       await stubCockpit(page);
@@ -9732,12 +9725,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
       await expect(page.locator('#ck-state')).toContainText('No saved state yet');
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('the rail has one Ticket details row that opens the viewer over the cockpit; Esc and an outside click close it (t-6254)', async ({ page }) => {
-    const id = `t-ckdet-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ckdet');
     try {
       writeTicket(id, 'in_progress', {
         acceptanceCriteria: ['- [ ] First cockpit criterion'],
@@ -9771,12 +9764,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#modal-overlay')).not.toHaveClass(/open/);
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('the sprint writing the plan badges the Ticket details row; opening it clears the badge (t-6254)', async ({ page }) => {
-    const id = `t-ckbadge-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ckbadge');
     const dir = path.join(PROJECT_ROOT, '.tickets', id);
     try {
       writeTicket(id, 'in_progress', {
@@ -9809,12 +9802,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#m-body')).toContainText('The sprint wrote this.');
       await expect(page.locator('#ck-details-badge')).toBeHidden();
     } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('a changed doc is marked New in the tree until it is viewed; unchanged docs raise nothing (t-6254)', async ({ page }) => {
-    const id = `t-cknew-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'cknew');
     const dir = path.join(PROJECT_ROOT, '.tickets', id);
     try {
       writeTicket(id, 'in_progress', {
@@ -9857,13 +9850,13 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(plan.locator('.doc-new')).toHaveCount(0);
       await expect(page.locator('#ck-details-badge')).toBeHidden();
     } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   // QUARANTINE t-8aa6: fails every run in webkit, the second waitForLoadState('networkidle') below times out at 30 s; see tests/board-spec-baseline.json
   test('the shared poll timer starts once per open tab (not per switch) and clears only when the last tab closes (t-96a8/t-8a2a)', async ({ page }) => {
-    const id = `t-cktimer-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'cktimer');
     try {
       writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] a criterion'] });
       await stubCockpit(page);
@@ -9909,12 +9902,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       calls = await page.evaluate(() => ({ set: window.__setIntervalCalls, clear: window.__clearIntervalCalls }));
       expect(calls.set).toBe(2);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('opening the cockpit fetches acceptance.md once, not twice (t-96a8)', async ({ page }) => {
-    const id = `t-ckfetch-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ckfetch');
     try {
       writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] a criterion'] });
       await stubCockpit(page);
@@ -9933,7 +9926,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
       expect(fetchCount).toBe(1);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
@@ -9997,7 +9990,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
   }
 
   test('leaving while running shows the confirm dialog with Save & End and Cancel (no Leave running)', async ({ page }) => {
-    const id = `t-lcrun-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'lcrun');
     try {
       writeTicket(id, 'in_progress');
       await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running' }));
@@ -10013,12 +10006,12 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await expect(modal).not.toHaveClass(/open/);
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('needs-you disables Save & End with an explanation', async ({ page }) => {
-    const id = `t-lcny-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'lcny');
     try {
       writeTicket(id, 'in_progress');
       await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'needs-you' }));
@@ -10028,12 +10021,12 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await expect(page.locator('#ck-leave-save')).toBeDisabled();
       await expect(page.locator('#ck-leave-confirm-body')).toContainText('waiting on you');
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('leaving after the session already finished skips the modal entirely', async ({ page }) => {
-    const id = `t-lcdone-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'lcdone');
     try {
       writeTicket(id, 'in_progress');
       await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'done' }));
@@ -10042,12 +10035,12 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await expect(page.locator('#ck-leave-confirm')).not.toHaveClass(/open/);
       await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('a live session on a ticket closed meanwhile offers no Save & End (t-b999)', async ({ page }) => {
-    const id = `t-lcclosed-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'lcclosed');
     try {
       writeTicket(id, 'in_progress');
       await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running' }));
@@ -10072,7 +10065,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await page.locator('#ck-end-session').click();
       await expect(page.locator('#ck-leave-save')).toBeVisible();
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
@@ -10083,7 +10076,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
   }));
 
   test('End Session on an unattached tab with a live daemon session explains instead of closing (t-2687)', async ({ page }) => {
-    const id = `t-lcdet-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'lcdet');
     try {
       writeTicket(id, 'in_progress');
       await stubSessions(page, [{ session: 's1', ticket: id, project_root: PROJECT_ROOT, cwd: PROJECT_ROOT, agent: '<img src=x onerror=1>', status: 'running' }]);
@@ -10115,7 +10108,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await expect(page.locator('#ck-leave-skip')).toBeVisible();
       await expect(page.locator('#ck-leave-cancel')).toHaveText('Cancel');
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
@@ -10141,7 +10134,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
     ['a failed lookup', null, 500],
   ]) {
     test(`End Session on an unattached tab still closes it with ${label} (t-2687)`, async ({ page }) => {
-      const id = `t-lcnone-${Date.now()}`;
+      const id = newTicketId(PROJECT_ROOT, 'lcnone');
       try {
         writeTicket(id, 'in_progress');
         await page.route('**/api/cockpit-sessions', route => route.fulfill({
@@ -10154,13 +10147,13 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
         await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/);
         await expect(page.locator('#ck-leave-confirm')).not.toHaveClass(/open/);
       } finally {
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, id);
       }
     });
   }
 
   test('a live tab keeps the normal Save & End dialog even when the daemon lists its session (t-2687)', async ({ page }) => {
-    const id = `t-lclive-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'lclive');
     try {
       writeTicket(id, 'in_progress');
       await stubSessions(page, [{ session: 's1', ticket: id, project_root: PROJECT_ROOT, agent: 'claude', status: 'running' }]);
@@ -10171,12 +10164,12 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await expect(page.locator('#ck-leave-save')).toBeEnabled();
       await expect(page.locator('#ck-leave-confirm-body')).not.toContainText("isn't attached");
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('a session with an unknown project root still matches by ticket id (t-2687)', async ({ page }) => {
-    const id = `t-lcroot-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'lcroot');
     try {
       writeTicket(id, 'in_progress');
       await stubSessions(page, [{ session: 's1', ticket: id, project_root: '', agent: 'claude', status: 'running' }]);
@@ -10186,13 +10179,13 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await expect(page.locator('#ck-leave-confirm-body')).toContainText("isn't attached to this tab");
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   for (const [label, list] of [['finds a session', 'DETACHED'], ['finds nothing', []]]) {
     test(`Start sprint attaching during the sessions lookup gives the live dialog, never a notice or teardown, when the lookup ${label} (t-2687)`, async ({ page }) => {
-      const id = `t-lcrace-${Date.now()}`;
+      const id = newTicketId(PROJECT_ROOT, 'lcrace');
       try {
         writeTicket(id, 'in_progress');
         let release;
@@ -10214,13 +10207,13 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
         await expect(page.locator('#ck-leave-confirm-body')).not.toContainText("isn't attached");
         await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
       } finally {
-        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+        removeTestTicket(PROJECT_ROOT, id);
       }
     });
   }
 
   test('switching tabs while the sessions lookup is in flight applies nothing to the wrong tab (t-2687)', async ({ page }) => {
-    const idA = `t-lcswa-${Date.now()}`, idB = `t-lcswb-${Date.now()}`;
+    const idA = newTicketId(PROJECT_ROOT, 'lcswa'), idB = newTicketId(PROJECT_ROOT, 'lcswb');
     try {
       writeTicket(idA, 'in_progress');
       writeTicket(idB, 'in_progress');
@@ -10244,13 +10237,13 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await expect(page.locator('#ck-leave-confirm')).not.toHaveClass(/open/);
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', idA), { recursive: true, force: true });
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', idB), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, idA);
+      removeTestTicket(PROJECT_ROOT, idB);
     }
   });
 
   test('Save & End waits for the ended reply before tearing down', async ({ page }) => {
-    const id = `t-lcsave-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'lcsave');
     try {
       writeTicket(id, 'in_progress');
       await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running', endDelayMs: 1500 }));   // long enough for expect's retry schedule to see the saving state
@@ -10263,12 +10256,12 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       // Once the fake page's delayed 'ended' arrives, teardown proceeds.
       await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/, { timeout: 3000 });
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('re-clicking Back mid-teardown does not reopen the modal or restart the end sequence (t-9eda)', async ({ page }) => {
-    const id = `t-lcreend-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'lcreend');
     try {
       writeTicket(id, 'in_progress');
       // forceEndDelayMs 2000: comfortable real-wall-clock margin for the two
@@ -10297,12 +10290,12 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       // The original end sequence still completes normally, exactly once.
       await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/, { timeout: 4000 });
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('End without saving closes the modal immediately, before the daemon confirms (t-76dc)', async ({ page }) => {
-    const id = `t-lcskip-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'lcskip');
     try {
       writeTicket(id, 'in_progress');
       // forceEndDelayMs 400: the daemon takes a moment to confirm — long enough
@@ -10330,7 +10323,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       // Once the daemon's delayed 'ended' actually arrives, teardown proceeds.
       await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/, { timeout: 3000 });
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
@@ -10338,7 +10331,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
   // daemon page relays that as 'save-refused' — NOT 'ended' — so the board must keep the
   // session, cancel the fallback kill, explain, and hand the controls back.
   test('a refused Save & End keeps the session, explains why, and re-enables the controls (t-f91a)', async ({ page }) => {
-    const id = `t-lcrefuse-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'lcrefuse');
     try {
       writeTicket(id, 'in_progress');
       await page.addInitScript(() => { window.__cockpitSaveFallbackMs = 1500; });   // a fallback that would kill within the test window
@@ -10362,12 +10355,12 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await page.locator('#ck-leave-save').click();
       await expect.poll(() => page.evaluate(() => window.__received)).toContain('save-and-end');
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('Save & End on an already-closed ticket skips the save prompt and force-ends (t-98d8)', async ({ page }) => {
-    const id = `t-lcclosed-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'lcclosed');
     try {
       writeTicket(id, 'in_progress');
       // endDelayMs 5000: if the short-circuit fails and we fall into save-and-end,
@@ -10395,12 +10388,12 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       expect(received).toContain('force-end');
       expect(received).not.toContain('save-and-end');
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('Save & End resolves immediately if the session already ended while the modal sat open (t-8efc)', async ({ page }) => {
-    const id = `t-lcrace-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'lcrace');
     try {
       writeTicket(id, 'in_progress');
       // Never replies to save-and-end (huge delay) — if the click handler
@@ -10434,12 +10427,12 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       // (never-firing, 60s) fake reply or the 90s production fallback.
       await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/, { timeout: 1000 });
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('a forged ended message not actually from the iframe is ignored', async ({ page }) => {
-    const id = `t-lcforge-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'lcforge');
     try {
       writeTicket(id, 'in_progress');
       // endDelayMs huge: the real reply must never be what completes this test.
@@ -10456,12 +10449,12 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
       await expect(page.locator('#ck-leave-confirm-status')).toHaveText(/^Saving state/);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('fallback timeout force-ends and warns the save may be incomplete', async ({ page }) => {
-    const id = `t-lctimeout-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'lctimeout');
     try {
       writeTicket(id, 'in_progress');
       // Never replies to save-and-end; force-end still gets a reply, exercising the fallback path.
@@ -10481,12 +10474,12 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await page.locator('#ck-leave-save').click();
       await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/, { timeout: 5000 });
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('Cancel is disabled mid-save', async ({ page }) => {
-    const id = `t-lcreset-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'lcreset');
     try {
       writeTicket(id, 'in_progress');
       // Never replies at all — the save just sits "in flight" for this test's purposes.
@@ -10498,13 +10491,13 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       // alone doesn't abort the pending save-and-end sequence.
       await expect(page.locator('#ck-leave-cancel')).toBeDisabled();
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('a fresh modal open resets buttons left disabled by a prior session\'s mid-save state', async ({ page }) => {
-    const id1 = `t-lcreset1-${Date.now()}`;
-    const id2 = `t-lcreset2-${Date.now()}`;
+    const id1 = newTicketId(PROJECT_ROOT, 'lcreset1');
+    const id2 = newTicketId(PROJECT_ROOT, 'lcreset2');
     try {
       writeTicket(id1, 'in_progress');
       writeTicket(id2, 'in_progress');
@@ -10530,12 +10523,12 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await expect(page.locator('#ck-leave-save')).toBeEnabled();
       await expect(page.locator('#ck-leave-confirm-status')).toHaveText('');
     } finally {
-      for (const id of [id1, id2]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      for (const id of [id1, id2]) removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('state chip (t-2e7e, t-824e): needs you on needs-you, running fallback otherwise, cleared on reopen', async ({ page }) => {
-    const id = `t-badge-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'badge');
     try {
       writeTicket(id, 'in_progress');
       await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running' }));
@@ -10576,11 +10569,11 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await expect(badge).not.toHaveClass(/st-needs-you/);
       await expect(badge).toHaveText('running');
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
   test('ticket cockpit state chip + reaper line (t-824e): working, done, Copilot needs-you, old daemon', async ({ page }) => {
-    const id = `t-chip-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'chip');
     let rows = [];
     try {
       writeTicket(id, 'in_progress');
@@ -10622,7 +10615,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await expect(reaper).not.toHaveAttribute('title', /Auto-save/);   // no stale tooltip once the text is gone
       await expect(page.locator('#cockpit-overlay')).not.toContainText('undefined');
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 });
@@ -10674,7 +10667,7 @@ test.describe('session sub-tabs (t-8a2a)', () => {
   }
 
   test('closing a tab sends no kill request; the daemon page\'s own Kill button still does (t-8a2a mitigation test)', async ({ page }) => {
-    const id = `t-8a2akill-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, '8a2akill');
     let killRequests = 0;
     try {
       writeTicket(id, 'in_progress');
@@ -10711,13 +10704,13 @@ test.describe('session sub-tabs (t-8a2a)', () => {
       await page.waitForTimeout(300);
       expect(killRequests).toBe(1);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('starting a second ticket adds a tab without disturbing the first (persistently mounted, no reconnect)', async ({ page }) => {
-    const id1 = `t-8a2amulti1-${Date.now()}`;
-    const id2 = `t-8a2amulti2-${Date.now()}`;
+    const id1 = newTicketId(PROJECT_ROOT, '8a2amulti1');
+    const id2 = newTicketId(PROJECT_ROOT, '8a2amulti2');
     let terminalRequests = 0;
     try {
       writeTicket(id1, 'in_progress');
@@ -10757,13 +10750,13 @@ test.describe('session sub-tabs (t-8a2a)', () => {
       expect(iframeStillSame).toBe(true);
       expect(terminalRequests).toBe(2);
     } finally {
-      for (const id of [id1, id2]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      for (const id of [id1, id2]) removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('"End Session" opens Save & End for the active tab only; a second open tab is unaffected', async ({ page }) => {
-    const id1 = `t-8a2aend1-${Date.now()}`;
-    const id2 = `t-8a2aend2-${Date.now()}`;
+    const id1 = newTicketId(PROJECT_ROOT, '8a2aend1');
+    const id2 = newTicketId(PROJECT_ROOT, '8a2aend2');
     try {
       writeTicket(id1, 'in_progress');
       writeTicket(id2, 'in_progress');
@@ -10797,13 +10790,13 @@ test.describe('session sub-tabs (t-8a2a)', () => {
       await expect(page.locator(`#ck-tab-strip-topbar .ck-tab-pill[data-tab-id="${id1}"]`)).toBeVisible();
       await expect(page.locator('#ck-id')).toHaveText(id1);
     } finally {
-      for (const id of [id1, id2]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      for (const id of [id1, id2]) removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('"← Board" with 2 tabs open only hides the overlay — no session ends, reopening restores either tab', async ({ page }) => {
-    const id1 = `t-8a2aback1-${Date.now()}`;
-    const id2 = `t-8a2aback2-${Date.now()}`;
+    const id1 = newTicketId(PROJECT_ROOT, '8a2aback1');
+    const id2 = newTicketId(PROJECT_ROOT, '8a2aback2');
     let killOrEndRequests = 0;
     try {
       writeTicket(id1, 'in_progress');
@@ -10838,13 +10831,13 @@ test.describe('session sub-tabs (t-8a2a)', () => {
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
       await expect(page.locator('#ck-id')).toHaveText(id1);
     } finally {
-      for (const id of [id1, id2]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      for (const id of [id1, id2]) removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('the shared poll relays daemon-build to a background tab without rendering its rail', async ({ page }) => {
-    const id1 = `t-8a2apoll1-${Date.now()}`;
-    const id2 = `t-8a2apoll2-${Date.now()}`;
+    const id1 = newTicketId(PROJECT_ROOT, '8a2apoll1');
+    const id2 = newTicketId(PROJECT_ROOT, '8a2apoll2');
     try {
       writeTicket(id1, 'in_progress');
       writeTicket(id2, 'in_progress');
@@ -10890,13 +10883,13 @@ test.describe('session sub-tabs (t-8a2a)', () => {
       // never swaps it to render the backgrounded tab's own content.
       await expect(page.locator('#ck-id')).toHaveText(id2);
     } finally {
-      for (const id of [id1, id2]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      for (const id of [id1, id2]) removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('a background tab\'s needs-you status renders in the tab strip', async ({ page }) => {
-    const id1 = `t-8a2aneedsyou1-${Date.now()}`;
-    const id2 = `t-8a2aneedsyou2-${Date.now()}`;
+    const id1 = newTicketId(PROJECT_ROOT, '8a2aneedsyou1');
+    const id2 = newTicketId(PROJECT_ROOT, '8a2aneedsyou2');
     try {
       writeTicket(id1, 'in_progress');
       writeTicket(id2, 'in_progress');
@@ -10932,7 +10925,7 @@ test.describe('session sub-tabs (t-8a2a)', () => {
       // received a needs-you status.
       await expect(page.locator('#ck-state-chip')).not.toHaveClass(/st-needs-you/);
     } finally {
-      for (const id of [id1, id2]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      for (const id of [id1, id2]) removeTestTicket(PROJECT_ROOT, id);
     }
   });
 });
@@ -10996,7 +10989,7 @@ test.describe('cockpit preview pane (t-b19b)', () => {
   }
 
   test('PREVIEW_FILE loads a sandboxed iframe pointed at the daemon preview endpoint', async ({ page }) => {
-    const id = `t-pvfile-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'pvfile');
     try {
       writeTicket(id, 'in_progress');
       await openResumedCockpit(page, id, fakePreviewCockpitPage({ respondWith: 'file' }));
@@ -11007,7 +11000,7 @@ test.describe('cockpit preview pane (t-b19b)', () => {
       await expect(iframe).toHaveAttribute('sandbox', 'allow-scripts');
       await expect(iframe).toHaveAttribute('src', `http://${FAKE_DAEMON_ADDR}/session/sess1/preview/ptok1/index.html`);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
@@ -11015,7 +11008,7 @@ test.describe('cockpit preview pane (t-b19b)', () => {
   const NOTE = 'Preview is sandboxed — forms and storage are disabled. Open it in your browser to use the app.';
 
   test('a static preview shows the sandbox note and Copy file link; the iframe stays sandboxed on the daemon URL (t-533f)', async ({ page, context, browserName }) => {
-    const id = `t-pvnote-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'pvnote');
     // t-df8e: clipboard permissions (and reading the clipboard back) are Chromium-only in Playwright.
     if (browserName === 'chromium') await context.grantPermissions(['clipboard-read', 'clipboard-write']);
     try {
@@ -11048,7 +11041,7 @@ test.describe('cockpit preview pane (t-b19b)', () => {
         await note.screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-533f', 'visuals', `note-${theme}.png`) });
       }
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
@@ -11068,7 +11061,7 @@ test.describe('cockpit preview pane (t-b19b)', () => {
   });
 
   test('without a path (older daemon) the note says where to open the file instead of a dead button (t-533f)', async ({ page }) => {
-    const id = `t-pvnopath-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'pvnopath');
     try {
       writeTicket(id, 'in_progress');
       await openResumedCockpit(page, id, fakePreviewCockpitPage({ respondWith: 'file' }));
@@ -11079,12 +11072,12 @@ test.describe('cockpit preview pane (t-b19b)', () => {
       await expect(note).toContainText('Open index.html from the project folder in your browser.');
       await expect(note.locator('.ck-preview-copy')).toHaveCount(0);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('if the clipboard is blocked, the file link is shown selected for a manual copy (t-533f)', async ({ page }) => {
-    const id = `t-pvclip-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'pvclip');
     await page.addInitScript(() => {
       Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.reject(new Error('denied')) } });
     });
@@ -11101,12 +11094,12 @@ test.describe('cockpit preview pane (t-b19b)', () => {
       expect(await input.evaluate(el => [el.selectionStart, el.selectionEnd])).toEqual([0, 'file:///tmp/my%20app/index.html'.length]);
       await expect(page.locator('.ck-preview-copy-status')).toHaveText("Copy this link into your browser's address bar:");
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('PREVIEW_SERVER_CMD shows a static run-yourself message with the exact command, no iframe', async ({ page }) => {
-    const id = `t-pvcmd-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'pvcmd');
     try {
       writeTicket(id, 'in_progress');
       await openResumedCockpit(page, id, fakePreviewCockpitPage({ respondWith: 'server-cmd' }));
@@ -11115,12 +11108,12 @@ test.describe('cockpit preview pane (t-b19b)', () => {
       await expect(page.locator('#ck-preview-body')).toContainText('npm run dev');
       await expect(page.locator('#ck-preview-body iframe')).toHaveCount(0);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('no marker within the timeout shows the fallback message', async ({ page }) => {
-    const id = `t-pvto-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'pvto');
     try {
       writeTicket(id, 'in_progress');
       await openResumedCockpit(page, id, fakePreviewCockpitPage({ respondWith: 'timeout' }));
@@ -11128,12 +11121,12 @@ test.describe('cockpit preview pane (t-b19b)', () => {
       await page.locator('#ck-preview-label').click();
       await expect(page.locator('#ck-preview-body')).toContainText("couldn't determine", { ignoreCase: true });
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('no live session (e.g. idle Resume, pre-Start) shows a message, not an infinite "Asking…"', async ({ page }) => {
-    const id = `t-pvnosess-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'pvnosess');
     try {
       writeTicket(id, 'in_progress');
       await openResumedCockpit(page, id, fakePreviewCockpitPage({ respondWith: 'no-session' }));
@@ -11142,12 +11135,12 @@ test.describe('cockpit preview pane (t-b19b)', () => {
       await expect(page.locator('#ck-preview-body')).toContainText('No active sprint session');
       await expect(page.locator('#ck-preview-body iframe')).toHaveCount(0);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('a daemon-rejected path shows a rejection message, not a broken iframe', async ({ page }) => {
-    const id = `t-pvrej-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'pvrej');
     try {
       writeTicket(id, 'in_progress');
       await openResumedCockpit(page, id, fakePreviewCockpitPage({ respondWith: 'rejected' }));
@@ -11156,12 +11149,12 @@ test.describe('cockpit preview pane (t-b19b)', () => {
       await expect(page.locator('#ck-preview-body')).toContainText('rejected');
       await expect(page.locator('#ck-preview-body iframe')).toHaveCount(0);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('collapse button re-collapses the pane', async ({ page }) => {
-    const id = `t-pvcol-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'pvcol');
     try {
       writeTicket(id, 'in_progress');
       await openResumedCockpit(page, id, fakePreviewCockpitPage({ respondWith: 'file' }));
@@ -11171,13 +11164,13 @@ test.describe('cockpit preview pane (t-b19b)', () => {
       await page.locator('#ck-preview-collapse').click();
       await expect(page.locator('#ck-preview')).toHaveClass(/collapsed/);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('a fresh cockpit open never inherits a prior session\'s stale preview content', async ({ page }) => {
-    const id1 = `t-pvst1-${Date.now()}`;
-    const id2 = `t-pvst2-${Date.now()}`;
+    const id1 = newTicketId(PROJECT_ROOT, 'pvst1');
+    const id2 = newTicketId(PROJECT_ROOT, 'pvst2');
     try {
       writeTicket(id1, 'in_progress');
       writeTicket(id2, 'in_progress');
@@ -11197,7 +11190,7 @@ test.describe('cockpit preview pane (t-b19b)', () => {
       await expect(page.locator('#ck-preview')).toHaveClass(/collapsed/);
       await expect(page.locator('#ck-preview-body iframe')).toHaveCount(0);
     } finally {
-      for (const id of [id1, id2]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      for (const id of [id1, id2]) removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
@@ -11227,7 +11220,7 @@ test.describe('cockpit preview pane (t-b19b)', () => {
   }
 
   test('"← Board" then reopening the same tab restores the mounted preview iframe without re-requesting it (t-82f4)', async ({ page }) => {
-    const id = `t-82f4rt-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, '82f4rt');
     try {
       writeTicket(id, 'in_progress');
       await openResumedCockpit(page, id, fakePreviewCockpitPageCountingRequests({ respondWith: 'file' }));
@@ -11249,12 +11242,12 @@ test.describe('cockpit preview pane (t-b19b)', () => {
       const reqCount = await page.frameLocator('#ck-iframe').locator('body').evaluate(() => window.__previewRequestCount);
       expect(reqCount).toBe(1);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('"← Board" then reopening a tab whose preview was never opened stays collapsed with no iframe (t-82f4)', async ({ page }) => {
-    const id = `t-82f4col-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, '82f4col');
     try {
       writeTicket(id, 'in_progress');
       await openResumedCockpit(page, id, fakePreviewCockpitPage({ respondWith: 'file' }));
@@ -11268,13 +11261,13 @@ test.describe('cockpit preview pane (t-b19b)', () => {
       await expect(page.locator('#ck-preview')).toHaveClass(/collapsed/);
       await expect(page.locator('#ck-preview-body iframe')).toHaveCount(0);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   test('closing a tab with an open preview frees its iframe from the DOM (t-82f4)', async ({ page }) => {
-    const id1 = `t-82f4cl1-${Date.now()}`;
-    const id2 = `t-82f4cl2-${Date.now()}`;
+    const id1 = newTicketId(PROJECT_ROOT, '82f4cl1');
+    const id2 = newTicketId(PROJECT_ROOT, '82f4cl2');
     try {
       writeTicket(id1, 'in_progress');
       writeTicket(id2, 'in_progress');
@@ -11292,13 +11285,13 @@ test.describe('cockpit preview pane (t-b19b)', () => {
 
       await expect(page.locator('#ck-preview-body iframe')).toHaveCount(0);
     } finally {
-      for (const id of [id1, id2]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      for (const id of [id1, id2]) removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
   // t-bc04: status badge next to the ticket id (topbar + rail), colored per status.
   test('status badge shows the ticket status next to the id (t-bc04)', async ({ page }) => {
-    const idP = `t-uibp${Date.now().toString().slice(-4)}`;
+    const idP = newTicketId(PROJECT_ROOT);
     try {
       writeTicket(idP, 'in_progress');
       await openResumedCockpit(page, idP, fakePreviewCockpitPage({ respondWith: 'file' }));
@@ -11308,12 +11301,12 @@ test.describe('cockpit preview pane (t-b19b)', () => {
       await expect(page.locator('#ck-tc-status')).toHaveText('in progress');
       await expect(page.locator('#ck-tc-status')).toHaveClass(/st-progress/);
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', idP), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, idP);
     }
   });
 
   test('preview pane is resizable and collapse still works (t-bc04)', async ({ page }) => {
-    const id = `t-uir${Date.now().toString().slice(-4)}`;
+    const id = newTicketId(PROJECT_ROOT);
     try {
       writeTicket(id, 'in_progress');
       await page.goto(BASE);
@@ -11349,7 +11342,7 @@ test.describe('cockpit preview pane (t-b19b)', () => {
       expect(await widthOf()).toBeGreaterThan(before + 40);
     } finally {
       await page.evaluate(() => localStorage.removeItem('ck-preview-w')).catch(() => {});
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 });
@@ -11433,7 +11426,7 @@ test.describe('cockpit rendered-output preview (t-8f9d)', () => {
 
   test.afterAll(() => {
     if (daemonProc) daemonProc.kill('SIGKILL');
-    if (work) fs.rmSync(work, { recursive: true, force: true });
+    if (work) fs.rmSync(/* non-ticket */ work, { recursive: true, force: true });
   });
 
   async function daemonAddr() {
@@ -11635,7 +11628,7 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
 
   test.afterAll(() => {
     for (const d of daemons) { try { d.kill('SIGKILL'); } catch { /* already gone */ } }
-    if (work) fs.rmSync(work, { recursive: true, force: true });
+    if (work) fs.rmSync(/* non-ticket */ work, { recursive: true, force: true });
   });
 
   // Spawn a fresh daemon (own state dir) so each test's restart/shutdown is
@@ -13151,7 +13144,7 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
   });
 
   test('editing a saved model persists and sources the per-ticket Gate-model dropdown, not just the hardcoded fallback', async ({ page }) => {
-    const id = `t-mtreg-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'mtreg');
     const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
     const canonical = readCanonicalModelTiers();
     try {
@@ -13204,7 +13197,7 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
       ).toBe(1);
       await expect(page.locator('.model-tier-select option[value="probe-alias-zz"]')).toHaveText('Registry Sourcing Probe');
     } finally {
-      fs.rmSync(ticketDir, { recursive: true, force: true });
+      removeTestTicket(PROJECT_ROOT, id);
       await restoreModelTiers(page, canonical);
     }
   });
@@ -13213,9 +13206,9 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
 test.describe('branch divergence badge (t-6328)', () => {
   test('a ticket with branch_divergence shows a card badge + modal footer note; a normal ticket shows neither; hostile branch names stay inert text', async ({ page }) => {
     const stamp = Date.now();
-    const divId = `t-brdv-${stamp}`;
-    const okId = `t-brok-${stamp}`;
-    const evilId = `t-brev-${stamp}`;
+    const divId = newTicketId(PROJECT_ROOT, 'brdv');
+    const okId = newTicketId(PROJECT_ROOT, 'brok');
+    const evilId = newTicketId(PROJECT_ROOT, 'brev');
     try {
       for (const id of [divId, okId, evilId]) {
         const dir = path.join(PROJECT_ROOT, '.tickets', id);
@@ -13270,7 +13263,7 @@ test.describe('branch divergence badge (t-6328)', () => {
       await expect(page.locator('#m-diverge')).toContainText('(branch merged)');
       expect(await page.evaluate(() => window.__pwn)).toBeUndefined();
     } finally {
-      for (const id of [divId, okId, evilId]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      for (const id of [divId, okId, evilId]) removeTestTicket(PROJECT_ROOT, id);
     }
   });
 });
@@ -13283,7 +13276,7 @@ test.describe('project-scoped ticket assets (t-7d83)', () => {
     const defaultRoot = path.join(root, 'default');
     const otherRoot = path.join(root, 'other');
     const canonHome = path.join(root, 'canon-home');
-    const id = 't-pj01';
+    const id = newTicketId(PROJECT_ROOT);
     let proc;
     try {
       fs.mkdirSync(path.join(defaultRoot, '.tickets'), { recursive: true });
@@ -13319,7 +13312,7 @@ test.describe('project-scoped ticket assets (t-7d83)', () => {
       await expect.poll(() => img.evaluate(el => el.naturalWidth)).toBeGreaterThan(0);
     } finally {
       if (proc) proc.kill();
-      fs.rmSync(root, { recursive: true, force: true });
+      fs.rmSync(/* non-ticket */ root, { recursive: true, force: true });
     }
   });
 
@@ -13639,7 +13632,7 @@ test.describe('board header and card footer (t-7723)', () => {
     }
     made.push(dir);
   }
-  test.afterEach(() => { for (const d of made.splice(0)) fs.rmSync(d, { recursive: true, force: true }); });
+  test.afterEach(() => { for (const d of made.splice(0)) fs.rmSync(/* non-ticket */ d, { recursive: true, force: true }); });
   async function openBoard(page, id) {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
@@ -13664,7 +13657,7 @@ test.describe('board header and card footer (t-7723)', () => {
   }
 
   test('footer is one row: clock + age, priority bars, status; no label grid', async ({ page }) => {
-    const id = `t-fp-struct-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'fp-struct');
     writeTicket(id, { priority: 2 });
     await openBoard(page, id);
     const card = page.locator(`.card[data-id="${id}"]`);
@@ -13678,10 +13671,9 @@ test.describe('board header and card footer (t-7723)', () => {
   });
 
   test('priority bars: P0 fills 3 red, P2 fills 2 amber, P3 fills 1 muted', async ({ page }) => {
-    const ts = Date.now();
     const cases = [[0, 'p-hi', ['--col-discarded', '--col-discarded', '--col-discarded']], [2, 'p-mid', ['--st-work', '--st-work', '--border-hover']], [3, 'p-lo', ['--text-muted', '--border-hover', '--border-hover']]];
     for (const [pri, cls, vars] of cases) {
-      const id = `t-fp-pri${pri}-${ts}`;
+      const id = newTicketId(PROJECT_ROOT, `fp-pri${pri}`);
       writeTicket(id, { priority: pri });
       await openBoard(page, id);
       const bars = page.locator(`.card[data-id="${id}"] .pri-bars`);
@@ -13695,7 +13687,7 @@ test.describe('board header and card footer (t-7723)', () => {
 
   test('a hand-edited priority with a quote cannot add an attribute to the footer', async ({ page }) => {
     // both servers keep a non-integer priority as a string, so it reaches the card's title attribute
-    const id = `t-fp-hostile-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'fp-hostile');
     writeTicket(id, { priority: 'x" data-pwn="1' });
     await openBoard(page, id);
     const pri = page.locator(`.card[data-id="${id}"] .card-pri`);
@@ -13705,7 +13697,7 @@ test.describe('board header and card footer (t-7723)', () => {
   });
 
   test('status is worded: ready shows "ready", a not-ready card shows its readiness label', async ({ page }) => {
-    const ts = Date.now(), rid = `t-fp-ready-${ts}`, nid = `t-fp-notready-${ts}`;
+    const rid = newTicketId(PROJECT_ROOT, 'fp-ready'), nid = newTicketId(PROJECT_ROOT, 'fp-notready');
     writeTicket(rid, { status: 'in_progress', ready: true });
     writeTicket(nid);
     await openBoard(page, rid);
@@ -13718,7 +13710,7 @@ test.describe('board header and card footer (t-7723)', () => {
 
   for (const vp of [{ width: 1400, height: 900 }, { width: 520, height: 900 }]) {
     test(`Start sits in the footer, right-aligned, inside the card (${vp.width}px)`, async ({ page }) => {
-      const id = `t-fp-start-${vp.width}-${Date.now()}`;
+      const id = newTicketId(PROJECT_ROOT, `fp-start-${vp.width}`);
       writeTicket(id);
       await openBoard(page, id);   // the search box is hidden at narrow widths, so find the card first, then resize
       await page.setViewportSize(vp);
@@ -13737,7 +13729,7 @@ test.describe('board header and card footer (t-7723)', () => {
   }
 
   test('the card menu button is hidden at rest, shown on hover and keyboard focus; the menu opens, opens the ticket and closes on Esc (t-9d93)', async ({ page }) => {
-    const id = `t-fp-menu-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'fp-menu');
     writeTicket(id);
     await openBoard(page, id);
     const card = page.locator(`.card[data-id="${id}"]`), btn = card.locator('.card-menu-btn'), menu = page.locator('#card-menu');
@@ -13792,7 +13784,7 @@ test.describe('board header and card footer (t-7723)', () => {
   });
 
   test('the type badge is a dot and the word, with no fill (t-9d93)', async ({ page }) => {
-    const id = `t-fp-type-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'fp-type');
     writeTicket(id);
     await openBoard(page, id);
     const r = await page.locator(`.card[data-id="${id}"] .type-badge`).evaluate(el => ({
@@ -13835,7 +13827,7 @@ test.describe('ticket modal document tree (t-e946)', () => {
     fs.writeFileSync(path.join(dir, 'research.md'), ['# Research', '', '## Only one heading', 'Text.', ''].join('\n'));
     made.push(dir);
   }
-  test.afterEach(() => { for (const d of made.splice(0)) fs.rmSync(d, { recursive: true, force: true }); });
+  test.afterEach(() => { for (const d of made.splice(0)) fs.rmSync(/* non-ticket */ d, { recursive: true, force: true }); });
   async function openModalFor(page, id) {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
@@ -13847,7 +13839,7 @@ test.describe('ticket modal document tree (t-e946)', () => {
 
   for (const vp of [{ width: 1280, height: 900 }, { width: 700, height: 900 }]) {
     test(`tree and pane geometry (${vp.width}px)`, async ({ page }) => {
-      const id = `t-tree-geo-${vp.width}-${Date.now()}`;
+      const id = newTicketId(PROJECT_ROOT, `tree-geo-${vp.width}`);
       writeTicket(id);
       await openModalFor(page, id);
       await page.setViewportSize(vp);
@@ -13872,7 +13864,7 @@ test.describe('ticket modal document tree (t-e946)', () => {
   }
 
   test('top-level nodes are a vertical list; Description is active on open; a click switches the doc', async ({ page }) => {
-    const id = `t-tree-nodes-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'tree-nodes');
     writeTicket(id);
     await openModalFor(page, id);
     await expect(page.locator('#m-docs .doc-tab.active')).toHaveText('Description');
@@ -13890,7 +13882,7 @@ test.describe('ticket modal document tree (t-e946)', () => {
   });
 
   test('child rows list a doc\'s ## headings, scroll to one, and keep the active doc; one heading shows none', async ({ page }) => {
-    const id = `t-tree-kids-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'tree-kids');
     writeTicket(id);
     await openModalFor(page, id);
     await tab(page, 'Acceptance').click();
@@ -13909,7 +13901,7 @@ test.describe('ticket modal document tree (t-e946)', () => {
   });
 
   test('checklist sections show done/total; a prose section shows no count', async ({ page }) => {
-    const id = `t-tree-counts-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'tree-counts');
     writeTicket(id);
     await openModalFor(page, id);
     await tab(page, 'Acceptance').click();
@@ -13920,7 +13912,7 @@ test.describe('ticket modal document tree (t-e946)', () => {
   });
 
   test('no link row; the Plan sign-off controls render once inside one .section-jumps after overlapping renders', async ({ page }) => {
-    const id = `t-tree-signoff-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'tree-signoff');
     writeTicket(id);
     await openModalFor(page, id);
     await tab(page, 'Plan').click();
@@ -13935,7 +13927,7 @@ test.describe('ticket modal document tree (t-e946)', () => {
   });
 
   test('ticket prev/next and the Edit hint live in the pane bar, none in the tree', async ({ page }) => {
-    const id = `t-tree-bar-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'tree-bar');
     writeTicket(id);
     await openModalFor(page, id);
     for (const sel of ['#btn-ticket-prev', '#btn-ticket-next', '.doc-edit-hint']) {
@@ -13950,7 +13942,7 @@ test.describe('ticket modal document tree (t-e946)', () => {
   });
 
   test('during edit a tree click does nothing and the tree is dimmed', async ({ page }) => {
-    const id = `t-tree-edit-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'tree-edit');
     writeTicket(id);
     await openModalFor(page, id);
     await tab(page, 'Acceptance').click();
@@ -13964,7 +13956,7 @@ test.describe('ticket modal document tree (t-e946)', () => {
   });
 
   test('a closed ticket shows read-only in the pane bar and no Edit button', async ({ page }) => {
-    const cid = `t-tree-closed-${Date.now()}`;
+    const cid = newTicketId(PROJECT_ROOT, 'tree-closed');
     writeTicket(cid, { status: 'closed' });
     await openModalFor(page, cid);
     await expect(page.locator('#m-pane-bar .doc-locked-badge')).toHaveText('read-only');
@@ -13984,7 +13976,7 @@ test.describe('ticket modal editor (t-a205)', () => {
     fs.writeFileSync(path.join(dir, 'plan.md'), ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: fixture', '', '- [ ] Plan approved', '', '## Approach', 'Fixture approach text.', ''].join('\n'));
     made.push(dir);
   }
-  test.afterEach(() => { for (const d of made.splice(0)) fs.rmSync(d, { recursive: true, force: true }); });
+  test.afterEach(() => { for (const d of made.splice(0)) fs.rmSync(/* non-ticket */ d, { recursive: true, force: true }); });
   async function openModalFor(page, id) {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
@@ -13996,7 +13988,7 @@ test.describe('ticket modal editor (t-a205)', () => {
   const editing = page => page.locator('#m-edit-area').isVisible();
 
   test('there is no Edit button; the hint shows for an editable doc and not for a closed or cancelled ticket', async ({ page }) => {
-    const id = `t-ed-hint-${Date.now()}`, cid = `t-ed-closed-${Date.now()}`, xid = `t-ed-cancel-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ed-hint'), cid = newTicketId(PROJECT_ROOT, 'ed-closed'), xid = newTicketId(PROJECT_ROOT, 'ed-cancel');
     writeTicket(id); writeTicket(cid, { status: 'closed' }); writeTicket(xid, { status: 'cancelled' });
     await openModalFor(page, id);
     await expect(page.locator('#m-pane-bar .doc-edit-hint')).toHaveText('Double-click to edit');
@@ -14009,7 +14001,7 @@ test.describe('ticket modal editor (t-a205)', () => {
   });
 
   test('double-click on the document starts editing; a checkbox row, a button in the document and a closed ticket do not', async ({ page }) => {
-    const id = `t-ed-dbl-${Date.now()}`, cid = `t-ed-dblc-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ed-dbl'), cid = newTicketId(PROJECT_ROOT, 'ed-dblc');
     writeTicket(id); writeTicket(cid, { status: 'closed' });
     await openModalFor(page, id);
     await page.locator('#m-body').evaluate(el => { const b = document.createElement('button'); b.id = 'probe-btn'; b.textContent = 'x'; el.appendChild(b); });
@@ -14028,7 +14020,7 @@ test.describe('ticket modal editor (t-a205)', () => {
   });
 
   test('the e key starts editing, but not in a field, with a modifier, on a closed ticket, or while editing', async ({ page }) => {
-    const id = `t-ed-key-${Date.now()}`, cid = `t-ed-keyc-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ed-key'), cid = newTicketId(PROJECT_ROOT, 'ed-keyc');
     writeTicket(id); writeTicket(cid, { status: 'closed' });
     await openModalFor(page, cid);
     await page.keyboard.press('e');
@@ -14051,7 +14043,7 @@ test.describe('ticket modal editor (t-a205)', () => {
   });
 
   test('while a ghost pane is open, double-click and e do not start editing (t-bb97)', async ({ page }) => {
-    const id = `t-ed-pick-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ed-pick');
     writeTicket(id);
     await openModalFor(page, id);
     await page.locator('#m-docs .doc-ghost').first().click();
@@ -14064,7 +14056,7 @@ test.describe('ticket modal editor (t-a205)', () => {
   });
 
   test('Cancel leaves the doc unchanged', async ({ page }) => {
-    const id = `t-ed-cancel2-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ed-cancel2');
     writeTicket(id);
     await openModalFor(page, id);
     await editDoc(page);
@@ -14076,7 +14068,7 @@ test.describe('ticket modal editor (t-a205)', () => {
   });
 
   test('the toolbar is a rounded card with image and line-number buttons, shown only while editing', async ({ page }) => {
-    const id = `t-ed-tb-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ed-tb');
     writeTicket(id);
     await openModalFor(page, id);
     await expect(page.locator('#m-editor-toolbar')).toBeHidden();
@@ -14090,7 +14082,7 @@ test.describe('ticket modal editor (t-a205)', () => {
   });
 
   test('the image button uploads the chosen file and inserts its markdown at the caret; a failed upload says so', async ({ page }) => {
-    const id = `t-ed-img-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ed-img');
     writeTicket(id);
     let mode = 'ok';
     await page.route('**/api/ticket/*/visual', route => mode === 'ok'
@@ -14114,7 +14106,7 @@ test.describe('ticket modal editor (t-a205)', () => {
   });
 
   test('the gutter numbers every line, follows typing, a snippet and the load, and the toggle is remembered', async ({ page }) => {
-    const id = `t-ed-gut-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ed-gut');
     writeTicket(id);
     await openModalFor(page, id);
     await tab(page, 'Acceptance').click();
@@ -14148,7 +14140,7 @@ test.describe('ticket modal editor (t-a205)', () => {
   });
 
   test('a long line wraps without a horizontal scrollbar and the gutter stays the same height as the text, also after narrowing', async ({ page }) => {
-    const id = `t-ed-wrap-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ed-wrap');
     writeTicket(id);
     await page.addInitScript(() => { try { localStorage.removeItem('sprint-check-editor-lines'); } catch {} });
     await openModalFor(page, id);
@@ -14170,7 +14162,7 @@ test.describe('ticket modal editor (t-a205)', () => {
   });
   // t-9b2d: the editor helpers are an ES module (static/editor.js) reached through a bridge; drive them in the real page.
   test('Tab and Shift+Tab indent the selected lines, and Enter continues a list item', async ({ page }) => {
-    const id = `t-ed-keys-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'ed-keys');
     writeTicket(id);
     await openModalFor(page, id);
     await tab(page, 'Description').click();
@@ -14203,7 +14195,7 @@ test.describe('ticket modal polish (t-612f)', () => {
     if (withDesign) fs.writeFileSync(path.join(dir, 'design.md'), ['# Design', '', '## Intro', 'Text.', '', filler, '', '## Shots ![shot](visuals/a.png)', 'More text.', '', filler, ''].join('\n'));
     made.push(dir);
   }
-  test.afterEach(() => { for (const d of made.splice(0)) fs.rmSync(d, { recursive: true, force: true }); });
+  test.afterEach(() => { for (const d of made.splice(0)) fs.rmSync(/* non-ticket */ d, { recursive: true, force: true }); });
   async function openModalFor(page, id) {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
@@ -14215,7 +14207,7 @@ test.describe('ticket modal polish (t-612f)', () => {
   const kids = (page, name) => page.locator(`#m-docs .doc-node[data-key${name ? `$="${name}.md"` : '=""'}] + .doc-children .doc-child`);
 
   test('nodes with two or more sections show + or −, the others an equal spacer, all in one column', async ({ page }) => {
-    const id = `t-pol-exp-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'pol-exp');
     writeTicket(id);
     await openModalFor(page, id);
     await expect(node(page, '').locator('.doc-expander')).toHaveText('−');                 // the open doc starts expanded
@@ -14232,7 +14224,7 @@ test.describe('ticket modal polish (t-612f)', () => {
   });
 
   test('a + expands another doc without opening it, − collapses, and the choice holds across switching', async ({ page }) => {
-    const id = `t-pol-tog-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'pol-tog');
     writeTicket(id);
     await openModalFor(page, id);
     await node(page, 'acceptance').locator('.doc-expander').click();
@@ -14253,7 +14245,7 @@ test.describe('ticket modal polish (t-612f)', () => {
   });
 
   test('a section row of a doc that is not open opens that doc and scrolls to the section', async ({ page }) => {
-    const id = `t-pol-jump-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'pol-jump');
     writeTicket(id);
     await openModalFor(page, id);
     await node(page, 'acceptance').locator('.doc-expander').click();
@@ -14268,7 +14260,7 @@ test.describe('ticket modal polish (t-612f)', () => {
   });
 
   test('a section row clicked while its doc is still loading scrolls once the doc has rendered', async ({ page }) => {
-    const id = `t-pol-gap-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'pol-gap');
     writeTicket(id);
     await openModalFor(page, id);
     await node(page, 'acceptance').locator('.doc-expander').click();
@@ -14283,7 +14275,7 @@ test.describe('ticket modal polish (t-612f)', () => {
   });
 
   test('a section whose heading carries markup still scrolls: the row and the rendered heading agree on the id', async ({ page }) => {
-    const id = `t-pol-slug-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'pol-slug');
     writeTicket(id, { withDesign: true });
     await openModalFor(page, id);
     await page.locator('#m-docs .doc-tab', { hasText: 'Design' }).click();
@@ -14298,7 +14290,7 @@ test.describe('ticket modal polish (t-612f)', () => {
   });
 
   test('sections come from a background read of every doc; an unreadable doc shows no +; a Save refreshes them', async ({ page }) => {
-    const id = `t-pol-bg-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'pol-bg');
     writeTicket(id);
     await page.route('**/api/doc/**plan.md', route => route.fulfill({ status: 500, contentType: 'application/json', body: '{}' }));
     await openModalFor(page, id);
@@ -14313,7 +14305,7 @@ test.describe('ticket modal polish (t-612f)', () => {
   });
 
   test('Demo/UX is a green switch and the Codex note is gone', async ({ page }) => {
-    const sfx = Date.now().toString(36).slice(-3), id = `t-d${sfx}`, cid = `t-c${sfx}`;   // the demo endpoint wants exactly t- plus four characters
+    const id = newTicketId(PROJECT_ROOT), cid = newTicketId(PROJECT_ROOT);   // the demo endpoint wants exactly t- plus four characters
     writeTicket(id); writeTicket(cid, { status: 'closed' });
     await openModalFor(page, id);
     await page.locator('#m-docs .doc-tab', { hasText: 'Plan' }).click();
@@ -14339,7 +14331,7 @@ test.describe('ticket modal polish (t-612f)', () => {
   });
 
   test('the top-left grip resizes with the bottom-right corner fixed; the bottom-right grip still resizes', async ({ page }) => {
-    const id = `t-pol-grip-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'pol-grip');
     writeTicket(id);
     await page.setViewportSize({ width: 1280, height: 900 });
     await openModalFor(page, id);
@@ -14371,7 +14363,7 @@ test.describe('ticket modal polish (t-612f)', () => {
   });
 
   test('a selected card has no outline of its own; a card with keyboard focus does', async ({ page }) => {
-    const ts = Date.now(), a = `t-pol-card-a-${ts}`, b = `t-pol-card-b-${ts}`;
+    const a = newTicketId(PROJECT_ROOT, 'pol-card-a'), b = newTicketId(PROJECT_ROOT, 'pol-card-b');
     writeTicket(a); writeTicket(b);
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
@@ -14391,7 +14383,7 @@ test.describe('ticket modal polish (t-612f)', () => {
   });
 
   test('a section click scrolls the text inside the rounded card; the card keeps its edges under the pane bar (t-5648)', async ({ page }) => {
-    const sfx = Date.now().toString(36).slice(-3), id = `t-s${sfx}`;
+    const id = newTicketId(PROJECT_ROOT);
     writeTicket(id);
     await page.setViewportSize({ width: 1300, height: 800 });
     await openModalFor(page, id);
@@ -14419,7 +14411,7 @@ test.describe('ticket modal polish (t-612f)', () => {
   });
 
   test('on the Plan tab the sign-off bar stays above the card and the card, not the body, scrolls (t-5648)', async ({ page }) => {
-    const sfx = Date.now().toString(36).slice(-3), id = `t-q${sfx}`;
+    const id = newTicketId(PROJECT_ROOT);
     writeTicket(id);
     await page.setViewportSize({ width: 1300, height: 800 });
     await openModalFor(page, id);
@@ -14435,7 +14427,7 @@ test.describe('ticket modal polish (t-612f)', () => {
   });
 
   test('a short doc keeps a card as tall as its text: no stretch to the pane bottom, no scrollbar (t-5648)', async ({ page }) => {
-    const sfx = Date.now().toString(36).slice(-3), id = `t-h${sfx}`;
+    const id = newTicketId(PROJECT_ROOT);
     writeTicket(id);
     await page.setViewportSize({ width: 1300, height: 950 });
     await openModalFor(page, id);
@@ -14454,7 +14446,7 @@ test.describe('ticket modal polish (t-612f)', () => {
   });
 
   test('a Feature card with the Demo/UX badge fits its header in a narrow column: id on one line, no badge clipped (t-d0c4)', async ({ page }) => {
-    const sfx = Date.now().toString(36).slice(-3), id = `t-m${sfx}`;
+    const id = newTicketId(PROJECT_ROOT);
     writeTicket(id, { type: 'feature', demo: true, status: 'in_progress' });
     await page.setViewportSize({ width: 760, height: 900 });
     await page.goto(BASE);
@@ -14472,7 +14464,7 @@ test.describe('ticket modal polish (t-612f)', () => {
   });
 
   test('the sign-off bar is one full-width row: tier, a wide Risk field, model; the controls share a height (t-d0c4, t-bb97)', async ({ page }) => {
-    const sfx = Date.now().toString(36).slice(-3), id = `t-b${sfx}`;
+    const id = newTicketId(PROJECT_ROOT);
     writeTicket(id);
     await page.setViewportSize({ width: 1400, height: 900 });
     await openModalFor(page, id);
@@ -14497,10 +14489,10 @@ test.describe('ticket modal polish (t-612f)', () => {
   });
 
   test('a new ticket shows Acceptance, Plan and Research as ghost nodes; the pane explains and offers + Acceptance; Cancel writes nothing, Save creates the file (t-bb97)', async ({ page }) => {
-    const sfx = Date.now().toString(36).slice(-3), id = `t-g${sfx}`;
+    const id = newTicketId(PROJECT_ROOT);
     writeTicket(id);
     const dir = path.join(PROJECT_ROOT, '.tickets', id);
-    for (const f of ['acceptance.md', 'plan.md', 'research.md']) fs.rmSync(path.join(dir, f), { force: true });   // a description-only ticket
+    for (const f of ['acceptance.md', 'plan.md', 'research.md']) fs.rmSync(/* non-ticket */ path.join(dir, f), { force: true });   // a description-only ticket
     await openModalFor(page, id);
     await expect(page.locator('#m-docs .doc-ghost')).toHaveText(['Acceptance+', 'Plan+', 'Research+']);
     await expect(page.locator('#m-docs .doc-tab:not(.doc-ghost)')).toHaveText(['Description']);
@@ -14528,10 +14520,10 @@ test.describe('ticket modal polish (t-612f)', () => {
   });
 
   test('a closed ticket shows no ghost nodes (t-bb97)', async ({ page }) => {
-    const sfx = Date.now().toString(36).slice(-3), id = `t-k${sfx}`;
+    const id = newTicketId(PROJECT_ROOT);
     writeTicket(id, { status: 'closed' });
     const dir = path.join(PROJECT_ROOT, '.tickets', id);
-    for (const f of ['acceptance.md', 'plan.md', 'research.md']) fs.rmSync(path.join(dir, f), { force: true });
+    for (const f of ['acceptance.md', 'plan.md', 'research.md']) fs.rmSync(/* non-ticket */ path.join(dir, f), { force: true });
     await page.goto(BASE);
     await page.locator('#board-search').fill(id);
     await page.locator(`.card[data-id="${id}"]`).click();
@@ -14540,7 +14532,7 @@ test.describe('ticket modal polish (t-612f)', () => {
   });
 
   test('the gate reports list as Eval Agent and Review Agent and still open their own files (t-1f22)', async ({ page }) => {
-    const sfx = Date.now().toString(36).slice(-3), id = `t-y${sfx}`;
+    const id = newTicketId(PROJECT_ROOT);
     writeTicket(id);
     const dir = path.join(PROJECT_ROOT, '.tickets', id);
     fs.writeFileSync(path.join(dir, 'eval-report.md'), '# Eval Report\n\nEVAL-BODY-MARK\n');
@@ -14561,7 +14553,7 @@ test.describe('ticket modal polish (t-612f)', () => {
   });
 
   test('the Demo/UX switch lives in the header chips row, not the Plan sign-off bar, and still toggles the ticket (t-bb97)', async ({ page }) => {
-    const sfx = Date.now().toString(36).slice(-3), id = `t-w${sfx}`;
+    const id = newTicketId(PROJECT_ROOT);
     writeTicket(id);
     await openModalFor(page, id);
     const sw = page.locator('#m-meta .signoff-demo-toggle');
@@ -14578,7 +14570,7 @@ test.describe('ticket modal polish (t-612f)', () => {
   });
 
   test('with Demo/UX on and a model picked, tier, Risk, model and the hint stay on one row in the default dialog (t-887e, t-bb97)', async ({ page }) => {
-    const sfx = Date.now().toString(36).slice(-3), id = `t-m${sfx}`;
+    const id = newTicketId(PROJECT_ROOT);
     writeTicket(id, { demo: true });
     await page.setViewportSize({ width: 1400, height: 900 });
     await openModalFor(page, id);
@@ -14597,7 +14589,7 @@ test.describe('ticket modal polish (t-612f)', () => {
   });
 
   test('a narrow dialog puts the Risk field alone on a full-width line; the Risk tooltip carries its text (t-d0c4)', async ({ page }) => {
-    const sfx = Date.now().toString(36).slice(-3), id = `t-n${sfx}`;
+    const id = newTicketId(PROJECT_ROOT);
     writeTicket(id);
     await page.setViewportSize({ width: 1400, height: 900 });
     await openModalFor(page, id);
@@ -14679,7 +14671,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   const made = [];
-  test.afterEach(() => { while (made.length) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', made.pop()), { recursive: true, force: true }); });
+  test.afterEach(() => { while (made.length) removeTestTicket(PROJECT_ROOT, made.pop()); });
   // runs: github marks a ticket out on GitHub; github: alone is only the issue link (sync-issues, import-issue).
   function ghTicket(id, { status = 'open', github = '', merged = '', runs = github ? 'github' : '', worktreePreference = '' } = {}) {
     const dir = path.join(PROJECT_ROOT, '.tickets', id);
@@ -14704,7 +14696,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   }
 
   test('a ticket out on GitHub shows in In progress with its stage chip and one stage button, not Start (t-718b)', async ({ page }) => {
-    const id = `t-gh1-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gh1');
     ghTicket(id, { github: 'acme/app#57' });
     const st = await routeStatus(page, id, { stage: 'sent', pr: null });
     await openBoard(page, id);
@@ -14726,7 +14718,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('a ticket only linked to an issue (synced or imported) stays a local Open ticket with Start (t-718b)', async ({ page }) => {
-    const id = `t-gh0-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gh0');
     ghTicket(id, { github: 'acme/app#57', runs: '' });
     const calls = [];
     await page.route(`**/api/ticket/${id}/github/**`, r => { calls.push(r.request().url()); return json(r, { ok: false, output: '' }); });
@@ -14741,7 +14733,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('polling asks only about cards out on GitHub, and not while the page is hidden (t-718b)', async ({ page }) => {
-    const id = `t-gh2-${Date.now()}`, local = `t-gh2l-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gh2'), local = newTicketId(PROJECT_ROOT, 'gh2l');
     ghTicket(id, { github: 'acme/app#57' }); ghTicket(local);
     const st = await routeStatus(page, id, { stage: 'sent' });
     const others = [];
@@ -14763,7 +14755,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('Start offers GitHub places; picking GitHub mounts no terminal, previews, sends and hands back a message (t-718b)', async ({ page }) => {
-    const id = `t-gh3-${Date.now()}`, busy = `t-gh3b-${Date.now()}`, done = `t-gh3c-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gh3'), busy = newTicketId(PROJECT_ROOT, 'gh3b'), done = newTicketId(PROJECT_ROOT, 'gh3c');
     ghTicket(id); ghTicket(busy, { github: 'acme/app#61' });
     ghTicket(done, { github: 'acme/app#41', status: 'closed' });   // t-093a: closed by hand, never merged: not busy
     await routeStatus(page, done, { stage: 'sent' });
@@ -14809,7 +14801,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('a failed send shows the reason and changes nothing (t-718b)', async ({ page }) => {
-    const id = `t-gh4-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gh4');
     ghTicket(id);
     await page.route('**/api/worktrees**', r => json(r, [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true }]));
     await page.route(`**/api/ticket/${id}/github/send-preview`, r => json(r, { ok: true, exit_code: 0, output: 'repo: acme/app (PRIVATE)' }));
@@ -14824,7 +14816,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('a send that fails after the panel was replaced writes nowhere and throws nothing (t-718b)', async ({ page }) => {
-    const id = `t-gh4b-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gh4b');
     ghTicket(id);
     const errors = []; page.on('pageerror', e => errors.push(String(e)));
     let release; const held = new Promise(r => { release = r; });
@@ -14844,7 +14836,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('the chip never says "can\'t check" while the first status is loading, and shows only a numeric PR (t-718b)', async ({ page }) => {
-    const id = `t-gh8-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gh8');
     ghTicket(id, { github: 'acme/app#57' });
     let release; const held = new Promise(r => { release = r; });
     let status = { stage: 'sent' };
@@ -14867,7 +14859,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('a failed merge says Not merged and Take back is hidden only while it runs (t-718b)', async ({ page }) => {
-    const id = `t-gh9-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gh9');
     ghTicket(id, { github: 'acme/app#57' });
     const stat = await routeStatus(page, id, { stage: 'results-in', pr: 58 });
     const job = { status: 'idle', output: '', exit_code: null, elapsed: 0 };
@@ -14897,7 +14889,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
 
   test('Stop works before the first merge poll answers; the dialog gives up after five lost polls (t-718b)', async ({ page }) => {
     test.setTimeout(60000);
-    const id = `t-gh10-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gh10');
     ghTicket(id, { github: 'acme/app#57' });
     await routeStatus(page, id, { stage: 'results-in', pr: 58 });
     let release; const held = new Promise(r => { release = r; });
@@ -14925,7 +14917,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('a ticket out on GitHub with a live local session keeps Answer (t-718b)', async ({ page }) => {
-    const id = 't-b711';   // the board only marks cards of ids shaped t-xxxx
+    const id = newTicketId(PROJECT_ROOT);   // the board only marks cards of ids shaped t-xxxx
     ghTicket(id, { github: 'acme/app#57' });
     await routeStatus(page, id, { stage: 'sent' });
     await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
@@ -14937,7 +14929,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('a GitHub pick selects no worktree row, even for a ticket with a worktree preference; a stale preview is dropped (t-718b)', async ({ page }) => {
-    const id = `t-gh12-${Date.now()}`, wtPath = '/tmp/wt-gh12/feat-x';
+    const id = newTicketId(PROJECT_ROOT, 'gh12'), wtPath = '/tmp/wt-gh12/feat-x';
     ghTicket(id, { worktreePreference: 'feat-x' });
     fs.writeFileSync(path.join(PROJECT_ROOT, '.tickets', id, 'plan.md'), ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: low', '', '- [x] Plan approved', '', '## Approach', 'x', ''].join('\n'));
     let release; const held = new Promise(r => { release = r; });
@@ -14970,7 +14962,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('only a ticket with runs: github, a github link and no merged: is out on GitHub (t-718b)', async ({ page }) => {
-    const noLink = `t-gh13-${Date.now()}`, merged = `t-gh14-${Date.now()}`;
+    const noLink = newTicketId(PROJECT_ROOT, 'gh13'), merged = newTicketId(PROJECT_ROOT, 'gh14');
     ghTicket(noLink, { runs: 'github' });
     ghTicket(merged, { github: 'acme/app#9', merged: 'PR #9' });
     for (const id of [noLink, merged]) {
@@ -14984,7 +14976,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test("a status that cannot be read says can't check and keeps gh's reason in the tooltip (t-718b)", async ({ page }) => {
-    const id = `t-gh15-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gh15');
     ghTicket(id, { github: 'acme/app#57' });
     await page.route(`**/api/ticket/${id}/github/status`, r => json(r, { ok: false, exit_code: 1, output: 'gh: HTTP 401' }));
     await openBoard(page, id);
@@ -15014,7 +15006,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   }
 
   test('Check & merge: Cancel at the confirm runs nothing; a merge that cannot start says so (t-718b)', async ({ page }) => {
-    const id = `t-gh16-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gh16');
     const { seen, button } = await mergeFlow(page, id, { startStatus: 500 });
     await button.click();
     await expect(page.locator('#gh-dialog-ok')).toHaveText('Run tests & merge');
@@ -15029,7 +15021,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('Check & merge: only a real merge shows Merged; the card button reopens a merge still running (t-718b)', async ({ page }) => {
-    const id = `t-gh17-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gh17');
     const { job, seen, button } = await mergeFlow(page, id);
     await button.click();
     await page.locator('#gh-dialog-ok').click();
@@ -15051,7 +15043,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('Check & merge: a failing Stop request throws nothing (t-718b)', async ({ page }) => {
-    const id = `t-gh18-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gh18');
     const errors = []; page.on('pageerror', e => errors.push(String(e)));
     const { button } = await mergeFlow(page, id);
     await page.route(`**/api/ticket/${id}/github/merge-stop`, r => r.fulfill({ status: 500, body: 'down' }));
@@ -15064,7 +15056,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
 
   test('Check & merge: a few lost polls in a row are survived; only a run of them gives up (t-718b)', async ({ page }) => {
     test.setTimeout(90000);
-    const id = `t-gh19-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gh19');
     ghTicket(id, { github: 'acme/app#57' });
     await routeStatus(page, id, { stage: 'results-in', pr: 58 });
     let polls = 0;
@@ -15083,7 +15075,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('Import results drops the cached status: the card shows the next stage at once (t-718b)', async ({ page }) => {
-    const id = `t-gh20-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gh20');
     ghTicket(id, { github: 'acme/app#57' });
     const st = await routeStatus(page, id, { stage: 'results-ready', pr: 58 });
     await page.route(`**/api/ticket/${id}/github/import`, r => { st.status = { stage: 'results-in', pr: 58 }; return json(r, { ok: true, exit_code: 0, output: 'import-results: 10 files' }); });
@@ -15095,7 +15087,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('an import whose PR head does not match still points to the close here (t-718b)', async ({ page }) => {
-    const id = `t-gh21-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gh21');
     ghTicket(id, { github: 'acme/app#57' });
     await routeStatus(page, id, { stage: 'results-ready', pr: 58 });
     await page.route(`**/api/ticket/${id}/github/import`, r => json(r, { ok: false, exit_code: 1, output: '  graded-head: none' }));
@@ -15105,7 +15097,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('Take back that fails says so; Tab and Shift+Tab wrap inside the dialog (t-718b)', async ({ page }) => {
-    const id = `t-gh22-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gh22');
     ghTicket(id, { github: 'acme/app#57' });
     await routeStatus(page, id, { stage: 'sent' });
     await page.route(`**/api/ticket/${id}/github/take-back`, r => json(r, { ok: false, exit_code: 1, output: 'take-back: gh failed' }));
@@ -15125,7 +15117,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('polling resumes when the page becomes visible again and on its 2-minute timer (t-718b)', async ({ page }) => {
-    const id = `t-gh23-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gh23');
     ghTicket(id, { github: 'acme/app#57' });
     await page.clock.install();
     const st = await routeStatus(page, id, { stage: 'sent' });
@@ -15142,7 +15134,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
 
   // Prod path: the worktree picker's GitHub row, gated by GET /api/github/doctor (t-90a3's checks).
   test('the GitHub row reads the doctor: checking, then set up first (n of m ready), never a place to pick (t-24b1)', async ({ page }) => {
-    const id = `t-gh24r-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gh24r');
     ghTicket(id);
     let release; const answered = new Promise(r => { release = r; });
     await page.route('**/api/github/doctor**', async r => { await answered; return json(r, { ok: true, exit_code: 0, output: '', doctor: { checks: [
@@ -15175,7 +15167,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
 
   // Prod path: the same row when the doctor cannot answer (server error): never counted as ready.
   test('the GitHub row says the checks could not run when the doctor read fails (t-24b1)', async ({ page }) => {
-    const id = `t-gh24f-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gh24f');
     ghTicket(id);
     await page.route('**/api/github/doctor**', r => r.fulfill({ status: 500, body: 'down' }));
     await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
@@ -15213,7 +15205,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
 
   // Prod path: a card whose session pushed a branch with no PR (github-status stage "branch"), and its Create PR button (t-9955).
   test('a session branch with no PR shows Create PR; it asks, names the branch, and opens once (t-24b1)', async ({ page }) => {
-    const id = `t-gh24b-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gh24b');
     ghTicket(id, { github: 'acme/app#57' });
     const stat = await routeStatus(page, id, { stage: 'branch', branch: 'claude/brave-x1' });
     const posts = [];
@@ -15238,7 +15230,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
 
   // Prod path: the merged dialog's push to the canon.mirror remotes (tkt push-main), offered only when some are named.
   test('Check & merge offers Push main only with canon.mirror remotes, naming them, and pushes once on the click (t-24b1)', async ({ page }) => {
-    const id = `t-gh24m-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gh24m');
     const pushes = [];
     let release; const held = new Promise(r => { release = r; });   // t-e523: the push answers only when the test says
     await page.route('**/api/github/push-main**', async r => { pushes.push(r.request().method()); await held; return json(r, { ok: true, exit_code: 0, output: 'public: main 1111aaaa -> 2222bbbb\n  to undo: git push public 1111aaaa:refs/heads/main\n' }); });
@@ -15520,7 +15512,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('no GitHub place for a ticket already in progress or already out; the panel says so (t-718b)', async ({ page }) => {
-    const live = `t-gh24-${Date.now()}`, out = `t-gh25-${Date.now()}`;
+    const live = newTicketId(PROJECT_ROOT, 'gh24'), out = newTicketId(PROJECT_ROOT, 'gh25');
     ghTicket(live, { status: 'in_progress' }); ghTicket(out, { github: 'acme/app#57' });
     await routeStatus(page, out, { stage: 'sent' });
     await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
@@ -15546,7 +15538,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test("a send that fails to preview cannot be created; a send finishing in another ticket's cockpit fills nothing there (t-718b)", async ({ page }) => {
-    const a = `t-gh26-${Date.now()}`, b = `t-gh27-${Date.now()}`;
+    const a = newTicketId(PROJECT_ROOT, 'gh26'), b = newTicketId(PROJECT_ROOT, 'gh27');
     ghTicket(a); ghTicket(b);
     let release; const held = new Promise(r => { release = r; });
     await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
@@ -15567,7 +15559,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('a local place replaces a GitHub pick, and a GitHub pick stays unselected on re-render (t-718b)', async ({ page }) => {
-    const plain = `t-gh28-${Date.now()}`, main = `t-gh29-${Date.now()}`;
+    const plain = newTicketId(PROJECT_ROOT, 'gh28'), main = newTicketId(PROJECT_ROOT, 'gh29');
     ghTicket(plain); ghTicket(main, { worktreePreference: 'main-checkout' });
     for (const id of [plain, main]) fs.writeFileSync(path.join(PROJECT_ROOT, '.tickets', id, 'plan.md'), ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: low', '', '- [x] Plan approved', '', '## Approach', 'x', ''].join('\n'));
     await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
@@ -15598,7 +15590,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('Import results posts the PR; without a verdict it points to the close on this machine (t-718b)', async ({ page }) => {
-    const id = `t-gh5-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gh5');
     ghTicket(id, { github: 'acme/app#57' });
     await routeStatus(page, id, { stage: 'results-ready', pr: 58 });
     const bodies = [];
@@ -15618,7 +15610,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('Close here: shown for an imported, unclosed ticket; confirming posts the PR to land (t-c259)', async ({ page }) => {
-    const id = `t-gh30-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gh30');
     ghTicket(id, { github: 'acme/app#57' });
     await routeStatus(page, id, { stage: 'results-ready', pr: 58, land: true });
     const bodies = [];
@@ -15636,7 +15628,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('Close here is absent without land: Import results and Check & merge stay as they were (t-c259)', async ({ page }) => {
-    const id = `t-gh31-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gh31');
     ghTicket(id, { github: 'acme/app#57' });
     await routeStatus(page, id, { stage: 'results-ready', pr: 58 });
     await openBoard(page, id);
@@ -15644,7 +15636,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('Check & merge: the checks first, one confirm, progress while running, then merged (t-718b)', async ({ page }) => {
-    const id = `t-gh6-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gh6');
     ghTicket(id, { github: 'acme/app#57' });
     await routeStatus(page, id, { stage: 'results-in', pr: 58 });
     const job = { status: 'idle', output: '', exit_code: null, elapsed: 0 };
@@ -15669,7 +15661,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('Check & merge: a refused check runs nothing; Stop ends a running job (t-718b)', async ({ page }) => {
-    const id = `t-gh7-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gh7');
     ghTicket(id, { github: 'acme/app#57' });
     await routeStatus(page, id, { stage: 'results-in', pr: 58 });
     let check = { ok: false, exit_code: 1, output: 'merge-pr: PR #58 is blocked by a branch rule (a required review or check)' };
@@ -15696,7 +15688,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('a public repo: the preview asks for a tick before Create issue sends with public (t-718b)', async ({ page }) => {
-    const id = `t-gh9-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gh9');
     ghTicket(id);
     const sends = [];
     await page.route('**/api/worktrees**', r => json(r, [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true }]));
@@ -15716,7 +15708,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('the dialog takes focus, keeps Tab inside, closes on Escape from anywhere and gives focus back (t-718b)', async ({ page }) => {
-    const id = `t-gh10-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gh10');
     ghTicket(id, { github: 'acme/app#57' });
     await routeStatus(page, id, { stage: 'sent' });
     await openBoard(page, id);
@@ -15736,7 +15728,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('a late merge check never fills a dialog opened after it was cancelled (t-718b)', async ({ page }) => {
-    const id = `t-gh11-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gh11');
     ghTicket(id, { github: 'acme/app#57' });
     await routeStatus(page, id, { stage: 'results-in', pr: 58 });
     let release; const held = new Promise(r => { release = r; });
@@ -15753,7 +15745,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('Take back asks, can close the issue, and posts once (t-718b)', async ({ page }) => {
-    const id = `t-gh8-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gh8');
     ghTicket(id, { github: 'acme/app#57' });
     await routeStatus(page, id, { stage: 'sent' });
     const bodies = [];
@@ -15783,7 +15775,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   // Prod path: every Close/Cancel/Stop on the board and the Cockpit shell, and the board's GitHub dialog.
   const ROLES = ['b-neutral', 'b-close', 'b-danger', 'b-danger-main', 'b-accent', 'b-primary'];
   test('Close and Cancel show a red outline on hover, Stop fills red, in Canon Dark and Light (t-e523)', async ({ page }) => {
-    const id = `t-gh-e523a-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gh-e523a');
     const { job, button } = await mergeFlow(page, id);
     for (const theme of ['dark', 'light']) {
       await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
@@ -15847,7 +15839,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('the merge log shows 16 lines, follows new output unless scrolled up, and keeps one live progress line (t-e523)', async ({ page }) => {
-    const id = `t-gh-e523b-${Date.now()}`;
+    const id = newTicketId(PROJECT_ROOT, 'gh-e523b');
     const { job, button } = await mergeFlow(page, id);
     const pre = page.locator('#gh-dialog-pre');
     const lines = n => Array.from({ length: n }, (_, i) => `line ${i + 1}`).join('\n');
@@ -15957,7 +15949,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
       ['branch', { branch: 'claude/x-1' }, 'open-pr', 'POST', 'Create PR'],   // its question first, then the run
       ['results-in', { pr: 58 }, 'merge-check', 'GET', null],
     ]) {
-      const id = `t-gh-e523esc-${route}-${Date.now()}`;
+      const id = newTicketId(PROJECT_ROOT, `gh-e523esc-${route}`);
       ghTicket(id, { github: 'acme/app#57' });
       await routeStatus(page, id, { stage, ...extra });
       let release; const held = new Promise(r => { release = r; });
