@@ -117,6 +117,8 @@ assert_eq 0 "$rc"
 assert_count 1 'no --tokens: in Claude Code the totals come in the background task'\''s <usage> notice; wait for it' "$warn_err"
 assert_eq 1 "$(wc -l < "$warn_err" | tr -d ' ')"
 assert_count 1 '"agent_id":"warn1"' "$log"
+(cd "$project" && CLAUDECODE=1 "$SUBAGENT_LOG" --agent-id warn6 --agent-type evaluator 2>"$warn_err")
+assert_count 1 'no --tokens: ' "$warn_err"
 (cd "$project" && CLAUDECODE=1 "$SUBAGENT_LOG" --agent-id warn2 --agent-type evaluator --tokens 5 2>"$warn_err")
 assert_eq 0 "$(wc -c < "$warn_err" | tr -d ' ')"
 for tk in "" "--tokens 5"; do
