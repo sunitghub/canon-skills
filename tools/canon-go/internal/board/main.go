@@ -5392,8 +5392,11 @@ func modelTiersValid(data map[string]any) bool {
 			if !ok || !modelIDRe.MatchString(fmt.Sprint(m["id"])) {
 				return false
 			}
-			if alias, hasAlias := m["alias"]; hasAlias && fmt.Sprint(alias) != "" && !modelIDRe.MatchString(fmt.Sprint(alias)) {
-				return false
+			if alias, hasAlias := m["alias"]; hasAlias && alias != nil { // t-d40b: a null alias means none; any other non-text value is refused
+				text, isText := alias.(string)
+				if !isText || (text != "" && !modelIDRe.MatchString(text)) {
+					return false
+				}
 			}
 		}
 	}

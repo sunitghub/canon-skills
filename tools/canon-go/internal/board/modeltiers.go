@@ -14,6 +14,9 @@ import (
 // MT_ALIASES). Removing the entry that holds one is refused until another model takes it over; a custom alias is not one of these.
 var knownAliases = map[string]bool{"fable": true, "opus": true, "sonnet": true, "haiku": true}
 
+// aliasOf is an entry's alias, trimmed; a missing or null alias is "".
+func aliasOf(m map[string]any) string { a, _ := m["alias"].(string); return strings.TrimSpace(a) }
+
 // registryModel finds an entry by id across providers.
 func registryModel(doc map[string]any, id string) (prov string, entry map[string]any) {
 	models, _ := doc["models"].(map[string]any)
@@ -30,9 +33,7 @@ func registryModel(doc map[string]any, id string) (prov string, entry map[string
 
 // heldBy lists what the entry holds: its alias and the tiers whose default for the provider names it.
 func heldBy(doc map[string]any, prov string, m map[string]any) (alias string, tiers []string) {
-	if a, ok := m["alias"]; ok {
-		alias = strings.TrimSpace(fmt.Sprint(a))
-	}
+	alias = aliasOf(m)
 	defaults, _ := doc["defaults"].(map[string]any)
 	for _, tier := range []string{"eval", "light"} {
 		per, _ := defaults[tier].(map[string]any)
@@ -50,7 +51,7 @@ func isLegacy(m map[string]any) bool { b, _ := m["legacy"].(bool); return b }
 func transfer(doc map[string]any, prov string, from, to map[string]any) error {
 	alias, tiers := heldBy(doc, prov, from)
 	if alias != "" {
-		if cur := strings.TrimSpace(fmt.Sprint(to["alias"])); to["alias"] != nil && cur != "" && cur != "<nil>" && cur != alias {
+		if cur := aliasOf(to); cur != "" && cur != alias {
 			return fmt.Errorf("%s already has the alias %s, so it cannot also take %s", to["id"], cur, alias)
 		}
 		to["alias"] = alias
@@ -176,7 +177,7 @@ func modelTiersConsistent(data map[string]any) bool {
 				legacyIDs[fmt.Sprint(m["id"])] = true
 				continue
 			}
-			if a := strings.ToLower(strings.TrimSpace(fmt.Sprint(m["alias"]))); m["alias"] != nil && a != "" && a != "<nil>" {
+			if a := strings.ToLower(aliasOf(m)); a != "" {
 				if seen[a] {
 					return false
 				}

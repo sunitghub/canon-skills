@@ -47,16 +47,12 @@ func parseDocsPage(provider, page string) []found {
 	var out []found
 	for _, loc := range re.FindAllStringIndex(text, -1) {
 		id := text[loc[0]:loc[1]]
-		if seen[id] || strings.HasSuffix(id, "-latest") {
+		if seen[id] {
 			continue
 		}
 		seen[id] = true
 		f := found{Provider: provider, ID: id, Name: displayName(id)}
-		end := loc[1] + 300
-		if end > len(text) {
-			end = len(text)
-		}
-		ms := priceRe.FindAllStringSubmatch(text[loc[1]:end], 2)
+		ms := priceRe.FindAllStringSubmatch(text[loc[1]:min(loc[1]+300, len(text))], 2)
 		if len(ms) == 2 {
 			f.In, _ = strconv.ParseFloat(ms[0][2], 64)
 			f.Out, _ = strconv.ParseFloat(ms[1][2], 64)
@@ -236,9 +232,10 @@ func buildProposal(doc map[string]any, finds []found) proposal {
 		if r.legacy || r.line == "" {
 			continue
 		}
-		if newer := best(r.prov, r.line, nil); newer != nil && newer.id != r.id && versionLess(r.ver, newer.ver) {
-			p.Retire = append(p.Retire, retireEntry{r.id, r.name, newer.id, newer.name, evalDefault(r.prov, r.id)})
-		} else if newer != nil && newer.id == r.id {
+		newest := best(r.prov, r.line, nil) // never nil: r itself is an active entry of this line
+		if versionLess(r.ver, newest.ver) {
+			p.Retire = append(p.Retire, retireEntry{r.id, r.name, newest.id, newest.name, evalDefault(r.prov, r.id)})
+		} else {
 			p.Current = append(p.Current, r.name)
 		}
 	}

@@ -21,9 +21,10 @@ import (
 
 const (
 	fetchMaxBody      = 2 << 20
-	fetchTimeout      = 10 * time.Second
 	fetchMaxRedirects = 3
 )
+
+var fetchTimeout = 10 * time.Second // a var so a test can shorten the default
 
 var fetchOKTypes = []string{"text/html", "application/json", "text/plain", "application/xhtml+xml"}
 
@@ -54,11 +55,8 @@ var blockedNets = func() []*net.IPNet {
 }()
 
 // blockedIP: loopback, private, link-local (the cloud metadata address included), shared (100.64/10, Tailscale), multicast and
-// unspecified addresses, and the IPv6 transition forms that embed an IPv4 address (NAT64, 6to4, Teredo, IPv4-compatible). An IPv4-mapped IPv6 address is judged by its IPv4 form.
+// unspecified addresses, and the IPv6 transition forms that embed an IPv4 address (NAT64, 6to4, Teredo, IPv4-compatible).
 func blockedIP(ip net.IP) bool {
-	if v4 := ip.To4(); v4 != nil {
-		ip = v4
-	}
 	for _, n := range blockedNets {
 		if n.Contains(ip) {
 			return true
@@ -111,8 +109,9 @@ func guardedGet(ctx context.Context, raw string, o fetchOpts) ([]byte, error) {
 		timeout = fetchTimeout
 	}
 	dialer := &net.Dialer{Timeout: timeout}
+	// No Proxy field: a proxy would dial for us and skip the address check. No cookie jar: nothing is kept between requests. The one context
+	// deadline below bounds dialing, the handshake, the headers and the body together.
 	transport := &http.Transport{
-		Proxy:           nil, // a proxy would dial for us and skip the address check
 		TLSClientConfig: o.tlsConfig,
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			host, port, err := net.SplitHostPort(addr)
@@ -139,15 +138,9 @@ func guardedGet(ctx context.Context, raw string, o fetchOpts) ([]byte, error) {
 			}
 			return dialer.DialContext(ctx, network, target)
 		},
-		ForceAttemptHTTP2:     false,
-		DisableKeepAlives:     true,
-		TLSHandshakeTimeout:   timeout,
-		ResponseHeaderTimeout: timeout,
 	}
 	client := &http.Client{
-		Timeout:   timeout,
 		Transport: transport,
-		Jar:       nil,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if o.noRedirect {
 				return fmt.Errorf("a redirect on a request that carries a key is refused")
