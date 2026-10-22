@@ -392,8 +392,8 @@ function ensureDoctor() {
   paintSyncButton();
 }
 // t-9641: Sync from GitHub is greyed out until the checks pass (no GitHub origin included); the tooltip says where to fix
-// it. The doctor runs once per board load (ensureDoctor at init), and again only when the picker asks after the retry
-// window: never on a timer.
+// it. The doctor runs once per board load (ensureDoctor at init), and again when the picker asks or the board gets focus
+// or becomes visible again (t-f053), each only after the retry window: never on a timer.
 let syncTitle = '';
 function paintSyncButton() {
   const b = document.getElementById('btn-gh-sync');
