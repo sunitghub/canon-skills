@@ -31,7 +31,7 @@ sha256() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi
 }
 
-usage() { sed -n 's/^# Usage: //p; s/^#        scripts/scripts/p' "$0" >&2; exit 64; }
+usage() { sed -n 's/^# Usage: /Usage: /p; s/^#        scripts/       scripts/p' "$0" >&2; exit 64; }
 
 SUMMARY=0
 case "${1:-}" in
@@ -113,9 +113,9 @@ NOTES=(); FAILED=0; AFFECTED=0; NEWER=0
 seen=" "
 while IFS=$'\t' read -r file pkg track ver up lic sum why; do
   [[ -z "$file" || "$file" == \#* ]] && continue
-  [[ "$seen" == *" $pkg@$ver "* ]] && continue
-  seen="$seen$pkg@$ver "
   if [[ -z "$why" ]]; then NOTES+=("manifest row $file has fewer than 8 columns"); FAILED=1; continue; fi
+  [[ "$seen" == *" $pkg@$ver "* ]] && continue   # xterm.js and xterm.css are one release: look it up once
+  seen="$seen$pkg@$ver "
   name="$pkg"; [[ "$track" == "$pkg" ]] || name="$pkg (now $track)"
   if latest="$(latest_of "$track" 2>"$ERR")"; then
     gap="$(behind "$ver" "$latest")"

@@ -100,7 +100,57 @@ for f in xterm.js xterm.css xterm-addon-fit.js; do
   assert_eq "$row" "$(bash "$SCRIPT" --sha "$f")"
   assert_eq "$row" "$(bash "$SCRIPT" --sha "$ROOT/tools/canon-go/internal/daemon/web/vendor/$f")"
 done
-NOJQ=1; run "$SCRIPT" --sha no-such-file; [[ "$RC" == 64 ]] || fail "check-vendored: --sha on a missing file exited $RC"
+
+# mutation-sweep follow-ups (t-93ff): the edges a surviving mutant showed no test reached
+# how far behind: patch, minor, and a "latest" older than the vendored version (a deprecated package's tag)
+for pair in "5.3.2|2 patch" "5.4.1|1 minor" "4.3.5|ahead of latest" "4.19.1|ahead of latest" "5.2.5|ahead of latest"; do
+  NOJQ=1; stubs "${pair%%|*}" 0.8.0; run "$SCRIPT"
+  want 0 "| 5.3.0 | ${pair%%|*} | ${pair#*|} |" >/dev/null || fail "check-vendored: latest ${pair%%|*} should read '${pair#*|}': $OUT"
+done
+# advisory columns: CVSS-only severity (jq reads the score; the fallback says n/a), no fix, two fixed-in versions
+CV='{"vulns":[{"id":"GHSA-cvss-only-0001","severity":[{"type":"CVSS_V3","score":"CVSS:3.1/AV:L"}]},{"id":"GHSA-two0-fixs-0002","affected":[{"ranges":[{"events":[{"introduced":"0"},{"fixed":"5.3.1"}]},{"events":[{"introduced":"5.4.0"},{"fixed":"5.4.2"}]}]}]}]}'
+for NOJQ in $MODES; do
+  stubs 5.3.0 0.8.0; printf '%s' "$CV" > "$STUB_DIR/osv_xterm_5.3.0"; run "$SCRIPT"
+  if [[ "$NOJQ" == 0 ]]; then sev="CVSS:3.1/AV:L"; else sev="severity n/a"; fi
+  want 1 "GHSA-cvss-only-0001 ($sev, fixed in no fix)" "GHSA-two0-fixs-0002 (severity n/a, fixed in 5.3.1 or 5.4.2)" >/dev/null \
+    || fail "check-vendored: advisory columns (VENDORED_NO_JQ=$NOJQ): $OUT"
+done
+# an unreadable OSV answer that is not JSON at all, and a registry answer with two "version" values (jq reads the top level)
+for NOJQ in $MODES; do
+  for bad in '<html>rate limited</html>' '{} trailing' 'x{"vulns":[]}' '{"vulns":[]}x'; do
+    stubs 5.3.0 0.8.0; printf '%s\n' "$bad" > "$STUB_DIR/osv_xterm-addon-fit_0.8.0"; run "$SCRIPT"
+    want 2 "OSV lookup for xterm-addon-fit 0.8.0 answered something unreadable" >/dev/null || fail "check-vendored: OSV answer '$bad' (VENDORED_NO_JQ=$NOJQ): $OUT"
+  done
+  stubs 5.3.0 0.8.0; echo '{"version":"6.0.0","engines":{"version":"1.0.0"}}' > "$STUB_DIR/npm__xterm_xterm"; run "$SCRIPT"
+  if [[ "$NOJQ" == 0 ]]; then want 0 "| 6.0.0 | 1 major |" >/dev/null || fail "check-vendored: jq top-level version: $OUT"
+  else want 2 "npm registry lookup for @xterm/xterm" >/dev/null || fail "check-vendored: fallback took one of two versions: $OUT"; fi
+done
+# the manifest: comment and blank lines are skipped, a row whose track is its own package shows the bare name, a short row fails
+NOJQ=1; stubs 5.3.0 0.8.0; M="$WORK/manifest.tsv"
+printf '# header\n\nxterm.js\txterm\txterm\t5.3.0\thttps://github.com/xtermjs/xterm.js\tMIT\tabc\twhy\n' > "$M"
+printf '{"name":"xterm","version":"5.3.0"}' > "$STUB_DIR/npm_xterm"
+OUT="$(PATH="$WORK/nonet:$PATH" VENDORED_MANIFEST="$M" VENDORED_CURL="$WORK/bin/stub-curl" VENDORED_NO_JQ=1 bash "$SCRIPT" 2>&1)" && RC=0 || RC=$?
+want 0 "| xterm | 5.3.0 | 5.3.0 | up to date | none |" >/dev/null || fail "check-vendored: same-track row or skipped lines: $OUT"
+printf 'xterm.css\txterm\t@xterm/xterm\t5.3.0\n' >> "$M"; printf '\n' >> "$M"
+OUT="$(PATH="$WORK/nonet:$PATH" VENDORED_MANIFEST="$M" VENDORED_CURL="$WORK/bin/stub-curl" VENDORED_NO_JQ=1 bash "$SCRIPT" 2>&1)" && RC=0 || RC=$?
+want 2 "manifest row xterm.css has fewer than 8 columns" >/dev/null || fail "check-vendored: short row: $OUT"
+OUT="$(VENDORED_MANIFEST="$WORK/none.tsv" bash "$SCRIPT" 2>&1)" && RC=0 || RC=$?
+want 2 "check-vendored: no manifest at $WORK/none.tsv" >/dev/null || fail "check-vendored: missing manifest: $OUT"
+# a registry failure shows in the table, not only in the notes
+NOJQ=1; stubs 5.3.0 0.8.0; : > "$STUB_DIR/npm__xterm_addon-fit.fail"; run "$SCRIPT"
+want 2 "| xterm-addon-fit (now @xterm/addon-fit) | 0.8.0 | lookup failed | ? |" >/dev/null || fail "check-vendored: registry failure row: $OUT"
+# --summary with no $GITHUB_STEP_SUMMARY (a local run) writes nowhere and prints no error
+NOJQ=1; stubs 5.3.0 0.8.0; SUMMARY_FILE=""; run "$SCRIPT" --summary
+want 0 "every package is up to date" >/dev/null || fail "check-vendored: --summary without a summary file: $OUT"
+[[ "$OUT" != *"No such file"* ]] || fail "check-vendored: --summary without a summary file wrote somewhere: $OUT"
+# usage: --sha exits 0; a bad option, a bare --sha, extra arguments and a missing file each exit 64 with a reason
+bash "$SCRIPT" --sha xterm.js >/dev/null || fail "check-vendored: --sha exited non-zero"
+for a in "--bogus" "--sha" "--sha xterm.js extra"; do
+  OUT="$(bash "$SCRIPT" $a 2>&1)" && RC=0 || RC=$?
+  want 64 "Usage: scripts/check-vendored.sh" >/dev/null || fail "check-vendored: '$a' should print usage and exit 64: $OUT"
+done
+OUT="$(bash "$SCRIPT" --sha no-such-file 2>&1)" && RC=0 || RC=$?
+want 64 "check-vendored: no such file: no-such-file" >/dev/null || fail "check-vendored: --sha on a missing file: $OUT"
 
 # revert checks: break the line that handles a case in a scratch copy; that case must then fail
 n=0
@@ -125,4 +175,4 @@ revert case_advisory "1" 's/ \|\| \[\[ -n "\$chunk" \]\]//'   # the last chunk h
 revert case_advisory "1" 's/s\/\^@@ID@@\/\/p/s\/^@@NOPE@@\/\/p/'
 revert case_up_to_date "1" 's/^    if grep -qE .\^\[\[:space:\]\]\*\\\{\[\[:space:\]\]\*\\\}.*return 0; fi$/    true/'
 
-echo "check-vendored: ok (8 cases on modes [$MODES], --summary, --sha; $n reverts caught)"
+echo "check-vendored: ok (8 cases on modes [$MODES], version gaps, advisory columns, manifest rows, --summary, --sha, usage; $n reverts caught)"
