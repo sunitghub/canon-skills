@@ -99,7 +99,9 @@ for P in "$GOP"; do
   expect_call "$srv land finish"   "$P" "$(post "$P" /api/ticket/t-ab12/github/land '{"finish":true}')" "land t-ab12 --finish"   # t-6623
   expect_call "$srv land fix"      "$P" "$(post "$P" /api/ticket/t-ab12/github/land '{"fix":true,"pr":58}')" "land t-ab12 --pr 58 --fix"
   for body in '{"finish":"yes"}' '{"fix":1}' '{"pr":"--fix"}'; do
+    before="$(last)"
     r="$(post "$P" /api/ticket/t-ab12/github/land "$body")"; [[ "$(code "$r")" == 400 ]] || fail "$srv land $body: HTTP $(code "$r")"
+    assert_eq "$before" "$(last)"   # a 400 runs no tkt command, not even one without the flag
   done
   r="$(post "$P" /api/ticket/t-ab12/github/land '{"pr":"--finish"}')"; [[ "$(code "$r")" == 400 ]] || fail "$srv land pr=--finish: HTTP $(code "$r")"
   expect_call "$srv push-main"     "$P" "$(post "$P" /api/github/push-main '{}')" "push-main"                            # t-24b1

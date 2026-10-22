@@ -70,6 +70,7 @@ grep -q '^status: open' "$f" || fail "test setup: ticket not reopened"
 
 # Prepare.
 out="$("$TKT" land "$id" < /dev/null 2>&1)"; assert_contains "$out" "worktree: $WT"; assert_contains "$out" "sprint complete $id, then: tkt land $id --finish"
+[[ "$out" != *"push them to the PR branch yourself"* ]] || fail "plain land printed the --fix hint: $out"   # the hint is for --fix only
 [[ "$(git -C "$WT" rev-parse HEAD)" == "$PRHEAD" ]] || fail "worktree is not at the PR head"
 [[ "$(git -C "$WT" rev-parse --abbrev-ref HEAD)" == "land/$id" ]] || fail "worktree is not on land/$id"
 grep -q '^status: in_progress' "$f" || fail "ticket not in_progress"
@@ -142,4 +143,5 @@ out="$("$TKT" land "$id" --fix < /dev/null 2>&1)"; assert_contains "$out" "workt
 grep -q '^status: in_progress' "$f" || fail "--fix did not reopen the closed ticket"
 [[ "$(tr -d '[:space:]' < ".tickets/$id/.cockpit-cwd")" == "$WT" ]] || fail "--fix: .cockpit-cwd is not the worktree"
 refuses "a plain land of an in_progress ticket" "not open" --
+refuses "--fix on a ticket already in progress" "not open" -- --fix
 echo "tkt land: ok"

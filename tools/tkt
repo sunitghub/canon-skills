@@ -2244,7 +2244,7 @@ Commands:
                             Check a cloud ticket's PR (evaluator passed on its head,
                             mergeable, suite green on base + PR) and merge it after a y.
                             --check: run only the checks that run no PR code, report, stop.
-  land <id> [--pr N] | land <id> --finish
+  land <id> [--pr N] [--fix] | land <id> --finish
                             Close an imported cloud ticket here: a worktree at the PR head,
                             the ticket bound to it; --finish after sprint complete removes it.
   github-status <id> [--json]

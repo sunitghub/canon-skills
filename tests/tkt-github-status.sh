@@ -57,7 +57,8 @@ LWT="$(cd "$(git rev-parse --show-toplevel)/.." && pwd -P)/$(basename "$(git rev
 assert_eq null "$(landed)"
 echo "$HEAD7" > ".tickets/$id/.land-head"; assert_eq null "$(landed)"
 mkdir -p "$LWT"; assert_eq "$LWT" "$(landed)"
-rm -rf "$LWT" ".tickets/$id/.land-head"; assert_eq null "$(landed)"
+rm ".tickets/$id/.land-head"; assert_eq null "$(landed)"   # a directory alone is not a land worktree
+rm -rf "$LWT"; assert_eq null "$(landed)"
 # t-c8d4: graded-head plus late docs only (the cloud's learnings sweep) is results-in, as merge-pr accepts it; a code change
 # after the graded head is not. The commits are made in another clone, so github-status has to fetch the PR head.
 git clone -q "$W/origin.git" "$W/c" 2>/dev/null
