@@ -587,5 +587,8 @@ export function initGithub() {
   document.getElementById('btn-gh-sync').addEventListener('click', syncFromGithub);
   ensureDoctor();   // t-9641: the Sync button's state
   if (!pollTimer) pollTimer = setInterval(() => pollGithub(false), POLL_MS);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) pollGithub(false); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { pollGithub(false); ensureDoctor(); } });
+  // t-f053: the Cockpit hides a board with its view container, which fires no visibilitychange in an iframe; it focuses the
+  // frame when the board comes back, so a Check fixed in Factory re-enables Sync. ensureDoctor stays bounded by DOCTOR_RETRY_MS.
+  window.addEventListener('focus', ensureDoctor);
 }

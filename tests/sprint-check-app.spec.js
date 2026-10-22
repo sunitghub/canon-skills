@@ -14791,6 +14791,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.locator('#ck-gh-create').click();
     await expect(page.locator('#ck-gh-sent')).toContainText(`Sent ${id} as issue #57`);
     await expect(page.locator('#ck-gh-prompt')).toHaveText(prompt);   // the line send-issue printed, verbatim
+    await expect(page.locator('#ck-gh-open')).toHaveText('Issue ↗');   // t-f053: goes to GitHub and changes nothing
     await page.evaluate(async (tid) => {   // the panel is shown again (a tab switch): the sent message is kept, not the preview
       const { cockpitState } = await import('/static/board-cockpit.js');
       const t = (await import('/static/board-core.js')).state.tickets.find(x => x.id === tid);
@@ -15419,8 +15420,8 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     let intake = { ok: true, exit_code: 0, intake: { repo: 'acme/app', label: 'canon', skipped: [], waiting: [
       { issue: 63, title: '<img src=x onerror="window.__xss=1">', type: 'task', priority: 2 },
       { issue: 64, title: 'Docs: a "quoted" title', type: 'bug', priority: 1 } ] }, last_synced: { ts: '2026-10-19T09:00:00.000Z', count: '2' } };
-    let intakeCalls = 0;
-    await page.route('**/api/github/intake**', r => { intakeCalls++; return json(r, intake); });
+    let intakeCalls = 0, intakeStatus = 0;
+    await page.route('**/api/github/intake**', r => { intakeCalls++; return intakeStatus ? r.fulfill({ status: intakeStatus, body: 'x' }) : json(r, intake); });
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
     await page.locator('#nav-factory').click();
@@ -15437,6 +15438,13 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.locator('#fac-gh-recheck').click();
     await expect(page.locator('#fac-in-wait')).toHaveText('No open issue labelled canon is waiting.');
     await expect(page.locator('#fac-in-last')).toHaveText('never');
+    for (const [status, shown] of [[500, 'HTTP 500'], [404, 'older than the page']]) {   // t-f053: a failed read is not "never"
+      intakeStatus = status;
+      await page.locator('#fac-gh-recheck').click();
+      await expect(page.locator('#fac-in-wait')).toContainText(shown);   // the answer has been rendered: "—" is also the placeholder while it loads
+      await expect(page.locator('#fac-in-last')).toHaveText('—');
+    }
+    intakeStatus = 0;
 
     doctor.checks[1] = { id: 'origin', status: 'bad', title: 'No GitHub repository', detail: '' };
     const before = intakeCalls;
@@ -15518,6 +15526,34 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.reload();
     await expect(b).toBeEnabled();
     await expect(b).toHaveAttribute('title', /^Sync from GitHub: make a ticket/);
+  });
+
+  // Prod path: the board's Sync from GitHub button after the user fixes GitHub in Factory and comes back (t-f053). The Cockpit hides
+  // a board with its view container and focuses the frame on return: that fires `focus`, never visibilitychange.
+  test('Sync from GitHub re-reads the checks when the board gets focus again, at most once per 30 s (t-f053)', async ({ page }) => {
+    await page.clock.install();
+    let answer = { ok: true, exit_code: 0, output: '', doctor: { checks: [{ id: 'origin', status: 'bad', title: 'No GitHub repository', detail: '' }] } };
+    await page.addInitScript(() => {   // counted in the page, so "no call" is known the moment the event handler returned
+      window.__doctorCalls = 0;
+      const f = window.fetch; window.fetch = (u, ...a) => { if (String(u).includes('/api/github/doctor')) window.__doctorCalls++; return f(u, ...a); };
+    });
+    await page.route('**/api/github/doctor**', r => json(r, answer));
+    await page.goto(BASE);
+    const b = page.locator('#btn-gh-sync');
+    await expect(b).toHaveAttribute('title', 'Set up GitHub first: Cockpit › Factory › GitHub');
+    const calls = () => page.evaluate(() => window.__doctorCalls);
+    const focus = () => page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    expect(await calls()).toBe(1);
+    await focus();
+    expect(await calls()).toBe(1);   // inside DOCTOR_RETRY_MS of the failed read
+    answer = { ok: true, exit_code: 0, output: '', doctor: { checks: [{ id: 'gh', status: 'ok', title: 't', detail: '' }] } };
+    await page.clock.fastForward(31000);
+    await focus();
+    await expect(b).toBeEnabled();
+    expect(await calls()).toBe(2);
+    await page.clock.fastForward(31000);
+    await focus();
+    expect(await calls()).toBe(2);   // ready: never re-read
   });
 
   test('no GitHub place for a ticket already in progress or already out; the panel says so (t-718b)', async ({ page }) => {

@@ -266,8 +266,9 @@ const lineMax = 64 << 10
 // Latest is the newest event of kind for project (t-9641: Factory's "Last synced"), searching day files newest first
 // within RetentionDays, or false. Anyone who can append to the folder can write a line, so each one is checked against
 // the v1 schema and skipped when it fails; only regular files named like a day file are read (no symlinks).
-// A minimal reader until t-0b89's read API.
-func Latest(home, kind, project string) (Event, bool) {
+// valid, when not nil, is one more per-kind check on a line that passed the schema (t-f053): a line it rejects is skipped like
+// any other invalid line, so it cannot hide an older valid one. A minimal reader until t-0b89's read API.
+func Latest(home, kind, project string, valid func(Event) bool) (Event, bool) {
 	if home == "" {
 		return Event{}, false
 	}
@@ -287,7 +288,7 @@ func Latest(home, kind, project string) (Event, bool) {
 		days = days[:RetentionDays+1]
 	}
 	for _, name := range days {
-		if ev, ok := latestIn(filepath.Join(dir, name), kind, project); ok {
+		if ev, ok := latestIn(filepath.Join(dir, name), kind, project, valid); ok {
 			return ev, true
 		}
 	}
@@ -295,7 +296,7 @@ func Latest(home, kind, project string) (Event, bool) {
 }
 
 // latestIn is the last valid matching line of one day file (append order). An over-long line is skipped whole.
-func latestIn(path, kind, project string) (Event, bool) {
+func latestIn(path, kind, project string, valid func(Event) bool) (Event, bool) {
 	f, err := os.Open(path)
 	if err != nil {
 		return Event{}, false
@@ -317,7 +318,7 @@ func latestIn(path, kind, project string) (Event, bool) {
 			continue
 		}
 		if !long {
-			if ev, good := parseLine(buf, kind, project); good {
+			if ev, good := parseLine(buf, kind, project); good && (valid == nil || valid(ev)) {
 				found, ok = ev, true
 			}
 		}

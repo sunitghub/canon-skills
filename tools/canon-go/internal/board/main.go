@@ -4681,7 +4681,7 @@ func githubIntake(root string) map[string]any {
 		res = map[string]any{"ok": true, "exit_code": 0, "intake": d}
 	}
 	res["last_synced"] = nil
-	if ev, ok := events.Latest(events.Home(), "github.synced", resolvedOrAbs(root)); ok && digitsRe.MatchString(ev.Data["count"]) {
+	if ev, ok := events.Latest(events.Home(), "github.synced", resolvedOrAbs(root), func(e events.Event) bool { return digitsRe.MatchString(e.Data["count"]) }); ok {
 		res["last_synced"] = map[string]any{"ts": ev.TS.Format("2006-01-02T15:04:05.000Z"), "count": ev.Data["count"]}
 	}
 	return res

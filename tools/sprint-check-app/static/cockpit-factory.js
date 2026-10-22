@@ -112,7 +112,7 @@ async function intakeLoad(pid, gen){
   if(ls&&ls.ts){
     const n=+ls.count, when=new Date(ls.ts);
     last.textContent=(isNaN(when)?ls.ts:when.toLocaleString())+' · '+n+' ticket'+(n===1?'':'s')+' made';
-  } else last.textContent='never';
+  } else last.textContent=res&&res.ok?'never':'—';   // a failed read is not "never" (t-f053)
   const d=res&&res.ok&&res.intake;
   // a 404 is a board started before this route existed (the page files are newer than the running binary)
   if(!d){ intakeWaiting(res&&res.old?'This board is older than the page. Restart <code>canon</code> (Ctrl+C, then <code>canon</code>) to read the waiting issues.':`<pre>${esc((res&&res.output)||'')}</pre>`); return; }

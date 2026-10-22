@@ -75,10 +75,21 @@ for P in "$GOP"; do
   r="$(get "$P" /api/github/intake)"
   assert_eq '2026-10-19T09:00:00.000Z|2' "$(body "$r" | js '[j.last_synced.ts, j.last_synced.count].join("|")')"
   # A short non-digit count passes the reader's schema and length checks, so the route's digits check must refuse it (t-9641
-  # eval: the long <img> count above never reaches that check). Until t-f053 the route shows null, not the older event.
+  # eval: the long <img> count above never reaches that check). It is skipped like any invalid line (t-f053), so the older
+  # valid event still shows; with only invalid lines the route shows null.
   ev dddddddddddddddd 2026-10-19T12:00:00.000Z "$PROJ" abc >> "$W/c2/events/2026-10-19.jsonl"
   r="$(get "$P" /api/github/intake)"
+  assert_eq '2026-10-19T09:00:00.000Z|2' "$(body "$r" | js '[j.last_synced.ts, j.last_synced.count].join("|")')"
+  mv "$W/c2/events/2026-10-19.jsonl" "$W/c2/events/held"; { ev dddddddddddddddd 2026-10-19T12:00:00.000Z "$PROJ" abc; } > "$W/c2/events/2026-10-19.jsonl"
+  r="$(get "$P" /api/github/intake)"
   assert_eq "null" "$(body "$r" | js 'JSON.stringify(j.last_synced)')"
+  mv "$W/c2/events/held" "$W/c2/events/2026-10-19.jsonl"
+  # t-f053: a project reached through a symlink still finds the event that names its physical path (resolvedOrAbs).
+  ln -s "$PROJ" "$W/link"; LP="$(port)"
+  SPRINT_CHECK_ROOT="$W/link" CANON_HOME="$W/c2" HOME="$W/home" COCKPIT_STATE_DIR="$W/ck" TKT_BIN="$W/tkt" SPRINT_CHECK_NO_BROWSER=1 TMPDIR="$W" "$GO_BIN" "$LP" >/dev/null 2>&1 & PIDS+=($!); disown $! 2>/dev/null || true
+  for _ in $(seq 50); do curl -s -o /dev/null "http://127.0.0.1:$LP/api/tickets" && break; sleep 0.1; done
+  r="$(get "$LP" /api/github/intake)"
+  assert_eq '2026-10-19T09:00:00.000Z|2' "$(body "$r" | js '[j.last_synced.ts, j.last_synced.count].join("|")')"
   touch "$W/badjson"; r="$(get "$P" /api/github/intake)"; rm -f "$W/badjson"
   assert_eq "false|undefined|not json" "$(body "$r" | js '[j.ok, typeof j.intake, j.output.trim()].join("|")')"
   r="$(curl -s -w '\n%{http_code}' -H 'Origin: https://evil.example' "http://127.0.0.1:$P/api/github/intake")"; [[ "$(code "$r")" == 403 ]] || fail "$srv: cross-origin GET intake was $(code "$r")"

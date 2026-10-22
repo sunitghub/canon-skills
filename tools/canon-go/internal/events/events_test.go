@@ -253,7 +253,7 @@ func TestLatestPicksNewestValidLine(t *testing.T) {
 	write("2026-10-21.jsonl.gz", ok("llllllllllllllll", "2026-10-21T09:00:00.000Z", "/p", "6"))
 	write("latest.jsonl", ok("mmmmmmmmmmmmmmmm", "2026-10-22T09:00:00.000Z", "/p", "8"))
 
-	ev, found := Latest(home, "github.synced", "/p")
+	ev, found := Latest(home, "github.synced", "/p", nil)
 	if !found || ev.ID != "bbbbbbbbbbbbbbbb" || ev.Data["count"] != "2" || !ev.TS.Equal(time.Date(2026, 10, 19, 9, 0, 0, 0, time.UTC)) {
 		t.Fatalf("Latest = %+v, %v; want the 10-19 09:00 line", ev, found)
 	}
@@ -263,13 +263,13 @@ func TestLatestPicksNewestValidLine(t *testing.T) {
 		ok("dddddddddddddddd", "2026-10-17T09:00:00.000Z", "/q", "2"),
 		ok("short", "2026-10-17T10:00:00.000Z", "/q", "3"),
 		ok("eeeeeeeeeeeeeeee", "2026-10-17T11:00:00.000Z", "/q", "123456789"))
-	if ev, found := Latest(home, "github.synced", "/q"); !found || ev.ID != "dddddddddddddddd" {
+	if ev, found := Latest(home, "github.synced", "/q", nil); !found || ev.ID != "dddddddddddddddd" {
 		t.Fatalf("Latest(/q) = %+v, %v; want the last valid line, dddd…", ev, found)
 	}
-	if _, found := Latest(home, "github.synced", "/nowhere"); found {
+	if _, found := Latest(home, "github.synced", "/nowhere", nil); found {
 		t.Error("found an event for a project with none")
 	}
-	if _, found := Latest(filepath.Join(home, "missing"), "github.synced", "/p"); found {
+	if _, found := Latest(filepath.Join(home, "missing"), "github.synced", "/p", nil); found {
 		t.Error("found an event in a missing home")
 	}
 }
@@ -288,7 +288,7 @@ func TestLatestReadsOnlyRetainedDays(t *testing.T) {
 		}
 		os.WriteFile(filepath.Join(dir, d+".jsonl"), []byte(line+"\n"), 0o600)
 	}
-	if ev, found := Latest(home, "github.synced", "/p"); found {
+	if ev, found := Latest(home, "github.synced", "/p", nil); found {
 		t.Fatalf("read a day file past the retention cap: %+v", ev)
 	}
 }
@@ -310,7 +310,31 @@ func TestLatestSurvivesMalformedLines(t *testing.T) {
 		b.WriteString("\n")
 	}
 	os.WriteFile(filepath.Join(dir, "2026-10-19.jsonl"), []byte(b.String()), 0o600)
-	if ev, found := Latest(home, "github.synced", "/p"); found {
+	if ev, found := Latest(home, "github.synced", "/p", nil); found {
 		t.Fatalf("a malformed line matched: %+v", ev)
+	}
+}
+
+// Protects the intake route's "Last synced": a newer line the value check rejects (a non-numeric count) is skipped like any
+// invalid line and must not hide an older valid one, in the same file and across day files (t-f053).
+func TestLatestSkipsLinesTheValueCheckRejects(t *testing.T) {
+	home := t.TempDir()
+	dir := filepath.Join(home, "events")
+	os.MkdirAll(dir, 0o700)
+	line := func(id, ts, count string) string {
+		return `{"schema":1,"id":"` + id + `","ts":"` + ts + `","kind":"github.synced","source":"tkt","project":"/p","data":{"count":"` + count + `"}}`
+	}
+	digits := func(e Event) bool { return e.Data["count"] != "" && strings.Trim(e.Data["count"], "0123456789") == "" }
+	os.WriteFile(filepath.Join(dir, "2026-10-18.jsonl"), []byte(line("aaaaaaaaaaaaaaaa", "2026-10-18T09:00:00.000Z", "3")+"\n"), 0o600)
+	os.WriteFile(filepath.Join(dir, "2026-10-19.jsonl"), []byte(line("bbbbbbbbbbbbbbbb", "2026-10-19T09:00:00.000Z", "2")+"\n"+line("cccccccccccccccc", "2026-10-19T10:00:00.000Z", "abc")+"\n"), 0o600)
+	os.WriteFile(filepath.Join(dir, "2026-10-20.jsonl"), []byte(line("dddddddddddddddd", "2026-10-20T09:00:00.000Z", "x")+"\n"), 0o600)
+	if ev, found := Latest(home, "github.synced", "/p", digits); !found || ev.ID != "bbbbbbbbbbbbbbbb" {
+		t.Fatalf("Latest with a value check = %+v, %v; want the older valid line bbbb…", ev, found)
+	}
+	if ev, found := Latest(home, "github.synced", "/p", nil); !found || ev.ID != "dddddddddddddddd" {
+		t.Fatalf("Latest without one = %+v, %v; want the newest line dddd…", ev, found)
+	}
+	if _, found := Latest(home, "github.synced", "/p", func(Event) bool { return false }); found {
+		t.Error("found a line although the value check rejects every one")
 	}
 }
