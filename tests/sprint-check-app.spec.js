@@ -13049,6 +13049,23 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
     await expect(page.locator('#ad-notify-toggle')).toHaveCount(0);
   });
 
+  // t-d40b. Protects the Admin > Model tiers tab opening: the registry is asked for FIRST (it is a local file, and used to wait behind the daemon,
+  // version and session requests, which can take seconds), and a quiet "Loading model tiers" line shows until it answers.
+  test('Model Tiers: the registry is requested before the slow daemon requests, and a loading line shows until it arrives (t-d40b)', async ({ page }) => {
+    const t0 = Date.now(); const when = {};
+    await page.route('**/api/cockpit', async route => { when.cockpit = Date.now() - t0; await new Promise(r => setTimeout(r, 2500)); await route.continue(); });
+    await page.route('**/api/admin/model-tiers', async route => { when.tiers = Date.now() - t0; await new Promise(r => setTimeout(r, 1500)); await route.continue(); });
+    await page.goto(BASE + '/cockpit');
+    await page.locator('#nav-admin').click();
+    const loading = page.locator('#mt-grid .mt-loading');
+    await expect(loading).toBeVisible();
+    await expect(loading).toHaveText('Loading model tiers\u2026');
+    await expect(page.locator('#mt-grid .mt-card').first()).toBeVisible({ timeout: 8000 });
+    await expect(loading).toHaveCount(0);
+    expect(when.tiers, JSON.stringify(when)).toBeLessThan(when.cockpit + 400);   // asked for without waiting for the 2.5 s daemon answer
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
   // t-d40b Refresh. Protects Admin > Model Tiers > Sources and Refresh: the saved sources are listed, Refresh asks the board (never with a URL
   // of its own) and shows a PROPOSAL that writes nothing until Apply, Apply sends only what is ticked, and the registry then follows the line:
   // the alias and default move to the newer model and the old one sits in Legacy. The board's fetch is stubbed here (no network in tests);

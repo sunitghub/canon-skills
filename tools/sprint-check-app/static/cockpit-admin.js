@@ -60,6 +60,7 @@ export function fmtUptime(secs){
 }
 
 export async function loadAdmin(){
+  mtLoad();   // t-d40b: first, not last: the registry is a local file read, and it used to wait behind the daemon, version and session requests below
   const projects=getProjects();
   const setTxt=(id,val)=>{const e=document.getElementById(id); if(e) e.textContent=val;};
   setTxt('ad-tile-projects',projects.length);
@@ -107,7 +108,6 @@ export async function loadAdmin(){
   }
   // Active projects = projects currently open in a tab (shell state).
   document.getElementById('ad-tile-active').textContent = openTabs.length;
-  mtLoad();
 }
 
 // ── Admin > Model Tiers (t-7e36) ────────────────────────────────────────
