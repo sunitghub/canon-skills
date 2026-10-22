@@ -16,9 +16,12 @@ check() {   # check <root>: print one line per broken rule, nothing when all hol
   grep -nE '^[[:space:]-]*uses:' "$wf" | grep -vE 'uses:[[:space:]]*[^@[:space:]]+@[0-9a-f]{40}([[:space:]]|$)' \
     | sed 's/^/action not pinned to a full SHA: /' || true
   grep -qE '^permissions:' "$wf" || echo "no top-level permissions"
+  ! grep -qE '^permissions:[[:space:]]*[^[:space:]#]' "$wf" || echo "top-level permissions not the block form"
+  ! grep -qE '^[[:space:]]+permissions:' "$wf" || echo "job-level permissions present"
   awk '/^permissions:/{p=1;next} p&&/^[^[:space:]#]/{p=0} p&&/[^[:space:]]/{print}' "$wf" \
     | grep -vE '^[[:space:]]*contents:[[:space:]]*read[[:space:]]*$' | sed 's/^/permission beyond contents: read: /' || true
   ! grep -q 'pull_request_target' "$wf" || echo "pull_request_target present"
+  ! grep -qE 'secrets\.' "$wf" || echo "secrets referenced"
   grep -qE 'go install golang\.org/x/vuln/cmd/govulncheck@v[0-9]+\.[0-9]+\.[0-9]+[[:space:]]*$' "$wf" \
     || echo "govulncheck not installed at an exact vX.Y.Z"
   ! grep -qE '@latest' "$wf" || echo "@latest present"
@@ -43,7 +46,10 @@ plant() {   # plant <expected substring> <sed expression | "dependabot">
 plant "action not pinned to a full SHA" 's/(checkout@)[0-9a-f]{40}/\1v7.0.1/'
 plant "no top-level permissions" '/^permissions:/,/^  contents: read/d'
 plant "permission beyond contents: read" 's/^  contents: read/  contents: write/'
+plant "top-level permissions not the block form" 's/^permissions:$/permissions: write-all/'
+plant "job-level permissions present" 's/^    runs-on: ubuntu-latest$/    permissions: write-all/'
 plant "pull_request_target present" 's/^  pull_request:/  pull_request_target:/'
+plant "secrets referenced" 's/^(          cache: false)$/          token: ${{ secrets.GITHUB_TOKEN }}/'
 plant "govulncheck not installed at an exact" 's/govulncheck@v[0-9.]+/govulncheck@latest/'
 plant "@latest present" 's/govulncheck@v[0-9.]+/govulncheck@latest/'
 plant "govulncheck not installed at an exact" 's/govulncheck@v[0-9.]+$/govulncheck/'
@@ -52,4 +58,4 @@ plant "scan failure is swallowed" 's/^        working-directory: tools\/canon-go
 plant "no go-version-file" '/go-version-file:/d'
 plant "dependabot config present" dependabot
 
-echo "ci-security-config: ok (govulncheck workflow pinned and read-only, no dependabot config; 11 planted breaks caught)"
+echo "ci-security-config: ok (govulncheck workflow pinned and read-only, no dependabot config; 14 planted breaks caught)"
