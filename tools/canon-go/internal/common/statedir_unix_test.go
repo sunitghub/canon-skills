@@ -38,8 +38,23 @@ func TestSecureStateDir(t *testing.T) {
 
 	file := filepath.Join(base, "file")
 	os.WriteFile(file, nil, 0o600)
-	if err := SecureStateDir(file); err == nil {
-		t.Fatal("a file in place of the folder must be refused")
+	if err := SecureStateDir(file); err == nil || !strings.Contains(err.Error(), "cockpit state folder "+file) {
+		t.Fatalf("a file in place of the folder must be refused naming it, got %v", err)
+	}
+}
+
+// Another account's folder is refused even at 0700. Changing a folder's owner needs root, so this runs only as root.
+func TestSecureStateDirRefusesOtherOwner(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skip("needs root to chown")
+	}
+	dir := filepath.Join(t.TempDir(), "theirs")
+	os.Mkdir(dir, 0o700)
+	if err := os.Chown(dir, 65534, 65534); err != nil {
+		t.Skip(err)
+	}
+	if err := SecureStateDir(dir); err == nil || !strings.Contains(err.Error(), "owned by uid 65534") {
+		t.Fatalf("another account's folder must be refused, got %v", err)
 	}
 }
 
@@ -49,9 +64,16 @@ func TestDefaultCockpitStateDirIsPerUser(t *testing.T) {
 		t.Fatalf("DefaultCockpitStateDir = %q", got)
 	}
 	t.Setenv("XDG_RUNTIME_DIR", "")
-	if got := DefaultCockpitStateDir(); strings.HasPrefix(got, os.TempDir()) {
-		if _, err := os.UserCacheDir(); err == nil {
-			t.Fatalf("with a user cache dir the default must not be under %s, got %q", os.TempDir(), got)
-		}
+	t.Setenv("XDG_CACHE_HOME", "/home/someone/.cache")
+	if got := DefaultCockpitStateDir(); got != "/home/someone/.cache/canon-cockpit" {
+		t.Fatalf("without XDG_RUNTIME_DIR the default is the user cache dir, got %q", got)
+	}
+	t.Setenv("XDG_CACHE_HOME", "")
+	t.Setenv("HOME", "")
+	if _, err := os.UserCacheDir(); err == nil {
+		t.Skip("this platform still finds a cache dir without HOME")
+	}
+	if got := DefaultCockpitStateDir(); got != filepath.Join(os.TempDir(), "canon-cockpit") {
+		t.Fatalf("with no cache dir the last resort is %s, got %q", filepath.Join(os.TempDir(), "canon-cockpit"), got)
 	}
 }

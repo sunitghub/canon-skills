@@ -34,18 +34,24 @@ type peerVerdict struct {
 func PeerConnContext(ctx context.Context, c net.Conn) context.Context {
 	v := peerVerdict{ok: true}
 	if peerSupported {
-		uid, err := peerUID(procNetDir, c.LocalAddr(), c.RemoteAddr())
-		switch {
-		case err != nil:
-			v = peerVerdict{reason: err.Error()}
-		case uid != os.Getuid():
-			v = peerVerdict{reason: fmt.Sprintf("connection owned by uid %d, not %d", uid, os.Getuid())}
-		}
+		v = verdictFor(procNetDir, os.Getuid(), c.LocalAddr(), c.RemoteAddr())
 		if !v.ok {
 			fmt.Fprintf(os.Stderr, "canon: refused %s: %s\n", c.RemoteAddr(), v.reason)
 		}
 	}
 	return context.WithValue(ctx, peerKey{}, v)
+}
+
+// verdictFor allows a connection only when the socket tables in dir show its client end owned by self.
+func verdictFor(dir string, self int, local, remote net.Addr) peerVerdict {
+	uid, err := peerUID(dir, local, remote)
+	if err != nil {
+		return peerVerdict{reason: err.Error()}
+	}
+	if uid != self {
+		return peerVerdict{reason: fmt.Sprintf("connection owned by uid %d, not %d", uid, self)}
+	}
+	return peerVerdict{ok: true}
 }
 
 // RequireSamePeer serves next only on a connection PeerConnContext approved. A request without a verdict (the
