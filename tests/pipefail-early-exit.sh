@@ -19,11 +19,12 @@ RX='(^|[^|])\|[[:space:]]*(command[[:space:]]+)?(grep[[:space:]]+(-[A-Za-z]*q[A-
 
 is_shell() { case "$1" in *.sh) return 0 ;; esac; case "$(head -c 64 "$1" 2>/dev/null | head -n 1)" in '#!'*sh*) return 0 ;; esac; return 1; }
 
-# files_under <dir> [<git root>]: the tracked files under <dir> when a git root is given and is a repository, else every file under it
-# (the planted self-test dir has no repository). Tracked only: a gitignored personal script on one machine must not fail the suite there.
+# files_under <dir> [<git root>]: the files git knows under <dir> (tracked, plus new files not yet added) when a git root is given and is a
+# repository, else every file under it (the planted self-test dir has no repository). Gitignored files are skipped: a personal script on
+# one machine must not fail the suite there.
 files_under() {
   if [[ -n "${2:-}" ]] && git -C "$2" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    git -C "$2" ls-files -- "${1#"$2"/}" | grep -v '/fixtures/' | sed "s|^|$2/|" | sort
+    { git -C "$2" ls-files -- "${1#"$2"/}"; git -C "$2" ls-files --others --exclude-standard -- "${1#"$2"/}"; } | grep -v '/fixtures/' | sed "s|^|$2/|" | sort
   else
     find "$1" -type f \( -path '*/node_modules' -o -path '*/.git' -o -path '*/fixtures' \) -prune -o -type f -print | sort
   fi
@@ -63,9 +64,9 @@ printf '# a comment row\n\nplanted.sh\tsafe | grep\tsmall fixed list\nplanted.sh
 want="$(printf '%s\n' 'noext:2:big | head -1' "planted.sh:1:echo x | grep -${Q}F x || exit 1" 'planted.sh:5:a=$(big | head -n 1)' "planted.sh:6:big | awk '{print; exit}'" "planted.sh:7:big | sed -n '1{p;q}'")"
 [[ "$got" == "$want" ]] || fail "pipefail-early-exit: the scan should flag exactly the planted readers, got: $got"
 [[ "$(sort -u "$USED")" == 3 ]] || fail "pipefail-early-exit: a planted allow row should match its line and only that one"
-# only tracked files are scanned: an untracked offender is not a hit, a tracked one is
-mkdir "$WORK/g"; ( cd "$WORK/g" && git init -q . && printf 'big | %s -1\n' "$H" > tracked.sh && printf 'big | %s -1\n' "$H" > local.sh && git add tracked.sh )
-[[ "$(scan "$WORK/g" "$WORK/g")" == "tracked.sh:1:big | $H -1" ]] || fail "pipefail-early-exit: the scan should read tracked files only, got: $(scan "$WORK/g" "$WORK/g")"
+# git's own file list is scanned: a tracked and a new (not yet added) offender are hits, a gitignored one is not
+mkdir "$WORK/g"; ( cd "$WORK/g" && git init -q . && printf 'big | %s -1\n' "$H" > tracked.sh && printf 'big | %s -1\n' "$H" > new.sh && printf 'big | %s -1\n' "$H" > ignored.sh && printf 'ignored.sh\n' > .gitignore && git add tracked.sh )
+[[ "$(scan "$WORK/g" "$WORK/g")" == "$(printf 'new.sh:1:big | %s -1\ntracked.sh:1:big | %s -1' "$H" "$H")" ]] || fail "pipefail-early-exit: the scan should read tracked and new files, not ignored ones, got: $(scan "$WORK/g" "$WORK/g")"
 
 : > "$USED"
 hits=""; for d in tools scripts tests; do hits="$hits$(scan "$ROOT/$d" "$ROOT" | sed "s|^|$d/|")"$'\n'; done
