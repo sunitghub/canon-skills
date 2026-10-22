@@ -49,6 +49,21 @@ check('claimTicketId refuses an id that already exists and registers one that do
   claimTicketId(root, 't-fixd');
   removeTestTicket(root, 't-fixd');
 });
+check('claimTicketId returns its id and refuses to claim it twice', () => {
+  assert.strictEqual(claimTicketId(root, 't-twic'), 't-twic');
+  assert.throws(() => claimTicketId(root, 't-twic'), /already exists/);
+});
+check('adoptBoardTicket returns the id and refuses an empty id, an empty title, a missing folder or a title not in ticket.md', () => {
+  const dir = path.join(root, '.tickets', 't-ad0p');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'ticket.md'), '# Title A\n');
+  assert.throws(() => adoptBoardTicket(root, '', 'Title A'), /not a ticket this test created/);
+  assert.throws(() => adoptBoardTicket(root, 't-ad0p', ''), /not a ticket this test created/);
+  assert.throws(() => adoptBoardTicket(root, 't-nodir', 'Title A'), /not a ticket this test created/);
+  assert.throws(() => adoptBoardTicket(root, 't-ad0p', 'Title B'), /not a ticket this test created/);
+  assert.strictEqual(adoptBoardTicket(root, 't-ad0p', 'Title A'), 't-ad0p');
+  removeTestTicket(root, 't-ad0p');
+});
 check('removeTestTicket throws for an id it did not create and leaves the folder', () => {
   assert.throws(() => removeTestTicket(root, 't-real'), /not created/);
   assert.ok(fs.existsSync(path.join(root, '.tickets', 't-real')));
