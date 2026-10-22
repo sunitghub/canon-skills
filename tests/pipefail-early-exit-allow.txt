@@ -4,12 +4,12 @@ tools/canon-dev.sh	printf '%s' "$slug" | grep -qE '^[a-z0-9]+(-[a-z0-9]+)*$' \	w
 tools/canon-dev.sh	if [ -n "$category" ] && ! printf ' %s ' "$valid_categories" | grep -q " $category "; then	writer is one skill-frontmatter value (slug, category list, deps or description), under 1 KB
 tools/canon-dev.sh	printf '%s\n' "$deps" | grep -qx "$sib" \	writer is one skill-frontmatter value (slug, category list, deps or description), under 1 KB
 tools/canon-dev.sh	if [ -z "$deps" ] && printf '%s' "$desc" | grep -qiE '(^|[^[:alpha:]])and then([^[:alpha:]]|$)'; then	writer is one skill-frontmatter value (slug, category list, deps or description), under 1 KB
-tools/canon-uninstall.sh	other="$(git -C "$INSTALL" rev-list --branches --not --remotes 2>/dev/null | head -1)" || other="?"	the line ends `|| other="?"` and the kept value is the reader's own; the writer prints one commit id per unmerged branch
+tools/canon-uninstall.sh	other="$(git -C "$INSTALL" rev-list --branches --not --remotes 2>/dev/null | head -1)" || other="?"	the line ends `|| other="?"`; the writer prints one value; the writer prints one commit id per unmerged branch
 tools/canon-uninstall.sh	printf '%s\n' "$cur" | tr ';' '\n' | grep -qixF "$(windows_path_entry)"	writer is $PATH, bounded by the environment size
 tools/cockpit-launch-lib.sh	if printf '%s' "$resp" | grep -q '"ok": *true'; then	writer is one JSON reply from the local daemon, under 1 KB
 tools/cockpit-launch-lib.sh	id="$(printf '%s' "$resp" | sed -n 's/.*"project": *{[^}]*"id": *"\([^"]*\)".*/\1/p' | head -1)"	writer is one JSON reply from the local daemon, under 1 KB
-tools/cockpit-stop-lib.sh	powershell.exe -NoProfile -Command "(Get-Process -Id $1 -ErrorAction SilentlyContinue).Path" 2>/dev/null | tr -d '\r' | sed '/^[[:space:]]*$/d' | head -1 || true	writer prints one pid or path and the line ends `|| true` / `|| pid=""`; the kept value is the reader's own
-tools/cockpit-stop-lib.sh	pid="$(sed -n 's/.*"pid"[[:space:]]*:[[:space:]]*"\{0,1\}\([0-9][0-9]*\).*/\1/p' "$d/daemon.json" 2>/dev/null | head -1)" || pid=""	writer prints one pid or path and the line ends `|| true` / `|| pid=""`; the kept value is the reader's own
+tools/cockpit-stop-lib.sh	powershell.exe -NoProfile -Command "(Get-Process -Id $1 -ErrorAction SilentlyContinue).Path" 2>/dev/null | tr -d '\r' | sed '/^[[:space:]]*$/d' | head -1 || true	writer prints one pid or path and the line ends `|| true` / `|| pid=""`; the writer prints one value
+tools/cockpit-stop-lib.sh	pid="$(sed -n 's/.*"pid"[[:space:]]*:[[:space:]]*"\{0,1\}\([0-9][0-9]*\).*/\1/p' "$d/daemon.json" 2>/dev/null | head -1)" || pid=""	writer prints one pid or path and the line ends `|| true` / `|| pid=""`; the writer prints one value
 tools/evidence.sh	first="$(head -c 512 -- "$f" | LC_ALL=C tr -d '\000' | head -n1 | tr -d '\r')" || first=""   # `|| …`: head exiting early may SIGPIPE a writer, which pipefail would turn into a silent exit	head -c 512 bounds the writer and the line ends `|| first=""`
 tools/fetch-daemon.sh	local want; want="$(manifest_lines | awk -v k="$key" -v t="$TARGET" '$1==k && $2==t {print $3; exit}')" || want=""	writer is the checked-in daemon manifest (tens of lines)
 tools/fetch-daemon.sh	want="$(manifest_lines | awk -v k="$key" -v t="$TARGET" '$1==k && $2==t {print $3; exit}')" || want=""	writer is the checked-in daemon manifest (tens of lines)
@@ -31,7 +31,6 @@ tools/sprint	run_id="$(grep -E '^evaluator-run-id:[[:space:]]+\S' "$report" | he
 tools/sprint	run_id="$(grep -E '^evaluator-run-id:[[:space:]]+\S' "$report" | head -1 | sed 's/^evaluator-run-id:[[:space:]]*//; s/[[:space:]]*$//')"	grep prints only the evaluator-run-id header lines (one or two)
 tools/sprint	grep -E '^(pass|fail):' "$report" | head -1 || echo "(no verdict line found)"	grep prints only the pass:/fail: verdict lines and the line ends `|| echo`
 tools/sprint	grep -nE '\|[[:space:]]*(not-run|partial)[[:space:]]*\|' "$report" | head -3	grep prints only the not-run/partial rows of one eval report, in a failure message
-tools/sprint	if _acceptance_section "Sign-off" "$plan" 2>/dev/null | sed 's/\*//g' | grep -qiE '^[[:space:]]*tier[[:space:]]*:[[:space:]]*trivial\b'; then	writer is the Sign-off section of plan.md (a few lines)
 tools/sprint	if ! printf '%s' "$vals" | grep -q '[^[:space:]]'; then	writer is one line of field values
 tools/sprint	grep -qi 'waived' "$acceptance" && grep -iE 'waived' "$acceptance" | grep -qE '[0-9]{4}-[0-9]{2}-[0-9]{2}'	writer is the waived lines of one acceptance.md
 tools/sprint	echo "relay-report: wrote $tdir/$dest from $found ($(sed -nE 's/.*"agentType"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/p' "${found%.jsonl}.meta.json" | head -1))"	sed reads one one-line meta.json
@@ -44,9 +43,9 @@ tools/tkt	| sort -u | head -8)"	writer is the unique long words of a few recent 
 tools/tkt	&& ! gh label list --repo "$repo" --search canon --json name --jq '.[].name' 2>/dev/null | grep -qx canon; then	gh label list is filtered by --search canon (a few rows)
 tools/tkt	_cloud_env_go() { [[ -n "$(git -C "$1" ls-files -- go.mod '*/go.mod' 2>/dev/null | head -1)" ]]; }	inside $(…) tested with -n: the pipeline status is ignored
 tools/tkt	if ! $tset && git -C "$tmp/w" ls-tree "o/$base" -- scripts/test.sh < /dev/null | grep -q '^100755 '; then tcmd="scripts/test.sh"; fi	git ls-tree of one path prints one line
-tools/tkt	failing="$(grep -E '^(FAILED|FAIL)' "$tmp/test.log" | head -20 || true)"	the line ends `|| true` and the kept value is the reader's own; head -20 is for a message
+tools/tkt	failing="$(grep -E '^(FAILED|FAIL)' "$tmp/test.log" | head -20 || true)"	the line ends `|| true`; the writer prints one value; head -20 is for a message
 tools/tkt	IFS=$'\t' read -r pr pst phead <<< "$(printf '%s\n' "$prs" | grep . | head -1)" || true	the line ends `|| true`; one row per open PR of one branch
-tools/tkt	b="$(git -C "$root" ls-remote --symref origin HEAD 2>/dev/null | awk '$1 == "ref:" { sub("refs/heads/", "", $2); print $2; exit }' || true)"; b="${b:-main}"	the line ends `|| true` and the kept value is the reader's own
+tools/tkt	b="$(git -C "$root" ls-remote --symref origin HEAD 2>/dev/null | awk '$1 == "ref:" { sub("refs/heads/", "", $2); print $2; exit }' || true)"; b="${b:-main}"	the line ends `|| true`; the writer prints one value
 tools/tkt	g="$(sed -n 's/^graded-head: *\([0-9a-f]\{7,40\}\).*/\1/p' "$1/eval-report.md" 2>/dev/null | head -1 || true)"	the line ends `|| true`; sed prints one line
 tools/upkeep-run	MODEL="$(sed -n '/^  "upkeep": {/,/^  }/s/^ *"default": *"\([^"]*\)".*/\1/p' "$TIERS" 2>/dev/null | head -n 1 || true)"	the line ends `|| true`; sed prints one config line
 scripts/check-binaries-released.sh	want="$(printf '%s\n' "$manifest" | tr -d '\r' | awk -v k="$key" -v t="$target" '$1==k && $2==t {print $3; exit}')"	writer is the release manifest (tens of lines)

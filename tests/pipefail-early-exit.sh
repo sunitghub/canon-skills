@@ -12,7 +12,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 source "$ROOT/tests/helpers.sh"
-ALLOW="${PIPEFAIL_ALLOW_FILE:-$ROOT/tests/pipefail-early-exit-allow.txt}"
+ALLOW="$ROOT/tests/pipefail-early-exit-allow.txt"
 
 # a single `|` (not `||`), then an early-exit reader; comment lines don't count
 RX='(^|[^|])\|[[:space:]]*(command[[:space:]]+)?(grep[[:space:]]+(-[A-Za-z]*q[A-Za-z]*|--quiet|--silent)([[:space:]]|$)|head([[:space:]]|$)|awk[[:space:]].*exit|sed[[:space:]][^|]*[;{[:space:]]q[};'"'"'"])'
