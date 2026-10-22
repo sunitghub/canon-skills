@@ -42,6 +42,9 @@ case "$1 $2" in
                 if [[ -z "${STUB_NO_SHA:-}" ]]; then echo "mergesha0000000000000000000000000000000000"; elif [[ "$*" != *"// empty"* ]]; then echo null; fi
                 exit 0; fi
               if [[ "$*" == *"--json state --jq"* ]]; then echo "${STUB_AFTER:-OPEN}"; exit 0; fi
+              # STUB_SCRIPT: a file of "MG MS" lines, one per read (the last repeats); STUB_READS counts the reads.
+              if [[ -n "${STUB_SCRIPT:-}" ]]; then n=$(( $(cat "$STUB_W/reads" 2>/dev/null || echo 0) + 1 )); echo $n > "$STUB_W/reads"
+                read -r STUB_MG STUB_MS < <(sed -n "${n}p" "$STUB_SCRIPT" | grep . || tail -1 "$STUB_SCRIPT"); fi
               printf '%s\t%s\t%s\t%s\t%s\t%s\n' "${STUB_STATE:-OPEN}" "${STUB_MG:-MERGEABLE}" "${STUB_MS:-CLEAN}" \
                 "${STUB_HEAD:?}" main "${STUB_CROSS:-false}" ;;
   "pr merge") printf 'cwd %s\n' "$PWD" >> "$STUB_LOG"; [[ -n "${STUB_MERGE_FAIL:-}" ]] && { echo "could not delete branch" >&2; exit 1; }
@@ -298,3 +301,23 @@ out="$("$TKT" import-results "$other" 2>&1)" || true
 assert_contains "$out" "evaluator: no eval-report.md  graded-head: none"
 
 echo "tkt-merge-pr: ok"
+
+# t-fefb: GitHub's mergeable UNKNOWN (right after another PR merged) is waited out; every other refusal stays immediate.
+mkdir "$W/sbin"; printf '#!/usr/bin/env bash\necho "$*" >> "$STUB_W/sleeps"\n' > "$W/sbin/sleep"; chmod +x "$W/sbin/sleep"
+PATH="$W/sbin:$PATH"   # from here on; earlier tests need the real sleep
+reads() { cat "$W/reads" 2>/dev/null || echo 0; }
+nsleeps() { grep -c '^5$' "$W/sleeps" 2>/dev/null || true; }
+printf 'UNKNOWN UNKNOWN\nUNKNOWN UNKNOWN\nMERGEABLE CLEAN\n' > "$W/script"; rm -f "$W/reads" "$W/sleeps"; : > "$STUB_LOG"
+rc=0; out="$(STUB_SCRIPT="$W/script" "$TKT" merge-pr "$id" --pr 7 --check 2>&1)" || rc=$?
+[[ "$rc" == 0 ]] || fail "UNKNOWN twice then MERGEABLE should pass --check (rc $rc): $out"
+[[ "$(reads)" == 3 && "$(nsleeps)" == 2 ]] || fail "expected 3 reads and 2 sleeps, got $(reads) and $(nsleeps)"
+assert_contains "$out" "merge-pr: PR #7 mergeable state is UNKNOWN; reading it again (2/6)…"
+assert_contains "$out" "(3/6)…"
+printf 'UNKNOWN UNKNOWN\n' > "$W/script"; rm -f "$W/reads" "$W/sleeps"
+refuses "a PR that stays UNKNOWN" "merge-pr: PR #7 cannot merge cleanly (mergeable: UNKNOWN, state: UNKNOWN)" STUB_SCRIPT="$W/script" -- --yes
+[[ "$(reads)" == 6 && "$(nsleeps)" == 5 ]] || fail "expected 6 reads and 5 sleeps, got $(reads) and $(nsleeps)"
+for pair in "CONFLICTING DIRTY" "MERGEABLE BLOCKED"; do
+  printf '%s\nMERGEABLE CLEAN\n' "$pair" > "$W/script"; rm -f "$W/reads" "$W/sleeps"
+  refuses "a $pair PR without waiting" "merge-pr: PR #7" STUB_SCRIPT="$W/script" -- --yes
+  [[ "$(reads)" == 1 && ! -e "$W/sleeps" ]] || fail "$pair should read once and not sleep"
+done
