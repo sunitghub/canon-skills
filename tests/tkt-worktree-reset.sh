@@ -79,7 +79,9 @@ mkdir -p "$A/.claude"; echo n > "$A/.claude/notes.md"; refuses "$A" "(.claude/no
 mkdir -p "$A/.claude/skills"; echo t > "$A/.claude/skills/x.md"; git -C "$A" add -f .claude/skills/x.md
 refuses "$A" "1 uncommitted or untracked path(s) (.claude/skills/x.md)"; git -C "$A" rm -q --cached .claude/skills/x.md; rm -r "$A/.claude"
 # A staged rename is one path (the new name), not its source as a second entry.
-git -C "$A" mv n.txt renamed.txt; refuses "$A" "1 uncommitted or untracked path(s) (renamed.txt);"; git -C "$A" reset -q --hard
+git -C "$A" mv n.txt renamed.txt; refuses "$A" "1 uncommitted or untracked path(s) (renamed.txt);"
+echo z > "$A/zz.txt"; refuses "$A" "2 uncommitted or untracked path(s) (renamed.txt, zz.txt);"; rm "$A/zz.txt"; git -C "$A" reset -q --hard
+echo 1 > "$A/u1.txt"; echo 2 > "$A/u2.txt"; refuses "$A" "2 uncommitted or untracked path(s) (u1.txt, u2.txt);"; rm "$A/u1.txt" "$A/u2.txt"
 git -C "$A" update-index --skip-worktree n.txt; refuses "$A" "1 file(s) marked skip-worktree or assume-unchanged"; git -C "$A" update-index --no-skip-worktree n.txt
 # Run from a subdirectory the probes still cover the whole worktree.
 mkdir -p "$A/sub/dir"; git -C "$A" update-index --skip-worktree n.txt; refuses "$A/sub/dir" "1 file(s) marked skip-worktree"; git -C "$A" update-index --no-skip-worktree n.txt; rm -r "$A/sub"
