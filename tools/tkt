@@ -1631,7 +1631,7 @@ cmd_merge_pr() {
   else ask="No test command (pass --test). Merge PR #$pr into $base on the gates alone?"; fi
   if $yes; then echo "$ask yes (--yes)"
   else
-    [[ -t 0 ]] || { echo "merge-pr: no terminal to ask on; pass --yes to run the tests and merge without asking" >&2; exit 1; }
+    [[ -t 0 ]] || { echo "merge-pr: no terminal to ask on; pass --yes to run the tests and merge without asking" >&2; _mp_refuse "no terminal to ask on"; }
     local ans; printf '%s%s [y/N] ' "$ask" "${issue:+ This also closes #$issue.}"
     read -r ans || ans=""
     [[ "$ans" == y || "$ans" == Y ]] || { echo "merge-pr: nothing run, not merged"; return 0; }
