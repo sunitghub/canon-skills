@@ -1957,7 +1957,7 @@ cmd_worktree_reset() {
   gd="$(git rev-parse --absolute-git-dir)" && common="$(git rev-parse --path-format=absolute --git-common-dir)" || { echo "worktree-reset: could not read the git dir; nothing reset" >&2; exit 1; }
   [[ "$gd" != "$common" ]] || { echo "worktree-reset: $top is the main checkout, not a linked worktree; run it inside the worktree whose branch you reset" >&2; exit 1; }
   branch="$(git symbolic-ref -q --short HEAD)" || { echo "worktree-reset: HEAD is detached; check out the worktree's tracking branch (git switch <branch>), then run again" >&2; exit 1; }
-  b="$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null)"; b="${b#origin/}"
+  b="$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null || true)"; b="${b#origin/}"
   [[ -n "$b" ]] || b="$(git ls-remote --symref origin HEAD 2>/dev/null | awk '$1 == "ref:" && !s { s = 1; sub("refs/heads/", "", $2); print $2 }' || true)"
   [[ -n "$b" ]] && _branch_ok "$b" || { echo "worktree-reset: cannot tell origin's default branch; run git remote set-head origin --auto, then run again" >&2; exit 1; }
   [[ "$branch" != "$b" ]] || { echo "worktree-reset: $branch is the default branch itself; run it in a worktree on its own tracking branch" >&2; exit 1; }

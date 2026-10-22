@@ -53,20 +53,36 @@ refuses_plain
 git -C "$P" remote set-url origin "$W/gone.git"
 refuses "$A" "git fetch origin failed; nothing reset"
 git -C "$P" remote set-url origin "$W/origin.git"
+# origin/HEAD unset (as after git remote add): the default branch is read from origin itself; unreadable too: refuse.
+git -C "$P" remote set-head origin -d
+run "$A" --dry-run --dry-run; assert_eq 0 "$rc"; assert_contains "$out" "new tip: origin/main"
+git -C "$P" remote set-url origin "$W/gone.git"
+refuses "$A" "cannot tell origin's default branch; run git remote set-head origin --auto"
+git -C "$P" remote set-url origin "$W/origin.git"; git -C "$P" remote set-head origin main
 
 # --dry-run prints what goes and changes nothing.
 run "$A" --dry-run; assert_eq 0 "$rc"
 assert_contains "$out" "new tip: origin/main ${MAIN:0:7} squash: the work (#1)"
 assert_contains "$out" "${WORK:0:7} feat: the work"
-assert_contains "$out" "m.txt"
+assert_contains "$out" "worktree-reset: track-a in $A"
+assert_contains "$out" "commits it drops from track-a (each is on a remote):"
+assert_contains "$out" "files it changes to origin/main's version:"$'\n'$'    A\tm.txt'
+assert_contains "$out" "the reset does not touch them: 0 stash entries"
 assert_contains "$out" "dry run; nothing changed"
 assert_eq "$WORK" "$(git -C "$A" rev-parse HEAD)"
 
 # Work refusals, each with its fix; after each the worktree is put back.
-echo dirty >> "$A/a.txt"; refuses "$A" "uncommitted or untracked path(s) (a.txt); commit and push them"; git -C "$A" checkout -q -- a.txt
+echo dirty >> "$A/a.txt"; refuses "$A" "1 uncommitted or untracked path(s) (a.txt); commit and push them"; git -C "$A" checkout -q -- a.txt
 echo u > "$A/untracked.txt"; refuses "$A" "uncommitted or untracked path(s) (untracked.txt)"; rm "$A/untracked.txt"
 mkdir -p "$A/.claude"; echo n > "$A/.claude/notes.md"; refuses "$A" "(.claude/notes.md)"; rm -r "$A/.claude"
+# Only UNTRACKED skill links are canon's: a staged file under .claude/skills is work.
+mkdir -p "$A/.claude/skills"; echo t > "$A/.claude/skills/x.md"; git -C "$A" add -f .claude/skills/x.md
+refuses "$A" "1 uncommitted or untracked path(s) (.claude/skills/x.md)"; git -C "$A" rm -q --cached .claude/skills/x.md; rm -r "$A/.claude"
+# A staged rename is one path (the new name), not its source as a second entry.
+git -C "$A" mv n.txt renamed.txt; refuses "$A" "1 uncommitted or untracked path(s) (renamed.txt);"; git -C "$A" reset -q --hard
 git -C "$A" update-index --skip-worktree n.txt; refuses "$A" "1 file(s) marked skip-worktree or assume-unchanged"; git -C "$A" update-index --no-skip-worktree n.txt
+# Run from a subdirectory the probes still cover the whole worktree.
+mkdir -p "$A/sub/dir"; git -C "$A" update-index --skip-worktree n.txt; refuses "$A/sub/dir" "1 file(s) marked skip-worktree"; git -C "$A" update-index --no-skip-worktree n.txt; rm -r "$A/sub"
 git -C "$A" update-index --assume-unchanged n.txt; refuses "$A" "1 file(s) marked skip-worktree or assume-unchanged"; git -C "$A" update-index --no-assume-unchanged n.txt
 (cd "$A" && echo local > l.txt && git add l.txt && git commit -qm "local only")
 refuses "$A" "track-a has 1 commit(s) on no remote"; git -C "$A" reset -q --hard "$WORK"
@@ -100,6 +116,7 @@ fi
 mkdir -p "$A/.claude/skills/sprint" "$A/.agents"; echo x > "$A/.claude/skills/sprint/SKILL.md"; ln -s ../.claude/skills "$A/.agents/skills"
 run "$A" --yes; assert_eq 0 "$rc"
 assert_contains "$out" "${WORK:0:7} feat: the work"
+assert_contains "$out" "Reset track-a to origin/main? yes (--yes)"
 assert_contains "$out" "notice: stash and other worktrees are shared and the reset does not touch them: 1 stash entry"
 assert_contains "$out" "other worktree: $P"; assert_contains "$out" "other worktree: $B"
 assert_contains "$out" "track-a now at ${MAIN:0:7} squash: the work (#1) (was ${WORK:0:8})"
@@ -118,14 +135,26 @@ run "$A" --yes; assert_eq 0 "$rc"; assert_contains "$out" "already at origin/mai
 # A branch only behind origin/main resets through the prompt's y (track-b, its stash dropped first).
 git -C "$B" stash drop -q
 if script -qec true /dev/null >/dev/null 2>&1; then
-  # The answer is an await: work made while the prompt waits is found by the re-probe, and nothing is reset.
-  mkfifo "$W/ans"; (cd "$B" && script -qec "$TKT worktree-reset" /dev/null < "$W/ans" > "$W/ask.out" 2>&1 || true) &
-  exec 3> "$W/ans"; n=0
-  until grep -q 'y/N' "$W/ask.out" 2>/dev/null; do n=$((n + 1)); (( n < 100 )) || fail "no prompt"; sleep 0.1; done
-  echo late > "$B/late.txt"; printf 'y\n' >&3; exec 3>&-; wait
-  assert_contains "$(cat "$W/ask.out")" "uncommitted or untracked path(s) (late.txt)"
-  assert_eq "$(git --git-dir="$W/origin.git" rev-parse main~1)" "$(git -C "$B" rev-parse HEAD)"; rm "$B/late.txt"
-  out="$(cd "$B" && printf 'y\n' | script -qec "$TKT worktree-reset" /dev/null 2>&1)"
+  # The answer is an await: whatever changes while the prompt waits is found before anything is reset.
+  ask_during() {   # ask_during <dir> <command run while the prompt waits> <answer>: sets out and rc
+    rm -f "$W/ans"; mkfifo "$W/ans"; : > "$W/ask.out"
+    (cd "$1" && r=0; script -qec "$TKT worktree-reset" /dev/null < "$W/ans" > "$W/ask.out" 2>&1 || r=$?; echo "$r" > "$W/ask.rc") &
+    exec 3> "$W/ans"; local n=0
+    until grep -q 'y/N' "$W/ask.out"; do n=$((n + 1)); (( n < 100 )) || fail "no prompt"; sleep 0.1; done
+    eval "$2"; printf '%s\n' "$3" >&3; exec 3>&-; wait
+    out="$(cat "$W/ask.out")"; rc="$(cat "$W/ask.rc")"
+  }
+  BASE="$(git --git-dir="$W/origin.git" rev-parse main~1)"
+  ask_during "$B" 'echo late > "$B/late.txt"' y
+  assert_eq 1 "$rc"; assert_contains "$out" "1 uncommitted or untracked path(s) (late.txt)"; assert_eq "$BASE" "$(git -C "$B" rev-parse HEAD)"; rm "$B/late.txt"
+  ask_during "$B" 'git -C "$B" commit -q --allow-empty -m moved' y
+  assert_eq 1 "$rc"; assert_contains "$out" "track-b moved while asking; nothing reset"; git -C "$B" reset -q --hard "$BASE"
+  ask_during "$B" 'git -C "$B" checkout -q -b other' y
+  assert_eq 1 "$rc"; assert_contains "$out" "track-b moved while asking"; assert_eq "$BASE" "$(git -C "$B" rev-parse HEAD)"
+  git -C "$B" checkout -q track-b; git -C "$B" branch -q -D other
+  # Y resets: the prompt names the branch, the target and its sha.
+  ask_during "$B" : Y
+  assert_eq 0 "$rc"; assert_contains "$out" "Reset track-b to origin/main (${MAIN:0:8})? [y/N]"
   assert_contains "$out" "(none: track-b is behind origin/main)"; assert_contains "$out" "track-b now at ${MAIN:0:7}"
   assert_eq "$MAIN" "$(git -C "$B" rev-parse HEAD)"
 fi
