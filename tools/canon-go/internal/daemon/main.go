@@ -190,7 +190,7 @@ func newServer(cfg config) *server {
 		cfg.sessionReapTTL = 15 * time.Minute
 	}
 	if cfg.stateDir == "" {
-		cfg.stateDir = common.EnvOr("COCKPIT_STATE_DIR", defaultStateDir())
+		cfg.stateDir = common.EnvOr("COCKPIT_STATE_DIR", common.DefaultCockpitStateDir())
 	}
 	if cfg.idleTimeout <= 0 {
 		cfg.idleTimeout = 5 * time.Minute
@@ -4642,6 +4642,14 @@ func Run(buildVersion, buildCommit string, args []string) int {
 		idleCheckInterval: envDurationOr("COCKPIT_IDLE_CHECK_INTERVAL", 0),
 	}
 	s := newServer(cfg)
+	// t-68ae: the state folder holds the boot token and hook settings; refuse one another account could read or plant.
+	if err := common.SecureStateDir(s.cfg.stateDir); err != nil {
+		fmt.Fprintln(os.Stderr, "cockpit-daemon:", err)
+		return 1
+	}
+	if w := common.PeerCheckWarning(); w != "" {
+		fmt.Fprintln(os.Stderr, w)
+	}
 
 	ln, err := net.Listen("tcp", cfg.addr)
 	if err != nil {
@@ -4671,7 +4679,8 @@ func Run(buildVersion, buildCommit string, args []string) int {
 		s.shutdownAllSessions()
 		os.Exit(0)
 	}()
-	srv := &http.Server{Handler: s.handler()}
+	// t-68ae: refuse connections another OS user opened (Linux), on every route.
+	srv := &http.Server{Handler: common.RequireSamePeer(s.handler()), ConnContext: common.PeerConnContext}
 	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -4690,16 +4699,6 @@ func writeStateFile(dir, addr, token string) error {
 	// relaunch) cross-platform without holding the boot token (t-ddc8 preserved).
 	data, _ := json.Marshal(map[string]string{"addr": addr, "token": token, "pid": strconv.Itoa(os.Getpid())})
 	return os.WriteFile(f, data, 0o600)
-}
-
-func defaultStateDir() string {
-	if d := os.Getenv("XDG_RUNTIME_DIR"); d != "" {
-		return filepath.Join(d, "canon-cockpit")
-	}
-	if d, err := os.UserCacheDir(); err == nil {
-		return filepath.Join(d, "canon-cockpit")
-	}
-	return filepath.Join(os.TempDir(), "canon-cockpit")
 }
 
 // envDurationOr reads a Go duration string (e.g. "10s", "2m") from the named
