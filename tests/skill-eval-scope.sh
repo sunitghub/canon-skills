@@ -84,6 +84,9 @@ reset_repo; put skills/alpha/evals/history.jsonl; put skills/alpha/evals/notes.m
 put skills/alpha/skill-eval-result.md; put skills/alpha/reference/skill-eval-result.md; put skills/alpha/scripts/s.sh; put agents/sub/x.md
 echo more >> tools/x.sh; echo more >> scripts/y.sh; echo more >> README.md; put skills/alpha/SKILL.md.bak
 expect "evals/ other than evals.json, result files, scripts, tools, README, nested agents, SKILL.md.bak" "" "$BASE"
+# t-b2ec: only the exact name skill-eval-result.md is ignored; another suffix is an ordinary doc (a .json never matches a doc at all)
+reset_repo; put skills/alpha/skill-eval-result.old.md;       expect "a skill-eval-result.<other>.md file" "skip alpha ($DOCS)" "$BASE"
+reset_repo; put skills/alpha/skill-eval-result.json;         expect "a skill-eval-result.json file" "" "$BASE"
 reset_repo; echo more >> skills/alpha/SKILL.md; git commit -qam "edit"
 expect "a committed change against its base" "run alpha" "$BASE"
 scope; [[ "$code" != 0 ]] || fail "skill-eval-scope: with no origin/main and no base it should refuse"
