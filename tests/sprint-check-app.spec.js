@@ -13629,9 +13629,9 @@ test.describe('board header and card footer (t-7723)', () => {
       fs.writeFileSync(path.join(dir, 'acceptance.md'), ['# Acceptance', '', '## Criteria', '- [x] Done', '', '## Test Plan', '- [x] Tested', ''].join('\n'));
       fs.writeFileSync(path.join(dir, 'plan.md'), ['# Plan', '', '## Approach', 'Fixture.', '', '## Sign-off', '- [x] Plan approved', ''].join('\n'));
     }
-    made.push(dir);
+    made.push(id);
   }
-  test.afterEach(() => { for (const d of made.splice(0)) fs.rmSync(/* non-ticket */ d, { recursive: true, force: true }); });
+  test.afterEach(() => { while (made.length) removeTestTicket(PROJECT_ROOT, made.pop()); });
   async function openBoard(page, id) {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
@@ -13824,9 +13824,9 @@ test.describe('ticket modal document tree (t-e946)', () => {
     fs.writeFileSync(path.join(dir, 'acceptance.md'), ['# Acceptance', '', `Ticket: \`${id}\``, '', '## Criteria', '- [x] One', '- [x] Two', '- [ ] Three', '', filler, '', '## Test Plan', '- [ ] Run it', '', '## QA', 'Notes only, no checkboxes.', ''].join('\n'));
     fs.writeFileSync(path.join(dir, 'plan.md'), ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: fixture', '', '- [ ] Plan approved', '', '## Approach', 'Fixture approach text.', ''].join('\n'));
     fs.writeFileSync(path.join(dir, 'research.md'), ['# Research', '', '## Only one heading', 'Text.', ''].join('\n'));
-    made.push(dir);
+    made.push(id);
   }
-  test.afterEach(() => { for (const d of made.splice(0)) fs.rmSync(/* non-ticket */ d, { recursive: true, force: true }); });
+  test.afterEach(() => { while (made.length) removeTestTicket(PROJECT_ROOT, made.pop()); });
   async function openModalFor(page, id) {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
@@ -13973,9 +13973,9 @@ test.describe('ticket modal editor (t-a205)', () => {
     fs.writeFileSync(path.join(dir, 'ticket.md'), ['---', `id: ${id}`, `status: ${status}`, 'type: task', 'priority: 2', 'created: 2026-06-28T00:00:00Z', '---', '', `# Editor fixture ${id}`, '', 'Plain description text for the editor.', ''].join('\n'));
     fs.writeFileSync(path.join(dir, 'acceptance.md'), ['# Acceptance', '', `Ticket: \`${id}\``, '', '## Criteria', '- [ ] One', '- [ ] Two', '', '## Test Plan', '- [ ] Run it', ''].join('\n'));
     fs.writeFileSync(path.join(dir, 'plan.md'), ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: fixture', '', '- [ ] Plan approved', '', '## Approach', 'Fixture approach text.', ''].join('\n'));
-    made.push(dir);
+    made.push(id);
   }
-  test.afterEach(() => { for (const d of made.splice(0)) fs.rmSync(/* non-ticket */ d, { recursive: true, force: true }); });
+  test.afterEach(() => { while (made.length) removeTestTicket(PROJECT_ROOT, made.pop()); });
   async function openModalFor(page, id) {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
@@ -14192,9 +14192,9 @@ test.describe('ticket modal polish (t-612f)', () => {
     fs.writeFileSync(path.join(dir, 'plan.md'), ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: fixture', '', '- [ ] Plan approved', '', '## Approach', 'Fixture approach text.', ''].join('\n'));
     fs.writeFileSync(path.join(dir, 'research.md'), ['# Research', '', '## Only one heading', 'Text.', ''].join('\n'));
     if (withDesign) fs.writeFileSync(path.join(dir, 'design.md'), ['# Design', '', '## Intro', 'Text.', '', filler, '', '## Shots ![shot](visuals/a.png)', 'More text.', '', filler, ''].join('\n'));
-    made.push(dir);
+    made.push(id);
   }
-  test.afterEach(() => { for (const d of made.splice(0)) fs.rmSync(/* non-ticket */ d, { recursive: true, force: true }); });
+  test.afterEach(() => { while (made.length) removeTestTicket(PROJECT_ROOT, made.pop()); });
   async function openModalFor(page, id) {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');

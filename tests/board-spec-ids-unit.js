@@ -17,6 +17,7 @@ function lintSpec(src) {
     if (/Math\.random/.test(line)) at('Math.random in the spec: make ids with newTicketId');
     if (/`t-[^`]*\$\{[^}`]*(Date\.now|stamp|Math)/.test(line)) at('a timestamped ticket id literal: use newTicketId(root, label)');
     if (/rmSync/.test(line) && !/\/\* non-ticket \*\//.test(line)) at('rmSync outside removeTestTicket: delete a ticket with removeTestTicket(root, id)');
+    if (/rmSync/.test(line) && /\/\* non-ticket \*\//.test(line) && /\.tickets|ticketDir|\bmade\b/.test(line)) at('the non-ticket marker on a line that names a ticket path');
   });
   return bad;
 }
@@ -89,6 +90,8 @@ check('the lint fails when a raw random id is reintroduced (revert check)', () =
 check('the lint fails on a timestamped id literal and on a direct ticket-folder rmSync', () => {
   assert.ok(lintSpec("const id = `t-x-${Date.now()}`;").length === 1);
   assert.ok(lintSpec("fs.rmSync(path.join(R, '.tickets', id), { recursive: true });").length === 1);
+  assert.ok(lintSpec("fs.rmSync(/* non-ticket */ path.join(R, '.tickets', id), { recursive: true });").length === 1);   // the marker cannot excuse a ticket path
+  assert.ok(lintSpec("for (const d of made.splice(0)) fs.rmSync(/* non-ticket */ d, {});").length === 1);
 });
 
 fs.rmSync(root, { recursive: true, force: true });
