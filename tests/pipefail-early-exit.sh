@@ -44,15 +44,15 @@ T="${TMPDIR:-/tmp}"; WORK="$(mktemp -d "${T%/}/pipefail-early-exit.XXXXXX")"; tr
 USED="$WORK/used"
 
 # the scan must flag planted offenders and honour a planted allow row (or a passing run proves nothing)
-Q=q; mkdir "$WORK/p"
+Q=q; H=head; mkdir "$WORK/p"
 printf '%s\n' "echo x | grep -${Q}F x || exit 1" "# a | grep -${Q} in a comment" "grep -${Q} x <<<\"\$v\"" 'echo x | grep x >/dev/null' \
   'a=$(big | head -n 1)' 'big | awk '"'"'{print; exit}'"'" 'big | sed -n '"'"'1{p;q}'"'" 'a || head x' 'ok | grep -c x' 'safe | grep '"-${Q}"' keep' > "$WORK/p/planted.sh"
 printf '#!/bin/bash\nbig | head -1\n' > "$WORK/p/noext"; printf 'big | head -1\n' > "$WORK/p/notshell.txt"
-printf 'planted.sh\tsafe | grep\tsmall fixed list\nplanted.sh\tnever matches\tstale row\n' > "$WORK/allow-self"
+printf '# a comment row\n\nplanted.sh\tsafe | grep\tsmall fixed list\nplanted.sh\tnever matches\tstale row\nother.sh\tbig | %s -n 1\tright text, wrong file\n' "$H" > "$WORK/allow-self"
 : > "$USED"; got="$(scan "$WORK/p" | filter "$WORK/allow-self")"
 want="$(printf '%s\n' 'noext:2:big | head -1' "planted.sh:1:echo x | grep -${Q}F x || exit 1" 'planted.sh:5:a=$(big | head -n 1)' "planted.sh:6:big | awk '{print; exit}'" "planted.sh:7:big | sed -n '1{p;q}'")"
 [[ "$got" == "$want" ]] || fail "pipefail-early-exit: the scan should flag exactly the planted readers, got: $got"
-[[ "$(sort -u "$USED")" == 1 ]] || fail "pipefail-early-exit: a planted allow row should match its line and only that one"
+[[ "$(sort -u "$USED")" == 3 ]] || fail "pipefail-early-exit: a planted allow row should match its line and only that one"
 
 : > "$USED"
 hits=""; for d in tools scripts tests; do hits="$hits$(scan "$ROOT/$d" | sed "s|^|$d/|")"$'\n'; done

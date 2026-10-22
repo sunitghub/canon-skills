@@ -23,7 +23,7 @@ tools/skills/prompts.sh	if echo "$PATH" | tr ':' '\n' | grep -qxF "$tools_dir"; 
 tools/sprint	t="$(find "$cfg/projects/" -maxdepth 2 -name "$CLAUDE_CODE_SESSION_ID.jsonl" -type f 2>/dev/null | head -1 || true)"	the line ends `|| true`; find prints one session file name
 tools/sprint	if ! _acceptance_section "Criteria" "$acceptance" | grep -qE '^[[:space:]]*[-*] \[[ xX]\][[:space:]]+\S'; then	writer is one section of a ticket doc (kept under ~500 words)
 tools/sprint	if ! _acceptance_section "Test Plan" "$acceptance" | grep -qE '^[[:space:]]*[-*] \[[ xX]\][[:space:]]+\S'; then	writer is one section of a ticket doc (kept under ~500 words)
-tools/sprint	if ! printf '%s\n' "$data_rows" | grep -qE '^\|[^|]+\|[[:space:]]*ran[[:space:]]*\|'; then	writer is the table rows of one eval report (tens of lines)
+tools/sprint	if ! printf '%s\n' "$data_rows" | grep -qE '^\|[^|]+\|[[:space:]]*ran[[:space:]]*\|'; then	writer is the Wrapup Gates table rows of one acceptance.md (tens of lines)
 tools/sprint	if _acceptance_section "Sign-off" "$plan" 2>/dev/null | sed 's/\*//g' | grep -qiE '^[[:space:]]*tier[[:space:]]*:[[:space:]]*trivial\b'; then	writer is the Sign-off section of plan.md (a few lines)
 tools/sprint	if _acceptance_section "Sign-off" "$plan" | grep -qE '^[[:space:]]*[-*] \[ \]'; then	writer is the Sign-off section of plan.md (a few lines)
 tools/sprint	if ! _acceptance_section "Sign-off" "$plan" | grep -qE '^[[:space:]]*[-*] \[[xX]\]'; then	writer is the Sign-off section of plan.md (a few lines)
