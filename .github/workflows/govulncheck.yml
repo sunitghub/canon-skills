@@ -1,0 +1,39 @@
+# t-b525: scan tools/canon-go for Go vulnerabilities its code can reach, standard library included
+# (Dependabot does not see the standard library). A reachable vulnerability fails the job.
+# The public mirror canon-skills carries this file too: keep it read-only, secret-free, pull_request only.
+# Pins are updated by hand (no Dependabot config, t-8493): docs/ci-security.md.
+name: govulncheck
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "tools/canon-go/**"
+      - ".github/workflows/govulncheck.yml"
+  pull_request:
+    paths:
+      - "tools/canon-go/**"
+      - ".github/workflows/govulncheck.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  govulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: tools/canon-go/go.mod
+          cache: false
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+      - name: Run govulncheck
+        working-directory: tools/canon-go
+        run: govulncheck ./...

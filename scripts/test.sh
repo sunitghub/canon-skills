@@ -134,6 +134,7 @@ tests=(
   "$ROOT/tests/pipefail-early-exit.sh"
   "$ROOT/tests/pipefail-rewrites.sh"
   "$ROOT/tests/pi-gate-recipe.sh"
+  "$ROOT/tests/ci-security-config.sh"
   "$ROOT/tests/sprint-check-delegate.sh"
   "$ROOT/tests/doc-mirror-parity.sh"
   "$ROOT/tests/doc-update-behavior.sh"
