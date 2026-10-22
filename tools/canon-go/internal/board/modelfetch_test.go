@@ -168,7 +168,7 @@ func TestFetchSizeTimeAndTypeCaps(t *testing.T) {
 	if _, err := guardedGet(context.Background(), "https://ok.test/", slow); err == nil || time.Since(start) > 1500*time.Millisecond {
 		t.Errorf("a slow body should time out quickly: %v after %v", err, time.Since(start))
 	}
-	for ct, want := range map[string]string{"image/png": "not read", "application/octet-stream": "not read", "": "not read"} {
+	for ct, want := range map[string]string{"image/png": "not read", "application/octet-stream": "not read", "": "not read", "text/plain": "not read", "application/xhtml+xml": "not read"} {
 		o := stub(t, func(w http.ResponseWriter, r *http.Request) { w.Header().Set("Content-Type", ct); w.Write([]byte("x")) })
 		if _, err := guardedGet(context.Background(), "https://ok.test/", o); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("content type %q: %v", ct, err)

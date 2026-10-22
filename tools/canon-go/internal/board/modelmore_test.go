@@ -43,7 +43,7 @@ func TestFetchDefaultTimeoutAndEdgePaths(t *testing.T) {
 	}
 	// ...and a fast answer under the default timeout succeeds (a default of zero would expire at once)
 	fast := stub(t, func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("Content-Type", "text/html")
 		w.Write([]byte("fast"))
 	})
 	fast.timeout = 0
@@ -52,7 +52,7 @@ func TestFetchDefaultTimeoutAndEdgePaths(t *testing.T) {
 	}
 	// a literal public IP in the URL is dialled as it is (the resolver is not asked)
 	ok := stub(t, func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("Content-Type", "text/html")
 		w.Write([]byte("hi"))
 	})
 	ok.resolve = func(context.Context, string) ([]net.IP, error) {

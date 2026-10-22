@@ -16,7 +16,7 @@ import (
 // t-d40b: the guarded fetch behind Admin > Model Tiers > Refresh. The board fetches a URL the user saved as a source, so the fetch is
 // built to refuse anything that is not a public https page: https only, the default port, no credentials in the URL, every resolved address
 // checked at dial time (so a name that resolves to a private address, or flips after a check, still fails), every redirect hop re-checked,
-// at most 3 redirects, a 10 s total timeout, a 2 MB body cap, and only text, html or json answers. No proxy is used (a proxy would
+// at most 3 redirects, a 10 s total timeout, a 2 MB body cap, and only html or json answers. No proxy is used (a proxy would
 // connect on our behalf and skip the address check), no cookies are kept, and nothing the page says is run.
 
 const (
@@ -26,7 +26,7 @@ const (
 
 var fetchTimeout = 10 * time.Second // a var so a test can shorten the default
 
-var fetchOKTypes = []string{"text/html", "application/json", "text/plain", "application/xhtml+xml"}
+var fetchOKTypes = []string{"text/html", "application/json"}
 
 // fetchOpts are the seams a test needs; production passes the zero value.
 type fetchOpts struct {
@@ -161,7 +161,7 @@ func guardedGet(ctx context.Context, raw string, o fetchOpts) ([]byte, error) {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", "canon-model-refresh")
-	req.Header.Set("Accept", "text/html, application/json;q=0.9, text/plain;q=0.5")
+	req.Header.Set("Accept", "text/html, application/json;q=0.9")
 	for k, v := range o.headers {
 		req.Header.Set(k, v)
 	}
