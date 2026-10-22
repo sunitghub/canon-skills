@@ -42,6 +42,10 @@ var blockedNets = func() []*net.IPNet {
 	for _, c := range []string{
 		"0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12", "192.0.0.0/24",
 		"192.168.0.0/16", "198.18.0.0/15", "224.0.0.0/4", "240.0.0.0/4", "::/128", "::1/128", "fc00::/7", "fe80::/10", "ff00::/8",
+		// IPv6 forms that carry an IPv4 address inside them: a gateway or tunnel can turn one into a connection to a private IPv4 host, so
+		// they are refused whole rather than unpacked. NAT64 (well-known and local-use), 6to4, Teredo and the IPv4-compatible ::/96, plus the
+		// discard prefix.
+		"64:ff9b::/96", "64:ff9b:1::/48", "2002::/16", "2001::/32", "::/96", "100::/64",
 	} {
 		_, n, _ := net.ParseCIDR(c)
 		nets = append(nets, n)
@@ -50,7 +54,7 @@ var blockedNets = func() []*net.IPNet {
 }()
 
 // blockedIP: loopback, private, link-local (the cloud metadata address included), shared (100.64/10, Tailscale), multicast and
-// unspecified addresses. An IPv4-mapped IPv6 address is judged by its IPv4 form.
+// unspecified addresses, and the IPv6 transition forms that embed an IPv4 address (NAT64, 6to4, Teredo, IPv4-compatible). An IPv4-mapped IPv6 address is judged by its IPv4 form.
 func blockedIP(ip net.IP) bool {
 	if v4 := ip.To4(); v4 != nil {
 		ip = v4

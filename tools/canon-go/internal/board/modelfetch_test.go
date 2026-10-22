@@ -74,6 +74,7 @@ func TestFetchRefusesNamesThatResolvePrivate(t *testing.T) {
 	for name, ips := range map[string][]string{
 		"loop4": {"127.0.0.1"}, "rfc1918": {"10.1.2.3"}, "rfc1918b": {"172.16.0.9"}, "rfc1918c": {"192.168.1.1"}, "meta": {"169.254.169.254"},
 		"loop6": {"::1"}, "ula": {"fd00::1"}, "cgnat": {"100.64.0.1"}, "mapped": {"::ffff:10.0.0.1"}, "mixed": {"8.8.8.8", "10.0.0.1"},
+		"nat64": {"64:ff9b::a00:1"}, "6to4": {"2002:c0a8:101::1"}, "teredo": {"2001:0:4136:e378:8000:63bf:3fff:fdd2"}, "compat": {"::a00:1"},
 	} {
 		o := fetchOpts{resolve: resolveTo(map[string][]string{name + ".test": ips}), timeout: 2 * time.Second}
 		_, err := guardedGet(context.Background(), "https://"+name+".test/", o)
