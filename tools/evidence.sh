@@ -111,11 +111,29 @@ shopt -s nullglob
 sha256_of() { if command -v sha256sum >/dev/null 2>&1; then sha256sum -- "$1" | cut -d' ' -f1; else shasum -a 256 -- "$1" | cut -d' ' -f1; fi; }
 line2_of() { head -c 16384 -- "$1" | LC_ALL=C tr -d '\000' | sed -n '2p' | tr -d '\r'; }   # a longer line 2 is cut, so it parses as nothing
 
+# quarantine_only_diff <from> <to> — t-7f5f: 0 when every added or removed line of the board spec between the two commits is a
+# `// QUARANTINE t-xxxx: reason` comment (checked line by line on -U0), else 1. Any other line, or a diff git cannot produce, is 1.
+quarantine_only_diff() {
+  local out line inhunk=0
+  out="$(git -C "$root" diff -U0 --no-renames "$1" "$2" -- tests/sprint-check-app.spec.js 2>/dev/null)" || return 1
+  while IFS= read -r line; do
+    if (( ! inhunk )); then   # headers come only before the first hunk; after it `--- x` is a removed line `-- x`
+      case "$line" in "diff --git "*|"index "*|"--- "*|"+++ "*|"") continue ;; esac
+    fi
+    case "$line" in
+      "@@ "*) inhunk=1 ;;
+      +*|-*) [[ "${line:1}" =~ ^[[:space:]]*//[[:space:]]*QUARANTINE[[:space:]]+t-[a-z0-9]{4}[[:space:]]*: ]] || return 1 ;;
+      *) return 1 ;;
+    esac
+  done <<< "$out"
+  return 0
+}
+
 # classify_one <file> — sets LINE (the output line), KIND (its first word), CODE and BASEONLY (1 when the only non-neutral tracked change since
-# the stamp is tests/board-spec-baseline.json, the one case `covered` may lift). Called directly, never in $(...), so the globals survive.
+# the stamp is tests/board-spec-baseline.json, optionally with QUARANTINE-comment-only edits to the spec (t-7f5f): the one case `covered` may lift). Called directly, never in $(...), so the globals survive.
 classify_one() {
   local f="$1" first last sha when cmdline osline shown full names p list n more
-  BASEONLY=0; CODE="?"; STAMP=""; SHOWN=""
+  BASEONLY=0; SPECQ=0; CODE="?"; STAMP=""; SHOWN=""
   base="$(safe "${f##*/}")"
   if [[ -L "$f" || ! -f "$f" ]]; then KIND=unstamped; LINE="unstamped $base exit=?"; return 0; fi
   first="$(head -c 512 -- "$f" | LC_ALL=C tr -d '\000' | head -n1 | tr -d '\r')" || first=""   # `|| …`: head exiting early may SIGPIPE a writer, which pipefail would turn into a silent exit
@@ -149,7 +167,14 @@ classify_one() {
     else KIND=fresh; LINE="fresh $base exit=$CODE (HEAD ${sha:0:7}, only .tickets/ and evidence-neutral files changed since, $when)$shown"; fi
     return 0
   fi
-  if [[ ${#names[@]} -eq 1 && "${names[0]}" == tests/board-spec-baseline.json ]]; then BASEONLY=1; fi
+  if [[ ${#names[@]} -eq 1 && "${names[0]}" == tests/board-spec-baseline.json ]]; then BASEONLY=1
+  else   # t-7f5f: a quarantine also adds/removes a `// QUARANTINE t-xxxx:` comment in the spec, which changes no behaviour
+    BASEONLY=1
+    for p in "${names[@]}"; do
+      case "$p" in tests/board-spec-baseline.json) ;; tests/sprint-check-app.spec.js) SPECQ=1 ;; *) BASEONLY=0 ;; esac
+    done
+    if (( BASEONLY && SPECQ )) && ! quarantine_only_diff "$full" "$graded"; then BASEONLY=0; fi
+  fi
   list=""; n=0
   for p in "${names[@]}"; do n=$((n + 1)); if [[ $n -le 5 ]]; then list+="${list:+, }$(safe "$p")"; fi; done
   more=""; if [[ $n -gt 5 ]]; then more=" (+$((n - 5)) more)"; fi
@@ -199,16 +224,18 @@ covered_by() {
 }
 
 REDIR="$(cd "$edir" && pwd -P)"
-FILES=(); KINDS=(); CODES=(); LINES=(); BASES=(); STAMPS=(); SHOWNS=()
+FILES=(); KINDS=(); CODES=(); LINES=(); BASES=(); SPECQS=(); STAMPS=(); SHOWNS=()
 for f in "$edir"/*.log; do
   classify_one "$f"
-  FILES+=("$f"); KINDS+=("$KIND"); CODES+=("$CODE"); LINES+=("$LINE"); BASES+=("$BASEONLY"); STAMPS+=("$STAMP"); SHOWNS+=("$SHOWN")
+  FILES+=("$f"); KINDS+=("$KIND"); CODES+=("$CODE"); LINES+=("$LINE"); BASES+=("$BASEONLY"); SPECQS+=("$SPECQ"); STAMPS+=("$STAMP"); SHOWNS+=("$SHOWN")
 done
 for i in "${!FILES[@]}"; do
   if [[ "${BASES[$i]}" == 1 && "${CODES[$i]}" =~ ^[01]$ ]]; then   # exit 2: the run itself failed, nothing to re-judge
     g="$(covered_by "${FILES[$i]}")"
     if [[ -n "$g" ]]; then
-      LINES[$i]="covered $(safe "${FILES[$i]##*/}") exit=${CODES[$i]} (HEAD ${STAMPS[$i]}; only tests/board-spec-baseline.json changed since; re-guarded at ${graded:0:7} by $(safe "${g% *}") over ${g##* } report(s))${SHOWNS[$i]}"
+      what="only tests/board-spec-baseline.json changed since"
+      if [[ "${SPECQS[$i]}" == 1 ]]; then what="only tests/board-spec-baseline.json and QUARANTINE comment lines in tests/sprint-check-app.spec.js changed since"; fi
+      LINES[$i]="covered $(safe "${FILES[$i]##*/}") exit=${CODES[$i]} (HEAD ${STAMPS[$i]}; $what; re-guarded at ${graded:0:7} by $(safe "${g% *}") over ${g##* } report(s))${SHOWNS[$i]}"
     elif [[ "$(line2_of "${FILES[$i]}")" =~ ^\$\ (bash\ )?(\./)?tests/run-board-spec\.sh(\ |$) ]]; then
       # t-278d: the recipe, so the next stamp neither overwrites the run's log nor leaves its reports outside evidence/.
       LINES[$i]+=$'\n'"  hint: to cover it, keep the run's --out folder inside .tickets/$id/evidence/, then stamp the guard under its OWN name, never this log's (that overwrites it): evidence.sh stamp $id board-spec-guard -- node tests/board-spec-guard.js <those reports>"
