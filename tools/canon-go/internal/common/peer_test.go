@@ -70,6 +70,9 @@ func TestPeerUIDFailsClosed(t *testing.T) {
 	if _, err := peerUID(t.TempDir(), a.LocalAddr(), b.LocalAddr()); err == nil || !strings.Contains(err.Error(), "not a TCP connection") {
 		t.Fatalf("a non-TCP connection must be an error, got %v", err)
 	}
+	if _, err := peerUID(t.TempDir(), server, b.LocalAddr()); err == nil || !strings.Contains(err.Error(), "not a TCP connection") {
+		t.Fatalf("a connection with one non-TCP end must be an error, got %v", err)
+	}
 }
 
 // Only the row matching BOTH ends counts; one-sided matches and malformed rows (short, no colon, bad hex, wrong
@@ -184,6 +187,10 @@ func TestPeerCheckWarning(t *testing.T) {
 	}
 	old := procNetDir
 	defer func() { procNetDir = old }()
+	procNetDir = writeTables(t, tcpHeader, "")
+	if w := PeerCheckWarning(); w != "" {
+		t.Fatalf("a readable tcp table must not warn, got %q", w)
+	}
 	procNetDir = t.TempDir()
 	if w := PeerCheckWarning(); !strings.HasPrefix(w, "canon: cannot read "+filepath.Join(procNetDir, "tcp")+" (") || !strings.Contains(w, "every request will be refused") {
 		t.Fatalf("unreadable /proc/net/tcp must warn, got %q", w)
