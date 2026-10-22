@@ -38,7 +38,6 @@ export async function pollSessions(){
   liveTabIds=next; needsTabIds=nextNeeds;
   lastSessions=sessions;
   renderSessionSurfaces();
-  notifyNeedsYou(sessions.map(sessionView));
   // A tab awaiting close (Save&End/End) is removed once its session has ended
   // — the daemon finished the save/end turn, so no orphan and no premature
   // iframe teardown.
@@ -310,52 +309,6 @@ export function renderSessionSurfaces(){
   renderAdminSessions(views);
   if(interrupted.length) renderInterrupted();   // t-d9e6: ticket titles arrive late
 }
-// ── Desktop notification (t-28ec) ──────────────────────────────────────────
-// The shell is the one page that sees every project, so it alone notifies (a board
-// per tab would repeat it). Opt-in per browser; permission is asked only from the
-// Admin switch's click. Fires on a move into needs-you while you aren't looking at the
-// cockpit — its tab hidden or its window unfocused (another app in front) — never for
-// sessions already waiting when the page loaded (first poll = baseline).
-const LS_NOTIFY='canon-cockpit-notify';
-let prevStates=null;
-function notifyEnabled(){ try{ return localStorage.getItem(LS_NOTIFY)==='on'; }catch(e){ return false; } }
-function notifyNeedsYou(views){
-  const prev=prevStates;
-  prevStates=new Map(views.map(v=>[v.sid,v.state]));
-  const inView=!document.hidden && document.hasFocus();
-  if(!prev || inView || !notifyEnabled() || typeof Notification==='undefined' || Notification.permission!=='granted') return;
-  for(const v of views){
-    if(!v.sid || v.state!=='needs-you' || prev.get(v.sid)==='needs-you') continue;
-    try{
-      const n=new Notification((v.ticket||(v.scratch?(v.scrTitle||'A scratch session'):'A session'))+' needs you',{
-        body:[ticketTitle(v.pid,v.ticket), v.projName||v.name].filter(Boolean).join(' \u00b7 '),
-        tag:'canon-cockpit-'+v.sid,
-      });
-      n.onclick=()=>{ try{ window.focus(); }catch(e){} openSessionInTab(v); n.close(); };
-    }catch(e){}
-  }
-}
-export function renderNotifySetting(){
-  const t=document.getElementById('ad-notify-toggle'), note=document.getElementById('ad-notify-note');
-  if(!t) return;
-  if(typeof Notification==='undefined'){
-    t.checked=false; t.disabled=true;
-    note.hidden=false; note.textContent='This browser doesn\u2019t support desktop notifications.';
-    return;
-  }
-  const denied=Notification.permission==='denied';
-  t.disabled=false;
-  t.checked=notifyEnabled() && Notification.permission==='granted';
-  note.hidden=!denied;
-  note.textContent=denied?'Blocked in the browser\u2019s site settings for this page \u2014 allow notifications there, then turn this on.':'';
-}
-export async function onNotifyToggleChange(e){
-  let perm=typeof Notification==='undefined' ? 'denied' : Notification.permission;
-  if(e.target.checked && perm==='default'){ try{ perm=await Notification.requestPermission(); }catch(err){ perm='denied'; } }
-  try{ localStorage.setItem(LS_NOTIFY, e.target.checked && perm==='granted' ? 'on' : 'off'); }catch(err){}
-  renderNotifySetting();
-}
-
 export function openCloseWarn(id){
   pendingCloseId=id;
   const t=openTabs.find(x=>x.id===id);

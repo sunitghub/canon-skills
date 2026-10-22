@@ -98,29 +98,11 @@
               <div class="ad-reaper" id="ad-reaper" hidden></div>
               <div id="ad-sessions"></div>
             </div>
-            <div class="admin-settings">
-              <div class="setting-row">
-                <div>
-                  <div class="setting-k">Verbose session logging</div>
-                  <div class="setting-d">Logs session lifecycle events (spawn, kill, exit, resume outcomes) to a file per ticket — for diagnosing a live issue. Never logs raw terminal content. Resets off when the daemon restarts.</div>
-                </div>
-                <label class="aswitch">
-                  <input type="checkbox" id="ad-debug-toggle" disabled>
-                  <span class="strack"><span class="sthumb"></span></span>
-                </label>
-              </div>
-              <div class="setting-row">
-                <div>
-                  <div class="setting-k">Desktop notifications</div>
-                  <div class="setting-d">Notifies this browser when a session starts waiting on you while the cockpit isn't in view. Shows the ticket, its title and the project — never terminal content. Off until you turn it on; the browser asks for permission then.</div>
-                  <div class="setting-d" id="ad-notify-note" hidden></div>
-                </div>
-                <label class="aswitch">
-                  <input type="checkbox" id="ad-notify-toggle">
-                  <span class="strack"><span class="sthumb"></span></span>
-                </label>
-              </div>
+            <div class="ad-tabs" role="tablist" aria-label="Admin">
+              <button type="button" class="ad-tab active" role="tab" id="ad-tab-tiers" data-adtab="tiers" aria-selected="true" aria-controls="ad-panel-tiers">Model tiers</button>
+              <button type="button" class="ad-tab" role="tab" id="ad-tab-logging" data-adtab="logging" aria-selected="false" aria-controls="ad-panel-logging" tabindex="-1">Logging</button>
             </div>
+            <div id="ad-panel-tiers" role="tabpanel" aria-labelledby="ad-tab-tiers">
             <div class="mt-wrap">
               <div class="slabel">Model Tiers</div>
               <div class="mt-defaults">
@@ -137,8 +119,28 @@
                 </div>
               </div>
               <div class="mt-openai-note" id="mt-openai-note">OpenAI picks are recorded only. A ticket can run its close gates on an OpenAI model under Copilot CLI with <code>Gate model: openai:&lt;id&gt;</code> (Plan tab).</div>
+              <div id="mt-sources"></div>
+              <div id="mt-proposal"></div>
+              <div id="mt-alias-alert"></div>
+              <div id="mt-move"></div>
               <div class="mt-tabs" id="mt-tabs"></div>
               <div class="mt-grid" id="mt-grid"></div>
+              <div id="mt-legacy"></div>
+            </div>
+            </div>
+            <div id="ad-panel-logging" role="tabpanel" aria-labelledby="ad-tab-logging" hidden>
+            <div class="admin-settings">
+              <div class="setting-row">
+                <div>
+                  <div class="setting-k">Verbose session logging</div>
+                  <div class="setting-d">Logs session lifecycle events (spawn, kill, exit, resume outcomes) to a file per ticket — for diagnosing a live issue. Never logs raw terminal content. Resets off when the daemon restarts.</div>
+                </div>
+                <label class="aswitch">
+                  <input type="checkbox" id="ad-debug-toggle" disabled>
+                  <span class="strack"><span class="sthumb"></span></span>
+                </label>
+              </div>
+            </div>
             </div>
           </div>
         </section>

@@ -12,6 +12,12 @@
   /* Solid, not transparent: Edge on Windows draws the native popup from the select's own colours (t-294b). */
   .mt-picker select{appearance:none;border:none;background:var(--bg);color:var(--text);font-size:12.5px;font-weight:600;width:100%;cursor:pointer}
   .mt-picker .mt-prov{font-size:10px;color:var(--text-dim);font-family:ui-monospace,monospace;white-space:nowrap}
+  /* t-d40b: Admin's own tabs (Model tiers, Logging) */
+  .ad-tabs{display:flex;gap:18px;border-bottom:1px solid var(--border-muted);margin:6px 0 14px}
+  html[data-theme="light"] .ad-tabs{border-bottom-color:var(--border)}
+  .ad-tab{font:inherit;font-size:13px;font-weight:600;color:var(--text-muted);background:none;border:0;border-bottom:2px solid transparent;padding:8px 2px;cursor:pointer}
+  .ad-tab:hover{color:var(--text)}
+  .ad-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
   .mt-tabs{display:flex;gap:4px;border-bottom:1px solid var(--border-muted);margin-bottom:12px}
   html[data-theme="light"] .mt-tabs{border-bottom-color:var(--border)}   /* t-83c9: the light --bg (#e8e8f0) is too close to --border-muted for this underline */
   .mt-tab{padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--text-muted);border-bottom:2px solid transparent;cursor:pointer}
@@ -36,6 +42,43 @@
   .mt-field input:focus{outline:none;border-color:var(--accent)}
   .mt-field-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .mt-card-err{font-size:10.5px;color:var(--col-discarded)}
+  /* t-d40b: unbound-alias alert, the move-before-remove panel and the collapsed Legacy list */
+  .mt-alert,.mt-move{border:1px solid var(--col-discarded);border-radius:12px;background:var(--panel);padding:10px 12px;margin-bottom:12px;display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--text-body)}
+  .mt-move{border-color:var(--accent)}
+  .mt-alert b,.mt-move b{color:var(--text);font-size:12.5px}
+  .mt-alert p,.mt-move p{margin:0;color:var(--text-muted)}
+  .mt-alert-acts,.mt-move-acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .mt-move select{font:inherit;font-size:12px;color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:4px 8px}
+  /* t-d40b: the Sources panel and the Refresh proposal */
+  .mt-sources,.mt-prop{border:1px solid var(--border);border-radius:12px;background:var(--panel);margin-bottom:12px}
+  .mt-prop{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
+  .mt-sources header,.mt-prop header{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border-muted);flex-wrap:wrap}
+  .mt-sources header h3,.mt-prop header b{flex:1;margin:0;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-muted);font-weight:600}
+  .mt-prop header b{font-size:13px;letter-spacing:0;text-transform:none;color:var(--text)}
+  .mt-tag{font-size:10px;font-weight:600;letter-spacing:.04em;border:1px solid var(--border);border-radius:999px;padding:1px 8px;color:var(--text-muted);white-space:nowrap}
+  .mt-tag.ok{color:var(--col-done,#4ade80);border-color:var(--col-done,#4ade80)}
+  .mt-tag.warn{color:#e5b567;border-color:#e5b567}
+  .mt-src-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;gap:10px;align-items:center;padding:9px 14px;border-bottom:1px solid var(--border-muted)}
+  .mt-src-u{font-family:ui-monospace,monospace;font-size:11.5px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mt-src-k{display:block;font-family:inherit;color:var(--text-muted);font-size:11px;margin-top:1px}
+  .mt-src-add{display:flex;gap:8px;padding:10px 14px;flex-wrap:wrap}
+  .mt-src-add input{flex:2;min-width:200px}
+  .mt-src-add input,.mt-src-add select{font:inherit;font-size:12px;color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 8px}
+  .mt-chg{display:flex;gap:10px;align-items:flex-start;padding:9px 14px;border-bottom:1px solid var(--border-muted);font-size:12px;color:var(--text-body)}
+  .mt-chg.sub{padding-left:38px;background:var(--bg)}
+  .mt-chg input{margin-top:3px;accent-color:var(--accent)}
+  .mt-chg small{display:block;color:var(--text-muted);font-size:11.5px;margin-top:1px}
+  .mt-chg b{color:var(--text)}
+  .mt-prop-h{padding:8px 14px 4px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);background:var(--bg);border-bottom:1px solid var(--border-muted)}
+  .mt-prop footer{display:flex;gap:8px;align-items:center;padding:10px 14px;flex-wrap:wrap}
+  .mt-prop footer span{flex:1;min-width:200px;color:var(--text-muted);font-size:11.5px}
+  .mt-spin{display:inline-block;width:11px;height:11px;border:2px solid var(--border-hover);border-top-color:var(--accent);border-radius:50%;animation:mtsp .7s linear infinite;vertical-align:-2px;margin-right:6px}
+  @keyframes mtsp{to{transform:rotate(360deg)}}
+  .mt-legacy{margin-top:12px;border:1px dashed var(--border);border-radius:12px;padding:8px 12px}
+  .mt-legacy summary{cursor:pointer;font-size:12px;color:var(--text-muted)}
+  .mt-legacy p{font-size:11.5px;color:var(--text-muted);margin:6px 0}
+  .mt-legacy-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}   /* not .mt-grid: the active-card count must not include these */
+  .mt-card.legacy{opacity:.7}
   .mt-add-card{border-style:dashed;border-radius:12px;display:flex;align-items:center;justify-content:center;min-height:110px;font-size:12.5px;cursor:pointer}
   .sessions{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:6px 4px}
   .slabel{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-body);padding:10px 14px 6px}

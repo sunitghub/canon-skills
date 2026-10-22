@@ -24,7 +24,7 @@ go_routes() {
 }
 # The pinned set: a route that disappears (or appears) changes what the board and the Cockpit can call, so it must
 # be an edit here too, never a silent change.
-want_routes="/api/admin/model-tiers /api/browse-dirs /api/ci-workflow /api/cockpit /api/cockpit-changes /api/cockpit-debug
+want_routes="/api/admin/model-tiers /api/admin/model-tiers/apply /api/admin/model-tiers/refresh /api/admin/model-tiers/remove /api/admin/model-tiers/retire /api/browse-dirs /api/ci-workflow /api/cockpit /api/cockpit-changes /api/cockpit-debug
 /api/cockpit-docs /api/cockpit-interrupted /api/cockpit-interrupted-dismiss /api/cockpit-restart /api/cockpit-sessions
 /api/cockpit-status /api/cockpit-stop /api/commit /api/doc /api/git /api/github/doctor /api/github/intake /api/github/push-main /api/github/sync
 /api/github/sync-preview /api/handoff /api/project-stats /api/projects /api/register-skill /api/skill-eval/check
@@ -805,6 +805,61 @@ done
 [[ ! -e "$user_file" ]] || fail "sprint-check-api: reset left $user_file"
 [[ "$(tiers_post '{"reset":true}')" == 200 ]] || fail "sprint-check-api: reset is not idempotent when no copy exists"
 [[ "$(tiers_json)" == "$seed_json" ]] || fail "sprint-check-api: GET after reset is not the seed"
+
+# t-d40b: retire and Remove-with-a-move go through the same validation and land in the data dir, never the seed.
+tiers_act() { curl -s -w '\n%{http_code}' -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' -d "$2" "$B/api/admin/model-tiers/$1"; }
+[[ "$(tiers_act retire '{"old":"claude-sonnet-5","new":"claude-sonnet-5-5"}' | tail -1)" == 200 ]] || fail "sprint-check-api: retire sonnet 5 -> 5.5 was rejected"
+tiers_json | python3 -c 'import sys,json
+d=json.load(sys.stdin); m={e["id"]:e for e in d["models"]["anthropic"]}
+assert m["claude-sonnet-5-5"].get("alias")=="sonnet" and m["claude-sonnet-5"].get("legacy") is True and not m["claude-sonnet-5"].get("alias"), m
+assert d["defaults"]["eval"]["anthropic"]=="claude-sonnet-5-5", d["defaults"]' || fail "sprint-check-api: retire did not move the alias and the eval default and mark the old entry legacy"
+[[ "$(shasum "$SEED_TIERS" | cut -d' ' -f1)" == "$seed_sha" ]] || fail "sprint-check-api: retire changed the tracked seed"
+retired_sha="$(shasum "$user_file" | cut -d' ' -f1)"
+for bad in retire:'{"old":"claude-sonnet-5","new":"claude-sonnet-5"}' retire:'{"old":"nope","new":"claude-sonnet-5-5"}' retire:'{"old":"claude-haiku-4-5-20251001","new":"gpt-6-sol"}' \
+           remove:'{"id":"claude-haiku-4-5-20251001"}' remove:'{"id":"claude-haiku-4-5-20251001","move_to":"claude-opus-5-5"}'; do
+  [[ "$(tiers_act "${bad%%:*}" "${bad#*:}" | tail -1)" == 400 ]] || fail "sprint-check-api: ${bad%%:*} ${bad#*:} should 400"
+  [[ "$(shasum "$user_file" | cut -d' ' -f1)" == "$retired_sha" ]] || fail "sprint-check-api: a refused ${bad%%:*} changed the data-dir copy"
+done
+tiers_act remove '{"id":"claude-haiku-4-5-20251001"}' | head -1 | grep 'holds the alias haiku' >/dev/null || fail "sprint-check-api: remove without a move target did not say what the entry holds"
+[[ "$(tiers_act remove '{"id":"claude-haiku-4-5-20251001","move_to":"claude-haiku-5-5"}' | tail -1)" == 200 ]] || fail "sprint-check-api: remove with a move target was rejected"
+tiers_json | python3 -c 'import sys,json
+d=json.load(sys.stdin); m={e["id"]:e for e in d["models"]["anthropic"]}
+assert "claude-haiku-4-5-20251001" not in m and m["claude-haiku-5-5"].get("alias")=="haiku", m' || fail "sprint-check-api: remove-with-a-move did not delete the entry and hand over the alias"
+# a save that gives two active entries one alias, or points a default at a legacy entry, is refused
+dup="$(tiers_json | python3 -c 'import sys,json
+d=json.load(sys.stdin); m={e["id"]:e for e in d["models"]["anthropic"]}; m["claude-opus-5-5"]["alias"]="haiku"; print(json.dumps(d))')"
+[[ "$(tiers_post "$dup")" == 400 ]] || fail "sprint-check-api: a duplicate active alias was accepted"
+legdef="$(tiers_json | python3 -c 'import sys,json
+d=json.load(sys.stdin); d["defaults"]["eval"]["anthropic"]="claude-sonnet-5"; print(json.dumps(d))')"
+[[ "$(tiers_post "$legdef")" == 400 ]] || fail "sprint-check-api: a default on a legacy entry was accepted"
+# t-d40b: Refresh answers from the SAVED sources only (a url in the request is ignored and nothing is fetched for it), reports a source
+# that is refused as one line, and never reads the network for a loopback or private address; Apply adds first, then retires.
+[[ "$(tiers_post '{"reset":true}')" == 200 ]] || fail "sprint-check-api: reset before the refresh checks failed"
+refresh_json() { curl -s -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' -d "$1" "$B/api/admin/model-tiers/refresh"; }
+priv_src="$(tiers_json | python3 -c 'import sys,json
+d=json.load(sys.stdin); d["sources"]=[{"url":"https://127.0.0.1/models","kind":"docs","provider":"anthropic"}]; print(json.dumps(d))')"
+[[ "$(tiers_post "$priv_src")" == 400 ]] || fail "sprint-check-api: a loopback source was saved"
+http_src="$(tiers_json | python3 -c 'import sys,json
+d=json.load(sys.stdin); d["sources"]=[{"url":"http://example.com/models","kind":"docs","provider":"anthropic"}]; print(json.dumps(d))')"
+[[ "$(tiers_post "$http_src")" == 400 ]] || fail "sprint-check-api: an http source was saved"
+keyhost_src="$(tiers_json | python3 -c 'import sys,json
+d=json.load(sys.stdin); d["sources"]=[{"url":"https://example.com/v1/models","kind":"api","provider":"anthropic"}]; print(json.dumps(d))')"
+[[ "$(tiers_post "$keyhost_src")" == 400 ]] || fail "sprint-check-api: a Models API source on another host was saved"
+tiers_json | python3 -c 'import sys,json
+d=json.load(sys.stdin); s=d["sources"]; assert [x["kind"] for x in s]==["docs","docs","api","api"], s' || fail "sprint-check-api: the seed's four sources are not served"
+# a request url is ignored: with no keys, the two API sources are skipped and nothing else is fetched when only an index is asked for
+out="$(env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY curl -s -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' -d '{"index":2,"url":"https://127.0.0.1/x"}' "$B/api/admin/model-tiers/refresh")"
+printf '%s' "$out" | python3 -c 'import sys,json
+r=json.load(sys.stdin); assert r["ok"] is True and len(r["sources"])==1 and r["sources"][0]["index"]==2, r
+assert r["proposal"]["add"]==[] and r["proposal"]["retire"], r' || fail "sprint-check-api: refresh with one index answered unexpectedly: $out"
+apply_ok="$(curl -s -w '\n%{http_code}' -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' \
+  -d '{"add":[{"id":"claude-haiku-5-6","provider":"anthropic","name":"Claude Haiku 5.6","input_price":0.1,"output_price":0.5}],"retire":[{"old":"claude-haiku-4-5-20251001","new":"claude-haiku-5-6"}]}' "$B/api/admin/model-tiers/apply")"
+[[ "$(printf '%s' "$apply_ok" | tail -1)" == 200 ]] || fail "sprint-check-api: apply was rejected: $apply_ok"
+tiers_json | python3 -c 'import sys,json
+d=json.load(sys.stdin); m={e["id"]:e for e in d["models"]["anthropic"]}
+assert m["claude-haiku-5-6"].get("alias")=="haiku" and m["claude-haiku-4-5-20251001"].get("legacy") is True, m' || fail "sprint-check-api: apply did not add the model and retire the old one"
+[[ "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' -d '{"add":[{"id":"claude-opus-5-5","provider":"anthropic","name":"x"}]}' "$B/api/admin/model-tiers/apply")" == 400 ]] || fail "sprint-check-api: apply of an id already in the registry should 400"
+[[ "$(tiers_post '{"reset":true}')" == 200 ]] || fail "sprint-check-api: reset after the t-d40b checks failed"
 
 # ── t-9b2d: GET /static/<name> — the board's own CSS/JS ─────────────────────
 # A second board runs from a temp copy of the app folder, so fixture files and links never touch the tracked tree; its

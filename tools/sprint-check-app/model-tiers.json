@@ -162,5 +162,27 @@
       "claude-haiku-5-5",
       "claude-sonnet-5-5"
     ]
-  }
+  },
+  "sources": [
+    {
+      "url": "https://platform.claude.com/docs/en/models/overview",
+      "kind": "docs",
+      "provider": "anthropic"
+    },
+    {
+      "url": "https://developers.openai.com/api/docs/models",
+      "kind": "docs",
+      "provider": "openai"
+    },
+    {
+      "url": "https://api.anthropic.com/v1/models",
+      "kind": "api",
+      "provider": "anthropic"
+    },
+    {
+      "url": "https://api.openai.com/v1/models",
+      "kind": "api",
+      "provider": "openai"
+    }
+  ]
 }

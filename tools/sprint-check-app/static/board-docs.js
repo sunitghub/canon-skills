@@ -827,7 +827,7 @@ export function initDocs() {
       // full API id — matches the value `claude -p --model` has always been
       // passed (DECISIONS.md t-4003) and every ticket's already-saved plan.md.
       const models = (reg.models && reg.models.anthropic) || [];
-      const aliased = models.filter(m => m.alias);
+      const aliased = models.filter(m => m.alias && !m.legacy);
       if (aliased.length) {
         MODEL_TIER_OPTIONS = ['default', ...aliased.map(m => m.alias)];
         MODEL_TIER_LABELS = Object.fromEntries(aliased.map(m => [m.alias, m.name]));

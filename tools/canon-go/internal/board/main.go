@@ -688,6 +688,60 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		sendJSONStatus(w, res, status)
 		return
 	}
+	// t-d40b: retire (the alias and defaults move to the replacement, the old entry goes legacy) and Remove with a move.
+	// t-d40b: Refresh fetches the saved sources and answers with a proposal (nothing is written); Apply writes the chosen part of it.
+	// The request never carries a URL: sources come from the saved registry.
+	if path == "/api/admin/model-tiers/refresh" {
+		only := -1
+		if f, ok := payload["index"].(float64); ok {
+			only = int(f)
+		}
+		doc := loadModelTiers()
+		res, st := refreshSources(doc, only, fetchOpts{})
+		res["ok"], res["sources"] = true, st
+		sendJSON(w, res)
+		return
+	}
+	if path == "/api/admin/model-tiers/apply" {
+		var adds []map[string]any
+		for _, a := range anySlice(payload["add"]) {
+			if m, ok := a.(map[string]any); ok {
+				adds = append(adds, m)
+			}
+		}
+		var pairs [][2]string
+		for _, r := range anySlice(payload["retire"]) {
+			if m, ok := r.(map[string]any); ok {
+				pairs = append(pairs, [2]string{fmt.Sprint(m["old"]), fmt.Sprint(m["new"])})
+			}
+		}
+		res := registryMove(func(doc map[string]any) error { return applyProposal(doc, adds, pairs) })
+		status := http.StatusOK
+		if ok, _ := res["ok"].(bool); !ok {
+			status = http.StatusBadRequest
+		}
+		sendJSONStatus(w, res, status)
+		return
+	}
+	if path == "/api/admin/model-tiers/retire" || path == "/api/admin/model-tiers/remove" {
+		var res map[string]any
+		if path == "/api/admin/model-tiers/retire" {
+			res = registryMove(func(doc map[string]any) error {
+				return retireModel(doc, fmt.Sprint(payload["old"]), fmt.Sprint(payload["new"]))
+			})
+		} else {
+			moveTo, _ := payload["move_to"].(string)
+			res = registryMove(func(doc map[string]any) error {
+				return removeModel(doc, fmt.Sprint(payload["id"]), moveTo)
+			})
+		}
+		status := http.StatusOK
+		if ok, _ := res["ok"].(bool); !ok {
+			status = http.StatusBadRequest
+		}
+		sendJSONStatus(w, res, status)
+		return
+	}
 	// t-7485: register the fixed `sprint` skill into the tab's project. eroot is
 	// the registry-resolved root (unknown id already 400'd above); the skill name
 	// t-7485/t-96c3: register a canon skill into the tab's project. eroot is the
@@ -5030,6 +5084,12 @@ func loadModelTiers() map[string]any {
 			found[0]["upkeep"] = u
 		}
 	}
+	// t-d40b: the same for the Refresh sources: a user file saved before they existed gets the seed's list.
+	if _, ok := found[0]["sources"]; !ok && len(found) > 1 {
+		if u, ok := found[len(found)-1]["sources"]; ok {
+			found[0]["sources"] = u
+		}
+	}
 	return found[0]
 }
 
@@ -5348,7 +5408,7 @@ func modelTiersValid(data map[string]any) bool {
 			}
 		}
 	}
-	return true
+	return modelTiersConsistent(data)
 }
 
 func saveModelTiers(data map[string]any) map[string]any {

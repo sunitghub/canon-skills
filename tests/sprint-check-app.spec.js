@@ -5787,11 +5787,11 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator('#nav-admin').click();
       const box = page.locator('#ad-sessions');
       await expect(box.locator('tbody tr')).toHaveCount(6);
-      // Order: tiles → sessions → Verbose logging → Model Tiers.
+      // Order: tiles → sessions → the tab strip (Model tiers by default) → Model Tiers (t-d40b: Verbose logging sits on the Logging tab).
       const order = await page.evaluate(() => {
         const q = s => document.querySelector('#view-admin ' + s);
         const before = (a, b) => !!(q(a).compareDocumentPosition(q(b)) & Node.DOCUMENT_POSITION_FOLLOWING);
-        return [before('.tiles', '.sessions'), before('.sessions', '.admin-settings'), before('.sessions', '.mt-wrap')];
+        return [before('.tiles', '.sessions'), before('.sessions', '.ad-tabs'), before('.ad-tabs', '.mt-wrap')];
       });
       expect(order).toEqual([true, true, true]);
       await expect(box.locator('tbody tr').nth(0).locator('.s1')).toHaveText('t-aaa1Test scripts leak board servers');
@@ -5805,10 +5805,10 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const fit = await page.evaluate(() => {
         const w = s => Math.round(document.querySelector('#view-admin ' + s).getBoundingClientRect().width);
         const wrap = document.querySelector('#ad-sessions .ad-table-wrap');
-        return { sessions: w('.sessions'), tiles: w('.tiles'), settings: w('.admin-settings'), scrolls: wrap.scrollWidth > wrap.clientWidth };
+        return { sessions: w('.sessions'), tiles: w('.tiles'), tabs: w('.ad-tabs'), scrolls: wrap.scrollWidth > wrap.clientWidth };
       });
       expect(fit.sessions).toBe(fit.tiles);
-      expect(fit.sessions).toBe(fit.settings);
+      expect(fit.sessions).toBe(fit.tabs);
       expect(fit.scrolls).toBe(false);
       await expect(page.locator('#ad-uptime')).toHaveText('—');                                   // uptime keeps "—" for 0
       const type = await box.evaluate(el => ({
@@ -5823,7 +5823,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    // t-28ec: board cards carry their session's state; Herdr colours; desktop notification in the shell.
+    // t-28ec: board cards carry their session's state; Herdr colours.
     const Q = Object.fromEntries(['need', 'work', 'idle', 'done', 'old', 'other'].map(k => [k, newTicketId(PROJECT_ROOT)]));
     const cardRows = () => [
       { session: 'c1', ticket: Q.need, project_root: PROJECT_ROOT, cwd: PROJECT_ROOT, agent: 'claude', status: 'needs-you', state: 'needs-you', state_secs: 42, idle_secs: 42, idle_limit_secs: 1800, signal: 'hook' },
@@ -6042,90 +6042,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    // A fake Notification + controllable document.hidden, installed before any page script runs.
-    const fakeNotifications = (page, { perm = 'default', nextPerm = 'granted', supported = true, hidden = false, on = false } = {}) => page.addInitScript(o => {
-      window.__notes = []; window.__permAsks = 0; window.__perm = o.perm; window.__hidden = o.hidden; window.__focused = !o.hidden;
-      document.hasFocus = () => window.__focused;
-      if (o.on) { try { localStorage.setItem('canon-cockpit-notify', 'on'); } catch (e) {} }
-      Object.defineProperty(document, 'hidden', { configurable: true, get: () => window.__hidden });
-      if (!o.supported) { delete window.Notification; return; }
-      window.Notification = class { constructor(title, opts) { window.__notes.push({ title, body: opts && opts.body, tag: opts && opts.tag }); window.__last = this; }
-        close() {} static get permission() { return window.__perm; }
-        static requestPermission() { window.__permAsks++; window.__perm = o.nextPerm; return Promise.resolve(window.__perm); } };
-    }, { perm, nextPerm, supported, hidden, on });
     const setRows = async (page, rows) => { await page.unroute('**/api/cockpit-sessions'); await page.route('**/api/cockpit-sessions', sessionsBody(rows)); };
     const one = (state, extra = {}) => ({ session: 's1', ticket: 't-aaa1', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', status: state === 'needs-you' ? 'needs-you' : 'running', state, state_secs: 1, idle_secs: 1, idle_limit_secs: 1800, signal: 'hook', ...extra });
-
-    test('desktop notification (t-28ec): opt-in switch, one notification per move into needs-you while hidden, click opens it', async ({ page }) => {
-      await fakeNotifications(page);
-      await stubTicketDocs(page);
-      await openShell(page, [one('working')]);
-      await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
-      expect(await page.evaluate(() => window.__permAsks)).toBe(0);      // never asked on load
-      await page.locator('#nav-admin').click();
-      const toggle = page.locator('#ad-notify-toggle');
-      await expect(toggle).not.toBeChecked();
-      await toggle.click({ force: true });
-      await expect(toggle).toBeChecked();
-      expect(await page.evaluate(() => window.__permAsks)).toBe(1);      // asked from the click
-      // Hidden + a move into needs-you → exactly one notification.
-      await page.evaluate(() => { window.__hidden = true; window.__focused = false; });
-      await setRows(page, [one('needs-you')]);
-      await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
-      await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });                          // still waiting: no repeat
-      expect(await page.evaluate(() => window.__notes)).toEqual([{ title: 't-aaa1 needs you', body: 'Test scripts leak board servers · proj-a', tag: 'canon-cockpit-s1' }]);
-      // Clicking it opens that session's project tab.
-      await page.locator('.tab.pinned').click();
-      await page.evaluate(() => window.__last.onclick());
-      await expect(page.locator('#view-proj-a')).toHaveClass(/active/);
-      // Visible and focused: no notification.
-      await page.evaluate(() => { window.__hidden = false; window.__focused = true; });
-      await setRows(page, [one('working')]); await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
-      await setRows(page, [one('needs-you')]); await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
-      expect(await page.evaluate(() => window.__notes.length)).toBe(1);
-      // Tab still showing but the window isn't focused (another app in front): notifies.
-      await page.evaluate(() => { window.__focused = false; });
-      await setRows(page, [one('working')]); await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
-      await setRows(page, [one('needs-you')]); await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
-      expect(await page.evaluate(() => window.__notes.length)).toBe(2);
-      await page.evaluate(() => { window.__focused = true; });
-      // Switch off: no notification even when hidden.
-      await page.locator('#nav-admin').click();
-      await toggle.click({ force: true });
-      await page.evaluate(() => { window.__hidden = true; });
-      await setRows(page, [one('working')]); await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
-      await setRows(page, [one('needs-you')]); await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
-      expect(await page.evaluate(() => window.__notes.length)).toBe(2);
-      await page.locator('#view-admin .admin-settings').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-28ec', 'visuals', 'admin-notify.png') });
-      await page.unrouteAll({ behavior: 'ignoreErrors' });
-    });
-
-    test('desktop notification (t-28ec): no burst for sessions already waiting at load; denied and unsupported are explained', async ({ page, browser }) => {
-      await fakeNotifications(page, { perm: 'granted', hidden: true, on: true });
-      await openShell(page, [one('needs-you')]);
-      for (let i = 0; i < 3; i++) await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
-      expect(await page.evaluate(() => window.__notes.length)).toBe(0);
-      await page.unrouteAll({ behavior: 'ignoreErrors' });
-
-      const denied = await browser.newPage();
-      await fakeNotifications(denied, { perm: 'default', nextPerm: 'denied' });
-      await openShell(denied, []);
-      await denied.locator('#nav-admin').click();
-      await denied.locator('#ad-notify-toggle').click({ force: true });
-      await expect(denied.locator('#ad-notify-toggle')).not.toBeChecked();
-      await expect(denied.locator('#ad-notify-note')).toContainText('Blocked');
-      await denied.unrouteAll({ behavior: 'ignoreErrors' });
-      await denied.close();
-
-      const none = await browser.newPage();
-      await fakeNotifications(none, { supported: false });
-      await openShell(none, []);
-      await none.locator('#nav-admin').click();
-      await expect(none.locator('#ad-notify-toggle')).toBeDisabled();
-      await expect(none.locator('#ad-notify-note')).toContainText('doesn’t support');
-      await none.unrouteAll({ behavior: 'ignoreErrors' });
-      await none.close();
-    });
 
     // t-47f1: scratch sessions — an agent in a project with no ticket.
     const fakeLivePage = `<!doctype html><html><body><script>
@@ -13099,6 +13017,226 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
     await page.request.post(BASE + '/api/admin/model-tiers', { data: { reset: true } });
     expect(readCanonicalModelTiers()).toBe(canonical);
   }
+
+  // t-d40b. Protects the Admin page: its own tab strip (Model tiers by default, Logging beside it), with the daemon panel and agent list above
+  // both, the arrow keys stepping between tabs, and no Desktop notifications switch any more.
+  test('Admin has Model tiers and Logging tabs; the daemon panel stays; the notifications switch is gone (t-d40b)', async ({ page }) => {
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    await page.locator('#nav-admin').click();
+    const tiers = page.locator('#ad-tab-tiers'), logging = page.locator('#ad-tab-logging');
+    await expect(page.locator('.ad-tab')).toHaveText(['Model tiers', 'Logging']);
+    await expect(tiers).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#ad-panel-tiers')).toBeVisible();
+    await expect(page.locator('#mt-tabs')).toBeVisible();                    // the Model tiers content is on the default tab
+    await expect(page.locator('#ad-panel-logging')).toBeHidden();
+    await expect(page.locator('#ad-debug-toggle')).toBeHidden();
+    await expect(page.locator('.tiles')).toBeVisible();                       // the daemon panel and tiles sit above the tabs
+    await logging.click();
+    await expect(logging).toHaveAttribute('aria-selected', 'true');
+    await expect(tiers).toHaveAttribute('aria-selected', 'false');
+    await expect(page.locator('#ad-panel-tiers')).toBeHidden();
+    await expect(page.locator('#ad-debug-toggle')).toBeVisible();
+    await expect(page.locator('.tiles')).toBeVisible();                       // still above, on every tab
+    await page.keyboard.press('ArrowLeft');                                    // focus is on the Logging tab after the click
+    await expect(tiers).toHaveAttribute('aria-selected', 'true');
+    await expect(tiers).toBeFocused();
+    await page.keyboard.press('End');
+    await expect(logging).toHaveAttribute('aria-selected', 'true');
+    await page.keyboard.press('Home');
+    await expect(tiers).toHaveAttribute('aria-selected', 'true');
+    expect(await page.locator('#view-admin').innerText()).not.toMatch(/Desktop notifications/);
+    await expect(page.locator('#ad-notify-toggle')).toHaveCount(0);
+  });
+
+  // t-d40b Refresh. Protects Admin > Model Tiers > Sources and Refresh: the saved sources are listed, Refresh asks the board (never with a URL
+  // of its own) and shows a PROPOSAL that writes nothing until Apply, Apply sends only what is ticked, and the registry then follows the line:
+  // the alias and default move to the newer model and the old one sits in Legacy. The board's fetch is stubbed here (no network in tests);
+  // the proposal builder and the fetch guard are pinned by the Go tests.
+  const refreshStub = proposal => ({ ok: true, sources: [
+    { index: 0, status: 'checked just now', ok: true, found: 4 }, { index: 1, status: 'checked just now', ok: true, found: 3 },
+    { index: 2, status: 'key not set', ok: false, found: 0 }, { index: 3, status: 'key not set', ok: false, found: 0 }], proposal });
+  const sonnetHaikuRetire = { add: [], current: ['Claude Opus 5.5', 'Claude Fable 5.1'], retire: [
+    { old: 'claude-sonnet-5', old_name: 'Claude Sonnet 5', new: 'claude-sonnet-5-5', new_name: 'Claude Sonnet 5.5', changes_gate_model: true },
+    { old: 'claude-haiku-4-5-20251001', old_name: 'Claude Haiku 4.5', new: 'claude-haiku-5-5', new_name: 'Claude Haiku 5.5' }] };
+
+  test('Model Tiers: Sources lists the saved sources, Refresh sends no URL and proposes without writing (t-d40b)', async ({ page }) => {
+    const canonical = readCanonicalModelTiers();
+    try {
+      const bodies = [];
+      await page.route('**/api/admin/model-tiers/refresh', async route => { bodies.push(JSON.parse(route.request().postData() || '{}')); await route.fulfill({ contentType: 'application/json', body: JSON.stringify(refreshStub(sonnetHaikuRetire)) }); });
+      await page.goto(BASE + '/cockpit');
+      await page.waitForLoadState('networkidle');
+      await page.locator('#nav-admin').click();
+      const rows = page.locator('#mt-sources .mt-src-row');
+      await expect(rows).toHaveCount(4);
+      await expect(rows.nth(0)).toContainText('https://platform.claude.com/docs/en/models/overview');
+      await expect(rows.nth(2)).toContainText('Models API');
+      await expect(rows.nth(2)).toContainText('ANTHROPIC_API_KEY');
+      await expect(page.locator('#mt-sources .mt-src-row .mt-tag')).toHaveText(['never checked', 'never checked', 'never checked', 'never checked']);
+      await expect(page.locator('#mt-proposal .mt-prop')).toHaveCount(0);       // nothing is fetched on load
+      expect(bodies).toEqual([]);
+      const before = await (await page.request.get(BASE + '/api/admin/model-tiers')).json();
+      await rows.nth(2).locator('.mt-src-rf').click();                          // one row: the request names an index, never a URL
+      await expect(page.locator('#mt-proposal .mt-prop')).toBeVisible();
+      await page.locator('#mt-sources .mt-rf-all').click();
+      await expect(rows.nth(2).locator('.mt-tag')).toHaveText('key not set');
+      await expect(rows.nth(0).locator('.mt-tag')).toHaveText('checked just now');
+      expect(bodies).toEqual([{ index: 2 }, {}]);
+      await expect(page.locator('#mt-proposal header b')).toHaveText('2 to retire');
+      expect(JSON.stringify(await (await page.request.get(BASE + '/api/admin/model-tiers')).json())).toBe(JSON.stringify(before));   // a proposal wrote nothing
+      await page.locator('#mt-proposal .mt-prop-dismiss').click();
+      await expect(page.locator('#mt-proposal .mt-prop')).toHaveCount(0);
+      // a source is added only as an https address, and a removed one leaves the saved list
+      await page.locator('#mt-src-url').fill('http://example.com/models');
+      await page.locator('.mt-src-addbtn').click();
+      await expect(page.locator('#mt-src-url')).toHaveAttribute('placeholder', 'Use an https:// address');
+      await expect(rows).toHaveCount(4);
+      await page.locator('#mt-src-url').fill('https://example.com/models');
+      await page.locator('.mt-src-addbtn').click();
+      await expect(rows).toHaveCount(5);
+      await rows.nth(4).locator('.mt-src-rm').click();
+      await expect(rows).toHaveCount(4);
+    } finally {
+      await restoreModelTiers(page, canonical);
+    }
+  });
+
+  test('Model Tiers: applying a proposal retires the old models: alias and default move, Legacy holds them, Remove on one deletes it (t-d40b)', async ({ page }) => {
+    const canonical = readCanonicalModelTiers();
+    try {
+      await page.route('**/api/admin/model-tiers/refresh', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify(refreshStub(sonnetHaikuRetire)) }));
+      let applied = null;
+      await page.route('**/api/admin/model-tiers/apply', async route => { applied = JSON.parse(route.request().postData()); await route.continue(); });
+      await page.goto(BASE + '/cockpit');
+      await page.waitForLoadState('networkidle');
+      await page.locator('#nav-admin').click();
+      await expect(page.locator('#mt-default-eval select[data-prov="anthropic"] option:checked')).toHaveText('Claude Sonnet 5');   // the seed starts on Sonnet 5
+      await page.locator('#mt-sources .mt-rf-all').click();
+      const prop = page.locator('#mt-proposal .mt-prop');
+      await expect(prop.locator('header b')).toHaveText('2 to retire');
+      await expect(prop).toContainText('Retire Claude Sonnet 5');
+      await expect(prop).toContainText('changes the gate model');
+      await expect(prop).toContainText('Already current');
+      await expect(prop.locator('.mt-prop-apply')).toHaveText('Apply 2 selected');
+      await prop.locator('[data-sel="t:claude-haiku-4-5-20251001"]').uncheck();      // only what is ticked is sent
+      await expect(prop.locator('.mt-prop-apply')).toHaveText('Apply 1 selected');
+      await prop.locator('.mt-prop-apply').click();
+      await expect(page.locator('#mt-proposal .mt-prop')).toHaveCount(0);
+      expect(applied).toEqual({ add: [], retire: [{ old: 'claude-sonnet-5', new: 'claude-sonnet-5-5' }] });
+      await expect(page.locator('#mt-default-eval select[data-prov="anthropic"] option:checked')).toHaveText('Claude Sonnet 5.5');
+      await expect(page.locator('.mt-card[data-id="claude-sonnet-5-5"] .mt-card-id').nth(1)).toContainText('sonnet');
+      await expect(page.locator('.mt-grid .mt-card[data-id="claude-sonnet-5"]')).toHaveCount(0);
+      await expect(page.locator('.mt-legacy summary')).toHaveText('Legacy \u00b7 1');
+      await page.locator('.mt-legacy summary').click();
+      await page.locator('.mt-card.legacy[data-id="claude-sonnet-5"] .b-danger').click();   // a legacy entry holds nothing: a plain confirm, then it is gone
+      await expect(page.locator('#cconfirm')).toHaveClass(/show/);
+      await page.locator('#cc-ok').click();
+      await expect(page.locator('.mt-legacy')).toHaveCount(0);
+      const reg = await (await page.request.get(BASE + '/api/admin/model-tiers')).json();
+      expect(reg.models.anthropic.some(m => m.id === 'claude-sonnet-5')).toBe(false);
+      expect(reg.models.anthropic.find(m => m.id === 'claude-haiku-4-5-20251001').legacy).toBeUndefined();   // the unticked one was left alone
+    } finally {
+      await restoreModelTiers(page, canonical);
+    }
+  });
+
+  test('Model Tiers: a proposal that adds a model lets Apply take the add without its replaces, and flags an unconfirmed price (t-d40b)', async ({ page }) => {
+    const canonical = readCanonicalModelTiers();
+    try {
+      const add = { provider: 'anthropic', id: 'claude-haiku-5-6', name: 'Claude Haiku 5.6', input_price: 0.1, output_price: 0.5, price_known: true, price_from: true,
+        replaces: 'claude-haiku-5-5', replaces_name: 'Claude Haiku 5.5' };
+      await page.route('**/api/admin/model-tiers/refresh', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify(refreshStub({ add: [add], retire: [], current: [] })) }));
+      let applied = null;
+      await page.route('**/api/admin/model-tiers/apply', async route => { applied = JSON.parse(route.request().postData()); await route.continue(); });
+      await page.goto(BASE + '/cockpit');
+      await page.waitForLoadState('networkidle');
+      await page.locator('#nav-admin').click();
+      await page.locator('#mt-sources .mt-rf-all').click();
+      const prop = page.locator('#mt-proposal .mt-prop');
+      await expect(prop.locator('header b')).toHaveText('1 new model');
+      await expect(prop).toContainText('Add Claude Haiku 5.6');
+      await expect(prop).toContainText('confirm price');
+      await expect(prop).toContainText('Replaces Claude Haiku 5.5');
+      await expect(prop.locator('.mt-prop-apply')).toHaveText('Apply 2 selected');
+      await prop.locator('[data-sel="r:claude-haiku-5-6"]').uncheck();              // add it, but keep Haiku 5.5 as it is
+      await expect(prop.locator('.mt-prop-apply')).toHaveText('Apply 1 selected');
+      await prop.locator('.mt-prop-apply').click();
+      expect(applied).toEqual({ add: [{ id: 'claude-haiku-5-6', provider: 'anthropic', name: 'Claude Haiku 5.6', input_price: 0.1, output_price: 0.5 }], retire: [] });
+      await expect(page.locator('.mt-grid .mt-card[data-id="claude-haiku-5-6"]')).toHaveCount(1);
+      await expect(page.locator('.mt-card[data-id="claude-haiku-5-5"] .mt-badge')).toHaveText('Default');   // the default did not move
+    } finally {
+      await restoreModelTiers(page, canonical);
+    }
+  });
+
+  // t-d40b slice 1. Protects Admin > Model Tiers: Remove of the model that holds a Claude Code alias or a default asks where they go
+  // (the board does the move), a retired model sits in Legacy and Restore brings it back, and a registry with an alias nobody holds
+  // says so and offers one click to bind it.
+  test('Model Tiers: Remove on the alias and default holder asks where they go; Legacy lists it and Restore returns it (t-d40b)', async ({ page }) => {
+    const canonical = readCanonicalModelTiers();
+    try {
+      await page.goto(BASE + '/cockpit');
+      await page.waitForLoadState('networkidle');
+      await page.locator('#nav-admin').click();
+      await page.locator('.mt-card[data-id="claude-sonnet-5"] .b-danger').click();
+      const move = page.locator('#mt-move .mt-move');
+      await expect(move).toContainText('Claude Sonnet 5 holds the alias sonnet and the Review & Eval default');
+      await expect(page.locator('#cconfirm')).not.toHaveClass(/show/);          // no plain confirm: it must not just delete
+      // an alias holder may only move to a model with no alias of its own
+      await expect(move.locator('select option')).toHaveText(['Claude Sonnet 5.5', 'Claude Haiku 5.5']);
+      await move.locator('select').selectOption('claude-sonnet-5-5');
+      await move.locator('.mt-move-retire').click();
+      await expect(page.locator('.mt-grid .mt-card[data-id="claude-sonnet-5"]')).toHaveCount(0);
+      await expect(page.locator('.mt-legacy summary')).toHaveText('Legacy \u00b7 1');
+      await expect(page.locator('#mt-default-eval select[data-prov="anthropic"] option:checked')).toHaveText('Claude Sonnet 5.5');
+      await expect(page.locator('.mt-card[data-id="claude-sonnet-5-5"] .mt-card-id').nth(1)).toContainText('sonnet');
+      await expect(page.locator('#mt-alias-alert .mt-alert')).toHaveCount(0);
+      const reg = await (await page.request.get(BASE + '/api/admin/model-tiers')).json();
+      const old = reg.models.anthropic.find(m => m.id === 'claude-sonnet-5');
+      expect(old.legacy).toBe(true);
+      expect(old.alias || '').toBe('');
+      // the Gate model dropdown never offers a legacy entry
+      expect(reg.models.anthropic.filter(m => m.alias && !m.legacy).map(m => m.alias)).toEqual(['fable', 'opus', 'sonnet', 'haiku']);
+      await page.locator('.mt-legacy summary').click();
+      await page.locator('.mt-card.legacy[data-id="claude-sonnet-5"] .mt-restore').click();
+      await expect(page.locator('.mt-grid .mt-card[data-id="claude-sonnet-5"]')).toHaveCount(1);
+      await expect(page.locator('.mt-legacy')).toHaveCount(0);
+      // a legacy entry holds nothing, so Remove deletes it after a plain confirm
+      await page.locator('.mt-card[data-id="claude-sonnet-5"] .b-danger').click();   // Sonnet 5 is active again but holds nothing now
+      await expect(page.locator('#cconfirm')).toHaveClass(/show/);
+      await page.locator('#cc-ok').click();
+      await expect(page.locator('.mt-grid .mt-card[data-id="claude-sonnet-5"]')).toHaveCount(0);
+    } finally {
+      await restoreModelTiers(page, canonical);
+    }
+  });
+
+  test('Model Tiers: an alias no active model holds shows a banner, and Bind clears it (t-d40b)', async ({ page }) => {
+    const canonical = readCanonicalModelTiers();
+    try {
+      // the registry as one user's machine ended up: Sonnet 5 and Haiku 4.5 removed, taking the sonnet and haiku aliases with them
+      const reg = JSON.parse(canonical);
+      reg.models.anthropic = reg.models.anthropic.filter(m => !['claude-sonnet-5', 'claude-haiku-4-5-20251001'].includes(m.id));
+      reg.defaults.eval.anthropic = 'claude-sonnet-5-5';
+      expect((await page.request.post(BASE + '/api/admin/model-tiers', { data: reg })).ok()).toBe(true);
+      await page.goto(BASE + '/cockpit');
+      await page.waitForLoadState('networkidle');
+      await page.locator('#nav-admin').click();
+      const alert = page.locator('#mt-alias-alert .mt-alert');
+      await expect(alert).toContainText('2 aliases unbound: sonnet, haiku');
+      await alert.locator('[data-bind="sonnet"]').click();
+      await expect(alert).toContainText('1 alias unbound: haiku');
+      await alert.locator('[data-bind="haiku"]').click();
+      await expect(page.locator('#mt-alias-alert .mt-alert')).toHaveCount(0);
+      const after = await (await page.request.get(BASE + '/api/admin/model-tiers')).json();
+      const by = Object.fromEntries(after.models.anthropic.filter(m => m.alias).map(m => [m.alias, m.id]));
+      expect(by.sonnet).toBe('claude-sonnet-5-5');
+      expect(by.haiku).toBe('claude-haiku-5-5');
+    } finally {
+      await restoreModelTiers(page, canonical);
+    }
+  });
 
   test('Admin "+ Add" creates a real registry entry with a usable alias reachable from the per-ticket dropdown, and Remove deletes it', async ({ page }) => {
     const canonical = readCanonicalModelTiers();
