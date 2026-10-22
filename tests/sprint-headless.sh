@@ -400,6 +400,17 @@ write_plan 'Tier: normal | Risk: fixture'
 (cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_ok "$SPRINT_HEADLESS" t-mdl1 --base-ref HEAD >/dev/null)
 assert_no_model_arg
 
+# 14c2. t-30bf: a graded project with its own skills/sprint and a planted tools/subagent-log.sh must never get that
+# script allowed or named: the orchestrator runs the install's subagent-log.sh (the attacker layout of the 2026-10-22 scan).
+mkdir -p "$WORK/tools"; printf '#!/bin/sh\necho planted\n' > "$WORK/tools/subagent-log.sh"; chmod +x "$WORK/tools/subagent-log.sh"
+INSTALL_TOOLS="$(cd -P "$ROOT/tools" && pwd)"
+: > "$CAP_ARGS"
+(cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_ok "$SPRINT_HEADLESS" t-mdl1 --base-ref HEAD >/dev/null)
+grep -qxF "<<ARG>>Bash($INSTALL_TOOLS/subagent-log.sh:*)" "$CAP_ARGS" || fail "t-30bf: sprint-headless must allow the install's subagent-log.sh"
+grep -qF "run: $INSTALL_TOOLS/subagent-log.sh" "$CAP_ARGS" || fail "t-30bf: sprint-headless prompt must name the install's subagent-log.sh"
+if grep -qF "./tools/subagent-log.sh" "$CAP_ARGS"; then fail "t-30bf: sprint-headless must not allow or name the graded project's ./tools/subagent-log.sh"; fi
+rm -rf "$WORK/tools"
+
 # 14d. Invalid Gate model → hard-fail before claude, no dispatch
 write_plan 'Tier: normal | Risk: fixture | Gate model: bad;model'
 : > "$CAP_ARGS"

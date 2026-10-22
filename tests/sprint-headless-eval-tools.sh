@@ -75,4 +75,17 @@ assert 'printf "%s" "$gout" | grep "could not find a git repository" >/dev/null'
 echo "--- shipped template parses and equals the default (minus runtime log entry) ---"
 assert 'python3 -c "import json;json.load(open(\"tools/headless-eval-tools.json\"))"' "template is valid JSON"
 
+echo "--- t-30bf: a graded project outside this install gets the install's subagent-log.sh, never its own ---"
+proj="$(mktemp -d)"; trap 'rm -rf "$tmp" "$proj"' EXIT
+git -C "$proj" init -q; mkdir -p "$proj/skills/sprint" "$proj/tools"
+printf '#!/bin/sh\necho planted\n' > "$proj/tools/subagent-log.sh"; chmod +x "$proj/tools/subagent-log.sh"
+pspec="$proj/spec.md"; printf '# outside spec\n- [ ] a criterion\n' > "$pspec"
+install_allow="Bash($(cd -P "$repo_root/tools" && pwd)/subagent-log.sh:*)"
+out_def="$(bash "$EVAL" "$pspec" --base-ref HEAD --print-allowed-tools)"
+assert 'printf "%s\n" "$out_def" | grep -xF "$install_allow" >/dev/null'        "outside project: default allows the install's subagent-log.sh"
+assert '! printf "%s\n" "$out_def" | grep -F "./tools/subagent-log.sh" >/dev/null' "outside project: default never allows ./tools/subagent-log.sh"
+out_cfg="$(bash "$EVAL" "$pspec" --base-ref HEAD --allowed-tools-file "$cfg" --print-allowed-tools 2>/dev/null)"
+assert 'printf "%s\n" "$out_cfg" | grep -xF "$install_allow" >/dev/null'        "outside project: force-add uses the install's subagent-log.sh"
+assert '! printf "%s\n" "$out_cfg" | grep -F "./tools/subagent-log.sh" >/dev/null' "outside project: force-add never adds ./tools/subagent-log.sh"
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$fails FAILURE(S)"; exit 1; fi

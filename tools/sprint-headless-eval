@@ -229,8 +229,15 @@ done
 
 if [[ -d "$ROOT/skills/sprint" ]]; then
   SKILLS_PREFIX="skills"
-  SUBAGENT_LOG="./tools/subagent-log.sh"
-  SUBAGENT_LOG_ALLOW="Bash(./tools/subagent-log.sh:*)"
+  # t-30bf: ./tools only when the graded tree is this install (it already supplies this script); any other project's
+  # tools/ is untrusted, so the orchestrator runs the install's own copy, as the consumer layout below does.
+  if [[ "$ROOT/tools" -ef "$SCRIPT_DIR" ]]; then
+    SUBAGENT_LOG="./tools/subagent-log.sh"
+    SUBAGENT_LOG_ALLOW="Bash(./tools/subagent-log.sh:*)"
+  else
+    SUBAGENT_LOG="$SCRIPT_DIR/subagent-log.sh"
+    SUBAGENT_LOG_ALLOW="Bash($SCRIPT_DIR/subagent-log.sh:*)"
+  fi
 elif [[ -d "$ROOT/.claude/skills/sprint" ]]; then
   SKILLS_PREFIX=".claude/skills"
   SUBAGENT_LOG="$SCRIPT_DIR/subagent-log.sh"
