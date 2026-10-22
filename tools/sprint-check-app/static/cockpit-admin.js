@@ -320,8 +320,8 @@ async function mtRestore(id){
 }
 async function mtMove(action,body){
   try{
-    const r=await fetch('/api/admin/model-tiers/'+action,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    const res=await r.json();
+    const res=await mtPost('/api/admin/model-tiers/'+action,body);
+    if(res.old){ toast(MT_OLD_BOARD); return false; }
     if(!res.ok){ toast(res.error||"Couldn't change the registry"); await mtLoad(); return false; }
     mtData=res.data; mtMoving=null; return true;
   }catch(e){ toast("Couldn't reach the board"); await mtLoad(); return false; }
@@ -340,6 +340,14 @@ function mtRenderMove(){
   if(rt) rt.addEventListener('click',()=>go('retire',{old:m.id,new:to()},m.name+' moved to Legacy'));
   if(rm) rm.addEventListener('click',()=>go('remove',{id:m.id,move_to:to()},'Removed '+m.name));
   el.querySelector('.mt-move-cancel').addEventListener('click',()=>{ mtMoving=null; mtRender(); });
+}
+// t-d40b: these calls only exist in a board built after this page. An older board answers 404 (plain text, not JSON), which must not read as
+// "unreachable": it means the board needs updating and restarting.
+const MT_OLD_BOARD="This board is older than this page and can't do that yet. Update canon and restart the board.";
+async function mtPost(url,body){
+  const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(r.status===404||r.status===405) return {old:true};
+  return await r.json();
 }
 // t-d40b: Sources and Refresh. Refresh only PROPOSES; nothing is written until Apply. The sources come from the saved registry (the request
 // never carries a URL), the board does the fetching, and a Models API key stays in the board's environment.
@@ -370,9 +378,9 @@ async function mtRefresh(index){
   if(mtBusy) return;
   mtBusy=true; mtRender();
   try{
-    const r=await fetch('/api/admin/model-tiers/refresh',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(index>=0?{index}:{})});
-    const res=await r.json();
-    if(!res.ok){ toast(res.error||"Couldn't refresh"); }
+    const res=await mtPost('/api/admin/model-tiers/refresh',index>=0?{index}:{});
+    if(res.old){ toast(MT_OLD_BOARD); }
+    else if(!res.ok){ toast(res.error||"Couldn't refresh"); }
     else{
       (res.sources||[]).forEach(s=>{ mtStatus[s.index]={status:s.status,ok:s.ok}; });
       mtProp=res.proposal||null; mtSel={};
@@ -407,9 +415,8 @@ async function mtApply(){
   mtProp.retire.forEach(x=>{ if(mtSel['t:'+x.old]) pair(x.old,x.new); });
   const n=mtApplyCount();
   try{
-    const r=await fetch('/api/admin/model-tiers/apply',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({add:adds.map(a=>({id:a.id,provider:a.provider,name:a.name,input_price:a.input_price,output_price:a.output_price})),retire})});
-    const res=await r.json();
+    const res=await mtPost('/api/admin/model-tiers/apply',{add:adds.map(a=>({id:a.id,provider:a.provider,name:a.name,input_price:a.input_price,output_price:a.output_price})),retire});
+    if(res.old){ toast(MT_OLD_BOARD); return; }
     if(!res.ok){ toast(res.error||"Couldn't apply"); await mtLoad(); return; }
     mtData=res.data; mtProp=null; mtSel={}; mtRender(); toast('Saved '+n+' change'+(n===1?'':'s'));
   }catch(e){ toast("Couldn't reach the board"); await mtLoad(); }

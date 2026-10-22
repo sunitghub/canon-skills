@@ -13092,6 +13092,12 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
       await expect(rows.nth(2)).toContainText('ANTHROPIC_API_KEY');
       await expect(page.locator('#mt-sources .mt-src-row .mt-tag')).toHaveText(['never checked', 'never checked', 'never checked', 'never checked']);
       await expect(page.locator('#mt-proposal .mt-prop')).toHaveCount(0);       // nothing is fetched on load
+      // the small per-row buttons: refresh turns green on hover, remove turns red
+      const hoverColour = async sel => { await page.locator(sel).first().hover(); return page.locator(sel).first().evaluate(e => getComputedStyle(e).color); };
+      const tokens = await page.evaluate(() => { const s = getComputedStyle(document.documentElement); return { done: s.getPropertyValue('--col-done').trim(), bad: s.getPropertyValue('--col-discarded').trim() }; });
+      const asRgb = c => page.evaluate(v => { const d = document.createElement('i'); d.style.color = v; document.body.appendChild(d); const r = getComputedStyle(d).color; d.remove(); return r; }, c);
+      expect(await hoverColour('#mt-sources .mt-src-rf')).toBe(await asRgb(tokens.done));
+      expect(await hoverColour('#mt-sources .mt-src-rm')).toBe(await asRgb(tokens.bad));
       expect(bodies).toEqual([]);
       const before = await (await page.request.get(BASE + '/api/admin/model-tiers')).json();
       await rows.nth(2).locator('.mt-src-rf').click();                          // one row: the request names an index, never a URL
@@ -13114,6 +13120,28 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
       await expect(rows).toHaveCount(5);
       await rows.nth(4).locator('.mt-src-rm').click();
       await expect(rows).toHaveCount(4);
+    } finally {
+      await restoreModelTiers(page, canonical);
+    }
+  });
+
+  // Protects Admin > Model Tiers on a board older than the page: its Refresh, Apply and Remove-with-a-move routes answer 404, and the page says the
+  // board needs updating (not "couldn't reach the board"), keeps working, and changes nothing.
+  test('Model Tiers: a board without the new routes is named as out of date, not as unreachable (t-d40b)', async ({ page }) => {
+    const canonical = readCanonicalModelTiers();
+    try {
+      for (const route of ['refresh', 'apply', 'remove', 'retire']) await page.route('**/api/admin/model-tiers/' + route, r => r.fulfill({ status: 404, contentType: 'text/plain', body: '404 page not found' }));
+      await page.goto(BASE + '/cockpit');
+      await page.waitForLoadState('networkidle');
+      await page.locator('#nav-admin').click();
+      await page.locator('#mt-sources .mt-rf-all').click();
+      await expect(page.locator('#toast, .toast').filter({ hasText: 'older than this page' }).first()).toBeVisible();
+      await expect(page.locator('#mt-sources .mt-rf-all')).toBeEnabled();            // not stuck busy
+      await expect(page.locator('#mt-proposal .mt-prop')).toHaveCount(0);
+      await page.locator('.mt-card[data-id="claude-sonnet-5"] .b-danger').click();   // holds the alias and the eval default: asks where it goes
+      await page.locator('#mt-move .mt-move-remove').click();
+      await expect(page.locator('#toast, .toast').filter({ hasText: 'older than this page' }).first()).toBeVisible();
+      await expect(page.locator('.mt-grid .mt-card[data-id="claude-sonnet-5"]')).toHaveCount(1);   // nothing was removed
     } finally {
       await restoreModelTiers(page, canonical);
     }
