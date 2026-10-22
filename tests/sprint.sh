@@ -1658,7 +1658,9 @@ wt_main="$(make_project)"; wt_dir="$(mktemp -d)/wt"
   cd "$wt_dir"; echo 'b' >> src/app.js; git add src/app.js; git commit -qm "work done in the worktree"
   out="$("$SPRINT" start "worktree stale eval")"; wid="$(printf '%s\n' "$out" | awk '/Sprint started:/ { print $3 }')"
   fr_gate_docs "$wt_main/.tickets/$wid" "$wt_main/.claude/subagent-runs.jsonl" "$(date +%s)-7000" "$(git rev-parse HEAD)"
-  assert_contains "$(env -u CLAUDECODE "$SPRINT" complete 2>&1)" "Sprint completed: $wid"
+  out="$(env -u CLAUDECODE "$SPRINT" complete 2>&1)"; assert_contains "$out" "Sprint completed: $wid"
+  # t-8f48: a close in a linked worktree names the step after the merge.
+  assert_contains "$out" "After its PR merges: run tkt worktree-reset here"
 )
 rm -rf "$wt_main" "$(dirname "$wt_dir")"
 
@@ -1671,7 +1673,8 @@ sub_top="$(make_project)"
   out="$("$SPRINT" start "subtree stale eval")"; sid="$(printf '%s\n' "$out" | awk '/Sprint started:/ { print $3 }')"
   fr_gate_docs ".tickets/$sid" ".claude/subagent-runs.jsonl" "$(date +%s)-7000" "$(git rev-parse HEAD)"
   echo 'b' >> ../other/x.js; git add ../other/x.js; git commit -qm "outside the project"
-  assert_contains "$(env -u CLAUDECODE "$SPRINT" complete 2>&1)" "Sprint completed: $sid"
+  out="$(env -u CLAUDECODE "$SPRINT" complete 2>&1)"; assert_contains "$out" "Sprint completed: $sid"
+  [[ "$out" != *"tkt worktree-reset"* ]] || fail "a close in the main checkout named tkt worktree-reset"   # t-8f48
   out="$("$SPRINT" start "subtree stale eval 2")"; sid2="$(printf '%s\n' "$out" | awk '/Sprint started:/ { print $3 }')"
   fr_gate_docs ".tickets/$sid2" ".claude/subagent-runs.jsonl" "$(date +%s)-7000" "$(git rev-parse HEAD)"
   echo 'c' >> src/app.js; git add src/app.js; git commit -qm "inside the project"

@@ -895,6 +895,12 @@ cmd_complete() {
   TKT_SPRINT_GATE_PASSED=1 "$TKT_BIN" close "$id"
   canon_event sprint.completed sprint "$(project_root)" "ticket=$id"
   echo "Sprint completed: $id"
+  # t-8f48: in a linked worktree, the step after the merge is resetting its tracking branch.
+  local gd common
+  if gd="$(git rev-parse --absolute-git-dir 2>/dev/null)" && common="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" \
+    && [[ "$gd" != "$common" ]]; then
+    echo "After its PR merges: run tkt worktree-reset here to reset this worktree's tracking branch to origin's default branch."
+  fi
 
   # t-2fb6: shrink old closed tickets' evidence/ (never this one: it is younger than the cut-off). The close already
   # happened, so a compact failure only warns.
