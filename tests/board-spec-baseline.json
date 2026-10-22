@@ -1165,6 +1165,14 @@
       ],
       "ticket": "t-8627",
       "reason": "webkit: failed in one full t-d40b run under load (2026-10-22), passed 3 of 3 when rerun alone"
+    },
+    {
+      "title": "GitHub workflow on the board (t-718b) > a failed send shows the reason and changes nothing (t-718b)",
+      "browsers": [
+        "chromium"
+      ],
+      "ticket": "t-8627",
+      "reason": "chromium: failed in a full t-d40b run on a quiet machine (load 2.5), passed 2 of 2 when rerun alone (2026-10-22); the third t-718b test seen flaking in this file"
     }
   ],
   "skipped": []
