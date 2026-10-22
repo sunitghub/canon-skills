@@ -57,12 +57,12 @@
   .mt-prop header b{font-size:13px;letter-spacing:0;text-transform:none;color:var(--text)}
   .mt-tag{font-size:10px;font-weight:600;letter-spacing:.04em;border:1px solid var(--border);border-radius:999px;padding:1px 8px;color:var(--text-muted);white-space:nowrap}
   .mt-tag.ok{color:var(--col-done,#4ade80);border-color:var(--col-done,#4ade80)}
-  .mt-tag.warn{color:#e5b567;border-color:#e5b567}
+  .mt-tag.warn{color:var(--th-warn-ink,var(--amber));border-color:var(--th-warn-ink,var(--amber))}
   /* the colours come from buttons.css (.b-primary, .b-neutral, .b-close, .b-danger-main); the shape is shared here */
   .mt-sources button,.mt-prop button,.mt-alert button,.mt-move button{font:inherit;font-size:12.5px;font-weight:600;padding:8px 15px;border-radius:9px;cursor:pointer;line-height:1.2}
   /* the main action of a block looks like Restart Daemon above: accent fill, white text, 9px corners */
   .mt-sources .b-primary,.mt-prop .b-primary,.mt-move .b-primary,.mt-move .b-danger-main{background:var(--accent);color:var(--th-on-accent,#fff);border:none;font-size:13px;padding:10px 18px}
-  .mt-move .b-danger-main{background:var(--col-discarded);color:#fff}
+  .mt-move .b-danger-main{background:var(--col-discarded);color:var(--th-on-accent,#fff)}
   .mt-sources .b-primary:hover,.mt-prop .b-primary:hover{filter:brightness(1.08)}
   .mt-sources button:disabled,.mt-prop button:disabled{opacity:.5;cursor:default}
   .mt-src-rf,.mt-src-rm{padding:4px 9px!important;font-size:12px}

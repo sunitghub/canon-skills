@@ -820,7 +820,8 @@ for bad in retire:'{"old":"claude-sonnet-5","new":"claude-sonnet-5"}' retire:'{"
   [[ "$(tiers_act "${bad%%:*}" "${bad#*:}" | tail -1)" == 400 ]] || fail "sprint-check-api: ${bad%%:*} ${bad#*:} should 400"
   [[ "$(shasum "$user_file" | cut -d' ' -f1)" == "$retired_sha" ]] || fail "sprint-check-api: a refused ${bad%%:*} changed the data-dir copy"
 done
-tiers_act remove '{"id":"claude-haiku-4-5-20251001"}' | head -1 | grep 'holds the alias haiku' >/dev/null || fail "sprint-check-api: remove without a move target did not say what the entry holds"
+first_line="$(tiers_act remove '{"id":"claude-haiku-4-5-20251001"}')"; first_line="${first_line%%$'\n'*}"
+[[ "$first_line" == *"holds the alias haiku"* ]] || fail "sprint-check-api: remove without a move target did not say what the entry holds"
 [[ "$(tiers_act remove '{"id":"claude-haiku-4-5-20251001","move_to":"claude-haiku-5-5"}' | tail -1)" == 200 ]] || fail "sprint-check-api: remove with a move target was rejected"
 tiers_json | python3 -c 'import sys,json
 d=json.load(sys.stdin); m={e["id"]:e for e in d["models"]["anthropic"]}

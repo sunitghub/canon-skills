@@ -21,7 +21,10 @@ d=json.load(open(sys.argv[1]))
 print(next((m["id"] for m in d["models"]["anthropic"] if m.get("alias")==sys.argv[2] and not m.get("legacy")), ""))' "$REGISTRY" "$1"; }
 daemon_id() { sed -n '/^var copilotModelIDs = map/,/^}/p' "$MAIN_GO" | sed -n "s/^[[:space:]]*\"$1\":[[:space:]]*\"\\([^\"]*\\)\",.*/\\1/p"; }
 # the note wraps across lines, so read it as one line first
-note_id() { tr '\n' ' ' < "$COMPLETE_MD" | sed -n "s/.*\`$1\`[^\`]*→[[:space:]]*\`\\(claude-[a-z0-9.-]*\\)\`.*/\\1/p" | head -1; }
+note_id() {
+  local out; out="$(tr '\n' ' ' < "$COMPLETE_MD" | sed -n "s/.*\`$1\`[^\`]*→[[:space:]]*\`\\(claude-[a-z0-9.-]*\\)\`.*/\\1/p")"
+  printf '%s\n' "${out%%$'\n'*}"   # the first match, without a reader that stops early
+}
 
 for alias in sonnet haiku; do
   reg="$(registry_id "$alias")"

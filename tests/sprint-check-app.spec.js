@@ -13171,6 +13171,9 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
       await expect(tags.nth(3)).toHaveText('failed \u00b7 just now');
       await expect(tags.nth(3)).toHaveAttribute('title', /refused: a private, loopback or link-local address is refused/);
       await expect(tags.nth(2)).toHaveClass(/warn/);
+      const colour = i => tags.nth(i).evaluate(e => getComputedStyle(e).color);
+      expect(await colour(2)).not.toBe(await colour(0));                       // the warning colour is a real, different colour (an undefined token would not be)
+      expect(await colour(2)).not.toBe('rgba(0, 0, 0, 0)');
       reg.sources[0].checked_at = 'yesterday';
       expect((await page.request.post(BASE + '/api/admin/model-tiers', { data: reg })).status()).toBe(400);
     } finally {
