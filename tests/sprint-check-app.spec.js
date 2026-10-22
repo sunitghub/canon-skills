@@ -99,6 +99,23 @@ test.beforeEach(async ({ context }) => {
     return route.continue({ url: u.toString() });
   });
 });
+// t-8627: on a quiet machine WebKit sometimes never fires "load" for a navigation to the healthy board (page.goto hangs the full 30 s
+// test timeout; the board answered every probe meanwhile, evidence/diag), and the same tests pass solo. A navigation that stalls is retried
+// once, bounded, and the retry is recorded as an annotation so the rate stays visible. A goto that names its own timeout, and every
+// assertion, is untouched; a navigation that stalls twice still fails the test.
+test.beforeEach(async ({ page }, info) => {
+  const first = page.goto.bind(page);
+  page.__gotoStallMs = 12000;
+  page.goto = async (url, opts) => {
+    if (opts && opts.timeout !== undefined) return first(url, opts);
+    try { return await first(url, { ...opts, timeout: page.__gotoStallMs }); }
+    catch (e) {
+      if (!/Timeout/.test(String(e && e.message))) throw e;
+      info.annotations.push({ type: 'goto-stall-retried', description: String(url) });
+      return first(url, { ...opts, timeout: page.__gotoStallMs });
+    }
+  };
+});
 test.afterEach(() => { realLanding = false; });
 
 // t-a205: editing starts with a double-click on the document; the Edit button is gone. The click lands in #m-body's own
@@ -15029,6 +15046,48 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#ck-gh-panel')).toBeHidden();
     await expect(page.locator(`#ck-tab-strip-topbar .ck-tab-pill[data-tab-id="${id}"]`)).toHaveCount(0);
     await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/);
+  });
+
+  // t-8627: the harness's navigation retry (the beforeEach above): a goto whose first request never answers is retried once and
+  // recorded; without it the test would sit the full 30 s on a stall. Protects every test's page.goto on WebKit.
+  test('a navigation that stalls once is retried once and recorded (t-8627)', async ({ page }, info) => {
+    page.__gotoStallMs = 1500;
+    let hits = 0;
+    await page.route('**/api/git', route => { hits++; if (hits === 1) return; return route.continue(); });   // the first request is never answered
+    await page.goto(BASE + '/api/git');
+    expect(hits).toBe(2);
+    expect(info.annotations.filter(a => a.type === 'goto-stall-retried')).toHaveLength(1);
+  });
+
+  // t-8627: the t-9641 flake. The preview of a first showGithubPanel call answers after a later call showed the Sent panel; the late answer
+  // used to overwrite it (`#ck-gh-prompt` vanished). Protects the Start dialog's GitHub place (static/board-github.js showGithubPanel).
+  test('a preview that answers after the Sent panel was shown does not replace it (t-8627)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh4c');
+    ghTicket(id);
+    let release; const held = new Promise(r => { release = r; });
+    await page.route('**/api/worktrees**', r => json(r, [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true }]));
+    await page.route(`**/api/ticket/${id}/github/send-preview`, async r => { await held; await json(r, { ok: true, exit_code: 0, output: 'repo: acme/app (PRIVATE)' }); });
+    await openBoard(page, id);
+    await page.locator(`.card[data-id="${id}"] .card-start`).click();
+    await page.locator('#ck-worktree .ck-gh-row').click();
+    await expect(page.locator('#ck-gh-panel')).toContainText('Loading the preview');
+    await page.evaluate(async (tid) => {   // the send landed meanwhile: the tab holds the Sent message and the panel is shown again
+      const { cockpitState } = await import('/static/board-cockpit.js');
+      const t = (await import('/static/board-core.js')).state.tickets.find(x => x.id === tid);
+      cockpitState.ghSent = { id: tid, n: '57', url: '', line: 'Work on Issue#57' };
+      await (await import('/static/board-github.js')).showGithubPanel(t, cockpitState);
+    }, id);
+    await expect(page.locator('#ck-gh-prompt')).toHaveText('Work on Issue#57');
+    // an observer, not an expect: a later re-render could put the Sent panel back and hide a brief overwrite
+    await page.evaluate(() => {
+      window.__sawPreview = false;
+      new MutationObserver(() => { if (document.getElementById('ck-gh-preview')) window.__sawPreview = true; })
+        .observe(document.getElementById('ck-gh-panel'), { childList: true, subtree: true });
+    });
+    release();
+    await page.waitForTimeout(400);   // time for the late answer to land if it were going to
+    expect(await page.evaluate(() => window.__sawPreview)).toBe(false);
+    await expect(page.locator('#ck-gh-prompt')).toHaveText('Work on Issue#57');
   });
 
   test('a failed send shows the reason and changes nothing (t-718b)', async ({ page }) => {
