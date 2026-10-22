@@ -2,7 +2,7 @@
 // The spec writes tickets under a project root and later deletes them; an id that collided with a real ticket would
 // delete that ticket's folder (.tickets is gitignored, so there is no undo). So a spec makes every id with
 // newTicketId (never one that exists) and deletes only through removeTestTicket (only an id this run created).
-// Kept free of Playwright so tests/board-spec-ids.test.js can load it.
+// Kept free of Playwright so tests/board-spec-ids-unit.js can load it.
 const fs = require('fs');
 const path = require('path');
 

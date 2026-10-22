@@ -3425,7 +3425,6 @@ test.describe('ticket-scoped feature reference (t-f89a)', () => {
   }
 
   test('a ```gherkin-file reference renders the ticket-local .feature as a scenario panel (A3)', async ({ page }) => {
-    const id = newTicketId(PROJECT_ROOT, 'fr-ok').slice(0, 24);
     const tid = newTicketId(PROJECT_ROOT);
     try {
       makeRefTicket(tid, 'features/discount.feature');
