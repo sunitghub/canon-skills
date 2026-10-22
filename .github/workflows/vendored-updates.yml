@@ -1,0 +1,24 @@
+# t-93ff: weekly report on the third-party files the daemon vendors (tools/vendored.tsv): the latest npm version of each
+# and the OSV advisories that affect the vendored version. It fails only on such an advisory or on a lookup that failed;
+# a newer version is information in the job summary. Report-only: no issues, PRs or commits.
+# The public mirror canon-skills carries this file too: keep it read-only and secret-free (tests/ci-security-config.sh).
+name: vendored-updates
+
+on:
+  schedule:
+    - cron: "41 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  vendored-updates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check vendored files for new versions and advisories
+        run: bash scripts/check-vendored.sh --summary
