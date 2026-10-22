@@ -58,4 +58,4 @@ plant "scan failure is swallowed" 's/^        working-directory: tools\/canon-go
 plant "no go-version-file" '/go-version-file:/d'
 plant "dependabot config present" dependabot
 
-echo "ci-security-config: ok (govulncheck workflow pinned and read-only, no dependabot config; 14 planted breaks caught)"
+echo "ci-security-config: ok (govulncheck workflow pinned and read-only, no dependabot config; $n planted breaks caught)"
