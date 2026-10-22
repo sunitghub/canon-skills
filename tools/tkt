@@ -1896,6 +1896,107 @@ cmd_push_main() {
   return $rc
 }
 
+# _wtr_dirty — t-8f48: the paths `git status` reports in the current worktree, untracked ones included, less canon's own
+# skill links (an untracked .agents/skills or .claude/skills, or anything under them: the board's t-07a8 rule,
+# isCanonSkillsLink). One path per line; exit 1 when git status fails.
+_wtr_dirty() {
+  local out entry skip=false
+  out="$(git status --porcelain=v1 -z --untracked-files=all 2>/dev/null | tr '\0' '\n')" || return 1
+  while IFS= read -r entry; do
+    if $skip; then skip=false; continue; fi
+    [[ ${#entry} -ge 4 ]] || continue
+    [[ "${entry:0:2}" == *[RC]* ]] && skip=true   # a rename or copy carries its source path as the next entry
+    if [[ "${entry:0:2}" == '??' ]]; then
+      case "${entry:3}" in .agents/skills|.agents/skills/*|.claude/skills|.claude/skills/*) continue ;; esac
+    fi
+    printf '%s\n' "${entry:3}"
+  done <<< "$out"
+}
+
+# _wtr_probe <branch> — t-8f48: everywhere this worktree keeps work a reset --hard would lose. Prints the first problem,
+# with how to fix it, on stderr and returns 1; returns 0 when nothing would be lost. Any probe that fails refuses.
+_wtr_probe() {
+  local branch="$1" p f d n
+  for p in MERGE_HEAD rebase-merge rebase-apply CHERRY_PICK_HEAD REVERT_HEAD; do
+    f="$(git rev-parse --git-path "$p" 2>/dev/null)" || { echo "worktree-reset: could not read the git dir; nothing reset" >&2; return 1; }
+    [[ ! -e "$f" ]] || { echo "worktree-reset: a merge, rebase, cherry-pick or revert is in progress ($p); finish or abort it, then run again" >&2; return 1; }
+  done
+  f="$(git ls-files -v 2>/dev/null)" || { echo "worktree-reset: git ls-files failed; nothing reset" >&2; return 1; }
+  n="$(printf '%s\n' "$f" | grep -cE '^([a-z]|S) ' || true)"
+  [[ "$n" == 0 ]] || { echo "worktree-reset: $n file(s) marked skip-worktree or assume-unchanged (git ls-files -v | grep -E '^([a-z]|S) '); clear them with git update-index --no-skip-worktree --no-assume-unchanged <file>, then run again" >&2; return 1; }
+  d="$(_wtr_dirty)" || { echo "worktree-reset: git status failed; nothing reset" >&2; return 1; }
+  if [[ -n "$d" ]]; then
+    n="$(printf '%s\n' "$d" | wc -l | tr -d ' ')"
+    echo "worktree-reset: $n uncommitted or untracked path(s) ($(printf '%s\n' "$d" | head -3 | paste -sd, - | sed 's/,/, /g')$( (( n > 3 )) && printf ', …')); commit and push them, or remove them, then run again" >&2; return 1
+  fi
+  f="$(git rev-list HEAD --not --remotes 2>/dev/null)" || { echo "worktree-reset: git rev-list failed; nothing reset" >&2; return 1; }
+  if [[ -n "$f" ]]; then
+    n="$(printf '%s\n' "$f" | wc -l | tr -d ' ')"
+    echo "worktree-reset: $branch has $n commit(s) on no remote (git log HEAD --not --remotes); push them (git push -u origin $branch), then run again" >&2; return 1
+  fi
+  return 0
+}
+
+# cmd_worktree_reset [--yes | --dry-run] — t-8f48: after a worktree's PR merged, resets its long-lived tracking branch
+# (CLAUDE.md ## Worktrees) to origin's default branch: fetch first, refuse wherever work would be lost (_wtr_probe), print
+# what goes, ask once, re-probe after the answer, then reset --hard to the sha shown. Stash and other worktrees are shared
+# and untouched: a notice. Never pushes, deletes a branch or removes a worktree.
+cmd_worktree_reset() {
+  local mode=ask
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --yes|--dry-run)
+        [[ "$mode" == ask || "$mode" == "$1" ]] || { echo "worktree-reset: --yes resets and --dry-run only prints; use one" >&2; exit 1; }
+        mode="$1"; shift ;;
+      *) echo "Usage: tkt worktree-reset [--yes | --dry-run]" >&2; exit 1 ;;
+    esac
+  done
+  local top gd common branch b tip tipline head
+  top="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "worktree-reset: not inside a git worktree; cd into the linked worktree to reset" >&2; exit 1; }
+  cd "$top" || exit 1
+  gd="$(git rev-parse --absolute-git-dir)" && common="$(git rev-parse --path-format=absolute --git-common-dir)" || { echo "worktree-reset: could not read the git dir; nothing reset" >&2; exit 1; }
+  [[ "$gd" != "$common" ]] || { echo "worktree-reset: $top is the main checkout, not a linked worktree; run it inside the worktree whose branch you reset" >&2; exit 1; }
+  branch="$(git symbolic-ref -q --short HEAD)" || { echo "worktree-reset: HEAD is detached; check out the worktree's tracking branch (git switch <branch>), then run again" >&2; exit 1; }
+  b="$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null)"; b="${b#origin/}"
+  [[ -n "$b" ]] || b="$(git ls-remote --symref origin HEAD 2>/dev/null | awk '$1 == "ref:" { sub("refs/heads/", "", $2); print $2; exit }' || true)"
+  [[ -n "$b" ]] && _branch_ok "$b" || { echo "worktree-reset: cannot tell origin's default branch; run git remote set-head origin --auto, then run again" >&2; exit 1; }
+  [[ "$branch" != "$b" ]] || { echo "worktree-reset: $branch is the default branch itself; run it in a worktree on its own tracking branch" >&2; exit 1; }
+  git fetch -q origin < /dev/null 2>/dev/null || { echo "worktree-reset: git fetch origin failed; nothing reset (origin/$b may be stale); check the network or remote, then run again" >&2; exit 1; }
+  tip="$(git rev-parse -q --verify "refs/remotes/origin/$b^{commit}")" || { echo "worktree-reset: origin/$b does not exist after the fetch; nothing reset" >&2; exit 1; }
+  head="$(git rev-parse HEAD)" || exit 1
+  _wtr_probe "$branch" || exit 1
+  tipline="$(git log -1 --format='%h %s' "$tip")"
+  if [[ "$head" == "$tip" ]]; then echo "worktree-reset: $branch is already at origin/$b ($tipline); nothing to reset"; return 0; fi
+  echo "worktree-reset: $branch in $top"
+  echo "  new tip: origin/$b $tipline"
+  local commits files
+  commits="$(git log --format='%h %s' "$tip..$head")"
+  files="$(git diff --name-status "$head" "$tip")"
+  echo "  commits it drops from $branch (each is on a remote):"; printf '%s\n' "${commits:-(none: $branch is behind origin/$b)}" | sed 's/^/    /'
+  echo "  files it changes to origin/$b's version:"; printf '%s\n' "${files:-(none)}" | sed 's/^/    /'
+  local stashes others
+  stashes="$(git stash list 2>/dev/null | wc -l | tr -d ' ')"
+  others="$(git worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p' | while IFS= read -r p; do [[ "$(git -C "$p" rev-parse --absolute-git-dir 2>/dev/null)" == "$gd" ]] || printf '%s\n' "$p"; done)"
+  echo "  notice: stash and other worktrees are shared and the reset does not touch them: $stashes stash entr$( [[ "$stashes" == 1 ]] && echo y || echo ies)"
+  printf '%s\n' "$others" | grep . | sed 's/^/    other worktree: /' || true
+  if [[ "$mode" == --dry-run ]]; then echo "worktree-reset: dry run; nothing changed"; return 0; fi
+  if [[ "$mode" == --yes ]]; then echo "Reset $branch to origin/$b? yes (--yes)"
+  else
+    [[ -t 0 ]] || { echo "worktree-reset: no terminal to ask on; pass --yes to reset without asking (or --dry-run)" >&2; exit 1; }
+    local ans; printf 'Reset %s to origin/%s (%s)? [y/N] ' "$branch" "$b" "${tip:0:8}"
+    read -r ans || ans=""
+    [[ "$ans" == y || "$ans" == Y ]] || { echo "worktree-reset: nothing reset"; return 0; }
+    # The answer is an await: re-check the branch, its tip and every probe before acting.
+    [[ "$(git symbolic-ref -q --short HEAD)" == "$branch" && "$(git rev-parse HEAD)" == "$head" ]] \
+      || { echo "worktree-reset: $branch moved while asking; nothing reset, run again" >&2; exit 1; }
+    _wtr_probe "$branch" || exit 1
+  fi
+  git reset -q --hard "$tip" < /dev/null || { echo "worktree-reset: git reset failed; see git status" >&2; exit 1; }
+  echo "worktree-reset: $branch now at $tipline (was ${head:0:8})"
+  echo "  the worktree keeps its identity: still $top on branch $branch"
+  echo "  next: sprint start <id> for the next ticket"
+}
+
 # _land_wt <root> <id> — the one owner of where `tkt land` puts its worktree (cmd_land, and github-status's `landed`).
 _land_wt() { printf '%s/%s-worktrees/land-%s' "$(dirname "$1")" "$(basename "$1")" "$2"; }
 
@@ -2279,6 +2380,10 @@ Commands:
   github-status <id> [--json]
                             Where a ticket sent to GitHub stands: sent, pr-open,
                             results-ready, results-in or merged (read-only).
+  worktree-reset [--yes | --dry-run]
+                            In a linked worktree whose PR merged: reset its tracking
+                            branch to origin's default branch (fetches first; refuses
+                            on uncommitted, untracked or unpushed work; asks once).
   take-back <id> [--close-issue]
                             Bring a ticket sent to GitHub back to this machine (clears
                             runs: github; --close-issue also comments on and closes
@@ -2324,6 +2429,7 @@ main() {
     release-check)  cmd_release_check "$@" ;;
     merge-pr)       cmd_merge_pr "$@" ;;
     land)           cmd_land "$@" ;;
+    worktree-reset) cmd_worktree_reset "$@" ;;
     take-back)      cmd_take_back "$@" ;;
     github-status)  cmd_github_status "$@" ;;
     export)         cmd_export "$@" ;;

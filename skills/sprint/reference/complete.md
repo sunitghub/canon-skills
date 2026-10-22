@@ -766,3 +766,6 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
       section), run `scripts/release.sh --dry-run` after the push to `public`, show the user its output, and run
       `scripts/release.sh` only on their explicit yes: it pushes a tag to the public repo. Nothing mechanical refuses a push
       while the ticket is open (that would need a hook, `t-f01d`); step 9 already precedes this step. `docs/releasing.md`.
+    - **Worktree (t-8f48).** A sprint run in a linked worktree on a long-lived tracking branch: once its PR has merged,
+      `tkt worktree-reset` (in that worktree) resets the branch to origin's default branch, not a bare
+      `git reset --hard origin/main`. It fetches first and refuses on uncommitted, untracked or unpushed work.

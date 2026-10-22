@@ -16,7 +16,7 @@ Canon-specific guidance that applies only in this repo. Global instructions are 
 
 When running multiple Claude Code instances in parallel worktrees:
 - Each worktree uses a long-lived tracking branch (e.g., `claude-code-1/main-1`)
-- After a PR merges, reset the tracking branch: `git reset --hard origin/main`
+- After a PR merges, reset the tracking branch from inside the worktree: `tkt worktree-reset` (fetches first, refuses on uncommitted, untracked or unpushed work, shows what goes and asks; `--dry-run` only prints)
 - The worktree keeps its identity across sprints — only the work branch changes
 
 @AGENTS.md

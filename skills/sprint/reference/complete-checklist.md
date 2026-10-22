@@ -57,6 +57,7 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
 9. **Close:** `sprint complete <id>`, never a hand-edited status. On refusal, report and stop (it runs `tkt compact`).
 10. **Commit & push:** stage specific files, `Closes: <id>` in the body, show files, message; ask. Public: only `tkt push-main`.
     A push is not a release: a `VERSION` bump needs `scripts/release.sh --dry-run` and the user's yes.
+    In a linked worktree, once the PR has merged: `tkt worktree-reset` there, not `git reset --hard origin/main`.
 
 ## Gate dispatch inputs
 
