@@ -278,6 +278,22 @@ func applyProposal(doc map[string]any, adds []map[string]any, retire [][2]string
 	return nil
 }
 
+// mergeFinds keeps one find per id. The same model from a docs page and the API: the copy that has a price wins whichever came first; two
+// copies alike on that point keep the first.
+func mergeFinds(finds []found) []found {
+	byID := map[string]found{}
+	for _, f := range finds {
+		if cur, ok := byID[f.ID]; !ok || (!cur.PriceKnow && f.PriceKnow) {
+			byID[f.ID] = f
+		}
+	}
+	merged := make([]found, 0, len(byID))
+	for _, f := range byID {
+		merged = append(merged, f)
+	}
+	return merged
+}
+
 // sourceStatus is what Refresh reports per saved source.
 type sourceStatus struct {
 	Index  int    `json:"index"`
@@ -330,17 +346,7 @@ func refreshSources(doc map[string]any, only int, fetchO fetchOpts) (map[string]
 		finds = append(finds, got...)
 		st = append(st, sourceStatus{i, "checked just now", true, len(got)})
 	}
-	// the same id from a docs page and the API: keep the one that has a price
-	byID := map[string]found{}
-	for _, f := range finds {
-		if cur, ok := byID[f.ID]; !ok || (!cur.PriceKnow && f.PriceKnow) {
-			byID[f.ID] = f
-		}
-	}
-	merged := make([]found, 0, len(byID))
-	for _, f := range byID {
-		merged = append(merged, f)
-	}
+	merged := mergeFinds(finds)
 	return map[string]any{"proposal": buildProposal(doc, merged)}, st
 }
 

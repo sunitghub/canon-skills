@@ -498,3 +498,26 @@ func TestRecordChecksAndSourceBookkeepingFields(t *testing.T) {
 		}
 	}
 }
+
+func TestMergeFindsAndRecordChecksBounds(t *testing.T) {
+	got := mergeFinds([]found{
+		{ID: "a", Name: "first unpriced"}, {ID: "a", Name: "second unpriced"}, // alike: the first stays
+		{ID: "b", Name: "priced first", In: 1, PriceKnow: true}, {ID: "b", Name: "priced second", In: 9, PriceKnow: true}, // alike: the first stays
+		{ID: "c", Name: "unpriced", In: 0}, {ID: "c", Name: "priced", In: 3, PriceKnow: true}, // the priced one wins
+		{ID: "d", Name: "priced", In: 4, PriceKnow: true}, {ID: "d", Name: "unpriced"}, // and keeps winning in the other order
+	})
+	by := map[string]found{}
+	for _, f := range got {
+		by[f.ID] = f
+	}
+	if len(got) != 4 || by["a"].Name != "first unpriced" || by["b"].Name != "priced first" || by["c"].Name != "priced" || by["d"].In != 4 {
+		t.Errorf("%+v", got)
+	}
+	// the check time is written for the first and the last source, and an index one past the end is ignored (no panic)
+	doc := map[string]any{"sources": []any{map[string]any{"url": "a"}, map[string]any{"url": "b"}}}
+	recordChecks(doc, []sourceStatus{{Index: 0, Status: "x", OK: true}, {Index: 1, Status: "y"}, {Index: 2, Status: "past the end"}}, time.Unix(0, 0))
+	srcs := doc["sources"].([]any)
+	if srcs[0].(map[string]any)["last_status"] != "x" || srcs[1].(map[string]any)["last_status"] != "y" {
+		t.Errorf("first and last source: %v", srcs)
+	}
+}
