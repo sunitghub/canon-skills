@@ -26,7 +26,7 @@ _git_hooks_dir() {
   if [[ -e "$dir/.git" ]]; then
     common="$(cd "$dir" 2>/dev/null && env -u GIT_DIR -u GIT_COMMON_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE \
       git rev-parse --git-common-dir 2>/dev/null)" || common=""
-    [[ -n "$common" ]] && common="$(cd "$dir" && cd "$common" 2>/dev/null && pwd)" || common=""
+    if [[ -n "$common" ]]; then common="$(cd "$dir" && cd "$common" 2>/dev/null && pwd)" || common=""; fi
   fi
   if [[ -n "$common" ]]; then printf '%s/hooks\n' "$common"; else printf '%s/.git/hooks\n' "$dir"; fi
 }
