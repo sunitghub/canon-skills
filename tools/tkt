@@ -1581,7 +1581,8 @@ cmd_merge_pr() {
     || { echo "merge-pr: gh could not read PR #$pr on $repo: $info" >&2; exit 1; }
   IFS=$'\t' read -r st mg ms head base cross <<< "$info"
   # t-1dec: a refusal after the PR was read is one `refused` entry in the ticket's github.md trail.
-  _mp_refuse() { _gh_trail "$tdir" refused "PR: #$pr" "reason: $1"; exit 1; }
+  # --check never appends: it is a read-only report.
+  _mp_refuse() { $check || _gh_trail "$tdir" refused "PR: #$pr" "reason: $1"; exit 1; }
   [[ "$st" == OPEN ]] || { echo "merge-pr: PR #$pr is $st, not open" >&2; _mp_refuse "PR is $st, not open"; }
   [[ "$cross" == false ]] || { echo "merge-pr: PR #$pr comes from a fork; its code would run here, so merge it on GitHub after reading it" >&2; _mp_refuse "PR comes from a fork"; }
   if [[ "$mg" != MERGEABLE || "$ms" != CLEAN ]]; then

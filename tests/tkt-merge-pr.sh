@@ -206,7 +206,9 @@ assert_contains "$out" "merge-pr: ready: would run touch \"\$STUB_W/ran\" on mai
 merged && fail "--check merged"; [[ "$(sig)" == "$before" ]] || fail "--check changed ticket.md"
 n_before="$(grep -c '^## ' "$gt")"; "$TKT" merge-pr "$id" --pr 7 --check >/dev/null 2>&1
 assert_eq "$n_before" "$(grep -c '^## ' "$gt")"   # t-1dec: --check appends nothing
+n_before="$(grep -c '^## ' "$gt")"
 refuses "--check on a blocked PR" "blocked by a branch rule" STUB_MS=BLOCKED -- --pr 7 --check
+assert_eq "$n_before" "$(grep -c '^## ' "$gt")"   # t-1dec: a --check refusal appends nothing either
 refuses "--yes with --check" "do not go together" -- --pr 7 --yes --check
 
 # Progress while the tests run: without a terminal a plain line every CANON_PROGRESS_SECONDS, naming the newest log line.
@@ -251,6 +253,12 @@ assert_grep '^merged: PR #7$' "$f"
 assert_contains "$(awk '/^## .* — merged$/ { b = "" } { b = b $0 "\n" } END { printf "%s", b }' "$gt")" "PR: #7"
 assert_contains "$(tail -n 5 "$gt")" "base: main"
 assert_eq "$(cat "$W/trail.before")" "$(head -n "$(wc -l < "$W/trail.before")" "$gt")"
+# A github.md that is a symlink is never written through.
+mv "$gt" "$W/trail.real"; ln -s "$W/trail.real" "$gt"; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
+cp "$W/trail.real" "$W/trail.sym.before"
+out="$("$TKT" merge-pr "$id" --pr 7 --yes 2>&1)" || fail "a symlinked github.md failed the merge: $out"
+assert_contains "$out" "warning: could not write the GitHub trail"; cmp -s "$W/trail.real" "$W/trail.sym.before" || fail "the trail was written through a symlink"
+rm -f "$gt"; mv "$W/trail.real" "$gt"; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
 # A trail that cannot be written (a directory in its place; root ignores permissions) warns once; the merge still succeeds.
 rm -f "$gt"; mkdir "$gt"; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
 out="$("$TKT" merge-pr "$id" --pr 7 --yes 2>&1)" || fail "an unwritable github.md failed the merge: $out"
