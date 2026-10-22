@@ -1927,7 +1927,7 @@ _wtr_probe() {
   d="$(_wtr_dirty)" || { echo "worktree-reset: git status failed; nothing reset" >&2; return 1; }
   if [[ -n "$d" ]]; then
     n="$(printf '%s\n' "$d" | wc -l | tr -d ' ')"
-    echo "worktree-reset: $n uncommitted or untracked path(s) ($(printf '%s\n' "$d" | head -3 | paste -sd, - | sed 's/,/, /g')$( (( n > 3 )) && printf ', …')); commit and push them, or remove them, then run again" >&2; return 1
+    echo "worktree-reset: $n uncommitted or untracked path(s) ($(sed -n '1,3p' <<< "$d" | paste -sd, - | sed 's/,/, /g')$( (( n > 3 )) && printf ', …')); commit and push them, or remove them, then run again" >&2; return 1
   fi
   f="$(git rev-list HEAD --not --remotes 2>/dev/null)" || { echo "worktree-reset: git rev-list failed; nothing reset" >&2; return 1; }
   if [[ -n "$f" ]]; then
@@ -1958,7 +1958,7 @@ cmd_worktree_reset() {
   [[ "$gd" != "$common" ]] || { echo "worktree-reset: $top is the main checkout, not a linked worktree; run it inside the worktree whose branch you reset" >&2; exit 1; }
   branch="$(git symbolic-ref -q --short HEAD)" || { echo "worktree-reset: HEAD is detached; check out the worktree's tracking branch (git switch <branch>), then run again" >&2; exit 1; }
   b="$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null)"; b="${b#origin/}"
-  [[ -n "$b" ]] || b="$(git ls-remote --symref origin HEAD 2>/dev/null | awk '$1 == "ref:" { sub("refs/heads/", "", $2); print $2; exit }' || true)"
+  [[ -n "$b" ]] || b="$(git ls-remote --symref origin HEAD 2>/dev/null | awk '$1 == "ref:" && !s { s = 1; sub("refs/heads/", "", $2); print $2 }' || true)"
   [[ -n "$b" ]] && _branch_ok "$b" || { echo "worktree-reset: cannot tell origin's default branch; run git remote set-head origin --auto, then run again" >&2; exit 1; }
   [[ "$branch" != "$b" ]] || { echo "worktree-reset: $branch is the default branch itself; run it in a worktree on its own tracking branch" >&2; exit 1; }
   git fetch -q origin < /dev/null 2>/dev/null || { echo "worktree-reset: git fetch origin failed; nothing reset (origin/$b may be stale); check the network or remote, then run again" >&2; exit 1; }
