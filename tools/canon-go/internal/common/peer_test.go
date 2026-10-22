@@ -97,6 +97,30 @@ func TestSameUserLiveConnectionAllowed(t *testing.T) {
 	}
 }
 
+// A refused connection is logged once to stderr with its remote address and the reason (audit trail, t-68ae).
+func TestPeerConnContextLogsRefusal(t *testing.T) {
+	if !peerSupported {
+		t.Skip("peer check is a no-op here")
+	}
+	r, w, _ := os.Pipe()
+	old := os.Stderr
+	os.Stderr = w
+	a, b := net.Pipe() // not TCP: the owner cannot be checked, so it must be refused
+	defer a.Close()
+	defer b.Close()
+	ctx := PeerConnContext(context.Background(), a)
+	os.Stderr = old
+	w.Close()
+	logged := make([]byte, 512)
+	n, _ := r.Read(logged)
+	if v := ctx.Value(peerKey{}).(peerVerdict); v.ok {
+		t.Fatal("a connection whose owner cannot be checked must be refused")
+	}
+	if got := string(logged[:n]); !strings.Contains(got, "canon: refused") || !strings.Contains(got, "not a TCP connection") {
+		t.Fatalf("refusal log = %q", got)
+	}
+}
+
 func TestPeerCheckWarning(t *testing.T) {
 	if !peerSupported {
 		if w := PeerCheckWarning(); w != "" {
