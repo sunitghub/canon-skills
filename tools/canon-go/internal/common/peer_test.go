@@ -33,7 +33,7 @@ func writeTables(t *testing.T, tcp, tcp6 string) string {
 }
 
 var (
-	server = &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8455} // 0100007F:2107
+	server = &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8455}  // 0100007F:2107
 	client = &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 40000} // 0100007F:9C40
 )
 
