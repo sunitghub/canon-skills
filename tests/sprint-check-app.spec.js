@@ -11420,7 +11420,7 @@ test.describe('cockpit rendered-output preview (t-8f9d)', () => {
     // only accepts messages from a loopback parent.
     await page.route('**/__pv533f', route => route.fulfill({ status: 200, contentType: 'text/html', body:
       `<!doctype html><html><body><iframe id="ck" style="width:800px;height:400px" ` +
-      `src="http://${addr}/cockpit?ticket=${TICKET}&embed=1&autostart=1"></iframe><script>
+      `src="http://${addr}/cockpit?ticket=${TICKET}&embed=1"></iframe><script>
         window.__msgs = [];
         window.addEventListener('message', function (e) {
           var d = e.data; if (!d || d.source !== 'canon-cockpit') return;
@@ -11431,6 +11431,8 @@ test.describe('cockpit rendered-output preview (t-8f9d)', () => {
         });
       </script></body></html>` }));
     await page.goto(BASE + '/__pv533f');
+    // t-9a49: the daemon page never starts a session on load, so start it the way a user does.
+    await page.frameLocator('#ck').locator('#startBtn').click();
     await expect.poll(() => page.evaluate(() => (window.__msgs.find(m => m.type === 'preview-file') || null)), { timeout: 30_000 })
       .not.toBeNull();
     const msg = await page.evaluate(() => window.__msgs.find(m => m.type === 'preview-file'));
