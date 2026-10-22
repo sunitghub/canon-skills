@@ -52,12 +52,11 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
    `superseded-by: <date>`.
 7. **Conventions:** propose a new convention line; ask first.
 8. **Summary:** `.tickets/<id>/summary.md`, one row per criterion (`delivered`/`waived`/`deferred`/`partial`;
-   escape `|`), plus a paragraph naming gate models and any reviewer NO. Run `tkt learn <id>`;
+   escape `|`), plus a paragraph naming gate models, any reviewer NO. Run `tkt learn <id>`;
    if it writes a file, run `/learnings-sweep <id>`. Say which in chat and summary.
-9. **Close:** `sprint complete <id>`, never a hand-edited status. On refusal, report and stop (it runs `tkt compact`).
-10. **Commit & push:** stage specific files, `Closes: <id>` in the body, show files, message; ask. Public: only `tkt push-main`.
-    A push is not a release: a `VERSION` bump needs `scripts/release.sh --dry-run` and the user's yes.
-    Worktree, after the merge: `tkt worktree-reset`.
+9. **Close:** `sprint complete <id>`, never a hand-edited status. On refusal, report and stop.
+10. **Commit & push:** stage specific files, `Closes: <id>` in the body, show them; ask. Public: only `tkt push-main`.
+    A push is not a release: `VERSION` bumps need `scripts/release.sh --dry-run` and a yes. Worktree, after the merge: `tkt worktree-reset`.
 
 ## Gate dispatch inputs
 

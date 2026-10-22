@@ -898,7 +898,7 @@ cmd_complete() {
   # t-8f48: in a linked worktree, the step after the merge is resetting its tracking branch.
   local gd common
   if gd="$(git rev-parse --absolute-git-dir 2>/dev/null)" && common="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" \
-    && [[ "$gd" != "$common" ]]; then
+    && [[ "$gd" != "$common" && "$(git symbolic-ref -q --short HEAD)" != land/* ]]; then   # a tkt land worktree ends with `tkt land <id> --finish`
     echo "After its PR merges: run tkt worktree-reset here to reset this worktree's tracking branch to origin's default branch."
   fi
 

@@ -1664,6 +1664,20 @@ wt_main="$(make_project)"; wt_dir="$(mktemp -d)/wt"
 )
 rm -rf "$wt_main" "$(dirname "$wt_dir")"
 
+# t-8f48: a tkt land worktree (branch land/<id>) ends with `tkt land --finish`, so its close does not name worktree-reset
+wt_main="$(make_project)"; wt_dir="$(mktemp -d)/wt"
+(
+  cd "$wt_main"; git config user.email t@example.com; git config user.name test
+  mkdir -p src .claude; echo 'a' > src/app.js; git add -A >/dev/null && git commit -qm base
+  git worktree add -q -b land/t-0000 "$wt_dir"
+  cd "$wt_dir"; echo 'b' >> src/app.js; git add src/app.js; git commit -qm "work done in the land worktree"
+  out="$("$SPRINT" start "land worktree close")"; wid="$(printf '%s\n' "$out" | awk '/Sprint started:/ { print $3 }')"
+  fr_gate_docs "$wt_main/.tickets/$wid" "$wt_main/.claude/subagent-runs.jsonl" "$(date +%s)-7000" "$(git rev-parse HEAD)"
+  out="$(env -u CLAUDECODE "$SPRINT" complete 2>&1)"; assert_contains "$out" "Sprint completed: $wid"
+  [[ "$out" != *"tkt worktree-reset"* ]] || fail "a close in a land/ worktree named tkt worktree-reset"
+)
+rm -rf "$wt_main" "$(dirname "$wt_dir")"
+
 # t-1b74: a project that is a subdirectory of a larger repository is graded on its own subtree only
 sub_top="$(make_project)"
 (

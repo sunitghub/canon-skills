@@ -56,6 +56,8 @@ git -C "$P" remote set-url origin "$W/origin.git"
 # origin/HEAD unset (as after git remote add): the default branch is read from origin itself; unreadable too: refuse.
 git -C "$P" remote set-head origin -d
 run "$A" --dry-run --dry-run; assert_eq 0 "$rc"; assert_contains "$out" "new tip: origin/main"
+# git 2.48+ fetch recreates origin/HEAD (followRemoteHEAD), so the dry run above set it again: unset it for the unreadable case.
+git -C "$P" remote set-head origin -d
 git -C "$P" remote set-url origin "$W/gone.git"
 refuses "$A" "cannot tell origin's default branch; run git remote set-head origin --auto"
 git -C "$P" remote set-url origin "$W/origin.git"; git -C "$P" remote set-head origin main
