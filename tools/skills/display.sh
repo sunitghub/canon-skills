@@ -16,10 +16,12 @@ compute_hook_status() {
   # migrated away by `add`/`init`, not reported here as an "issue."
   if $_has_sprint || $_has_ticket; then
     _hook_names+=("pre-commit (git)")
-    local _pc_hook="$project_dir/.git/hooks/pre-commit"
+    local _pc_hooks _pc_hook
+    _pc_hooks="$(_git_hooks_dir "$project_dir")"   # a linked worktree's hooks live in the common git dir (t-80fc)
+    _pc_hook="$_pc_hooks/pre-commit"
     if [ -f "$_pc_hook" ] && grep -qF "canon-managed-pre-commit-hook" "$_pc_hook" 2>/dev/null; then
       _hook_tags+=("ok")
-    elif [ ! -d "$project_dir/.git/hooks" ]; then
+    elif [ ! -d "$_pc_hooks" ]; then
       _hook_tags+=("skipped — not a git repo")
     else
       _hook_tags+=("not wired")

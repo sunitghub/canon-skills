@@ -5,7 +5,13 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# A linked worktree's .git is a FILE; its hooks live in the common git dir (t-80fc, same lookup as tools/hooks-lib.sh).
 HOOKS_DIR="$REPO_ROOT/.git/hooks"
+if [ -e "$REPO_ROOT/.git" ]; then
+  common="$(cd "$REPO_ROOT" && env -u GIT_DIR -u GIT_COMMON_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE \
+    git rev-parse --git-common-dir 2>/dev/null)" || common=""
+  if [ -n "$common" ] && common="$(cd "$REPO_ROOT" && cd "$common" 2>/dev/null && pwd)"; then HOOKS_DIR="$common/hooks"; fi
+fi
 
 if [ ! -d "$HOOKS_DIR" ]; then
   echo "  [skip]  .git/hooks not found (not a git repo?)"

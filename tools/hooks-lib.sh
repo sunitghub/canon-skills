@@ -18,9 +18,23 @@ _init_claude() {
   _uninstall_claude "$settings"
 }
 
+# Prints <dir>'s git hooks folder. In a linked worktree .git is a FILE and the hooks live in the common git dir, so ask
+# git (t-80fc); only when <dir> itself has a .git entry, so a plain subfolder of another repo still reads as "not a repo".
+# GIT_* from a calling hook would aim git elsewhere. Falls back to <dir>/.git/hooks (the old path, for the messages).
+_git_hooks_dir() {
+  local dir="$1" common=""
+  if [[ -e "$dir/.git" ]]; then
+    common="$(cd "$dir" 2>/dev/null && env -u GIT_DIR -u GIT_COMMON_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE \
+      git rev-parse --git-common-dir 2>/dev/null)" || common=""
+    if [[ -n "$common" ]]; then common="$(cd "$dir" && cd "$common" 2>/dev/null && pwd)" || common=""; fi
+  fi
+  if [[ -n "$common" ]]; then printf '%s/hooks\n' "$common"; else printf '%s/.git/hooks\n' "$dir"; fi
+}
+
 _init_git_precommit() {
   local project_dir="$1"
-  local hooks_dir="$project_dir/.git/hooks"
+  local hooks_dir
+  hooks_dir="$(_git_hooks_dir "$project_dir")"
   local hook="$hooks_dir/pre-commit"
   local marker="# canon-managed-pre-commit-hook"
   local template="$SKILLS_ROOT/scripts/pre-commit-hook-template.sh"
@@ -71,7 +85,8 @@ _init_git_precommit() {
 
 _uninstall_git_precommit() {
   local project_dir="$1"
-  local hook="$project_dir/.git/hooks/pre-commit"
+  local hook
+  hook="$(_git_hooks_dir "$project_dir")/pre-commit"
   local marker="# canon-managed-pre-commit-hook"
 
   local local_hook="$hook.local"

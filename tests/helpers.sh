@@ -107,6 +107,12 @@ event_line() {
   cat "$CANON_HOME"/events/*.jsonl 2>/dev/null | grep -F "\"kind\":\"$1\"" | grep -F "\"ticket\":\"$2\"" | tail -1 || true
 }
 
+# git_dir <repo-dir> / git_common_dir <repo-dir>: that checkout's git directory as an absolute, physical path (t-80fc). In a
+# linked worktree .git is a FILE: per-worktree state (HEAD, index) is under git_dir, hooks, config and refs under git_common_dir.
+# A test that needs a real checkout's git metadata asks git; never "$dir/.git/hooks".
+git_dir() { (cd "$1" && cd "$(git rev-parse --git-dir)" && pwd -P); }
+git_common_dir() { (cd "$1" && cd "$(git rev-parse --git-common-dir)" && pwd -P); }
+
 make_project() {
   local dir
   dir="$(mktemp -d)"

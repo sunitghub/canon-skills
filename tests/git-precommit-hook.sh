@@ -224,7 +224,8 @@ trap 'rm -rf "$project" "$conflict_project" "$behavior_project" "$leak_root" "$n
 printf '# Claude\n' > "$nogit_project/CLAUDE.md"
 printf '# Agents\n' > "$nogit_project/AGENTS.md"
 nogit_output="$("$SKILLS" add sprint "$nogit_project" 2>&1)"
-assert_contains "$nogit_output" "not a git repo"
+assert_contains "$nogit_output" "$nogit_project/.git/hooks/pre-commit not found (not a git repo?)"
+assert_contains "$("$SKILLS" status "$nogit_project" 2>&1)" "[skipped — not a git repo]"
 [[ ! -d "$nogit_project/.git" ]] || fail "expected no .git to be created"
 
 # ── Remove uninstalls the hook (t-0bcd) ─────────────────────────────────────
@@ -234,5 +235,28 @@ trap 'rm -rf "$project" "$conflict_project" "$behavior_project" "$leak_root" "$n
 assert_file_exists "$remove_project/.git/hooks/pre-commit"
 "$SKILLS" remove sprint "$remove_project" >/dev/null
 [[ ! -f "$remove_project/.git/hooks/pre-commit" ]] || fail "expected .git/hooks/pre-commit to be removed by skills.sh remove"
+
+# ── A linked worktree (.git is a FILE): add, status and remove use the common hooks dir (t-80fc) ──
+wt_main="$(make_project)"; wt_tree="$(mktemp -d)"; rm -rf "$wt_tree"
+trap 'rm -rf "$project" "$conflict_project" "$behavior_project" "$leak_root" "$nogit_project" "$remove_project" "$wt_main" "$wt_tree"' EXIT
+git -C "$wt_main" -c user.email=t@t -c user.name=t commit -q --allow-empty -m seed
+git -C "$wt_main" worktree add -q "$wt_tree"
+[[ -f "$wt_tree/.git" ]] || fail "expected the linked worktree to have a .git FILE"
+wt_hook="$(git_common_dir "$wt_tree")/hooks/pre-commit"
+# GIT_* leaked from a calling hook (t-ce0b) must not aim the lookup at another repository
+wt_out="$(GIT_DIR=/nonexistent GIT_WORK_TREE=/nonexistent GIT_COMMON_DIR=/nonexistent "$SKILLS" add sprint "$wt_tree" 2>&1)"
+if [[ "$wt_out" == *"not a git repo"* ]]; then fail "skills.sh add skipped the hook in a linked worktree"; fi
+assert_grep "canon-managed-pre-commit-hook" "$wt_hook"
+assert_contains "$("$SKILLS" status "$wt_tree" 2>&1)" "pre-commit (git)          [ok]"
+"$SKILLS" remove sprint "$wt_tree" >/dev/null
+[[ ! -f "$wt_hook" ]] || fail "expected skills.sh remove from a worktree to remove the common pre-commit hook"
+# a sprint project in git whose hook is gone reads "not wired"
+"$SKILLS" add sprint "$wt_tree" >/dev/null 2>&1; rm -f "$wt_hook"
+assert_contains "$("$SKILLS" status "$wt_tree" 2>&1)" "pre-commit (git)          [not wired]"
+# a .git pointer whose git dir is gone skips cleanly, as "not a git repo"
+broken="$(mktemp -d)"; printf 'gitdir: %s/missing\n' "$broken" > "$broken/.git"
+trap 'rm -rf "$project" "$conflict_project" "$behavior_project" "$leak_root" "$nogit_project" "$remove_project" "$wt_main" "$wt_tree" "$broken"' EXIT
+broken_out="$("$SKILLS" add sprint "$broken" 2>&1)" || fail "skills.sh add failed on a broken .git pointer: $(printf '%s' "$broken_out" | tail -3)"
+assert_contains "$broken_out" "$broken/.git/hooks/pre-commit not found (not a git repo?)"
 
 printf 'git-precommit-hook: ok\n'
