@@ -1157,6 +1157,14 @@
       ],
       "ticket": "t-8627",
       "reason": "chromium: failed in one full t-d40b run under load (2026-10-22), passed 3 of 3 when rerun alone; webkit already measured 6 of 6 passing alone (t-f053)"
+    },
+    {
+      "title": "GitHub workflow on the board (t-718b) > a send that fails after the panel was replaced writes nowhere and throws nothing (t-718b)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8627",
+      "reason": "webkit: failed in one full t-d40b run under load (2026-10-22), passed 3 of 3 when rerun alone"
     }
   ],
   "skipped": []
