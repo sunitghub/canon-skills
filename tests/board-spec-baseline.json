@@ -1027,17 +1027,6 @@
       }
     },
     {
-      "title": "cockpit in board (t-ddc8) > cross-project Sessions row (t-2d2e) > desktop notification (t-28ec): opt-in switch, one notification per move into needs-you while hidden, click opens it",
-      "browsers": [
-        "webkit"
-      ],
-      "ticket": "t-8627",
-      "reason": "webkit timing flake: failed in a full t-15d8 run under load (2026-10-19), passed when rerun in the --grep classify run; cause not yet diagnosed",
-      "failed_runs": {
-        "webkit": "1/2"
-      }
-    },
-    {
       "title": "ticket modal document tree (t-e946) > checklist sections show done/total; a prose section shows no count",
       "browsers": [
         "webkit"
@@ -1135,6 +1124,31 @@
       "failed_runs": {
         "webkit": "1/1"
       }
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > an open ticket in progress in a worktree sits in IN PROGRESS with Resume and a worktree chip, and Resume preselects that worktree (t-19d1)",
+      "browsers": [
+        "chromium",
+        "webkit"
+      ],
+      "ticket": "t-2ff0",
+      "reason": "fails alone on a clean copy of origin/main (2efbaba5) too, 0 of 3 solo runs (2026-10-22); cause not yet diagnosed"
+    },
+    {
+      "title": "cockpit stale-daemon banner (t-74d6) > a tab opening a live session offers Attach with the agent locked, and both windows get the shared notice",
+      "browsers": [
+        "chromium"
+      ],
+      "ticket": "t-8627",
+      "reason": "chromium: failed in one full t-d40b run under load (2026-10-22), passed 2 of 2 when rerun alone"
+    },
+    {
+      "title": "GitHub workflow on the board (t-718b) > a public repo: the preview asks for a tick before Create issue sends with public (t-718b)",
+      "browsers": [
+        "chromium"
+      ],
+      "ticket": "t-8627",
+      "reason": "chromium: failed in one full t-d40b run under load (2026-10-22), passed 2 of 2 when rerun alone"
     }
   ],
   "skipped": []
