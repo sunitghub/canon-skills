@@ -2,7 +2,7 @@ module canon
 
 go 1.26.5
 
-toolchain go1.27.2
+toolchain go1.27.3
 
 require github.com/aymanbagabas/go-pty v0.2.3
 
