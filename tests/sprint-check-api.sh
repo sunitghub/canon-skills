@@ -852,6 +852,15 @@ out="$(env -u ANTHROPIC_API_KEY -u OPENAI_API_KEY curl -s -X POST -H 'Origin: ht
 printf '%s' "$out" | python3 -c 'import sys,json
 r=json.load(sys.stdin); assert r["ok"] is True and len(r["sources"])==1 and r["sources"][0]["index"]==2, r
 assert r["proposal"]["add"]==[] and r["proposal"]["retire"], r' || fail "sprint-check-api: refresh with one index answered unexpectedly: $out"
+# t-d40b: the check time and result are kept with the source that was visited, in the data dir, and only for that one
+tiers_json | python3 -c 'import sys,json,datetime
+d=json.load(sys.stdin); s=d["sources"]
+assert "checked_at" not in s[0] and "checked_at" not in s[3], s
+assert s[2]["last_ok"] is False and s[2]["last_status"]=="key not set", s[2]
+datetime.datetime.strptime(s[2]["checked_at"], "%Y-%m-%dT%H:%M:%SZ")' || fail "sprint-check-api: refresh did not record when the visited source was checked"
+[[ "$(shasum "$SEED_TIERS" | cut -d' ' -f1)" == "$seed_sha" ]] || fail "sprint-check-api: refresh changed the tracked seed"
+printf '%s' "$out" | python3 -c 'import sys,json
+r=json.load(sys.stdin); assert r["data"]["sources"][2]["checked_at"], r' || fail "sprint-check-api: the refresh answer does not carry the registry with the check times"
 apply_ok="$(curl -s -w '\n%{http_code}' -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' \
   -d '{"add":[{"id":"claude-haiku-5-6","provider":"anthropic","name":"Claude Haiku 5.6","input_price":0.1,"output_price":0.5}],"retire":[{"old":"claude-haiku-4-5-20251001","new":"claude-haiku-5-6"}]}' "$B/api/admin/model-tiers/apply")"
 [[ "$(printf '%s' "$apply_ok" | tail -1)" == 200 ]] || fail "sprint-check-api: apply was rejected: $apply_ok"

@@ -13147,6 +13147,37 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
     }
   });
 
+  // Protects the Sources panel across a reload: when a source was last checked and how it went are kept with the source, so a row says
+  // "checked 3 h ago" or "key not set" and not "never checked", and a saved time that is not a time is refused.
+  test('Model Tiers: when a source was last checked is kept and shown after a reload (t-d40b)', async ({ page }) => {
+    const canonical = readCanonicalModelTiers();
+    try {
+      const ago = min => new Date(Date.now() - min * 60000).toISOString().replace(/\.\d+Z$/, 'Z');
+      const reg = JSON.parse(canonical);
+      reg.sources = [
+        { url: 'https://platform.claude.com/docs/en/models/overview', kind: 'docs', provider: 'anthropic', checked_at: ago(3), last_ok: true, last_status: 'checked just now' },
+        { url: 'https://developers.openai.com/api/docs/models', kind: 'docs', provider: 'openai', checked_at: ago(180), last_ok: true, last_status: 'checked just now' },
+        { url: 'https://api.anthropic.com/v1/models', kind: 'api', provider: 'anthropic', checked_at: ago(60 * 30), last_ok: false, last_status: 'key not set' },
+        { url: 'https://api.openai.com/v1/models', kind: 'api', provider: 'openai', checked_at: ago(0.2), last_ok: false, last_status: 'refused: a private, loopback or link-local address is refused' }];
+      expect((await page.request.post(BASE + '/api/admin/model-tiers', { data: reg })).ok()).toBe(true);
+      await page.goto(BASE + '/cockpit');
+      await page.waitForLoadState('networkidle');
+      await page.locator('#nav-admin').click();
+      const tags = page.locator('#mt-sources .mt-src-row .mt-tag');
+      await expect(tags.nth(0)).toHaveText('checked 3 min ago');
+      await expect(tags.nth(0)).toHaveClass(/ok/);
+      await expect(tags.nth(1)).toHaveText('checked 3 h ago');
+      await expect(tags.nth(2)).toHaveText(/^key not set \u00b7 [A-Z][a-z]{2} \d{1,2}$/);          // a day or more ago: the date
+      await expect(tags.nth(3)).toHaveText('failed \u00b7 just now');
+      await expect(tags.nth(3)).toHaveAttribute('title', /refused: a private, loopback or link-local address is refused/);
+      await expect(tags.nth(2)).toHaveClass(/warn/);
+      reg.sources[0].checked_at = 'yesterday';
+      expect((await page.request.post(BASE + '/api/admin/model-tiers', { data: reg })).status()).toBe(400);
+    } finally {
+      await restoreModelTiers(page, canonical);
+    }
+  });
+
   test('Model Tiers: applying a proposal retires the old models: alias and default move, Legacy holds them, Remove on one deletes it (t-d40b)', async ({ page }) => {
     const canonical = readCanonicalModelTiers();
     try {

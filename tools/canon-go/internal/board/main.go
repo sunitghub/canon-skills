@@ -699,6 +699,10 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		doc := loadModelTiers()
 		res, st := refreshSources(doc, only, fetchOpts{})
 		res["ok"], res["sources"] = true, st
+		recordChecks(doc, st, time.Now())
+		if saved := saveModelTiers(doc); saved["ok"] == true {
+			res["data"] = doc // the registry now carries the check times
+		}
 		sendJSON(w, res)
 		return
 	}

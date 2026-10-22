@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // t-d40b: what Refresh does with the pages it fetched. A source is a docs page (HTML with model ids and prices) or a provider's Models
@@ -351,4 +352,18 @@ func redactKey(msg string) string {
 		}
 	}
 	return msg
+}
+
+// recordChecks writes when each source that Refresh visited was checked and how it went into the saved source itself (checked_at, last_ok,
+// last_status), so the Sources panel can still say "checked 3 h ago" after a reload. This is bookkeeping about the check, not a registry change:
+// models, aliases and defaults are untouched.
+func recordChecks(doc map[string]any, st []sourceStatus, now time.Time) {
+	srcs, _ := doc["sources"].([]any)
+	for _, s := range st {
+		if s.Index < 0 || s.Index >= len(srcs) {
+			continue
+		}
+		m, _ := srcs[s.Index].(map[string]any)
+		m["checked_at"], m["last_ok"], m["last_status"] = now.UTC().Format(time.RFC3339), s.OK, s.Status
+	}
 }

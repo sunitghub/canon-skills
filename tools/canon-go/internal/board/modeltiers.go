@@ -3,6 +3,7 @@ package board
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 // t-d40b: the model registry's moves. One function retires a model in favour of another (its alias and any default
@@ -215,6 +216,18 @@ func modelSourcesValid(data map[string]any) bool {
 		s, ok := e.(map[string]any)
 		if !ok {
 			return false
+		}
+		if at, has := s["checked_at"]; has { // the bookkeeping Refresh records: a timestamp, a flag and a line of text, or absent
+			text, isText := at.(string)
+			if _, err := time.Parse(time.RFC3339, text); !isText || err != nil {
+				return false
+			}
+			if _, isBool := s["last_ok"].(bool); !isBool {
+				return false
+			}
+			if _, isText := s["last_status"].(string); !isText {
+				return false
+			}
 		}
 		kind, prov, raw := fmt.Sprint(s["kind"]), fmt.Sprint(s["provider"]), fmt.Sprint(s["url"])
 		if (kind != "docs" && kind != "api") || (prov != "anthropic" && prov != "openai") {

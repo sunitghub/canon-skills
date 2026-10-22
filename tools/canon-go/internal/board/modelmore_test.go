@@ -460,3 +460,41 @@ func TestRefreshSourcesProviderPathsAndMerge(t *testing.T) {
 		t.Errorf("a key of fewer than six characters is not worth masking (it would blank ordinary words): %q", got)
 	}
 }
+
+// The check time and result are kept with each source Refresh visited (and only those), as a timestamp, a flag and a line of text.
+func TestRecordChecksAndSourceBookkeepingFields(t *testing.T) {
+	doc := proposalDoc()
+	doc["sources"] = []any{
+		map[string]any{"url": "https://a.test/", "kind": "docs", "provider": "openai"},
+		map[string]any{"url": "https://b.test/", "kind": "docs", "provider": "openai"},
+	}
+	now := time.Date(2026, 10, 22, 14, 5, 9, 0, time.FixedZone("x", 5*3600))
+	recordChecks(doc, []sourceStatus{{Index: 1, Status: "key not set", OK: false}, {Index: 7, Status: "out of range"}, {Index: -1}}, now)
+	first := doc["sources"].([]any)[0].(map[string]any)
+	second := doc["sources"].([]any)[1].(map[string]any)
+	if _, has := first["checked_at"]; has {
+		t.Error("a source Refresh did not visit has no check time")
+	}
+	if second["checked_at"] != "2026-10-22T09:05:09Z" || second["last_ok"] != false || second["last_status"] != "key not set" {
+		t.Errorf("the visited source: %v", second)
+	}
+	if !modelTiersValid(doc) {
+		t.Error("a registry with check times must be valid")
+	}
+	for name, mut := range map[string]func(m map[string]any){
+		"a check time that is not a time": func(m map[string]any) { m["checked_at"] = "yesterday" },
+		"a check time that is a number":   func(m map[string]any) { m["checked_at"] = 5.0 },
+		"a missing flag":                  func(m map[string]any) { delete(m, "last_ok") },
+		"a flag that is text":             func(m map[string]any) { m["last_ok"] = "yes" },
+		"a missing status line":           func(m map[string]any) { delete(m, "last_status") },
+		"a status that is a number":       func(m map[string]any) { m["last_status"] = 3.0 },
+	} {
+		d := proposalDoc()
+		src := map[string]any{"url": "https://a.test/", "kind": "docs", "provider": "openai", "checked_at": "2026-10-22T09:05:09Z", "last_ok": true, "last_status": "ok"}
+		mut(src)
+		d["sources"] = []any{src}
+		if modelTiersValid(d) {
+			t.Errorf("%s should be refused", name)
+		}
+	}
+}

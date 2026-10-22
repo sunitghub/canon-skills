@@ -353,11 +353,26 @@ async function mtPost(url,body){
 // never carries a URL), the board does the fetching, and a Models API key stays in the board's environment.
 let mtStatus={}, mtBusy=false, mtProp=null, mtSel={};
 const MT_SRC_KIND=s=>s.kind==='api'?'Models API \u00b7 reads '+(s.provider==='openai'?'OPENAI_API_KEY':'ANTHROPIC_API_KEY')+' from the environment':'Docs page \u00b7 '+(s.provider==='openai'?'OpenAI':'Anthropic');
+// When a source was last checked and how it went is kept with the source (the board records it on every Refresh), so it survives a reload.
+function mtAgo(iso){
+  const t=Date.parse(iso); if(isNaN(t)) return '';
+  const m=Math.round((Date.now()-t)/60000);
+  if(m<1) return 'just now'; if(m<60) return m+' min ago';
+  const h=Math.round(m/60); if(h<24) return h+' h ago';
+  return new Date(t).toLocaleDateString(undefined,{month:'short',day:'numeric'});
+}
+function mtSaved(s){
+  if(!s.checked_at) return {status:'never checked',ok:false,checked:false};
+  const when=mtAgo(s.checked_at), full=new Date(s.checked_at).toLocaleString();
+  if(s.last_ok) return {status:'checked '+when,ok:true,checked:true,title:'checked '+full};
+  const why=/^key not set/.test(s.last_status||'')?'key not set':'failed';
+  return {status:why+' \u00b7 '+when,ok:false,checked:true,title:(s.last_status||why)+' \u00b7 '+full};
+}
 function mtRenderSources(){
   const el=document.getElementById('mt-sources'); if(!el) return;
   const srcs=mtData.sources||[];
-  const row=(s,i)=>{ const st=mtStatus[i]||{status:'never checked'}; const cls=st.ok?'ok':(/key not set|refused/.test(st.status)?'warn':'');
-    return `<div class="mt-src-row"><div><div class="mt-src-u">${esc(s.url)}</div><span class="mt-src-k">${esc(MT_SRC_KIND(s))}</span></div><span class="mt-tag ${cls}" title="${escAttr(st.status)}">${esc(st.status.length>34?st.status.slice(0,32)+'\u2026':st.status)}</span><button type="button" class="mt-src-rf b-neutral" data-i="${i}" aria-label="Refresh ${escAttr(s.url)}"${mtBusy?' disabled':''}>\u21bb</button><button type="button" class="mt-src-rm b-close" data-i="${i}" aria-label="Remove ${escAttr(s.url)}">\u2715</button></div>`; };
+  const row=(s,i)=>{ const st=mtStatus[i]||mtSaved(s); const cls=st.ok?'ok':(st.checked?'warn':'');
+    return `<div class="mt-src-row"><div><div class="mt-src-u">${esc(s.url)}</div><span class="mt-src-k">${esc(MT_SRC_KIND(s))}</span></div><span class="mt-tag ${cls}" title="${escAttr(st.title||st.status)}">${esc(st.status.length>34?st.status.slice(0,32)+'\u2026':st.status)}</span><button type="button" class="mt-src-rf b-neutral" data-i="${i}" aria-label="Refresh ${escAttr(s.url)}"${mtBusy?' disabled':''}>\u21bb</button><button type="button" class="mt-src-rm b-close" data-i="${i}" aria-label="Remove ${escAttr(s.url)}">\u2715</button></div>`; };
   el.innerHTML=`<div class="mt-sources"><header><h3>Sources</h3><span class="mt-tag">checked only when you press Refresh</span><button type="button" class="mt-rf-all b-primary"${mtBusy?' disabled':''}>${mtBusy?'<span class="mt-spin"></span>Checking\u2026':'\u21bb Refresh all'}</button></header>${srcs.map(row).join('')}<div class="mt-src-add"><input type="text" id="mt-src-url" placeholder="https://\u2026 a docs page that lists models and prices" aria-label="Source URL"><select id="mt-src-kind" aria-label="Source type"><option value="anthropic">Docs page \u00b7 Anthropic</option><option value="openai">Docs page \u00b7 OpenAI</option></select><button type="button" class="mt-src-addbtn b-neutral">+ Add source</button></div></div>`;
   el.querySelector('.mt-rf-all').addEventListener('click',()=>mtRefresh(-1));
   el.querySelectorAll('.mt-src-rf').forEach(b=>b.addEventListener('click',()=>mtRefresh(Number(b.dataset.i))));
@@ -382,7 +397,8 @@ async function mtRefresh(index){
     if(res.old){ toast(MT_OLD_BOARD); }
     else if(!res.ok){ toast(res.error||"Couldn't refresh"); }
     else{
-      (res.sources||[]).forEach(s=>{ mtStatus[s.index]={status:s.status,ok:s.ok}; });
+      if(res.data){ mtData=res.data; mtStatus={}; }   // the registry now carries when each source was checked
+      else (res.sources||[]).forEach(s=>{ mtStatus[s.index]={status:s.status,ok:s.ok,checked:true}; });
       mtProp=res.proposal||null; mtSel={};
       if(mtProp){ mtProp.add.forEach(a=>{ mtSel['a:'+a.id]=true; if(a.replaces) mtSel['r:'+a.id]=true; }); mtProp.retire.forEach(x=>{ mtSel['t:'+x.old]=true; }); }
     }
