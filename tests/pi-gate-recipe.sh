@@ -13,9 +13,11 @@ recipe="$(grep -m1 -E '^[[:space:]]+`pi -p ' "$DOC" || true)"
 [[ -n "$recipe" ]] || fail "no \`pi -p …\` recipe line found in $DOC"
 
 for flag in --no-session --no-context-files --no-skills --no-prompt-templates --no-extensions --no-mcp \
-            '--tools read,bash,grep,find,ls' '--model "<provider>/'; do
+            '--model "<provider>/'; do
   [[ "$recipe" == *"$flag"* ]] || fail "the pi gate recipe lacks $flag: $recipe"
 done
+# the allowlist is exactly these five: a trailing space stops `--tools read,bash,grep,find,ls,edit,write` from passing
+[[ "$recipe" == *"--tools read,bash,grep,find,ls "* ]] || fail "the pi gate recipe's --tools is not exactly read,bash,grep,find,ls: $recipe"
 [[ "$recipe" != *--exclude-tools* ]] || fail "the pi gate recipe still carries the --exclude-tools denylist: $recipe"
 
 echo "pi-gate-recipe: ok"

@@ -289,7 +289,7 @@ Opus` default, scoped only to the two close-gate dispatches below.
   *config-default* model (verified: it reported `claude-opus-4-6…` regardless of a `kimi-k3`
   interactive session), and pi exposes no `PI_MODEL`/`PI_PROVIDER` env to read it from — so the
   dispatching agent supplies its own current model, as `provider/model`: a bare name such as
-  `kimi-k3` is refused when more than one authenticated provider offers it (t-294e, verified on Pi 1.2.0).
+  `kimi-k3` is refused when more than one authenticated provider offers it (t-294e, verified on Pi 1.4.0).
   `--tools read,bash,grep,find,ls` is an allowlist of built-in names (lowercase), the
   read-only-by-prompt + Bash profile the gate contract requires; `bash` can still write, so read-only stays a
   prompt rule, as for the Claude gates. An allowlist replaces the old `--exclude-tools edit,write`, which never
