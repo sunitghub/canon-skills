@@ -1074,6 +1074,19 @@ _safe_ticket_path() {
   return 0
 }
 
+# _gh_trail <ticket dir> <kind> <line>... (t-1dec): appends a dated "## <UTC time> — <kind>" block of plain lines to
+# <ticket dir>/github.md, creating it with a "# GitHub" heading. The board shows it as the ticket's GitHub node. Never
+# fails the command it records: a file that cannot be written gives one warning line and returns 0.
+_gh_trail() {
+  local f="$1/github.md" kind="$2" block
+  shift 2
+  block="$(printf '\n## %s — %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$kind"; printf '%s\n' "$@")"
+  if [[ -L "$f" ]] || ! { { [[ -s "$f" ]] || printf '# GitHub\n'; printf '%s\n' "$block"; } >> "$f"; } 2>/dev/null; then
+    echo "warning: could not write the GitHub trail ($f)" >&2
+  fi
+  return 0
+}
+
 cmd_send_issue() {
   local id="" dry=false public=false
   while [[ $# -gt 0 ]]; do
@@ -1180,6 +1193,7 @@ cmd_send_issue() {
   set_or_add_field "$file" github "$repo#$n"
   # t-718b: github: is only the link (sync and import write it too); runs: github says a cloud session has the work.
   set_or_add_field "$file" runs github
+  _gh_trail "$tdir" sent "issue: $url" "repo: $repo"
   printf 'Sent %s as %s\nIn a Claude cloud session on %s, type:\n' "$id" "$url" "$repo"
   printf 'Work on Issue#%s for ticket %s. Read its section "Working on this" thoroughly before starting and follow it step by step. Work on a new branch, never main.\n' "$n" "$id"
 }
@@ -1566,12 +1580,14 @@ cmd_merge_pr() {
     --jq '[.state, .mergeable, .mergeStateStatus, .headRefOid, .baseRefName, .isCrossRepository] | @tsv' 2>&1)" \
     || { echo "merge-pr: gh could not read PR #$pr on $repo: $info" >&2; exit 1; }
   IFS=$'\t' read -r st mg ms head base cross <<< "$info"
-  [[ "$st" == OPEN ]] || { echo "merge-pr: PR #$pr is $st, not open" >&2; exit 1; }
-  [[ "$cross" == false ]] || { echo "merge-pr: PR #$pr comes from a fork; its code would run here, so merge it on GitHub after reading it" >&2; exit 1; }
+  # t-1dec: a refusal after the PR was read is one `refused` entry in the ticket's github.md trail.
+  _mp_refuse() { _gh_trail "$tdir" refused "PR: #$pr" "reason: $1"; exit 1; }
+  [[ "$st" == OPEN ]] || { echo "merge-pr: PR #$pr is $st, not open" >&2; _mp_refuse "PR is $st, not open"; }
+  [[ "$cross" == false ]] || { echo "merge-pr: PR #$pr comes from a fork; its code would run here, so merge it on GitHub after reading it" >&2; _mp_refuse "PR comes from a fork"; }
   if [[ "$mg" != MERGEABLE || "$ms" != CLEAN ]]; then
     if [[ "$ms" == BLOCKED ]]; then echo "merge-pr: PR #$pr is blocked by a branch rule (a required review or check): https://github.com/$repo/pull/$pr" >&2
     else echo "merge-pr: PR #$pr cannot merge cleanly (mergeable: $mg, state: $ms)" >&2; fi
-    exit 1
+    _mp_refuse "PR cannot merge cleanly (mergeable: $mg, state: $ms)"
   fi
   # The suite on what main will hold: base + the PR, in a scratch clone.
   local tmp url; tmp="$(mktemp -d "${TMPDIR:-/tmp}/tkt-merge.XXXXXX")"
@@ -1582,8 +1598,8 @@ cmd_merge_pr() {
   local err
   err="$({ git clone -q "$root" "$tmp/w" \
     && git -C "$tmp/w" fetch -q "$url" "+refs/heads/$base:refs/remotes/o/$base" "+refs/pull/$pr/head:refs/remotes/o/pr"; } < /dev/null 2>&1)" \
-    || { echo "merge-pr: could not fetch $base and PR #$pr from origin: $err" >&2; exit 1; }
-  [[ "$(git -C "$tmp/w" rev-parse o/pr)" == "$head" ]] || { echo "merge-pr: PR #$pr moved while checking it; run merge-pr again" >&2; exit 1; }
+    || { echo "merge-pr: could not fetch $base and PR #$pr from origin: $err" >&2; _mp_refuse "could not fetch $base and the PR from origin"; }
+  [[ "$(git -C "$tmp/w" rev-parse o/pr)" == "$head" ]] || { echo "merge-pr: PR #$pr moved while checking it; run merge-pr again" >&2; _mp_refuse "PR moved while it was checked"; }
   # t-fdb1: a head past graded-head passes only when what came after is merge-safe late docs (the cloud's learnings sweep, complete.md
   # step 8); read from the fetched objects, so a non-ancestor or a git failure refuses.
   if [[ "$head" != "$graded"* ]]; then
@@ -1591,13 +1607,13 @@ cmd_merge_pr() {
     late="$(late_docs_delta "$tmp/w" "$graded" "$head" "$id")" || lrc=$?
     case "$lrc" in
       0) echo "merge-pr: PR #$pr head is graded-head plus late docs only: $(printf '%s\n' "$late" | grep . | paste -sd, - | sed 's/,/, /g')" ;;
-      1) echo "merge-pr: PR #$pr head $head is not the commit the evaluator graded ($graded); since then it changes $(printf '%s\n' "$late" | sed -n '1,5p' | paste -sd, - | sed 's/,/, /g'): re-run the gates on it" >&2; exit 1 ;;
-      *) echo "merge-pr: PR #$pr head $head is not the commit the evaluator graded ($graded): $late; re-run the gates on it" >&2; exit 1 ;;
+      1) echo "merge-pr: PR #$pr head $head is not the commit the evaluator graded ($graded); since then it changes $(printf '%s\n' "$late" | sed -n '1,5p' | paste -sd, - | sed 's/,/, /g'): re-run the gates on it" >&2; _mp_refuse "PR head $head is not the graded-head $graded and changes more than late docs" ;;
+      *) echo "merge-pr: PR #$pr head $head is not the commit the evaluator graded ($graded): $late; re-run the gates on it" >&2; _mp_refuse "PR head $head is not the graded-head $graded" ;;
     esac
   fi
   git -C "$tmp/w" checkout -q -B merge-pr-check "o/$base" < /dev/null \
     && git -C "$tmp/w" -c user.name=canon -c user.email=canon@localhost merge -q --no-edit o/pr < /dev/null >/dev/null 2>&1 \
-    || { echo "merge-pr: PR #$pr does not merge into $base here" >&2; exit 1; }
+    || { echo "merge-pr: PR #$pr does not merge into $base here" >&2; _mp_refuse "PR does not merge into $base"; }
   # The default comes from the base branch, not the merge: a PR that deletes scripts/test.sh must not switch its gate off.
   if ! $tset && git -C "$tmp/w" ls-tree "o/$base" -- scripts/test.sh < /dev/null | grep -q '^100755 '; then tcmd="scripts/test.sh"; fi
   # The test command runs the PR's code on this machine, so the question comes first: nothing from the PR runs before a y.
@@ -1630,18 +1646,19 @@ cmd_merge_pr() {
         failing="$(grep -E '^(FAILED|FAIL)' "$tmp/test.log" | head -20 || true)"
         [[ -z "$failing" ]] || printf 'Failing:\n%s\n' "$failing" >&2
         if kept="$(mktemp "${TMPDIR:-/tmp}/tkt-merge-$id-pr$pr.XXXXXX")" && cat "$tmp/test.log" > "$kept"; then echo "Full log kept at: $kept" >&2; fi
-        echo "Last lines:" >&2; tail -30 "$tmp/test.log" >&2; exit 1; }
+        echo "Last lines:" >&2; tail -30 "$tmp/test.log" >&2; _mp_refuse "$tcmd failed on $base + PR"; }
   fi
   # From /, never a checkout: --delete-branch then touches only the branch on GitHub.
   local out note=""
   if ! out="$(cd / && gh pr merge "$pr" --repo "$repo" --merge --delete-branch --match-head-commit "$head" 2>&1)"; then
     # gh can fail after GitHub merged (deleting the branch, say): what GitHub says decides.
     [[ "$(gh pr view "$pr" --repo "$repo" --json state --jq .state 2>/dev/null || true)" == MERGED ]] \
-      || { echo "merge-pr: gh could not merge PR #$pr: $out" >&2; exit 1; }
+      || { echo "merge-pr: gh could not merge PR #$pr: $out" >&2; _mp_refuse "gh could not merge the PR"; }
     note=" (gh reported: $out)"
   fi
   local sha; sha="$(gh pr view "$pr" --repo "$repo" --json mergeCommit --jq '.mergeCommit.oid // empty' 2>/dev/null || true)"
   set_or_add_field "$file" merged "${sha:-PR #$pr}"
+  _gh_trail "$tdir" merged "PR: #$pr" "merge commit: ${sha:-unknown}" "base: $base"
   # A close moved to this machine leaves the results branch behind (import-results keeps it while its checks fail).
   if git -C "$root" ls-remote --exit-code --heads origin "canon-results/$id" >/dev/null 2>&1; then
     git -C "$root" push -q origin --delete "canon-results/$id" 2>/dev/null \
@@ -2125,7 +2142,7 @@ cmd_import_results() {
   done < <(find "$tmp/$rel" -type f -print0)
   [[ -n "$gh_line" && -z "$(get_field "$tdir/ticket.md" github)" ]] && set_or_add_field "$tdir/ticket.md" github "$gh_line"
   [[ -n "$runs_line" && -z "$(get_field "$tdir/ticket.md" runs)" ]] && set_or_add_field "$tdir/ticket.md" runs "$runs_line"
-  local st cst="" verdict graded rc=0
+  local st cst="" verdict graded rc=0 prline=""
   st="$(get_field "$tdir/ticket.md" status)"
   # t-1cf5: an in_progress import would bind to this checkout and block its local close; the close happens in a
   # worktree at the PR head, where tkt start sets in_progress again. cloud_status keeps what the cloud left.
@@ -2147,20 +2164,26 @@ cmd_import_results() {
     echo "    run the evaluator and sprint complete in that worktree: the cloud's evaluator run record cannot travel,$([[ "$verdict" == pass ]] && echo " so its pass will not satisfy the local close" || echo " and ${verdict:-no report} is all that came back")"
   fi
   if [[ -n "$pr" ]]; then
-    local prh; prh="$(cd "$root" && gh pr view "$pr" --json headRefOid --jq .headRefOid 2>&1)" || { echo "import-results: gh could not read PR #$pr: $prh" >&2; rc=1; }
-    if [[ $rc == 0 && -n "$graded" && "$prh" == "$graded"* ]]; then echo "  PR #$pr head $prh: matches graded-head"
+    local prh; prh="$(cd "$root" && gh pr view "$pr" --json headRefOid --jq .headRefOid 2>&1)" || { echo "import-results: gh could not read PR #$pr: $prh" >&2; rc=1; prline="PR: #$pr (gh could not read it)"; }
+    if [[ $rc == 0 && -n "$graded" && "$prh" == "$graded"* ]]; then echo "  PR #$pr head $prh: matches graded-head"; prline="PR: #$pr head $prh: matches graded-head"
     elif [[ $rc == 0 ]]; then
       # t-fdb1: the cloud's learnings sweep lands after grading; a delta of merge-safe late docs only still counts as the graded code.
       local late="" lrc=2
       if [[ -n "$graded" ]] && git -C "$root" fetch -q origin "refs/pull/$pr/head" < /dev/null 2>/dev/null; then
         late="$(late_docs_delta "$root" "$graded" "$prh" "$id")" && lrc=0 || lrc=$?
       fi
-      if [[ $lrc == 0 ]]; then echo "  PR #$pr head $prh: graded-head plus late docs only: $(printf '%s\n' "$late" | grep . | paste -sd, - | sed 's/,/, /g')"
-      else echo "  PR #$pr head $prh does NOT match graded-head ${graded:-none}: the evaluator graded other code${late:+ ($(printf '%s\n' "$late" | sed -n '1,5p' | paste -sd, - | sed 's/,/, /g'))}" >&2; rc=1; fi
+      if [[ $lrc == 0 ]]; then echo "  PR #$pr head $prh: graded-head plus late docs only: $(printf '%s\n' "$late" | grep . | paste -sd, - | sed 's/,/, /g')"; prline="PR: #$pr head $prh: graded-head plus late docs only"
+      else echo "  PR #$pr head $prh does NOT match graded-head ${graded:-none}: the evaluator graded other code${late:+ ($(printf '%s\n' "$late" | sed -n '1,5p' | paste -sd, - | sed 's/,/, /g'))}" >&2; rc=1; prline="PR: #$pr head $prh: does NOT match graded-head ${graded:-none}"; fi
     fi
   fi
   _regrade_line "$root" "$tdir" "$pr" "$rc"   # t-278d: advises only; never changes rc
-  _evidence_os_lines "$tdir"                  # t-a83a: advises only; never changes rc
+  local osout; osout="$(_evidence_os_lines "$tdir")"   # t-a83a: advises only; never changes rc
+  [[ -z "$osout" ]] || printf '%s\n' "$osout"
+  # t-1dec: the trail keeps what the lines above showed once, including a refusal on a head mismatch.
+  local tl=("files: $n" "ticket status: ${st:-unknown}" "evaluator: ${verdict:-none}" "graded head: ${graded:-none}") ol
+  [[ -z "$prline" ]] || tl+=("$prline")
+  while IFS= read -r ol; do [[ -z "$ol" ]] || tl+=("evidence: ${ol#"  evidence ran on: "}"); done <<< "$osout"
+  _gh_trail "$tdir" imported "${tl[@]}"
   if [[ "$rc" == 0 ]]; then
     git -C "$root" push -q origin --delete "canon-results/$id" 2>/dev/null || echo "  note: could not delete canon-results/$id on origin; delete it by hand" >&2
   else

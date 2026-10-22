@@ -60,6 +60,11 @@ printf '# Acceptance\n\n## Criteria\n- [ ] Idle CPU under 5%%\n\n## Test Plan\n-
 printf '# Plan\n\n## Sign-off\nTier: normal\n\n- [x] Plan approved\n\n## Approach\n1. Profile it.\n# a note in the plan, not a part\n2. Fix it.\n\n## Files\n`server.py`\n' > "$d/plan.md"
 printf '# Research: x\n\n- Polls every 8 s.\n' > "$d/research.md"
 "$TKT" send-issue "$id" >/dev/null
+# t-1dec: a real send starts the GitHub trail: the heading, then one dated block with the issue and repo.
+gt="$A/$d/github.md"
+assert_eq "# GitHub" "$(head -1 "$gt")"; assert_eq 1 "$(grep -c '^## ' "$gt")"
+assert_grep '^## [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]+Z — sent$' "$gt"
+assert_grep '^issue: https://github.com/acme/app/issues/57$' "$gt"; assert_grep '^repo: acme/app$' "$gt"
 
 B="$W/cloud"; mkdir "$B" && git -C "$B" init -q && git -C "$B" remote add origin https://github.com/acme/app.git
 cd "$B"
@@ -163,7 +168,7 @@ assert_eq "1" "$(git --git-dir="$W/origin.git" branch --list "canon-results/*" |
 # Back on the laptop: files byte-for-byte, a local edit kept aside, github: kept, branch deleted, PR head checked.
 unset STUB_CLOUD
 L="$W/laptop2"; git clone -q "$W/origin.git" "$L" 2>/dev/null; cd "$L"
-mkdir -p ".tickets/$id" && cp "$A/$d/ticket.md" "$A/$d/plan.md" ".tickets/$id/"
+mkdir -p ".tickets/$id" && cp "$A/$d/ticket.md" "$A/$d/plan.md" "$A/$d/github.md" ".tickets/$id/"
 export STUB_PR_HEAD; # every board and Go path is a trigger on its own (the failed check keeps the branch, so the head still mismatches); a high-risk plan is one too
 for f in tests/run-board-spec.sh tests/board-spec-baseline.json tools/sprint-check-app/x.js; do
   out="$(STUB_PR_HEAD=0000000000000000000000000000000000000000 STUB_PR_FILES="$f" "$TKT" import-results "$id" --pr 58 2>&1)" || true; assert_contains "$out" "re-grade needed on this Mac: board change (full board spec), PR head"
@@ -189,6 +194,14 @@ assert_grep "^runs: github$" ".tickets/$id/ticket.md"     # t-718b: the laptop's
 assert_contains "$out" "status: closed"
 assert_contains "$out" "evaluator: pass"
 assert_contains "$out" "matches graded-head"
+# t-1dec: the import appended its block after the send block, which stayed byte-identical; the trail holds what the output showed.
+gt=".tickets/$id/github.md"; sent_block="$(cat "$A/$d/github.md")"
+assert_eq "$sent_block" "$(head -n "$(wc -l < "$A/$d/github.md")" "$gt")"
+# (the re-grade loop above imported on mismatched heads six times; each of those is a refused block on the trail)
+imp="$(awk '/^## .* — imported$/ { b = "" } { b = b $0 "\n" } END { printf "%s", b }' "$gt")"; nblocks="$(grep -c '^## ' "$gt")"
+assert_contains "$imp" "files: 13"; assert_contains "$imp" "ticket status: closed"; assert_contains "$imp" "evaluator: pass"
+assert_contains "$imp" "graded head: $STUB_PR_HEAD"; assert_contains "$imp" "PR: #58 head $STUB_PR_HEAD: matches graded-head"
+assert_contains "$imp" "evidence: Plan9 4.0 mips (this machine:"
 # t-a83a: one line per foreign OS, sanitized and capped; this machine's OS and subfolders say nothing
 assert_contains "$out" "  evidence ran on: Plan9 4.0 mips (this machine: $(uname -srm))"
 assert_eq 1 "$(printf '%s\n' "$out" | grep -c 'evidence ran on: Plan9')"
@@ -206,6 +219,9 @@ cd "$X" && "$TKT" export "$id" >/dev/null 2>&1 && cd "$L"
 STUB_PR_HEAD=0000000000000000000000000000000000000000
 rc=0; out="$("$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "a PR head that differs from graded-head should exit 1"; assert_contains "$out" "does NOT match graded-head"
+# t-1dec: the refused import is on the trail too, as its own block.
+assert_eq "$((nblocks + 1))" "$(grep -c '^## ' ".tickets/$id/github.md")"
+assert_contains "$(awk '/^## .* — imported$/ { b = "" } { b = b $0 "\n" } END { printf "%s", b }' ".tickets/$id/github.md")" "PR: #58 head 0000000000000000000000000000000000000000: does NOT match graded-head"
 [[ -n "$(git --git-dir="$W/origin.git" branch --list "canon-results/$id")" ]] || fail "a failed --pr check deleted canon-results/$id"
 # t-278d: triggers by what the PR touches. The branch is kept after a failed check, so import-results can run again on it.
 rc=0; out="$(STUB_PR_FILES="tools/sprint-check-app/server.js docs/x.md" "$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
