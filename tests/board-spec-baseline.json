@@ -1149,6 +1149,14 @@
       ],
       "ticket": "t-8627",
       "reason": "chromium: failed in one full t-d40b run under load (2026-10-22), passed 2 of 2 when rerun alone"
+    },
+    {
+      "title": "GitHub workflow on the board (t-718b) > Check & merge offers Push main only with canon.mirror remotes, naming them, and pushes once on the click (t-24b1)",
+      "browsers": [
+        "chromium"
+      ],
+      "ticket": "t-8627",
+      "reason": "chromium: failed in one full t-d40b run under load (2026-10-22), passed 3 of 3 when rerun alone; webkit already measured 6 of 6 passing alone (t-f053)"
     }
   ],
   "skipped": []
