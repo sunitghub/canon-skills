@@ -108,6 +108,27 @@ set -e
 assert_eq 1 "$rc"
 assert_count 1 'agent-id is required' "$err_file"
 
+# ── t-0b61: a Claude Code gate row with no --tokens warns on stderr; the row is still written, exit 0 ──
+warn_err="$(mktemp)"; trap 'rm -rf "$project" "$legacy" "$warn_err"' EXIT
+set +e
+(cd "$project" && CLAUDECODE=1 "$SUBAGENT_LOG" --agent-id warn1 --agent-type reviewer 2>"$warn_err"); rc=$?
+set -e
+assert_eq 0 "$rc"
+assert_count 1 'no --tokens: in Claude Code the totals come in the background task'\''s <usage> notice; wait for it' "$warn_err"
+assert_eq 1 "$(wc -l < "$warn_err" | tr -d ' ')"
+assert_count 1 '"agent_id":"warn1"' "$log"
+(cd "$project" && CLAUDECODE=1 "$SUBAGENT_LOG" --agent-id warn2 --agent-type evaluator --tokens 5 2>"$warn_err")
+assert_eq 0 "$(wc -c < "$warn_err" | tr -d ' ')"
+for tk in "" "--tokens 5"; do
+  # shellcheck disable=SC2086
+  (cd "$project" && env -u CLAUDECODE "$SUBAGENT_LOG" --agent-id warn3 --agent-type evaluator $tk 2>"$warn_err")
+  assert_eq 0 "$(wc -c < "$warn_err" | tr -d ' ')"
+done
+(cd "$project" && CLAUDECODE=1 "$SUBAGENT_LOG" --agent-id warn4 2>"$warn_err")
+assert_eq 0 "$(wc -c < "$warn_err" | tr -d ' ')"
+(cd "$project" && echo '{"agent_id":"warn5","agent_type":"reviewer"}' | CLAUDECODE=1 "$legacy/tools/subagent-log.sh" 2>"$warn_err")
+assert_eq 0 "$(wc -c < "$warn_err" | tr -d ' ')"
+
 # ── -h/--help prints usage and exits 0 ──────────────────────────────────────
 set +e
 (cd "$project" && "$SUBAGENT_LOG" -h >"$help_file" 2>&1); rc=$?
