@@ -1738,19 +1738,23 @@ cmd_github_status() {
     read -r sb def <<< "$sbout" || true
     [[ -n "$sb" ]] && stage=branch
   fi
-  # t-c259: imported (a local eval-report.md), not closed, PR open: the card offers "Close here" (tkt land).
+  # t-c259: imported (a local eval-report.md), not closed, PR open: the card offers "Continue here" (tkt land).
   local land=false
   [[ "$pst" == OPEN && "$stage" != results-in && "$(get_field "$file" status)" == open && -f "$tdir/eval-report.md" ]] && land=true
+  # t-6623: the card's Finish: the ticket is bound to the worktree `tkt land` made.
+  local landed="" lwt; lwt="$(_land_wt "$root" "$id")"
+  [[ -f "$tdir/.land-head" && -d "$lwt" ]] && landed="$lwt"
   local mirrors m mj="" sep=""
   mirrors="$(git -C "$root" config --get-all canon.mirror 2>/dev/null || true)"
   while IFS= read -r m; do [[ -n "$m" ]] && { mj+="$sep$(json_str "$m")"; sep=,; }; done <<< "$mirrors"
   if $json; then
-    printf '{"id":%s,"issue":%s,"stage":%s,"pr":%s,"pr_state":%s,"pr_head":%s,"results_branch":%s,"branch":%s,"mirrors":[%s],"verdict":%s,"graded_head":%s,"graded_matches_pr":%s,"merged":%s,"land":%s}\n' \
+    printf '{"id":%s,"issue":%s,"stage":%s,"pr":%s,"pr_state":%s,"pr_head":%s,"results_branch":%s,"branch":%s,"mirrors":[%s],"verdict":%s,"graded_head":%s,"graded_matches_pr":%s,"merged":%s,"land":%s,"landed":%s}\n' \
       "$(json_str "$id")" "$(json_str "$gh")" "$(json_str "$stage")" "$(json_num "$pr" null)" \
       "$([[ -n "$pst" ]] && json_str "$pst" || echo null)" "$([[ -n "$phead" ]] && json_str "$phead" || echo null)" "$branch" \
       "$([[ -n "$sb" ]] && json_str "$sb" || echo null)" "$mj" \
       "$([[ "$verdict" != - ]] && json_str "$verdict" || echo null)" "$([[ "$graded" != - ]] && json_str "$graded" || echo null)" "$match" \
-      "$([[ -n "$merged" ]] && json_str "$merged" || echo null)" "$land"
+      "$([[ -n "$merged" ]] && json_str "$merged" || echo null)" "$land" \
+      "$([[ -n "$landed" ]] && json_str "$landed" || echo null)"
   else
     echo "$id · $gh · $stage"
     [[ -n "$pr" ]] && echo "  PR #$pr ($pst) head $phead"
@@ -1869,29 +1873,35 @@ cmd_push_main() {
   return $rc
 }
 
-# cmd_land <id> [--pr N] | <id> --finish — t-c259: closes an imported cloud ticket here. The gates need an agent, so two
+# _land_wt <root> <id> — the one owner of where `tkt land` puts its worktree (cmd_land, and github-status's `landed`).
+_land_wt() { printf '%s/%s-worktrees/land-%s' "$(dirname "$1")" "$(basename "$1")" "$2"; }
+
+# cmd_land <id> [--pr N] [--fix] | <id> --finish — t-c259: closes an imported cloud ticket here. The gates need an agent, so two
 # phases. Prepare: a linked worktree on land/<id> at the PR head, the ticket (one shared .tickets/, t-cd06) started and bound
 # to it (.cockpit-cwd), so `sprint complete` run there passes the freshness gate. --finish: after that close, unbinds the
 # ticket and removes the worktree and branch (git's own refusal on uncommitted work stands; nothing is forced), then points
-# at merge-pr. Never pushes or merges.
+# at merge-pr. Never pushes or merges. t-6623: --fix prepares even when the PR head already has a passing verdict and the
+# ticket is closed (a Check & merge whose suite failed here): it reopens the ticket in the worktree to be fixed and graded again.
 cmd_land() {
-  local id="" pr="" finish=false
+  local id="" pr="" finish=false fix=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --pr) pr="${2:-}"; shift 2 || { echo "Error: --pr needs a number" >&2; exit 1; } ;;
       --finish) finish=true; shift ;;
+      --fix) fix=true; shift ;;
       -*) echo "Unknown option: $1" >&2; exit 1 ;;
       *)  [[ -z "$id" ]] && id="$1"; shift ;;
     esac
   done
-  [[ -n "$id" ]] || { echo "Usage: tkt land <id> [--pr N] | tkt land <id> --finish" >&2; exit 1; }
+  [[ -n "$id" ]] || { echo "Usage: tkt land <id> [--pr N] [--fix] | tkt land <id> --finish" >&2; exit 1; }
+  ! { $fix && $finish; } || { echo "land: --fix prepares a worktree and --finish removes one; use one" >&2; exit 1; }
   [[ -z "$pr" || "$pr" =~ ^[0-9]+$ ]] || { echo "land: --pr takes a PR number" >&2; exit 1; }
   local file tdir root; file="$(find_ticket "$id")"; tdir="$(dirname "$file")"; id="$(get_field "$file" id)"
   [[ "$id" =~ ^t-[a-z0-9]+$ ]] || { echo "land: not a ticket id: $id" >&2; exit 1; }
   [[ "$(basename "$file")" == ticket.md ]] || { echo "land: $id is a legacy flat ticket; nothing to bind a worktree to" >&2; exit 1; }
   root="$(dirname "$(tickets_dir)")"; root="$(git -C "$root" rev-parse --show-toplevel)" || exit 1
   local wt branch="land/$id"
-  wt="$(dirname "$root")/$(basename "$root")-worktrees/land-$id"
+  wt="$(_land_wt "$root" "$id")"
   local verdict graded; read -r verdict graded < <(_eval_verdict_head "$tdir")
   if $finish; then
     [[ -f "$tdir/.cockpit-cwd" && "$(_ticket_cwd_binding "$file")" == "$(_normalize_path "$wt")" ]] \
@@ -1913,7 +1923,9 @@ cmd_land() {
     echo "  next: tkt merge-pr $id"
     return 0
   fi
-  [[ "$(get_field "$file" status)" == open ]] || { echo "land: $id is $(get_field "$file" status), not open; import its results first (tkt import-results $id)" >&2; exit 1; }
+  local was; was="$(get_field "$file" status)"
+  [[ "$was" == open ]] || { $fix && [[ "$was" == closed ]]; } || { echo "land: $id is $was, not open; import its results first (tkt import-results $id)" >&2; exit 1; }
+  [[ -z "$(get_field "$file" merged)" ]] || { echo "land: $id is already merged" >&2; exit 1; }
   # Imported = sent to GitHub (github: line) and its sprint files are here (import-results brings plan.md); --pr cannot stand in for that.
   [[ -n "$(get_field "$file" github)" && -f "$tdir/plan.md" ]] \
     || { echo "land: $id was not imported from a GitHub sprint (no github: line or no plan.md here); run tkt import-results $id first" >&2; exit 1; }
@@ -1926,7 +1938,7 @@ cmd_land() {
   IFS=$'\t' read -r st head cross <<< "$info"
   [[ "$st" == OPEN ]] || { echo "land: PR #$pr is $st, not open" >&2; exit 1; }
   [[ "$cross" == false ]] || { echo "land: PR #$pr comes from a fork; its code would run here, so close it on GitHub after reading it" >&2; exit 1; }
-  if [[ "$verdict" == pass && "$graded" != - && "$head" == "$graded"* ]]; then
+  if ! $fix && [[ "$verdict" == pass && "$graded" != - && "$head" == "$graded"* ]]; then
     echo "land: $id already has a passing verdict on PR #$pr's head; nothing to close here: tkt merge-pr $id" >&2; exit 1
   fi
   [[ ! -e "$wt" ]] || { echo "land: $wt already exists; remove it (git worktree remove) or finish that close" >&2; exit 1; }
@@ -1943,6 +1955,7 @@ cmd_land() {
   echo "land: $id at PR #$pr head ${head:0:8}"
   echo "  worktree: $wt (branch $branch)"
   echo "  next: in that worktree run the evaluator and sprint complete $id, then: tkt land $id --finish"
+  ! $fix || echo "  fix it there and commit; --finish keeps land/$id with your commits, then push them to the PR branch yourself"
 }
 
 # cmd_take_back <id> [--close-issue] — t-d271: a ticket sent to GitHub comes back to this machine: its runs: github line

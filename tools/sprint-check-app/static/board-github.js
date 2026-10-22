@@ -68,7 +68,9 @@ export function ghButtonHTML(t) {
   const btn = (action, label, title) =>
     `<button class="card-start card-gh-btn" type="button" data-id="${esc(t.id)}" data-gh-action="${action}" title="${escAttr(title)}">${esc(label)}</button>`;
   // t-c259: imported, not closed, PR open: the close finishes here, in a worktree at the PR head.
-  if (st.land) return btn('land', 'Close here', 'Make a worktree at the PR head to run the gates in (tkt land)');
+  // t-6623: once that worktree exists the card offers Finish (tkt land --finish), which removes it after the close.
+  if (st.landed) return btn('finish', 'Finish', `Remove the worktree at ${st.landed} once sprint complete has closed the ticket there (tkt land --finish)`);
+  if (st.land) return btn('land', 'Continue here', 'Make a worktree at the PR head and continue the ticket there (tkt land)');
   if (st.stage === 'results-ready') return btn('import', 'Import results', 'Bring the cloud session\'s results back into this ticket');
   if (st.stage === 'results-in' || st.stage === 'merging') return btn('merge', 'Check & merge', 'Check the PR and merge it after your confirmation');
   // t-9955: "↗" goes to GitHub and changes nothing; Create PR is the one that makes something.
@@ -100,22 +102,39 @@ async function ghAction(t, action) {
   if (action === 'import') return importResults(t, pr);
   if (action === 'merge') return checkAndMerge(t, pr);
   if (action === 'open-pr' && p) return openPr(t, p, st);
-  if (action === 'land') return closeHere(t, pr);
+  if (action === 'land') return continueHere(t, pr);
+  if (action === 'finish') return finishHere(t);
 }
 
-// ── Close here (t-c259): a cloud PR whose gates did not pass on its head is closed on this machine ───────────────────────────────────
-async function closeHere(t, pr) {
+// ── Continue here (t-c259, renamed t-6623): a cloud PR whose gates did not pass on its head is closed on this machine ──────────────
+async function continueHere(t, pr, fix = false) {
+  const head = pr ? `PR #${pr}'s` : 'the PR\'s';
   const ask = openDialog({
-    title: `Close ${t.id} here?`,
-    body: `Creates a worktree on land/${t.id} at ${pr ? `PR #${pr}'s` : 'the PR\'s'} head and starts the ticket there. Nothing is pushed or merged. Run the evaluator and sprint complete in that worktree, then tkt land ${t.id} --finish and Check & merge.`,
+    title: fix ? `Fix ${t.id} here?` : `Continue ${t.id} here?`,
+    body: `Creates a worktree on land/${t.id} at ${head} head and starts the ticket there.${fix ? ' Fix what failed, commit it there, and run sprint complete again.' : ' Run the evaluator and sprint complete in that worktree.'} Then Finish on the card removes the worktree. Nothing is pushed or merged.`,
     ok: 'Create worktree', cancel: 'Cancel',
   });
   if (!(await ask).ok) return;
-  const run = openDialog({ title: `Preparing ${t.id}…`, pre: 'Running tkt land…', cancel: 'Close', escape: false });
+  return landRun(t, { ...(pr ? { pr } : {}), ...(fix ? { fix: true } : {}) }, 'Preparing', 'Worktree ready');
+}
+
+async function finishHere(t) {
+  const st = stageOf(t);
+  const ask = openDialog({
+    title: `Finish ${t.id}?`,
+    body: `Removes the worktree at ${st.landed} and its land/${t.id} branch (the branch stays if it holds commits the PR does not). It needs sprint complete to have closed the ticket there with a passing verdict. Nothing is pushed or merged.`,
+    ok: 'Finish', cancel: 'Cancel',
+  });
+  if (!(await ask).ok) return;
+  return landRun(t, { finish: true }, 'Finishing', 'Closed here');
+}
+
+async function landRun(t, body, doing, done) {
+  const run = openDialog({ title: `${doing} ${t.id}…`, pre: 'Running tkt land…', cancel: 'Close', escape: false });
   let res;
-  try { res = await postJSON(ghApi(t.id, 'land'), pr ? { pr } : {}); }
+  try { res = await postJSON(ghApi(t.id, 'land'), body); }
   catch (e) { res = { ok: false, output: String(e.message || e) }; }
-  updateDialog({ title: res.ok ? 'Worktree ready' : 'Nothing was changed', body: '', pre: res.output || '', escape: true }, run.gen);
+  updateDialog({ title: res.ok ? done : 'Nothing was changed', body: '', pre: res.output || '', escape: true }, run.gen);
   statusById.delete(t.id);
   await loadData();
 }
@@ -248,7 +267,7 @@ async function importResults(t, pr) {
   updateDialog({
     title: res.ok ? `Results are back in .tickets/${t.id}/` : (noVerdict ? 'Imported, but the cloud sprint did not close' : 'Import failed'),
     body: res.ok ? 'Next: Check & merge on the card.'
-      : noVerdict ? 'There is no passing evaluator verdict on the PR\'s head, so there is nothing to merge yet. Finish the close on this machine: tkt land (Close here on the card, once the results include an eval-report) makes a worktree at the PR\'s head to run the evaluator and sprint complete in, then Check & merge (docs/setup.md › Claude cloud sessions).'
+      : noVerdict ? 'There is no passing evaluator verdict on the PR\'s head, so there is nothing to merge yet. Finish the close on this machine: tkt land (Continue here on the card, once the results include an eval-report) makes a worktree at the PR\'s head to run the evaluator and sprint complete in, then Check & merge (docs/setup.md › Claude cloud sessions).'
       : 'Nothing was changed.',
     pre: res.output || '', escape: true,
   }, shown.gen);
@@ -312,12 +331,15 @@ async function followMerge(t, prB, show) {
   // t-24b1: merge-pr fast-forwards local main itself (its last line says how); the canon.mirror remotes are offered here,
   // named, and pushed only on this click.
   const offer = merged && mirrors.length ? `Push main to ${mirrors.join(', ')}` : '';
+  // t-6623: merge-pr says "<cmd> failed on <base> + PR #N" when the suite fails here: the PR can be fixed in a worktree.
+  const suiteFailed = !merged && /failed on .* \+ PR #\d+/.test(st?.output || '');
   if (gen !== undefined) updateDialog({
     title: merged ? 'Merged' : 'Not merged',
     body: merged ? `The PR is merged and the issue closed by its Fixes line.${offer ? ` Also push main to ${mirrors.join(', ')} (git config canon.mirror)?` : ''}` : 'Nothing changed on GitHub. See the output.',
-    pre: st?.output || '', ok: offer, cancel: 'Close', escape: true,
+    pre: st?.output || '', ok: offer || (suiteFailed ? 'Fix here' : ''), cancel: 'Close', escape: true,
   }, gen);
   if (offer && shown) shown.then(v => { if (v && v.ok) pushMain(mirrors); });
+  else if (suiteFailed && shown) shown.then(v => { if (v && v.ok) continueHere(t, prB.pr, true); });
   statusById.delete(t.id);
   await loadData();
 }

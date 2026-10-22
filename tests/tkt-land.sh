@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# t-c259: tkt land closes an imported cloud ticket here (the `tkt land` command, and the board's Close here button that runs it).
+# t-c259: tkt land closes an imported cloud ticket here (the `tkt land` command, and the board's Continue here button that runs it).
 # Prepare: a linked worktree on land/<id> at the PR head, the ticket started and bound to it. --finish: only after a closed
 # ticket with a passing verdict graded on that worktree's head; it unbinds and removes worktree and branch. Every refusal changes nothing.
 set -euo pipefail
@@ -127,4 +127,19 @@ out="$("$TKT" land "$id" --finish < /dev/null 2>&1)"; assert_contains "$out" "la
 [[ ! -e "$WT" ]] || fail "worktree still there"
 [[ "$(git rev-parse "refs/heads/land/$id")" == "$NEWHEAD" ]] || fail "the commit made in the worktree was lost"
 [[ ! -e ".tickets/$id/.land-head" ]] || fail ".land-head left behind"
+# t-6623 --fix: a Check & merge whose suite failed here leaves a closed ticket whose PR head already has a passing verdict.
+id="$("$TKT" create "Closed cloud ticket" -t bug)"; f=".tickets/$id/ticket.md"; WT="$W/project-worktrees/land-$id"
+awk '/^---$/ && ++n == 2 { print "github: acme/app#23" } { print }' "$f" > "$W/t" && mv "$W/t" "$f"; echo plan > ".tickets/$id/plan.md"
+printf 'graded-head: %s\npass: all met\n' "$PRHEAD" > ".tickets/$id/eval-report.md"
+sed -i.bak 's/^status: .*/status: closed/' "$f"; rm -f "$f.bak"
+refuses "a closed ticket without --fix" "not open" --
+refuses "--fix together with --finish" "use one" -- --fix --finish
+sed -i.bak 's/^status: closed/status: closed\nmerged: abc123/' "$f"; rm -f "$f.bak"
+refuses "--fix on a merged ticket" "already merged" -- --fix
+sed -i.bak '/^merged: /d' "$f"; rm -f "$f.bak"
+out="$("$TKT" land "$id" --fix < /dev/null 2>&1)"; assert_contains "$out" "worktree: $WT"; assert_contains "$out" "push them to the PR branch yourself"
+[[ "$(git -C "$WT" rev-parse HEAD)" == "$PRHEAD" ]] || fail "--fix worktree is not at the PR head"
+grep -q '^status: in_progress' "$f" || fail "--fix did not reopen the closed ticket"
+[[ "$(tr -d '[:space:]' < ".tickets/$id/.cockpit-cwd")" == "$WT" ]] || fail "--fix: .cockpit-cwd is not the worktree"
+refuses "a plain land of an in_progress ticket" "not open" --
 echo "tkt land: ok"
