@@ -42,7 +42,7 @@ govulncheck ./...
 It needs `vuln.go.dev`. Where that host is blocked but Google Cloud Storage is not, the same database is at
 `govulncheck -db https://storage.googleapis.com/go-vulndb ./...`.
 
-# Vendored third-party code: new versions and advisories
+## Vendored third-party code: new versions and advisories
 
 The daemon embeds three files it copies from npm rather than installing: `xterm.js` and `xterm.css` (xterm 5.3.0) and
 `xterm-addon-fit.js` (0.8.0), in `tools/canon-go/internal/daemon/web/vendor/`. With no `package.json` or lockfile,
@@ -60,7 +60,7 @@ neither `npm audit` nor Dependabot can see them (`t-93ff`). Three pieces cover t
   advisories that affect the **vendored** package and version. OSV does the version matching, so there is no range
   arithmetic here and no token is needed.
 
-## When it runs
+### When it runs
 
 `.github/workflows/vendored-updates.yml` runs it weekly (Monday 06:41 UTC, a different minute from govulncheck) and on
 demand (Actions › vendored-updates › Run workflow). Like govulncheck it has `permissions: contents: read`, uses no
@@ -71,7 +71,7 @@ fails never reads as "no advisories". GitHub's own email for a failed scheduled 
 The workflow also runs on the public mirror, canon-skills. **GitHub pauses scheduled workflows on a public repository
 after 60 days without repository activity**; a push re-enables them, or re-enable the workflow from the Actions tab.
 
-## Run it locally
+### Run it locally
 
 ```bash
 scripts/check-vendored.sh            # print the table; exit 0 clean, 1 advisory, 2 a lookup failed
@@ -82,14 +82,14 @@ It needs only `bash` and `curl`, on macOS, Linux and Git Bash. It uses `jq` when
 (`VENDORED_NO_JQ=1` forces the fallback); both decide "affected or not" the same way, and only the severity and fixed-in
 columns are best-effort without `jq`. It needs `registry.npmjs.org` and `api.osv.dev`.
 
-## Reading the job summary
+### Reading the job summary
 
 One row per vendored package: the package (and the package it moved to), the vendored and latest versions, how far
 behind (`N major`, `N minor`, `N patch` or `up to date`), the advisories on the vendored version as
 `<id> (<severity>, fixed in <version>)`, and the upstream release notes. A list under the table names each newer version,
 each advisory and each failed lookup, and the last line is the verdict: `ok` (newer versions are information) or `FAIL`.
 
-## What we do with a finding
+### What we do with a finding
 
 - **A security advisory on a vendored version** becomes a P0 ticket the same day: upgrade to the fixed version, or show
   why the advisory cannot reach canon's use of the file.
@@ -98,7 +98,7 @@ each advisory and each failed lookup, and the last line is the verdict: `ok` (ne
 - **Nothing is upgraded or merged automatically.** The report never opens issues or PRs, and there is no Dependabot
   config (`t-8493`).
 
-## Bumping a vendored file
+### Bumping a vendored file
 
 In a sprint:
 
