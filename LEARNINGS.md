@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-23-2026 10:07
+learnings-sweep last run: 10-23-2026 12:10
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-23 | [t-04f4](.tickets/t-04f4/learnings.md) | A pin in a generated file is only as good as the generator: the template carries a placeholder and the board refuses to write it unless the install has a release version, so a dev build can never emit an unpinned or wrong canon ref; files already written in consumer repos stay as they were. | UNPROMOTED |
 | 2026-10-23 | [t-89b0](.tickets/t-89b0/learnings.md) | Pinning the gate's entry doc did not pin the protocol: eval.md and review.md send the subagent on to more skills/ docs by relative path, so a path pin must cover the hops the docs themselves take (the reviewer caught it; the tests had checked only the entry path). | UNPROMOTED |
 | 2026-10-22 | [t-fcb3](.tickets/t-fcb3/learnings.md) | A gate rule that names a pattern as a finding (CI `permissions:`/unpinned actions) collided with the same gate's "no hardening" exclusion; the reviewer caught it and a behaviour check reproduced it, so new gate rules need their condition for being a finding stated next to them. | UNPROMOTED |
 | 2026-10-22 | [t-d40b](.tickets/t-d40b/learnings.md) | A check done only when data is saved does not protect a later reader of the same file, and a load-then-slow-call-then-save handler overwrites changes made meanwhile: Refresh loaded the registry, fetched for seconds, wrote it back, and would have sent an API key to whatever host a hand-edited source named; re-check at the point of use and re-load before the write. | UNPROMOTED |
