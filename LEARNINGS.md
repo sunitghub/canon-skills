@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-22-2026 20:17
+learnings-sweep last run: 10-23-2026 01:34
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-23 | [t-9a49](.tickets/t-9a49/learnings.md) | Sequential base-then-branch batches of a flaky board test swung both ways (0/6 vs 2/6, then the reverse); only alternating rounds (5/8 vs 5/8) showed it was a pre-existing flake, so never call a board-spec flake a regression from sequential batches. | UNPROMOTED |
 | 2026-10-22 | [t-fcb3](.tickets/t-fcb3/learnings.md) | A gate rule that names a pattern as a finding (CI `permissions:`/unpinned actions) collided with the same gate's "no hardening" exclusion; the reviewer caught it and a behaviour check reproduced it, so new gate rules need their condition for being a finding stated next to them. | UNPROMOTED |
 | 2026-10-22 | [t-d40b](.tickets/t-d40b/learnings.md) | A check done only when data is saved does not protect a later reader of the same file, and a load-then-slow-call-then-save handler overwrites changes made meanwhile: Refresh loaded the registry, fetched for seconds, wrote it back, and would have sent an API key to whatever host a hand-edited source named; re-check at the point of use and re-load before the write. | UNPROMOTED |
 | 2026-10-22 | [t-8f48](.tickets/t-8f48/learnings.md) | Under `set -e` a bare `v="$(cmd)"` with a failing cmd exits silently: `tkt worktree-reset` died with no output when `origin/HEAD` was unset, a fallback the hand-written tests never reached; mutation-sweep survivors on that line led to the test that exposed it. | UNPROMOTED |
