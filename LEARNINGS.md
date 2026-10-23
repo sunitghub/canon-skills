@@ -1,10 +1,12 @@
 # Learnings
 
-learnings-sweep last run: 10-23-2026 16:12
+learnings-sweep last run: 10-23-2026 18:10
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-23 | [t-04f4](.tickets/t-04f4/learnings.md) | GNU-only `sed 0,/re/` addresses silently plant nothing under macOS's BSD sed, so a cloud-passed security test failed on the Mac with `got: nothing`; plants should assert a non-empty expected message, and the reviewer noted nothing checks that the `v<VERSION>` tag the generated workflow pins exists on canon-skills. | UNPROMOTED |
+| 2026-10-23 | [t-68ae](.tickets/t-68ae/learnings.md) | The state-dir test hard-coded Linux's `XDG_CACHE_HOME` behaviour and failed on macOS (`os.UserCacheDir` is `~/Library/Caches`), and the evaluator's weakest mutants survived (group-bit mask `0o077` to `0o007`; the daemon's `RequireSamePeer` wrapper pinned only by a one-time grep): the group and foreign-owner refusals have no non-root test, and Linux-gated code is mutation-swept per platform, not once. | UNPROMOTED |
 | 2026-10-23 | [t-9a49](.tickets/t-9a49/learnings.md) | A security fix's browser check was narrowed in the cloud (chromium no-regression run exited 1 on a known flake, WebKit not run), so the evaluator's pass rested on a pre-existing-flake argument its own base/branch pair (0/2 vs 1/2) did not prove; the Mac full-spec re-grade is the real gate, and the reviewer found a comment left above the wrong function when `framePageOK` was inserted. | UNPROMOTED |
 | 2026-10-23 | [t-5ff5](.tickets/t-5ff5/learnings.md) | Allowing `git diff/log` under dontAsk lets `--output=<file>` write anywhere (abbreviations such as `--outp=` too); the fix is an argv-refusing wrapper (`tools/git-read`), and the reviewer found a plain `Bash(git diff:*)` grant still in `tools/upkeep-run:169`, outside the change. | UNPROMOTED |
 | 2026-10-23 | [t-2ea4](.tickets/t-2ea4/learnings.md) | A mutant (`skills.sh init` to `initx`) survived because the test's `skills.sh` stub is a silent `exit 0`, so no test proves `bin/install.js` calls init before the daemon fetch; a stub that records its calls is what makes an ordering line testable. | UNPROMOTED |
