@@ -156,7 +156,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    | break-it | skipped | advisory — not high-risk, no untrusted-input surface |
    ```
 
-   There is no `repo-check` row: the gate was removed (`t-0a7c`); its canon-only checks run in `code-reviewer`, its stale-reference check in `tools/doc-check`. A table written earlier that still has the row stays valid — `sprint complete` and `check-evidence` read no gate by name except that one row must be `ran`.
+   There is no `repo-check` row: the gate was removed (`t-0a7c`); its canon-only checks run in `code-reviewer`, its stale-reference check in `tools/doc-check`. A table written earlier that still has the row stays valid — `sprint complete` and `check-evidence` read no gate by name except that at least one row must be `ran`.
 
    `code-reviewer` and `reviewer` are distinct gates — `code-reviewer` is wrapup's in-context
    8-dimension check (`skills/wrapup/gates/reviewer.md`, inline, findings only, no verdict);

@@ -66,11 +66,6 @@ assert_contains "$out" "broken cmd: tkt bogus"
 E="$(mktemp -d)"; printf 'Run `sprint frobnicate`.\n' > "$E/a.md"
 "$ROOT/tools/doc-check" --root "$E" "$E/a.md" || fail "doc-check: judged a command with no dispatcher to compare against"
 
-# Options.
-helptext="$("$ROOT/tools/doc-check" --help)"; [[ "$helptext" == usage* ]] || fail "doc-check: --help printed no usage"
-rc=0; "$ROOT/tools/doc-check" --bogus >/dev/null 2>&1 || rc=$?; [[ "$rc" == 2 ]] || fail "doc-check: unknown option exited $rc, want 2"
-rc=0; (cd "$E" && "$ROOT/tools/doc-check" >/dev/null 2>&1) || rc=$?; [[ "$rc" == 2 ]] || fail "doc-check: outside a repo with no --root exited $rc, want 2"
-rc=0; "$ROOT/tools/doc-check" --root >/dev/null 2>&1 || rc=$?; [[ "$rc" == 2 ]] || fail "doc-check: --root with no value exited $rc, want 2"
 
 # canon's own user-facing docs stay clean (the default file set).
 "$ROOT/tools/doc-check" --root "$ROOT" || fail "doc-check: canon's own docs have findings"

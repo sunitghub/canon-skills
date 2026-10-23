@@ -22,7 +22,7 @@ if [[ ${#files[@]} -eq 0 ]]; then
   for f in "$root"/README.md "$root"/docs/*.md "$root"/tools/*.md; do [[ -f "$f" ]] && files+=("$f"); done
 fi
 
-# A tool's subcommands: the labels of the last `case "$cmd" in` block of its dispatcher (empty when the tool is absent).
+# A tool's subcommands: the labels of the `case "$cmd" in` block of its dispatcher (empty when the tool is absent).
 subs() {
   local t="$root/tools/$1"
   [[ -f "$t" ]] || return 0
