@@ -20,8 +20,9 @@ CANON_STOP_WAIT=$((10#$CANON_STOP_WAIT))                              # '08' is 
 BOARD_STATUS=none; BOARD_PID=""; BOARD_FOREIGN=""; LAUNCHER_PID=""
 DAEMON_STATUS=none; DAEMON_PID=""; DAEMON_FOREIGN_DIRS=""; SESSIONS=0
 
-# Every place a daemon or board may keep its runtime state: the board's dir (the Go board's `cockpitStateDir`: <tmp>/canon-cockpit-board), an
-# explicit COCKPIT_STATE_DIR, and the daemon's own default (main.go `defaultStateDir`).
+# Every place a daemon or board may keep its runtime state: an explicit COCKPIT_STATE_DIR, the per-user default the board and
+# daemon share since t-68ae (common.DefaultCockpitStateDir), and <tmp>/canon-cockpit-board, where older boards kept it (still
+# listed so an update stops a daemon an older install started).
 cockpit_state_dirs() {
   local tmp="${TMPDIR:-${TEMP:-/tmp}}"
   if _is_windows && command -v cygpath >/dev/null 2>&1 && [ -n "${TEMP:-}" ]; then tmp="$(cygpath -u "$TEMP" 2>/dev/null)" || tmp="${TMPDIR:-/tmp}"; fi

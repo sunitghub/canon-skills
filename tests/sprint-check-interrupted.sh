@@ -46,7 +46,7 @@ STUB_PID=$!; disown "$STUB_PID" 2>/dev/null || true
 wait_for "http://127.0.0.1:$STUB_PORT/healthz" || fail "sprint-check-interrupted: stub daemon did not start"
 
 seed() {   # seed <state-dir>: daemon.json → the stub, plus the interrupted fixture
-  mkdir -p "$1"
+  mkdir -p -m 700 "$1"   # t-68ae: the board refuses a state folder open to others
   printf '{"addr":"127.0.0.1:%s","pid":"0"}' "$STUB_PORT" > "$1/daemon.json"
   python3 - "$1/interrupted.json" "$PROJ" <<'PY'
 import json, sys

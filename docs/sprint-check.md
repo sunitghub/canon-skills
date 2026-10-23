@@ -232,6 +232,10 @@ sprint agent without leaving the browser — no second terminal.
   (canon's one third-party-dep binary — see `DECISIONS.md` 2026-08-23); the board
   server stays pure stdlib.
 - **Security:** binds **127.0.0.1 only**; every request checks loopback Host/Origin;
+  on Linux the board and the daemon also refuse any connection another OS user opened
+  (owner looked up in `/proc/net/tcp`, failing closed; not yet on macOS/Windows, t-68ae);
+  the state folder (`$XDG_RUNTIME_DIR/canon-cockpit`, else the user cache dir) must be
+  yours with mode 0700, or the cockpit refuses to start;
   a boot token gates session start and `/end-session` (Reap now / Kill, sent only by
   the daemon's own `/relay` page) and a per-session token gates stream/input/kill;
   ticket ids are validated `^t-[a-z0-9]{4}$` and exec'd as an argv slice (never a

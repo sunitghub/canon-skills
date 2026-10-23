@@ -160,7 +160,11 @@ func Run(buildVersion, buildCommit string, args []string) int {
 	mux.HandleFunc("/", handle)
 
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
-	server := &http.Server{Addr: addr, Handler: mux}
+	// t-68ae: refuse connections another OS user opened (Linux), on every route.
+	server := &http.Server{Addr: addr, Handler: common.RequireSamePeer(mux), ConnContext: common.PeerConnContext}
+	if w := common.PeerCheckWarning(); w != "" {
+		fmt.Fprintln(os.Stderr, w)
+	}
 	url := fmt.Sprintf("http://127.0.0.1:%d", port)
 	// t-6693: banner uses addr (no scheme — see server.py's mirror comment) and
 	// is labeled "Canon Cockpit" not "sprint-check" — post-t-4700 every
@@ -3787,12 +3791,22 @@ func cockpitDaemonCandidates(toolsDir, root, goos string, extraRoots ...string) 
 }
 
 // cockpitStateDir is where the board expects the daemon to publish daemon.json.
-// COCKPIT_STATE_DIR overrides (tests); default is a fixed loopback-local temp dir.
+// COCKPIT_STATE_DIR overrides (tests); the default is the daemon's per-user folder (t-68ae).
 func cockpitStateDir() string {
 	if d := os.Getenv("COCKPIT_STATE_DIR"); d != "" {
 		return d
 	}
-	return filepath.Join(os.TempDir(), "canon-cockpit-board")
+	return common.DefaultCockpitStateDir()
+}
+
+// cockpitStateFile is name inside the state folder, or "" when the folder fails common.SecureStateDir: the board
+// never reads an address, pid or session list from a folder another account could have written (t-68ae).
+func cockpitStateFile(name string) string {
+	dir := cockpitStateDir()
+	if common.SecureStateDir(dir) != nil {
+		return ""
+	}
+	return filepath.Join(dir, name)
 }
 
 func cockpitHealthy(addr string) bool {
@@ -3811,7 +3825,7 @@ func cockpitHealthy(addr string) bool {
 // discoverCockpitAddr reads the daemon addr from daemon.json (only the addr —
 // never the token) and reports whether that daemon answers /healthz.
 func discoverCockpitAddr() (string, bool) {
-	raw, err := os.ReadFile(filepath.Join(cockpitStateDir(), "daemon.json"))
+	raw, err := os.ReadFile(cockpitStateFile("daemon.json"))
 	if err != nil {
 		return "", false
 	}
@@ -4048,7 +4062,7 @@ func cockpitSessionsText(sessions []map[string]any) string {
 
 var interruptedMu sync.Mutex
 
-func interruptedPath() string { return filepath.Join(cockpitStateDir(), "interrupted.json") }
+func interruptedPath() string { return cockpitStateFile("interrupted.json") }
 
 func readInterrupted() []map[string]any {
 	var es []map[string]any
@@ -4135,7 +4149,7 @@ func cockpitInterruptedDismiss(id string) map[string]any {
 // readDaemonPID reads the daemon's own pid from daemon.json (t-44d9) so the board
 // can force-restart it via OS process control — never the boot token (t-ddc8).
 func readDaemonPID() int {
-	raw, err := os.ReadFile(filepath.Join(cockpitStateDir(), "daemon.json"))
+	raw, err := os.ReadFile(cockpitStateFile("daemon.json"))
 	if err != nil {
 		return 0
 	}
@@ -4307,7 +4321,9 @@ func ensureCockpit() map[string]any {
 		return map[string]any{"running": false, "addr": nil, "error": "cockpit daemon binary not found; run `canon update` to fetch it"}
 	}
 	stateDir := cockpitStateDir()
-	os.MkdirAll(stateDir, 0700)
+	if err := common.SecureStateDir(stateDir); err != nil {
+		return map[string]any{"running": false, "addr": nil, "error": err.Error()}
+	}
 	os.Remove(filepath.Join(stateDir, "daemon.json")) // clear any stale addr
 	cmd := exec.Command(cockpitDaemonBin, "-addr", "127.0.0.1:0")
 	env := append(os.Environ(),
