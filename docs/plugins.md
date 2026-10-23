@@ -70,7 +70,7 @@ Sprint progress kinds (t-5ef8; the Cockpit card reads these; "Build" has no kind
 | Kind | `data` | Written when |
 |---|---|---|
 | `plan.written` | `ticket`, `tier` | the plan is drafted and waits for approval |
-| `wrapup.gate_started` | `ticket`, `gate` (a Wrapup Gates row: `code-simplifier`, `code-reviewer`, `security-review`, `repo-check`, `doc-audit`, ...) | a wrapup gate begins |
+| `wrapup.gate_started` | `ticket`, `gate` (a Wrapup Gates row: `code-simplifier`, `code-reviewer`, `security-review`, `doc-audit`, ...) | a wrapup gate begins |
 | `wrapup.gate_finished` | `ticket`, `gate`, `result` (`ran`, `skipped`, `not-applicable`) | a wrapup gate ends |
 
 An event never carries a ticket's description, documents or session text. Each field has a length limit, and longer

@@ -118,6 +118,7 @@ tests=(
   "$ROOT/tests/upkeep-skill-hash-parity.sh"
   "$ROOT/tests/dead-code-scan.sh"
   "$ROOT/tests/sprint-gate-agents.sh"
+  "$ROOT/tests/doc-check.sh"
   "$ROOT/tests/pre-push-release.sh"
   "$ROOT/tests/sprint-check-worktrees.sh"
   "$ROOT/tests/sprint-check-ticket-commit.sh"
