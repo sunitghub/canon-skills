@@ -1035,6 +1035,20 @@ func TestRunModelIDCases(t *testing.T) {
 			t.Errorf("runModelRe refused %q", m)
 		}
 	}
+	// The Skill Eval run route applies it: a bad model is refused before anything else; a good or empty one
+	// passes this check (no skill_dir, so the run then stops at the folder check and nothing starts).
+	root := t.TempDir()
+	isModelRefusal := func(r map[string]any) bool { return strings.Contains(fmt.Sprint(r["error"]), "plain model id") }
+	for _, m := range cases.Bad {
+		if r := startSkillEvalRun(root, map[string]any{"confirm_cost": true, "model": m}); m != "" && !isModelRefusal(r) {
+			t.Errorf("startSkillEvalRun(model %q) = %v, want a model refusal", m, r)
+		}
+	}
+	for _, m := range append(cases.Good, "") {
+		if r := startSkillEvalRun(root, map[string]any{"confirm_cost": true, "model": m}); r["ok"] != false || isModelRefusal(r) {
+			t.Errorf("startSkillEvalRun(model %q) = %v, want the folder check, not a model refusal", m, r)
+		}
+	}
 }
 
 // t-0e8b: Upkeep is removed — no board route starts a headless agent, so its three paths answer 404.
