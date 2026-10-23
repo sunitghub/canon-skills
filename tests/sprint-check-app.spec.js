@@ -3821,12 +3821,19 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const b = daemonPage.indexOf(endMarker);
       expect(a).toBeGreaterThan(0); expect(b).toBeGreaterThan(a);
       const wiring = daemonPage.slice(a, b + endMarker.length);
+      // t-9a49: the wiring posts through toParent; take the page's own definition, with the parent origin the daemon
+      // would inject (host and frame are both served from BASE here).
+      const p0 = daemonPage.indexOf('  var PARENT = "__COCKPIT_PARENT__";');
+      const p1 = daemonPage.indexOf('\n', daemonPage.indexOf('  function toParent(msg)', p0));
+      expect(p0).toBeGreaterThan(0); expect(p1).toBeGreaterThan(p0);
+      const toParent = daemonPage.slice(p0, p1 + 1).replace('"__COCKPIT_PARENT__"', 'location.origin');
       await page.route('**/__pk/host', r => r.fulfill({ status: 200, contentType: 'text/html', body: `<!doctype html><body><iframe id="t" src="/__pk/term" style="width:600px;height:300px"></iframe><script>
         window.__msgs=[]; window.addEventListener('message',function(e){ if(e.data&&e.data.source==='canon-cockpit') window.__msgs.push(e.data.type+':'+(e.data.key||'')); });</script></body>` }));
       await page.route('**/__pk/term', r => r.fulfill({ status: 200, contentType: 'text/html', body: `<!doctype html><link rel="stylesheet" href="/__pk/xterm.css"><body><div id="terminal"></div>
         <script src="/__pk/xterm.js"></script><script>
         var term = new Terminal({}); term.open(document.getElementById("terminal"));
         window.__data = []; term.onData(function(d){ window.__data.push(d); });
+        ${toParent}
         ${wiring}
         </script></body>` }));
       await page.route('**/__pk/xterm.js', r => r.fulfill({ status: 200, contentType: 'application/javascript', body: fs.readFileSync(path.join(web, 'vendor', 'xterm.js'), 'utf8') }));
@@ -11434,7 +11441,7 @@ test.describe('cockpit rendered-output preview (t-8f9d)', () => {
     // only accepts messages from a loopback parent.
     await page.route('**/__pv533f', route => route.fulfill({ status: 200, contentType: 'text/html', body:
       `<!doctype html><html><body><iframe id="ck" style="width:800px;height:400px" ` +
-      `src="http://${addr}/cockpit?ticket=${TICKET}&embed=1&autostart=1"></iframe><script>
+      `src="http://${addr}/cockpit?ticket=${TICKET}&embed=1"></iframe><script>
         window.__msgs = [];
         window.addEventListener('message', function (e) {
           var d = e.data; if (!d || d.source !== 'canon-cockpit') return;
@@ -11445,6 +11452,8 @@ test.describe('cockpit rendered-output preview (t-8f9d)', () => {
         });
       </script></body></html>` }));
     await page.goto(BASE + '/__pv533f');
+    // t-9a49: the daemon page never starts a session on load, so start it the way a user does.
+    await page.frameLocator('#ck').locator('#startBtn').click();
     await expect.poll(() => page.evaluate(() => (window.__msgs.find(m => m.type === 'preview-file') || null)), { timeout: 30_000 })
       .not.toBeNull();
     const msg = await page.evaluate(() => window.__msgs.find(m => m.type === 'preview-file'));

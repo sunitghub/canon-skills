@@ -90,9 +90,9 @@ def call(port, method, path, body=None):
     req = urllib.request.Request(f"http://127.0.0.1:{port}{path}", data=data, method=method, headers={"Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
-            return r.status, r.read(), dict(r.headers)
+            return r.status, r.read(), r.headers
     except urllib.error.HTTPError as e:
-        return e.code, e.read(), dict(e.headers)
+        return e.code, e.read(), e.headers
 def j(port, method, path, body=None):
     code, raw, _ = call(port, method, path, body)
     return code, (json.loads(raw) if raw[:1] in (b"{", b"[") else raw)
@@ -166,7 +166,8 @@ rep = j(go, "GET", "/api/skill-eval/report" + q)[1]
 assert rep["ok"] and rep["report_path"].endswith("report.html") and rep["summary"]["meanDelta"] == 0.5, rep
 code, body, headers = call(go, "GET", "/api/skill-eval/report.html" + q)
 assert code == 200 and body == b"<html>report</html>\n", (code, body)
-assert headers.get("Content-Security-Policy", "").startswith("sandbox allow-scripts;") and headers.get("X-Content-Type-Options") == "nosniff", headers
+csp = headers.get_all("Content-Security-Policy") or []   # t-9a49: the board also adds frame-ancestors 'self' to every response
+assert any(v.startswith("sandbox allow-scripts;") for v in csp) and "frame-ancestors 'self'" in csp and headers.get("X-Content-Type-Options") == "nosniff", dict(headers)
 state = json.load(open(os.path.join(proj, ".reports", "skillEvalRuns.json")))
 assert state[G]["status"] == "done" and state[G]["model"] == "claude-haiku-4-5-20251001", state
 assert run(os.path.join(S, "hooky"), confirm_cost=False)["error"].startswith("confirm_cost")

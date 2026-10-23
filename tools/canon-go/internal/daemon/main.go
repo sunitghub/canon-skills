@@ -305,11 +305,42 @@ func (s *server) guardHandler(next http.Handler) http.HandlerFunc {
 	return s.guard(next.ServeHTTP)
 }
 
+// framePageOK sets the frame policy for a page the board frames (/cockpit, /relay) and refuses a cross-site request
+// (t-9a49): only a loopback page may frame it, so another website can neither embed it nor load it in a frame.
+func framePageOK(w http.ResponseWriter, r *http.Request) bool {
+	if r.Header.Get("Sec-Fetch-Site") == "cross-site" {
+		http.Error(w, "forbidden: cross-site", http.StatusForbidden)
+		return false
+	}
+	w.Header().Set("Content-Security-Policy", "frame-ancestors http://127.0.0.1:* http://localhost:*")
+	return true
+}
+
+// parentOriginRe is a loopback http origin, optionally with a port: what the board serves from.
+var parentOriginRe = regexp.MustCompile(`^http://(127\.0\.0\.1|localhost)(:[0-9]{1,5})?$`)
+
+// parentOrigin is the origin of the page framing this one, from the Referer, when it is a loopback origin; else "".
+// The cockpit posts its status, cwd and preview token only to this origin (t-9a49).
+func parentOrigin(r *http.Request) string {
+	u, err := url.Parse(r.Header.Get("Referer"))
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	o := u.Scheme + "://" + u.Host
+	if !parentOriginRe.MatchString(o) {
+		return ""
+	}
+	return o
+}
+
 // handleCockpit serves the same-origin cockpit page with the daemon boot token
 // injected (loopback trust model — the page and the session API share an
 // origin, so the token never crosses origins). An optional ?ticket= prefills
 // the Start control; it is validated before injection.
 func (s *server) handleCockpit(w http.ResponseWriter, r *http.Request) {
+	if !framePageOK(w, r) {
+		return
+	}
 	raw, err := webFS.ReadFile("web/cockpit.html")
 	if err != nil {
 		http.Error(w, "cockpit page missing", http.StatusInternalServerError)
@@ -320,15 +351,11 @@ func (s *server) handleCockpit(w http.ResponseWriter, r *http.Request) {
 		ticket = ""
 	}
 	// embed=1 trims the daemon page's own chrome (brand + ticket input) when the
-	// board frames it; autostart=1 auto-launches the prefilled ticket. Both are
-	// strictly "1" or empty — no other value is injected.
+	// board frames it: strictly "1" or empty, no other value is injected. The page
+	// never starts a session on load (t-9a49 removed autostart).
 	embed := ""
 	if r.URL.Query().Get("embed") == "1" {
 		embed = "1"
-	}
-	autostart := ""
-	if r.URL.Query().Get("autostart") == "1" {
-		autostart = "1"
 	}
 	// t-cd06: ?cwd= prefills the WORKTREE selection the board made. This route
 	// has no token (only loopback-origin guard), so the value is validated the
@@ -362,7 +389,7 @@ func (s *server) handleCockpit(w http.ResponseWriter, r *http.Request) {
 	page := strings.ReplaceAll(string(raw), "__COCKPIT_TOKEN__", s.cfg.token)
 	page = strings.ReplaceAll(page, "__COCKPIT_TICKET__", ticket)
 	page = strings.ReplaceAll(page, "__COCKPIT_EMBED__", embed)
-	page = strings.ReplaceAll(page, "__COCKPIT_AUTOSTART__", autostart)
+	page = strings.ReplaceAll(page, "__COCKPIT_PARENT__", parentOrigin(r))
 	page = strings.ReplaceAll(page, "__COCKPIT_CWD__", cwd)
 	page = strings.ReplaceAll(page, "__COCKPIT_AGENT__", agentDefault)
 	page = strings.ReplaceAll(page, "__COCKPIT_AGENT_HINT__", agentHint)
@@ -2635,6 +2662,9 @@ func (s *server) handleEndSession(w http.ResponseWriter, r *http.Request) {
 // handleRelay serves the /relay page (t-3c9a): the Cockpit shell frames it hidden and asks it, by
 // postMessage, to call /end-session with the boot token, which stays in the daemon's own origin.
 func (s *server) handleRelay(w http.ResponseWriter, r *http.Request) {
+	if !framePageOK(w, r) {
+		return
+	}
 	raw, err := webFS.ReadFile("web/relay.html")
 	if err != nil {
 		http.Error(w, "relay page missing", http.StatusInternalServerError)
