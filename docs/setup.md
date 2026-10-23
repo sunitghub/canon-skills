@@ -152,8 +152,14 @@ script's Go block:
 2. `tkt send-issue <id>` creates it (needs `gh auth login`), adds the `canon` label, records `github: owner/repo#N`
    in `ticket.md`, and prints the line to start with. A public repo is refused unless you add `--public`: anyone
    could read the ticket's notes.
-3. Start a new session on the `canon` environment and your repo and paste the prompt `send-issue` printed (the board's
-   Send panel shows the same line with a Copy prompt button), which reads: "Work on Issue#N for ticket <id>. Read its
+3. Start the session. One command does steps 2 and 3: `tkt send-issue <id> --launch` shows the issue, asks `[y/N]`
+   (`--yes` skips the question), creates it, then runs `claude --cloud "<prompt>"` from your checkout and saves the
+   session's `View:` URL in `.tickets/<id>/github.md`. The session runs on your account's default environment (the CLI
+   has no flag for a hosted one, only `--environment` for self-hosted pools), so make `canon` the default, and the
+   cloud clones origin's copy of your current branch: push it first (`--launch` warns, never pushes). From the board,
+   Send's panel also shows the same `claude --cloud '...'` line with a Copy command button; the board does not run it.
+   By hand: start a new session on the `canon` environment and your repo and paste the prompt `send-issue` printed
+   (the board's Send panel shows the same line with a Copy prompt button), which reads: "Work on Issue#N for ticket <id>. Read its
    section "Working on this" thoroughly before starting and follow it step by step. Work on a new branch, never main."
    The branch rule is in the prompt and the issue because a private repo on a free GitHub plan cannot enforce it with a
    branch rule, so the text is the only guard (t-1cf4). The issue's "Working on this" lists the steps in order;

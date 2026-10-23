@@ -253,4 +253,115 @@ rc=0; gl="$("$TKT" send-issue "$id3" 2>&1)" || rc=$?
 assert_contains "$gl" "origin is not a GitHub repo"
 [[ ! -s "$STUB_LOG" ]] || fail "gh was called for a non-GitHub origin"
 
+# t-0da2: --launch starts the cloud session; a stub claude logs its cwd and arguments and plays STUB_CLAUDE=ok|fail|nourl.
+cat > "$stub/claude" <<'EOF'
+#!/usr/bin/env bash
+if [[ "${1:-}" == --help ]]; then echo "Options:"; [[ -n "${STUB_NOCLOUD:-}" ]] || echo "  --cloud [description|session_id|url]  Create a cloud session"; exit 0; fi
+{ printf 'cwd=%s\n' "$PWD"; printf 'arg=%s\n' "$@"; } >> "$STUB_CLAUDE_LOG"
+case "${STUB_CLAUDE:-ok}" in
+  fail)  echo "Error: not signed in" >&2; exit 1 ;;
+  nourl) echo "Created cloud session: x" ;;
+  *)     echo "Created cloud session: Work on Issue"; echo "View: https://claude.ai/code/session_abc?from=cli&m=0"; echo "Resume with: claude --teleport session_abc" ;;
+esac
+EOF
+chmod +x "$stub/claude"
+export STUB_CLAUDE_LOG="$stub/claude.log"
+git remote set-url origin https://github.com/acme/app.git   # the cases above end on a GitLab origin
+fresh() { "$TKT" create "Launch case $1" -t task -p 2 -d "x"; }
+project_real="$(pwd -P)"
+
+# Without --launch the output gains one line, the same prompt as a single-quoted command a terminal can run.
+idf="$(fresh plain)"; : > "$STUB_LOG"; : > "$STUB_CLAUDE_LOG"
+out="$("$TKT" send-issue "$idf")"
+cmdline="$(printf '%s\n' "$out" | grep '^From a terminal: claude --cloud ' || true)"
+[[ -n "$cmdline" ]] || fail "no 'From a terminal:' line: $out"
+want="Work on Issue#57 for ticket $idf. Read its section \"Working on this\" thoroughly before starting and follow it step by step. Work on a new branch, never main."
+got="$(eval "set -- ${cmdline#From a terminal: claude --cloud }"; printf '%s' "$1")"
+assert_eq "$want" "$got"
+[[ ! -s "$STUB_CLAUDE_LOG" ]] || fail "claude ran without --launch"
+
+# Refusals come before anything is created: a claude without --cloud, no terminal without --yes, --yes alone, --launch with --dry-run.
+idl="$(fresh refuse)"; : > "$STUB_LOG"; before="$(cksum < ".tickets/$idl/ticket.md")"
+rc=0; r="$(STUB_NOCLOUD=1 "$TKT" send-issue "$idl" --launch --yes 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "claude without --cloud should exit 1, got $rc"; assert_contains "$r" "needs the Claude CLI with --cloud"
+rc=0; r="$("$TKT" send-issue "$idl" --launch </dev/null 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "--launch without a terminal or --yes should exit 1, got $rc"; assert_contains "$r" "add --yes"
+rc=0; r="$("$TKT" send-issue "$idl" --yes 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "--yes alone should exit 1, got $rc"; assert_contains "$r" "--yes only goes with --launch"
+rc=0; r="$("$TKT" send-issue "$idl" --launch --dry-run 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "--launch --dry-run should exit 1, got $rc"
+[[ "$(writes)" == 0 ]] || fail "a refused --launch made a writing gh call: $(cat "$STUB_LOG")"
+[[ "$(cksum < ".tickets/$idl/ticket.md")" == "$before" ]] || fail "a refused --launch changed the ticket"
+[[ ! -s "$STUB_CLAUDE_LOG" ]] || fail "a refused --launch ran claude"
+
+# --yes: the issue as today, then claude --cloud <start line> from the project root, the View: URL shown and kept in the trail.
+idy="$(fresh yes)"; : > "$STUB_LOG"; : > "$STUB_CLAUDE_LOG"
+out="$("$TKT" send-issue "$idy" --launch --yes </dev/null 2>"$stub/yes.err")"
+assert_contains "$out" "Sent $idy as https://github.com/acme/app/issues/57"
+assert_contains "$out" "Cloud session: https://claude.ai/code/session_abc?from=cli&m=0"
+assert_grep "^cwd=$project_real$" "$STUB_CLAUDE_LOG"
+assert_grep "^arg=--cloud$" "$STUB_CLAUDE_LOG"
+assert_grep "^arg=Work on Issue#57 for ticket $idy\. Read its section \"Working on this\" thoroughly" "$STUB_CLAUDE_LOG"
+[[ "$(grep -c '^arg=' "$STUB_CLAUDE_LOG")" == 2 ]] || fail "the prompt was not one argument: $(cat "$STUB_CLAUDE_LOG")"
+assert_grep "^session: https://claude.ai/code/session_abc\\?from=cli&m=0$" ".tickets/$idy/github.md"
+assert_grep "— launched$" ".tickets/$idy/github.md"
+assert_grep "^github: acme/app#57$" ".tickets/$idy/ticket.md"
+
+# claude fails, or prints no session URL, after the issue exists: the issue stays recorded, the manual command is printed, exit 1.
+for mode in fail nourl; do
+  idm="$(fresh "$mode")"; : > "$STUB_LOG"
+  rc=0; r="$(STUB_CLAUDE=$mode "$TKT" send-issue "$idm" --launch --yes </dev/null 2>&1)" || rc=$?
+  [[ "$rc" == 1 ]] || fail "claude $mode should exit 1, got $rc: $r"
+  assert_contains "$r" "was sent, but claude --cloud did not start a session"
+  assert_contains "$r" "Start it yourself: claude --cloud '"
+  assert_grep "^github: acme/app#57$" ".tickets/$idm/ticket.md"
+  ! grep -q "launched" ".tickets/$idm/github.md" || fail "a failed launch wrote a launched line"
+done
+
+# A branch ahead of its upstream, or without one, warns and pushes nothing.
+git -c user.name=t -c user.email=t@t commit -q --allow-empty -m base; git -c user.name=t -c user.email=t@t commit -q --allow-empty -m next
+br="$(git rev-parse --abbrev-ref HEAD)"
+ida="$(fresh ahead)"
+r="$("$TKT" send-issue "$ida" --launch --yes </dev/null 2>&1 >/dev/null)"
+assert_contains "$r" "branch $br has no upstream"
+git config "branch.$br.remote" origin; git config "branch.$br.merge" "refs/heads/$br"; git update-ref "refs/remotes/origin/$br" HEAD~1
+idb="$(fresh ahead2)"
+r="$("$TKT" send-issue "$idb" --launch --yes </dev/null 2>&1 >/dev/null)"
+assert_contains "$r" "branch $br is 1 commit(s) ahead of its upstream"
+[[ "$(git rev-parse "refs/remotes/origin/$br")" == "$(git rev-parse HEAD~1)" ]] || fail "--launch moved the upstream ref"
+
+# Asking: a pty answers n (nothing created, claude not run) and y (sent and launched). Needs python3.
+if command -v python3 >/dev/null 2>&1; then
+  ptyrun() { python3 -I - "$TKT" "$1" "$2" <<'PYEOF'
+import os, pty, sys
+tkt, tid, ans = sys.argv[1:4]
+pid, fd = pty.fork()
+if pid == 0:
+    os.execv(tkt, [tkt, "send-issue", tid, "--launch"])
+buf, sent = b"", False
+while True:
+    try: d = os.read(fd, 4096)
+    except OSError: break
+    if not d: break
+    buf += d
+    if not sent and b"[y/N]" in buf:
+        os.write(fd, (ans + "\n").encode()); sent = True
+_, st = os.waitpid(pid, 0)
+sys.stdout.write(buf.decode(errors="replace"))
+sys.exit(os.waitstatus_to_exitcode(st))
+PYEOF
+  }
+  idn="$(fresh no)"; : > "$STUB_LOG"; : > "$STUB_CLAUDE_LOG"; before="$(cksum < ".tickets/$idn/ticket.md")"
+  r="$(ptyrun "$idn" n)" || fail "answering n should exit 0: $r"
+  assert_contains "$r" "--- body ---"; assert_contains "$r" "not sent; nothing was created"
+  [[ "$(writes)" == 0 && ! -s "$STUB_CLAUDE_LOG" ]] || fail "answer n still sent or launched"
+  [[ "$(cksum < ".tickets/$idn/ticket.md")" == "$before" ]] || fail "answer n changed the ticket"
+  idp="$(fresh pty)"; : > "$STUB_CLAUDE_LOG"
+  r="$(ptyrun "$idp" y)" || fail "answering y should exit 0: $r"
+  assert_contains "$r" "Cloud session: https://claude.ai/code/session_abc"
+  assert_grep "^arg=--cloud$" "$STUB_CLAUDE_LOG"
+else
+  echo "tkt-send-issue: skipped the ask-before-sending cases: no python3"
+fi
+
 echo "tkt-send-issue: ok"

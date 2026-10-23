@@ -1088,16 +1088,26 @@ _gh_trail() {
 }
 
 cmd_send_issue() {
-  local id="" dry=false public=false
+  local id="" dry=false public=false launch=false yes=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --dry-run) dry=true; shift ;;
       --public)  public=true; shift ;;
+      --launch)  launch=true; shift ;;
+      --yes)     yes=true; shift ;;
       -*) echo "Unknown option: $1" >&2; exit 1 ;;
       *)  [[ -z "$id" ]] && id="$1"; shift ;;
     esac
   done
-  [[ -z "$id" ]] && { echo "Usage: tkt send-issue <id> [--dry-run] [--public]" >&2; exit 1; }
+  [[ -z "$id" ]] && { echo "Usage: tkt send-issue <id> [--dry-run] [--public] [--launch [--yes]]" >&2; exit 1; }
+  $yes && ! $launch && { echo "send-issue: --yes only goes with --launch" >&2; exit 1; }
+  $launch && $dry && { echo "send-issue: --launch and --dry-run cannot go together; --dry-run only previews" >&2; exit 1; }
+  # t-0da2: --launch starts a cloud session, which costs plan usage, so every refusal comes before anything is created.
+  if $launch; then
+    command -v claude >/dev/null 2>&1 && claude --help 2>&1 | grep -q -- '--cloud' \
+      || { echo "send-issue: --launch needs the Claude CLI with --cloud: update it (claude update), then try again" >&2; exit 1; }
+    [[ -t 0 ]] || $yes || { echo "send-issue: --launch asks before it sends, and there is no terminal to ask on; add --yes to send without asking" >&2; exit 1; }
+  fi
 
   local file tdir title
   file="$(find_ticket "$id")"
@@ -1173,6 +1183,25 @@ cmd_send_issue() {
     printf -- '--- dry run: nothing was created ---\n'
     return 0
   fi
+  if $launch; then
+    # The cloud session clones origin's copy of the current branch, so commits only here never reach it. Warn, never push.
+    local br ahead
+    br="$(git -C "$root" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+    if [[ -n "$br" ]]; then
+      if ahead="$(git -C "$root" rev-list --count '@{u}..HEAD' 2>/dev/null)"; then
+        [[ "$ahead" -gt 0 ]] && echo "send-issue: warning: branch $br is $ahead commit(s) ahead of its upstream; the cloud session will not see them until you push" >&2
+      else
+        echo "send-issue: warning: branch $br has no upstream; the cloud session clones origin without it" >&2
+      fi
+    fi
+    if ! $yes; then
+      printf 'repo: %s (%s)\ntitle: %s: %s\nlabel: canon\n--- body ---\n' "$repo" "$vis" "$id" "$title"
+      cat "$body"
+      printf -- '--- end of issue ---\nCreate this issue and start a Claude cloud session on it? [y/N] '
+      local ans=""; read -r ans || true
+      [[ "$ans" == [yY] || "$ans" == [yY][eE][sS] ]] || { echo "send-issue: not sent; nothing was created"; return 0; }
+    fi
+  fi
 
   local out n
   # A label just created is not in `gh label list --search` yet (t-1465), so only a failed create asks the search.
@@ -1194,8 +1223,24 @@ cmd_send_issue() {
   # t-718b: github: is only the link (sync and import write it too); runs: github says a cloud session has the work.
   set_or_add_field "$file" runs github
   _gh_trail "$tdir" sent "issue: $url" "repo: $repo"
+  local start="Work on Issue#$n for ticket $id. Read its section \"Working on this\" thoroughly before starting and follow it step by step. Work on a new branch, never main."
+  # The same line as one shell command, single-quoted for a terminal (t-0da2); the board shows it beside the prompt.
+  local cmdline="claude --cloud '$(printf '%s' "$start" | sed "s/'/'\\\\''/g")'"
   printf 'Sent %s as %s\nIn a Claude cloud session on %s, type:\n' "$id" "$url" "$repo"
-  printf 'Work on Issue#%s for ticket %s. Read its section "Working on this" thoroughly before starting and follow it step by step. Work on a new branch, never main.\n' "$n" "$id"
+  printf '%s\n' "$start"
+  printf 'From a terminal: %s\n' "$cmdline"
+  if $launch; then
+    local lout lrc=0 sess
+    lout="$(cd "$root" && claude --cloud "$start" 2>&1)" || lrc=$?
+    printf '%s\n' "$lout"
+    sess="$(printf '%s\n' "$lout" | grep -Eo 'https://claude\.ai/code/[^ ]+' | head -1 || true)"
+    if (( lrc != 0 )) || [[ -z "$sess" ]]; then
+      echo "send-issue: $id was sent, but claude --cloud did not start a session (see above). Start it yourself: $cmdline" >&2
+      exit 1
+    fi
+    _gh_trail "$tdir" launched "session: $sess"
+    printf 'Cloud session: %s\n' "$sess"
+  fi
 }
 
 # cmd_import_issue <N> [--body-file F] [--force] — t-554c: rebuilds .tickets/<id>/ from a `tkt send-issue` body (the
@@ -2349,11 +2394,13 @@ Commands:
                             ticket.md is older than DAYS (default 14): delete raw
                             board-spec JSON reports, pack the rest into evidence.tgz.
                             Files cited by path stay loose. sprint complete runs it.
-  send-issue <id> [--dry-run] [--public]
+  send-issue <id> [--dry-run] [--public] [--launch [--yes]]
                             Post the ticket as an issue on origin's GitHub repo, laid
                             out like the board (Description, Acceptance, Plan, Research), for a
                             Claude cloud session ("Work on Issue#N"). Records github:
-                            and runs: github.
+                            and runs: github. --launch also starts that session with
+                            `claude --cloud` from this checkout (asks first; --yes skips
+                            the question; warns, never pushes, if the branch is ahead).
   import-issue <N> [--body-file F] [--force]
                             Rebuild .tickets/<id>/ from a send-issue body (used by
                             sprint import-issue in the cloud session).
