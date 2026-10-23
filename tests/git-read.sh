@@ -7,7 +7,8 @@ TOOL="$ROOT/tools/git-read"
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
 fail() { echo "git-read: FAIL — $*" >&2; exit 1; }
 R="$WORK/r"; git init -q "$R"; git -C "$R" config user.email t@t; git -C "$R" config user.name t
-echo a > "$R/f"; git -C "$R" add f; git -C "$R" commit -qm one; echo b > "$R/f"
+mkdir "$R/d"; echo g > "$R/d/g"
+echo a > "$R/f"; git -C "$R" add f d; git -C "$R" commit -qm one; echo b > "$R/f"
 echo outside > "$WORK/outside.txt"
 mkdir -p "$WORK/nested"; git init -q "$WORK/nested/o"; echo x > "$WORK/nested/o/g"
 snapshot() { (cd "$WORK" && find . \( -path ./r/.git -o -path ./nested/o/.git \) -prune -o -print | LC_ALL=C sort); }
@@ -46,6 +47,8 @@ refuse "implicit no-index" diff ../outside.txt f
 refuse "absolute outside"  diff "$WORK/outside.txt" f
 refuse "another repo"      diff "$WORK/nested/o/g" f
 refuse "outside dir"       diff "$WORK" f
+set +e; out="$(cd "$WORK" && bash "$TOOL" status 2>&1)"; rc=$?; set -e   # outside any repository
+[[ "$rc" -ne 0 ]] && grep -q "^git-read: not inside a git work tree" <<<"$out" || fail "outside a repository: not refused ($rc): $out"
 
 # the four read subcommands work, and status leaves .git/index alone
 idx="$(cksum < "$R/.git/index")"; touch "$R/f"
@@ -56,6 +59,8 @@ grep -q 'one' <<<"$(cd "$R" && bash "$TOOL" log --oneline -1)" || fail "log"
 grep -q 'f' <<<"$(cd "$R" && bash "$TOOL" status --porcelain)" || fail "status"
 mkdir -p "$R/sub"; [[ "$(cd "$R/sub" && bash "$TOOL" diff --name-only HEAD -- ../f)" == f ]] || fail "a path inside the repo given from a subdirectory was refused"
 rmdir "$R/sub"
+[[ "$(cd "$R" && bash "$TOOL" show HEAD:d/g)" == g ]] || fail "show HEAD:d/g (a rev:path, not a file) was refused"
+[[ "$(cd "$R" && bash "$TOOL" diff --name-only HEAD -- "$R")" == f ]] || fail "the repository's own top directory, by absolute path, was refused"
 [[ "$(cksum < "$R/.git/index")" == "$idx" ]] || fail "status rewrote .git/index"
 [[ "$(snapshot)" == "$before" ]] || fail "a read subcommand wrote a file"
 
