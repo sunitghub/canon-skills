@@ -1,10 +1,14 @@
 # Learnings
 
-learnings-sweep last run: 10-23-2026 13:47
+learnings-sweep last run: 10-23-2026 16:12
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-23 | [t-9a49](.tickets/t-9a49/learnings.md) | A security fix's browser check was narrowed in the cloud (chromium no-regression run exited 1 on a known flake, WebKit not run), so the evaluator's pass rested on a pre-existing-flake argument its own base/branch pair (0/2 vs 1/2) did not prove; the Mac full-spec re-grade is the real gate, and the reviewer found a comment left above the wrong function when `framePageOK` was inserted. | UNPROMOTED |
+| 2026-10-23 | [t-5ff5](.tickets/t-5ff5/learnings.md) | Allowing `git diff/log` under dontAsk lets `--output=<file>` write anywhere (abbreviations such as `--outp=` too); the fix is an argv-refusing wrapper (`tools/git-read`), and the reviewer found a plain `Bash(git diff:*)` grant still in `tools/upkeep-run:169`, outside the change. | UNPROMOTED |
+| 2026-10-23 | [t-2ea4](.tickets/t-2ea4/learnings.md) | A mutant (`skills.sh init` to `initx`) survived because the test's `skills.sh` stub is a silent `exit 0`, so no test proves `bin/install.js` calls init before the daemon fetch; a stub that records its calls is what makes an ordering line testable. | UNPROMOTED |
+| 2026-10-23 | [t-89b0](.tickets/t-89b0/learnings.md) | The reviewer said NO: the pin covered only the first doc a gate prompt names, but those docs read other `skills/...` paths relative to the PR checkout, and `claude -p` still loads the PR's own `.claude/settings.json` and CLAUDE.md; pinning one file does not pin what it loads. | UNPROMOTED |
 | 2026-10-23 | [t-0e8b](.tickets/t-0e8b/learnings.md) | A permanent board-spec test that writes its screenshots to `.tickets/<id>/visuals/` ties shared test output to whichever ticket last edited it (t-67ab, then t-0e8b); the reviewer flagged it as a standards issue, not a defect. | UNPROMOTED |
 | 2026-10-23 | [t-8627](.tickets/t-8627/learnings.md) | A "random" WebKit stall was deterministic: the display slept and Playwright WebKit never navigated the ~64th page; a retry and a looser guard had been added before the cause was measured (31 of 31 retried stalls stalled again), and a stall entry stayed in the baseline as a "non-stall" failure until the evaluator read its logged error | UNPROMOTED |
 | 2026-10-22 | [t-fcb3](.tickets/t-fcb3/learnings.md) | A gate rule that names a pattern as a finding (CI `permissions:`/unpinned actions) collided with the same gate's "no hardening" exclusion; the reviewer caught it and a behaviour check reproduced it, so new gate rules need their condition for being a finding stated next to them. | UNPROMOTED |

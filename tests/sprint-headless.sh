@@ -437,6 +437,46 @@ assert_model_arg haiku
 (cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_ok "$SPRINT_HEADLESS_EVAL" specs/x.md --base-ref HEAD >/dev/null)
 assert_no_model_arg
 
+# 14f3. t-89b0: CANON_GATE_SKILLS pins the grading protocol to canon's skills; the graded tree's own skills/ (here
+# $WORK/skills/sprint, as a PR could add) is never named, and the install's subagent-log.sh is used.
+write_plan 'Tier: normal | Risk: fixture'
+PIN="$(cd -P "$ROOT/skills" && pwd)"; PIN_TOOLS="$(cd -P "$ROOT/tools" && pwd)"
+for gate in sprint-headless sprint-headless-eval; do
+  : > "$CAP_ARGS"
+  if [[ "$gate" == sprint-headless ]]; then
+    (cd "$WORK" && CANON_GATE_SKILLS="$PIN" PATH="$STUB_CAP_DIR:$PATH" run_ok "$SPRINT_HEADLESS" t-mdl1 --base-ref HEAD >/dev/null)
+  else
+    (cd "$WORK" && CANON_GATE_SKILLS="$PIN" PATH="$STUB_CAP_DIR:$PATH" run_ok "$SPRINT_HEADLESS_EVAL" specs/x.md --base-ref HEAD >/dev/null)
+  fi
+  grep -qF "read $PIN/sprint/reference/eval.md" "$CAP_ARGS" || fail "t-89b0 $gate: prompt must read the pinned $PIN/sprint/reference/eval.md"
+  if grep -qE "read (\.claude/)?skills/sprint/reference" "$CAP_ARGS"; then fail "t-89b0 $gate: prompt names the graded tree's skills/"; fi
+  grep -qxF "<<ARG>>Bash($PIN_TOOLS/subagent-log.sh:*)" "$CAP_ARGS" || fail "t-89b0 $gate: must allow the install's subagent-log.sh"
+  grep -qF "run: $PIN_TOOLS/subagent-log.sh --agent-id" "$CAP_ARGS" || fail "t-89b0 $gate: prompt must run the install's subagent-log.sh"
+  grep -qF "resolves under $PIN: read it there, never from this project's own skills/" "$CAP_ARGS" || fail "t-89b0 $gate: prompt must pin the docs' nested skills/... references"
+done
+# without the pin there is no such instruction (today's resolution, unchanged)
+: > "$CAP_ARGS"; (cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_ok "$SPRINT_HEADLESS" t-mdl1 --base-ref HEAD >/dev/null)
+if grep -qF "never from this project's own skills/" "$CAP_ARGS"; then fail "t-89b0: unpinned runs must not carry the pin note"; fi
+out="$(cd "$WORK" && CANON_GATE_SKILLS="$WORK/nowhere" PATH="$STUB_CAP_DIR:$PATH" run_fail "$SPRINT_HEADLESS" t-mdl1 --base-ref HEAD 2>&1)"
+assert_contains "$out" "has no sprint/ skill docs"
+
+# 14f4. t-5ff5: git only through the install's read-only git-read; no plain git grant, and the prompt says so
+for gate in sprint-headless sprint-headless-eval; do
+  : > "$CAP_ARGS"
+  if [[ "$gate" == sprint-headless ]]; then
+    (cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_ok "$SPRINT_HEADLESS" t-mdl1 --base-ref HEAD >/dev/null)
+  else
+    (cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_ok "$SPRINT_HEADLESS_EVAL" specs/x.md --base-ref HEAD >/dev/null)
+  fi
+  grep -qxF "<<ARG>>Bash($PIN_TOOLS/git-read:*)" "$CAP_ARGS" || fail "t-5ff5 $gate: must allow the install's git-read"
+  if grep -qE "^<<ARG>>Bash\(git[ :]" "$CAP_ARGS"; then fail "t-5ff5 $gate: a plain git grant is still passed"; fi
+  grep -qF "Run git only as $PIN_TOOLS/git-read <diff|log|show|status>" "$CAP_ARGS" || fail "t-5ff5 $gate: prompt must route git through git-read"
+done
+# the whole sprint-headless grant, in order: nothing dropped, nothing added
+: > "$CAP_ARGS"; (cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_ok "$SPRINT_HEADLESS" t-mdl1 --base-ref HEAD >/dev/null)
+grants="$(awk '/^<<ARG>>--allowedTools$/{on=1; next} on && /^<<ARG>>--/{on=0} on' "$CAP_ARGS")"
+[[ "$grants" == "$(printf '<<ARG>>%s\n' Agent "Bash($PIN_TOOLS/git-read:*)" "Bash(./tools/subagent-log.sh:*)" Read Grep Glob LS)" ]] || fail "t-5ff5 sprint-headless: allowedTools are not exactly the read-only set: $grants"
+
 # 14g. sprint-headless-eval --model invalid → hard-fail before claude
 : > "$CAP_ARGS"
 out="$(cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_fail "$SPRINT_HEADLESS_EVAL" specs/x.md --base-ref HEAD --model 'bad;model')"
@@ -517,7 +557,7 @@ rm -f "$WORK/.tickets/t-ev01/eval-report.md"
 [[ -f "$WORK/.tickets/t-ev01/eval-report.md" ]] || fail "eval ticket mode: eval-report.md not written into the ticket folder"
 assert_contains "$(cat "$WORK/.tickets/t-ev01/eval-report.md")" "pass: ok"
 ev_prompt="$(cat "$PROMPT_CAP")"
-assert_contains "$ev_prompt" "git diff --name-only origin/main HEAD"
+assert_contains "$ev_prompt" "derive changed files from: $PIN_TOOLS/git-read diff --name-only origin/main HEAD"
 assert_contains "$ev_prompt" "fixture"
 if [[ "$ev_prompt" == *"Tested locally"* ]]; then fail "eval ticket mode: QA 'Tested locally' leaked into graded criteria"; fi
 
@@ -533,7 +573,7 @@ git -C "$WORK" branch -f main HEAD
 : > "$ARGS_CAP"
 (cd "$WORK" && PATH="$STUB_EV_DIR:$PATH" run_ok "$SPRINT_HEADLESS_EVAL" t-ev01 >/dev/null)
 main_prompt="$(cat "$PROMPT_CAP")"
-assert_contains "$main_prompt" "git diff --name-only main HEAD"
+assert_contains "$main_prompt" "derive changed files from: $PIN_TOOLS/git-read diff --name-only main HEAD"
 if [[ "$main_prompt" == *"origin/main"* ]]; then fail "eval: fell back to main but still referenced origin/main"; fi
 git -C "$WORK" branch -D main >/dev/null 2>&1 || true
 
@@ -546,7 +586,7 @@ git -C "$WORK" update-ref refs/remotes/origin/main HEAD
 # 15e. explicit --base-ref beats the default
 (cd "$WORK" && PATH="$STUB_EV_DIR:$PATH" run_ok "$SPRINT_HEADLESS_EVAL" t-ev01 --base-ref HEAD >/dev/null)
 head_prompt="$(cat "$PROMPT_CAP")"
-assert_contains "$head_prompt" "git diff --name-only HEAD HEAD"
+assert_contains "$head_prompt" "derive changed files from: $PIN_TOOLS/git-read diff --name-only HEAD HEAD"
 if [[ "$head_prompt" == *"origin/main"* ]]; then fail "eval: default used despite explicit --base-ref"; fi
 
 # 15f. spec-file mode still works (report next to the spec)

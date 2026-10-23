@@ -23,7 +23,7 @@ allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git log:*), Bash(git s
 - Needs Verification
 - Out of Scope
 
-> **`allowed-tools` note:** the `allowed-tools:` frontmatter above is advisory when this gate runs inline in the main session (it does not bind there) and, per `DECISIONS.md` `t-ce74`, is very likely equally inert everywhere else — it only activates on a genuine `Skill`-tool invocation, and this gate is never invoked that way. Under headless-CI (`tools/sprint-headless`), the real enforced restriction is a **separate, hardcoded** `--allowedTools` list on the whole `claude -p` dispatch (`tools/sprint-headless`'s own script, not this file's frontmatter) — coincidentally similar in shape (no general Bash), but a different mechanism. The two fresh-subagent gates (`review.md`/`eval.md`) carry no such frontmatter and rely on `subagent_type: "Plan"` instead.
+> **`allowed-tools` note:** the `allowed-tools:` frontmatter above is advisory when this gate runs inline in the main session (it does not bind there) and, per `DECISIONS.md` `t-ce74`, is very likely equally inert everywhere else — it only activates on a genuine `Skill`-tool invocation, and this gate is never invoked that way. Under headless-CI (`tools/sprint-headless`), the real enforced restriction is a **separate, hardcoded** `--allowedTools` list on the whole `claude -p` dispatch (`tools/sprint-headless`'s own script, not this file's frontmatter) — coincidentally similar in shape (no general Bash), but a different mechanism; there, git is granted only through the install's read-only `tools/git-read` (t-5ff5). The two fresh-subagent gates (`review.md`/`eval.md`) carry no such frontmatter and rely on `subagent_type: "Plan"` instead.
 
 ## Scope
 

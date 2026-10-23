@@ -207,6 +207,10 @@ func handle(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
+	// t-9a49: no other site may frame the board (clickjacking its buttons). The CSP is added, never set, so the
+	// preview's own sandbox CSP (also added) and this one are both enforced.
+	w.Header().Set("X-Frame-Options", "SAMEORIGIN")
+	w.Header().Add("Content-Security-Policy", "frame-ancestors 'self'")
 	if r.Method == http.MethodGet {
 		handleGet(w, r)
 		return
@@ -547,7 +551,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "text/html; charset=utf-8")
 				// The report is generated from a user-picked skill's content: render it in an
 				// opaque origin (sandbox without allow-same-origin) so it cannot reach this API.
-				w.Header().Set("Content-Security-Policy", "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:")
+				w.Header().Add("Content-Security-Policy", "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:")
 				w.Header().Set("X-Content-Type-Options", "nosniff")
 				w.Header().Set("Content-Length", strconv.Itoa(len(body)))
 				w.Write(body)
