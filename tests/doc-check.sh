@@ -69,6 +69,7 @@ E="$(mktemp -d)"; printf 'Run `sprint frobnicate`.\n' > "$E/a.md"
 # Options.
 "$ROOT/tools/doc-check" --help | grep -q usage || fail "doc-check: --help printed no usage"
 rc=0; "$ROOT/tools/doc-check" --bogus >/dev/null 2>&1 || rc=$?; [[ "$rc" == 2 ]] || fail "doc-check: unknown option exited $rc, want 2"
+rc=0; (cd "$E" && "$ROOT/tools/doc-check" >/dev/null 2>&1) || rc=$?; [[ "$rc" == 2 ]] || fail "doc-check: outside a repo with no --root exited $rc, want 2"
 rc=0; "$ROOT/tools/doc-check" --root >/dev/null 2>&1 || rc=$?; [[ "$rc" == 2 ]] || fail "doc-check: --root with no value exited $rc, want 2"
 
 # canon's own user-facing docs stay clean (the default file set).
