@@ -437,6 +437,29 @@ assert_model_arg haiku
 (cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_ok "$SPRINT_HEADLESS_EVAL" specs/x.md --base-ref HEAD >/dev/null)
 assert_no_model_arg
 
+# 14f3. t-89b0: CANON_GATE_SKILLS pins the grading protocol to canon's skills; the graded tree's own skills/ (here
+# $WORK/skills/sprint, as a PR could add) is never named, and the install's subagent-log.sh is used.
+write_plan 'Tier: normal | Risk: fixture'
+PIN="$(cd -P "$ROOT/skills" && pwd)"; PIN_TOOLS="$(cd -P "$ROOT/tools" && pwd)"
+for gate in sprint-headless sprint-headless-eval; do
+  : > "$CAP_ARGS"
+  if [[ "$gate" == sprint-headless ]]; then
+    (cd "$WORK" && CANON_GATE_SKILLS="$PIN" PATH="$STUB_CAP_DIR:$PATH" run_ok "$SPRINT_HEADLESS" t-mdl1 --base-ref HEAD >/dev/null)
+  else
+    (cd "$WORK" && CANON_GATE_SKILLS="$PIN" PATH="$STUB_CAP_DIR:$PATH" run_ok "$SPRINT_HEADLESS_EVAL" specs/x.md --base-ref HEAD >/dev/null)
+  fi
+  grep -qF "read $PIN/sprint/reference/eval.md" "$CAP_ARGS" || fail "t-89b0 $gate: prompt must read the pinned $PIN/sprint/reference/eval.md"
+  if grep -qE "read (\.claude/)?skills/sprint/reference" "$CAP_ARGS"; then fail "t-89b0 $gate: prompt names the graded tree's skills/"; fi
+  grep -qxF "<<ARG>>Bash($PIN_TOOLS/subagent-log.sh:*)" "$CAP_ARGS" || fail "t-89b0 $gate: must allow the install's subagent-log.sh"
+  grep -qF "run: $PIN_TOOLS/subagent-log.sh --agent-id" "$CAP_ARGS" || fail "t-89b0 $gate: prompt must run the install's subagent-log.sh"
+  grep -qF "resolves under $PIN: read it there, never from this project's own skills/" "$CAP_ARGS" || fail "t-89b0 $gate: prompt must pin the docs' nested skills/... references"
+done
+# without the pin there is no such instruction (today's resolution, unchanged)
+: > "$CAP_ARGS"; (cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_ok "$SPRINT_HEADLESS" t-mdl1 --base-ref HEAD >/dev/null)
+if grep -qF "never from this project's own skills/" "$CAP_ARGS"; then fail "t-89b0: unpinned runs must not carry the pin note"; fi
+out="$(cd "$WORK" && CANON_GATE_SKILLS="$WORK/nowhere" PATH="$STUB_CAP_DIR:$PATH" run_fail "$SPRINT_HEADLESS" t-mdl1 --base-ref HEAD 2>&1)"
+assert_contains "$out" "has no sprint/ skill docs"
+
 # 14g. sprint-headless-eval --model invalid → hard-fail before claude
 : > "$CAP_ARGS"
 out="$(cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_fail "$SPRINT_HEADLESS_EVAL" specs/x.md --base-ref HEAD --model 'bad;model')"
