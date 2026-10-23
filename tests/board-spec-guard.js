@@ -31,21 +31,8 @@ function testsOf(report) {
   for (const [t, rec] of Object.entries(recordsOf(report))) out[t] = rec.status;
   return out;
 }
-// t-8627: a navigation stall is a test whose last attempt timed out inside page.goto or page.first while "navigating to" the board
-// (WebKit and chromium both do this now and then, to a random test, with the board answering; the cause is not found). Such a failure
-// is told apart from a regression by happening in some runs of a test and not in others.
-const isFailure = (status) => status === 'unexpected' || status === 'flaky' || status === 'timedOut' || status === 'interrupted';
-const STALL = /Timeout \d+ms exceeded[\s\S]*navigating to/;
-function stallsOf(report) {
-  const out = new Set();
-  for (const [t, rec] of Object.entries(recordsOf(report))) {
-    const last = ((rec.results || [])[(rec.results || []).length - 1]) || {};
-    if (isFailure(rec.status) && STALL.test(String((last.error || {}).message || ''))) out.add(t);
-  }
-  return out;
-}
-const MAX_STALLS_PER_RUN = 10;
 const browserOf = (file) => (/-(chromium|webkit|firefox)-run\d+\.json$/.exec(file) || [])[1] || null;
+const isFailure = (status) => status === 'unexpected' || status === 'flaky' || status === 'timedOut' || status === 'interrupted';
 
 const isListed = (baseline, kind, title, b) => (baseline[kind] || []).some((e) => e.title === title && (e.browsers || []).includes(b));
 
@@ -58,7 +45,7 @@ function evaluate({ reports, baseline, specText, partial }) {
   for (const b of browsers) {
     const runs = reports.filter((r) => r.browser === b);
     const titles = new Set(); runs.forEach((r) => Object.keys(r.tests).forEach((t) => titles.add(t)));
-    const c = { failing: [], flaky: [], stalled: [], skipped: [], missing: [], passing: 0, total: titles.size, runs: runs.length };
+    const c = { failing: [], flaky: [], skipped: [], missing: [], passing: 0, total: titles.size, runs: runs.length };
     for (const t of titles) {
       known.add(t);
       const failed = runs.filter((r) => isFailure(r.tests[t])).length;
@@ -66,22 +53,14 @@ function evaluate({ reports, baseline, specText, partial }) {
       const absent = runs.filter((r) => !(t in r.tests)).length;
       if (skippedRuns > 0) c.skipped.push(t);
       if (absent > 0) c.missing.push(t);
-      const stalled = runs.filter((r) => isFailure(r.tests[t]) && (r.stalls || new Set()).has(t)).length;
       if (skippedRuns === runs.length) continue;
       else if (failed === runs.length) c.failing.push(t);
-      else if (failed > 0 && stalled === failed) c.stalled.push(t);
       else if (failed > 0) c.flaky.push(t);
       else c.passing++;
     }
     classes[b] = c;
   }
   const listed = (kind, title, b) => isListed(baseline, kind, title, b);
-  // t-8627: a stall that hit a test in only some of its runs is a warning (the same test passed elsewhere, so the page loads); a run
-  // with more than MAX_STALLS_PER_RUN of them means the board or the machine is sick, and that fails.
-  for (const b of browsers) {
-    for (const t of classes[b].stalled) if (!listed('flaky', t, b) && !listed('failing', t, b)) warnings.push(`${b}: "${t}" stalled on navigation in ${runsFailed(reports, b, t)} of ${classes[b].runs} runs and passed in the others`);
-    for (const r of reports) if (r.browser === b && (r.stalls || new Set()).size > MAX_STALLS_PER_RUN) violations.push(`${b}: ${r.run} had ${r.stalls.size} navigation stalls (more than ${MAX_STALLS_PER_RUN}): the board or the machine is not healthy`);
-  }
   for (const b of browsers) {
     for (const t of classes[b].failing) {
       if (listed('failing', t, b)) continue;
@@ -145,16 +124,14 @@ function main(argv) {
   const reports = files.map((f) => {
     const browser = browserOf(f);
     if (!browser) { console.error(`board-spec-guard: cannot tell the browser from "${f}" (expected board-spec-<browser>-run<N>.json)`); process.exit(2); }
-    const report = JSON.parse(fs.readFileSync(f, 'utf8'));
-    return { browser, run: f, tests: testsOf(report), stalls: stallsOf(report) };
+    return { browser, run: f, tests: testsOf(JSON.parse(fs.readFileSync(f, 'utf8'))) };
   });
   const baseline = JSON.parse(fs.readFileSync(baselineFile, 'utf8'));
   const r = evaluate({ reports, baseline, specText: fs.readFileSync(specFile, 'utf8'), partial });
   for (const [b, c] of Object.entries(r.classes)) {
-    console.log(`== ${b}: ${c.total} tests, ${c.runs} run(s): ${c.passing} passing, ${c.flaky.length} flaky, ${c.stalled.length} stalled, ${c.failing.length} failing, ${c.skipped.length} skipped`);
+    console.log(`== ${b}: ${c.total} tests, ${c.runs} run(s): ${c.passing} passing, ${c.flaky.length} flaky, ${c.failing.length} failing, ${c.skipped.length} skipped`);
     for (const t of c.failing) console.log(`   FAILING ${t}`);
     for (const t of c.flaky) console.log(`   flaky   ${t}`);
-    for (const t of c.stalled) console.log(`   stalled ${t}`);
     for (const t of c.skipped) console.log(`   skipped ${t}`);
   }
   for (const w of r.warnings) console.log(`warning: ${w}`);
@@ -166,5 +143,5 @@ function main(argv) {
   return violations.length ? 1 : 0;
 }
 
-module.exports = { evaluate, stallsOf, testsOf, recordsOf, browserOf, isListed, isFailure };
+module.exports = { evaluate, testsOf, recordsOf, browserOf, isListed, isFailure };
 if (require.main === module) process.exit(main(process.argv.slice(2)));

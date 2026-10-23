@@ -99,22 +99,17 @@ test.beforeEach(async ({ context }) => {
     return route.continue({ url: u.toString() });
   });
 });
-// t-8627: on a quiet machine WebKit sometimes never fires "load" for a navigation to the healthy board (page.goto hangs the full 30 s
-// test timeout; the board answered every probe meanwhile, evidence/diag), and the same tests pass solo. A navigation that stalls is retried
-// once, bounded, and the retry is recorded as an annotation so the rate stays visible. A goto that names its own timeout, and every
-// assertion, is untouched; a navigation that stalls twice still fails the test.
-test.beforeEach(async ({ page }, info) => {
-  const first = page.goto.bind(page);
-  page.__gotoStallMs = 12000;
-  page.goto = async (url, opts) => {
-    if (opts && opts.timeout !== undefined) return first(url, opts);
-    try { return await first(url, { ...opts, timeout: page.__gotoStallMs }); }
-    catch (e) {
-      if (!/Timeout/.test(String(e && e.message))) throw e;
-      info.annotations.push({ type: 'goto-stall-retried', description: String(url) });
-      return first(url, { ...opts, timeout: page.__gotoStallMs });
-    }
-  };
+// t-8627: the cause of the WebKit navigation stalls. On macOS, once ~64 pages have been created in one WebKit browser while the display sleeps, that
+// page and every later one never navigate until the browser restarts (each failure starts a fresh worker, hence a stall every ~64
+// tests). A plain webkit.launch() loop against a trivial local server stalls at page 64 with the display off and never with it on. So
+// each WebKit worker keeps the display awake before its browser starts: -u wakes it, -d keeps it from idle-sleeping, -w ends the
+// assertion with the worker; the second lets the display come on first.
+let displayAwake = null;
+test.beforeAll(async ({ browserName }) => {
+  if (process.platform !== 'darwin' || browserName !== 'webkit' || displayAwake) return;
+  displayAwake = spawn('caffeinate', ['-d', '-u', '-w', String(process.pid)], { stdio: 'ignore' });
+  displayAwake.on('error', () => {});   // no caffeinate: run as before
+  await new Promise(r => setTimeout(r, 1000));
 });
 test.afterEach(() => { realLanding = false; });
 
@@ -15048,17 +15043,6 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#ck-gh-panel')).toBeHidden();
     await expect(page.locator(`#ck-tab-strip-topbar .ck-tab-pill[data-tab-id="${id}"]`)).toHaveCount(0);
     await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/);
-  });
-
-  // t-8627: the harness's navigation retry (the beforeEach above): a goto whose first request never answers is retried once and
-  // recorded; without it the test would sit the full 30 s on a stall. Protects every test's page.goto on WebKit.
-  test('a navigation that stalls once is retried once and recorded (t-8627)', async ({ page }, info) => {
-    page.__gotoStallMs = 1500;
-    let hits = 0;
-    await page.route('**/api/git', route => { hits++; if (hits === 1) return; return route.continue(); });   // the first request is never answered
-    await page.goto(BASE + '/api/git');
-    expect(hits).toBe(2);
-    expect(info.annotations.filter(a => a.type === 'goto-stall-retried')).toHaveLength(1);
   });
 
   // t-8627: the t-9641 flake. The preview of a first showGithubPanel call answers after a later call showed the Sent panel; the late answer

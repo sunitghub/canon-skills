@@ -1,5 +1,5 @@
 {
-  "_about": "t-8627: only tests that failed for a reason other than a navigation stall in the quiet post-fix runs are listed. failing = failed in every run (quarantined: needs a ticket id and a QUARANTINE marker in the spec; none now); flaky = may fail any number of runs: needs a reason and a ticket id; skipped = allowed to be skipped; min_tests = per-browser floor on the tests reported. A navigation stall (page.goto/page.first timeout while navigating) that hits a test in only some of its runs is a guard warning, not a listing: tests/board-spec-guard.js.",
+  "_about": "t-8627: only tests that failed for a reason other than a navigation stall in the quiet post-fix runs are listed. failing = failed in every run (quarantined: needs a ticket id and a QUARANTINE marker in the spec; none now); flaky = may fail any number of runs: needs a reason and a ticket id; skipped = allowed to be skipped; min_tests = per-browser floor on the tests reported.",
   "min_tests": {
     "chromium": 471,
     "webkit": 471
