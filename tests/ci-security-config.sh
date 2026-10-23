@@ -124,13 +124,13 @@ plant "cron shared by two workflows" $V 's/"41 6 \* \* 1"/"17 6 * * 1"/'
 plant "missing $WFD/$V" $V rm
 plant "dependabot config present" dependabot ""
 # the generated canon-gate template (t-04f4)
-plant "$TPL: action not pinned to a full SHA" $TPL '0,/(checkout@)[0-9a-f]{40}/s//\1v7.0.1/'
+plant "$TPL: action not pinned to a full SHA" $TPL '1,/(checkout@)[0-9a-f]{40}/s/(checkout@)[0-9a-f]{40}/\1v7.0.1/'
 plant "$TPL: no top-level permissions block" $TPL '/^permissions:$/,/^  contents: read$/d'
 plant "$TPL: permission beyond contents: read" $TPL 's/^  contents: read$/  contents: read\n  pull-requests: write/'
 plant "$TPL: job-level permissions present" $TPL 's/^    runs-on: ubuntu-latest$/    runs-on: ubuntu-latest\n    permissions: write-all/'
 plant "$TPL: not triggered by pull_request" $TPL 's/^  pull_request:$/  push:/'
 plant "$TPL: pull_request_target or workflow_run present" $TPL 's/^  pull_request:$/  pull_request_target:/'
-plant "$TPL: a checkout keeps its credentials" $TPL '0,/persist-credentials: false/{/persist-credentials: false/d}'
+plant "$TPL: a checkout keeps its credentials" $TPL '1,/persist-credentials: false/{/persist-credentials: false/d;}'
 plant "$TPL: canon checkout not pinned by the __CANON_REF__ placeholder" $TPL 's/ref: __CANON_REF__/ref: main/'
 plant "$TPL: Claude Code CLI not installed at an exact x.y.z" $TPL 's/claude-code@[0-9.]+$/claude-code/'
 plant "$TPL: @latest present" $TPL 's/claude-code@[0-9.]+$/claude-code@latest/'
