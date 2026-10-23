@@ -39,6 +39,8 @@ Any change to `app.html` or `static/` requires Playwright verification — not j
 - A Test Plan line that names a set ("each converted button") gets a script that shoots the set and checks its own coverage against the named list. A flex row stretches its children to one height, so check padding and radius, not height (`t-e523`).
 - A rule on a container's children (`.foot button{max-width}`) also hits components nested inside it: when restyling, render every nested component (`t-2758`).
 - Covering a view with an overlay is not hiding it: the covered iframe keeps focus and tab order. Mark it `inert`, make focus code skip it, and grep the in-page help sheet when a UI rule is retired (`t-bcce`).
+- A WebKit run on a Mac whose display is asleep stalls: after about 64 pages in one browser Playwright's WebKit never navigates again, so a stall hit every ~64th test (a plain `webkit.launch()` loop stalls at page 64 with the display off, never with it on). The spec's WebKit `beforeAll` runs `caffeinate -d -u -w <worker pid>`. A retry and a looser guard had hidden it, so measure the cause before adding either (`t-8627`).
+- A new permanent spec writes its screenshots to a folder it owns, not `.tickets/<id>/visuals/`: that ties shared test output to whichever ticket last edited the spec (`t-67ab`, then `t-0e8b`).
 
 ## Board root redirect (t-5716)
 
