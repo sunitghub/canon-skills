@@ -1,5 +1,4 @@
-// markdown.js (t-43ba) — the one markdown renderer: md() for every ticket doc and, through upRenderReport
-// (cockpit-upkeep.js), every Upkeep report. Its only import is html-escape.js, so the Cockpit shell can load it without the board's state.
+// markdown.js (t-43ba) — the one markdown renderer: md() for every ticket doc. Its only import is html-escape.js.
 // board-helpers.js re-exports everything here, so board modules and tests keep importing it from there.
 
 // esc/escAttr live in html-escape.js (shared with the board's other modules and the Cockpit shell); re-exported so importers keep one path.
@@ -104,8 +103,7 @@ export function renderFeatureRefPlaceholder(body) {
 }
 
 // Minimal markdown: headers, bold, _italic_, inline code, > quotes, checklist items, bullet lists, images
-// opts.images === false (t-43ba): `![alt](src)` stays text — for LLM-written reports, which must not load a remote image.
-export function md(raw, ticketId, opts = {}) {
+export function md(raw, ticketId) {
   if (!raw) return '';
   // Pre-stamp each checkbox line with its source position using a null-byte
   // marker that survives esc() and sortChecklistRuns(), so the rendered index
@@ -149,7 +147,6 @@ export function md(raw, ticketId, opts = {}) {
     .replace(/^## (.+)$/gm, '<strong class="doc-heading-2">$1</strong>')
     .replace(/^### (.+)$/gm,'<strong class="doc-heading-3">$1</strong>')
     .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (m, alt, src) => {
-      if (opts.images === false) return m;
       // t-d2e1: md() escaped the whole doc above, so the path is decoded back to its real characters before it is
       // URL-encoded, then escaped once for the attribute (it's.png, a&b.png). alt is already escaped text.
       const raw = unescapeHtml(src);

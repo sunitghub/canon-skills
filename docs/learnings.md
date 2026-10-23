@@ -157,10 +157,6 @@ So each project that adds the sprint skill gets its own destination (`t-f65c`):
 - To move the learnings, run `/promote-learnings` in an interactive session. After the report it asks which
   proposals to apply, writes only the ones you confirm into `PROMOTED.md` (one or two lines each, with the ticket
   ID), and flips each row to `` `promoted → PROMOTED.md` ``.
-- The Upkeep card runs the same skill headlessly, and there it stays report-only: it never writes
-  `PROMOTED.md`. The card's **?** panel points to the interactive step. A green **→ What to do next** link under
-  its description jumps to that section, which is also shown in green (`t-f5ab`). The section begins with
-  running `/promote-learnings` in an interactive session.
 
 Because `PROMOTED.md` is always loaded, keep it short. The skill warns when its entries pass 60 lines.
 
@@ -296,10 +292,7 @@ flowchart TD
     S["skills.sh add sprint<br/>(or skills.sh refresh)"] --> T["Creates PROMOTED.md at project root<br/>adds @PROMOTED.md to project AGENTS.md"]
     A["1. sprint complete<br/>reviewer writes review-notes.md"] --> B["2. tkt learn<br/>auto-run by sprint complete (step 8)<br/>.tickets/ID/learnings.md<br/>status UNPROMOTED"]
     B --> E["3. learnings-sweep<br/>run by the sprint agent at close<br/>(protocol step, not a command)<br/>one row into project LEARNINGS.md<br/>(not imported: unreviewed queue)"]
-    E --> U{"Who runs<br/>promote-learnings?"}
-    U -- "Upkeep card (headless)" --> V["Report only<br/>never writes PROMOTED.md<br/>? panel points to interactive step"]
-    U -- "Interactive /promote-learnings" --> F["Fresh read-only report<br/>then asks which proposals to apply"]
-    V -. "run interactively" .-> F
+    E --> F["4. /promote-learnings in a fresh interactive session<br/>read-only report<br/>then asks which proposals to apply"]
     F --> G{"You confirm<br/>a proposal?"}
     G -- No --> H["Row flipped to dismissed<br/>or left UNPROMOTED"]
     G -- Yes --> Q["PROMOTED.md<br/>1-2 lines + ticket ID<br/>row flipped to promoted → PROMOTED.md"]

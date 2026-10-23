@@ -1,9 +1,9 @@
 // t-565f: the Cockpit shell's views code (was part of cockpit.html's one script). Declarations only: the
 // load-time code is initViews(), which cockpit-main.js runs in order once every module has loaded.
-import { loadUpkeep } from './cockpit-upkeep.js';
+import { loadSkillEval } from './cockpit-skill-eval.js';
 import { loadAdmin } from './cockpit-admin.js';
 import { loadFactory } from './cockpit-factory.js';
-import { activateTab, activeTab, applySplit, setUpkeepPane, splitShown } from './cockpit-tabs.js';
+import { activateTab, activeTab, applySplit, setSkillEvalPane, splitShown } from './cockpit-tabs.js';
 
 export function showView(v){
   if(v==='projects'){
@@ -15,8 +15,8 @@ export function showView(v){
     activateTab('projects');
     return;
   }
-  const inSplit=v==='upkeep'&&splitShown();   // t-bcce: with a split on screen, Upkeep opens inside its project's pane and the split stays
-  if(inSplit) setUpkeepPane(activeTab);   // every other path clears it in applySplit
+  const inSplit=v==='skill-eval'&&splitShown();   // t-bcce: with a split on screen, Skill Eval opens inside its project's pane and the split stays
+  if(inSplit) setSkillEvalPane(activeTab);   // every other path clears it in applySplit
   if(!inSplit){
     document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
     document.getElementById('nav-projects').classList.remove('active');
@@ -29,9 +29,9 @@ export function showView(v){
   } else if(v==='factory'){   // t-9641: per-project GitHub setup, full size like Admin
     document.getElementById('view-factory').classList.add('active');
     loadFactory();
-  } else if(v==='upkeep'){
-    if(!inSplit) document.getElementById('view-upkeep').classList.add('active');
-    loadUpkeep();
+  } else if(v==='skill-eval'){
+    if(!inSplit) document.getElementById('view-skill-eval').classList.add('active');
+    loadSkillEval();
   }
   applySplit();   // t-416c: Admin (and Factory, t-9641) shows full size and suspends the split
 }

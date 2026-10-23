@@ -47,7 +47,7 @@
   .gh-card .gh-steps{max-width:80ch}
   .gh-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
   .gh-chips code{border:1px solid var(--border);border-radius:6px;padding:1px 6px}
-  /* the Projects card's Factory row, a link like Upkeep's */
+  /* the Projects card's Factory row, a link like Skill Eval's */
   .metarow.fac-row{cursor:pointer}
   .metarow.fac-row:hover .v{text-decoration:underline}
   .metarow.fac-row .v.muted{color:var(--text-muted);font-weight:400}

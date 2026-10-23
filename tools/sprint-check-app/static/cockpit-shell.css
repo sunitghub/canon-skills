@@ -103,7 +103,7 @@
   .views.split-h .view.pane2{inset:0 0 0 auto;width:calc((1 - var(--r))*100% - 3px)}
   .views.split-v .view.pane1{inset:0 0 auto 0;height:calc(var(--r)*100% - 3px)}
   .views.split-v .view.pane2{inset:auto 0 0 0;height:calc((1 - var(--r))*100% - 3px)}
-  .view#view-upkeep.pane1,.view#view-upkeep.pane2{z-index:1;background:var(--bg)}   /* t-bcce: Upkeep covers its own pane's board */
+  .view#view-skill-eval.pane1,.view#view-skill-eval.pane2{z-index:1;background:var(--bg)}   /* t-bcce: Skill Eval covers its own pane's board */
   #split-handle{position:absolute;z-index:6;display:none;background:var(--border);touch-action:none;transition:background .12s}
   #split-handle:hover,#split-handle:focus-visible,#split-handle.drag{background:var(--accent);outline:none}
   .views.split-h #split-handle{display:block;top:0;bottom:0;left:calc(var(--r)*100% - 3px);width:6px;cursor:col-resize}
@@ -137,7 +137,7 @@
   .skill-nudge .sn-x:hover,.shared-warn .sn-x:hover{color:var(--text);border-color:var(--border-hover)}
   #view-projects{padding:24px 30px}
   #view-admin{padding:24px 30px}
-  #view-upkeep{padding:24px 30px}
+  #view-skill-eval{padding:24px 30px}
   .admin-wrap{max-width:620px}
   .admin-h1{font-size:21px;font-weight:700;letter-spacing:-.4px;margin-bottom:20px}
   .dpanel{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:26px;display:flex;gap:24px;align-items:center;margin-bottom:16px}

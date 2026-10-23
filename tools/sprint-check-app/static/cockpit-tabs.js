@@ -14,7 +14,7 @@ export let activeTab='projects';
 export function goTab(id){
   if(split&&splitShown()&&id!==activeTab) startPulse(id);
   activateTab(id);
-  const f=id===upkeepPane?null:document.querySelector('#view-'+id+' iframe');   // t-bcce: a board covered by Upkeep is inert, so there is nothing to focus
+  const f=id===skillEvalPane?null:document.querySelector('#view-'+id+' iframe');   // t-bcce: a board covered by Skill Eval is inert, so there is nothing to focus
   lastScriptFocus=Date.now();
   if(f) focusWant={id,until:Date.now()+1500,warned:false};   // t-f769: after the grace below, syncFocusedPane keeps asking for this focus until it lands
   // A click into a pane is the user's own choice: stop asking for the wanted pane (the boards are same-origin).
@@ -106,9 +106,9 @@ export function ensureView(id,name){
 // split = {a,b,dir:'h'|'v',ratio}: pane1 is `a` (left/top), pane2 is `b`. `activeTab` stays the FOCUSED pane. Both views
 // are shown by CSS classes only (see .pane1/.pane2); nothing is ever moved in the DOM, because that reloads an iframe.
 const LS_SPLIT='canon-cockpit-split';
-export let split=null, prevTab=null, lastScriptFocus=0, focusWant=null, upkeepPane=null;   // upkeepPane: the tab whose pane shows Upkeep (t-bcce)
-// t-565f: Views and Upkeep set upkeepPane, and the spec resets prevTab; the owner exports these instead of the bindings.
-export function setUpkeepPane(id){ upkeepPane=id; }
+export let split=null, prevTab=null, lastScriptFocus=0, focusWant=null, skillEvalPane=null;   // skillEvalPane: the tab whose pane shows Skill Eval (t-bcce)
+// t-565f: Views and Skill Eval set skillEvalPane, and the spec resets prevTab; the owner exports these instead of the bindings.
+export function setSkillEvalPane(id){ skillEvalPane=id; }
 export function resetPrevTab(){ prevTab=null; }
 const SPLIT_MIN={h:280,v:220};
 // Each visible board is told whether it is in a split and whether it is the focused pane; `pulse` marks a pane that took
@@ -160,13 +160,13 @@ export function applySplit(){
   document.querySelectorAll('.view[inert]').forEach(v=>v.removeAttribute('inert'));
   views.classList.remove('split-h','split-v');
   const sc=document.getElementById('split-close'); if(sc) sc.hidden=!splitShown();
-  if(!splitShown()){ upkeepPane=null; sendPaneState(); return; }
+  if(!splitShown()){ skillEvalPane=null; sendPaneState(); return; }
   const va=document.getElementById('view-'+split.a), vb=document.getElementById('view-'+split.b);
-  if(!va||!vb){ split=null; upkeepPane=null; saveSplit(); sendPaneState(); return; }
+  if(!va||!vb){ split=null; skillEvalPane=null; saveSplit(); sendPaneState(); return; }
   va.classList.add('pane1'); vb.classList.add('pane2');
-  const uv=document.getElementById('view-upkeep');   // t-bcce: Upkeep sits over its own pane
-  if(upkeepPane===split.a) uv.classList.add('pane1'); else if(upkeepPane===split.b) uv.classList.add('pane2'); else upkeepPane=null;
-  if(upkeepPane) document.getElementById('view-'+upkeepPane).setAttribute('inert','');   // the board under Upkeep takes no focus or keys
+  const uv=document.getElementById('view-skill-eval');   // t-bcce: Skill Eval sits over its own pane
+  if(skillEvalPane===split.a) uv.classList.add('pane1'); else if(skillEvalPane===split.b) uv.classList.add('pane2'); else skillEvalPane=null;
+  if(skillEvalPane) document.getElementById('view-'+skillEvalPane).setAttribute('inert','');   // the board under Skill Eval takes no focus or keys
   views.classList.add(split.dir==='v'?'split-v':'split-h');
   split.ratio=clampRatio(split.ratio);
   views.style.setProperty('--r',split.ratio);
@@ -238,7 +238,7 @@ export function activateTab(id){
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   const v=document.getElementById('view-'+id) || document.getElementById('view-projects');
   v.classList.add('active');
-  // activating any tab means we're in the Projects workspace, not Admin/Factory/Upkeep (t-5dc2, t-7ae6, t-9641)
+  // activating any tab means we're in the Projects workspace, not Admin/Factory/Skill Eval (t-5dc2, t-9641, t-0e8b)
   const np=document.getElementById('nav-projects');
   if(np) np.classList.add('active');
   ['nav-admin','nav-factory'].forEach(n=>{ const a=document.getElementById(n); if(a) a.classList.remove('active'); });

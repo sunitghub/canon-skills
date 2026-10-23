@@ -55,9 +55,6 @@ var (
 	toolsDir         string // t-f99b: canon tools dir (for the skills link target: <toolsDir>/../skills)
 	headlessRuns     = map[string]map[string]any{}
 	headlessRunsMu   sync.Mutex
-	upkeepRunBin     string // t-7ae6
-	upkeepRuns       = map[upkeepKey]map[string]any{}
-	upkeepRunsMu     sync.Mutex
 	shellStartTime   = time.Now() // t-ade9: this server process's own start, for Cockpit Uptime
 )
 
@@ -149,7 +146,6 @@ func Run(buildVersion, buildCommit string, args []string) int {
 	cockpitHTML = filepath.Join(filepath.Dir(appHTML), "cockpit.html")
 	modelTiersPath = filepath.Join(filepath.Dir(appHTML), "model-tiers.json")
 	sprintHeadless = resolveSprintHeadless(toolsDir, projectRoot, cwd)
-	upkeepRunBin = resolveUpkeepRunBin(toolsDir, projectRoot, cwd)
 	canonGateTmpl = resolveCanonGateTemplate(toolsDir, projectRoot, cwd)
 	cockpitDaemonBin = resolveCockpitDaemon(toolsDir, projectRoot, cwd)
 	// Passes through an explicit COCKPIT_SPRINT_BIN override (e.g. a test
@@ -562,34 +558,6 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
-		if path == "/api/upkeep/status" {
-			skill := r.URL.Query().Get("skill")
-			if !upkeepSkills[skill] {
-				http.Error(w, "unknown skill", http.StatusBadRequest)
-				return
-			}
-			root, ok := effectiveRoot(r)
-			if !ok {
-				http.Error(w, "unknown project", http.StatusBadRequest)
-				return
-			}
-			sendJSON(w, getUpkeepRunState(root, skill))
-			return
-		}
-		if path == "/api/upkeep/report" {
-			skill := r.URL.Query().Get("skill")
-			if !upkeepSkills[skill] {
-				http.Error(w, "unknown skill", http.StatusBadRequest)
-				return
-			}
-			root, ok := effectiveRoot(r)
-			if !ok {
-				http.Error(w, "unknown project", http.StatusBadRequest)
-				return
-			}
-			sendJSON(w, getUpkeepReport(root, skill))
-			return
-		}
 		if m := apiWorktreeLockRe.FindStringSubmatch(path); m != nil {
 			root, ok := effectiveRoot(r)
 			if !ok {
@@ -900,19 +868,6 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 	}
 	if path == "/api/skill-eval/run" {
 		sendJSON(w, startSkillEvalRun(eroot, payload))
-		return
-	}
-	if path == "/api/upkeep/run" {
-		skill := stringValue(payload, "skill", "")
-		if !upkeepSkills[skill] {
-			http.Error(w, "bad request", http.StatusBadRequest)
-			return
-		}
-		model := stringValue(payload, "model", "")
-		if model == "" {
-			model = upkeepDefaultModel() // "" (no registry default) is refused by startUpkeepRun's model-id check
-		}
-		sendJSON(w, startUpkeepRun(eroot, skill, model))
 		return
 	}
 	if path == "/api/ci-workflow" {
@@ -3759,48 +3714,6 @@ func resolveSprintHeadless(toolsDir, root string, extraRoots ...string) string {
 	return candidates[0]
 }
 
-// resolveUpkeepRunBin finds the upkeep-run script (t-7ae6), mirroring
-// resolveSprintHeadless's override/candidate-search shape exactly.
-// UPKEEP_RUN_BIN overrides (tests point at a stub).
-func resolveUpkeepRunBin(toolsDir, root string, extraRoots ...string) string {
-	if b := os.Getenv("UPKEEP_RUN_BIN"); b != "" {
-		return b
-	}
-	candidates := upkeepRunBinCandidates(toolsDir, root, runtime.GOOS, extraRoots...)
-	for _, candidate := range candidates {
-		if exists(candidate) {
-			return candidate
-		}
-	}
-	return candidates[0]
-}
-
-// upkeepRunBinCandidates returns the ordered upkeep-run paths to try for a
-// given GOOS (t-1776). upkeep-run is a bash script with no Windows-native
-// entry point; exec.Command on an explicit path (not a bare name) does NOT
-// consult PATHEXT the way it would for a bare command, so launching the bash
-// script directly fails outright on Windows. tools/upkeep-run.cmd (mirrors
-// sprint.cmd's Git-for-Windows-locating pattern) is tried FIRST on Windows,
-// then the bash script as a fallback. goos is a parameter (not runtime.GOOS)
-// so the Windows ordering is unit-testable on any host — same idiom as
-// cockpitDaemonCandidates above.
-func upkeepRunBinCandidates(toolsDir, root, goos string, extraRoots ...string) []string {
-	toolsDirs := []string{toolsDir, filepath.Join(root, "tools")}
-	for _, er := range extraRoots {
-		toolsDirs = append(toolsDirs, filepath.Join(er, "tools"))
-	}
-	var candidates []string
-	if goos == "windows" {
-		for _, td := range toolsDirs { // .cmd wrapper first
-			candidates = append(candidates, filepath.Join(td, "upkeep-run.cmd"))
-		}
-	}
-	for _, td := range toolsDirs { // bash script (the only option on non-Windows)
-		candidates = append(candidates, filepath.Join(td, "upkeep-run"))
-	}
-	return candidates
-}
-
 // resolveCanonGateTemplate finds canon-gate-template.yml. Deliberately
 // independent of SPRINT_HEADLESS_BIN (t-1781) — that override only redirects
 // which binary gets *executed*, it must not also redirect where this sibling
@@ -4763,168 +4676,6 @@ func getMergeRunState(root, id string) map[string]any {
 	return res
 }
 
-// ── Upkeep (t-7ae6): headless, read-only per-project report runner ─────────
-// Mirrors runHeadless/startHeadlessRun/getHeadlessRunState's shape exactly,
-// keyed by (root, skill) instead of ticket id — parity with server.py.
-
-type upkeepKey struct{ root, skill string }
-
-var upkeepSkills = map[string]bool{
-	"context-check": true, "context-doctor": true, "dead-code-cleanup": true, "promote-learnings": true,
-}
-
-var upkeepReportRe = regexp.MustCompile(`(?m)^UPKEEP_REPORT: (.+)$`)
-
-func upkeepStatePath(root string) string {
-	return filepath.Join(root, ".reports", "upkeepRuns.json")
-}
-
-func upkeepStateLoad(root string) map[string]map[string]any {
-	data, err := os.ReadFile(upkeepStatePath(root))
-	if err != nil {
-		return map[string]map[string]any{}
-	}
-	var state map[string]map[string]any
-	if json.Unmarshal(data, &state) != nil {
-		return map[string]map[string]any{}
-	}
-	return state
-}
-
-func upkeepStateSave(root, skill string, entry map[string]any) {
-	p := upkeepStatePath(root)
-	_ = os.MkdirAll(filepath.Dir(p), 0o755)
-	state := upkeepStateLoad(root)
-	state[skill] = entry
-	data, err := json.MarshalIndent(state, "", "  ")
-	if err != nil {
-		return
-	}
-	_ = os.WriteFile(p, data, 0o644) // best-effort — in-memory upkeepRuns is authoritative for this process
-}
-
-func runUpkeep(root, skill, model string) {
-	key := upkeepKey{root, skill}
-	output, err := exec.Command(upkeepRunBin, skill, "--root", root, "--model", model).CombinedOutput()
-	exitCode := 0
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			exitCode = exitErr.ExitCode()
-		} else {
-			output = []byte(fmt.Sprintf("Error: could not start upkeep-run: %v", err))
-			exitCode = 1
-		}
-	}
-	reportPath := ""
-	if m := upkeepReportRe.FindStringSubmatch(string(output)); m != nil {
-		reportPath = strings.TrimSpace(m[1])
-	}
-	status := "done"
-	if exitCode != 0 || reportPath == "" {
-		status = "error"
-	}
-	finishedAt := time.Now()
-	upkeepRunsMu.Lock()
-	upkeepRuns[key]["status"] = status
-	upkeepRuns[key]["output"] = string(output)
-	upkeepRuns[key]["exit_code"] = exitCode
-	upkeepRuns[key]["report_path"] = reportPath
-	upkeepRuns[key]["finished_at"] = finishedAt
-	upkeepRunsMu.Unlock()
-	// t-1776: bound the persisted tail (parity with server.py's cockpit_set_debug-
-	// style budgeting elsewhere) so a future failure is self-diagnosing from
-	// upkeepRuns.json alone without inflating it unboundedly across runs.
-	outputTail := string(output)
-	if len(outputTail) > 2048 {
-		outputTail = outputTail[len(outputTail)-2048:]
-	}
-	upkeepStateSave(root, skill, map[string]any{
-		"status": status, "report_path": reportPath,
-		"finished_at": finishedAt.Unix(), "model": model, "output": outputTail,
-	})
-}
-
-// Same model-id rule as tools/upkeep-run; tests/fixtures/model-id-cases.json locks both.
-var upkeepModelRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:\[\]-]{0,63}$`)
-
-func validUpkeepModel(model string) bool { return upkeepModelRe.MatchString(model) }
-
-func startUpkeepRun(root, skill, model string) map[string]any {
-	if !upkeepSkills[skill] {
-		return map[string]any{"ok": false, "error": "unknown skill " + skill}
-	}
-	if !validUpkeepModel(model) {
-		return map[string]any{"ok": false, "error": "model must be a plain model id (letters, digits, . _ : [ ] -)"}
-	}
-	key := upkeepKey{root, skill}
-	upkeepRunsMu.Lock()
-	if existing, ok := upkeepRuns[key]; ok && existing["status"] == "running" {
-		upkeepRunsMu.Unlock()
-		state := getUpkeepRunState(root, skill)
-		state["ok"] = false
-		state["busy"] = true
-		return state
-	}
-	upkeepRuns[key] = map[string]any{"status": "running", "output": "", "exit_code": nil, "started_at": time.Now(), "model": model}
-	upkeepRunsMu.Unlock()
-	go runUpkeep(root, skill, model)
-	state := getUpkeepRunState(root, skill)
-	state["ok"] = true
-	return state
-}
-
-func getUpkeepRunState(root, skill string) map[string]any {
-	key := upkeepKey{root, skill}
-	upkeepRunsMu.Lock()
-	state, ok := upkeepRuns[key]
-	upkeepRunsMu.Unlock()
-	if ok {
-		// t-1776: surface the same bounded tail the persisted entry gets, so a
-		// failure is diagnosable from the dashboard, not just upkeepRuns.json.
-		out, _ := state["output"].(string)
-		if len(out) > 2048 {
-			out = out[len(out)-2048:]
-		}
-		result := map[string]any{
-			"status": state["status"], "exit_code": state["exit_code"],
-			"report_path": state["report_path"], "finished_at": state["finished_at"],
-			"model": state["model"], "output": out,
-		}
-		if state["status"] == "running" {
-			result["elapsed"] = time.Since(state["started_at"].(time.Time)).Seconds()
-		}
-		return result
-	}
-	if persisted, ok := upkeepStateLoad(root)[skill]; ok {
-		return map[string]any{
-			"status": persisted["status"], "exit_code": nil,
-			"report_path": persisted["report_path"], "finished_at": persisted["finished_at"],
-			"model": persisted["model"], "output": persisted["output"],
-		}
-	}
-	return map[string]any{"status": "idle", "report_path": ""}
-}
-
-func getUpkeepReport(root, skill string) map[string]any {
-	state := getUpkeepRunState(root, skill)
-	reportPath, _ := state["report_path"].(string)
-	if reportPath == "" {
-		return map[string]any{"ok": false, "error": "no report yet"}
-	}
-	// Containment: the report must live under this root's own .reports/ dir —
-	// never trust a path merely because it round-tripped through our own state.
-	reportsDir, err1 := filepath.Abs(filepath.Join(root, ".reports"))
-	absReport, err2 := filepath.Abs(reportPath)
-	if err1 != nil || err2 != nil || !strings.HasPrefix(absReport, reportsDir+string(filepath.Separator)) {
-		return map[string]any{"ok": false, "error": "report path outside .reports/"}
-	}
-	data, err := os.ReadFile(reportPath)
-	if err != nil {
-		return map[string]any{"ok": false, "error": err.Error()}
-	}
-	return map[string]any{"ok": true, "path": reportPath, "content": string(data)}
-}
-
 var staticNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*\.(css|js)$`)
 
 // serveStatic serves the board's own CSS and JS modules (t-9b2d) from the static/ folder beside
@@ -5086,12 +4837,6 @@ func loadModelTiers() map[string]any {
 	if len(found) == 0 {
 		return empty
 	}
-	// t-43ba: Upkeep's models and default live in the seed; a user file saved before them takes the seed's.
-	if _, ok := found[0]["upkeep"]; !ok && len(found) > 1 {
-		if u, ok := found[len(found)-1]["upkeep"]; ok {
-			found[0]["upkeep"] = u
-		}
-	}
 	// t-d40b: the same for the Refresh sources: a user file saved before they existed gets the seed's list.
 	if _, ok := found[0]["sources"]; !ok && len(found) > 1 {
 		if u, ok := found[len(found)-1]["sources"]; ok {
@@ -5099,14 +4844,6 @@ func loadModelTiers() map[string]any {
 		}
 	}
 	return found[0]
-}
-
-// upkeepDefaultModel is the registry's upkeep.default (t-43ba): the one Upkeep default, which the board's picker
-// selects and tools/upkeep-run falls back to. "" when the registry has none.
-func upkeepDefaultModel() string {
-	u, _ := loadModelTiers()["upkeep"].(map[string]any)
-	id, _ := u["default"].(string)
-	return id
 }
 
 // ── User themes (t-f889) — mirrors server.py's list_themes/open_themes_folder ──
