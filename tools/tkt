@@ -1108,7 +1108,9 @@ cmd_send_issue() {
     command -v claude >/dev/null 2>&1 && chelp="$(claude --help 2>&1 || true)"   # captured: grep -q would SIGPIPE it under pipefail
     [[ "$chelp" == *--cloud* ]] \
       || { echo "send-issue: --launch needs the Claude CLI with --cloud: update it (claude update), then try again" >&2; exit 1; }
-    [[ -t 0 ]] || $yes || { echo "send-issue: --launch asks before it sends, and there is no terminal to ask on; add --yes to send without asking" >&2; exit 1; }
+    # claude --cloud refuses without an interactive terminal (also when its output is piped, or run with ! inside a Claude Code
+    # session), so --launch needs one even with --yes, and runs claude on the terminal itself, never through $(...).
+    [[ -t 0 && -t 1 ]] || { echo "send-issue: --launch needs an interactive terminal: claude --cloud refuses to run piped or from a script. Run it in a terminal window, or send without --launch and start the session yourself" >&2; exit 1; }
   fi
 
   local file tdir title
@@ -1232,16 +1234,13 @@ cmd_send_issue() {
   printf '%s\n' "$start"
   printf 'From a terminal: %s\n' "$cmdline"
   if $launch; then
-    local lout lrc=0 sess
-    lout="$(cd "$root" && claude --cloud "$start" 2>&1)" || lrc=$?
-    printf '%s\n' "$lout"
-    sess="$(printf '%s\n' "$lout" | grep -Eo 'https://claude\.ai/code/[^ ]+' | sed -n 1p || true)"
-    if (( lrc != 0 )) || [[ -z "$sess" ]]; then
-      echo "send-issue: $id was sent, but claude --cloud did not start a session (see above). Start it yourself: $cmdline" >&2
+    local lrc=0
+    (cd "$root" && claude --cloud "$start") || lrc=$?
+    if (( lrc != 0 )); then
+      echo "send-issue: $id was sent, but claude --cloud did not start a session (exit $lrc). Start it yourself: $cmdline" >&2
       exit 1
     fi
-    _gh_trail "$tdir" launched "session: $sess"
-    printf 'Cloud session: %s\n' "$sess"
+    _gh_trail "$tdir" launched "command: $cmdline"
   fi
 }
 
@@ -2401,8 +2400,9 @@ Commands:
                             out like the board (Description, Acceptance, Plan, Research), for a
                             Claude cloud session ("Work on Issue#N"). Records github:
                             and runs: github. --launch also starts that session with
-                            `claude --cloud` from this checkout (asks first; --yes skips
-                            the question; warns, never pushes, if the branch is ahead).
+                            `claude --cloud` from this checkout, in a real terminal only
+                            (asks first; --yes skips the question; warns, never pushes,
+                            if the branch is ahead).
   import-issue <N> [--body-file F] [--force]
                             Rebuild .tickets/<id>/ from a send-issue body (used by
                             sprint import-issue in the cloud session).

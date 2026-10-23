@@ -153,11 +153,12 @@ script's Go block:
    in `ticket.md`, and prints the line to start with. A public repo is refused unless you add `--public`: anyone
    could read the ticket's notes.
 3. Start the session. One command does steps 2 and 3: `tkt send-issue <id> --launch` shows the issue, asks `[y/N]`
-   (`--yes` skips the question), creates it, then runs `claude --cloud "<prompt>"` from your checkout and saves the
-   session's `View:` URL in `.tickets/<id>/github.md`. The session runs on your account's default environment (the CLI
-   has no flag for a hosted one, only `--environment` for self-hosted pools), so make `canon` the default, and the
-   cloud clones origin's copy of your current branch: push it first (`--launch` warns, never pushes). From the board,
-   Send's panel also shows the same `claude --cloud '...'` line with a Copy command button; the board does not run it.
+   (`--yes` skips the question), creates it, then runs `claude --cloud "<prompt>"` from your checkout and notes the
+   launch in `.tickets/<id>/github.md`. It needs a real terminal window: `claude --cloud` refuses when its output is piped,
+   from a script, or run with `!` inside a Claude Code session. The session runs on your account's default environment
+   (the CLI has no flag for a hosted one, only `--environment` for self-hosted pools), so make `canon` the default, and the
+   cloud clones origin's copy of your current branch: push it first (`--launch` warns, never pushes). The board's Send
+   panel shows the same `claude --cloud '...'` line with a Copy command button; paste it into a terminal window.
    By hand: start a new session on the `canon` environment and your repo and paste the prompt `send-issue` printed
    (the board's Send panel shows the same line with a Copy prompt button), which reads: "Work on Issue#N for ticket <id>. Read its
    section "Working on this" thoroughly before starting and follow it step by step. Work on a new branch, never main."
