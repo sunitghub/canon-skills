@@ -40,6 +40,37 @@ assert_contains "$out" "broken file: tools/nope.sh"
 rc=0; "$ROOT/tools/doc-check" --root "$W" "$W/docs/none.md" >/dev/null 2>&1 || rc=$?
 [[ "$rc" == 2 ]] || fail "doc-check: a missing input file exited $rc, want 2"
 
+# Default file set: README.md, docs/*.md and tools/*.md are all read when no file is named.
+D="$(mktemp -d)"; mkdir -p "$D/docs" "$D/tools"; cp "$ROOT/tools/sprint" "$ROOT/tools/tkt" "$D/tools/"
+printf 'See [a](gone-a.md).\n' > "$D/README.md"; printf 'See [b](gone-b.md).\n' > "$D/docs/g.md"; printf 'See [c](gone-c.md).\n' > "$D/tools/t.md"
+rc=0; out="$("$ROOT/tools/doc-check" --root "$D" 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "doc-check: default set exited $rc, want 1: $out"
+for f in README.md docs/g.md tools/t.md; do assert_contains "$out" "$f:1: broken link"; done
+
+# Link forms: absolute-from-root resolves, a missing one does not; a tkt alias and an unknown tkt subcommand; code is not prose.
+cat > "$W/docs/forms.md" <<'MD'
+[ok](/docs/real.md) [no](/nope.md) [mail](mailto:a@b.c) [ph](<x>) [empty]()
+`tkt list` and `tkt bogus` and `[fake](nowhere.md)`
+```
+[fake](nowhere.md)
+```
+MD
+rc=0; out="$("$ROOT/tools/doc-check" --root "$W" "$W/docs/forms.md" 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "doc-check: forms doc exited $rc, want 1: $out"
+assert_contains "$out" "broken link: /nope.md"
+assert_contains "$out" "broken cmd: tkt bogus"
+[[ "$out" != *"tkt list"* && "$out" != *nowhere* && "$out" != *"real.md"* ]] || fail "doc-check: flagged something valid or inside code: $out"
+[[ "$(grep -c . <<<"$out")" == 2 ]] || fail "doc-check: expected exactly 2 findings: $out"
+
+# Without the tools in the root there is no subcommand list to compare against, so commands are not judged.
+E="$(mktemp -d)"; printf 'Run `sprint frobnicate`.\n' > "$E/a.md"
+"$ROOT/tools/doc-check" --root "$E" "$E/a.md" || fail "doc-check: judged a command with no dispatcher to compare against"
+
+# Options.
+"$ROOT/tools/doc-check" --help | grep -q usage || fail "doc-check: --help printed no usage"
+rc=0; "$ROOT/tools/doc-check" --bogus >/dev/null 2>&1 || rc=$?; [[ "$rc" == 2 ]] || fail "doc-check: unknown option exited $rc, want 2"
+rc=0; "$ROOT/tools/doc-check" --root >/dev/null 2>&1 || rc=$?; [[ "$rc" == 2 ]] || fail "doc-check: --root with no value exited $rc, want 2"
+
 # canon's own user-facing docs stay clean (the default file set).
 "$ROOT/tools/doc-check" --root "$ROOT" || fail "doc-check: canon's own docs have findings"
 echo "doc-check: ok"
