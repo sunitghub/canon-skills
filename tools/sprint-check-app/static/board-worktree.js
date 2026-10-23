@@ -727,10 +727,10 @@ export async function mountCockpitTerminal(t, cwd) {
     return;
   }
   cockpitState.addr = addr;
-  // Never autostart: the terminal always loads idle with Start sprint pulsing,
-  // for both a fresh OPEN ticket and a Resume — a launch should always be a
-  // deliberate click, not something that fires the moment the panel opens.
-  let url = `http://${addr}/cockpit?ticket=${encodeURIComponent(t.id)}&embed=1&autostart=0`;
+  // The terminal always loads idle with Start sprint pulsing, for both a fresh
+  // OPEN ticket and a Resume: a launch is always a deliberate click (the daemon
+  // page has no autostart since t-9a49).
+  let url = `http://${addr}/cockpit?ticket=${encodeURIComponent(t.id)}&embed=1`;
   // t-fc91: a shared daemon (t-391a) resolves an empty cwd to ITS launch project,
   // not this board's — so the Main checkout ('') must name this board's own project
   // root, else a second project's ticket resolves against the wrong project ("ticket

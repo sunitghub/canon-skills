@@ -305,10 +305,6 @@ func (s *server) guardHandler(next http.Handler) http.HandlerFunc {
 	return s.guard(next.ServeHTTP)
 }
 
-// handleCockpit serves the same-origin cockpit page with the daemon boot token
-// injected (loopback trust model — the page and the session API share an
-// origin, so the token never crosses origins). An optional ?ticket= prefills
-// the Start control; it is validated before injection.
 // framePageOK sets the frame policy for a page the board frames (/cockpit, /relay) and refuses a cross-site request
 // (t-9a49): only a loopback page may frame it, so another website can neither embed it nor load it in a frame.
 func framePageOK(w http.ResponseWriter, r *http.Request) bool {
@@ -337,6 +333,10 @@ func parentOrigin(r *http.Request) string {
 	return o
 }
 
+// handleCockpit serves the same-origin cockpit page with the daemon boot token
+// injected (loopback trust model — the page and the session API share an
+// origin, so the token never crosses origins). An optional ?ticket= prefills
+// the Start control; it is validated before injection.
 func (s *server) handleCockpit(w http.ResponseWriter, r *http.Request) {
 	if !framePageOK(w, r) {
 		return
