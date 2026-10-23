@@ -1,5 +1,5 @@
 {
-  "_about": "t-8627: only tests that failed for a reason other than a navigation stall in the quiet post-fix runs are listed. failing = failed in every run (quarantined: needs a ticket id and a QUARANTINE marker in the spec; none now); flaky = may fail any number of runs: needs a reason and a ticket id; skipped = allowed to be skipped; min_tests = per-browser floor on the tests reported.",
+  "_about": "t-8627: only a test that failed for a reason other than a navigation stall in the quiet runs is listed (the stalls were display sleep and are fixed in the spec). failing = failed in every run (quarantined: needs a ticket id and a QUARANTINE marker in the spec; none now); flaky = may fail any number of runs: needs a reason and a ticket id; skipped = allowed to be skipped; min_tests = per-browser floor on the tests reported.",
   "min_tests": {
     "chromium": 471,
     "webkit": 471
@@ -7,20 +7,12 @@
   "failing": [],
   "flaky": [
     {
-      "title": "cockpit in board (t-ddc8) > cross-project Sessions row (t-2d2e) > upkeep (t-67ab): the board path bar — branch under the path, no counts, + New · Sync · Upkeep · Scratch · CI on the right (order since t-90a3)",
-      "browsers": [
-        "webkit"
-      ],
-      "ticket": "t-8627",
-      "reason": "a 30 s test timeout in one WebKit run of 4 post-fix runs (t-8627 evidence/after run1); the same test passed in the other 3 runs and in chromium"
-    },
-    {
       "title": "cockpit preview pane (t-b19b) > no live session (e.g. idle Resume, pre-Start) shows a message, not an infinite \"Asking…\"",
       "browsers": [
         "webkit"
       ],
       "ticket": "t-8627",
-      "reason": "toContainText on #ck-preview failed in one WebKit run of 4 post-fix runs (t-8627 evidence/after run1); passed in the other 3 and in chromium"
+      "reason": "toContainText on #ck-preview failed in one WebKit run of 4 pre-display-fix runs (t-8627 evidence/after run1); passed in the other 3 and in chromium, and in both stamped bs-run runs"
     }
   ],
   "skipped": []
