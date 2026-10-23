@@ -1066,7 +1066,7 @@ EOF
   [[ "$gates_form" == with ]] && printf '| repo-check | ran | written before the gate was removed |\n' >> ".tickets/$rc_id/acceptance.md"
   printf '# Plan\n## Sign-off\nTier: trivial | Risk: one-liner\n- [x] Plan approved — proceed to implementation\n## Approach\nNone needed.\n' > ".tickets/$rc_id/plan.md"
   git -c user.name=t -c user.email=t@example.com commit -q --allow-empty -m fixture   # evidence.sh check needs a HEAD
-  rc_evidence="$("$SPRINT" check-evidence "$rc_id" 2>&1)" || fail "sprint check-evidence refused a Wrapup Gates table $gates_form a repo-check row: $rc_evidence"
+  rc_evidence="$(CANON_TICKETS_DIR="$PWD/.tickets" "$SPRINT" check-evidence "$rc_id" 2>&1)" || fail "sprint check-evidence refused a Wrapup Gates table $gates_form a repo-check row: $rc_evidence"
   assert_contains "$rc_evidence" "check-evidence:"
   rc_close="$("$SPRINT" complete 2>&1 || true)"
   assert_contains "$rc_close" "closed"
