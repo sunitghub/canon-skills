@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { evaluate } = require('./board-spec-guard.js');
+const { evaluate, stallsOf } = require('./board-spec-guard.js');
 
 let fails = 0;
 const ok = (name, cond, detail) => { if (cond) console.log('  ok   ' + name); else { fails++; console.log('  FAIL ' + name + (detail !== undefined ? '  => ' + JSON.stringify(detail) : '')); } };
@@ -139,6 +139,26 @@ const failing = { failing: [{ title: TITLE, browsers: ['chromium'], ticket: 't-a
   ok('a run that reported 0 tests is a violation', v(r).some((x) => /reported 0 tests, so nothing ran/.test(x)), v(r));
   const p = evaluate({ reports: none, baseline: { failing: [], flaky: [] }, specText: '', partial: true });
   ok('a 0-test run is a violation under --partial (--grep) too', v(p).some((x) => /reported 0 tests/.test(x)), v(p));
+}
+
+// ── t-8627: a navigation stall in some runs is a warning; in every run, or in a flood, it is not ──
+{
+  const stalled = (i, t, set) => Object.assign(rep('webkit', i, { [t]: set ? 'unexpected' : 'expected', other: 'expected' }), { stalls: new Set(set ? [t] : []) });
+  const some = evaluate({ reports: [stalled(1, TITLE, true), stalled(2, TITLE, false), stalled(3, TITLE, false)], baseline: { failing: [], flaky: [] }, specText: '' });
+  ok('a stall in 1 of 3 runs is a warning, not a violation', v(some).length === 0 && some.warnings.length === 1 && /stalled on navigation in 1 of 3/.test(some.warnings[0]), [v(some), some.warnings]);
+  const every = evaluate({ reports: [1, 2, 3].map((i) => stalled(i, TITLE, true)), baseline: { failing: [], flaky: [] }, specText: '' });
+  ok('a stall in every run of a test is a violation (a page that never loads is a regression)', v(every).length === 1 && /failed in every run/.test(v(every)[0]), v(every));
+  const mixed = [stalled(1, TITLE, true), Object.assign(rep('webkit', 2, { [TITLE]: 'unexpected', other: 'expected' }), { stalls: new Set() }), stalled(3, TITLE, false)];
+  ok('one stall plus one ordinary failure of the same test is a violation', v(evaluate({ reports: mixed, baseline: { failing: [], flaky: [] }, specText: '' })).length === 1);
+  const many = {}; const set = new Set(); for (let i = 0; i < 11; i++) { many['t' + i] = 'unexpected'; set.add('t' + i); }
+  const ok2 = Object.keys(many).reduce((a, k) => (a[k] = 'expected', a), {});
+  const flood = evaluate({ reports: [Object.assign(rep('webkit', 1, many), { stalls: set }), rep('webkit', 2, ok2), rep('webkit', 3, ok2)], baseline: { failing: [], flaky: [] }, specText: '' });
+  ok('more than 10 stalls in one run is a violation', v(flood).some((x) => /11 navigation stalls/.test(x)), v(flood));
+  const rec = (msg) => ({ suites: [{ title: 'f', specs: [{ title: 'a', tests: [{ status: 'unexpected', results: [{ error: { message: msg } }] }] }] }] });
+  ok('stallsOf reads the page.goto / page.first timeout signature from a real report shape',
+    stallsOf(rec('TimeoutError: page.first: Timeout 12000ms exceeded. Call log:\n  - navigating to "http://127.0.0.1:1/", waiting until "load"')).has('a') &&
+    stallsOf(rec('TimeoutError: page.goto: Timeout 30000ms exceeded.\nCall log:\n  - navigating to "http://x/"')).has('a'));
+  ok('stallsOf ignores an ordinary assertion timeout', stallsOf(rec('Error: expect(locator).toContainText(expected) failed\nTimeout 5000ms exceeded')).size === 0);
 }
 
 if (fails) { console.log(`\nboard-spec-guard-unit: ${fails} FAILED`); process.exit(1); }
