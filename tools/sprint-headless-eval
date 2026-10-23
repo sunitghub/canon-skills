@@ -227,6 +227,7 @@ done
 
 # --- Resolve skills-doc path for the evaluator protocol ---
 
+PIN_NOTE=""
 # t-89b0: CI pins the grading protocol to canon's own skills (the template sets CANON_GATE_SKILLS to the canon
 # checkout), so a skills/ or .claude/skills/ folder the graded PR adds is never read.
 if [[ -n "${CANON_GATE_SKILLS:-}" ]]; then
@@ -234,6 +235,9 @@ if [[ -n "${CANON_GATE_SKILLS:-}" ]]; then
   SKILLS_PREFIX="${CANON_GATE_SKILLS%/}"
   SUBAGENT_LOG="$SCRIPT_DIR/subagent-log.sh"
   SUBAGENT_LOG_ALLOW="Bash($SCRIPT_DIR/subagent-log.sh:*)"
+  # The entry docs send the subagent on to more skills/... docs by relative path; pin those hops too (t-89b0 review).
+  PIN_NOTE="
+Tell each subagent, in its instructions: every skills/... path those docs reference (and any .claude/skills/... or .agents/skills/... form of it) resolves under $SKILLS_PREFIX: read it there, never from this project's own skills/, .claude/skills/ or .agents/skills/ folders."
 elif [[ -d "$ROOT/skills/sprint" ]]; then
   SKILLS_PREFIX="skills"
   SUBAGENT_LOG="./tools/subagent-log.sh"
@@ -297,7 +301,7 @@ SPEC_TITLE="$(awk '/^#[[:space:]]/ { sub(/^#[[:space:]]+/, ""); print; exit }' "
 PROMPT="You are the orchestrator for a lightweight headless eval run. The code change under review already exists as the diff between $BASE_REF and HEAD — you never write or edit code yourself.
 
 Dispatch exactly one fresh Agent subagent, subagent_type: \"Plan\":
-- Evaluator — instruct it to read $SKILLS_PREFIX/sprint/reference/eval.md for the grading protocol format and evidence standards, then grade the following criteria against the diff between $BASE_REF and HEAD.
+- Evaluator — instruct it to read $SKILLS_PREFIX/sprint/reference/eval.md for the grading protocol format and evidence standards, then grade the following criteria against the diff between $BASE_REF and HEAD.$PIN_NOTE
 
 **Important adaptations for this lightweight mode:**
 - There is NO ticket ID and NO .tickets/ directory for this run. The evaluator must NOT try to read .tickets/ or look for acceptance.md/plan.md in .tickets/.

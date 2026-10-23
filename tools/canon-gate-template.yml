@@ -36,6 +36,7 @@ jobs:
       - name: Make canon skills resolvable to the gate
         run: |
           mkdir -p .claude
+          rm -rf .claude/skills   # a PR's own .claude/skills would otherwise get the link nested inside it (t-89b0)
           ln -sfn "$GITHUB_WORKSPACE/canon/skills" .claude/skills
 
       - name: Install Claude Code CLI

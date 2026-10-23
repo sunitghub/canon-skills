@@ -452,7 +452,11 @@ for gate in sprint-headless sprint-headless-eval; do
   if grep -qE "read (\.claude/)?skills/sprint/reference" "$CAP_ARGS"; then fail "t-89b0 $gate: prompt names the graded tree's skills/"; fi
   grep -qxF "<<ARG>>Bash($PIN_TOOLS/subagent-log.sh:*)" "$CAP_ARGS" || fail "t-89b0 $gate: must allow the install's subagent-log.sh"
   grep -qF "run: $PIN_TOOLS/subagent-log.sh --agent-id" "$CAP_ARGS" || fail "t-89b0 $gate: prompt must run the install's subagent-log.sh"
+  grep -qF "resolves under $PIN: read it there, never from this project's own skills/" "$CAP_ARGS" || fail "t-89b0 $gate: prompt must pin the docs' nested skills/... references"
 done
+# without the pin there is no such instruction (today's resolution, unchanged)
+: > "$CAP_ARGS"; (cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_ok "$SPRINT_HEADLESS" t-mdl1 --base-ref HEAD >/dev/null)
+if grep -qF "never from this project's own skills/" "$CAP_ARGS"; then fail "t-89b0: unpinned runs must not carry the pin note"; fi
 out="$(cd "$WORK" && CANON_GATE_SKILLS="$WORK/nowhere" PATH="$STUB_CAP_DIR:$PATH" run_fail "$SPRINT_HEADLESS" t-mdl1 --base-ref HEAD 2>&1)"
 assert_contains "$out" "has no sprint/ skill docs"
 

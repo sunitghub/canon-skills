@@ -93,7 +93,7 @@ What the generated workflow trusts (t-89b0):
 - **A ticket id is required.** `tools/gate-ticket-check` fails the job when the PR body names no `t-xxxx`, so a required check can't be passed by leaving it out.
 - **Approved criteria are pinned.** When the base branch already holds `.tickets/<id>/plan.md` with a checked `Plan approved`, the PR may not change that ticket's `ticket.md`, `plan.md` or `acceptance.md`; change approved criteria in their own reviewed PR.
 - **Criteria written in the PR are flagged.** In the usual flow (`tkt ci <id> on` commits the docs on the work branch) the gate grades the PR against criteria the same PR wrote, and says so with a `::warning::`. It checks the work against its ticket; it does not stop an author from writing easy criteria. To require a person's review of them, add `.tickets/**` to CODEOWNERS.
-- **The protocol is canon's.** The gate step sets `CANON_GATE_SKILLS` to the canon checkout's `skills/`, so `sprint-headless` and `sprint-headless-eval` never read a `skills/` folder the PR adds.
+- **The protocol is canon's.** The workflow replaces any `.claude/skills` the PR ships with a link to the canon checkout, and the gate step sets `CANON_GATE_SKILLS` to it. `sprint-headless` and `sprint-headless-eval` then name the pinned docs and tell each subagent to resolve every nested `skills/...` reference there. A `skills/` folder the PR adds still exists on disk; the gate is told never to read it, which is an instruction to the model rather than a sandbox.
 
 ## Consumer-Project CI
 
