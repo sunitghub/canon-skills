@@ -451,6 +451,7 @@ for gate in sprint-headless sprint-headless-eval; do
   grep -qF "read $PIN/sprint/reference/eval.md" "$CAP_ARGS" || fail "t-89b0 $gate: prompt must read the pinned $PIN/sprint/reference/eval.md"
   if grep -qE "read (\.claude/)?skills/sprint/reference" "$CAP_ARGS"; then fail "t-89b0 $gate: prompt names the graded tree's skills/"; fi
   grep -qxF "<<ARG>>Bash($PIN_TOOLS/subagent-log.sh:*)" "$CAP_ARGS" || fail "t-89b0 $gate: must allow the install's subagent-log.sh"
+  grep -qF "run: $PIN_TOOLS/subagent-log.sh --agent-id" "$CAP_ARGS" || fail "t-89b0 $gate: prompt must run the install's subagent-log.sh"
 done
 out="$(cd "$WORK" && CANON_GATE_SKILLS="$WORK/nowhere" PATH="$STUB_CAP_DIR:$PATH" run_fail "$SPRINT_HEADLESS" t-mdl1 --base-ref HEAD 2>&1)"
 assert_contains "$out" "has no sprint/ skill docs"

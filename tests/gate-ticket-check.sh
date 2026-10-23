@@ -17,6 +17,8 @@ Tier: normal | Risk: x
 - [x] Plan approved — proceed to implementation'
 doc t-aaaa ticket.md "id: t-aaaa"; doc t-aaaa plan.md "$approved_plan"; doc t-aaaa acceptance.md "- [ ] C1"
 doc t-bbbb ticket.md "id: t-bbbb"                                              # created on main, not yet planned
+doc t-dddd plan.md "$(printf '# Plan\n- [ ] Plan approved — proceed to implementation\n')"     # planned, not approved
+doc t-eeee plan.md "Note: once signed off, - [x] Plan approved goes on its own line."  # prose, not the checkbox
 g add -A; g commit -q -m base; BASE="$(g rev-parse HEAD)"
 
 run() {  # run <body> → sets out, rc
@@ -31,7 +33,10 @@ run "see kit-abcd for context"   # a t-xxxx inside another word is not an id
 
 # 2. Approved on the base and unchanged: graded against the base docs.
 run "Closes: t-aaaa"
-[[ $rc -eq 0 && "$out" == *"id=t-aaaa"* && "$out" != *"::warning::"* ]] || fail "approved, unchanged: rc=$rc $out"
+[[ $rc -eq 0 && "$out" == *"t-aaaa: graded against the plan and criteria approved on the base branch."* && "$out" == *"id=t-aaaa"* && "$out" != *"::warning::"* ]] || fail "approved, unchanged: rc=$rc $out"
+mkdir -p "$WORK/r/sub/dir"   # run from a subdirectory: .tickets/ paths still resolve from the repo root
+set +e; out="$(cd "$WORK/r/sub/dir" && printf 'Closes: t-aaaa' | "$TOOL" "$BASE" 2>&1)"; rc=$?; set -e
+[[ $rc -eq 0 && "$out" == *"approved on the base branch"* ]] || fail "from a subdirectory: rc=$rc $out"
 
 # 3. Approved on the base, PR changes each graded doc in turn: fail naming it.
 for f in acceptance.md plan.md ticket.md; do
@@ -46,7 +51,7 @@ run "Closes: t-aaaa"
 # 4. No approved plan on the base (created there, planned in the PR) and a ticket new in the PR: graded, with a warning.
 g checkout -q -B pr "$BASE"; doc t-bbbb plan.md "$approved_plan"; doc t-bbbb acceptance.md "- [ ] C1"; doc t-cccc ticket.md "id: t-cccc"
 g add -A; g commit -qm plan
-for t in t-bbbb t-cccc; do
+for t in t-bbbb t-cccc t-dddd t-eeee; do
   run "Closes: $t"
   [[ $rc -eq 0 && "$out" == *"::warning::$t's plan and criteria were authored in this PR"* && "$out" == *"id=$t"* ]] || fail "$t authored in the PR: rc=$rc $out"
 done
