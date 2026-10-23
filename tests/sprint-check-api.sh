@@ -462,7 +462,10 @@ code="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$B/api/ticket/notaticket
 rm -rf "$WORK/.github"
 ci1="$(curl -s -X POST "$B/api/ci-workflow" -d '{}')"
 [[ "$(printf '%s' "$ci1" | json_get ok)" == True ]] || fail "sprint-check-api: ci-workflow create not ok: $ci1"
-cmp -s "$WORK/.github/workflows/canon-gate.yml" "$ROOT/tools/canon-gate-template.yml" || fail "sprint-check-api: the written canon-gate.yml differs from the shipped template"
+# t-04f4: the written file is the template with the canon ref pinned to this install's release tag.
+sed "s/__CANON_REF__/v$(tr -d '[:space:]' < "$ROOT/VERSION")/" "$ROOT/tools/canon-gate-template.yml" > "$WORK/canon-gate.expected"
+cmp -s "$WORK/.github/workflows/canon-gate.yml" "$WORK/canon-gate.expected" || fail "sprint-check-api: the written canon-gate.yml is not the template with the canon ref pinned"
+grep -q "ref: v[0-9]*\.[0-9]*\.[0-9]* " "$WORK/.github/workflows/canon-gate.yml" || fail "sprint-check-api: the written canon-gate.yml has no pinned canon ref"
 ci2="$(curl -s -X POST "$B/api/ci-workflow" -d '{}')"
 [[ "$(printf '%s' "$ci2" | json_get ok)" == False && "$(printf '%s' "$ci2" | json_get reason)" == exists ]] || fail "sprint-check-api: ci-workflow did not refuse on exists: $ci2"
 rm -rf "$WORK/.github"

@@ -1742,6 +1742,12 @@ func createTicket(title, typ, status string, priority int, body string, ci bool,
 	return t
 }
 
+// canonRefPlaceholder in canon-gate-template.yml becomes v<VERSION> when the board writes the workflow (t-04f4).
+const canonRefPlaceholder = "__CANON_REF__"
+
+// releaseVersionRe is a release VERSION: exactly x.y.z, the form canon-skills tags as v<x.y.z>.
+var releaseVersionRe = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
+
 // writeCIWorkflow copies the shipped canon-gate workflow template to the
 // project's .github/workflows/canon-gate.yml. Fixed target path (no traversal);
 // refuses rather than clobbering an existing workflow. Mirror of server.py's
@@ -1756,6 +1762,15 @@ func writeCIWorkflow() map[string]any {
 	if err != nil {
 		return map[string]any{"ok": false, "reason": err.Error(), "path": rel}
 	}
+	// t-04f4: the workflow checks canon out at the release tag of this install, never a moving branch.
+	ver := canonVersion()
+	if !releaseVersionRe.MatchString(ver) {
+		return map[string]any{"ok": false, "reason": "this canon has no release version (" + ver + "), so the workflow cannot pin canon; run Set up CI gate from a released install", "path": rel}
+	}
+	if n := strings.Count(string(data), canonRefPlaceholder); n != 1 {
+		return map[string]any{"ok": false, "reason": fmt.Sprintf("the canon-gate template has %d %s placeholders, want 1", n, canonRefPlaceholder), "path": rel}
+	}
+	data = []byte(strings.Replace(string(data), canonRefPlaceholder, "v"+ver, 1))
 	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
 		return map[string]any{"ok": false, "reason": err.Error(), "path": rel}
 	}

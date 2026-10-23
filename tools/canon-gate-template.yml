@@ -9,26 +9,35 @@
 # base branch is graded against those docs, and a PR that changes them fails. Criteria authored in the PR itself
 # are graded with a warning that a person should review them (add .tickets/** to CODEOWNERS to enforce that).
 # The grading protocol always comes from the canon checkout, never from the PR.
+# t-04f4: least privilege and pinned. The token is read-only and not kept in .git/config; the actions, the canon
+# checkout (the release of the install that wrote this file) and the Claude Code CLI are fixed versions. Re-run
+# "Set up CI gate" after updating canon to move to the new release (docs/ci-security.md).
 name: canon gate
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
 
+permissions:
+  contents: read
+
 jobs:
   grade:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout the PR
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0            # full history — the gate diffs against the base SHA
+          persist-credentials: false
 
       - name: Checkout canon
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: sunitghub/canon-skills
+          ref: __CANON_REF__        # the board writes the release tag of the canon that generated this file
           path: canon
+          persist-credentials: false
 
       - name: Add canon tools to PATH
         run: echo "$GITHUB_WORKSPACE/canon/tools" >> "$GITHUB_PATH"
@@ -40,7 +49,7 @@ jobs:
           ln -sfn "$GITHUB_WORKSPACE/canon/skills" .claude/skills
 
       - name: Install Claude Code CLI
-        run: npm install -g @anthropic-ai/claude-code
+        run: npm install -g @anthropic-ai/claude-code@2.1.309
 
       - name: Check the PR's canon ticket
         id: tkt
