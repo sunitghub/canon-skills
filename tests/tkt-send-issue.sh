@@ -281,6 +281,23 @@ got="$(eval "set -- ${cmdline#From a terminal: claude --cloud }"; printf '%s' "$
 assert_eq "$want" "$got"
 [[ ! -s "$STUB_CLAUDE_LOG" ]] || fail "claude ran without --launch"
 
+# No claude on PATH at all (the same PATH-without-one-command trick as the gh case below), the usage line, and the help text.
+noclaude="$stub/noclaude"; mkdir "$noclaude"; path_nocl=""
+IFS=: read -ra cdirs <<<"$PATH"
+for dir in "${cdirs[@]}"; do
+  [[ "$dir" == "$stub" ]] && continue
+  if [[ -x "$dir/claude" ]]; then
+    for f in "$dir"/*; do [[ "${f##*/}" == claude || -e "$noclaude/${f##*/}" ]] || ln -s "$f" "$noclaude/${f##*/}"; done
+  else path_nocl="$path_nocl:$dir"; fi
+done
+idc="$(fresh noclaude)"
+rc=0; r="$(PATH="$noclaude$path_nocl" "$TKT" send-issue "$idc" --launch --yes 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "no claude should exit 1, got $rc: $r"; assert_contains "$r" "needs the Claude CLI with --cloud"
+rc=0; r="$("$TKT" send-issue 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "send-issue without an id should exit 1, got $rc"; assert_contains "$r" "Usage: tkt send-issue <id> [--dry-run] [--public] [--launch [--yes]]"
+h="$("$TKT" --help 2>&1)"
+assert_contains "$h" "send-issue <id> [--dry-run] [--public] [--launch [--yes]]"; assert_contains "$h" "in a real terminal only"
+
 # Refusals come before anything is created: a claude without --cloud, no terminal (with or without --yes), --yes alone, --launch with --dry-run.
 idl="$(fresh refuse)"; : > "$STUB_LOG"; before="$(cksum < ".tickets/$idl/ticket.md")"
 rc=0; r="$(STUB_NOCLOUD=1 "$TKT" send-issue "$idl" --launch --yes 2>&1)" || rc=$?
@@ -293,6 +310,7 @@ rc=0; r="$("$TKT" send-issue "$idl" --yes 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "--yes alone should exit 1, got $rc"; assert_contains "$r" "--yes only goes with --launch"
 rc=0; r="$("$TKT" send-issue "$idl" --launch --dry-run 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "--launch --dry-run should exit 1, got $rc"
+assert_contains "$r" "cannot go together"
 [[ "$(writes)" == 0 ]] || fail "a refused --launch made a writing gh call: $(cat "$STUB_LOG")"
 [[ "$(cksum < ".tickets/$idl/ticket.md")" == "$before" ]] || fail "a refused --launch changed the ticket"
 [[ ! -s "$STUB_CLAUDE_LOG" ]] || fail "a refused --launch ran claude"
@@ -301,30 +319,51 @@ rc=0; r="$("$TKT" send-issue "$idl" --launch --dry-run 2>&1)" || rc=$?
 if ! command -v python3 >/dev/null 2>&1; then
   echo "tkt-send-issue: skipped the --launch cases that need a terminal: no python3"
 else
-  ptyrun() { python3 -I - "$TKT" "$1" "$2" <<'PYEOF'
-import os, pty, sys
-tkt, tid, ans = sys.argv[1:4]
-args = [tkt, "send-issue", tid, "--launch"] + (["--yes"] if ans == "yes" else [])
+  # pty.py runs tkt send-issue --launch on a pty. mode: flag (adds --yes) or the answer typed at [y/N]: n, y, yes, eof (Ctrl-D).
+  # PTY_HALF=stdin gives a terminal on stdin only, stdout a pipe; PTY_HALF=stdout the reverse; PTY_CWD sets the directory.
+  cat > "$stub/pty.py" <<'PYEOF'
+import os, pty, subprocess, sys
+tkt, tid, mode = sys.argv[1:4]
+half, cwd = os.environ.get("PTY_HALF", ""), os.environ.get("PTY_CWD") or None
+args = [tkt, "send-issue", tid, "--launch"] + (["--yes"] if mode == "flag" else [])
+if half:
+    m, s = pty.openpty()
+    if half == "stdin":
+        p = subprocess.Popen(args, stdin=s, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, cwd=cwd)
+        out = p.communicate()[0]
+    else:
+        p = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=s, stderr=s, cwd=cwd)
+        os.close(s)
+        out = b""
+        while True:
+            try: d = os.read(m, 4096)
+            except OSError: break
+            if not d: break
+            out += d
+        p.wait()
+    sys.stdout.write(out.decode(errors="replace")); sys.exit(p.returncode)
 pid, fd = pty.fork()
 if pid == 0:
+    if cwd: os.chdir(cwd)
     os.execv(tkt, args)
+reply = {"n": b"n\n", "y": b"y\n", "yes": b"yes\n", "eof": b"\x04"}.get(mode)
 buf, sent = b"", False
 while True:
     try: d = os.read(fd, 4096)
     except OSError: break
     if not d: break
     buf += d
-    if not sent and ans != "yes" and b"[y/N]" in buf:
-        os.write(fd, (ans + "\n").encode()); sent = True
+    if reply and not sent and b"[y/N]" in buf:
+        os.write(fd, reply); sent = True
 _, st = os.waitpid(pid, 0)
 sys.stdout.write(buf.decode(errors="replace"))
 sys.exit(os.waitstatus_to_exitcode(st))
 PYEOF
-  }
+  ptyrun() { python3 -I "$stub/pty.py" "$TKT" "$1" "${2:-flag}"; }
 
   # --yes: the issue as today, then claude --cloud <start line> from the project root on the terminal, and the launch in the trail.
   idy="$(fresh yes)"; : > "$STUB_LOG"; : > "$STUB_CLAUDE_LOG"
-  out="$(ptyrun "$idy" yes)" || fail "--launch --yes on a terminal failed: $out"
+  out="$(ptyrun "$idy" flag)" || fail "--launch --yes on a terminal failed: $out"
   assert_contains "$out" "Sent $idy as https://github.com/acme/app/issues/57"
   assert_contains "$out" "View: https://claude.ai/code/session_abc"        # claude's own output reaches the terminal
   assert_grep "^cwd=$project_real$" "$STUB_CLAUDE_LOG"
@@ -337,7 +376,7 @@ PYEOF
 
   # claude fails after the issue exists: the issue stays recorded, the manual command is printed, exit 1, no launched entry.
   idm="$(fresh fail)"; : > "$STUB_LOG"
-  rc=0; r="$(STUB_CLAUDE=fail ptyrun "$idm" yes)" || rc=$?
+  rc=0; r="$(STUB_CLAUDE=fail ptyrun "$idm" flag)" || rc=$?
   [[ "$rc" == 1 ]] || fail "a failing claude should exit 1, got $rc: $r"
   assert_contains "$r" "was sent, but claude --cloud did not start a session"
   assert_contains "$r" "Start it yourself: claude --cloud '"
@@ -347,14 +386,14 @@ PYEOF
   # A branch without an upstream, or ahead of it, warns and pushes nothing.
   git -c user.name=t -c user.email=t@t commit -q --allow-empty -m base; git -c user.name=t -c user.email=t@t commit -q --allow-empty -m next
   br="$(git rev-parse --abbrev-ref HEAD)"
-  r="$(ptyrun "$(fresh noup)" yes)"
+  r="$(ptyrun "$(fresh noup)" flag)"
   assert_contains "$r" "branch $br has no upstream"
   git config "branch.$br.remote" origin; git config "branch.$br.merge" "refs/heads/$br"; git update-ref "refs/remotes/origin/$br" HEAD~1
-  r="$(ptyrun "$(fresh ahead)" yes)"
+  r="$(ptyrun "$(fresh ahead)" flag)"
   assert_contains "$r" "branch $br is 1 commit(s) ahead of its upstream"
   [[ "$(git rev-parse "refs/remotes/origin/$br")" == "$(git rev-parse HEAD~1)" ]] || fail "--launch moved the upstream ref"
   git update-ref "refs/remotes/origin/$br" HEAD   # level with the upstream, the usual case: no warning, and under set -e no stop
-  rc=0; r="$(ptyrun "$(fresh level)" yes)" || rc=$?
+  rc=0; r="$(ptyrun "$(fresh level)" flag)" || rc=$?
   [[ "$rc" == 0 ]] || fail "--launch on a branch level with its upstream failed ($rc): $r"
   [[ "$r" != *"warning: branch"* ]] || fail "a branch level with its upstream warned: $r"
 
@@ -362,12 +401,37 @@ PYEOF
   idn="$(fresh no)"; : > "$STUB_LOG"; : > "$STUB_CLAUDE_LOG"; before="$(cksum < ".tickets/$idn/ticket.md")"
   r="$(ptyrun "$idn" n)" || fail "answering n should exit 0: $r"
   assert_contains "$r" "--- body ---"; assert_contains "$r" "not sent; nothing was created"
+  assert_contains "$r" "repo: acme/app (PRIVATE)"; assert_contains "$r" "title: $idn: Launch case no"; assert_contains "$r" "# Description"
   [[ "$(writes)" == 0 && ! -s "$STUB_CLAUDE_LOG" ]] || fail "answer n still sent or launched"
   [[ "$(cksum < ".tickets/$idn/ticket.md")" == "$before" ]] || fail "answer n changed the ticket"
   : > "$STUB_CLAUDE_LOG"
   r="$(ptyrun "$(fresh yes2)" y)" || fail "answering y should exit 0: $r"
   assert_contains "$r" "View: https://claude.ai/code/session_abc"
   assert_grep "^arg=--cloud$" "$STUB_CLAUDE_LOG"
+
+  # claude --cloud refuses unless stdin AND stdout are terminals: either one alone is refused, before anything is created.
+  for half in stdin stdout; do
+    idh="$(fresh "half-$half")"; : > "$STUB_LOG"; : > "$STUB_CLAUDE_LOG"
+    rc=0; r="$(PTY_HALF=$half ptyrun "$idh" flag)" || rc=$?
+    [[ "$rc" == 1 ]] || fail "a terminal on $half only should exit 1, got $rc: $r"
+    assert_contains "$r" "needs an interactive terminal"
+    [[ "$(writes)" == 0 && ! -s "$STUB_CLAUDE_LOG" ]] || fail "a terminal on $half only still sent or launched"
+  done
+
+  # The answer is read as typed: "yes" sends and launches, and Ctrl-D (end of input) is a no, not a crash.
+  : > "$STUB_CLAUDE_LOG"
+  r="$(ptyrun "$(fresh word)" yes)" || fail "answering yes should exit 0: $r"
+  assert_contains "$r" "View: https://claude.ai/code/session_abc"
+  assert_grep "^arg=--cloud$" "$STUB_CLAUDE_LOG"
+  : > "$STUB_LOG"; : > "$STUB_CLAUDE_LOG"
+  r="$(ptyrun "$(fresh eof)" eof)" || fail "Ctrl-D at the question should exit 0: $r"
+  assert_contains "$r" "not sent; nothing was created"
+  [[ "$(writes)" == 0 && ! -s "$STUB_CLAUDE_LOG" ]] || fail "Ctrl-D still sent or launched"
+
+  # claude starts in the project root even when tkt runs from a subdirectory.
+  mkdir -p sub; : > "$STUB_CLAUDE_LOG"
+  r="$(PTY_CWD="$project_real/sub" ptyrun "$(fresh subdir)" flag)" || fail "--launch from a subdirectory failed: $r"
+  assert_grep "^cwd=$project_real$" "$STUB_CLAUDE_LOG"
 fi
 
 echo "tkt-send-issue: ok"
