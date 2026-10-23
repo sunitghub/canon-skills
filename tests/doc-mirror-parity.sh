@@ -228,7 +228,7 @@ done
 # merging (t-936d). This is what t-8f16's headless/demo contradiction slipped
 # through: Check I only locked the evaluator-floor phrase, not the gate list
 # or the headless carve-out that actually drifted.
-DEMO_GATE_LIST='keep exactly `security-review` + the binding evaluator, skip the advisory reviewer + the rest of wrapup — a superset of what `bugfix` trims, additionally dropping `code-reviewer` and `repo-check` (which `bugfix` keeps).'
+DEMO_GATE_LIST='keep exactly `security-review` + the binding evaluator, skip the advisory reviewer + the rest of wrapup — a superset of what `bugfix` trims, additionally dropping `code-reviewer` (which `bugfix` keeps).'
 DEMO_HAIKU='evaluator is forced to Haiku'
 DEMO_HEADLESS='Headless/CI never reduces the gate set for `demo`: `sprint-headless` runs its full pipeline and ignores `demo` entirely; `sprint-headless-eval` (already eval-only) also runs its full gate set but reads `demo: true` to default the evaluator to Haiku when no `--model` is given — a model choice, never a skipped gate.'
 
@@ -280,18 +280,20 @@ for file in "$ROOT/agents/canon-reviewer.md" "$ROOT/agents/canon-evaluator.md" "
 done
 grep -qF -- '**Pin the environment**' "$SHARED" || fail "doc-mirror-parity: shared-gate-protocol.md is missing the '**Pin the environment**' paragraph (t-ce0b, Check M)"
 
-# ── Check N: repo-check runs in a canon checkout only (t-b215). wrapup/SKILL.md's skip names the same canon-checkout test and record line
-# as complete.md's skill-eval skip (one meaning of "canon checkout"), and the two generic checks it no longer runs in user projects live
-# in doc-audit (stale references) and code-reviewer (syntax).
+# ── Check N: the repo-check gate is gone (t-0a7c); its checks live elsewhere. The wrapup pipeline no longer names it, the gate file is
+# deleted, doc-audit hands its mechanical checks to tools/doc-check, and code-reviewer holds the syntax check and the canon-checkout-only
+# checks (skills lint, catalog drift, orphan scripts, board render). complete.md's skill-eval skip keeps the canon-checkout test (t-b215).
 COMPLETE_MD="$ROOT/skills/sprint/reference/complete.md"
-for frag in '`tools/skill-eval-scope.sh` does not exist' 'skipped | not a canon checkout'; do
-  grep -qF -- "$frag" "$WRAPUP" || fail "doc-mirror-parity: wrapup/SKILL.md's repo-check skip lost '$frag' (t-b215, Check N)"
-done
+grep -qF -- 'security-review → doc-audit → refresh docs' "$WRAPUP" || fail "doc-mirror-parity: wrapup/SKILL.md's pipeline is not code-simplifier → code-reviewer → security-review → doc-audit → refresh docs (t-0a7c, Check N)"
+[[ ! -e "$ROOT/skills/wrapup/gates/repo-check.md" ]] || fail "doc-mirror-parity: skills/wrapup/gates/repo-check.md is back; the gate was removed (t-0a7c, Check N)"
 for frag in '`tools/skill-eval-scope.sh`' '`skipped | not a canon checkout`'; do
-  grep -qF -- "$frag" "$COMPLETE_MD" || fail "doc-mirror-parity: complete.md's skill-eval skip lost '$frag', the test wrapup's repo-check skip shares (t-b215, Check N)"
+  grep -qF -- "$frag" "$COMPLETE_MD" || fail "doc-mirror-parity: complete.md's skill-eval skip lost '$frag' (t-b215, Check N)"
 done
-grep -qF -- '**Stale references**' "$ROOT/skills/doc-audit/SKILL.md" || fail "doc-mirror-parity: doc-audit lost its Stale references check, moved there from repo-check (t-b215, Check N)"
-grep -qF -- '`bash -n` for shell scripts' "$ROOT/skills/wrapup/gates/reviewer.md" || fail "doc-mirror-parity: code-reviewer lost its syntax check, moved there from repo-check (t-b215, Check N)"
+grep -qF -- 'tools/doc-check' "$ROOT/skills/doc-audit/SKILL.md" || fail "doc-mirror-parity: doc-audit no longer runs tools/doc-check first (t-0a7c, Check N)"
+grep -qF -- 'only when a user-facing doc changed' "$ROOT/skills/doc-audit/SKILL.md" || fail "doc-mirror-parity: doc-audit lost its skip rule (t-0a7c, Check N)"
+for frag in '`bash -n` for shell scripts' 'canon-dev.sh lint' 'canon-dev.sh catalog'; do
+  grep -qF -- "$frag" "$ROOT/skills/wrapup/gates/reviewer.md" || fail "doc-mirror-parity: code-reviewer lost '$frag', moved there from repo-check (t-0a7c, Check N)"
+done
 
 # ── Check O: efficiency.md is the always-loaded minimum and efficiency-notes.md holds its domain rules (t-8837). Every domain the
 # index line in efficiency.md names must be a section of the notes file, or an agent is sent to a section that does not exist; and the

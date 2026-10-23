@@ -26,6 +26,13 @@ hidden: true
 4. Syntax check on changed files: `bash -n` for shell scripts; for Python, `python3 -m py_compile` only when
    `python3 -c ''` succeeds, else say it was skipped and why (a Windows machine may have no working `python3`). A
    failure is a Critical finding.
+   **Canon checkout only** (`tools/skill-eval-scope.sh` exists; the checks `repo-check` used to make, `t-0a7c`), each only
+   when its files changed: (a) any `skills/**/SKILL.md` → `./tools/canon-dev.sh lint` must print `skills lint: clean`;
+   (b) skill or tool frontmatter → `./tools/canon-dev.sh catalog`, and `CATALOG.md` must be in the diff when it changed;
+   (c) a new file in `scripts/`, `tools/` or a workflow dir → something wires it (`skills.sh init`, an extension, a test,
+   a doc) or it is documented as run by hand — an orphan is a finding; (d) `tools/sprint-check*`, `docs/sprint-check.md`
+   or README board claims → render the affected flow in a real browser (`tools/sprint-check-app/CLAUDE.md`, or
+   `skills/sprint/reference/shared-gate-protocol.md ## Self-serve visual verification`); `open` alone does not count.
 5. Report every real finding — place each into the severity sections below rather than omitting it; do not drop a finding because it looks low-severity or you are not fully certain. Coverage is the job at the finding stage; ranking and filtering happen in the sections (and downstream, via the human).
 6. For PRs, return to the previous/default branch.
 

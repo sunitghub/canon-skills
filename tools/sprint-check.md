@@ -10,7 +10,7 @@ hidden: true
 
 A browser-based kanban board that reads the current project's tickets, HANDOFF.md, and git history. No cloud, no login, no install beyond canon.
 
-![sprint-check board](../meta/screenshots/sprint-check-legacy.png)
+![sprint-check board](../meta/screenshots/board-light.png)
 
 ## Getting Started
 

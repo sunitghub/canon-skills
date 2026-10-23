@@ -1026,7 +1026,7 @@ cat > ".tickets/$bugfix_id/acceptance.md" <<'EOF'
 | Gate | Status | Reason |
 |------|--------|--------|
 | security-review | ran | no trust boundary touched |
-| repo-check | ran | single-file fix |
+| code-reviewer | ran | single-file fix |
 EOF
 cat > ".tickets/$bugfix_id/plan.md" <<'EOF'
 # Plan
@@ -1046,6 +1046,33 @@ assert_contains "$bugfix_no_eval" "eval-report.md is missing"
 sed -i.bak 's/^Tier: bugfix .*/Tier: trivial | Risk: genuinely a one-liner/' ".tickets/$bugfix_id/plan.md" && rm -f ".tickets/$bugfix_id/plan.md.bak"
 trivial_close="$("$SPRINT" complete 2>&1 || true)"
 assert_contains "$trivial_close" "closed"
+
+# --- Wrapup Gates without a repo-check row, and an old table that still has one (t-0a7c): the gate is gone, neither form is an error ---
+for gates_form in without with; do
+  rc_id="$("$SPRINT" start "wrapup gates $gates_form repo-check row" | awk '/Sprint started:/ { print $3 }')"
+  [[ "$rc_id" =~ ^t-[0-9a-f]{4}$ ]] || fail "sprint start gave no ticket id for the $gates_form repo-check case"
+  printf '# Summary\n| Item | Status |\n|---|---|\n| x | delivered |\n' > ".tickets/$rc_id/summary.md"
+  cat > ".tickets/$rc_id/acceptance.md" <<'EOF'
+# Acceptance
+## Criteria
+- [x] Done.
+## Test Plan
+- [x] npm test
+## Wrapup Gates
+| Gate | Status | Reason |
+|------|--------|--------|
+| security-review | ran | no trust boundary touched |
+EOF
+  [[ "$gates_form" == with ]] && printf '| repo-check | ran | written before the gate was removed |\n' >> ".tickets/$rc_id/acceptance.md"
+  printf '# Plan\n## Sign-off\nTier: trivial | Risk: one-liner\n- [x] Plan approved — proceed to implementation\n## Approach\nNone needed.\n' > ".tickets/$rc_id/plan.md"
+  git -c user.name=t -c user.email=t@example.com commit -q --allow-empty -m fixture   # evidence.sh check needs a HEAD
+  rc_evidence="$("$SPRINT" check-evidence "$rc_id" 2>&1)" || fail "sprint check-evidence refused a Wrapup Gates table $gates_form a repo-check row: $rc_evidence"
+  assert_contains "$rc_evidence" "check-evidence:"
+  rc_close="$("$SPRINT" complete 2>&1 || true)"
+  assert_contains "$rc_close" "closed"
+  [[ "$rc_close" != *"Wrapup Gates"* ]] || fail "sprint complete objected to a Wrapup Gates table $gates_form a repo-check row: $rc_close"
+done
+git update-ref -d "$(git symbolic-ref HEAD)"   # back to the fixture's no-commit state for the cases below
 
 # --- sprint suggest-tier (t-b6a3): propose-only structural bugfix-tier classifier ---
 # Isolated git fixtures (make_project's shared repo has no origin/main baseline).

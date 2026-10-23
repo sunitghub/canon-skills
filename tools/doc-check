@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# doc-check — doc-audit's mechanical checks, no model (t-0a7c).
+#   doc-check [--root DIR] [file.md ...]
+# Per doc: (1) a relative markdown link must resolve; (2) a `sprint <sub>` / `tkt <sub>` in a code span or fence must
+# name a subcommand the tool's dispatcher knows; (3) a code-span path under a top-level dir of the root
+# (tools/, skills/, docs/ ...) with a file extension must exist. Default files: README.md, docs/*.md, tools/*.md.
+# Exit 0 clean; 1 names each finding as `file:line: <kind>: <what>`; 2 usage. Judgment checks stay with doc-audit.
+set -euo pipefail
+
+root=""; files=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --root) [[ $# -ge 2 ]] || { echo "usage: doc-check [--root DIR] [file.md ...]" >&2; exit 2; }; root="$2"; shift 2 ;;
+    -h|--help) echo "usage: doc-check [--root DIR] [file.md ...]"; exit 0 ;;
+    -*) echo "doc-check: unknown option $1" >&2; exit 2 ;;
+    *) files+=("$1"); shift ;;
+  esac
+done
+[[ -n "$root" ]] || root="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "doc-check: not in a git repo; pass --root" >&2; exit 2; }
+root="$(cd "$root" && pwd)"
+if [[ ${#files[@]} -eq 0 ]]; then
+  for f in "$root"/README.md "$root"/docs/*.md "$root"/tools/*.md; do [[ -f "$f" ]] && files+=("$f"); done
+fi
+
+# A tool's subcommands: the labels of the last `case "$cmd" in` block of its dispatcher (empty when the tool is absent).
+subs() {
+  local t="$root/tools/$1"
+  [[ -f "$t" ]] || return 0
+  awk '/case "\$cmd" in/{n=0; f=1; next} f&&/^  esac/{f=0} f&&/^    [a-z][a-z0-9|_-]*\)/{gsub(/\)/,"",$1); print $1}' "$t" \
+    | tr '|' '\n' | grep -v '^-' | sort -u || true
+}
+sprint_subs="$(subs sprint)"; tkt_subs="$(subs tkt)"
+tops="$(cd "$root" && for d in */; do printf '%s|' "${d%/}"; done)"; tops="${tops%|}"
+
+bad=0
+for f in "${files[@]}"; do
+  [[ -f "$f" ]] || { echo "doc-check: no such file: $f" >&2; exit 2; }
+  dir="$(cd "$(dirname "$f")" && pwd)"
+  while IFS=$'\t' read -r line kind what; do
+    [[ -n "$line" ]] || continue
+    case "$kind" in
+      link) target="${what%%[#?]*}"
+        [[ -z "$target" ]] && continue
+        if [[ "$target" == /* ]]; then p="$root$target"; else p="$dir/$target"; fi
+        [[ -e "$p" ]] && continue ;;
+      cmd) tool="${what%% *}"; sub="${what#* }"
+        list="$sprint_subs"; [[ "$tool" == tkt ]] && list="$tkt_subs"
+        [[ -z "$list" ]] && continue
+        grep -qxF -- "$sub" <<<"$list" && continue ;;
+      file) [[ -e "$root/$what" ]] && continue ;;
+    esac
+    echo "${f#"$root"/}:$line: broken $kind: $what"; bad=1
+  done < <(awk -v tops="$tops" '
+    function emit(k, w) { printf "%d\t%s\t%s\n", NR, k, w }
+    /^[ \t]*(```|~~~)/ { fence = !fence; next }
+    {
+      s = $0
+      if (!fence) {                       # markdown links outside fences, ignoring those inside code spans
+        t = s; gsub(/`[^`]*`/, "", t)
+        while (match(t, /\]\([^) ]+\)/)) {
+          u = substr(t, RSTART + 2, RLENGTH - 3); t = substr(t, RSTART + RLENGTH)
+          if (u !~ /^(https?:|mailto:|#|\/\/)/ && u !~ /[{}$<>*]/) emit("link", u)
+        }
+      }
+      code = ""                           # command candidates: a fenced line, or a code span, that STARTS with the tool name
+      if (fence) code = s
+      else { t = s; while (match(t, /`[^`]+`/)) { code = code "\t" substr(t, RSTART + 1, RLENGTH - 2); t = substr(t, RSTART + RLENGTH) } }
+      n = split(code, parts, "\t")
+      for (i = 1; i <= n; i++) {
+        c = parts[i]; sub(/^[ \t]*(\$ )?/, "", c)
+        if (match(c, /^(sprint|tkt) [a-z][a-z0-9-]*/)) emit("cmd", substr(c, RSTART, RLENGTH))
+      }
+      c = code
+      while (match(c, "(^|[^A-Za-z0-9_.\\/-])(" tops ")\\/[A-Za-z0-9_.\\/-]*[A-Za-z0-9_]\\.[A-Za-z0-9]+")) {
+        m = substr(c, RSTART, RLENGTH); c = substr(c, RSTART + RLENGTH)
+        sub(/^[^A-Za-z0-9_]/, "", m); emit("file", m)
+      }
+    }' "$f" | sort -u -t$'\t' -k1,1n -k2,3)
+done
+exit "$bad"
