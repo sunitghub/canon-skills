@@ -131,8 +131,8 @@
     .why-result-more { padding: 8px 12px; color: var(--text-muted); font-size: 12px; font-style: italic; }
     .column {
       display: flex; flex-direction: column;
-      /* t-28ec: equal lanes that share the whole board width (basis 0: content can't skew them) */
-      min-width: 210px; flex: 1 1 0;
+      /* t-28ec: equal lanes that share the board width (basis 0: content can't skew them); t-0ef2: none wider than 360px, so a maximized window keeps card proportions */
+      min-width: 210px; max-width: 360px; flex: 1 1 0;
       max-height: 100%;
     }
     .column-header {

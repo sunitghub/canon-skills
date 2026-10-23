@@ -5881,17 +5881,23 @@ test.describe('cockpit in board (t-ddc8)', () => {
         const lane = page.locator('.column-body[data-status="in_progress"]');
         await expect(lane.locator('.card').first()).toHaveAttribute('data-id', Q.need);
         await expect(page.locator('.column', { has: lane }).locator('.column-needs')).toHaveText('1 needs you');
-        // Lanes are equal and fill the board's width (they were capped at 320px and skewed by content).
-        for (const width of [1600, 1300]) {
+        // Lanes are equal (content cannot skew them) and share the board's width, but none is wider than 360px (t-0ef2): a
+        // maximized window keeps card proportions and the free space falls to the right of the last lane.
+        for (const width of [2000, 1600, 1300]) {
           await page.setViewportSize({ width, height: 800 });
           const lanes = await page.evaluate(() => {
-            const b = document.getElementById('board'), cs = getComputedStyle(b);
-            const cols = [...b.querySelectorAll(':scope > .column')].map(c => c.getBoundingClientRect().width);
-            const inner = b.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-            return { cols, inner, gaps: parseFloat(cs.columnGap) * (cols.length - 1) };
+            const b = document.getElementById('board'), cs = getComputedStyle(b), br = b.getBoundingClientRect();
+            const padL = parseFloat(cs.paddingLeft), padR = parseFloat(cs.paddingRight);
+            const cols = [...b.querySelectorAll(':scope > .column')].map(c => c.getBoundingClientRect());
+            const inner = b.clientWidth - padL - padR;
+            return { widths: cols.map(c => c.width), first: cols[0].left - br.left - padL, end: cols[cols.length - 1].right, innerRight: br.right - padR,
+              inner, gaps: parseFloat(cs.columnGap) * (cols.length - 1) };
           });
-          expect(Math.max(...lanes.cols) - Math.min(...lanes.cols)).toBeLessThan(1);
-          expect(Math.abs(lanes.cols.reduce((a, b) => a + b, 0) + lanes.gaps - lanes.inner)).toBeLessThan(2);
+          const want = Math.min(360, (lanes.inner - lanes.gaps) / lanes.widths.length);
+          expect(Math.max(...lanes.widths) - Math.min(...lanes.widths)).toBeLessThan(1);
+          expect(Math.abs(lanes.widths[0] - want)).toBeLessThan(1);
+          expect(Math.abs(lanes.first)).toBeLessThan(1);
+          if (width >= 2000) expect(lanes.end).toBeLessThan(lanes.innerRight - 20);
         }
         await page.setViewportSize({ width: 1280, height: 720 });
         // Herdr palette, both themes.
