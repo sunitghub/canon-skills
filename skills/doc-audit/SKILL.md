@@ -48,6 +48,8 @@ Fix each finding it prints (exit 1) before the model pass; do not re-check these
 
    **Affected doc coverage** — when code, workflow, UI, command behavior, or screenshots change, search every doc surface that could describe it: README, guides, examples, tool docs, skill docs, standards, and catalog text. Do not stop at the first visible doc.
 
+   **Skill-name accuracy** — if `./tools/skills.sh` exists, run `./tools/skills.sh list`; compare to the skill names in README/guide command examples (`tools/doc-check` only judges `sprint`/`tkt` subcommands and paths).
+
    **Workflow gate accuracy** — distinguish UI state changes from workflow commands. Board actions such as creating tickets or moving cards update local ticket state only; do not imply they run agent workflows, wrapup, validation, or close pipelines unless the tool actually does.
 
    **Heading style** — user-facing README headings should be Title Case. Keep intentional brand casing, command names, and code-block comments unchanged.

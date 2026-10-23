@@ -27,7 +27,7 @@ hidden: true
    `python3 -c ''` succeeds, else say it was skipped and why (a Windows machine may have no working `python3`). A
    failure is a Critical finding.
    **Canon checkout only** (`tools/skill-eval-scope.sh` exists; the checks `repo-check` used to make, `t-0a7c`), each only
-   when its files changed: (a) any `skills/**/SKILL.md` → `./tools/canon-dev.sh lint` must print `skills lint: clean`;
+   when its files changed: (a) any `skills/**/SKILL.md` → `./tools/canon-dev.sh lint` must print `skills lint: clean`, and `./tools/skills.sh list` must show the advertised standalone skills with imported sub-skills hidden;
    (b) skill or tool frontmatter → `./tools/canon-dev.sh catalog`, and `CATALOG.md` must be in the diff when it changed;
    (c) a new file in `scripts/`, `tools/` or a workflow dir → something wires it (`skills.sh init`, an extension, a test,
    a doc) or it is documented as run by hand — an orphan is a finding; (d) `tools/sprint-check*`, `docs/sprint-check.md`
