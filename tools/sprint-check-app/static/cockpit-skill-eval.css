@@ -21,7 +21,6 @@
   .rc-select{appearance:none;-webkit-appearance:none;border:1px solid var(--border);background:var(--bg);color:var(--text-body);border-radius:7px;padding:6px 26px 6px 10px;font:inherit;font-size:12px;font-weight:600;cursor:pointer;background-image:linear-gradient(45deg, transparent 50%, var(--text-dim) 50%), linear-gradient(135deg, var(--text-dim) 50%, transparent 50%);background-position:calc(100% - 14px) center, calc(100% - 9px) center;background-size:5px 5px, 5px 5px;background-repeat:no-repeat}
   .rc-select:hover{border-color:var(--border-hover);color:var(--text)}
   .rc-select:disabled{opacity:.45;cursor:not-allowed}
-  .rc-config-note{font-size:10.5px;color:var(--text-dim);margin-left:2px}
   .rc-actions{display:flex;gap:8px;margin-top:auto}
   .rc-actions .btn{padding:7px 15px;font-size:12.5px}
   /* ---- Skill Eval (t-23d8): check a picked skill folder, then run the plugin eval ---- */
@@ -100,6 +99,7 @@
   .rc-pop-facts{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border-muted)}
   .rc-pop-fact{font-size:11.5px;color:var(--text-body);background:var(--accent-dim);border-radius:8px;padding:3px 9px}
   .rc-pop-fact b{color:var(--accent);font-weight:700;margin-right:4px}
+  /* shared shell rules, kept here for their cascade position (after cockpit-admin.css) */
   .view iframe{width:100%;height:100%;border:0;display:block;background:var(--bg)}
   .vhead{display:flex;align-items:center;margin-bottom:20px}
   .vhead h1{font-size:21px;font-weight:700;letter-spacing:-.4px}
