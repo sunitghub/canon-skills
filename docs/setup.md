@@ -155,8 +155,8 @@ script's Go block:
 3. Start the session. One command does steps 2 and 3: `tkt send-issue <id> --launch` shows the issue, asks `[y/N]`
    (`--yes` skips the question), creates it, then runs `claude --cloud "<prompt>"` from your checkout and notes the
    launch in `.tickets/<id>/github.md`. It needs a real terminal window: `claude --cloud` refuses when its output is piped,
-   from a script, or run with `!` inside a Claude Code session. The session runs on your account's default environment
-   (the CLI has no flag for a hosted one, only `--environment` for self-hosted pools), so make `canon` the default, and the
+   from a script, or run with `!` inside a Claude Code session. The CLI has no flag to pick a hosted environment
+   (only `--environment` for self-hosted pools), so the session should use your account's default: make `canon` the default, and the
    cloud clones origin's copy of your current branch: push it first (`--launch` warns, never pushes). The board's Send
    panel shows the same `claude --cloud '...'` line with a Copy command button; paste it into a terminal window.
    By hand: start a new session on the `canon` environment and your repo and paste the prompt `send-issue` printed
