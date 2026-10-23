@@ -38,7 +38,7 @@ export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 W="$(cd "$(mktemp -d)" && pwd -P)"; trap 'rm -rf "$W"' EXIT
 up="$W/up"; mkdir -p "$up/tools" "$W/home"
 git init -q -b main "$up"
-printf '#!/bin/sh\nexit 0\n' > "$up/tools/skills.sh"; printf '#!/bin/sh\necho fetch-daemon-ran\n' > "$up/tools/fetch-daemon.sh"
+printf '#!/bin/sh\nexit 0\n' > "$up/tools/skills.sh"; printf '#!/bin/sh\necho "fetch-daemon-ran$*"\n[ -z "${DAEMON_FAIL-}" ]\n' > "$up/tools/fetch-daemon.sh"
 # t-65c9: install.sh now runs the install's own `canon update`, so the upstream carries the real script and what it sources
 cp "$ROOT/tools/canon" "$ROOT/tools/cockpit-launch-lib.sh" "$ROOT/tools/platform-lib.sh" "$ROOT/tools/release-manifest.sh" "$up/tools/"; printf '/.canon-track\n' > "$up/.gitignore"
 for i in 1 2 3; do echo "$i" > "$up/f"; git -C "$up" add -A; git -C "$up" -c user.email=t@e -c user.name=t commit -qm "c$i"; done
@@ -97,9 +97,12 @@ assert_eq "$tip" "$(git -C "$W/devmain" rev-parse HEAD)"; assert_eq "main" "$(tr
 printf '# canon releases\nv0.3.0 %s %s\n' "$Z" "$rel" > "$mf"
 out="$(env_i node "$ROOT/bin/install.js" "$W/jsrel" 2>&1)" || fail "install.js could not install the verified release: $out"
 assert_eq "$rel" "$(git -C "$W/jsrel" rev-parse HEAD)"; [[ -z "$(git -C "$W/jsrel" symbolic-ref -q HEAD || true)" ]] || fail "install-js: the release install is on a branch"
-assert_contains "$out" "canon is now on v0.3.0"; assert_contains "$out" "fetch-daemon-ran"
+assert_contains "$out" "canon is now on v0.3.0"; grep -qx "fetch-daemon-ran" <<<"$out" || fail "install-js: did not run fetch-daemon.sh itself: $out"
 out="$(env_i node "$ROOT/bin/install.js" "$W/jsrel" 2>&1)" || fail "install.js over a release install failed: $out"
-assert_contains "$out" "canon is up to date (v0.3.0, verified"; [[ "$out" != *"Cloning canon"* ]] || fail "install-js: re-run cloned over the install: $out"; assert_contains "$out" "fetch-daemon-ran"
+assert_contains "$out" "canon is up to date (v0.3.0, verified"; [[ "$out" != *"Cloning canon"* ]] || fail "install-js: re-run cloned over the install: $out"; grep -qx "fetch-daemon-ran" <<<"$out" || fail "install-js: re-run did not fetch the daemon: $out"
+# a failed update or daemon fetch is a warning: the install stays and the installer finishes
+out="$(env_i CANON_REF=v9.9.9 DAEMON_FAIL=1 node "$ROOT/bin/install.js" "$W/jsrel" 2>&1)" || fail "install.js failed on a failed update or daemon fetch: $out"
+assert_eq "$rel" "$(git -C "$W/jsrel" rev-parse HEAD)"; assert_contains "$out" "Skipping update."; assert_contains "$out" "agent sessions in the Cockpit need the daemon"
 out="$(env_i CANON_REF=main node "$ROOT/bin/install.js" "$W/jsrel" 2>&1)" || fail "install.js CANON_REF=main over a release install failed: $out"
 assert_eq "$tip" "$(git -C "$W/jsrel" rev-parse HEAD)"
 out="$(env_i CANON_REF=main node "$ROOT/bin/install.js" "$W/jsmain" 2>&1)" || fail "install.js CANON_REF=main failed: $out"
