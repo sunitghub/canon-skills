@@ -57,6 +57,12 @@ assert '[ "$grc" -eq 0 ]'                                                       
 assert 'grep -qF "Warning: $gcfg grants '"'"'Bash(git diff:*)'"'"': plain git under dontAsk can write files" <<<"$gout"' "plain-git config prints the write-risk warning"
 set +e; nwout="$(bash "$EVAL" "$spec" --base-ref HEAD --allowed-tools-file "$cfg" --print-allowed-tools 2>&1)"; set -e
 assert '! grep -qF "Warning:" <<<"$nwout"'                                      "a config without plain git prints no warning"
+g2="$tmp/git2.json"; printf '["Bash(git:*)"]\n' > "$g2"
+set +e; g2out="$(bash "$EVAL" "$spec" --base-ref HEAD --allowed-tools-file "$g2" --print-allowed-tools 2>&1)"; set -e
+assert 'grep -qF "grants '"'"'Bash(git:*)'"'"': plain git under dontAsk" <<<"$g2out"' "a Bash(git:*) grant warns too"
+g3="$tmp/git3.json"; printf '["Read","%s"]\n' "$git_allow" > "$g3"
+g3out="$(bash "$EVAL" "$spec" --base-ref HEAD --allowed-tools-file "$g3" --print-allowed-tools 2>/dev/null)"
+assert '[ "$(grep -cxF "$git_allow" <<<"$g3out")" -eq 1 ]'                     "a config that lists git-read keeps one grant (not force-added twice)"
 
 echo "--- malformed / non-array / missing configs fail-closed ---"
 badj="$tmp/bad.json"; printf '{not valid json' > "$badj"
