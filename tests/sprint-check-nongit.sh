@@ -35,7 +35,7 @@ GO_BIN="$(build_board "$BIN_DIR")"
 # An empty PATH directory: no git for the boards or the daemon (a PM's machine).
 NOGIT_PATH="$BIN_DIR/empty"; mkdir -p "$NOGIT_PATH"
 export CANON_HOME="$WORK/canon-home" COCKPIT_STATE_DIR="$WORK/state"
-mkdir -p "$CANON_HOME/cockpit" "$COCKPIT_STATE_DIR"
+mkdir -p "$CANON_HOME/cockpit"; mkdir -p -m 700 "$COCKPIT_STATE_DIR"   # t-68ae: the daemon refuses a state folder open to others
 # The folder is a REGISTERED project (the daemon's trust rule for a folder without git).
 printf '[{"id":"aaaaaaaaaaaa","path":"%s","name":"pm-project","description":"","added":"2026-09-29"}]\n' "$PROJ" > "$CANON_HOME/cockpit/projects.json"
 # A stub agent: writes a file into its working directory, then stays alive like a live session.

@@ -461,7 +461,11 @@ export function githubPickerRowsHTML(t, tab) {
   }).join('') + githubPlaceRowHTML(tab);
 }
 
+// t-8627: a preview answer that arrives after a later call (or a hide) must not write: each call takes a number, and only the latest may.
+let ghPanelGen = 0;
+
 export function hideGithubPanel() {
+  ghPanelGen++;
   const panel = document.getElementById('ck-gh-panel');
   if (panel) { panel.hidden = true; panel.innerHTML = ''; }
 }
@@ -469,18 +473,25 @@ export function hideGithubPanel() {
 export async function showGithubPanel(t, tab) {
   const panel = document.getElementById('ck-gh-panel');
   if (!panel) return;
+  const sent = tab && tab.ghSent && tab.ghSent.id === t.id;
+  // t-8627: a panel already sending this ticket (loading, or a form with a preview) stays as it is; a failed preview still
+  // reloads. openCockpit mounts once more when its rail render ends, and a GitHub pick and a failed send made before that lost
+  // their reason to the second render.
+  if (!sent && !ghOut(t) && !panel.hidden && panel.querySelector('[data-gh-send]')?.dataset.ghSend === t.id) return;
+  const gen = ++ghPanelGen;
   panel.hidden = false;
-  if (tab && tab.ghSent && tab.ghSent.id === t.id) return showSent(panel, t, tab);   // kept across tab switches until dismissed
+  if (sent) return showSent(panel, t, tab);   // kept across tab switches until dismissed
   if (ghOut(t)) {
     const p = ghParts(t);
     panel.innerHTML = `<div class="ck-gh-box"><h3>${esc(t.id)} is out on GitHub${p ? ` as issue #${esc(p.issue)}` : ''}</h3>
       <p>A Claude cloud session works it there; this ticket does not run here until you take it back. Its card shows the next step.</p></div>`;
     return;
   }
-  panel.innerHTML = `<div class="ck-gh-box"><h3>Send ${esc(t.id)} to GitHub</h3><p>Loading the preview…</p></div>`;
+  panel.innerHTML = `<div class="ck-gh-box" data-gh-send="${esc(t.id)}"><h3>Send ${esc(t.id)} to GitHub</h3><p>Loading the preview…</p></div>`;
   let pv;
   try { pv = await getJSON(ghApi(t.id, 'send-preview')); }
   catch (e) { pv = { ok: false, output: String(e.message || e) }; }
+  if (gen !== ghPanelGen) return;   // a later call (the Sent panel, a tab switch) or a hide owns the panel now
   if (tab && (tab !== cockpitState || !tab.ghPick)) return;   // another tab, or another place, was picked meanwhile
   const isPublic = /\(PUBLIC\)/.test(pv.output || '');
   // t-093a: send-issue's warnings (no criteria, no plan) are a note above the preview, in the CLI's own words; they don't block.
@@ -488,7 +499,7 @@ export async function showGithubPanel(t, tab) {
   const outLines = String(pv.output || '').split(/\r?\n/);
   const warns = outLines.filter(l => WARN.test(l)).map(l => l.replace(WARN, ''));
   const preview = outLines.filter(l => !WARN.test(l)).join('\n');
-  panel.innerHTML = `<div class="ck-gh-box">
+  panel.innerHTML = `<div class="ck-gh-box"${pv.ok ? ` data-gh-send="${esc(t.id)}"` : ''}>
       <h3>Send ${esc(t.id)} to GitHub</h3>
       <p>${pv.ok ? 'The issue, exactly as it will be created. Nothing is sent until you press Create issue.' : 'The preview failed, so nothing can be sent yet:'}</p>
       ${warns.length ? `<div class="ck-gh-note" id="ck-gh-note" role="note">${warns.map(w => `<p>${esc(w)}</p>`).join('')}</div>` : ''}

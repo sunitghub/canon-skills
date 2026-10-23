@@ -1,6 +1,6 @@
 ---
 name: promote-learnings
-description: Reviews LEARNINGS.md's UNPROMOTED rows as a fresh, no-implementation-history reader and proposes where each durable one belongs. Report-only, except that in a consumer project it writes the proposals you confirm to PROMOTED.md. Use as one of Upkeep's four report-only checks, or by hand when the UNPROMOTED queue needs triage.
+description: Reviews LEARNINGS.md's UNPROMOTED rows as a fresh, no-implementation-history reader and proposes where each durable one belongs. Report-only, except that in a consumer project it writes the proposals you confirm to PROMOTED.md. Run it by hand, in a fresh session, when the UNPROMOTED queue needs triage.
 category: agent-ops
 tags: [learnings, sprint, memory, promotion]
 hidden: true
@@ -25,9 +25,8 @@ a candidate's full detail. This skill reads each UNPROMOTED row's source
 The non-self-promote rule (`learnings-sweep`'s own SKILL.md) exists because the sprint that
 produced a learning has no perspective on whether it generalizes — everything looks load-bearing
 to the agent that just lived through it. This skill must run with no memory of the sprint(s) that
-produced the candidates it's reviewing. When dispatched via Upkeep, this is automatic (every
-dispatch is a fresh `claude -p` subprocess); if run by hand in an interactive session, start a
-fresh session — do not run it in the same conversation that just closed the sprint(s) in question.
+produced the candidates it's reviewing. Start a fresh session for it — do not run it in the same
+conversation that just closed the sprint(s) in question.
 
 ## Canon or consumer
 
@@ -98,7 +97,7 @@ The destinations depend on which project the session is in:
 ## Apply (consumer projects, interactive only)
 
 After presenting the report, ask the user which `PROMOTED.md` proposals to apply. Write only the ones
-they explicitly confirm. Skip this step entirely in a headless or Upkeep run (`claude -p`, `upkeep-run`),
+they explicitly confirm. Skip this step entirely in a headless run (`claude -p`),
 where the report is the only output. For each confirmed proposal:
 
 1. Grep `PROMOTED.md` for the same rule. If it is already there, extend that entry instead of adding

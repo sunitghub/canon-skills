@@ -65,7 +65,7 @@ var kinds = map[string][]field{
 	"context.threshold":       {{"session", 64}, {"ticket", 64}, {"agent", 16}, {"pct", 4}},
 	"log.pruned":              {{"from", 10}, {"to", 10}, {"files", 6}, {"last_seal", 64}},
 	// t-5ef8: the sprint progress card. "Build" has no kind: it is the time after plan.approved and before the first
-	// wrapup.gate_started. gate names are the Wrapup Gates table rows (code-simplifier, repo-check, ...).
+	// wrapup.gate_started. gate names are the Wrapup Gates table rows (code-simplifier, doc-audit, ...).
 	"plan.written":         {{"ticket", 64}, {"tier", 16}},
 	"wrapup.gate_started":  {{"ticket", 64}, {"gate", 32}},
 	"wrapup.gate_finished": {{"ticket", 64}, {"gate", 32}, {"result", 16}},

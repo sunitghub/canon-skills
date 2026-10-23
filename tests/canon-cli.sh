@@ -32,7 +32,7 @@ TOKEN="SECRET-daemon-token-$$"
 stub_daemon() {
   local sd="$1" sessions="$2" port
   port="$(free_port)"
-  mkdir -p "$sd"; printf '%s' "$sessions" > "$sd/stub-sessions.json"   # re-read per request, so a test can change it
+  mkdir -p -m 700 "$sd"; printf '%s' "$sessions" > "$sd/stub-sessions.json"   # re-read per request, so a test can change it
   python3 - "$port" "$sd/stub-sessions.json" <<'PY' >/dev/null 2>&1 &
 import http.server, sys
 port, path = int(sys.argv[1]), sys.argv[2]
@@ -44,7 +44,7 @@ class H(http.server.BaseHTTPRequestHandler):
 http.server.HTTPServer(("127.0.0.1", port), H).serve_forever()
 PY
   local pid=$!; disown "$pid" 2>/dev/null || true; PIDS+=("$pid")
-  mkdir -p "$sd"
+  mkdir -p -m 700 "$sd"
   printf '{"addr":"127.0.0.1:%s","token":"%s","pid":"%s"}' "$port" "$TOKEN" "$pid" > "$sd/daemon.json"
   wait_for "http://127.0.0.1:$port/healthz" || fail "canon-cli: stub daemon did not start"
 }

@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# gate-ticket-check <base-sha> — decide whether the canon CI gate may grade this PR (t-89b0).
+# Reads the PR body on stdin and runs in the PR checkout. On success prints `id=<ticket>` (for $GITHUB_OUTPUT).
+# Exits 1 with a GitHub `::error::` line when:
+#   - the body names no canon ticket (t-xxxx), so a required check cannot be passed by leaving the id out;
+#   - the base commit already holds an approved plan for the ticket (.tickets/<id>/plan.md with "[x] Plan approved")
+#     and the PR changes that ticket's ticket.md, plan.md or acceptance.md: approved criteria are not the PR's to edit.
+# When the base has no approved plan (the normal flow: `tkt ci <id> on` commits the docs on the work branch), it
+# grades the PR's own docs and prints a `::warning::` that they were authored in this PR and need human review.
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"   # .tickets/ paths below are repo-relative
+base="${1:-}"
+[[ "$base" =~ ^[0-9a-f]{7,40}$ ]] || { echo "::error::gate-ticket-check: base must be a commit sha, got '$base'"; exit 1; }
+git rev-parse --verify --quiet "$base^{commit}" >/dev/null || { echo "::error::gate-ticket-check: base $base is not a commit in this checkout"; exit 1; }
+
+ids="$(grep -owE 't-[a-z0-9]{4}' || true)"   # capture, then take the first: no early-exit reader under pipefail
+id="${ids%%$'\n'*}"
+if [[ -z "$id" ]]; then
+  echo "::error::No canon ticket id (t-xxxx) in the PR body: the canon gate grades a PR against its ticket. Add one, e.g. 'Closes: t-1a2b'."
+  exit 1
+fi
+
+tdir=".tickets/$id"
+plan="$(git show "$base:$tdir/plan.md" 2>/dev/null || true)"
+if grep -q '^\s*-\s*\[x\]\s*Plan approved' <<<"$plan"; then
+  changed="$(git diff --name-only "$base" HEAD -- "$tdir/ticket.md" "$tdir/plan.md" "$tdir/acceptance.md")"
+  if [[ -n "$changed" ]]; then
+    echo "::error::$id's plan was already approved on the base branch; this PR changes its graded docs: $(printf '%s' "$changed" | tr '\n' ' ')- change approved criteria in their own reviewed PR."
+    exit 1
+  fi
+  echo "$id: graded against the plan and criteria approved on the base branch."
+else
+  echo "::warning::$id's plan and criteria were authored in this PR (no approved plan on the base branch): the gate grades the PR against its own claims, so a person should review .tickets/$id/."
+fi
+echo "id=$id"

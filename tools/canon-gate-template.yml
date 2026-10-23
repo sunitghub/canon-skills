@@ -5,26 +5,39 @@
 #   1. add an ANTHROPIC_API_KEY repo secret (gh secret set ANTHROPIC_API_KEY)
 #   2. commit + push this file
 #   3. (optional) require the "grade" check in branch protection to block merges
+# t-89b0: a PR whose body names no canon ticket fails this check. A ticket whose plan was already approved on the
+# base branch is graded against those docs, and a PR that changes them fails. Criteria authored in the PR itself
+# are graded with a warning that a person should review them (add .tickets/** to CODEOWNERS to enforce that).
+# The grading protocol always comes from the canon checkout, never from the PR.
+# t-04f4: least privilege and pinned. The token is read-only and not kept in .git/config; the actions, the canon
+# checkout (the release of the install that wrote this file) and the Claude Code CLI are fixed versions. Re-run
+# "Set up CI gate" after updating canon to move to the new release (docs/ci-security.md).
 name: canon gate
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
 
+permissions:
+  contents: read
+
 jobs:
   grade:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout the PR
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0            # full history — the gate diffs against the base SHA
+          persist-credentials: false
 
       - name: Checkout canon
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: sunitghub/canon-skills
+          ref: __CANON_REF__        # the board writes the release tag of the canon that generated this file
           path: canon
+          persist-credentials: false
 
       - name: Add canon tools to PATH
         run: echo "$GITHUB_WORKSPACE/canon/tools" >> "$GITHUB_PATH"
@@ -32,25 +45,29 @@ jobs:
       - name: Make canon skills resolvable to the gate
         run: |
           mkdir -p .claude
+          rm -rf .claude/skills   # a PR's own .claude/skills would otherwise get the link nested inside it (t-89b0)
           ln -sfn "$GITHUB_WORKSPACE/canon/skills" .claude/skills
 
       - name: Install Claude Code CLI
-        run: npm install -g @anthropic-ai/claude-code
+        run: npm install -g @anthropic-ai/claude-code@2.1.309
 
-      - name: Extract canon ticket id from the PR body
+      - name: Check the PR's canon ticket
         id: tkt
         env:
           BODY: ${{ github.event.pull_request.body }}   # via env, never interpolated into the script
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          id="$(printf '%s' "$BODY" | grep -oE 't-[a-z0-9]{4}' | head -1 || true)"
-          echo "id=$id" >> "$GITHUB_OUTPUT"
+          # Fails without a ticket id, or when the PR edits a ticket whose plan was approved on the base.
+          out="$(printf '%s' "$BODY" | gate-ticket-check "$BASE_SHA")" || { printf '%s\n' "$out"; exit 1; }
+          printf '%s\n' "$out"
+          printf '%s\n' "$out" | grep '^id=' >> "$GITHUB_OUTPUT"
 
       - name: Headless canon gate
-        if: steps.tkt.outputs.id != ''
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           TICKET: ${{ steps.tkt.outputs.id }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CANON_GATE_SKILLS: ${{ github.workspace }}/canon/skills   # grade with canon's protocol, never the PR's
         run: |
           # Honor the ticket's committed gate mode: eval-only vs the full pipeline.
           if grep -q '^gate: eval' ".tickets/$TICKET/ticket.md" 2>/dev/null; then

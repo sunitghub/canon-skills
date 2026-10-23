@@ -31,6 +31,27 @@ govulncheck to an exact version. With no Dependabot, nothing bumps them: update 
 SHA from `git ls-remote https://github.com/actions/<name> refs/tags/<tag>` and the version from
 `go list -m -versions golang.org/x/vuln`.
 
+## The canon-gate template (t-04f4)
+
+`tools/canon-gate-template.yml` is the workflow the board's **Set up CI gate** writes into a project as
+`.github/workflows/canon-gate.yml`. `tests/ci-security-config.sh` checks it with its own rules: it legitimately uses
+the `ANTHROPIC_API_KEY` secret. The rules:
+
+- `permissions: contents: read` and no job-level permissions;
+- every action pinned to a full SHA (the same `actions/checkout` pin as the workflows above), with
+  `persist-credentials: false` on every checkout;
+- triggered by `pull_request` only, never `pull_request_target` or `workflow_run`;
+- no secret but `ANTHROPIC_API_KEY`, and every `${{ … }}` a whole key value, never inside a `run:` script;
+- the Claude Code CLI at an exact version.
+
+The canon checkout carries `ref: __CANON_REF__`. The board replaces it with `v<VERSION>` of the install that writes
+the file, and refuses on an install without a release version. A project's gate therefore runs the canon release that
+generated it, and moves to a newer one only when someone deletes the file and runs Set up CI gate again. Existing
+`canon-gate.yml` files are never rewritten by the board.
+
+Bumping: take the checkout SHA as for the workflows above; the CLI version from `npm view @anthropic-ai/claude-code
+version`. Change the template, then re-run `tests/ci-security-config.sh`.
+
 ## Run it locally
 
 ```bash

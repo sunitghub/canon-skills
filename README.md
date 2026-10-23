@@ -106,7 +106,7 @@ Change the code and the expected answer changes with it, so the check agrees wit
 flowchart LR
     P["Plan\nticket · acceptance · plan.md\nresearch.md"]
     B["Build\ncode · commits"]
-    W["Wrapup\nsimplify · code-review · security\nrepo-check · doc-audit"]
+    W["Wrapup\nsimplify · code-review · security\ndoc-audit"]
     E[["Evaluate\nreviewer (advisory) · evaluator (binding)\nclean-context · adversarial\npass/fail per criterion"]]
     C["Close\nsprint complete"]
     D["Board\nsprint-check"]

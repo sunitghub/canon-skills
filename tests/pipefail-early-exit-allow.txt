@@ -47,7 +47,6 @@ tools/tkt	failing="$(grep -E '^(FAILED|FAIL)' "$tmp/test.log" | head -20 || true
 tools/tkt	IFS=$'\t' read -r pr pst phead <<< "$(printf '%s\n' "$prs" | grep . | head -1)" || true	the line ends `|| true`; one row per open PR of one branch
 tools/tkt	b="$(git -C "$root" ls-remote --symref origin HEAD 2>/dev/null | awk '$1 == "ref:" { sub("refs/heads/", "", $2); print $2; exit }' || true)"; b="${b:-main}"	the line ends `|| true`; the writer prints one value
 tools/tkt	g="$(sed -n 's/^graded-head: *\([0-9a-f]\{7,40\}\).*/\1/p' "$1/eval-report.md" 2>/dev/null | head -1 || true)"	the line ends `|| true`; sed prints one line
-tools/upkeep-run	MODEL="$(sed -n '/^  "upkeep": {/,/^  }/s/^ *"default": *"\([^"]*\)".*/\1/p' "$TIERS" 2>/dev/null | head -n 1 || true)"	the line ends `|| true`; sed prints one config line
 scripts/check-binaries-released.sh	want="$(printf '%s\n' "$manifest" | tr -d '\r' | awk -v k="$key" -v t="$target" '$1==k && $2==t {print $3; exit}')"	writer is the release manifest (tens of lines)
 scripts/pre-commit-hook-template.sh	if echo "$ticket_diff" | grep -q "^+status: closed"; then	this script sets no pipefail, so no SIGPIPE failure; the writer is one commit's ticket diff, a ticket list or a plan section; revisit if pipefail is added
 scripts/pre-commit-hook-template.sh	echo "$ticket_diff" | grep -q "^+closed:" || DIRECT_CLOSE=1	this script sets no pipefail, so no SIGPIPE failure; the writer is one commit's ticket diff, a ticket list or a plan section; revisit if pipefail is added

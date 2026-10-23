@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run-board-spec — t-4469: run the full board Playwright spec (tests/sprint-check-app.spec.js) the one reproducible way.
 #
-#   tests/run-board-spec.sh [--runs N] [--browsers chromium,webkit] [--out DIR] [--grep PATTERN] [--strict] [--no-guard] [--keep]
+#   tests/run-board-spec.sh [--runs N] [--browsers chromium,webkit] [--out DIR] [--grep PATTERN] [--strict] [--no-guard] [--keep] [--allow-busy]
 #                           [--classify [--solo-runs N] [--base REF]]
 #
 # Why a copy: the spec writes and deletes tickets under its project root, so it must never run against canon's own
@@ -16,12 +16,13 @@
 # never written.
 # Every run records the machine's load at start and end in $OUT/machine-load.txt and prints a WARNING when another spec or test.sh
 # run is going or the load exceeds the CPU count: WebKit fails timing-sensitive tests under load (t-5989).
+# t-8627: a run does not START on such a machine: it waits up to ML_WAIT_MAX seconds (900) for it to calm, then exits 2 (--allow-busy runs anyway).
 # Needs: rsync, go, node, npx (Playwright browsers installed), git, curl, python3. macOS/Linux; ~13-18 min per browser per run
 # (the spec is one file, so Playwright runs it on one worker; measured 2026-10-15, t-5989).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-RUNS=3; BROWSERS="chromium,webkit"; OUT=""; GREP=""; STRICT=""; GUARD=1; KEEP=0; CLASSIFY=0; SOLO_RUNS=3; BASE=""
+RUNS=3; BROWSERS="chromium,webkit"; OUT=""; GREP=""; STRICT=""; GUARD=1; KEEP=0; CLASSIFY=0; SOLO_RUNS=3; BASE=""; ALLOW_BUSY=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --runs) RUNS="$2"; shift 2 ;;
@@ -31,6 +32,7 @@ while [ $# -gt 0 ]; do
     --strict) STRICT="--strict"; shift ;;
     --no-guard) GUARD=0; shift ;;
     --keep) KEEP=1; shift ;;
+    --allow-busy) ALLOW_BUSY=1; shift ;;
     --classify) CLASSIFY=1; shift ;;
     --solo-runs) SOLO_RUNS="$2"; shift 2 ;;
     --base) BASE="$2"; shift 2 ;;
@@ -57,6 +59,12 @@ COPY="$(cd "$COPY" && pwd -P)"
 # t-5989: a busy machine (another spec or test.sh run, or load over the CPU count) makes WebKit fail timing-sensitive tests, so every
 # run records its load at start and end in $OUT/machine-load.txt and warns when it is too busy to trust.
 source "$ROOT/tests/machine-load.sh"
+# t-8627: wait for a quiet machine before starting (up to ML_WAIT_MAX seconds), else refuse; --allow-busy skips the wait.
+if [ "$ALLOW_BUSY" = 0 ] && ! machine_wait_quiet "$OUT/machine-load.txt" "$$"; then
+  echo "run-board-spec: the machine stayed busy; wait for it to calm, or pass --allow-busy to run anyway (WebKit will fail timing tests)" >&2
+  rmdir "$COPY" 2>/dev/null || true
+  exit 2
+fi
 machine_load start "$OUT/machine-load.txt" "$$"
 BOARD_PID=""; BASE_COPY=""; BASE_PID=""; BASE_PORT=""
 

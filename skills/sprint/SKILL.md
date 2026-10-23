@@ -119,7 +119,7 @@ One light-close covers **two intents**, both explicit and user-elected:
   (research questions answered with cites; required screens present, embedded, and fresh).
 
 For either intent, `sprint complete` runs a **fast close-path**:
-**keep exactly `security-review` + the binding evaluator, skip the advisory reviewer + the rest of wrapup — a superset of what `bugfix` trims, additionally dropping `code-reviewer` and `repo-check` (which `bugfix` keeps).**
+**keep exactly `security-review` + the binding evaluator, skip the advisory reviewer + the rest of wrapup — a superset of what `bugfix` trims, additionally dropping `code-reviewer` (which `bugfix` keeps).**
 **The evaluator is forced to Haiku
 (`security-review` runs inline on the session model)** — only the dispatched evaluator takes a
 `model:` param; see `reference/complete.md`'s Model-tier section. It is a

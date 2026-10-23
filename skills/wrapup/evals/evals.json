@@ -5,7 +5,7 @@
       "id": 1,
       "case_type": "control",
       "prompt": "Run wrapup after adding a new feature: a 40-line function in tools/sprint that validates ticket IDs. README.md was also updated to document the new behavior.",
-      "expected_output": "The skill runs simplifier, reviewer, and doc-audit (since README changed). Security-review is skipped (no security-sensitive patterns). repo-check runs because tools/ changed. The pipeline produces findings for each gate that ran, then refreshes docs. Committing is not wrapup's own step \u2014 that happens later, in sprint complete.",
+      "expected_output": "The skill runs simplifier, reviewer, and doc-audit (since README changed). Security-review is skipped (no security-sensitive patterns). The pipeline produces findings for each gate that ran, then refreshes docs. Committing is not wrapup's own step — that happens later, in sprint complete.",
       "expectations": [
         "Runs or describes running code-simplifier on the changed function",
         "Runs or describes running code-reviewer",
@@ -17,13 +17,13 @@
     {
       "id": 2,
       "case_type": "compliance",
-      "prompt": "In the canon repo itself (tools/skill-eval-scope.sh exists), run wrapup. The session only changed README.md \u2014 a single sentence was reworded. No code was modified.",
-      "expected_output": "The skill skips code-simplifier and code-reviewer (doc-only change) and skips security-review, but runs repo-check (README is an in-scope trigger per repo-check's own scope) and runs doc-audit. It explains the skip reason for each skipped gate.",
+      "prompt": "In the canon repo itself (tools/skill-eval-scope.sh exists), run wrapup. The session only changed README.md — a single sentence was reworded. No code was modified.",
+      "expected_output": "The skill skips code-simplifier and code-reviewer (doc-only change) and skips security-review, but runs doc-audit: tools/doc-check first, then the judgment pass. There is no repo-check gate. It explains the skip reason for each skipped gate.",
       "expectations": [
         "Skips code-simplifier with a stated reason",
         "Skips code-reviewer with a stated reason",
-        "Runs or describes running repo-check because README changed",
-        "Runs or describes running doc-audit",
+        "Runs or describes running tools/doc-check on the changed README, then the doc-audit judgment checks",
+        "Does not mention or run a repo-check gate",
         "States a skip reason for each skipped gate, not just silently omits them"
       ]
     },
@@ -42,22 +42,22 @@
       "id": 4,
       "case_type": "edge",
       "prompt": "Run wrapup after a single-line fix: a typo corrected in a variable name inside tools/sprint. No docs or skills changed.",
-      "expected_output": "The skill applies trivial-change skip logic: skips simplifier (single-line), skips reviewer (single-line fix, no design implications), skips doc-audit (no user-facing docs changed), skips repo-check (tools changed but only a trivial rename). Runs the refresh-docs step; does not end with its own commit prompt \u2014 that's sprint complete's step, not wrapup's.",
+      "expected_output": "The skill applies trivial-change skip logic: skips simplifier (single-line), skips reviewer (single-line fix, no design implications), skips doc-audit (no user-facing docs changed). Runs the refresh-docs step; does not end with its own commit prompt — that's sprint complete's step, not wrapup's.",
       "expectations": [
         "Skips code-simplifier citing single-line/trivial change",
         "Skips code-reviewer citing single-line fix with no design implications",
-        "Does not end with wrapup's own commit-and-push prompt \u2014 commit happens later, in sprint complete"
+        "Does not end with wrapup's own commit-and-push prompt — commit happens later, in sprint complete"
       ]
     },
     {
       "id": 5,
       "case_type": "boundary",
       "prompt": "In a user's own project that installed canon (it has README.md and docs/, and no tools/skill-eval-scope.sh file), run wrapup. The session changed docs/setup.md: a new section names the command `npm run seed` and the file `scripts/seed.js`. No code was modified.",
-      "expected_output": "The skill skips repo-check without reading its gate, recording it as skipped because this is not a canon checkout, and runs doc-audit, which checks that `npm run seed` and `scripts/seed.js` still exist (stale references).",
+      "expected_output": "The skill runs doc-audit: tools/doc-check checks that the named file `scripts/seed.js` still exists and that the changed doc's links and `sprint`/`tkt` subcommands resolve; the model pass covers the judgment checks, and `npm run seed` is confirmed against package.json. There is no repo-check gate.",
       "expectations": [
-        "Skips repo-check with the reason that this is not a canon checkout (tools/skill-eval-scope.sh is absent)",
-        "Does not read or apply repo-check's own checks (skill graph, catalog, board render)",
-        "Runs or describes running doc-audit, including checking that the named command and file still exist"
+        "Runs or describes running tools/doc-check (or an equivalent mechanical check) on docs/setup.md before the model pass",
+        "Checks that the named file `scripts/seed.js` and the command `npm run seed` still exist",
+        "Does not run any canon-only repo-surface checks (skill graph, catalog, board render) in a consumer project"
       ],
       "type": "capability"
     }

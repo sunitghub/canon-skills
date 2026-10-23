@@ -3,7 +3,7 @@
 import { cockpitConfirm, esc, escAttr, openHelp, toast } from './cockpit-core.js';
 import { GIT_ICON, SCRATCH_ICON, renderSessionSurfaces, startScratch, startSessionPoll } from './cockpit-sessions.js';
 import { showView } from './cockpit-views.js';
-import { fillCardBranchUpkeep, openUpkeepFor } from './cockpit-upkeep.js';
+import { openSkillEvalFor } from './cockpit-skill-eval.js';
 import { fillCardFactory, openFactoryGithub } from './cockpit-factory.js';
 import { closeTab, openProject, openTabs, restoreTabs, updateActiveCount } from './cockpit-tabs.js';
 
@@ -49,7 +49,7 @@ export async function load(){
             <div class="metarow" data-f="sessions-row" hidden><span class="k">Sessions</span><span class="v" data-f="sessions"></span></div>
             <div class="metarow" data-f="stopped-row" hidden><span class="k">Stopped</span><span class="v" data-f="stopped"></span></div>
             <div class="metarow"><span class="k">Branch</span><span class="v mono" data-f="branch">…</span></div>
-            <div class="metarow upk-row" data-upkeep="${escAttr(p.id)}" title="Open this project's Upkeep"><span class="k">Upkeep</span><span class="v" data-f="upkeep">…</span></div>
+            <div class="metarow se-link-row" data-skill-eval="${escAttr(p.id)}" title="Check a skill folder in this project"><span class="k">Skill Eval</span><span class="v">Open</span></div>
             <div class="metarow fac-row" data-factory="${escAttr(p.id)}" title="Open this project's Factory"><span class="k">Factory</span><span class="v" data-f="factory">…</span></div>
           </div>
           <div class="card-divider"></div>
@@ -70,7 +70,7 @@ export async function load(){
   grid.querySelectorAll('.dereg').forEach(b=>b.addEventListener('click',()=>dereg(b.dataset.id,b.dataset.name)));
   grid.querySelectorAll('.scratchbtn').forEach(b=>b.addEventListener('click',()=>startScratch(b.dataset.scratch)));
   grid.querySelectorAll('.go').forEach(b=>b.addEventListener('click',()=>openProject(b.dataset.open,b.dataset.name,{nudge:true})));
-  grid.querySelectorAll('.upk-row').forEach(r=>r.addEventListener('click',()=>openUpkeepFor(r.dataset.upkeep)));
+  grid.querySelectorAll('.se-link-row').forEach(r=>r.addEventListener('click',()=>openSkillEvalFor(r.dataset.skillEval)));
   grid.querySelectorAll('.fac-row').forEach(r=>r.addEventListener('click',()=>openFactoryGithub(r.dataset.factory)));
   grid.querySelectorAll('.regskill').forEach(b=>b.addEventListener('click',()=>registerSkill(b.dataset.id,b.dataset.name,b.dataset.path,b.dataset.skill,b)));
   grid.querySelectorAll('.gitstate').forEach(b=>b.addEventListener('click',()=>{ if(b.classList.contains('is-off')) trackChanges(b.dataset.id,b.dataset.name,b); }));
@@ -78,10 +78,21 @@ export async function load(){
   renderSessionSurfaces();
 }
 
+// t-67ab: the card's Branch row (hidden when the project has no git, t-5a4b).
+async function fillCardBranch(id,el){
+  const br=el.querySelector('[data-f="branch"]');
+  try{
+    const r=await fetch('/api/git?project='+encodeURIComponent(id)); const g=r.ok?await r.json():null;
+    const row=br.closest('.metarow');
+    if(g&&g.is_git===false){ if(row) row.hidden=true; }
+    else{ if(row) row.hidden=false; br.textContent=(g&&g.branch)||'—'; }
+  }catch(e){ br.textContent='—'; }
+}
+
 async function fillCardStats(id){
   const el=document.querySelector('.meta[data-stats="'+(window.CSS&&CSS.escape?CSS.escape(id):id)+'"]');
   if(!el) return;
-  fillCardBranchUpkeep(id,el);
+  fillCardBranch(id,el);
   fillCardFactory(id,el);
   const up=el.querySelector('[data-f="updated"]'), ct=el.querySelector('[data-f="count"]'), sk=el.querySelector('[data-f="skills"]');
   try{

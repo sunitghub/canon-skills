@@ -156,13 +156,6 @@
       }
     ]
   },
-  "upkeep": {
-    "default": "claude-sonnet-5-5",
-    "models": [
-      "claude-haiku-5-5",
-      "claude-sonnet-5-5"
-    ]
-  },
   "sources": [
     {
       "url": "https://platform.claude.com/docs/en/models/overview",

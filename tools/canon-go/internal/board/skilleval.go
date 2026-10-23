@@ -1137,6 +1137,9 @@ func skillEvalMaxCost(v any) float64 {
 	return math.Min(math.Max(c, 0.5), 10.0)
 }
 
+// runModelRe is the plain model-id rule for a board-started skill-eval run; tests/fixtures/model-id-cases.json locks it.
+var runModelRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:\[\]-]{0,63}$`)
+
 func startSkillEvalRun(root string, payload map[string]any) map[string]any {
 	fail := func(msg string) map[string]any { return map[string]any{"ok": false, "error": msg} }
 	if payload["confirm_cost"] != true {
@@ -1146,7 +1149,7 @@ func startSkillEvalRun(root string, payload map[string]any) map[string]any {
 	if v, ok := payload["model"]; ok {
 		model = pyStr(v)
 	}
-	if model != "" && !upkeepModelRe.MatchString(model) {
+	if model != "" && !runModelRe.MatchString(model) {
 		return fail("model must be a plain model id (letters, digits, . _ : [ ] -)")
 	}
 	rawDir := ""

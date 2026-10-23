@@ -29,8 +29,8 @@ want_routes="/api/admin/model-tiers /api/admin/model-tiers/apply /api/admin/mode
 /api/cockpit-status /api/cockpit-stop /api/commit /api/doc /api/git /api/github/doctor /api/github/intake /api/github/push-main /api/github/sync
 /api/github/sync-preview /api/handoff /api/project-stats /api/projects /api/register-skill /api/skill-eval/check
 /api/skill-eval/report /api/skill-eval/report.html /api/skill-eval/run /api/skill-eval/status /api/themes /api/themes/open
-/api/ticket /api/ticket-feature /api/ticket-image /api/tickets /api/track-changes /api/upkeep/report /api/upkeep/run
-/api/upkeep/status /api/version /api/why /api/worktree-lock /api/worktree-unlock /api/worktrees"
+/api/ticket /api/ticket-feature /api/ticket-image /api/tickets /api/track-changes
+/api/version /api/why /api/worktree-lock /api/worktree-unlock /api/worktrees"
 go="$(go_routes)"
 [[ "$go" == "$(printf '%s\n' $want_routes)" ]] || fail "sprint-check-api: the /api/ route set changed:
 $(diff <(printf '%s\n' $want_routes) <(printf '%s\n' "$go") || true)"
@@ -462,7 +462,10 @@ code="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$B/api/ticket/notaticket
 rm -rf "$WORK/.github"
 ci1="$(curl -s -X POST "$B/api/ci-workflow" -d '{}')"
 [[ "$(printf '%s' "$ci1" | json_get ok)" == True ]] || fail "sprint-check-api: ci-workflow create not ok: $ci1"
-cmp -s "$WORK/.github/workflows/canon-gate.yml" "$ROOT/tools/canon-gate-template.yml" || fail "sprint-check-api: the written canon-gate.yml differs from the shipped template"
+# t-04f4: the written file is the template with the canon ref pinned to this install's release tag.
+sed "s/__CANON_REF__/v$(tr -d '[:space:]' < "$ROOT/VERSION")/" "$ROOT/tools/canon-gate-template.yml" > "$WORK/canon-gate.expected"
+cmp -s "$WORK/.github/workflows/canon-gate.yml" "$WORK/canon-gate.expected" || fail "sprint-check-api: the written canon-gate.yml is not the template with the canon ref pinned"
+grep -q "ref: v[0-9]*\.[0-9]*\.[0-9]* " "$WORK/.github/workflows/canon-gate.yml" || fail "sprint-check-api: the written canon-gate.yml has no pinned canon ref"
 ci2="$(curl -s -X POST "$B/api/ci-workflow" -d '{}')"
 [[ "$(printf '%s' "$ci2" | json_get ok)" == False && "$(printf '%s' "$ci2" | json_get reason)" == exists ]] || fail "sprint-check-api: ci-workflow did not refuse on exists: $ci2"
 rm -rf "$WORK/.github"
@@ -787,16 +790,6 @@ for bad in '{"models":"x","defaults":{}}' '[]' 'null' '{"reset":"yes"}' '{"reset
   [[ "$(tiers_post "$bad")" == 400 ]] || fail "sprint-check-api: model-tiers payload $bad should 400"
   [[ "$(shasum "$user_file" | cut -d' ' -f1)" == "$saved_sha" ]] || fail "sprint-check-api: rejected payload $bad changed the data-dir copy"
 done
-# t-43ba: a data-dir copy saved before `upkeep` existed gets the seed's (Upkeep's picker and default read it).
-old_copy="$(python3 -c 'import sys,json; d=json.load(open(sys.argv[1])); d.pop("upkeep"); print(json.dumps(d))' "$SEED_TIERS")"
-printf '%s' "$old_copy" > "$user_file"
-[[ "$(curl -s "$B/api/admin/model-tiers" | python3 -c 'import sys,json; print(json.dumps(json.load(sys.stdin).get("upkeep"), sort_keys=True))')" == \
-   "$(python3 -c 'import sys,json; print(json.dumps(json.load(open(sys.argv[1]))["upkeep"], sort_keys=True))' "$SEED_TIERS")" ]] \
-  || fail "sprint-check-api: a data-dir copy without upkeep did not get the seed's"
-own_copy="$(python3 -c 'import sys,json; d=json.load(open(sys.argv[1])); d["upkeep"]={"default":"claude-haiku-5-5","models":["claude-haiku-5-5"]}; print(json.dumps(d))' "$SEED_TIERS")"
-printf '%s' "$own_copy" > "$user_file"
-[[ "$(curl -s "$B/api/admin/model-tiers" | python3 -c 'import sys,json; print(json.load(sys.stdin)["upkeep"]["default"])')" == claude-haiku-5-5 ]] \
-  || fail "sprint-check-api: a data-dir copy's own upkeep was replaced by the seed's"
 for corrupt in '[]' 'null' 'not json'; do   # a data-dir copy that is not a registry object falls back to the seed
   printf '%s' "$corrupt" > "$user_file"
   [[ "$(tiers_json)" == "$seed_json" ]] || fail "sprint-check-api: GET with a corrupt data-dir copy ($corrupt) is not the seed"

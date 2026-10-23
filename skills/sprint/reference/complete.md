@@ -32,10 +32,10 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
 - 9. Close
 - 10. Commit & Push
 
-1. **Wrapup.** Read `skills/wrapup/SKILL.md`, run the wrapup pipeline (code-simplifier, code-reviewer, security-review, repo-check, doc-audit, then refresh docs) over the sprint's changed files — scope varies by gate: wrapup's memory-scoped gates (code-simplifier, code-reviewer) only see "code touched this session", so a multi-session sprint won't get earlier-session files re-checked by those two; security-review derives scope from git instead. `reviewer`/`evaluator` (steps 2-3 below, not part of this pipeline) also diff against `origin/main`, so they cover the full sprint regardless of session boundaries.
+1. **Wrapup.** Read `skills/wrapup/SKILL.md`, run the wrapup pipeline (code-simplifier, code-reviewer, security-review, doc-audit, then refresh docs) over the sprint's changed files — scope varies by gate: wrapup's memory-scoped gates (code-simplifier, code-reviewer) only see "code touched this session", so a multi-session sprint won't get earlier-session files re-checked by those two; security-review derives scope from git instead. `reviewer`/`evaluator` (steps 2-3 below, not part of this pipeline) also diff against `origin/main`, so they cover the full sprint regardless of session boundaries.
 
    **Bugfix tier — lighter wrapup.** For a `Tier: bugfix` sprint (eval-only), run a reduced
-   wrapup: keep `security-review` (a fix can still touch a trust boundary), `repo-check` (in a canon checkout), and
+   wrapup: keep `security-review` (a fix can still touch a trust boundary) and
    the inline `code-reviewer` (the cheap in-context 8-dimension check — it runs, not skipped);
    `code-simplifier` and `doc-audit` may be skipped — a narrow single-file diff usually already
    meets `wrapup/SKILL.md`'s own existing per-gate criteria for those two ("docs, comments, or
@@ -49,7 +49,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    **demo close-path**. The `demo` flag covers one light-close for two user-elected intents — a
    live demo (time-box), or a docs/research/UX-mockup sprint whose whole surface is `.md`/`.pen`
    (+ visuals) with no code to code-review or simplify. The close-path is identical for both:
-   **keep exactly `security-review` + the binding evaluator, skip the advisory reviewer + the rest of wrapup — a superset of what `bugfix` trims, additionally dropping `code-reviewer` and `repo-check` (which `bugfix` keeps).**
+   **keep exactly `security-review` + the binding evaluator, skip the advisory reviewer + the rest of wrapup — a superset of what `bugfix` trims, additionally dropping `code-reviewer` (which `bugfix` keeps).**
    (step 2 = advisory reviewer, step 3 = evaluator; refresh-docs, the pipeline's last step, still runs.) It **never drops below the binding evaluator** — that floor is non-negotiable. **The evaluator is forced to Haiku
    (`security-review` runs inline on the session model)** — see the Model-tier section below.
    This reduction is driven by an explicit **user flag, not structural
@@ -57,7 +57,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    the same class of explicit/auditable override as `eval_override` / `Gate model:` (see
    `AGENTS.md`'s `## Model Tiers` and `DECISIONS.md`'s 2026-07-30 north-star-amendment entry).
 
-   **Upkeep report-only guard (t-2201) — HARD, structural.** If `ticket.md` also carries a
+   **Maintenance-skill report-only guard (t-2201) — HARD, structural.** If `ticket.md` also carries a
    `skills:` line (an *auto-Demo'd maintenance chore* — `t-354b`), the demo light-close is valid
    **only if the sprint's diff is report-only**: `git diff --name-only $(git merge-base HEAD
    origin/main) HEAD` (the same base-ref command the reviewer/evaluator gates use; canon gitignores `.tickets/`,
@@ -149,13 +149,14 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    | code-reviewer | ran | no findings — reviewed the 8-dimension checklist in-context |
    | reviewer | ran | verdict: YES (model: sonnet — Admin Review & Eval default) |
    | security-review | skipped | no security-sensitive patterns |
-   | repo-check | skipped | no repo surface changed |
    | doc-audit | ran | README updated |
    | eval | ran | verdict: pass — eval-report.md written (model: sonnet — Admin Review & Eval default; 12m) |
    | skill-eval | skipped | advisory — no skill or gate agent changed |
    | mutation-test | skipped | no logic files changed |
    | break-it | skipped | advisory — not high-risk, no untrusted-input surface |
    ```
+
+   There is no `repo-check` row: the gate was removed (`t-0a7c`); its canon-only checks run in `code-reviewer`, its stale-reference check in `tools/doc-check`. A table written earlier that still has the row stays valid — `sprint complete` and `check-evidence` read no gate by name except that at least one row must be `ran`.
 
    `code-reviewer` and `reviewer` are distinct gates — `code-reviewer` is wrapup's in-context
    8-dimension check (`skills/wrapup/gates/reviewer.md`, inline, findings only, no verdict);
@@ -411,7 +412,7 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    triggers the skip), **or if `ticket.md` has `demo: true` AND the t-2201 guard doesn't void it**
    (the demo close-path skips this advisory gate the same way `bugfix` does, while still running
    the binding evaluator in step 3 — see "Demo mode" in step 1 — **but only if the sprint's diff
-   is report-only per the "Upkeep report-only guard (t-2201)" above; if `ticket.md` also carries
+   is report-only per the "Maintenance-skill report-only guard (t-2201)" above; if `ticket.md` also carries
    a `skills:` line and any non-`.md` file changed, `demo` does NOT apply here and this gate is
    NOT skipped** — re-check that guard before skipping on `demo` alone). `bugfix` is the **eval-only** tier: it skips *this advisory reviewer* but,
    unlike `trivial`, still runs the binding evaluator in step 3. A sprint always starts as normal or high-risk (`SKILL.md`'s tiers never let genuinely

@@ -55,11 +55,7 @@ Click any commit in the sidebar to see what changed and which ticket it likely b
 
 `+ New` opens a form pre-filled with the intent skeleton: `## Problem`, `## Outcome`, `## Constraints` and `## Open questions` (a bug also gets `## Expected` and `## Actual`), each followed by a one-line `<!-- … -->` hint: the form's text box shows the hints as prompts, and once the ticket is saved the board's Description view hides them; `tkt create` without `-d` writes the same, and at sprint start the plan answers or carries forward each open question (t-b0c9). The screenshot above predates it. The title suggests a type automatically — feature, task, bug, chore, or epic — while leaving type, priority, and description editable before `Create`. The ticket lands in `.tickets/<id>/ticket.md`, immediately visible to your agent.
 
-A ticket can also carry maintenance skills via `tkt create --skills a,b` (or by hand-setting `skills: <csv>` in `ticket.md`'s frontmatter); `sprint start` on that ticket runs each selected skill as the sprint's work. The close tier follows what actually changed — a run whose output is only reports/`.md` takes the light close, while a `dead-code-cleanup` that deletes code is a normal-tier close with the binding evaluator; the "maintenance" label never skips the evaluator. For a quick, ticket-free check instead, see **Upkeep Dashboard** below.
-
-## Upkeep Dashboard
-
-**Upkeep** (the Upkeep button on a project's board, t-67ab — it shows that project only; each Projects card says how many checks have never run) runs `context-check`, `context-doctor`, `dead-code-cleanup`, or `promote-learnings` headlessly against that project — no ticket, no sprint gate, always read-only (a run only ever writes its own `.reports/<skill>_<timestamp>.md`; it never modifies or deletes anything else, even when `dead-code-cleanup` finds a confirmed-dead symbol). Pick a model (Claude models only for now: Haiku 5.5 or Sonnet 5.5, the default; the list and default are `upkeep` in Admin › Model Tiers' `model-tiers.json`, which `tools/upkeep-run` also falls back to, t-43ba), click **Run** — a confirmation dialog names the model and notes the dispatch is a real LLM call that will incur API cost. Each report ends with its own **Next Steps**: the exact follow-up command or file edit a human would run to act on the findings, never auto-executed.
+A ticket can also carry maintenance skills via `tkt create --skills a,b` (or by hand-setting `skills: <csv>` in `ticket.md`'s frontmatter); `sprint start` on that ticket runs each selected skill as the sprint's work. The close tier follows what actually changed — a run whose output is only reports/`.md` takes the light close, while a `dead-code-cleanup` that deletes code is a normal-tier close with the binding evaluator; the "maintenance" label never skips the evaluator. For a quick, ticket-free check, run the skill yourself in an interactive session (`/context-check`, `/context-doctor`, `/dead-code-cleanup`, `/promote-learnings`). The board no longer runs these headlessly (Upkeep was removed in t-0e8b; see the CHANGELOG security note).
 
 ## Ticket Completeness
 
@@ -108,7 +104,7 @@ Enforcement layers:
 
 Recommended order: create `acceptance.md` first to define Done, then `plan.md` to capture the approach and decisions. `sprint-check` suggests that order in `+ New doc`.
 
-Only those markdown files are sprint docs the user or agent creates. The double-bordered steps in the diagrams are reference docs and skills used when the tier calls for them: `orient` reads the codebase and feeds findings into the Plan, `impact-analysis` rates risk and feeds the test plan (detailed below), and `capture` (a real skill) writes notable discoveries to `HANDOFF.md` when they appear mid-build. On `sprint complete`, `code-simplifier`, `code-reviewer`, `security-review`, `repo-check`, and `doc-audit` are considered in order, using skip rules for steps that do not apply. Then the `reviewer` (fresh subagent, advisory) and `eval` (fresh subagent, binding) gates run — both with no implementation history — and `eval` grades each acceptance criterion against the actual code from a clean context window; any `partial` or `not-run` criterion forces the verdict to `fail` (there's no separate non-blocking `partial`/`not-run` verdict), and either blocks close. These all run as part of the `sprint` workflow; they are not separate docs to create and not commands the user has to invoke.
+Only those markdown files are sprint docs the user or agent creates. The double-bordered steps in the diagrams are reference docs and skills used when the tier calls for them: `orient` reads the codebase and feeds findings into the Plan, `impact-analysis` rates risk and feeds the test plan (detailed below), and `capture` (a real skill) writes notable discoveries to `HANDOFF.md` when they appear mid-build. On `sprint complete`, `code-simplifier`, `code-reviewer`, `security-review`, and `doc-audit` are considered in order, using skip rules for steps that do not apply. Then the `reviewer` (fresh subagent, advisory) and `eval` (fresh subagent, binding) gates run — both with no implementation history — and `eval` grades each acceptance criterion against the actual code from a clean context window; any `partial` or `not-run` criterion forces the verdict to `fail` (there's no separate non-blocking `partial`/`not-run` verdict), and either blocks close. These all run as part of the `sprint` workflow; they are not separate docs to create and not commands the user has to invoke.
 
 ### Impact Analysis — five dimensions
 
@@ -236,6 +232,10 @@ sprint agent without leaving the browser — no second terminal.
   (canon's one third-party-dep binary — see `DECISIONS.md` 2026-08-23); the board
   server stays pure stdlib.
 - **Security:** binds **127.0.0.1 only**; every request checks loopback Host/Origin;
+  on Linux the board and the daemon also refuse any connection another OS user opened
+  (owner looked up in `/proc/net/tcp`, failing closed; not yet on macOS/Windows, t-68ae);
+  the state folder (`$XDG_RUNTIME_DIR/canon-cockpit`, else the user cache dir) must be
+  yours with mode 0700, or the cockpit refuses to start;
   a boot token gates session start and `/end-session` (Reap now / Kill, sent only by
   the daemon's own `/relay` page) and a per-session token gates stream/input/kill;
   ticket ids are validated `^t-[a-z0-9]{4}$` and exec'd as an argv slice (never a

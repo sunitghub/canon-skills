@@ -2,8 +2,100 @@
 // load-time code is initSkillEval(), which cockpit-main.js runs in order once every module has loaded.
 import { cockpitConfirm, esc, escAttr } from './cockpit-core.js';
 import { _normPath } from './cockpit-sessions.js';
-import { upFmtWhen, upModelLabel, upHelpBtn, upHelpSync, upProjectId, upToggleCollapse } from './cockpit-upkeep.js';
 import { getProjects } from './cockpit-projects.js';
+import { showView } from './cockpit-views.js';
+import { activateTab, activeTab, applySplit, openProject, setSkillEvalPane } from './cockpit-tabs.js';
+
+// ── "?" info popover (t-576f): non-modal, anchored to its button, closes on Esc or an outside click ──
+const UP_HELP={
+  'skill-eval':{title:'Skill Eval',
+    lead:"Checks that a skill folder ships evals and follows Anthropic's skill-authoring rules, then measures the skill with and without it.",
+    sections:[
+      ['The three stages','<b>1 Eval coverage</b> (free): does <code>evals/evals.json</code> exist with enough varied cases?<br><b>2 Best practices</b> (free): frontmatter, description, size and trust checks based on Anthropic\'s published rules.<br><b>3 Plugin eval</b> (paid): runs <code>claude plugin eval</code>. Stage 3 unlocks only when stages 1 and 2 have no failure, and a skill with hooks or shell blocks needs your explicit OK.'],
+      ['What we hand to plugin eval','Your <code>evals.json</code> is converted to eval cases. Each gets an LLM-judge rubric built from its expectations, plus, for most cases, a check that the skill actually fired. Every case runs twice with the skill and twice without it (the baseline); the difference is the skill\'s effect. The grading itself is Anthropic\'s <code>claude plugin eval</code>.'],
+      ['Limits','Scores come from an LLM judge, so they are only as good as your evals. Each run starts in an empty working directory (per the plugin-evals doc) with read-only tools, and expectations about saving memory are dropped. A skill that refuses direct invocation, as wrapup does, may never fire and so scores as if it did nothing. Canon\'s own skills are never picked here.'],
+      ['What to do next','Open the full report (link above). A stage 1/2 failure: fix the flagged frontmatter, eval-coverage, or trust issue directly in the skill folder, then re-run. A stage 3 result: compare the with-skill and without-skill scores — a skill that didn\'t move the needle needs a stronger description or examples, not just more evals.']],
+    facts:[['Cost','stage 3 uses your Claude usage, capped near $3 (list price) per run'],['Writes','run state in the project\'s .reports/skillEvalRuns.json; reports stay in canon\'s cache']]}
+};
+let upHelpOpen=null, upHelpScroll=0;
+function upHelpBtn(id){
+  const h=UP_HELP[id]; if(!h) return '';
+  return `<span class="rc-help-wrap"><button type="button" class="rc-help" aria-label="About ${escAttr(h.title)}" aria-expanded="${upHelpOpen===id}" aria-controls="up-help-${id}">?</button></span>`;
+}
+function upHelpPanelHTML(id){
+  const h=UP_HELP[id];
+  return `<div class="rc-pop" id="up-help-${id}" role="region" aria-label="About ${escAttr(h.title)}"><div class="rc-pop-body">`
+    +`<div class="rc-pop-head"><span class="rc-pop-title">${esc(h.title)}</span><button type="button" class="rc-pop-x" aria-label="Close">&times;</button></div>`
+    +`<p class="rc-pop-lead">${esc(h.lead)}</p>`
+    +(h.sections.some(s=>s[0]===UP_NEXT)?`<button type="button" class="rc-pop-jump">&rarr; ${UP_NEXT}</button>`:'')
+    +h.sections.map(s=>`<div class="rc-pop-sec${s[0]===UP_NEXT?' next" id="up-help-'+id+'-next':''}"><div class="rc-pop-eyebrow">${esc(s[0])}</div><p>${s[1]}</p></div>`).join('')
+    +`<div class="rc-pop-facts">${h.facts.map(f=>`<span class="rc-pop-fact"><b>${esc(f[0])}</b>${esc(f[1])}</span>`).join('')}</div>`
+    +'</div></div>';
+}
+// Keeps the DOM in step with upHelpOpen; called after every card (re)render so a poll refresh does not close it.
+// t-783a: it also wires the "?" buttons (once each: a button can outlive a sync) and each freshly built panel.
+const upHelpWired=new WeakSet();
+function upHelpSync(){
+  document.querySelectorAll('[data-help]').forEach(card=>{
+    const id=card.dataset.help, open=upHelpOpen===id;
+    const btn=card.querySelector('.rc-help'); if(btn) btn.setAttribute('aria-expanded',String(open));
+    if(btn&&!upHelpWired.has(btn)){ upHelpWired.add(btn); btn.addEventListener('click',()=>upHelpToggle(id)); }
+    const wrap=card.querySelector('.rc-help-wrap'); if(!wrap) return;
+    const pop=wrap.querySelector('.rc-pop');
+    if(open&&!pop){
+      wrap.insertAdjacentHTML('beforeend',upHelpPanelHTML(id)); upHelpPlace(wrap.querySelector('.rc-pop'));
+      wrap.querySelector('.rc-pop-x').addEventListener('click',()=>upHelpClose(true));
+      const jump=wrap.querySelector('.rc-pop-jump'); if(jump) jump.addEventListener('click',()=>upHelpJump(id));
+      wrap.querySelector('.rc-pop-body').scrollTop=upHelpScroll;   // a card re-render rebuilds the panel; keep the reader's place
+    }
+    else if(!open&&pop) pop.remove();
+  });
+}
+// Open downward unless there is more room above; cap the body height to the room actually available.
+function upHelpPlace(pop){
+  // Room above is measured from #views' top edge: the tab strip sits above it and would cover the panel.
+  const main=document.querySelector('.main'), mr=main?main.getBoundingClientRect():{left:0};
+  const views=pop.closest('.views'), topEdge=views?views.getBoundingClientRect().top:0;
+  const w=pop.parentElement.getBoundingClientRect(), below=window.innerHeight-w.bottom-44, above=w.top-topEdge-16;
+  const up=below<300&&above>below;
+  pop.classList.toggle('up',up);
+  if(main) pop.style.width=Math.max(220,Math.min(400,w.right+6-mr.left-12))+'px';   // never spill under the sidebar on a narrow window
+  pop.querySelector('.rc-pop-body').style.maxHeight=Math.max(160,Math.min(520,up?above:below))+'px';
+}
+const UP_NEXT='What to do next';
+// Scroll only the panel body: scrollIntoView would also scroll the page behind the popover.
+function upHelpJump(id){
+  const sec=document.getElementById(`up-help-${id}-next`), body=sec&&sec.closest('.rc-pop-body'); if(!body) return;
+  body.scrollBy({top:sec.getBoundingClientRect().top-body.getBoundingClientRect().top-4,behavior:'smooth'});
+}
+function upHelpToggle(id){ upHelpOpen=(upHelpOpen===id)?null:id; upHelpScroll=0; upHelpSync(); }
+// focusBtn: Escape and the x hand focus back to the "?"; an outside click leaves focus where the user put it.
+function upHelpClose(focusBtn){
+  const id=upHelpOpen; upHelpOpen=null; upHelpScroll=0; upHelpSync();
+  if(focusBtn&&id){ const b=document.querySelector(`[data-help="${id}"] .rc-help`); if(b) b.focus(); }
+}
+
+let upProjectId=null;   // the project this Skill Eval view is for (t-67ab, t-0e8b)
+
+function upFmtWhen(finishedAt){
+  if(!finishedAt) return null;
+  const d=new Date(finishedAt*1000);
+  return isNaN(d.getTime()) ? null : d.toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+}
+
+// t-0e8b: the Skill Eval view belongs to a project, opened from its Projects card; ← Board returns to the tab.
+export function openSkillEvalFor(pid){
+  if(!getProjects().some(p=>p.id===pid)) return;
+  if(pid!==upProjectId){ seReset(); upProjectId=pid; }
+  if(activeTab!==pid){ const p=getProjects().find(x=>x.id===pid); openProject(pid,p.name); }
+  showView('skill-eval');
+}
+export function loadSkillEval(){
+  const proj=getProjects().find(p=>p.id===upProjectId);
+  document.getElementById('se-proj').textContent=proj?proj.name:'';
+  seRender();
+}
+
 
 // ── Skill Eval (t-23d8): free checks on a picked skill folder, then the paid plugin eval ──
 // Every path/gate decision is re-made by the server (validate_skill_dir, confirm_cost, fail and
@@ -168,7 +260,7 @@ function seStartPoll(){
 async function seRun(){
   const modelEl=document.getElementById('se-model');
   const model=modelEl?modelEl.value:'claude-haiku-4-5-20251001';
-  const label=upModelLabel(model);
+  const label=modelEl&&modelEl.selectedOptions[0]?modelEl.selectedOptions[0].textContent:model;
   const name=se.dir.split(/[\\/]/).pop();
   const ok=await cockpitConfirm({
     title:'Run plugin eval on '+name+'?',
@@ -184,5 +276,9 @@ async function seRun(){
 }
 // t-565f: skill-eval's load-time code, run once at the end (the module version keeps it in initSkillEval()).
 export function initSkillEval(){
-document.addEventListener('DOMContentLoaded',()=>document.querySelector('#up-detail .up-detail-head').addEventListener('click',()=>upToggleCollapse()));
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&upHelpOpen) upHelpClose(true); });
+document.addEventListener('click',e=>{ if(upHelpOpen&&!e.target.closest('.rc-pop,.rc-help')) upHelpClose(false); });
+document.addEventListener('scroll',e=>{ if(e.target.classList&&e.target.classList.contains('rc-pop-body')) upHelpScroll=e.target.scrollTop; },true);
+window.addEventListener('resize',()=>{ if(upHelpOpen) upHelpClose(false); });   // placement is computed once, so a resize closes it
+document.getElementById('se-back').addEventListener('click',()=>{ setSkillEvalPane(null); if(upProjectId) activateTab(upProjectId); else applySplit(); });
 }

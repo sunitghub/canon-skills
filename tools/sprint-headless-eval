@@ -227,7 +227,18 @@ done
 
 # --- Resolve skills-doc path for the evaluator protocol ---
 
-if [[ -d "$ROOT/skills/sprint" ]]; then
+PIN_NOTE=""
+# t-89b0: CI pins the grading protocol to canon's own skills (the template sets CANON_GATE_SKILLS to the canon
+# checkout), so a skills/ or .claude/skills/ folder the graded PR adds is never read.
+if [[ -n "${CANON_GATE_SKILLS:-}" ]]; then
+  [[ -d "$CANON_GATE_SKILLS/sprint" ]] || { echo "Error: CANON_GATE_SKILLS=$CANON_GATE_SKILLS has no sprint/ skill docs." >&2; exit 1; }
+  SKILLS_PREFIX="${CANON_GATE_SKILLS%/}"
+  SUBAGENT_LOG="$SCRIPT_DIR/subagent-log.sh"
+  SUBAGENT_LOG_ALLOW="Bash($SCRIPT_DIR/subagent-log.sh:*)"
+  # The entry docs send the subagent on to more skills/... docs by relative path; pin those hops too (t-89b0 review).
+  PIN_NOTE="
+Tell each subagent, in its instructions: every skills/... path those docs reference (and any .claude/skills/... or .agents/skills/... form of it) resolves under $SKILLS_PREFIX: read it there, never from this project's own skills/, .claude/skills/ or .agents/skills/ folders."
+elif [[ -d "$ROOT/skills/sprint" ]]; then
   SKILLS_PREFIX="skills"
   # t-30bf: ./tools only when the graded tree is this install (it already supplies this script); any other project's
   # tools/ is untrusted, so the orchestrator runs the install's own copy, as the consumer layout below does.
@@ -246,18 +257,24 @@ else
   echo "Error: no sprint skill docs found at '$ROOT/skills/sprint' or '$ROOT/.claude/skills/sprint'. Run 'skills.sh add sprint' first." >&2
   exit 1
 fi
+# t-5ff5: git only through the running install's read-only wrapper (git diff/log/show --output=<path> writes any file
+# under dontAsk). Its absolute path, in every layout, so the graded PR cannot swap the wrapper.
+GIT_READ="$SCRIPT_DIR/git-read"
+GIT_READ_ALLOW="Bash($GIT_READ:*)"
+GIT_NOTE="
+Run git only as $GIT_READ <diff|log|show|status> [args] (for example: $GIT_READ diff --name-only $BASE_REF HEAD), never plain git: plain git is not allowed in this run. Tell each subagent the same, in its instructions."
 
 # --- Resolve the evaluator's allowedTools (config-driven, secure-by-default) ---
 # No --allowed-tools-file  => the built-in least-privilege list (unchanged behavior).
 # A file                   => its JSON string-array, with the two mechanism-required
-#                             entries (Agent + the runtime subagent-log allow) force-added
+#                             entries (Agent, the git-read grant, the runtime subagent-log allow) force-added
 #                             so a hand-edited config can't break dispatch/audit. Broadening
 #                             the evaluator's tools is thus an explicit, auditable opt-in;
 #                             the dontAsk evaluator grades an untrusted diff, so any added
 #                             grant must be NARROW (see tools/headless-eval-tools.json).
 ALLOWED_TOOLS=()
 resolve_allowed_tools() {
-  local default=("Agent" "Bash(git diff:*)" "Bash(git log:*)" "Bash(git show:*)" "Bash(git status:*)" "$SUBAGENT_LOG_ALLOW" "Read" "Grep" "Glob" "LS")
+  local default=("Agent" "$GIT_READ_ALLOW" "$SUBAGENT_LOG_ALLOW" "Read" "Grep" "Glob" "LS")
   if [[ -z "$ALLOWED_TOOLS_FILE" ]]; then
     ALLOWED_TOOLS=("${default[@]}")
     return 0
@@ -269,12 +286,16 @@ resolve_allowed_tools() {
     [[ -n "$line" ]] && ALLOWED_TOOLS+=("$line")
   done <<< "$parsed"
   # Force-add mechanism-required entries (dispatch + audit) if the config omitted them.
-  local have_agent=0 have_log=0 t
+  local have_agent=0 have_git=0 have_log=0 t
   for t in ${ALLOWED_TOOLS[@]+"${ALLOWED_TOOLS[@]}"}; do
     [[ "$t" == "Agent" ]] && have_agent=1
+    [[ "$t" == "$GIT_READ_ALLOW" ]] && have_git=1
     [[ "$t" == "$SUBAGENT_LOG_ALLOW" ]] && have_log=1
+    # t-5ff5: a plain git grant still works (existing configs keep running) but reopens the --output write path
+    [[ "$t" == "Bash(git "* || "$t" == "Bash(git:"* ]] && echo "Warning: $ALLOWED_TOOLS_FILE grants '$t': plain git under dontAsk can write files (git diff/log/show --output=<path>). Remove it; the evaluator reaches git through $GIT_READ, which this run grants." >&2
   done
   [[ "$have_agent" -eq 1 ]] || ALLOWED_TOOLS+=("Agent")
+  [[ "$have_git" -eq 1 ]] || ALLOWED_TOOLS+=("$GIT_READ_ALLOW")
   [[ "$have_log" -eq 1 ]] || ALLOWED_TOOLS+=("$SUBAGENT_LOG_ALLOW")
   echo "Notice: evaluator allowedTools (from $ALLOWED_TOOLS_FILE): ${ALLOWED_TOOLS[*]}" >&2
 }
@@ -297,13 +318,13 @@ SPEC_TITLE="$(awk '/^#[[:space:]]/ { sub(/^#[[:space:]]+/, ""); print; exit }' "
 PROMPT="You are the orchestrator for a lightweight headless eval run. The code change under review already exists as the diff between $BASE_REF and HEAD — you never write or edit code yourself.
 
 Dispatch exactly one fresh Agent subagent, subagent_type: \"Plan\":
-- Evaluator — instruct it to read $SKILLS_PREFIX/sprint/reference/eval.md for the grading protocol format and evidence standards, then grade the following criteria against the diff between $BASE_REF and HEAD.
+- Evaluator — instruct it to read $SKILLS_PREFIX/sprint/reference/eval.md for the grading protocol format and evidence standards, then grade the following criteria against the diff between $BASE_REF and HEAD.$PIN_NOTE$GIT_NOTE
 
 **Important adaptations for this lightweight mode:**
 - There is NO ticket ID and NO .tickets/ directory for this run. The evaluator must NOT try to read .tickets/ or look for acceptance.md/plan.md in .tickets/.
 - The evaluator must NOT write eval-report.md (its Bash writes will be refused anyway). Instead, instruct it to include its full report verbatim in its response text.
 - The evaluator must skip the run-id step (step 1 of eval.md) — there is no ticket dir to write it to.
-- For step 2, the evaluator must derive changed files from: git diff --name-only $BASE_REF HEAD
+- For step 2, the evaluator must derive changed files from: $GIT_READ diff --name-only $BASE_REF HEAD
 - For step 3, the acceptance criteria to grade are provided below (not in a file):
 
 **Spec: $SPEC_TITLE**

@@ -104,7 +104,7 @@ free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",
 # $1 = human label, $2 = base url, $3 = its state dir
 exercise() {
   local label="$1" base="$2" sd="$3"
-  rm -rf "$sd"; mkdir -p "$sd"
+  rm -rf "$sd"; mkdir -p -m 700 "$sd"   # t-68ae: the board refuses a state folder open to others
 
   # discover with no daemon → running:false, addr:null
   local disc; disc="$(curl -s "$base/api/cockpit")"
@@ -191,7 +191,7 @@ wait_ready "$GO_PORT" || fail "sprint-check-cockpit: the board did not start"
 exercise "board" "http://127.0.0.1:$GO_PORT" "$GO_SD"
 
 # override case: COCKPIT_SPRINT_BIN already set in the launching env
-GO_PORT2="$(free_port)"; GO_SD2="$WORK/state-go-override"; mkdir -p "$GO_SD2"
+GO_PORT2="$(free_port)"; GO_SD2="$WORK/state-go-override"; mkdir -p -m 700 "$GO_SD2"
 SPRINT_CHECK_ROOT="$WORK" SPRINT_CHECK_NO_BROWSER=1 COCKPIT_STATE_DIR="$GO_SD2" COCKPIT_DAEMON_BIN="$STUB" COCKPIT_SPRINT_BIN="$OVERRIDE_VALUE" \
   "$GO_BIN" "$GO_PORT2" >/dev/null 2>&1 &
 GO_PID2=$!; disown "$GO_PID2" 2>/dev/null || true

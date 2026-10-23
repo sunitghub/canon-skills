@@ -199,36 +199,11 @@ for tok in $(grep -oE 'var\(--col-[a-z]+\)' <<<"$CKSRC" | sed 's/var(//;s/)//' |
   grep -qF -- "${tok}:" <<<"$CKSRC" || fail "canon: cockpit.html uses ${tok} but never defines it"
 done
 
-# ── Phase 2b-iv: Upkeep view (t-7ae6) ─────────────────────────────────────────
-# t-67ab: Upkeep lives in each project tab (the board's Upkeep button), not the sidebar; no picker.
-! grep -qF 'id="nav-upkeep"' <<<"$page" || fail "canon: Upkeep must not have a sidebar entry (t-67ab)"
-grep -qF "showView('upkeep')" <<<"$page" || fail "canon: openUpkeepFor must show the Upkeep view"
-grep -qF "type==='open-upkeep'" <<<"$page" || fail "canon: the shell must handle the board's open-upkeep message"
-grep -qF 'id="view-upkeep"' <<<"$page" || fail "canon: missing #view-upkeep section"
-! grep -qF 'id="up-projrow"' <<<"$page" || fail "canon: Upkeep must not have its own project picker (t-67ab)"
-grep -qF 'id="up-back"' <<<"$page" || fail "canon: Upkeep missing its ← Board button"
-grep -qF 'id="up-grid"' <<<"$page" || fail "canon: Upkeep missing report card grid"
-grep -qF 'id="up-detail"' <<<"$page" || fail "canon: Upkeep missing the single report-detail panel"
-for skill in "context-check" "context-doctor" "dead-code-cleanup" "promote-learnings"; do
-  grep -qF "$skill" <<<"$page" || fail "canon: Upkeep missing skill $skill"
-done
-for ep in "/api/upkeep/run" "/api/upkeep/status" "/api/upkeep/report"; do
-  grep -qF "$ep" <<<"$page" || fail "canon: Upkeep should call $ep"
-done
-# t-7ae6 grill #1/#2: Agent picker only enables Claude; Pi/Copilot are visibly
-# present but disabled ("(soon)"), never silently omitted.
-grep -qF "Pi (soon)" <<<"$page" || fail "canon: Upkeep Agent picker should show Pi disabled, not omit it"
-grep -qF "Copilot (soon)" <<<"$page" || fail "canon: Upkeep Agent picker should show Copilot disabled, not omit it"
-# t-43ba: Upkeep's models, labels and default come from the Model Tiers registry; its module names none.
-! grep -qiE "haiku|sonnet|opus|fable" "$ROOT/tools/sprint-check-app/static/cockpit-upkeep.js" \
-  || fail "canon: cockpit-upkeep.js names a model; Upkeep's models come from model-tiers.json's upkeep entry"
-# t-7ae6 grill #2: universal read-only — the client must never claim to write
-# to any of these shared files itself (the dispatch prompt enforces this
-# server-side via tools/upkeep-run; this just guards against a future client
-# regression that adds a direct write call).
-for forbidden in "standards/" "critique/canon-learnings.md"; do
-  grep -qE "fetch.*$forbidden" <<<"$page" && fail "canon: Upkeep client must never write to $forbidden directly"
-done
+# ── Skill Eval view (t-23d8, t-0e8b): opened from a Projects card; Upkeep is removed ─────
+grep -qF "showView('skill-eval')" <<<"$page" || fail "canon: openSkillEvalFor must show the Skill Eval view"
+grep -qF 'id="view-skill-eval"' <<<"$page" || fail "canon: missing #view-skill-eval section"
+grep -qF 'id="se-back"' <<<"$page" || fail "canon: Skill Eval missing its ← Board button"
+! grep -qiF "upkeep" <<<"$page" || fail "canon: the shell still mentions Upkeep (removed, t-0e8b)"
 
 # ── Help/tour overlay (t-c5e7) ───────────────────────────────────────────────
 grep -qF 'id="help-overlay"' <<<"$page" || fail "canon: missing Help overlay"
@@ -444,4 +419,4 @@ run_launcher never 0 2
 [[ -z "$L_OPENS" && "$L_CODE" == 1 ]] || fail "canon: board that never answers: want no open and exit 1, got code $L_CODE opens '$L_OPENS'"
 [[ "$L_OUT" == *"did not answer on port"* ]] || fail "canon: timeout message missing: $L_OUT"
 
-echo "canon: ok (t-302d browser opens only after /api/version answers (0.2/1.5/3.0 s starts, dead board, silent board); single-instance no-2nd-server; /cockpit serves Projects page with section bar + Add + quote-safe escaping; Phase 2a tab bar + iframe /?project= + localStorage persistence + project-scoped card stats; app.html carries the project fetch wrapper + theme sync; Phase 3 embed marker strips version/daemon/theme/help, keeps CI, folder-path breadcrumb, scoped to canon-proj-embed not body.embed; Phase 2b-i Admin view — daemon status/version/uptime/restart + 3 tiles incl Active projects + sessions list, reusing existing endpoints, uptime_secs plumbed; shell Help/tour overlay wired to the footer button + Versions from existing endpoints; Phase 2b-iv Upkeep view — nav/view/project-picker/report-grid/single-detail-panel present, all 4 skills, Agent picker shows Pi/Copilot disabled not omitted, no model named in cockpit-upkeep.js (t-43ba), client never writes directly to standards/ or critique/canon-learnings.md; Phase 2b-iii in-tab agent session reuse + live-session poller + guarded closeTab/close-warn modal + scoped beforeunload + origin-checked shell→board Save&End bridge; t-7485/t-96c3 per-project Skills row + register efficiency/sprint from IMPORTANT_SKILLS, reordered meta, divider, larger actions, red ✕; t-65b0 board blue-grey dark theme (light untouched) + embed rail hide + card bottom-row/tooltips; t-1b88 Add-Project Browse folder picker via /api/browse-dirs; t-340d hide dotfolders by default + Show-hidden toggle; t-07c8 git relaxed to a warning + no-store HTML; t-5849 canon-styled cockpitConfirm replaces native confirm/prompt; t-5c3c soft nudge to register sprint skill on explicit project open, session-scoped dismiss, no restore-time banner storm)"
+echo "canon: ok (t-302d browser opens only after /api/version answers (0.2/1.5/3.0 s starts, dead board, silent board); single-instance no-2nd-server; /cockpit serves Projects page with section bar + Add + quote-safe escaping; Phase 2a tab bar + iframe /?project= + localStorage persistence + project-scoped card stats; app.html carries the project fetch wrapper + theme sync; Phase 3 embed marker strips version/daemon/theme/help, keeps CI, folder-path breadcrumb, scoped to canon-proj-embed not body.embed; Phase 2b-i Admin view — daemon status/version/uptime/restart + 3 tiles incl Active projects + sessions list, reusing existing endpoints, uptime_secs plumbed; shell Help/tour overlay wired to the footer button + Versions from existing endpoints; Skill Eval view with its ← Board, and no Upkeep left in the shell (t-0e8b); Phase 2b-iii in-tab agent session reuse + live-session poller + guarded closeTab/close-warn modal + scoped beforeunload + origin-checked shell→board Save&End bridge; t-7485/t-96c3 per-project Skills row + register efficiency/sprint from IMPORTANT_SKILLS, reordered meta, divider, larger actions, red ✕; t-65b0 board blue-grey dark theme (light untouched) + embed rail hide + card bottom-row/tooltips; t-1b88 Add-Project Browse folder picker via /api/browse-dirs; t-340d hide dotfolders by default + Show-hidden toggle; t-07c8 git relaxed to a warning + no-store HTML; t-5849 canon-styled cockpitConfirm replaces native confirm/prompt; t-5c3c soft nudge to register sprint skill on explicit project open, session-scoped dismiss, no restore-time banner storm)"
