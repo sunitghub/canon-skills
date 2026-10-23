@@ -1193,7 +1193,9 @@ cmd_send_issue() {
     br="$(git -C "$root" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
     if [[ -n "$br" ]]; then
       if ahead="$(git -C "$root" rev-list --count '@{u}..HEAD' 2>/dev/null)"; then
-        [[ "$ahead" -gt 0 ]] && echo "send-issue: warning: branch $br is $ahead commit(s) ahead of its upstream; the cloud session will not see them until you push" >&2
+        if (( ahead > 0 )); then
+          echo "send-issue: warning: branch $br is $ahead commit(s) ahead of its upstream; the cloud session will not see them until you push" >&2
+        fi
       else
         echo "send-issue: warning: branch $br has no upstream; the cloud session clones origin without it" >&2
       fi

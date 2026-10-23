@@ -531,9 +531,9 @@ function showSent(panel, t, tab) {
   const { n, url, line, cmd } = tab.ghSent;
   panel.innerHTML = `<div class="ck-gh-box ck-gh-sent" id="ck-gh-sent">
       <h3>Sent ${esc(t.id)} as issue #${esc(n)}</h3>
-      ${line ? `<p>Start a Claude cloud session on the canon environment and type:</p><pre class="ck-gh-pre ck-gh-prompt" id="ck-gh-prompt">${esc(line)}</pre>${cmd ? `<p>Or start it from a terminal in this project:</p><pre class="ck-gh-pre ck-gh-prompt" id="ck-gh-cmd">${esc(cmd)}</pre>` : ''}` : `<p>Start a Claude cloud session on the canon environment and point it at issue #${esc(n)}.</p>`}
+      ${line ? `<p>Start a Claude cloud session on the canon environment and type:</p><pre class="ck-gh-pre ck-gh-prompt" id="ck-gh-prompt">${esc(line)}</pre>${cmd ? `<p>Or paste this in a terminal window in this project (a real terminal; it is refused inside a Claude session):</p><pre class="ck-gh-pre ck-gh-prompt" id="ck-gh-cmd">${esc(cmd)}</pre>` : ''}` : `<p>Start a Claude cloud session on the canon environment and point it at issue #${esc(n)}.</p>`}
       <p>The card is in In progress and shows the next step.</p>
-      <div class="ck-gh-actions">${line ? `<button type="button" class="ck-gh-create" id="ck-gh-copy">Copy prompt</button>` : ''}${cmd ? `<button type="button" id="ck-gh-copy-cmd">Copy command</button>` : ''}${url ? `<button type="button" id="ck-gh-open" title="Issue #${esc(n)} on GitHub">Issue ↗</button>` : ''}<button type="button" id="ck-gh-dismiss">Close tab</button><span class="ck-gh-status" id="ck-gh-status" role="status"></span></div>
+      <div class="ck-gh-actions">${cmd ? `<button type="button" class="ck-gh-create" id="ck-gh-copy-cmd">Copy command</button>` : ''}${line ? `<button type="button" id="ck-gh-copy">Copy prompt</button>` : ''}${url ? `<button type="button" id="ck-gh-open" title="Issue #${esc(n)} on GitHub">Issue ↗</button>` : ''}<button type="button" id="ck-gh-dismiss">Close tab</button><span class="ck-gh-status" id="ck-gh-status" role="status"></span></div>
     </div>`;
   const copyText = async (text) => {
     const s = document.getElementById('ck-gh-status');

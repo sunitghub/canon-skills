@@ -353,6 +353,10 @@ PYEOF
   r="$(ptyrun "$(fresh ahead)" yes)"
   assert_contains "$r" "branch $br is 1 commit(s) ahead of its upstream"
   [[ "$(git rev-parse "refs/remotes/origin/$br")" == "$(git rev-parse HEAD~1)" ]] || fail "--launch moved the upstream ref"
+  git update-ref "refs/remotes/origin/$br" HEAD   # level with the upstream, the usual case: no warning, and under set -e no stop
+  rc=0; r="$(ptyrun "$(fresh level)" yes)" || rc=$?
+  [[ "$rc" == 0 ]] || fail "--launch on a branch level with its upstream failed ($rc): $r"
+  [[ "$r" != *"warning: branch"* ]] || fail "a branch level with its upstream warned: $r"
 
   # Asking: n creates nothing and runs no claude; y sends and launches.
   idn="$(fresh no)"; : > "$STUB_LOG"; : > "$STUB_CLAUDE_LOG"; before="$(cksum < ".tickets/$idn/ticket.md")"
