@@ -85,6 +85,8 @@ To unblock a legitimate case like this, a human (never CI, never an agent) does 
 
 Run this only in an isolated, secret-scoped CI environment — `claude -p`'s own permission system genuinely restricts what the headless orchestrator and its subagents can do (`--permission-mode dontAsk` + a narrow `--allowedTools` — read/dispatch only, no unrestricted Bash), but an isolated runner is still recommended defense-in-depth, since the agent is processing PR content that could, in principle, be adversarial.
 
+**Git goes through `tools/git-read` (t-5ff5).** Both gates grant git only as the running install's `tools/git-read`, by absolute path, never plain `git`: `git diff/log/show --output=<path>` writes any file, so a plain `Bash(git diff:*)` grant would let text in the graded PR steer a grader into writing files. `git-read` runs only `diff`, `log`, `show` and `status`, first (so git's global options such as `-c`, `-C`, `--git-dir`, `--work-tree` and `--exec-path` are refused), refuses `--out*`, `--ext-diff` and `--no-index`, and sets `GIT_OPTIONAL_LOCKS=0` so `status` does not rewrite the index. The prompt tells the orchestrator and every subagent to use it. Shell redirection under that grant (`git-read diff > f`, `>> f`, `| tee f`) was probed with a real `claude -p` 2.1.309 (the CLI version the canon-gate template pins) in `dontAsk` mode: each was denied and no file was written. A different local CLI version is not covered by that probe.
+
 ## Generating the workflow from the board
 
 Instead of hand-adding the workflow, click **⚙ CI** ("Set up CI gate") in the sprint-check board header — it writes `.github/workflows/canon-gate.yml` from a shipped template (refusing if the file already exists, so it never clobbers a customized one). That workflow extracts the ticket id from the PR body (`Closes: t-xxxx`), then dispatches by the ticket's committed `gate`: `sprint-headless-eval` for `gate: eval`, else the full `sprint-headless`. You still: add an `ANTHROPIC_API_KEY` repo secret, commit + push the file, and (optionally) require the `grade` check in branch protection to block merges. The board only *writes the file* — it can't set GitHub secrets or push.
@@ -166,9 +168,9 @@ To run the evaluator on a specific model (e.g. Haiku to save tokens), pass `--mo
 
 ### Evaluator tool permissions (`--allowed-tools-file`)
 
-By default the evaluator subagent runs under a **least-privilege allowlist** — `Agent`, read-only `git` (`diff`/`log`/`show`/`status`), the subagent-log hook, and `Read`/`Grep`/`Glob`/`LS`. It deliberately has **no general Bash**, so it cannot execute code: a criterion whose only proof is running a command grades `not-run` and (per `eval.md`'s fail-closed rule) forces `fail`.
+By default the evaluator subagent runs under a **least-privilege allowlist** — `Agent`, read-only git through `tools/git-read` (`diff`/`log`/`show`/`status`, above), the subagent-log hook, and `Read`/`Grep`/`Glob`/`LS`. It deliberately has **no general Bash**, so it cannot execute code: a criterion whose only proof is running a command grades `not-run` and (per `eval.md`'s fail-closed rule) forces `fail`.
 
-To let the evaluator run a load-bearing test, pass `--allowed-tools-file <json>` — a JSON array of tool strings that **replaces** the default list (the script always force-adds `Agent` and the subagent-log entry so dispatch/audit can't break). The shipped template `tools/headless-eval-tools.json` is exactly the least-privilege set; copy it and add only what you need:
+To let the evaluator run a load-bearing test, pass `--allowed-tools-file <json>` — a JSON array of tool strings that **replaces** the default list (the script always force-adds `Agent`, the `git-read` grant and the subagent-log entry so dispatch/audit can't break). The shipped template `tools/headless-eval-tools.json` is exactly the least-privilege set; copy it and add only what you need:
 
 ```bash
 sprint-headless-eval t-1234 --base-ref origin/main \
@@ -176,6 +178,8 @@ sprint-headless-eval t-1234 --base-ref origin/main \
 ```
 
 ⚠️ **Security — grant narrowly.** The evaluator runs under `--permission-mode dontAsk` against an **untrusted diff**, so a blanket `"Bash"` grant is a code-execution / prompt-injection vector. Grant the **specific runner only**, e.g. `"Bash(bash tests/run.sh:*)"` — never bare `"Bash"` or `"Bash(bash:*)"`. Broadening is an explicit, committed, auditable choice (the run prints a `Notice: evaluator allowedTools (from …)` line); the default stays locked so no consumer incurs this risk unintentionally. A malformed or non-array file fails closed (non-zero exit, no grading).
+
+⚠️ **A config that still grants plain git stays exposed until you change it (t-5ff5).** An existing file with `"Bash(git diff:*)"` (or any `Bash(git …)`) keeps working, so it does not break CI, but it reopens the `--output` write path; every run prints a `Warning: … grants 'Bash(git diff:*)': plain git under dontAsk can write files` line. Remove those entries: `git-read` is force-added.
 
 ### Scoping the grade to `## Criteria` (`--criteria-only`)
 

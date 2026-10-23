@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# git-read — the headless close gates' only git access (t-5ff5). They run under --permission-mode dontAsk on an
+# untrusted diff, and git diff/log/show --output=<path> writes any file, so this runs only read subcommands and
+# refuses the flags that write, run another program or read outside the repository.
+# Usage: git-read <diff|log|show|status> [args...]
+set -euo pipefail
+
+sub="${1-}"
+case "$sub" in
+  diff|log|show|status) ;;
+  *) echo "git-read: the first argument must be diff, log, show or status (got '$sub'); git's global options are refused." >&2; exit 2 ;;
+esac
+shift
+for a in "$@"; do
+  case "$a" in
+    --out*|--ext-diff|--no-index) echo "git-read: '$a' is refused: it can write files, run another program or read outside the repository." >&2; exit 2 ;;
+  esac
+done
+# GIT_OPTIONAL_LOCKS=0: status does not rewrite .git/index
+GIT_OPTIONAL_LOCKS=0 exec git --no-pager "$sub" "$@"

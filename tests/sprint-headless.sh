@@ -460,6 +460,19 @@ if grep -qF "never from this project's own skills/" "$CAP_ARGS"; then fail "t-89
 out="$(cd "$WORK" && CANON_GATE_SKILLS="$WORK/nowhere" PATH="$STUB_CAP_DIR:$PATH" run_fail "$SPRINT_HEADLESS" t-mdl1 --base-ref HEAD 2>&1)"
 assert_contains "$out" "has no sprint/ skill docs"
 
+# 14f4. t-5ff5: git only through the install's read-only git-read; no plain git grant, and the prompt says so
+for gate in sprint-headless sprint-headless-eval; do
+  : > "$CAP_ARGS"
+  if [[ "$gate" == sprint-headless ]]; then
+    (cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_ok "$SPRINT_HEADLESS" t-mdl1 --base-ref HEAD >/dev/null)
+  else
+    (cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_ok "$SPRINT_HEADLESS_EVAL" specs/x.md --base-ref HEAD >/dev/null)
+  fi
+  grep -qxF "<<ARG>>Bash($PIN_TOOLS/git-read:*)" "$CAP_ARGS" || fail "t-5ff5 $gate: must allow the install's git-read"
+  if grep -qE "^<<ARG>>Bash\(git[ :]" "$CAP_ARGS"; then fail "t-5ff5 $gate: a plain git grant is still passed"; fi
+  grep -qF "Run git only as $PIN_TOOLS/git-read <diff|log|show|status>" "$CAP_ARGS" || fail "t-5ff5 $gate: prompt must route git through git-read"
+done
+
 # 14g. sprint-headless-eval --model invalid → hard-fail before claude
 : > "$CAP_ARGS"
 out="$(cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_fail "$SPRINT_HEADLESS_EVAL" specs/x.md --base-ref HEAD --model 'bad;model')"
@@ -540,7 +553,7 @@ rm -f "$WORK/.tickets/t-ev01/eval-report.md"
 [[ -f "$WORK/.tickets/t-ev01/eval-report.md" ]] || fail "eval ticket mode: eval-report.md not written into the ticket folder"
 assert_contains "$(cat "$WORK/.tickets/t-ev01/eval-report.md")" "pass: ok"
 ev_prompt="$(cat "$PROMPT_CAP")"
-assert_contains "$ev_prompt" "git diff --name-only origin/main HEAD"
+assert_contains "$ev_prompt" "git-read diff --name-only origin/main HEAD"
 assert_contains "$ev_prompt" "fixture"
 if [[ "$ev_prompt" == *"Tested locally"* ]]; then fail "eval ticket mode: QA 'Tested locally' leaked into graded criteria"; fi
 
@@ -556,7 +569,7 @@ git -C "$WORK" branch -f main HEAD
 : > "$ARGS_CAP"
 (cd "$WORK" && PATH="$STUB_EV_DIR:$PATH" run_ok "$SPRINT_HEADLESS_EVAL" t-ev01 >/dev/null)
 main_prompt="$(cat "$PROMPT_CAP")"
-assert_contains "$main_prompt" "git diff --name-only main HEAD"
+assert_contains "$main_prompt" "git-read diff --name-only main HEAD"
 if [[ "$main_prompt" == *"origin/main"* ]]; then fail "eval: fell back to main but still referenced origin/main"; fi
 git -C "$WORK" branch -D main >/dev/null 2>&1 || true
 
@@ -569,7 +582,7 @@ git -C "$WORK" update-ref refs/remotes/origin/main HEAD
 # 15e. explicit --base-ref beats the default
 (cd "$WORK" && PATH="$STUB_EV_DIR:$PATH" run_ok "$SPRINT_HEADLESS_EVAL" t-ev01 --base-ref HEAD >/dev/null)
 head_prompt="$(cat "$PROMPT_CAP")"
-assert_contains "$head_prompt" "git diff --name-only HEAD HEAD"
+assert_contains "$head_prompt" "git-read diff --name-only HEAD HEAD"
 if [[ "$head_prompt" == *"origin/main"* ]]; then fail "eval: default used despite explicit --base-ref"; fi
 
 # 15f. spec-file mode still works (report next to the spec)
