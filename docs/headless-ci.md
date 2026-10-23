@@ -89,6 +89,12 @@ Run this only in an isolated, secret-scoped CI environment — `claude -p`'s own
 
 Instead of hand-adding the workflow, click **⚙ CI** ("Set up CI gate") in the sprint-check board header — it writes `.github/workflows/canon-gate.yml` from a shipped template (refusing if the file already exists, so it never clobbers a customized one). That workflow extracts the ticket id from the PR body (`Closes: t-xxxx`), then dispatches by the ticket's committed `gate`: `sprint-headless-eval` for `gate: eval`, else the full `sprint-headless`. You still: add an `ANTHROPIC_API_KEY` repo secret, commit + push the file, and (optionally) require the `grade` check in branch protection to block merges. The board only *writes the file* — it can't set GitHub secrets or push.
 
+What the generated workflow trusts (t-89b0):
+- **A ticket id is required.** `tools/gate-ticket-check` fails the job when the PR body names no `t-xxxx`, so a required check can't be passed by leaving it out.
+- **Approved criteria are pinned.** When the base branch already holds `.tickets/<id>/plan.md` with a checked `Plan approved`, the PR may not change that ticket's `ticket.md`, `plan.md` or `acceptance.md`; change approved criteria in their own reviewed PR.
+- **Criteria written in the PR are flagged.** In the usual flow (`tkt ci <id> on` commits the docs on the work branch) the gate grades the PR against criteria the same PR wrote, and says so with a `::warning::`. It checks the work against its ticket; it does not stop an author from writing easy criteria. To require a person's review of them, add `.tickets/**` to CODEOWNERS.
+- **The protocol is canon's.** The gate step sets `CANON_GATE_SKILLS` to the canon checkout's `skills/`, so `sprint-headless` and `sprint-headless-eval` never read a `skills/` folder the PR adds.
+
 ## Consumer-Project CI
 
 The example above only works when the CI checkout **is** canon's own repo — `tools/sprint-headless` exists at that relative path because canon's `tools/` directory is right there in the checkout.
