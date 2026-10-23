@@ -1,6 +1,6 @@
 ---
 name: doc-audit
-description: Audit user-facing docs for overstated claims, missing prerequisites, absolutes, scope inflation, and stale commands.
+description: Audit user-facing docs for overstated claims, missing prerequisites, absolutes, and scope inflation; mechanical checks (links, commands, files) run in tools/doc-check.
 category: agent-ops
 tags: [docs, accuracy, audit, claims]
 hidden: true
@@ -11,6 +11,13 @@ hidden: true
 Called automatically by wrapup — do not invoke directly.
 
 Audit user-facing documentation for accuracy. Append to `doc-findings.md` (project root) only after explicit confirmation.
+
+**Run only when a user-facing doc changed** (the Scope list below). Otherwise record the skip and stop.
+
+**Mechanical checks first, no model:** run `tools/doc-check <changed docs>` (resolve it with `command -v sprint`'s directory
+in a consumer project where `tools/` isn't symlinked in). It checks that relative links resolve, that every `sprint`/`tkt`
+subcommand in a code span or fence exists, and that every `tools/`, `skills/`, `docs/` file path in a code span exists.
+Fix each finding it prints (exit 1) before the model pass; do not re-check these by hand. The checks below are the ones a script cannot judge.
 
 ## Scope
 
@@ -23,7 +30,7 @@ Audit user-facing documentation for accuracy. Append to `doc-findings.md` (proje
 
 1. Read `doc-findings.md` if it exists; skip logged issues.
 
-2. Read `README.md`, `docs/*.md` and `tools/*.md`. Note claims about features, behavior, and requirements.
+2. Read the changed docs in scope (plus `README.md` when a command or flow changed). Note claims about features, behavior, and requirements.
 
 3. If `skills/` exists, read `description` and `summary` frontmatter in `skills/*/SKILL.md` and `standards/*.md`; compare to each skill body.
 
@@ -41,11 +48,7 @@ Audit user-facing documentation for accuracy. Append to `doc-findings.md` (proje
 
    **Affected doc coverage** — when code, workflow, UI, command behavior, or screenshots change, search every doc surface that could describe it: README, guides, examples, tool docs, skill docs, standards, and catalog text. Do not stop at the first visible doc.
 
-   **Stale references** — every path, command, script or file name a changed doc names still exists (`git grep -n`
-   or `ls` each one; a renamed or removed one is a finding). In canon, `repo-check` also does this; in other projects
-   this check is the only one (`t-b215`).
-
-   **Command accuracy** — if `./tools/skills.sh` exists, run `./tools/skills.sh list`; compare to skill names in README/guides command examples.
+   **Skill-name accuracy** — if `./tools/skills.sh` exists, run `./tools/skills.sh list`; compare to the skill names in README/guide command examples (`tools/doc-check` only judges `sprint`/`tkt` subcommands and paths).
 
    **Workflow gate accuracy** — distinguish UI state changes from workflow commands. Board actions such as creating tickets or moving cards update local ticket state only; do not imply they run agent workflows, wrapup, validation, or close pipelines unless the tool actually does.
 

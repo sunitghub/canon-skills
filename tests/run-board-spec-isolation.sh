@@ -28,13 +28,15 @@ cat > "$WORK/bin/npx" <<'STUB'
 echo '{"suites":[]}' > "$PLAYWRIGHT_JSON_OUTPUT_NAME"
 exit 0
 STUB
+printf '#!/bin/sh\nexit 1\n' > "$WORK/bin/pgrep"   # t-8627: no other run (the suite running this test must not make the machine "busy")
+echo "0.1 0.1 0.1 1/100 999" > "$WORK/loadavg"
 chmod +x "$WORK/bin/"*
 
 run() {   # run <name> <args...> [env via RUN_ENV]: sets out (stdout+stderr) and rc
   local name="$1"; shift
   rm -rf "$WORK/state"/*; mkdir -p "$WORK/out-$name"
   set +e
-  out="$(env STATE="$WORK/state" TMPDIR="$WORK" PATH="$WORK/bin:$PATH" ${RUN_ENV:-} bash "$FAKE/tests/run-board-spec.sh" --out "$WORK/out-$name" "$@" 2>&1)"; rc=$?
+  out="$(env STATE="$WORK/state" TMPDIR="$WORK" ML_LOADAVG_FILE="$WORK/loadavg" ML_WAIT_POLL=1 PATH="$WORK/bin:$PATH" ${RUN_ENV:-} bash "$FAKE/tests/run-board-spec.sh" --out "$WORK/out-$name" "$@" 2>&1)"; rc=$?
   set -e
 }
 
@@ -51,4 +53,12 @@ kill_leaks
 run leakguard --runs 1 --browsers chromium
 assert_contains "$out" "board-spec-guard:"; assert_eq 2 "$rc"
 kill_leaks
+# t-8627: a busy machine is waited out and then refused (exit 2, nothing started, no copy left behind); --allow-busy runs anyway
+echo "99.0 99.0 99.0 1/100 999" > "$WORK/loadavg"
+RUN_ENV="ML_WAIT_MAX=0"; run busy --runs 1 --browsers chromium --no-guard
+assert_eq 2 "$rc"; assert_contains "$out" "still busy after 0s"; assert_contains "$out" "the machine stayed busy"
+[ ! -e "$WORK/state/boards" ] || fail "run-board-spec: a board was started on a busy machine"
+[ -z "$(ls -d "$WORK"/board-spec-copy.* 2>/dev/null)" ] || fail "run-board-spec: a refused run left its copy behind"
+run allowed --runs 1 --browsers chromium --no-guard --allow-busy
+assert_eq 0 "$rc"; assert_contains "$out" "WARNING: the machine is busy"   # still told, not blocked
 echo "run-board-spec-isolation: ok"

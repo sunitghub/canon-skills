@@ -99,6 +99,18 @@ test.beforeEach(async ({ context }) => {
     return route.continue({ url: u.toString() });
   });
 });
+// t-8627: the cause of the WebKit navigation stalls. On macOS, once ~64 pages have been created in one WebKit browser while the display sleeps, that
+// page and every later one never navigate until the browser restarts (each failure starts a fresh worker, hence a stall every ~64
+// tests). A plain webkit.launch() loop against a trivial local server stalls at page 64 with the display off and never with it on. So
+// each WebKit worker keeps the display awake before its browser starts: -u wakes it, -d keeps it from idle-sleeping, -w ends the
+// assertion with the worker; the second lets the display come on first.
+let displayAwake = null;
+test.beforeAll(async ({ browserName }) => {
+  if (process.platform !== 'darwin' || browserName !== 'webkit' || displayAwake) return;
+  displayAwake = spawn('caffeinate', ['-d', '-u', '-w', String(process.pid)], { stdio: 'ignore' });
+  displayAwake.on('error', () => {});   // no caffeinate: run as before
+  await new Promise(r => setTimeout(r, 1000));
+});
 test.afterEach(() => { realLanding = false; });
 
 // t-a205: editing starts with a double-click on the document; the Edit button is gone. The click lands in #m-body's own
@@ -6186,7 +6198,6 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    // QUARANTINE t-8aa6: fails every run on clean main too (the row's boundingBox() is null when measured); see tests/board-spec-baseline.json
     test('interrupted (t-6a05): a row is one line plus the reason; Admin rows too', async ({ page }) => {
       const list = [stoppedEntry('t-cc33', '/tmp/proj-a', { resumable: false, reason: 'ticket is closed' })];
       await stubInterrupted(page, list, []);
@@ -6199,11 +6210,15 @@ test.describe('cockpit in board (t-ddc8)', () => {
       expect(Math.abs(metaBox.y - idBox.y)).toBeLessThan(idBox.height);          // id and meta share a line
       expect(reasonBox.y).toBeGreaterThan(idBox.y + idBox.height - 1);            // the reason is below
       await page.evaluate(async () => { const { showView } = await import('/static/cockpit-views.js'); return ( showView('admin')); });
-      const s1 = page.locator('#ad-sessions tr[data-id="t-cc33"] .s1');
-      await expect(s1).toBeVisible();
-      const nameBox = await s1.boundingBox(), metaA = await s1.locator('.s1meta').boundingBox();
-      expect(Math.abs(metaA.y - nameBox.y)).toBeLessThan(nameBox.height);
-      expect(await y(page.locator('#ad-sessions tr[data-id="t-cc33"] .s3'))).toBeGreaterThan(nameBox.y + nameBox.height - 1);
+      // t-8627: the table renders twice (the ticket titles arrive a few ms after the first paint and replace the rows), so a box read from a
+      // handle located before the second render comes back null. One read of the rows as they are, retried until they hold still.
+      await expect.poll(() => page.evaluate(() => {
+        const r = document.querySelector('#ad-sessions tr[data-id="t-cc33"]');
+        const b = sel => { const e = r && r.querySelector(sel); return e && e.getBoundingClientRect(); };
+        const name = b('.s1'), meta = b('.s1meta'), why = b('.s3');
+        if (!name || !meta || !why || !name.height) return null;
+        return { metaOnNameLine: Math.abs(meta.y - name.y) < name.height, reasonBelow: why.y > name.y + name.height - 1 };
+      })).toEqual({ metaOnNameLine: true, reasonBelow: true });
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
@@ -9705,7 +9720,6 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
-  // QUARANTINE t-8aa6: fails every run in webkit, the second waitForLoadState('networkidle') below times out at 30 s; see tests/board-spec-baseline.json
   test('the shared poll timer starts once per open tab (not per switch) and clears only when the last tab closes (t-96a8/t-8a2a)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'cktimer');
     try {
@@ -13515,6 +13529,29 @@ test.describe('board header and card footer (t-7723)', () => {
     await expect(page.locator('#m-id')).toHaveText(id);
   });
 
+  // t-8627: a card whose menu button is clipped by its column's bottom edge. Chrome scrolls the button into view as the click focuses
+  // it, and the scroll event arrived after the menu opened, so the menu closed at once. Protects the card menu's scroll-close rule
+  // (static/board-render.js).
+  test('the card menu stays open when its button sat partly below the column edge (t-8627)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'fp-clip');
+    writeTicket(id);
+    await openBoard(page, id);
+    const card = page.locator(`.card[data-id="${id}"]`), btn = card.locator('.card-menu-btn'), menu = page.locator('#card-menu');
+    await btn.evaluate(b => {   // the column ends 4 px above the button's bottom edge
+      const body = b.closest('.column-body');
+      body.style.maxHeight = `${b.getBoundingClientRect().bottom - body.getBoundingClientRect().top - 4}px`;
+    });
+    await card.hover();
+    await btn.click();
+    await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));   // the focus scroll's event has fired
+    await expect(menu).toHaveClass(/open/);
+    await btn.evaluate(b => { const body = b.closest('.column-body'); body.scrollTop = body.scrollTop > 0 ? 0 : body.scrollHeight; });
+    await expect(menu).not.toHaveClass(/open/);   // a scroll that moves the button still closes it
+    await btn.click();
+    await menu.locator('[data-act="open"]').click();
+    await expect(page.locator('#m-id')).toHaveText(id);
+  });
+
   test('columns have no box: the status colour is the header dot only, + is on Open alone, Discarded is muted (t-9d93)', async ({ page }) => {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
@@ -14574,6 +14611,37 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/);
   });
 
+  // t-8627: the t-9641 flake. The preview of a first showGithubPanel call answers after a later call showed the Sent panel; the late answer
+  // used to overwrite it (`#ck-gh-prompt` vanished). Protects the Start dialog's GitHub place (static/board-github.js showGithubPanel).
+  test('a preview that answers after the Sent panel was shown does not replace it (t-8627)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh4c');
+    ghTicket(id);
+    let release; const held = new Promise(r => { release = r; });
+    await page.route('**/api/worktrees**', r => json(r, [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true }]));
+    await page.route(`**/api/ticket/${id}/github/send-preview`, async r => { await held; await json(r, { ok: true, exit_code: 0, output: 'repo: acme/app (PRIVATE)' }); });
+    await openBoard(page, id);
+    await page.locator(`.card[data-id="${id}"] .card-start`).click();
+    await page.locator('#ck-worktree .ck-gh-row').click();
+    await expect(page.locator('#ck-gh-panel')).toContainText('Loading the preview');
+    await page.evaluate(async (tid) => {   // the send landed meanwhile: the tab holds the Sent message and the panel is shown again
+      const { cockpitState } = await import('/static/board-cockpit.js');
+      const t = (await import('/static/board-core.js')).state.tickets.find(x => x.id === tid);
+      cockpitState.ghSent = { id: tid, n: '57', url: '', line: 'Work on Issue#57' };
+      await (await import('/static/board-github.js')).showGithubPanel(t, cockpitState);
+    }, id);
+    await expect(page.locator('#ck-gh-prompt')).toHaveText('Work on Issue#57');
+    // an observer, not an expect: a later re-render could put the Sent panel back and hide a brief overwrite
+    await page.evaluate(() => {
+      window.__sawPreview = false;
+      new MutationObserver(() => { if (document.getElementById('ck-gh-preview')) window.__sawPreview = true; })
+        .observe(document.getElementById('ck-gh-panel'), { childList: true, subtree: true });
+    });
+    release();
+    await page.waitForTimeout(400);   // time for the late answer to land if it were going to
+    expect(await page.evaluate(() => window.__sawPreview)).toBe(false);
+    await expect(page.locator('#ck-gh-prompt')).toHaveText('Work on Issue#57');
+  });
+
   test('a failed send shows the reason and changes nothing (t-718b)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gh4');
     ghTicket(id);
@@ -14587,6 +14655,30 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#ck-gh-status')).toHaveText('Not sent; nothing changed.');
     await expect(page.locator('#ck-gh-preview')).toContainText('HTTP 401');
     await expect(page.locator('#ck-gh-create')).toBeEnabled();
+  });
+
+  // t-8627: openCockpit mounts the panel once more when its own rail render finishes; a GitHub pick and a send made before that used to
+  // be wiped by the second render (1 in 100 solo runs of the test above). Protects showGithubPanel (static/board-github.js).
+  test('a second panel render for the same ticket keeps a failed send\'s reason (t-8627)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh4d');
+    ghTicket(id);
+    let previews = 0;
+    await page.route('**/api/worktrees**', r => json(r, [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true }]));
+    await page.route(`**/api/ticket/${id}/github/send-preview`, r => { previews++; return json(r, { ok: true, exit_code: 0, output: 'repo: acme/app (PRIVATE)' }); });
+    await page.route(`**/api/ticket/${id}/github/send`, r => json(r, { ok: false, exit_code: 1, output: 'send-issue: gh could not read acme/app: HTTP 401' }));
+    await openBoard(page, id);
+    await page.locator(`.card[data-id="${id}"] .card-start`).click();
+    await page.locator('#ck-worktree .ck-gh-row').click();
+    await page.locator('#ck-gh-create').click();
+    await expect(page.locator('#ck-gh-status')).toHaveText('Not sent; nothing changed.');
+    await page.evaluate(async (tid) => {   // openCockpit's own mount, landing late
+      const { cockpitState } = await import('/static/board-cockpit.js');
+      const t = (await import('/static/board-core.js')).state.tickets.find(x => x.id === tid);
+      await (await import('/static/board-github.js')).showGithubPanel(t, cockpitState);
+    }, id);
+    await expect(page.locator('#ck-gh-status')).toHaveText('Not sent; nothing changed.');
+    await expect(page.locator('#ck-gh-preview')).toContainText('HTTP 401');
+    expect(previews).toBe(1);
   });
 
   test('a send that fails after the panel was replaced writes nowhere and throws nothing (t-718b)', async ({ page }) => {
