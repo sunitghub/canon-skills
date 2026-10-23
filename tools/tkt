@@ -1104,7 +1104,9 @@ cmd_send_issue() {
   $launch && $dry && { echo "send-issue: --launch and --dry-run cannot go together; --dry-run only previews" >&2; exit 1; }
   # t-0da2: --launch starts a cloud session, which costs plan usage, so every refusal comes before anything is created.
   if $launch; then
-    command -v claude >/dev/null 2>&1 && claude --help 2>&1 | grep -q -- '--cloud' \
+    local chelp=""
+    command -v claude >/dev/null 2>&1 && chelp="$(claude --help 2>&1 || true)"   # captured: grep -q would SIGPIPE it under pipefail
+    [[ "$chelp" == *--cloud* ]] \
       || { echo "send-issue: --launch needs the Claude CLI with --cloud: update it (claude update), then try again" >&2; exit 1; }
     [[ -t 0 ]] || $yes || { echo "send-issue: --launch asks before it sends, and there is no terminal to ask on; add --yes to send without asking" >&2; exit 1; }
   fi
@@ -1233,7 +1235,7 @@ cmd_send_issue() {
     local lout lrc=0 sess
     lout="$(cd "$root" && claude --cloud "$start" 2>&1)" || lrc=$?
     printf '%s\n' "$lout"
-    sess="$(printf '%s\n' "$lout" | grep -Eo 'https://claude\.ai/code/[^ ]+' | head -1 || true)"
+    sess="$(printf '%s\n' "$lout" | grep -Eo 'https://claude\.ai/code/[^ ]+' | sed -n 1p || true)"
     if (( lrc != 0 )) || [[ -z "$sess" ]]; then
       echo "send-issue: $id was sent, but claude --cloud did not start a session (see above). Start it yourself: $cmdline" >&2
       exit 1
