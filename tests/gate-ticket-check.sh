@@ -44,6 +44,8 @@ for f in acceptance.md plan.md ticket.md; do
   run "Closes: t-aaaa"
   [[ $rc -ne 0 && "$out" == *"::error::"*"already approved"*".tickets/t-aaaa/$f"* ]] || fail "changing approved $f must fail: rc=$rc $out"
 done
+set +e; out="$(cd "$WORK/r/sub/dir" && printf 'Closes: t-aaaa' | "$TOOL" "$BASE" 2>&1)"; rc=$?; set -e   # same, from a subdirectory
+[[ $rc -ne 0 && "$out" == *"already approved"* ]] || fail "a changed approved doc must fail from a subdirectory too: rc=$rc $out"
 g checkout -q -B pr "$BASE"; printf 'notes\n' > "$WORK/r/.tickets/t-aaaa/research.md"; g add -A; g commit -qm research
 run "Closes: t-aaaa"
 [[ $rc -eq 0 ]] || fail "a non-graded doc (research.md) may change: $out"

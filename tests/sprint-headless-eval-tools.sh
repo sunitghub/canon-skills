@@ -80,6 +80,6 @@ pin_allow="Bash($(cd -P "$repo_root/tools" && pwd)/subagent-log.sh:*)"
 pinned="$(CANON_GATE_SKILLS="$repo_root/skills" bash "$EVAL" "$spec" --base-ref HEAD --print-allowed-tools)"
 assert 'printf "%s\n" "$pinned" | grep -xF "$pin_allow" >/dev/null'                  "pinned: allows the install's subagent-log.sh"
 set +e; bad="$(CANON_GATE_SKILLS="$tmp/none" bash "$EVAL" "$spec" --base-ref HEAD --print-allowed-tools 2>&1)"; brc=$?; set -e
-assert '[ "$brc" -ne 0 ] && printf "%s" "$bad" | grep -q "has no sprint/ skill docs"' "pinned dir without sprint/ is refused"
+assert '[ "$brc" -ne 0 ] && grep -q "has no sprint/ skill docs" <<<"$bad"' "pinned dir without sprint/ is refused"
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$fails FAILURE(S)"; exit 1; fi

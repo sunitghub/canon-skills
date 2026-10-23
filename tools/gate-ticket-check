@@ -14,14 +14,16 @@ base="${1:-}"
 [[ "$base" =~ ^[0-9a-f]{7,40}$ ]] || { echo "::error::gate-ticket-check: base must be a commit sha, got '$base'"; exit 1; }
 git rev-parse --verify --quiet "$base^{commit}" >/dev/null || { echo "::error::gate-ticket-check: base $base is not a commit in this checkout"; exit 1; }
 
-id="$(grep -owE 't-[a-z0-9]{4}' | head -1 || true)"
+ids="$(grep -owE 't-[a-z0-9]{4}' || true)"   # capture, then take the first: no early-exit reader under pipefail
+id="${ids%%$'\n'*}"
 if [[ -z "$id" ]]; then
   echo "::error::No canon ticket id (t-xxxx) in the PR body: the canon gate grades a PR against its ticket. Add one, e.g. 'Closes: t-1a2b'."
   exit 1
 fi
 
 tdir=".tickets/$id"
-if git show "$base:$tdir/plan.md" 2>/dev/null | grep -q '^\s*-\s*\[x\]\s*Plan approved'; then
+plan="$(git show "$base:$tdir/plan.md" 2>/dev/null || true)"
+if grep -q '^\s*-\s*\[x\]\s*Plan approved' <<<"$plan"; then
   changed="$(git diff --name-only "$base" HEAD -- "$tdir/ticket.md" "$tdir/plan.md" "$tdir/acceptance.md")"
   if [[ -n "$changed" ]]; then
     echo "::error::$id's plan was already approved on the base branch; this PR changes its graded docs: $(printf '%s' "$changed" | tr '\n' ' ')- change approved criteria in their own reviewed PR."
