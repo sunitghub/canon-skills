@@ -163,6 +163,12 @@ else
   echo "Error: no sprint/wrapup skill docs found at either '$ROOT/skills/sprint' (canon repo) or '$ROOT/.claude/skills/sprint' (consumer project). Run 'skills.sh add sprint' first." >&2
   exit 1
 fi
+# t-5ff5: git only through the running install's read-only wrapper (git diff/log/show --output=<path> writes any file
+# under dontAsk). Its absolute path, in every layout, so the graded PR cannot swap the wrapper.
+GIT_READ="$SCRIPT_DIR/git-read"
+GIT_READ_ALLOW="Bash($GIT_READ:*)"
+GIT_NOTE="
+Run git only as $GIT_READ <diff|log|show|status> [args] (for example: $GIT_READ diff --name-only $BASE_REF HEAD), never plain git: plain git is not allowed in this run. Tell each subagent the same, in its instructions."
 
 REVIEWER_START="@@@CANON_HEADLESS_REPORT:reviewer@@@"
 REVIEWER_END="@@@CANON_HEADLESS_REPORT:/reviewer@@@"
@@ -203,7 +209,7 @@ fi
 
 PROMPT="You are the orchestrator for a headless CI grading run of ticket $ID in this repo. The code change under review already exists as the diff between $BASE_REF and HEAD — you never write or edit code yourself.
 
-$GATE_INSTRUCTIONS$PIN_NOTE
+$GATE_INSTRUCTIONS$PIN_NOTE$GIT_NOTE
 
 After each subagent completes, run: $SUBAGENT_LOG --agent-id <the agent id from that dispatch> --agent-type $LOG_TYPES
 
@@ -238,7 +244,7 @@ else
     --output-format json \
     --permission-mode dontAsk \
     ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
-    --allowedTools "Agent" "Bash(git diff:*)" "Bash(git log:*)" "Bash(git show:*)" "Bash(git status:*)" "$SUBAGENT_LOG_ALLOW" "Read" "Grep" "Glob" "LS")"
+    --allowedTools "Agent" "$GIT_READ_ALLOW" "$SUBAGENT_LOG_ALLOW" "Read" "Grep" "Glob" "LS")"
   INVOKE_STATUS=$?
   set -e
 

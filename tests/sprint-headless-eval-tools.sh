@@ -24,16 +24,16 @@ spec="$tmp/spec.md"; printf '# tools test spec\n- [ ] a criterion to satisfy ext
 # Expected least-privilege default (skills/ layout → ./tools subagent-log allow).
 read -r -d '' EXPECT_DEFAULT <<'EOF' || true
 Agent
-Bash(git diff:*)
-Bash(git log:*)
-Bash(git show:*)
-Bash(git status:*)
+Bash(__GIT_READ__:*)
 Bash(./tools/subagent-log.sh:*)
 Read
 Grep
 Glob
 LS
 EOF
+
+EXPECT_DEFAULT="${EXPECT_DEFAULT/__GIT_READ__/$(cd -P "$repo_root/tools" && pwd)/git-read}"   # t-5ff5: the install's git-read, by absolute path
+git_allow="Bash($(cd -P "$repo_root/tools" && pwd)/git-read:*)"
 
 echo "--- default (no --allowed-tools-file) ---"
 def="$(bash "$EVAL" "$spec" --base-ref HEAD --print-allowed-tools)"
@@ -48,6 +48,21 @@ assert 'printf "%s\n" "$ext" | grep -xF "Bash(bash tests/run.sh:*)" >/dev/null' 
 assert 'printf "%s\n" "$ext" | grep -xF "Agent" >/dev/null'                "Agent force-added when omitted by config"
 assert 'printf "%s\n" "$ext" | grep -xF "Bash(./tools/subagent-log.sh:*)" >/dev/null' "subagent-log allow force-added when omitted"
 assert '! printf "%s\n" "$ext" | grep -xF "Bash(git diff:*)" >/dev/null'   "config REPLACES the default (git-diff grant gone)"
+assert 'printf "%s\n" "$ext" | grep -xF "$git_allow" >/dev/null'           "t-5ff5: git-read force-added when omitted by config"
+
+echo "--- t-5ff5: a config that still grants plain git warns (and keeps working) ---"
+gcfg="$tmp/git.json"; printf '["Read","Bash(git diff:*)"]\n' > "$gcfg"
+set +e; gout="$(bash "$EVAL" "$spec" --base-ref HEAD --allowed-tools-file "$gcfg" --print-allowed-tools 2>&1)"; grc=$?; set -e
+assert '[ "$grc" -eq 0 ]'                                                       "plain-git config still runs"
+assert 'grep -qF "Warning: $gcfg grants '"'"'Bash(git diff:*)'"'"': plain git under dontAsk can write files" <<<"$gout"' "plain-git config prints the write-risk warning"
+set +e; nwout="$(bash "$EVAL" "$spec" --base-ref HEAD --allowed-tools-file "$cfg" --print-allowed-tools 2>&1)"; set -e
+assert '! grep -qF "Warning:" <<<"$nwout"'                                      "a config without plain git prints no warning"
+g2="$tmp/git2.json"; printf '["Bash(git:*)"]\n' > "$g2"
+set +e; g2out="$(bash "$EVAL" "$spec" --base-ref HEAD --allowed-tools-file "$g2" --print-allowed-tools 2>&1)"; set -e
+assert 'grep -qF "grants '"'"'Bash(git:*)'"'"': plain git under dontAsk" <<<"$g2out"' "a Bash(git:*) grant warns too"
+g3="$tmp/git3.json"; printf '["Read","%s"]\n' "$git_allow" > "$g3"
+g3out="$(bash "$EVAL" "$spec" --base-ref HEAD --allowed-tools-file "$g3" --print-allowed-tools 2>/dev/null)"
+assert '[ "$(grep -cxF "$git_allow" <<<"$g3out")" -eq 1 ]'                     "a config that lists git-read keeps one grant (not force-added twice)"
 
 echo "--- malformed / non-array / missing configs fail-closed ---"
 badj="$tmp/bad.json"; printf '{not valid json' > "$badj"

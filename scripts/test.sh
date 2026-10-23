@@ -145,6 +145,7 @@ tests=(
   "$ROOT/tests/doc-update-behavior.sh"
   "$ROOT/tests/gate-model-parity.sh"
   "$ROOT/tests/gate-ticket-check.sh"
+  "$ROOT/tests/git-read.sh"
   "$ROOT/tests/gate-snapshot.sh"
   "$ROOT/tests/jtbd-routing.sh"
   "$ROOT/tests/why-cap.sh"
