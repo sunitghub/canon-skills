@@ -9,9 +9,10 @@ fail() { echo "git-read: FAIL — $*" >&2; exit 1; }
 R="$WORK/r"; git init -q "$R"; git -C "$R" config user.email t@t; git -C "$R" config user.name t
 echo a > "$R/f"; git -C "$R" add f; git -C "$R" commit -qm one; echo b > "$R/f"
 echo outside > "$WORK/outside.txt"
-snapshot() { (cd "$WORK" && find . -path ./r/.git -prune -o -print | LC_ALL=C sort); }
-before="$(snapshot)"
+mkdir -p "$WORK/nested"; git init -q "$WORK/nested/o"; echo x > "$WORK/nested/o/g"
+snapshot() { (cd "$WORK" && find . \( -path ./r/.git -o -path ./nested/o/.git \) -prune -o -print | LC_ALL=C sort); }
 
+before="$(snapshot)"   # taken after every fixture exists
 # each refused form exits non-zero, names the refusal, and git never runs (no file appears anywhere)
 refuse() {
   local why="$1"; shift
@@ -39,6 +40,12 @@ refuse "abbreviated"       diff --outp="$WORK/o5"
 refuse "late --output"     diff HEAD -- f --output="$WORK/o6"
 refuse "--ext-diff"        diff --ext-diff
 refuse "--no-index"        diff --no-index "$WORK/outside.txt" f
+refuse "--help"            diff --help
+# git diff goes --no-index by itself when a path is outside the work tree: an existing outside path is refused
+refuse "implicit no-index" diff ../outside.txt f
+refuse "absolute outside"  diff "$WORK/outside.txt" f
+refuse "another repo"      diff "$WORK/nested/o/g" f
+refuse "outside dir"       diff "$WORK" f
 
 # the four read subcommands work, and status leaves .git/index alone
 idx="$(cksum < "$R/.git/index")"; touch "$R/f"
@@ -47,7 +54,9 @@ grep -q '^+b$' <<<"$(cd "$R" && bash "$TOOL" diff)" || fail "diff did not show t
 grep -q 'one' <<<"$(cd "$R" && bash "$TOOL" log --oneline -1)" || fail "log"
 [[ "$(cd "$R" && bash "$TOOL" show HEAD:f)" == a ]] || fail "show HEAD:f"
 grep -q 'f' <<<"$(cd "$R" && bash "$TOOL" status --porcelain)" || fail "status"
+mkdir -p "$R/sub"; [[ "$(cd "$R/sub" && bash "$TOOL" diff --name-only HEAD -- ../f)" == f ]] || fail "a path inside the repo given from a subdirectory was refused"
+rmdir "$R/sub"
 [[ "$(cksum < "$R/.git/index")" == "$idx" ]] || fail "status rewrote .git/index"
 [[ "$(snapshot)" == "$before" ]] || fail "a read subcommand wrote a file"
 
-echo "git-read: ok (5 global options, other/no subcommand, 6 --output forms, --ext-diff and --no-index refused with nothing written; diff/log/show/status work; status leaves the index)"
+echo "git-read: ok (5 global options, other/no subcommand, 6 --output forms, --ext-diff, --no-index, --help and paths outside the repository (implicit no-index) refused with nothing written; diff/log/show/status work; status leaves the index)"

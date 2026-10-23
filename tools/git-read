@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # git-read — the headless close gates' only git access (t-5ff5). They run under --permission-mode dontAsk on an
 # untrusted diff, and git diff/log/show --output=<path> writes any file, so this runs only read subcommands and
-# refuses the flags that write, run another program or read outside the repository.
+# refuses the flags that write, run another program or read outside the repository, and paths outside it.
 # Usage: git-read <diff|log|show|status> [args...]
 set -euo pipefail
 
@@ -11,10 +11,17 @@ case "$sub" in
   *) echo "git-read: the first argument must be diff, log, show or status (got '$sub'); git's global options are refused." >&2; exit 2 ;;
 esac
 shift
+top="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "git-read: not inside a git work tree." >&2; exit 2; }
 for a in "$@"; do
   case "$a" in
-    --out*|--ext-diff|--no-index) echo "git-read: '$a' is refused: it can write files, run another program or read outside the repository." >&2; exit 2 ;;
+    --out*|--ext-diff|--no-index|--help) echo "git-read: '$a' is refused: it can write files, run another program or read outside the repository." >&2; exit 2 ;;
   esac
+  # git diff switches to --no-index by itself when a path lies outside the work tree, so an existing path must be
+  # inside this repository (git names both top levels, so the comparison holds in Git Bash too)
+  if [[ "$a" != -* && -e "$a" ]]; then
+    d="$a"; [[ -d "$d" ]] || d="$(dirname -- "$a")"
+    [[ "$(git -C "$d" rev-parse --show-toplevel 2>/dev/null)" == "$top" ]] || { echo "git-read: '$a' is outside this repository; refused." >&2; exit 2; }
+  fi
 done
 # GIT_OPTIONAL_LOCKS=0: status does not rewrite .git/index
 GIT_OPTIONAL_LOCKS=0 exec git --no-pager "$sub" "$@"
