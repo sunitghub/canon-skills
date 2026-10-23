@@ -65,7 +65,11 @@ func TestDefaultCockpitStateDirIsPerUser(t *testing.T) {
 	}
 	t.Setenv("XDG_RUNTIME_DIR", "")
 	t.Setenv("XDG_CACHE_HOME", "/home/someone/.cache")
-	if got := DefaultCockpitStateDir(); got != "/home/someone/.cache/canon-cockpit" {
+	cache, err := os.UserCacheDir() // XDG_CACHE_HOME on Linux, ~/Library/Caches on macOS
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := DefaultCockpitStateDir(); got != filepath.Join(cache, "canon-cockpit") {
 		t.Fatalf("without XDG_RUNTIME_DIR the default is the user cache dir, got %q", got)
 	}
 	t.Setenv("XDG_CACHE_HOME", "")
