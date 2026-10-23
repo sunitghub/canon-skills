@@ -13986,6 +13986,29 @@ test.describe('board header and card footer (t-7723)', () => {
     await expect(page.locator('#m-id')).toHaveText(id);
   });
 
+  // t-8627: a card whose menu button is clipped by its column's bottom edge. Chrome scrolls the button into view as the click focuses
+  // it, and the scroll event arrived after the menu opened, so the menu closed at once. Protects the card menu's scroll-close rule
+  // (static/board-render.js).
+  test('the card menu stays open when its button sat partly below the column edge (t-8627)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'fp-clip');
+    writeTicket(id);
+    await openBoard(page, id);
+    const card = page.locator(`.card[data-id="${id}"]`), btn = card.locator('.card-menu-btn'), menu = page.locator('#card-menu');
+    await btn.evaluate(b => {   // the column ends 4 px above the button's bottom edge
+      const body = b.closest('.column-body');
+      body.style.maxHeight = `${b.getBoundingClientRect().bottom - body.getBoundingClientRect().top - 4}px`;
+    });
+    await card.hover();
+    await btn.click();
+    await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));   // the focus scroll's event has fired
+    await expect(menu).toHaveClass(/open/);
+    await btn.evaluate(b => { const body = b.closest('.column-body'); body.scrollTop = body.scrollTop > 0 ? 0 : body.scrollHeight; });
+    await expect(menu).not.toHaveClass(/open/);   // a scroll that moves the button still closes it
+    await btn.click();
+    await menu.locator('[data-act="open"]').click();
+    await expect(page.locator('#m-id')).toHaveText(id);
+  });
+
   test('columns have no box: the status colour is the header dot only, + is on Open alone, Discarded is muted (t-9d93)', async ({ page }) => {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
@@ -15089,6 +15112,30 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#ck-gh-status')).toHaveText('Not sent; nothing changed.');
     await expect(page.locator('#ck-gh-preview')).toContainText('HTTP 401');
     await expect(page.locator('#ck-gh-create')).toBeEnabled();
+  });
+
+  // t-8627: openCockpit mounts the panel once more when its own rail render finishes; a GitHub pick and a send made before that used to
+  // be wiped by the second render (1 in 100 solo runs of the test above). Protects showGithubPanel (static/board-github.js).
+  test('a second panel render for the same ticket keeps a failed send\'s reason (t-8627)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh4d');
+    ghTicket(id);
+    let previews = 0;
+    await page.route('**/api/worktrees**', r => json(r, [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true }]));
+    await page.route(`**/api/ticket/${id}/github/send-preview`, r => { previews++; return json(r, { ok: true, exit_code: 0, output: 'repo: acme/app (PRIVATE)' }); });
+    await page.route(`**/api/ticket/${id}/github/send`, r => json(r, { ok: false, exit_code: 1, output: 'send-issue: gh could not read acme/app: HTTP 401' }));
+    await openBoard(page, id);
+    await page.locator(`.card[data-id="${id}"] .card-start`).click();
+    await page.locator('#ck-worktree .ck-gh-row').click();
+    await page.locator('#ck-gh-create').click();
+    await expect(page.locator('#ck-gh-status')).toHaveText('Not sent; nothing changed.');
+    await page.evaluate(async (tid) => {   // openCockpit's own mount, landing late
+      const { cockpitState } = await import('/static/board-cockpit.js');
+      const t = (await import('/static/board-core.js')).state.tickets.find(x => x.id === tid);
+      await (await import('/static/board-github.js')).showGithubPanel(t, cockpitState);
+    }, id);
+    await expect(page.locator('#ck-gh-status')).toHaveText('Not sent; nothing changed.');
+    await expect(page.locator('#ck-gh-preview')).toContainText('HTTP 401');
+    expect(previews).toBe(1);
   });
 
   test('a send that fails after the panel was replaced writes nowhere and throws nothing (t-718b)', async ({ page }) => {

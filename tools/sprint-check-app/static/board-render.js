@@ -463,7 +463,13 @@ export function renderBoard() {
     cardMenu._close = closeMenu;
     document.addEventListener('pointerdown', e => { if (!e.target.closest('#card-menu, .card-menu-btn')) closeMenu(false); });
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && cardMenu.classList.contains('open')) { e.stopPropagation(); closeMenu(true); } }, true);
-    window.addEventListener('scroll', () => closeMenu(false), true);
+    // A scroll closes the menu only once it has moved the menu's button. Chrome focuses a clicked button and scrolls a clipped one into
+    // view, and that scroll's event arrives just after the click opened the menu (t-8627).
+    window.addEventListener('scroll', () => {
+      const owner = document.querySelector('.card-menu-btn[aria-expanded="true"]');
+      if (owner && owner.getBoundingClientRect().top === cardMenu._ownerTop) return;
+      closeMenu(false);
+    }, true);
     // Tab-ing past the last item closes the menu. WebKit does not focus a clicked button, so a click inside the menu
     // reports a focusout with no relatedTarget: ignore it while the pointer is down in the menu.
     let menuPointer = false;
@@ -500,6 +506,7 @@ export function renderBoard() {
       cardMenu.querySelector('[data-act="path"]').textContent = 'Copy folder path';
       cardMenu.dataset.id = btn.dataset.id;
       const r = btn.getBoundingClientRect();
+      cardMenu._ownerTop = r.top;
       cardMenu.classList.add('open');
       cardMenu.style.left = Math.max(8, Math.min(r.left, innerWidth - cardMenu.offsetWidth - 8)) + 'px';
       cardMenu.style.top = Math.min(r.bottom + 4, innerHeight - cardMenu.offsetHeight - 8) + 'px';
