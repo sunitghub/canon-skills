@@ -1,4 +1,4 @@
-import { SHELL_TAB, TICKET_TYPES, TYPE_TEMPLATES, detectTicketType, state } from './board-core.js';
+import { TICKET_TYPES, TYPE_TEMPLATES, detectTicketType, state } from './board-core.js';
 import { WT_PREF_MAIN, esc, escAttr, titleCase } from './board-helpers.js';
 import { editScratchTitle, newScratchId, openScratch, postWrite, renderBoard, startPromote } from './board-render.js';
 import { blobToBase64, insertPlainText, nextPasteVisualIndex, readClipboardImages, resetPanelDrag, resetPanelResize, uploadVisual } from './board-panels.js';
@@ -232,12 +232,6 @@ export function initCreate() {
 
     document.getElementById('btn-create').addEventListener('click', open);
     document.getElementById('btn-scratch').addEventListener('click', () => openScratch(newScratchId()));   // t-e162
-    // t-67ab: Upkeep lives in the Canon Cockpit shell; ask it to show this project's checks.
-    if (window.parent !== window) {
-      const up = document.getElementById('btn-upkeep');
-      up.hidden = false;
-      up.addEventListener('click', () => window.parent.postMessage({ source: 'canon-board', type: 'open-upkeep', tab: SHELL_TAB }, location.origin));
-    }
     document.getElementById('ck-promote').addEventListener('click', () => startPromote(false));          // t-f553
     document.getElementById('ck-tc-title').addEventListener('click', editScratchTitle);
     document.getElementById('create-close').addEventListener('click', close);

@@ -57,7 +57,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    the same class of explicit/auditable override as `eval_override` / `Gate model:` (see
    `AGENTS.md`'s `## Model Tiers` and `DECISIONS.md`'s 2026-07-30 north-star-amendment entry).
 
-   **Upkeep report-only guard (t-2201) — HARD, structural.** If `ticket.md` also carries a
+   **Maintenance-skill report-only guard (t-2201) — HARD, structural.** If `ticket.md` also carries a
    `skills:` line (an *auto-Demo'd maintenance chore* — `t-354b`), the demo light-close is valid
    **only if the sprint's diff is report-only**: `git diff --name-only $(git merge-base HEAD
    origin/main) HEAD` (the same base-ref command the reviewer/evaluator gates use; canon gitignores `.tickets/`,
@@ -411,7 +411,7 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    triggers the skip), **or if `ticket.md` has `demo: true` AND the t-2201 guard doesn't void it**
    (the demo close-path skips this advisory gate the same way `bugfix` does, while still running
    the binding evaluator in step 3 — see "Demo mode" in step 1 — **but only if the sprint's diff
-   is report-only per the "Upkeep report-only guard (t-2201)" above; if `ticket.md` also carries
+   is report-only per the "Maintenance-skill report-only guard (t-2201)" above; if `ticket.md` also carries
    a `skills:` line and any non-`.md` file changed, `demo` does NOT apply here and this gate is
    NOT skipped** — re-check that guard before skipping on `demo` alone). `bugfix` is the **eval-only** tier: it skips *this advisory reviewer* but,
    unlike `trivial`, still runs the binding evaluator in step 3. A sprint always starts as normal or high-risk (`SKILL.md`'s tiers never let genuinely

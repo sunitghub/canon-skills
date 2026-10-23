@@ -7,7 +7,6 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
-	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -547,59 +546,6 @@ func TestCockpitDaemonCandidates(t *testing.T) {
 	}
 }
 
-// t-1776: upkeep-run is a bash script with no Windows-native entry point --
-// exec.Command on an explicit path doesn't consult PATHEXT the way it would
-// for a bare command name, so the bash script must never be Windows' first
-// candidate; the .cmd wrapper (mirroring sprint.cmd) must come first there,
-// and never appear at all on non-Windows.
-func TestUpkeepRunBinCandidates(t *testing.T) {
-	td := filepath.FromSlash("/x/tools")
-	root := filepath.FromSlash("/proj")
-
-	win := upkeepRunBinCandidates(td, root, "windows")
-	wantWinFirst := filepath.Join(td, "upkeep-run.cmd")
-	if len(win) == 0 || win[0] != wantWinFirst {
-		t.Fatalf("windows first candidate = %v, want %s", win, wantWinFirst)
-	}
-	bashFallback := filepath.Join(td, "upkeep-run")
-	foundBash := false
-	for _, c := range win {
-		if c == bashFallback {
-			foundBash = true
-		}
-	}
-	if !foundBash {
-		t.Fatalf("windows candidates missing bash fallback %s: %v", bashFallback, win)
-	}
-
-	for _, goos := range []string{"darwin", "linux"} {
-		u := upkeepRunBinCandidates(td, root, goos)
-		want := filepath.Join(td, "upkeep-run")
-		if len(u) == 0 || u[0] != want {
-			t.Fatalf("%s first candidate = %v, want %s", goos, u, want)
-		}
-		for _, c := range u {
-			if filepath.Base(c) == "upkeep-run.cmd" {
-				t.Fatalf("%s must not offer a .cmd candidate: %v", goos, u)
-			}
-		}
-	}
-
-	// extraRoots contribute their own tools/ dirs on every platform.
-	er := filepath.FromSlash("/wt")
-	got := upkeepRunBinCandidates(td, root, "windows", er)
-	wantExtra := filepath.Join(er, "tools", "upkeep-run.cmd")
-	foundExtra := false
-	for _, c := range got {
-		if c == wantExtra {
-			foundExtra = true
-		}
-	}
-	if !foundExtra {
-		t.Fatalf("extraRoot tools dir missing from candidates: %v", got)
-	}
-}
-
 // t-99fa: /api/version returns {version, daemon}; version reflects the build
 // var (stamped via -ldflags), daemon is "" when no daemon binary is resolved.
 func TestVersionEndpoint(t *testing.T) {
@@ -1065,159 +1011,9 @@ func TestBrowseDirsHidden(t *testing.T) {
 	}
 }
 
-// writeStubScript (t-7ae6) writes an executable script at dir/name that prints
-// stdout, exits with the given code. Mirrors this file's existing pattern for
-// stubbing external binaries via an env-var override — never overwrite the
-// real on-disk script in place (t-1781).
-func writeStubScript(t *testing.T, dir, name, stdout string, exitCode int) string {
-	t.Helper()
-	p := filepath.Join(dir, name)
-	body := fmt.Sprintf("#!/bin/sh\nprintf '%%s' '%s'\nexit %d\n", stdout, exitCode)
-	if err := os.WriteFile(p, []byte(body), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	return p
-}
-
-func TestResolveUpkeepRunBin(t *testing.T) {
-	t.Setenv("UPKEEP_RUN_BIN", "/custom/upkeep-run")
-	if got := resolveUpkeepRunBin("/tools", "/root"); got != "/custom/upkeep-run" {
-		t.Fatalf("env override not honored: got %q", got)
-	}
-	t.Setenv("UPKEEP_RUN_BIN", "")
-	toolsDirD := t.TempDir()
-	p := filepath.Join(toolsDirD, "upkeep-run")
-	os.WriteFile(p, []byte("#!/bin/sh\n"), 0o755)
-	if got := resolveUpkeepRunBin(toolsDirD, "/nonexistent-root"); got != p {
-		t.Fatalf("expected toolsDir candidate %q, got %q", p, got)
-	}
-}
-
-// t-1776: a failed run's output must be persisted AND surfaced via
-// getUpkeepRunState — the whole point of persisting it is that a caller can
-// see WHY a run failed, not just someone opening upkeepRuns.json by hand
-// (reviewer finding). Also confirms the 2048-byte tail cap actually bounds a
-// long output, not just that a short one round-trips.
-func TestRunUpkeepPersistsAndSurfacesBoundedOutput(t *testing.T) {
-	root := setupTestProject(t)
-	longMsg := strings.Repeat("X", 5000)
-	stub := writeStubScript(t, t.TempDir(), "stub-upkeep-run", longMsg, 1)
-	oldBin := upkeepRunBin
-	upkeepRunBin = stub
-	defer func() { upkeepRunBin = oldBin }()
-
-	// runUpkeep assumes startUpkeepRun already seeded this map entry (it
-	// normally runs as a goroutine startUpkeepRun launches) — seed it the
-	// same way here so this synchronous, direct call doesn't panic on a nil
-	// map write.
-	key := upkeepKey{root, "context-check"}
-	upkeepRunsMu.Lock()
-	upkeepRuns[key] = map[string]any{"status": "running", "output": "", "exit_code": nil, "started_at": time.Now()}
-	upkeepRunsMu.Unlock()
-
-	runUpkeep(root, "context-check", "claude-haiku-4-5-20251001")
-
-	state := getUpkeepRunState(root, "context-check")
-	out, _ := state["output"].(string)
-	if len(out) != 2048 {
-		t.Fatalf("getUpkeepRunState output not bounded to 2048 bytes: got %d", len(out))
-	}
-
-	persisted := upkeepStateLoad(root)["context-check"]
-	pout, _ := persisted["output"].(string)
-	if len(pout) != 2048 {
-		t.Fatalf("persisted output not bounded to 2048 bytes: got %d", len(pout))
-	}
-}
-
-func TestGetUpkeepRunStateIdle(t *testing.T) {
-	root := t.TempDir()
-	upkeepRuns = map[upkeepKey]map[string]any{}
-	state := getUpkeepRunState(root, "context-check")
-	if state["status"] != "idle" {
-		t.Fatalf("expected idle for a never-run skill, got %v", state)
-	}
-}
-
-// TestStartUpkeepRunDoubleSpawnGuard: a second start while one is "running"
-// for the same (root, skill) must not spawn a second process — mirrors
-// startHeadlessRun's own guard, same shape, different key.
-func TestStartUpkeepRunDoubleSpawnGuard(t *testing.T) {
-	root := t.TempDir()
-	upkeepRuns = map[upkeepKey]map[string]any{}
-	key := upkeepKey{root, "context-check"}
-	upkeepRuns[key] = map[string]any{"status": "running", "started_at": time.Now()}
-	result := startUpkeepRun(root, "context-check", "claude-haiku-4-5-20251001")
-	if result["busy"] != true {
-		t.Fatalf("expected busy:true when already running, got %v", result)
-	}
-}
-
-func TestStartUpkeepRunUnknownSkill(t *testing.T) {
-	root := t.TempDir()
-	result := startUpkeepRun(root, "not-a-real-skill", "claude-haiku-4-5-20251001")
-	if result["ok"] != false {
-		t.Fatalf("expected ok:false for an unknown skill, got %v", result)
-	}
-}
-
-// TestRunUpkeepEndToEnd runs the real dispatch machinery against a stub
-// upkeep-run binary (never the real claude -p — this test asserts the Go
-// wiring, not a live model call) that prints the UPKEEP_REPORT sentinel line,
-// and confirms the resulting state + persisted .reports/upkeepRuns.json both
-// reflect it.
-func TestRunUpkeepEndToEnd(t *testing.T) {
-	root := t.TempDir()
-	os.MkdirAll(filepath.Join(root, ".reports"), 0o755)
-	reportPath := filepath.Join(root, ".reports", "context-check_test.md")
-	os.WriteFile(reportPath, []byte("# Report\n"), 0o644)
-	stubDir := t.TempDir()
-	upkeepRunBin = writeStubScript(t, stubDir, "upkeep-run", "UPKEEP_REPORT: "+reportPath+"\n", 0)
-	// runUpkeep assumes its map entry already exists — startUpkeepRun normally
-	// initializes it before launching the goroutine that calls this.
-	upkeepRuns = map[upkeepKey]map[string]any{
-		{root, "context-check"}: {"status": "running", "started_at": time.Now()},
-	}
-
-	runUpkeep(root, "context-check", "claude-haiku-4-5-20251001")
-
-	state := getUpkeepRunState(root, "context-check")
-	if state["status"] != "done" {
-		t.Fatalf("expected status done, got %v", state)
-	}
-	if state["report_path"] != reportPath {
-		t.Fatalf("expected report_path %q, got %v", reportPath, state["report_path"])
-	}
-	persisted := upkeepStateLoad(root)
-	if persisted["context-check"] == nil {
-		t.Fatal("expected .reports/upkeepRuns.json to have a context-check entry")
-	}
-
-	report := getUpkeepReport(root, "context-check")
-	if report["ok"] != true || report["content"] != "# Report\n" {
-		t.Fatalf("expected report content to be served, got %v", report)
-	}
-}
-
-// TestGetUpkeepReportRejectsPathOutsideReports: a report_path that doesn't
-// live under this root's own .reports/ must be refused, even if it somehow
-// ended up in state — the containment check must not just trust the state.
-func TestGetUpkeepReportRejectsPathOutsideReports(t *testing.T) {
-	root := t.TempDir()
-	outside := filepath.Join(t.TempDir(), "not-in-reports.md")
-	os.WriteFile(outside, []byte("secret"), 0o644)
-	upkeepRuns = map[upkeepKey]map[string]any{
-		{root, "context-check"}: {"status": "done", "report_path": outside},
-	}
-	report := getUpkeepReport(root, "context-check")
-	if report["ok"] != false {
-		t.Fatalf("expected the out-of-.reports/ path to be refused, got %v", report)
-	}
-}
-
-// TestUpkeepModelIDCases (t-be1f): the model string reaches `claude --model`, so it must be a plain model id.
-// The good/bad cases live in tests/fixtures/model-id-cases.json, shared with the bash and Python tests.
-func TestUpkeepModelIDCases(t *testing.T) {
+// TestRunModelIDCases (t-be1f): a board-started run's model must be a plain model id.
+// The good/bad cases live in tests/fixtures/model-id-cases.json.
+func TestRunModelIDCases(t *testing.T) {
 	raw, err := os.ReadFile("../../../../tests/fixtures/model-id-cases.json")
 	if err != nil {
 		t.Fatal(err)
@@ -1229,53 +1025,35 @@ func TestUpkeepModelIDCases(t *testing.T) {
 	if err := json.Unmarshal(raw, &cases); err != nil {
 		t.Fatal(err)
 	}
-	root := t.TempDir()
-	// Other tests share the package-level upkeepRuns map, so only look at this test's own root.
-	hasUpkeepJob := func(r string) bool {
-		upkeepRunsMu.Lock()
-		defer upkeepRunsMu.Unlock()
-		for k := range upkeepRuns {
-			if k.root == r {
-				return true
-			}
-		}
-		return false
-	}
 	for _, m := range cases.Bad {
-		if validUpkeepModel(m) {
-			t.Errorf("validUpkeepModel accepted %q", m)
-		}
-		r := startUpkeepRun(root, "context-check", m)
-		if r["ok"] != false || !strings.Contains(fmt.Sprint(r["error"]), "model") {
-			t.Errorf("startUpkeepRun(%q) = %v, want a model refusal", m, r)
+		if runModelRe.MatchString(m) {
+			t.Errorf("runModelRe accepted %q", m)
 		}
 	}
 	for _, m := range cases.Good {
-		if !validUpkeepModel(m) {
-			t.Errorf("validUpkeepModel refused %q", m)
+		if !runModelRe.MatchString(m) {
+			t.Errorf("runModelRe refused %q", m)
 		}
 	}
-	if hasUpkeepJob(root) {
-		t.Errorf("a refused model started a job for %s", root)
-	}
-	// Seeded fuzz: strings built from parts that can never be legitimate are always refused.
-	rng := rand.New(rand.NewSource(20260922))
-	// A dash is only hostile as the FIRST character (ok-tail is a valid id); the rest are never valid anywhere.
-	badChars := []string{" ", ";", "$(", "`", "|", "&", "\n", "\r", "\t", "'", "\"", "\\", "/", "é", "*", "="}
-	heads := []string{"", "ok", "xxxxx"}
-	for i := 0; i < 300; i++ {
-		var m string
-		if rng.Intn(10) < 3 {
-			m = []string{"-", "--"}[rng.Intn(2)] + []string{"", "tail", "x y"}[rng.Intn(3)]
-		} else {
-			m = heads[rng.Intn(len(heads))] + badChars[rng.Intn(len(badChars))] + []string{"", "tail"}[rng.Intn(2)]
+}
+
+// t-0e8b: Upkeep is removed — no board route starts a headless agent, so its three paths answer 404.
+func TestUpkeepRoutesGone(t *testing.T) {
+	setupTestProject(t)
+	for _, c := range []struct{ method, path, body string }{
+		{"POST", "/api/upkeep/run", `{"skill":"context-check"}`},
+		{"GET", "/api/upkeep/status?skill=context-check", ""},
+		{"GET", "/api/upkeep/report?skill=context-check", ""},
+	} {
+		req := httptest.NewRequest(c.method, "http://127.0.0.1"+c.path, strings.NewReader(c.body))
+		if c.method == "POST" {
+			req.Header.Set("Content-Type", "application/json")
 		}
-		if r := startUpkeepRun(root, "context-check", m); r["ok"] != false {
-			t.Fatalf("fuzz: startUpkeepRun(%q) = %v", m, r)
+		rec := httptest.NewRecorder()
+		handle(rec, req)
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("%s %s = %d, want 404", c.method, c.path, rec.Code)
 		}
-	}
-	if hasUpkeepJob(root) {
-		t.Errorf("the fuzz started a job for %s", root)
 	}
 }
 

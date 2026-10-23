@@ -107,12 +107,12 @@ async function editDoc(page) {
   await page.locator('#m-body').dblclick({ position: { x: 6, y: 6 } });
 }
 
-// t-67ab: Upkeep lives inside a project tab (opened by its board's Upkeep button); open the
-// first registered project's Upkeep the way that button does.
-async function openUpkeepView(page) {
+// t-0e8b: Skill Eval lives inside a project tab (opened from its Projects card); open the
+// first registered project's Skill Eval the way that row does.
+async function openSkillEvalView(page) {
   await expect.poll(() => page.evaluate(async () => { const { getProjects } = await import('/static/cockpit-projects.js'); return ( getProjects().length); })).toBeGreaterThan(0);   // t-565f: no window._projects
-  await page.evaluate(async () => { const { openUpkeepFor } = await import('/static/cockpit-upkeep.js'); const { getProjects } = await import('/static/cockpit-projects.js'); return ( openUpkeepFor(getProjects()[0].id)); });
-  await expect(page.locator('#view-upkeep')).toHaveClass(/active/);
+  await page.evaluate(async () => { const { openSkillEvalFor } = await import('/static/cockpit-skill-eval.js'); const { getProjects } = await import('/static/cockpit-projects.js'); return ( openSkillEvalFor(getProjects()[0].id)); });
+  await expect(page.locator('#view-skill-eval')).toHaveClass(/active/);
 }
 
 // t-d2e1: the quote-breakout payload, and a scan for any on* attribute an escape bug would let it add.
@@ -4185,7 +4185,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('split view (t-bcce): Upkeep opens inside its own pane and leaves the split and tabs alone', async ({ page }) => {
+    test('split view (t-bcce): Skill Eval opens inside its own pane and leaves the split and tabs alone', async ({ page }) => {
       await openShell(page, []);
       await splitTabs(page);
       for (const dir of ['beside', 'below']) {
@@ -4193,36 +4193,36 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await splitVia(page, 'proj-x', dir);
         await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return ( activateTab('proj-x')); });
         const cls = dir === 'beside' ? /split-h/ : /split-v/;
-        await page.evaluate(async () => { const { showView } = await import('/static/cockpit-views.js'); return ( showView('upkeep')); });
+        await page.evaluate(async () => { const { showView } = await import('/static/cockpit-views.js'); return ( showView('skill-eval')); });
         await expect(page.locator('#views')).toHaveClass(cls);                       // the split is not suspended
         await expect(page.locator('#panebar .tab.project[data-tab="proj-x"]')).toHaveCount(1);   // the tabs did not move
         await expect(page.locator('#tabstrip .tab.project[data-tab="proj-a"]')).toHaveCount(1);
-        await expect(page.locator('#view-upkeep')).toBeVisible();
+        await expect(page.locator('#view-skill-eval')).toBeVisible();
         await expect(page.locator('#view-proj-a')).toBeVisible();                    // the other pane's board is still there
-        const up = await bbox(page, '#view-upkeep'), px = await bbox(page, '#view-proj-x'), pa = await bbox(page, '#view-proj-a');
+        const up = await bbox(page, '#view-skill-eval'), px = await bbox(page, '#view-proj-x'), pa = await bbox(page, '#view-proj-a');
         for (const k of ['x', 'y', 'width', 'height']) expect(Math.abs(up[k] - px[k])).toBeLessThanOrEqual(1);   // exactly its own pane
         expect(up.x + up.width <= pa.x + 1 || up.y + up.height <= pa.y + 1 || up.x >= pa.x + pa.width - 1 || up.y >= pa.y + pa.height - 1).toBe(true);   // not over the other pane
         expect(await page.locator('#view-proj-x').getAttribute('inert')).not.toBeNull();   // the covered board takes no focus or keys
         await expect(page.locator('#view-proj-a')).not.toHaveAttribute('inert', /.*/);
-        for (const key of ['s', 's', 'r', 'r']) {                                    // swap and rotate: Upkeep follows its project's pane
+        for (const key of ['s', 's', 'r', 'r']) {                                    // swap and rotate: Skill Eval follows its project's pane
           await pressPrefix(page, key);
-          const upk = await bbox(page, '#view-upkeep'), pxx = await bbox(page, '#view-proj-x');
+          const upk = await bbox(page, '#view-skill-eval'), pxx = await bbox(page, '#view-proj-x');
           for (const k of ['x', 'y', 'width', 'height']) expect(Math.abs(upk[k] - pxx[k])).toBeLessThanOrEqual(1);
         }
-        await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return ( activateTab('proj-a')); });                            // focus moves to the other pane: Upkeep stays where it is
-        await expect(page.locator('#view-upkeep')).toBeVisible();
-        const up2 = await bbox(page, '#view-upkeep');
+        await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return ( activateTab('proj-a')); });                            // focus moves to the other pane: Skill Eval stays where it is
+        await expect(page.locator('#view-skill-eval')).toBeVisible();
+        const up2 = await bbox(page, '#view-skill-eval');
         for (const k of ['x', 'y', 'width', 'height']) expect(Math.abs(up2[k] - px[k])).toBeLessThanOrEqual(1);
-        await page.locator('#up-back').click();                                      // back to the board, same layout
-        await expect(page.locator('#view-upkeep')).toBeHidden();
+        await page.locator('#se-back').click();                                      // back to the board, same layout
+        await expect(page.locator('#view-skill-eval')).toBeHidden();
         await expect(page.locator('#view-proj-x')).not.toHaveAttribute('inert', /.*/);
         await expect(page.locator('#view-proj-x')).toBeVisible();
         await expect(page.locator('#views')).toHaveClass(cls);
         await expect(page.locator('#panebar .tab.project[data-tab="proj-x"]')).toHaveCount(1);
       }
-      await page.evaluate(async () => { const { showView } = await import('/static/cockpit-views.js'); const { activateTab, closeTab } = await import('/static/cockpit-tabs.js'); activateTab('proj-a'); activateTab('proj-x'); showView('upkeep'); closeTab('proj-x'); });   // closing the hosting tab ends the split and Upkeep
+      await page.evaluate(async () => { const { showView } = await import('/static/cockpit-views.js'); const { activateTab, closeTab } = await import('/static/cockpit-tabs.js'); activateTab('proj-a'); activateTab('proj-x'); showView('skill-eval'); closeTab('proj-x'); });   // closing the hosting tab ends the split and Skill Eval
       await expect(page.locator('#views')).not.toHaveClass(/split-/);
-      await expect(page.locator('#view-upkeep')).toBeHidden();
+      await expect(page.locator('#view-skill-eval')).toBeHidden();
       await page.evaluate(async () => { const { showView } = await import('/static/cockpit-views.js'); const { activateTab } = await import('/static/cockpit-tabs.js'); activateTab('proj-a'); showView('admin'); });      // Admin still suspends the split
       await expect(page.locator('#views')).not.toHaveClass(/split-/);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
@@ -5378,7 +5378,6 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const inline = () => page.evaluate(() => [...document.querySelectorAll('*')].flatMap(el =>
         [...el.attributes].filter(a => /^on/i.test(a.name)).map(a => `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''} ${a.name}`)));
       await page.route('**/api/browse-dirs*', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ path: '/home/me', parent: '/home', entries: [] }) }));
-      await page.route('**/api/upkeep/status*', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'done', report_path: '/tmp/r.md', finished_at: Date.now() / 1000 }) }));
       await openShell(page, stateRows());
       await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
       const seen = {};
@@ -5389,13 +5388,14 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('.mt-card.editing')).toHaveCount(1);
       seen.admin = await inline();
       await page.locator('.mt-card.editing .mt-cancel').click();
-      await openUpkeepView(page);
-      await expect(page.locator('#up-grid .rcard').first()).toBeVisible();
-      await page.locator('#up-grid .rc-help').first().click();                          // "?" popover open
-      await expect(page.locator('#up-grid .rc-pop')).toHaveCount(1);
+      await openSkillEvalView(page);
+      await expect(page.locator('#se-card .rc-title')).toBeVisible();
+      await page.locator('#se-card .rc-help').click({ force: true });                  // "?" popover open
+      await expect(page.locator('#se-card .rc-pop')).toHaveCount(1);
+      await page.keyboard.press('Escape');
       await page.locator('#se-card button', { hasText: 'Browse' }).click();                                // Skill Eval browse open
       await expect(page.locator('#se-card .dirnav')).toBeVisible();
-      seen.upkeep = await inline();
+      seen.skillEval = await inline();
       await page.locator('#nav-projects').click();
       await page.locator('#help-btn').click();
       seen.help = await inline();
@@ -5411,7 +5411,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator('.tab[data-tab="proj-a"] .tx').click();
       await expect(page.locator('#closeWarn')).toHaveClass(/show/);
       seen.closeWarn = await inline();
-      expect(seen).toEqual({ projects: [], admin: [], upkeep: [], help: [], keys: [], add: [], closeWarn: [] });
+      expect(seen).toEqual({ projects: [], admin: [], skillEval: [], help: [], keys: [], add: [], closeWarn: [] });
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
@@ -6245,102 +6245,36 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    // t-67ab: Upkeep moved into each project tab.
-    const upkeepStatus = (page, doneFor = {}) => {
-      const asked = [];
-      return page.route('**/api/upkeep/status*', r => {
-        const u = new URL(r.request().url());
-        const pid = u.searchParams.get('project'), skill = u.searchParams.get('skill');
-        asked.push(pid);
-        const done = (doneFor[pid] || []).includes(skill);
-        return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(done ? { status: 'done', finished_at: 1790600000, report_path: 'r.md' } : { status: 'idle', report_path: '' }) });
-      }).then(() => asked);
-    };
-
-    test('upkeep (t-67ab): the board\u2019s Upkeep button opens that project\u2019s Upkeep; \u2190 Board returns; another tab gets its own', async ({ page }) => {
-      const asked = await upkeepStatus(page);
-      const boardA = await openShell(page, []);
-      await expect(boardA.locator('#btn-upkeep')).toBeVisible();
-      asked.length = 0;
-      await boardA.locator('#btn-upkeep').click();
-      await expect(page.locator('#view-upkeep')).toHaveClass(/active/);
-      await expect(page.locator('#up-proj')).toHaveText('proj-a');
-      await expect.poll(() => asked.length).toBeGreaterThanOrEqual(4);
-      expect([...new Set(asked)]).toEqual(['proj-a']);
-      await page.locator('#up-back').click();
-      await expect(page.locator('#view-proj-a')).toHaveClass(/active/);
-      // proj-x's board opens proj-x's Upkeep, and only proj-x is asked about.
-      await page.evaluate(async () => { const { openProject } = await import('/static/cockpit-tabs.js'); return ( openProject('proj-x', 'proj-x')); });
-      const boardX = page.frameLocator('#view-proj-x iframe');
-      await expect(boardX.locator('#btn-upkeep')).toBeVisible({ timeout: 8000 });
-      asked.length = 0;
-      await boardX.locator('#btn-upkeep').click();
-      await expect(page.locator('#up-proj')).toHaveText('proj-x');
-      await expect.poll(() => asked.length).toBeGreaterThanOrEqual(4);
-      expect([...new Set(asked)]).toEqual(['proj-x']);
-      fs.mkdirSync(path.join(PROJECT_ROOT, '.tickets', 't-67ab', 'visuals'), { recursive: true });
-      await page.screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-67ab', 'visuals', 'upkeep-in-tab.png') });
-      // Switching tabs shows that tab's board, never a stale Upkeep.
-      await page.locator('#up-back').click();
-      await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return ( activateTab('proj-a')); });
-      await expect(page.locator('#view-upkeep')).not.toHaveClass(/active/);
-      await expect(page.locator('#view-proj-a')).toHaveClass(/active/);
-      // A closed tab's token is dropped: a message carrying it opens nothing.
-      const oldTok = await page.evaluate(async () => {
-        const { closeTab } = await import('/static/cockpit-tabs.js');
-        const t = new URL(document.querySelector('#view-proj-x iframe').src).searchParams.get('tab');
-        closeTab('proj-x');
-        return t;
-      });
-      await page.evaluate(t => window.postMessage({ source: 'canon-board', type: 'open-upkeep', tab: t }, location.origin), oldTok);
-      await page.waitForTimeout(300);
-      await expect(page.locator('#view-upkeep')).not.toHaveClass(/active/);
-      await expect(page.locator('#view-proj-x')).toHaveCount(0);
-      // A forged open-upkeep from outside a tab's board opens nothing.
-      await page.evaluate(() => window.postMessage({ source: 'canon-board', type: 'open-upkeep' }, location.origin));
-      await page.waitForTimeout(300);
-      await expect(page.locator('#view-upkeep')).not.toHaveClass(/active/);
-      await page.unrouteAll({ behavior: 'ignoreErrors' });
-    });
-
-    test('upkeep (t-67ab): the board path bar — branch under the path, no counts, + New · Sync · Upkeep · Scratch · CI on the right (order since t-90a3)', async ({ page }) => {
-      await upkeepStatus(page);
+    test('board path bar (t-67ab, t-0e8b): branch under the path, no counts, + New · Sync · Scratch · CI on the right, no Upkeep button', async ({ page }) => {
       const board = await openShell(page, []);
-      await expect(board.locator('#btn-upkeep')).toBeVisible();
       await expect(board.locator('#h-branch')).not.toHaveText('\u2014', { timeout: 8000 });   // data loaded
       for (const id of ['h-open', 'h-active', 'h-needs-stat', 'h-archived-stat']) await expect(board.locator('#' + id)).toHaveCount(0);
+      await expect(board.locator('#btn-upkeep')).toHaveCount(0);   // t-0e8b: nothing on the board starts an agent headlessly
       const box = async sel => board.locator(sel).boundingBox();
       const proj = await box('#h-project'), branch = await box('#h-branch');
       expect(branch.y).toBeGreaterThan(proj.y + proj.height / 2);   // on the line below the path
-      expect(await board.locator('.header-right button:visible').evaluateAll(bs => bs.slice(0, 5).map(b => b.id)))
-        .toEqual(['btn-create', 'btn-gh-sync', 'btn-upkeep', 'btn-scratch', 'btn-ci-setup']);   // t-90a3 put Sync from GitHub after + New
-      const right = await box('.header-right'), up = await box('#btn-upkeep');
-      expect(up.x).toBeGreaterThan(proj.x + proj.width);   // the buttons sit to the right of the path
-      await board.locator('#header').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-67ab', 'visuals', 'path-bar.png') });
-      expect(right.x + right.width).toBeGreaterThan(up.x);
-      // A standalone board (no Cockpit shell) has no Upkeep button.
-      const solo = await page.context().newPage();
-      await solo.goto(BASE);
-      await solo.waitForLoadState('networkidle');
-      await expect(solo.locator('#btn-upkeep')).toBeHidden();
-      await solo.close();
+      expect(await board.locator('.header-right button:visible').evaluateAll(bs => bs.slice(0, 4).map(b => b.id)))
+        .toEqual(['btn-create', 'btn-gh-sync', 'btn-scratch', 'btn-ci-setup']);   // t-90a3 put Sync from GitHub after + New
+      const right = await box('.header-right'), first = await box('#btn-create');
+      expect(first.x).toBeGreaterThan(proj.x + proj.width);   // the buttons sit to the right of the path
+      await board.locator('#header').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-0e8b', 'visuals', 'path-bar.png') });
+      expect(right.x + right.width).toBeGreaterThan(first.x);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('upkeep (t-67ab): each Projects card shows its branch and how many checks never ran; the row opens Upkeep', async ({ page }) => {
-      await upkeepStatus(page, { 'proj-a': ['context-check'], 'proj-x': ['context-check', 'context-doctor', 'dead-code-cleanup', 'promote-learnings'] });
+    test('Projects card (t-67ab, t-0e8b): shows its branch and no Upkeep count; the Skill Eval row opens that project\u2019s Skill Eval', async ({ page }) => {
       await openShell(page, []);
       await page.locator('.tab.pinned').click();
       const card = pid => page.locator(`.meta[data-stats="${pid}"]`);
-      await expect(card('proj-a').locator('[data-f="upkeep"]')).toHaveText('3 checks never run');
-      await expect(card('proj-x').locator('[data-f="upkeep"]')).toHaveText('all checks run');
       const branch = await page.evaluate(async () => (await (await fetch('/api/git?project=proj-a')).json()).branch);
       expect(branch).toBeTruthy();
       await expect(card('proj-a').locator('[data-f="branch"]')).toHaveText(branch);
-      await page.locator('.meta[data-stats="proj-a"]').locator('xpath=ancestor::div[contains(@class,"card")][1]').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-67ab', 'visuals', 'project-card.png') });
-      await card('proj-a').locator('.upk-row').click();
-      await expect(page.locator('#view-upkeep')).toHaveClass(/active/);
-      await expect(page.locator('#up-proj')).toHaveText('proj-a');
+      await expect(card('proj-a').locator('[data-f="upkeep"]')).toHaveCount(0);
+      await expect(card('proj-a')).not.toContainText('never run');
+      await page.locator('.meta[data-stats="proj-a"]').locator('xpath=ancestor::div[contains(@class,"card")][1]').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-0e8b', 'visuals', 'project-card.png') });
+      await card('proj-x').locator('.se-link-row').click();
+      await expect(page.locator('#view-skill-eval')).toHaveClass(/active/);
+      await expect(page.locator('#se-proj')).toHaveText('proj-x');
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
@@ -11743,24 +11677,16 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
   });
 });
 
-test.describe('Canon Cockpit Upkeep (t-7ae6)', () => {
+test.describe('Canon Cockpit Projects card and Skill Eval view (t-7d8d, t-0e8b)', () => {
   // These test the shell page (tools/sprint-check-app/cockpit.html, served at
   // /cockpit by THIS board's own server), not app.html and not the separate
   // cockpit-daemon binary's own same-named cockpit.html served at a daemon addr.
   const PROJECTS = [{ id: 'proj-a', path: '/tmp/proj-a', name: 'proj-a', description: '', added: '2026-09-15' }];
 
-  async function stubUpkeep(page, { status = { status: 'idle', report_path: '' }, report = null } = {}) {
+  async function stubProjects(page) {
     await page.route('**/api/projects', route => route.fulfill({
       status: 200, contentType: 'application/json', body: JSON.stringify(PROJECTS),
     }));
-    await page.route('**/api/upkeep/status*', route => route.fulfill({
-      status: 200, contentType: 'application/json', body: JSON.stringify(status),
-    }));
-    if (report) {
-      await page.route('**/api/upkeep/report*', route => route.fulfill({
-        status: 200, contentType: 'application/json', body: JSON.stringify(report),
-      }));
-    }
   }
 
   // --- t-7d8d: busy state while a skill registers (skills.sh add is slow on Windows) ---
@@ -11906,347 +11832,41 @@ test.describe('Canon Cockpit Upkeep (t-7ae6)', () => {
     reg.release({ ok: false, error: 'x' });
   });
 
-  test('Upkeep has no sidebar entry and shows the chosen project\u2019s checks, no picker (t-67ab)', async ({ page }) => {
-    await stubUpkeep(page);
+  test('the skill-eval "?" popover renders its numbered stages on separate lines (t-4254)', async ({ page }) => {
+    await stubProjects(page);
     await page.goto(BASE + '/cockpit');
-    await page.waitForLoadState('networkidle');
-    await expect(page.locator('#nav-upkeep')).toHaveCount(0);
-    await openUpkeepView(page);
-    await expect(page.locator('#view-projects')).not.toHaveClass(/active/);
-    await expect(page.locator('#up-proj')).toHaveText(PROJECTS[0].name);
-    await expect(page.locator('#up-projrow')).toHaveCount(0);
-    // All 4 skills render as cards.
-    for (const id of ['context-check', 'context-doctor', 'dead-code-cleanup', 'promote-learnings']) {
-      await expect(page.locator('#up-card-' + id)).toBeVisible();
-    }
-  });
-
-  test('context-check "?" popover mentions trend tracking against the last run (t-c957)', async ({ page }) => {
-    await stubUpkeep(page);
-    await page.goto(BASE + '/cockpit');
-    await openUpkeepView(page);
-    await page.locator('#up-card-context-check .rc-help').click();
-    await expect(page.locator('#up-help-context-check')).toContainText(
-      'compares its finding count to your last run on this repo');
-  });
-
-  test('promote-learnings and dead-code-cleanup "?" popovers name the concrete next step (t-a27a)', async ({ page }) => {
-    await stubUpkeep(page);
-    await page.goto(BASE + '/cockpit');
-    await openUpkeepView(page);
-
-    await page.locator('#up-card-promote-learnings .rc-help').click();
-    await expect(page.locator('#up-help-promote-learnings')).toContainText(
-      'no promote command');
-
-    await page.locator('#up-card-dead-code-cleanup .rc-help').click();
-    await expect(page.locator('#up-help-dead-code-cleanup')).toContainText(
-      'interactive session'); // exact phrasing moved into its own section, t-d05b
-  });
-
-  test('promote-learnings "?" popover mentions direct invocation and a captured example (t-5dd4)', async ({ page }) => {
-    await stubUpkeep(page);
-    await page.goto(BASE + '/cockpit');
-    await openUpkeepView(page);
-    await page.locator('#up-card-promote-learnings .rc-help').click();
-    const panel = page.locator('#up-help-promote-learnings');
-    await expect(panel).toContainText('/promote-learnings');
-    await expect(panel).toContainText('Example output');
-    await expect(panel).toContainText('not a live preview');
-    await expect(panel).toContainText('standards/efficiency.md');
-    await expect(panel).toContainText('dismiss');
-  });
-
-  test('promote-learnings "?" popover covers the consumer PROMOTED.md path (t-8b55)', async ({ page }) => {
-    await stubUpkeep(page);
-    await page.goto(BASE + '/cockpit');
-    await openUpkeepView(page);
-    await page.locator('#up-card-promote-learnings .rc-help').click();
-    // Look sections up by their heading element, not by text order (the t-f5ab jump link repeats "What to do next").
-    const section = (name) => page.locator('#up-help-promote-learnings .rc-pop-sec')
-      .filter({ has: page.locator('.rc-pop-eyebrow', { hasText: new RegExp(`^${name}$`, 'i') }) }).innerText();
-    expect(await section('Why it runs')).toContain('PROMOTED.md');
-    expect(await section('Example output — from a past run, not a live preview')).toContain('In canon, this skill never writes');
-    expect(await section('What to do next')).toContain('PROMOTED.md');
-    expect(await section('What to do next')).toMatch(/^What to do next\s*To move the learnings, run \/promote-learnings in an interactive session/i);
-    expect(await section('What it does not do')).toContain('PROMOTED.md');
-    await page.locator('#up-help-promote-learnings').screenshot({ path: test.info().outputPath('promote-learnings-help.png') });
-  });
-
-  test('"What to do next" renders in the theme green with an unobstructed jump link (t-f5ab)', async ({ page }) => {
-    await page.setViewportSize({ width: 1300, height: 760 }); // promote-learnings' "?" opens upward at this size (t-67ab: no picker row, cards sit higher)
-    await stubUpkeep(page);
-    await page.goto(BASE + '/cockpit');
-    await openUpkeepView(page);
-    await page.locator('#up-card-promote-learnings .rc-help').click();
-    const panel = page.locator('#up-help-promote-learnings');
-    await expect(panel).toHaveClass(/\bup\b/);
-    const next = panel.locator('.rc-pop-sec.next');
-    await expect(next.locator('.rc-pop-eyebrow')).toHaveText(/what to do next/i);
-
-    for (const [theme, green, muted] of [['dark', 'rgb(74, 222, 128)', 'rgb(151, 161, 180)'], ['light', 'rgb(22, 163, 74)', 'rgb(82, 82, 122)']]) {
-      await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
-      await expect(next.locator('.rc-pop-eyebrow')).toHaveCSS('color', green);
-      await expect(next).toHaveCSS('border-left-color', green);
-      await expect(panel.locator('.rc-pop-sec:not(.next) .rc-pop-eyebrow').first()).toHaveCSS('color', muted);
-    }
-
-    // The link sits between the lead and the first section.
-    const order = await panel.evaluate(p => [...p.querySelector('.rc-pop-body').children].map(c => c.className));
-    expect(order.indexOf('rc-pop-jump')).toBe(order.indexOf('rc-pop-lead') + 1);
-    expect(order.indexOf('rc-pop-jump')).toBeLessThan(order.findIndex(c => c.startsWith('rc-pop-sec')));
-
-    // Nothing (top bar, tab strip) covers the element: the topmost element at its centre is inside the panel.
-    const unobstructed = sel => panel.locator(sel).first().evaluate(e => {
-      const r = e.getBoundingClientRect(), hit = document.elementFromPoint(r.left + 20, r.top + r.height / 2);
-      return !!hit && !!hit.closest('.rc-pop');
-    });
-    expect(await unobstructed('.rc-pop-title')).toBe(true);
-    expect(await unobstructed('.rc-pop-jump')).toBe(true);
-
-    const pageY = await page.evaluate(() => window.scrollY);
-    await panel.locator('.rc-pop-jump').click();
-    await expect.poll(() => unobstructed('.rc-pop-sec.next .rc-pop-eyebrow')).toBe(true);
-    expect(await page.evaluate(() => window.scrollY)).toBe(pageY);
-  });
-
-  test('promote-learnings and skill-eval "?" popovers render numbered lists on separate lines (t-4254)', async ({ page }) => {
-    await stubUpkeep(page);
-    await page.goto(BASE + '/cockpit');
-    await openUpkeepView(page);
-    await expect(page.locator('#se-card .rc-title')).toBeVisible(); // seRender runs after the grid
-
-    await page.locator('#up-card-promote-learnings .rc-help').click();
-    const learningsHtml = await page.locator('#up-help-promote-learnings').innerHTML();
-    expect(learningsHtml).toContain('<br><b>2</b>');
-    expect(learningsHtml).toContain('<br><b>3</b>');
-
+    await openSkillEvalView(page);
+    await expect(page.locator('#se-card .rc-title')).toBeVisible();
     await page.locator('[data-help="skill-eval"] .rc-help').click({ force: true });
     const skillEvalHtml = await page.locator('#up-help-skill-eval').innerHTML();
     expect(skillEvalHtml).toContain('<br><b>2 Best practices</b>');
     expect(skillEvalHtml).toContain('<br><b>3 Plugin eval</b>');
   });
 
-  test('all 5 Upkeep "?" popovers have a "What to do next" section (t-d05b)', async ({ page }) => {
-    await stubUpkeep(page);
-    await page.goto(BASE + '/cockpit');
-    await openUpkeepView(page);
-    await expect(page.locator('#se-card .rc-title')).toBeVisible(); // seRender runs after the grid
-
-    const cases = [
-      ['context-check', 'Trend line move'],
-      ['context-doctor', "claude-optimization.md"],
-      ['dead-code-cleanup', 'review candidates and confirm removals'],
-      ['promote-learnings', 'no promote command'],
-      ['skill-eval', 'Open the full report'],
-    ];
-    for (const [id, snippet] of cases) {
-      await page.locator(`[data-help="${id}"] .rc-help`).click({ force: true });
-      const panel = page.locator(`#up-help-${id}`);
-      await expect(panel).toContainText('What to do next', { ignoreCase: true });
-      await expect(panel).toContainText(snippet);
-      await page.locator(`[data-help="${id}"] .rc-help`).click({ force: true }); // close before next
-    }
-
-    // dead-code-cleanup/promote-learnings: the moved sentences must appear only
-    // once each in the panel, not duplicated between the new section and
-    // "What it does not do".
-    await page.locator('[data-help="dead-code-cleanup"] .rc-help').click({ force: true });
-    const deadCodeText = await page.locator('#up-help-dead-code-cleanup').innerText();
-    expect(deadCodeText.match(/review candidates and confirm removals/g)?.length ?? 0).toBe(1);
-    await page.locator('[data-help="dead-code-cleanup"] .rc-help').click({ force: true });
-
-    await page.locator('#up-card-promote-learnings .rc-help').click();
-    const learningsText = await page.locator('#up-help-promote-learnings').innerText();
-    expect(learningsText.match(/no promote command/g)?.length ?? 0).toBe(1);
-  });
-
-  test('the Projects nav leaves Upkeep for the project grid (t-5dc2, t-67ab)', async ({ page }) => {
-    await stubUpkeep(page);
+  test('the Projects nav leaves Skill Eval for the project grid (t-5dc2, t-67ab)', async ({ page }) => {
+    await stubProjects(page);
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
-    await openUpkeepView(page);
+    await openSkillEvalView(page);
     await page.locator('#nav-projects').click();
-    await expect(page.locator('#view-upkeep')).not.toHaveClass(/active/);
+    await expect(page.locator('#view-skill-eval')).not.toHaveClass(/active/);
     await expect(page.locator('#view-projects')).toHaveClass(/active/);
     await expect(page.locator('#nav-projects')).toHaveClass(/active/);
   });
 
-  test('clicking Run posts the project as a URL query param, not just the JSON body (t-7ae6 live-caught bug)', async ({ page }) => {
-    await stubUpkeep(page);
-    let capturedUrl = '';
-    await page.route('**/api/upkeep/run*', route => {
-      capturedUrl = route.request().url();
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, status: 'running' }) });
-    });
+  test('Skill Eval\u2019s \u2190 Board returns to its project tab (t-0e8b)', async ({ page }) => {
+    await stubProjects(page);
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
-    await openUpkeepView(page);
-    await page.locator('#up-card-context-check button:has-text("Run")').click();
-    await expect(page.locator('#cc-ok')).toBeVisible();
-    await page.locator('#cc-ok').click();
-    await expect.poll(() => capturedUrl).toContain('project=proj-a');
-  });
-
-  test('a running skill disables its Agent/Model selects and Run button, and polling clears it', async ({ page, browserName }) => {
-    let pollCount = 0;
-    await page.route('**/api/projects', route => route.fulfill({
-      status: 200, contentType: 'application/json', body: JSON.stringify(PROJECTS),
-    }));
-    await page.route('**/api/upkeep/status*', route => {
-      pollCount++;
-      const running = pollCount <= 1; // first read: running; poll tick: done
-      route.fulfill({
-        status: 200, contentType: 'application/json',
-        body: JSON.stringify(running
-          ? { status: 'running', report_path: '', elapsed: 1 }
-          : { status: 'done', report_path: '/tmp/proj-a/.reports/context-check_x.md', finished_at: Date.now() / 1000 }),
-      });
-    });
-    await page.goto(BASE + '/cockpit');
-    await page.waitForLoadState('networkidle');
-    pollCount = 0;   // t-67ab: the Projects cards already asked for status on load
-    await openUpkeepView(page);
-    await expect(page.locator('#up-card-context-check .up-status.run')).toBeVisible();
-    await expect(page.locator('#up-card-context-check .rc-select').first()).toBeDisabled();
-    await expect(page.locator('#up-card-context-check')).toContainText('locked while running');
-    // A disabled Run must also look disabled (the global .btn had no disabled style).
-    const runBtn = page.locator('#up-card-context-check .rc-actions .btn').first();
-    await expect(runBtn).toBeDisabled();
-    await expect(runBtn).toHaveCSS('cursor', 'not-allowed');
-    await expect(runBtn).not.toHaveCSS('opacity', '1');
-    // A real hover on a disabled button never matches reliably, so force :hover through CDP and read the computed filter.
-    // t-df8e: CDP is Chromium-only, so WebKit skips this one check.
-    if (browserName === 'chromium') {
-      const cdp = await page.context().newCDPSession(page);
-      await cdp.send('DOM.enable'); await cdp.send('CSS.enable');
-      const { root } = await cdp.send('DOM.getDocument');
-      const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector: '#up-card-context-check .rc-actions .btn' });
-      await cdp.send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: ['hover'] });
-      await page.waitForTimeout(400); // let any filter transition finish before reading
-      // Read once, without toHaveCSS's auto-retry: the 3s poll re-renders the card, and a retry would eventually
-      // read the fresh, un-hovered button and pass even with the rule removed.
-      expect(await runBtn.evaluate(el => getComputedStyle(el).filter)).toBe('none'); // a disabled button must not brighten on hover
-    }
-    // Poll interval is 3s in the client; wait long enough for one tick to land.
-    await expect(page.locator('#up-card-context-check .up-status.ok, #up-card-context-check .up-status.run')).toHaveCount(1, { timeout: 6000 });
-  });
-
-  test('View report renders findings as amber callouts and bold text, read from the report endpoint', async ({ page }) => {
-    await stubUpkeep(page, {
-      status: { status: 'done', report_path: '/tmp/proj-a/.reports/context-check_x.md', finished_at: Date.now() / 1000 },
-      report: { ok: true, path: '/tmp/proj-a/.reports/context-check_x.md',
-        content: '# Report\n\n**Summary:** all clear.\n\nSome **bold** prose.\n\n## Findings\n\n- `AGENTS.md:1` a finding.\n\n## Next Steps\n\nDo the thing.\n' },
-    });
-    await page.goto(BASE + '/cockpit');
-    await page.waitForLoadState('networkidle');
-    await openUpkeepView(page);
-    await page.locator('#up-card-context-check button:has-text("View report")').click();
-    await expect(page.locator('#up-detail')).toHaveClass(/open/);
-    // A leading `**Label:** value` line is a meta chip (5e5a6cf), not inline bold: <b> inside .up-meta .um.
-    await expect(page.locator('#up-rp-body .up-meta .um b')).toContainText('Summary');
-    await expect(page.locator('#up-rp-body .up-meta .um')).toContainText('all clear.');
-    await expect(page.locator('#up-rp-body p strong')).toContainText('bold');
-    await expect(page.locator('#up-rp-body ul.up-findings li')).toContainText('AGENTS.md:1');
-    await expect(page.locator('#up-rp-body')).toContainText('Next Steps');
-  });
-
-  test('the report header folds and unfolds the report (t-783a)', async ({ page }) => {
-    await stubUpkeep(page, {
-      status: { status: 'done', report_path: '/tmp/proj-a/.reports/context-check_x.md', finished_at: Date.now() / 1000 },
-      report: { ok: true, path: '/tmp/proj-a/.reports/context-check_x.md', content: '# Report\n\nBody.\n' },
-    });
-    await page.goto(BASE + '/cockpit');
-    await page.waitForLoadState('networkidle');
-    await openUpkeepView(page);
-    await page.locator('#up-card-context-check button:has-text("View report")').click();
-    await expect(page.locator('#up-detail')).toHaveClass(/open/);
-    await page.locator('#up-detail .up-detail-head').click();
-    await expect(page.locator('#up-detail')).not.toHaveClass(/open/);
-    await page.locator('#up-detail .up-detail-head').click();
-    await expect(page.locator('#up-detail')).toHaveClass(/open/);
-  });
-
-  test('upkeep (t-43ba) report renders italic and quotes through md()', async ({ page }) => {
-    await stubUpkeep(page, {
-      status: { status: 'done', report_path: '/tmp/proj-a/.reports/dead-code-cleanup_x.md', finished_at: Date.now() / 1000 },
-      report: { ok: true, path: '/tmp/proj-a/.reports/dead-code-cleanup_x.md',
-        content: '# Dead code\n\n_Scope: whole repo. Generated: 2026-10-21._\n\n> Advisory only — nothing was modified.\n> Second line with `a_b_c`.\nAfter the quote, a > b.\n\n![pixel](http://127.0.0.1:9/x.png)\n' },
-    });
-    await page.goto(BASE + '/cockpit');
-    await page.waitForLoadState('networkidle');
-    await openUpkeepView(page);
-    await page.locator('#up-card-context-check button:has-text("View report")').click();
-    await expect(page.locator('#up-rp-body em')).toHaveText('Scope: whole repo. Generated: 2026-10-21.');
-    await expect(page.locator('#up-rp-body blockquote')).toHaveCount(1);   // adjacent > lines are one quote
-    await expect(page.locator('#up-rp-body blockquote')).toContainText('Advisory only');
-    await expect(page.locator('#up-rp-body blockquote code')).toHaveText('a_b_c');   // an underscore in a code span stays literal
-    await expect(page.locator('#up-rp-body')).not.toContainText('_Scope');
-    await expect(page.locator('#up-rp-body')).not.toContainText('> Advisory');
-    await expect(page.locator('#up-rp-body blockquote')).toContainText('Second line');
-    await expect(page.locator('#up-rp-body blockquote')).not.toContainText('> Second');      // its own line, not joined text
-    await expect(page.locator('#up-rp-body p').nth(-2)).toHaveText('After the quote, a > b.');   // a mid-line > is text; the quote ends
-    await expect(page.locator('#up-rp-body img')).toHaveCount(0);                                   // a report (LLM output) never loads a remote image
-    await expect(page.locator('#up-rp-body p').last()).toHaveText('![pixel](http://127.0.0.1:9/x.png)');
-  });
-
-  test('upkeep (t-43ba) picker from registry, Ran on, Running hover', async ({ page }) => {
-    const TIERS = { defaults: { eval: {}, light: {} },
-      models: { anthropic: [
-        { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5' }, { id: 'claude-haiku-5-5', name: 'Claude Haiku 5.5' },
-        { id: 'claude-sonnet-5-5', name: 'Claude Sonnet 5.5' }, { id: 'claude-sonnet-5', name: 'Claude Sonnet 5' }], openai: [] },
-      upkeep: { default: 'claude-sonnet-5-5', models: ['claude-haiku-5-5', 'claude-sonnet-5-5'] } };
-    await page.route('**/api/admin/model-tiers', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(TIERS) }));
-    const done = { status: 'done', report_path: '/tmp/r.md', finished_at: Date.now() / 1000 };
-    const bySkill = { 'context-check': { ...done, model: 'claude-sonnet-5' }, 'context-doctor': done,
-      'dead-code-cleanup': { status: 'running', report_path: '', elapsed: 1, model: 'claude-haiku-5-5' },
-      'promote-learnings': { ...done, model: 'claude-unlisted-9' } };
-    await page.route('**/api/projects', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(PROJECTS) }));
-    await page.route('**/api/upkeep/status*', route => {
-      const skill = new URL(route.request().url()).searchParams.get('skill');
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(bySkill[skill] || { status: 'idle', report_path: '' }) });
-    });
-    await page.goto(BASE + '/cockpit');
-    await page.waitForLoadState('networkidle');
-    await openUpkeepView(page);
-    const sel = page.locator('#up-model-context-check');
-    await expect(sel.locator('option')).toHaveText(['Haiku 5.5', 'Sonnet 5.5']);   // the registry's upkeep.models, its names
-    await expect(sel).toHaveValue('claude-sonnet-5-5');                             // the registry's upkeep.default
-    await expect(page.locator('#up-card-context-check .rc-when')).toContainText('Ran on Sonnet 5');
-    await expect(page.locator('#up-card-context-doctor .rc-when')).toContainText('Last run');
-    await expect(page.locator('#up-card-context-doctor .rc-when')).not.toContainText('Ran on');   // no model recorded: no label
-    await expect(page.locator('#up-card-dead-code-cleanup .up-status.run')).toHaveAttribute('title', 'Running on Haiku 5.5');
-    await expect(page.locator('#up-card-promote-learnings .rc-when')).toContainText('Ran on claude-unlisted-9');   // not in the registry: its id
-    await page.locator('#up-card-context-doctor .up-run').click();
-    await expect(page.locator('#cc-body')).toContainText('Claude Sonnet 5.5');                       // the confirm names the picked model
-    await page.locator('#cc-cancel').click();
-  });
-
-  test('upkeep (t-43ba) registry unavailable: the picker offers the server default', async ({ page }) => {
-    await page.route('**/api/admin/model-tiers', route => route.fulfill({ status: 500, body: 'x' }));
-    await stubUpkeep(page, { status: { status: 'done', report_path: '/tmp/r.md', finished_at: Date.now() / 1000, model: 'claude-sonnet-5' } });
-    await page.goto(BASE + '/cockpit');
-    await page.waitForLoadState('networkidle');
-    await openUpkeepView(page);
-    await expect(page.locator('#up-model-context-check option')).toHaveText(['Default']);
-    await expect(page.locator('#up-model-context-check')).toHaveValue('');
-    await expect(page.locator('#up-card-context-check .rc-when')).toContainText('Ran on claude-sonnet-5');
-  });
-
-  test('t-d2e1: a quote in a failed run\'s output stays inside the Error pill\'s tooltip', async ({ page }) => {
-    const output = `boom ${XSS_ATTR} and it's <b>done</b>`;
-    await stubUpkeep(page, { status: { status: 'error', report_path: '', output, finished_at: Date.now() / 1000 } });
-    await page.goto(BASE + '/cockpit');
-    await page.waitForLoadState('networkidle');
-    await openUpkeepView(page);
-    const pill = page.locator('#up-card-context-check .up-status.err');
-    await expect(pill).toHaveText('Error');
-    await expect(pill).toHaveAttribute('title', output);                                 // title round-trips
-    expect(await onAttrs(page)).toEqual([]);
+    await openSkillEvalView(page);
+    await expect(page.locator('#se-proj')).toHaveText('proj-a');
+    await page.locator('#se-back').click();
+    await expect(page.locator('#view-skill-eval')).not.toHaveClass(/active/);
+    await expect(page.locator('#view-proj-a')).toHaveClass(/active/);
   });
 
   test('t-d2e1: the shell\'s esc() escapes & < > " \' and survives a 500-string fuzz', async ({ page }) => {
-    await stubUpkeep(page);
+    await stubProjects(page);
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
     const r = await page.evaluate(async () => {
@@ -12268,24 +11888,6 @@ test.describe('Canon Cockpit Upkeep (t-7ae6)', () => {
     expect(r.same).toBe(true);
     expect(r.bad).toEqual([]);
   });
-
-  test('Run again on a skill with a report asks first, then runs it for the project (t-783a)', async ({ page }) => {
-    await stubUpkeep(page, { status: { status: 'done', report_path: '/tmp/proj-a/.reports/context-check_x.md', finished_at: Date.now() / 1000 } });
-    let capturedUrl = '', capturedBody = null;
-    await page.route('**/api/upkeep/run*', route => {
-      capturedUrl = route.request().url(); capturedBody = route.request().postDataJSON();
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, status: 'running' }) });
-    });
-    await page.goto(BASE + '/cockpit');
-    await page.waitForLoadState('networkidle');
-    await openUpkeepView(page);
-    await page.locator('#up-card-context-check button:has-text("Run again")').click();
-    await expect(page.locator('#cc-ok')).toBeVisible();
-    expect(capturedUrl).toBe('');                                                     // nothing runs before the confirm
-    await page.locator('#cc-ok').click();
-    await expect.poll(() => capturedUrl).toContain('project=proj-a');
-    expect(capturedBody.skill).toBe('context-check');
-  });
 });
 
 test.describe('Canon Cockpit Skill Eval card (t-23d8)', () => {
@@ -12306,7 +11908,6 @@ test.describe('Canon Cockpit Skill Eval card (t-23d8)', () => {
   // skill_dir. Default mirrors the Python server's plain "pick a folder" error, i.e. available.
   async function setup(page, { check, statuses = [{ ok: true, status: 'never' }], run = { ok: true, status: 'running' }, capture = {}, probe = { ok: false, error: 'skill_dir is required' } }) {
     await page.route('**/api/projects', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(PROJECTS) }));
-    await page.route('**/api/upkeep/status*', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'idle', report_path: '' }) }));
     await page.route('**/api/browse-dirs*', route => {
       const path = new URL(route.request().url()).searchParams.get('path');
       const body = path === '/tmp/proj-a'
@@ -12334,7 +11935,7 @@ test.describe('Canon Cockpit Skill Eval card (t-23d8)', () => {
     });
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
-    await openUpkeepView(page);
+    await openSkillEvalView(page);
   }
   async function pick(page) {
     await page.locator('#se-card button:has-text("Browse")').click();
@@ -12414,7 +12015,7 @@ test.describe('Canon Cockpit Skill Eval card (t-23d8)', () => {
     await setup(page, { check: GOOD, capture });
     await page.unroute('**/api/skill-eval/status*');
     await page.route('**/api/skill-eval/status*', route => route.abort());
-    await page.reload(); await page.waitForLoadState('networkidle'); await openUpkeepView(page);
+    await page.reload(); await page.waitForLoadState('networkidle'); await openSkillEvalView(page);
     await expect(page.locator('#se-card button:has-text("Browse")')).toBeEnabled();
     await pick(page);
     expect(capture.checkCount).toBe(1);
@@ -12512,145 +12113,91 @@ test.describe('Canon Cockpit Skill Eval card (t-23d8)', () => {
 
 test.describe('Canon Cockpit "?" info popovers (t-576f)', () => {
   const PROJECTS = [{ id: 'proj-a', path: '/tmp/proj-a', name: 'proj-a', description: '', added: '2026-09-15' }];
-  const CARDS = ['context-check', 'context-doctor', 'dead-code-cleanup', 'promote-learnings', 'skill-eval'];
+  const ID = 'skill-eval';   // t-0e8b: the Skill Eval card is the one card with a "?" since Upkeep's were removed
   async function open(page, width = 1100) {
     await page.setViewportSize({ width, height: 900 });
     await page.route('**/api/projects', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(PROJECTS) }));
-    await page.route('**/api/upkeep/status*', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'idle', report_path: '' }) }));
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
-    await openUpkeepView(page);
-    await expect(page.locator('#up-card-context-check')).toBeVisible();
-    await expect(page.locator('#se-card .rc-title')).toBeVisible();   // seRender runs after the grid; clicking its "?" earlier races the re-render
+    await openSkillEvalView(page);
+    await expect(page.locator('#se-card .rc-title')).toBeVisible();
   }
-  const btn = (page, id) => page.locator(`[data-help="${id}"] .rc-help`);
-  const pop = (page, id) => page.locator(`[data-help="${id}"] .rc-pop`);
+  const btn = page => page.locator(`[data-help="${ID}"] .rc-help`);
+  const pop = page => page.locator(`[data-help="${ID}"] .rc-pop`);
 
-  test('every card has a real "?" button that toggles a non-modal popover with the expected sections', async ({ page }) => {
+  test('the card has a real "?" button that toggles a non-modal popover with the expected sections', async ({ page }) => {
     await open(page);
-    for (const id of CARDS) {
-      await expect(btn(page, id)).toHaveAttribute('aria-expanded', 'false');
-      await expect(btn(page, id)).toHaveAccessibleName(/About /);
-      await page.mouse.move(600, 20);   // a lingering hover lifts the card above (translateY)
-      // force: Playwright's "stable" wait on this button times out about once in 25 runs under CPU load although its box never
-      // moves (sampled: one position for 2s in 8 parallel browsers); the real mouse events are still dispatched.
-      await btn(page, id).click({ force: true });
-      await expect(btn(page, id)).toHaveAttribute('aria-expanded', 'true');
-      await expect(pop(page, id)).toBeVisible();
-      await expect(btn(page, id)).toHaveAttribute('aria-controls', `up-help-${id}`);
-      await btn(page, id).click({ force: true });                    // second click closes
-      await expect(pop(page, id)).toHaveCount(0);
-      await expect(btn(page, id)).toHaveAttribute('aria-expanded', 'false');
-    }
-    await btn(page, 'promote-learnings').click();
-    for (const h of ['How it happens', 'Why it runs', 'Where learnings come from', 'What it does not do', 'Cost'])
-      await expect(pop(page, 'promote-learnings')).toContainText(h, { ignoreCase: true });
-    await expect(pop(page, 'promote-learnings')).toContainText('tkt learn');
-    // t-67ab: with no picker row the open promote-learnings panel can cover this "?"; press it by keyboard.
-    await btn(page, 'skill-eval').focus(); await page.keyboard.press('Enter');
-    for (const h of ['The three stages', 'What we hand to plugin eval', 'Limits'])
-      await expect(pop(page, 'skill-eval')).toContainText(h, { ignoreCase: true });
-    await expect(pop(page, 'promote-learnings')).toHaveCount(0);      // opening another closes the first
+    await expect(btn(page)).toHaveAttribute('aria-expanded', 'false');
+    await expect(btn(page)).toHaveAccessibleName(/About /);
+    await btn(page).click({ force: true });
+    await expect(btn(page)).toHaveAttribute('aria-expanded', 'true');
+    await expect(pop(page)).toBeVisible();
+    await expect(btn(page)).toHaveAttribute('aria-controls', `up-help-${ID}`);
+    for (const h of ['The three stages', 'What we hand to plugin eval', 'Limits', 'What to do next'])
+      await expect(pop(page)).toContainText(h, { ignoreCase: true });
+    await expect(page.locator('.scrim.show')).toHaveCount(0);
+    await btn(page).click({ force: true });                    // second click closes
+    await expect(pop(page)).toHaveCount(0);
+    await expect(btn(page)).toHaveAttribute('aria-expanded', 'false');
   });
 
   test('Escape and an outside click close it; a click inside does not', async ({ page }) => {
     await open(page);
-    await btn(page, 'context-check').click();
-    await pop(page, 'context-check').locator('.rc-pop-lead').click();
-    await expect(pop(page, 'context-check')).toBeVisible();
+    await btn(page).click({ force: true });
+    await pop(page).locator('.rc-pop-lead').click();
+    await expect(pop(page)).toBeVisible();
     await page.keyboard.press('Escape');
-    await expect(pop(page, 'context-check')).toHaveCount(0);
-    await btn(page, 'context-check').click();
-    await page.locator('.up-h1').click();
-    await expect(pop(page, 'context-check')).toHaveCount(0);
-    await btn(page, 'context-check').click();
-    await pop(page, 'context-check').getByRole('button', { name: 'Close' }).click();
-    await expect(pop(page, 'context-check')).toHaveCount(0);
+    await expect(pop(page)).toHaveCount(0);
+    await btn(page).click({ force: true });
+    await page.locator('.sev-h1').click();
+    await expect(pop(page)).toHaveCount(0);
+    await btn(page).click({ force: true });
+    await pop(page).getByRole('button', { name: 'Close' }).click();
+    await expect(pop(page)).toHaveCount(0);
   });
 
-  test('it is non-modal: another card stays operable and no scrim appears', async ({ page }) => {
+  test('it survives a card re-render while open, and keeps the reader\'s scroll position', async ({ page }) => {
     await open(page);
-    await btn(page, 'promote-learnings').click();
-    await expect(pop(page, 'promote-learnings')).toBeVisible();
-    await expect(page.locator('.scrim.show')).toHaveCount(0);
-    const sel = page.locator('#up-model-context-check');
-    await expect(sel).toBeEnabled();
-    await sel.selectOption('claude-haiku-5-5');                      // selectOption sends no click, so the popover stays open
-    await expect(sel).toHaveValue('claude-haiku-5-5');
-    await expect(pop(page, 'promote-learnings')).toBeVisible();      // the page was usable while it was open, and it is still open
-  });
-
-  test('it survives a card re-render (status polling) while open', async ({ page }) => {
-    await open(page);
-    await btn(page, 'dead-code-cleanup').click();
-    await expect(pop(page, 'dead-code-cleanup')).toBeVisible();
-    await page.evaluate(async () => { const { upRenderGrid } = await import('/static/cockpit-upkeep.js'); return ( upRenderGrid()); });                       // what the 3s poll does when a run finishes
-    await expect(pop(page, 'dead-code-cleanup')).toBeVisible();
-    await expect(btn(page, 'dead-code-cleanup')).toHaveAttribute('aria-expanded', 'true');
-    await page.evaluate(async () => { const { loadUpkeep } = await import('/static/cockpit-upkeep.js'); return ( loadUpkeep()); });                         // project switch / view re-entry path
-    await expect(pop(page, 'dead-code-cleanup')).toBeVisible();
-    await btn(page, 'skill-eval').click({ force: true });           // and the Skill Eval card's own render path
-    await expect(pop(page, 'skill-eval')).toBeVisible();
+    await btn(page).click({ force: true });
+    const body = pop(page).locator('.rc-pop-body');
+    await body.evaluate(el => { el.scrollTop = 120; });
+    await expect.poll(() => body.evaluate(el => el.scrollTop)).toBeGreaterThan(50);
     await page.evaluate(async () => { const { seRender } = await import('/static/cockpit-skill-eval.js'); return ( seRender()); });
-    await expect(pop(page, 'skill-eval')).toBeVisible();
-    await expect(pop(page, 'dead-code-cleanup')).toHaveCount(0);
+    await expect(pop(page)).toBeVisible();
+    await expect(btn(page)).toHaveAttribute('aria-expanded', 'true');
+    await expect.poll(() => pop(page).locator('.rc-pop-body').evaluate(el => el.scrollTop)).toBeGreaterThan(50);
+    await btn(page).click({ force: true });
+    await btn(page).click({ force: true });                    // reopened: it starts at the top
+    await expect.poll(() => pop(page).locator('.rc-pop-body').evaluate(el => el.scrollTop)).toBe(0);
   });
 
   test('Escape and the close button return focus to the "?"; an outside click does not steal focus', async ({ page }) => {
     await open(page);
-    await btn(page, 'context-doctor').click({ force: true });
+    await btn(page).click({ force: true });
     await page.keyboard.press('Escape');
-    await expect(btn(page, 'context-doctor')).toBeFocused();
-    await btn(page, 'context-doctor').click({ force: true });
-    await pop(page, 'context-doctor').getByRole('button', { name: 'Close' }).click();
-    await expect(btn(page, 'context-doctor')).toBeFocused();
-    await btn(page, 'context-doctor').click({ force: true });
-    await page.locator('#up-model-context-check').focus();
-    await page.locator('.up-h1').click();
-    await expect(pop(page, 'context-doctor')).toHaveCount(0);
-    await expect(btn(page, 'context-doctor')).not.toBeFocused();
-  });
-
-  test('the reader\'s scroll position survives a card re-render; a different card starts at the top', async ({ page }) => {
-    await open(page);
-    await btn(page, 'skill-eval').click({ force: true });
-    const body = pop(page, 'skill-eval').locator('.rc-pop-body');
-    await body.evaluate(el => { el.scrollTop = 120; });
-    await expect.poll(() => body.evaluate(el => el.scrollTop)).toBeGreaterThan(50);
-    await expect.poll(() => page.evaluate(async () => { const ck_upkeep = await import('/static/cockpit-upkeep.js'); return ( ck_upkeep.upHelpScroll); })).toBeGreaterThan(50);   // the scroll event (async) records the position; a real reader's scroll is long done before a re-render (t-565f: evaluate, so it can import the module)
-    await page.evaluate(async () => { const { seRender } = await import('/static/cockpit-skill-eval.js'); return ( seRender()); });
-    await expect.poll(() => pop(page, 'skill-eval').locator('.rc-pop-body').evaluate(el => el.scrollTop)).toBeGreaterThan(50);
-    // The Skill Eval popover opens upward over the right-hand cards, so switch via the left column's "?" (not covered).
-    await btn(page, 'context-check').click();
-    await expect(pop(page, 'context-check')).toBeVisible();
-    await expect.poll(() => pop(page, 'context-check').locator('.rc-pop-body').evaluate(el => el.scrollTop)).toBe(0);
-    await btn(page, 'skill-eval').click({ force: true });                      // back: it does not resume the old position
-    await expect.poll(() => pop(page, 'skill-eval').locator('.rc-pop-body').evaluate(el => el.scrollTop)).toBe(0);
+    await expect(btn(page)).toBeFocused();
+    await btn(page).click({ force: true });
+    await pop(page).getByRole('button', { name: 'Close' }).click();
+    await expect(btn(page)).toBeFocused();
+    await btn(page).click({ force: true });
+    await page.locator('#se-back').focus();
+    await page.locator('.sev-h1').click();
+    await expect(pop(page)).toHaveCount(0);
+    await expect(btn(page)).not.toBeFocused();
   });
 
   test('a window resize closes it (placement is computed once)', async ({ page }) => {
     await open(page);
-    await btn(page, 'context-check').click({ force: true });
-    await expect(pop(page, 'context-check')).toBeVisible();
+    await btn(page).click({ force: true });
+    await expect(pop(page)).toBeVisible();
     await page.setViewportSize({ width: 1000, height: 800 });
-    await expect(pop(page, 'context-check')).toHaveCount(0);
+    await expect(pop(page)).toHaveCount(0);
   });
 
-  test('the popover text says what is true: allowed git/wc, tkt learn/learnings-sweep run automatically, honest Skill Eval limits, chips', async ({ page }) => {
+  test('the popover text says what is true: honest Skill Eval limits and chips', async ({ page }) => {
     await open(page);
-    await btn(page, 'context-check').click({ force: true });
-    const cc = pop(page, 'context-check');
-    await expect(cc).toContainText('runs no arbitrary shell commands');
-    await expect(cc).toContainText('read-only git and wc');
-    await expect(cc).not.toContainText('does not run shell commands');
-    await expect(cc).toContainText('many tool turns');
-    await expect(cc.locator('.rc-pop-fact', { hasText: 'Reads' })).toContainText('project and global');
-    await expect(cc.locator('.rc-pop-fact', { hasText: 'Writes' })).toContainText('one report');
-    await btn(page, 'promote-learnings').click({ force: true });
-    await expect(pop(page, 'promote-learnings')).toContainText('the sprint agent runs this itself at close');
-    await expect(pop(page, 'promote-learnings')).toContainText('also automatic, right after');   // learnings-sweep, not just tkt learn
-    await btn(page, 'skill-eval').focus(); await page.keyboard.press('Enter');   // the open panel can cover this "?" (t-67ab)
-    const se = pop(page, 'skill-eval');
+    await btn(page).click({ force: true });
+    const se = pop(page);
     await expect(se).toContainText('for most cases, a check that the skill actually fired');
     await expect(se).toContainText('needs your explicit OK');
     await expect(se).toContainText('may never fire');
@@ -12661,16 +12208,13 @@ test.describe('Canon Cockpit "?" info popovers (t-576f)', () => {
   for (const width of [1100, 600]) {
     test(`the popover stays inside the window and clear of the sidebar at ${width}px`, async ({ page }) => {
       await open(page, width);
-      for (const id of CARDS) {
-        await btn(page, id).click();
-        const b = await pop(page, id).boundingBox();
-        const main = await page.locator('.main').boundingBox();
-        expect(b.x).toBeGreaterThanOrEqual(main.x - 1);
-        expect(b.x + b.width).toBeLessThanOrEqual(main.x + main.width + 1);
-        expect(b.y).toBeGreaterThanOrEqual(-1);
-        expect(b.y + b.height).toBeLessThanOrEqual(900 + 1);   // flips upward / shrinks instead of running off the bottom
-        await btn(page, id).click();
-      }
+      await btn(page).click({ force: true });
+      const b = await pop(page).boundingBox();
+      const main = await page.locator('.main').boundingBox();
+      expect(b.x).toBeGreaterThanOrEqual(main.x - 1);
+      expect(b.x + b.width).toBeLessThanOrEqual(main.x + main.width + 1);
+      expect(b.y).toBeGreaterThanOrEqual(-1);
+      expect(b.y + b.height).toBeLessThanOrEqual(900 + 1);   // flips upward / shrinks instead of running off the bottom
     });
   }
 });
@@ -12879,12 +12423,11 @@ function contrastOf(a, b) {
   return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
 }
 
-// t-4064: a header button's hover label must contrast with its hover fill. Upkeep set only the fill, so it inherited
+// t-4064: a header button's hover label must contrast with its hover fill. A button that set only the fill inherited
 // the on-accent label from `.create-btn:hover` and read white on pale in light themes.
 test('board header buttons (t-4064): the hover label contrasts with the hover fill in every theme', async ({ page }) => {
   await page.goto(BASE + '/');
   await page.waitForLoadState('networkidle');
-  await page.evaluate(() => { document.querySelector('#btn-upkeep').hidden = false; });
   const themes = await page.evaluate(async () => (await import('/static/theme-data.js')).THEMES.map(t => ({ id: t.id, css: !!t.css, mode: t.mode })));
   expect(themes.length).toBeGreaterThan(6);
   const low = [];
@@ -12894,7 +12437,7 @@ test('board header buttons (t-4064): the hover label contrasts with the hover fi
       document.documentElement.dataset.theme = css ? id.replace('canon-', '') : mode;
       d.setVars(document.documentElement, css ? null : d.derive(th).board);
     }, t);
-    for (const sel of ['#btn-create', '#btn-upkeep', '#btn-scratch', '#btn-ci-setup']) {
+    for (const sel of ['#btn-create', '#btn-scratch', '#btn-ci-setup']) {
       const btn = page.locator(sel);
       await btn.hover();
       await expect.poll(() => btn.evaluate(b => b.getAnimations().length)).toBe(0);
@@ -13857,12 +13400,12 @@ test.describe('board header and card footer (t-7723)', () => {
   }
 
   for (const theme of ['dark', 'light']) {
-    test(`header order is New, Upkeep, Scratch, CI and New is filled (${theme})`, async ({ page }) => {
+    test(`header order is New, Scratch, CI and New is filled (${theme})`, async ({ page }) => {
       await page.goto(BASE);
       await page.waitForLoadState('networkidle');
       await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
-      const order = await page.evaluate(() => [...document.querySelectorAll('#btn-create,#btn-upkeep,#btn-scratch,#btn-ci-setup')].map(b => b.id));
-      expect(order).toEqual(['btn-create', 'btn-upkeep', 'btn-scratch', 'btn-ci-setup']);
+      const order = await page.evaluate(() => [...document.querySelectorAll('#btn-create,#btn-scratch,#btn-ci-setup')].map(b => b.id));
+      expect(order).toEqual(['btn-create', 'btn-scratch', 'btn-ci-setup']);
       // the button animates its background for .1s after a theme switch, so poll until it settles on the accent
       await expect.poll(() => page.evaluate(() => {
         const p = document.createElement('i'); p.style.backgroundColor = 'var(--accent)'; document.body.appendChild(p);
@@ -14845,7 +14388,7 @@ test.describe('ticket modal polish (t-612f)', () => {
   });
 });
 
-// t-38f1: the light --text-dim colours real text (brand suffix, Admin labels, Upkeep notes), so it must read on every surface it sits on.
+// t-38f1: the light --text-dim colours real text (brand suffix, Admin labels, Skill Eval notes), so it must read on every surface it sits on.
 test('cockpit light theme (t-38f1): --text-dim text reads at 4.5:1 on --bg, --panel and --border-muted', async ({ page }) => {
   await page.goto(BASE + '/cockpit');
   await page.waitForLoadState('networkidle');
@@ -16118,16 +15661,15 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     expect(missing).toEqual([]);
   });
 
-  test('the board header: + New is the filled main action; Sync, Upkeep, Scratch and CI are sub-actions (t-e523)', async ({ page }) => {
+  test('the board header: + New is the filled main action; Sync, Scratch and CI are sub-actions (t-e523)', async ({ page }) => {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
-    await page.evaluate(() => { document.getElementById('btn-upkeep').hidden = false; });
     await expect(page.locator('#btn-create')).toHaveClass(/\bb-primary\b/);
     await expect(page.locator('#btn-ci-setup')).not.toHaveAttribute('style');   // its look comes from the stylesheets
     for (const theme of ['dark', 'light']) {
       await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
       expect(await page.locator('#btn-create').evaluate(e => getComputedStyle(e).backgroundColor)).toBe(await themeColor(page, '--accent'));   // filled
-      for (const sel of ['#btn-gh-sync', '#btn-upkeep', '#btn-scratch', '#btn-ci-setup']) await expectRole(page, page.locator(sel), 'b-accent');
+      for (const sel of ['#btn-gh-sync', '#btn-scratch', '#btn-ci-setup']) await expectRole(page, page.locator(sel), 'b-accent');
     }
   });
 

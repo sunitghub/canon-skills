@@ -4,7 +4,7 @@
      .b-danger-main  a main action that stops or deletes (Stop Daemon, Deregister, a danger confirm): fills red on hover
      .b-danger       a secondary stop or delete (Kill, Discard): red outline on hover
      .b-close        Close, Cancel, a ✕: red outline on hover, the same rule as .b-danger
-     .b-accent       a sub-action beside the main one (Scratch, Upkeep, CI, + efficiency): accent outline and tint on hover
+     .b-accent       a sub-action beside the main one (Scratch, CI, + efficiency): accent outline and tint on hover
      .b-neutral      any other secondary button (Copy, Browse…): brighter border and text on hover
    Theme variables only (tests/sprint-check-theme.js scans this file for both pages). */
 /* The shape every role button shares; :where adds no specificity, so a button's own rule can still drop the border or

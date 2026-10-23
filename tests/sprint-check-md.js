@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-// sprint-check-md (t-43ba) — md() (static/markdown.js), the one renderer for every ticket doc and, through
-// upRenderReport, every Upkeep report: _italic_ and > quotes render; an underscore in a code span or a snake_case word
+// sprint-check-md (t-43ba) — md() (static/markdown.js), the one renderer for every ticket doc: _italic_ and > quotes render; an underscore in a code span or a snake_case word
 // stays literal. Loads the REAL md() out of the board's modules (tests/board-script.js).
 const { loadBoard } = require('./board-script');
 
@@ -25,14 +24,12 @@ ok('markup inside a quote renders; an underscore in a code span stays literal',
   inner === '<blockquote class="doc-quote"><em>Scope</em> and <code class="doc-code">a_b_c</code></blockquote>', inner);
 const code = md('`_not italic_`');
 ok('a code span that is wholly _x_ stays literal', code === '<code class="doc-code">_not italic_</code>', code);
-const snake = md('upkeep_runs_json and a_b.png');
-ok('snake_case words stay literal', snake === 'upkeep_runs_json and a_b.png', snake);
+const snake = md('skill_eval_runs and a_b.png');
+ok('snake_case words stay literal', snake === 'skill_eval_runs and a_b.png', snake);
 const item = md('- _item_');
 ok('italic right after and before a tag (inside a bullet)', item.includes('<span><em>item</em></span>'), item);
 const eq = md('a=_b_ and _c_=d');
 ok('= is not a word edge for _italic_', eq === 'a=_b_ and _c_=d', eq);
-const noImg = md('![a](http://evil.example/x.png)', undefined, { images: false });
-ok('images: false keeps an image as text (an Upkeep report never loads a remote <img>)', !noImg.includes('<img') && noImg.includes('http://evil.example/x.png'), noImg);
 ok('a ticket doc still renders its images', md('![a](visuals/a.png)', 't-abcd').includes('<img'));
 const gt = md('a > b');
 ok('a > that does not start the line is text', gt === 'a &gt; b', gt);

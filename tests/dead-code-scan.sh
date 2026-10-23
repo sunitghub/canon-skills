@@ -4,8 +4,8 @@
 # comment), a Bash helper called through `source`, a test-only caller, an over-export, an export used in its own file
 # that a test also imports (live: the test needs the export), unexported
 # Go and Go init, Go in main.go, Python, test files outside tests/, each entry-point pattern, CRLF and non-ASCII paths,
-# and .cs/.rs files it must list as skipped; plus a pathspec, an empty scope and a run from a subdirectory. Also: tools/upkeep-run hands the headless dispatch
-# exactly that scan command. Protects the shipped dead-code-cleanup scan and `upkeep-run dead-code-cleanup`.
+# and .cs/.rs files it must list as skipped; plus a pathspec, an empty scope and a run from a subdirectory.
+# Protects the shipped dead-code-cleanup scan.
 
 set -euo pipefail
 
@@ -142,21 +142,5 @@ mkdir "$W/plain"
 set +e; err="$(cd "$W/plain" && bash "$SCAN" 2>&1)"; code=$?; set -e
 assert_eq "2" "$code" "dead-code-scan: exit code outside a git repo"
 assert_contains "$err" "not a git repository" "dead-code-scan: says why it refused"
-
-# upkeep-run gives the headless dispatch exactly this install's scan command, and no generic Bash.
-U="$W/upkeep-root"
-mkdir -p "$U/skills/dead-code-cleanup" "$W/fakebin"
-cp "$ROOT/skills/dead-code-cleanup/SKILL.md" "$U/skills/dead-code-cleanup/"
-printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$@" > "%s/claude-args.log"\nexit 0\n' "$W" > "$W/fakebin/claude"
-chmod +x "$W/fakebin/claude"
-PATH="$W/fakebin:$PATH" "$ROOT/tools/upkeep-run" dead-code-cleanup --root "$U" >/dev/null 2>&1 || true
-assert_file_exists "$W/claude-args.log"
-grep -qxF "Bash(bash '$ROOT/tools/dead-code-scan.sh')" "$W/claude-args.log" || fail "upkeep-run: scan command not in --allowedTools"
-[[ "$(grep -c '^Bash(bash' "$W/claude-args.log")" == 1 ]] || fail "upkeep-run: more than the one scan command allowed"
-grep -qF "Run its scanner as exactly this command, with no arguments: bash '$ROOT/tools/dead-code-scan.sh'" "$W/claude-args.log" \
-  || fail "upkeep-run: prompt does not name the scan command"
-# t-43ba: with no --model, upkeep-run runs the registry's one Upkeep default (the board's picker default too).
-want_model="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["upkeep"]["default"])' "$ROOT/tools/sprint-check-app/model-tiers.json")"
-assert_eq "$want_model" "$(grep -A1 -xF -- '--model' "$W/claude-args.log" | tail -n 1)" "upkeep-run: fallback model is the registry's upkeep.default"
 
 echo "dead-code-scan: ok"

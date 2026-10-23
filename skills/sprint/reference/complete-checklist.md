@@ -78,7 +78,7 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
 | Case | Read in `complete.md` |
 |---|---|
 | `Tier: bugfix` or `Tier: trivial` in Sign-off | step 1 "Bugfix tier — lighter wrapup"; step 2 "Bugfix downgrade" |
-| `demo: true` in ticket.md (and the `skills:` Upkeep guard) | step 1 "Demo mode"; "Upkeep report-only guard" |
+| `demo: true` in ticket.md (and the `skills:` maintenance-skill guard) | step 1 "Demo mode"; "Maintenance-skill report-only guard" |
 | `Gate model: openai:<id>`, Copilot CLI, Codex or pi | "Gate dispatch mechanics": its `openai`, Copilot, Codex and pi bullets |
 | no git, or no commit yet | step 1 "Folder without git"; mechanics rule 7 |
 | a gate wrote outside its report, or snapshot post differs | mechanics rule 7 |

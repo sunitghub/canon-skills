@@ -1,8 +1,8 @@
 {
   "_about": "t-4469: tests seen failing in five real-data runs per browser (tests/run-board-spec.sh). failing = failed in every run (quarantined: needs a ticket id and a QUARANTINE marker in the spec); flaky = may fail any number of runs, including all runs of one batch (the guard warns; --strict fails): needs a reason and a ticket id; skipped = allowed to be skipped; min_tests = per-browser floor on the number of tests reported (a drop means tests did not run). failed_runs is information only.",
   "min_tests": {
-    "chromium": 471,
-    "webkit": 471
+    "chromium": 453,
+    "webkit": 453
   },
   "failing": [
     {
@@ -297,7 +297,7 @@
       }
     },
     {
-      "title": "Canon Cockpit \"?\" info popovers (t-576f) > every card has a real \"?\" button that toggles a non-modal popover with the expected sections",
+      "title": "Canon Cockpit \"?\" info popovers (t-576f) > the card has a real \"?\" button that toggles a non-modal popover with the expected sections",
       "browsers": [
         "webkit"
       ],
@@ -308,7 +308,7 @@
       }
     },
     {
-      "title": "Canon Cockpit Upkeep (t-7ae6) > registering a skill shows a spinner, disables the card's buttons, and sends one request; success reloads (t-7d8d)",
+      "title": "Canon Cockpit Projects card and Skill Eval view (t-7d8d, t-0e8b) > registering a skill shows a spinner, disables the card's buttons, and sends one request; success reloads (t-7d8d)",
       "browsers": [
         "webkit"
       ],
@@ -354,7 +354,7 @@
       }
     },
     {
-      "title": "cockpit in board (t-ddc8) > cross-project Sessions row (t-2d2e) > upkeep (t-67ab): the board path bar — branch under the path, no counts, + New · Sync · Upkeep · Scratch · CI on the right (order since t-90a3)",
+      "title": "cockpit in board (t-ddc8) > cross-project Sessions row (t-2d2e) > board path bar (t-67ab, t-0e8b): branch under the path, no counts, + New · Sync · Scratch · CI on the right, no Upkeep button",
       "browsers": [
         "webkit"
       ],
@@ -521,7 +521,7 @@
       }
     },
     {
-      "title": "Canon Cockpit Upkeep (t-7ae6) > cancelling the register confirm sends nothing and leaves the buttons alone (t-7d8d)",
+      "title": "Canon Cockpit Projects card and Skill Eval view (t-7d8d, t-0e8b) > cancelling the register confirm sends nothing and leaves the buttons alone (t-7d8d)",
       "browsers": [
         "webkit"
       ],
@@ -576,7 +576,7 @@
       }
     },
     {
-      "title": "Canon Cockpit Upkeep (t-7ae6) > a run in flight blocks a second one for the same project even after the cards re-render (t-7d8d)",
+      "title": "Canon Cockpit Projects card and Skill Eval view (t-7d8d, t-0e8b) > a run in flight blocks a second one for the same project even after the cards re-render (t-7d8d)",
       "browsers": [
         "webkit"
       ],
@@ -631,18 +631,7 @@
       }
     },
     {
-      "title": "Canon Cockpit Upkeep (t-7ae6) > t-d2e1: a quote in a failed run's output stays inside the Error pill's tooltip",
-      "browsers": [
-        "webkit"
-      ],
-      "ticket": "t-5989",
-      "reason": "30 s webkit timeout in a full run (t-2758, 2026-10-13); passed alone 3/3 on the branch and 3/3 on main 2718ef2c in 0.9-1.7 s",
-      "failed_runs": {
-        "webkit": "1/1"
-      }
-    },
-    {
-      "title": "board header and card footer (t-7723) > header order is New, Upkeep, Scratch, CI and New is filled (light)",
+      "title": "board header and card footer (t-7723) > header order is New, Scratch, CI and New is filled (light)",
       "browsers": [
         "webkit"
       ],
@@ -818,7 +807,7 @@
       }
     },
     {
-      "title": "Canon Cockpit \"?\" info popovers (t-576f) > the popover text says what is true: allowed git/wc, tkt learn/learnings-sweep run automatically, honest Skill Eval limits, chips",
+      "title": "Canon Cockpit \"?\" info popovers (t-576f) > the popover text says what is true: honest Skill Eval limits and chips",
       "browsers": [
         "webkit"
       ],
@@ -1046,17 +1035,6 @@
       "reason": "webkit timing flake: failed in a full t-15d8 run under load (2026-10-19), passed when rerun in the --grep classify run; cause not yet diagnosed",
       "failed_runs": {
         "webkit": "1/2"
-      }
-    },
-    {
-      "title": "Canon Cockpit Upkeep (t-7ae6) > the report header folds and unfolds the report (t-783a)",
-      "browsers": [
-        "webkit"
-      ],
-      "ticket": "t-8627",
-      "reason": "webkit timing flake: failed in a full t-8020 run under load (2026-10-19), passed 2/2 alone (--grep rerun); cause not yet diagnosed",
-      "failed_runs": {
-        "webkit": "1/3"
       }
     },
     {
