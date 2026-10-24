@@ -14173,13 +14173,13 @@ test.describe('ticket modal polish (t-612f)', () => {
       await page.waitForTimeout(150);
     };
     const a = await box();
-    await drag('.modal-resize-handle-tl', -80, -60);
+    await drag('#modal .modal-resize-handle-tl', -80, -60);
     const b = await box();
     expect(Math.abs((b.width - a.width) - 80)).toBeLessThanOrEqual(2);
     expect(Math.abs((b.height - a.height) - 60)).toBeLessThanOrEqual(2);
     expect(Math.abs((b.x + b.width) - (a.x + a.width))).toBeLessThanOrEqual(2);            // bottom-right corner stayed
     expect(Math.abs((b.y + b.height) - (a.y + a.height))).toBeLessThanOrEqual(2);
-    await drag('.modal-resize-handle-tl', 600, 600);                                        // shrinks to the minimum
+    await drag('#modal .modal-resize-handle-tl', 600, 600);                                        // shrinks to the minimum
     const c = await box();
     expect(c.width).toBeLessThan(b.width - 100);
     expect(c.width).toBeGreaterThanOrEqual(419); expect(c.height).toBeGreaterThanOrEqual(319);
