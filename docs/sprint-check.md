@@ -49,6 +49,10 @@ type `why:path/to/file` as a shortcut.
 
 Click any commit in the sidebar to see what changed and which ticket it likely belongs to — matched by ticket ID in the commit message or by keyword when no ID is present.
 
+## Logbook — a project's Handoff and Learnings
+
+The **Logbook** button (a notepad icon, right after **+ New** in the board header) opens a read-only window over the project's own `HANDOFF.md` and `LEARNINGS.md`; the Projects card has a **Logbook** row that opens the same window in that project's tab. **Handoff** shows the sections of `HANDOFF.md` between its markers as cards (Current Focus first). **Learnings** shows the table in `LEARNINGS.md` with a badge for the unpromoted rows, filter chips (All, Unpromoted, Promoted, and Dismissed when there are such rows) and the promoted target under each promoted row; a ticket id opens that ticket. The files stay the source: nothing here edits them, runs a skill or starts an agent. Their text is shown as text (an image reference in them is not loaded), and a missing, unreadable, symlinked or over-512 KB file says so. The window moves by its title bar and resizes from either top-left or bottom-right corner, like the ticket dialog, and opens at its default place and size each time. In a git worktree it reads that worktree's copy. The window reads `GET /api/logbook`.
+
 ## Create Tickets from the Board
 
 ![New ticket modal](../meta/screenshots/new-ticket.png)

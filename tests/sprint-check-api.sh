@@ -27,7 +27,7 @@ go_routes() {
 want_routes="/api/admin/model-tiers /api/admin/model-tiers/apply /api/admin/model-tiers/refresh /api/admin/model-tiers/remove /api/admin/model-tiers/retire /api/browse-dirs /api/ci-workflow /api/cockpit /api/cockpit-changes /api/cockpit-debug
 /api/cockpit-docs /api/cockpit-interrupted /api/cockpit-interrupted-dismiss /api/cockpit-restart /api/cockpit-sessions
 /api/cockpit-status /api/cockpit-stop /api/commit /api/doc /api/git /api/github/doctor /api/github/intake /api/github/push-main /api/github/sync
-/api/github/sync-preview /api/handoff /api/project-stats /api/projects /api/register-skill /api/skill-eval/check
+/api/github/sync-preview /api/handoff /api/logbook /api/project-stats /api/projects /api/register-skill /api/skill-eval/check
 /api/skill-eval/report /api/skill-eval/report.html /api/skill-eval/run /api/skill-eval/status /api/themes /api/themes/open
 /api/ticket /api/ticket-feature /api/ticket-image /api/tickets /api/track-changes
 /api/version /api/why /api/worktree-lock /api/worktree-unlock /api/worktrees"
@@ -693,9 +693,13 @@ n2="$(curl -s "$B/api/tickets?project=$reg_id2" | python3 -c 'import sys,json;pr
 printf '# Handoff\n## Current Focus\nRegproj focus line for the scoped read.\n' > "$REGPROJ/HANDOFF.md"
 printf '# Acceptance\n## Criteria\n- [ ] regproj scoped doc\n' > "$REGPROJ/.tickets/t-aaa1/acceptance.md"
 python3 - "$(curl -s "$B/api/handoff?project=$reg_id")" "$(curl -s "$B/api/git?project=$reg_id")" \
-  "$(curl -s "$B/api/why?project=$reg_id")" "$(curl -s "$B/api/doc/t-aaa1/acceptance.md?project=$reg_id")" <<'PY' || fail "sprint-check-api: scoped reads"
+  "$(curl -s "$B/api/why?project=$reg_id")" "$(curl -s "$B/api/doc/t-aaa1/acceptance.md?project=$reg_id")" \
+  "$(curl -s "$B/api/logbook?project=$reg_id")" "$(curl -s "$B/api/logbook?project=$reg_id2")" <<'PY' || fail "sprint-check-api: scoped reads"
 import json, sys
-h, g, w, d = (json.loads(a) for a in sys.argv[1:5])
+h, g, w, d, lb1, lb2 = (json.loads(a) for a in sys.argv[1:7])
+# t-c6bb: the Logbook reads the named project's own files, and says "missing" for the one it lacks (not the default project's)
+assert "Regproj focus line" in lb1["handoff"].get("text", "") and lb1["learnings"].get("missing") is True, f"logbook not regproj-scoped: {lb1}"
+assert lb2["handoff"].get("missing") is True and "Regproj" not in json.dumps(lb2), f"logbook read another project: {lb2}"
 assert "Regproj focus line" in json.dumps(h), f"handoff not regproj-scoped: {h}"
 assert g.get("project") == "regproj" and g.get("total_commits") == 1, f"git not regproj-scoped: {g}"
 assert w.get("message") == "Enter a file path." and w.get("results") == [], f"why: {w}"

@@ -306,6 +306,13 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		sendJSON(w, loadHandoff(root))
+	case "/api/logbook": // t-c6bb: HANDOFF.md and LEARNINGS.md text for the Logbook (logbook.go)
+		root, ok := effectiveRoot(r)
+		if !ok {
+			http.Error(w, "unknown project", http.StatusBadRequest)
+			return
+		}
+		sendJSON(w, loadLogbook(root))
 	case "/api/track-changes":
 		root, errMsg, ok := trackChangesRoot(r)
 		if !ok {

@@ -6273,7 +6273,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('board path bar (t-67ab, t-0e8b): branch under the path, no counts, + New · Sync · Scratch · CI on the right, no Upkeep button', async ({ page }) => {
+    test('board path bar (t-67ab, t-0e8b, t-c6bb): branch under the path, no counts, + New · Logbook · Sync · Scratch · CI on the right, no Upkeep button', async ({ page }) => {
       const board = await openShell(page, []);
       await expect(board.locator('#h-branch')).not.toHaveText('\u2014', { timeout: 8000 });   // data loaded
       for (const id of ['h-open', 'h-active', 'h-needs-stat', 'h-archived-stat']) await expect(board.locator('#' + id)).toHaveCount(0);
@@ -6281,8 +6281,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const box = async sel => board.locator(sel).boundingBox();
       const proj = await box('#h-project'), branch = await box('#h-branch');
       expect(branch.y).toBeGreaterThan(proj.y + proj.height / 2);   // on the line below the path
-      expect(await board.locator('.header-right button:visible').evaluateAll(bs => bs.slice(0, 4).map(b => b.id)))
-        .toEqual(['btn-create', 'btn-gh-sync', 'btn-scratch', 'btn-ci-setup']);   // t-90a3 put Sync from GitHub after + New
+      expect(await board.locator('.header-right button:visible').evaluateAll(bs => bs.slice(0, 5).map(b => b.id)))
+        .toEqual(['btn-create', 'btn-logbook', 'btn-gh-sync', 'btn-scratch', 'btn-ci-setup']);   // t-90a3 put Sync from GitHub after + New; t-c6bb the Logbook right after it
       const right = await box('.header-right'), first = await box('#btn-create');
       expect(first.x).toBeGreaterThan(proj.x + proj.width);   // the buttons sit to the right of the path
       await board.locator('#header').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-0e8b', 'visuals', 'path-bar.png') });
@@ -6303,6 +6303,24 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await card('proj-x').locator('.se-link-row').click();
       await expect(page.locator('#view-skill-eval')).toHaveClass(/active/);
       await expect(page.locator('#se-proj')).toHaveText('proj-x');
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('Projects card (t-c6bb): the Logbook row opens that project\u2019s Logbook; Admin has no Logbook', async ({ page }) => {
+      await openShell(page, []);
+      await page.locator('.tab.pinned').click();
+      const row = page.locator('.meta[data-stats="proj-a"] .lb-link-row');
+      await expect(row.locator('svg.lb-ico')).toHaveCount(1);
+      await expect(row).toContainText('Logbook');
+      await row.click();
+      const board = page.frameLocator('#view-proj-a iframe');
+      await expect(board.locator('#logbook-overlay')).toHaveClass(/open/, { timeout: 8000 });   // the shell asked the board to open it
+      await expect(board.locator('#logbook-modal')).toHaveAttribute('role', 'dialog');
+      await expect(board.locator('#lb-body')).not.toContainText('Loading');   // the real /api/logbook answered: this project's files, or "No HANDOFF.md"
+      await expect(board.locator('#lb-body .lb-sec, #lb-body .lb-empty').first()).toBeVisible();
+      await board.locator('#lb-close').click();
+      await page.evaluate(async () => { const { showView } = await import('/static/cockpit-views.js'); return showView('admin'); });
+      await expect(page.locator('#view-admin')).not.toContainText('Logbook');
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
@@ -15947,5 +15965,239 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     const frame = page.locator('#view-proj-e523 iframe');
     await expect(frame).toHaveAttribute('aria-label', 'proj-e523');
     expect(await frame.getAttribute('title')).toBeNull();
+  });
+});
+
+// t-c6bb: the Logbook — a read-only modal over a project's HANDOFF.md and LEARNINGS.md (static/board-logbook.js, GET /api/logbook).
+// The route itself is pinned by TestLogbookRoute and sprint-check-api.sh; these tests drive the board a user opens, with the two files
+// supplied by a route, so they never read this repo's own HANDOFF.md or LEARNINGS.md.
+test.describe('Logbook (t-c6bb)', () => {
+  const HANDOFF = '# Handoff\n\n<!-- canon:handoff:BEGIN -->\n## Current Focus\nFocus line with `code`.\n\n## In Progress\n- t-0001 one\n- t-0002 two\n\n## Discoveries\nA discovery.\n\n## Next Steps\n1. Do it.\n\n## Resume Checklist\n- `git status`\n<!-- canon:handoff:END -->\n\n## Scratch\nnot a Logbook section\n';
+  const row = (d, id, f, st) => `| ${d} | [${id}](.tickets/${id}/learnings.md) | ${f} | ${st} |\n`;
+  const LEARN = '# Learnings\n\nlearnings-sweep last run: x\n\n<!-- canon:learnings:BEGIN -->\n| Date | Ticket | Finding | Status |\n|---|---|---|---|\n'
+    + row('2026-10-23', 't-aaaa', 'An unpromoted finding with `code` and a \\| pipe.', 'UNPROMOTED')
+    + row('2026-10-22', 't-bbbb', 'A promoted one.', '`promoted → standards/efficiency-notes.md`')
+    + row('2026-10-21', 't-cccc', 'A dismissed one.', 'dismissed')
+    + row('2026-10-20', 't-dddd', 'Another unpromoted.', 'UNPROMOTED')
+    + '<!-- canon:learnings:END -->\n';
+  const file = text => ({ text, mtime: '2026-10-23T00:00:00Z' });
+  const serve = (page, handoff, learnings) => page.route(/\/api\/logbook(\?|$)/, r => r.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ handoff: handoff === undefined ? file(HANDOFF) : handoff, learnings: learnings === undefined ? file(LEARN) : learnings }),
+  }));
+  const open = async page => { await page.locator('#btn-logbook').click(); await expect(page.locator('#logbook-overlay')).toHaveClass(/open/); };
+
+  test('header button, tabs, Handoff cards, Learnings chips and table, Esc and focus (t-c6bb)', async ({ page }) => {
+    await serve(page);
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    // the icon button sits right after + New, on the same row
+    expect(await page.locator('.header-right button').evaluateAll(bs => bs.slice(0, 2).map(b => b.id))).toEqual(['btn-create', 'btn-logbook']);
+    await expect(page.locator('#btn-logbook svg.lb-ico')).toHaveCount(1);
+    const a = await page.locator('#btn-create').boundingBox(), b = await page.locator('#btn-logbook').boundingBox();
+    expect(Math.abs(a.y - b.y)).toBeLessThan(4);
+    expect(b.x).toBeGreaterThanOrEqual(a.x + a.width - 1);
+    await open(page);
+    await expect(page.locator('#logbook-modal')).toHaveAttribute('role', 'dialog');
+    await expect(page.locator('#lb-title')).toHaveText('Logbook');
+    await expect(page.locator('#lb-note')).toHaveText('HANDOFF.md · updated by the sprint skill');
+    // Handoff: the five sections between the markers, in file order, and not the Scratch section after them; Current Focus is accented
+    await expect(page.locator('.lb-sec h3')).toHaveText(['Current Focus', 'In Progress', 'Discoveries', 'Next Steps', 'Resume Checklist']);
+    await expect(page.locator('.lb-sec').first()).toHaveClass(/lb-focus/);
+    await expect(page.locator('.lb-sec').nth(1)).not.toHaveClass(/lb-focus/);
+    await expect(page.locator('#lb-body')).not.toContainText('not a Logbook section');
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate(t => { if (t === 'light') document.documentElement.dataset.theme = 'light'; else document.documentElement.removeAttribute('data-theme'); }, theme);
+      expect(await page.locator('.lb-sec').first().evaluate(e => getComputedStyle(e).borderTopColor)).toBe(await themeColor(page, '--accent'));
+      expect(await page.locator('.lb-sec').nth(1).evaluate(e => getComputedStyle(e).borderTopColor)).not.toBe(await themeColor(page, '--accent'));
+    }
+    await page.evaluate(() => document.documentElement.removeAttribute('data-theme'));
+    // Learnings: badge = unpromoted rows, chips count each status, a Dismissed chip only because a dismissed row exists
+    await page.locator('#lb-tab-l').click();
+    await expect(page.locator('#lb-note')).toHaveText('LEARNINGS.md · written by tkt learn, reviewed by promote-learnings');
+    await expect(page.locator('#lb-count')).toHaveText('2');
+    await expect(page.locator('.lb-chip')).toHaveText(['All 4', 'Unpromoted 2', 'Promoted 1', 'Dismissed 1']);
+    await expect(page.locator('.lb-table tbody tr')).toHaveCount(4);
+    await expect(page.locator('.lb-table tbody tr').first().locator('.lb-find')).toContainText('a | pipe');   // an escaped pipe stays one cell
+    const promoted = page.locator('.lb-table tbody tr', { hasText: 't-bbbb' });
+    await expect(promoted.locator('.lb-st')).toHaveText('promoted');
+    await expect(promoted.locator('.lb-target')).toHaveText('standards/efficiency-notes.md');
+    // filter: each chip shows only its rows and leaves the other counts alone
+    await page.locator('.lb-chip', { hasText: 'Unpromoted' }).click();
+    await expect(page.locator('.lb-table tbody tr')).toHaveCount(2);
+    await expect(page.locator('.lb-st')).toHaveText(['unpromoted', 'unpromoted']);
+    await expect(page.locator('.lb-chip')).toHaveText(['All 4', 'Unpromoted 2', 'Promoted 1', 'Dismissed 1']);
+    await page.locator('.lb-chip', { hasText: 'Dismissed' }).click();
+    await expect(page.locator('.lb-table tbody tr')).toHaveCount(1);
+    // Esc closes it and focus goes back to the button
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#logbook-overlay')).not.toHaveClass(/open/);
+    await expect(page.locator('#btn-logbook')).toBeFocused();
+    // without a dismissed row there is no Dismissed chip
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+    await serve(page, undefined, file(LEARN.replace(/\| dismissed \|/, '| UNPROMOTED |')));
+    await open(page);
+    await page.locator('#lb-tab-l').click();
+    await expect(page.locator('.lb-chip')).toHaveText(['All 4', 'Unpromoted 3', 'Promoted 1']);
+  });
+
+  test('a ticket id opens that ticket; one that is not on this board says so (t-c6bb)', async ({ page }) => {
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    const id = await page.locator('.card').first().getAttribute('data-id');
+    await serve(page, undefined, file('<!-- canon:learnings:BEGIN -->\n' + row('2026-10-23', id, 'On the board.', 'UNPROMOTED') + row('2026-10-22', 't-zzzz', 'Not on the board.', 'UNPROMOTED') + '<!-- canon:learnings:END -->\n'));
+    await open(page);
+    await page.locator('#lb-tab-l').click();
+    await page.locator('.lb-tk', { hasText: 't-zzzz' }).click();
+    await expect(page.locator('#lb-msg')).toHaveText('t-zzzz is not on this board.');
+    await expect(page.locator('#logbook-overlay')).toHaveClass(/open/);
+    await page.locator('.lb-tk', { hasText: id }).click();
+    await expect(page.locator('#logbook-overlay')).not.toHaveClass(/open/);
+    await expect(page.locator('#modal-overlay')).toHaveClass(/open/);
+    await expect(page.locator('#m-id')).toHaveText(id);
+  });
+
+  test('a missing file, a read error and a failed request each say so, never an empty-looking modal (t-c6bb)', async ({ page }) => {
+    await serve(page, { missing: true }, { error: 'LEARNINGS.md is a symbolic link; the Logbook reads regular files only' });
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await open(page);
+    await expect(page.locator('#lb-body')).toContainText('No HANDOFF.md in this project');
+    await page.locator('#lb-tab-l').click();
+    await expect(page.locator('#lb-body [role="alert"]')).toContainText('LEARNINGS.md could not be read');
+    await expect(page.locator('#lb-body [role="alert"]')).toContainText('symbolic link');
+    await expect(page.locator('#lb-count')).toBeHidden();
+    await page.keyboard.press('Escape');
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+    let fail = true;
+    await page.route(/\/api\/logbook(\?|$)/, r => fail ? r.fulfill({ status: 500, body: 'boom' }) : r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ handoff: file(HANDOFF), learnings: file(LEARN) }) }));
+    await open(page);
+    await expect(page.locator('#lb-body [role="alert"]')).toContainText('The Logbook could not be loaded');
+    await expect(page.locator('#lb-body [role="alert"]')).toContainText('HTTP 500');
+    // a board started before the route existed answers 404: the Logbook says the board is older, not just the number
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+    await page.route(/\/api\/logbook(\?|$)/, r => r.fulfill({ status: 404, body: 'not found' }));
+    await page.locator('[data-reload]').click();
+    await expect(page.locator('#lb-body [role="alert"]')).toContainText('This board is older than the Logbook');
+    await expect(page.locator('#lb-body [role="alert"]')).toContainText('Restart it (canon)');
+    await expect(page.locator('#lb-body [role="alert"]')).not.toContainText('HTTP 404');
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+    await page.route(/\/api\/logbook(\?|$)/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ handoff: file(HANDOFF), learnings: file(LEARN) }) }));
+    fail = false;
+    await page.locator('[data-reload]').click();
+    await expect(page.locator('.lb-sec h3').first()).toHaveText('Current Focus');
+  });
+
+  test('the Logbook moves by its title bar, resizes from its corner and starts fresh on every open (t-c6bb)', async ({ page }) => {
+    await serve(page);
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await open(page);
+    const panel = page.locator('#logbook-modal');
+    // the open animation scales the panel: measure only once it has settled at its default size
+    const vw = page.viewportSize().width;
+    await expect.poll(async () => Math.round((await panel.boundingBox()).width)).toBe(Math.min(900, vw - 24));
+    const start = await panel.boundingBox();
+    // resize first (a moved panel's corner can leave the window): drag the bottom-right corner inward
+    const grip = await page.locator('#logbook-modal .modal-resize-handle:not(.modal-resize-handle-tl)').boundingBox();
+    const gx = grip.x + grip.width / 2, gy = grip.y + grip.height / 2;
+    await page.mouse.move(gx, gy);
+    await page.mouse.down();
+    await page.mouse.move(gx - 120, gy - 80, { steps: 6 });
+    await page.mouse.up();
+    const sized = await panel.boundingBox();
+    expect(sized.width).toBeLessThan(start.width - 100);
+    expect(sized.height).toBeLessThan(start.height - 60);
+    await expect(page.locator('.lb-sec').first()).toBeVisible();   // the content is still there in the smaller panel
+    // the base dialog adds both corners itself (the Logbook's markup has none): the top-left corner shrinks it with the bottom-right corner held still
+    await expect(page.locator('#logbook-modal .modal-resize-handle')).toHaveCount(2);
+    const tl = await page.locator('#logbook-modal .modal-resize-handle-tl').boundingBox();
+    const tx = tl.x + tl.width / 2, ty = tl.y + tl.height / 2;
+    await page.mouse.move(tx, ty);
+    await page.mouse.down();
+    await page.mouse.move(tx + 60, ty + 40, { steps: 6 });
+    await page.mouse.up();
+    const small = await panel.boundingBox();
+    expect(Math.abs(small.width - (sized.width - 60))).toBeLessThan(3);
+    expect(Math.abs(small.height - (sized.height - 40))).toBeLessThan(3);
+    expect(Math.abs((small.x + small.width) - (sized.x + sized.width))).toBeLessThan(3);
+    expect(Math.abs((small.y + small.height) - (sized.y + sized.height))).toBeLessThan(3);
+    // move: drag the title bar
+    const head = await page.locator('#logbook-modal .modal-header').boundingBox();
+    const hx = head.x + 60, hy = head.y + head.height / 2;
+    await page.mouse.move(hx, hy);
+    await page.mouse.down();
+    await page.mouse.move(hx + 90, hy + 50, { steps: 6 });
+    await page.mouse.up();
+    const moved = await panel.boundingBox();
+    expect(Math.abs(moved.x - small.x - 90)).toBeLessThan(3);
+    expect(Math.abs(moved.y - small.y - 50)).toBeLessThan(3);
+    expect(Math.abs(moved.width - small.width)).toBeLessThan(2);
+    // buttons on the title bar are not drag handles: the close button still closes
+    await page.locator('#lb-close').click();
+    await expect(page.locator('#logbook-overlay')).not.toHaveClass(/open/);
+    // reopening puts it back where it started, at its default size
+    await open(page);
+    await expect.poll(async () => { const b = await panel.boundingBox(); return [Math.round(b.x), Math.round(b.y), Math.round(b.width), Math.round(b.height)].join(','); })
+      .toBe([Math.round(start.x), Math.round(start.y), Math.round(start.width), Math.round(start.height)].join(','));
+  });
+
+  test('a click outside closes it, a selection dragged out onto the overlay does not, and a closed dialog is out of the tab order (t-c6bb)', async ({ page }) => {
+    await serve(page);
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await open(page);
+    const panel = page.locator('#logbook-modal');
+    await expect.poll(async () => Math.round((await panel.boundingBox()).width)).toBe(Math.min(900, page.viewportSize().width - 24));
+    const text = await page.locator('.lb-sec h3').first().boundingBox();
+    await page.mouse.move(text.x + 4, text.y + 4);
+    await page.mouse.down();
+    await page.mouse.move(6, 360, { steps: 8 });   // out onto the overlay beside the panel
+    await page.mouse.up();
+    await expect(page.locator('#logbook-overlay')).toHaveClass(/open/);
+    await page.mouse.click(6, 360);   // a plain click on the overlay
+    await expect(page.locator('#logbook-overlay')).not.toHaveClass(/open/);
+    await expect(page.locator('#lb-close')).toBeHidden();
+    for (let i = 0; i < 25; i++) {
+      await page.keyboard.press('Tab');
+      expect(await page.evaluate(() => !!document.activeElement.closest('#logbook-overlay'))).toBe(false);
+    }
+  });
+
+  test('untrusted file text is shown as text: no element, handler, link, image request or navigation (t-c6bb)', async ({ page }) => {
+    const hostile = '<img src=x onerror="window.__pwned=1"> <script>window.__pwned=2</script> [click](javascript:window.__pwned=3) ![t](https://attacker.example/p.png) !![x](a)(https://attacker.example/bypass.png) <b>bold</b>';   // the last image is the bypass of a source pre-filter
+    // a code span or a fence inside an image's alt: md() restores it after the image step, so markup lands inside the <img> tag
+    const inAlt = '![a`x onmouseover=window.__pwned=6`z](https://attacker.example/p2.png) ![a\n```\nx onmouseover=window.__pwned=7\n```\nz](https://attacker.example/p3.png)';
+    // md() strips <!-- --> comments before its image step, so a comment inside the opener rebuilds a real image (second review's bypass)
+    const split = '!<!-- c -->[x](https://attacker.example/bypass2.png) !<!-- c -->[a`x onmouseover=window.__pwned=8`z](https://attacker.example/p4.png)';
+    const big = 'x'.repeat(1000000);
+    await serve(page, file('<!-- canon:handoff:BEGIN -->\n## Current Focus\n' + hostile + '\n' + inAlt + '\n' + split + '\n\n## Discoveries\n' + big + '\n<!-- canon:handoff:END -->\n'),
+      file('<!-- canon:learnings:BEGIN -->\n' + row('2026-10-23', 't-aaaa', hostile + ' ' + inAlt.split('\n').join(' ') + ' ' + split, '`promoted → <img src=x onerror=window.__pwned=5>`') + '<!-- canon:learnings:END -->\n'));
+    const seen = [];
+    page.on('request', r => { if (/attacker\.example/.test(r.url())) seen.push(r.url()); });
+    await page.route(/attacker\.example/, r => r.abort());
+    let dialogs = 0;
+    page.on('dialog', d => { dialogs++; d.dismiss(); });
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await open(page);
+    await expect(page.locator('.lb-sec').first()).toContainText('<img src=x onerror="window.__pwned=1">');   // the text itself is visible
+    await page.locator('#lb-tab-l').click();
+    await expect(page.locator('.lb-table tbody tr')).toHaveCount(1);
+    await expect(page.locator('.lb-find')).toContainText('<script>window.__pwned=2</script>');
+    for (const tab of ['#lb-tab-h', '#lb-tab-l']) {
+      await page.locator(tab).click();
+      expect(await page.locator('#logbook-overlay img, #logbook-overlay script, #logbook-overlay a, #logbook-overlay iframe, #logbook-overlay [onerror], #logbook-overlay b').count()).toBe(0);
+    }
+    // no element rendered from the file's text carries an event-handler or style attribute (the panel's own inline style is the drag engine's)
+    for (const tab of ['#lb-tab-h', '#lb-tab-l']) {
+      await page.locator(tab).click();
+      expect(await page.locator('#lb-body *').evaluateAll(els => els.filter(e => [...e.attributes].some(a => /^(on|style$)/i.test(a.name))).map(e => e.outerHTML.slice(0, 80)))).toEqual([]);
+    }
+    await page.locator('#logbook-overlay .lb-sec, #logbook-overlay .lb-table').first().hover();
+    expect(await page.evaluate(() => window.__pwned)).toBeUndefined();
+    expect(seen).toEqual([]);
+    expect(dialogs).toBe(0);
+    expect(page.url()).toContain(new URL(BASE).host);
   });
 });

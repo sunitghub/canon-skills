@@ -5,6 +5,7 @@ import { TICKET_ID_RE, liveTabIds } from './cockpit-sessions.js';
 import { toggleSide } from './cockpit-sidebar.js';
 import { showView } from './cockpit-views.js';
 import { openFactoryGithub } from './cockpit-factory.js';
+import { logbookOpened } from './cockpit-logbook.js';
 import { openTabSessionMenu } from './cockpit-end.js';
 import { activeTab, applySplit, closeSplit, closeTab, goTab, isProjectTab, onScratchTabs, openSessionInTab, openSplit, openTabs, prevTab, renderTabs, saveSplit, senderTab, split, splitShown } from './cockpit-tabs.js';
 
@@ -138,6 +139,7 @@ window.addEventListener('message',function(e){
   const pid=senderTab(d);
   if(!pid) return;   // only a project tab's own board
   if(d.type==='scratch-tabs'){ onScratchTabs(d,pid); return; }
+  if(d.type==='logbook-opened'){ logbookOpened(pid); return; }   // t-c6bb: the board has opened its Logbook; stop asking
   if(d.type==='open-factory-github'){ openFactoryGithub(pid); return; }   // t-24b1, t-9641: the picker's "set up first" row
   if(d.type==='session-menu'){ if(pid===activeTab&&!shellDialogOpen()) openTabSessionMenu(pid, typeof d.id==='string'?d.id:''); return; }   // t-3c9a: the reply to prefix then t
   if(d.type==='prefix-armed'||d.type==='prefix-cancel'||d.type==='prefix-key'){   // t-a198: only the visible tab's board speaks

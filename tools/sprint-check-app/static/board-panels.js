@@ -108,7 +108,7 @@ export function resetPanelResize(panel) {
   panel.style.height = '';
 }
 
-function makePanelDraggable(panelId, headerSelector = '.modal-header') {
+export function makePanelDraggable(panelId, headerSelector = '.modal-header') {
   const panel = document.getElementById(panelId);
   const header = panel?.querySelector(headerSelector);
   if (!panel || !header) return;
@@ -163,7 +163,7 @@ function makePanelDraggable(panelId, headerSelector = '.modal-header') {
   });
 }
 
-function makePanelResizable(panelId) {
+export function makePanelResizable(panelId) {
   const panel = document.getElementById(panelId);
   if (!panel) return;
   panel.querySelectorAll('.modal-resize-handle').forEach(handle => {
