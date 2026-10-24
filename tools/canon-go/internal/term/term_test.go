@@ -162,7 +162,7 @@ func TestPromptCommands(t *testing.T) {
 	cfg := Config{Root: root}
 	out := run(t, cfg, "help\nls\ncat a.go\ncat .env\ncat ../outside/secret.txt\nrm -rf x\ncat a.go | cat\nls -la\nexit\ncat a.go\n")
 	for _, want := range []string{
-		"restricted", "su               a full shell",
+		"Welcome to Canon Console", "Needs su",
 		"a.go  ", "sub/",
 		"package",
 		"cat: .env files are never shown",

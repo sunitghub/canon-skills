@@ -43,6 +43,7 @@ func Main(args []string) int {
 		Word:     RandomWord,
 		Limit:    *limit,
 		Warn:     *warn,
+		Rows:     terminalRows,
 	}
 	return Run(cfg)
 }

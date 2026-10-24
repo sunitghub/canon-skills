@@ -194,7 +194,8 @@ sprint agent without leaving the browser — no second terminal.
   `<repo>/../<name>-worktrees/scratch-<n>`, and removes worktree and branch when the
   session ends only if nothing was done in it (no uncommitted changes, no new commits).
   **Terminal** (`t-57ab`), beside Scratch on the path bar, opens a scratch-style tab that runs a restricted prompt
-  instead of an agent: `ls` and `cat` inside the project (code is coloured; `.env*`, `.git/`, symlinks that leave the
+  instead of an agent. It opens with a welcome (**Canon Console**) that lists what you can run and what needs `su`; `help` shows it
+  again. `ls` and `cat` work inside the project (`cat` pages a screenful at a time, Enter for more, `q` to stop; code is coloured; `.env*`, `.git/`, symlinks that leave the
   project, binary files and files over 1 MB are refused; control characters in a file are shown as symbols), read-only
   `tkt` (`current`, `ls`, `show`, `why`, `github-doctor`, `github-status`), `su` and `exit`. There is no shell: no pipes,
   redirects or globs. `su` prints a random word to type back, then runs your login shell for 5 minutes (a warning at 4:30,
