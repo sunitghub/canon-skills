@@ -3,6 +3,7 @@ import { esc } from './board-helpers.js';
 import { renderBoard, updateDoc } from './board-render.js';
 import { modalState, openModal } from './board-modal.js';
 import { refreshEditorGutter, renderModalBody } from './board-docs.js';
+import { initDialogPanel } from './board-dialog.js';
 
 // ── Semantic ticket matching ──────────────────────────────────────────────
 
@@ -336,7 +337,7 @@ export function initPanels() {
   });
 
   makePanelDraggable('modal');
-  makePanelDraggable('commit-panel');
+  initDialogPanel({ panelId: 'commit-panel', resizable: false });
   makePanelDraggable('create-modal');
   makePanelResizable('modal');
   makePanelResizable('create-modal');

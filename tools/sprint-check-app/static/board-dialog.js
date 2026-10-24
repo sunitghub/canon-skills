@@ -6,6 +6,13 @@
 // bottom-right, as the ticket and create dialogs have them) are added here unless the panel brings its own.
 import { makePanelDraggable, makePanelResizable, resetPanelDrag, resetPanelResize } from './board-panels.js';
 
+// t-cca5: the panel half on its own, for a dialog that keeps its own open/close code (ticket, create, commit, GitHub): it moves by
+// `handle` and, unless `resizable` is false, resizes from its corner. The caller resets position and size on its own open.
+export function initDialogPanel({ panelId, handle = '.modal-header', resizable = true }) {
+  makePanelDraggable(panelId, handle);
+  if (resizable) makePanelResizable(panelId);
+}
+
 export function initDialog({ overlayId, panelId, closeId, fallbackFocusId, onOpen, onClose }) {
   const overlay = document.getElementById(overlayId);
   const panel = document.getElementById(panelId);
@@ -21,8 +28,7 @@ export function initDialog({ overlayId, panelId, closeId, fallbackFocusId, onOpe
       panel.appendChild(g);
     }
   }
-  makePanelDraggable(panelId);
-  makePanelResizable(panelId);
+  initDialogPanel({ panelId });
 
   function open() {
     if (isOpen()) return;
