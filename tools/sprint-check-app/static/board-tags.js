@@ -102,7 +102,7 @@ export function openTagMenu({ anchor, selected, onChange }) {
     if (!TAG_RE.test(tag)) { msg.textContent = 'Use lowercase letters, digits and dashes (1 to 24 characters).'; return; }
     if (sel.length >= MAX_TAGS) { msg.textContent = `At most ${MAX_TAGS} tags.`; return; }
     const res = await postWrite('/api/tags', { tag }, 'add the tag');
-    if (!res.ok) { msg.textContent = (res.data && res.data.error) || 'The tag could not be added.'; return; }
+    if (!res.ok) { msg.textContent = res.error || 'The tag could not be added.'; return; }
     catalog = res.data;
     add.value = '';
     const next = sel.includes(tag) ? sel : [...sel, tag];

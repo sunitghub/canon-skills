@@ -34,6 +34,9 @@ var starterTags = []starterTag{
 // normalizeTags turns a comma list into the stored form: lowercase, trimmed, empty entries dropped, duplicates dropped with the
 // first one's place kept. It returns an error naming the first tag that is not valid, or the 9th.
 func normalizeTags(csv string) ([]string, error) {
+	if strings.ContainsAny(csv, "\r\n") { // as tkt: a newline is never trimmed away, it is refused
+		return nil, fmt.Errorf("tags must be on one line")
+	}
 	var out []string
 	seen := map[string]bool{}
 	for _, raw := range strings.Split(csv, ",") {

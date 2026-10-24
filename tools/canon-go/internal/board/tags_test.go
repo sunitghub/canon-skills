@@ -52,6 +52,15 @@ func TestNormalizeTagsCorpus(t *testing.T) {
 	}
 }
 
+// A newline is refused, never trimmed: tkt refuses it too (tests/ticket-tags.sh), and the corpus file is line-based so it cannot hold one.
+func TestNormalizeTagsRefusesNewlines(t *testing.T) {
+	for _, in := range []string{"go\n", "go\r", "a\nb", "\ngo", "a,b\r\nc"} {
+		if got, err := normalizeTags(in); err == nil {
+			t.Errorf("normalizeTags(%q) = %v, want an error", in, got)
+		}
+	}
+}
+
 func TestTagRoutes(t *testing.T) {
 	root := setupTestProject(t)
 
