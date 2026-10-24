@@ -64,6 +64,8 @@ check_template() {   # check_template <file> (t-04f4): the workflow the board wr
   ! grep -qE '^[[:space:]]*(-[[:space:]]+)?if:' "$t" || echo "an if: condition present (a step could be skipped)"
   ! grep -qE '^[[:space:]]+(PATH|NODE_OPTIONS|RUNNER_TOOL_CACHE|NODE_PATH|YARN_[A-Z_]+|[Nn][Pp][Mm]_[Cc][Oo][Nn][Ff][Ii][Gg]_[A-Za-z_]+):' "$t" \
     || echo "an environment override of PATH, NODE_OPTIONS or npm/yarn config"
+  ! grep -qE '^[[:space:]]*(-[[:space:]]+)?env:[[:space:]]*[^[:space:]#]' "$t" || echo "an environment override of PATH, NODE_OPTIONS or npm/yarn config (a flow-style env:)"
+  ! grep -qE '^[[:space:]]+strategy:' "$t" || echo "a strategy matrix present (a literal version could bypass the pin)"
   if [[ -z "$sn" ]]; then echo "no actions/setup-node step"
   else
     [[ "$nsn" == 1 ]] || echo "$nsn setup-node steps, want 1"
@@ -73,7 +75,8 @@ check_template() {   # check_template <file> (t-04f4): the workflow the board wr
     blk="$(awk -v s="$sn" 'NR>s && /^      - /{exit} NR>=s{print}' "$t")"   # the step: from its uses: line to the next step
     nv="$(awk '/^[[:space:]]+node-version:/{sub(/^[^:]*:[[:space:]]*/,""); sub(/[[:space:]]*#.*$/,""); print; exit}' <<<"$blk")"
     nv="${nv//\"/}"; nv="${nv//\'/}"; nv="${nv%"${nv##*[![:space:]]}"}"   # a quoted version, or one with trailing spaces, is the same version
-    if [[ ! "$nv" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then echo "Node not at an exact x.y.z (node-version: ${nv:-missing})"
+    # t-2d0f: no leading zero, and minor and patch under 1000 (node_ge's arithmetic assumes it)
+    if [[ ! "$nv" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})$ ]]; then echo "Node not at an exact x.y.z (node-version: ${nv:-missing})"
     else
       major="${nv%%.*}"
       case "$major" in 22) floor=22.23.4 ;; 24) floor=24.22.1 ;; 26) floor=26.12.1 ;; *) floor="" ;; esac
@@ -200,6 +203,11 @@ plant "$TPL: unexpected line in the setup-node step" $TPL 's/^(          package
 plant "$TPL: unexpected line in the setup-node step" $TPL 's/^(          package-manager-cache: false.*)$/\1\n          mirror: https:\/\/mirror.example/'
 plant "$TPL: an if: condition present" $TPL 's/^      - name: Set up a patched Node$/      - name: Set up a patched Node\n        if: false/'
 plant "$TPL: an environment override of PATH, NODE_OPTIONS or npm/yarn config" $TPL 's/^    runs-on: ubuntu-latest$/    runs-on: ubuntu-latest\n    env:\n      NODE_OPTIONS: --require .\/x.js/'
+# t-2d0f: guard gaps t-c4b4 left (template-regression guards, not a defence against a hostile template)
+plant "$TPL: Node not at an exact x.y.z" $TPL 's/node-version: 22\.23\.4/node-version: 22.023.4/'
+plant "$TPL: Node not at an exact x.y.z" $TPL 's/node-version: 22\.23\.4/node-version: 22.23.1000/'
+plant "$TPL: an environment override of PATH, NODE_OPTIONS or npm/yarn config" $TPL 's/^(        uses: actions\/setup-node@.*)$/\1\n        env: { NODE_OPTIONS: x }/'
+plant "$TPL: a strategy matrix present" $TPL 's/^    runs-on: ubuntu-latest$/    runs-on: ubuntu-latest\n    strategy:\n      matrix:\n        node: [22.23.4]/'
 plant "missing $TPL" $TPL rm
 
 echo "ci-security-config: ok ($(ls "$ROOT/$WFD" | wc -l | tr -d ' ') workflows and the canon-gate template pinned and least-privilege, no dependabot config; $n planted breaks caught)"

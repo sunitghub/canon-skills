@@ -65,8 +65,8 @@ release of that line), put it in `node-version:`, raise that major's floor in `c
 lands, and take the `actions/setup-node` SHA as for the other actions (`gh api repos/actions/setup-node/releases/latest`,
 then the tag's commit). The SHA pins the action's code, not Node's bytes: setup-node downloads from GitHub's node-versions
 release assets (falling back to nodejs.org) and checks only the version it ends up with, so the exact version is what canon
-controls. Nothing opens a PR for this: until the weekly report watches the template's pins (t-2d0f), a
-security release of Node is a reason to bump by hand. A project that already has a `canon-gate.yml` keeps its old Node
+controls. Nothing opens a PR for this: the weekly report (below) watches the pin and fails when a security release of
+its line is newer, and you bump it by hand. A project that already has a `canon-gate.yml` keeps its old Node
 step until it deletes the file and runs Set up CI gate again.
 
 ## Run it locally
@@ -118,7 +118,7 @@ scripts/check-vendored.sh --summary  # also append it to $GITHUB_STEP_SUMMARY wh
 
 It needs only `bash` and `curl`, on macOS, Linux and Git Bash. It uses `jq` when present and a grep/sed fallback when not
 (`VENDORED_NO_JQ=1` forces the fallback); both decide "affected or not" the same way, and only the severity and fixed-in
-columns are best-effort without `jq`. It needs `registry.npmjs.org` and `api.osv.dev`.
+columns are best-effort without `jq`. It needs `registry.npmjs.org`, `api.osv.dev` and `nodejs.org`.
 
 ### Reading the job summary
 
@@ -126,6 +126,19 @@ One row per vendored package: the package (and the package it moved to), the ven
 behind (`N major`, `N minor`, `N patch` or `up to date`), the advisories on the vendored version as
 `<id> (<severity>, fixed in <version>)`, and the upstream release notes. A list under the table names each newer version,
 each advisory and each failed lookup, and the last line is the verdict: `ok` (newer versions are information) or `FAIL`.
+
+### The CI gate template's pins (t-2d0f)
+
+The same report reads two pins from `tools/canon-gate-template.yml` (the template owns them; the script never copies a
+version) and adds a row for each: the `node-version:` of the `actions/setup-node` step, and the
+`npm install -g @anthropic-ai/claude-code@x.y.z` line. **Node** is checked against `https://nodejs.org/dist/index.json`:
+a `"security": true` release of the pin's major that is newer than the pin fails the job (exit 1), with the newest one
+named as the fixed-in version; a newer non-security release is information. The **Claude Code CLI** is checked against
+npm's `latest` (information only) and OSV for the pinned version; any advisory fails the job. A pin the script cannot
+find, or an answer it cannot read, exits 2, never 0. A failure means: bump the pin in `tools/canon-gate-template.yml`
+**and** the floor table in `tests/ci-security-config.sh` (the offline guard, which would otherwise keep accepting the old
+floor). Existing consumers' `canon-gate.yml` files are not rewritten: a project picks up the new pin when it deletes
+the file and runs Set up CI gate again.
 
 ### What we do with a finding
 

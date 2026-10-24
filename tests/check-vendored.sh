@@ -19,11 +19,12 @@ url=""; body=""
 while [[ $# -gt 0 ]]; do case "$1" in -d) body="$2"; shift 2 ;; -H|-X|--max-time) shift 2 ;; *) url="$1"; shift ;; esac; done
 case "$url" in
   https://registry.npmjs.org/*/latest) key="npm_$(printf '%s' "${url#https://registry.npmjs.org/}" | sed 's#/latest$##; s#[@/]#_#g')" ;;
+  https://nodejs.org/dist/index.json) key=node_index ;;
   https://api.osv.dev/v1/query)
     name="$(printf '%s' "$body" | sed -n 's/.*"name":"\([^"]*\)".*/\1/p')"
     ver="$(printf '%s' "$body" | sed -n 's/.*"version":"\([^"]*\)".*/\1/p')"
     [[ "$body" == *'"ecosystem":"npm"'* ]] || { echo "curl: (22) stub: OSV query without ecosystem npm: $body" >&2; exit 22; }
-    key="osv_${name}_${ver:-ANY}" ;;
+    key="osv_$(printf '%s' "${name}_${ver:-ANY}" | tr '@/' '__')" ;;
   *) echo "curl: (6) stub: unexpected URL $url" >&2; exit 6 ;;
 esac
 echo "$key" >> "$STUB_DIR/calls"
@@ -34,19 +35,29 @@ EOF
 printf '#!/bin/sh\necho "real curl called in a test: $*" >&2\nexit 99\n' > "$WORK/nonet/curl"
 chmod +x "$WORK/bin/stub-curl" "$WORK/nonet/curl"
 
+# a fixture template with fixed pins: the cases never move when the real template's pins are bumped
+TPLF="$WORK/template.yml"
+printf '%s\n' 'jobs:' '  grade:' '    steps:' '      - name: Set up a patched Node' '        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0' \
+  '        with:' '          node-version: 22.23.4         # exact' '          package-manager-cache: false' '      - name: Install Claude Code CLI' \
+  '        run: npm install -g @anthropic-ai/claude-code@2.1.309' '      - name: Checkout the PR' '        with:' '          node-version: 99.9.9' > "$TPLF"
+NODEIDX='[{"version":"v24.1.0","date":"2026-10-01","lts":false,"security":true},{"version":"v22.23.4","date":"2026-10-20","files":["linux-x64"],"npm":"10.9.0","lts":"Jod","security":true},{"version":"v22.23.3","date":"2026-10-12","lts":"Jod","security":false}]'
+
 ADV='{"vulns":[{"id":"GHSA-test-plnt-0001","summary":"planted","aliases":["CVE-2099-0001"],"affected":[{"package":{"name":"xterm","ecosystem":"npm"},"ranges":[{"type":"SEMVER","events":[{"introduced":"0"},{"fixed":"5.3.1"}]}]}],"severity":[{"type":"CVSS_V3","score":"CVSS:3.1/AV:N"}],"database_specific":{"severity":"HIGH"}}]}'
 OLD='{"vulns":[{"id":"GHSA-old0-only-3900","affected":[{"ranges":[{"type":"SEMVER","events":[{"introduced":"3.9.0"},{"fixed":"3.9.2"}]}]}],"database_specific":{"severity":"CRITICAL"}}]}'
 
 stubs() {   # stubs <xterm latest> <addon latest>: a fresh STUB_DIR, both registries answer, OSV answers {} for the vendored versions
-  STUB_DIR="$(mktemp -d "$WORK/stub.XXXXXX")"; export STUB_DIR
+  STUB_DIR="$(mktemp -d "$WORK/stub.XXXXXX")"; export STUB_DIR; TEMPLATE_FILE=""
   printf '{"name":"@xterm/xterm","version":"%s","dist":{"tarball":"x"}}' "$1" > "$STUB_DIR/npm__xterm_xterm"
   printf '{"name":"@xterm/addon-fit","version":"%s"}' "$2" > "$STUB_DIR/npm__xterm_addon-fit"
   echo '{}' > "$STUB_DIR/osv_xterm_5.3.0"; echo '{}' > "$STUB_DIR/osv_xterm-addon-fit_0.8.0"
   printf '%s' "$ADV" > "$STUB_DIR/osv_xterm_ANY"; printf '%s' "$OLD" > "$STUB_DIR/osv_xterm_3.9.0"
+  printf '%s' "$NODEIDX" > "$STUB_DIR/node_index"                                        # the template pins: Node 22.23.4 (the newest of line 22), CLI 2.1.309
+  printf '{"name":"@anthropic-ai/claude-code","version":"2.1.309"}' > "$STUB_DIR/npm__anthropic-ai_claude-code"
+  echo '{}' > "$STUB_DIR/osv__anthropic-ai_claude-code_2.1.309"
 }
 run() {   # run <script> [args]: OUT and RC, with the mode in $NOJQ
   set +e
-  OUT="$(PATH="$WORK/nonet:$PATH" VENDORED_CURL="$WORK/bin/stub-curl" VENDORED_NO_JQ="$NOJQ" GITHUB_STEP_SUMMARY="${SUMMARY_FILE:-}" bash "$@" 2>&1)"
+  OUT="$(PATH="$WORK/nonet:$PATH" VENDORED_CURL="$WORK/bin/stub-curl" VENDORED_NO_JQ="$NOJQ" VENDORED_TEMPLATE="${TEMPLATE_FILE:-$TPLF}" GITHUB_STEP_SUMMARY="${SUMMARY_FILE:-}" bash "$@" 2>&1)"
   RC=$?
   set -e
 }
@@ -78,6 +89,65 @@ case_osv_error() {
 case_bad_registry() { stubs 5.3.0 0.8.0; echo '<html>busy</html>' > "$STUB_DIR/npm__xterm_addon-fit"; run "$1"; want 2 "npm registry lookup for @xterm/addon-fit" "answered no readable version"; }
 case_bad_osv() { stubs 5.3.0 0.8.0; echo '{"vulns":[{"summary":"no id"}]}' > "$STUB_DIR/osv_xterm_5.3.0"; run "$1"; want 2 "OSV lookup for xterm 5.3.0 answered something unreadable"; }
 CASES="case_up_to_date case_newer case_advisory case_other_version case_registry_error case_osv_error case_bad_registry case_bad_osv"
+
+# t-2d0f: the CI gate template's Node and CLI pins
+pins() {   # pins <node> <cli>: a template with other pins (TEMPLATE_FILE)
+  TEMPLATE_FILE="$WORK/pins.yml"; sed -e "s/node-version: 22\.23\.4/node-version: $1/" -e "s/claude-code@2\.1\.309/claude-code@$2/" "$TPLF" > "$TEMPLATE_FILE"
+}
+nodeidx() { printf '%s' "$1" > "$STUB_DIR/node_index"; }
+NOTSEC='{"version":"v22.24.0","date":"2026-10-30","lts":"Jod","security":false}'
+SEC5='{"version":"v22.23.5","date":"2026-10-24","lts":"Jod","security":true}'
+case_node_security() {
+  stubs 5.3.0 0.8.0; nodeidx "[$SEC5,${NODEIDX#[}"; run "$1"
+  want 1 "ADVISORY: node 22.23.4 pinned in tools/canon-gate-template.yml has a newer security release: fixed in 22.23.5" \
+    "| node 22.23.4 (CI gate) | 22.23.4 | 22.23.5 | 1 patch | security release (fixed in 22.23.5) |" "FAIL: an advisory affects"
+}
+case_node_current() { stubs 5.3.0 0.8.0; nodeidx "[$SEC5,${NODEIDX#[}"; pins 22.23.5 2.1.309; run "$1"; want 0 "| node 22.23.5 (CI gate) | 22.23.5 | 22.23.5 | up to date | none |" "every package is up to date"; }
+case_node_nonsecurity() {
+  stubs 5.3.0 0.8.0; nodeidx "[$NOTSEC,${NODEIDX#[}"; run "$1"
+  want 0 "newer version: node 22.24.0 (pinned 22.23.4, 1 minor behind; not a security release)" "| node 22.23.4 (CI gate) | 22.23.4 | 22.24.0 | 1 minor | none |"
+}
+case_node_no_security_line() { stubs 5.3.0 0.8.0; nodeidx '[{"version":"v22.23.4","security":false},{"version":"v22.23.3","security":false}]'; run "$1"; want 0 "| node 22.23.4 (CI gate) |" "none |"; }
+case_node_other_major() { stubs 5.3.0 0.8.0; nodeidx '[{"version":"v24.2.0","security":true},{"version":"v220.23.9","security":true}]'; run "$1"; want 2 "has no release of major 22" "| node 22.23.4 (CI gate) | 22.23.4 | lookup failed |"; }
+case_node_decoy() {   # a "version"/"security" text inside another field or a nested object is not an entry's own key
+  stubs 5.3.0 0.8.0; nodeidx '[{"version":"v22.23.4","note":"\"version\":\"v22.99.9\",\"security\":true","extra":{"version":"v22.98.0","security":true},"security":false}]'; run "$1"
+  want 0 "| node 22.23.4 (CI gate) | 22.23.4 | 22.23.4 | up to date | none |"
+}
+case_node_garbage() {
+  local bad; for bad in '<html>busy</html>' '[]' '{"version":"v22.23.5","security":true}' '[{"version":"v22.23.5"}]' '[{"security":true}]' '[{"version":"v22.23.5","security":"yes"}]' '[{"version":"v22.23.5","security":true}] x' '[{"version":"v22.23.5","security":true}'; do
+    stubs 5.3.0 0.8.0; nodeidx "$bad"; run "$1"; want 2 "Node index (https://nodejs.org/dist/index.json) answered something unreadable" "| lookup failed |" >/dev/null || { echo "answer '$bad': $OUT"; return 1; }
+  done
+}
+case_node_curl_error() { stubs 5.3.0 0.8.0; : > "$STUB_DIR/node_index.fail"; run "$1"; want 2 "Node index lookup failed (https://nodejs.org/dist/index.json)" "503" "advisories are unknown, not absent"; }
+case_cli_advisory() {
+  stubs 5.3.0 0.8.0; printf '%s' "$ADV" > "$STUB_DIR/osv__anthropic-ai_claude-code_2.1.309"; run "$1"
+  want 1 "ADVISORY: @anthropic-ai/claude-code 2.1.309 pinned in tools/canon-gate-template.yml is affected by GHSA-test-plnt-0001 (HIGH, fixed in 5.3.1)" \
+    "| @anthropic-ai/claude-code (CI gate) | 2.1.309 | 2.1.309 | up to date | GHSA-test-plnt-0001 (HIGH, fixed in 5.3.1) |"
+}
+case_cli_clean_newer() {
+  stubs 5.3.0 0.8.0; printf '{"version":"2.2.0"}' > "$STUB_DIR/npm__anthropic-ai_claude-code"; run "$1"
+  want 0 "newer version: @anthropic-ai/claude-code 2.2.0 (pinned 2.1.309, 1 minor behind)" "| 2.1.309 | 2.2.0 | 1 minor | none |"
+}
+case_cli_unreadable() { stubs 5.3.0 0.8.0; echo '<html>x</html>' > "$STUB_DIR/osv__anthropic-ai_claude-code_2.1.309"; run "$1"; want 2 "OSV lookup for @anthropic-ai/claude-code 2.1.309 answered something unreadable"; }
+case_cli_npm_error() { stubs 5.3.0 0.8.0; : > "$STUB_DIR/npm__anthropic-ai_claude-code.fail"; run "$1"; want 2 "npm registry lookup failed for @anthropic-ai/claude-code" "| lookup failed | ? |"; }
+case_pin_missing() {   # a pin the script cannot find exits 2 and names the template line it looked for
+  stubs 5.3.0 0.8.0; TEMPLATE_FILE="$WORK/nopins.yml"; grep -vE 'node-version:|claude-code@' "$TPLF" > "$TEMPLATE_FILE"; run "$1"
+  want 2 "no exact 'node-version: x.y.z' in the actions/setup-node step of tools/canon-gate-template.yml" \
+    "no single 'npm install -g @anthropic-ai/claude-code@x.y.z' line in tools/canon-gate-template.yml" "| node (CI gate) | not found |"
+}
+case_pin_unparsable() { stubs 5.3.0 0.8.0; pins 22 2.1.309; run "$1"; want 2 "no exact 'node-version: x.y.z'" "(found: 22)"; }
+case_worst_wins() {   # a failing vendored row and a failing template row: 2 over 1 over 0
+  stubs 5.3.0 0.8.0; printf '%s' "$ADV" > "$STUB_DIR/osv_xterm_5.3.0"; nodeidx "[$SEC5,${NODEIDX#[}"; run "$1"; want 1 "ADVISORY: xterm 5.3.0" "fixed in 22.23.5" || return 1
+  : > "$STUB_DIR/osv__anthropic-ai_claude-code_2.1.309.fail"; run "$1"; want 2 "ADVISORY: xterm 5.3.0" "fixed in 22.23.5" "OSV lookup failed for @anthropic-ai/claude-code" || return 1
+  stubs 5.3.0 0.8.0; : > "$STUB_DIR/osv_xterm_5.3.0.fail"; nodeidx "[$SEC5,${NODEIDX#[}"; run "$1"; want 2 "fixed in 22.23.5" "OSV lookup failed for xterm"
+}
+case_template_rows() {   # --summary carries both template rows into $GITHUB_STEP_SUMMARY
+  stubs 5.3.0 0.8.0; SUMMARY_FILE="$WORK/tsummary.md"; : > "$SUMMARY_FILE"; run "$1" --summary; local r=$? s; s="$(cat "$SUMMARY_FILE")"; SUMMARY_FILE=""
+  [[ "$s" == *"| node 22.23.4 (CI gate) | 22.23.4 | 22.23.4 | up to date | none |"* && "$s" == *"| @anthropic-ai/claude-code (CI gate) | 2.1.309 | 2.1.309 | up to date | none |"* ]] \
+    || { echo "rows missing from the summary: $s"; return 1; }
+  want 0 "every package is up to date"
+}
+CASES="$CASES case_node_security case_node_current case_node_nonsecurity case_node_no_security_line case_node_other_major case_node_decoy case_node_garbage case_node_curl_error case_cli_advisory case_cli_clean_newer case_cli_unreadable case_cli_npm_error case_pin_missing case_pin_unparsable case_worst_wins case_template_rows"
 
 MODES="1"; if command -v jq >/dev/null 2>&1; then MODES="0 1"; else echo "check-vendored: jq not installed; only the fallback path runs"; fi
 for NOJQ in $MODES; do
@@ -129,10 +199,10 @@ done
 NOJQ=1; stubs 5.3.0 0.8.0; M="$WORK/manifest.tsv"
 printf '# header\n\nxterm.js\txterm\txterm\t5.3.0\thttps://github.com/xtermjs/xterm.js\tMIT\tabc\twhy\n' > "$M"
 printf '{"name":"xterm","version":"5.3.0"}' > "$STUB_DIR/npm_xterm"
-OUT="$(PATH="$WORK/nonet:$PATH" VENDORED_MANIFEST="$M" VENDORED_CURL="$WORK/bin/stub-curl" VENDORED_NO_JQ=1 bash "$SCRIPT" 2>&1)" && RC=0 || RC=$?
+OUT="$(PATH="$WORK/nonet:$PATH" VENDORED_MANIFEST="$M" VENDORED_CURL="$WORK/bin/stub-curl" VENDORED_TEMPLATE="$TPLF" VENDORED_NO_JQ=1 bash "$SCRIPT" 2>&1)" && RC=0 || RC=$?
 want 0 "| xterm | 5.3.0 | 5.3.0 | up to date | none |" >/dev/null || fail "check-vendored: same-track row or skipped lines: $OUT"
 printf 'xterm.css\txterm\t@xterm/xterm\t5.3.0\n' >> "$M"; printf '\n' >> "$M"
-OUT="$(PATH="$WORK/nonet:$PATH" VENDORED_MANIFEST="$M" VENDORED_CURL="$WORK/bin/stub-curl" VENDORED_NO_JQ=1 bash "$SCRIPT" 2>&1)" && RC=0 || RC=$?
+OUT="$(PATH="$WORK/nonet:$PATH" VENDORED_MANIFEST="$M" VENDORED_CURL="$WORK/bin/stub-curl" VENDORED_TEMPLATE="$TPLF" VENDORED_NO_JQ=1 bash "$SCRIPT" 2>&1)" && RC=0 || RC=$?
 want 2 "manifest row xterm.css has fewer than 8 columns" >/dev/null || fail "check-vendored: short row: $OUT"
 OUT="$(VENDORED_MANIFEST="$WORK/none.tsv" bash "$SCRIPT" 2>&1)" && RC=0 || RC=$?
 want 2 "check-vendored: no manifest at $WORK/none.tsv" >/dev/null || fail "check-vendored: missing manifest: $OUT"
@@ -174,5 +244,11 @@ revert case_bad_osv "1" 's/&& ! grep -qE .*<<< "\$flat"; then$/\&\& false; then/
 revert case_advisory "1" 's/ \|\| \[\[ -n "\$chunk" \]\]//'   # the last chunk has no newline: read alone drops it, a silent miss
 revert case_advisory "1" 's/s\/\^@@ID@@\/\/p/s\/^@@NOPE@@\/\/p/'
 revert case_up_to_date "1" 's/^    if grep -qE .\^\[\[:space:\]\]\*\\\{\[\[:space:\]\]\*\\\}.*return 0; fi$/    true/'
+revert case_node_security "0 1" 's/\(\( k > pk && k > fixedk \)\)/(( 0 ))/'
+revert case_node_other_major "0 1" 's/^  \(\( found \)\) \|\|/  true ||/'
+revert case_node_garbage "0" 's/all\(\.\[\]; type == "object" and \(\.version \| type\) == "string" and \(\.security \| type\) == "boolean"\)/true/'
+revert case_node_garbage "1" 's/if \(ver != "" && \(sec == "true" \|\| sec == "false"\)\)/if (ver != "")/'
+revert case_node_decoy "1" 's/if \(d == 2\) \{ if \(st == "key"\) key = s;/if (1) { if (st == "key") key = s;/'
+revert case_cli_advisory "0 1" 's/^      AFFECTED=1$/      AFFECTED=0/;s/^(.*NOTES\+=\("ADVISORY: \$CLI.*)$/\1/'
 
-echo "check-vendored: ok (8 cases on modes [$MODES], version gaps, advisory columns, manifest rows, --summary, --sha, usage; $n reverts caught)"
+echo "check-vendored: ok (24 cases on modes [$MODES], template pins, version gaps, advisory columns, manifest rows, --summary, --sha, usage; $n reverts caught)"

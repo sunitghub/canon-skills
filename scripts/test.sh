@@ -10,6 +10,9 @@ export SPRINT_CHECK_NO_BROWSER=1
 # t-2d74: skills.sh prompts through /dev/tty, so a run from a real terminal stopped for a 15s prompt per
 # temp project. The pty-simulated prompt tests unset this for their own child.
 export SKILLS_SH_NO_TTY=1
+# t-9791: a git that needs credentials prompts on /dev/tty; a suite in the batch's background process group then gets SIGTTOU
+# when git turns off echo, and the whole group stops. That is what hung the board's Check & merge (it runs this on a pty). Never prompt.
+export GIT_TERMINAL_PROMPT=0
 # t-f182: tkt, sprint and the board append events to $CANON_HOME/events; a test run never writes into the user's own log.
 # One folder for the run, unless the caller pinned one (a test that needs the default sets CANON_HOME= for its child).
 if [[ -z "${CANON_HOME:-}" ]]; then CANON_HOME="$(mktemp -d "${TMPDIR:-/tmp}/canon-test-home.XXXXXX")"; export CANON_HOME; fi
