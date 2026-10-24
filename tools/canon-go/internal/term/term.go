@@ -73,6 +73,7 @@ type entry struct {
 var welcomeEntries = []entry{
 	{"help", "show this list (a lone ? does too)", false},
 	{"clear", "clear the screen (cls does too)", false},
+	{"pwd", "show the project folder this prompt is in", false},
 	{"ls [path]", "list files with sizes and dates", false},
 	{"cat <file>", "show a file a page at a time, with colours for code", false},
 	{"tkt current", "show the active ticket", false},
@@ -169,6 +170,8 @@ func (c Config) dispatch(line string, rd *bufio.Reader) bool {
 		return true
 	case "help":
 		fmt.Fprint(c.Out, welcome())
+	case "pwd":
+		fmt.Fprintln(c.Out, Visible(c.Root))
 	case "clear", "cls":
 		fmt.Fprint(c.Out, "\x1b[H\x1b[2J\x1b[3J")
 	case "ls":
@@ -180,7 +183,7 @@ func (c Config) dispatch(line string, rd *bufio.Reader) bool {
 	case "su":
 		return c.su(rd)
 	default:
-		fmt.Fprintf(c.Out, "not allowed here: %s   allowed: help, ls, cat, tkt, su, clear, exit\n", Visible(f[0]))
+		fmt.Fprintf(c.Out, "not allowed here: %s   allowed: help, ls, cat, pwd, tkt, su, clear, exit\n", Visible(f[0]))
 	}
 	return false
 }

@@ -115,7 +115,7 @@ func readEscape(rd *bufio.Reader) (up, down bool) {
 	}
 }
 
-var commandNames = []string{"cat", "clear", "cls", "exit", "help", "ls", "su", "tkt"}
+var commandNames = []string{"cat", "clear", "cls", "exit", "help", "ls", "pwd", "su", "tkt"}
 
 // complete finishes the last word of line the way a shell does: the command, a read-only tkt subcommand, or a path for
 // ls and cat inside the project (never .git or .env*, never outside it). It returns the line with the word completed as

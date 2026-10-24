@@ -73,15 +73,18 @@ func TestReadLineEditing(t *testing.T) {
 	}
 }
 
-// Protects the extra prompt words: a lone ? shows the list like help, and clear or cls wipe the screen.
+// Protects the extra prompt words: a lone ? shows the list like help, clear or cls wipe the screen, and pwd names the project folder.
 func TestHelpMarkAndClear(t *testing.T) {
 	root, _ := project(t)
-	out := run(t, Config{Root: root}, "?\nclear\ncls\n? x\nexit\n")
+	out := run(t, Config{Root: root}, "?\nclear\ncls\npwd\n? x\nexit\n")
 	if strings.Count(out, "Welcome to Canon Console") != 2 { // the opening welcome and the lone ?
 		t.Errorf("want the welcome twice (open, ?):\n%s", out)
 	}
 	if strings.Count(out, "\x1b[2J") != 2 {
 		t.Errorf("clear and cls should each wipe the screen:\n%q", out)
+	}
+	if !strings.Contains(out, root+"\n") {
+		t.Errorf("pwd should print the project folder %q:\n%s", root, out)
 	}
 	if !strings.Contains(out, "not supported here (no shell): ?") {
 		t.Errorf("a ? inside a longer line is still refused:\n%s", out)
