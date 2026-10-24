@@ -16201,3 +16201,135 @@ test.describe('Logbook (t-c6bb)', () => {
     expect(page.url()).toContain(new URL(BASE).host);
   });
 });
+
+// t-37e8: ticket tags. Prod paths: the card, the ticket modal header, the New Ticket dialog and the search box, over the board's
+// /api/tags, /api/ticket/<id>/tags and /api/tickets routes (the files on disk are the proof of what was saved).
+test.describe('Tags (t-37e8)', () => {
+  const made = [];
+  const dir = id => path.join(PROJECT_ROOT, '.tickets', id);
+  const writeTagged = (id, { tags = '', status = 'open', title = 'Tags fixture' } = {}) => {
+    fs.mkdirSync(dir(id), { recursive: true });
+    fs.writeFileSync(path.join(dir(id), 'ticket.md'), ['---', `id: ${id}`, `status: ${status}`, 'type: task', ...(tags ? [`tags: ${tags}`] : []), 'priority: 2', 'created: 2026-10-24T00:00:00Z', '---', '', `# ${title}`, '', 'Body.', ''].join('\n'));
+    made.push(id);
+  };
+  const tagsOnDisk = id => { const m = /^tags: (.*)$/m.exec(fs.readFileSync(path.join(dir(id), 'ticket.md'), 'utf8')); return m ? m[1] : ''; };
+  const projectList = path.join(PROJECT_ROOT, '.tickets', 'tags.json');
+  test.afterEach(() => { while (made.length) removeTestTicket(PROJECT_ROOT, made.pop()); fs.rmSync(projectList, { force: true }); });
+  const find = async (page, q) => { await page.goto(BASE); await page.waitForLoadState('networkidle'); await page.locator('#board-search').fill(q); };
+
+  test('cards show three chips and +n; the modal edits tags from the dropdown, saves them, and a closed ticket is read-only (t-37e8)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT), done = newTicketId(PROJECT_ROOT);
+    writeTagged(id, { tags: 'security,nodejs,go,github' });
+    writeTagged(done, { tags: 'go', status: 'closed' });
+    await find(page, id);
+    const card = page.locator(`.card[data-id="${id}"]`);
+    await expect(card.locator('.tag-chip')).toHaveText(['Security', 'NodeJs', 'Go']);
+    await expect(card.locator('.tag-more')).toHaveText('+1');
+    await card.click();
+    await expect(page.locator('#m-tag-chips .tag-chip')).toHaveText(['Security', 'NodeJs', 'Go', 'GitHub']);
+    await page.locator('#m-tags-btn').click();
+    const menu = page.locator('.tag-menu');
+    await expect(menu).toBeVisible();
+    await expect(menu.locator('label', { hasText: 'Enterprise' })).toHaveCount(1);          // the starter list
+    await menu.locator('label', { hasText: /^Go$/ }).locator('input').uncheck();
+    await expect.poll(() => tagsOnDisk(id)).toBe('security,nodejs,github');
+    await expect(page.locator('#m-tag-chips .tag-chip')).toHaveText(['Security', 'NodeJs', 'GitHub']);
+    await menu.locator('.tag-menu-add').fill('Billing!');                                     // a tag the server would refuse: hinted, nothing sent
+    await page.keyboard.press('Enter');
+    await expect(menu.locator('.tag-menu-msg')).toContainText('lowercase');
+    expect(tagsOnDisk(id)).toBe('security,nodejs,github');
+    await menu.locator('.tag-menu-add').fill('Billing');
+    await page.keyboard.press('Enter');
+    await expect.poll(() => tagsOnDisk(id)).toBe('security,nodejs,github,billing');
+    expect(JSON.parse(fs.readFileSync(projectList, 'utf8'))).toEqual(['billing']);           // saved to the project's own list
+    await expect(page.locator('#m-tag-chips .tag-chip').last()).toHaveText('Billing');          // stored lowercase, shown in Title Case
+    await menu.locator('.tag-menu-add').fill('  fix later  ');                                  // trimmed, inner space becomes a dash
+    await page.keyboard.press('Enter');
+    await expect.poll(() => tagsOnDisk(id)).toBe('security,nodejs,github,billing,fix-later');
+    await expect(page.locator('#m-tag-chips .tag-chip').last()).toHaveText('Fix-Later');
+    await page.keyboard.press('Escape');                                                      // closes the menu, not the ticket dialog
+    await expect(menu).toHaveCount(0);
+    await expect(page.locator('#modal-overlay')).toHaveClass(/open/);
+    await expect(page.locator('#m-tags-btn')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#modal-overlay')).not.toHaveClass(/open/);
+    await expect(card.locator('.tag-chip')).toHaveText(['Security', 'NodeJs', 'GitHub']);   // the card follows
+    // closed: shown, not editable
+    await page.locator('#board-search').fill(done);
+    await page.locator(`.card[data-id="${done}"]`).click();
+    await expect(page.locator('#m-tag-chips .tag-chip')).toHaveText(['Go']);
+    await expect(page.locator('#m-tags-btn')).toBeDisabled();
+  });
+
+  test('the New Ticket dialog picks tags from the dropdown and the created ticket carries them (t-37e8)', async ({ page }) => {
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await page.locator('#btn-create').click();
+    await page.locator('#c-title').fill('Tag me from the dialog');
+    await page.locator('#c-tags-btn').click();
+    const menu = page.locator('.tag-menu');
+    await menu.locator('label', { hasText: 'GitHub' }).locator('input').check();
+    await menu.locator('label', { hasText: 'Security' }).locator('input').check();
+    await expect(page.locator('#c-tag-chips .tag-chip')).toHaveText(['GitHub', 'Security']);
+    await page.keyboard.press('Escape');
+    await expect(menu).toHaveCount(0);
+    await expect(page.locator('#create-overlay')).toHaveClass(/open/);                        // Escape closed only the menu
+    const created = page.waitForResponse(r => new URL(r.url()).pathname === '/api/tickets' && r.request().method() === 'POST');
+    await page.locator('#c-submit').click();
+    const id = (await (await created).json()).id;
+    try { expect(tagsOnDisk(id)).toBe('github,security'); } finally { fs.rmSync(dir(id), { recursive: true, force: true }); }   // made through the UI, not newTicketId
+    await page.locator('#btn-create').click();                                                // a fresh dialog starts with no tags
+    await expect(page.locator('#c-tag-chips .tag-chip')).toHaveCount(0);
+  });
+
+  test('tag:x finds exactly the tagged tickets in any case; a plain word also matches the tag; an unknown tag finds nothing (t-37e8)', async ({ page }) => {
+    const a = newTicketId(PROJECT_ROOT), b = newTicketId(PROJECT_ROOT), c = newTicketId(PROJECT_ROOT);
+    writeTagged(a, { tags: 'github,go', title: 'Alpha tagged' });
+    writeTagged(b, { title: 'Beta mentions github in its title only' });
+    writeTagged(c, { tags: 'security', title: 'Gamma other tag' });
+    const shown = async () => (await page.locator('.card').evaluateAll(els => els.map(e => e.dataset.id))).filter(i => [a, b, c].includes(i)).sort();
+    await find(page, 'tag:github');
+    await expect.poll(shown).toEqual([a]);
+    for (const q of ['TAG:GitHub', 'tag: github', ' Tag :GITHUB ']) {
+      await page.locator('#board-search').fill(q);
+      await expect.poll(shown, { message: q }).toEqual([a]);
+    }
+    await page.locator('#board-search').fill('github');                                      // plain word: the title match and the tag match
+    await expect.poll(shown).toEqual([a, b].sort());
+    await page.locator('#board-search').fill('tag:nobody-has-this');
+    await expect.poll(shown).toEqual([]);
+    await expect(page.locator('#board-empty-search')).toContainText('No tickets match');
+    await page.locator('#board-search').fill('tag:security');
+    await expect.poll(shown).toEqual([c]);
+  });
+
+  test('a board without the tags route says so in the dropdown instead of showing an empty list (t-37e8)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT);
+    writeTagged(id, { title: 'Old board' });
+    await page.route(/\/api\/tags(\?|$)/, r => r.fulfill({ status: 404, contentType: 'text/plain', body: '404 page not found' }));
+    await find(page, id);
+    await page.locator(`.card[data-id="${id}"]`).click();
+    await page.locator('#m-tags-btn').click();
+    await expect(page.locator('.tag-menu-msg')).toContainText('Restart it');
+    await expect(page.locator('.tag-menu .tag-menu-add')).toBeVisible();
+  });
+
+  test('a hostile tag in a ticket file is text on the card, in the modal and in the dropdown: no element, handler or request (t-37e8)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT);
+    const hostile = '"><img src=x onerror=window.__pwned=1>';
+    writeTagged(id, { tags: `${hostile},ok` });
+    const requests = [];
+    page.on('request', r => { if (/\/x$|pwned/.test(r.url())) requests.push(r.url()); });
+    await find(page, id);
+    const card = page.locator(`.card[data-id="${id}"]`);
+    expect((await card.locator('.tag-chip').first().textContent()).toLowerCase()).toBe(hostile);   // shown in Title Case, as text
+    await expect(card.locator('img')).toHaveCount(0);
+    await card.click();
+    await page.locator('#m-tags-btn').click();
+    await expect(page.locator('.tag-menu label', { hasText: 'onerror' })).toHaveCount(1);
+    await expect(page.locator('.tag-menu img')).toHaveCount(0);
+    await expect(page.locator('#m-tag-chips img')).toHaveCount(0);
+    expect(await page.evaluate(() => window.__pwned)).toBeUndefined();
+    expect(requests).toEqual([]);
+  });
+});

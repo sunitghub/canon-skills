@@ -1,0 +1,31 @@
+/* t-37e8: ticket tags — chips on cards and in the modal, and the tags dropdown. Board tokens only. */
+.tag-chip, .tag-more {
+  display: inline-block; font-size: 10.5px; line-height: 16px; padding: 0 7px; border-radius: 999px;
+  border: 1px solid var(--border-hover); color: var(--text-muted); background: transparent; white-space: nowrap;
+}
+.tag-more { border-style: dashed; }
+.card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.card-tags:empty { display: none; }
+.meta-tags { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.tag-edit {
+  font: inherit; font-size: 11px; line-height: 16px; padding: 0 8px; border-radius: 999px; cursor: pointer;
+  border: 1px dashed var(--border-hover); background: transparent; color: var(--accent);
+}
+.tag-edit:disabled { cursor: default; opacity: .5; }
+.tag-menu {
+  position: fixed; z-index: 300; width: 230px; max-height: min(380px, calc(100vh - 16px)); overflow: auto;
+  background: var(--surface); border: 1px solid var(--border-hover); border-radius: 10px; padding: 8px;
+  box-shadow: 0 12px 32px rgba(0,0,0,.45);
+}
+.tag-menu-list { display: flex; flex-direction: column; }
+.tag-menu-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 6px; font-size: 12.5px; color: var(--text); cursor: pointer; }
+.tag-menu-row:hover { background: var(--accent-dim); }
+.tag-menu-row input:disabled + span { opacity: .5; }
+.tag-menu-msg { min-height: 16px; margin: 4px 6px 0; font-size: 11px; color: var(--th-warn-ink, #fbbf24); }
+.tag-menu-add {
+  width: 100%; box-sizing: border-box; margin-top: 4px; font: inherit; font-size: 12.5px; padding: 6px 8px;
+  background: var(--surface-raised, var(--surface)); color: var(--text); border: 1px solid var(--border); border-radius: 6px;
+}
+.tag-menu-add:focus { outline: none; border-color: var(--accent); }
+html[data-theme="light"] .tag-menu-msg { color: var(--th-warn-ink, #92400e); }
+.create-tags { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px; }

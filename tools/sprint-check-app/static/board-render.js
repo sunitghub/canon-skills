@@ -1,6 +1,7 @@
 import { COLLAPSE_STATUSES, COLUMNS, COL_LIMIT, SHELL_TAB, docSlug, loadData, state } from './board-core.js';
-import { age, ciBadge, demoBadge, divergenceLine, effectiveStatus, esc, escAttr, normalizeSearch, outcomeRatio, ticketMatchesQuery, typeBadge, whyQueryFromInput, worktreePrefLine, worktreeRun } from './board-helpers.js';
+import { ticketTags, age, ciBadge, demoBadge, divergenceLine, effectiveStatus, esc, escAttr, normalizeSearch, outcomeRatio, ticketMatchesQuery, typeBadge, whyQueryFromInput, worktreePrefLine, worktreeRun } from './board-helpers.js';
 import { openModal } from './board-modal.js';
+import { tagChipsHTML } from './board-tags.js';
 import { moveCard } from './board-docs.js';
 import { activeTabId, cockpitState, cockpitTabs, unmountTab } from './board-cockpit.js';
 import { openCockpit, renderSidebarChanges } from './board-cockpit-rail.js';
@@ -767,6 +768,7 @@ function cardHTML(t, idx) {
       <div class="card-body">
         ${t.status === 'closed' ? `<button class="card-archive" data-id="${esc(t.id)}" title="Archive this ticket">archive</button>` : ''}
         <p class="card-title">${esc(t.title)}</p>
+        ${ticketTags(t).length ? `<div class="card-tags">${tagChipsHTML(ticketTags(t), 3)}</div>` : ''}
         ${t.status === 'in_progress' ? `<span class="card-wt-chip" data-id="${esc(t.id)}"></span>` : ''}
         ${ghChipHTML(t)}
         ${run ? `<div class="card-wt-pref card-wt-run" title="In progress in worktree ${escAttr(run.branch)} (this checkout's copy still says open until the branch merges).">Worktree: ${esc(run.branch)}</div>` : `${worktreePrefLine(t)}

@@ -25,6 +25,11 @@ export function normalizeSearch(s) {
   return String(s ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
+// t-37e8: a ticket's tags as a lowercase list (the frontmatter value is a comma string, absent = none).
+export function ticketTags(t) {
+  return String((t && t.tags) ?? '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+}
+
 function searchableText(t) {
   const r = readiness(t);
   return normalizeSearch([
@@ -32,6 +37,7 @@ function searchableText(t) {
     t.title,
     t.status,
     t.type,
+    ticketTags(t).join(' '),
     `p${t.priority ?? 2}`,
     t.body,
     r.label,
@@ -51,6 +57,7 @@ function primarySearchText(t) {
     t.title,
     t.status,
     t.type,
+    ticketTags(t).join(' '),
     `p${t.priority ?? 2}`,
     t.body,
     r.label,
@@ -65,6 +72,9 @@ export function ticketMatchesQuery(t) {
   const q = normalizeSearch(state.query);
   if (state.queryMode !== 'search') return true;
   if (!q) return true;
+  // t-37e8: `tag:github` (any case, spaces allowed after the colon) matches the tickets that carry exactly that tag, nothing else
+  const tagQuery = /^\s*tag\s*:\s*(.*?)\s*$/i.exec(String(state.query ?? ''));
+  if (tagQuery) return ticketTags(t).includes(tagQuery[1].toLowerCase());
   // Direct field queries — bypass prose search entirely (zero false positives)
   if (q === 'is ci') return !!t.ci;
   if (q === 'is override') return !!t.eval_override;

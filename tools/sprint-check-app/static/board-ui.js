@@ -322,6 +322,7 @@ export function initUi() {
       { query: 'haiku', hint: 'Gates ran on haiku' },
       { query: 'bug', hint: 'Bug tickets' },
       { query: 'p0', hint: 'Critical priority' },
+      { query: 'tag:github', hint: 'Tickets tagged GitHub' },
     ];
     const WHY_TIPS = [
       { query: 'src/app.js', hint: 'Why was this file built this way?' },
