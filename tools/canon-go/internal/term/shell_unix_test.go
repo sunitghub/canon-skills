@@ -58,7 +58,9 @@ func TestRunSpecEndsPromptly(t *testing.T) {
 		name, script string
 		max          time.Duration
 	}{
-		{"hangup", "sleep 60 & wait", 1500 * time.Millisecond},
+		// A process started under nohup has SIGHUP ignored and its children inherit that, so this one may end through the
+		// kill after the 2 s grace period instead of the hang-up: both are the design, so the bound is the grace plus slack.
+		{"hangup", "sleep 60 & wait", 2500 * time.Millisecond},
 		{"ignores hangup", "trap '' HUP; while :; do sleep 1; done", 4 * time.Second},
 	} {
 		ctx, cancel := context.WithCancel(context.Background())
