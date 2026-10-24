@@ -40,7 +40,7 @@ func loginShell(root string) shellSpec {
 func RealShell(ctx context.Context, root string) error { return runSpec(ctx, loginShell(root)) }
 
 // runSpec runs the shell in its own process group and, when ctx ends, hangs up and then kills that whole group, so a
-// program started inside the shell does not outlive the five minutes.
+// program started inside the shell does not outlive the ten minutes.
 func runSpec(ctx context.Context, sp shellSpec) error {
 	cmd := exec.Command(sp.Path, sp.Args...)
 	cmd.Dir = sp.Dir

@@ -10,9 +10,9 @@ import (
 	"time"
 )
 
-// Defaults for su: five minutes, with a warning half a minute before the end.
+// Defaults for su: ten minutes, with a warning half a minute before the end.
 const (
-	DefaultLimit = 5 * time.Minute
+	DefaultLimit = 10 * time.Minute
 	DefaultWarn  = 30 * time.Second
 )
 

@@ -80,8 +80,8 @@ func TestPromptDetails(t *testing.T) {
 	out := run(t, Config{Root: root}, "  ls order  \nls order/a.txt\nls .git\nls a b\nls -x\nls nope\ncat\ncat -n x\ncat zz.zzz\ncat plain.zzz\ncat .env plain.zzz\ncat crlf.zzz\n|cat\nls ~x\nexit\n")
 	for _, want := range []string{
 		"$ ",
-		"a.txt  b.txt  c.txt\n", // sorted
-		"a.txt\n",               // ls of a file prints its name
+		"-rw-r--r--", // the long form, with the mode first
+		"  c.txt\n",
 		"ls: the .git folder is never shown",
 		"usage: ls [path]",
 		"ls: no such file or directory",
@@ -95,6 +95,9 @@ func TestPromptDetails(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
 		}
+	}
+	if a, b, c := strings.Index(out, "  a.txt\n"), strings.Index(out, "  b.txt\n"), strings.Index(out, "  c.txt\n"); !(a >= 0 && a < b && b < c) {
+		t.Errorf("ls order should list a.txt, b.txt, c.txt:\n%s", out)
 	}
 	if strings.Contains(out, "\u240d") {
 		t.Errorf("a CRLF file shows a symbol on every line:\n%s", out)
@@ -139,7 +142,7 @@ func TestReadOnlyTktIsExactlyThis(t *testing.T) {
 	}
 }
 
-// Protects su's defaults and its order of events: a missing limit means five minutes, a bad warning means thirty seconds,
+// Protects su's defaults and its order of events: a missing limit means ten minutes, a bad warning means thirty seconds,
 // the countdown message names the time, the shell has really returned before su_expired and the prompt message, and a
 // Config with no event writer still works.
 func TestSuDefaultsAndOrder(t *testing.T) {
@@ -163,10 +166,10 @@ func TestSuDefaultsAndOrder(t *testing.T) {
 	pw.WriteString("su\nKx7m2\n")
 	<-f.started
 	waitFor(t, func() bool { f.mu.Lock(); defer f.mu.Unlock(); return len(f.chans) == 2 })
-	if f.waits[0] != 4*time.Minute+30*time.Second || f.waits[1] != 5*time.Minute {
-		t.Fatalf("defaults: timers %v, want 4m30s and 5m", f.waits)
+	if f.waits[0] != 9*time.Minute+30*time.Second || f.waits[1] != 10*time.Minute {
+		t.Fatalf("defaults: timers %v, want 9m30s and 10m", f.waits)
 	}
-	if !strings.Contains(out.String(), "Full shell mode lasts 5m0s") {
+	if !strings.Contains(out.String(), "Full shell mode lasts 10m0s") {
 		t.Errorf("the countdown message is missing:\n%s", out.String())
 	}
 	f.chans[1] <- time.Now()

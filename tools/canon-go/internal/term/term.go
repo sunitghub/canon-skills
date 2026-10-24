@@ -69,7 +69,7 @@ type entry struct {
 
 var welcomeEntries = []entry{
 	{"help", "show this list", false},
-	{"ls [path]", "list files", false},
+	{"ls [path]", "list files with sizes and dates", false},
 	{"cat <file>", "show a file a page at a time, with colours for code", false},
 	{"tkt current", "show the active ticket", false},
 	{"tkt ls [--status=X]", "list tickets", false},
@@ -78,7 +78,7 @@ var welcomeEntries = []entry{
 	{"tkt github-status <id>", "where a ticket stands on GitHub", false},
 	{"tkt github-doctor", "check that GitHub is ready (gh, origin)", false},
 	{"tkt --help", "every tkt command, including the rarely needed ones", false},
-	{"su", "a full shell for 5 minutes (asks for a word; 3 wrong answers close the terminal)", false},
+	{"su", "a full shell for 10 minutes (asks for a word; 3 wrong answers close the terminal)", false},
 	{"exit", "leave", false},
 	{"tkt create [title] -d <desc> -p <0-4>", "create a ticket and print its id", true},
 	{"tkt start <id>", "set it in progress and mark it ACTIVE", true},
@@ -167,14 +167,22 @@ func (c Config) dispatch(line string, rd *bufio.Reader) bool {
 	return false
 }
 
+// ls always prints the long form (mode, size, date, name); -l and -a are accepted because every entry is listed anyway.
 func (c Config) ls(args []string) {
-	if len(args) > 1 || (len(args) == 1 && strings.HasPrefix(args[0], "-")) {
-		fmt.Fprintln(c.Out, "usage: ls [path]   (no options here)")
+	var paths []string
+	for _, a := range args {
+		if strings.HasPrefix(a, "-") && len(a) > 1 && strings.Trim(a[1:], "la") == "" {
+			continue
+		}
+		paths = append(paths, a)
+	}
+	if len(paths) > 1 || (len(paths) == 1 && strings.HasPrefix(paths[0], "-")) {
+		fmt.Fprintln(c.Out, "usage: ls [path]   (always the long form; no other options here)")
 		return
 	}
 	arg := "."
-	if len(args) == 1 {
-		arg = args[0]
+	if len(paths) == 1 {
+		arg = paths[0]
 	}
 	real, err := confine(c.Root, arg)
 	if err != nil {
@@ -187,7 +195,7 @@ func (c Config) ls(args []string) {
 		return
 	}
 	if !fi.IsDir() {
-		fmt.Fprintln(c.Out, Visible(fi.Name()))
+		fmt.Fprintln(c.Out, longLine(fi, fi.Name()))
 		return
 	}
 	ents, err := os.ReadDir(real)
@@ -195,16 +203,39 @@ func (c Config) ls(args []string) {
 		fmt.Fprintf(c.Out, "ls: %v\n", cleanErr(err))
 		return
 	}
-	names := make([]string, 0, len(ents))
+	lines := make([]string, 0, len(ents))
 	for _, e := range ents {
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
 		n := e.Name()
 		if e.IsDir() {
 			n += "/"
 		}
-		names = append(names, Visible(n))
+		lines = append(lines, longLine(info, n))
 	}
-	sort.Strings(names)
-	fmt.Fprintln(c.Out, strings.Join(names, "  "))
+	for _, l := range lines { // os.ReadDir already sorts by name
+		fmt.Fprintln(c.Out, l)
+	}
+}
+
+// longLine is one ls -l row without owner or link count: mode, size, modified time, name.
+func longLine(fi os.FileInfo, name string) string {
+	return fmt.Sprintf("%s %7s %s  %s", fi.Mode().String(), humanSize(fi.Size()), fi.ModTime().Format("Jan _2 15:04"), Visible(name))
+}
+
+func humanSize(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d", n)
+	}
+	div, exp := int64(unit), 0
+	for m := n / unit; m >= unit; m /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f%c", float64(n)/float64(div), "KMGT"[exp])
 }
 
 func (c Config) cat(args []string, rd *bufio.Reader) {

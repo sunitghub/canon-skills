@@ -207,9 +207,9 @@ sprint agent without leaving the browser — no second terminal.
   project, binary files and files over 1 MB are refused; control characters in a file or in `tkt`'s output are shown as symbols), read-only
   `tkt` (`current`, `ls`, `show`, `why`, `github-doctor`, `github-status`), `su` and `exit`. There is no shell: no pipes,
   redirects or globs. `su` prints a random word (a capital letter and four more characters) to type back; a typo can be retried, and the third
-  wrong answer in all closes the terminal (open it again to start over). A right word runs your login shell for 5 minutes (a warning at 4:30,
-  the shell is hung up at 5:00 and everything it started in the terminal is ended, then the restricted prompt returns; type
-  `su` again for another 5 minutes). Leaving the shell with `exit` ends what it started too. `tkt send-issue <id> --launch` works there, because `claude --cloud` needs a real terminal. `su`, its denials
+  wrong answer in all closes the terminal (open it again to start over). A right word runs your login shell for 10 minutes (a warning at 9:30,
+  the shell is hung up at 10:00 and everything it started in the terminal is ended, then the restricted prompt returns; type
+  `su` again for another 10 minutes). Leaving the shell with `exit` ends what it started too. `tkt send-issue <id> --launch` works there, because `claude --cloud` needs a real terminal. `su`, its denials
   and its end are logged as `terminal.su_*` events (see `docs/plugins.md`). It is a convenience boundary, not a sandbox: a
   program that starts a session of its own (`setsid`, a daemon) survives the end of `su`, and a full shell can edit any file you can. Ending the Terminal tab while `su` is live can leave the shell's background jobs running, and a Terminal row reopened from the saved list comes back without its Terminal mode (open a new one).
   `su` is not available on Windows yet. The board's path bar has a **Scratch** too. An open scratch tab shows on the Agents

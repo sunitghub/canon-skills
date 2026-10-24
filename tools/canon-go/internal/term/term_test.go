@@ -175,10 +175,10 @@ func run(t *testing.T, cfg Config, input string) string {
 func TestPromptCommands(t *testing.T) {
 	root, _ := project(t)
 	cfg := Config{Root: root}
-	out := run(t, cfg, "help\nls\ncat a.go\ncat .env\ncat ../outside/secret.txt\nrm -rf x\ncat a.go | cat\nls -la\nexit\ncat a.go\n")
+	out := run(t, cfg, "help\nls\ncat a.go\ncat .env\ncat ../outside/secret.txt\nrm -rf x\ncat a.go | cat\nls -R\nexit\ncat a.go\n")
 	for _, want := range []string{
 		"Welcome to Canon Console", "Needs su",
-		"a.go  ", "sub/",
+		" a.go\n", " sub/\n",
 		"package",
 		"cat: .env files are never shown",
 		"cat: outside this project",
@@ -393,7 +393,7 @@ func TestSuFailsClosedWhenTheLogCannotBeWritten(t *testing.T) {
 	}
 }
 
-// Protects the five minutes: a warning 30 s before the end, then the shell is stopped through its context and the
+// Protects the ten minutes: a warning 30 s before the end, then the shell is stopped through its context and the
 // prompt comes back; a shell that exits first is logged as exited.
 func TestSuExpiry(t *testing.T) {
 	root, _ := project(t)
@@ -423,7 +423,7 @@ func TestSuExpiry(t *testing.T) {
 	if got := f.log(); got != "terminal.su_prompted|terminal.su_granted minutes=5|terminal.su_expired how=ended" {
 		t.Errorf("events %q", got)
 	}
-	// Back in the restricted prompt: a shell command is refused again, and su can start another five minutes.
+	// Back in the restricted prompt: a shell command is refused again, and su can start another ten minutes.
 	pw.WriteString("rm x\nexit\n")
 	if code := <-done; code != 0 {
 		t.Errorf("Run returned %d", code)
