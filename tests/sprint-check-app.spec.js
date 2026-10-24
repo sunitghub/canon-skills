@@ -16231,6 +16231,9 @@ test.describe('Tags (t-37e8)', () => {
     const menu = page.locator('.tag-menu');
     await expect(menu).toBeVisible();
     await expect(menu.locator('label', { hasText: 'Enterprise' })).toHaveCount(1);          // the starter list
+    const labels = await menu.locator('label').allTextContents();
+    expect(labels).toEqual([...labels].sort((x, y) => x.localeCompare(y, undefined, { sensitivity: 'base' })));   // sorted A to Z
+    expect(labels.slice(0, 3)).toEqual(['Board', 'CI', 'CLI']);
     await menu.locator('label', { hasText: /^Go$/ }).locator('input').uncheck();
     await expect.poll(() => tagsOnDisk(id)).toBe('security,nodejs,github');
     await expect(page.locator('#m-tag-chips .tag-chip')).toHaveText(['Security', 'NodeJs', 'GitHub']);
@@ -16246,6 +16249,9 @@ test.describe('Tags (t-37e8)', () => {
     await menu.locator('.tag-menu-add').fill('  fix later  ');                                  // trimmed, inner space becomes a dash
     await page.keyboard.press('Enter');
     await expect.poll(() => tagsOnDisk(id)).toBe('security,nodejs,github,billing,fix-later');
+    const after = await menu.locator('label').allTextContents();                                // the added tags joined the sorted list
+    expect(after).toEqual([...after].sort((x, y) => x.localeCompare(y, undefined, { sensitivity: 'base' })));
+    expect(after).toContain('Billing');
     await expect(page.locator('#m-tag-chips .tag-chip').last()).toHaveText('Fix-Later');
     await page.keyboard.press('Escape');                                                      // closes the menu, not the ticket dialog
     await expect(menu).toHaveCount(0);

@@ -70,7 +70,9 @@ export function openTagMenu({ anchor, selected, onChange }) {
   const options = () => [...catalog.starter.map(s => s.tag), ...catalog.project.filter(p => !catalog.starter.some(s => s.tag === p))];
   const paint = () => {
     list.replaceChildren();
-    for (const tag of [...new Set([...options(), ...sel])]) {
+    // A to Z by the label the user sees (starters, the project's own and any ticked tag alike); ticking one does not move it
+    const byLabel = (a, b) => tagLabel(a).localeCompare(tagLabel(b), undefined, { sensitivity: 'base' });
+    for (const tag of [...new Set([...options(), ...sel])].sort(byLabel)) {
       const row = document.createElement('label');
       row.className = 'tag-menu-row';
       const box = document.createElement('input');
