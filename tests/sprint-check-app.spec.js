@@ -6115,7 +6115,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(banner.locator('img')).toHaveCount(0);
       // Admin: the card is renamed and lists every stopped session, including the other project's and the unregistered one.
       await page.evaluate(async () => { const { showView } = await import('/static/cockpit-views.js'); return ( showView('admin')); });
-      await expect(page.locator('#view-admin .slabel', { hasText: 'Active & stopped agents (all projects)' })).toBeVisible();
+      await expect(page.locator('#view-admin .slabel', { hasText: 'Active & stopped agents & terminal sessions (all projects)' })).toBeVisible();
       await expect(page.locator('#ad-sessions tr.st-stopped')).toHaveCount(6);
       await expect(page.locator('#ad-sessions tr[data-id="t-ux01"] .s3')).toHaveText('Can\u2019t resume: project is gone');
       await expect(page.locator('#ad-sessions tr[data-id="t-ux01"] [data-act="resume"]')).toHaveCount(0);
