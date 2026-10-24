@@ -1,0 +1,146 @@
+//go:build !windows
+
+package term
+
+import (
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"syscall"
+	"testing"
+	"time"
+
+	gopty "github.com/aymanbagabas/go-pty"
+)
+
+// TestMain lets the test binary run the restricted prompt itself, so the end-to-end test below can put it on a real pty.
+func TestMain(m *testing.M) {
+	if os.Getenv("CANON_TERM_TEST_CHILD") == "1" {
+		os.Exit(Main(os.Args[2:])) // os.Args[1] is "term", as the daemon strips it
+	}
+	os.Exit(m.Run())
+}
+
+// Protects the real thing on a real pty: the prompt, the typed word, a login shell that owns the terminal, no daemon
+// secrets inside it, the warning, the end of the shell and its jobs, the restricted prompt coming back, and exactly the
+// three audit events with the word in none of them.
+func TestRealPtySession(t *testing.T) {
+	root, _ := project(t)
+	home := t.TempDir()
+	p, err := gopty.New()
+	if err != nil {
+		t.Skip("no pty here:", err)
+	}
+	defer p.Close()
+	c := p.Command(os.Args[0], "term", "--session", "sidx", "--ticket", "s-ab12", "--project", root, "--limit", "4s", "--warn", "2s")
+	c.Dir = root
+	env := []string{"PATH=" + os.Getenv("PATH"), "HOME=" + home, "SHELL=/bin/sh", "CANON_HOME=" + home, "CANON_TERM_TEST_CHILD=1", "ENV=", "PS1=sh$ "}
+	c.Env = env
+	if err := c.Start(); err != nil {
+		t.Fatal(err)
+	}
+	out := &safeBuf{}
+	go func() {
+		buf := make([]byte, 4096)
+		for {
+			n, err := p.Read(buf)
+			if n > 0 {
+				_, _ = out.Write(buf[:n])
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	send := func(s string) { _, _ = p.Write([]byte(s)) }
+	wait := func(re string, d time.Duration) string {
+		t.Helper()
+		r := regexp.MustCompile(re)
+		end := time.Now().Add(d)
+		for time.Now().Before(end) {
+			if m := r.FindString(out.String()); m != "" {
+				return m
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		t.Fatalf("timed out waiting for %q; output:\n%s", re, out.String())
+		return ""
+	}
+	wait(`restricted`, 10*time.Second)
+	send("ls\n")
+	wait(`a\.go`, 5*time.Second)
+	send("cat .env\n")
+	wait(`never shown`, 5*time.Second)
+	send("su\n")
+	word := strings.TrimSuffix(strings.TrimPrefix(wait(`Type [a-z2-9]{4}-[a-z2-9]{4} to continue`, 5*time.Second), "Type "), " to continue")
+	send(word + "\n")
+	time.Sleep(700 * time.Millisecond)
+	send("echo shell-$((20+22))-${COCKPIT_TOKEN:-none}\n")
+	wait(`shell-42-none`, 5*time.Second)
+	send("sleep 300 &\n")
+	time.Sleep(200 * time.Millisecond)
+	send("echo bgpid=$!\n")
+	var bg int
+	for _, ch := range wait(`bgpid=\d+`, 5*time.Second)[6:] {
+		bg = bg*10 + int(ch-'0')
+	}
+	wait(`full shell ends in`, 6*time.Second)
+	wait(`time is up`, 6*time.Second)
+	send("rm x\n")
+	wait(`not allowed here: rm`, 5*time.Second)
+	time.Sleep(300 * time.Millisecond)
+	if st := procState(bg); st != "" && st != "Z" {
+		t.Errorf("the background program (pid %d) is still running (state %s) after the shell ended", bg, st)
+	} else if st == "" {
+		if err := syscall.Kill(bg, 0); err == nil {
+			t.Errorf("the background program (pid %d) is still alive", bg)
+		}
+	}
+	send("exit\n")
+	if err := c.Wait(); err != nil {
+		t.Errorf("exit status: %v", err)
+	}
+	var events string
+	files, _ := filepath.Glob(filepath.Join(home, "events", "*.jsonl"))
+	for _, f := range files {
+		b, _ := os.ReadFile(f)
+		events += string(b)
+	}
+	kinds := regexp.MustCompile(`"kind":"(terminal\.[a-z_]+)"`).FindAllStringSubmatch(events, -1)
+	var got []string
+	for _, k := range kinds {
+		got = append(got, k[1])
+	}
+	if strings.Join(got, " ") != "terminal.su_prompted terminal.su_granted terminal.su_expired" {
+		t.Errorf("events %v\n%s", got, events)
+	}
+	if strings.Contains(events, word) {
+		t.Error("the typed word is in the event log")
+	}
+}
+
+// procState is the process state letter from /proc, or "" when there is no such process or no /proc (macOS).
+func procState(pid int) string {
+	b, err := os.ReadFile("/proc/" + itoa(pid) + "/stat")
+	if err != nil {
+		return ""
+	}
+	s := string(b)
+	i := strings.LastIndex(s, ")")
+	if i < 0 || i+2 >= len(s) {
+		return ""
+	}
+	return string(s[i+2])
+}
+
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	var b []byte
+	for ; n > 0; n /= 10 {
+		b = append([]byte{byte('0' + n%10)}, b...)
+	}
+	return string(b)
+}

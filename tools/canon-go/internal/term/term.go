@@ -42,8 +42,10 @@ var readOnlyTkt = map[string]bool{"current": true, "ls": true, "show": true, "wh
 // ReadOnlyTkt lists the allowed tkt subcommands, sorted (tests compare it with `tkt --help`).
 func ReadOnlyTkt() []string {
 	out := make([]string, 0, len(readOnlyTkt))
-	for k := range readOnlyTkt {
-		out = append(out, k)
+	for k, ok := range readOnlyTkt {
+		if ok {
+			out = append(out, k)
+		}
 	}
 	sort.Strings(out)
 	return out
@@ -158,6 +160,7 @@ func (c Config) cat(args []string) {
 			fmt.Fprintf(c.Out, "cat: %v\n", err)
 			continue
 		}
+		src = strings.ReplaceAll(src, "\r\n", "\n") // a Windows-authored file is not shown with a symbol on every line
 		fmt.Fprint(c.Out, Highlight(name, Visible(src)))
 		if !strings.HasSuffix(src, "\n") {
 			fmt.Fprintln(c.Out)

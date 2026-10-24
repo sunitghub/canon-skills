@@ -816,6 +816,9 @@ func agentKind(a string) (string, bool) {
 	}
 }
 
+// termProgram is the daemon's own binary, which runs the restricted prompt (a variable so tests can run a stand-in).
+var termProgram = os.Executable
+
 // termEnv is the environment of a term session: the daemon's own, without its COCKPIT_* settings (the boot token may be
 // among them, and the su shell would inherit it).
 func termEnv(environ []string) []string {
@@ -987,7 +990,7 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	switch kind {
 	case "term":
 		// t-57ab: the daemon's own binary runs the restricted prompt in the pty; no agent, no hooks.
-		exe, err := os.Executable()
+		exe, err := termProgram()
 		if err != nil {
 			p.Close()
 			return nil, err

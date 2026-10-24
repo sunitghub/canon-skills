@@ -198,10 +198,10 @@ sprint agent without leaving the browser — no second terminal.
   project, binary files and files over 1 MB are refused; control characters in a file are shown as symbols), read-only
   `tkt` (`current`, `ls`, `show`, `why`, `github-doctor`, `github-status`), `su` and `exit`. There is no shell: no pipes,
   redirects or globs. `su` prints a random word to type back, then runs your login shell for 5 minutes (a warning at 4:30,
-  the shell and its job-control jobs hung up at 5:00, then the restricted prompt returns; type `su` again for another 5
-  minutes). `tkt send-issue <id> --launch` works there, because `claude --cloud` needs a real terminal. `su`, its denials
+  the shell is hung up at 5:00 and everything it started in the terminal is ended, then the restricted prompt returns; type
+  `su` again for another 5 minutes). Leaving the shell with `exit` ends what it started too. `tkt send-issue <id> --launch` works there, because `claude --cloud` needs a real terminal. `su`, its denials
   and its end are logged as `terminal.su_*` events (see `docs/plugins.md`). It is a convenience boundary, not a sandbox: a
-  program that detaches itself (`nohup`, `setsid`) survives the end of `su`, and a full shell can edit any file you can.
+  program that starts a session of its own (`setsid`, a daemon) survives the end of `su`, and a full shell can edit any file you can.
   `su` is not available on Windows yet. The board's path bar has a **Scratch** too. An open scratch tab shows on the Agents
   rail as *not started* until its agent runs (`t-f553`). Click the scratch title to name it
   (`t-f553`); the rail, Admin and notifications show that name. **Promote to ticket**

@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -22,6 +24,7 @@ type shellSpec struct {
 	In         io.Reader
 	Out        io.Writer
 	Foreground bool // hand the terminal to the shell's process group (the real pty), and take it back after
+	Sweep      bool // when the shell ends, also end everything else it started in this terminal's session
 }
 
 // loginShell is the full shell su starts: the user's own login shell on the pty.
@@ -30,7 +33,7 @@ func loginShell(root string) shellSpec {
 	if sh == "" {
 		sh = "/bin/sh"
 	}
-	return shellSpec{Path: sh, Args: []string{"-l"}, Dir: root, In: os.Stdin, Out: os.Stdout, Foreground: true}
+	return shellSpec{Path: sh, Args: []string{"-l"}, Dir: root, In: os.Stdin, Out: os.Stdout, Foreground: true, Sweep: true}
 }
 
 // RealShell runs the user's login shell until it exits or ctx ends.
@@ -57,6 +60,11 @@ func runSpec(ctx context.Context, sp shellSpec) error {
 	go func() {
 		select {
 		case <-ctx.Done():
+			select {
+			case <-finished: // the shell already ended: its group id may belong to someone else now
+				return
+			default:
+			}
 			_ = syscall.Kill(-pgid, syscall.SIGHUP)
 			select {
 			case <-finished:
@@ -68,8 +76,36 @@ func runSpec(ctx context.Context, sp shellSpec) error {
 	}()
 	err := cmd.Wait()
 	close(finished)
+	if sp.Sweep {
+		sweepSession()
+	}
 	if sp.Foreground {
 		_ = unix.IoctlSetPointerInt(int(os.Stdin.Fd()), unix.TIOCSPGRP, syscall.Getpgrp())
 	}
 	return err
+}
+
+// sweepSession ends every process left in this terminal's session, so a background job the shell started (a shell that
+// does not hang its jobs up, such as dash, leaves them running) does not outlive su. It only runs when this process is
+// the leader of its own session, as the daemon makes it: started from an ordinary terminal, the session is the user's
+// whole terminal and nothing is touched. A program that starts a session of its own (setsid) is out of reach.
+func sweepSession() {
+	me := os.Getpid()
+	sid, err := unix.Getsid(0)
+	if err != nil || sid != me {
+		return
+	}
+	out, err := exec.Command("ps", "-A", "-o", "pid=").Output()
+	if err != nil {
+		return
+	}
+	for _, f := range strings.Fields(string(out)) {
+		pid, err := strconv.Atoi(f)
+		if err != nil || pid <= 1 || pid == me {
+			continue
+		}
+		if s, err := unix.Getsid(pid); err == nil && s == sid {
+			_ = syscall.Kill(pid, syscall.SIGKILL)
+		}
+	}
 }
