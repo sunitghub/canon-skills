@@ -10,8 +10,8 @@ import (
 	"github.com/alecthomas/chroma/v2/styles"
 )
 
-// highlightLimit bounds how long a lexer may run; on a timeout the file is shown plain.
-const highlightLimit = 2 * time.Second
+// highlightLimit bounds how long a lexer may run; on a timeout the file is shown plain (a variable so a test can shorten it).
+var highlightLimit = 2 * time.Second
 
 // Highlight returns src with terminal colours chosen by the file name's language, or src unchanged when the language
 // is unknown, the lexer fails, or it takes too long. src must already be passed through Visible: chroma adds only its

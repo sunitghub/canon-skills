@@ -8395,3 +8395,60 @@ func TestRunDispatchesTerm(t *testing.T) {
 		t.Fatal("Run did not dispatch term: it is serving instead")
 	}
 }
+
+// t-57ab: only a term session loses COCKPIT_*; an agent keeps the daemon's environment (COCKPIT_TICKET and the rest).
+func TestSpawnKeepsDaemonEnvForAgents(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "env.txt")
+	fake := filepath.Join(dir, "fake-agent")
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\nenv > \"$TERM_TEST_OUT\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TERM_TEST_OUT", out)
+	t.Setenv("COCKPIT_TOKEN", "boot-secret")
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	s := newServer(config{token: bootTok, sprintBin: fake, projectRoot: root, stateDir: t.TempDir()})
+	t.Cleanup(func() { killAllSessions(s) })
+	if _, err := s.spawn("t-ab12", root, root, "claude"); err != nil {
+		t.Fatal(err)
+	}
+	var seen string
+	for i := 0; i < 300 && seen == ""; i++ {
+		if b, err := os.ReadFile(out); err == nil && strings.Contains(string(b), "PATH=") {
+			seen = string(b)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !strings.Contains(seen, "COCKPIT_TICKET=t-ab12") || !strings.Contains(seen, "COCKPIT_TOKEN=boot-secret") {
+		t.Errorf("an agent session should keep the daemon's COCKPIT_* environment:\n%s", seen)
+	}
+}
+
+// t-57ab: the board reads a term session's state from activity, like pi; claude reads its hook, copilot its menu.
+func TestSessionSignalByAgent(t *testing.T) {
+	now := time.Now()
+	for agent, want := range map[string]string{"term": "activity", "pi": "activity", "claude": "hook", "copilot": "copilot-menu"} {
+		se := &session{agent: agent, lastActivity: now, statusSince: now, status: "running"}
+		if _, _, _, sig := sessionStateLocked(se, now); sig != want {
+			t.Errorf("agent %s: signal %q, want %q", agent, sig, want)
+		}
+	}
+}
+
+// t-57ab: a normal run with -version prints the version and is not taken for the term subcommand.
+func TestRunVersionIsNotTerm(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stdout
+	os.Stdout = w
+	code := Run("v9.9.9", "c0ffee", []string{"-version"})
+	w.Close()
+	os.Stdout = old
+	b, _ := io.ReadAll(r)
+	if code != 0 || !strings.Contains(string(b), "9.9.9") || strings.Contains(string(b), "Welcome to") {
+		t.Errorf("code=%d output=%q", code, string(b))
+	}
+}

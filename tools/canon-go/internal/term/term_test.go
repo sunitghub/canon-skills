@@ -135,6 +135,17 @@ func TestVisible(t *testing.T) {
 	}
 }
 
+// Protects the time limit: a lexer that takes longer than the limit is dropped and the file is shown plain.
+func TestHighlightTimeoutShowsPlain(t *testing.T) {
+	old := highlightLimit
+	highlightLimit = time.Nanosecond
+	t.Cleanup(func() { highlightLimit = old })
+	src := strings.Repeat("package main\n\nfunc f() { println(\"x\") }\n", 20000)
+	if got := Highlight("big.go", src); got != src {
+		t.Errorf("a lexer past its limit should leave the text plain (got %d bytes, want %d)", len(got), len(src))
+	}
+}
+
 func TestHighlight(t *testing.T) {
 	if got := Highlight("a.go", "package main\n"); !strings.Contains(got, "\x1b[") || !strings.Contains(got, "package") {
 		t.Errorf("a Go file should be coloured, got %q", got)
@@ -368,12 +379,12 @@ func TestSuFailsClosedWhenTheLogCannotBeWritten(t *testing.T) {
 	root, _ := project(t)
 	f := newFakeSu()
 	f.emitErr = errors.New("disk full")
-	out := run(t, f.cfg(root), "su\nKx7m2\nexit\n")
+	out := run(t, f.cfg(root), "su\nKx7m2\nls\nexit\n")
 	if f.shells != 0 {
 		t.Fatal("a shell started although su_granted could not be logged")
 	}
-	if !strings.Contains(out, "su refused") {
-		t.Errorf("no refusal message:\n%s", out)
+	if !strings.Contains(out, "su refused") || !strings.Contains(out, "a.go") {
+		t.Errorf("a refusal should print its message and leave the prompt running (ls after it):\n%s", out)
 	}
 }
 
@@ -442,9 +453,9 @@ func TestRandomWord(t *testing.T) {
 // Without a shell runner (Windows today) su says so and starts nothing.
 func TestSuUnavailable(t *testing.T) {
 	root, _ := project(t)
-	out := run(t, Config{Root: root}, "su\nexit\n")
-	if !strings.Contains(out, "su is not available") {
-		t.Errorf("got:\n%s", out)
+	out := run(t, Config{Root: root}, "su\nls\nexit\n")
+	if !strings.Contains(out, "su is not available") || !strings.Contains(out, "a.go") {
+		t.Errorf("su should say so and leave the prompt running (ls after it):\n%s", out)
 	}
 }
 
