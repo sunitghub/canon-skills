@@ -6510,6 +6510,26 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.frameLocator('#view-proj-a iframe').locator('#cockpit')).toHaveClass(/term-mode/);
     });
 
+    const waitSessionLive = (board) => expect.poll(() => board.locator('body').evaluate(async () => (await import('/static/board-cockpit.js')).sessionIsLive()), { timeout: 10000 }).toBe(true);
+
+    test('Terminal close (t-57ab): x on a live agent session (not a Terminal) never offers to close a Terminal', async ({ page }) => {
+      const stubPage = `<!doctype html><html><body><script>parent.postMessage({source:'canon-cockpit',type:'status',status:'running'},'*');</script></body></html>`;
+      await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: stubPage }));
+      await openShell(page, []);
+      await stubCockpit(page);
+      await page.route(/\/api\/cockpit(\?|$)/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR, launched: true }) }));
+      await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return activateTab('proj-a'); });
+      await boardsKeyReady(page, ['proj-a']);
+      const board = page.frameLocator('#view-proj-a iframe');
+      await board.locator('#btn-scratch').click();          // a plain Scratch (an agent), not a Terminal
+      await expect(board.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await waitSessionLive(board);
+      await pressPrefix(page, 'x');
+      await page.waitForTimeout(1200);                       // past the shell's wait for the board's answer
+      const title = await board.locator('#ck-leave-confirm-title').textContent({ timeout: 500 }).catch(() => '');   // the shell may close the whole tab instead: then there is no dialog at all
+      expect(title).not.toBe('Close this Terminal?');
+    });
+
     test('Terminal close (t-57ab): the prefix then x asks to close just the Terminal; c cancels and the project tab stays, Enter ends it', async ({ page }) => {
       const stubPage = `<!doctype html><html><body><script>
         parent.postMessage({source:'canon-cockpit',type:'status',status:'running'},'*');
@@ -6525,6 +6545,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await pressPrefix(page, 'm');
       await expect(board.locator('#cockpit')).toHaveClass(/term-mode/);
       await expect(board.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await waitSessionLive(board);                          // x asks about a LIVE Terminal: wait for the stub's running status
       await pressPrefix(page, 'x');
       await expect(board.locator('#ck-leave-confirm')).toHaveClass(/open/);
       await expect(board.locator('#ck-leave-confirm-title')).toHaveText('Close this Terminal?');
@@ -6537,6 +6558,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.keyboard.press('Enter');
       await expect(board.locator('#ck-leave-confirm')).not.toHaveClass(/open/);
       expect(await shellTab(page)).toBe('proj-a');
+      // ending reloads the board's tickets; let that request finish before the page goes away (a late route would fail the test)
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
     test('promote (t-f553): editable title with hover, Promote → Continue as the ticket opens its cockpit', async ({ page }) => {
