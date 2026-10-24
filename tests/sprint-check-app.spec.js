@@ -3744,6 +3744,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await pressPrefix(page, '?');
       await expect(page.locator('#keys-sheet')).toHaveClass(/show/);
       await expect(page.locator('#keys-prefix')).toHaveText('ctrl+.');
+      await expect(page.locator('#keys-sheet kbd', { hasText: /^m$/ })).toHaveCount(1);   // t-57ab: prefix then m opens a Terminal
       await page.keyboard.press('Escape');
       await expect(page.locator('#keys-sheet')).not.toHaveClass(/show/);
       await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return ( activateTab('proj-a')); });
@@ -6273,7 +6274,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('board path bar (t-67ab, t-0e8b, t-c6bb): branch under the path, no counts, + New · Logbook · Sync · Scratch · CI on the right, no Upkeep button', async ({ page }) => {
+    test('board path bar (t-67ab, t-0e8b, t-c6bb, t-57ab): branch under the path, no counts, + New · Logbook · Sync · Scratch · Terminal · CI on the right, no Upkeep button', async ({ page }) => {
       const board = await openShell(page, []);
       await expect(board.locator('#h-branch')).not.toHaveText('\u2014', { timeout: 8000 });   // data loaded
       for (const id of ['h-open', 'h-active', 'h-needs-stat', 'h-archived-stat']) await expect(board.locator('#' + id)).toHaveCount(0);
@@ -6281,8 +6282,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const box = async sel => board.locator(sel).boundingBox();
       const proj = await box('#h-project'), branch = await box('#h-branch');
       expect(branch.y).toBeGreaterThan(proj.y + proj.height / 2);   // on the line below the path
-      expect(await board.locator('.header-right button:visible').evaluateAll(bs => bs.slice(0, 5).map(b => b.id)))
-        .toEqual(['btn-create', 'btn-logbook', 'btn-gh-sync', 'btn-scratch', 'btn-ci-setup']);   // t-90a3 put Sync from GitHub after + New; t-c6bb the Logbook right after it
+      expect(await board.locator('.header-right button:visible').evaluateAll(bs => bs.slice(0, 6).map(b => b.id)))
+        .toEqual(['btn-create', 'btn-logbook', 'btn-gh-sync', 'btn-scratch', 'btn-terminal', 'btn-ci-setup']);   // t-90a3 put Sync from GitHub after + New; t-c6bb the Logbook right after it; t-57ab the Terminal after Scratch
       const right = await box('.header-right'), first = await box('#btn-create');
       expect(first.x).toBeGreaterThan(proj.x + proj.width);   // the buttons sit to the right of the path
       await board.locator('#header').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-0e8b', 'visuals', 'path-bar.png') });
@@ -6496,6 +6497,94 @@ test.describe('cockpit in board (t-ddc8)', () => {
       });
     </script></body></html>`;
     const recordSeen = page => page.evaluate(() => { window.__termSeen = []; window.addEventListener('message', e => { if (e.data && e.data.type === '__seen') window.__termSeen.push(e.data.msg); }); });
+
+    test('Terminal button (t-57ab): opens a scratch tab whose daemon page is asked for mode=term; Scratch is not', async ({ page }) => {
+      await stubCockpit(page);
+      const urls = [];
+      await page.route('**/cockpit?**', r => { urls.push(r.request().url()); return r.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>cockpit</body></html>' }); });
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await expect(page.locator('#btn-terminal svg.scr-ico')).toBeVisible();   // the >_ icon, beside the label
+      await expect(page.locator('#btn-terminal')).toContainText('Terminal');
+      await page.locator('#btn-terminal').click();
+      await expect(page.locator('#cockpit')).toHaveClass(/scratch-mode/);
+      await expect.poll(() => urls.length).toBeGreaterThan(0);
+      const u = new URL(urls[0]);
+      expect(u.searchParams.get('mode')).toBe('term');
+      expect(u.searchParams.get('ticket')).toMatch(/^s-[a-z0-9]{4}$/);
+      await expect(page.locator('#ck-promote')).toBeHidden();   // promote types an agent prompt into the pty: not for a terminal
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      const before = urls.length;
+      await page.locator('#btn-scratch').click();
+      await expect.poll(() => urls.length).toBeGreaterThan(before);
+      expect(new URL(urls[urls.length - 1]).searchParams.get('mode')).toBeNull();   // the plain Scratch button starts an agent as before
+    });
+
+    test('Terminal shortcut (t-57ab): the prefix then m opens a Terminal tab in the active project', async ({ page }) => {
+      const urls = [];
+      await page.route('**/cockpit?**', r => { urls.push(r.request().url()); return r.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>cockpit</body></html>' }); });
+      await openShell(page, []);
+      await stubCockpit(page);
+      await page.route(/\/api\/cockpit(\?|$)/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR, launched: true }) }));
+      await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return activateTab('proj-a'); });
+      await boardsKeyReady(page, ['proj-a']);
+      await pressPrefix(page, 'm');
+      await expect.poll(() => urls.some(u => new URL(u).searchParams.get('mode') === 'term')).toBe(true);
+      await expect(page.frameLocator('#view-proj-a iframe').locator('#cockpit')).toHaveClass(/term-mode/);
+    });
+
+    const waitSessionLive = (board) => expect.poll(() => board.locator('body').evaluate(async () => (await import('/static/board-cockpit.js')).sessionIsLive()), { timeout: 10000 }).toBe(true);
+
+    test('Terminal close (t-57ab): x on a live agent session (not a Terminal) never offers to close a Terminal', async ({ page }) => {
+      const stubPage = `<!doctype html><html><body><script>parent.postMessage({source:'canon-cockpit',type:'status',status:'running'},'*');</script></body></html>`;
+      await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: stubPage }));
+      await openShell(page, []);
+      await stubCockpit(page);
+      await page.route(/\/api\/cockpit(\?|$)/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR, launched: true }) }));
+      await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return activateTab('proj-a'); });
+      await boardsKeyReady(page, ['proj-a']);
+      const board = page.frameLocator('#view-proj-a iframe');
+      await board.locator('#btn-scratch').click();          // a plain Scratch (an agent), not a Terminal
+      await expect(board.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await waitSessionLive(board);
+      await pressPrefix(page, 'x');
+      await page.waitForTimeout(1200);                       // past the shell's wait for the board's answer
+      const title = await board.locator('#ck-leave-confirm-title').textContent({ timeout: 500 }).catch(() => '');   // the shell may close the whole tab instead: then there is no dialog at all
+      expect(title).not.toBe('Close this Terminal?');
+    });
+
+    test('Terminal close (t-57ab): the prefix then x asks to close just the Terminal; c cancels and the project tab stays, Enter ends it', async ({ page }) => {
+      const stubPage = `<!doctype html><html><body><script>
+        parent.postMessage({source:'canon-cockpit',type:'status',status:'running'},'*');
+        addEventListener('message',function(e){ var d=e.data; if(d&&d.source==='canon-cockpit'&&d.type==='end-scratch') parent.postMessage({source:'canon-cockpit',type:'ended'},'*'); });
+      </script></body></html>`;
+      await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: stubPage }));
+      await openShell(page, []);
+      await stubCockpit(page);
+      await page.route(/\/api\/cockpit(\?|$)/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR, launched: true }) }));
+      await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return activateTab('proj-a'); });
+      await boardsKeyReady(page, ['proj-a']);
+      const board = page.frameLocator('#view-proj-a iframe');
+      await pressPrefix(page, 'm');
+      await expect(board.locator('#cockpit')).toHaveClass(/term-mode/);
+      await expect(board.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await waitSessionLive(board);                          // x asks about a LIVE Terminal: wait for the stub's running status
+      await pressPrefix(page, 'x');
+      await expect(board.locator('#ck-leave-confirm')).toHaveClass(/open/);
+      await expect(board.locator('#ck-leave-confirm-title')).toHaveText('Close this Terminal?');
+      await expect(board.locator('#ck-leave-save')).toBeHidden();
+      await page.keyboard.press('c');
+      await expect(board.locator('#ck-leave-confirm')).not.toHaveClass(/open/);
+      expect(await shellTab(page)).toBe('proj-a');           // only the dialog went; the project tab stays
+      await pressPrefix(page, 'x');
+      await expect(board.locator('#ck-leave-confirm')).toHaveClass(/open/);
+      await page.keyboard.press('Enter');
+      await expect(board.locator('#ck-leave-confirm')).not.toHaveClass(/open/);
+      expect(await shellTab(page)).toBe('proj-a');
+      // ending reloads the board's tickets; let that request finish before the page goes away (a late route would fail the test)
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
 
     test('promote (t-f553): editable title with hover, Promote → Continue as the ticket opens its cockpit', async ({ page }) => {
       const tid = newTicketId(PROJECT_ROOT);

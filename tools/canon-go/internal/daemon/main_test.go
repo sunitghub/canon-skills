@@ -3949,6 +3949,8 @@ func TestAgentKindAllowlist(t *testing.T) {
 		{"claude", "claude", true},
 		{"pi", "pi", true},
 		{"copilot", "copilot", true},
+		{"term", "term", true}, // t-57ab
+		{"Term", "", false},
 		{"bogus", "", false},
 		{"Claude", "", false},  // case-sensitive
 		{"pi ", "", false},     // no trimming — exact match only
@@ -8246,5 +8248,217 @@ func TestAFailedScratchNoteLeavesTheClaimForALaterEnd(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(hand); !strings.Contains(string(b), "s-ff06: ") {
 		t.Fatalf("after a failed note, a later end wrote nothing:\n%s", b)
+	}
+}
+
+// t-57ab: a term session runs the restricted prompt, not an agent. Its argv is fixed, its environment has none of the
+// daemon's COCKPIT_* settings (the su shell inherits it), and /session/start refuses it for a ticket.
+func TestTermSessionShape(t *testing.T) {
+	got := termEnv([]string{"PATH=/bin", "COCKPIT_TOKEN=secret", "HOME=/h", "COCKPIT_TICKET=t-ab12", "NOT_COCKPIT_X=1"})
+	if want := "PATH=/bin HOME=/h NOT_COCKPIT_X=1"; strings.Join(got, " ") != want {
+		t.Errorf("termEnv = %q, want %q", strings.Join(got, " "), want)
+	}
+	if a := strings.Join(termArgs("sid1", "s-ab12", "/p"), " "); a != "term --session sid1 --ticket s-ab12 --project /p" {
+		t.Errorf("termArgs = %q", a)
+	}
+	bin, _, _ := fakeSprint(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	if code := startSessionAgent(t, ts.URL, "t-ab12", "term", "wrong"); code != http.StatusUnauthorized {
+		t.Fatalf("term without the boot token: want 401, got %d", code)
+	}
+}
+
+// t-57ab: the /cockpit page turns into the restricted terminal only for mode=term on a scratch id.
+func TestCockpitPageMode(t *testing.T) {
+	ts, base := newTestServer(t, "true")
+	_ = ts
+	get := func(q string) string {
+		resp, err := http.Get(base + "/cockpit?" + q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return string(b)
+	}
+	for q, want := range map[string]string{
+		"ticket=s-ab12&mode=term":    `var MODE = "term";`,
+		"ticket=s-ab12":              `var MODE = "";`,
+		"ticket=t-ab12&mode=term":    `var MODE = "";`, // a ticket page is never the terminal
+		"ticket=s-ab12&mode=other":   `var MODE = "";`,
+		"ticket=s-ab12&mode=term%22": `var MODE = "";`,
+	} {
+		page := get(q)
+		if !strings.Contains(page, want) {
+			t.Errorf("%s: want %s in the page", q, want)
+		}
+		if strings.Contains(page, "__COCKPIT_MODE__") {
+			t.Errorf("%s: the mode placeholder was not replaced", q)
+		}
+	}
+}
+
+// t-57ab: a term start for a ticket is refused and starts nothing.
+func TestTermForTicketStartsNothing(t *testing.T) {
+	bin, _, _ := fakeSprint(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	if code := startSessionAgent(t, ts.URL, "t-ab12", "term", bootTok); code != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d", code)
+	}
+	s.mu.Lock()
+	n := len(s.sessions)
+	s.mu.Unlock()
+	if n != 0 {
+		t.Errorf("a refused term start left %d session(s) running", n)
+	}
+}
+
+// t-57ab: a term session runs the daemon's own binary with the fixed argv and an environment without COCKPIT_*.
+func TestSpawnTermRunsOwnBinaryWithoutDaemonSecrets(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "seen.txt")
+	fake := filepath.Join(dir, "fake-term")
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\n{ echo \"args:$*\"; env; } > \"$TERM_TEST_OUT\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	old := termProgram
+	termProgram = func() (string, error) { return fake, nil }
+	t.Cleanup(func() { termProgram = old })
+	t.Setenv("TERM_TEST_OUT", out)
+	t.Setenv("COCKPIT_TOKEN", "boot-secret")
+	t.Setenv("COCKPIT_FOO", "x")
+	root := t.TempDir()
+	s := newServer(config{token: bootTok, sprintBin: "true", projectRoot: root, stateDir: t.TempDir()})
+	t.Cleanup(func() { killAllSessions(s) })
+	se, err := s.spawn("s-ab12", root, root, "term")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var seen string
+	for i := 0; i < 300 && seen == ""; i++ {
+		if b, err := os.ReadFile(out); err == nil && strings.Contains(string(b), "PATH=") {
+			seen = string(b)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if seen == "" {
+		t.Fatal("the stand-in terminal never ran")
+	}
+	if want := "args:term --session " + se.sid + " --ticket s-ab12 --project " + root; !strings.Contains(seen, want) {
+		t.Errorf("argv: want %q in\n%s", want, seen)
+	}
+	if strings.Contains(seen, "COCKPIT_") || strings.Contains(seen, "boot-secret") {
+		t.Errorf("the term child inherited daemon settings:\n%s", seen)
+	}
+	if se.agent != "term" {
+		t.Errorf("session agent = %q", se.agent)
+	}
+	// A binary that cannot be found fails the spawn and registers nothing.
+	termProgram = func() (string, error) { return "", os.ErrNotExist }
+	s.mu.Lock()
+	before := len(s.sessions)
+	s.mu.Unlock()
+	if _, err := s.spawn("s-ab13", root, root, "term"); err == nil {
+		t.Error("spawn should fail when the daemon's own binary cannot be found")
+	}
+	s.mu.Lock()
+	after := len(s.sessions)
+	s.mu.Unlock()
+	if after != before {
+		t.Errorf("a failed term spawn registered a session")
+	}
+}
+
+// t-57ab: `cockpit-daemon term ...` runs the restricted prompt, it does not start a daemon.
+func TestRunDispatchesTerm(t *testing.T) {
+	done := make(chan int, 1)
+	go func() { done <- Run("v", "c", []string{"term", "--no-such-flag"}) }()
+	select {
+	case code := <-done:
+		if code != 2 {
+			t.Errorf("a bad term flag should return 2, got %d", code)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run did not dispatch term: it is serving instead")
+	}
+}
+
+// t-57ab: only a term session loses COCKPIT_*; an agent keeps the daemon's environment (COCKPIT_TICKET and the rest).
+func TestSpawnKeepsDaemonEnvForAgents(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "env.txt")
+	fake := filepath.Join(dir, "fake-agent")
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\nenv > \"$TERM_TEST_OUT\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TERM_TEST_OUT", out)
+	t.Setenv("COCKPIT_TOKEN", "boot-secret")
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	s := newServer(config{token: bootTok, sprintBin: fake, projectRoot: root, stateDir: t.TempDir()})
+	t.Cleanup(func() { killAllSessions(s) })
+	if _, err := s.spawn("t-ab12", root, root, "claude"); err != nil {
+		t.Fatal(err)
+	}
+	var seen string
+	for i := 0; i < 300 && seen == ""; i++ {
+		if b, err := os.ReadFile(out); err == nil && strings.Contains(string(b), "PATH=") {
+			seen = string(b)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !strings.Contains(seen, "COCKPIT_TICKET=t-ab12") || !strings.Contains(seen, "COCKPIT_TOKEN=boot-secret") {
+		t.Errorf("an agent session should keep the daemon's COCKPIT_* environment:\n%s", seen)
+	}
+}
+
+// t-57ab: the board reads a term session's state from activity, like pi; claude reads its hook, copilot its menu.
+func TestSessionSignalByAgent(t *testing.T) {
+	now := time.Now()
+	for agent, want := range map[string]string{"term": "activity", "pi": "activity", "claude": "hook", "copilot": "copilot-menu"} {
+		se := &session{agent: agent, lastActivity: now, statusSince: now, status: "running"}
+		if _, _, _, sig := sessionStateLocked(se, now); sig != want {
+			t.Errorf("agent %s: signal %q, want %q", agent, sig, want)
+		}
+	}
+}
+
+// t-57ab: a normal run with -version prints the version and is not taken for the term subcommand.
+func TestRunVersionIsNotTerm(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stdout
+	os.Stdout = w
+	code := Run("v9.9.9", "c0ffee", []string{"-version"})
+	w.Close()
+	os.Stdout = old
+	b, _ := io.ReadAll(r)
+	// The version text depends on the install the test runs from; the commit stamp is the one part Run passes through.
+	if code != 0 || !strings.Contains(string(b), "c0ffee") || strings.Contains(string(b), "Welcome to") {
+		t.Errorf("code=%d output=%q", code, string(b))
+	}
+}
+
+// t-57ab: a terminal session cannot be promoted: promote types an agent prompt into the pty, where a live su shell would
+// run it as commands. (The session has no pty: reaching the write would panic, so a 409 also proves nothing was typed.)
+func TestPromoteRefusedForTerminal(t *testing.T) {
+	s := newServer(config{token: bootTok, sprintBin: "true", projectRoot: t.TempDir(), stateDir: t.TempDir()})
+	se := &session{agent: "term", ticket: "s-ab12", status: "running"}
+	rec := httptest.NewRecorder()
+	s.handlePromote(rec, httptest.NewRequest(http.MethodPost, "/promote", strings.NewReader("{}")), se)
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "no agent to promote") {
+		t.Errorf("promote on a terminal: code=%d body=%q", rec.Code, rec.Body.String())
 	}
 }

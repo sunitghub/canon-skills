@@ -1,5 +1,5 @@
 import { SHELL_TAB, loadData, state } from './board-core.js';
-import { CK_SIGNAL_LABEL, CK_STATE_LABEL, COCKPIT_TICKET_ID, SCRATCH_ID, announceScratchTabs, ckRowState, findTicketById, finishAdopt, openScratch, postToTab, render, renderBoard, renderScratchWhere, showPromotedChoice, showToast, startPromote } from './board-render.js';
+import { CK_SIGNAL_LABEL, CK_STATE_LABEL, COCKPIT_TICKET_ID, SCRATCH_ID, announceScratchTabs, ckRowState, findTicketById, finishAdopt, newScratchId, openScratch, postToTab, render, renderBoard, renderScratchWhere, showPromotedChoice, showToast, startPromote } from './board-render.js';
 import { findLiveDaemonSession, openTicketWhenLoaded, renderCockpitRail, renderTabStrip, stopCockpitPoll } from './board-cockpit-rail.js';
 import { applyActualWorkingCwd, maybeMountCockpitTerminal } from './board-worktree.js';
 
@@ -279,6 +279,29 @@ export function requestPreview() {
 
 export function sessionIsLive() {
   return !!cockpitState && (cockpitState.status === 'running' || cockpitState.status === 'needs-you');
+}
+
+// t-57ab: prefix then x on a Terminal: the leave dialog, worded for a terminal. Enter closes it, c (or Esc) cancels.
+export function openTerminalCloseConfirm() {
+  const ov = document.getElementById('ck-leave-confirm');
+  const save = document.getElementById('ck-leave-save'), skip = document.getElementById('ck-leave-skip'), cancel = document.getElementById('ck-leave-cancel');
+  save.style.display = 'none';
+  skip.style.display = ''; skip.disabled = false; cancel.disabled = false;
+  skip.textContent = 'Close Terminal (Enter)'; cancel.textContent = 'Cancel (c)';
+  document.getElementById('ck-leave-confirm-title').textContent = 'Close this Terminal?';
+  document.getElementById('ck-leave-confirm-body').textContent = 'This ends the Terminal, and anything you started in su. Press Enter to close it, or c to cancel.';
+  document.getElementById('ck-leave-confirm-status').textContent = '';
+  const discard = document.getElementById('ck-leave-discard');
+  discard.hidden = true; discard.classList.remove('armed'); discard.disabled = false; delete discard.dataset.mode;
+  cockpitState.leaveChanges = null;
+  ov.classList.add('open');
+  const onKey = e => {
+    if (!ov.classList.contains('open')) { document.removeEventListener('keydown', onKey, true); return; }
+    if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); skip.click(); }
+    else if (e.key === 'c' || e.key === 'C' || e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancel.click(); }
+  };
+  document.addEventListener('keydown', onKey, true);
+  setTimeout(() => skip.focus(), 0);   // deferred: a synchronous focus could take the keypress that opened the dialog
 }
 
 export function openLeaveConfirm() {
@@ -736,6 +759,17 @@ export function initCockpit() {
     }
     if (d.type === 'close-scratch') {                      // t-3c9a (user): Kill / Reap now ended this scratch session from the shell; close its chip. closeTab never ends or contacts the daemon
       if (typeof d.id === 'string' && SCRATCH_ID.test(d.id) && cockpitTabs[d.id]) closeTab(d.id);
+      return;
+    }
+    if (d.type === 'close-terminal-request') {             // t-57ab: prefix then x. Only a live Terminal is closed here; otherwise the shell closes the tab as before
+      const open = document.getElementById('cockpit-overlay').classList.contains('open');
+      const isTerm = open && cockpitState && sessionIsLive() && !cockpitState._ending && state.scratch.get(cockpitState.id)?.term === true;
+      if (isTerm) openTerminalCloseConfirm();
+      try { window.parent.postMessage({ source: 'canon-board', type: 'close-terminal-ack', tab: SHELL_TAB, handled: isTerm }, location.origin); } catch {}
+      return;
+    }
+    if (d.type === 'open-terminal-request') {              // t-57ab: prefix then m: the same as the Terminal button
+      openScratch(newScratchId(), { term: true });
       return;
     }
     if (d.type === 'open-scratch') {                       // t-47f1: shell's "+ Scratch", or a scratch row reopened

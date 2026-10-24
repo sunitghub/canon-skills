@@ -69,6 +69,11 @@ var kinds = map[string][]field{
 	"plan.written":         {{"ticket", 64}, {"tier", 16}},
 	"wrapup.gate_started":  {{"ticket", 64}, {"gate", 32}},
 	"wrapup.gate_finished": {{"ticket", 64}, {"gate", 32}, {"result", 16}},
+	// t-57ab: the board's restricted terminal. "ticket" is the scratch id; no typed text, word or path is ever logged.
+	"terminal.su_prompted": {{"session", 64}, {"ticket", 64}},
+	"terminal.su_granted":  {{"session", 64}, {"ticket", 64}, {"minutes", 4}},
+	"terminal.su_denied":   {{"session", 64}, {"ticket", 64}, {"reason", 16}},
+	"terminal.su_expired":  {{"session", 64}, {"ticket", 64}, {"how", 16}},
 }
 
 // Sources are the programs that write events.

@@ -23,6 +23,7 @@ package daemon
 import (
 	"canon/internal/common"
 	"canon/internal/events"
+	"canon/internal/term"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -357,6 +358,11 @@ func (s *server) handleCockpit(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("embed") == "1" {
 		embed = "1"
 	}
+	// t-57ab: mode=term turns a scratch page into the restricted terminal: strictly "term" on a scratch id, else empty.
+	mode := ""
+	if r.URL.Query().Get("mode") == "term" && isScratch(ticket) {
+		mode = "term"
+	}
 	// t-cd06: ?cwd= prefills the WORKTREE selection the board made. This route
 	// has no token (only loopback-origin guard), so the value is validated the
 	// same conservative way as ticket above before it's embedded in a JS string
@@ -391,6 +397,7 @@ func (s *server) handleCockpit(w http.ResponseWriter, r *http.Request) {
 	page = strings.ReplaceAll(page, "__COCKPIT_EMBED__", embed)
 	page = strings.ReplaceAll(page, "__COCKPIT_PARENT__", parentOrigin(r))
 	page = strings.ReplaceAll(page, "__COCKPIT_CWD__", cwd)
+	page = strings.ReplaceAll(page, "__COCKPIT_MODE__", mode)
 	page = strings.ReplaceAll(page, "__COCKPIT_AGENT__", agentDefault)
 	page = strings.ReplaceAll(page, "__COCKPIT_AGENT_HINT__", agentHint)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -478,6 +485,11 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 	kind, ok := agentKind(body.Agent)
 	if !ok {
 		http.Error(w, "invalid agent", http.StatusBadRequest)
+		return
+	}
+	// t-57ab: the restricted terminal has no ticket and no sprint; a ticket session never runs it.
+	if kind == "term" && !scratch {
+		http.Error(w, "term sessions are scratch only", http.StatusBadRequest)
 		return
 	}
 	// t-391a: derive the project from the (re-validated) client cwd so ONE
@@ -797,9 +809,31 @@ func agentKind(a string) (string, bool) {
 		return "pi", true
 	case "copilot":
 		return "copilot", true
+	case "term":
+		return "term", true // t-57ab: not an agent: the restricted prompt (internal/term), scratch sessions only
 	default:
 		return "", false
 	}
+}
+
+// termProgram is the daemon's own binary, which runs the restricted prompt (a variable so tests can run a stand-in).
+var termProgram = os.Executable
+
+// termEnv is the environment of a term session: the daemon's own, without its COCKPIT_* settings (the boot token may be
+// among them, and the su shell would inherit it).
+func termEnv(environ []string) []string {
+	out := make([]string, 0, len(environ))
+	for _, kv := range environ {
+		if !strings.HasPrefix(kv, "COCKPIT_") {
+			out = append(out, kv)
+		}
+	}
+	return out
+}
+
+// termArgs is the argv after the daemon's own binary for a term session.
+func termArgs(sid, ticket, projectRoot string) []string {
+	return []string{"term", "--session", sid, "--ticket", ticket, "--project", projectRoot}
 }
 
 // agentSpawnArgs builds the PTY command args (after the program) for the chosen
@@ -952,7 +986,16 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	copilotResuming := false   // t-6ce0: surfaced onto the session below
 	copilotGate := ""          // t-d8b0: logged below when copilot can't take it
 	inProgress := s.ticketStatusIn(projectRoot, ticket) == "in_progress"
+	termSession := false
 	switch kind {
+	case "term":
+		// t-57ab: the daemon's own binary runs the restricted prompt in the pty; no agent, no hooks.
+		exe, err := termProgram()
+		if err != nil {
+			p.Close()
+			return nil, err
+		}
+		program, args, termSession = exe, termArgs(sid, ticket, projectRoot), true
 	case "pi":
 		program = common.EnvOr("COCKPIT_PI_BIN", "pi")
 		// Resume (pi -c) when the ticket is already in_progress; else a fresh
@@ -992,6 +1035,9 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	c := p.Command(bin, args...)
 	c.Dir = cwd
 	c.Env = append(os.Environ(), "COCKPIT_TICKET="+ticket)
+	if termSession {
+		c.Env = termEnv(os.Environ())
+	}
 	if err := c.Start(); err != nil {
 		p.Close()
 		os.RemoveAll(hookDir)
@@ -1123,7 +1169,7 @@ func sessionStateLocked(se *session, now time.Time) (state string, stateSecs, id
 	switch se.agent {
 	case "copilot":
 		signal = "copilot-menu"
-	case "pi":
+	case "pi", "term":
 		signal = "activity"
 	default:
 		signal = "hook"
@@ -1441,6 +1487,11 @@ func (s *server) handlePromote(w http.ResponseWriter, r *http.Request, se *sessi
 	}
 	if !isScratch(se.ticket) {
 		http.Error(w, "only a scratch session can be promoted", http.StatusConflict)
+		return
+	}
+	// t-57ab: promote types an agent prompt into the pty; a terminal has no agent, and a live su shell would run it as commands.
+	if se.agent == "term" {
+		http.Error(w, "a terminal session has no agent to promote", http.StatusConflict)
 		return
 	}
 	if se.isExited() {
@@ -4646,6 +4697,9 @@ func executableMtime() int64 {
 // FlagSet, not the global one, so the flags parse from args whatever the caller.
 func Run(buildVersion, buildCommit string, args []string) int {
 	version, commit = buildVersion, buildCommit
+	if len(args) > 0 && args[0] == "term" { // t-57ab: the restricted prompt a term session runs in its pty
+		return term.Main(args[1:])
+	}
 	fs := flag.NewFlagSet("cockpit-daemon", flag.ContinueOnError)
 	versionFlag := fs.Bool("version", false, "print build version and exit")
 	addr := fs.String("addr", common.EnvOr("COCKPIT_ADDR", "127.0.0.1:8455"), "loopback bind address")
