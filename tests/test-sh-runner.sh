@@ -63,9 +63,11 @@ assert_eq 10 "$(printf '%s\n' "$slowest" | wc -l | tr -d ' ')"
 
 # A passing run: exit 0, each go/node skip line printed once (never from the dry pass), and --list unchanged by go/node being absent.
 P="$WORK/pass"; runner_copy "$P" tests/a.sh tests/b.sh
-echo 'echo a-ran' > "$P/tests/a.sh"; echo 'echo b-ran' > "$P/tests/b.sh"
-set +e; out="$(PATH="$WORK/bin" bash "$P/scripts/test.sh" 2>&1)"; rc=$?; set -e
+echo 'echo a-ran prompt=${GIT_TERMINAL_PROMPT-unset}' > "$P/tests/a.sh"; echo 'echo b-ran' > "$P/tests/b.sh"
+set +e; out="$(GIT_TERMINAL_PROMPT=1 PATH="$WORK/bin" bash "$P/scripts/test.sh" 2>&1)"; rc=$?; set -e
 assert_eq 0 "$rc"; assert_contains "$out" "a-ran"; assert_contains "$out" "b-ran"; assert_contains "$out" "All tests passed."
+# t-9791: the runner forces git never to prompt on the tty: a prompt from the background batch group stops the whole group on a pty (board Check & merge)
+assert_contains "$out" "a-ran prompt=0"
 for skipped_line in "==> tools/canon-go/internal/board skipped (go absent)" \
   "==> tools/canon-go/internal/daemon skipped (go absent)" "==> tests/sprint-check-gherkin.js skipped (node absent)"; do
   assert_eq 1 "$(printf '%s\n' "$out" | grep -cxF "$skipped_line")"
