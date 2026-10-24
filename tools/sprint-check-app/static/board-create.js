@@ -1,6 +1,7 @@
 import { TICKET_TYPES, TYPE_TEMPLATES, detectTicketType, state } from './board-core.js';
 import { WT_PREF_MAIN, esc, escAttr, titleCase } from './board-helpers.js';
 import { editScratchTitle, newScratchId, openScratch, postWrite, renderBoard, startPromote } from './board-render.js';
+import { openTagMenu, tagChipsHTML } from './board-tags.js';
 import { blobToBase64, insertPlainText, nextPasteVisualIndex, readClipboardImages, resetPanelDrag, resetPanelResize, uploadVisual } from './board-panels.js';
 
 // ── Create ticket ─────────────────────────────────────────────────────────
@@ -25,6 +26,10 @@ export function initCreate() {
     let demoEnabled = false;
     let templateUntouched = true;
     let stagedVisuals = [];
+    let createTags = [];   // t-37e8: the tags picked in the dropdown; sent with the create
+    const tagsBtn = document.getElementById('c-tags-btn');
+    const paintCreateTags = () => { document.getElementById('c-tag-chips').innerHTML = tagChipsHTML(createTags, 8); tagsBtn.textContent = createTags.length ? 'Edit tags' : '+ Tags'; };
+    tagsBtn.addEventListener('click', () => openTagMenu({ anchor: tagsBtn, selected: createTags, onChange: async tags => { createTags = tags; paintCreateTags(); return true; } }));
 
     bodyEl.addEventListener('paste', e => {
       const images = readClipboardImages(e);
@@ -122,6 +127,7 @@ export function initCreate() {
       selectedType = 'task'; selectedPri = 2; templateUntouched = true;
       ciEnabled = false; gateEval = false; demoEnabled = false; stagedVisuals = [];
       wtMode = 'main'; wtNewValue = ''; wtNewTouched = false;
+      createTags = []; paintCreateTags();
       ciBtn.classList.remove('active');
       gateBtn.classList.remove('active'); demoBtn.classList.remove('active'); syncGate();
       refreshWorktreeRow();
@@ -202,7 +208,7 @@ export function initCreate() {
       titleEl.style.borderColor = '';
       document.getElementById('c-submit').disabled = true;
       try {
-        const created = await postWrite('/api/tickets', { title, type: selectedType, status: 'open', priority: selectedPri, body: bodyEl.value, ci: ciEnabled, gate: gateEval ? 'eval' : 'full', demo: demoEnabled, worktree_preference: worktreePreferenceValue() }, 'create the ticket');
+        const created = await postWrite('/api/tickets', { title, type: selectedType, status: 'open', priority: selectedPri, body: bodyEl.value, ci: ciEnabled, gate: gateEval ? 'eval' : 'full', demo: demoEnabled, tags: createTags, worktree_preference: worktreePreferenceValue() }, 'create the ticket');
         if (!created.ok) { document.getElementById('c-submit').disabled = false; return; }
         const ticket = created.data;
 

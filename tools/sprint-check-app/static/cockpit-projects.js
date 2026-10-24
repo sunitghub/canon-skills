@@ -4,6 +4,8 @@ import { cockpitConfirm, esc, escAttr, openHelp, toast } from './cockpit-core.js
 import { GIT_ICON, SCRATCH_ICON, renderSessionSurfaces, startScratch, startSessionPoll } from './cockpit-sessions.js';
 import { showView } from './cockpit-views.js';
 import { openSkillEvalFor } from './cockpit-skill-eval.js';
+import { openLogbookFor } from './cockpit-logbook.js';
+import { LOGBOOK_ICON } from './logbook-icon.js';
 import { fillCardFactory, openFactoryGithub } from './cockpit-factory.js';
 import { closeTab, openProject, openTabs, restoreTabs, updateActiveCount } from './cockpit-tabs.js';
 
@@ -49,6 +51,7 @@ export async function load(){
             <div class="metarow" data-f="sessions-row" hidden><span class="k">Sessions</span><span class="v" data-f="sessions"></span></div>
             <div class="metarow" data-f="stopped-row" hidden><span class="k">Stopped</span><span class="v" data-f="stopped"></span></div>
             <div class="metarow"><span class="k">Branch</span><span class="v mono" data-f="branch">…</span></div>
+            <div class="metarow lb-link-row" data-logbook="${escAttr(p.id)}" title="Read this project's Handoff and Learnings"><span class="k">Logbook</span><span class="v">${LOGBOOK_ICON}Open</span></div>
             <div class="metarow se-link-row" data-skill-eval="${escAttr(p.id)}" title="Check a skill folder in this project"><span class="k">Skill Eval</span><span class="v">Open</span></div>
             <div class="metarow fac-row" data-factory="${escAttr(p.id)}" title="Open this project's Factory"><span class="k">Factory</span><span class="v" data-f="factory">…</span></div>
           </div>
@@ -71,6 +74,7 @@ export async function load(){
   grid.querySelectorAll('.scratchbtn').forEach(b=>b.addEventListener('click',()=>startScratch(b.dataset.scratch)));
   grid.querySelectorAll('.go').forEach(b=>b.addEventListener('click',()=>openProject(b.dataset.open,b.dataset.name,{nudge:true})));
   grid.querySelectorAll('.se-link-row').forEach(r=>r.addEventListener('click',()=>openSkillEvalFor(r.dataset.skillEval)));
+  grid.querySelectorAll('.lb-link-row').forEach(r=>r.addEventListener('click',()=>openLogbookFor(r.dataset.logbook)));
   grid.querySelectorAll('.fac-row').forEach(r=>r.addEventListener('click',()=>openFactoryGithub(r.dataset.factory)));
   grid.querySelectorAll('.regskill').forEach(b=>b.addEventListener('click',()=>registerSkill(b.dataset.id,b.dataset.name,b.dataset.path,b.dataset.skill,b)));
   grid.querySelectorAll('.gitstate').forEach(b=>b.addEventListener('click',()=>{ if(b.classList.contains('is-off')) trackChanges(b.dataset.id,b.dataset.name,b); }));

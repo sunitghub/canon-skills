@@ -31,6 +31,44 @@ govulncheck to an exact version. With no Dependabot, nothing bumps them: update 
 SHA from `git ls-remote https://github.com/actions/<name> refs/tags/<tag>` and the version from
 `go list -m -versions golang.org/x/vuln`.
 
+## The canon-gate template (t-04f4)
+
+`tools/canon-gate-template.yml` is the workflow the board's **Set up CI gate** writes into a project as
+`.github/workflows/canon-gate.yml`. `tests/ci-security-config.sh` checks it with its own rules: it legitimately uses
+the `ANTHROPIC_API_KEY` secret. The rules:
+
+- `permissions: contents: read` and no job-level permissions;
+- every action pinned to a full SHA (the same `actions/checkout` pin as the workflows above), with
+  `persist-credentials: false` on every checkout;
+- triggered by `pull_request` only, never `pull_request_target` or `workflow_run`;
+- no secret but `ANTHROPIC_API_KEY`, and every `${{ … }}` a whole key value, never inside a `run:` script;
+- the Claude Code CLI at an exact version, installed on a Node that the workflow sets up itself (`actions/setup-node` at a
+  full SHA): an exact `x.y.z` not below the patched floor of its major (22.23.4, 24.22.1, 26.12.1: the releases that fixed
+  CVE-2026-111497, a Brotli decoder flaw in `node:zlib`), a major with no floor (20 and older, 21, 23, 25) refused because it
+  has no patched release (t-c4b4). The Node step and the CLI install run before any checkout, so no file of the PR (an
+  `.npmrc`, a `yarn-path` script that setup-node's own `yarn --version` probe would run) can steer them. The step carries only
+  `node-version`, `package-manager-cache: false` and `check-latest: false`; the workflow is one job with no `if:` and no
+  override of `PATH`, `NODE_OPTIONS` or npm/yarn config.
+
+The canon checkout carries `ref: __CANON_REF__`. The board replaces it with `v<VERSION>` of the install that writes
+the file, and refuses on an install without a release version. A project's gate therefore runs the canon release that
+generated it, and moves to a newer one only when someone deletes the file and runs Set up CI gate again. Existing
+`canon-gate.yml` files are never rewritten by the board.
+
+Bumping: take the checkout SHA as for the workflows above; the CLI version from `npm view @anthropic-ai/claude-code
+version`. Change the template, then re-run `tests/ci-security-config.sh`.
+
+Node is not an npm package, so Dependabot and the security-review gate do not see it, and the runner image's own Node is
+not canon's to trust (the `ubuntu-24.04` image of 2026-10-12 shipped 22.23.3, a patch below the fix). To bump it: take the
+newest release of the pinned line with `"security": true` from `https://nodejs.org/dist/index.json` (or any newer
+release of that line), put it in `node-version:`, raise that major's floor in `check_template` when a security release
+lands, and take the `actions/setup-node` SHA as for the other actions (`gh api repos/actions/setup-node/releases/latest`,
+then the tag's commit). The SHA pins the action's code, not Node's bytes: setup-node downloads from GitHub's node-versions
+release assets (falling back to nodejs.org) and checks only the version it ends up with, so the exact version is what canon
+controls. Nothing opens a PR for this: until the weekly report watches the template's pins (t-2d0f), a
+security release of Node is a reason to bump by hand. A project that already has a `canon-gate.yml` keeps its old Node
+step until it deletes the file and runs Set up CI gate again.
+
 ## Run it locally
 
 ```bash

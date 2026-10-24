@@ -27,6 +27,7 @@ tkt reopen <id>               # reopen
 tkt ci <id> [on|off]          # mark CI-eligible for headless grading
 tkt gate <id> [eval|full]     # headless gate mode: eval-only vs full (needs ci on)
 tkt demo <id> [on|off]        # demo close-path: security-review + evaluator only (Haiku)
+tkt tags <id> [csv]           # print or replace a ticket's tags (tkt create --tags a,b); the board finds them with tag:x
 tkt show <id> [--json]        # show full ticket
 tkt learn <id> [--force]      # distill a closed sprint's deviations/findings into an UNPROMOTED .tickets/<id>/learnings.md candidate (proposes, never promotes)
 tkt compact [--older-than DAYS] [--dry-run]  # shrink old closed tickets' evidence/ (default 14 days); sprint complete runs it

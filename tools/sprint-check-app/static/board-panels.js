@@ -3,6 +3,7 @@ import { esc } from './board-helpers.js';
 import { renderBoard, updateDoc } from './board-render.js';
 import { modalState, openModal } from './board-modal.js';
 import { refreshEditorGutter, renderModalBody } from './board-docs.js';
+import { initDialogPanel } from './board-dialog.js';
 
 // ── Semantic ticket matching ──────────────────────────────────────────────
 
@@ -108,7 +109,7 @@ export function resetPanelResize(panel) {
   panel.style.height = '';
 }
 
-function makePanelDraggable(panelId, headerSelector = '.modal-header') {
+export function makePanelDraggable(panelId, headerSelector = '.modal-header') {
   const panel = document.getElementById(panelId);
   const header = panel?.querySelector(headerSelector);
   if (!panel || !header) return;
@@ -163,7 +164,7 @@ function makePanelDraggable(panelId, headerSelector = '.modal-header') {
   });
 }
 
-function makePanelResizable(panelId) {
+export function makePanelResizable(panelId) {
   const panel = document.getElementById(panelId);
   if (!panel) return;
   panel.querySelectorAll('.modal-resize-handle').forEach(handle => {
@@ -335,13 +336,10 @@ export function initPanels() {
     if (e.target === e.currentTarget) closeCommitPanel();
   });
 
-  makePanelDraggable('modal');
-  makePanelDraggable('commit-panel');
-  makePanelDraggable('create-modal');
-  makePanelResizable('modal');
-  makePanelResizable('create-modal');
-  makePanelDraggable('gh-dialog-box', '#gh-dialog-title');   // t-e523: the GitHub dialog moves by its title
-  makePanelResizable('gh-dialog-box');
+  initDialogPanel({ panelId: 'modal' });
+  initDialogPanel({ panelId: 'commit-panel', resizable: false });
+  initDialogPanel({ panelId: 'create-modal' });
+  initDialogPanel({ panelId: 'gh-dialog-box', handle: '#gh-dialog-title' });   // t-e523: the GitHub dialog moves by its title
 
   // Delegated handler — fires once, lives on #m-body permanently
   document.getElementById('m-body').addEventListener('click', async e => {

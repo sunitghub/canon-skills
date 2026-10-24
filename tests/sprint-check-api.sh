@@ -27,8 +27,8 @@ go_routes() {
 want_routes="/api/admin/model-tiers /api/admin/model-tiers/apply /api/admin/model-tiers/refresh /api/admin/model-tiers/remove /api/admin/model-tiers/retire /api/browse-dirs /api/ci-workflow /api/cockpit /api/cockpit-changes /api/cockpit-debug
 /api/cockpit-docs /api/cockpit-interrupted /api/cockpit-interrupted-dismiss /api/cockpit-restart /api/cockpit-sessions
 /api/cockpit-status /api/cockpit-stop /api/commit /api/doc /api/git /api/github/doctor /api/github/intake /api/github/push-main /api/github/sync
-/api/github/sync-preview /api/handoff /api/project-stats /api/projects /api/register-skill /api/skill-eval/check
-/api/skill-eval/report /api/skill-eval/report.html /api/skill-eval/run /api/skill-eval/status /api/themes /api/themes/open
+/api/github/sync-preview /api/handoff /api/logbook /api/project-stats /api/projects /api/register-skill /api/skill-eval/check
+/api/skill-eval/report /api/skill-eval/report.html /api/skill-eval/run /api/skill-eval/status /api/tags /api/themes /api/themes/open
 /api/ticket /api/ticket-feature /api/ticket-image /api/tickets /api/track-changes
 /api/version /api/why /api/worktree-lock /api/worktree-unlock /api/worktrees"
 go="$(go_routes)"
@@ -462,7 +462,10 @@ code="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$B/api/ticket/notaticket
 rm -rf "$WORK/.github"
 ci1="$(curl -s -X POST "$B/api/ci-workflow" -d '{}')"
 [[ "$(printf '%s' "$ci1" | json_get ok)" == True ]] || fail "sprint-check-api: ci-workflow create not ok: $ci1"
-cmp -s "$WORK/.github/workflows/canon-gate.yml" "$ROOT/tools/canon-gate-template.yml" || fail "sprint-check-api: the written canon-gate.yml differs from the shipped template"
+# t-04f4: the written file is the template with the canon ref pinned to this install's release tag.
+sed "s/__CANON_REF__/v$(tr -d '[:space:]' < "$ROOT/VERSION")/" "$ROOT/tools/canon-gate-template.yml" > "$WORK/canon-gate.expected"
+cmp -s "$WORK/.github/workflows/canon-gate.yml" "$WORK/canon-gate.expected" || fail "sprint-check-api: the written canon-gate.yml is not the template with the canon ref pinned"
+grep -q "ref: v[0-9]*\.[0-9]*\.[0-9]* " "$WORK/.github/workflows/canon-gate.yml" || fail "sprint-check-api: the written canon-gate.yml has no pinned canon ref"
 ci2="$(curl -s -X POST "$B/api/ci-workflow" -d '{}')"
 [[ "$(printf '%s' "$ci2" | json_get ok)" == False && "$(printf '%s' "$ci2" | json_get reason)" == exists ]] || fail "sprint-check-api: ci-workflow did not refuse on exists: $ci2"
 rm -rf "$WORK/.github"
@@ -690,9 +693,13 @@ n2="$(curl -s "$B/api/tickets?project=$reg_id2" | python3 -c 'import sys,json;pr
 printf '# Handoff\n## Current Focus\nRegproj focus line for the scoped read.\n' > "$REGPROJ/HANDOFF.md"
 printf '# Acceptance\n## Criteria\n- [ ] regproj scoped doc\n' > "$REGPROJ/.tickets/t-aaa1/acceptance.md"
 python3 - "$(curl -s "$B/api/handoff?project=$reg_id")" "$(curl -s "$B/api/git?project=$reg_id")" \
-  "$(curl -s "$B/api/why?project=$reg_id")" "$(curl -s "$B/api/doc/t-aaa1/acceptance.md?project=$reg_id")" <<'PY' || fail "sprint-check-api: scoped reads"
+  "$(curl -s "$B/api/why?project=$reg_id")" "$(curl -s "$B/api/doc/t-aaa1/acceptance.md?project=$reg_id")" \
+  "$(curl -s "$B/api/logbook?project=$reg_id")" "$(curl -s "$B/api/logbook?project=$reg_id2")" <<'PY' || fail "sprint-check-api: scoped reads"
 import json, sys
-h, g, w, d = (json.loads(a) for a in sys.argv[1:5])
+h, g, w, d, lb1, lb2 = (json.loads(a) for a in sys.argv[1:7])
+# t-c6bb: the Logbook reads the named project's own files, and says "missing" for the one it lacks (not the default project's)
+assert "Regproj focus line" in lb1["handoff"].get("text", "") and lb1["learnings"].get("missing") is True, f"logbook not regproj-scoped: {lb1}"
+assert lb2["handoff"].get("missing") is True and "Regproj" not in json.dumps(lb2), f"logbook read another project: {lb2}"
 assert "Regproj focus line" in json.dumps(h), f"handoff not regproj-scoped: {h}"
 assert g.get("project") == "regproj" and g.get("total_commits") == 1, f"git not regproj-scoped: {g}"
 assert w.get("message") == "Enter a file path." and w.get("results") == [], f"why: {w}"

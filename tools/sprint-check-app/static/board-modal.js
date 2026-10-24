@@ -1,11 +1,12 @@
 import { DEBUG, LIVE_EDITABLE_SLUGS, availableDocTypes, docSlug, loadData, state } from './board-core.js';
-import { WT_PREF_MAIN, age, effectiveStatus, esc, escAttr, openWorktreePreference, titleCase, typeBadge } from './board-helpers.js';
+import { WT_PREF_MAIN, ticketTags, age, effectiveStatus, esc, escAttr, openWorktreePreference, titleCase, typeBadge } from './board-helpers.js';
 import { ckRowState, fetchDoc, findTicketById, postWrite, readiness, renderBoard } from './board-render.js';
 import { activateGhost, exitEditMode, refreshModalActions, renderModalBody, saveEdit } from './board-docs.js';
 import { cockpitState } from './board-cockpit.js';
 import { renderCockpitDetails } from './board-cockpit-rail.js';
 import { resetPanelDrag, resetPanelResize } from './board-panels.js';
 import { setText } from './board-ui.js';
+import { openTagMenu, saveTicketTags, tagChipsHTML } from './board-tags.js';
 
 // ── Modal ─────────────────────────────────────────────────────────────────
 
@@ -68,6 +69,28 @@ export function showStaleEditNotice(t) {
 }
 
 // t-bb97: the status chips row, now also holding the Demo/UX switch (it moved here from the Plan sign-off bar).
+// t-37e8: the Tags item of the modal header: the chips, and a button that opens the shared dropdown (a closed ticket is read-only).
+function tagsMetaHTML(t) {
+  const tags = ticketTags(t);
+  const locked = t.status === 'closed' || t.status === 'cancelled';
+  return `<span class="meta-tags"><span id="m-tag-chips" class="meta-tags">${tagChipsHTML(tags, 8)}</span>`
+    + `<button type="button" id="m-tags-btn" class="tag-edit" aria-haspopup="true" aria-expanded="false"${locked ? ' disabled title="Ticket is closed — no further edits."' : ''}>${tags.length ? 'Edit' : '+ Add tag'}</button></span>`;
+}
+function bindTagsMeta(t) {
+  const btn = document.getElementById('m-tags-btn');
+  if (!btn || btn.disabled) return;
+  btn.addEventListener('click', () => openTagMenu({
+    anchor: btn,
+    selected: ticketTags(t),
+    onChange: async tags => {
+      if (!await saveTicketTags(t, tags)) return false;
+      document.getElementById('m-tag-chips').innerHTML = tagChipsHTML(tags, 8);
+      btn.textContent = tags.length ? 'Edit' : '+ Add tag';
+      return true;
+    },
+  }));
+}
+
 function renderModalMeta(t) {
   const statusColor = {
     open: 'var(--col-open)', in_progress: 'var(--col-progress)',
@@ -79,11 +102,13 @@ function renderModalMeta(t) {
     { label:'Status',   html:`<span style="color:${statusColor};font-weight:500">${esc(titleCase(t.status.replace('_',' ')))}</span>` },
     { label:'Type',     val: titleCase(t.type || 'task') },
     { label:'Priority', val: `P${t.priority ?? 2}` },
+    { label:'Tags',     html: tagsMetaHTML(t) },
     { label:'Age',      val: age(t.created) || '—' },
     ...(openWorktreePreference(t) === WT_PREF_MAIN ? [{ label:'Worktree', html:`<span title="Chosen at New Ticket — the sprint runs in the main checkout.">Main checkout</span>` }]
       : openWorktreePreference(t) ? [{ label:'Worktree', html:`<span title="Chosen at New Ticket — created when you start the sprint">${esc(openWorktreePreference(t))} <span style="color:var(--text-muted)">· created when you start</span></span>` }] : []),
     { label:'Ready',    html:`<span style="color:${mReadyColor};font-weight:600;display:flex;align-items:center;gap:4px"><span style="width:7px;height:7px;border-radius:50%;background:${mReadyColor};display:inline-block;flex-shrink:0"></span>${esc(mReadyLabel)}</span>` },
   ].map(m => `<div class="meta-item"><span class="meta-label">${esc(m.label)}</span><span class="meta-val">${m.html ?? esc(m.val)}</span></div>`).join('');
+  bindTagsMeta(t);
 
   const demoOn = String(t.demo) === 'true';
   const demoBtn = document.createElement('button');

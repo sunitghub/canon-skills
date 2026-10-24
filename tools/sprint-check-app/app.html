@@ -12,6 +12,9 @@
   <link rel="stylesheet" href="/static/board-cockpit.css">
   <link rel="stylesheet" href="/static/board-scrollbars.css">
   <link rel="stylesheet" href="/static/board-github.css">
+  <link rel="stylesheet" href="/static/board-dialog.css">
+  <link rel="stylesheet" href="/static/board-logbook.css">
+  <link rel="stylesheet" href="/static/board-tags.css">
   <link rel="stylesheet" href="/static/buttons.css">
   <script src="/static/theme-boot.js" data-page="board"></script>
 </head>
@@ -52,6 +55,7 @@
     </div>
     <div class="header-right">
       <button class="create-btn primary-btn b-primary" id="btn-create" title="Create new ticket">+ New</button>
+      <button class="create-btn logbook-btn b-accent" id="btn-logbook" title="Logbook: this project's Handoff and Learnings (read-only)" aria-haspopup="dialog" aria-expanded="false">Logbook</button>
       <button class="create-btn b-accent" id="btn-gh-sync" title="Sync from GitHub: make a ticket of each open issue on origin labelled canon (tkt sync-issues)" aria-label="Sync from GitHub">&#10227;<span class="gh-sync-lbl"> Sync from GitHub</span></button>
       <button class="create-btn scratch-btn b-accent" id="btn-scratch" title="Start an agent in this project with no ticket — no sprint, no gates"><svg class="scr-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 19c1.2-1.5 2.3-1.5 3.3 0s2.2 1.5 3.3 0 2-1 2.9.2"/><path d="M19.3 3.9a1.9 1.9 0 0 1 2.7 2.7L12.3 16.3l-3.6 1 1-3.6z"/><path d="M17.6 5.6l2.7 2.7"/></svg>Scratch</button>
       <button class="create-btn b-accent" id="btn-terminal" title="A restricted terminal in this project: ls, cat, read-only tkt; su for a full shell for 5 minutes (Ctrl+. then m)"><svg class="scr-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="3.5" width="19" height="17" rx="2.5"/><path d="M2.5 8.5h19"/><path d="M8.5 12.5l3 2.5-3 2.5"/></svg>Terminal</button>
@@ -325,7 +329,7 @@
 </div>
 <!-- Modal -->
 <div id="modal-overlay">
-  <div id="modal">
+  <div id="modal" class="dlg-motion">
     <div class="modal-side-drag drag-left"></div>
     <div class="modal-side-drag drag-right"></div>
     <div class="modal-header">
@@ -402,7 +406,7 @@
 
 <!-- Commit detail panel -->
 <div id="commit-overlay">
-  <div id="commit-panel">
+  <div id="commit-panel" class="dlg-motion">
     <div class="modal-header">
       <span class="modal-id" id="co-hash"></span>
       <div class="modal-title" id="co-subject"></div>
@@ -418,8 +422,23 @@
 </div>
 
 <!-- Create ticket modal -->
+<div id="logbook-overlay" class="dlg-overlay" aria-hidden="true">
+  <div id="logbook-modal" class="dlg-panel" role="dialog" aria-modal="true" aria-labelledby="lb-title">
+    <div class="modal-header">
+      <div class="modal-title" id="lb-title">Logbook</div>
+      <span class="lb-note" id="lb-note"></span>
+      <button class="modal-close b-close" id="lb-close" type="button" aria-label="Close Logbook">&#10005;</button>
+    </div>
+    <div class="lb-tabs" role="tablist" aria-label="Logbook">
+      <button role="tab" id="lb-tab-h" type="button" aria-selected="true" aria-controls="lb-body">Handoff</button>
+      <button role="tab" id="lb-tab-l" type="button" aria-selected="false" aria-controls="lb-body">Learnings <span class="lb-badge" id="lb-count" hidden>0</span></button>
+    </div>
+    <div class="lb-body" id="lb-body" role="tabpanel" tabindex="0"></div>
+  </div>
+</div>
+
 <div id="create-overlay">
-  <div id="create-modal">
+  <div id="create-modal" class="dlg-motion">
     <div class="modal-header">
       <div class="modal-title">New Ticket</div>
       <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
@@ -438,6 +457,10 @@
       <div class="create-row">
         <span class="create-label">Priority</span>
         <div class="create-pills" id="c-priorities"></div>
+      </div>
+      <div class="create-row">
+        <span class="create-label">Tags</span>
+        <div class="create-tags"><span id="c-tag-chips" class="create-tags"></span><button class="create-pill" id="c-tags-btn" type="button" aria-haspopup="true" aria-expanded="false" title="Tag this ticket so the board search finds it with tag:name">+ Tags</button></div>
       </div>
       <div class="create-row" id="c-worktree-row" style="display:none">
         <span class="create-label">Worktree</span>

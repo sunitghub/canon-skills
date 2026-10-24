@@ -10,6 +10,10 @@
   .sev-back:hover{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-dim);transform:translateY(-1px)}
   .metarow.se-link-row{cursor:pointer}
   .metarow.se-link-row:hover .v{text-decoration:underline}
+  .metarow.lb-link-row{cursor:pointer}
+  .metarow.lb-link-row:hover .v{text-decoration:underline}
+  .metarow.lb-link-row .v{display:inline-flex;align-items:center;gap:5px}
+  .metarow.lb-link-row .lb-ico{width:13px;height:13px;flex:none}
   .rcard{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;gap:12px;transition:transform .14s ease,box-shadow .14s ease,border-color .14s ease}
   .rcard:hover{border-color:var(--accent);transform:translateY(-3px);box-shadow:0 10px 28px -8px rgba(0,0,0,.5),0 0 0 3px var(--accent-dim)}
   .rc-top{display:flex;align-items:flex-start;gap:12px}

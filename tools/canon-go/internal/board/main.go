@@ -306,6 +306,20 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		sendJSON(w, loadHandoff(root))
+	case "/api/logbook": // t-c6bb: HANDOFF.md and LEARNINGS.md text for the Logbook (logbook.go)
+		root, ok := effectiveRoot(r)
+		if !ok {
+			http.Error(w, "unknown project", http.StatusBadRequest)
+			return
+		}
+		sendJSON(w, loadLogbook(root))
+	case "/api/tags": // t-37e8: the starter tags and the project's own (tags.go)
+		root, ok := effectiveRoot(r)
+		if !ok {
+			http.Error(w, "unknown project", http.StatusBadRequest)
+			return
+		}
+		sendJSON(w, tagsAnswer(root))
 	case "/api/track-changes":
 		root, errMsg, ok := trackChangesRoot(r)
 		if !ok {
@@ -755,6 +769,37 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, writeVisual(m[1], stringValue(payload, "filename", ""), stringValue(payload, "data", ""), eroot))
 		return
 	}
+	if path == "/api/tags" { // t-37e8: add one tag to the project's list
+		tag, _ := payload["tag"].(string)
+		if err := addProjectTag(eroot, tag); err != nil {
+			sendTagError(w, err)
+			return
+		}
+		sendJSON(w, tagsAnswer(eroot))
+		return
+	}
+	if m := apiTicketTagsRe.FindStringSubmatch(path); m != nil { // t-37e8: replace a ticket's tags
+		csv, ok := tagsPayload(payload["tags"])
+		if !ok {
+			sendTagError(w, fmt.Errorf("tags must be a list of text"))
+			return
+		}
+		tags, err := normalizeTags(csv)
+		if err != nil {
+			sendTagError(w, err)
+			return
+		}
+		if handled, st, res := writeLiveTicket(m[1], "tags", map[string]any{"tags": tags}, eroot); handled {
+			sendJSONStatus(w, res, st)
+			return
+		}
+		if !writeTags(m[1], tags, eroot) {
+			sendJSONStatus(w, map[string]any{"ok": false, "error": "that ticket was not found"}, http.StatusNotFound)
+			return
+		}
+		sendJSON(w, map[string]any{"ok": true, "tags": tags})
+		return
+	}
 	if m := apiTicketDemoRe.FindStringSubmatch(path); m != nil {
 		if handled, st, res := writeLiveTicket(m[1], "demo", payload, eroot); handled {
 			sendJSONStatus(w, res, st)
@@ -939,6 +984,15 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		if v, ok := payload["body"]; !ok || v == nil { // absent or null: the skeleton (t-b0c9); an empty body stays empty
 			body = ticketSkeleton(typ)
 		}
+		csv, tagsOK := tagsPayload(payload["tags"])
+		newTags, tagsErr := normalizeTags(csv)
+		if !tagsOK {
+			tagsErr = fmt.Errorf("tags must be a list of text")
+		}
+		if tagsErr != nil { // t-37e8: refuse before anything is written
+			sendTagError(w, tagsErr)
+			return
+		}
 		sendJSON(w, createTicket(
 			stringValue(payload, "title", "Untitled"),
 			typ,
@@ -950,6 +1004,7 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 			boolValue(payload["demo"]),
 			stringValue(payload, "skills", ""),
 			stringValue(payload, "worktree_preference", ""),
+			newTags,
 			eroot,
 		))
 		return
@@ -1657,7 +1712,7 @@ func ticketSkeleton(typ string) string {
 	return "## Problem\n<!-- What is wrong or missing, and for whom? -->\n\n" + skeletonRest
 }
 
-func createTicket(title, typ, status string, priority int, body string, ci bool, gate string, demo bool, skills string, worktreePreference string, root string) ticket {
+func createTicket(title, typ, status string, priority int, body string, ci bool, gate string, demo bool, skills string, worktreePreference string, tags []string, root string) ticket {
 	td := ticketsDirForRoot(root)
 	os.MkdirAll(td, 0755)
 	existing := map[string]bool{}
@@ -1732,8 +1787,12 @@ func createTicket(title, typ, status string, priority int, body string, ci bool,
 	if wt := strings.TrimSpace(strings.ReplaceAll(worktreePreference, "\n", " ")); wt != "" {
 		wtLine = "worktree_preference: " + wt + "\n"
 	}
+	tagsLine := ""
+	if l := tagsFrontmatterLine(tags); l != "" { // t-37e8: already validated by the caller (normalizeTags)
+		tagsLine = l + "\n"
+	}
 	evalLine := "eval_override: false"
-	text := fmt.Sprintf("---\nid: %s\ntitle: %s\nstatus: %s\ntype: %s\npriority: %d\ncreated: %s\n%s%s%s%s%s%s\n---\n\n%s\n", id, strings.ReplaceAll(title, "\n", " "), status, typ, priority, time.Now().UTC().Format("2006-01-02T15:04:05Z"), ciLine, gateLine, demoLine, skillsLine, wtLine, evalLine, strings.TrimSpace(body))
+	text := fmt.Sprintf("---\nid: %s\ntitle: %s\nstatus: %s\ntype: %s\npriority: %d\ncreated: %s\n%s%s%s%s%s%s%s\n---\n\n%s\n", id, strings.ReplaceAll(title, "\n", " "), status, typ, priority, time.Now().UTC().Format("2006-01-02T15:04:05Z"), ciLine, gateLine, demoLine, skillsLine, wtLine, tagsLine, evalLine, strings.TrimSpace(body))
 	path := filepath.Join(dir, "ticket.md")
 	if os.WriteFile(path, []byte(text), 0644) == nil {
 		emitEvent("ticket.created", root, map[string]string{"ticket": id, "title": title, "type": typ, "priority": strconv.Itoa(priority)})
@@ -1741,6 +1800,12 @@ func createTicket(title, typ, status string, priority int, body string, ci bool,
 	t, _ := parseTicket(path)
 	return t
 }
+
+// canonRefPlaceholder in canon-gate-template.yml becomes v<VERSION> when the board writes the workflow (t-04f4).
+const canonRefPlaceholder = "__CANON_REF__"
+
+// releaseVersionRe is a release VERSION: exactly x.y.z, the form canon-skills tags as v<x.y.z>.
+var releaseVersionRe = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
 
 // writeCIWorkflow copies the shipped canon-gate workflow template to the
 // project's .github/workflows/canon-gate.yml. Fixed target path (no traversal);
@@ -1756,6 +1821,15 @@ func writeCIWorkflow() map[string]any {
 	if err != nil {
 		return map[string]any{"ok": false, "reason": err.Error(), "path": rel}
 	}
+	// t-04f4: the workflow checks canon out at the release tag of this install, never a moving branch.
+	ver := canonVersion()
+	if !releaseVersionRe.MatchString(ver) {
+		return map[string]any{"ok": false, "reason": "this canon has no release version (" + ver + "), so the workflow cannot pin canon; run Set up CI gate from a released install", "path": rel}
+	}
+	if n := strings.Count(string(data), canonRefPlaceholder); n != 1 {
+		return map[string]any{"ok": false, "reason": fmt.Sprintf("the canon-gate template has %d %s placeholders, want 1", n, canonRefPlaceholder), "path": rel}
+	}
+	data = []byte(strings.Replace(string(data), canonRefPlaceholder, "v"+ver, 1))
 	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
 		return map[string]any{"ok": false, "reason": err.Error(), "path": rel}
 	}
@@ -1959,6 +2033,7 @@ var (
 	apiTicketBodyRe     = regexp.MustCompile(`^/api/ticket/([^/]+)/body$`)
 	apiTicketVisualRe   = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/visual$`)
 	apiTicketDemoRe     = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/demo$`)
+	apiTicketTagsRe     = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/tags$`)
 	apiGitHubPostRe     = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/github/(send|import|merge|merge-stop|take-back|open-pr|land)$`)
 	apiWorktreeUnlockRe = regexp.MustCompile(`^/api/worktree-unlock/([^/]+)$`)
 	checkboxItemRe      = regexp.MustCompile(`(?m)^\s*[-*]\s+\[[ xX]\]\s+\S`)
@@ -2450,7 +2525,7 @@ var docOverlayFields = []string{"docs", "acceptance_has_items", "acceptance_unch
 	"models_used", "plan_has_approach", "plan_approved"}
 
 // t-8be2: the worktree copy also owns the ticket's own fields (title is the body's first heading).
-var ticketOverlayFields = []string{"status", "title", "body", "demo"}
+var ticketOverlayFields = []string{"status", "title", "body", "demo", "tags"}
 
 func registeredWorktrees(root string) []map[string]any {
 	out := []map[string]any{}
@@ -2808,6 +2883,15 @@ func writeLiveTicket(id, kind string, payload map[string]any, root string) (hand
 			return fail(http.StatusConflict, "bad_ticket", "that ticket.md has no status line")
 		}
 		updated = text[:m[2]] + strings.Join(liveClosedMarker(lines, newStatus), "\n") + text[m[3]:]
+	case "tags": // t-37e8: the route validated payload["tags"] ([]string); check again, this writes a file
+		tags, ok := payload["tags"].([]string)
+		if !ok {
+			return fail(http.StatusBadRequest, "bad_tags", "tags must be a list of text")
+		}
+		if _, err := normalizeTags(strings.Join(tags, ",")); err != nil {
+			return fail(http.StatusBadRequest, "bad_tags", err.Error())
+		}
+		updated = text[:m[2]] + strings.Join(setTagsLine(strings.Split(text[m[2]:m[3]], "\n"), tags), "\n") + text[m[3]:]
 	default:
 		var kept []string
 		for _, ln := range strings.Split(text[m[2]:m[3]], "\n") {

@@ -475,7 +475,27 @@ done
 # the whole sprint-headless grant, in order: nothing dropped, nothing added
 : > "$CAP_ARGS"; (cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_ok "$SPRINT_HEADLESS" t-mdl1 --base-ref HEAD >/dev/null)
 grants="$(awk '/^<<ARG>>--allowedTools$/{on=1; next} on && /^<<ARG>>--/{on=0} on' "$CAP_ARGS")"
-[[ "$grants" == "$(printf '<<ARG>>%s\n' Agent "Bash($PIN_TOOLS/git-read:*)" "Bash(./tools/subagent-log.sh:*)" Read Grep Glob LS)" ]] || fail "t-5ff5 sprint-headless: allowedTools are not exactly the read-only set: $grants"
+[[ "$grants" == "$(printf '<<ARG>>%s\n' Agent "Bash($PIN_TOOLS/git-read:*)" "Bash($PIN_TOOLS/subagent-log.sh:*)" Read Grep Glob LS)" ]] || fail "t-5ff5 sprint-headless: allowedTools are not exactly the read-only set: $grants"
+# 14f2. t-30bf: which subagent-log.sh the orchestrator may run. A graded project with its own skills/sprint and a planted
+# tools/subagent-log.sh (the 2026-10-22 scan's attacker layout) gets the install's copy in the allow list and the prompt,
+# for both gates; only a project whose tools/ IS this install keeps the relative ./tools path.
+INSTALL_TOOLS="$(cd -P "$ROOT/tools" && pwd)"
+write_plan 'Tier: normal | Risk: fixture'
+check_log_path() {  # check_log_path <label> <expected path> <forbidden substring or ""> -- <gate> <args...>
+  local label="$1" want="$2" deny="$3"; shift 4
+  : > "$CAP_ARGS"
+  (cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_ok "$@" >/dev/null)
+  grep -qxF "<<ARG>>Bash($want:*)" "$CAP_ARGS" || fail "t-30bf $label: allow list must hold Bash($want:*)"
+  grep -qF "run: $want --agent-id" "$CAP_ARGS" || fail "t-30bf $label: prompt must run $want"
+  if [[ -n "$deny" ]] && grep -qF "$deny" "$CAP_ARGS"; then fail "t-30bf $label: must not allow or name $deny"; fi
+}
+mkdir -p "$WORK/tools"; printf '#!/bin/sh\necho planted\n' > "$WORK/tools/subagent-log.sh"; chmod +x "$WORK/tools/subagent-log.sh"
+check_log_path "outside project, sprint-headless" "$INSTALL_TOOLS/subagent-log.sh" "./tools/subagent-log.sh" -- "$SPRINT_HEADLESS" t-mdl1 --base-ref HEAD
+check_log_path "outside project, sprint-headless-eval" "$INSTALL_TOOLS/subagent-log.sh" "./tools/subagent-log.sh" -- "$SPRINT_HEADLESS_EVAL" specs/x.md --base-ref HEAD
+rm -rf "$WORK/tools"; ln -s "$INSTALL_TOOLS" "$WORK/tools"
+check_log_path "install as project, sprint-headless" "./tools/subagent-log.sh" "" -- "$SPRINT_HEADLESS" t-mdl1 --base-ref HEAD
+check_log_path "install as project, sprint-headless-eval" "./tools/subagent-log.sh" "" -- "$SPRINT_HEADLESS_EVAL" specs/x.md --base-ref HEAD
+rm -f "$WORK/tools"
 
 # 14g. sprint-headless-eval --model invalid → hard-fail before claude
 : > "$CAP_ARGS"

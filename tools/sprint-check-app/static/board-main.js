@@ -11,6 +11,8 @@ import { initPanels } from './board-panels.js';
 import { initCreate } from './board-create.js';
 import { initUi } from './board-ui.js';
 import { initGithub } from './board-github.js';
+import { initLogbook } from './board-logbook.js';
+import { initTags } from './board-tags.js';
 
 initCore();
 initRender();
@@ -22,3 +24,5 @@ initPanels();
 initCreate();
 initUi();
 initGithub();
+initLogbook();
+initTags();

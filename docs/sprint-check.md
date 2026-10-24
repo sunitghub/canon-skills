@@ -36,7 +36,7 @@ Open a ticket to read or edit its Description, Acceptance, and Plan without leav
 
 ![sprint-check board — searchable local kanban](../meta/screenshots/sprint-check-board-dark.png)
 
-Use the search box above the columns to find tickets by title, id, status, type, priority, description, doc names, or readiness labels such as `plan incomplete`. Matching tickets stay in their original lanes so status context is preserved. Press `Esc` or clear the field to restore the full board.
+Use the search box above the columns to find tickets by title, id, status, type, priority, description, doc names, readiness labels such as `plan incomplete`, or tags (`tag:github`, see Tags below). Matching tickets stay in their original lanes so status context is preserved. Press `Esc` or clear the field to restore the full board.
 
 Switch the segmented control from `Search` to `Why` to ask why a file exists or
 changed. Enter a project-relative file path and sprint-check scans git history,
@@ -48,6 +48,14 @@ type `why:path/to/file` as a shortcut.
 ![Commit detail with related ticket](../meta/screenshots/commit-detail.png)
 
 Click any commit in the sidebar to see what changed and which ticket it likely belongs to — matched by ticket ID in the commit message or by keyword when no ID is present.
+
+## Tags
+
+A ticket can carry up to eight **tags** (`t-37e8`), stored as one frontmatter line, `tags: security,nodejs`. Pick them from the **Tags** dropdown in the New Ticket dialog, or from the **Tags** item in the ticket window's header (a closed ticket shows them read-only); `tkt create --tags a,b` and `tkt tags <id> [a,b]` do the same from the terminal. The dropdown, sorted A to Z, starts with Enterprise, GitHub, Security, NodeJs, Go, Logging, Events, Tracing, Board, Cockpit, CLI, Windows, Installer, Docs, Tests, Release, Performance, Cloud, Skills and CI; **Add tag…** saves a new one to the project's own list, `.tickets/tags.json`. A tag is lowercase letters, digits and dashes (up to 24 characters); what you type is trimmed, lowercased and its inner spaces become dashes, and it is shown in Title Case. Cards show three chips and `+n` for the rest. In the search box, `tag:github` (any case) finds the tickets with that tag; from three characters on the text only has to be part of a tag, so `tag:git` finds `github` (shorter text must be the whole tag, so `tag:go` does not find `golang`). A plain word such as `github` also matches a ticket's tags. A tag that is not valid is refused, never rewritten. The routes are `GET`/`POST /api/tags` and `POST /api/ticket/<id>/tags`. A board started before tags existed says so in the dropdown: restart it (`canon`).
+
+## Logbook — a project's Handoff and Learnings
+
+The **Logbook** button (a notepad icon, right after **+ New** in the board header) opens a read-only window over the project's own `HANDOFF.md` and `LEARNINGS.md`; the Projects card has a **Logbook** row that opens the same window in that project's tab. **Handoff** shows the sections of `HANDOFF.md` between its markers as cards (Current Focus first). **Learnings** shows the table in `LEARNINGS.md` with a badge for the unpromoted rows, filter chips (All, Unpromoted, Promoted, and Dismissed when there are such rows) and the promoted target under each promoted row; a ticket id opens that ticket. The files stay the source: nothing here edits them, runs a skill or starts an agent. Their text is shown as text (an image reference in them is not loaded), and a missing, unreadable, symlinked or over-512 KB file says so. The window moves by its title bar and resizes from either top-left or bottom-right corner, like the ticket dialog, and opens at its default place and size each time. In a git worktree it reads that worktree's copy. The window reads `GET /api/logbook`.
 
 ## Create Tickets from the Board
 
