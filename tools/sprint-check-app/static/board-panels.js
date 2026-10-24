@@ -338,9 +338,8 @@ export function initPanels() {
 
   makePanelDraggable('modal');
   initDialogPanel({ panelId: 'commit-panel', resizable: false });
-  makePanelDraggable('create-modal');
+  initDialogPanel({ panelId: 'create-modal' });
   makePanelResizable('modal');
-  makePanelResizable('create-modal');
   makePanelDraggable('gh-dialog-box', '#gh-dialog-title');   // t-e523: the GitHub dialog moves by its title
   makePanelResizable('gh-dialog-box');
 
