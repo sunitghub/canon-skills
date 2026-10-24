@@ -19,6 +19,15 @@ func confine(root, arg string) (string, error) {
 	if strings.ContainsRune(arg, 0) {
 		return "", errors.New("not allowed")
 	}
+	// A relative path is checked by name before the file system is asked, so a refused name is refused whether or not it
+	// exists. (An absolute path is checked after resolution: its parent folders may legitimately be called .envs.)
+	if !filepath.IsAbs(arg) {
+		for _, part := range strings.FieldsFunc(arg, func(r rune) bool { return r == '/' || r == '\\' }) {
+			if err := deniedName(part); err != nil {
+				return "", err
+			}
+		}
+	}
 	rootReal, err := filepath.EvalSymlinks(root)
 	if err != nil {
 		return "", errors.New("the project folder is not readable")
@@ -37,11 +46,8 @@ func confine(root, arg string) (string, error) {
 	}
 	if rel != "." {
 		for _, part := range strings.Split(rel, string(filepath.Separator)) {
-			if part == ".git" {
-				return "", errors.New("the .git folder is never shown")
-			}
-			if strings.HasPrefix(part, ".env") {
-				return "", errors.New(".env files are never shown")
+			if err := deniedName(part); err != nil {
+				return "", err
 			}
 		}
 	}
@@ -107,4 +113,16 @@ func Visible(s string) string {
 		}
 	}
 	return b.String()
+}
+
+// deniedName refuses the .git folder and every .env file, in any letter case.
+func deniedName(part string) error {
+	low := strings.ToLower(part)
+	if low == ".git" {
+		return errors.New("the .git folder is never shown")
+	}
+	if strings.HasPrefix(low, ".env") {
+		return errors.New(".env files are never shown")
+	}
+	return nil
 }

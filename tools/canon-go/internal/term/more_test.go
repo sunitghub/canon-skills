@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -258,5 +259,48 @@ func TestSuThreeTriesThenTheTerminalCloses(t *testing.T) {
 	f, cfg, out = mk()
 	if code := runCode(cfg, out, "su\n\nsu\n\nsu\n\nsu\n\nsu\nKx7m2\nexit\n"); code != 0 || f.shells != 1 {
 		t.Errorf("empty answers must not close the terminal: code=%d shells=%d log=%s", code, f.shells, f.log())
+	}
+}
+
+// A project inside a folder named like a secret (".envs") is still readable by absolute path: only names inside the
+// project are refused.
+func TestAbsolutePathUnderADotEnvParent(t *testing.T) {
+	base := filepath.Join(t.TempDir(), ".envs", "proj")
+	if err := os.MkdirAll(base, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(base, "a.zzz"), []byte("ok\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := readFile(base, filepath.Join(base, "a.zzz")); err != nil {
+		t.Errorf("an absolute path under a .envs parent should be readable: %v", err)
+	}
+	if _, _, err := readFile(base, "a.zzz"); err != nil {
+		t.Errorf("a relative path should be readable: %v", err)
+	}
+}
+
+// Protects the terminal from ticket text: what tkt prints goes through the same filter as a file, line by line, so an
+// escape sequence from an imported issue cannot move the cursor or draw a fake prompt, and a character split across two
+// writes survives.
+func TestTktOutputIsFiltered(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell script stand-in")
+	}
+	root, _ := project(t)
+	fake := filepath.Join(t.TempDir(), "tkt")
+	script := "#!/bin/sh\nprintf 'title \\033]0;pwned\\007\\033[2Jfake$ \\n'\nprintf 'caf\\303'\nsleep 0.1\nprintf '\\251 tail\\n'\nprintf 'no newline at the end'\n"
+	if err := os.WriteFile(fake, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	out := run(t, Config{Root: root, Tkt: fake}, "tkt show t-ab12\nexit\n")
+	rest := regexp.MustCompile("\\x1b\\[[0-9;]*m").ReplaceAllString(out, "") // the prompt's own bold title
+	if strings.ContainsRune(rest, 0x1b) || strings.ContainsRune(rest, 0x07) {
+		t.Errorf("a control character from tkt reached the terminal: %q", out)
+	}
+	for _, want := range []string{"title \u241b]0;pwned\u2407\u241b[2Jfake$ ", "caf\u00e9 tail", "no newline at the end"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output lacks %q:\n%q", want, out)
+		}
 	}
 }

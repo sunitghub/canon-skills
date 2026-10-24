@@ -73,6 +73,11 @@ func TestConfine(t *testing.T) {
 		{".env", ".env files"},
 		{".env.local", ".env files"},
 		{"nope.txt", "no such file"},
+		{".ENV", ".env files"}, // any letter case: macOS and Windows file systems ignore it
+		{".Env.local", ".env files"},
+		{".GIT/config", ".git folder"},
+		{"sub/.Git", ".git folder"},
+		{"sub\\.ENV", ".env files"}, // a Windows separator
 		{"a.go\x00x", "not allowed"},
 	}
 	if runtime.GOOS != "windows" {

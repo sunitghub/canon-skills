@@ -8,6 +8,7 @@ package term
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -15,6 +16,7 @@ import (
 	"os/exec"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -236,8 +238,12 @@ func (c Config) tkt(args []string) {
 	}
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = c.Root
-	cmd.Stdout, cmd.Stderr = c.Out, c.Out
-	if err := cmd.Run(); err != nil {
+	// tkt prints ticket text, which can come from an imported issue: show it the way cat shows a file, line by line.
+	vw := &visibleWriter{w: c.Out}
+	cmd.Stdout, cmd.Stderr = vw, vw
+	err := cmd.Run()
+	vw.flush()
+	if err != nil {
 		if _, ok := err.(*exec.ExitError); !ok {
 			fmt.Fprintf(c.Out, "tkt: %v\n", err)
 		}
@@ -283,5 +289,39 @@ func (c Config) page(text string, rd *bufio.Reader) {
 			fmt.Fprintln(c.Out)
 			return
 		}
+	}
+}
+
+// visibleWriter passes text through Visible a whole line at a time (so a character split across two writes is not
+// damaged) and keeps nothing back after flush.
+type visibleWriter struct {
+	w   io.Writer
+	buf []byte
+	mu  sync.Mutex
+}
+
+func (v *visibleWriter) Write(p []byte) (int, error) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.buf = append(v.buf, p...)
+	for {
+		i := bytes.IndexByte(v.buf, '\n')
+		if i < 0 {
+			break
+		}
+		if _, err := io.WriteString(v.w, Visible(string(v.buf[:i+1]))); err != nil {
+			return 0, err
+		}
+		v.buf = v.buf[i+1:]
+	}
+	return len(p), nil
+}
+
+func (v *visibleWriter) flush() {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if len(v.buf) > 0 {
+		_, _ = io.WriteString(v.w, Visible(string(v.buf)))
+		v.buf = nil
 	}
 }
