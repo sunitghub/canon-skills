@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-23-2026 19:07
+learnings-sweep last run: 10-23-2026 21:04
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-23 | [t-c6bb](.tickets/t-c6bb/learnings.md) | A filter over a renderer's source (`![` opener) or over its output (a regex for `<img>`) was bypassed twice in review (a code span inside an alt, a comment inside the opener) because md() transforms run between those points: only the parsed result is trustworthy, and a "two layers" claim needs one revert test per layer (the second review found none failed when a layer was removed). | UNPROMOTED |
 | 2026-10-23 | [t-0ef2](.tickets/t-0ef2/learnings.md) | A `min(cap, share)` expectation only proves the cap at widths where the share exceeds the cap: in the spec's page that is 2000 px alone (at 1600 the board is narrower and four capped lanes exactly fill it), and my first free-space assertion at 1600 failed on that assumption; measure the real geometry in a scratch board before writing a width assertion. | UNPROMOTED |
 | 2026-10-23 | [t-04f4](.tickets/t-04f4/learnings.md) | GNU-only `sed 0,/re/` addresses silently plant nothing under macOS's BSD sed, so a cloud-passed security test failed on the Mac with `got: nothing`; plants should assert a non-empty expected message, and the reviewer noted nothing checks that the `v<VERSION>` tag the generated workflow pins exists on canon-skills. | `promoted → standards/efficiency-notes.md` |
 | 2026-10-23 | [t-68ae](.tickets/t-68ae/learnings.md) | The state-dir test hard-coded Linux's `XDG_CACHE_HOME` behaviour and failed on macOS (`os.UserCacheDir` is `~/Library/Caches`), and the evaluator's weakest mutants survived (group-bit mask `0o077` to `0o007`; the daemon's `RequireSamePeer` wrapper pinned only by a one-time grep): the group and foreign-owner refusals have no non-root test, and Linux-gated code is mutation-swept per platform, not once. | `promoted → standards/efficiency-notes.md` |
