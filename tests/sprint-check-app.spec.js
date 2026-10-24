@@ -6527,6 +6527,11 @@ test.describe('cockpit in board (t-ddc8)', () => {
       expect(u.searchParams.get('mode')).toBe('term');
       expect(u.searchParams.get('ticket')).toMatch(/^s-[a-z0-9]{4}$/);
       await expect(page.frameLocator('#ck-term iframe').locator('body')).toHaveAttribute('data-started', '1');   // one click: the board tells the Terminal page to open its prompt
+      await expect(page.locator('#ck-scratch-kind')).toHaveText('TERMINAL');   // the rail card names a Terminal, not a Scratch session
+      await expect(page.locator('#ck-tc-status')).toHaveText('terminal');
+      await expect(page.locator('#ck-scratch-end')).toContainText('ends the Terminal');
+      await expect(page.locator('#ck-scratch-note .ck-term-ico')).toBeVisible();
+      await expect(page.locator('#ck-scratch-note .ck-scratch-ico')).toBeHidden();
       await expect(page.locator('#ck-promote')).toBeHidden();   // promote types an agent prompt into the pty: not for a terminal
       await page.goto(BASE);
       await page.waitForLoadState('networkidle');

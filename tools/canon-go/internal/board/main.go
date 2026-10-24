@@ -4157,7 +4157,10 @@ func readInterrupted() []map[string]any {
 }
 
 // interruptedReason says why an entry can't be resumed ("" when it can) — the checks Start makes.
-func interruptedReason(id, root, cwd string) string {
+func interruptedReason(id, root, cwd, agent string) string {
+	if strings.HasPrefix(id, "s-") && agent == "term" {
+		return "terminal — it ended when the daemon stopped; open a new one with the Terminal button"
+	}
 	if strings.HasPrefix(id, "s-") {
 		return "scratch session — its conversation can't be resumed; its changes stay in " + cwd
 	}
@@ -4191,7 +4194,7 @@ func cockpitInterrupted() []map[string]any {
 		if !common.SessionIDRe.MatchString(str["id"]) || str["project_root"] == "" || live[str["id"]+"\x00"+str["project_root"]] {
 			continue
 		}
-		reason := interruptedReason(str["id"], str["project_root"], str["cwd"])
+		reason := interruptedReason(str["id"], str["project_root"], str["cwd"], str["agent"])
 		e["resumable"] = reason == ""
 		e["reason"] = reason
 		out = append(out, e)

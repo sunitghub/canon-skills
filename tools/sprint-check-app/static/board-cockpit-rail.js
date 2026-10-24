@@ -82,7 +82,7 @@ function renderCockpitStatusBadge(t) {
   for (const id of ['ck-status', 'ck-tc-status']) {
     const el = document.getElementById(id);
     if (!el) continue;
-    el.textContent = info.label;
+    el.textContent = t && t.term ? 'terminal' : info.label;
     el.className = 'ck-status-badge ' + info.cls;
   }
 }
@@ -173,6 +173,9 @@ export async function renderCockpitRail(t) {
   refreshSessionStateChip();
   document.getElementById('cockpit').classList.toggle('scratch-mode', !!t.scratch);
   document.getElementById('cockpit').classList.toggle('term-mode', !!t.term);   // t-57ab: a terminal has no agent to promote
+  document.getElementById('ck-scratch-kind').textContent = t.term ? 'TERMINAL' : 'SCRATCH';
+  document.getElementById('ck-scratch-sub').textContent = t.term ? 'restricted prompt · ls, cat, read-only tkt · su for a full shell' : 'no ticket · no gates';
+  document.getElementById('ck-scratch-end').textContent = t.term ? 'Closing it ends the Terminal, and anything you started in su.' : 'End keeps any uncommitted changes in place.';
   document.getElementById('ck-id').textContent = displayTicketId(t);
   document.getElementById('ck-title').textContent = t.title || '';
   document.getElementById('ck-title').title = t.title || '';   // t-b91f: the full title when the bar truncates it

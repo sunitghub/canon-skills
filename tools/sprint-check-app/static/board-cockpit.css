@@ -106,6 +106,9 @@
     .ck-scratch-note { display: none; margin-top: 10px; padding: 10px 12px; border: 1px dashed var(--border-hover); border-radius: 8px; font-size: 12px; line-height: 1.5; color: var(--text-muted); }
     .ck-scratch-note b { color: var(--text); letter-spacing: .06em; }
     #cockpit.scratch-mode .ck-scratch-note { display: block; }
+    .ck-term-ico { display: none; }
+    #cockpit.term-mode .ck-term-ico { display: inline; }
+    #cockpit.term-mode .ck-scratch-ico { display: none; }
     #cockpit.term-mode #ck-promote { display: none; }   /* t-57ab: promote types an agent prompt; a terminal has no agent */
     /* t-f553: editable scratch title, promote */
     #cockpit.scratch-mode #ck-tc-title { cursor: text; border-radius: 4px; }
