@@ -12,6 +12,9 @@
 # t-04f4: least privilege and pinned. The token is read-only and not kept in .git/config; the actions, the canon
 # checkout (the release of the install that wrote this file) and the Claude Code CLI are fixed versions. Re-run
 # "Set up CI gate" after updating canon to move to the new release (docs/ci-security.md).
+# t-c4b4: Node is pinned too. The CLI runs on a Node the runner image chose, and an image can ship one with a known
+# runtime CVE (22.23.3 on 2026-10-12, fixed in 22.23.4); setup-node installs an exact patched one before the CLI. Both
+# steps run before the PR is checked out, so no file of the PR (.npmrc, a yarn-path script) can steer them.
 name: canon gate
 
 on:
@@ -25,6 +28,15 @@ jobs:
   grade:
     runs-on: ubuntu-latest
     steps:
+      - name: Set up a patched Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22.23.4         # exact, and not below the patched floor in tests/ci-security-config.sh
+          package-manager-cache: false # the action's default cache is keyed by files the PR controls
+
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code@2.1.309
+
       - name: Checkout the PR
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -47,9 +59,6 @@ jobs:
           mkdir -p .claude
           rm -rf .claude/skills   # a PR's own .claude/skills would otherwise get the link nested inside it (t-89b0)
           ln -sfn "$GITHUB_WORKSPACE/canon/skills" .claude/skills
-
-      - name: Install Claude Code CLI
-        run: npm install -g @anthropic-ai/claude-code@2.1.309
 
       - name: Check the PR's canon ticket
         id: tkt
