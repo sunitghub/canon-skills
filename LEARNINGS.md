@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-24-2026 06:50
+learnings-sweep last run: 10-24-2026 08:30
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-24 | [t-37e8](.tickets/t-37e8/learnings.md) | `run-board-spec.sh` copies the real working tree, gitignored files included, so a file the user's own board writes (here the project's `.tickets/tags.json`, which held their real tags) leaks into the spec and silently changed an ordering assertion: a spec that touches shared project state must delete it first and last, and never assert on what a real tree may hold. Related: a list repainted under the pointer right after it opens swallows the click (repaint only when the data changed), which only a real browser spec showed. | UNPROMOTED |
 | 2026-10-24 | [t-cca5](.tickets/t-cca5/learnings.md) | Adding a shared component to the always-present DOM (the Logbook's top-left grip) silently broke an older test whose selector was unscoped (`.modal-resize-handle-tl` matched two elements): it failed on main in both browsers for a whole sprint and was filed as "Mac-only, unexplained". Scope a test's selector to its own panel, and read a baseline failure's message before calling it environmental. Also: `run-board-spec.sh` counts the tool wrapper's own shell as "another run" when launched in the background or through a pipe; run it plain with `--allow-busy` on a quiet machine. | UNPROMOTED |
 | 2026-10-24 | [t-c4b4](.tickets/t-c4b4/learnings.md) | A pinned install step that runs after the PR is checked out still lets the PR steer it: setup-node runs `node`, `npm` and `yarn --version` in the workspace (yarn 1.x runs a `yarn-path` script from the workspace `.yarnrc`) and `npm install -g` reads a PR's `.npmrc`, so install steps go before the checkout; and a SHA pin on an action pins its code, not the bytes it downloads, and a guard that reads only the first matching line is a regression guard: allow-list the step's keys. | UNPROMOTED |
 | 2026-10-23 | [t-c6bb](.tickets/t-c6bb/learnings.md) | A filter over a renderer's source (`![` opener) or over its output (a regex for `<img>`) was bypassed twice in review (a code span inside an alt, a comment inside the opener) because md() transforms run between those points: only the parsed result is trustworthy, and a "two layers" claim needs one revert test per layer (the second review found none failed when a layer was removed). | UNPROMOTED |
