@@ -217,8 +217,30 @@ ticket_skeleton() {
     "## Open questions" "<!-- Anything to decide before planning. The plan answers or carries forward each one. -->"
 }
 
+# t-37e8: ticket tags. The rule is the Go board's (tools/canon-go/internal/board/tags.go); tests/ticket-tags.sh runs the one corpus
+# tests/tags-corpus.tsv through both. A tag is refused, never repaired, unless it is a plain lowercase word, so nothing a user types
+# can start another frontmatter line. Prints the stored form (a,b); returns 1 with the reason on stderr.
+tag_normalize() {
+  local LC_ALL=C csv="$1" out="" raw t n=0
+  case "$csv" in *$'\n'*|*$'\r'*) echo "Error: tags must be on one line" >&2; return 1 ;; esac
+  local -a parts=()
+  IFS=',' read -ra parts <<< "$csv"   # split on comma; IFS restored after
+  for raw in ${parts[@]+"${parts[@]}"}; do
+    t="${raw#"${raw%%[![:space:]]*}"}"; t="${t%"${t##*[![:space:]]}"}"
+    t="$(printf '%s' "$t" | tr '[:upper:]' '[:lower:]')"
+    [[ -z "$t" ]] && continue
+    [[ ",$out," == *",$t,"* ]] && continue
+    if ! [[ "$t" =~ ^[a-z0-9][a-z0-9-]{0,23}$ ]]; then
+      echo "Error: \"$raw\" is not a valid tag: use lowercase letters, digits and dashes, 1 to 24 characters, starting with a letter or digit" >&2; return 1
+    fi
+    if (( n == 8 )); then echo "Error: a ticket can have at most 8 tags" >&2; return 1; fi
+    out="${out:+$out,}$t"; n=$((n + 1))
+  done
+  printf '%s' "$out"
+}
+
 cmd_create() {
-  local title="" type="task" priority="2" description="" skills="" described=""
+  local title="" type="task" priority="2" description="" skills="" described="" tags=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -226,12 +248,14 @@ cmd_create() {
       -p|--priority)    priority="$2";    shift 2 ;;
       -d|--description) description="$2"; described=1; shift 2 ;;
       -s|--skills)      skills="$2";      shift 2 ;;
+      --tags)           tags="$2";        shift 2 ;;
       -*) echo "Unknown option: $1" >&2; exit 1 ;;
       *)  [[ -z "$title" ]] && title="$1"; shift ;;
     esac
   done
 
   [[ -z "$title" ]] && { echo "Error: title required" >&2; exit 1; }
+  if [[ -n "$tags" ]]; then tags="$(tag_normalize "$tags")" || exit 1; fi   # t-37e8: refuse before anything is written
 
   # t-354b: maintenance skills (csv) — allowlisted to the three repo-hygiene
   # skills, order-preserving dedupe (parity with sprint-check-go).
@@ -272,6 +296,7 @@ cmd_create() {
     printf "type: %s\n" "$type"
     printf "priority: %s\n" "$priority"
     [[ -n "$skills_line" ]] && printf "%s\n" "$skills_line"
+    [[ -n "$tags" ]] && printf "tags: %s\n" "$tags"
     printf "eval_override: false\n"
     printf "eval_fail_count: 0\n"
     printf -- "---\n"
@@ -418,6 +443,23 @@ cmd_demo() {
   fi
 
   printf "%s: demo=%s\n" "$id" "$value"
+}
+
+# t-37e8: tkt tags <id> [csv] — print a ticket's tags, or replace them (an empty csv clears them).
+cmd_tags() {
+  local id="${1:-}"
+  [[ -z "$id" ]] && { echo "Usage: tkt tags <id> [csv]" >&2; exit 1; }
+  local file
+  file="$(find_ticket "$id")"
+  id="$(get_field "$file" id)"
+  if [[ $# -lt 2 ]]; then
+    printf "%s: tags=%s\n" "$id" "$(get_field "$file" tags)"
+    return 0
+  fi
+  local tags
+  tags="$(tag_normalize "$2")" || exit 1
+  if [[ -n "$tags" ]]; then set_or_add_field "$file" tags "$tags"; else remove_field "$file" tags; fi
+  printf "%s: tags=%s\n" "$id" "$tags"
 }
 
 cmd_close() {
@@ -2311,6 +2353,7 @@ Commands:
     -d, --description       Description text
     -t, --type              Type (bug|feature|task|epic|chore) [default: task]
     -p, --priority          Priority 0-4, 0=highest [default: 2]
+    --tags a,b              Tags (lowercase letters, digits, dashes; at most 8)
   start <id>                Set status to in_progress and mark ACTIVE
   close <id> [--no-sprint]  Set status to closed and clear ACTIVE if matched.
                             Refuses by default — use 'sprint complete' if the
@@ -2326,6 +2369,8 @@ Commands:
                             sprint-headless-eval (evaluator only), 'full' (default)
                             runs the full sprint-headless pipeline. No arg prints
                             the current mode. Only meaningful when ci is on.
+  tags <id> [csv]           Print a ticket's tags, or replace them (an empty list
+                            clears them); the board's search finds them as tag:x
   demo <id> [on|off]        Mark ticket for the demo close-path: 'sprint complete'
                             runs security-review + the binding evaluator only
                             (forced Haiku), skipping the advisory reviewer + rest
@@ -2412,6 +2457,7 @@ main() {
     ci)             cmd_ci "$@" ;;
     gate)           cmd_gate "$@" ;;
     demo)           cmd_demo "$@" ;;
+    tags)           cmd_tags "$@" ;;
     current)        cmd_current ;;
     reopen)         cmd_set_status "${1:-}" open ;;
     ls|list)        cmd_ls "$@" ;;

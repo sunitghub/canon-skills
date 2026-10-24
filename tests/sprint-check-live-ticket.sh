@@ -104,6 +104,18 @@ run_checks() {
   code="$(post t-lv01/demo '{"demo":true}')"
   [[ "$code" == 200 ]] && grep -q '^demo: true$' "$wtf" && [[ "$(sha "$mainf")" == "$main_before" ]] || fail "$label: Demo on must edit the worktree copy only"
 
+  # 3b. Tags (t-37e8): written to the worktree copy only; the board shows the worktree's; a refused list changes nothing; clearing
+  #     puts the bytes back as they were.
+  wt_before="$(sha "$wtf")"
+  code="$(post t-lv01/tags '{"tags":["Go","security"]}')"
+  [[ "$code" == 200 ]] && grep -qx 'tags: go,security' "$wtf" && [[ "$(sha "$mainf")" == "$main_before" ]] || fail "$label: tags must edit the worktree copy only, got $code"
+  [[ "$(tfield t-lv01 tags)" == '{"tags": "go,security"}' ]] || fail "$label: a bound ticket must show the worktree's tags, got $(tfield t-lv01 tags)"
+  grep -q '^demo: true$' "$wtf" && grep -q 'live description' "$wtf" || fail "$label: a tags write must keep every other field and the body"
+  code="$(post t-lv01/tags '{"tags":["bad tag"]}')"
+  [[ "$code" == 400 ]] && grep -qx 'tags: go,security' "$wtf" || fail "$label: an invalid tag must be 400 and change nothing, got $code"
+  code="$(post t-lv01/tags '{"tags":[]}')"
+  [[ "$code" == 200 && "$(sha "$wtf")" == "$wt_before" && "$(sha "$mainf")" == "$main_before" ]] || fail "$label: clearing tags must restore the worktree copy's bytes, got $code"
+
   # 4. Body: guarded by base_hash, frontmatter kept, size capped, main untouched.
   local etag; etag="$(sha "$wtf")"
   code="$(post t-lv01/body '{"body":"# Board title\n\nboard edit"}')"

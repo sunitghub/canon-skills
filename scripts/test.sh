@@ -138,6 +138,7 @@ tests=(
   "$ROOT/tests/model-registry-parity.sh"
   "$ROOT/tests/vendored-manifest.sh"
   "$ROOT/tests/check-vendored.sh"
+  "$ROOT/tests/ticket-tags.sh"
   "$ROOT/tests/sprint-check-delegate.sh"
   "$ROOT/tests/doc-mirror-parity.sh"
   "$ROOT/tests/doc-update-behavior.sh"

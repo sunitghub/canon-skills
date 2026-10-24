@@ -1,0 +1,22 @@
+# t-37e8: input<TAB>stored value (or ERR). One corpus, run through tkt (tests/ticket-tags.sh) and the Go board (tags_test.go).
+security	security
+Security,NodeJs	security,nodejs
+ github , go 	github,go
+a,,b,	a,b
+go,Go,GO	go
+	
+node-js	node-js
+0day	0day
+aaaaaaaaaaaaaaaaaaaaaaaa	aaaaaaaaaaaaaaaaaaaaaaaa
+aaaaaaaaaaaaaaaaaaaaaaaaa	ERR
+-lead	ERR
+has space	ERR
+under_score	ERR
+x:y	ERR
+---	ERR
+a<script>	ERR
+quote"	ERR
+ünï	ERR
+a,b,c,d,e,f,g,h	a,b,c,d,e,f,g,h
+a,b,c,d,e,f,g,h,i	ERR
+a,b,c,d,e,f,g,h,a	a,b,c,d,e,f,g,h
