@@ -6510,6 +6510,35 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.frameLocator('#view-proj-a iframe').locator('#cockpit')).toHaveClass(/term-mode/);
     });
 
+    test('Terminal close (t-57ab): the prefix then x asks to close just the Terminal; c cancels and the project tab stays, Enter ends it', async ({ page }) => {
+      const stubPage = `<!doctype html><html><body><script>
+        parent.postMessage({source:'canon-cockpit',type:'status',status:'running'},'*');
+        addEventListener('message',function(e){ var d=e.data; if(d&&d.source==='canon-cockpit'&&d.type==='end-scratch') parent.postMessage({source:'canon-cockpit',type:'ended'},'*'); });
+      </script></body></html>`;
+      await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: stubPage }));
+      await openShell(page, []);
+      await stubCockpit(page);
+      await page.route(/\/api\/cockpit(\?|$)/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR, launched: true }) }));
+      await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return activateTab('proj-a'); });
+      await boardsKeyReady(page, ['proj-a']);
+      const board = page.frameLocator('#view-proj-a iframe');
+      await pressPrefix(page, 'm');
+      await expect(board.locator('#cockpit')).toHaveClass(/term-mode/);
+      await expect(board.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await pressPrefix(page, 'x');
+      await expect(board.locator('#ck-leave-confirm')).toHaveClass(/open/);
+      await expect(board.locator('#ck-leave-confirm-title')).toHaveText('Close this Terminal?');
+      await expect(board.locator('#ck-leave-save')).toBeHidden();
+      await page.keyboard.press('c');
+      await expect(board.locator('#ck-leave-confirm')).not.toHaveClass(/open/);
+      expect(await shellTab(page)).toBe('proj-a');           // only the dialog went; the project tab stays
+      await pressPrefix(page, 'x');
+      await expect(board.locator('#ck-leave-confirm')).toHaveClass(/open/);
+      await page.keyboard.press('Enter');
+      await expect(board.locator('#ck-leave-confirm')).not.toHaveClass(/open/);
+      expect(await shellTab(page)).toBe('proj-a');
+    });
+
     test('promote (t-f553): editable title with hover, Promote → Continue as the ticket opens its cockpit', async ({ page }) => {
       const tid = newTicketId(PROJECT_ROOT);
       writeTicket(tid, 'open');

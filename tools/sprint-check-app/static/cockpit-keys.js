@@ -64,6 +64,7 @@ export function toggleKeysSheet(open){
   if(want) document.getElementById('keys-prefix').textContent=canonPrefixLabel();
   s.classList.toggle('show',want);
 }
+let xAsk=null;   // t-57ab: the tab whose board was asked whether a Terminal is open
 function prefixAction(key){
   if(key===canonPrefixLabel().slice(5)){ toggleKeysSheet(true); return; }   // the prefix twice opens the sheet, even if it is rebound to a key below
   const all=['projects'].concat(openTabs.map(t=>t.id));
@@ -91,7 +92,15 @@ function prefixAction(key){
     try{ f.contentWindow.postMessage({source:'canon-cockpit-shell',type:'open-terminal-request'},location.origin); }catch(e){}
     return;
   }
-  if(key==='x'){ if(activeTab!=='projects') closeTab(activeTab); return; }
+  if(key==='x'){
+    if(activeTab==='projects') return;
+    // t-57ab: a live Terminal in this project's board is closed on its own (with its own confirm); with none, the tab closes as before
+    const pid=activeTab, f=document.querySelector('#view-'+pid+' iframe');
+    if(!f){ closeTab(pid); return; }
+    xAsk=pid; setTimeout(()=>{ if(xAsk===pid){ xAsk=null; closeTab(pid); } },800);   // a board that never answers must not make x do nothing
+    try{ f.contentWindow.postMessage({source:'canon-cockpit-shell',type:'close-terminal-request'},location.origin); }catch(e){ xAsk=null; closeTab(pid); }
+    return;
+  }
   if(key==='/'){
     const f=document.querySelector('#view-'+activeTab+' iframe');
     if(f){ try{ f.focus(); f.contentWindow.postMessage({source:'canon-cockpit-shell',type:'focus-search'},location.origin); }catch(e){} }
@@ -144,6 +153,7 @@ window.addEventListener('message',function(e){
   const pid=senderTab(d);
   if(!pid) return;   // only a project tab's own board
   if(d.type==='scratch-tabs'){ onScratchTabs(d,pid); return; }
+  if(d.type==='close-terminal-ack'){ if(xAsk===pid){ xAsk=null; if(d.handled!==true&&pid===activeTab&&!shellDialogOpen()) closeTab(pid); } return; }   // t-57ab
   if(d.type==='open-factory-github'){ openFactoryGithub(pid); return; }   // t-24b1, t-9641: the picker's "set up first" row
   if(d.type==='session-menu'){ if(pid===activeTab&&!shellDialogOpen()) openTabSessionMenu(pid, typeof d.id==='string'?d.id:''); return; }   // t-3c9a: the reply to prefix then t
   if(d.type==='prefix-armed'||d.type==='prefix-cancel'||d.type==='prefix-key'){   // t-a198: only the visible tab's board speaks
