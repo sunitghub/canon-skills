@@ -126,6 +126,7 @@
        session is open), same renderTabStrip() call filling both containers. */
     .ck-tab-strip { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
     .ck-tab-strip:empty { display: none; }
+    #board-wrap > .ck-tab-strip { margin: 8px 14px 10px; }   /* the board header's own 14px inset, so the first tab lines up with Search */
     .ck-tab-strip-topbar { flex: 0 1 auto; flex-wrap: nowrap; min-width: 0; margin: 0; overflow: hidden; }   /* t-b91f: one row, shrinks before the controls */
     .ck-tab-pill {
       display: flex; align-items: center; gap: 6px;

@@ -6543,6 +6543,20 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.frameLocator('#ck-term iframe').locator('body')).not.toHaveAttribute('data-started', '1');   // an agent session keeps the manual Start (t-9a49)   // the plain Scratch button starts an agent as before
     });
 
+    test('Open tabs (t-5157): the tab strip under the board header lines up with the Search group', async ({ page }) => {
+      await stubCockpit(page);
+      await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>cockpit</body></html>' }));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#btn-terminal').click();
+      await expect(page.locator('#cockpit')).toHaveClass(/scratch-mode/);
+      await page.locator('#ck-back').click();
+      const chip = page.locator('#ck-tab-strip > *').first();
+      await expect(chip).toBeVisible();
+      const [c, s] = [await chip.boundingBox(), await page.locator('.search-mode').boundingBox()];
+      expect(Math.abs(c.x - s.x)).toBeLessThan(1.5);
+    });
+
     test('Terminal shortcut (t-57ab): the prefix then m opens a Terminal tab in the active project', async ({ page }) => {
       const urls = [];
       await page.route('**/cockpit?**', r => { urls.push(r.request().url()); return r.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>cockpit</body></html>' }); });
