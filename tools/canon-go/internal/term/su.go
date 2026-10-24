@@ -19,10 +19,10 @@ const (
 // su asks for a random word and, only when it is typed back, runs the full shell for Limit. The typed word stops a pasted
 // or scripted "su" from confirming itself: the word is unknown until it is printed. The timer lives here, in the same
 // process as the prompt, so there is no token to steal.
-func (c Config) su(rd *bufio.Reader) {
+func (c Config) su(rd *bufio.Reader) (closeTerminal bool) {
 	if c.RunShell == nil {
 		fmt.Fprintln(c.Out, "su is not available here yet")
-		return
+		return false
 	}
 	limit, warn := c.Limit, c.Warn
 	if limit <= 0 {
@@ -31,29 +31,44 @@ func (c Config) su(rd *bufio.Reader) {
 	if warn <= 0 || warn >= limit {
 		warn = DefaultWarn
 	}
+	st := c.st
+	if st == nil {
+		st = &suState{}
+	}
 	word := c.Word()
 	c.emit("terminal.su_prompted", nil)
 	fmt.Fprintf(c.Out, "Full shell mode lasts %s, then you drop back to this prompt.\nNothing you run there is restricted. This is logged.\nType %s to continue (Enter cancels): ", limit, word)
-	ans, err := rd.ReadString('\n')
-	ans = strings.TrimSpace(ans)
-	reason := ""
-	switch {
-	case ans == "" && err != nil:
-		reason = "eof"
-	case ans == "":
-		reason = "empty"
-	case subtle.ConstantTimeCompare([]byte(ans), []byte(word)) != 1:
-		reason = "wrong"
+	for {
+		ans, err := rd.ReadString('\n')
+		ans = strings.TrimSpace(ans)
+		if ans == "" {
+			reason := "empty"
+			if err != nil {
+				reason = "eof"
+			}
+			c.emit("terminal.su_denied", map[string]string{"reason": reason})
+			fmt.Fprintln(c.Out, "Cancelled: still in the restricted prompt.")
+			return false
+		}
+		if subtle.ConstantTimeCompare([]byte(ans), []byte(word)) == 1 {
+			break
+		}
+		st.wrong++
+		if st.wrong >= maxWrong {
+			// The third wrong answer closes the terminal; the log says so.
+			c.emit("terminal.su_denied", map[string]string{"reason": "locked"})
+			fmt.Fprintf(c.Out, "Wrong %d times: closing the terminal. Open it again to start over.\n", maxWrong)
+			st.closed = true
+			return true
+		}
+		c.emit("terminal.su_denied", map[string]string{"reason": "wrong"})
+		fmt.Fprintf(c.Out, "Wrong, %d left. Type %s again (Enter cancels): ", maxWrong-st.wrong, word)
 	}
-	if reason != "" {
-		c.emit("terminal.su_denied", map[string]string{"reason": reason})
-		fmt.Fprintln(c.Out, "Cancelled: still in the restricted prompt.")
-		return
-	}
+	st.wrong = 0
 	// Fail closed: a grant nobody can see is not granted.
 	if err := c.emitErr("terminal.su_granted", map[string]string{"minutes": fmt.Sprint(int(limit / time.Minute))}); err != nil {
 		fmt.Fprintln(c.Out, "su refused: the audit log cannot be written, so nothing was started.")
-		return
+		return false
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -70,11 +85,11 @@ func (c Config) su(rd *bufio.Reader) {
 			<-done
 			c.emit("terminal.su_expired", map[string]string{"how": "ended"})
 			fmt.Fprint(c.Out, "\r\n— full shell time is up; back in the restricted prompt (type su to start again) —\r\n")
-			return
+			return false
 		case <-done:
 			c.emit("terminal.su_expired", map[string]string{"how": "exited"})
 			fmt.Fprintln(c.Out, "Back in the restricted prompt.")
-			return
+			return false
 		}
 	}
 }
@@ -92,20 +107,32 @@ func (c Config) emitErr(kind string, extra map[string]string) error {
 	return c.Emit(kind, d)
 }
 
-const wordAlphabet = "abcdefghjkmnpqrstuvwxyz23456789" // no look-alikes
+// Three wrong answers in all, across every su in this terminal, close the terminal: the word is short, so a blind
+// guesser gets three tries, not thousands. A right answer starts the count again.
+const maxWrong = 3
 
-// RandomWord is the word su asks for: two groups of four characters, about 39 bits.
+// suState is what the prompt remembers between su commands.
+type suState struct {
+	wrong  int
+	closed bool // the third wrong answer ended the terminal
+}
+
+const (
+	firstAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ"        // a capital first, no I or O
+	wordAlphabet  = "abcdefghjkmnpqrstuvwxyz23456789" // then lower case and digits, no look-alikes
+)
+
+// RandomWord is the word su asks for: a capital letter and four more characters, about 25 bits. Enough because the
+// word only has to defeat an answer given without seeing it, and wrong answers are logged and locked out.
 func RandomWord() string {
-	b := make([]byte, 8)
+	b := make([]byte, 5)
 	if _, err := rand.Read(b); err != nil {
 		panic(err) // no randomness, no su: a panic ends the prompt, which is the safe outcome
 	}
-	out := make([]byte, 0, 9)
-	for i, x := range b {
-		if i == 4 {
-			out = append(out, '-')
-		}
-		out = append(out, wordAlphabet[int(x)%len(wordAlphabet)])
+	out := make([]byte, 5)
+	out[0] = firstAlphabet[int(b[0])%len(firstAlphabet)]
+	for i := 1; i < 5; i++ {
+		out[i] = wordAlphabet[int(b[i])%len(wordAlphabet)]
 	}
 	return string(out)
 }

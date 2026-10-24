@@ -198,7 +198,8 @@ sprint agent without leaving the browser — no second terminal.
   again. `ls` and `cat` work inside the project (`cat` pages a screenful at a time, Enter for more, `q` to stop; code is coloured; `.env*`, `.git/`, symlinks that leave the
   project, binary files and files over 1 MB are refused; control characters in a file are shown as symbols), read-only
   `tkt` (`current`, `ls`, `show`, `why`, `github-doctor`, `github-status`), `su` and `exit`. There is no shell: no pipes,
-  redirects or globs. `su` prints a random word to type back, then runs your login shell for 5 minutes (a warning at 4:30,
+  redirects or globs. `su` prints a random word (a capital letter and four more characters) to type back; a typo can be retried, and the third
+  wrong answer in all closes the terminal (open it again to start over). A right word runs your login shell for 5 minutes (a warning at 4:30,
   the shell is hung up at 5:00 and everything it started in the terminal is ended, then the restricted prompt returns; type
   `su` again for another 5 minutes). Leaving the shell with `exit` ends what it started too. `tkt send-issue <id> --launch` works there, because `claude --cloud` needs a real terminal. `su`, its denials
   and its end are logged as `terminal.su_*` events (see `docs/plugins.md`). It is a convenience boundary, not a sandbox: a

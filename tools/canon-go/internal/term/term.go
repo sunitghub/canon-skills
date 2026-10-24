@@ -34,6 +34,7 @@ type Config struct {
 	Limit    time.Duration // how long su lasts
 	Warn     time.Duration // how long before the end it warns
 	Rows     func() int    // the terminal's height, for paging cat; nil or 0 means 24
+	st       *suState      // what su remembers between commands (set by Run)
 }
 
 // readOnlyTkt is the whole list of tkt subcommands the restricted prompt runs. Everything else, including any command
@@ -75,7 +76,7 @@ var welcomeEntries = []entry{
 	{"tkt github-status <id>", "where a ticket stands on GitHub", false},
 	{"tkt github-doctor", "check that GitHub is ready (gh, origin)", false},
 	{"tkt --help", "every tkt command, including the rarely needed ones", false},
-	{"su", "a full shell for 5 minutes (asks you to type a word)", false},
+	{"su", "a full shell for 5 minutes (asks for a word; 3 wrong answers close the terminal)", false},
 	{"exit", "leave", false},
 	{"tkt create [title] -d <desc> -p <0-4>", "create a ticket and print its id", true},
 	{"tkt start <id>", "set it in progress and mark it ACTIVE", true},
@@ -115,6 +116,9 @@ func Run(cfg Config) int {
 	if cfg.After == nil {
 		cfg.After = time.After
 	}
+	if cfg.st == nil {
+		cfg.st = &suState{}
+	}
 	rd := bufio.NewReader(cfg.In)
 	fmt.Fprint(cfg.Out, welcome())
 	for {
@@ -123,6 +127,9 @@ func Run(cfg Config) int {
 		line = strings.TrimSpace(line)
 		if line != "" {
 			if cfg.dispatch(line, rd) {
+				if cfg.st.closed {
+					return 1
+				}
 				return 0
 			}
 		}
@@ -151,7 +158,7 @@ func (c Config) dispatch(line string, rd *bufio.Reader) bool {
 	case "tkt":
 		c.tkt(f[1:])
 	case "su":
-		c.su(rd)
+		return c.su(rd)
 	default:
 		fmt.Fprintf(c.Out, "not allowed here: %s   allowed: help, ls, cat, tkt, su, exit\n", f[0])
 	}

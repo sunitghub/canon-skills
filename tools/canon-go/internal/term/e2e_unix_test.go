@@ -73,7 +73,7 @@ func TestRealPtySession(t *testing.T) {
 	send("cat .env\n")
 	wait(`never shown`, 5*time.Second)
 	send("su\n")
-	word := strings.TrimSuffix(strings.TrimPrefix(wait(`Type [a-z2-9]{4}-[a-z2-9]{4} to continue`, 5*time.Second), "Type "), " to continue")
+	word := strings.TrimSuffix(strings.TrimPrefix(wait(`Type [A-Z][a-z2-9]{4} to continue`, 5*time.Second), "Type "), " to continue")
 	send(word + "\n")
 	time.Sleep(700 * time.Millisecond)
 	send("echo shell-$((20+22))-${COCKPIT_TOKEN:-none}\n")
@@ -143,4 +143,65 @@ func itoa(n int) string {
 		b = append([]byte{byte('0' + n%10)}, b...)
 	}
 	return string(b)
+}
+
+// Protects the three tries on the real thing: three wrong answers end the process itself, with exit status 1, and the
+// shell is never started.
+func TestRealPtyThreeWrongAnswersClose(t *testing.T) {
+	root, _ := project(t)
+	home := t.TempDir()
+	p, err := gopty.New()
+	if err != nil {
+		t.Skip("no pty here:", err)
+	}
+	defer p.Close()
+	c := p.Command(os.Args[0], "term", "--session", "sidy", "--ticket", "s-ab12", "--project", root)
+	c.Dir = root
+	c.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + home, "SHELL=/bin/sh", "CANON_HOME=" + home, "CANON_TERM_TEST_CHILD=1"}
+	if err := c.Start(); err != nil {
+		t.Fatal(err)
+	}
+	out := &safeBuf{}
+	go func() {
+		buf := make([]byte, 4096)
+		for {
+			n, err := p.Read(buf)
+			if n > 0 {
+				_, _ = out.Write(buf[:n])
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	waitFor(t, func() bool { return strings.Contains(out.String(), "Welcome to Canon Console") })
+	for i := 0; i < 3; i++ {
+		_, _ = p.Write([]byte("su\n"))
+		waitFor(t, func() bool { return strings.Count(out.String(), "to continue (Enter cancels)") > i })
+		_, _ = p.Write([]byte("Zz999\n"))
+		_, _ = p.Write([]byte("\n")) // cancel any retry prompt so the next su starts clean
+		if strings.Contains(out.String(), "closing the terminal") {
+			break
+		}
+	}
+	waitFor(t, func() bool { return strings.Contains(out.String(), "closing the terminal") })
+	done := make(chan error, 1)
+	go func() { done <- c.Wait() }()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Error("the closed terminal should exit with status 1")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the terminal did not close after three wrong answers")
+	}
+	files, _ := filepath.Glob(filepath.Join(home, "events", "*.jsonl"))
+	var events string
+	for _, f := range files {
+		b, _ := os.ReadFile(f)
+		events += string(b)
+	}
+	if strings.Contains(events, "su_granted") || !strings.Contains(events, `"reason":"locked"`) {
+		t.Errorf("events:\n%s", events)
+	}
 }

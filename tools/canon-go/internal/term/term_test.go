@@ -283,7 +283,7 @@ func newFakeSu() *fakeSu { return &fakeSu{started: make(chan struct{}, 4), stop:
 
 func (f *fakeSu) cfg(root string) Config {
 	return Config{
-		Root: root, Session: "sid", Ticket: "s-ab12", Word: func() string { return "abcd-efgh" },
+		Root: root, Session: "sid", Ticket: "s-ab12", Word: func() string { return "Kx7m2" },
 		Emit: func(kind string, data map[string]string) error {
 			f.mu.Lock()
 			defer f.mu.Unlock()
@@ -336,16 +336,16 @@ func (f *fakeSu) log() string {
 // Protects the typed word: only the exact word starts a shell; a wrong, empty or missing answer does not, and each is logged.
 func TestSuNeedsTheWord(t *testing.T) {
 	root, _ := project(t)
-	for _, c := range []struct{ input, reason string }{
-		{"su\nwrong-word\nexit\n", "wrong"},
-		{"su\n\nexit\n", "empty"},
-		{"su\n", "eof"},
-		{"su\nabcd-efgh \n", ""}, // surrounding blanks are ignored: this one is granted
+	for _, c := range []struct{ input, events string }{
+		{"su\nwrong-word\n\nexit\n", "terminal.su_prompted|terminal.su_denied reason=wrong|terminal.su_denied reason=empty"},
+		{"su\n\nexit\n", "terminal.su_prompted|terminal.su_denied reason=empty"},
+		{"su\n", "terminal.su_prompted|terminal.su_denied reason=eof"},
+		{"su\nKx7m2 \n", ""}, // surrounding blanks are ignored: this one is granted
 	} {
 		f := newFakeSu()
 		close(f.stop) // a granted shell exits at once
 		out := run(t, f.cfg(root), c.input)
-		if c.reason == "" {
+		if c.events == "" {
 			if f.shells != 1 || !strings.Contains(f.log(), "terminal.su_granted minutes=5") {
 				t.Errorf("%q: the right word should start the shell once; shells=%d log=%s", c.input, f.shells, f.log())
 			}
@@ -354,8 +354,8 @@ func TestSuNeedsTheWord(t *testing.T) {
 		if f.shells != 0 {
 			t.Errorf("%q: a shell started without the word", c.input)
 		}
-		if want := "terminal.su_prompted|terminal.su_denied reason=" + c.reason; f.log() != want {
-			t.Errorf("%q: events %q, want %q", c.input, f.log(), want)
+		if f.log() != c.events {
+			t.Errorf("%q: events %q, want %q", c.input, f.log(), c.events)
 		}
 		if !strings.Contains(out, "Cancelled") {
 			t.Errorf("%q: no cancel message:\n%s", c.input, out)
@@ -368,7 +368,7 @@ func TestSuFailsClosedWhenTheLogCannotBeWritten(t *testing.T) {
 	root, _ := project(t)
 	f := newFakeSu()
 	f.emitErr = errors.New("disk full")
-	out := run(t, f.cfg(root), "su\nabcd-efgh\nexit\n")
+	out := run(t, f.cfg(root), "su\nKx7m2\nexit\n")
 	if f.shells != 0 {
 		t.Fatal("a shell started although su_granted could not be logged")
 	}
@@ -388,7 +388,7 @@ func TestSuExpiry(t *testing.T) {
 	cfg.In, cfg.Out = pr, out
 	done := make(chan int, 1)
 	go func() { done <- Run(cfg) }()
-	pw.WriteString("su\nabcd-efgh\n")
+	pw.WriteString("su\nKx7m2\n")
 	<-f.started
 	waitFor(t, func() bool { f.mu.Lock(); defer f.mu.Unlock(); return len(f.chans) == 2 })
 	if f.waits[0] != 4*time.Minute+30*time.Second || f.waits[1] != 5*time.Minute {
@@ -418,14 +418,14 @@ func TestSuExpiry(t *testing.T) {
 
 	g := newFakeSu()
 	close(g.stop)
-	run(t, g.cfg(root), "su\nabcd-efgh\nexit\n")
+	run(t, g.cfg(root), "su\nKx7m2\nexit\n")
 	if got := g.log(); got != "terminal.su_prompted|terminal.su_granted minutes=5|terminal.su_expired how=exited" {
 		t.Errorf("a shell that exits first: events %q", got)
 	}
 }
 
 func TestRandomWord(t *testing.T) {
-	re := regexp.MustCompile(`^[a-z2-9]{4}-[a-z2-9]{4}$`)
+	re := regexp.MustCompile(`^[A-Z][a-z2-9]{4}$`)
 	seen := map[string]bool{}
 	for i := 0; i < 200; i++ {
 		w := RandomWord()
