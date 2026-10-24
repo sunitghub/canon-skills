@@ -16214,7 +16214,12 @@ test.describe('Tags (t-37e8)', () => {
   };
   const tagsOnDisk = id => { const m = /^tags: (.*)$/m.exec(fs.readFileSync(path.join(dir(id), 'ticket.md'), 'utf8')); return m ? m[1] : ''; };
   const projectList = path.join(PROJECT_ROOT, '.tickets', 'tags.json');
-  test.afterEach(() => { while (made.length) removeTestTicket(PROJECT_ROOT, made.pop()); fs.rmSync(projectList, { force: true }); });
+  // the project's own list is shared state (the run copies a real tree that may hold one): start and end with none
+  test.beforeEach(() => { fs.rmSync(projectList, { force: true }); });   /* non-ticket */
+  test.afterEach(() => {
+    while (made.length) removeTestTicket(PROJECT_ROOT, made.pop());
+    fs.rmSync(projectList, { force: true });   /* non-ticket */
+  });
   const find = async (page, q) => { await page.goto(BASE); await page.waitForLoadState('networkidle'); await page.locator('#board-search').fill(q); };
 
   test('cards show three chips and +n; the modal edits tags from the dropdown, saves them, and a closed ticket is read-only (t-37e8)', async ({ page }) => {
@@ -16271,7 +16276,8 @@ test.describe('Tags (t-37e8)', () => {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
     await page.locator('#btn-create').click();
-    await page.locator('#c-title').fill('Tag me from the dialog');
+    const title = `Tag me from the dialog ${Date.now()}`;
+    await page.locator('#c-title').fill(title);
     await page.locator('#c-tags-btn').click();
     const menu = page.locator('.tag-menu');
     await menu.locator('label', { hasText: 'GitHub' }).locator('input').check();
@@ -16282,8 +16288,9 @@ test.describe('Tags (t-37e8)', () => {
     await expect(page.locator('#create-overlay')).toHaveClass(/open/);                        // Escape closed only the menu
     const created = page.waitForResponse(r => new URL(r.url()).pathname === '/api/tickets' && r.request().method() === 'POST');
     await page.locator('#c-submit').click();
-    const id = (await (await created).json()).id;
-    try { expect(tagsOnDisk(id)).toBe('github,security'); } finally { fs.rmSync(dir(id), { recursive: true, force: true }); }   // made through the UI, not newTicketId
+    const id = adoptBoardTicket(PROJECT_ROOT, (await (await created).json()).id, title);   // made through the UI: removed after the test
+    made.push(id);
+    expect(tagsOnDisk(id)).toBe('github,security');
     await page.locator('#btn-create').click();                                                // a fresh dialog starts with no tags
     await expect(page.locator('#c-tag-chips .tag-chip')).toHaveCount(0);
   });
