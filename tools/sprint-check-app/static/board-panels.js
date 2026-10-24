@@ -336,10 +336,9 @@ export function initPanels() {
     if (e.target === e.currentTarget) closeCommitPanel();
   });
 
-  makePanelDraggable('modal');
+  initDialogPanel({ panelId: 'modal' });
   initDialogPanel({ panelId: 'commit-panel', resizable: false });
   initDialogPanel({ panelId: 'create-modal' });
-  makePanelResizable('modal');
   initDialogPanel({ panelId: 'gh-dialog-box', handle: '#gh-dialog-title' });   // t-e523: the GitHub dialog moves by its title
 
   // Delegated handler — fires once, lives on #m-body permanently
