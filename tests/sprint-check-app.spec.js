@@ -6447,6 +6447,20 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
+    test('Terminal row (t-5157): the Agents list and Admin name a term session Terminal with the >_ mark, not the Scratch pencil', async ({ page }) => {
+      await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: fakeLivePage }));
+      await openShell(page, [{ ...scratchRow('s-q7s1', 'c:/users/me/proj-x/'), agent: 'term' }]);
+      await stubEmbeddedCockpit(page);
+      await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return pollSessions(); });
+      const row = page.locator('#ag-list .ag-row');
+      await expect(row.locator('.ag-t1')).toHaveText('Terminal');
+      await expect(row.locator('.ag-t1 svg.scr-ico')).toHaveAttribute('aria-label', 'Terminal');
+      await page.locator('#nav-admin').click();
+      await expect(page.locator('#ad-sessions .s1')).toHaveText('Terminal');
+      await expect(page.locator('#ad-sessions .s1 svg.scr-ico')).toHaveAttribute('aria-label', 'Terminal');
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     test('scratch (t-e162): the board path bar has + Scratch; the scratch view says where it runs', async ({ page }) => {
       const where = [];
       await stubCockpit(page);

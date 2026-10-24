@@ -1,7 +1,7 @@
 // t-565f: the Cockpit shell's admin code (was part of cockpit.html's one script). Declarations only: the
 // load-time code is initAdmin(), which cockpit-main.js runs in order once every module has loaded.
 import { cockpitConfirm, esc, escAttr, toast } from './cockpit-core.js';
-import { SCRATCH_ICON, TICKET_ID_RE, _projKey, dismissInterrupted, fmtDur, interrupted, intrProj, intrSince, renderSessionSurfaces, resumeInterrupted, sessionTime, sessionView, setLastSessions, ticketTitle } from './cockpit-sessions.js';
+import { scratchIcon, TICKET_ID_RE, _projKey, dismissInterrupted, fmtDur, interrupted, intrProj, intrSince, renderSessionSurfaces, resumeInterrupted, sessionTime, sessionView, setLastSessions, ticketTitle } from './cockpit-sessions.js';
 import { openSessionInTab, openTabs } from './cockpit-tabs.js';
 import { getProjects } from './cockpit-projects.js';
 import { canKill, canReap, confirmEnd } from './cockpit-end.js';
@@ -24,7 +24,7 @@ export function renderAdminSessions(views){
       const since=v.since!==null ? ' \u00b7 '+fmtDur(v.since) : '';
       return `<tr class="st st-${v.state}">`+
       `<td title="${escAttr(v.label+(v.signal?' \u00b7 state from: '+v.signal:''))}"><span class="stcell"><span class="sdot"></span>${esc(v.short+since)}</span></td>`+
-      `<td class="sess"><div class="s1" title="${escAttr(title)}">${v.ticket?`<span class="ag-id">${esc(v.ticket)}</span>${esc(title)}`:(v.scratch?`${SCRATCH_ICON}${esc(v.scrTitle||'Scratch session')}`:'no ticket')}</div>`+
+      `<td class="sess"><div class="s1" title="${escAttr(title)}">${v.ticket?`<span class="ag-id">${esc(v.ticket)}</span>${esc(title)}`:(v.scratch?`${scratchIcon(v.agent)}${esc(v.scrTitle||'Scratch session')}`:'no ticket')}</div>`+
       `<div class="s2" title="${escAttr(v.proot+' \u00b7 '+v.agent+' \u00b7 '+v.cwd+inSession)}">${esc((v.projName||v.name)+' \u00b7 '+v.agent+' \u00b7 '+dir+inSession)}</div></td>`+
       `<td class="reap">${esc(v.reaper||'\u2014')}</td>`+
       `<td><div class="acts"><button class="ad-open b-accent${v.state==='needs-you'?' answer':''}" data-i="${i}">${v.state==='needs-you'?'Answer':'Open'}</button>`+
@@ -34,7 +34,7 @@ export function renderAdminSessions(views){
     interrupted.map(e=>{
       const proj=intrProj(e), pid=(proj||{}).id||'';
       const title=TICKET_ID_RE.test(e.id)?ticketTitle(pid,e.id):'';
-      const who=TICKET_ID_RE.test(e.id)?`<span class="ag-id">${esc(e.id)}</span>${esc(title)}`:`${SCRATCH_ICON}${esc('Scratch session')} <span class="ag-id">${esc(e.id)}</span>`;
+      const who=TICKET_ID_RE.test(e.id)?`<span class="ag-id">${esc(e.id)}</span>${esc(title)}`:`${scratchIcon(e.agent)}${esc(e.agent==='term'?'Terminal':'Scratch session')} <span class="ag-id">${esc(e.id)}</span>`;
       const meta=[proj?proj.name:e.project_root,e.agent,intrSince(e)&&'since '+intrSince(e)].filter(Boolean).join(' \u00b7 ');
       return `<tr class="st st-stopped" data-id="${escAttr(e.id)}">`+
       `<td><span class="stcell"><span class="sdot"></span>stopped</span></td>`+

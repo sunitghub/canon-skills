@@ -198,7 +198,7 @@ export function sessionView(s){
     signal:SIGNAL_LABEL[s.signal]||'',
     ticket:TICKET_ID_RE.test(ticket)?ticket:'',
     scratch:SCRATCH_ID_RE.test(ticket)?ticket:'',   // t-47f1: a scratch session (s-xxxx), no ticket
-    scrTitle:SCRATCH_ID_RE.test(ticket)?String(s.title||'').slice(0,80):'',   // t-f553: its user-given title
+    scrTitle:SCRATCH_ID_RE.test(ticket)?String(s.title||(s.agent==='term'?'Terminal':'')).slice(0,80):'',   // t-f553: its user-given title
     proot, name:proot.split(/[\\/]/).filter(Boolean).pop()||proot,
     agent:String(s.agent||''), cwd:String(s.cwd||''), sid:String(s.session||''),
     shared:s.shared===true,   // t-5a4b: another live session works in this same folder, and there is no git to keep them apart
@@ -273,7 +273,7 @@ export function renderSessionSurfaces(){
       const title=ticketTitle(v.pid,v.ticket), time=sessionTime(v);
       return `<button class="ag-row st st-${v.state}" data-i="${rail.indexOf(v)}" title="${escAttr((title?title+' \u2014 ':'')+v.label+(v.signal?(' \u00b7 state from: '+v.signal):''))}">`+
       `<span class="sdot"></span>`+
-      `<span class="ag-t1">${v.ticket?`<span class="ag-id">${esc(v.ticket)}</span>${esc(title)}`:(v.scratch?`${SCRATCH_ICON}${esc(v.scrTitle||'Scratch session')}`:'<span class="ag-none">no ticket</span>')}</span>`+
+      `<span class="ag-t1">${v.ticket?`<span class="ag-id">${esc(v.ticket)}</span>${esc(title)}`:(v.scratch?`${scratchIcon(v.agent)}${esc(v.scrTitle||'Scratch session')}`:'<span class="ag-none">no ticket</span>')}</span>`+
       `<span class="ag-s">${esc(agentLine(v))}</span>`+
       `<span class="ag-p" title="${escAttr(time.tip)}" data-short="${escAttr(time.short)}">${esc(time.full)}</span></button>`;
     }).join('')
@@ -349,6 +349,9 @@ export const SCRATCH_ID_RE=/^s-[a-z0-9]{4}$/;
 // t-8d72: the Git status icon on a project card (a branch: three nodes and a curve).
 export const GIT_ICON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>';
 // t-f553: a scribble and a pencil, the scratch session mark on the rail, Admin and the Scratch buttons.
+export const TERMINAL_ICON='<svg class="scr-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Terminal"><rect x="2.5" y="3.5" width="19" height="17" rx="2.5"/><path d="M2.5 8.5h19"/><path d="M8.5 12.5l3 2.5-3 2.5"/></svg>';
+// A Terminal is a scratch session whose agent is "term": it gets the Terminal button's icon, not the pencil.
+export const scratchIcon=agent=>agent==='term'?TERMINAL_ICON:SCRATCH_ICON;
 export const SCRATCH_ICON='<svg class="scr-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Scratch session"><path d="M1.5 19c1.2-1.5 2.3-1.5 3.3 0s2.2 1.5 3.3 0 2-1 2.9.2"/><path d="M19.3 3.9a1.9 1.9 0 0 1 2.7 2.7L12.3 16.3l-3.6 1 1-3.6z"/><path d="M17.6 5.6l2.7 2.7"/></svg>';
 // t-f553: scratch tabs each board has open, keyed by project id — shown on the rail before
 // their agent starts (the daemon only reports running sessions).
