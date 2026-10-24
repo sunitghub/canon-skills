@@ -1,5 +1,5 @@
 import { SHELL_TAB, loadData, state } from './board-core.js';
-import { CK_SIGNAL_LABEL, CK_STATE_LABEL, COCKPIT_TICKET_ID, SCRATCH_ID, announceScratchTabs, ckRowState, findTicketById, finishAdopt, openScratch, postToTab, render, renderBoard, renderScratchWhere, showPromotedChoice, showToast, startPromote } from './board-render.js';
+import { CK_SIGNAL_LABEL, CK_STATE_LABEL, COCKPIT_TICKET_ID, SCRATCH_ID, announceScratchTabs, ckRowState, findTicketById, finishAdopt, newScratchId, openScratch, postToTab, render, renderBoard, renderScratchWhere, showPromotedChoice, showToast, startPromote } from './board-render.js';
 import { findLiveDaemonSession, openTicketWhenLoaded, renderCockpitRail, renderTabStrip, stopCockpitPoll } from './board-cockpit-rail.js';
 import { applyActualWorkingCwd, maybeMountCockpitTerminal } from './board-worktree.js';
 
@@ -736,6 +736,10 @@ export function initCockpit() {
     }
     if (d.type === 'close-scratch') {                      // t-3c9a (user): Kill / Reap now ended this scratch session from the shell; close its chip. closeTab never ends or contacts the daemon
       if (typeof d.id === 'string' && SCRATCH_ID.test(d.id) && cockpitTabs[d.id]) closeTab(d.id);
+      return;
+    }
+    if (d.type === 'open-terminal-request') {              // t-57ab: prefix then m: the same as the Terminal button
+      openScratch(newScratchId(), { term: true });
       return;
     }
     if (d.type === 'open-scratch') {                       // t-47f1: shell's "+ Scratch", or a scratch row reopened

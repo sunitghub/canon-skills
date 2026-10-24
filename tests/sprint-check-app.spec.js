@@ -3744,6 +3744,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await pressPrefix(page, '?');
       await expect(page.locator('#keys-sheet')).toHaveClass(/show/);
       await expect(page.locator('#keys-prefix')).toHaveText('ctrl+.');
+      await expect(page.locator('#keys-sheet kbd', { hasText: /^m$/ })).toHaveCount(1);   // t-57ab: prefix then m opens a Terminal
       await page.keyboard.press('Escape');
       await expect(page.locator('#keys-sheet')).not.toHaveClass(/show/);
       await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return ( activateTab('proj-a')); });
@@ -6479,6 +6480,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.route('**/cockpit?**', r => { urls.push(r.request().url()); return r.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>cockpit</body></html>' }); });
       await page.goto(BASE);
       await page.waitForLoadState('networkidle');
+      await expect(page.locator('#btn-terminal svg.scr-ico')).toBeVisible();   // the >_ icon, beside the label
+      await expect(page.locator('#btn-terminal')).toContainText('Terminal');
       await page.locator('#btn-terminal').click();
       await expect(page.locator('#cockpit')).toHaveClass(/scratch-mode/);
       await expect.poll(() => urls.length).toBeGreaterThan(0);
@@ -6492,6 +6495,19 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator('#btn-scratch').click();
       await expect.poll(() => urls.length).toBeGreaterThan(before);
       expect(new URL(urls[urls.length - 1]).searchParams.get('mode')).toBeNull();   // the plain Scratch button starts an agent as before
+    });
+
+    test('Terminal shortcut (t-57ab): the prefix then m opens a Terminal tab in the active project', async ({ page }) => {
+      const urls = [];
+      await page.route('**/cockpit?**', r => { urls.push(r.request().url()); return r.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>cockpit</body></html>' }); });
+      await openShell(page, []);
+      await stubCockpit(page);
+      await page.route(/\/api\/cockpit(\?|$)/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR, launched: true }) }));
+      await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return activateTab('proj-a'); });
+      await boardsKeyReady(page, ['proj-a']);
+      await pressPrefix(page, 'm');
+      await expect.poll(() => urls.some(u => new URL(u).searchParams.get('mode') === 'term')).toBe(true);
+      await expect(page.frameLocator('#view-proj-a iframe').locator('#cockpit')).toHaveClass(/term-mode/);
     });
 
     test('promote (t-f553): editable title with hover, Promote → Continue as the ticket opens its cockpit', async ({ page }) => {

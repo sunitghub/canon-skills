@@ -85,6 +85,12 @@ function prefixAction(key){
     try{ f.contentWindow.postMessage({source:'canon-cockpit-shell',type:'session-menu-request'},location.origin); }catch(e){}
     return;
   }
+  if(key==='m'){   // t-57ab: a Terminal tab in the active project, as the board's Terminal button does
+    const f=activeTab!=='projects'&&document.querySelector('#view-'+activeTab+' iframe');
+    if(!f){ toast('Open a project tab first, then press the prefix and m for a Terminal'); return; }
+    try{ f.contentWindow.postMessage({source:'canon-cockpit-shell',type:'open-terminal-request'},location.origin); }catch(e){}
+    return;
+  }
   if(key==='x'){ if(activeTab!=='projects') closeTab(activeTab); return; }
   if(key==='/'){
     const f=document.querySelector('#view-'+activeTab+' iframe');
