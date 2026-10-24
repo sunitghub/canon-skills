@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
-	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -461,13 +460,6 @@ func TestSuUnavailable(t *testing.T) {
 	out := run(t, Config{Root: root}, "su\nls\nexit\n")
 	if !strings.Contains(out, "su is not available") || !strings.Contains(out, "a.go") {
 		t.Errorf("su should say so and leave the prompt running (ls after it):\n%s", out)
-	}
-}
-
-func TestReadOnlyTktListIsSorted(t *testing.T) {
-	l := ReadOnlyTkt()
-	if !sort.StringsAreSorted(l) || len(l) != 6 {
-		t.Errorf("ReadOnlyTkt = %v", l)
 	}
 }
 

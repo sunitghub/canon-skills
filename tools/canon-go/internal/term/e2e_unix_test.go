@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -122,7 +123,7 @@ func TestRealPtySession(t *testing.T) {
 
 // procState is the process state letter from /proc, or "" when there is no such process or no /proc (macOS).
 func procState(pid int) string {
-	b, err := os.ReadFile("/proc/" + itoa(pid) + "/stat")
+	b, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
 	if err != nil {
 		return ""
 	}
@@ -132,17 +133,6 @@ func procState(pid int) string {
 		return ""
 	}
 	return string(s[i+2])
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var b []byte
-	for ; n > 0; n /= 10 {
-		b = append([]byte{byte('0' + n%10)}, b...)
-	}
-	return string(b)
 }
 
 // Protects the three tries on the real thing: three wrong answers end the process itself, with exit status 1, and the
@@ -203,5 +193,81 @@ func TestRealPtyThreeWrongAnswersClose(t *testing.T) {
 	}
 	if strings.Contains(events, "su_granted") || !strings.Contains(events, `"reason":"locked"`) {
 		t.Errorf("events:\n%s", events)
+	}
+}
+
+// Protects the restricted prompt after a su shell that left the terminal in raw, no-echo mode and was then ended by the
+// time limit: the prompt must get its modes back, or the next line would not be read as a line.
+func TestRealPtyModesRestoredAfterShellKilled(t *testing.T) {
+	root, _ := project(t)
+	home := t.TempDir()
+	p, err := gopty.New()
+	if err != nil {
+		t.Skip("no pty here:", err)
+	}
+	defer p.Close()
+	c := p.Command(os.Args[0], "term", "--session", "sidm", "--ticket", "s-ab12", "--project", root, "--limit", "3s", "--warn", "1s")
+	c.Dir = root
+	c.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + home, "SHELL=/bin/sh", "CANON_HOME=" + home, "CANON_TERM_TEST_CHILD=1", "ENV=", "PS1=sh$ "}
+	if err := c.Start(); err != nil {
+		t.Fatal(err)
+	}
+	out := &safeBuf{}
+	go func() {
+		buf := make([]byte, 4096)
+		for {
+			n, err := p.Read(buf)
+			if n > 0 {
+				_, _ = out.Write(buf[:n])
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	send := func(s string) { _, _ = p.Write([]byte(s)) }
+	wait := func(re string, d time.Duration) string {
+		t.Helper()
+		r := regexp.MustCompile(re)
+		end := time.Now().Add(d)
+		for time.Now().Before(end) {
+			if m := r.FindString(out.String()); m != "" {
+				return m
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		t.Fatalf("timed out waiting for %q; output:\n%s", re, out.String())
+		return ""
+	}
+	wait(`restricted`, 10*time.Second)
+	send("su\n")
+	word := strings.TrimSuffix(strings.TrimPrefix(wait(`Type [A-Z][a-z2-9]{4} to continue`, 5*time.Second), "Type "), " to continue")
+	send(word + "\n")
+	time.Sleep(700 * time.Millisecond)
+	send("stty raw -echo -icrnl; sleep 100\n")
+	wait(`time is up`, 8*time.Second)
+	time.Sleep(300 * time.Millisecond)
+	send("xqzjk") // echo is the visible mode: it was switched off in the shell and must be back on
+	wait(`xqzjk`, 3*time.Second)
+	send("\n")
+	send("exit\n")
+	_ = c.Wait()
+}
+
+// Protects cat against a file that is not a regular one: a FIFO would block the prompt forever on open.
+func TestCatRefusesFifo(t *testing.T) {
+	root, _ := project(t)
+	if err := syscall.Mkfifo(filepath.Join(root, "pipe.txt"), 0o600); err != nil {
+		t.Skip("no fifo here:", err)
+	}
+	done := make(chan error, 1)
+	go func() { _, _, err := readFile(root, "pipe.txt"); done <- err }()
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "not a regular file") {
+			t.Errorf("err = %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("cat blocked on a FIFO")
 	}
 }

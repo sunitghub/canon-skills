@@ -203,7 +203,7 @@ sprint agent without leaving the browser — no second terminal.
   the shell is hung up at 5:00 and everything it started in the terminal is ended, then the restricted prompt returns; type
   `su` again for another 5 minutes). Leaving the shell with `exit` ends what it started too. `tkt send-issue <id> --launch` works there, because `claude --cloud` needs a real terminal. `su`, its denials
   and its end are logged as `terminal.su_*` events (see `docs/plugins.md`). It is a convenience boundary, not a sandbox: a
-  program that starts a session of its own (`setsid`, a daemon) survives the end of `su`, and a full shell can edit any file you can.
+  program that starts a session of its own (`setsid`, a daemon) survives the end of `su`, and a full shell can edit any file you can. Ending the Terminal tab while `su` is live can leave the shell's background jobs running, and a Terminal row reopened from the saved list comes back without its Terminal mode (open a new one).
   `su` is not available on Windows yet. The board's path bar has a **Scratch** too. An open scratch tab shows on the Agents
   rail as *not started* until its agent runs (`t-f553`). Click the scratch title to name it
   (`t-f553`); the rail, Admin and notifications show that name. **Promote to ticket**

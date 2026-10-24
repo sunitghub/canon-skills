@@ -1489,6 +1489,11 @@ func (s *server) handlePromote(w http.ResponseWriter, r *http.Request, se *sessi
 		http.Error(w, "only a scratch session can be promoted", http.StatusConflict)
 		return
 	}
+	// t-57ab: promote types an agent prompt into the pty; a terminal has no agent, and a live su shell would run it as commands.
+	if se.agent == "term" {
+		http.Error(w, "a terminal session has no agent to promote", http.StatusConflict)
+		return
+	}
 	if se.isExited() {
 		http.Error(w, "session has exited", http.StatusGone)
 		return

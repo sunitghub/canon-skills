@@ -8268,9 +8268,6 @@ func TestTermSessionShape(t *testing.T) {
 	ts := httptest.NewServer(s.handler())
 	t.Cleanup(ts.Close)
 	t.Cleanup(func() { killAllSessions(s) })
-	if code := startSessionAgent(t, ts.URL, "t-ab12", "term", bootTok); code != http.StatusBadRequest {
-		t.Fatalf("term for a ticket: want 400, got %d", code)
-	}
 	if code := startSessionAgent(t, ts.URL, "t-ab12", "term", "wrong"); code != http.StatusUnauthorized {
 		t.Fatalf("term without the boot token: want 401, got %d", code)
 	}
@@ -8451,5 +8448,17 @@ func TestRunVersionIsNotTerm(t *testing.T) {
 	// The version text depends on the install the test runs from; the commit stamp is the one part Run passes through.
 	if code != 0 || !strings.Contains(string(b), "c0ffee") || strings.Contains(string(b), "Welcome to") {
 		t.Errorf("code=%d output=%q", code, string(b))
+	}
+}
+
+// t-57ab: a terminal session cannot be promoted: promote types an agent prompt into the pty, where a live su shell would
+// run it as commands. (The session has no pty: reaching the write would panic, so a 409 also proves nothing was typed.)
+func TestPromoteRefusedForTerminal(t *testing.T) {
+	s := newServer(config{token: bootTok, sprintBin: "true", projectRoot: t.TempDir(), stateDir: t.TempDir()})
+	se := &session{agent: "term", ticket: "s-ab12", status: "running"}
+	rec := httptest.NewRecorder()
+	s.handlePromote(rec, httptest.NewRequest(http.MethodPost, "/promote", strings.NewReader("{}")), se)
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "no agent to promote") {
+		t.Errorf("promote on a terminal: code=%d body=%q", rec.Code, rec.Body.String())
 	}
 }

@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"canon/internal/events"
 )
@@ -35,7 +34,7 @@ func Main(args []string) int {
 	home := events.Home()
 	cfg := Config{
 		Root: root, In: os.Stdin, Out: os.Stdout,
-		Session: *session, Ticket: *ticket, Project: filepath.Clean(*project),
+		Session: *session, Ticket: *ticket,
 		Emit: func(kind string, data map[string]string) error {
 			return events.Emit(home, kind, "daemon", *project, data)
 		},

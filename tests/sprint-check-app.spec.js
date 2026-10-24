@@ -6485,6 +6485,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const u = new URL(urls[0]);
       expect(u.searchParams.get('mode')).toBe('term');
       expect(u.searchParams.get('ticket')).toMatch(/^s-[a-z0-9]{4}$/);
+      await expect(page.locator('#ck-promote')).toBeHidden();   // promote types an agent prompt into the pty: not for a terminal
       await page.goto(BASE);
       await page.waitForLoadState('networkidle');
       const before = urls.length;

@@ -60,6 +60,12 @@ func readFile(root, arg string) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
+	// Look before opening: opening a FIFO or a device would block the prompt.
+	if pre, err := os.Stat(real); err != nil {
+		return "", "", errors.New(cleanErr(err))
+	} else if !pre.Mode().IsRegular() {
+		return "", "", errors.New("not a regular file")
+	}
 	f, err := os.Open(real)
 	if err != nil {
 		return "", "", errors.New(cleanErr(err))

@@ -22,11 +22,11 @@ import (
 
 // Config is everything Run needs; tests replace the shell, the clock and the event writer.
 type Config struct {
-	Root                     string // project root; ls and cat never leave it
-	In                       io.Reader
-	Out                      io.Writer
-	Session, Ticket, Project string
-	Tkt                      string // the tkt binary; "" looks it up on PATH
+	Root            string // project root; ls and cat never leave it
+	In              io.Reader
+	Out             io.Writer
+	Session, Ticket string
+	Tkt             string // the tkt binary; "" looks it up on PATH
 	// Emit writes one audit event (kind, data); the session and ticket fields are added by the caller of Emit.
 	Emit func(kind string, data map[string]string) error
 	// RunShell runs the full shell until it exits or ctx ends (then it must stop the whole process group). nil: su is unavailable.
@@ -162,7 +162,7 @@ func (c Config) dispatch(line string, rd *bufio.Reader) bool {
 	case "su":
 		return c.su(rd)
 	default:
-		fmt.Fprintf(c.Out, "not allowed here: %s   allowed: help, ls, cat, tkt, su, exit\n", f[0])
+		fmt.Fprintf(c.Out, "not allowed here: %s   allowed: help, ls, cat, tkt, su, exit\n", Visible(f[0]))
 	}
 	return false
 }
@@ -187,7 +187,7 @@ func (c Config) ls(args []string) {
 		return
 	}
 	if !fi.IsDir() {
-		fmt.Fprintln(c.Out, fi.Name())
+		fmt.Fprintln(c.Out, Visible(fi.Name()))
 		return
 	}
 	ents, err := os.ReadDir(real)

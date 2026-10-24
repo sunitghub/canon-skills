@@ -172,6 +172,7 @@ export async function renderCockpitRail(t) {
   renderSessionStateChip();
   refreshSessionStateChip();
   document.getElementById('cockpit').classList.toggle('scratch-mode', !!t.scratch);
+  document.getElementById('cockpit').classList.toggle('term-mode', !!t.term);   // t-57ab: a terminal has no agent to promote
   document.getElementById('ck-id').textContent = displayTicketId(t);
   document.getElementById('ck-title').textContent = t.title || '';
   document.getElementById('ck-title').title = t.title || '';   // t-b91f: the full title when the bar truncates it

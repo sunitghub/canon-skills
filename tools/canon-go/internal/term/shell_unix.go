@@ -46,7 +46,9 @@ func runSpec(ctx context.Context, sp shellSpec) error {
 	cmd.Dir = sp.Dir
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = sp.In, sp.Out, sp.Out
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	restoreModes := func() {}
 	if sp.Foreground {
+		restoreModes = saveTerminal(int(os.Stdin.Fd()))
 		cmd.SysProcAttr.Foreground = true
 		cmd.SysProcAttr.Ctty = int(os.Stdin.Fd())
 		// The prompt writes to the terminal while the shell owns it: a background process would get SIGTTOU.
@@ -81,6 +83,7 @@ func runSpec(ctx context.Context, sp shellSpec) error {
 	}
 	if sp.Foreground {
 		_ = unix.IoctlSetPointerInt(int(os.Stdin.Fd()), unix.TIOCSPGRP, syscall.Getpgrp())
+		restoreModes() // after the foreground is ours again: a killed program may have left the terminal raw
 	}
 	return err
 }
