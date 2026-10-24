@@ -15504,7 +15504,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.route('**/api/github/doctor**', r => json(r, answer));
     await page.reload();
     await expect(b).toBeEnabled();
-    await expect(b).toHaveAttribute('title', /^Sync from GitHub: make a ticket/);
+    await expect(b).toHaveAttribute('title', /^GitHub Sync: make a ticket/);
   });
 
   // Prod path: the board's Sync from GitHub button after the user fixes GitHub in Factory and comes back (t-f053). The Cockpit hides

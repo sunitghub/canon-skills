@@ -100,7 +100,7 @@ async function intakeLoad(pid, gen){
   const repo=document.getElementById('fac-in-repo'), last=document.getElementById('fac-in-last');
   repo.textContent=last.textContent='—';
   if(!ghDoctor || (ghDoctor.checks||[]).some(c=>c.status==='bad')){
-    intakeWaiting('Unavailable until the checks above pass. Sync from GitHub on the board is disabled meanwhile.');
+    intakeWaiting('Unavailable until the checks above pass. GitHub Sync on the board is disabled meanwhile.');
     return;
   }
   intakeWaiting('Checking…');

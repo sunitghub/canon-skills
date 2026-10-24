@@ -391,7 +391,7 @@ function ensureDoctor() {
   }, () => { doctor = { state: 'failed', n: 0, m: 0 }; }).then(() => { swapPlaceRow(); paintSyncButton(); });
   paintSyncButton();
 }
-// t-9641: Sync from GitHub is greyed out until the checks pass (no GitHub origin included); the tooltip says where to fix
+// t-9641: GitHub Sync is greyed out until the checks pass (no GitHub origin included); the tooltip says where to fix
 // it. The doctor runs once per board load (ensureDoctor at init), and again when the picker asks or the board gets focus
 // or becomes visible again (t-f053), each only after the retry window: never on a timer.
 let syncTitle = '';
@@ -557,10 +557,10 @@ function showSent(panel, t, tab) {
   });
 }
 
-// ── Sync from GitHub (t-90a3): the dry run first, then one sync on Create ──────────────────────────────────────────
+// ── GitHub Sync (t-90a3): the dry run first, then one sync on Create ──────────────────────────────────────────
 const SYNC_WARNING = 'The label admits an issue; it does not vouch for it. An author can edit the text after it is labelled, and an issue template can apply the label. Read the issues before creating them.';
 async function syncFromGithub() {
-  const shown = openDialog({ title: 'Sync from GitHub', pre: 'Running tkt sync-issues --dry-run…', ok: 'Create tickets', cancel: 'Cancel', escape: false });
+  const shown = openDialog({ title: 'GitHub Sync', pre: 'Running tkt sync-issues --dry-run…', ok: 'Create tickets', cancel: 'Cancel', escape: false });
   updateDialog({ okDisabled: true }, shown.gen);
   let res;
   try { res = await getJSON('/api/github/sync-preview'); }
@@ -571,7 +571,7 @@ async function syncFromGithub() {
     pre: res.output || '', ok: `Create ${n} ticket${n === 1 ? '' : 's'}`, okDisabled: !n, escape: true,
   }, shown.gen);
   if (!(await shown).ok) return;
-  const run = openDialog({ title: 'Sync from GitHub', pre: 'Running tkt sync-issues…', cancel: 'Close', escape: false });
+  const run = openDialog({ title: 'GitHub Sync', pre: 'Running tkt sync-issues…', cancel: 'Close', escape: false });
   try { res = await postJSON('/api/github/sync', {}); }
   catch (e) { res = { ok: false, output: String(e.message || e) }; }
   updateDialog({ body: res.ok ? '' : 'Sync failed.', pre: res.output || '', escape: true }, run.gen);
