@@ -16321,6 +16321,13 @@ test.describe('Tags (t-37e8)', () => {
     await expect.poll(shown).toEqual([]);
   });
 
+  test('the rotating search tips include a tag: example (t-37e8)', async ({ page }) => {
+    test.setTimeout(60000);
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await expect.poll(() => page.locator('#board-search').getAttribute('placeholder'), { timeout: 40000, intervals: [500] }).toContain('tag:github');   // a tip changes every 2.5 s
+  });
+
   test('a board without the tags route says so in the dropdown instead of showing an empty list (t-37e8)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT);
     writeTagged(id, { title: 'Old board' });
