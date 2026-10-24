@@ -6267,7 +6267,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('board path bar (t-67ab, t-0e8b): branch under the path, no counts, + New · Sync · Scratch · CI on the right, no Upkeep button', async ({ page }) => {
+    test('board path bar (t-67ab, t-0e8b, t-57ab): branch under the path, no counts, + New · Sync · Scratch · Terminal · CI on the right, no Upkeep button', async ({ page }) => {
       const board = await openShell(page, []);
       await expect(board.locator('#h-branch')).not.toHaveText('\u2014', { timeout: 8000 });   // data loaded
       for (const id of ['h-open', 'h-active', 'h-needs-stat', 'h-archived-stat']) await expect(board.locator('#' + id)).toHaveCount(0);
@@ -6275,8 +6275,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const box = async sel => board.locator(sel).boundingBox();
       const proj = await box('#h-project'), branch = await box('#h-branch');
       expect(branch.y).toBeGreaterThan(proj.y + proj.height / 2);   // on the line below the path
-      expect(await board.locator('.header-right button:visible').evaluateAll(bs => bs.slice(0, 4).map(b => b.id)))
-        .toEqual(['btn-create', 'btn-gh-sync', 'btn-scratch', 'btn-ci-setup']);   // t-90a3 put Sync from GitHub after + New
+      expect(await board.locator('.header-right button:visible').evaluateAll(bs => bs.slice(0, 5).map(b => b.id)))
+        .toEqual(['btn-create', 'btn-gh-sync', 'btn-scratch', 'btn-terminal', 'btn-ci-setup']);   // t-90a3 put Sync from GitHub after + New
       const right = await box('.header-right'), first = await box('#btn-create');
       expect(first.x).toBeGreaterThan(proj.x + proj.width);   // the buttons sit to the right of the path
       await board.locator('#header').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-0e8b', 'visuals', 'path-bar.png') });
@@ -6472,6 +6472,26 @@ test.describe('cockpit in board (t-ddc8)', () => {
       });
     </script></body></html>`;
     const recordSeen = page => page.evaluate(() => { window.__termSeen = []; window.addEventListener('message', e => { if (e.data && e.data.type === '__seen') window.__termSeen.push(e.data.msg); }); });
+
+    test('Terminal button (t-57ab): opens a scratch tab whose daemon page is asked for mode=term; Scratch is not', async ({ page }) => {
+      await stubCockpit(page);
+      const urls = [];
+      await page.route('**/cockpit?**', r => { urls.push(r.request().url()); return r.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>cockpit</body></html>' }); });
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#btn-terminal').click();
+      await expect(page.locator('#cockpit')).toHaveClass(/scratch-mode/);
+      await expect.poll(() => urls.length).toBeGreaterThan(0);
+      const u = new URL(urls[0]);
+      expect(u.searchParams.get('mode')).toBe('term');
+      expect(u.searchParams.get('ticket')).toMatch(/^s-[a-z0-9]{4}$/);
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      const before = urls.length;
+      await page.locator('#btn-scratch').click();
+      await expect.poll(() => urls.length).toBeGreaterThan(before);
+      expect(new URL(urls[urls.length - 1]).searchParams.get('mode')).toBeNull();   // the plain Scratch button starts an agent as before
+    });
 
     test('promote (t-f553): editable title with hover, Promote → Continue as the ticket opens its cockpit', async ({ page }) => {
       const tid = newTicketId(PROJECT_ROOT);

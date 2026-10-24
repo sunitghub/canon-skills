@@ -120,11 +120,13 @@
   var PARENT = "__COCKPIT_PARENT__";
   function toParent(msg){ if(PARENT && window.parent !== window) window.parent.postMessage(msg, PARENT); }
   var PREFILL_CWD = "__COCKPIT_CWD__"; // t-cd06: worktree path the board selected, or "" for main checkout
+  var MODE = "__COCKPIT_MODE__";               // t-57ab: "term" = the restricted terminal (scratch only), else ""
   var AGENT = "__COCKPIT_AGENT__" || "claude"; // t-0d67: default picker selection (last-used)
   var AGENT_HINT = "__COCKPIT_AGENT_HINT__";   // e.g. "Last used: Claude Code · model: sonnet"
   (function initAgentPicker(){
     var sel = document.getElementById("agentSel");
     if(sel && (AGENT === "claude" || AGENT === "pi" || AGENT === "copilot")) sel.value = AGENT;
+    if(sel && MODE === "term") sel.style.display = "none"; // not an agent: the page starts the restricted terminal
     var h = document.getElementById("agentHint");
     if(h) h.textContent = AGENT_HINT;
   })();
@@ -232,7 +234,10 @@ function canonPrefixKeys(emit) {
   // the user to enter one. Standalone, the page's own ticket-id input applies.
   // t-47f1: a scratch session (s-xxxx) has no ticket and runs the plain agent.
   var SCRATCH = /^s-[a-z0-9]{4}$/.test(PREFILL || "");
-  if (SCRATCH) {
+  if (MODE === "term" && SCRATCH) {
+    document.getElementById("startBtn").textContent = "\u25B6 Open terminal";
+    term.writeln("\x1b[38;5;244mcanon terminal — press \x1b[1m\u25B6 Open terminal\x1b[0m\x1b[38;5;244m for a restricted prompt in this project: ls, cat, read-only tkt. Type \x1b[1msu\x1b[0m\x1b[38;5;244m there for a full shell for 5 minutes.\x1b[0m");
+  } else if (SCRATCH) {
     document.getElementById("startBtn").textContent = "\u25B6 Start agent";
     term.writeln("\x1b[38;5;244mcanon cockpit — scratch session: press \x1b[1m\u25B6 Start agent\x1b[0m\x1b[38;5;244m to launch a real \x1b[1minteractive agent\x1b[0m\x1b[38;5;244m in this project's main checkout. No ticket, no sprint, no gates.\x1b[0m");
   } else if (EMBED === "1") {
@@ -241,7 +246,7 @@ function canonPrefixKeys(emit) {
   } else {
     term.writeln("\x1b[38;5;244mcanon cockpit — enter a ticket id and press Start to launch a real \x1b[1minteractive agent session\x1b[0m\x1b[38;5;244m on it (\x1b[1msprint start <id>\x1b[0m\x1b[38;5;244m).\x1b[0m");
   }
-  term.writeln("\x1b[38;5;244mIt runs with this project's own permission settings — it can write files and run commands, and prompts you here when they require approval.\x1b[0m");
+  if (!(MODE === "term" && SCRATCH)) term.writeln("\x1b[38;5;244mIt runs with this project's own permission settings — it can write files and run commands, and prompts you here when they require approval.\x1b[0m");
 
   var dotEl = document.getElementById("dot"), statusEl = document.getElementById("statusText");
   var statusWrap = statusEl.parentNode, activeTicket = "";
@@ -477,7 +482,7 @@ function canonPrefixKeys(emit) {
     setStatus("running","starting…");
     starting = true;
     try{
-      var agent = (document.getElementById("agentSel") || {}).value || AGENT || "claude";
+      var agent = (MODE === "term" && SCRATCH) ? "term" : (document.getElementById("agentSel") || {}).value || AGENT || "claude";
       var r = await fetch("/session/start", { method:"POST", headers: Object.assign({"Content-Type":"application/json"}, authHeaders(TOKEN)), body: JSON.stringify({ticket:ticket, cwd:PREFILL_CWD, agent:agent}) });
       if(!r.ok){
         // t-2a1c: surface the daemon's own message (e.g. "ticket not visible in
@@ -695,7 +700,7 @@ function canonPrefixKeys(emit) {
 
   // t-61c7: a tab that opens an id with a live session says so and offers Attach
   // (the daemon already attaches any Start for a live id, ignoring the picked agent).
-  var AGENT_LABEL = { claude: "Claude Code", pi: "Pi", copilot: "Copilot CLI" };
+  var AGENT_LABEL = { claude: "Claude Code", pi: "Pi", copilot: "Copilot CLI", term: "Terminal" };
   var starting = false; // a Start is in flight: its own new row must not read as another window's
   var START_LABEL = document.getElementById("startBtn").textContent;
   async function checkLive(){

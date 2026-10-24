@@ -3949,6 +3949,8 @@ func TestAgentKindAllowlist(t *testing.T) {
 		{"claude", "claude", true},
 		{"pi", "pi", true},
 		{"copilot", "copilot", true},
+		{"term", "term", true}, // t-57ab
+		{"Term", "", false},
 		{"bogus", "", false},
 		{"Claude", "", false},  // case-sensitive
 		{"pi ", "", false},     // no trimming — exact match only
@@ -8246,5 +8248,30 @@ func TestAFailedScratchNoteLeavesTheClaimForALaterEnd(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(hand); !strings.Contains(string(b), "s-ff06: ") {
 		t.Fatalf("after a failed note, a later end wrote nothing:\n%s", b)
+	}
+}
+
+// t-57ab: a term session runs the restricted prompt, not an agent. Its argv is fixed, its environment has none of the
+// daemon's COCKPIT_* settings (the su shell inherits it), and /session/start refuses it for a ticket.
+func TestTermSessionShape(t *testing.T) {
+	got := termEnv([]string{"PATH=/bin", "COCKPIT_TOKEN=secret", "HOME=/h", "COCKPIT_TICKET=t-ab12", "NOT_COCKPIT_X=1"})
+	if want := "PATH=/bin HOME=/h NOT_COCKPIT_X=1"; strings.Join(got, " ") != want {
+		t.Errorf("termEnv = %q, want %q", strings.Join(got, " "), want)
+	}
+	if a := strings.Join(termArgs("sid1", "s-ab12", "/p"), " "); a != "term --session sid1 --ticket s-ab12 --project /p" {
+		t.Errorf("termArgs = %q", a)
+	}
+	bin, _, _ := fakeSprint(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	if code := startSessionAgent(t, ts.URL, "t-ab12", "term", bootTok); code != http.StatusBadRequest {
+		t.Fatalf("term for a ticket: want 400, got %d", code)
+	}
+	if code := startSessionAgent(t, ts.URL, "t-ab12", "term", "wrong"); code != http.StatusUnauthorized {
+		t.Fatalf("term without the boot token: want 401, got %d", code)
 	}
 }

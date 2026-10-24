@@ -903,9 +903,10 @@ export function renderScratchWhere(tab) {
     : normProjectPath(cwd) === normProjectPath(state.gitRoot) ? 'Running in the main checkout.'
     : 'Running in worktree ' + cwd.split(/[\\/]/).filter(Boolean).pop() + ' — removed on End if nothing was done in it.';
 }
-export function openScratch(id) {
+export function openScratch(id, opts = {}) {
   if (!SCRATCH_ID.test(id)) return;
-  if (!state.scratch.has(id)) state.scratch.set(id, { id, title: 'Scratch session', status: 'scratch', scratch: true, docs: [] });
+  // t-57ab: opts.term opens the restricted terminal (the daemon page gets mode=term) instead of an agent.
+  if (!state.scratch.has(id)) state.scratch.set(id, { id, title: opts.term ? 'Terminal' : 'Scratch session', status: 'scratch', scratch: true, term: !!opts.term, docs: [] });
   openCockpit(id);
 }
 

@@ -232,6 +232,7 @@ export function initCreate() {
 
     document.getElementById('btn-create').addEventListener('click', open);
     document.getElementById('btn-scratch').addEventListener('click', () => openScratch(newScratchId()));   // t-e162
+    document.getElementById('btn-terminal').addEventListener('click', () => openScratch(newScratchId(), { term: true }));   // t-57ab
     document.getElementById('ck-promote').addEventListener('click', () => startPromote(false));          // t-f553
     document.getElementById('ck-tc-title').addEventListener('click', editScratchTitle);
     document.getElementById('create-close').addEventListener('click', close);
