@@ -64,6 +64,7 @@
     .create-btn.scratch-btn { border-style: dashed; }   /* t-e162; colours from buttons.css .b-accent (t-e523) */
     .create-btn.scratch-btn { display: inline-flex; align-items: center; gap: 5px; }
     .scr-ico { width: 15px; height: 15px; flex-shrink: 0; vertical-align: -3px; }   /* t-f553: scribble + pencil */
+    #btn-terminal .scr-ico { margin-right: 5px; }   /* t-57ab: the window icon is a closed box, so it needs room before the label */
     .create-btn.ci-setup-btn { font-weight: 700; letter-spacing: -.3px; }
 
     /* ── Create modal ────────────────────────────── */
