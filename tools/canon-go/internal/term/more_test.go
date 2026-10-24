@@ -307,3 +307,21 @@ func TestTktOutputIsFiltered(t *testing.T) {
 		}
 	}
 }
+
+// Protects ls's colours: folders bold blue, links cyan, executables green, plain files and anything unusual uncoloured.
+func TestColorName(t *testing.T) {
+	for _, c := range []struct {
+		m    os.FileMode
+		want string
+	}{
+		{os.ModeDir | 0o755, "\x1b[1;34mn\x1b[0m"},
+		{os.ModeSymlink | 0o777, "\x1b[36mn\x1b[0m"},
+		{0o755, "\x1b[32mn\x1b[0m"},
+		{0o644, "n"},
+		{os.ModeNamedPipe | 0o644, "n"},
+	} {
+		if got := colorName(c.m, "n"); got != c.want {
+			t.Errorf("colorName(%v) = %q, want %q", c.m, got, c.want)
+		}
+	}
+}

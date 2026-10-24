@@ -36,6 +36,7 @@ type Config struct {
 	Limit    time.Duration // how long su lasts
 	Warn     time.Duration // how long before the end it warns
 	Rows     func() int    // the terminal's height, for paging cat; nil or 0 means 24
+	RawMode  func() func() // switches the terminal to key-by-key input for the prompt line (Tab completion); returns the undo, or nil when In is not a terminal
 	st       *suState      // what su remembers between commands (set by Run)
 }
 
@@ -68,7 +69,8 @@ type entry struct {
 }
 
 var welcomeEntries = []entry{
-	{"help", "show this list", false},
+	{"help", "show this list (a lone ? does too)", false},
+	{"clear", "clear the screen (cls does too)", false},
 	{"ls [path]", "list files with sizes and dates", false},
 	{"cat <file>", "show a file a page at a time, with colours for code", false},
 	{"tkt current", "show the active ticket", false},
@@ -123,11 +125,13 @@ func Run(cfg Config) int {
 	}
 	rd := bufio.NewReader(cfg.In)
 	fmt.Fprint(cfg.Out, welcome())
+	var hist []string
 	for {
 		fmt.Fprint(cfg.Out, "$ ")
-		line, err := rd.ReadString('\n')
+		line, err := cfg.readLine(rd, &hist)
 		line = strings.TrimSpace(line)
 		if line != "" {
+			hist = append(hist, line)
 			if cfg.dispatch(line, rd) {
 				if cfg.st.closed {
 					return 1
@@ -143,6 +147,10 @@ func Run(cfg Config) int {
 
 // dispatch runs one line; it reports whether the prompt should end.
 func (c Config) dispatch(line string, rd *bufio.Reader) bool {
+	if line == "?" { // the one place a ? is not a glob
+		fmt.Fprint(c.Out, welcome())
+		return false
+	}
 	if i := strings.IndexAny(line, shellChars); i >= 0 {
 		fmt.Fprintf(c.Out, "not supported here (no shell): %s\n", string(line[i]))
 		return false
@@ -153,6 +161,8 @@ func (c Config) dispatch(line string, rd *bufio.Reader) bool {
 		return true
 	case "help":
 		fmt.Fprint(c.Out, welcome())
+	case "clear", "cls":
+		fmt.Fprint(c.Out, "\x1b[H\x1b[2J\x1b[3J")
 	case "ls":
 		c.ls(f[1:])
 	case "cat":
@@ -162,7 +172,7 @@ func (c Config) dispatch(line string, rd *bufio.Reader) bool {
 	case "su":
 		return c.su(rd)
 	default:
-		fmt.Fprintf(c.Out, "not allowed here: %s   allowed: help, ls, cat, tkt, su, exit\n", Visible(f[0]))
+		fmt.Fprintf(c.Out, "not allowed here: %s   allowed: help, ls, cat, tkt, su, clear, exit\n", Visible(f[0]))
 	}
 	return false
 }
@@ -222,7 +232,25 @@ func (c Config) ls(args []string) {
 
 // longLine is one ls -l row without owner or link count: mode, size, modified time, name.
 func longLine(fi os.FileInfo, name string) string {
-	return fmt.Sprintf("%s %7s %s  %s", fi.Mode().String(), humanSize(fi.Size()), fi.ModTime().Format("Jan _2 15:04"), Visible(name))
+	return fmt.Sprintf("%s %7s %s  %s", fi.Mode().String(), humanSize(fi.Size()), fi.ModTime().Format("Jan _2 15:04"), colorName(fi.Mode(), Visible(name)))
+}
+
+// colorName paints a name the way GNU ls does by default: folders bold blue, links cyan, executables green, the rest plain.
+// name is already Visible, so it carries no escape of its own.
+func colorName(m os.FileMode, name string) string {
+	code := ""
+	switch {
+	case m.IsDir():
+		code = "1;34"
+	case m&os.ModeSymlink != 0:
+		code = "36"
+	case m.IsRegular() && m&0o111 != 0:
+		code = "32"
+	}
+	if code == "" {
+		return name
+	}
+	return "\x1b[" + code + "m" + name + "\x1b[0m"
 }
 
 func humanSize(n int64) string {

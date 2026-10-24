@@ -71,6 +71,8 @@ func TestRealPtySession(t *testing.T) {
 	wait(`restricted`, 10*time.Second)
 	send("ls\n")
 	wait(`a\.go`, 5*time.Second)
+	send("cat a.\t\n") // Tab on the real pty: the prompt reads keys itself and completes a.go before Enter
+	wait(`package`, 5*time.Second)
 	send("cat .env\n")
 	wait(`never shown`, 5*time.Second)
 	send("su\n")

@@ -43,6 +43,7 @@ func Main(args []string) int {
 		Limit:    *limit,
 		Warn:     *warn,
 		Rows:     terminalRows,
+		RawMode:  func() func() { return rawMode(int(os.Stdin.Fd())) },
 	}
 	return Run(cfg)
 }

@@ -175,10 +175,10 @@ func run(t *testing.T, cfg Config, input string) string {
 func TestPromptCommands(t *testing.T) {
 	root, _ := project(t)
 	cfg := Config{Root: root}
-	out := run(t, cfg, "help\nls\ncat a.go\ncat .env\ncat ../outside/secret.txt\nrm -rf x\ncat a.go | cat\nls -R\nexit\ncat a.go\n")
+	out := run(t, cfg, "help\nls\ncat a.go\ncat .env\ncat ../outside/secret.txt\nrm -rf x\ncat a.go | cat\nls -R\n?\nexit\ncat a.go\n")
 	for _, want := range []string{
 		"Welcome to Canon Console", "Needs su",
-		" a.go\n", " sub/\n",
+		" a.go\n", " \x1b[1;34msub/\x1b[0m\n",
 		"package",
 		"cat: .env files are never shown",
 		"cat: outside this project",
