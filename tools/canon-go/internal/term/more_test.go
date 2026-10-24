@@ -108,7 +108,7 @@ func TestTktCommand(t *testing.T) {
 	root, _ := project(t)
 	bindir := t.TempDir()
 	fake := filepath.Join(bindir, "tkt")
-	if err := os.WriteFile(fake, []byte("#!/bin/sh\npwd\necho \"args:$*\"\n[ \"$1\" = fail ] && exit 3\nexit 0\n"), 0o755); err != nil {
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\npwd -P\necho \"args:$*\"\n[ \"$1\" = fail ] && exit 3\nexit 0\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	// Default binary: found on PATH, run in the project folder.

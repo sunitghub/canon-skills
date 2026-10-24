@@ -383,6 +383,7 @@ func TestSuFailsClosedWhenTheLogCannotBeWritten(t *testing.T) {
 	root, _ := project(t)
 	f := newFakeSu()
 	f.emitErr = errors.New("disk full")
+	close(f.stop) // a shell that starts anyway returns at once, so a broken guard fails the check below instead of hanging on the fake clock
 	out := run(t, f.cfg(root), "su\nKx7m2\nls\nexit\n")
 	if f.shells != 0 {
 		t.Fatal("a shell started although su_granted could not be logged")
