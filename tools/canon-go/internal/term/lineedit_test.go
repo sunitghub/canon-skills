@@ -3,6 +3,10 @@ package term
 import (
 	"bufio"
 	"bytes"
+	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -81,5 +85,28 @@ func TestHelpMarkAndClear(t *testing.T) {
 	}
 	if !strings.Contains(out, "not supported here (no shell): ?") {
 		t.Errorf("a ? inside a longer line is still refused:\n%s", out)
+	}
+}
+
+// Protects paging beyond cat: a long tkt listing and a long ls stop at "more" and q ends them, as a long file does.
+func TestPagingCoversTktAndLs(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell script stand-in")
+	}
+	root, _ := project(t)
+	fake := filepath.Join(t.TempDir(), "tkt")
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\ni=1\nwhile [ $i -le 40 ]; do echo \"t-$i row\"; i=$((i+1)); done\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := Config{Root: root, Tkt: fake, Rows: func() int { return 10 }}
+	out := run(t, cfg, "tkt ls\nq\nexit\n")
+	if !strings.Contains(out, "-- more:") || strings.Contains(out, "t-40 row") {
+		t.Errorf("tkt ls should stop at the first page when q is typed:\n%s", out)
+	}
+	for i := 0; i < 12; i++ {
+		os.WriteFile(filepath.Join(root, fmt.Sprintf("f%02d.txt", i)), nil, 0o644)
+	}
+	if out := run(t, cfg, "ls\nq\nexit\n"); !strings.Contains(out, "-- more:") {
+		t.Errorf("a long ls should page:\n%s", out)
 	}
 }

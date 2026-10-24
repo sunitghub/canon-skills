@@ -14,6 +14,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"sort"
 	"strings"
 	"sync"
@@ -33,11 +34,12 @@ type Config struct {
 	RunShell func(ctx context.Context, root string) error
 	After    func(time.Duration) <-chan time.Time
 	Word     func() string
-	Limit    time.Duration // how long su lasts
-	Warn     time.Duration // how long before the end it warns
-	Rows     func() int    // the terminal's height, for paging cat; nil or 0 means 24
-	RawMode  func() func() // switches the terminal to key-by-key input for the prompt line (Tab completion); returns the undo, or nil when In is not a terminal
-	st       *suState      // what su remembers between commands (set by Run)
+	Limit    time.Duration  // how long su lasts
+	Warn     time.Duration  // how long before the end it warns
+	Rows     func() int     // the terminal's height, for paging cat; nil or 0 means 24
+	RawMode  func() func()  // switches the terminal to key-by-key input for the prompt line (Tab completion); returns the undo, or nil when In is not a terminal
+	st       *suState       // what su remembers between commands (set by Run)
+	intr     chan os.Signal // SIGINTs caught while a command ran (set by Run): a command that was interrupted shows nothing more
 }
 
 // readOnlyTkt is the whole list of tkt subcommands the restricted prompt runs. Everything else, including any command
@@ -125,6 +127,12 @@ func Run(cfg Config) int {
 	}
 	rd := bufio.NewReader(cfg.In)
 	fmt.Fprint(cfg.Out, welcome())
+	// A Ctrl-C while a command runs is a SIGINT to this whole foreground group. Catching it keeps the prompt alive while the
+	// command (which gets the default action on exec) stops; ignoring it would be inherited by tkt and leave it unstoppable.
+	sigc := make(chan os.Signal, 1)
+	signal.Notify(sigc, os.Interrupt)
+	defer signal.Stop(sigc)
+	cfg.intr = sigc
 	var hist []string
 	for {
 		fmt.Fprint(cfg.Out, "$ ")
@@ -164,11 +172,11 @@ func (c Config) dispatch(line string, rd *bufio.Reader) bool {
 	case "clear", "cls":
 		fmt.Fprint(c.Out, "\x1b[H\x1b[2J\x1b[3J")
 	case "ls":
-		c.ls(f[1:])
+		c.ls(f[1:], rd)
 	case "cat":
 		c.cat(f[1:], rd)
 	case "tkt":
-		c.tkt(f[1:])
+		c.tkt(f[1:], rd)
 	case "su":
 		return c.su(rd)
 	default:
@@ -178,7 +186,7 @@ func (c Config) dispatch(line string, rd *bufio.Reader) bool {
 }
 
 // ls always prints the long form (mode, size, date, name); -l and -a are accepted because every entry is listed anyway.
-func (c Config) ls(args []string) {
+func (c Config) ls(args []string, rd *bufio.Reader) {
 	var paths []string
 	for _, a := range args {
 		if strings.HasPrefix(a, "-") && len(a) > 1 && strings.Trim(a[1:], "la") == "" {
@@ -225,9 +233,7 @@ func (c Config) ls(args []string) {
 		}
 		lines = append(lines, longLine(info, n))
 	}
-	for _, l := range lines { // os.ReadDir already sorts by name
-		fmt.Fprintln(c.Out, l)
-	}
+	c.page(strings.Join(lines, "\n"), rd) // os.ReadDir already sorted them by name
 }
 
 // longLine is one ls -l row without owner or link count: mode, size, modified time, name.
@@ -282,7 +288,7 @@ func (c Config) cat(args []string, rd *bufio.Reader) {
 	}
 }
 
-func (c Config) tkt(args []string) {
+func (c Config) tkt(args []string, rd *bufio.Reader) {
 	if len(args) == 0 {
 		fmt.Fprintln(c.Out, "usage: tkt <command>   read-only here: "+strings.Join(ReadOnlyTkt(), ", "))
 		return
@@ -298,10 +304,24 @@ func (c Config) tkt(args []string) {
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = c.Root
 	// tkt prints ticket text, which can come from an imported issue: show it the way cat shows a file, line by line.
-	vw := &visibleWriter{w: c.Out}
+	select { // forget a Ctrl-C from before this command
+	case <-c.intr:
+	default:
+	}
+	// A slow, long listing (tkt ls takes seconds) pages as it streams: when a page is full the writer waits for a key, so tkt
+	// itself waits on its pipe, and q stops it.
+	pw := &pageWriter{c: c, rd: rd, size: c.pageSize()}
+	vw := &visibleWriter{w: pw}
 	cmd.Stdout, cmd.Stderr = vw, vw
+	pw.cmd = cmd
 	err := cmd.Run()
 	vw.flush()
+	select {
+	case <-c.intr:
+		fmt.Fprintln(c.Out, "^C")
+		return
+	default:
+	}
 	if err != nil {
 		if _, ok := err.(*exec.ExitError); !ok {
 			fmt.Fprintf(c.Out, "tkt: %v\n", err)
@@ -322,16 +342,7 @@ func cleanErr(err error) string {
 // page shows text a screenful at a time: Enter for the next page, q to stop. Text that fits is shown at once.
 func (c Config) page(text string, rd *bufio.Reader) {
 	lines := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
-	rows := 24
-	if c.Rows != nil {
-		if r := c.Rows(); r > 0 {
-			rows = r
-		}
-	}
-	size := rows - 1
-	if size < 5 {
-		size = 5
-	}
+	size := c.pageSize()
 	for len(lines) > 0 {
 		n := size
 		if n > len(lines) {
@@ -342,13 +353,93 @@ func (c Config) page(text string, rd *bufio.Reader) {
 		if len(lines) == 0 {
 			return
 		}
-		fmt.Fprintf(c.Out, "\x1b[0m-- more: Enter for the next page, q to stop (%d lines left) -- ", len(lines))
-		ans, err := rd.ReadString('\n')
-		if err != nil || strings.EqualFold(strings.TrimSpace(ans), "q") {
-			fmt.Fprintln(c.Out)
+		fmt.Fprintf(c.Out, "\x1b[0m-- more: Enter or space for the next page, q or Ctrl-C to stop (%d lines left) -- ", len(lines))
+		if c.pageKey(rd) {
 			return
 		}
 	}
+}
+
+// pageSize is how many lines fit a screen: the terminal's height less the prompt line, never under 5.
+func (c Config) pageSize() int {
+	rows := 24
+	if c.Rows != nil {
+		if r := c.Rows(); r > 0 {
+			rows = r
+		}
+	}
+	if rows-1 < 5 {
+		return 5
+	}
+	return rows - 1
+}
+
+// pageWriter prints whole lines and, once a page is full, asks for a key before the next line. A stop key ends the
+// command it is paging and drops what is still to come.
+type pageWriter struct {
+	c       Config
+	rd      *bufio.Reader
+	cmd     *exec.Cmd
+	size, n int
+	stopped bool
+}
+
+func (p *pageWriter) Write(b []byte) (int, error) {
+	if p.stopped {
+		return len(b), nil
+	}
+	for _, line := range strings.SplitAfter(string(b), "\n") {
+		if line == "" {
+			continue
+		}
+		if p.n >= p.size {
+			fmt.Fprint(p.c.Out, "\x1b[0m-- more: Enter or space for the next page, q or Ctrl-C to stop -- ")
+			if p.c.pageKey(p.rd) {
+				p.stopped = true
+				if p.cmd != nil && p.cmd.Process != nil {
+					_ = p.cmd.Process.Kill()
+				}
+				return len(b), nil
+			}
+			p.n = 0
+		}
+		fmt.Fprint(p.c.Out, line)
+		p.n++
+	}
+	return len(b), nil
+}
+
+// pageKey waits at the "more" prompt and says whether to stop. On a terminal it takes one key (Enter or space goes on;
+// q, Ctrl-C or Ctrl-D stop) and wipes the prompt; otherwise it reads a line and stops on q.
+func (c Config) pageKey(rd *bufio.Reader) bool {
+	if c.RawMode != nil {
+		if restore := c.RawMode(); restore != nil {
+			defer restore()
+			for {
+				b, err := rd.ReadByte()
+				if err != nil {
+					fmt.Fprint(c.Out, "\r\x1b[K")
+					return true
+				}
+				switch b {
+				case '\r', '\n', ' ':
+					fmt.Fprint(c.Out, "\r\x1b[K")
+					return false
+				case 'q', 'Q', 0x03, 0x04:
+					fmt.Fprint(c.Out, "\r\x1b[K")
+					return true
+				case 0x1b:
+					readEscape(rd)
+				}
+			}
+		}
+	}
+	ans, err := rd.ReadString('\n')
+	if err != nil || strings.EqualFold(strings.TrimSpace(ans), "q") {
+		fmt.Fprintln(c.Out)
+		return true
+	}
+	return false
 }
 
 // visibleWriter passes text through Visible a whole line at a time (so a character split across two writes is not
