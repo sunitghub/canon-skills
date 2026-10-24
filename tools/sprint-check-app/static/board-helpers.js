@@ -72,9 +72,13 @@ export function ticketMatchesQuery(t) {
   const q = normalizeSearch(state.query);
   if (state.queryMode !== 'search') return true;
   if (!q) return true;
-  // t-37e8: `tag:github` (any case, spaces allowed after the colon) matches the tickets that carry exactly that tag, nothing else
+  // t-37e8: `tag:github` (any case, spaces allowed after the colon) matches the tickets that carry that tag. From 3 characters on
+  // the text only has to be part of a tag (`tag:git` finds github); shorter text must be the whole tag (`tag:go` is not `golang`).
   const tagQuery = /^\s*tag\s*:\s*(.*?)\s*$/i.exec(String(state.query ?? ''));
-  if (tagQuery) return ticketTags(t).includes(tagQuery[1].toLowerCase());
+  if (tagQuery) {
+    const want = tagQuery[1].toLowerCase();
+    return ticketTags(t).some(x => want.length >= 3 ? x.includes(want) : x === want);
+  }
   // Direct field queries — bypass prose search entirely (zero false positives)
   if (q === 'is ci') return !!t.ci;
   if (q === 'is override') return !!t.eval_override;

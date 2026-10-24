@@ -16288,12 +16288,13 @@ test.describe('Tags (t-37e8)', () => {
     await expect(page.locator('#c-tag-chips .tag-chip')).toHaveCount(0);
   });
 
-  test('tag:x finds exactly the tagged tickets in any case; a plain word also matches the tag; an unknown tag finds nothing (t-37e8)', async ({ page }) => {
-    const a = newTicketId(PROJECT_ROOT), b = newTicketId(PROJECT_ROOT), c = newTicketId(PROJECT_ROOT);
+  test('tag:x finds the tagged tickets in any case (part of a tag from 3 characters); a plain word also matches the tag; an unknown tag finds nothing (t-37e8)', async ({ page }) => {
+    const a = newTicketId(PROJECT_ROOT), b = newTicketId(PROJECT_ROOT), c = newTicketId(PROJECT_ROOT), d = newTicketId(PROJECT_ROOT);
     writeTagged(a, { tags: 'github,go', title: 'Alpha tagged' });
     writeTagged(b, { title: 'Beta mentions github in its title only' });
     writeTagged(c, { tags: 'security', title: 'Gamma other tag' });
-    const shown = async () => (await page.locator('.card').evaluateAll(els => els.map(e => e.dataset.id))).filter(i => [a, b, c].includes(i)).sort();
+    writeTagged(d, { tags: 'golang', title: 'Delta a longer tag' });
+    const shown = async () => (await page.locator('.card').evaluateAll(els => els.map(e => e.dataset.id))).filter(i => [a, b, c, d].includes(i)).sort();
     await find(page, 'tag:github');
     await expect.poll(shown).toEqual([a]);
     for (const q of ['TAG:GitHub', 'tag: github', ' Tag :GITHUB ']) {
@@ -16307,6 +16308,17 @@ test.describe('Tags (t-37e8)', () => {
     await expect(page.locator('#board-empty-search')).toContainText('No tickets match');
     await page.locator('#board-search').fill('tag:security');
     await expect.poll(shown).toEqual([c]);
+    // from 3 characters the text only has to be part of a tag; shorter text must be the whole tag
+    await page.locator('#board-search').fill('tag: git');
+    await expect.poll(shown, { message: 'tag: git (3 characters)' }).toEqual([a]);
+    await page.locator('#board-search').fill('tag:THU');
+    await expect.poll(shown).toEqual([a]);
+    await page.locator('#board-search').fill('tag:gol');
+    await expect.poll(shown).toEqual([d]);
+    await page.locator('#board-search').fill('tag:go');                                       // 2 characters: the whole tag, so not golang
+    await expect.poll(shown).toEqual([a]);
+    await page.locator('#board-search').fill('tag:gi');
+    await expect.poll(shown).toEqual([]);
   });
 
   test('a board without the tags route says so in the dropdown instead of showing an empty list (t-37e8)', async ({ page }) => {
