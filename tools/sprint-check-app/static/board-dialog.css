@@ -1,5 +1,5 @@
-/* t-c6bb: the base dialog's look (board-dialog.js). The ticket, create, commit and GitHub dialogs each repeat these rules under their own
-   ids; a new dialog uses the classes instead: .dlg-overlay around a .dlg-panel holding a .modal-header and a .modal-resize-handle
+/* t-c6bb: the base dialog's look (board-dialog.js). The ticket, create and commit panels share its pop-in
+   (.dlg-motion, t-cca5) and keep their own overlay look under their ids; a new dialog uses the classes instead: .dlg-overlay around a .dlg-panel holding a .modal-header and a .modal-resize-handle
    (both styled in board-modal.css). A dialog sets only its own default size. */
 .dlg-overlay {
   position: fixed; inset: 0; z-index: 100;

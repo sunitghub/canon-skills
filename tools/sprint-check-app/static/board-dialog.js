@@ -3,7 +3,8 @@
 // from) and a panel that moves by its header and resizes from its corner, back at its start place and size on every open. The
 // drag and resize engine is board-panels.js's (one copy); the look is board-dialog.css (.dlg-overlay / .dlg-panel).
 // Markup: an overlay holding a panel, the panel holding a `.modal-header` (the drag handle). The two resize corners (top-left and
-// bottom-right, as the ticket and create dialogs have them) are added here unless the panel brings its own.
+// bottom-right, as the ticket and create dialogs have them) are added here unless the panel brings its own. The four older dialogs
+// (t-cca5) keep their own open/close code and take only the panel half, initDialogPanel.
 import { makePanelDraggable, makePanelResizable, resetPanelDrag, resetPanelResize } from './board-panels.js';
 
 // t-cca5: the panel half on its own, for a dialog that keeps its own open/close code (ticket, create, commit, GitHub): it moves by
