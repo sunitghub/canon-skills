@@ -766,7 +766,10 @@ export async function mountCockpitTerminal(t, cwd) {
   // t-74d6: once the cockpit page loads, relay the daemon build status so it can
   // render (or hide) the stale banner. Sent on load so the listener is ready.
   const bi = cockpitState.buildInfo || { stale: false, running_build: null, latest_build: null };
-  iframe.onload = () => { try { iframe.contentWindow.postMessage({ source: 'canon-cockpit', type: 'daemon-build', info: bi }, 'http://' + addr); } catch (e) {} };
+  iframe.onload = () => {
+    try { iframe.contentWindow.postMessage({ source: 'canon-cockpit', type: 'daemon-build', info: bi }, 'http://' + addr); } catch (e) {}
+    if (t.term) { try { iframe.contentWindow.postMessage({ source: 'canon-cockpit', type: 'start-terminal' }, 'http://' + addr); } catch (e) {} }   // one click: the restricted prompt opens itself
+  };
   iframe.src = url;
   iframe.style.visibility = 'visible';
   setTermMessage('');

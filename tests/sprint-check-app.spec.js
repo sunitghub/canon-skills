@@ -6501,7 +6501,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     test('Terminal button (t-57ab): opens a scratch tab whose daemon page is asked for mode=term; Scratch is not', async ({ page }) => {
       await stubCockpit(page);
       const urls = [];
-      await page.route('**/cockpit?**', r => { urls.push(r.request().url()); return r.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>cockpit</body></html>' }); });
+      await page.route('**/cockpit?**', r => { urls.push(r.request().url()); return r.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>cockpit<script>window.addEventListener("message", e => { if (e.data && e.data.type === "start-terminal") document.body.dataset.started = "1"; });</script></body></html>' }); });
       await page.goto(BASE);
       await page.waitForLoadState('networkidle');
       await expect(page.locator('#btn-terminal svg.scr-ico')).toBeVisible();   // the >_ icon, beside the label
@@ -6512,13 +6512,16 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const u = new URL(urls[0]);
       expect(u.searchParams.get('mode')).toBe('term');
       expect(u.searchParams.get('ticket')).toMatch(/^s-[a-z0-9]{4}$/);
+      await expect(page.frameLocator('#ck-term iframe').locator('body')).toHaveAttribute('data-started', '1');   // one click: the board tells the Terminal page to open its prompt
       await expect(page.locator('#ck-promote')).toBeHidden();   // promote types an agent prompt into the pty: not for a terminal
       await page.goto(BASE);
       await page.waitForLoadState('networkidle');
       const before = urls.length;
       await page.locator('#btn-scratch').click();
       await expect.poll(() => urls.length).toBeGreaterThan(before);
-      expect(new URL(urls[urls.length - 1]).searchParams.get('mode')).toBeNull();   // the plain Scratch button starts an agent as before
+      expect(new URL(urls[urls.length - 1]).searchParams.get('mode')).toBeNull();
+      await page.waitForTimeout(500);
+      await expect(page.frameLocator('#ck-term iframe').locator('body')).not.toHaveAttribute('data-started', '1');   // an agent session keeps the manual Start (t-9a49)   // the plain Scratch button starts an agent as before
     });
 
     test('Terminal shortcut (t-57ab): the prefix then m opens a Terminal tab in the active project', async ({ page }) => {

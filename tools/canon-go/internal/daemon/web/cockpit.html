@@ -236,7 +236,6 @@ function canonPrefixKeys(emit) {
   var SCRATCH = /^s-[a-z0-9]{4}$/.test(PREFILL || "");
   if (MODE === "term" && SCRATCH) {
     document.getElementById("startBtn").textContent = "\u25B6 Open terminal";
-    term.writeln("\x1b[38;5;244mcanon terminal — press \x1b[1m\u25B6 Open terminal\x1b[0m\x1b[38;5;244m for a restricted prompt in this project: ls, cat, read-only tkt. Type \x1b[1msu\x1b[0m\x1b[38;5;244m there for a full shell for 5 minutes.\x1b[0m");
   } else if (SCRATCH) {
     document.getElementById("startBtn").textContent = "\u25B6 Start agent";
     term.writeln("\x1b[38;5;244mcanon cockpit — scratch session: press \x1b[1m\u25B6 Start agent\x1b[0m\x1b[38;5;244m to launch a real \x1b[1minteractive agent\x1b[0m\x1b[38;5;244m in this project's main checkout. No ticket, no sprint, no gates.\x1b[0m");
@@ -379,6 +378,10 @@ function canonPrefixKeys(emit) {
     } else if(d.type === "set-title"){
       if(!session || typeof d.title !== "string") return;
       fetch("/session/"+session+"/title", { method:"POST", headers: Object.assign({"Content-Type":"application/json"}, authHeaders(sessTok)), body: JSON.stringify({ title: d.title }) }).catch(function(){});
+    } else if(d.type === "start-terminal"){
+      // The board's Terminal button and prefix m open straight to the prompt. Only the restricted terminal starts without
+      // a click (it can change nothing), and only on the board's say-so, never from the URL (t-9a49); agents keep the manual Start.
+      if(MODE === "term" && SCRATCH && !session && !starting) start();
     } else if(d.type === "daemon-build"){
       showStaleBanner(d.info);
     }
