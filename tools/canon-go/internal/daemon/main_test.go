@@ -8448,7 +8448,8 @@ func TestRunVersionIsNotTerm(t *testing.T) {
 	w.Close()
 	os.Stdout = old
 	b, _ := io.ReadAll(r)
-	if code != 0 || !strings.Contains(string(b), "9.9.9") || strings.Contains(string(b), "Welcome to") {
+	// The version text depends on the install the test runs from; the commit stamp is the one part Run passes through.
+	if code != 0 || !strings.Contains(string(b), "c0ffee") || strings.Contains(string(b), "Welcome to") {
 		t.Errorf("code=%d output=%q", code, string(b))
 	}
 }
