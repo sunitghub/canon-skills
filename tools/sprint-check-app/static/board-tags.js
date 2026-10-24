@@ -6,16 +6,16 @@ import { esc, escAttr, titleCase } from './board-helpers.js';
 import { postWrite, renderBoard } from './board-render.js';
 
 const TAG_RE = /^[a-z0-9][a-z0-9-]{0,23}$/;
-export const MAX_TAGS = 8;
+const MAX_TAGS = 8;
 let catalog = { starter: [], project: [], error: '' };
 
 // A starter tag has its own label (GitHub, NodeJs, CLI); any other is shown in Title Case (the stored form stays lowercase).
-export function tagLabel(tag) {
+function tagLabel(tag) {
   const s = catalog.starter.find(x => x.tag === tag);
   return s ? s.label : titleCase(tag);
 }
 
-export async function loadTagCatalog() {
+async function loadTagCatalog() {
   // A board started before tags existed answers 404: say so in the dropdown, never show an empty list as if there were no starters.
   try {
     const r = await fetch('/api/tags');
@@ -35,7 +35,7 @@ export function tagChipsHTML(tags, max = 3) {
 }
 
 let menu = null;
-export function closeTagMenu() {
+function closeTagMenu() {
   if (!menu) return;
   const { el, anchor, off } = menu;
   menu = null;
