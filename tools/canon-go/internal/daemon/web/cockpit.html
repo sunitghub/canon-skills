@@ -384,6 +384,11 @@ function canonPrefixKeys(emit) {
       // The board's Terminal button and prefix m open straight to the prompt. Only the restricted terminal starts without
       // a click (it can change nothing), and only on the board's say-so, never from the URL (t-9a49); agents keep the manual Start.
       if(MODE === "term" && SCRATCH && !session && !starting) start();
+    } else if(d.type === "type-command"){
+      // t-0aa7: To Claude Cloud. The board types ONE line at the Terminal's prompt for the user to send: it never presses Enter, and
+      // this page accepts nothing but that exact line, so a page that is not the board cannot type anything else here.
+      if(MODE !== "term" || typeof d.text !== "string" || !/^tkt send-issue t-[a-z0-9]{4} --launch$/.test(d.text)) return;
+      typeWhenReady(d.text);
     } else if(d.type === "daemon-build"){
       showStaleBanner(d.info);
     }
@@ -687,6 +692,19 @@ function canonPrefixKeys(emit) {
     if(!session) return;
     fetch("/session/"+session+"/input", { method:"POST", headers: authHeaders(sessTok), body: d }).catch(function(){});
   });
+
+  // Waits for the session and for the restricted prompt (the cursor line is just "$ ") before typing, so the line is not lost or doubled.
+  function typeWhenReady(text){
+    var tries = 0;
+    (function poll(){
+      tries++;
+      var prompt = false;
+      try{ var b = term.buffer.active, ln = b.getLine(b.baseY + b.cursorY); prompt = !!ln && /^\$\s*$/.test(ln.translateToString(true)); }catch(e){}
+      if(session && prompt){
+        fetch("/session/"+session+"/input", { method:"POST", headers: authHeaders(sessTok), body: text }).catch(function(){});
+      } else if(tries < 150){ setTimeout(poll, 100); }
+    })();
+  }
 
   function resize(){
     fit.fit();

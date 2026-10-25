@@ -14897,6 +14897,45 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     expect(others).toEqual([]);
   });
 
+  // Prod path: the Sent panel's To Claude Cloud button (t-0aa7): the Terminal opens with `tkt send-issue <id> --launch` typed for the
+  // user to send, never sent; on Windows the same button copies the line and says where to paste it.
+  for (const windows of [false, true]) {
+    test(`To Claude Cloud ${windows ? 'copies the line on Windows' : 'types the line in the Terminal without sending it'} (t-0aa7)`, async ({ page }) => {
+      const id = newTicketId(PROJECT_ROOT);   // a real t-xxxx id: the button refuses any other
+      ghTicket(id);
+      const prompt = `Work on Issue#57 for ticket ${id}. Read its section "Working on this" thoroughly before starting and follow it step by step. Work on a new branch, never main.`;
+      await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
+      await page.route('**/api/worktrees**', r => json(r, [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true }]));
+      await page.route(`**/api/ticket/${id}/github/send-preview`, r => json(r, { ok: true, exit_code: 0, output: 'repo: acme/app (PRIVATE)\ntitle: ' + id + ': GitHub test\n--- body ---\n# Description\nx\n' }));
+      await page.route(`**/api/ticket/${id}/github/send`, r => json(r, { ok: true, exit_code: 0, output: `Sent ${id} as https://github.com/acme/app/issues/57\nIn a Claude cloud session on acme/app, type:\n${prompt}\nFrom a terminal: claude --cloud '${prompt}'\n` }));
+      // A stand-in daemon page that keeps every message the board posts to it.
+      await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>cockpit<script>window.__msgs=[];window.addEventListener("message",function(e){window.__msgs.push(e.data)})</script></body></html>' }));
+      if (windows) await page.addInitScript(() => { Object.defineProperty(navigator, 'userAgentData', { get: () => ({ platform: 'Windows' }), configurable: true }); });
+      await page.addInitScript(() => { window.__copied = null; Object.defineProperty(navigator, 'clipboard', { value: { writeText: async (t) => { window.__copied = t; } }, configurable: true }); });
+      await openBoard(page, id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await page.locator('#ck-worktree .ck-gh-row').click();
+      await page.locator('#ck-gh-create').click();
+      await expect(page.locator('#ck-gh-sent')).toContainText(`Sent ${id} as issue #57`);
+      const line = `tkt send-issue ${id} --launch`;
+      await page.evaluate(async () => { (await import('/static/board-core.js')).state.isGitProject = true; });   // the fixture project is not a git repository
+      await expect(page.locator('#ck-gh-to-cloud')).toHaveText('To Claude Cloud');
+      await page.locator('#ck-gh-to-cloud').click();
+      if (windows) {
+        await expect.poll(() => page.evaluate(() => window.__copied)).toBe(line);
+        await expect(page.locator('#ck-gh-status')).toContainText('PowerShell or Git Bash');
+        expect(page.frames().filter(f => f.url().includes('mode=term'))).toHaveLength(0);   // no Terminal was opened
+      } else {
+        await expect.poll(() => page.frames().some(f => f.url().includes('mode=term'))).toBe(true);
+        const frame = page.frames().find(f => f.url().includes('mode=term'));
+        await expect.poll(() => frame.evaluate(() => window.__msgs.map(m => m.type))).toEqual(expect.arrayContaining(['start-terminal', 'type-command']));
+        const typed = await frame.evaluate(() => window.__msgs.filter(m => m.type === 'type-command'));
+        expect(typed).toEqual([{ source: 'canon-cockpit', type: 'type-command', text: line }]);   // the one line, no newline: never sent
+        expect(typed[0].text).not.toMatch(/[\r\n]/);
+      }
+    });
+  }
+
   test('Start offers GitHub places; picking GitHub mounts no terminal, previews, sends and hands back a message (t-718b)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gh3'), busy = newTicketId(PROJECT_ROOT, 'gh3b'), done = newTicketId(PROJECT_ROOT, 'gh3c');
     ghTicket(id); ghTicket(busy, { github: 'acme/app#61' });
@@ -15040,7 +15079,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('the chip never says "can\'t check" while the first status is loading, and shows only a numeric PR (t-718b)', async ({ page }) => {
-    const id = newTicketId(PROJECT_ROOT, 'gh8');
+    const id = newTicketId(PROJECT_ROOT);   // a real t-xxxx id: the button refuses any other
     ghTicket(id, { github: 'acme/app#57' });
     let release; const held = new Promise(r => { release = r; });
     let status = { stage: 'sent' };
@@ -16227,7 +16266,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('Take back asks, can close the issue, and posts once (t-718b)', async ({ page }) => {
-    const id = newTicketId(PROJECT_ROOT, 'gh8');
+    const id = newTicketId(PROJECT_ROOT);   // a real t-xxxx id: the button refuses any other
     ghTicket(id, { github: 'acme/app#57' });
     await routeStatus(page, id, { stage: 'sent' });
     const bodies = [];

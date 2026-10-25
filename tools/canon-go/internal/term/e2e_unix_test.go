@@ -287,3 +287,55 @@ func TestCatRefusesFifo(t *testing.T) {
 		t.Fatal("cat blocked on a FIFO")
 	}
 }
+
+// Protects tkt send-issue --launch on the real thing: the prompt hands it the terminal (stdin and stdout are terminals, as
+// claude --cloud requires), while every other tkt command still runs through the pager's pipe (stdout is not a terminal).
+func TestRealPtyLaunchGetsATerminal(t *testing.T) {
+	root, _ := project(t)
+	home := t.TempDir()
+	bin := t.TempDir()
+	stub := "#!/bin/sh\nt0=no; [ -t 0 ] && t0=yes\nt1=no; [ -t 1 ] && t1=yes\necho \"stub-$1 stdin-tty=$t0 stdout-tty=$t1\"\n"
+	if err := os.WriteFile(filepath.Join(bin, "tkt"), []byte(stub), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	p, err := gopty.New()
+	if err != nil {
+		t.Skip("no pty here:", err)
+	}
+	defer p.Close()
+	c := p.Command(os.Args[0], "term", "--session", "sidl", "--ticket", "s-ab12", "--project", root)
+	c.Dir = root
+	c.Env = []string{"PATH=" + bin + ":" + os.Getenv("PATH"), "HOME=" + home, "SHELL=/bin/sh", "CANON_HOME=" + home, "CANON_TERM_TEST_CHILD=1"}
+	if err := c.Start(); err != nil {
+		t.Fatal(err)
+	}
+	out := &safeBuf{}
+	go func() {
+		buf := make([]byte, 4096)
+		for {
+			n, err := p.Read(buf)
+			if n > 0 {
+				_, _ = out.Write(buf[:n])
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	waitFor(t, func() bool { return strings.Contains(out.String(), "Welcome to Canon Console") })
+	_, _ = p.Write([]byte("tkt create x\n"))
+	waitFor(t, func() bool { return strings.Contains(out.String(), "stub-create stdin-tty=no stdout-tty=no") })
+	_, _ = p.Write([]byte("tkt send-issue t-ab12 --launch\n"))
+	waitFor(t, func() bool { return strings.Contains(out.String(), "stub-send-issue stdin-tty=yes stdout-tty=yes") })
+	_, _ = p.Write([]byte("exit\n"))
+	_ = c.Wait()
+	files, _ := filepath.Glob(filepath.Join(home, "events", "*.jsonl"))
+	var events string
+	for _, f := range files {
+		b, _ := os.ReadFile(f)
+		events += string(b)
+	}
+	if strings.Count(events, `"kind":"terminal.tkt"`) != 2 || strings.Contains(events, "t-ab12") {
+		t.Errorf("want two terminal.tkt events and no argument in them:\n%s", events)
+	}
+}

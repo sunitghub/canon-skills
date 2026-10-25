@@ -27,6 +27,12 @@ type shellSpec struct {
 	Sweep      bool // when the shell ends, also end everything else it started in this terminal's session
 }
 
+// RunOnTerminal runs one program as the foreground of the real terminal until it exits (tkt send-issue --launch: claude --cloud
+// refuses without a terminal); Ctrl-C reaches it, and the prompt takes the terminal back after.
+func RunOnTerminal(ctx context.Context, path string, args []string, dir string) error {
+	return runSpec(ctx, shellSpec{Path: path, Args: args, Dir: dir, In: os.Stdin, Out: os.Stdout, Foreground: true})
+}
+
 // loginShell is the full shell su starts: the user's own login shell on the pty.
 func loginShell(root string) shellSpec {
 	sh := os.Getenv("SHELL")

@@ -31,7 +31,7 @@ tkt tags <id> [csv]           # print or replace a ticket's tags (tkt create --t
 tkt show <id> [--json]        # show full ticket
 tkt learn <id> [--force]      # distill a closed sprint's deviations/findings into an UNPROMOTED .tickets/<id>/learnings.md candidate (proposes, never promotes)
 tkt compact [--older-than DAYS] [--dry-run]  # shrink old closed tickets' evidence/ (default 14 days); sprint complete runs it
-tkt send-issue <id> [--dry-run] [--public] [--launch [--yes]]  # post the ticket as an issue on origin's GitHub repo for a Claude cloud session; --launch also starts it with `claude --cloud`
+tkt send-issue <id> [--dry-run] [--public] [--launch [--yes]]  # post the ticket as an issue on origin's GitHub repo for a Claude cloud session; --launch also starts it with `claude --cloud` (on a ticket that was already sent it starts the session on its issue and creates nothing)
 tkt import-issue <N> [--body-file F]  # in the cloud session: rebuild .tickets/<id>/ from that issue (sprint import-issue also starts it)
 tkt export <id> [--public]          # at the cloud close: send .tickets/<id>/ back (with the PR, or to canon-results/<id>)
 tkt import-results <id> [--pr N]    # on your machine: bring canon-results/<id> back; local edits kept in .before-import/

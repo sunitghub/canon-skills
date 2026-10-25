@@ -254,19 +254,22 @@ func TestTktAllowlistAgainstHelp(t *testing.T) {
 	for _, s := range subs {
 		have[s] = true
 	}
-	for _, ro := range ReadOnlyTkt() {
+	for _, ro := range append(ReadOnlyTkt(), RunTkt()...) {
 		if !have[ro] {
-			t.Errorf("read-only tkt %q is not in tkt --help any more", ro)
+			t.Errorf("tkt %q (run here without su) is not in tkt --help any more", ro)
 		}
+	}
+	if runTkt["merge-pr"] {
+		t.Error("merge-pr runs the PR's code here and must need su")
 	}
 	cfg := Config{Root: root, Tkt: fake}
 	for _, s := range subs {
 		_ = os.Remove(marker)
 		out := run(t, cfg, "tkt "+s+" x\nexit\n")
 		_, ran := os.Stat(marker)
-		if readOnlyTkt[s] {
+		if readOnlyTkt[s] || runTkt[s] {
 			if ran != nil || !strings.Contains(out, "ran-"+s) {
-				t.Errorf("tkt %s is read-only and should run, got:\n%s", s, out)
+				t.Errorf("tkt %s runs here without su and should run, got:\n%s", s, out)
 			}
 		} else if ran == nil || !strings.Contains(out, "not allowed here: tkt "+s) {
 			t.Errorf("tkt %s changes things and must be refused, got:\n%s", s, out)
@@ -318,7 +321,7 @@ func (f *fakeSu) cfg(root string) Config {
 				return f.emitErr
 			}
 			e := kind
-			for _, k := range []string{"reason", "how", "minutes"} {
+			for _, k := range []string{"reason", "how", "minutes", "sub"} {
 				if v, ok := data[k]; ok {
 					e += " " + k + "=" + v
 				}

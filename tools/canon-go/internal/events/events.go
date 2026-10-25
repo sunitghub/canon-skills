@@ -74,6 +74,8 @@ var kinds = map[string][]field{
 	"terminal.su_granted":  {{"session", 64}, {"ticket", 64}, {"minutes", 4}},
 	"terminal.su_denied":   {{"session", 64}, {"ticket", 64}, {"reason", 16}},
 	"terminal.su_expired":  {{"session", 64}, {"ticket", 64}, {"how", 16}},
+	// t-0aa7: a tkt command that changes things, run in the Terminal without su. "sub" is the subcommand name only.
+	"terminal.tkt": {{"session", 64}, {"ticket", 64}, {"sub", 32}},
 }
 
 // Sources are the programs that write events.

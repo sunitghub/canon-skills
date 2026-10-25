@@ -1135,6 +1135,25 @@ _gh_trail() {
   return 0
 }
 
+# _si_texts <id> <issue number>: sets _si_start (the prompt for the cloud session) and _si_cmdline (the same line as one
+# single-quoted shell command for a terminal, t-0da2; the board shows both). The one place that builds them.
+_si_texts() {
+  _si_start="Work on Issue#$2 for ticket $1. Read its section \"Working on this\" thoroughly before starting and follow it step by step. Work on a new branch, never main."
+  _si_cmdline="claude --cloud '$(printf '%s' "$_si_start" | sed "s/'/'\\\\''/g")'"
+}
+
+# _si_launch <root> <ticket dir> <id>: run claude --cloud with _si_start from <root>, on the user's terminal, and note it in the
+# ticket's GitHub trail. Used right after a send, and alone for a ticket that was already sent (t-0aa7).
+_si_launch() {
+  local root="$1" tdir="$2" id="$3" lrc=0
+  (cd "$root" && claude --cloud "$_si_start") || lrc=$?
+  if (( lrc != 0 )); then
+    echo "send-issue: $id was sent, but claude --cloud did not start a session (exit $lrc). Start it yourself: $_si_cmdline" >&2
+    return 1
+  fi
+  _gh_trail "$tdir" launched "command: $_si_cmdline"
+}
+
 cmd_send_issue() {
   local id="" dry=false public=false launch=false yes=false
   while [[ $# -gt 0 ]]; do
@@ -1167,7 +1186,21 @@ cmd_send_issue() {
   tdir="$(dirname "$file")"
   title="$(get_title "$file")"
   local sent; sent="$(get_field "$file" github)"
-  [[ -n "$sent" && "$(get_field "$file" runs)" == github ]] && { echo "send-issue: $id was already sent: $sent" >&2; exit 1; }
+  if [[ -n "$sent" && "$(get_field "$file" runs)" == github ]]; then
+    # t-0aa7: --launch on a ticket that was already sent starts the cloud session on its issue and creates nothing.
+    $launch || { echo "send-issue: $id was already sent: $sent" >&2; exit 1; }
+    local sn="${sent##*#}"
+    [[ "$sn" =~ ^[0-9]+$ ]] || { echo "send-issue: $id is linked to $sent, which has no issue number to start a session on" >&2; exit 1; }
+    _si_texts "$id" "$sn"
+    if ! $yes; then
+      printf '%s was already sent as %s.\nStart a Claude cloud session on it? Nothing new is created. [y/N] ' "$id" "$sent"
+      local sans=""; read -r sans || true
+      [[ "$sans" == [yY] || "$sans" == [yY][eE][sS] ]] || { echo "send-issue: no session started"; return 0; }
+    fi
+    printf '%s\nFrom a terminal: %s\n' "$_si_start" "$_si_cmdline"
+    _si_launch "$(dirname "$(tickets_dir)")" "$tdir" "$id" || exit 1
+    return 0
+  fi
   # A github: line without runs: github links an issue this ticket came from (sync-issues, import-issue) or one a
   # take-back left open: sending again would make a second issue for the same work.
   [[ -n "$sent" ]] && { echo "send-issue: $id is already linked to $sent; work it here, or close that issue and remove the github: line to send it" >&2; exit 1; }
@@ -1277,21 +1310,11 @@ cmd_send_issue() {
   # t-718b: github: is only the link (sync and import write it too); runs: github says a cloud session has the work.
   set_or_add_field "$file" runs github
   _gh_trail "$tdir" sent "issue: $url" "repo: $repo"
-  local start="Work on Issue#$n for ticket $id. Read its section \"Working on this\" thoroughly before starting and follow it step by step. Work on a new branch, never main."
-  # The same line as one shell command, single-quoted for a terminal (t-0da2); the board shows it beside the prompt.
-  local cmdline="claude --cloud '$(printf '%s' "$start" | sed "s/'/'\\\\''/g")'"
+  _si_texts "$id" "$n"
   printf 'Sent %s as %s\nIn a Claude cloud session on %s, type:\n' "$id" "$url" "$repo"
-  printf '%s\n' "$start"
-  printf 'From a terminal: %s\n' "$cmdline"
-  if $launch; then
-    local lrc=0
-    (cd "$root" && claude --cloud "$start") || lrc=$?
-    if (( lrc != 0 )); then
-      echo "send-issue: $id was sent, but claude --cloud did not start a session (exit $lrc). Start it yourself: $cmdline" >&2
-      exit 1
-    fi
-    _gh_trail "$tdir" launched "command: $cmdline"
-  fi
+  printf '%s\n' "$_si_start"
+  printf 'From a terminal: %s\n' "$_si_cmdline"
+  if $launch; then _si_launch "$root" "$tdir" "$id" || exit 1; fi
 }
 
 # cmd_import_issue <N> [--body-file F] [--force] — t-554c: rebuilds .tickets/<id>/ from a `tkt send-issue` body (the
@@ -2494,7 +2517,8 @@ Commands:
                             and runs: github. --launch also starts that session with
                             `claude --cloud` from this checkout, in a real terminal only
                             (asks first; --yes skips the question; warns, never pushes,
-                            if the branch is ahead).
+                            if the branch is ahead). On a ticket that was already sent,
+                            --launch starts the session on its issue and creates nothing.
   import-issue <N> [--body-file F] [--force]
                             Rebuild .tickets/<id>/ from a send-issue body (used by
                             sprint import-issue in the cloud session).

@@ -161,7 +161,7 @@ script's Go block:
    from a script, or run with `!` inside a Claude Code session. The CLI has no flag to pick a hosted environment
    (only `--environment` for self-hosted pools), so the session should use your account's default: make `canon` the default, and the
    cloud clones origin's copy of your current branch: push it first (`--launch` warns, never pushes). The board's Send
-   panel shows the same `claude --cloud '...'` line with a Copy command button; paste it into a terminal window.
+   panel shows the same `claude --cloud '...'` line with a Copy command button; paste it into a terminal window. Its **To Claude Cloud** button opens the board's Terminal with `tkt send-issue <id> --launch` already typed for you to send with Enter (for a ticket that was already sent, `--launch` starts the session on its issue and creates nothing). On Windows the Terminal cannot start a cloud session yet, so the button copies that line and says to paste it in PowerShell or Git Bash in the project folder.
    By hand: start a new session on the `canon` environment and your repo and paste the prompt `send-issue` printed
    (the board's Send panel shows the same line with a Copy prompt button), which reads: "Work on Issue#N for ticket <id>. Read its
    section "Working on this" thoroughly before starting and follow it step by step. Work on a new branch, never main."

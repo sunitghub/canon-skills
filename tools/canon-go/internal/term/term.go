@@ -33,6 +33,9 @@ type Config struct {
 	// RunShell runs the full shell until it exits or ctx ends (then it must stop the whole process group). nil: su is unavailable.
 	RunShell func(ctx context.Context, root string) error
 	After    func(time.Duration) <-chan time.Time
+	// RunOnTerminal runs one program as the foreground of the user's real terminal (tkt send-issue --launch needs one for
+	// claude --cloud); nil: not available here (Windows has no runner yet, t-57ab).
+	RunOnTerminal func(ctx context.Context, path string, args []string, dir string) error
 	// Auth asks the OS for the account password; nil, or ErrNoAuth, means su is unavailable.
 	Auth    func(ctx context.Context, out io.Writer) error
 	Limit   time.Duration  // how long su lasts
@@ -43,9 +46,37 @@ type Config struct {
 	intr    chan os.Signal // SIGINTs caught while a command ran (set by Run): a command that was interrupted shows nothing more
 }
 
-// readOnlyTkt is the whole list of tkt subcommands the restricted prompt runs. Everything else, including any command
-// added to tkt later, needs su.
-var readOnlyTkt = map[string]bool{"current": true, "ls": true, "show": true, "why": true, "github-doctor": true, "github-status": true}
+// readOnlyTkt are the tkt subcommands that only read. runTkt are the ones that change a ticket or post to GitHub, which the board
+// already offers as buttons behind a confirmation: they run here without su, each audited (terminal.tkt, the subcommand name only).
+// Everything else, including any command added to tkt later and merge-pr (it runs the PR's code here), needs su.
+var (
+	readOnlyTkt = map[string]bool{"current": true, "ls": true, "show": true, "why": true, "github-doctor": true, "github-status": true}
+	runTkt      = map[string]bool{"create": true, "start": true, "demo": true, "close": true, "reopen": true, "archive": true, "send-issue": true, "import-issue": true, "open-pr": true, "import-results": true}
+)
+
+// suFlags are refused on every tkt subcommand without su: --test runs any command and --body-file reads any file.
+var suFlags = []string{"--test", "--body-file"}
+
+func suFlag(args []string) string {
+	for _, a := range args {
+		for _, f := range suFlags {
+			if a == f || strings.HasPrefix(a, f+"=") {
+				return f
+			}
+		}
+	}
+	return ""
+}
+
+// RunTkt lists the subcommands that run without su and change things, sorted.
+func RunTkt() []string {
+	out := make([]string, 0, len(runTkt))
+	for k := range runTkt {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
 
 // ReadOnlyTkt lists the allowed tkt subcommands, sorted (tests compare it with `tkt --help`).
 func ReadOnlyTkt() []string {
@@ -84,18 +115,18 @@ var welcomeEntries = []entry{
 	{"tkt github-status <id>", "where a ticket stands on GitHub", false},
 	{"tkt github-doctor", "check that GitHub is ready (gh, origin)", false},
 	{"tkt --help", "every tkt command, including the rarely needed ones", false},
+	{"tkt create [title] -d <desc> -p <0-4>", "create a ticket and print its id", false},
+	{"tkt start <id>", "set it in progress and mark it ACTIVE", false},
+	{"tkt demo <id> [on|off]", "mark a ticket for the light (demo) close", false},
+	{"tkt close <id>", "close a ticket", false},
+	{"tkt reopen <id>", "open a closed ticket again", false},
+	{"tkt archive <id>", "hide a ticket from the board columns", false},
+	{"tkt send-issue <id> [--dry-run] [--launch]", "post the ticket as a GitHub issue (--launch also starts a cloud session)", false},
+	{"tkt import-issue <issue number>", "rebuild a ticket from a send-issue issue", false},
+	{"tkt open-pr <id>", "open the PR a cloud session did not", false},
+	{"tkt import-results <id>", "bring a cloud session's results back", false},
 	{"su", "a full shell for 10 minutes (asks the OS to approve: your password, or UAC on Windows; 3 failures close the terminal)", false},
 	{"exit", "leave", false},
-	{"tkt create [title] -d <desc> -p <0-4>", "create a ticket and print its id", true},
-	{"tkt start <id>", "set it in progress and mark it ACTIVE", true},
-	{"tkt demo <id> [on|off]", "mark a ticket for the light (demo) close", true},
-	{"tkt close <id>", "close a ticket", true},
-	{"tkt reopen <id>", "open a closed ticket again", true},
-	{"tkt archive <id>", "hide a ticket from the board columns", true},
-	{"tkt send-issue <id> [--dry-run] [--launch]", "post the ticket as a GitHub issue (--launch also starts a cloud session)", true},
-	{"tkt import-issue <issue number>", "rebuild a ticket from a send-issue issue", true},
-	{"tkt open-pr <id>", "open the PR a cloud session did not", true},
-	{"tkt import-results <id>", "bring a cloud session's results back", true},
 	{"tkt merge-pr <id>", "merge a ticket's PR after its checks", true},
 }
 
@@ -297,13 +328,28 @@ func (c Config) tkt(args []string, rd *bufio.Reader) {
 		fmt.Fprintln(c.Out, "usage: tkt <command>   read-only here: "+strings.Join(ReadOnlyTkt(), ", "))
 		return
 	}
-	if !readOnlyTkt[args[0]] && args[0] != "--help" {
+	if !readOnlyTkt[args[0]] && !runTkt[args[0]] && args[0] != "--help" {
 		fmt.Fprintf(c.Out, "not allowed here: tkt %s   (it can change things: type su first)\n", args[0])
 		return
+	}
+	if f := suFlag(args); f != "" {
+		fmt.Fprintf(c.Out, "not allowed here: tkt %s %s   (it can run a command or read any file: type su first)\n", args[0], f)
+		return
+	}
+	if runTkt[args[0]] {
+		// Fail closed, as su_granted: a command nobody can see in the log is not run. The name only: arguments are issue text, titles, paths.
+		if err := c.emitErr("terminal.tkt", map[string]string{"sub": args[0]}); err != nil {
+			fmt.Fprintln(c.Out, "tkt refused: the audit log cannot be written, so nothing was run.")
+			return
+		}
 	}
 	bin := c.Tkt
 	if bin == "" {
 		bin = "tkt"
+	}
+	if args[0] == "send-issue" && hasArg(args, "--launch") {
+		c.launch(bin, args)
+		return
 	}
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = c.Root
@@ -327,6 +373,38 @@ func (c Config) tkt(args []string, rd *bufio.Reader) {
 	default:
 	}
 	if err != nil {
+		if _, ok := err.(*exec.ExitError); !ok {
+			fmt.Fprintf(c.Out, "tkt: %v\n", err)
+		}
+	}
+}
+
+func hasArg(args []string, want string) bool {
+	for _, a := range args {
+		if a == want {
+			return true
+		}
+	}
+	return false
+}
+
+// launch runs tkt send-issue --launch on the user's own terminal, not through the pager's pipe: claude --cloud refuses to
+// start unless stdin and stdout are a terminal.
+func (c Config) launch(bin string, args []string) {
+	if c.RunOnTerminal == nil {
+		fmt.Fprintln(c.Out, "tkt send-issue --launch needs a full terminal, which this Terminal cannot give on Windows yet.\nPaste the same line in PowerShell or Git Bash in the project folder instead.")
+		return
+	}
+	path, err := exec.LookPath(bin)
+	if err != nil {
+		fmt.Fprintf(c.Out, "tkt: %v\n", err)
+		return
+	}
+	select { // forget a Ctrl-C from before this command
+	case <-c.intr:
+	default:
+	}
+	if err := c.RunOnTerminal(context.Background(), path, args, c.Root); err != nil {
 		if _, ok := err.(*exec.ExitError); !ok {
 			fmt.Fprintf(c.Out, "tkt: %v\n", err)
 		}

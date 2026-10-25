@@ -38,12 +38,13 @@ func Main(args []string) int {
 		Emit: func(kind string, data map[string]string) error {
 			return events.Emit(home, kind, "daemon", *project, data)
 		},
-		RunShell: RealShell,
-		Auth:     osAuth,
-		Limit:    *limit,
-		Warn:     *warn,
-		Rows:     terminalRows,
-		RawMode:  func() func() { return rawMode(int(os.Stdin.Fd())) },
+		RunShell:      RealShell,
+		RunOnTerminal: RunOnTerminal,
+		Auth:          osAuth,
+		Limit:         *limit,
+		Warn:          *warn,
+		Rows:          terminalRows,
+		RawMode:       func() func() { return rawMode(int(os.Stdin.Fd())) },
 	}
 	return Run(cfg)
 }

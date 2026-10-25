@@ -6,6 +6,12 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Added
+- **To Claude Cloud** on the Sent panel (`t-0aa7`): after Create issue, one click opens the board's Terminal with `tkt send-issue <id> --launch` already typed; you press Enter. On Windows it copies the line and says to paste it in PowerShell or Git Bash (the Terminal cannot start a cloud session there yet). `tkt send-issue <id> --launch` on a ticket that was already sent now starts the session on its existing issue instead of refusing, and creates nothing.
+
+### Changed
+- The Terminal runs ten `tkt` commands without `su`: `create`, `start`, `demo`, `close`, `reopen`, `archive`, `send-issue`, `import-issue`, `open-pr`, `import-results`, each logged as a `terminal.tkt` event (the subcommand name only). `merge-pr`, every other subcommand, and the flags `--test` and `--body-file` still need `su`. `send-issue --launch` runs on your real terminal, as `claude --cloud` requires.
+
 ## [0.18.11] - 2026-10-25
 
 Tag lists are checked the same way by `tkt` and the board. Update with `canon update`, then stop the running board (Ctrl+C in the terminal running `canon`, or close its window) and run `canon` again. The daemon needs no restart.

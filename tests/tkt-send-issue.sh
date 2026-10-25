@@ -374,6 +374,19 @@ PYEOF
   assert_grep "^command: claude --cloud '" ".tickets/$idy/github.md"
   assert_grep "^github: acme/app#57$" ".tickets/$idy/ticket.md"
 
+  # t-0aa7: --launch on a ticket that was already sent starts a session on its existing issue and creates nothing (the Sent panel's
+  # To Claude Cloud types exactly this line); without --launch the ticket is still refused as already sent.
+  : > "$STUB_LOG"; : > "$STUB_CLAUDE_LOG"; before="$(cksum < ".tickets/$idy/ticket.md")"
+  out="$(ptyrun "$idy" flag)" || fail "--launch --yes on an already-sent ticket failed: $out"
+  [[ "$(writes)" == 0 ]] || fail "launching an already-sent ticket made a writing gh call: $(cat "$STUB_LOG")"
+  [[ "$(cksum < ".tickets/$idy/ticket.md")" == "$before" ]] || fail "launching an already-sent ticket changed the ticket"
+  assert_grep "^arg=Work on Issue#57 for ticket $idy\. Read its section" "$STUB_CLAUDE_LOG"
+  [[ "$(grep -c '— launched$' ".tickets/$idy/github.md")" == 2 ]] || fail "the second launch was not noted in the trail"
+  r="$("$TKT" send-issue "$idy" 2>&1)" && fail "a plain send-issue of a sent ticket should still be refused"
+  assert_contains "$r" "was already sent"
+  out="$(ptyrun "$idy" n)" || fail "declining the question exited nonzero: $out"
+  assert_contains "$out" "no session started"
+
   # claude fails after the issue exists: the issue stays recorded, the manual command is printed, exit 1, no launched entry.
   idm="$(fresh fail)"; : > "$STUB_LOG"
   rc=0; r="$(STUB_CLAUDE=fail ptyrun "$idm" flag)" || rc=$?

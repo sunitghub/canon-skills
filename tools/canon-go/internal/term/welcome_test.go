@@ -37,22 +37,22 @@ func TestWelcomeMatchesThePrompt(t *testing.T) {
 				t.Errorf("tkt --help runs here")
 			}
 		case e.su:
-			if readOnlyTkt[sub] {
+			if readOnlyTkt[sub] || runTkt[sub] {
 				t.Errorf("%q says it needs su but the prompt runs it", e.cmd)
 			}
 			if !real[sub] {
 				t.Errorf("%q is not a tkt command (see tkt --help)", e.cmd)
 			}
 		default:
-			if !readOnlyTkt[sub] {
+			if !readOnlyTkt[sub] && !runTkt[sub] {
 				t.Errorf("%q says you can run it but the prompt refuses it", e.cmd)
 			}
 			listedRO[sub] = true
 		}
 	}
-	for _, ro := range ReadOnlyTkt() {
+	for _, ro := range append(ReadOnlyTkt(), RunTkt()...) {
 		if !listedRO[ro] {
-			t.Errorf("read-only tkt %q is not in the welcome", ro)
+			t.Errorf("tkt %q runs here without su and is not in the welcome", ro)
 		}
 	}
 }

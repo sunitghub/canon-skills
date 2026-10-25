@@ -97,6 +97,9 @@ export function whyQueryFromInput(value) {
   return (prefixed ? prefixed[1] : raw).trim();
 }
 
+// t-0aa7: the browser runs on the board's own machine, so its platform is the board's. The Terminal cannot run a cloud session on Windows yet.
+export function isWindowsBrowser() { return /^win/i.test((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || ''); }
+
 export function age(iso) {
   if (!iso) return '';
   // t-19d1: a legacy date-only `created` has no time of day — report whole days, never a made-up

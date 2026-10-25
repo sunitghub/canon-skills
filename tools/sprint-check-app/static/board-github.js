@@ -4,8 +4,8 @@
 // out on GitHub: it shows in In progress (board-helpers.js effectiveStatus) with a GitHub chip and one stage button instead of Start.
 import { state } from './board-core.js';
 import { closeTab, cockpitState } from './board-cockpit.js';
-import { esc, escAttr } from './board-helpers.js';
-import { render, showToast } from './board-render.js';
+import { esc, escAttr, isWindowsBrowser } from './board-helpers.js';
+import { newScratchId, openScratch, render, showToast } from './board-render.js';
 import { loadData, SHELL_TAB } from './board-core.js';
 import { resetPanelDrag, resetPanelResize } from './board-panels.js';
 
@@ -548,7 +548,7 @@ function showSent(panel, t, tab) {
       <h3>Sent ${esc(t.id)} as issue #${esc(n)}</h3>
       ${line ? `<p>Start a Claude cloud session on the canon environment and type:</p><pre class="ck-gh-pre ck-gh-prompt" id="ck-gh-prompt">${esc(line)}</pre>${cmd ? `<p>Or paste this in a terminal window in this project (a real terminal; it is refused inside a Claude session):</p><pre class="ck-gh-pre ck-gh-prompt" id="ck-gh-cmd">${esc(cmd)}</pre>` : ''}` : `<p>Start a Claude cloud session on the canon environment and point it at issue #${esc(n)}.</p>`}
       <p>The card is in In progress and shows the next step.</p>
-      <div class="ck-gh-actions">${cmd ? `<button type="button" class="ck-gh-create" id="ck-gh-copy-cmd">Copy command</button>` : ''}${line ? `<button type="button" id="ck-gh-copy">Copy prompt</button>` : ''}${url ? `<button type="button" id="ck-gh-open" title="Issue #${esc(n)} on GitHub">Issue ↗</button>` : ''}<button type="button" id="ck-gh-dismiss">Close tab</button><span class="ck-gh-status" id="ck-gh-status" role="status"></span></div>
+      <div class="ck-gh-actions">${cmd ? `<button type="button" class="ck-gh-create" id="ck-gh-to-cloud" title="Open the Terminal with the command typed (you press Enter)">To Claude Cloud</button><button type="button" id="ck-gh-copy-cmd">Copy command</button>` : ''}${line ? `<button type="button" id="ck-gh-copy">Copy prompt</button>` : ''}${url ? `<button type="button" id="ck-gh-open" title="Issue #${esc(n)} on GitHub">Issue ↗</button>` : ''}<button type="button" id="ck-gh-dismiss">Close tab</button><span class="ck-gh-status" id="ck-gh-status" role="status"></span></div>
     </div>`;
   const copyText = async (text) => {
     const s = document.getElementById('ck-gh-status');
@@ -557,6 +557,18 @@ function showSent(panel, t, tab) {
   };
   document.getElementById('ck-gh-copy')?.addEventListener('click', () => copyText(line));
   document.getElementById('ck-gh-copy-cmd')?.addEventListener('click', () => copyText(cmd));
+  // t-0aa7: To Claude Cloud opens the board's Terminal with `tkt send-issue <id> --launch` typed and not sent (the ticket is already sent:
+  // tkt then starts the session on its issue and creates nothing). On Windows the Terminal cannot run it yet: copy the line instead.
+  document.getElementById('ck-gh-to-cloud')?.addEventListener('click', async () => {
+    if (!/^t-[a-z0-9]{4}$/.test(t.id)) return;
+    const typed = `tkt send-issue ${t.id} --launch`;
+    if (isWindowsBrowser()) {
+      await copyText(typed);
+      document.getElementById('ck-gh-status').textContent = 'Windows: paste this in PowerShell or Git Bash in the project folder and press Enter. The board\'s Terminal cannot start a cloud session on Windows yet.';
+      return;
+    }
+    openScratch(newScratchId(), { term: true, typeLine: typed });
+  });
   document.getElementById('ck-gh-open')?.addEventListener('click', () => openUrl(url));
   // The work is in the cloud now, so the tab has nothing left to show: close it (closeTab never ends a session).
   document.getElementById('ck-gh-dismiss').addEventListener('click', () => {

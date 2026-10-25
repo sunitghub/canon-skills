@@ -70,6 +70,7 @@ Terminal audit kinds (t-57ab; written by the Cockpit daemon's restricted termina
 | `terminal.su_granted` | `session`, `ticket`, `minutes` | the word is typed back and the full shell starts; if this cannot be written, no shell starts |
 | `terminal.su_denied` | `session`, `ticket`, `reason` (`auth`, `unavailable`, `locked`) | `auth`: the OS password prompt failed or was cancelled; `unavailable`: the machine has no OS password prompt, so there is no full shell (never counted); `locked` is the third failed password, which closes the terminal |
 | `terminal.su_expired` | `session`, `ticket`, `how` (`ended` at the time limit, `exited` when the shell ended first) | the full shell ends |
+| `terminal.tkt` | `session`, `ticket`, `sub` (the subcommand name only, never an argument) | one of `create`, `start`, `demo`, `close`, `reopen`, `archive`, `send-issue`, `import-issue`, `open-pr`, `import-results` is run in the Terminal without `su`; if this cannot be written, the command is not run |
 
 Audit events carry ids, numbers and names only: never a PR or issue title, an imported result's text, a token, or a URL
 with credentials.
