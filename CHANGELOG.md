@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Fixed
+- **Dialog resize** from the bottom-right corner keeps the top-left corner fixed (`t-4803`). It used to grow around the centre, so the top-left corner moved. A corner drag now also stops at the window edge, so no dialog leaves the viewport.
+
 ## [0.18.8] - 2026-10-25
 
 The Terminal's `su` now asks for your account password. Update with `canon update`, then run Restart Daemon in Admin (the daemon changed) and stop and start the board (Ctrl+C in the terminal running `canon`, or close its window, then run `canon`). A Terminal already open keeps the old `su` until you open a new one.

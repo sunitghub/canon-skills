@@ -170,7 +170,7 @@ export function makePanelResizable(panelId) {
   panel.querySelectorAll('.modal-resize-handle').forEach(handle => {
     const topLeft = handle.classList.contains('modal-resize-handle-tl');
     let resizing = false;
-    let startX = 0, startY = 0, startWidth = 0, startHeight = 0, startDragX = 0, startDragY = 0;
+    let startX = 0, startY = 0, startWidth = 0, startHeight = 0, startDragX = 0, startDragY = 0, roomX = 0, roomY = 0;
 
     handle.addEventListener('pointerdown', e => {
       resizing = true;
@@ -179,6 +179,9 @@ export function makePanelResizable(panelId) {
       const rect = panel.getBoundingClientRect();
       startWidth = rect.width;
       startHeight = rect.height;
+      // t-4803: the most it can grow before it leaves the window, measured from the corner that stays put
+      roomX = (topLeft ? rect.right : window.innerWidth - rect.left) - 12;
+      roomY = (topLeft ? rect.bottom : window.innerHeight - rect.top) - 12;
       startDragX = Number(panel.dataset.dragX || 0);
       startDragY = Number(panel.dataset.dragY || 0);
       handle.classList.add('resizing');
@@ -191,24 +194,27 @@ export function makePanelResizable(panelId) {
 
     handle.addEventListener('pointermove', e => {
       if (!resizing) return;
-      const maxWidth = Math.max(320, window.innerWidth - 24);
-      const maxHeight = Math.max(320, window.innerHeight - 24);
-      const minWidth = Math.min(420, maxWidth);
-      const minHeight = Math.min(320, maxHeight);
+      // growth stops at the room left from the fixed corner. A dialog already wider than that (dragged mostly off-screen) keeps the
+      // size it has instead of shrinking to the sliver of room, and a drag never makes it bigger than it started in that case; the
+      // minimum never exceeds the size it started at, so a dialog on screen is never forced out past the window edge.
+      const viewW = Math.max(320, window.innerWidth - 24), viewH = Math.max(320, window.innerHeight - 24);
+      const maxWidth = Math.min(viewW, Math.max(roomX, startWidth));
+      const maxHeight = Math.min(viewH, Math.max(roomY, startHeight));
+      const minWidth = Math.min(420, startWidth, maxWidth);
+      const minHeight = Math.min(320, startHeight, maxHeight);
       const dx = e.clientX - startX, dy = e.clientY - startY;
       const nextWidth = Math.min(maxWidth, Math.max(minWidth, startWidth + (topLeft ? -dx : dx)));
       const nextHeight = Math.min(maxHeight, Math.max(minHeight, startHeight + (topLeft ? -dy : dy)));
       panel.style.width = `${nextWidth}px`;
       panel.style.height = `${nextHeight}px`;
-      if (topLeft) {
-        // t-612f: the dialog is centred, so growing it from the top-left keeps the bottom-right corner still only if the centre
-        // moves back by half of each size change (the same --drag offset the side drags use)
-        const nx = startDragX - (nextWidth - startWidth) / 2, ny = startDragY - (nextHeight - startHeight) / 2;
-        panel.dataset.dragX = String(nx);
-        panel.dataset.dragY = String(ny);
-        panel.style.setProperty('--drag-x', `${nx}px`);
-        panel.style.setProperty('--drag-y', `${ny}px`);
-      }
+      // t-612f, t-4803: the dialog is centred, so growing it keeps the opposite corner still only if the centre moves by half of
+      // each size change: back for the top-left handle, forward for the bottom-right one (the same --drag offset the side drags use)
+      const sign = topLeft ? -1 : 1;
+      const nx = startDragX + sign * (nextWidth - startWidth) / 2, ny = startDragY + sign * (nextHeight - startHeight) / 2;
+      panel.dataset.dragX = String(nx);
+      panel.dataset.dragY = String(ny);
+      panel.style.setProperty('--drag-x', `${nx}px`);
+      panel.style.setProperty('--drag-y', `${ny}px`);
     });
 
     const stopResize = e => {
