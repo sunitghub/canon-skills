@@ -6622,6 +6622,27 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
+    test('Rail shortcut (t-5157): the prefix then c folds and unfolds the open tab\'s side panel; w still folds the Workspace sidebar', async ({ page }) => {
+      const stubPage = `<!doctype html><html><body><script>parent.postMessage({source:'canon-cockpit',type:'status',status:'running'},'*');</script></body></html>`;
+      await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: stubPage }));
+      await openShell(page, []);
+      await stubCockpit(page);
+      await page.route(/\/api\/cockpit(\?|$)/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR, launched: true }) }));
+      await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return activateTab('proj-a'); });
+      await boardsKeyReady(page, ['proj-a']);
+      const board = page.frameLocator('#view-proj-a iframe');
+      await pressPrefix(page, 'm');
+      await expect(board.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await expect(board.locator('#cockpit')).not.toHaveClass(/rail-collapsed/);
+      await pressPrefix(page, 'c');
+      await expect(board.locator('#cockpit')).toHaveClass(/rail-collapsed/);
+      await pressPrefix(page, 'c');
+      await expect(board.locator('#cockpit')).not.toHaveClass(/rail-collapsed/);
+      await pressPrefix(page, 'w');
+      await expect(page.locator('html')).toHaveClass(/side-collapsed/);   // a different panel: the Workspace sidebar
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     test('promote (t-f553): editable title with hover, Promote → Continue as the ticket opens its cockpit', async ({ page }) => {
       const tid = newTicketId(PROJECT_ROOT);
       writeTicket(tid, 'open');

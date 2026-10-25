@@ -73,6 +73,11 @@ function prefixAction(key){
   if(key==='n'||key==='b'){ const i=Math.max(0,all.indexOf(activeTab)); goTab(all[(i+(key==='n'?1:-1)+all.length)%all.length]); return; }
   if(key==='p'){ goTab('projects'); return; }
   if(key==='w'){ toggleSide(); return; }   // the Workspace sidebar, t-4077
+  if(key==='c'){   // the open tab's own side panel (the ticket or Terminal card), not the Workspace sidebar that w folds
+    const f=activeTab!=='projects'&&document.querySelector('#view-'+activeTab+' iframe');
+    if(f){ try{ f.contentWindow.postMessage({source:'canon-cockpit-shell',type:'toggle-rail-request'},location.origin); }catch(e){} }
+    return;
+  }
   if(key==='a'){ showView('admin'); try{ window.focus(); }catch(e){} return; }   // Admin, like clicking it in the sidebar
   if(key==='f'||key==='l'){ if(openTabs.length) goTab(openTabs[key==='f'?0:openTabs.length-1].id); return; }   // first / last project tab
   if(key==='e'){

@@ -768,6 +768,10 @@ export function initCockpit() {
       try { window.parent.postMessage({ source: 'canon-board', type: 'close-terminal-ack', tab: SHELL_TAB, handled: isTerm }, location.origin); } catch {}
       return;
     }
+    if (d.type === 'toggle-rail-request') {                // prefix then c: the same as the rail's < button, when a tab is open
+      if (document.getElementById('cockpit-overlay').classList.contains('open')) document.getElementById('ck-rail-toggle').click();
+      return;
+    }
     if (d.type === 'open-terminal-request') {              // t-57ab: prefix then m: the same as the Terminal button
       openScratch(newScratchId(), { term: true });
       return;
