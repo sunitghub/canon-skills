@@ -16261,6 +16261,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('the GitHub dialog moves by its title, resizes from its corner, and opens at its default place again (t-e523)', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 1100 });   // t-4803: a corner drag now stops at the window edge, so leave room to grow
     await page.route('**/api/github/intake**', r => json(r, { ok: true, exit_code: 0, intake: { repo: 'a/b', label: 'canon', waiting: [], skipped: Array.from({ length: 40 }, (_, i) => ({ issue: i + 1, title: `Issue ${i + 1}`, reason: 'already t-0000', ticket: 't-0000', ticket_status: 'open' })) } }));
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
