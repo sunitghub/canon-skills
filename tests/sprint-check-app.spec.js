@@ -16862,6 +16862,26 @@ test.describe('Tags (t-37e8)', () => {
     await expect(page.locator('.tag-menu .tag-menu-add')).toBeVisible();
   });
 
+  test('a null tags.json is refused by the server in the Add tag box and left as it was (t-3472)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT);
+    writeTagged(id, { title: 'Null list' });
+    fs.writeFileSync(projectList, 'null');
+    await find(page, id);
+    await page.locator(`.card[data-id="${id}"]`).click();
+    await page.locator('#m-tags-btn').click();
+    const menu = page.locator('.tag-menu');
+    await expect(menu.locator('.tag-menu-msg')).toContainText('not a JSON array');          // the catalog already reports it
+    await menu.locator('.tag-menu-add').fill('billing');                                     // a valid tag, so only the server can refuse
+    const refused = page.waitForResponse(r => new URL(r.url()).pathname === '/api/tags' && r.request().method() === 'POST');
+    await page.keyboard.press('Enter');
+    const res = await refused;                                                               // the Add path itself, not the catalog's message that was already there
+    expect(res.status()).toBe(400);
+    expect((await res.json()).error).toContain('not a JSON array');
+    await expect(menu.locator('.tag-menu-msg')).toContainText('not a JSON array');
+    expect(fs.readFileSync(projectList, 'utf8')).toBe('null');
+    expect(tagsOnDisk(id)).toBe('');
+  });
+
   test('a hostile tag in a ticket file is text on the card, in the modal and in the dropdown: no element, handler or request (t-37e8)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT);
     const hostile = '"><img src=x onerror=window.__pwned=1>';
