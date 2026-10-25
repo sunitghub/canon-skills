@@ -37,6 +37,8 @@
 
 .lb-table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
 .lb-table th { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border); }
+.lb-table tbody tr { transition: background .12s; }
+.lb-table tbody tr:hover { background: var(--accent-dim); }   /* one rule for every .lb-table: the Logbook and GitHub Sync */
 .lb-table td { padding: 9px 8px; border-bottom: 1px solid var(--border); vertical-align: top; color: var(--text); }
 .lb-date { white-space: nowrap; color: var(--text-muted); }
 .lb-find { overflow-wrap: anywhere; }

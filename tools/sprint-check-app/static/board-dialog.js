@@ -9,9 +9,26 @@ import { makePanelDraggable, makePanelResizable, resetPanelDrag, resetPanelResiz
 
 // t-cca5: the panel half on its own, for a dialog that keeps its own open/close code (ticket, create, commit, GitHub): it moves by
 // `handle` and, unless `resizable` is false, resizes from its corner. The caller resets position and size on its own open.
+// Every resizable dialog has both corners, bottom-right and top-left, whether or not its markup lists them.
+function ensureResizeHandles(panel) {
+  const want = [['modal-resize-handle modal-resize-handle-tl', 'Resize dialog from the top-left'], ['modal-resize-handle', 'Resize dialog']];
+  for (const [cls, label] of want) {
+    const tl = cls.includes('-tl');
+    if (tl ? panel.querySelector('.modal-resize-handle-tl') : panel.querySelector('.modal-resize-handle:not(.modal-resize-handle-tl)')) continue;
+    const g = document.createElement('div');
+    g.className = cls;
+    g.title = label;
+    g.setAttribute('aria-label', label);
+    panel.appendChild(g);
+  }
+}
+
 export function initDialogPanel({ panelId, handle = '.modal-header', resizable = true }) {
   makePanelDraggable(panelId, handle);
-  if (resizable) makePanelResizable(panelId);
+  if (resizable) {
+    ensureResizeHandles(document.getElementById(panelId));
+    makePanelResizable(panelId);
+  }
 }
 
 export function initDialog({ overlayId, panelId, closeId, fallbackFocusId, onOpen, onClose }) {
@@ -20,15 +37,6 @@ export function initDialog({ overlayId, panelId, closeId, fallbackFocusId, onOpe
   let returnTo = null;
   const isOpen = () => overlay.classList.contains('open');
 
-  if (!panel.querySelector('.modal-resize-handle')) {
-    for (const [cls, label] of [['modal-resize-handle modal-resize-handle-tl', 'Resize dialog from the top-left'], ['modal-resize-handle', 'Resize dialog']]) {
-      const g = document.createElement('div');
-      g.className = cls;
-      g.title = label;
-      g.setAttribute('aria-label', label);
-      panel.appendChild(g);
-    }
-  }
   initDialogPanel({ panelId });
 
   function open() {

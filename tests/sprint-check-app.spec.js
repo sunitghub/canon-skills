@@ -15452,6 +15452,36 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     expect((await page.locator('#btn-gh-sync').boundingBox()).width).toBeLessThan(50);
   });
 
+  test('GitHub Sync rows tint on hover, and every base dialog resizes from both corners (t-b045)', async ({ page }) => {
+    await page.route('**/api/github/intake**', r => json(r, { ok: true, exit_code: 0, intake: { repo: 'a/b', label: 'canon', waiting: [{ issue: 9, title: 'One', type: 'task', priority: 2 }, { issue: 8, title: 'Two', type: 'bug', priority: 1 }], skipped: [] } }));
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    // one top-left and one bottom-right handle on each base dialog, whether or not its markup listed them
+    for (const id of ['gh-dialog-box', 'create-modal', 'modal']) {
+      await expect(page.locator(`#${id} > .modal-resize-handle-tl`)).toHaveCount(1);
+      await expect(page.locator(`#${id} > .modal-resize-handle:not(.modal-resize-handle-tl)`)).toHaveCount(1);
+    }
+    await page.locator('#btn-gh-sync').click();
+    const row = page.locator('#gh-dialog-table tbody tr').first();
+    const bg = () => row.evaluate(el => getComputedStyle(el).backgroundColor);
+    const before = await bg();
+    await row.hover();
+    await expect.poll(bg).not.toBe(before);   // hovering a row tints it
+    // drag the top-left corner up and left: the dialog grows and its bottom-right corner stays where it was
+    const box = page.locator('#gh-dialog-box'), start = await box.boundingBox();
+    const tl = await page.locator('#gh-dialog-box > .modal-resize-handle-tl').boundingBox();
+    await page.mouse.move(tl.x + tl.width / 2, tl.y + tl.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(tl.x + tl.width / 2 - 60, tl.y + tl.height / 2 - 40, { steps: 5 });
+    await page.mouse.up();
+    const grown = await box.boundingBox();
+    expect(grown.width).toBeGreaterThan(start.width + 40);
+    expect(grown.height).toBeGreaterThan(start.height + 25);
+    expect(Math.abs((grown.x + grown.width) - (start.x + start.width))).toBeLessThan(2);
+    expect(Math.abs((grown.y + grown.height) - (start.y + start.height))).toBeLessThan(2);
+    await page.locator('#gh-dialog-cancel').click();
+  });
+
   test('GitHub Sync shows a hostile title as text, and the table follows the theme (t-b045)', async ({ page }) => {
     const evil = '<img src=x onerror="window.__pwned=1"> <b>bold</b>';
     await page.route('**/api/github/intake**', r => json(r, { ok: true, exit_code: 0, intake: { repo: 'a/b', label: 'canon', waiting: [{ issue: 9, title: evil, type: 'task', priority: 2 }], skipped: [] } }));
@@ -16137,7 +16167,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     const moved = await box.boundingBox();
     expect(Math.round(moved.x - start.x)).toBe(80);
     expect(Math.round(moved.y - start.y)).toBe(40);
-    const corner = await page.locator('#gh-dialog-box .modal-resize-handle').boundingBox();
+    const corner = await page.locator('#gh-dialog-box .modal-resize-handle:not(.modal-resize-handle-tl)').boundingBox();
     await page.mouse.move(corner.x + corner.width / 2, corner.y + corner.height / 2);
     await page.mouse.down();
     await page.mouse.move(corner.x + corner.width / 2 + 60, corner.y + corner.height / 2 + 120, { steps: 5 });

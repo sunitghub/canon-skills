@@ -62,7 +62,7 @@ html[data-theme="light"] .ck-gh-box .ck-gh-note p { color: var(--th-warn-ink, #9
 /* t-9641: GitHub Sync greyed out until the GitHub checks pass (its title says where to fix it) */
 #btn-gh-sync:disabled, #btn-gh-sync:disabled:hover { opacity: .45; cursor: not-allowed; background: transparent; color: var(--text-muted); }
 
-/* t-b045: GitHub Sync's table. It reuses the Logbook's .lb-table; only what differs is here, in theme tokens. */
+/* t-b045: GitHub Sync's table. It reuses the Logbook's .lb-table (with its row hover); only what differs is here, in theme tokens. */
 .gh-dialog-table { margin-top: 10px; max-height: 46vh; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
 .gh-sync-table { margin: 0; }
 .gh-sync-table td:first-child, .gh-sync-table th:first-child { width: 2.5em; color: var(--text-muted); }
