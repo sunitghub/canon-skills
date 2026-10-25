@@ -503,6 +503,7 @@ const IG_STATE={
   'not-checked':['warn','Not checked','The published hashes could not be read or did not verify, so nothing is shown as checked.'],
   'list-pending':['mute','List pending','This release has no published hash list yet.'],
 };
+const igCardFiles=r=>new Set((r.agents||[]).map(a=>a.graded_by));   // a protocol file shown in an agent's card is not listed twice
 const IG_GROUPS=[['agents','Agents'],['prompts','Prompts and protocol'],['tools','Gate files'],['programs','Programs']];
 async function igLoad(refresh){
   const box=document.getElementById('ig-body'); if(!box) return;
@@ -512,25 +513,24 @@ async function igLoad(refresh){
   let h=`<div class="ig-strip ig-${cls}"><b>${esc(label)}</b>${r.tag?' \u00b7 '+esc(r.tag):''}${r.state==='verified'?` \u00b7 ${r.match} of ${r.total} files match${r.source==='cached'?' \u00b7 saved list':''}`:''}`+
     `<button type="button" class="ig-again b-accent" id="ig-again">Check again</button></div>`+
     `<div class="setting-d">${esc(r.reason||note)}</div>`;
-  if(r.state==='verified'){
+  {
     const files=r.files||[];
-    const pill=rows=>{ const bad=rows.filter(x=>x.status!=='match').length; return bad?`<span class="ig-pill ig-pill-bad">${bad} differ${bad===1?'s':''}</span>`:`<span class="ig-pill ig-pill-ok">Matches ${esc(r.tag)}</span>`; };
+    const stateLabel=(IG_STATE[r.state]||[0,r.state])[1];
+    const pill=rows=>{ if(r.state!=='verified') return `<span class="ig-pill ig-pill-mute">${esc(stateLabel)}</span>`; const bad=rows.filter(x=>x.status!=='match').length; return bad?`<span class="ig-pill ig-pill-bad">${bad} differ${bad===1?'s':''}</span>`:`<span class="ig-pill ig-pill-ok">Matches ${esc(r.tag)}</span>`; };
     const fileRow=x=>`<div class="ig-frow ig-${x.status}"><span class="ig-dot"></span><code>${esc(x.path)}</code>`+(x.gate?'<span class="ig-gate">gate file</span>':'')+
       (x.status!=='match'?`<span class="ig-st">${esc(x.status)}</span>`:'')+
       (x.restore?`<div class="ig-fix">Put it back: <code>${esc(x.restore)}</code> <button type="button" class="ig-copy b-neutral" data-cmd="${escAttr(x.restore)}">Copy</button></div>`:'')+`</div>`;
     h+=IG_GROUPS.map(([g,name])=>{
-      const cardFiles=new Set((r.agents||[]).map(a=>a.graded_by));   // a protocol file shown in an agent's card is not listed twice
-      const rows=files.filter(x=>x.group===g&&!(g==='prompts'&&cardFiles.has(x.path))); if(!rows.length) return '';
+      const rows=files.filter(x=>x.group===g&&!(g==='prompts'&&igCardFiles(r).has(x.path))); if(!rows.length) return '';
       let body;
       if(g==='agents'){
         body=(r.agents||[]).map(a=>{
-          const mine=rows.filter(x=>x.path===a.file||x.path===a.graded_by);
           const own=rows.filter(x=>x.path===a.file)[0];
           const extra=files.filter(x=>x.path===a.graded_by);
           const list=[own].concat(extra).filter(Boolean);
           const kv=(k,v)=>v?`<div class="ig-kv"><span class="ig-k">${k}</span><span>${v}</span></div>`:'';
           return `<div class="ig-card"><div class="ig-card-h"><b class="ig-name">${esc(a.name)}</b>`+
-            (a.role?`<span class="ig-badge">${esc(a.role)}</span>`:'')+(a.read_only?'<span class="ig-badge ig-ro">read-only</span>':'')+
+            (a.role?`<span class="ig-badge">${esc(a.role)}</span>`:'')+(a.read_only?'<span class="ig-badge" title="No Edit or Write tool. The shell can still write.">read-only</span>':'')+
             `<span class="ig-card-pill">${pill(list)}</span></div>`+
             kv('Model',esc(a.model))+kv('Effort',esc(a.effort))+kv('Tools',esc(a.tools))+kv('Writes',a.writes?`<code>${esc(a.writes)}</code> only`:'')+
             `<div class="ig-files">${list.map(fileRow).join('')}</div>`+
@@ -542,7 +542,7 @@ async function igLoad(refresh){
       const inAgents=g==='agents'?rows.concat(files.filter(x=>(r.agents||[]).some(a=>a.graded_by===x.path))):rows;
       return `<div class="ig-ghead"><span class="ig-group">${esc(name)}</span><span class="ig-count">${rows.length} file${rows.length===1?'':'s'}</span>${pill(inAgents)}</div>${body}`;
     }).join('');
-    if(r.blocking) h+='<div class="setting-d ig-block">A gate file or gate prompt differs, so <code>sprint complete</code> will refuse to close until it is put back.</div>';
+    if(r.state==='verified'&&r.blocking) h+='<div class="setting-d ig-block">A gate file or gate prompt differs, so <code>sprint complete</code> will refuse to close until it is put back.</div>';
   }
   box.innerHTML=h;
   document.getElementById('ig-again').addEventListener('click',()=>igLoad(true));

@@ -12931,14 +12931,19 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
   test('Admin > Integrity: states, a changed gate file with its restore command, Check again, and no write route (t-2af0)', async ({ page }) => {
     const gets = [], writes = [];
     page.on('request', r => { if (r.url().includes('/api/integrity')) gets.push(r.url()); else if (r.method() !== 'GET' && r.url().includes('/api/')) writes.push(r.method() + ' ' + r.url()); });
-    let body = { state: 'not-from-release', reason: 'this install follows main: there is no released copy to compare with', files: [], match: 0, total: 0, blocking: false };
+    let body = { state: 'not-from-release', reason: 'this install follows main: there is no released copy to compare with', match: 0, total: 0, blocking: false,
+      files: [{ path: 'agents/canon-reviewer.md', group: 'agents', gate: true, status: 'unchecked' }, { path: 'skills/sprint/reference/review.md', group: 'prompts', gate: true, status: 'unchecked' }],
+      agents: [{ name: 'canon-reviewer', file: 'agents/canon-reviewer.md', graded_by: 'skills/sprint/reference/review.md', role: 'advisory', model: 'claude-sonnet-5', read_only: true }] };
     await page.route('**/api/integrity**', route => route.fulfill({ json: body }));
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
     await page.locator('#nav-admin').click();
     await page.locator('#ad-tab-integrity').click();
     await expect(page.locator('#ig-body .ig-strip')).toContainText('Not a release install');
-    await expect(page.locator('#ig-body .ig-frow')).toHaveCount(0);            // nothing is shown as checked
+    await expect(page.locator('#ig-body .ig-pill-ok')).toHaveCount(0);       // nothing is shown as matching
+    await expect(page.locator('#ig-body .ig-pill-mute').first()).toHaveText('Not a release install');
+    await expect(page.locator('#ig-body .ig-frow.ig-unchecked')).toHaveCount(2);
+    await expect(page.locator('#ig-body .ig-card')).toHaveCount(1);
     body = { state: 'list-pending', tag: 'v1.2.3', reason: 'v1.2.3 has no line in integrity.txt yet', files: [], match: 0, total: 0, blocking: false };
     await page.locator('#ig-again').click();
     await expect(page.locator('#ig-body .ig-strip')).toContainText('List pending');

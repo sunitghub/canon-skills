@@ -187,7 +187,7 @@ func TestIntegrityListMustEqualItsPin(t *testing.T) {
 	f := newIntegFx(t)
 	f.pinTx = "v1.2.3 " + strings.Repeat("0", 64) + "\n" // the published hash is another file's
 	r := checkIntegrity(f.deps)
-	if r.State != integrityNotChecked || len(r.Files) != 0 || !strings.Contains(r.Reason, "does not match its published hash") {
+	if r.State != integrityNotChecked || anyChecked(r) || !strings.Contains(r.Reason, "does not match its published hash") {
 		t.Errorf("a list that does not equal its pin must not be used: %+v", r)
 	}
 	if _, err := os.Stat(filepath.Join(f.home, "integrity")); err == nil {
@@ -290,7 +290,7 @@ func TestIntegrityStatesThatNeverCountOrBlock(t *testing.T) {
 		f.edit("tools/sprint", "edited on purpose")
 		setup(f)
 		r := checkIntegrity(f.deps)
-		if r.State != integrityNotFromRelease || r.Blocking || r.Match != 0 || len(r.Files) != 0 {
+		if r.State != integrityNotFromRelease || r.Blocking || r.Match != 0 || anyChecked(r) {
 			t.Errorf("%s: %+v", name, r)
 		}
 		if f.calls != 0 {
@@ -311,7 +311,7 @@ func TestIntegrityHostileListIsNotFollowed(t *testing.T) {
 		raw, _ := json.Marshal(l)
 		f.list, f.pinTx = raw, "v1.2.3 "+sha256Hex(raw)+"\n" // the pin matches: the list is genuine but hostile
 		r := checkIntegrity(f.deps)
-		if r.State != integrityNotChecked || r.Match != 0 || len(r.Files) != 0 || !strings.Contains(r.Reason, bad) {
+		if r.State != integrityNotChecked || r.Match != 0 || anyChecked(r) || !strings.Contains(r.Reason, bad) {
 			t.Errorf("%q: %+v", bad, r)
 		}
 	}
@@ -542,8 +542,8 @@ func TestIntegrityAgentCards(t *testing.T) {
 	}
 	g := newIntegFx(t)
 	g.deps.atTag = func(string, string) (bool, bool, error) { return true, false, nil }
-	if r := checkIntegrity(g.deps); len(r.Agents) != 0 {
-		t.Errorf("a state that is not verified shows no cards: %+v", r.Agents)
+	if r := checkIntegrity(g.deps); len(r.Agents) != 2 || r.Agents[0].Model != "claude-sonnet-5" {
+		t.Errorf("a state that is not verified still lists the cards: %+v", r.Agents)
 	}
 }
 
@@ -564,5 +564,60 @@ func TestIntegrityEditOnlyOrWriteOnlyToolsAreNotReadOnly(t *testing.T) {
 		if a := checkIntegrity(f.deps).Agents[0]; a.ReadOnly {
 			t.Errorf("tools %q must not read as read-only", tools)
 		}
+	}
+}
+
+// anyChecked: does the result claim anything about a file's content? A state that is not verified may list files, as "unchecked".
+func anyChecked(r integrityResult) bool {
+	for _, x := range r.Files {
+		if x.Status != "unchecked" || x.Restore != "" {
+			return true
+		}
+	}
+	return r.Match != 0 || r.Total != 0 || r.Blocking
+}
+
+func TestIntegrityPreviewListsFilesWithoutClaimingAnything(t *testing.T) {
+	f := newIntegFx(t)
+	f.deps.atTag = func(string, string) (bool, bool, error) { return true, false, nil }
+	f.edit("tools/sprint", "edited")
+	r := checkIntegrity(f.deps)
+	if r.State != integrityNotFromRelease || len(r.Files) != 13 || anyChecked(r) || len(r.Agents) != 2 {
+		t.Fatalf("preview: %+v", r)
+	}
+	groups := map[string]int{}
+	for _, x := range r.Files {
+		groups[x.Group]++
+	}
+	if groups["agents"] != 2 || groups["prompts"] != 3 || groups["tools"] != 7 || groups["programs"] != 1 {
+		t.Errorf("groups: %v", groups)
+	}
+	h := newIntegFx(t)
+	h.deps.root = filepath.Join(h.root, "gone")
+	if r := checkIntegrity(h.deps); len(r.Files) != 0 || len(r.Agents) != 0 {
+		t.Errorf("an unreadable install folder lists nothing: %+v", r)
+	}
+}
+
+// The preview lists must equal the ones the release list is built from: scripts/integrity-list.sh owns them.
+func TestPreviewListsMatchTheReleaseScript(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "scripts", "integrity-list.sh"))
+	if err != nil {
+		t.Skip("scripts/integrity-list.sh is not beside this checkout:", err)
+	}
+	arr := func(name string) []string {
+		for _, l := range strings.Split(string(b), "\n") {
+			if strings.HasPrefix(l, name+"=(") {
+				return strings.Fields(strings.TrimSuffix(strings.TrimPrefix(l, name+"=("), ")"))
+			}
+		}
+		t.Fatalf("%s not found in integrity-list.sh", name)
+		return nil
+	}
+	if got, want := strings.Join(previewGateFiles, " "), strings.Join(arr("GATE_FILES"), " "); got != want {
+		t.Errorf("gate files drifted:\n%s\n%s", got, want)
+	}
+	if got, want := strings.Join(previewGatePrompts, " "), strings.Join(arr("GATE_PROMPTS"), " "); got != want {
+		t.Errorf("gate prompts drifted:\n%s\n%s", got, want)
 	}
 }

@@ -199,3 +199,5 @@
   .ig-prompt{margin-top:6px} .ig-prompt summary{cursor:pointer;color:var(--accent);font-size:12.5px}
   .ig-prompt pre{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg-sunken,transparent);border:1px solid var(--border-muted);border-radius:8px;padding:10px 12px;font-size:12px;margin:8px 0 0}
   .ig-block{color:var(--st-need)}
+  .ig-pill-mute{color:var(--text-muted);border-color:var(--border)}
+  .ig-unchecked .ig-dot{background:var(--text-muted)}

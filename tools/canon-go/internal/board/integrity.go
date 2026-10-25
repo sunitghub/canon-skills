@@ -310,6 +310,46 @@ func integrityGroup(p string, prompt bool) string {
 
 // checkIntegrity decides the install's state and, for a verified one, compares the slice-1 files with the list.
 func checkIntegrity(d integrityDeps) integrityResult {
+	res := checkIntegrityCore(d)
+	if res.State != integrityVerified {
+		res.Files, res.Agents = unverifiedPreview(d.root)
+	}
+	return res
+}
+
+// The slice-1 paths, used only to LIST files when no verified list exists (a main install, an offline run): every row says
+// "unchecked", none is ever shown as matching. The paths a check compares always come from the verified list, never from here.
+// tests read scripts/integrity-list.sh and fail when these drift from its GATE_FILES and GATE_PROMPTS.
+var (
+	previewGateFiles   = []string{"tools/sprint", "tools/gate-snapshot.sh", "tools/subagent-log.sh", "tools/evidence.sh", "tools/sprint-headless", "tools/sprint-headless-eval", "tools/gate-model.sh"}
+	previewGatePrompts = []string{"agents/canon-reviewer.md", "agents/canon-evaluator.md", "skills/sprint/reference/review.md", "skills/sprint/reference/eval.md", "skills/sprint/reference/shared-gate-protocol.md"}
+)
+
+func unverifiedPreview(root string) ([]integrityFile, []integrityAgent) {
+	files := []integrityFile{}
+	if r, err := filepath.EvalSymlinks(root); err == nil {
+		root = r
+	} else {
+		return files, nil
+	}
+	var agents []integrityAgent
+	add := func(p string, prompt bool) {
+		files = append(files, integrityFile{Path: p, Group: integrityGroup(p, prompt), Gate: true, Status: "unchecked"})
+		if strings.HasPrefix(p, "agents/") {
+			agents = append(agents, readAgent(root, p))
+		}
+	}
+	for _, p := range previewGateFiles {
+		add(p, false)
+	}
+	for _, p := range previewGatePrompts {
+		add(p, true)
+	}
+	files = append(files, integrityFile{Path: integrityManifest, Group: "programs", Status: "unchecked"})
+	return files, agents
+}
+
+func checkIntegrityCore(d integrityDeps) integrityResult {
 	res := integrityResult{Files: []integrityFile{}}
 	root, err := filepath.EvalSymlinks(d.root)
 	if err != nil {
@@ -355,7 +395,7 @@ func checkIntegrity(d integrityDeps) integrityResult {
 	}
 	paths = append(paths, integrityManifest)
 	res.State, res.Source = integrityVerified, source
-	_, noGit := os.Lstat(filepath.Join(root, ".git"))
+	_, gitErr := os.Lstat(filepath.Join(root, ".git")) // nil: a git checkout
 	for _, p := range paths {
 		want, ok := l.Files[p]
 		if !validRel(p) || !ok || !integrityHexRe.MatchString(want) {
@@ -376,7 +416,7 @@ func checkIntegrity(d integrityDeps) integrityResult {
 		if f.Status == "match" {
 			res.Match++
 		} else {
-			if noGit == nil {
+			if gitErr == nil {
 				f.Restore = "git -C " + shellQuote(root) + " checkout -- " + p
 			} else {
 				f.Restore = "canon update"
@@ -464,8 +504,6 @@ func integrityRoot() string {
 	return filepath.Dir(dir)
 }
 
-// integrityCLI is `sprint-check integrity [--json] [--gate] [--online]`: --gate exits 3 only when the state is verified and a gate file or
-// prompt differs; every other outcome exits 0 (a missing list, an offline run or a main install never blocks a close).
 func parseIntegrityArgs(args []string) (asJSON, gate, online, ok bool) {
 	for _, a := range args {
 		switch a {
@@ -482,6 +520,8 @@ func parseIntegrityArgs(args []string) (asJSON, gate, online, ok bool) {
 	return asJSON, gate, online, true
 }
 
+// integrityCLI is `sprint-check integrity [--json] [--gate] [--online]`: --gate exits 3 only when the state is verified and a gate file or
+// prompt differs; every other outcome exits 0 (a missing list, an offline run or a main install never blocks a close).
 func integrityCLI(args []string, stdout, stderr io.Writer) int {
 	asJSON, gate, online, ok := parseIntegrityArgs(args)
 	if !ok {

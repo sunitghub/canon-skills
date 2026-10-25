@@ -56,7 +56,7 @@ if [ "$dry" = 0 ]; then command -v gh >/dev/null 2>&1 || die "gh is required (gh
 if [ "$dry" = 1 ]; then
   # t-2af0: the integrity list is built the same way from HEAD, so a path it refuses shows here and not after the tag is pushed.
   dry_dir="$(mktemp -d)"; il_line="$(bash "$REPO_ROOT/scripts/integrity-list.sh" "$tag" "$dry_dir" HEAD)" || { rm -rf "$dry_dir"; die "the integrity list cannot be built from HEAD; nothing was done"; }
-  echo "release: dry run: integrity-$version.json would list $(grep -c '^"' "$dry_dir/integrity-$version.json") entries and be pinned in integrity.txt"; rm -rf "$dry_dir"
+  echo "release: dry run: integrity-$version.json would list $(grep -c '^"[^"]*": "[0-9a-f]\{64\}"' "$dry_dir/integrity-$version.json") entries and be pinned in integrity.txt"; rm -rf "$dry_dir"
   echo "release: dry run — would tag $tag at $(git_ rev-parse --short HEAD), push only refs/tags/$tag to $REMOTE, and create the GitHub release on $RELEASE_REPO with canon-$version.zip attached and these notes:"
   printf '%s\n' "$notes"
   exit 0
@@ -74,7 +74,7 @@ echo "release: pushed tag $tag to $REMOTE"
 echo "release: manifest line for canon-$version.zip: $manifest_line"   # printed now: the zip folder is deleted on exit, even when the gh call below fails
 echo "release: integrity line for integrity-$version.json: $integrity_line"
 if ! gh release create "$tag" "$zip_dir/canon-$version.zip" "$zip_dir/integrity-$version.json" --repo "$RELEASE_REPO" --title "canon $version" --notes-file "$notes_file"; then
-  die "tag $tag is already pushed but the GitHub release was not created; finish with: gh release create $tag canon-$version.zip integrity-$version.json --repo $RELEASE_REPO --title 'canon $version' --notes-file <notes> (rebuild the zip with scripts/release-zip.sh $tag <folder>, upload that file, and publish the manifest line the rebuild prints)"
+  die "tag $tag is already pushed but the GitHub release was not created; finish with: gh release create $tag canon-$version.zip integrity-$version.json --repo $RELEASE_REPO --title 'canon $version' --notes-file <notes> (rebuild the zip with scripts/release-zip.sh $tag <folder>, upload that file, and publish the manifest line the rebuild prints; rebuild the list with scripts/integrity-list.sh $tag <folder>, whose printed line must equal the integrity line above)"
 fi
 echo "release: $tag released"
 echo "release: next, publish this line as the first entry of site/releases.txt in the canon-site repo (installers verify against it, so verified installs of $tag fail until it is live):"
