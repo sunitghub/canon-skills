@@ -16271,6 +16271,24 @@ test.describe('Logbook (t-c6bb)', () => {
     await expect(page.locator('#m-id')).toHaveText(id);
   });
 
+  test('nothing unpromoted: no badge, and the status column never wraps its file name (t-5157)', async ({ page }) => {
+    await serve(page, undefined, file('# Learnings\n\n<!-- canon:learnings:BEGIN -->\n| Date | Ticket | Finding | Status |\n|---|---|---|---|\n'
+      + row('2026-10-13', 't-0514', 'Data-check evidence must come from the same dataset the app shows: the first evaluator failed it because the check read a day-old CSV (296 rows) while the live-synced app showed 295; per-class counts read from the app\'s own filters reconciled it.', '`promoted → PROMOTED.md`')
+      + '<!-- canon:learnings:END -->\n'));
+    await page.setViewportSize({ width: 1000, height: 700 });
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await open(page);
+    await page.locator('#lb-tab-l').click();
+    await expect(page.locator('.lb-table tbody tr')).toHaveCount(1);
+    await expect(page.locator('#lb-count')).toBeHidden();   // all promoted: nothing to review, so no 0 bubble
+    const target = page.locator('.lb-target').first();
+    const lines = await target.evaluate(e => Math.round(e.getBoundingClientRect().height / parseFloat(getComputedStyle(e).lineHeight || '16')));
+    expect(lines).toBe(1);   // "PROMOTED.md" is one line
+    await page.keyboard.press('Escape');
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
   test('a missing file, a read error and a failed request each say so, never an empty-looking modal (t-c6bb)', async ({ page }) => {
     await serve(page, { missing: true }, { error: 'LEARNINGS.md is a symbolic link; the Logbook reads regular files only' });
     await page.goto(BASE);

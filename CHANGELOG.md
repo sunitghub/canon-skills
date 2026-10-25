@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Fixed
+- The Logbook's Learnings table keeps a row's status and its destination file (`PROMOTED.md`) on one line each instead of wrapping the file name, and the badge on the Learnings tab shows only when something is still unpromoted (it showed a 0).
+
 ## [0.18.2] - 2026-10-25
 
 `canon stop` now stops the board as well as the daemon. Update with `canon update`; stop the running board (Ctrl+C in the terminal running `canon`, or close its window) and run `canon` again.

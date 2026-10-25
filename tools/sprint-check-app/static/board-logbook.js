@@ -132,7 +132,8 @@ function render() {
   }
   const un = data.learnings && data.learnings.text ? parseLearnings(data.learnings.text).filter(r => r.kind === 'un').length : 0;
   count.textContent = un;
-  count.hidden = !(data.learnings && data.learnings.text);
+  count.hidden = !un;   // the badge is the number still to review: nothing to review, no badge
+  count.title = un + ' unpromoted';
   body.innerHTML = tab === 'h' ? renderHandoff() : renderLearnings();
 }
 

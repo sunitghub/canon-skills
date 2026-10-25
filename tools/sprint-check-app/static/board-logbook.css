@@ -51,7 +51,8 @@
 }
 .lb-st-un { border-color: var(--th-warn-line, rgba(251,191,36,.45)); color: var(--th-warn-ink, #fbbf24); }
 .lb-st-pr { border-color: var(--th-ok-line, rgba(74,222,128,.45)); color: var(--th-ok-ink, #4ade80); }
-.lb-target { margin-top: 3px; font-size: 11px; color: var(--text-muted); overflow-wrap: anywhere; }
+.lb-target { margin-top: 3px; font-size: 11px; color: var(--text-muted); }
+.lb-table td:last-child { white-space: nowrap; }   /* the status badge and its destination file stay on one line each */
 
 .lb-empty { border: 1px dashed var(--border-hover); border-radius: 10px; padding: 16px; color: var(--text-muted); font-size: 12.5px; }
 .lb-empty b { display: block; color: var(--text); margin-bottom: 4px; }
