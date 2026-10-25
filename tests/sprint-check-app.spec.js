@@ -12938,7 +12938,7 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
     await page.locator('#nav-admin').click();
     await page.locator('#ad-tab-integrity').click();
     await expect(page.locator('#ig-body .ig-strip')).toContainText('Not a release install');
-    await expect(page.locator('#ig-body .ig-row')).toHaveCount(0);            // nothing is shown as checked
+    await expect(page.locator('#ig-body .ig-frow')).toHaveCount(0);            // nothing is shown as checked
     body = { state: 'list-pending', tag: 'v1.2.3', reason: 'v1.2.3 has no line in integrity.txt yet', files: [], match: 0, total: 0, blocking: false };
     await page.locator('#ig-again').click();
     await expect(page.locator('#ig-body .ig-strip')).toContainText('List pending');
@@ -12946,17 +12946,28 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
     body = { state: 'not-checked', tag: 'v1.2.3', reason: 'cannot read https://getcanon.dev/integrity.txt (offline)', files: [], match: 0, total: 0, blocking: false };
     await page.locator('#ig-again').click();
     await expect(page.locator('#ig-body .ig-strip')).toContainText('Not checked');
-    body = { state: 'verified', tag: 'v1.2.3', source: 'online', match: 2, total: 3, blocking: true, files: [
+    body = { state: 'verified', tag: 'v1.2.3', source: 'online', match: 3, total: 4, blocking: true, files: [
       { path: 'tools/sprint', group: 'tools', gate: true, status: 'changed', restore: "git -C '/x/canon' checkout -- tools/sprint" },
       { path: 'tools/gate-model.sh', group: 'tools', gate: true, status: 'match' },
-      { path: 'agents/canon-reviewer.md', group: 'agents', gate: true, status: 'match' }] };
+      { path: 'agents/canon-reviewer.md', group: 'agents', gate: true, status: 'match' },
+      { path: 'skills/sprint/reference/review.md', group: 'prompts', gate: true, status: 'match' }],
+      agents: [{ name: 'canon-reviewer', file: 'agents/canon-reviewer.md', graded_by: 'skills/sprint/reference/review.md', role: 'advisory', model: 'claude-sonnet-5', effort: 'high', tools: 'Read, Grep', writes: 'review-notes.md', read_only: true, prompt: 'You are canon\'s advisory reviewer gate.' }] };
     await page.locator('#ig-again').click();
-    await expect(page.locator('#ig-body .ig-strip')).toContainText('2 of 3 files match');
-    await expect(page.locator('#ig-body .ig-row')).toHaveCount(3);
-    await expect(page.locator('.ig-row.ig-changed')).toContainText('tools/sprint');
-    await expect(page.locator('.ig-row.ig-changed .ig-fix code')).toHaveText("git -C '/x/canon' checkout -- tools/sprint");
+    await expect(page.locator('#ig-body .ig-strip')).toContainText('3 of 4 files match');
+    await expect(page.locator('#ig-body .ig-frow')).toHaveCount(4);              // the protocol file is in the reviewer's card, not listed twice
+    await expect(page.locator('.ig-card')).toHaveCount(1);
+    await expect(page.locator('.ig-card')).toContainText('canon-reviewer');
+    await expect(page.locator('.ig-card .ig-badge')).toHaveText(['advisory', 'read-only']);
+    await expect(page.locator('.ig-card')).toContainText('claude-sonnet-5');
+    await expect(page.locator('.ig-card')).toContainText('review-notes.md');
+    await expect(page.locator('.ig-card .ig-pill-ok')).toHaveText('Matches v1.2.3');
+    await page.locator('.ig-prompt summary').click();
+    await expect(page.locator('.ig-prompt pre')).toContainText('advisory reviewer gate');
+    await expect(page.locator('.ig-ghead .ig-pill-bad')).toHaveText('1 differs');       // the Gate files group header
+    await expect(page.locator('.ig-frow.ig-changed')).toContainText('tools/sprint');
+    await expect(page.locator('.ig-frow.ig-changed .ig-fix code')).toHaveText("git -C '/x/canon' checkout -- tools/sprint");
     await expect(page.locator('.ig-block')).toContainText('sprint complete');
-    await expect(page.locator('.ig-row.ig-match .ig-fix')).toHaveCount(0);
+    await expect(page.locator('.ig-frow.ig-match .ig-fix')).toHaveCount(0);
     expect(writes).toEqual([]);
   });
 

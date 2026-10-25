@@ -42,6 +42,10 @@ func newIntegFx(t *testing.T) *integFx {
 		files[p] = "content of " + p + "\n"
 	}
 	list := integrityList{Tag: "v1.2.3", Commit: strings.Repeat("a", 40), GateFiles: gateFiles, GatePrompts: gatePrompts, Files: map[string]string{}}
+	for _, p := range gatePrompts[:2] {
+		files[p] = "---\nname: " + strings.TrimSuffix(filepath.Base(p), ".md") + "\ndescription: canon's " + map[bool]string{true: "binding", false: "advisory"}[strings.Contains(p, "evaluator")] +
+			" gate.\nmodel: claude-sonnet-5\neffort: high\ntools: Read, Grep, Bash\nwrites: report.md\ngraded-by: skills/sprint/reference/review.md\n---\n<!-- canon:agent (managed) -->\nYou are a gate.\nSecond line.\n"
+	}
 	for p, c := range files {
 		full := filepath.Join(root, filepath.FromSlash(p))
 		_ = os.MkdirAll(filepath.Dir(full), 0o755)
@@ -513,5 +517,32 @@ func TestIntegrityOversizedSavedListIsNotUsed(t *testing.T) {
 	f.fail["integrity.txt"] = errors.New("offline")
 	if r := checkIntegrity(f.deps); r.State != integrityNotChecked {
 		t.Errorf("an oversized saved list: %+v", r)
+	}
+}
+
+func TestIntegrityAgentCards(t *testing.T) {
+	f := newIntegFx(t)
+	r := checkIntegrity(f.deps)
+	if len(r.Agents) != 2 {
+		t.Fatalf("agents: %+v", r.Agents)
+	}
+	rev, ev := r.Agents[0], r.Agents[1]
+	if rev.Name != "canon-reviewer" || rev.Role != "advisory" || ev.Role != "binding" || rev.Model != "claude-sonnet-5" || rev.Effort != "high" ||
+		rev.Tools != "Read, Grep, Bash" || rev.Writes != "report.md" || !rev.ReadOnly || rev.GradedBy != "skills/sprint/reference/review.md" ||
+		rev.File != "agents/canon-reviewer.md" || rev.Prompt != "You are a gate.\nSecond line." {
+		t.Errorf("reviewer card: %+v", rev)
+	}
+	f.edit("agents/canon-reviewer.md", "---\ntools: Read, Write\n---\nx")
+	if a := checkIntegrity(f.deps).Agents[0]; a.ReadOnly || a.Prompt != "x" {
+		t.Errorf("a tool list with Write is not read-only: %+v", a)
+	}
+	f.edit("agents/canon-reviewer.md", "no front matter")
+	if a := checkIntegrity(f.deps).Agents[0]; a.Name != "canon-reviewer" || a.Model != "" || a.Prompt != "" {
+		t.Errorf("a file without front matter gives a bare card: %+v", a)
+	}
+	g := newIntegFx(t)
+	g.deps.atTag = func(string, string) (bool, bool, error) { return true, false, nil }
+	if r := checkIntegrity(g.deps); len(r.Agents) != 0 {
+		t.Errorf("a state that is not verified shows no cards: %+v", r.Agents)
 	}
 }

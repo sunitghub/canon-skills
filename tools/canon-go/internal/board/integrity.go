@@ -60,15 +60,31 @@ type integrityFile struct {
 	Restore string `json:"restore,omitempty"` // the command that puts it back, for a changed or missing file
 }
 
+// integrityAgent is what the page shows about one gate agent: read from the agent file in the install (its own front matter), so it
+// describes what is on disk, next to the file's match/changed status.
+type integrityAgent struct {
+	Name     string `json:"name"`
+	File     string `json:"file"`
+	GradedBy string `json:"graded_by,omitempty"` // the protocol file the agent follows
+	Role     string `json:"role,omitempty"`      // advisory | binding
+	Model    string `json:"model,omitempty"`
+	Effort   string `json:"effort,omitempty"`
+	Tools    string `json:"tools,omitempty"`
+	Writes   string `json:"writes,omitempty"`
+	ReadOnly bool   `json:"read_only"`
+	Prompt   string `json:"prompt,omitempty"`
+}
+
 type integrityResult struct {
-	State    string          `json:"state"`
-	Tag      string          `json:"tag,omitempty"`
-	Reason   string          `json:"reason,omitempty"`
-	Source   string          `json:"source,omitempty"` // online | cached
-	Files    []integrityFile `json:"files"`
-	Match    int             `json:"match"`
-	Total    int             `json:"total"`
-	Blocking bool            `json:"blocking"` // a gate file or gate prompt differs in a verified install
+	State    string           `json:"state"`
+	Tag      string           `json:"tag,omitempty"`
+	Reason   string           `json:"reason,omitempty"`
+	Source   string           `json:"source,omitempty"` // online | cached
+	Files    []integrityFile  `json:"files"`
+	Agents   []integrityAgent `json:"agents,omitempty"`
+	Match    int              `json:"match"`
+	Total    int              `json:"total"`
+	Blocking bool             `json:"blocking"` // a gate file or gate prompt differs in a verified install
 }
 
 type integrityDeps struct {
@@ -372,7 +388,64 @@ func checkIntegrity(d integrityDeps) integrityResult {
 		res.Files = append(res.Files, f)
 	}
 	res.Total = len(res.Files)
+	for _, f := range res.Files {
+		if f.Group == "agents" {
+			res.Agents = append(res.Agents, readAgent(root, f.Path))
+		}
+	}
 	return res
+}
+
+// readAgent reads an agent file's front matter and prompt for display (64 KB at most; a file that cannot be read gives a bare card).
+func readAgent(root, rel string) integrityAgent {
+	a := integrityAgent{File: rel, Name: strings.TrimSuffix(filepath.Base(rel), ".md")}
+	fh, err := os.Open(filepath.Join(root, filepath.FromSlash(rel)))
+	if err != nil {
+		return a
+	}
+	defer fh.Close()
+	b, _ := io.ReadAll(io.LimitReader(fh, 64<<10))
+	lines := strings.Split(strings.ReplaceAll(string(b), "\r\n", "\n"), "\n")
+	if len(lines) == 0 || lines[0] != "---" {
+		return a
+	}
+	end := 1
+	for ; end < len(lines) && lines[end] != "---"; end++ {
+		k, v, ok := strings.Cut(lines[end], ": ")
+		if !ok {
+			continue
+		}
+		switch k {
+		case "name":
+			a.Name = v
+		case "model":
+			a.Model = v
+		case "effort":
+			a.Effort = v
+		case "tools":
+			a.Tools = v
+		case "writes":
+			a.Writes = v
+		case "graded-by":
+			a.GradedBy = v
+		case "description":
+			switch d := strings.ToLower(v); {
+			case strings.Contains(d, "binding"):
+				a.Role = "binding"
+			case strings.Contains(d, "advisory"):
+				a.Role = "advisory"
+			}
+		}
+	}
+	a.ReadOnly = a.Tools != "" && !strings.Contains(a.Tools, "Edit") && !strings.Contains(a.Tools, "Write")
+	var body []string
+	for _, l := range lines[min(end+1, len(lines)):] {
+		if !strings.HasPrefix(l, "<!-- canon:agent") {
+			body = append(body, l)
+		}
+	}
+	a.Prompt = strings.TrimSpace(strings.Join(body, "\n"))
+	return a
 }
 
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }

@@ -510,15 +510,37 @@ async function igLoad(refresh){
   let r; try{ r=await (await fetch('/api/integrity'+(refresh?'?refresh=1':''))).json(); }catch(e){ box.innerHTML='<div class="setting-d">Could not reach the board.</div>'; return; }
   const [cls,label,note]=IG_STATE[r.state]||['mute',r.state,''];
   let h=`<div class="ig-strip ig-${cls}"><b>${esc(label)}</b>${r.tag?' \u00b7 '+esc(r.tag):''}${r.state==='verified'?` \u00b7 ${r.match} of ${r.total} files match${r.source==='cached'?' \u00b7 saved list':''}`:''}`+
-    `<button type="button" class="ig-again b-neutral" id="ig-again">Check again</button></div>`+
+    `<button type="button" class="ig-again b-accent" id="ig-again">Check again</button></div>`+
     `<div class="setting-d">${esc(r.reason||note)}</div>`;
   if(r.state==='verified'){
+    const files=r.files||[];
+    const pill=rows=>{ const bad=rows.filter(x=>x.status!=='match').length; return bad?`<span class="ig-pill ig-pill-bad">${bad} differ${bad===1?'s':''}</span>`:`<span class="ig-pill ig-pill-ok">Matches ${esc(r.tag)}</span>`; };
+    const fileRow=x=>`<div class="ig-frow ig-${x.status}"><span class="ig-dot"></span><code>${esc(x.path)}</code>`+(x.gate?'<span class="ig-gate">gate file</span>':'')+
+      (x.status!=='match'?`<span class="ig-st">${esc(x.status)}</span>`:'')+
+      (x.restore?`<div class="ig-fix">Put it back: <code>${esc(x.restore)}</code> <button type="button" class="ig-copy b-neutral" data-cmd="${escAttr(x.restore)}">Copy</button></div>`:'')+`</div>`;
     h+=IG_GROUPS.map(([g,name])=>{
-      const rows=(r.files||[]).filter(f=>f.group===g); if(!rows.length) return '';
-      return `<div class="ig-group">${esc(name)}</div>`+rows.map(f=>
-        `<div class="ig-row ig-${f.status}"><span class="ig-mark">${f.status==='match'?'\u2713':'\u2717'}</span><code>${esc(f.path)}</code>`+
-        (f.gate?'<span class="ig-gate">gate</span>':'')+`<span class="ig-st">${esc(f.status)}</span>`+
-        (f.restore?`<div class="ig-fix">Put it back: <code>${esc(f.restore)}</code> <button type="button" class="ig-copy b-neutral" data-cmd="${escAttr(f.restore)}">Copy</button></div>`:'')+`</div>`).join('');
+      const cardFiles=new Set((r.agents||[]).map(a=>a.graded_by));   // a protocol file shown in an agent's card is not listed twice
+      const rows=files.filter(x=>x.group===g&&!(g==='prompts'&&cardFiles.has(x.path))); if(!rows.length) return '';
+      let body;
+      if(g==='agents'){
+        body=(r.agents||[]).map(a=>{
+          const mine=rows.filter(x=>x.path===a.file||x.path===a.graded_by);
+          const own=rows.filter(x=>x.path===a.file)[0];
+          const extra=files.filter(x=>x.path===a.graded_by);
+          const list=[own].concat(extra).filter(Boolean);
+          const kv=(k,v)=>v?`<div class="ig-kv"><span class="ig-k">${k}</span><span>${v}</span></div>`:'';
+          return `<div class="ig-card"><div class="ig-card-h"><b class="ig-name">${esc(a.name)}</b>`+
+            (a.role?`<span class="ig-badge">${esc(a.role)}</span>`:'')+(a.read_only?'<span class="ig-badge ig-ro">read-only</span>':'')+
+            `<span class="ig-card-pill">${pill(list)}</span></div>`+
+            kv('Model',esc(a.model))+kv('Effort',esc(a.effort))+kv('Tools',esc(a.tools))+kv('Writes',a.writes?`<code>${esc(a.writes)}</code> only`:'')+
+            `<div class="ig-files">${list.map(fileRow).join('')}</div>`+
+            (a.prompt?`<details class="ig-prompt"><summary>Prompt \u00b7 ${esc(a.file)}</summary><pre>${esc(a.prompt)}</pre></details>`:'')+`</div>`;
+        }).join('')||rows.map(fileRow).join('');
+        const shown=new Set((r.agents||[]).flatMap(a=>[a.file,a.graded_by]));
+        const rest=rows.filter(x=>!shown.has(x.path)); if(rest.length) body+=`<div class="ig-files">${rest.map(fileRow).join('')}</div>`;
+      } else body=`<div class="ig-files">${rows.map(fileRow).join('')}</div>`;
+      const inAgents=g==='agents'?rows.concat(files.filter(x=>(r.agents||[]).some(a=>a.graded_by===x.path))):rows;
+      return `<div class="ig-ghead"><span class="ig-group">${esc(name)}</span><span class="ig-count">${rows.length} file${rows.length===1?'':'s'}</span>${pill(inAgents)}</div>${body}`;
     }).join('');
     if(r.blocking) h+='<div class="setting-d ig-block">A gate file or gate prompt differs, so <code>sprint complete</code> will refuse to close until it is put back.</div>';
   }
