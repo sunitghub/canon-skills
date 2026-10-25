@@ -194,8 +194,10 @@ export function makePanelResizable(panelId) {
 
     handle.addEventListener('pointermove', e => {
       if (!resizing) return;
-      const maxWidth = Math.min(Math.max(320, window.innerWidth - 24), Math.max(roomX, 0));
-      const maxHeight = Math.min(Math.max(320, window.innerHeight - 24), Math.max(roomY, 0));
+      // a dialog dragged mostly off-screen keeps its minimum size instead of shrinking to the sliver of room left
+      const viewW = Math.max(320, window.innerWidth - 24), viewH = Math.max(320, window.innerHeight - 24);
+      const maxWidth = Math.min(viewW, Math.max(roomX, Math.min(420, viewW)));
+      const maxHeight = Math.min(viewH, Math.max(roomY, Math.min(320, viewH)));
       const minWidth = Math.min(420, maxWidth);
       const minHeight = Math.min(320, maxHeight);
       const dx = e.clientX - startX, dy = e.clientY - startY;

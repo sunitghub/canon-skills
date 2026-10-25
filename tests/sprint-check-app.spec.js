@@ -16561,7 +16561,6 @@ test.describe('Logbook (t-c6bb)', () => {
       .toBe([Math.round(start.x), Math.round(start.y), Math.round(start.width), Math.round(start.height)].join(','));
   });
 
-
   test('the Logbook keeps the opposite corner fixed when a corner is dragged (t-4803)', async ({ page }) => {
     await serve(page);
     await page.goto(BASE);
