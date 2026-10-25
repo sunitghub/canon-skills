@@ -33,8 +33,7 @@ type Config struct {
 	// RunShell runs the full shell until it exits or ctx ends (then it must stop the whole process group). nil: su is unavailable.
 	RunShell func(ctx context.Context, root string) error
 	After    func(time.Duration) <-chan time.Time
-	Word     func() string
-	// Auth asks the OS for the user's password; nil, or ErrNoAuth, means su asks for the typed Word instead.
+	// Auth asks the OS for the account password; nil, or ErrNoAuth, means su is unavailable.
 	Auth    func(ctx context.Context, out io.Writer) error
 	Limit   time.Duration  // how long su lasts
 	Warn    time.Duration  // how long before the end it warns

@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -290,6 +291,7 @@ type fakeSu struct {
 	waits   []time.Duration
 	chans   []chan time.Time
 	emitErr error
+	auth    []error // what each OS prompt answers, in order; an empty queue passes
 	ctxErr  error
 	shells  int
 }
@@ -298,7 +300,17 @@ func newFakeSu() *fakeSu { return &fakeSu{started: make(chan struct{}, 4), stop:
 
 func (f *fakeSu) cfg(root string) Config {
 	return Config{
-		Root: root, Session: "sid", Ticket: "s-ab12", Word: func() string { return "Kx7m2" },
+		Root: root, Session: "sid", Ticket: "s-ab12",
+		Auth: func(context.Context, io.Writer) error {
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			if len(f.auth) == 0 {
+				return nil
+			}
+			e := f.auth[0]
+			f.auth = f.auth[1:]
+			return e
+		},
 		Emit: func(kind string, data map[string]string) error {
 			f.mu.Lock()
 			defer f.mu.Unlock()
@@ -348,43 +360,13 @@ func (f *fakeSu) log() string {
 	return strings.Join(f.events, "|")
 }
 
-// Protects the typed word: only the exact word starts a shell; a wrong, empty or missing answer does not, and each is logged.
-func TestSuNeedsTheWord(t *testing.T) {
-	root, _ := project(t)
-	for _, c := range []struct{ input, events string }{
-		{"su\nwrong-word\n\nexit\n", "terminal.su_prompted|terminal.su_denied reason=wrong|terminal.su_denied reason=empty"},
-		{"su\n\nexit\n", "terminal.su_prompted|terminal.su_denied reason=empty"},
-		{"su\n", "terminal.su_prompted|terminal.su_denied reason=eof"},
-		{"su\nKx7m2 \n", ""}, // surrounding blanks are ignored: this one is granted
-	} {
-		f := newFakeSu()
-		close(f.stop) // a granted shell exits at once
-		out := run(t, f.cfg(root), c.input)
-		if c.events == "" {
-			if f.shells != 1 || !strings.Contains(f.log(), "terminal.su_granted minutes=5") {
-				t.Errorf("%q: the right word should start the shell once; shells=%d log=%s", c.input, f.shells, f.log())
-			}
-			continue
-		}
-		if f.shells != 0 {
-			t.Errorf("%q: a shell started without the word", c.input)
-		}
-		if f.log() != c.events {
-			t.Errorf("%q: events %q, want %q", c.input, f.log(), c.events)
-		}
-		if !strings.Contains(out, "Cancelled") {
-			t.Errorf("%q: no cancel message:\n%s", c.input, out)
-		}
-	}
-}
-
 // Protects the fail-closed rule: when su_granted cannot be written, no shell starts.
 func TestSuFailsClosedWhenTheLogCannotBeWritten(t *testing.T) {
 	root, _ := project(t)
 	f := newFakeSu()
 	f.emitErr = errors.New("disk full")
 	close(f.stop) // a shell that starts anyway returns at once, so a broken guard fails the check below instead of hanging on the fake clock
-	out := run(t, f.cfg(root), "su\nKx7m2\nls\nexit\n")
+	out := run(t, f.cfg(root), "su\nls\nexit\n")
 	if f.shells != 0 {
 		t.Fatal("a shell started although su_granted could not be logged")
 	}
@@ -404,7 +386,7 @@ func TestSuExpiry(t *testing.T) {
 	cfg.In, cfg.Out = pr, out
 	done := make(chan int, 1)
 	go func() { done <- Run(cfg) }()
-	pw.WriteString("su\nKx7m2\n")
+	pw.WriteString("su\n")
 	<-f.started
 	waitFor(t, func() bool { f.mu.Lock(); defer f.mu.Unlock(); return len(f.chans) == 2 })
 	if f.waits[0] != 4*time.Minute+30*time.Second || f.waits[1] != 5*time.Minute {
@@ -434,24 +416,9 @@ func TestSuExpiry(t *testing.T) {
 
 	g := newFakeSu()
 	close(g.stop)
-	run(t, g.cfg(root), "su\nKx7m2\nexit\n")
+	run(t, g.cfg(root), "su\nexit\n")
 	if got := g.log(); got != "terminal.su_prompted|terminal.su_granted minutes=5|terminal.su_expired how=exited" {
 		t.Errorf("a shell that exits first: events %q", got)
-	}
-}
-
-func TestRandomWord(t *testing.T) {
-	re := regexp.MustCompile(`^[A-Z][a-z2-9]{4}$`)
-	seen := map[string]bool{}
-	for i := 0; i < 200; i++ {
-		w := RandomWord()
-		if !re.MatchString(w) {
-			t.Fatalf("word %q has the wrong shape", w)
-		}
-		seen[w] = true
-	}
-	if len(seen) < 199 {
-		t.Errorf("only %d distinct words in 200", len(seen))
 	}
 }
 
@@ -490,27 +457,32 @@ func (p pipeW) WriteString(s string) { _, _ = p.Write([]byte(s)) }
 
 func newPipe() (io.Reader, pipeW) { r, w := io.Pipe(); return r, pipeW{w} }
 
-// With an OS Auth, su asks the OS and never the word: a pass starts the shell, a failure is su_denied reason=auth,
-// three failures close the terminal, and no provider falls back to the word.
+// su asks the OS for the account password and never for a word: a pass starts the shell, a failure is su_denied
+// reason=auth, three failures close the terminal, and no provider means su is unavailable (no fallback, no shell).
 func TestSuUsesOSAuth(t *testing.T) {
 	root, _ := project(t)
-	fail := errors.New("sudo: 1 incorrect password attempt")
+	fail := errors.New("Authentication failed")
 	for _, c := range []struct {
 		name, input, events string
-		auth                error
+		auth                []error
+		noAuth              bool // Config.Auth is nil
 		shells              int
 		code                int    // Run's exit status: 1 only when the terminal is closed
 		say                 string // what the user is told
 	}{
-		{"pass", "su\nexit\n", "terminal.su_prompted|terminal.su_granted minutes=5|terminal.su_expired how=exited", nil, 1, 0, "Approve the OS prompt"},
-		{"fail", "su\nexit\n", "terminal.su_prompted|terminal.su_denied reason=auth", fail, 0, 0, "Authentication failed: still in the restricted prompt."},
-		{"three fails", "su\nsu\nsu\nexit\n", "terminal.su_prompted|terminal.su_denied reason=auth|terminal.su_prompted|terminal.su_denied reason=auth|terminal.su_prompted|terminal.su_denied reason=locked", fail, 0, 1, "Authentication failed 3 times: closing the terminal"},
-		{"no provider", "su\nKx7m2\nexit\n", "terminal.su_prompted|terminal.su_granted minutes=5|terminal.su_expired how=exited", ErrNoAuth, 1, 0, "so a typed word is used instead"},
+		{"pass", "su\nexit\n", "terminal.su_prompted|terminal.su_granted minutes=5|terminal.su_expired how=exited", nil, false, 1, 0, "Approve the OS prompt"},
+		{"fail", "su\nexit\n", "terminal.su_prompted|terminal.su_denied reason=auth", []error{fail}, false, 0, 0, "Authentication failed: still in the restricted prompt."},
+		{"three fails", "su\nsu\nsu\nexit\n", "terminal.su_prompted|terminal.su_denied reason=auth|terminal.su_prompted|terminal.su_denied reason=auth|terminal.su_prompted|terminal.su_denied reason=locked", []error{fail, fail, fail}, false, 0, 1, "closing the terminal"},
+		{"no provider", "su\nexit\n", "terminal.su_prompted|terminal.su_denied reason=unavailable", []error{ErrNoAuth}, false, 0, 0, "su is not available here"},
+		{"no Auth at all", "su\nexit\n", "terminal.su_prompted|terminal.su_denied reason=unavailable", nil, true, 0, 0, "su is not available here"},
 	} {
 		f := newFakeSu()
 		close(f.stop)
+		f.auth = c.auth
 		cfg := f.cfg(root)
-		cfg.Auth = func(context.Context, io.Writer) error { return c.auth }
+		if c.noAuth {
+			cfg.Auth = nil
+		}
 		var buf bytes.Buffer
 		cfg.In, cfg.Out = strings.NewReader(c.input), &buf
 		code := Run(cfg)
@@ -521,56 +493,90 @@ func TestSuUsesOSAuth(t *testing.T) {
 		if f.shells != c.shells || f.log() != c.events {
 			t.Errorf("%s: shells=%d events %q, want %d %q", c.name, f.shells, f.log(), c.shells, c.events)
 		}
-		if strings.Contains(out, "Kx7m2") && c.auth != ErrNoAuth {
-			t.Errorf("%s: the word was printed although the OS was asked", c.name)
+		if strings.Contains(out, "to continue (Enter cancels)") {
+			t.Errorf("%s: a typed word was asked for", c.name)
 		}
 	}
 }
 
+// authCommand picks the OS's own password prompt for the account: dscl on macOS, su to the same account on Linux, Windows
+// sudo only when it is switched on; anything else, or no tool on PATH, or no account name, is no provider.
 func TestAuthCommand(t *testing.T) {
-	found := func(string) (string, error) { return "/usr/bin/sudo", nil }
+	found := func(n string) (string, error) { return "/usr/bin/" + n, nil }
 	missing := func(string) (string, error) { return "", errors.New("not found") }
-	if _, a, ok := authCommand("linux", found, func() bool { return true }); !ok || strings.Join(a, " ") != "-k -v" {
-		t.Errorf("linux: %v %v", a, ok)
-	}
-	if _, a, ok := authCommand("darwin", found, func() bool { return true }); !ok || strings.Join(a, " ") != "-k -v" {
-		t.Errorf("darwin: %v %v", a, ok)
-	}
-	if _, a, ok := authCommand("windows", found, func() bool { return true }); !ok || strings.Join(a, " ") != "cmd /c exit" {
-		t.Errorf("windows: %v %v", a, ok)
-	}
 	on, off := func() bool { return true }, func() bool { return false }
-	if _, _, ok := authCommand("windows", found, off); ok {
-		t.Error("Windows sudo switched off must mean no provider, so su falls back to the word")
+	for _, c := range []struct {
+		goos, account, want string
+		lookPath            func(string) (string, error)
+		sudoOn              func() bool
+	}{
+		{"darwin", "sam", "/usr/bin/dscl . -authonly sam", found, on},
+		{"linux", "sam", "/usr/bin/su -c true sam", found, on},
+		{"windows", "sam", "/usr/bin/sudo cmd /c exit", found, on},
+		{"windows", "sam", "", found, off},  // sudo is off in Settings: only UAC-less failure, so no provider
+		{"darwin", "sam", "", missing, on},  // no dscl
+		{"linux", "sam", "", missing, on},   // no su
+		{"windows", "sam", "", missing, on}, // no sudo.exe
+		{"darwin", "", "", found, on},       // no account name to check
+		{"linux", "", "", found, on},
+		{"freebsd", "sam", "", found, on}, // su -c means something else there
+	} {
+		name, args, ok := authCommand(c.goos, c.account, c.lookPath, c.sudoOn)
+		got := ""
+		if ok {
+			got = name + " " + strings.Join(args, " ")
+		}
+		if got != c.want {
+			t.Errorf("%s/%q: got %q, want %q", c.goos, c.account, got, c.want)
+		}
 	}
-	if _, _, ok := authCommand("linux", missing, on); ok {
-		t.Error("no sudo on PATH must mean no provider, so su falls back to the word")
+	// A sudo alone is no provider on macOS or Linux: sudo -v passes silently for a NOPASSWD user.
+	onlySudo := func(n string) (string, error) {
+		if n == "sudo" {
+			return "/usr/bin/sudo", nil
+		}
+		return "", errors.New("not found")
+	}
+	for _, goos := range []string{"darwin", "linux"} {
+		if _, _, ok := authCommand(goos, "sam", onlySudo, on); ok {
+			t.Errorf("%s must not fall back to sudo for the password check", goos)
+		}
 	}
 }
 
-// OSAuth runs the sudo it finds on PATH: none means no provider (ErrNoAuth), a failing sudo is a denial, a passing one a grant.
-func TestOSAuthRunsSudo(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("shell script stub")
+// OSAuth runs the tool it finds on PATH with the account name: none means no provider (ErrNoAuth), a failing one is a
+// denial, a passing one a grant.
+func TestOSAuthRunsThePasswordTool(t *testing.T) {
+	tool := map[string]string{"darwin": "dscl", "linux": "su"}[runtime.GOOS]
+	if tool == "" {
+		t.Skip("macOS and Linux only")
+	}
+	u, err := user.Current()
+	if err != nil {
+		t.Skip("no current user:", err)
+	}
+	args := ". -authonly " + u.Username
+	if runtime.GOOS == "linux" {
+		args = "-c true " + u.Username
 	}
 	dir := t.TempDir()
 	t.Setenv("PATH", dir)
 	if err := OSAuth(context.Background(), io.Discard); !errors.Is(err, ErrNoAuth) {
-		t.Fatalf("no sudo on PATH: got %v, want ErrNoAuth", err)
+		t.Fatalf("no %s on PATH: got %v, want ErrNoAuth", tool, err)
 	}
-	stub := filepath.Join(dir, "sudo")
+	stub := filepath.Join(dir, tool)
 	for _, c := range []struct {
 		script string
 		want   func(error) bool
 	}{
-		{"#!/bin/sh\n[ \"$1 $2\" = \"-k -v\" ] || exit 9\n", func(e error) bool { return e == nil }},
+		{"#!/bin/sh\n[ \"$*\" = \"" + args + "\" ] || exit 9\n", func(e error) bool { return e == nil }},
 		{"#!/bin/sh\nexit 1\n", func(e error) bool { return e != nil && !errors.Is(e, ErrNoAuth) }},
 	} {
 		if err := os.WriteFile(stub, []byte(c.script), 0o755); err != nil {
 			t.Fatal(err)
 		}
 		if err := OSAuth(context.Background(), io.Discard); !c.want(err) {
-			t.Errorf("sudo stub %q: got %v", c.script, err)
+			t.Errorf("%s stub %q: got %v", tool, c.script, err)
 		}
 	}
 }
@@ -581,8 +587,7 @@ func TestSuOSAuthPassResetsFailures(t *testing.T) {
 	f := newFakeSu()
 	close(f.stop)
 	cfg := f.cfg(root)
-	results := []error{errors.New("no"), errors.New("no"), nil, errors.New("no"), errors.New("no")}
-	cfg.Auth = func(context.Context, io.Writer) error { e := results[0]; results = results[1:]; return e }
+	f.auth = []error{errors.New("no"), errors.New("no"), nil, errors.New("no"), errors.New("no")}
 	var buf bytes.Buffer
 	cfg.In, cfg.Out = strings.NewReader("su\nsu\nsu\nsu\nsu\nexit\n"), &buf
 	if code := Run(cfg); code != 0 {
@@ -590,7 +595,7 @@ func TestSuOSAuthPassResetsFailures(t *testing.T) {
 	}
 }
 
-// The Windows switch for sudo: only 1-3 in `reg query`'s output is on; off, missing or garbled is off, so su asks for the word.
+// The Windows switch for sudo: only 1-3 in `reg query`'s output is on; off, missing or garbled is off, so su is unavailable.
 func TestSudoEnabledIn(t *testing.T) {
 	reg := func(v string) string {
 		return "\r\nHKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Sudo\r\n    Enabled    REG_DWORD    " + v + "\r\n\r\n"

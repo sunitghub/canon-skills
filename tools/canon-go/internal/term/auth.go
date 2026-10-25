@@ -6,34 +6,46 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/user"
 	"strconv"
 	"strings"
 )
 
-// ErrNoAuth means this machine has no OS credential prompt su can use; su then falls back to the typed word.
+// ErrNoAuth means this machine has no OS password prompt su can use; su is then unavailable (there is no typed-word
+// fallback: without the account password there is no admin shell).
 var ErrNoAuth = errors.New("no OS authentication available")
 
-// authCommand is the OS's own prompt: sudo asks for the user's login password through PAM (Linux) or Open Directory
-// (macOS), so canon never sees it. -k drops a cached sudo ticket, so the prompt always appears. Windows sudo (11 24H2+,
-// off until switched on in Settings) asks for UAC consent, not a password, and has no -v: running a command that exits
-// at once makes it ask. A sudo.exe that ships but is switched off would only fail, so Windows needs sudoOn to say it is
-// on. ok is false when no provider applies; su then asks for the typed word.
-func authCommand(goos string, lookPath func(string) (string, error), sudoOn func() bool) (name string, args []string, ok bool) {
-	sudo, err := lookPath("sudo")
-	if err != nil {
-		return "", nil, false
-	}
-	if goos == "windows" {
-		if !sudoOn() {
+// authCommand is the OS's own password prompt for the signed-in account, one that asks for the password whatever sudo is
+// set to (sudo -v passes silently for a NOPASSWD user, so it is not used): macOS checks it against Open Directory with
+// dscl -authonly, Linux with su to the same account, which asks PAM for that account's password. canon never sees the
+// password. Windows has no console password check that fits: its sudo (11 24H2+, off until switched on in Settings) asks
+// for UAC consent, and has no -v, so a command that exits at once makes it ask. ok is false when no provider applies.
+func authCommand(goos, account string, lookPath func(string) (string, error), sudoOn func() bool) (name string, args []string, ok bool) {
+	switch goos {
+	case "darwin":
+		p, err := lookPath("dscl")
+		if err != nil || account == "" {
 			return "", nil, false
 		}
-		return sudo, []string{"cmd", "/c", "exit"}, true
+		return p, []string{".", "-authonly", account}, true
+	case "linux":
+		p, err := lookPath("su")
+		if err != nil || account == "" {
+			return "", nil, false
+		}
+		return p, []string{"-c", "true", account}, true
+	case "windows":
+		p, err := lookPath("sudo")
+		if err != nil || !sudoOn() {
+			return "", nil, false
+		}
+		return p, []string{"cmd", "/c", "exit"}, true
 	}
-	return sudo, []string{"-k", "-v"}, true
+	return "", nil, false
 }
 
 // windowsSudoOn reads Windows' own switch for sudo (HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Sudo, Enabled: 0
-// off, 1-3 on in one of its three modes). Anything unreadable counts as off, so doubt falls back to the typed word.
+// off, 1-3 on in one of its three modes). Anything unreadable counts as off, so doubt means su is unavailable.
 func windowsSudoOn() bool {
 	out, err := exec.Command("reg", "query", `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Sudo`, "/v", "Enabled").Output()
 	return err == nil && sudoEnabledIn(string(out))
@@ -49,12 +61,20 @@ func sudoEnabledIn(out string) bool {
 	return err == nil && v >= 1 && v <= 3
 }
 
-// osAuth is what Main wires; the end-to-end test child sets it nil to exercise the typed-word fallback on a real pty.
+// osAuth is what Main wires.
 var osAuth = OSAuth
 
-// OSAuth asks the OS for the user's password. It returns ErrNoAuth when there is no provider, nil when the user passed.
+// OSAuth asks the OS for the signed-in account's password. It returns ErrNoAuth when there is no provider, nil when the
+// user passed.
 func OSAuth(ctx context.Context, out io.Writer) error {
-	name, args, ok := authCommand(goos, exec.LookPath, windowsSudoOn)
+	account := ""
+	if u, err := user.Current(); err == nil {
+		account = u.Username
+	}
+	if account == "" {
+		account = os.Getenv("USER")
+	}
+	name, args, ok := authCommand(goos, account, exec.LookPath, windowsSudoOn)
 	if !ok {
 		return ErrNoAuth
 	}

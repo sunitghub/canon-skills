@@ -3,6 +3,7 @@ package term
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -163,7 +164,7 @@ func TestSuDefaultsAndOrder(t *testing.T) {
 	cfg.In, cfg.Out = pr, out
 	done := make(chan int, 1)
 	go func() { done <- Run(cfg) }()
-	pw.WriteString("su\nKx7m2\n")
+	pw.WriteString("su\n")
 	<-f.started
 	waitFor(t, func() bool { f.mu.Lock(); defer f.mu.Unlock(); return len(f.chans) == 2 })
 	if f.waits[0] != 9*time.Minute+30*time.Second || f.waits[1] != 10*time.Minute {
@@ -190,7 +191,7 @@ func TestSuDefaultsAndOrder(t *testing.T) {
 	c2 := g.cfg(root)
 	c2.Emit = nil
 	c2.Limit, c2.Warn = time.Minute, time.Minute
-	out2 := run(t, c2, "su\nKx7m2\nexit\n")
+	out2 := run(t, c2, "su\nexit\n")
 	if g.waits[0] != 30*time.Second || !strings.Contains(out2, "Back in the restricted prompt.") {
 		t.Errorf("a warning at the limit should become 30s; timers %v\n%s", g.waits, out2)
 	}
@@ -203,7 +204,7 @@ func TestSuRealTimer(t *testing.T) {
 	cfg := f.cfg(root)
 	cfg.After = nil
 	cfg.Limit, cfg.Warn = 300*time.Millisecond, 100*time.Millisecond
-	out := run(t, cfg, "su\nKx7m2\nexit\n")
+	out := run(t, cfg, "su\nexit\n")
 	if !strings.Contains(out, "ends in") || !strings.Contains(out, "time is up") {
 		t.Errorf("the real timers should warn and end:\n%s", out)
 	}
@@ -212,56 +213,53 @@ func TestSuRealTimer(t *testing.T) {
 	}
 }
 
-// Protects the short word: three tries only. A typo can be retried on the same word; the third wrong answer in all, across
-// every su, closes the terminal (exit status 1, logged as "locked"), and the commands after it never run; a right answer
-// starts the count again; an empty answer or end of input never counts.
+// Protects the three tries: a failed OS prompt can be retried; the third failure in all, across every su, closes the
+// terminal (exit status 1, logged as "locked"), and the commands after it never run; a pass starts the count again; a
+// machine with no OS prompt never counts.
 func TestSuThreeTriesThenTheTerminalCloses(t *testing.T) {
 	root, _ := project(t)
-	mk := func() (*fakeSu, Config, *safeBuf) {
+	no := errors.New("Authentication failed")
+	mk := func(auth ...error) (*fakeSu, Config, *safeBuf) {
 		f := newFakeSu()
 		close(f.stop)
+		f.auth = auth
 		return f, f.cfg(root), &safeBuf{}
 	}
 	runCode := func(cfg Config, out *safeBuf, input string) int {
 		cfg.In, cfg.Out = strings.NewReader(input), out
 		return Run(cfg)
 	}
-	// A typo twice, then the word: the shell starts, and the prompt tells how many tries are left.
-	f, cfg, out := mk()
-	if code := runCode(cfg, out, "su\nBad11\nBad22\nKx7m2\nexit\n"); code != 0 {
+	// Two failures, then a pass: the shell starts.
+	f, cfg, out := mk(no, no, nil)
+	if code := runCode(cfg, out, "su\nsu\nsu\nexit\n"); code != 0 {
 		t.Errorf("exit status %d", code)
 	}
-	if want := "terminal.su_prompted|terminal.su_denied reason=wrong|terminal.su_denied reason=wrong|terminal.su_granted minutes=5|terminal.su_expired how=exited"; f.log() != want {
+	if want := "terminal.su_prompted|terminal.su_denied reason=auth|terminal.su_prompted|terminal.su_denied reason=auth|terminal.su_prompted|terminal.su_granted minutes=5|terminal.su_expired how=exited"; f.log() != want {
 		t.Errorf("events:\n got %s\nwant %s", f.log(), want)
 	}
-	if f.shells != 1 || !strings.Contains(out.String(), "Wrong, 2 left.") || !strings.Contains(out.String(), "Wrong, 1 left.") {
+	if f.shells != 1 {
 		t.Errorf("shells=%d\n%s", f.shells, out.String())
 	}
-	// Three wrong answers in one su close the terminal; nothing after them runs.
-	f, cfg, out = mk()
-	if code := runCode(cfg, out, "su\nBad1\nBad2\nBad3\nls\nsu\nKx7m2\n"); code != 1 {
+	// Three failures close the terminal; nothing after them runs.
+	f, cfg, out = mk(no, no, no)
+	if code := runCode(cfg, out, "su\nsu\nsu\nls\nsu\n"); code != 1 {
 		t.Errorf("a closed terminal should exit 1, got %d", code)
 	}
-	if want := "terminal.su_prompted|terminal.su_denied reason=wrong|terminal.su_denied reason=wrong|terminal.su_denied reason=locked"; f.log() != want {
+	if want := "terminal.su_prompted|terminal.su_denied reason=auth|terminal.su_prompted|terminal.su_denied reason=auth|terminal.su_prompted|terminal.su_denied reason=locked"; f.log() != want {
 		t.Errorf("events:\n got %s\nwant %s", f.log(), want)
 	}
-	if f.shells != 0 || strings.Contains(out.String(), "a.go") || !strings.Contains(out.String(), "Wrong 3 times: closing the terminal.") {
+	if f.shells != 0 || strings.Contains(out.String(), "a.go") || !strings.Contains(out.String(), "Authentication failed 3 times: closing the terminal.") {
 		t.Errorf("shells=%d\n%s", f.shells, out.String())
 	}
-	// The count carries across su commands: one wrong answer, cancel, three times.
-	f, cfg, out = mk()
-	if code := runCode(cfg, out, "su\nBad1\n\nsu\nBad2\n\nsu\nBad3\nls\n"); code != 1 || f.shells != 0 || strings.Contains(out.String(), "a.go") {
-		t.Errorf("three wrong answers over three su commands should close it: code=%d shells=%d\n%s", code, f.shells, out.String())
+	// A pass starts the count again: two failures, a pass, two failures do not close it.
+	f, cfg, out = mk(no, no, nil, no, no)
+	if code := runCode(cfg, out, "su\nsu\nsu\nsu\nsu\nexit\n"); code != 0 || f.shells != 1 {
+		t.Errorf("a pass should reset the count: code=%d shells=%d\n%s", code, f.shells, out.String())
 	}
-	// A right answer starts the count again.
-	f, cfg, out = mk()
-	if code := runCode(cfg, out, "su\nBad1\nBad2\nKx7m2\nsu\nBad3\nBad4\nKx7m2\nexit\n"); code != 0 || f.shells != 2 {
-		t.Errorf("a right answer should reset the count: code=%d shells=%d\n%s", code, f.shells, out.String())
-	}
-	// Empty answers and end of input never count.
-	f, cfg, out = mk()
-	if code := runCode(cfg, out, "su\n\nsu\n\nsu\n\nsu\n\nsu\nKx7m2\nexit\n"); code != 0 || f.shells != 1 {
-		t.Errorf("empty answers must not close the terminal: code=%d shells=%d log=%s", code, f.shells, f.log())
+	// No OS prompt on the machine never counts, however often it is tried.
+	f, cfg, out = mk(ErrNoAuth, ErrNoAuth, ErrNoAuth, ErrNoAuth, ErrNoAuth)
+	if code := runCode(cfg, out, "su\nsu\nsu\nsu\nsu\nls\n"); code != 0 || f.shells != 0 || !strings.Contains(out.String(), "a.go") {
+		t.Errorf("an unavailable su must not close the terminal: code=%d shells=%d\n%s", code, f.shells, out.String())
 	}
 }
 
