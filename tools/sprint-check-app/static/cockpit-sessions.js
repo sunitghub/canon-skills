@@ -188,7 +188,7 @@ export function sessionView(s){
   const reapIn=(limit!==null && idle!==null) ? Math.max(0,limit-idle) : null;
   let reaper='';
   if(state==='needs-you') reaper='paused \u00b7 waiting on you';
-  else if(reapIn!==null) reaper='auto-save & end in '+(reapIn>0 ? fmtDur(reapIn) : 'under a minute');
+  else if(reapIn!==null) reaper=(s.agent==='term' ? 'closes in ' : 'auto-save & end in ')+(reapIn>0 ? fmtDur(reapIn) : 'under a minute');   // a Terminal has nothing to save
   const proot=String(s.project_root||''), ticket=String(s.ticket||'');
   const proj=getProjects().find(p=>_projKey(p.path)===_projKey(proot));
   const startMs=Date.parse(s.started);   // t-aca6: the daemon's session start (RFC 3339); missing on old daemons

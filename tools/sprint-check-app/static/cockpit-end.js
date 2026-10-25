@@ -63,10 +63,11 @@ function closeScratchChip(v){
 }
 
 // What the idle reaper would act on: a live session at its prompt. Never needs-you or working (the daemon says why).
-export function canReap(v){ return !!v.sid && (v.state==='idle'||v.state==='done'); }
+export function canReap(v){ return !!v.sid && v.agent!=='term' && (v.state==='idle'||v.state==='done'); }   // a Terminal has nothing to save, so Reap now would only be Kill
 export function canKill(v){ return !!v.sid; }
 function reapWhyNot(v){
   if(!v.sid) return 'Not started yet';
+  if(v.agent==='term') return 'A Terminal has nothing to save \u2014 use Kill';
   if(v.state==='needs-you') return 'Waiting on you \u2014 answer it first';
   if(v.state==='working') return 'Working \u2014 the agent isn\u2019t at its prompt';
   return '';

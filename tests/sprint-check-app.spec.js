@@ -6459,6 +6459,9 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator('#nav-admin').click();
       await expect(page.locator('#ad-sessions .s1')).toHaveText('Terminal');
       await expect(page.locator('#ad-sessions .s1 svg.scr-ico')).toHaveAttribute('aria-label', 'Terminal');
+      await expect(page.locator('#ad-sessions .reap')).toContainText('closes in');   // nothing to auto-save in a Terminal
+      await expect(page.locator('#ad-sessions .ad-end[data-end="reap"]')).toHaveCount(0);   // so no Reap now, only Kill
+      await expect(page.locator('#ad-sessions .ad-end.kill')).toHaveCount(1);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
