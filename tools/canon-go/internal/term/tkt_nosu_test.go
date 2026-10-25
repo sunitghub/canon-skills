@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -124,5 +125,48 @@ func TestSendIssueLaunchUsesTheTerminal(t *testing.T) {
 	out := run(t, cfg, "tkt send-issue t-ab12 --launch\nexit\n")
 	if _, err := os.Stat(marker); err == nil || !strings.Contains(out, "PowerShell or Git Bash") {
 		t.Errorf("without a runner --launch must refuse and say where to paste it:\n%s", out)
+	}
+}
+
+// Protects the exact list of tkt commands that run here without su, in sorted order: adding one is an edit here too.
+func TestRunTktIsExactlyThis(t *testing.T) {
+	want := "archive close create demo import-issue import-results open-pr reopen send-issue start"
+	if got := strings.Join(RunTkt(), " "); got != want {
+		t.Errorf("run-without-su tkt = %q, want %q", got, want)
+	}
+}
+
+// A word that only starts like a refused flag is not one: --testing is not --test, and --body-files is not --body-file.
+func TestSuFlagMatchIsExact(t *testing.T) {
+	for _, a := range []string{"--testing", "--body-files", "--tests=1", "-test", "test"} {
+		if f := suFlag([]string{a}); f != "" {
+			t.Errorf("%q was read as %q", a, f)
+		}
+	}
+	for _, a := range []string{"--test", "--test=x", "--body-file", "--body-file=y"} {
+		if suFlag([]string{a}) == "" {
+			t.Errorf("%q must be a su flag", a)
+		}
+	}
+}
+
+// Protects what --launch reports when it cannot run: tkt not on PATH, and a runner that fails to start; a program that ran and
+// exited nonzero is its own output to show, not a second message here.
+func TestSendIssueLaunchErrors(t *testing.T) {
+	root, _ := project(t)
+	bin, _ := fakeTkt(t)
+	cfg := Config{Root: root, Tkt: filepath.Join(t.TempDir(), "no-such-tkt")}
+	cfg.RunOnTerminal = func(context.Context, string, []string, string) error { return nil }
+	if out := run(t, cfg, "tkt send-issue t-ab12 --launch\nexit\n"); !strings.Contains(out, "tkt: ") {
+		t.Errorf("a missing tkt was not reported:\n%s", out)
+	}
+	cfg.Tkt = bin
+	cfg.RunOnTerminal = func(context.Context, string, []string, string) error { return errors.New("could not start") }
+	if out := run(t, cfg, "tkt send-issue t-ab12 --launch\nexit\n"); !strings.Contains(out, "tkt: could not start") {
+		t.Errorf("a runner failure was not reported:\n%s", out)
+	}
+	cfg.RunOnTerminal = func(context.Context, string, []string, string) error { return exec.Command("sh", "-c", "exit 3").Run() }
+	if out := run(t, cfg, "tkt send-issue t-ab12 --launch\nexit\n"); strings.Contains(out, "tkt: exit status") {
+		t.Errorf("a program's own nonzero exit must not be repeated:\n%s", out)
 	}
 }
