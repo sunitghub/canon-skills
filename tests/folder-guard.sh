@@ -31,6 +31,9 @@ check 'D:\ProgramData'               "$HOME_DIR" "a system folder"
 check /usr                           "$HOME_DIR" "a system folder"
 check /etc                           "$HOME_DIR" "a system folder"
 check /var                           "$HOME_DIR" "a system folder"
+for d in /System /Applications /Library; do   # macOS folders: only where they exist (the bash check reads the real folder)
+  [[ -d "$d" ]] && check "$d" "$HOME_DIR" "a system folder"
+done
 check /bin                           "$HOME_DIR" "a system folder"
 check /sbin                          "$HOME_DIR" "a system folder"
 check /opt                           "$HOME_DIR" "a system folder"
