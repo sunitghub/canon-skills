@@ -74,11 +74,11 @@ func TestAnnotateWorking(t *testing.T) {
 	t.Run("fields", func(t *testing.T) {
 		dir := t.TempDir()
 		os.WriteFile(filepath.Join(dir, "ACTIVE"), []byte("t-aa01\n"), 0o644)
-		os.WriteFile(filepath.Join(dir, "ACTIVE.beat"), []byte(beatText("t-aa01", age(90*time.Second), "elsewhere", "")), 0o644)
+		os.WriteFile(filepath.Join(dir, "ACTIVE.beat"), []byte(beatText("t-aa01", age(90*time.Second), "elsewhere", "4242")), 0o644)
 		tickets := []ticket{{"id": "t-aa01", "status": "in_progress"}}
 		annotateWorking(dir, tickets, now, "me", alive)
 		w, _ := tickets[0]["working"].(map[string]any)
-		if w["age_s"] != 90 || w["host"] != "elsewhere" || w["here"] != false {
+		if w["age_s"] != 90 || w["host"] != "elsewhere" || w["here"] != false || w["pid"] != 4242 {
 			t.Errorf("working = %v", w)
 		}
 	})

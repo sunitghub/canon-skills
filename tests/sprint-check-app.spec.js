@@ -5890,6 +5890,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark')); const dark = await ink();
         await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light')); const light = await ink();
         expect(dark).not.toBe(light);
+        expect(light).not.toBe('rgb(223, 142, 29)');   // not the pale --st-work: 2.4:1 on a light card
         // A live Cockpit session keeps Open; Working never replaces it.
         rows = [{ session: 'cw', ticket: id, project_root: PROJECT_ROOT, cwd: PROJECT_ROOT, agent: 'claude', status: 'running', state: 'working', state_secs: 3, idle_secs: 3, idle_limit_secs: 1800 }];
         await page.reload(); await page.waitForLoadState('networkidle');
