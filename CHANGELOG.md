@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.18.8] - 2026-10-25
+
+The Terminal's `su` now asks for your account password. Update with `canon update`, then run Restart Daemon in Admin (the daemon changed) and stop and start the board (Ctrl+C in the terminal running `canon`, or close its window, then run `canon`). A Terminal already open keeps the old `su` until you open a new one.
+
 - **Terminal `su` asks for your account password** (`t-4pb6`): the OS asks for it (`dscl -authonly` on macOS, `su` to your own account on Linux; on Windows 11 24H2+ with sudo switched on, its UAC prompt), whatever `sudo` is set to, so a passwordless sudo no longer skips it. The random word is gone: with no OS prompt on the machine, or an account that cannot pass it, there is no full shell. In a Terminal tab, End Session, Auto Save, the state chip and Kill are gone or disabled: close it with `Ctrl+.` then `x`.
 
 ## [0.18.7] - 2026-10-25
