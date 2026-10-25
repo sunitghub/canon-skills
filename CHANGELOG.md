@@ -6,7 +6,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
-- **Terminal `su` asks for your account password** (`t-4pb6`): the OS prompts (`sudo -k -v` on macOS and Linux, Windows `sudo`) instead of a random word; without `sudo` it falls back to the word. In a Terminal tab, End Session, Auto Save, the state chip and Kill are gone or disabled: close it with `Ctrl+.` then `x`.
+- **Terminal `su` asks for your account password** (`t-4pb6`): the OS prompts (`sudo -k -v` on macOS and Linux; on Windows 11 24H2+ with sudo switched on, its UAC prompt) instead of a random word; without a usable `sudo` it falls back to the word. In a Terminal tab, End Session, Auto Save, the state chip and Kill are gone or disabled: close it with `Ctrl+.` then `x`.
 
 ## [0.18.5] - 2026-10-25
 

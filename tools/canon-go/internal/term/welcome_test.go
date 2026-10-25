@@ -64,7 +64,7 @@ func TestWelcomeOnStartAndHelp(t *testing.T) {
 	if n := strings.Count(out, "Welcome to "+Name); n != 2 {
 		t.Errorf("the welcome should show at the start and on help, shown %d times", n)
 	}
-	for _, want := range []string{"You can run", "Needs su (type su first, then your account password)", "tkt create [title] -d <desc> -p <0-4>", "tkt send-issue <id> [--dry-run] [--launch]", "tkt import-issue <issue number>"} {
+	for _, want := range []string{"You can run", "Needs su (type su first, then the OS approval)", "tkt create [title] -d <desc> -p <0-4>", "tkt send-issue <id> [--dry-run] [--launch]", "tkt import-issue <issue number>"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the welcome lacks %q:\n%s", want, out)
 		}

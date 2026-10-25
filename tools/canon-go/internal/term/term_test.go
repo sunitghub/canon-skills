@@ -502,7 +502,7 @@ func TestSuUsesOSAuth(t *testing.T) {
 		code                int    // Run's exit status: 1 only when the terminal is closed
 		say                 string // what the user is told
 	}{
-		{"pass", "su\nexit\n", "terminal.su_prompted|terminal.su_granted minutes=5|terminal.su_expired how=exited", nil, 1, 0, "Enter your account password"},
+		{"pass", "su\nexit\n", "terminal.su_prompted|terminal.su_granted minutes=5|terminal.su_expired how=exited", nil, 1, 0, "Approve the OS prompt"},
 		{"fail", "su\nexit\n", "terminal.su_prompted|terminal.su_denied reason=auth", fail, 0, 0, "Authentication failed: still in the restricted prompt."},
 		{"three fails", "su\nsu\nsu\nexit\n", "terminal.su_prompted|terminal.su_denied reason=auth|terminal.su_prompted|terminal.su_denied reason=auth|terminal.su_prompted|terminal.su_denied reason=locked", fail, 0, 1, "Authentication failed 3 times: closing the terminal"},
 		{"no provider", "su\nKx7m2\nexit\n", "terminal.su_prompted|terminal.su_granted minutes=5|terminal.su_expired how=exited", ErrNoAuth, 1, 0, "so a typed word is used instead"},
@@ -530,16 +530,20 @@ func TestSuUsesOSAuth(t *testing.T) {
 func TestAuthCommand(t *testing.T) {
 	found := func(string) (string, error) { return "/usr/bin/sudo", nil }
 	missing := func(string) (string, error) { return "", errors.New("not found") }
-	if _, a, ok := authCommand("linux", found); !ok || strings.Join(a, " ") != "-k -v" {
+	if _, a, ok := authCommand("linux", found, func() bool { return true }); !ok || strings.Join(a, " ") != "-k -v" {
 		t.Errorf("linux: %v %v", a, ok)
 	}
-	if _, a, ok := authCommand("darwin", found); !ok || strings.Join(a, " ") != "-k -v" {
+	if _, a, ok := authCommand("darwin", found, func() bool { return true }); !ok || strings.Join(a, " ") != "-k -v" {
 		t.Errorf("darwin: %v %v", a, ok)
 	}
-	if _, a, ok := authCommand("windows", found); !ok || strings.Join(a, " ") != "cmd /c exit" {
+	if _, a, ok := authCommand("windows", found, func() bool { return true }); !ok || strings.Join(a, " ") != "cmd /c exit" {
 		t.Errorf("windows: %v %v", a, ok)
 	}
-	if _, _, ok := authCommand("linux", missing); ok {
+	on, off := func() bool { return true }, func() bool { return false }
+	if _, _, ok := authCommand("windows", found, off); ok {
+		t.Error("Windows sudo switched off must mean no provider, so su falls back to the word")
+	}
+	if _, _, ok := authCommand("linux", missing, on); ok {
 		t.Error("no sudo on PATH must mean no provider, so su falls back to the word")
 	}
 }
@@ -583,5 +587,17 @@ func TestSuOSAuthPassResetsFailures(t *testing.T) {
 	cfg.In, cfg.Out = strings.NewReader("su\nsu\nsu\nsu\nsu\nexit\n"), &buf
 	if code := Run(cfg); code != 0 {
 		t.Fatalf("exit %d: the pass should have reset the failure count\n%s", code, buf.String())
+	}
+}
+
+// The Windows switch for sudo: only 1-3 in `reg query`'s output is on; off, missing or garbled is off, so su asks for the word.
+func TestSudoEnabledIn(t *testing.T) {
+	reg := func(v string) string {
+		return "\r\nHKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Sudo\r\n    Enabled    REG_DWORD    " + v + "\r\n\r\n"
+	}
+	for in, want := range map[string]bool{reg("0x0"): false, reg("0x1"): true, reg("0x3"): true, reg("0x4"): false, reg("zz"): false, "": false} {
+		if got := sudoEnabledIn(in); got != want {
+			t.Errorf("%q: got %v, want %v", in, got, want)
+		}
 	}
 }

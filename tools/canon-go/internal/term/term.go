@@ -85,7 +85,7 @@ var welcomeEntries = []entry{
 	{"tkt github-status <id>", "where a ticket stands on GitHub", false},
 	{"tkt github-doctor", "check that GitHub is ready (gh, origin)", false},
 	{"tkt --help", "every tkt command, including the rarely needed ones", false},
-	{"su", "a full shell for 10 minutes (asks for your account password; 3 failures close the terminal)", false},
+	{"su", "a full shell for 10 minutes (asks the OS to approve: your password, or UAC on Windows; 3 failures close the terminal)", false},
 	{"exit", "leave", false},
 	{"tkt create [title] -d <desc> -p <0-4>", "create a ticket and print its id", true},
 	{"tkt start <id>", "set it in progress and mark it ACTIVE", true},
@@ -110,7 +110,7 @@ func welcome() string {
 			line(e)
 		}
 	}
-	b.WriteString("\nNeeds su (type su first, then your account password)\n")
+	b.WriteString("\nNeeds su (type su first, then the OS approval)\n")
 	for _, e := range welcomeEntries {
 		if e.su {
 			line(e)

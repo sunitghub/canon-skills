@@ -38,7 +38,7 @@ func (c Config) su(rd *bufio.Reader) (closeTerminal bool) {
 	}
 	c.emit("terminal.su_prompted", nil)
 	if c.Auth != nil {
-		fmt.Fprintf(c.Out, "Full shell mode lasts %s, then you drop back to this prompt.\nNothing you run there is restricted. This is logged.\nEnter your account password to continue (Ctrl+C cancels):\n", limit)
+		fmt.Fprintf(c.Out, "Full shell mode lasts %s, then you drop back to this prompt.\nNothing you run there is restricted. This is logged.\nApprove the OS prompt to continue (your account password; UAC on Windows). Ctrl+C cancels:\n", limit)
 		err := c.Auth(context.Background(), c.Out)
 		if err == nil {
 			st.wrong = 0
