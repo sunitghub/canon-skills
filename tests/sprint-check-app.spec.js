@@ -15485,6 +15485,25 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     expect(posts).toEqual([]);
   });
 
+  // Prod path: the GitHub Sync button on a repo with a long issue list (the route's whole-document read is t-862e's endpoint test).
+  test('GitHub Sync shows 300 issues, and says so when the listing is too large to read (t-862e)', async ({ page }) => {
+    const waiting = Array.from({ length: 300 }, (_, i) => ({ issue: i + 1, title: `Issue ${i + 1}`, type: 'task', priority: 2 }));
+    let answer = { ok: true, exit_code: 0, intake: { repo: 'a/b', label: 'canon', waiting, skipped: [] } };
+    await page.route('**/api/github/intake**', r => json(r, answer));
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await page.locator('#btn-gh-sync').click();
+    await expect(page.locator('#gh-dialog-table tbody tr')).toHaveCount(300);
+    await expect(page.locator('#gh-dialog-ok')).toHaveText('Create 300 selected');
+    await page.locator('#gh-dialog-cancel').click();
+    answer = { ok: false, exit_code: 1, output: 'the issue listing is too large to show (5000000 bytes; the limit is 4194304)' };
+    await page.locator('#btn-gh-sync').click();
+    await expect(page.locator('#gh-dialog')).toContainText('too large to show');
+    await expect(page.locator('#gh-dialog-table')).toBeHidden();
+    await expect(page.locator('#gh-dialog-ok')).toBeDisabled();
+    await page.keyboard.press('Escape');
+  });
+
   test('a late preview reply for a closed GitHub Sync dialog does not take focus from the open one (t-b045)', async ({ page }) => {
     let calls = 0, release;
     const held = new Promise(r => { release = r; });

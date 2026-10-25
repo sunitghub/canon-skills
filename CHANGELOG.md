@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Fixed
+- **GitHub Sync** shows every waiting issue (`t-862e`). The board used to keep only the last 16 KB of the issue listing, so a repo with about 85 or more waiting issues failed to preview. The listing is now read whole, up to 4 MiB (about 10,000 issues); beyond that the dialog says the listing is too large to show instead of a broken preview.
+
 ## [0.18.5] - 2026-10-25
 
 GitHub Sync lets you pick which issues become tickets, and every dialog can be resized from two corners. Update with `canon update`, then stop the running board (Ctrl+C in the terminal running `canon`, or close its window) and run `canon` again. The board and `tkt` changed; the daemon needs no restart.

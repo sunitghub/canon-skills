@@ -25,6 +25,8 @@ printf '%s | %s | progress=%s\n' "\$PWD" "\$*" "\${CANON_PROGRESS_SECONDS:-}" >>
 [[ "\$1" == github-status ]] && { echo '{"id":"t-ab12","stage":"pr-open","pr":24}'; exit 0; }
 [[ "\$1" == github-doctor && -e "$W/badjson" ]] && { echo "not json"; exit 0; }
 [[ "\$*" == "sync-issues --dry-run --json" && -e "$W/badjson" ]] && { echo "not json"; exit 0; }
+[[ "\$*" == "sync-issues --dry-run --json" && -e "$W/many" ]] && { node -e 'const w=[];for(let i=1;i<=300;i++)w.push({issue:i,title:"Issue number "+i+" "+"x".repeat(150),type:"task",priority:2});process.stdout.write(JSON.stringify({repo:"acme/app",label:"canon",waiting:w,skipped:[]}))'; exit 0; }
+[[ "\$*" == "sync-issues --dry-run --json" && -e "$W/huge" ]] && { head -c 5000000 /dev/zero | tr '\\0' x; exit 0; }
 [[ "\$*" == "sync-issues --dry-run --json" ]] && { echo '{"repo":"acme/app","label":"canon","waiting":[{"issue":63,"title":"<b>x</b>","type":"task","priority":2}],"skipped":[]}'; exit 0; }
 [[ "\$1" == github-doctor ]] && { echo '{"checks":[{"id":"gh","status":"bad","title":"t","detail":"d","fix":{"url":"u"}}],"cloud":{"domains":[],"setup_script":""}}'; exit 0; }
 case "\$1 \$*" in
@@ -107,6 +109,10 @@ for P in "$GOP"; do
   assert_eq '2026-10-19T09:00:00.000Z|2' "$(body "$r" | js '[j.last_synced.ts, j.last_synced.count].join("|")')"
   touch "$W/badjson"; r="$(get "$P" /api/github/intake)"; rm -f "$W/badjson"
   assert_eq "false|undefined|not json" "$(body "$r" | js '[j.ok, typeof j.intake, j.output.trim()].join("|")')"
+  touch "$W/many"; r="$(get "$P" /api/github/intake)"; rm -f "$W/many"   # t-862e: a listing over the 16 KB tail every other route keeps
+  assert_eq "true|300|63" "$(body "$r" | js '[j.ok, j.intake.waiting.length + j.intake.skipped.length, j.intake.waiting[62].issue].join("|")')"
+  touch "$W/huge"; r="$(get "$P" /api/github/intake)"; rm -f "$W/huge"
+  assert_eq "false|undefined|true" "$(body "$r" | js '[j.ok, typeof j.intake, /too large to show \(5000000 bytes/.test(j.output)].join("|")')"
   r="$(curl -s -w '\n%{http_code}' -H 'Origin: https://evil.example' "http://127.0.0.1:$P/api/github/intake")"; [[ "$(code "$r")" == 403 ]] || fail "$srv: cross-origin GET intake was $(code "$r")"
   r="$(curl -s -w '\n%{http_code}' -H 'Sec-Fetch-Site: cross-site' "http://127.0.0.1:$P/api/github/intake")"; [[ "$(code "$r")" == 403 ]] || fail "$srv: cross-site GET intake was $(code "$r")"
   r="$(get "$P" '/api/github/intake?project=nope')"; [[ "$(code "$r")" == 400 ]] || fail "$srv: unknown project intake was $(code "$r")"
