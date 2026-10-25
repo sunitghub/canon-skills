@@ -6067,6 +6067,11 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#keys-sheet')).toContainText('Collapse / expand this tab\'s side panel');
       await expect(page.locator('#keys-sheet')).toContainText('Collapse / expand the Workspace sidebar');
       const fits = await page.locator('#keys-sheet .keys-modal').evaluate(el => [...el.querySelectorAll('tr, td, h4, h3')].every(n => n.getBoundingClientRect().right <= el.getBoundingClientRect().right + 1));
+      const row = page.locator('#keys-sheet .keys-table tr').first();
+      const bg = () => row.evaluate(el => getComputedStyle(el).backgroundColor);
+      const before = await bg();
+      await row.hover();
+      await expect.poll(bg).not.toBe(before);   // hovering a row tints it
       expect(fits).toBe(true);   // a long line must not push a column past the dialog's edge (the Split view column was clipped)
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });

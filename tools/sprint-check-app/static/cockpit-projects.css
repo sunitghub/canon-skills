@@ -90,6 +90,8 @@
   .keys-table{width:100%;border-collapse:collapse;font-size:13px}
   .keys-table td{padding:4px 0;border-top:1px solid var(--border-muted);color:var(--text-body)}
   .keys-table td:first-child{white-space:nowrap;padding-right:16px}
+  .keys-table tr{transition:background .12s}
+  .keys-table tr:hover{background:var(--accent-dim)}   /* one rule for every row of every table in the sheet */
   .keys-table tr.keys-danger td{color:var(--col-discarded)}
   .keys-table tr.keys-danger kbd{color:var(--col-discarded);border-color:var(--col-discarded)}
   .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:10px 16px;font-size:13px;display:none}
