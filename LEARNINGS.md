@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-25-2026 08:02
+learnings-sweep last run: 10-25-2026 09:30
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-25 | [t-187e](.tickets/t-187e/learnings.md) | A new colour reused from a token that is fine in dark (`--st-work`) was 2.4:1 on a light card at 11px; a test that only asserts dark and light differ cannot see it, so assert the light value is not the known-pale token. A tool added to `tools/` also breaks every test that copies a fixed tool list (`subagent-log-cli.sh`) | UNPROMOTED |
 | 2026-10-25 | [t-862e](.tickets/t-862e/learnings.md) | A reader that keeps only the tail of a command's output is right for a log and wrong for a document someone parses: the cut JSON failed silently at about 85 issues; read documents whole under a cap and refuse over it. A `go test -run <name>` in a Test Plan that matches no test passes with "no tests to run" — run the plan's own command | UNPROMOTED |
 | 2026-10-25 | [t-b045](.tickets/t-b045/learnings.md) | A dialog body chosen once at open ("label admits…" warning) stayed after the user unticked every row; derive body text from the same count that drives the button, and write the "is this creatable" rule once (`_sync_blocker`) instead of in a pre-check and the loop | UNPROMOTED |
 | 2026-10-25 | [t-5157](.tickets/t-5157/learnings.md) | A line editor's own tests and a mutation sweep both missed a panic (`strings.Fields` of a Unicode-space-only line is empty, then `words[len(words)-1]`) that the fresh evaluator found by typing NBSP then Tab on a real pty and by fuzzing `complete` with 20000 random lines: for input handling, hand the evaluator the hostile-input brief, and treat any word-splitting that assumes one-space separators as suspect. | UNPROMOTED |

@@ -1273,6 +1273,8 @@ func loadTickets(root string) []ticket {
 			t["type_outcome"] = entry
 		}
 	}
+	host, _ := os.Hostname()
+	annotateWorking(ticketsDirForRoot(root), tickets, time.Now(), host, pidAlive)
 	headlessRunsMu.Lock()
 	running := map[string]bool{}
 	for id, state := range headlessRuns {

@@ -9,6 +9,19 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 ### Fixed
 - **Dialog resize** from the bottom-right corner keeps the top-left corner fixed (`t-4803`). It used to grow around the centre, so the top-left corner moved. A corner drag now also stops at the window edge, so no dialog leaves the viewport.
 
+## [0.18.8] - 2026-10-25
+
+The Terminal's `su` now asks for your account password. Update with `canon update`, then run Restart Daemon in Admin (the daemon changed) and stop and start the board (Ctrl+C in the terminal running `canon`, or close its window, then run `canon`). A Terminal already open keeps the old `su` until you open a new one.
+
+- **Terminal `su` asks for your account password** (`t-4pb6`): the OS asks for it (`dscl -authonly` on macOS, `su` to your own account on Linux; on Windows 11 24H2+ with sudo switched on, its UAC prompt), whatever `sudo` is set to, so a passwordless sudo no longer skips it. The random word is gone: with no OS prompt on the machine, or an account that cannot pass it, there is no full shell. In a Terminal tab, End Session, Auto Save, the state chip and Kill are gone or disabled: close it with `Ctrl+.` then `x`.
+
+## [0.18.7] - 2026-10-25
+
+Cards say Working while an agent is on the ticket. Update with `canon update`, then stop the running board (Ctrl+C in the terminal running `canon`, or close its window) and run `canon` again. The board, `tkt` and `sprint` changed; the daemon needs no restart. The new heartbeat starts with the next `tkt start` or `sprint continue`, so a ticket already in progress shows Resume until its agent runs one.
+
+### Added
+- **Working** on the board's cards (`t-187e`). An agent you started by hand in a plain terminal used to leave the card saying Resume, and a click started a second agent on the same ticket. The commands an agent runs now keep a small heartbeat, `.tickets/ACTIVE.beat`, and while it is fresh the card shows **● Working**. Click it for how long ago and where; **Resume anyway** still starts the session. When the agent stops or the machine restarts the card goes back to Resume by itself. A live Cockpit session still shows Open / Answer. See docs/sprint-check.md.
+
 ## [0.18.6] - 2026-10-25
 
 GitHub Sync now shows a long issue list. Update with `canon update`, then stop the running board (Ctrl+C in the terminal running `canon`, or close its window) and run `canon` again. Only the board changed; the daemon needs no restart.

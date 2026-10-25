@@ -39,7 +39,7 @@ func Main(args []string) int {
 			return events.Emit(home, kind, "daemon", *project, data)
 		},
 		RunShell: RealShell,
-		Word:     RandomWord,
+		Auth:     osAuth,
 		Limit:    *limit,
 		Warn:     *warn,
 		Rows:     terminalRows,

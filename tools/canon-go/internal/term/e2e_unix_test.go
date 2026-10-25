@@ -23,7 +23,21 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// Protects the real thing on a real pty: the prompt, the typed word, a login shell that owns the terminal, no daemon
+// passwordTools puts stand-ins for the OS password tools (dscl on macOS, su on Linux) in a new folder, first on PATH. Like
+// the real ones they read the password from the terminal itself and pass only for "secret".
+func passwordTools(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	script := "#!/bin/sh\nstty -echo </dev/tty\nprintf 'Password: ' >/dev/tty\nIFS= read -r p </dev/tty\nstty echo </dev/tty\nprintf '\\n' >/dev/tty\n[ \"$p\" = secret ]\n"
+	for _, n := range []string{"dscl", "su"} {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir + ":" + os.Getenv("PATH")
+}
+
+// Protects the real thing on a real pty: the prompt, the OS password prompt, a login shell that owns the terminal, no daemon
 // secrets inside it, the warning, the end of the shell and its jobs, the restricted prompt coming back, and exactly the
 // three audit events with the word in none of them.
 func TestRealPtySession(t *testing.T) {
@@ -36,7 +50,7 @@ func TestRealPtySession(t *testing.T) {
 	defer p.Close()
 	c := p.Command(os.Args[0], "term", "--session", "sidx", "--ticket", "s-ab12", "--project", root, "--limit", "4s", "--warn", "2s")
 	c.Dir = root
-	env := []string{"PATH=" + os.Getenv("PATH"), "HOME=" + home, "SHELL=/bin/sh", "CANON_HOME=" + home, "CANON_TERM_TEST_CHILD=1", "ENV=", "PS1=sh$ "}
+	env := []string{"PATH=" + passwordTools(t), "HOME=" + home, "SHELL=/bin/sh", "CANON_HOME=" + home, "CANON_TERM_TEST_CHILD=1", "ENV=", "PS1=sh$ "}
 	c.Env = env
 	if err := c.Start(); err != nil {
 		t.Fatal(err)
@@ -76,8 +90,8 @@ func TestRealPtySession(t *testing.T) {
 	send("cat .env\n")
 	wait(`never shown`, 5*time.Second)
 	send("su\n")
-	word := strings.TrimSuffix(strings.TrimPrefix(wait(`Type [A-Z][a-z2-9]{4} to continue`, 5*time.Second), "Type "), " to continue")
-	send(word + "\n")
+	wait(`Password: `, 5*time.Second)
+	send("secret\n")
 	time.Sleep(700 * time.Millisecond)
 	send("echo shell-$((20+22))-${COCKPIT_TOKEN:-none}\n")
 	wait(`shell-42-none`, 5*time.Second)
@@ -118,8 +132,11 @@ func TestRealPtySession(t *testing.T) {
 	if strings.Join(got, " ") != "terminal.su_prompted terminal.su_granted terminal.su_expired" {
 		t.Errorf("events %v\n%s", got, events)
 	}
-	if strings.Contains(events, word) {
-		t.Error("the typed word is in the event log")
+	if strings.Contains(events, "secret") {
+		t.Error("the password is in the event log")
+	}
+	if strings.Contains(out.String(), "secret") {
+		t.Errorf("the password was echoed:\n%q", out.String())
 	}
 }
 
@@ -137,7 +154,7 @@ func procState(pid int) string {
 	return string(s[i+2])
 }
 
-// Protects the three tries on the real thing: three wrong answers end the process itself, with exit status 1, and the
+// Protects the three tries on the real thing: three failed passwords end the process itself, with exit status 1, and the
 // shell is never started.
 func TestRealPtyThreeWrongAnswersClose(t *testing.T) {
 	root, _ := project(t)
@@ -149,7 +166,7 @@ func TestRealPtyThreeWrongAnswersClose(t *testing.T) {
 	defer p.Close()
 	c := p.Command(os.Args[0], "term", "--session", "sidy", "--ticket", "s-ab12", "--project", root)
 	c.Dir = root
-	c.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + home, "SHELL=/bin/sh", "CANON_HOME=" + home, "CANON_TERM_TEST_CHILD=1"}
+	c.Env = []string{"PATH=" + passwordTools(t), "HOME=" + home, "SHELL=/bin/sh", "CANON_HOME=" + home, "CANON_TERM_TEST_CHILD=1"}
 	if err := c.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -169,12 +186,9 @@ func TestRealPtyThreeWrongAnswersClose(t *testing.T) {
 	waitFor(t, func() bool { return strings.Contains(out.String(), "Welcome to Canon Console") })
 	for i := 0; i < 3; i++ {
 		_, _ = p.Write([]byte("su\n"))
-		waitFor(t, func() bool { return strings.Count(out.String(), "to continue (Enter cancels)") > i })
-		_, _ = p.Write([]byte("Zz999\n"))
-		_, _ = p.Write([]byte("\n")) // cancel any retry prompt so the next su starts clean
-		if strings.Contains(out.String(), "closing the terminal") {
-			break
-		}
+		waitFor(t, func() bool { return strings.Count(out.String(), "Password: ") > i })
+		_, _ = p.Write([]byte("wrong\n"))
+		waitFor(t, func() bool { return strings.Count(out.String(), "Authentication failed") > i })
 	}
 	waitFor(t, func() bool { return strings.Contains(out.String(), "closing the terminal") })
 	done := make(chan error, 1)
@@ -185,7 +199,7 @@ func TestRealPtyThreeWrongAnswersClose(t *testing.T) {
 			t.Error("the closed terminal should exit with status 1")
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatal("the terminal did not close after three wrong answers")
+		t.Fatal("the terminal did not close after three failed passwords")
 	}
 	files, _ := filepath.Glob(filepath.Join(home, "events", "*.jsonl"))
 	var events string
@@ -210,7 +224,7 @@ func TestRealPtyModesRestoredAfterShellKilled(t *testing.T) {
 	defer p.Close()
 	c := p.Command(os.Args[0], "term", "--session", "sidm", "--ticket", "s-ab12", "--project", root, "--limit", "3s", "--warn", "1s")
 	c.Dir = root
-	c.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + home, "SHELL=/bin/sh", "CANON_HOME=" + home, "CANON_TERM_TEST_CHILD=1", "ENV=", "PS1=sh$ "}
+	c.Env = []string{"PATH=" + passwordTools(t), "HOME=" + home, "SHELL=/bin/sh", "CANON_HOME=" + home, "CANON_TERM_TEST_CHILD=1", "ENV=", "PS1=sh$ "}
 	if err := c.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -243,8 +257,8 @@ func TestRealPtyModesRestoredAfterShellKilled(t *testing.T) {
 	}
 	wait(`restricted`, 10*time.Second)
 	send("su\n")
-	word := strings.TrimSuffix(strings.TrimPrefix(wait(`Type [A-Z][a-z2-9]{4} to continue`, 5*time.Second), "Type "), " to continue")
-	send(word + "\n")
+	wait(`Password: `, 5*time.Second)
+	send("secret\n")
 	time.Sleep(700 * time.Millisecond)
 	send("stty raw -echo -icrnl; sleep 100\n")
 	wait(`time is up`, 8*time.Second)

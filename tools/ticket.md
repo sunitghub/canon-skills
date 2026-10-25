@@ -103,7 +103,7 @@ without completing it, close via the explicit `tkt close <id> --no-sprint`.
 ## Agent Workflow
 
 - Before starting work: run `tkt ls` to understand open tasks.
-- **When picking up a task: run `tkt start <id>` before writing any code.** This records `.tickets/ACTIVE` so agents agree on the current task.
+- **When picking up a task: run `tkt start <id>` before writing any code.** This records `.tickets/ACTIVE` so agents agree on the current task, and (`tools/work-beat`) `.tickets/ACTIVE.beat`, the heartbeat that makes the board show Working instead of Resume while an agent is on it.
 - Include the ticket ID in every commit body (e.g. `Closes: t-8ms5`) per `standards/efficiency.md`'s Git conventions — type-prefixed subject, not a bare ticket-ID prefix.
 - **Do not run `tkt close <id>` for sprint work.** Use `sprint complete` so
   validation runs consistently.

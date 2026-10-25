@@ -30,6 +30,7 @@ done
 SCRIPT_DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
 source "$SCRIPT_DIR/ticket-root.sh"
 source "$SCRIPT_DIR/platform-lib.sh"   # canon_event (t-8854)
+"$SCRIPT_DIR/work-beat" touch || true   # t-187e: a gate around this ticket is a sign an agent is on it
 
 mode="${1:-}"; file="${2:-}"; role=""
 # t-8854: `pre … --role reviewer|evaluator` names the gate about to run, for the gate.started event (optional).

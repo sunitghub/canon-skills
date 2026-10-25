@@ -152,6 +152,7 @@
       white-space: nowrap; flex: none;   /* t-b91f: always visible */
     }
     .ck-end-session:hover { color: var(--text); border-color: var(--accent); }
+    .ck-end-session:disabled { opacity: .45; cursor: not-allowed; border-color: var(--border); color: var(--text-muted); }
     .ck-body { flex: 1; min-height: 0; display: flex; }
     .ck-rail {
       position: relative;
@@ -540,5 +541,7 @@
     .card-start.answer { background: var(--st-need); color: var(--st-ink); }
     .card-start.open { background: var(--surface-hover); color: var(--text); border: 1px solid var(--border-hover); }
     .column-needs { font-size: 11px; font-weight: 600; color: var(--st-need); margin-left: auto; margin-right: 6px; }
+    .card-start.working { background: transparent; color: var(--st-work); border: 1px solid var(--st-work); cursor: help; }   /* t-187e */
+    html[data-theme="light"] .card-start.working { color: var(--th-warn-ink, #b45309); border-color: var(--th-warn-ink, #b45309); }   /* --st-work (#df8e1d) is too pale for 11px text on a light card (2.4:1), as .ready-flag found */
     .card-start.disabled, .card-start:disabled { background: var(--surface-raised); color: var(--text-muted); cursor: not-allowed; }
 

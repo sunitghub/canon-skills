@@ -3,10 +3,8 @@ package term
 import (
 	"bufio"
 	"context"
-	"crypto/rand"
-	"crypto/subtle"
+	"errors"
 	"fmt"
-	"strings"
 	"time"
 )
 
@@ -16,10 +14,11 @@ const (
 	DefaultWarn  = 30 * time.Second
 )
 
-// su asks for a random word and, only when it is typed back, runs the full shell for Limit. The typed word stops a pasted
-// or scripted "su" from confirming itself: the word is unknown until it is printed. The timer lives here, in the same
-// process as the prompt, so there is no token to steal.
-func (c Config) su(rd *bufio.Reader) (closeTerminal bool) {
+// su asks the OS for the account password and, only when it passes, runs the full shell for Limit. The OS reads the
+// password from the terminal itself, so a pasted or scripted "su" cannot confirm itself and canon never sees it. With no
+// OS prompt on the machine su is unavailable. The timer lives here, in the same process as the prompt, so there is no
+// token to steal.
+func (c Config) su(_ *bufio.Reader) (closeTerminal bool) {
 	if c.RunShell == nil {
 		fmt.Fprintln(c.Out, "su is not available here yet")
 		return false
@@ -35,36 +34,42 @@ func (c Config) su(rd *bufio.Reader) (closeTerminal bool) {
 	if st == nil {
 		st = &suState{}
 	}
-	word := c.Word()
 	c.emit("terminal.su_prompted", nil)
-	fmt.Fprintf(c.Out, "Full shell mode lasts %s, then you drop back to this prompt.\nNothing you run there is restricted. This is logged.\nType %s to continue (Enter cancels): ", limit, word)
-	for {
-		ans, err := rd.ReadString('\n')
-		ans = strings.TrimSpace(ans)
-		if ans == "" {
-			reason := "empty"
-			if err != nil {
-				reason = "eof"
-			}
-			c.emit("terminal.su_denied", map[string]string{"reason": reason})
-			fmt.Fprintln(c.Out, "Cancelled: still in the restricted prompt.")
-			return false
-		}
-		if subtle.ConstantTimeCompare([]byte(ans), []byte(word)) == 1 {
-			break
-		}
-		st.wrong++
-		if st.wrong >= maxWrong {
-			// The third wrong answer closes the terminal; the log says so.
-			c.emit("terminal.su_denied", map[string]string{"reason": "locked"})
-			fmt.Fprintf(c.Out, "Wrong %d times: closing the terminal. Open it again to start over.\n", maxWrong)
-			st.closed = true
-			return true
-		}
-		c.emit("terminal.su_denied", map[string]string{"reason": "wrong"})
-		fmt.Fprintf(c.Out, "Wrong, %d left. Type %s again (Enter cancels): ", maxWrong-st.wrong, word)
+	if c.Auth == nil {
+		c.unavailable()
+		return false
 	}
-	st.wrong = 0
+	fmt.Fprintf(c.Out, "Full shell mode lasts %s, then you drop back to this prompt.\nNothing you run there is restricted. This is logged.\nApprove the OS prompt to continue (your account password; UAC on Windows). Ctrl+C cancels:\n", limit)
+	err := c.Auth(context.Background(), c.Out)
+	if err == nil {
+		st.wrong = 0
+		return c.grant(limit, warn)
+	}
+	if errors.Is(err, ErrNoAuth) {
+		c.unavailable()
+		return false
+	}
+	// A failed or cancelled OS prompt counts: three in all, across every su, close the terminal.
+	st.wrong++
+	if st.wrong >= maxWrong {
+		c.emit("terminal.su_denied", map[string]string{"reason": "locked"})
+		fmt.Fprintf(c.Out, "Authentication failed %d times: closing the terminal. Open it again to start over.\n", maxWrong)
+		st.closed = true
+		return true
+	}
+	c.emit("terminal.su_denied", map[string]string{"reason": "auth"})
+	fmt.Fprintln(c.Out, "Authentication failed: still in the restricted prompt.")
+	return false
+}
+
+// unavailable: no OS password prompt here, so no admin shell. It is logged but never counts toward the three tries.
+func (c Config) unavailable() {
+	c.emit("terminal.su_denied", map[string]string{"reason": "unavailable"})
+	fmt.Fprintln(c.Out, "su is not available here: this machine has no OS password prompt for it, and without the account password there is no full shell.")
+}
+
+// grant logs the grant and runs the full shell for limit, warning warn before the end.
+func (c Config) grant(limit, warn time.Duration) (closeTerminal bool) {
 	// Fail closed: a grant nobody can see is not granted.
 	if err := c.emitErr("terminal.su_granted", map[string]string{"minutes": fmt.Sprint(int(limit / time.Minute))}); err != nil {
 		fmt.Fprintln(c.Out, "su refused: the audit log cannot be written, so nothing was started.")
@@ -107,32 +112,12 @@ func (c Config) emitErr(kind string, extra map[string]string) error {
 	return c.Emit(kind, d)
 }
 
-// Three wrong answers in all, across every su in this terminal, close the terminal: the word is short, so a blind
-// guesser gets three tries, not thousands. A right answer starts the count again.
+// Three failed passwords in all, across every su in this terminal, close the terminal: a blind guesser gets three tries.
+// A pass starts the count again.
 const maxWrong = 3
 
 // suState is what the prompt remembers between su commands.
 type suState struct {
 	wrong  int
-	closed bool // the third wrong answer ended the terminal
-}
-
-const (
-	firstAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ"        // a capital first, no I or O
-	wordAlphabet  = "abcdefghjkmnpqrstuvwxyz23456789" // then lower case and digits, no look-alikes
-)
-
-// RandomWord is the word su asks for: a capital letter and four more characters, about 25 bits. Enough because the
-// word only has to defeat an answer given without seeing it, and wrong answers are logged and locked out.
-func RandomWord() string {
-	b := make([]byte, 5)
-	if _, err := rand.Read(b); err != nil {
-		panic(err) // no randomness, no su: a panic ends the prompt, which is the safe outcome
-	}
-	out := make([]byte, 5)
-	out[0] = firstAlphabet[int(b[0])%len(firstAlphabet)]
-	for i := 1; i < 5; i++ {
-		out[i] = wordAlphabet[int(b[i])%len(wordAlphabet)]
-	}
-	return string(out)
+	closed bool // the third failed password ended the terminal
 }
