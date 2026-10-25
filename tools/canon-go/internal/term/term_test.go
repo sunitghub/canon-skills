@@ -507,21 +507,24 @@ func TestAuthCommand(t *testing.T) {
 	on, off := func() bool { return true }, func() bool { return false }
 	for _, c := range []struct {
 		goos, account, want string
+		root                bool // running as root
 		lookPath            func(string) (string, error)
 		sudoOn              func() bool
 	}{
-		{"darwin", "sam", "/usr/bin/dscl . -authonly sam", found, on},
-		{"linux", "sam", "/usr/bin/su -c true sam", found, on},
-		{"windows", "sam", "/usr/bin/sudo cmd /c exit", found, on},
-		{"windows", "sam", "", found, off},  // sudo is off in Settings: only UAC-less failure, so no provider
-		{"darwin", "sam", "", missing, on},  // no dscl
-		{"linux", "sam", "", missing, on},   // no su
-		{"windows", "sam", "", missing, on}, // no sudo.exe
-		{"darwin", "", "", found, on},       // no account name to check
-		{"linux", "", "", found, on},
-		{"freebsd", "sam", "", found, on}, // su -c means something else there
+		{"darwin", "sam", "/usr/bin/dscl . -authonly sam", false, found, on},
+		{"linux", "sam", "/usr/bin/su -c true sam", false, found, on},
+		{"windows", "sam", "/usr/bin/sudo cmd /c exit", false, found, on},
+		{"windows", "sam", "", false, found, off},  // sudo is off in Settings: only UAC-less failure, so no provider
+		{"darwin", "sam", "", false, missing, on},  // no dscl
+		{"linux", "sam", "", false, missing, on},   // no su
+		{"windows", "sam", "", false, missing, on}, // no sudo.exe
+		{"darwin", "", "", false, found, on},       // no account name to check
+		{"linux", "", "", false, found, on},
+		{"freebsd", "sam", "", false, found, on},
+		{"linux", "root", "", true, found, on},                                // su asks root for nothing: no check, so no provider
+		{"darwin", "root", "/usr/bin/dscl . -authonly root", true, found, on}, // dscl asks for the password whoever runs it // su -c means something else there
 	} {
-		name, args, ok := authCommand(c.goos, c.account, c.lookPath, c.sudoOn)
+		name, args, ok := authCommand(c.goos, c.account, c.root, c.lookPath, c.sudoOn)
 		got := ""
 		if ok {
 			got = name + " " + strings.Join(args, " ")
@@ -538,7 +541,7 @@ func TestAuthCommand(t *testing.T) {
 		return "", errors.New("not found")
 	}
 	for _, goos := range []string{"darwin", "linux"} {
-		if _, _, ok := authCommand(goos, "sam", onlySudo, on); ok {
+		if _, _, ok := authCommand(goos, "sam", false, onlySudo, on); ok {
 			t.Errorf("%s must not fall back to sudo for the password check", goos)
 		}
 	}
