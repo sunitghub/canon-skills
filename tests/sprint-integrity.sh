@@ -9,6 +9,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
 export CANON_HOME="$work/home"; mkdir -p "$CANON_HOME"
 export CANON_INTEGRITY_ROOT   # set below, per install
+export CANON_INTEGRITY_URL="https://127.0.0.1:9/integrity.txt"   # unreachable: the gate falls back to the saved list
 board="$(build_board "$work/board")"
 sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
 
