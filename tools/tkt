@@ -1384,7 +1384,7 @@ cmd_sync_issues() {
     local want creatable=","
     while IFS=$'\t' read -r n labels; do
       [[ -z "$(awk -v k="$repo#$n" '$1 == k { print $2; exit }' "$tmp/linked")" ]] || continue
-      ! tail -n +2 "$tmp/issue-$n" | grep -q '^<!-- canon:ticket ' || continue
+      [[ "$(tail -n +2 "$tmp/issue-$n" | grep -c '^<!-- canon:ticket ' || true)" == 0 ]] || continue
       creatable="$creatable$n,"
     done < "$tmp/todo"
     for want in ${only//,/ }; do

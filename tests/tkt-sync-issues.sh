@@ -198,7 +198,7 @@ out="$("$TKT" sync-issues --only 31)"   # the first issue of the listing is sele
 assert_contains "$out" "#31  Pick one"
 [[ "$(grep -rl '^github: acme/app#31$' .tickets | wc -l | tr -d ' ')" == 1 ]] || fail "--only 31 should make exactly one ticket for #31"
 # the preview names a closed local ticket so the issue can be closed on GitHub, and every skipped row carries its title and ticket
-f11="$(grep -rl '^github: acme/app#11$' .tickets | head -1)"
+f11="$(grep -rl '^github: acme/app#11$' .tickets)"; f11="${f11%%$'\n'*}"   # the first match; no early-exit reader under pipefail
 sed -i.bak 's/^status: .*/status: closed/' "$f11"; rm -f "$f11.bak"
 pj="$("$TKT" sync-issues --dry-run --json)"
 assert_eq "$(printf '%s' "$pj" | jx '[k["reason"] for k in d["skipped"] if k["issue"]==11]')" "[\"already $t11 (closed here): close #11 on GitHub\"]"
