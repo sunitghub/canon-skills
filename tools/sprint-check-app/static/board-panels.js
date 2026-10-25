@@ -194,12 +194,14 @@ export function makePanelResizable(panelId) {
 
     handle.addEventListener('pointermove', e => {
       if (!resizing) return;
-      // a dialog dragged mostly off-screen keeps its minimum size instead of shrinking to the sliver of room left
+      // growth stops at the room left from the fixed corner. A dialog already wider than that (dragged mostly off-screen) keeps the
+      // size it has instead of shrinking to the sliver of room, and a drag never makes it bigger than it started in that case; the
+      // minimum never exceeds the size it started at, so a dialog on screen is never forced out past the window edge.
       const viewW = Math.max(320, window.innerWidth - 24), viewH = Math.max(320, window.innerHeight - 24);
-      const maxWidth = Math.min(viewW, Math.max(roomX, Math.min(420, viewW)));
-      const maxHeight = Math.min(viewH, Math.max(roomY, Math.min(320, viewH)));
-      const minWidth = Math.min(420, maxWidth);
-      const minHeight = Math.min(320, maxHeight);
+      const maxWidth = Math.min(viewW, Math.max(roomX, startWidth));
+      const maxHeight = Math.min(viewH, Math.max(roomY, startHeight));
+      const minWidth = Math.min(420, startWidth, maxWidth);
+      const minHeight = Math.min(320, startHeight, maxHeight);
       const dx = e.clientX - startX, dy = e.clientY - startY;
       const nextWidth = Math.min(maxWidth, Math.max(minWidth, startWidth + (topLeft ? -dx : dx)));
       const nextHeight = Math.min(maxHeight, Math.max(minHeight, startHeight + (topLeft ? -dy : dy)));

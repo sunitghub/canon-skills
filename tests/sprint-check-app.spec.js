@@ -15649,6 +15649,38 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expectCornersHold(page, '#create-modal');
   });
 
+  // A dialog moved by its header and then resized from a corner must never grow past the window: the old floor of 420px
+  // pushed a dialog with 388px of room 20px out (found by the evaluator, t-4803).
+  test('a dialog dragged by its header and then resized from a corner stays inside a small window (t-4803)', async ({ page }) => {
+    await page.setViewportSize({ width: 500, height: 500 });
+    await page.route('**/api/github/intake**', r => json(r, { ok: true, exit_code: 0, intake: { repo: 'a/b', label: 'canon', waiting: [], skipped: [] } }));
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await page.locator('#btn-gh-sync').click();
+    const panel = page.locator('#gh-dialog-box');
+    await panel.evaluate(el => Promise.all(el.getAnimations().map(a => a.finished)));
+    const head = await page.locator('#gh-dialog-title').boundingBox();
+    await page.mouse.move(head.x + head.width / 2, head.y + head.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(head.x + head.width / 2 + 40, head.y + head.height / 2 + 40, { steps: 4 });
+    await page.mouse.up();
+    const start = await panel.boundingBox();
+    expect(start.x + start.width, 'on screen before the resize').toBeLessThanOrEqual(501);
+    const h = await panel.locator(':scope > .modal-resize-handle:not(.modal-resize-handle-tl)').boundingBox();
+    const x = h.x + h.width / 2, y = h.y + h.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    for (const [dx, dy] of [[1, 1], [10, 10], [-20, -20], [40, 40]]) {
+      await page.mouse.move(x + dx, y + dy, { steps: 2 });
+      const b = await panel.boundingBox();
+      expect(b.x + b.width, `right edge after ${dx},${dy}`).toBeLessThanOrEqual(501);
+      expect(b.y + b.height, `bottom edge after ${dx},${dy}`).toBeLessThanOrEqual(501);
+      expect(Math.abs(b.x - start.x), `top-left x after ${dx},${dy}`).toBeLessThanOrEqual(1);
+      expect(Math.abs(b.y - start.y), `top-left y after ${dx},${dy}`).toBeLessThanOrEqual(1);
+    }
+    await page.mouse.up();
+  });
+
   test('GitHub Sync shows a hostile title as text, and the table follows the theme (t-b045)', async ({ page }) => {
     const evil = '<img src=x onerror="window.__pwned=1"> <b>bold</b>';
     await page.route('**/api/github/intake**', r => json(r, { ok: true, exit_code: 0, intake: { repo: 'a/b', label: 'canon', waiting: [{ issue: 9, title: evil, type: 'task', priority: 2 }], skipped: [] } }));
