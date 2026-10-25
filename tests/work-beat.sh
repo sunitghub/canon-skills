@@ -21,7 +21,12 @@ field() { sed -n "s/^$1=//p" "$P/.tickets/ACTIVE.beat"; }
 mkdir -p .tickets
 "$BEAT" touch; [[ ! -e .tickets/ACTIVE.beat ]] || fail "work-beat: wrote a beat with no ACTIVE ticket"
 printf 'not an id\n' > .tickets/ACTIVE; "$BEAT" touch; [[ ! -e .tickets/ACTIVE.beat ]] || fail "work-beat: wrote a beat for a garbage ACTIVE"
+for bad in 'xt-aa9c' 't-aa9cd' 't-aa9c extra'; do   # only a whole ticket id counts (the anchors)
+  printf '%s\n' "$bad" > .tickets/ACTIVE; "$BEAT" touch; [[ ! -e .tickets/ACTIVE.beat ]] || fail "work-beat: wrote a beat for ACTIVE '$bad'"
+done
 rm .tickets/ACTIVE
+CANON_TICKETS_DIR="$WORK/nowhere" "$BEAT" touch; assert_eq 0 "$?"                  # an unusable folder is silent too: a label never fails its caller
+CANON_TICKETS_DIR="$WORK/nowhere" "$BEAT" clear; assert_eq 0 "$?"
 "$BEAT" frobnicate 2>/dev/null; assert_eq 0 "$?"
 
 # tkt start marks ACTIVE and beats once: the ticket, the time, this host.
@@ -49,6 +54,11 @@ fake="$WORK/claude"; ln -s "$(command -v bash)" "$fake"   # a symlink: a copied 
 rm -f .tickets/ACTIVE.beat
 "$fake" -c "echo \$\$ > '$WORK/fakepid'; '$BEAT' touch; :"   # not the last command, or bash execs it in place and the fake is gone
 assert_eq "$(cat "$WORK/fakepid")" "$(field pid)"
+# ... even several shells down (the harness runs a shell, which runs a script, which runs sprint), and the usage line names the verbs.
+rm -f .tickets/ACTIVE.beat
+"$fake" -c "echo \$\$ > '$WORK/fakepid'; bash -c \"bash -c '\\\"$BEAT\\\" touch; :'; :\"; :"
+assert_eq "$(cat "$WORK/fakepid")" "$(field pid)"
+case "$("$BEAT" frobnicate 2>&1)" in *"usage: work-beat touch|clear"*) ;; *) fail "work-beat: no usage line for an unknown verb" ;; esac
 # ... and a chain with no agent leaves pid empty (the test's own ancestors may hold one, so cut the chain with env -i and a new session).
 if command -v setsid >/dev/null 2>&1; then
   rm -f .tickets/ACTIVE.beat

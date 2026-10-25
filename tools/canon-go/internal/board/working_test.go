@@ -36,6 +36,9 @@ func TestAnnotateWorking(t *testing.T) {
 		{"corrupt beat", "t-aa01", "\x00\x01 not a beat", "in_progress", false, false},
 		{"empty beat", "t-aa01", "", "in_progress", false, false},
 		{"oversized beat", "t-aa01", beatText("t-aa01", age(time.Minute), "me", "") + string(make([]byte, 4000)), "in_progress", false, false},
+		{"pid 1 is no pid: the quiet window applies", "t-aa01", beatText("t-aa01", age(3*time.Hour), "me", "1"), "in_progress", false, false},
+		{"pid 1 is no pid, recent", "t-aa01", beatText("t-aa01", age(5*time.Minute), "me", "1"), "in_progress", true, false},
+		{"ts 0", "t-aa01", "ticket=t-aa01\nts=0\nhost=me\npid=\n", "in_progress", false, false},
 		{"no ts", "t-aa01", "ticket=t-aa01\nhost=me\n", "in_progress", false, false},
 	}
 	for _, c := range cases {
