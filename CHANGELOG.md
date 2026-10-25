@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Fixed
+- **Dialog resize** from the bottom-right corner keeps the top-left corner fixed (`t-4803`). It used to grow around the centre, so the top-left corner moved. A corner drag now also stops at the window edge, so no dialog leaves the viewport.
+
 ## [0.18.6] - 2026-10-25
 
 GitHub Sync now shows a long issue list. Update with `canon update`, then stop the running board (Ctrl+C in the terminal running `canon`, or close its window) and run `canon` again. Only the board changed; the daemon needs no restart.
