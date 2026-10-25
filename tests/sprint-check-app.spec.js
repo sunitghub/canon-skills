@@ -14936,6 +14936,31 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     });
   }
 
+  // The button refuses an id that is not t-xxxx: nothing is typed, nothing is copied, no Terminal opens (t-0aa7).
+  test('To Claude Cloud types nothing for a ticket id that is not t-xxxx (t-0aa7)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh9');   // a labelled test id, not a real t-xxxx one
+    ghTicket(id);
+    expect(id).not.toMatch(/^t-[a-z0-9]{4}$/);
+    const prompt = `Work on Issue#57 for ticket ${id}. Read its section "Working on this" thoroughly before starting and follow it step by step. Work on a new branch, never main.`;
+    await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
+    await page.route('**/api/worktrees**', r => json(r, [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true }]));
+    await page.route(`**/api/ticket/${id}/github/send-preview`, r => json(r, { ok: true, exit_code: 0, output: 'repo: acme/app (PRIVATE)\ntitle: ' + id + ': GitHub test\n--- body ---\n# Description\nx\n' }));
+    await page.route(`**/api/ticket/${id}/github/send`, r => json(r, { ok: true, exit_code: 0, output: `Sent ${id} as https://github.com/acme/app/issues/57\nIn a Claude cloud session on acme/app, type:\n${prompt}\nFrom a terminal: claude --cloud '${prompt}'\n` }));
+    await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>cockpit<script>window.__msgs=[];window.addEventListener("message",function(e){window.__msgs.push(e.data)})</script></body></html>' }));
+    await page.addInitScript(() => { window.__copied = null; Object.defineProperty(navigator, 'clipboard', { value: { writeText: async (t) => { window.__copied = t; } }, configurable: true }); });
+    await openBoard(page, id);
+    await page.locator(`.card[data-id="${id}"] .card-start`).click();
+    await page.locator('#ck-worktree .ck-gh-row').click();
+    await page.locator('#ck-gh-create').click();
+    await expect(page.locator('#ck-gh-sent')).toContainText(`Sent ${id} as issue #57`);
+    await page.evaluate(async () => { (await import('/static/board-core.js')).state.isGitProject = true; });
+    await page.locator('#ck-gh-to-cloud').click();
+    await page.waitForTimeout(500);
+    expect(page.frames().filter(f => f.url().includes('mode=term'))).toHaveLength(0);   // no Terminal, so nothing typed
+    expect(await page.evaluate(() => window.__copied)).toBeNull();
+    await expect(page.locator('#ck-gh-status')).toHaveText('');
+  });
+
   test('Start offers GitHub places; picking GitHub mounts no terminal, previews, sends and hands back a message (t-718b)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gh3'), busy = newTicketId(PROJECT_ROOT, 'gh3b'), done = newTicketId(PROJECT_ROOT, 'gh3c');
     ghTicket(id); ghTicket(busy, { github: 'acme/app#61' });
