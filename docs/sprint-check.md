@@ -202,10 +202,10 @@ sprint agent without leaving the browser — no second terminal.
   `<repo>/../<name>-worktrees/scratch-<n>`, and removes worktree and branch when the
   session ends only if nothing was done in it (no uncommitted changes, no new commits).
   **Terminal** (`t-57ab`, a `>_` icon; keyboard: the prefix `ctrl+.` then `m` opens one, then `x` closes just the Terminal after a confirm: Enter yes, `c` cancel), beside Scratch on the path bar, opens a scratch-style tab that runs a restricted prompt
-  instead of an agent. It opens with a welcome (**Canon Console**) that lists what you can run and what needs `su`; `help` shows it
-  again. `ls` and `cat` work inside the project (`cat` pages a screenful at a time, Enter for more, `q` to stop; code is coloured; `.env*` and `.git/` in any letter case, symlinks that leave the
+  instead of an agent, straight to the prompt with no Start button; when it ends (`exit`, Kill or the idle reaper) the board closes its tab. It opens with a welcome (**Canon Console**) that lists what you can run and what needs `su`; `help` (or a lone `?`) shows it
+  again, `clear` or `cls` wipes the screen and `pwd` prints the project folder. `ls` (always the long form, folders blue) and `cat` work inside the project; `ls`, `cat` and `tkt` page a screenful at a time (Enter or space for more, `q` or Ctrl-C to stop; Ctrl-C stops only the command, never the Terminal); code is coloured; `.env*` and `.git/` in any letter case, symlinks that leave the
   project, binary files and files over 1 MB are refused; control characters in a file or in `tkt`'s output are shown as symbols), read-only
-  `tkt` (`current`, `ls`, `show`, `why`, `github-doctor`, `github-status`), `su` and `exit`. There is no shell: no pipes,
+  `tkt` (`current`, `ls`, `show`, `why`, `github-doctor`, `github-status`), `su` and `exit`. Tab completes commands, read-only `tkt` subcommands and project paths (never `.git`, `.env*` or anything outside the project), Up and Down walk the history, and Ctrl-U and Ctrl-W edit the line. There is no shell: no pipes,
   redirects or globs. `su` prints a random word (a capital letter and four more characters) to type back; a typo can be retried, and the third
   wrong answer in all closes the terminal (open it again to start over). A right word runs your login shell for 10 minutes (a warning at 9:30,
   the shell is hung up at 10:00 and everything it started in the terminal is ended, then the restricted prompt returns; type
