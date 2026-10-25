@@ -34,6 +34,9 @@ check /var                           "$HOME_DIR" "a system folder"
 for d in /System /Applications /Library; do   # macOS folders: only where they exist (the bash check reads the real folder)
   [[ -d "$d" ]] && check "$d" "$HOME_DIR" "a system folder"
 done
+check /private/etc                   "$HOME_DIR" "a system folder"       # macOS's physical /etc, reached without the /etc alias
+check /private/var                   "$HOME_DIR" "a system folder"
+check /private/var/folders/x/T       "$HOME_DIR" ""
 check /bin                           "$HOME_DIR" "a system folder"
 check /sbin                          "$HOME_DIR" "a system folder"
 check /opt                           "$HOME_DIR" "a system folder"
@@ -69,6 +72,12 @@ refused "canon"         bash "$TOOLS_DIR/canon"
 for c in "$TKT --help" "$SPRINT help" "bash $TOOLS_DIR/canon --help" "bash $TOOLS_DIR/canon version"; do
   (cd "$HOME_DIR" && $c >/dev/null 2>&1) || fail "folder-guard: '$c' failed in the home folder"
 done
+
+# The subcommands that are not "start the Cockpit" are not blocked there: canon update (run from System32 by a Windows admin), stop, status.
+out="$(cd "$HOME_DIR" && bash "$TOOLS_DIR/canon" update bogus 2>&1)" && fail "folder-guard: canon update bogus should refuse its own argument"
+[[ "$out" == *"takes no arguments"* && "$out" != *"is not a project"* ]] || fail "folder-guard: canon update was blocked by the folder guard: $out"
+out="$(cd "$HOME_DIR" && CANON_COCKPIT_PORT=58999 bash "$TOOLS_DIR/canon" stop 2>&1)" || fail "folder-guard: canon stop failed in the home folder: $out"
+[[ "$out" != *"is not a project"* ]] || fail "folder-guard: canon stop was blocked by the folder guard: $out"
 
 # The board binary refuses too, before it listens (the launchers all end here).
 BOARD="$(build_board "$W/bin")"

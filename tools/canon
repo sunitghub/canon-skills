@@ -448,8 +448,8 @@ main() {
       if [ "$({ tr -d '[:space:]' < "$SCRIPT_DIR/../.canon-track"; } 2>/dev/null)" = main ]; then main_track_note "$v"; else echo "$v"; fi
       exit 0 ;;
     status|sessions|stop|restart) board_cmd "$@"; exit 0 ;;
-    wait) shift; wait_cmd "$@" ;;
-    update) shift; update_cmd "$@" ;;
+    wait) shift; wait_cmd "$@"; exit $? ;;       # t-b2ff: a subcommand never falls through to the start path and its folder guard
+    update) shift; update_cmd "$@"; exit $? ;;
     uninstall) shift; exec bash "$SCRIPT_DIR/canon-uninstall.sh" "$@" ;;
     completion) shift; completion_cmd "$@"; exit 0 ;;
     "") : ;;

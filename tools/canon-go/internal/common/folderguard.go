@@ -16,7 +16,7 @@ var (
 	driveRootRe    = regexp.MustCompile(`^[a-z]:/?$`)
 	windowsTreeRe  = regexp.MustCompile(`^[a-z]:/windows(/|$)`)
 	windowsExactRe = regexp.MustCompile(`^[a-z]:/(program files|program files \(x86\)|programdata)$`)
-	unixSystem     = map[string]bool{"/usr": true, "/bin": true, "/sbin": true, "/etc": true, "/var": true, "/opt": true, "/system": true, "/library": true, "/applications": true}
+	unixSystem     = map[string]bool{"/usr": true, "/bin": true, "/sbin": true, "/etc": true, "/var": true, "/private/etc": true, "/private/var": true, "/opt": true, "/system": true, "/library": true, "/applications": true}
 )
 
 // NotAProject returns the reason dir is refused ("a system folder", "your home folder", "the root of a drive") or "".

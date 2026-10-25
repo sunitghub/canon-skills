@@ -124,7 +124,7 @@ _folder_guard_one() {
     /|/[a-z]) why="the root of a drive" ;;
     /[a-z]/windows|/[a-z]/windows/*) why="a system folder"; tree=1 ;;
     "/"[a-z]"/program files"|"/"[a-z]"/program files (x86)"|/[a-z]/programdata) why="a system folder" ;;
-    /usr|/bin|/sbin|/etc|/var|/opt|/system|/library|/applications) why="a system folder" ;;
+    /usr|/bin|/sbin|/etc|/var|/private/etc|/private/var|/opt|/system|/library|/applications) why="a system folder" ;;
     *)
       if [[ -n "${HOME:-}" ]]; then
         h="$(cd "$HOME" 2>/dev/null && pwd -P)" || h=""
