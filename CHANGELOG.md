@@ -6,6 +6,13 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.18.4] - 2026-10-25
+
+`canon update` no longer refuses on a machine where the board has run: the event log and custom themes sit in `~/.canon/events/` and `~/.canon/themes/`, which on a default install is the clone itself, and the update saw them as uncommitted changes. If your update is already refusing with `?? events/` and `?? themes/`, run this once (it only tells git to ignore those two folders; nothing is deleted), then `canon update`: `printf '/events/\n/themes/\n' >> ~/.canon/.git/info/exclude`.
+
+### Fixed
+- The repo's `.gitignore` ignores `/events/`, `/themes/` and `/logs/` (ready for Logging), as it did `/cockpit/` (`t-97b1`). `tests/canon-update.sh` now fails if any of the three runtime folders under `CANON_HOME` is not ignored.
+
 ## [0.18.3] - 2026-10-25
 
 A small Logbook fix. Update with `canon update`, then stop the running board (Ctrl+C in the terminal running `canon`, or close its window) and run `canon` again. The daemon needs no restart.

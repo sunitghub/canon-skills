@@ -457,6 +457,8 @@ set +e; out="$("$F2/tools/canon" update 2>&1)"; code=$?; set -e
 assert_eq "1" "$code"; assert_contains "$out" "git tag -d v0.3.1"
 # the real .gitignore must ignore the marker, or a main-track install would show an untracked file and `canon update` would refuse it
 grep -qx '/.canon-track' "$ROOT/.gitignore" || fail "canon-update: the repo .gitignore does not ignore /.canon-track"
+# and so must every directory canon writes under CANON_HOME, which on a default install is this clone: a run of the board creates them, and the next update would refuse (events/ and themes/ did, on a second Mac)
+for d in cockpit events themes logs; do grep -qx "/$d/" "$ROOT/.gitignore" || fail "canon-update: the repo .gitignore does not ignore /$d/ (CANON_HOME's runtime dir)"; done
 # a bad value after --to latest never reaches git
 rm -f "$WORK/git.calls"; set +e; out="$(PATH="$GSTUB:$PATH" "$CA" update --to latest extra 2>&1)"; code=$?; set -e
 assert_eq "2" "$code"; [[ ! -e "$WORK/git.calls" ]] || fail "canon-update: a bad --to latest reached git: $(cat "$WORK/git.calls")"
