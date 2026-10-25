@@ -152,6 +152,7 @@
       white-space: nowrap; flex: none;   /* t-b91f: always visible */
     }
     .ck-end-session:hover { color: var(--text); border-color: var(--accent); }
+    .ck-end-session:disabled { opacity: .45; cursor: not-allowed; border-color: var(--border); color: var(--text-muted); }
     .ck-body { flex: 1; min-height: 0; display: flex; }
     .ck-rail {
       position: relative;

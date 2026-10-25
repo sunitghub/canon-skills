@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+- **Terminal `su` asks for your account password** (`t-4pb6`): the OS asks for it (`dscl -authonly` on macOS, `su` to your own account on Linux; on Windows 11 24H2+ with sudo switched on, its UAC prompt), whatever `sudo` is set to, so a passwordless sudo no longer skips it. The random word is gone: with no OS prompt on the machine, or an account that cannot pass it, there is no full shell. In a Terminal tab, End Session, Auto Save, the state chip and Kill are gone or disabled: close it with `Ctrl+.` then `x`.
+
 ## [0.18.7] - 2026-10-25
 
 Cards say Working while an agent is on the ticket. Update with `canon update`, then stop the running board (Ctrl+C in the terminal running `canon`, or close its window) and run `canon` again. The board, `tkt` and `sprint` changed; the daemon needs no restart. The new heartbeat starts with the next `tkt start` or `sprint continue`, so a ticket already in progress shows Resume until its agent runs one.

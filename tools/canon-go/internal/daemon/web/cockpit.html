@@ -127,6 +127,8 @@
     var sel = document.getElementById("agentSel");
     if(sel && (AGENT === "claude" || AGENT === "pi" || AGENT === "copilot")) sel.value = AGENT;
     if(sel && MODE === "term") sel.style.display = "none"; // not an agent: the page starts the restricted terminal
+    var kb = document.getElementById("killBtn");
+    if(kb && MODE === "term") kb.style.display = "none";   // a Terminal ends with the prefix key then x, not Kill
     var h = document.getElementById("agentHint");
     if(h) h.textContent = AGENT_HINT;
   })();

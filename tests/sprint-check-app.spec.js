@@ -10269,6 +10269,20 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
     await expect(page.locator('#ck-leave-cancel')).toHaveText('OK');
   });
 
+  test('A Terminal tab disables End Session; a Scratch tab keeps it (t-4pb6)', async ({ page }) => {
+    await page.route('**/api/cockpit', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR, launched: true }) }));
+    await page.route('**/cockpit?**', route => route.fulfill({ status: 200, contentType: 'text/html', body: fakeCockpitPage({ initialStatus: 'idle' }) }));
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await page.evaluate(async () => { const { state } = await import('/static/board-core.js'); const { openScratch } = await import('/static/board-render.js'); state.isGitProject = true; openScratch('s-dt02', { term: true }); });
+    await expect(page.locator('#ck-id')).toHaveText('s-dt02');
+    await expect(page.locator('#ck-end-session')).toBeDisabled();
+    await expect(page.locator('#ck-end-session')).toHaveAttribute('title', /Ctrl\+\. then x/);
+    await page.evaluate(async () => { const { openScratch } = await import('/static/board-render.js'); openScratch('s-dt03'); });
+    await expect(page.locator('#ck-id')).toHaveText('s-dt03');
+    await expect(page.locator('#ck-end-session')).toBeEnabled();
+  });
+
   for (const [label, list, status] of [
     ['no daemon session', [], 200],
     ['a session for another project root', [{ ticket: 'T-ID', project_root: '/somewhere/else', agent: 'claude', status: 'running' }], 200],

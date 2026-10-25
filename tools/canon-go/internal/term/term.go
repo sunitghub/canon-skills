@@ -33,13 +33,14 @@ type Config struct {
 	// RunShell runs the full shell until it exits or ctx ends (then it must stop the whole process group). nil: su is unavailable.
 	RunShell func(ctx context.Context, root string) error
 	After    func(time.Duration) <-chan time.Time
-	Word     func() string
-	Limit    time.Duration  // how long su lasts
-	Warn     time.Duration  // how long before the end it warns
-	Rows     func() int     // the terminal's height, for paging cat; nil or 0 means 24
-	RawMode  func() func()  // switches the terminal to key-by-key input for the prompt line (Tab completion); returns the undo, or nil when In is not a terminal
-	st       *suState       // what su remembers between commands (set by Run)
-	intr     chan os.Signal // SIGINTs caught while a command ran (set by Run): a command that was interrupted shows nothing more
+	// Auth asks the OS for the account password; nil, or ErrNoAuth, means su is unavailable.
+	Auth    func(ctx context.Context, out io.Writer) error
+	Limit   time.Duration  // how long su lasts
+	Warn    time.Duration  // how long before the end it warns
+	Rows    func() int     // the terminal's height, for paging cat; nil or 0 means 24
+	RawMode func() func()  // switches the terminal to key-by-key input for the prompt line (Tab completion); returns the undo, or nil when In is not a terminal
+	st      *suState       // what su remembers between commands (set by Run)
+	intr    chan os.Signal // SIGINTs caught while a command ran (set by Run): a command that was interrupted shows nothing more
 }
 
 // readOnlyTkt is the whole list of tkt subcommands the restricted prompt runs. Everything else, including any command
@@ -83,7 +84,7 @@ var welcomeEntries = []entry{
 	{"tkt github-status <id>", "where a ticket stands on GitHub", false},
 	{"tkt github-doctor", "check that GitHub is ready (gh, origin)", false},
 	{"tkt --help", "every tkt command, including the rarely needed ones", false},
-	{"su", "a full shell for 10 minutes (asks for a word; 3 wrong answers close the terminal)", false},
+	{"su", "a full shell for 10 minutes (asks the OS to approve: your password, or UAC on Windows; 3 failures close the terminal)", false},
 	{"exit", "leave", false},
 	{"tkt create [title] -d <desc> -p <0-4>", "create a ticket and print its id", true},
 	{"tkt start <id>", "set it in progress and mark it ACTIVE", true},
@@ -108,7 +109,7 @@ func welcome() string {
 			line(e)
 		}
 	}
-	b.WriteString("\nNeeds su (type su first, then the word it shows)\n")
+	b.WriteString("\nNeeds su (type su first, then the OS approval)\n")
 	for _, e := range welcomeEntries {
 		if e.su {
 			line(e)

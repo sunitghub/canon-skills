@@ -62,13 +62,13 @@ Audit kinds (t-4c09; the schema is fixed here, each emitter is built by the tick
 | `context.threshold` | `session`, `ticket`, `agent`, `pct` | once, when a session passes 75% context |
 | `log.pruned` | `from`, `to` (days), `files`, `last_seal` | the retention job removes day files |
 
-Terminal audit kinds (t-57ab; written by the Cockpit daemon's restricted terminal; `ticket` is the scratch id; never the typed word, a path or a command):
+Terminal audit kinds (t-57ab; written by the Cockpit daemon's restricted terminal; `ticket` is the scratch id; never a password, a path or a command):
 
 | Kind | `data` | Written when |
 |---|---|---|
 | `terminal.su_prompted` | `session`, `ticket` | `su` is typed and the word is shown |
 | `terminal.su_granted` | `session`, `ticket`, `minutes` | the word is typed back and the full shell starts; if this cannot be written, no shell starts |
-| `terminal.su_denied` | `session`, `ticket`, `reason` (`wrong`, `empty`, `eof`, `locked`) | the answer is not the word; `locked` is the third wrong answer, which closes the terminal |
+| `terminal.su_denied` | `session`, `ticket`, `reason` (`auth`, `unavailable`, `locked`) | `auth`: the OS password prompt failed or was cancelled; `unavailable`: the machine has no OS password prompt, so there is no full shell (never counted); `locked` is the third failed password, which closes the terminal |
 | `terminal.su_expired` | `session`, `ticket`, `how` (`ended` at the time limit, `exited` when the shell ended first) | the full shell ends |
 
 Audit events carry ids, numbers and names only: never a PR or issue title, an imported result's text, a token, or a URL
