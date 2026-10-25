@@ -40,6 +40,34 @@ async function expectRole(page, loc, role) {
   await page.mouse.move(0, 0);
 }
 
+// t-4803: drag each corner of a dialog and check the opposite corner stays put (1px) and the dialog stays inside the window.
+// Each corner is dragged out (growing) and in (shrinking); the panel settles after its open animation first.
+async function expectCornersHold(page, panelSel) {
+  const panel = page.locator(panelSel);
+  await panel.evaluate(el => Promise.all(el.getAnimations().map(a => a.finished)));   // the open animation scales the panel
+  await expect(panel).toBeVisible();
+  const vp = page.viewportSize();
+  for (const [corner, sel, dir] of [['bottom-right', '.modal-resize-handle:not(.modal-resize-handle-tl)', 1], ['top-left', '.modal-resize-handle-tl', -1]]) {
+    for (const d of [30, -30]) {
+      const before = await panel.boundingBox();
+      const h = await panel.locator(`:scope > ${sel}`).boundingBox();
+      const x = h.x + h.width / 2, y = h.y + h.height / 2;
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      await page.mouse.move(x + dir * d, y + dir * d, { steps: 4 });
+      await page.mouse.up();
+      const after = await panel.boundingBox();
+      const fixed = dir === 1 ? [after.x - before.x, after.y - before.y] : [after.x + after.width - before.x - before.width, after.y + after.height - before.y - before.height];
+      expect(Math.abs(fixed[0]), `${panelSel} ${corner} ${d}: opposite corner x`).toBeLessThanOrEqual(1);
+      expect(Math.abs(fixed[1]), `${panelSel} ${corner} ${d}: opposite corner y`).toBeLessThanOrEqual(1);
+      expect(after.x).toBeGreaterThanOrEqual(-1);
+      expect(after.y).toBeGreaterThanOrEqual(-1);
+      expect(after.x + after.width).toBeLessThanOrEqual(vp.width + 1);
+      expect(after.y + after.height).toBeLessThanOrEqual(vp.height + 1);
+    }
+  }
+}
+
 // t-15d8: a test that needs its own board starts the Go board (the only board), built once per worker into a miniature
 // install: <tmp>/tools/sprint-check-bin/sprint-check (the name an install uses, so test.sh's leak check sees it) beside a
 // link to this checkout's tools/sprint-check-app, which the board finds relative to its own binary.
@@ -15552,6 +15580,17 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.locator('#gh-dialog-cancel').click();
   });
 
+  test('a corner drag keeps the opposite corner fixed in the GitHub Sync and New Ticket dialogs (t-4803)', async ({ page }) => {
+    await page.route('**/api/github/intake**', r => json(r, { ok: true, exit_code: 0, intake: { repo: 'a/b', label: 'canon', waiting: [], skipped: [] } }));
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await page.locator('#btn-gh-sync').click();
+    await expectCornersHold(page, '#gh-dialog-box');
+    await page.locator('#gh-dialog-cancel').click();
+    await page.locator('#btn-create').click();
+    await expectCornersHold(page, '#create-modal');
+  });
+
   test('GitHub Sync shows a hostile title as text, and the table follows the theme (t-b045)', async ({ page }) => {
     const evil = '<img src=x onerror="window.__pwned=1"> <b>bold</b>';
     await page.route('**/api/github/intake**', r => json(r, { ok: true, exit_code: 0, intake: { repo: 'a/b', label: 'canon', waiting: [{ issue: 9, title: evil, type: 'task', priority: 2 }], skipped: [] } }));
@@ -16521,6 +16560,14 @@ test.describe('Logbook (t-c6bb)', () => {
       .toBe([Math.round(start.x), Math.round(start.y), Math.round(start.width), Math.round(start.height)].join(','));
   });
 
+
+  test('the Logbook keeps the opposite corner fixed when a corner is dragged (t-4803)', async ({ page }) => {
+    await serve(page);
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await open(page);
+    await expectCornersHold(page, '#logbook-modal');
+  });
   test('a click outside closes it, a selection dragged out onto the overlay does not, and a closed dialog is out of the tab order (t-c6bb)', async ({ page }) => {
     await serve(page);
     await page.goto(BASE);
