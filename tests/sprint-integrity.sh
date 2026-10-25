@@ -36,6 +36,7 @@ new_install() {
 
 project="$(make_project)"; trap 'rm -rf "$work" "$project"' EXIT
 inst="$work/install"; new_install "$inst"
+export SPRINT_CHECK_NO_BROWSER=1
 export CANON_INTEGRITY_ROOT="$inst" SPRINT_CHECK_BIN="$board"
 cd "$project"
 git -C "$project" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
