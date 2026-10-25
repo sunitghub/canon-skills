@@ -13599,6 +13599,9 @@ test.describe('Canon Cockpit help', () => {
       await page.route('**/api/cockpit', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ running: true, stale: false, running_build: { version: '9.9.9', commit: '0e2fd866' } }) }));
       await page.goto(BASE + '/cockpit');
       await page.locator('#nav-admin').click();
+      await expect(page.locator('.dgrid .drow .k')).toHaveText(['Canon', 'Board Build', 'Cockpit Daemon', 'Cockpit Uptime', 'Daemon Uptime']);   // one casing for every row
+      const fonts = await page.locator('.dgrid .drow .v').evaluateAll(els => els.map(e => getComputedStyle(e).fontFamily + '|' + getComputedStyle(e).fontWeight + '|' + getComputedStyle(e).fontSize));
+      expect(new Set(fonts).size).toBe(1);   // and one font for every value (one `.drow .v` rule)
       await expect(page.locator('#ad-ver-canon')).toHaveText('v9.9.9');
       await expect(page.locator('#ad-ver-board')).toHaveText('abc1234');
       await expect(page.locator('#ad-ver-daemon')).toHaveText('9.9.9 (0e2fd866)');   // the running daemon's own build wins, as in Help
