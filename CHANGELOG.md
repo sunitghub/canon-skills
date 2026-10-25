@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Added
+- **Working** on the board's cards (`t-187e`). An agent you started by hand in a plain terminal used to leave the card saying Resume, and a click started a second agent on the same ticket. The commands an agent runs now keep a small heartbeat, `.tickets/ACTIVE.beat`, and while it is fresh the card shows **● Working**. Click it for how long ago and where; **Resume anyway** still starts the session. When the agent stops or the machine restarts the card goes back to Resume by itself. A live Cockpit session still shows Open / Answer. See docs/sprint-check.md.
+
 ## [0.18.6] - 2026-10-25
 
 GitHub Sync now shows a long issue list. Update with `canon update`, then stop the running board (Ctrl+C in the terminal running `canon`, or close its window) and run `canon` again. Only the board changed; the daemon needs no restart.

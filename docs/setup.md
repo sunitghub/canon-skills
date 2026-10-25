@@ -254,15 +254,15 @@ and specs travel with the repo.
 
 **Runtime files are the exception — don't commit those.** canon writes a few per-machine files under
 `.tickets/` that change every session and must never be tracked: `.tickets/ACTIVE` (the active-sprint
-pointer) and the cockpit's `.tickets/<id>/.cockpit-*` files (`.cockpit-cwd`, `.cockpit-agent`,
-`.cockpit-session-id`). `tkt` auto-seeds a `.tickets/.gitignore` covering them (`.cockpit-*`, `ACTIVE`)
+pointer), `.tickets/ACTIVE.beat` (the "an agent is on it" heartbeat the board shows as Working) and the cockpit's `.tickets/<id>/.cockpit-*` files (`.cockpit-cwd`, `.cockpit-agent`,
+`.cockpit-session-id`). `tkt` auto-seeds a `.tickets/.gitignore` covering them (`.cockpit-*`, `ACTIVE`, `ACTIVE.beat`; a file canon seeded earlier gains the new line, one you wrote is left alone)
 the first time it ensures the tickets directory exists — so on a project that tracks `.tickets/`, the
 ticket docs are committed while the runtime churn is ignored. Commit that `.gitignore`. If your repo
 **already committed** any runtime files (e.g. from before this was seeded), untrack them once — they
 stay on disk, they just stop being versioned:
 
 ```bash
-git rm -r --cached --ignore-unmatch '.tickets/**/.cockpit-*' '.tickets/ACTIVE'
+git rm -r --cached --ignore-unmatch '.tickets/**/.cockpit-*' '.tickets/ACTIVE' '.tickets/ACTIVE.beat'
 git commit -m "stop tracking canon runtime files"
 ```
 

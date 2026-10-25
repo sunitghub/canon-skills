@@ -288,6 +288,21 @@ if len(gh_doc) != 1 or gh_doc[0]["name"] != "GitHub":
     print(f"sprint-check-api: FAIL — t-1dec github.md doc: {gh_doc!r}, want one named 'GitHub'"); sys.exit(1)
 PY
 
+# ── /api/tickets `working` (t-187e): the ticket ACTIVE names, in progress, with a fresh ACTIVE.beat; stale or other-ticket beats add nothing ──
+tg="$WORK/.tickets/t-gate/ticket.md"; cp "$tg" "$WORK/t-gate.orig"
+sed 's/^status: open/status: in_progress/' "$WORK/t-gate.orig" > "$tg"
+working_of() { curl -s "$B/api/tickets" | python3 -c 'import json,sys; t={x["id"]:x for x in json.load(sys.stdin)}["t-gate"]; w=t.get("working"); print("none" if w is None else "%s|%s|%s" % (w["host"], w["here"], w["age_s"] < 120))'; }
+printf 't-gate\n' > "$WORK/.tickets/ACTIVE"
+printf 'ticket=t-gate\nts=%s\nhost=%s\npid=\n' "$(date +%s)" "$(hostname | tr -d '[:space:]')" > "$WORK/.tickets/ACTIVE.beat"
+assert_eq "$(hostname | tr -d '[:space:]')|True|True" "$(working_of)"
+printf 'ticket=t-gate\nts=100\nhost=%s\npid=\n' "$(hostname | tr -d '[:space:]')" > "$WORK/.tickets/ACTIVE.beat"
+assert_eq none "$(working_of)"                                  # a stale beat: Resume again with no manual step
+printf 'ticket=t-other\nts=%s\nhost=h\npid=\n' "$(date +%s)" > "$WORK/.tickets/ACTIVE.beat"
+assert_eq none "$(working_of)"                                  # a beat for another ticket
+printf 'garbage' > "$WORK/.tickets/ACTIVE.beat"
+assert_eq none "$(working_of)"                                  # a corrupt file is ignored, never an error
+rm -f "$WORK/.tickets/ACTIVE" "$WORK/.tickets/ACTIVE.beat"; cp "$WORK/t-gate.orig" "$tg"
+
 # ── /api/git (t-9cde, t-d218) ────────────────────────────────────────────────
 go_git="$(curl -s "$B/api/git")"
 [[ "$(printf '%s' "$go_git" | json_get total_commits)" == 2 ]] || fail "sprint-check-api: /api/git total_commits should be 2 (fixture has 2 commits): $go_git"

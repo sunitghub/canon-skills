@@ -214,6 +214,7 @@ cmd_continue() {
   fi
   tdir="$(ticket_dir_for "$id")"
   _gate_agents_check "$(project_root)"
+  "$SCRIPT_DIR/work-beat" touch || true   # t-187e
   echo "Continuing sprint: $id"
   echo "Status: $status"
   echo "Ticket: $tdir/ticket.md"

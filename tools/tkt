@@ -58,7 +58,11 @@ ensure_tickets_dir() {
 # canon runtime files — per-machine session state, never commit (t-2f53)
 .cockpit-*
 ACTIVE
+ACTIVE.beat
 EOF
+  elif grep -qxF '# canon runtime files — per-machine session state, never commit (t-2f53)' "$dir/.gitignore" \
+      && ! grep -qxF 'ACTIVE.beat' "$dir/.gitignore"; then
+    printf 'ACTIVE.beat\n' >> "$dir/.gitignore"   # t-187e: a file canon seeded earlier gains the new runtime file; one the user wrote is left alone
   fi
   echo "$dir"
 }
@@ -125,6 +129,7 @@ set_active() {
   local id="$1" file
   file="$(active_file)"
   printf "%s\n" "$id" > "$file"
+  "$SCRIPT_DIR/work-beat" touch || true   # t-187e: an agent just took this ticket
 }
 
 clear_active_if() {
@@ -140,6 +145,7 @@ clear_active_if() {
   # never reproducible before this ticket made that state possible.
   if [[ "$current" == "$id" ]]; then
     rm -f "$file"
+    "$SCRIPT_DIR/work-beat" clear || true   # t-187e
   fi
   return 0
 }

@@ -99,6 +99,7 @@ tests=(
   "$ROOT/tests/machine-load-unit.sh"
   "$ROOT/tests/run-board-spec-isolation.sh"
   "$ROOT/tests/evidence.sh"
+  "$ROOT/tests/work-beat.sh"
   "$ROOT/tests/sprint-check-evidence.sh"
   "$ROOT/tests/test-sh-runner.sh"
   "$ROOT/tests/build-zip-go-package.sh"
