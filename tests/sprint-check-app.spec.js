@@ -6596,6 +6596,25 @@ test.describe('cockpit in board (t-ddc8)', () => {
       expect(title).not.toBe('Close this Terminal?');
     });
 
+    test('Close (t-5157): x on an open Scratch tab closes just that tab and lands on the board; x again closes the project tab', async ({ page }) => {
+      const stubPage = `<!doctype html><html><body><script>parent.postMessage({source:'canon-cockpit',type:'status',status:'running'},'*');</script></body></html>`;
+      await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: stubPage }));
+      await openShell(page, []);
+      await stubCockpit(page);
+      await page.route(/\/api\/cockpit(\?|$)/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR, launched: true }) }));
+      await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return activateTab('proj-a'); });
+      await boardsKeyReady(page, ['proj-a']);
+      const board = page.frameLocator('#view-proj-a iframe');
+      await board.locator('#btn-scratch').click();
+      await expect(board.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await pressPrefix(page, 'x');
+      await expect(board.locator('#cockpit-overlay')).not.toHaveClass(/open/);   // back on the project's board
+      expect(await shellTab(page)).toBe('proj-a');                               // the project tab stays
+      await pressPrefix(page, 'x');
+      await expect.poll(() => shellTab(page)).not.toBe('proj-a');                // with no session tab open, x closes the project tab as before
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     test('Terminal close (t-57ab): the prefix then x asks to close just the Terminal; c cancels and the project tab stays, Enter ends it', async ({ page }) => {
       const stubPage = `<!doctype html><html><body><script>
         parent.postMessage({source:'canon-cockpit',type:'status',status:'running'},'*');

@@ -763,11 +763,15 @@ export function initCockpit() {
       if (typeof d.id === 'string' && SCRATCH_ID.test(d.id) && cockpitTabs[d.id]) closeTab(d.id);
       return;
     }
-    if (d.type === 'close-terminal-request') {             // t-57ab: prefix then x. Only a live Terminal is closed here; otherwise the shell closes the tab as before
+    if (d.type === 'close-terminal-request') {             // t-57ab: prefix then x. A live Terminal asks first; another open session tab closes alone; with none open the shell closes the project tab
       const open = document.getElementById('cockpit-overlay').classList.contains('open');
       const isTerm = open && cockpitState && sessionIsLive() && !cockpitState._ending && state.scratch.get(cockpitState.id)?.term === true;
+      // Any other open session tab (a Scratch, a ticket) closes alone, like its x chip, and lands on the board; only with
+      // none open does the shell close the project tab.
+      const closeSession = open && !isTerm && !!activeTabId;
       if (isTerm) openTerminalCloseConfirm();
-      try { window.parent.postMessage({ source: 'canon-board', type: 'close-terminal-ack', tab: SHELL_TAB, handled: isTerm }, location.origin); } catch {}
+      else if (closeSession) closeTab(activeTabId);
+      try { window.parent.postMessage({ source: 'canon-board', type: 'close-terminal-ack', tab: SHELL_TAB, handled: isTerm || closeSession }, location.origin); } catch {}
       return;
     }
     if (d.type === 'toggle-rail-request') {                // prefix then w: the same as the rail's < button when a tab is open; the shell folds its own sidebar otherwise
