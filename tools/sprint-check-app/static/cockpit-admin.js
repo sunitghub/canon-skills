@@ -1,6 +1,6 @@
 // t-565f: the Cockpit shell's admin code (was part of cockpit.html's one script). Declarations only: the
 // load-time code is initAdmin(), which cockpit-main.js runs in order once every module has loaded.
-import { cockpitConfirm, esc, escAttr, toast } from './cockpit-core.js';
+import { cockpitConfirm, esc, escAttr, fillVersions, toast } from './cockpit-core.js';
 import { scratchIcon, TICKET_ID_RE, _projKey, dismissInterrupted, fmtDur, interrupted, intrProj, intrSince, renderSessionSurfaces, resumeInterrupted, sessionTime, sessionView, setLastSessions, ticketTitle } from './cockpit-sessions.js';
 import { openSessionInTab, openTabs } from './cockpit-tabs.js';
 import { getProjects } from './cockpit-projects.js';
@@ -70,9 +70,7 @@ export async function loadAdmin(){
   if(!ck.running){ st.className='dstatus down'; st.textContent='Not running'; }
   else if(ck.stale){ st.className='dstatus stale'; st.textContent='Out of date'; }
   else { st.className='dstatus healthy'; st.textContent='Healthy'; }
-  let ver='—';
-  try{ const v=await (await fetch('/api/version')).json(); if(v&&v.version) ver='v'+v.version+(v.commit?(' ('+v.commit+')'):''); }catch(e){}
-  document.getElementById('ad-version').textContent=ver;
+  fillVersions({canon:'ad-ver-canon', board:'ad-ver-board', daemon:'ad-ver-daemon'});   // not awaited: the uptime rows below must not wait behind two fetches
   document.getElementById('ad-shell-uptime').textContent=fmtUptime(ck.shell_uptime_secs);
   const up=(ck.running_build&&ck.running_build.uptime_secs);
   document.getElementById('ad-uptime').textContent=ck.running?fmtUptime(up):'—';

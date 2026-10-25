@@ -58,10 +58,15 @@ function closeHelp(){ document.getElementById('help-overlay').classList.remove('
 async function loadHelpVersions(){
   // Only stay "loaded" once /api/version arrived (it fills the canon row; /api/cockpit can fill the daemon row alone): a fetch that failed (the board restarting) must retry on the next open.
   setTimeout(()=>{ if(document.getElementById('hv-canon').textContent.trim()==='\u2014') _helpVersionsLoaded=false; },4000);
+  return fillVersions({canon:'hv-canon', board:'hv-board', daemon:'hv-daemon'});
+}
+// canon, board build and cockpit-daemon build into the three elements named by ids: the Help panel and Admin's daemon panel show the same rows from here.
+export async function fillVersions(ids){
+  const set=(id,txt)=>{ const e=document.getElementById(id); if(e) e.textContent=txt; };
   try{ const v=await (await fetch('/api/version')).json();
-    if(v&&v.version) document.getElementById('hv-canon').textContent='v'+v.version;
-    if(v&&v.commit) document.getElementById('hv-board').textContent=v.commit;
-    if(v&&v.daemon) document.getElementById('hv-daemon').textContent=v.daemon;
+    if(v&&v.version) set(ids.canon,'v'+v.version);
+    if(v&&v.commit) set(ids.board,v.commit);
+    if(v&&v.daemon) set(ids.daemon,v.daemon);
   }catch(e){}
   // daemon build (best-effort) from /api/cockpit running_build
   try{ const ck=await (await fetch('/api/cockpit')).json();
@@ -69,9 +74,9 @@ async function loadHelpVersions(){
     if(rb&&rb.version){
       // t-4487: show the same string `cockpit-daemon --version` prints. A running build without a commit (an older daemon) must not
       // wipe a stamped string /api/version already filled in; it only fills an empty row.
-      const el=document.getElementById('hv-daemon');
-      if(rb.commit&&rb.commit!=='dev') el.textContent=rb.version+' ('+rb.commit+')';   // a dev build prints bare, as --version does
-      else if(el.textContent.trim()==='\u2014') el.textContent=rb.version;
+      const el=document.getElementById(ids.daemon);
+      if(el&&rb.commit&&rb.commit!=='dev') el.textContent=rb.version+' ('+rb.commit+')';   // a dev build prints bare, as --version does
+      else if(el&&el.textContent.trim()==='\u2014') el.textContent=rb.version;
     }
   }catch(e){}
 }

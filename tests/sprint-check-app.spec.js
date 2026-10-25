@@ -13594,6 +13594,15 @@ test.describe('Canon Cockpit help', () => {
         await expect(page.locator('#hv-daemon')).toHaveText(want);
       });
     }
+    test("Admin's daemon panel shows the same three rows as Help (canon, board build, cockpit-daemon)", async ({ page }) => {
+      await page.route('**/api/version', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ version: '9.9.9', commit: 'abc1234', daemon: '9.9.9 (23efca20)' }) }));
+      await page.route('**/api/cockpit', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ running: true, stale: false, running_build: { version: '9.9.9', commit: '0e2fd866' } }) }));
+      await page.goto(BASE + '/cockpit');
+      await page.locator('#nav-admin').click();
+      await expect(page.locator('#ad-ver-canon')).toHaveText('v9.9.9');
+      await expect(page.locator('#ad-ver-board')).toHaveText('abc1234');
+      await expect(page.locator('#ad-ver-daemon')).toHaveText('9.9.9 (0e2fd866)');   // the running daemon's own build wins, as in Help
+    });
     test('a 64-character stamp wraps inside the panel on a phone instead of overflowing', async ({ page }) => {
       await page.setViewportSize({ width: 390, height: 844 });
       await daemonRow(page, { version: '0.3.0 (23efca20)', cockpit: { version: '0.3.0', commit: 'a'.repeat(64) } });

@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Changed
+- Admin's daemon panel lists the same three versions as Help: canon, the board build and the cockpit-daemon build. It used to show one "Current version" that was the board's.
+
 ## [0.18.0] - 2026-10-25
 
 Tickets get tags, the board gets a Logbook and a **Terminal** tab (a restricted prompt in your project: `ls`, `cat`, read-only `tkt`, Tab completion and paging, with `su` for a full shell for 10 minutes), the Cockpit gets a Factory page for the GitHub workflow, and Upkeep is removed. Update with `canon update`. Both the board and the daemon changed: press **Restart Daemon** in Admin (Save & End running agent sessions first: a restart ends them), then stop the running board (Ctrl+C in the terminal running `canon`, or close its window) and run `canon` again.

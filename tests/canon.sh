@@ -154,7 +154,7 @@ grep -qE "body\.embed #h-version" <<<"$board" && fail "canon: must NOT hide chro
 grep -qF 'id="nav-admin"' <<<"$page" || fail "canon: missing Admin nav item"
 grep -qF "showView('admin')" <<<"$page" || fail "canon: Admin nav not wired to showView"
 grep -qF 'id="view-admin"' <<<"$page" || fail "canon: missing #view-admin section"
-grep -qF 'id="ad-version"' <<<"$page" || fail "canon: Admin missing Current version row"
+grep -qF 'id="ad-ver-daemon"' <<<"$page" || fail "canon: Admin missing the cockpit-daemon version row"
 grep -qF 'id="ad-uptime"' <<<"$page" || fail "canon: Admin missing Daemon Uptime row"
 grep -qF "Daemon Uptime" <<<"$page" || fail "canon: Admin Uptime row not relabeled Daemon Uptime (t-ade9)"
 grep -qF 'id="ad-shell-uptime"' <<<"$page" || fail "canon: Admin missing Cockpit Uptime row (t-ade9)"
