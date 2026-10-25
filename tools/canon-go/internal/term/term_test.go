@@ -489,3 +489,52 @@ type pipeW struct{ *io.PipeWriter }
 func (p pipeW) WriteString(s string) { _, _ = p.Write([]byte(s)) }
 
 func newPipe() (io.Reader, pipeW) { r, w := io.Pipe(); return r, pipeW{w} }
+
+// With an OS Auth, su asks the OS and never the word: a pass starts the shell, a failure is su_denied reason=auth,
+// three failures close the terminal, and no provider falls back to the word.
+func TestSuUsesOSAuth(t *testing.T) {
+	root, _ := project(t)
+	fail := errors.New("sudo: 1 incorrect password attempt")
+	for _, c := range []struct {
+		name, input, events string
+		auth                error
+		shells              int
+	}{
+		{"pass", "su\nexit\n", "terminal.su_prompted|terminal.su_granted minutes=5|terminal.su_expired how=exited", nil, 1},
+		{"fail", "su\nexit\n", "terminal.su_prompted|terminal.su_denied reason=auth", fail, 0},
+		{"three fails", "su\nsu\nsu\nexit\n", "terminal.su_prompted|terminal.su_denied reason=auth|terminal.su_prompted|terminal.su_denied reason=auth|terminal.su_prompted|terminal.su_denied reason=locked", fail, 0},
+		{"no provider", "su\nKx7m2\nexit\n", "terminal.su_prompted|terminal.su_granted minutes=5|terminal.su_expired how=exited", ErrNoAuth, 1},
+	} {
+		f := newFakeSu()
+		close(f.stop)
+		cfg := f.cfg(root)
+		cfg.Auth = func(context.Context, io.Writer) error { return c.auth }
+		var buf bytes.Buffer
+		cfg.In, cfg.Out = strings.NewReader(c.input), &buf
+		Run(cfg)
+		out := buf.String()
+		if f.shells != c.shells || f.log() != c.events {
+			t.Errorf("%s: shells=%d events %q, want %d %q", c.name, f.shells, f.log(), c.shells, c.events)
+		}
+		if strings.Contains(out, "Kx7m2") && c.auth != ErrNoAuth {
+			t.Errorf("%s: the word was printed although the OS was asked", c.name)
+		}
+	}
+}
+
+func TestAuthCommand(t *testing.T) {
+	found := func(string) (string, error) { return "/usr/bin/sudo", nil }
+	missing := func(string) (string, error) { return "", errors.New("not found") }
+	if _, a, ok := authCommand("linux", found); !ok || strings.Join(a, " ") != "-k -v" {
+		t.Errorf("linux: %v %v", a, ok)
+	}
+	if _, a, ok := authCommand("darwin", found); !ok || strings.Join(a, " ") != "-k -v" {
+		t.Errorf("darwin: %v %v", a, ok)
+	}
+	if _, a, ok := authCommand("windows", found); !ok || strings.Join(a, " ") != "cmd /c exit" {
+		t.Errorf("windows: %v %v", a, ok)
+	}
+	if _, _, ok := authCommand("linux", missing); ok {
+		t.Error("no sudo on PATH must mean no provider, so su falls back to the word")
+	}
+}

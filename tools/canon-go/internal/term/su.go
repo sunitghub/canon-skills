@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -35,8 +36,30 @@ func (c Config) su(rd *bufio.Reader) (closeTerminal bool) {
 	if st == nil {
 		st = &suState{}
 	}
-	word := c.Word()
 	c.emit("terminal.su_prompted", nil)
+	if c.Auth != nil {
+		fmt.Fprintf(c.Out, "Full shell mode lasts %s, then you drop back to this prompt.\nNothing you run there is restricted. This is logged.\nEnter your account password to continue (Ctrl+C cancels):\n", limit)
+		err := c.Auth(context.Background(), c.Out)
+		if err == nil {
+			st.wrong = 0
+			return c.grant(limit, warn)
+		}
+		if !errors.Is(err, ErrNoAuth) {
+			// A failed or cancelled OS prompt counts like a wrong word: three in all close the terminal.
+			st.wrong++
+			if st.wrong >= maxWrong {
+				c.emit("terminal.su_denied", map[string]string{"reason": "locked"})
+				fmt.Fprintf(c.Out, "Authentication failed %d times: closing the terminal. Open it again to start over.\n", maxWrong)
+				st.closed = true
+				return true
+			}
+			c.emit("terminal.su_denied", map[string]string{"reason": "auth"})
+			fmt.Fprintln(c.Out, "Authentication failed: still in the restricted prompt.")
+			return false
+		}
+		fmt.Fprintln(c.Out, "This machine has no OS password prompt for su, so a typed word is used instead.")
+	}
+	word := c.Word()
 	fmt.Fprintf(c.Out, "Full shell mode lasts %s, then you drop back to this prompt.\nNothing you run there is restricted. This is logged.\nType %s to continue (Enter cancels): ", limit, word)
 	for {
 		ans, err := rd.ReadString('\n')
@@ -65,6 +88,11 @@ func (c Config) su(rd *bufio.Reader) (closeTerminal bool) {
 		fmt.Fprintf(c.Out, "Wrong, %d left. Type %s again (Enter cancels): ", maxWrong-st.wrong, word)
 	}
 	st.wrong = 0
+	return c.grant(limit, warn)
+}
+
+// grant logs the grant and runs the full shell for limit, warning warn before the end.
+func (c Config) grant(limit, warn time.Duration) (closeTerminal bool) {
 	// Fail closed: a grant nobody can see is not granted.
 	if err := c.emitErr("terminal.su_granted", map[string]string{"minutes": fmt.Sprint(int(limit / time.Minute))}); err != nil {
 		fmt.Fprintln(c.Out, "su refused: the audit log cannot be written, so nothing was started.")

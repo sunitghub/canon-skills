@@ -40,6 +40,7 @@ func Main(args []string) int {
 		},
 		RunShell: RealShell,
 		Word:     RandomWord,
+		Auth:     osAuth,
 		Limit:    *limit,
 		Warn:     *warn,
 		Rows:     terminalRows,

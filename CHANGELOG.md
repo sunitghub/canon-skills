@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+- **Terminal `su` asks for your account password** (`t-4pb6`): the OS prompts (`sudo -k -v` on macOS and Linux, Windows `sudo`) instead of a random word; without `sudo` it falls back to the word. In a Terminal tab, End Session, Auto Save, the state chip and Kill are gone or disabled: close it with `Ctrl+.` then `x`.
+
 ## [0.18.5] - 2026-10-25
 
 GitHub Sync lets you pick which issues become tickets, and every dialog can be resized from two corners. Update with `canon update`, then stop the running board (Ctrl+C in the terminal running `canon`, or close its window) and run `canon` again. The board and `tkt` changed; the daemon needs no restart.

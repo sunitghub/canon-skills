@@ -206,8 +206,8 @@ sprint agent without leaving the browser — no second terminal.
   again, `clear` or `cls` wipes the screen and `pwd` prints the project folder. `ls` (always the long form, folders blue) and `cat` work inside the project; `ls`, `cat` and `tkt` page a screenful at a time (Enter or space for more, `q` or Ctrl-C to stop; Ctrl-C stops only the command, never the Terminal); code is coloured; `.env*` and `.git/` in any letter case, symlinks that leave the
   project, binary files and files over 1 MB are refused; control characters in a file or in `tkt`'s output are shown as symbols), read-only
   `tkt` (`current`, `ls`, `show`, `why`, `github-doctor`, `github-status`), `su` and `exit`. Tab completes commands, read-only `tkt` subcommands and project paths (never `.git`, `.env*` or anything outside the project), Up and Down walk the history, and Ctrl-U and Ctrl-W edit the line. There is no shell: no pipes,
-  redirects or globs. `su` prints a random word (a capital letter and four more characters) to type back; a typo can be retried, and the third
-  wrong answer in all closes the terminal (open it again to start over). A right word runs your login shell for 10 minutes (a warning at 9:30,
+  redirects or globs. `su` asks the OS for your account password (`sudo -k -v` on macOS and Linux, `sudo` on Windows; canon never sees it). Without `sudo` it prints a random word (a capital letter and four more characters) to type back instead. The third
+  failure in all closes the terminal (open it again to start over). A pass runs your login shell for 10 minutes (a warning at 9:30,
   the shell is hung up at 10:00 and everything it started in the terminal is ended, then the restricted prompt returns; type
   `su` again for another 10 minutes). Leaving the shell with `exit` ends what it started too. `tkt send-issue <id> --launch` works there, because `claude --cloud` needs a real terminal. `su`, its denials
   and its end are logged as `terminal.su_*` events (see `docs/plugins.md`). It is a convenience boundary, not a sandbox: a

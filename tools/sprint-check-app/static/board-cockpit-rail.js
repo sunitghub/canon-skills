@@ -176,6 +176,9 @@ export async function renderCockpitRail(t) {
   document.getElementById('ck-scratch-kind').textContent = t.term ? 'TERMINAL' : 'SCRATCH';
   document.getElementById('ck-scratch-sub').textContent = t.term ? 'restricted prompt · ls, cat, read-only tkt · su for a full shell' : 'no ticket · no gates';
   document.getElementById('ck-scratch-end').textContent = t.term ? 'Closing it ends the Terminal, and anything you started in su.' : 'End keeps any uncommitted changes in place.';
+  const endBtn = document.getElementById('ck-end-session');   // End Session is for agent sessions; a Terminal ends with Ctrl+. then x
+  endBtn.disabled = !!t.term;
+  endBtn.title = t.term ? 'A Terminal ends with Ctrl+. then x' : 'Save state and end this session';
   document.getElementById('ck-id').textContent = displayTicketId(t);
   document.getElementById('ck-title').textContent = t.title || '';
   document.getElementById('ck-title').title = t.title || '';   // t-b91f: the full title when the bar truncates it
@@ -622,7 +625,7 @@ export function initCockpitRail() {
   }, true));
 
   document.getElementById('ck-end-session').addEventListener('click', async () => {
-    if (!cockpitState || cockpitState._ending) return;
+    if (!cockpitState || cockpitState._ending || state.scratch.get(cockpitState.id)?.term === true) return;
     if (sessionIsLive()) { openLeaveConfirm(); return; }
     const tab = cockpitState;
     const detached = await findLiveDaemonSession(tab.id);

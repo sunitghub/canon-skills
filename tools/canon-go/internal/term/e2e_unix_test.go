@@ -18,6 +18,7 @@ import (
 // TestMain lets the test binary run the restricted prompt itself, so the end-to-end test below can put it on a real pty.
 func TestMain(m *testing.M) {
 	if os.Getenv("CANON_TERM_TEST_CHILD") == "1" {
+		osAuth = nil
 		os.Exit(Main(os.Args[2:])) // os.Args[1] is "term", as the daemon strips it
 	}
 	os.Exit(m.Run())

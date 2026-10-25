@@ -120,7 +120,8 @@ function fmtWait(secs) {
 }
 export function renderSessionStateChip() {
   const chip = document.getElementById('ck-state-chip'), reaper = document.getElementById('ck-reaper');
-  if (!sessionIsLive()) { chip.hidden = true; reaper.hidden = true; return; }
+  // A Terminal is not an agent: no working state and no auto-save countdown.
+  if (!sessionIsLive() || state.scratch.get(cockpitState.id)?.term === true) { chip.hidden = true; reaper.hidden = true; return; }
   const row = cockpitState.daemonRow || null;
   const num = v => (typeof v === 'number' && isFinite(v) && v >= 0) ? v : null;
   let st = row ? ckRowState(row) : 'running';
