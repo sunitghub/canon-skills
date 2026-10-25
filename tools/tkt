@@ -2493,6 +2493,7 @@ EOF
 main() {
   local cmd="${1:-help}"
   shift || true
+  case "$cmd" in help|--help|-h|--version|-v) ;; *) require_project_folder tkt ;; esac   # t-b2ff
 
   case "$cmd" in
     create)         cmd_create "$@" ;;

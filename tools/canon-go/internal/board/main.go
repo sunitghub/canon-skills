@@ -137,6 +137,14 @@ func Run(buildVersion, buildCommit string, args []string) int {
 	}
 
 	cwd := common.Getwd()
+	// t-b2ff: a system folder, a drive root or the home folder is not a project: say so and start nothing.
+	home, _ := os.UserHomeDir()
+	folder := common.EnvOr("SPRINT_CHECK_ROOT", cwd)
+	if why := common.NotAProject(folder, home); why != "" {
+		abs, _ := filepath.Abs(folder)
+		fmt.Fprintf(os.Stderr, "canon: %s is not a project (%s with no git repository). cd into your project folder and run canon again.\n", abs, why)
+		return 1
+	}
 	projectRoot = findProjectRoot(common.EnvOr("SPRINT_CHECK_ROOT", cwd))
 	exe, _ := os.Executable()
 	toolsDir = filepath.Dir(exe)

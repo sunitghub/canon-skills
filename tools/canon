@@ -20,6 +20,7 @@ done
 SCRIPT_DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
 # shellcheck source=cockpit-launch-lib.sh
 source "$SCRIPT_DIR/cockpit-launch-lib.sh"
+source "$SCRIPT_DIR/ticket-root.sh"   # t-b2ff: folder_guard_reason, require_project_folder
 
 usage() {
   cat <<'EOF'
@@ -456,6 +457,7 @@ main() {
     *) echo "Unknown argument: $1" >&2; usage >&2; exit 1 ;;
   esac
 
+  require_project_folder canon   # t-b2ff: not from a system folder, a drive root or the home folder (before anything is fetched or started)
   local port="${PORT_ARG:-${CANON_COCKPIT_PORT:-8899}}"
   local url="http://127.0.0.1:$port/cockpit"
 

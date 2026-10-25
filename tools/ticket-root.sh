@@ -93,3 +93,61 @@ late_docs_delta() {
   if [[ -n "$other" ]]; then printf '%s\n' "$other"; return 1; fi
   printf '%s\n' "$files" | grep . || true
 }
+
+# t-b2ff: canon must not treat a system folder, a drive root or the home folder as a project (an Administrator PowerShell opens in
+# C:\Windows\System32; canon there would serve, then fill, a folder nobody keeps tickets in). folder_guard_reason <dir> prints why
+# <dir> is refused, or nothing. The same table is common.NotAProject in tools/canon-go/internal/common/folderguard.go (the board);
+# tests/folder-guard.sh and its Go test run one corpus through both. A .git at <dir> (inside the Windows tree: at it or above it)
+# makes it a project; a .tickets folder never does. Git Bash shows C:\Windows as /c/windows; a C:\ form is accepted too.
+folder_guard_reason() {
+  local raw="$1" form dir why
+  case "$raw" in
+    [A-Za-z]:*) _folder_guard_one "$raw"; return 0 ;;
+  esac
+  # as given and with links resolved (/etc is /private/etc on macOS)
+  for form in "$(cd "$raw" 2>/dev/null && pwd -L)" "$(cd "$raw" 2>/dev/null && pwd -P)"; do
+    [[ -n "$form" ]] || continue
+    why="$(_folder_guard_one "$form")"
+    [[ -z "$why" ]] || { printf '%s\n' "$why"; return 0; }
+  done
+}
+
+# _folder_guard_one <absolute path or C:\ form>: the reason for that one spelling of a folder, or nothing.
+_folder_guard_one() {
+  local dir="$1" p why="" tree=0 d h
+  case "$dir" in
+    [A-Za-z]:*) p="$(printf '%s' "$dir" | tr 'A-Z\\' 'a-z/')"; p="/${p%%:*}${p#*:}"; dir="$p" ;;   # a C:\ form is walked as /c/...
+    *) p="$(printf '%s' "$dir" | tr 'A-Z' 'a-z')" ;;
+  esac
+  p="${p%/}"; [[ -n "$p" ]] || p="/"
+  case "$p" in
+    /|/[a-z]) why="the root of a drive" ;;
+    /[a-z]/windows|/[a-z]/windows/*) why="a system folder"; tree=1 ;;
+    "/"[a-z]"/program files"|"/"[a-z]"/program files (x86)"|/[a-z]/programdata) why="a system folder" ;;
+    /usr|/bin|/sbin|/etc|/var|/opt|/system|/library|/applications) why="a system folder" ;;
+    *)
+      if [[ -n "${HOME:-}" ]]; then
+        h="$(cd "$HOME" 2>/dev/null && pwd -P)" || h=""
+        [[ -n "$h" && "$(printf '%s' "$dir" | tr 'A-Z' 'a-z')" == "$(printf '%s' "$h" | tr 'A-Z' 'a-z')" ]] && why="your home folder"
+      fi ;;
+  esac
+  [[ -n "$why" ]] || return 0
+  d="$dir"
+  while :; do
+    [[ -e "$d/.git" ]] && return 0
+    [[ "$tree" == 1 && "$d" != "/" && "$d" != "$(dirname "$d")" ]] || break
+    d="$(dirname "$d")"
+  done
+  printf '%s\n' "$why"
+}
+
+# require_project_folder <tool>: refuse, from main() of tkt, sprint and canon (exit ends the real shell, never a $(...) subshell),
+# when the folder canon would use is not a project. Nothing is created.
+require_project_folder() {
+  local tool="$1" dir why
+  dir="$(dirname "$(tickets_dir)")"
+  why="$(folder_guard_reason "$dir")"
+  [[ -z "$why" ]] && return 0
+  echo "$tool: $(cd "$dir" 2>/dev/null && pwd -P || printf '%s' "$dir") is not a project ($why with no git repository). cd into your project folder and run $tool again." >&2
+  exit 1
+}

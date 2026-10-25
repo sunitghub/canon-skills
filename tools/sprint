@@ -1266,6 +1266,7 @@ EOF
 main() {
   local cmd="${1:-help}"
   shift || true
+  case "$cmd" in help|--help|-h) ;; *) require_project_folder sprint ;; esac   # t-b2ff
 
   case "$cmd" in
     start) cmd_start "$@" ;;

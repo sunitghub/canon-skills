@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Changed
+- `canon`, `tkt` and `sprint` refuse to run in a system folder, a drive root or your home folder (`t-b2ff`): an Administrator PowerShell opens in `C:\Windows\System32`, and canon there would serve a board for, and fill, a folder nobody keeps tickets in. They print why and exit 1, creating nothing; a git repository there (a dotfiles repository in `~`) still counts as a project, a `.tickets` folder alone does not, and plain folders with no git are unaffected. See docs/setup.md.
+
 ## [0.18.9] - 2026-10-25
 
 Dialogs resize from the corner you drag. Update with `canon update`, then stop the running board (Ctrl+C in the terminal running `canon`, or close its window) and run `canon` again. Only the board's web files changed: the daemon needs no restart.
