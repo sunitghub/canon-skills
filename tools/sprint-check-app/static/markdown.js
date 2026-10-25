@@ -193,3 +193,15 @@ export function md(raw, ticketId) {
     // Restore ```gherkin-file references as async placeholders (hydrated post-render).
     .replace(/\x03(\d+)\x03/g, (_, i) => renderFeatureRefPlaceholder(featureRefs[+i]));
 }
+
+// md() with images off. md() turns ![alt](url) into an <img> (its src and alt come from the file), and its later transforms (stripping
+// <!-- --> comments, restoring code spans) can rebuild that syntax or put markup inside the tag, so a filter over its source or a
+// regex over its output can be bypassed (`!<!-- c -->[x](url)`, a code span inside an alt). The result is the thing to check: parse it
+// into an inert <template> (it loads and runs nothing) and replace every <img> by its alt text, so no request is made and none of
+// the file's attributes survive. md() escapes everything else first, so no other element can come from the file's text.
+export const safeMd = text => {
+  const t = document.createElement('template');
+  t.innerHTML = md(text, '');
+  t.content.querySelectorAll('img').forEach(i => i.replaceWith('[image: ' + (i.getAttribute('alt') || '') + ']'));
+  return t.innerHTML;
+};

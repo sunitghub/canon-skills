@@ -12934,6 +12934,7 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
     let body = { state: 'not-from-release', reason: 'this install follows main: there is no released copy to compare with', match: 0, total: 0, blocking: false,
       files: [{ path: 'agents/canon-reviewer.md', group: 'agents', gate: true, status: 'unchecked' }, { path: 'skills/sprint/reference/review.md', group: 'prompts', gate: true, status: 'unchecked' }],
       agents: [{ name: 'canon-reviewer', file: 'agents/canon-reviewer.md', graded_by: 'skills/sprint/reference/review.md', role: 'advisory', model: 'claude-sonnet-5', read_only: true }] };
+    await page.route('**/api/admin/model-tiers', route => route.fulfill({ json: { defaults: { eval: { anthropic: 'claude-sonnet-5-5' } }, models: { anthropic: [{ id: 'claude-sonnet-5-5', name: 'Claude Sonnet 5.5' }] } } }));
     await page.route('**/api/integrity**', route => route.fulfill({ json: body }));
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
@@ -12943,7 +12944,7 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
     await expect(page.locator('#ig-body .ig-pill-ok')).toHaveCount(0);       // nothing is shown as matching
     await expect(page.locator('#ig-body .ig-pill-mute').first()).toHaveText('Not a release install');
     await expect(page.locator('#ig-body .ig-frow.ig-unchecked')).toHaveCount(2);
-    await expect(page.locator('#ig-body .ig-card')).toHaveCount(1);
+    await expect(page.locator('#ig-body .ig-agent')).toHaveCount(1);
     body = { state: 'list-pending', tag: 'v1.2.3', reason: 'v1.2.3 has no line in integrity.txt yet', files: [], match: 0, total: 0, blocking: false };
     await page.locator('#ig-again').click();
     await expect(page.locator('#ig-body .ig-strip')).toContainText('List pending');
@@ -12960,14 +12961,15 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
     await page.locator('#ig-again').click();
     await expect(page.locator('#ig-body .ig-strip')).toContainText('3 of 4 files match');
     await expect(page.locator('#ig-body .ig-frow')).toHaveCount(4);              // the protocol file is in the reviewer's card, not listed twice
-    await expect(page.locator('.ig-card')).toHaveCount(1);
-    await expect(page.locator('.ig-card')).toContainText('canon-reviewer');
-    await expect(page.locator('.ig-card .ig-badge')).toHaveText(['advisory', 'read-only']);
-    await expect(page.locator('.ig-card')).toContainText('claude-sonnet-5');
-    await expect(page.locator('.ig-card')).toContainText('review-notes.md');
-    await expect(page.locator('.ig-card .ig-pill-ok')).toHaveText('Matches v1.2.3');
+    await expect(page.locator('.ig-agent')).toHaveCount(1);
+    await expect(page.locator('.ig-agent')).toContainText('canon-reviewer');
+    await expect(page.locator('.ig-agent .ig-badge')).toHaveText(['advisory', 'read-only']);
+    await expect(page.locator('.ig-agent')).toContainText('claude-sonnet-5');
+    await expect(page.locator('.ig-agent')).toContainText('Admin default: Claude Sonnet 5.5');   // read from the Model Tiers registry, not from the agent file
+    await expect(page.locator('.ig-agent')).toContainText('review-notes.md');
+    await expect(page.locator('.ig-agent .ig-pill-ok')).toHaveText('Matches v1.2.3');
     await page.locator('.ig-prompt summary').click();
-    await expect(page.locator('.ig-prompt pre')).toContainText('advisory reviewer gate');
+    await expect(page.locator('.ig-prompt .ig-md')).toContainText('advisory reviewer gate');
     await expect(page.locator('.ig-ghead .ig-pill-bad')).toHaveText('1 differs');       // the Gate files group header
     await expect(page.locator('.ig-frow.ig-changed')).toContainText('tools/sprint');
     await expect(page.locator('.ig-frow.ig-changed .ig-fix code')).toHaveText("git -C '/x/canon' checkout -- tools/sprint");

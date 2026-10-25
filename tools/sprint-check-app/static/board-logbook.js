@@ -3,7 +3,8 @@
 // parses them. The files can come from a PR or a clone, so every piece of their text goes through esc()/md() before it is markup,
 // and nothing here writes a file, runs a command or starts an agent. Declarations plus initLogbook(), run by board-main.js.
 import { SHELL_TAB } from './board-core.js';
-import { esc, escAttr, md } from './board-helpers.js';
+import { esc, escAttr } from './board-helpers.js';
+import { safeMd } from './markdown.js';
 import { initDialog } from './board-dialog.js';
 import { openModal } from './board-modal.js';
 import { findTicketById } from './board-render.js';
@@ -71,18 +72,6 @@ function parseLearnings(text) {
 }
 
 const el = id => document.getElementById(id);
-
-// md() with images off. md() turns ![alt](url) into an <img> (its src and alt come from the file), and its later transforms (stripping
-// <!-- --> comments, restoring code spans) can rebuild that syntax or put markup inside the tag, so a filter over its source or a
-// regex over its output can be bypassed (`!<!-- c -->[x](url)`, a code span inside an alt). The result is the thing to check: parse it
-// into an inert <template> (it loads and runs nothing) and replace every <img> by its alt text, so no request is made and none of
-// the file's attributes survive. md() escapes everything else first, so no other element can come from the file's text.
-const safeMd = text => {
-  const t = document.createElement('template');
-  t.innerHTML = md(text, '');
-  t.content.querySelectorAll('img').forEach(i => i.replaceWith('[image: ' + (i.getAttribute('alt') || '') + ']'));
-  return t.innerHTML;
-};
 
 function fileState(f, name) {
   if (!f) return '<div class="lb-empty">' + esc(name) + ' was not in the answer.</div>';

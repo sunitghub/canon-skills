@@ -5,6 +5,7 @@ import { scratchIcon, TICKET_ID_RE, _projKey, dismissInterrupted, fmtDur, interr
 import { openSessionInTab, openTabs } from './cockpit-tabs.js';
 import { getProjects } from './cockpit-projects.js';
 import { canKill, canReap, confirmEnd } from './cockpit-end.js';
+import { safeMd } from './markdown.js';
 
 export function renderAdminSessions(views){
   const box=document.getElementById('ad-sessions');
@@ -509,6 +510,7 @@ async function igLoad(refresh){
   const box=document.getElementById('ig-body'); if(!box) return;
   box.innerHTML='<div class="setting-d">Checking\u2026</div>';
   let r; try{ r=await (await fetch('/api/integrity'+(refresh?'?refresh=1':''))).json(); }catch(e){ box.innerHTML='<div class="setting-d">Could not reach the board.</div>'; return; }
+  let dflt=''; try{ const m=await (await fetch('/api/admin/model-tiers')).json(); const id=(m.defaults.eval||{}).anthropic; const e=(m.models.anthropic||[]).find(x=>x.id===id); dflt=e?e.name:''; }catch(e){}   // what the Admin page picks for the gates; the agent file's own model is only the floor
   const [cls,label,note]=IG_STATE[r.state]||['mute',r.state,''];
   let h=`<div class="ig-strip ig-${cls}"><b>${esc(label)}</b>${r.tag?' \u00b7 '+esc(r.tag):''}${r.state==='verified'?` \u00b7 ${r.match} of ${r.total} files match${r.source==='cached'?' \u00b7 saved list':''}`:''}`+
     `<button type="button" class="ig-again b-accent" id="ig-again">Check again</button></div>`+
@@ -518,7 +520,7 @@ async function igLoad(refresh){
     const stateLabel=(IG_STATE[r.state]||[0,r.state])[1];
     const pill=rows=>{ if(r.state!=='verified') return `<span class="ig-pill ig-pill-mute">${esc(stateLabel)}</span>`; const bad=rows.filter(x=>x.status!=='match').length; return bad?`<span class="ig-pill ig-pill-bad">${bad} differ${bad===1?'s':''}</span>`:`<span class="ig-pill ig-pill-ok">Matches ${esc(r.tag)}</span>`; };
     const fileRow=x=>`<div class="ig-frow ig-${x.status}"><span class="ig-dot"></span><code>${esc(x.path)}</code>`+(x.gate?'<span class="ig-gate">gate file</span>':'')+
-      (x.status!=='match'?`<span class="ig-st">${esc(x.status)}</span>`:'')+
+      (x.status==='changed'||x.status==='missing'?`<span class="ig-st">${esc(x.status)}</span>`:'')+
       (x.restore?`<div class="ig-fix">Put it back: <code>${esc(x.restore)}</code> <button type="button" class="ig-copy b-neutral" data-cmd="${escAttr(x.restore)}">Copy</button></div>`:'')+`</div>`;
     h+=IG_GROUPS.map(([g,name])=>{
       const rows=files.filter(x=>x.group===g&&!(g==='prompts'&&igCardFiles(r).has(x.path))); if(!rows.length) return '';
@@ -528,17 +530,17 @@ async function igLoad(refresh){
           const own=rows.filter(x=>x.path===a.file)[0];
           const extra=files.filter(x=>x.path===a.graded_by);
           const list=[own].concat(extra).filter(Boolean);
-          const kv=(k,v)=>v?`<div class="ig-kv"><span class="ig-k">${k}</span><span>${v}</span></div>`:'';
-          return `<div class="ig-card"><div class="ig-card-h"><b class="ig-name">${esc(a.name)}</b>`+
+          const kv=(k,v,c)=>v?`<div class="ig-kv"><span class="ig-k">${k}</span><span${c?` class="${c}"`:''}>${v}</span></div>`:'';
+          return `<div class="ig-card ig-agent"><div class="ig-card-h"><b class="ig-name">${esc(a.name)}</b>`+
             (a.role?`<span class="ig-badge">${esc(a.role)}</span>`:'')+(a.read_only?'<span class="ig-badge" title="No Edit or Write tool. The shell can still write.">read-only</span>':'')+
             `<span class="ig-card-pill">${pill(list)}</span></div>`+
-            kv('Model',esc(a.model))+kv('Effort',esc(a.effort))+kv('Tools',esc(a.tools))+kv('Writes',a.writes?`<code>${esc(a.writes)}</code> only`:'')+
+            kv('Model',esc(a.model)+(dflt?` <span class="ig-note">\u00b7 Admin default: ${esc(dflt)} (Review &amp; Eval)</span>`:''),'ig-mono')+kv('Effort',esc(a.effort))+kv('Tools',esc(a.tools))+kv('Writes',a.writes?`<code class="ig-mono">${esc(a.writes)}</code> only`:'')+
             `<div class="ig-files">${list.map(fileRow).join('')}</div>`+
-            (a.prompt?`<details class="ig-prompt"><summary>Prompt \u00b7 ${esc(a.file)}</summary><pre>${esc(a.prompt)}</pre></details>`:'')+`</div>`;
+            (a.prompt?`<details class="ig-prompt"><summary>Prompt \u00b7 ${esc(a.file)}</summary><div class="ig-md">${safeMd(a.prompt)}</div></details>`:'')+`</div>`;
         }).join('')||rows.map(fileRow).join('');
         const shown=new Set((r.agents||[]).flatMap(a=>[a.file,a.graded_by]));
-        const rest=rows.filter(x=>!shown.has(x.path)); if(rest.length) body+=`<div class="ig-files">${rest.map(fileRow).join('')}</div>`;
-      } else body=`<div class="ig-files">${rows.map(fileRow).join('')}</div>`;
+        const rest=rows.filter(x=>!shown.has(x.path)); if(rest.length) body+=`<div class="ig-card"><div class="ig-files">${rest.map(fileRow).join('')}</div></div>`;
+      } else body=`<div class="ig-card"><div class="ig-files">${rows.map(fileRow).join('')}</div></div>`;
       const inAgents=g==='agents'?rows.concat(files.filter(x=>(r.agents||[]).some(a=>a.graded_by===x.path))):rows;
       return `<div class="ig-ghead"><span class="ig-group">${esc(name)}</span><span class="ig-count">${rows.length} file${rows.length===1?'':'s'}</span>${pill(inAgents)}</div>${body}`;
     }).join('');

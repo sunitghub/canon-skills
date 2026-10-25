@@ -1,0 +1,2 @@
+/* Rendered markdown text (markdown.js md()/safeMd()): the Logbook sections and Admin > Integrity prompts share this one rule. */
+.lb-md, .ig-md { font-size: 12.5px; line-height: 1.55; color: var(--text); overflow-wrap: anywhere; white-space: pre-wrap; }

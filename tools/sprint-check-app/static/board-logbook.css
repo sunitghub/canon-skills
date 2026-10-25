@@ -22,7 +22,6 @@
 .lb-sec { border: 1px solid var(--border); border-radius: 10px; background: var(--surface-raised); padding: 10px 14px; margin-bottom: 10px; }
 .lb-sec.lb-focus { border-color: var(--accent); }
 .lb-sec h3 { margin: 0 0 6px; font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-muted); font-weight: 600; }
-.lb-md { font-size: 12.5px; line-height: 1.55; color: var(--text); overflow-wrap: anywhere; white-space: pre-wrap; }
 .lb-md .doc-check-marker { pointer-events: none; }
 .lb-none { color: var(--text-dim); margin: 0; }
 
