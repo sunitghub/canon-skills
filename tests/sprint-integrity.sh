@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# t-2af0: protects `sprint complete`'s integrity gate (tools/sprint _gate_integrity): in an install that came from a release, a
+# changed or missing gate file refuses the close (exit 1, names the file and the restore command, emits gate.rejected
+# reason=integrity_changed); every other state (clean, no list, main install, board without the command) does not.
+set -euo pipefail
+
+source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
+
+work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
+export CANON_HOME="$work/home"; mkdir -p "$CANON_HOME"
+export CANON_INTEGRITY_ROOT   # set below, per install
+board="$(build_board "$work/board")"
+sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
+
+GATE_FILES=(tools/sprint tools/gate-snapshot.sh tools/subagent-log.sh tools/evidence.sh tools/sprint-headless tools/sprint-headless-eval tools/gate-model.sh)
+GATE_PROMPTS=(agents/canon-reviewer.md agents/canon-evaluator.md skills/sprint/reference/review.md skills/sprint/reference/eval.md skills/sprint/reference/shared-gate-protocol.md)
+
+# An install copy whose list (saved under CANON_HOME/integrity, as a first online check would) matches the copy exactly.
+new_install() {
+  local inst="$1" ver=9.8.7 p rows sep
+  rm -rf "$inst"; copy_canon_tree "$inst"
+  printf '%s\n' "$ver" > "$inst/VERSION"
+  rm -f "$inst/.canon-track"; rm -rf "$CANON_HOME/integrity"; mkdir -p "$CANON_HOME/integrity"
+  {
+    printf '{"tag":"v%s","commit":"%s","gate_files":[' "$ver" "$(printf 'a%.0s' $(seq 40))"
+    sep=""; for p in "${GATE_FILES[@]}"; do printf '%s"%s"' "$sep" "$p"; sep=,; done
+    printf '],"gate_prompts":['
+    sep=""; for p in "${GATE_PROMPTS[@]}"; do printf '%s"%s"' "$sep" "$p"; sep=,; done
+    printf '],"files":{'
+    sep=""; for p in "${GATE_FILES[@]}" "${GATE_PROMPTS[@]}" tools/cockpit-daemon.sha256; do printf '%s"%s":"%s"' "$sep" "$p" "$(sha "$inst/$p")"; sep=,; done
+    printf '}}\n'
+  } > "$CANON_HOME/integrity/v$ver.json"
+  sha "$CANON_HOME/integrity/v$ver.json" > "$CANON_HOME/integrity/v$ver.pin"
+}
+
+project="$(make_project)"; trap 'rm -rf "$work" "$project"' EXIT
+inst="$work/install"; new_install "$inst"
+export CANON_INTEGRITY_ROOT="$inst" SPRINT_CHECK_BIN="$board"
+cd "$project"
+git -C "$project" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+id="$("$inst/tools/tkt" create "integrity gate" -t task -p 2)"
+"$inst/tools/tkt" start "$id" >/dev/null
+
+complete() { set +e; out="$("$inst/tools/sprint" complete 2>&1)"; rc=$?; set -e; }
+
+# Clean install: the gate passes; the close stops later, at a gate that has nothing to do with integrity.
+complete
+[[ "$out" != *"differs from the release"* ]] || fail "a clean install was refused by the integrity gate: $out"
+
+# One byte appended to a gate file: refused, with the file and the restore command, and an event.
+printf '#' >> "$inst/tools/gate-model.sh"
+complete
+[[ "$rc" -eq 1 ]] || fail "a changed gate file must exit 1, got $rc: $out"
+assert_contains "$out" "a gate file or gate prompt in this canon install differs"
+assert_contains "$out" "tools/gate-model.sh: changed"
+assert_contains "$out" "canon update"
+[[ -n "$(event_line gate.rejected "$id")" ]] || fail "no gate.rejected event"
+assert_contains "$(event_line gate.rejected "$id")" '"reason":"integrity_changed"'
+
+# A deleted gate prompt: refused too.
+new_install "$inst"; rm "$inst/agents/canon-evaluator.md"
+complete
+[[ "$rc" -eq 1 ]] && [[ "$out" == *"agents/canon-evaluator.md: missing"* ]] || fail "a missing gate prompt must refuse: rc=$rc $out"
+
+# A changed non-gate file, and a changed programs manifest, never refuse.
+new_install "$inst"; printf '#' >> "$inst/README.md"; printf '#' >> "$inst/tools/cockpit-daemon.sha256"
+complete
+[[ "$out" != *"differs from the release"* ]] || fail "a non-gate change refused the close: $out"
+
+# Not a release install, no saved list, or a board that predates the command: fail open even with a changed gate file.
+new_install "$inst"; printf '#' >> "$inst/tools/gate-model.sh"
+echo main > "$inst/.canon-track"
+complete; [[ "$out" != *"differs from the release"* ]] || fail "a main install was refused: $out"
+rm -f "$inst/.canon-track"
+export CANON_HOME="$work/empty-home"; mkdir -p "$CANON_HOME"
+complete; [[ "$out" != *"differs from the release"* ]] || fail "an install with no list (offline) was refused: $out"
+export CANON_HOME="$work/home"
+printf '#!/bin/sh\necho "old board"\n' > "$work/old-board"; chmod +x "$work/old-board"
+SPRINT_CHECK_BIN="$work/old-board" complete
+[[ "$out" != *"differs from the release"* ]] || fail "a board without the command refused the close: $out"
+
+echo "sprint-integrity: ok"

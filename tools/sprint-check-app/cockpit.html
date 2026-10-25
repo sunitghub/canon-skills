@@ -103,6 +103,7 @@
             <div class="ad-tabs" role="tablist" aria-label="Admin">
               <button type="button" class="ad-tab active" role="tab" id="ad-tab-tiers" data-adtab="tiers" aria-selected="true" aria-controls="ad-panel-tiers">Model tiers</button>
               <button type="button" class="ad-tab" role="tab" id="ad-tab-logging" data-adtab="logging" aria-selected="false" aria-controls="ad-panel-logging" tabindex="-1">Logging</button>
+              <button type="button" class="ad-tab" role="tab" id="ad-tab-integrity" data-adtab="integrity" aria-selected="false" aria-controls="ad-panel-integrity" tabindex="-1">Integrity</button>
             </div>
             <div id="ad-panel-tiers" role="tabpanel" aria-labelledby="ad-tab-tiers">
             <div class="mt-wrap">
@@ -128,6 +129,13 @@
               <div class="mt-tabs" id="mt-tabs"></div>
               <div class="mt-grid" id="mt-grid"><div class="mt-loading" role="status"><span class="mt-spin"></span>Loading model tiers…</div></div>
               <div id="mt-legacy"></div>
+            </div>
+            </div>
+            <div id="ad-panel-integrity" role="tabpanel" aria-labelledby="ad-tab-integrity" hidden>
+            <div class="ig-wrap">
+              <div class="slabel">Integrity</div>
+              <div class="setting-d">Do canon&rsquo;s gate files still match the release this install came from? A match proves a file is unchanged since the release; it does not prove the release was safe. This page only reads; it changes nothing.</div>
+              <div id="ig-body" role="status"><div class="setting-d">Not checked yet.</div></div>
             </div>
             </div>
             <div id="ad-panel-logging" role="tabpanel" aria-labelledby="ad-tab-logging" hidden>

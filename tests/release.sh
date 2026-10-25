@@ -43,7 +43,9 @@ EXPECT_NOTES=$'### Added\n- one thing\n- another thing'
 fresh() {   # prints a repo on main, equal to a bare `public` remote, VERSION 0.3.0, CHANGELOG with a dated 0.3.0 section
   local d; d="$(mktemp -d "$WORK/r.XXXXXX")"   # not a counter: this runs in a $(...) subshell
   git init -q --bare -b main "$d.pub.git"; git init -q -b main "$d"; mkdir -p "$d/scripts"
-  cp "$ROOT/scripts/release.sh" "$ROOT/scripts/release-zip.sh" "$d/scripts/" 2>/dev/null || true
+  cp "$ROOT/scripts/release.sh" "$ROOT/scripts/release-zip.sh" "$ROOT/scripts/integrity-list.sh" "$d/scripts/" 2>/dev/null || true
+  # t-2af0: the integrity list names the gate files and prompts, so the fixture repo holds them (any content)
+  local g; for g in tools/sprint tools/gate-snapshot.sh tools/subagent-log.sh tools/evidence.sh tools/sprint-headless tools/sprint-headless-eval tools/gate-model.sh agents/canon-reviewer.md agents/canon-evaluator.md skills/sprint/reference/review.md skills/sprint/reference/eval.md skills/sprint/reference/shared-gate-protocol.md; do mkdir -p "$d/$(dirname "$g")"; echo "$g" > "$d/$g"; done
   echo 0.3.0 > "$d/VERSION"; printf '%s\n' "$CHANGELOG_OK" > "$d/CHANGELOG.md"
   git -C "$d" "${ident[@]}" add -A; git -C "$d" "${ident[@]}" commit -qm init
   git -C "$d" remote add public "$d.pub.git"; git -C "$d" push -q public main 2>/dev/null
@@ -82,6 +84,13 @@ assert_contains "$(cat "$GH_LOG")" "canon-0.3.0.zip"
 sum="$(if command -v sha256sum >/dev/null 2>&1; then sha256sum "$GH_ZIP"; else shasum -a 256 "$GH_ZIP"; fi | cut -d' ' -f1)"
 assert_contains "$out" "v0.3.0 $sum $(git -C "$d" rev-parse 'v0.3.0^{commit}')"
 assert_contains "$out" "releases.txt"
+# t-2af0: the integrity list rides on the same release as a second asset, its hash is a separate line for integrity.txt, and the
+# releases.txt line keeps exactly its three fields
+assert_contains "$(cat "$GH_LOG")" "integrity-0.3.0.json"
+assert_contains "$out" "site/integrity.txt"
+il_sum="$(printf '%s\n' "$out" | sed -n 's/^release: integrity line for integrity-0.3.0.json: v0.3.0 \([0-9a-f]\{64\}\)$/\1/p')"
+[[ -n "$il_sum" ]] || fail "release: no integrity line printed: $out"
+[[ "$(printf '%s\n' "$out" | grep -c '^v0\.3\.0 [0-9a-f]\{64\} [0-9a-f]\{40\}$')" == 1 ]] || fail "release: the releases.txt line is not exactly three fields: $out"
 echo "release: tags, pushes only the tag, creates the release with the CHANGELOG section"
 
 # Another local tag must not travel with it (push is the one tag, not --tags).
@@ -158,6 +167,14 @@ printf '#!/bin/sh\ncase " $* " in *" ls-remote "*) echo "fatal: ls-remote failed
 : > "$GH_LOG"; set +e; out="$(cd "$d" && PATH="$LSR:$BIN:$PATH" bash scripts/release.sh 2>&1)"; code=$?; set -e
 [[ "$code" != 0 ]] || fail "release: a failing ls-remote was read as 'no such tag': $out"
 assert_contains "$out" "cannot list tags"; untouched "$d"
+
+# t-2af0: a list that cannot be built (a gate path missing from the tree) stops everything before the push, and undoes the local tag.
+d="$(fresh)"; rm "$d/tools/gate-model.sh"; git -C "$d" "${ident[@]}" commit -qam "drop a gate file"; git -C "$d" push -q public main 2>/dev/null; : > "$GH_LOG"
+set +e; out="$(rel "$d")"; code=$?; set -e
+[[ "$code" != 0 ]] || fail "release: a tree without a gate file still released: $out"
+assert_contains "$out" "gate path 'tools/gate-model.sh' is not in the tree"
+assert_eq "" "$(git -C "$d" tag)"; assert_eq "" "$(git -C "$d.pub.git" tag)"; assert_eq "" "$(cat "$GH_LOG")"
+echo "release: an integrity list that cannot be built leaves no tag and pushes nothing"
 
 # A zip that cannot be built stops everything before the push, and the local tag it made is undone.
 d="$(fresh)"; rm "$d/scripts/release-zip.sh"; : > "$GH_LOG"

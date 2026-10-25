@@ -496,6 +496,38 @@ async function stopDaemon(){
   }catch(e){ toast("Couldn't reach the board"); }
   setTimeout(loadAdmin,600);
 }
+// ── Admin > Integrity (t-2af0): read-only. GET /api/integrity; "Check again" re-reads getcanon.dev (?refresh=1). No write route.
+const IG_STATE={
+  'verified':['ok','Verified','These files were compared with the hashes published for this release.'],
+  'not-from-release':['mute','Not a release install','There is no released copy to compare with, so nothing is shown as checked.'],
+  'not-checked':['warn','Not checked','The published hashes could not be read or did not verify, so nothing is shown as checked.'],
+  'list-pending':['mute','List pending','This release has no published hash list yet.'],
+};
+const IG_GROUPS=[['agents','Agents'],['prompts','Prompts and protocol'],['tools','Gate files'],['programs','Programs']];
+async function igLoad(refresh){
+  const box=document.getElementById('ig-body'); if(!box) return;
+  box.innerHTML='<div class="setting-d">Checking\u2026</div>';
+  let r; try{ r=await (await fetch('/api/integrity'+(refresh?'?refresh=1':''))).json(); }catch(e){ box.innerHTML='<div class="setting-d">Could not reach the board.</div>'; return; }
+  const [cls,label,note]=IG_STATE[r.state]||['mute',r.state,''];
+  let h=`<div class="ig-strip ig-${cls}"><b>${esc(label)}</b>${r.tag?' \u00b7 '+esc(r.tag):''}${r.state==='verified'?` \u00b7 ${r.match} of ${r.total} files match${r.source==='cached'?' \u00b7 saved list':''}`:''}`+
+    `<button type="button" class="ig-again b-neutral" id="ig-again">Check again</button></div>`+
+    `<div class="setting-d">${esc(r.reason||note)}</div>`;
+  if(r.state==='verified'){
+    h+=IG_GROUPS.map(([g,name])=>{
+      const rows=(r.files||[]).filter(f=>f.group===g); if(!rows.length) return '';
+      return `<div class="ig-group">${esc(name)}</div>`+rows.map(f=>
+        `<div class="ig-row ig-${f.status}"><span class="ig-mark">${f.status==='match'?'\u2713':'\u2717'}</span><code>${esc(f.path)}</code>`+
+        (f.gate?'<span class="ig-gate">gate</span>':'')+`<span class="ig-st">${esc(f.status)}</span>`+
+        (f.restore?`<div class="ig-fix">Put it back: <code>${esc(f.restore)}</code> <button type="button" class="ig-copy b-neutral" data-cmd="${escAttr(f.restore)}">Copy</button></div>`:'')+`</div>`).join('');
+    }).join('');
+    if(r.blocking) h+='<div class="setting-d ig-block">A gate file or gate prompt differs, so <code>sprint complete</code> will refuse to close until it is put back.</div>';
+  }
+  box.innerHTML=h;
+  document.getElementById('ig-again').addEventListener('click',()=>igLoad(true));
+  box.querySelectorAll('.ig-copy').forEach(b=>b.addEventListener('click',async()=>{
+    try{ await navigator.clipboard.writeText(b.dataset.cmd); toast('Copied'); }catch(e){ toast('Select the command and copy it'); }
+  }));
+}
 // t-565f: admin's load-time code, run once at the end (the module version keeps it in initAdmin()).
 export function initAdmin(){
 
@@ -503,10 +535,11 @@ export function initAdmin(){
 // (busy-confirm + re-poll) — OS pid-kill only, never the daemon's own
 // token-gated shutdown route (t-ddc8).
 // t-d40b: Admin's own tabs. The daemon panel and the agent list above stay on every tab; Model tiers is the default.
-const AD_TABS=['tiers','logging'];
+const AD_TABS=['tiers','logging','integrity'];
 function adminTab(name){
   document.querySelectorAll('.ad-tab').forEach(b=>{ const on=b.dataset.adtab===name; b.classList.toggle('active',on); b.setAttribute('aria-selected',String(on)); b.tabIndex=on?0:-1; });
   AD_TABS.forEach(n=>{ const p=document.getElementById('ad-panel-'+n); if(p) p.hidden=n!==name; });
+  if(name==='integrity') igLoad(false);
 }
 function initAdminTabs(){
   const strip=document.querySelector('.ad-tabs'); if(!strip) return;

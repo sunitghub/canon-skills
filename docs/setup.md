@@ -405,6 +405,10 @@ So canon never runs the `python3` App execution alias under `…\AppData\Local\M
 - **Command names depend on the shell:** PowerShell and cmd use the `.cmd` wrappers (`skills refresh`), Git Bash needs the script names (`skills.sh refresh`).
 - **Run canon from your project folder, not an Administrator shell's default one.** An elevated PowerShell opens in `C:\Windows\System32`. `canon`, `tkt` and `sprint` refuse to run in a folder that is not a project: a drive root (`/`, `C:\`), the Windows folder and everything in it, `C:\Program Files`, `C:\Program Files (x86)`, `C:\ProgramData`, the system folders `/usr`, `/bin`, `/sbin`, `/etc`, `/var`, `/opt`, `/System`, `/Library` and `/Applications` themselves, and your home folder itself, each unless a git repository is there (a `.tickets` folder alone does not count). They print why, exit 1, and start and create nothing: `cd` into your project and run again. A plain folder with no git is still a project, and so are the subfolders of those system folders.
 
+### Integrity: have canon's gate files changed? (Admin > Integrity)
+
+`canon` compares the seven gate files and five gate prompts (the reviewer and evaluator definitions and protocol) in an install that came from a release with the hashes published for that release, and `sprint complete` refuses to close while one of them differs: the gates grade your sprint, so they must be the released ones. The page lists each file, marks a gate file, and shows the command that puts it back (`git -C <canon> checkout -- <file>` or `canon update`). It never changes a file. Only a verified release install can block: an install that follows main, a checkout that is not exactly at a release tag, a release with no published list yet, or a machine that is offline with no saved list show a plain state and block nothing. A match shows that a file is unchanged since the release, not that the release was safe. Saved lists live in `integrity/` under `CANON_HOME`; `sprint-check integrity` prints the same result in a terminal.
+
 Adding or removing a Windows gap? Update this list in the same change.
 
 Register canon in another project:

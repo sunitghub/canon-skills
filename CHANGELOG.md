@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Added
+- **Admin > Integrity** (`t-2af0`): in an install that came from a release, canon compares the seven gate files and five gate prompts with the hashes published for that release, and `sprint complete` refuses to close while one differs (it names the file and the command that puts it back). The page is read-only and shows four states (verified, not a release install, not checked, list pending); only "verified" can block. The release now attaches `integrity-X.Y.Z.json` and prints a line for `getcanon.dev/integrity.txt` (`docs/releasing.md` step 5b). `sprint-check integrity [--json] [--gate]` prints the same check in a terminal.
+
 ## [0.18.12] - 2026-10-25
 
 One click from the Sent panel to a Claude cloud session, and a Terminal that can run the cloud workflow. Update with `canon update`, then run Restart Daemon in Admin (the daemon changed) and stop and start the board (Ctrl+C in the terminal running `canon`, or close its window, then run `canon`). A Terminal that is already open keeps the old prompt until you open a new one.

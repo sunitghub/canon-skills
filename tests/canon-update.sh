@@ -210,9 +210,12 @@ assert_eq 2 "$(git -C "$WORK/shallow" rev-list --count HEAD)"
 # t-97b1: on a default install CANON_HOME is the clone, so the Cockpit data dir cockpit/ sits inside it. The repo's own .gitignore must ignore it,
 # or canon update refuses on every install that has run the Cockpit; a real stray file next to it must still be refused.
 git -C "$ROOT" check-ignore -q cockpit/projects.json || fail "the repo .gitignore must ignore /cockpit/ (the Cockpit data dir inside a default install)"
+# t-2af0: the saved integrity list and its pin live in integrity/ under CANON_HOME, so they sit in the clone too.
+git -C "$ROOT" check-ignore -q integrity/v1.2.3.json || fail "the repo .gitignore must ignore /integrity/ (the saved Integrity lists inside a default install)"
 cp "$ROOT/.gitignore" "$WORK/seed/.gitignore"; git -C "$WORK/seed" "${ident[@]}" add .gitignore && git -C "$WORK/seed" "${ident[@]}" commit -qm "real gitignore" && git -C "$WORK/seed" push -q origin main 2>/dev/null
 git clone -q "$WORK/origin.git" "$WORK/inst2" 2>/dev/null; maintrack "$WORK/inst2"
 mkdir -p "$WORK/inst2/cockpit"; echo '{}' > "$WORK/inst2/cockpit/projects.json"
+mkdir -p "$WORK/inst2/integrity"; echo "{}" > "$WORK/inst2/integrity/v1.2.3.json"   # t-2af0
 assert_eq "" "$(git -C "$WORK/inst2" status --porcelain)"
 echo cockpit-news > "$WORK/seed/NEWS"; git -C "$WORK/seed" "${ident[@]}" commit -qam cockpit-news && git -C "$WORK/seed" push -q origin main 2>/dev/null
 : > "$REFRESH_LOG"

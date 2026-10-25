@@ -12902,7 +12902,7 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
     await page.waitForLoadState('networkidle');
     await page.locator('#nav-admin').click();
     const tiers = page.locator('#ad-tab-tiers'), logging = page.locator('#ad-tab-logging');
-    await expect(page.locator('.ad-tab')).toHaveText(['Model tiers', 'Logging']);
+    await expect(page.locator('.ad-tab')).toHaveText(['Model tiers', 'Logging', 'Integrity']);
     await expect(tiers).toHaveAttribute('aria-selected', 'true');
     await expect(page.locator('#ad-panel-tiers')).toBeVisible();
     await expect(page.locator('#mt-tabs')).toBeVisible();                    // the Model tiers content is on the default tab
@@ -12919,11 +12919,45 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
     await expect(tiers).toHaveAttribute('aria-selected', 'true');
     await expect(tiers).toBeFocused();
     await page.keyboard.press('End');
-    await expect(logging).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#ad-tab-integrity')).toHaveAttribute('aria-selected', 'true');   // t-2af0: Integrity is the last tab
     await page.keyboard.press('Home');
     await expect(tiers).toHaveAttribute('aria-selected', 'true');
     expect(await page.locator('#view-admin').innerText()).not.toMatch(/Desktop notifications/);
     await expect(page.locator('#ad-notify-toggle')).toHaveCount(0);
+  });
+
+  // t-2af0. Protects Admin > Integrity: the four states each say what they are and only a verified install lists files; a changed
+  // gate file shows red with its restore command as copyable text; "Check again" asks for a refresh; and the page makes no write call.
+  test('Admin > Integrity: states, a changed gate file with its restore command, Check again, and no write route (t-2af0)', async ({ page }) => {
+    const gets = [], writes = [];
+    page.on('request', r => { if (r.url().includes('/api/integrity')) gets.push(r.url()); else if (r.method() !== 'GET' && r.url().includes('/api/')) writes.push(r.method() + ' ' + r.url()); });
+    let body = { state: 'not-from-release', reason: 'this install follows main: there is no released copy to compare with', files: [], match: 0, total: 0, blocking: false };
+    await page.route('**/api/integrity**', route => route.fulfill({ json: body }));
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    await page.locator('#nav-admin').click();
+    await page.locator('#ad-tab-integrity').click();
+    await expect(page.locator('#ig-body .ig-strip')).toContainText('Not a release install');
+    await expect(page.locator('#ig-body .ig-row')).toHaveCount(0);            // nothing is shown as checked
+    body = { state: 'list-pending', tag: 'v1.2.3', reason: 'v1.2.3 has no line in integrity.txt yet', files: [], match: 0, total: 0, blocking: false };
+    await page.locator('#ig-again').click();
+    await expect(page.locator('#ig-body .ig-strip')).toContainText('List pending');
+    expect(gets[gets.length - 1]).toContain('refresh=1');
+    body = { state: 'not-checked', tag: 'v1.2.3', reason: 'cannot read https://getcanon.dev/integrity.txt (offline)', files: [], match: 0, total: 0, blocking: false };
+    await page.locator('#ig-again').click();
+    await expect(page.locator('#ig-body .ig-strip')).toContainText('Not checked');
+    body = { state: 'verified', tag: 'v1.2.3', source: 'online', match: 2, total: 3, blocking: true, files: [
+      { path: 'tools/sprint', group: 'tools', gate: true, status: 'changed', restore: "git -C '/x/canon' checkout -- tools/sprint" },
+      { path: 'tools/gate-model.sh', group: 'tools', gate: true, status: 'match' },
+      { path: 'agents/canon-reviewer.md', group: 'agents', gate: true, status: 'match' }] };
+    await page.locator('#ig-again').click();
+    await expect(page.locator('#ig-body .ig-strip')).toContainText('2 of 3 files match');
+    await expect(page.locator('#ig-body .ig-row')).toHaveCount(3);
+    await expect(page.locator('.ig-row.ig-changed')).toContainText('tools/sprint');
+    await expect(page.locator('.ig-row.ig-changed .ig-fix code')).toHaveText("git -C '/x/canon' checkout -- tools/sprint");
+    await expect(page.locator('.ig-block')).toContainText('sprint complete');
+    await expect(page.locator('.ig-row.ig-match .ig-fix')).toHaveCount(0);
+    expect(writes).toEqual([]);
   });
 
   // t-d40b. Protects the Admin > Model tiers tab opening: the registry is asked for FIRST (it is a local file, and used to wait behind the daemon,

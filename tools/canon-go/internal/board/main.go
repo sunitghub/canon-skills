@@ -209,6 +209,7 @@ Helpers (used by canon's shell tools; see helpers.go):
   settings <status|add|remove> <settings.json> <allow|deny> <rule>...
   event <kind> --project <dir> --source <name> key=value...
   transcript-report <agent-transcript.jsonl> <first-line-prefix>
+  integrity [--json] [--gate] [--online]
 
 The dashboard reads .tickets/, HANDOFF.md, and git history from the current
 project. It starts a local Go HTTP server and opens the board in your default
@@ -287,6 +288,8 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, loadModelTiers())
 	case "/api/themes":
 		sendJSON(w, listThemes())
+	case "/api/integrity": // t-2af0: read-only; ?refresh=1 re-checks the list against getcanon.dev
+		sendJSON(w, checkIntegrity(defaultIntegrityDeps(filepath.Dir(toolsDir), r.URL.Query().Get("refresh") == "1")))
 	case "/api/tickets":
 		root, ok := effectiveRoot(r)
 		if !ok {

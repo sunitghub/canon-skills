@@ -744,6 +744,22 @@ _gate_reject() {
   canon_event gate.rejected sprint "$(dirname "$(dirname "$2")")" "ticket=$1" "role=$3" "reason=$4"
 }
 
+# _gate_integrity <id> <ticket dir> — t-2af0: refuse the close when this install came from a release and a gate file or gate prompt
+# no longer has that release's hash (a changed gate could grade its own sprint). Only `sprint-check integrity --gate` exit 3 blocks:
+# a board without the command, no list, offline, a main install or a git checkout off the tag all pass. No override flag.
+_gate_integrity() {
+  local id="$1" tdir="$2" b h out rc=0
+  b="$(board_bin)"; h="$("$b" --help 2>/dev/null)" || h=""
+  case "$h" in *"integrity [--json]"*) ;; *) return 0 ;; esac
+  out="$("$b" integrity --gate 2>&1)" || rc=$?
+  [[ "$rc" -eq 3 ]] || return 0
+  echo "Sprint $id cannot close: a gate file or gate prompt in this canon install differs from the release it came from."
+  printf '%s\n' "$out"
+  echo "The gates grade this sprint, so they must be the released ones. Put the files back with the command shown, then run sprint complete again."
+  _gate_reject "$id" "$tdir" integrity integrity_changed
+  return 1
+}
+
 _gate_eval_report() {
   local id="$1" tdir="$2"
   local plan="$tdir/plan.md"
@@ -882,6 +898,7 @@ cmd_complete() {
   tdir="$(ticket_dir_for "$id")"
   acceptance="$tdir/acceptance.md"
 
+  _gate_integrity           "$id" "$tdir"                || exit 1
   _gate_sprint_files        "$id" "$tdir" "$acceptance"  || exit 1
   _gate_acceptance_sections "$id" "$acceptance"          || exit 1
   _gate_wrapup_gates        "$id" "$acceptance"          || exit 1
