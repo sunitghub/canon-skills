@@ -28,6 +28,7 @@ done
 SCRIPT_DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
 source "$SCRIPT_DIR/ticket-root.sh"
 source "$SCRIPT_DIR/platform-lib.sh"   # canon_event (t-8854)
+"$SCRIPT_DIR/work-beat" touch || true   # t-187e
 
 AGENT_ID=""
 AGENT_TYPE=""

@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# work-beat — the "an agent is on this ticket" heartbeat (t-187e). The one writer of .tickets/ACTIVE.beat.
+#   work-beat touch   record now, this host and the agent's process id for the ticket .tickets/ACTIVE names (nothing if none)
+#   work-beat clear   remove the beat
+# The board reads the file and shows Working instead of Resume while it is fresh. It is only a label, so this never fails
+# its caller: every problem is silent and the exit status is 0. CANON_TICKETS_DIR names the .tickets/ folder (as evidence.sh).
+set -uo pipefail
+_SOURCE="${BASH_SOURCE[0]}"
+while [[ -L "$_SOURCE" ]]; do
+  _DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"; _SOURCE="$(readlink "$_SOURCE")"
+  [[ "$_SOURCE" != /* ]] && _SOURCE="$_DIR/$_SOURCE"
+done
+source "$(cd -P "$(dirname "$_SOURCE")" && pwd)/ticket-root.sh"
+
+# The nearest parent process that is an agent harness; empty when none is found. Under Git Bash a process id is the
+# shell's own and means nothing to the board's Windows process table, so none is recorded there.
+agent_pid() {
+  case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) return 0 ;; esac
+  local p=$$ line comm n=0   # walks from this shell upward: each ps line is "<ppid> <comm>" of $p
+  while [[ "$p" =~ ^[0-9]+$ && "$p" -gt 1 && $n -lt 12 ]]; do
+    line="$(ps -o ppid= -o comm= -p "$p" 2>/dev/null)" || return 0
+    line="${line#"${line%%[![:space:]]*}"}"; comm="${line#*[[:space:]]}"
+    comm="$(basename "${comm#"${comm%%[![:space:]]*}"}" | tr 'A-Z' 'a-z')"
+    case "$comm" in claude|codex|copilot|opencode|gemini|pi) echo "$p"; return 0 ;; esac   # $p is still the process the line describes
+    p="${line%%[[:space:]]*}"
+    n=$((n + 1))
+  done
+}
+
+tdir="${CANON_TICKETS_DIR:-$(tickets_dir 2>/dev/null)}" || exit 0
+[[ -n "$tdir" && -d "$tdir" ]] || exit 0
+case "${1:-}" in
+  touch)
+    [[ -f "$tdir/ACTIVE" ]] || exit 0
+    id="$(tr -d '[:space:]' < "$tdir/ACTIVE" 2>/dev/null)" || exit 0
+    [[ "$id" =~ ^t-[0-9a-f]{4}$ ]] || exit 0
+    tmp="$tdir/ACTIVE.beat.$$"
+    { printf 'ticket=%s\nts=%s\nhost=%s\npid=%s\n' "$id" "$(date +%s)" "$(hostname 2>/dev/null | tr -d '[:space:]')" "$(agent_pid)" > "$tmp" \
+        && mv -f "$tmp" "$tdir/ACTIVE.beat"; } 2>/dev/null || rm -f "$tmp" 2>/dev/null
+    ;;
+  clear) rm -f "$tdir/ACTIVE.beat" 2>/dev/null ;;
+  *) echo "usage: work-beat touch|clear" >&2 ;;
+esac
+exit 0

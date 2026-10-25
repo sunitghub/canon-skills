@@ -5854,6 +5854,50 @@ test.describe('cockpit in board (t-ddc8)', () => {
       { session: 'c6', ticket: Q.other, project_root: '/tmp/some-other-project', cwd: '/tmp/some-other-project', agent: 'claude', status: 'needs-you', state: 'needs-you', state_secs: 5, idle_secs: 5, idle_limit_secs: 1800, signal: 'hook' },
     ];
 
+    // Prod path: the card's Resume button on a ticket an agent started in a plain terminal (work-beat's `working` label, t-187e).
+    test('a card shows Working, not Resume, while an agent is on the ticket; Resume anyway still starts it (t-187e)', async ({ page }) => {
+      const id = newTicketId(PROJECT_ROOT);
+      writeTicket(id, 'in_progress');
+      try {
+        let working = { age_s: 240, host: 'this-mac', here: true, pid: 4242 };
+        let rows = [];
+        await stubCockpit(page);
+        await page.route('**/api/cockpit-sessions', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rows) }));
+        await page.route(u => u.pathname === '/api/tickets', async route => {
+          const res = await route.fetch(); const list = await res.json();
+          for (const t of list) if (t.id === id && working) t.working = working;
+          await route.fulfill({ response: res, json: list });
+        });
+        await page.goto(BASE);
+        await page.waitForLoadState('networkidle');
+        const btn = page.locator(`.card[data-id="${id}"] .card-start`);
+        await expect(btn).toHaveText('● Working');
+        await expect(btn).toHaveAttribute('title', /last active on this ticket 4 min ago, on this machine \(process 4242\)/);
+        const started = () => page.evaluate(async id => Object.keys((await import('/static/board-cockpit.js')).cockpitTabs).includes(id), id);
+        // Clicking explains and starts nothing; Cancel leaves it so.
+        await btn.click();
+        await expect(page.locator('#gh-dialog')).toContainText('can collide with the first');
+        await expect(page.locator('#gh-dialog-ok')).toHaveText('Resume anyway');
+        await page.locator('#gh-dialog-cancel').click();
+        expect(await started()).toBe(false);
+        // Resume anyway starts it exactly as Resume does.
+        await btn.click();
+        await page.locator('#gh-dialog-ok').click();
+        await expect.poll(started).toBe(true);
+        await page.evaluate(async id => { const m = await import('/static/board-cockpit.js'); delete m.cockpitTabs[id]; }, id);
+        // The pill follows the theme (tokens only): its colour differs between dark and light.
+        const ink = () => page.evaluate(id => getComputedStyle(document.querySelector(`.card[data-id="${id}"] .card-start`)).color, id);
+        await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark')); const dark = await ink();
+        await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light')); const light = await ink();
+        expect(dark).not.toBe(light);
+        expect(light).not.toBe('rgb(223, 142, 29)');   // not the pale --st-work: 2.4:1 on a light card
+        // A live Cockpit session keeps Open; Working never replaces it.
+        rows = [{ session: 'cw', ticket: id, project_root: PROJECT_ROOT, cwd: PROJECT_ROOT, agent: 'claude', status: 'running', state: 'working', state_secs: 3, idle_secs: 3, idle_limit_secs: 1800 }];
+        await page.reload(); await page.waitForLoadState('networkidle');
+        await expect(btn).toHaveText('Open ▸');
+      } finally { removeTestTicket(PROJECT_ROOT, id); }
+    });
+
     test('board cards (t-28ec): state strips, Answer/Open, needs-you first, counts, Herdr colours, re-render only on change', async ({ page }) => {
       for (const id of Object.values(Q)) writeTicket(id, 'in_progress');
       try {
@@ -15497,6 +15541,25 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.keyboard.press('Escape');
     await expect(page.locator('#gh-dialog')).not.toHaveClass(/open/);
     expect(posts).toEqual([]);
+  });
+
+  // Prod path: the GitHub Sync button on a repo with a long issue list (the route's whole-document read is t-862e's endpoint test).
+  test('GitHub Sync shows 300 issues, and says so when the listing is too large to read (t-862e)', async ({ page }) => {
+    const waiting = Array.from({ length: 300 }, (_, i) => ({ issue: i + 1, title: `Issue ${i + 1}`, type: 'task', priority: 2 }));
+    let answer = { ok: true, exit_code: 0, intake: { repo: 'a/b', label: 'canon', waiting, skipped: [] } };
+    await page.route('**/api/github/intake**', r => json(r, answer));
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await page.locator('#btn-gh-sync').click();
+    await expect(page.locator('#gh-dialog-table tbody tr')).toHaveCount(300);
+    await expect(page.locator('#gh-dialog-ok')).toHaveText('Create 300 selected');
+    await page.locator('#gh-dialog-cancel').click();
+    answer = { ok: false, exit_code: 1, output: 'the issue listing is too large to show (5000000 bytes; the limit is 4194304)' };
+    await page.locator('#btn-gh-sync').click();
+    await expect(page.locator('#gh-dialog')).toContainText('too large to show');
+    await expect(page.locator('#gh-dialog-table')).toBeHidden();
+    await expect(page.locator('#gh-dialog-ok')).toBeDisabled();
+    await page.keyboard.press('Escape');
   });
 
   test('a late preview reply for a closed GitHub Sync dialog does not take focus from the open one (t-b045)', async ({ page }) => {

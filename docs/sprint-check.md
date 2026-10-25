@@ -136,6 +136,8 @@ Every card on the board shows **▶ Start** (OPEN) or **▶ Resume** (IN_PROGRES
 click it to switch the board itself into cockpit mode and launch or resume a
 sprint agent without leaving the browser — no second terminal.
 
+**Working (`t-187e`).** When you start an agent by hand in a plain terminal (`sprint start` there), the Cockpit knows nothing about it, and Resume would start a second agent on the same ticket. So the commands an agent runs (`sprint start` / `continue`, `tkt start`, `evidence.sh stamp`, `gate-snapshot.sh`, `subagent-log.sh`) write a small heartbeat, `.tickets/ACTIVE.beat` (the ticket, the time, this machine and the agent's process id when it can be found; `tkt close` and `sprint complete` remove it). While `.tickets/ACTIVE` names the ticket and the heartbeat is fresh, its card shows a **● Working** pill instead of Resume. Fresh means: the agent's process is still alive and the last command was under 4 hours ago, or, when no process could be checked (another machine, Windows, an agent canon does not recognise), the last command was under 10 minutes ago. When the agent stops, or the machine restarts, the pill goes back to Resume within a few seconds with nothing to clean up. Click the pill for how long ago and where; **Resume anyway** starts the Cockpit session as Resume does. A live Cockpit session still shows Open / Answer. It is a label only: it never blocks anything, and only the ticket this checkout's `ACTIVE` names can show it (an agent in another worktree keeps its own `ACTIVE`).
+
 - **What it does:** a background daemon (`tools/cockpit-daemon`) owns a real
   **PTY** running an interactive `claude` session on the ticket, and serves an
   embedded terminal (xterm.js). Click **Start sprint** (or **Resume**) → the

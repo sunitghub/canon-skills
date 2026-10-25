@@ -48,6 +48,7 @@ id="$1"; shift
 
 root="$(git rev-parse --show-toplevel 2>/dev/null)" || die "not inside a git repository"
 git -C "$root" rev-parse --verify -q HEAD >/dev/null 2>&1 || die "this repository has no commit yet"
+"$SCRIPT_DIR/work-beat" touch || true   # t-187e
 tdir="${CANON_TICKETS_DIR:-$(tickets_dir)}"   # a plain clone has its own empty .tickets/: point this at the project's, and the stamp still names the clone's HEAD
 [[ -d "$tdir/$id" && ! -L "$tdir/$id" ]] || die "no ticket folder $id under $tdir"
 edir="$tdir/$id/evidence"

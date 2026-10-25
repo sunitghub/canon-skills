@@ -1273,6 +1273,8 @@ func loadTickets(root string) []ticket {
 			t["type_outcome"] = entry
 		}
 	}
+	host, _ := os.Hostname()
+	annotateWorking(ticketsDirForRoot(root), tickets, time.Now(), host, pidAlive)
 	headlessRunsMu.Lock()
 	running := map[string]bool{}
 	for id, state := range headlessRuns {
@@ -4541,6 +4543,9 @@ func getHeadlessRunState(ticketID string) map[string]any {
 
 const tktTail = 16384
 
+// intakeMax: the most `tkt sync-issues --dry-run --json` output the board will read whole (about 10,000 issues).
+const intakeMax = 4 << 20
+
 var prRe = regexp.MustCompile(`^[0-9]{1,9}$`)
 
 func resolveTkt() string {
@@ -4563,7 +4568,11 @@ func tailString(s string) string {
 	return s
 }
 
-func runTkt(root string, args []string) map[string]any {
+func runTkt(root string, args []string) map[string]any { return runTktMax(root, args, 0) }
+
+// runTktMax: maxBytes 0 keeps only the last tktTail bytes (a log for a person). A document someone parses must not be cut:
+// with maxBytes > 0 a successful run's whole output is returned, or ok:false saying it is too large, never a tail of it.
+func runTktMax(root string, args []string, maxBytes int) map[string]any {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, resolveTkt(), args...)
@@ -4578,6 +4587,12 @@ func runTkt(root string, args []string) map[string]any {
 		} else {
 			out, code = []byte(fmt.Sprintf("could not run tkt: %v", err)), 1
 		}
+	}
+	if maxBytes > 0 && code == 0 {
+		if len(out) > maxBytes {
+			return map[string]any{"ok": false, "exit_code": 1, "output": fmt.Sprintf("the issue listing is too large to show (%d bytes; the limit is %d)", len(out), maxBytes)}
+		}
+		return map[string]any{"ok": true, "exit_code": 0, "output": string(out)}
 	}
 	return map[string]any{"ok": code == 0, "exit_code": code, "output": tailString(string(out))}
 }
@@ -4783,7 +4798,7 @@ var digitsRe = regexp.MustCompile(`^[0-9]{1,8}$`)
 // labelled canon that no ticket links to yet); "last_synced" is the newest github.synced event for this project, or nil.
 // Event lines are untrusted: a count that is not digits is not shown.
 func githubIntake(root string) map[string]any {
-	res := runTkt(root, []string{"sync-issues", "--dry-run", "--json"})
+	res := runTktMax(root, []string{"sync-issues", "--dry-run", "--json"}, intakeMax)
 	if res["ok"] == true {
 		var d map[string]any
 		if json.Unmarshal([]byte(res["output"].(string)), &d) != nil {

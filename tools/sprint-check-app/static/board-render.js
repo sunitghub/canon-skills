@@ -8,7 +8,7 @@ import { openCockpit, renderSidebarChanges } from './board-cockpit-rail.js';
 import { cockpitForwardSlash, fetchWorktreeLock } from './board-worktree.js';
 import { openCommitPanel } from './board-panels.js';
 import { applySearch, setText } from './board-ui.js';
-import { bindGithubCardButtons, ensureGithubStatus, ghButtonHTML, ghChipHTML, ghOut } from './board-github.js';
+import { bindGithubCardButtons, ensureGithubStatus, ghButtonHTML, ghChipHTML, ghOut, openDialog } from './board-github.js';
 
 // ── Render ────────────────────────────────────────────────────────────────
 
@@ -442,6 +442,7 @@ export function renderBoard() {
     btn.addEventListener('click', e => {
       e.stopPropagation();
       if (btn.disabled) return;
+      if (btn.classList.contains('working')) { const wt = state.tickets.find(x => x.id === btn.dataset.id); if (wt && wt.working) resumeWorking(wt); return; }
       openCockpit(btn.dataset.id);
     });
   });
@@ -725,6 +726,16 @@ export function readiness(t) {
   return { ready, hasAcceptance, hasPlan, acceptanceIncomplete, acceptanceUnchecked, planIncomplete, planApproved, label };
 }
 
+// t-187e: how long ago and where the agent that holds the ticket last showed itself (the work-beat label).
+function workingAgo(sec) { return sec < 90 ? 'moments ago' : sec < 5400 ? `${Math.round(sec / 60)} min ago` : `${Math.round(sec / 3600)} h ago`; }
+function workingTip(w) {
+  return `An agent was last active on this ticket ${workingAgo(w.age_s)}, ${w.here ? 'on this machine' : `on ${w.host || 'another machine'}`}${w.pid ? ` (process ${w.pid})` : ''}.`;
+}
+async function resumeWorking(t) {
+  const r = await openDialog({ title: `${t.id} is being worked on`, body: `${workingTip(t.working)} Resuming starts a second agent on the same ticket, which can collide with the first.`, ok: 'Resume anyway', cancel: 'Cancel' });
+  if (r && r.ok) openCockpit(t.id);
+}
+
 function cardHTML(t, idx) {
   const { ready, label, acceptanceIncomplete, acceptanceUnchecked, planIncomplete } = readiness(t);
   const animClass = (idx !== undefined) ? ' animate-in' : '';
@@ -751,6 +762,8 @@ function cardHTML(t, idx) {
     startBtn = `<button class="card-start resume" data-id="${esc(t.id)}" title="Resume this sprint — it's in progress in worktree ${escAttr(run.branch)}">▶ Resume</button>`;
   } else if (t.status === 'open') {
     startBtn = `<button class="card-start" data-id="${esc(t.id)}" title="Start this sprint in the cockpit">▶ Start</button>`;
+  } else if (t.status === 'in_progress' && t.working) {   // t-187e: an agent outside the Cockpit is on it: a click explains before it starts a second one
+    startBtn = `<button class="card-start working" type="button" data-id="${esc(t.id)}" title="${escAttr(workingTip(t.working))}">● Working</button>`;
   } else if (t.status === 'in_progress') {
     startBtn = `<button class="card-start resume" data-id="${esc(t.id)}" title="Resume this sprint in the cockpit">▶ Resume</button>`;
   }

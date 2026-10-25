@@ -8,6 +8,20 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 - **Terminal `su` asks for your account password** (`t-4pb6`): the OS asks for it (`dscl -authonly` on macOS, `su` to your own account on Linux; on Windows 11 24H2+ with sudo switched on, its UAC prompt), whatever `sudo` is set to, so a passwordless sudo no longer skips it. The random word is gone: with no OS prompt on the machine, or an account that cannot pass it, there is no full shell. In a Terminal tab, End Session, Auto Save, the state chip and Kill are gone or disabled: close it with `Ctrl+.` then `x`.
 
+## [0.18.7] - 2026-10-25
+
+Cards say Working while an agent is on the ticket. Update with `canon update`, then stop the running board (Ctrl+C in the terminal running `canon`, or close its window) and run `canon` again. The board, `tkt` and `sprint` changed; the daemon needs no restart. The new heartbeat starts with the next `tkt start` or `sprint continue`, so a ticket already in progress shows Resume until its agent runs one.
+
+### Added
+- **Working** on the board's cards (`t-187e`). An agent you started by hand in a plain terminal used to leave the card saying Resume, and a click started a second agent on the same ticket. The commands an agent runs now keep a small heartbeat, `.tickets/ACTIVE.beat`, and while it is fresh the card shows **● Working**. Click it for how long ago and where; **Resume anyway** still starts the session. When the agent stops or the machine restarts the card goes back to Resume by itself. A live Cockpit session still shows Open / Answer. See docs/sprint-check.md.
+
+## [0.18.6] - 2026-10-25
+
+GitHub Sync now shows a long issue list. Update with `canon update`, then stop the running board (Ctrl+C in the terminal running `canon`, or close its window) and run `canon` again. Only the board changed; the daemon needs no restart.
+
+### Fixed
+- **GitHub Sync** shows every waiting issue (`t-862e`). The board used to keep only the last 16 KB of the issue listing, so a repo with about 85 or more waiting issues failed to preview. The listing is now read whole, up to 4 MiB (about 10,000 issues); beyond that the dialog says the listing is too large to show instead of a broken preview.
+
 ## [0.18.5] - 2026-10-25
 
 GitHub Sync lets you pick which issues become tickets, and every dialog can be resized from two corners. Update with `canon update`, then stop the running board (Ctrl+C in the terminal running `canon`, or close its window) and run `canon` again. The board and `tkt` changed; the daemon needs no restart.

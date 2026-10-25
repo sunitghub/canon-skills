@@ -201,7 +201,7 @@ let dlgEscape = true;    // t-e523: while a step runs, Escape does nothing; only
 let dlgFollow = true;    // the log follows new output until the user scrolls up, and again once they scroll back down
 let dlgReturn = null;    // where focus goes back to when the dialog closes
 // Returns a promise of the choice; .gen is this dialog's number for updateDialog.
-function openDialog({ title, body = '', pre = '', check = '', ok = '', cancel = 'Close', escape = true }) {
+export function openDialog({ title, body = '', pre = '', check = '', ok = '', cancel = 'Close', escape = true }) {
   const d = dialog();
   if (!d.el.classList.contains('open')) { dlgReturn = document.activeElement; resetPanelDrag(d.box); resetPanelResize(d.box); }
   const gen = ++dlgGen;
