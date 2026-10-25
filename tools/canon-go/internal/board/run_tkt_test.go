@@ -31,11 +31,14 @@ func TestRunTktMax(t *testing.T) {
 	if r := run("50000", false, 0); r["ok"] != true || len(out(r)) != tktTail {
 		t.Errorf("max 0 must keep the last %d bytes, got ok=%v len=%d", tktTail, r["ok"], len(out(r)))
 	}
-	if r := run("50000", false, 100000); r["ok"] != true || len(out(r)) != 50000 {
-		t.Errorf("under the cap must return the whole output, got ok=%v len=%d", r["ok"], len(out(r)))
+	if r := run("50000", false, 100000); r["ok"] != true || r["exit_code"] != 0 || len(out(r)) != 50000 {
+		t.Errorf("under the cap must return the whole output, got ok=%v code=%v len=%d", r["ok"], r["exit_code"], len(out(r)))
+	}
+	if r := run("50000", false, 50000); r["ok"] != true || len(out(r)) != 50000 {
+		t.Errorf("exactly the cap is allowed, got ok=%v len=%d", r["ok"], len(out(r)))
 	}
 	r := run("50000", false, 40000)
-	if r["ok"] != false || !strings.Contains(out(r), "too large to show (50000 bytes; the limit is 40000)") {
+	if r["ok"] != false || r["exit_code"] != 1 || !strings.Contains(out(r), "too large to show (50000 bytes; the limit is 40000)") {
 		t.Errorf("over the cap must refuse with the size, got %v %q", r["ok"], out(r))
 	}
 	if r := run("50000", true, 100000); r["ok"] != false || r["exit_code"] != 3 || len(out(r)) != tktTail {
