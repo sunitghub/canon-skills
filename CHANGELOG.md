@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.18.12] - 2026-10-25
+
+One click from the Sent panel to a Claude cloud session, and a Terminal that can run the cloud workflow. Update with `canon update`, then run Restart Daemon in Admin (the daemon changed) and stop and start the board (Ctrl+C in the terminal running `canon`, or close its window, then run `canon`). A Terminal that is already open keeps the old prompt until you open a new one.
+
 ### Added
 - **To Claude Cloud** on the Sent panel (`t-0aa7`): after Create issue, one click opens the board's Terminal with `tkt send-issue <id> --launch` already typed; you press Enter. On Windows it copies the line and says to paste it in PowerShell or Git Bash (the Terminal cannot start a cloud session there yet). `tkt send-issue <id> --launch` on a ticket that was already sent now starts the session on its existing issue instead of refusing, and creates nothing.
 
