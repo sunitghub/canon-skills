@@ -457,3 +457,61 @@ func TestIntegrityDirectoryWhereAFileBelongsIsChanged(t *testing.T) {
 		t.Errorf("a folder in place of a gate file: %+v", r)
 	}
 }
+
+func TestIntegrityGroupsAndJSONKeys(t *testing.T) {
+	f := newIntegFx(t)
+	f.edit("tools/sprint", "x")
+	r := checkIntegrity(f.deps)
+	want := map[string]string{"tools/sprint": "tools", "agents/canon-reviewer.md": "agents", "skills/sprint/reference/eval.md": "prompts", integrityManifest: "programs"}
+	for _, x := range r.Files {
+		if g, ok := want[x.Path]; ok && x.Group != g {
+			t.Errorf("%s is in group %q, want %q", x.Path, x.Group, g)
+		}
+		if x.Gate != (x.Path != integrityManifest) {
+			t.Errorf("%s gate=%v", x.Path, x.Gate)
+		}
+	}
+	b, _ := json.Marshal(r) // the page reads these names
+	for _, k := range []string{`"state":"verified"`, `"tag":"v1.2.3"`, `"source":"online"`, `"match":12`, `"total":13`, `"blocking":true`, `"files":[`, `"path":"tools/sprint"`, `"group":"tools"`, `"gate":true`, `"status":"changed"`, `"restore":"canon update"`} {
+		if !strings.Contains(string(b), k) {
+			t.Errorf("the JSON lacks %s: %s", k, b)
+		}
+	}
+}
+
+func TestIntegrityReasonsSayWhy(t *testing.T) {
+	f := newIntegFx(t)
+	f.fail["integrity.txt"] = errors.New("no network")
+	if r := checkIntegrity(f.deps); !strings.Contains(r.Reason, "cannot read https://pin.test/integrity.txt (no network)") {
+		t.Errorf("offline: %q", r.Reason)
+	}
+	g := newIntegFx(t)
+	g.pinTx = "v9.9.9 " + strings.Repeat("a", 64) + "\n"
+	if r := checkIntegrity(g.deps); r.Reason != "v1.2.3 has no line in integrity.txt yet" {
+		t.Errorf("pending: %q", r.Reason)
+	}
+	h := newIntegFx(t)
+	h.deps.root = filepath.Join(h.root, "gone")
+	if r := checkIntegrity(h.deps); r.State != integrityNotFromRelease || r.Reason != "cannot read the install folder" {
+		t.Errorf("no folder: %+v", r)
+	}
+	k := newIntegFx(t)
+	k.deps.atTag = func(string, string) (bool, bool, error) { return true, false, nil }
+	if r := checkIntegrity(k.deps); r.Reason != "this checkout is not exactly at v1.2.3" {
+		t.Errorf("off the tag: %q", r.Reason)
+	}
+}
+
+func TestIntegrityOversizedSavedListIsNotUsed(t *testing.T) {
+	f := newIntegFx(t)
+	checkIntegrity(f.deps)
+	lp, pp := f.deps.cachePaths("v1.2.3")
+	big := bytes.Repeat([]byte(" "), integrityListMax+1)
+	_ = os.WriteFile(lp, big, 0o600)
+	_ = os.WriteFile(pp, []byte(sha256Hex(big)+"\n"), 0o600)
+	f.deps.online = false
+	f.fail["integrity.txt"] = errors.New("offline")
+	if r := checkIntegrity(f.deps); r.State != integrityNotChecked {
+		t.Errorf("an oversized saved list: %+v", r)
+	}
+}

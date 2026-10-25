@@ -280,16 +280,16 @@ func validRel(p string) bool {
 	return integrityPathRe.MatchString(p) && !strings.HasPrefix(p, "/") && !strings.Contains(p, "..") && !strings.Contains(p, "//")
 }
 
-func integrityGroup(p string, gate bool) string {
+func integrityGroup(p string, prompt bool) string {
 	switch {
 	case p == integrityManifest:
 		return "programs"
 	case strings.HasPrefix(p, "agents/"):
 		return "agents"
-	case gate:
-		return "tools"
+	case prompt:
+		return "prompts"
 	}
-	return "prompts"
+	return "tools"
 }
 
 // checkIntegrity decides the install's state and, for a verified one, compares the slice-1 files with the list.
@@ -327,13 +327,15 @@ func checkIntegrity(d integrityDeps) integrityResult {
 		res.State, res.Reason = integrityNotChecked, "the list for "+tag+" is not one canon can read"
 		return res
 	}
-	gate := map[string]bool{}
+	gate, prompt := map[string]bool{}, map[string]bool{}
 	var paths []string
-	for _, group := range [][]string{l.GateFiles, l.GatePrompts} {
-		for _, p := range group {
-			gate[p] = true
-			paths = append(paths, p)
-		}
+	for _, p := range l.GateFiles {
+		gate[p] = true
+		paths = append(paths, p)
+	}
+	for _, p := range l.GatePrompts {
+		gate[p], prompt[p] = true, true
+		paths = append(paths, p)
 	}
 	paths = append(paths, integrityManifest)
 	res.State, res.Source = integrityVerified, source
@@ -345,7 +347,7 @@ func checkIntegrity(d integrityDeps) integrityResult {
 			res.Files, res.Match, res.Total, res.Blocking = []integrityFile{}, 0, 0, false
 			return res
 		}
-		f := integrityFile{Path: p, Group: integrityGroup(p, gate[p]), Gate: gate[p]}
+		f := integrityFile{Path: p, Group: integrityGroup(p, prompt[p]), Gate: gate[p]}
 		got, st := hashFile(filepath.Join(root, filepath.FromSlash(p)))
 		switch {
 		case st != "":
