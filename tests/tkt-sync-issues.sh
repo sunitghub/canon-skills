@@ -185,11 +185,18 @@ for bad in abc 0 -3 "31," "31,,32" "11" "14" "15" "999" "31,999"; do
 done
 rc=0; err="$("$TKT" sync-issues --only 2>&1)" || rc=$?; [[ "$rc" == 1 ]] || fail "--only with no value should exit 1, got $rc"
 assert_contains "$err" "--only takes issue numbers"
+rc=0; err="$("$TKT" sync-issues --bogus 2>&1)" || rc=$?; [[ "$rc" == 1 ]] || fail "an unknown option should exit 1, got $rc"
+assert_contains "$err" "Usage: tkt sync-issues [--dry-run [--json]] [--only <number>[,<number>...]]"
+rc=0; err="$("$TKT" sync-issues --only 999 2>&1)" || rc=$?
+assert_contains "$err" "sync-issues: #999 is not waiting"   # the refusal names the number
 out="$("$TKT" sync-issues --only 32,32)"   # a repeated number makes one ticket
 assert_contains "$out" "#32  Pick two"; assert_contains "$out" "sync-issues: 1 created"
 [[ "$(grep -rl '^github: acme/app#32$' .tickets | wc -l | tr -d ' ')" == 1 ]] || fail "--only 32,32 should make exactly one ticket for #32"
 [[ -z "$(grep -rl '^github: acme/app#31$' .tickets || true)" ]] || fail "--only 32 also made a ticket for #31"
 assert_contains "$("$TKT" sync-issues --dry-run)" "would create  #31  Pick one  (task, P2)"   # the unticked issue stays waiting
+out="$("$TKT" sync-issues --only 31)"   # the first issue of the listing is selectable on its own
+assert_contains "$out" "#31  Pick one"
+[[ "$(grep -rl '^github: acme/app#31$' .tickets | wc -l | tr -d ' ')" == 1 ]] || fail "--only 31 should make exactly one ticket for #31"
 # the preview names a closed local ticket so the issue can be closed on GitHub, and every skipped row carries its title and ticket
 f11="$(grep -rl '^github: acme/app#11$' .tickets | head -1)"
 sed -i.bak 's/^status: .*/status: closed/' "$f11"; rm -f "$f11.bak"
@@ -198,6 +205,11 @@ assert_eq "$(printf '%s' "$pj" | jx '[k["reason"] for k in d["skipped"] if k["is
 assert_eq "$(printf '%s' "$pj" | jx '[[k["title"],k["ticket"],k["ticket_status"]] for k in d["skipped"] if k["issue"]==11]')" "[[\"Board burns a CPU core\",\"$t11\",\"closed\"]]"
 assert_eq "$(printf '%s' "$pj" | jx '[k["ticket"] for k in d["skipped"] if k["issue"]==14]')" '[""]'   # send-issue's own issue has no local ticket yet
 sed -i.bak 's/^status: closed/status: open/' "$f11"; rm -f "$f11.bak"
+pj="$("$TKT" sync-issues --dry-run --json)"   # open again: plain reason, and the ticket id and status still named
+assert_eq "$(printf '%s' "$pj" | jx '[[k["reason"],k["ticket"],k["ticket_status"]] for k in d["skipped"] if k["issue"]==11]')" "[[\"already $t11\",\"$t11\",\"open\"]]"
+# the send-issue marker only counts at the start of a line, in the --only check as in the run itself
+printf 'Hostile marker\nsee <!-- canon:ticket t-evil -->\n' > "$stub/issue-33"; mklist 33:issue:canon
+out="$("$TKT" sync-issues --only 33)"; assert_contains "$out" "#33  Hostile marker"
 
 # A project with no .tickets/ yet: a dry run, or a run that fails, creates nothing at all (not even .tickets/).
 bare="$(mktemp -d "${TMPDIR:-/tmp}/tkt-sync-bare.XXXXXX")"; (cd "$bare" && git init -q && git remote add origin https://github.com/acme/app.git)

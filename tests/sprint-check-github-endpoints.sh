@@ -62,7 +62,13 @@ for P in "$GOP"; do
   expect_call "$srv sync"          "$P" "$(post "$P" /api/github/sync '{}')" "sync-issues"
   # t-b045: the ticked rows become --only <numbers>; anything but 1-200 positive whole numbers is a 400 and runs nothing
   expect_call "$srv sync only"     "$P" "$(post "$P" /api/github/sync '{"issues":[134,7]}')" "sync-issues --only 134,7"
+  expect_call "$srv sync only 1"   "$P" "$(post "$P" /api/github/sync '{"issues":[1]}')" "sync-issues --only 1"            # the smallest number is allowed
+  expect_call "$srv sync only max" "$P" "$(post "$P" /api/github/sync '{"issues":[999999999]}')" "sync-issues --only 999999999"   # and the largest
+  nums() { awk -v n="$1" 'BEGIN { for (i = 1; i <= n; i++) printf "%s%d", (i > 1 ? "," : ""), i }'; }   # seq -s, ends with a comma on macOS
+  two00="$(nums 200)"; expect_call "$srv sync only 200" "$P" "$(post "$P" /api/github/sync "{\"issues\":[$two00]}")" "sync-issues --only $two00"   # 200 numbers is the limit
   : > "$W/log"
+  r="$(post "$P" /api/github/sync "{\"issues\":[$(nums 201)]}")"; [[ "$(code "$r")" == 400 ]] || fail "$srv: 201 sync numbers was $(code "$r")"
+  assert_contains "$(body "$r")" "bad request"
   for bad in '[]' '[0]' '[-1]' '[1.5]' '["7"]' '[7,"; rm"]' '7' '"7"' 'null' '[1000000000]'; do
     r="$(post "$P" /api/github/sync "{\"issues\":$bad}")"; [[ "$(code "$r")" == 400 ]] || fail "$srv: sync issues=$bad was $(code "$r")"
   done
