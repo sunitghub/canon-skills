@@ -153,6 +153,16 @@ func TestProjectTagList(t *testing.T) {
 	if b, _ := os.ReadFile(file); string(b) != `{"not":"an array"` {
 		t.Errorf("a corrupt tags.json was overwritten: %q", b)
 	}
+	writeFile(t, file, `null`) // t-3472: null is not an array either; it is refused and kept, not read as empty and replaced
+	if e, _ := get()["error"].(string); !strings.Contains(e, "not a JSON array") {
+		t.Errorf("a null tags.json is not reported: %v", get())
+	}
+	if code, _ := tagsPost(t, "/api/tags", `{"tag":"newtag"}`); code != http.StatusBadRequest {
+		t.Errorf("add over a null tags.json = %d, want 400", code)
+	}
+	if b, _ := os.ReadFile(file); string(b) != `null` {
+		t.Errorf("a null tags.json was overwritten: %q", b)
+	}
 	writeFile(t, file, `["fine","bad tag"]`)
 	if e, _ := get()["error"].(string); !strings.Contains(e, "bad tag") {
 		t.Errorf("an invalid entry is not reported: %v", get())

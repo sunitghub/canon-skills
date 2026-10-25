@@ -37,6 +37,11 @@ func normalizeTags(csv string) ([]string, error) {
 	if strings.ContainsAny(csv, "\r\n") { // as tkt: a newline is never trimmed away, it is refused
 		return nil, fmt.Errorf("tags must be on one line")
 	}
+	for i := 0; i < len(csv); i++ { // as tkt (LC_ALL=C): any non-ASCII byte is refused, so no Unicode space trims and no Kelvin sign folds to k
+		if csv[i] >= 0x80 {
+			return nil, fmt.Errorf("tags must be plain ASCII: use lowercase letters, digits and dashes")
+		}
+	}
 	var out []string
 	seen := map[string]bool{}
 	for _, raw := range strings.Split(csv, ",") {
@@ -138,6 +143,9 @@ func readProjectTags(root string) ([]string, error) {
 	var list []string
 	if err := json.Unmarshal(data, &list); err != nil {
 		return nil, fmt.Errorf("tags.json is not a JSON array of strings: fix or delete it (%v)", err)
+	}
+	if list == nil { // JSON null unmarshals to a nil slice without error: refuse it like any non-array file
+		return nil, fmt.Errorf("tags.json is not a JSON array of strings: fix or delete it (it holds null)")
 	}
 	for _, t := range list {
 		if !ticketTagRe.MatchString(t) {

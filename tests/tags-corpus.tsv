@@ -20,3 +20,8 @@ quote"	ERR
 a,b,c,d,e,f,g,h	a,b,c,d,e,f,g,h
 a,b,c,d,e,f,g,h,i	ERR
 a,b,c,d,e,f,g,h,a	a,b,c,d,e,f,g,h
+ go	ERR
+go 	ERR
+ go	ERR
+go, 	ERR
+Kube	ERR
