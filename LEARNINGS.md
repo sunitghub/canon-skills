@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-24-2026 12:54
+learnings-sweep last run: 10-24-2026 20:18
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-25 | [t-5157](.tickets/t-5157/learnings.md) | A line editor's own tests and a mutation sweep both missed a panic (`strings.Fields` of a Unicode-space-only line is empty, then `words[len(words)-1]`) that the fresh evaluator found by typing NBSP then Tab on a real pty and by fuzzing `complete` with 20000 random lines: for input handling, hand the evaluator the hostile-input brief, and treat any word-splitting that assumes one-space separators as suspect. | UNPROMOTED |
 | 2026-10-24 | [t-9791](.tickets/t-9791/learnings.md) | A test whose `origin` is a fake `https://github.com/...` URL must rewrite reads as well as pushes: `git ls-remote origin` reached real GitHub (401), git prompted on /dev/tty, and on a pty (the board's Check & merge) the prompt stopped the batch's whole background process group; the old check also passed vacuously offline. `scripts/test.sh` now exports `GIT_TERMINAL_PROMPT=0` | UNPROMOTED |
 | 2026-10-24 | [t-37e8](.tickets/t-37e8/learnings.md) | `run-board-spec.sh` copies the real working tree, gitignored files included, so a file the user's own board writes (here the project's `.tickets/tags.json`, which held their real tags) leaks into the spec and silently changed an ordering assertion: a spec that touches shared project state must delete it first and last, and never assert on what a real tree may hold. Related: a list repainted under the pointer right after it opens swallows the click (repaint only when the data changed), which only a real browser spec showed. | UNPROMOTED |
 | 2026-10-24 | [t-cca5](.tickets/t-cca5/learnings.md) | Adding a shared component to the always-present DOM (the Logbook's top-left grip) silently broke an older test whose selector was unscoped (`.modal-resize-handle-tl` matched two elements): it failed on main in both browsers for a whole sprint and was filed as "Mac-only, unexplained". Scope a test's selector to its own panel, and read a baseline failure's message before calling it environmental. Also: `run-board-spec.sh` counts the tool wrapper's own shell as "another run" when launched in the background or through a pipe; run it plain with `--allow-busy` on a quiet machine. | UNPROMOTED |
