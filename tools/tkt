@@ -1372,6 +1372,8 @@ cmd_sync_issues() {
     printf '%s\t%s\n' "$n" "$labels" >> "$tmp/todo"
   done < "$tmp/list"
   if [[ ! -f "$tmp/todo" ]]; then
+    # --only names issues to create; with none listed at all it cannot be satisfied, so it refuses like any number that is not waiting.
+    if [[ -n "$only" ]]; then echo "sync-issues: #${only%%,*} is not waiting (no open issue is labelled canon here); nothing was created" >&2; exit 1; fi
     if $json; then _sync_json "$repo" "$tmp"; return 0; fi
     echo "sync-issues: no open issues labelled canon on $repo"
     $dry || canon_event github.synced tkt "$root" "count=0"

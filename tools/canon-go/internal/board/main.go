@@ -820,7 +820,15 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 	}
 	if path == "/api/github/sync" {
 		args := []string{"sync-issues"}
-		// t-b045: the dialog's ticked rows. A list that is not 1-200 positive integers is a bad request; nothing is built from it
+		// t-b045: the only key this route reads is "issues". Any other key (a wrong-case "Issues", say) is a bad request, never
+		// a silent "no list" that would create every waiting issue.
+		for k := range payload {
+			if k != "issues" {
+				http.Error(w, "bad request", http.StatusBadRequest)
+				return
+			}
+		}
+		// The dialog's ticked rows. A list that is not 1-200 positive integers is a bad request; nothing is built from it
 		// but digits, and tkt still refuses a number that is not waiting.
 		if v, present := payload["issues"]; present {
 			nums, ok := issueNumbers(v)

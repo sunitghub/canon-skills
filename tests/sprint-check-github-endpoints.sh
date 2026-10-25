@@ -69,6 +69,9 @@ for P in "$GOP"; do
   : > "$W/log"
   r="$(post "$P" /api/github/sync "{\"issues\":[$(nums 201)]}")"; [[ "$(code "$r")" == 400 ]] || fail "$srv: 201 sync numbers was $(code "$r")"
   assert_contains "$(body "$r")" "bad request"
+  for stray in '{"Issues":[1]}' '{"issues":[1],"all":true}' '{"all":true}'; do   # a key the route does not read is refused, never "no list"
+    r="$(post "$P" /api/github/sync "$stray")"; [[ "$(code "$r")" == 400 ]] || fail "$srv: sync $stray was $(code "$r")"
+  done
   for bad in '[]' '[0]' '[-1]' '[1.5]' '["7"]' '[7,"; rm"]' '7' '"7"' 'null' '[1000000000]'; do
     r="$(post "$P" /api/github/sync "{\"issues\":$bad}")"; [[ "$(code "$r")" == 400 ]] || fail "$srv: sync issues=$bad was $(code "$r")"
   done

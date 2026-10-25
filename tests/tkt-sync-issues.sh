@@ -204,7 +204,11 @@ pj="$("$TKT" sync-issues --dry-run --json)"
 assert_eq "$(printf '%s' "$pj" | jx '[k["reason"] for k in d["skipped"] if k["issue"]==11]')" "[\"already $t11 (closed here): close #11 on GitHub\"]"
 assert_eq "$(printf '%s' "$pj" | jx '[[k["title"],k["ticket"],k["ticket_status"]] for k in d["skipped"] if k["issue"]==11]')" "[[\"Board burns a CPU core\",\"$t11\",\"closed\"]]"
 assert_eq "$(printf '%s' "$pj" | jx '[k["ticket"] for k in d["skipped"] if k["issue"]==14]')" '[""]'   # send-issue's own issue has no local ticket yet
-sed -i.bak 's/^status: closed/status: open/' "$f11"; rm -f "$f11.bak"
+for st in cancelled archived; do   # every status that means "done here" gets the close-on-GitHub hint
+  sed -i.bak "s/^status: .*/status: $st/" "$f11"; rm -f "$f11.bak"
+  assert_eq "$("$TKT" sync-issues --dry-run --json | jx '[k["reason"] for k in d["skipped"] if k["issue"]==11]')" "[\"already $t11 ($st here): close #11 on GitHub\"]"
+done
+sed -i.bak 's/^status: .*/status: open/' "$f11"; rm -f "$f11.bak"
 pj="$("$TKT" sync-issues --dry-run --json)"   # open again: plain reason, and the ticket id and status still named
 assert_eq "$(printf '%s' "$pj" | jx '[[k["reason"],k["ticket"],k["ticket_status"]] for k in d["skipped"] if k["issue"]==11]')" "[[\"already $t11\",\"$t11\",\"open\"]]"
 # the send-issue marker only counts at the start of a line, in the --only check as in the run itself
@@ -226,6 +230,17 @@ n0="$(synced)"; "$TKT" sync-issues --dry-run >/dev/null
 assert_eq "$n0" "$(synced)"   # t-9641 eval: a dry run with nothing labelled records no sync (the board's preview runs it)
 "$TKT" sync-issues >/dev/null
 assert_eq $((n0 + 1)) "$(synced)"
+# --only with nothing waiting at all (an empty listing, or only a pull request) refuses with exit 1, writes nothing and records no sync
+n1="$(synced)"; before="$(snap)"
+for l in "" "15:pr:canon"; do
+  if [[ -n "$l" ]]; then mklist "$l"; else : > "$stub/list"; fi
+  for flags in "--only 5" "--dry-run --only 5" "--dry-run --json --only 15"; do
+    rc=0; err="$("$TKT" sync-issues $flags 2>&1)" || rc=$?
+    [[ "$rc" == 1 ]] || fail "sync-issues $flags with nothing waiting should exit 1, got $rc: $err"
+    assert_contains "$err" "is not waiting"
+  done
+done
+assert_eq "$n1" "$(synced)"; assert_eq "$before" "$(snap)"
 
 git remote set-url origin https://gitlab.com/acme/app.git; : > "$STUB_LOG"
 rc=0; err="$("$TKT" sync-issues 2>&1)" || rc=$?
