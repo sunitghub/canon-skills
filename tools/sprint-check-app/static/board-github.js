@@ -602,7 +602,9 @@ async function syncFromGithub() {
     const refresh = () => { const n = picked().length; updateDialog({ body: n ? SYNC_WARNING : 'Nothing to create.', okLabel: `Create ${n} selected`, okDisabled: !n }, shown.gen); };
     updateDialog({ pre: '', table: syncTable(rows, refresh), escape: true }, shown.gen);
     refresh();
-    (document.querySelector('#gh-dialog-table input:not(:disabled)') || dialog().cancel).focus();   // the keyboard starts on the first row you can tick
+    // The keyboard starts on the first row you can tick, but only while this dialog is still the one shown: a late reply for a
+    // closed one must not take focus from whatever the user has moved to.
+    if (dlgGen === shown.gen) (document.querySelector('#gh-dialog-table input:not(:disabled)') || dialog().cancel).focus();
   }
   const choice = await shown;
   if (!choice.ok) return;

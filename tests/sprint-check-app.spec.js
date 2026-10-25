@@ -15485,6 +15485,24 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     expect(posts).toEqual([]);
   });
 
+  test('a late preview reply for a closed GitHub Sync dialog does not take focus from the open one (t-b045)', async ({ page }) => {
+    let calls = 0, release;
+    const held = new Promise(r => { release = r; });
+    const intake = { ok: true, exit_code: 0, intake: { repo: 'a/b', label: 'canon', waiting: [{ issue: 9, title: 'One', type: 'task', priority: 2 }], skipped: [] } };
+    await page.route('**/api/github/intake**', async r => { if (++calls === 1) await held; return json(r, intake); });
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await page.locator('#btn-gh-sync').click();            // the first reply is slow
+    await page.locator('#gh-dialog-cancel').click();       // closed before it arrives
+    await page.locator('#btn-gh-sync').click();            // reopened: this reply is quick
+    await expect(page.locator('#gh-dialog-table tbody tr')).toHaveCount(1);
+    await page.locator('#gh-dialog-cancel').focus();       // the user has moved to Cancel
+    release();
+    await page.waitForTimeout(400);                        // the stale reply has been handled
+    await expect(page.locator('#gh-dialog-cancel')).toBeFocused();
+    await page.keyboard.press('Escape');
+  });
+
   test('GitHub Sync rows tint on hover, and every base dialog resizes from both corners (t-b045)', async ({ page }) => {
     await page.route('**/api/github/intake**', r => json(r, { ok: true, exit_code: 0, intake: { repo: 'a/b', label: 'canon', waiting: [{ issue: 9, title: 'One', type: 'task', priority: 2 }, { issue: 8, title: 'Two', type: 'bug', priority: 1 }], skipped: [] } }));
     await page.goto(BASE);

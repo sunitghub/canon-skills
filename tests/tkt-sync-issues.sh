@@ -197,6 +197,10 @@ assert_contains "$("$TKT" sync-issues --dry-run)" "would create  #31  Pick one  
 out="$("$TKT" sync-issues --only 31)"   # the first issue of the listing is selectable on its own
 assert_contains "$out" "#31  Pick one"
 [[ "$(grep -rl '^github: acme/app#31$' .tickets | wc -l | tr -d ' ')" == 1 ]] || fail "--only 31 should make exactly one ticket for #31"
+# a repeated flag is refused (it used to replace the first, so --only 31 --only 32 made only #32); a comma list is the way
+b0="$(snap)"; rc=0; err="$("$TKT" sync-issues --only 31 --only 32 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "a repeated --only should exit 1, got $rc: $err"
+assert_contains "$err" "--only may be given once"; assert_eq "$b0" "$(snap)"
 # the preview names a closed local ticket so the issue can be closed on GitHub, and every skipped row carries its title and ticket
 f11="$(grep -rl '^github: acme/app#11$' .tickets)"; f11="${f11%%$'\n'*}"   # the first match; no early-exit reader under pipefail
 sed -i.bak 's/^status: .*/status: closed/' "$f11"; rm -f "$f11.bak"
@@ -230,6 +234,12 @@ n0="$(synced)"; "$TKT" sync-issues --dry-run >/dev/null
 assert_eq "$n0" "$(synced)"   # t-9641 eval: a dry run with nothing labelled records no sync (the board's preview runs it)
 "$TKT" sync-issues >/dev/null
 assert_eq $((n0 + 1)) "$(synced)"
+# a listing that repeats an issue (gh --paginate can) makes one ticket for it, with or without --only
+printf 'Twice listed\nx\n' > "$stub/issue-41"; mklist 41:issue:canon 41:issue:canon
+out="$("$TKT" sync-issues --only 41)"; assert_contains "$out" "sync-issues: 1 created"
+[[ "$(grep -rl '^github: acme/app#41$' .tickets | wc -l | tr -d ' ')" == 1 ]] || fail "a repeated listing entry made more than one ticket for #41"
+printf 'Twice listed again\nx\n' > "$stub/issue-42"; mklist 42:issue:canon 42:issue:canon
+out="$("$TKT" sync-issues)"; assert_contains "$out" "sync-issues: 1 created"
 # --only with nothing waiting at all (an empty listing, or only a pull request) refuses with exit 1, writes nothing and records no sync
 n1="$(synced)"; before="$(snap)"
 for l in "" "15:pr:canon"; do

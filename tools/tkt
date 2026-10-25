@@ -1340,6 +1340,7 @@ cmd_sync_issues() {
       --only)
         # --only 5,7: create just those issues (the Cockpit's GitHub Sync passes what the user ticked). Positive integers only.
         [[ -n "${2:-}" && "$2" =~ ^[1-9][0-9]*(,[1-9][0-9]*)*$ ]] || { echo "sync-issues: --only takes issue numbers like 5 or 5,7 (got '${2:-}')" >&2; exit 1; }
+        [[ -z "$only" ]] || { echo "sync-issues: --only may be given once (use a comma list: --only 5,7)" >&2; exit 1; }   # a second flag must not silently replace the first
         only="$2"; shift 2 ;;
       *) echo "Usage: tkt sync-issues [--dry-run [--json]] [--only <number>[,<number>...]]" >&2; exit 1 ;;
     esac
@@ -1359,9 +1360,10 @@ cmd_sync_issues() {
   err="$(gh api --paginate "repos/$repo/issues?labels=canon&state=open&per_page=100" --jq "$q" 2>&1 > "$tmp/list")" \
     || { echo "sync-issues: gh could not list issues on $repo: $err" >&2; exit 1; }
   # Decode every issue first, so a bad entry part-way creates nothing.
-  local n kind labels t64 b64
+  local n kind labels t64 b64 seen=","
   while IFS=$'\t' read -r n kind labels t64 b64; do
     [[ "$n" =~ ^[0-9]+$ && "$kind" == issue ]] || continue
+    case "$seen" in *",$n,"*) continue ;; esac; seen="$seen$n,"   # a paginated listing can repeat an issue: one ticket per issue
     # Each decode is checked on its own: a failed title decode must not hide behind the body's status.
     { printf '%s' "$t64" | base64 --decode > "$tmp/t64-$n" && printf '%s' "$b64" | base64 --decode > "$tmp/b64-$n"; } 2>/dev/null \
       || { echo "sync-issues: could not decode issue #$n from the listing" >&2; exit 1; }
