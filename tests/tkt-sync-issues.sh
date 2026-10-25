@@ -172,6 +172,33 @@ rc=0; err="$("$TKT" sync-issues 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "an undecodable body should exit 1, got $rc: $err"
 assert_eq "$before" "$(snap)"
 
+# --only (t-b045, the Cockpit's GitHub Sync table): the selection narrows what is created, never widens it.
+printf 'Pick one\nx\n' > "$stub/issue-31"; printf 'Pick two\nx\n' > "$stub/issue-32"
+mklist 31:issue:canon 32:issue:canon 11:issue:canon 14:issue:canon 15:pr:canon
+before="$(snap)"; : > "$STUB_LOG"
+# a value that is not a list of positive integers, or a number this run would not create (already a ticket, send-issue's own, a pull
+# request, not listed), refuses with exit 1 and writes nothing, even when a valid number comes with it
+for bad in abc 0 -3 "31," "31,,32" "11" "14" "15" "999" "31,999"; do
+  rc=0; err="$("$TKT" sync-issues --only "$bad" 2>&1)" || rc=$?
+  [[ "$rc" == 1 ]] || fail "--only '$bad' should exit 1, got $rc: $err"
+  assert_eq "$before" "$(snap)"
+done
+rc=0; err="$("$TKT" sync-issues --only 2>&1)" || rc=$?; [[ "$rc" == 1 ]] || fail "--only with no value should exit 1, got $rc"
+assert_contains "$err" "--only takes issue numbers"
+out="$("$TKT" sync-issues --only 32,32)"   # a repeated number makes one ticket
+assert_contains "$out" "#32  Pick two"; assert_contains "$out" "sync-issues: 1 created"
+[[ "$(grep -rl '^github: acme/app#32$' .tickets | wc -l | tr -d ' ')" == 1 ]] || fail "--only 32,32 should make exactly one ticket for #32"
+[[ -z "$(grep -rl '^github: acme/app#31$' .tickets || true)" ]] || fail "--only 32 also made a ticket for #31"
+assert_contains "$("$TKT" sync-issues --dry-run)" "would create  #31  Pick one  (task, P2)"   # the unticked issue stays waiting
+# the preview names a closed local ticket so the issue can be closed on GitHub, and every skipped row carries its title and ticket
+f11="$(grep -rl '^github: acme/app#11$' .tickets | head -1)"
+sed -i.bak 's/^status: .*/status: closed/' "$f11"; rm -f "$f11.bak"
+pj="$("$TKT" sync-issues --dry-run --json)"
+assert_eq "$(printf '%s' "$pj" | jx '[k["reason"] for k in d["skipped"] if k["issue"]==11]')" "[\"already $t11 (closed here): close #11 on GitHub\"]"
+assert_eq "$(printf '%s' "$pj" | jx '[[k["title"],k["ticket"],k["ticket_status"]] for k in d["skipped"] if k["issue"]==11]')" "[[\"Board burns a CPU core\",\"$t11\",\"closed\"]]"
+assert_eq "$(printf '%s' "$pj" | jx '[k["ticket"] for k in d["skipped"] if k["issue"]==14]')" '[""]'   # send-issue's own issue has no local ticket yet
+sed -i.bak 's/^status: closed/status: open/' "$f11"; rm -f "$f11.bak"
+
 # A project with no .tickets/ yet: a dry run, or a run that fails, creates nothing at all (not even .tickets/).
 bare="$(mktemp -d "${TMPDIR:-/tmp}/tkt-sync-bare.XXXXXX")"; (cd "$bare" && git init -q && git remote add origin https://github.com/acme/app.git)
 mklist 11:issue:canon,bug,P1

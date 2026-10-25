@@ -82,7 +82,10 @@ Claude subscription, with no API key. The ticket goes to your repo as a GitHub i
 
 Before the first send, the Cockpit's Factory › GitHub (or `tkt github-doctor`) checks that gh is installed and signed in
 and that origin is a GitHub repo, and has Copy buttons for the recipe below. Issues labelled `canon` come in with the
-board's header button **GitHub Sync** (`tkt sync-issues`), which stays greyed out until those checks pass. Factory ›
+board's header button **GitHub Sync** (`tkt sync-issues`), which stays greyed out until those checks pass. It opens a table
+(Idx, Issue, Reason and a checkbox per row): the issues it would create are ticked, the others are disabled with the reason (a
+ticket that is closed here is marked so you can close its issue on GitHub), and **Create N selected** makes only the ticked
+ones (`tkt sync-issues --only 5,7`). Factory ›
 GitHub's Intake box shows the issues waiting (`tkt sync-issues --dry-run --json`) and when the project last synced.
 
 A ticket that went to GitHub keeps its trail in `.tickets/<id>/github.md`: `tkt send-issue`, `tkt import-results` and

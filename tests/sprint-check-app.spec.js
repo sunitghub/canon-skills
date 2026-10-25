@@ -15383,54 +15383,101 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     expect(pushes).toEqual(['POST']);
   });
 
-  // Prod path: the header's Sync from GitHub button (tkt sync-issues through t-d271's two routes).
-  test('Sync from GitHub previews the dry run, creates on Create only, and disables Create when there is nothing to make (t-90a3)', async ({ page }) => {
-    let preview = { ok: true, exit_code: 0, output: 'would create  #61  Export tasks as CSV  (feature, P2)\nwould create  #62  Dark mode flickers  (bug, P1)\nskip  #57  already t-3b90\ndry run: 2 to create, nothing written\n' };
+  // Prod path: the header's GitHub Sync button (tkt sync-issues through t-d271's routes; the table and its ticked rows are t-b045).
+  test('GitHub Sync lists the issues in a table, creates only the ticked ones, and disables Create when there is nothing to make (t-b045)', async ({ page }) => {
+    const waiting = [{ issue: 61, title: 'Export tasks as CSV', type: 'feature', priority: 2 }, { issue: 62, title: 'Dark mode flickers', type: 'bug', priority: 1 }];
+    const skipped = [{ issue: 57, title: 'An old one', reason: 'already t-3b90 (closed here): close #57 on GitHub', ticket: 't-3b90', ticket_status: 'closed' }];
+    let intake = { ok: true, exit_code: 0, intake: { repo: 'a/b', label: 'canon', waiting, skipped } };
     const posts = [];
     let reloads = 0;
-    await page.route('**/api/github/sync-preview**', r => json(r, preview));
-    await page.route(u => u.pathname === '/api/github/sync', r => { posts.push(r.request().method()); return json(r, { ok: true, exit_code: 0, output: 't-aa01  #61  Export tasks as CSV\nt-aa02  #62  Dark mode flickers\nsync-issues: 2 created\n' }); });
+    await page.route('**/api/github/intake**', r => json(r, intake));
+    await page.route(u => u.pathname === '/api/github/sync', r => { posts.push(JSON.parse(r.request().postData() || '{}')); return json(r, { ok: true, exit_code: 0, output: 't-aa01  #61  Export tasks as CSV\nsync-issues: 1 created\n' }); });
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
     page.on('request', q => { if (new URL(q.url()).pathname === '/api/tickets') reloads++; });
-    const dlg = page.locator('#gh-dialog'), ok = page.locator('#gh-dialog-ok');
+    const dlg = page.locator('#gh-dialog'), ok = page.locator('#gh-dialog-ok'), rows = page.locator('#gh-dialog-table tbody tr');
 
     await page.locator('#btn-gh-sync').click();
-    await expect(page.locator('#gh-dialog-pre')).toContainText('would create  #61  Export tasks as CSV');
+    await expect(page.locator('#gh-dialog-table th')).toHaveText(['Idx', 'Issue', 'Reason', '']);
+    await expect(rows).toHaveCount(3);   // newest issue first: 62, 61, then the skipped 57
+    await expect(rows.nth(0)).toContainText('#62 Dark mode flickers');
+    await expect(rows.nth(0).locator('td').nth(0)).toHaveText('1');
+    await expect(rows.nth(0).locator('td').nth(2)).toHaveText('new: becomes a bug ticket (P1)');
+    await expect(rows.nth(2).locator('td').nth(2)).toHaveText('already t-3b90 (closed here): close #57 on GitHub');   // the GitHub side is suggested
+    await expect(rows.nth(2).locator('td').nth(1)).toContainText('An old one');
+    await expect(rows.locator('input')).toHaveCount(3);
+    await expect(rows.nth(0).locator('input')).toBeChecked();
+    await expect(rows.nth(1).locator('input')).toBeChecked();
+    await expect(rows.nth(2).locator('input')).toBeDisabled();
+    await expect(rows.nth(2).locator('input')).not.toBeChecked();
     await expect(page.locator('#gh-dialog-body')).toContainText('The label admits an issue; it does not vouch for it.');
-    await expect(ok).toHaveText('Create 2 tickets');
-    await expect(ok).toBeEnabled();
+    await expect(ok).toHaveText('Create 2 selected');
     await page.locator('#gh-dialog-cancel').click();
     await expect(dlg).not.toHaveClass(/open/);
     expect(posts).toEqual([]);
 
     await page.locator('#btn-gh-sync').click();
-    await expect(ok).toHaveText('Create 2 tickets');
+    await rows.nth(0).locator('input').uncheck();   // leave #62 out
+    await expect(ok).toHaveText('Create 1 selected');
     const before = reloads;
     await ok.click();
-    await expect(page.locator('#gh-dialog-pre')).toContainText('sync-issues: 2 created');
-    expect(posts).toEqual(['POST']);
+    await expect(page.locator('#gh-dialog-pre')).toContainText('sync-issues: 1 created');
+    expect(posts).toEqual([{ issues: [61] }]);   // only the ticked row
     await expect.poll(() => reloads).toBeGreaterThan(before);
     await page.locator('#gh-dialog-cancel').click();
 
-    preview = { ok: true, exit_code: 0, output: 'skip  #57  already t-3b90\ndry run: 0 to create, nothing written\n' };
     await page.locator('#btn-gh-sync').click();
-    await expect(ok).toHaveText('Create 0 tickets');
-    await expect(ok).toBeDisabled();
-    await expect(page.locator('#gh-dialog-body')).toHaveText('Nothing to create.');
+    await rows.nth(0).locator('input').uncheck(); await rows.nth(1).locator('input').uncheck();
+    await expect(ok).toHaveText('Create 0 selected');
+    await expect(ok).toBeDisabled();   // nothing ticked: nothing to confirm
     await page.locator('#gh-dialog-cancel').click();
 
-    preview = { ok: false, exit_code: 1, output: 'sync-issues: origin is not a GitHub repo (https://gitlab.com/a/b.git)\n' };
+    intake = { ok: true, exit_code: 0, intake: { repo: 'a/b', label: 'canon', waiting: [], skipped } };
+    await page.locator('#btn-gh-sync').click();
+    await expect(ok).toBeDisabled();
+    await expect(page.locator('#gh-dialog-body')).toHaveText('Nothing to create.');
+    await expect(rows).toHaveCount(1);   // the skipped row is still listed: its Reason is the advice
+    await page.locator('#gh-dialog-cancel').click();
+
+    intake = { ok: false, exit_code: 1, output: 'sync-issues: origin is not a GitHub repo (https://gitlab.com/a/b.git)\n' };
     await page.locator('#btn-gh-sync').click();
     await expect(page.locator('#gh-dialog-pre')).toContainText('origin is not a GitHub repo');
     await expect(ok).toBeDisabled();
     await page.locator('#gh-dialog-cancel').click();
-    expect(posts).toEqual(['POST']);
+    expect(posts).toEqual([{ issues: [61] }]);
 
     // A split-pane-wide board: the button drops its label, so it adds only an icon to the header.
     await page.setViewportSize({ width: 640, height: 600 });
     await expect(page.locator('#btn-gh-sync .gh-sync-lbl')).toBeHidden();
     expect((await page.locator('#btn-gh-sync').boundingBox()).width).toBeLessThan(50);
+  });
+
+  test('GitHub Sync shows a hostile title as text, and the table follows the theme (t-b045)', async ({ page }) => {
+    const evil = '<img src=x onerror="window.__pwned=1"> <b>bold</b>';
+    await page.route('**/api/github/intake**', r => json(r, { ok: true, exit_code: 0, intake: { repo: 'a/b', label: 'canon', waiting: [{ issue: 9, title: evil, type: 'task', priority: 2 }], skipped: [] } }));
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await page.locator('#btn-gh-sync').click();
+    const cell = page.locator('#gh-dialog-table tbody tr').first().locator('td').nth(1);
+    await expect(cell).toContainText(evil);   // the characters themselves, not markup
+    await expect(page.locator('#gh-dialog-table img, #gh-dialog-table b + b')).toHaveCount(0);
+    expect(await page.evaluate(() => window.__pwned)).toBeUndefined();
+    const seen = {};
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate(th => { if (th === 'light') document.documentElement.dataset.theme = 'light'; else document.documentElement.removeAttribute('data-theme'); }, theme);
+      const css = await page.evaluate(() => {
+        const wrap = document.getElementById('gh-dialog-table'), td = wrap.querySelector('tbody tr td'), box = wrap.querySelector('input');
+        const v = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+        return { border: getComputedStyle(wrap).borderTopColor, idx: getComputedStyle(td).color, accent: getComputedStyle(box).accentColor, vars: { border: v('--border'), muted: v('--text-muted'), accent: v('--accent') } };
+      });
+      seen[theme] = css;
+      const probe = await page.evaluate(vars => { const p = document.createElement('i'); document.body.append(p); const out = {}; for (const [k, c] of Object.entries(vars)) { p.style.color = c; out[k] = getComputedStyle(p).color; } p.remove(); return out; }, css.vars);
+      expect(css.border).toBe(probe.border); expect(css.idx).toBe(probe.muted); expect(css.accent).toBe(probe.accent);   // tokens, not literals
+    }
+    expect(seen.dark.idx).not.toBe(seen.light.idx);   // and they differ between themes
+    expect(seen.dark.border).not.toBe(seen.light.border);
+    await page.evaluate(() => document.documentElement.removeAttribute('data-theme'));
+    await page.locator('#gh-dialog-cancel').click();
   });
 
   // Prod path: Factory › GitHub (t-9641; was Admin's), rendering GET /api/github/doctor (tkt github-doctor) for the chosen project.
@@ -16075,10 +16122,10 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('the GitHub dialog moves by its title, resizes from its corner, and opens at its default place again (t-e523)', async ({ page }) => {
-    await page.route('**/api/github/sync-preview**', r => json(r, { ok: true, exit_code: 0, output: Array.from({ length: 40 }, (_, i) => `skip  #${i}  already t-0000`).join('\n') + '\ndry run: 0 to create, nothing written\n' }));
+    await page.route('**/api/github/intake**', r => json(r, { ok: true, exit_code: 0, intake: { repo: 'a/b', label: 'canon', waiting: [], skipped: Array.from({ length: 40 }, (_, i) => ({ issue: i + 1, title: `Issue ${i + 1}`, reason: 'already t-0000', ticket: 't-0000', ticket_status: 'open' })) } }));
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
-    const box = page.locator('#gh-dialog-box'), pre = page.locator('#gh-dialog-pre');
+    const box = page.locator('#gh-dialog-box'), pre = page.locator('#gh-dialog-table');
     await page.locator('#btn-gh-sync').click();
     await expect(page.locator('#gh-dialog-body')).toHaveText('Nothing to create.');
     const start = await box.boundingBox(), preStart = await pre.boundingBox();
@@ -16098,7 +16145,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     const grown = await box.boundingBox(), preGrown = await pre.boundingBox();
     expect(grown.width).toBeGreaterThan(moved.width + 40);
     expect(grown.height).toBeGreaterThan(moved.height + 80);
-    expect(preGrown.height).toBeGreaterThan(preStart.height + 60);   // the log takes the new room
+    expect(preGrown.height).toBeGreaterThan(preStart.height + 60);   // the table takes the new room
     await page.locator('#gh-dialog-cancel').click();
     await page.locator('#btn-gh-sync').click();
     await expect(page.locator('#gh-dialog-body')).toHaveText('Nothing to create.');
@@ -16110,8 +16157,8 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   test('the GitHub dialog ignores a click outside it, and Escape while a step runs (t-e523)', async ({ page }) => {
     let release;
     const held = new Promise(r => { release = r; });
-    let preview = 'dry run: 0 to create, nothing written\n';
-    await page.route('**/api/github/sync-preview**', async r => { await held; return json(r, { ok: true, exit_code: 0, output: preview }); });
+    let waitingNow = [];
+    await page.route('**/api/github/intake**', async r => { await held; return json(r, { ok: true, exit_code: 0, intake: { repo: 'a/b', label: 'canon', waiting: waitingNow, skipped: [] } }); });
     let releaseSync; const syncHeld = new Promise(r => { releaseSync = r; });
     await page.route(u => u.pathname === '/api/github/sync', async r => { await syncHeld; return json(r, { ok: true, exit_code: 0, output: 'sync-issues: 1 created\n' }); });
     await page.goto(BASE);
@@ -16130,9 +16177,9 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.keyboard.press('Escape');
     await expect(dlg).not.toHaveClass(/open/);
     // the sync itself (after Create): Escape waits for it too
-    preview = 'would create  #61  Export tasks as CSV  (feature, P2)\ndry run: 1 to create, nothing written\n';
+    waitingNow = [{ issue: 61, title: 'Export tasks as CSV', type: 'feature', priority: 2 }];
     await page.locator('#btn-gh-sync').click();
-    await page.locator('#gh-dialog-ok', { hasText: 'Create 1 ticket' }).click();
+    await page.locator('#gh-dialog-ok', { hasText: 'Create 1 selected' }).click();
     await expect(page.locator('#gh-dialog-pre')).toHaveText('Running tkt sync-issues…');
     await page.keyboard.press('Escape');
     await page.waitForTimeout(200);

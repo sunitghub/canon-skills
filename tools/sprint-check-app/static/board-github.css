@@ -37,7 +37,7 @@
   transform: translate(var(--drag-x, 0px), var(--drag-y, 0px));
 }
 #gh-dialog-title { cursor: move; }
-#gh-dialog-box[style*="height"] .gh-dialog-pre { max-height: none; flex: 1 1 auto; min-height: 0; }
+#gh-dialog-box[style*="height"] .gh-dialog-pre, #gh-dialog-box[style*="height"] .gh-dialog-table { max-height: none; flex: 1 1 auto; min-height: 0; }
 #gh-dialog-box[style*="width"] { max-width: none; }
 .ck-gh-prompt { max-height: none; font-size: 12.5px; }
 /* t-093a: send-issue's warnings, shown as a note (the send is not blocked); the same warn tokens as the board's toasts. */
@@ -47,7 +47,7 @@ html[data-theme="light"] .ck-gh-note { border-color: var(--th-warn-line, #d97706
 html[data-theme="light"] .ck-gh-box .ck-gh-note p { color: var(--th-warn-ink, #92400e); }
 .ck-gh-public, .gh-dialog-check { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; color: var(--text); }
 .gh-dialog-check { margin-top: 10px; }
-.gh-dialog-check[hidden], .gh-dialog-pre[hidden] { display: none; }
+.gh-dialog-check[hidden], .gh-dialog-pre[hidden], .gh-dialog-table[hidden] { display: none; }
 .ck-gh-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .ck-gh-actions button {
   font: inherit; font-size: 13px; padding: 6px 14px; border-radius: 8px; cursor: pointer;
@@ -61,3 +61,13 @@ html[data-theme="light"] .ck-gh-box .ck-gh-note p { color: var(--th-warn-ink, #9
     @media (max-width: 760px) { .gh-sync-lbl { display: none; } }
 /* t-9641: GitHub Sync greyed out until the GitHub checks pass (its title says where to fix it) */
 #btn-gh-sync:disabled, #btn-gh-sync:disabled:hover { opacity: .45; cursor: not-allowed; background: transparent; color: var(--text-muted); }
+
+/* t-b045: GitHub Sync's table. It reuses the Logbook's .lb-table; only what differs is here, in theme tokens. */
+.gh-dialog-table { margin-top: 10px; max-height: 46vh; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+.gh-sync-table { margin: 0; }
+.gh-sync-table td:first-child, .gh-sync-table th:first-child { width: 2.5em; color: var(--text-muted); }
+.gh-sync-table td:last-child, .gh-sync-table th:last-child { width: 2.5em; text-align: center; white-space: normal; }
+.gh-sync-table td:nth-child(3) { color: var(--text-muted); }
+.gh-sync-table tr.gh-sync-skip td { color: var(--text-muted); }
+.gh-sync-table input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
+.gh-sync-table input[type=checkbox]:disabled { cursor: not-allowed; opacity: .45; }

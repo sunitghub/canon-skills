@@ -187,6 +187,7 @@ function dialog() {
     title: document.getElementById('gh-dialog-title'),
     body: document.getElementById('gh-dialog-body'),
     pre: document.getElementById('gh-dialog-pre'),
+    table: document.getElementById('gh-dialog-table'),
     check: document.getElementById('gh-dialog-check'),
     checkLabel: document.getElementById('gh-dialog-check-label'),
     ok: document.getElementById('gh-dialog-ok'),
@@ -209,6 +210,7 @@ function openDialog({ title, body = '', pre = '', check = '', ok = '', cancel = 
   d.title.textContent = title;
   d.body.textContent = body;
   d.pre.textContent = oneProgressLine(pre); d.pre.hidden = !pre; d.pre.scrollTop = d.pre.scrollHeight;
+  d.table.replaceChildren(); d.table.hidden = true;   // a table belongs to one dialog: the next one starts without it
   d.check.checked = false; d.checkLabel.hidden = !check;
   d.checkLabel.querySelector('span').textContent = check;
   d.ok.textContent = ok; d.ok.hidden = !ok; d.ok.disabled = false;
@@ -220,7 +222,7 @@ function openDialog({ title, body = '', pre = '', check = '', ok = '', cancel = 
       const back = dlgReturn; dlgReturn = null;
       if (back && back.isConnected && typeof back.focus === 'function') back.focus();
     };
-    d.ok.onclick = () => dlgClose && dlgClose({ ok: true, checked: d.check.checked });
+    d.ok.onclick = () => dlgClose && dlgClose({ ok: true, checked: d.check.checked, issues: [...d.table.querySelectorAll('input[type=checkbox]:checked')].map(b => +b.dataset.issue) });
     d.cancel.onclick = () => dlgClose && dlgClose({ ok: false });
   });
   (d.ok.hidden ? d.cancel : d.ok).focus();
@@ -238,6 +240,7 @@ function updateDialog(fields, gen) {
     d.ok.textContent = fields.ok; d.ok.hidden = !fields.ok;
     if (fields.ok) d.ok.focus(); else if (document.activeElement === d.ok || !d.el.contains(document.activeElement)) d.cancel.focus();
   }
+  if ('table' in fields) { d.table.replaceChildren(...(fields.table ? [fields.table] : [])); d.table.hidden = !fields.table; }
   if ('okDisabled' in fields) d.ok.disabled = fields.okDisabled;
   if ('cancel' in fields) setCancel(d, fields.cancel);
   if ('escape' in fields) dlgEscape = fields.escape;
@@ -559,20 +562,52 @@ function showSent(panel, t, tab) {
 
 // ── GitHub Sync (t-90a3): the dry run first, then one sync on Create ──────────────────────────────────────────
 const SYNC_WARNING = 'The label admits an issue; it does not vouch for it. An author can edit the text after it is labelled, and an issue template can apply the label. Read the issues before creating them.';
+// The preview as a table: Idx, Issue, Reason and a checkbox per row. A waiting issue starts ticked; a skipped one is disabled and its
+// Reason says why (and, for a ticket closed here, to close the issue on GitHub). Every cell is text: a title is GitHub's, not ours.
+function syncRows(intake) {
+  const waiting = (intake.waiting || []).map(w => ({ issue: w.issue, title: w.title, reason: `new: becomes a ${w.type} ticket (P${w.priority})`, pickable: true }));
+  const skipped = (intake.skipped || []).map(s => ({ issue: s.issue, title: s.title || '', reason: s.reason, pickable: false }));
+  return waiting.concat(skipped).sort((a, b) => b.issue - a.issue);
+}
+function syncTable(rows, onChange) {
+  const t = document.createElement('table'); t.className = 'lb-table gh-sync-table';
+  const head = t.createTHead().insertRow();
+  for (const h of ['Idx', 'Issue', 'Reason', '']) { const th = document.createElement('th'); th.textContent = h; if (!h) th.setAttribute('aria-label', 'Create'); head.append(th); }
+  const body = t.createTBody();
+  rows.forEach((r, i) => {
+    const tr = body.insertRow();
+    tr.insertCell().textContent = String(i + 1);
+    const issue = tr.insertCell(); const num = document.createElement('b'); num.textContent = '#' + r.issue;
+    issue.append(num, ' ' + r.title);
+    const why = tr.insertCell(); why.className = 'gh-sync-why'; why.textContent = r.reason;
+    const box = document.createElement('input'); box.type = 'checkbox'; box.checked = r.pickable; box.disabled = !r.pickable; box.dataset.issue = String(r.issue);
+    box.setAttribute('aria-label', `Create #${r.issue}`); box.addEventListener('change', onChange);
+    tr.insertCell().append(box);
+    if (!r.pickable) tr.className = 'gh-sync-skip';
+  });
+  return t;
+}
 async function syncFromGithub() {
-  const shown = openDialog({ title: 'GitHub Sync', pre: 'Running tkt sync-issues --dry-run…', ok: 'Create tickets', cancel: 'Cancel', escape: false });
+  const shown = openDialog({ title: 'GitHub Sync', pre: 'Reading the issues labelled canon…', ok: 'Create tickets', cancel: 'Cancel', escape: false });
   updateDialog({ okDisabled: true }, shown.gen);
   let res;
-  try { res = await getJSON('/api/github/sync-preview'); }
+  try { res = await getJSON('/api/github/intake'); }
   catch (e) { res = { ok: false, output: String(e.message || e) }; }
-  const n = res.ok ? +((/dry run: (\d+) to create/.exec(res.output || '') || [])[1] || 0) : 0;
-  updateDialog({
-    body: res.ok ? (n ? SYNC_WARNING : 'Nothing to create.') : 'The preview failed; nothing was written.',
-    pre: res.output || '', ok: `Create ${n} ticket${n === 1 ? '' : 's'}`, okDisabled: !n, escape: true,
-  }, shown.gen);
-  if (!(await shown).ok) return;
+  const rows = res.ok && res.intake ? syncRows(res.intake) : [];
+  if (!rows.length) {
+    updateDialog({ body: res.ok ? 'Nothing to create.' : 'The preview failed; nothing was written.', pre: res.ok ? '' : (res.output || ''), ok: 'Create tickets', okDisabled: true, escape: true }, shown.gen);
+  } else {
+    const picked = () => [...document.querySelectorAll('#gh-dialog-table input[type=checkbox]:checked')].map(b => +b.dataset.issue);
+    const refresh = () => { const n = picked().length; updateDialog({ ok: `Create ${n} selected`, okDisabled: !n }, shown.gen); };
+    const any = rows.some(r => r.pickable);
+    updateDialog({ body: any ? SYNC_WARNING : 'Nothing to create.', pre: '', table: syncTable(rows, refresh), escape: true }, shown.gen);
+    refresh();
+  }
+  const choice = await shown;
+  if (!choice.ok) return;
+  const issues = choice.issues;
   const run = openDialog({ title: 'GitHub Sync', pre: 'Running tkt sync-issues…', cancel: 'Close', escape: false });
-  try { res = await postJSON('/api/github/sync', {}); }
+  try { res = await postJSON('/api/github/sync', { issues }); }
   catch (e) { res = { ok: false, output: String(e.message || e) }; }
   updateDialog({ body: res.ok ? '' : 'Sync failed.', pre: res.output || '', escape: true }, run.gen);
   await loadData();
@@ -584,7 +619,7 @@ function dialogKeys(e) {
   const d = dialog();
   if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); if (dlgEscape) dlgClose({ ok: false }); return; }
   if (e.key !== 'Tab') return;
-  const items = [d.check, d.ok, d.cancel].filter(x => x && !x.hidden && !x.disabled && x.offsetParent !== null);
+  const items = [...d.table.querySelectorAll('input[type=checkbox]'), d.check, d.ok, d.cancel].filter(x => x && !x.hidden && !x.disabled && x.offsetParent !== null);
   if (!items.length) return;
   const i = items.indexOf(document.activeElement);
   const next = e.shiftKey ? (i <= 0 ? items.length - 1 : i - 1) : (i === -1 || i === items.length - 1 ? 0 : i + 1);

@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"math"
 	"mime"
 	"net"
 	"net/http"
@@ -499,7 +500,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			sendJSON(w, map[string]string{"content": string(data)})
 			return
 		}
-		if m := apiGitHubGetRe.FindStringSubmatch(path); m != nil || path == "/api/github/sync-preview" || path == "/api/github/doctor" || path == "/api/github/intake" {
+		if m := apiGitHubGetRe.FindStringSubmatch(path); m != nil || path == "/api/github/doctor" || path == "/api/github/intake" {
 			// t-d271: these run git and gh, so a page on another site must not fire them blind.
 			if !originOK(r.Header.Get("Origin")) || r.Header.Get("Sec-Fetch-Site") == "cross-site" {
 				http.Error(w, "forbidden", http.StatusForbidden)
@@ -516,10 +517,6 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			}
 			if path == "/api/github/intake" {
 				sendJSON(w, githubIntake(groot))
-				return
-			}
-			if m == nil {
-				sendJSON(w, runTkt(groot, []string{"sync-issues", "--dry-run"}))
 				return
 			}
 			switch m[2] {
@@ -822,7 +819,18 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if path == "/api/github/sync" {
-		sendJSON(w, runTkt(eroot, []string{"sync-issues"}))
+		args := []string{"sync-issues"}
+		// t-b045: the dialog's ticked rows. A list that is not 1-200 positive integers is a bad request; nothing is built from it
+		// but digits, and tkt still refuses a number that is not waiting.
+		if v, present := payload["issues"]; present {
+			nums, ok := issueNumbers(v)
+			if !ok {
+				http.Error(w, "bad request", http.StatusBadRequest)
+				return
+			}
+			args = append(args, "--only", nums)
+		}
+		sendJSON(w, runTkt(eroot, args))
 		return
 	}
 	if path == "/api/github/push-main" { // t-24b1: the merged dialog's push to the canon.mirror remotes, after its confirm
@@ -4564,6 +4572,23 @@ func runTkt(root string, args []string) map[string]any {
 		}
 	}
 	return map[string]any{"ok": code == 0, "exit_code": code, "output": tailString(string(out))}
+}
+
+// issueNumbers: "5,7" from a JSON array of 1 to 200 whole numbers between 1 and 999999999; false for anything else.
+func issueNumbers(v any) (string, bool) {
+	list, ok := v.([]any)
+	if !ok || len(list) == 0 || len(list) > 200 {
+		return "", false
+	}
+	parts := make([]string, 0, len(list))
+	for _, e := range list {
+		f, ok := e.(float64)
+		if !ok || f != math.Trunc(f) || f < 1 || f > 999999999 {
+			return "", false
+		}
+		parts = append(parts, strconv.Itoa(int(f)))
+	}
+	return strings.Join(parts, ","), true
 }
 
 // prArg: nil slice + true for no PR, ["--pr", n] for digits, false for anything else (the caller answers 400).

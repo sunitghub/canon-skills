@@ -1331,12 +1331,16 @@ _sync_clean() {   # _sync_clean title|body < text: drops C0 (but a body's tab an
 # --dry-run --json (t-9641): one object {repo, label, waiting: [{issue, title, type, priority}], skipped: [{issue, reason}]}
 # for Factory > GitHub's Intake box. A completed real run emits github.synced with the count made (0 included).
 cmd_sync_issues() {
-  local dry=false json=false
+  local dry=false json=false only=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --dry-run) dry=true; shift ;;
       --json) json=true; shift ;;
-      *) echo "Usage: tkt sync-issues [--dry-run [--json]]" >&2; exit 1 ;;
+      --only)
+        # --only 5,7: create just those issues (the Cockpit's GitHub Sync passes what the user ticked). Positive integers only.
+        [[ -n "${2:-}" && "$2" =~ ^[1-9][0-9]*(,[1-9][0-9]*)*$ ]] || { echo "sync-issues: --only takes issue numbers like 5 or 5,7 (got '${2:-}')" >&2; exit 1; }
+        only="$2"; shift 2 ;;
+      *) echo "Usage: tkt sync-issues [--dry-run [--json]] [--only <number>[,<number>...]]" >&2; exit 1 ;;
     esac
   done
   if $json && ! $dry; then echo "Usage: tkt sync-issues [--dry-run [--json]] (--json needs --dry-run)" >&2; exit 1; fi
@@ -1374,13 +1378,34 @@ cmd_sync_issues() {
   fi
   # Which issues tickets already link to: "<owner/repo#N> <id>" per ticket with a github: line.
   local f g; : > "$tmp/linked"; [[ -d "$dir" ]] && ticket_files "$dir" | while IFS= read -r f; do
-    g="$(get_field "$f" github)"; [[ -n "$g" ]] && printf '%s %s\n' "$g" "$(get_field "$f" id)"; done > "$tmp/linked" || true
-  local made=0 title type pri l id linked labs
+    g="$(get_field "$f" github)"; [[ -n "$g" ]] && printf '%s %s %s\n' "$g" "$(get_field "$f" id)" "$(get_field "$f" status)"; done > "$tmp/linked" || true
+  # --only: every number asked for must be an issue this run would create; otherwise nothing is written.
+  if [[ -n "$only" ]]; then
+    local want creatable=","
+    while IFS=$'\t' read -r n labels; do
+      [[ -z "$(awk -v k="$repo#$n" '$1 == k { print $2; exit }' "$tmp/linked")" ]] || continue
+      ! tail -n +2 "$tmp/issue-$n" | grep -q '^<!-- canon:ticket ' || continue
+      creatable="$creatable$n,"
+    done < "$tmp/todo"
+    for want in ${only//,/ }; do
+      [[ "$creatable" == *",$want,"* ]] || { echo "sync-issues: #$want is not waiting (it is not labelled canon, is a pull request, is already a ticket, or came from tkt send-issue); nothing was created" >&2; exit 1; }
+    done
+  fi
+  local made=0 title type pri l id linked labs lst
   while IFS=$'\t' read -r n labels; do
     title="$(head -1 "$tmp/issue-$n")"; tail -n +2 "$tmp/issue-$n" > "$tmp/body-$n"
     linked="$(awk -v k="$repo#$n" '$1 == k { print $2; exit }' "$tmp/linked")"
-    if [[ -n "$linked" ]]; then _sync_skip "$n" "already $linked"; continue; fi
+    if [[ -n "$linked" ]]; then
+      # A ticket that is closed, cancelled or archived here but whose issue is still open: say so, so it can be closed on GitHub.
+      lst="$(awk -v k="$repo#$n" '$1 == k { print $3; exit }' "$tmp/linked")"
+      case "$lst" in
+        closed|cancelled|archived) _sync_skip "$n" "already $linked ($lst here): close #$n on GitHub" "$linked" "$lst" ;;
+        *) _sync_skip "$n" "already $linked" "$linked" "$lst" ;;
+      esac
+      continue
+    fi
     if grep -q '^<!-- canon:ticket ' "$tmp/body-$n"; then _sync_skip "$n" "made by tkt send-issue: use tkt import-issue $n"; continue; fi
+    if [[ -n "$only" && ",$only," != *",$n,"* ]]; then continue; fi   # ticked-off issues stay waiting
     type=task; pri=2
     IFS=, read -ra labs <<< "$labels"
     for l in ${labs[@]+"${labs[@]}"}; do
@@ -1414,8 +1439,9 @@ cmd_sync_issues() {
   fi
 }
 # _sync_skip <issue> <reason>: a skipped issue, printed, or kept for --json (the caller's $json and $tmp).
+# Optional 3rd and 4th: the ticket the issue is already linked to, and its status (kept for --json).
 _sync_skip() {
-  if $json; then printf '%s\t%s\n' "$1" "$2" >> "$tmp/skipped"; else echo "skip  #$1  $2"; fi
+  if $json; then printf '%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$(head -1 "$tmp/issue-$1" 2>/dev/null)" "${3:-}" "${4:-}" >> "$tmp/skipped"; else echo "skip  #$1  $2"; fi
 }
 # _sync_json <repo> <tmp>: the --dry-run --json object from <tmp>/waiting and <tmp>/skipped (tab-separated, issue first).
 _sync_json() {
@@ -1428,8 +1454,9 @@ _sync_json() {
   fi
   printf '],"skipped":['; sep=""
   if [[ -f "$2/skipped" ]]; then
-    while IFS=$'\t' read -r n reason; do
-      printf '%s{"issue":%s,"reason":%s}' "$sep" "$n" "$(json_str "$reason")"; sep=,
+    local stitle sticket sstatus
+    while IFS=$'\t' read -r n reason stitle sticket sstatus; do
+      printf '%s{"issue":%s,"reason":%s,"title":%s,"ticket":%s,"ticket_status":%s}' "$sep" "$n" "$(json_str "$reason")" "$(json_str "$stitle")" "$(json_str "$sticket")" "$(json_str "$sstatus")"; sep=,
     done < "$2/skipped"
   fi
   printf ']}\n'

@@ -59,8 +59,14 @@ for P in "$GOP"; do
   expect_call "$srv send"          "$P" "$(post "$P" /api/ticket/t-ab12/github/send '{}')" "send-issue t-ab12"
   expect_call "$srv send public"   "$P" "$(post "$P" /api/ticket/t-ab12/github/send '{"public":true}')" "send-issue t-ab12 --public"
   expect_call "$srv send public?"  "$P" "$(post "$P" /api/ticket/t-ab12/github/send '{"public":"yes"}')" "send-issue t-ab12"   # only a real true
-  expect_call "$srv sync-preview"  "$P" "$(get "$P" /api/github/sync-preview)" "sync-issues --dry-run"
   expect_call "$srv sync"          "$P" "$(post "$P" /api/github/sync '{}')" "sync-issues"
+  # t-b045: the ticked rows become --only <numbers>; anything but 1-200 positive whole numbers is a 400 and runs nothing
+  expect_call "$srv sync only"     "$P" "$(post "$P" /api/github/sync '{"issues":[134,7]}')" "sync-issues --only 134,7"
+  : > "$W/log"
+  for bad in '[]' '[0]' '[-1]' '[1.5]' '["7"]' '[7,"; rm"]' '7' '"7"' 'null' '[1000000000]'; do
+    r="$(post "$P" /api/github/sync "{\"issues\":$bad}")"; [[ "$(code "$r")" == 400 ]] || fail "$srv: sync issues=$bad was $(code "$r")"
+  done
+  [[ ! -s "$W/log" ]] || fail "$srv: a refused sync list still ran tkt: $(cat "$W/log")"
   r="$(get "$P" /api/github/doctor)"; expect_call "$srv doctor" "$P" "$r" "github-doctor --json"   # t-90a3: Factory › GitHub's checks (t-9641)
   assert_eq "gh|bad|u" "$(body "$r" | js '[j.doctor.checks[0].id, j.doctor.checks[0].status, j.doctor.checks[0].fix.url].join("|")')"
   touch "$W/badjson"; r="$(get "$P" /api/github/doctor)"; rm -f "$W/badjson"   # output that is not JSON is a failure, not a doctor
@@ -129,7 +135,7 @@ for P in "$GOP"; do
   r="$(post "$P" /api/ticket/T-AB12/github/send '{}')"; [[ "$(code "$r")" != 200 ]] || fail "$srv accepted a malformed id"
   # Another site cannot fire these: a foreign Origin, or Sec-Fetch-Site: cross-site, is 403 on GET and POST.
   r="$(curl -s -w '\n%{http_code}' -H 'Origin: https://evil.example' "http://127.0.0.1:$P/api/ticket/t-ab12/github/merge-check")"; [[ "$(code "$r")" == 403 ]] || fail "$srv: cross-origin GET merge-check was $(code "$r")"
-  r="$(curl -s -w '\n%{http_code}' -H 'Sec-Fetch-Site: cross-site' "http://127.0.0.1:$P/api/github/sync-preview")"; [[ "$(code "$r")" == 403 ]] || fail "$srv: cross-site GET sync-preview was $(code "$r")"
+  r="$(curl -s -w '\n%{http_code}' -H 'Sec-Fetch-Site: cross-site' "http://127.0.0.1:$P/api/github/intake")"; [[ "$(code "$r")" == 403 ]] || fail "$srv: cross-site GET intake was $(code "$r")"
   r="$(curl -s -w '\n%{http_code}' -H 'Origin: https://evil.example' "http://127.0.0.1:$P/api/github/doctor")"; [[ "$(code "$r")" == 403 ]] || fail "$srv: cross-origin GET doctor was $(code "$r")"
   r="$(curl -s -w '\n%{http_code}' -X POST -H 'Origin: https://evil.example' -H 'Content-Type: application/json' -d '{}' "http://127.0.0.1:$P/api/ticket/t-ab12/github/send")"; [[ "$(code "$r")" == 403 ]] || fail "$srv: cross-origin POST send was $(code "$r")"
   for w in /api/ticket/t-ab12/github/open-pr /api/ticket/t-ab12/github/land /api/github/push-main; do

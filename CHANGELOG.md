@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Changed
+- **GitHub Sync** shows the issues in a table (`t-b045`): Idx, Issue, Reason and a checkbox per row. Issues it would create are ticked, others are disabled with the reason, and a skipped issue whose ticket is closed, cancelled or archived here says `close #N on GitHub`. **Create N selected** makes only the ticked ones. `tkt sync-issues --only 5,7` does the same from the shell (it refuses, writing nothing, a number that is not waiting). `tkt sync-issues --dry-run --json` skipped rows now carry `title`, `ticket` and `ticket_status`. The text route `/api/github/sync-preview` is gone (the dialog reads `/api/github/intake`).
+
 ## [0.18.4] - 2026-10-25
 
 `canon update` no longer refuses on a machine where the board has run: the event log and custom themes sit in `~/.canon/events/` and `~/.canon/themes/`, which on a default install is the clone itself, and the update saw them as uncommitted changes. If your update is already refusing with `?? events/` and `?? themes/`, run this once (it only tells git to ignore those two folders; nothing is deleted), then `canon update`: `printf '/events/\n/themes/\n' >> ~/.canon/.git/info/exclude`.
