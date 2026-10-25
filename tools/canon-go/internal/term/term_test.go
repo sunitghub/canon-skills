@@ -499,11 +499,13 @@ func TestSuUsesOSAuth(t *testing.T) {
 		name, input, events string
 		auth                error
 		shells              int
+		code                int    // Run's exit status: 1 only when the terminal is closed
+		say                 string // what the user is told
 	}{
-		{"pass", "su\nexit\n", "terminal.su_prompted|terminal.su_granted minutes=5|terminal.su_expired how=exited", nil, 1},
-		{"fail", "su\nexit\n", "terminal.su_prompted|terminal.su_denied reason=auth", fail, 0},
-		{"three fails", "su\nsu\nsu\nexit\n", "terminal.su_prompted|terminal.su_denied reason=auth|terminal.su_prompted|terminal.su_denied reason=auth|terminal.su_prompted|terminal.su_denied reason=locked", fail, 0},
-		{"no provider", "su\nKx7m2\nexit\n", "terminal.su_prompted|terminal.su_granted minutes=5|terminal.su_expired how=exited", ErrNoAuth, 1},
+		{"pass", "su\nexit\n", "terminal.su_prompted|terminal.su_granted minutes=5|terminal.su_expired how=exited", nil, 1, 0, "Enter your account password"},
+		{"fail", "su\nexit\n", "terminal.su_prompted|terminal.su_denied reason=auth", fail, 0, 0, "Authentication failed: still in the restricted prompt."},
+		{"three fails", "su\nsu\nsu\nexit\n", "terminal.su_prompted|terminal.su_denied reason=auth|terminal.su_prompted|terminal.su_denied reason=auth|terminal.su_prompted|terminal.su_denied reason=locked", fail, 0, 1, "Authentication failed 3 times: closing the terminal"},
+		{"no provider", "su\nKx7m2\nexit\n", "terminal.su_prompted|terminal.su_granted minutes=5|terminal.su_expired how=exited", ErrNoAuth, 1, 0, "so a typed word is used instead"},
 	} {
 		f := newFakeSu()
 		close(f.stop)
@@ -511,8 +513,11 @@ func TestSuUsesOSAuth(t *testing.T) {
 		cfg.Auth = func(context.Context, io.Writer) error { return c.auth }
 		var buf bytes.Buffer
 		cfg.In, cfg.Out = strings.NewReader(c.input), &buf
-		Run(cfg)
+		code := Run(cfg)
 		out := buf.String()
+		if code != c.code || !strings.Contains(out, c.say) {
+			t.Errorf("%s: exit %d, want %d; output lacks %q:\n%s", c.name, code, c.code, c.say, out)
+		}
 		if f.shells != c.shells || f.log() != c.events {
 			t.Errorf("%s: shells=%d events %q, want %d %q", c.name, f.shells, f.log(), c.shells, c.events)
 		}
@@ -536,5 +541,47 @@ func TestAuthCommand(t *testing.T) {
 	}
 	if _, _, ok := authCommand("linux", missing); ok {
 		t.Error("no sudo on PATH must mean no provider, so su falls back to the word")
+	}
+}
+
+// OSAuth runs the sudo it finds on PATH: none means no provider (ErrNoAuth), a failing sudo is a denial, a passing one a grant.
+func TestOSAuthRunsSudo(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell script stub")
+	}
+	dir := t.TempDir()
+	t.Setenv("PATH", dir)
+	if err := OSAuth(context.Background(), io.Discard); !errors.Is(err, ErrNoAuth) {
+		t.Fatalf("no sudo on PATH: got %v, want ErrNoAuth", err)
+	}
+	stub := filepath.Join(dir, "sudo")
+	for _, c := range []struct {
+		script string
+		want   func(error) bool
+	}{
+		{"#!/bin/sh\n[ \"$1 $2\" = \"-k -v\" ] || exit 9\n", func(e error) bool { return e == nil }},
+		{"#!/bin/sh\nexit 1\n", func(e error) bool { return e != nil && !errors.Is(e, ErrNoAuth) }},
+	} {
+		if err := os.WriteFile(stub, []byte(c.script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := OSAuth(context.Background(), io.Discard); !c.want(err) {
+			t.Errorf("sudo stub %q: got %v", c.script, err)
+		}
+	}
+}
+
+// A pass starts the count over: two failures, a pass, two more failures must not close the terminal.
+func TestSuOSAuthPassResetsFailures(t *testing.T) {
+	root, _ := project(t)
+	f := newFakeSu()
+	close(f.stop)
+	cfg := f.cfg(root)
+	results := []error{errors.New("no"), errors.New("no"), nil, errors.New("no"), errors.New("no")}
+	cfg.Auth = func(context.Context, io.Writer) error { e := results[0]; results = results[1:]; return e }
+	var buf bytes.Buffer
+	cfg.In, cfg.Out = strings.NewReader("su\nsu\nsu\nsu\nsu\nexit\n"), &buf
+	if code := Run(cfg); code != 0 {
+		t.Fatalf("exit %d: the pass should have reset the failure count\n%s", code, buf.String())
 	}
 }
