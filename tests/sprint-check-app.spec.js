@@ -5894,7 +5894,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         rows = [{ session: 'cw', ticket: id, project_root: PROJECT_ROOT, cwd: PROJECT_ROOT, agent: 'claude', status: 'running', state: 'working', state_secs: 3, idle_secs: 3, idle_limit_secs: 1800 }];
         await page.reload(); await page.waitForLoadState('networkidle');
         await expect(btn).toHaveText('Open ▸');
-      } finally { fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true }); }
+      } finally { removeTestTicket(PROJECT_ROOT, id); }
     });
 
     test('board cards (t-28ec): state strips, Answer/Open, needs-you first, counts, Herdr colours, re-render only on change', async ({ page }) => {
