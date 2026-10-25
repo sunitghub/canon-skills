@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.18.5] - 2026-10-25
+
+GitHub Sync lets you pick which issues become tickets, and every dialog can be resized from two corners. Update with `canon update`, then stop the running board (Ctrl+C in the terminal running `canon`, or close its window) and run `canon` again. The board and `tkt` changed; the daemon needs no restart.
+
 ### Changed
 - **GitHub Sync** shows the issues in a table (`t-b045`): Idx, Issue, Reason and a checkbox per row. Issues it would create are ticked, others are disabled with the reason, and a skipped issue whose ticket is closed, cancelled or archived here says `close #N on GitHub`. **Create N selected** makes only the ticked ones. `tkt sync-issues --only 5,7` does the same from the shell (it refuses, writing nothing, a number that is not waiting). `tkt sync-issues --dry-run --json` skipped rows now carry `title`, `ticket` and `ticket_status`. The text route `/api/github/sync-preview` is gone (the dialog reads `/api/github/intake`). Its rows tint on hover (the Logbook's too), and every dialog now resizes from the top-left corner as well as the bottom-right, including this one and New Ticket.
 
