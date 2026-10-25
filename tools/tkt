@@ -1328,7 +1328,8 @@ _sync_clean() {   # _sync_clean title|body < text: drops C0 (but a body's tab an
   LC_ALL=C awk -v mode="$1" '{ gsub(/\302[\200-\237]/, ""); gsub(/[\001-\010\013-\037\177]/, "")
     if (mode == "title") { gsub(/[\t\n]/, ""); printf "%s", $0 } else print }'
 }
-# --dry-run --json (t-9641): one object {repo, label, waiting: [{issue, title, type, priority}], skipped: [{issue, reason}]}
+# --dry-run --json (t-9641): one object {repo, label, waiting: [{issue, title, type, priority}], skipped: [{issue, reason, title, ticket, ticket_status}]}
+# (t-b045: ticket and ticket_status name the ticket an already-linked issue belongs to). --only N[,N...] creates just those issues.
 # for Factory > GitHub's Intake box. A completed real run emits github.synced with the count made (0 included).
 cmd_sync_issues() {
   local dry=false json=false only=""
@@ -1383,28 +1384,28 @@ cmd_sync_issues() {
   if [[ -n "$only" ]]; then
     local want creatable=","
     while IFS=$'\t' read -r n labels; do
-      [[ -z "$(awk -v k="$repo#$n" '$1 == k { print $2; exit }' "$tmp/linked")" ]] || continue
-      [[ "$(tail -n +2 "$tmp/issue-$n" | grep -c '^<!-- canon:ticket ' || true)" == 0 ]] || continue
+      [[ -z "$(_sync_blocker "$n")" ]] || continue
       creatable="$creatable$n,"
     done < "$tmp/todo"
     for want in ${only//,/ }; do
       [[ "$creatable" == *",$want,"* ]] || { echo "sync-issues: #$want is not waiting (it is not labelled canon, is a pull request, is already a ticket, or came from tkt send-issue); nothing was created" >&2; exit 1; }
     done
   fi
-  local made=0 title type pri l id linked labs lst
+  local made=0 title type pri l id linked labs lst blocker
   while IFS=$'\t' read -r n labels; do
     title="$(head -1 "$tmp/issue-$n")"; tail -n +2 "$tmp/issue-$n" > "$tmp/body-$n"
-    linked="$(awk -v k="$repo#$n" '$1 == k { print $2; exit }' "$tmp/linked")"
-    if [[ -n "$linked" ]]; then
-      # A ticket that is closed, cancelled or archived here but whose issue is still open: say so, so it can be closed on GitHub.
-      lst="$(awk -v k="$repo#$n" '$1 == k { print $3; exit }' "$tmp/linked")"
-      case "$lst" in
-        closed|cancelled|archived) _sync_skip "$n" "already $linked ($lst here): close #$n on GitHub" "$linked" "$lst" ;;
-        *) _sync_skip "$n" "already $linked" "$linked" "$lst" ;;
-      esac
-      continue
-    fi
-    if grep -q '^<!-- canon:ticket ' "$tmp/body-$n"; then _sync_skip "$n" "made by tkt send-issue: use tkt import-issue $n"; continue; fi
+    blocker="$(_sync_blocker "$n")"
+    case "$blocker" in
+      linked*)
+        read -r linked lst <<< "${blocker#linked }"
+        # A ticket that is closed, cancelled or archived here but whose issue is still open: say so, so it can be closed on GitHub.
+        case "$lst" in
+          closed|cancelled|archived) _sync_skip "$n" "already $linked ($lst here): close #$n on GitHub" "$linked" "$lst" ;;
+          *) _sync_skip "$n" "already $linked" "$linked" "$lst" ;;
+        esac
+        continue ;;
+      send-issue) _sync_skip "$n" "made by tkt send-issue: use tkt import-issue $n"; continue ;;
+    esac
     if [[ -n "$only" && ",$only," != *",$n,"* ]]; then continue; fi   # ticked-off issues stay waiting
     type=task; pri=2
     IFS=, read -ra labs <<< "$labels"
@@ -1437,6 +1438,13 @@ cmd_sync_issues() {
     echo "sync-issues: $made created"
     canon_event github.synced tkt "$root" "count=$made"
   fi
+}
+# _sync_blocker <issue>: why this run would not make a ticket for it ("linked <ticket> <status>" or "send-issue"), nothing when it
+# would. The one rule behind the skip lines, --only's check and the create loop (the caller's $repo and $tmp).
+_sync_blocker() {
+  local k; k="$(awk -v k="$repo#$1" '$1 == k { print $2, $3; exit }' "$tmp/linked")"
+  if [[ -n "$k" ]]; then echo "linked $k"; return 0; fi
+  [[ "$(tail -n +2 "$tmp/issue-$1" | grep -c '^<!-- canon:ticket ' || true)" == 0 ]] || echo send-issue
 }
 # _sync_skip <issue> <reason>: a skipped issue, printed, or kept for --json (the caller's $json and $tmp).
 # Optional 3rd and 4th: the ticket the issue is already linked to, and its status (kept for --json).

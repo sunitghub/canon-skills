@@ -598,9 +598,8 @@ async function syncFromGithub() {
     updateDialog({ body: res.ok ? 'Nothing to create.' : 'The preview failed; nothing was written.', pre: res.ok ? '' : (res.output || ''), ok: 'Create tickets', okDisabled: true, escape: true }, shown.gen);
   } else {
     const picked = () => [...document.querySelectorAll('#gh-dialog-table input[type=checkbox]:checked')].map(b => +b.dataset.issue);
-    const refresh = () => { const n = picked().length; updateDialog({ ok: `Create ${n} selected`, okDisabled: !n }, shown.gen); };
-    const any = rows.some(r => r.pickable);
-    updateDialog({ body: any ? SYNC_WARNING : 'Nothing to create.', pre: '', table: syncTable(rows, refresh), escape: true }, shown.gen);
+    const refresh = () => { const n = picked().length; updateDialog({ body: n ? SYNC_WARNING : 'Nothing to create.', ok: `Create ${n} selected`, okDisabled: !n }, shown.gen); };
+    updateDialog({ pre: '', table: syncTable(rows, refresh), escape: true }, shown.gen);
     refresh();
   }
   const choice = await shown;

@@ -23,7 +23,7 @@ func TestIssueNumbers(t *testing.T) {
 		{[]any{float64(5), float64(7)}, "5,7", true},
 		{[]any{float64(1)}, "1", true},
 		{[]any{float64(999999999)}, "999999999", true},
-		{many(200), strings.TrimSuffix(strings.Repeat("x,", 0), ","), true},
+		{many(200), "", true}, // 200 numbers is the limit; the join is checked below
 		{many(201), "", false},
 		{[]any{}, "", false},
 		{[]any{float64(0)}, "", false},

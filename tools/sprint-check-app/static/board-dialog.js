@@ -10,11 +10,13 @@ import { makePanelDraggable, makePanelResizable, resetPanelDrag, resetPanelResiz
 // t-cca5: the panel half on its own, for a dialog that keeps its own open/close code (ticket, create, commit, GitHub): it moves by
 // `handle` and, unless `resizable` is false, resizes from its corner. The caller resets position and size on its own open.
 // Every resizable dialog has both corners, bottom-right and top-left, whether or not its markup lists them.
+const RESIZE_CORNERS = [
+  { find: '.modal-resize-handle-tl', cls: 'modal-resize-handle modal-resize-handle-tl', label: 'Resize dialog from the top-left' },
+  { find: '.modal-resize-handle:not(.modal-resize-handle-tl)', cls: 'modal-resize-handle', label: 'Resize dialog' },
+];
 function ensureResizeHandles(panel) {
-  const want = [['modal-resize-handle modal-resize-handle-tl', 'Resize dialog from the top-left'], ['modal-resize-handle', 'Resize dialog']];
-  for (const [cls, label] of want) {
-    const tl = cls.includes('-tl');
-    if (tl ? panel.querySelector('.modal-resize-handle-tl') : panel.querySelector('.modal-resize-handle:not(.modal-resize-handle-tl)')) continue;
+  for (const { find, cls, label } of RESIZE_CORNERS) {
+    if (panel.querySelector(find)) continue;
     const g = document.createElement('div');
     g.className = cls;
     g.title = label;

@@ -15430,6 +15430,9 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await rows.nth(0).locator('input').uncheck(); await rows.nth(1).locator('input').uncheck();
     await expect(ok).toHaveText('Create 0 selected');
     await expect(ok).toBeDisabled();   // nothing ticked: nothing to confirm
+    await expect(page.locator('#gh-dialog-body')).toHaveText('Nothing to create.');   // and the dialog says so
+    await rows.nth(0).locator('input').check();
+    await expect(page.locator('#gh-dialog-body')).toContainText('does not vouch for it');   // ticking a row brings the warning back
     await page.locator('#gh-dialog-cancel').click();
 
     intake = { ok: true, exit_code: 0, intake: { repo: 'a/b', label: 'canon', waiting: [], skipped } };
