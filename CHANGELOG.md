@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.18.7] - 2026-10-25
+
+Cards say Working while an agent is on the ticket. Update with `canon update`, then stop the running board (Ctrl+C in the terminal running `canon`, or close its window) and run `canon` again. The board, `tkt` and `sprint` changed; the daemon needs no restart. The new heartbeat starts with the next `tkt start` or `sprint continue`, so a ticket already in progress shows Resume until its agent runs one.
+
 ### Added
 - **Working** on the board's cards (`t-187e`). An agent you started by hand in a plain terminal used to leave the card saying Resume, and a click started a second agent on the same ticket. The commands an agent runs now keep a small heartbeat, `.tickets/ACTIVE.beat`, and while it is fresh the card shows **● Working**. Click it for how long ago and where; **Resume anyway** still starts the session. When the agent stops or the machine restarts the card goes back to Resume by itself. A live Cockpit session still shows Open / Answer. See docs/sprint-check.md.
 
