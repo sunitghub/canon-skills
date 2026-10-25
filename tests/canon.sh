@@ -355,7 +355,7 @@ grep -qF "bar.remove(); v.classList.remove('has-nudge')" <<<"$page" || fail "can
 # after STUB_DELAY, or exits at once, or never listens) and a stub opener that records whether the port answered AT THE
 # MOMENT it was called.
 LT="$WORK/launch-tools"; mkdir -p "$LT" "$WORK/ostub"
-cp "$ROOT/tools/canon" "$ROOT/tools/cockpit-launch-lib.sh" "$ROOT/tools/platform-lib.sh" "$LT/"
+cp "$ROOT/tools/canon" "$ROOT/tools/cockpit-launch-lib.sh" "$ROOT/tools/platform-lib.sh" "$ROOT/tools/ticket-root.sh" "$LT/"
 echo 0.0.0 > "$WORK/VERSION"
 cat > "$WORK/board-stub" <<'PY'
 #!/usr/bin/env python3

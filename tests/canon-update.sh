@@ -31,7 +31,7 @@ maintrack() { printf 'main\n' > "$1/.canon-track"; echo '/.canon-track' >> "$1/.
 git init -q --bare -b main "$WORK/origin.git"
 git clone -q "$WORK/origin.git" "$WORK/seed" 2>/dev/null
 mkdir -p "$WORK/seed/tools"
-cp "$ROOT/tools/canon" "$ROOT/tools/cockpit-launch-lib.sh" "$ROOT/tools/platform-lib.sh" "$WORK/seed/tools/"
+cp "$ROOT/tools/canon" "$ROOT/tools/cockpit-launch-lib.sh" "$ROOT/tools/platform-lib.sh" "$ROOT/tools/ticket-root.sh" "$WORK/seed/tools/"
 cat > "$WORK/seed/tools/skills.sh" <<'SH'
 #!/usr/bin/env bash
 # stub: log each refresh; a project folder named "bad" fails
@@ -280,7 +280,7 @@ out="$("$CANON" update 2>&1)"; refute_contains "$out" "kept your previous"
 O3="$WORK/o3.git"; git init -q --bare -b main "$O3"
 git clone -q "$O3" "$WORK/seed3" 2>/dev/null
 mkdir -p "$WORK/seed3/tools"
-cp "$ROOT/tools/canon" "$ROOT/tools/cockpit-launch-lib.sh" "$ROOT/tools/platform-lib.sh" "$WORK/seed3/tools/"
+cp "$ROOT/tools/canon" "$ROOT/tools/cockpit-launch-lib.sh" "$ROOT/tools/platform-lib.sh" "$ROOT/tools/ticket-root.sh" "$WORK/seed3/tools/"
 cp "$WORK/seed/tools/skills.sh" "$WORK/seed/tools/fetch-daemon.sh" "$ROOT/tools/release-manifest.sh" "$WORK/seed3/tools/"
 printf "tools/*-win.exe\n/.canon-track\n" > "$WORK/seed3/.gitignore"   # as the real .gitignore: the fetch stub writes these
 echo 0.3.0 > "$WORK/seed3/VERSION"; git -C "$WORK/seed3" "${ident[@]}" add -A -f; git -C "$WORK/seed3" "${ident[@]}" commit -qm "release 0.3.0"

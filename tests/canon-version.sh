@@ -14,7 +14,7 @@ done
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$tmp/tools"
-cp "$ROOT/tools/canon" "$ROOT/tools/cockpit-launch-lib.sh" "$ROOT/tools/platform-lib.sh" "$tmp/tools/"
+cp "$ROOT/tools/canon" "$ROOT/tools/cockpit-launch-lib.sh" "$ROOT/tools/platform-lib.sh" "$ROOT/tools/ticket-root.sh" "$tmp/tools/"
 assert_eq "canon unknown" "$("$tmp/tools/canon" --version)"
 
 printf 'canon-version: ok\n'

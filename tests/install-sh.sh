@@ -40,7 +40,7 @@ up="$W/up"; mkdir -p "$up/tools" "$W/home"
 git init -q -b main "$up"
 printf '#!/bin/sh\nexit 0\n' > "$up/tools/skills.sh"; printf '#!/bin/sh\necho "fetch-daemon-ran$*"\n[ -z "${DAEMON_FAIL-}" ]\n' > "$up/tools/fetch-daemon.sh"
 # t-65c9: install.sh now runs the install's own `canon update`, so the upstream carries the real script and what it sources
-cp "$ROOT/tools/canon" "$ROOT/tools/cockpit-launch-lib.sh" "$ROOT/tools/platform-lib.sh" "$ROOT/tools/release-manifest.sh" "$up/tools/"; printf '/.canon-track\n' > "$up/.gitignore"
+cp "$ROOT/tools/canon" "$ROOT/tools/cockpit-launch-lib.sh" "$ROOT/tools/platform-lib.sh" "$ROOT/tools/ticket-root.sh" "$ROOT/tools/release-manifest.sh" "$up/tools/"; printf '/.canon-track\n' > "$up/.gitignore"
 for i in 1 2 3; do echo "$i" > "$up/f"; git -C "$up" add -A; git -C "$up" -c user.email=t@e -c user.name=t commit -qm "c$i"; done
 HOME="$W/home" CANON_REPO="file://$up" CANON_REF=main bash "$ROOT/install.sh" "$W/home/.canon" >/dev/null 2>&1 || fail "install.sh against a local remote failed"
 assert_eq true "$(git -C "$W/home/.canon" rev-parse --is-shallow-repository)"
