@@ -6,7 +6,12 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.18.11] - 2026-10-25
+
+Tag lists are checked the same way by `tkt` and the board. Update with `canon update`, then stop the running board (Ctrl+C in the terminal running `canon`, or close its window) and run `canon` again. The daemon needs no restart.
+
 ### Fixed
+- The board's tag check refuses non-ASCII lists like `tkt` does (`t-3472`): a no-break space or U+2028 at the edge of a list, or the Kelvin sign folding to `k`, no longer passes. A `tags.json` holding `null` is refused like any file that is not an array, and no longer read as empty and replaced by the next added tag.
 - `tkt` tag lists refuse non-ASCII on every system (`t-3472`). The lower-casing step ran in the system's own locale, so on a UTF-8 Mac or Windows the Kelvin sign (U+212A) was folded to `k` and accepted, while the board refused it; it now runs in the C locale as the rest of the check does.
 
 ## [0.18.10] - 2026-10-25
