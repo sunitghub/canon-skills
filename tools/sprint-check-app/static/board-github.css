@@ -67,6 +67,7 @@ html[data-theme="light"] .ck-gh-box .ck-gh-note p { color: var(--th-warn-ink, #9
 .gh-sync-table { margin: 0; }
 .gh-sync-table td:first-child, .gh-sync-table th:first-child { width: 2.5em; color: var(--text-muted); }
 .gh-sync-table td:last-child, .gh-sync-table th:last-child { width: 2.5em; text-align: center; white-space: normal; }
+.gh-sync-table td:nth-child(2), .gh-sync-table td:nth-child(3) { overflow-wrap: anywhere; }   /* a long unbroken title wraps inside its cell, not past the dialog */
 .gh-sync-table td:nth-child(3) { color: var(--text-muted); }
 .gh-sync-table tr.gh-sync-skip td { color: var(--text-muted); }
 .gh-sync-table input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }

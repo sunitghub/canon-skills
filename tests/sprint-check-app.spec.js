@@ -15455,6 +15455,36 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     expect((await page.locator('#btn-gh-sync').boundingBox()).width).toBeLessThan(50);
   });
 
+  test('GitHub Sync works from the keyboard: focus starts on a row, Space ticks without moving focus or creating anything, Esc closes (t-b045)', async ({ page }) => {
+    const posts = [];
+    await page.route('**/api/github/intake**', r => json(r, { ok: true, exit_code: 0, intake: { repo: 'a/b', label: 'canon', waiting: [{ issue: 9, title: 'x'.repeat(300), type: 'task', priority: 2 }, { issue: 8, title: 'Two', type: 'bug', priority: 1 }], skipped: [{ issue: 7, title: 'Seven', reason: 'already t-0007', ticket: 't-0007', ticket_status: 'open' }] } }));
+    await page.route(u => u.pathname === '/api/github/sync', r => { posts.push(r.request().postData()); return json(r, { ok: true, exit_code: 0, output: 'sync-issues: 2 created\n' }); });
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await page.locator('#btn-gh-sync').click();
+    const rows = page.locator('#gh-dialog-table tbody tr'), ok = page.locator('#gh-dialog-ok');
+    await expect(rows).toHaveCount(3);
+    await expect(rows.nth(0).locator('input')).toBeFocused();            // the keyboard starts on the first row you can tick
+    await page.keyboard.press('Space');                                    // untick it
+    await expect(rows.nth(0).locator('input')).not.toBeChecked();
+    await expect(rows.nth(0).locator('input')).toBeFocused();            // and focus stays: it must not jump to Create
+    await expect(ok).toHaveText('Create 1 selected');
+    await page.keyboard.press('Space');                                    // tick it again
+    await expect(rows.nth(0).locator('input')).toBeChecked();
+    await expect(ok).toHaveText('Create 2 selected');
+    expect(posts).toEqual([]);                                             // no key press created anything
+    await page.keyboard.press('Tab');
+    await expect(rows.nth(1).locator('input')).toBeFocused();            // the disabled third row is skipped
+    await page.keyboard.press('Tab');
+    await expect(ok).toBeFocused();
+    // a 300-character title wraps inside its cell: the table does not outgrow the dialog
+    const wide = await page.locator('#gh-dialog-table').evaluate(e => e.scrollWidth - e.clientWidth);
+    expect(wide).toBeLessThanOrEqual(1);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#gh-dialog')).not.toHaveClass(/open/);
+    expect(posts).toEqual([]);
+  });
+
   test('GitHub Sync rows tint on hover, and every base dialog resizes from both corners (t-b045)', async ({ page }) => {
     await page.route('**/api/github/intake**', r => json(r, { ok: true, exit_code: 0, intake: { repo: 'a/b', label: 'canon', waiting: [{ issue: 9, title: 'One', type: 'task', priority: 2 }, { issue: 8, title: 'Two', type: 'bug', priority: 1 }], skipped: [] } }));
     await page.goto(BASE);

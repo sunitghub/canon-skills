@@ -241,6 +241,7 @@ function updateDialog(fields, gen) {
     if (fields.ok) d.ok.focus(); else if (document.activeElement === d.ok || !d.el.contains(document.activeElement)) d.cancel.focus();
   }
   if ('table' in fields) { d.table.replaceChildren(...(fields.table ? [fields.table] : [])); d.table.hidden = !fields.table; }
+  if ('okLabel' in fields) d.ok.textContent = fields.okLabel;   // a new label only: focus stays where the user is (a Space on a checkbox must not land on Create)
   if ('okDisabled' in fields) d.ok.disabled = fields.okDisabled;
   if ('cancel' in fields) setCancel(d, fields.cancel);
   if ('escape' in fields) dlgEscape = fields.escape;
@@ -598,9 +599,10 @@ async function syncFromGithub() {
     updateDialog({ body: res.ok ? 'Nothing to create.' : 'The preview failed; nothing was written.', pre: res.ok ? '' : (res.output || ''), ok: 'Create tickets', okDisabled: true, escape: true }, shown.gen);
   } else {
     const picked = () => [...document.querySelectorAll('#gh-dialog-table input[type=checkbox]:checked')].map(b => +b.dataset.issue);
-    const refresh = () => { const n = picked().length; updateDialog({ body: n ? SYNC_WARNING : 'Nothing to create.', ok: `Create ${n} selected`, okDisabled: !n }, shown.gen); };
+    const refresh = () => { const n = picked().length; updateDialog({ body: n ? SYNC_WARNING : 'Nothing to create.', okLabel: `Create ${n} selected`, okDisabled: !n }, shown.gen); };
     updateDialog({ pre: '', table: syncTable(rows, refresh), escape: true }, shown.gen);
     refresh();
+    (document.querySelector('#gh-dialog-table input:not(:disabled)') || dialog().cancel).focus();   // the keyboard starts on the first row you can tick
   }
   const choice = await shown;
   if (!choice.ok) return;
