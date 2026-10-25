@@ -406,8 +406,11 @@ func integrityCLI(args []string, stdout, stderr io.Writer) int {
 			return 2
 		}
 	}
-	root := common.EnvOr("CANON_INTEGRITY_ROOT", integrityRoot())
-	res := checkIntegrity(defaultIntegrityDeps(root, online))
+	return integrityRun(asJSON, gate, defaultIntegrityDeps(common.EnvOr("CANON_INTEGRITY_ROOT", integrityRoot()), online), stdout)
+}
+
+func integrityRun(asJSON, gate bool, d integrityDeps, stdout io.Writer) int {
+	res := checkIntegrity(d)
 	if asJSON {
 		b, _ := json.Marshal(res)
 		fmt.Fprintln(stdout, string(b))

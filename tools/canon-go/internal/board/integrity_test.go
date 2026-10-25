@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -352,39 +352,108 @@ func TestIntegrityAssetFetchFailureFallsBackOnlyToAGoodSavedList(t *testing.T) {
 	}
 }
 
-func TestIntegrityCLIExitCodes(t *testing.T) {
-	// A fake install and a test server cannot be reached from the CLI (it builds its own deps), so the exit rule is checked on the
-	// result: blocking exits 3, every other state 0.
-	run := func(res integrityResult, gate bool) (int, string) {
-		var out bytes.Buffer
-		code := 0
-		if gate && res.Blocking {
-			code = 3
-		}
-		if !gate || res.Blocking || res.State != integrityVerified {
-			out.WriteString(integritySummary(res))
-		}
-		return code, out.String()
+func TestIntegrityRunExitCodesAndOutput(t *testing.T) {
+	f := newIntegFx(t)
+	var out bytes.Buffer
+	if code := integrityRun(false, true, f.deps, &out); code != 0 || out.Len() != 0 {
+		t.Errorf("a clean verified gate check prints nothing and exits 0: %d %q", code, out.String())
 	}
-	if code, out := run(integrityResult{State: integrityVerified, Blocking: true, Match: 11, Total: 13, Tag: "v1.2.3"}, true); code != 3 || !strings.Contains(out, "differs from release v1.2.3") {
-		t.Errorf("blocking: %d %q", code, out)
+	out.Reset()
+	if code := integrityRun(false, false, f.deps, &out); code != 0 || !strings.Contains(out.String(), "13 of 13 files match release v1.2.3") {
+		t.Errorf("without --gate the summary prints: %d %q", code, out.String())
 	}
-	for _, s := range []string{integrityNotFromRelease, integrityNotChecked, integrityListPending} {
-		if code, out := run(integrityResult{State: s, Reason: "why"}, true); code != 0 || !strings.Contains(out, s) {
-			t.Errorf("%s: %d %q", s, code, out)
-		}
+	out.Reset()
+	if code := integrityRun(true, false, f.deps, &out); code != 0 || !strings.Contains(out.String(), `"state":"verified"`) {
+		t.Errorf("--json: %d %q", code, out.String())
 	}
-	if code, out := run(integrityResult{State: integrityVerified, Match: 13, Total: 13, Tag: "v1.2.3"}, true); code != 0 || out != "" {
-		t.Errorf("a clean verified gate check prints nothing: %d %q", code, out)
+	f.edit("tools/gate-model.sh", "x")
+	f.edit(integrityManifest, "x")
+	out.Reset()
+	if code := integrityRun(false, true, f.deps, &out); code != 3 || !strings.Contains(out.String(), "differs from release v1.2.3 (11 of 13") ||
+		!strings.Contains(out.String(), "tools/gate-model.sh: changed. Put it back: canon update") || strings.Contains(out.String(), integrityManifest) {
+		t.Errorf("a changed gate file exits 3 and names only the gate file: %d %q", code, out.String())
 	}
+	out.Reset()
+	if code := integrityRun(false, false, f.deps, &out); code != 0 {
+		t.Errorf("without --gate a difference never exits 3: %d", code)
+	}
+	g := newIntegFx(t)
+	g.edit("tools/sprint", "x")
+	g.deps.atTag = func(string, string) (bool, bool, error) { return true, false, nil }
+	out.Reset()
+	if code := integrityRun(false, true, g.deps, &out); code != 0 || !strings.Contains(out.String(), "not-from-release") {
+		t.Errorf("a state that is not verified prints its reason and never blocks: %d %q", code, out.String())
+	}
+}
+
+func TestIntegrityCLIFlagsAndRoot(t *testing.T) {
 	var out, errb bytes.Buffer
 	if code := integrityCLI([]string{"--nope"}, &out, &errb); code != 2 || !strings.Contains(errb.String(), "usage") {
 		t.Errorf("an unknown flag: %d %q", code, errb.String())
 	}
 	t.Setenv("CANON_INTEGRITY_ROOT", t.TempDir()) // no VERSION: not from a release, exit 0 even with --gate
-	out.Reset()
 	if code := integrityCLI([]string{"--gate", "--json"}, &out, &errb); code != 0 || !strings.Contains(out.String(), `"state":"not-from-release"`) {
 		t.Errorf("the CLI on a folder with no release: %d %q", code, out.String())
 	}
-	_ = fmt.Sprint
+}
+
+func TestShellQuote(t *testing.T) {
+	if got := shellQuote("/a b/it's"); got != `'/a b/it'\''s'` {
+		t.Errorf("got %s", got)
+	}
+}
+
+func TestIntegrityRootIsTheToolsFolderParent(t *testing.T) {
+	exe, _ := os.Executable()
+	if got, want := integrityRoot(), filepath.Dir(filepath.Dir(exe)); got != want {
+		t.Errorf("integrityRoot = %q, want the parent of the folder holding the executable, %q", got, want)
+	}
+}
+
+func TestGitAtTag(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("no git")
+	}
+	dir := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		c := exec.Command("git", append([]string{"-C", dir, "-c", "user.email=t@t", "-c", "user.name=t"}, args...)...)
+		if out, err := c.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	if isGit, at, err := gitAtTag(dir, "v1.2.3"); isGit || !at || err != nil {
+		t.Errorf("a folder with no .git is a zip install, counted as at the release: %v %v %v", isGit, at, err)
+	}
+	git("init", "-q")
+	git("commit", "-q", "--allow-empty", "-m", "one")
+	if isGit, at, err := gitAtTag(dir, "v1.2.3"); !isGit || at || err != nil {
+		t.Errorf("a clone without the tag is not at it: %v %v %v", isGit, at, err)
+	}
+	git("tag", "v1.2.3")
+	if isGit, at, err := gitAtTag(dir, "v1.2.3"); !isGit || !at || err != nil {
+		t.Errorf("HEAD at the tag: %v %v %v", isGit, at, err)
+	}
+	git("commit", "-q", "--allow-empty", "-m", "two")
+	if isGit, at, err := gitAtTag(dir, "v1.2.3"); !isGit || at || err != nil {
+		t.Errorf("HEAD past the tag is not at it: %v %v %v", isGit, at, err)
+	}
+}
+
+func TestHttpsGetRefusesPlainHTTP(t *testing.T) {
+	if _, err := httpsGet("http://example.test/x", 10); err == nil {
+		t.Error("an http address must be refused")
+	}
+}
+
+func TestIntegrityDirectoryWhereAFileBelongsIsChanged(t *testing.T) {
+	f := newIntegFx(t)
+	p := filepath.Join(f.root, "tools/gate-model.sh")
+	_ = os.Remove(p)
+	if err := os.Mkdir(p, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if r := checkIntegrity(f.deps); f.status(r, "tools/gate-model.sh") != "changed" || !r.Blocking {
+		t.Errorf("a folder in place of a gate file: %+v", r)
+	}
 }
