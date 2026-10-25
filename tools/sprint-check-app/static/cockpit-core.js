@@ -64,7 +64,7 @@ async function loadHelpVersions(){
 export async function fillVersions(ids){
   const set=(id,txt)=>{ const e=document.getElementById(id); if(e) e.textContent=txt; };
   try{ const v=await (await fetch('/api/version')).json();
-    if(v&&v.version) set(ids.canon,'v'+v.version);
+    if(v&&v.version) set(ids.canon,v.version);
     if(v&&v.commit) set(ids.board,v.commit);
     if(v&&v.daemon) set(ids.daemon,v.daemon);
   }catch(e){}
