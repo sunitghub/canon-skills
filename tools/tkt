@@ -233,7 +233,7 @@ tag_normalize() {
   IFS=',' read -ra parts <<< "$csv"   # split on comma; IFS restored after
   for raw in ${parts[@]+"${parts[@]}"}; do
     t="${raw#"${raw%%[![:space:]]*}"}"; t="${t%"${t##*[![:space:]]}"}"
-    t="$(printf '%s' "$t" | tr '[:upper:]' '[:lower:]')"
+    t="$(printf '%s' "$t" | LC_ALL=C tr '[:upper:]' '[:lower:]')"   # the env, not the local LC_ALL above, picks tr's locale: a UTF-8 tr folds the Kelvin sign (U+212A) to k (t-3472)
     [[ -z "$t" ]] && continue
     [[ ",$out," == *",$t,"* ]] && continue
     if ! [[ "$t" =~ ^[a-z0-9][a-z0-9-]{0,23}$ ]]; then
