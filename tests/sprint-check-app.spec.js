@@ -16872,7 +16872,11 @@ test.describe('Tags (t-37e8)', () => {
     const menu = page.locator('.tag-menu');
     await expect(menu.locator('.tag-menu-msg')).toContainText('not a JSON array');          // the catalog already reports it
     await menu.locator('.tag-menu-add').fill('billing');                                     // a valid tag, so only the server can refuse
+    const refused = page.waitForResponse(r => new URL(r.url()).pathname === '/api/tags' && r.request().method() === 'POST');
     await page.keyboard.press('Enter');
+    const res = await refused;                                                               // the Add path itself, not the catalog's message that was already there
+    expect(res.status()).toBe(400);
+    expect((await res.json()).error).toContain('not a JSON array');
     await expect(menu.locator('.tag-menu-msg')).toContainText('not a JSON array');
     expect(fs.readFileSync(projectList, 'utf8')).toBe('null');
     expect(tagsOnDisk(id)).toBe('');
