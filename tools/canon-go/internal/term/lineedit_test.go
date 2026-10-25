@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Protects Tab completion at the restricted prompt: commands, read-only tkt subcommands and project paths complete the
@@ -216,6 +217,20 @@ func TestCompleteFilters(t *testing.T) {
 		}
 	}
 	c := Config{Root: root}
+	if err := os.WriteFile(filepath.Join(root, "nl\nname.txt"), nil, 0o644); err == nil {
+		if _, cands := c.complete("ls nl"); len(cands) != 0 {
+			t.Errorf("a name with a newline must not be offered: %q", cands)
+		}
+		if got, _ := c.complete("ls nl"); got != "ls nl" {
+			t.Errorf("a name with a newline must not complete: %q", got)
+		}
+	}
+	for _, line := range []string{"\u00a0", "cat\u00a0", "\u2003", "ls\u3000"} { // Unicode spaces: Fields drops them, so there may be no word at all
+		got, _ := c.complete(line) // must not panic
+		if line == "cat\u00a0" && got != "cat\u00a0" {
+			t.Errorf("a space after cat starts a new word (several files, nothing to complete): %q", got)
+		}
+	}
 	for _, tc := range []struct{ in, want string }{
 		{"ca", "cat "}, {"ex", "exit "}, {"pw", "pwd "}, {"s", "su "}, {"t", "tkt "}, {"l", "ls "}, {"he", "help "},
 		{"ls .d", "ls .dot "},
@@ -230,5 +245,27 @@ func TestCompleteFilters(t *testing.T) {
 	}
 	if got, _ := c.complete("ls " + filepath.Join(root, "su")); got != "ls "+filepath.Join(root, "sub")+"/" {
 		t.Errorf("an absolute path inside the project should complete: %q", got)
+	}
+}
+
+// Protects the pager's stop: q ends the command being paged, not just the output, so the prompt returns at once even when
+// tkt would run on (here: sleep 30 after a screenful).
+func TestPagerStopEndsTkt(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell script stand-in")
+	}
+	root, _ := project(t)
+	fake := filepath.Join(t.TempDir(), "tkt")
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\ni=1\nwhile [ $i -le 40 ]; do echo \"t-$i row\"; i=$((i+1)); done\nexec sleep 30\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	cfg := Config{Root: root, Tkt: fake, Rows: func() int { return 10 }, In: strings.NewReader("tkt ls\nq\nexit\n"), Out: &out}
+	done := make(chan int, 1)
+	go func() { done <- Run(cfg) }()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("q did not end tkt: the prompt is still waiting on it")
 	}
 }

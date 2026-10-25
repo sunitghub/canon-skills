@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -122,7 +123,8 @@ var commandNames = []string{"cat", "clear", "cls", "exit", "help", "ls", "pwd", 
 // far as it is unambiguous, and the matches when more than one remains.
 func (c Config) complete(line string) (string, []string) {
 	words := strings.Fields(line)
-	trailing := line == "" || strings.HasSuffix(line, " ")
+	last, _ := utf8.DecodeLastRuneInString(line)
+	trailing := line == "" || unicode.IsSpace(last) // any space ends a word, as strings.Fields counts them
 	cur, n := "", len(words)
 	if !trailing {
 		cur, n = words[len(words)-1], len(words)-1
@@ -187,7 +189,7 @@ func (c Config) completePath(cur string) (toks, shown []string) {
 		if !strings.HasPrefix(name, part) || (strings.HasPrefix(name, ".") && !strings.HasPrefix(part, ".")) {
 			continue
 		}
-		if name != Visible(name) || strings.ContainsAny(name, shellChars+" \t") {
+		if name != Visible(name) || strings.ContainsAny(name, shellChars) || strings.IndexFunc(name, unicode.IsSpace) >= 0 {
 			continue
 		}
 		if _, err := confine(c.Root, dir+name); err != nil {
