@@ -533,26 +533,30 @@ export async function showGithubPanel(t, tab) {
     const outL = String(res.output || '').split(/\r?\n/);
     const at = outL.findIndex(l => /type:\s*$/.test(l));
     const line = at >= 0 ? (outL[at + 1] || '').trim() : '';
-    if (tab) tab.ghSent = { id: t.id, n, url, line };
-    if (!tab || tab === cockpitState) showSent(panel, t, tab || { ghSent: { id: t.id, n, url, line } });
+    // t-0da2: the same prompt as a terminal command, on the line send-issue prints after the prompt; the board never runs it.
+    const cmd = (outL.find(l => l.startsWith('From a terminal: ')) || '').slice('From a terminal: '.length).trim();
+    if (tab) tab.ghSent = { id: t.id, n, url, line, cmd };
+    if (!tab || tab === cockpitState) showSent(panel, t, tab || { ghSent: { id: t.id, n, url, line, cmd } });
     statusById.delete(t.id);
     await loadData();
   });
 }
 
 function showSent(panel, t, tab) {
-  const { n, url, line } = tab.ghSent;
+  const { n, url, line, cmd } = tab.ghSent;
   panel.innerHTML = `<div class="ck-gh-box ck-gh-sent" id="ck-gh-sent">
       <h3>Sent ${esc(t.id)} as issue #${esc(n)}</h3>
-      ${line ? `<p>Start a Claude cloud session on the canon environment and type:</p><pre class="ck-gh-pre ck-gh-prompt" id="ck-gh-prompt">${esc(line)}</pre>` : `<p>Start a Claude cloud session on the canon environment and point it at issue #${esc(n)}.</p>`}
+      ${line ? `<p>Start a Claude cloud session on the canon environment and type:</p><pre class="ck-gh-pre ck-gh-prompt" id="ck-gh-prompt">${esc(line)}</pre>${cmd ? `<p>Or paste this in a terminal window in this project (a real terminal; it is refused inside a Claude session):</p><pre class="ck-gh-pre ck-gh-prompt" id="ck-gh-cmd">${esc(cmd)}</pre>` : ''}` : `<p>Start a Claude cloud session on the canon environment and point it at issue #${esc(n)}.</p>`}
       <p>The card is in In progress and shows the next step.</p>
-      <div class="ck-gh-actions">${line ? `<button type="button" class="ck-gh-create" id="ck-gh-copy">Copy prompt</button>` : ''}${url ? `<button type="button" id="ck-gh-open" title="Issue #${esc(n)} on GitHub">Issue ↗</button>` : ''}<button type="button" id="ck-gh-dismiss">Close tab</button><span class="ck-gh-status" id="ck-gh-status" role="status"></span></div>
+      <div class="ck-gh-actions">${cmd ? `<button type="button" class="ck-gh-create" id="ck-gh-copy-cmd">Copy command</button>` : ''}${line ? `<button type="button" id="ck-gh-copy">Copy prompt</button>` : ''}${url ? `<button type="button" id="ck-gh-open" title="Issue #${esc(n)} on GitHub">Issue ↗</button>` : ''}<button type="button" id="ck-gh-dismiss">Close tab</button><span class="ck-gh-status" id="ck-gh-status" role="status"></span></div>
     </div>`;
-  document.getElementById('ck-gh-copy')?.addEventListener('click', async () => {
+  const copyText = async (text) => {
     const s = document.getElementById('ck-gh-status');
-    try { await navigator.clipboard.writeText(line); s.textContent = 'Copied.'; }
-    catch { s.textContent = `Copy was blocked: select "${line}" above.`; }
-  });
+    try { await navigator.clipboard.writeText(text); s.textContent = 'Copied.'; }
+    catch { s.textContent = `Copy was blocked: select "${text}" above.`; }
+  };
+  document.getElementById('ck-gh-copy')?.addEventListener('click', () => copyText(line));
+  document.getElementById('ck-gh-copy-cmd')?.addEventListener('click', () => copyText(cmd));
   document.getElementById('ck-gh-open')?.addEventListener('click', () => openUrl(url));
   // The work is in the cloud now, so the tab has nothing left to show: close it (closeTab never ends a session).
   document.getElementById('ck-gh-dismiss').addEventListener('click', () => {

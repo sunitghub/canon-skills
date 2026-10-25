@@ -14908,7 +14908,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.route('**/api/worktrees**', r => json(r, [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true }]));
     await page.route(`**/api/ticket/${id}/github/send-preview`, r => json(r, { ok: true, exit_code: 0, output: 'repo: acme/app (PRIVATE)\ntitle: ' + id + ': GitHub test\n--- body ---\n# Description\nsend-issue: warning: ' + id + ' has no plan (plan.md ## Approach is empty): the session will draft it and wait for your approval\n--- dry run: nothing was created ---' }));
     const prompt = `Work on Issue#57 for ticket ${id}. Read its section "Working on this" thoroughly before starting and follow it step by step. Work on a new branch, never main.`;
-    await page.route(`**/api/ticket/${id}/github/send`, r => { sendBody = JSON.parse(r.request().postData() || '{}'); return json(r, { ok: true, exit_code: 0, output: `Sent ${id} as https://github.com/acme/app/issues/57\nIn a Claude cloud session on acme/app, type:\n${prompt}` }); });
+    await page.route(`**/api/ticket/${id}/github/send`, r => { sendBody = JSON.parse(r.request().postData() || '{}'); return json(r, { ok: true, exit_code: 0, output: `Sent ${id} as https://github.com/acme/app/issues/57\nIn a Claude cloud session on acme/app, type:\n${prompt}\nFrom a terminal: claude --cloud '${prompt}'` }); });
     await openBoard(page, id);
     await page.locator(`.card[data-id="${id}"] .card-start`).click();
     await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
@@ -14926,6 +14926,11 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.locator('#ck-gh-create').click();
     await expect(page.locator('#ck-gh-sent')).toContainText(`Sent ${id} as issue #57`);
     await expect(page.locator('#ck-gh-prompt')).toHaveText(prompt);   // the line send-issue printed, verbatim
+    // t-0da2: the terminal command send-issue printed next is shown and copied as is; the board runs nothing (cockpitPosts stays 0 below).
+    await expect(page.locator('#ck-gh-cmd')).toHaveText(`claude --cloud '${prompt}'`);
+    await page.evaluate(() => { window.__copied = null; Object.defineProperty(navigator, 'clipboard', { value: { writeText: async (t) => { window.__copied = t; } }, configurable: true }); });
+    await page.locator('#ck-gh-copy-cmd').click();
+    await expect.poll(() => page.evaluate(() => window.__copied)).toBe(`claude --cloud '${prompt}'`);
     await expect(page.locator('#ck-gh-open')).toHaveText('Issue ↗');   // t-f053: goes to GitHub and changes nothing
     await page.evaluate(async (tid) => {   // the panel is shown again (a tab switch): the sent message is kept, not the preview
       const { cockpitState } = await import('/static/board-cockpit.js');
