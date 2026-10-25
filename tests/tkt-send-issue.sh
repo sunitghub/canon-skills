@@ -259,7 +259,7 @@ cat > "$stub/claude" <<'EOF'
 #!/usr/bin/env bash
 if [[ "${1:-}" == --help ]]; then echo "Options:"; [[ -n "${STUB_NOCLOUD:-}" ]] || echo "  --cloud [description|session_id|url]  Create a cloud session"; exit 0; fi
 [[ -t 0 && -t 1 ]] || { echo "claude --cloud needs an interactive terminal" >&2; exit 1; }
-{ printf 'cwd=%s\n' "$PWD"; printf 'arg=%s\n' "$@"; } >> "$STUB_CLAUDE_LOG"
+{ printf 'cwd=%s\n' "$(pwd -P)"; printf 'arg=%s\n' "$@"; } >> "$STUB_CLAUDE_LOG"
 case "${STUB_CLAUDE:-ok}" in
   fail) echo "Error: not signed in" >&2; exit 1 ;;
   *)    echo "Created cloud session: Work on Issue"; echo "View: https://claude.ai/code/session_abc?from=cli&m=0" ;;
