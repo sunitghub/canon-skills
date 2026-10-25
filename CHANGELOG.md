@@ -6,8 +6,12 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.18.1] - 2026-10-25
+
+Admin's daemon panel now shows every version. Update with `canon update`. Only the board's web files changed: stop the running board (Ctrl+C in the terminal running `canon`, or close its window) and run `canon` again. The daemon needs no restart.
+
 ### Changed
-- Admin's daemon panel lists the same three versions as Help: canon, the board build and the cockpit-daemon build. It used to show one "Current version" that was the board's.
+- Admin's panel, now titled **Canon Cockpit**, lists the same three versions as Help: **Canon**, **Board Build** and **Cockpit Daemon**, with one casing for every row and no `v` prefix on the version. It used to show a single "Current version" that was the board's build under a "Cockpit Daemon" title. Help's Versions block drops the `v` as well.
 
 ## [0.18.0] - 2026-10-25
 
