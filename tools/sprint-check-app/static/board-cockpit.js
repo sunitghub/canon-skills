@@ -626,6 +626,8 @@ export function initCockpit() {
     }
     if (d.type === 'status') {
       tab.status = d.status;
+      // A Terminal that ended (exit typed, Kill, or the reaper) has nothing left to show or resume: close its tab.
+      if ((d.status === 'done' || d.status === 'ended') && state.scratch.get(sourceId)?.term === true) { teardownCockpit(sourceId); return; }
       if (isActive) { renderSessionStateChip(); refreshSessionStateChip(); }
       renderTabStrip();
     } else if (d.type === 'started') {
@@ -768,8 +770,10 @@ export function initCockpit() {
       try { window.parent.postMessage({ source: 'canon-board', type: 'close-terminal-ack', tab: SHELL_TAB, handled: isTerm }, location.origin); } catch {}
       return;
     }
-    if (d.type === 'toggle-rail-request') {                // prefix then c: the same as the rail's < button, when a tab is open
-      if (document.getElementById('cockpit-overlay').classList.contains('open')) document.getElementById('ck-rail-toggle').click();
+    if (d.type === 'toggle-rail-request') {                // prefix then w: the same as the rail's < button when a tab is open; the shell folds its own sidebar otherwise
+      const open = document.getElementById('cockpit-overlay').classList.contains('open');
+      if (open) document.getElementById('ck-rail-toggle').click();
+      try { window.parent.postMessage({ source: 'canon-board', type: 'toggle-rail-ack', tab: SHELL_TAB, handled: open }, location.origin); } catch {}
       return;
     }
     if (d.type === 'open-terminal-request') {              // t-57ab: prefix then m: the same as the Terminal button

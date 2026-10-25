@@ -693,8 +693,8 @@ function canonPrefixKeys(emit) {
   }
   window.addEventListener("resize", resize);
 
-  // A Terminal has no Start button to reopen it, so say how to get another one.
-  function termEnded(){ if(MODE === "term") term.writeln("\r\n\x1b[38;5;244mTerminal ended. Press the Terminal button (or the prefix, then m) for a new one.\x1b[0m"); }
+  // A Terminal has no Start button to reopen it. Framed by the board, the board closes the tab; on its own page, say how to get another.
+  function termEnded(){ if(MODE === "term" && window.parent === window) term.writeln("\r\n\x1b[38;5;244mTerminal ended. Press the Terminal button (or the prefix, then m) for a new one.\x1b[0m"); }
   async function kill(){
     if(!session) return;
     await fetch("/session/"+session+"/kill", { method:"POST", headers: authHeaders(sessTok) }).catch(function(){});

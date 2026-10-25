@@ -65,6 +65,7 @@ export function toggleKeysSheet(open){
   if(want) document.getElementById('keys-prefix').textContent=canonPrefixLabel();
   s.classList.toggle('show',want);
 }
+let wAsk=null;   // the tab whose board was asked to fold its side panel; an answer of "nothing open" folds the Workspace sidebar instead
 let xAsk=null;   // t-57ab: the tab whose board was asked whether a Terminal is open
 function prefixAction(key){
   if(key===canonPrefixLabel().slice(5)){ toggleKeysSheet(true); return; }   // the prefix twice opens the sheet, even if it is rebound to a key below
@@ -72,12 +73,15 @@ function prefixAction(key){
   if(/^[1-9]$/.test(key)){ const t=openTabs[+key-1]; if(t) goTab(t.id); return; }
   if(key==='n'||key==='b'){ const i=Math.max(0,all.indexOf(activeTab)); goTab(all[(i+(key==='n'?1:-1)+all.length)%all.length]); return; }
   if(key==='p'){ goTab('projects'); return; }
-  if(key==='w'){ toggleSide(); return; }   // the Workspace sidebar, t-4077
-  if(key==='c'){   // the open tab's own side panel (the ticket or Terminal card), not the Workspace sidebar that w folds
+  if(key==='w'){   // the open tab's side panel when it has one on screen, else the Workspace sidebar (t-4077)
     const f=activeTab!=='projects'&&document.querySelector('#view-'+activeTab+' iframe');
-    if(f){ try{ f.contentWindow.postMessage({source:'canon-cockpit-shell',type:'toggle-rail-request'},location.origin); }catch(e){} }
+    if(!f){ toggleSide(); return; }
+    wAsk=activeTab;
+    try{ f.contentWindow.postMessage({source:'canon-cockpit-shell',type:'toggle-rail-request'},location.origin); }catch(e){ wAsk=null; toggleSide(); return; }
+    const asked=wAsk; setTimeout(()=>{ if(wAsk===asked){ wAsk=null; toggleSide(); } },250);   // a board that is still loading never answers
     return;
   }
+  if(key==='c'){ toggleSide(); return; }   // always the Workspace sidebar
   if(key==='a'){ showView('admin'); try{ window.focus(); }catch(e){} return; }   // Admin, like clicking it in the sidebar
   if(key==='f'||key==='l'){ if(openTabs.length) goTab(openTabs[key==='f'?0:openTabs.length-1].id); return; }   // first / last project tab
   if(key==='e'){
@@ -159,6 +163,7 @@ window.addEventListener('message',function(e){
   const pid=senderTab(d);
   if(!pid) return;   // only a project tab's own board
   if(d.type==='scratch-tabs'){ onScratchTabs(d,pid); return; }
+  if(d.type==='toggle-rail-ack'){ if(wAsk===pid){ wAsk=null; if(d.handled!==true) toggleSide(); } return; }
   if(d.type==='close-terminal-ack'){ if(xAsk===pid){ xAsk=null; if(d.handled!==true&&pid===activeTab&&!shellDialogOpen()) closeTab(pid); } return; }   // t-57ab
   if(d.type==='logbook-opened'){ logbookOpened(pid); return; }   // t-c6bb: the board has opened its Logbook; stop asking
   if(d.type==='open-factory-github'){ openFactoryGithub(pid); return; }   // t-24b1, t-9641: the picker's "set up first" row
