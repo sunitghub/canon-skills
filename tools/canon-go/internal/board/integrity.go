@@ -466,8 +466,7 @@ func integrityRoot() string {
 
 // integrityCLI is `sprint-check integrity [--json] [--gate] [--online]`: --gate exits 3 only when the state is verified and a gate file or
 // prompt differs; every other outcome exits 0 (a missing list, an offline run or a main install never blocks a close).
-func integrityCLI(args []string, stdout, stderr io.Writer) int {
-	asJSON, gate, online := false, false, false
+func parseIntegrityArgs(args []string) (asJSON, gate, online, ok bool) {
 	for _, a := range args {
 		switch a {
 		case "--json":
@@ -477,9 +476,17 @@ func integrityCLI(args []string, stdout, stderr io.Writer) int {
 		case "--online":
 			online = true
 		default:
-			fmt.Fprintln(stderr, "usage: sprint-check integrity [--json] [--gate] [--online]")
-			return 2
+			return false, false, false, false
 		}
+	}
+	return asJSON, gate, online, true
+}
+
+func integrityCLI(args []string, stdout, stderr io.Writer) int {
+	asJSON, gate, online, ok := parseIntegrityArgs(args)
+	if !ok {
+		fmt.Fprintln(stderr, "usage: sprint-check integrity [--json] [--gate] [--online]")
+		return 2
 	}
 	return integrityRun(asJSON, gate, defaultIntegrityDeps(common.EnvOr("CANON_INTEGRITY_ROOT", integrityRoot()), online), stdout)
 }

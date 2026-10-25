@@ -546,3 +546,23 @@ func TestIntegrityAgentCards(t *testing.T) {
 		t.Errorf("a state that is not verified shows no cards: %+v", r.Agents)
 	}
 }
+
+func TestParseIntegrityArgs(t *testing.T) {
+	for args, want := range map[string][4]bool{"": {false, false, false, true}, "--json": {true, false, false, true}, "--gate": {false, true, false, true},
+		"--online": {false, false, true, true}, "--gate --online": {false, true, true, true}, "--bogus": {false, false, false, false}} {
+		j, g, o, ok := parseIntegrityArgs(strings.Fields(args))
+		if got := [4]bool{j, g, o, ok}; got != want {
+			t.Errorf("%q: %v want %v", args, got, want)
+		}
+	}
+}
+
+func TestIntegrityEditOnlyOrWriteOnlyToolsAreNotReadOnly(t *testing.T) {
+	for _, tools := range []string{"Read, Edit", "Read, Write", "Edit", "Write"} {
+		f := newIntegFx(t)
+		f.edit("agents/canon-reviewer.md", "---\ntools: "+tools+"\n---\nx")
+		if a := checkIntegrity(f.deps).Agents[0]; a.ReadOnly {
+			t.Errorf("tools %q must not read as read-only", tools)
+		}
+	}
+}
