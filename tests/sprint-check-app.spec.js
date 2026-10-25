@@ -6668,6 +6668,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('html')).not.toHaveClass(/side-collapsed/);   // w left the Workspace sidebar alone
       await pressPrefix(page, 'c');
       await expect(page.locator('html')).toHaveClass(/side-collapsed/);
+      await expect(page.locator('#side-collapse')).toHaveAttribute('title', /then c\)/);   // the button names the key that folds it
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 

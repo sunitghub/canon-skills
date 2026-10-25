@@ -43,7 +43,7 @@ function setSideCollapsed(on, save){
   const b=document.getElementById('side-collapse');
   b.setAttribute('aria-expanded', String(!on));
   b.setAttribute('aria-label', on ? 'Expand sidebar' : 'Collapse sidebar');
-  b.title=(on ? 'Expand sidebar' : 'Collapse sidebar')+' (ctrl+. then w)';
+  b.title=(on ? 'Expand sidebar' : 'Collapse sidebar')+' (ctrl+. then c)';
   if(save){ try{ localStorage.setItem(LS_SIDE_OFF, on ? '1' : '0'); }catch(e){} }
 }
 export function toggleSide(){ setSideCollapsed(!document.documentElement.classList.contains('side-collapsed'), true); }
