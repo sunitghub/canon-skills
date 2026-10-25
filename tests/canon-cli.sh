@@ -164,10 +164,22 @@ for b in main.go; do
   done
   # --force stops it (the board ends the stub daemon by its recorded pid).
   out="$(run stop --force)"; no_token "$out"
-  assert_eq "Cockpit daemon stopped. The board is still running; Ctrl+C in the terminal running canon (or close its window) stops it." "$out"
+  # this test's board is built outside the install, so canon stop must name it and leave it running (an install's own board is stopped: see below)
+  assert_eq "Cockpit daemon stopped. The board on port $PORT is not this install's, or cannot be identified, so it was left running; Ctrl+C in the terminal running canon (or close its window) stops it." "$out"
   assert_contains "$(run status)" "daemon:   not running"
   assert_eq "No sessions running." "$(run sessions)"
   echo "canon-cli: $b ok"
 done
+
+# canon stop also ends THIS install's own board (tools/sprint-check-bin, found by its port and verified by its path), on an isolated state dir and port.
+if [[ -x "$ROOT/tools/sprint-check-bin/sprint-check" ]]; then
+  PORT="$(free_port)"; own="$(mktemp -d)"
+  ( cd "$own" && COCKPIT_STATE_DIR="$own/state" HOME="$own" "$ROOT/tools/sprint-check-bin/sprint-check" "$PORT" >/dev/null 2>&1 & echo $! > "$own/pid"; disown )
+  bp="$(cat "$own/pid")"; PIDS+=("$bp")
+  wait_for "http://127.0.0.1:$PORT/api/version" || fail "canon-cli: the install's own board did not start"
+  out="$(COCKPIT_STATE_DIR="$own/state" HOME="$own" run stop)"
+  assert_eq "Canon stopped: the Cockpit daemon and the board." "$out"
+  ! kill -0 "$bp" 2>/dev/null || fail "canon-cli: canon stop left this install's board running"
+fi
 
 echo "canon-cli: ok (status/sessions text + --json, wait (reach/timeout/exited/list/--json/--project/bad input), escapes neutralised, busy refusal, --force stop, board down, no token)"

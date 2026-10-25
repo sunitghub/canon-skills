@@ -6,6 +6,13 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.18.2] - 2026-10-25
+
+`canon stop` now stops the board as well as the daemon. Update with `canon update`; stop the running board (Ctrl+C in the terminal running `canon`, or close its window) and run `canon` again.
+
+### Changed
+- `canon stop [--force]` stops the Cockpit daemon and then the board, using the same checked stop `canon uninstall` uses: only a board that belongs to this install is signalled, and any other listener on the port is named and left running. It used to stop only the daemon and tell you to press Ctrl+C in the terminal running `canon`. Sessions still make it refuse without `--force`.
+
 ## [0.18.1] - 2026-10-25
 
 Admin's daemon panel now shows every version. Update with `canon update`. Only the board's web files changed: stop the running board (Ctrl+C in the terminal running `canon`, or close its window) and run `canon` again. The daemon needs no restart.

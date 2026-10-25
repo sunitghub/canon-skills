@@ -30,7 +30,7 @@ Usage:
   canon <port>             Use a specific port (default 8899)
   canon status [--json]    Board and daemon state, version, sessions by state
   canon sessions [--json]  Every live agent session across projects
-  canon stop [--force]     Stop the cockpit daemon (--force ends live sessions)
+  canon stop [--force]     Stop the cockpit daemon and the board (--force ends live sessions)
   canon restart [--force]  Restart the cockpit daemon (--force ends live sessions)
   canon wait <id> --until <state>[,<state>...] [--timeout MS] [--project PATH] [--json]
                            Block until a session (ticket or scratch id) is in a state:
@@ -365,6 +365,25 @@ wait_cmd() {
   done
 }
 
+# canon stop ends the board too, once the daemon is down: the same verified stop canon uninstall uses (tools/cockpit-stop-lib.sh), so only a
+# board that belongs to THIS install is signalled; any other listener on the port is left alone and named.
+stop_board() {
+  INSTALL="$(cd "$SCRIPT_DIR/.." && pwd -P)"; PORT="$1"
+  board_up() { curl -s -o /dev/null --max-time 3 "http://127.0.0.1:$PORT/api/version" 2>/dev/null; }
+  # shellcheck source=platform-lib.sh
+  source "$SCRIPT_DIR/platform-lib.sh"
+  # shellcheck source=cockpit-stop-lib.sh
+  source "$SCRIPT_DIR/cockpit-stop-lib.sh"
+  probe_board
+  case "$BOARD_STATUS" in
+    ours)
+      if stop_verified "$BOARD_PID" board; then echo "Canon stopped: the Cockpit daemon and the board."
+      else echo "Cockpit daemon stopped, but the board (pid $BOARD_PID) did not exit within ${CANON_STOP_WAIT}s; Ctrl+C in the terminal running canon (or close its window) stops it." >&2; exit 1; fi ;;
+    none) echo "Cockpit daemon stopped. The board had already ended." ;;
+    *) echo "Cockpit daemon stopped. The board on port $PORT is not this install's, or cannot be identified, so it was left running; Ctrl+C in the terminal running canon (or close its window) stops it." ;;
+  esac
+}
+
 # t-03a8: the read and control subcommands go through the running board's own API — it
 # renders the text (?format=text), so this stays curl-only: no Python, no jq (a Git-only
 # Windows machine has neither).
@@ -410,7 +429,7 @@ board_cmd() {
       fi
       if [[ "$cmd" == stop ]]; then
         if grep -qE '"running": ?true' <<<"$out"; then echo "The daemon is still running — try: canon stop --force" >&2; exit 1; fi
-        echo "Cockpit daemon stopped. The board is still running; Ctrl+C in the terminal running canon (or close its window) stops it."
+        stop_board "$port"
       else
         if grep -qE '"restarted": ?true' <<<"$out"; then echo "Cockpit daemon restarted."
         else echo "The daemon did not restart: $out" >&2; exit 1; fi
