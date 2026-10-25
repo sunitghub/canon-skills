@@ -15079,7 +15079,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('the chip never says "can\'t check" while the first status is loading, and shows only a numeric PR (t-718b)', async ({ page }) => {
-    const id = newTicketId(PROJECT_ROOT);   // a real t-xxxx id: the button refuses any other
+    const id = newTicketId(PROJECT_ROOT, 'gh8');
     ghTicket(id, { github: 'acme/app#57' });
     let release; const held = new Promise(r => { release = r; });
     let status = { stage: 'sent' };
@@ -16266,7 +16266,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('Take back asks, can close the issue, and posts once (t-718b)', async ({ page }) => {
-    const id = newTicketId(PROJECT_ROOT);   // a real t-xxxx id: the button refuses any other
+    const id = newTicketId(PROJECT_ROOT, 'gh8');
     ghTicket(id, { github: 'acme/app#57' });
     await routeStatus(page, id, { stage: 'sent' });
     const bodies = [];
