@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Added
+- `sprint-check gate-clusters [--days N] [--json]` groups repeated gate failures (evaluator fails, rejected closes, reviewer NOs) by cause from this machine's logs. It only prints (t-b874).
+
 ## [0.20.0] - 2026-10-26
 
 A Terminal that opens beside what you are working on. Update with `canon update`, then run **Restart Daemon** in Admin (the daemon's terminal page and command list changed) and stop and start the board (Ctrl+C in the terminal running `canon`, or close its window, then run `canon`).

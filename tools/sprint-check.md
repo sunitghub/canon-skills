@@ -138,3 +138,7 @@ Click `+ New` in the header. As you type the title, the type (Feature / Task / B
 - `sprint-check` runs the Go board on macOS, Linux and WSL (`tools/sprint-check-bin/sprint-check`, fetched or built from source; no Python)
 - `sprint-check-win` runs the same Go board for Windows/Git Bash users
 - Cockpit port defaults to 8899 (`CANON_COCKPIT_PORT` to change it) — shared across every project, not per-project
+
+## Gate failure clusters
+
+`sprint-check gate-clusters [--days N] [--json]` (default 30 days) groups repeated close-gate failures by cause: evaluator `fail`/`partial`/`not-run`/`budget` runs in `.claude/subagent-runs.jsonl` (with the first failing criterion of the ticket's latest `eval-report.md`, read once per ticket, not the report of the failing run), `gate.rejected` events in `$CANON_HOME/events`, and reviewer `NO` in `review-notes.md` (open or closed tickets). A run is one `agent_id` (the log can hold two lines for it). A cause in at least 2 runs is a cluster; one seen once is listed apart. It reads this machine's files only (no network, no model call), writes nothing, and shows bad log lines as `N unreadable lines`. It never creates a ticket or changes `tkt learn`. The field names it reads sit in one table, `gcKeys`, in `internal/board/gateclusters.go`.
