@@ -121,6 +121,25 @@ git -C "$E2E" init -q
   "$ROOT/tools/skills.sh" refresh "$E2E" >/dev/null 2>&1
   [ -z "$(mirror_listed "$E2E")" ] || fail "skills.sh refresh did not repair the old lines: $(mirror_listed "$E2E")"
 )
+# ── 10. t-ae3b: the "commit .gitignore" hint is for a registration that CHANGED the file, and never reads as a refresh change ──
+H="$(mktemp -d)"; H_HOME="$(mktemp -d)"; git -C "$H" init -q; git -C "$H" config user.email t@example.com; git -C "$H" config user.name test
+printf 'node_modules/\n' > "$H/.gitignore"; git -C "$H" add .gitignore; git -C "$H" commit -qm base
+(
+  unset SKILLS_ROOT
+  export HOME="$H_HOME" SHELL=/bin/zsh SKILLS_SH_NO_TTY=1
+  touch "$H_HOME/.zshrc"
+  out="$("$ROOT/tools/skills.sh" add sprint "$H" 2>&1)"
+  [[ "$out" == *"Next: commit .gitignore"* ]] || fail "a registration that changed .gitignore did not say to commit it: $out"
+  git -C "$H" add .gitignore; git -C "$H" commit -qm "canon setup"
+  out="$("$ROOT/tools/skills.sh" add sprint "$H" 2>&1)"
+  [[ "$out" != *"Next: commit .gitignore"* ]] || fail "a registration that changed nothing still said to commit .gitignore: $out"
+  echo 'foo' >> "$H/.gitignore"      # the user's own edit: not canon's to mention, and refresh must stay quiet about it
+  out="$("$ROOT/tools/skills.sh" add sprint "$H" 2>&1)"
+  [[ "$out" != *"Next: commit .gitignore"* ]] || fail "a registration that changed nothing mentioned the user's own .gitignore edit: $out"
+  out="$("$ROOT/tools/skills.sh" refresh "$H" 2>&1)"
+  [[ "$out" != *"Next: commit .gitignore"* && "$out" != *"[gitignore]"* ]] || fail "refresh read the user's own .gitignore edit as a canon change: $out"
+)
+rm -rf "$H" "$H_HOME"
 rm -rf "$SYM" "$RD" "$RP" "$NN" "$E2E" "$E2E_HOME"
 
 echo "skills-mirror-gitignore: ok"

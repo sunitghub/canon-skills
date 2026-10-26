@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # tools/skills/cmd-add.sh — skills.sh add
 
+_gi_fingerprint() { git -C "$1" hash-object -- .gitignore 2>/dev/null || true; }
+
 cmd_add() {
   local skill="${1:-}"
   local project_dir="${2:-$(pwd)}"
   local as_dep="${3:-}"  # "dep" when called recursively for a dependency
 
   [ -z "$skill" ] && { echo "Usage: skills.sh add <skill-name> [project-dir]"; exit 1; }
+  local gi_before; gi_before="$(_gi_fingerprint "$project_dir")"
 
   local skill_file
   skill_file=$(find_skill "$skill") || {
@@ -78,8 +81,10 @@ cmd_add() {
 
   register_project "$project_dir"
   upsert_skills_symlinks "$project_dir" "$skill_file"
-  # t-ae3b: the registration edits the tracked .gitignore and leaves it uncommitted; commit it before a sprint's gates run
-  [ -z "$as_dep" ] && [ -n "$(git -C "$project_dir" status --porcelain -- .gitignore 2>/dev/null)" ] \
-    && echo "Next: commit .gitignore (canon added its ignore lines) before you start a sprint, so a close is not asked to re-grade."
+  # t-ae3b: a registration that changed the tracked .gitignore leaves it uncommitted; commit it before a sprint's gates run. No word
+  # refresh greps as a change (cmd-refresh.sh), and only when THIS call changed the file (a user's own edit is not canon's to mention).
+  if [ -z "$as_dep" ] && [ "$(_gi_fingerprint "$project_dir")" != "$gi_before" ]; then
+    echo "Next: commit .gitignore before you start a sprint, so its close is not asked to grade again."
+  fi
   return 0
 }

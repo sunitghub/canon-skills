@@ -651,7 +651,7 @@ _gate_eval_report_consistency() {
 # through (without it a fresh project's first close was refused). It replays the real writers, never a copy of their lines: the graded
 # file as git checks it out (`cat-file --filters`), in a scratch repo, through _ensure_mirror_gitignored alone (a project's own
 # .claude/agents gets no line), then _ensure_agents_link_gitignored in either order (skills add: mirror first; link_worktree: agents
-# first), or through ensure_gitattributes; the working-tree file must match one result byte for byte. Order, CRs and duplicates therefore count (break-it found a line-set check too loose). A
+# first), or through ensure_gitattributes; the working-tree file must match one result line for line, a carriage return at the end of a line aside (t-ae3b: autocrlf). Order, duplicates and a CR inside a line therefore count (break-it found a line-set check too loose). A
 # symlink, a deleted file or a failed git call is false.
 _canon_setup_edit_only() (   # a subshell, so its EXIT trap removes the scratch repo on any exit without touching the caller's traps
   wroot="$1" graded="$2" path="$3" name="${3##*/}"
@@ -689,7 +689,7 @@ _canon_setup_edit_only() (   # a subshell, so its EXIT trap removes the scratch 
     n="$(wc -l < "$d" | tr -d ' ')"
     if [ "$n" -lt "$bn" ]; then bn="$n"; best="$d"; fi
   done
-  [ -z "$best" ] || sed -n '1,4p' "$best" | cut -c1-120 | sed 's/^/  /'
+  [ -z "$best" ] || sed -n '1,4p' "$best" | cat -v | cut -c1-120 | sed 's/^/  /'
   exit 1
 )
 
