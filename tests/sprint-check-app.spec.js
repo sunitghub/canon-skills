@@ -6655,7 +6655,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
     // ── t-ccf5: a Terminal pane next to the tab you are on ──────────────────────────────────────────────────────────────
     // The cockpit page is stubbed with a page that stamps a random number into its own document, so a reload shows as a new stamp.
-    const termStub = `<!doctype html><html><body>cockpit<script>window.__stamp = Math.random(); window.__msgs = []; window.addEventListener('message', e => window.__msgs.push(e.data));</script></body></html>`;
+    const termStub = `<!doctype html><html><body>cockpit<script>window.__stamp = performance.now() + ':' + Date.now(); window.__msgs = []; window.addEventListener('message', e => window.__msgs.push(e.data));</script></body></html>`;
     // A standalone board ignores shell messages (there is no shell), so these call what the messages call; the shell's keys are in the last test.
     const askBoard = (page, msg) => page.evaluate(async m => { const b = await import('/static/board-cockpit.js'); if (m.type === 'open-terminal-request') b.openTerminalPane(m.placement); else b.projectTabNav(m.action); }, msg);
     const ovBox = page => page.locator('#cockpit-overlay').boundingBox();
