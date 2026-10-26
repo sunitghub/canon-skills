@@ -6,8 +6,12 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-10-26
+
+A check that canon's own gate files are the released ones. Update with `canon update`, then stop and start the board (Ctrl+C in the terminal running `canon`, or close its window, then run `canon`). The daemon did not change, so Restart Daemon is not needed.
+
 ### Added
-- **Admin > Integrity** (`t-2af0`): in an install that came from a release, canon compares the seven gate files and five gate prompts with the hashes published for that release, and `sprint complete` refuses to close while one differs (it names the file and the command that puts it back). The page is read-only and shows four states (verified, not a release install, not checked, list pending); only "verified" can block. The release now attaches `integrity-X.Y.Z.json` and prints a line for `getcanon.dev/integrity.txt` (`docs/releasing.md` step 5b). `sprint-check integrity [--json] [--gate]` prints the same check in a terminal.
+- **Admin > Integrity** (`t-2af0`): in an install that came from a release, canon compares the seven gate files and five gate prompts with the hashes published for that release, and `sprint complete` refuses to close while one differs (it names the file and the command that puts it back, and records a `gate.rejected` event). The page is read-only: a card for each gate agent (role, model, effort, tools, the prompt it runs), the file lists with a state pill, and what is not covered yet (`install.sh`, `install.ps1`, git hooks, skills, standards). Four states (verified, not a release install, not checked, list pending); only "verified" can block, so an install that follows main, a checkout that is not at a release tag, an offline machine with no saved list, or a release whose list is not published yet never blocks. A match proves a file is unchanged since the release, not that the release was safe; a process that can write to your canon folder or `CANON_HOME` can still change the gate (see `docs/setup.md`). The release now attaches `integrity-X.Y.Z.json` and prints a line for `getcanon.dev/integrity.txt` (`docs/releasing.md` step 5b). `sprint-check integrity [--json] [--gate] [--online]` prints the same check in a terminal.
 
 ## [0.18.12] - 2026-10-25
 
