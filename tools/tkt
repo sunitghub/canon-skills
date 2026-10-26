@@ -1733,13 +1733,13 @@ cmd_merge_pr() {
     || { echo "merge-pr: $id's eval-report.md has $nv verdict lines and $ng graded-heads; one of each is required" >&2; exit 1; }
   local issue=""; issue="$(get_field "$file" github)"; [[ "$issue" == "$repo#"* && "${issue##*#}" =~ ^[0-9]+$ ]] && issue="${issue##*#}" || issue=""
   pr="$(_resolve_pr merge-pr "$file" "$repo" "$pr")" || exit 1
-  local info st mg ms head base cross tries=1
+  local info st mg ms head base cross draft tries=1
   # t-fefb: right after another merge GitHub reads mergeable UNKNOWN while it recomputes; wait it out (6 reads, 5 s apart).
   while :; do
-    info="$(gh pr view "$pr" --repo "$repo" --json state,mergeable,mergeStateStatus,headRefOid,baseRefName,isCrossRepository \
-      --jq '[.state, .mergeable, .mergeStateStatus, .headRefOid, .baseRefName, .isCrossRepository] | @tsv' 2>&1)" \
+    info="$(gh pr view "$pr" --repo "$repo" --json state,mergeable,mergeStateStatus,headRefOid,baseRefName,isCrossRepository,isDraft \
+      --jq '[.state, .mergeable, .mergeStateStatus, .headRefOid, .baseRefName, .isCrossRepository, .isDraft] | @tsv' 2>&1)" \
       || { echo "merge-pr: gh could not read PR #$pr on $repo: $info" >&2; exit 1; }
-    IFS=$'\t' read -r st mg ms head base cross <<< "$info"
+    IFS=$'\t' read -r st mg ms head base cross draft <<< "$info"
     [[ "$mg" == UNKNOWN && "$tries" -lt 6 ]] || break
     tries=$((tries + 1)); echo "merge-pr: PR #$pr mergeable state is UNKNOWN; reading it again ($tries/6)…"; sleep 5
   done
@@ -1748,6 +1748,9 @@ cmd_merge_pr() {
   _mp_refuse() { $check || _gh_trail "$tdir" refused "PR: #$pr" "reason: $1"; exit 1; }
   [[ "$st" == OPEN ]] || { echo "merge-pr: PR #$pr is $st, not open" >&2; _mp_refuse "PR is $st, not open"; }
   [[ "$cross" == false ]] || { echo "merge-pr: PR #$pr comes from a fork; its code would run here, so merge it on GitHub after reading it" >&2; _mp_refuse "PR comes from a fork"; }
+  # t-a463: a draft cannot be merged (a cloud PR is always opened as one). Said here, in seconds, before any clone or test run; GitHub
+  # reads such a PR as CLEAN or BLOCKED, so the checks below would not name it.
+  [[ "$draft" != true ]] || { echo "merge-pr: PR #$pr is a draft; GitHub will not merge it. Run: gh pr ready $pr  (or press Mark ready on the card), then merge." >&2; _mp_refuse "PR is a draft"; }
   if [[ "$mg" != MERGEABLE || "$ms" != CLEAN ]]; then
     if [[ "$ms" == BLOCKED ]]; then echo "merge-pr: PR #$pr is blocked by a branch rule (a required review or check): https://github.com/$repo/pull/$pr" >&2
     else echo "merge-pr: PR #$pr cannot merge cleanly (mergeable: $mg, state: $ms)" >&2; fi
@@ -1817,7 +1820,19 @@ cmd_merge_pr() {
   if ! out="$(cd / && gh pr merge "$pr" --repo "$repo" --merge --delete-branch --match-head-commit "$head" 2>&1)"; then
     # gh can fail after GitHub merged (deleting the branch, say): what GitHub says decides.
     [[ "$(gh pr view "$pr" --repo "$repo" --json state --jq .state 2>/dev/null || true)" == MERGED ]] \
-      || { echo "merge-pr: gh could not merge PR #$pr: $out" >&2; _mp_refuse "gh could not merge the PR"; }
+      || {
+        # t-a463: after a passing suite say so first (the 3.5 minutes were not wasted), then what GitHub says, then the PR as it reads now;
+        # a vague "Something went wrong" is followed by the cause when the re-read finds one.
+        local d2="" s2="" m2="" why=""
+        IFS=$'\t' read -r d2 s2 m2 < <(gh pr view "$pr" --repo "$repo" --json isDraft,mergeStateStatus,mergeable \
+          --jq '[.isDraft, .mergeStateStatus, .mergeable] | @tsv' 2>/dev/null || true) || true
+        [[ "$d2" == true ]] && why="PR #$pr is a draft: run gh pr ready $pr"
+        [[ -z "$why" && "$s2" == BEHIND ]] && why="the PR branch is behind $base: update it, then merge"
+        [[ -z "$why" && "$s2" == BLOCKED ]] && why="a branch rule blocks the merge (a required review or check)"
+        [[ -z "$tcmd" ]] || echo "merge-pr: the suite passed on $base + PR #$pr; GitHub refused the merge." >&2
+        echo "merge-pr: gh could not merge PR #$pr: $out" >&2
+        [[ -z "$d2$s2$m2" ]] || echo "merge-pr: PR #$pr now reads: draft=$d2, mergeStateStatus=$s2, mergeable=$m2${why:+; $why}" >&2
+        _mp_refuse "gh could not merge the PR"; }
     note=" (gh reported: $out)"
   fi
   local sha; sha="$(gh pr view "$pr" --repo "$repo" --json mergeCommit --jq '.mergeCommit.oid // empty' 2>/dev/null || true)"
@@ -1830,6 +1845,37 @@ cmd_merge_pr() {
   fi
   echo "Merged PR #$pr into $base${sha:+ ($sha)}$note."
   _ff_local_base "$root" "$base"
+}
+
+# cmd_pr_ready <id> [--pr N] — t-a463: mark the ticket's own open, same-repo DRAFT PR ready (`gh pr ready`), so merge-pr can merge it. The board's
+# "Mark ready" button runs this. Changes nothing unless every fact holds; reversible with `gh pr ready --undo N`.
+cmd_pr_ready() {
+  local id="" pr=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --pr) pr="${2:-}"; shift 2 || { echo "Error: --pr needs a number" >&2; exit 1; } ;;
+      -*)   echo "Unknown option: $1" >&2; exit 1 ;;
+      *)    [[ -z "$id" ]] && id="$1"; shift ;;
+    esac
+  done
+  [[ -n "$id" ]] || { echo "Usage: tkt pr-ready <id> [--pr N]" >&2; exit 1; }
+  [[ -z "$pr" || "$pr" =~ ^[0-9]+$ ]] || { echo "pr-ready: --pr takes a PR number" >&2; exit 1; }
+  local file tdir root repo; file="$(find_ticket "$id")"; tdir="$(dirname "$file")"; id="$(get_field "$file" id)"
+  root="$(git -C "$tdir" rev-parse --show-toplevel)" || exit 1
+  repo="$(_gh_origin_repo "$root" pr-ready)" || exit 1
+  command -v gh >/dev/null 2>&1 || { echo "pr-ready: needs the GitHub CLI: install gh, then run: gh auth login" >&2; exit 1; }
+  pr="$(_resolve_pr pr-ready "$file" "$repo" "$pr")" || exit 1
+  local info st cross draft
+  info="$(gh pr view "$pr" --repo "$repo" --json state,isCrossRepository,isDraft --jq '[.state, .isCrossRepository, .isDraft] | @tsv' 2>&1)" \
+    || { echo "pr-ready: gh could not read PR #$pr on $repo: $info" >&2; exit 1; }
+  IFS=$'\t' read -r st cross draft <<< "$info"
+  [[ "$st" == OPEN ]] || { echo "pr-ready: PR #$pr is $st, not open; nothing changed" >&2; exit 1; }
+  [[ "$cross" == false ]] || { echo "pr-ready: PR #$pr comes from a fork; mark it ready on GitHub after reading it; nothing changed" >&2; exit 1; }
+  [[ "$draft" == true ]] || { echo "pr-ready: PR #$pr is not a draft; nothing to do"; return 0; }
+  local out
+  out="$(gh pr ready "$pr" --repo "$repo" 2>&1)" || { echo "pr-ready: gh could not mark PR #$pr ready: $out" >&2; exit 1; }
+  _gh_trail "$tdir" ready "PR: #$pr"
+  echo "Marked PR #$pr ready for review. (Undo: gh pr ready --undo $pr --repo $repo)"
 }
 
 # _branch_ok <name> — t-24b1: a branch name read from GitHub or a remote goes on git and gh command lines only when
@@ -2598,6 +2644,7 @@ main() {
     land)           cmd_land "$@" ;;
     worktree-reset) cmd_worktree_reset "$@" ;;
     take-back)      cmd_take_back "$@" ;;
+    pr-ready)       cmd_pr_ready "$@" ;;
     github-status)  cmd_github_status "$@" ;;
     export)         cmd_export "$@" ;;
     import-results) cmd_import_results "$@" ;;

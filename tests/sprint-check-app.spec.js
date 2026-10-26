@@ -16773,7 +16773,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.route(`**/api/ticket/${id}/github/merge-stop`, r => { stops++; Object.assign(job, { status: 'done', exit_code: 130, output: 'progress\nmerge-pr: stopped; the tests were ended and nothing was merged\n' }); return json(r, job); });
     await openBoard(page, id);
     await page.locator(`.card[data-id="${id}"] .card-gh-btn`).click();
-    await expect(page.locator('#gh-dialog-body')).toHaveText('Not mergeable here. Nothing was run or changed.');
+    await expect(page.locator('#gh-dialog-body')).toHaveText('PR #58 is blocked by a branch rule (a required review or check). Nothing was run or changed.');   // t-a463: the reason first
     await expect(page.locator('#gh-dialog-ok')).toBeHidden();
     await page.locator('#gh-dialog-cancel').click();
     expect(posts).toBe(0);
@@ -16786,6 +16786,48 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     expect(stops).toBe(0);
     await page.locator('#gh-dialog-cancel').click();
     await expect.poll(() => stops).toBe(1);
+  });
+
+  // t-a463: a cloud PR is always a draft and GitHub will not merge one. Check & merge now says so in seconds, with the reason ABOVE the log and a
+  // Mark ready button (the click is the consent; tkt pr-ready re-checks); after it, Check & merge runs again. Protects the card's merge dialog.
+  for (const theme of ['dark', 'light']) {
+    test(`Check & merge: a draft PR shows the reason above the log and a Mark ready button that marks it ready and checks again (${theme}, t-a463)`, async ({ page }) => {
+      const id = newTicketId(PROJECT_ROOT, 'gh8');
+      ghTicket(id, { github: 'acme/app#57' });
+      await routeStatus(page, id, { stage: 'results-in', pr: 58 });
+      await page.addInitScript(t => document.documentElement.setAttribute('data-theme', t), theme);
+      const draftOut = 'merge-pr: PR #58 is a draft; GitHub will not merge it. Run: gh pr ready 58  (or press Mark ready on the card), then merge.\nsome earlier log line\nanother log line';
+      let check = { ok: false, exit_code: 1, output: draftOut };
+      const readyPosts = [];
+      await page.route(`**/api/ticket/${id}/github/merge-check**`, r => json(r, check));
+      await page.route(`**/api/ticket/${id}/github/ready`, r => { readyPosts.push(JSON.parse(r.request().postData() || '{}')); check = { ok: true, exit_code: 0, output: 'merge-pr: ready' }; return json(r, { ok: true, exit_code: 0, output: 'Marked PR #58 ready for review.' }); });
+      await openBoard(page, id);
+      await page.locator(`.card[data-id="${id}"] .card-gh-btn`).click();
+      const body = page.locator('#gh-dialog-body'), pre = page.locator('#gh-dialog-pre');
+      await expect(body).toContainText('PR #58 is a draft; GitHub will not merge it');
+      await expect(body).toContainText('Nothing was run or changed.');
+      const [b, p] = [await body.boundingBox(), await pre.boundingBox()];
+      expect(b.y).toBeLessThan(p.y);                                                  // the reason above the log
+      await expect(page.locator('#gh-dialog-ok')).toHaveText('Mark ready');
+      await page.locator('#gh-dialog-ok').click();
+      await expect.poll(() => readyPosts).toEqual([{ pr: 58 }]);
+      await expect(page.locator('#gh-dialog-ok')).toHaveText('Run tests & merge');   // checked again, and ready now
+      await page.screenshot({ path: test.info().outputPath(`draft-${theme}.png`) });
+    });
+  }
+
+  test('Check & merge: a refusal that is not a draft shows its reason first and no Mark ready button (t-a463)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh8');
+    ghTicket(id, { github: 'acme/app#57' });
+    await routeStatus(page, id, { stage: 'results-in', pr: 58 });
+    await page.route(`**/api/ticket/${id}/github/merge-check**`, r => json(r, { ok: false, exit_code: 1, output: 'merge-pr: PR #58 is CLOSED, not open\nlog' }));
+    let posts = 0;
+    await page.route(`**/api/ticket/${id}/github/ready`, r => { posts++; return json(r, { ok: true, output: '' }); });
+    await openBoard(page, id);
+    await page.locator(`.card[data-id="${id}"] .card-gh-btn`).click();
+    await expect(page.locator('#gh-dialog-body')).toContainText('PR #58 is CLOSED, not open. Nothing was run or changed.');
+    await expect(page.locator('#gh-dialog-ok')).toBeHidden();
+    expect(posts).toBe(0);
   });
 
   test('a public repo: the preview asks for a tick before Create issue sends with public (t-718b)', async ({ page }) => {

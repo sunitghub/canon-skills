@@ -280,6 +280,25 @@ async function importResults(t, pr) {
 }
 
 // ── Check & merge ───────────────────────────────────────────────────────────────────────────────────────────────────
+// t-a463: the one line that says WHY, shown above the log (a long log tail buries it). Prefers the line that names the refusal.
+function refusalReason(out) {
+  const lines = String(out || '').split('\n').map(s => s.trim()).filter(Boolean);
+  const hit = lines.find(s => /is a draft|GitHub refused|gh could not merge|failed on .* \+ PR|cannot merge cleanly|not open|blocked by|comes from a fork|not the commit the evaluator graded/.test(s)) || lines[0] || '';
+  return hit.replace(/^merge-pr:\s*/, '');
+}
+const isDraftRefusal = out => /is a draft; GitHub will not merge it|is a draft: run gh pr ready/.test(out || '');
+// A cloud PR is always opened as a draft and GitHub will not merge one: the dialog's button marks it ready (the click is the consent; tkt
+// pr-ready re-checks that it is this ticket's own open same-repo draft; gh pr ready --undo reverses it), then runs Check & merge again.
+async function markReady(t, pr) {
+  const shown = openDialog({ title: `Marking ${t.id}'s PR ready…`, body: 'Running tkt pr-ready.', cancel: 'Close', escape: false });
+  let res;
+  try { res = await postJSON(ghApi(t.id, 'ready'), pr ? { pr } : {}); }
+  catch (e) { res = { ok: false, output: String(e.message || e) }; }
+  if (!res.ok) { updateDialog({ title: 'Could not mark it ready', body: 'Nothing was changed.', pre: res.output || '', escape: true }, shown.gen); return; }
+  updateDialog({ title: 'Marked ready', body: 'Checking it again…', pre: res.output || '', escape: false }, shown.gen);
+  await checkAndMerge(t, pr);
+}
+
 async function checkAndMerge(t, pr) {
   const prQ = pr ? `?pr=${encodeURIComponent(pr)}` : '';
   const prB = pr ? { pr } : {};
@@ -289,7 +308,9 @@ async function checkAndMerge(t, pr) {
   try { chk = await getJSON(ghApi(t.id, 'merge-check') + prQ); }
   catch (e) { chk = { ok: false, output: String(e.message || e) }; }
   if (!chk.ok) {
-    updateDialog({ body: 'Not mergeable here. Nothing was run or changed.', pre: chk.output || '', cancel: 'Close', escape: true }, open.gen);
+    const reason = refusalReason(chk.output), draft = isDraftRefusal(chk.output);
+    updateDialog({ body: `${(reason || 'Not mergeable here').replace(/[.:\s]+$/, '')}. Nothing was run or changed.`, pre: chk.output || '', ok: draft ? 'Mark ready' : '', cancel: 'Close', escape: true }, open.gen);
+    if (draft) { const v = await open; if (v && v.ok) await markReady(t, pr); }
     return;
   }
   updateDialog({
@@ -337,12 +358,14 @@ async function followMerge(t, prB, show) {
   const offer = merged && mirrors.length ? `Push main to ${mirrors.join(', ')}` : '';
   // t-6623: merge-pr says "<cmd> failed on <base> + PR #N" when the suite fails here: the PR can be fixed in a worktree.
   const suiteFailed = !merged && /failed on .* \+ PR #\d+/.test(st?.output || '');
+  const draftRefused = !merged && isDraftRefusal(st?.output);   // t-a463
   if (gen !== undefined) updateDialog({
     title: merged ? 'Merged' : 'Not merged',
-    body: merged ? `The PR is merged and the issue closed by its Fixes line.${offer ? ` Also push main to ${mirrors.join(', ')} (git config canon.mirror)?` : ''}` : 'Nothing changed on GitHub. See the output.',
-    pre: st?.output || '', ok: offer || (suiteFailed ? 'Fix here' : ''), cancel: 'Close', escape: true,
+    body: merged ? `The PR is merged and the issue closed by its Fixes line.${offer ? ` Also push main to ${mirrors.join(', ')} (git config canon.mirror)?` : ''}` : `${(refusalReason(st?.output) || 'Not merged').replace(/[.:\s]+$/, '')}. Nothing changed on GitHub. See the output.`,
+    pre: st?.output || '', ok: offer || (draftRefused ? 'Mark ready' : suiteFailed ? 'Fix here' : ''), cancel: 'Close', escape: true,
   }, gen);
   if (offer && shown) shown.then(v => { if (v && v.ok) pushMain(mirrors); });
+  else if (draftRefused && shown) shown.then(v => { if (v && v.ok) markReady(t, prB.pr); });
   else if (suiteFailed && shown) shown.then(v => { if (v && v.ok) continueHere(t, prB.pr, true); });
   statusById.delete(t.id);
   await loadData();

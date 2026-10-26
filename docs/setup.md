@@ -185,6 +185,10 @@ script's Go block:
    what the PR changes, asks once, runs your tests (`scripts/test.sh`, or `--test "<command>"`) on your base branch
    plus the PR in a scratch clone, and merges if they pass. `--check` runs the checks only. With no terminal to ask
    on (an agent running it for you), it refuses unless given `--yes`, which skips only the question, never the checks.
+   A cloud PR is opened as a draft and GitHub will not merge a draft: `tkt merge-pr` (and `--check`) stop in seconds, before any
+   test run, and say so. `tkt pr-ready <id>` (the "Mark ready" button on the card's dialog) marks the ticket's own open, same-repo
+   draft PR ready (`gh pr ready --undo <n>` reverses it); then merge. If GitHub refuses after your tests passed, the output says the
+   suite passed and names the cause it finds (draft, behind, blocked).
    After the merge it fast-forwards your local base branch to GitHub's (only a clean fast-forward; otherwise it leaves
    it and says why). To also push main to other remotes you keep in step, name them once with
    `git config --add canon.mirror <remote>`; `tkt push-main` (or the board's "Push main to …" after a merge) pushes only

@@ -931,6 +931,10 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 			sendJSON(w, runTkt(eroot, append([]string{"import-results", id}, pr...)))
 			return
 		}
+		if m[2] == "ready" { // t-a463: Mark ready on the "Not merged" dialog; tkt pr-ready re-checks every fact
+			sendJSON(w, runTkt(eroot, append([]string{"pr-ready", id}, pr...)))
+			return
+		}
 		sendJSON(w, startMergeRun(eroot, id, pr))
 		return
 	}
@@ -2072,7 +2076,7 @@ var (
 	apiTicketVisualRe   = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/visual$`)
 	apiTicketDemoRe     = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/demo$`)
 	apiTicketTagsRe     = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/tags$`)
-	apiGitHubPostRe     = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/github/(send|import|merge|merge-stop|take-back|open-pr|land)$`)
+	apiGitHubPostRe     = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/github/(send|import|merge|merge-stop|take-back|open-pr|land|ready)$`)
 	apiWorktreeUnlockRe = regexp.MustCompile(`^/api/worktree-unlock/([^/]+)$`)
 	checkboxItemRe      = regexp.MustCompile(`(?m)^\s*[-*]\s+\[[ xX]\]\s+\S`)
 	uncheckedItemRe     = regexp.MustCompile(`(?m)^\s*[-*]\s+\[ \]\s+\S`)

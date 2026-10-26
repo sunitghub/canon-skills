@@ -125,6 +125,11 @@ for P in "$GOP"; do
   expect_call "$srv import no pr"  "$P" "$(post "$P" /api/ticket/t-ab12/github/import '{}')" "import-results t-ab12"
   expect_call "$srv merge-check"   "$P" "$(get "$P" '/api/ticket/t-ab12/github/merge-check?pr=58')" "merge-pr t-ab12 --check --pr 58"
   expect_call "$srv take-back"     "$P" "$(post "$P" /api/ticket/t-ab12/github/take-back '{}')" "take-back t-ab12"
+  expect_call "$srv ready"         "$P" "$(post "$P" /api/ticket/t-ab12/github/ready '{"pr":58}')" "pr-ready t-ab12 --pr 58"   # t-a463
+  expect_call "$srv ready no pr"   "$P" "$(post "$P" /api/ticket/t-ab12/github/ready '{}')" "pr-ready t-ab12"
+  for bad in '"5x"' '"--yes"' '-1' 'true'; do
+    r="$(post "$P" /api/ticket/t-ab12/github/ready "{\"pr\":$bad}")"; [[ "$(code "$r")" == 400 ]] || fail "$srv ready pr=$bad: HTTP $(code "$r")"
+  done
   expect_call "$srv open-pr"       "$P" "$(post "$P" /api/ticket/t-ab12/github/open-pr '{}')" "open-pr t-ab12"          # t-24b1
   expect_call "$srv land"          "$P" "$(post "$P" /api/ticket/t-ab12/github/land '{"pr":58}')" "land t-ab12 --pr 58"      # t-c259
   expect_call "$srv land no pr"    "$P" "$(post "$P" /api/ticket/t-ab12/github/land '{}')" "land t-ab12"

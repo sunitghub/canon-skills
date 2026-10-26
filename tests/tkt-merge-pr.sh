@@ -46,8 +46,11 @@ case "$1 $2" in
               # STUB_SCRIPT: a file of "MG MS" lines, one per read (the last repeats); STUB_READS counts the reads.
               if [[ -n "${STUB_SCRIPT:-}" ]]; then n=$(( $(cat "$STUB_W/reads" 2>/dev/null || echo 0) + 1 )); echo $n > "$STUB_W/reads"
                 read -r STUB_MG STUB_MS < <(sed -n "${n}p" "$STUB_SCRIPT" | grep . || tail -1 "$STUB_SCRIPT"); fi
-              printf '%s\t%s\t%s\t%s\t%s\t%s\n' "${STUB_STATE:-OPEN}" "${STUB_MG:-MERGEABLE}" "${STUB_MS:-CLEAN}" \
-                "${STUB_HEAD:?}" main "${STUB_CROSS:-false}" ;;
+              if [[ "$*" == *"--json isDraft,mergeStateStatus,mergeable"* ]]; then printf '%s\t%s\t%s\n' "${STUB_REREAD_DRAFT:-${STUB_DRAFT:-false}}" "${STUB_REREAD_MS:-${STUB_MS:-CLEAN}}" "${STUB_MG:-MERGEABLE}"; exit 0; fi   # t-a463: the re-read after a refused merge
+              if [[ "$*" == *"--json state,isCrossRepository,isDraft"* ]]; then printf '%s\t%s\t%s\n' "${STUB_STATE:-OPEN}" "${STUB_CROSS:-false}" "${STUB_DRAFT:-false}"; exit 0; fi   # t-a463: pr-ready's read
+              printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "${STUB_STATE:-OPEN}" "${STUB_MG:-MERGEABLE}" "${STUB_MS:-CLEAN}" \
+                "${STUB_HEAD:?}" main "${STUB_CROSS:-false}" "${STUB_DRAFT:-false}" ;;
+  "pr ready") exit "${STUB_READY_RC:-0}" ;;
   "pr merge") printf 'cwd %s\n' "$PWD" >> "$STUB_LOG"; [[ -n "${STUB_MERGE_FAIL:-}" ]] && { echo "could not delete branch" >&2; exit 1; }
               # STUB_MERGE_PUSH: GitHub's merge moves main on origin (here: to the PR head, a fast-forward of the base).
               [[ -n "${STUB_MERGE_PUSH:-}" ]] && git --git-dir="$STUB_W/origin.git" update-ref refs/heads/main "$STUB_HEAD"; exit 0 ;;
@@ -142,6 +145,45 @@ before="$(sig)"; rc=0; out="$(STUB_MERGE_FAIL=1 "$TKT" merge-pr "$id" --yes 2>&1
 [[ "$rc" == 1 ]] || fail "a merge GitHub did not make should exit 1, got $rc"
 assert_contains "$out" "gh could not merge PR #7: could not delete branch"
 [[ "$(sig)" == "$before" ]] || fail "a failed merge recorded something in ticket.md"
+
+# t-a463: a draft PR (a cloud PR always is one) is refused in seconds, before the clone and the test run, for --check and a real run alike.
+rm -f "$W/ran"; gt=".tickets/$id/github.md"; blocks_before="$(grep -c '^## ' "$gt")"
+refuses "a draft PR" "PR #7 is a draft; GitHub will not merge it. Run: gh pr ready 7" STUB_DRAFT=true -- --yes
+[[ ! -e "$W/ran" ]] || fail "the suite ran on a draft PR (t-a463)"
+assert_eq "$((blocks_before + 1))" "$(grep -c '^## ' "$gt")"; assert_grep '^reason: PR is a draft$' "$gt"
+blocks_before="$(grep -c '^## ' "$gt")"
+refuses "a draft PR on --check" "is a draft; GitHub will not merge it" STUB_DRAFT=true -- --check
+assert_eq "$blocks_before" "$(grep -c '^## ' "$gt")"   # --check is read-only: no trail entry
+# the same PR, not a draft, still checks as ready (positive control)
+out="$("$TKT" merge-pr "$id" --check 2>&1)" || fail "a non-draft PR no longer checks: $out"
+assert_contains "$out" "merge-pr: ready"
+# after a passing suite GitHub refuses anyway: say the suite passed, what GitHub said, and what the PR reads like now (the draft, named)
+before="$(sig)"; rc=0; out="$(STUB_MERGE_FAIL=1 STUB_REREAD_DRAFT=true "$TKT" merge-pr "$id" --yes 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "a refused merge should exit 1, got $rc"
+assert_contains "$out" "the suite passed on main + PR #7; GitHub refused the merge."
+assert_contains "$out" "gh could not merge PR #7: could not delete branch"
+assert_contains "$out" "PR #7 now reads: draft=true, mergeStateStatus=CLEAN, mergeable=MERGEABLE; PR #7 is a draft: run gh pr ready 7"
+[[ "$(sig)" == "$before" ]] || fail "a refused merge recorded something in ticket.md"
+out="$(STUB_MERGE_FAIL=1 STUB_REREAD_MS=BEHIND "$TKT" merge-pr "$id" --yes 2>&1)" || true
+assert_contains "$out" "the PR branch is behind main: update it, then merge"
+echo "merge-pr: names a draft first, and what GitHub refused after a passing suite (t-a463)"
+
+# tkt pr-ready: marks the ticket's own open, same-repo DRAFT PR ready, with one gh call; anything else changes nothing.
+readyc() { grep -c '^pr ready' "$STUB_LOG" || true; }
+: > "$STUB_LOG"; before="$(sig)"
+out="$(STUB_DRAFT=true "$TKT" pr-ready "$id" 2>&1)" || fail "pr-ready on a draft failed: $out"
+assert_contains "$out" "Marked PR #7 ready for review"; assert_eq 1 "$(readyc)"; assert_grep '^pr ready 7 --repo acme/app$' "$STUB_LOG"
+assert_grep '— ready$' "$gt"
+for c in "a PR that is not a draft|false|OPEN|false|not a draft" "a closed PR|true|CLOSED|false|is CLOSED, not open" "a PR from a fork|true|OPEN|true|comes from a fork"; do
+  IFS='|' read -r label d st cr msg <<< "$c"
+  : > "$STUB_LOG"; rc=0; out="$(STUB_DRAFT=$d STUB_STATE=$st STUB_CROSS=$cr "$TKT" pr-ready "$id" 2>&1)" || rc=$?
+  assert_contains "$out" "$msg"; assert_eq 0 "$(readyc)"
+  [[ "$label" == "a PR that is not a draft" ]] || [[ "$rc" == 1 ]] || fail "pr-ready should refuse $label (rc $rc): $out"
+done
+: > "$STUB_LOG"; rc=0; out="$(STUB_DRAFT=true "$TKT" pr-ready "$id" --pr '7;x' 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "pr-ready took a PR argument that is not a number: $out"; assert_eq 0 "$(readyc)"
+[[ "$(sig)" == "$before" ]] || fail "pr-ready changed ticket.md"
+echo "pr-ready: marks only the ticket's own open same-repo draft ready (t-a463)"
 
 # The prompt needs a pseudo-terminal from script(1); Git Bash on Windows has none, so those cases skip there, loudly.
 if command -v script >/dev/null 2>&1; then
