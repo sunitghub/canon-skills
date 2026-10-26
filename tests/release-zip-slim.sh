@@ -31,7 +31,7 @@ build() {
 
 # check_zip <zip> <unpack folder>: prints the problems found, one per line (nothing = a good zip)
 check_zip() {
-  local zip="$1" u="$2" top bad="" p f n kb files
+  local zip="$1" u="$2" full="${3:-}" top p f n kb files
   rm -rf "$u"; mkdir -p "$u"; unzip -q "$zip" -d "$u"; top="$u/canon-9.9.9"
   [[ -d "$top" ]] || { echo "no canon-9.9.9/ folder"; return; }
   # 1. what is left out
@@ -43,21 +43,42 @@ check_zip() {
   [[ -n "$shots" ]] || echo "app.html names no tour screenshots (the check cannot run)"
   for f in $shots; do [[ -f "$top/meta/screenshots/$f" ]] || echo "the tour image $f is missing"; done
   [[ "$n" == "$(printf '%s\n' "$shots" | grep -c .)" ]] || echo "meta/ holds $n files, not just the tour's $(printf '%s\n' "$shots" | grep -c .)"
-  # ... and the files named by the tools (each with the line that reads it)
-  for p in tools/tkt tools/canon tools/skills.sh tools/sprint tools/fetch-daemon.sh tools/src-key.sh tools/cloud-env.sh tools/hooks-lib.sh \
-           scripts/pre-commit-hook-template.sh tools/canon-go/go.mod tools/canon-go/go.sum tools/cockpit-daemon.sha256 VERSION install.sh install.ps1 \
-           skills/sprint/SKILL.md agents/canon-reviewer.md standards/efficiency.md docs/setup.md tools/sprint-check-app/app.html; do
-    [[ -f "$top/$p" ]] || echo "$p is missing (the install reads it)"
-  done
+  # ... and the files the tools read (path <TAB> what reads it)
+  while IFS=$'\t' read -r p why; do
+    [[ -f "$top/$p" ]] || echo "$p is missing ($why)"
+  done <<'REQ'
+tools/tkt	the ticket tool
+tools/canon	the canon command
+tools/skills.sh	skills add / refresh (SKILLS_ROOT is the install)
+tools/sprint	sprint start / complete
+tools/fetch-daemon.sh	fetches the two programs at start
+tools/src-key.sh	sourced by fetch-daemon.sh
+tools/cockpit-daemon.sha256	fetch-daemon.sh's manifest of release hashes
+tools/cloud-env.sh	prints the cloud environment's setup script
+tools/hooks-lib.sh	installs the pre-commit hook into a project
+scripts/pre-commit-hook-template.sh	tools/hooks-lib.sh:40 copies it
+tools/canon-go/go.mod	tools/cloud-env.sh reads the pinned toolchain
+tools/canon-go/go.sum	the module's checksums beside go.mod
+VERSION	canon version, fetch-daemon.sh, the board's header
+install.sh	the macOS and Linux installer
+install.ps1	the Windows installer
+skills/sprint/SKILL.md	the sprint skill
+agents/canon-reviewer.md	the close-gate reviewer
+standards/efficiency.md	the global standards file skills add imports
+docs/setup.md	linked from the tools' messages
+tools/sprint-check-app/app.html	the board page (its tour images are checked above)
+REQ
   # 3. everything else shipped is byte-identical to the tag, and nothing but the exclusions is missing
   local want got
   want="$(tree_files | grep -vE '^(tests/|tools/canon-go/cmd/|tools/canon-go/internal/)' | grep -vE '^meta/' || true)"
   got="$(cd "$top" && find . -type f | sed 's#^\./##' | grep -v '^meta/' | LC_ALL=C sort)"
   [[ "$(printf '%s\n' "$want" | LC_ALL=C sort)" == "$got" ]] || echo "the files outside meta/ differ from the tag's tree minus the exclusions"
-  while IFS= read -r f; do
-    [[ -f "$top/$f" ]] || continue
-    [[ "$(git -C "$R" rev-parse "v9.9.9:$f")" == "$(git hash-object --no-filters "$top/$f")" ]] || echo "$f differs from the tag"
-  done < <(printf '%s\n' "$want")
+  if [[ -n "$full" ]]; then   # one git call per file: only for the zip the test expects to be good
+    while IFS= read -r f; do
+      [[ -f "$top/$f" ]] || continue
+      [[ "$(git -C "$R" rev-parse "v9.9.9:$f")" == "$(git hash-object --no-filters "$top/$f")" ]] || echo "$f differs from the tag"
+    done < <(printf '%s\n' "$want")
+  fi
   # 4. size: the point of the exclusions
   kb="$(du -sk "$top" | cut -f1)"; files="$(find "$top" -type f | wc -l | tr -d ' ')"
   (( kb <= 4608 )) || echo "unpacked size ${kb} KB is over 4608 KB"
@@ -66,7 +87,7 @@ check_zip() {
 
 # the working copy's script builds a good zip
 build "$ROOT/scripts/release-zip.sh" "$WORK/out" || fail "release-zip-slim: the build failed"
-problems="$(check_zip "$WORK/out/canon-9.9.9.zip" "$WORK/u1")"
+problems="$(check_zip "$WORK/out/canon-9.9.9.zip" "$WORK/u1" full)"
 [[ -z "$problems" ]] || fail "release-zip-slim: the zip is wrong:
 $problems"
 echo "release-zip-slim: leaves out tests, the Go source and all but the tour's screenshots; every path the install reads is present and identical to the tag"
@@ -85,6 +106,9 @@ top="$WORK/u1/canon-9.9.9"; P="$WORK/proj"; mkdir -p "$P"; git -C "$P" init -q
 (cd "$P" && HOME="$WORK/home" CANON_HOME="$WORK/home/.canon" bash "$top/tools/tkt" --version >/dev/null 2>&1) || fail "release-zip-slim: tkt --version did not run from the unpacked zip"
 cv="$(cd "$P" && HOME="$WORK/home" CANON_HOME="$WORK/home/.canon" bash "$top/tools/canon" version 2>&1 || true)"
 [[ "$cv" == *"$(cat "$top/VERSION")"* ]] || fail "release-zip-slim: canon version did not name $(cat "$top/VERSION"): $cv"
+sl_zip="$(cd "$P" && HOME="$WORK/home" CANON_HOME="$WORK/home/.canon" bash "$top/tools/skills.sh" list 2>&1 || true)"
+sl_full="$(cd "$P" && HOME="$WORK/home" CANON_HOME="$WORK/home/.canon" bash "$R/tools/skills.sh" list 2>&1 || true)"
+assert_eq "$sl_full" "$sl_zip"   # the skills list is the same from the unpacked zip as from the full tree
 out="$(bash "$top/tools/cloud-env.sh" script --go 2>&1)"; [[ "$out" == *"go.dev/dl"* && "$out" == *"canon-go/go.mod"* ]] || fail "release-zip-slim: cloud-env.sh script --go is wrong from the unpacked zip"
 grep -q '^toolchain go' "$top/tools/canon-go/go.mod" || fail "release-zip-slim: go.mod has no toolchain line"
 echo "release-zip-slim: tkt, canon and cloud-env run from the unpacked zip; go.mod keeps its toolchain line"

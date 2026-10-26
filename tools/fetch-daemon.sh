@@ -103,6 +103,7 @@ try_download() {
 build_from_source() {
   [ "${CANON_FETCH_NO_BUILD:-0}" = 1 ] && { fail_reason="$fail_reason (not building from source at start; run canon update)"; return 1; }
   command -v go >/dev/null 2>&1 || { fail_reason="$fail_reason; and Go is not installed to build it"; return 1; }
+  [ -d "$MODULE_DIR/cmd/$COMP" ] || { fail_reason="$fail_reason; and this install does not carry the source (the end-user zip leaves it out): run canon update, reinstall, or clone the repository to build"; return 1; }
   local semver; semver="$(tr -d ' \t\n\r' < "$REPO/VERSION" 2>/dev/null)" || semver=dev
   mkdir -p "$(dirname "$DEST")"
   tmp="$(mktemp "$(dirname "$DEST")/.$(basename "$DEST").XXXXXX")"

@@ -26,7 +26,7 @@ else die "no sha256sum or shasum on this machine"; fi
 # A new top-level folder ships unless it is named here; docs/releasing.md says why each of these is safe, and tests/release-zip-slim.sh
 # fails if a file the install reads falls under this list.
 #   tests/                    canon's own tests (the many tests/ mentions in tools/ are about the USER's project)
-#   meta/                     README screenshots and GIFs, EXCEPT the images the board's product tour shows (KEEP_SHOTS below)
+#   meta/                     README screenshots and GIFs, EXCEPT the images the board's product tour shows (keep_shots below)
 #   tools/canon-go/{cmd,internal}   the Go source: a zip install picks its prebuilt binary from the release manifest, never the source;
 #                                   go.mod and go.sum stay (tools/cloud-env.sh reads the pinned toolchain from go.mod)
 SLIM_EXCLUDE=(tests tools/canon-go/cmd tools/canon-go/internal)

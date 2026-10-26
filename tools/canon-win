@@ -18,5 +18,6 @@ if ! command -v go >/dev/null 2>&1; then
 fi
 
 PORT="${1:-${CANON_COCKPIT_PORT:-8899}}"
+[[ -d "$ROOT/tools/canon-go/cmd" ]] || { echo "Error: this install does not carry the Go source (the end-user zip leaves it out); clone the repository to run canon-win from source." >&2; exit 1; }
 cd "$ROOT/tools/canon-go"   # the module; the board still roots at the checkout, as when it ran from $ROOT (t-8020)
 SPRINT_CHECK_ROOT="${SPRINT_CHECK_ROOT:-$ROOT}" exec go run ./cmd/sprint-check "$PORT"

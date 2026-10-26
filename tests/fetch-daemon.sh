@@ -114,6 +114,12 @@ reset; manifest "$GOODSHA"; export STUB_CURL_RC=22 STUB_ASSET="$GOOD"; fetch
 reset; manifest "$GOODSHA"; export STUB_CURL_RC=22 STUB_GO_FAIL=1 FETCH_PATH="$WORK/gostub:$STUBS:$BASEPATH"; fetch
 [[ "$rc" == 1 ]] || fail "a failed source build must exit 1 ($rc): $out"; assert_contains "$out" "building from source failed"; assert_contains "$out" "needs Go 1.26.5"; no_leftovers
 
+# 5b. t-3954: an install from the slim zip carries no Go source: a failed download names that and points to the fix, never a bare go error
+reset; manifest "$GOODSHA"; export STUB_CURL_RC=22 STUB_ASSET="$GOOD" FETCH_PATH="$WORK/gostub:$STUBS:$BASEPATH"
+mv "$R/tools/canon-go/cmd" "$R/tools/canon-go/cmd.away"; fetch; mv "$R/tools/canon-go/cmd.away" "$R/tools/canon-go/cmd"
+[[ "$rc" == 1 ]] || fail "no download and no source must exit 1 ($rc): $out"; assert_contains "$out" "does not carry the source"; assert_contains "$out" "canon update"; [[ ! -e "$BIN" ]]
+no_leftovers
+
 # 6. no manifest line for this daemon commit (not released): never download, fall through
 reset; printf '# header\n' > "$R/tools/cockpit-daemon.sha256"; export STUB_ASSET="$GOOD"; fetch
 [[ "$rc" == 1 ]]; assert_contains "$out" "not released yet"; [[ ! -s "$STUB_LOG" ]] || fail "downloaded without a checksum to verify against"

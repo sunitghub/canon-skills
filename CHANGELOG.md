@@ -7,7 +7,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 ## [Unreleased]
 
 ### Changed
-- **Smaller download for Windows installs** (`t-3954`): the release zip no longer carries canon's own tests, the README screenshots and GIFs (the board's tour keeps its seven images) or the Go source: 12.4 MB in 547 files becomes about 4.1 MB in 279 (the zip itself 6.7 MB to 1.8 MB). Nothing the install reads is removed; macOS and Linux git installs are unchanged.
+- **Smaller download for Windows installs** (`t-3954`): the release zip no longer carries canon's own tests, the README screenshots and GIFs (the board's tour keeps its seven images) or the Go source: 12.4 MB in 547 files becomes about 4.1 MB in 279 (the zip itself 6.7 MB to 1.8 MB). Nothing the install runs is removed; the one thing the zip no longer allows is building the programs from source (a failed download then says so and points to `canon update`, a reinstall or a clone). macOS and Linux git installs are unchanged. A fresh install gets the smaller tree; an existing one keeps its old files until it is reinstalled.
 
 ## [0.20.2] - 2026-10-26
 
