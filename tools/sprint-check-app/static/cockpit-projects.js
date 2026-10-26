@@ -95,13 +95,17 @@ async function fillCardBranch(id,el){
 
 // t-5738: the cards were filled once at load, so tickets made while the Cockpit stayed open never showed (Total Tickets 0 until a restart).
 // refreshStats re-reads every card: when the Projects page is shown again and every 30 s while it is on screen. A card still fetching is
-// left alone, and a failed refresh keeps the value already shown.
-const statsBusy=new Set();
+// has one read at a time: a request that arrives mid-read is remembered and re-read once, so the newer state is never dropped. A failed
+// refresh keeps the value already shown.
+const statsBusy=new Set(), statsAgain=new Set();
 export function refreshStats(){
   registeredProjects.forEach(p=>{
-    if(statsBusy.has(p.id)) return;
+    if(statsBusy.has(p.id)){ statsAgain.add(p.id); return; }
     statsBusy.add(p.id);
-    fillCardStats(p.id,true).finally(()=>statsBusy.delete(p.id));
+    fillCardStats(p.id,true).finally(()=>{
+      statsBusy.delete(p.id);
+      if(statsAgain.delete(p.id)) refreshStats();
+    });
   });
 }
 function projectsPageShown(){ const g=document.getElementById('grid'); return !!g && g.offsetParent!==null && document.visibilityState==='visible'; }
