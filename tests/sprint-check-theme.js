@@ -3,7 +3,7 @@
 //    anything unreadable (missing, corrupt, a throwing localStorage or matchMedia) means Dark, never an error.
 // 2. cockpit-theme.js readChoice: an old 'dark'/'light' migrates; unknown modes, wrong types and foreign theme ids fall
 //    back to the default; a valid choice survives.
-// 3. Canon's entries in theme-data.js match cockpit-shell.css (their swatches and contrast use them; the CSS owns Canon).
+// 3. Canon's entries in theme-data.js match tokens.css (their swatches and contrast use them; the CSS owns Canon).
 // 4. (t-4fa5) contrast: the WCAG helper, every built-in at AA; derive() sets every variable the CSS needs; no colour in
 //    the CSS ignores the theme; theme-boot.js applies a valid first-paint cache and skips anything else in it.
 const fs = require('fs');
@@ -91,14 +91,14 @@ assert.strictEqual(boot({ page: 'board', embedded: false, stored: SB(J({ mode: '
   assert.deepStrictEqual(readChoice(J({ mode: 'dark', light: 'nord', dark: 'catppuccin-latte' })), D, 'third-party themes of the wrong mode fall back');
   for (const bad of ['{', '[]', 'null', '7', J({ mode: 'sepia' }), J({ mode: ['light'] })]) assert.deepStrictEqual(readChoice(bad), D, `unreadable ${bad} is the default`);
 
-  const css = fs.readFileSync(path.join(STATIC, 'cockpit-shell.css'), 'utf8');
-  const block = (mode) => { const m = css.match(new RegExp(`html\\[data-theme="${mode}"\\]\\{(--bg:[^}]*)\\}`)); assert.ok(m, `cockpit-shell.css has the ${mode} block`); return m[1]; };
+  const css = fs.readFileSync(path.join(STATIC, 'tokens.css'), 'utf8');
+  const block = (mode) => { const m = css.match(new RegExp(`${mode === 'dark' ? ':root' : 'html\\[data-theme="light"\\]'}\\s*\\{(\\s*(?:/\\*[^*]*\\*/\\s*)?(?:/\\*[^*]*\\*/\\s*)?--bg:[^}]*)\\}`)); assert.ok(m, `tokens.css has the ${mode} block`); return m[1]; };
   const value = (decls, name) => { const m = decls.match(new RegExp(`${name}:([^;]+)`)); assert.ok(m, `${name} defined`); return m[1].trim(); };
   const norm = (h) => (h.length === 4 ? '#' + [...h.slice(1)].map(x => x + x).join('') : h).toLowerCase();
   for (const t of THEMES.filter(t => t.css)) {
     const decls = block(t.mode);
-    for (const [slot, v] of [['bg', '--bg'], ['surface', '--panel'], ['accent', '--accent'], ['ok', '--col-done'], ['bad', '--col-discarded']]) {
-      assert.strictEqual(norm(t.c[slot]), norm(value(decls, v)), `${t.name} ${slot} equals cockpit-shell.css ${v}`);
+    for (const [slot, v] of [['bg', '--bg'], ['surface', '--surface'], ['accent', '--accent'], ['ok', '--col-done'], ['bad', '--col-discarded']]) {
+      assert.strictEqual(norm(t.c[slot]), norm(value(decls, v)), `${t.name} ${slot} equals tokens.css ${v}`);
     }
   }
   assert.deepStrictEqual(THEMES.map(t => t.id).sort(), ['canon-dark', 'canon-light', 'catppuccin-latte', 'catppuccin-mocha', 'dracula', 'gruvbox-dark', 'nord', 'tokyo-night'], 'the eight built-ins');
@@ -122,10 +122,12 @@ assert.strictEqual(boot({ page: 'board', embedded: false, stored: SB(J({ mode: '
   // t-e523: buttons.css is linked by both pages, so it counts as each page's CSS
   const shellCss = read(/^(cockpit-.*|buttons)\.css$/), boardCss = read(/^(board-.*|buttons)\.css$/);
   const blockNames = (txt, re) => { const out = new Set(); for (const m of txt.matchAll(re)) for (const v of m[1].matchAll(/(--[a-z0-9-]+)\s*:/g)) out.add(v[1]); return out; };
-  const shellNeed = blockNames(css, /html\[data-theme="(?:dark|light)"\]\{([^}]*)\}/g);
-  const baseCss = fs.readFileSync(path.join(STATIC, 'board-base.css'), 'utf8');
-  const boardNeed = blockNames(baseCss, /(?::root|html\[data-theme="light"\])\s*\{([^}]*)\}/g);
-  for (const n of ['--sidebar-w', '--header-h', '--radius', '--radius-sm']) boardNeed.delete(n);   // layout, not colour
+  // the shell reads these palette names; the board reads every other palette name in tokens.css (the scales are not colours)
+  const shellNeed = new Set(['--bg', '--panel', '--border', '--border-hover', '--border-muted', '--text', '--text-body', '--text-muted', '--text-dim', '--accent', '--accent-dim',
+    '--col-done', '--col-progress', '--col-discarded', '--amber', '--card-stat', '--scrim', '--st-need', '--st-work', '--st-done', '--st-idle']);
+  const SHELL_ONLY = new Set(['--panel', '--amber', '--card-stat', '--scrim']);
+  const boardNeed = blockNames(css, /(?::root|html\[data-theme="light"\])\s*\{([^}]*)\}/g);
+  for (const n of [...boardNeed]) if (SHELL_ONLY.has(n) || /^--(radius|fs|sp|shadow|mono|sidebar-w|header-h)/.test(n)) boardNeed.delete(n);
   const thUsed = (files) => { const out = new Set(); for (const [, t] of files) for (const m of t.matchAll(/var\((--th-[a-z0-9-]+)/g)) out.add(m[1]); return out; };
   for (const n of thUsed(shellCss)) shellNeed.add(n);
   for (const n of thUsed(boardCss)) boardNeed.add(n);
@@ -174,6 +176,17 @@ assert.strictEqual(boot({ page: 'board', embedded: false, stored: SB(J({ mode: '
   for (const planted of ['.x { color: #123456; }', 'html[data-theme="light"] .x { color: #123456; }', '.col-open { --card-glow: rgba(1,2,3,.4); }', '.x { color: var(--nope, #123456); }']) {
     assert.strictEqual(scan('planted.css', planted).length, 1, `the scan rejects: ${planted}`);
   }
+
+  // t-be64: a colour literal belongs in tokens.css. Every other file has a budget (today's count); it may only shrink,
+  // and a file not listed has none. Lower the number in the change that moves a file onto tokens.
+  const LITERAL_BUDGET = { 'board-base.css': 13, 'board-cockpit.css': 23, 'board-dialog.css': 2, 'board-dialogs.css': 27, 'board-github.css': 7,
+    'board-lanes.css': 64, 'board-logbook.css': 15, 'board-modal.css': 28, 'board-tags.css': 3, 'buttons.css': 2, 'cockpit-admin.css': 6,
+    'cockpit-projects.css': 3, 'cockpit-shell.css': 8, 'cockpit-skill-eval.css': 2 };
+  const literalCount = (text) => (text.replace(/\/\*[\s\S]*?\*\//g, '').match(COLOR) || []).length;
+  const over = statics.filter(f => f.endsWith('.css') && f !== 'tokens.css')
+    .map(f => [f, literalCount(fs.readFileSync(path.join(STATIC, f), 'utf8'))]).filter(([f, n]) => n > (LITERAL_BUDGET[f] || 0)).map(([f, n]) => `${f}: ${n} > ${LITERAL_BUDGET[f] || 0}`);
+  assert.deepStrictEqual(over, [], 'a colour literal outside tokens.css (add a token, or lower nothing):\n' + over.join('\n'));
+  assert.strictEqual(literalCount('.x { color: #123456; border-color: rgba(1,2,3,.4); } /* #fff */'), 2, 'the literal counter sees both forms and skips comments');
 
   // ── 4d. theme-boot.js applies a valid cache and skips the rest ──
   const nord = THEMES.find(t => t.id === 'nord'), latte = THEMES.find(t => t.id === 'catppuccin-latte');
@@ -269,5 +282,5 @@ assert.strictEqual(boot({ page: 'board', embedded: false, stored: SB(J({ mode: '
   assert.ok(Object.values(TD.themeById('user-ink').c).every(v => /^#[0-9a-f]{6}$/.test(v)), 'colours normalised to #rrggbb');
   delete global.fetch;
 
-  console.log('sprint-check-theme: ok (theme-boot precedence, fallback and cache for shell and board; readChoice migration; Canon equals cockpit-shell.css; AA per built-in; derive completeness; no unthemed CSS colour; user themes: page re-check, fallback, cache, Low contrast)');
+  console.log('sprint-check-theme: ok (theme-boot precedence, fallback and cache for shell and board; readChoice migration; Canon equals tokens.css; AA per built-in; derive completeness; no unthemed CSS colour; user themes: page re-check, fallback, cache, Low contrast)');
 })().catch(e => { console.error('FAIL:', e.message); process.exit(1); });

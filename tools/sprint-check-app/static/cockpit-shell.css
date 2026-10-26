@@ -1,9 +1,4 @@
-  html[data-theme="dark"]{--bg:#1b2330;--panel:#232d3c;--border:#313d50;--border-hover:#3f4d63;--border-muted:#2a3547;--text:#e6ebf2;--text-body:#a7b0c0;--text-muted:#97a1b4;--text-dim:#4a566b;--accent:#7c6af7;--accent-dim:rgba(124,106,247,0.14);--col-done:#4ade80;--col-progress:#60a5fa;--col-discarded:#f87171;--amber:#fbbf24;--card-stat:#c7bfff;--scrim:rgba(0,0,0,.6)}
-  html[data-theme="light"]{--bg:#e8e8f0;--panel:#fff;--border:#dcdce8;--border-hover:#c0c0d4;--border-muted:#e8e8f2;--text:#1a1a2e;--text-body:#424269;--text-muted:#52527a;--text-dim:#64648a;--accent:#6c5cf7;--accent-dim:rgba(108,92,247,0.10);--col-done:#16a34a;--col-progress:#2563eb;--col-discarded:#dc2626;--amber:#b45309;--card-stat:#5a3ff0;--scrim:rgba(20,20,40,.35)}
   /* Native controls (select popups, scrollbars) follow the theme; Windows otherwise draws them light. */
-  /* t-28ec: session-state colours, Herdr's palette (Catppuccin Mocha / Latte) — one owner per page */
-  html[data-theme="dark"]{--st-need:#f38ba8;--st-work:#f9e2af;--st-done:#94e2d5;--st-idle:#a6e3a1}
-  html[data-theme="light"]{--st-need:#d20f39;--st-work:#df8e1d;--st-done:#179299;--st-idle:#40a02b}
   html[data-theme="dark"]{color-scheme:dark}
   html[data-theme="light"]{color-scheme:light}
   option{background:var(--panel);color:var(--text)}
