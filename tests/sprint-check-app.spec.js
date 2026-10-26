@@ -12976,6 +12976,18 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
     await expect(page.locator('.ig-block')).toContainText('sprint complete');
     await expect(page.locator('.ig-frow.ig-match .ig-fix')).toHaveCount(0);
     expect(writes).toEqual([]);
+    // the route answers GET only: a POST changes nothing and is refused
+    const post = await page.request.post(BASE + '/api/integrity', { data: {} });
+    expect([404, 405]).toContain(post.status());   // POSTs have no Integrity route at all
+    await expect(page.locator('#ad-panel-integrity')).toContainText('install.ps1');   // what is not covered yet is stated
+    // both themes: the match pill and the changed row stay readable (a colour of their own, not the page's)
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate(t => { document.documentElement.dataset.theme = t; }, theme);
+      const c = await page.locator('.ig-agent .ig-pill-ok').evaluate(e => getComputedStyle(e).color);
+      const bg = await page.locator('#ad-panel-integrity .ig-card').first().evaluate(e => getComputedStyle(e).backgroundColor);
+      expect(c, theme + ' pill colour').not.toBe(bg);
+      await expect(page.locator('.ig-frow.ig-changed .ig-st')).toBeVisible();
+    }
   });
 
   // t-d40b. Protects the Admin > Model tiers tab opening: the registry is asked for FIRST (it is a local file, and used to wait behind the daemon,

@@ -19,19 +19,33 @@ assert_eq "v9.9.9 $sum" "$line"
 python3 -I - "$ROOT" "$json" <<'PY'
 import hashlib, json, subprocess, sys
 root, path = sys.argv[1:3]
-d = json.load(open(path))
+d0 = json.load(open(path))
 head = subprocess.check_output(["git", "-C", root, "rev-parse", "HEAD"], text=True).strip()
-assert d["tag"] == "v9.9.9" and d["commit"] == head, (d["tag"], d["commit"])
-tree = subprocess.check_output(["git", "-C", root, "ls-tree", "-r", "-z", "--name-only", "HEAD"]).decode().split("\0")[:-1]
-assert sorted(tree) == sorted(d["files"]), (set(tree) ^ set(d["files"]))
-for p in tree:
-    blob = subprocess.check_output(["git", "-C", root, "cat-file", "blob", "HEAD:" + p])
-    assert hashlib.sha256(blob).hexdigest() == d["files"][p], p
-assert d["gate_files"] == ["tools/sprint", "tools/gate-snapshot.sh", "tools/subagent-log.sh", "tools/evidence.sh", "tools/sprint-headless", "tools/sprint-headless-eval", "tools/gate-model.sh"], d["gate_files"]
-assert d["gate_prompts"] == ["agents/canon-reviewer.md", "agents/canon-evaluator.md", "skills/sprint/reference/review.md", "skills/sprint/reference/eval.md", "skills/sprint/reference/shared-gate-protocol.md"], d["gate_prompts"]
-for p in d["gate_files"] + d["gate_prompts"]:
-    assert p in d["files"], p
-print("integrity-list: %d files match HEAD, the gate lists are exact" % len(tree))
+def verify(d):
+  assert d["tag"] == "v9.9.9" and d["commit"] == head, (d["tag"], d["commit"])
+  tree = subprocess.check_output(["git", "-C", root, "ls-tree", "-r", "-z", "--name-only", "HEAD"]).decode().split("\0")[:-1]
+  assert sorted(tree) == sorted(d["files"]), (set(tree) ^ set(d["files"]))
+  for p in tree:
+      blob = subprocess.check_output(["git", "-C", root, "cat-file", "blob", "HEAD:" + p])
+      assert hashlib.sha256(blob).hexdigest() == d["files"][p], p
+  assert d["gate_files"] == ["tools/sprint", "tools/gate-snapshot.sh", "tools/subagent-log.sh", "tools/evidence.sh", "tools/sprint-headless", "tools/sprint-headless-eval", "tools/gate-model.sh"], d["gate_files"]
+  assert d["gate_prompts"] == ["agents/canon-reviewer.md", "agents/canon-evaluator.md", "skills/sprint/reference/review.md", "skills/sprint/reference/eval.md", "skills/sprint/reference/shared-gate-protocol.md"], d["gate_prompts"]
+  for p in d["gate_files"] + d["gate_prompts"]:
+      assert p in d["files"], p
+  return len(tree)
+n = verify(d0)
+# the comparison itself must be able to fail: one extra, one missing and one changed file are each caught
+import copy
+extra = copy.deepcopy(d0); extra["files"]["zz-extra-file"] = "0" * 64
+missing = copy.deepcopy(d0); del missing["files"][sorted(d0["files"])[0]]
+changed = copy.deepcopy(d0); k = sorted(d0["files"])[0]; changed["files"][k] = "1" * 64
+for name, bad in (("one extra", extra), ("one missing", missing), ("one changed", changed)):
+    try:
+        verify(bad)
+    except AssertionError:
+        continue
+    raise SystemExit("integrity-list: the comparison did not catch " + name + " file")
+print("integrity-list: %d files match HEAD, the gate lists are exact; an extra, a missing and a changed file are each caught" % n)
 PY
 
 # 2. Refusals: a bad tag, a missing folder, an unknown revision, and a gate path that is not in the tree.

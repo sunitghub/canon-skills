@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # t-2af0: protects `sprint complete`'s integrity gate (tools/sprint _gate_integrity): in an install that came from a release, a
 # changed or missing gate file refuses the close (exit 1, names the file and the restore command, emits gate.rejected
-# reason=integrity_changed); every other state (clean, no list, main install, board without the command) does not.
+# reason=integrity); every other state (clean, no list, a corrupt saved list, a main install, canon's own checkout, a missing or older
+# board) prints one line at most and does not refuse. The check reads the install its board sits in: no environment variable moves it.
 set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 
 work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
 export CANON_HOME="$work/home"; mkdir -p "$CANON_HOME"
-export CANON_INTEGRITY_ROOT   # set below, per install
-export CANON_INTEGRITY_URL="https://127.0.0.1:9/integrity.txt"   # unreachable: the gate falls back to the saved list
-board="$(build_board "$work/board")"
+export SPRINT_CHECK_NO_BROWSER=1
+board_bin="$(build_board "$work/board")"   # copied into each install
 sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
 
 GATE_FILES=(tools/sprint tools/gate-snapshot.sh tools/subagent-log.sh tools/evidence.sh tools/sprint-headless tools/sprint-headless-eval tools/gate-model.sh)
@@ -18,8 +18,9 @@ GATE_PROMPTS=(agents/canon-reviewer.md agents/canon-evaluator.md skills/sprint/r
 
 # An install copy whose list (saved under CANON_HOME/integrity, as a first online check would) matches the copy exactly.
 new_install() {
-  local inst="$1" ver=9.8.7 p rows sep
+  local inst="$1" ver=9.8.7 p sep
   rm -rf "$inst"; copy_canon_tree "$inst"
+  mkdir -p "$inst/tools/sprint-check-bin"; cp "$board_bin" "$inst/tools/sprint-check-bin/sprint-check"
   printf '%s\n' "$ver" > "$inst/VERSION"
   rm -f "$inst/.canon-track"; rm -rf "$CANON_HOME/integrity"; mkdir -p "$CANON_HOME/integrity"
   {
@@ -36,28 +37,28 @@ new_install() {
 
 project="$(make_project)"; trap 'rm -rf "$work" "$project"' EXIT
 inst="$work/install"; new_install "$inst"
-export SPRINT_CHECK_NO_BROWSER=1
-export CANON_INTEGRITY_ROOT="$inst" SPRINT_CHECK_BIN="$board"
+export SPRINT_CHECK_BIN="$inst/tools/sprint-check-bin/sprint-check"
 cd "$project"
 git -C "$project" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
 id="$("$inst/tools/tkt" create "integrity gate" -t task -p 2)"
 "$inst/tools/tkt" start "$id" >/dev/null
 
 complete() { set +e; out="$("$inst/tools/sprint" complete 2>&1)"; rc=$?; set -e; }
+not_refused() { [[ "$out" != *"cannot close: a gate file or gate prompt"* ]] || fail "$1: the integrity gate refused the close: $out"; }
 
-# Clean install: the gate passes; the close stops later, at a gate that has nothing to do with integrity.
+# Clean install: the gate passes with one line; the close stops later, at a gate that has nothing to do with integrity.
 complete
-[[ "$out" != *"differs from the release"* ]] || fail "a clean install was refused by the integrity gate: $out"
+not_refused "a clean install"
+assert_contains "$out" "integrity: 13 of 13 files match release v9.8.7"
 
 # One byte appended to a gate file: refused, with the file and the restore command, and an event.
 printf '#' >> "$inst/tools/gate-model.sh"
 complete
 [[ "$rc" -eq 1 ]] || fail "a changed gate file must exit 1, got $rc: $out"
-assert_contains "$out" "a gate file or gate prompt in this canon install differs"
+assert_contains "$out" "cannot close: a gate file or gate prompt in this canon install differs"
 assert_contains "$out" "tools/gate-model.sh: changed"
 assert_contains "$out" "canon update"
-[[ -n "$(event_line gate.rejected "$id")" ]] || fail "no gate.rejected event"
-assert_contains "$(event_line gate.rejected "$id")" '"reason":"integrity_changed"'
+assert_contains "$(event_line gate.rejected "$id")" '"reason":"integrity"'
 
 # A deleted gate prompt: refused too.
 new_install "$inst"; rm "$inst/agents/canon-evaluator.md"
@@ -66,19 +67,29 @@ complete
 
 # A changed non-gate file, and a changed programs manifest, never refuse.
 new_install "$inst"; printf '#' >> "$inst/README.md"; printf '#' >> "$inst/tools/cockpit-daemon.sha256"
-complete
-[[ "$out" != *"differs from the release"* ]] || fail "a non-gate change refused the close: $out"
+complete; not_refused "a non-gate change"
 
-# Not a release install, no saved list, or a board that predates the command: fail open even with a changed gate file.
+# Fail open, even with a changed gate file in the install:
 new_install "$inst"; printf '#' >> "$inst/tools/gate-model.sh"
 echo main > "$inst/.canon-track"
-complete; [[ "$out" != *"differs from the release"* ]] || fail "a main install was refused: $out"
+complete; not_refused "a main install"; assert_contains "$out" "not-from-release"
 rm -f "$inst/.canon-track"
-export CANON_HOME="$work/empty-home"; mkdir -p "$CANON_HOME"
-complete; [[ "$out" != *"differs from the release"* ]] || fail "an install with no list (offline) was refused: $out"
-export CANON_HOME="$work/home"
+
+# canon's own checkout: a git checkout whose HEAD is not the release tag.
+git -C "$inst" init -q && git -C "$inst" add -A >/dev/null 2>&1 && git -C "$inst" -c user.email=t@t -c user.name=t commit -q -m dev
+complete; not_refused "a checkout that is not at the tag"; assert_contains "$out" "not exactly at v9.8.7"
+rm -rf "$inst/.git"
+
+# a corrupt saved list (it no longer equals its pin) and no saved list at all: never a refusal, whatever the network answers
+printf '{"tag":"v9.8.7","files":{}}' > "$CANON_HOME/integrity/v9.8.7.json"
+complete; not_refused "a corrupt saved list"
+rm -rf "$CANON_HOME/integrity"
+complete; not_refused "no saved list"
+
+# a missing board binary and a board that predates the command
+new_install "$inst"; printf '#' >> "$inst/tools/gate-model.sh"
+SPRINT_CHECK_BIN="$work/does-not-exist" complete; not_refused "a missing board"
 printf '#!/bin/sh\necho "old board"\n' > "$work/old-board"; chmod +x "$work/old-board"
-SPRINT_CHECK_BIN="$work/old-board" complete
-[[ "$out" != *"differs from the release"* ]] || fail "a board without the command refused the close: $out"
+SPRINT_CHECK_BIN="$work/old-board" complete; not_refused "a board without the command"
 
 echo "sprint-integrity: ok"

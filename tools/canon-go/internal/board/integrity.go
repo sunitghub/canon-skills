@@ -17,7 +17,6 @@ import (
 	"strings"
 	"time"
 
-	"canon/internal/common"
 	"canon/internal/events"
 )
 
@@ -106,8 +105,8 @@ type integrityList struct {
 }
 
 func defaultIntegrityDeps(root string, online bool) integrityDeps {
-	return integrityDeps{root: root, home: events.Home(), pinURL: common.EnvOr("CANON_INTEGRITY_URL", integrityPinURL),
-		assetBase: common.EnvOr("CANON_INTEGRITY_ASSET_BASE", integrityAssetBase), online: online, get: httpsGet, atTag: gitAtTag}
+	return integrityDeps{root: root, home: events.Home(), pinURL: integrityPinURL,
+		assetBase: integrityAssetBase, online: online, get: httpsGet, atTag: gitAtTag}
 }
 
 // httpsGet reads one https URL (a redirect must stay on https) up to max bytes; anything longer is an error, never a cut copy.
@@ -528,7 +527,7 @@ func integrityCLI(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "usage: sprint-check integrity [--json] [--gate] [--online]")
 		return 2
 	}
-	return integrityRun(asJSON, gate, defaultIntegrityDeps(common.EnvOr("CANON_INTEGRITY_ROOT", integrityRoot()), online), stdout)
+	return integrityRun(asJSON, gate, defaultIntegrityDeps(integrityRoot(), online), stdout)
 }
 
 func integrityRun(asJSON, gate bool, d integrityDeps, stdout io.Writer) int {
@@ -536,7 +535,7 @@ func integrityRun(asJSON, gate bool, d integrityDeps, stdout io.Writer) int {
 	if asJSON {
 		b, _ := json.Marshal(res)
 		fmt.Fprintln(stdout, string(b))
-	} else if !gate || res.Blocking || res.State != integrityVerified {
+	} else {
 		fmt.Fprintln(stdout, integritySummary(res))
 	}
 	if gate && res.Blocking {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -62,6 +63,9 @@ func newIntegFx(t *testing.T) *integFx {
 		atTag: func(string, string) (bool, bool, error) { return false, true, nil }}
 	f.deps.get = func(url string, max int64) ([]byte, error) {
 		f.calls++
+		if b, ok := f.body[url]; ok && int64(len(b)) > max {
+			return nil, fmt.Errorf("larger than %d bytes", max)
+		}
 		for suffix, err := range f.fail {
 			if strings.HasSuffix(url, suffix) {
 				return nil, err
@@ -359,8 +363,8 @@ func TestIntegrityAssetFetchFailureFallsBackOnlyToAGoodSavedList(t *testing.T) {
 func TestIntegrityRunExitCodesAndOutput(t *testing.T) {
 	f := newIntegFx(t)
 	var out bytes.Buffer
-	if code := integrityRun(false, true, f.deps, &out); code != 0 || out.Len() != 0 {
-		t.Errorf("a clean verified gate check prints nothing and exits 0: %d %q", code, out.String())
+	if code := integrityRun(false, true, f.deps, &out); code != 0 || !strings.Contains(out.String(), "13 of 13 files match release v1.2.3") || strings.Count(out.String(), "\n") != 1 {
+		t.Errorf("a clean verified gate check prints one line and exits 0: %d %q", code, out.String())
 	}
 	out.Reset()
 	if code := integrityRun(false, false, f.deps, &out); code != 0 || !strings.Contains(out.String(), "13 of 13 files match release v1.2.3") {
@@ -390,14 +394,10 @@ func TestIntegrityRunExitCodesAndOutput(t *testing.T) {
 	}
 }
 
-func TestIntegrityCLIFlagsAndRoot(t *testing.T) {
+func TestIntegrityCLIUnknownFlag(t *testing.T) {
 	var out, errb bytes.Buffer
 	if code := integrityCLI([]string{"--nope"}, &out, &errb); code != 2 || !strings.Contains(errb.String(), "usage") {
 		t.Errorf("an unknown flag: %d %q", code, errb.String())
-	}
-	t.Setenv("CANON_INTEGRITY_ROOT", t.TempDir()) // no VERSION: not from a release, exit 0 even with --gate
-	if code := integrityCLI([]string{"--gate", "--json"}, &out, &errb); code != 0 || !strings.Contains(out.String(), `"state":"not-from-release"`) {
-		t.Errorf("the CLI on a folder with no release: %d %q", code, out.String())
 	}
 }
 
@@ -619,5 +619,13 @@ func TestPreviewListsMatchTheReleaseScript(t *testing.T) {
 	}
 	if got, want := strings.Join(previewGatePrompts, " "), strings.Join(arr("GATE_PROMPTS"), " "); got != want {
 		t.Errorf("gate prompts drifted:\n%s\n%s", got, want)
+	}
+}
+
+func TestIntegrityOversizedPinFileIsNotUsed(t *testing.T) {
+	f := newIntegFx(t)
+	f.body["https://pin.test/integrity.txt"] = append([]byte("v1.2.3 "+f.pin+"\n# "), bytes.Repeat([]byte("x"), integrityPinMax)...)
+	if r := checkIntegrity(f.deps); r.State != integrityNotChecked || !strings.Contains(r.Reason, "larger than") {
+		t.Errorf("an integrity.txt over the cap: %+v", r)
 	}
 }

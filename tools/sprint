@@ -752,11 +752,11 @@ _gate_integrity() {
   b="$(board_bin)"; h="$("$b" --help 2>/dev/null)" || h=""
   case "$h" in *"integrity [--json]"*) ;; *) return 0 ;; esac
   out="$("$b" integrity --gate --online 2>&1)" || rc=$?
-  [[ "$rc" -eq 3 ]] || return 0
+  if [[ "$rc" -ne 3 ]]; then printf '%s\n' "$out" | head -1; return 0; fi   # one line in every state that does not block
   echo "Sprint $id cannot close: a gate file or gate prompt in this canon install differs from the release it came from."
   printf '%s\n' "$out"
   echo "The gates grade this sprint, so they must be the released ones. Put the files back with the command shown, then run sprint complete again."
-  _gate_reject "$id" "$tdir" integrity integrity_changed
+  _gate_reject "$id" "$tdir" sprint integrity
   return 1
 }
 
