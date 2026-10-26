@@ -1,7 +1,9 @@
 import { SHELL_TAB, loadData, state } from './board-core.js';
 import { CK_SIGNAL_LABEL, CK_STATE_LABEL, COCKPIT_TICKET_ID, SCRATCH_ID, announceScratchTabs, ckRowState, findTicketById, finishAdopt, newScratchId, openScratch, postToTab, render, renderBoard, renderScratchWhere, showPromotedChoice, showToast, startPromote } from './board-render.js';
-import { findLiveDaemonSession, openTicketWhenLoaded, renderCockpitRail, renderTabStrip, stopCockpitPoll } from './board-cockpit-rail.js';
+import { closeCockpit, findLiveDaemonSession, openCockpit, openTicketWhenLoaded, renderCockpitRail, renderTabStrip, stopCockpitPoll } from './board-cockpit-rail.js';
 import { applyActualWorkingCwd, maybeMountCockpitTerminal } from './board-worktree.js';
+import { applyPane, clearPaneFor, paneHostId, paneRoom, paneTabId, setPane, shownIds } from './board-pane.js';
+import { ghOut } from './board-github.js';
 
 // ── Cockpit (t-ddc8): one-window mode ───────────────────────────────────────
 // Board↔cockpit switch. The board owns no PTY — it ensures the shipped
@@ -93,15 +95,18 @@ export function setActiveTab(id) {
   // t-82f4: preview containers get the same show/hide-only swap as terminal
   // iframes, in the same pass — a backgrounded tab's mounted preview (if any)
   // stays alive in the DOM, never re-created.
+  const overlayOpen = document.getElementById('cockpit-overlay').classList.contains('open');
+  const shown = shownIds(id, overlayOpen);   // t-ccf5: a Terminal pane shows two iframes at once; every other case shows one
   for (const [tid, tab] of Object.entries(cockpitTabs)) {
     const isActive = tid === id;
     if (tab.iframeEl) {
-      tab.iframeEl.style.display = isActive ? '' : 'none';
+      tab.iframeEl.style.display = shown.has(tid) ? '' : 'none';
       if (isActive) tab.iframeEl.id = 'ck-iframe';
       else tab.iframeEl.removeAttribute('id');
     }
     if (tab.previewEl) tab.previewEl.style.display = isActive ? '' : 'none';
   }
+  applyPane(id, overlayOpen, cockpitTabs);
   document.getElementById('ck-preview').classList.toggle('collapsed', !cockpitState || cockpitState.previewCollapsed);
   const msgEl = document.getElementById('ck-term-msg');
   if (msgEl) msgEl.textContent = (cockpitState && cockpitState.pendingMessage) || '';
@@ -401,6 +406,47 @@ function closeLeaveConfirm() {
   document.getElementById('ck-leave-confirm').classList.remove('open');
 }
 
+// t-ccf5: open a Terminal as a pane next to the tab you are on ('below' or 'beside'): the Board when the overlay is closed, else the
+// open session tab. With no placement, no room, or a Terminal already on screen it is a full tab as before. An open Terminal tab is
+// reused (a second one adds nothing) unless opts.fresh (To Claude Cloud types into its own, new one).
+export async function openTerminalPane(placement, opts = {}) {
+  const open = document.getElementById('cockpit-overlay').classList.contains('open');
+  if (open && activeTabId === paneTabId()) {   // the pane's Terminal is on screen: m / M only move it to the other side
+    const h = paneHostId();
+    if (placement && paneRoom(h, placement)) { setPane(h, activeTabId, placement); applyPane(activeTabId, true, cockpitTabs); }
+    return;
+  }
+  const host = open ? activeTabId : '';
+  const onTerm = open && state.scratch.get(activeTabId)?.term === true;
+  const existing = opts.fresh ? null : Object.keys(cockpitTabs).find(id => state.scratch.get(id)?.term === true && id !== host);
+  const id = existing || newScratchId();
+  const placed = !!placement && !onTerm && paneRoom(host, placement);
+  if (placed) setPane(host, id, placement);
+  if (existing) await openCockpit(existing); else await openScratch(id, { term: true, typeLine: opts.typeLine });
+  // Next to a session tab, that tab stays the active one: its rail (a ticket's GitHub / Sent panel included) keeps the screen, and the
+  // Terminal is the second pane. Opening the Terminal re-rendered the rail for the Terminal, so the host's is rebuilt.
+  // A host whose rail is the GitHub panel never mounted a terminal iframe, so rebuilding it touches no iframe; any other host is only
+  // made active again, never remounted (a remount would reload its screen).
+  if (placed && host && cockpitTabs[host]) {
+    if (cockpitTabs[host].ghPick || ghOut(findTicketById(host))) cockpitTabs[host].needsRemount = true;
+    await openCockpit(host);
+  }
+  if (placed && cockpitTabs[id] && cockpitTabs[id].iframeEl) cockpitTabs[id].iframeEl.focus();   // the pane takes the keyboard, as a Terminal tab does
+}
+
+// t-ccf5: prefix then P n / b / f / l: next / previous / first / last tab of this project, the Board first, wrapping. A Terminal pane
+// beside the Board makes the Board and the Terminal one stop (it is on screen together).
+export function projectTabNav(action) {
+  const open = document.getElementById('cockpit-overlay').classList.contains('open');
+  let ids = ['', ...Object.keys(cockpitTabs)];
+  const pt = paneTabId();
+  if (pt && paneHostId() === '' && cockpitTabs[pt]) ids = [pt, ...ids.slice(1).filter(x => x !== pt)];
+  const cur = open ? Math.max(0, ids.indexOf(activeTabId)) : 0;
+  const n = ids.length;
+  const next = action === 'n' ? (cur + 1) % n : action === 'b' ? (cur - 1 + n) % n : action === 'f' ? 0 : n - 1;
+  if (ids[next] === '') closeCockpit(); else openCockpit(ids[next]);
+}
+
 // t-8a2a: shared by closeTab() and teardownCockpit() — removes a tab's own
 // iframe from the DOM (dropping its connection outright, a stronger and
 // simpler guarantee than the old single-tab `iframe.src = 'about:blank'`)
@@ -414,7 +460,9 @@ export function unmountTab(id) {
   // iframe above — otherwise a closed tab's preview iframe leaks, detached
   // from the tab strip but still parented under #ck-preview-body.
   if (tab.previewEl && tab.previewEl.parentNode) tab.previewEl.parentNode.removeChild(tab.previewEl);
+  const boardPane = paneTabId() === id && paneHostId() === '';   // the Terminal that sat under the Board
   delete cockpitTabs[id];
+  clearPaneFor(id);   // t-ccf5: a closed Terminal (or the tab it sat next to) ends the pane; the other tab just stays
   announceScratchTabs();
   if (activeTabId === id) {
     const remaining = Object.keys(cockpitTabs);
@@ -430,13 +478,17 @@ export function unmountTab(id) {
       // this switch (e.g. archived/deleted elsewhere while backgrounded) —
       // don't leave the previous tab's stale labels on screen.
       else { document.getElementById('ck-id').textContent = nextId; document.getElementById('ck-title').textContent = ''; document.getElementById('ck-title').title = ''; }
+      if (boardPane) closeCockpit();   // t-ccf5: the Board it sat under comes back whole; the other tabs stay open in the strip
     } else {
       activeTabId = null;
       cockpitState = null;
       document.getElementById('cockpit-overlay').classList.remove('open');
       stopCockpitPoll();
       renderSessionStateChip(); // null cockpitState -> hides it; no other path re-renders this once the last tab closes
+      applyPane(null, false, cockpitTabs);
     }
+  } else {
+    applyPane(activeTabId, document.getElementById('cockpit-overlay').classList.contains('open'), cockpitTabs);   // t-ccf5: the pane's other tab is now alone
   }
   renderTabStrip();
 }
@@ -620,7 +672,7 @@ export function initCockpit() {
     if (!d || d.source !== 'canon-cockpit') return;
     const isActive = sourceId === activeTabId;
     if (d.type === 'prefix-armed' || d.type === 'prefix-cancel' || d.type === 'prefix-key') {   // t-a198: relay the terminal's prefix to the shell
-      if (isActive && window.parent !== window && (d.type !== 'prefix-key' || (typeof d.key === 'string' && d.key.length <= 2))) {
+      if ((isActive || shownIds(activeTabId, true).has(sourceId)) && window.parent !== window && (d.type !== 'prefix-key' || (typeof d.key === 'string' && d.key.length <= 2))) {
         window.parent.postMessage({ source: 'canon-board', type: d.type, key: typeof d.key === 'string' ? d.key : '', tab: SHELL_TAB }, location.origin);
       }
       return;
@@ -781,8 +833,12 @@ export function initCockpit() {
       try { window.parent.postMessage({ source: 'canon-board', type: 'toggle-rail-ack', tab: SHELL_TAB, handled: open }, location.origin); } catch {}
       return;
     }
-    if (d.type === 'open-terminal-request') {              // t-57ab: prefix then m: the same as the Terminal button
-      openScratch(newScratchId(), { term: true });
+    if (d.type === 'open-terminal-request') {              // t-57ab: prefix then m: the same as the Terminal button; t-ccf5: m / M open it as a pane
+      openTerminalPane(d.placement === 'below' || d.placement === 'beside' ? d.placement : '');
+      return;
+    }
+    if (d.type === 'project-tab-request') {                // t-ccf5: prefix then P n / b / f / l
+      if (['n', 'b', 'f', 'l'].includes(d.action)) projectTabNav(d.action);
       return;
     }
     if (d.type === 'open-scratch') {                       // t-47f1: shell's "+ Scratch", or a scratch row reopened

@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-26-2026 06:40
+learnings-sweep last run: 10-26-2026 13:50
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-26 | [t-ccf5](.tickets/t-ccf5/learnings.md) | Find where the user's flow really lives before the plan is approved: To Claude Cloud sits in a ticket tab's rail, so the approved "pane under the Board" would not have fixed it; and `scripts/test.sh` does not run the board specs, so a new focus line broke two older specs unseen until the evaluator ran them: stamp the related board specs too | UNPROMOTED |
 | 2026-10-26 | [t-2af0](.tickets/t-2af0/learnings.md) | A guard test whose bad inputs also carry a wrong value is vacuous when a later check rejects them first (pin-file NUL/extra-field cases with an unrelated hash passed with the guards deleted): put the REAL value in the file and break only the one thing; and a mutation survivor is "equivalent" only after a probe shows no input reaches the difference | UNPROMOTED |
 | 2026-10-25 | [t-0aa7](.tickets/t-0aa7/learnings.md) | A global `sed` on a test id (`newTicketId(PROJECT_ROOT, 'gh8')`) also rewrote two unrelated tests: replace by line number or review the diff of every test file touched; and a Test Plan line that promises a case is graded by whether the case exists, so write the plan from the tests you will really add. A button that types a command at a prompt must be built from a validated id and accepted by the receiver only for that exact line | UNPROMOTED |
 | 2026-10-25 | [t-b2ff](.tickets/t-b2ff/learnings.md) | A path check keyed on a folder's alias name (`/etc`) misses its physical name on macOS (`/private/etc`), and resolving links works only forwards: list both spellings, and test the physical one. A launcher that sources a new sibling file breaks every test that copies a fixed file list into a fake install (five suites failed the first full run) | UNPROMOTED |

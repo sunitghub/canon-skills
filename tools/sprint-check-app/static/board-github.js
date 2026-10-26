@@ -3,9 +3,9 @@
 // own beyond choosing which button a card shows. A ticket with runs: github (and its github: link, no merged: line) is
 // out on GitHub: it shows in In progress (board-helpers.js effectiveStatus) with a GitHub chip and one stage button instead of Start.
 import { state } from './board-core.js';
-import { closeTab, cockpitState } from './board-cockpit.js';
+import { closeTab, cockpitState, openTerminalPane } from './board-cockpit.js';
 import { esc, escAttr, isWindowsBrowser } from './board-helpers.js';
-import { newScratchId, openScratch, render, showToast } from './board-render.js';
+import { render, showToast } from './board-render.js';
 import { loadData, SHELL_TAB } from './board-core.js';
 import { resetPanelDrag, resetPanelResize } from './board-panels.js';
 
@@ -567,7 +567,7 @@ function showSent(panel, t, tab) {
       document.getElementById('ck-gh-status').textContent = 'Windows: paste this in PowerShell or Git Bash in the project folder and press Enter. The board\'s Terminal cannot start a cloud session on Windows yet.';
       return;
     }
-    openScratch(newScratchId(), { term: true, typeLine: typed });
+    openTerminalPane('below', { fresh: true, typeLine: typed });   // t-ccf5: under this tab, so the Sent panel stays on screen
   });
   document.getElementById('ck-gh-open')?.addEventListener('click', () => openUrl(url));
   // The work is in the cloud now, so the tab has nothing left to show: close it (closeTab never ends a session).

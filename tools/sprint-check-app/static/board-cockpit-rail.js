@@ -3,6 +3,7 @@ import { displayTicketId, effectiveStatus, esc, escAttr } from './board-helpers.
 import { SCRATCH_ID, announceScratchTabs, findTicketById, normProjectPath, renderScratchWhere, showToast } from './board-render.js';
 import { activateDoc, modalState, openModal } from './board-modal.js';
 import { hasFilledCheckbox, hasUsefulSectionText, parseGateModel, sectionContent } from './board-docs.js';
+import { applyPane, initPane } from './board-pane.js';
 import { activeTabId, closeTab, cockpitState, cockpitTabs, newCockpitTabState, openLeaveConfirm, refreshSessionStateChip, renderSessionStateChip, sessionIsLive, setActiveTab, teardownCockpit } from './board-cockpit.js';
 import { cockpitPathKey, fetchWorktreeLock, formatStateAsParagraphs, maybeMountCockpitTerminal, renderCockpitWorktree } from './board-worktree.js';
 
@@ -15,8 +16,9 @@ function canonPrefixLabel() {
   return v;
 }
 function canonPrefixKeys(emit) {
-  var armed = false, timer = null, swallow = null;
-  function disarm() { armed = false; if (timer) { clearTimeout(timer); timer = null; } }
+  var armed = false, sub = false, timer = null, swallow = null;   // sub: `P` was pressed, one more key follows (t-ccf5)
+  function disarm() { armed = false; sub = false; if (timer) { clearTimeout(timer); timer = null; } }
+  function arm() { if (timer) clearTimeout(timer); timer = setTimeout(function () { if (armed) { disarm(); emit('cancel', ''); } }, 1500); }
   function handle(e) {
     var t = e.type, k = e.key;
     if (swallow !== null && e.code === swallow && (t === 'keypress' || t === 'keyup')) {
@@ -28,16 +30,19 @@ function canonPrefixKeys(emit) {
     if (k === 'Control' || k === 'Shift' || k === 'Alt' || k === 'Meta' || k === 'AltGraph' || k === 'CapsLock') return false;
     swallow = null;
     if (armed) {
-      disarm();
+      var was = sub;
       swallow = e.code;
       e.preventDefault(); e.stopPropagation();
-      if (k === 'Escape') emit('cancel', ''); else emit('key', k);
+      if (k === 'Escape') { disarm(); emit('cancel', ''); return true; }
+      if (!was && k === 'P') { sub = true; arm(); emit('armed', 'P'); return true; }   // the project-view namespace: P then one key
+      disarm();
+      emit('key', was ? 'P' + k : k);
       return true;
     }
     var altgr = e.getModifierState && e.getModifierState('AltGraph');
     if (e.ctrlKey && !e.altKey && !altgr && !e.metaKey && !e.shiftKey && !e.repeat && k === canonPrefixLabel().slice(5)) {
       armed = true; swallow = e.code;
-      timer = setTimeout(function () { if (armed) { disarm(); emit('cancel', ''); } }, 1500);
+      arm();
       e.preventDefault(); e.stopPropagation();
       emit('armed', '');
       return true;
@@ -304,6 +309,7 @@ export async function openCockpit(id) {
 // session is now a separate, explicit action — see #ck-end-session below.
 export function closeCockpit() {
   document.getElementById('cockpit-overlay').classList.remove('open');
+  applyPane(activeTabId, false, cockpitTabs);   // t-ccf5: the Board alone again; the pane is remembered
 }
 
 // t-2687: a tab that was never attached (closed/reopened, or opened from the COCKPIT SESSIONS
@@ -618,6 +624,7 @@ async function renderCockpitState(t) {
 
 // t-1543: this file's load-time code; board-main.js runs it after every module has loaded.
 export function initCockpitRail() {
+  initPane(() => applyPane(activeTabId, document.getElementById('cockpit-overlay').classList.contains('open'), cockpitTabs));   // t-ccf5
   ['keydown', 'keypress', 'keyup'].forEach(type => document.addEventListener(type, e => {
     if (window.parent === window) return;
     if (type === 'keydown' && boardKeyBlocked(e)) { boardKeys.cancel(); return; }

@@ -545,3 +545,17 @@
     html[data-theme="light"] .card-start.working { color: var(--th-warn-ink, #b45309); border-color: var(--th-warn-ink, #b45309); }   /* --st-work (#df8e1d) is too pale for 11px text on a light card (2.4:1), as .ready-flag found */
     .card-start.disabled, .card-start:disabled { background: var(--surface-raised); color: var(--text-muted); cursor: not-allowed; }
 
+
+    /* t-ccf5: a Terminal pane next to the tab you are on (board-pane.js sets --ckr = the other pane's share) */
+    #cockpit-overlay.ck-pane-below { inset: auto 0 0 0; height: calc((1 - var(--ckr, .5)) * 100%); border-top: 1px solid var(--border); }
+    #cockpit-overlay.ck-pane-beside { inset: 0 0 0 auto; width: calc((1 - var(--ckr, .5)) * 100%); border-left: 1px solid var(--border); }
+    #ck-term.ck-split-below iframe.ck-pane1, #ck-term.ck-split-beside iframe.ck-pane1 { position: absolute; top: 0; left: 0; }
+    #ck-term.ck-split-below iframe.ck-pane1 { right: 0; height: calc(var(--ckr, .5) * 100% - 3px); }
+    #ck-term.ck-split-below iframe.ck-pane2 { position: absolute; left: 0; right: 0; bottom: 0; height: calc((1 - var(--ckr, .5)) * 100% - 3px); }
+    #ck-term.ck-split-beside iframe.ck-pane1 { bottom: 0; width: calc(var(--ckr, .5) * 100% - 3px); height: auto; }
+    #ck-term.ck-split-beside iframe.ck-pane2 { position: absolute; top: 0; bottom: 0; right: 0; width: calc((1 - var(--ckr, .5)) * 100% - 3px); height: auto; }
+    #ck-pane-handle { position: fixed; z-index: 65; background: var(--border); touch-action: none; transition: background .12s; }
+    #ck-pane-handle[hidden] { display: none; }
+    #ck-pane-handle:hover, #ck-pane-handle:focus-visible, #ck-pane-handle.drag { background: var(--accent); outline: none; }
+    #ck-pane-handle[data-dir="below"] { cursor: row-resize; }
+    #ck-pane-handle[data-dir="beside"] { cursor: col-resize; }

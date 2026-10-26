@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // Protects the welcome from lying: every tkt line is labelled the way the prompt really treats it, every read-only tkt
@@ -123,5 +125,21 @@ func TestTktHelpRuns(t *testing.T) {
 	}
 	if out := run(t, Config{Root: root, Tkt: fake}, "tkt --help\nexit\n"); !strings.Contains(out, "ran:--help") {
 		t.Errorf("tkt --help should run:\n%s", out)
+	}
+}
+
+// The command list fits a terminal pane: a longer line wraps into the next row and hides the command column (t-ccf5, the su line).
+func TestWelcomeLinesFitANarrowPane(t *testing.T) {
+	const maxCols = 100
+	for _, l := range strings.Split(strings.TrimRight(welcome(), "\n"), "\n") {
+		plain := regexp.MustCompile("\x1b\\[[0-9;]*m").ReplaceAllString(l, "")
+		if n := utf8.RuneCountInString(plain); n > maxCols {
+			t.Errorf("a welcome line is %d columns (max %d): %q", n, maxCols, plain)
+		}
+	}
+	for _, e := range welcomeEntries { // the su line still says what it is: a time limit, the OS approval and what the failures do
+		if e.cmd == "su" && !(strings.Contains(e.desc, "10 min") && strings.Contains(e.desc, "OS approval") && strings.Contains(e.desc, "close")) {
+			t.Errorf("su's description lost a fact: %q", e.desc)
+		}
 	}
 }

@@ -75,6 +75,29 @@ function press(h, key, o) {
   ok('a lone modifier press while armed neither cancels nor is consumed', h.handle(ev('keydown', 'Shift', { code: 'ShiftLeft', shift: true })) === false);
   ok('shifted key (?) after the prefix is delivered as ?', h.handle(ev('keydown', '?', { code: 'Slash', shift: true })) === true && out[out.length - 1] === 'key:?', out);
 }
+// ── t-ccf5: P is a namespace: one more key follows it ──
+{
+  const { ctx, timers } = load(undefined); const out = []; const h = ctx.canonPrefixKeys((t, k) => out.push(t + ':' + k));
+  const arm = () => { h.handle(ev('keydown', '.', { ctrl: true, code: 'Period' })); h.handle(ev('keyup', '.', { code: 'Period' })); };
+  arm(); out.length = 0;
+  ok('P stays armed, is consumed, and reports a sub-state (not a key)', h.handle(ev('keydown', 'P', { code: 'KeyP', shift: true })) === true && out.join() === 'armed:P', out);
+  h.handle(ev('keyup', 'P', { code: 'KeyP' }));
+  ok('P then n is one key, Pn, consumed whole', press(h, 'n', { code: 'KeyN' }).length === 0 && out[out.length - 1] === 'key:Pn', out);
+  ok('after Pn the handler is idle', press(h, 'a').length === 3);
+  arm(); out.length = 0; h.handle(ev('keydown', 'P', { code: 'KeyP', shift: true })); h.handle(ev('keyup', 'P', { code: 'KeyP' }));
+  ok('Escape after P cancels', h.handle(ev('keydown', 'Escape', { code: 'Escape' })) === true && out[out.length - 1] === 'cancel:', out);
+  ok('and the next plain key is not consumed', press(h, 'n', { code: 'KeyN' }).length === 3);
+  arm(); out.length = 0; h.handle(ev('keydown', 'P', { code: 'KeyP', shift: true })); h.handle(ev('keyup', 'P', { code: 'KeyP' }));
+  const t = timers.filter(x => x.live); ok('P re-arms the 1.5 s timer (one live timer, 1500 ms)', t.length === 1 && t[0].ms === 1500, timers);
+  t[0].fn();
+  ok('the timer after P cancels', out[out.length - 1] === 'cancel:', out);
+  ok('and a plain key after that is not consumed', press(h, 'b', { code: 'KeyB' }).length === 3);
+  arm(); out.length = 0; h.handle(ev('keydown', 'P', { code: 'KeyP', shift: true })); h.handle(ev('keyup', 'P', { code: 'KeyP' }));
+  h.handle(ev('keydown', 'P', { code: 'KeyP', shift: true }));
+  ok('a second P is just the key PP (no deeper nesting)', out[out.length - 1] === 'key:PP', out);
+  arm(); out.length = 0;
+  ok('lowercase p is a plain key, Projects', h.handle(ev('keydown', 'p', { code: 'KeyP' })) === true && out[out.length - 1] === 'key:p', out);
+}
 // ── hostile: keys that must never be the prefix ──
 {
   const { ctx } = load(undefined); const out = []; const h = ctx.canonPrefixKeys((t, k) => out.push(t));
