@@ -20,8 +20,9 @@ function canonPrefixLabel() {
   return v;
 }
 function canonPrefixKeys(emit) {
-  var armed = false, timer = null, swallow = null;
-  function disarm() { armed = false; if (timer) { clearTimeout(timer); timer = null; } }
+  var armed = false, sub = false, timer = null, swallow = null;   // sub: `P` was pressed, one more key follows (t-ccf5)
+  function disarm() { armed = false; sub = false; if (timer) { clearTimeout(timer); timer = null; } }
+  function arm() { if (timer) clearTimeout(timer); timer = setTimeout(function () { if (armed) { disarm(); emit('cancel', ''); } }, 1500); }
   function handle(e) {
     var t = e.type, k = e.key;
     if (swallow !== null && e.code === swallow && (t === 'keypress' || t === 'keyup')) {
@@ -33,16 +34,19 @@ function canonPrefixKeys(emit) {
     if (k === 'Control' || k === 'Shift' || k === 'Alt' || k === 'Meta' || k === 'AltGraph' || k === 'CapsLock') return false;
     swallow = null;
     if (armed) {
-      disarm();
+      var was = sub;
       swallow = e.code;
       e.preventDefault(); e.stopPropagation();
-      if (k === 'Escape') emit('cancel', ''); else emit('key', k);
+      if (k === 'Escape') { disarm(); emit('cancel', ''); return true; }
+      if (!was && k === 'P') { sub = true; arm(); emit('armed', 'P'); return true; }   // the project-view namespace: P then one key
+      disarm();
+      emit('key', was ? 'P' + k : k);
       return true;
     }
     var altgr = e.getModifierState && e.getModifierState('AltGraph');
     if (e.ctrlKey && !e.altKey && !altgr && !e.metaKey && !e.shiftKey && !e.repeat && k === canonPrefixLabel().slice(5)) {
       armed = true; swallow = e.code;
-      timer = setTimeout(function () { if (armed) { disarm(); emit('cancel', ''); } }, 1500);
+      arm();
       e.preventDefault(); e.stopPropagation();
       emit('armed', '');
       return true;
@@ -53,10 +57,11 @@ function canonPrefixKeys(emit) {
 }
 // canon:prefix-keys:end
 let keyHintTimer=null;
-function showKeyHint(on){
+function showKeyHint(on,sub){
   const h=document.getElementById('keyhint'); if(!h) return;
   clearTimeout(keyHintTimer);
-  if(on){ h.innerHTML='<kbd>'+esc(canonPrefixLabel())+'</kbd> then a key — <kbd>?</kbd> help, <kbd>Esc</kbd> cancel'; h.classList.add('show'); keyHintTimer=setTimeout(()=>showKeyHint(false),2000); }
+  if(on&&sub==='P'){ h.innerHTML='<kbd>P</kbd> this project\u2019s tabs — <kbd>n</kbd> next, <kbd>b</kbd> previous, <kbd>f</kbd> first, <kbd>l</kbd> last, <kbd>Esc</kbd> cancel'; h.classList.add('show'); keyHintTimer=setTimeout(()=>showKeyHint(false),1500); }
+  else if(on){ h.innerHTML='<kbd>'+esc(canonPrefixLabel())+'</kbd> then a key — <kbd>?</kbd> help, <kbd>Esc</kbd> cancel'; h.classList.add('show'); keyHintTimer=setTimeout(()=>showKeyHint(false),2000); }
   else h.classList.remove('show');
 }
 export function toggleKeysSheet(open){
@@ -96,10 +101,16 @@ function prefixAction(key){
     try{ f.contentWindow.postMessage({source:'canon-cockpit-shell',type:'session-menu-request'},location.origin); }catch(e){}
     return;
   }
-  if(key==='m'){   // t-57ab: a Terminal tab in the active project, as the board's Terminal button does
+  if(key==='m'||key==='M'){   // t-57ab: a Terminal in the active project; t-ccf5: as a pane below (m) or beside (M) the tab you are on
     const f=activeTab!=='projects'&&document.querySelector('#view-'+activeTab+' iframe');
     if(!f){ toast('Open a project tab first, then press the prefix and m for a Terminal'); return; }
-    try{ f.contentWindow.postMessage({source:'canon-cockpit-shell',type:'open-terminal-request'},location.origin); }catch(e){}
+    try{ f.contentWindow.postMessage({source:'canon-cockpit-shell',type:'open-terminal-request',placement:key==='m'?'below':'beside'},location.origin); }catch(e){}
+    return;
+  }
+  if(key.length===2&&key[0]==='P'&&'nbfl'.includes(key[1])){   // t-ccf5: the project-view keys: next / previous / first / last tab of THIS project
+    const f=activeTab!=='projects'&&document.querySelector('#view-'+activeTab+' iframe');
+    if(!f){ toast('Open a project tab first, then use P n / b / f / l to move between its tabs'); return; }
+    try{ f.contentWindow.postMessage({source:'canon-cockpit-shell',type:'project-tab-request',action:key[1]},location.origin); }catch(e){}
     return;
   }
   if(key==='x'){
@@ -134,7 +145,7 @@ function prefixAction(key){
   if(key==='?') toggleKeysSheet(true);
 }
 const shellKeys=canonPrefixKeys((type,key)=>{
-  if(type==='armed'){ showKeyHint(true); return; }
+  if(type==='armed'){ showKeyHint(true,key); return; }
   showKeyHint(false);
   if(type==='key') prefixAction(key);
 });

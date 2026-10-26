@@ -70,7 +70,7 @@ board_sources() {
   local f
   cat "$1/tools/sprint-check-app/app.html"
   for f in "$1"/tools/sprint-check-app/static/*.css "$1"/tools/sprint-check-app/static/*.js; do
-    case "${f##*/}" in cockpit-*) continue ;; esac
+    case "${f##*/}" in cockpit-*|split-handle.js) continue ;; esac   # t-ccf5: split-handle.js is a pane resize handle (arrow keys on purpose), not the ticket modal
     if [[ -f "$f" ]]; then cat "$f"; fi
   done
 }

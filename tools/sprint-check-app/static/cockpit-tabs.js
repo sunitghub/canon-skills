@@ -1,5 +1,6 @@
 // t-565f: the Cockpit shell's tabs code (was part of cockpit.html's one script). Declarations only: the
 // load-time code is initTabs(), which cockpit-main.js runs in order once every module has loaded.
+import { bindSplitHandle, clampRatio as clampBy, validRatio } from './split-handle.js';
 import { esc, toast } from './cockpit-core.js';
 import { SCRATCH_ID_RE, TICKET_ID_RE, _projKey, boardScratch, interrupted, liveTabIds, needsTabIds, openCloseWarn, renderInterrupted, renderSessionSurfaces } from './cockpit-sessions.js';
 import { getProjects, registerSkill } from './cockpit-projects.js';
@@ -141,9 +142,7 @@ export function splitShown(){
 }
 function clampRatio(r){
   const views=document.getElementById('views');
-  const total=split.dir==='v'?views.clientHeight:views.clientWidth, edge=SPLIT_MIN[split.dir]+3;
-  if(!(total>2*edge)) return .5;
-  return Math.min(1-edge/total,Math.max(edge/total,r));
+  return clampBy(r,split.dir==='v'?views.clientHeight:views.clientWidth,SPLIT_MIN[split.dir]);   // t-ccf5: the rule is shared with the board's Terminal pane
 }
 export function saveSplit(){
   try{ if(split) localStorage.setItem(LS_SPLIT,JSON.stringify(split)); else localStorage.removeItem(LS_SPLIT); }catch(e){}
@@ -151,7 +150,7 @@ export function saveSplit(){
 function restoreSplit(){
   let s=null; try{ s=JSON.parse(localStorage.getItem(LS_SPLIT)||'null'); }catch(e){}
   if(!s||typeof s!=='object'||!isProjectTab(s.a)||!isProjectTab(s.b)||s.a===s.b) return;
-  split={a:s.a,b:s.b,dir:s.dir==='v'?'v':'h',ratio:(typeof s.ratio==='number'&&s.ratio>.05&&s.ratio<.95)?s.ratio:.5};
+  split={a:s.a,b:s.b,dir:s.dir==='v'?'v':'h',ratio:validRatio(s.ratio)};
 }
 export function applySplit(){
   if((splitShown()?split.b:'')!==placedPaneTab) renderTabs();   // t-9a6c: the pane-2 tab moves with the split
@@ -322,25 +321,9 @@ export function initTabs(){
 (function wireSplitHandle(){
   const handle=document.getElementById('split-handle'), views=document.getElementById('views');
   if(!handle) return;
-  let dragging=false;
-  const move=e=>{
-    if(!dragging||!split) return;
-    const r=views.getBoundingClientRect();
-    split.ratio=clampRatio(split.dir==='v'?(e.clientY-r.top)/r.height:(e.clientX-r.left)/r.width);
-    applySplit();
-  };
-  handle.addEventListener('pointerdown',e=>{ dragging=true; handle.classList.add('drag'); try{ handle.setPointerCapture(e.pointerId); }catch(err){} e.preventDefault(); });
-  handle.addEventListener('pointermove',move);
-  const stop=()=>{ if(!dragging) return; dragging=false; handle.classList.remove('drag'); saveSplit(); };
-  handle.addEventListener('pointerup',stop); handle.addEventListener('pointercancel',stop);
-  handle.addEventListener('dblclick',()=>{ if(!split) return; split.ratio=.5; applySplit(); saveSplit(); });
-  handle.addEventListener('keydown',e=>{
-    if(!split) return;
-    const step=e.shiftKey?.1:.02, back=split.dir==='v'?'ArrowUp':'ArrowLeft', fwd=split.dir==='v'?'ArrowDown':'ArrowRight';
-    if(e.key===back||e.key===fwd){ e.preventDefault(); split.ratio+=(e.key===fwd?step:-step); }
-    else if(e.key==='Home'){ e.preventDefault(); split.ratio=.5; }
-    else return;
-    applySplit(); saveSplit();
+  bindSplitHandle(handle,{
+    active:()=>!!split, dir:()=>split.dir, box:()=>views.getBoundingClientRect(), get:()=>split.ratio,
+    set:r=>{ split.ratio=clampRatio(r); applySplit(); }, done:saveSplit,
   });
   window.addEventListener('resize',applySplit);
   // Which pane has focus: ask each pane's own document (the boards are same-origin; a nested terminal frame counts as inside it).
