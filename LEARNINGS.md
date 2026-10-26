@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-26-2026 15:20
+learnings-sweep last run: 10-26-2026 16:55
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-26 | [t-3954](.tickets/t-3954/learnings.md) | A release asset's exclusion list needs a test that unpacks a built artifact and checks every path the install READS, with the reader cited per path, plus a revert check per rule: the reviewer found a failure path (a failed download on a slim install hitting a bare Go error) that no list check could see. | UNPROMOTED |
 | 2026-10-26 | [t-a5c9](.tickets/t-a5c9/learnings.md) | A cache key must name what the cached value depends on (the loaded list, not just its length), and a test for it needs inputs where the stale answer DIFFERS from the fresh one: my first memo test used ids that matched neither reading, so it passed with the memo broken | UNPROMOTED |
 | 2026-10-26 | [t-b874](.tickets/t-b874/learnings.md) | A reader of a log other agents write must count what the log means (one run per agent id), not its lines, and read per-ticket files once: the run log held two lines per run (29 lines for 24 runs) and a crafted log cost 217 s; test the counting on the REAL log's quirks, not a fixture that gives every run a unique id. Also: a cloud PR is a draft and GitHub will not merge it, but merge-pr found out only after 3.5 min of tests (t-a463) | UNPROMOTED |
 | 2026-10-26 | [t-ccf5](.tickets/t-ccf5/learnings.md) | Find where the user's flow really lives before the plan is approved: To Claude Cloud sits in a ticket tab's rail, so the approved "pane under the Board" would not have fixed it; and `scripts/test.sh` does not run the board specs, so a new focus line broke two older specs unseen until the evaluator ran them: stamp the related board specs too | UNPROMOTED |
