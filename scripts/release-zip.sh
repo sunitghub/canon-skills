@@ -22,6 +22,29 @@ if command -v sha256sum >/dev/null 2>&1; then sha() { sha256sum "$1" | cut -d' '
 elif command -v shasum >/dev/null 2>&1; then sha() { shasum -a 256 "$1" | cut -d' ' -f1; }
 else die "no sha256sum or shasum on this machine"; fi
 
+# What an end user's zip leaves out (t-3954): nothing in the install reads these. Git installs (a clone) keep everything. One list, here.
+# A new top-level folder ships unless it is named here; docs/releasing.md says why each of these is safe, and tests/release-zip-slim.sh
+# fails if a file the install reads falls under this list.
+#   tests/                    canon's own tests (the many tests/ mentions in tools/ are about the USER's project)
+#   meta/                     README screenshots and GIFs, EXCEPT the images the board's product tour shows (KEEP_SHOTS below)
+#   tools/canon-go/{cmd,internal}   the Go source: a zip install picks its prebuilt binary from the release manifest, never the source;
+#                                   go.mod and go.sum stay (tools/cloud-env.sh reads the pinned toolchain from go.mod)
+SLIM_EXCLUDE=(tests tools/canon-go/cmd tools/canon-go/internal)
+tag_ref="refs/tags/$tag"
+keep_shots=""   # the screenshots the board's page names, read from the same tag so the list cannot drift from app.html
+if git -C "$REPO_ROOT" cat-file -e "$tag_ref:tools/sprint-check-app/app.html" 2>/dev/null; then
+  keep_shots="$(git -C "$REPO_ROOT" show "$tag_ref:tools/sprint-check-app/app.html" | grep -o 'src="/meta/screenshots/[A-Za-z0-9_.-]*"' | sed 's#.*/##; s#"$##' | sort -u || true)"
+fi
+exclude=()
+for p in "${SLIM_EXCLUDE[@]}"; do exclude+=(":(exclude)$p"); done
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  case "$f" in *[!A-Za-z0-9._/@+-]*) die "a path under meta/ has a character the slim list cannot name: $f" ;; esac
+  base="${f##*/}"
+  if [ "${f%/*}" = "meta/screenshots" ] && printf '%s\n' "$keep_shots" | grep -qxF "$base"; then continue; fi
+  exclude+=(":(exclude)$f")
+done < <(git -C "$REPO_ROOT" ls-tree -r --name-only "$tag_ref" -- meta 2>/dev/null)
+
 zip="$out/canon-$version.zip"
-git -C "$REPO_ROOT" archive --format=zip --prefix="canon-$version/" -o "$zip" "refs/tags/$tag" || { rm -f "$zip"; die "git archive failed for $tag"; }
+git -C "$REPO_ROOT" archive --format=zip --prefix="canon-$version/" -o "$zip" "$tag_ref" -- . "${exclude[@]}" || { rm -f "$zip"; die "git archive failed for $tag"; }
 printf '%s %s %s\n' "$tag" "$(sha "$zip")" "$commit"

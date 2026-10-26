@@ -117,6 +117,7 @@ tests=(
   "$ROOT/tests/events.sh"
   "$ROOT/tests/release-daemon-publish.sh"
   "$ROOT/tests/release.sh"
+  "$ROOT/tests/release-zip-slim.sh"
   "$ROOT/tests/integrity-list.sh"
   "$ROOT/tests/sprint-integrity.sh"
   "$ROOT/tests/gate-clusters.sh"

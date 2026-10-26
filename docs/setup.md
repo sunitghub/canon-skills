@@ -402,6 +402,7 @@ So canon never runs the `python3` App execution alias under `…\AppData\Local\M
 
 ### Windows: what's different
 
+- **Download size:** the zip install is about 4 MB unpacked (1.8 MB downloaded; canon's own tests, the README screenshots and the Go source are left out, `docs/releasing.md` has the list), plus the board and daemon programs fetched at install (about 21 MB on Windows).
 - **Command names depend on the shell:** PowerShell and cmd use the `.cmd` wrappers (`skills refresh`), Git Bash needs the script names (`skills.sh refresh`).
 - **Run canon from your project folder, not an Administrator shell's default one.** An elevated PowerShell opens in `C:\Windows\System32`. `canon`, `tkt` and `sprint` refuse to run in a folder that is not a project: a drive root (`/`, `C:\`), the Windows folder and everything in it, `C:\Program Files`, `C:\Program Files (x86)`, `C:\ProgramData`, the system folders `/usr`, `/bin`, `/sbin`, `/etc`, `/var`, `/opt`, `/System`, `/Library` and `/Applications` themselves, and your home folder itself, each unless a git repository is there (a `.tickets` folder alone does not count). They print why, exit 1, and start and create nothing: `cd` into your project and run again. A plain folder with no git is still a project, and so are the subfolders of those system folders.
 
