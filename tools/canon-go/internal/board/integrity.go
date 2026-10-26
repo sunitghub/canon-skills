@@ -110,7 +110,10 @@ func defaultIntegrityDeps(root string, online bool) integrityDeps {
 }
 
 // httpsGet reads one https URL (a redirect must stay on https) up to max bytes; anything longer is an error, never a cut copy.
-func httpsGet(url string, max int64) ([]byte, error) {
+func httpsGet(url string, max int64) ([]byte, error) { return httpsGetWith(&http.Client{}, url, max) }
+
+// httpsGetWith is httpsGet through a given client (a test's TLS server needs its own); the redirect rule is always ours.
+func httpsGetWith(client *http.Client, url string, max int64) ([]byte, error) {
 	if !strings.HasPrefix(url, "https://") {
 		return nil, fmt.Errorf("not an https address")
 	}
@@ -120,12 +123,13 @@ func httpsGet(url string, max int64) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &http.Client{CheckRedirect: func(r *http.Request, via []*http.Request) error {
+	c := *client
+	c.CheckRedirect = func(r *http.Request, via []*http.Request) error {
 		if r.URL.Scheme != "https" || len(via) > 5 {
 			return errors.New("redirect refused")
 		}
 		return nil
-	}}
+	}
 	resp, err := c.Do(req)
 	if err != nil {
 		return nil, err

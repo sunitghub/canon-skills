@@ -12946,9 +12946,11 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
     await expect(page.locator('#ig-body .ig-frow.ig-unchecked')).toHaveCount(2);
     await expect(page.locator('#ig-body .ig-agent')).toHaveCount(1);
     body = { state: 'list-pending', tag: 'v1.2.3', reason: 'v1.2.3 has no line in integrity.txt yet', files: [], match: 0, total: 0, blocking: false };
+    body.blocking = true;                                                      // a response that claims blocking outside a verified state must not show the block line
     await page.locator('#ig-again').click();
     await expect(page.locator('#ig-body .ig-strip')).toContainText('List pending');
     expect(gets[gets.length - 1]).toContain('refresh=1');
+    await expect(page.locator('.ig-block')).toHaveCount(0);
     body = { state: 'not-checked', tag: 'v1.2.3', reason: 'cannot read https://getcanon.dev/integrity.txt (offline)', files: [], match: 0, total: 0, blocking: false };
     await page.locator('#ig-again').click();
     await expect(page.locator('#ig-body .ig-strip')).toContainText('Not checked');
@@ -12974,6 +12976,7 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
     await expect(page.locator('.ig-frow.ig-changed')).toContainText('tools/sprint');
     await expect(page.locator('.ig-frow.ig-changed .ig-fix code')).toHaveText("git -C '/x/canon' checkout -- tools/sprint");
     await expect(page.locator('.ig-block')).toContainText('sprint complete');
+    await expect(page.locator('.ig-group')).toHaveText(['Agents', 'Prompts and protocol', 'Gate files']);
     await expect(page.locator('.ig-frow.ig-match .ig-fix')).toHaveCount(0);
     expect(writes).toEqual([]);
     // the route answers GET only: a POST changes nothing and is refused

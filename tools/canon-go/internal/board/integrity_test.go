@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -462,9 +464,43 @@ func TestGitAtTag(t *testing.T) {
 	}
 }
 
-func TestHttpsGetRefusesPlainHTTP(t *testing.T) {
-	if _, err := httpsGet("http://example.test/x", 10); err == nil {
-		t.Error("an http address must be refused")
+func TestHttpsGetAgainstATLSServer(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/ok", func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte("0123456789")) })
+	mux.HandleFunc("/exact", func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write(bytes.Repeat([]byte("a"), 10)) })
+	mux.HandleFunc("/big", func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write(bytes.Repeat([]byte("a"), 11)) })
+	mux.HandleFunc("/missing", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
+	mux.HandleFunc("/to-http", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://127.0.0.1:1/x", http.StatusFound)
+	})
+	mux.HandleFunc("/loop", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/loop", http.StatusFound) })
+	mux.HandleFunc("/hop", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/ok", http.StatusFound) })
+	srv := httptest.NewTLSServer(mux)
+	defer srv.Close()
+	get := func(p string) ([]byte, error) { return httpsGetWith(srv.Client(), srv.URL+p, 10) }
+	if b, err := get("/ok"); err != nil || string(b) != "0123456789" {
+		t.Errorf("a plain 200: %q %v", b, err)
+	}
+	if b, err := get("/exact"); err != nil || len(b) != 10 {
+		t.Errorf("a body exactly at the cap is allowed: %d %v", len(b), err)
+	}
+	if b, err := get("/big"); err == nil || b != nil || !strings.Contains(err.Error(), "larger than 10 bytes") {
+		t.Errorf("a body over the cap is an error, never a cut copy: %q %v", b, err)
+	}
+	if _, err := get("/missing"); err == nil || !strings.Contains(err.Error(), "HTTP 404") {
+		t.Errorf("a 404: %v", err)
+	}
+	if _, err := get("/to-http"); err == nil || !strings.Contains(err.Error(), "redirect refused") {
+		t.Errorf("a redirect to http: %v", err)
+	}
+	if _, err := get("/loop"); err == nil || !strings.Contains(err.Error(), "redirect refused") {
+		t.Errorf("a redirect loop stops after five hops: %v", err)
+	}
+	if b, err := get("/hop"); err != nil || string(b) != "0123456789" {
+		t.Errorf("one https redirect is followed: %q %v", b, err)
+	}
+	if _, err := httpsGetWith(srv.Client(), "http://127.0.0.1:1/x", 10); err == nil || err.Error() != "not an https address" {
+		t.Errorf("a plain http address is refused before any request: %v", err)
 	}
 }
 

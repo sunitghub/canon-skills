@@ -44,7 +44,11 @@ id="$("$inst/tools/tkt" create "integrity gate" -t task -p 2)"
 "$inst/tools/tkt" start "$id" >/dev/null
 
 complete() { set +e; out="$("$inst/tools/sprint" complete 2>&1)"; rc=$?; set -e; }
-not_refused() { [[ "$out" != *"cannot close: a gate file or gate prompt"* ]] || fail "$1: the integrity gate refused the close: $out"; }
+# fail open means the close went ON to its next gate (the fixture has no sprint files, so that gate is the one that speaks)
+not_refused() {
+  [[ "$out" != *"cannot close: a gate file or gate prompt"* ]] || fail "$1: the integrity gate refused the close: $out"
+  [[ "$out" == *"Missing required sprint file"* ]] || fail "$1: the close did not go on to its next gate: $out"
+}
 
 # Clean install: the gate passes with one line; the close stops later, at a gate that has nothing to do with integrity.
 complete
