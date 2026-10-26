@@ -683,8 +683,13 @@ _canon_setup_edit_only() (   # a subshell, so its EXIT trap removes the scratch 
   done
   # No variant matched: say how the file differs from canon's own edit (the closest variant's diff), so a refusal is not a bare "changed" (t-ae3b).
   echo "note: $path differs from canon's own setup edit (closest diff, canon's edit vs the file):"
-  wc -l "$tmp"/d.* 2>/dev/null | grep -v ' total$' | sort -n | head -1 | awk '{print $2}' | while IFS= read -r best; do
-    sed -n '1,4p' "$best" | cut -c1-120 | sed 's/^/  /'; done
+  local best="" bn=999999 n d
+  for d in "$tmp"/d.*; do
+    [ -f "$d" ] || continue
+    n="$(wc -l < "$d" | tr -d ' ')"
+    if [ "$n" -lt "$bn" ]; then bn="$n"; best="$d"; fi
+  done
+  [ -z "$best" ] || sed -n '1,4p' "$best" | cut -c1-120 | sed 's/^/  /'
   exit 1
 )
 
