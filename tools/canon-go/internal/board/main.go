@@ -91,6 +91,12 @@ func canonVersion() string {
 	return version
 }
 
+// startupBanner is the first line the board prints. It names the installed version (canonVersion reads the install's VERSION), never the
+// unset build variable that a release build leaves at "dev" (t-dec4).
+func startupBanner(addr string) string {
+	return fmt.Sprintf("Canon Cockpit %s  listening on %s  (project: %s)", versionString(), addr, filepath.Base(projectRoot))
+}
+
 // versionString renders "<semver> (<sha>)" when a real commit is stamped.
 func versionString() string { return common.VersionString(canonVersion(), commit) }
 
@@ -142,11 +148,9 @@ func Run(buildVersion, buildCommit string, args []string) int {
 	folder := common.EnvOr("SPRINT_CHECK_ROOT", cwd)
 	if why := common.NotAProject(folder, home); why != "" {
 		abs, _ := filepath.Abs(folder)
-		fmt.Fprintf(os.Stderr, "canon: %s is not a project (%s with no git repository). Make a folder for your work, for example: mkdir -p \"%s\", cd into it, run git init, then run canon again.\n", abs, why, filepath.Join(home, "projects", "demo"))
-		if why == "your home folder" {
-			if m, _ := filepath.Glob(filepath.Join(abs, ".tickets", "*", "ticket.md")); len(m) > 0 {
-				fmt.Fprintf(os.Stderr, "canon: %s has a .tickets folder with tickets in it, left by an earlier run. If they belong to a project, move the folder into it (nothing here moves it for you).\n", abs)
-			}
+		m, _ := filepath.Glob(filepath.Join(abs, ".tickets", "*", "ticket.md"))
+		for _, line := range common.NotAProjectMessage("canon", abs, why, home, len(m) > 0, runtime.GOOS) {
+			fmt.Fprintln(os.Stderr, line)
 		}
 		return 1
 	}
@@ -184,7 +188,7 @@ func Run(buildVersion, buildCommit string, args []string) int {
 	// is labeled "Canon Cockpit" not "sprint-check" — post-t-4700 every
 	// supported launcher funnels into the one shared instance; there's no
 	// standalone board mode left. url is still used below for the browser-open.
-	fmt.Fprintf(os.Stderr, "Canon Cockpit %s  listening on %s  (project: %s)\n", version, addr, filepath.Base(projectRoot))
+	fmt.Fprintln(os.Stderr, startupBanner(addr))
 	fmt.Fprintf(os.Stderr, "tickets: %s\n", ticketsDir)
 
 	if os.Getenv("SPRINT_CHECK_NO_BROWSER") != "1" {

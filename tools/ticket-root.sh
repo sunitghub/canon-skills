@@ -151,11 +151,20 @@ require_project_folder() {
   dir="$(dirname "$(tickets_dir)")"
   why="$(folder_guard_reason "$dir")"
   [[ -z "$why" ]] && return 0
-  # t-5738: say where to go (a first-time user has no project folder yet), and when the refused folder holds tickets from an earlier run, how to move them
-  local shown demo; shown="$(cd "$dir" 2>/dev/null && pwd -P || printf '%s' "$dir")"; demo="${HOME:-~}/projects/demo"
-  echo "$tool: $shown is not a project ($why with no git repository). Make a folder for your work, for example: mkdir -p \"$demo\", cd into it, run git init, then run $tool again." >&2
+  # t-5738/t-dec4: say where to go (a first-time user has no project folder yet), in the user's own shell form: on Windows the folder is
+  # C:\Users\x (not Git Bash's /c/Users/x) and the example works in PowerShell, cmd and Git Bash. Same words as common.NotAProjectMessage
+  # (internal/common/folderguard.go); tests/folder-guard.sh compares them. CANON_HOST_OS is a test hook for uname.
+  local shown home_shown demo mk mv sep=/
+  shown="$(cd "$dir" 2>/dev/null && pwd -P || printf '%s' "$dir")"; home_shown="${HOME:-~}"; mk="mkdir -p"; mv=mv
+  case "${CANON_HOST_OS:-$(uname -s 2>/dev/null)}" in
+    MINGW*|MSYS*|CYGWIN*)
+      sep='\'; mk=mkdir; mv=move
+      if command -v cygpath >/dev/null 2>&1; then shown="$(cygpath -w "$shown" 2>/dev/null || printf '%s' "$shown")"; home_shown="$(cygpath -w "$home_shown" 2>/dev/null || printf '%s' "$home_shown")"; fi ;;
+  esac
+  demo="$home_shown${sep}projects${sep}demo"
+  echo "$tool: $shown is not a project ($why with no git repository). Make a folder for your work, for example: $mk \"$demo\", cd into it, run git init, then run $tool again." >&2
   if [[ "$why" == "your home folder" ]] && compgen -G "$dir/.tickets/*/ticket.md" >/dev/null 2>&1; then
-    echo "$tool: $shown has a .tickets folder with tickets in it, left by an earlier run. If they belong to a project, move the folder into it (nothing here moves it for you), for a project that has no .tickets yet: mv \"$dir/.tickets\" \"$demo/.tickets\"" >&2
+    echo "$tool: $shown has a .tickets folder with tickets in it, left by an earlier run. If they belong to a project, move the folder into it (nothing here moves it for you), for a project that has no .tickets yet: $mv \"$shown${sep}.tickets\" \"$demo${sep}.tickets\"" >&2
   fi
   exit 1
 }

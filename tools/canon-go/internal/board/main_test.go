@@ -1874,3 +1874,23 @@ func TestFindProjectRootSkipsAStrayHomeTickets(t *testing.T) {
 		t.Errorf("home itself: got %q, want %q", got, home)
 	}
 }
+
+// Protects the board's first line on start (t-dec4): a Windows user saw "Canon Cockpit dev" because release builds leave the build
+// variable at "dev"; the line must name the installed VERSION.
+func TestStartupBannerNamesTheInstalledVersion(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "VERSION"), []byte("9.8.7\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	oldTools, oldVersion, oldCommit, oldProject := toolsDir, version, commit, projectRoot
+	defer func() { toolsDir, version, commit, projectRoot = oldTools, oldVersion, oldCommit, oldProject }()
+	toolsDir, version, commit, projectRoot = filepath.Join(root, "tools"), "dev", "dev", filepath.Join(root, "proj")
+	want := "Canon Cockpit 9.8.7  listening on 127.0.0.1:8899  (project: proj)"
+	if got := startupBanner("127.0.0.1:8899"); got != want {
+		t.Errorf("banner = %q, want %q", got, want)
+	}
+	commit = "2ea377f7ed96"
+	if got := startupBanner("127.0.0.1:8899"); !strings.Contains(got, "9.8.7 (2ea377f7ed96)") {
+		t.Errorf("a stamped commit is not shown: %q", got)
+	}
+}

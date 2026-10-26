@@ -114,6 +114,22 @@ out="$(cd "$STRAY" && "$TKT" ls 2>&1)" && fail "folder-guard: tkt ls ran in the 
 # a HOME with a space is quoted in the example
 SP="$W/with space"; mkdir -p "$SP"; out="$(cd "$SP" && HOME="$SP" "$TKT" ls 2>&1)" && fail "folder-guard: tkt ls ran in a home folder with a space"
 [[ "$out" == *"mkdir -p \"$SP/projects/demo\""* ]] || fail "folder-guard: the example folder is not quoted for a HOME with a space: $out"
+# t-dec4: on Windows (Git Bash under PowerShell) the same refusal shows the folder as C:\Users\x and an example command PowerShell accepts; the sentence
+# is the one internal/common's TestNotAProjectMessage pins. cygpath is stubbed (it maps this fixture's home to C:\Users\agentops), uname by CANON_HOST_OS.
+STRAY_P="$(cd "$STRAY" && pwd -P)"; mkdir -p "$W/winbin"
+cat > "$W/winbin/cygpath" <<STUB
+#!/usr/bin/env bash
+[ "\$1" = -w ] && shift
+p="\$1"; for pre in "$STRAY_P" "$STRAY"; do case "\$p" in "\$pre"*) p="C:/Users/agentops\${p#\$pre}" ;; esac; done
+printf '%s\\n' "\$p" | sed 's#/#\\\\#g'
+STUB
+chmod +x "$W/winbin/cygpath"
+out="$(cd "$STRAY" && PATH="$W/winbin:$PATH" CANON_HOST_OS=MINGW64_NT-10.0 "$TKT" ls 2>&1)" && fail "folder-guard: tkt ls ran in the home folder (windows form case)"
+want1='tkt: C:\Users\agentops is not a project (your home folder with no git repository). Make a folder for your work, for example: mkdir "C:\Users\agentops\projects\demo", cd into it, run git init, then run tkt again.'
+want2='tkt: C:\Users\agentops has a .tickets folder with tickets in it, left by an earlier run. If they belong to a project, move the folder into it (nothing here moves it for you), for a project that has no .tickets yet: move "C:\Users\agentops\.tickets" "C:\Users\agentops\projects\demo\.tickets"'
+assert_eq "$want1"$'\n'"$want2" "$out"
+[[ "$out" != *"mkdir -p"* && "$out" != *"/c/"* ]] || fail "folder-guard: the Windows refusal still has a Git Bash form: $out"
+
 # the board starts there (this checks only its start guard; its project finder is covered by TestFindProjectRootSkipsAStrayHomeTickets, the daemon's by TestTicketsDirInSkipsAStrayHomeTickets)
 out="$(cd "$STRAY/Documents/app" && SPRINT_CHECK_NO_BROWSER=1 timeout 8 "$BOARD" 8458 2>&1 || true)"
 [[ "$out" != *"is not a project"* ]] || fail "folder-guard: the board refused a folder under a home that has a stray .tickets: $out"

@@ -76,3 +76,39 @@ func sameFolder(a, b string) bool {
 	}
 	return strings.EqualFold(filepath.Clean(a), filepath.Clean(b))
 }
+
+var gitBashDriveRe = regexp.MustCompile(`^/([a-zA-Z])(/.*)?$`)
+
+// DisplayPath is a folder as the user's own shell spells it (t-dec4). A PowerShell user does not know Git Bash's /c/Users/x: on Windows
+// it becomes C:\Users\x, and a drive path written with slashes gets backslashes. Anywhere else it is unchanged. goos is runtime.GOOS
+// (a parameter so the table is tested on every OS).
+func DisplayPath(p, goos string) string {
+	if goos != "windows" {
+		return p
+	}
+	if m := gitBashDriveRe.FindStringSubmatch(p); m != nil {
+		return strings.ToUpper(m[1]) + `:` + strings.ReplaceAll(m[2], "/", `\`)
+	}
+	if len(p) >= 2 && p[1] == ':' {
+		return strings.ReplaceAll(p, "/", `\`)
+	}
+	return p
+}
+
+// NotAProjectMessage is what canon, tkt and sprint print when the folder is refused (t-5738, t-dec4): why, a folder to make with a command
+// the user's shell accepts (Windows: mkdir "C:\Users\x\projects\demo", works in PowerShell, cmd and Git Bash; elsewhere mkdir -p), and, when
+// the refused home folder holds tickets from an earlier run, how to move them (nothing here moves anything). tools/ticket-root.sh prints the
+// same words (require_project_folder); tests/folder-guard.sh compares the two.
+func NotAProjectMessage(tool, dir, why, home string, hasTickets bool, goos string) []string {
+	shown, h := DisplayPath(dir, goos), DisplayPath(home, goos)
+	sep, mk, mv := "/", "mkdir -p", "mv"
+	if goos == "windows" {
+		sep, mk, mv = `\`, "mkdir", "move"
+	}
+	demo := h + sep + "projects" + sep + "demo"
+	out := []string{tool + ": " + shown + " is not a project (" + why + " with no git repository). Make a folder for your work, for example: " + mk + ` "` + demo + `", cd into it, run git init, then run ` + tool + " again."}
+	if why == "your home folder" && hasTickets {
+		out = append(out, tool+": "+shown+" has a .tickets folder with tickets in it, left by an earlier run. If they belong to a project, move the folder into it (nothing here moves it for you), for a project that has no .tickets yet: "+mv+` "`+shown+sep+`.tickets" "`+demo+sep+`.tickets"`)
+	}
+	return out
+}
