@@ -200,20 +200,26 @@ func TestIntegrityListMustEqualItsPin(t *testing.T) {
 }
 
 func TestIntegrityPinFileShapes(t *testing.T) {
-	h := strings.Repeat("a", 64)
+	// every bad shape carries the REAL pin of the list, so only the shape guards in pinFor can refuse it; with a wrong hash the
+	// list-versus-pin comparison would refuse it anyway and the guard would go untested
+	probe := newIntegFx(t)
+	p := probe.pin
+	other := strings.Repeat("c", 64)
 	for name, c := range map[string]struct {
 		body  string
 		state string
 	}{
-		"no line for the tag":  {"v9.9.9 " + h + "\n", integrityListPending},
+		"no line for the tag":  {"v9.9.9 " + p + "\n", integrityListPending},
 		"empty file":           {"", integrityListPending},
-		"fourth field":         {"v1.2.3 " + h + " " + h + "\n", integrityNotChecked},
-		"three fields":         {"v1.2.3 " + h + " " + strings.Repeat("b", 40) + "\n", integrityNotChecked},
-		"short hash":           {"v1.2.3 abcd\n", integrityNotChecked},
-		"upper-case hash":      {"v1.2.3 " + strings.ToUpper(h) + "\n", integrityNotChecked},
-		"two different hashes": {"v1.2.3 " + h + "\nv1.2.3 " + strings.Repeat("c", 64) + "\n", integrityNotChecked},
-		"NUL byte":             {"v1.2.3 " + h + "\x00\n", integrityNotChecked},
-		"only comments":        {"# v1.2.3 " + h + "\n", integrityListPending},
+		"only comments":        {"# v1.2.3 " + p + "\n", integrityListPending},
+		"fourth field":         {"v1.2.3 " + p + " " + p + "\n", integrityNotChecked},
+		"three fields":         {"v1.2.3 " + p + " " + strings.Repeat("b", 40) + "\n", integrityNotChecked},
+		"short hash":           {"v1.2.3 " + p[:63] + "\n", integrityNotChecked},
+		"upper-case hash":      {"v1.2.3 " + strings.ToUpper(p) + "\n", integrityNotChecked},
+		"two different hashes": {"v1.2.3 " + p + "\nv1.2.3 " + other + "\n", integrityNotChecked},
+		"the other line first": {"v1.2.3 " + other + "\nv1.2.3 " + p + "\n", integrityNotChecked},
+		"NUL byte":             {"v1.2.3 " + p + "\x00\n", integrityNotChecked},
+		"NUL in a comment":     {"# a\x00b\nv1.2.3 " + p + "\n", integrityNotChecked},
 	} {
 		f := newIntegFx(t)
 		f.pinTx = c.body
@@ -221,11 +227,23 @@ func TestIntegrityPinFileShapes(t *testing.T) {
 			t.Errorf("%s: %+v", name, r)
 		}
 	}
-	// the same line twice is one line
+	// a comment line, a blank line and a line for another tag around the real one are fine, and so is the same line twice
 	f := newIntegFx(t)
-	f.pinTx = "v1.2.3 " + f.pin + "\r\nv1.2.3 " + f.pin + "\r\n"
+	f.pinTx = "# header\n\nv1.2.2 " + other + "\nv1.2.3 " + f.pin + "\r\nv1.2.3 " + f.pin + "\r\n"
 	if r := checkIntegrity(f.deps); r.State != integrityVerified {
-		t.Errorf("a repeated identical line (CRLF): %+v", r)
+		t.Errorf("a clean file with comments, another tag and a repeated line: %+v", r)
+	}
+}
+
+func TestPinForDirect(t *testing.T) {
+	h := strings.Repeat("a", 64)
+	if pin, ok, err := pinFor([]byte("v1.0.0 "+h+"\n"), "v1.0.0"); pin != h || !ok || err != nil {
+		t.Errorf("one good line: %q %v %v", pin, ok, err)
+	}
+	for name, body := range map[string]string{"NUL": "v1.0.0 " + h + "\x00", "fourth field": "v1.0.0 " + h + " x", "conflict": "v1.0.0 " + h + "\nv1.0.0 " + strings.Repeat("b", 64)} {
+		if _, ok, err := pinFor([]byte(body), "v1.0.0"); ok || err == nil {
+			t.Errorf("%s must be an error, got ok=%v err=%v", name, ok, err)
+		}
 	}
 }
 
