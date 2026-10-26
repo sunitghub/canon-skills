@@ -1843,3 +1843,34 @@ func canonRoot(t *testing.T) string {
 	}
 	return filepath.Clean(root)
 }
+
+// Protects the board's project finder on a Windows first run (t-5738): a stray .tickets in the home folder must not become the project of
+// every folder under home; a real .tickets or .git still wins, and home itself falls through to itself (the folder guard refuses it).
+func TestFindProjectRootSkipsAStrayHomeTickets(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	mk := func(p string) string {
+		d := filepath.Join(home, p)
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return d
+	}
+	mk(".tickets")
+	docs := mk("Documents")
+	proj := mk("Documents/app/.tickets")
+	repo := mk("repo/.git")
+	if got := findProjectRoot(docs); got != docs {
+		t.Errorf("a folder under a stray home .tickets: got %q, want itself %q", got, docs)
+	}
+	if got := findProjectRoot(filepath.Dir(proj)); got != filepath.Dir(proj) {
+		t.Errorf("a folder with its own .tickets: got %q", got)
+	}
+	if got := findProjectRoot(filepath.Join(home, "repo")); got != filepath.Dir(repo) {
+		t.Errorf("a repository under home: got %q", got)
+	}
+	if got := findProjectRoot(home); got != home {
+		t.Errorf("home itself: got %q, want %q", got, home)
+	}
+}

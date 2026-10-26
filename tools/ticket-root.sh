@@ -3,7 +3,9 @@
 tickets_dir() {
   local dir="$PWD"
   while [[ "$dir" != "/" ]]; do
-    [[ -d "$dir/.tickets" ]] && echo "$dir/.tickets" && return 0
+    # t-5738: a .tickets in a folder the guard refuses (the home folder, a drive root, a system folder) is not a project's: a stray
+    # ~/.tickets made every folder under home resolve to home. Skip it and keep walking; a .git there still counts.
+    if [[ -d "$dir/.tickets" ]] && [[ -z "$(folder_guard_reason "$dir")" ]]; then echo "$dir/.tickets"; return 0; fi
     [[ -d "$dir/.git" ]] && echo "$dir/.tickets" && return 0
     # t-cd06: a git-worktree checkout's .git is a FILE ("gitdir: <repo>/.git/
     # worktrees/<name>"), not a directory — the check above never matches it,
@@ -148,6 +150,11 @@ require_project_folder() {
   dir="$(dirname "$(tickets_dir)")"
   why="$(folder_guard_reason "$dir")"
   [[ -z "$why" ]] && return 0
-  echo "$tool: $(cd "$dir" 2>/dev/null && pwd -P || printf '%s' "$dir") is not a project ($why with no git repository). cd into your project folder and run $tool again." >&2
+  # t-5738: say where to go (a first-time user has no project folder yet), and when the refused folder holds tickets from an earlier run, how to move them
+  local shown demo; shown="$(cd "$dir" 2>/dev/null && pwd -P || printf '%s' "$dir")"; demo="${HOME:-~}/projects/demo"
+  echo "$tool: $shown is not a project ($why with no git repository). Make a folder for your work, for example: mkdir -p \"$demo\", cd into it, run git init, then run $tool again." >&2
+  if [[ "$why" == "your home folder" ]] && compgen -G "$dir/.tickets/*/ticket.md" >/dev/null 2>&1; then
+    echo "$tool: $shown has a .tickets folder with tickets in it, left by an earlier run. If they belong to a project, move the folder into it (nothing here moves it for you): mv \"$dir/.tickets\" \"$demo/.tickets\"" >&2
+  fi
   exit 1
 }

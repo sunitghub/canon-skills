@@ -92,4 +92,34 @@ for d in "$W/plain" "$W/proj" "$W/tonly"; do
 done
 (cd "$W/plain" && "$TKT" create "still works" >/dev/null) || fail "folder-guard: tkt create failed in a plain folder"
 
+# t-5738: a stray .tickets in the home folder (an earlier canon run) must not become the project of every folder under home.
+STRAY="$W/stray"; mkdir -p "$STRAY/Documents/app" "$STRAY/repo" "$STRAY/.tickets"; git -C "$STRAY/repo" init -q
+export HOME="$STRAY"
+resolves() { # <label> <folder>: the project folder tickets_dir picks from <folder> is <folder> itself, never the stray home
+  local got; got="$(cd "$2" && bash -c 'source "$1/tools/ticket-root.sh"; tickets_dir' _ "$ROOT")"
+  [[ "$(cd "$(dirname "$got")" && pwd -P)" == "$(cd "$2" && pwd -P)" ]] || fail "folder-guard: $1: tickets_dir from $2 gave $got"
+}
+resolves "a folder under home"            "$STRAY/Documents/app"
+resolves "a repository under home"        "$STRAY/repo"
+(cd "$STRAY/Documents/app" && "$TKT" create "from under home" >/dev/null 2>&1) || fail "folder-guard: tkt create failed under a home folder that has a stray .tickets"
+[[ -n "$(ls "$STRAY/Documents/app/.tickets" 2>/dev/null)" && -z "$(ls "$STRAY/.tickets")" ]] || fail "folder-guard: the ticket went to the stray home .tickets instead of the project folder"
+# from the home folder itself it is still refused; with no tickets in the stray folder the text gives only the folder hint, with a ticket it adds the move hint
+out="$(cd "$STRAY" && "$TKT" ls 2>&1)" && fail "folder-guard: tkt ls ran in the home folder"
+[[ "$out" == *"is not a project (your home folder"*"for example: mkdir -p \"$STRAY/projects/demo\""* && "$out" != *"left by an earlier run"* ]] || fail "folder-guard: the home refusal has no example folder, or names tickets that are not there: $out"
+mkdir -p "$STRAY/.tickets/t-aaaa"; printf -- '---\nid: t-aaaa\nstatus: open\n---\n# old\n' > "$STRAY/.tickets/t-aaaa/ticket.md"
+before="$(cd "$STRAY/.tickets" && find . -type f | LC_ALL=C sort | xargs shasum | shasum)"
+out="$(cd "$STRAY" && "$TKT" ls 2>&1)" && fail "folder-guard: tkt ls ran in the home folder with tickets in it"
+[[ "$out" == *"left by an earlier run"*"mv "* ]] || fail "folder-guard: no move hint for a home folder that holds tickets: $out"
+[[ "$before" == "$(cd "$STRAY/.tickets" && find . -type f | LC_ALL=C sort | xargs shasum | shasum)" ]] || fail "folder-guard: refusing the home folder changed its .tickets"
+# a HOME with a space is quoted in the example
+SP="$W/with space"; mkdir -p "$SP"; out="$(cd "$SP" && HOME="$SP" "$TKT" ls 2>&1)" && fail "folder-guard: tkt ls ran in a home folder with a space"
+[[ "$out" == *"mkdir -p \"$SP/projects/demo\""* ]] || fail "folder-guard: the example folder is not quoted for a HOME with a space: $out"
+# the board finds the same project (Go twin of tickets_dir)
+out="$(cd "$STRAY/Documents/app" && SPRINT_CHECK_NO_BROWSER=1 timeout 8 "$BOARD" 8458 2>&1 || true)"
+[[ "$out" != *"is not a project"* ]] || fail "folder-guard: the board refused a folder under a home that has a stray .tickets: $out"
+
+# Both installers end by saying where to go next, with the home path (a first-time user has no project folder, and canon refuses home)
+grep -q 'Next: open a terminal in your project folder (for example %s/projects/demo' "$ROOT/install.sh" || fail "folder-guard: install.sh does not print the next step"
+grep -q 'Next: open a terminal in your project folder (for example \$HOME\\projects\\demo' "$ROOT/install.ps1" || fail "folder-guard: install.ps1 does not print the next step"
+
 echo "folder-guard: ok"

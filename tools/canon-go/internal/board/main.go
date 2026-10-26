@@ -142,7 +142,12 @@ func Run(buildVersion, buildCommit string, args []string) int {
 	folder := common.EnvOr("SPRINT_CHECK_ROOT", cwd)
 	if why := common.NotAProject(folder, home); why != "" {
 		abs, _ := filepath.Abs(folder)
-		fmt.Fprintf(os.Stderr, "canon: %s is not a project (%s with no git repository). cd into your project folder and run canon again.\n", abs, why)
+		fmt.Fprintf(os.Stderr, "canon: %s is not a project (%s with no git repository). Make a folder for your work, for example: mkdir -p \"%s\", cd into it, run git init, then run canon again.\n", abs, why, filepath.Join(home, "projects", "demo"))
+		if why == "your home folder" {
+			if m, _ := filepath.Glob(filepath.Join(abs, ".tickets", "*", "ticket.md")); len(m) > 0 {
+				fmt.Fprintf(os.Stderr, "canon: %s has a .tickets folder with tickets in it, left by an earlier run. If they belong to a project, move the folder into it (nothing here moves it for you).\n", abs)
+			}
+		}
 		return 1
 	}
 	projectRoot = findProjectRoot(common.EnvOr("SPRINT_CHECK_ROOT", cwd))
@@ -2186,8 +2191,10 @@ func keywordSet(text string, stop map[string]bool) map[string]bool {
 
 func findProjectRoot(start string) string {
 	dir, _ := filepath.Abs(start)
+	home, _ := os.UserHomeDir()
 	for {
-		if exists(filepath.Join(dir, ".git")) || exists(filepath.Join(dir, ".tickets")) {
+		// t-5738: a .tickets in a folder the guard refuses (home, a drive root, a system folder) is not a project's; skip it, as tickets_dir does
+		if exists(filepath.Join(dir, ".git")) || (exists(filepath.Join(dir, ".tickets")) && common.NotAProject(dir, home) == "") {
 			return dir
 		}
 		next := filepath.Dir(dir)
