@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.20.2] - 2026-10-26
+
+Search several ticket ids at once. Update with `canon update`, then reload the board page (no restart needed: only the board's page code changed, not its programs).
+
 ### Added
 - **Search several ticket ids at once** (`t-a5c9`): in the board's search box type two to four characters of each id, without `t-`, separated by spaces or commas (`69f6 1ae4 f066`, or `9f 1ae`), and every ticket whose id contains any of them shows. A query that is not a list of ids is the ordinary search, and nothing the ordinary search found before is hidden.
 
