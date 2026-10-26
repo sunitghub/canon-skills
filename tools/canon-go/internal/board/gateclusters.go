@@ -231,6 +231,7 @@ func gateClusters(root, home string, days int, now time.Time) gcReport {
 	cutoff := now.Add(-time.Duration(days) * 24 * time.Hour)
 	var runs []gcRun
 	tdir := filepath.Join(root, ".tickets")
+	titles := map[string]string{} // ticket id -> first failing criterion title, read once per ticket
 
 	// 1. the run log: evaluator/reviewer runs with a failing outcome
 	logLabel := "run log " + gcKeys.RunLog
@@ -257,7 +258,13 @@ func gateClusters(root, home string, days int, now time.Time) gcReport {
 		}
 		example := cause
 		if ticket != "" && role == "evaluator" {
-			if t := gcReportTitle(filepath.Join(tdir, ticket, gcKeys.EvalReport)); t != "" {
+			// the run log is untrusted: one ticket repeated on thousands of lines must read its report once, not once per line
+			t, seen := titles[ticket]
+			if !seen {
+				t = gcReportTitle(filepath.Join(tdir, ticket, gcKeys.EvalReport))
+				titles[ticket] = t
+			}
+			if t != "" {
 				cause += ": " + t
 				example = cause
 			}

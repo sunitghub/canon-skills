@@ -384,3 +384,30 @@ func TestGateClustersCapsAndLookAlikes(t *testing.T) {
 		t.Errorf("only the real t-beef notes count as a reviewer NO (not a look-alike folder or a symlink): %+v", no)
 	}
 }
+
+// The run log is untrusted: thousands of failing lines for one ticket must read that ticket's 1 MiB eval-report.md once, not once per
+// line (the reviewer measured 217 s for 46k lines before the cache).
+func TestGateClustersReadsEachReportOnce(t *testing.T) {
+	root, home, now := gcFixture(t)
+	pad := strings.Repeat("filler row of text in the report that is never a table row\n", 17000) + "| 2 | Safe reading | fail |\n"   // the failing row is last: a read has to scan the whole file
+	gcWrite(t, filepath.Join(root, ".tickets/t-9999/eval-report.md"), "| # | Criterion | Verdict |\n|---|---|---|\n"+pad)
+	var b strings.Builder
+	for i := 0; i < 20000; i++ {
+		b.WriteString(`{"ts":"2026-10-25T10:00:00Z","agent_id":"x` + strconv.Itoa(i) + `","agent_type":"evaluator","ticket":"t-9999","outcome":"fail"}` + "\n")
+	}
+	gcWrite(t, filepath.Join(root, ".claude/subagent-runs.jsonl"), b.String())
+	start := time.Now()
+	r := gateClusters(root, home, 30, now)
+	if d := time.Since(start); d > 3*time.Second {
+		t.Errorf("20000 failing lines for one ticket took %v: the report is being re-read per line", d)
+	}
+	found := false
+	for _, c := range r.Clusters {
+		if c.Cause == "evaluator fail: Safe reading" && c.Count == 20000 {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("the 20000 failures did not form one titled cluster: %+v", r.Clusters)
+	}
+}
