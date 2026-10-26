@@ -4,7 +4,7 @@ import { SCRATCH_ID, announceScratchTabs, findTicketById, normProjectPath, rende
 import { activateDoc, modalState, openModal } from './board-modal.js';
 import { hasFilledCheckbox, hasUsefulSectionText, parseGateModel, sectionContent } from './board-docs.js';
 import { applyPane, initPane } from './board-pane.js';
-import { activeTabId, closeTab, cockpitState, cockpitTabs, newCockpitTabState, openLeaveConfirm, refreshSessionStateChip, renderSessionStateChip, sessionIsLive, setActiveTab, teardownCockpit } from './board-cockpit.js';
+import { activeTabId, closeTab, cockpitState, cockpitTabs, newCockpitTabState, openLeaveConfirm, openTerminalCloseConfirm, refreshSessionStateChip, renderSessionStateChip, sessionIsLive, setActiveTab, teardownCockpit } from './board-cockpit.js';
 import { cockpitPathKey, fetchWorktreeLock, formatStateAsParagraphs, maybeMountCockpitTerminal, renderCockpitWorktree } from './board-worktree.js';
 
 // t-a198: the keyboard prefix (see the shell). Keys typed with focus in the board come here; the terminal frame's
@@ -139,6 +139,11 @@ function ensurePreviewResize() {
 // render call. A pill's own needs-you dot is how a BACKGROUND tab's status
 // stays visible without switching to it (the topbar badge only reflects the
 // active tab).
+// t-2aed: a Terminal starts as soon as it opens (no agent to start), so its x ends it, through the same "Close this Terminal?" dialog as
+// Ctrl+. then x; every other tab's x still only hides the tab (t-8a2a). A Terminal that is no longer live just closes.
+const isTerminalTab = id => state.scratch.get(id)?.term === true;
+const isLiveTerminal = id => isTerminalTab(id) && ['running', 'needs-you'].includes(cockpitTabs[id]?.status);
+
 export function renderTabStrip() {
   const ids = Object.keys(cockpitTabs);
   const html = ids.map(id => {
@@ -149,7 +154,7 @@ export function renderTabStrip() {
     return `<span class="ck-tab-pill${id === activeTabId ? ' active' : ''}" data-tab-id="${esc(id)}">`
       + (needsYou ? '<span class="ck-tab-pill-needsyou" title="Agent is waiting on you"></span>' : '')
       + `<span class="ck-tab-pill-id">${esc(label)}</span>`
-      + `<button class="ck-tab-pill-close b-close" data-tab-id="${esc(id)}" title="Close tab (session stays running)" type="button">×</button>`
+      + `<button class="ck-tab-pill-close b-close" data-tab-id="${esc(id)}" title="${isTerminalTab(id) ? 'End this Terminal' : 'Close tab (session stays running)'}" type="button">×</button>`
       + `</span>`;
   }).join('');
   for (const containerId of ['ck-tab-strip', 'ck-tab-strip-topbar']) {
@@ -162,9 +167,15 @@ export function renderTabStrip() {
     pill.addEventListener('click', () => openCockpit(pill.dataset.tabId));
   });
   document.querySelectorAll('.ck-tab-pill-close').forEach(btn => {
-    btn.addEventListener('click', (e) => {
+    btn.addEventListener('click', async (e) => {
       e.stopPropagation();
-      closeTab(btn.dataset.tabId);
+      const id = btn.dataset.tabId;
+      if (isLiveTerminal(id)) {   // t-2aed: switch to it first, so the dialog acts on THIS Terminal
+        await openCockpit(id);
+        if (activeTabId === id && cockpitState && !cockpitState._ending) openTerminalCloseConfirm();
+        return;
+      }
+      closeTab(id);
     });
   });
 }
@@ -181,9 +192,9 @@ export async function renderCockpitRail(t) {
   document.getElementById('ck-scratch-kind').textContent = t.term ? 'TERMINAL' : 'SCRATCH';
   document.getElementById('ck-scratch-sub').textContent = t.term ? 'restricted prompt · ls, cat, read-only tkt · su for a full shell' : 'no ticket · no gates';
   document.getElementById('ck-scratch-end').textContent = t.term ? 'Closing it ends the Terminal, and anything you started in su.' : 'End keeps any uncommitted changes in place.';
-  const endBtn = document.getElementById('ck-end-session');   // End Session is for agent sessions; a Terminal ends with Ctrl+. then x
-  endBtn.disabled = !!t.term;
-  endBtn.title = t.term ? 'A Terminal ends with Ctrl+. then x' : 'Save state and end this session';
+  const endBtn = document.getElementById('ck-end-session');   // t-2aed: a Terminal's End Session asks "Close this Terminal?", as the tab x and Ctrl+. then x do
+  endBtn.disabled = false;
+  endBtn.title = t.term ? 'End this Terminal (same as Ctrl+. then x)' : 'Save state and end this session';
   document.getElementById('ck-id').textContent = displayTicketId(t);
   document.getElementById('ck-title').textContent = t.title || '';
   document.getElementById('ck-title').title = t.title || '';   // t-b91f: the full title when the bar truncates it
@@ -632,7 +643,11 @@ export function initCockpitRail() {
   }, true));
 
   document.getElementById('ck-end-session').addEventListener('click', async () => {
-    if (!cockpitState || cockpitState._ending || state.scratch.get(cockpitState.id)?.term === true) return;
+    if (!cockpitState || cockpitState._ending) return;
+    if (state.scratch.get(cockpitState.id)?.term === true) {   // t-2aed
+      if (sessionIsLive()) openTerminalCloseConfirm(); else closeTab(cockpitState.id);
+      return;
+    }
     if (sessionIsLive()) { openLeaveConfirm(); return; }
     const tab = cockpitState;
     const detached = await findLiveDaemonSession(tab.id);

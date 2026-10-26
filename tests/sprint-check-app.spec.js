@@ -7068,6 +7068,66 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
+    // t-2aed: a Terminal starts when it opens (no agent to start), so its tab x ends it through the "Close this Terminal?" dialog; every other tab's x
+    // still only hides the tab. Protects the Cockpit tab strip, End Session on a Terminal, and the rule that closing an agent tab never ends it.
+    test('Terminal x (t-2aed): the x on a live Terminal asks to end it, Cancel keeps it, Enter ends it; End Session is enabled; an agent tab\'s x never ends it', async ({ page }) => {
+      const stubPage = `<!doctype html><html><body><script>
+        parent.postMessage({source:'canon-cockpit',type:'status',status:'running'},'*');
+        addEventListener('message',function(e){ var d=e.data; if(d&&d.source==='canon-cockpit'&&d.type==='end-scratch'){ document.body.setAttribute('data-ended','1'); parent.postMessage({source:'canon-cockpit',type:'ended'},'*'); } });
+      </script></body></html>`;
+      await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: stubPage }));
+      await openShell(page, []);
+      await stubCockpit(page);
+      await page.route(/\/api\/cockpit(\?|$)/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR, launched: true }) }));
+      await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return activateTab('proj-a'); });
+      await boardsKeyReady(page, ['proj-a']);
+      const board = page.frameLocator('#view-proj-a iframe');
+      await pressPrefix(page, 'm');
+      await expect(board.locator('#cockpit')).toHaveClass(/term-mode/);
+      await waitSessionLive(board);
+      const pills = board.locator('#ck-tab-strip-topbar .ck-tab-pill');
+      const confirm = board.locator('#ck-leave-confirm');
+      // End Session on a Terminal is a live control with its reason in the tooltip, and it opens the same dialog
+      await expect(board.locator('#ck-end-session')).toBeEnabled();
+      await expect(board.locator('#ck-end-session')).toHaveAttribute('title', /End this Terminal/);
+      await board.locator('#ck-end-session').click();
+      await expect(confirm).toHaveClass(/open/);
+      await expect(board.locator('#ck-leave-confirm-title')).toHaveText('Close this Terminal?');
+      await board.locator('#ck-leave-cancel').click();
+      await expect(confirm).not.toHaveClass(/open/);
+      // the x asks, Cancel keeps the Terminal
+      await expect(pills).toHaveCount(1);
+      await expect(pills.first().locator('.ck-tab-pill-close')).toHaveAttribute('title', 'End this Terminal');
+      await pills.first().locator('.ck-tab-pill-close').click();
+      await expect(confirm).toHaveClass(/open/);
+      await expect(board.locator('#ck-leave-confirm-title')).toHaveText('Close this Terminal?');
+      await board.locator('#ck-leave-cancel').click();
+      await expect(confirm).not.toHaveClass(/open/);
+      await expect(pills).toHaveCount(1);
+      // an agent (Scratch) tab opens beside it; its x only hides it: no dialog, and the page is never told to end
+      await board.locator('#btn-scratch').click();
+      await expect(pills).toHaveCount(2);
+      await waitSessionLive(board);
+      const agentPill = pills.nth(1);
+      await expect(agentPill.locator('.ck-tab-pill-close')).toHaveAttribute('title', 'Close tab (session stays running)');
+      await agentPill.locator('.ck-tab-pill-close').click();
+      await expect(pills).toHaveCount(1);
+      await page.waitForTimeout(300);
+      await expect(confirm).not.toHaveClass(/open/);
+      expect(await page.evaluate(() => [...document.querySelectorAll('#view-proj-a iframe')[0].contentDocument.querySelectorAll('#ck-term iframe')].some(f => { try { return f.contentDocument.body.getAttribute('data-ended') === '1'; } catch { return false; } }))).toBe(false);
+      // the x on the Terminal, while it is not the shown tab, brings it forward and asks about THAT Terminal; Enter ends it and the tab goes
+      await board.locator('#btn-scratch').click();
+      await expect(pills).toHaveCount(2);
+      await pills.first().locator('.ck-tab-pill-close').click();
+      await expect(confirm).toHaveClass(/open/);
+      await expect(board.locator('#ck-scratch-kind')).toHaveText('TERMINAL');
+      await page.keyboard.press('Enter');
+      await expect(confirm).not.toHaveClass(/open/);
+      await expect(pills).toHaveCount(1);                                         // only the agent tab is left
+      await expect(board.locator('#ck-scratch-kind')).toHaveText('SCRATCH');
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     test('Terminal exit (t-5157): when the Terminal ends (exit, Kill, reaper) the board closes its tab', async ({ page }) => {
       const stubPage = `<!doctype html><html><body><script>parent.postMessage({source:'canon-cockpit',type:'status',status:'running'},'*');
         addEventListener('message',function(e){ var d=e.data; if(d&&d.type==='test-exit') parent.postMessage({source:'canon-cockpit',type:'status',status:'done'},'*'); });</script></body></html>`;

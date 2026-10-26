@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Changed
+- **A Terminal tab's `×` and End Session end the Terminal** (`t-2aed`): a Terminal starts as soon as it opens, so there is no agent to end; the `×` on its tab (and the End Session button, which was greyed out) now asks "Close this Terminal?" (Enter closes it, `c` cancels), the same as the prefix then `x`. An agent or Scratch tab's `×` is unchanged: it only hides the tab and never ends the session.
+
 ## [0.20.6] - 2026-10-26
 
 Canon starts in your home folder, and the Windows first-run text is right. Update with `canon update`, then restart the board so it loads the new program.
