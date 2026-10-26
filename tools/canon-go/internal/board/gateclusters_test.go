@@ -102,7 +102,8 @@ func TestGateClustersUntrustedInput(t *testing.T) {
 	root, home := t.TempDir(), t.TempDir()
 	now := time.Date(2026, 10, 26, 0, 0, 0, 0, time.UTC)
 	good := `{"ts":"2026-10-25T00:00:00Z","agent_id":"x1","agent_type":"evaluator","ticket":"t-aaaa","outcome":"fail"}` + "\n"
-	gcWrite(t, filepath.Join(root, ".claude/subagent-runs.jsonl"), good+"{not json\n"+good)
+	good2 := strings.Replace(good, `"x1"`, `"x2"`, 1) // a second run, not the same one twice (one agent id is one run)
+	gcWrite(t, filepath.Join(root, ".claude/subagent-runs.jsonl"), good+"{not json\n"+good2)
 	// a criterion title with control characters and a long tail is cleaned and capped
 	gcWrite(t, filepath.Join(root, ".tickets/t-aaaa/eval-report.md"), "| 1 | Bad\x1b[31m title "+strings.Repeat("z", 300)+" | fail |\n")
 	// a day file over the byte cap
@@ -389,7 +390,7 @@ func TestGateClustersCapsAndLookAlikes(t *testing.T) {
 // line (the reviewer measured 217 s for 46k lines before the cache).
 func TestGateClustersReadsEachReportOnce(t *testing.T) {
 	root, home, now := gcFixture(t)
-	pad := strings.Repeat("filler row of text in the report that is never a table row\n", 17000) + "| 2 | Safe reading | fail |\n"   // the failing row is last: a read has to scan the whole file
+	pad := strings.Repeat("filler row of text in the report that is never a table row\n", 17000) + "| 2 | Safe reading | fail |\n" // the failing row is last: a read has to scan the whole file
 	gcWrite(t, filepath.Join(root, ".tickets/t-9999/eval-report.md"), "| # | Criterion | Verdict |\n|---|---|---|\n"+pad)
 	var b strings.Builder
 	for i := 0; i < 20000; i++ {
@@ -409,5 +410,60 @@ func TestGateClustersReadsEachReportOnce(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("the 20000 failures did not form one titled cluster: %+v", r.Clusters)
+	}
+}
+
+// One run is one agent id. The log can hold two lines for it (a bare hook line, then the line with its cost): that is one failure, not a
+// two-run pattern (found on the real log by the evaluator: 29 lines for 24 runs).
+func TestGateClustersCountsOneRunPerAgentID(t *testing.T) {
+	root, home, now := gcFixture(t)
+	line := func(id, ticket string) string {
+		return `{"ts":"2026-10-25T10:00:00Z","agent_id":"` + id + `","agent_type":"reviewer","ticket":"` + ticket + `","outcome":"fail"}` + "\n"
+	}
+	gcWrite(t, filepath.Join(root, ".claude/subagent-runs.jsonl"), line("dup-1", "t-1111")+line("dup-1", "t-1111")+line("two-2", "t-2222")+line("two-3", "t-3333"))
+	r := gateClusters(root, home, 30, now)
+	var fail []gcCluster
+	for _, c := range append(append([]gcCluster{}, r.Clusters...), r.SeenOnce...) {
+		if c.Cause == "reviewer fail" {
+			fail = append(fail, c)
+		}
+	}
+	if len(fail) != 1 || fail[0].Count != 3 || len(fail[0].Runs) != 3 {
+		t.Fatalf("three distinct agent ids, one of them logged twice, are three runs: %+v", fail)
+	}
+	gcWrite(t, filepath.Join(root, ".claude/subagent-runs.jsonl"), line("same-1", "t-1111")+line("same-1", "t-1111"))
+	r = gateClusters(root, home, 30, now)
+	for _, c := range r.Clusters {
+		if c.Cause == "reviewer fail" {
+			t.Errorf("one run logged twice is a pattern: %+v", c)
+		}
+	}
+	if len(r.SeenOnce) == 0 || r.SeenOnce[0].Count != 1 {
+		t.Errorf("one run logged twice must be seen once: %+v", r.SeenOnce)
+	}
+}
+
+// The day-file cap keeps the NEWEST gcMaxFiles files: a gate.rejected event in the oldest file is not read.
+func TestGateClustersDayFileCapKeepsTheNewest(t *testing.T) {
+	root, home, now := gcFixture(t)
+	dir := filepath.Join(home, "events")
+	rej := func(id string) string {
+		return `{"schema":1,"id":"` + id + `","ts":"2026-10-24T09:00:00Z","kind":"gate.rejected","source":"sprint","project":"p","data":{"ticket":"t-7777","role":"evaluator","reason":"oldest-only"}}` + "\n"
+	}
+	// 401 consecutive day files from 2026-10-24: the cap is on the count, and it must keep the newest 400
+	first := time.Date(2026, 10, 24, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < gcMaxFiles+1; i++ {
+		name := first.AddDate(0, 0, i).Format("2006-01-02") + ".jsonl"
+		body := ""
+		if i == 0 {
+			body = rej("old") // the OLDEST file of the 401 holds the only oldest-only event
+		}
+		gcWrite(t, filepath.Join(dir, name), body)
+	}
+	r := gateClusters(root, home, 30, now)
+	for _, c := range append(append([]gcCluster{}, r.Clusters...), r.SeenOnce...) {
+		if strings.Contains(c.Cause, "oldest-only") {
+			t.Errorf("the cap read the oldest file instead of dropping it: %+v", c)
+		}
 	}
 }

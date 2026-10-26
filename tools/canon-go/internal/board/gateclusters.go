@@ -231,6 +231,7 @@ func gateClusters(root, home string, days int, now time.Time) gcReport {
 	cutoff := now.Add(-time.Duration(days) * 24 * time.Hour)
 	var runs []gcRun
 	tdir := filepath.Join(root, ".tickets")
+	seenRun := map[string]bool{}  // agent ids already counted
 	titles := map[string]string{} // ticket id -> first failing criterion title, read once per ticket
 
 	// 1. the run log: evaluator/reviewer runs with a failing outcome
@@ -249,6 +250,14 @@ func gateClusters(root, home string, days int, now time.Time) gcReport {
 		at, err := time.Parse(time.RFC3339, str(gcKeys.RunTS))
 		if err != nil || at.Before(cutoff) {
 			return
+		}
+		// one run is one agent id: the log can hold two lines for it (a bare hook line, then the line with its cost), and
+		// two lines are not two failures
+		if id := str(gcKeys.RunID); id != "" {
+			if seenRun[id] {
+				return
+			}
+			seenRun[id] = true
 		}
 		role := strings.TrimPrefix(gcWord(str(gcKeys.RunType)), "canon-")
 		cause := role + " " + outcome
