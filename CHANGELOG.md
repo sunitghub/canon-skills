@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+- `sprint-check gate-clusters [--days N] [--json]` groups repeated gate failures (evaluator fails, rejected closes, reviewer NOs) by cause from this machine's logs. It only prints (t-b874).
+
 ## [0.19.0] - 2026-10-26
 
 A check that canon's own gate files are the released ones. Update with `canon update`, then stop and start the board (Ctrl+C in the terminal running `canon`, or close its window, then run `canon`). The daemon did not change, so Restart Daemon is not needed.

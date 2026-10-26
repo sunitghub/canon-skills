@@ -10,6 +10,7 @@
 //	sprint-check event <kind> --project <dir> --source <name> key=value...   (sources: internal/events)
 //	                                               one event line (t-f182); always exits 0, prints nothing
 //	sprint-check integrity [--json] [--gate] [--online]   do the gate files still match their release (t-2af0); --gate exits 3 only when verified and a gate file differs
+//	sprint-check gate-clusters [--days N] [--json]   repeated gate failures grouped by cause (t-b874); prints only
 //	sprint-check transcript-report <transcript> <prefix>   a gate's report from its subagent transcript (t-ff14)
 package board
 
@@ -62,6 +63,8 @@ func runHelper(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 		return 0, true
 	case "integrity": // t-2af0: `sprint complete` asks it whether a gate file differs from the release
 		return integrityCLI(args[1:], stdout, stderr), true
+	case "gate-clusters": // t-b874: repeated gate failures by cause; read-only
+		return gateClustersCLI(args[1:], stdout, stderr), true
 	case "skill-check":
 		return skillCheckCLI(args[1:], stdout, stderr), true
 	case "event":
