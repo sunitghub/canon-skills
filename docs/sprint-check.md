@@ -36,7 +36,7 @@ Open a ticket to read or edit its Description, Acceptance, and Plan without leav
 
 ![sprint-check board — searchable local kanban](../meta/screenshots/sprint-check-board-dark.png)
 
-Use the search box above the columns to find tickets by title, id, status, type, priority, description, doc names, readiness labels such as `plan incomplete`, or tags (`tag:github`, see Tags below). Matching tickets stay in their original lanes so status context is preserved. Press `Esc` or clear the field to restore the full board.
+Use the search box above the columns to find tickets by title, id, status, type, priority, description, doc names, readiness labels such as `plan incomplete`, or tags (`tag:github`, see Tags below). Several ticket ids at once: type two to four characters of each id, without `t-`, separated by spaces or commas (`69f6 1ae4 f066`, or just `9f 1ae`), and every ticket whose id contains any of them shows, together with whatever the ordinary search finds for the same words. Matching tickets stay in their original lanes so status context is preserved. Press `Esc` or clear the field to restore the full board.
 
 Switch the segmented control from `Search` to `Why` to ask why a file exists or
 changed. Enter a project-relative file path and sprint-check scans git history,

@@ -1474,6 +1474,7 @@ test.describe('board modal', () => {
   test('search takes several ticket ids at once, partial or full, and leaves the ordinary search alone (t-a5c9)', async ({ page }) => {
     const ids = [newTicketId(PROJECT_ROOT, 'idq1'), newTicketId(PROJECT_ROOT, 'idq2'), newTicketId(PROJECT_ROOT, 'idq3'), newTicketId(PROJECT_ROOT, 'idq4')];
     const titles = ['Idq1 alpha login', 'Idq2 beta', 'Idq3 gamma', 'Idq4 delta'];
+    const e = newTicketId(PROJECT_ROOT, 'idq5'), f1 = newTicketId(PROJECT_ROOT, 'cab'), f2 = newTicketId(PROJECT_ROOT, 'bad');   // e: words cab and bad in its title only; f1 / f2: ids with cab / bad
     const mk = (id, title) => {
       const dir = path.join(PROJECT_ROOT, '.tickets', id);
       fs.mkdirSync(dir, { recursive: true });
@@ -1481,6 +1482,7 @@ test.describe('board modal', () => {
     };
     try {
       ids.forEach((id, i) => mk(id, titles[i]));
+      mk(e, 'Idq5 has cab and bad in its title'); mk(f1, 'Idq6 plain'); mk(f2, 'Idq7 plain');
       await page.goto(BASE);
       await page.waitForLoadState('networkidle');
       const card = id => page.locator(`.card[data-id="${id}"]`);
@@ -1503,11 +1505,22 @@ test.describe('board modal', () => {
         if (should) await expect(card(id), `${id} contains one of ${terms}`).toBeVisible(); else await expect(card(id), `${id} contains none of ${terms}`).toBeHidden();
       }
       expect(all.length).toBeGreaterThan(3);
+      // every OTHER loaded open ticket follows the same rule (not only the four made here): shown exactly when its id contains a term
+      const others = all.filter(id => !ids.includes(id));
+      for (const id of others.slice(0, 40)) {
+        const should = terms.some(x => id.replace(/^t-/, '').includes(x));
+        expect(await card(id).isVisible(), `${id} contains ${should ? 'a' : 'none of the'} terms ${terms}`).toBe(should);
+      }
       // not a list of ids: the ordinary search alone (all words in the text)
       await search(`${four[1]} login`);             // `login` is in no id and is longer than an id: text search; no ticket has both words
       await expect(card(a)).toBeHidden(); await expect(card(b)).toBeHidden();
       await search('idq1 login');                   // two ordinary words, both in a's title
       await expect(card(a)).toBeVisible(); await expect(card(b)).toBeHidden(); await expect(card(d)).toBeHidden();
+      // the union: two terms that are each part of some id (`cab`, `bad`) AND words in a ticket whose own id has neither: that ticket still shows
+      await search('cab bad');
+      await expect(card(e)).toBeVisible();
+      await expect(card(f1)).toBeVisible(); await expect(card(f2)).toBeVisible();   // the tickets whose ids contain `cab` / `bad`
+      await expect(card(d)).toBeHidden();
       // a single term is still the ordinary search (an id is text too)
       await search(four[2]);
       await expect(card(c)).toBeVisible(); await expect(card(a)).toBeHidden();
@@ -1515,7 +1528,7 @@ test.describe('board modal', () => {
       await search('zzzz qqqq');
       await expect(page.locator('#board-empty-search')).toContainText('No tickets match');
     } finally {
-      ids.forEach(id => removeTestTicket(PROJECT_ROOT, id));
+      [...ids, e, f1, f2].forEach(id => removeTestTicket(PROJECT_ROOT, id));
     }
   });
 
@@ -1525,20 +1538,34 @@ test.describe('board modal', () => {
     await page.waitForLoadState('networkidle');
     const got = await page.evaluate(async () => {
       const { idQueryTerms } = await import('/static/board-helpers.js');
-      const T = [{ id: 't-69f6' }, { id: 't-1ae4' }, { id: 't-f066' }, { id: 't-a9f1' }];
+      const T = [{ id: 't-69f6' }, { id: 't-1ae4' }, { id: 't-f066' }, { id: 't-a9f1' }, { id: 't-ab12cd34' }];   // the last is longer than a real id, to prove a 5-character term never counts
       const q = x => idQueryTerms(x, T);
       return {
         one: q('69f6'), two: q('69f6 1ae4'), commas: q('t-69f6, 1ae4'), upper: q('69F6 1AE4'), partial: q('9f 1ae'), repeat: q('69f6 69f6'),
-        short: q('6 1ae'), long: q('69f66 1ae4'), word: q('bug fix'), mixed: q('69f6 login'), unknown: q('zz qq'), empty: q('  '), none: q(null),
+        short: q('6 1ae'), long: q('69f66 1ae4'), longInId: q('ab12c 1ae4'), isci: q('is ci'), isOverride: q('is override'), readiness: q('needs acc'), tagq: q('tag:git go'), word: q('bug fix'), mixed: q('69f6 login'), unknown: q('zz qq'), empty: q('  '), none: q(null),
       };
     });
+    const memo = await page.evaluate(async () => {
+      const { ticketMatchesQuery } = await import('/static/board-helpers.js');
+      const { state } = await import('/static/board-core.js');
+      const keep = [state.tickets, state.query, state.queryMode];
+      state.queryMode = 'search'; state.query = 'aa bb';
+      state.tickets = [{ id: 't-aaaa' }, { id: 't-bbbb' }, { id: 't-cccc' }];
+      const first = state.tickets.map(t => ticketMatchesQuery(t));
+      state.tickets = [{ id: 't-aa11' }, { id: 't-cc22' }, { id: 't-dd33' }];   // the same count, other ids: `bb` is now part of no id, so this is an ordinary search; stale terms would still match `aa`
+      const second = state.tickets.map(t => ticketMatchesQuery(t));
+      [state.tickets, state.query, state.queryMode] = keep;
+      return { first, second };
+    });
+    expect(memo.first).toEqual([true, true, false]);
+    expect(memo.second).toEqual([false, false, false]);                     // not an id list any more (`bb` is in no id): the old terms were not reused for t-aa11
     expect(got.one).toBeNull();                                             // a single term is never a list
     expect(got.two).toEqual(['69f6', '1ae4']);
     expect(got.commas).toEqual(['69f6', '1ae4']);                           // t- dropped, commas are spaces
     expect(got.upper).toEqual(['69f6', '1ae4']);
     expect(got.partial).toEqual(['9f', '1ae']);
     expect(got.repeat).toEqual(['69f6', '69f6']);
-    for (const k of ['short', 'long', 'word', 'mixed', 'unknown', 'empty', 'none']) expect(got[k], k).toBeNull();
+    for (const k of ['short', 'long', 'longInId', 'isci', 'isOverride', 'readiness', 'tagq', 'word', 'mixed', 'unknown', 'empty', 'none']) expect(got[k], k).toBeNull();   // the special queries are never id lists
   });
 
   test('modal next and previous stay in the same status lane sorted by newest first', async ({ page }) => {

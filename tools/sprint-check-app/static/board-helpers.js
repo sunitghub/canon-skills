@@ -80,10 +80,13 @@ export function idQueryTerms(raw, tickets) {
   return terms.every(x => ids.some(id => id.includes(x))) ? terms : null;
 }
 
-let idQueryMemo = { key: null, terms: null };
+let idQueryMemo = { raw: null, list: null, len: -1, terms: null };
 function idTermsFor(raw) {
-  const key = String(raw ?? '') + '\0' + state.tickets.length;   // the filter runs once per ticket: work it out once per query
-  if (idQueryMemo.key !== key) idQueryMemo = { key, terms: idQueryTerms(raw, state.tickets) };
+  // the filter runs once per ticket: work the terms out once per query and per loaded list (a reload assigns a new array)
+  const q = String(raw ?? '');
+  if (idQueryMemo.raw !== q || idQueryMemo.list !== state.tickets || idQueryMemo.len !== state.tickets.length) {
+    idQueryMemo = { raw: q, list: state.tickets, len: state.tickets.length, terms: idQueryTerms(q, state.tickets) };
+  }
   return idQueryMemo.terms;
 }
 
