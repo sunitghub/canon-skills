@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.20.7] - 2026-10-26
+
+The Terminal tab's `×` and End Session end the Terminal, Check & merge understands draft PRs, and a GitHub route can no longer start a merge by accident. Update with `canon update`, then restart the board so it loads the new program.
+
 ### Fixed
 - **A GitHub route action without a handler can no longer start a merge** (`t-bb1b`): in the board, an action added to the GitHub write routes without its own branch used to fall through to starting a merge run (which runs the PR's tests here and merges). `merge` is now explicit, anything else without a branch is a 404, and a test fails when one is added without its branch. Nothing reachable today changes.
 
