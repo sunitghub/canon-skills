@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-10-26
+
+A Terminal that opens beside what you are working on. Update with `canon update`, then run **Restart Daemon** in Admin (the daemon's terminal page and command list changed) and stop and start the board (Ctrl+C in the terminal running `canon`, or close its window, then run `canon`).
+
 ### Added
 - **A Terminal pane next to the tab you are on** (`t-ccf5`): `ctrl+.` then `m` opens the Terminal in a pane below the Board, or below the session tab you are in (`M`: beside), so the Board, or a ticket's GitHub panel, stays on screen. To Claude Cloud now opens its Terminal this way. A draggable handle (arrow keys, double-click to reset) sets the split, which is remembered per project; a window too small for two panes opens a full tab as before. `ctrl+.` then `P` then `n` / `b` / `f` / `l` moves to the next / previous / first / last tab of the current project (the Board and its Terminal pane count as one stop); lowercase `p` is still Projects. The shortcuts sheet lists the new keys. The Terminal's command list is shorter: `su` and `tkt send-issue` no longer wrap over the command column. The daemon's terminal page changed (the prefix handler), so Restart Daemon after updating.
 
