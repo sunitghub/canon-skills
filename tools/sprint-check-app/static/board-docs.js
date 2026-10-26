@@ -1,5 +1,5 @@
 import { DOC_TYPES, LIVE_EDITABLE_SLUGS, docFileFor, docSlug, state } from './board-core.js';
-import { displayTicketId, divergenceInfo, esc, hydrateFeatureRefs, md, normalizeTicketLineId } from './board-helpers.js';
+import { LITE_LABEL, displayTicketId, divergenceInfo, esc, hydrateFeatureRefs, md, normalizeTicketLineId } from './board-helpers.js';
 import { findTicketById, postWrite, renderBoard, renderHeader, renderSidebar, updateDoc } from './board-render.js';
 import { adoptTicketWrite, fetchModalDoc, markDocHeadings, modalState, renderModalDocs, showStaleEditNotice, stopHeadlessPoll } from './board-modal.js';
 import { tagCheckboxes } from './board-panels.js';
@@ -188,9 +188,9 @@ function injectSignoffControls(container, content, t) {
   if (String(t.demo) === 'true' && recognized && currentLower !== 'default' && currentLower !== 'haiku') {
     const hint = document.createElement('span');
     hint.className = 'model-tier-note model-tier-demo-hint';
-    hint.textContent = 'Overrides Demo/UX’s Haiku';   // short: this row is already tight (full text in the title)
+    hint.textContent = `Overrides ${LITE_LABEL}’s Haiku`;   // short: this row is already tight (full text in the title)
     hint.style.whiteSpace = 'nowrap';
-    hint.title = 'Demo/UX is on, which normally forces a Haiku evaluator. An explicit Gate model overrides that, so this ticket’s gate runs on the model you picked.'
+    hint.title = `${LITE_LABEL} is on, which normally forces a Haiku evaluator. An explicit Gate model overrides that, so this ticket’s gate runs on the model you picked.`
       + (currentLower.startsWith('openai:') ? ' An OpenAI pick only applies under Copilot CLI; elsewhere the gate falls back to Haiku.' : '');
     wrap.appendChild(hint);
   }

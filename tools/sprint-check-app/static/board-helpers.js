@@ -165,9 +165,14 @@ export function ciBadge(t) {
   return `<span class="ci-badge" title="CI-eligible — headless grading (tools/sprint-headless) can run against this ticket. Set with: tkt ci ${esc(t.id)} off">CI</span>`;
 }
 
-export function demoBadge(t) {
+// t-be64: the badge, the switch, the New-ticket pill and the model hint name the reason (demo, docs, UX work), not the
+// effect. The ticket flag stays `demo: true` (CLI, route, docs); only this text is "Lite".
+export const LITE_LABEL = 'Lite';
+export const LITE_TIP = 'Lite close — for live demos or docs/research/UX-mockup work: sprint complete runs security-review + the binding evaluator only (forced Haiku), skipping the advisory reviewer + rest of wrapup. Never drops below the evaluator.';
+
+export function liteBadge(t) {
   if (String(t.demo) !== 'true') return '';
-  return `<span class="demo-badge" title="Demo/Docs/UX light-close — for live demos or docs/research/UX-mockup work: sprint complete runs the reduced close-path (security-review + the binding evaluator only, forced Haiku), skipping the advisory reviewer + rest of wrapup. Never drops below the evaluator. Set with: tkt demo ${esc(t.id)} off">DEMO/UX</span>`;
+  return `<span class="lite-badge" title="${escAttr(LITE_TIP)} Set with: tkt demo ${esc(t.id)} off">${esc(LITE_LABEL.toUpperCase())}</span>`;
 }
 
 // t-6328: `branch_divergence` ({branch,status,where,merged}) is sent only when this ticket's

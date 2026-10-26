@@ -42,14 +42,14 @@ Start checklist — rules that need no reference read (each owned by the step na
    - **Docs/UX light-close recognition.** If the request reads as docs/research/UX
      work — signals like *study, research, docs, documentation, UX, mockup, screen
      mockup, wireframe, design*, and the deliverable is `.md`/`.pen` (+ exported
-     visuals) with no code — *propose* the Demo/Docs/UX light-close (offer to run
+     visuals) with no code — *propose* the Lite light-close (offer to run
      `tkt demo <id> on`) and say why: heavy wrapup + the advisory reviewer add
      little with no code, while the binding Haiku evaluator still grades the
      doc/mockup against `acceptance.md`. It stays user-elected — propose, don't
      auto-apply — and rides on top of the normal/high-risk tier you classified
      above; it is not a substitute for that classification. A request that also
      touches code is a full sprint regardless of keywords. See `SKILL.md`'s
-     "Demo / Docs / UX (light close)" section.
+     "Lite (light close)" section.
    - **Maintenance-skills chore (t-354b).** If the active ticket's `ticket.md`
      frontmatter carries a `skills:` line (a Chore created via the board's
      Maintenance multi-select or `tkt create --skills`, allowlisted to
@@ -60,7 +60,7 @@ Start checklist — rules that need no reference read (each owned by the step na
      with a Summary table"; "`dead-code-cleanup` reports candidates and removes
      only those the user confirms"). **Close tier follows what actually changed,
      never the "maintenance" label** (same invariant as bugfix/demo): a run whose
-     whole output is reports/`.md` takes the Demo/Docs light-close (the binding
+     whole output is reports/`.md` takes the Lite light-close (the binding
      evaluator still grades the report), while a `dead-code-cleanup` that actually
      **deletes code** is a normal-tier close with the binding evaluator mandatory.
      `dead-code-cleanup` is advisory-first — never delete without explicit user

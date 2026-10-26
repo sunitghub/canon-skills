@@ -1,5 +1,5 @@
 import { TICKET_TYPES, TYPE_TEMPLATES, detectTicketType, state } from './board-core.js';
-import { WT_PREF_MAIN, esc, escAttr, titleCase } from './board-helpers.js';
+import { LITE_LABEL, LITE_TIP, WT_PREF_MAIN, esc, escAttr, titleCase } from './board-helpers.js';
 import { editScratchTitle, newScratchId, openScratch, postWrite, renderBoard, startPromote } from './board-render.js';
 import { openTagMenu, tagChipsHTML } from './board-tags.js';
 import { blobToBase64, insertPlainText, nextPasteVisualIndex, readClipboardImages, resetPanelDrag, resetPanelResize, uploadVisual } from './board-panels.js';
@@ -45,6 +45,7 @@ export function initCreate() {
     const ciBtn = document.getElementById('c-ci');
     const gateBtn = document.getElementById('c-gate-eval');
     const demoBtn = document.getElementById('c-demo');
+    demoBtn.textContent = LITE_LABEL; demoBtn.title = LITE_TIP;
 
     // Eval-only is only meaningful when CI is on; keep it disabled + reset otherwise.
     function syncGate() {

@@ -1020,7 +1020,7 @@ test.describe('board modal', () => {
     await expect(page.locator('#create-modal')).not.toContainText('Eval Override');
     await expect(page.locator('#c-gate-eval')).toBeDisabled(); // the open-time reset ran (syncGate) — no leftover reference to the removed pill
     const options = page.locator('#c-ci').locator('xpath=..').locator('button');
-    await expect(options).toHaveText(['CI', 'Eval-only', 'Demo/UX']);
+    await expect(options).toHaveText(['CI', 'Eval-only', 'Lite']);
   });
 
   test('New Ticket Eval-only toggle is CI-gated and writes gate: eval (t-4e57)', async ({ page }) => {
@@ -1088,8 +1088,8 @@ test.describe('board modal', () => {
       expect(tm).toMatch(/^demo: true$/m);
 
       // The card renders the DEMO badge
-      await expect(card.locator('.demo-badge')).toBeVisible();
-      await expect(card.locator('.demo-badge')).toHaveText('DEMO/UX');   // t-d0c4: the board says Demo/UX, like the Plan switch
+      await expect(card.locator('.lite-badge')).toBeVisible();
+      await expect(card.locator('.lite-badge')).toHaveText('LITE');   // t-d0c4: the board says Lite
     } finally {
       if (createdId) removeTestTicket(PROJECT_ROOT, createdId);
     }
@@ -2371,7 +2371,7 @@ test.describe('board modal', () => {
       // Demo is on (frontmatter): an explicit model replaces the forced-Haiku evaluator, and the Plan tab says so.
       const hint = page.locator('.model-tier-demo-hint');
       await expect(page.locator('.signoff-demo-toggle')).toHaveAttribute('aria-checked', 'true');
-      await expect(hint).toHaveText('Overrides Demo/UX’s Haiku');
+      await expect(hint).toHaveText('Overrides Lite’s Haiku');
       await expect(hint).toHaveAttribute('title', /Copilot CLI/);
       await select.selectOption('sonnet');
       await expect.poll(() => fs.readFileSync(planPath, 'utf8')).toContain('Gate model: sonnet');
@@ -2385,7 +2385,7 @@ test.describe('board modal', () => {
       await expect(hint).toHaveCount(0);   // Default = no override, nothing to warn about
       // With demo off there is nothing to override either.
       await select.selectOption('sonnet');
-      await expect(hint).toHaveText('Overrides Demo/UX’s Haiku');
+      await expect(hint).toHaveText('Overrides Lite’s Haiku');
       await page.locator('.signoff-demo-toggle').click();
       await expect(page.locator('.signoff-demo-toggle')).toHaveAttribute('aria-checked', 'false');
       await expect(hint).toHaveCount(0);
@@ -2668,7 +2668,7 @@ test.describe('board modal', () => {
       const toggle = page.locator('.signoff-demo-toggle');
       await expect(toggle).toHaveAttribute('aria-checked', 'false');
       await expect(toggle).not.toHaveClass(/active/);
-      await expect(page.locator(`.card[data-id="${id}"] .demo-badge`)).toHaveCount(0);
+      await expect(page.locator(`.card[data-id="${id}"] .lite-badge`)).toHaveCount(0);
 
       // Toggle ON → frontmatter gains demo: true, button flips, card badge appears live
       await toggle.click();
@@ -2676,7 +2676,7 @@ test.describe('board modal', () => {
         fs.readFileSync(path.join(ticketDir, 'ticket.md'), 'utf8')
       ).toMatch(/^demo: true$/m);
       await expect(page.locator('.signoff-demo-toggle')).toHaveAttribute('aria-checked', 'true');
-      await expect(page.locator(`.card[data-id="${id}"] .demo-badge`)).toBeVisible();
+      await expect(page.locator(`.card[data-id="${id}"] .lite-badge`)).toBeVisible();
 
       // Toggle OFF → demo line removed, badge gone
       await page.locator('.signoff-demo-toggle').click();
@@ -2684,7 +2684,7 @@ test.describe('board modal', () => {
         /^demo:/m.test(fs.readFileSync(path.join(ticketDir, 'ticket.md'), 'utf8'))
       ).toBe(false);
       await expect(page.locator('.signoff-demo-toggle')).toHaveAttribute('aria-checked', 'false');
-      await expect(page.locator(`.card[data-id="${id}"] .demo-badge`)).toHaveCount(0);
+      await expect(page.locator(`.card[data-id="${id}"] .lite-badge`)).toHaveCount(0);
     } finally {
       if (id) removeTestTicket(PROJECT_ROOT, id);
     }
@@ -9994,7 +9994,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     const demo = page.locator('.signoff-demo-toggle');
     await expect(demo).toHaveAttribute('aria-checked', 'false');
     await demo.click();
-    await expect(toast).toContainText("Couldn't change Demo/UX: HTTP 403");
+    await expect(toast).toContainText("Couldn't change Lite: HTTP 403");
     await expect(page.locator('.signoff-demo-toggle')).toHaveAttribute('aria-checked', 'false');
     // Sign-off tier: a refused change re-renders to the saved value.
     const tier = page.locator('.signoff-controls select').first();
@@ -14861,7 +14861,7 @@ test.describe('ticket modal editor (t-a205)', () => {
   });
 });
 
-// t-612f: expandable doc nodes (+ / −), the Demo/UX switch, the top-left resize grip, the keyboard-only card outline
+// t-612f: expandable doc nodes (+ / −), the Lite switch, the top-left resize grip, the keyboard-only card outline
 test.describe('ticket modal polish (t-612f)', () => {
   const made = [];
   function writeTicket(id, { status = 'open', withDesign = false, type = 'task', demo = false } = {}) {
@@ -14984,7 +14984,7 @@ test.describe('ticket modal polish (t-612f)', () => {
     await expect(kids(page, 'acceptance')).toHaveCount(4);
   });
 
-  test('Demo/UX is a green switch and the Codex note is gone', async ({ page }) => {
+  test('Lite is a green switch and the Codex note is gone', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT), cid = newTicketId(PROJECT_ROOT);   // the demo endpoint wants exactly t- plus four characters
     writeTicket(id); writeTicket(cid, { status: 'closed' });
     await openModalFor(page, id);
@@ -14992,7 +14992,7 @@ test.describe('ticket modal polish (t-612f)', () => {
     const sw = page.locator('.signoff-demo-toggle');
     await expect(sw).toHaveAttribute('role', 'switch');
     await expect(sw).toHaveAttribute('aria-checked', 'false');
-    await expect(sw).toHaveText('Demo/UX');
+    await expect(sw).toHaveText('Lite');
     await expect(page.locator('.section-jumps')).not.toContainText('No effect under Codex');
     const look = () => page.evaluate(() => {
       const t = document.querySelector('.signoff-demo-toggle .sw-track'), k = document.querySelector('.signoff-demo-toggle .sw-knob');
@@ -15125,7 +15125,7 @@ test.describe('ticket modal polish (t-612f)', () => {
     expect(r.scrolls).toBeLessThanOrEqual(1);                                               // and shows no scrollbar
   });
 
-  test('a Feature card with the Demo/UX badge fits its header in a narrow column: id on one line, no badge clipped (t-d0c4)', async ({ page }) => {
+  test('a Feature card with the Lite badge fits its header in a narrow column: id on one line, no badge clipped (t-d0c4)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT);
     writeTicket(id, { type: 'feature', demo: true, status: 'in_progress' });
     await page.setViewportSize({ width: 760, height: 900 });
@@ -15133,11 +15133,11 @@ test.describe('ticket modal polish (t-612f)', () => {
     await page.waitForLoadState('networkidle');
     await page.locator('#board-search').fill(id);
     const card = page.locator(`.card[data-id="${id}"]`);
-    await expect(card.locator('.demo-badge')).toHaveText('DEMO/UX');
+    await expect(card.locator('.lite-badge')).toHaveText('LITE');
     const r = await page.evaluate(i => {
       const c = document.querySelector(`.card[data-id="${i}"]`), q = s => c.querySelector(s).getBoundingClientRect(), cb = c.getBoundingClientRect();
       const idr = document.createRange(); idr.selectNodeContents(c.querySelector('.card-id'));
-      return { card: cb, badge: q('.demo-badge'), idLines: new Set([...idr.getClientRects()].map(x => Math.round(x.top))).size };
+      return { card: cb, badge: q('.lite-badge'), idLines: new Set([...idr.getClientRects()].map(x => Math.round(x.top))).size };
     }, id);
     expect(r.badge.right).toBeLessThanOrEqual(r.card.right - 4);                            // the badge is not clipped at the card edge
     expect(r.idLines).toBe(1);                                                              // t-xxxx does not wrap
@@ -15246,7 +15246,7 @@ test.describe('ticket modal polish (t-612f)', () => {
     await expect(page.locator('#m-body')).toContainText('issue: https://github.com/acme/app/issues/1');
   });
 
-  test('the Demo/UX switch lives in the header chips row, not the Plan sign-off bar, and still toggles the ticket (t-bb97)', async ({ page }) => {
+  test('the Lite switch lives in the header chips row, not the Plan sign-off bar, and still toggles the ticket (t-bb97)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT);
     writeTicket(id);
     await openModalFor(page, id);
@@ -15255,7 +15255,7 @@ test.describe('ticket modal polish (t-612f)', () => {
     await sw.click();
     await expect(page.locator('#m-meta .signoff-demo-toggle')).toHaveAttribute('aria-checked', 'true');
     await expect.poll(() => fs.readFileSync(path.join(PROJECT_ROOT, '.tickets', id, 'ticket.md'), 'utf8')).toMatch(/demo: true/);
-    await expect(page.locator(`.card[data-id="${id}"] .demo-badge`)).toHaveText('DEMO/UX');
+    await expect(page.locator(`.card[data-id="${id}"] .lite-badge`)).toHaveText('LITE');
     await page.locator('#m-docs .doc-tab', { hasText: 'Plan' }).click();
     await expect(page.locator('.signoff-controls')).toHaveCount(1);
     await expect(page.locator('.signoff-controls .signoff-demo-toggle')).toHaveCount(0);   // gone from the sign-off bar
@@ -15263,14 +15263,14 @@ test.describe('ticket modal polish (t-612f)', () => {
     await expect(page.locator('#m-meta .signoff-demo-toggle')).toHaveAttribute('aria-checked', 'true');   // still there on the Plan tab
   });
 
-  test('with Demo/UX on and a model picked, tier, Risk, model and the hint stay on one row in the default dialog (t-887e, t-bb97)', async ({ page }) => {
+  test('with Lite on and a model picked, tier, Risk, model and the hint stay on one row in the default dialog (t-887e, t-bb97)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT);
     writeTicket(id, { demo: true });
     await page.setViewportSize({ width: 1400, height: 900 });
     await openModalFor(page, id);
     await page.locator('#m-docs .doc-tab', { hasText: 'Plan' }).click();
     await page.locator('.model-tier-select').selectOption('opus');
-    await expect(page.locator('.model-tier-demo-hint')).toHaveText('Overrides Demo/UX’s Haiku');
+    await expect(page.locator('.model-tier-demo-hint')).toHaveText('Overrides Lite’s Haiku');
     await expect.poll(() => page.evaluate(() => document.getElementById('modal').getAnimations().length)).toBe(0);
     const r = await page.evaluate(() => {
       const q = s => document.querySelector(s).getBoundingClientRect();

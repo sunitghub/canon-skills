@@ -1,5 +1,5 @@
 import { DEBUG, LIVE_EDITABLE_SLUGS, availableDocTypes, docSlug, loadData, state } from './board-core.js';
-import { WT_PREF_MAIN, ticketTags, age, effectiveStatus, esc, escAttr, openWorktreePreference, titleCase, typeBadge } from './board-helpers.js';
+import { LITE_LABEL, LITE_TIP, WT_PREF_MAIN, ticketTags, age, effectiveStatus, esc, escAttr, openWorktreePreference, titleCase, typeBadge } from './board-helpers.js';
 import { ckRowState, fetchDoc, findTicketById, postWrite, readiness, renderBoard } from './board-render.js';
 import { activateGhost, exitEditMode, refreshModalActions, renderModalBody, saveEdit } from './board-docs.js';
 import { cockpitState } from './board-cockpit.js';
@@ -68,7 +68,7 @@ export function showStaleEditNotice(t) {
   };
 }
 
-// t-bb97: the status chips row, now also holding the Demo/UX switch (it moved here from the Plan sign-off bar).
+// t-bb97: the status chips row, now also holding the Lite switch (it moved here from the Plan sign-off bar).
 // t-37e8: the Tags item of the modal header: the chips, and a button that opens the shared dropdown (a closed ticket is read-only).
 function tagsMetaHTML(t) {
   const tags = ticketTags(t);
@@ -116,18 +116,18 @@ function renderModalMeta(t) {
   demoBtn.className = 'signoff-demo-toggle';
   demoBtn.setAttribute('role', 'switch');
   demoBtn.setAttribute('aria-checked', String(demoOn));
-  demoBtn.innerHTML = '<span class="sw-track"><span class="sw-knob"></span></span><span>Demo/UX</span>';
+  demoBtn.innerHTML = '<span class="sw-track"><span class="sw-knob"></span></span><span>' + esc(LITE_LABEL) + '</span>';
   // The demo flag lives in MAIN's ticket.md frontmatter, not the live worktree plan.md, so only a closed ticket locks it.
   const demoLocked = t.status === 'closed' || t.status === 'cancelled';
   demoBtn.disabled = demoLocked;
   demoBtn.title = demoLocked
     ? 'Ticket is closed — no further edits.'
-    : 'Demo/Docs/UX light-close (live demos or docs/research/UX-mockup work): sprint complete runs security-review + the binding evaluator only (forced Haiku), skipping the advisory reviewer + rest of wrapup. Never drops below the evaluator.';
+    : LITE_TIP;
   demoBtn.addEventListener('click', async () => {
     const next = String(t.demo) !== 'true';
     demoBtn.disabled = true;
     try {
-      const res = await postWrite(`/api/ticket/${t.id}/demo`, { demo: next }, 'change Demo/UX');
+      const res = await postWrite(`/api/ticket/${t.id}/demo`, { demo: next }, `change ${LITE_LABEL}`);
       if (res.ok) { t.demo = next ? 'true' : 'false'; const cur0 = findTicketById(t.id); if (cur0) cur0.demo = t.demo; adoptTicketWrite(t.id, res.data); }
     } finally {
       renderBoard();

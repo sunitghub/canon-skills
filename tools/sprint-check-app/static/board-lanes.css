@@ -377,12 +377,16 @@
     }
     .ci-badge::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--th-on-ok-dim, rgba(255,255,255,.65)); flex-shrink: 0; }
 
-    .demo-badge {
-      font-size: 10px; padding: 1px 7px 1px 5px; border-radius: 4px; font-weight: 700;
+    /* t-be64: calm, not an alert: warn-coloured text and outline on a 10% tint */
+    .lite-badge {
+      --lite: var(--th-warn, var(--amber));
+      font-size: 10px; padding: 0 6px 0 5px; border-radius: 4px; font-weight: 700;
       letter-spacing: .04em; text-transform: uppercase; position: relative; z-index: 1;
-      display: inline-flex; align-items: center; gap: 4px; color: var(--th-on-warn, #fff); background: var(--th-warn, #f59e0b);
+      display: inline-flex; align-items: center; gap: 4px; color: var(--lite);
+      border: 1px solid color-mix(in srgb, var(--lite) 55%, transparent);
+      background: color-mix(in srgb, var(--lite) 10%, transparent);
     }
-    .demo-badge::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--th-on-warn-dim, rgba(255,255,255,.7)); flex-shrink: 0; }
+    .lite-badge::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
 
     /* Outcome dot — once per type in the sidebar legend, aggregating closed tickets of that
        type (server omits it below a 2-closed-ticket sample). A dot, not a text pill: the

@@ -54,8 +54,8 @@ export function derive(t) {
   };
   const th = {
     '--th-text': c.text, '--th-title': c.text,
-    '--th-on-accent': ink(c, c.accent), '--th-on-bad': ink(c, c.bad), '--th-on-ok': ink(c, c.ok), '--th-on-warn': ink(c, c.warn),
-    '--th-on-ok-dim': alpha(ink(c, c.ok), 0.65), '--th-on-warn-dim': alpha(ink(c, c.warn), 0.7),
+    '--th-on-accent': ink(c, c.accent), '--th-on-bad': ink(c, c.bad), '--th-on-ok': ink(c, c.ok),
+    '--th-on-ok-dim': alpha(ink(c, c.ok), 0.65),
     '--th-knob': dark ? c.text : c.surface, '--th-hover-soft': alpha(c.text, 0.05),
     '--th-accent': c.accent, '--th-accent-soft': alpha(c.accent, 0.12), '--th-accent-line': alpha(c.accent, 0.4),
     '--th-muted-fill': c.muted, '--th-muted-ink': ink(c, c.muted), '--th-info-soft': alpha(c.info, 0.1),

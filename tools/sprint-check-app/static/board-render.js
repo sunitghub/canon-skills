@@ -1,5 +1,5 @@
 import { COLLAPSE_STATUSES, COLUMNS, COL_LIMIT, SHELL_TAB, docSlug, loadData, state } from './board-core.js';
-import { ticketTags, age, ciBadge, demoBadge, divergenceLine, effectiveStatus, esc, escAttr, normalizeSearch, outcomeRatio, ticketMatchesQuery, typeBadge, whyQueryFromInput, worktreePrefLine, worktreeRun } from './board-helpers.js';
+import { ticketTags, age, ciBadge, liteBadge, divergenceLine, effectiveStatus, esc, escAttr, normalizeSearch, outcomeRatio, ticketMatchesQuery, typeBadge, whyQueryFromInput, worktreePrefLine, worktreeRun } from './board-helpers.js';
 import { openModal } from './board-modal.js';
 import { tagChipsHTML } from './board-tags.js';
 import { moveCard } from './board-docs.js';
@@ -775,7 +775,7 @@ function cardHTML(t, idx) {
         <button class="card-menu-btn" type="button" data-id="${esc(t.id)}" aria-haspopup="menu" aria-expanded="false" aria-label="Card menu for ${esc(t.id)}" title="Copy ID, copy folder path, open">⋯</button>
         ${typeBadge(t.type)}
         ${ciBadge(t)}
-        ${demoBadge(t)}
+        ${liteBadge(t)}
         ${String(t.ci) === 'true' ? `<button class="ci-run-btn b-accent${t.headless_running ? ' running' : ''}" data-id="${esc(t.id)}" aria-label="Run headless grading"><svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M4 2.5v11l9-5.5z"/></svg></button>` : ''}
       </div>
       <div class="card-body">
