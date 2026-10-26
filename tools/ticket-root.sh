@@ -5,8 +5,8 @@ tickets_dir() {
   while [[ "$dir" != "/" ]]; do
     # t-dec4: the walk stops at home: a folder under home is its own project, so neither home's .tickets nor its .git (a dotfiles repository)
     # nor anything above home (C:\Users, /Users) can be its project; started IN home it falls through to home's own .tickets below, so home
-    # is a project like any other. (Exact match first; the helper only when the last names agree, so an ordinary walk forks nothing.)
-    if [[ "$dir" == "${HOME:-}" ]] || { [[ -n "${HOME:-}" && "${dir##*/}" == "${HOME##*/}" ]] && _is_home_folder "$dir"; }; then break; fi
+    # is a project like any other. (-ef: the same file by device and inode, so a symlinked or differently spelled HOME matches; no forks.)
+    if [[ -n "${HOME:-}" && "$dir" -ef "$HOME" ]]; then break; fi
     # t-5738: a .tickets in a drive root or a system folder is not a project's. Skip it and keep walking; a .git there still counts.
     # (A folder with its own .git is a project at once, so the guard, which forks about twenty times, runs only without one.)
     if [[ -d "$dir/.tickets" ]] && { [[ -d "$dir/.git" ]] || [[ -z "$(folder_guard_reason "$dir")" ]]; }; then echo "$dir/.tickets"; return 0; fi
@@ -100,7 +100,7 @@ late_docs_delta() {
   printf '%s\n' "$files" | grep . || true
 }
 
-# t-b2ff: canon must not treat a system folder or a drive root as a project (t-dec4: the home folder is one; see _is_home_folder) (an Administrator PowerShell opens in
+# t-b2ff: canon must not treat a system folder or a drive root as a project (t-dec4: the home folder is one; tickets_dir stops its walk there) (an Administrator PowerShell opens in
 # C:\Windows\System32; canon there would serve, then fill, a folder nobody keeps tickets in). folder_guard_reason <dir> prints why
 # <dir> is refused, or nothing. The same table is common.NotAProject in tools/canon-go/internal/common/folderguard.go (the board);
 # tests/folder-guard.sh and its Go test run one corpus through both. A .git at <dir> (inside the Windows tree: at it or above it)
@@ -116,16 +116,6 @@ folder_guard_reason() {
     why="$(_folder_guard_one "$form")"
     [[ -z "$why" ]] || { printf '%s\n' "$why"; return 0; }
   done
-}
-
-# _is_home_folder <dir>: dir is the home folder itself (links resolved, case ignored). The home folder is not refused (t-dec4); the walk-up in
-# tickets_dir uses this so a folder under home never adopts home's .tickets. Go twin: common.IsHome.
-_is_home_folder() {
-  local d h
-  [[ -n "${HOME:-}" ]] || return 1
-  d="$(cd "$1" 2>/dev/null && pwd -P)" || return 1
-  h="$(cd "$HOME" 2>/dev/null && pwd -P)" || return 1
-  [[ "$(printf '%s' "$d" | tr 'A-Z' 'a-z')" == "$(printf '%s' "$h" | tr 'A-Z' 'a-z')" ]]
 }
 
 # _folder_guard_one <absolute path or C:\ form>: the reason for that one spelling of a folder, or nothing.

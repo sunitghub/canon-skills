@@ -1934,3 +1934,23 @@ func TestFindProjectRootHomeIsTheProjectAndNothingAboveIt(t *testing.T) {
 		t.Errorf("a folder under a home that is a dotfiles repository: got %q", got)
 	}
 }
+
+// t-dec4: started IN a home that has neither a .git nor a .tickets, with a .tickets above it: home is the project, nothing above is adopted.
+// (The sibling tests give home a .git or a .tickets, which would mask a regression here.)
+func TestFindProjectRootBareHomeWithTicketsAbove(t *testing.T) {
+	parent := t.TempDir()
+	home := filepath.Join(parent, "home")
+	for _, d := range []string{filepath.Join(parent, ".tickets"), filepath.Join(home, "sub")} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	if got := findProjectRoot(home); got != home {
+		t.Errorf("started in a bare home: got %q, want %q", got, home)
+	}
+	if got := findProjectRoot(filepath.Join(home, "sub")); got != filepath.Join(home, "sub") {
+		t.Errorf("under a bare home: got %q", got)
+	}
+}

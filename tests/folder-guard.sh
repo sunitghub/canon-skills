@@ -118,6 +118,13 @@ HP="$W/hp"; mkdir -p "$HP/.tickets" "$HP/home/.tickets" "$HP/home/sub"
 # started in home with NO .tickets of its own, a .tickets above home is not adopted (home is the project); and a dotfiles .git in home does not take over the folders under it
 HQ="$W/hq"; mkdir -p "$HQ/.tickets" "$HQ/home/sub" "$HQ/home/.git"
 (export HOME="$HQ/home"; resolves "started in home, a .tickets above and none in home" "$HQ/home" "$HQ/home"; resolves "a folder under a home that is a dotfiles repository" "$HQ/home/sub" "$HQ/home/sub")
+# started in home with NO .git and NO .tickets of its own and a .tickets above home: home is the project (nothing above it is adopted). The earlier
+# fixtures all gave home a .git or a .tickets, which masked this (t-dec4 evaluator).
+HN="$W/hn"; mkdir -p "$HN/.tickets" "$HN/home/sub"
+(export HOME="$HN/home"; resolves "started in a bare home, a .tickets above it" "$HN/home" "$HN/home"; resolves "under a bare home, a .tickets above it" "$HN/home/sub" "$HN/home/sub")
+# HOME reached through a symlink: a folder under it resolves to itself from either spelling, and the symlinked home is its own project
+HL="$W/hl"; mkdir -p "$HL/real/app" "$HL/real/.tickets"; ln -s "$HL/real" "$HL/link"
+(export HOME="$HL/link"; resolves "a folder under a symlinked HOME, via the real path" "$HL/real/app" "$HL/real/app"; resolves "a folder under a symlinked HOME, via the link" "$HL/link/app" "$HL/real/app"; resolves "a symlinked HOME itself" "$HL/link" "$HL/real")
 # a refused folder's text quotes a HOME with a space in the example
 if [[ -d "$REFUSED" ]]; then
   SP="$W/with space"; mkdir -p "$SP"; out="$(cd "$REFUSED" && HOME="$SP" "$TKT" ls 2>&1)" && fail "folder-guard: tkt ls ran in $REFUSED"
