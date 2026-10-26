@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-26-2026 13:50
+learnings-sweep last run: 10-26-2026 14:50
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-26 | [t-b874](.tickets/t-b874/learnings.md) | A reader of a log other agents write must count what the log means (one run per agent id), not its lines, and read per-ticket files once: the run log held two lines per run (29 lines for 24 runs) and a crafted log cost 217 s; test the counting on the REAL log's quirks, not a fixture that gives every run a unique id. Also: a cloud PR is a draft and GitHub will not merge it, but merge-pr found out only after 3.5 min of tests (t-a463) | UNPROMOTED |
 | 2026-10-26 | [t-ccf5](.tickets/t-ccf5/learnings.md) | Find where the user's flow really lives before the plan is approved: To Claude Cloud sits in a ticket tab's rail, so the approved "pane under the Board" would not have fixed it; and `scripts/test.sh` does not run the board specs, so a new focus line broke two older specs unseen until the evaluator ran them: stamp the related board specs too | UNPROMOTED |
 | 2026-10-26 | [t-2af0](.tickets/t-2af0/learnings.md) | A guard test whose bad inputs also carry a wrong value is vacuous when a later check rejects them first (pin-file NUL/extra-field cases with an unrelated hash passed with the guards deleted): put the REAL value in the file and break only the one thing; and a mutation survivor is "equivalent" only after a probe shows no input reaches the difference | UNPROMOTED |
 | 2026-10-25 | [t-0aa7](.tickets/t-0aa7/learnings.md) | A global `sed` on a test id (`newTicketId(PROJECT_ROOT, 'gh8')`) also rewrote two unrelated tests: replace by line number or review the diff of every test file touched; and a Test Plan line that promises a case is graded by whether the case exists, so write the plan from the tests you will really add. A button that types a command at a prompt must be built from a validated id and accepted by the receiver only for that exact line | UNPROMOTED |
