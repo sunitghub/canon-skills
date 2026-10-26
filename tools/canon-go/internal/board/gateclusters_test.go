@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -130,5 +131,173 @@ func TestGateClustersCLIUsage(t *testing.T) {
 	var o, e bytes.Buffer
 	if gateClustersCLI([]string{"--days", "0"}, &o, &e) != 2 || gateClustersCLI([]string{"--bogus"}, &o, &e) != 2 {
 		t.Error("bad args must exit 2")
+	}
+}
+
+func TestGateClustersOutcomesAndNames(t *testing.T) {
+	root, home := t.TempDir(), t.TempDir()
+	now := time.Date(2026, 10, 26, 0, 0, 0, 0, time.UTC)
+	var b strings.Builder
+	n := 0
+	add := func(typ, ticket, outcome string) {
+		n++
+		b.WriteString(`{"ts":"2026-10-25T00:00:00Z","agent_id":"` + strings.Repeat("i", n) + `","agent_type":"` + typ + `","ticket":"` + ticket + `","outcome":"` + outcome + `"}` + "\n")
+	}
+	for _, o := range []string{"fail", "partial", "not-run", "budget"} {
+		add("canon-evaluator", "t-aaaa", o)
+		add("canon-evaluator", "t-bbbb", o)
+	}
+	add("evaluator", "t-aaaa", "pass")
+	add("evaluator", "t-aaaa", "")
+	add("Bad Type", "t-aaaa/../x", "fail")
+	add("Bad Type", "T-AAAA", "fail")
+	gcWrite(t, filepath.Join(root, ".claude/subagent-runs.jsonl"), b.String()+`{"ts":"bad","agent_type":"evaluator","outcome":"fail"}`+"\n")
+	r := gateClusters(root, home, 30, now)
+	got := map[string]int{}
+	for _, c := range r.Clusters {
+		got[c.Cause] = c.Count
+		if c.Cause != "unknown fail" && len(c.Tickets) != 2 {
+			t.Errorf("tickets %v", c.Tickets)
+		}
+	}
+	want := map[string]int{"evaluator fail": 2, "evaluator partial": 2, "evaluator not-run": 2, "evaluator budget": 2, "unknown fail": 2}
+	if len(got) != len(want) {
+		t.Fatalf("got %v", got)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("%s: %d, want %d", k, got[k], v)
+		}
+	}
+	for _, c := range r.Clusters {
+		if c.Cause == "unknown fail" && (len(c.Tickets) != 0 || len(c.Runs) != 2) {
+			t.Errorf("unknown: %+v", c)
+		}
+	}
+	if len(r.SeenOnce) != 0 {
+		t.Errorf("once: %+v", r.SeenOnce)
+	}
+}
+
+func TestGateClustersOrderWindowAndCaps(t *testing.T) {
+	root, home := t.TempDir(), t.TempDir()
+	now := time.Date(2026, 10, 26, 0, 0, 0, 0, time.UTC)
+	ev := func(id, ts, reason string) string {
+		return `{"id":"` + id + `","ts":"` + ts + `","kind":"gate.rejected","data":{"ticket":"t-aaaa","role":"reviewer","reason":"` + reason + `"}}` + "\n"
+	}
+	// "late" has 2 runs, "early" 2 runs but older, "many" 7 runs; an old day file and a wrong-type data value are ignored
+	var many strings.Builder
+	for i := 0; i < 7; i++ {
+		many.WriteString(ev("m"+strconv.Itoa(i), "2026-10-24T0"+strconv.Itoa(i)+":00:00Z", "many"))
+	}
+	gcWrite(t, filepath.Join(home, "events/2026-10-24.jsonl"), many.String()+
+		ev("l1", "2026-10-24T10:00:00Z", "late")+ev("l2", "2026-10-24T11:00:00Z", "late")+
+		ev("e1", "2026-10-20T10:00:00Z", "early")+ev("e2", "2026-10-20T11:00:00Z", "early"))
+	gcWrite(t, filepath.Join(home, "events/2026-09-01.jsonl"), ev("o1", "2026-09-01T10:00:00Z", "ancient")+ev("o2", "2026-09-01T10:00:01Z", "ancient"))
+	gcWrite(t, filepath.Join(home, "events/notes.jsonl"), ev("x1", "2026-10-24T10:00:00Z", "ignored")+ev("x2", "2026-10-24T10:00:00Z", "ignored"))
+	r := gateClusters(root, home, 30, now)
+	var causes []string
+	for _, c := range r.Clusters {
+		causes = append(causes, c.Cause)
+	}
+	if strings.Join(causes, "|") != "rejected reviewer many|rejected reviewer late|rejected reviewer early" {
+		t.Fatalf("order %v", causes)
+	}
+	var out bytes.Buffer
+	gcText(r, &out)
+	if !strings.Contains(out.String(), "7 x rejected reviewer many\n  tickets: t-aaaa\n  runs: m6 m5 m4 m3 m2 +2 more\n") {
+		t.Errorf("text:\n%s", out.String())
+	}
+	if gcCapped(nil) != "-" || gcCapped([]string{"a", "b"}) != "a b" || gcCapped([]string{"1", "2", "3", "4", "5"}) != "1 2 3 4 5" {
+		t.Error("gcCapped")
+	}
+	if got := gcClean("ab\x00cd\tef", 5); got != "ab cd" {
+		t.Errorf("clean %q", got)
+	}
+	if gcID("a b") != "" || gcID(strings.Repeat("a", 65)) != "" || gcID(strings.Repeat("a", 64)) == "" || gcID("") != "" {
+		t.Error("gcID")
+	}
+	if gcWord("Bad") != "unknown" || gcWord("ok-1") != "ok-1" || gcWord("a\nb") != "unknown" {
+		t.Error("gcWord")
+	}
+}
+
+func TestGateClustersFileKinds(t *testing.T) {
+	d := t.TempDir()
+	var un int
+	seen := 0
+	count := func([]byte) { seen++ }
+	if e := gcLines(filepath.Join(d, "none"), "x", count, &un); e != "x: missing" {
+		t.Errorf("missing: %q", e)
+	}
+	if e := gcLines(d, "x", count, &un); e != "x: not a regular file" {
+		t.Errorf("dir: %q", e)
+	}
+	real := filepath.Join(d, "real")
+	gcWrite(t, real, "a\n\n"+strings.Repeat("y", gcMaxLine+10)+"\nb")
+	if e := gcLines(real, "x", count, &un); e != "" || seen != 2 || un != 1 {
+		t.Errorf("real: %q seen %d unreadable %d", e, seen, un)
+	}
+	if err := os.Symlink(real, filepath.Join(d, "link")); err == nil {
+		if e := gcLines(filepath.Join(d, "link"), "x", count, &un); e != "x: not a regular file" {
+			t.Errorf("symlink: %q", e)
+		}
+	}
+	for _, c := range []struct {
+		notes string
+		no    bool
+	}{
+		{"# n\n## Verdict\n\n**NO**\n", true},
+		{"## Verdict\nNO — reasons\n", true},
+		{"## Verdict\n\nYES\n", false},
+		{"NO\n## Verdict\n\nYES\n", false},
+		{"## Verdict\n", false},
+	} {
+		p := filepath.Join(d, "notes")
+		gcWrite(t, p, c.notes)
+		if gcReviewerNo(p) != c.no {
+			t.Errorf("notes %q", c.notes)
+		}
+	}
+	gcWrite(t, filepath.Join(d, "rep"), "| # | Criterion | Verdict |\n|---|---|---|\n| 1 | Okay | pass |\n| **2** | **Broken thing** | **fail** |\n| 3 | Later | fail |\n")
+	if got := gcReportTitle(filepath.Join(d, "rep")); got != "Broken thing" {
+		t.Errorf("title %q", got)
+	}
+	if gcReportTitle(filepath.Join(d, "nope")) != "" || gcReportTitle(d) != "" {
+		t.Error("title of nothing")
+	}
+}
+
+func TestGateClustersCLIRun(t *testing.T) {
+	root, home := t.TempDir(), t.TempDir()
+	t.Setenv("CANON_HOME", home)
+	t.Chdir(root)
+	day := time.Now().UTC().Format("2006-01-02")
+	line := `{"id":"e","ts":"` + time.Now().UTC().Format(time.RFC3339) + `","kind":"gate.rejected","data":{"ticket":"t-aaaa","role":"evaluator","reason":"stale"}}` + "\n"
+	gcWrite(t, filepath.Join(home, "events", day+".jsonl"), line+line)
+	var o, e bytes.Buffer
+	if code := gateClustersCLI([]string{"--days", "3650", "--json"}, &o, &e); code != 0 {
+		t.Fatalf("code %d %s", code, e.String())
+	}
+	var rep gcReport
+	if err := json.Unmarshal(o.Bytes(), &rep); err != nil || rep.Days != 3650 || len(rep.Clusters) != 1 || rep.Clusters[0].Count != 2 {
+		t.Errorf("json %s (%v)", o.String(), err)
+	}
+	o.Reset()
+	if code := gateClustersCLI(nil, &o, &e); code != 0 || !strings.HasPrefix(o.String(), "error: run log") || !strings.Contains(o.String(), "gate failure clusters, last 30 days\n2 x rejected evaluator stale") {
+		t.Errorf("text %d:\n%s", code, o.String())
+	}
+	for _, bad := range [][]string{{"--days"}, {"--days", "x"}, {"--days", "3651"}, {"--days", "0"}, {"extra"}} {
+		e.Reset()
+		if gateClustersCLI(bad, &o, &e) != 2 || !strings.Contains(e.String(), "usage: sprint-check gate-clusters") {
+			t.Errorf("args %v", bad)
+		}
+	}
+	// one run, so no cluster: the text says so and lists it apart
+	gcWrite(t, filepath.Join(home, "events", day+".jsonl"), line)
+	o.Reset()
+	gateClustersCLI(nil, &o, &e)
+	if !strings.Contains(o.String(), "no cause seen in 2 or more runs\nseen once (not a pattern):\n1 x rejected evaluator stale") {
+		t.Errorf("once:\n%s", o.String())
 	}
 }
