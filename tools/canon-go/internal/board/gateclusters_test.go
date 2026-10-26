@@ -301,3 +301,29 @@ func TestGateClustersCLIRun(t *testing.T) {
 		t.Errorf("once:\n%s", o.String())
 	}
 }
+
+func TestGateClustersJSONShapeAndReviewerIDs(t *testing.T) {
+	root := t.TempDir()
+	gcWrite(t, filepath.Join(root, ".tickets/t-1111/review-notes.md"), "## Verdict\n\nNO\n")
+	gcWrite(t, filepath.Join(root, ".tickets/t-2222/review-notes.md"), "## Verdict\n\nNO\n")
+	r := gateClusters(root, "", 30, time.Now())
+	if len(r.Errors) != 2 || r.Errors[1] != "events folder: no CANON_HOME and no home folder" {
+		t.Errorf("errors %v", r.Errors)
+	}
+	if r2 := gateClusters(root, t.TempDir(), 30, time.Now()); r2.Errors[1] != "events folder: missing" {
+		t.Errorf("errors %v", r2.Errors)
+	}
+	c := r.Clusters[0]
+	if c.Example != "reviewer NO t-2222" && c.Example != "reviewer NO t-1111" {
+		t.Errorf("example %q", c.Example)
+	}
+	if !gcHas(c.Runs, "review:t-1111") || !gcHas(c.Runs, "review:t-2222") {
+		t.Errorf("runs %v", c.Runs)
+	}
+	b, _ := json.Marshal(r)
+	for _, k := range []string{`"days":`, `"clusters":`, `"seen_once":`, `"unreadable_lines":`, `"errors":`, `"cause":`, `"count":`, `"tickets":`, `"runs":`, `"example":`, `"last":`} {
+		if !strings.Contains(string(b), k) {
+			t.Errorf("json lacks %s: %s", k, b)
+		}
+	}
+}
