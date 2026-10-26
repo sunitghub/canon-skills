@@ -39,7 +39,9 @@ const { pathToFileURL } = require('url');
 
   { // beside (h): the pointer's x decides; the owner is told on release
     const h = mk(), act = { v: true }, o = owner('h', act); bindSplitHandle(h, o);
-    h.on.pointerdown({ pointerId: 7, preventDefault() {} });
+    h.on.pointermove({ clientX: 900, clientY: 0 }); assert.strictEqual(o.ratio, .5);        // a move with no press before it moves nothing
+    let prevented = false;
+    h.on.pointerdown({ pointerId: 7, preventDefault() { prevented = true; } }); assert.ok(prevented, 'pressing the handle must not start a text selection');
     assert.strictEqual(h.captured, 7); assert.ok(h.cls.has('drag'));
     h.on.pointermove({ clientX: 600, clientY: 0 }); assert.strictEqual(o.ratio, .5);        // (600-100)/1000
     h.on.pointermove({ clientX: 300, clientY: 999 }); assert.strictEqual(o.ratio, .2);      // y is ignored when side by side
