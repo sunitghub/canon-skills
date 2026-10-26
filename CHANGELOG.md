@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Fixed
+- **Ticket ids with letters past `f`** (`t-b266`): an id such as `t-3tc4` (older or hand-made; `tkt create` still makes hex) was refused by four commands that only took hex digits: `sprint check-evidence`, `evidence.sh stamp|check`, the working-card heartbeat (`work-beat`) and `sprint-check gate-clusters`. They now take `t-[a-z0-9]{4}` like the rest of canon. `gate-clusters` is in the board program, so it needs the next board release to reach an installed machine.
+- **`sprint complete` refused canon's own `.gitignore` lines on Windows git** (`t-ae3b`): with `core.autocrlf=true` and an LF-only `.gitignore`, the three lines `skills add` writes were read as a change made after grading. The check now ignores a line-ending carriage return, and a refusal for `.gitignore` or `.gitattributes` prints how the file differs from canon's own edit. `skills add` also says to commit `.gitignore` before starting a sprint.
+
 ## [0.20.3] - 2026-10-26
 
 Smaller Windows download. Update with `canon update`; nothing to restart.
