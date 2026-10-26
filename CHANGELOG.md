@@ -8,6 +8,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ### Changed
 - **A Terminal tab's `×` and End Session end the Terminal** (`t-2aed`): a Terminal starts as soon as it opens, so there is no agent to end; the `×` on its tab (and the End Session button, which was greyed out) now asks "Close this Terminal?" (Enter closes it, `c` cancels), the same as the prefix then `x`. An agent or Scratch tab's `×` is unchanged: it only hides the tab and never ends the session.
+- **A cancelled "Close this Terminal?" dialog could answer a later Enter** (`t-2aed`, from `t-57ab`): after cancelling it with the mouse, its key listener stayed armed, so the Enter meant for an agent session's own End Session dialog was taken as "End without saving". The listener now acts only while it is still the Terminal's dialog.
 
 ## [0.20.6] - 2026-10-26
 

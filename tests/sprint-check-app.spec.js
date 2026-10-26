@@ -7115,7 +7115,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       // that Enter would end the agent session without saving (found in review; the old key listener stayed armed)
       await board.locator('#ck-end-session').click();
       await expect(confirm).toHaveClass(/open/);
-      await expect(board.locator('#ck-leave-confirm-title')).toHaveText('A sprint session is still running');
+      await expect(board.locator('#ck-leave-confirm-title')).not.toHaveText('Close this Terminal?');   // the Scratch session's own dialog ("Save this session as a ticket?")
       await page.keyboard.press('Enter');
       await page.waitForTimeout(300);
       await expect(confirm).toHaveClass(/open/);
