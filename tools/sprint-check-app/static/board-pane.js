@@ -51,6 +51,7 @@ export function applyPane(activeId, open, tabs) {
   const board = !!pane && pane.host === '', sess = !!pane && pane.host !== '';
   const onBoard = !!(open && board && activeId === pane.tab && paneRoom('', dir));
   const onSess = !!(open && sess && (activeId === pane.host || activeId === pane.tab) && paneRoom(pane.host, dir));
+  const wasBeside = ov.classList.contains('ck-pane-beside');
   ov.classList.toggle('ck-pane-below', onBoard && dir === 'below');
   ov.classList.toggle('ck-pane-beside', onBoard && dir === 'beside');
   term.classList.toggle('ck-split-below', onSess && dir === 'below');
@@ -75,10 +76,10 @@ export function applyPane(activeId, open, tabs) {
   h.dataset.dir = dir;
   h.setAttribute('aria-orientation', dir === 'below' ? 'horizontal' : 'vertical');
   h.setAttribute('aria-valuenow', Math.round(ratio * 100));
-  if (onBoard && dir === 'beside') ck.classList.add('rail-collapsed');   // beside the Board there is no room for the rail too; the < button (or w) still opens it
+  if (onBoard && dir === 'beside' && !wasBeside) ck.classList.add('rail-collapsed');   // only as it opens: a rail the user unfolded stays unfolded   // beside the Board there is no room for the rail too; the < button (or w) still opens it
 }
 
-export const paneOn = () => { const h = document.getElementById('ck-pane-handle'); return !!h && !h.hidden; };
+const paneOn = () => { const h = document.getElementById('ck-pane-handle'); return !!h && !h.hidden; };
 
 export function initPane(reapply) {
   const h = document.getElementById('ck-pane-handle');

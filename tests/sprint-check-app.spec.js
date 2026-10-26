@@ -6657,7 +6657,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     // The cockpit page is stubbed with a page that stamps a random number into its own document, so a reload shows as a new stamp.
     const termStub = `<!doctype html><html><body>cockpit<script>window.__stamp = performance.now() + ':' + Date.now(); window.__msgs = []; window.addEventListener('message', e => window.__msgs.push(e.data));</script></body></html>`;
     // A standalone board ignores shell messages (there is no shell), so these call what the messages call; the shell's keys are in the last test.
-    const askBoard = (page, msg) => page.evaluate(async m => { const b = await import('/static/board-cockpit.js'); if (m.type === 'open-terminal-request') b.openTerminalPane(m.placement); else b.projectTabNav(m.action); }, msg);
+    const askBoard = (page, msg) => page.evaluate(async m => { const b = await import('/static/board-cockpit.js'); if (m.type === 'open-terminal-request') return b.openTerminalPane(m.placement); return b.projectTabNav(m.action); }, msg);
     const ovBox = page => page.locator('#cockpit-overlay').boundingBox();
 
     // Protects the Cockpit's `m` / `M` keys: the Board stays on screen and clickable while a Terminal runs in a pane below or beside it.
@@ -6700,6 +6700,23 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#ck-pane-handle')).toHaveAttribute('aria-orientation', 'vertical');
     });
 
+    // Protects closing the Terminal pane: with another session tab open the Board comes back whole (that tab stays open in the strip).
+    test('Terminal pane (t-ccf5): closing the pane under the Board restores the Board even when another session tab is open', async ({ page }) => {
+      await page.setViewportSize({ width: 1280, height: 900 });
+      await stubCockpit(page);
+      await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: termStub }));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#btn-scratch').click();
+      await page.locator('#ck-back').click();
+      await askBoard(page, { type: 'open-terminal-request', placement: 'below' });
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/ck-pane-below/);
+      await page.locator('#ck-tab-strip-topbar .ck-tab-pill.active .ck-tab-pill-close').click();   // close the Terminal
+      await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/);
+      await expect(page.locator('#ck-pane-handle')).toBeHidden();
+      await expect(page.locator('#ck-tab-strip .ck-tab-pill')).toHaveCount(1);                      // the other session is still there
+    });
+
     // Protects the Cockpit's `m` key and the To Claude Cloud button: next to a session tab both iframes show, the session keeps its
     // screen (same element, no reload), and a narrow window falls back to a full tab.
     test('Terminal pane (t-ccf5): next to a session tab both tabs show; the session is never reloaded (positive control); no room means a full tab', async ({ page }) => {
@@ -6729,6 +6746,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         return ok ? (await hostFrame()).evaluate(() => window.__stamp) : 'element or src changed';
       };
       expect(await same()).toBe(stamp0);
+      await expect(page.locator('#ck-iframe')).toHaveAttribute('data-tab-id', host);               // the id and the rail stay with the tab you were on
       await page.locator('#ck-pane-handle').focus(); await page.keyboard.press('ArrowDown');   // resize
       await askBoard(page, { type: 'open-terminal-request', placement: 'beside' });             // a Terminal is already open: it is reused, not doubled
       await expect(page.locator('#ck-term iframe')).toHaveCount(2);
@@ -15168,6 +15186,10 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
         const typed = await frame.evaluate(() => window.__msgs.filter(m => m.type === 'type-command'));
         expect(typed).toEqual([{ source: 'canon-cockpit', type: 'type-command', text: line }]);   // the one line, no newline: never sent
         expect(typed[0].text).not.toMatch(/[\r\n]/);
+        // t-ccf5: the Terminal is a pane under this tab, and this tab's Sent panel is still on screen beside it
+        await expect(page.locator('#ck-term')).toHaveClass(/ck-split-below/);
+        await expect(page.locator('#ck-gh-sent')).toContainText(`Sent ${id} as issue #57`);
+        await expect(page.locator('#ck-iframe')).toHaveCount(1);                                   // one id: the host tab's, so its rail stays
       }
     });
   }

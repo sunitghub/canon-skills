@@ -181,7 +181,7 @@ window.addEventListener('message',function(e){
   if(d.type==='session-menu'){ if(pid===activeTab&&!shellDialogOpen()) openTabSessionMenu(pid, typeof d.id==='string'?d.id:''); return; }   // t-3c9a: the reply to prefix then t
   if(d.type==='prefix-armed'||d.type==='prefix-cancel'||d.type==='prefix-key'){   // t-a198: only the visible tab's board speaks
     if(pid!==activeTab||shellDialogOpen()) return;   // a dialog in the shell swallows it, whichever frame had focus
-    if(d.type==='prefix-armed'){ showKeyHint(true); return; }
+    if(d.type==='prefix-armed'){ showKeyHint(true,d.key); return; }
     showKeyHint(false);
     if(d.type==='prefix-key'&&typeof d.key==='string'&&d.key.length<=2) prefixAction(d.key);
     return;

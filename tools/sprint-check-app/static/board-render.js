@@ -923,7 +923,7 @@ export function openScratch(id, opts = {}) {
   // t-57ab: opts.term opens the restricted terminal (the daemon page gets mode=term) instead of an agent.
   if (!state.scratch.has(id)) state.scratch.set(id, { id, title: opts.term ? 'Terminal' : 'Scratch session', status: 'scratch', scratch: true, term: !!opts.term, docs: [] });
   if (opts.typeLine) state.scratch.get(id).typeLine = opts.typeLine;   // t-0aa7: typed at the prompt once it is up, never sent
-  openCockpit(id);
+  return openCockpit(id);
 }
 
 // t-1543: this file's load-time code; board-main.js runs it after every module has loaded.
