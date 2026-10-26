@@ -54,7 +54,7 @@ const (
 var (
 	gcIDRe     = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,64}$`)
 	gcWordRe   = regexp.MustCompile(`^[a-z][a-z0-9_.-]{0,31}$`)
-	gcTicketRe = regexp.MustCompile(`^t-[0-9a-f]{4,12}$`)
+	gcTicketRe = regexp.MustCompile(`^t-[a-z0-9]{4}$`)
 	gcDayRe    = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}\.jsonl$`)
 )
 

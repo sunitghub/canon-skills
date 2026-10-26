@@ -1781,6 +1781,17 @@ cg_project="$(make_project)"
   cg_closes "canon lines, committed after grading"
   git reset -q --hard HEAD~1
 
+  # t-ae3b: Windows git (core.autocrlf=true) with a project .gitignore that is LF-only: the replayed old file comes back CRLF, canon's own
+  # lines must still pass, and a real extra line must still refuse with the reason printed
+  git config core.autocrlf true
+  cg_start autocrlf-lf; canon_setup "$PWD"
+  cg_closes "autocrlf=true, LF-only .gitignore, canon lines uncommitted"
+  git reset -q --hard HEAD; git checkout -q -- . ; git config core.autocrlf true
+  cg_start autocrlf-extra; canon_setup "$PWD"; echo 'secret.js' >> .gitignore
+  cg_refuses .gitignore "autocrlf=true plus another line"
+  [[ "$(env -u CLAUDECODE "$SPRINT" complete 2>&1)" == *"differs from canon's own setup edit"*"secret.js"* ]] || fail "t-ae3b: a refused .gitignore did not say how it differs"
+  git checkout -q -- .gitignore .gitattributes; git config --unset core.autocrlf
+
   # any other line beside canon's, or instead of them, is refused, in either file
   cg_start refusals
   canon_setup "$PWD"; echo 'secret.js' >> .gitignore; cg_refused .gitignore "canon lines plus another line"; git checkout -q -- .gitattributes

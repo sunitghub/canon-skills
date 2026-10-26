@@ -675,8 +675,14 @@ _canon_setup_edit_only() (   # a subshell, so its EXIT trap removes the scratch 
         am) _ensure_agents_link_gitignored "$tmp" && _ensure_mirror_gitignored "$tmp" ;;
         g) ensure_gitattributes "$tmp" ;;
       esac ) >/dev/null 2>&1 || true   # the byte compare below is the check, not the writer's status
-    cmp -s "$tmp/$name" "$wroot/$path" && exit 0
+    # Line endings are not what this guards: with core.autocrlf=true the replayed old file comes back CRLF while a project file written
+    # by a tool is LF (t-ae3b), so compare with carriage returns removed.
+    tr -d '\r' < "$tmp/$name" > "$tmp/want.lf"; tr -d '\r' < "$wroot/$path" > "$tmp/have.lf"
+    cmp -s "$tmp/want.lf" "$tmp/have.lf" && exit 0
   done
+  # No variant matched: say how the file differs from canon's own edit, so a refusal is not a bare "changed" (t-ae3b).
+  echo "note: $path differs from canon's own setup edit (diff of canon's edit vs the file, first lines):"
+  diff "$tmp/want.lf" "$tmp/have.lf" 2>/dev/null | sed -n '1,4p' | cut -c1-120 | sed 's/^/  /' || true
   exit 1
 )
 
@@ -958,7 +964,7 @@ cmd_check_review_notes() {
 # Exit 0 ok, 1 refused (each log named with how to fix it), 2 usage or a failed check.
 cmd_check_evidence() {
   local id="${1:-}" out line bad=0 n=0 edir f name
-  [[ "$id" =~ ^t-[0-9a-f]{4}$ ]] || { echo "usage: sprint check-evidence <ticket-id>" >&2; exit 2; }
+  [[ "$id" =~ ^t-[a-z0-9]{4}$ ]] || { echo "usage: sprint check-evidence <ticket-id>" >&2; exit 2; }
   out="$("$SCRIPT_DIR/evidence.sh" check "$id" 2>&1)" || { echo "check-evidence: evidence.sh check failed: $out" >&2; exit 2; }
   # A log name `evidence.sh stamp` can never write (a space, `;`, a control character) could carry a fake `exit=0` inside the
   # line check prints for it, so such a name is refused outright; every name left then holds no space, and the matches below are exact.

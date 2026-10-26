@@ -50,6 +50,16 @@ func gcFixture(t *testing.T) (root, home string, now time.Time) {
 	return
 }
 
+// Protects the gate-clusters reader on a project whose ticket ids have letters past f (t-b266): ids are t-[a-z0-9]{4}, as everywhere else.
+func TestGateClustersTicketIDShape(t *testing.T) {
+	for id, want := range map[string]bool{"t-3tc4": true, "t-1234": true, "t-abcd": true, "t-zzzz": true, "T-3TC4": false, "t-": false,
+		"t-3tc": false, "t-3tc45": false, "t-3t_4": false, "t-3tc4/../x": false, "": false} {
+		if got := gcTicketRe.MatchString(id); got != want {
+			t.Errorf("gcTicketRe(%q) = %v, want %v", id, got, want)
+		}
+	}
+}
+
 func TestGateClustersExact(t *testing.T) {
 	root, home, now := gcFixture(t)
 	r := gateClusters(root, home, 30, now)

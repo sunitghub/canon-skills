@@ -39,7 +39,7 @@ usage() { echo "usage: evidence.sh stamp <ticket-id> <name> -- <command...> | ev
 refuse() { echo "evidence: $*" >&2; exit 125; }
 die() { echo "evidence: $*" >&2; exit 2; }
 
-id_re='^t-[0-9a-f]{4}$'
+id_re='^t-[a-z0-9]{4}$'
 mode="${1-}"
 [[ "$mode" == stamp || "$mode" == check ]] || usage
 shift

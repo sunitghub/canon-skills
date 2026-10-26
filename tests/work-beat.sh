@@ -21,6 +21,8 @@ field() { sed -n "s/^$1=//p" "$P/.tickets/ACTIVE.beat"; }
 mkdir -p .tickets
 "$BEAT" touch; [[ ! -e .tickets/ACTIVE.beat ]] || fail "work-beat: wrote a beat with no ACTIVE ticket"
 printf 'not an id\n' > .tickets/ACTIVE; "$BEAT" touch; [[ ! -e .tickets/ACTIVE.beat ]] || fail "work-beat: wrote a beat for a garbage ACTIVE"
+printf 't-3tc4\n' > .tickets/ACTIVE; "$BEAT" touch; assert_eq t-3tc4 "$(field ticket)"   # t-b266: an id with letters past f is a ticket id
+rm -f .tickets/ACTIVE.beat
 for bad in 'xt-aa9c' 't-aa9cd' 't-aa9c extra'; do   # only a whole ticket id counts (the anchors)
   printf '%s\n' "$bad" > .tickets/ACTIVE; "$BEAT" touch; [[ ! -e .tickets/ACTIVE.beat ]] || fail "work-beat: wrote a beat for ACTIVE '$bad'"
 done

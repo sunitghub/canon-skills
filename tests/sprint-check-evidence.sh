@@ -24,6 +24,13 @@ put() { mkdir -p "$(dirname "$ED/$1")"; printf '%b' "$2" > "$ED/$1"; }
 ce; assert_eq 2 "$code"; assert_contains "$out" "usage: sprint check-evidence"
 ce nope; assert_eq 2 "$code"
 ce 't-abcd;x'; assert_eq 2 "$code"
+# t-b266: an id with letters past f (an older or hand-made one, t-3tc4) is a ticket id like any other: it gets past the usage check
+# to evidence.sh (no such ticket folder here, so that is what refuses it); only a non-id still gets the usage line
+ce t-3tc4; [[ "$out" != *"usage: sprint check-evidence"* ]] || fail "check-evidence refused the letter-and-digit id t-3tc4 as not an id: $out"
+for bad in T-3TC4 t- t-3tc t-3tc45 t-3t_4 't-3tc4/../x' 't-3tc4 '; do ce "$bad"; assert_eq 2 "$code"; assert_contains "$out" "usage: sprint check-evidence"; done
+# no hand-written hex-only ticket-id pattern is left in the shipped tools or the board's Go source (t-b266: four of them rejected t-3tc4)
+hexleft="$(grep -rInE 't-\[0-9a-f\]' "$ROOT/tools" 2>/dev/null | grep -v 'node_modules\|_test.go\|/tests/' || true)"
+[[ -z "$hexleft" ]] || fail "a hex-only ticket-id pattern is back (ids may use a-z and 0-9): $hexleft"
 # no evidence at all: nothing to refuse
 ce "$ID"; assert_eq 0 "$code"; assert_contains "$out" "no stamped logs"
 # fresh exit 0 only: ok

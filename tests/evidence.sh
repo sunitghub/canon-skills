@@ -71,6 +71,8 @@ refused "a staged change" 125 "commit first" "$ID" x
 git reset -q --hard "$C1"
 refused "a ticket id with capitals" 2 "usage" "T-ABCD" x
 refused "a short ticket id" 2 "usage" "t-abc" x
+refused "a long ticket id" 2 "usage" "t-abcde" x
+refused "a letter-and-digit id is an id (reaches the folder check, t-b266)" 2 "no ticket folder" "t-3tc4" x
 refused "a path as ticket id" 2 "usage" "../t-abcd" x
 refused "a ticket with no folder" 2 "no ticket folder" "t-ffff" x
 for bad in A .hid "a b" "../x" "x/y" "-x" ""; do refused "name '$bad'" 2 "usage" "$ID" "$bad"; done

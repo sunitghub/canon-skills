@@ -33,7 +33,7 @@ case "${1:-}" in
   touch)
     [[ -f "$tdir/ACTIVE" ]] || exit 0
     id="$(tr -d '[:space:]' < "$tdir/ACTIVE" 2>/dev/null)" || exit 0
-    [[ "$id" =~ ^t-[0-9a-f]{4}$ ]] || exit 0
+    [[ "$id" =~ ^t-[a-z0-9]{4}$ ]] || exit 0
     tmp="$tdir/ACTIVE.beat.$$"
     { printf 'ticket=%s\nts=%s\nhost=%s\npid=%s\n' "$id" "$(date +%s)" "$(hostname 2>/dev/null | tr -d '[:space:]')" "$(agent_pid)" > "$tmp" \
         && mv -f "$tmp" "$tdir/ACTIVE.beat"; } 2>/dev/null || rm -f "$tmp" 2>/dev/null

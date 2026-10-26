@@ -78,4 +78,8 @@ cmd_add() {
 
   register_project "$project_dir"
   upsert_skills_symlinks "$project_dir" "$skill_file"
+  # t-ae3b: the registration edits the tracked .gitignore and leaves it uncommitted; commit it before a sprint's gates run
+  [ -z "$as_dep" ] && [ -n "$(git -C "$project_dir" status --porcelain -- .gitignore 2>/dev/null)" ] \
+    && echo "Next: commit .gitignore (canon added its ignore lines) before you start a sprint, so a close is not asked to re-grade."
+  return 0
 }
