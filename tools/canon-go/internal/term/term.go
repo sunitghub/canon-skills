@@ -121,11 +121,11 @@ var welcomeEntries = []entry{
 	{"tkt close <id>", "close a ticket", false},
 	{"tkt reopen <id>", "open a closed ticket again", false},
 	{"tkt archive <id>", "hide a ticket from the board columns", false},
-	{"tkt send-issue <id> [--dry-run] [--launch]", "post the ticket as a GitHub issue (--launch also starts a cloud session)", false},
+	{"tkt send-issue <id> [--dry-run] [--launch]", "post it as a GitHub issue (--launch: cloud session)", false},
 	{"tkt import-issue <issue number>", "rebuild a ticket from a send-issue issue", false},
 	{"tkt open-pr <id>", "open the PR a cloud session did not", false},
 	{"tkt import-results <id>", "bring a cloud session's results back", false},
-	{"su", "a full shell for 10 minutes (asks the OS to approve: your password, or UAC on Windows; 3 failures close the terminal)", false},
+	{"su", "a full shell for 10 min (OS approval; 3 fails close)", false},
 	{"exit", "leave", false},
 	{"tkt merge-pr <id>", "merge a ticket's PR after its checks", true},
 }
