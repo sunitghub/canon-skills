@@ -8506,3 +8506,24 @@ func TestTicketsDirInStopsAtHome(t *testing.T) {
 		t.Errorf("home itself: got %q, want %q", got, want)
 	}
 }
+
+// t-dec4: the daemon's walk agrees: started in home it is home's own project even with a .tickets above, and a dotfiles .git in home does
+// not take over a folder under home.
+func TestTicketsDirInHomeIsTheProjectAndNothingAboveIt(t *testing.T) {
+	parent := t.TempDir()
+	home := filepath.Join(parent, "home")
+	for _, d := range []string{filepath.Join(parent, ".tickets"), filepath.Join(home, "sub"), filepath.Join(home, ".git")} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	s := &server{}
+	if got, want := s.ticketsDirIn(home), filepath.Join(home, ".tickets"); got != want {
+		t.Errorf("started in home: got %q, want %q", got, want)
+	}
+	if got, want := s.ticketsDirIn(filepath.Join(home, "sub")), filepath.Join(home, "sub", ".tickets"); got != want {
+		t.Errorf("under a home that is a dotfiles repository: got %q, want %q", got, want)
+	}
+}

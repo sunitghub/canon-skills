@@ -1914,3 +1914,23 @@ func TestFindProjectRootStopsAtHome(t *testing.T) {
 		t.Errorf("home itself: got %q", got)
 	}
 }
+
+// t-dec4: started IN home with no .tickets of its own, a .tickets above home must not be adopted (home is the project); and a dotfiles
+// repository (.git) in home must not take over the folders under home either.
+func TestFindProjectRootHomeIsTheProjectAndNothingAboveIt(t *testing.T) {
+	parent := t.TempDir()
+	home := filepath.Join(parent, "home")
+	for _, d := range []string{filepath.Join(parent, ".tickets"), filepath.Join(home, "sub"), filepath.Join(home, ".git")} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	if got := findProjectRoot(home); got != home {
+		t.Errorf("started in home: got %q, want home %q", got, home)
+	}
+	if got := findProjectRoot(filepath.Join(home, "sub")); got != filepath.Join(home, "sub") {
+		t.Errorf("a folder under a home that is a dotfiles repository: got %q", got)
+	}
+}

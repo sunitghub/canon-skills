@@ -7,7 +7,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 ## [Unreleased]
 
 ### Changed
-- **`canon`, `tkt` and `sprint` start in your home folder** (`t-dec4`): the home folder is a project like any other, with its tickets in `~/.tickets` (macOS, Linux, Windows). A folder under home never uses home's `.tickets`, so one left by an earlier run cannot take over the folders beneath it. Drive roots and system folders are still refused.
+- **`canon`, `tkt` and `sprint` start in your home folder** (`t-dec4`): the home folder is a project like any other, with its tickets in `~/.tickets` (macOS, Linux, Windows). A folder under home is its own project: the search stops at home, so home's `.tickets` or `.git` (a dotfiles repository) and anything above home cannot take over the folders beneath it. Drive roots and system folders are still refused.
 
 ### Fixed
 - **Windows first-run text** (`t-dec4`): the board's start line said `Canon Cockpit dev` on a release install; it now names the installed version. The refusal for a drive root or a system folder showed Git Bash's `/c/Windows/System32` and `mkdir -p`, which PowerShell does not accept; on Windows it now shows `C:\Windows\System32` and `mkdir "C:\Users\you\projects\demo"` (works in PowerShell, cmd and Git Bash).

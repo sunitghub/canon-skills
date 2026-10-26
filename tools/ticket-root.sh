@@ -3,11 +3,13 @@
 tickets_dir() {
   local dir="$PWD"
   while [[ "$dir" != "/" ]]; do
-    # t-5738/t-dec4: a .tickets in a drive root or a system folder, or in the home folder when the walk did NOT start there, is not this
-    # project's: a stray ~/.tickets made every folder under home resolve to home. Skip it and keep walking; a .git there still counts.
-    # Started IN home, home is a project like any other. (A folder with its own .git is a project at once, so the guard, which forks about
-    # twenty times, runs only without one.)
-    if [[ -d "$dir/.tickets" ]] && { [[ -d "$dir/.git" ]] || { [[ -z "$(folder_guard_reason "$dir")" ]] && { [[ "$dir" == "$PWD" ]] || ! _is_home_folder "$dir"; }; }; }; then echo "$dir/.tickets"; return 0; fi
+    # t-dec4: the walk stops at home: a folder under home is its own project, so neither home's .tickets nor its .git (a dotfiles repository)
+    # nor anything above home (C:\Users, /Users) can be its project; started IN home it falls through to home's own .tickets below, so home
+    # is a project like any other. (Exact match first; the helper only when the last names agree, so an ordinary walk forks nothing.)
+    if [[ "$dir" == "${HOME:-}" ]] || { [[ -n "${HOME:-}" && "${dir##*/}" == "${HOME##*/}" ]] && _is_home_folder "$dir"; }; then break; fi
+    # t-5738: a .tickets in a drive root or a system folder is not a project's. Skip it and keep walking; a .git there still counts.
+    # (A folder with its own .git is a project at once, so the guard, which forks about twenty times, runs only without one.)
+    if [[ -d "$dir/.tickets" ]] && { [[ -d "$dir/.git" ]] || [[ -z "$(folder_guard_reason "$dir")" ]]; }; then echo "$dir/.tickets"; return 0; fi
     [[ -d "$dir/.git" ]] && echo "$dir/.tickets" && return 0
     # t-cd06: a git-worktree checkout's .git is a FILE ("gitdir: <repo>/.git/
     # worktrees/<name>"), not a directory — the check above never matches it,
@@ -39,9 +41,6 @@ tickets_dir() {
           ;;
       esac
     fi
-    # t-dec4: a folder under home is its own project, so the walk stops AT home when it started below it: nothing above home (C:\Users, /Users)
-    # can be its project. (Exact match first; the helper only when the last names agree, so an ordinary walk forks nothing.)
-    if [[ "$dir" != "$PWD" ]] && { [[ "$dir" == "${HOME:-}" ]] || { [[ -n "${HOME:-}" && "${dir##*/}" == "${HOME##*/}" ]] && _is_home_folder "$dir"; }; }; then break; fi
     dir="$(dirname "$dir")"
   done
   echo "$PWD/.tickets"

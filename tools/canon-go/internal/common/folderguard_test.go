@@ -103,28 +103,23 @@ func TestNotAProjectMessage(t *testing.T) {
 	}
 }
 
-// t-dec4: home is a project when the walk starts there, and a folder under home never adopts home's .tickets.
-func TestSkipTicketsAndIsHome(t *testing.T) {
+// t-dec4: IsHome recognises the home folder itself; the walk-up in findProjectRoot/ticketsDirIn/tickets_dir stops there when it started below.
+func TestIsHome(t *testing.T) {
 	home := t.TempDir()
 	under := filepath.Join(home, "Documents")
 	if err := os.Mkdir(under, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	for _, c := range []struct {
-		name, dir, start string
-		want             bool
-	}{
-		{"home, walk started in home: taken", home, home, false},
-		{"home, walk started under home: skipped", home, under, true},
-		{"a folder under home is taken", under, under, false},
-		{"a system folder is skipped", "/etc", "/etc", true},
-		{"a drive root is skipped", `C:\`, `C:\`, true},
-	} {
-		if got := SkipTickets(c.dir, c.start, home); got != c.want {
-			t.Errorf("%s: SkipTickets(%q,%q) = %v, want %v", c.name, c.dir, c.start, got, c.want)
-		}
-	}
-	if !IsHome(home, home) || IsHome(under, home) || IsHome(home, "") {
+	if !IsHome(home, home) || IsHome(under, home) || IsHome(home, "") || IsHome("", home) {
 		t.Error("IsHome: wrong")
+	}
+}
+
+// The first-run text for a Windows home with a space in it (a user name can have one): the example folder is quoted.
+func TestNotAProjectMessageWindowsHomeWithSpace(t *testing.T) {
+	got := NotAProjectMessage("canon", "/c/Windows/System32", "a system folder", `C:\Users\Ann Lee`, "windows")
+	want := `canon: C:\Windows\System32 is not a project (a system folder with no git repository). Make a folder for your work, for example: mkdir "C:\Users\Ann Lee\projects\demo", cd into it, run git init, then run canon again.`
+	if len(got) != 1 || got[0] != want {
+		t.Errorf("got %q, want %q", got, want)
 	}
 }

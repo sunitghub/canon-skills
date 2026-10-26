@@ -2194,17 +2194,16 @@ func keywordSet(text string, stop map[string]bool) map[string]bool {
 
 func findProjectRoot(start string) string {
 	dir, _ := filepath.Abs(start)
-	startAbs := dir
 	home, _ := os.UserHomeDir()
 	for {
-		// t-5738/t-dec4: a .tickets in a drive root or system folder, or in home when the walk did not start there, is not this project's;
-		// skip it, as tickets_dir does
-		if exists(filepath.Join(dir, ".git")) || (exists(filepath.Join(dir, ".tickets")) && !common.SkipTickets(dir, start, home)) {
-			return dir
-		}
-		// t-dec4: a folder under home is its own project, so the walk stops at home; nothing above it can be its project
-		if dir != startAbs && common.IsHome(dir, home) {
+		// t-dec4: a folder under home is its own project, so a walk that started BELOW home stops at home: neither home's .tickets nor its
+		// .git (a dotfiles repository) nor anything above home can be its project. Started IN home, home is a project like any other.
+		if common.IsHome(dir, home) {
 			return start
+		}
+		// t-5738: a .tickets in a drive root or a system folder is not a project's; skip it, as tickets_dir does
+		if exists(filepath.Join(dir, ".git")) || (exists(filepath.Join(dir, ".tickets")) && common.NotAProject(dir) == "") {
+			return dir
 		}
 		next := filepath.Dir(dir)
 		if next == dir {

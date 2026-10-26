@@ -3869,18 +3869,19 @@ func (s *server) ticketsDirIn(root string) string {
 	dir := root
 	home, _ := os.UserHomeDir()
 	for dir != "" && dir != "/" {
+		// t-dec4: a folder under home is its own project, so a walk that started BELOW home stops at home (neither its .tickets nor its
+		// .git nor anything above it is the project); started IN home, home is a project like any other
+		if common.IsHome(dir, home) {
+			break
+		}
 		for _, marker := range []string{".tickets", ".git"} {
-			// t-5738/t-dec4: a .tickets in a drive root or system folder, or in home when this walk did not start there, is not the project's
-			if marker == ".tickets" && common.SkipTickets(dir, root, home) {
+			// t-5738: a .tickets in a drive root or a system folder is not a project's: skip it
+			if marker == ".tickets" && common.NotAProject(dir) != "" {
 				continue
 			}
 			if fi, err := os.Stat(filepath.Join(dir, marker)); err == nil && fi.IsDir() {
 				return filepath.Join(dir, ".tickets")
 			}
-		}
-		// t-dec4: a folder under home is its own project, so the walk stops at home; nothing above it can be its project
-		if dir != root && common.IsHome(dir, home) {
-			break
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {

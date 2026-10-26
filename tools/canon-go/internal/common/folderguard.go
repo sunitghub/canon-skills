@@ -20,7 +20,7 @@ var (
 )
 
 // NotAProject returns the reason dir is refused ("a system folder" or "the root of a drive") or "". The home folder is NOT refused (t-dec4:
-// it is a project like any other); IsHome is how the walk-up recognises it, so a folder under home never adopts home's .tickets.
+// it is a project like any other); IsHome is how the walk-up recognises it, so a walk that started below home stops there.
 // A .git at dir (inside the Windows tree: at dir or any folder above it) makes it a project; a .tickets folder never does.
 // The folder is checked as given and with its links resolved (/var is /private/var on macOS).
 func NotAProject(dir string) string {
@@ -65,8 +65,8 @@ func refused(abs string) string {
 	}
 }
 
-// IsHome says dir is the home folder itself (links resolved, case ignored). t-dec4: a .tickets in home belongs to a project started IN home;
-// a folder under home must not walk up into it (t-5738), so findProjectRoot and ticketsDirIn skip it unless the walk started there.
+// IsHome says dir is the home folder itself (links resolved, case ignored). t-dec4: home is a project only for a walk that started IN it; a
+// folder under home never walks up into home or above it (t-5738), so findProjectRoot and ticketsDirIn stop at home.
 func IsHome(dir, home string) bool {
 	if home == "" || dir == "" {
 		return false
@@ -79,13 +79,6 @@ func IsHome(dir, home string) bool {
 		}
 	}
 	return sameFolder(abs, home)
-}
-
-// SkipTickets says a .tickets in dir is not the project's of a walk that started at start: dir is a refused folder (system folder, drive
-// root), or it is the home folder and the walk did NOT start there. One rule for the board's findProjectRoot and the daemon's ticketsDirIn;
-// tools/ticket-root.sh's tickets_dir is its shell twin (t-5738, t-dec4).
-func SkipTickets(dir, start, home string) bool {
-	return NotAProject(dir) != "" || (IsHome(dir, home) && !sameFolder(dir, start))
 }
 
 // sameFolder: the same folder, resolving links and ignoring case (Windows and macOS file systems do).

@@ -115,6 +115,9 @@ out="$(cd "$STRAY" && "$TKT" ls 2>&1)" || fail "folder-guard: tkt ls failed in t
 # started in home, home wins even when a folder ABOVE home has a .tickets of its own (the exception that keeps home a project)
 HP="$W/hp"; mkdir -p "$HP/.tickets" "$HP/home/.tickets" "$HP/home/sub"
 (export HOME="$HP/home"; resolves "home with a .tickets above it" "$HP/home" "$HP/home"; resolves "a folder under home, a .tickets above home" "$HP/home/sub" "$HP/home/sub")
+# started in home with NO .tickets of its own, a .tickets above home is not adopted (home is the project); and a dotfiles .git in home does not take over the folders under it
+HQ="$W/hq"; mkdir -p "$HQ/.tickets" "$HQ/home/sub" "$HQ/home/.git"
+(export HOME="$HQ/home"; resolves "started in home, a .tickets above and none in home" "$HQ/home" "$HQ/home"; resolves "a folder under a home that is a dotfiles repository" "$HQ/home/sub" "$HQ/home/sub")
 # a refused folder's text quotes a HOME with a space in the example
 if [[ -d "$REFUSED" ]]; then
   SP="$W/with space"; mkdir -p "$SP"; out="$(cd "$REFUSED" && HOME="$SP" "$TKT" ls 2>&1)" && fail "folder-guard: tkt ls ran in $REFUSED"
