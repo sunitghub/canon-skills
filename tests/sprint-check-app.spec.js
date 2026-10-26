@@ -16816,6 +16816,32 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     });
   }
 
+  // The other place a draft shows up: the checks passed, the suite passed, and GitHub still refused (the PR turned back into a draft, say). The "Not merged"
+  // dialog names it and offers the same button; and when tkt pr-ready itself refuses, the dialog says so and nothing is re-run.
+  test('Check & merge: GitHub refuses after the suite passed because the PR is a draft: Not merged shows the reason and Mark ready; a refused ready says why (t-a463)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh8');
+    ghTicket(id, { github: 'acme/app#57' });
+    await routeStatus(page, id, { stage: 'results-in', pr: 58 });
+    const out = 'merge-pr: running scripts/test.sh on main + PR #58…\nmerge-pr: the suite passed on main + PR #58; GitHub refused the merge.\nmerge-pr: gh could not merge PR #58: GraphQL: Something went wrong\nmerge-pr: PR #58 now reads: draft=true, mergeStateStatus=CLEAN, mergeable=MERGEABLE; PR #58 is a draft: run gh pr ready 58\n';
+    const job = { status: 'idle', output: '', exit_code: null, elapsed: 0 };
+    const readyPosts = [];
+    await page.route(`**/api/ticket/${id}/github/merge-check**`, r => json(r, { ok: true, exit_code: 0, output: 'merge-pr: ready' }));
+    await page.route(`**/api/ticket/${id}/github/merge`, r => { if (r.request().method() === 'POST') Object.assign(job, { status: 'done', output: out, exit_code: 1, elapsed: 3 }); return json(r, job); });
+    await page.route(`**/api/ticket/${id}/github/ready`, r => { readyPosts.push(JSON.parse(r.request().postData() || '{}')); return json(r, { ok: false, exit_code: 1, output: 'pr-ready: PR #58 is CLOSED, not open; nothing changed' }); });
+    await openBoard(page, id);
+    await page.locator(`.card[data-id="${id}"] .card-gh-btn`).click();
+    await page.locator('#gh-dialog-ok').click();                                    // Run tests & merge
+    await expect(page.locator('#gh-dialog-title')).toHaveText('Not merged');
+    await expect(page.locator('#gh-dialog-body')).toContainText('the suite passed on main + PR #58; GitHub refused the merge.');
+    await expect(page.locator('#gh-dialog-ok')).toHaveText('Mark ready');
+    await page.locator('#gh-dialog-ok').click();
+    await expect.poll(() => readyPosts).toEqual([{ pr: 58 }]);
+    await expect(page.locator('#gh-dialog-title')).toHaveText('Could not mark it ready');
+    await expect(page.locator('#gh-dialog-body')).toHaveText('Nothing was changed.');
+    await expect(page.locator('#gh-dialog-pre')).toContainText('PR #58 is CLOSED, not open');
+    await expect(page.locator('#gh-dialog-ok')).toBeHidden();                       // nothing offered again, nothing re-run
+  });
+
   test('Check & merge: a refusal that is not a draft shows its reason first and no Mark ready button (t-a463)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gh8');
     ghTicket(id, { github: 'acme/app#57' });

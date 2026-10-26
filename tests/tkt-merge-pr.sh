@@ -154,6 +154,10 @@ assert_eq "$((blocks_before + 1))" "$(grep -c '^## ' "$gt")"; assert_grep '^reas
 blocks_before="$(grep -c '^## ' "$gt")"
 refuses "a draft PR on --check" "is a draft; GitHub will not merge it" STUB_DRAFT=true -- --check
 assert_eq "$blocks_before" "$(grep -c '^## ' "$gt")"   # --check is read-only: no trail entry
+# gh could not say whether it is a draft (the field arrives as "-" after jq): not "not a draft"; nothing runs (fails closed)
+rm -f "$W/ran"
+refuses "a PR whose draft state gh did not say" "did not say whether PR #7 is a draft" STUB_DRAFT=- -- --yes
+[[ ! -e "$W/ran" ]] || fail "the suite ran although gh did not say whether the PR is a draft (t-a463)"
 # the same PR, not a draft, still checks as ready (positive control)
 out="$("$TKT" merge-pr "$id" --check 2>&1)" || fail "a non-draft PR no longer checks: $out"
 assert_contains "$out" "merge-pr: ready"
@@ -180,6 +184,14 @@ for c in "a PR that is not a draft|false|OPEN|false|not a draft" "a closed PR|tr
   assert_contains "$out" "$msg"; assert_eq 0 "$(readyc)"
   [[ "$label" == "a PR that is not a draft" ]] || [[ "$rc" == 1 ]] || fail "pr-ready should refuse $label (rc $rc): $out"
 done
+# only THIS ticket's own PR: another open draft's number (the board or a typo) is refused, with no gh pr ready call; the ticket's own number passes
+: > "$STUB_LOG"; rc=0; out="$(STUB_DRAFT=true "$TKT" pr-ready "$id" --pr 99 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "pr-ready marked a PR that is not the ticket's ready (rc $rc): $out"
+assert_contains "$out" "PR #99 is not this ticket's PR"; assert_eq 0 "$(readyc)"
+: > "$STUB_LOG"; out="$(STUB_DRAFT=true "$TKT" pr-ready "$id" --pr 7 2>&1)" || fail "pr-ready refused the ticket's own PR when named: $out"
+assert_eq 1 "$(readyc)"
+: > "$STUB_LOG"; rc=0; out="$(STUB_DRAFT=- "$TKT" pr-ready "$id" 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "pr-ready acted when gh did not say whether the PR is a draft (rc $rc): $out"; assert_eq 0 "$(readyc)"
 : > "$STUB_LOG"; rc=0; out="$(STUB_DRAFT=true "$TKT" pr-ready "$id" --pr '7;x' 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "pr-ready took a PR argument that is not a number: $out"; assert_eq 0 "$(readyc)"
 [[ "$(sig)" == "$before" ]] || fail "pr-ready changed ticket.md"

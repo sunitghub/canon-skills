@@ -1737,7 +1737,7 @@ cmd_merge_pr() {
   # t-fefb: right after another merge GitHub reads mergeable UNKNOWN while it recomputes; wait it out (6 reads, 5 s apart).
   while :; do
     info="$(gh pr view "$pr" --repo "$repo" --json state,mergeable,mergeStateStatus,headRefOid,baseRefName,isCrossRepository,isDraft \
-      --jq '[.state, .mergeable, .mergeStateStatus, .headRefOid, .baseRefName, .isCrossRepository, .isDraft] | @tsv' 2>&1)" \
+      --jq '[.state, .mergeable, .mergeStateStatus, .headRefOid, .baseRefName, .isCrossRepository, .isDraft] | map(if . == null or . == "" then "-" else tostring end) | @tsv' 2>&1)" \
       || { echo "merge-pr: gh could not read PR #$pr on $repo: $info" >&2; exit 1; }
     IFS=$'\t' read -r st mg ms head base cross draft <<< "$info"
     [[ "$mg" == UNKNOWN && "$tries" -lt 6 ]] || break
@@ -1751,6 +1751,7 @@ cmd_merge_pr() {
   # t-a463: a draft cannot be merged (a cloud PR is always opened as one). Said here, in seconds, before any clone or test run; GitHub
   # reads such a PR as CLEAN or BLOCKED, so the checks below would not name it.
   [[ "$draft" != true ]] || { echo "merge-pr: PR #$pr is a draft; GitHub will not merge it. Run: gh pr ready $pr  (or press Mark ready on the card), then merge." >&2; _mp_refuse "PR is a draft"; }
+  [[ "$draft" == false ]] || { echo "merge-pr: gh did not say whether PR #$pr is a draft (isDraft: ${draft:-empty}); not running anything" >&2; _mp_refuse "could not tell whether the PR is a draft"; }
   if [[ "$mg" != MERGEABLE || "$ms" != CLEAN ]]; then
     if [[ "$ms" == BLOCKED ]]; then echo "merge-pr: PR #$pr is blocked by a branch rule (a required review or check): https://github.com/$repo/pull/$pr" >&2
     else echo "merge-pr: PR #$pr cannot merge cleanly (mergeable: $mg, state: $ms)" >&2; fi
@@ -1864,13 +1865,21 @@ cmd_pr_ready() {
   root="$(git -C "$tdir" rev-parse --show-toplevel)" || exit 1
   repo="$(_gh_origin_repo "$root" pr-ready)" || exit 1
   command -v gh >/dev/null 2>&1 || { echo "pr-ready: needs the GitHub CLI: install gh, then run: gh auth login" >&2; exit 1; }
-  pr="$(_resolve_pr pr-ready "$file" "$repo" "$pr")" || exit 1
+  # The PR must be this ticket's own: the one open PR saying "Fixes #<issue>", whether found here or named by --pr (a number from the board is
+  # re-checked, never trusted).
+  local given="$pr" own
+  pr="$(_resolve_pr pr-ready "$file" "$repo" "")" || exit 1
+  if [[ -n "$given" && "$given" != "$pr" ]]; then
+    own="$(get_field "$file" github)"; own="${own##*#}"
+    echo "pr-ready: PR #$given is not this ticket's PR ($id's open PR for issue #$own is #$pr); nothing changed" >&2; exit 1
+  fi
   local info st cross draft
-  info="$(gh pr view "$pr" --repo "$repo" --json state,isCrossRepository,isDraft --jq '[.state, .isCrossRepository, .isDraft] | @tsv' 2>&1)" \
+  info="$(gh pr view "$pr" --repo "$repo" --json state,isCrossRepository,isDraft --jq '[.state, .isCrossRepository, .isDraft] | map(if . == null or . == "" then "-" else tostring end) | @tsv' 2>&1)" \
     || { echo "pr-ready: gh could not read PR #$pr on $repo: $info" >&2; exit 1; }
   IFS=$'\t' read -r st cross draft <<< "$info"
   [[ "$st" == OPEN ]] || { echo "pr-ready: PR #$pr is $st, not open; nothing changed" >&2; exit 1; }
   [[ "$cross" == false ]] || { echo "pr-ready: PR #$pr comes from a fork; mark it ready on GitHub after reading it; nothing changed" >&2; exit 1; }
+  [[ "$draft" == true || "$draft" == false ]] || { echo "pr-ready: gh did not say whether PR #$pr is a draft; nothing changed" >&2; exit 1; }
   [[ "$draft" == true ]] || { echo "pr-ready: PR #$pr is not a draft; nothing to do"; return 0; }
   local out
   out="$(gh pr ready "$pr" --repo "$repo" 2>&1)" || { echo "pr-ready: gh could not mark PR #$pr ready: $out" >&2; exit 1; }
