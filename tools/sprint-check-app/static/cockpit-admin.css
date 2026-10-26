@@ -182,7 +182,7 @@
   .ig-pill{margin-left:auto;font-size:11px;font-weight:600;border-radius:999px;padding:1px 10px;border:1px solid}
   .ig-pill-ok{color:var(--st-idle);border-color:var(--st-idle)} .ig-pill-bad{color:var(--st-need);border-color:var(--st-need)}
   .ig-card+.ig-card{margin-top:14px}
-  .ig-card{border:1px solid var(--border);border-radius:10px;background:var(--surface-raised,transparent);padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+  .ig-card{border:1px solid var(--border);border-radius:10px;background:var(--panel);padding:12px 14px;display:flex;flex-direction:column;gap:6px}
   .ig-card .ig-files{margin-top:0}
   .ig-card-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
   .ig-name{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;color:var(--text)}
@@ -201,7 +201,7 @@
   .ig-fix{flex-basis:100%;font-size:12px;color:var(--text-muted);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   .ig-copy{border-radius:7px;padding:2px 8px;font-size:11px;font-weight:600;cursor:pointer}
   .ig-prompt{margin-top:6px} .ig-prompt summary{cursor:pointer;color:var(--accent);font-size:12.5px}
-  .ig-prompt .ig-md{white-space:normal;text-align:justify;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;background:color-mix(in srgb, var(--bg) 70%, var(--surface-raised));border:1px solid var(--border-muted);border-radius:8px;padding:10px 12px;margin:8px 0 0}
+  .ig-prompt .ig-md{white-space:normal;text-align:justify;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;background:var(--bg);border:1px solid var(--border-muted);border-radius:8px;padding:10px 12px;margin:8px 0 0}
   .ig-block{color:var(--st-need)}
   .ig-pill-mute{color:var(--text-muted);border-color:var(--border)}
   .ig-unchecked .ig-dot{background:var(--text-muted)}
