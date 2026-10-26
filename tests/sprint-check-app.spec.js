@@ -14436,7 +14436,7 @@ test.describe('board header and card footer (t-7723)', () => {
     await expect(page.locator('#m-id')).toHaveText(id);
   });
 
-  test('columns have no box: the status colour is the header dot only, + is on Open alone, Discarded is muted (t-9d93)', async ({ page }) => {
+  test('columns have no box: the status colour is the header bar only, no per-column +, Discarded is muted (t-9d93, t-be64)', async ({ page }) => {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
     const r = await page.evaluate(() => {
@@ -14449,6 +14449,7 @@ test.describe('board header and card footer (t-7723)', () => {
         dot: cs(open.querySelector('.col-indicator'), 'backgroundColor'), dotDone: cs(col('col-done').querySelector('.col-indicator'), 'backgroundColor'),
         countBg: document.querySelector('.column-count') ? cs(document.querySelector('.column-count'), 'backgroundColor') : null,
         adds: [...document.querySelectorAll('.column')].map(c => c.querySelectorAll('.column-add').length),
+        barW: cs(open.querySelector('.col-indicator'), 'width'), barH: cs(open.querySelector('.col-indicator'), 'height'),
         discardedOpacity: cs(col('col-discarded').querySelector('.column-header'), 'opacity'),
       };
     });
@@ -14457,10 +14458,9 @@ test.describe('board header and card footer (t-7723)', () => {
     expect(r.title).toBe(r.titleDone);                                                      // titles share one colour; only the dot differs
     expect(r.dot).not.toBe(r.dotDone);
     if (r.countBg) expect(r.countBg).toBe('rgba(0, 0, 0, 0)');                             // the count is plain text, not a pill
-    expect(r.adds).toEqual([1, 0, 0, 0]);                                                   // + on Open only
+    expect(r.adds).toEqual([0, 0, 0, 0]);                                                   // no per-column + (t-be64): + New adds a ticket
+    expect([r.barW, r.barH]).toEqual(['3px', '14px']);                                      // t-be64: the status colour is a short vertical bar
     expect(Number(r.discardedOpacity)).toBeLessThan(1);
-    await page.locator('.column-add').click();
-    await expect(page.locator('#create-modal')).toBeVisible();
   });
 
   test('the type badge is a dot and the word, with no fill (t-9d93)', async ({ page }) => {

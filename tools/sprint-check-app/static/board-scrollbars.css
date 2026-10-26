@@ -1,5 +1,5 @@
     /* ── Scrollbars ───────────────────────────── */
     ::-webkit-scrollbar       { width: 4px; height: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 2px; opacity: .6; }
+    ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 2px; }   /* t-be64: quiet at rest; the column bar is the only status colour */
     ::-webkit-scrollbar-thumb:hover { background: var(--accent); }

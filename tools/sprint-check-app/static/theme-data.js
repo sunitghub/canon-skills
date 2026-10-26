@@ -66,11 +66,6 @@ export function derive(t) {
     th[`--th-${k}-line`] = alpha(c[k], dark ? 0.35 : 0.6);
     th[`--th-${k}-ink`] = dark ? c[k] : mix(c[k], c.text, 0.45);
   }
-  for (const [col, v] of [['open', c.muted], ['progress', c.info], ['done', c.ok], ['discarded', c.bad]]) {
-    th[`--th-col-${col}-line`] = alpha(v, 0.45);
-    th[`--th-col-${col}-glow`] = alpha(v, 0.45);
-    th[`--th-col-${col}-status`] = alpha(v, 0.72);
-  }
   const shell = { ...shared, ...th,
     '--panel': c.surface, '--accent-dim': alpha(c.accent, dark ? 0.14 : 0.1), '--amber': c.warn,
     '--card-stat': mix(c.accent, c.text, 0.4), '--scrim': dark ? 'rgba(0,0,0,.6)' : alpha(c.text, 0.35),

@@ -36,6 +36,15 @@
   --badge-fg:       #0b0f14;
   --col-discarded:  #f87171;
 
+  /* status inks, tints and lines (a theme overrides them as --th-*-ink / -soft / -line) */
+  --ok: #22c55e; --ok-ink: #16a34a; --ok-soft: rgba(74,222,128,.12);
+  --bad-ink: #dc2626; --bad-soft: rgba(248,113,113,.12);
+  --warn-ink: #fbbf24; --warn-soft: rgba(251,191,36,.10); --warn-line: rgba(251,191,36,.35);
+  --on-ok: #fff; --on-ok-dim: rgba(255,255,255,.65); --on-accent: #fff;
+  --title: var(--text);
+  /* ticket-type dots: fixed category colours, like the donut chart's (board-render.js TYPE_COLORS) */
+  --type-bug: #ef4444; --type-feature: #8b5cf6; --type-task: #3b82f6; --type-chore: #6b7280; --type-epic: #f97316;
+
   /* t-28ec: session-state colours, Herdr's palette (Catppuccin Mocha / Latte) */
   --st-need: #f38ba8; --st-work: #f9e2af; --st-done: #94e2d5; --st-idle: #a6e3a1; --st-ink: #1e1e2e;
 
@@ -86,6 +95,10 @@ html[data-theme="light"] {
   --col-done-contrast: #ffffff;
   --badge-fg:       #ffffff;
   --col-discarded:  #dc2626;
+
+  --ok-ink: #15803d;
+  --warn-ink: #92400e; --warn-soft: #fef3c7; --warn-line: #d97706;
+  --title: #3d3d60;
 
   --st-need: #d20f39; --st-work: #df8e1d; --st-done: #179299; --st-idle: #40a02b; --st-ink: #fff;
 

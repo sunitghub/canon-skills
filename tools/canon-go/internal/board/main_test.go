@@ -1551,6 +1551,23 @@ func bumpMtime(t *testing.T, path string, by time.Duration) {
 	}
 }
 
+// t-be64: an Emacs lock symlink (`.#plan.md`) and autosave (`#plan.md#`) beside the docs are not doc tabs.
+func TestTicketFolderIgnoresEditorTempFiles(t *testing.T) {
+	root := setupTestProject(t)
+	dir := filepath.Join(ticketsDir, "t-e1a0")
+	writeFile(t, filepath.Join(dir, "ticket.md"), "---\nid: t-e1a0\nstatus: open\ntype: task\n---\n# Title\n")
+	writeFile(t, filepath.Join(dir, "plan.md"), "## Approach\nx\n")
+	writeFile(t, filepath.Join(dir, "#plan.md#"), "autosave\n")
+	if err := os.Symlink("user@host.1953:1793055567", filepath.Join(dir, ".#plan.md")); err != nil {
+		t.Fatal(err)
+	}
+	tk := cacheTicket(t, root, "t-e1a0")
+	docs, _ := tk["docs"].([]docInfo)
+	if len(docs) != 1 || docs[0].File != "t-e1a0/plan.md" {
+		t.Fatalf("docs = %v, want only plan.md", docs)
+	}
+}
+
 func TestTicketCacheSeesEdits(t *testing.T) {
 	root := setupTestProject(t)
 	dir := filepath.Join(ticketsDir, "t-c1a1")
@@ -1560,6 +1577,10 @@ func TestTicketCacheSeesEdits(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "plan.md"), "## Sign-off\n- [ ] Plan approved\n## Approach\nx\n")
 	if tk := cacheTicket(t, root, "t-c1a1"); tk["status"] != "open" || tk["plan_approved"] != false || tk["acceptance_unchecked"] != true {
 		t.Fatalf("initial load: %v", tk)
+	}
+	// t-be64: the card's "N to check" counts the unchecked boxes of acceptance.md and plan.md (2 + 1)
+	if tk := cacheTicket(t, root, "t-c1a1"); tk["unchecked_count"] != 3 {
+		t.Fatalf("unchecked_count = %v, want 3", tk["unchecked_count"])
 	}
 	writeFile(t, tm, "---\nid: t-c1a1\nstatus: in_progress\ntype: task\n---\n# Title one\n")
 	if tk := cacheTicket(t, root, "t-c1a1"); tk["status"] != "in_progress" {

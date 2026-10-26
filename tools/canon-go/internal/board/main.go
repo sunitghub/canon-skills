@@ -1101,24 +1101,30 @@ func parseTicket(path string) (ticket, error) {
 		sort.Strings(files)
 		sort.SliceStable(files, func(i, j int) bool { return docRank(files[i]) < docRank(files[j]) })
 		for _, f := range files {
-			if filepath.Base(f) == "ticket.md" {
+			// an editor's lock or autosave file (Emacs `.#plan.md`, `#plan.md#`) is not a doc
+			if base := filepath.Base(f); base == "ticket.md" || strings.HasPrefix(base, ".") || strings.HasPrefix(base, "#") {
 				continue
 			}
 			docs = append(docs, docInfo{Name: docName(f), File: filepath.ToSlash(filepath.Join(filepath.Base(filepath.Dir(path)), filepath.Base(f)))})
 		}
 		t["acceptance_has_items"] = nil
 		t["acceptance_unchecked"] = nil
+		t["unchecked_count"] = nil
 		t["models_used"] = []string{}
 		if acc, err := os.ReadFile(filepath.Join(filepath.Dir(path), "acceptance.md")); err == nil {
 			accText := string(acc)
 			t["acceptance_has_items"] = checkboxItemRe.MatchString(section(accText, "Criteria")) && checkboxItemRe.MatchString(section(accText, "Test Plan"))
 			t["acceptance_unchecked"] = uncheckedItemRe.MatchString(accText)
+			t["unchecked_count"] = len(uncheckedItemRe.FindAllStringIndex(accText, -1))
 			t["models_used"] = modelsUsed(section(accText, "Wrapup Gates"))
 		}
 		t["plan_has_approach"] = nil
 		t["plan_approved"] = nil
 		if plan, err := os.ReadFile(filepath.Join(filepath.Dir(path), "plan.md")); err == nil {
 			planText := string(plan)
+			if n, ok := t["unchecked_count"].(int); ok {
+				t["unchecked_count"] = n + len(uncheckedItemRe.FindAllStringIndex(planText, -1))
+			}
 			t["plan_has_approach"] = usefulText(section(planText, "Approach"))
 			t["plan_approved"] = sectionHasCheckedItem(planText, "Sign-off")
 		}
@@ -2577,7 +2583,7 @@ func listWorktreesBase(ticketID, root string) []map[string]any {
 // agent-writable, so a bound path must be a registered non-main worktree and
 // every read stays inside <worktree>/.tickets/<id>/.
 var docOverlayFields = []string{"docs", "acceptance_has_items", "acceptance_unchecked",
-	"models_used", "plan_has_approach", "plan_approved"}
+	"models_used", "plan_has_approach", "plan_approved", "unchecked_count"}
 
 // t-8be2: the worktree copy also owns the ticket's own fields (title is the body's first heading).
 var ticketOverlayFields = []string{"status", "title", "body", "demo", "tags"}

@@ -351,7 +351,6 @@ export function renderBoard() {
           ${needsHere ? `<span class="column-needs">${needsHere} needs you</span>` : ''}
           <span class="column-header-end">
             ${cards.length > 0 ? `<span class="column-count">${cards.length}</span>` : ''}
-            ${col.status === 'open' ? `<button class="column-add" type="button" aria-label="New ticket" title="New ticket">+</button>` : ''}
           </span>
         </div>
         <div class="column-body" data-status="${esc(col.status)}">
@@ -371,7 +370,6 @@ export function renderBoard() {
   state.boardFirstRender = false;
   board.querySelectorAll('.column-body').forEach(b => { b.scrollTop = savedScroll[b.dataset.status] || 0; });
 
-  board.querySelectorAll('.column-add').forEach(btn => btn.addEventListener('click', () => document.getElementById('btn-create').click()));
 
   board.querySelectorAll('.col-show-more').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -723,7 +721,11 @@ export function readiness(t) {
     : planIncomplete ? 'plan incomplete'
     : !planApproved ? 'needs signoff'
     : 'ready';
-  return { ready, hasAcceptance, hasPlan, acceptanceIncomplete, acceptanceUnchecked, planIncomplete, planApproved, label };
+  // t-be64: the card says "N to check" (acceptance.md + plan.md boxes, server field unchecked_count); the sentence is its title
+  const n = Number.isInteger(t.unchecked_count) ? t.unchecked_count : 0;
+  const short = acceptanceUnchecked && n > 0 ? `${n} to check` : label;
+  const full = acceptanceUnchecked && n > 0 ? `${n} to check: unchecked items in acceptance.md and plan.md` : label;
+  return { ready, hasAcceptance, hasPlan, acceptanceIncomplete, acceptanceUnchecked, planIncomplete, planApproved, label, short, full };
 }
 
 // t-187e: how long ago and where the agent that holds the ticket last showed itself (the work-beat label).
@@ -737,7 +739,7 @@ async function resumeWorking(t) {
 }
 
 function cardHTML(t, idx) {
-  const { ready, label, acceptanceIncomplete, acceptanceUnchecked, planIncomplete } = readiness(t);
+  const { ready, label, short, full, acceptanceIncomplete, acceptanceUnchecked, planIncomplete } = readiness(t);
   const animClass = (idx !== undefined) ? ' animate-in' : '';
   const animStyle = (idx !== undefined) ? ` style="--i:${idx}"` : '';
   const pri = t.priority ?? 2;
@@ -793,7 +795,7 @@ function cardHTML(t, idx) {
         <span class="ready-indicator ${ready ? 'ready' : (acceptanceIncomplete || acceptanceUnchecked || planIncomplete) ? 'incomplete' : 'not-ready'}" data-id="${esc(t.id)}">
           ${ready
             ? `<span class="ready-dot"></span><span class="ready-label">ready</span>`
-            : `<span class="ready-flag" aria-label="${esc(label)} — open the ticket for details">${esc(label)}</span>`}
+            : `<span class="ready-flag" title="${escAttr(full)}" aria-label="${esc(full)} — open the ticket for details">${esc(short)}</span>`}
         </span>
         ${startBtn}
       </div>

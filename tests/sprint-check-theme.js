@@ -125,9 +125,11 @@ assert.strictEqual(boot({ page: 'board', embedded: false, stored: SB(J({ mode: '
   // the shell reads these palette names; the board reads every other palette name in tokens.css (the scales are not colours)
   const shellNeed = new Set(['--bg', '--panel', '--border', '--border-hover', '--border-muted', '--text', '--text-body', '--text-muted', '--text-dim', '--accent', '--accent-dim',
     '--col-done', '--col-progress', '--col-discarded', '--amber', '--card-stat', '--scrim', '--st-need', '--st-work', '--st-done', '--st-idle']);
+  // Canon's fallbacks for --th-* names the CSS reads as var(--th-x, var(--x)); a theme sets the --th-* one, never these
+  const FALLBACK_ONLY = /^--(ok|ok-ink|ok-soft|bad-ink|bad-soft|warn-ink|warn-soft|warn-line|on-ok|on-ok-dim|on-accent|title|type-[a-z]+)$/;
   const SHELL_ONLY = new Set(['--panel', '--amber', '--card-stat', '--scrim']);
   const boardNeed = blockNames(css, /(?::root|html\[data-theme="light"\])\s*\{([^}]*)\}/g);
-  for (const n of [...boardNeed]) if (SHELL_ONLY.has(n) || /^--(radius|fs|sp|shadow|mono|sidebar-w|header-h)/.test(n)) boardNeed.delete(n);
+  for (const n of [...boardNeed]) if (SHELL_ONLY.has(n) || /^--(radius|fs|sp|shadow|mono|sidebar-w|header-h)/.test(n) || FALLBACK_ONLY.test(n)) boardNeed.delete(n);
   const thUsed = (files) => { const out = new Set(); for (const [, t] of files) for (const m of t.matchAll(/var\((--th-[a-z0-9-]+)/g)) out.add(m[1]); return out; };
   for (const n of thUsed(shellCss)) shellNeed.add(n);
   for (const n of thUsed(boardCss)) boardNeed.add(n);
@@ -147,9 +149,7 @@ assert.strictEqual(boot({ page: 'board', embedded: false, stored: SB(J({ mode: '
   // ── 4c. no colour in the CSS ignores the theme ──
   // A literal colour is allowed only as the fallback of var(--x, …) where derive() sets --x, inside Canon's own theme
   // blocks, in a shadow or a black overlay, or on this list (identity and the terminal frame, t-2ba3).
-  const ALLOWED = [['board-base.css', '#1A1A1F'], ['board-cockpit.css', 'var(--panel2, #0d131c)'],
-    // the ticket-type dots: fixed category colours, like the donut chart's (board-render.js TYPE_COLORS)
-    ...['--type-dot: #ef4444', '--type-dot: #8b5cf6', '--type-dot: #3b82f6', '--type-dot: #6b7280', '--type-dot: #f97316', 'var(--type-dot, #6b7280)'].map(x => ['board-lanes.css', x])];
+  const ALLOWED = [['board-base.css', '#1A1A1F'], ['board-cockpit.css', 'var(--panel2, #0d131c)']];
   const setByDerive = new Set([...Object.keys(derive(THEMES.find(t => !t.css)).shell), ...Object.keys(derive(THEMES.find(t => !t.css)).board)]);
   const COLOR = /#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)/g;
   function scan(file, text) {
@@ -180,7 +180,7 @@ assert.strictEqual(boot({ page: 'board', embedded: false, stored: SB(J({ mode: '
   // t-be64: a colour literal belongs in tokens.css. Every other file has a budget (today's count); it may only shrink,
   // and a file not listed has none. Lower the number in the change that moves a file onto tokens.
   const LITERAL_BUDGET = { 'board-base.css': 13, 'board-cockpit.css': 23, 'board-dialog.css': 2, 'board-dialogs.css': 27, 'board-github.css': 7,
-    'board-lanes.css': 64, 'board-logbook.css': 15, 'board-modal.css': 28, 'board-tags.css': 3, 'buttons.css': 2, 'cockpit-admin.css': 6,
+    'board-logbook.css': 15, 'board-modal.css': 28, 'board-tags.css': 3, 'buttons.css': 2, 'cockpit-admin.css': 6,
     'cockpit-projects.css': 3, 'cockpit-shell.css': 8, 'cockpit-skill-eval.css': 2 };
   const literalCount = (text) => (text.replace(/\/\*[\s\S]*?\*\//g, '').match(COLOR) || []).length;
   const over = statics.filter(f => f.endsWith('.css') && f !== 'tokens.css')
