@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Fixed
+- **A stray `~/.tickets` blocked every folder under home on a first run** (`t-5738`): `tkt`, `sprint`, `canon` and the board took the first `.tickets` going up, so a `.tickets` left in the home folder by an earlier install made every folder under home resolve to home, which canon then refused. A `.tickets` in a folder canon refuses as a project (home, a drive root, a system folder) is now skipped. The refusal names an example folder to make (`<home>/projects/demo`), and says how to move old tickets from home into a project (it never moves them). `install.sh` and `install.ps1` end with the same next step.
+- **Project cards stayed at their first numbers** (`t-5738`): Total Tickets, Updated, Skills and Branch were read once when the Cockpit loaded, so tickets made while it stayed open showed only after a restart. The cards now refresh when you come back to Projects and every 30 seconds while it is on screen; a failed read keeps the number shown.
+
 ## [0.20.4] - 2026-10-26
 
 Two Windows fixes: tickets with letters in their id, and canon's own `.gitignore` lines at close. Update with `canon update`, then restart the board so it loads the new program.

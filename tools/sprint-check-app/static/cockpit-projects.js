@@ -93,7 +93,19 @@ async function fillCardBranch(id,el){
   }catch(e){ br.textContent='—'; }
 }
 
-async function fillCardStats(id){
+// t-5738: the cards were filled once at load, so tickets made while the Cockpit stayed open never showed (Total Tickets 0 until a restart).
+// refreshStats re-reads every card: when the Projects page is shown again and every 30 s while it is on screen. A card still fetching is
+// left alone, and a failed refresh keeps the value already shown.
+const statsBusy=new Set();
+export function refreshStats(){
+  registeredProjects.forEach(p=>{
+    if(statsBusy.has(p.id)) return;
+    statsBusy.add(p.id);
+    fillCardStats(p.id,true).finally(()=>statsBusy.delete(p.id));
+  });
+}
+function projectsPageShown(){ const g=document.getElementById('grid'); return !!g && g.offsetParent!==null && document.visibilityState==='visible'; }
+async function fillCardStats(id,refresh){
   const el=document.querySelector('.meta[data-stats="'+(window.CSS&&CSS.escape?CSS.escape(id):id)+'"]');
   if(!el) return;
   fillCardBranch(id,el);
@@ -127,7 +139,7 @@ async function fillCardStats(id){
       try{ const t=await fetch('/api/track-changes?project='+encodeURIComponent(id)); if(t.ok) st=await t.json(); }catch(e){}
       setGitState(gs,st);
     }
-  }catch(e){ up.textContent='—'; ct.textContent='—'; if(sk) sk.textContent='—'; }
+  }catch(e){ if(!refresh){ up.textContent='—'; ct.textContent='—'; if(sk) sk.textContent='—'; } }
 }
 
 // t-8d72: the icon's three states, from GET /api/track-changes. A non-git folder cannot run agents until it is
@@ -285,6 +297,13 @@ document.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('add-use-dir').addEventListener('click',()=>useBrowseDir());
   document.getElementById('add-cancel').addEventListener('click',()=>closeAdd());
   document.getElementById('add-submit').addEventListener('click',()=>submitAdd());
+});
+
+setInterval(()=>{ if(projectsPageShown()) refreshStats(); },30000);
+document.addEventListener('visibilitychange',()=>{ if(projectsPageShown()) refreshStats(); });
+document.addEventListener('DOMContentLoaded',()=>{   // switching back to the Projects tab shows the grid again
+  const g=document.getElementById('grid');
+  if(g && 'IntersectionObserver' in window) new IntersectionObserver(es=>{ if(es.some(e=>e.isIntersecting)) refreshStats(); }).observe(g);
 });
 
 fetch('/api/version').then(r=>r.json()).then(v=>{if(v&&v.version)document.getElementById('ver').textContent='v'+v.version;}).catch(()=>{});

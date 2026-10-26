@@ -12389,6 +12389,39 @@ test.describe('Canon Cockpit Projects card and Skill Eval view (t-7d8d, t-0e8b)'
   }
   const regBtn = (page, skill) => page.locator(`.regskill[data-id="proj-a"][data-skill="${skill}"]`);
 
+  // t-5738: the cards were filled once at load, so tickets made while the Cockpit stayed open never showed until a restart.
+  test('a project card\'s Total Tickets follows new tickets without a reload: on coming back, on a timer, and a failed read keeps the number (t-5738)', async ({ page }) => {
+    let count = 0, fail = false, reads = 0;
+    await page.route('**/api/projects', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(PROJECTS) }));
+    await page.route('**/api/project-stats*', route => {
+      reads++;
+      if (fail) return route.abort();
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ updated: '2026-10-26', ticket_count: count, skills: ['sprint'] }) });
+    });
+    await page.clock.install();
+    await page.goto(BASE + '/cockpit');
+    const total = page.locator('.meta[data-stats="proj-a"] [data-f="count"]');
+    await expect(total).toHaveText('0');
+    // a ticket appears while the page stays open; coming back to the page (visibility) re-reads it
+    count = 3;
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await expect(total).toHaveText('3');
+    // the timer re-reads by itself while the Projects page is on screen
+    count = 5;
+    await page.clock.fastForward('00:31');
+    await expect(total).toHaveText('5');
+    // a failed read keeps the number already shown (not a dash)
+    fail = true; count = 9;
+    await page.clock.fastForward('00:31');
+    await page.waitForTimeout(300);
+    await expect(total).toHaveText('5');
+    // hidden Projects page: no reads on the timer
+    fail = false;
+    await page.evaluate(() => { document.getElementById('grid').style.display = 'none'; });
+    const before = reads; await page.clock.fastForward('01:05'); await page.waitForTimeout(300);
+    expect(reads).toBe(before);
+  });
+
   test('registering a skill shows a spinner, disables the card\'s buttons, and sends one request; success reloads (t-7d8d)', async ({ page }) => {
     const reg = await stubRegister(page);
     const sprint = regBtn(page, 'sprint'), eff = regBtn(page, 'efficiency');
