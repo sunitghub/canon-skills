@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-25-2026 16:25
+learnings-sweep last run: 10-26-2026 06:40
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-26 | [t-2af0](.tickets/t-2af0/learnings.md) | A guard test whose bad inputs also carry a wrong value is vacuous when a later check rejects them first (pin-file NUL/extra-field cases with an unrelated hash passed with the guards deleted): put the REAL value in the file and break only the one thing; and a mutation survivor is "equivalent" only after a probe shows no input reaches the difference | UNPROMOTED |
 | 2026-10-25 | [t-0aa7](.tickets/t-0aa7/learnings.md) | A global `sed` on a test id (`newTicketId(PROJECT_ROOT, 'gh8')`) also rewrote two unrelated tests: replace by line number or review the diff of every test file touched; and a Test Plan line that promises a case is graded by whether the case exists, so write the plan from the tests you will really add. A button that types a command at a prompt must be built from a validated id and accepted by the receiver only for that exact line | UNPROMOTED |
 | 2026-10-25 | [t-b2ff](.tickets/t-b2ff/learnings.md) | A path check keyed on a folder's alias name (`/etc`) misses its physical name on macOS (`/private/etc`), and resolving links works only forwards: list both spellings, and test the physical one. A launcher that sources a new sibling file breaks every test that copies a fixed file list into a fake install (five suites failed the first full run) | UNPROMOTED |
 | 2026-10-25 | [t-187e](.tickets/t-187e/learnings.md) | A new colour reused from a token that is fine in dark (`--st-work`) was 2.4:1 on a light card at 11px; a test that only asserts dark and light differ cannot see it, so assert the light value is not the known-pale token. A tool added to `tools/` also breaks every test that copies a fixed tool list (`subagent-log-cli.sh`) | UNPROMOTED |
