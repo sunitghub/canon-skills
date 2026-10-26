@@ -6662,6 +6662,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
     // A standalone board ignores shell messages (there is no shell), so these call what the messages call; the shell's keys are in the last test.
     const askBoard = (page, msg) => page.evaluate(async m => { const b = await import('/static/board-cockpit.js'); if (m.type === 'open-terminal-request') return b.openTerminalPane(m.placement); return b.projectTabNav(m.action); }, msg);
     const ovBox = page => page.locator('#cockpit-overlay').boundingBox();
+    // A Terminal pane takes the keyboard when it opens (the real terminal page relays the prefix to the shell itself; a stub page has no
+    // handler). Specs that go on to press keys in the board hand the keyboard back to it once the pane has taken it.
+    const boardOwnsKeys = async board => {
+      await expect.poll(() => board.locator('body').evaluate(() => document.activeElement && document.activeElement.tagName)).toBe('IFRAME');
+      await board.locator('#ck-back').focus();
+    };
 
     // Protects the Cockpit's `m` / `M` keys: the Board stays on screen and clickable while a Terminal runs in a pane below or beside it.
     test('Terminal pane (t-ccf5): below the Board with the Board still clickable; the handle resizes, resets and is remembered; closing restores the Board', async ({ page }) => {
@@ -6945,6 +6951,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await pressPrefix(page, 'm');
       await expect(board.locator('#cockpit')).toHaveClass(/term-mode/);
       await expect(board.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await boardOwnsKeys(board);
       await waitSessionLive(board);                          // x asks about a LIVE Terminal: wait for the stub's running status
       await pressPrefix(page, 'x');
       await expect(board.locator('#ck-leave-confirm')).toHaveClass(/open/);
@@ -6996,6 +7003,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('html')).not.toHaveClass(/side-collapsed/);
       await pressPrefix(page, 'm');
       await expect(board.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await boardOwnsKeys(board);
       await expect(board.locator('#cockpit')).not.toHaveClass(/rail-collapsed/);
       await pressPrefix(page, 'w');
       await expect(board.locator('#cockpit')).toHaveClass(/rail-collapsed/);
