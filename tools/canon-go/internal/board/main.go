@@ -146,10 +146,9 @@ func Run(buildVersion, buildCommit string, args []string) int {
 	// t-b2ff: a system folder, a drive root or the home folder is not a project: say so and start nothing.
 	home, _ := os.UserHomeDir()
 	folder := common.EnvOr("SPRINT_CHECK_ROOT", cwd)
-	if why := common.NotAProject(folder, home); why != "" {
+	if why := common.NotAProject(folder); why != "" {
 		abs, _ := filepath.Abs(folder)
-		m, _ := filepath.Glob(filepath.Join(abs, ".tickets", "*", "ticket.md"))
-		for _, line := range common.NotAProjectMessage("canon", abs, why, home, len(m) > 0, runtime.GOOS) {
+		for _, line := range common.NotAProjectMessage("canon", abs, why, home, runtime.GOOS) {
 			fmt.Fprintln(os.Stderr, line)
 		}
 		return 1
@@ -2195,11 +2194,17 @@ func keywordSet(text string, stop map[string]bool) map[string]bool {
 
 func findProjectRoot(start string) string {
 	dir, _ := filepath.Abs(start)
+	startAbs := dir
 	home, _ := os.UserHomeDir()
 	for {
-		// t-5738: a .tickets in a folder the guard refuses (home, a drive root, a system folder) is not a project's; skip it, as tickets_dir does
-		if exists(filepath.Join(dir, ".git")) || (exists(filepath.Join(dir, ".tickets")) && common.NotAProject(dir, home) == "") {
+		// t-5738/t-dec4: a .tickets in a drive root or system folder, or in home when the walk did not start there, is not this project's;
+		// skip it, as tickets_dir does
+		if exists(filepath.Join(dir, ".git")) || (exists(filepath.Join(dir, ".tickets")) && !common.SkipTickets(dir, start, home)) {
 			return dir
+		}
+		// t-dec4: a folder under home is its own project, so the walk stops at home; nothing above it can be its project
+		if dir != startAbs && common.IsHome(dir, home) {
+			return start
 		}
 		next := filepath.Dir(dir)
 		if next == dir {

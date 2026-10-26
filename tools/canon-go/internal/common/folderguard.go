@@ -19,10 +19,11 @@ var (
 	unixSystem     = map[string]bool{"/usr": true, "/bin": true, "/sbin": true, "/etc": true, "/var": true, "/private/etc": true, "/private/var": true, "/opt": true, "/system": true, "/library": true, "/applications": true}
 )
 
-// NotAProject returns the reason dir is refused ("a system folder", "your home folder", "the root of a drive") or "".
+// NotAProject returns the reason dir is refused ("a system folder" or "the root of a drive") or "". The home folder is NOT refused (t-dec4:
+// it is a project like any other); IsHome is how the walk-up recognises it, so a folder under home never adopts home's .tickets.
 // A .git at dir (inside the Windows tree: at dir or any folder above it) makes it a project; a .tickets folder never does.
 // The folder is checked as given and with its links resolved (/var is /private/var on macOS).
-func NotAProject(dir, home string) string {
+func NotAProject(dir string) string {
 	abs := dir
 	if len(dir) < 2 || dir[1] != ':' { // a drive path is classified by its name on any OS
 		var err error
@@ -36,14 +37,14 @@ func NotAProject(dir, home string) string {
 		forms = append(forms, r)
 	}
 	for _, f := range forms {
-		if why := refused(f, home); why != "" {
+		if why := refused(f); why != "" {
 			return why
 		}
 	}
 	return ""
 }
 
-func refused(abs, home string) string {
+func refused(abs string) string {
 	p := strings.ToLower(filepath.ToSlash(abs))
 	why, tree := "", windowsTreeRe.MatchString(p)
 	switch {
@@ -51,8 +52,6 @@ func refused(abs, home string) string {
 		why = "the root of a drive"
 	case tree || windowsExactRe.MatchString(p) || unixSystem[p]:
 		why = "a system folder"
-	case home != "" && sameFolder(abs, home):
-		why = "your home folder"
 	default:
 		return ""
 	}
@@ -64,6 +63,29 @@ func refused(abs, home string) string {
 			return why
 		}
 	}
+}
+
+// IsHome says dir is the home folder itself (links resolved, case ignored). t-dec4: a .tickets in home belongs to a project started IN home;
+// a folder under home must not walk up into it (t-5738), so findProjectRoot and ticketsDirIn skip it unless the walk started there.
+func IsHome(dir, home string) bool {
+	if home == "" || dir == "" {
+		return false
+	}
+	abs := dir
+	if len(dir) < 2 || dir[1] != ':' {
+		var err error
+		if abs, err = filepath.Abs(dir); err != nil {
+			return false
+		}
+	}
+	return sameFolder(abs, home)
+}
+
+// SkipTickets says a .tickets in dir is not the project's of a walk that started at start: dir is a refused folder (system folder, drive
+// root), or it is the home folder and the walk did NOT start there. One rule for the board's findProjectRoot and the daemon's ticketsDirIn;
+// tools/ticket-root.sh's tickets_dir is its shell twin (t-5738, t-dec4).
+func SkipTickets(dir, start, home string) bool {
+	return NotAProject(dir) != "" || (IsHome(dir, home) && !sameFolder(dir, start))
 }
 
 // sameFolder: the same folder, resolving links and ignoring case (Windows and macOS file systems do).
@@ -95,20 +117,15 @@ func DisplayPath(p, goos string) string {
 	return p
 }
 
-// NotAProjectMessage is what canon, tkt and sprint print when the folder is refused (t-5738, t-dec4): why, a folder to make with a command
-// the user's shell accepts (Windows: mkdir "C:\Users\x\projects\demo", works in PowerShell, cmd and Git Bash; elsewhere mkdir -p), and, when
-// the refused home folder holds tickets from an earlier run, how to move them (nothing here moves anything). tools/ticket-root.sh prints the
-// same words (require_project_folder); tests/folder-guard.sh compares the two.
-func NotAProjectMessage(tool, dir, why, home string, hasTickets bool, goos string) []string {
+// NotAProjectMessage is what canon, tkt and sprint print when the folder is refused (a system folder or a drive root; t-dec4): why, and a folder
+// to make with a command the user's shell accepts (Windows: mkdir "C:\Users\x\projects\demo", works in PowerShell, cmd and Git Bash;
+// elsewhere mkdir -p). tools/ticket-root.sh prints the same words (require_project_folder); tests/folder-guard.sh compares the two.
+func NotAProjectMessage(tool, dir, why, home, goos string) []string {
 	shown, h := DisplayPath(dir, goos), DisplayPath(home, goos)
-	sep, mk, mv := "/", "mkdir -p", "mv"
+	sep, mk := "/", "mkdir -p"
 	if goos == "windows" {
-		sep, mk, mv = `\`, "mkdir", "move"
+		sep, mk = `\`, "mkdir"
 	}
 	demo := h + sep + "projects" + sep + "demo"
-	out := []string{tool + ": " + shown + " is not a project (" + why + " with no git repository). Make a folder for your work, for example: " + mk + ` "` + demo + `", cd into it, run git init, then run ` + tool + " again."}
-	if why == "your home folder" && hasTickets {
-		out = append(out, tool+": "+shown+" has a .tickets folder with tickets in it, left by an earlier run. If they belong to a project, move the folder into it (nothing here moves it for you), for a project that has no .tickets yet: "+mv+` "`+shown+sep+`.tickets" "`+demo+sep+`.tickets"`)
-	}
-	return out
+	return []string{tool + ": " + shown + " is not a project (" + why + " with no git repository). Make a folder for your work, for example: " + mk + ` "` + demo + `", cd into it, run git init, then run ` + tool + " again."}
 }

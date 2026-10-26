@@ -3,7 +3,6 @@ package common
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -29,47 +28,45 @@ func TestNotAProject(t *testing.T) {
 		t.Fatal(err)
 	}
 	cases := []struct {
-		name, dir, home, want string
+		name, dir, want string
 	}{
-		{"the filesystem root", "/", home, "the root of a drive"},
-		{"a drive root", `C:\`, home, "the root of a drive"},
-		{"a drive root, lower case", "c:", home, "the root of a drive"},
-		{"System32", `C:\Windows\System32`, home, "a system folder"},
-		{"System32, odd case, slashes", "c:/WINDOWS/system32", home, "a system folder"},
-		{"the Windows folder", `C:\Windows`, home, "a system folder"},
-		{"inside the Windows tree", `C:\Windows\System32\drivers`, home, "a system folder"},
-		{"Program Files", `C:\Program Files`, home, "a system folder"},
-		{"Program Files (x86)", `C:\Program Files (x86)`, home, "a system folder"},
-		{"ProgramData", `D:\ProgramData`, home, "a system folder"},
-		{"/usr", "/usr", home, "a system folder"},
-		{"/etc", "/etc", home, "a system folder"},
-		{"/var", "/var", home, "a system folder"},
-		{"/System", "/System", home, "a system folder"},
-		{"/Applications", "/Applications", home, "a system folder"},
-		{"/bin", "/bin", home, "a system folder"},
-		{"/private/etc (macOS's own name for /etc)", "/private/etc", home, "a system folder"},
-		{"/private/var", "/private/var", home, "a system folder"},
-		{"a folder under /private/var is fine", "/private/var/folders/x/T", home, ""},
-		{"/sbin", "/sbin", home, "a system folder"},
-		{"/opt", "/opt", home, "a system folder"},
-		{"/Library", "/Library", home, "a system folder"},
-		{"a folder inside Program Files is fine", `C:\Program Files\Foo`, home, ""},
-		{"a folder that only starts with Windows is fine", `C:\Windowsfoo`, home, ""},
-		{"a drive-looking piece in the middle is not a drive", "/tmp/c:/windows/x", home, ""},
-		{"a user folder is fine", `C:\Users\sam\proj`, home, ""},
-		{"the home folder", home, home, "your home folder"},
-		{"a unix subfolder is fine", "/usr/local/src/p", home, ""},
-		{"a temp folder under /var is fine", filepath.Join(plain), home, ""},
-		{"a folder inside home is fine", sub, home, ""},
-		{"a plain folder with no git is fine", plain, home, ""},
-		{"a git project is fine", proj, home, ""},
-		{"a dotfiles repository in the home folder is a project", gitHome, gitHome, ""},
-		{".tickets alone does not rescue the home folder", ticketsOnly, ticketsOnly, "your home folder"},
-		{"a .tickets-only folder is fine", ticketsOnly, home, ""},
-		{"an empty home is never matched", plain, "", ""},
+		{"the filesystem root", "/", "the root of a drive"},
+		{"a drive root", `C:\`, "the root of a drive"},
+		{"a drive root, lower case", "c:", "the root of a drive"},
+		{"System32", `C:\Windows\System32`, "a system folder"},
+		{"System32, odd case, slashes", "c:/WINDOWS/system32", "a system folder"},
+		{"the Windows folder", `C:\Windows`, "a system folder"},
+		{"inside the Windows tree", `C:\Windows\System32\drivers`, "a system folder"},
+		{"Program Files", `C:\Program Files`, "a system folder"},
+		{"Program Files (x86)", `C:\Program Files (x86)`, "a system folder"},
+		{"ProgramData", `D:\ProgramData`, "a system folder"},
+		{"/usr", "/usr", "a system folder"},
+		{"/etc", "/etc", "a system folder"},
+		{"/var", "/var", "a system folder"},
+		{"/System", "/System", "a system folder"},
+		{"/Applications", "/Applications", "a system folder"},
+		{"/bin", "/bin", "a system folder"},
+		{"/private/etc (macOS's own name for /etc)", "/private/etc", "a system folder"},
+		{"/private/var", "/private/var", "a system folder"},
+		{"a folder under /private/var is fine", "/private/var/folders/x/T", ""},
+		{"/sbin", "/sbin", "a system folder"},
+		{"/opt", "/opt", "a system folder"},
+		{"/Library", "/Library", "a system folder"},
+		{"a folder inside Program Files is fine", `C:\Program Files\Foo`, ""},
+		{"a folder that only starts with Windows is fine", `C:\Windowsfoo`, ""},
+		{"a drive-looking piece in the middle is not a drive", "/tmp/c:/windows/x", ""},
+		{"a user folder is fine", `C:\Users\sam\proj`, ""},
+		{"the home folder is a project like any other (t-dec4)", home, ""},
+		{"a unix subfolder is fine", "/usr/local/src/p", ""},
+		{"a temp folder under /var is fine", filepath.Join(plain), ""},
+		{"a folder inside home is fine", sub, ""},
+		{"a plain folder with no git is fine", plain, ""},
+		{"a git project is fine", proj, ""},
+		{"a dotfiles repository in the home folder is a project", gitHome, ""},
+		{"a .tickets-only folder is fine", ticketsOnly, ""},
 	}
 	for _, c := range cases {
-		if got := NotAProject(c.dir, c.home); got != c.want {
+		if got := NotAProject(c.dir); got != c.want {
 			t.Errorf("%s: NotAProject(%q) = %q, want %q", c.name, c.dir, got, c.want)
 		}
 	}
@@ -94,20 +91,40 @@ func TestDisplayPath(t *testing.T) {
 }
 
 func TestNotAProjectMessage(t *testing.T) {
-	win := NotAProjectMessage("tkt", "/c/Users/agentops", "your home folder", `C:\Users\agentops`, true, "windows")
-	wantWin := []string{
-		`tkt: C:\Users\agentops is not a project (your home folder with no git repository). Make a folder for your work, for example: mkdir "C:\Users\agentops\projects\demo", cd into it, run git init, then run tkt again.`,
-		`tkt: C:\Users\agentops has a .tickets folder with tickets in it, left by an earlier run. If they belong to a project, move the folder into it (nothing here moves it for you), for a project that has no .tickets yet: move "C:\Users\agentops\.tickets" "C:\Users\agentops\projects\demo\.tickets"`,
+	win := NotAProjectMessage("tkt", "/c/Windows/System32", "a system folder", `C:\Users\agentops`, "windows")
+	wantWin := `tkt: C:\Windows\System32 is not a project (a system folder with no git repository). Make a folder for your work, for example: mkdir "C:\Users\agentops\projects\demo", cd into it, run git init, then run tkt again.`
+	if len(win) != 1 || win[0] != wantWin {
+		t.Errorf("windows message:\n%q\nwant:\n%q", win, wantWin)
 	}
-	if strings.Join(win, "\n") != strings.Join(wantWin, "\n") {
-		t.Errorf("windows message:\n%s\nwant:\n%s", strings.Join(win, "\n"), strings.Join(wantWin, "\n"))
-	}
-	unix := NotAProjectMessage("canon", "/home/sam", "your home folder", "/home/sam", false, "linux")
-	wantUnix := `canon: /home/sam is not a project (your home folder with no git repository). Make a folder for your work, for example: mkdir -p "/home/sam/projects/demo", cd into it, run git init, then run canon again.`
+	unix := NotAProjectMessage("canon", "/usr", "a system folder", "/home/sam", "linux")
+	wantUnix := `canon: /usr is not a project (a system folder with no git repository). Make a folder for your work, for example: mkdir -p "/home/sam/projects/demo", cd into it, run git init, then run canon again.`
 	if len(unix) != 1 || unix[0] != wantUnix {
 		t.Errorf("unix message: %q", unix)
 	}
-	if got := NotAProjectMessage("canon", "/usr", "a system folder", "/home/sam", true, "linux"); len(got) != 1 {
-		t.Errorf("the move hint is for the home folder only: %q", got)
+}
+
+// t-dec4: home is a project when the walk starts there, and a folder under home never adopts home's .tickets.
+func TestSkipTicketsAndIsHome(t *testing.T) {
+	home := t.TempDir()
+	under := filepath.Join(home, "Documents")
+	if err := os.Mkdir(under, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name, dir, start string
+		want             bool
+	}{
+		{"home, walk started in home: taken", home, home, false},
+		{"home, walk started under home: skipped", home, under, true},
+		{"a folder under home is taken", under, under, false},
+		{"a system folder is skipped", "/etc", "/etc", true},
+		{"a drive root is skipped", `C:\`, `C:\`, true},
+	} {
+		if got := SkipTickets(c.dir, c.start, home); got != c.want {
+			t.Errorf("%s: SkipTickets(%q,%q) = %v, want %v", c.name, c.dir, c.start, got, c.want)
+		}
+	}
+	if !IsHome(home, home) || IsHome(under, home) || IsHome(home, "") {
+		t.Error("IsHome: wrong")
 	}
 }

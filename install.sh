@@ -82,5 +82,5 @@ else
   printf '\nInstalled the verified release %s. Update any time with: canon update\n' "$(git -C "$TARGET" describe --tags --exact-match 2>/dev/null || echo '')"
 fi
 printf '\nDone.\n\n'
-# t-5738: a first-time user has no project folder yet; canon refuses the home folder, so say where to go
+# t-5738: a first-time user has no project folder yet; say where to go (canon works in the home folder too, but a project folder keeps tickets with the project)
 printf 'Next: open a terminal in your project folder (for example %s/projects/demo; make it with mkdir -p, then git init) and run: canon\n\n' "$HOME"

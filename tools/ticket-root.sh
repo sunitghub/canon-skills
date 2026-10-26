@@ -3,10 +3,11 @@
 tickets_dir() {
   local dir="$PWD"
   while [[ "$dir" != "/" ]]; do
-    # t-5738: a .tickets in a folder the guard refuses (the home folder, a drive root, a system folder) is not a project's: a stray
-    # ~/.tickets made every folder under home resolve to home. Skip it and keep walking; a .git there still counts.
-    # (a folder with its own .git is a project at once, so the guard, which forks about twenty times, runs only without one)
-    if [[ -d "$dir/.tickets" ]] && { [[ -d "$dir/.git" ]] || [[ -z "$(folder_guard_reason "$dir")" ]]; }; then echo "$dir/.tickets"; return 0; fi
+    # t-5738/t-dec4: a .tickets in a drive root or a system folder, or in the home folder when the walk did NOT start there, is not this
+    # project's: a stray ~/.tickets made every folder under home resolve to home. Skip it and keep walking; a .git there still counts.
+    # Started IN home, home is a project like any other. (A folder with its own .git is a project at once, so the guard, which forks about
+    # twenty times, runs only without one.)
+    if [[ -d "$dir/.tickets" ]] && { [[ -d "$dir/.git" ]] || { [[ -z "$(folder_guard_reason "$dir")" ]] && { [[ "$dir" == "$PWD" ]] || ! _is_home_folder "$dir"; }; }; }; then echo "$dir/.tickets"; return 0; fi
     [[ -d "$dir/.git" ]] && echo "$dir/.tickets" && return 0
     # t-cd06: a git-worktree checkout's .git is a FILE ("gitdir: <repo>/.git/
     # worktrees/<name>"), not a directory — the check above never matches it,
@@ -38,6 +39,9 @@ tickets_dir() {
           ;;
       esac
     fi
+    # t-dec4: a folder under home is its own project, so the walk stops AT home when it started below it: nothing above home (C:\Users, /Users)
+    # can be its project. (Exact match first; the helper only when the last names agree, so an ordinary walk forks nothing.)
+    if [[ "$dir" != "$PWD" ]] && { [[ "$dir" == "${HOME:-}" ]] || { [[ -n "${HOME:-}" && "${dir##*/}" == "${HOME##*/}" ]] && _is_home_folder "$dir"; }; }; then break; fi
     dir="$(dirname "$dir")"
   done
   echo "$PWD/.tickets"
@@ -97,7 +101,7 @@ late_docs_delta() {
   printf '%s\n' "$files" | grep . || true
 }
 
-# t-b2ff: canon must not treat a system folder, a drive root or the home folder as a project (an Administrator PowerShell opens in
+# t-b2ff: canon must not treat a system folder or a drive root as a project (t-dec4: the home folder is one; see _is_home_folder) (an Administrator PowerShell opens in
 # C:\Windows\System32; canon there would serve, then fill, a folder nobody keeps tickets in). folder_guard_reason <dir> prints why
 # <dir> is refused, or nothing. The same table is common.NotAProject in tools/canon-go/internal/common/folderguard.go (the board);
 # tests/folder-guard.sh and its Go test run one corpus through both. A .git at <dir> (inside the Windows tree: at it or above it)
@@ -115,9 +119,19 @@ folder_guard_reason() {
   done
 }
 
+# _is_home_folder <dir>: dir is the home folder itself (links resolved, case ignored). The home folder is not refused (t-dec4); the walk-up in
+# tickets_dir uses this so a folder under home never adopts home's .tickets. Go twin: common.IsHome.
+_is_home_folder() {
+  local d h
+  [[ -n "${HOME:-}" ]] || return 1
+  d="$(cd "$1" 2>/dev/null && pwd -P)" || return 1
+  h="$(cd "$HOME" 2>/dev/null && pwd -P)" || return 1
+  [[ "$(printf '%s' "$d" | tr 'A-Z' 'a-z')" == "$(printf '%s' "$h" | tr 'A-Z' 'a-z')" ]]
+}
+
 # _folder_guard_one <absolute path or C:\ form>: the reason for that one spelling of a folder, or nothing.
 _folder_guard_one() {
-  local dir="$1" p why="" tree=0 d h
+  local dir="$1" p why="" tree=0 d
   case "$dir" in
     [A-Za-z]:*) p="$(printf '%s' "$dir" | tr 'A-Z\\' 'a-z/')"; p="/${p%%:*}${p#*:}"; dir="$p" ;;   # a C:\ form is walked as /c/...
     *) p="$(printf '%s' "$dir" | tr 'A-Z' 'a-z')" ;;
@@ -128,11 +142,6 @@ _folder_guard_one() {
     /[a-z]/windows|/[a-z]/windows/*) why="a system folder"; tree=1 ;;
     "/"[a-z]"/program files"|"/"[a-z]"/program files (x86)"|/[a-z]/programdata) why="a system folder" ;;
     /usr|/bin|/sbin|/etc|/var|/private/etc|/private/var|/opt|/system|/library|/applications) why="a system folder" ;;
-    *)
-      if [[ -n "${HOME:-}" ]]; then
-        h="$(cd "$HOME" 2>/dev/null && pwd -P)" || h=""
-        [[ -n "$h" && "$(printf '%s' "$dir" | tr 'A-Z' 'a-z')" == "$(printf '%s' "$h" | tr 'A-Z' 'a-z')" ]] && why="your home folder"
-      fi ;;
   esac
   [[ -n "$why" ]] || return 0
   d="$dir"
@@ -154,17 +163,14 @@ require_project_folder() {
   # t-5738/t-dec4: say where to go (a first-time user has no project folder yet), in the user's own shell form: on Windows the folder is
   # C:\Users\x (not Git Bash's /c/Users/x) and the example works in PowerShell, cmd and Git Bash. Same words as common.NotAProjectMessage
   # (internal/common/folderguard.go); tests/folder-guard.sh compares them. CANON_HOST_OS is a test hook for uname.
-  local shown home_shown demo mk mv sep=/
-  shown="$(cd "$dir" 2>/dev/null && pwd -P || printf '%s' "$dir")"; home_shown="${HOME:-~}"; mk="mkdir -p"; mv=mv
+  local shown home_shown demo mk sep=/
+  shown="$(cd "$dir" 2>/dev/null && pwd -P || printf '%s' "$dir")"; home_shown="${HOME:-~}"; mk="mkdir -p"
   case "${CANON_HOST_OS:-$(uname -s 2>/dev/null)}" in
     MINGW*|MSYS*|CYGWIN*)
-      sep='\'; mk=mkdir; mv=move
+      sep='\'; mk=mkdir
       if command -v cygpath >/dev/null 2>&1; then shown="$(cygpath -w "$shown" 2>/dev/null || printf '%s' "$shown")"; home_shown="$(cygpath -w "$home_shown" 2>/dev/null || printf '%s' "$home_shown")"; fi ;;
   esac
   demo="$home_shown${sep}projects${sep}demo"
   echo "$tool: $shown is not a project ($why with no git repository). Make a folder for your work, for example: $mk \"$demo\", cd into it, run git init, then run $tool again." >&2
-  if [[ "$why" == "your home folder" ]] && compgen -G "$dir/.tickets/*/ticket.md" >/dev/null 2>&1; then
-    echo "$tool: $shown has a .tickets folder with tickets in it, left by an earlier run. If they belong to a project, move the folder into it (nothing here moves it for you), for a project that has no .tickets yet: $mv \"$shown${sep}.tickets\" \"$demo${sep}.tickets\"" >&2
-  fi
   exit 1
 }

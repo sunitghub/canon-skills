@@ -1894,3 +1894,23 @@ func TestStartupBannerNamesTheInstalledVersion(t *testing.T) {
 		t.Errorf("a stamped commit is not shown: %q", got)
 	}
 }
+
+// t-dec4: a folder under home is its own project, so the walk stops at home: a .tickets in the folder ABOVE home (C:\Users, /Users) never
+// becomes its project, and home itself, started in, is a project with its own .tickets.
+func TestFindProjectRootStopsAtHome(t *testing.T) {
+	parent := t.TempDir()
+	home := filepath.Join(parent, "home")
+	for _, d := range []string{filepath.Join(parent, ".tickets"), filepath.Join(home, ".tickets"), filepath.Join(home, "sub")} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	if got := findProjectRoot(filepath.Join(home, "sub")); got != filepath.Join(home, "sub") {
+		t.Errorf("a folder under home with a .tickets above home: got %q", got)
+	}
+	if got := findProjectRoot(home); got != home {
+		t.Errorf("home itself: got %q", got)
+	}
+}

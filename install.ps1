@@ -251,7 +251,7 @@ if ($Bootstrap) {
   } else {
     Write-Host "==> Open a new PowerShell window and run: canon"
   }
-  # t-5738: this branch is `irm https://getcanon.dev/install.ps1 | iex` and `canon update`, the first-run path; canon refuses your home folder
+  # t-5738: this branch is `irm https://getcanon.dev/install.ps1 | iex` and `canon update`, the first-run path
   Write-Host "==> Next: open a terminal in your project folder (for example $HOME\projects\demo; make it with mkdir, then git init) and run: canon"
   Write-Host "canon installed successfully."
   return
@@ -264,7 +264,7 @@ Write-Host ""
 Write-Host "Fully quit and reopen VS Code, then from your project folder run:"
 Write-Host "  skills add sprint"
 Write-Host ""
-# t-5738: canon refuses your home folder, and a first-time user has no project folder yet
+# t-5738: a first-time user has no project folder yet (canon works in the home folder too, but a project folder keeps tickets with the project)
 Write-Host "Next: open a terminal in your project folder (for example $HOME\projects\demo; make it with mkdir, then git init) and run: canon"
 Write-Host ""
 Write-Host "For this terminal only, you can also run:"

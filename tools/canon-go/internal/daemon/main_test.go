@@ -8486,3 +8486,23 @@ func TestTicketsDirInSkipsAStrayHomeTickets(t *testing.T) {
 		}
 	}
 }
+
+// t-dec4: the daemon's per-project walk also stops at home, so a .tickets above home is never a folder under home's project.
+func TestTicketsDirInStopsAtHome(t *testing.T) {
+	parent := t.TempDir()
+	home := filepath.Join(parent, "home")
+	for _, d := range []string{filepath.Join(parent, ".tickets"), filepath.Join(home, ".tickets"), filepath.Join(home, "sub")} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	s := &server{}
+	if got, want := s.ticketsDirIn(filepath.Join(home, "sub")), filepath.Join(home, "sub", ".tickets"); got != want {
+		t.Errorf("under home: got %q, want %q", got, want)
+	}
+	if got, want := s.ticketsDirIn(home), filepath.Join(home, ".tickets"); got != want {
+		t.Errorf("home itself: got %q, want %q", got, want)
+	}
+}
