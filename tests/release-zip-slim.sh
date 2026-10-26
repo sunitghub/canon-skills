@@ -57,7 +57,7 @@ check_zip() {
   while IFS= read -r f; do
     [[ -f "$top/$f" ]] || continue
     [[ "$(git -C "$R" rev-parse "v9.9.9:$f")" == "$(git hash-object --no-filters "$top/$f")" ]] || echo "$f differs from the tag"
-  done < <(printf '%s\n' "$want" | head -400)
+  done < <(printf '%s\n' "$want")
   # 4. size: the point of the exclusions
   kb="$(du -sk "$top" | cut -f1)"; files="$(find "$top" -type f | wc -l | tr -d ' ')"
   (( kb <= 4608 )) || echo "unpacked size ${kb} KB is over 4608 KB"
@@ -83,7 +83,8 @@ re='^v9\.9\.9 [0-9a-f]{64} [0-9a-f]{40}$'
 # the tools run from the unpacked tree, in a scratch project, with the user's HOME kept out of it
 top="$WORK/u1/canon-9.9.9"; P="$WORK/proj"; mkdir -p "$P"; git -C "$P" init -q
 (cd "$P" && HOME="$WORK/home" CANON_HOME="$WORK/home/.canon" bash "$top/tools/tkt" --version >/dev/null 2>&1) || fail "release-zip-slim: tkt --version did not run from the unpacked zip"
-(cd "$P" && HOME="$WORK/home" CANON_HOME="$WORK/home/.canon" bash "$top/tools/canon" version 2>&1 | grep -q "$(cat "$top/VERSION")") || fail "release-zip-slim: canon version did not name $(cat "$top/VERSION")"
+cv="$(cd "$P" && HOME="$WORK/home" CANON_HOME="$WORK/home/.canon" bash "$top/tools/canon" version 2>&1 || true)"
+[[ "$cv" == *"$(cat "$top/VERSION")"* ]] || fail "release-zip-slim: canon version did not name $(cat "$top/VERSION"): $cv"
 out="$(bash "$top/tools/cloud-env.sh" script --go 2>&1)"; [[ "$out" == *"go.dev/dl"* && "$out" == *"canon-go/go.mod"* ]] || fail "release-zip-slim: cloud-env.sh script --go is wrong from the unpacked zip"
 grep -q '^toolchain go' "$top/tools/canon-go/go.mod" || fail "release-zip-slim: go.mod has no toolchain line"
 echo "release-zip-slim: tkt, canon and cloud-env run from the unpacked zip; go.mod keeps its toolchain line"

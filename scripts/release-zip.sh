@@ -41,7 +41,7 @@ while IFS= read -r f; do
   [ -n "$f" ] || continue
   case "$f" in *[!A-Za-z0-9._/@+-]*) die "a path under meta/ has a character the slim list cannot name: $f" ;; esac
   base="${f##*/}"
-  if [ "${f%/*}" = "meta/screenshots" ] && printf '%s\n' "$keep_shots" | grep -qxF "$base"; then continue; fi
+  if [ "${f%/*}" = "meta/screenshots" ]; then case $'\n'"$keep_shots"$'\n' in *$'\n'"$base"$'\n'*) continue ;; esac; fi
   exclude+=(":(exclude)$f")
 done < <(git -C "$REPO_ROOT" ls-tree -r --name-only "$tag_ref" -- meta 2>/dev/null)
 
