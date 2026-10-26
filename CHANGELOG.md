@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.20.6] - 2026-10-26
+
+Canon starts in your home folder, and the Windows first-run text is right. Update with `canon update`, then restart the board so it loads the new program.
+
 ### Changed
 - **`canon`, `tkt` and `sprint` start in your home folder** (`t-dec4`): the home folder is a project like any other, with its tickets in `~/.tickets` (macOS, Linux, Windows). A folder under home is its own project: the search stops at home, so home's `.tickets` or `.git` (a dotfiles repository) and anything above home cannot take over the folders beneath it. Drive roots and system folders are still refused.
 
