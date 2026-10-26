@@ -679,10 +679,12 @@ _canon_setup_edit_only() (   # a subshell, so its EXIT trap removes the scratch 
     # by a tool is LF (t-ae3b), so compare with carriage returns removed.
     tr -d '\r' < "$tmp/$name" > "$tmp/want.lf"; tr -d '\r' < "$wroot/$path" > "$tmp/have.lf"
     cmp -s "$tmp/want.lf" "$tmp/have.lf" && exit 0
+    diff "$tmp/want.lf" "$tmp/have.lf" > "$tmp/d.$v" 2>/dev/null || true
   done
-  # No variant matched: say how the file differs from canon's own edit, so a refusal is not a bare "changed" (t-ae3b).
-  echo "note: $path differs from canon's own setup edit (diff of canon's edit vs the file, first lines):"
-  diff "$tmp/want.lf" "$tmp/have.lf" 2>/dev/null | sed -n '1,4p' | cut -c1-120 | sed 's/^/  /' || true
+  # No variant matched: say how the file differs from canon's own edit (the closest variant's diff), so a refusal is not a bare "changed" (t-ae3b).
+  echo "note: $path differs from canon's own setup edit (closest diff, canon's edit vs the file):"
+  wc -l "$tmp"/d.* 2>/dev/null | grep -v ' total$' | sort -n | head -1 | awk '{print $2}' | while IFS= read -r best; do
+    sed -n '1,4p' "$best" | cut -c1-120 | sed 's/^/  /'; done
   exit 1
 )
 
