@@ -1969,12 +1969,22 @@ func TestGitHubPostActionsAreAllHandled(t *testing.T) {
 		t.Fatal("could not read the action list of apiGitHubPostRe from main.go")
 	}
 	actions := strings.Split(m[1], "|")
-	if len(actions) < 8 {
-		t.Fatalf("read too few actions: %v", actions)
+	if len(actions) == 0 || actions[0] == "" {
+		t.Fatalf("read no actions: %q", m[1])
 	}
+	// Only the POST handler's own body counts (the GET routes have their own `case "status":` etc.), and a comment never does.
+	start := strings.Index(text, "apiGitHubPostRe.FindStringSubmatch(path)")
+	if start < 0 {
+		t.Fatal("could not find the POST handler in main.go")
+	}
+	end := strings.Index(text[start:], "apiHeadlessRunRe.FindStringSubmatch(path)")
+	if end < 0 {
+		t.Fatal("could not find the end of the POST handler in main.go")
+	}
+	body := regexp.MustCompile(`(?m)//.*$`).ReplaceAllString(text[start:start+end], "")
 	for _, a := range actions {
-		if !strings.Contains(text, `case "`+a+`":`) && !strings.Contains(text, `m[2] == "`+a+`"`) {
-			t.Errorf("the action %q is in apiGitHubPostRe but the handler has no branch for it (it would not be handled)", a)
+		if !strings.Contains(body, `case "`+a+`":`) && !strings.Contains(body, `m[2] == "`+a+`"`) {
+			t.Errorf("the action %q is in apiGitHubPostRe but the POST handler has no branch for it (it would not be handled)", a)
 		}
 	}
 }
