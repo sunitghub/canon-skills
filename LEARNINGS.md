@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-26-2026 16:55
+learnings-sweep last run: 10-26-2026 17:55
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-26 | [t-b266](.tickets/t-b266/learnings.md) | A guard that replays a writer's output and byte-compares must be run under the platform setting that changes bytes (core.autocrlf, LF-only file): the Mac-only fixture passed while the same code refused canon's own lines on Windows; and an id validator copied by hand drifts, so grep for the old spelling in a test. | UNPROMOTED |
 | 2026-10-26 | [t-3954](.tickets/t-3954/learnings.md) | A release asset's exclusion list needs a test that unpacks a built artifact and checks every path the install READS, with the reader cited per path, plus a revert check per rule: the reviewer found a failure path (a failed download on a slim install hitting a bare Go error) that no list check could see. | UNPROMOTED |
 | 2026-10-26 | [t-a5c9](.tickets/t-a5c9/learnings.md) | A cache key must name what the cached value depends on (the loaded list, not just its length), and a test for it needs inputs where the stale answer DIFFERS from the fresh one: my first memo test used ids that matched neither reading, so it passed with the memo broken | UNPROMOTED |
 | 2026-10-26 | [t-b874](.tickets/t-b874/learnings.md) | A reader of a log other agents write must count what the log means (one run per agent id), not its lines, and read per-ticket files once: the run log held two lines per run (29 lines for 24 runs) and a crafted log cost 217 s; test the counting on the REAL log's quirks, not a fixture that gives every run a unique id. Also: a cloud PR is a draft and GitHub will not merge it, but merge-pr found out only after 3.5 min of tests (t-a463) | UNPROMOTED |
