@@ -83,20 +83,21 @@ export async function load(){
 }
 
 // t-67ab: the card's Branch row (hidden when the project has no git, t-5a4b).
-async function fillCardBranch(id,el){
+async function fillCardBranch(id,el,refresh){
   const br=el.querySelector('[data-f="branch"]');
   try{
     const r=await fetch('/api/git?project='+encodeURIComponent(id)); const g=r.ok?await r.json():null;
+    if(refresh&&!g) return;   // a failed refresh keeps the branch already shown
     const row=br.closest('.metarow');
     if(g&&g.is_git===false){ if(row) row.hidden=true; }
     else{ if(row) row.hidden=false; br.textContent=(g&&g.branch)||'—'; }
-  }catch(e){ br.textContent='—'; }
+  }catch(e){ if(!refresh) br.textContent='—'; }
 }
 
 // t-5738: the cards were filled once at load, so tickets made while the Cockpit stayed open never showed (Total Tickets 0 until a restart).
-// refreshStats re-reads every card: when the Projects page is shown again and every 30 s while it is on screen. A card still fetching is
-// has one read at a time: a request that arrives mid-read is remembered and re-read once, so the newer state is never dropped. A failed
-// refresh keeps the value already shown.
+// refreshStats re-reads every card (tickets, updated, skills, branch, git icon; not Factory) when the Projects page is shown again and
+// every 30 s while it is on screen. A card has one read at a time: a request that arrives mid-read is remembered and re-read once, so
+// the newer state is never dropped. A failed refresh keeps the value already shown.
 const statsBusy=new Set(), statsAgain=new Set();
 export function refreshStats(){
   registeredProjects.forEach(p=>{
@@ -112,8 +113,8 @@ function projectsPageShown(){ const g=document.getElementById('grid'); return !!
 async function fillCardStats(id,refresh){
   const el=document.querySelector('.meta[data-stats="'+(window.CSS&&CSS.escape?CSS.escape(id):id)+'"]');
   if(!el) return;
-  fillCardBranch(id,el);
-  fillCardFactory(id,el);
+  fillCardBranch(id,el,refresh);
+  if(!refresh) fillCardFactory(id,el);   // Factory has its own refresh; re-reading it here would re-run gh every interval
   const up=el.querySelector('[data-f="updated"]'), ct=el.querySelector('[data-f="count"]'), sk=el.querySelector('[data-f="skills"]');
   try{
     const r=await fetch('/api/project-stats?project='+encodeURIComponent(id));
@@ -139,9 +140,9 @@ async function fillCardStats(id,refresh){
     // t-8d72 (was the t-d538 chip): the Git icon reads the same status and stays hidden when it cannot say.
     const gs=card&&card.querySelector('.gitstate');
     if(gs){
-      let st=null;
-      try{ const t=await fetch('/api/track-changes?project='+encodeURIComponent(id)); if(t.ok) st=await t.json(); }catch(e){}
-      setGitState(gs,st);
+      let st=null, got=false;
+      try{ const t=await fetch('/api/track-changes?project='+encodeURIComponent(id)); if(t.ok){ st=await t.json(); got=true; } }catch(e){}
+      if(got||!refresh) setGitState(gs,st);   // a failed refresh leaves the icon as it was
     }
   }catch(e){ if(!refresh){ up.textContent='—'; ct.textContent='—'; if(sk) sk.textContent='—'; } }
 }

@@ -8462,3 +8462,26 @@ func TestPromoteRefusedForTerminal(t *testing.T) {
 		t.Errorf("promote on a terminal: code=%d body=%q", rec.Code, rec.Body.String())
 	}
 }
+
+// Protects the daemon's per-project ticket folder (t-5738): a stray .tickets in the home folder is not the project's, so a folder under
+// home resolves to itself, as tickets_dir (shell) and findProjectRoot (board) do.
+func TestTicketsDirInSkipsAStrayHomeTickets(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	for _, d := range []string{".tickets", "Documents/app", "repo/.git"} {
+		if err := os.MkdirAll(filepath.Join(home, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s := &server{}
+	for root, want := range map[string]string{
+		filepath.Join(home, "Documents", "app"): filepath.Join(home, "Documents", "app", ".tickets"),
+		filepath.Join(home, "repo"):             filepath.Join(home, "repo", ".tickets"),
+		home:                                    filepath.Join(home, ".tickets"),
+	} {
+		if got := s.ticketsDirIn(root); got != want {
+			t.Errorf("ticketsDirIn(%q) = %q, want %q", root, got, want)
+		}
+	}
+}

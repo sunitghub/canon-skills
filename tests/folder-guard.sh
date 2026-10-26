@@ -114,12 +114,14 @@ out="$(cd "$STRAY" && "$TKT" ls 2>&1)" && fail "folder-guard: tkt ls ran in the 
 # a HOME with a space is quoted in the example
 SP="$W/with space"; mkdir -p "$SP"; out="$(cd "$SP" && HOME="$SP" "$TKT" ls 2>&1)" && fail "folder-guard: tkt ls ran in a home folder with a space"
 [[ "$out" == *"mkdir -p \"$SP/projects/demo\""* ]] || fail "folder-guard: the example folder is not quoted for a HOME with a space: $out"
-# the board finds the same project (Go twin of tickets_dir)
+# the board starts there (this checks only its start guard; its project finder is covered by TestFindProjectRootSkipsAStrayHomeTickets, the daemon's by TestTicketsDirInSkipsAStrayHomeTickets)
 out="$(cd "$STRAY/Documents/app" && SPRINT_CHECK_NO_BROWSER=1 timeout 8 "$BOARD" 8458 2>&1 || true)"
 [[ "$out" != *"is not a project"* ]] || fail "folder-guard: the board refused a folder under a home that has a stray .tickets: $out"
 
 # Both installers end by saying where to go next, with the home path (a first-time user has no project folder, and canon refuses home)
 grep -q 'Next: open a terminal in your project folder (for example %s/projects/demo' "$ROOT/install.sh" || fail "folder-guard: install.sh does not print the next step"
-grep -q 'Next: open a terminal in your project folder (for example \$HOME\\projects\\demo' "$ROOT/install.ps1" || fail "folder-guard: install.ps1 does not print the next step"
+# install.ps1 has two endings: the bootstrap one (irm ... | iex, canon update: the first-run path) and the file one; both must say it
+[[ "$(grep -v '^[[:space:]]*#' "$ROOT/install.ps1" | grep -c 'Next: open a terminal in your project folder (for example \$HOME\\projects\\demo')" == 2 ]] || fail "folder-guard: install.ps1 must print the next step in both its bootstrap and its file ending"
+awk '/^[[:space:]]*#/{next} /^if [(][$]Bootstrap[)] [{]/{b=1; f=0} b&&/Next: open a terminal/{f=1} b&&/canon installed successfully/{ok=f} b&&/^  return/{b=0} END{exit !ok}' "$ROOT/install.ps1" || fail "folder-guard: the bootstrap ending of install.ps1 does not print the next step before it returns"
 
 echo "folder-guard: ok"

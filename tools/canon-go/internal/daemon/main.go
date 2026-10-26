@@ -3867,8 +3867,13 @@ func (s *server) sessionStateDir(root, id string) string {
 // many projects). ticketsDir() is the launch-default wrapper.
 func (s *server) ticketsDirIn(root string) string {
 	dir := root
+	home, _ := os.UserHomeDir()
 	for dir != "" && dir != "/" {
 		for _, marker := range []string{".tickets", ".git"} {
+			// t-5738: a .tickets in a folder the guard refuses (home, a drive root, a system folder) is not a project's: skip it
+			if marker == ".tickets" && common.NotAProject(dir, home) != "" {
+				continue
+			}
 			if fi, err := os.Stat(filepath.Join(dir, marker)); err == nil && fi.IsDir() {
 				return filepath.Join(dir, ".tickets")
 			}

@@ -12393,6 +12393,7 @@ test.describe('Canon Cockpit Projects card and Skill Eval view (t-7d8d, t-0e8b)'
   test('a project card\'s Total Tickets follows new tickets without a reload: on coming back, on a timer, and a failed read keeps the number (t-5738)', async ({ page }) => {
     let count = 0, fail = false, reads = 0;
     await page.route('**/api/projects', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(PROJECTS) }));
+    await page.route('**/api/git*', route => fail ? route.abort() : route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ is_git: true, branch: 'main' }) }));
     await page.route('**/api/project-stats*', route => {
       reads++;
       if (fail) return route.abort();
@@ -12415,6 +12416,7 @@ test.describe('Canon Cockpit Projects card and Skill Eval view (t-7d8d, t-0e8b)'
     await page.clock.fastForward('00:31');
     await page.waitForTimeout(300);
     await expect(total).toHaveText('5');
+    await expect(page.locator('.meta[data-stats="proj-a"] [data-f="branch"]')).toHaveText('main');   // the branch is kept too
     // hidden Projects page: no reads on the timer
     fail = false;
     await page.evaluate(() => { document.getElementById('grid').style.display = 'none'; });

@@ -251,6 +251,8 @@ if ($Bootstrap) {
   } else {
     Write-Host "==> Open a new PowerShell window and run: canon"
   }
+  # t-5738: this branch is `irm https://getcanon.dev/install.ps1 | iex` and `canon update`, the first-run path; canon refuses your home folder
+  Write-Host "==> Next: open a terminal in your project folder (for example $HOME\projects\demo; make it with mkdir, then git init) and run: canon"
   Write-Host "canon installed successfully."
   return
 }
