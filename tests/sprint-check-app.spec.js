@@ -12976,7 +12976,7 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
     await expect(page.locator('.ig-frow.ig-changed')).toContainText('tools/sprint');
     await expect(page.locator('.ig-frow.ig-changed .ig-fix code')).toHaveText("git -C '/x/canon' checkout -- tools/sprint");
     await expect(page.locator('.ig-block')).toContainText('sprint complete');
-    await expect(page.locator('.ig-group')).toHaveText(['Agents', 'Prompts and protocol', 'Gate files']);
+    await expect(page.locator('.ig-group')).toHaveText(['Agents', 'Gate files'])   // the prompts group is empty here: its one file sits in the reviewer's card;
     await expect(page.locator('.ig-frow.ig-match .ig-fix')).toHaveCount(0);
     expect(writes).toEqual([]);
     // the route answers GET only: a POST changes nothing and is refused
