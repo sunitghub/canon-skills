@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Fixed
+- **A GitHub route action without a handler can no longer start a merge** (`t-bb1b`): in the board, an action added to the GitHub write routes without its own branch used to fall through to starting a merge run (which runs the PR's tests here and merges). `merge` is now explicit, anything else without a branch is a 404, and a test fails when one is added without its branch. Nothing reachable today changes.
+
 ### Added
 - **Check & merge knows about drafts** (`t-a463`): a cloud PR is always opened as a draft and GitHub will not merge one, but the 3.5-minute test run came first and the refusal after it was a vague GraphQL error. `tkt merge-pr` and `--check` now stop in seconds with "PR #N is a draft; GitHub will not merge it" before running anything, the card's dialog shows that reason above the log with a **Mark ready** button (`tkt pr-ready <id>`: only the ticket's own open, same-repo draft PR, a `--pr` that is not the ticket's PR is refused, reversible with `gh pr ready --undo`), then checks again. A merge GitHub refuses after a passing suite now says the suite passed and what the PR reads like (draft, behind, blocked).
 

@@ -935,7 +935,13 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 			sendJSON(w, runTkt(eroot, append([]string{"pr-ready", id}, pr...)))
 			return
 		}
-		sendJSON(w, startMergeRun(eroot, id, pr))
+		if m[2] == "merge" {
+			sendJSON(w, startMergeRun(eroot, id, pr))
+			return
+		}
+		// t-bb1b: an action in apiGitHubPostRe with no branch above must NOT fall through to a merge run (which runs the PR's tests here and
+		// merges); TestGitHubPostActionsAreAllHandled fails when one is added without its branch
+		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
 	if m := apiHeadlessRunRe.FindStringSubmatch(path); m != nil {

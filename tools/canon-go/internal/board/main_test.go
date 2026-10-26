@@ -1954,3 +1954,27 @@ func TestFindProjectRootBareHomeWithTicketsAbove(t *testing.T) {
 		t.Errorf("under a bare home: got %q", got)
 	}
 }
+
+// Protects the board's GitHub write routes (t-bb1b): every action in apiGitHubPostRe has its own branch in the handler. An action added to the
+// regexp without one used to fall through to starting a MERGE RUN (the PR's tests run here, then it merges); now it is a 404, and this test fails
+// first. Read from the source, so the list cannot drift from the regexp.
+func TestGitHubPostActionsAreAllHandled(t *testing.T) {
+	src, err := os.ReadFile("main.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(src)
+	m := regexp.MustCompile(`apiGitHubPostRe\s*=\s*regexp\.MustCompile\(` + "`" + `[^` + "`" + `]*github/\(([^)]*)\)\$` + "`").FindStringSubmatch(text)
+	if m == nil {
+		t.Fatal("could not read the action list of apiGitHubPostRe from main.go")
+	}
+	actions := strings.Split(m[1], "|")
+	if len(actions) < 8 {
+		t.Fatalf("read too few actions: %v", actions)
+	}
+	for _, a := range actions {
+		if !strings.Contains(text, `case "`+a+`":`) && !strings.Contains(text, `m[2] == "`+a+`"`) {
+			t.Errorf("the action %q is in apiGitHubPostRe but the handler has no branch for it (it would not be handled)", a)
+		}
+	}
+}
