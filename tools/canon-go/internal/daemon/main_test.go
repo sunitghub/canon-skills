@@ -965,7 +965,7 @@ func TestNeedsYouStatus(t *testing.T) {
 	// stream emits on attach, and so would pass even if input cleared nothing.
 	waitForAfter(t, buf, "status=needs-you", "status=running", 3*time.Second)
 	waitEvent(t, out.Session, "session.needs_you", map[string]string{"ticket": "t-ab12"}) // t-8854
-	if n := countEvents(out.Session, "session.needs_you"); n != 1 { // only the move into needs-you, never running
+	if n := countEvents(out.Session, "session.needs_you"); n != 1 {                       // only the move into needs-you, never running
 		t.Errorf("%d session.needs_you events, want 1", n)
 	}
 }
@@ -2277,7 +2277,7 @@ func TestSaveAndEndFileSettleEndsSession(t *testing.T) {
 			// t-d9e6: ended on purpose — not offered after a restart.
 			waitSnapshotGone(t, s, "t-ab12")
 			waitEvent(t, out.Session, "session.saved", map[string]string{"by": "file-settle"}) // t-8854
-			return // ended via file-settle — success
+			return                                                                             // ended via file-settle — success
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
@@ -4422,7 +4422,7 @@ func TestResolveProjectForCwd(t *testing.T) {
 		t.Fatal("nonexistent cwd accepted, want rejected")
 	}
 	if _, ok := s.resolveProjectForCwd(t.TempDir()); ok {
-		t.Fatal("unregistered non-git cwd accepted, want rejected")   // t-5a4b: only a REGISTERED root is trusted
+		t.Fatal("unregistered non-git cwd accepted, want rejected") // t-5a4b: only a REGISTERED root is trusted
 	}
 	got, ok := s.resolveProjectForCwd(root)
 	wantResolved, _ := filepath.EvalSymlinks(root)
@@ -4837,7 +4837,7 @@ func TestWaitExitKeepsUnixDrainAndClosesOnce(t *testing.T) {
 	s.sessions[se.sid] = se
 	exited := make(chan struct{})
 	go se.readLoop()
-	go func() { se.waitExit(func() error { <-exited; return nil }, 50*time.Millisecond); }()
+	go func() { se.waitExit(func() error { <-exited; return nil }, 50*time.Millisecond) }()
 	var wg sync.WaitGroup
 	for i := 0; i < 3; i++ {
 		wg.Add(1)
@@ -5697,10 +5697,10 @@ func TestSessionStateDerivation(t *testing.T) {
 	now := time.Now()
 	menu := []byte("Do you want to allow this?\r\n1. Yes\r\n3. No (Esc)\r\n↑/↓ to navigate · enter to\r\nselect · esc to cancel\r\n")
 	cases := []struct {
-		name                 string
-		se                   *session
-		state, signal        string
-		stateSecs, idleSecs  int64
+		name                string
+		se                  *session
+		state, signal       string
+		stateSecs, idleSecs int64
 	}{
 		{"hook question", &session{agent: "claude", status: "needs-you", statusSince: now.Add(-42 * time.Second), lastActivity: now.Add(-40 * time.Second)}, "needs-you", "hook", 42, 40},
 		{"finished at the prompt", &session{agent: "claude", status: "awaiting-input", statusSince: now.Add(-70 * time.Second), lastActivity: now.Add(-90 * time.Second)}, "done", "hook", 70, 90},
@@ -5890,10 +5890,10 @@ func TestIsTerminalReport(t *testing.T) {
 		{"\x1b]11;rgb:1b1b/2323/3030\x07", true}, {"\x1b]10;rgb:e6e6/ebeb/f2f2\x1b\\", true},
 		{"\x1bP>|xterm.js(5.5.0)\x1b\\", true},
 		{"", false}, {"y", false}, {"\r", false}, {"1", false}, {"\x1b", false}, // Esc alone is a real key
-		{"\x1b[A", false}, {"\x1b[B", false},                                    // arrow keys answer menus
-		{"\x1b[<0;10;5M", false},                                                // mouse
-		{"hello world", false}, {"\x1b[200~pasted\x1b[201~", false},             // typing, bracketed paste
-		{"\x1b[I1", false}, {"1\x1b[O", false},                                   // a key alongside a report
+		{"\x1b[A", false}, {"\x1b[B", false}, // arrow keys answer menus
+		{"\x1b[<0;10;5M", false},                                    // mouse
+		{"hello world", false}, {"\x1b[200~pasted\x1b[201~", false}, // typing, bracketed paste
+		{"\x1b[I1", false}, {"1\x1b[O", false}, // a key alongside a report
 	} {
 		if got := isTerminalReport([]byte(tc.in)); got != tc.want {
 			t.Errorf("isTerminalReport(%q) = %v, want %v", tc.in, got, tc.want)
@@ -6208,7 +6208,9 @@ func TestScratchWorktrees(t *testing.T) {
 	branchExists := func(b string) bool {
 		return exec.Command("git", "-C", root, "rev-parse", "--verify", "--quiet", "refs/heads/"+b).Run() == nil
 	}
-	t.Cleanup(func() { os.RemoveAll(filepath.Join(filepath.Dir(resolvedRoot), filepath.Base(resolvedRoot)+"-worktrees")) })
+	t.Cleanup(func() {
+		os.RemoveAll(filepath.Join(filepath.Dir(resolvedRoot), filepath.Base(resolvedRoot)+"-worktrees"))
+	})
 
 	first := start("s-aa01")
 	if !pathsEqual(first.Cwd, resolvedRoot) && !pathsEqual(first.Cwd, root) {
@@ -6948,7 +6950,6 @@ func waitSnapshotGone(t *testing.T, s *server, id string) {
 	}
 	t.Fatalf("%s is still in the session snapshot after ending on purpose: %v", id, snapIDs(t, s.snapshotPath()))
 }
-
 
 // writeRegistry writes a board-style projects.json (t-5a4b) listing the given paths.
 func writeRegistry(t *testing.T, file string, paths ...string) {
