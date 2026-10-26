@@ -256,9 +256,11 @@ func gateClusters(root, home string, days int, now time.Time) gcReport {
 			ticket = ""
 		}
 		example := cause
-		if t := gcReportTitle(filepath.Join(tdir, ticket, gcKeys.EvalReport)); ticket != "" && t != "" && role == "evaluator" {
-			cause += ": " + t
-			example = cause
+		if ticket != "" && role == "evaluator" {
+			if t := gcReportTitle(filepath.Join(tdir, ticket, gcKeys.EvalReport)); t != "" {
+				cause += ": " + t
+				example = cause
+			}
 		}
 		runs = append(runs, gcRun{cause, ticket, gcID(str(gcKeys.RunID)), gcClean(example+" "+ticket, gcExampleMax), at})
 	}, &rep.Unreadable); e != "" {
@@ -444,7 +446,7 @@ func gateClustersCLI(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "sprint-check gate-clusters: cannot find the project:", err)
 		return 1
 	}
-	rep := gateClusters(root, gcHome(), days, time.Now())
+	rep := gateClusters(root, events.Home(), days, time.Now())
 	if asJSON {
 		b, _ := json.Marshal(rep)
 		fmt.Fprintln(stdout, string(b))
@@ -453,5 +455,3 @@ func gateClustersCLI(args []string, stdout, stderr io.Writer) int {
 	gcText(rep, stdout)
 	return 0
 }
-
-func gcHome() string { return events.Home() }
