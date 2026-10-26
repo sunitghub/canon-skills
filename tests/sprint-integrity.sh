@@ -80,7 +80,7 @@ complete; not_refused "a main install"; assert_contains "$out" "not-from-release
 rm -f "$inst/.canon-track"
 
 # canon's own checkout: a git checkout whose HEAD is not the release tag.
-git -C "$inst" init -q && git -C "$inst" add -A >/dev/null 2>&1 && git -C "$inst" -c user.email=t@t -c user.name=t commit -q -m dev
+git -C "$inst" init -q && git -C "$inst" add -A >/dev/null 2>&1 && git -C "$inst" -c gc.auto=0 -c maintenance.auto=false -c user.email=t@t -c user.name=t commit -q -m dev   # no background maintenance: it raced the rm -rf below ('.git: Directory not empty')
 complete; not_refused "a checkout that is not at the tag"; assert_contains "$out" "not exactly at v9.8.7"
 rm -rf "$inst/.git"
 
