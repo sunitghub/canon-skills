@@ -2,7 +2,8 @@
 # t-2af0: protects `sprint complete`'s integrity gate (tools/sprint _gate_integrity): in an install that came from a release, a
 # changed or missing gate file refuses the close (exit 1, names the file and the restore command, emits gate.rejected
 # reason=integrity); every other state (clean, no list, a corrupt saved list, a main install, canon's own checkout, a missing or older
-# board) prints one line at most and does not refuse. The check reads the install its board sits in: no environment variable moves it.
+# board) prints one line at most and does not refuse. The gate asks the install's own board, so no variable the caller sets moves it
+# (SPRINT_CHECK_BIN and invented skip names are tried below); the limits left are in docs/setup.md.
 set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
@@ -37,7 +38,6 @@ new_install() {
 
 project="$(make_project)"; trap 'rm -rf "$work" "$project"' EXIT
 inst="$work/install"; new_install "$inst"
-export SPRINT_CHECK_BIN="$inst/tools/sprint-check-bin/sprint-check"
 cd "$project"
 git -C "$project" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
 id="$("$inst/tools/tkt" create "integrity gate" -t task -p 2)"
@@ -86,10 +86,19 @@ complete; not_refused "a corrupt saved list"
 rm -rf "$CANON_HOME/integrity"
 complete; not_refused "no saved list"
 
-# a missing board binary and a board that predates the command
+# no variable the caller sets skips the refusal: a swapped board, the root, the network address, a made-up skip name
 new_install "$inst"; printf '#' >> "$inst/tools/gate-model.sh"
-SPRINT_CHECK_BIN="$work/does-not-exist" complete; not_refused "a missing board"
-printf '#!/bin/sh\necho "old board"\n' > "$work/old-board"; chmod +x "$work/old-board"
-SPRINT_CHECK_BIN="$work/old-board" complete; not_refused "a board without the command"
+printf '#!/bin/sh\necho "integrity: stub says fine"\n' > "$work/stub-board"; chmod +x "$work/stub-board"
+for kv in "SPRINT_CHECK_BIN=$work/stub-board" "SPRINT_CHECK_BIN=/bin/true" "CANON_SKIP_INTEGRITY=1" "CANON_INTEGRITY_ROOT=$work" "CANON_INTEGRITY_URL=https://127.0.0.1:9/x" "TKT_SPRINT_GATE_PASSED=1" "CI=true"; do
+  env "$kv" "$inst/tools/sprint" complete >"$work/skip.out" 2>&1 && rc=0 || rc=$?
+  [[ "$rc" -eq 1 ]] && grep -q "cannot close: a gate file or gate prompt" "$work/skip.out" || fail "$kv skipped the refusal (rc=$rc): $(cat "$work/skip.out")"
+done
+
+# a missing board binary and a board that predates the command: fail open
+new_install "$inst"; printf '#' >> "$inst/tools/gate-model.sh"
+mv "$inst/tools/sprint-check-bin/sprint-check" "$work/moved-board"
+complete; not_refused "a missing board"
+printf '#!/bin/sh\necho "old board"\n' > "$inst/tools/sprint-check-bin/sprint-check"; chmod +x "$inst/tools/sprint-check-bin/sprint-check"
+complete; not_refused "a board without the command"
 
 echo "sprint-integrity: ok"

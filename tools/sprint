@@ -749,7 +749,8 @@ _gate_reject() {
 # the saved list is re-checked against integrity.txt first (--online; only an unreachable network falls back to the saved copy); a board without the command, no list, offline, a main install or a git checkout off the tag all pass. No override flag.
 _gate_integrity() {
   local id="$1" tdir="$2" b h out rc=0
-  b="$(board_bin)"; h="$("$b" --help 2>/dev/null)" || h=""
+  b="$SCRIPT_DIR/../$(board_rel_path)"   # this install's own board, never SPRINT_CHECK_BIN: a caller must not choose who answers
+  h="$("$b" --help 2>/dev/null)" || h=""
   case "$h" in *"integrity [--json]"*) ;; *) return 0 ;; esac
   out="$("$b" integrity --gate --online 2>&1)" || rc=$?
   if [[ "$rc" -ne 3 ]]; then printf '%s\n' "${out%%$'\n'*}"; return 0; fi   # one line in every state that does not block
