@@ -15137,10 +15137,11 @@ test.describe('ticket modal polish (t-612f)', () => {
     const r = await page.evaluate(i => {
       const c = document.querySelector(`.card[data-id="${i}"]`), q = s => c.querySelector(s).getBoundingClientRect(), cb = c.getBoundingClientRect();
       const idr = document.createRange(); idr.selectNodeContents(c.querySelector('.card-id'));
-      return { card: cb, badge: q('.lite-badge'), idLines: new Set([...idr.getClientRects()].map(x => Math.round(x.top))).size };
+      return { card: cb, badge: q('.lite-badge'), type: q('.type-badge'), idTop: q('.card-id').top, idLines: new Set([...idr.getClientRects()].map(x => Math.round(x.top))).size };
     }, id);
     expect(r.badge.right).toBeLessThanOrEqual(r.card.right - 4);                            // the badge is not clipped at the card edge
     expect(r.idLines).toBe(1);                                                              // t-xxxx does not wrap
+    expect(Math.abs(r.type.top - r.idTop)).toBeLessThan(6);                                 // t-be64: the type stays on the id's row; only Lite/CI wrap below
   });
 
   test('the sign-off bar is one full-width row: tier, a wide Risk field, model; the controls share a height (t-d0c4, t-bb97)', async ({ page }) => {
