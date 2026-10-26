@@ -288,7 +288,9 @@ export function sessionIsLive() {
 }
 
 // t-57ab: prefix then x on a Terminal: the leave dialog, worded for a terminal. Enter closes it, c (or Esc) cancels.
+let terminalConfirmOff = null;   // t-2aed: the Terminal dialog's key listener, so only one is ever armed
 export function openTerminalCloseConfirm() {
+  if (terminalConfirmOff) terminalConfirmOff();
   const ov = document.getElementById('ck-leave-confirm');
   const save = document.getElementById('ck-leave-save'), skip = document.getElementById('ck-leave-skip'), cancel = document.getElementById('ck-leave-cancel');
   save.style.display = 'none';
@@ -301,16 +303,22 @@ export function openTerminalCloseConfirm() {
   discard.hidden = true; discard.classList.remove('armed'); discard.disabled = false; delete discard.dataset.mode;
   cockpitState.leaveChanges = null;
   ov.classList.add('open');
+  const titleEl = document.getElementById('ck-leave-confirm-title');
+  const off = () => { document.removeEventListener('keydown', onKey, true); terminalConfirmOff = null; };
   const onKey = e => {
-    if (!ov.classList.contains('open')) { document.removeEventListener('keydown', onKey, true); return; }
+    // The dialog is shared with the agent's End Session (openLeaveConfirm). This listener must act only while it is still THE TERMINAL's
+    // dialog: a mouse Cancel leaves it armed, and an Enter meant for an agent's dialog would end that agent without saving (t-2aed review).
+    if (!ov.classList.contains('open') || titleEl.textContent !== 'Close this Terminal?') { off(); return; }
     if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); skip.click(); }
     else if (e.key === 'c' || e.key === 'C' || e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancel.click(); }
   };
   document.addEventListener('keydown', onKey, true);
+  terminalConfirmOff = off;
   setTimeout(() => skip.focus(), 0);   // deferred: a synchronous focus could take the keypress that opened the dialog
 }
 
 export function openLeaveConfirm() {
+  if (terminalConfirmOff) terminalConfirmOff();   // t-2aed: a Terminal dialog cancelled with the mouse must not answer this one's Enter
   const needsYou = cockpitState.status === 'needs-you';
   // Reset every control fresh — a prior session's in-flight save could have
   // left "Cancel" disabled and stale status text behind.

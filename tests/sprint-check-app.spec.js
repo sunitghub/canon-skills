@@ -7073,7 +7073,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     test('Terminal x (t-2aed): the x on a live Terminal asks to end it, Cancel keeps it, Enter ends it; End Session is enabled; an agent tab\'s x never ends it', async ({ page }) => {
       const stubPage = `<!doctype html><html><body><script>
         parent.postMessage({source:'canon-cockpit',type:'status',status:'running'},'*');
-        addEventListener('message',function(e){ var d=e.data; if(d&&d.source==='canon-cockpit'&&d.type==='end-scratch'){ document.body.setAttribute('data-ended','1'); parent.postMessage({source:'canon-cockpit',type:'ended'},'*'); } });
+        addEventListener('message',function(e){ var d=e.data; if(d&&d.source==='canon-cockpit'&&d.type==='end-scratch'){ parent.postMessage({source:'t2aed-spy',type:'end-seen'},'*'); parent.postMessage({source:'canon-cockpit',type:'ended'},'*'); } });
       </script></body></html>`;
       await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: stubPage }));
       await openShell(page, []);
@@ -7082,6 +7082,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return activateTab('proj-a'); });
       await boardsKeyReady(page, ['proj-a']);
       const board = page.frameLocator('#view-proj-a iframe');
+      await board.locator('body').evaluate(() => { window.__endSeen = 0; addEventListener('message', e => { if (e.data && e.data.source === 't2aed-spy') window.__endSeen++; }); });   // counts the end requests any session page receives
+      const endSeen = () => board.locator('body').evaluate(() => window.__endSeen);
       await pressPrefix(page, 'm');
       await expect(board.locator('#cockpit')).toHaveClass(/term-mode/);
       await waitSessionLive(board);
@@ -7109,12 +7111,24 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(pills).toHaveCount(2);
       await waitSessionLive(board);
       const agentPill = pills.nth(1);
+      // a Terminal dialog that was cancelled with the MOUSE (above) must not answer the Enter meant for the agent's own End Session dialog:
+      // that Enter would end the agent session without saving (found in review; the old key listener stayed armed)
+      await board.locator('#ck-end-session').click();
+      await expect(confirm).toHaveClass(/open/);
+      await expect(board.locator('#ck-leave-confirm-title')).toHaveText('A sprint session is still running');
+      await page.keyboard.press('Enter');
+      await page.waitForTimeout(300);
+      await expect(confirm).toHaveClass(/open/);
+      await expect(pills).toHaveCount(2);
+      expect(await endSeen()).toBe(0);
+      await board.locator('#ck-leave-cancel').click();
+      await expect(confirm).not.toHaveClass(/open/);
       await expect(agentPill.locator('.ck-tab-pill-close')).toHaveAttribute('title', 'Close tab (session stays running)');
       await agentPill.locator('.ck-tab-pill-close').click();
       await expect(pills).toHaveCount(1);
       await page.waitForTimeout(300);
       await expect(confirm).not.toHaveClass(/open/);
-      expect(await page.evaluate(() => [...document.querySelectorAll('#view-proj-a iframe')[0].contentDocument.querySelectorAll('#ck-term iframe')].some(f => { try { return f.contentDocument.body.getAttribute('data-ended') === '1'; } catch { return false; } }))).toBe(false);
+      expect(await endSeen()).toBe(0);                                             // an agent tab's x never asked the session to end
       // the x on the Terminal, while it is not the shown tab, brings it forward and asks about THAT Terminal; Enter ends it and the tab goes
       await board.locator('#btn-scratch').click();
       await expect(pills).toHaveCount(2);
@@ -7125,6 +7139,33 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(confirm).not.toHaveClass(/open/);
       await expect(pills).toHaveCount(1);                                         // only the agent tab is left
       await expect(board.locator('#ck-scratch-kind')).toHaveText('SCRATCH');
+      expect(await endSeen()).toBe(1);                                             // exactly the Terminal was told to end
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    // A Terminal that is no longer live (idle: reaped or its shell exited) has nothing to end: its x and End Session just close the tab, no dialog.
+    test('Terminal x (t-2aed): a Terminal that is not live closes at once from its x and from End Session, with no dialog', async ({ page }) => {
+      const stubPage = `<!doctype html><html><body><script>parent.postMessage({source:'canon-cockpit',type:'status',status:'idle'},'*');</script></body></html>`;
+      await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: stubPage }));
+      await openShell(page, []);
+      await stubCockpit(page);
+      await page.route(/\/api\/cockpit(\?|$)/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR, launched: true }) }));
+      await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return activateTab('proj-a'); });
+      await boardsKeyReady(page, ['proj-a']);
+      const board = page.frameLocator('#view-proj-a iframe');
+      const pills = board.locator('#ck-tab-strip-topbar .ck-tab-pill');
+      const confirm = board.locator('#ck-leave-confirm');
+      await pressPrefix(page, 'm');
+      await expect(board.locator('#cockpit')).toHaveClass(/term-mode/);
+      await expect(pills).toHaveCount(1);
+      await pills.first().locator('.ck-tab-pill-close').click();
+      await expect(pills).toHaveCount(0);
+      await expect(confirm).not.toHaveClass(/open/);
+      await pressPrefix(page, 'm');
+      await expect(pills).toHaveCount(1);
+      await board.locator('#ck-end-session').click();
+      await expect(pills).toHaveCount(0);
+      await expect(confirm).not.toHaveClass(/open/);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
