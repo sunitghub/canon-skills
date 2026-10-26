@@ -431,6 +431,7 @@ export async function openTerminalPane(placement, opts = {}) {
     if (cockpitTabs[host].ghPick || ghOut(findTicketById(host))) cockpitTabs[host].needsRemount = true;
     await openCockpit(host);
   }
+  if (placed && cockpitTabs[id] && cockpitTabs[id].iframeEl) cockpitTabs[id].iframeEl.focus();   // the pane takes the keyboard, as a Terminal tab does
 }
 
 // t-ccf5: prefix then P n / b / f / l: next / previous / first / last tab of this project, the Board first, wrapping. A Terminal pane

@@ -4399,7 +4399,10 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const rowHeights = await page.locator('#keys-sheet .keys-table td:last-child').evaluateAll(els => els.map(e => Math.round(e.getBoundingClientRect().height)));
       expect(Math.max(...rowHeights), 'no description wraps onto a second line').toBeLessThanOrEqual(30);
       const keys = await page.locator('#keys-sheet .keys-table kbd').allTextContents();
-      for (const k of ['1', '9', 'f', 'l', 'n', 'b', 'p', 'a', 'x', 'v', '-', 'V', '_', 'o', 's', 'r', 'u', 'e', 't', '/', '?', 'Esc']) expect(keys, `the sheet lists ${k}`).toContain(k);
+      for (const k of ['1', '9', 'f', 'l', 'n', 'b', 'p', 'a', 'x', 'v', '-', 'V', '_', 'o', 's', 'r', 'u', 'e', 't', '/', '?', 'Esc', 'm', 'M', 'P']) expect(keys, `the sheet lists ${k}`).toContain(k);
+      // t-ccf5: the Terminal pane and project tab rows, with their exact text
+      const rows = await page.locator('#keys-sheet .keys-table tr').evaluateAll(trs => trs.map(t => t.innerText.replace(/\s+/g, ' ').trim()));
+      for (const r of ['m Terminal below the tab you are on', 'M Terminal beside the tab you are on', 'P n / b Next / previous tab in this project', 'P f / l First / last tab in this project']) expect(rows, `the sheet has the row "${r}"`).toContain(r);
       const lastRow = await bbox(page, '#keys-sheet .keys-grid > section:first-child .keys-table:last-child tr:last-child'), closeBtn = await bbox(page, '#keys-close');
       expect(closeBtn.y - (lastRow.y + lastRow.height), 'the Close button has room below the last row').toBeGreaterThanOrEqual(16);
       const box = await bbox(page, '#keys-sheet .keys-modal');
@@ -6709,12 +6712,38 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.waitForLoadState('networkidle');
       await page.locator('#btn-scratch').click();
       await page.locator('#ck-back').click();
+      const other = await page.evaluate(() => document.querySelector('#ck-term iframe[data-tab-id]').dataset.tabId);   // the session that stays behind
+      const otherStamp = async () => (await (await page.locator('iframe[data-tab-id="' + other + '"]').elementHandle()).contentFrame()).evaluate(() => window.__stamp);
+      const stamp0 = await otherStamp();
       await askBoard(page, { type: 'open-terminal-request', placement: 'below' });
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/ck-pane-below/);
+      const termId = await page.evaluate(async () => (await import('/static/board-pane.js')).paneTabId());
+      await expect.poll(() => page.evaluate(() => document.activeElement && document.activeElement.dataset && document.activeElement.dataset.tabId)).toBe(termId);   // the pane has the keyboard
+      await page.locator('#ck-pane-handle').focus(); await page.keyboard.press('ArrowUp');
+      expect(await otherStamp()).toBe(stamp0);                                                      // the session behind the Board is never reloaded by the pane
       await page.locator('#ck-tab-strip-topbar .ck-tab-pill.active .ck-tab-pill-close').click();   // close the Terminal
       await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/);
       await expect(page.locator('#ck-pane-handle')).toBeHidden();
       await expect(page.locator('#ck-tab-strip .ck-tab-pill')).toHaveCount(1);                      // the other session is still there
+      expect(await otherStamp()).toBe(stamp0);                                                      // and was never reloaded by opening or closing the pane
+    });
+
+    // Protects the Cockpit's `m` key: the pane's size is remembered per project, so closing the Terminal and opening another restores it.
+    test('Terminal pane (t-ccf5): the size you set is restored when the pane is opened again', async ({ page }) => {
+      await page.setViewportSize({ width: 1280, height: 900 });
+      await stubCockpit(page);
+      await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: termStub }));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await askBoard(page, { type: 'open-terminal-request', placement: 'below' });
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/ck-pane-below/);
+      await page.locator('#ck-pane-handle').focus(); for (let i = 0; i < 5; i++) await page.keyboard.press('ArrowUp');
+      const y1 = (await ovBox(page)).y; expect(y1).toBeLessThan(400);
+      await page.reload();                                                                         // a new page: only localStorage remembers the size
+      await page.waitForLoadState('networkidle');
+      await askBoard(page, { type: 'open-terminal-request', placement: 'below' });
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/ck-pane-below/);
+      expect(Math.abs((await ovBox(page)).y - y1)).toBeLessThan(3);                                // the same size, from localStorage
     });
 
     // Protects the Cockpit's `m` key and the To Claude Cloud button: next to a session tab both iframes show, the session keeps its
@@ -6761,6 +6790,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await askBoard(page, { type: 'open-terminal-request', placement: 'below' });
       await expect(term).not.toHaveClass(/ck-split/);
       await expect(page.locator('#ck-pane-handle')).toBeHidden();
+      await expect(page.locator('#cockpit')).toHaveClass(/term-mode/);                              // a full Terminal tab is on screen instead
+      await expect(page.locator('#ck-iframe')).not.toHaveAttribute('data-tab-id', host);
     });
 
     // Protects the To Claude Cloud button: after Create issue it asks for a Terminal pane under the current tab, with the line typed (not sent).
@@ -6838,6 +6869,26 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.frameLocator('#view-proj-a iframe').locator('.ck-tab-pill-close').first().click();
       await pressPrefix(page, 'M');
       await expect(page.frameLocator('#view-proj-a iframe').locator('#cockpit-overlay')).toHaveClass(/ck-pane-beside/);
+    });
+
+    // Protects the shell's prefix relay: a key typed in the pane's Terminal (not the active tab's) still reaches the shell, so `P n` works there.
+    test('Terminal pane (t-ccf5): the prefix typed inside the pane\'s Terminal reaches the shell (P n), not only the active tab\'s', async ({ page }) => {
+      await openShell(page, []);
+      await stubCockpit(page);
+      await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>cockpit</body></html>' }));
+      await page.route(/\/api\/cockpit(\?|$)/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR, launched: true }) }));
+      await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return activateTab('proj-a'); });
+      await boardsKeyReady(page, ['proj-a']);
+      const board = page.frameLocator('#view-proj-a iframe');
+      await board.locator('body').evaluate(() => { window.__asked = []; window.addEventListener('message', e => { if (e.data && e.data.type === 'project-tab-request') window.__asked.push(e.data.action); }); });
+      await board.locator('#btn-scratch').click();                                                    // the session tab the pane sits under
+      await pressPrefix(page, 'm');
+      await expect(board.locator('#ck-term')).toHaveClass(/ck-split-below/);
+      await expect.poll(() => page.frames().some(f => f.url().includes('mode=term')), { timeout: 10000 }).toBe(true);
+      const term = page.frames().find(f => f.url().includes('mode=term'));
+      await term.evaluate(() => parent.postMessage({ source: 'canon-cockpit', type: 'prefix-key', key: 'Pn' }, '*'));
+      await expect.poll(() => board.locator('body').evaluate(() => window.__asked)).toEqual(['n']);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });                                             // no stub callback may still be fetching when the page closes
     });
 
     const waitSessionLive = (board) => expect.poll(() => board.locator('body').evaluate(async () => (await import('/static/board-cockpit.js')).sessionIsLive()), { timeout: 10000 }).toBe(true);
