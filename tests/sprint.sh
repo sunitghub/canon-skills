@@ -1790,6 +1790,10 @@ cg_project="$(make_project)"
   cg_start autocrlf-extra; canon_setup "$PWD"; echo 'secret.js' >> .gitignore
   cg_refuses .gitignore "autocrlf=true plus another line"
   [[ "$(env -u CLAUDECODE "$SPRINT" complete 2>&1)" == *"differs from canon's own setup edit"*"secret.js"* ]] || fail "t-ae3b: a refused .gitignore did not say how it differs"
+  git checkout -q -- .gitignore .gitattributes
+  # a carriage return inside a line is not a line ending: it still refuses (the guard strips only a trailing one)
+  cg_start autocrlf-midcr; canon_setup "$PWD"; sed -i.bak 's#^/\.agents/skills$#/.agents/sk\rills#' .gitignore && rm -f .gitignore.bak
+  cg_refuses .gitignore "a carriage return inside a canon line"
   git checkout -q -- .gitignore .gitattributes; git config --unset core.autocrlf
 
   # any other line beside canon's, or instead of them, is refused, in either file
