@@ -68,6 +68,25 @@ function primarySearchText(t) {
   ].join(' '));
 }
 
+// t-a5c9: several ticket ids at once. `69f6 1ae4 f066` (an optional `t-` and commas allowed) is an ID LIST when it has two or more
+// terms, each two to four characters of [0-9a-z], and each is part of at least one loaded ticket's id: the board then shows every
+// ticket whose id contains ANY term, in addition to whatever the ordinary search finds for the same words (a real word spelled with a-f
+// letters, like `add bad`, is also an id list: the union keeps its old results). A word in no id, a term longer than an id, or a single
+// term is the ordinary search alone. Returns the terms, or null.
+export function idQueryTerms(raw, tickets) {
+  const terms = String(raw ?? '').toLowerCase().split(/[\s,]+/).map(x => x.replace(/^t-/, '')).filter(Boolean);
+  if (terms.length < 2 || !terms.every(x => /^[0-9a-z]{2,4}$/.test(x))) return null;
+  const ids = (tickets || []).map(t => String(t.id ?? '').toLowerCase().replace(/^t-/, ''));
+  return terms.every(x => ids.some(id => id.includes(x))) ? terms : null;
+}
+
+let idQueryMemo = { key: null, terms: null };
+function idTermsFor(raw) {
+  const key = String(raw ?? '') + '\0' + state.tickets.length;   // the filter runs once per ticket: work it out once per query
+  if (idQueryMemo.key !== key) idQueryMemo = { key, terms: idQueryTerms(raw, state.tickets) };
+  return idQueryMemo.terms;
+}
+
 export function ticketMatchesQuery(t) {
   const q = normalizeSearch(state.query);
   if (state.queryMode !== 'search') return true;
@@ -79,6 +98,8 @@ export function ticketMatchesQuery(t) {
     const want = tagQuery[1].toLowerCase();
     return ticketTags(t).some(x => want.length >= 3 ? x.includes(want) : x === want);
   }
+  const idTerms = idTermsFor(state.query);
+  if (idTerms) { const id = String(t.id ?? '').toLowerCase().replace(/^t-/, ''); if (idTerms.some(x => id.includes(x))) return true; }   // else the ordinary search below: nothing it found before is lost
   // Direct field queries — bypass prose search entirely (zero false positives)
   if (q === 'is ci') return !!t.ci;
   if (q === 'is override') return !!t.eval_override;

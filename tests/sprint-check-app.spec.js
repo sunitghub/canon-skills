@@ -1469,6 +1469,78 @@ test.describe('board modal', () => {
     }
   });
 
+  // t-a5c9. Protects the board's search box: ids typed without `t-` (2, 3 or 4 characters, spaces or commas between) show every ticket whose
+  // id contains any of them; a query that is not a list of ids is the ordinary search, and nothing the ordinary search found is lost.
+  test('search takes several ticket ids at once, partial or full, and leaves the ordinary search alone (t-a5c9)', async ({ page }) => {
+    const ids = [newTicketId(PROJECT_ROOT, 'idq1'), newTicketId(PROJECT_ROOT, 'idq2'), newTicketId(PROJECT_ROOT, 'idq3'), newTicketId(PROJECT_ROOT, 'idq4')];
+    const titles = ['Idq1 alpha login', 'Idq2 beta', 'Idq3 gamma', 'Idq4 delta'];
+    const mk = (id, title) => {
+      const dir = path.join(PROJECT_ROOT, '.tickets', id);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'ticket.md'), ['---', `id: ${id}`, 'status: open', 'type: task', 'priority: 2', 'created: 2026-06-08T00:00:00Z', '---', '', `# ${title}`, ''].join('\n'));
+    };
+    try {
+      ids.forEach((id, i) => mk(id, titles[i]));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      const card = id => page.locator(`.card[data-id="${id}"]`);
+      const search = async q => { await page.locator('#board-search').fill(q); await page.waitForTimeout(250); };
+      const [a, b, c, d] = ids;
+      // test ids are `t-idqN-<stamp>`, so the four characters `idqN` stand for a real id's four: they are part of exactly one test ticket's id
+      const four = ['idq1', 'idq2', 'idq3', 'idq4'];
+      await search(`${four[0]} ${four[1]} ${four[2]}`);
+      await expect(card(a)).toBeVisible({ timeout: 8000 }); await expect(card(b)).toBeVisible(); await expect(card(c)).toBeVisible();
+      await expect(card(d)).toBeHidden();
+      // with t- and commas
+      await search(`t-${four[0]}, t-${four[1]},${four[2]}`);
+      await expect(card(a)).toBeVisible(); await expect(card(b)).toBeVisible(); await expect(card(c)).toBeVisible(); await expect(card(d)).toBeHidden();
+      // partial: the first 2 characters of two ids and the first 3 of a third: every ticket whose id contains any of them, computed here from the list
+      const terms = ['q1', 'dq2', 'q4'];
+      await search(terms.join(' '));
+      const all = await page.evaluate(async () => (await import('/static/board-core.js')).state.tickets.filter(t => t.status === 'open').map(t => t.id));
+      for (const id of ids) {
+        const should = terms.some(x => id.replace(/^t-/, '').includes(x));
+        if (should) await expect(card(id), `${id} contains one of ${terms}`).toBeVisible(); else await expect(card(id), `${id} contains none of ${terms}`).toBeHidden();
+      }
+      expect(all.length).toBeGreaterThan(3);
+      // not a list of ids: the ordinary search alone (all words in the text)
+      await search(`${four[1]} login`);             // `login` is in no id and is longer than an id: text search; no ticket has both words
+      await expect(card(a)).toBeHidden(); await expect(card(b)).toBeHidden();
+      await search('idq1 login');                   // two ordinary words, both in a's title
+      await expect(card(a)).toBeVisible(); await expect(card(b)).toBeHidden(); await expect(card(d)).toBeHidden();
+      // a single term is still the ordinary search (an id is text too)
+      await search(four[2]);
+      await expect(card(c)).toBeVisible(); await expect(card(a)).toBeHidden();
+      // terms that are no part of any id: ordinary search, the existing empty message
+      await search('zzzz qqqq');
+      await expect(page.locator('#board-empty-search')).toContainText('No tickets match');
+    } finally {
+      ids.forEach(id => removeTestTicket(PROJECT_ROOT, id));
+    }
+  });
+
+  // t-a5c9. Protects the same search box at the function level: the cases that decide between an id list and an ordinary search.
+  test('idQueryTerms decides between an id list and an ordinary query (t-a5c9)', async ({ page }) => {
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    const got = await page.evaluate(async () => {
+      const { idQueryTerms } = await import('/static/board-helpers.js');
+      const T = [{ id: 't-69f6' }, { id: 't-1ae4' }, { id: 't-f066' }, { id: 't-a9f1' }];
+      const q = x => idQueryTerms(x, T);
+      return {
+        one: q('69f6'), two: q('69f6 1ae4'), commas: q('t-69f6, 1ae4'), upper: q('69F6 1AE4'), partial: q('9f 1ae'), repeat: q('69f6 69f6'),
+        short: q('6 1ae'), long: q('69f66 1ae4'), word: q('bug fix'), mixed: q('69f6 login'), unknown: q('zz qq'), empty: q('  '), none: q(null),
+      };
+    });
+    expect(got.one).toBeNull();                                             // a single term is never a list
+    expect(got.two).toEqual(['69f6', '1ae4']);
+    expect(got.commas).toEqual(['69f6', '1ae4']);                           // t- dropped, commas are spaces
+    expect(got.upper).toEqual(['69f6', '1ae4']);
+    expect(got.partial).toEqual(['9f', '1ae']);
+    expect(got.repeat).toEqual(['69f6', '69f6']);
+    for (const k of ['short', 'long', 'word', 'mixed', 'unknown', 'empty', 'none']) expect(got[k], k).toBeNull();
+  });
+
   test('modal next and previous stay in the same status lane sorted by newest first', async ({ page }) => {
     const stamp = Date.now();
     const tickets = [

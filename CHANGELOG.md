@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Added
+- **Search several ticket ids at once** (`t-a5c9`): in the board's search box type two to four characters of each id, without `t-`, separated by spaces or commas (`69f6 1ae4 f066`, or `9f 1ae`), and every ticket whose id contains any of them shows. A query that is not a list of ids is the ordinary search, and nothing the ordinary search found before is hidden.
+
 ## [0.20.1] - 2026-10-26
 
 A command that groups repeated gate failures. Update with `canon update`, then stop and start the board (Ctrl+C in the terminal running `canon`, or close its window, then run `canon`). The daemon did not change, so Restart Daemon is not needed.
