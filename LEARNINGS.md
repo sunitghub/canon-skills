@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-26-2026 14:50
+learnings-sweep last run: 10-26-2026 15:20
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-26 | [t-a5c9](.tickets/t-a5c9/learnings.md) | A cache key must name what the cached value depends on (the loaded list, not just its length), and a test for it needs inputs where the stale answer DIFFERS from the fresh one: my first memo test used ids that matched neither reading, so it passed with the memo broken | UNPROMOTED |
 | 2026-10-26 | [t-b874](.tickets/t-b874/learnings.md) | A reader of a log other agents write must count what the log means (one run per agent id), not its lines, and read per-ticket files once: the run log held two lines per run (29 lines for 24 runs) and a crafted log cost 217 s; test the counting on the REAL log's quirks, not a fixture that gives every run a unique id. Also: a cloud PR is a draft and GitHub will not merge it, but merge-pr found out only after 3.5 min of tests (t-a463) | UNPROMOTED |
 | 2026-10-26 | [t-ccf5](.tickets/t-ccf5/learnings.md) | Find where the user's flow really lives before the plan is approved: To Claude Cloud sits in a ticket tab's rail, so the approved "pane under the Board" would not have fixed it; and `scripts/test.sh` does not run the board specs, so a new focus line broke two older specs unseen until the evaluator ran them: stamp the related board specs too | UNPROMOTED |
 | 2026-10-26 | [t-2af0](.tickets/t-2af0/learnings.md) | A guard test whose bad inputs also carry a wrong value is vacuous when a later check rejects them first (pin-file NUL/extra-field cases with an unrelated hash passed with the guards deleted): put the REAL value in the file and break only the one thing; and a mutation survivor is "equivalent" only after a probe shows no input reaches the difference | UNPROMOTED |
