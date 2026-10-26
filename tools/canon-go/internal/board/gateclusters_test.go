@@ -327,3 +327,60 @@ func TestGateClustersJSONShapeAndReviewerIDs(t *testing.T) {
 		}
 	}
 }
+
+// The caps and the file rules the sweep found unguarded: more than gcMaxFiles day files, an oversized file read only to its cap, a
+// symlinked review-notes.md and look-alike folder names are never followed or counted.
+func TestGateClustersCapsAndLookAlikes(t *testing.T) {
+	root, home, now := gcFixture(t)
+	for i := 0; i < gcMaxFiles+1; i++ { // 401 day files, all older than the window except none: the cap is on the count, not the date
+		gcWrite(t, filepath.Join(home, "events", time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC).AddDate(0, 0, i).Format("2006-01-02")+".jsonl"), "")
+	}
+	r := gateClusters(root, home, 30, now)
+	found := false
+	for _, e := range r.Errors {
+		if strings.Contains(e, "more than 400 day files") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("no cap message for %d day files: %v", gcMaxFiles+1, r.Errors)
+	}
+	// an oversized day file is read to the cap and says so
+	big := filepath.Join(home, "events", "2026-10-25.jsonl")
+	if err := os.WriteFile(big, bytes.Repeat([]byte("x"), gcMaxBytes+10), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r = gateClusters(root, home, 30, now)
+	over := false
+	for _, e := range r.Errors {
+		if strings.Contains(e, "larger than 4 MiB") {
+			over = true
+		}
+	}
+	if !over {
+		t.Errorf("an oversized file was not reported: %v", r.Errors)
+	}
+	// look-alike ticket folders and a symlinked review-notes.md are not counted as reviewer NOs; one real folder is (the control)
+	gcWrite(t, filepath.Join(root, ".tickets/t-beef/review-notes.md"), "## Verdict\n\nNO\n")
+	for _, n := range []string{"xt-aaaa", "t-aaaa-evil", "t-zz"} {
+		gcWrite(t, filepath.Join(root, ".tickets", n, "review-notes.md"), "## Verdict\n\nNO\n")
+	}
+	real := filepath.Join(root, "elsewhere-notes.md")
+	gcWrite(t, real, "## Verdict\n\nNO\n")
+	if err := os.MkdirAll(filepath.Join(root, ".tickets/t-abcd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(real, filepath.Join(root, ".tickets/t-abcd/review-notes.md")); err != nil {
+		t.Skip("no symlinks here:", err)
+	}
+	r = gateClusters(root, home, 30, now)
+	var no []gcCluster
+	for _, c := range append(append([]gcCluster{}, r.Clusters...), r.SeenOnce...) {
+		if c.Cause == "reviewer NO" {
+			no = append(no, c)
+		}
+	}
+	if len(no) != 1 || no[0].Count != 1 || len(no[0].Tickets) != 1 || no[0].Tickets[0] != "t-beef" {
+		t.Errorf("only the real t-beef notes count as a reviewer NO (not a look-alike folder or a symlink): %+v", no)
+	}
+}
