@@ -6,6 +6,18 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-10-26
+
+The board's tickets are soft cards, the Demo/UX badge is now Lite, and the board and the Cockpit shell share one palette file. Update with `canon update`, then restart the board (the board program changed; the daemon did not).
+
+### Changed
+- **Soft cards** (`t-be64`): a card is a hairline-bordered, rounded surface with no header band and no coloured left edge, and a soft hover. A column's short vertical bar is the only status colour. The per-column `+` is gone (`+ New` adds a ticket). An In progress card shows its branch on its own line, and an unchecked ticket reads `N to check` (the unchecked boxes of `acceptance.md` and `plan.md`) instead of `unchecked items`.
+- **Lite** (`t-be64`): the badge, the Plan switch and the New-ticket option that said Demo/UX now say Lite, in warn-coloured text and outline instead of a solid orange fill. The ticket flag stays `demo: true` and `tkt demo` is unchanged.
+- **One palette file** (`t-be64`): `static/tokens.css` defines Canon Dark and Light once for the board and the shell (they had drifted), plus the radius, font, spacing and shadow scales. The dark secondary text (the version next to Canon Cockpit) is now readable, and scrollbar thumbs are quiet until hovered.
+
+### Fixed
+- **An editor's lock file no longer shows as a doc tab** (`t-be64`): an Emacs `.#plan.md` or `#plan.md#` in a ticket folder is skipped.
+
 ## [0.20.7] - 2026-10-26
 
 The Terminal tab's `×` and End Session end the Terminal, Check & merge understands draft PRs, and a GitHub route can no longer start a merge by accident. Update with `canon update`, then restart the board so it loads the new program.
