@@ -4509,10 +4509,10 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const rowHeights = await page.locator('#keys-sheet .keys-table td:last-child').evaluateAll(els => els.map(e => Math.round(e.getBoundingClientRect().height)));
       expect(Math.max(...rowHeights), 'no description wraps onto a second line').toBeLessThanOrEqual(30);
       const keys = await page.locator('#keys-sheet .keys-table kbd').allTextContents();
-      for (const k of ['1', '9', 'f', 'l', 'n', 'b', 'p', 'a', 'x', 'v', '-', 'V', '_', 'o', 's', 'r', 'u', 'e', 't', '/', '?', 'Esc', 'm', 'M', 'P']) expect(keys, `the sheet lists ${k}`).toContain(k);
+      for (const k of ['1', '9', 'f', 'l', 'n', 'b', 'p', 'a', 'x', 'v', '-', 'V', '_', 'o', 's', 'r', 'u', 'e', 't', '/', '?', 'Esc', 'm', 'M', 'P', 'h']) expect(keys, `the sheet lists ${k}`).toContain(k);
       // t-ccf5: the Terminal pane and project tab rows, with their exact text
       const rows = await page.locator('#keys-sheet .keys-table tr').evaluateAll(trs => trs.map(t => t.innerText.replace(/\s+/g, ' ').trim()));
-      for (const r of ['m Terminal below the tab you are on', 'M Terminal beside the tab you are on', 'P n / b Next / previous tab in this project', 'P f / l First / last tab in this project']) expect(rows, `the sheet has the row "${r}"`).toContain(r);
+      for (const r of ['m Terminal below the tab you are on', 'M Terminal beside the tab you are on', 'P n / b Next / previous tab in this project', 'P f / l First / last session tab in this project', 'P h Home: this project\'s Board']) expect(rows, `the sheet has the row "${r}"`).toContain(r);
       const lastRow = await bbox(page, '#keys-sheet .keys-grid > section:first-child .keys-table:last-child tr:last-child'), closeBtn = await bbox(page, '#keys-close');
       expect(closeBtn.y - (lastRow.y + lastRow.height), 'the Close button has room below the last row').toBeGreaterThanOrEqual(16);
       const box = await bbox(page, '#keys-sheet .keys-modal');
@@ -5687,9 +5687,22 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#view-proj-a .shared-warn')).toHaveCount(0);            // dismissed stays dismissed
       await page.evaluate(async rows => { const { renderSessionSurfaces, setLastSessions } = await import('/static/cockpit-sessions.js'); setLastSessions(rows); renderSessionSurfaces(); }, [mk('s-aaaa', false)]);
       await page.evaluate(async rows => { const { renderSessionSurfaces, setLastSessions } = await import('/static/cockpit-sessions.js'); setLastSessions(rows); renderSessionSurfaces(); }, [mk('s-aaaa', true), mk('s-bbbb', true)]);
-      await expect(page.locator('#view-proj-a .shared-warn')).toBeVisible();              // sharing stopped, then began again
+      await expect(page.locator('#view-proj-a .shared-warn')).toHaveCount(0);            // t-a1ac: sharing stopped, then began again: a dismissal is for good
       await page.evaluate(async rows => { const { renderSessionSurfaces, setLastSessions } = await import('/static/cockpit-sessions.js'); setLastSessions(rows); renderSessionSurfaces(); }, [mk('s-aaaa', false)]);
       await expect(page.locator('#view-proj-a .shared-warn')).toHaveCount(0);
+      // t-a1ac: for good means after a reload too, and only for the project dismissed. The route keeps the sharing in every poll,
+      // so the shell's own refresh cannot clear a banner behind the assertion's back; proj-x's banner is the control.
+      const both = [mk('s-aaaa', true), mk('s-bbbb', true), { ...mk('s-cccc', true), project_root: 'C:\\Users\\me\\Proj-X', cwd: 'C:\\Users\\me\\Proj-X' }, { ...mk('s-dddd', true), project_root: 'C:\\Users\\me\\Proj-X', cwd: 'C:\\Users\\me\\Proj-X' }];
+      await page.route('**/api/cockpit-sessions', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(both) }));
+      await page.reload();
+      await page.waitForLoadState('networkidle');
+      await page.evaluate(async () => {
+        const { openProject } = await import('/static/cockpit-tabs.js'); openProject('proj-a', 'proj-a'); openProject('proj-x', 'proj-x');
+        await (await import('/static/cockpit-sessions.js')).pollSessions();
+      });
+      await expect(page.locator('#view-proj-x .shared-warn')).toBeVisible();              // another project's warning still shows
+      await page.waitForTimeout(300);
+      await expect(page.locator('#view-proj-a .shared-warn')).toHaveCount(0);            // the dismissed one stays gone after a reload
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
@@ -7018,7 +7031,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
     // Protects the Cockpit's tab keys: P then n / b / f / l move through this project's tabs, wrapping; with a Terminal pane next to the Board
     // the Board and the Terminal are one stop.
-    test('project tab keys (t-ccf5): P n / b / f / l cycle the Board and the open tabs; the Board with its Terminal pane is one stop', async ({ page }) => {
+    test('project tab keys (t-ccf5, t-a1ac): P n / b cycle the Board and the open tabs, f / l the first / last session tab, h the Board; the Board with its Terminal pane is one stop', async ({ page }) => {
       await page.setViewportSize({ width: 1280, height: 900 });
       await stubCockpit(page);
       await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: termStub }));
@@ -7037,7 +7050,9 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await key('n'); expect(await active()).toBe(ids[1]);
       await key('n'); expect(await active()).toBe('BOARD');          // wraps
       await key('b'); expect(await active()).toBe(ids[1]);           // and back
-      await key('f'); expect(await active()).toBe('BOARD');
+      await key('f'); expect(await active()).toBe(ids[0]);           // t-a1ac: the first SESSION tab, not the Board
+      await key('l'); expect(await active()).toBe(ids[1]);
+      await key('h'); expect(await active()).toBe('BOARD');          // Home
       await key('l'); expect(await active()).toBe(ids[1]);
       await key('x'); expect(await active()).toBe(ids[1]);           // an unknown action does nothing
       // a Terminal pane beside the Board: the Board and the Terminal are one stop, listed first
@@ -7063,10 +7078,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await pressPrefix(page, 'P'); await expect(page.locator('#keyhint')).toContainText('this project');
       await page.keyboard.press('n');
       await expect.poll(asked).toEqual(['n']);
+      await pressPrefix(page, 'P'); await page.keyboard.press('h');
+      await expect.poll(asked).toEqual(['n', 'h']);                                     // t-a1ac: P h reaches the board
       await pressPrefix(page, 'P'); await page.keyboard.press('Escape');
       await page.keyboard.press('b');                                                   // armed no more: a plain b is not a command
       await page.waitForTimeout(150);
-      expect(await asked()).toEqual(['n']);
+      expect(await asked()).toEqual(['n', 'h']);
       await pressPrefix(page, 'p');
       await expect(page.locator('#nav-projects')).toHaveClass(/active/);
       // m and M reach the board with their placement and open a pane

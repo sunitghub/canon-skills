@@ -241,11 +241,12 @@ function agentLine(v){
   return v.short+agent;
 }
 // t-5a4b: two sessions in one folder without git can overwrite each other — say so, once, under
-// the project. Dismissing hides it until the sharing stops and starts again.
-const sharedDismissed=new Set();
+// the project. Dismissing hides it for good (t-a1ac).
+// t-a1ac: a dismissal is for good, per project, kept in this browser (storage can be refused: then it lasts for the page).
+const LS_SHARED='canon-shared-warn-dismissed';
+const sharedDismissed=new Set((()=>{ try{ const a=JSON.parse(localStorage.getItem(LS_SHARED)||'[]'); return Array.isArray(a)?a.filter(x=>typeof x==='string'):[]; }catch(e){ return []; } })());
 function syncSharedWarnings(views){
   const sharing=new Set(views.filter(v=>v.shared&&v.pid).map(v=>v.pid));
-  for(const id of [...sharedDismissed]) if(!sharing.has(id)) sharedDismissed.delete(id);
   document.querySelectorAll('.shared-warn').forEach(b=>{ if(!sharing.has(b.dataset.pid)||sharedDismissed.has(b.dataset.pid)){ const v=b.parentElement; b.remove(); if(v) v.classList.remove('has-shared'); } });
   for(const id of sharing){
     const v=document.getElementById('view-'+id);
@@ -254,7 +255,7 @@ function syncSharedWarnings(views){
     const msg=document.createElement('span'); msg.className='sn-msg';
     msg.textContent='More than one agent is working in this folder. They can overwrite each other\u2019s changes \u2014 fine for reading and running tests, risky if both edit the same files.';
     const x=document.createElement('button'); x.className='sn-x'; x.title='Dismiss'; x.textContent='\u2715';
-    x.addEventListener('click',()=>{ sharedDismissed.add(id); bar.remove(); v.classList.remove('has-shared'); });
+    x.addEventListener('click',()=>{ sharedDismissed.add(id); try{ localStorage.setItem(LS_SHARED,JSON.stringify([...sharedDismissed])); }catch(e){} bar.remove(); v.classList.remove('has-shared'); });
     bar.appendChild(msg); bar.appendChild(x);
     v.classList.add('has-shared'); v.insertBefore(bar,v.firstChild);
   }

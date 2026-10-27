@@ -107,9 +107,9 @@ function prefixAction(key){
     try{ f.contentWindow.postMessage({source:'canon-cockpit-shell',type:'open-terminal-request',placement:key==='m'?'below':'beside'},location.origin); }catch(e){}
     return;
   }
-  if(key.length===2&&key[0]==='P'&&'nbfl'.includes(key[1])){   // t-ccf5: the project-view keys: next / previous / first / last tab of THIS project
+  if(key.length===2&&key[0]==='P'&&'nbflh'.includes(key[1])){   // t-ccf5: the project-view keys: next / previous / first / last tab of THIS project; t-a1ac: h = its Board
     const f=activeTab!=='projects'&&document.querySelector('#view-'+activeTab+' iframe');
-    if(!f){ toast('Open a project tab first, then use P n / b / f / l to move between its tabs'); return; }
+    if(!f){ toast('Open a project tab first, then use P n / b / f / l / h to move between its tabs'); return; }
     try{ f.contentWindow.postMessage({source:'canon-cockpit-shell',type:'project-tab-request',action:key[1]},location.origin); }catch(e){}
     return;
   }

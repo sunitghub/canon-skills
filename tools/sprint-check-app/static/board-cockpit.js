@@ -451,16 +451,24 @@ export async function openTerminalPane(placement, opts = {}) {
   if (placed && cockpitTabs[id] && cockpitTabs[id].iframeEl) cockpitTabs[id].iframeEl.focus();   // the pane takes the keyboard, as a Terminal tab does
 }
 
-// t-ccf5: prefix then P n / b / f / l: next / previous / first / last tab of this project, the Board first, wrapping. A Terminal pane
-// beside the Board makes the Board and the Terminal one stop (it is on screen together).
+// t-ccf5: prefix then P n / b: next / previous tab of this project, the Board first, wrapping. A Terminal pane beside the Board makes
+// the Board and the Terminal one stop (it is on screen together). t-a1ac: f / l are the first / last SESSION tab, h is Home (the Board).
 export function projectTabNav(action) {
+  if (action === 'h') { closeCockpit(); return; }
+  if (action === 'f' || action === 'l') {
+    const tabs = Object.keys(cockpitTabs);
+    if (!tabs.length) { showToast('No session tab is open here yet'); return; }
+    openCockpit(tabs[action === 'f' ? 0 : tabs.length - 1]);
+    return;
+  }
   const open = document.getElementById('cockpit-overlay').classList.contains('open');
+  if (action !== 'n' && action !== 'b') return;
   let ids = ['', ...Object.keys(cockpitTabs)];
   const pt = paneTabId();
   if (pt && paneHostId() === '' && cockpitTabs[pt]) ids = [pt, ...ids.slice(1).filter(x => x !== pt)];
   const cur = open ? Math.max(0, ids.indexOf(activeTabId)) : 0;
   const n = ids.length;
-  const next = action === 'n' ? (cur + 1) % n : action === 'b' ? (cur - 1 + n) % n : action === 'f' ? 0 : n - 1;
+  const next = action === 'n' ? (cur + 1) % n : (cur - 1 + n) % n;
   if (ids[next] === '') closeCockpit(); else openCockpit(ids[next]);
 }
 
@@ -856,7 +864,7 @@ export function initCockpit() {
       return;
     }
     if (d.type === 'project-tab-request') {                // t-ccf5: prefix then P n / b / f / l
-      if (['n', 'b', 'f', 'l'].includes(d.action)) projectTabNav(d.action);
+      if (['n', 'b', 'f', 'l', 'h'].includes(d.action)) projectTabNav(d.action);
       return;
     }
     if (d.type === 'open-scratch') {                       // t-47f1: shell's "+ Scratch", or a scratch row reopened
