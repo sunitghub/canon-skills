@@ -6,6 +6,20 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-10-27
+
+Update with `canon update`, then restart the daemon (Admin's **Restart Daemon**): the daemon's event writer changed.
+
+### Added
+- The event log now records the actions that change things, as lines in `$CANON_HOME/events/YYYY-MM-DD.jsonl` (the file `docs/plugins.md` describes):
+  - `close.confirmed` when `sprint complete` closes a ticket, with the plan's tier when its Sign-off names one;
+  - `github.sent`, `github.results_imported` (a clean import) and `github.merged`, from `tkt send-issue`, `tkt import-results` and `tkt merge-pr`;
+  - `setting.changed` when the Admin Model tiers page saves, applies, retires or removes (the Review & Eval default model before and after, never a source URL) and when the Verbose session logging switch changes.
+  A command run from a terminal carries no `actor`, because it cannot tell a person from an agent; a Model tiers write from the Admin page carries `actor: user` only when it comes with a loopback Origin. Nothing in the app shows these lines yet: read them with any tool that reads JSON lines. `docs/plugins.md` also lists the kinds that are not written yet and why.
+
+### Fixed
+- A test of the board's Check & merge shutdown could fail under load; it now waits for the stub it signals instead of sleeping.
+
 ## [0.23.0] - 2026-10-27
 
 Update with `canon update`, then restart the daemon (Admin's **Restart Daemon**): the event writer in the daemon changed.
