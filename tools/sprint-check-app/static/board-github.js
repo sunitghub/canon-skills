@@ -480,10 +480,10 @@ function githubPlaceRowHTML(tab) {
 // t-ced8: a ticket can go to a cloud session while it is open, or in progress with nothing working on it (planned here, then handed
 // over): a live session for it (a row in the daemon's list) means someone is working it. `tkt send-issue` makes the same call and
 // owns the other checks (unpushed commits, a live session it can see, a closed ticket), so the Terminal and this row agree.
-export function githubCanSend(t) {
+function githubCanSend(t) {
   if (!t || t.scratch || ghOut(t)) return false;
   if (t.status === 'open') return true;
-  return t.status === 'in_progress' && !(state.cockpitRows && state.cockpitRows.get(t.id));
+  return t.status === 'in_progress' && !t.working && !(state.cockpitRows && state.cockpitRows.get(t.id));   // t.working: an agent outside the Cockpit (t-187e)
 }
 export function githubPickerRowsHTML(t, tab) {
   if (!githubCanSend(t)) return '';

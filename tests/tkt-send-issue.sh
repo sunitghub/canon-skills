@@ -407,11 +407,11 @@ PYEOF
   ida="$(fresh ahead)"; : > "$STUB_LOG"
   rc=0; r="$(ptyrun "$ida" flag)" || rc=$?
   [[ "$rc" == 1 ]] || fail "unpushed commits must refuse the send, got $rc: $r"
-  assert_contains "$r" "1 commit(s) here are on no branch of origin"; assert_contains "$r" "--allow-unpushed"
+  assert_contains "$r" "1 commit(s) in "; assert_contains "$r" "are on no branch of origin"; assert_contains "$r" "tkt send-issue $ida --allow-unpushed"
   [[ "$(writes)" == 0 ]] || fail "a refused send made a writing gh call: $(cat "$STUB_LOG")"
   assert_grep "^status: open$" ".tickets/$ida/ticket.md"; ! grep -q "^github:" ".tickets/$ida/ticket.md" || fail "a refused send linked the ticket"
   r="$("$TKT" send-issue "$ida" --dry-run 2>&1)" && fail "--dry-run must refuse unpushed commits too (the board's preview runs it)"
-  assert_contains "$r" "1 commit(s) here are on no branch of origin"
+  assert_contains "$r" "are on no branch of origin"
   r="$("$TKT" send-issue "$ida" --allow-unpushed 2>&1)" || fail "--allow-unpushed did not send: $r"
   assert_contains "$r" "warning: 1 commit(s) are on no branch of origin"; assert_contains "$r" "Sent $ida as"
   [[ "$(git rev-parse "refs/remotes/origin/$br")" == "$(git rev-parse HEAD~1)" ]] || fail "--launch moved the upstream ref"
@@ -446,6 +446,16 @@ CEOF
   idq="$(fresh quiet)"; "$TKT" start "$idq" >/dev/null
   r="$(STUB_CANON=fail "$TKT" send-issue "$idq" 2>&1)" || fail "canon failing must read as no live session, not refuse: $r"
   assert_contains "$r" "Sent $idq as"
+  # a ticket bound to a linked worktree: ITS unpushed commits count, not the main checkout's (the main checkout is level with origin here)
+  idl="$(fresh wtbound)"; "$TKT" start "$idl" >/dev/null
+  git worktree add -q -b wtbranch "$stub/wt" >/dev/null 2>&1; git -C "$stub/wt" -c user.name=t -c user.email=t@t commit -q --allow-empty -m wtwork
+  printf '%s\n' "$stub/wt" > ".tickets/$idl/.cockpit-cwd"; : > "$STUB_LOG"
+  rc=0; r="$("$TKT" send-issue "$idl" 2>&1)" || rc=$?
+  [[ "$rc" == 1 ]] || fail "unpushed commits in the ticket's worktree must refuse, got $rc: $r"; assert_contains "$r" "are on no branch of origin"
+  [[ "$(writes)" == 0 ]] || fail "a refused worktree send made a writing gh call"; assert_grep "^status: in_progress$" ".tickets/$idl/ticket.md"
+  git update-ref refs/remotes/origin/wtbranch "$(git -C "$stub/wt" rev-parse HEAD)"
+  r="$("$TKT" send-issue "$idl" 2>&1)" || fail "the worktree's commits are pushed: the send must go: $r"; assert_contains "$r" "Sent $idl as"
+  git worktree remove --force "$stub/wt" >/dev/null 2>&1 || true
   # no canon on the PATH at all (a cloud session, a minimal install): not live either
   idz="$(fresh nocanon)"; "$TKT" start "$idz" >/dev/null; mv "$stub/canon" "$stub/canon.off"
   r="$(PATH="$stub:/usr/bin:/bin" "$TKT" send-issue "$idz" 2>&1)" || { mv "$stub/canon.off" "$stub/canon"; fail "no canon on the PATH must read as no live session, not refuse: $r"; }
@@ -460,10 +470,10 @@ CEOF
   echo base > tracked.txt; git add tracked.txt; git -c user.name=t -c user.email=t@t commit -q -m tracked; git update-ref "refs/remotes/origin/$br" HEAD
   echo changed >> tracked.txt
   idw="$(fresh warn)"; r="$("$TKT" send-issue "$idw" 2>&1)" || fail "an uncommitted change must warn, not refuse: $r"
-  assert_contains "$r" "1 file(s) have uncommitted changes"; [[ "$r" != *"under .tickets/ are tracked"* ]] || fail "warned about tracked ticket files in a project that ignores them"
+  assert_contains "$r" "1 file(s) in "; assert_contains "$r" "have uncommitted or untracked changes"; [[ "$r" != *"under .tickets/ are tracked"* ]] || fail "warned about tracked ticket files in a project that ignores them"
   git checkout -q -- tracked.txt
   r="$("$TKT" send-issue "$(fresh clean)" --dry-run 2>&1)" || fail "a clean tree failed a dry run: $r"
-  [[ "$r" != *"uncommitted changes"* ]] || fail "a clean tree warned about uncommitted changes: $r"
+  [[ "$r" != *"uncommitted or untracked changes"* ]] || fail "a clean tree warned about uncommitted changes: $r"
   idt="$(fresh tracked)"; git add -f ".tickets/$idt"; git -c user.name=t -c user.email=t@t commit -q -m "track $idt"; git update-ref "refs/remotes/origin/$br" HEAD
   echo "more" >> ".tickets/$idt/ticket.md"
   r="$("$TKT" send-issue "$idt" --dry-run 2>&1)" || fail "dry run of a tracked ticket with an uncommitted file failed: $r"

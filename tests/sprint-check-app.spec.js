@@ -16853,9 +16853,11 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
       state.cockpitRows = new Map([[b, { state: 'working' }]]);   // the daemon lists a session for it
       const busy = row(b);
       state.cockpitRows = new Map();
-      return { out: row(a), idle: idle.includes('ck-gh-row') || idle.includes('ck-gh-place'), busy, closed: row(c) };
+      const t = state.tickets.find(x => x.id === b); t.working = { by: 'claude' };   // an agent outside the Cockpit is on it
+      const outside = row(b); delete t.working;
+      return { out: row(a), idle: idle.includes('id="ck-gh-place"'), busy, outside, closed: row(c) };
     }, [out, live, done]);
-    expect(rows).toEqual({ out: '', idle: true, busy: '', closed: '' });   // none for a sent, a live or a closed ticket
+    expect(rows).toEqual({ out: '', idle: true, busy: '', outside: '', closed: '' });   // none for a sent, a live or a closed ticket
   });
 
   test("a send that fails to preview cannot be created; a send finishing in another ticket's cockpit fills nothing there (t-718b)", async ({ page }) => {

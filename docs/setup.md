@@ -156,7 +156,7 @@ script's Go block:
    in `ticket.md`, and prints the line to start with. A public repo is refused unless you add `--public`: anyone
    could read the ticket's notes.
    The cloud session works from GitHub, not from your machine: commits that are on no branch of `origin` are
-   refused (push first, or add `--allow-unpushed`), and uncommitted changes get a warning. A ticket you planned here is
+   refused (push first, or add `--allow-unpushed` in a terminal; for an in-progress ticket bound to a worktree it is that worktree's commits that count), and uncommitted or untracked changes get a warning. A ticket you planned here is
    `in_progress`; it can still be sent once no session is working on it, and it goes back to `open` as it leaves. The
    board's GitHub option and `--dry-run` show exactly what the command says.
 3. Start the session. One command does steps 2 and 3: `tkt send-issue <id> --launch` shows the issue, asks `[y/N]`

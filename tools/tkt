@@ -1156,27 +1156,27 @@ _si_launch() {
 
 # t-ced8: what the cloud session can and cannot see. It works from GitHub, so a commit on no branch of origin is invisible to it (refuse),
 # and so is an uncommitted change (warn). One owner: the board's preview and send run this command, so the Terminal and the dialog agree.
-# _si_check_pushed <root> <allow-unpushed true|false> <id>
+# _si_check_pushed <root> <worktree> <allow-unpushed true|false> <id>: <worktree> is where the ticket's code lives (an in-progress ticket can
+# be bound to a linked worktree, whose commits and files are not the main checkout's); <root> is where .tickets/ lives.
 _si_check_pushed() {
-  local root="$1" allow="$2" id="$3" n dirty
-  git -C "$root" rev-parse -q --verify HEAD >/dev/null 2>&1 || return 0   # no git, or no commit yet: nothing to be ahead
-  if [[ -z "$(git -C "$root" for-each-ref --count=1 refs/remotes/origin 2>/dev/null)" ]]; then
+  local root="$1" wt="$2" allow="$3" id="$4" n dirty tracked
+  git -C "$wt" rev-parse -q --verify HEAD >/dev/null 2>&1 || return 0   # no git, or no commit yet: nothing to be ahead
+  if [[ -z "$(git -C "$wt" for-each-ref --count=1 refs/remotes/origin 2>/dev/null)" ]]; then
     echo "send-issue: warning: no origin branches are known here, so I cannot tell whether GitHub has your commits: run git fetch, then send again" >&2
-  else
-    n="$(git -C "$root" rev-list --count HEAD --not --remotes=origin 2>/dev/null || echo 0)"
-    if (( n > 0 )); then
-      if [[ "$allow" == true ]]; then
-        echo "send-issue: warning: $n commit(s) are on no branch of origin; the cloud session will not see them (--allow-unpushed)" >&2
-      else
-        echo "send-issue: $n commit(s) here are on no branch of origin: the cloud session works from GitHub and will not see them." >&2
-        echo "  Push them (git push), then send again; or send anyway with --allow-unpushed." >&2
-        return 1
-      fi
+  elif ! n="$(git -C "$wt" rev-list --count HEAD --not --remotes=origin 2>/dev/null)"; then
+    echo "send-issue: warning: could not compare $wt with origin, so I cannot tell whether GitHub has your commits" >&2
+  elif (( n > 0 )); then
+    if [[ "$allow" == true ]]; then
+      echo "send-issue: warning: $n commit(s) are on no branch of origin; the cloud session will not see them (--allow-unpushed)" >&2
+    else
+      echo "send-issue: $n commit(s) in $wt are on no branch of origin: the cloud session works from GitHub and will not see them." >&2
+      echo "  Push them (git push) and send again. From a terminal, tkt send-issue $id --allow-unpushed sends anyway." >&2
+      return 1
     fi
   fi
-  dirty="$(git -C "$root" status --porcelain --untracked-files=no -- . ':(exclude).tickets' 2>/dev/null | wc -l | tr -d ' ')"
-  (( dirty > 0 )) && echo "send-issue: warning: $dirty file(s) have uncommitted changes; the cloud session will not see them" >&2
-  local tracked; tracked="$(git -C "$root" ls-files -- ".tickets/$id" 2>/dev/null || true)"   # captured, not piped into head (pipefail)
+  dirty="$(git -C "$wt" status --porcelain -- . ':(exclude).tickets' 2>/dev/null | wc -l | tr -d ' ')"
+  (( dirty > 0 )) && echo "send-issue: warning: $dirty file(s) in $wt have uncommitted or untracked changes; the cloud session will not see them" >&2
+  tracked="$(git -C "$root" ls-files -- ".tickets/$id" 2>/dev/null || true)"   # captured, not piped into head (pipefail)
   if [[ -n "$tracked" ]] && [[ -n "$(git -C "$root" status --porcelain --untracked-files=no -- ".tickets/$id" 2>/dev/null)" ]]; then
     echo "send-issue: warning: $id's files under .tickets/ are tracked and have uncommitted changes; the issue carries the text on disk, but the cloud session's clone holds the committed copy" >&2
   fi
@@ -1244,16 +1244,6 @@ cmd_send_issue() {
 
   local root repo
   root="$(dirname "$(tickets_dir)")"
-  repo="$(_gh_origin_repo "$root" send-issue)" || exit 1
-  command -v gh >/dev/null 2>&1 || { echo "send-issue: needs the GitHub CLI: install gh, then run: gh auth login" >&2; exit 1; }
-  local vis
-  vis="$(gh repo view "$repo" --json visibility --jq .visibility 2>&1)" || { echo "send-issue: gh could not read $repo: $vis" >&2; echo "  If you are signed out, run: gh auth login" >&2; exit 1; }
-  # A dry run creates nothing, so it previews a public repo too (its repo: line says PUBLIC); the board asks from it (t-718b).
-  if [[ "$vis" == PUBLIC ]] && ! $public && ! $dry; then
-    echo "send-issue: $repo is PUBLIC: anyone could read this ticket's problem, plan and notes." >&2
-    echo "  Send it anyway with: tkt send-issue $id --public" >&2; exit 1
-  fi
-
   # t-ced8: a ticket planned here is in_progress; it may go to the cloud once nothing is working on it. closed and cancelled never do.
   local st; st="$(get_field "$file" status)"
   case "$st" in
@@ -1263,7 +1253,18 @@ cmd_send_issue() {
   if [[ "$st" == in_progress ]] && _si_live_session "$id"; then
     echo "send-issue: $id has a live agent session: end it (or let it finish) before sending the ticket to the cloud" >&2; exit 1
   fi
-  _si_check_pushed "$root" "$allow" "$id" || exit 1
+  local wt; wt="$(_ticket_cwd_binding "$file")"; [[ -d "$wt" ]] || wt="$root"
+  _si_check_pushed "$root" "$wt" "$allow" "$id" || exit 1
+
+  repo="$(_gh_origin_repo "$root" send-issue)" || exit 1
+  command -v gh >/dev/null 2>&1 || { echo "send-issue: needs the GitHub CLI: install gh, then run: gh auth login" >&2; exit 1; }
+  local vis
+  vis="$(gh repo view "$repo" --json visibility --jq .visibility 2>&1)" || { echo "send-issue: gh could not read $repo: $vis" >&2; echo "  If you are signed out, run: gh auth login" >&2; exit 1; }
+  # A dry run creates nothing, so it previews a public repo too (its repo: line says PUBLIC); the board asks from it (t-718b).
+  if [[ "$vis" == PUBLIC ]] && ! $public && ! $dry; then
+    echo "send-issue: $repo is PUBLIC: anyone could read this ticket's problem, plan and notes." >&2
+    echo "  Send it anyway with: tkt send-issue $id --public" >&2; exit 1
+  fi
 
   local acc="$tdir/acceptance.md" plan="$tdir/plan.md" res="$tdir/research.md"
   # _si_all <file> [prompts]: every "## " section of <file>, with its own heading, as the board's tree lists it, tables
@@ -1317,17 +1318,12 @@ cmd_send_issue() {
     return 0
   fi
   if $launch; then
-    # The cloud session clones origin's copy of the current branch, so commits only here never reach it. Warn, never push.
-    local br ahead
+    # The cloud session clones origin's copy of the current branch: a branch with no upstream still clones origin without it. Warn, never push.
+    # (Commits on no branch of origin are refused earlier, by _si_check_pushed.)
+    local br
     br="$(git -C "$root" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
-    if [[ -n "$br" ]]; then
-      if ahead="$(git -C "$root" rev-list --count '@{u}..HEAD' 2>/dev/null)"; then
-        if (( ahead > 0 )); then
-          echo "send-issue: warning: branch $br is $ahead commit(s) ahead of its upstream; the cloud session will not see them until you push" >&2
-        fi
-      else
-        echo "send-issue: warning: branch $br has no upstream; the cloud session clones origin without it" >&2
-      fi
+    if [[ -n "$br" ]] && ! git -C "$root" rev-list --count '@{u}..HEAD' >/dev/null 2>&1; then
+      echo "send-issue: warning: branch $br has no upstream; the cloud session clones origin without it" >&2
     fi
     if ! $yes; then
       printf 'repo: %s (%s)\ntitle: %s: %s\nlabel: canon\n--- body ---\n' "$repo" "$vis" "$id" "$title"
@@ -1355,11 +1351,11 @@ cmd_send_issue() {
     echo "  Add 'github: $repo#<number>' to $file by hand." >&2; exit 1
   fi
   set_or_add_field "$file" github "$repo#$n"
-  if [[ "$st" == in_progress ]]; then   # t-ced8: out on GitHub is open + runs: github (t-718b); a ticket planned here joins that state
-    cmd_set_status "$id" open   # also clears ACTIVE when it names this ticket
-  fi
   # t-718b: github: is only the link (sync and import write it too); runs: github says a cloud session has the work.
   set_or_add_field "$file" runs github
+  if [[ "$st" == in_progress ]]; then   # t-ced8: out on GitHub is open + runs: github (t-718b); a ticket planned here joins that state, last
+    cmd_set_status "$id" open   # also clears ACTIVE when it names this ticket
+  fi
   _gh_trail "$tdir" sent "issue: $url" "repo: $repo"
   _si_texts "$id" "$n"
   printf 'Sent %s as %s\nIn a Claude cloud session on %s, type:\n' "$id" "$url" "$repo"
