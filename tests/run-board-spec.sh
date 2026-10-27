@@ -125,13 +125,13 @@ wait_board() {
 }
 start_board "$COPY"; PORT="$STARTED_PORT"; BOARD_PID="$STARTED_PID"
 wait_board "$PORT"
-if [ "$RUNS_SET" = 1 ]; then RUNS_NOTE="$RUNS run(s)"; else RUNS_NOTE="1 run, repeated up to $RUNS only where the guard rejects it"; fi
-echo "run-board-spec: board from the copy on port $PORT; $RUNS_NOTE of: $BROWSERS; reports go to $OUT"
+if [ "$RUNS_SET" = 1 ]; then RUNS_NOTE="$RUNS run(s)"; else RUNS_NOTE="one pass per browser, repeated (up to $RUNS) only for a browser the guard rejects"; fi
+echo "run-board-spec: board from the copy on port $PORT; $RUNS_NOTE; browsers: $BROWSERS; reports go to $OUT"
 
 IFS=',' read -r -a BLIST <<< "$BROWSERS"
 run_pass() {   # run_pass <browser> <n>
   local b="$1" n="$2" report="$OUT/board-spec-$1-run$2.json"
-  echo "run-board-spec: $b run $n/$RUNS"
+  if [ "$RUNS_SET" = 1 ]; then echo "run-board-spec: $b run $n/$RUNS"; else echo "run-board-spec: $b run $n (first pass; up to $RUNS only if rejected)"; fi
   (cd "$COPY" && PLAYWRIGHT_JSON_OUTPUT_NAME="$report" SPRINT_CHECK_BASE="http://127.0.0.1:$PORT" SPRINT_CHECK_TEST_ROOT="$COPY" \
     npx playwright test tests/sprint-check-app.spec.js --browser="$b" --reporter=json,line ${GREP:+--grep "$GREP"} >"$OUT/board-spec-$b-run$n.log" 2>&1) || true
   [ -s "$report" ] || { echo "run-board-spec: no JSON report for $b run $n (see $OUT/board-spec-$b-run$n.log)" >&2; exit 2; }
@@ -140,6 +140,7 @@ run_pass() {   # run_pass <browser> <n>
 # --runs N is exactly N runs, as before.
 if [ "$RUNS_SET" = 1 ]; then LAST="$RUNS"; else LAST=1; fi
 for b in "${BLIST[@]}"; do
+  rm -f "$OUT"/board-spec-"$b"-run*.json "$OUT"/board-spec-"$b"-run*.log   # a reused --out must not leave an earlier run's reports for the guard and the stamp to judge
   for n in $(seq 1 "$LAST"); do run_pass "$b" "$n"; done
 done
 if [ "$RUNS_SET" = 0 ]; then
@@ -148,7 +149,7 @@ if [ "$RUNS_SET" = 0 ]; then
     if node "$ROOT/tests/board-spec-guard.js" --partial ${STRICT} "$OUT/board-spec-$b-run1.json" >"$OUT/probe-$b.log" 2>&1; then
       echo "run-board-spec: $b: run 1 clean, no repeat needed"
     else
-      echo "run-board-spec: $b: run 1 was rejected by the guard (see $OUT/probe-$b.log), repeating (2 to $RUNS of $RUNS)"
+      echo "run-board-spec: $b: run 1 was rejected by the guard (see $OUT/probe-$b.log), repeating (runs 2 to $RUNS)"
       for n in $(seq 2 "$RUNS"); do run_pass "$b" "$n"; done
     fi
   done

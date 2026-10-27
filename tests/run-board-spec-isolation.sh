@@ -70,10 +70,17 @@ assert_eq 0 "$rc"; assert_eq 1 "$(nreports adaptive-clean chromium)"; assert_eq 
 assert_contains "$out" "chromium: run 1 clean, no repeat needed"
 echo 'process.exit(process.argv.slice(2).some(a => /board-spec-webkit-run/.test(a)) ? 1 : 0)' > "$FAKE/tests/board-spec-guard.js"   # rejects only webkit's report
 run adaptive-webkit --browsers chromium,webkit
+assert_eq 1 "$rc"   # the final guard (webkit rejected) still fails the run
 assert_eq 1 "$(nreports adaptive-webkit chromium)"; assert_eq 3 "$(nreports adaptive-webkit webkit)"   # only the rejected browser is repeated
 assert_contains "$out" "webkit: run 1 was rejected by the guard"; assert_contains "$out" "chromium: run 1 clean, no repeat needed"
 run explicit --runs 2 --browsers chromium,webkit
+assert_eq 1 "$rc"
 assert_eq 2 "$(nreports explicit chromium)"; assert_eq 2 "$(nreports explicit webkit)"   # an explicit --runs is exactly that many, whatever the guard says
 run noguard --browsers chromium --no-guard
 assert_eq 1 "$(nreports noguard chromium)"; assert_contains "$out" "the guard is skipped"
+# a reused --out must not leave an earlier run's reports for the guard and the stamp to judge
+echo 'process.exit(0)' > "$FAKE/tests/board-spec-guard.js"
+mkdir -p "$WORK/out-reuse"; echo '{"suites":[]}' > "$WORK/out-reuse/board-spec-chromium-run2.json"; echo '{"suites":[]}' > "$WORK/out-reuse/board-spec-chromium-run3.json"
+run reuse --browsers chromium
+assert_eq 0 "$rc"; assert_eq 1 "$(nreports reuse chromium)"; [ ! -e "$WORK/out-reuse/board-spec-chromium-run3.json" ] || fail "run-board-spec: a stale run3 report survived a reused --out"
 echo "run-board-spec-isolation: ok"
