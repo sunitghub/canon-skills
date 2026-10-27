@@ -60,7 +60,7 @@ let keyHintTimer=null;
 function showKeyHint(on,sub){
   const h=document.getElementById('keyhint'); if(!h) return;
   clearTimeout(keyHintTimer);
-  if(on&&sub==='P'){ h.innerHTML='<kbd>P</kbd> this project\u2019s tabs — <kbd>n</kbd> next, <kbd>b</kbd> previous, <kbd>f</kbd> first, <kbd>l</kbd> last, <kbd>Esc</kbd> cancel'; h.classList.add('show'); keyHintTimer=setTimeout(()=>showKeyHint(false),1500); }
+  if(on&&sub==='P'){ h.innerHTML='<kbd>P</kbd> this project\u2019s tabs — <kbd>n</kbd> next, <kbd>b</kbd> previous, <kbd>f</kbd> first, <kbd>l</kbd> last, <kbd>h</kbd> home, <kbd>Esc</kbd> cancel'; h.classList.add('show'); keyHintTimer=setTimeout(()=>showKeyHint(false),1500); }
   else if(on){ h.innerHTML='<kbd>'+esc(canonPrefixLabel())+'</kbd> then a key — <kbd>?</kbd> help, <kbd>Esc</kbd> cancel'; h.classList.add('show'); keyHintTimer=setTimeout(()=>showKeyHint(false),2000); }
   else h.classList.remove('show');
 }

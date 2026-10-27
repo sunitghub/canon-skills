@@ -5668,8 +5668,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
     });
 
     // t-5a4b: two sessions in one folder without git can overwrite each other. The daemon flags them `shared`; the
-    // shell warns once under that project, a dismissal sticks while the sharing lasts, and the warning goes away
-    // when the sharing stops. A lone session, or one the daemon doesn't flag, shows nothing.
+    // shell warns once under that project, a dismissal is for good (t-a1ac: also after the sharing restarts and after a reload), and the
+    // warning goes away when the sharing stops. A lone session, or one the daemon doesn't flag, shows nothing.
     test('shell (t-5a4b): a folder shared by several agents shows a dismissible warning under its project', async ({ page }) => {
       const mk = (id, shared) => ({ session: id, ticket: id, project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', status: 'running', started: '2026-09-29T00:00:00Z', shared });
       await openShell(page, [mk('s-aaaa', false)]);
@@ -7053,8 +7053,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await key('f'); expect(await active()).toBe(ids[0]);           // t-a1ac: the first SESSION tab, not the Board
       await key('l'); expect(await active()).toBe(ids[1]);
       await key('h'); expect(await active()).toBe('BOARD');          // Home
-      await key('l'); expect(await active()).toBe(ids[1]);
-      await key('x'); expect(await active()).toBe(ids[1]);           // an unknown action does nothing
+      await key('f'); expect(await active()).toBe(ids[0]);
+      await key('x'); expect(await active()).toBe(ids[0]);           // an unknown action does nothing (the old code fell through to the LAST tab, so ask from the first)
       // a Terminal pane beside the Board: the Board and the Terminal are one stop, listed first
       await page.locator('#ck-back').click();
       await askBoard(page, { type: 'open-terminal-request', placement: 'below' });
@@ -7064,6 +7064,22 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/ck-pane/);
       await key('b'); expect(await active()).toBe(term);             // back to the Board + Terminal stop: the split is restored
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/ck-pane-below/);
+      await key('n'); expect(await active()).toBe(ids[0]);
+      await key('h'); expect(await active()).toBe(term);             // t-a1ac: Home with a pane is that same stop, the pane kept
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/ck-pane-below/);
+    });
+
+    // t-a1ac: with no session tab open, P f / P l say so and stay on the Board.
+    test('project tab keys (t-a1ac): P f / l with no session tab open show a note and stay on the Board', async ({ page }) => {
+      await stubCockpit(page);
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await askBoard(page, { type: 'project-tab-request', action: 'f' });
+      await expect(page.locator('#drop-toast')).toContainText('No session tab is open');
+      await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/);
+      await page.evaluate(() => document.getElementById('drop-toast').classList.remove('show'));
+      await askBoard(page, { type: 'project-tab-request', action: 'l' });
+      await expect(page.locator('#drop-toast')).toContainText('No session tab is open');
     });
 
     // Protects the shell's prefix handler: P is a namespace, one more key follows, Esc cancels it, and the board is told the action.

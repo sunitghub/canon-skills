@@ -241,8 +241,7 @@ function agentLine(v){
   return v.short+agent;
 }
 // t-5a4b: two sessions in one folder without git can overwrite each other — say so, once, under
-// the project. Dismissing hides it for good (t-a1ac).
-// t-a1ac: a dismissal is for good, per project, kept in this browser (storage can be refused: then it lasts for the page).
+// the project. t-a1ac: dismissing hides it for good, per project, kept in this browser (storage can be refused: then for the page's life).
 const LS_SHARED='canon-shared-warn-dismissed';
 const sharedDismissed=new Set((()=>{ try{ const a=JSON.parse(localStorage.getItem(LS_SHARED)||'[]'); return Array.isArray(a)?a.filter(x=>typeof x==='string'):[]; }catch(e){ return []; } })());
 function syncSharedWarnings(views){

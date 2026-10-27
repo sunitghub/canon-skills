@@ -454,7 +454,9 @@ export async function openTerminalPane(placement, opts = {}) {
 // t-ccf5: prefix then P n / b: next / previous tab of this project, the Board first, wrapping. A Terminal pane beside the Board makes
 // the Board and the Terminal one stop (it is on screen together). t-a1ac: f / l are the first / last SESSION tab, h is Home (the Board).
 export function projectTabNav(action) {
-  if (action === 'h') { closeCockpit(); return; }
+  const pt = paneTabId();
+  const home = pt && paneHostId() === '' && cockpitTabs[pt] ? pt : '';   // the Board's stop: with a Terminal pane under it, the Board and the pane together
+  if (action === 'h') { if (home) openCockpit(home); else closeCockpit(); return; }
   if (action === 'f' || action === 'l') {
     const tabs = Object.keys(cockpitTabs);
     if (!tabs.length) { showToast('No session tab is open here yet'); return; }
@@ -464,8 +466,7 @@ export function projectTabNav(action) {
   const open = document.getElementById('cockpit-overlay').classList.contains('open');
   if (action !== 'n' && action !== 'b') return;
   let ids = ['', ...Object.keys(cockpitTabs)];
-  const pt = paneTabId();
-  if (pt && paneHostId() === '' && cockpitTabs[pt]) ids = [pt, ...ids.slice(1).filter(x => x !== pt)];
+  if (home) ids = [home, ...ids.slice(1).filter(x => x !== home)];
   const cur = open ? Math.max(0, ids.indexOf(activeTabId)) : 0;
   const n = ids.length;
   const next = action === 'n' ? (cur + 1) % n : (cur - 1 + n) % n;
