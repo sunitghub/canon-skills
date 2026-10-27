@@ -446,6 +446,10 @@ CEOF
   idq="$(fresh quiet)"; "$TKT" start "$idq" >/dev/null
   r="$(STUB_CANON=fail "$TKT" send-issue "$idq" 2>&1)" || fail "canon failing must read as no live session, not refuse: $r"
   assert_contains "$r" "Sent $idq as"
+  # no canon on the PATH at all (a cloud session, a minimal install): not live either
+  idz="$(fresh nocanon)"; "$TKT" start "$idz" >/dev/null; mv "$stub/canon" "$stub/canon.off"
+  r="$(PATH="$stub:/usr/bin:/bin" "$TKT" send-issue "$idz" 2>&1)" || { mv "$stub/canon.off" "$stub/canon"; fail "no canon on the PATH must read as no live session, not refuse: $r"; }
+  mv "$stub/canon.off" "$stub/canon"; assert_contains "$r" "Sent $idz as"
   ido="$(fresh openlive)"
   r="$(STUB_SESSIONS="[{\"session\":\"s9\",\"ticket\":\"$ido\"}]" "$TKT" send-issue "$ido" 2>&1)" || fail "an open ticket with a session row must still send: $r"
   assert_contains "$r" "Sent $ido as"
