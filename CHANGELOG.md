@@ -6,6 +6,18 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.22.1] - 2026-10-27
+
+Update with `canon update`. No daemon restart is needed: only the Cockpit pages and a gate doc changed.
+
+### Changed
+- In the Cockpit, `Ctrl+.` then `P` then `f` / `l` go to the first / last session tab of the project (they used to land on the Board), and the new `P h` goes Home to the project's Board. `P n` / `P b` are unchanged. The shortcuts sheet and key hint list them.
+- The "More than one agent is working in this folder" banner stays dismissed once you close it: for that project, in that browser, also after the sharing restarts or the page reloads.
+
+### Fixed
+- A prefix action the Cockpit does not know no longer jumps to the last tab.
+- Gate renders (the reviewer's and evaluator's headless Chrome check) no longer use your real Chrome profile or the macOS keychain, so they cannot raise a "Keychain Not Found" dialog on your desktop. The recipe is in `skills/sprint/reference/shared-gate-protocol.md`; projects get it with `canon update`.
+
 ## [0.22.0] - 2026-10-27
 
 The Cockpit's Agents list keeps the order the agents were opened in, and a short bar in the theme colour marks the agent you are in. Update with `canon update`, then restart the daemon (Admin's **Restart Daemon**): the daemon program changed, and a running one stays on the old order until restarted.
