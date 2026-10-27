@@ -96,3 +96,50 @@ func TestMergeRunStartsOwnSession(t *testing.T) {
 		t.Fatalf("merge job session id = %d, want its own pid %d (it shares the board's terminal)", sid, pid)
 	}
 }
+
+// t-ada9: with the merge job in its own session a Ctrl-C to the board's terminal no longer reaches it, so the board's own
+// signal handler must end it (merge-pr's trap stops the tests) before the board exits.
+func TestSignalStopsMergeJobsBeforeExit(t *testing.T) {
+	dir := t.TempDir()
+	mark := filepath.Join(dir, "stopped")
+	stub := filepath.Join(dir, "tkt")
+	body := "#!/bin/sh\ntrap 'echo stopped > \"" + mark + "\"; exit 130' TERM\nwhile :; do sleep 0.1; done\n"
+	if err := os.WriteFile(stub, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TKT_BIN", stub)
+	key := mergeKey{dir, "t-ab12"}
+	startMergeRun(dir, "t-ab12", nil)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		mergeRunsMu.Lock()
+		c := mergeCmds[key]
+		mergeRunsMu.Unlock()
+		if c != nil && c.Process != nil {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	time.Sleep(300 * time.Millisecond) // let the stub install its trap
+	sigc := make(chan os.Signal, 1)
+	exited := make(chan int, 1)
+	go exitOnSignal(sigc, func(code int) { exited <- code })
+	sigc <- os.Interrupt
+	select {
+	case code := <-exited:
+		if code != 130 {
+			t.Fatalf("exit code = %d, want 130", code)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the board did not exit after the signal")
+	}
+	if _, err := os.Stat(mark); err != nil {
+		t.Fatalf("the merge job was not stopped before the board exited: %v", err)
+	}
+	mergeRunsMu.Lock()
+	status := mergeRuns[key]["status"]
+	mergeRunsMu.Unlock()
+	if status == "running" {
+		t.Fatal("the merge job is still marked running")
+	}
+}

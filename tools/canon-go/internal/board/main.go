@@ -21,6 +21,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -196,6 +197,11 @@ func Run(buildVersion, buildCommit string, args []string) int {
 			openBrowser(url)
 		}()
 	}
+
+	// t-ada9: a merge job leads its own session, so a Ctrl-C to this terminal no longer reaches it: end the jobs here.
+	sigc := make(chan os.Signal, 1)
+	signal.Notify(sigc, os.Interrupt, syscall.SIGTERM)
+	go exitOnSignal(sigc, os.Exit)
 
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		fmt.Fprintln(os.Stderr, err)
@@ -4740,6 +4746,42 @@ func signalMerge(cmd *exec.Cmd) {
 		return
 	}
 	cmd.Process.Signal(syscall.SIGTERM)
+}
+
+// stopMergeJobs ends every running merge job the way Stop does and waits for them (merge-pr's trap ends the tests, then
+// KILLs after 2 s), so the board can exit without leaving a test run behind.
+func stopMergeJobs(wait time.Duration) {
+	mergeRunsMu.Lock()
+	var keys []mergeKey
+	for k, c := range mergeCmds {
+		if c != nil && c.Process != nil && mergeRuns[k]["status"] == "running" {
+			keys = append(keys, k)
+		}
+	}
+	mergeRunsMu.Unlock()
+	for _, k := range keys {
+		stopMergeRun(k.root, k.id)
+	}
+	for deadline := time.Now().Add(wait); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		mergeRunsMu.Lock()
+		running := false
+		for _, k := range keys {
+			if mergeRuns[k]["status"] == "running" {
+				running = true
+			}
+		}
+		mergeRunsMu.Unlock()
+		if !running {
+			return
+		}
+	}
+}
+
+// exitOnSignal waits for one signal, ends the merge jobs, then exits like a signalled process (130).
+func exitOnSignal(sigc <-chan os.Signal, exit func(int)) {
+	<-sigc
+	stopMergeJobs(4 * time.Second)
+	exit(130)
 }
 
 // runMerge reads merge-pr's output line by line while it runs, so the board can show its progress lines.
