@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-27-2026 09:04
+learnings-sweep last run: 10-27-2026 09:32
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-27 | [t-6aaf](.tickets/t-6aaf/learnings.md) | Before replacing a line of a shared page, grep every test that slices it by its text: a board spec cut the page's wiring by the old one-line handler and broke, and the suite stamp (no board spec) stayed green; the reviewer caught it. And when a custom key handler turns one key into other input, swallow all its events: xterm still sends `\r` from the keypress of a swallowed keydown (checked in the real xterm.js, Chromium and WebKit). | UNPROMOTED |
 | 2026-10-27 | [t-6fb8](.tickets/t-6fb8/learnings.md) | A spec that fails on every dev checkout may be a harness difference, not a flake: `go run` puts the board's executable in a temp folder, so it has no VERSION and says `dev` (stamp it the way an install is, through GOFLAGS so the no-browser guard still finds the start). An unlisted failure that passes on rerun is only evidence once the solo reruns are saved with `--out`; and never run a spec check beside `scripts/test.sh` (its 0-second timing row fails under load). | UNPROMOTED |
 | 2026-10-27 | [t-432d](.tickets/t-432d/learnings.md) | A board spec runs on a copy of the REAL tickets, so a test that walks a lane (modal prev/next ignores the search) breaks the day a real ticket goes out on GitHub or into progress: stub `/api/tickets` down to the test's own fixtures, and read a failure that is 0/3 on the base as data-dependence before blaming flakiness. | UNPROMOTED |
 | 2026-10-27 | [t-ada9](.tickets/t-ada9/learnings.md) | Moving a child into its own session (Setsid) also removes it from the terminal's Ctrl-C: the parent then needs its own signal handler that stops the child (the reviewer caught it; a test with a stub that traps TERM and a real board + SIGINT proved it); and a process or pty reproduction counts only when stamped from a clone of the final head with its command (`evidence.sh stamp`), twice an unstamped older-clone run failed the evaluator. A mutant that empties a stop path orphans its stub: end it by exact pid. | UNPROMOTED |
