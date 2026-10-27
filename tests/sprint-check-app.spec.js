@@ -15144,6 +15144,35 @@ test.describe('ticket modal polish (t-612f)', () => {
     expect(Math.abs(r.type.top - r.idTop)).toBeLessThan(6);                                 // t-be64: the type stays on the id's row; only Lite/CI wrap below
   });
 
+  test('a soft card: 12px radius, hairline border and no coloured edge, the branch under the title on In progress only, "N to check" from the files (t-be64)', async ({ page }) => {
+    const idIn = newTicketId(PROJECT_ROOT, 'soft-in'), idOpen = newTicketId(PROJECT_ROOT, 'soft-open');
+    writeTicket(idIn, { status: 'in_progress' });
+    writeTicket(idOpen, { status: 'open' });
+    await page.route('**/api/worktree-lock/*', route => route.fulfill({ json: { locked: true, cwd: '/x/wt/ToDo/export-csv' } }));
+    await page.route('**/api/worktrees', route => route.fulfill({ json: [{ path: '/x/wt/ToDo/export-csv', branch: 'ToDo/export-csv' }] }));
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await page.locator('#board-search').fill('soft-');
+    const card = page.locator(`.card[data-id="${idIn}"]`), open = page.locator(`.card[data-id="${idOpen}"]`);
+    await expect(card).toBeVisible();
+    const look = await card.evaluate(el => { const cs = getComputedStyle(el); return { radius: cs.borderTopLeftRadius, left: cs.borderLeftWidth, leftColor: cs.borderLeftColor, top: cs.borderTopColor, head: getComputedStyle(el.querySelector('.card-head')).backgroundColor }; });
+    expect(look.radius).toBe('12px');
+    expect(look.left).toBe('1px');                                                          // a hairline, not the old 3px column edge
+    expect(look.leftColor).toBe(look.top);
+    expect(look.head).toBe('rgba(0, 0, 0, 0)');                                             // no header band
+    const branch = card.locator('.card-wt-chip');
+    await expect(branch).toHaveText('ToDo/export-csv');
+    await expect(branch).toHaveAttribute('title', 'Worktree: ToDo/export-csv');
+    await expect(open.locator('.card-wt-chip:not(:empty)')).toHaveCount(0);                 // Open cards show no branch line
+    // the count is every unchecked box of acceptance.md and plan.md, read from the files
+    const dir = path.join(PROJECT_ROOT, '.tickets', idIn);
+    const want = ['acceptance.md', 'plan.md'].reduce((n, f) => n + (fs.readFileSync(path.join(dir, f), 'utf8').match(/^\s*[-*]\s+\[ \]\s+\S/gm) || []).length, 0);
+    expect(want).toBeGreaterThan(1);
+    const flag = card.locator('.ready-flag');
+    await expect(flag).toHaveText(`${want} to check`);
+    await expect(flag).toHaveAttribute('title', new RegExp(`^${want} to check: unchecked items`));
+  });
+
   test('the sign-off bar is one full-width row: tier, a wide Risk field, model; the controls share a height (t-d0c4, t-bb97)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT);
     writeTicket(id);

@@ -370,7 +370,6 @@ export function renderBoard() {
   state.boardFirstRender = false;
   board.querySelectorAll('.column-body').forEach(b => { b.scrollTop = savedScroll[b.dataset.status] || 0; });
 
-
   board.querySelectorAll('.col-show-more').forEach(btn => {
     btn.addEventListener('click', () => {
       const s = btn.dataset.status;
