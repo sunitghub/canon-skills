@@ -1176,8 +1176,8 @@ _si_check_pushed() {
   fi
   dirty="$(git -C "$root" status --porcelain --untracked-files=no -- . ':(exclude).tickets' 2>/dev/null | wc -l | tr -d ' ')"
   (( dirty > 0 )) && echo "send-issue: warning: $dirty file(s) have uncommitted changes; the cloud session will not see them" >&2
-  if [[ -n "$(git -C "$root" ls-files -- ".tickets/$id" 2>/dev/null | head -1)" ]] \
-    && [[ -n "$(git -C "$root" status --porcelain --untracked-files=no -- ".tickets/$id" 2>/dev/null)" ]]; then
+  local tracked; tracked="$(git -C "$root" ls-files -- ".tickets/$id" 2>/dev/null || true)"   # captured, not piped into head (pipefail)
+  if [[ -n "$tracked" ]] && [[ -n "$(git -C "$root" status --porcelain --untracked-files=no -- ".tickets/$id" 2>/dev/null)" ]]; then
     echo "send-issue: warning: $id's files under .tickets/ are tracked and have uncommitted changes; the issue carries the text on disk, but the cloud session's clone holds the committed copy" >&2
   fi
   return 0
