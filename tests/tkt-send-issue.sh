@@ -424,6 +424,7 @@ PYEOF
   # runs: github, ACTIVE cleared); a live session, a closed ticket and a failed post each leave it exactly as it was.
   cat > "$stub/canon" <<'CEOF'
 #!/usr/bin/env bash
+[[ "${STUB_CANON:-}" == fail ]] && exit 1
 [[ "$1 $2" == "sessions --json" ]] && echo "${STUB_SESSIONS:-[]}"
 CEOF
   chmod +x "$stub/canon"
@@ -441,6 +442,13 @@ CEOF
   assert_contains "$r" "Sent $idp as"
   assert_grep "^status: open$" ".tickets/$idp/ticket.md"; assert_grep "^runs: github$" ".tickets/$idp/ticket.md"; assert_grep "^github: acme/app#57$" ".tickets/$idp/ticket.md"
   [[ ! -s .tickets/ACTIVE ]] || fail "ACTIVE still names a ticket that went to the cloud: $(cat .tickets/ACTIVE)"
+  # no answer from canon (not installed, daemon down: it exits 1) is "not live"; an OPEN ticket is never held back by a session row
+  idq="$(fresh quiet)"; "$TKT" start "$idq" >/dev/null
+  r="$(STUB_CANON=fail "$TKT" send-issue "$idq" 2>&1)" || fail "canon failing must read as no live session, not refuse: $r"
+  assert_contains "$r" "Sent $idq as"
+  ido="$(fresh openlive)"
+  r="$(STUB_SESSIONS="[{\"session\":\"s9\",\"ticket\":\"$ido\"}]" "$TKT" send-issue "$ido" 2>&1)" || fail "an open ticket with a session row must still send: $r"
+  assert_contains "$r" "Sent $ido as"
   idc="$(fresh closed)"; "$TKT" close "$idc" --no-sprint >/dev/null
   rc=0; r="$("$TKT" send-issue "$idc" 2>&1)" || rc=$?
   [[ "$rc" == 1 ]] || fail "a closed ticket must be refused, got $rc"; assert_contains "$r" "is closed; only an open or in-progress ticket"
@@ -450,10 +458,20 @@ CEOF
   idw="$(fresh warn)"; r="$("$TKT" send-issue "$idw" 2>&1)" || fail "an uncommitted change must warn, not refuse: $r"
   assert_contains "$r" "1 file(s) have uncommitted changes"; [[ "$r" != *"under .tickets/ are tracked"* ]] || fail "warned about tracked ticket files in a project that ignores them"
   git checkout -q -- tracked.txt
+  r="$("$TKT" send-issue "$(fresh clean)" --dry-run 2>&1)" || fail "a clean tree failed a dry run: $r"
+  [[ "$r" != *"uncommitted changes"* ]] || fail "a clean tree warned about uncommitted changes: $r"
   idt="$(fresh tracked)"; git add -f ".tickets/$idt"; git -c user.name=t -c user.email=t@t commit -q -m "track $idt"; git update-ref "refs/remotes/origin/$br" HEAD
   echo "more" >> ".tickets/$idt/ticket.md"
   r="$("$TKT" send-issue "$idt" --dry-run 2>&1)" || fail "dry run of a tracked ticket with an uncommitted file failed: $r"
   assert_contains "$r" "$idt's files under .tickets/ are tracked and have uncommitted changes"
+  git add -f ".tickets/$idt"; git -c user.name=t -c user.email=t@t commit -q -m "commit $idt edits"; git update-ref "refs/remotes/origin/$br" HEAD
+  r="$("$TKT" send-issue "$idt" --dry-run 2>&1)" || fail "dry run of a tracked, clean ticket failed: $r"
+  [[ "$r" != *"are tracked and have uncommitted changes"* ]] || fail "a tracked ticket with nothing uncommitted warned: $r"
+  # no remote branches known at all: it cannot tell, so it says so and still sends
+  git for-each-ref --format='%(refname)' refs/remotes/origin | while read -r ref; do git update-ref -d "$ref"; done
+  r="$("$TKT" send-issue "$(fresh norefs)" --dry-run 2>&1)" || fail "no origin refs must warn, not refuse: $r"
+  assert_contains "$r" "warning: no origin branches are known here"
+  git update-ref "refs/remotes/origin/$br" HEAD
 
   # Asking: n creates nothing and runs no claude; y sends and launches.
   idn="$(fresh no)"; : > "$STUB_LOG"; : > "$STUB_CLAUDE_LOG"; before="$(cksum < ".tickets/$idn/ticket.md")"
