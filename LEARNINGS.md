@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-27-2026 04:46
+learnings-sweep last run: 10-27-2026 05:32
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-27 | [t-d42a](.tickets/t-d42a/learnings.md) | A grep-built inventory is only as complete as its patterns: this one said no other path starts an agent while missing the Terminal's `tkt send-issue --launch` -> `claude --cloud` (the flow used that same day); search by capability (every way a process or remote session starts), name the patterns in the file, and keep the saved output from after the change. A landed cloud PR also needs main merged into its branch before `merge-pr` when a release went out meanwhile. | UNPROMOTED |
 | 2026-10-27 | [t-3d04](.tickets/t-3d04/learnings.md) | An evaluator can only reproduce a group result you stamped: cite the exact grep, run it with `--out` on a quiet machine, and never write counts from a run you did not keep (the first evaluator spent 50 minutes on a loaded machine and failed on 73/73 and 116/116); and an `<iframe>` given `top:0; bottom:0; height:auto` stays at 150px, so a split pane needs `height:100%`. | UNPROMOTED |
 | 2026-10-27 | [t-be64](.tickets/t-be64/learnings.md) | A Test Plan line that lists assertions must be checked against the spec diff before close (the reviewer found radius, branch line and `N to check` promised but unasserted), and moving a shared palette to one file breaks older guards that grep the old files (`tests/canon.sh` failed only in the full-suite stamp, not in the board spec). | UNPROMOTED |
 | 2026-10-26 | [t-bb1b](.tickets/t-bb1b/learnings.md) | A test that checks a source file for a branch must search ONLY the handler it guards and strip comments: searching the whole file was satisfied by a comment and by a GET route's case of the same name; and a route default must be the safe one (404), never the dangerous one (a merge run). | UNPROMOTED |
