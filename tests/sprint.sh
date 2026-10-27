@@ -533,6 +533,7 @@ EOF
 cat > ".tickets/$fresh_id/plan.md" <<'EOF'
 # Plan
 ## Sign-off
+Tier: Normal | Risk: low
 - [x] Plan approved
 ## Approach
 test
@@ -784,6 +785,8 @@ mv "$rn.aside" "$rn"
 good_review "native/foo.c, empty-state.js" "nonexistent helper referenced, tools/sprint:12 [severity: low · confidence: med]"
 model_complete_output="$("$SPRINT" complete)"
 assert_contains "$model_complete_output" "Sprint completed: $model_id"
+mc="$(event_line close.confirmed "$model_id")"; [[ -n "$mc" ]] || fail "a real close left no close.confirmed"   # t-4c09: a plan with no Tier line: the event has no tier key, not an empty one
+[[ "$mc" != *'"tier"'* ]] || fail "a plan without a tier wrote one: $mc"
 assert_grep "^status: closed$" ".tickets/$model_id/ticket.md"
 
 

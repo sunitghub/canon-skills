@@ -277,7 +277,10 @@ func (s *server) handler() http.Handler {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
-		debugEnabled.Store(body.Enabled)
+		was := debugEnabled.Swap(body.Enabled)
+		if was != body.Enabled { // t-4c09: a real change, from the Admin page (a person's click); never terminal text, only the two words
+			events.EmitActor(events.Home(), "setting.changed", "daemon", "user", "", map[string]string{"name": "verbose-logging", "old": onOff(was), "new": onOff(body.Enabled)})
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"enabled": debugEnabled.Load()})
 	})
@@ -2434,6 +2437,13 @@ func (se *session) cleanup() {
 	if wt != nil {
 		wt.remove(se.projectRoot, se.debugf)
 	}
+}
+
+func onOff(b bool) string {
+	if b {
+		return "on"
+	}
+	return "off"
 }
 
 // debugEnabled (t-ffb9) gates verbose session-lifecycle logging, toggled via

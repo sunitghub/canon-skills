@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -432,5 +433,31 @@ func TestEnvelopeDocNamesEveryField(t *testing.T) {
 	}
 	if !strings.Contains(doc, "| `actor` | optional:") {
 		t.Error("docs/plugins.md does not mark actor optional")
+	}
+}
+
+// t-4c09. Protects the audit log's privacy: events carry project and ticket names, so a new events folder is 0700 and a new day file 0600
+// (the Windows ACL equivalent is not tested here).
+func TestEventsFolderAndFilePermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("mode bits do not apply on Windows")
+	}
+	home := t.TempDir()
+	if err := Emit(home, "github.synced", "tkt", "/p", map[string]string{"count": "1"}); err != nil {
+		t.Fatal(err)
+	}
+	st, err := os.Stat(filepath.Join(home, "events"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Mode().Perm() != 0o700 {
+		t.Errorf("events folder mode = %o, want 700", st.Mode().Perm())
+	}
+	files, _ := filepath.Glob(filepath.Join(home, "events", "*.jsonl"))
+	if len(files) != 1 {
+		t.Fatalf("day files = %v", files)
+	}
+	if fi, _ := os.Stat(files[0]); fi.Mode().Perm() != 0o600 {
+		t.Errorf("day file mode = %o, want 600", fi.Mode().Perm())
 	}
 }

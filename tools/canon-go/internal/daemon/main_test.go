@@ -4590,6 +4590,62 @@ func TestAdminDebugTogglesFlagAndVersionReflectsIt(t *testing.T) {
 	}
 }
 
+// t-4c09. Protects the Admin page's Verbose session logging switch: a real change leaves one setting.changed line (name verbose-logging,
+// old and new as on/off, actor user, no project); setting it to what it already is leaves none; no terminal text is ever in it.
+func TestAdminDebugToggleLeavesAuditLine(t *testing.T) {
+	defer debugEnabled.Store(false)
+	debugEnabled.Store(false)
+	home := t.TempDir()
+	t.Setenv("CANON_HOME", home)
+	s := newServer(config{token: bootTok, projectRoot: t.TempDir(), stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	toggle := func(enabled bool) {
+		body, _ := json.Marshal(map[string]bool{"enabled": enabled})
+		resp, err := http.Post(ts.URL+"/admin/debug", "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+	}
+	lines := func() []map[string]any {
+		files, _ := filepath.Glob(filepath.Join(home, "events", "*.jsonl"))
+		var out []map[string]any
+		for _, f := range files {
+			b, _ := os.ReadFile(f)
+			for _, l := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+				var m map[string]any
+				if l != "" && json.Unmarshal([]byte(l), &m) == nil && m["kind"] == "setting.changed" {
+					out = append(out, m)
+				}
+			}
+		}
+		return out
+	}
+	toggle(false) // already off: no change, no line
+	if n := len(lines()); n != 0 {
+		t.Fatalf("setting the switch to its current value logged %d line(s)", n)
+	}
+	toggle(true)
+	got := lines()
+	if len(got) != 1 {
+		t.Fatalf("turning it on logged %d line(s), want 1", len(got))
+	}
+	d, _ := got[0]["data"].(map[string]any)
+	if got[0]["source"] != "daemon" || got[0]["actor"] != "user" || got[0]["project"] != "" || d["name"] != "verbose-logging" || d["old"] != "off" || d["new"] != "on" || len(d) != 3 {
+		t.Fatalf("the line: %v", got[0])
+	}
+	toggle(true) // on again: nothing new
+	toggle(false)
+	got = lines()
+	if len(got) != 2 {
+		t.Fatalf("after on, on, off: %d line(s), want 2", len(got))
+	}
+	if d, _ := got[1]["data"].(map[string]any); d["old"] != "on" || d["new"] != "off" {
+		t.Fatalf("the turn-off line: %v", got[1])
+	}
+}
+
 // TestDebugLoggingOffByDefaultWritesNoFile: with the flag at its default
 // (off), a full spawn+kill cycle must never create .cockpit-debug.log.
 func TestDebugLoggingOffByDefaultWritesNoFile(t *testing.T) {
