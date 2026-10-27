@@ -6051,7 +6051,11 @@ func settingsJSON(res settings.Result) map[string]any {
 	for k, v := range res.Values {
 		values[k] = map[string]any{"value": v.V, "source": v.Source}
 	}
-	return map[string]any{"ok": true, "values": values, "warnings": res.Warnings}
+	warnings := res.Warnings
+	if warnings == nil {
+		warnings = []string{} // a list, never null, for every client
+	}
+	return map[string]any{"ok": true, "values": values, "warnings": warnings}
 }
 
 // settingsFailure answers a settings error: a file that cannot be used is a 422 naming it, anything else (an unknown key, a bad

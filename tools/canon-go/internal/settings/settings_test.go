@@ -331,3 +331,153 @@ func TestInstallStyleSetWithOneFile(t *testing.T) {
 		t.Error("a value outside the install schema was accepted")
 	}
 }
+
+// t-dba0 (from the mutation sweep). Protects what a person reads when a file cannot be used: each failure says WHY, in its own words.
+func TestFailureReasonsAreSaid(t *testing.T) {
+	root := t.TempDir()
+	s := ProjectSet(root)
+	for want, body := range map[string]string{
+		"is not valid JSON":    `{"terminal": `,
+		"is not a JSON object": `[1]`,
+		"larger than 64 KB":    `{"pad":"` + strings.Repeat("x", MaxFileBytes) + `"}`,
+		"nested deeper than 8": `{"a":{"b":{"c":{"d":{"e":{"f":{"g":{"h":{"i":1}}}}}}}}}`,
+	} {
+		write(t, s.Local, body)
+		_, err := s.Load()
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("want a reason containing %q, got %v", want, err)
+		}
+	}
+	if runtime.GOOS != "windows" {
+		os.Remove(s.Local)
+		target := filepath.Join(t.TempDir(), "t.json")
+		write(t, target, `{}`)
+		if err := os.Symlink(target, s.Local); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Load(); err == nil || !strings.Contains(err.Error(), "symlink") {
+			t.Errorf("a symlink should say so: %v", err)
+		}
+		os.Remove(s.Local)
+		if err := os.MkdirAll(s.Local, 0o755); err != nil { // a folder where the file should be
+			t.Fatal(err)
+		}
+		if _, err := s.Load(); err == nil || !strings.Contains(err.Error(), "not a regular file") {
+			t.Errorf("a folder should say it is not a regular file: %v", err)
+		}
+	}
+}
+
+// Protects the caps at their edges: exactly 64 KB and exactly 8 levels are fine, one more is not.
+func TestCapsAtTheirEdges(t *testing.T) {
+	s := ProjectSet(t.TempDir())
+	pad := func(n int) string { // a valid JSON object of exactly n bytes
+		base := `{"p":""}`
+		return `{"p":"` + strings.Repeat("x", n-len(base)) + `"}`
+	}
+	write(t, s.Local, pad(MaxFileBytes))
+	if _, err := s.Load(); err != nil {
+		t.Errorf("exactly %d bytes must load: %v", MaxFileBytes, err)
+	}
+	write(t, s.Local, pad(MaxFileBytes+1))
+	if _, err := s.Load(); err == nil {
+		t.Errorf("%d bytes must be refused", MaxFileBytes+1)
+	}
+	eight := `{"a":{"b":{"c":{"d":{"e":{"f":{"g":{"h":1}}}}}}}}` // 8 levels of object
+	write(t, s.Local, eight)
+	if _, err := s.Load(); err != nil {
+		t.Errorf("8 levels must load: %v", err)
+	}
+	write(t, s.Local, `{"a":`+eight+`}`)
+	if _, err := s.Load(); err == nil {
+		t.Error("9 levels must be refused")
+	}
+}
+
+// Protects the names a reader (the board, a test, a plugin) compares against, and the range at both ends for every number type.
+func TestSourceNamesAndRangeEdges(t *testing.T) {
+	if SourceDefault != "default" || SourceShared != "shared" || SourceLocal != "local" {
+		t.Errorf("source names changed: %q %q %q", SourceDefault, SourceShared, SourceLocal)
+	}
+	k := ProjectSet("").Schema["terminal.paging"]
+	for _, ok := range []any{float64(5), float64(500), 5, 500, json.Number("5"), json.Number("500")} {
+		if _, err := k.Validate(ok); err != nil {
+			t.Errorf("%#v refused: %v", ok, err)
+		}
+	}
+	for _, bad := range []any{float64(4), float64(501), 4, 501, json.Number("4"), json.Number("501"), json.Number("x"), json.Number("5.5")} {
+		if _, err := k.Validate(bad); err == nil {
+			t.Errorf("%#v accepted", bad)
+		}
+	}
+}
+
+// Protects the user's file when its shape is not what a write expects, and a set with no local file.
+func TestWriteRefusals(t *testing.T) {
+	s := ProjectSet(t.TempDir())
+	write(t, s.Local, `{"terminal":"not an object"}`)
+	before := read(t, s.Local)
+	if _, err := s.SetLocal("terminal.paging", "off"); err == nil || !strings.Contains(err.Error(), "not an object") {
+		t.Errorf("a non-object parent: %v", err)
+	}
+	if read(t, s.Local) != before {
+		t.Error("the file was changed")
+	}
+	if _, err := (Set{Schema: s.Schema}).SetLocal("terminal.paging", "off"); err == nil || !strings.Contains(err.Error(), "no local settings file") {
+		t.Errorf("a set with no local file: %v", err)
+	}
+	if runtime.GOOS != "windows" && os.Getuid() != 0 { // a folder that cannot be written to: nothing half-written is left
+		root := t.TempDir()
+		s2 := ProjectSet(root)
+		if err := os.MkdirAll(filepath.Dir(s2.Local), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(filepath.Dir(s2.Local), 0o500); err != nil {
+			t.Fatal(err)
+		}
+		defer os.Chmod(filepath.Dir(s2.Local), 0o755)
+		if _, err := s2.SetLocal("terminal.paging", "off"); err == nil || !strings.Contains(err.Error(), "cannot write") {
+			t.Errorf("a read-only folder: %v", err)
+		}
+		os.Chmod(filepath.Dir(s2.Local), 0o755)
+		if entries, _ := os.ReadDir(filepath.Dir(s2.Local)); len(entries) != 0 {
+			t.Errorf("a failed write left %v", entries)
+		}
+	}
+}
+
+// Protects the exclude file's own text: an existing file without a final newline gets the line on its own line, unrelated lines stay,
+// and a symlinked exclude says so.
+func TestIgnoreInGitKeepsTheExistingFile(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not installed")
+	}
+	root := t.TempDir()
+	cmd := exec.Command("git", "-C", root, "init", "-q")
+	cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v %s", err, out)
+	}
+	ex := filepath.Join(root, ".git", "info", "exclude")
+	write(t, ex, "# mine\n*.log") // no final newline
+	if err := IgnoreInGit(root, LocalRel); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, ex); got != "# mine\n*.log\n"+LocalRel+"\n" {
+		t.Errorf("exclude = %q", got)
+	}
+	if err := IgnoreInGit(root, LocalRel); err != nil || read(t, ex) != "# mine\n*.log\n"+LocalRel+"\n" {
+		t.Errorf("a second call changed the file: %v %q", err, read(t, ex))
+	}
+	if runtime.GOOS != "windows" {
+		os.Remove(ex)
+		target := filepath.Join(t.TempDir(), "x")
+		write(t, target, "")
+		if err := os.Symlink(target, ex); err != nil {
+			t.Fatal(err)
+		}
+		if err := IgnoreInGit(root, LocalRel); err == nil || !strings.Contains(err.Error(), "symlink") {
+			t.Errorf("a symlinked exclude: %v", err)
+		}
+	}
+}

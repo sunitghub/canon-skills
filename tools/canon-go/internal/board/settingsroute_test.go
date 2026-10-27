@@ -2,9 +2,11 @@ package board
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -131,5 +133,83 @@ func TestSettingsRoutes(t *testing.T) {
 	}
 	if n := len(settingEvents(t, home)); n != 1 {
 		t.Fatalf("a refused write logged: %d line(s) in total", n)
+	}
+}
+
+// t-dba0 (from the mutation sweep). Protects the shape every client reads and the messages a person sees: ok true with a warnings
+// list on success, ok false with the reason on a refusal, an unknown project said plainly, and the 403 naming what is missing.
+func TestSettingsRouteAnswers(t *testing.T) {
+	t.Setenv("CANON_HOME", t.TempDir())
+	root := t.TempDir()
+	old := projectRoot
+	projectRoot = root
+	defer func() { projectRoot = old }()
+	do := func(method, query, origin, body string) (int, string, map[string]any) {
+		req := httptest.NewRequest(method, "/api/settings"+query, strings.NewReader(body))
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		w := httptest.NewRecorder()
+		if method == http.MethodGet {
+			handleGet(w, req)
+		} else {
+			handlePost(w, req)
+		}
+		var m map[string]any
+		_ = json.Unmarshal(w.Body.Bytes(), &m)
+		return w.Code, w.Body.String(), m
+	}
+	if code, body, _ := do(http.MethodGet, "?project=nope", "", ""); code != 400 || !strings.Contains(body, "unknown project") {
+		t.Errorf("GET unknown project: %d %q", code, body)
+	}
+	if code, body, _ := do(http.MethodPost, "", "", `{"key":"terminal.paging","value":"off"}`); code != 403 || !strings.Contains(body, "loopback Origin") {
+		t.Errorf("POST without Origin: %d %q", code, body)
+	}
+	code, _, m := do(http.MethodGet, "", "", "")
+	if code != 200 || m["ok"] != true {
+		t.Fatalf("GET: %d %v", code, m)
+	}
+	if w, ok := m["warnings"].([]any); !ok || w == nil {
+		t.Errorf("warnings must be a list, got %#v", m["warnings"])
+	}
+	code, _, m = do(http.MethodPost, "", "http://127.0.0.1:8423", `{"key":"terminal.paging","value":"on"}`)
+	if code != 400 || m["ok"] != false || !strings.Contains(fmt.Sprint(m["error"]), "terminal.paging") {
+		t.Errorf("a bad value: %d %v", code, m)
+	}
+}
+
+// Protects `git status` through the real route: after a write in a repository the local file is excluded and nothing else changed.
+func TestSettingsRouteKeepsTheFileOutOfGit(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not installed")
+	}
+	t.Setenv("CANON_HOME", t.TempDir())
+	root := t.TempDir()
+	run := func(args ...string) string {
+		cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+		return string(out)
+	}
+	run("init", "-q")
+	run("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init")
+	old := projectRoot
+	projectRoot = root
+	defer func() { projectRoot = old }()
+	req := httptest.NewRequest(http.MethodPost, "/api/settings", strings.NewReader(`{"key":"terminal.paging","value":25}`))
+	req.Header.Set("Origin", "http://127.0.0.1:8423")
+	w := httptest.NewRecorder()
+	handlePost(w, req)
+	if w.Code != 200 {
+		t.Fatalf("write = %d %s", w.Code, w.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(root, ".canon", "settings.local.json")); err != nil {
+		t.Fatal(err)
+	}
+	if st := run("status", "--porcelain"); strings.TrimSpace(st) != "" {
+		t.Fatalf("git status is not clean after a write:\n%s", st)
 	}
 }
