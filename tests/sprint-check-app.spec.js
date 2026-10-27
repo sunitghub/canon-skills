@@ -15497,6 +15497,41 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     expect(others).toEqual([]);
   });
 
+  // Prod path: Ctrl+. m / M opens the Terminal as a pane under or beside a ticket's GitHub panel (t-ccf5). Beside, an iframe given
+  // top + bottom + height:auto stayed at the 150px default, so the Terminal was a short strip with its text cut off (t-3d04).
+  for (const dir of ['below', 'beside']) {
+    test(`a Terminal pane placed ${dir} fills its half and gets the keys (t-3d04)`, async ({ page }) => {
+      const id = newTicketId(PROJECT_ROOT);
+      ghTicket(id);
+      await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
+      await page.route('**/api/worktrees**', r => json(r, [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true }]));
+      await page.route(`**/api/ticket/${id}/github/send-preview`, r => json(r, { ok: true, exit_code: 0, output: 'repo: acme/app (PRIVATE)\ntitle: ' + id + ': GitHub test\n--- body ---\n# Description\nx\n' }));
+      // A stand-in daemon page: an input that logs the keys it gets.
+      await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: '<html><body><input id="i" autofocus><script>window.__keys=[];addEventListener("keydown",function(e){window.__keys.push(e.key)})</script></body></html>' }));
+      await openBoard(page, id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await page.locator('#ck-worktree .ck-gh-row').click();
+      await expect(page.locator('#ck-gh-panel')).toBeVisible();
+      await page.evaluate(async () => { (await import('/static/board-core.js')).state.isGitProject = true; });   // the fixture project is not a git repository
+      await page.evaluate(async d => { await (await import('/static/board-cockpit.js')).openTerminalPane(d, { fresh: true }); }, dir);
+      await expect(page.locator('#ck-term')).toHaveClass(new RegExp(`ck-split-${dir}`));
+      const term = page.locator('#ck-term iframe.ck-pane2');
+      await expect(term).toBeVisible();
+      const g = await page.evaluate(() => {
+        const t = document.getElementById('ck-term').getBoundingClientRect(), f = document.querySelector('#ck-term iframe.ck-pane2').getBoundingClientRect(), p = document.getElementById('ck-gh-panel').getBoundingClientRect();
+        return { termW: t.width, termH: t.height, w: f.width, h: f.height, panelH: p.height, panelW: p.width };
+      });
+      if (dir === 'beside') { expect(g.h).toBeGreaterThan(g.termH - 4); expect(g.w).toBeLessThan(g.termW * 0.7); expect(g.panelH).toBeGreaterThan(g.termH - 4); }   // the full height, not the 150px default
+      else { expect(g.w).toBeGreaterThan(g.termW - 4); expect(g.h).toBeLessThan(g.termH * 0.7); expect(g.panelW).toBeGreaterThan(g.termW - 4); }
+      await expect.poll(() => page.evaluate(() => document.activeElement && document.activeElement.className)).toBe('ck-pane2');   // the pane took the keyboard
+      // the pane's own frame, not a URL match: the Terminal's address depends on how it was opened
+      const termFrame = async () => (await term.elementHandle()).contentFrame();
+      await expect.poll(async () => { const f = await termFrame(); return f ? f.evaluate(() => Array.isArray(window.__keys)).catch(() => false) : false; }, { timeout: 20000 }).toBe(true);   // its listener exists before a key is typed
+      await page.keyboard.type('hello');
+      await expect.poll(async () => (await termFrame()).evaluate(() => window.__keys.join(''))).toContain('hello');
+    });
+  }
+
   // Prod path: the Sent panel's To Claude Cloud button (t-0aa7): the Terminal opens with `tkt send-issue <id> --launch` typed for the
   // user to send, never sent; on Windows the same button copies the line and says where to paste it.
   for (const windows of [false, true]) {
@@ -15536,6 +15571,19 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
         await expect(page.locator('#ck-term')).toHaveClass(/ck-split-below/);
         await expect(page.locator('#ck-gh-sent')).toContainText(`Sent ${id} as issue #57`);
         await expect(page.locator('#ck-iframe')).toHaveCount(1);                                   // one id: the host tab's, so its rail stays
+        // t-3d04: the line is on the clipboard on every OS, and the panel is the host pane only: its box ends where the Terminal begins
+        await expect.poll(() => page.evaluate(() => window.__copied)).toBe(line);
+        await expect(page.locator('#ck-gh-status')).toContainText('Copied');
+        const geo = () => page.evaluate(() => {
+          const p = document.getElementById('ck-gh-panel').getBoundingClientRect(), t = document.querySelector('#ck-term iframe.ck-pane2').getBoundingClientRect();
+          return { panelBottom: p.bottom, panelRight: p.right, termTop: t.top, termLeft: t.left, panelH: p.height };
+        });
+        const below = await geo();
+        expect(below.panelBottom).toBeLessThanOrEqual(below.termTop + 1);                           // below: not under the Terminal
+        expect(below.panelH).toBeGreaterThan(40);
+        await page.evaluate(() => { const t = document.getElementById('ck-term'); t.classList.remove('ck-split-below'); t.classList.add('ck-split-beside'); });
+        const beside = await geo();
+        expect(beside.panelRight).toBeLessThanOrEqual(beside.termLeft + 1);                         // beside: not under the Terminal
       }
     });
   }

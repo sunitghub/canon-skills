@@ -552,8 +552,9 @@
     #ck-term.ck-split-below iframe.ck-pane1, #ck-term.ck-split-beside iframe.ck-pane1 { position: absolute; top: 0; left: 0; }
     #ck-term.ck-split-below iframe.ck-pane1 { right: 0; height: calc(var(--ckr, .5) * 100% - 3px); }
     #ck-term.ck-split-below iframe.ck-pane2 { position: absolute; left: 0; right: 0; bottom: 0; height: calc((1 - var(--ckr, .5)) * 100% - 3px); }
-    #ck-term.ck-split-beside iframe.ck-pane1 { bottom: 0; width: calc(var(--ckr, .5) * 100% - 3px); height: auto; }
-    #ck-term.ck-split-beside iframe.ck-pane2 { position: absolute; top: 0; bottom: 0; right: 0; width: calc((1 - var(--ckr, .5)) * 100% - 3px); height: auto; }
+    /* t-3d04: height 100%, not auto: an iframe is a replaced element, so top + bottom + height:auto left it at the 150px default */
+    #ck-term.ck-split-beside iframe.ck-pane1 { bottom: 0; width: calc(var(--ckr, .5) * 100% - 3px); height: 100%; }
+    #ck-term.ck-split-beside iframe.ck-pane2 { position: absolute; top: 0; bottom: 0; right: 0; width: calc((1 - var(--ckr, .5)) * 100% - 3px); height: 100%; }
     #ck-pane-handle { position: fixed; z-index: 65; background: var(--border); touch-action: none; transition: background .12s; }
     #ck-pane-handle[hidden] { display: none; }
     #ck-pane-handle:hover, #ck-pane-handle:focus-visible, #ck-pane-handle.drag { background: var(--accent); outline: none; }

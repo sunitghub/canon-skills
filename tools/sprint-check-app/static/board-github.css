@@ -21,6 +21,9 @@
   background: var(--bg);
 }
 .ck-gh-panel[hidden] { display: none; }
+/* t-3d04: with a Terminal pane beside or under this tab, the panel is the host pane only (the share iframe.ck-pane1 gets, board-cockpit.css), so its own scroll bar is not hidden behind the Terminal */
+#ck-term.ck-split-below .ck-gh-panel { inset: 0 0 auto 0; height: calc(var(--ckr, .5) * 100% - 3px); }
+#ck-term.ck-split-beside .ck-gh-panel { inset: 0 auto 0 0; width: calc(var(--ckr, .5) * 100% - 3px); }
 .ck-gh-box { width: 100%; max-width: 760px; display: flex; flex-direction: column; gap: 10px; color: var(--text); }
 .ck-gh-box h3 { margin: 0; font-size: 15px; }
 .ck-gh-box p { margin: 0; color: var(--text-muted); font-size: 13px; line-height: 1.5; }

@@ -9,6 +9,15 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 ### Security
 - The board routes that start an agent (`POST /api/skill-eval/run`, `POST /api/ticket/<id>/headless-run`) now refuse a request with no loopback `Origin` header, and the headless run needs `confirm: true` (t-d42a). The Cockpit daemon's `/session/start` (a session you start, gated by the boot token) is unchanged.
 
+## [0.21.1] - 2026-10-27
+
+Send to GitHub stays reachable next to a Terminal, and a Terminal placed beside a tab is no longer a short strip. Update with `canon update`, then reload the board (no daemon or board-program change).
+
+### Fixed
+- **Create issue is no longer hidden behind a split Terminal** (`t-3d04`): with the Terminal below or beside a ticket's Send to GitHub panel, the panel took the whole area and the Terminal covered its lower half and its scroll bar. It now takes only its own pane's share and follows the divider.
+- **A Terminal placed beside a tab fills its half** (`t-3d04`): it was 150px tall, so its text and prompt were cut off.
+- **To Claude Cloud copies its command on every OS** (`t-3d04`): the `tkt send-issue <id> --launch` line is copied as well as typed in the Terminal, and the status says when the copy was blocked.
+
 ## [0.21.0] - 2026-10-26
 
 The board's tickets are soft cards, the Demo/UX badge is now Lite, and the board and the Cockpit shell share one palette file. Update with `canon update`, then restart the board (the board program changed; the daemon did not).
