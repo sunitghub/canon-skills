@@ -1357,6 +1357,7 @@ cmd_send_issue() {
     cmd_set_status "$id" open   # also clears ACTIVE when it names this ticket
   fi
   _gh_trail "$tdir" sent "issue: $url" "repo: $repo"
+  canon_event github.sent tkt "$root" "ticket=$id" "issue=$n"   # t-4c09: observer-only; after the post and every write
   _si_texts "$id" "$n"
   printf 'Sent %s as %s\nIn a Claude cloud session on %s, type:\n' "$id" "$url" "$repo"
   printf '%s\n' "$_si_start"
@@ -1892,6 +1893,7 @@ cmd_merge_pr() {
       || echo "merge-pr: note: could not delete canon-results/$id on origin; delete it by hand" >&2
   fi
   echo "Merged PR #$pr into $base${sha:+ ($sha)}$note."
+  canon_event github.merged tkt "$root" "ticket=$id" "pr=$pr"   # t-4c09
   _ff_local_base "$root" "$base"
 }
 
@@ -2557,6 +2559,7 @@ cmd_import_results() {
     echo "  kept canon-results/$id on origin, since a check failed: fix it and run import-results again" >&2
   fi
   echo "  Add its LEARNINGS.md row locally (learnings-sweep for $id) if it wrote learnings.md."
+  if [[ "$rc" == 0 ]]; then canon_event github.results_imported tkt "$root" "ticket=$id" ${pr:+"pr=$pr"}; fi   # t-4c09: only a clean import
   return "$rc"
 }
 

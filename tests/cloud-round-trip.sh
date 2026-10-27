@@ -194,6 +194,10 @@ assert_grep "^runs: github$" ".tickets/$id/ticket.md"     # t-718b: the laptop's
 assert_contains "$out" "status: closed"
 assert_contains "$out" "evaluator: pass"
 assert_contains "$out" "matches graded-head"
+# t-4c09: only the clean import leaves an audit line; the six mismatched imports above were refused
+ri="$(cat "$CANON_HOME"/events/*.jsonl | grep -F '"kind":"github.results_imported"' | grep -F "\"ticket\":\"$id\"" || true)"
+assert_eq 1 "$(printf '%s\n' "$ri" | grep -c . || true)"
+assert_contains "$ri" '"pr":"58"'; assert_contains "$ri" '"source":"tkt"'; [[ "$ri" != *'"actor"'* ]] || fail "a CLI import claimed an actor: $ri"
 # t-1dec: the import appended its block after the send block, which stayed byte-identical; the trail holds what the output showed.
 gt=".tickets/$id/github.md"; sent_block="$(cat "$A/$d/github.md")"
 assert_eq "$sent_block" "$(head -n "$(wc -l < "$A/$d/github.md")" "$gt")"

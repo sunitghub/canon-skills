@@ -7,6 +7,7 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 
 W="$(mktemp -d "${TMPDIR:-/tmp}/tkt-merge-pr.XXXXXX")"
+use_fresh_board "$W/board"   # t-4c09: the audit event goes through the board binary (built before HOME moves)
 trap 'rm -rf "$W"' EXIT
 export HOME="$W/home" XDG_CONFIG_HOME="$W/home/.config" TMPDIR="$W/tmp"; mkdir -p "$HOME" "$TMPDIR"
 git config --global init.defaultBranch main
@@ -215,8 +216,10 @@ merged && fail "an n at the prompt merged"; [[ "$(sig)" == "$before" ]] || fail 
 
 : > "$STUB_LOG"
 rm -f "$TMPDIR"/tkt-merge-*
+[[ -z "$(event_line github.merged "$id")" ]] || fail "a refused or declined merge wrote github.merged"   # t-4c09
 out="$(tty_run y "$TKT" merge-pr "$id" 2>&1)" || fail "merge-pr with y failed: $out"
 [[ -z "$(ls "$TMPDIR" | grep '^tkt-merge-.*-pr[0-9]*\.' || true)" ]] || fail "a passing run kept a log"
+gm="$(event_line github.merged "$id")"; assert_contains "$gm" '"pr":"7"'; assert_contains "$gm" '"source":"tkt"'; [[ "$gm" != *'"actor"'* ]] || fail "a CLI merge claimed an actor: $gm"
 assert_contains "$out" "running scripts/test.sh on main + PR #7"
 assert_contains "$out" "Merged PR #7 into main"
 grep -qx "pr merge 7 --repo acme/app --merge --delete-branch --match-head-commit $PRHEAD" "$STUB_LOG" || fail "wrong merge call: $(cat "$STUB_LOG")"

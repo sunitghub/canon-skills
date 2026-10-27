@@ -6,6 +6,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 
 project="$(make_project)"
 stub="$(mktemp -d "${TMPDIR:-/tmp}/tkt-send-issue.XXXXXX")"
+use_fresh_board "$stub/bin"   # t-4c09: the audit event goes through the board binary
 trap 'rm -rf "$project" "$stub"' EXIT
 cd "$project"
 
@@ -412,8 +413,10 @@ PYEOF
   assert_grep "^status: open$" ".tickets/$ida/ticket.md"; ! grep -q "^github:" ".tickets/$ida/ticket.md" || fail "a refused send linked the ticket"
   r="$("$TKT" send-issue "$ida" --dry-run 2>&1)" && fail "--dry-run must refuse unpushed commits too (the board's preview runs it)"
   assert_contains "$r" "are on no branch of origin"
+  [[ -z "$(event_line github.sent "$ida")" ]] || fail "a refused send wrote github.sent"   # t-4c09
   r="$("$TKT" send-issue "$ida" --allow-unpushed 2>&1)" || fail "--allow-unpushed did not send: $r"
   assert_contains "$r" "warning: 1 commit(s) are on no branch of origin"; assert_contains "$r" "Sent $ida as"
+  gs="$(event_line github.sent "$ida")"; assert_contains "$gs" '"source":"tkt"'; assert_contains "$gs" '"issue":"57"'; [[ "$gs" != *'"actor"'* ]] || fail "a CLI send claimed an actor: $gs"
   [[ "$(git rev-parse "refs/remotes/origin/$br")" == "$(git rev-parse HEAD~1)" ]] || fail "--launch moved the upstream ref"
   git update-ref "refs/remotes/origin/$br" HEAD   # level with the upstream, the usual case: no warning, and under set -e no stop
   rc=0; r="$(ptyrun "$(fresh level)" flag)" || rc=$?

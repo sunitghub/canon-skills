@@ -557,8 +557,11 @@ cat > ".claude/subagent-runs.jsonl" <<'EOF'
 {"timestamp":1000000100,"agent_id":"hand-written","agent_type":"evaluator"}
 {"ts":"2001-09-09T02:16:40Z","session_id":"s1","agent_id":"agent-real2","agent_type":"general-purpose","transcript_path":"/tmp/eval2.jsonl","tokens":5,"outcome":"pass","model":"claude-sonnet-5"}
 EOF
+[[ -z "$(event_line close.confirmed "$fresh_id")" ]] || fail "a refused close wrote close.confirmed"   # t-4c09: every refusal above left no audit line
 complete_output="$("$SPRINT" complete)"
 assert_contains "$complete_output" "Sprint completed: $fresh_id"
+cc="$(event_line close.confirmed "$fresh_id")"   # t-4c09: the audit line of a real close: the plan's tier, no actor (a command cannot know)
+assert_contains "$cc" '"source":"sprint"'; assert_contains "$cc" '"tier":"normal"'; [[ "$cc" != *'"actor"'* ]] || fail "a CLI close claimed an actor: $cc"
 assert_contains "$(event_line sprint.completed "$fresh_id")" '"source":"sprint"'   # t-f182: after the close, never before
 assert_grep "^status: closed$" ".tickets/$fresh_id/ticket.md"
 assert_grep "^status: closed$" ".tickets/$id/ticket.md"
