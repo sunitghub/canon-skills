@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-27-2026 10:56
+learnings-sweep last run: 10-27-2026 11:30
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-27 | [t-3488](.tickets/t-3488/learnings.md) | A "no dialog appeared" check that watches process names must be baseline-aware and self-tested: `CoreServicesUIAgent` is resident on every Mac, so a plain pgrep failed a clean run, and a copied `sleep` named SecurityAgent is killed by macOS (a compiled stand-in works). | UNPROMOTED |
 | 2026-10-27 | [t-7456](.tickets/t-7456/learnings.md) | A message handler must IGNORE a malformed value, not coerce it: a non-string id became `''` and cleared the marker, and only the forged-message spec caught it; and a test whose ids sort the same as the thing under test cannot kill a mutant that drops the sort. | UNPROMOTED |
 | 2026-10-27 | [t-6aaf](.tickets/t-6aaf/learnings.md) | Before replacing a line of a shared page, grep every test that slices it by its text: a board spec cut the page's wiring by the old one-line handler and broke, and the suite stamp (no board spec) stayed green; the reviewer caught it. And when a custom key handler turns one key into other input, swallow all its events: xterm still sends `\r` from the keypress of a swallowed keydown (checked in the real xterm.js, Chromium and WebKit). | UNPROMOTED |
 | 2026-10-27 | [t-6fb8](.tickets/t-6fb8/learnings.md) | A spec that fails on every dev checkout may be a harness difference, not a flake: `go run` puts the board's executable in a temp folder, so it has no VERSION and says `dev` (stamp it the way an install is, through GOFLAGS so the no-browser guard still finds the start). An unlisted failure that passes on rerun is only evidence once the solo reruns are saved with `--out`; and never run a spec check beside `scripts/test.sh` (its 0-second timing row fails under load). | UNPROMOTED |
