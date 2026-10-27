@@ -3945,7 +3945,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const web = path.join(__dirname, '..', 'tools', 'canon-go', 'internal', 'daemon', 'web');
       const daemonPage = fs.readFileSync(path.join(web, 'cockpit.html'), 'utf8');
       const a = daemonPage.indexOf('  // t-a198: the prefix key.');
-      const endMarker = '    term.attachCustomKeyEventHandler(function (ev) { return !prefixKeys.handle(ev); });\n  }\n';
+      const endMarker = '    if (nl) sendInput(nl);\n    return false;\n  });\n';   // t-6aaf: the end of the one shared key handler
       const b = daemonPage.indexOf(endMarker);
       expect(a).toBeGreaterThan(0); expect(b).toBeGreaterThan(a);
       const wiring = daemonPage.slice(a, b + endMarker.length);
@@ -3957,10 +3957,11 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const toParent = daemonPage.slice(p0, p1 + 1).replace('"__COCKPIT_PARENT__"', 'location.origin');
       await page.route('**/__pk/host', r => r.fulfill({ status: 200, contentType: 'text/html', body: `<!doctype html><body><iframe id="t" src="/__pk/term" style="width:600px;height:300px"></iframe><script>
         window.__msgs=[]; window.addEventListener('message',function(e){ if(e.data&&e.data.source==='canon-cockpit') window.__msgs.push(e.data.type+':'+(e.data.key||'')); });</script></body>` }));
-      await page.route('**/__pk/term', r => r.fulfill({ status: 200, contentType: 'text/html', body: `<!doctype html><link rel="stylesheet" href="/__pk/xterm.css"><body><div id="terminal"></div>
+      await page.route('**/__pk/term', r => r.fulfill({ status: 200, contentType: 'text/html', body: `<!doctype html><link rel="stylesheet" href="/__pk/xterm.css"><body><div id="terminal"></div><select id="agentSel"><option value="claude" selected>claude</option></select>
         <script src="/__pk/xterm.js"></script><script>
         var term = new Terminal({}); term.open(document.getElementById("terminal"));
         window.__data = []; term.onData(function(d){ window.__data.push(d); });
+        var MODE = "", session = null, __sent = []; function sendInput(d){ __sent.push(d); }   // t-6aaf: what the page's handler reads
         ${toParent}
         ${wiring}
         </script></body>` }));
@@ -3981,6 +3982,16 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.keyboard.press('Control+.'); await page.keyboard.press('Escape'); await page.keyboard.type('d');
       await expect.poll(data).toBe('\x03|\x04|a|b|c|d');
       expect(await page.evaluate(() => window.__msgs.join(','))).toBe('prefix-armed:,prefix-key:2,prefix-armed:,prefix-cancel:');
+      // t-6aaf: in a running session Shift+Enter goes out as ESC+CR and xterm adds no \r of its own (the keypress is swallowed too);
+      // with no session it is left to xterm as plain Enter
+      await term.locator('body').evaluate(() => { window.session = 's1'; });
+      await page.keyboard.press('Shift+Enter');
+      await expect.poll(() => term.locator('body').evaluate(() => window.__sent.join('|'))).toBe('\x1b\r');
+      await page.waitForTimeout(150);
+      expect(await data()).toBe('\x03|\x04|a|b|c|d');
+      await term.locator('body').evaluate(() => { window.session = null; });
+      await page.keyboard.press('Shift+Enter');
+      await expect.poll(data).toBe('\x03|\x04|a|b|c|d|\r');
     });
 
     test('keyboard prefix (t-a198): the sidebar keyboard button opens the cheat sheet, and the footer still fits at the narrowest sidebar', async ({ page }) => {
