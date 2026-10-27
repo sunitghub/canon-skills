@@ -594,7 +594,7 @@ function showSent(panel, t, tab) {
     await openTerminalPane('below', { fresh: true, typeLine: typed });   // t-ccf5: under this tab, so the Sent panel stays on screen
     // opening the Terminal rebuilds this panel, which clears the status: say it after
     const status = document.getElementById('ck-gh-status');
-    if (copied && status) status.textContent = 'Copied. It is also typed in the Terminal: press Enter.';
+    if (status) status.textContent = copied ? 'Copied. It is also typed in the Terminal: press Enter.' : 'Copy was blocked, but the command is typed in the Terminal: press Enter.';
   });
   document.getElementById('ck-gh-open')?.addEventListener('click', () => openUrl(url));
   // The work is in the cloud now, so the tab has nothing left to show: close it (closeTab never ends a session).
