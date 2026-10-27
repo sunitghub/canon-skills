@@ -5238,6 +5238,23 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect.poll(on).toBe('t-aaa1+aria');
       await page.locator('#nav-admin').click();                          // Admin has no agent in view
       await expect.poll(on).toBe('');
+      await page.locator('#nav-projects').click();                       // so does the Projects page
+      await expect.poll(on).toBe('');
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    // t-7456: groups and rows that have no daemon session yet (agent picker still up) keep a fixed order too.
+    test('t-7456: not-started scratch rows keep their creation order; a group of only those follows the tab opening order', async ({ page }) => {
+      await openShell(page, []);
+      await page.evaluate(async () => {
+        const m = await import('/static/cockpit-sessions.js');
+        m.boardScratch.set('proj-x', [{ id: 's-bb22', title: 'x one' }]);
+        m.boardScratch.set('proj-a', [{ id: 's-cc33', title: 'a two' }, { id: 's-aa11', title: 'a one' }]);
+        m.renderSessionSurfaces();
+      });
+      const rows = () => page.evaluate(() => [...document.querySelectorAll('#ag-list .ag-proj b, #ag-list .ag-row .ag-t1')].map(e => e.textContent.trim()).join(' | '));
+      // proj-a's tab is open, proj-x's is not: a goes first; inside a, the board's order (creation) is kept, not the id order
+      expect(await rows()).toBe('proj-a | a two | a one | proj-x | x one');
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
