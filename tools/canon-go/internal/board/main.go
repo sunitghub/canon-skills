@@ -945,6 +945,15 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if m := apiHeadlessRunRe.FindStringSubmatch(path); m != nil {
+		// t-d42a: starts an unattended `claude -p`: the Origin header must be present, and the caller must confirm.
+		if !agentOriginOK(r) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		if payload["confirm"] != true {
+			sendJSONStatus(w, map[string]any{"ok": false, "error": "confirm required: this run starts an unattended agent"}, http.StatusBadRequest)
+			return
+		}
 		baseRef := fmt.Sprint(payload["base_ref"])
 		if !baseRefRe.MatchString(baseRef) {
 			http.Error(w, "bad request", http.StatusBadRequest)
@@ -962,6 +971,10 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if path == "/api/skill-eval/run" {
+		if !agentOriginOK(r) { // t-d42a: starts `claude plugin eval`
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
 		sendJSON(w, startSkillEvalRun(eroot, payload))
 		return
 	}
@@ -3814,6 +3827,13 @@ var originOKRe = regexp.MustCompile(`^http://(127\.0\.0\.1|localhost)(:[0-9]{1,5
 
 func originOK(origin string) bool {
 	return origin == "" || originOKRe.MatchString(origin)
+}
+
+// agentOriginOK is originOK without the empty pass (t-d42a): a route that starts an agent process needs a loopback
+// Origin header, which a browser always sends on a POST and a stray local client (curl) does not.
+func agentOriginOK(r *http.Request) bool {
+	o := r.Header.Get("Origin")
+	return o != "" && originOKRe.MatchString(o)
 }
 
 func hostOK(host string) bool {

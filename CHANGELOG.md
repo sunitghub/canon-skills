@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Security
+- The board routes that start an agent (`POST /api/skill-eval/run`, `POST /api/ticket/<id>/headless-run`) now refuse a request with no loopback `Origin` header, and the headless run needs `confirm: true` (t-d42a). The Cockpit daemon's `/session/start` (a session you start, gated by the boot token) is unchanged.
+
 ## [0.21.1] - 2026-10-27
 
 Send to GitHub stays reachable next to a Terminal, and a Terminal placed beside a tab is no longer a short strip. Update with `canon update`, then reload the board (no daemon or board-program change).
