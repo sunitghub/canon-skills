@@ -6,6 +6,14 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.21.3] - 2026-10-27
+
+Check & merge can no longer be stopped by the terminal the board was started from, and quitting the board ends a running merge. Update with `canon update`, then restart the board (the board program changed; the daemon did not).
+
+### Fixed
+- **Check & merge no longer hangs on the board's own terminal** (`t-ada9`): the merge job inherited the terminal the board was started from, so any step under it that opened `/dev/tty` (git, ssh, sudo) could stop the whole run, as one did for 25 minutes. The job now runs in its own session with no terminal.
+- **Quitting the board ends a running merge** (`t-ada9`): a Ctrl-C or SIGTERM to the board stops its merge jobs (the tests are ended and nothing is merged), waits up to 4 seconds, then exits.
+
 ## [0.21.2] - 2026-10-27
 
 The board's agent-starting routes now refuse a request with no Origin header. Update with `canon update`, then restart the board (the board program changed; the daemon did not).
