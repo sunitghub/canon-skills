@@ -1,0 +1,333 @@
+package settings
+
+import (
+	"encoding/json"
+	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+)
+
+func write(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func read(t *testing.T, path string) string {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// t-dba0. Protects every consumer of project settings: precedence default < shared < local with the source of each value, and a
+// key the file does not know is kept when the file is rewritten.
+func TestPrecedenceAndSources(t *testing.T) {
+	root := t.TempDir()
+	s := ProjectSet(root)
+	r, err := s.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := r.Values["terminal.paging"]; v.V != "auto" || v.Source != SourceDefault {
+		t.Fatalf("default: %+v", v)
+	}
+	write(t, s.Shared, `{"terminal":{"paging":"off"},"future":{"x":1}}`)
+	if v, _ := s.Load(); v.Values["terminal.paging"].V != "off" || v.Values["terminal.paging"].Source != SourceShared {
+		t.Fatalf("shared: %+v", v.Values["terminal.paging"])
+	}
+	write(t, s.Local, `{"terminal":{"paging":40,"other":"kept"},"mine":true}`)
+	if v, _ := s.Load(); v.Values["terminal.paging"].V != 40 || v.Values["terminal.paging"].Source != SourceLocal {
+		t.Fatalf("local: %+v", v.Values["terminal.paging"])
+	}
+	// a write keeps every key it does not own, and leaves the shared file alone
+	sharedBefore := read(t, s.Shared)
+	if _, err := s.SetLocal("terminal.paging", "off"); err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal([]byte(read(t, s.Local)), &doc); err != nil {
+		t.Fatal(err)
+	}
+	term := doc["terminal"].(map[string]any)
+	if term["paging"] != "off" || term["other"] != "kept" || doc["mine"] != true {
+		t.Fatalf("a write lost keys: %v", doc)
+	}
+	if read(t, s.Shared) != sharedBefore {
+		t.Fatal("a write touched the shared file")
+	}
+}
+
+// Protects the closed schema: only the three kinds of value a key accepts get in, with a message naming the key and the range.
+func TestPagingValues(t *testing.T) {
+	s := ProjectSet(t.TempDir())
+	for _, ok := range []any{"auto", "off", float64(5), float64(500), 40, json.Number("25")} {
+		if _, err := s.SetLocal("terminal.paging", ok); err != nil {
+			t.Errorf("%v refused: %v", ok, err)
+		}
+	}
+	for _, bad := range []any{float64(0), float64(4), float64(501), float64(-1), "on", "", "40", 1.5, nil, map[string]any{"a": 1}, []any{1}, true} {
+		_, err := s.SetLocal("terminal.paging", bad)
+		if err == nil {
+			t.Errorf("%#v was accepted", bad)
+		} else if !strings.Contains(err.Error(), "terminal.paging") || !strings.Contains(err.Error(), "500") {
+			t.Errorf("%#v: the message should name the key and the range: %v", bad, err)
+		}
+	}
+	if _, err := s.SetLocal("terminal.nope", "auto"); err == nil {
+		t.Error("an unknown key was accepted")
+	}
+	if _, err := s.SetLocal("../../etc/passwd", "auto"); err == nil {
+		t.Error("a path-like key was accepted")
+	}
+}
+
+// Protects the user's file: a malformed, oversized, too deep or symlinked file is reported BY NAME on a read and a write is refused
+// leaving it byte-identical: never reset, never silently ignored.
+func TestMalformedFilesAreReportedNotReset(t *testing.T) {
+	s := ProjectSet(t.TempDir())
+	cases := map[string]string{
+		"not json":        `{"terminal": `,
+		"not an object":   `[1,2]`,
+		"too large":       `{"pad":"` + strings.Repeat("x", MaxFileBytes) + `"}`,
+		"too deep":        `{"a":{"b":{"c":{"d":{"e":{"f":{"g":{"h":{"i":1}}}}}}}}}`,
+		"a string number": `"hello"`,
+	}
+	for name, body := range cases {
+		for _, which := range []string{"local", "shared"} {
+			path := s.Local
+			if which == "shared" {
+				path = s.Shared
+			}
+			write(t, path, body)
+			_, err := s.Load()
+			var fe *FileError
+			if !errors.As(err, &fe) || !strings.HasPrefix(fe.File, ".canon/settings") {
+				t.Errorf("%s (%s): Load = %v, want a FileError naming the file", name, which, err)
+			}
+			if which == "local" {
+				before := read(t, path)
+				if _, err := s.SetLocal("terminal.paging", "off"); err == nil {
+					t.Errorf("%s: a write over a malformed local file succeeded", name)
+				}
+				if read(t, path) != before {
+					t.Errorf("%s: the malformed file was changed", name)
+				}
+			}
+			os.Remove(path)
+		}
+	}
+	// the message never carries an absolute path
+	write(t, s.Local, `x`)
+	if _, err := s.Load(); err == nil || strings.Contains(err.Error(), string(filepath.Separator)+"var") || filepath.IsAbs(strings.Fields(err.Error())[0]) {
+		t.Errorf("the error leaks a path: %v", err)
+	}
+}
+
+// Protects the user's other files: a symlinked .canon, settings file or exclude is refused, and nothing is written through it.
+func TestSymlinksAreRefused(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on Windows")
+	}
+	outside := t.TempDir()
+	// .canon is a symlink to a folder outside the project
+	root := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(root, ".canon")); err != nil {
+		t.Fatal(err)
+	}
+	s := ProjectSet(root)
+	if _, err := s.SetLocal("terminal.paging", "off"); err == nil {
+		t.Error("a write through a symlinked .canon succeeded")
+	}
+	if entries, _ := os.ReadDir(outside); len(entries) != 0 {
+		t.Errorf("something was written outside the project: %v", entries)
+	}
+	// the file itself is a symlink to a precious file
+	root2 := t.TempDir()
+	precious := filepath.Join(outside, "precious")
+	write(t, precious, `{"terminal":{"paging":"off"}}`) // valid settings: only the symlink check can refuse it
+	s2 := ProjectSet(root2)
+	if err := os.MkdirAll(filepath.Dir(s2.Local), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(precious, s2.Local); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s2.SetLocal("terminal.paging", "off"); err == nil {
+		t.Error("a write over a symlinked settings file succeeded")
+	}
+	if read(t, precious) != `{"terminal":{"paging":"off"}}` {
+		t.Error("the symlink's target was changed")
+	}
+	if _, err := s2.Load(); err == nil {
+		t.Error("a read of a symlinked settings file succeeded")
+	}
+}
+
+// Protects the repo: only a key the schema marks Shareable can come from the shared (repo-controlled) file; an invalid value in
+// either file is ignored with a warning, never fatal.
+func TestSharedFileIsUntrusted(t *testing.T) {
+	root := t.TempDir()
+	s := Set{
+		Schema: Schema{
+			"ui.compact": {Validate: func(v any) (any, error) { return v, nil }, Shareable: true, Default: false},
+			"run.command": {Validate: func(v any) (any, error) {
+				if _, ok := v.(string); !ok {
+					return nil, errors.New("must be text")
+				}
+				return v, nil
+			}, Shareable: false, Default: ""},
+		},
+		Shared: filepath.Join(root, ".canon", "settings.json"),
+		Local:  filepath.Join(root, ".canon", "settings.local.json"),
+	}
+	write(t, s.Shared, `{"ui":{"compact":true},"run":{"command":"rm -rf /"}}`)
+	r, err := s.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Values["run.command"].V != "" || r.Values["run.command"].Source != SourceDefault {
+		t.Fatalf("a non-shareable key came from the shared file: %+v", r.Values["run.command"])
+	}
+	if r.Values["ui.compact"].V != true || r.Values["ui.compact"].Source != SourceShared {
+		t.Fatalf("a shareable key did not: %+v", r.Values["ui.compact"])
+	}
+	if len(r.Warnings) != 1 || !strings.Contains(r.Warnings[0], "run.command") || !strings.Contains(r.Warnings[0], "shared") {
+		t.Fatalf("warnings: %v", r.Warnings)
+	}
+	// the same key in the LOCAL file is honoured; an invalid value is ignored with a warning
+	write(t, s.Local, `{"run":{"command":"make"}}`)
+	if r, _ := s.Load(); r.Values["run.command"].V != "make" || r.Values["run.command"].Source != SourceLocal {
+		t.Fatalf("local: %+v", r.Values["run.command"])
+	}
+	write(t, s.Local, `{"run":{"command":7}}`)
+	r, _ = s.Load()
+	if r.Values["run.command"].Source != SourceDefault || len(r.Warnings) < 2 {
+		t.Fatalf("an invalid local value: %+v %v", r.Values["run.command"], r.Warnings)
+	}
+}
+
+// Protects atomic, private writes: the file is 0600, no temp file is left, and the folder is created when missing.
+func TestWriteIsAtomicAndPrivate(t *testing.T) {
+	root := t.TempDir()
+	s := ProjectSet(root)
+	if _, err := s.SetLocal("terminal.paging", 30); err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "windows" {
+		if fi, _ := os.Stat(s.Local); fi.Mode().Perm() != 0o600 {
+			t.Errorf("mode = %o, want 600", fi.Mode().Perm())
+		}
+	}
+	entries, _ := os.ReadDir(filepath.Dir(s.Local))
+	if len(entries) != 1 || entries[0].Name() != "settings.local.json" {
+		t.Errorf("the folder holds %v, want only settings.local.json", entries)
+	}
+	// a second write replaces it whole
+	if _, err := s.SetLocal("terminal.paging", "off"); err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal([]byte(read(t, s.Local)), &doc); err != nil || doc["terminal"].(map[string]any)["paging"] != "off" {
+		t.Fatalf("after the second write: %v %v", err, doc)
+	}
+}
+
+// Protects `git status` and `canon update`: the local file is added to the repo's info/exclude ONCE, no tracked file changes, and a
+// project without git needs nothing.
+func TestIgnoreInGit(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not installed")
+	}
+	root := t.TempDir()
+	run := func(args ...string) string {
+		cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+		return string(out)
+	}
+	run("init", "-q")
+	run("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init")
+	s := ProjectSet(root)
+	if _, err := s.SetLocal("terminal.paging", 20); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		if err := IgnoreInGit(root, LocalRel); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ex := read(t, filepath.Join(root, ".git", "info", "exclude"))
+	if n := strings.Count(ex, LocalRel); n != 1 {
+		t.Fatalf("exclude holds the line %d times:\n%s", n, ex)
+	}
+	if st := run("status", "--porcelain"); strings.TrimSpace(st) != "" {
+		t.Fatalf("git status is not clean after a write:\n%s", st)
+	}
+	// no git at all: nothing happens and nothing fails
+	if err := IgnoreInGit(t.TempDir(), LocalRel); err != nil {
+		t.Errorf("a folder without git failed: %v", err)
+	}
+	// a symlinked exclude is refused
+	if runtime.GOOS != "windows" {
+		root2 := t.TempDir()
+		cmd := exec.Command("git", "-C", root2, "init", "-q")
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v %s", err, out)
+		}
+		precious := filepath.Join(t.TempDir(), "precious")
+		write(t, precious, "keep me")
+		ex2 := filepath.Join(root2, ".git", "info", "exclude")
+		os.Remove(ex2)
+		if err := os.Symlink(precious, ex2); err != nil {
+			t.Fatal(err)
+		}
+		if err := IgnoreInGit(root2, LocalRel); err == nil {
+			t.Error("a symlinked exclude was edited")
+		}
+		if read(t, precious) != "keep me" {
+			t.Error("the symlink's target was changed")
+		}
+	}
+}
+
+// Protects t-3137: the package works for an install-wide file, with one file and its own schema (no project folder, no git).
+func TestInstallStyleSetWithOneFile(t *testing.T) {
+	dir := t.TempDir()
+	s := Set{
+		Schema: Schema{"log.keep_days": {Validate: func(v any) (any, error) {
+			f, ok := v.(float64)
+			if !ok || (f != 30 && f != 90 && f != 365) {
+				return nil, errors.New("must be 30, 90 or 365")
+			}
+			return int(f), nil
+		}, Default: 30}},
+		Local: filepath.Join(dir, "settings.json"),
+	}
+	if r, err := s.Load(); err != nil || r.Values["log.keep_days"].V != 30 || r.Values["log.keep_days"].Source != SourceDefault {
+		t.Fatalf("default: %v %+v", err, r)
+	}
+	if _, err := s.SetLocal("log.keep_days", float64(90)); err != nil {
+		t.Fatal(err)
+	}
+	if r, _ := s.Load(); r.Values["log.keep_days"].V != 90 {
+		t.Fatalf("after set: %+v", r.Values["log.keep_days"])
+	}
+	if _, err := s.SetLocal("log.keep_days", float64(7)); err == nil {
+		t.Error("a value outside the install schema was accepted")
+	}
+}

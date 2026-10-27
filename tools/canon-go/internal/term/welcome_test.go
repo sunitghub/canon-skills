@@ -23,7 +23,7 @@ func TestWelcomeMatchesThePrompt(t *testing.T) {
 		w := strings.Fields(e.cmd)
 		if w[0] != "tkt" {
 			switch w[0] {
-			case "help", "clear", "pwd", "ls", "cat", "su", "exit":
+			case "help", "clear", "pwd", "ls", "cat", "paging", "su", "exit":
 				if e.su {
 					t.Errorf("%q cannot need su", e.cmd)
 				}

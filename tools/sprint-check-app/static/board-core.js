@@ -289,7 +289,7 @@ export function initCore() {
     // otherwise showed the shell's launch-time project's worktrees under any tab.
     // (`ticket-image` is deliberately absent: it's only ever an <img> src the browser loads directly, so
     // resolveMockupSrc scopes it itself — t-7d83.)
-    const READ_RE = /^\/api\/(tickets|handoff|logbook|tags$|git|why|doc\/|commit\/|project-stats|worktrees|worktree-lock\/|ticket-feature\/|ticket-commit\/|cockpit-changes$|ticket\/[^/]+\/github\/|github\/)/;
+    const READ_RE = /^\/api\/(settings$|tickets|handoff|logbook|tags$|git|why|doc\/|commit\/|project-stats|worktrees|worktree-lock\/|ticket-feature\/|ticket-commit\/|cockpit-changes$|ticket\/[^/]+\/github\/|github\/)/;
     // t-8485: editable-tab WRITE endpoints that also take ?project (POST). Scope
     // these so drag-status / create / edit-body / edit-doc / demo / visual / worktree
     // create/unlock done inside a project tab target THAT project. Deliberately
@@ -298,7 +298,7 @@ export function initCore() {
     // t-d271: the GitHub workflow routes (ticket/<id>/github/*, github/sync*) run tkt in the tab's project.
     // t-d254: ticket-commit/ (GET plan + POST commit) — unscoped, a tab would classify
     // and COMMIT in the board's default project instead of the tab's (live-caught, VM).
-    const WRITE_RE = /^\/api\/(tickets$|tags$|ticket\/[^/]+\/(status|body|demo|tags|visual|github\/)|doc\/|worktrees$|worktree-unlock\/|ticket-commit\/|github\/)/;
+    const WRITE_RE = /^\/api\/(settings$|tickets$|tags$|ticket\/[^/]+\/(status|body|demo|tags|visual|github\/)|doc\/|worktrees$|worktree-unlock\/|ticket-commit\/|github\/)/;
     const _fetch = window.fetch.bind(window);
     window.fetch = function(input, init){
       try {

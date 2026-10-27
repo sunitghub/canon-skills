@@ -7,8 +7,12 @@
 package term
 
 import (
+	"math"
+	"strconv"
+
 	"bufio"
 	"bytes"
+	"canon/internal/settings"
 	"context"
 	"fmt"
 	"io"
@@ -37,10 +41,14 @@ type Config struct {
 	// claude --cloud); nil: not available here (Windows has no runner yet, t-57ab).
 	RunOnTerminal func(ctx context.Context, path string, args []string, dir string) error
 	// Auth asks the OS for the account password; nil, or ErrNoAuth, means su is unavailable.
-	Auth    func(ctx context.Context, out io.Writer) error
-	Limit   time.Duration  // how long su lasts
-	Warn    time.Duration  // how long before the end it warns
-	Rows    func() int     // the terminal's height, for paging cat; nil or 0 means 24
+	Auth  func(ctx context.Context, out io.Writer) error
+	Limit time.Duration // how long su lasts
+	Warn  time.Duration // how long before the end it warns
+	Rows  func() int    // the terminal's height, for paging cat; nil or 0 means 24
+	// Paging is terminal.paging (t-dba0): "auto" (the screen's height; "" means the same), "off" (never pause) or a number of lines.
+	// The paging command changes it for this Terminal only.
+	Paging  string
+	pg      *string        // the live value (set by Run from Paging)
 	RawMode func() func()  // switches the terminal to key-by-key input for the prompt line (Tab completion); returns the undo, or nil when In is not a terminal
 	st      *suState       // what su remembers between commands (set by Run)
 	intr    chan os.Signal // SIGINTs caught while a command ran (set by Run): a command that was interrupted shows nothing more
@@ -108,6 +116,7 @@ var welcomeEntries = []entry{
 	{"pwd", "show the project folder this prompt is in", false},
 	{"ls [path]", "list files with sizes and dates", false},
 	{"cat <file>", "show a file a page at a time, with colours for code", false},
+	{"paging [auto|off|<lines>]", "show or set when output pauses (this one only)", false},
 	{"tkt current", "show the active ticket", false},
 	{"tkt ls [--status=X]", "list tickets", false},
 	{"tkt show <id>", "show one ticket", false},
@@ -157,6 +166,10 @@ func Run(cfg Config) int {
 	}
 	if cfg.st == nil {
 		cfg.st = &suState{}
+	}
+	if cfg.pg == nil {
+		p := cfg.Paging
+		cfg.pg = &p
 	}
 	rd := bufio.NewReader(cfg.In)
 	fmt.Fprint(cfg.Out, welcome())
@@ -212,10 +225,12 @@ func (c Config) dispatch(line string, rd *bufio.Reader) bool {
 		c.cat(f[1:], rd)
 	case "tkt":
 		c.tkt(f[1:], rd)
+	case "paging":
+		c.paging(f[1:])
 	case "su":
 		return c.su(rd)
 	default:
-		fmt.Fprintf(c.Out, "not allowed here: %s   allowed: help, ls, cat, pwd, tkt, su, clear, exit\n", Visible(f[0]))
+		fmt.Fprintf(c.Out, "not allowed here: %s   allowed: help, ls, cat, pwd, paging, tkt, su, clear, exit\n", Visible(f[0]))
 	}
 	return false
 }
@@ -442,8 +457,58 @@ func (c Config) page(text string, rd *bufio.Reader) {
 	}
 }
 
-// pageSize is how many lines fit a screen: the terminal's height less the prompt line, never under 5.
+// paging shows the setting, or changes it for this Terminal only (nothing is saved: the Paging control on the rail does that).
+func (c Config) paging(args []string) {
+	cur := c.pagingValue()
+	if len(args) == 0 {
+		fmt.Fprintf(c.Out, "paging: %s   (paging auto|off|<%d-%d lines> changes it for this Terminal; the rail's Paging control saves it)\n", cur, settings.MinPaging, settings.MaxPaging)
+		return
+	}
+	if len(args) > 1 {
+		fmt.Fprintln(c.Out, "usage: paging [auto|off|<lines>]")
+		return
+	}
+	a := args[0]
+	if a == "on" {
+		a = "auto"
+	}
+	v := any(a)
+	if n, err := strconv.Atoi(a); err == nil {
+		v = n
+	}
+	norm, err := settings.ProjectSet("").Schema["terminal.paging"].Validate(v)
+	if err != nil {
+		fmt.Fprintf(c.Out, "paging: %q is not a setting here: use auto, off or a number of lines from %d to %d\n", a, settings.MinPaging, settings.MaxPaging)
+		return
+	}
+	*c.pg = fmt.Sprint(norm)
+	fmt.Fprintf(c.Out, "paging: %s (this Terminal only)\n", *c.pg)
+}
+
+// pagingValue is the live setting: "auto", "off" or a number of lines as text.
+func (c Config) pagingValue() string {
+	p := c.Paging
+	if c.pg != nil {
+		p = *c.pg
+	}
+	if p == "" {
+		return "auto"
+	}
+	return p
+}
+
+// pageSize is how many lines fit a screen: the terminal's height less the prompt line, never under 5. terminal.paging off means
+// never pause (a size no text reaches); a number means that many lines.
 func (c Config) pageSize() int {
+	switch p := c.pagingValue(); p {
+	case "auto":
+	case "off":
+		return math.MaxInt32
+	default:
+		if n, err := strconv.Atoi(p); err == nil && n >= settings.MinPaging && n <= settings.MaxPaging {
+			return n
+		}
+	}
 	rows := 24
 	if c.Rows != nil {
 		if r := c.Rows(); r > 0 {

@@ -1,6 +1,6 @@
 import { SHELL_TAB, docSlug, state } from './board-core.js';
 import { displayTicketId, effectiveStatus, esc, escAttr } from './board-helpers.js';
-import { SCRATCH_ID, announceScratchTabs, findTicketById, normProjectPath, renderScratchWhere, showToast } from './board-render.js';
+import { SCRATCH_ID, announceScratchTabs, findTicketById, normProjectPath, postWrite, renderScratchWhere, showToast } from './board-render.js';
 import { activateDoc, modalState, openModal } from './board-modal.js';
 import { hasFilledCheckbox, hasUsefulSectionText, parseGateModel, sectionContent } from './board-docs.js';
 import { applyPane, initPane } from './board-pane.js';
@@ -184,12 +184,50 @@ export function renderTabStrip() {
 // driven by whichever tab is active, re-rendered on switch — no per-tab
 // accordion/scroll state). Shared by a fresh tab open and a switch to an
 // already-open tab; never touches the terminal iframe itself.
+// t-dba0: a Terminal tab's Paging control. The value is terminal.paging from the project's settings files (the local file wins); a change
+// is saved to the LOCAL file through /api/settings and applies to the next Terminal. A file the board cannot use is said, not hidden.
+function setPagingOption(sel, value) {   // a hand-edited number outside the presets gets its own option
+  if (![...sel.options].some(o => o.value === value)) {
+    const o = document.createElement('option');
+    o.value = value; o.textContent = `${value} lines`;
+    sel.append(o);
+  }
+  sel.value = value;
+  sel.dataset.was = value;
+}
+async function loadPaging() {
+  const sel = document.getElementById('ck-paging-sel'), msg = document.getElementById('ck-paging-msg');
+  if (!sel) return;
+  if (!sel.dataset.bound) {
+    sel.dataset.bound = '1';
+    sel.addEventListener('change', async () => {
+      const was = sel.dataset.was, raw = sel.value;
+      const r = await postWrite('/api/settings', { key: 'terminal.paging', value: /^\d+$/.test(raw) ? Number(raw) : raw }, 'save the paging setting');
+      if (!r.ok) { setPagingOption(sel, was); msg.textContent = ''; return; }
+      sel.dataset.was = raw;
+      msg.textContent = 'Saved: applies to the next Terminal.';
+    });
+  }
+  msg.textContent = '';
+  sel.disabled = true;
+  try {
+    const r = await fetch('/api/settings');
+    const d = await r.json().catch(() => null);
+    if (!r.ok || !d || d.ok === false) { msg.textContent = (d && d.error) || `The settings could not be read (HTTP ${r.status}).`; return; }
+    const v = d.values && d.values['terminal.paging'];
+    setPagingOption(sel, v ? String(v.value) : 'auto');
+    sel.disabled = false;
+    if (d.warnings && d.warnings.length) msg.textContent = d.warnings[0];
+  } catch { msg.textContent = 'The settings could not be read: the board server did not answer.'; }
+}
+
 export async function renderCockpitRail(t) {
   renderSessionStateChip();
   refreshSessionStateChip();
   document.getElementById('cockpit').classList.toggle('scratch-mode', !!t.scratch);
   document.getElementById('cockpit').classList.toggle('term-mode', !!t.term);   // t-57ab: a terminal has no agent to promote
   document.getElementById('ck-scratch-kind').textContent = t.term ? 'TERMINAL' : 'SCRATCH';
+  if (t.term) loadPaging();
   document.getElementById('ck-scratch-sub').textContent = t.term ? 'restricted prompt · ls, cat, read-only tkt · su for a full shell' : 'no ticket · no gates';
   document.getElementById('ck-scratch-end').textContent = t.term ? 'Closing it ends the Terminal, and anything you started in su.' : 'End keeps any uncommitted changes in place.';
   const endBtn = document.getElementById('ck-end-session');   // t-2aed: a Terminal's End Session asks "Close this Terminal?", as the tab x and Ctrl+. then x do

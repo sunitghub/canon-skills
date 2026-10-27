@@ -6843,6 +6843,57 @@ test.describe('cockpit in board (t-ddc8)', () => {
     </script></body></html>`;
     const recordSeen = page => page.evaluate(() => { window.__termSeen = []; window.addEventListener('message', e => { if (e.data && e.data.type === '__seen') window.__termSeen.push(e.data.msg); }); });
 
+    // t-dba0. Protects the Terminal rail card's Paging control: it shows the saved setting (a hand-edited number gets its own option), a change
+    // is POSTed once as {key, value} to the LOCAL settings route and says it applies to the next Terminal, a refused save puts the old value
+    // back, a file the board cannot use is shown as the reason (the control stays disabled), and a Scratch session has no such control.
+    test('Terminal rail card (t-dba0): the Paging control shows the saved setting, saves one change, reverts a refused one, and says when the file cannot be read', async ({ page }) => {
+      await stubCockpit(page);
+      await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>cockpit<script>window.addEventListener("message", e => { if (e.data && e.data.type === "start-terminal") document.body.dataset.started = "1"; });</script></body></html>' }));
+      const posts = [];
+      let mode = 'ok';
+      const reply = (r, status, body) => r.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+      await page.route('**/api/settings', async r => {
+        if (r.request().method() === 'POST') {
+          const body = JSON.parse(r.request().postData());
+          posts.push(body);
+          if (mode === 'refuse') return reply(r, 400, { ok: false, error: 'terminal.paging: must be "auto", "off" or a whole number of lines from 5 to 500' });
+          return reply(r, 200, { ok: true, values: { 'terminal.paging': { value: body.value, source: 'local' } }, warnings: [] });
+        }
+        if (mode === 'bad') return reply(r, 422, { ok: false, error: '.canon/settings.local.json: is not valid JSON' });
+        return reply(r, 200, { ok: true, values: { 'terminal.paging': { value: 37, source: 'local' } }, warnings: [] });
+      });
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#btn-terminal').click();
+      const sel = page.locator('#ck-paging-sel');
+      await expect(page.locator('#ck-paging')).toBeVisible();
+      await expect(sel).toBeEnabled();
+      await expect(sel).toHaveValue('37');                                              // a hand-edited number outside the presets has its own option
+      await expect(sel.locator('option[value="37"]')).toHaveText('37 lines');
+      await sel.selectOption('off');
+      await expect.poll(() => posts.length).toBe(1);
+      expect(posts[0]).toEqual({ key: 'terminal.paging', value: 'off' });
+      await expect(page.locator('#ck-paging-msg')).toContainText('applies to the next Terminal');
+      await sel.selectOption('20');
+      await expect.poll(() => posts.length).toBe(2);
+      expect(posts[1]).toEqual({ key: 'terminal.paging', value: 20 });                  // lines go as a number
+      mode = 'refuse';
+      await sel.selectOption('auto');
+      await expect.poll(() => posts.length).toBe(3);
+      await expect(sel).toHaveValue('20');                                              // refused: the old value is back
+      mode = 'bad';
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#btn-terminal').click();
+      await expect(page.locator('#ck-paging-msg')).toContainText('.canon/settings.local.json: is not valid JSON');
+      await expect(sel).toBeDisabled();                                                 // never a silent reset
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#btn-scratch').click();
+      await expect(page.locator('#ck-paging')).toBeHidden();                            // a Scratch session has no terminal pager
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     test('Terminal button (t-57ab): opens a scratch tab whose daemon page is asked for mode=term; Scratch is not', async ({ page }) => {
       await stubCockpit(page);
       const urls = [];

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"canon/internal/common"
 	"canon/internal/events"
+	"canon/internal/settings"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -301,6 +302,13 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, registryLoad())
 	case "/api/admin/model-tiers":
 		sendJSON(w, loadModelTiers())
+	case "/api/settings": // t-dba0: the project's merged settings with the source of each
+		root, ok := effectiveRoot(r)
+		if !ok {
+			http.Error(w, "unknown project", http.StatusBadRequest)
+			return
+		}
+		sendSettings(w, root)
 	case "/api/themes":
 		sendJSON(w, listThemes())
 	case "/api/integrity": // t-2af0: read-only; ?refresh=1 re-checks the list against getcanon.dev
@@ -690,6 +698,14 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 			status = http.StatusBadRequest
 		}
 		sendJSONStatus(w, res, status)
+		return
+	}
+	if path == "/api/settings" { // t-dba0: one key of the project's LOCAL settings file; the route cannot name a file or a key outside the schema
+		if !agentOriginOK(r) {
+			http.Error(w, "settings writes need a loopback Origin", http.StatusForbidden)
+			return
+		}
+		writeSetting(w, r, eroot, payload)
 		return
 	}
 	if path == "/api/admin/model-tiers" {
@@ -6027,4 +6043,67 @@ func firstN(s string, n int) string {
 		return s
 	}
 	return s[:n]
+}
+
+// settingsJSON is the answer of GET and POST /api/settings: every key with its effective value and where it came from.
+func settingsJSON(res settings.Result) map[string]any {
+	values := map[string]any{}
+	for k, v := range res.Values {
+		values[k] = map[string]any{"value": v.V, "source": v.Source}
+	}
+	return map[string]any{"ok": true, "values": values, "warnings": res.Warnings}
+}
+
+// settingsFailure answers a settings error: a file that cannot be used is a 422 naming it, anything else (an unknown key, a bad
+// value) a 400. Nothing was written in either case.
+func settingsFailure(w http.ResponseWriter, err error) {
+	status := http.StatusBadRequest
+	var fe *settings.FileError
+	if errors.As(err, &fe) {
+		status = http.StatusUnprocessableEntity
+	}
+	sendJSONStatus(w, map[string]any{"ok": false, "error": err.Error()}, status)
+}
+
+func sendSettings(w http.ResponseWriter, root string) {
+	res, err := settings.ProjectSet(root).Load()
+	if err != nil {
+		settingsFailure(w, err)
+		return
+	}
+	sendJSON(w, settingsJSON(res))
+}
+
+// writeSetting changes one key in the project's local settings file, keeps the file out of `git status`, records one setting.changed
+// event (the key and the values, never file text) and answers the merged settings.
+func writeSetting(w http.ResponseWriter, r *http.Request, root string, payload map[string]any) {
+	key, _ := payload["key"].(string)
+	set := settings.ProjectSet(root)
+	before, err := set.Load()
+	if err != nil {
+		settingsFailure(w, err)
+		return
+	}
+	res, err := set.SetLocal(key, payload["value"])
+	if err != nil {
+		settingsFailure(w, err)
+		return
+	}
+	_ = settings.IgnoreInGit(root, settings.LocalRel) // best effort: a failure here must not undo a saved setting
+	emitProjectSetting(r, root, key, fmt.Sprint(before.Values[key].V), fmt.Sprint(res.Values[key].V))
+	sendJSON(w, settingsJSON(res))
+}
+
+// emitProjectSetting is emitSetting for a setting that belongs to a project (t-dba0): same actor rule (a loopback Origin), the project
+// root in the event.
+func emitProjectSetting(r *http.Request, root, name, old, new string) {
+	actor := ""
+	if r != nil && agentOriginOK(r) {
+		actor = "user"
+	}
+	abs, err := filepath.Abs(root)
+	if err != nil {
+		abs = root
+	}
+	events.EmitActor(events.Home(), "setting.changed", "board", actor, resolvedOrAbs(abs), map[string]string{"name": name, "old": old, "new": new})
 }

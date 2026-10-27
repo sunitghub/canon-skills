@@ -339,3 +339,68 @@ func TestRealPtyLaunchGetsATerminal(t *testing.T) {
 		t.Errorf("want two terminal.tkt events and no argument in them:\n%s", events)
 	}
 }
+
+// t-dba0. Protects the start-up read on the real program: a Terminal started in a project whose .canon/settings.local.json says
+// terminal.paging 6 pauses a 20-line file after 6 lines, and one with a malformed file says so on the error stream and still pages.
+func TestRealPtyReadsTheProjectPaging(t *testing.T) {
+	root, _ := project(t)
+	var lines []string
+	for i := 0; i < 20; i++ {
+		lines = append(lines, "row "+strconv.Itoa(i))
+	}
+	if err := os.WriteFile(filepath.Join(root, "twenty.txt"), []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, ".canon"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".canon", "settings.local.json"), []byte(`{"terminal":{"paging":6}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	home := t.TempDir()
+	p, err := gopty.New()
+	if err != nil {
+		t.Skip("no pty here:", err)
+	}
+	defer p.Close()
+	c := p.Command(os.Args[0], "term", "--session", "sidp", "--ticket", "s-ab13", "--project", root)
+	c.Dir = root
+	c.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + home, "CANON_HOME=" + home, "CANON_TERM_TEST_CHILD=1"}
+	if err := c.Start(); err != nil {
+		t.Fatal(err)
+	}
+	out := &safeBuf{}
+	go func() {
+		buf := make([]byte, 4096)
+		for {
+			n, err := p.Read(buf)
+			if n > 0 {
+				_, _ = out.Write(buf[:n])
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	send := func(s string) { _, _ = p.Write([]byte(s)) }
+	wait := func(re string) {
+		t.Helper()
+		r := regexp.MustCompile(re)
+		for end := time.Now().Add(8 * time.Second); time.Now().Before(end); time.Sleep(20 * time.Millisecond) {
+			if r.MatchString(out.String()) {
+				return
+			}
+		}
+		t.Fatalf("never saw %q in:\n%s", re, out.String())
+	}
+	wait(`\$ `)
+	send("cat twenty.txt\r")
+	wait(`\(14 lines left\)`) // 20 lines, 6 shown
+	send("q")
+	wait(`\$ `)
+	send("exit\r")
+	_ = c.Wait()
+	if strings.Contains(out.String(), "row 19") {
+		t.Errorf("the whole file was shown despite paging 6:\n%s", out.String())
+	}
+}

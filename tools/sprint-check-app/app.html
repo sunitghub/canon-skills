@@ -206,6 +206,14 @@
             <div class="ck-scratch-actions">
               <button class="ck-scratch-btn" id="ck-promote" type="button" title="Ask the agent to create a ticket from this session (you approve its tkt create command), then continue this conversation as that ticket">Promote to ticket</button>
             </div>
+            <div class="ck-paging" id="ck-paging">
+              <label for="ck-paging-sel" title="When long output (cat, ls, tkt ls) pauses for a key. Saved in this project's .canon/settings.local.json, which stays out of git; applies to the next Terminal. In a Terminal, 'paging' changes it for that one only.">Paging</label>
+              <select id="ck-paging-sel" aria-describedby="ck-paging-msg" disabled>
+                <option value="auto">Auto</option><option value="off">Off</option>
+                <option value="10">10 lines</option><option value="20">20 lines</option><option value="40">40 lines</option><option value="100">100 lines</option>
+              </select>
+              <span class="ck-paging-msg" id="ck-paging-msg" role="status"></span>
+            </div>
             <div class="ck-scratch-promoted" id="ck-scratch-promoted" hidden></div>
           </div>
           <button type="button" class="ck-details" id="ck-details" aria-describedby="ck-details-note">

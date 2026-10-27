@@ -3,9 +3,11 @@ package term
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
 
 	"canon/internal/events"
+	"canon/internal/settings"
 )
 
 // Main runs the restricted prompt for the daemon: `cockpit-daemon term --session <id> --ticket <id> --project <root>`.
@@ -33,7 +35,8 @@ func Main(args []string) int {
 	}
 	home := events.Home()
 	cfg := Config{
-		Root: root, In: os.Stdin, Out: os.Stdout,
+		Paging: projectPaging(*project, os.Stderr),
+		Root:   root, In: os.Stdin, Out: os.Stdout,
 		Session: *session, Ticket: *ticket,
 		Emit: func(kind string, data map[string]string) error {
 			return events.Emit(home, kind, "daemon", *project, data)
@@ -47,4 +50,15 @@ func Main(args []string) int {
 		RawMode:       func() func() { return rawMode(int(os.Stdin.Fd())) },
 	}
 	return Run(cfg)
+}
+
+// projectPaging is terminal.paging from the project's own settings files (t-dba0): "auto", "off" or a number of lines. A malformed
+// file is said on errOut and the default is used, so a broken file never stops the Terminal.
+func projectPaging(project string, errOut io.Writer) string {
+	res, err := settings.ProjectSet(project).Load()
+	if err != nil {
+		fmt.Fprintf(errOut, "term: %v (using the default paging)\n", err)
+		return "auto"
+	}
+	return fmt.Sprint(res.Values["terminal.paging"].V)
 }

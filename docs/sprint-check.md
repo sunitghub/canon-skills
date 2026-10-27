@@ -49,6 +49,17 @@ type `why:path/to/file` as a shortcut.
 
 Click any commit in the sidebar to see what changed and which ticket it likely belongs to — matched by ticket ID in the commit message or by keyword when no ID is present.
 
+## Project settings
+
+A project keeps its own settings in two small JSON files under `.canon/`, in the project's main folder:
+
+- `.canon/settings.json` is yours to edit and commit, so everyone who clones the project gets the same display preferences. Only keys marked shareable are read from it, so a cloned repo cannot configure anything but display; no secrets belong in it.
+- `.canon/settings.local.json` is personal. It is the only file the board writes, and the board keeps it out of git for you (it adds the file to the repository's own `.git/info/exclude`, so no tracked file changes and `git status` stays clean).
+
+A setting's value is the local file's, else the shared file's, else the built-in default. Keys the board does not know are left as they are when it writes. A file that is not valid JSON (or is larger than 64 KB, or is a symlink) is reported by name and never overwritten: fix it by hand.
+
+The first key is `terminal.paging`: `"auto"` (long output pauses at the screen's height), `"off"` (never pauses) or a whole number of lines from 5 to 500. The Terminal tab's rail card has a **Paging** control that saves it, and the setting applies to the next Terminal; typing `paging off`, `paging auto` or `paging 20` in a Terminal changes that one only.
+
 ## Tags
 
 A ticket can carry up to eight **tags** (`t-37e8`), stored as one frontmatter line, `tags: security,nodejs`. Pick them from the **Tags** dropdown in the New Ticket dialog, or from the **Tags** item in the ticket window's header (a closed ticket shows them read-only); `tkt create --tags a,b` and `tkt tags <id> [a,b]` do the same from the terminal. The dropdown, sorted A to Z, starts with Enterprise, GitHub, Security, NodeJs, Go, Logging, Events, Tracing, Board, Cockpit, CLI, Windows, Installer, Docs, Tests, Release, Performance, Cloud, Skills and CI; **Add tag…** saves a new one to the project's own list, `.tickets/tags.json`. A tag is lowercase letters, digits and dashes (up to 24 characters); what you type is trimmed, lowercased and its inner spaces become dashes, and it is shown in Title Case. Cards show three chips and `+n` for the rest. In the search box, `tag:github` (any case) finds the tickets with that tag; from three characters on the text only has to be part of a tag, so `tag:git` finds `github` (shorter text must be the whole tag, so `tag:go` does not find `golang`). A plain word such as `github` also matches a ticket's tags. A tag that is not valid is refused, never rewritten. The routes are `GET`/`POST /api/tags` and `POST /api/ticket/<id>/tags`. A board started before tags existed says so in the dropdown: restart it (`canon`).
