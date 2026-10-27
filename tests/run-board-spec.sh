@@ -105,9 +105,13 @@ ln -s "$ROOT/node_modules" "$COPY/node_modules"
 # records survives for cleanup. COCKPIT_STATE_DIR too: its default ($TMPDIR/canon-cockpit-board) is the real Cockpit daemon's, and a
 # board that finds the user's live daemon there fails the leave-session tests (t-2992). COCKPIT_DAEMON_BIN names no file, so the
 # board never launches a daemon of its own: one would outlive it (detached by design) and fail the same tests later in the run.
+# t-6fb8: a `go run` board has no VERSION file beside its executable, so it says "no release version (dev)" and Set up CI gate
+# (rightly) refuses to write a workflow pinned to a tag. Stamp it the way an install is stamped (fetch-daemon.sh, -X main.version)
+# so the browser spec exercises the write path. GOFLAGS, not a flag after `go run`: tests/no-browser-in-tests.sh finds board
+# starts by the `go run ./cmd/sprint-check` spelling.
 start_board() {
   STARTED_PORT="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
-  (cd "$1/tools/canon-go" && CANON_HOME="$1/.spec-canon-home" COCKPIT_STATE_DIR="$1/.spec-cockpit-state" COCKPIT_DAEMON_BIN="$1/.spec-no-daemon" SPRINT_CHECK_ROOT="$1" SPRINT_CHECK_NO_BROWSER=1 exec go run ./cmd/sprint-check "$STARTED_PORT" >/dev/null 2>&1) &
+  (cd "$1/tools/canon-go" && CANON_HOME="$1/.spec-canon-home" COCKPIT_STATE_DIR="$1/.spec-cockpit-state" COCKPIT_DAEMON_BIN="$1/.spec-no-daemon" SPRINT_CHECK_ROOT="$1" SPRINT_CHECK_NO_BROWSER=1 GOFLAGS='-ldflags=-X=main.version=0.0.0' exec go run ./cmd/sprint-check "$STARTED_PORT" >/dev/null 2>&1) &
   STARTED_PID=$!
 }
 wait_board() {
