@@ -5167,6 +5167,77 @@ test.describe('cockpit in board (t-ddc8)', () => {
       { session: 'a3', ticket: 't-ccc3', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', status: 'running', state: 'working', state_secs: 3, idle_secs: 3, idle_limit_secs: 1800, signal: 'hook' },
       { session: 'a4', ticket: 't-ddd4', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', status: 'running', state: 'working', state_secs: 3, idle_secs: 3, idle_limit_secs: 1800, signal: 'hook', started: new Date(Date.now() + 3600000).toISOString() },
     ];
+    // t-7456: the Agents list keeps the order the agents were opened, whatever order the daemon returns them in; a group does not move
+    // when its first session ends; a not-started scratch row goes last in its group; a group that left comes back at the bottom.
+    test('t-7456: the Agents list keeps the opened order however the daemon returns the sessions', async ({ page }) => {
+      const X = 'C:\\Users\\me\\Proj-X', A = '/tmp/proj-a';
+      const row = (session, ticket, root, mins) => ({ session, ticket, project_root: root, cwd: root, agent: 'claude', status: 'running', state: 'working', state_secs: 3, idle_secs: 3, idle_limit_secs: 1800, signal: 'hook', started: agoIso(mins) });
+      const x1 = row('x1', 't-xxx1', X, 50), a1 = row('a1', 't-aaa1', A, 40), x2 = row('x2', 't-xxx2', X, 30), a2 = row('a2', 't-aaa2', A, 20), x3 = row('x3', 't-xxx3', X, 5);
+      let current = [];
+      await openShell(page, current);
+      await page.route('**/api/cockpit-sessions', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(current) }));
+      const show = async rows => { current = rows; await page.evaluate(async () => (await import('/static/cockpit-sessions.js')).pollSessions()); };
+      const order = () => page.evaluate(() => [...document.querySelectorAll('#ag-list .ag-proj b, #ag-list .ag-row')].map(e => e.matches('b') ? e.textContent.trim() : (e.querySelector('.ag-id') ? e.querySelector('.ag-id').textContent.trim() : 'scratch')).join(' '));
+      // the first list arrives newest first: the order still comes from the start times
+      await show([a2, x2, a1, x1]);
+      const opened = 'proj-x t-xxx1 t-xxx2 proj-a t-aaa1 t-aaa2';
+      await expect.poll(order).toBe(opened);
+      for (const rows of [[x1, a1, x2, a2], [a2, a1, x2, x1], [x2, a2, x1, a1], [a1, x1, a2, x2], [a2, x2, a1, x1]]) {
+        await show(rows);
+        expect(await order()).toBe(opened);                                    // the same whatever order the daemon lists them in
+      }
+      await show([a1, x2, a2]);                                                 // proj-x's first session ended: its group keeps its place
+      expect(await order()).toBe('proj-x t-xxx2 proj-a t-aaa1 t-aaa2');
+      await page.evaluate(async () => { (await import('/static/cockpit-sessions.js')).boardScratch.set('proj-a', [{ id: 's-ab12', title: '' }]); (await import('/static/cockpit-sessions.js')).renderSessionSurfaces(); });
+      expect(await order()).toBe('proj-x t-xxx2 proj-a t-aaa1 t-aaa2 scratch');   // not started: last in its group
+      await show([a1, a2]);                                                     // proj-x has no sessions left: its group goes
+      expect(await order()).toBe('proj-a t-aaa1 t-aaa2 scratch');
+      await show([a1, a2, x3]);                                                 // and comes back at the bottom, not at its old place
+      expect(await order()).toBe('proj-a t-aaa1 t-aaa2 scratch proj-x t-xxx3');
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    // t-7456: the Agents row of the session the project tab's board has in view carries a short bar in the theme's accent.
+    test('t-7456: the Agents row of the session in view has the accent bar; forged messages change nothing', async ({ page }) => {
+      const mk = (session, ticket) => ({ session, ticket, project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', status: 'running', state: 'working', state_secs: 3, idle_secs: 3, idle_limit_secs: 1800, signal: 'hook', started: agoIso(session === 'a1' ? 20 : 10) });
+      await openShell(page, [mk('a1', 't-aaa1'), mk('a2', 't-aaa2')]);
+      await page.evaluate(async () => { const m = await import('/static/cockpit-sessions.js'); m.boardScratch.set('proj-a', [{ id: 's-ab12', title: '' }]); await m.pollSessions(); });
+      const send = (id, tab) => page.evaluate(async ([id, tab]) => {
+        const { tabTokens } = await import('/static/cockpit-tabs.js');
+        const tok = tab === 'real' ? [...tabTokens.entries()].find(([, v]) => v === 'proj-a')[0] : tab;
+        window.postMessage({ source: 'canon-board', type: 'active-session', id, tab: tok }, location.origin);
+      }, [id, tab]);
+      const on = () => page.evaluate(() => [...document.querySelectorAll('#ag-list .ag-row.on')].map(e => (e.querySelector('.ag-id') ? e.querySelector('.ag-id').textContent : 'scratch') + (e.getAttribute('aria-current') === 'true' ? '+aria' : '')).join(' '));
+      expect(await on()).toBe('');                                       // nothing reported yet
+      await send('t-aaa2', 'real');
+      await expect.poll(on).toBe('t-aaa2+aria');
+      await send('s-ab12', 'real');                                      // a scratch tab that has not started
+      await expect.poll(on).toBe('scratch+aria');
+      await send('t-aaa1', 'bogus');                                     // not a known tab's token
+      await send('../etc', 'real');                                      // not a ticket or scratch id
+      await send(7, 'real');
+      await page.waitForTimeout(150);
+      expect(await on()).toBe('scratch+aria');                           // none of the three moved it
+      for (const theme of ['dark', 'light']) {
+        await page.evaluate(t => { document.documentElement.dataset.theme = t; }, theme);
+        const got = await page.evaluate(() => {
+          const bar = getComputedStyle(document.querySelector('#ag-list .ag-row.on'), '::before');
+          const probe = document.createElement('i'); probe.style.background = 'var(--accent)'; document.body.append(probe);
+          const accent = getComputedStyle(probe).backgroundColor; probe.remove();
+          return { bar: bar.backgroundColor, accent, width: bar.width };
+        });
+        expect(got.bar, theme).toBe(got.accent);                          // the theme's accent, not a literal
+        expect(got.width, theme).toBe('3px');
+      }
+      await send('', 'real');                                            // the board alone
+      await expect.poll(on).toBe('');
+      await send('t-aaa1', 'real');
+      await expect.poll(on).toBe('t-aaa1+aria');
+      await page.locator('#nav-admin').click();                          // Admin has no agent in view
+      await expect.poll(on).toBe('');
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     test('t-aca6: each Agents row shows the project and time in session; Admin\'s sub-line ends with the same total', async ({ page }) => {
       await openShell(page, timeRows());
       await page.evaluate(async () => (await import('/static/cockpit-sessions.js')).pollSessions());

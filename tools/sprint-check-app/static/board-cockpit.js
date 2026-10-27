@@ -89,6 +89,13 @@ export function activeIframe() {
 // pre-t-8a2a call site (and Playwright test) that looked up #ck-iframe still
 // resolves correctly with zero changes: there's still exactly one #ck-iframe
 // in the DOM, it just now migrates between tabs on switch.
+// t-7456: tell the shell which session the user is looking at, so its Agents list marks that row: the open tab's id while the
+// cockpit is showing, '' when the Board alone is.
+export function announceActiveSession() {
+  if (window.parent === window) return;
+  const open = document.getElementById('cockpit-overlay').classList.contains('open');
+  try { window.parent.postMessage({ source: 'canon-board', type: 'active-session', tab: SHELL_TAB, id: open && activeTabId ? activeTabId : '' }, location.origin); } catch {}
+}
 export function setActiveTab(id) {
   activeTabId = id;
   cockpitState = cockpitTabs[id] || null;
@@ -107,6 +114,7 @@ export function setActiveTab(id) {
     if (tab.previewEl) tab.previewEl.style.display = isActive ? '' : 'none';
   }
   applyPane(id, overlayOpen, cockpitTabs);
+  announceActiveSession();
   document.getElementById('ck-preview').classList.toggle('collapsed', !cockpitState || cockpitState.previewCollapsed);
   const msgEl = document.getElementById('ck-term-msg');
   if (msgEl) msgEl.textContent = (cockpitState && cockpitState.pendingMessage) || '';
@@ -494,6 +502,7 @@ export function unmountTab(id) {
       stopCockpitPoll();
       renderSessionStateChip(); // null cockpitState -> hides it; no other path re-renders this once the last tab closes
       applyPane(null, false, cockpitTabs);
+      announceActiveSession();
     }
   } else {
     applyPane(activeTabId, document.getElementById('cockpit-overlay').classList.contains('open'), cockpitTabs);   // t-ccf5: the pane's other tab is now alone

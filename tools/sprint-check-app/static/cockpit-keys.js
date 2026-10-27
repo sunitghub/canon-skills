@@ -7,7 +7,7 @@ import { showView } from './cockpit-views.js';
 import { openFactoryGithub } from './cockpit-factory.js';
 import { logbookOpened } from './cockpit-logbook.js';
 import { openTabSessionMenu } from './cockpit-end.js';
-import { activeTab, applySplit, closeSplit, closeTab, goTab, isProjectTab, onScratchTabs, openSessionInTab, openSplit, openTabs, prevTab, renderTabs, saveSplit, senderTab, split, splitShown } from './cockpit-tabs.js';
+import { activeTab, applySplit, closeSplit, closeTab, goTab, isProjectTab, onActiveSession, onScratchTabs, openSessionInTab, openSplit, openTabs, prevTab, renderTabs, saveSplit, senderTab, split, splitShown } from './cockpit-tabs.js';
 
   // ── Keyboard prefix (t-a198) ─────────────────────────────────────────────
   // Press the prefix (default ctrl+., rebind with localStorage "canon-prefix"), release, then one key. Keys typed in
@@ -174,6 +174,7 @@ window.addEventListener('message',function(e){
   const pid=senderTab(d);
   if(!pid) return;   // only a project tab's own board
   if(d.type==='scratch-tabs'){ onScratchTabs(d,pid); return; }
+  if(d.type==='active-session'){ onActiveSession(d,pid); return; }   // t-7456
   if(d.type==='toggle-rail-ack'){ if(wAsk===pid){ wAsk=null; if(d.handled!==true) toggleSide(); } return; }
   if(d.type==='close-terminal-ack'){ if(xAsk===pid){ xAsk=null; if(d.handled!==true&&pid===activeTab&&!shellDialogOpen()) closeTab(pid); } return; }   // t-57ab
   if(d.type==='logbook-opened'){ logbookOpened(pid); return; }   // t-c6bb: the board has opened its Logbook; stop asking

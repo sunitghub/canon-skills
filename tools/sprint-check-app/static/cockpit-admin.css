@@ -141,6 +141,8 @@
   .ag-proj b{color:var(--text-body);font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis}
   .ag-row{display:grid;grid-template-columns:12px minmax(0,1fr);column-gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer;border:0;background:transparent;text-align:left;font:inherit;color:var(--text-body);width:100%}
   .ag-row:hover{background:var(--border-muted)}
+  .ag-row{position:relative}
+  .ag-row.on::before{content:'';position:absolute;left:0;top:7px;bottom:7px;width:3px;border-radius:2px;background:var(--accent)}   /* t-7456: the session in view, as the Projects page's bar */
   .ag-row .sdot{width:8px;height:8px;margin-top:6px}
   .ag-row .ag-t1{font-size:14px;color:var(--text-body);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   /* the ticket id reads like Herdr's agent name: bright and bold, the title softer after it */

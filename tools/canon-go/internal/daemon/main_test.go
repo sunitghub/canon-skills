@@ -8547,3 +8547,39 @@ func TestTicketsDirInBareHomeWithTicketsAbove(t *testing.T) {
 		t.Errorf("under a bare home: got %q, want %q", got, want)
 	}
 }
+
+// t-7456: /sessions lists sessions in the order they were opened (start time, then id), the same on every call. The map the daemon
+// keeps them in iterates in a different order each time, which made the sidebar's Agents list move.
+func TestSessionsListIsInOpenedOrder(t *testing.T) {
+	root := t.TempDir()
+	s := newServer(config{token: bootTok, projectRoot: root, stateDir: t.TempDir()})
+	base := time.Date(2026, 10, 27, 9, 0, 0, 0, time.UTC)
+	var want []string
+	for i := 0; i < 8; i++ {
+		sid := fmt.Sprintf("sid-%02d", i)
+		started := base.Add(time.Duration(i/2) * time.Minute) // two sessions per second-resolution timestamp: the id breaks the tie
+		s.sessions[sid] = &session{sid: sid, projectRoot: root, cwd: root, agent: "claude", status: "running", started: started,
+			subs: map[chan frame]struct{}{}, lastActivity: time.Now(), statusSince: time.Now()}
+		want = append(want, sid)
+	}
+	order := func() []string {
+		rec := httptest.NewRecorder()
+		s.handleSessions(rec, httptest.NewRequest("GET", "/sessions", nil))
+		var rows []struct {
+			Session string `json:"session"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &rows); err != nil {
+			t.Fatalf("decode /sessions: %v (%s)", err, rec.Body.String())
+		}
+		got := make([]string, len(rows))
+		for i, r := range rows {
+			got[i] = r.Session
+		}
+		return got
+	}
+	for call := 0; call < 50; call++ {
+		if got := order(); strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Fatalf("call %d: /sessions order = %v, want %v (the opened order)", call, got, want)
+		}
+	}
+}

@@ -3,6 +3,7 @@
 import { loadSkillEval } from './cockpit-skill-eval.js';
 import { loadAdmin } from './cockpit-admin.js';
 import { loadFactory } from './cockpit-factory.js';
+import { renderSessionSurfaces } from './cockpit-sessions.js';
 import { activateTab, activeTab, applySplit, setSkillEvalPane, splitShown } from './cockpit-tabs.js';
 
 export function showView(v){
@@ -23,6 +24,7 @@ export function showView(v){
     document.getElementById('nav-admin').classList.toggle('active',v==='admin');
     document.getElementById('nav-factory').classList.toggle('active',v==='factory');
   }
+  renderSessionSurfaces();   // t-7456: Admin and Factory have no agent in view
   if(v==='admin'){
     document.getElementById('view-admin').classList.add('active');
     loadAdmin();

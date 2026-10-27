@@ -35,6 +35,14 @@ export function onScratchTabs(d,pid){
   if(tabs.length) boardScratch.set(pid,tabs); else boardScratch.delete(pid);
   renderSessionSurfaces();
 }
+// t-7456: the session each project's board has in view ('' = the Board alone); the Agents list marks that row for the active project tab.
+export const boardActive=new Map();
+export function onActiveSession(d,pid){
+  const id=d.id;
+  if(typeof id!=='string' || (id && !SCRATCH_ID_RE.test(id) && !TICKET_ID_RE.test(id))) return;   // malformed: change nothing
+  if(id) boardActive.set(pid,id); else boardActive.delete(pid);
+  renderSessionSurfaces();
+}
 // Open a session's project tab, then hand its ticket (if any) to that tab's board.
 // Shared by the board's open-session message and the t-824e session surfaces.
 export function openSessionInTab(v){
@@ -244,6 +252,7 @@ export function activateTab(id){
   renderTabs();
   saveTabs();
   applySplit();
+  renderSessionSurfaces();   // t-7456: the Agents list marks the row in view in the tab now showing
 }
 export function openProject(id,name,opts){
   opts=opts||{};

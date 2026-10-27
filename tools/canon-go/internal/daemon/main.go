@@ -1131,6 +1131,14 @@ func (s *server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.mu.Unlock()
+	// t-7456: s.sessions is a map, so the range above is in a different order on every call; a list that reorders itself moves the
+	// sidebar's rows under the user's hand. The order is the order the sessions were opened (start time, then id), and never changes.
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Started != out[j].Started { // RFC 3339 in UTC: the strings sort as times
+			return out[i].Started < out[j].Started
+		}
+		return out[i].Session < out[j].Session
+	})
 	// t-5a4b: sessions sharing one folder without git can overwrite each other — say so. Only when
 	// two rows share a cwd is git asked at all, once per project.
 	byCwd, noGit := map[string]int{}, map[string]bool{}

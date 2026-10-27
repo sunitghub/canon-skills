@@ -4,7 +4,7 @@ import { SCRATCH_ID, announceScratchTabs, findTicketById, normProjectPath, rende
 import { activateDoc, modalState, openModal } from './board-modal.js';
 import { hasFilledCheckbox, hasUsefulSectionText, parseGateModel, sectionContent } from './board-docs.js';
 import { applyPane, initPane } from './board-pane.js';
-import { activeTabId, closeTab, cockpitState, cockpitTabs, newCockpitTabState, openLeaveConfirm, openTerminalCloseConfirm, refreshSessionStateChip, renderSessionStateChip, sessionIsLive, setActiveTab, teardownCockpit } from './board-cockpit.js';
+import { activeTabId, announceActiveSession, closeTab, cockpitState, cockpitTabs, newCockpitTabState, openLeaveConfirm, openTerminalCloseConfirm, refreshSessionStateChip, renderSessionStateChip, sessionIsLive, setActiveTab, teardownCockpit } from './board-cockpit.js';
 import { cockpitPathKey, fetchWorktreeLock, formatStateAsParagraphs, maybeMountCockpitTerminal, renderCockpitWorktree } from './board-worktree.js';
 
 // t-a198: the keyboard prefix (see the shell). Keys typed with focus in the board come here; the terminal frame's
@@ -269,6 +269,7 @@ export async function openCockpit(id) {
   ensurePreviewResize();
   document.getElementById('cockpit').classList.remove('rail-collapsed');
   document.getElementById('cockpit-overlay').classList.add('open');
+  announceActiveSession();
 
   if (cockpitTabs[id]) {
     // Already open — switch only. Never re-src's the iframe, never
@@ -320,6 +321,7 @@ export async function openCockpit(id) {
 // session is now a separate, explicit action — see #ck-end-session below.
 export function closeCockpit() {
   document.getElementById('cockpit-overlay').classList.remove('open');
+  announceActiveSession();
   applyPane(activeTabId, false, cockpitTabs);   // t-ccf5: the Board alone again; the pane is remembered
 }
 
