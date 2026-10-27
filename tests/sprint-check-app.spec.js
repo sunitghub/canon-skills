@@ -1542,6 +1542,7 @@ test.describe('board modal', () => {
       const q = x => idQueryTerms(x, T);
       return {
         one: q('69f6'), two: q('69f6 1ae4'), commas: q('t-69f6, 1ae4'), upper: q('69F6 1AE4'), partial: q('9f 1ae'), repeat: q('69f6 69f6'),
+        dropOne: q('t-69f6 t-9999'), dropTwo: q('t-69f6, t-1ae4 t-9999'), dropBare: q('69f6 9999'), dropMixed: q('t-69f6 9999'), dropAll: q('t-9999 t-8888'), dropSingle: q('t-69f6'), dropWord: q('t-69f6 login'), dropShort: q('t-69f6 t-9'),
         short: q('6 1ae'), long: q('69f66 1ae4'), longInId: q('ab12c 1ae4'), isci: q('is ci'), isOverride: q('is override'), readiness: q('needs acc'), tagq: q('tag:git go'), word: q('bug fix'), mixed: q('69f6 login'), unknown: q('zz qq'), empty: q('  '), none: q(null),
       };
     });
@@ -1560,12 +1561,34 @@ test.describe('board modal', () => {
     expect(memo.first).toEqual([true, true, false]);
     expect(memo.second).toEqual([false, false, false]);                     // not an id list any more (`bb` is in no id): the old terms were not reused for t-aa11
     expect(got.one).toBeNull();                                             // a single term is never a list
+    expect(got.dropOne).toEqual(['69f6']);                                  // t-b198: every term a full id: the one in no id is dropped, the rest is the list
+    expect(got.dropTwo).toEqual(['69f6', '1ae4']);
+    for (const k of ['dropBare', 'dropMixed', 'dropAll', 'dropSingle', 'dropWord', 'dropShort']) expect(got[k], k).toBeNull();   // bare or mixed terms keep the strict rule; nothing left, one term, a word, a 1-character term: not a list
     expect(got.two).toEqual(['69f6', '1ae4']);
     expect(got.commas).toEqual(['69f6', '1ae4']);                           // t- dropped, commas are spaces
     expect(got.upper).toEqual(['69f6', '1ae4']);
     expect(got.partial).toEqual(['9f', '1ae']);
     expect(got.repeat).toEqual(['69f6', '69f6']);
     for (const k of ['short', 'long', 'longInId', 'isci', 'isOverride', 'readiness', 'tagq', 'word', 'mixed', 'unknown', 'empty', 'none']) expect(got[k], k).toBeNull();   // the special queries are never id lists
+  });
+
+  // t-b198. Protects the board search box: a list of ticket ids with a wrong one still shows the real ones and says what it left out.
+  test('a list of ticket ids drops the one that does not exist and says so (t-b198)', async ({ page }) => {
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    const ids = await page.evaluate(async () => { const { state } = await import('/static/board-core.js'); return state.tickets.filter(t => /^t-[0-9a-f]{4}$/.test(t.id)).slice(0, 2).map(t => t.id); });   // other prefixes (AS-…) exist on the real board; the rule is about t- ids
+    expect(ids).toHaveLength(2);
+    const search = page.locator('#board-search');
+    const count = page.locator('#board-search-count');
+    await search.fill(`${ids[0]} t-zzzz`);
+    await expect(count).toHaveText(/^1 of \d+ \u00b7 ignored t-zzzz$/);                // the real id is found, the wrong one is named
+    await search.fill(`${ids[0]} ${ids[1]}`);
+    await expect(count).toHaveText(/^2 of \d+$/);                                    // every id real: both, and no note
+    await search.fill(`${ids[0]} t-<b>x</b>`);                                       // not an id at all: the ordinary search, no note, and no markup in the count
+    await expect(count).not.toContainText('ignored');
+    await expect(count.locator('b')).toHaveCount(0);
+    await search.fill(`${ids[0]} t-zz<i>`);
+    await expect(count.locator('i')).toHaveCount(0);
   });
 
   test('modal next and previous stay in the same status lane sorted by newest first', async ({ page }) => {

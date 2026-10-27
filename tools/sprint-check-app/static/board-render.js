@@ -1,5 +1,5 @@
 import { COLLAPSE_STATUSES, COLUMNS, COL_LIMIT, SHELL_TAB, docSlug, loadData, state } from './board-core.js';
-import { ticketTags, age, ciBadge, liteBadge, divergenceLine, effectiveStatus, esc, escAttr, normalizeSearch, outcomeRatio, ticketMatchesQuery, typeBadge, whyQueryFromInput, worktreePrefLine, worktreeRun } from './board-helpers.js';
+import { ticketTags, age, ciBadge, liteBadge, divergenceLine, effectiveStatus, esc, escAttr, idQueryDropped, normalizeSearch, outcomeRatio, ticketMatchesQuery, typeBadge, whyQueryFromInput, worktreePrefLine, worktreeRun } from './board-helpers.js';
 import { openModal } from './board-modal.js';
 import { tagChipsHTML } from './board-tags.js';
 import { moveCard } from './board-docs.js';
@@ -326,7 +326,8 @@ export function renderBoard() {
   const emptyEl = document.getElementById('board-empty-search');
   renderWhyResults();
   if (countEl) {
-    countEl.textContent = query ? `${tickets.length} of ${state.tickets.length}` : '';
+    const ignored = query ? idQueryDropped(state.query) : [];   // t-b198: an id list names the ids it left out
+    countEl.textContent = query ? `${tickets.length} of ${state.tickets.length}` + (ignored.length ? ` \u00b7 ignored ${ignored.join(' ')}` : '') : '';
   }
   if (emptyEl) {
     emptyEl.classList.toggle('visible', Boolean(query) && tickets.length === 0);

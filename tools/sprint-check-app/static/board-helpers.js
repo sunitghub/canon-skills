@@ -74,21 +74,37 @@ function primarySearchText(t) {
 // letters, like `add bad`, is also an id list: the union keeps its old results). A word in no id, a term longer than an id, or a single
 // term is the ordinary search alone. Returns the terms, or null.
 export function idQueryTerms(raw, tickets) {
-  const terms = String(raw ?? '').toLowerCase().split(/[\s,]+/).map(x => x.replace(/^t-/, '')).filter(Boolean);
-  if (terms.length < 2 || !terms.every(x => /^[0-9a-z]{2,4}$/.test(x))) return null;
-  const ids = (tickets || []).map(t => String(t.id ?? '').toLowerCase().replace(/^t-/, ''));
-  return terms.every(x => ids.some(id => id.includes(x))) ? terms : null;
+  const split = idQuerySplit(raw, tickets);
+  return split ? split.terms : null;
 }
 
-let idQueryMemo = { raw: null, list: null, len: -1, terms: null };
-function idTermsFor(raw) {
+// t-b198: when EVERY term is written as a full id (`t-` then 2 to 4 of [0-9a-z]), a term that is part of no loaded ticket's id is
+// dropped and the rest are the list: `t-43a2 t-1212` shows t-43a2. Only that spelling: a bare short word is part of some id almost
+// always (`to do`), so bare terms keep the strict all-or-nothing rule above. Returns { terms, dropped } or null.
+function idQuerySplit(raw, tickets) {
+  const words = String(raw ?? '').toLowerCase().split(/[\s,]+/).filter(Boolean);
+  const terms = words.map(x => x.replace(/^t-/, ''));
+  if (terms.length < 2 || !terms.every(x => /^[0-9a-z]{2,4}$/.test(x))) return null;
+  const ids = (tickets || []).map(t => String(t.id ?? '').toLowerCase().replace(/^t-/, ''));
+  const known = x => ids.some(id => id.includes(x));
+  if (terms.every(known)) return { terms, dropped: [] };
+  if (!words.every(w => w.startsWith('t-'))) return null;
+  const kept = terms.filter(known);
+  return kept.length ? { terms: kept, dropped: terms.filter(x => !known(x)) } : null;
+}
+
+let idQueryMemo = { raw: null, list: null, len: -1, split: null };
+function idSplitFor(raw) {
   // the filter runs once per ticket: work the terms out once per query and per loaded list (a reload assigns a new array)
   const q = String(raw ?? '');
   if (idQueryMemo.raw !== q || idQueryMemo.list !== state.tickets || idQueryMemo.len !== state.tickets.length) {
-    idQueryMemo = { raw: q, list: state.tickets, len: state.tickets.length, terms: idQueryTerms(q, state.tickets) };
+    idQueryMemo = { raw: q, list: state.tickets, len: state.tickets.length, split: idQuerySplit(q, state.tickets) };
   }
-  return idQueryMemo.terms;
+  return idQueryMemo.split;
 }
+function idTermsFor(raw) { const s = idSplitFor(raw); return s ? s.terms : null; }
+// The ids the search ignored for this query, as typed (`t-1212`); empty when none, or when the query is not an id list.
+export function idQueryDropped(raw) { const s = idSplitFor(raw); return s ? s.dropped.map(x => 't-' + x) : []; }
 
 export function ticketMatchesQuery(t) {
   const q = normalizeSearch(state.query);
