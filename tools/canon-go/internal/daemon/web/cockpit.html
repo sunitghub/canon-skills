@@ -208,12 +208,32 @@ function canonPrefixKeys(emit) {
   return { handle: handle, cancel: function () { if (armed) { disarm(); emit('cancel', ''); } } };
 }
 // canon:prefix-keys:end
+  // canon:shift-enter:begin (t-6aaf) — unit-tested by tests/shift-enter.js, which loads this block out of the page
+  // xterm.js sends the same \r for Shift+Enter as for Enter, so an agent cannot tell them apart; ESC+CR (Alt+Enter) is the
+  // newline an agent's prompt accepts. null: not ours (the restricted Terminal reads whole lines and keeps Enter as it is, an
+  // unknown agent too, a modified or composing key too). Otherwise the text to send: ESC+CR on the keydown, "" on the keypress and
+  // keyup halves of the same key, which the caller swallows so xterm does not also send the \r its keypress handler would.
+  function canonShiftEnter(ev, mode, agent) {
+    if (mode === "term" || (agent !== "claude" && agent !== "pi" && agent !== "copilot")) return null;
+    if (ev.key !== "Enter" || !ev.shiftKey || ev.ctrlKey || ev.altKey || ev.metaKey || ev.isComposing) return null;
+    return ev.type === "keydown" ? "\x1b\r" : "";
+  }
+  // canon:shift-enter:end
+  var prefixKeys = null;
   if (window.parent !== window) {
-    var prefixKeys = canonPrefixKeys(function (type, key) {
+    prefixKeys = canonPrefixKeys(function (type, key) {
       try { toParent({ source: "canon-cockpit", type: "prefix-" + type, key: key }); } catch (e) {}
     });
-    term.attachCustomKeyEventHandler(function (ev) { return !prefixKeys.handle(ev); });
   }
+  // t-6aaf: xterm keeps ONE custom handler, so the prefix keys and Shift+Enter share it (the prefix first, as before), and it is
+  // attached whether or not the page is embedded.
+  term.attachCustomKeyEventHandler(function (ev) {
+    if (prefixKeys && prefixKeys.handle(ev)) return false;
+    var nl = session ? canonShiftEnter(ev, MODE, (document.getElementById("agentSel") || {}).value) : null;
+    if (nl === null) return true;
+    if (nl) sendInput(nl);
+    return false;
+  });
   // Live font control: apply to the running terminal, persist, and reflow so
   // the PTY is told the new column/row count.
   function setTermFont(n){
@@ -692,10 +712,11 @@ function canonPrefixKeys(emit) {
     }
   }
 
-  term.onData(function(d){
+  function sendInput(d){
     if(!session) return;
     fetch("/session/"+session+"/input", { method:"POST", headers: authHeaders(sessTok), body: d }).catch(function(){});
-  });
+  }
+  term.onData(sendInput);
 
   // Waits for the session and for the restricted prompt (the cursor line is just "$ ") before typing, so the line is not lost or doubled.
   function typeWhenReady(text){
