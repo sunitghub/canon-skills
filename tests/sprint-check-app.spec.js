@@ -3184,7 +3184,7 @@ test.describe('board modal', () => {
         const first = await page.evaluate(async (ticketId) => {
           const r = await fetch(`/api/ticket/${ticketId}/headless-run`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ base_ref: 'main' }),
+            body: JSON.stringify({ base_ref: 'main', confirm: true }),
           });
           return r.json();
         }, id);
@@ -3192,7 +3192,7 @@ test.describe('board modal', () => {
         const second = await page.evaluate(async (ticketId) => {
           const r = await fetch(`/api/ticket/${ticketId}/headless-run`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ base_ref: 'main' }),
+            body: JSON.stringify({ base_ref: 'main', confirm: true }),
           });
           return r.json();
         }, id);
@@ -3302,7 +3302,7 @@ test.describe('board modal', () => {
         await page.evaluate(async (ticketId) => {
           await fetch(`/api/ticket/${ticketId}/headless-run`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ base_ref: 'main' }),
+            body: JSON.stringify({ base_ref: 'main', confirm: true }),
           });
         }, id);
         await page.locator('#board-search').fill(id);

@@ -87,7 +87,7 @@ go, proj, out, work, root = sys.argv[1:6]
 S = os.path.join(proj, ".claude", "skills")
 def call(port, method, path, body=None):
     data = None if body is None else (body if isinstance(body, bytes) else json.dumps(body).encode())
-    req = urllib.request.Request(f"http://127.0.0.1:{port}{path}", data=data, method=method, headers={"Content-Type": "application/json"})
+    req = urllib.request.Request(f"http://127.0.0.1:{port}{path}", data=data, method=method, headers={"Content-Type": "application/json", "Origin": "http://127.0.0.1"})
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
             return r.status, r.read(), r.headers
