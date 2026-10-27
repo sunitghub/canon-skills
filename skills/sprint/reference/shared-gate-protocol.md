@@ -141,11 +141,11 @@ regression as a finding even if it falls outside the sprint's stated focus.
      --use-mock-keychain --password-store=basic --screenshot="<out>.png" \
      --window-size=<W>,<H> --hide-scrollbars "file://<absolute-path-to-page>"
    ```
-   `<scratch>` is your own `mktemp -d`. `--user-data-dir --use-mock-keychain --password-store=basic`
-   keep the render off the user's real profile and keychain (t-3488: without them macOS shows a
-   "Keychain Not Found" dialog on the user's desktop; never click its Reset To Defaults). Verified for Chrome
-   on macOS only; Edge and Brave are expected to behave the same and are untested. `--use-mock-keychain` is
-   a macOS switch and `--password-store=basic` a Linux one: each is ignored elsewhere. On Windows a pinned
+   `<scratch>` is your own `mktemp -d`. `--user-data-dir` keeps the render off the user's real profile;
+   `--use-mock-keychain` (a macOS switch) and `--password-store=basic` (a Linux one; each is ignored elsewhere)
+   keep it off the system keychain and keyring. Without them macOS can show a "Keychain Not Found" dialog on the
+   user's desktop (t-3488); never click its Reset To Defaults. Run on Chrome on macOS only (exit 0, a PNG, no new
+   SecurityAgent process); Edge and Brave are expected to behave the same and are untested. On Windows a pinned
    HOME does not move Chrome's profile (it lives under `%LOCALAPPDATA%`), so `--user-data-dir` is what isolates
    it, and in Git Bash it must be Chrome's native form: `--user-data-dir="$(cygpath -m "<scratch>")/chrome-profile"`;
    the Windows run is untested (`not-run`).
