@@ -273,7 +273,7 @@ export function renderSessionSurfaces(){
   rail.sort((a,b)=>opened(a)<opened(b) ? -1 : opened(a)>opened(b) ? 1 : 0);
   const groups=new Map();
   for(const v of rail){ const k=_projKey(v.proot); if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(v); }
-  for(const k of [...groupRank.keys()]) if(!groups.has(k)) groupRank.delete(k);   // a group that left comes back at the bottom
+  if(views.length) for(const k of [...groupRank.keys()]) if(!groups.has(k)) groupRank.delete(k);   // a group that left comes back at the bottom (an empty list is a failed poll or nothing running: keep every rank)
   const firstSeen=[...groups.keys()].filter(k=>!groupRank.has(k)).map(k=>{
     const g=groups.get(k), at=openTabs.findIndex(t=>t.id===g[0].pid);
     return { k, start:Math.min(...g.map(opened)), tab:at<0 ? Infinity : at };
@@ -284,7 +284,7 @@ export function renderSessionSurfaces(){
   list.innerHTML=rail.length===0 ? '<div class="ag-empty">No agents running</div>' : ordered.map(g=>
     `<div class="ag-proj" title="${escAttr(g[0].proot)}"><b>${esc(g[0].projName||g[0].name)}</b><span>${g.length}</span>${g[0].pid?`<button class="ag-plus" data-scratch="${escAttr(g[0].pid)}" title="New scratch session in ${escAttr(g[0].projName||g[0].name)}" aria-label="New scratch session">+</button>`:''}</div>`+g.map(v=>{
       const title=ticketTitle(v.pid,v.ticket), time=sessionTime(v);
-      const inView=!!v.pid && v.pid===activeTab && (v.ticket||v.scratch)===boardActive.get(activeTab) && (document.getElementById('view-'+activeTab)||{classList:{contains:()=>false}}).classList.contains('active');   // t-7456
+      const inView=!!v.pid && v.pid===activeTab && (v.ticket||v.scratch)===boardActive.get(activeTab) && document.getElementById('view-'+activeTab)?.classList.contains('active');   // t-7456
       return `<button class="ag-row st st-${v.state}${inView?' on':''}"${inView?' aria-current="true"':''} data-i="${rail.indexOf(v)}" title="${escAttr((title?title+' \u2014 ':'')+v.label+(v.signal?(' \u00b7 state from: '+v.signal):''))}">`+
       `<span class="sdot"></span>`+
       `<span class="ag-t1">${v.ticket?`<span class="ag-id">${esc(v.ticket)}</span>${esc(title)}`:(v.scratch?`${scratchIcon(v.agent)}${esc(v.scrTitle||'Scratch session')}`:'<span class="ag-none">no ticket</span>')}</span>`+

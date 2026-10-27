@@ -269,7 +269,6 @@ export async function openCockpit(id) {
   ensurePreviewResize();
   document.getElementById('cockpit').classList.remove('rail-collapsed');
   document.getElementById('cockpit-overlay').classList.add('open');
-  announceActiveSession();
 
   if (cockpitTabs[id]) {
     // Already open — switch only. Never re-src's the iframe, never

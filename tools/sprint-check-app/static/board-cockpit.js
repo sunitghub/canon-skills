@@ -78,6 +78,14 @@ export function activeIframe() {
   return cockpitState ? cockpitState.iframeEl : null;
 }
 
+// t-7456: tell the shell which session the user is looking at, so its Agents list marks that row: the open tab's id while the
+// cockpit is showing, '' when the Board alone is.
+export function announceActiveSession() {
+  if (window.parent === window) return;
+  const open = document.getElementById('cockpit-overlay').classList.contains('open');
+  try { window.parent.postMessage({ source: 'canon-board', type: 'active-session', tab: SHELL_TAB, id: open && activeTabId ? activeTabId : '' }, location.origin); } catch {}
+}
+
 // Switches which tab is "active": reassigns cockpitState to point at it,
 // toggles which tab's iframe is visible in the DOM (never re-src'd — no
 // reconnect), and restores that tab's own pending terminal message into the
@@ -89,13 +97,6 @@ export function activeIframe() {
 // pre-t-8a2a call site (and Playwright test) that looked up #ck-iframe still
 // resolves correctly with zero changes: there's still exactly one #ck-iframe
 // in the DOM, it just now migrates between tabs on switch.
-// t-7456: tell the shell which session the user is looking at, so its Agents list marks that row: the open tab's id while the
-// cockpit is showing, '' when the Board alone is.
-export function announceActiveSession() {
-  if (window.parent === window) return;
-  const open = document.getElementById('cockpit-overlay').classList.contains('open');
-  try { window.parent.postMessage({ source: 'canon-board', type: 'active-session', tab: SHELL_TAB, id: open && activeTabId ? activeTabId : '' }, location.origin); } catch {}
-}
 export function setActiveTab(id) {
   activeTabId = id;
   cockpitState = cockpitTabs[id] || null;

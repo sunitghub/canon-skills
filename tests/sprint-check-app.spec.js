@@ -5188,6 +5188,9 @@ test.describe('cockpit in board (t-ddc8)', () => {
       }
       await show([a1, x2, a2]);                                                 // proj-x's first session ended: its group keeps its place
       expect(await order()).toBe('proj-x t-xxx2 proj-a t-aaa1 t-aaa2');
+      await show([]);                                                           // a failed poll lists nothing: it must not forget the ranks
+      await show([a1, x2, a2]);
+      expect(await order()).toBe('proj-x t-xxx2 proj-a t-aaa1 t-aaa2');
       await page.evaluate(async () => { (await import('/static/cockpit-sessions.js')).boardScratch.set('proj-a', [{ id: 's-ab12', title: '' }]); (await import('/static/cockpit-sessions.js')).renderSessionSurfaces(); });
       expect(await order()).toBe('proj-x t-xxx2 proj-a t-aaa1 t-aaa2 scratch');   // not started: last in its group
       await show([a1, a2]);                                                     // proj-x has no sessions left: its group goes
