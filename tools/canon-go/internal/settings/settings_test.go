@@ -629,20 +629,23 @@ func TestIgnoreInGitBelowTheTop(t *testing.T) {
 func TestWriteCapEdge(t *testing.T) {
 	s := ProjectSet(t.TempDir())
 	pad := func(n int) { write(t, s.Local, `{"pad":"`+strings.Repeat("x", n)+`"}`) }
-	pad(100)
+	const p0 = 1000
+	pad(p0)
 	if _, err := s.SetLocal("terminal.paging", "off"); err != nil {
 		t.Fatal(err)
 	}
-	extra := len(read(t, s.Local)) - len(`{"pad":"`+strings.Repeat("x", 100)+`"}`) // bytes a write adds to this file
-	pad(MaxFileBytes - extra - len(`{"pad":""}`) - 2)                              // -2: the written file indents the pad key
+	l0 := len(read(t, s.Local)) // what a write makes of a file with a pad of p0 bytes
+	pad(p0 + MaxFileBytes - l0)
 	if _, err := s.SetLocal("terminal.paging", "off"); err != nil {
-		t.Fatalf("a result near the cap: %v", err)
+		t.Fatalf("a result of exactly the cap: %v", err)
 	}
-	n := len(read(t, s.Local))
-	if n > MaxFileBytes {
-		t.Fatalf("wrote %d bytes, over the cap", n)
+	if n := len(read(t, s.Local)); n != MaxFileBytes {
+		t.Fatalf("wrote %d bytes, want exactly %d", n, MaxFileBytes)
 	}
-	pad(MaxFileBytes - extra - len(`{"pad":""}`) - 2 + (MaxFileBytes - n) + 1)
+	if got := read(t, s.Local); !strings.HasSuffix(got, "}\n") {
+		t.Errorf("the file must end with one newline, not %q", got[len(got)-4:])
+	}
+	pad(p0 + MaxFileBytes - l0 + 1)
 	if _, err := s.SetLocal("terminal.paging", "off"); err == nil {
 		t.Error("a result one byte over the cap was written")
 	}
