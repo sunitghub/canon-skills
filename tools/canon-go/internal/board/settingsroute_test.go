@@ -213,3 +213,34 @@ func TestSettingsRouteKeepsTheFileOutOfGit(t *testing.T) {
 		t.Fatalf("git status is not clean after a write:\n%s", st)
 	}
 }
+
+// Protects what the person is told when git cannot be kept clean: the save stands and the answer carries a warning.
+func TestSettingsRouteWarnsWhenGitCannotBeKeptClean(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not installed")
+	}
+	t.Setenv("CANON_HOME", t.TempDir())
+	root := t.TempDir()
+	cmd := exec.Command("git", "-C", root, "init", "-q")
+	cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v %s", err, out)
+	}
+	ex := filepath.Join(root, ".git", "info", "exclude")
+	os.Remove(ex)
+	if err := os.Symlink(filepath.Join(t.TempDir(), "elsewhere"), ex); err != nil {
+		t.Fatal(err)
+	}
+	old := projectRoot
+	projectRoot = root
+	defer func() { projectRoot = old }()
+	req := httptest.NewRequest(http.MethodPost, "/api/settings", strings.NewReader(`{"key":"terminal.paging","value":25}`))
+	req.Header.Set("Origin", "http://127.0.0.1:8423")
+	w := httptest.NewRecorder()
+	handlePost(w, req)
+	var m map[string]any
+	_ = json.Unmarshal(w.Body.Bytes(), &m)
+	if w.Code != 200 || !strings.Contains(fmt.Sprint(m["warnings"]), "could not keep .canon/settings.local.json out of git status") {
+		t.Fatalf("%d %s", w.Code, w.Body.String())
+	}
+}

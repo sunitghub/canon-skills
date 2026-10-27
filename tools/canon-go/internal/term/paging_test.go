@@ -98,6 +98,9 @@ func TestPagingCommandSurface(t *testing.T) {
 			t.Errorf("output lacks %q:\n%s", want, out)
 		}
 	}
+	if !strings.Contains(out, "$ usage: paging [auto|off|<lines>]\n") {
+		t.Errorf("`paging 1 2` must print the usage line on its own:\n%s", out)
+	}
 	for _, never := range []string{`"1" is not a setting.`, "<nil>"} { // a malformed use must not fall through to a change
 		if strings.Contains(out, never) {
 			t.Errorf("output must not contain %q:\n%s", never, out)

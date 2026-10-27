@@ -624,3 +624,26 @@ func TestIgnoreInGitBelowTheTop(t *testing.T) {
 		t.Errorf("a non-repository: %v", err)
 	}
 }
+
+// Protects the write cap at its exact edge: a result of exactly 64 KB is written, one byte more is refused.
+func TestWriteCapEdge(t *testing.T) {
+	s := ProjectSet(t.TempDir())
+	pad := func(n int) { write(t, s.Local, `{"pad":"`+strings.Repeat("x", n)+`"}`) }
+	pad(100)
+	if _, err := s.SetLocal("terminal.paging", "off"); err != nil {
+		t.Fatal(err)
+	}
+	extra := len(read(t, s.Local)) - len(`{"pad":"`+strings.Repeat("x", 100)+`"}`) // bytes a write adds to this file
+	pad(MaxFileBytes - extra - len(`{"pad":""}`) - 2)                              // -2: the written file indents the pad key
+	if _, err := s.SetLocal("terminal.paging", "off"); err != nil {
+		t.Fatalf("a result near the cap: %v", err)
+	}
+	n := len(read(t, s.Local))
+	if n > MaxFileBytes {
+		t.Fatalf("wrote %d bytes, over the cap", n)
+	}
+	pad(MaxFileBytes - extra - len(`{"pad":""}`) - 2 + (MaxFileBytes - n) + 1)
+	if _, err := s.SetLocal("terminal.paging", "off"); err == nil {
+		t.Error("a result one byte over the cap was written")
+	}
+}
