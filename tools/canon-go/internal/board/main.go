@@ -6093,7 +6093,9 @@ func writeSetting(w http.ResponseWriter, r *http.Request, root string, payload m
 		settingsFailure(w, err)
 		return
 	}
-	_ = settings.IgnoreInGit(root, settings.LocalRel) // best effort: a failure here must not undo a saved setting
+	if err := settings.IgnoreInGit(root, settings.LocalRel); err != nil { // the saved setting stays; the person is told the file may show in git status
+		res.Warnings = append(res.Warnings, "could not keep .canon/settings.local.json out of git status: "+err.Error())
+	}
 	emitProjectSetting(r, root, key, fmt.Sprint(before.Values[key].V), fmt.Sprint(res.Values[key].V))
 	sendJSON(w, settingsJSON(res))
 }

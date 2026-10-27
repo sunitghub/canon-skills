@@ -195,9 +195,11 @@ function setPagingOption(sel, value) {   // a hand-edited number outside the pre
   sel.value = value;
   sel.dataset.was = value;
 }
+let pagingLoad = 0;
 async function loadPaging() {
   const sel = document.getElementById('ck-paging-sel'), msg = document.getElementById('ck-paging-msg');
   if (!sel) return;
+  const mine = ++pagingLoad;   // a slower, older answer must not overwrite a newer one
   if (!sel.dataset.bound) {
     sel.dataset.bound = '1';
     sel.addEventListener('change', async () => {
@@ -213,6 +215,7 @@ async function loadPaging() {
   try {
     const r = await fetch('/api/settings');
     const d = await r.json().catch(() => null);
+    if (mine !== pagingLoad) return;
     if (!r.ok || !d || d.ok === false) { msg.textContent = (d && d.error) || `The settings could not be read (HTTP ${r.status}).`; return; }
     const v = d.values && d.values['terminal.paging'];
     setPagingOption(sel, v ? String(v.value) : 'auto');

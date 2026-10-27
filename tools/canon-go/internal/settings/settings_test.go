@@ -552,3 +552,75 @@ func TestIgnoreInGitOnAnEmptyExclude(t *testing.T) {
 		t.Errorf("%v %q", err, read(t, ex))
 	}
 }
+
+// t-dba0 (reviewer round). Protects the user's file: a change that would leave it over 64 KB is refused before anything is written,
+// keys this package does not own keep their digits and characters, trailing data is invalid JSON, arrays count as depth, and a missing
+// project folder is not recreated by a write.
+func TestReviewerFixes(t *testing.T) {
+	s := ProjectSet(t.TempDir())
+	big := `{"pad":"` + strings.Repeat("x", MaxFileBytes-20) + `"}`
+	write(t, s.Local, big)
+	before := read(t, s.Local)
+	if _, err := s.SetLocal("terminal.paging", "off"); err == nil || !strings.Contains(err.Error(), "larger than 64 KB") {
+		t.Errorf("a write past the cap: %v", err)
+	}
+	if read(t, s.Local) != before {
+		t.Error("the file changed although the write was refused")
+	}
+	write(t, s.Local, `{"n":12345678901234567890,"f":1.0,"s":"a<b&c"}`)
+	if _, err := s.SetLocal("terminal.paging", 30); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"12345678901234567890", "1.0", "a<b&c"} {
+		if !strings.Contains(read(t, s.Local), want) {
+			t.Errorf("%q was rewritten: %s", want, read(t, s.Local))
+		}
+	}
+	write(t, s.Local, `{} {}`)
+	if _, err := s.Load(); err == nil || !strings.Contains(err.Error(), "not valid JSON") {
+		t.Errorf("trailing data: %v", err)
+	}
+	write(t, s.Local, `{"a":[[[[[[[[[1]]]]]]]]]}`)
+	if _, err := s.Load(); err == nil || !strings.Contains(err.Error(), "deeper than 8") {
+		t.Errorf("arrays must count as depth: %v", err)
+	}
+	gone := filepath.Join(t.TempDir(), "gone")
+	if _, err := ProjectSet(gone).SetLocal("terminal.paging", "off"); err == nil {
+		t.Error("a write for a missing project folder succeeded")
+	}
+	if _, err := os.Stat(gone); err == nil {
+		t.Error("the missing project folder was recreated")
+	}
+}
+
+// Protects `git status` for a project below the repository's top, and a project that is not in a repository at all.
+func TestIgnoreInGitBelowTheTop(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not installed")
+	}
+	top := t.TempDir()
+	git := func(dir string, args ...string) string {
+		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+		return string(out)
+	}
+	git(top, "init", "-q")
+	sub := filepath.Join(top, "sub")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(sub, LocalRel), `{}`)
+	if err := IgnoreInGit(sub, LocalRel); err != nil {
+		t.Fatal(err)
+	}
+	if st := git(top, "status", "--porcelain", "-uall"); strings.TrimSpace(st) != "" {
+		t.Errorf("git status shows the file:\n%s", st)
+	}
+	if err := IgnoreInGit(t.TempDir(), LocalRel); err != nil { // not a repository: nothing is written anywhere
+		t.Errorf("a non-repository: %v", err)
+	}
+}

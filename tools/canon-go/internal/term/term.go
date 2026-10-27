@@ -7,22 +7,22 @@
 package term
 
 import (
-	"math"
-	"strconv"
-
 	"bufio"
 	"bytes"
-	"canon/internal/settings"
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"os/exec"
 	"os/signal"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"canon/internal/settings"
 )
 
 // Config is everything Run needs; tests replace the shell, the clock and the event writer.
@@ -41,17 +41,18 @@ type Config struct {
 	// claude --cloud); nil: not available here (Windows has no runner yet, t-57ab).
 	RunOnTerminal func(ctx context.Context, path string, args []string, dir string) error
 	// Auth asks the OS for the account password; nil, or ErrNoAuth, means su is unavailable.
-	Auth  func(ctx context.Context, out io.Writer) error
-	Limit time.Duration // how long su lasts
-	Warn  time.Duration // how long before the end it warns
-	Rows  func() int    // the terminal's height, for paging cat; nil or 0 means 24
-	// Paging is terminal.paging (t-dba0): "auto" (the screen's height; "" means the same), "off" (never pause) or a number of lines.
-	// The paging command changes it for this Terminal only.
-	Paging  string
-	pg      *string        // the live value (set by Run from Paging)
+	Auth    func(ctx context.Context, out io.Writer) error
+	Limit   time.Duration  // how long su lasts
+	Warn    time.Duration  // how long before the end it warns
+	Rows    func() int     // the terminal's height, for paging cat; nil or 0 means 24
 	RawMode func() func()  // switches the terminal to key-by-key input for the prompt line (Tab completion); returns the undo, or nil when In is not a terminal
 	st      *suState       // what su remembers between commands (set by Run)
 	intr    chan os.Signal // SIGINTs caught while a command ran (set by Run): a command that was interrupted shows nothing more
+
+	// Paging is terminal.paging (t-dba0): "auto" (the screen's height; "" means the same), "off" (never pause) or a number of lines.
+	// The paging command changes it for this Terminal only.
+	Paging string
+	pg     *string // the live value (set by Run from Paging)
 }
 
 // readOnlyTkt are the tkt subcommands that only read. runTkt are the ones that change a ticket or post to GitHub, which the board
@@ -478,7 +479,7 @@ func (c Config) paging(args []string) {
 	}
 	norm, err := settings.ProjectSet("").Schema["terminal.paging"].Validate(v)
 	if err != nil {
-		fmt.Fprintf(c.Out, "paging: %q is not a setting here: use auto, off or a number of lines from %d to %d\n", a, settings.MinPaging, settings.MaxPaging)
+		fmt.Fprintf(c.Out, "paging: %q is not a setting. usage: paging [auto|off|<lines>]   (lines %d to %d; on means auto)\n", a, settings.MinPaging, settings.MaxPaging)
 		return
 	}
 	*c.pg = fmt.Sprint(norm)

@@ -64,10 +64,12 @@ set +e; out="$(key sprint-check)"; rc=$?; set -e; assert_eq 1 "$rc"; assert_eq "
 if command -v go >/dev/null 2>&1; then
   for comp in cockpit-daemon sprint-check; do
     paths="$(bash -c 'source "$1/tools/src-key.sh"; canon_component_paths "$2"' _ "$ROOT" "$comp")"
+    pkgs="$(cd "$ROOT/tools/canon-go" && go list -deps "./cmd/$comp" 2>/dev/null | grep '^canon/internal/' || true)"
+    [[ -n "$pkgs" ]] || fail "go list -deps found no internal package for $comp: the key check would pass without checking anything"
     while IFS= read -r pkg; do
       [[ -n "$pkg" ]] || continue
       [[ " $paths " == *" tools/canon-go/${pkg#canon/} "* ]] || fail "$comp is built from $pkg but its source key does not name tools/canon-go/${pkg#canon/}"
-    done < <(cd "$ROOT/tools/canon-go" && go list -deps "./cmd/$comp" 2>/dev/null | grep '^canon/internal/' || true)
+    done <<< "$pkgs"
   done
 fi
 echo "src-key: ok (40-hex per component, own changes re-key only their binary, shared ones both, stable across clones, unknown/missing refuse)"

@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"os/exec"
@@ -99,7 +100,12 @@ func readDoc(path string) (map[string]any, error) {
 		return map[string]any{}, nil
 	}
 	var v any
-	if err := json.Unmarshal(b, &v); err != nil {
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.UseNumber() // numbers keep their digits when a key this package does not own is written back
+	if err := dec.Decode(&v); err != nil {
+		return nil, &FileError{shortName(path), "is not valid JSON"}
+	}
+	if _, err := dec.Token(); !errors.Is(err, io.EOF) { // nothing but whitespace may follow the one value
 		return nil, &FileError{shortName(path), "is not valid JSON"}
 	}
 	m, ok := v.(map[string]any)
@@ -113,12 +119,19 @@ func readDoc(path string) (map[string]any, error) {
 }
 
 func depth(v any) int {
-	m, ok := v.(map[string]any)
-	if !ok {
+	var kids []any
+	switch x := v.(type) {
+	case map[string]any:
+		for _, c := range x {
+			kids = append(kids, c)
+		}
+	case []any:
+		kids = x
+	default:
 		return 0
 	}
 	d := 0
-	for _, c := range m {
+	for _, c := range kids {
 		if n := depth(c); n > d {
 			d = n
 		}
@@ -197,6 +210,11 @@ func (s Set) Load() (Result, error) {
 				res.Warnings = append(res.Warnings, fmt.Sprintf("%s: %s may not be set in a shared file; ignored (set it in the local file)", shortName(f.path), k))
 				continue
 			}
+			if n, isNum := raw.(json.Number); isNum { // validators see a float64, as they do for a request body
+				if f, ferr := n.Float64(); ferr == nil {
+					raw = f
+				}
+			}
 			v, err := def.Validate(raw)
 			if err != nil {
 				res.Warnings = append(res.Warnings, fmt.Sprintf("%s: %s: %v; ignored", shortName(f.path), k, err))
@@ -235,12 +253,19 @@ func (s Set) SetLocal(key string, value any) (Result, error) {
 	if fi, err := os.Lstat(dir); err == nil && fi.Mode()&os.ModeSymlink != 0 {
 		return Result{}, &FileError{filepath.Base(dir), "is a symlink; settings must live in a plain folder"}
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return Result{}, fmt.Errorf("cannot create %s", filepath.Base(dir))
-	}
-	body, err := json.MarshalIndent(doc, "", "  ")
-	if err != nil {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false) // < and & stay as they were written
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(doc); err != nil {
 		return Result{}, err
+	}
+	body := bytes.TrimRight(buf.Bytes(), "\n")
+	if len(body)+1 > MaxFileBytes { // never write a file this package would then refuse to read
+		return Result{}, fmt.Errorf("%s would be larger than %d KB with this change; trim it by hand first", shortName(s.Local), MaxFileBytes>>10)
+	}
+	if err := os.Mkdir(dir, 0o755); err != nil && !errors.Is(err, os.ErrExist) { // one level only: a missing project folder is not recreated
+		return Result{}, fmt.Errorf("cannot create %s: is the project folder still there?", filepath.Base(dir))
 	}
 	tmp, err := os.CreateTemp(dir, ".settings-*.tmp")
 	if err != nil {
@@ -265,7 +290,7 @@ func (s Set) SetLocal(key string, value any) (Result, error) {
 }
 
 // IgnoreInGit adds rel (a path relative to root) to the repository's own info/exclude once, so a personal file stays out of
-// `git status` without any tracked file changing. No git, or a root that is not a repository, is nil; a symlinked exclude is refused.
+// `git status` without any tracked file changing. No git, or a root that is not in a repository, is nil; a symlinked exclude is refused.
 func IgnoreInGit(root, rel string) error {
 	out, err := exec.Command("git", "-C", root, "rev-parse", "--git-path", "info/exclude").Output()
 	if err != nil {
@@ -275,6 +300,12 @@ func IgnoreInGit(root, rel string) error {
 	if p == "" {
 		return nil
 	}
+	// a project below the repository's top (a monorepo folder) is excluded by its path from the top, which is what exclude patterns mean
+	pre, err := exec.Command("git", "-C", root, "rev-parse", "--show-prefix").Output()
+	if err != nil {
+		return nil
+	}
+	rel = filepath.ToSlash(strings.TrimSpace(string(pre))) + filepath.ToSlash(rel)
 	if !filepath.IsAbs(p) {
 		p = filepath.Join(root, p)
 	}

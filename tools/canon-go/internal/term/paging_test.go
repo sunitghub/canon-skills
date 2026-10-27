@@ -34,7 +34,7 @@ func TestPagingCommandIsSessionOnly(t *testing.T) {
 	}
 	// off: the whole file at once, no "-- more" prompt; auto at 24 rows pauses
 	out := run(t, Config{Root: root, Rows: func() int { return 24 }}, "paging\npaging off\ncat long.txt\npaging 10\npaging\npaging nope\npaging 4\npaging 1 2\nexit\n")
-	for _, want := range []string{"paging: auto", "paging: off (this Terminal only)", "line 59", "paging: 10 (this Terminal only)", "paging: 10   (paging", `"nope" is not a setting here`, `"4" is not a setting here`, "usage: paging [auto|off|<lines>]"} {
+	for _, want := range []string{"paging: auto", "paging: off (this Terminal only)", "line 59", "paging: 10 (this Terminal only)", "paging: 10   (paging", `"nope" is not a setting. usage: paging [auto|off|<lines>]`, `"4" is not a setting. usage: paging [auto|off|<lines>]`, "usage: paging [auto|off|<lines>]"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
 		}
@@ -98,7 +98,7 @@ func TestPagingCommandSurface(t *testing.T) {
 			t.Errorf("output lacks %q:\n%s", want, out)
 		}
 	}
-	for _, never := range []string{`"1" is not a setting`, "<nil>"} { // a malformed use must not fall through to a change
+	for _, never := range []string{`"1" is not a setting.`, "<nil>"} { // a malformed use must not fall through to a change
 		if strings.Contains(out, never) {
 			t.Errorf("output must not contain %q:\n%s", never, out)
 		}

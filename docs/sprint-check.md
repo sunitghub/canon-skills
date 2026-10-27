@@ -54,11 +54,11 @@ Click any commit in the sidebar to see what changed and which ticket it likely b
 A project keeps its own settings in two small JSON files under `.canon/`, in the project's main folder:
 
 - `.canon/settings.json` is yours to edit and commit, so everyone who clones the project gets the same display preferences. Only keys marked shareable are read from it, so a cloned repo cannot configure anything but display; no secrets belong in it.
-- `.canon/settings.local.json` is personal. It is the only file the board writes, and the board keeps it out of git for you (it adds the file to the repository's own `.git/info/exclude`, so no tracked file changes and `git status` stays clean).
+- `.canon/settings.local.json` is personal. It is the only file the board writes, and the board keeps it out of git for you (it adds the file to the enclosing repository's own `.git/info/exclude`, using its path from the repository's top, so no tracked file changes and `git status` stays clean; if that cannot be done the board says so when you save).
 
-A setting's value is the local file's, else the shared file's, else the built-in default. Keys the board does not know are left as they are when it writes. A file that is not valid JSON (or is larger than 64 KB, or is a symlink) is reported by name and never overwritten: fix it by hand.
+A setting's value is the local file's, else the shared file's, else the built-in default. Keys the board does not know keep their values when it writes (the file is rewritten with its keys sorted and indented). A file that is not valid JSON (or is larger than 64 KB, nested deeper than 8 levels, or is a symlink) is reported by name and never overwritten, and a change that would push it past 64 KB is refused: fix it by hand.
 
-The first key is `terminal.paging`: `"auto"` (long output pauses at the screen's height), `"off"` (never pauses) or a whole number of lines from 5 to 500. The Terminal tab's rail card has a **Paging** control that saves it, and the setting applies to the next Terminal; typing `paging off`, `paging auto` or `paging 20` in a Terminal changes that one only.
+The first key is `terminal.paging`: `"auto"` (long output pauses at the screen's height), `"off"` (never pauses) or a whole number of lines from 5 to 500. The Terminal tab's rail card has a **Paging** control that saves it, and the setting applies to the next Terminal; typing `paging off`, `paging auto` (`paging on` means the same) or `paging 20` in a Terminal changes that one only.
 
 ## Tags
 
