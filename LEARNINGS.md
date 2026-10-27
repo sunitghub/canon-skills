@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-27-2026 16:30
+learnings-sweep last run: 10-27-2026 21:30
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-27 | [t-ced8](.tickets/t-ced8/learnings.md) | A safety check for something that happens elsewhere (a cloud session that works from GitHub) must run where the work lives: ticket-bound worktrees are not the main checkout, so a check run in the main checkout skipped exactly the tickets the change added (the reviewer caught it); and put the checks in the command, not the UI, so the Terminal and the dialog cannot disagree. A promised spec in the Test Plan is graded on whether it exists. | UNPROMOTED |
 | 2026-10-27 | [t-15b5](.tickets/t-15b5/learnings.md) | Before renaming a field to match a plan, check what the published contract promises: docs/plugins.md said v1 only gains fields, so the plan's `type`/`actor` rename would have broken every reader and day-file; the one genuinely new thing (`actor`) was added optionally instead. And an acceptance claim ('the doc and the struct agree') needs a test that reads the doc, or it is only a wish. | UNPROMOTED |
 | 2026-10-27 | [t-43a2](.tickets/t-43a2/learnings.md) | Measure a perf ticket's levers before planning them: both of t-43a2's (API-only tests on one browser, condition waits) were worth about nothing against the real report (0.1 s and 7.5%); the real lever was the three-pass stamp policy. And a runner that clears nothing breaks the stamp workflow: a reused `--out` kept an earlier run's reports for the guard to judge. | UNPROMOTED |
 | 2026-10-27 | [t-b198](.tickets/t-b198/learnings.md) | When you rewrite a parser's term loop, diff its behaviour on the half-typed inputs the old one tolerated: dropping `.filter(Boolean)` made a bare `t-` reject the whole id list while the next id is typed (the reviewer proved it on a scratch copy of the old and new code); and a board spec on the real ticket list must filter to the id shape it tests (`AS-…` ids exist there). | UNPROMOTED |
