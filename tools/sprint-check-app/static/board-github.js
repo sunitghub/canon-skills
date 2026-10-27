@@ -575,8 +575,8 @@ function showSent(panel, t, tab) {
     </div>`;
   const copyText = async (text) => {
     const s = document.getElementById('ck-gh-status');
-    try { await navigator.clipboard.writeText(text); s.textContent = 'Copied.'; }
-    catch { s.textContent = `Copy was blocked: select "${text}" above.`; }
+    try { await navigator.clipboard.writeText(text); s.textContent = 'Copied.'; return true; }
+    catch { s.textContent = `Copy was blocked: select "${text}" above.`; return false; }
   };
   document.getElementById('ck-gh-copy')?.addEventListener('click', () => copyText(line));
   document.getElementById('ck-gh-copy-cmd')?.addEventListener('click', () => copyText(cmd));
@@ -590,7 +590,11 @@ function showSent(panel, t, tab) {
       document.getElementById('ck-gh-status').textContent = 'Windows: paste this in PowerShell or Git Bash in the project folder and press Enter. The board\'s Terminal cannot start a cloud session on Windows yet.';
       return;
     }
-    openTerminalPane('below', { fresh: true, typeLine: typed });   // t-ccf5: under this tab, so the Sent panel stays on screen
+    const copied = await copyText(typed);   // t-3d04: also copied, so it is ready to paste while the Terminal starts
+    await openTerminalPane('below', { fresh: true, typeLine: typed });   // t-ccf5: under this tab, so the Sent panel stays on screen
+    // opening the Terminal rebuilds this panel, which clears the status: say it after
+    const status = document.getElementById('ck-gh-status');
+    if (copied && status) status.textContent = 'Copied. It is also typed in the Terminal: press Enter.';
   });
   document.getElementById('ck-gh-open')?.addEventListener('click', () => openUrl(url));
   // The work is in the cloud now, so the tab has nothing left to show: close it (closeTab never ends a session).
