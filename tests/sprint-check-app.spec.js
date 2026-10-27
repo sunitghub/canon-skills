@@ -16860,6 +16860,32 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     expect(rows).toEqual({ out: '', idle: true, busy: '', outside: '', closed: '' });   // none for a sent, a live or a closed ticket
   });
 
+  // t-ced8. Protects the user's lost workflow: a ticket planned here (in progress, nothing working on it) picked the GitHub place, previews
+  // and sends exactly like an open one; the dialog shows `tkt send-issue`'s own text (a refusal from the command reads the same there).
+  test('an in-progress ticket with nothing working on it can be previewed and sent from the picker (t-ced8)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh30'), refused = newTicketId(PROJECT_ROOT, 'gh31');
+    ghTicket(id, { status: 'in_progress' }); ghTicket(refused, { status: 'in_progress' });
+    await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
+    await page.route('**/api/worktrees**', r => json(r, [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true }]));
+    await page.route(`**/api/ticket/${id}/github/send-preview`, r => json(r, { ok: true, exit_code: 0, output: 'repo: acme/app (PRIVATE)\n--- body ---\nplanned here' }));
+    await page.route(`**/api/ticket/${id}/github/send`, r => json(r, { ok: true, exit_code: 0, output: `Sent ${id} as https://github.com/acme/app/issues/71` }));
+    await page.route(`**/api/ticket/${refused}/github/send-preview`, r => json(r, { ok: false, exit_code: 1, output: 'send-issue: 2 commit(s) in /w are on no branch of origin: the cloud session works from GitHub and will not see them.' }));
+    await openBoard(page, id);
+    await page.locator(`.card[data-id="${id}"] .card-start`).click();
+    await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+    await page.locator('#ck-worktree .ck-gh-row').click();
+    await expect(page.locator('#ck-gh-panel')).toBeVisible();
+    await expect(page.locator('#ck-gh-panel')).toContainText('planned here');   // the preview is the command's output
+    await expect(page.locator('#ck-gh-create')).toBeEnabled();
+    await page.locator('#ck-gh-create').click();
+    await expect(page.locator('#ck-gh-sent')).toBeVisible();
+    // the command's refusal (unpushed commits) disables the send and says why, as the Terminal would
+    await page.evaluate(async (tid) => { await (await import('/static/board-cockpit-rail.js')).openCockpit(tid); }, refused);
+    await page.locator('#ck-worktree .ck-gh-row').click();
+    await expect(page.locator('#ck-gh-create')).toBeDisabled();
+    await expect(page.locator('#ck-gh-panel')).toContainText('are on no branch of origin');
+  });
+
   test("a send that fails to preview cannot be created; a send finishing in another ticket's cockpit fills nothing there (t-718b)", async ({ page }) => {
     const a = newTicketId(PROJECT_ROOT, 'gh26'), b = newTicketId(PROJECT_ROOT, 'gh27');
     ghTicket(a); ghTicket(b);
