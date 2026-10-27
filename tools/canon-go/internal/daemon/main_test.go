@@ -8554,14 +8554,13 @@ func TestSessionsListIsInOpenedOrder(t *testing.T) {
 	root := t.TempDir()
 	s := newServer(config{token: bootTok, projectRoot: root, stateDir: t.TempDir()})
 	base := time.Date(2026, 10, 27, 9, 0, 0, 0, time.UTC)
-	var want []string
 	for i := 0; i < 8; i++ {
 		sid := fmt.Sprintf("sid-%02d", i)
-		started := base.Add(time.Duration(i/2) * time.Minute) // two sessions per second-resolution timestamp: the id breaks the tie
+		started := base.Add(-time.Duration(i/2) * time.Minute) // later ids start EARLIER, so the start time and the id disagree; two sessions share each time: the id breaks the tie
 		s.sessions[sid] = &session{sid: sid, projectRoot: root, cwd: root, agent: "claude", status: "running", started: started,
 			subs: map[chan frame]struct{}{}, lastActivity: time.Now(), statusSince: time.Now()}
-		want = append(want, sid)
 	}
+	want := []string{"sid-06", "sid-07", "sid-04", "sid-05", "sid-02", "sid-03", "sid-00", "sid-01"}
 	order := func() []string {
 		rec := httptest.NewRecorder()
 		s.handleSessions(rec, httptest.NewRequest("GET", "/sessions", nil))
