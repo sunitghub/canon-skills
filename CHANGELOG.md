@@ -6,6 +6,18 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-10-27
+
+Update with `canon update`, then restart the daemon (Admin's **Restart Daemon**): the event writer in the daemon changed.
+
+### Added
+- A ticket you planned here (in progress, nothing working on it) can be sent to a Claude cloud session: the Cockpit's **GitHub · new issue** option now shows for it, and `tkt send-issue` accepts it. As it leaves it goes back to `open`, like any sent ticket.
+- `tkt send-issue` (and its `--dry-run`, which the board's preview runs) now checks what GitHub can see, in the ticket's own worktree: commits that are on no branch of `origin` are refused, because the cloud session works from GitHub (push first, or add `--allow-unpushed` in a terminal), and uncommitted or untracked changes get a warning. Open tickets get the same checks.
+- Events gain an optional `actor` field (`user`, `agent` or `system`: who caused the event, as opposed to `source`, the program that wrote it). Nothing sets it yet; older events simply lack it. `kind` and `source` are unchanged. See `docs/plugins.md`.
+
+### Changed
+- A full board-spec stamp now runs one pass per browser and repeats (up to 3) only for a browser whose first report the guard rejects: about 33 minutes instead of about 98. `--runs N` is still exactly N.
+
 ## [0.22.2] - 2026-10-27
 
 Update with `canon update`. No daemon restart is needed: only a Cockpit board page changed.
