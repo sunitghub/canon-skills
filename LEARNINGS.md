@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-27-2026 12:40
+learnings-sweep last run: 10-27-2026 14:10
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-27 | [t-b198](.tickets/t-b198/learnings.md) | When you rewrite a parser's term loop, diff its behaviour on the half-typed inputs the old one tolerated: dropping `.filter(Boolean)` made a bare `t-` reject the whole id list while the next id is typed (the reviewer proved it on a scratch copy of the old and new code); and a board spec on the real ticket list must filter to the id shape it tests (`AS-…` ids exist there). | UNPROMOTED |
 | 2026-10-27 | [t-a1ac](.tickets/t-a1ac/learnings.md) | An assertion that something is GONE passes vacuously if a background poll can clear it: the banner's reload spec passed with the storage write removed until it was rebuilt around a route stub plus a control project; always revert-prove a `toHaveCount(0)`. Also an old spec can mask a bug by luck (an unknown key fell through to 'last', which equalled the active tab). | UNPROMOTED |
 | 2026-10-27 | [t-3488](.tickets/t-3488/learnings.md) | A "no dialog appeared" check that watches process names must be baseline-aware and self-tested: `CoreServicesUIAgent` is resident on every Mac, so a plain pgrep failed a clean run, and a copied `sleep` named SecurityAgent is killed by macOS (a compiled stand-in works). | UNPROMOTED |
 | 2026-10-27 | [t-7456](.tickets/t-7456/learnings.md) | A message handler must IGNORE a malformed value, not coerce it: a non-string id became `''` and cleared the marker, and only the forged-message spec caught it; and a test whose ids sort the same as the thing under test cannot kill a mutant that drops the sort. | UNPROMOTED |
