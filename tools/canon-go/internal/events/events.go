@@ -116,18 +116,31 @@ func now() time.Time {
 	return time.Now().UTC()
 }
 
+// actors is who caused an event (t-15b5): a person at the board or CLI, an agent in a session, or canon itself (a timer, the reaper, a
+// retention job). It is optional: absent from every line written before it existed and from an emitter that does not know it.
+var actors = map[string]bool{"user": true, "agent": true, "system": true}
+
 type line struct {
 	Schema  int               `json:"schema"`
 	ID      string            `json:"id"`
 	TS      string            `json:"ts"`
 	Kind    string            `json:"kind"`
 	Source  string            `json:"source"`
+	Actor   string            `json:"actor,omitempty"`
 	Project string            `json:"project"`
 	Data    map[string]string `json:"data"`
 }
 
 // Line builds one event line (no newline), refusing an unknown kind, source or field. Values are cut to their limit.
 func Line(kind, source, project string, data map[string]string, at time.Time) ([]byte, error) {
+	return LineActor(kind, source, "", project, data, at)
+}
+
+// LineActor is Line with the optional actor (t-15b5): "" leaves it out, anything but user, agent or system is refused.
+func LineActor(kind, source, actor, project string, data map[string]string, at time.Time) ([]byte, error) {
+	if actor != "" && !actors[actor] {
+		return nil, fmt.Errorf("unknown event actor %q", actor)
+	}
 	fields, ok := kinds[kind]
 	if !ok {
 		return nil, fmt.Errorf("unknown event kind %q", kind)
@@ -151,7 +164,7 @@ func Line(kind, source, project string, data map[string]string, at time.Time) ([
 	if _, err := rand.Read(id[:]); err != nil {
 		return nil, err
 	}
-	b, err := json.Marshal(line{Schema, hex.EncodeToString(id[:]), at.Format("2006-01-02T15:04:05.000Z"), kind, source, cut(project, projectMax), out})
+	b, err := json.Marshal(line{Schema, hex.EncodeToString(id[:]), at.Format("2006-01-02T15:04:05.000Z"), kind, source, actor, cut(project, projectMax), out})
 	if err != nil {
 		return nil, err
 	}
@@ -173,19 +186,24 @@ func cut(s string, max int) string {
 // Emit appends one event to home/events/<UTC day>.jsonl. The caller ignores the error (observer-only); Emit itself
 // notes it in emit-errors.log.
 func Emit(home, kind, source, project string, data map[string]string) error {
-	err := emit(home, kind, source, project, data)
+	return EmitActor(home, kind, source, "", project, data)
+}
+
+// EmitActor is Emit with the optional actor (t-15b5).
+func EmitActor(home, kind, source, actor, project string, data map[string]string) error {
+	err := emit(home, kind, source, actor, project, data)
 	if err != nil {
 		noteFailure(home, err)
 	}
 	return err
 }
 
-func emit(home, kind, source, project string, data map[string]string) error {
+func emit(home, kind, source, actor, project string, data map[string]string) error {
 	if home == "" {
 		return errors.New("no CANON_HOME and no home folder")
 	}
 	at := now()
-	b, err := Line(kind, source, project, data, at)
+	b, err := LineActor(kind, source, actor, project, data, at)
 	if err != nil {
 		return err
 	}
@@ -265,6 +283,7 @@ type Event struct {
 	Source  string
 	Project string
 	Data    map[string]string
+	Actor   string // t-15b5: "" when the line has none (every line written before it, or an emitter that does not know it)
 }
 
 // lineMax caps a line Latest will parse: a writer cuts every value, so a longer line was not written by Emit.
@@ -345,10 +364,11 @@ func parseLine(b []byte, kind, project string) (Event, bool) {
 		TS      string            `json:"ts"`
 		Kind    string            `json:"kind"`
 		Source  string            `json:"source"`
+		Actor   string            `json:"actor"`
 		Project string            `json:"project"`
 		Data    map[string]string `json:"data"`
 	}
-	if json.Unmarshal(b, &l) != nil || string(l.Schema) != "1" || l.Kind != kind || l.Project != project || !sources[l.Source] {
+	if json.Unmarshal(b, &l) != nil || (l.Actor != "" && !actors[l.Actor]) || string(l.Schema) != "1" || l.Kind != kind || l.Project != project || !sources[l.Source] {
 		return Event{}, false
 	}
 	fields, known := kinds[l.Kind]
@@ -370,5 +390,5 @@ func parseLine(b []byte, kind, project string) (Event, bool) {
 	if err != nil {
 		return Event{}, false
 	}
-	return Event{l.ID, ts.UTC(), l.Kind, l.Source, l.Project, l.Data}, true
+	return Event{l.ID, ts.UTC(), l.Kind, l.Source, l.Project, l.Data, l.Actor}, true
 }

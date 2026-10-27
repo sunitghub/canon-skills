@@ -28,6 +28,7 @@ renamed or removed.
 | `ts` | when it was written, RFC 3339 UTC with milliseconds |
 | `kind` | one of the kinds below |
 | `source` | the program that wrote it: `tkt`, `sprint`, `board`, `gate-snapshot`, `subagent-log` or `daemon` |
+| `actor` | optional: who caused it: `user` (a person at the board or the command line), `agent` (an agent in a session) or `system` (canon itself: a timer, the idle reaper, a retention job). Different from `source`, which is the program that wrote the line. Absent from every event written before it existed and from any emitter that does not know it: treat absent as unknown. A line with any other value is not a v1 event |
 | `project` | the project's root folder, an absolute path (symlinks resolved) |
 | `data` | only the fields listed for the kind; every value is a string |
 

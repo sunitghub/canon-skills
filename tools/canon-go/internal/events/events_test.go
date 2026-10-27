@@ -344,3 +344,67 @@ func TestLatestSkipsLinesTheValueCheckRejects(t *testing.T) {
 		t.Error("found a line although the value check rejects every one")
 	}
 }
+
+// t-15b5. Protects the event stream every reader (t-0b89, t-1bd5, plugins) depends on: the envelope gains one OPTIONAL field, `actor`
+// (user, agent or system); a line without it, which is every line written before it existed, still reads; an unknown value is refused
+// at write and skipped at read; and `kind` and `source` are not renamed (schema v1's promise).
+func TestActorIsOptionalAndValidated(t *testing.T) {
+	at := time.Date(2026, 10, 27, 9, 0, 0, 0, time.UTC)
+	data := map[string]string{"count": "3"}
+
+	plain, err := Line("github.synced", "tkt", "/p", data, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if json.Unmarshal(plain, &m) != nil {
+		t.Fatalf("not JSON: %s", plain)
+	}
+	if _, has := m["actor"]; has {
+		t.Fatalf("a line with no actor must not carry the key: %s", plain)
+	}
+	for _, k := range []string{"schema", "id", "ts", "kind", "source", "project", "data"} {
+		if _, ok := m[k]; !ok {
+			t.Fatalf("v1 field %q is gone from %s", k, plain)
+		}
+	}
+
+	for _, a := range []string{"user", "agent", "system"} {
+		b, err := LineActor("github.synced", "tkt", a, "/p", data, at)
+		if err != nil {
+			t.Fatalf("actor %q refused: %v", a, err)
+		}
+		ev, ok := parseLine(b, "github.synced", "/p")
+		if !ok || ev.Actor != a || ev.Kind != "github.synced" || ev.Source != "tkt" {
+			t.Fatalf("actor %q did not round-trip: %+v ok=%v (%s)", a, ev, ok, b)
+		}
+	}
+	if ev, ok := parseLine(plain, "github.synced", "/p"); !ok || ev.Actor != "" {
+		t.Fatalf("an old-format line must read with no actor: %+v ok=%v", ev, ok)
+	}
+
+	for _, bad := range []string{"root", "User", "robot", " user"} {
+		if _, err := LineActor("github.synced", "tkt", bad, "/p", data, at); err == nil {
+			t.Fatalf("actor %q was accepted", bad)
+		}
+	}
+	forged := `{"schema":1,"id":"aaaaaaaaaaaaaaaa","ts":"2026-10-27T09:00:00.000Z","kind":"github.synced","source":"tkt","actor":"root","project":"/p","data":{"count":"3"}}`
+	if _, ok := parseLine([]byte(forged), "github.synced", "/p"); ok {
+		t.Fatal("a line with an unknown actor was read")
+	}
+
+	home := t.TempDir()
+	if err := EmitActor(home, "github.synced", "tkt", "agent", "/p", data); err != nil {
+		t.Fatal(err)
+	}
+	if ev, ok := Latest(home, "github.synced", "/p", nil); !ok || ev.Actor != "agent" {
+		t.Fatalf("Latest after EmitActor: %+v ok=%v", ev, ok)
+	}
+	home2 := t.TempDir()
+	if err := Emit(home2, "github.synced", "tkt", "/p", data); err != nil {
+		t.Fatal(err)
+	}
+	if ev, ok := Latest(home2, "github.synced", "/p", nil); !ok || ev.Actor != "" {
+		t.Fatalf("Latest after Emit (no actor): %+v ok=%v", ev, ok)
+	}
+}
