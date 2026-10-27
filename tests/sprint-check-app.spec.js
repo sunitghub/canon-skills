@@ -15524,9 +15524,11 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
       if (dir === 'beside') { expect(g.h).toBeGreaterThan(g.termH - 4); expect(g.w).toBeLessThan(g.termW * 0.7); expect(g.panelH).toBeGreaterThan(g.termH - 4); }   // the full height, not the 150px default
       else { expect(g.w).toBeGreaterThan(g.termW - 4); expect(g.h).toBeLessThan(g.termH * 0.7); expect(g.panelW).toBeGreaterThan(g.termW - 4); }
       await expect.poll(() => page.evaluate(() => document.activeElement && document.activeElement.className)).toBe('ck-pane2');   // the pane took the keyboard
+      // the pane's own frame, not a URL match: the Terminal's address depends on how it was opened
+      const termFrame = async () => (await term.elementHandle()).contentFrame();
+      await expect.poll(async () => { const f = await termFrame(); return f ? f.evaluate(() => Array.isArray(window.__keys)).catch(() => false) : false; }, { timeout: 20000 }).toBe(true);   // its listener exists before a key is typed
       await page.keyboard.type('hello');
-      const frame = page.frames().find(f => f.url().includes('mode=term'));
-      await expect.poll(() => frame.evaluate(() => window.__keys.join(''))).toContain('hello');
+      await expect.poll(async () => (await termFrame()).evaluate(() => window.__keys.join(''))).toContain('hello');
     });
   }
 
