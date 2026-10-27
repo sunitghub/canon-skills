@@ -193,7 +193,8 @@ grep -qF "debug_enabled" <<<"$page" || fail "canon: Admin debug toggle should re
 # t-5dc2: every --col-* referenced in cockpit.html must be defined (undefined token → unstyled).
 # Note: `grep -- ` so a "--col-*" pattern isn't parsed as options.
 # t-783a: the shell's CSS lives in static/cockpit-*.css, so uses and definitions are read from the page and those files.
-CKSRC="$(cat "$ROOT/tools/sprint-check-app/cockpit.html"; for f in "$ROOT"/tools/sprint-check-app/static/cockpit-*.css; do if [[ -f "$f" ]]; then cat "$f"; fi; done)"
+# t-be64: the palette (--col-*) is defined once, in static/tokens.css.
+CKSRC="$(cat "$ROOT/tools/sprint-check-app/cockpit.html" "$ROOT/tools/sprint-check-app/static/tokens.css"; for f in "$ROOT"/tools/sprint-check-app/static/cockpit-*.css; do if [[ -f "$f" ]]; then cat "$f"; fi; done)"
 grep -qE 'var\(--col-[a-z]+\)' <<<"$CKSRC" || fail "canon: no --col-* use found in the shell sources (the check would pass vacuously)"
 for tok in $(grep -oE 'var\(--col-[a-z]+\)' <<<"$CKSRC" | sed 's/var(//;s/)//' | sort -u); do
   grep -qF -- "${tok}:" <<<"$CKSRC" || fail "canon: cockpit.html uses ${tok} but never defines it"
@@ -284,8 +285,9 @@ board_flat="$(printf '%s' "$board" | tr '\n' ' ')"
 grep -qE '\-\-bg: *#1b2330' <<<"$board_flat" || fail "canon: the board dark --bg should be the blue-grey #1b2330"
 grep -qF "#0d0d10" <<<"$board" && fail "canon: the board still carries the old near-black #0d0d10 dark --bg"
 grep -qE '\-\-accent: *#7c6af7' <<<"$board_flat" || fail "canon: the board --accent must stay purple #7c6af7"
-# light theme untouched (its --bg is still #f2f2f7)
-grep -qF "#f2f2f7" <<<"$board" || fail "canon: the board light --bg (#f2f2f7) must be unchanged"
+# t-be64: the palette has one owner, static/tokens.css; Canon Light's --bg is the shell's #e8e8f0 (the board's old #f2f2f7 had drifted)
+grep -qF "#f2f2f7" <<<"$board" && fail "canon: the board still carries the old light --bg #f2f2f7"
+grep -qE 'html\[data-theme="light"\] *\{[^}]*--bg: *#e8e8f0' <<<"$(tr '\n' ' ' <"$ROOT/tools/sprint-check-app/static/tokens.css")" || fail "canon: tokens.css light --bg should be #e8e8f0"
 # embed-only: the collapsed-sidebar quick-jump rail is hidden in a project tab, but the markup still exists for standalone
 grep -qE "html\.canon-proj-embed \.sidebar-icon-rail *\{ *display: *none" <<<"$board" || fail "canon: the icon rail must be hidden in the embedded tab (canon-proj-embed)"
 grep -qF 'class="sidebar-icon-rail"' <<<"$board" || fail "canon: the standalone icon rail markup must still be present"
