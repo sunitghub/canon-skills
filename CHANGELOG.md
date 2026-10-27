@@ -6,6 +6,13 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.22.2] - 2026-10-27
+
+Update with `canon update`. No daemon restart is needed: only a Cockpit board page changed.
+
+### Fixed
+- The board search with a list of ticket ids no longer shows nothing when one id does not exist. `t-43a2 t-1212` now shows `t-43a2`, and the count line says `1 of N · ignored t-1212`. This applies when every term is written as a full id (`t-` and four characters); bare terms and ordinary words such as `to do` search as before.
+
 ## [0.22.1] - 2026-10-27
 
 Update with `canon update`. No daemon restart is needed: only the Cockpit pages and a gate doc changed.
