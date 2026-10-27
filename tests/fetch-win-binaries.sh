@@ -13,9 +13,9 @@ ident=(-c user.email=t@example.com -c user.name=test)
 refute_contains() { [[ "$1" != *"$2"* ]] || fail "expected output NOT to contain '$2'; got: $1"; }
 
 # t-8020: the daemon and the board are one module (tools/canon-go); tools/src-key.sh names each binary's key
-R="$WORK/repo"; M="$R/tools/canon-go"; mkdir -p "$M/cmd/cockpit-daemon" "$M/cmd/sprint-check" "$M/internal/daemon" "$M/internal/board" "$M/internal/common" "$M/internal/events"
+R="$WORK/repo"; M="$R/tools/canon-go"; mkdir -p "$M/cmd/cockpit-daemon" "$M/cmd/sprint-check" "$M/internal/daemon" "$M/internal/board" "$M/internal/common" "$M/internal/events" "$M/internal/term" "$M/internal/settings"
 cp "$ROOT/tools/fetch-daemon.sh" "$ROOT/tools/src-key.sh" "$R/tools/"
-for d in cmd/cockpit-daemon cmd/sprint-check internal/daemon internal/board internal/common internal/events; do printf 'package x\n// %s\n' "$d" > "$M/$d/x.go"; done
+for d in cmd/cockpit-daemon cmd/sprint-check internal/daemon internal/board internal/common internal/events internal/term internal/settings; do printf 'package x\n// %s\n' "$d" > "$M/$d/x.go"; done
 printf 'module x\n\ngo 1.26.5\n' > "$M/go.mod"; : > "$M/go.sum"; echo 0.3.0 > "$R/VERSION"
 git -C "$R" init -q -b main; git -C "$R" "${ident[@]}" add -A; git -C "$R" "${ident[@]}" commit -qm seed
 printf '/tools/*-win.exe\n' >> "$R/.git/info/exclude"   # as the repo's own .gitignore does: a fetched exe is not a dirty tree

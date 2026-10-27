@@ -14,12 +14,12 @@ ident=(-c user.email=t@example.com -c user.name=test)
 # t-8020: the daemon and the board are one module (tools/canon-go, cmd/cockpit-daemon and cmd/sprint-check). Keys come from
 # tools/src-key.sh. t-b62a retired the headless helper (the board binary's headless-json replaced it): no release names it.
 R="$WORK/repo"; M="$R/tools/canon-go"
-mkdir -p "$R/scripts" "$M/cmd/sprint-check" "$M/cmd/cockpit-daemon" "$M/internal/board" "$M/internal/daemon" "$M/internal/common" "$M/internal/events"
+mkdir -p "$R/scripts" "$M/cmd/sprint-check" "$M/cmd/cockpit-daemon" "$M/internal/board" "$M/internal/daemon" "$M/internal/common" "$M/internal/events" "$M/internal/term" "$M/internal/settings"
 cp "$ROOT/scripts/release-daemon.sh" "$R/scripts/"; cp "$ROOT/tools/src-key.sh" "$R/tools/"; cp "$ROOT/THIRD-PARTY-NOTICES.md" "$R/"; echo 0.3.0 > "$R/VERSION"
 LV="$(go env GOVERSION)"   # the local Go: pins equal to it need no download in a hermetic test
 printf 'module canon\n\ngo 1.21\n\ntoolchain %s\n' "$LV" > "$M/go.mod"; : > "$M/go.sum"
 for d in "$M/cmd/sprint-check" "$M/cmd/cockpit-daemon"; do printf 'package main\n\nvar version, commit string\n\nfunc main() { println(version, commit) }\n' > "$d/main.go"; done
-for d in internal/board internal/daemon internal/common internal/events; do printf 'package x\n' > "$M/$d/x.go"; done
+for d in internal/board internal/daemon internal/common internal/events internal/term internal/settings; do printf 'package x\n' > "$M/$d/x.go"; done
 printf '# header\n' > "$R/tools/cockpit-daemon.sha256"
 git -C "$R" init -q -b main; git -C "$R" "${ident[@]}" add -A; git -C "$R" "${ident[@]}" commit -qm seed
 key() { bash -c 'source "$1/tools/src-key.sh"; canon_src_key "$1" "$2"' _ "$R" "$1" | cut -c1-12; }
