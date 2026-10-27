@@ -16,7 +16,7 @@
   --text:           #e6ebf2;
   --text-body:      #a7b0c0;
   --text-muted:     #97a1b4;
-  --text-dim:       #4a566b;
+  --text-dim:       #8a96ab;   /* real text (version suffix, Admin labels): 4.5:1 on --bg and --panel, still dimmer than --text-muted */
   --accent:         #7c6af7;
   --accent-dim:     rgba(124,106,247,0.12);
   --glow-tint:      rgba(124,106,247,.09);

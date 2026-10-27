@@ -15331,6 +15331,25 @@ test('cockpit light theme (t-38f1): --text-dim text reads at 4.5:1 on --bg, --pa
   expect(contrastOf(got.dim, got.bg), 'still dimmer than --text-muted').toBeLessThan(contrastOf(got.textMuted, got.bg));
 });
 
+// t-be64: the dark --text-dim was 2.1:1 on the sidebar (the faint version suffix); it is text, so it reads on --bg and --panel too.
+test('cockpit dark theme (t-be64): --text-dim text reads at 4.5:1 on --bg and --panel, and stays dimmer than --text-muted', async ({ page }) => {
+  await page.goto(BASE + '/cockpit');
+  await page.waitForLoadState('networkidle');
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
+  const got = await page.evaluate(() => {
+    const cs = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+    const probe = document.createElement('i'); document.body.append(probe);
+    const rgb = v => { probe.style.color = v; return getComputedStyle(probe).color; };
+    const out = { dim: rgb(cs('--text-dim')), bg: rgb(cs('--bg')), panel: rgb(cs('--panel')), textMuted: rgb(cs('--text-muted')) };
+    probe.remove();
+    out.brand = getComputedStyle(document.querySelector('.brand small')).color;
+    return out;
+  });
+  for (const s of ['bg', 'panel']) expect(contrastOf(got.dim, got[s]), `--text-dim on --${s}: ${JSON.stringify(got)}`).toBeGreaterThanOrEqual(4.5);
+  expect(contrastOf(got.brand, got.panel), '.brand small label on the sidebar').toBeGreaterThanOrEqual(4.5);
+  expect(contrastOf(got.dim, got.bg), 'still dimmer than --text-muted').toBeLessThan(contrastOf(got.textMuted, got.bg));
+});
+
 // t-b5c7: `.modal input` is for text fields; it also matched the Show hidden checkbox, which WebKit then drew 0px wide.
 test('shell (t-b5c7): the Add Project Show hidden checkbox has a visible box inside its label, and text fields keep their width', async ({ page }) => {
   await page.route('**/api/browse-dirs*', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ path: '/home/me', parent: '/home', entries: [] }) }));
