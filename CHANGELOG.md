@@ -6,6 +6,13 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.21.4] - 2026-10-27
+
+Shift+Enter inserts a newline in a Cockpit agent session. Update with `canon update`, then restart the daemon (Admin's **Restart Daemon**): the daemon program changed, and a running one stays on the old page until it restarts.
+
+### Fixed
+- **Shift+Enter inserts a newline in Claude, pi and copilot sessions** (`t-6aaf`): the terminal sent the same Enter for Shift+Enter, so an agent could not tell them apart and submitted. An unmodified Shift+Enter now sends ESC then Enter, the newline sequence agents accept. The restricted Terminal, Ctrl+Enter and the other keys are unchanged, and the Ctrl+. prefix keys work as before. Until you restart the daemon, use Ctrl+J, or a backslash then Enter.
+
 ## [0.21.3] - 2026-10-27
 
 Check & merge can no longer be stopped by the terminal the board was started from, and quitting the board ends a running merge. Update with `canon update`, then restart the board (the board program changed; the daemon did not).
