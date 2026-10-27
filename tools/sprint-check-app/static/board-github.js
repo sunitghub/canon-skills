@@ -477,8 +477,16 @@ function githubPlaceRowHTML(tab) {
 }
 
 // ── The worktree picker's GitHub rows, and the panel shown instead of the terminal ──────────────────────────────────
+// t-ced8: a ticket can go to a cloud session while it is open, or in progress with nothing working on it (planned here, then handed
+// over): a live session for it (a row in the daemon's list) means someone is working it. `tkt send-issue` makes the same call and
+// owns the other checks (unpushed commits, a live session it can see, a closed ticket), so the Terminal and this row agree.
+export function githubCanSend(t) {
+  if (!t || t.scratch || ghOut(t)) return false;
+  if (t.status === 'open') return true;
+  return t.status === 'in_progress' && !(state.cockpitRows && state.cockpitRows.get(t.id));
+}
 export function githubPickerRowsHTML(t, tab) {
-  if (!t || t.scratch || t.status !== 'open' || ghOut(t)) return '';
+  if (!githubCanSend(t)) return '';
   // A closed or cancelled ticket is not busy in the cloud: one closed by hand never gets merged: (t-093a). ghOut() stays
   // true for it, because a closed, imported ticket still needs its Check & merge button.
   const busy = (state.tickets || []).filter(x => ghOut(x) && x.status !== 'closed' && x.status !== 'cancelled');

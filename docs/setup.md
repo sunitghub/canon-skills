@@ -155,6 +155,10 @@ script's Go block:
 2. `tkt send-issue <id>` creates it (needs `gh auth login`), adds the `canon` label, records `github: owner/repo#N`
    in `ticket.md`, and prints the line to start with. A public repo is refused unless you add `--public`: anyone
    could read the ticket's notes.
+   The cloud session works from GitHub, not from your machine: commits that are on no branch of `origin` are
+   refused (push first, or add `--allow-unpushed`), and uncommitted changes get a warning. A ticket you planned here is
+   `in_progress`; it can still be sent once no session is working on it, and it goes back to `open` as it leaves. The
+   board's GitHub option and `--dry-run` show exactly what the command says.
 3. Start the session. One command does steps 2 and 3: `tkt send-issue <id> --launch` shows the issue, asks `[y/N]`
    (`--yes` skips the question), creates it, then runs `claude --cloud "<prompt>"` from your checkout and notes the
    launch in `.tickets/<id>/github.md`. It needs a real terminal window: `claude --cloud` refuses when its output is piped,

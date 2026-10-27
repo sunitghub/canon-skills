@@ -1154,19 +1154,56 @@ _si_launch() {
   _gh_trail "$tdir" launched "command: $_si_cmdline"
 }
 
+# t-ced8: what the cloud session can and cannot see. It works from GitHub, so a commit on no branch of origin is invisible to it (refuse),
+# and so is an uncommitted change (warn). One owner: the board's preview and send run this command, so the Terminal and the dialog agree.
+# _si_check_pushed <root> <allow-unpushed true|false> <id>
+_si_check_pushed() {
+  local root="$1" allow="$2" id="$3" n dirty
+  git -C "$root" rev-parse -q --verify HEAD >/dev/null 2>&1 || return 0   # no git, or no commit yet: nothing to be ahead
+  if [[ -z "$(git -C "$root" for-each-ref --count=1 refs/remotes/origin 2>/dev/null)" ]]; then
+    echo "send-issue: warning: no origin branches are known here, so I cannot tell whether GitHub has your commits: run git fetch, then send again" >&2
+  else
+    n="$(git -C "$root" rev-list --count HEAD --not --remotes=origin 2>/dev/null || echo 0)"
+    if (( n > 0 )); then
+      if [[ "$allow" == true ]]; then
+        echo "send-issue: warning: $n commit(s) are on no branch of origin; the cloud session will not see them (--allow-unpushed)" >&2
+      else
+        echo "send-issue: $n commit(s) here are on no branch of origin: the cloud session works from GitHub and will not see them." >&2
+        echo "  Push them (git push), then send again; or send anyway with --allow-unpushed." >&2
+        return 1
+      fi
+    fi
+  fi
+  dirty="$(git -C "$root" status --porcelain --untracked-files=no -- . ':(exclude).tickets' 2>/dev/null | wc -l | tr -d ' ')"
+  (( dirty > 0 )) && echo "send-issue: warning: $dirty file(s) have uncommitted changes; the cloud session will not see them" >&2
+  if [[ -n "$(git -C "$root" ls-files -- ".tickets/$id" 2>/dev/null | head -1)" ]] \
+    && [[ -n "$(git -C "$root" status --porcelain --untracked-files=no -- ".tickets/$id" 2>/dev/null)" ]]; then
+    echo "send-issue: warning: $id's files under .tickets/ are tracked and have uncommitted changes; the issue carries the text on disk, but the cloud session's clone holds the committed copy" >&2
+  fi
+  return 0
+}
+# _si_live_session <id>: 0 when the Cockpit daemon lists a live agent session for the ticket. No canon, no daemon, no answer: not live.
+_si_live_session() {
+  local j
+  command -v canon >/dev/null 2>&1 || return 1
+  j="$(canon sessions --json 2>/dev/null)" || return 1
+  [[ "$j" =~ \"ticket\"[[:space:]]*:[[:space:]]*\"$1\" ]]
+}
+
 cmd_send_issue() {
-  local id="" dry=false public=false launch=false yes=false
+  local id="" dry=false public=false launch=false yes=false allow=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --dry-run) dry=true; shift ;;
       --public)  public=true; shift ;;
       --launch)  launch=true; shift ;;
       --yes)     yes=true; shift ;;
+      --allow-unpushed) allow=true; shift ;;
       -*) echo "Unknown option: $1" >&2; exit 1 ;;
       *)  [[ -z "$id" ]] && id="$1"; shift ;;
     esac
   done
-  [[ -z "$id" ]] && { echo "Usage: tkt send-issue <id> [--dry-run] [--public] [--launch [--yes]]" >&2; exit 1; }
+  [[ -z "$id" ]] && { echo "Usage: tkt send-issue <id> [--dry-run] [--public] [--allow-unpushed] [--launch [--yes]]" >&2; exit 1; }
   $yes && ! $launch && { echo "send-issue: --yes only goes with --launch" >&2; exit 1; }
   $launch && $dry && { echo "send-issue: --launch and --dry-run cannot go together; --dry-run only previews" >&2; exit 1; }
   # t-0da2: --launch starts a cloud session, which costs plan usage, so every refusal comes before anything is created.
@@ -1216,6 +1253,17 @@ cmd_send_issue() {
     echo "send-issue: $repo is PUBLIC: anyone could read this ticket's problem, plan and notes." >&2
     echo "  Send it anyway with: tkt send-issue $id --public" >&2; exit 1
   fi
+
+  # t-ced8: a ticket planned here is in_progress; it may go to the cloud once nothing is working on it. closed and cancelled never do.
+  local st; st="$(get_field "$file" status)"
+  case "$st" in
+    open|in_progress) ;;
+    *) echo "send-issue: $id is $st; only an open or in-progress ticket can be sent" >&2; exit 1 ;;
+  esac
+  if [[ "$st" == in_progress ]] && _si_live_session "$id"; then
+    echo "send-issue: $id has a live agent session: end it (or let it finish) before sending the ticket to the cloud" >&2; exit 1
+  fi
+  _si_check_pushed "$root" "$allow" "$id" || exit 1
 
   local acc="$tdir/acceptance.md" plan="$tdir/plan.md" res="$tdir/research.md"
   # _si_all <file> [prompts]: every "## " section of <file>, with its own heading, as the board's tree lists it, tables
@@ -1307,6 +1355,9 @@ cmd_send_issue() {
     echo "  Add 'github: $repo#<number>' to $file by hand." >&2; exit 1
   fi
   set_or_add_field "$file" github "$repo#$n"
+  if [[ "$st" == in_progress ]]; then   # t-ced8: out on GitHub is open + runs: github (t-718b); a ticket planned here joins that state
+    cmd_set_status "$id" open   # also clears ACTIVE when it names this ticket
+  fi
   # t-718b: github: is only the link (sync and import write it too); runs: github says a cloud session has the work.
   set_or_add_field "$file" runs github
   _gh_trail "$tdir" sent "issue: $url" "repo: $repo"
@@ -2565,7 +2616,7 @@ Commands:
                             ticket.md is older than DAYS (default 14): delete raw
                             board-spec JSON reports, pack the rest into evidence.tgz.
                             Files cited by path stay loose. sprint complete runs it.
-  send-issue <id> [--dry-run] [--public] [--launch [--yes]]
+  send-issue <id> [--dry-run] [--public] [--allow-unpushed] [--launch [--yes]]
                             Post the ticket as an issue on origin's GitHub repo, laid
                             out like the board (Description, Acceptance, Plan, Research), for a
                             Claude cloud session ("Work on Issue#N"). Records github:

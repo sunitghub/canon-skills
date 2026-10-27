@@ -16825,9 +16825,11 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     expect(await calls()).toBe(2);   // ready: never re-read
   });
 
-  test('no GitHub place for a ticket already in progress or already out; the panel says so (t-718b)', async ({ page }) => {
-    const live = newTicketId(PROJECT_ROOT, 'gh24'), out = newTicketId(PROJECT_ROOT, 'gh25');
-    ghTicket(live, { status: 'in_progress' }); ghTicket(out, { github: 'acme/app#57' });
+  // t-ced8 changes the t-718b rule: an in-progress ticket NOTHING is working on can be sent (planned here, handed to the cloud); one with a live
+  // session, one already out and a closed one cannot. Protects: the Cockpit's GitHub option, which `tkt send-issue` backs.
+  test('the GitHub place: an idle in-progress ticket has it; a live, sent or closed one has none; the panel says so (t-718b, t-ced8)', async ({ page }) => {
+    const live = newTicketId(PROJECT_ROOT, 'gh24'), out = newTicketId(PROJECT_ROOT, 'gh25'), done = newTicketId(PROJECT_ROOT, 'gh28');
+    ghTicket(live, { status: 'in_progress' }); ghTicket(out, { github: 'acme/app#57' }); ghTicket(done, { status: 'closed' });
     await routeStatus(page, out, { stage: 'sent' });
     await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
     await page.route('**/api/worktrees**', r => json(r, [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true }]));
@@ -16835,7 +16837,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.locator(`.card[data-id="${live}"] .card-start`).click();
     await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
     await expect(page.locator('#ck-worktree .ck-worktree-row').first()).toBeVisible();
-    await expect(page.locator('#ck-worktree .ck-gh-row')).toHaveCount(0);   // a started ticket cannot be sent
+    await expect(page.locator('#ck-worktree .ck-gh-row')).toHaveCount(1);   // t-ced8: planned here, nothing working on it: it can be sent
     await page.evaluate(async (tid) => {   // the panel for a ticket already out: the notice, no preview to send
       const { cockpitState } = await import('/static/board-cockpit.js');
       const t = (await import('/static/board-core.js')).state.tickets.find(x => x.id === tid);
@@ -16843,12 +16845,17 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     }, out);
     await expect(page.locator('#ck-gh-panel')).toContainText(`${out} is out on GitHub`);
     await expect(page.locator('#ck-gh-create')).toHaveCount(0);
-    const rows = await page.evaluate(async ([a, b]) => {   // the picker rows themselves: none for a ticket already out or already started
+    const rows = await page.evaluate(async ([a, b, c]) => {   // the picker rows themselves
       const { githubPickerRowsHTML } = await import('/static/board-github.js');
-      const ts = (await import('/static/board-core.js')).state.tickets;
-      return [githubPickerRowsHTML(ts.find(x => x.id === a), {}), githubPickerRowsHTML(ts.find(x => x.id === b), {})];
-    }, [out, live]);
-    expect(rows).toEqual(['', '']);
+      const { state } = await import('/static/board-core.js');
+      const row = id => githubPickerRowsHTML(state.tickets.find(x => x.id === id), {});
+      const idle = row(b);
+      state.cockpitRows = new Map([[b, { state: 'working' }]]);   // the daemon lists a session for it
+      const busy = row(b);
+      state.cockpitRows = new Map();
+      return { out: row(a), idle: idle.includes('ck-gh-row') || idle.includes('ck-gh-place'), busy, closed: row(c) };
+    }, [out, live, done]);
+    expect(rows).toEqual({ out: '', idle: true, busy: '', closed: '' });   // none for a sent, a live or a closed ticket
   });
 
   test("a send that fails to preview cannot be created; a send finishing in another ticket's cockpit fills nothing there (t-718b)", async ({ page }) => {

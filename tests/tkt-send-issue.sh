@@ -294,9 +294,9 @@ idc="$(fresh noclaude)"
 rc=0; r="$(PATH="$noclaude$path_nocl" "$TKT" send-issue "$idc" --launch --yes 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "no claude should exit 1, got $rc: $r"; assert_contains "$r" "needs the Claude CLI with --cloud"
 rc=0; r="$("$TKT" send-issue 2>&1)" || rc=$?
-[[ "$rc" == 1 ]] || fail "send-issue without an id should exit 1, got $rc"; assert_contains "$r" "Usage: tkt send-issue <id> [--dry-run] [--public] [--launch [--yes]]"
+[[ "$rc" == 1 ]] || fail "send-issue without an id should exit 1, got $rc"; assert_contains "$r" "Usage: tkt send-issue <id> [--dry-run] [--public] [--allow-unpushed] [--launch [--yes]]"
 h="$("$TKT" --help 2>&1)"
-assert_contains "$h" "send-issue <id> [--dry-run] [--public] [--launch [--yes]]"; assert_contains "$h" "in a real terminal only"
+assert_contains "$h" "send-issue <id> [--dry-run] [--public] [--allow-unpushed] [--launch [--yes]]"; assert_contains "$h" "in a real terminal only"
 
 # Refusals come before anything is created: a claude without --cloud, no terminal (with or without --yes), --yes alone, --launch with --dry-run.
 idl="$(fresh refuse)"; : > "$STUB_LOG"; before="$(cksum < ".tickets/$idl/ticket.md")"
@@ -402,13 +402,58 @@ PYEOF
   r="$(ptyrun "$(fresh noup)" flag)"
   assert_contains "$r" "branch $br has no upstream"
   git config "branch.$br.remote" origin; git config "branch.$br.merge" "refs/heads/$br"; git update-ref "refs/remotes/origin/$br" HEAD~1
-  r="$(ptyrun "$(fresh ahead)" flag)"
-  assert_contains "$r" "branch $br is 1 commit(s) ahead of its upstream"
+  # t-ced8: a commit on no branch of origin is invisible to the cloud session, so the send is REFUSED (it only warned before), the ticket and
+  # GitHub are untouched, and --allow-unpushed sends it anyway with a warning.
+  ida="$(fresh ahead)"; : > "$STUB_LOG"
+  rc=0; r="$(ptyrun "$ida" flag)" || rc=$?
+  [[ "$rc" == 1 ]] || fail "unpushed commits must refuse the send, got $rc: $r"
+  assert_contains "$r" "1 commit(s) here are on no branch of origin"; assert_contains "$r" "--allow-unpushed"
+  [[ "$(writes)" == 0 ]] || fail "a refused send made a writing gh call: $(cat "$STUB_LOG")"
+  assert_grep "^status: open$" ".tickets/$ida/ticket.md"; ! grep -q "^github:" ".tickets/$ida/ticket.md" || fail "a refused send linked the ticket"
+  r="$("$TKT" send-issue "$ida" --dry-run 2>&1)" && fail "--dry-run must refuse unpushed commits too (the board's preview runs it)"
+  assert_contains "$r" "1 commit(s) here are on no branch of origin"
+  r="$("$TKT" send-issue "$ida" --allow-unpushed 2>&1)" || fail "--allow-unpushed did not send: $r"
+  assert_contains "$r" "warning: 1 commit(s) are on no branch of origin"; assert_contains "$r" "Sent $ida as"
   [[ "$(git rev-parse "refs/remotes/origin/$br")" == "$(git rev-parse HEAD~1)" ]] || fail "--launch moved the upstream ref"
   git update-ref "refs/remotes/origin/$br" HEAD   # level with the upstream, the usual case: no warning, and under set -e no stop
   rc=0; r="$(ptyrun "$(fresh level)" flag)" || rc=$?
   [[ "$rc" == 0 ]] || fail "--launch on a branch level with its upstream failed ($rc): $r"
   [[ "$r" != *"warning: branch"* ]] || fail "a branch level with its upstream warned: $r"
+
+  # t-ced8: a ticket planned here is in_progress. It can be sent when no session works on it, and it joins the sent state (open +
+  # runs: github, ACTIVE cleared); a live session, a closed ticket and a failed post each leave it exactly as it was.
+  cat > "$stub/canon" <<'CEOF'
+#!/usr/bin/env bash
+[[ "$1 $2" == "sessions --json" ]] && echo "${STUB_SESSIONS:-[]}"
+CEOF
+  chmod +x "$stub/canon"
+  idp="$(fresh planned)"; "$TKT" start "$idp" >/dev/null; : > "$STUB_LOG"
+  assert_grep "^status: in_progress$" ".tickets/$idp/ticket.md"; [[ "$(cat .tickets/ACTIVE)" == "$idp" ]] || fail "start did not mark ACTIVE"
+  rc=0; r="$(STUB_SESSIONS="[{\"session\":\"s1\",\"ticket\":\"$idp\"}]" "$TKT" send-issue "$idp" 2>&1)" || rc=$?
+  [[ "$rc" == 1 ]] || fail "a ticket with a live session must be refused, got $rc: $r"; assert_contains "$r" "has a live agent session"
+  [[ "$(writes)" == 0 ]] || fail "a refused send made a writing gh call"
+  assert_grep "^status: in_progress$" ".tickets/$idp/ticket.md"; [[ "$(cat .tickets/ACTIVE)" == "$idp" ]] || fail "a refused send cleared ACTIVE"
+  rc=0; r="$(STUB_FAIL=create "$TKT" send-issue "$idp" 2>&1)" || rc=$?
+  [[ "$rc" == 1 ]] || fail "a failed post should exit 1, got $rc"
+  assert_grep "^status: in_progress$" ".tickets/$idp/ticket.md"; ! grep -q "^github:" ".tickets/$idp/ticket.md" || fail "a failed post linked the ticket"
+  [[ "$(cat .tickets/ACTIVE)" == "$idp" ]] || fail "a failed post cleared ACTIVE"
+  r="$("$TKT" send-issue "$idp" 2>&1)" || fail "an in-progress ticket with no live session was not sent: $r"
+  assert_contains "$r" "Sent $idp as"
+  assert_grep "^status: open$" ".tickets/$idp/ticket.md"; assert_grep "^runs: github$" ".tickets/$idp/ticket.md"; assert_grep "^github: acme/app#57$" ".tickets/$idp/ticket.md"
+  [[ ! -s .tickets/ACTIVE ]] || fail "ACTIVE still names a ticket that went to the cloud: $(cat .tickets/ACTIVE)"
+  idc="$(fresh closed)"; "$TKT" close "$idc" --no-sprint >/dev/null
+  rc=0; r="$("$TKT" send-issue "$idc" 2>&1)" || rc=$?
+  [[ "$rc" == 1 ]] || fail "a closed ticket must be refused, got $rc"; assert_contains "$r" "is closed; only an open or in-progress ticket"
+  # uncommitted code warns (and sends); a tracked, uncommitted ticket file warns only when .tickets/ is tracked
+  echo base > tracked.txt; git add tracked.txt; git -c user.name=t -c user.email=t@t commit -q -m tracked; git update-ref "refs/remotes/origin/$br" HEAD
+  echo changed >> tracked.txt
+  idw="$(fresh warn)"; r="$("$TKT" send-issue "$idw" 2>&1)" || fail "an uncommitted change must warn, not refuse: $r"
+  assert_contains "$r" "1 file(s) have uncommitted changes"; [[ "$r" != *"under .tickets/ are tracked"* ]] || fail "warned about tracked ticket files in a project that ignores them"
+  git checkout -q -- tracked.txt
+  idt="$(fresh tracked)"; git add -f ".tickets/$idt"; git -c user.name=t -c user.email=t@t commit -q -m "track $idt"; git update-ref "refs/remotes/origin/$br" HEAD
+  echo "more" >> ".tickets/$idt/ticket.md"
+  r="$("$TKT" send-issue "$idt" --dry-run 2>&1)" || fail "dry run of a tracked ticket with an uncommitted file failed: $r"
+  assert_contains "$r" "$idt's files under .tickets/ are tracked and have uncommitted changes"
 
   # Asking: n creates nothing and runs no claude; y sends and launches.
   idn="$(fresh no)"; : > "$STUB_LOG"; : > "$STUB_CLAUDE_LOG"; before="$(cksum < ".tickets/$idn/ticket.md")"
