@@ -408,3 +408,29 @@ func TestActorIsOptionalAndValidated(t *testing.T) {
 		t.Fatalf("Latest after Emit (no actor): %+v ok=%v", ev, ok)
 	}
 }
+
+// t-15b5. Protects the published contract: every field of the envelope the writer emits has a row in docs/plugins.md's envelope table
+// (and `actor` is marked optional there), so the doc cannot drift from the struct a plugin author reads it against.
+func TestEnvelopeDocNamesEveryField(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "docs", "plugins.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := string(raw)
+	b, err := LineActor("github.synced", "tkt", "agent", "/p", map[string]string{"count": "1"}, time.Date(2026, 10, 27, 9, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if json.Unmarshal(b, &m) != nil {
+		t.Fatalf("not JSON: %s", b)
+	}
+	for k := range m {
+		if !strings.Contains(doc, "| `"+k+"` |") {
+			t.Errorf("docs/plugins.md has no envelope row for the field %q the writer emits", k)
+		}
+	}
+	if !strings.Contains(doc, "| `actor` | optional:") {
+		t.Error("docs/plugins.md does not mark actor optional")
+	}
+}
