@@ -125,8 +125,8 @@ func TestSettingsRoutes(t *testing.T) {
 	if c, m := get(""); c != 422 || !strings.Contains(m["error"].(string), ".canon/settings.local.json") {
 		t.Fatalf("malformed GET: %d %v", c, m)
 	}
-	if c, _ := post("", click, `{"key":"terminal.paging","value":"auto"}`); c != 422 {
-		t.Fatalf("malformed POST = %d", c)
+	if c, m := post("", click, `{"key":"terminal.paging","value":"auto"}`); c != 422 || m == nil || m["ok"] != false {
+		t.Fatalf("malformed POST = %d %v (one JSON answer, ok false)", c, m)
 	}
 	if b, _ := os.ReadFile(local); string(b) != `{"terminal": ` {
 		t.Fatalf("the malformed file was changed: %q", b)
@@ -159,7 +159,7 @@ func TestSettingsRouteAnswers(t *testing.T) {
 		_ = json.Unmarshal(w.Body.Bytes(), &m)
 		return w.Code, w.Body.String(), m
 	}
-	if code, body, _ := do(http.MethodGet, "?project=nope", "", ""); code != 400 || !strings.Contains(body, "unknown project") {
+	if code, body, _ := do(http.MethodGet, "?project=nope", "", ""); code != 400 || body != "unknown project\n" {
 		t.Errorf("GET unknown project: %d %q", code, body)
 	}
 	if code, body, _ := do(http.MethodPost, "", "", `{"key":"terminal.paging","value":"off"}`); code != 403 || !strings.Contains(body, "loopback Origin") {

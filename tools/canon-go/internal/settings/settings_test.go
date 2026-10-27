@@ -481,3 +481,74 @@ func TestIgnoreInGitKeepsTheExistingFile(t *testing.T) {
 		}
 	}
 }
+
+// t-dba0 (second sweep). Protects the edges of reading and writing: an empty or whitespace-only file is "no settings", an unreadable
+// file or folder is said, a symlinked folder says so on a write, the file is written indented, and an empty exclude file gets the line
+// with no blank line before it.
+func TestReadAndWriteEdges(t *testing.T) {
+	s := ProjectSet(t.TempDir())
+	for _, body := range []string{"", "  \n\t\n"} {
+		write(t, s.Local, body)
+		if r, err := s.Load(); err != nil || r.Values["terminal.paging"].Source != SourceDefault {
+			t.Errorf("%q: %v %+v", body, err, r)
+		}
+	}
+	if _, err := s.SetLocal("terminal.paging", 30); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, s.Local); !strings.Contains(got, "\n  \"terminal\": {\n    \"paging\": 30\n  }\n}") {
+		t.Errorf("the file is not written as indented JSON: %q", got)
+	}
+	if runtime.GOOS == "windows" || os.Getuid() == 0 {
+		return
+	}
+	// unreadable file, and an unreadable folder: each says it cannot be read, naming the file
+	if err := os.Chmod(s.Local, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Load(); err == nil || !strings.Contains(err.Error(), "cannot be read") {
+		t.Errorf("an unreadable file: %v", err)
+	}
+	os.Chmod(s.Local, 0o600)
+	dir := filepath.Dir(s.Local)
+	if err := os.Chmod(dir, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(dir, 0o755)
+	if _, err := s.Load(); err == nil || !strings.Contains(err.Error(), "cannot be read") {
+		t.Errorf("an unreadable folder: %v", err)
+	}
+	os.Chmod(dir, 0o755)
+	// a symlinked folder says so on a write
+	root := t.TempDir()
+	if err := os.Symlink(t.TempDir(), filepath.Join(root, ".canon")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ProjectSet(root).SetLocal("terminal.paging", "off"); err == nil || !strings.Contains(err.Error(), "symlink") {
+		t.Errorf("a symlinked folder: %v", err)
+	}
+}
+
+func TestIgnoreInGitOnAnEmptyExclude(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not installed")
+	}
+	root := t.TempDir()
+	cmd := exec.Command("git", "-C", root, "init", "-q")
+	cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v %s", err, out)
+	}
+	ex := filepath.Join(root, ".git", "info", "exclude")
+	write(t, ex, "")
+	if err := IgnoreInGit(root, LocalRel); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, ex); got != LocalRel+"\n" {
+		t.Errorf("an empty exclude file became %q", got)
+	}
+	write(t, ex, "keep\n") // already ends with a newline: no blank line either
+	if err := IgnoreInGit(root, LocalRel); err != nil || read(t, ex) != "keep\n"+LocalRel+"\n" {
+		t.Errorf("%v %q", err, read(t, ex))
+	}
+}

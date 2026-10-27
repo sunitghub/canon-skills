@@ -93,9 +93,14 @@ func TestProjectPagingReadsTheFiles(t *testing.T) {
 func TestPagingCommandSurface(t *testing.T) {
 	root, _ := project(t)
 	out := run(t, Config{Root: root, Paging: "12"}, "help\nbogus\npaging 1 2\npaging\npaging on\npaging\npaging 30\npaging auto\npaging\nexit\n")
-	for _, want := range []string{"paging [auto|off|<lines>]", "allowed: help, ls, cat, pwd, paging, tkt, su, clear, exit", "usage: paging [auto|off|<lines>]", "paging: 12   (paging", "paging: auto (this Terminal only)", "paging: 30 (this Terminal only)"} {
+	for _, want := range []string{"show or set when output pauses", "allowed: help, ls, cat, pwd, paging, tkt, su, clear, exit", "usage: paging [auto|off|<lines>]", "paging: 12   (paging", "paging: auto (this Terminal only)", "paging: 30 (this Terminal only)"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
+		}
+	}
+	for _, never := range []string{`"1" is not a setting`, "<nil>"} { // a malformed use must not fall through to a change
+		if strings.Contains(out, never) {
+			t.Errorf("output must not contain %q:\n%s", never, out)
 		}
 	}
 	if strings.Count(out, "paging: 12   (paging") != 1 {
