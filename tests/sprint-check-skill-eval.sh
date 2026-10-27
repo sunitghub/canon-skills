@@ -82,12 +82,12 @@ for body in '[1]' '"x"' '1'; do   # a non-object body is a 400, not a dropped co
   assert_eq 400 "$(post -o /dev/null -w '%{http_code}' -d "$body" "$U")"
 done
 assert_eq false "$(post -d null "$U" | jq -r .ok)"   # `null` is an empty payload in Go (t-15d8): refused, never a run
-run_body="$(post -d "{\"skill_dir\":\"$PROJ/.claude/skills/good\"}" "http://127.0.0.1:$PORT/api/skill-eval/run")"
+run_body="$(post -H "Origin: http://127.0.0.1" -d "{\"skill_dir\":\"$PROJ/.claude/skills/good\"}" "http://127.0.0.1:$PORT/api/skill-eval/run")"
 assert_contains "$run_body" "confirm_cost"
 G="$PROJ/.claude/skills/good"; H="$PROJ/.claude/skills/hooky"
 st_of() { curl -s "http://127.0.0.1:$PORT/api/skill-eval/status?skill_dir=$1" | jq -r .status; }
 wait_done() { for _ in $(seq 1 200); do [[ "$(st_of "$1")" != running ]] && return 0; sleep 0.05; done; fail "skill eval run did not finish"; }
-runp() { post -d "$1" "http://127.0.0.1:$PORT/api/skill-eval/run"; }
+runp() { post -H "Origin: http://127.0.0.1" -d "$1" "http://127.0.0.1:$PORT/api/skill-eval/run"; }
 GRUN="$(jq -cn --arg d "$G" '{skill_dir: $d, confirm_cost: true}')"
 # Good model ids (not only the default) start a run (t-a350's allow side).
 for m in claude-sonnet-5 opus 'sonnet[1m]' us.anthropic.claude-haiku-4-5-20251001-v1:0; do

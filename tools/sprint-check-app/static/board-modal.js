@@ -299,7 +299,7 @@ function renderModalHeadless(t) {
     const input = document.getElementById('m-headless-baseref');
     const baseRef = input.value.trim();
     if (!baseRef) { input.focus(); return; }
-    postWrite(`/api/ticket/${encodeURIComponent(t.id)}/headless-run`, { base_ref: baseRef }, 'start the headless run')
+    postWrite(`/api/ticket/${encodeURIComponent(t.id)}/headless-run`, { base_ref: baseRef, confirm: true }, 'start the headless run')
       .then(res => {
         if (!res.ok) return; // t-1940: the reason is toasted; a refused start used to vanish silently
         renderHeadlessStatus(t.id, res.data);

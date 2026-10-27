@@ -151,7 +151,7 @@ import hashlib, json, os, shutil, subprocess, sys, time, urllib.parse, urllib.re
 go, skills, root, go_bin = sys.argv[1:5]
 def post(port, path, body):
     req = urllib.request.Request(f"http://127.0.0.1:{port}{path}", data=json.dumps(body).encode(), method="POST",
-                                 headers={"Content-Type": "application/json"})
+                                 headers={"Content-Type": "application/json", "Origin": "http://127.0.0.1"})
     with urllib.request.urlopen(req, timeout=30) as r:
         return json.loads(r.read())
 def get(port, path):

@@ -397,7 +397,7 @@ EOF
 chmod +x "$SPRINT_HEADLESS_BIN" "$SPRINT_HEADLESS_EVAL_BIN"
 
 [[ "$(curl -s "$B/api/ticket/t-mock/headless-run" | json_get status)" == idle ]] || fail "sprint-check-api: headless-run should start idle"
-trig="$(curl -s -X POST "$B/api/ticket/t-mock/headless-run" -d '{"base_ref":"main"}')"
+trig="$(curl -s -X POST -H "Origin: http://127.0.0.1" "$B/api/ticket/t-mock/headless-run" -d '{"base_ref":"main","confirm":true}')"
 [[ "$(printf '%s' "$trig" | json_get status)" == running ]] || fail "sprint-check-api: headless-run trigger did not return status=running: $trig"
 
 # headless_running field on /api/tickets (t-dd51)
@@ -425,7 +425,7 @@ if t and t.get("headless_running"):
 PY
 
 # gate-mode dispatch (t-4e57): a gate:eval ticket invokes sprint-headless-eval, never the full pipeline
-gtrig="$(curl -s -X POST "$B/api/ticket/t-gate/headless-run" -d '{"base_ref":"main"}')"
+gtrig="$(curl -s -X POST -H "Origin: http://127.0.0.1" "$B/api/ticket/t-gate/headless-run" -d '{"base_ref":"main","confirm":true}')"
 [[ "$(printf '%s' "$gtrig" | json_get status)" == running ]] || fail "sprint-check-api: t-gate headless-run did not start: $gtrig"
 sleep 3
 python3 - "$(curl -s "$B/api/ticket/t-gate/headless-run")" <<'PY'
