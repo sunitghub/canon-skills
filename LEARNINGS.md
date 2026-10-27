@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-26-2026 22:50
+learnings-sweep last run: 10-26-2026 20:12
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-27 | [t-be64](.tickets/t-be64/learnings.md) | A Test Plan line that lists assertions must be checked against the spec diff before close (the reviewer found radius, branch line and `N to check` promised but unasserted), and moving a shared palette to one file breaks older guards that grep the old files (`tests/canon.sh` failed only in the full-suite stamp, not in the board spec). | UNPROMOTED |
 | 2026-10-26 | [t-bb1b](.tickets/t-bb1b/learnings.md) | A test that checks a source file for a branch must search ONLY the handler it guards and strip comments: searching the whole file was satisfied by a comment and by a GET route's case of the same name; and a route default must be the safe one (404), never the dangerous one (a merge run). | UNPROMOTED |
 | 2026-10-26 | [t-a463](.tickets/t-a463/learnings.md) | An action that takes a number from a UI must re-check that the number is the ticket's own (an explicit `--pr` skipped the lookup), and a tab-separated shell read silently drops empty fields: map empty to a placeholder and refuse anything but the expected value (fail closed); a route table where an unlisted branch falls through to the dangerous default needs a 404 for it. | UNPROMOTED |
 | 2026-10-26 | [t-2aed](.tickets/t-2aed/learnings.md) | A key listener added to a SHARED dialog must check that the dialog is still its own (title) and be disarmed by every other opener: a mouse Cancel left it armed and a later Enter ended an agent session without saving; and "never sends X" needs a spy on the receiving page, not a check on an element that is already gone. | UNPROMOTED |
