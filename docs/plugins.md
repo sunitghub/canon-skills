@@ -53,17 +53,17 @@ Audit kinds (t-4c09; the schema is fixed here, each emitter is built by the tick
 | Kind | `data` | Written when |
 |---|---|---|
 | `plan.approved` | `ticket`, `tier` | the plan's Sign-off box is ticked |
-| `close.confirmed` | `ticket`, `tier` (when the plan's Sign-off names one) | `sprint complete` closes the ticket |
+| `close.confirmed` | `ticket`, `tier` (one of `trivial`, `bugfix`, `normal`, `high-risk`, read from the `Tier:` line of the plan's Sign-off; absent when it names none) | `sprint complete` closes the ticket |
 | `github.sent` | `ticket`, `issue` (number) | `tkt send-issue` |
-| `github.results_imported` | `ticket`, `pr` (number) | `tkt import-results` |
+| `github.results_imported` | `ticket`, `pr` (number; absent when `--pr` was not a number) | `tkt import-results`, after a clean import |
 | `github.merged` | `ticket`, `pr` (number) | `tkt merge-pr` |
 | `github.synced` | `count` (tickets made) | `tkt sync-issues` |
-| `setting.changed` | `name`, `old`, `new` (non-secret settings only) | the Admin Model tiers page saves (`model-tiers.save`, `.reset`, `.apply`, `.retire`, `.remove`; `old` and `new` are the Review & Eval default model before and after) or the Verbose session logging switch changes (`verbose-logging`, `on` or `off`) |
+| `setting.changed` | `name`, `old`, `new` (non-secret settings only) | the Admin Model tiers page saves (`model-tiers.save`, `.reset`, `.apply`, `.retire`, `.remove`; `old` and `new` are the Review & Eval default model before and after; every successful write is recorded, even one that leaves that default as it was) or the Verbose session logging switch changes (`verbose-logging`, `on` or `off`) |
 | `integrity.restored` | `item`, `count` | an Integrity restore |
 | `context.threshold` | `session`, `ticket`, `agent`, `pct` | once, when a session passes 75% context |
 | `log.pruned` | `from`, `to` (days), `files`, `last_seal` | the retention job removes day files |
 
-Which audit kinds are written today (t-4c09): `close.confirmed`, `github.sent`, `github.results_imported` (a clean import only), `github.merged`, `github.synced` and `setting.changed`. A command that is run from a terminal carries no `actor`, because it cannot tell a person from an agent; a click on the board or Admin page is `actor: user`. Not written yet, each waiting on a feature that does not exist: `plan.approved` (nothing observes the approval: the box in `plan.md` is ticked by hand), `integrity.restored` (Admin > Integrity only checks, there is no restore), `context.threshold` (there is no per-session context figure yet), and `log.pruned` (retention today is a bare delete; the sealed log is a later ticket).
+Which audit kinds are written today (t-4c09): `close.confirmed`, `github.sent`, `github.results_imported` (a clean import only), `github.merged`, `github.synced` and `setting.changed`. A command run from a terminal carries no `actor`, because it cannot tell a person from an agent. A Model tiers write from the Admin page carries `actor: user` only when the request has a loopback Origin (a click on the page); the Verbose session logging switch carries none, because that endpoint is open to any local process. Install-wide events such as `setting.changed` have `project` set to the empty string. Not written yet, each waiting on a feature that does not exist: `plan.approved` (nothing observes the approval: the box in `plan.md` is ticked by hand), `integrity.restored` (Admin > Integrity only checks, there is no restore), `context.threshold` (there is no per-session context figure yet), and `log.pruned` (retention today is a bare delete; the sealed log is a later ticket).
 
 Terminal audit kinds (t-57ab; written by the Cockpit daemon's restricted terminal; `ticket` is the scratch id; never a password, a path or a command):
 

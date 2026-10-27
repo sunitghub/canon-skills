@@ -4591,7 +4591,7 @@ func TestAdminDebugTogglesFlagAndVersionReflectsIt(t *testing.T) {
 }
 
 // t-4c09. Protects the Admin page's Verbose session logging switch: a real change leaves one setting.changed line (name verbose-logging,
-// old and new as on/off, actor user, no project); setting it to what it already is leaves none; no terminal text is ever in it.
+// old and new as on/off, no actor (the endpoint is token-free: it cannot tell a person from a script), no project); setting it to what it already is leaves none; no terminal text is ever in it.
 func TestAdminDebugToggleLeavesAuditLine(t *testing.T) {
 	defer debugEnabled.Store(false)
 	debugEnabled.Store(false)
@@ -4632,7 +4632,7 @@ func TestAdminDebugToggleLeavesAuditLine(t *testing.T) {
 		t.Fatalf("turning it on logged %d line(s), want 1", len(got))
 	}
 	d, _ := got[0]["data"].(map[string]any)
-	if got[0]["source"] != "daemon" || got[0]["actor"] != "user" || got[0]["project"] != "" || d["name"] != "verbose-logging" || d["old"] != "off" || d["new"] != "on" || len(d) != 3 {
+	if got[0]["source"] != "daemon" || got[0]["actor"] != nil || got[0]["project"] != "" || d["name"] != "verbose-logging" || d["old"] != "off" || d["new"] != "on" || len(d) != 3 {
 		t.Fatalf("the line: %v", got[0])
 	}
 	toggle(true) // on again: nothing new

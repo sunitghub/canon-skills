@@ -927,8 +927,8 @@ cmd_complete() {
   TKT_SPRINT_GATE_PASSED=1 "$TKT_BIN" close "$id"
   canon_event sprint.completed sprint "$(project_root)" "ticket=$id"
   # t-4c09: the audit line for the close: the plan's tier (the word after "Tier:" in the Sign-off), when it names one
-  local _tier; _tier="$(sed -n 's/^[[:space:]]*[Tt]ier:[[:space:]]*\([A-Za-z-]*\).*/\1/p' "$tdir/plan.md" 2>/dev/null || true)"; _tier="${_tier%%$'\n'*}"
-  canon_event close.confirmed sprint "$(project_root)" "ticket=$id" ${_tier:+"tier=$(printf '%s' "$_tier" | tr 'A-Z' 'a-z')"}
+  local _tier; _tier="$(_acceptance_section "Sign-off" "$tdir/plan.md" 2>/dev/null | sed 's/\*//g' | tr 'A-Z' 'a-z' | sed -nE 's/^[[:space:]]*tier[[:space:]]*:[[:space:]]*(trivial|bugfix|normal|high-risk).*/\1/p' || true)"; _tier="${_tier%%$'\n'*}"
+  canon_event close.confirmed sprint "$(project_root)" "ticket=$id" ${_tier:+"tier=$_tier"}
   echo "Sprint completed: $id"
   # t-8f48: in a linked worktree, the step after the merge is resetting its tracking branch.
   local gd common

@@ -11,6 +11,13 @@ import (
 	"testing"
 )
 
+// clickReq is a request as the Admin page sends it: a loopback Origin.
+func clickReq() *http.Request {
+	r := httptest.NewRequest(http.MethodPost, "/api/admin/model-tiers", nil)
+	r.Header.Set("Origin", "http://127.0.0.1:8423")
+	return r
+}
+
 // settingEvents returns every setting.changed line under $CANON_HOME/events as decoded JSON.
 func settingEvents(t *testing.T, home string) []map[string]any {
 	t.Helper()
@@ -52,14 +59,14 @@ func TestModelTiersWritesLeaveOneAuditLine(t *testing.T) {
 	}
 
 	// a refused change: nothing written, nothing logged
-	auditTiers("retire", func() map[string]any {
+	auditTiers(clickReq(), "retire", func() map[string]any {
 		return registryMove(func(map[string]any) error { return errors.New("no thanks") })
 	})
 	if n := len(settingEvents(t, dir)); n != 0 {
 		t.Fatalf("a refused change logged %d event(s)", n)
 	}
 	// an invalid save: refused by validation, nothing logged
-	if res := auditTiers("save", func() map[string]any { return saveModelTiers(map[string]any{"models": "nope"}) }); res["ok"] == true {
+	if res := auditTiers(clickReq(), "save", func() map[string]any { return saveModelTiers(map[string]any{"models": "nope"}) }); res["ok"] == true {
 		t.Fatal("an invalid payload was saved")
 	}
 	if n := len(settingEvents(t, dir)); n != 0 {
@@ -67,7 +74,7 @@ func TestModelTiersWritesLeaveOneAuditLine(t *testing.T) {
 	}
 
 	// a good retire: one line, the default before and after
-	res := auditTiers("retire", func() map[string]any {
+	res := auditTiers(clickReq(), "retire", func() map[string]any {
 		return registryMove(func(d map[string]any) error { return retireModel(d, "claude-sonnet-5", "claude-sonnet-5-5") })
 	})
 	if res["ok"] != true {
@@ -86,7 +93,7 @@ func TestModelTiersWritesLeaveOneAuditLine(t *testing.T) {
 		t.Errorf("data: %v", data)
 	}
 	// a reset (the user's override deleted) is its own action
-	if res := auditTiers("reset", func() map[string]any { return saveModelTiers(map[string]any{"reset": true}) }); res["ok"] != true {
+	if res := auditTiers(clickReq(), "reset", func() map[string]any { return saveModelTiers(map[string]any{"reset": true}) }); res["ok"] != true {
 		t.Fatalf("reset: %v", res)
 	}
 	got = settingEvents(t, dir)
@@ -125,7 +132,7 @@ func TestModelTiersWriteSucceedsWhenEventsCannotBeWritten(t *testing.T) {
 		f.Close()
 		t.Skip("the folder is still writable (running as root?)")
 	}
-	res := auditTiers("retire", func() map[string]any {
+	res := auditTiers(clickReq(), "retire", func() map[string]any {
 		return registryMove(func(d map[string]any) error { return retireModel(d, "claude-sonnet-5", "claude-sonnet-5-5") })
 	})
 	if res["ok"] != true {
@@ -206,5 +213,21 @@ func TestModelTiersRoutesRecordTheirAction(t *testing.T) {
 	}
 	if c := post("/api/admin/model-tiers", `{"models":"nope"}`); c == http.StatusOK || count() != 5 {
 		t.Fatalf("an invalid save: status %d, %d line(s)", c, count())
+	}
+	// no Origin (a script or an agent's shell): the write goes through as today, and the line claims no actor
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/model-tiers/apply", strings.NewReader(`{"add":[],"retire":[]}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handlePost(w, req)
+	if w.Code != http.StatusOK || count() != 6 {
+		t.Fatalf("an apply without an Origin: status %d, %d line(s)", w.Code, count())
+	}
+	if got := settingEvents(t, dir); got[5]["actor"] != nil {
+		t.Fatalf("a request without an Origin was logged as %v", got[5]["actor"])
+	}
+	for i := 0; i < 5; i++ {
+		if got := settingEvents(t, dir); got[i]["actor"] != "user" {
+			t.Fatalf("line %d: a click should be logged as user, got %v", i, got[i]["actor"])
+		}
 	}
 }

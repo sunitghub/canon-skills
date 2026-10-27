@@ -697,7 +697,7 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		if reset, _ := payload["reset"].(bool); reset && len(payload) == 1 {
 			action = "reset"
 		}
-		res := auditTiers(action, func() map[string]any { return saveModelTiers(payload) })
+		res := auditTiers(r, action, func() map[string]any { return saveModelTiers(payload) })
 		status := http.StatusOK
 		if ok, _ := res["ok"].(bool); !ok {
 			status = http.StatusBadRequest
@@ -736,7 +736,7 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 				pairs = append(pairs, [2]string{fmt.Sprint(m["old"]), fmt.Sprint(m["new"])})
 			}
 		}
-		res := auditTiers("apply", func() map[string]any {
+		res := auditTiers(r, "apply", func() map[string]any {
 			return registryMove(func(doc map[string]any) error { return applyProposal(doc, adds, pairs) })
 		})
 		status := http.StatusOK
@@ -749,14 +749,14 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 	if path == "/api/admin/model-tiers/retire" || path == "/api/admin/model-tiers/remove" {
 		var res map[string]any
 		if path == "/api/admin/model-tiers/retire" {
-			res = auditTiers("retire", func() map[string]any {
+			res = auditTiers(r, "retire", func() map[string]any {
 				return registryMove(func(doc map[string]any) error {
 					return retireModel(doc, fmt.Sprint(payload["old"]), fmt.Sprint(payload["new"]))
 				})
 			})
 		} else {
 			moveTo, _ := payload["move_to"].(string)
-			res = auditTiers("remove", func() map[string]any {
+			res = auditTiers(r, "remove", func() map[string]any {
 				return registryMove(func(doc map[string]any) error {
 					return removeModel(doc, fmt.Sprint(payload["id"]), moveTo)
 				})
@@ -1622,10 +1622,14 @@ func writeStatus(id, status string, root string) bool {
 	return ok
 }
 
-// emitSetting records an Admin setting write (t-4c09, kind setting.changed) after it succeeded. A board route is a person's click, so the
-// actor is `user`; the setting is install-wide, so there is no project. Observer-only: the result is ignored.
-func emitSetting(name, old, new string) {
-	events.EmitActor(events.Home(), "setting.changed", "board", "user", "", map[string]string{"name": name, "old": old, "new": new})
+// emitSetting records an Admin setting write (t-4c09, kind setting.changed) after it succeeded. The actor is `user` only when the request
+// carries a loopback Origin (a click on the page); the setting is install-wide, so there is no project. Observer-only.
+func emitSetting(r *http.Request, name, old, new string) {
+	actor := "" // a request without a loopback Origin could be a script or an agent's shell: the log does not claim a person (t-4c09 review)
+	if r != nil && agentOriginOK(r) {
+		actor = "user"
+	}
+	events.EmitActor(events.Home(), "setting.changed", "board", actor, "", map[string]string{"name": name, "old": old, "new": new})
 }
 
 // evalDefault is the Review & Eval default model of the effective Model tiers registry: the one value there that changes what the
@@ -1638,11 +1642,11 @@ func evalDefault(doc map[string]any) string {
 }
 
 // auditTiers runs one Model tiers write and, when it succeeded, records the Review & Eval default before and after.
-func auditTiers(action string, run func() map[string]any) map[string]any {
+func auditTiers(r *http.Request, action string, run func() map[string]any) map[string]any {
 	old := evalDefault(loadModelTiers())
 	res := run()
 	if ok, _ := res["ok"].(bool); ok {
-		emitSetting("model-tiers."+action, old, evalDefault(loadModelTiers()))
+		emitSetting(r, "model-tiers."+action, old, evalDefault(loadModelTiers()))
 	}
 	return res
 }

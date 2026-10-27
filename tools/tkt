@@ -2559,7 +2559,7 @@ cmd_import_results() {
     echo "  kept canon-results/$id on origin, since a check failed: fix it and run import-results again" >&2
   fi
   echo "  Add its LEARNINGS.md row locally (learnings-sweep for $id) if it wrote learnings.md."
-  if [[ "$rc" == 0 ]]; then canon_event github.results_imported tkt "$root" "ticket=$id" ${pr:+"pr=$pr"}; fi   # t-4c09: only a clean import
+  if [[ "$rc" == 0 ]]; then canon_event github.results_imported tkt "$root" "ticket=$id" $([[ "$pr" =~ ^[0-9]+$ ]] && printf %s "pr=$pr"); fi   # t-4c09: only a clean import
   return "$rc"
 }
 

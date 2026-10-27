@@ -278,8 +278,8 @@ func (s *server) handler() http.Handler {
 			return
 		}
 		was := debugEnabled.Swap(body.Enabled)
-		if was != body.Enabled { // t-4c09: a real change, from the Admin page (a person's click); never terminal text, only the two words
-			events.EmitActor(events.Home(), "setting.changed", "daemon", "user", "", map[string]string{"name": "verbose-logging", "old": onOff(was), "new": onOff(body.Enabled)})
+		if was != body.Enabled { // t-4c09: a real change; no actor, because this endpoint is token-free and checks no Origin (a script can call it)
+			events.Emit(events.Home(), "setting.changed", "daemon", "", map[string]string{"name": "verbose-logging", "old": onOff(was), "new": onOff(body.Enabled)})
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"enabled": debugEnabled.Load()})
