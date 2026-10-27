@@ -92,7 +92,7 @@ func TestProjectPagingReadsTheFiles(t *testing.T) {
 // a malformed use changes nothing, and `auto` resets.
 func TestPagingCommandSurface(t *testing.T) {
 	root, _ := project(t)
-	out := run(t, Config{Root: root, Paging: "12"}, "help\nbogus\npaging 1 2\npaging\npaging on\npaging\npaging 30\npaging auto\npaging\nexit\n")
+	out := run(t, Config{Root: root, Paging: "12"}, "help\nbogus\npaging 1 2\npaging\npaging nope\npaging 4\npaging\npaging on\npaging\npaging 30\npaging auto\npaging\nexit\n")
 	for _, want := range []string{"show or set when output pauses", "allowed: help, ls, cat, pwd, paging, tkt, su, clear, exit", "usage: paging [auto|off|<lines>]", "paging: 12   (paging", "paging: auto (this Terminal only)", "paging: 30 (this Terminal only)"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
@@ -103,8 +103,8 @@ func TestPagingCommandSurface(t *testing.T) {
 			t.Errorf("output must not contain %q:\n%s", never, out)
 		}
 	}
-	if strings.Count(out, "paging: 12   (paging") != 1 {
-		t.Errorf("a malformed `paging 1 2` must leave 12 in place, then `paging on` reset to auto:\n%s", out)
+	if strings.Count(out, "paging: 12   (paging") != 2 {
+		t.Errorf("a malformed `paging 1 2`, `paging nope` and `paging 4` must each leave 12 in place:\n%s", out)
 	}
 	if strings.Count(out, "paging: auto   (paging") != 2 {
 		t.Errorf("`paging` after `paging on` and after `paging auto` should both show auto:\n%s", out)
