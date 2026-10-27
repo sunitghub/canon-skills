@@ -1542,7 +1542,7 @@ test.describe('board modal', () => {
       const q = x => idQueryTerms(x, T);
       return {
         one: q('69f6'), two: q('69f6 1ae4'), commas: q('t-69f6, 1ae4'), upper: q('69F6 1AE4'), partial: q('9f 1ae'), repeat: q('69f6 69f6'),
-        dropOne: q('t-69f6 t-9999'), dropTwo: q('t-69f6, t-1ae4 t-9999'), dropBare: q('69f6 9999'), dropMixed: q('t-69f6 9999'), dropAll: q('t-9999 t-8888'), dropSingle: q('t-69f6'), dropWord: q('t-69f6 login'), dropShort: q('t-69f6 t-9'),
+        dropOne: q('t-69f6 t-9999'), dropTwo: q('t-69f6, t-1ae4 t-9999'), dropBare: q('69f6 9999'), dropMixed: q('t-69f6 9999'), dropAll: q('t-9999 t-8888'), dropSingle: q('t-69f6'), dropWord: q('t-69f6 login'), dropShort: q('t-69f6 t-9'), typing: q('t-69f6 t-1ae4 t-'), typingComma: q('t-69f6, t-1ae4, t-'), typingFirst: q('t- 69f6 1ae4'), typingDrop: q('t-69f6 t-9999 t-'),
         short: q('6 1ae'), long: q('69f66 1ae4'), longInId: q('ab12c 1ae4'), isci: q('is ci'), isOverride: q('is override'), readiness: q('needs acc'), tagq: q('tag:git go'), word: q('bug fix'), mixed: q('69f6 login'), unknown: q('zz qq'), empty: q('  '), none: q(null),
       };
     });
@@ -1563,6 +1563,10 @@ test.describe('board modal', () => {
     expect(got.one).toBeNull();                                             // a single term is never a list
     expect(got.dropOne).toEqual(['69f6']);                                  // t-b198: every term a full id: the one in no id is dropped, the rest is the list
     expect(got.dropTwo).toEqual(['69f6', '1ae4']);
+    expect(got.typing).toEqual(['69f6', '1ae4']);                           // a half-typed `t-` is not a term: the list stays a list while the next id is typed
+    expect(got.typingComma).toEqual(['69f6', '1ae4']);
+    expect(got.typingFirst).toEqual(['69f6', '1ae4']);
+    expect(got.typingDrop).toEqual(['69f6']);
     for (const k of ['dropBare', 'dropMixed', 'dropAll', 'dropSingle', 'dropWord', 'dropShort']) expect(got[k], k).toBeNull();   // bare or mixed terms keep the strict rule; nothing left, one term, a word, a 1-character term: not a list
     expect(got.two).toEqual(['69f6', '1ae4']);
     expect(got.commas).toEqual(['69f6', '1ae4']);                           // t- dropped, commas are spaces
@@ -1582,6 +1586,10 @@ test.describe('board modal', () => {
     const count = page.locator('#board-search-count');
     await search.fill(`${ids[0]} t-zzzz`);
     await expect(count).toHaveText(/^1 of \d+ \u00b7 ignored t-zzzz$/);                // the real id is found, the wrong one is named
+    await search.fill(`${ids[0]} t-zzzz t-zzzz`);
+    await expect(count).toHaveText(/^1 of \d+ \u00b7 ignored t-zzzz$/);                // said once, not twice
+    await search.fill(`${ids[0]} ${ids[1]} t-`);                                     // typing the next id: still the list, no flash of an empty result
+    await expect(count).toHaveText(/^2 of \d+$/);
     await search.fill(`${ids[0]} ${ids[1]}`);
     await expect(count).toHaveText(/^2 of \d+$/);                                    // every id real: both, and no note
     await search.fill(`${ids[0]} t-<b>x</b>`);                                       // not an id at all: the ordinary search, no note, and no markup in the count

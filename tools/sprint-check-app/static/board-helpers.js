@@ -72,7 +72,7 @@ function primarySearchText(t) {
 // terms, each two to four characters of [0-9a-z], and each is part of at least one loaded ticket's id: the board then shows every
 // ticket whose id contains ANY term, in addition to whatever the ordinary search finds for the same words (a real word spelled with a-f
 // letters, like `add bad`, is also an id list: the union keeps its old results). A word in no id, a term longer than an id, or a single
-// term is the ordinary search alone. Returns the terms, or null.
+// term is the ordinary search alone. t-b198: see idQuerySplit for the one exception. Returns the terms, or null.
 export function idQueryTerms(raw, tickets) {
   const split = idQuerySplit(raw, tickets);
   return split ? split.terms : null;
@@ -82,7 +82,7 @@ export function idQueryTerms(raw, tickets) {
 // dropped and the rest are the list: `t-43a2 t-1212` shows t-43a2. Only that spelling: a bare short word is part of some id almost
 // always (`to do`), so bare terms keep the strict all-or-nothing rule above. Returns { terms, dropped } or null.
 function idQuerySplit(raw, tickets) {
-  const words = String(raw ?? '').toLowerCase().split(/[\s,]+/).filter(Boolean);
+  const words = String(raw ?? '').toLowerCase().split(/[\s,]+/).filter(w => w && w !== 't-');   // a bare `t-` is an id being typed: not a term
   const terms = words.map(x => x.replace(/^t-/, ''));
   if (terms.length < 2 || !terms.every(x => /^[0-9a-z]{2,4}$/.test(x))) return null;
   const ids = (tickets || []).map(t => String(t.id ?? '').toLowerCase().replace(/^t-/, ''));
@@ -90,7 +90,7 @@ function idQuerySplit(raw, tickets) {
   if (terms.every(known)) return { terms, dropped: [] };
   if (!words.every(w => w.startsWith('t-'))) return null;
   const kept = terms.filter(known);
-  return kept.length ? { terms: kept, dropped: terms.filter(x => !known(x)) } : null;
+  return kept.length ? { terms: kept, dropped: [...new Set(terms.filter(x => !known(x)))] } : null;
 }
 
 let idQueryMemo = { raw: null, list: null, len: -1, split: null };
