@@ -17,15 +17,16 @@
 # Every run records the machine's load at start and end in $OUT/machine-load.txt and prints a WARNING when another spec or test.sh
 # run is going or the load exceeds the CPU count: WebKit fails timing-sensitive tests under load (t-5989).
 # t-8627: a run does not START on such a machine: it waits up to ML_WAIT_MAX seconds (900) for it to calm, then exits 2 (--allow-busy runs anyway).
+# t-43a2: without --runs each browser runs ONCE and is repeated (up to 3) only if the guard rejects its first report; --runs N is exactly N.
 # Needs: rsync, go, node, npx (Playwright browsers installed), git, curl, python3. macOS/Linux; ~13-18 min per browser per run
 # (the spec is one file, so Playwright runs it on one worker; measured 2026-10-15, t-5989).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-RUNS=3; BROWSERS="chromium,webkit"; OUT=""; GREP=""; STRICT=""; GUARD=1; KEEP=0; CLASSIFY=0; SOLO_RUNS=3; BASE=""; ALLOW_BUSY=0
+RUNS=3; RUNS_SET=0; BROWSERS="chromium,webkit"; OUT=""; GREP=""; STRICT=""; GUARD=1; KEEP=0; CLASSIFY=0; SOLO_RUNS=3; BASE=""; ALLOW_BUSY=0
 while [ $# -gt 0 ]; do
   case "$1" in
-    --runs) RUNS="$2"; shift 2 ;;
+    --runs) RUNS="$2"; RUNS_SET=1; shift 2 ;;
     --browsers) BROWSERS="$2"; shift 2 ;;
     --out) OUT="$2"; shift 2 ;;
     --grep) GREP="$2"; shift 2 ;;
@@ -124,18 +125,34 @@ wait_board() {
 }
 start_board "$COPY"; PORT="$STARTED_PORT"; BOARD_PID="$STARTED_PID"
 wait_board "$PORT"
-echo "run-board-spec: board from the copy on port $PORT; $RUNS run(s) of: $BROWSERS; reports go to $OUT"
+if [ "$RUNS_SET" = 1 ]; then RUNS_NOTE="$RUNS run(s)"; else RUNS_NOTE="1 run, repeated up to $RUNS only where the guard rejects it"; fi
+echo "run-board-spec: board from the copy on port $PORT; $RUNS_NOTE of: $BROWSERS; reports go to $OUT"
 
 IFS=',' read -r -a BLIST <<< "$BROWSERS"
+run_pass() {   # run_pass <browser> <n>
+  local b="$1" n="$2" report="$OUT/board-spec-$1-run$2.json"
+  echo "run-board-spec: $b run $n/$RUNS"
+  (cd "$COPY" && PLAYWRIGHT_JSON_OUTPUT_NAME="$report" SPRINT_CHECK_BASE="http://127.0.0.1:$PORT" SPRINT_CHECK_TEST_ROOT="$COPY" \
+    npx playwright test tests/sprint-check-app.spec.js --browser="$b" --reporter=json,line ${GREP:+--grep "$GREP"} >"$OUT/board-spec-$b-run$n.log" 2>&1) || true
+  [ -s "$report" ] || { echo "run-board-spec: no JSON report for $b run $n (see $OUT/board-spec-$b-run$n.log)" >&2; exit 2; }
+}
+# t-43a2: without --runs, one pass per browser, and a browser is repeated (up to $RUNS) only when the guard rejects its first report.
+# --runs N is exactly N runs, as before.
+if [ "$RUNS_SET" = 1 ]; then LAST="$RUNS"; else LAST=1; fi
 for b in "${BLIST[@]}"; do
-  for n in $(seq 1 "$RUNS"); do
-    report="$OUT/board-spec-$b-run$n.json"
-    echo "run-board-spec: $b run $n/$RUNS"
-    (cd "$COPY" && PLAYWRIGHT_JSON_OUTPUT_NAME="$report" SPRINT_CHECK_BASE="http://127.0.0.1:$PORT" SPRINT_CHECK_TEST_ROOT="$COPY" \
-      npx playwright test tests/sprint-check-app.spec.js --browser="$b" --reporter=json,line ${GREP:+--grep "$GREP"} >"$OUT/board-spec-$b-run$n.log" 2>&1) || true
-    [ -s "$report" ] || { echo "run-board-spec: no JSON report for $b run $n (see $OUT/board-spec-$b-run$n.log)" >&2; exit 2; }
-  done
+  for n in $(seq 1 "$LAST"); do run_pass "$b" "$n"; done
 done
+if [ "$RUNS_SET" = 0 ]; then
+  for b in "${BLIST[@]}"; do
+    if [ "$GUARD" != 1 ]; then echo "run-board-spec: $b: run 1 only (the guard is skipped: nothing to judge a repeat by)"; continue; fi
+    if node "$ROOT/tests/board-spec-guard.js" --partial ${STRICT} "$OUT/board-spec-$b-run1.json" >"$OUT/probe-$b.log" 2>&1; then
+      echo "run-board-spec: $b: run 1 clean, no repeat needed"
+    else
+      echo "run-board-spec: $b: run 1 was rejected by the guard (see $OUT/probe-$b.log), repeating (2 to $RUNS of $RUNS)"
+      for n in $(seq 2 "$RUNS"); do run_pass "$b" "$n"; done
+    fi
+  done
+fi
 
 # Stop the boards, then prove nothing of ours is left and canon's own tree did not move. Sets STATUS to 2 on a problem.
 stop_and_check() {
