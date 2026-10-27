@@ -4748,6 +4748,9 @@ func runMerge(key mergeKey, args []string) {
 	cmd := exec.Command(resolveTkt(), args...)
 	cmd.Dir = key.root
 	cmd.Env = append(os.Environ(), "CANON_PROGRESS_SECONDS=5")
+	// t-ada9: its own session, so no controlling terminal: a suite that opens /dev/tty from a background group (git, ssh,
+	// sudo) fails at once instead of stopping the whole run on the terminal the board was started from.
+	detachDaemon(cmd)
 	pipe, err := cmd.StdoutPipe()
 	if err == nil {
 		cmd.Stderr = cmd.Stdout

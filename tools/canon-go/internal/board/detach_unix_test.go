@@ -60,3 +60,39 @@ func TestGitOutInDisablesTerminalPrompt(t *testing.T) {
 		t.Fatalf("GIT_TERMINAL_PROMPT seen by git = %q, want 0", out)
 	}
 }
+
+// t-ada9: the merge job leads its own session, so a suite under it has no controlling terminal to be stopped on.
+func TestMergeRunStartsOwnSession(t *testing.T) {
+	dir := t.TempDir()
+	stub := filepath.Join(dir, "tkt")
+	if err := os.WriteFile(stub, []byte("#!/bin/sh\nsleep 3\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TKT_BIN", stub)
+	key := mergeKey{dir, "t-ab12"}
+	startMergeRun(dir, "t-ab12", nil)
+	defer stopMergeRun(dir, "t-ab12")
+	var pid int
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		mergeRunsMu.Lock()
+		if c := mergeCmds[key]; c != nil && c.Process != nil {
+			pid = c.Process.Pid
+		}
+		mergeRunsMu.Unlock()
+		if pid != 0 {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if pid == 0 {
+		t.Fatal("the merge job never started")
+	}
+	sid, err := getsid(pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sid != pid {
+		t.Fatalf("merge job session id = %d, want its own pid %d (it shares the board's terminal)", sid, pid)
+	}
+}
