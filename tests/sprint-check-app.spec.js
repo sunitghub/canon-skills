@@ -7939,7 +7939,9 @@ test.describe('cockpit in board (t-ddc8)', () => {
         const resp = await route.fetch();
         const json = await resp.json();
         for (const t of json) if (t.id === id) t.branch_divergence = { branch: 'sprint/feat-19d1', status: 'in_progress', where: 'worktree', merged: false };
-        await route.fulfill({ response: resp, json });
+        // t-432d: the board runs on a copy of the real tree, where real tickets are in progress or out on GitHub (shown In progress);
+        // the modal's prev/next ignores the search, so keep the lane to this test's own two tickets.
+        await route.fulfill({ response: resp, json: json.filter(t => t.id === id || t.id === ipId) });
       });
       await page.goto(BASE);
       await page.waitForLoadState('networkidle');
