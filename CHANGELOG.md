@@ -6,6 +6,16 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-10-27
+
+The Cockpit's Agents list keeps the order the agents were opened in, and a short bar in the theme colour marks the agent you are in. Update with `canon update`, then restart the daemon (Admin's **Restart Daemon**): the daemon program changed, and a running one stays on the old order until restarted.
+
+### Added
+- A short vertical bar, in the theme's accent colour, at the left of the Agents row of the session you have open, including a scratch session that has not started yet. Admin, Factory, Projects and the Board alone show none.
+
+### Fixed
+- The Agents list no longer moves around. It follows the order the agents were opened; a project's group keeps its place while the page is open, and a failed refresh does not forget it.
+
 ## [0.21.4] - 2026-10-27
 
 Shift+Enter inserts a newline in a Cockpit agent session. Update with `canon update`, then restart the daemon (Admin's **Restart Daemon**): the daemon program changed, and a running one stays on the old page until it restarts.
