@@ -3,6 +3,8 @@ package board
 import (
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -132,5 +134,77 @@ func TestModelTiersWriteSucceedsWhenEventsCannotBeWritten(t *testing.T) {
 	os.Chmod(filepath.Join(dir, "events"), 0o700)
 	if n := len(settingEvents(t, dir)); n != 0 {
 		t.Fatalf("%d event(s) were logged into a read-only folder", n)
+	}
+}
+
+// t-4c09. Protects the Admin Model tiers routes themselves (the action name each one records and the payload each reads): a request to
+// each write route leaves exactly one setting.changed line named for it, carrying the Review & Eval default before and after.
+func TestModelTiersRoutesRecordTheirAction(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CANON_HOME", dir)
+	seed := filepath.Join(dir, "seed.json")
+	old := modelTiersPath
+	modelTiersPath = seed
+	defer func() { modelTiersPath = old }()
+	raw, _ := json.Marshal(regDoc())
+	if err := os.WriteFile(seed, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	post := func(path, body string) int {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Origin", "http://127.0.0.1:8423")
+		w := httptest.NewRecorder()
+		handlePost(w, req)
+		return w.Code
+	}
+	last := func() map[string]any {
+		got := settingEvents(t, dir)
+		if len(got) == 0 {
+			return nil
+		}
+		return got[len(got)-1]["data"].(map[string]any)
+	}
+	count := func() int { return len(settingEvents(t, dir)) }
+
+	if c := post("/api/admin/model-tiers/retire", `{"old":"claude-sonnet-5","new":"claude-sonnet-5-5"}`); c != http.StatusOK {
+		t.Fatalf("retire = %d", c)
+	}
+	if d := last(); count() != 1 || d["name"] != "model-tiers.retire" || d["old"] != "claude-sonnet-5" || d["new"] != "claude-sonnet-5-5" {
+		t.Fatalf("retire route: %d line(s), last %v", count(), d)
+	}
+	if c := post("/api/admin/model-tiers/remove", `{"id":"claude-haiku-5-5","move_to":"claude-haiku-4-5"}`); c != http.StatusOK {
+		t.Fatalf("remove = %d", c)
+	}
+	if d := last(); count() != 2 || d["name"] != "model-tiers.remove" {
+		t.Fatalf("remove route: %d line(s), last %v", count(), d)
+	}
+	if c := post("/api/admin/model-tiers/apply", `{"add":[],"retire":[{"old":"claude-opus-5-5","new":"claude-opus-5-5"}]}`); c == http.StatusOK {
+		t.Fatalf("an apply that retires a model into itself must be refused, got %d", c)
+	}
+	if count() != 2 {
+		t.Fatalf("a refused apply logged: %d line(s)", count())
+	}
+	if c := post("/api/admin/model-tiers/apply", `{"add":[],"retire":[]}`); c != http.StatusOK {
+		t.Fatalf("an empty apply = %d", c)
+	}
+	if d := last(); count() != 3 || d["name"] != "model-tiers.apply" {
+		t.Fatalf("apply route: %d line(s), last %v", count(), d)
+	}
+	cur, _ := json.Marshal(loadModelTiers())
+	if c := post("/api/admin/model-tiers", string(cur)); c != http.StatusOK {
+		t.Fatalf("save = %d", c)
+	}
+	if d := last(); count() != 4 || d["name"] != "model-tiers.save" {
+		t.Fatalf("save route: %d line(s), last %v", count(), d)
+	}
+	if c := post("/api/admin/model-tiers", `{"reset":true}`); c != http.StatusOK {
+		t.Fatalf("reset = %d", c)
+	}
+	if d := last(); count() != 5 || d["name"] != "model-tiers.reset" {
+		t.Fatalf("reset route: %d line(s), last %v", count(), d)
+	}
+	if c := post("/api/admin/model-tiers", `{"models":"nope"}`); c == http.StatusOK || count() != 5 {
+		t.Fatalf("an invalid save: status %d, %d line(s)", c, count())
 	}
 }
