@@ -103,7 +103,8 @@ func TestSignalStopsMergeJobsBeforeExit(t *testing.T) {
 	dir := t.TempDir()
 	mark := filepath.Join(dir, "stopped")
 	stub := filepath.Join(dir, "tkt")
-	body := "#!/bin/sh\ntrap 'echo stopped > \"" + mark + "\"; exit 130' TERM\nwhile :; do sleep 0.1; done\n"
+	ready := filepath.Join(dir, "ready")
+	body := "#!/bin/sh\ntrap 'echo stopped > \"" + mark + "\"; exit 130' TERM\necho ready > \"" + ready + "\"\nwhile :; do sleep 0.1; done\n"
 	if err := os.WriteFile(stub, []byte(body), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +121,14 @@ func TestSignalStopsMergeJobsBeforeExit(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	time.Sleep(300 * time.Millisecond) // let the stub install its trap
+	for end := time.Now().Add(10 * time.Second); time.Now().Before(end); time.Sleep(20 * time.Millisecond) { // the stub says when its trap is installed: a fixed sleep raced under load
+		if _, err := os.Stat(ready); err == nil {
+			break
+		}
+	}
+	if _, err := os.Stat(ready); err != nil {
+		t.Fatal("the stub never installed its trap")
+	}
 	sigc := make(chan os.Signal, 1)
 	exited := make(chan int, 1)
 	go exitOnSignal(sigc, func(code int) { exited <- code })
