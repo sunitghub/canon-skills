@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-27-2026 22:37
+learnings-sweep last run: 10-28-2026 05:45
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-28 | [t-3137](.tickets/t-3137/learnings.md) | A parser for a file others can write must be strict about what follows the value, and a hash chain has a limit to say aloud: `json.Decoder.Decode` stops after the first value, so a seal line with trailing text passed until a mutation survivor showed it; and removing the newest seals (or the file) is invisible to any keyless chain, so the docs and acceptance wording say "a middle line", not "a deleted line". | UNPROMOTED |
 | 2026-10-28 | [t-07b5](.tickets/t-07b5/learnings.md) | A new way to read results from outside content (a PR head) must be checked as untrusted before it ships: the automated security review found that any fork PR saying "Fixes #n" could plant fake results, and a `set -e` pipeline in the new extraction exited silently with no message until a test of the failure case showed it. | UNPROMOTED |
 | 2026-10-28 | [t-dba0](.tickets/t-dba0/learnings.md) | A writer must never produce a file its own reader refuses, and a test for atomic write must hold a hard link across it: the reviewer found a write that grew a 54 KB file past the 64 KB read cap, and the evaluator found that reverting temp-file-plus-rename to an in-place write left every test green. | UNPROMOTED |
 | 2026-10-27 | [t-4c09](.tickets/t-4c09/learnings.md) | An audit log must not claim what the emitter cannot know: a token-free endpoint or a route that accepts an empty Origin can be driven by a script, so logging it as `actor: user` makes the trail lie; leave the field absent and let the viewer say unknown. And call the real route in the test, not the helper behind it: a sweep showed every route's action name was unproven until the test posted to the routes. | UNPROMOTED |
