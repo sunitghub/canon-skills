@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -52,14 +53,14 @@ func TestExportOrderCapAndLinks(t *testing.T) {
 		os.Symlink(secret, filepath.Join(dir, "2026-10-04.jsonl"))
 	}
 	var out bytes.Buffer
-	if err := Export(&out, home); err != nil || out.String() != "{\"a\":1}\n{\"b\":1}\n{\"c\":1}\n" {
+	if err := exportAll(&out, home); err != nil || out.String() != "{\"a\":1}\n{\"b\":1}\n{\"c\":1}\n" {
 		t.Errorf("export = %q %v", out.String(), err)
 	}
 	old := exportMax
 	exportMax = 20 // 8 + 8 + 9 bytes with the added newline
 	defer func() { exportMax = old }()
 	out.Reset()
-	if err := Export(&out, home); err != ErrExportTooBig || out.Len() != 0 {
+	if err := exportAll(&out, home); err != ErrExportTooBig || out.Len() != 0 {
 		t.Errorf("over the cap: %v, %d bytes written", err, out.Len())
 	}
 	exportMax = old
@@ -67,10 +68,10 @@ func TestExportOrderCapAndLinks(t *testing.T) {
 	dayMaxBytes = 4
 	defer func() { dayMaxBytes = oldDay }()
 	out.Reset()
-	if err := Export(&out, home); err == nil || !strings.Contains(err.Error(), "too large") || out.Len() != 0 {
+	if err := exportAll(&out, home); err == nil || !strings.Contains(err.Error(), "too large") || out.Len() != 0 {
 		t.Errorf("a day over its cap: %v, %d bytes written", err, out.Len())
 	}
-	if err := Export(&out, t.TempDir()); err != nil {
+	if err := exportAll(&out, t.TempDir()); err != nil {
 		t.Errorf("no log: %v", err)
 	}
 }
@@ -131,7 +132,7 @@ func TestExportEdges(t *testing.T) {
 	zw.Close()
 	os.WriteFile(filepath.Join(dir, "2026-10-01.jsonl.gz"), gz.Bytes(), 0o600)
 	var out bytes.Buffer
-	if err := Export(&out, home); err != nil || out.String() != "{\"p\":1}\n" {
+	if err := exportAll(&out, home); err != nil || out.String() != "{\"p\":1}\n" {
 		t.Errorf("twin and empty day: %q %v", out.String(), err)
 	}
 	if in, _ := Stat(home); in.Days != 2 || in.Files != 3 {
@@ -141,17 +142,17 @@ func TestExportEdges(t *testing.T) {
 	defer func() { exportMax, dayMaxBytes = oldMax, oldDay }()
 	exportMax = 8 + 1 + 1 // the plain day (8 bytes) plus one per file counted, the empty day counting 1
 	out.Reset()
-	if err := Export(&out, home); err != nil {
+	if err := exportAll(&out, home); err != nil {
 		t.Errorf("a total exactly at the cap: %v", err)
 	}
 	exportMax--
-	if err := Export(&out, home); err != ErrExportTooBig {
+	if err := exportAll(&out, home); err != ErrExportTooBig {
 		t.Errorf("one byte over the cap: %v", err)
 	}
 	exportMax = oldMax
 	dayMaxBytes = 8
 	out.Reset()
-	if err := Export(&out, home); err != nil {
+	if err := exportAll(&out, home); err != nil {
 		t.Errorf("a day exactly at its cap: %v", err)
 	}
 }
@@ -172,4 +173,12 @@ func TestClearInAFolderThatCannotBeWritten(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "2026-10-01.jsonl")); err != nil {
 		t.Errorf("a file went")
 	}
+}
+
+// exportAll is what the export route does: the size check, then the stream.
+func exportAll(w io.Writer, home string) error {
+	if err := ExportCheck(home); err != nil {
+		return err
+	}
+	return ExportStream(w, home)
 }

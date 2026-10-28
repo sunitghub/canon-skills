@@ -91,16 +91,19 @@ func handleLoggingGet(w http.ResponseWriter, r *http.Request, path string) bool 
 		sendJSONStatus(w, st, code)
 	case loggingPrefix + "/verify":
 		results, ok := events.Verify(events.Home(), time.Now().UTC())
+		counts := map[string]int{"intact": 0, "broken": 0, "missing": 0, "unsealed": 0}
+		for _, d := range results {
+			counts[d.Result]++
+		}
+		summary := verifySummary(ok, results, counts) // before the cut below, so a broken day past the cap still shows
 		if len(results) > 2000 {
 			results = results[:2000]
 		}
-		counts := map[string]int{"intact": 0, "broken": 0, "missing": 0, "unsealed": 0}
 		rows := make([]map[string]string, 0, len(results))
 		for _, d := range results {
-			counts[d.Result]++
 			rows = append(rows, map[string]string{"day": d.Day, "result": d.Result, "why": d.Why})
 		}
-		sendJSON(w, map[string]any{"ok": true, "intact": ok, "counts": counts, "results": rows, "summary": verifySummary(ok, results, counts)})
+		sendJSON(w, map[string]any{"ok": true, "intact": ok, "counts": counts, "results": rows, "summary": summary})
 	case loggingPrefix + "/export":
 		exportLog(w)
 	default:

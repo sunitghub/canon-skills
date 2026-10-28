@@ -542,7 +542,7 @@ func TestVerifyGivesTheReason(t *testing.T) {
 	h, d = copyDir(t, dir)
 	l := sealLines(t, d)
 	os.WriteFile(filepath.Join(d, sealsName), []byte(l[0]+"\n"+l[2]+"\n"+l[1]+"\n"), 0o600)
-	if w := why(h, "2026-10-02"); w != "seal is out of order or repeated" && w != "seal chain does not match the line before it" {
+	if w := why(h, "2026-10-02"); w != "seal is out of order or repeated" && w != "does not follow the seal before it" {
 		t.Errorf("swapped seals: %q", w)
 	}
 	// a repeated seal for a day that already has one, chained correctly, is out of order

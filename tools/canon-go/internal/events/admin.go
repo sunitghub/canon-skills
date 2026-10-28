@@ -168,14 +168,6 @@ func ExportStream(w io.Writer, home string) error {
 	return nil
 }
 
-// Export is ExportCheck, then ExportStream.
-func Export(w io.Writer, home string) error {
-	if err := ExportCheck(home); err != nil {
-		return err
-	}
-	return ExportStream(w, home)
-}
-
 // copyDay copies one day's uncompressed bytes to w, adding a final newline when the file lacks one, and returns the byte count.
 func copyDay(w io.Writer, path string) (int64, error) {
 	r, err := openDay(path)

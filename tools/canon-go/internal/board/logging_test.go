@@ -292,8 +292,11 @@ func TestLoggingVerify(t *testing.T) {
 	for i := 0; i < 2105; i++ {
 		os.WriteFile(filepath.Join(many.dir, time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC).AddDate(0, 0, i).Format("2006-01-02")+".jsonl"), []byte("{}\n"), 0o600)
 	}
-	if _, v, _ := many.get("/api/admin/logging/verify"); len(v["results"].([]any)) != 2000 {
-		t.Errorf("results must be capped at 2000, got %d", len(v["results"].([]any)))
+	os.WriteFile(filepath.Join(many.dir, "2006-06-06.jsonl"), []byte("{}\n"), 0o600) // sorts after the 2000 rows kept
+	events.Seal(many.home, time.Now().UTC())
+	os.Remove(filepath.Join(many.dir, "2006-06-06.jsonl"))
+	if _, v, _ := many.get("/api/admin/logging/verify"); len(v["results"].([]any)) != 2000 || v["intact"] != false || !strings.HasPrefix(v["summary"].(string), "Broken: ") {
+		t.Errorf("results are capped at 2000 and a broken day past the cap still shows in the summary: %d %v", len(v["results"].([]any)), v["summary"])
 	}
 }
 

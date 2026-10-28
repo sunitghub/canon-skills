@@ -326,7 +326,7 @@ func Verify(home string, at time.Time) ([]DayResult, bool) {
 		}
 		prevRaw = r.raw
 		if r.prev != prevHash {
-			fail(r.day, "seal chain does not match the line before it")
+			fail(r.day, "does not follow the seal before it")
 		}
 		prevHash = r.hash
 		if r.anchor {
