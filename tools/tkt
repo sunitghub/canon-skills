@@ -1098,6 +1098,14 @@ _gh_origin_repo() {   # _gh_origin_repo <root> <label>: prints origin's GitHub o
   fi
 }
 
+# _pr_in_repo <repo> <pr> — t-07b5: succeeds only for a PR whose head branch lives in <repo> itself. A fork's PR head is anyone's
+# content (anyone can open a PR that says "Fixes #n"), so it is never read as a ticket's results. 1: a fork; 2: gh could not say.
+_pr_in_repo() {
+  local x
+  x="$(gh pr view "$2" --repo "$1" --json isCrossRepository --jq .isCrossRepository 2>&1)" || { echo "gh could not read PR #$2 on $1: $x" >&2; return 2; }
+  [[ "$x" == false ]]
+}
+
 # _repo_visibility <repo>: PUBLIC or PRIVATE, from gh when it can answer, else from an anonymous request (a public repo
 # answers 200, a private one 404). Prints nothing when neither can tell.
 _repo_visibility() {
@@ -2020,7 +2028,10 @@ cmd_github_status() {
       lerr="$(git -C "$root" fetch -q origin "refs/pull/$pr/head" < /dev/null 2>&1)" \
         || { echo "github-status: could not fetch PR #$pr's head from origin: $lerr" >&2; exit 1; }
     fi
-    git -C "$root" show "$phead:$trel/ticket.md" 2>/dev/null | grep -qx 'status: closed' && trk=true
+    # only a PR from this very repository counts (_pr_in_repo): a fork's head is anyone's content
+    if git -C "$root" show "$phead:$trel/ticket.md" 2>/dev/null | grep -qx 'status: closed'; then
+      _pr_in_repo "$repo" "$pr" 2>/dev/null && trk=true
+    fi
   fi
   if [[ -n "$merged" || "$pst" == MERGED ]]; then stage=merged
   elif [[ "$verdict" == pass ]] && { $match || $late; } && [[ "$(get_field "$file" status)" == closed ]]; then stage=results-in
@@ -2507,6 +2518,10 @@ cmd_import_results() {
     [[ -z "$pr" && -n "$gh0" ]] && { pr="$(_resolve_pr import-results "$lt" "${gh0%#*}" "")" || pr=""; }
     [[ "$pr" =~ ^[0-9]+$ ]] \
       || { echo "import-results: origin has no branch canon-results/$id, and there is no PR to read a tracked $rel/ from (pass --pr N, or did the cloud session run tkt export $id?)" >&2; exit 1; }
+    local prepo="${gh0%#*}"; [[ -n "$prepo" ]] || { [[ -f "$lt" ]] && prepo="$(get_field "$lt" github)"; prepo="${prepo%#*}"; }
+    [[ -n "$prepo" ]] || prepo="$(_gh_origin_repo "$root" import-results)" || exit 1
+    local prc=0; _pr_in_repo "$prepo" "$pr" || prc=$?
+    [[ $prc == 0 ]] || { [[ $prc == 1 ]] && echo "import-results: PR #$pr comes from a fork of $prepo: its head is not read as this ticket's results" >&2; exit 1; }
     git -C "$root" fetch -q origin "refs/pull/$pr/head" 2>/dev/null \
       || { echo "import-results: origin has no branch canon-results/$id, and PR #$pr's head could not be fetched" >&2; exit 1; }
     src="PR #$pr's head"

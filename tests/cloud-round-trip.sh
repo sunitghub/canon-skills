@@ -30,7 +30,7 @@ case "$1 $2" in
   "issue create") while [[ $# -gt 0 ]]; do [[ "$1" == --body-file ]] && cp "$2" "$STUB_BODY"; shift; done
                   echo "https://github.com/acme/app/issues/57" ;;
   "issue view")   cat "$STUB_BODY" ;;
-  "pr view")      echo "${STUB_PR_HEAD:?}" ;;
+  "pr view")      if [[ " $* " == *" isCrossRepository "* ]]; then echo "${STUB_CROSS:-false}"; else echo "${STUB_PR_HEAD:?}"; fi ;;
   "pr diff")      printf '%s\n' ${STUB_PR_FILES:-docs/x.md} ;;
   "pr list")      printf '%b' "${STUB_PRS:-}" ;;
   *) echo "unexpected gh call: $*" >&2; exit 9 ;;
@@ -223,7 +223,7 @@ assert_contains "$out" "no re-grade needed"
 cd "$X" && "$TKT" export "$id" >/dev/null 2>&1 && cd "$L"
 STUB_PR_HEAD=0000000000000000000000000000000000000000
 rc=0; out="$("$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
-[[ "$rc" == 1 ]] || fail "a PR head that differs from graded-head should exit 1"; assert_contains "$out" "does NOT match graded-head"
+[[ "$rc" == 1 ]] || fail "a PR head that differs from graded-head should exit 1"; assert_contains "$out" "does NOT match graded-head"; assert_contains "$out" "kept canon-results/$id on origin, since a check failed: fix it and run import-results again"
 # t-1dec: the refused import is on the trail too, as its own block.
 assert_eq "$((nblocks + 1))" "$(grep -c '^## ' ".tickets/$id/github.md")"
 assert_contains "$(awk '/^## .* — imported$/ { b = "" } { b = b $0 "\n" } END { printf "%s", b }' ".tickets/$id/github.md")" "PR: #58 head 0000000000000000000000000000000000000000: does NOT match graded-head"
@@ -333,10 +333,21 @@ cmp -s "$A/$d/plan.md" ".tickets/$id/.before-import/plan.md" || fail "the local 
 assert_contains "$out" "read from PR #60's head"; assert_contains "$out" "status: closed"; assert_contains "$out" "evaluator: pass"
 [[ "$out" != *"could not delete"* ]] || fail "it tried to delete a results branch that never existed: $out"
 assert_contains "$(cat "$CANON_HOME"/events/*.jsonl | grep -F '"kind":"github.results_imported"' | tail -1)" '"pr":"60"'
+# A PR from a fork is anyone's content: refused, nothing written.
+rm -rf ".tickets/$id/.before-import"; cp ".tickets/$id/plan.md" "$W/plan.keep"; printf 'local edit\n' > ".tickets/$id/plan.md"
+rc=0; out="$(STUB_CROSS=true STUB_PR_HEAD="$TRK" "$TKT" import-results "$id" --pr 60 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "a fork's PR should be refused: $out"; assert_contains "$out" "comes from a fork of acme/app"
+assert_eq "local edit" "$(cat ".tickets/$id/plan.md")"; [[ ! -e ".tickets/$id/.before-import" ]] || fail "a refused import wrote a backup"
+cp "$W/plan.keep" ".tickets/$id/plan.md"
 # --pr names the PR directly (no gh lookup); a head with no ticket in it fails naming both places it looked; no PR at all says so.
 rc=0; out="$(STUB_PR_HEAD="$TRK" "$TKT" import-results "$id" --pr 61 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "a PR head with no ticket should exit 1: $out"
 assert_contains "$out" "PR #61's head has no .tickets/$id/ticket.md"; assert_contains "$out" "origin has no branch canon-results/$id either"
+rc=0; out="$(STUB_PR_HEAD=0000000000000000000000000000000000000000 "$TKT" import-results "$id" --pr 60 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "a PR head that is not the graded head should exit 1"; assert_contains "$out" "does NOT match graded-head"
+assert_contains "$out" "a check failed: run import-results again"; [[ "$out" != *"on origin, since"* ]] || fail "it claimed to keep a branch that never existed: $out"
+rc=0; out="$(STUB_PR_HEAD="$TRK" "$TKT" import-results "$id" --pr 62 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "a PR with no head on origin should exit 1: $out"; assert_contains "$out" "PR #62's head could not be fetched"
 rc=0; out="$("$TKT" import-results "$id" 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "no branch and no PR should exit 1"; assert_contains "$out" "origin has no branch canon-results/$id, and there is no PR"
 cd "$W"

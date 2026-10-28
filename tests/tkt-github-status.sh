@@ -26,6 +26,7 @@ printf '%s\n' "$*" >> "$STUB_LOG"
 [[ "$1 $2" == "api repos/acme/app/compare/"* ]] && { cat "$STUB_W/cmp" 2>/dev/null || echo false; exit 0; }
 [[ "$1 $2" == "pr list" && " $* " == *" --head "* ]] && { cat "$STUB_W/headprs" 2>/dev/null || echo 0; exit 0; }
 [[ "$1 $2" == "pr list" ]] && { cat "$STUB_W/prs"; exit 0; }
+[[ "$1 $2" == "pr view" ]] && { echo "${STUB_CROSS:-false}"; exit 0; }
 echo "unexpected gh call: $*" >&2; exit 9
 SH
 chmod +x "$W/bin/gh"; export PATH="$W/bin:$PATH" STUB_LOG="$W/log" STUB_W="$W"
@@ -100,13 +101,18 @@ git -C "$W/c" add -f ".tickets/$id/ticket.md"; git -C "$W/c" commit -qm "cloud c
 git -C "$W/c" push -q origin "+$TR:refs/pull/24/head"
 printf '24\tOPEN\t%s\n' "$TR" > "$W/prs";       assert_eq "results-ready|24|OPEN|false||false" "$(st)"
 assert_contains "$("$TKT" github-status "$id")" "tkt import-results $id --pr 24"
+STUB_CROSS=true; export STUB_CROSS; assert_eq "pr-open|24|OPEN|false||false" "$(st)"; unset STUB_CROSS   # a fork's PR head is anyone's content, not a result
 printf '24\tCLOSED\t%s\n' "$TR" > "$W/prs";     assert_eq "pr-open|24|CLOSED|false||false" "$(st)"   # only an open PR offers it
 sed -i.bak 's/^status: closed$/status: open/' "$W/c/.tickets/$id/ticket.md" && rm -f "$W/c/.tickets/$id/ticket.md.bak"
 git -C "$W/c" commit -qam "still open"; TO="$(git -C "$W/c" rev-parse HEAD)"; git -C "$W/c" push -q origin "+$TO:refs/pull/24/head"
 printf '24\tOPEN\t%s\n' "$TO" > "$W/prs";       assert_eq "pr-open|24|OPEN|false||false" "$(st)"   # an unclosed ticket in the head is not a result
 git -C "$W/c" rm -q -r --cached ".tickets"; git -C "$W/c" commit -qm "no ticket"; TN="$(git -C "$W/c" rev-parse HEAD)"; git -C "$W/c" push -q origin "+$TN:refs/pull/24/head"
 printf '24\tOPEN\t%s\n' "$TN" > "$W/prs";       assert_eq "pr-open|24|OPEN|false||false" "$(st)"   # no ticket in the head at all
-git -C "$W/c" push -q origin --delete refs/pull/24/head; printf '' > "$W/prs"
+# A head that is not local and cannot be fetched exits 1 here too, never a guessed stage.
+git -C "$W/c" push -q origin --delete refs/pull/24/head
+printf '24\tOPEN\t%s\n' 0123456789abcdef0123456789abcdef01234567 > "$W/prs"; rc=0; out="$("$TKT" github-status "$id" 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "an unfetchable PR head should exit 1 for an open ticket too"; assert_contains "$out" "could not fetch PR #24's head"
+printf '' > "$W/prs"
 # t-24b1: a branch the session pushed without a PR (#41). Only while the stage would be "sent".
 printf '' > "$W/prs"; sed -i.bak 's/^status: closed$/status: open/' "$f" && rm -f "$f.bak" ".tickets/$id/eval-report.md"
 bs() { "$TKT" github-status "$id" --json | node -e 'const j=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write([j.stage,j.branch,JSON.stringify(j.mirrors)].join("|"))'; }
