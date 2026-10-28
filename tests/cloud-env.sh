@@ -34,6 +34,7 @@ assert_eq "True 8 True" "$(json)"
 txt="$("$TKT" cloud-env)"
 assert_contains "$txt" "# Network access: Limited, with these domains added and Allow package managers ticked (a Go project: base plus Go)"
 assert_contains "$txt" "sum.golang.org"
+assert_contains "$txt" "add your own stack's domains yourself"
 assert_eq "$go" "$(sed -n '/^# Setup script$/,$p' <<< "$txt" | tail -n +2)"
 rc=0; "$TKT" cloud-env --yaml >/dev/null 2>&1 || rc=$?; assert_eq 1 "$rc"
 # A tools/ copy without cloud-env.sh: text mode says what is missing and exits 1 (not 127); --json gives empty values.

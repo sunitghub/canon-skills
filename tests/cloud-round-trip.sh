@@ -30,7 +30,12 @@ case "$1 $2" in
   "issue create") while [[ $# -gt 0 ]]; do [[ "$1" == --body-file ]] && cp "$2" "$STUB_BODY"; shift; done
                   echo "https://github.com/acme/app/issues/57" ;;
   "issue view")   cat "$STUB_BODY" ;;
-  "pr view")      if [[ " $* " == *" isCrossRepository "* ]]; then echo "${STUB_CROSS:-false}"; else echo "${STUB_PR_HEAD:?}"; fi ;;
+  "pr view")      if [[ " $* " == *" isCrossRepository "* ]]; then
+                    # the exact question _pr_in_repo asks: a PR number, the ticket's repository, nothing else
+                    [[ "$*" =~ ^pr\ view\ [0-9]+\ --repo\ acme/app\ --json\ isCrossRepository\ --jq\ \.isCrossRepository$ ]] || { echo "bad PR question: $*" >&2; exit 9; }
+                    [[ "${STUB_CROSS:-}" == fail ]] && { echo "HTTP 502: pr view" >&2; exit 1; }
+                    echo "${STUB_CROSS:-false}"
+                  else echo "${STUB_PR_HEAD:?}"; fi ;;
   "pr diff")      printf '%s\n' ${STUB_PR_FILES:-docs/x.md} ;;
   "pr list")      printf '%b' "${STUB_PRS:-}" ;;
   *) echo "unexpected gh call: $*" >&2; exit 9 ;;
@@ -339,6 +344,13 @@ rc=0; out="$(STUB_CROSS=true STUB_PR_HEAD="$TRK" "$TKT" import-results "$id" --p
 [[ "$rc" == 1 ]] || fail "a fork's PR should be refused: $out"; assert_contains "$out" "comes from a fork of acme/app"
 assert_eq "local edit" "$(cat ".tickets/$id/plan.md")"; [[ ! -e ".tickets/$id/.before-import" ]] || fail "a refused import wrote a backup"
 cp "$W/plan.keep" ".tickets/$id/plan.md"
+# gh cannot say whether the PR is from a fork: refused with gh's reason, not a guess and not "from a fork".
+rc=0; out="$(STUB_CROSS=fail STUB_PR_HEAD="$TRK" "$TKT" import-results "$id" --pr 60 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "an unreadable PR should be refused: $out"; assert_contains "$out" "gh could not read PR #60 on acme/app: HTTP 502"; [[ "$out" != *"from a fork"* ]] || fail "a gh failure was reported as a fork: $out"
+# No ticket here and no github: line: the repository comes from origin, which must be a GitHub repo.
+L4="$W/laptop4"; git clone -q "$W/origin.git" "$L4" 2>/dev/null
+rc=0; out="$(cd "$L4" && STUB_PR_HEAD="$TRK" "$TKT" import-results "$id" --pr 60 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "no github: line and a non-GitHub origin should be refused: $out"; assert_contains "$out" "origin is not a GitHub repo"
 # --pr names the PR directly (no gh lookup); a head with no ticket in it fails naming both places it looked; no PR at all says so.
 rc=0; out="$(STUB_PR_HEAD="$TRK" "$TKT" import-results "$id" --pr 61 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "a PR head with no ticket should exit 1: $out"
