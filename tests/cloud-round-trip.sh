@@ -377,6 +377,7 @@ rc=0; out="$(cd "$L4" && STUB_PR_HEAD="$TRK" "$TKT" import-results "$id" --pr 60
 rc=0; out="$(STUB_PR_HEAD="$TRK" "$TKT" import-results "$id" --pr 61 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "a PR head with no ticket should exit 1: $out"
 assert_contains "$out" "PR #61's head has no .tickets/$id/ticket.md"; assert_contains "$out" "origin has no branch canon-results/$id either"
+assert_contains "$out" $'\n  next: tkt land '"$id"' --pr 61   (close it here, in a worktree at the PR head)'   # t-d0a5
 rc=0; out="$(STUB_PR_HEAD=0000000000000000000000000000000000000000 "$TKT" import-results "$id" --pr 60 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "a PR head that is not the graded head should exit 1"; assert_contains "$out" "does NOT match graded-head"
 assert_contains "$out" "a check failed: run import-results again"; [[ "$out" != *"on origin, since"* ]] || fail "it claimed to keep a branch that never existed: $out"

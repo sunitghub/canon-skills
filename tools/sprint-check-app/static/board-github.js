@@ -70,6 +70,8 @@ export function ghButtonHTML(t) {
   // t-c259: imported, not closed, PR open: the close finishes here, in a worktree at the PR head.
   // t-6623: once that worktree exists the card offers Finish (tkt land --finish), which removes it after the close.
   if (st.landed) return btn('finish', 'Finish', `Remove the worktree at ${st.landed} once sprint complete has closed the ticket there (tkt land --finish)`);
+  // t-d0a5: PR open but nothing came back (the cloud session stopped before its close): close it here, the same tkt land.
+  if (st.land && st.close_here) return btn('close-here', 'Close here', 'The cloud session stopped before its close: make a worktree at the PR head and close the ticket there (tkt land)');
   if (st.land) return btn('land', 'Continue here', 'Make a worktree at the PR head and continue the ticket there (tkt land)');
   if (st.stage === 'results-ready') return btn('import', 'Import results', 'Bring the cloud session\'s results back into this ticket');
   if (st.stage === 'results-in' || st.stage === 'merging') return btn('merge', 'Check & merge', 'Check the PR and merge it after your confirmation');
@@ -103,6 +105,7 @@ async function ghAction(t, action) {
   if (action === 'merge') return checkAndMerge(t, pr);
   if (action === 'open-pr' && p) return openPr(t, p, st);
   if (action === 'land') return continueHere(t, pr);
+  if (action === 'close-here') return closeHere(t, pr);
   if (action === 'finish') return finishHere(t);
 }
 
@@ -116,6 +119,18 @@ async function continueHere(t, pr, fix = false) {
   });
   if (!(await ask).ok) return;
   return landRun(t, { ...(pr ? { pr } : {}), ...(fix ? { fix: true } : {}) }, 'Preparing', 'Worktree ready');
+}
+
+// t-d0a5: the card cannot tell a stopped cloud session from one still working, so the confirm says when to use it.
+async function closeHere(t, pr) {
+  const head = pr ? `PR #${pr}'s` : 'the PR\'s';
+  const ask = openDialog({
+    title: `Close ${t.id} here?`,
+    body: `Use this only once the cloud session has stopped: nothing came back from it (no results to import). Creates a worktree on land/${t.id} at ${head} head and starts the ticket there; run the close in that worktree, then Finish on the card removes it. Nothing is pushed or merged.`,
+    ok: 'Create worktree', cancel: 'Cancel',
+  });
+  if (!(await ask).ok) return;
+  return landRun(t, pr ? { pr } : {}, 'Preparing', 'Worktree ready');
 }
 
 async function finishHere(t) {

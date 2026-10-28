@@ -556,6 +556,9 @@ func TestAuthCommand(t *testing.T) {
 // OSAuth runs the tool it finds on PATH with the account name: none means no provider (ErrNoAuth), a failing one is a
 // denial, a passing one a grant.
 func TestOSAuthRunsThePasswordTool(t *testing.T) {
+	if os.Geteuid() == 0 { // t-d0a5: as root OSAuth runs no tool at all (su asks root for no password), so its stubs are never called
+		t.Skip("running as root: OSAuth uses no password tool for root")
+	}
 	tool := map[string]string{"darwin": "dscl", "linux": "su"}[runtime.GOOS]
 	if tool == "" {
 		t.Skip("macOS and Linux only")

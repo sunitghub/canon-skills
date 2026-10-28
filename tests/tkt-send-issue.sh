@@ -99,6 +99,8 @@ grep -qxF "5. Run \`sprint complete\`: a fresh reviewer and a fresh evaluator ar
   || fail "the issue lacks the gates line (t-67c5)"
 grep -qxF "6. Run \`tkt export $id\` and push nothing else for it: export prints where the ticket went." "$STUB_BODY" \
   || fail "the issue lacks the export line (t-67c5)"
+grep -qxF "   If \`sprint complete\` could not pass, still run \`tkt export $id\`, and say in the PR which step failed and why." "$STUB_BODY" \
+  || fail "the issue lacks the export-anyway line (t-d0a5)"
 # t-093a: the list ends by telling the session to stop, so it does not offer to watch the PR.
 grep -qxF "7. Then stop. Do not merge the PR, watch it, or act on CI results or review comments: the merge happens on the user's machine" "$STUB_BODY" \
   || fail "the issue lacks the stop step (t-093a)"

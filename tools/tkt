@@ -1315,6 +1315,7 @@ cmd_send_issue() {
     printf '4. Build it and run the tests; tick each acceptance item only when it is true.\n'
     printf '5. Run `sprint complete`: a fresh reviewer and a fresh evaluator are dispatched, and neither is skipped or written by hand.\n'
     printf '6. Run `tkt export %s` and push nothing else for it: export prints where the ticket went.\n' "$id"
+    printf '   If `sprint complete` could not pass, still run `tkt export %s`, and say in the PR which step failed and why.\n' "$id"
     printf '7. Then stop. Do not merge the PR, watch it, or act on CI results or review comments: the merge happens on the user'"'"'s machine\n'
     printf '   (`tkt import-results %s --pr <N>`, then `tkt merge-pr %s`, N being the PR number). Reply with both commands, N filled in,\n' "$id" "$id"
     printf '   and say you are done.\n'
@@ -2126,6 +2127,9 @@ cmd_github_status() {
   # t-c259: imported (a local eval-report.md), not closed, PR open: the card offers "Continue here" (tkt land).
   local land=false
   [[ "$pst" == OPEN && "$stage" != results-in && "$(get_field "$file" status)" == open && -f "$tdir/eval-report.md" ]] && land=true
+  # t-d0a5: PR open, nothing came back (no results branch, no import), a plan here: the card offers Close here (also tkt land).
+  local close_here=false
+  [[ "$pst" == OPEN && "$stage" == pr-open && "$(get_field "$file" status)" == open && ! -f "$tdir/eval-report.md" && -f "$tdir/plan.md" ]] && { land=true; close_here=true; }
   # t-6623: the card's Finish: the ticket is bound to the worktree `tkt land` made.
   local landed="" lwt; lwt="$(_land_wt "$root" "$id")"
   [[ -f "$tdir/.land-head" && -d "$lwt" ]] && landed="$lwt"
@@ -2133,12 +2137,12 @@ cmd_github_status() {
   mirrors="$(git -C "$root" config --get-all canon.mirror 2>/dev/null || true)"
   while IFS= read -r m; do [[ -n "$m" ]] && { mj+="$sep$(json_str "$m")"; sep=,; }; done <<< "$mirrors"
   if $json; then
-    printf '{"id":%s,"issue":%s,"stage":%s,"pr":%s,"pr_state":%s,"pr_head":%s,"results_branch":%s,"branch":%s,"mirrors":[%s],"verdict":%s,"graded_head":%s,"graded_matches_pr":%s,"merged":%s,"land":%s,"landed":%s}\n' \
+    printf '{"id":%s,"issue":%s,"stage":%s,"pr":%s,"pr_state":%s,"pr_head":%s,"results_branch":%s,"branch":%s,"mirrors":[%s],"verdict":%s,"graded_head":%s,"graded_matches_pr":%s,"merged":%s,"land":%s,"close_here":%s,"landed":%s}\n' \
       "$(json_str "$id")" "$(json_str "$gh")" "$(json_str "$stage")" "$(json_num "$pr" null)" \
       "$([[ -n "$pst" ]] && json_str "$pst" || echo null)" "$([[ -n "$phead" ]] && json_str "$phead" || echo null)" "$branch" \
       "$([[ -n "$sb" ]] && json_str "$sb" || echo null)" "$mj" \
       "$([[ "$verdict" != - ]] && json_str "$verdict" || echo null)" "$([[ "$graded" != - ]] && json_str "$graded" || echo null)" "$match" \
-      "$([[ -n "$merged" ]] && json_str "$merged" || echo null)" "$land" \
+      "$([[ -n "$merged" ]] && json_str "$merged" || echo null)" "$land" "$close_here" \
       "$([[ -n "$landed" ]] && json_str "$landed" || echo null)"
   else
     echo "$id · $gh · $stage"
@@ -2704,7 +2708,10 @@ cmd_import_results() {
   local arc=0; git -C "$root" archive "$head" "$rel" 2>/dev/null | tar -x -C "$tmp" 2>/dev/null || arc=$?
   [[ -f "$tmp/$rel/ticket.md" ]] || arc=1
   [[ $arc == 0 ]] \
-    || { echo "import-results: $src has no $rel/ticket.md$([[ "$src" == canon-results/* ]] || echo "; origin has no branch canon-results/$id either: did the cloud session commit .tickets/ or run tkt export $id?")" >&2; exit 1; }
+    || { echo "import-results: $src has no $rel/ticket.md$([[ "$src" == canon-results/* ]] || echo "; origin has no branch canon-results/$id either: did the cloud session commit .tickets/ or run tkt export $id?")" >&2
+       # t-d0a5: a cloud run that stopped before its close brought nothing back; it closes here instead
+       [[ "$src" == canon-results/* || -z "$pr" ]] || echo "  next: tkt land $id --pr $pr   (close it here, in a worktree at the PR head)" >&2
+       exit 1; }
   local gh_line="" runs_line=""
   [[ -f "$tdir/ticket.md" ]] && { gh_line="$(get_field "$tdir/ticket.md" github)"; runs_line="$(get_field "$tdir/ticket.md" runs)"; }
   local f n=0 kept=0

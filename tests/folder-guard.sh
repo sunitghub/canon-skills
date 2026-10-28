@@ -18,6 +18,10 @@ why() { ( HOME="$2"; folder_guard_reason "$1" ); }   # <dir> <home>
 
 # The corpus (one line per case): <dir> <home> -> reason or empty. Same kinds as the Go test.
 check() { assert_eq "$3" "$(why "$1" "$2")"; }
+# t-d0a5: the guard resolves a folder with cd, so a path this machine lacks can never be refused (/private/etc on Linux):
+# such a system folder is checked only where it exists, and the ones left out are named at the end.
+absent=()
+check_dir() { if [[ -d "$1" ]]; then check "$@"; else absent+=("$1"); fi; }
 check /                              "$HOME_DIR" "the root of a drive"
 check 'C:\'                          "$HOME_DIR" "the root of a drive"
 check 'c:'                           "$HOME_DIR" "the root of a drive"
@@ -28,18 +32,18 @@ check 'C:\Windows\System32\drivers'  "$HOME_DIR" "a system folder"
 check 'C:\Program Files'             "$HOME_DIR" "a system folder"
 check 'C:\Program Files (x86)'       "$HOME_DIR" "a system folder"
 check 'D:\ProgramData'               "$HOME_DIR" "a system folder"
-check /usr                           "$HOME_DIR" "a system folder"
-check /etc                           "$HOME_DIR" "a system folder"
-check /var                           "$HOME_DIR" "a system folder"
+check_dir /usr                          "$HOME_DIR" "a system folder"
+check_dir /etc                          "$HOME_DIR" "a system folder"
+check_dir /var                          "$HOME_DIR" "a system folder"
 for d in /System /Applications /Library; do   # macOS folders: only where they exist (the bash check reads the real folder)
   [[ -d "$d" ]] && check "$d" "$HOME_DIR" "a system folder"
 done
-check /private/etc                   "$HOME_DIR" "a system folder"       # macOS's physical /etc, reached without the /etc alias
-check /private/var                   "$HOME_DIR" "a system folder"
+check_dir /private/etc                  "$HOME_DIR" "a system folder"       # macOS's physical /etc, reached without the /etc alias
+check_dir /private/var                  "$HOME_DIR" "a system folder"
 check /private/var/folders/x/T       "$HOME_DIR" ""
-check /bin                           "$HOME_DIR" "a system folder"
-check /sbin                          "$HOME_DIR" "a system folder"
-check /opt                           "$HOME_DIR" "a system folder"
+check_dir /bin                          "$HOME_DIR" "a system folder"
+check_dir /sbin                         "$HOME_DIR" "a system folder"
+check_dir /opt                          "$HOME_DIR" "a system folder"
 check 'C:\Program Files\Foo'         "$HOME_DIR" ""
 check 'C:\Windowsfoo'                 "$HOME_DIR" ""
 check 'C:\Users\sam\proj'            "$HOME_DIR" ""
@@ -159,4 +163,5 @@ grep -q 'Next: open a terminal in your project folder (for example %s/projects/d
 [[ "$(grep -v '^[[:space:]]*#' "$ROOT/install.ps1" | grep -c 'Next: open a terminal in your project folder (for example \$HOME\\projects\\demo')" == 2 ]] || fail "folder-guard: install.ps1 must print the next step in both its bootstrap and its file ending"
 awk '/^[[:space:]]*#/{next} /^if [(][$]Bootstrap[)] [{]/{b=1; f=0} b&&/Next: open a terminal/{f=1} b&&/canon installed successfully/{ok=f} b&&/^  return/{b=0} END{exit !ok}' "$ROOT/install.ps1" || fail "folder-guard: the bootstrap ending of install.ps1 does not print the next step before it returns"
 
+[[ ${#absent[@]} -eq 0 ]] || echo "folder-guard: not on this machine, so not checked: ${absent[*]}"
 echo "folder-guard: ok"

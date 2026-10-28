@@ -51,7 +51,14 @@ printf 'evaluator-run-id: 1-1\ngraded-head: ffffffffffffffffffffffffffffffffffff
 land() { "$TKT" github-status "$id" --json | node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(0,"utf8")).land))'; }
 assert_eq false "$(land)"
 sed -i.bak 's/^status: closed$/status: open/' "$f" && rm -f "$f.bak";  assert_eq true "$(land)"
-mv ".tickets/$id/eval-report.md" "$W/er";                              assert_eq false "$(land)"
+mv ".tickets/$id/eval-report.md" "$W/er";                              rm -f ".tickets/$id/plan.md"; assert_eq false "$(land)"
+# t-d0a5: PR open, nothing came back (no results branch, no import), a plan here: land with close_here (the card's Close here).
+lc() { "$TKT" github-status "$id" --json | node -e 'const j=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write(j.land+"|"+j.close_here)'; }
+echo plan > ".tickets/$id/plan.md";                                     assert_eq "true|true" "$(lc)"
+git push -q origin "HEAD:refs/heads/canon-results/$id";                 assert_eq "false|false" "$(lc)"   # results to import: Import results, not Close here
+git push -q origin --delete "canon-results/$id"
+sed -i.bak 's/^status: open$/status: closed/' "$f" && rm -f "$f.bak";  assert_eq "false|false" "$(lc)"
+sed -i.bak 's/^status: closed$/status: open/' "$f" && rm -f "$f.bak";  rm ".tickets/$id/plan.md"
 printf '24\tMERGED\t%s\n' "$HEAD7" > "$W/prs"; mv "$W/er" ".tickets/$id/eval-report.md"; assert_eq false "$(land)"
 printf '24\tOPEN\t%s\n' "$HEAD7" > "$W/prs"
 sed -i.bak 's/^status: open$/status: closed/' "$f" && rm -f "$f.bak"

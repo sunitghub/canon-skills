@@ -40,7 +40,17 @@ func passwordTools(t *testing.T) string {
 // Protects the real thing on a real pty: the prompt, the OS password prompt, a login shell that owns the terminal, no daemon
 // secrets inside it, the warning, the end of the shell and its jobs, the restricted prompt coming back, and exactly the
 // three audit events with the word in none of them.
+// skipAsRoot (t-d0a5): these tests type a password at su's OS prompt. Run as root, OSAuth finds none (su asks root for no
+// password, auth.go), which is right, so su is "not available here" and there is nothing to test: a Claude cloud session runs as root.
+func skipAsRoot(t *testing.T) {
+	t.Helper()
+	if os.Geteuid() == 0 {
+		t.Skip("running as root: su needs no OS password here, so there is no password prompt to test")
+	}
+}
+
 func TestRealPtySession(t *testing.T) {
+	skipAsRoot(t)
 	root, _ := project(t)
 	home := t.TempDir()
 	p, err := gopty.New()
@@ -157,6 +167,7 @@ func procState(pid int) string {
 // Protects the three tries on the real thing: three failed passwords end the process itself, with exit status 1, and the
 // shell is never started.
 func TestRealPtyThreeWrongAnswersClose(t *testing.T) {
+	skipAsRoot(t)
 	root, _ := project(t)
 	home := t.TempDir()
 	p, err := gopty.New()
@@ -215,6 +226,7 @@ func TestRealPtyThreeWrongAnswersClose(t *testing.T) {
 // Protects the restricted prompt after a su shell that left the terminal in raw, no-echo mode and was then ended by the
 // time limit: the prompt must get its modes back, or the next line would not be read as a line.
 func TestRealPtyModesRestoredAfterShellKilled(t *testing.T) {
+	skipAsRoot(t)
 	root, _ := project(t)
 	home := t.TempDir()
 	p, err := gopty.New()

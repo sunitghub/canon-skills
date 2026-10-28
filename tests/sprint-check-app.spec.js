@@ -17138,6 +17138,28 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     expect(bodies).toEqual([{ pr: 58 }]);
   });
 
+  // Prod path: the card's Close here (t-d0a5), for a cloud run that stopped before its close: PR open, nothing came back.
+  test('Close here: shown when the PR is open and nothing came back; its confirm says when to use it; confirming posts the PR to land (t-d0a5)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh3c');
+    ghTicket(id, { github: 'acme/app#57' });
+    await routeStatus(page, id, { stage: 'pr-open', pr: 58, land: true, close_here: true });
+    const bodies = [];
+    await page.route(`**/api/ticket/${id}/github/land`, r => { bodies.push(JSON.parse(r.request().postData() || '{}')); return json(r, { ok: true, exit_code: 0, output: `land: ${id} at PR #58 head 9c41e2a2\n  worktree: /w/land-${id}` }); });
+    await openBoard(page, id);
+    const btn = page.locator(`.card[data-id="${id}"] .card-gh-btn`);
+    await expect(btn).toHaveText('Close here');
+    await expect(btn).toHaveAttribute('title', /stopped before its close/);
+    await btn.click();
+    await expect(page.locator('#gh-dialog-title')).toHaveText(`Close ${id} here?`);
+    await expect(page.locator('#gh-dialog-body')).toContainText('Use this only once the cloud session has stopped');
+    await page.locator('#gh-dialog-cancel').click();
+    expect(bodies).toEqual([]);   // cancel posts nothing
+    await btn.click();
+    await page.locator('#gh-dialog-ok').click();
+    await expect(page.locator('#gh-dialog-title')).toHaveText('Worktree ready');
+    expect(bodies).toEqual([{ pr: 58 }]);
+  });
+
   test('Finish: shown once the land worktree exists, names its path, and posts finish (t-6623)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gh32');
     ghTicket(id, { github: 'acme/app#57' });
