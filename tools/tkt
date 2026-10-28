@@ -2029,7 +2029,7 @@ cmd_github_status() {
         || { echo "github-status: could not fetch PR #$pr's head from origin: $lerr" >&2; exit 1; }
     fi
     # only a PR from this very repository counts (_pr_in_repo): a fork's head is anyone's content
-    local trst; trst="$(git -C "$root" show "$phead:$trel/ticket.md" 2>/dev/null | sed -n 's/^status: //p')"
+    local trst; trst="$(git -C "$root" show "$phead:$trel/ticket.md" 2>/dev/null | sed -n 's/^status: //p' || true)"
     if [[ "${trst%%$'\n'*}" == closed ]]; then
       _pr_in_repo "$repo" "$pr" 2>/dev/null && trk=true
     fi
