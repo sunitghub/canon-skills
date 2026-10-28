@@ -37,9 +37,6 @@ func passwordTools(t *testing.T) string {
 	return dir + ":" + os.Getenv("PATH")
 }
 
-// Protects the real thing on a real pty: the prompt, the OS password prompt, a login shell that owns the terminal, no daemon
-// secrets inside it, the warning, the end of the shell and its jobs, the restricted prompt coming back, and exactly the
-// three audit events with the word in none of them.
 // skipAsRoot (t-d0a5): these tests type a password at su's OS prompt. Run as root, OSAuth finds none (su asks root for no
 // password, auth.go), which is right, so su is "not available here" and there is nothing to test: a Claude cloud session runs as root.
 func skipAsRoot(t *testing.T) {
@@ -49,6 +46,9 @@ func skipAsRoot(t *testing.T) {
 	}
 }
 
+// Protects the real thing on a real pty: the prompt, the OS password prompt, a login shell that owns the terminal, no daemon
+// secrets inside it, the warning, the end of the shell and its jobs, the restricted prompt coming back, and exactly the
+// three audit events with the word in none of them.
 func TestRealPtySession(t *testing.T) {
 	skipAsRoot(t)
 	root, _ := project(t)
