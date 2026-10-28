@@ -16403,6 +16403,16 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     };
     await mergeOnce();   // no mirrors: no offer
     await expect(page.locator('#gh-dialog-ok')).toBeHidden();
+    // t-41ff: the body says what happened to local main, with the files that stopped it and the next step.
+    await expect(page.locator('#gh-dialog-body')).toContainText('Local main: 1111aaaa -> 2222bbbb (fast-forward)');
+    await page.locator('#gh-dialog-cancel').click();
+    Object.assign(job, { status: 'idle', output: '', exit_code: null });
+    await expect(page.locator('#gh-dialog')).not.toHaveClass(/open/);
+    await button.click();
+    await page.locator('#gh-dialog-ok').click();
+    Object.assign(job, { status: 'done', exit_code: 0, output: 'Merged PR #58 into main (abc).\nLocal main: 1 file(s) here differ from the merged copy; left at 1111aaaa:\n  new.txt\n  Commit or move them, then run: git pull  (in the Cockpit Terminal, type su first)\nlater line\n' });
+    await expect(page.locator('#gh-dialog-title')).toHaveText('Merged');
+    await expect(page.locator('#gh-dialog-body')).toHaveText('The PR is merged and the issue closed by its Fixes line. Local main: 1 file(s) here differ from the merged copy; left at 1111aaaa: new.txt Commit or move them, then run: git pull  (in the Cockpit Terminal, type su first)');
     await page.locator('#gh-dialog-cancel').click();
     stat.status = { stage: 'results-in', pr: 58, mirrors: ['public'] };
     await page.evaluate(async () => (await import('/static/board-github.js')).pollGithub(true));

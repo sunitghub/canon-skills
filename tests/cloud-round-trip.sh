@@ -144,17 +144,19 @@ printf 'HEAD 0 T\n$ true\n# on %s; bash 3.2.57\nexit 0\n' "$(uname -srm)" > ".ti
 printf 'HEAD 0 T\n$ true\n# on Evil\x1b[2J\x07 1.0 \xc2\x9b%s; bash 5\r\nexit 0\n' "$(head -c 3000 /dev/zero | tr '\0' x)" > ".tickets/$id/evidence/hostile.log"
 mkdir -p ".tickets/$id/evidence/old" && printf 'HEAD 0 T\n$ true\n# on Hidden 1 x; bash 5\nexit 0\n' > ".tickets/$id/evidence/old/hidden.log"
 printf '/tmp/x\n' > ".tickets/$id/.cockpit-cwd"
+mkdir -p ".tickets/$id/.before-import" && printf 'old plan\n' > ".tickets/$id/.before-import/plan.md"   # t-41ff: a backup is never exported
 st_before="$(git status --porcelain)"; idx_before="$(git ls-files -s | cksum)"
 # A public repo: refused, nothing pushed.
 rc=0; out="$(STUB_VIS=PUBLIC "$TKT" export "$id" 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "export to a public repo should be refused"; assert_contains "$out" "acme/app is PUBLIC"
 [[ -z "$(git --git-dir="$W/origin.git" branch --list "canon-results/*")" ]] || fail "a refused export pushed a branch"
 out="$("$TKT" export "$id" 2>/dev/null)"
-assert_contains "$out" "pushed .tickets/$id/ to canon-results/$id"
+assert_contains "$out" "pushed .tickets/$id/ to canon-results/$id. On your machine: tkt import-results $id --pr <N>, then tkt merge-pr $id"
 files="$(git --git-dir="$W/origin.git" ls-tree -r --name-only "canon-results/$id" | tr '\n' ' ')"
 assert_eq ".tickets/$id/acceptance.md .tickets/$id/eval-report.md .tickets/$id/evidence/a1.log .tickets/$id/evidence/a2.log .tickets/$id/evidence/empty.log .tickets/$id/evidence/here.log .tickets/$id/evidence/hostile.log .tickets/$id/evidence/longcmd.log .tickets/$id/evidence/old/hidden.log .tickets/$id/evidence/oldfmt.log .tickets/$id/evidence/report.json .tickets/$id/plan.md .tickets/$id/ticket.md " "$files"
 assert_eq "$st_before" "$(git status --porcelain)"
 assert_eq "$idx_before" "$(git ls-files -s | cksum)"
+rm -rf ".tickets/$id/.before-import"
 
 # A ticket.md whose id points outside its folder (a cloned repo controls it): refused, nothing pushed.
 mkdir -p .tickets/t-evil1 && printf -- '---\nid: ../../.git\nstatus: closed\n---\n# x\n' > .tickets/t-evil1/ticket.md
@@ -168,7 +170,7 @@ rm -rf .tickets/t-evil1
 T="$W/tracked"; git clone -q "$W/origin.git" "$T" 2>/dev/null; cd "$T"
 git remote set-url origin https://github.com/acme/app.git
 rm -f .gitignore; mkdir -p ".tickets/$id" && cp "$e/ticket.md" ".tickets/$id/"
-assert_contains "$("$TKT" export "$id")" "commit it on the PR branch"
+assert_contains "$("$TKT" export "$id")" "commit it on the PR branch. On your machine: tkt import-results $id --pr <N>, then tkt merge-pr $id"
 assert_eq "1" "$(git --git-dir="$W/origin.git" branch --list "canon-results/*" | grep -c .)"
 
 # Back on the laptop: files byte-for-byte, a local edit kept aside, github: kept, branch deleted, PR head checked.
@@ -207,7 +209,9 @@ assert_contains "$ri" '"pr":"58"'; assert_contains "$ri" '"source":"tkt"'; [[ "$
 # t-1dec: the import appended its block after the send block, which stayed byte-identical; the trail holds what the output showed.
 gt=".tickets/$id/github.md"; sent_block="$(cat "$A/$d/github.md")"
 assert_eq "$sent_block" "$(head -n "$(wc -l < "$A/$d/github.md")" "$gt")"
-# (the re-grade loop above imported on mismatched heads six times; each of those is a refused block on the trail)
+# (the re-grade loop above imported on mismatched heads six times; each of those is an "import refused" block on the trail, t-41ff)
+assert_eq 1 "$(grep -c '^## .* — imported$' "$gt")"
+[[ "$(grep -c '^## .* — import refused$' "$gt")" -ge 6 ]] || fail "the mismatched imports were not logged as import refused: $(grep '^## ' "$gt")"
 imp="$(awk '/^## .* — imported$/ { b = "" } { b = b $0 "\n" } END { printf "%s", b }' "$gt")"; nblocks="$(grep -c '^## ' "$gt")"
 assert_contains "$imp" "files: 13"; assert_contains "$imp" "ticket status: closed"; assert_contains "$imp" "evaluator: pass"
 assert_contains "$imp" "graded head: $STUB_PR_HEAD"; assert_contains "$imp" "PR: #58 head $STUB_PR_HEAD: matches graded-head"
@@ -231,7 +235,8 @@ rc=0; out="$("$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "a PR head that differs from graded-head should exit 1"; assert_contains "$out" "does NOT match graded-head"; assert_contains "$out" "kept canon-results/$id on origin, since a check failed: fix it and run import-results again"
 # t-1dec: the refused import is on the trail too, as its own block.
 assert_eq "$((nblocks + 1))" "$(grep -c '^## ' ".tickets/$id/github.md")"
-assert_contains "$(awk '/^## .* — imported$/ { b = "" } { b = b $0 "\n" } END { printf "%s", b }' ".tickets/$id/github.md")" "PR: #58 head 0000000000000000000000000000000000000000: does NOT match graded-head"
+assert_eq "import refused" "$(grep '^## ' ".tickets/$id/github.md" | tail -1 | sed 's/^## [^ ]* — //')"
+assert_contains "$(awk '/^## .* — import refused$/ { b = "" } { b = b $0 "\n" } END { printf "%s", b }' ".tickets/$id/github.md")" "PR: #58 head 0000000000000000000000000000000000000000: does NOT match graded-head"
 [[ -n "$(git --git-dir="$W/origin.git" branch --list "canon-results/$id")" ]] || fail "a failed --pr check deleted canon-results/$id"
 # t-278d: triggers by what the PR touches. The branch is kept after a failed check, so import-results can run again on it.
 rc=0; out="$(STUB_PR_FILES="tools/sprint-check-app/server.js docs/x.md" "$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?

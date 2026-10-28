@@ -102,8 +102,10 @@ grep -qxF "6. Run \`tkt export $id\` and push nothing else for it: export prints
 # t-093a: the list ends by telling the session to stop, so it does not offer to watch the PR.
 grep -qxF "7. Then stop. Do not merge the PR, watch it, or act on CI results or review comments: the merge happens on the user's machine" "$STUB_BODY" \
   || fail "the issue lacks the stop step (t-093a)"
-grep -qxF "   (\`tkt import-results\`, then \`tkt merge-pr\`). Reply with the PR number and the import command, and say you are done." "$STUB_BODY" \
-  || fail "the issue lacks the stop step's second line (t-093a)"
+# t-41ff: the commands run as written: the real id, and --pr with the N the session is told to fill in.
+grep -qxF "   (\`tkt import-results $id --pr <N>\`, then \`tkt merge-pr $id\`, N being the PR number). Reply with both commands, N filled in," "$STUB_BODY" \
+  || fail "the issue lacks the stop step's second line with runnable commands (t-093a, t-41ff)"
+grep -qxF "   and say you are done." "$STUB_BODY" || fail "the issue lacks the stop step's last line (t-41ff)"
 grep -qxF "If a step cannot be done, say so in the PR description; do not skip it silently." "$STUB_BODY" \
   || fail "the issue lacks the closing line line (t-67c5)"
 # t-1465: GitHub hides a bare <placeholder> as an HTML tag, so in "Working on this" each sits inside a code span.

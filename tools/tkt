@@ -59,10 +59,12 @@ ensure_tickets_dir() {
 .cockpit-*
 ACTIVE
 ACTIVE.beat
+.before-import/
 EOF
-  elif grep -qxF '# canon runtime files — per-machine session state, never commit (t-2f53)' "$dir/.gitignore" \
-      && ! grep -qxF 'ACTIVE.beat' "$dir/.gitignore"; then
-    printf 'ACTIVE.beat\n' >> "$dir/.gitignore"   # t-187e: a file canon seeded earlier gains the new runtime file; one the user wrote is left alone
+  elif grep -qxF '# canon runtime files — per-machine session state, never commit (t-2f53)' "$dir/.gitignore"; then
+    # t-187e, t-41ff: a file canon seeded earlier gains each newer entry; one the user wrote is left alone
+    grep -qxF 'ACTIVE.beat' "$dir/.gitignore" || printf 'ACTIVE.beat\n' >> "$dir/.gitignore"
+    grep -qxF '.before-import/' "$dir/.gitignore" || printf '.before-import/\n' >> "$dir/.gitignore"
   fi
   echo "$dir"
 }
@@ -1314,7 +1316,8 @@ cmd_send_issue() {
     printf '5. Run `sprint complete`: a fresh reviewer and a fresh evaluator are dispatched, and neither is skipped or written by hand.\n'
     printf '6. Run `tkt export %s` and push nothing else for it: export prints where the ticket went.\n' "$id"
     printf '7. Then stop. Do not merge the PR, watch it, or act on CI results or review comments: the merge happens on the user'"'"'s machine\n'
-    printf '   (`tkt import-results`, then `tkt merge-pr`). Reply with the PR number and the import command, and say you are done.\n'
+    printf '   (`tkt import-results %s --pr <N>`, then `tkt merge-pr %s`, N being the PR number). Reply with both commands, N filled in,\n' "$id" "$id"
+    printf '   and say you are done.\n'
     printf '\nIf a step cannot be done, say so in the PR description; do not skip it silently.\n'
     printf '\n<!-- canon:ticket %s -->\n' "$id"
   } > "$body"
@@ -1893,8 +1896,6 @@ cmd_merge_pr() {
     note=" (gh reported: $out)"
   fi
   local sha; sha="$(gh pr view "$pr" --repo "$repo" --json mergeCommit --jq '.mergeCommit.oid // empty' 2>/dev/null || true)"
-  set_or_add_field "$file" merged "${sha:-PR #$pr}"
-  _gh_trail "$tdir" merged "PR: #$pr" "merge commit: ${sha:-unknown}" "base: $base"
   # A close moved to this machine leaves the results branch behind (import-results keeps it while its checks fail).
   if git -C "$root" ls-remote --exit-code --heads origin "canon-results/$id" >/dev/null 2>&1; then
     git -C "$root" push -q origin --delete "canon-results/$id" 2>/dev/null \
@@ -1902,7 +1903,10 @@ cmd_merge_pr() {
   fi
   echo "Merged PR #$pr into $base${sha:+ ($sha)}$note."
   canon_event github.merged tkt "$root" "ticket=$id" "pr=$pr"   # t-4c09
-  _ff_local_base "$root" "$base"
+  _ff_local_base "$root" "$base" "$id"
+  # t-41ff: written after the local update, so ticket.md is not yet dirty from this merge when the fast-forward runs.
+  set_or_add_field "$file" merged "${sha:-PR #$pr}"
+  _gh_trail "$tdir" merged "PR: #$pr" "merge commit: ${sha:-unknown}" "base: $base"
 }
 
 # cmd_pr_ready <id> [--pr N] — t-a463: mark the ticket's own open, same-repo DRAFT PR ready (`gh pr ready`), so merge-pr can merge it. The board's
@@ -1948,11 +1952,20 @@ cmd_pr_ready() {
 # git accepts it as a branch name and it cannot be read as an option.
 _branch_ok() { [[ -n "$1" && "$1" != -* ]] && git check-ref-format --branch "$1" >/dev/null 2>&1; }
 
-# _ff_local_base <root> <branch> — t-24b1: after a merge, move the local <branch> to origin's, fast-forward only. Never a
-# merge, rebase, reset or force: when it cannot (dirty tree, checked out in another worktree, local commits origin lacks),
-# it changes nothing and says why. Checked out here: `merge --ff-only`; checked out nowhere: a compare-and-swap of the ref.
+# _ff_strip_fields — t-41ff: a ticket.md on stdin without the frontmatter lines canon keeps per machine, to compare a local
+# ticket.md with the merged one.
+_ff_strip_fields() { awk 'NR == 1 && $0 == "---" { fm = 1; print; next } fm && $0 == "---" { fm = 0 } fm && /^(github|runs|merged|cloud_status):/ { next } { print }'; }
+
+# _ff_extra_lines <merged> <local> — t-41ff: the local file's lines the merged copy lacks, in order (each merged line
+# accounts for one equal local line).
+_ff_extra_lines() { awk 'FILENAME == ARGV[1] { c[$0]++; next } c[$0] > 0 { c[$0]--; next } { print }' "$1" "$2"; }
+
+# _ff_local_base <root> <branch> [<id>] — t-24b1: after a merge, move the local <branch> to origin's, fast-forward only. Never a
+# merge, rebase, reset or force: when it cannot (a file here differs from the merged copy, checked out in another worktree,
+# local commits origin lacks), it changes nothing and says why. Checked out here: `merge --ff-only`; checked out nowhere: a
+# compare-and-swap of the ref.
 _ff_local_base() {
-  local root="$1" b="$2" old new wt here
+  local root="$1" b="$2" id="${3:-}" old new wt here
   _branch_ok "$b" || { echo "Local branch: the base branch name ($b) is not usable; update it by hand: git pull"; return 0; }
   git -C "$root" fetch -q origin "refs/heads/$b" 2>/dev/null || { echo "Local $b: could not fetch origin/$b; update it by hand: git pull"; return 0; }
   new="$(git -C "$root" rev-parse FETCH_HEAD)"
@@ -1965,13 +1978,70 @@ _ff_local_base() {
   if [[ -z "$wt" ]]; then
     git -C "$root" update-ref "refs/heads/$b" "$new" "$old"
   elif [[ "$(cd "$wt" && pwd -P)" == "$(cd "$here" && pwd -P)" ]]; then
-    [[ -z "$(git -C "$root" status --porcelain --untracked-files=no)" ]] \
-      || { echo "Local $b: uncommitted changes here; left at ${old:0:8}. Update it by hand: git pull"; return 0; }
-    git -C "$root" merge -q --ff-only "$new" || { echo "Local $b: git refused the fast-forward; left at ${old:0:8}. Update it by hand: git pull"; return 0; }
+    _ff_here "$root" "$b" "$id" "$old" "$new" || return 0
   else
     echo "Local $b: checked out in $wt; left at ${old:0:8}. Update it there: git pull"; return 0
   fi
   echo "Local $b: ${old:0:8} -> ${new:0:8} (fast-forward)"
+}
+
+# _ff_here <root> <branch> <id> <old> <new> — t-41ff: the fast-forward of the branch checked out here. What blocks it is a file
+# the merge changes that is here but not as HEAD has it (edited, or untracked). One canon wrote that the merge carries anyway
+# is set aside and put back after: byte-identical to the merged copy, this ticket's ticket.md differing only in canon's
+# per-machine fields (kept as it is here), or the audit log (its lines the merged copy lacks are appended). Any other one, or a
+# staged one, stops it with nothing changed. A refused fast-forward restores every file set aside. Returns 1 when not moved.
+# The paths come from the PR, so they are untrusted: matched literally, never through a symlinked folder, printed sanitized.
+_ff_here() {
+  local root="$1" b="$2" id="$3" old="$4" new="$5" p m rp safe=() kinds=() differ=()
+  local GIT_LITERAL_PATHSPECS=1; export GIT_LITERAL_PATHSPECS
+  rp="$(cd "$root" && pwd -P)"
+  while IFS= read -r -d '' p; do
+    if [[ "$p" == */* && "$(cd "$root/${p%/*}" 2>/dev/null && pwd -P)" != "$rp/${p%/*}" && -e "$root/${p%/*}" ]]; then differ+=("$p (inside a symlinked folder)"); continue; fi
+    if ! git -C "$root" diff --cached --quiet "$old" -- "$p"; then differ+=("$p (staged)"); continue; fi
+    if git -C "$root" cat-file -e "$old:$p" 2>/dev/null; then git -C "$root" diff --quiet "$old" -- "$p" && continue
+    else [[ -e "$root/$p" || -L "$root/$p" ]] || continue; fi
+    m="$(git -C "$root" ls-tree "$new" -- "$p" | cut -d' ' -f1)"
+    if [[ -f "$root/$p" && ! -L "$root/$p" && ( "$m" == 100644 || "$m" == 100755 ) ]]; then
+      if cmp -s <(git -C "$root" cat-file blob "$new:$p") "$root/$p"; then safe+=("$p"); kinds+=(same); continue; fi
+      if [[ -n "$id" && "$p" == ".tickets/$id/ticket.md" ]] \
+        && cmp -s <(git -C "$root" cat-file blob "$new:$p" | _ff_strip_fields) <(_ff_strip_fields < "$root/$p"); then safe+=("$p"); kinds+=(ticket); continue; fi
+      if [[ "$p" == .claude/subagent-runs.jsonl ]]; then safe+=("$p"); kinds+=(log); continue; fi
+    fi
+    differ+=("$p")
+  done < <(git -C "$root" diff --no-renames --name-only -z "$old" "$new")
+  if [[ ${#differ[@]} -gt 0 ]]; then
+    echo "Local $b: ${#differ[@]} file(s) here differ from the merged copy; left at ${old:0:8}:"
+    for p in "${differ[@]}"; do printf '  %s\n' "${p//[^[:print:]]/?}"; done
+    echo "  Commit or move them, then run: git pull  (in the Cockpit Terminal, type su first)"
+    return 1
+  fi
+  if [[ ${#safe[@]} -eq 0 ]]; then
+    git -C "$root" merge -q --ff-only "$new" || { echo "Local $b: git refused the fast-forward; left at ${old:0:8}. Update it by hand: git pull"; return 1; }
+    return 0
+  fi
+  local bk i err=""; bk="$(mktemp -d "${TMPDIR:-/tmp}/tkt-ff.XXXXXX")" || { echo "Local $b: no room to set files aside; left at ${old:0:8}. Update it by hand: git pull"; return 1; }
+  for i in "${!safe[@]}"; do
+    p="${safe[$i]}"
+    cp -p "$root/$p" "$bk/$i" || { rm -rf "$bk"; echo "Local $b: could not set $p aside; left at ${old:0:8}. Update it by hand: git pull"; return 1; }
+    [[ "${kinds[$i]}" != log ]] || _ff_extra_lines <(git -C "$root" cat-file blob "$new:$p") "$root/$p" > "$bk/$i.extra"
+  done
+  for p in "${safe[@]}"; do
+    if git -C "$root" cat-file -e "$old:$p" 2>/dev/null; then git -C "$root" checkout -q -- "$p"; else rm -f "$root/$p"; fi
+  done
+  if ! err="$(git -C "$root" merge -q --ff-only "$new" 2>&1)"; then
+    for i in "${!safe[@]}"; do cp -p "$bk/$i" "$root/${safe[$i]}"; done
+    rm -rf "$bk"
+    echo "Local $b: git refused the fast-forward; left at ${old:0:8}, every file set aside put back. Update it by hand: git pull"
+    [[ -z "$err" ]] || printf '%s\n' "$err" | sed 's/^/  git: /'
+    return 1
+  fi
+  for i in "${!safe[@]}"; do
+    case "${kinds[$i]}" in
+      ticket) cp -p "$bk/$i" "$root/${safe[$i]}" ;;
+      log)    cat "$bk/$i.extra" >> "$root/${safe[$i]}" ;;
+    esac
+  done
+  rm -rf "$bk"
 }
 
 # cmd_github_status <id> [--json] — t-d271: where a ticket sent to GitHub stands, for the board to poll. Read-only: one
@@ -2424,7 +2494,7 @@ cmd_export() {
   grep -qiE '^[[:space:]]*- \[x\] Plan approved' "$tdir/plan.md" 2>/dev/null \
     || echo "export: WARNING: the plan in $id/plan.md is not approved (its Sign-off box is unticked)." >&2
   if ! git -C "$root" check-ignore -q "$rel/ticket.md"; then
-    echo "export: .tickets/ is tracked here, so $rel/ goes back with the PR: commit it on the PR branch."; return 0
+    echo "export: .tickets/ is tracked here, so $rel/ goes back with the PR: commit it on the PR branch. On your machine: tkt import-results $id --pr <N>, then tkt merge-pr $id"; return 0
   fi
   # The folder holds notes and evidence logs: like send-issue, a public repo needs --public.
   local repo vis=""; repo="$(_gh_origin_repo "$root" export 2>/dev/null)" && vis="$(_repo_visibility "$repo")"
@@ -2437,11 +2507,11 @@ cmd_export() {
   # shellcheck disable=SC2064  # expand now: $idx is local
   trap "rm -f '$idx'" EXIT
   local tree commit
-  (cd "$root" && find "$rel" -type f ! -name '.cockpit-*' -print0 | GIT_INDEX_FILE="$idx" xargs -0 git add -f --) || { echo "export: could not stage $rel" >&2; exit 1; }
+  (cd "$root" && find "$rel" -path "$rel/.before-import" -prune -o -type f ! -name '.cockpit-*' -print0 | GIT_INDEX_FILE="$idx" xargs -0 git add -f --) || { echo "export: could not stage $rel" >&2; exit 1; }
   tree="$(cd "$root" && GIT_INDEX_FILE="$idx" git write-tree)" || exit 1
   commit="$(git -C "$root" commit-tree "$tree" -m "canon results: $id")" || exit 1
   git -C "$root" push --force origin "$commit:refs/heads/canon-results/$id" >&2 || { echo "export: push to origin failed" >&2; exit 1; }
-  echo "export: pushed $rel/ to canon-results/$id. On your machine: tkt import-results $id"
+  echo "export: pushed $rel/ to canon-results/$id. On your machine: tkt import-results $id --pr <N>, then tkt merge-pr $id"
 }
 
 # _eval_verdict_head <ticket dir>: prints "<verdict> <graded-head>" from eval-report.md ("-" for either when absent).
@@ -2597,7 +2667,7 @@ cmd_import_results() {
   local tl=("files: $n" "ticket status: ${st:-unknown}" "evaluator: ${verdict:-none}" "graded head: ${graded:-none}") ol
   [[ -z "$prline" ]] || tl+=("$prline")
   while IFS= read -r ol; do [[ -z "$ol" ]] || tl+=("evidence: ${ol#"  evidence ran on: "}"); done <<< "$osout"
-  _gh_trail "$tdir" imported "${tl[@]}"
+  _gh_trail "$tdir" "$([[ "$rc" == 0 ]] && echo imported || echo "import refused")" "${tl[@]}"   # t-41ff: a refused import is not logged as imported
   if [[ "$rc" == 0 && "$src" != canon-results/* ]]; then
     echo "  read from $src (a tracked $rel/ rides in the PR; there is no results branch to delete)"
   elif [[ "$rc" == 0 ]]; then

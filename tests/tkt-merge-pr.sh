@@ -63,6 +63,10 @@ REAL_GIT="$(command -v git)"
 cat > "$W/bin/git" <<SH
 #!/usr/bin/env bash
 [[ -n "\${STUB_FF_FETCH_FAIL:-}" && " \$* " == *" fetch -q origin refs/heads/main "* ]] && { echo "fatal: unable to access origin" >&2; exit 128; }
+if [[ " \$* " == *" merge -q --ff-only "* ]]; then
+  [[ -z "\${STUB_FF_SPY:-}" ]] || grep -c '^merged:' "\$STUB_FF_SPY" > "$W/ff-spy" || true
+  [[ -z "\${STUB_FF_MERGE_FAIL:-}" ]] || { echo "error: forced ff failure" >&2; exit 1; }
+fi
 if [[ " \$* " == *" fetch "* || " \$* " == *" ls-remote "* ]]; then a=(); for x in "\$@"; do [[ "\$x" == https://github.com/acme/app.git || "\$x" == origin ]] && x="$W/origin.git"; a+=("\$x"); done; set -- "\${a[@]}"; fi
 exec "$REAL_GIT" "\$@"
 SH
@@ -394,11 +398,16 @@ ff_merge() {   # origin main back at the base, the ticket unmerged; one merge-pr
   STUB_MERGE_PUSH=1 "$TKT" merge-pr "$id" --pr 7 --yes --test true 2>&1
 }
 git checkout -q main; git reset -q --hard "$BASE"
-out="$(ff_merge)"; assert_contains "$out" "Local main: ${BASE:0:8} -> ${PRHEAD:0:8} (fast-forward)"
+out="$(STUB_FF_SPY="$PWD/$f" ff_merge)"; assert_contains "$out" "Local main: ${BASE:0:8} -> ${PRHEAD:0:8} (fast-forward)"
+assert_eq 0 "$(cat "$W/ff-spy")"; assert_grep '^merged: mergesha' "$f"   # t-41ff: merged: is written after main moved, not before
 assert_eq "$PRHEAD" "$(git rev-parse main)"; [[ "$(git status --porcelain --untracked-files=no)" == "" ]] || fail "the fast-forward left changes"
-git reset -q --hard "$BASE"; echo dirty >> .gitignore                      # a dirty tree: left alone
-out="$(ff_merge)"; assert_contains "$out" "Local main: uncommitted changes here; left at ${BASE:0:8}. Update it by hand: git pull"
-assert_eq "$BASE" "$(git rev-parse main)"; assert_grep '^dirty$' .gitignore; git checkout -q .gitignore
+git reset -q --hard "$BASE"; echo dirty >> .gitignore                      # t-41ff: an edit the merge does not touch survives it
+out="$(ff_merge)"; assert_contains "$out" "Local main: ${BASE:0:8} -> ${PRHEAD:0:8} (fast-forward)"
+assert_eq "$PRHEAD" "$(git rev-parse main)"; assert_grep '^dirty$' .gitignore; git checkout -q .gitignore; git reset -q --hard "$BASE"
+git reset -q --hard "$BASE"; echo mine > change.txt                        # a file the merge changes, edited here: left alone
+out="$(ff_merge)"; assert_contains "$out" "Local main: 1 file(s) here differ from the merged copy; left at ${BASE:0:8}:"
+assert_contains "$out" $'\n  change.txt\n  Commit or move them, then run: git pull  (in the Cockpit Terminal, type su first)'
+assert_eq "$BASE" "$(git rev-parse main)"; assert_eq mine "$(cat change.txt)"; rm change.txt
 git checkout -q -b side                                                    # main checked out nowhere: the ref moves
 out="$(ff_merge)"; assert_contains "$out" "Local main: ${BASE:0:8} -> ${PRHEAD:0:8} (fast-forward)"
 assert_eq "$PRHEAD" "$(git rev-parse main)"; assert_eq side "$(git branch --show-current)"
@@ -414,6 +423,53 @@ git reset -q --hard "$BASE"; out="$(STUB_FF_FETCH_FAIL=1 ff_merge)"; assert_cont
 assert_eq "$BASE" "$(git rev-parse main)"
 git checkout -q -B side; git branch -qD main; out="$(ff_merge)"; assert_contains "$out" "Local main: none here; nothing to update"
 git checkout -q -B main "$BASE"
+
+# t-41ff: the PR carries files canon already wrote here (import-results): identical ones, this ticket's ticket.md (local
+# fields aside) and the audit log are set aside, main fast-forwards, and the local fields and log lines come back. Any
+# other difference leaves every file and main as they were. Protects `tkt merge-pr` and the board's Check & merge.
+B="$W/build"; git clone -q "$W/origin.git" "$B" 2>/dev/null; git -C "$B" checkout -q "$BASE"
+echo change > "$B/change.txt"; echo same > "$B/new.txt"; mkdir -p "$B/.claude"; printf 'a\nb\n' > "$B/.claude/subagent-runs.jsonl"
+git -C "$B" add -f change.txt new.txt .claude/subagent-runs.jsonl; git -C "$B" commit -qm graded; G="$(git -C "$B" rev-parse HEAD)"
+eval_ok "$G"; mkdir -p "$B/.tickets/$id"; cp ".tickets/$id/eval-report.md" "$B/.tickets/$id/"
+sed '/^github: /d; /^merged: /d' "$f" > "$B/.tickets/$id/ticket.md"; printf 'c\n' >> "$B/.claude/subagent-runs.jsonl"
+git -C "$B" add -f .tickets .claude/subagent-runs.jsonl; git -C "$B" commit -qm "late docs"; H="$(git -C "$B" rev-parse HEAD)"
+git -C "$B" push -qf origin "HEAD:refs/pull/7/head"
+recon_setup() {   # main at the base (mixed reset: --hard would delete the ticket files H tracks); canon's copies as import-results leaves them, plus an unrelated edit
+  git checkout -q main; git reset -q "$BASE"; git checkout -q -- .gitignore; rm -f change.txt; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
+  echo same > new.txt; mkdir -p .claude; printf 'a\nlocal1\nb\n' > .claude/subagent-runs.jsonl; echo dirty >> .gitignore
+}
+tree_sig() { cksum new.txt .claude/subagent-runs.jsonl .gitignore ".tickets/$id/eval-report.md" "$f"; }
+recon_setup; cp "$f" "$W/ticket.before"
+out="$(STUB_HEAD="$H" ff_merge)"
+assert_contains "$out" "Local main: ${BASE:0:8} -> ${H:0:8} (fast-forward)"; assert_eq "$H" "$(git rev-parse main)"
+assert_eq "$(cat "$W/ticket.before")" "$(sed '/^merged: mergesha0\{34\}$/d' "$f")"; assert_grep '^merged: mergesha' "$f"   # the local fields kept, plus merged:
+assert_eq "$(printf 'a\nb\nc\nlocal1')" "$(cat .claude/subagent-runs.jsonl)"; assert_eq same "$(cat new.txt)"
+assert_grep '^dirty$' .gitignore; assert_grep '— merged$' ".tickets/$id/github.md"
+git checkout -q .gitignore
+# Not identical: an untracked file, or ticket.md's title (the near miss of the field rule). Nothing changes; each is named.
+recon_setup; echo other > new.txt; before="$(tree_sig)"
+out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" "Local main: 1 file(s) here differ from the merged copy; left at ${BASE:0:8}:"
+assert_contains "$out" $'\n  new.txt\n  Commit or move them, then run: git pull  (in the Cockpit Terminal, type su first)'
+assert_eq "$BASE" "$(git rev-parse main)"; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; assert_eq "$before" "$(tree_sig)"
+recon_setup; sed -i.bak 's/^# Cloud ticket$/# Cloud ticket, renamed here/' "$f" && rm -f "$f.bak"; assert_grep '^# Cloud ticket, renamed here$' "$f"; before="$(tree_sig)"
+out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" $'\n  .tickets/'"$id"$'/ticket.md\n  Commit or move them'
+assert_eq "$BASE" "$(git rev-parse main)"; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; assert_eq "$before" "$(tree_sig)"
+sed -i.bak 's/^# Cloud ticket, renamed here$/# Cloud ticket/' "$f" && rm -f "$f.bak"
+# A PR path under a folder that is a symlink here is never followed: the file outside the repo stays (t-07b5: PR paths are untrusted).
+git -C "$B" checkout -q "$BASE"; mkdir -p "$B/lnk"; echo same2 > "$B/lnk/new2.txt"; git -C "$B" add lnk/new2.txt; git -C "$B" commit -qm "under a link"
+H2="$(git -C "$B" rev-parse HEAD)"; git -C "$B" push -qf origin "HEAD:refs/pull/7/head"; eval_ok "$H2"
+recon_setup; mkdir -p "$W/outside"; echo same2 > "$W/outside/new2.txt"; ln -s "$W/outside" lnk
+out="$(STUB_HEAD="$H2" ff_merge)"; assert_contains "$out" $'\n  lnk/new2.txt (inside a symlinked folder)\n  Commit or move them'
+assert_eq "$BASE" "$(git rev-parse main)"; assert_eq same2 "$(cat "$W/outside/new2.txt")"
+rm lnk; git -C "$B" push -qf origin "$H:refs/pull/7/head"; eval_ok "$G"
+# git refuses after the files were set aside: each comes back byte for byte, main stays.
+recon_setup; before="$(tree_sig)"
+out="$(STUB_HEAD="$H" STUB_FF_MERGE_FAIL=1 ff_merge)"
+assert_contains "$out" "Local main: git refused the fast-forward; left at ${BASE:0:8}, every file set aside put back. Update it by hand: git pull"
+assert_contains "$out" "  git: error: forced ff failure"
+assert_eq "$BASE" "$(git rev-parse main)"; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; assert_eq "$before" "$(tree_sig)"
+git checkout -q .gitignore; rm -rf new.txt .claude; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; eval_ok "$PRHEAD"
+git push -qf origin "$PRHEAD:refs/pull/7/head"; git --git-dir="$W/origin.git" update-ref refs/heads/main "$BASE"
 
 # t-4718 also fixed import-results: a ticket that comes back without eval-report.md is reported, not a silent exit.
 other="t-0e0e"; X="$W/cloud"; git clone -q "$W/origin.git" "$X" 2>/dev/null

@@ -33,6 +33,16 @@ grep -q "^skills:" ".tickets/$nsid/ticket.md" && fail "tkt create without --skil
 assert_file_exists ".tickets/.gitignore"
 assert_grep "^\.cockpit-\*$" ".tickets/.gitignore"
 assert_grep "^ACTIVE$" ".tickets/.gitignore"
+# t-41ff: import backups never ride in a commit; a block canon seeded earlier gains the line once, the rest untouched.
+assert_grep "^\.before-import/$" ".tickets/.gitignore"
+mkdir -p .tickets/t-bi/.before-import && : > .tickets/t-bi/.before-import/plan.md
+git check-ignore -q .tickets/t-bi/.before-import/plan.md || fail "git does not ignore a ticket's .before-import/ file"
+rm -rf .tickets/t-bi
+printf '# canon runtime files — per-machine session state, never commit (t-2f53)\n.cockpit-*\nACTIVE\nACTIVE.beat\n' > .tickets/.gitignore
+"$TKT" create "Gains before-import" >/dev/null
+assert_eq "$(printf '# canon runtime files — per-machine session state, never commit (t-2f53)\n.cockpit-*\nACTIVE\nACTIVE.beat\n.before-import/')" "$(cat .tickets/.gitignore)"
+"$TKT" create "Gains it once" >/dev/null
+assert_eq 1 "$(grep -cxF '.before-import/' .tickets/.gitignore)"
 
 # ...and it must never clobber a user's existing .tickets/.gitignore.
 preserve_project="$(make_project)"

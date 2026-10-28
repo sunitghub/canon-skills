@@ -288,6 +288,15 @@ function refusalReason(out) {
   const hit = lines.find(s => /is a draft|GitHub refused|gh could not merge|failed on .* \+ PR|cannot merge cleanly|not open|blocked by|comes from a fork|not the commit the evaluator graded/.test(s)) || lines[0] || '';
   return hit.replace(/^merge-pr:\s*/, '');
 }
+// t-41ff: merge-pr's "Local <branch>:" line and the indented lines under it (the files that stopped the update, the next step).
+function localMainNote(out) {
+  const lines = String(out || '').split('\n');
+  const i = lines.findIndex(s => /^Local [^:]+: /.test(s));
+  if (i < 0) return '';
+  const rest = [];
+  for (const s of lines.slice(i + 1)) { if (!/^ {2}\S/.test(s)) break; rest.push(s.trim()); }
+  return [lines[i], ...rest].join(' ');
+}
 const isDraftRefusal = out => /is a draft; GitHub will not merge it|is a draft: run gh pr ready/.test(out || '');
 // A cloud PR is always opened as a draft and GitHub will not merge one: the dialog's button marks it ready (the click is the consent; tkt
 // pr-ready re-checks that it is this ticket's own open same-repo draft; gh pr ready --undo reverses it), then runs Check & merge again.
@@ -361,9 +370,10 @@ async function followMerge(t, prB, show) {
   // t-6623: merge-pr says "<cmd> failed on <base> + PR #N" when the suite fails here: the PR can be fixed in a worktree.
   const suiteFailed = !merged && /failed on .* \+ PR #\d+/.test(st?.output || '');
   const draftRefused = !merged && isDraftRefusal(st?.output);   // t-a463
+  const local = merged ? localMainNote(st.output) : '';
   if (gen !== undefined) updateDialog({
     title: merged ? 'Merged' : 'Not merged',
-    body: merged ? `The PR is merged and the issue closed by its Fixes line.${offer ? ` Also push main to ${mirrors.join(', ')} (git config canon.mirror)?` : ''}` : `${(refusalReason(st?.output) || 'Not merged').replace(/[.:\s]+$/, '')}. Nothing changed on GitHub. See the output.`,
+    body: merged ? `The PR is merged and the issue closed by its Fixes line.${local ? ` ${local}` : ''}${offer ? ` Also push main to ${mirrors.join(', ')} (git config canon.mirror)?` : ''}` : `${(refusalReason(st?.output) || 'Not merged').replace(/[.:\s]+$/, '')}. Nothing changed on GitHub. See the output.`,
     pre: st?.output || '', ok: offer || (draftRefused ? 'Mark ready' : suiteFailed ? 'Fix here' : ''), cancel: 'Close', escape: true,
   }, gen);
   if (offer && shown) shown.then(v => { if (v && v.ok) pushMain(mirrors); });

@@ -186,8 +186,9 @@ script's Go block:
 5. On your machine, `tkt import-results <id> --pr <PR number>` brings the results back: from the branch
    `canon-results/<id>` when there is one, otherwise (a project that commits `.tickets/`) from the PR's head commit.
    Without `--pr` it finds the PR through the ticket's `github:` line. Every file comes byte-for-byte, a local file
-   that differs is kept in `.tickets/<id>/.before-import/`, and a report gives the status, the evaluator's verdict
-   and whether it graded the PR's head commit. Then it deletes the branch (a PR head has nothing to delete). The
+   that differs is kept in `.tickets/<id>/.before-import/` (ignored by git), and a report gives the status, the evaluator's verdict
+   and whether it graded the PR's head commit. An import whose PR head is not the graded one exits 1 and shows on the
+   GitHub tab as `import refused`. Then it deletes the branch (a PR head has nothing to delete). The
    Factory card shows **Import results** in both cases. A ticket the cloud left `in_progress` comes
    back `open` (see "When a cloud sprint cannot close" below).
 6. `tkt merge-pr <id>` finishes it: it checks the evaluator passed on the PR's head and GitHub can merge it, shows
@@ -198,8 +199,10 @@ script's Go block:
    test run, and say so. `tkt pr-ready <id>` (the "Mark ready" button on the card's dialog) marks the ticket's own open, same-repo
    draft PR ready (`gh pr ready --undo <n>` reverses it); then merge. If GitHub refuses after your tests passed, the output says the
    suite passed and names the cause it finds (draft, behind, blocked).
-   After the merge it fast-forwards your local base branch to GitHub's (only a clean fast-forward; otherwise it leaves
-   it and says why). To also push main to other remotes you keep in step, name them once with
+   After the merge it fast-forwards your local base branch to GitHub's, only as a fast-forward. Files the import wrote
+   that the PR also carries do not stop it: one identical to the merged copy, the ticket's `ticket.md` differing only in
+   canon's local fields (kept), and `.claude/subagent-runs.jsonl` (local-only lines appended) are set aside and put back.
+   Any other file that differs leaves the branch where it was, and the output names each one and the `git pull` to run. To also push main to other remotes you keep in step, name them once with
    `git config --add canon.mirror <remote>`; `tkt push-main` (or the board's "Push main to …" after a merge) pushes only
    those, never forced, and prints how to undo each push.
 
