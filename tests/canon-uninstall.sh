@@ -488,7 +488,7 @@ run "$h" "$inst" --yes; assert_eq 0 "$rc"; assert_contains "$out" "(none)"; asse
 
 # ── docs and completions list the command; the old two-step is gone ─────────────────────────────────────────────────────────────────────────
 help_out="$("$ROOT/tools/canon" --help)"; assert_contains "$help_out" "canon uninstall [--dry-run] [--yes] [--keep-data] [--force]"
-assert_contains "$("$ROOT/tools/canon" completion bash)" "update uninstall completion"
+assert_contains "$("$ROOT/tools/canon" completion bash)" "update uninstall log completion"
 assert_contains "$("$ROOT/tools/canon" completion powershell)" "'uninstall'"
 for f in README.md docs/setup.md; do assert_contains "$(cat "$ROOT/$f")" "canon uninstall"; done
 [[ -z "$(grep -n 'rm -rf ~/.canon' "$ROOT/README.md" "$ROOT/docs/setup.md" || true)" ]] || fail "README.md/docs/setup.md still tell people to rm -rf ~/.canon"
