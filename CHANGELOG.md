@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-10-28
+
 Update with `canon update`, then restart the daemon (Admin's **Restart Daemon**): the board has new routes.
 
 ### Added
