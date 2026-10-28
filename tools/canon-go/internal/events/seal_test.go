@@ -882,7 +882,7 @@ func TestVerifyReasonsForFileFaults(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		h, d = logWith(t, nil)
 		os.Symlink(filepath.Join(t.TempDir(), "x"), filepath.Join(d, sealsName))
-		if got := reason(h); got != "seals.jsonl: is not a regular file" && got != "seals.jsonl: cannot be read" {
+		if got := reason(h); got != "seals.jsonl: is not a regular file" {
 			t.Errorf("linked seal file: %q", got)
 		}
 		h = t.TempDir()
