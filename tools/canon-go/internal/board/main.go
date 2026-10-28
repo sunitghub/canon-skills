@@ -4755,7 +4755,6 @@ func issueNumbers(v any) (string, bool) {
 	return strings.Join(parts, ","), true
 }
 
-// prArg: nil slice + true for no PR, ["--pr", n] for digits, false for anything else (the caller answers 400).
 // commitPushArgs builds `tkt commit-push <id> [--file P]... [--message M]` from a browser payload (t-32f9). A path is never
 // empty, absolute, an option (leading -), above the checkout (a .. segment) or carrying NUL or a line break; at most 500 of
 // them. tkt then accepts only paths its own --dry-run lists. false means a bad request: nothing runs.
@@ -4790,6 +4789,7 @@ func commitPushArgs(id string, payload map[string]any) ([]string, bool) {
 	return args, true
 }
 
+// prArg: nil slice + true for no PR, ["--pr", n] for digits, false for anything else (the caller answers 400).
 func prArg(v any) ([]string, bool) {
 	if v == nil {
 		return []string{}, true

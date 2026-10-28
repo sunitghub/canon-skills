@@ -15846,7 +15846,12 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
       return json(r, { ok: true, exit_code: 0, output: 'repo: acme/app (PRIVATE)' });
     });
     await page.route(`**/api/ticket/${id}/github/commit-push-preview`, r => json(r, { ok: true, exit_code: 0, output: `commit-push: ${id} in /w\nbranch: main -> origin/main (2 commit(s) to push)\nfile:  M src/app.js\nfile: ?? .env.local` }));
-    await page.route(`**/api/ticket/${id}/github/commit-push`, r => { posts.push(JSON.parse(r.request().postData() || '{}')); return json(r, { ok: true, exit_code: 0, output: 'commit-push: pushed main to origin' }); });
+    let failNext = true;   // the first confirmed POST fails: its reason shows in the form, the issue preview stays
+    await page.route(`**/api/ticket/${id}/github/commit-push`, r => {
+      posts.push(JSON.parse(r.request().postData() || '{}'));
+      if (failNext) { failNext = false; return json(r, { ok: false, exit_code: 1, output: 'commit-push: origin/main has commits this branch lacks; nothing changed.' }); }
+      return json(r, { ok: true, exit_code: 0, output: 'commit-push: pushed main to origin' });
+    });
     await openBoard(page, id);
     await page.locator(`.card[data-id="${id}"] .card-start`).click();
     await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
@@ -15874,12 +15879,19 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#gh-dialog-pre')).not.toContainText('.env.local');
     await page.locator('#gh-dialog-cancel').click();
     expect(posts).toEqual([]);
+    // A refused POST: the reason is in the form, the issue preview keeps its text.
+    const previewText = await page.locator('#ck-gh-preview').textContent();
+    await page.locator('#ck-gh-cp-go').click();
+    await page.locator('#gh-dialog-ok').click();
+    await expect(page.locator('#ck-gh-cp-out')).toHaveText('commit-push: origin/main has commits this branch lacks; nothing changed.');
+    await expect(page.locator('#ck-gh-cp-status')).toHaveText('Not pushed; see why below.');
+    await expect(page.locator('#ck-gh-preview')).toHaveText(previewText);
     // Confirm: one POST with exactly the ticked files and the message; then the send preview runs again.
     const before = previews; mode = 'clean';
     await page.locator('#ck-gh-cp-go').click();
     await page.locator('#gh-dialog-ok').click();
-    await expect.poll(() => posts.length).toBe(1);
-    expect(posts[0]).toEqual({ files: ['src/app.js'], message: `chore: ${id} work for the cloud session` });
+    await expect.poll(() => posts.length).toBe(2);
+    expect(posts[1]).toEqual({ files: ['src/app.js'], message: `chore: ${id} work for the cloud session` });
     await expect.poll(() => previews).toBeGreaterThan(before);
     await expect(page.locator('#ck-gh-create')).toBeEnabled();
     await expect(page.locator('#ck-gh-cp-open')).toHaveCount(0);

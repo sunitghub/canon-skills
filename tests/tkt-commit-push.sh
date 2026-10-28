@@ -49,16 +49,36 @@ refuses() {   # refuses <message part> <args...>
 }
 refuses "is not one of this checkout's changes" --file "../outside.txt" --message "chore: x"
 refuses "is not one of this checkout's changes" --file ".tickets/$other/ticket.md" --message "chore: x"
-refuses "refused file name -x (starts with -)" --file "-x" --message "chore: x"
+refuses "refused file name '-x' (empty, or starts with -)" --file "-x" --message "chore: x"
 refuses "a commit needs --message" --file a.txt
 refuses "a commit needs --message" --file a.txt --message ""
 refuses "one line of at most 200 characters" --file a.txt --message "$(head -c 201 /dev/zero | tr '\0' x)"
 refuses "one line of at most 200 characters" --file a.txt --message $'two\nlines'
 refuses "nothing to commit (no --file) and nothing to push"
+refuses "refused file name '' (empty, or starts with -)" --file "" --message "chore: x"
+refuses "one line of at most 200 characters" --file a.txt --message $'cr\rhere'
+for args in "--file" "--message"; do refuses "needs a" $args; done
+refuses "Unknown option: --bogus" --bogus
+rc=0; out="$("$TKT" commit-push 2>&1)" || rc=$?; assert_eq 1 "$rc"; assert_contains "$out" "Usage: tkt commit-push <id>"
+# What the list leaves out: a name with a tab, canon's own skill links; a staged rename is one line, its new name.
+touch "$(printf 'tab\tname')"; mkdir -p .claude/skills/x && touch .claude/skills/x/SKILL.md
+git mv a.txt a2.txt; out="$("$TKT" commit-push "$id" --dry-run)"
+grep -qxF "file: RM a2.txt" <<< "$out" || fail "a staged rename is not one line under its new name: $out"
+[[ "$out" != *" a.txt"* && "$out" != *tab* && "$out" != *".claude/skills"* ]] || fail "the dry run listed a rename's old name, a tab name or a skill link: $out"
+git mv a2.txt a.txt; rm -rf "$(printf 'tab\tname')" .claude; before="$(sig)"
+# No origin, or one that cannot be reached: refused, nothing changed.
+git remote rename origin up; refuses "this project has no origin remote" --file a.txt --message "chore: x"; git remote rename up origin
+git remote set-url origin "$W/nowhere.git"; refuses "could not reach origin" --file a.txt --message "chore: x"; git remote set-url origin "$W/origin.git"
+# A commit hook that refuses: nothing pushed, the reason and the staged state said.
+printf '#!/bin/sh\nexit 1\n' > .git/hooks/pre-commit; chmod +x .git/hooks/pre-commit
+rc=0; out="$("$TKT" commit-push "$id" --file a.txt --message "chore: x" 2>&1)" || rc=$?
+assert_eq 1 "$rc"; assert_contains "$out" "git could not commit (a hook may have refused it); nothing pushed. The files are staged"
+assert_eq "$(git --git-dir="$W/origin.git" rev-parse main)" "$(git rev-parse HEAD)"; rm .git/hooks/pre-commit; git reset -q -- a.txt
 
 # Commit two of the files: exactly those land, the staged b.txt stays staged and out of the commit; the push is plain.
-out="$("$TKT" commit-push "$id" --file a.txt --file newdir/one.txt --message "chore: $id work for the cloud session")"
-assert_contains "$out" "commit-push: committed"; assert_contains "$out" "(2 file(s)): chore: $id work for the cloud session"
+msg200="chore: $id $(head -c 220 /dev/zero | tr '\0' w)"; msg200="${msg200:0:200}"; [[ ${#msg200} == 200 ]] || fail "test setup: message is ${#msg200} long"
+out="$("$TKT" commit-push "$id" --file a.txt --file newdir/one.txt --message "$msg200")"   # 200 characters: the limit, allowed
+assert_contains "$out" "commit-push: committed"; assert_contains "$out" "(2 file(s)): $msg200"
 assert_contains "$out" "commit-push: pushed main to origin"; assert_contains "$out" "  to undo: git revert "
 assert_eq "a.txt newdir/one.txt" "$(git show --name-only --format= HEAD | sort | tr '\n' ' ' | sed 's/ $//')"
 assert_eq "$(git rev-parse HEAD)" "$(git --git-dir="$W/origin.git" rev-parse main)"
@@ -71,6 +91,7 @@ assert_eq "*.txt" "$(git show --name-only --format= HEAD)"; assert_eq "?? plain.
 
 # Nothing to commit, but a commit to push: --file-less run pushes it.
 git commit -qm "local only" -- b.txt; out="$("$TKT" commit-push "$id")"; assert_contains "$out" "pushed main to origin"
+[[ "$out" != *"to undo"* && "$out" != *committed* ]] || fail "a push with nothing committed named a commit or an undo: $out"
 assert_eq "$(git rev-parse HEAD)" "$(git --git-dir="$W/origin.git" rev-parse main)"
 
 # Origin has a commit this branch lacks: refused before anything is committed.
@@ -80,6 +101,12 @@ git pull -q --no-rebase origin main
 
 # Detached HEAD: refused.
 git checkout -q --detach; refuses "is not on a branch (detached HEAD)" --file newdir/two.txt --message "chore: x"; git checkout -q main
+
+# A ticket bound to a linked worktree: its checkout and branch are the ones listed and pushed.
+git worktree add -q -b wt-branch "$W/wt" main; printf '%s\n' "$W/wt" > ".tickets/$id/.cockpit-cwd"; echo wt > "$W/wt/w.txt"
+out="$("$TKT" commit-push "$id" --dry-run)"; assert_contains "$out" "commit-push: $id in $W/wt"; assert_contains "$out" "branch: wt-branch -> origin/wt-branch (new on origin)"
+grep -qxF "file: ?? w.txt" <<< "$out" || fail "the bound worktree's file is not listed: $out"
+rm ".tickets/$id/.cockpit-cwd"; git worktree remove --force "$W/wt"; git branch -q -D wt-branch
 
 # A branch origin does not have yet: pushed with -u, tracking origin/<branch>.
 git checkout -q -b feat/new; out="$("$TKT" commit-push "$id" --dry-run)"; assert_contains "$out" "branch: feat/new -> origin/feat/new (new on origin)"

@@ -30,6 +30,12 @@ func TestCommitPushArgs(t *testing.T) {
 	for i := range many {
 		many[i] = "f"
 	}
+	if got, good := commitPushArgs("t-ab12", map[string]any{"files": many[:500]}); !good || len(got) != 2+2*500 { // 500 is the limit, allowed
+		t.Errorf("500 files: refused or wrong (%d args, %v)", len(got), good)
+	}
+	if _, good := commitPushArgs("t-ab12", map[string]any{"files": []any{strings.Repeat("a", 4096)}}); !good { // and so is a 4096-byte path
+		t.Error("a 4096-byte path was refused")
+	}
 	bad := map[string]map[string]any{
 		"files not a list":     {"files": "a.txt"},
 		"a file not a string":  {"files": []any{1.0}},

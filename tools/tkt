@@ -2326,7 +2326,7 @@ cmd_commit_push() {
     [[ ${#msg} -le 200 && "$msg" != *$'\n'* && "$msg" != *$'\r'* ]] \
       || { echo "commit-push: the message must be one line of at most 200 characters; nothing changed" >&2; exit 1; }
     for f in "${files[@]}"; do
-      [[ "$f" != -* ]] || { echo "commit-push: refused file name $f (starts with -); nothing changed" >&2; exit 1; }
+      [[ -n "$f" && "$f" != -* ]] || { echo "commit-push: refused file name '$f' (empty, or starts with -); nothing changed" >&2; exit 1; }
       printf '%s\n' "$list" | cut -f2- | grep -qxF -- "$f" \
         || { echo "commit-push: $f is not one of this checkout's changes (tkt commit-push $id --dry-run lists them); nothing changed" >&2; exit 1; }
     done
@@ -2337,7 +2337,7 @@ cmd_commit_push() {
   if [[ ${#files[@]} -gt 0 ]]; then
     # Only the named paths: --only commits their worktree state and leaves anything else in the index staged, not committed.
     out="$(git -C "$wt" add -A -- "${files[@]}" 2>&1 && git -C "$wt" commit -q --only -m "$msg" -- "${files[@]}" 2>&1)" \
-      || { echo "commit-push: git could not commit: $out" >&2; exit 1; }
+      || { echo "commit-push: git could not commit (a hook may have refused it); nothing pushed. The files are staged: git reset -- <file> unstages one. $out" >&2; exit 1; }
     sha="$(git -C "$wt" rev-parse HEAD)"
     echo "commit-push: committed ${sha:0:8} ($(printf '%s\n' "${files[@]}" | grep -c .) file(s)): $msg"
   fi

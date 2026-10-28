@@ -555,7 +555,7 @@ export async function showGithubPanel(t, tab) {
       <h3>Send ${esc(t.id)} to GitHub</h3>
       <p>${pv.ok ? 'The issue, exactly as it will be created. Nothing is sent until you press Create issue.' : 'The preview failed, so nothing can be sent yet:'}</p>
       ${warns.length ? `<div class="ck-gh-note" id="ck-gh-note" role="note">${warns.map(w => `<p>${esc(w)}</p>`).join('')}</div>` : ''}
-      ${cpOffer ? `<div class="ck-gh-cp" id="ck-gh-cp"><button type="button" id="ck-gh-cp-open">Commit and push…</button></div>` : ''}
+      ${cpOffer ? `<div class="ck-gh-cp" id="ck-gh-cp"><div class="ck-gh-actions"><button type="button" id="ck-gh-cp-open">Commit and push…</button></div></div>` : ''}
       <pre class="ck-gh-pre" id="ck-gh-preview">${esc(preview)}</pre>
       ${isPublic ? `<label class="ck-gh-public"><input type="checkbox" id="ck-gh-public"> This repository is public: anyone could read the ticket's notes. Send anyway.</label>` : ''}
       <div class="ck-gh-actions"><button type="button" class="ck-gh-create" id="ck-gh-create"${pv.ok ? '' : ' disabled'}>Create issue</button><span class="ck-gh-status" id="ck-gh-status" role="status"></span></div>
@@ -615,10 +615,11 @@ async function showCommitPush(t, tab, gen) {
   box.innerHTML = `<p>Branch: <code>${esc(branch)}</code></p>
       ${files.length ? `<ul class="ck-gh-cp-files" id="ck-gh-cp-files">${files.map((f, i) => `<li><label><input type="checkbox" data-i="${i}"${f.untracked ? '' : ' checked'}> <code>${esc(f.path)}</code> <span class="ck-gh-cp-st">${f.untracked ? 'new, not tracked' : 'changed'}</span></label></li>`).join('')}</ul>` : '<p>No uncommitted files: only the commits already here are pushed.</p>'}
       ${files.length ? `<label class="ck-gh-cp-msg">Commit message <input type="text" id="ck-gh-cp-msg" maxlength="200" value="${escAttr(`chore: ${t.id} work for the cloud session`)}"></label>` : ''}
-      <div class="ck-gh-actions"><button type="button" class="ck-gh-create" id="ck-gh-cp-go">Commit and push</button><button type="button" id="ck-gh-cp-cancel">Cancel</button><span class="ck-gh-status" id="ck-gh-cp-status" role="status"></span></div>`;
+      <div class="ck-gh-actions"><button type="button" class="ck-gh-create" id="ck-gh-cp-go">Commit and push</button><button type="button" id="ck-gh-cp-cancel">Cancel</button><span class="ck-gh-status" id="ck-gh-cp-status" role="status"></span></div>
+      <pre class="ck-gh-pre" id="ck-gh-cp-out" hidden></pre>`;
   document.getElementById('ck-gh-cp-cancel').addEventListener('click', () => {
     delete box.dataset.open;
-    box.innerHTML = '<button type="button" id="ck-gh-cp-open">Commit and push…</button>';
+    box.innerHTML = '<div class="ck-gh-actions"><button type="button" id="ck-gh-cp-open">Commit and push…</button></div>';
     wireCommitPush(t, tab, gen);
   });
   document.getElementById('ck-gh-cp-go').addEventListener('click', async () => {
@@ -640,7 +641,8 @@ async function showCommitPush(t, tab, gen) {
     if (gen !== ghPanelGen) return;
     if (!res.ok) {
       status.textContent = 'Not pushed; see why below.';
-      document.getElementById('ck-gh-preview').textContent = res.output || '';
+      const outEl = document.getElementById('ck-gh-cp-out');
+      if (outEl) { outEl.textContent = res.output || ''; outEl.hidden = false; }
       return;
     }
     showToast(`Pushed ${name} to origin.`);
