@@ -55,6 +55,12 @@ Usage:
                            --keep-data) and the install folder (a dirty or unpushed git clone is
                            never deleted), and on Windows the user PATH entry. --dry-run changes
                            nothing; with no terminal and no --yes it only prints the plan.
+  canon log verify         Check the activity log (~/.canon/events) against its day seals: one
+                           line per day, intact, broken, missing or unsealed; exit 1 if any day is
+                           broken or missing. A seal shows a day was not changed after it was
+                           sealed, not who wrote it.
+  canon log seal           Seal every closed day not sealed yet (the daemon and the first event of
+                           each day do this too).
   canon completion <bash|zsh|powershell>
                            Print a completion script. bash: eval "$(canon completion bash)"
                            in ~/.bashrc; zsh: eval "$(canon completion zsh)" in ~/.zshrc
@@ -265,7 +271,7 @@ _canon() {
   local cur prev w
   cur="${COMP_WORDS[COMP_CWORD]}"; prev="${COMP_WORDS[COMP_CWORD-1]}"
   if [ "$COMP_CWORD" -eq 1 ]; then
-    COMPREPLY=($(compgen -W "status sessions stop restart wait update uninstall completion version help" -- "$cur")); return
+    COMPREPLY=($(compgen -W "status sessions stop restart wait update uninstall log completion version help" -- "$cur")); return
   fi
   case "$prev" in
     --until) COMPREPLY=($(compgen -W "needs-you working done idle exited" -- "$cur")); return ;;
@@ -277,6 +283,7 @@ _canon() {
     stop|restart) w="--force" ;;
     wait) w="--until --timeout --project --json" ;;
     completion) w="bash zsh powershell" ;;
+    log) w="verify seal" ;;
     uninstall) w="--dry-run --yes --keep-data --force" ;;
     *) w="" ;;
   esac
@@ -295,11 +302,11 @@ Register-ArgumentCompleter -Native -CommandName canon, canon.cmd -ScriptBlock {
   $pos = if ($wordToComplete) { $n - 1 } else { $n }
   $prev = if ($pos -ge 1) { $el[$pos - 1] } else { '' }
   $sub = if ($n -ge 2 -and $pos -gt 1) { $el[1] } else { '' }
-  $cands = if ($pos -eq 1) { 'status','sessions','stop','restart','wait','update','uninstall','completion','version','help' }
+  $cands = if ($pos -eq 1) { 'status','sessions','stop','restart','wait','update','uninstall','log','completion','version','help' }
     elseif ($prev -eq '--until') { 'needs-you','working','done','idle','exited' }
     else { switch ($sub) {
       'status' { '--json' } 'sessions' { '--json' } 'stop' { '--force' } 'restart' { '--force' }
-      'wait' { '--until','--timeout','--project','--json' } 'completion' { 'bash','zsh','powershell' } 'uninstall' { '--dry-run','--yes','--keep-data','--force' }
+      'wait' { '--until','--timeout','--project','--json' } 'completion' { 'bash','zsh','powershell' } 'log' { 'verify','seal' } 'uninstall' { '--dry-run','--yes','--keep-data','--force' }
       default { @() } } }
   $cands | Where-Object { $_ -like "$wordToComplete*" } |
     ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
@@ -314,6 +321,13 @@ completion_cmd() {
     powershell) completion_powershell ;;
     *) echo "canon completion: choose bash, zsh or powershell" >&2; exit 2 ;;
   esac
+}
+
+# t-3137: the activity log's seals. An older board takes an unknown first word for a port and would serve, so ask --help first.
+log_cmd() {
+  local b h; b="$(board_bin)"; h="$("$b" --help 2>/dev/null)" || h=""
+  case "$h" in *"log verify"*) ;; *) echo "canon log: the board binary ($b) is older than this command; run canon update." >&2; exit 1 ;; esac
+  exec "$b" log "$@"
 }
 
 # t-180d: poll the board for one session's state (it answers with the state word, so no
@@ -451,6 +465,7 @@ main() {
     wait) shift; wait_cmd "$@"; exit $? ;;       # t-b2ff: a subcommand never falls through to the start path and its folder guard
     update) shift; update_cmd "$@"; exit $? ;;
     uninstall) shift; exec bash "$SCRIPT_DIR/canon-uninstall.sh" "$@" ;;
+    log) shift; log_cmd "$@" ;;
     completion) shift; completion_cmd "$@"; exit 0 ;;
     "") : ;;
     [0-9]*) PORT_ARG="$1" ;;

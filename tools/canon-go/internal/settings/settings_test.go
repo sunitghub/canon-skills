@@ -670,3 +670,41 @@ func TestWriteCapEdge(t *testing.T) {
 		t.Error("a result one byte over the cap was written")
 	}
 }
+
+// Protects the retention setting the activity log reads: only 30, 90 and 365 are accepted, a bad value or file means 30, and a linked file is not followed.
+func TestInstallSetRetention(t *testing.T) {
+	for body, want := range map[string]int{
+		`{"log":{"retention_days":90}}`:    90,
+		`{"log":{"retention_days":365}}`:   365,
+		`{"log":{"retention_days":30}}`:    30,
+		`{"log":{"retention_days":7}}`:     30,
+		`{"log":{"retention_days":"90"}}`:  30,
+		`{"log":{"retention_days":90.5}}`:  30,
+		`{"log":{"retention_days":null}}`:  30,
+		`{"log":{"retention_days":9e999}}`: 30,
+		`{`:                                30,
+		``:                                 30,
+	} {
+		home := t.TempDir()
+		if body != "" {
+			os.WriteFile(filepath.Join(home, "settings.json"), []byte(body), 0o600)
+		}
+		if got := RetentionDays(home); got != want {
+			t.Errorf("%q: retention = %d, want %d", body, got, want)
+		}
+	}
+	if RetentionDays("") != 30 {
+		t.Errorf("no home must mean the default")
+	}
+	if runtime.GOOS != "windows" {
+		home, outside := t.TempDir(), filepath.Join(t.TempDir(), "s.json")
+		os.WriteFile(outside, []byte(`{"log":{"retention_days":365}}`), 0o600)
+		os.Symlink(outside, filepath.Join(home, "settings.json"))
+		if got := RetentionDays(home); got != 30 {
+			t.Errorf("a symlinked settings file was followed: %d", got)
+		}
+	}
+	if InstallSet("/x").Schema[RetentionKey].Shareable {
+		t.Errorf("the retention key must not be shareable")
+	}
+}

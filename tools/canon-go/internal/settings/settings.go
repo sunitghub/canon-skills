@@ -379,3 +379,56 @@ func ProjectSet(root string) Set {
 
 // LocalRel is the local file's path relative to the project root (what IgnoreInGit takes).
 const LocalRel = ".canon/settings.local.json"
+
+// RetentionKey is log.retention_days: how many days the activity log keeps (t-3137). Only these three are offered.
+const (
+	RetentionKey     = "log.retention_days"
+	RetentionDefault = 30
+)
+
+func validateRetention(v any) (any, error) {
+	bad := fmt.Errorf("must be 30, 90 or 365 days")
+	var n float64
+	switch x := v.(type) {
+	case float64:
+		n = x
+	case int:
+		n = float64(x)
+	case json.Number:
+		f, err := x.Float64()
+		if err != nil {
+			return nil, bad
+		}
+		n = f
+	default:
+		return nil, bad
+	}
+	if n == 30 || n == 90 || n == 365 {
+		return int(n), nil
+	}
+	return nil, bad
+}
+
+// InstallSet is the install-wide settings: $CANON_HOME/settings.json, one file, never shared through a repository.
+func InstallSet(home string) Set {
+	return Set{
+		Schema: Schema{RetentionKey: {Validate: validateRetention, Shareable: false, Default: RetentionDefault}},
+		Local:  filepath.Join(home, "settings.json"),
+	}
+}
+
+// RetentionDays is the effective log.retention_days of the install at home. A missing, malformed, unreadable or
+// symlinked file, or a bad value, means the default: a broken settings file never decides to keep nothing or delete more.
+func RetentionDays(home string) int {
+	if home == "" {
+		return RetentionDefault
+	}
+	res, err := InstallSet(home).Load()
+	if err != nil {
+		return RetentionDefault
+	}
+	if n, ok := res.Values[RetentionKey].V.(int); ok {
+		return n
+	}
+	return RetentionDefault
+}

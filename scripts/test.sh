@@ -115,6 +115,7 @@ tests=(
   "$ROOT/tests/check-binaries-released.sh"
   "$ROOT/tests/src-key.sh"
   "$ROOT/tests/events.sh"
+  "$ROOT/tests/events-log.sh"
   "$ROOT/tests/release-daemon-publish.sh"
   "$ROOT/tests/release.sh"
   "$ROOT/tests/release-zip-slim.sh"

@@ -10,6 +10,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"canon/internal/settings"
 )
 
 // Protects every emitter (tkt, sprint, the board): the v1 line shape and its limits.
@@ -56,6 +58,9 @@ func readAll(t *testing.T, dir string) []map[string]any {
 	files, _ := filepath.Glob(filepath.Join(dir, "*.jsonl"))
 	var out []map[string]any
 	for _, f := range files { // name order = day order
+		if filepath.Base(f) == sealsName {
+			continue
+		}
 		fh, err := os.Open(f)
 		if err != nil {
 			t.Fatal(err)
@@ -80,24 +85,33 @@ func TestDayFilesAndRetention(t *testing.T) {
 	home := t.TempDir()
 	dir := filepath.Join(home, "events")
 	os.MkdirAll(dir, 0o700)
-	// 2026-07-22 is exactly 90 days before 10-20: kept; look-alike names are never touched, however old they look
-	for _, keep := range []string{"2026-07-22.jsonl", "2026-07-23.jsonl", "notes.txt", "emit-errors.log", "x2001-01-01.jsonl", "2001-01-01.jsonl.bak", "2001-13-45.jsonl"} {
+	// 2026-09-20 is exactly 30 days before 10-20 (the default retention): kept; look-alike names are never touched, however old they look
+	for _, keep := range []string{"2026-09-20.jsonl", "2026-09-21.jsonl", "notes.txt", "emit-errors.log", "x2001-01-01.jsonl", "2001-01-01.jsonl.bak", "2001-13-45.jsonl"} {
 		os.WriteFile(filepath.Join(dir, keep), []byte(""), 0o600)
 	}
-	os.WriteFile(filepath.Join(dir, "2026-07-21.jsonl"), []byte(""), 0o600) // 91 days: deleted
+	os.WriteFile(filepath.Join(dir, "2026-09-19.jsonl"), []byte(""), 0o600) // 31 days: deleted
 	for _, ts := range []string{"2026-10-19T23:59:59.900Z", "2026-10-20T00:00:00.100Z", "2026-10-20T00:00:01Z"} {
 		t.Setenv("CANON_EVENTS_CLOCK", ts)
 		if err := Emit(home, "ticket.closed", "tkt", "/p", map[string]string{"ticket": "t-" + ts[17:19]}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	for name, want := range map[string]bool{"2026-07-21.jsonl": false, "2026-07-22.jsonl": true, "2026-07-23.jsonl": true, "notes.txt": true,
+	for name, want := range map[string]bool{"2026-09-19.jsonl": false, "2026-09-20.jsonl": true, "2026-09-21.jsonl": true, "notes.txt": true,
 		"x2001-01-01.jsonl": true, "2001-01-01.jsonl.bak": true, "2001-13-45.jsonl": true, "2026-10-19.jsonl": true, "2026-10-20.jsonl": true} {
-		if _, err := os.Stat(filepath.Join(dir, name)); (err == nil) != want {
+		_, err := os.Stat(filepath.Join(dir, name))
+		if _, gzErr := os.Stat(filepath.Join(dir, name+".gz")); gzErr == nil { // a sealed day older than 7 days is gzipped
+			err = nil
+		}
+		if (err == nil) != want {
 			t.Errorf("%s present=%v, want %v", name, err == nil, want)
 		}
 	}
-	all := readAll(t, dir)
+	var all []map[string]any
+	for _, m := range readAll(t, dir) {
+		if m["kind"] == "ticket.closed" { // the maintenance also wrote its log.pruned event for the removed day
+			all = append(all, m)
+		}
+	}
 	if len(all) != 3 || all[0]["ts"] != "2026-10-19T23:59:59.900Z" || all[2]["ts"] != "2026-10-20T00:00:01.000Z" {
 		t.Errorf("events across midnight: %v", all)
 	}
@@ -281,13 +295,13 @@ func TestLatestPicksNewestValidLine(t *testing.T) {
 	}
 }
 
-// Protects the intake route's read cost: only the newest RetentionDays+1 day files are read, so an event older than that is not found.
+// Protects the intake route's read cost: only the newest 30+1 day files are read, so an event older than that is not found.
 func TestLatestReadsOnlyRetainedDays(t *testing.T) {
 	home := t.TempDir()
 	dir := filepath.Join(home, "events")
 	os.MkdirAll(dir, 0o700)
 	day := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	for i := 0; i < RetentionDays+2; i++ {
+	for i := 0; i < settings.RetentionDefault+2; i++ {
 		d := day.AddDate(0, 0, i).Format("2006-01-02")
 		line := ""
 		if i == 0 { // only the oldest file holds a match, and it is past the cap

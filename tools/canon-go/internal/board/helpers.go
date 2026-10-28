@@ -70,6 +70,8 @@ func runHelper(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 	case "event":
 		emitEventCLI(args[1:])
 		return 0, true // observer-only: an event never changes the caller's outcome
+	case "log":
+		return logCLI(args[1:], stdout, stderr), true
 	case "transcript-report":
 		if len(args) != 3 {
 			fmt.Fprintln(stderr, "usage: sprint-check transcript-report <agent-transcript.jsonl> <first-line-prefix>")

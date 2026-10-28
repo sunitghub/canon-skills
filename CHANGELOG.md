@@ -6,6 +6,15 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+Update with `canon update`, then restart the daemon (Admin's **Restart Daemon**): the daemon now maintains the activity log.
+
+### Added
+- **Day seals and `canon log verify`.** The activity log (`~/.canon/events`) gets one seal per closed day in `seals.jsonl` (the day's line count and SHA-256, chained to the previous seal). `canon log verify` prints `intact`, `broken`, `missing` or `unsealed` for each day and exits 1 when a day was changed, deleted or reordered; `canon log seal` seals what is due. The daemon seals hourly, and so does the first event of each day. A seal shows a day was not changed after it was sealed; it does not show who wrote it.
+- **Keep for is a setting.** `log.retention_days` in `~/.canon/settings.json` (30, 90 or 365). Sealed days older than 7 days are gzipped, and each removal writes a `log.pruned` event.
+
+### Changed
+- **The activity log is now kept for 30 days, not 90.** The first event written after you update removes every day file older than 30 days (and records it). To keep more, set `{"log":{"retention_days":90}}` in `~/.canon/settings.json` before updating. Your first event files date from 2026-10-20, so nothing is that old until about 2026-11-19.
+
 ## [0.25.1] - 2026-10-28
 
 Update with `canon update`. No daemon restart is needed.

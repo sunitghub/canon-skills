@@ -2545,6 +2545,22 @@ func (s *server) startIdleReaper() {
 	}()
 }
 
+// startLogMaintenance seals closed days of the activity log, gzips old ones and removes those past the retention setting, once at
+// start and then every hour (t-3137). Only Run calls it, so a test server never touches a real log. Errors go to emit-errors.log.
+func startLogMaintenance() {
+	go func() {
+		ticker := time.NewTicker(time.Hour)
+		defer ticker.Stop()
+		for {
+			home := events.Home()
+			if err := events.Maintain(home, time.Now().UTC(), "daemon"); err != nil && !errors.Is(err, events.ErrBusy) {
+				events.NoteFailure(home, err)
+			}
+			<-ticker.C
+		}
+	}()
+}
+
 // idleTimeoutFor picks the idle-reap timeout tier for a session's cwd
 // (t-cd06): nebula's own 5m default assumes the session runs in a
 // disposable worktree, safe to auto-kill without a second thought. The main
@@ -4754,6 +4770,7 @@ func Run(buildVersion, buildCommit string, args []string) int {
 		idleCheckInterval: envDurationOr("COCKPIT_IDLE_CHECK_INTERVAL", 0),
 	}
 	s := newServer(cfg)
+	startLogMaintenance()
 	// t-68ae: the state folder holds the boot token and hook settings; refuse one another account could read or plant.
 	if err := common.SecureStateDir(s.cfg.stateDir); err != nil {
 		fmt.Fprintln(os.Stderr, "cockpit-daemon:", err)

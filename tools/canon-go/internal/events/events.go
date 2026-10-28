@@ -19,18 +19,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"canon/internal/settings"
 )
 
 // Schema is the version every event carries.
 const Schema = 1
-
-// RetentionDays is how long a day file is kept; the first write of a new day deletes older ones.
-const RetentionDays = 90
 
 type field struct {
 	name string
@@ -82,8 +80,6 @@ var kinds = map[string][]field{
 var sources = map[string]bool{"tkt": true, "sprint": true, "board": true, "gate-snapshot": true, "subagent-log": true, "daemon": true}
 
 const projectMax = 1024
-
-var dayFileRe = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2})\.jsonl$`)
 
 // Kinds lists the v1 kinds, sorted (docs and tests).
 func Kinds() []string {
@@ -193,7 +189,7 @@ func Emit(home, kind, source, project string, data map[string]string) error {
 func EmitActor(home, kind, source, actor, project string, data map[string]string) error {
 	err := emit(home, kind, source, actor, project, data)
 	if err != nil {
-		noteFailure(home, err)
+		NoteFailure(home, err)
 	}
 	return err
 }
@@ -226,8 +222,10 @@ func emit(home, kind, source, actor, project string, data map[string]string) err
 	}
 	_, werr := f.Write(append(b, '\n')) // one write: whole under concurrent appends
 	cerr := f.Close()
-	if newDay {
-		prune(dir, at)
+	if newDay { // t-3137: seal closed days, gzip old ones, remove those past the retention setting
+		if merr := Maintain(home, at, source); merr != nil && !errors.Is(merr, ErrBusy) {
+			NoteFailure(home, merr)
+		}
 	}
 	if werr != nil {
 		return werr
@@ -235,31 +233,10 @@ func emit(home, kind, source, actor, project string, data map[string]string) err
 	return cerr
 }
 
-// prune deletes day files older than RetentionDays before at. Only names shaped like a day file are touched.
-func prune(dir string, at time.Time) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return
-	}
-	oldest := at.AddDate(0, 0, -RetentionDays).Format("2006-01-02")
-	for _, e := range entries {
-		m := dayFileRe.FindStringSubmatch(e.Name())
-		if m == nil || !e.Type().IsRegular() {
-			continue
-		}
-		if _, err := time.Parse("2006-01-02", m[1]); err != nil {
-			continue
-		}
-		if m[1] < oldest {
-			os.Remove(filepath.Join(dir, e.Name()))
-		}
-	}
-}
-
 const errorsLogMax = 1 << 20
 
-// noteFailure appends one line to events/emit-errors.log, best effort; it stops growing at 1 MB.
-func noteFailure(home string, err error) {
+// NoteFailure appends one line to events/emit-errors.log, best effort; it stops growing at 1 MB.
+func NoteFailure(home string, err error) {
 	if home == "" {
 		return
 	}
@@ -290,7 +267,7 @@ type Event struct {
 const lineMax = 64 << 10
 
 // Latest is the newest event of kind for project (t-9641: Factory's "Last synced"), searching day files newest first
-// within RetentionDays, or false. Anyone who can append to the folder can write a line, so each one is checked against
+// within the retention setting (log.retention_days, 30 by default), or false. A day older than 7 days may be gzipped; it is read the same. Anyone who can append to the folder can write a line, so each one is checked against
 // the v1 schema and skipped when it fails; only regular files named like a day file are read (no symlinks).
 // valid, when not nil, is one more per-kind check on a line that passed the schema (t-f053): a line it rejects is skipped like
 // any other invalid line, so it cannot hide an older valid one. A minimal reader until t-0b89's read API.
@@ -305,13 +282,14 @@ func Latest(home, kind, project string, valid func(Event) bool) (Event, bool) {
 	}
 	var days []string
 	for _, e := range entries {
-		if dayFileRe.MatchString(e.Name()) && e.Type().IsRegular() {
+		if m := dayAnyRe.FindStringSubmatch(e.Name()); m != nil && e.Type().IsRegular() {
 			days = append(days, e.Name())
 		}
 	}
-	sort.Sort(sort.Reverse(sort.StringSlice(days)))
-	if len(days) > RetentionDays+1 {
-		days = days[:RetentionDays+1]
+	// newest day first; a plain file sorts before its .gz twin, which is only left behind by a crashed gzip
+	sort.Slice(days, func(i, j int) bool { return days[i] > days[j] })
+	if keep := settings.RetentionDays(home) + 1; len(days) > keep {
+		days = days[:keep]
 	}
 	for _, name := range days {
 		if ev, ok := latestIn(filepath.Join(dir, name), kind, project, valid); ok {
@@ -323,7 +301,7 @@ func Latest(home, kind, project string, valid func(Event) bool) (Event, bool) {
 
 // latestIn is the last valid matching line of one day file (append order). An over-long line is skipped whole.
 func latestIn(path, kind, project string, valid func(Event) bool) (Event, bool) {
-	f, err := os.Open(path)
+	f, err := openDay(path)
 	if err != nil {
 		return Event{}, false
 	}

@@ -223,6 +223,7 @@ Helpers (used by canon's shell tools; see helpers.go):
   headless-json, json-strings <file>, skill-check <skill-dir>,
   settings <status|add|remove> <settings.json> <allow|deny> <rule>...
   event <kind> --project <dir> --source <name> key=value...
+  log verify | seal        the activity log's day seals (canon log)
   transcript-report <agent-transcript.jsonl> <first-line-prefix>
   integrity [--json] [--gate] [--online]
   gate-clusters [--days N] [--json]
