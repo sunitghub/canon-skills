@@ -38,7 +38,7 @@ $(diff <(printf '%s\n' $want_routes) <(printf '%s\n' "$go") || true)"
 # t-d271: the per-ticket GitHub routes are regexes, which the extractor above collapses to /api/ticket: pin their
 # sub-route names.
 gh_subroutes() { grep -oE "github/\((send|import|merge|take-back|send-preview|merge-check)[a-z|-]*\)" "$1" | tr '()|' '\n\n\n' | grep -v '^github/$' | grep . | sort -u; }
-assert_eq "import land merge merge-check merge-stop open-pr ready send send-preview status take-back" "$(gh_subroutes "$MAIN_GO" | tr '\n' ' ' | sed 's/ $//')"
+assert_eq "commit-push commit-push-preview import land merge merge-check merge-stop open-pr ready send send-preview status take-back" "$(gh_subroutes "$MAIN_GO" | tr '\n' ' ' | sed 's/ $//')"
 
 route_count="$(echo "$go" | wc -l | tr -d ' ')"
 

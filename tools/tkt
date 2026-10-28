@@ -2320,14 +2320,15 @@ cmd_commit_push() {
     [[ -z "$list" ]] || printf '%s\n' "$list" | while IFS=$'\t' read -r xy p; do printf 'file: %s %s\n' "$xy" "$p"; done
     return 0
   fi
-  local f
+  local f paths
+  paths="$(printf '%s\n' "$list" | cut -f2-)"   # captured, not piped into grep -q (pipefail)
   if [[ ${#files[@]} -gt 0 ]]; then
     $msgset && [[ -n "$msg" ]] || { echo "commit-push: a commit needs --message; nothing changed" >&2; exit 1; }
     [[ ${#msg} -le 200 && "$msg" != *$'\n'* && "$msg" != *$'\r'* ]] \
       || { echo "commit-push: the message must be one line of at most 200 characters; nothing changed" >&2; exit 1; }
     for f in "${files[@]}"; do
       [[ -n "$f" && "$f" != -* ]] || { echo "commit-push: refused file name '$f' (empty, or starts with -); nothing changed" >&2; exit 1; }
-      printf '%s\n' "$list" | cut -f2- | grep -qxF -- "$f" \
+      grep -qxF -- "$f" <<< "$paths" \
         || { echo "commit-push: $f is not one of this checkout's changes (tkt commit-push $id --dry-run lists them); nothing changed" >&2; exit 1; }
     done
   elif ! $new && [[ "$ahead" == 0 ]]; then
