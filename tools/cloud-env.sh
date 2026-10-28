@@ -24,7 +24,7 @@ script_head() {
   cat <<'SH'
 #!/bin/bash
 set -e
-curl -fsSL https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.sh | bash
+curl -fsSL https://getcanon.dev/install.sh | bash
 SH
 }
 script_go() {

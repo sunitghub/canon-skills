@@ -92,6 +92,21 @@ git remote set-url origin "$W/origin.git"
 id2="$("$TKT" create "Local only")"; rc=0; out="$("$TKT" github-status "$id2" 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "an unsent ticket should exit 1"; assert_contains "$out" "was not sent to GitHub"
 assert_contains "$("$TKT" github-status "$id")" "$id · acme/app#23 ·"
+# t-07b5: a tracked .tickets/ has no results branch: the closed ticket rides in the PR's head, so that head is where to look.
+# Protects: the Factory card's poll (Import results for a project that commits .tickets/).
+sed -i.bak 's/^status: closed$/status: open/' "$f" && rm -f "$f.bak" ".tickets/$id/eval-report.md"
+mkdir -p "$W/c/.tickets/$id"; sed 's/^status: .*$/status: closed/' "$f" > "$W/c/.tickets/$id/ticket.md"
+git -C "$W/c" add -f ".tickets/$id/ticket.md"; git -C "$W/c" commit -qm "cloud close"; TR="$(git -C "$W/c" rev-parse HEAD)"
+git -C "$W/c" push -q origin "+$TR:refs/pull/24/head"
+printf '24\tOPEN\t%s\n' "$TR" > "$W/prs";       assert_eq "results-ready|24|OPEN|false||false" "$(st)"
+assert_contains "$("$TKT" github-status "$id")" "tkt import-results $id --pr 24"
+printf '24\tCLOSED\t%s\n' "$TR" > "$W/prs";     assert_eq "pr-open|24|CLOSED|false||false" "$(st)"   # only an open PR offers it
+sed -i.bak 's/^status: closed$/status: open/' "$W/c/.tickets/$id/ticket.md" && rm -f "$W/c/.tickets/$id/ticket.md.bak"
+git -C "$W/c" commit -qam "still open"; TO="$(git -C "$W/c" rev-parse HEAD)"; git -C "$W/c" push -q origin "+$TO:refs/pull/24/head"
+printf '24\tOPEN\t%s\n' "$TO" > "$W/prs";       assert_eq "pr-open|24|OPEN|false||false" "$(st)"   # an unclosed ticket in the head is not a result
+git -C "$W/c" rm -q -r --cached ".tickets"; git -C "$W/c" commit -qm "no ticket"; TN="$(git -C "$W/c" rev-parse HEAD)"; git -C "$W/c" push -q origin "+$TN:refs/pull/24/head"
+printf '24\tOPEN\t%s\n' "$TN" > "$W/prs";       assert_eq "pr-open|24|OPEN|false||false" "$(st)"   # no ticket in the head at all
+git -C "$W/c" push -q origin --delete refs/pull/24/head; printf '' > "$W/prs"
 # t-24b1: a branch the session pushed without a PR (#41). Only while the stage would be "sent".
 printf '' > "$W/prs"; sed -i.bak 's/^status: closed$/status: open/' "$f" && rm -f "$f.bak" ".tickets/$id/eval-report.md"
 bs() { "$TKT" github-status "$id" --json | node -e 'const j=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write([j.stage,j.branch,JSON.stringify(j.mirrors)].join("|"))'; }

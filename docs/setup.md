@@ -98,7 +98,7 @@ this project's recipe ready to paste (the Cockpit's Factory › GitHub has Copy 
 script's Go block:
 
 - **Name:** `canon`
-- **Network access:** *Custom*, with these domains, and tick *Also include default list of common package managers*:
+- **Network access:** *Limited*, with these domains added, and tick *Allow package managers*:
   `getcanon.dev`, `github.com`, `raw.githubusercontent.com`, `objects.githubusercontent.com`, and for Go projects and
   canon itself (canon's tests build its daemon with the Go it pins): `go.dev`, `dl.google.com`, `proxy.golang.org`,
   `sum.golang.org`. Add your own stack's domains (an npm or PyPI mirror, for example) yourself.
@@ -106,7 +106,7 @@ script's Go block:
   ```bash
   #!/bin/bash
   set -e
-  curl -fsSL https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.sh | bash
+  curl -fsSL https://getcanon.dev/install.sh | bash
 
   # Go: the toolchain canon pins, read from the installed release, so builds and tests match your machine.
   GOV="$(sed -n 's/^toolchain go//p' "$HOME/.canon/tools/canon-go/go.mod" 2>/dev/null)" || GOV=""   # a missing file must not stop the session
@@ -181,9 +181,12 @@ script's Go block:
 4. At the close the session runs `tkt export <id>`. If your project commits `.tickets/`, the ticket goes back inside
    the PR. If not, it is pushed to a branch `canon-results/<id>` that is never merged. A public repo needs `--public`,
    as with `send-issue`: the folder holds the ticket's notes and evidence logs.
-5. On your machine, `tkt import-results <id> --pr <PR number>` brings that branch back: every file byte-for-byte, a
-   local file that differs kept in `.tickets/<id>/.before-import/`, and a report of the status, the evaluator's verdict
-   and whether it graded the PR's head commit. Then it deletes the branch. A ticket the cloud left `in_progress` comes
+5. On your machine, `tkt import-results <id> --pr <PR number>` brings the results back: from the branch
+   `canon-results/<id>` when there is one, otherwise (a project that commits `.tickets/`) from the PR's head commit.
+   Without `--pr` it finds the PR through the ticket's `github:` line. Every file comes byte-for-byte, a local file
+   that differs is kept in `.tickets/<id>/.before-import/`, and a report gives the status, the evaluator's verdict
+   and whether it graded the PR's head commit. Then it deletes the branch (a PR head has nothing to delete). The
+   Factory card shows **Import results** in both cases. A ticket the cloud left `in_progress` comes
    back `open` (see "When a cloud sprint cannot close" below).
 6. `tkt merge-pr <id>` finishes it: it checks the evaluator passed on the PR's head and GitHub can merge it, shows
    what the PR changes, asks once, runs your tests (`scripts/test.sh`, or `--test "<command>"`) on your base branch

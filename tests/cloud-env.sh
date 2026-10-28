@@ -15,7 +15,7 @@ grep -q 'GOV=' <<< "$base" && fail "the base script carries the Go block"
 grep -q 'GOV=' <<< "$go" || fail "the --go script lacks the Go block"
 for s in "$base" "$go"; do
   assert_eq "#!/bin/bash" "$(head -1 <<< "$s")"
-  assert_contains "$s" "canon-skills/main/install.sh | bash"
+  assert_contains "$s" "https://getcanon.dev/install.sh | bash"
   assert_contains "$s" 'cp "$HOME/.canon/agents/canon-reviewer.md"'
 done
 [[ "$(grep -n 'GOV=' <<< "$go" | cut -d: -f1)" -lt "$(grep -n '^for t in' <<< "$go" | cut -d: -f1)" ]] || fail "the Go block is not before the wrappers"
@@ -32,7 +32,7 @@ assert_eq "False 4 False" "$(json)"   # not tracked yet
 git add tools/canon-go/go.mod
 assert_eq "True 8 True" "$(json)"
 txt="$("$TKT" cloud-env)"
-assert_contains "$txt" "# Network access: Custom, with these domains (a Go project: base plus Go)"
+assert_contains "$txt" "# Network access: Limited, with these domains added and Allow package managers ticked (a Go project: base plus Go)"
 assert_contains "$txt" "sum.golang.org"
 assert_eq "$go" "$(sed -n '/^# Setup script$/,$p' <<< "$txt" | tail -n +2)"
 rc=0; "$TKT" cloud-env --yaml >/dev/null 2>&1 || rc=$?; assert_eq 1 "$rc"

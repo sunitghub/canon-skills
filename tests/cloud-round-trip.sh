@@ -32,6 +32,7 @@ case "$1 $2" in
   "issue view")   cat "$STUB_BODY" ;;
   "pr view")      echo "${STUB_PR_HEAD:?}" ;;
   "pr diff")      printf '%s\n' ${STUB_PR_FILES:-docs/x.md} ;;
+  "pr list")      printf '%b' "${STUB_PRS:-}" ;;
   *) echo "unexpected gh call: $*" >&2; exit 9 ;;
 esac
 EOF
@@ -315,6 +316,30 @@ assert_contains "$out" "$lid"
 "$TKT" reopen "$lid" >/dev/null; "$TKT" start "$id" >/dev/null
 assert_eq "$id" "$("$TKT" current | awk '{print $1}')"
 "$TKT" reopen "$id" >/dev/null
+
+# t-07b5: a project that commits .tickets/ has no results branch: the closed ticket rides in the PR, so import-results reads it from
+# the PR's head. Protects: `tkt import-results` and the Factory card's Import results button for such a project.
+git --git-dir="$W/origin.git" update-ref -d "refs/heads/canon-results/$id" 2>/dev/null || true
+cd "$X" && git checkout -q -b tracked main && sed -i.bak 's/^status: .*$/status: closed/' ".tickets/$id/ticket.md" && rm -f ".tickets/$id/ticket.md.bak" && printf 'graded-head: %s\n## Verdict\npass: all criteria met\n' "$(git rev-parse HEAD)" > ".tickets/$id/eval-report.md" \
+  && git add -f ".tickets/$id" && git rm -q --cached -f ".tickets/$id/.cockpit-cwd" && git commit -qm "cloud close" && TRK="$(git rev-parse HEAD)" && git push -qf origin "HEAD:refs/pull/60/head" && git checkout -q main
+printf 'no tickets here\n' > "$W/notes.txt"; git -C "$X" checkout -q -b bare main && git -C "$X" rm -q -r --cached .tickets 2>/dev/null || true
+git -C "$X" commit -qm "no ticket" --allow-empty && git -C "$X" push -qf origin "HEAD:refs/pull/61/head" && git -C "$X" checkout -q main
+L3="$W/laptop3"; git clone -q "$W/origin.git" "$L3" 2>/dev/null; cd "$L3"
+mkdir -p ".tickets/$id" && cp "$A/$d/ticket.md" "$A/$d/plan.md" ".tickets/$id/"
+printf '60\tOPEN\t%s\n' "$TRK" > "$W/prs3"
+out="$(STUB_PRS="$(cat "$W/prs3")\n" STUB_PR_HEAD="$TRK" "$TKT" import-results "$id" 2>&1)" || fail "import from a PR head (PR found through the github: line) failed: $out"
+for f in acceptance.md eval-report.md evidence/report.json; do git -C "$X" show "$TRK:.tickets/$id/$f" | cmp -s - ".tickets/$id/$f" || fail "$f did not come back byte-for-byte from the PR head"; done
+cmp -s "$A/$d/plan.md" ".tickets/$id/.before-import/plan.md" || fail "the local plan.md was not kept in .before-import/"
+assert_contains "$out" "read from PR #60's head"; assert_contains "$out" "status: closed"; assert_contains "$out" "evaluator: pass"
+[[ "$out" != *"could not delete"* ]] || fail "it tried to delete a results branch that never existed: $out"
+assert_contains "$(cat "$CANON_HOME"/events/*.jsonl | grep -F '"kind":"github.results_imported"' | tail -1)" '"pr":"60"'
+# --pr names the PR directly (no gh lookup); a head with no ticket in it fails naming both places it looked; no PR at all says so.
+rc=0; out="$(STUB_PR_HEAD="$TRK" "$TKT" import-results "$id" --pr 61 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "a PR head with no ticket should exit 1: $out"
+assert_contains "$out" "PR #61's head has no .tickets/$id/ticket.md"; assert_contains "$out" "origin has no branch canon-results/$id either"
+rc=0; out="$("$TKT" import-results "$id" 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "no branch and no PR should exit 1"; assert_contains "$out" "origin has no branch canon-results/$id, and there is no PR"
+cd "$W"
 
 # No results branch: a clear refusal.
 rc=0; out="$("$TKT" import-results "$id" 2>&1)" || rc=$?

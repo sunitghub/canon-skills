@@ -1683,7 +1683,7 @@ cmd_cloud_env() {
   if $json; then _cloud_env_json "$root"; printf '\n'; return 0; fi
   [[ -f "$SCRIPT_DIR/cloud-env.sh" ]] || { echo "cloud-env: $SCRIPT_DIR/cloud-env.sh is missing; run canon update to restore canon's tools" >&2; exit 1; }
   if _cloud_env_go "$root"; then flag=(--go); kind="a Go project: base plus Go"; fi
-  printf '# Network access: Custom, with these domains (%s); add your own stack'"'"'s domains yourself\n' "$kind"
+  printf '# Network access: Limited, with these domains added and Allow package managers ticked (%s); add your own stack'"'"'s domains yourself\n' "$kind"
   bash "$SCRIPT_DIR/cloud-env.sh" domains ${flag[@]+"${flag[@]}"}
   printf '\n# Setup script\n'
   bash "$SCRIPT_DIR/cloud-env.sh" script ${flag[@]+"${flag[@]}"}
@@ -2011,9 +2011,20 @@ cmd_github_status() {
     fi
     late_docs_delta "$root" "$graded" "$phead" "$id" >/dev/null && late=true
   fi
+  # t-07b5: a tracked .tickets/ has no results branch: its closed ticket rides in the PR's head. Looked at only when the card is
+  # not already results-in; the fetch runs once per head (the commit stays local).
+  local trk=false trel=".tickets/$id"
+  if ! $branch && [[ "$pst" == OPEN && "$pr" =~ ^[0-9]+$ && "$phead" =~ ^[0-9a-f]{40}$ ]] \
+    && ! { [[ "$verdict" == pass ]] && { $match || $late; } && [[ "$(get_field "$file" status)" == closed ]]; }; then
+    if ! git -C "$root" cat-file -e "$phead^{commit}" 2>/dev/null; then
+      lerr="$(git -C "$root" fetch -q origin "refs/pull/$pr/head" < /dev/null 2>&1)" \
+        || { echo "github-status: could not fetch PR #$pr's head from origin: $lerr" >&2; exit 1; }
+    fi
+    git -C "$root" show "$phead:$trel/ticket.md" 2>/dev/null | grep -qx 'status: closed' && trk=true
+  fi
   if [[ -n "$merged" || "$pst" == MERGED ]]; then stage=merged
   elif [[ "$verdict" == pass ]] && { $match || $late; } && [[ "$(get_field "$file" status)" == closed ]]; then stage=results-in
-  elif $branch; then stage=results-ready
+  elif $branch || $trk; then stage=results-ready
   elif [[ -n "$pr" ]]; then stage=pr-open
   else stage=sent; fi
   # t-24b1: no PR and no results branch yet: did the session push a branch and stop short of a PR (#41)?
@@ -2044,6 +2055,7 @@ cmd_github_status() {
     echo "$id · $gh · $stage"
     [[ -n "$pr" ]] && echo "  PR #$pr ($pst) head $phead"
     $branch && echo "  canon-results/$id is on origin: tkt import-results $id${pr:+ --pr $pr}"
+    $trk && echo "  PR #$pr carries the closed ticket (a tracked .tickets/): tkt import-results $id --pr $pr"
     [[ -n "$sb" ]] && echo "  $sb is on origin with no PR: tkt open-pr $id"
     [[ "$verdict" != - ]] && echo "  evaluator: $verdict on ${graded}$($match && echo ' (the PR head)' || { $late && echo ' (the PR head plus late docs)'; } || echo '')"
     [[ -n "$merged" ]] && echo "  merged: $merged"
@@ -2487,14 +2499,25 @@ cmd_import_results() {
   [[ -n "$id" ]] || { echo "Usage: tkt import-results <id> [--pr N]" >&2; exit 1; }
   [[ "$id" =~ ^t-[a-z0-9]+$ ]] || { echo "import-results: not a ticket id: $id" >&2; exit 1; }
   local dir root rel tdir; dir="$(ensure_tickets_dir)"; root="$(dirname "$dir")"; rel=".tickets/$id"; tdir="$dir/$id"
-  git -C "$root" fetch -q origin "refs/heads/canon-results/$id" 2>/dev/null \
-    || { echo "import-results: origin has no branch canon-results/$id (did the cloud session run tkt export $id?)" >&2; exit 1; }
+  # t-07b5: an ignored .tickets/ comes back on the branch; a tracked one rode in the PR, so with no branch the PR's head is the source.
+  local src="canon-results/$id"
+  if ! git -C "$root" fetch -q origin "refs/heads/canon-results/$id" 2>/dev/null; then
+    local lt="$tdir/ticket.md" gh0=""
+    [[ -z "$pr" && -f "$lt" ]] && gh0="$(get_field "$lt" github)"
+    [[ -z "$pr" && -n "$gh0" ]] && { pr="$(_resolve_pr import-results "$lt" "${gh0%#*}" "")" || pr=""; }
+    [[ "$pr" =~ ^[0-9]+$ ]] \
+      || { echo "import-results: origin has no branch canon-results/$id, and there is no PR to read a tracked $rel/ from (pass --pr N, or did the cloud session run tkt export $id?)" >&2; exit 1; }
+    git -C "$root" fetch -q origin "refs/pull/$pr/head" 2>/dev/null \
+      || { echo "import-results: origin has no branch canon-results/$id, and PR #$pr's head could not be fetched" >&2; exit 1; }
+    src="PR #$pr's head"
+  fi
   local head; head="$(git -C "$root" rev-parse FETCH_HEAD)"
   local tmp; tmp="$(mktemp -d "${TMPDIR:-/tmp}/tkt-results.XXXXXX")"
   # shellcheck disable=SC2064  # expand now: $tmp is local
   trap "rm -rf '$tmp'" EXIT
-  git -C "$root" archive "$head" "$rel" | tar -x -C "$tmp" || { echo "import-results: could not read canon-results/$id" >&2; exit 1; }
-  [[ -f "$tmp/$rel/ticket.md" ]] || { echo "import-results: canon-results/$id has no $rel/ticket.md" >&2; exit 1; }
+  git -C "$root" archive "$head" "$rel" 2>/dev/null | tar -x -C "$tmp" 2>/dev/null || true
+  [[ -f "$tmp/$rel/ticket.md" ]] \
+    || { echo "import-results: $src has no $rel/ticket.md$([[ "$src" == canon-results/* ]] || echo "; origin has no branch canon-results/$id either: did the cloud session commit .tickets/ or run tkt export $id?")" >&2; exit 1; }
   local gh_line="" runs_line=""
   [[ -f "$tdir/ticket.md" ]] && { gh_line="$(get_field "$tdir/ticket.md" github)"; runs_line="$(get_field "$tdir/ticket.md" runs)"; }
   local f n=0 kept=0
@@ -2553,10 +2576,12 @@ cmd_import_results() {
   [[ -z "$prline" ]] || tl+=("$prline")
   while IFS= read -r ol; do [[ -z "$ol" ]] || tl+=("evidence: ${ol#"  evidence ran on: "}"); done <<< "$osout"
   _gh_trail "$tdir" imported "${tl[@]}"
-  if [[ "$rc" == 0 ]]; then
+  if [[ "$rc" == 0 && "$src" != canon-results/* ]]; then
+    echo "  read from $src (a tracked $rel/ rides in the PR; there is no results branch to delete)"
+  elif [[ "$rc" == 0 ]]; then
     git -C "$root" push -q origin --delete "canon-results/$id" 2>/dev/null || echo "  note: could not delete canon-results/$id on origin; delete it by hand" >&2
   else
-    echo "  kept canon-results/$id on origin, since a check failed: fix it and run import-results again" >&2
+    echo "  $([[ "$src" == canon-results/* ]] && echo "kept $src on origin, since a check failed: fix it and" || echo "a check failed:") run import-results again" >&2
   fi
   echo "  Add its LEARNINGS.md row locally (learnings-sweep for $id) if it wrote learnings.md."
   if [[ "$rc" == 0 ]]; then canon_event github.results_imported tkt "$root" "ticket=$id" $([[ "$pr" =~ ^[0-9]+$ ]] && printf %s "pr=$pr"); fi   # t-4c09: only a clean import
