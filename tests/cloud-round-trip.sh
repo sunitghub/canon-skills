@@ -383,6 +383,12 @@ rc=0; out="$(STUB_PR_HEAD=0000000000000000000000000000000000000000 "$TKT" import
 assert_contains "$out" "a check failed: run import-results again"; [[ "$out" != *"on origin, since"* ]] || fail "it claimed to keep a branch that never existed: $out"
 rc=0; out="$(STUB_PR_HEAD="$TRK" "$TKT" import-results "$id" --pr 63 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "a PR head whose ticket folder has no ticket.md should exit 1: $out"; assert_contains "$out" "PR #63's head has no .tickets/$id/ticket.md"
+# t-d0a5: a results branch without the ticket is a broken export, not a stopped session: no tkt land hint there.
+git -C "$X" push -qf origin "bare:refs/heads/canon-results/$id"
+rc=0; out="$("$TKT" import-results "$id" --pr 61 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "a results branch without the ticket should exit 1: $out"; assert_contains "$out" "canon-results/$id has no .tickets/$id/ticket.md"
+[[ "$out" != *"next: tkt land"* ]] || fail "a broken results branch named tkt land: $out"
+git --git-dir="$W/origin.git" update-ref -d "refs/heads/canon-results/$id"
 rc=0; out="$(STUB_PR_HEAD="$TRK" "$TKT" import-results "$id" --pr 62 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "a PR with no head on origin should exit 1: $out"; assert_contains "$out" "PR #62's head could not be fetched"
 rc=0; out="$("$TKT" import-results "$id" 2>&1)" || rc=$?

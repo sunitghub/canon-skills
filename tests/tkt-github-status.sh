@@ -55,6 +55,10 @@ mv ".tickets/$id/eval-report.md" "$W/er";                              rm -f ".t
 # t-d0a5: PR open, nothing came back (no results branch, no import), a plan here: land with close_here (the card's Close here).
 lc() { "$TKT" github-status "$id" --json | node -e 'const j=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write(j.land+"|"+j.close_here)'; }
 echo plan > ".tickets/$id/plan.md";                                     assert_eq "true|true" "$(lc)"
+mv "$W/er" ".tickets/$id/eval-report.md";                              assert_eq "true|false" "$(lc)"   # imported: Continue here, not Close here
+mv ".tickets/$id/eval-report.md" "$W/er"
+printf '24\tMERGED\t%s\n' "$HEAD7" > "$W/prs";                          assert_eq "false|false" "$(lc)"   # a merged PR: nothing to close
+printf '24\tOPEN\t%s\n' "$HEAD7" > "$W/prs"
 git push -q origin "HEAD:refs/heads/canon-results/$id";                 assert_eq "false|false" "$(lc)"   # results to import: Import results, not Close here
 git push -q origin --delete "canon-results/$id"
 sed -i.bak 's/^status: open$/status: closed/' "$f" && rm -f "$f.bak";  assert_eq "false|false" "$(lc)"
