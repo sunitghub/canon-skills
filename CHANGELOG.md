@@ -6,6 +6,14 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.25.1] - 2026-10-28
+
+Update with `canon update`. No daemon restart is needed.
+
+### Fixed
+- A project that commits `.tickets/` has no `canon-results/<id>` branch, so a ticket sent to a cloud session could not be brought back. `tkt import-results` now reads the closed ticket from the pull request's head, and `tkt github-status` reports it as results-ready. A pull request from a fork is refused, and a `gh` failure is reported with its reason instead of looking like "no results".
+- The Claude cloud environment text says "Network access: Limited" with the domains added and Allow package managers ticked, and `cloud-env.sh` installs from `https://getcanon.dev/install.sh`.
+
 ## [0.25.0] - 2026-10-28
 
 Update with `canon update`, then restart the daemon (Admin's **Restart Daemon**): the Terminal in the daemon changed.
