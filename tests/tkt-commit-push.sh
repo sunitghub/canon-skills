@@ -64,6 +64,7 @@ rc=0; out="$("$TKT" commit-push 2>&1)" || rc=$?; assert_eq 1 "$rc"; assert_conta
 touch "$(printf 'tab\tname')"; mkdir -p .claude/skills/x && touch .claude/skills/x/SKILL.md
 git mv a.txt a2.txt; out="$("$TKT" commit-push "$id" --dry-run)"
 grep -qxF "file: RM a2.txt" <<< "$out" || fail "a staged rename is not one line under its new name: $out"
+while IFS= read -r l; do [[ -e "${l:9}" ]] || fail "the dry run listed a path that is not here (a rename's source read as an entry?): '$l'"; done < <(grep '^file: ' <<< "$out")
 [[ "$out" != *" a.txt"* && "$out" != *tab* && "$out" != *".claude/skills"* ]] || fail "the dry run listed a rename's old name, a tab name or a skill link: $out"
 git mv a2.txt a.txt; rm -rf "$(printf 'tab\tname')" .claude; before="$(sig)"
 # No origin, or one that cannot be reached: refused, nothing changed.
@@ -78,7 +79,7 @@ assert_eq "$(git --git-dir="$W/origin.git" rev-parse main)" "$(git rev-parse HEA
 # Commit two of the files: exactly those land, the staged b.txt stays staged and out of the commit; the push is plain.
 msg200="chore: $id $(head -c 220 /dev/zero | tr '\0' w)"; msg200="${msg200:0:200}"; [[ ${#msg200} == 200 ]] || fail "test setup: message is ${#msg200} long"
 out="$("$TKT" commit-push "$id" --file a.txt --file newdir/one.txt --message "$msg200")"   # 200 characters: the limit, allowed
-assert_contains "$out" "commit-push: committed"; assert_contains "$out" "(2 file(s)): $msg200"
+[[ "$out" =~ commit-push:\ committed\ [0-9a-f]{8}\ \(2\ file\(s\)\):\  ]] || fail "the commit line does not name the commit: $out"; assert_contains "$out" "(2 file(s)): $msg200"
 assert_contains "$out" "commit-push: pushed main to origin"; assert_contains "$out" "  to undo: git revert "
 assert_eq "a.txt newdir/one.txt" "$(git show --name-only --format= HEAD | sort | tr '\n' ' ' | sed 's/ $//')"
 assert_eq "$(git rev-parse HEAD)" "$(git --git-dir="$W/origin.git" rev-parse main)"
@@ -103,7 +104,9 @@ git pull -q --no-rebase origin main
 git checkout -q --detach; refuses "is not on a branch (detached HEAD)" --file newdir/two.txt --message "chore: x"; git checkout -q main
 
 # A ticket bound to a linked worktree: its checkout and branch are the ones listed and pushed.
-git worktree add -q -b wt-branch "$W/wt" main; printf '%s\n' "$W/wt" > ".tickets/$id/.cockpit-cwd"; echo wt > "$W/wt/w.txt"
+git worktree add -q -b wt-branch "$W/wt" main; printf '%s\n' "$W/wt" > ".tickets/$id/.cockpit-cwd"
+out="$("$TKT" commit-push "$id" --dry-run)"; [[ "$out" != *"file:"* ]] || fail "a clean checkout listed files: $out"
+echo wt > "$W/wt/w.txt"
 out="$("$TKT" commit-push "$id" --dry-run)"; assert_contains "$out" "commit-push: $id in $W/wt"; assert_contains "$out" "branch: wt-branch -> origin/wt-branch (new on origin)"
 grep -qxF "file: ?? w.txt" <<< "$out" || fail "the bound worktree's file is not listed: $out"
 rm ".tickets/$id/.cockpit-cwd"; git worktree remove --force "$W/wt"; git branch -q -D wt-branch
