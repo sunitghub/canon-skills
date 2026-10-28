@@ -334,7 +334,7 @@ func TestLoggingExport(t *testing.T) {
 func TestLoggingDelete(t *testing.T) {
 	g := newLogRig(t, map[string]string{
 		"2020-01-01.jsonl": "{}\n", "2020-01-02.jsonl.gz": "x", "seals.jsonl": "{}\n", "emit-errors.log": "e\n",
-		"notes.txt": "keep", "2020-01-01.jsonl.bak": "keep", "2020-13-45.jsonl": "keep", "x2020-01-01.jsonl": "keep",
+		"notes.txt": "keep", "2020-01-01.jsonl.bak": "keep", "seals.jsonl.bak": "keep", "emit-errors.log.1": "keep", "2020-13-45.jsonl": "keep", "x2020-01-01.jsonl": "keep",
 	})
 	var outside string
 	if runtime.GOOS != "windows" {
@@ -360,7 +360,7 @@ func TestLoggingDelete(t *testing.T) {
 	if code != 200 || res["ok"] != true || res["removed"] != float64(wantRemoved) {
 		t.Fatalf("delete = %d %v", code, res)
 	}
-	for _, kept := range []string{"notes.txt", "2020-01-01.jsonl.bak", "2020-13-45.jsonl", "x2020-01-01.jsonl"} {
+	for _, kept := range []string{"notes.txt", "seals.jsonl.bak", "emit-errors.log.1", "2020-01-01.jsonl.bak", "2020-13-45.jsonl", "x2020-01-01.jsonl"} {
 		if _, err := os.Stat(filepath.Join(g.dir, kept)); err != nil {
 			t.Errorf("%s was removed", kept)
 		}

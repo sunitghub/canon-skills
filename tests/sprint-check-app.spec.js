@@ -17986,7 +17986,7 @@ test.describe.serial('Canon Cockpit Admin > Logging (t-1bd5)', () => {
       await expect(page.locator('#lg-notice')).not.toContainText('Tower');
       await expect(page.locator('.lg-badge')).toHaveText('Always on');
       await expect(page.locator('#lg-dir')).toHaveText(/events$/);
-      await expect(page.locator('#lg-where')).toContainText('3 days');
+      await expect(page.locator('#lg-where')).toContainText('3 days, 3 files');
       await expect(page.locator('#lg-keep')).toHaveValue('30');
       await expect(page.locator('#lg-keep option:checked')).toHaveText('30 days (default)');
       await expect(page.locator('#lg-keep option')).toHaveText(['30 days (default)', '90 days', '1 year']);

@@ -64,8 +64,8 @@ The first key is `terminal.paging`: `"auto"` (long output pauses at the screen's
 
 The Cockpit's **Admin › Logging** tab (`t-1bd5`) is where you check and control the activity log canon keeps in `~/.canon/events` (see [plugins.md](plugins.md) for its format). The log is always on: Factory's "Last synced" and the sprint progress card read it. It never records terminal content or prompts, is stored only on this computer, and is never sent anywhere. The tab shows the real folder and what is in it, and offers:
 
-- **Keep for**: 30 days (the default), 90 days or 1 year. Choosing a shorter time than the log already holds asks first and says how many days will go; Cancel changes nothing. Nothing is removed at that moment: the next maintenance (the first event of a day, or the hourly run while the daemon is up) does it. Each change writes a `setting.changed` event and is saved to `~/.canon/settings.json`.
-- **Compress files older than 7 days**: on by default; sealed old days become `.jsonl.gz`. Verify and Export read them either way.
+- **Keep for** (`log.retention_days`): 30 days (the default), 90 days or 1 year. Choosing a shorter time than the log already holds asks first and says how many days will go; Cancel changes nothing. Nothing is removed at that moment: the next maintenance (the first event of a day, or the hourly run while the daemon is up) does it. Each change writes a `setting.changed` event and is saved to `~/.canon/settings.json`.
+- **Compress files older than 7 days** (`log.compress`): on by default; sealed old days become `.jsonl.gz`. Verify and Export read them either way.
 - **Show in folder**, **Export .jsonl** (every day, oldest first, up to 256 MB) and **Verify**, which checks each closed day against its seal (the same as `canon log verify`). A seal shows a day was not changed after it was sealed; it does not show who wrote it.
 - **Delete…**, after a confirm: removes every day, the seal file and `emit-errors.log` from this computer, and the new log starts with a `log.deleted` note. It cannot be undone.
 

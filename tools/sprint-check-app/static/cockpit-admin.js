@@ -621,7 +621,7 @@ function lgRender(st){
     note.textContent=age<st.retention_days?'Nothing to remove yet: the oldest day is '+lgPlural(age,'day')+' old.':'Days older than this are removed once a day.';
   }
   const c=$('lg-compress'); c.checked=!!st.compress; c.disabled=false;
-  $('lg-where').textContent=st.dir+(st.days?' \u00b7 '+lgPlural(st.days,'day')+', '+lgSize(st.bytes)+', '+st.oldest+' to '+st.newest:' \u00b7 empty');
+  $('lg-where').textContent=st.dir+(st.days?' \u00b7 '+lgPlural(st.days,'day')+', '+lgPlural(st.files,'file')+', '+lgSize(st.bytes)+', '+st.oldest+' to '+st.newest:' \u00b7 empty');
   $('lg-delete').disabled=!st.files;
 }
 async function lgLoad(){
