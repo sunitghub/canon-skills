@@ -1968,15 +1968,18 @@ _ff_local_base() {
   local root="$1" b="$2" id="${3:-}" old new wt here
   _branch_ok "$b" || { echo "Local branch: the base branch name ($b) is not usable; update it by hand: git pull"; return 0; }
   git -C "$root" fetch -q origin "refs/heads/$b" 2>/dev/null || { echo "Local $b: could not fetch origin/$b; update it by hand: git pull"; return 0; }
-  new="$(git -C "$root" rev-parse FETCH_HEAD)"
+  # t-41ff: every git call is guarded: merge-pr writes merged: after this, under set -e, so a failure here must not end it.
+  new="$(git -C "$root" rev-parse FETCH_HEAD)" || { echo "Local $b: could not read origin/$b; update it by hand: git pull"; return 0; }
   old="$(git -C "$root" rev-parse -q --verify "refs/heads/$b")" || { echo "Local $b: none here; nothing to update"; return 0; }
   [[ "$old" == "$new" ]] && { echo "Local $b: already at ${new:0:8}"; return 0; }
   git -C "$root" merge-base --is-ancestor "$old" "$new" \
     || { echo "Local $b: has commits origin/$b lacks, not a fast-forward; left at ${old:0:8}. Update it by hand: git pull"; return 0; }
-  wt="$(git -C "$root" worktree list --porcelain | awk -v r="branch refs/heads/$b" '/^worktree /{ w = substr($0, 10) } $0 == r { print w }')"
-  here="$(git -C "$root" rev-parse --show-toplevel)"
+  wt="$(git -C "$root" worktree list --porcelain | awk -v r="branch refs/heads/$b" '/^worktree /{ w = substr($0, 10) } $0 == r { print w }')" \
+    && here="$(git -C "$root" rev-parse --show-toplevel)" \
+    || { echo "Local $b: git could not list its worktrees; left at ${old:0:8}. Update it by hand: git pull"; return 0; }
   if [[ -z "$wt" ]]; then
-    git -C "$root" update-ref "refs/heads/$b" "$new" "$old"
+    git -C "$root" update-ref "refs/heads/$b" "$new" "$old" \
+      || { echo "Local $b: git refused to move it; left at ${old:0:8}. Update it by hand: git pull"; return 0; }
   elif [[ "$(cd "$wt" && pwd -P)" == "$(cd "$here" && pwd -P)" ]]; then
     _ff_here "$root" "$b" "$id" "$old" "$new" || return 0
   else
@@ -2038,7 +2041,9 @@ _ff_here() {
   for i in "${!safe[@]}"; do
     case "${kinds[$i]}" in
       ticket) cp -p "$bk/$i" "$root/${safe[$i]}" ;;
-      log)    cat "$bk/$i.extra" >> "$root/${safe[$i]}" ;;
+      log)    # a merged copy without a final newline must not glue the first local line onto its last one
+              [[ ! -s "$bk/$i.extra" || ! -s "$root/${safe[$i]}" || -z "$(tail -c 1 "$root/${safe[$i]}")" ]] || printf '\n' >> "$root/${safe[$i]}"
+              cat "$bk/$i.extra" >> "$root/${safe[$i]}" ;;
     esac
   done
   rm -rf "$bk"

@@ -63,6 +63,7 @@ REAL_GIT="$(command -v git)"
 cat > "$W/bin/git" <<SH
 #!/usr/bin/env bash
 [[ -n "\${STUB_FF_FETCH_FAIL:-}" && " \$* " == *" fetch -q origin refs/heads/main "* ]] && { echo "fatal: unable to access origin" >&2; exit 128; }
+[[ -n "\${STUB_UPDATE_REF_FAIL:-}" && " \$* " == *" update-ref refs/heads/main "* ]] && { echo "fatal: forced update-ref failure" >&2; exit 128; }
 if [[ " \$* " == *" merge -q --ff-only "* ]]; then
   [[ -z "\${STUB_FF_SPY:-}" ]] || grep -c '^merged:' "\$STUB_FF_SPY" > "$W/ff-spy" || true
   [[ -z "\${STUB_FF_MERGE_FAIL:-}" ]] || { echo "error: forced ff failure" >&2; exit 1; }
@@ -411,6 +412,9 @@ assert_eq "$BASE" "$(git rev-parse main)"; assert_eq mine "$(cat change.txt)"; r
 git checkout -q -b side                                                    # main checked out nowhere: the ref moves
 out="$(ff_merge)"; assert_contains "$out" "Local main: ${BASE:0:8} -> ${PRHEAD:0:8} (fast-forward)"
 assert_eq "$PRHEAD" "$(git rev-parse main)"; assert_eq side "$(git branch --show-current)"
+git branch -qf main "$BASE"   # t-41ff: a git failure in the local update (set -e) still lets merge-pr record merged: and exit 0
+out="$(STUB_UPDATE_REF_FAIL=1 ff_merge)"; assert_contains "$out" "Local main: git refused to move it; left at ${BASE:0:8}. Update it by hand: git pull"
+assert_eq "$BASE" "$(git rev-parse main)"; assert_grep '^merged: mergesha' "$f"; git branch -qf main "$PRHEAD"
 git branch -qf main "$BASE"; git worktree add -q "$W/wt" main              # main checked out in another worktree: left alone
 out="$(ff_merge)"; assert_contains "$out" "Local main: checked out in $(cd "$W/wt" && pwd -P); left at ${BASE:0:8}. Update it there: git pull"
 assert_eq "$BASE" "$(git rev-parse main)"; git worktree remove -f "$W/wt"
@@ -431,7 +435,7 @@ B="$W/build"; git clone -q "$W/origin.git" "$B" 2>/dev/null; git -C "$B" checkou
 echo change > "$B/change.txt"; echo same > "$B/new.txt"; mkdir -p "$B/.claude"; printf 'a\nb\n' > "$B/.claude/subagent-runs.jsonl"
 git -C "$B" add -f change.txt new.txt .claude/subagent-runs.jsonl; git -C "$B" commit -qm graded; G="$(git -C "$B" rev-parse HEAD)"
 eval_ok "$G"; mkdir -p "$B/.tickets/$id"; cp ".tickets/$id/eval-report.md" "$B/.tickets/$id/"
-sed '/^github: /d; /^merged: /d' "$f" > "$B/.tickets/$id/ticket.md"; printf 'c\n' >> "$B/.claude/subagent-runs.jsonl"
+sed '/^github: /d; /^merged: /d' "$f" > "$B/.tickets/$id/ticket.md"; printf 'c' >> "$B/.claude/subagent-runs.jsonl"   # no final newline
 git -C "$B" add -f .tickets .claude/subagent-runs.jsonl; git -C "$B" commit -qm "late docs"; H="$(git -C "$B" rev-parse HEAD)"
 git -C "$B" push -qf origin "HEAD:refs/pull/7/head"
 recon_setup() {   # main at the base (mixed reset: --hard would delete the ticket files H tracks); canon's copies as import-results leaves them, plus an unrelated edit
