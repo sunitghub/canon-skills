@@ -211,7 +211,7 @@ func TestLoggingKeepFor(t *testing.T) {
 	for _, body := range []string{`{"retention_days":7}`, `{"retention_days":"30"}`, `{"retention_days":30.5}`, `{"compress":"yes"}`, `{}`, `{"retention_days":90,"path":"/etc"}`, `{"retention_days":90,"compress":"yes"}`} {
 		snap := g.snapshot()
 		code, res := g.post("/api/admin/logging", logClick, body)
-		if code != 400 || res == nil || res["ok"] != false || res["error"] == "" || res["error"] == nil {
+		if code != 400 || res == nil || res["ok"] != false || res["error"] == "" || res["error"] == nil || (strings.Contains(body, "path") && !strings.Contains(res["error"].(string), "unknown field path")) {
 			t.Errorf("%s answered %d %v (one JSON error body expected)", body, code, res)
 		}
 		if !sameFiles(snap, g.snapshot()) {
@@ -228,8 +228,8 @@ func TestLoggingKeepFor(t *testing.T) {
 	}
 	os.WriteFile(setting, []byte("{not json"), 0o600)
 	badBefore := g.snapshot()
-	if code, _ := g.post("/api/admin/logging", logClick, `{"retention_days":90}`); code != 400 || !sameFiles(badBefore, g.snapshot()) {
-		t.Errorf("a malformed settings file must be refused and left alone: %d", code)
+	if code, res := g.post("/api/admin/logging", logClick, `{"retention_days":90}`); code != 400 || res == nil || res["ok"] != false || !strings.Contains(res["error"].(string), "settings.json") || !sameFiles(badBefore, g.snapshot()) {
+		t.Errorf("a malformed settings file must be refused and left alone: %d %v", code, res)
 	}
 }
 
@@ -276,9 +276,24 @@ func TestLoggingVerify(t *testing.T) {
 	if len(rows) == 0 {
 		t.Errorf("no results")
 	}
+	rows0, _ := v["results"].([]any)
+	if r1, _ := rows0[1].(map[string]any); r1["day"] != "2020-01-02" || r1["why"] != "does not match its seal" || r1["result"] != "broken" {
+		t.Errorf("a broken row carries its reason: %v", rows0)
+	}
 	empty := newLogRig(t, nil)
 	if _, v, _ := empty.get("/api/admin/logging/verify"); v["summary"] != "No activity log yet" {
 		t.Errorf("empty log: %v", v)
+	}
+	only := newLogRig(t, map[string]string{"2020-01-01.jsonl": "{}\n"})
+	if _, v, _ := only.get("/api/admin/logging/verify"); v["summary"] != "1 day not sealed yet" || v["intact"] != true {
+		t.Errorf("only an unsealed day: %v", v)
+	}
+	many := newLogRig(t, nil)
+	for i := 0; i < 2105; i++ {
+		os.WriteFile(filepath.Join(many.dir, time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC).AddDate(0, 0, i).Format("2006-01-02")+".jsonl"), []byte("{}\n"), 0o600)
+	}
+	if _, v, _ := many.get("/api/admin/logging/verify"); len(v["results"].([]any)) != 2000 {
+		t.Errorf("results must be capped at 2000, got %d", len(v["results"].([]any)))
 	}
 }
 
@@ -326,8 +341,9 @@ func TestLoggingDelete(t *testing.T) {
 	}
 	before := g.snapshot()
 	for _, body := range []string{`{}`, `{"confirm":"yes"}`, `{"confirm":true}`, `{"confirm":"Delete"}`} {
-		if code, _ := g.post("/api/admin/logging/delete", logClick, body); code != 400 {
-			t.Errorf("%s answered %d", body, code)
+		code, res := g.post("/api/admin/logging/delete", logClick, body)
+		if e, _ := res["error"].(string); code != 400 || res["ok"] != false || !strings.Contains(e, `"confirm":"delete"`) {
+			t.Errorf("%s answered %d %v", body, code, res)
 		}
 	}
 	if !sameFiles(before, g.snapshot()) {
@@ -444,12 +460,12 @@ func TestLoggingReveal(t *testing.T) {
 	revealFolder = func(string) error { calls++; return nil }
 	defer func() { revealFolder = old }()
 	os.Remove(g.dir)
-	if code, res := g.post("/api/admin/logging/reveal", logClick, `{}`); code != 404 || res["ok"] != false || calls != 0 {
+	if code, res := g.post("/api/admin/logging/reveal", logClick, `{}`); code != 404 || res["ok"] != false || calls != 0 || !strings.Contains(res["error"].(string), "no activity log folder") {
 		t.Errorf("no folder: %d %v calls=%d", code, res, calls)
 	}
 	os.MkdirAll(g.dir, 0o700)
 	revealFolder = func(string) error { return os.ErrPermission }
-	if code, res := g.post("/api/admin/logging/reveal", logClick, `{}`); code != 500 || res["ok"] != false {
+	if code, res := g.post("/api/admin/logging/reveal", logClick, `{}`); code != 500 || res["ok"] != false || !strings.Contains(res["error"].(string), "could not open") {
 		t.Errorf("a failing opener: %d %v", code, res)
 	}
 	revealFolder = func(d string) error { calls++; return nil }
@@ -488,7 +504,7 @@ func TestLoggingVerifyShape(t *testing.T) {
 func TestLoggingDeleteBusyAndPartial(t *testing.T) {
 	g := newLogRig(t, map[string]string{"2020-01-01.jsonl": "{}\n"})
 	os.WriteFile(filepath.Join(g.dir, ".maintain.lock"), nil, 0o600)
-	if code, res := g.post("/api/admin/logging/delete", logClick, `{"confirm":"delete"}`); code != 409 || res["ok"] != false {
+	if code, res := g.post("/api/admin/logging/delete", logClick, `{"confirm":"delete"}`); code != 409 || res["ok"] != false || !strings.Contains(res["error"].(string), "try again") {
 		t.Errorf("busy: %d %v", code, res)
 	}
 	if _, err := os.Stat(filepath.Join(g.dir, "2020-01-01.jsonl")); err != nil {

@@ -121,6 +121,9 @@ func verifySummary(ok bool, results []events.DayResult, counts map[string]int) s
 	if counts["intact"] == 0 && counts["unsealed"] == 0 {
 		return "No activity log yet"
 	}
+	if counts["intact"] == 0 {
+		return fmt.Sprintf("%d day%s not sealed yet", counts["unsealed"], plural(counts["unsealed"]))
+	}
 	s := fmt.Sprintf("%d day%s sealed, all intact", counts["intact"], plural(counts["intact"]))
 	if counts["unsealed"] > 0 {
 		s += fmt.Sprintf("; %d not sealed yet", counts["unsealed"])
