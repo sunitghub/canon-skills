@@ -6,6 +6,16 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-10-28
+
+Update with `canon update`, then restart the daemon (Admin's **Restart Daemon**): the board has new routes.
+
+### Added
+- **Commit and push…** in the Send to GitHub panel. When the send is refused for commits origin does not have, or warns about uncommitted files, the panel lists the changed files (new, untracked files unticked: one could be a secret), takes a commit message, and after a confirm that names the files and the branch commits exactly those files and pushes the branch to origin. Never forced; a branch origin does not have yet is pushed with `-u`; refused when origin has commits you lack (pull first). The send preview then runs again. From a terminal: `tkt commit-push <id> [--dry-run] [--file <path>]... [--message <text>]` (in the Cockpit Terminal it needs `su`, like `push-main`). New: `GET /api/ticket/<id>/github/commit-push-preview` and `POST /api/ticket/<id>/github/commit-push`, both refusing a cross-site Origin.
+
+### Changed
+- Factory › GitHub › Cloud environment starts with **Give Claude this repository** (install the Claude GitHub App on it: a private repository is invisible to cloud sessions without it) and ends with **Start a new session** after you change the setup script. The Checks count now reads "ready on this machine", since canon cannot see your cloud setup. The Sent panel names the same prerequisites, and `docs/setup.md` says both.
+
 ## [0.27.2] - 2026-10-28
 
 Update with `canon update`. No daemon restart is needed.
