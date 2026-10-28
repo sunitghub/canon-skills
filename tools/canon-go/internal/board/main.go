@@ -279,6 +279,9 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		serveStatic(w, r, name)
 		return
 	}
+	if strings.HasPrefix(path, loggingPrefix) && handleLoggingGet(w, r, path) { // t-1bd5
+		return
+	}
 	switch path {
 	case "", "/":
 		// t-5716: a top-level visit lands on the Cockpit; its tab iframes, ?standalone=1 and
@@ -707,6 +710,9 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeSetting(w, r, eroot, payload)
+		return
+	}
+	if handleLoggingPost(w, r, path, payload) { // t-1bd5: Admin > Logging
 		return
 	}
 	if path == "/api/admin/model-tiers" {
@@ -4970,11 +4976,18 @@ func githubIntake(root string) map[string]any {
 		}
 		res = map[string]any{"ok": true, "exit_code": 0, "intake": d}
 	}
+	addIntakeLog(res, root)
+	return res
+}
+
+// addIntakeLog adds what the activity log knows to the Intake answer: "last_synced" (the newest github.synced for the project, or nil) and
+// "keep_days", how far back the log reaches (t-1bd5), so the page can say "none in the last N days" instead of "never".
+func addIntakeLog(res map[string]any, root string) {
 	res["last_synced"] = nil
+	res["keep_days"] = settings.RetentionDays(events.Home())
 	if ev, ok := events.Latest(events.Home(), "github.synced", resolvedOrAbs(root), func(e events.Event) bool { return digitsRe.MatchString(e.Data["count"]) }); ok {
 		res["last_synced"] = map[string]any{"ts": ev.TS.Format("2006-01-02T15:04:05.000Z"), "count": ev.Data["count"]}
 	}
-	return res
 }
 
 func getMergeRunState(root, id string) map[string]any {

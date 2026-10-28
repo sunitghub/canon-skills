@@ -384,7 +384,15 @@ const LocalRel = ".canon/settings.local.json"
 const (
 	RetentionKey     = "log.retention_days"
 	RetentionDefault = 30
+	CompressKey      = "log.compress" // gzip sealed day files older than 7 days; on by default
 )
+
+func validateBool(v any) (any, error) {
+	if b, ok := v.(bool); ok {
+		return b, nil
+	}
+	return nil, fmt.Errorf("must be true or false")
+}
 
 func validateRetention(v any) (any, error) {
 	bad := fmt.Errorf("must be 30, 90 or 365 days")
@@ -412,8 +420,11 @@ func validateRetention(v any) (any, error) {
 // InstallSet is the install-wide settings: $CANON_HOME/settings.json, one file, never shared through a repository.
 func InstallSet(home string) Set {
 	return Set{
-		Schema: Schema{RetentionKey: {Validate: validateRetention, Shareable: false, Default: RetentionDefault}},
-		Local:  filepath.Join(home, "settings.json"),
+		Schema: Schema{
+			RetentionKey: {Validate: validateRetention, Shareable: false, Default: RetentionDefault},
+			CompressKey:  {Validate: validateBool, Shareable: false, Default: true},
+		},
+		Local: filepath.Join(home, "settings.json"),
 	}
 }
 
@@ -431,4 +442,19 @@ func RetentionDays(home string) int {
 		return n
 	}
 	return RetentionDefault
+}
+
+// CompressOn is the effective log.compress of the install at home: on unless a valid file says false.
+func CompressOn(home string) bool {
+	if home == "" {
+		return true
+	}
+	res, err := InstallSet(home).Load()
+	if err != nil {
+		return true
+	}
+	if b, ok := res.Values[CompressKey].V.(bool); ok {
+		return b
+	}
+	return true
 }

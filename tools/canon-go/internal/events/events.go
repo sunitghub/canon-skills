@@ -63,6 +63,7 @@ var kinds = map[string][]field{
 	"integrity.restored":      {{"item", 64}, {"count", 8}},
 	"context.threshold":       {{"session", 64}, {"ticket", 64}, {"agent", 16}, {"pct", 4}},
 	"log.pruned":              {{"from", 10}, {"to", 10}, {"files", 6}, {"last_seal", 64}},
+	"log.deleted":             {{"from", 10}, {"to", 10}, {"files", 6}}, // t-1bd5: the user deleted the log from Admin > Logging
 	// t-5ef8: the sprint progress card. "Build" has no kind: it is the time after plan.approved and before the first
 	// wrapup.gate_started. gate names are the Wrapup Gates table rows (code-simplifier, doc-audit, ...).
 	"plan.written":         {{"ticket", 64}, {"tier", 16}},

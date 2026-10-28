@@ -6,6 +6,15 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+Update with `canon update`, then restart the daemon (Admin's **Restart Daemon**): the board has new routes.
+
+### Added
+- **Admin › Logging** (the Cockpit): what canon keeps and where (the real folder), **Keep for** (30 days by default, 90 days, 1 year; a shorter choice asks first and says how many days will go), **Compress files older than 7 days**, **Show in folder**, **Export .jsonl**, **Verify**, and **Delete…** (after a confirm; the new log starts with a `log.deleted` note). The log stays always on; Verbose session logging is on the same page. Settings are saved to `~/.canon/settings.json` and each change writes a `setting.changed` event. New: `GET /api/admin/logging` (with `/verify` and `/export`) and `POST /api/admin/logging` (with `/delete` and `/reveal`); every write needs a loopback `Origin`.
+- `docs/setup.md` says what canon keeps on your computer and how to delete it.
+
+### Changed
+- Factory's Intake card says "none in the last 30 days" (the retention setting) instead of "never" when the log holds no sync.
+
 ## [0.26.0] - 2026-10-28
 
 Update with `canon update`, then restart the daemon (Admin's **Restart Daemon**): the daemon now maintains the activity log.

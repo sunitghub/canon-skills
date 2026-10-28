@@ -23,6 +23,8 @@ The Cockpit's board and its agent sessions (Scratch, Start sprint) are two small
 
 **Custom location.** `CANON_HOME=/path/to/dir bash <(curl -fsSL https://getcanon.dev/install.sh)` installs to that folder instead of `~/.canon`.
 
+**What canon keeps on your computer.** canon writes a local activity log to `~/.canon/events` (one line per change across your projects: who, the ticket, what happened; never terminal content or prompts). It stays on your computer and is never sent anywhere. It is how Factory and the sprint progress card know what happened. Keep it for 30, 90 or 365 days, check it or delete it from the Cockpit's Admin › Logging tab, or run `canon log verify`.
+
 **Step 2 — Run init (once)**
 
 ```bash

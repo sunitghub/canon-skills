@@ -16758,6 +16758,9 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.locator('#fac-gh-recheck').click();
     await expect(page.locator('#fac-in-wait')).toHaveText('No open issue labelled canon is waiting.');
     await expect(page.locator('#fac-in-last')).toHaveText('never');
+    intake = { ok: true, exit_code: 0, intake: { repo: 'acme/app', label: 'canon', waiting: [], skipped: [] }, last_synced: null, keep_days: 30 };   // t-1bd5: the log reaches back 30 days
+    await page.locator('#fac-gh-recheck').click();
+    await expect(page.locator('#fac-in-last')).toHaveText('none in the last 30 days');
     for (const [status, shown] of [[500, 'HTTP 500'], [404, 'older than the page']]) {   // t-f053: a failed read is not "never"
       intakeStatus = status;
       await page.locator('#fac-gh-recheck').click();
@@ -17942,5 +17945,123 @@ test.describe('Tags (t-37e8)', () => {
     await expect(page.locator('#m-tag-chips img')).toHaveCount(0);
     expect(await page.evaluate(() => window.__pwned)).toBeUndefined();
     expect(requests).toEqual([]);
+  });
+});
+
+// t-1bd5. Protects Admin > Logging as a person uses it, against a real board with its own CANON_HOME: the notice and the real folder,
+// Keep for (a lowering that would remove days asks first, Cancel changes nothing, Keep removes no file at once), the compress switch,
+// Verify on an intact and on a tampered log, the Export link, Delete with its confirm, and the Verbose switch still on the page.
+test.describe.serial('Canon Cockpit Admin > Logging (t-1bd5)', () => {
+  test('Logging: notice, Keep for with its confirm, compress, Verify, Export, Delete', async ({ page }) => {
+    const os = require('os');
+    const net = require('net');
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'canon-t1bd5-'));
+    const defaultRoot = path.join(root, 'default');
+    const canonHome = path.join(root, 'canon-home');
+    const evDir = path.join(canonHome, 'events');
+    const day = n => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
+    let proc;
+    try {
+      fs.mkdirSync(path.join(defaultRoot, '.tickets'), { recursive: true });
+      fs.mkdirSync(evDir, { recursive: true });
+      for (const [n, body] of [[40, '{"a":1}\n'], [2, '{"b":1}\n'], [0, '{"c":1}\n']]) fs.writeFileSync(path.join(evDir, `${day(n)}.jsonl`), body);
+      const port = await new Promise(resolve => {
+        const srv = net.createServer();
+        srv.listen(0, '127.0.0.1', () => { const p = srv.address().port; srv.close(() => resolve(p)); });
+      });
+      proc = spawnGoBoard(port, { cwd: defaultRoot, env: { SPRINT_CHECK_ROOT: defaultRoot, CANON_HOME: canonHome } });
+      const base = `http://127.0.0.1:${port}`;
+      await expect.poll(async () => { try { return (await page.request.get(`${base}/api/tickets`)).status(); } catch { return 0; } }, { timeout: 8000 }).toBe(200);
+      const setting = () => JSON.parse(fs.readFileSync(path.join(canonHome, 'settings.json'), 'utf8')).log;   // read after the page's save has landed: poll it
+      const bytes = n => fs.readFileSync(path.join(evDir, `${day(n)}.jsonl`), 'utf8');
+
+      await page.goto(`${base}/cockpit`);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#nav-admin').click();
+      await page.locator('#ad-tab-logging').click();
+      // the notice and the real folder
+      await expect(page.locator('#lg-notice')).toContainText('stored on this computer');
+      await expect(page.locator('#lg-notice')).toContainText('never sent anywhere');
+      await expect(page.locator('#lg-notice')).toContainText('never terminal content or prompts');
+      await expect(page.locator('#lg-notice')).not.toContainText('Tower');
+      await expect(page.locator('.lg-badge')).toHaveText('Always on');
+      await expect(page.locator('#lg-dir')).toHaveText(/events$/);
+      await expect(page.locator('#lg-where')).toContainText('3 days');
+      await expect(page.locator('#lg-keep')).toHaveValue('30');
+      await expect(page.locator('#lg-keep option:checked')).toHaveText('30 days (default)');
+      await expect(page.locator('#lg-keep option')).toHaveText(['30 days (default)', '90 days', '1 year']);
+      await expect(page.locator('#lg-compress')).toBeChecked();
+      await expect(page.locator('#ad-debug-toggle')).toBeVisible();              // Verbose session logging stays on this page
+      await expect(page.locator('.lg-card #ad-debug-toggle')).toHaveCount(0);    // outside the Activity log card
+
+      // Verify: the log has no seals yet, so closed days read "not sealed yet" and the badge never claims "intact"
+      await expect(page.locator('#lg-seal')).not.toHaveText('Checking\u2026');
+      await expect(page.locator('#lg-seal')).not.toContainText('authenticated');
+      await expect(page.locator('#lg-seal')).not.toContainText('chain');
+
+      // Keep for 90, then lower to 30 with a day 40 days old: the confirm opens, Cancel changes nothing
+      await page.locator('#lg-keep').selectOption('90');
+      await expect(page.locator('#lg-keep')).toBeEnabled();
+      await expect.poll(() => setting().retention_days).toBe(90);
+      await page.locator('#lg-keep').selectOption('30');
+      await expect(page.locator('#cconfirm')).toHaveClass(/show/);
+      await expect(page.locator('#cc-body')).toContainText('1 day (1 file)');
+      await page.locator('#cc-cancel').click();
+      await expect(page.locator('#lg-keep')).toHaveValue('90');
+      await expect.poll(() => setting().retention_days).toBe(90);                  // Cancel changed nothing
+      await page.locator('#lg-keep').selectOption('30');
+      await page.locator('#cc-ok').click();
+      await expect.poll(() => setting().retention_days).toBe(30);
+      await expect(page.locator('#lg-keep')).toHaveValue('30');
+      expect(bytes(40)).toBe('{"a":1}\n');                                         // nothing removed inside the request
+
+      // compress off and on
+      const compressSwitch = page.locator('label.aswitch:has(#lg-compress)');          // the input itself is visually hidden: click the switch
+      await compressSwitch.click();
+      await expect(page.locator('#lg-compress')).toBeEnabled();
+      await expect(page.locator('#lg-compress')).not.toBeChecked();
+      await expect.poll(() => setting().compress).toBe(false);
+      await compressSwitch.click();
+      await expect(page.locator('#lg-compress')).toBeEnabled();
+      await expect(page.locator('#lg-compress')).toBeChecked();
+      await expect.poll(() => setting().compress).toBe(true);
+
+      // seal the closed days through the real command route's tool, then Verify: intact; edit a day: broken and named
+      const seal = require('child_process').spawnSync(goBoardBin(), ['log', 'seal'], { env: { ...process.env, CANON_HOME: canonHome, HOME: root }, encoding: 'utf8' });
+      expect(seal.status).toBe(0);
+      await page.locator('#lg-verify').click();
+      await expect(page.locator('#lg-seal')).toContainText('days sealed');
+      await expect(page.locator('#lg-seal')).toHaveClass(/lg-seal-ok/);
+      fs.writeFileSync(path.join(evDir, `${day(2)}.jsonl`), '{"b":2}\n');
+      await page.locator('#lg-verify').click();
+      await expect(page.locator('#lg-seal')).toHaveText(`Broken: ${day(2)} broken`);
+      await expect(page.locator('#lg-seal')).toHaveClass(/lg-seal-bad/);
+      await expect(page.locator('#lg-out')).toContainText(`${day(2)}  broken`);
+      fs.writeFileSync(path.join(evDir, `${day(2)}.jsonl`), '{"b":1}\n');
+
+      // Export: the link is a download, and the route sends every day in order
+      await expect(page.locator('#lg-export')).toHaveAttribute('href', '/api/admin/logging/export');
+      const exp = await page.request.get(`${base}/api/admin/logging/export`);
+      expect(exp.headers()['content-disposition']).toContain('canon-activity-log.jsonl');
+      expect((await exp.text()).split('\n').filter(Boolean).slice(0, 3)).toEqual(['{"a":1}', '{"b":1}', '{"c":1}']);
+
+      // Delete: Cancel keeps it, Delete removes days and seals, the fresh log starts with log.deleted
+      await page.locator('#lg-delete').click();
+      await expect(page.locator('#cc-body')).toContainText('3 days');
+      await expect(page.locator('#cc-body')).toContainText('cannot be undone');
+      await page.locator('#cc-cancel').click();
+      expect(fs.existsSync(path.join(evDir, 'seals.jsonl'))).toBe(true);
+      await page.locator('#lg-delete').click();
+      await page.locator('#cc-ok').click();
+      await expect.poll(() => fs.existsSync(path.join(evDir, 'seals.jsonl'))).toBe(false);
+      expect(fs.existsSync(path.join(evDir, `${day(40)}.jsonl`))).toBe(false);
+      const fresh = fs.readFileSync(path.join(evDir, `${day(0)}.jsonl`), 'utf8').split('\n')[0];
+      expect(JSON.parse(fresh).kind).toBe('log.deleted');
+      expect(JSON.parse(fresh).actor).toBe('user');
+      await expect(page.locator('#lg-where')).toContainText('1 day');
+    } finally {
+      if (proc) proc.kill();
+      fs.rmSync(/* non-ticket */ root, { recursive: true, force: true });
+    }
   });
 });

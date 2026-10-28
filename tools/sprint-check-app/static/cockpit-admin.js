@@ -564,6 +564,7 @@ function adminTab(name){
   document.querySelectorAll('.ad-tab').forEach(b=>{ const on=b.dataset.adtab===name; b.classList.toggle('active',on); b.setAttribute('aria-selected',String(on)); b.tabIndex=on?0:-1; });
   AD_TABS.forEach(n=>{ const p=document.getElementById('ad-panel-'+n); if(p) p.hidden=n!==name; });
   if(name==='integrity') igLoad(false);
+  if(name==='logging') lgLoad();
 }
 function initAdminTabs(){
   const strip=document.querySelector('.ad-tabs'); if(!strip) return;
@@ -585,3 +586,93 @@ document.addEventListener('DOMContentLoaded',()=>{
   if(db) db.addEventListener('change',onDebugToggleChange);
 });
 }
+
+// ── t-1bd5: Admin > Logging ──────────────────────────────────────────────
+// The activity log's settings and checks. Everything written to the page below is text (textContent), never HTML: a day name or a
+// reason comes from files anyone who can write ~/.canon/events controls.
+let lgState=null;
+const lgLabel=n=>n===365?'1 year':n+' days';
+const lgPlural=(n,w)=>n+' '+w+(n===1?'':'s');
+function lgSize(n){ return n>=1048576?(n/1048576).toFixed(1)+' MB':n>=1024?Math.round(n/1024)+' KB':n+' bytes'; }
+async function lgCall(path,body){
+  try{
+    const r=await fetch(path,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    let j=null; try{ j=await r.json(); }catch(e){}
+    return {code:r.status,j};
+  }catch(e){ return {code:0,j:null}; }
+}
+function lgRender(st){
+  lgState=st;
+  const $=id=>document.getElementById(id);
+  $('lg-dir').textContent=st.dir;
+  const sel=$('lg-keep');
+  sel.textContent='';
+  (st.retention_options||[]).forEach(n=>{
+    const o=document.createElement('option'); o.value=String(n);
+    o.textContent=lgLabel(n)+(n===st.retention_default?' (default)':'');
+    o.selected=n===st.retention_days; sel.appendChild(o);
+  });
+  sel.disabled=false;
+  const note=$('lg-keep-note');
+  if(st.settings_error) note.textContent='The settings file cannot be read ('+st.settings_error+'), so '+lgLabel(st.retention_days)+' applies.';
+  else if(!st.days) note.textContent='Nothing is stored yet. Days older than this are removed once a day.';
+  else{
+    const age=Math.max(0,Math.round((Date.now()-Date.parse(st.oldest+'T00:00:00Z'))/86400000));
+    note.textContent=age<st.retention_days?'Nothing to remove yet: the oldest day is '+lgPlural(age,'day')+' old.':'Days older than this are removed once a day.';
+  }
+  const c=$('lg-compress'); c.checked=!!st.compress; c.disabled=false;
+  $('lg-where').textContent=st.dir+(st.days?' \u00b7 '+lgPlural(st.days,'day')+', '+lgSize(st.bytes)+', '+st.oldest+' to '+st.newest:' \u00b7 empty');
+  $('lg-delete').disabled=!st.files;
+}
+async function lgLoad(){
+  const {j}=await lgCall('/api/admin/logging');
+  if(j&&j.ok) lgRender(j); else document.getElementById('lg-keep-note').textContent="Couldn't read the activity log's state.";
+  lgVerify(true);
+}
+async function lgSave(body,label){
+  const {code,j}=await lgCall('/api/admin/logging',body);
+  if(code===409&&j&&j.needs_confirm){
+    const ok=await cockpitConfirm({title:'Keep for '+label+'?',body:'The next maintenance will remove '+lgPlural(j.would_remove_days,'day')+' ('+lgPlural(j.would_remove_files,'file')+') older than that. It cannot be undone. Maintenance runs when the first event of a day is written, and every hour while the Cockpit daemon runs.',okLabel:'Keep '+label,danger:true,focusCancel:true});
+    if(!ok){ lgRender(lgState); return; }
+    return lgSave(Object.assign({},body,{confirm_remove:true}),label);
+  }
+  if(j&&j.ok){ lgRender(j); toast('Saved'); }
+  else{ toast((j&&j.error)||"Couldn't reach the board \u2014 no change made"); if(lgState) lgRender(lgState); }
+}
+async function lgVerify(quiet){
+  const seal=document.getElementById('lg-seal'), out=document.getElementById('lg-out');
+  seal.className='lg-seal'; seal.textContent='Checking\u2026';
+  const {j}=await lgCall('/api/admin/logging/verify');
+  if(!j||!j.ok){ seal.textContent='Not checked'; seal.className='lg-seal lg-seal-warn'; return; }
+  seal.textContent=j.summary;
+  seal.className='lg-seal '+(j.intact?'lg-seal-ok':'lg-seal-bad');
+  out.textContent='';
+  const rows=(j.results||[]).filter(r=>r.result!=='intact');
+  rows.forEach(r=>{
+    const d=document.createElement('div'); d.className='lg-row lg-row-'+r.result;
+    d.textContent=r.day+'  '+r.result+(r.why?'  ('+r.why+')':''); out.appendChild(d);
+  });
+  out.hidden=!rows.length;
+  if(!quiet) toast(j.summary);
+}
+async function lgDelete(){
+  const st=lgState||{};
+  const ok=await cockpitConfirm({title:'Delete the activity log?',body:'This removes '+lgPlural(st.days||0,'day')+(st.oldest?' ('+st.oldest+' to '+st.newest+')':'')+' and the seal file from this computer. It cannot be undone. A new log starts with a note that this one was deleted.',okLabel:'Delete',danger:true,focusCancel:true});
+  if(!ok) return;
+  const {j}=await lgCall('/api/admin/logging/delete',{confirm:'delete'});
+  if(j&&j.ok) toast('Activity log deleted');
+  else toast((j&&j.error)||"Couldn't reach the board \u2014 nothing deleted");
+  lgLoad();
+}
+async function lgReveal(){
+  const {j}=await lgCall('/api/admin/logging/reveal',{});
+  if(!(j&&j.ok)) toast((j&&j.error)||"Couldn't open the folder");
+}
+document.addEventListener('DOMContentLoaded',()=>{
+  const on=(id,ev,fn)=>{ const el=document.getElementById(id); if(el) el.addEventListener(ev,fn); };
+  on('lg-keep','change',e=>{ e.target.disabled=true; const n=Number(e.target.value); lgSave({retention_days:n},lgLabel(n)); });
+  on('lg-compress','change',e=>{ e.target.disabled=true; lgSave({compress:e.target.checked},'compress'); });
+  on('lg-verify','click',()=>lgVerify(false));
+  on('lg-delete','click',lgDelete);
+  on('lg-reveal','click',lgReveal);
+});

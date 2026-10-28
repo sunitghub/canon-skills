@@ -141,16 +141,44 @@
             </div>
             </div>
             <div id="ad-panel-logging" role="tabpanel" aria-labelledby="ad-tab-logging" hidden>
-            <div class="admin-settings">
-              <div class="setting-row">
-                <div>
-                  <div class="setting-k">Verbose session logging</div>
-                  <div class="setting-d">Logs session lifecycle events (spawn, kill, exit, resume outcomes) to a file per ticket — for diagnosing a live issue. Never logs raw terminal content. Resets off when the daemon restarts.</div>
+            <div class="lg-wrap">
+              <div class="slabel">Logging</div>
+              <div class="setting-d lg-notice" id="lg-notice">canon keeps a local activity log: one line for each change across your projects (who did it, the ticket, what happened, a ticket&rsquo;s title, never terminal content or prompts). It is stored on this computer in <code id="lg-dir">~/.canon/events</code> and is never sent anywhere. It is always on, because Factory and the sprint progress card read it too. You decide how long it is kept, and you can delete it here.</div>
+              <div class="admin-settings lg-card" id="lg-card">
+                <div class="lg-head"><span class="setting-k">Activity log</span><span class="lg-badge">Always on</span><span class="lg-seal" id="lg-seal" role="status">Checking&hellip;</span></div>
+                <div class="setting-row">
+                  <div><div class="setting-k">Keep for</div><div class="setting-d" id="lg-keep-note"></div></div>
+                  <select id="lg-keep" aria-label="Keep the activity log for" disabled></select>
                 </div>
-                <label class="aswitch">
-                  <input type="checkbox" id="ad-debug-toggle" disabled>
-                  <span class="strack"><span class="sthumb"></span></span>
-                </label>
+                <div class="setting-row">
+                  <div><div class="setting-k">Compress files older than 7 days</div><div class="setting-d">Old daily files become <code>.jsonl.gz</code>. Verify and Export still read them.</div></div>
+                  <label class="aswitch"><input type="checkbox" id="lg-compress" aria-label="Compress files older than 7 days" disabled><span class="strack"><span class="sthumb"></span></span></label>
+                </div>
+                <div class="setting-row">
+                  <div><div class="setting-k">Location</div><div class="setting-d" id="lg-where">&hellip;</div></div>
+                  <button type="button" class="btn b-neutral" id="lg-reveal">Show in folder</button>
+                </div>
+                <div class="setting-row">
+                  <div><div class="setting-k">Check and export</div><div class="setting-d">Verify compares each closed day with the seal made when it closed. A seal shows a day was not changed since; it does not show who wrote it.</div></div>
+                  <div class="lg-actions"><button type="button" class="btn b-neutral" id="lg-verify">Verify</button><a class="btn b-neutral" id="lg-export" href="/api/admin/logging/export" download="canon-activity-log.jsonl">Export .jsonl</a></div>
+                </div>
+                <div class="lg-out" id="lg-out" hidden></div>
+                <div class="setting-row">
+                  <div><div class="setting-k">Delete activity log</div><div class="setting-d">Removes every day and the seal file from this computer. It cannot be undone; a new log starts with a note that this one was deleted.</div></div>
+                  <button type="button" class="btn b-danger" id="lg-delete" disabled>Delete&hellip;</button>
+                </div>
+              </div>
+              <div class="admin-settings">
+                <div class="setting-row">
+                  <div>
+                    <div class="setting-k">Verbose session logging</div>
+                    <div class="setting-d">Logs session lifecycle events (spawn, kill, exit, resume outcomes) to a file per ticket — for diagnosing a live issue. Never logs raw terminal content. Resets off when the daemon restarts.</div>
+                  </div>
+                  <label class="aswitch">
+                    <input type="checkbox" id="ad-debug-toggle" disabled>
+                    <span class="strack"><span class="sthumb"></span></span>
+                  </label>
+                </div>
               </div>
             </div>
             </div>

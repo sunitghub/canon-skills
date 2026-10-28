@@ -722,3 +722,30 @@ func TestValidateRetentionTypes(t *testing.T) {
 		}
 	}
 }
+
+// Protects log.compress: on by default, only a real boolean changes it, and a broken file keeps it on.
+func TestCompressSetting(t *testing.T) {
+	for body, want := range map[string]bool{`{"log":{"compress":false}}`: false, `{"log":{"compress":true}}`: true, `{"log":{"compress":"no"}}`: true, `{"log":{"compress":0}}`: true, `{`: true, ``: true} {
+		home := t.TempDir()
+		if body != "" {
+			os.WriteFile(filepath.Join(home, "settings.json"), []byte(body), 0o600)
+		}
+		if got := CompressOn(home); got != want {
+			t.Errorf("%q: compress = %v, want %v", body, got, want)
+		}
+	}
+	if !CompressOn("") {
+		t.Errorf("no home must mean on")
+	}
+	home := t.TempDir()
+	set := InstallSet(home)
+	if _, err := set.SetLocal(CompressKey, false); err != nil || CompressOn(home) {
+		t.Errorf("SetLocal(false): %v", err)
+	}
+	if _, err := set.SetLocal(CompressKey, "false"); err == nil {
+		t.Errorf("a string was accepted as a boolean")
+	}
+	if _, err := set.SetLocal(RetentionKey, 90); err != nil || RetentionDays(home) != 90 || CompressOn(home) {
+		t.Errorf("setting one key must keep the other: %v", err)
+	}
+}

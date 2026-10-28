@@ -209,3 +209,18 @@
   .ig-wrap .setting-d{max-width:none;text-align:justify}   /* the shell's 440px suits Admin's setting rows, not this full-width page */
   .ig-wrap .slabel{padding-left:0}   /* the label lines up with the tab strip above */
   .ig-note{font-family:inherit;color:var(--text-body)}
+  /* t-1bd5: Admin > Logging */
+  .lg-wrap{display:flex;flex-direction:column;gap:10px;margin-top:8px}
+  .lg-wrap .setting-d{max-width:none}
+  .lg-notice{line-height:1.5}
+  .lg-card{padding-top:12px}
+  .lg-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:2px 0 10px}
+  .lg-badge{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;border:1px solid var(--accent,var(--text-muted));color:var(--accent,var(--text-muted));border-radius:999px;padding:1px 9px}
+  .lg-seal{font-size:12px;font-weight:600;border:1px solid var(--border);border-radius:999px;padding:2px 11px;color:var(--text-muted)}
+  .lg-seal-ok{color:var(--st-idle);border-color:var(--st-idle)} .lg-seal-bad{color:var(--st-need);border-color:var(--st-need)} .lg-seal-warn{color:var(--text-muted)}
+  .lg-actions{display:flex;gap:8px;flex-wrap:wrap}
+  .lg-actions a.btn{text-decoration:none}
+  .lg-out{border-top:1px solid var(--border-muted);padding:8px 0;font-family:var(--mono,ui-monospace,monospace);font-size:12px;display:flex;flex-direction:column;gap:3px}
+  .lg-row-broken,.lg-row-missing{color:var(--st-need)} .lg-row-unsealed{color:var(--text-muted)}
+  #lg-keep{background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:13px}
+

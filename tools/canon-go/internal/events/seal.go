@@ -434,8 +434,10 @@ func Maintain(home string, at time.Time, source string) error {
 	if err := sealClosed(dir, at); err != nil {
 		errs = append(errs, err)
 	}
-	if err := gzipSealed(dir, at); err != nil {
-		errs = append(errs, err)
+	if settings.CompressOn(home) {
+		if err := gzipSealed(dir, at); err != nil {
+			errs = append(errs, err)
+		}
 	}
 	if err := prune(home, dir, at, source); err != nil {
 		errs = append(errs, err)
