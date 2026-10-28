@@ -233,6 +233,26 @@ func TestWriteIsAtomicAndPrivate(t *testing.T) {
 	if len(entries) != 1 || entries[0].Name() != "settings.local.json" {
 		t.Errorf("the folder holds %v, want only settings.local.json", entries)
 	}
+	// a second write replaces the file, never writes through it: a hard link made before keeps the old bytes
+	if runtime.GOOS != "windows" {
+		link := filepath.Join(t.TempDir(), "old")
+		if err := os.Link(s.Local, link); err != nil {
+			t.Fatal(err)
+		}
+		oldBytes := read(t, link)
+		if _, err := s.SetLocal("terminal.paging", "off"); err != nil {
+			t.Fatal(err)
+		}
+		if read(t, link) != oldBytes {
+			t.Error("the write went through the existing file (not temp file plus rename)")
+		}
+		if a, b := read(t, s.Local), oldBytes; a == b {
+			t.Error("the file did not change")
+		}
+		if _, err := s.SetLocal("terminal.paging", 30); err != nil {
+			t.Fatal(err)
+		}
+	}
 	// a second write replaces it whole
 	if _, err := s.SetLocal("terminal.paging", "off"); err != nil {
 		t.Fatal(err)
