@@ -830,3 +830,88 @@ func TestVerifyWithNoLog(t *testing.T) {
 		t.Errorf("no events folder: %v ok=%v", rs, ok)
 	}
 }
+
+// Protects the written format docs/plugins.md promises: the exact key names, in order, of a seal and an anchor.
+func TestWrittenSealFormat(t *testing.T) {
+	home, dir := logWith(t, map[string]string{"2020-01-01.jsonl": "{}\n{}\n"})
+	setRetention(t, home, 30)
+	if err := Maintain(home, at("2026-10-05T00:00:00Z"), "tkt"); err != nil {
+		t.Fatal(err)
+	}
+	l := sealLines(t, dir)
+	want0 := `{"day":"2020-01-01","lines":2,"sha256":"` + sum("{}\n{}\n") + `","prev":""}`
+	want1 := `{"pruned_through":"2020-01-01","prev":"` + sum(want0) + `"}`
+	if len(l) != 2 || l[0] != want0 || l[1] != want1 {
+		t.Errorf("seal lines = %q\nwant %q and %q", l, want0, want1)
+	}
+}
+
+// Protects reading the seal file as written by another tool or edited by hand: no final newline is still a line, an empty day seals and
+// verifies, and a blank line is a fault.
+func TestSealFileEdgeShapes(t *testing.T) {
+	home, dir := logWith(t, map[string]string{"2026-10-01.jsonl": "", "2026-10-02.jsonl": "{}\n"})
+	Seal(home, at("2026-10-05T00:00:00Z"))
+	if rs, ok := Verify(home, at("2026-10-05T12:00:00Z")); !ok || len(rs) != 2 || rs[0].Result != resultIntact {
+		t.Fatalf("an empty sealed day: %v", rs)
+	}
+	l := sealLines(t, dir)
+	os.WriteFile(filepath.Join(dir, sealsName), []byte(l[0]+"\n"+l[1]), 0o600) // no final newline
+	if rs, ok := Verify(home, at("2026-10-05T12:00:00Z")); !ok || len(rs) != 2 || rs[1].Result != resultIntact {
+		t.Errorf("a last seal with no newline was dropped: %v", rs)
+	}
+	os.WriteFile(filepath.Join(dir, sealsName), []byte(l[0]+"\n\n"+l[1]+"\n"), 0o600)
+	if rs, ok := Verify(home, at("2026-10-05T12:00:00Z")); ok {
+		t.Errorf("a blank line in the seal file passed: %v", rs)
+	}
+}
+
+// Protects the reason given for a bad seal file, a linked events folder and a day that cannot be read.
+func TestVerifyReasonsForFileFaults(t *testing.T) {
+	reason := func(h string) string {
+		rs, ok := Verify(h, at("2026-10-05T12:00:00Z"))
+		if ok || len(rs) == 0 {
+			return "ok"
+		}
+		return rs[0].Day + ": " + rs[0].Why
+	}
+	h, d := logWith(t, nil)
+	os.WriteFile(filepath.Join(d, sealsName), bytes.Repeat([]byte("x"), sealsMax+1), 0o600)
+	if got := reason(h); got != "seals.jsonl: is larger than 4 MB" {
+		t.Errorf("big seal file: %q", got)
+	}
+	if runtime.GOOS != "windows" {
+		h, d = logWith(t, nil)
+		os.Symlink(filepath.Join(t.TempDir(), "x"), filepath.Join(d, sealsName))
+		if got := reason(h); got != "seals.jsonl: is not a regular file" && got != "seals.jsonl: cannot be read" {
+			t.Errorf("linked seal file: %q", got)
+		}
+		h = t.TempDir()
+		os.Symlink(t.TempDir(), filepath.Join(h, "events"))
+		if got := reason(h); !strings.Contains(got, "events is not a folder") {
+			t.Errorf("linked events folder: %q", got)
+		}
+		if n, err := Seal(h, at("2026-10-05T00:00:00Z")); n != 0 || err == nil || !strings.Contains(err.Error(), "events is not a folder") {
+			t.Errorf("seal through a linked events folder: %d %v", n, err)
+		}
+		if os.Geteuid() != 0 {
+			h, d = logWith(t, map[string]string{"2026-10-01.jsonl": "{}\n"})
+			Seal(h, at("2026-10-05T00:00:00Z"))
+			os.Chmod(filepath.Join(d, "2026-10-01.jsonl"), 0)
+			defer os.Chmod(filepath.Join(d, "2026-10-01.jsonl"), 0o600)
+			if got := reason(h); got != "2026-10-01: file cannot be read: unreadable" {
+				t.Errorf("unreadable day: %q", got)
+			}
+		}
+	}
+	if _, err := Seal("", at("2026-10-05T00:00:00Z")); err == nil || !strings.Contains(err.Error(), "CANON_HOME") {
+		t.Errorf("seal with no home: %v", err)
+	}
+	if !strings.Contains(ErrBusy.Error(), "another run") {
+		t.Errorf("ErrBusy reads %q", ErrBusy)
+	}
+	h, d = logWith(t, map[string]string{"2026-10-02.jsonl": "{}\n"})
+	os.WriteFile(filepath.Join(d, sealsName), []byte(`{"pruned_through":"2026-10-02","prev":""}`+"\n"), 0o600)
+	if got := reason(h); got != "2026-10-02: present although the log was pruned through 2026-10-02" {
+		t.Errorf("anchor lie: %q", got)
+	}
+}

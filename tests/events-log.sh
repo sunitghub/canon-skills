@@ -48,6 +48,8 @@ cp "$W/keep.jsonl" "$EV/2020-01-02.jsonl"; cp "$W/keep3.jsonl" "$EV/2020-01-03.j
 
 set +e; out="$("$CANON" log nonsense 2>&1)"; code=$?; set -e
 assert_eq "2" "$code"; assert_contains "$out" "usage: canon log verify | seal"
+set +e; out="$("$CANON" log verify extra 2>&1)"; code=$?; set -e
+assert_eq "2" "$code"; assert_contains "$out" "usage: canon log verify | seal"
 set +e; out="$("$CANON" log 2>&1)"; code=$?; set -e
 assert_eq "2" "$code"; assert_contains "$out" "usage: canon log verify | seal"
 
