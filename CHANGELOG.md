@@ -6,6 +6,17 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.28.1] - 2026-10-28
+
+Update with `canon update`. No daemon restart is needed.
+
+### Fixed
+- A cloud session that cannot finish its close now still comes back. The issue's steps tell it to run `tkt export <id>` anyway and to say in the PR which step failed and why. When nothing came back (an open PR, no results to import), the ticket's card offers **Close here**: it makes a worktree at the PR head (`tkt land`) after a confirm that says to use it only once the cloud session has stopped. `tkt import-results` names the same next step (`tkt land <id> --pr N`) when the PR carries no ticket.
+- canon's own test suite can now pass in a Claude cloud session, which runs as root: the four terminal tests that need an OS password prompt skip there (canon correctly finds none for root), and the folder-guard test checks a system folder only where it exists (`/private/etc` is macOS-only).
+
+### Changed
+- `mutant-sweep` leaves out two kinds of low-value shell mutants: emptying a double-quoted string that is only variables (`"$root"`, `"$a/$b"`), and anything but line deletion on a line that only prints (`echo`/`printf`). The report says how many it left out (`skipped by rule: N`). On a large change of `tools/tkt` this cut the mutants from 343 to 241, so a close's sweep runs about 30% faster.
+
 ## [0.28.0] - 2026-10-28
 
 Update with `canon update`, then restart the daemon (Admin's **Restart Daemon**): the board has new routes.
