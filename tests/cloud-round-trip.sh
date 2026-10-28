@@ -329,6 +329,8 @@ cd "$X" && git checkout -q -b tracked main && sed -i.bak 's/^status: .*$/status:
   && git add -f ".tickets/$id" && git rm -q --cached -f ".tickets/$id/.cockpit-cwd" && git commit -qm "cloud close" && TRK="$(git rev-parse HEAD)" && git push -qf origin "HEAD:refs/pull/60/head" && git checkout -q main
 printf 'no tickets here\n' > "$W/notes.txt"; git -C "$X" checkout -q -b bare main && git -C "$X" rm -q -r --cached .tickets 2>/dev/null || true
 git -C "$X" commit -qm "no ticket" --allow-empty && git -C "$X" push -qf origin "HEAD:refs/pull/61/head" && git -C "$X" checkout -q main
+git -C "$X" checkout -q -b noticket main && mkdir -p ".tickets/$id" 2>/dev/null; printf 'notes only\n' > "$X/.tickets/$id/plan.md" && git -C "$X" add -f ".tickets/$id/plan.md" \
+  && git -C "$X" commit -qm "folder without ticket.md" && git -C "$X" push -qf origin "HEAD:refs/pull/63/head" && git -C "$X" checkout -q main
 L3="$W/laptop3"; git clone -q "$W/origin.git" "$L3" 2>/dev/null; cd "$L3"
 mkdir -p ".tickets/$id" && cp "$A/$d/ticket.md" "$A/$d/plan.md" ".tickets/$id/"
 printf '60\tOPEN\t%s\n' "$TRK" > "$W/prs3"
@@ -358,6 +360,8 @@ assert_contains "$out" "PR #61's head has no .tickets/$id/ticket.md"; assert_con
 rc=0; out="$(STUB_PR_HEAD=0000000000000000000000000000000000000000 "$TKT" import-results "$id" --pr 60 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "a PR head that is not the graded head should exit 1"; assert_contains "$out" "does NOT match graded-head"
 assert_contains "$out" "a check failed: run import-results again"; [[ "$out" != *"on origin, since"* ]] || fail "it claimed to keep a branch that never existed: $out"
+rc=0; out="$(STUB_PR_HEAD="$TRK" "$TKT" import-results "$id" --pr 63 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "a PR head whose ticket folder has no ticket.md should exit 1: $out"; assert_contains "$out" "PR #63's head has no .tickets/$id/ticket.md"
 rc=0; out="$(STUB_PR_HEAD="$TRK" "$TKT" import-results "$id" --pr 62 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "a PR with no head on origin should exit 1: $out"; assert_contains "$out" "PR #62's head could not be fetched"
 rc=0; out="$("$TKT" import-results "$id" 2>&1)" || rc=$?
