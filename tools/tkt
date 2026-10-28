@@ -2336,7 +2336,7 @@ cmd_land() {
     return 0
   fi
   local was; was="$(get_field "$file" status)"
-  [[ "$was" == open ]] || { $fix && [[ "$was" == closed ]]; } || { echo "land: $id is $was, not open; import its results first (tkt import-results $id)" >&2; exit 1; }
+  [[ "$was" == open ]] || { $fix && [[ "$was" == closed ]]; } || { echo "land: $id is $was, not open; import its results first (tkt import-results $id)$([[ "$was" == closed ]] && echo "; if they are imported and the PR head is not the graded head, close it again here: tkt land $id --pr ${pr:-<N>} --fix")" >&2; exit 1; }
   [[ -z "$(get_field "$file" merged)" ]] || { echo "land: $id is already merged" >&2; exit 1; }
   # Imported = sent to GitHub (github: line) and its sprint files are here (import-results brings plan.md); --pr cannot stand in for that.
   [[ -n "$(get_field "$file" github)" && -f "$tdir/plan.md" ]] \
@@ -2584,7 +2584,10 @@ cmd_import_results() {
         late="$(late_docs_delta "$root" "$graded" "$prh" "$id")" && lrc=0 || lrc=$?
       fi
       if [[ $lrc == 0 ]]; then echo "  PR #$pr head $prh: graded-head plus late docs only: $(printf '%s\n' "$late" | grep . | paste -sd, - | sed 's/,/, /g')"; prline="PR: #$pr head $prh: graded-head plus late docs only"
-      else echo "  PR #$pr head $prh does NOT match graded-head ${graded:-none}: the evaluator graded other code${late:+ ($(printf '%s\n' "$late" | sed -n '1,5p' | paste -sd, - | sed 's/,/, /g'))}" >&2; rc=1; prline="PR: #$pr head $prh: does NOT match graded-head ${graded:-none}"; fi
+      else echo "  PR #$pr head $prh does NOT match graded-head ${graded:-none}: the evaluator graded other code${late:+ ($(printf '%s\n' "$late" | sed -n '1,5p' | paste -sd, - | sed 's/,/, /g'))}" >&2; rc=1; prline="PR: #$pr head $prh: does NOT match graded-head ${graded:-none}"
+        # t-75f5: a cloud-closed ticket cannot go through `land` without --fix, and the card offers only Import results: name the way out.
+        [[ "$st" != closed || -z "$graded" ]] || echo "  next: tkt land $id --pr $pr --fix   (the cloud closed the ticket, but its evaluator graded other code than the PR head: close it again here)" >&2
+      fi
     fi
   fi
   _regrade_line "$root" "$tdir" "$pr" "$rc"   # t-278d: advises only; never changes rc

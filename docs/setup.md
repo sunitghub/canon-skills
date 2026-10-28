@@ -229,10 +229,10 @@ continue at step 5 with that PR number.
 approve the plan, it builds, runs the tests, runs a fresh evaluator and stamps the evidence. The Mac only runs
 `tkt import-results <id> --pr <N>` then `tkt merge-pr <id>`, and does **not** rebase: `merge-pr` merges a PR that is
 MERGEABLE and CLEAN on a newer `main` after running `scripts/test.sh` on `main` + the PR, and refuses unless the PR head
-is the graded head, or the graded head plus only `LEARNINGS.md`, `LEARNINGS-archive.md` or that ticket's own `.tickets/<id>/` changes (the
-learnings sweep the cloud commits after its gates, t-fdb1), none of them a symlink. `merge-pr` names those files before it
+is the graded head, or the graded head plus only `LEARNINGS.md`, `LEARNINGS-archive.md`, that ticket's own `.tickets/<id>/` changes (the
+learnings sweep the cloud commits after its gates, t-fdb1) or lines **added** to `.claude/subagent-runs.jsonl` (the audit log the gates append to, which a cloud session commits after its evaluator graded, t-75f5), none of them a symlink. The log is data, not instructions, and the sprint close already counts it as a late file; it may only grow (a changed, removed or binary log needs a re-grade), and no other file under `.claude/` is late-safe. `merge-pr` names those files before it
 asks; read the `LEARNINGS.md` row, since every sprint start reads that file. Any other change after grading, `AGENTS.md`,
-`CLAUDE.md`, `HANDOFF.md`, `DECISIONS.md` and `PROMOTED.md` included (agents load them as instructions), still needs a re-grade. The Mac re-grades only for one of four triggers: a **board** change (the board, its spec or its runner: the full board spec), a **Go**
+`CLAUDE.md`, `HANDOFF.md`, `DECISIONS.md` and `PROMOTED.md` included (agents load them as instructions), still needs a re-grade. When the cloud closed a ticket but its PR head is still not the graded head, `tkt land <id> --pr N --fix` closes it again here (plain `land` refuses a closed ticket); the import dialog and `tkt import-results` print that command. The Mac re-grades only for one of four triggers: a **board** change (the board, its spec or its runner: the full board spec), a **Go**
 change that needs a release (the daemon, the Go board, the headless helper), a **high-risk** ticket, or a **PR head that no longer equals the graded
 head**. `import-results` ends with one line saying which of these apply, or "no re-grade needed"; it only advises and
 never changes `merge-pr`. Each evidence log records the machine it ran on (line 3, `# on <uname -srm>; bash <version>`);

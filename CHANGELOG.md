@@ -6,6 +6,14 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.27.1] - 2026-10-28
+
+Update with `canon update`. No daemon restart is needed.
+
+### Fixed
+- A cloud sprint's run no longer needs a re-grade on the Mac for its audit log. A cloud session commits `.claude/subagent-runs.jsonl` after its evaluator graded, so `tkt merge-pr` and the card's Check & merge treated every clean cloud run as new code. `merge-pr`, `tkt import-results` and the card now accept lines **added** to that log (a changed, removed or binary log, a symlink, and every other file under `.claude/` still need a re-grade). `docs/setup.md` › Who grades what says why.
+- When the cloud closed a ticket but its PR head differs from the graded head, the import dialog, `tkt import-results` and `tkt land` now name `tkt land <id> --pr N --fix`. Before, three messages sent you in a circle: the dialog said to use `land`, `land` refused a closed ticket and said to import first, and the import failed again.
+
 ## [0.27.0] - 2026-10-28
 
 Update with `canon update`, then restart the daemon (Admin's **Restart Daemon**): the board has new routes.

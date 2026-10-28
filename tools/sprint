@@ -703,7 +703,7 @@ _canon_setup_edit_only() (   # a subshell, so its EXIT trap removes the scratch 
 # older checkouts (the post-commit hook commits nothing now, t-9383); anything else an agent touches after grading is stale.
 _gate_eval_report_fresh() {
   local id="$1" tdir="$2" report="$tdir/eval-report.md" heads graded changed n shown f
-  local late_re="^(\\.tickets/|$MERGE_SAFE_LATE_ALT|DECISIONS\\.md\$|DECISIONS-archive\\.md\$|HANDOFF\\.md\$|PROMOTED\\.md\$|AGENTS\\.md\$|(.+/)?CLAUDE\\.md\$|\\.claude/subagent-runs\\.jsonl\$|dist/)"
+  local late_re="^(\\.tickets/|$MERGE_SAFE_LATE_ALT|DECISIONS\\.md\$|DECISIONS-archive\\.md\$|HANDOFF\\.md\$|PROMOTED\\.md\$|AGENTS\\.md\$|(.+/)?CLAUDE\\.md\$|${MERGE_SAFE_AUDIT_LOG//./\\.}\$|dist/)"
   local wroot proot rel
   # The caller's OWN worktree, not project_root (which maps a linked worktree back to the main checkout): the graded commit and the
   # sprint's changes live in the worktree the sprint ran in. project_root only locates the project subtree inside its repository.

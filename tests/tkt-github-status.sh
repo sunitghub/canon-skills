@@ -75,6 +75,17 @@ assert_contains "$("$TKT" github-status "$id")" "(the PR head plus late docs)"
 echo b > "$W/c/src.txt"; git -C "$W/c" commit -qam code; X="$(git -C "$W/c" rev-parse HEAD)"
 git -C "$W/c" push -q origin "+$X:refs/pull/24/head"
 printf '24\tOPEN\t%s\n' "$X" > "$W/prs";       assert_eq "pr-open|24|OPEN|false|pass|false" "$(st)"
+# t-75f5: the audit log (.claude/subagent-runs.jsonl) may be appended after grading, as merge-pr accepts it; a rewritten one may not.
+git -C "$W/c" checkout -q -B logs "$G"; mkdir -p "$W/c/.claude"; printf 'a\nb\n' > "$W/c/.claude/subagent-runs.jsonl"
+git -C "$W/c" add -f .claude/subagent-runs.jsonl; git -C "$W/c" commit -qm "graded with a log"; G2="$(git -C "$W/c" rev-parse HEAD)"
+printf 'c\n' >> "$W/c/.claude/subagent-runs.jsonl"; git -C "$W/c" commit -qam "log grew"; A2="$(git -C "$W/c" rev-parse HEAD)"
+git -C "$W/c" reset -q --hard "$G2"; printf 'a\nX\n' > "$W/c/.claude/subagent-runs.jsonl"; git -C "$W/c" commit -qam "log rewritten"; R2="$(git -C "$W/c" rev-parse HEAD)"
+printf 'evaluator-run-id: 1-1\ngraded-head: %s\npass: all met\n' "$G2" > ".tickets/$id/eval-report.md"
+git -C "$W/c" push -q origin "+$A2:refs/pull/24/head"; printf '24\tOPEN\t%s\n' "$A2" > "$W/prs"
+assert_eq "results-in|24|OPEN|false|pass|false" "$(st)"
+assert_contains "$("$TKT" github-status "$id")" "(the PR head plus late docs)"
+git -C "$W/c" push -q origin "+$R2:refs/pull/24/head"; printf '24\tOPEN\t%s\n' "$R2" > "$W/prs"
+assert_eq "pr-open|24|OPEN|false|pass|false" "$(st)"
 # A head that is not local and cannot be fetched exits 1, never a guessed stage.
 git -C "$W/c" push -q origin --delete refs/pull/24/head
 printf '24\tOPEN\t%s\n' 0123456789abcdef0123456789abcdef01234567 > "$W/prs"; rc=0; out="$("$TKT" github-status "$id" 2>&1)" || rc=$?

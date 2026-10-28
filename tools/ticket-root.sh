@@ -77,10 +77,15 @@ worktree_root() {
 # names the files before it asks. The always-loaded and start-read docs (AGENTS.md, CLAUDE.md, PROMOTED.md, HANDOFF.md,
 # DECISIONS.md) and other tickets' folders are not here.
 MERGE_SAFE_LATE_ALT='LEARNINGS\.md$|LEARNINGS-archive\.md$'
+# The one other late file (t-75f5): the audit log the gates append to (subagent-log.sh). A cloud session commits it after its evaluator
+# graded, so without it every clean cloud run reads as new code. It is data, not instructions (no agent loads it), and it may only GROW:
+# a changed or removed line is a rewrite and needs a re-grade. Nothing else under .claude/ is late-safe. tools/sprint's close-time
+# list builds its regex from this name.
+MERGE_SAFE_AUDIT_LOG='.claude/subagent-runs.jsonl'
 
 # late_docs_delta <git-dir> <graded> <head> <ticket-id> — t-fdb1: prints the files changed from graded to head, one per line.
-# Returns 0 when head descends from graded and every file is a merge-safe late doc or sits in .tickets/<ticket-id>/ (no dotfile
-# component; an empty delta included), 1 when a file is not, or any changed path becomes a symlink or a submodule (they are the
+# Returns 0 when head descends from graded and every file is a merge-safe late doc, the audit log with lines only added, or sits in
+# .tickets/<ticket-id>/ (no dotfile component; an empty delta included), 1 when a file is not, or any changed path becomes a symlink or a submodule (they are the
 # ones printed), 2 when graded is not an ancestor of head, the id is not a plain ticket id, or git cannot tell (prints the reason).
 # A rename counts both paths.
 late_docs_delta() {
@@ -91,6 +96,19 @@ late_docs_delta() {
   files="$(git -C "$dir" -c core.quotepath=off diff --no-renames --name-only "$graded" "$head" 2>&1)" \
     || { echo "git could not list the files from ${graded:0:7} to ${head:0:7}: $files"; return 2; }
   other="$(printf '%s\n' "$files" | grep . | grep -vE "^($MERGE_SAFE_LATE_ALT|\\.tickets/$id/([^./][^/]*/)*[^./][^/]*$)" || true)"
+  # t-75f5: the audit log passes only when lines were added and none removed (a binary file shows "-"; a rewrite shows removals).
+  if [[ $'\n'"$other"$'\n' == *$'\n'"$MERGE_SAFE_AUDIT_LOG"$'\n'* ]]; then
+    local ns add del _rest kept="" ln grew=false
+    ns="$(git -C "$dir" -c core.quotepath=off diff --numstat --no-renames "$graded" "$head" -- "$MERGE_SAFE_AUDIT_LOG" 2>&1)" \
+      || { echo "git could not count the lines of $MERGE_SAFE_AUDIT_LOG from ${graded:0:7} to ${head:0:7}: $ns"; return 2; }
+    read -r add del _rest <<< "$ns"
+    [[ "$add" =~ ^[0-9]+$ && "$del" == 0 ]] && grew=true
+    while IFS= read -r ln; do
+      if [[ "$ln" != "$MERGE_SAFE_AUDIT_LOG" ]]; then kept+="$ln"$'\n'
+      elif ! $grew; then kept+="$ln (rewritten; not appended)"$'\n'; fi
+    done <<< "$other"
+    other="$kept"
+  fi
   # A name is not the content: a symlink (120000) or submodule (160000) under an allowed name points somewhere else.
   local raw; raw="$(git -C "$dir" -c core.quotepath=off diff --raw --no-renames "$graded" "$head" 2>&1)" \
     || { echo "git could not list the file modes from ${graded:0:7} to ${head:0:7}: $raw"; return 2; }

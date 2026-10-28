@@ -257,12 +257,21 @@ rc=0; out="$(STUB_PR_FILES="LEARNINGS.md" "$TKT" import-results "$id" --pr 58 2>
 assert_contains "$out" "PR #58 head $STUB_PR_HEAD: graded-head plus late docs only: LEARNINGS.md"
 assert_contains "$out" "no re-grade needed"
 [[ -z "$(git --git-dir="$W/origin.git" branch --list "canon-results/$id")" ]] || fail "a late-docs-only import kept canon-results/$id"
+# t-75f5: the cloud's audit log after grading (a new file or appended lines) counts the same; the dialog and the card then reach Check & merge.
+cd "$X" && "$TKT" export "$id" >/dev/null 2>&1 && git checkout -q sweep && mkdir -p .claude && printf '{"a":1}\n{"a":2}\n{"a":3}\n' > .claude/subagent-runs.jsonl \
+  && git add -f .claude/subagent-runs.jsonl && git commit -qm "audit log" && git push -qf origin "HEAD:refs/pull/58/head" && cd "$L"
+STUB_PR_HEAD="$(git -C "$X" rev-parse HEAD)"
+rc=0; out="$(STUB_PR_FILES="LEARNINGS.md .claude/subagent-runs.jsonl" "$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
+[[ "$rc" == 0 ]] || fail "a head that only added the audit log after grading should import with rc 0: $out"
+assert_contains "$out" "PR #58 head $STUB_PR_HEAD: graded-head plus late docs only: .claude/subagent-runs.jsonl, LEARNINGS.md"
+assert_contains "$out" "no re-grade needed"
 cd "$X" && "$TKT" export "$id" >/dev/null 2>&1 && mkdir -p tools && printf 'x\n' > tools/x.sh && git add tools/x.sh \
   && git commit -qm code && git push -qf origin "HEAD:refs/pull/58/head" && git checkout -q main && cd "$L"
 STUB_PR_HEAD="$(git -C "$X" rev-parse sweep)"
 rc=0; out="$(STUB_PR_FILES="LEARNINGS.md tools/x.sh" "$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "a code commit after grading should exit 1: $out"
 assert_contains "$out" "does NOT match graded-head"; assert_contains "$out" "(tools/x.sh)"
+assert_contains "$out" "next: tkt land $id --pr 58 --fix"   # t-75f5: the cloud closed the ticket; `land` without --fix refuses a closed one, so the way out is named
 [[ -n "$(git --git-dir="$W/origin.git" branch --list "canon-results/$id")" ]] || fail "a code delta deleted canon-results/$id"
 # An import that cannot write keeps the branch on origin, so nothing is lost.
 if [[ "$(id -u)" != 0 ]]; then

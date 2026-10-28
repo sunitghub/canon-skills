@@ -16236,6 +16236,21 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#gh-dialog-title')).toHaveText('Imported, but the cloud sprint did not close');
   });
 
+  // t-75f5. Protects the import dialog: a cloud-closed ticket whose PR head is not the graded head names the command that works
+  // (tkt land <id> --pr N --fix) instead of the Continue here button the card does not offer for it.
+  test('an import of a cloud-closed ticket with a mismatched head names tkt land --fix (t-75f5)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh21b');
+    ghTicket(id, { github: 'acme/app#57' });
+    await routeStatus(page, id, { stage: 'results-ready', pr: 58 });
+    const out = `  PR #58 head abc1234 does NOT match graded-head def5678: the evaluator graded other code\n  next: tkt land ${id} --pr 58 --fix   (the cloud closed the ticket)`;
+    await page.route(`**/api/ticket/${id}/github/import`, r => json(r, { ok: false, exit_code: 1, output: out }));
+    await openBoard(page, id);
+    await page.locator(`.card[data-id="${id}"] .card-gh-btn`).click();
+    await expect(page.locator('#gh-dialog-title')).toHaveText('Imported, but the cloud sprint did not close');
+    await expect(page.locator('#gh-dialog-body')).toContainText(`run tkt land ${id} --pr 58 --fix in a terminal`);
+    await expect(page.locator('#gh-dialog-body')).not.toContainText('Continue here on the card');
+  });
+
   test('Take back that fails says so; Tab and Shift+Tab wrap inside the dialog (t-718b)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gh22');
     ghTicket(id, { github: 'acme/app#57' });

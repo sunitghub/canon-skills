@@ -268,9 +268,11 @@ async function importResults(t, pr) {
   try { res = await postJSON(ghApi(t.id, 'import'), pr ? { pr } : {}); }
   catch (e) { res = { ok: false, output: String(e.message || e) }; }
   const noVerdict = /no eval-report\.md|graded-head: none|NOT match graded-head/.test(res.output || '');
+  const fixCmd = ((res.output || '').match(/next: (tkt land [\w-]+ --pr \d+ --fix)/) || [])[1] || '';   // t-75f5: a cloud-closed ticket with a mismatched head: `land` needs --fix
   updateDialog({
     title: res.ok ? `Results are back in .tickets/${t.id}/` : (noVerdict ? 'Imported, but the cloud sprint did not close' : 'Import failed'),
     body: res.ok ? 'Next: Check & merge on the card.'
+      : fixCmd ? `The cloud closed this ticket, but the PR\'s head is not the commit its evaluator graded, so Check & merge is not offered. Close it again on this machine: run ${fixCmd} in a terminal (it makes a worktree at the PR\'s head to grade and close in; docs/setup.md › Claude cloud sessions).`
       : noVerdict ? 'There is no passing evaluator verdict on the PR\'s head, so there is nothing to merge yet. Finish the close on this machine: tkt land (Continue here on the card, once the results include an eval-report) makes a worktree at the PR\'s head to run the evaluator and sprint complete in, then Check & merge (docs/setup.md › Claude cloud sessions).'
       : 'Nothing was changed.',
     pre: res.output || '', escape: true,

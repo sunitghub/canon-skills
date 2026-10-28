@@ -65,6 +65,12 @@ refuses "a PR head that already has a verdict" "nothing to close here" --
 rm ".tickets/$id/eval-report.md"
 "$TKT" start "$id" >/dev/null
 refuses "a ticket that is not open" "not open" --
+"$TKT" close "$id" --no-sprint >/dev/null 2>&1 || sed -i.bak 's/^status: .*/status: closed/' "$f"; rm -f "$f.bak"   # t-75f5: closed, not merely started
+refuses "a closed ticket without --fix" "tkt land $id --pr <N> --fix" --
+refuses "a closed ticket without --fix, PR named" "tkt land $id --pr 7 --fix" -- --pr 7
+sed -i.bak 's/^status: .*/status: in_progress/' "$f"; rm -f "$f.bak"
+refuses "an in-progress ticket" "import its results first (tkt import-results $id)" --
+[[ "$out" != *"--fix"* ]] || fail "the --fix hint is only for a closed ticket: $out"
 "$TKT" reopen "$id" >/dev/null 2>&1 || sed -i.bak 's/^status: .*/status: open/' "$f"
 grep -q '^status: open' "$f" || fail "test setup: ticket not reopened"
 

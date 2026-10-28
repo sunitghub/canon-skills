@@ -350,6 +350,37 @@ git push -qf origin "HEAD:refs/pull/7/head"; LINK="$(git rev-parse HEAD)"; git c
 refuses "a symlink under an allowed name after grading" "LEARNINGS.md (symlink or submodule)" STUB_HEAD="$LINK" -- --pr 7 --yes
 git push -qf origin "$PRHEAD:refs/pull/7/head"
 
+# t-75f5: the cloud's audit log (.claude/subagent-runs.jsonl) is the one file under .claude/ that may follow the grade, and only appended to.
+# The graded head here already holds a two-line log; each head below is one commit on it published as PR #7's head.
+LOGBASE="$(git checkout -q -B past "$PRHEAD"; mkdir -p .claude; printf 'a\nb\n' > .claude/subagent-runs.jsonl; git add -f .claude/subagent-runs.jsonl
+  git commit -qm "graded with a log"; git rev-parse HEAD; git checkout -q main)"
+sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; eval_ok "$LOGBASE"
+pastlog() {   # pastlog <log content> [file...]: a commit on LOGBASE that sets the log to that text and touches the files
+  git checkout -q -B past "$LOGBASE"; printf '%s' "$1" > .claude/subagent-runs.jsonl; shift; local x
+  for x in "$@"; do mkdir -p "$(dirname "$x")"; echo "$x" > "$x"; git add -f "$x"; done
+  git add -f .claude/subagent-runs.jsonl; git commit -qm "after grading"; git push -qf origin "HEAD:refs/pull/7/head"; git rev-parse HEAD; git checkout -q main
+}
+GREW="$(pastlog $'a\nb\nc\n' ".tickets/$id/summary.md" LEARNINGS.md)"; : > "$STUB_LOG"
+out="$(STUB_HEAD="$GREW" "$TKT" merge-pr "$id" --pr 7 --yes 2>&1)" || fail "a head that only appended to the audit log was refused: $out"
+assert_contains "$out" "merge-pr: PR #7 head is graded-head plus late docs only: .claude/subagent-runs.jsonl, .tickets/$id/summary.md, LEARNINGS.md"
+grep -qx "pr merge 7 --repo acme/app --merge --delete-branch --match-head-commit $GREW" "$STUB_LOG" || fail "the audit-log merge was not pinned to its head: $(cat "$STUB_LOG")"
+sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
+refuses "a rewritten audit log" "since then it changes .claude/subagent-runs.jsonl (rewritten; not appended)" STUB_HEAD="$(pastlog $'a\nX\nc\n')" -- --pr 7 --yes
+refuses "a truncated audit log" "since then it changes .claude/subagent-runs.jsonl (rewritten; not appended)" STUB_HEAD="$(pastlog $'a\n')" -- --pr 7 --yes
+refuses "an emptied audit log" "since then it changes .claude/subagent-runs.jsonl (rewritten; not appended)" STUB_HEAD="$(pastlog '')" -- --pr 7 --yes
+refuses "an appended log beside a code file" "since then it changes tools/x.sh" STUB_HEAD="$(pastlog $'a\nb\nc\n' tools/x.sh)" -- --pr 7 --yes
+refuses "another file under .claude/" "since then it changes .claude/settings.json" STUB_HEAD="$(pastlog $'a\nb\nc\n' .claude/settings.json)" -- --pr 7 --yes
+refuses "an agent definition under .claude/" "since then it changes .claude/agents/x.md" STUB_HEAD="$(pastlog $'a\nb\nc\n' .claude/agents/x.md)" -- --pr 7 --yes
+refuses "a look-alike log name" "since then it changes .claude/subagent-runs.jsonl.bak" STUB_HEAD="$(pastlog $'a\nb\nc\n' .claude/subagent-runs.jsonl.bak)" -- --pr 7 --yes
+refuses "the log's name in another folder" "since then it changes x/.claude/subagent-runs.jsonl" STUB_HEAD="$(pastlog $'a\nb\nc\n' x/.claude/subagent-runs.jsonl)" -- --pr 7 --yes
+git checkout -q -B past "$LOGBASE"; printf 'a\nb\n\000c\n' > .claude/subagent-runs.jsonl; git add -f .claude/subagent-runs.jsonl; git commit -qm "binary log"
+git push -qf origin "HEAD:refs/pull/7/head"; BIN="$(git rev-parse HEAD)"; git checkout -q main
+refuses "a binary audit log" "since then it changes .claude/subagent-runs.jsonl (rewritten; not appended)" STUB_HEAD="$BIN" -- --pr 7 --yes
+git checkout -q -B past "$LOGBASE"; rm .claude/subagent-runs.jsonl; ln -s AGENTS.md .claude/subagent-runs.jsonl; git add -f .claude/subagent-runs.jsonl; git commit -qm "log as a link"
+git push -qf origin "HEAD:refs/pull/7/head"; LOGLINK="$(git rev-parse HEAD)"; git checkout -q main
+refuses "the audit log turned into a symlink" ".claude/subagent-runs.jsonl (symlink or submodule)" STUB_HEAD="$LOGLINK" -- --pr 7 --yes
+sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; eval_ok "$PRHEAD"; git push -qf origin "$PRHEAD:refs/pull/7/head"
+
 # t-24b1: after the merge, local main catches up with origin's, fast-forward only, or is left alone with the reason.
 BASE="$(git rev-parse "$PRHEAD^")"
 ff_merge() {   # origin main back at the base, the ticket unmerged; one merge-pr --yes whose merge moves origin main
