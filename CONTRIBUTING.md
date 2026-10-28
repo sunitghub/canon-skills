@@ -66,14 +66,15 @@ pass CI.
 
 ## Shipping a Change
 
-canon is a living library — there's no release step for skills, tools, or docs.
-Push to both remotes and users pick it up automatically:
+A merged change reaches users through a release, not a push. Installs (the curl and
+PowerShell installers, `canon update`) take the latest **verified release**: a tagged
+version listed in `https://getcanon.dev/releases.txt`. Only `canon update --to main`
+follows `main` directly.
 
-```bash
-git push          # → sunitghub/canon (dev)
-git push public   # → sunitghub/canon-skills (public install target)
-```
-
-The curl installer (`install.sh`) is the primary distribution channel. On
-re-run it does `git pull`, so every push is live for existing installs on the
-next invocation.
+- **Contributors:** open a PR. Your change ships in the next release; you do not push to
+  `public` or cut a release yourself.
+- **Maintainers:** follow **[docs/releasing.md](docs/releasing.md)** step by step: binaries
+  first when `scripts/check-binaries-released.sh` says so, then `tkt push-main` (never a plain
+  `git push public`: the pre-push hook from `scripts/install-hooks.sh` refuses it), then
+  `scripts/release.sh`, then the canon-site lines and badge. An agent cutting the release
+  needs the three public commands allowed, as that doc's step 2 explains.
