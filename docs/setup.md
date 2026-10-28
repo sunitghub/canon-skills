@@ -94,6 +94,10 @@ A ticket that went to GitHub keeps its trail in `.tickets/<id>/github.md`: `tkt 
 `tkt merge-pr` each append a dated entry (issue, PR, graded head, merge commit or refusal reason), and the board shows it
 as the ticket's **GitHub** tab.
 
+**Once: give Claude the repository.** A cloud session can work in a private repository only when the Claude GitHub
+App is installed on it (`https://github.com/apps/claude/installations/new`); without it the repository is not offered
+and the session cannot read the issue.
+
 **Once: create a "canon" environment.** In a new session, open *Choose environment*, then *Cloud*. `tkt cloud-env` prints
 this project's recipe ready to paste (the Cockpit's Factory › GitHub has Copy buttons for it); its one source is
 `tools/cloud-env.sh`. Below is the full recipe; a project that is not written in Go leaves out the Go domains and the
@@ -141,6 +145,8 @@ script's Go block:
   identity only where the image has none.
 - No secrets, no environment variables.
 
+After you change the setup script, start a new session: one that is already open keeps the old script.
+
 **What to expect in a session** (seen on t-2194, 2026-10-16):
 
 - It runs as root, so tests that make a folder unwritable skip those cases (`tkt-compact`); your machine runs them.
@@ -158,7 +164,10 @@ script's Go block:
    in `ticket.md`, and prints the line to start with. A public repo is refused unless you add `--public`: anyone
    could read the ticket's notes.
    The cloud session works from GitHub, not from your machine: commits that are on no branch of `origin` are
-   refused (push first, or add `--allow-unpushed` in a terminal; for an in-progress ticket bound to a worktree it is that worktree's commits that count), and uncommitted or untracked changes get a warning. A ticket you planned here is
+   refused (push first, or add `--allow-unpushed` in a terminal; for an in-progress ticket bound to a worktree it is that worktree's commits that count), and uncommitted or untracked changes get a warning. In either case the board's Send panel offers **Commit and push…**:
+   it lists the changed files (untracked ones unticked), and after a confirm that names the files and the branch it runs
+   `tkt commit-push <id> --file <path>... --message <text>`, which commits exactly those files and pushes the branch to
+   `origin` (never forced; `-u` for a branch origin does not have; refused when origin has commits you lack). A ticket you planned here is
    `in_progress`; it can still be sent once no session is working on it, and it goes back to `open` as it leaves. The
    board's GitHub option and `--dry-run` show exactly what the command says.
 3. Start the session. One command does steps 2 and 3: `tkt send-issue <id> --launch` shows the issue, asks `[y/N]`

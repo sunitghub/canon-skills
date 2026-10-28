@@ -525,6 +525,8 @@ export async function showGithubPanel(t, tab) {
   // reloads. openCockpit mounts once more when its rail render ends, and a GitHub pick and a failed send made before that lost
   // their reason to the second render.
   if (!sent && !ghOut(t) && !panel.hidden && panel.querySelector('[data-gh-send]')?.dataset.ghSend === t.id) return;
+  // t-32f9: so does a panel whose Commit and push form is open (a failed preview offers it, and would otherwise reload under it).
+  if (!sent && !ghOut(t) && !panel.hidden && panel.querySelector('#ck-gh-cp')?.dataset.open === t.id) return;
   const gen = ++ghPanelGen;
   panel.hidden = false;
   if (sent) return showSent(panel, t, tab);   // kept across tab switches until dismissed
@@ -546,14 +548,19 @@ export async function showGithubPanel(t, tab) {
   const outLines = String(pv.output || '').split(/\r?\n/);
   const warns = outLines.filter(l => WARN.test(l)).map(l => l.replace(WARN, ''));
   const preview = outLines.filter(l => !WARN.test(l)).join('\n');
+  // t-32f9: unpushed commits refuse the send and uncommitted files only warn; either way the cloud would not see them, so offer
+  // to commit and push from here (tkt commit-push, after a confirm that names the files and the branch).
+  const cpOffer = /are on no branch of origin/.test(pv.output || '') || warns.some(w => /have uncommitted or untracked changes/.test(w));
   panel.innerHTML = `<div class="ck-gh-box"${pv.ok ? ` data-gh-send="${esc(t.id)}"` : ''}>
       <h3>Send ${esc(t.id)} to GitHub</h3>
       <p>${pv.ok ? 'The issue, exactly as it will be created. Nothing is sent until you press Create issue.' : 'The preview failed, so nothing can be sent yet:'}</p>
       ${warns.length ? `<div class="ck-gh-note" id="ck-gh-note" role="note">${warns.map(w => `<p>${esc(w)}</p>`).join('')}</div>` : ''}
+      ${cpOffer ? `<div class="ck-gh-cp" id="ck-gh-cp"><button type="button" id="ck-gh-cp-open">Commit and push…</button></div>` : ''}
       <pre class="ck-gh-pre" id="ck-gh-preview">${esc(preview)}</pre>
       ${isPublic ? `<label class="ck-gh-public"><input type="checkbox" id="ck-gh-public"> This repository is public: anyone could read the ticket's notes. Send anyway.</label>` : ''}
       <div class="ck-gh-actions"><button type="button" class="ck-gh-create" id="ck-gh-create"${pv.ok ? '' : ' disabled'}>Create issue</button><span class="ck-gh-status" id="ck-gh-status" role="status"></span></div>
     </div>`;
+  if (cpOffer) wireCommitPush(t, tab, gen);
   const create = document.getElementById('ck-gh-create');
   create?.addEventListener('click', async () => {
     const pub = document.getElementById('ck-gh-public');
@@ -585,12 +592,70 @@ export async function showGithubPanel(t, tab) {
   });
 }
 
+// t-32f9: the Send panel's Commit and push. The list is tkt commit-push --dry-run's, untracked files unticked (one may be a secret);
+// nothing runs until the confirm, which names every file and the branch. Then the send preview runs again.
+function wireCommitPush(t, tab, gen) {
+  const open = document.getElementById('ck-gh-cp-open');
+  open?.addEventListener('click', () => showCommitPush(t, tab, gen));
+}
+async function showCommitPush(t, tab, gen) {
+  const box = document.getElementById('ck-gh-cp');
+  if (!box) return;
+  box.dataset.open = t.id;
+  box.innerHTML = '<p>Reading the changes…</p>';
+  let pv;
+  try { pv = await getJSON(ghApi(t.id, 'commit-push-preview')); }
+  catch (e) { pv = { ok: false, output: String(e.message || e) }; }
+  if (gen !== ghPanelGen) return;
+  if (!pv.ok) { box.innerHTML = `<p>Could not read the changes:</p><pre class="ck-gh-pre">${esc(pv.output || '')}</pre>`; return; }
+  const lines = String(pv.output || '').split(/\r?\n/);
+  const branch = (lines.find(l => l.startsWith('branch: ')) || '').slice('branch: '.length);
+  const name = branch.split(' ')[0];
+  const files = lines.map(l => /^file: (..) (.+)$/.exec(l)).filter(Boolean).map(m => ({ path: m[2], untracked: m[1] === '??' }));
+  box.innerHTML = `<p>Branch: <code>${esc(branch)}</code></p>
+      ${files.length ? `<ul class="ck-gh-cp-files" id="ck-gh-cp-files">${files.map((f, i) => `<li><label><input type="checkbox" data-i="${i}"${f.untracked ? '' : ' checked'}> <code>${esc(f.path)}</code> <span class="ck-gh-cp-st">${f.untracked ? 'new, not tracked' : 'changed'}</span></label></li>`).join('')}</ul>` : '<p>No uncommitted files: only the commits already here are pushed.</p>'}
+      ${files.length ? `<label class="ck-gh-cp-msg">Commit message <input type="text" id="ck-gh-cp-msg" maxlength="200" value="${escAttr(`chore: ${t.id} work for the cloud session`)}"></label>` : ''}
+      <div class="ck-gh-actions"><button type="button" class="ck-gh-create" id="ck-gh-cp-go">Commit and push</button><button type="button" id="ck-gh-cp-cancel">Cancel</button><span class="ck-gh-status" id="ck-gh-cp-status" role="status"></span></div>`;
+  document.getElementById('ck-gh-cp-cancel').addEventListener('click', () => {
+    delete box.dataset.open;
+    box.innerHTML = '<button type="button" id="ck-gh-cp-open">Commit and push…</button>';
+    wireCommitPush(t, tab, gen);
+  });
+  document.getElementById('ck-gh-cp-go').addEventListener('click', async () => {
+    const status = document.getElementById('ck-gh-cp-status');
+    const chosen = [...box.querySelectorAll('#ck-gh-cp-files input[type=checkbox]:checked')].map(b => files[+b.dataset.i].path);
+    const msg = (document.getElementById('ck-gh-cp-msg')?.value || '').trim();
+    if (chosen.length && !msg) { status.textContent = 'Write a commit message first.'; return; }
+    const choice = await openDialog({
+      title: `Commit and push ${t.id}?`,
+      body: chosen.length ? `Commits ${chosen.length} file(s) on ${name}, then pushes ${name} to origin. Never forced.` : `Pushes ${name} to origin. Never forced.`,
+      pre: chosen.length ? `${chosen.join('\n')}\n\nmessage: ${msg}` : '',
+      ok: 'Commit and push', cancel: 'Cancel', escape: true,
+    });
+    if (!choice || !choice.ok || gen !== ghPanelGen) return;
+    status.textContent = 'Committing and pushing…';
+    let res;
+    try { res = await postJSON(ghApi(t.id, 'commit-push'), chosen.length ? { files: chosen, message: msg } : {}); }
+    catch (e) { res = { ok: false, output: String(e.message || e) }; }
+    if (gen !== ghPanelGen) return;
+    if (!res.ok) {
+      status.textContent = 'Not pushed; see why below.';
+      document.getElementById('ck-gh-preview').textContent = res.output || '';
+      return;
+    }
+    showToast(`Pushed ${name} to origin.`);
+    hideGithubPanel();
+    showGithubPanel(t, tab);   // the send preview runs again on what origin has now
+  });
+}
+
 function showSent(panel, t, tab) {
   const { n, url, line, cmd } = tab.ghSent;
   panel.innerHTML = `<div class="ck-gh-box ck-gh-sent" id="ck-gh-sent">
       <h3>Sent ${esc(t.id)} as issue #${esc(n)}</h3>
       ${line ? `<p>Start a Claude cloud session on the canon environment and type:</p><pre class="ck-gh-pre ck-gh-prompt" id="ck-gh-prompt">${esc(line)}</pre>${cmd ? `<p>Or paste this in a terminal window in this project (a real terminal; it is refused inside a Claude session):</p><pre class="ck-gh-pre ck-gh-prompt" id="ck-gh-cmd">${esc(cmd)}</pre>` : ''}` : `<p>Start a Claude cloud session on the canon environment and point it at issue #${esc(n)}.</p>`}
       <p>The card is in In progress and shows the next step.</p>
+      <p class="ck-gh-prereq" id="ck-gh-prereq">First time on this repository? The cloud session needs the Claude GitHub App installed on it and the canon environment (Factory › GitHub › Cloud environment). After you change the environment's setup script, start a new session: an open one keeps the old script.</p>
       <div class="ck-gh-actions">${cmd ? `<button type="button" class="ck-gh-create" id="ck-gh-to-cloud" title="Open the Terminal with the command typed (you press Enter)">To Claude Cloud</button><button type="button" id="ck-gh-copy-cmd">Copy command</button>` : ''}${line ? `<button type="button" id="ck-gh-copy">Copy prompt</button>` : ''}${url ? `<button type="button" id="ck-gh-open" title="Issue #${esc(n)} on GitHub">Issue ↗</button>` : ''}<button type="button" id="ck-gh-dismiss">Close tab</button><span class="ck-gh-status" id="ck-gh-status" role="status"></span></div>
     </div>`;
   const copyText = async (text) => {

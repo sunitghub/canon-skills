@@ -2259,6 +2259,98 @@ cmd_push_main() {
   return $rc
 }
 
+# _cp_files <checkout> <id> — t-32f9: what commit-push may commit, one "<XY>\t<path>" per line: every change git status reports
+# (untracked files one by one), less other tickets' .tickets/<other>/ files and canon's own skill links. A path with a tab or
+# a newline is left out (it could not be named back safely).
+_cp_files() {
+  local wt="$1" id="$2" entry xy path skip=false
+  while IFS= read -r -d '' entry; do
+    if $skip; then skip=false; continue; fi
+    [[ ${#entry} -ge 4 ]] || continue
+    xy="${entry:0:2}"; path="${entry:3}"
+    [[ "$xy" == *[RC]* ]] && skip=true   # a rename or copy carries its source path as the next entry
+    case "$path" in *$'\t'*|*$'\n'*) continue ;; esac
+    case "$path" in .tickets/"$id"/*) ;; .tickets/*) continue ;; esac
+    if [[ "$xy" == '??' ]]; then
+      case "$path" in .agents/skills|.agents/skills/*|.claude/skills|.claude/skills/*) continue ;; esac
+    fi
+    printf '%s\t%s\n' "$xy" "$path"
+  done < <(git -C "$wt" status --porcelain=v1 -z --untracked-files=all 2>/dev/null)
+}
+
+# cmd_commit_push <id> [--dry-run] [--file <path>]... [--message <text>] — t-32f9: what the Send panel's "Commit and push" runs,
+# after its confirm. Commits exactly the named files (anything else already staged stays staged, uncommitted), then pushes the
+# ticket's branch to origin's branch of the same name: never forced, -u when origin has no such branch yet, refused when origin
+# has commits this branch lacks. Every --file must be one --dry-run lists. A push that fails keeps the commit and says so.
+cmd_commit_push() {
+  local id="" dry=false msg="" msgset=false files=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --dry-run) dry=true; shift ;;
+      --file)    [[ $# -ge 2 ]] || { echo "commit-push: --file needs a path" >&2; exit 1; }; files+=("$2"); shift 2 ;;
+      --message) [[ $# -ge 2 ]] || { echo "commit-push: --message needs a text" >&2; exit 1; }; msg="$2"; msgset=true; shift 2 ;;
+      -*) echo "Unknown option: $1" >&2; exit 1 ;;
+      *)  [[ -z "$id" ]] && id="$1"; shift ;;
+    esac
+  done
+  [[ -n "$id" ]] || { echo "Usage: tkt commit-push <id> [--dry-run] [--file <path>]... [--message <text>]" >&2; exit 1; }
+  # A path is a file name, never a pattern: a file named '*.txt' must commit that one file, not every .txt (t-41ff's rule).
+  local GIT_LITERAL_PATHSPECS=1; export GIT_LITERAL_PATHSPECS
+  local file root wt b list new=false ahead=0 base=""
+  file="$(find_ticket "$id")"; id="$(get_field "$file" id)"
+  root="$(dirname "$(tickets_dir)")"
+  wt="$(_ticket_cwd_binding "$file")"; [[ -d "$wt" ]] || wt="$root"
+  b="$(git -C "$wt" symbolic-ref -q --short HEAD)" || { echo "commit-push: $wt is not on a branch (detached HEAD); check out a branch first" >&2; exit 1; }
+  _branch_ok "$b" || { echo "commit-push: the branch name ($b) is not usable here; push it by hand" >&2; exit 1; }
+  git -C "$wt" remote get-url origin >/dev/null 2>&1 || { echo "commit-push: this project has no origin remote; nothing to push to" >&2; exit 1; }
+  local lrc=0; git -C "$wt" ls-remote --exit-code --heads origin "refs/heads/$b" >/dev/null 2>&1 || lrc=$?
+  if [[ $lrc == 2 ]]; then new=true
+  elif [[ $lrc != 0 ]]; then echo "commit-push: could not reach origin (git ls-remote exit $lrc); nothing changed" >&2; exit 1
+  else
+    git -C "$wt" fetch -q origin "refs/heads/$b" 2>/dev/null || { echo "commit-push: could not fetch origin/$b; nothing changed" >&2; exit 1; }
+    base="$(git -C "$wt" rev-parse FETCH_HEAD)" || exit 1
+    git -C "$wt" merge-base --is-ancestor "$base" HEAD \
+      || { echo "commit-push: origin/$b has commits this branch lacks; nothing changed. Run git pull first, then commit and push again." >&2; exit 1; }
+    ahead="$(git -C "$wt" rev-list --count "$base..HEAD")" || exit 1
+  fi
+  list="$(_cp_files "$wt" "$id")"
+  if $dry; then
+    echo "commit-push: $id in $wt"
+    if $new; then echo "branch: $b -> origin/$b (new on origin)"; else echo "branch: $b -> origin/$b ($ahead commit(s) to push)"; fi
+    [[ -z "$list" ]] || printf '%s\n' "$list" | while IFS=$'\t' read -r xy p; do printf 'file: %s %s\n' "$xy" "$p"; done
+    return 0
+  fi
+  local f
+  if [[ ${#files[@]} -gt 0 ]]; then
+    $msgset && [[ -n "$msg" ]] || { echo "commit-push: a commit needs --message; nothing changed" >&2; exit 1; }
+    [[ ${#msg} -le 200 && "$msg" != *$'\n'* && "$msg" != *$'\r'* ]] \
+      || { echo "commit-push: the message must be one line of at most 200 characters; nothing changed" >&2; exit 1; }
+    for f in "${files[@]}"; do
+      [[ "$f" != -* ]] || { echo "commit-push: refused file name $f (starts with -); nothing changed" >&2; exit 1; }
+      printf '%s\n' "$list" | cut -f2- | grep -qxF -- "$f" \
+        || { echo "commit-push: $f is not one of this checkout's changes (tkt commit-push $id --dry-run lists them); nothing changed" >&2; exit 1; }
+    done
+  elif ! $new && [[ "$ahead" == 0 ]]; then
+    echo "commit-push: nothing to commit (no --file) and nothing to push on $b; nothing changed" >&2; exit 1
+  fi
+  local sha out
+  if [[ ${#files[@]} -gt 0 ]]; then
+    # Only the named paths: --only commits their worktree state and leaves anything else in the index staged, not committed.
+    out="$(git -C "$wt" add -A -- "${files[@]}" 2>&1 && git -C "$wt" commit -q --only -m "$msg" -- "${files[@]}" 2>&1)" \
+      || { echo "commit-push: git could not commit: $out" >&2; exit 1; }
+    sha="$(git -C "$wt" rev-parse HEAD)"
+    echo "commit-push: committed ${sha:0:8} ($(printf '%s\n' "${files[@]}" | grep -c .) file(s)): $msg"
+  fi
+  local pushargs=(push -q); $new && pushargs+=(-u)
+  if ! out="$(git -C "$wt" "${pushargs[@]}" origin "refs/heads/$b:refs/heads/$b" 2>&1)"; then
+    echo "commit-push: ${sha:+committed ${sha:0:8} here; }push failed: $(tail -1 <<< "$out")" >&2
+    echo "  retry: git push origin $b${sha:+   undo the commit: git reset --soft HEAD^}" >&2
+    exit 1
+  fi
+  echo "commit-push: pushed $b to origin$($new && echo ' (new branch, tracking origin/'"$b"')')"
+  [[ -z "$sha" ]] || echo "  to undo: git revert ${sha:0:8} (it is on origin now)"
+}
+
 # _wtr_dirty — t-8f48: the paths `git status` reports in the current worktree, untracked ones included, less canon's own
 # skill links (an untracked .agents/skills or .claude/skills, or anything under them: the board's t-07a8 rule,
 # isCanonSkillsLink). One path per line; exit 1 when git status fails.
@@ -2756,6 +2848,10 @@ Commands:
                             (a commit naming <id>), with "Fixes #N".
   push-main                 Push origin's default branch to each git config canon.mirror
                             remote (opt-in; never forced; prints how to undo).
+  commit-push <id> [--dry-run] [--file <path>]... [--message <text>]
+                            Commit exactly the named files in the ticket's checkout, then
+                            push its branch to origin (never forced; -u for a new branch;
+                            refused when origin is ahead). --dry-run lists branch and files.
   release-check <sha>       Exit 1 when <sha> ships binaries not yet released (canon's
                             pre-push hook runs it for canon.mirror remotes)
   github-doctor [--json]    Read-only GitHub readiness checks (gh signed in, origin and
@@ -2820,6 +2916,7 @@ main() {
     cloud-env)      cmd_cloud_env "$@" ;;
     open-pr)        cmd_open_pr "$@" ;;
     push-main)      cmd_push_main "$@" ;;
+    commit-push)    cmd_commit_push "$@" ;;
     release-check)  cmd_release_check "$@" ;;
     merge-pr)       cmd_merge_pr "$@" ;;
     land)           cmd_land "$@" ;;

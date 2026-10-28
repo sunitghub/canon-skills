@@ -560,6 +560,8 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			switch m[2] {
 			case "send-preview":
 				sendJSON(w, runTkt(groot, []string{"send-issue", m[1], "--dry-run"}))
+			case "commit-push-preview": // t-32f9: the files and branch the Send panel's Commit and push offers
+				sendJSON(w, runTkt(groot, []string{"commit-push", m[1], "--dry-run"}))
 			case "merge":
 				sendJSON(w, getMergeRunState(groot, m[1]))
 			case "status":
@@ -928,6 +930,14 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 			return
 		case "open-pr":
 			sendJSON(w, runTkt(eroot, []string{"open-pr", id}))
+			return
+		case "commit-push": // t-32f9: after the Send panel's confirm; tkt re-checks every path against its own list
+			args, ok := commitPushArgs(id, payload)
+			if !ok {
+				http.Error(w, "bad request", http.StatusBadRequest)
+				return
+			}
+			sendJSON(w, runTkt(eroot, args))
 			return
 		case "land":
 			pr, ok := prArg(payload["pr"])
@@ -2160,7 +2170,7 @@ var (
 	apiDocRe            = regexp.MustCompile(`^/api/doc/(.+)$`)
 	apiTicketImageRe    = regexp.MustCompile(`^/api/ticket-image/(t-[a-z0-9]{4})/(.+)$`)
 	apiTicketFeatureRe  = regexp.MustCompile(`^/api/ticket-feature/(t-[a-z0-9]{4})/(.+)$`)
-	apiGitHubGetRe      = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/github/(send-preview|merge-check|merge|status)$`)
+	apiGitHubGetRe      = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/github/(send-preview|commit-push-preview|merge-check|merge|status)$`)
 	apiHeadlessRunRe    = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/headless-run$`)
 	apiWorktreeLockRe   = regexp.MustCompile(`^/api/worktree-lock/(t-[a-z0-9]{4})$`)
 	apiCockpitDocsRe    = regexp.MustCompile(`^/api/cockpit-docs/(t-[a-z0-9]{4})$`)
@@ -2169,7 +2179,7 @@ var (
 	apiTicketVisualRe   = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/visual$`)
 	apiTicketDemoRe     = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/demo$`)
 	apiTicketTagsRe     = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/tags$`)
-	apiGitHubPostRe     = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/github/(send|import|merge|merge-stop|take-back|open-pr|land|ready)$`)
+	apiGitHubPostRe     = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/github/(send|import|merge|merge-stop|take-back|open-pr|land|ready|commit-push)$`)
 	apiWorktreeUnlockRe = regexp.MustCompile(`^/api/worktree-unlock/([^/]+)$`)
 	checkboxItemRe      = regexp.MustCompile(`(?m)^\s*[-*]\s+\[[ xX]\]\s+\S`)
 	uncheckedItemRe     = regexp.MustCompile(`(?m)^\s*[-*]\s+\[ \]\s+\S`)
@@ -4746,6 +4756,40 @@ func issueNumbers(v any) (string, bool) {
 }
 
 // prArg: nil slice + true for no PR, ["--pr", n] for digits, false for anything else (the caller answers 400).
+// commitPushArgs builds `tkt commit-push <id> [--file P]... [--message M]` from a browser payload (t-32f9). A path is never
+// empty, absolute, an option (leading -), above the checkout (a .. segment) or carrying NUL or a line break; at most 500 of
+// them. tkt then accepts only paths its own --dry-run lists. false means a bad request: nothing runs.
+func commitPushArgs(id string, payload map[string]any) ([]string, bool) {
+	args := []string{"commit-push", id}
+	if v, present := payload["files"]; present {
+		list, isList := v.([]any)
+		if !isList || len(list) > 500 {
+			return nil, false
+		}
+		for _, item := range list {
+			p, isStr := item.(string)
+			if !isStr || p == "" || len(p) > 4096 || strings.HasPrefix(p, "-") || strings.HasPrefix(p, "/") || strings.HasPrefix(p, `\`) ||
+				(len(p) > 1 && p[1] == ':') || strings.ContainsAny(p, "\x00\n\r") {
+				return nil, false
+			}
+			for _, seg := range strings.FieldsFunc(p, func(r rune) bool { return r == '/' || r == '\\' }) {
+				if seg == ".." {
+					return nil, false
+				}
+			}
+			args = append(args, "--file", p)
+		}
+	}
+	if v, present := payload["message"]; present {
+		msg, isStr := v.(string)
+		if !isStr || strings.ContainsAny(msg, "\x00") {
+			return nil, false
+		}
+		args = append(args, "--message", msg)
+	}
+	return args, true
+}
+
 func prArg(v any) ([]string, bool) {
 	if v == nil {
 		return []string{}, true

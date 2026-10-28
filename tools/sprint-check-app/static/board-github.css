@@ -52,6 +52,12 @@ html[data-theme="light"] .ck-gh-box .ck-gh-note p { color: var(--th-warn-ink, #9
 .gh-dialog-check { margin-top: 10px; }
 .gh-dialog-check[hidden], .gh-dialog-pre[hidden], .gh-dialog-table[hidden] { display: none; }
 .ck-gh-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+/* t-32f9: the Send panel's Commit and push */
+.ck-gh-cp { display: flex; flex-direction: column; gap: 8px; }
+.ck-gh-cp-files { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow: auto; display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
+.ck-gh-cp-st { color: var(--text-muted); }
+.ck-gh-cp-msg { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--text-muted); }
+.ck-gh-cp-msg input { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; }
 .ck-gh-actions button {
   font: inherit; font-size: 13px; padding: 6px 14px; border-radius: 8px; cursor: pointer;
   border: 1px solid var(--border); background: transparent; color: var(--text);

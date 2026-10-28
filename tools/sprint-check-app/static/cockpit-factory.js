@@ -75,7 +75,7 @@ function ghRender(res){
   const box=document.getElementById('fac-gh-checks'), count=document.getElementById('fac-gh-count');
   if(!ghDoctor){ count.textContent='Checks'; document.getElementById('fac-gh-copy-domains').disabled=document.getElementById('fac-gh-copy-script').disabled=true; box.innerHTML=`<div class="gh-row gh-bad"><i></i><em class="gh-n"></em><div><b>Could not run the checks</b><pre>${esc(res.output||'')}</pre></div></div>`; return; }
   const checks=ghDoctor.checks||[];
-  count.textContent=`Checks · ${checks.filter(c=>c.status!=='bad').length} of ${checks.length} ready`;
+  count.textContent=`Checks · ${checks.filter(c=>c.status!=='bad').length} of ${checks.length} ready on this machine`;   // t-32f9: the cloud setup is not one of them
   box.innerHTML=checks.map((c,i)=>{
     const f=c.fix||{};
     const fix=f.cmd?`<code>${esc(f.cmd)}</code><button type="button" class="btn b-primary" data-gh-copy="${escAttr(f.cmd)}">Copy</button>`

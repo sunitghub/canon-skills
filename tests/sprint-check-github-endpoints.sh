@@ -142,6 +142,15 @@ for P in "$GOP"; do
   done
   r="$(post "$P" /api/ticket/t-ab12/github/land '{"pr":"--finish"}')"; [[ "$(code "$r")" == 400 ]] || fail "$srv land pr=--finish: HTTP $(code "$r")"
   expect_call "$srv push-main"     "$P" "$(post "$P" /api/github/push-main '{}')" "push-main"                            # t-24b1
+  # t-32f9: Commit and push, the Send panel's preview and its confirmed POST; a path that could be an option or leave the checkout is a 400
+  expect_call "$srv cp preview"    "$P" "$(get "$P" /api/ticket/t-ab12/github/commit-push-preview)" "commit-push t-ab12 --dry-run"
+  expect_call "$srv cp push only"  "$P" "$(post "$P" /api/ticket/t-ab12/github/commit-push '{}')" "commit-push t-ab12"
+  expect_call "$srv cp files"      "$P" "$(post "$P" /api/ticket/t-ab12/github/commit-push '{"files":["a.txt","d/b.txt"],"message":"chore: t-ab12 work"}')" "commit-push t-ab12 --file a.txt --file d/b.txt --message chore: t-ab12 work"
+  for bad in '{"files":"a.txt"}' '{"files":["-x"]}' '{"files":["/etc/passwd"]}' '{"files":["a/../../x"]}' '{"files":["a\nb"]}' '{"files":[1]}' '{"message":3}'; do
+    before="$(last)"
+    r="$(post "$P" /api/ticket/t-ab12/github/commit-push "$bad")"; [[ "$(code "$r")" == 400 ]] || fail "$srv commit-push $bad: HTTP $(code "$r")"
+    assert_eq "$before" "$(last)"
+  done
   expect_call "$srv take-back cl"  "$P" "$(post "$P" /api/ticket/t-ab12/github/take-back '{"close_issue":true}')" "take-back t-ab12 --close-issue"
   # A PR that is not digits: 400 and nothing run, on every route that takes one.
   n="$(wc -l < "$W/log")"
@@ -158,7 +167,8 @@ for P in "$GOP"; do
   r="$(curl -s -w '\n%{http_code}' -H 'Sec-Fetch-Site: cross-site' "http://127.0.0.1:$P/api/github/intake")"; [[ "$(code "$r")" == 403 ]] || fail "$srv: cross-site GET intake was $(code "$r")"
   r="$(curl -s -w '\n%{http_code}' -H 'Origin: https://evil.example' "http://127.0.0.1:$P/api/github/doctor")"; [[ "$(code "$r")" == 403 ]] || fail "$srv: cross-origin GET doctor was $(code "$r")"
   r="$(curl -s -w '\n%{http_code}' -X POST -H 'Origin: https://evil.example' -H 'Content-Type: application/json' -d '{}' "http://127.0.0.1:$P/api/ticket/t-ab12/github/send")"; [[ "$(code "$r")" == 403 ]] || fail "$srv: cross-origin POST send was $(code "$r")"
-  for w in /api/ticket/t-ab12/github/open-pr /api/ticket/t-ab12/github/land /api/github/push-main; do
+  r="$(curl -s -w '\n%{http_code}' -H 'Origin: https://evil.example' "http://127.0.0.1:$P/api/ticket/t-ab12/github/commit-push-preview")"; [[ "$(code "$r")" == 403 ]] || fail "$srv: cross-origin GET commit-push-preview was $(code "$r")"
+  for w in /api/ticket/t-ab12/github/open-pr /api/ticket/t-ab12/github/land /api/github/push-main /api/ticket/t-ab12/github/commit-push; do
     r="$(curl -s -w '\n%{http_code}' -X POST -H 'Origin: https://evil.example' -H 'Content-Type: application/json' -d '{}' "http://127.0.0.1:$P$w")"; [[ "$(code "$r")" == 403 ]] || fail "$srv: cross-origin POST $w was $(code "$r")"
   done
   # An unknown project is 400, on GET and POST.

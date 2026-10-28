@@ -233,10 +233,12 @@
                 </div>
                 <div class="fac-subpanel" id="fac-cloud-claude" role="tabpanel" aria-labelledby="fac-cloud-tab-claude">
                 <ol class="gh-steps">
+                  <li><b>Give Claude this repository.</b> Install the Claude GitHub App on it (<code>github.com/apps/claude</code>): a private repository is invisible to cloud sessions without it.</li>
                   <li><b>Create the environment.</b> In Claude (desktop &rsaquo; Code, or claude.ai/code): New session &rsaquo; Choose environment &rsaquo; Cloud. Name it <code>canon</code>.</li>
                   <li><b>Network access: Limited</b>, and tick <i>Allow package managers</i>. <button type="button" class="btn b-primary" id="fac-gh-copy-domains">Copy domains</button><div class="gh-chips" id="fac-gh-domains"></div><div class="setting-d fac-domains-note">These are canon's (the Go ones only for a Go project). Add your own stack's domains, an npm or PyPI mirror for example, yourself.</div></li>
                   <li><b>Setup script</b>: installs canon's latest verified release, its commands and both gate agents (and, for a Go project, the Go version canon pins). <button type="button" class="btn b-primary" id="fac-gh-copy-script">Copy setup script</button></li>
                   <li><b>Secrets:</b> none.</li>
+                  <li><b>Start a new session</b> after you change the setup script: an open session keeps the old one.</li>
                 </ol>
                 </div>
                 <div class="setting-d">A recipe, not a check: canon cannot see your cloud environments.</div>

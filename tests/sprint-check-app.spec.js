@@ -15832,6 +15832,69 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#ck-gh-status')).toHaveText('');
   });
 
+  // Prod path: the Send panel's Commit and push (t-32f9), shown for unpushed commits (a refusal) and uncommitted files (a warning).
+  test('Send panel offers Commit and push for unpushed or uncommitted work; untracked unticked; nothing posts before the confirm (t-32f9)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh32');
+    ghTicket(id);
+    let mode = 'refused', previews = 0, posts = [];
+    await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
+    await page.route('**/api/worktrees**', r => json(r, [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true }]));
+    await page.route(`**/api/ticket/${id}/github/send-preview`, r => {
+      previews++;
+      if (mode === 'refused') return json(r, { ok: false, exit_code: 1, output: 'send-issue: 2 commit(s) in /w are on no branch of origin: the cloud session works from GitHub and will not see them.\n  Push them (git push) and send again.' });
+      if (mode === 'dirty') return json(r, { ok: true, exit_code: 0, output: 'send-issue: warning: 2 file(s) in /w have uncommitted or untracked changes; the cloud session will not see them\nrepo: acme/app (PRIVATE)' });
+      return json(r, { ok: true, exit_code: 0, output: 'repo: acme/app (PRIVATE)' });
+    });
+    await page.route(`**/api/ticket/${id}/github/commit-push-preview`, r => json(r, { ok: true, exit_code: 0, output: `commit-push: ${id} in /w\nbranch: main -> origin/main (2 commit(s) to push)\nfile:  M src/app.js\nfile: ?? .env.local` }));
+    await page.route(`**/api/ticket/${id}/github/commit-push`, r => { posts.push(JSON.parse(r.request().postData() || '{}')); return json(r, { ok: true, exit_code: 0, output: 'commit-push: pushed main to origin' }); });
+    await openBoard(page, id);
+    await page.locator(`.card[data-id="${id}"] .card-start`).click();
+    await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+    await page.locator('#ck-worktree .ck-gh-row').click();
+    // The refusal: Create issue is disabled, and Commit and push is offered.
+    await expect(page.locator('#ck-gh-create')).toBeDisabled();
+    await page.locator('#ck-gh-cp-open').click();
+    await expect(page.locator('#ck-gh-cp')).toContainText('Branch: main -> origin/main (2 commit(s) to push)');
+    await page.evaluate(async (tid) => {   // the panel mounted again (the Cockpit's rail render does): the open form stays
+      const { cockpitState } = await import('/static/board-cockpit.js');
+      const t = (await import('/static/board-core.js')).state.tickets.find(x => x.id === tid);
+      await (await import('/static/board-github.js')).showGithubPanel(t, cockpitState);
+    }, id);
+    await expect(page.locator('#ck-gh-cp')).toContainText('Branch: main -> origin/main (2 commit(s) to push)');
+    const boxes = page.locator('#ck-gh-cp-files input[type=checkbox]');
+    await expect(boxes).toHaveCount(2);
+    await expect(boxes.nth(0)).toBeChecked();       // a tracked change
+    await expect(boxes.nth(1)).not.toBeChecked();   // an untracked file: could be a secret, so opt-in
+    await expect(page.locator('#ck-gh-cp-msg')).toHaveValue(`chore: ${id} work for the cloud session`);
+    // Cancel at the confirm: nothing is posted.
+    await page.locator('#ck-gh-cp-go').click();
+    await expect(page.locator('#gh-dialog-title')).toHaveText(`Commit and push ${id}?`);
+    await expect(page.locator('#gh-dialog-body')).toHaveText('Commits 1 file(s) on main, then pushes main to origin. Never forced.');
+    await expect(page.locator('#gh-dialog-pre')).toContainText('src/app.js');
+    await expect(page.locator('#gh-dialog-pre')).not.toContainText('.env.local');
+    await page.locator('#gh-dialog-cancel').click();
+    expect(posts).toEqual([]);
+    // Confirm: one POST with exactly the ticked files and the message; then the send preview runs again.
+    const before = previews; mode = 'clean';
+    await page.locator('#ck-gh-cp-go').click();
+    await page.locator('#gh-dialog-ok').click();
+    await expect.poll(() => posts.length).toBe(1);
+    expect(posts[0]).toEqual({ files: ['src/app.js'], message: `chore: ${id} work for the cloud session` });
+    await expect.poll(() => previews).toBeGreaterThan(before);
+    await expect(page.locator('#ck-gh-create')).toBeEnabled();
+    await expect(page.locator('#ck-gh-cp-open')).toHaveCount(0);
+    // The warning (uncommitted files, send allowed) offers it too.
+    mode = 'dirty';
+    await page.evaluate(async (tid) => {
+      const { cockpitState } = await import('/static/board-cockpit.js');
+      const gh = await import('/static/board-github.js');
+      const t = (await import('/static/board-core.js')).state.tickets.find(x => x.id === tid);
+      gh.hideGithubPanel(); await gh.showGithubPanel(t, cockpitState);
+    }, id);
+    await expect(page.locator('#ck-gh-create')).toBeEnabled();
+    await expect(page.locator('#ck-gh-cp-open')).toHaveText('Commit and push…');
+  });
+
   test('Start offers GitHub places; picking GitHub mounts no terminal, previews, sends and hands back a message (t-718b)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gh3'), busy = newTicketId(PROJECT_ROOT, 'gh3b'), done = newTicketId(PROJECT_ROOT, 'gh3c');
     ghTicket(id); ghTicket(busy, { github: 'acme/app#61' });
@@ -15856,11 +15919,14 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     // t-093a: the CLI's warning is a note above the preview, not a block, and it is not repeated inside the preview.
     await expect(page.locator('#ck-gh-note')).toHaveText(`${id} has no plan (plan.md ## Approach is empty): the session will draft it and wait for your approval`);
     await expect(page.locator('#ck-gh-preview')).not.toContainText('send-issue: warning');
+    await expect(page.locator('#ck-gh-cp-open')).toHaveCount(0);   // t-32f9: a missing plan is nothing to commit and push
     await expect(page.locator('#ck-gh-create')).toBeEnabled();
     expect(cockpitPosts).toBe(0);
     await page.locator('#ck-gh-create').click();
     await expect(page.locator('#ck-gh-sent')).toContainText(`Sent ${id} as issue #57`);
     await expect(page.locator('#ck-gh-prompt')).toHaveText(prompt);   // the line send-issue printed, verbatim
+    // t-32f9: the first run's prerequisites are named here, before the cloud fails on them.
+    await expect(page.locator('#ck-gh-prereq')).toHaveText("First time on this repository? The cloud session needs the Claude GitHub App installed on it and the canon environment (Factory › GitHub › Cloud environment). After you change the environment's setup script, start a new session: an open one keeps the old script.");
     // t-0da2: the terminal command send-issue printed next is shown and copied as is; the board runs nothing (cockpitPosts stays 0 below).
     await expect(page.locator('#ck-gh-cmd')).toHaveText(`claude --cloud '${prompt}'`);
     await page.evaluate(() => { window.__copied = null; Object.defineProperty(navigator, 'clipboard', { value: { writeText: async (t) => { window.__copied = t; } }, configurable: true }); });
@@ -16698,7 +16764,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
 
     const rows = page.locator('#fac-gh-checks .gh-row');
     await expect(rows).toHaveCount(3);
-    await expect(page.locator('#fac-gh-count')).toHaveText('Checks · 1 of 3 ready');
+    await expect(page.locator('#fac-gh-count')).toHaveText('Checks · 1 of 3 ready on this machine');
     expect(calls).toEqual(['proj-a', 'proj-b']);
     await expect(rows.nth(0).locator('a')).toHaveAttribute('href', 'https://github.com/cli/cli');
     await expect(rows.nth(0)).toHaveClass(/gh-bad/);
@@ -16717,10 +16783,10 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.locator('#nav-projects').click(); await page.locator('#nav-factory').click();
     doctor.checks[0] = { id: 'gh', status: 'ok', title: 'Signed in to GitHub', detail: 'Signed in as octo.' };
     await page.locator('#fac-gh-recheck').click();
-    await expect(page.locator('#fac-gh-count')).toHaveText('Checks · 2 of 3 ready');
+    await expect(page.locator('#fac-gh-count')).toHaveText('Checks · 2 of 3 ready on this machine');
     expect(calls).toEqual(['proj-a', 'proj-b', 'proj-a']);
     await page.locator('#fac-gh-project').selectOption('proj-b');
-    await expect(page.locator('#fac-gh-count')).toHaveText('Checks · 1 of 3 ready');   // proj-b's cached answer
+    await expect(page.locator('#fac-gh-count')).toHaveText('Checks · 1 of 3 ready on this machine');   // proj-b's cached answer
     expect(calls).toEqual(['proj-a', 'proj-b', 'proj-a']);
   });
 
@@ -16742,6 +16808,10 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#fac-cloud .fac-subtab')).toHaveText(['Claude']);
     await expect(page.locator('#fac-cloud-tab-claude')).toHaveAttribute('aria-selected', 'true');
     await expect(page.locator('#fac-cloud-claude #fac-gh-copy-domains')).toHaveCount(1);
+    // t-32f9: the Claude GitHub App comes first (a private repo is invisible without it), a new session last.
+    await expect(page.locator('#fac-cloud-claude .gh-steps > li').first()).toHaveText('Give Claude this repository. Install the Claude GitHub App on it (github.com/apps/claude): a private repository is invisible to cloud sessions without it.');
+    await expect(page.locator('#fac-cloud-claude .gh-steps > li').last()).toHaveText('Start a new session after you change the setup script: an open session keeps the old one.');
+    await expect(page.locator('#fac-cloud-claude .gh-steps > li')).toHaveCount(6);
     await expect(page.locator('#fac-cloud > .setting-d').first()).toHaveText('A recipe, not a check: canon cannot see your cloud environments.');
     await expect(page.locator('#fac-cloud-claude .setting-d:not(.fac-domains-note)')).toHaveCount(0);   // the footer lines; t-9955's domains note belongs with the chips
     await page.locator('#fac-tab-line').click();
@@ -16848,7 +16918,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.locator('.fac-row[data-factory="proj-b"]').click();
     await expect(page.locator('#view-factory')).toHaveClass(/active/);
     await expect(page.locator('#fac-gh-project')).toHaveValue('proj-b');
-    await expect(page.locator('#fac-gh-count')).toHaveText('Checks · 1 of 2 ready');
+    await expect(page.locator('#fac-gh-count')).toHaveText('Checks · 1 of 2 ready on this machine');
   });
 
   // Prod path: the board header's Sync from GitHub button, gated by GET /api/github/doctor (t-9641).

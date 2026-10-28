@@ -262,6 +262,9 @@ func TestTktAllowlistAgainstHelp(t *testing.T) {
 	if runTkt["merge-pr"] {
 		t.Error("merge-pr runs the PR's code here and must need su")
 	}
+	if runTkt["commit-push"] || readOnlyTkt["commit-push"] {
+		t.Error("commit-push pushes to origin and must need su, like push-main (t-32f9)")
+	}
 	cfg := Config{Root: root, Tkt: fake}
 	for _, s := range subs {
 		_ = os.Remove(marker)
