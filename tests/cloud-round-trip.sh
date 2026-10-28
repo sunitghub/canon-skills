@@ -320,9 +320,15 @@ cd "$X" && "$TKT" export "$id" >/dev/null 2>&1 && cd "$L"
 out="$("$TKT" import-results "$id" --pr 58 2>&1)" || true
 assert_contains "$out" "  next: tkt land $id --pr 58"
 assert_contains "$out" "so its pass will not satisfy the local close"
+[[ "$out" != *"--fix"* ]] || fail "an open (unfinished) cloud ticket must not be told to land --fix (plain land works for it): $out"   # t-75f5
 rm -f "$X/.tickets/$id/eval-report.md" ".tickets/$id/eval-report.md"; cd "$X" && "$TKT" export "$id" >/dev/null 2>&1 && cd "$L"
 out="$("$TKT" import-results "$id" 2>&1)" || true
 assert_contains "$out" "  next: tkt land $id"; assert_contains "$out" "and no report is all that came back"
+# t-75f5: a closed ticket with no report has no graded head to differ from: no --fix hint (there is nothing to re-grade against).
+sed -i.bak 's/^status: in_progress$/status: closed/' "$X/.tickets/$id/ticket.md" && rm "$X/.tickets/$id/ticket.md.bak"
+cd "$X" && "$TKT" export "$id" >/dev/null 2>&1 && cd "$L"
+rc=0; out="$("$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
+[[ "$out" != *"--fix"* ]] || fail "a closed ticket with no evaluator report must not name land --fix: $out"
 rc=0; out="$("$SPRINT" complete 2>&1)" || rc=$?
 [[ "$rc" == 1 && "$out" != *"multiple in-progress"* ]] || fail "sprint complete saw the imported ticket as in progress (rc $rc): $out"
 assert_contains "$out" "$lid"

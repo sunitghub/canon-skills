@@ -369,6 +369,8 @@ refuses "a rewritten audit log" "since then it changes .claude/subagent-runs.jso
 refuses "a truncated audit log" "since then it changes .claude/subagent-runs.jsonl (rewritten; not appended)" STUB_HEAD="$(pastlog $'a\n')" -- --pr 7 --yes
 refuses "an emptied audit log" "since then it changes .claude/subagent-runs.jsonl (rewritten; not appended)" STUB_HEAD="$(pastlog '')" -- --pr 7 --yes
 refuses "an appended log beside a code file" "since then it changes tools/x.sh" STUB_HEAD="$(pastlog $'a\nb\nc\n' tools/x.sh)" -- --pr 7 --yes
+refuses "an appended log beside two code files" "since then it changes tools/x.sh, tools/y.sh" STUB_HEAD="$(pastlog $'a\nb\nc\n' tools/x.sh tools/y.sh)" -- --pr 7 --yes
+refuses "a rewritten log beside a code file" "since then it changes .claude/subagent-runs.jsonl (rewritten; not appended), tools/x.sh" STUB_HEAD="$(pastlog $'a\nX\n' tools/x.sh)" -- --pr 7 --yes
 refuses "another file under .claude/" "since then it changes .claude/settings.json" STUB_HEAD="$(pastlog $'a\nb\nc\n' .claude/settings.json)" -- --pr 7 --yes
 refuses "an agent definition under .claude/" "since then it changes .claude/agents/x.md" STUB_HEAD="$(pastlog $'a\nb\nc\n' .claude/agents/x.md)" -- --pr 7 --yes
 refuses "a look-alike log name" "since then it changes .claude/subagent-runs.jsonl.bak" STUB_HEAD="$(pastlog $'a\nb\nc\n' .claude/subagent-runs.jsonl.bak)" -- --pr 7 --yes
