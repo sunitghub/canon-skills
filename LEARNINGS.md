@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-27-2026 19:22
+learnings-sweep last run: 10-27-2026 22:37
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-28 | [t-07b5](.tickets/t-07b5/learnings.md) | A new way to read results from outside content (a PR head) must be checked as untrusted before it ships: the automated security review found that any fork PR saying "Fixes #n" could plant fake results, and a `set -e` pipeline in the new extraction exited silently with no message until a test of the failure case showed it. | UNPROMOTED |
 | 2026-10-28 | [t-dba0](.tickets/t-dba0/learnings.md) | A writer must never produce a file its own reader refuses, and a test for atomic write must hold a hard link across it: the reviewer found a write that grew a 54 KB file past the 64 KB read cap, and the evaluator found that reverting temp-file-plus-rename to an in-place write left every test green. | UNPROMOTED |
 | 2026-10-27 | [t-4c09](.tickets/t-4c09/learnings.md) | An audit log must not claim what the emitter cannot know: a token-free endpoint or a route that accepts an empty Origin can be driven by a script, so logging it as `actor: user` makes the trail lie; leave the field absent and let the viewer say unknown. And call the real route in the test, not the helper behind it: a sweep showed every route's action name was unproven until the test posted to the routes. | UNPROMOTED |
 | 2026-10-27 | [t-ced8](.tickets/t-ced8/learnings.md) | A safety check for something that happens elsewhere (a cloud session that works from GitHub) must run where the work lives: ticket-bound worktrees are not the main checkout, so a check run in the main checkout skipped exactly the tickets the change added (the reviewer caught it); and put the checks in the command, not the UI, so the Terminal and the dialog cannot disagree. A promised spec in the Test Plan is graded on whether it exists. | UNPROMOTED |
