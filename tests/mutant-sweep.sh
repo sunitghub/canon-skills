@@ -53,6 +53,7 @@ cd "$1/$2" || return 1
 p="$1 (staged)"
 echo "$(date)"
 echo "done" >&2
+printf "%s %s\n" "a" "b"   # "c" d
 EOF
 cat >> weak.js <<'EOF'
 const f = (a, b, s) => { if (a !== 1 && b <= 2) return !s; return /^x$/.test(s) ? [3, 1].sort() : false; };
@@ -165,10 +166,10 @@ for want in \
 done
 assert_contains "$out" "unsupported: x.rb"
 # t-2602: a lone-variable string and an output-only line lose their mutants; text next to a variable, or an echo that does work, keeps them.
-for none in 'weak.sh:3 empty-string' 'weak.sh:9 empty-string' 'weak.sh:7 bool' 'weak.sh:12 empty-string'; do
+for none in 'weak.sh:3 empty-string' 'weak.sh:9 empty-string' 'weak.sh:7 bool' 'weak.sh:12 empty-string' 'weak.sh:13 empty-string'; do
   [[ "$out" != *"$none"* ]] || fail "mutant-sweep: '$none' should be skipped by rule: $out"
 done
-assert_contains "$out" "skipped by rule: 7 (bare-variable strings 5, output-only lines 2)"
+assert_contains "$out" "skipped by rule: 10 (bare-variable strings 5, output-only lines 5)"
 # Python and Go (t-a3ef): one fixture line per family; a comment line, a docstring or block-comment body and the operators
 # inside a string yield nothing, and a mutant that does not parse is INVALID (never listed as a survivor).
 for want in \
@@ -200,6 +201,7 @@ fi
 assert_contains "$out" "unmapped: other.sh"
 [[ "$out" =~ INVALID\ [1-9] ]] || fail "mutant-sweep: deleting the 'if' line should be INVALID: $out"
 [[ "$out" =~ KILLED\ 0 ]] || fail "mutant-sweep: a test that always passes killed something: $out"
+assert_contains "$(cat "$WORK/report.md")" "skipped by rule: 10 (bare-variable strings 5, output-only lines 5)"
 assert_contains "$(cat "$WORK/report.md")" "| weak.sh:3 | \`cmp: == -> !=@"
 assert_contains "$(cat "$WORK/report.md")" "| weak.sh:3 | \`bool: \\|\\| -> &&@"   # a | in a cell would split the table row
 
