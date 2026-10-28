@@ -216,7 +216,7 @@ func parseRecord(b []byte, n int) record {
 	}
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.DisallowUnknownFields()
-	if err := dec.Decode(&v); err != nil || v.Prev == nil || (*v.Prev != "" && !hexRe.MatchString(*v.Prev)) {
+	if err := dec.Decode(&v); err != nil || dec.More() || v.Prev == nil || (*v.Prev != "" && !hexRe.MatchString(*v.Prev)) {
 		rec.fault = "not a seal"
 		return rec
 	}

@@ -17,7 +17,7 @@ printf '{"b":1}\n' > "$EV/2020-01-02.jsonl"
 printf '{"c":1}\n' > "$EV/2020-01-03.jsonl"
 
 out="$("$CANON" log verify)"
-assert_contains "$out" "2020-01-01   unsealed"
+assert_contains "$out" "2020-01-01   unsealed  (closed, not sealed yet)"
 assert_contains "$out" "0 intact, 0 broken, 0 missing, 3 unsealed"
 
 out="$("$CANON" log seal)"; assert_eq "sealed 3 day(s)" "$out"
@@ -26,7 +26,7 @@ out="$("$CANON" log verify)"
 assert_contains "$out" "3 intact, 0 broken, 0 missing, 0 unsealed"
 assert_contains "$out" "does not show who wrote it"
 
-cp "$EV/2020-01-02.jsonl" "$W/keep.jsonl"
+cp "$EV/2020-01-02.jsonl" "$W/keep.jsonl"; cp "$EV/2020-01-03.jsonl" "$W/keep3.jsonl"
 printf '{"b":2}\n' > "$EV/2020-01-02.jsonl"
 set +e; out="$("$CANON" log verify)"; code=$?; set -e
 assert_eq "1" "$code"
@@ -37,10 +37,30 @@ cp "$W/keep.jsonl" "$EV/2020-01-02.jsonl"
 rm "$EV/2020-01-03.jsonl"
 set +e; out="$("$CANON" log verify)"; code=$?; set -e
 assert_eq "1" "$code"
-assert_contains "$out" "2020-01-03   missing"
+assert_contains "$out" "2020-01-03   missing  (sealed but its file is gone)"
+assert_contains "$out" "2 intact, 0 broken, 1 missing, 0 unsealed"
+printf '{"b":2}\n' > "$EV/2020-01-02.jsonl"   # one broken and one missing at once
+out="$("$CANON" log verify || true)"
+assert_contains "$out" "2020-01-02   broken  (does not match its seal)"
+assert_contains "$out" "1 intact, 1 broken, 1 missing, 0 unsealed"
+cp "$W/keep.jsonl" "$EV/2020-01-02.jsonl"; cp "$W/keep3.jsonl" "$EV/2020-01-03.jsonl"
+"$CANON" log verify >/dev/null || fail "events-log: restoring the days did not make the log intact"
 
-set +e; "$CANON" log nonsense >/dev/null 2>&1; code=$?; set -e
-assert_eq "2" "$code"
+set +e; out="$("$CANON" log nonsense 2>&1)"; code=$?; set -e
+assert_eq "2" "$code"; assert_contains "$out" "usage: canon log verify | seal"
+set +e; out="$("$CANON" log 2>&1)"; code=$?; set -e
+assert_eq "2" "$code"; assert_contains "$out" "usage: canon log verify | seal"
+
+# seal that cannot finish exits 1 and says why: the seal file is a link
+mkdir -p "$W/other"; : > "$W/other/target"
+printf '{"d":1}\n' > "$EV/2020-01-04.jsonl"
+mv "$EV/seals.jsonl" "$W/seals.keep"; ln -s "$W/other/target" "$EV/seals.jsonl"
+set +e; out="$("$CANON" log seal 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"; assert_contains "$out" "canon log seal:"
+rm "$EV/seals.jsonl"; mv "$W/seals.keep" "$EV/seals.jsonl"
+
+# a fresh install has no log: nothing to check is not a failure
+CANON_HOME="$W/empty-home" "$CANON" log verify | grep -F "no activity log yet" >/dev/null || fail "events-log: a missing log was not said"
 
 # an older board takes an unknown first word for a port and would serve: canon asks --help first and refuses
 printf '#!/bin/sh\necho "usage: old board"\n' > "$W/old-board"; chmod +x "$W/old-board"

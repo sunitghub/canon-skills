@@ -507,3 +507,326 @@ func TestLatestReadsAGzippedDay(t *testing.T) {
 		t.Errorf("Latest through a .gz = %+v %v", ev, ok)
 	}
 }
+
+// Protects verify's words: the CLI and the Admin page (t-1bd5) match on them, so they are pinned as literals.
+func TestVerifyWords(t *testing.T) {
+	if resultIntact != "intact" || resultBroken != "broken" || resultMiss != "missing" || resultUnseal != "unsealed" {
+		t.Errorf("result words changed: %q %q %q %q", resultIntact, resultBroken, resultMiss, resultUnseal)
+	}
+}
+
+// Protects the reason each failure gives: the line a person reads after the day.
+func TestVerifyGivesTheReason(t *testing.T) {
+	home, dir := logWith(t, threeDays)
+	Seal(home, at("2026-10-05T00:00:00Z"))
+	clock := at("2026-10-05T12:00:00Z")
+	why := func(h, day string) string {
+		rs, _ := Verify(h, clock)
+		for _, r := range rs {
+			if r.Day == day && r.Result != resultIntact {
+				return r.Why
+			}
+		}
+		return ""
+	}
+	h, d := copyDir(t, dir)
+	os.WriteFile(filepath.Join(d, "2026-10-02.jsonl"), []byte("x\n"), 0o600)
+	if w := why(h, "2026-10-02"); w != "does not match its seal" {
+		t.Errorf("changed day: %q", w)
+	}
+	h, d = copyDir(t, dir)
+	os.Remove(filepath.Join(d, "2026-10-02.jsonl"))
+	if w := why(h, "2026-10-02"); w != "sealed but its file is gone" {
+		t.Errorf("missing day: %q", w)
+	}
+	h, d = copyDir(t, dir)
+	l := sealLines(t, d)
+	os.WriteFile(filepath.Join(d, sealsName), []byte(l[0]+"\n"+l[2]+"\n"+l[1]+"\n"), 0o600)
+	if w := why(h, "2026-10-02"); w != "seal is out of order or repeated" && w != "seal chain does not match the line before it" {
+		t.Errorf("swapped seals: %q", w)
+	}
+	// a repeated seal for a day that already has one, chained correctly, is out of order
+	h, d = copyDir(t, dir)
+	l = sealLines(t, d)
+	var s struct {
+		Day, SHA256 string
+		Lines       int
+	}
+	json.Unmarshal([]byte(l[2]), &s)
+	again, _ := json.Marshal(map[string]any{"day": s.Day, "lines": s.Lines, "sha256": s.SHA256, "prev": sum(l[2] + "x")})
+	again, _ = json.Marshal(map[string]any{"day": s.Day, "lines": s.Lines + 1, "sha256": s.SHA256, "prev": sum(l[2])})
+	f, _ := os.OpenFile(filepath.Join(d, sealsName), os.O_APPEND|os.O_WRONLY, 0)
+	f.Write(append(again, '\n'))
+	f.Close()
+	if w := why(h, "2026-10-03"); w != "seal is out of order or repeated" {
+		t.Errorf("repeated day: %q", w)
+	}
+	if rs, ok := Verify(h, clock); ok {
+		t.Errorf("a repeated day passed: %v", rs)
+	}
+	// a symlinked day names the cause; an oversized sealed day says so
+	if runtime.GOOS != "windows" {
+		h, d = copyDir(t, dir)
+		os.Remove(filepath.Join(d, "2026-10-02.jsonl"))
+		os.Symlink(filepath.Join(d, "2026-10-01.jsonl"), filepath.Join(d, "2026-10-02.jsonl"))
+		if w := why(h, "2026-10-02"); w != "file cannot be read: not a regular file" {
+			t.Errorf("symlinked day: %q", w)
+		}
+	}
+	old := dayMaxBytes
+	dayMaxBytes = 4
+	defer func() { dayMaxBytes = old }()
+	h, _ = copyDir(t, dir)
+	if w := why(h, "2026-10-03"); w != "file cannot be read: too large" {
+		t.Errorf("oversized day: %q", w)
+	}
+}
+
+// Protects the seal file's strictness: a line that is not exactly a seal or an anchor is broken and named, never half-trusted.
+func TestMalformedSealLinesAreBroken(t *testing.T) {
+	a64 := strings.Repeat("a", 64)
+	for name, line := range map[string]string{
+		"no prev":           `{"day":"2026-10-01","lines":1,"sha256":"` + a64 + `"}`,
+		"prev not hex":      `{"day":"2026-10-01","lines":1,"sha256":"` + a64 + `","prev":"zz"}`,
+		"prev 65 chars":     `{"day":"2026-10-01","lines":1,"sha256":"` + a64 + `","prev":"` + a64 + `a"}`,
+		"sha not hex":       `{"day":"2026-10-01","lines":1,"sha256":"` + strings.Repeat("g", 64) + `","prev":""}`,
+		"sha 65 chars":      `{"day":"2026-10-01","lines":1,"sha256":"` + a64 + `a","prev":""}`,
+		"sha with a prefix": `{"day":"2026-10-01","lines":1,"sha256":"x` + a64 + `","prev":""}`,
+		"day with a suffix": `{"day":"2026-10-01x","lines":1,"sha256":"` + a64 + `","prev":""}`,
+		"day with a prefix": `{"day":"x2026-10-01","lines":1,"sha256":"` + a64 + `","prev":""}`,
+		"negative lines":    `{"day":"2026-10-01","lines":-1,"sha256":"` + a64 + `","prev":""}`,
+		"no lines":          `{"day":"2026-10-01","sha256":"` + a64 + `","prev":""}`,
+		"no day":            `{"lines":1,"sha256":"` + a64 + `","prev":""}`,
+		"unknown field":     `{"day":"2026-10-01","lines":1,"sha256":"` + a64 + `","prev":"","extra":1}`,
+		"anchor and day":    `{"pruned_through":"2026-10-01","day":"2026-10-01","prev":""}`,
+		"anchor and lines":  `{"pruned_through":"2026-10-01","lines":1,"prev":""}`,
+		"anchor and sha":    `{"pruned_through":"2026-10-01","sha256":"` + a64 + `","prev":""}`,
+		"anchor bad day":    `{"pruned_through":"2026-10-01x","prev":""}`,
+		"seal and anchor":   `{"day":"2026-10-01","lines":1,"sha256":"` + a64 + `","pruned_through":"2026-10-01","prev":""}`,
+		"empty object":      `{}`,
+		"not an object":     `[1]`,
+		"trailing text":     `{"pruned_through":"2026-10-01","prev":""} x`,
+	} {
+		home, dir := logWith(t, nil)
+		os.WriteFile(filepath.Join(dir, sealsName), []byte(line+"\n"), 0o600)
+		rs, ok := Verify(home, at("2026-10-05T00:00:00Z"))
+		if ok || len(rs) == 0 || rs[0].Day != "seals.jsonl" || rs[0].Result != resultBroken {
+			t.Errorf("%s: %v ok=%v", name, rs, ok)
+		}
+	}
+	// the well-formed shapes pass the same parser, so the table above is not rejecting everything
+	home, dir := logWith(t, nil)
+	good := `{"pruned_through":"2026-10-01","prev":""}`
+	os.WriteFile(filepath.Join(dir, sealsName), []byte(good+"\n"), 0o600)
+	if rs, ok := Verify(home, at("2026-10-05T00:00:00Z")); !ok {
+		t.Errorf("a well-formed anchor alone: %v", rs)
+	}
+	// the longest line allowed passes the length check; one byte more is a fault
+	pad := func(n int) string {
+		base := `{"pruned_through":"2026-10-01","prev":"","p":""}`
+		return base
+	}
+	_ = pad
+	line := `{"pruned_through":"2026-10-01","prev":""}` + strings.Repeat(" ", sealLineMax-len(good))
+	os.WriteFile(filepath.Join(dir, sealsName), []byte(line+"\n"), 0o600)
+	if rs, ok := Verify(home, at("2026-10-05T00:00:00Z")); !ok {
+		t.Errorf("a line of exactly %d bytes: %v", sealLineMax, rs)
+	}
+	os.WriteFile(filepath.Join(dir, sealsName), []byte(line+" \n"), 0o600)
+	if rs, ok := Verify(home, at("2026-10-05T00:00:00Z")); ok {
+		t.Errorf("a line of %d bytes passed: %v", sealLineMax+1, rs)
+	}
+}
+
+// Protects two sealers at once (the first event of a day and the daemon): an identical repeated seal line is ignored, a different one is not.
+func TestIdenticalDuplicateSealIsTolerated(t *testing.T) {
+	home, dir := logWith(t, threeDays)
+	Seal(home, at("2026-10-05T00:00:00Z"))
+	l := sealLines(t, dir)
+	os.WriteFile(filepath.Join(dir, sealsName), []byte(l[0]+"\n"+l[0]+"\n"+l[1]+"\n"+l[2]+"\n"), 0o600)
+	if rs, ok := Verify(home, at("2026-10-05T12:00:00Z")); !ok {
+		t.Errorf("an identical repeated seal: %v", rs)
+	}
+	os.WriteFile(filepath.Join(dir, sealsName), []byte(l[0]+"\n"+l[1]+"\n"+l[0]+"\n"+l[2]+"\n"), 0o600) // not adjacent
+	if rs, ok := Verify(home, at("2026-10-05T12:00:00Z")); ok {
+		t.Errorf("a repeated seal that is not the line before: %v", rs)
+	}
+}
+
+// Protects the order of the output and which file a day reads from.
+func TestVerifyOrderAndPlainBeatsGzip(t *testing.T) {
+	home, dir := logWith(t, map[string]string{"2026-10-01.jsonl": "{\"a\":1}\n", "2026-10-03.jsonl": "{\"c\":1}\n"})
+	Seal(home, at("2026-10-05T00:00:00Z"))
+	os.WriteFile(filepath.Join(dir, "2026-09-20.jsonl"), []byte("{}\n"), 0o600) // closed, older than every seal: stays unsealed, listed first
+	os.WriteFile(filepath.Join(dir, "2026-13-45.jsonl"), []byte("{}\n"), 0o600) // not a date: ignored
+	rs, ok := Verify(home, at("2026-10-05T12:00:00Z"))
+	var days []string
+	for _, r := range rs {
+		days = append(days, r.Day)
+	}
+	if !ok || strings.Join(days, " ") != "2026-09-20 2026-10-01 2026-10-03" {
+		t.Errorf("results %v ok=%v", rs, ok)
+	}
+	// both forms of one day (a crashed gzip): the plain file is the one checked
+	var gz bytes.Buffer
+	zw := gzip.NewWriter(&gz)
+	zw.Write([]byte("something else\n"))
+	zw.Close()
+	os.WriteFile(filepath.Join(dir, "2026-10-01.jsonl.gz"), gz.Bytes(), 0o600)
+	if rs, ok := Verify(home, at("2026-10-05T12:00:00Z")); !ok {
+		t.Errorf("plain file ignored for its gzip twin: %v", rs)
+	}
+}
+
+// Protects the counts: a file with no final newline still counts its last line, and an empty one has none.
+func TestHashDayLinesAndExactCap(t *testing.T) {
+	_, dir := logWith(t, map[string]string{"a.jsonl": "{}\n{}", "b.jsonl": "", "c.jsonl": "{}\n"})
+	for name, want := range map[string]int{"a.jsonl": 2, "b.jsonl": 0, "c.jsonl": 1} {
+		if _, n, err := hashDay(filepath.Join(dir, name)); err != nil || n != want {
+			t.Errorf("%s: %d lines, %v; want %d", name, n, err, want)
+		}
+	}
+	old := dayMaxBytes
+	dayMaxBytes = 8
+	defer func() { dayMaxBytes = old }()
+	os.WriteFile(filepath.Join(dir, "d.jsonl"), []byte("12345678"), 0o600)
+	if _, _, err := hashDay(filepath.Join(dir, "d.jsonl")); err != nil {
+		t.Errorf("a file of exactly the cap: %v", err)
+	}
+	os.WriteFile(filepath.Join(dir, "e.jsonl"), []byte("123456789"), 0o600)
+	if _, _, err := hashDay(filepath.Join(dir, "e.jsonl")); err == nil {
+		t.Errorf("a file one byte over the cap was read")
+	}
+	dayMaxBytes = 256 // the compressed file must fit under the cap too
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	zw.Write(bytes.Repeat([]byte("0"), 256))
+	zw.Close()
+	os.WriteFile(filepath.Join(dir, "f.jsonl.gz"), buf.Bytes(), 0o600)
+	if _, _, err := hashDay(filepath.Join(dir, "f.jsonl.gz")); err != nil {
+		t.Errorf("a gzip that expands to exactly the cap: %v", err)
+	}
+	buf.Reset()
+	zw = gzip.NewWriter(&buf)
+	zw.Write(bytes.Repeat([]byte("0"), 257))
+	zw.Close()
+	os.WriteFile(filepath.Join(dir, "g.jsonl.gz"), buf.Bytes(), 0o600)
+	if _, _, err := hashDay(filepath.Join(dir, "g.jsonl.gz")); err == nil {
+		t.Errorf("a gzip that expands one byte past the cap was read")
+	}
+}
+
+// Protects the daemon's hourly run and `canon log seal` on an install with no log, a busy lock or a linked seal file.
+func TestMaintainAndSealEdgeCases(t *testing.T) {
+	empty := t.TempDir()
+	if err := Maintain(empty, at("2026-10-05T00:00:00Z"), "daemon"); err != nil {
+		t.Errorf("no events folder yet is not an error: %v", err)
+	}
+	if n, err := Seal(empty, at("2026-10-05T00:00:00Z")); n != 0 || err != nil {
+		t.Errorf("seal with no events folder: %d %v", n, err)
+	}
+	if n, err := Seal("", at("2026-10-05T00:00:00Z")); n != 0 || err == nil {
+		t.Errorf("seal with no home: %d %v", n, err)
+	}
+	home, dir := logWith(t, threeDays)
+	os.WriteFile(filepath.Join(dir, lockName), nil, 0o600)
+	if n, err := Seal(home, at("2026-10-05T00:00:00Z")); n != 0 || err != ErrBusy {
+		t.Errorf("seal under a fresh lock: %d %v", n, err)
+	}
+	os.Remove(filepath.Join(dir, lockName))
+	if runtime.GOOS == "windows" {
+		return
+	}
+	// a linked seal file: nothing is written through it, and nothing is pruned that an anchor could not record
+	outside := filepath.Join(t.TempDir(), "target")
+	os.WriteFile(outside, []byte("keep\n"), 0o600)
+	os.Symlink(outside, filepath.Join(dir, sealsName))
+	os.WriteFile(filepath.Join(dir, "2020-01-01.jsonl"), []byte("{}\n"), 0o600)
+	if err := Maintain(home, at("2026-10-05T00:00:00Z"), "tkt"); err == nil {
+		t.Errorf("maintenance with a linked seal file must report it")
+	}
+	if b, _ := os.ReadFile(outside); string(b) != "keep\n" {
+		t.Errorf("a seal was written through the link: %q", b)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "2020-01-01.jsonl")); err != nil {
+		t.Errorf("a day was pruned with no way to record it")
+	}
+	if n, err := Seal(home, at("2026-10-05T00:00:00Z")); n != 0 || err == nil {
+		t.Errorf("seal with a linked seal file: %d %v", n, err)
+	}
+}
+
+// Protects the order inside a prune: the pruned_through record is written first, so if it cannot be written nothing is removed.
+func TestPruneWritesTheAnchorBeforeRemoving(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs a read-only file the account cannot write")
+	}
+	home, dir := logWith(t, map[string]string{"2020-01-01.jsonl": "{}\n"})
+	os.WriteFile(filepath.Join(dir, sealsName), nil, 0o400)
+	if err := Maintain(home, at("2026-10-05T00:00:00Z"), "tkt"); err == nil {
+		t.Errorf("a seal file that cannot be written must be reported")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "2020-01-01.jsonl")); err != nil {
+		t.Errorf("a day was removed although its anchor was not written")
+	}
+}
+
+// Protects an anchor that names a day that still exists, exactly: the day itself is the lie, the next day is not.
+func TestAnchorBoundaryDay(t *testing.T) {
+	home, dir := logWith(t, map[string]string{"2026-10-02.jsonl": "{}\n"})
+	os.WriteFile(filepath.Join(dir, sealsName), []byte(`{"pruned_through":"2026-10-02","prev":""}`+"\n"), 0o600)
+	if rs, ok := Verify(home, at("2026-10-05T00:00:00Z")); ok {
+		t.Errorf("a day equal to pruned_through still exists: %v", rs)
+	}
+	os.WriteFile(filepath.Join(dir, sealsName), []byte(`{"pruned_through":"2026-10-01","prev":""}`+"\n"), 0o600)
+	if rs, ok := Verify(home, at("2026-10-05T00:00:00Z")); !ok {
+		t.Errorf("a day after pruned_through is fine: %v", rs)
+	}
+}
+
+// Protects the event writer's care for the log: a failed maintenance on a new day is noted in emit-errors.log, a busy one is not.
+func TestEmitNotesAFailedMaintenance(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on Windows")
+	}
+	home, dir := logWith(t, nil)
+	t.Setenv("CANON_EVENTS_CLOCK", "2026-10-05T12:00:00Z")
+	os.WriteFile(filepath.Join(dir, lockName), nil, 0o600) // another run is working: not a failure
+	if err := Emit(home, "ticket.closed", "tkt", "/p", map[string]string{"ticket": "t-1"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "emit-errors.log")); err == nil {
+		t.Errorf("a busy maintenance was noted as an error")
+	}
+	os.Remove(filepath.Join(dir, lockName))
+	os.Symlink(filepath.Join(t.TempDir(), "x"), filepath.Join(dir, sealsName))
+	t.Setenv("CANON_EVENTS_CLOCK", "2026-10-06T12:00:00Z") // a new day
+	Emit(home, "ticket.closed", "tkt", "/p", map[string]string{"ticket": "t-2"})
+	if b, err := os.ReadFile(filepath.Join(dir, "emit-errors.log")); err != nil || len(b) == 0 {
+		t.Errorf("a failed maintenance left no note: %v", err)
+	}
+	// and the event itself was written
+	if ev, ok := Latest(home, "ticket.closed", "/p", nil); !ok || ev.Data["ticket"] != "t-2" {
+		t.Errorf("the event was lost: %+v", ev)
+	}
+}
+
+// Protects the gzip step's cleanup: a day that does not match its seal leaves no temporary file behind.
+func TestGzipLeavesNoTemporaryFile(t *testing.T) {
+	home, dir := logWith(t, map[string]string{"2026-10-01.jsonl": "{\"a\":1}\n"})
+	Seal(home, at("2026-10-05T00:00:00Z"))
+	os.WriteFile(filepath.Join(dir, "2026-10-01.jsonl"), []byte("{\"a\":2}\n"), 0o600)
+	if err := Maintain(home, at("2026-10-20T00:00:00Z"), "tkt"); err == nil {
+		t.Errorf("a changed day must be reported")
+	}
+	if left, _ := filepath.Glob(filepath.Join(dir, "*.tmp.gz")); len(left) != 0 {
+		t.Errorf("temporary files left: %v", left)
+	}
+}
+
+// Protects verify on an install that has no log yet (a new machine): nothing to check is not a failure.
+func TestVerifyWithNoLog(t *testing.T) {
+	if rs, ok := Verify(t.TempDir(), at("2026-10-05T00:00:00Z")); !ok || len(rs) != 0 {
+		t.Errorf("no events folder: %v ok=%v", rs, ok)
+	}
+}

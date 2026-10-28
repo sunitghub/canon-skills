@@ -708,3 +708,17 @@ func TestInstallSetRetention(t *testing.T) {
 		t.Errorf("the retention key must not be shareable")
 	}
 }
+
+// Protects the retention validator the Admin page (t-1bd5) will call with Go values: ints, whole floats and json numbers, nothing else.
+func TestValidateRetentionTypes(t *testing.T) {
+	for _, v := range []any{30, 90, 365, float64(90), json.Number("365")} {
+		if got, err := validateRetention(v); err != nil || got == nil {
+			t.Errorf("%v: %v", v, err)
+		}
+	}
+	for _, v := range []any{7, 0, float64(31), "30", nil, true, json.Number("90.5"), json.Number("x"), []any{30}} {
+		if _, err := validateRetention(v); err == nil || err.Error() != "must be 30, 90 or 365 days" {
+			t.Errorf("%v accepted or wrong message: %v", v, err)
+		}
+	}
+}
