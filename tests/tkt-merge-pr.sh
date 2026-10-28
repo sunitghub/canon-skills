@@ -490,9 +490,22 @@ rm lnk; git -C "$B" push -qf origin "$H:refs/pull/7/head"; eval_ok "$G"
 recon_setup; before="$(tree_sig)"
 out="$(STUB_HEAD="$H" STUB_FF_MERGE_FAIL=1 ff_merge)"
 assert_contains "$out" "Local main: git refused the fast-forward; left at ${BASE:0:8}, every file set aside put back. Update it by hand: git pull"
+assert_eq 0 "$(find "$TMPDIR" -maxdepth 1 -name 'tkt-ff.*' | grep -c . || true)"   # the set-aside copies are removed here too
 assert_contains "$out" "  git: error: forced ff failure"; [[ "$out" != *"(fast-forward)"* ]] || fail "a refused update still printed a fast-forward: $out"
 assert_eq "$BASE" "$(git rev-parse main)"; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; assert_eq "$before" "$(tree_sig)"
-git checkout -q .gitignore scripts/test.sh; rm -rf new.txt newdir .claude; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; eval_ok "$PRHEAD"
+# A log with no local-only lines comes out byte-identical to the merged copy (no newline added to one that lacks it).
+recon_setup; printf 'a\nb\n' > .claude/subagent-runs.jsonl; out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" "(fast-forward)"
+printf 'a\nb\nc' | cmp -s - .claude/subagent-runs.jsonl || fail "a log with nothing local changed: $(od -c .claude/subagent-runs.jsonl | head -3)"
+git checkout -q .gitignore scripts/test.sh; rm -rf new.txt newdir .claude; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
+# A PR path is matched literally (t-07b5: untrusted): a tracked file named '*' never stands for every file, so the
+# unrelated edit to .gitignore survives the set-aside of '*'.
+git -C "$B" checkout -q "$BASE"; echo x > "$B/*"; git -C "$B" add -- ':(literal)*'; git -C "$B" commit -qm "star"; BASE2="$(git -C "$B" rev-parse HEAD)"
+echo y > "$B/*"; git -C "$B" add -- ':(literal)*'; git -C "$B" commit -qm "star changed"; H4="$(git -C "$B" rev-parse HEAD)"
+git -C "$B" push -qf origin "$BASE2:refs/heads/star-base" "$H4:refs/pull/7/head"; git fetch -q origin refs/heads/star-base; eval_ok "$H4"
+git checkout -q main; git reset -q "$BASE2"; git checkout -q -- .; echo y > '*'; echo dirty >> .gitignore   # mixed: main is at H, which tracks the ticket files
+out="$(BASE="$BASE2" STUB_HEAD="$H4" ff_merge)"; assert_contains "$out" "Local main: ${BASE2:0:8} -> ${H4:0:8} (fast-forward)"
+assert_grep '^dirty$' .gitignore; assert_eq y "$(cat '*')"
+git checkout -q .gitignore; git reset -q --hard "$BASE"; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; eval_ok "$PRHEAD"
 git push -qf origin "$PRHEAD:refs/pull/7/head"; git --git-dir="$W/origin.git" update-ref refs/heads/main "$BASE"
 
 # t-4718 also fixed import-results: a ticket that comes back without eval-report.md is reported, not a silent exit.
