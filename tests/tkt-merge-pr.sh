@@ -451,14 +451,14 @@ recon_setup; cp "$f" "$W/ticket.before"
 out="$(STUB_HEAD="$H" ff_merge)"
 assert_contains "$out" "Local main: ${BASE:0:8} -> ${H:0:8} (fast-forward)"; assert_eq "$H" "$(git rev-parse main)"
 assert_eq "$(cat "$W/ticket.before")" "$(sed '/^merged: mergesha0\{34\}$/d' "$f")"; assert_grep '^merged: mergesha' "$f"   # the local fields kept, plus merged:
-printf 'a\nb\nc\nlocal1\n' | cmp -s - .claude/subagent-runs.jsonl || fail "audit log: $(od -c .claude/subagent-runs.jsonl | head -3)"   # merged copy had no final newline
+printf 'a\nb\nc\nlocal1\n' | cmp -s - .claude/subagent-runs.jsonl || fail "audit log: $(od -c .claude/subagent-runs.jsonl)"   # merged copy had no final newline
 assert_eq same "$(cat new.txt)"; assert_eq n "$(cat newdir/x.txt)"; assert_contains "$(cat scripts/test.sh)" "echo merged"
 assert_grep '^dirty$' .gitignore; assert_grep '— merged$' ".tickets/$id/github.md"; assert_grep '^merge commit: mergesha' ".tickets/$id/github.md"
 assert_eq 0 "$(find "$TMPDIR" -maxdepth 1 -name 'tkt-ff.*' | grep -c . || true)"   # the set-aside copies are removed
 git checkout -q .gitignore
 # The merged log ends with a newline: no blank line before the local ones.
 recon_setup; git -C "$B" push -qf origin "$H3:refs/pull/7/head"; out="$(STUB_HEAD="$H3" ff_merge)"; assert_contains "$out" "(fast-forward)"
-printf 'a\nb\nc\nlocal1\n' | cmp -s - .claude/subagent-runs.jsonl || fail "audit log after a newline-ended copy: $(od -c .claude/subagent-runs.jsonl | head -3)"
+printf 'a\nb\nc\nlocal1\n' | cmp -s - .claude/subagent-runs.jsonl || fail "audit log after a newline-ended copy: $(od -c .claude/subagent-runs.jsonl)"
 git -C "$B" push -qf origin "$H:refs/pull/7/head"
 # A tracked file edited here to exactly the merged copy is set aside too.
 recon_setup; git show "$H:scripts/test.sh" > scripts/test.sh; out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" "Local main: ${BASE:0:8} -> ${H:0:8} (fast-forward)"
@@ -495,7 +495,7 @@ assert_contains "$out" "  git: error: forced ff failure"; [[ "$out" != *"(fast-f
 assert_eq "$BASE" "$(git rev-parse main)"; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; assert_eq "$before" "$(tree_sig)"
 # A log with no local-only lines comes out byte-identical to the merged copy (no newline added to one that lacks it).
 recon_setup; printf 'a\nb\n' > .claude/subagent-runs.jsonl; out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" "(fast-forward)"
-printf 'a\nb\nc' | cmp -s - .claude/subagent-runs.jsonl || fail "a log with nothing local changed: $(od -c .claude/subagent-runs.jsonl | head -3)"
+printf 'a\nb\nc' | cmp -s - .claude/subagent-runs.jsonl || fail "a log with nothing local changed: $(od -c .claude/subagent-runs.jsonl)"
 git checkout -q .gitignore scripts/test.sh; rm -rf new.txt newdir .claude; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
 # A PR path is matched literally (t-07b5: untrusted): a tracked file named '*' never stands for every file, so the
 # unrelated edit to .gitignore survives the set-aside of '*'.
