@@ -49,6 +49,10 @@ pick() { [[ $1 -lt 3 ]] && echo "low"; sort -u "$2" | uniq; }
 if [[ "$y" == cfg.json ]]; then
   echo true
 fi
+cd "$1/$2" || return 1
+p="$1 (staged)"
+echo "$(date)"
+echo "done" >&2
 EOF
 cat >> weak.js <<'EOF'
 const f = (a, b, s) => { if (a !== 1 && b <= 2) return !s; return /^x$/.test(s) ? [3, 1].sort() : false; };
@@ -148,17 +152,23 @@ sweep --map weak.sh='true ./other.sh' --map weak.js=true --map weak.py=true --ma
 for want in \
   'weak.sh:3 cmp: == -> !=@' 'weak.sh:3 bool: || -> &&@' 'weak.sh:3 negation: drop !@' 'weak.sh:3 code: return 1 -> return 0@' \
   'weak.sh:3 drop-conjunct: left of &&@' 'weak.sh:3 drop-conjunct: right of &&@' 'weak.sh:3 drop-conjunct: right of ||@' \
-  'weak.sh:3 empty-string: "$1"@' 'weak.sh:3 delete-line |' \
+  'weak.sh:3 delete-line |' \
   'weak.sh:4 cmp: -lt -> -ge@' 'weak.sh:4 off-by-one: -lt -> -le@' 'weak.sh:4 bool: && -> ||@' 'weak.sh:4 sort: sort -u -> sort@' \
   'weak.sh:4 sort: drop uniq@' \
   'weak.sh:5 drop-anchor: ^@' 'weak.sh:5 drop-anchor: $@' 'weak.sh:5 code: exit 2 -> exit 0@' \
-  'weak.sh:6 widen: cfg.json -> cfg.*@' 'weak.sh:7 bool: true -> false@' \
+  'weak.sh:6 widen: cfg.json -> cfg.*@' \
+  'weak.sh:9 delete-line' 'weak.sh:10 empty-string: "$1 (staged)"@' 'weak.sh:11 empty-string: "$(date)"@' 'weak.sh:12 delete-line' \
   'weak.js:2 cmp: !== -> ===@' 'weak.js:2 cmp: <= -> >@' 'weak.js:2 off-by-one: <= -> <@' 'weak.js:2 bool: && -> ||@' \
   'weak.js:2 negation: drop !@' 'weak.js:2 drop-anchor: ^@' 'weak.js:2 drop-anchor: $@' "weak.js:2 sort: .sort() -> ''@" \
   'weak.js:2 bool: false -> true@' 'weak.js:2 drop-conjunct: left of &&@'; do
   assert_contains "$out" "$want"
 done
 assert_contains "$out" "unsupported: x.rb"
+# t-2602: a lone-variable string and an output-only line lose their mutants; text next to a variable, or an echo that does work, keeps them.
+for none in 'weak.sh:3 empty-string' 'weak.sh:9 empty-string' 'weak.sh:7 bool' 'weak.sh:12 empty-string'; do
+  [[ "$out" != *"$none"* ]] || fail "mutant-sweep: '$none' should be skipped by rule: $out"
+done
+assert_contains "$out" "skipped by rule: 7 (bare-variable strings 5, output-only lines 2)"
 # Python and Go (t-a3ef): one fixture line per family; a comment line, a docstring or block-comment body and the operators
 # inside a string yield nothing, and a mutant that does not parse is INVALID (never listed as a survivor).
 for want in \

@@ -44,7 +44,10 @@ mutant-sweep --map <logic file>=<test command> [--map ...] --report .tickets/<id
 - **Operators** (one fixed table in the tool, applied at every occurrence): comparison and
   `&&`/`||`/`and`/`or` flips, off-by-one, `true`/`false`/`None`, `is`/`in` and `err != nil` flips, negation removal, return/exit codes, sort/unique
   removal (`sorted()`/`set()` too), a dropped `&&`/`||` operand, a dropped regex anchor, a widened pattern, an emptied
-  string constant, and whole-line deletion.
+  string constant, and whole-line deletion. Two shell-only rules leave mutants out, counted in the report as
+  `skipped by rule:`: a double-quoted string that is only variable expansions (`"$x"`, `"$a/$b"`) is not emptied
+  (it mostly falls back to the cwd or a default, an equivalent mutant), and a line that is only `echo`/`printf` gets
+  just `delete-line` (an emptied message only proves a test pins its text).
 - **Isolation.** Every mutant runs in a fresh copy of the project (tracked + untracked files, no
   `.git`) with its own `HOME`, `TMPDIR`, `CANON_HOME` and `XDG_CONFIG_HOME`; the real tree is never written.
   Caches that default under HOME (`GOMODCACHE`, `GOPATH`, `GOCACHE`, `PLAYWRIGHT_BROWSERS_PATH`) are passed through.
