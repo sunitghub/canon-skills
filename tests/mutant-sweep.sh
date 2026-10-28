@@ -54,6 +54,7 @@ p="$1 (staged)"
 echo "$(date)"
 echo "done" >&2
 printf "%s %s\n" "a" "b"   # "c" d
+echo "x" | tee out.log
 EOF
 cat >> weak.js <<'EOF'
 const f = (a, b, s) => { if (a !== 1 && b <= 2) return !s; return /^x$/.test(s) ? [3, 1].sort() : false; };
@@ -159,6 +160,7 @@ for want in \
   'weak.sh:5 drop-anchor: ^@' 'weak.sh:5 drop-anchor: $@' 'weak.sh:5 code: exit 2 -> exit 0@' \
   'weak.sh:6 widen: cfg.json -> cfg.*@' \
   'weak.sh:9 delete-line' 'weak.sh:10 empty-string: "$1 (staged)"@' 'weak.sh:11 empty-string: "$(date)"@' 'weak.sh:12 delete-line' \
+  'weak.sh:14 empty-string: "x"@' \
   'weak.js:2 cmp: !== -> ===@' 'weak.js:2 cmp: <= -> >@' 'weak.js:2 off-by-one: <= -> <@' 'weak.js:2 bool: && -> ||@' \
   'weak.js:2 negation: drop !@' 'weak.js:2 drop-anchor: ^@' 'weak.js:2 drop-anchor: $@' "weak.js:2 sort: .sort() -> ''@" \
   'weak.js:2 bool: false -> true@' 'weak.js:2 drop-conjunct: left of &&@'; do
