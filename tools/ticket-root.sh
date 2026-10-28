@@ -102,7 +102,7 @@ late_docs_delta() {
     ns="$(git -C "$dir" -c core.quotepath=off diff --numstat --no-renames "$graded" "$head" -- "$MERGE_SAFE_AUDIT_LOG" 2>&1)" \
       || { echo "git could not count the lines of $MERGE_SAFE_AUDIT_LOG from ${graded:0:7} to ${head:0:7}: $ns"; return 2; }
     read -r add del _rest <<< "$ns"
-    [[ "$add" =~ ^[0-9]+$ && "$del" == 0 ]] && grew=true
+    [[ "$add" =~ ^[0-9]+$ && "$add" -gt 0 && "$del" == 0 ]] && grew=true   # "0 0" is a mode-only change or an empty log removed: not growth
     while IFS= read -r ln; do
       if [[ "$ln" != "$MERGE_SAFE_AUDIT_LOG" ]]; then kept+="$ln"$'\n'
       elif ! $grew; then kept+="$ln (rewritten; not appended)"$'\n'; fi

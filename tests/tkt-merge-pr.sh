@@ -375,6 +375,9 @@ refuses "another file under .claude/" "since then it changes .claude/settings.js
 refuses "an agent definition under .claude/" "since then it changes .claude/agents/x.md" STUB_HEAD="$(pastlog $'a\nb\nc\n' .claude/agents/x.md)" -- --pr 7 --yes
 refuses "a look-alike log name" "since then it changes .claude/subagent-runs.jsonl.bak" STUB_HEAD="$(pastlog $'a\nb\nc\n' .claude/subagent-runs.jsonl.bak)" -- --pr 7 --yes
 refuses "the log's name in another folder" "since then it changes x/.claude/subagent-runs.jsonl" STUB_HEAD="$(pastlog $'a\nb\nc\n' x/.claude/subagent-runs.jsonl)" -- --pr 7 --yes
+git checkout -q -B past "$LOGBASE"; chmod +x .claude/subagent-runs.jsonl; git add -f .claude/subagent-runs.jsonl; git commit -qm "log mode only"
+git push -qf origin "HEAD:refs/pull/7/head"; MODE="$(git rev-parse HEAD)"; git checkout -q main
+refuses "a mode-only change to the audit log" "since then it changes .claude/subagent-runs.jsonl (rewritten; not appended)" STUB_HEAD="$MODE" -- --pr 7 --yes
 git checkout -q -B past "$LOGBASE"; printf 'a\nb\n\000c\n' > .claude/subagent-runs.jsonl; git add -f .claude/subagent-runs.jsonl; git commit -qm "binary log"
 git push -qf origin "HEAD:refs/pull/7/head"; BIN="$(git rev-parse HEAD)"; git checkout -q main
 refuses "a binary audit log" "since then it changes .claude/subagent-runs.jsonl (rewritten; not appended)" STUB_HEAD="$BIN" -- --pr 7 --yes
