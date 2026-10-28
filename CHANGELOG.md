@@ -6,6 +6,18 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-10-28
+
+Update with `canon update`, then restart the daemon (Admin's **Restart Daemon**): the Terminal in the daemon changed.
+
+### Added
+- A project settings file: `.canon/settings.json` (shared with the team) and `.canon/settings.local.json` (yours; the board keeps it out of `git status` through the repository's own `.git/info/exclude`). The first key is `terminal.paging` (`auto`, `off`, or 5 to 500 lines). The file is read with size, depth and symlink limits, a bad file is reported by name and never overwritten, and the board writes only the local file, atomically, with mode 0600. See `docs/sprint-check.md` › Project settings.
+- A **Paging** control on the Terminal's rail card, and a `paging` command in the Terminal (`paging off`, `paging auto`, `paging 20`) that changes the setting for that Terminal only. A Terminal reads the setting when it starts.
+- `/api/settings` (GET, and POST for a loopback Origin) and a `setting.changed` event for each project setting saved.
+
+### Fixed
+- The source keys of the daemon and the board now list every package they are built from (`internal/term`, `internal/settings`), and `tests/src-key.sh` checks them against `go list -deps`, so a change to those packages re-keys the binary.
+
 ## [0.24.0] - 2026-10-27
 
 Update with `canon update`, then restart the daemon (Admin's **Restart Daemon**): the daemon's event writer changed.
