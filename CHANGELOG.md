@@ -13,7 +13,7 @@ Update with `canon update`, then restart the daemon (Admin's **Restart Daemon**)
 - **Keep for is a setting.** `log.retention_days` in `~/.canon/settings.json` (30, 90 or 365). Sealed days older than 7 days are gzipped, and each removal writes a `log.pruned` event.
 
 ### Changed
-- **The activity log is now kept for 30 days, not 90.** The first event written after you update removes every day file older than 30 days (and records it). To keep more, set `{"log":{"retention_days":90}}` in `~/.canon/settings.json` before updating. Your first event files date from 2026-10-20, so nothing is that old until about 2026-11-19.
+- **The activity log is now kept for 30 days, not 90.** The first event written after you update, or the daemon at its next start, removes every day file older than 30 days (and records it). To keep more, set `{"log":{"retention_days":90}}` in `~/.canon/settings.json` before updating. Your first event files date from 2026-10-20, so nothing is that old until about 2026-11-19.
 
 ## [0.25.1] - 2026-10-28
 

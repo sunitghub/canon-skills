@@ -4,7 +4,8 @@
 // when several writers append at once (.tickets/t-f182/evidence/spike). Each event is one open, one O_APPEND write
 // and one close, so no descriptor is ever held across midnight.
 //
-// Observer-only: emitting never blocks, delays or fails the change it describes. Callers emit after their own write
+// Observer-only: emitting never fails the change it describes, and only the first event of a UTC day takes longer (it also
+// seals, gzips and prunes the log: seal.go). Callers emit after their own write
 // succeeded and ignore the result; a failure is noted in events/emit-errors.log, best effort.
 //
 // v1 is additive-only from here on: t-0b89 (read API), t-4c09 (audit) and t-4381 read these fields.
@@ -267,7 +268,8 @@ type Event struct {
 const lineMax = 64 << 10
 
 // Latest is the newest event of kind for project (t-9641: Factory's "Last synced"), searching day files newest first
-// within the retention setting (log.retention_days, 30 by default), or false. A day older than 7 days may be gzipped; it is read the same. Anyone who can append to the folder can write a line, so each one is checked against
+// within the retention setting (log.retention_days, 30 by default), or false. A day older than 7 days may be gzipped; it is read
+// the same. Anyone who can append to the folder can write a line, so each one is checked against
 // the v1 schema and skipped when it fails; only regular files named like a day file are read (no symlinks).
 // valid, when not nil, is one more per-kind check on a line that passed the schema (t-f053): a line it rejects is skipped like
 // any other invalid line, so it cannot hide an older valid one. A minimal reader until t-0b89's read API.
@@ -286,7 +288,7 @@ func Latest(home, kind, project string, valid func(Event) bool) (Event, bool) {
 			days = append(days, e.Name())
 		}
 	}
-	// newest day first; a plain file sorts before its .gz twin, which is only left behind by a crashed gzip
+	// newest day first; a day with both a plain file and a .gz twin (a crashed gzip) is read from the .gz first, which holds the same lines
 	sort.Slice(days, func(i, j int) bool { return days[i] > days[j] })
 	if keep := settings.RetentionDays(home) + 1; len(days) > keep {
 		days = days[:keep]
