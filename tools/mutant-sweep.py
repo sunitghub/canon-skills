@@ -228,6 +228,24 @@ def conjunct_drops(line, lo, hi, spans):
     return out
 
 
+SKIPPED = {'var': 0, 'out': 0}   # mutants the two shell rules left out (t-2602), reported by main
+BARE_VAR = re.compile(r'^(?:\$\{[^}]*\}|\$\w+)(?:[/:](?:\$\{[^}]*\}|\$\w+))*$')
+OUTPUT_ONLY = re.compile(r'^\s*(?:echo|printf)(?:\s+[^\s|;&<>(){}`$\\]*)*\s*(?:>&2)?\s*$')
+
+
+def output_only(line, spans, hi):
+    """A shell line that only prints: echo/printf, optionally >&2, nothing that does work."""
+    if '$(' in line[:hi] or '`' in line[:hi]:
+        return False
+    code, last = '', 0
+    for a, b in spans:
+        if b > hi:
+            break
+        code += line[last:a] + 'S'
+        last = b
+    return bool(OUTPUT_ONLY.match(code + line[last:hi]))
+
+
 def mutants_for_line(line, lang):
     spans = string_spans(line, lang)
     hi = code_end(line, lang, spans)
@@ -309,6 +327,9 @@ def mutants_for_line(line, lang):
             out.append((f'drop-anchor: ^@{a+n+1}', line[:a + n] + body[1:] + line[b - n:]))
         if body.endswith('$') and not body.endswith('\\$') and len(body) > 1:
             out.append((f'drop-anchor: $@{b-n}', line[:b - n - 1] + line[b - n:]))
+        if lang == 'sh' and q == '"' and BARE_VAR.match(body):
+            SKIPPED['var'] += 1   # emptying a lone variable only proves a fallback to the cwd or a default
+            continue
         if body:
             out.append((f'empty-string: {q}{body[:20]}{q}@{a+1}', line[:a] + q + q + line[b:]))
     if lang == 'sh':
@@ -328,6 +349,10 @@ def mutants_for_line(line, lang):
             if m.group(3):
                 out.append((f'drop-anchor: $@{m.start(3)+1}', line[:m.start(3)] + line[m.end(3):]))
     out.extend(conjunct_drops(line, 0, hi, spans))
+    if lang == 'sh' and output_only(line, spans, hi):
+        keep = [x for x in out if x[0] == 'delete-line']
+        SKIPPED['out'] += len(out) - len(keep)
+        return keep
     if lang in ('sh', 'js'):
         return out
     seen = {}   # py/go: two rows can yield the same text; keep the first position, the later (more specific) name
@@ -574,6 +599,8 @@ def main():
                     continue
                 todo.append((path, i, name, '\n'.join(src[:i] + [new] + src[i + 1:]), lang, cmd))
 
+    nskip = SKIPPED['var'] + SKIPPED['out']
+    skipped_note = f"skipped by rule: {nskip} (bare-variable strings {SKIPPED['var']}, output-only lines {SKIPPED['out']})" if nskip else ''
     env = dict(os.environ, **home_caches())
     root = tempfile.mkdtemp(prefix='mutant-sweep.')
     if any(t[4] == 'go' for t in todo):
@@ -590,6 +617,8 @@ def main():
     ex = ThreadPoolExecutor(a.jobs)
     try:
         print(f'mutant-sweep: base {base[:12]}, {len(todo)} mutants in {len(maps) - len(unsupported)} file(s)', flush=True)
+        if skipped_note:
+            print(skipped_note, flush=True)
         for p in unsupported:
             print(f'unsupported: {p}')
         for p in unmapped:
@@ -634,6 +663,8 @@ def main():
             fh.write('# Mutation Report\n\n' + f'Base `{base[:12]}`. ' + ', '.join(f'{k} {v}' for k, v in counts.items()) + '.\n\n')
             fh.write('Each mutant ran in its own copy with HOME, TMPDIR, CANON_HOME and XDG_CONFIG_HOME pinned inside it. Canary: '
                      + (', '.join(f'LEAK `{f}`' for f in leaks) if leaks else 'real ~/.canon untouched') + '.\n\n')
+            if skipped_note:
+                fh.write(skipped_note + '\n\n')
             for p in unsupported:
                 fh.write(f'- unsupported: `{p}`\n')
             for p in unmapped:
