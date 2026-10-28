@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-28-2026 16:16
+learnings-sweep last run: 10-28-2026 17:30
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-28 | [t-32f9](.tickets/t-32f9/learnings.md) | A failed preview that reloads on the next mount (t-8627, so the reason is not lost) will also wipe any form a user opened inside it: give the open form its own keep-the-panel guard and pin it with a forced second mount, since the race only showed up once in the board spec. And a git command that takes file names from a list still needs literal pathspecs: a real file named `*.txt` is a pattern to `git add`. | UNPROMOTED |
 | 2026-10-28 | [t-41ff](.tickets/t-41ff/learnings.md) | Moving a write after a step under `set -e` (merge-pr now writes `merged:` after the local fast-forward) turns every unguarded command in that step into a way to skip the write after an irreversible action (GitHub already merged): the reviewer caught it, not the tests. Also: paths from a PR reached `rm -f`/`git checkout` and needed literal pathspecs and a symlinked-folder check, found only by the wrapup security review. | UNPROMOTED |
 | 2026-10-28 | [t-75f5](.tickets/t-75f5/learnings.md) | When widening a trust allow-list by one file, test the near misses with a fixture that would let the wrong code pass: a look-alike name only failed the unanchored mutant once the commit also grew the log, and a mode-only change read as "0 added, 0 removed" until the reviewer asked what a numstat of zero means. And an acceptance line must describe what the code reports (`graded_matches_pr` is an exact-head test), or the first evaluator fails it. | UNPROMOTED |
 | 2026-10-28 | [t-1bd5](.tickets/t-1bd5/learnings.md) | A test for a refused request must check the body and that no file changed, not only the status code: mutation survivors showed that dropping the `return` after an error response still saved the setting while the recorded status stayed 400; and a lock helper that returned a bool reported "busy" for an unwritable folder until the test of Delete in a read-only folder asked why. | UNPROMOTED |
