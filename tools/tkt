@@ -2031,7 +2031,9 @@ cmd_github_status() {
     # only a PR from this very repository counts (_pr_in_repo): a fork's head is anyone's content
     local trst; trst="$(git -C "$root" show "$phead:$trel/ticket.md" 2>/dev/null | sed -n 's/^status: //p' || true)"
     if [[ "${trst%%$'\n'*}" == closed ]]; then
-      _pr_in_repo "$repo" "$pr" 2>/dev/null && trk=true
+      local perr prc=0; perr="$(_pr_in_repo "$repo" "$pr" 2>&1)" || prc=$?
+      [[ $prc == 2 ]] && { echo "github-status: $perr" >&2; exit 1; }   # gh could not say: never a guessed stage
+      [[ $prc == 0 ]] && trk=true
     fi
   fi
   if [[ -n "$merged" || "$pst" == MERGED ]]; then stage=merged
@@ -2495,7 +2497,7 @@ _evidence_os_lines() {
   return 0
 }
 
-# cmd_import_results <id> [--pr N] — t-554c: brings a cloud sprint's .tickets/<id>/ back from canon-results/<id>. Files
+# cmd_import_results <id> [--pr N] — t-554c: brings a cloud sprint's .tickets/<id>/ back from canon-results/<id> (t-07b5: or, with no branch, from the PR's head, which is where a tracked .tickets/ goes). Files
 # arrive byte-for-byte (but an in_progress ticket.md comes back open, t-1cf5); a differing local file is kept in
 # .before-import/; the close already happened in the cloud, so this only reports it. The remote branch is deleted only
 # after the files are written.
@@ -2531,8 +2533,9 @@ cmd_import_results() {
   local tmp; tmp="$(mktemp -d "${TMPDIR:-/tmp}/tkt-results.XXXXXX")"
   # shellcheck disable=SC2064  # expand now: $tmp is local
   trap "rm -rf '$tmp'" EXIT
-  git -C "$root" archive "$head" "$rel" 2>/dev/null | tar -x -C "$tmp" 2>/dev/null || true
-  [[ -f "$tmp/$rel/ticket.md" ]] \
+  local arc=0; git -C "$root" archive "$head" "$rel" 2>/dev/null | tar -x -C "$tmp" 2>/dev/null || arc=$?
+  [[ -f "$tmp/$rel/ticket.md" ]] || arc=1
+  [[ $arc == 0 ]] \
     || { echo "import-results: $src has no $rel/ticket.md$([[ "$src" == canon-results/* ]] || echo "; origin has no branch canon-results/$id either: did the cloud session commit .tickets/ or run tkt export $id?")" >&2; exit 1; }
   local gh_line="" runs_line=""
   [[ -f "$tdir/ticket.md" ]] && { gh_line="$(get_field "$tdir/ticket.md" github)"; runs_line="$(get_field "$tdir/ticket.md" runs)"; }

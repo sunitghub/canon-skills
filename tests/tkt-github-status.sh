@@ -26,6 +26,7 @@ printf '%s\n' "$*" >> "$STUB_LOG"
 [[ "$1 $2" == "api repos/acme/app/compare/"* ]] && { cat "$STUB_W/cmp" 2>/dev/null || echo false; exit 0; }
 [[ "$1 $2" == "pr list" && " $* " == *" --head "* ]] && { cat "$STUB_W/headprs" 2>/dev/null || echo 0; exit 0; }
 [[ "$1 $2" == "pr list" ]] && { cat "$STUB_W/prs"; exit 0; }
+[[ "$1 $2" == "pr view" && "${STUB_CROSS:-}" == fail ]] && { echo "HTTP 502: pr view" >&2; exit 1; }
 [[ "$1 $2" == "pr view" ]] && {
   [[ "$*" =~ ^pr\ view\ [0-9]+\ --repo\ acme/app\ --json\ isCrossRepository\ --jq\ \.isCrossRepository$ ]] || { echo "bad PR question: $*" >&2; exit 9; }
   echo "${STUB_CROSS:-false}"; exit 0; }
@@ -104,7 +105,10 @@ git -C "$W/c" push -q origin "+$TR:refs/pull/24/head"
 printf '24\tOPEN\t%s\n' "$TR" > "$W/prs";       assert_eq "results-ready|24|OPEN|false||false" "$(st)"
 assert_contains "$("$TKT" github-status "$id")" "tkt import-results $id --pr 24"
 STUB_CROSS=true; export STUB_CROSS; assert_eq "pr-open|24|OPEN|false||false" "$(st)"
-[[ "$("$TKT" github-status "$id")" != *"carries the closed ticket"* ]] || fail "the plain form offered a fork's PR head"; unset STUB_CROSS   # a fork's PR head is anyone's content, not a result
+[[ "$("$TKT" github-status "$id")" != *"carries the closed ticket"* ]] || fail "the plain form offered a fork's PR head"
+STUB_CROSS=fail; rc=0; out="$("$TKT" github-status "$id" 2>&1)" || rc=$?   # gh cannot say whether the PR is a fork's: exit 1, never a guessed stage
+[[ "$rc" == 1 ]] || fail "an unreadable PR should exit 1: $out"; assert_contains "$out" "github-status: gh could not read PR #24 on acme/app: HTTP 502"
+unset STUB_CROSS   # a fork's PR head is anyone's content, not a result
 printf '24\tCLOSED\t%s\n' "$TR" > "$W/prs";     assert_eq "pr-open|24|CLOSED|false||false" "$(st)"   # only an open PR offers it
 sed -i.bak 's/^status: closed$/status: open/' "$W/c/.tickets/$id/ticket.md" && rm -f "$W/c/.tickets/$id/ticket.md.bak"
 git -C "$W/c" commit -qam "still open"; TO="$(git -C "$W/c" rev-parse HEAD)"; git -C "$W/c" push -q origin "+$TO:refs/pull/24/head"
