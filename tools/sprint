@@ -701,6 +701,8 @@ _canon_setup_edit_only() (   # a subshell, so its EXIT trap removes the scratch 
 # covers a failing verdict, not stale evidence. Untracked files are ignored: a tree always has some, and sprint files are committed
 # before grading (complete.md step 1). The paths below are written after grading by design (complete.md steps 6-8), or are dist/ from
 # older checkouts (the post-commit hook commits nothing now, t-9383); anything else an agent touches after grading is stale.
+# The audit log's path has one owner: MERGE_SAFE_AUDIT_LOG in tools/ticket-root.sh (t-75f5), which merge-pr's late_docs_delta also uses,
+# there with an append-only rule; this list is built from it.
 _gate_eval_report_fresh() {
   local id="$1" tdir="$2" report="$tdir/eval-report.md" heads graded changed n shown f
   local late_re="^(\\.tickets/|$MERGE_SAFE_LATE_ALT|DECISIONS\\.md\$|DECISIONS-archive\\.md\$|HANDOFF\\.md\$|PROMOTED\\.md\$|AGENTS\\.md\$|(.+/)?CLAUDE\\.md\$|${MERGE_SAFE_AUDIT_LOG//./\\.}\$|dist/)"

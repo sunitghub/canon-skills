@@ -86,6 +86,8 @@ assert_eq "results-in|24|OPEN|false|pass|false" "$(st)"
 assert_contains "$("$TKT" github-status "$id")" "(the PR head plus late docs)"
 git -C "$W/c" push -q origin "+$R2:refs/pull/24/head"; printf '24\tOPEN\t%s\n' "$R2" > "$W/prs"
 assert_eq "pr-open|24|OPEN|false|pass|false" "$(st)"
+git push -q origin "HEAD:refs/heads/canon-results/$id"; assert_eq "results-ready|24|OPEN|true|pass|false" "$(st)"   # a results branch makes it importable, not merge-ready
+git push -q origin --delete "canon-results/$id"
 # A head that is not local and cannot be fetched exits 1, never a guessed stage.
 git -C "$W/c" push -q origin --delete refs/pull/24/head
 printf '24\tOPEN\t%s\n' 0123456789abcdef0123456789abcdef01234567 > "$W/prs"; rc=0; out="$("$TKT" github-status "$id" 2>&1)" || rc=$?
