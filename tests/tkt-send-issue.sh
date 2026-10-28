@@ -465,11 +465,15 @@ CEOF
   git worktree remove --force "$stub/wt" >/dev/null 2>&1 || true
   # t-4c09 observer-only: with the events folder unwritable the send behaves exactly the same and logs nothing
   if [[ "$(id -u)" != 0 ]]; then   # root writes into a read-only folder anyway
+  # t-d0a5: scripts/test.sh shares one CANON_HOME across parallel suites, so another suite's event could land between the two counts:
+  # this block counts a private copy of the events folder.
+  shared_home="$CANON_HOME"; CANON_HOME="$stub/canon-home-ro"; mkdir -p "$CANON_HOME"; cp -R "$shared_home/events" "$CANON_HOME/"; export CANON_HOME
   ido2="$(fresh readonly)"; before_n="$(cat "$CANON_HOME"/events/*.jsonl | grep -c . || true)"
   chmod 400 "$CANON_HOME"/events/*.jsonl; chmod 500 "$CANON_HOME/events"   # an existing day file takes an append even in a read-only folder
   r="$("$TKT" send-issue "$ido2" 2>&1)" || { chmod 700 "$CANON_HOME/events"; chmod 600 "$CANON_HOME"/events/*.jsonl; fail "an unwritable events folder broke the send: $r"; }
   chmod 700 "$CANON_HOME/events"; chmod 600 "$CANON_HOME"/events/*.jsonl; assert_contains "$r" "Sent $ido2 as"; [[ -z "$(event_line github.sent "$ido2")" ]] || fail "an event was written into a read-only folder"
   assert_eq "$before_n" "$(cat "$CANON_HOME"/events/*.jsonl | grep -c . || true)"
+  CANON_HOME="$shared_home"; export CANON_HOME
   fi
   # no canon on the PATH at all (a cloud session, a minimal install): not live either
   idz="$(fresh nocanon)"; "$TKT" start "$idz" >/dev/null; mv "$stub/canon" "$stub/canon.off"
