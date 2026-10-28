@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-10-28
+
 Update with `canon update`, then restart the daemon (Admin's **Restart Daemon**): the daemon now maintains the activity log.
 
 ### Added
