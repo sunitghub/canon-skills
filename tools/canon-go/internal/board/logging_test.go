@@ -118,6 +118,9 @@ func TestLoggingState(t *testing.T) {
 	os.WriteFile(filepath.Join(g.dir, g.day(40)+".jsonl"), []byte("{}\n{}\n"), 0o600)
 	os.WriteFile(filepath.Join(g.dir, g.day(50)+".jsonl.gz"), []byte("x"), 0o600)
 	code, st, _ := g.get("/api/admin/logging")
+	if opts, _ := st["retention_options"].([]any); st["ok"] != true || len(opts) != 3 || opts[0] != float64(30) || opts[1] != float64(90) || opts[2] != float64(365) || st["bytes"] != float64(3+6+1) {
+		t.Errorf("ok, options and bytes: %v", st)
+	}
 	if code != 200 || st["retention_days"] != float64(30) || st["compress"] != true || st["retention_default"] != float64(30) || st["days"] != float64(3) || st["files"] != float64(3) {
 		t.Fatalf("state = %d %v", code, st)
 	}
@@ -182,6 +185,9 @@ func TestLoggingKeepFor(t *testing.T) {
 	}
 	before := g.snapshot()
 	code, st := g.post("/api/admin/logging", logClick, `{"retention_days":30}`)
+	if e, _ := st["error"].(string); st["ok"] != false || !strings.Contains(e, "confirm_remove") {
+		t.Errorf("the 409 body must say ok false and name confirm_remove: %v", st)
+	}
 	if code != 409 || st["needs_confirm"] != true || st["would_remove_days"] != float64(1) || st["would_remove_files"] != float64(1) {
 		t.Fatalf("lower without the flag: %d %v", code, st)
 	}
@@ -202,10 +208,23 @@ func TestLoggingKeepFor(t *testing.T) {
 	if code, _ := g.post("/api/admin/logging", logClick, `{"retention_days":30}`); code != 200 { // nothing would go: no confirm needed
 		t.Errorf("lower with nothing to remove: %d", code)
 	}
-	for _, body := range []string{`{"retention_days":7}`, `{"retention_days":"30"}`, `{"retention_days":30.5}`, `{"compress":"yes"}`, `{}`, `{"retention_days":30,"path":"/etc"}`} {
-		if code, _ := g.post("/api/admin/logging", logClick, body); code != 400 {
-			t.Errorf("%s answered %d", body, code)
+	for _, body := range []string{`{"retention_days":7}`, `{"retention_days":"30"}`, `{"retention_days":30.5}`, `{"compress":"yes"}`, `{}`, `{"retention_days":90,"path":"/etc"}`, `{"retention_days":90,"compress":"yes"}`} {
+		snap := g.snapshot()
+		code, res := g.post("/api/admin/logging", logClick, body)
+		if code != 400 || res == nil || res["ok"] != false || res["error"] == "" || res["error"] == nil {
+			t.Errorf("%s answered %d %v (one JSON error body expected)", body, code, res)
 		}
+		if !sameFiles(snap, g.snapshot()) {
+			t.Errorf("%s changed a file although it was refused", body)
+		}
+	}
+	// the same value again with days that would go is not a lowering: no confirm
+	os.WriteFile(filepath.Join(g.dir, g.day(100)+".jsonl"), []byte("{}\n"), 0o600)
+	if code, _ := g.post("/api/admin/logging", logClick, `{"retention_days":30}`); code != 200 {
+		t.Errorf("saving the current value answered %d", code)
+	}
+	if code, res := g.post("/api/admin/logging", logClick, `{"retention_days":30,"compress":"x"}`); code != 400 || res["ok"] != false {
+		t.Errorf("mixed bad body: %d %v", code, res)
 	}
 	os.WriteFile(setting, []byte("{not json"), 0o600)
 	badBefore := g.snapshot()
@@ -382,5 +401,132 @@ func TestIntakeCarriesKeepDaysAndLastSynced(t *testing.T) {
 	ls, _ := res["last_synced"].(map[string]any)
 	if res["keep_days"] != 90 || ls["count"] != "4" {
 		t.Errorf("with a sync: %v", res)
+	}
+}
+
+// Protects the folder name the page shows: inside the home folder it is abbreviated with ~ and the OS separator, outside it is the full path.
+func TestLoggingDisplayDir(t *testing.T) {
+	uh := t.TempDir()
+	t.Setenv("HOME", uh)
+	t.Setenv("USERPROFILE", uh)
+	sep := string(filepath.Separator)
+	if got := displayDir(filepath.Join(uh, ".canon")); got != "~"+sep+".canon"+sep+"events" {
+		t.Errorf("inside home: %q", got)
+	}
+	other := t.TempDir()
+	if got := displayDir(other); got != filepath.Join(other, "events") {
+		t.Errorf("outside home: %q", got)
+	}
+	if got := displayDir(uh); got != "~"+sep+"events" {
+		t.Errorf("home itself: %q", got)
+	}
+}
+
+// Protects the page when the log folder cannot be read (a linked events folder): an error answer with ok false, not a half state.
+func TestLoggingStateWhenTheFolderIsALink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on Windows")
+	}
+	g := newLogRig(t, nil)
+	os.Remove(g.dir)
+	os.Symlink(t.TempDir(), g.dir)
+	code, st, _ := g.get("/api/admin/logging")
+	if code != 500 || st["ok"] != false || st["error"] != "the activity log folder cannot be read" {
+		t.Errorf("state = %d %v", code, st)
+	}
+}
+
+// Protects Show in folder: a missing folder is a 404 that opens nothing, a failing opener is a 500, and the folder opened is the events folder.
+func TestLoggingReveal(t *testing.T) {
+	g := newLogRig(t, nil)
+	calls := 0
+	old := revealFolder
+	revealFolder = func(string) error { calls++; return nil }
+	defer func() { revealFolder = old }()
+	os.Remove(g.dir)
+	if code, res := g.post("/api/admin/logging/reveal", logClick, `{}`); code != 404 || res["ok"] != false || calls != 0 {
+		t.Errorf("no folder: %d %v calls=%d", code, res, calls)
+	}
+	os.MkdirAll(g.dir, 0o700)
+	revealFolder = func(string) error { return os.ErrPermission }
+	if code, res := g.post("/api/admin/logging/reveal", logClick, `{}`); code != 500 || res["ok"] != false {
+		t.Errorf("a failing opener: %d %v", code, res)
+	}
+	revealFolder = func(d string) error { calls++; return nil }
+	if code, res := g.post("/api/admin/logging/reveal", logClick, `{}`); code != 200 || res["ok"] != true || calls != 1 {
+		t.Errorf("reveal: %d %v calls=%d", code, res, calls)
+	}
+}
+
+// Protects Verify's page answer: ok, the four counts, one row per non-empty day with its fields, and the unsealed note in the summary.
+func TestLoggingVerifyShape(t *testing.T) {
+	g := newLogRig(t, map[string]string{"2020-01-01.jsonl": "{}\n"})
+	events.Seal(g.home, time.Now().UTC())
+	os.WriteFile(filepath.Join(g.dir, "2020-01-02.jsonl"), []byte("{}\n"), 0o600) // closed, after the seal: not sealed yet
+	_, v, _ := g.get("/api/admin/logging/verify")
+	counts, _ := v["counts"].(map[string]any)
+	rows, _ := v["results"].([]any)
+	first, _ := rows[0].(map[string]any)
+	if v["ok"] != true || v["intact"] != true || counts["intact"] != float64(1) || counts["unsealed"] != float64(1) || counts["broken"] != float64(0) || counts["missing"] != float64(0) {
+		t.Fatalf("verify = %v", v)
+	}
+	if first["day"] != "2020-01-01" || first["result"] != "intact" || len(rows) != 2 {
+		t.Errorf("rows = %v", rows)
+	}
+	if v["summary"] != "1 day sealed, all intact; 1 not sealed yet" {
+		t.Errorf("summary = %v", v["summary"])
+	}
+	os.Remove(filepath.Join(g.dir, "2020-01-01.jsonl"))
+	_, v, _ = g.get("/api/admin/logging/verify")
+	if v["summary"] != "Broken: 2020-01-01 missing" || v["intact"] != false {
+		t.Errorf("missing day: %v", v)
+	}
+}
+
+// Protects Delete while canon is sealing, and a delete that cannot finish: a busy lock is a 409 that removes nothing, a folder that
+// cannot be written is a 500 with the real reason that does not claim success.
+func TestLoggingDeleteBusyAndPartial(t *testing.T) {
+	g := newLogRig(t, map[string]string{"2020-01-01.jsonl": "{}\n"})
+	os.WriteFile(filepath.Join(g.dir, ".maintain.lock"), nil, 0o600)
+	if code, res := g.post("/api/admin/logging/delete", logClick, `{"confirm":"delete"}`); code != 409 || res["ok"] != false {
+		t.Errorf("busy: %d %v", code, res)
+	}
+	if _, err := os.Stat(filepath.Join(g.dir, "2020-01-01.jsonl")); err != nil {
+		t.Errorf("a busy delete removed a file")
+	}
+	os.Remove(filepath.Join(g.dir, ".maintain.lock"))
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		return
+	}
+	os.Chmod(g.dir, 0o500) // the folder cannot be written: nothing can be removed
+	defer os.Chmod(g.dir, 0o700)
+	code, res := g.post("/api/admin/logging/delete", logClick, `{"confirm":"delete"}`)
+	if e, _ := res["error"].(string); code != 500 || res["ok"] != false || !strings.Contains(e, "permission denied") || res["removed"] != float64(0) {
+		t.Errorf("a folder that cannot be written: %d %v", code, res)
+	}
+	if _, err := os.Stat(filepath.Join(g.dir, "2020-01-01.jsonl")); err != nil {
+		t.Errorf("a file went")
+	}
+}
+
+// Protects Export's download headers and its refusal of a log it cannot read.
+func TestLoggingExportHeadersAndRefusal(t *testing.T) {
+	g := newLogRig(t, map[string]string{"2020-01-01.jsonl": "{}\n"})
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/logging/export", nil)
+	w := httptest.NewRecorder()
+	handleGet(w, req)
+	if w.Header().Get("X-Content-Type-Options") != "nosniff" {
+		t.Errorf("export must be nosniff: %v", w.Header())
+	}
+	if runtime.GOOS != "windows" {
+		os.Remove(g.dir + "/2020-01-01.jsonl")
+		os.WriteFile(g.dir+"/2020-01-01.jsonl.gz", []byte("not gzip"), 0o600)
+		w = httptest.NewRecorder()
+		handleGet(w, httptest.NewRequest(http.MethodGet, "/api/admin/logging/export", nil))
+		var res map[string]any
+		json.Unmarshal(w.Body.Bytes(), &res)
+		if w.Code != 500 || res["ok"] != false || res["error"] == nil || w.Header().Get("Content-Disposition") != "" {
+			t.Errorf("an unreadable day: %d %v %v", w.Code, res, w.Header())
+		}
 	}
 }

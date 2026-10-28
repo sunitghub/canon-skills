@@ -704,8 +704,10 @@ func TestInstallSetRetention(t *testing.T) {
 			t.Errorf("a symlinked settings file was followed: %d", got)
 		}
 	}
-	if InstallSet("/x").Schema[RetentionKey].Shareable {
-		t.Errorf("the retention key must not be shareable")
+	for _, k := range []string{RetentionKey, CompressKey} {
+		if InstallSet("/x").Schema[k].Shareable {
+			t.Errorf("%s must not be shareable", k)
+		}
 	}
 }
 

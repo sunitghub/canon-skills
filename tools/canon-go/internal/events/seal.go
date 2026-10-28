@@ -393,22 +393,26 @@ func herrWord(err error) string {
 	return "unreadable"
 }
 
-// lock takes events/.maintain.lock (O_EXCL). A lock older than lockStale is a crashed run's and is taken over.
-func lock(dir string) (release func(), ok bool) {
+// lock takes events/.maintain.lock (O_EXCL). A lock older than lockStale is a crashed run's and is taken over. ErrBusy means another run
+// holds it; any other error is why the lock file could not be made (an unwritable folder).
+func lock(dir string) (release func(), err error) {
 	p := filepath.Join(dir, lockName)
 	for i := 0; i < 2; i++ {
 		f, err := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 		if err == nil {
 			f.Close()
-			return func() { os.Remove(p) }, true
+			return func() { os.Remove(p) }, nil
+		}
+		if !errors.Is(err, os.ErrExist) {
+			return nil, err
 		}
 		fi, serr := os.Lstat(p)
 		if serr != nil || time.Since(fi.ModTime()) < lockStale {
-			return nil, false
+			return nil, ErrBusy
 		}
 		os.Remove(p)
 	}
-	return nil, false
+	return nil, ErrBusy
 }
 
 // ErrBusy means another run is sealing or pruning; the caller may try again.
@@ -425,9 +429,9 @@ func Maintain(home string, at time.Time, source string) error {
 		}
 		return err
 	}
-	release, ok := lock(dir)
-	if !ok {
-		return ErrBusy
+	release, err := lock(dir)
+	if err != nil {
+		return err
 	}
 	defer release()
 	var errs []error
@@ -454,9 +458,9 @@ func Seal(home string, at time.Time) (int, error) {
 		}
 		return 0, err
 	}
-	release, ok := lock(dir)
-	if !ok {
-		return 0, ErrBusy
+	release, err := lock(dir)
+	if err != nil {
+		return 0, err
 	}
 	defer release()
 	before, _ := parseSeals(dir)

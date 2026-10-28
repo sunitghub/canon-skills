@@ -3,6 +3,7 @@ package events
 import (
 	"bytes"
 	"compress/gzip"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -117,5 +118,58 @@ func TestClearExactNamesAndLock(t *testing.T) {
 		if _, err := Clear(h3); err == nil {
 			t.Errorf("a linked events folder must be refused")
 		}
+	}
+}
+
+// Protects Export's edges: a day with both a plain and a gz file is exported once (the plain), an empty day adds nothing, a total exactly at
+// the cap is allowed, and a day exactly at its own cap is allowed.
+func TestExportEdges(t *testing.T) {
+	home, dir := logWith(t, map[string]string{"2026-10-01.jsonl": "{\"p\":1}\n", "2026-10-02.jsonl": "", "2026-13-45.jsonl": "{\"bad\":1}\n"})
+	var gz bytes.Buffer
+	zw := gzip.NewWriter(&gz)
+	zw.Write([]byte("{\"twin\":1}\n"))
+	zw.Close()
+	os.WriteFile(filepath.Join(dir, "2026-10-01.jsonl.gz"), gz.Bytes(), 0o600)
+	var out bytes.Buffer
+	if err := Export(&out, home); err != nil || out.String() != "{\"p\":1}\n" {
+		t.Errorf("twin and empty day: %q %v", out.String(), err)
+	}
+	if in, _ := Stat(home); in.Days != 2 || in.Files != 3 {
+		t.Errorf("an impossible date must not count: %+v", in)
+	}
+	oldMax, oldDay := exportMax, dayMaxBytes
+	defer func() { exportMax, dayMaxBytes = oldMax, oldDay }()
+	exportMax = 8 + 1 + 1 // the plain day (8 bytes) plus one per file counted, the empty day counting 1
+	out.Reset()
+	if err := Export(&out, home); err != nil {
+		t.Errorf("a total exactly at the cap: %v", err)
+	}
+	exportMax--
+	if err := Export(&out, home); err != ErrExportTooBig {
+		t.Errorf("one byte over the cap: %v", err)
+	}
+	exportMax = oldMax
+	dayMaxBytes = 8
+	out.Reset()
+	if err := Export(&out, home); err != nil {
+		t.Errorf("a day exactly at its cap: %v", err)
+	}
+}
+
+// Protects Delete in a folder that cannot be written: the real reason comes back (not "busy"), nothing is counted as removed, and the
+// files are still there. A file held open on Windows lands in Failed instead; that needs a Windows machine to show.
+func TestClearInAFolderThatCannotBeWritten(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs a folder the account cannot write")
+	}
+	home, dir := logWith(t, map[string]string{"2026-10-02.jsonl": "x", "2026-10-01.jsonl": "x"})
+	os.Chmod(dir, 0o500)
+	defer os.Chmod(dir, 0o700)
+	c, err := Clear(home)
+	if err == nil || errors.Is(err, ErrBusy) || !strings.Contains(err.Error(), "permission denied") || c.Files != 0 {
+		t.Errorf("Clear = %+v %v", c, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "2026-10-01.jsonl")); err != nil {
+		t.Errorf("a file went")
 	}
 }

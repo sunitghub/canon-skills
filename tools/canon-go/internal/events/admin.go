@@ -232,9 +232,9 @@ func Clear(home string) (Cleared, error) {
 	if err != nil {
 		return c, err
 	}
-	release, ok := lock(dir)
-	if !ok {
-		return c, ErrBusy
+	release, err := lock(dir)
+	if err != nil {
+		return c, err
 	}
 	defer release()
 	entries, err := os.ReadDir(dir)
