@@ -170,7 +170,7 @@ rm -rf .tickets/t-evil1
 T="$W/tracked"; git clone -q "$W/origin.git" "$T" 2>/dev/null; cd "$T"
 git remote set-url origin https://github.com/acme/app.git
 rm -f .gitignore; mkdir -p ".tickets/$id" && cp "$e/ticket.md" ".tickets/$id/"
-assert_contains "$("$TKT" export "$id")" "commit it on the PR branch. On your machine: tkt import-results $id --pr <N>, then tkt merge-pr $id"
+out="$("$TKT" export "$id")"; assert_contains "$out" "commit it on the PR branch. On your machine: tkt import-results $id --pr <N>, then tkt merge-pr $id"
 assert_eq "1" "$(git --git-dir="$W/origin.git" branch --list "canon-results/*" | grep -c .)"
 
 # Back on the laptop: files byte-for-byte, a local edit kept aside, github: kept, branch deleted, PR head checked.

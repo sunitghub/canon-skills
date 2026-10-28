@@ -433,13 +433,17 @@ git checkout -q -B main "$BASE"
 # other difference leaves every file and main as they were. Protects `tkt merge-pr` and the board's Check & merge.
 B="$W/build"; git clone -q "$W/origin.git" "$B" 2>/dev/null; git -C "$B" checkout -q "$BASE"
 echo change > "$B/change.txt"; echo same > "$B/new.txt"; mkdir -p "$B/.claude"; printf 'a\nb\n' > "$B/.claude/subagent-runs.jsonl"
-git -C "$B" add -f change.txt new.txt .claude/subagent-runs.jsonl; git -C "$B" commit -qm graded; G="$(git -C "$B" rev-parse HEAD)"
+# also: a file in a folder that is not here (no blocker), a tracked file it changes, and a near miss of the log's name
+mkdir -p "$B/newdir"; echo n > "$B/newdir/x.txt"; printf '#!/usr/bin/env bash\necho merged\n' > "$B/scripts/test.sh"; echo theirs > "$B/.claude/subagent-runs.jsonl.bak"
+git -C "$B" add -f change.txt new.txt newdir/x.txt scripts/test.sh .claude/subagent-runs.jsonl .claude/subagent-runs.jsonl.bak; git -C "$B" commit -qm graded; G="$(git -C "$B" rev-parse HEAD)"
 eval_ok "$G"; mkdir -p "$B/.tickets/$id"; cp ".tickets/$id/eval-report.md" "$B/.tickets/$id/"
 sed '/^github: /d; /^merged: /d' "$f" > "$B/.tickets/$id/ticket.md"; printf 'c' >> "$B/.claude/subagent-runs.jsonl"   # no final newline
 git -C "$B" add -f .tickets .claude/subagent-runs.jsonl; git -C "$B" commit -qm "late docs"; H="$(git -C "$B" rev-parse HEAD)"
+git -C "$B" checkout -q "$G"; git -C "$B" checkout -q "$H" -- .tickets .claude/subagent-runs.jsonl; printf '\n' >> "$B/.claude/subagent-runs.jsonl"; git -C "$B" add -f .tickets .claude/subagent-runs.jsonl
+git -C "$B" commit -qm "late docs, log with a final newline"; H3="$(git -C "$B" rev-parse HEAD)"; git -C "$B" checkout -q "$H"
 git -C "$B" push -qf origin "HEAD:refs/pull/7/head"
 recon_setup() {   # main at the base (mixed reset: --hard would delete the ticket files H tracks); canon's copies as import-results leaves them, plus an unrelated edit
-  git checkout -q main; git reset -q "$BASE"; git checkout -q -- .gitignore; rm -f change.txt; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
+  git checkout -q main; git reset -q "$BASE"; git checkout -q -- .gitignore scripts/test.sh; rm -rf change.txt newdir .claude/subagent-runs.jsonl.bak; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
   echo same > new.txt; mkdir -p .claude; printf 'a\nlocal1\nb\n' > .claude/subagent-runs.jsonl; echo dirty >> .gitignore
 }
 tree_sig() { cksum new.txt .claude/subagent-runs.jsonl .gitignore ".tickets/$id/eval-report.md" "$f"; }
@@ -447,18 +451,34 @@ recon_setup; cp "$f" "$W/ticket.before"
 out="$(STUB_HEAD="$H" ff_merge)"
 assert_contains "$out" "Local main: ${BASE:0:8} -> ${H:0:8} (fast-forward)"; assert_eq "$H" "$(git rev-parse main)"
 assert_eq "$(cat "$W/ticket.before")" "$(sed '/^merged: mergesha0\{34\}$/d' "$f")"; assert_grep '^merged: mergesha' "$f"   # the local fields kept, plus merged:
-assert_eq "$(printf 'a\nb\nc\nlocal1')" "$(cat .claude/subagent-runs.jsonl)"; assert_eq same "$(cat new.txt)"
-assert_grep '^dirty$' .gitignore; assert_grep '— merged$' ".tickets/$id/github.md"
+printf 'a\nb\nc\nlocal1\n' | cmp -s - .claude/subagent-runs.jsonl || fail "audit log: $(od -c .claude/subagent-runs.jsonl | head -3)"   # merged copy had no final newline
+assert_eq same "$(cat new.txt)"; assert_eq n "$(cat newdir/x.txt)"; assert_contains "$(cat scripts/test.sh)" "echo merged"
+assert_grep '^dirty$' .gitignore; assert_grep '— merged$' ".tickets/$id/github.md"; assert_grep '^merge commit: mergesha' ".tickets/$id/github.md"
+assert_eq 0 "$(find "$TMPDIR" -maxdepth 1 -name 'tkt-ff.*' | grep -c . || true)"   # the set-aside copies are removed
 git checkout -q .gitignore
+# The merged log ends with a newline: no blank line before the local ones.
+recon_setup; git -C "$B" push -qf origin "$H3:refs/pull/7/head"; out="$(STUB_HEAD="$H3" ff_merge)"; assert_contains "$out" "(fast-forward)"
+printf 'a\nb\nc\nlocal1\n' | cmp -s - .claude/subagent-runs.jsonl || fail "audit log after a newline-ended copy: $(od -c .claude/subagent-runs.jsonl | head -3)"
+git -C "$B" push -qf origin "$H:refs/pull/7/head"
+# A tracked file edited here to exactly the merged copy is set aside too.
+recon_setup; git show "$H:scripts/test.sh" > scripts/test.sh; out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" "Local main: ${BASE:0:8} -> ${H:0:8} (fast-forward)"
+assert_eq "" "$(git status --porcelain --untracked-files=no -- scripts/test.sh)"
 # Not identical: an untracked file, or ticket.md's title (the near miss of the field rule). Nothing changes; each is named.
 recon_setup; echo other > new.txt; before="$(tree_sig)"
 out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" "Local main: 1 file(s) here differ from the merged copy; left at ${BASE:0:8}:"
-assert_contains "$out" $'\n  new.txt\n  Commit or move them, then run: git pull  (in the Cockpit Terminal, type su first)'
+assert_contains "$out" $'\n  new.txt\n  Commit or move them, then run: git pull  (in the Cockpit Terminal, type su first)'; [[ "$out" != *"(fast-forward)"* ]] || fail "a refused update still printed a fast-forward: $out"
 assert_eq "$BASE" "$(git rev-parse main)"; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; assert_eq "$before" "$(tree_sig)"
 recon_setup; sed -i.bak 's/^# Cloud ticket$/# Cloud ticket, renamed here/' "$f" && rm -f "$f.bak"; assert_grep '^# Cloud ticket, renamed here$' "$f"; before="$(tree_sig)"
 out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" $'\n  .tickets/'"$id"$'/ticket.md\n  Commit or move them'
 assert_eq "$BASE" "$(git rev-parse main)"; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; assert_eq "$before" "$(tree_sig)"
 sed -i.bak 's/^# Cloud ticket, renamed here$/# Cloud ticket/' "$f" && rm -f "$f.bak"
+# Staged, a symlink here (even to identical text), or a near miss of the log's name: each differs.
+recon_setup; git add -f new.txt; out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" $'\n  new.txt (staged)\n'; [[ "$out" != *"(fast-forward)"* ]] || fail "a refused update still printed a fast-forward: $out"
+assert_eq "$BASE" "$(git rev-parse main)"; git reset -q -- new.txt
+recon_setup; rm new.txt; echo same > "$W/same.txt"; ln -s "$W/same.txt" new.txt; out="$(STUB_HEAD="$H" ff_merge)"
+assert_contains "$out" $'\n  new.txt\n'; [[ -L new.txt ]] || fail "the local symlink was replaced"; assert_eq "$BASE" "$(git rev-parse main)"; rm new.txt
+recon_setup; echo mine > .claude/subagent-runs.jsonl.bak; out="$(STUB_HEAD="$H" ff_merge)"
+assert_contains "$out" $'\n  .claude/subagent-runs.jsonl.bak\n'; assert_eq mine "$(cat .claude/subagent-runs.jsonl.bak)"; assert_eq "$BASE" "$(git rev-parse main)"
 # A PR path under a folder that is a symlink here is never followed: the file outside the repo stays (t-07b5: PR paths are untrusted).
 git -C "$B" checkout -q "$BASE"; mkdir -p "$B/lnk"; echo same2 > "$B/lnk/new2.txt"; git -C "$B" add lnk/new2.txt; git -C "$B" commit -qm "under a link"
 H2="$(git -C "$B" rev-parse HEAD)"; git -C "$B" push -qf origin "HEAD:refs/pull/7/head"; eval_ok "$H2"
@@ -470,9 +490,9 @@ rm lnk; git -C "$B" push -qf origin "$H:refs/pull/7/head"; eval_ok "$G"
 recon_setup; before="$(tree_sig)"
 out="$(STUB_HEAD="$H" STUB_FF_MERGE_FAIL=1 ff_merge)"
 assert_contains "$out" "Local main: git refused the fast-forward; left at ${BASE:0:8}, every file set aside put back. Update it by hand: git pull"
-assert_contains "$out" "  git: error: forced ff failure"
+assert_contains "$out" "  git: error: forced ff failure"; [[ "$out" != *"(fast-forward)"* ]] || fail "a refused update still printed a fast-forward: $out"
 assert_eq "$BASE" "$(git rev-parse main)"; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; assert_eq "$before" "$(tree_sig)"
-git checkout -q .gitignore; rm -rf new.txt .claude; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; eval_ok "$PRHEAD"
+git checkout -q .gitignore scripts/test.sh; rm -rf new.txt newdir .claude; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; eval_ok "$PRHEAD"
 git push -qf origin "$PRHEAD:refs/pull/7/head"; git --git-dir="$W/origin.git" update-ref refs/heads/main "$BASE"
 
 # t-4718 also fixed import-results: a ticket that comes back without eval-report.md is reported, not a silent exit.
