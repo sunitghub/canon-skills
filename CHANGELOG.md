@@ -6,6 +6,16 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.27.2] - 2026-10-28
+
+Update with `canon update`. No daemon restart is needed.
+
+### Fixed
+- After **Check & merge** (or `tkt merge-pr`), your local main now catches up by itself in a project that commits `.tickets/`. Before, the files `tkt import-results` had written (the ticket's files, `.before-import/` copies, `.claude/subagent-runs.jsonl`) made every `git pull` fail with "would be overwritten by merge", and the Merged dialog did not say why. `merge-pr` now sets aside each file that is identical to the merged copy, the ticket's `ticket.md` when it differs only in canon's local fields (`github:`, `runs:`, `merged:`, `cloud_status:`, kept as they were), and the audit log (your local lines are appended after the merged ones), fast-forwards, and puts them back. Any other file that differs, or a staged one, leaves main where it was, and the output and the Merged dialog name each file and the `git pull` to run (in the Cockpit Terminal, type `su` first). It is still only ever a fast-forward. PR paths are untrusted: they are matched literally and never followed through a symlinked folder.
+- `.tickets/<id>/.before-import/` (the copies `tkt import-results` keeps) is now in the `.tickets/.gitignore` canon creates (added to one canon created earlier; your own file is left alone), and `tkt export` never sends it.
+- A cloud session's closing message now gives commands that run as written: `tkt import-results <id> --pr <N>`, then `tkt merge-pr <id>`.
+- An import whose PR head is not the graded commit now shows on the ticket's GitHub tab as `import refused`, not `imported`.
+
 ## [0.27.1] - 2026-10-28
 
 Update with `canon update`. No daemon restart is needed.
