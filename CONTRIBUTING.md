@@ -76,5 +76,6 @@ follows `main` directly.
 - **Maintainers:** follow **[docs/releasing.md](docs/releasing.md)** step by step: binaries
   first when `scripts/check-binaries-released.sh` says so, then `tkt push-main` (never a plain
   `git push public`: the pre-push hook from `scripts/install-hooks.sh` refuses it), then
-  `scripts/release.sh`, then the canon-site lines and badge. An agent cutting the release
+  `scripts/release.sh`, then the canon-site lines and badge, and the release is done only when
+  `scripts/check-release-live.sh` (the command `release.sh` prints last) passes. An agent cutting the release
   needs the three public commands allowed, as that doc's step 2 explains.

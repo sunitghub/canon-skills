@@ -91,6 +91,9 @@ assert_contains "$out" "site/integrity.txt"
 il_sum="$(printf '%s\n' "$out" | sed -n 's/^release: integrity line for integrity-0.3.0.json: v0.3.0 \([0-9a-f]\{64\}\)$/\1/p')"
 [[ -n "$il_sum" ]] || fail "release: no integrity line printed: $out"
 [[ "$(printf '%s\n' "$out" | grep -c '^v0\.3\.0 [0-9a-f]\{64\} [0-9a-f]\{40\}$')" == 1 ]] || fail "release: the releases.txt line is not exactly three fields: $out"
+# t-ea3a: the last line is the check that finishes the release, with both printed lines filled in exactly
+grep -qxF "  scripts/check-release-live.sh v0.3.0 --manifest-line \"v0.3.0 $sum $(git -C "$d" rev-parse 'v0.3.0^{commit}')\" --integrity-line \"v0.3.0 $il_sum\" --wait 600" <<< "$out" \
+  || fail "release: the closing check-release-live command is missing or wrong: $out"
 echo "release: tags, pushes only the tag, creates the release with the CHANGELOG section"
 
 # Another local tag must not travel with it (push is the one tag, not --tags).

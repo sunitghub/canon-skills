@@ -81,3 +81,6 @@ echo "release: next, publish this line as the first entry of site/releases.txt i
 echo "$manifest_line"
 echo "release: and this line as the first entry of site/integrity.txt in the same repo (Admin > Integrity checks installed files against it; a release without it reads 'list not published yet', never a failure):"
 echo "$integrity_line"
+# t-ea3a: the release is finished only when the site carries both lines and the badge; this is the check that says so.
+echo "release: last, once canon-site is pushed (docs/releasing.md step 5), finish with:"
+echo "  scripts/check-release-live.sh $tag --manifest-line \"$manifest_line\" --integrity-line \"$integrity_line\" --wait 600"
