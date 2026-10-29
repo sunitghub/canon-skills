@@ -62,6 +62,10 @@ old note
 |-------|----------|--------|
 | sprint | dev | skills/sprint/SKILL.md |
 <!-- AI-SKILLS:END -->
+
+
+
+User last line, after canon's last block.
 EOT
 printf '%s\n' "$project" > "$tmp_home/.config/canon/projects"
 
@@ -78,7 +82,8 @@ assert_count 1 "@/elsewhere/skills/x.md" "$project/AGENTS.md"
 assert_count 1 "@PROMOTED.md" "$project/AGENTS.md"
 # guard: the user's own blank runs are untouched, even the one that ends at a canon line
 assert_eq "3 2" "$(runs_of_blanks "$project/AGENTS.md" | awk -F: 'NR <= 2 { printf "%s%s", (NR > 1 ? " " : ""), $2 }')"
-stacked="$(runs_of_blanks "$project/AGENTS.md" | awk -F: 'NR > 2 && $2 > 1')"
+assert_eq "3" "$(runs_of_blanks "$project/AGENTS.md" | awk -F: 'END { print $2 }')"   # guard: user text right after a canon block keeps its run
+stacked="$(runs_of_blanks "$project/AGENTS.md" | awk -F: '{ r[NR] = $0; n[NR] = $2 } END { for (i = 3; i < NR; i++) if (n[i] > 1) print r[i] }')"
 [[ -z "$stacked" ]] || fail "canon left stacked blank lines: $stacked"
 
 h1="$(md5sum "$project/AGENTS.md" | cut -d' ' -f1)"
@@ -110,7 +115,7 @@ stacked="$(runs_of_blanks "$projectc/AGENTS.md" | awk -F: '$2 > 1')"
 [[ -z "$stacked" ]] || fail "the AI-SKILLS writer stacked blank lines: $stacked"
 
 # No trailing newline and no blank line: each block still gets exactly one separating blank line above it.
-blank_before() { awk -v p="$1" '{ sub(/\r$/, "") } $0 == p { exit (prev == "" && NR > 1) ? 0 : 1 } { prev = $0 }' "$2"; }
+blank_before() { awk -v p="$1" '{ sub(/\r$/, "") } $0 == p { found = 1; exit (prev == "" && NR > 1) ? 0 : 1 } { prev = $0 } END { if (!found) exit 1 }' "$2"; }
 printf '# Agents' > "$projectd/AGENTS.md"
 "$SKILLS" add sprint "$projectd" >/dev/null 2>&1
 SKILLS_SH_ASSUME_YES=1 "$SKILLS" add efficiency "$projectd" >/dev/null 2>&1
