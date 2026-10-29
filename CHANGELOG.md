@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Fixed
+- Check & merge on a PR that conflicts with its base now names the conflicting files and offers **Fix here** (t-ca00). `tkt merge-pr` (and `--check`) prints `conflicts in: <files>`, listed by `git merge-tree` from the fetched objects (git 2.38 or newer; nothing is checked out or run), and `next: tkt land <id> --pr N --fix`; the refusal and its exit code are unchanged. The board's dialog shows the files and the button, and `tkt land --fix` on such a PR says to `git merge origin/<base>` in the worktree and resolve those files before the gates. A draft keeps Mark ready; every other refusal keeps only Close.
+
 ## [0.30.3] - 2026-10-29
 
 Update with `canon update` (stop the Cockpit first), then restart the daemon (Admin's **Restart Daemon**): the board changed.

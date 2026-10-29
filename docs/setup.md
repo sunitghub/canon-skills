@@ -269,6 +269,8 @@ cloud's passed: `sprint complete` checks this machine's record of the evaluator 
 (t-b650). Then `tkt merge-pr <id>`, which also deletes `canon-results/<id>`. A fix pushed to the PR after grading
 needs the evaluator again: `merge-pr` merges only the graded head.
 
+A PR that conflicts with its base (another PR merged first) is refused with the files named: `merge-pr: conflicts in: <files>`, listed by `git merge-tree` from the fetched objects (git 2.38 or newer), and Check & merge shows them with **Fix here**. That runs `tkt land <id> --pr N --fix`: in the worktree run `git merge origin/<base>`, resolve those files, run the evaluator and `sprint complete`, finish, push the result to the PR branch yourself, then Check & merge again.
+
 Each session is a fresh machine. Keep the environment; archive old sessions.
 
 ## Tracking `.tickets/` in your project

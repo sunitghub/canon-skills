@@ -29,7 +29,7 @@ mkdir "$W/bin"; cat > "$W/bin/gh" <<'SH'
 printf '%s\n' "$*" >> "$STUB_LOG"
 case "$1 $2" in
   "pr list") cat "$STUB_W/prlist" ;;
-  "pr view") printf '%s\t%s\t%s\n' "${STUB_STATE:-OPEN}" "${STUB_HEAD:?}" "${STUB_CROSS:-false}" ;;
+  "pr view") printf '%s\t%s\t%s\t%s\t%s\n' "${STUB_STATE:-OPEN}" "${STUB_HEAD:?}" "${STUB_CROSS:-false}" "${STUB_MG:-MERGEABLE}" main ;;
   *) echo "unexpected gh call: $*" >&2; exit 9 ;;
 esac
 SH
@@ -150,4 +150,10 @@ grep -q '^status: in_progress' "$f" || fail "--fix did not reopen the closed tic
 [[ "$(tr -d '[:space:]' < ".tickets/$id/.cockpit-cwd")" == "$WT" ]] || fail "--fix: .cockpit-cwd is not the worktree"
 refuses "a plain land of an in_progress ticket" "not open" --
 refuses "--fix on a ticket already in progress" "not open" -- --fix
+# t-ca00: protects `tkt land --fix` (the board's Fix here on a conflicting PR): the next line says to merge the base in first.
+id="$("$TKT" create "Conflicting cloud ticket" -t bug)"; f=".tickets/$id/ticket.md"; WT="$W/project-worktrees/land-$id"
+awk '/^---$/ && ++n == 2 { print "github: acme/app#24" } { print }' "$f" > "$W/t" && mv "$W/t" "$f"; echo plan > ".tickets/$id/plan.md"
+out="$(STUB_MG=CONFLICTING "$TKT" land "$id" --fix < /dev/null 2>&1)"
+assert_contains "$out" "next: in that worktree run git merge origin/main, resolve the conflicting files, then run the evaluator and sprint complete $id, then: tkt land $id --finish"
+echo "land: a conflicting PR's next step says to merge the base first (t-ca00)"
 echo "tkt land: ok"

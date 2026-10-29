@@ -1812,20 +1812,33 @@ cmd_merge_pr() {
   # reads such a PR as CLEAN or BLOCKED, so the checks below would not name it.
   [[ "$draft" != true ]] || { echo "merge-pr: PR #$pr is a draft; GitHub will not merge it. Run: gh pr ready $pr  (or press Mark ready on the card), then merge." >&2; _mp_refuse "PR is a draft"; }
   [[ "$draft" == false ]] || { echo "merge-pr: gh did not say whether PR #$pr is a draft (isDraft: ${draft:-empty}); not running anything" >&2; _mp_refuse "could not tell whether the PR is a draft"; }
-  if [[ "$mg" != MERGEABLE || "$ms" != CLEAN ]]; then
-    if [[ "$ms" == BLOCKED ]]; then echo "merge-pr: PR #$pr is blocked by a branch rule (a required review or check): https://github.com/$repo/pull/$pr" >&2
-    else echo "merge-pr: PR #$pr cannot merge cleanly (mergeable: $mg, state: $ms)" >&2; fi
-    _mp_refuse "PR cannot merge cleanly (mergeable: $mg, state: $ms)"
-  fi
-  # The suite on what main will hold: base + the PR, in a scratch clone.
-  local tmp url; tmp="$(mktemp -d "${TMPDIR:-/tmp}/tkt-merge.XXXXXX")"
+  # The scratch clone the suite runs in; also where a conflict is listed. Nothing from the PR is checked out or run by the fetch.
+  local tmp url err; tmp="$(mktemp -d "${TMPDIR:-/tmp}/tkt-merge.XXXXXX")"
   # shellcheck disable=SC2064  # expand now: $tmp is local
   trap "rm -rf '$tmp'" EXIT
   url="$(git -C "$root" remote get-url origin)"
   # Nothing before the prompt reads the terminal (</dev/null): a typed-ahead answer is the prompt's alone.
-  local err
-  err="$({ git clone -q "$root" "$tmp/w" \
-    && git -C "$tmp/w" fetch -q "$url" "+refs/heads/$base:refs/remotes/o/$base" "+refs/pull/$pr/head:refs/remotes/o/pr"; } < /dev/null 2>&1)" \
+  _mp_fetch() { err="$({ git clone -q "$root" "$tmp/w" \
+    && git -C "$tmp/w" fetch -q "$url" "+refs/heads/$base:refs/remotes/o/$base" "+refs/pull/$pr/head:refs/remotes/o/pr"; } < /dev/null 2>&1)"; }
+  if [[ "$mg" != MERGEABLE || "$ms" != CLEAN ]]; then
+    if [[ "$ms" == BLOCKED ]]; then echo "merge-pr: PR #$pr is blocked by a branch rule (a required review or check): https://github.com/$repo/pull/$pr" >&2
+    else echo "merge-pr: PR #$pr cannot merge cleanly (mergeable: $mg, state: $ms)" >&2; fi
+    # t-ca00: name the conflicting files (git merge-tree reads objects only) and the way out; a failure here never hides the refusal.
+    if [[ "$mg" == CONFLICTING ]]; then
+      local mt mrc=0
+      if ! _mp_fetch; then echo "merge-pr: could not list the conflicting files: could not fetch $base and PR #$pr from origin: $err" >&2
+      else
+        mt="$(git -C "$tmp/w" merge-tree --write-tree --name-only --no-messages "o/$base" o/pr < /dev/null 2>&1)" || mrc=$?
+        if [[ "$mrc" == 1 ]]; then echo "merge-pr: conflicts in: $(printf '%s\n' "$mt" | sed 1d | grep . | paste -sd, - | sed 's/,/, /g')" >&2
+        elif [[ "$mrc" == 0 ]]; then echo "merge-pr: git finds no conflict between $base and PR #$pr here; GitHub's view may be stale, check again" >&2
+        else echo "merge-pr: could not list the conflicting files (git merge-tree needs git 2.38 or newer, exit $mrc)" >&2; fi
+      fi
+      echo "next: tkt land $id --pr $pr --fix (a worktree at the PR head: merge $base, resolve, close it again, then Check & merge)" >&2
+    fi
+    _mp_refuse "PR cannot merge cleanly (mergeable: $mg, state: $ms)"
+  fi
+  # The suite on what main will hold: base + the PR, in a scratch clone.
+  _mp_fetch \
     || { echo "merge-pr: could not fetch $base and PR #$pr from origin: $err" >&2; _mp_refuse "could not fetch $base and the PR from origin"; }
   [[ "$(git -C "$tmp/w" rev-parse o/pr)" == "$head" ]] || { echo "merge-pr: PR #$pr moved while checking it; run merge-pr again" >&2; _mp_refuse "PR moved while it was checked"; }
   # t-fdb1: a head past graded-head passes only when what came after is merge-safe late docs (the cloud's learnings sweep, complete.md
@@ -2516,10 +2529,10 @@ cmd_land() {
   local repo; repo="$(_gh_origin_repo "$root" land)" || exit 1
   command -v gh >/dev/null 2>&1 || { echo "land: needs the GitHub CLI: install gh, then run: gh auth login" >&2; exit 1; }
   pr="$(_resolve_pr land "$file" "$repo" "$pr")" || exit 1
-  local info st head cross
-  info="$(gh pr view "$pr" --repo "$repo" --json state,headRefOid,isCrossRepository --jq '[.state, .headRefOid, .isCrossRepository] | @tsv' 2>&1)" \
+  local info st head cross mg base
+  info="$(gh pr view "$pr" --repo "$repo" --json state,headRefOid,isCrossRepository,mergeable,baseRefName --jq '[.state, .headRefOid, .isCrossRepository, .mergeable, .baseRefName] | map(if . == null or . == "" then "-" else tostring end) | @tsv' 2>&1)" \
     || { echo "land: gh could not read PR #$pr on $repo: $info" >&2; exit 1; }
-  IFS=$'\t' read -r st head cross <<< "$info"
+  IFS=$'\t' read -r st head cross mg base <<< "$info"
   [[ "$st" == OPEN ]] || { echo "land: PR #$pr is $st, not open" >&2; exit 1; }
   [[ "$cross" == false ]] || { echo "land: PR #$pr comes from a fork; its code would run here, so close it on GitHub after reading it" >&2; exit 1; }
   if ! $fix && [[ "$verdict" == pass && "$graded" != - && "$head" == "$graded"* ]]; then
@@ -2538,7 +2551,9 @@ cmd_land() {
   canon_event ticket.status_changed tkt "$root" "ticket=$id" from=open to=in_progress
   echo "land: $id at PR #$pr head ${head:0:8}"
   echo "  worktree: $wt (branch $branch)"
-  echo "  next: in that worktree run the evaluator and sprint complete $id, then: tkt land $id --finish"
+  if [[ "$mg" == CONFLICTING ]]; then   # t-ca00: the PR conflicts with its base; merge it in before the gates
+    echo "  next: in that worktree run git merge origin/$base, resolve the conflicting files, then run the evaluator and sprint complete $id, then: tkt land $id --finish"
+  else echo "  next: in that worktree run the evaluator and sprint complete $id, then: tkt land $id --finish"; fi
   ! $fix || echo "  fix it there and commit; --finish keeps land/$id with your commits, then push them to the PR branch yourself"
 }
 

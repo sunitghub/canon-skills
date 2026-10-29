@@ -17440,6 +17440,33 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     expect(posts).toBe(0);
   });
 
+  // t-ca00: protects the card's Check & merge dialog on a conflicting PR: it names the files and offers Fix here (land with fix); a draft keeps Mark ready.
+  test('Check & merge: a conflicting PR names the files and Fix here posts land with fix; a draft refusal still shows Mark ready (t-ca00)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh8');
+    ghTicket(id, { github: 'acme/app#57' });
+    await routeStatus(page, id, { stage: 'results-in', pr: 58 });
+    const conflictOut = 'merge-pr: PR #58 cannot merge cleanly (mergeable: CONFLICTING, state: DIRTY)\nmerge-pr: conflicts in: CHANGELOG.md, tools/tkt\nnext: tkt land t-x --pr 58 --fix (a worktree)';
+    const draftOut = 'merge-pr: PR #58 is a draft; GitHub will not merge it. Run: gh pr ready 58  (or press Mark ready on the card), then merge.';
+    let check = { ok: false, exit_code: 1, output: conflictOut };
+    await page.route(`**/api/ticket/${id}/github/merge-check**`, r => json(r, check));
+    const bodies = [];
+    await page.route(`**/api/ticket/${id}/github/land`, r => { bodies.push(JSON.parse(r.request().postData() || '{}')); return json(r, { ok: true, exit_code: 0, output: `land: ${id} at PR #58 head 9c41e2a2` }); });
+    await openBoard(page, id);
+    await page.locator(`.card[data-id="${id}"] .card-gh-btn`).click();
+    await expect(page.locator('#gh-dialog-body')).toContainText('PR #58 cannot merge cleanly (mergeable: CONFLICTING, state: DIRTY). Conflicts in: CHANGELOG.md, tools/tkt. Nothing was run or changed.');
+    await expect(page.locator('#gh-dialog-ok')).toHaveText('Fix here');
+    expect(bodies).toEqual([]);
+    await page.locator('#gh-dialog-ok').click();
+    await expect(page.locator('#gh-dialog-title')).toHaveText(`Fix ${id} here?`);
+    await page.locator('#gh-dialog-ok').click();
+    await expect(page.locator('#gh-dialog-title')).toHaveText('Worktree ready');
+    expect(bodies).toEqual([{ pr: 58, fix: true }]);
+    check = { ok: false, exit_code: 1, output: draftOut };
+    await page.reload(); await openBoard(page, id);
+    await page.locator(`.card[data-id="${id}"] .card-gh-btn`).click();
+    await expect(page.locator('#gh-dialog-ok')).toHaveText('Mark ready');
+  });
+
   test('a public repo: the preview asks for a tick before Create issue sends with public (t-718b)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gh9');
     ghTicket(id);

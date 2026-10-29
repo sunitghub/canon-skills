@@ -63,6 +63,7 @@ REAL_GIT="$(command -v git)"
 cat > "$W/bin/git" <<SH
 #!/usr/bin/env bash
 [[ -n "\${STUB_FF_FETCH_FAIL:-}" && " \$* " == *" fetch -q origin refs/heads/main "* ]] && { echo "fatal: unable to access origin" >&2; exit 128; }
+[[ -n "\${STUB_PR_FETCH_FAIL:-}" && " \$* " == *" fetch -q "*" +refs/pull/"* ]] && { echo "fatal: unable to access origin" >&2; exit 128; }
 [[ -n "\${STUB_UPDATE_REF_FAIL:-}" && " \$* " == *" update-ref refs/heads/main "* ]] && { echo "fatal: forced update-ref failure" >&2; exit 128; }
 if [[ " \$* " == *" merge -q --ff-only "* ]]; then
   [[ -z "\${STUB_FF_SPY:-}" ]] || grep -c '^merged:' "\$STUB_FF_SPY" > "$W/ff-spy" || true
@@ -539,3 +540,31 @@ done
 # A gh failure on the read is still a refusal, not a wait.
 rm -f "$W/reads" "$W/sleeps"
 refuses "a PR gh cannot read" "gh could not read PR #7 on acme/app: HTTP 502" STUB_VIEW_FAIL=1 -- --yes
+
+# t-ca00: protects `tkt merge-pr` / the board's Check & merge on a PR that conflicts with its base: the refusal stays, and now names
+# the conflicting files (git merge-tree over fetched objects; nothing checked out or run) and the `tkt land --fix` way out.
+X="$W/conflict-clone"; git clone -q "$W/origin.git" "$X" 2>/dev/null
+( cd "$X"; printf 'one\ntwo\nthree\n' > shared.txt; echo same > other.txt; git add -A; git commit -qm "shared file"; git push -q origin HEAD:main
+  git checkout -q -b pr9; echo theirs > shared.txt; echo pr-only > pr-only.txt; git add -A; git commit -qm "PR edits shared.txt"
+  git push -q origin HEAD:refs/pull/9/head
+  git checkout -q main; echo ours > shared.txt; git add -A; git commit -qm "main edits the same line"; git push -q origin HEAD:main )
+git -C "$P" fetch -q origin main; git -C "$P" merge -q --ff-only origin/main 2>/dev/null || true
+wt_before="$(git -C "$P" status --porcelain; git -C "$P" rev-parse HEAD; git -C "$P" diff --cached | cksum)"
+for mode in --yes --check; do
+  rm -f "$W/ran"
+  refuses "a conflicting PR ($mode)" "merge-pr: PR #9 cannot merge cleanly (mergeable: CONFLICTING, state: DIRTY)" STUB_MG=CONFLICTING STUB_MS=DIRTY -- --pr 9 "$mode"
+  assert_contains "$out" "merge-pr: conflicts in: shared.txt"
+  [[ "$out" != *"pr-only.txt"* && "$out" != *"other.txt"* ]] || fail "conflicts line names a file that does not conflict: $out"
+  assert_contains "$out" "next: tkt land $id --pr 9 --fix (a worktree at the PR head: merge main, resolve, close it again, then Check & merge)"
+  [[ ! -e "$W/ran" ]] || fail "a conflicting PR ran the test command"
+  [[ "$(git -C "$P" status --porcelain; git -C "$P" rev-parse HEAD; git -C "$P" diff --cached | cksum)" == "$wt_before" ]] \
+    || fail "merge-pr changed the working tree, HEAD or index on a conflict ($mode)"
+done
+# t-ca00: a fetch that fails must not hide the refusal: the reason is printed, the PR is still refused, and the way out is still named.
+refuses "a conflicting PR when origin cannot be fetched" "merge-pr: could not list the conflicting files: could not fetch main and PR #9" \
+  STUB_MG=CONFLICTING STUB_MS=DIRTY STUB_PR_FETCH_FAIL=1 -- --pr 9 --check
+assert_contains "$out" "cannot merge cleanly (mergeable: CONFLICTING, state: DIRTY)"; assert_contains "$out" "next: tkt land $id --pr 9 --fix"
+# A blocked PR is not a conflict: no conflicts line, no land hint.
+refuses "a blocked PR (no conflict lines)" "blocked by a branch rule" STUB_MS=BLOCKED -- --pr 9 --check
+[[ "$out" != *"conflicts in"* && "$out" != *"next: tkt land"* ]] || fail "a non-conflict refusal printed conflict lines: $out"
+echo "merge-pr: names the conflicting files and the land --fix next step (t-ca00)"
