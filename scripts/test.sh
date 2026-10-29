@@ -68,6 +68,7 @@ tests=(
   "$ROOT/tests/skills-subagent-log-permission.sh"
   "$ROOT/tests/skills-assume-yes.sh"
   "$ROOT/tests/skills-refresh.sh"
+  "$ROOT/tests/agents-md-hygiene.sh"
   "$ROOT/tests/skills-uninstall.sh"
   "$ROOT/tests/worktree-suites.sh"
   "$ROOT/tests/skills-mirror-gitignore.sh"

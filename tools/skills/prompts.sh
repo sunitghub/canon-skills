@@ -117,10 +117,8 @@ offer_model_tiers_note() {
     return 0
   fi
   if _prompt_or_auto_yes "Update AGENTS.md with model-per-task note?"; then
-    {
-      echo ""
-      awk '/<!-- MODEL-TIERS:BEGIN -->/{flag=1} flag; /<!-- MODEL-TIERS:END -->/{flag=0}' "$source_agents"
-    } >> "$target"
+    ensure_blank_sep "$target"
+    awk '/<!-- MODEL-TIERS:BEGIN -->/{flag=1} flag; /<!-- MODEL-TIERS:END -->/{flag=0}' "$source_agents" >> "$target"
     echo "AGENTS.md updated with model-per-task note."
   fi
 }

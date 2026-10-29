@@ -108,6 +108,16 @@ has_line() {
   HAS_LINE_T="$1" awk 'BEGIN { t = ENVIRON["HAS_LINE_T"] } { sub(/\r$/, "") } $0 == t { f=1; exit } END { exit !f }' "$2"
 }
 
+# ensure_blank_sep <file> — end the file on exactly one separating blank line before canon appends a block: nothing for an
+# empty or missing file, nothing when the last line is already blank (t-351c: each writer added its own, so they stacked).
+ensure_blank_sep() {
+  local f="$1"
+  [ -s "$f" ] || return 0
+  if [ -n "$(tail -c1 "$f")" ]; then echo >> "$f"; fi
+  if [ -n "$(tail -n1 "$f" | tr -d '\r')" ]; then echo >> "$f"; fi
+  return 0
+}
+
 is_canon_project_import_line() {
   local line="$1" import_path base
   [[ "$line" == @* ]] || return 1
