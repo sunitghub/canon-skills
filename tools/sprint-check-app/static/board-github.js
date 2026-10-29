@@ -507,7 +507,7 @@ function githubPlaceRowHTML(tab) {
     const what = doctor.state === 'bad' ? `set up first (${doctor.n} of ${doctor.m} ready)` : 'set up first (the checks could not run)';
     return `<div class="ck-worktree-held-row ck-gh-setup" id="ck-gh-place" role="button" tabindex="0" title="Opens Factory › GitHub, which lists what to fix"><span class="ck-worktree-held-branch">GitHub · ${what}</span><span class="ck-worktree-held-why">open Factory › GitHub</span></div>`;
   }
-  return `<div class="ck-worktree-row ck-gh-row${tab.ghPick ? ' selected' : ''}" id="ck-gh-place" data-github="new" title="Sends this ticket as an issue to your repo; a Claude cloud session works it and opens a PR">
+  return `<div class="ck-worktree-row ck-gh-row${tab.ghPick ? ' selected' : ''}" id="ck-gh-place" data-github="new" title="Sends this ticket as an issue to your repo; a cloud agent works it and opens a PR">
       <div class="ck-worktree-radio"></div>
       <div class="ck-worktree-labels"><div class="ck-worktree-label">GitHub · new issue</div><div class="ck-worktree-sub">A Cloud Agent works it</div></div>
     </div>`;
@@ -572,7 +572,7 @@ export async function showGithubPanel(t, tab) {
   if (ghOut(t)) {
     const p = ghParts(t);
     panel.innerHTML = `<div class="ck-gh-box"><h3>${esc(t.id)} is out on GitHub${p ? ` as issue #${esc(p.issue)}` : ''}</h3>
-      <p>A Claude cloud session works it there; this ticket does not run here until you take it back. Its card shows the next step.</p></div>`;
+      <p>A cloud agent works it there; this ticket does not run here until you take it back. Its card shows the next step.</p></div>`;
     return;
   }
   panel.innerHTML = `<div class="ck-gh-box" data-gh-send="${esc(t.id)}"><h3>Send ${esc(t.id)} to GitHub</h3><p>Loading the preview…</p></div>`;

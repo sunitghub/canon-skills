@@ -9815,7 +9815,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
       const box = page.locator('#ck-worktree');
       await expect(box.locator('.ck-worktree-row .ck-worktree-label')).toHaveText(['Main checkout (current)', 'sprint/free', 'sprint/mine', 'GitHub · new issue']);   // t-718b: the GitHub place
-      const group = box.locator('details.ck-worktree-held');
+      const group = box.locator('details.ck-worktree-held:not(.ck-gh-busy-fold)');   // t-6f51 folds the GitHub rows with the same class
       await expect(group.locator('summary')).toHaveText('2 worktrees unavailable');
       await expect(group).not.toHaveAttribute('open', '');
       for (const theme of ['dark', 'light']) {
