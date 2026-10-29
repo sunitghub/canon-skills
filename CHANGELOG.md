@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Added
+- The worktree picker folds the tickets already out on GitHub into one collapsed "N tickets on GitHub" line, and a send with no PR and no issue activity for 3 days reads "no activity for N days" with a **Take back** button (the card's own dialog) (t-6f51). `tkt github-status --json` gains `issue_updated` (the issue's `updatedAt`, one `gh issue view` read, only while the stage is `sent`; `null` when unreadable). The Send panel numbers its steps when files are changed: a changed tracked file holds **Create issue** until Commit and push succeeds or "Send without these changes" is ticked; untracked files only get a note. `tkt send-issue` itself is unchanged (`docs/setup.md`).
+
 ## [0.30.5] - 2026-10-29
 
 Update with `canon update` (stop the Cockpit first), then restart the daemon (Admin's **Restart Daemon**): the board changed. Hidden lanes all fold into one thin lane at the end of the board, stacked top to bottom.

@@ -16004,6 +16004,8 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
       const t = (await import('/static/board-core.js')).state.tickets.find(x => x.id === tid);
       gh.hideGithubPanel(); await gh.showGithubPanel(t, cockpitState);
     }, id);
+    await expect(page.locator('#ck-gh-create')).toBeDisabled();   // t-6f51: the tracked change waits for Commit and push or "Send without"
+    await page.locator('#ck-gh-skip').check();
     await expect(page.locator('#ck-gh-create')).toBeEnabled();
     await expect(page.locator('#ck-gh-cp-open')).toHaveText('Commit and push…');
   });
@@ -17555,6 +17557,134 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('.column', { has: card }).locator('.col-title, .column-title, h2').first()).toContainText(/open/i);
     await expect(card.locator('.card-gh-chip')).toHaveCount(0);
     await expect(card.locator('.card-start')).toHaveText(/Start/);
+  });
+
+  // ── t-6f51: the picker folds the tickets already on GitHub, flags a dead send, and the Send panel orders its steps ──
+  const daysAgo = n => new Date(Date.now() - n * 86400000).toISOString().replace(/\.\d+Z$/, 'Z');
+  async function openPicker(page, id) {
+    await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
+    await page.route('**/api/worktrees**', r => json(r, [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true }]));
+    await openBoard(page, id);
+    await page.locator(`.card[data-id="${id}"] .card-start`).click();
+    await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+  }
+
+  // Prod path: the worktree picker (githubPickerRowsHTML) on a project with tickets out on GitHub.
+  test('the picker folds tickets on GitHub into one collapsed line; the new-issue row stays outside it (t-6f51)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh60'), a = newTicketId(PROJECT_ROOT, 'gh60a'), b = newTicketId(PROJECT_ROOT, 'gh60b');
+    ghTicket(id); ghTicket(a, { github: 'acme/app#61' }); ghTicket(b, { github: 'acme/app#62' });
+    await routeStatus(page, a, { stage: 'sent', issue_updated: daysAgo(0) });
+    await routeStatus(page, b, { stage: 'pr-open', pr: 63 });
+    await openPicker(page, id);
+    const fold = page.locator('#ck-worktree details.ck-gh-busy-fold');
+    await expect(fold).toHaveCount(1);
+    // The copied project may hold other tickets out on GitHub: the line counts every row, so compare it with the rows.
+    const n = await fold.locator('.ck-gh-busy').count();
+    expect(n).toBeGreaterThanOrEqual(2);
+    await expect(fold.locator('summary')).toHaveText(`${n} tickets on GitHub`);
+    await expect(fold).not.toHaveAttribute('open', '');
+    await expect(fold.locator('.ck-gh-busy').first()).toBeHidden();
+    await fold.locator('summary').click();
+    await expect(fold.locator('.ck-gh-busy').first()).toBeVisible();
+    await expect(fold.locator('.ck-gh-busy', { hasText: a })).toContainText('GitHub #61');
+    await expect(fold.locator('.ck-gh-busy', { hasText: b })).toContainText('GitHub #62');
+    await expect(page.locator('#ck-worktree #ck-gh-place')).toHaveCount(1);
+    await expect(fold.locator('#ck-gh-place')).toHaveCount(0);   // the place row to send another stays outside
+    const one = await page.evaluate(async ([tid, drop]) => {   // one ticket: singular
+      const { githubPickerRowsHTML } = await import('/static/board-github.js');
+      const { state } = await import('/static/board-core.js');
+      const keep = state.tickets; state.tickets = keep.filter(x => x.id === tid || x.id === drop);
+      const html = githubPickerRowsHTML(keep.find(x => x.id === tid), {}); state.tickets = keep;
+      return /<summary>([^<]*)<\/summary>/.exec(html)?.[1];
+    }, [id, a]);
+    expect(one).toBe('1 ticket on GitHub');
+  });
+
+  // Prod path: githubPickerRowsHTML's stale rule over github-status's issue_updated, and the card's takeBack dialog from the picker.
+  test('a send with no PR and no activity for 3 days is stale with a Take back that opens the existing dialog (t-6f51)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh61'), stale = newTicketId(PROJECT_ROOT, 'gh61s'), fresh = newTicketId(PROJECT_ROOT, 'gh61f'),
+      pr = newTicketId(PROJECT_ROOT, 'gh61p'), sentPr = newTicketId(PROJECT_ROOT, 'gh61q'), unknown = newTicketId(PROJECT_ROOT, 'gh61u');
+    ghTicket(id);
+    for (const [t, n] of [[stale, 71], [fresh, 72], [pr, 73], [sentPr, 74], [unknown, 75]]) ghTicket(t, { github: `acme/app#${n}` });
+    await routeStatus(page, stale, { stage: 'sent', issue_updated: daysAgo(5) });
+    await routeStatus(page, fresh, { stage: 'sent', issue_updated: daysAgo(2) });
+    await routeStatus(page, pr, { stage: 'pr-open', pr: 9, issue_updated: daysAgo(9) });
+    await routeStatus(page, sentPr, { stage: 'sent', pr: 9, issue_updated: daysAgo(9) });
+    await routeStatus(page, unknown, { stage: 'sent', issue_updated: null });   // unreadable: never guessed stale
+    const bodies = [];
+    await page.route(`**/api/ticket/${stale}/github/take-back`, r => { bodies.push(JSON.parse(r.request().postData() || '{}')); return json(r, { ok: true, exit_code: 0, output: 'take-back: back' }); });
+    await openPicker(page, id);
+    await page.locator('#ck-worktree .ck-gh-busy-fold summary').click();
+    const row = t => page.locator('#ck-worktree .ck-gh-busy', { hasText: t });
+    await expect(row(stale)).toContainText('no activity for 5 days');
+    await expect(row(stale)).not.toContainText('busy');
+    await expect(row(stale).locator('.ck-gh-takeback')).toHaveText('Take back');
+    for (const t of [fresh, pr, sentPr, unknown]) {
+      await expect(row(t)).toContainText('busy');
+      await expect(row(t).locator('.ck-gh-takeback')).toHaveCount(0);
+    }
+    await row(stale).locator('.ck-gh-takeback').click();
+    await expect(page.locator('#gh-dialog-title')).toHaveText(`Take ${stale} back from GitHub?`);   // takeBack's own dialog
+    await page.locator('#gh-dialog-cancel').click();
+    expect(bodies).toEqual([]);   // the button only asks; nothing posts before the confirm
+    await row(stale).locator('.ck-gh-takeback').click();
+    await page.locator('#gh-dialog-ok').click();
+    await expect.poll(() => bodies.length).toBe(1);
+    expect(bodies[0]).toEqual({ close_issue: false });
+  });
+
+  // Prod path: showGithubPanel's send preview (tkt send-issue --dry-run's warning) with the Commit and push form's file list.
+  async function sendPanel(page, id, { preview, files }) {
+    await page.route(`**/api/ticket/${id}/github/send-preview`, r => json(r, preview()));
+    await page.route(`**/api/ticket/${id}/github/commit-push-preview`, r => json(r, { ok: true, exit_code: 0, output: `commit-push: ${id} in /w\nbranch: main -> origin/main\n${files}` }));
+    await openPicker(page, id);
+    await page.locator('#ck-worktree .ck-gh-row').click();
+    await expect(page.locator('#ck-gh-preview')).toContainText('repo: acme/app');
+  }
+  const DIRTY = 'send-issue: warning: 1 file(s) in /w have uncommitted or untracked changes; the cloud session will not see them\nrepo: acme/app (PRIVATE)';
+  const CLEAN = 'repo: acme/app (PRIVATE)';
+
+  test('a changed tracked file numbers the steps and holds Create issue until Commit and push or Send without (t-6f51)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh62');
+    ghTicket(id);
+    let dirty = true;
+    await page.route(`**/api/ticket/${id}/github/commit-push`, r => { dirty = false; return json(r, { ok: true, exit_code: 0, output: 'commit-push: pushed' }); });
+    await sendPanel(page, id, { preview: () => ({ ok: true, exit_code: 0, output: dirty ? DIRTY : CLEAN }), files: 'file:  M src/app.js\nfile: ?? notes.txt' });
+    await expect(page.locator('#ck-gh-step1')).toHaveText('Step 1: Commit and push — the cloud only sees what is on GitHub');
+    await expect(page.locator('#ck-gh-step2')).toHaveText('Step 2: Create issue');
+    await expect(page.locator('#ck-gh-create')).toBeDisabled();
+    await page.locator('#ck-gh-skip').check();
+    await expect(page.locator('#ck-gh-create')).toBeEnabled();
+    await page.locator('#ck-gh-skip').uncheck();
+    await expect(page.locator('#ck-gh-create')).toBeDisabled();
+    // Commit and push succeeds: the preview runs again clean, the steps and the opt-out go, Create issue is enabled.
+    await page.locator('#ck-gh-cp-open').click();
+    await page.locator('#ck-gh-cp-go').click();
+    await page.locator('#gh-dialog-ok').click();
+    await expect(page.locator('#ck-gh-step1')).toHaveCount(0);
+    await expect(page.locator('#ck-gh-skip')).toHaveCount(0);
+    await expect(page.locator('#ck-gh-create')).toBeEnabled();
+  });
+
+  test('only untracked files give a one-line note and leave Create issue enabled (t-6f51)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh63');
+    ghTicket(id);
+    await sendPanel(page, id, { preview: () => ({ ok: true, exit_code: 0, output: DIRTY }), files: 'file: ?? notes.txt' });
+    await expect(page.locator('#ck-gh-untracked')).toHaveText('1 new file is not tracked, so the cloud will not see it. You can still create the issue.');
+    await expect(page.locator('#ck-gh-skip')).toHaveCount(0);
+    await expect(page.locator('#ck-gh-create')).toBeEnabled();
+  });
+
+  test('unpushed commits still refuse the send and show no steps (t-6f51)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh64');
+    ghTicket(id);
+    await page.route(`**/api/ticket/${id}/github/send-preview`, r => json(r, { ok: false, exit_code: 1, output: 'send-issue: 2 commit(s) in /w are on no branch of origin: the cloud session works from GitHub and will not see them.' }));
+    await openPicker(page, id);
+    await page.locator('#ck-worktree .ck-gh-row').click();
+    await expect(page.locator('#ck-gh-panel')).toContainText('are on no branch of origin');
+    await expect(page.locator('#ck-gh-create')).toBeDisabled();
+    await expect(page.locator('#ck-gh-skip')).toHaveCount(0);   // no opt-out for a refusal
+    await expect(page.locator('#ck-gh-step1')).toHaveCount(0);
   });
 
   // ── t-e523: one rule per button role (static/buttons.css), and the GitHub dialog's log, progress line, size and closing ──

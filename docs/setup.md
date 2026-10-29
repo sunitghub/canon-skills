@@ -170,7 +170,7 @@ After you change the setup script, start a new session: one that is already open
    refused (push first, or add `--allow-unpushed` in a terminal; for an in-progress ticket bound to a worktree it is that worktree's commits that count), and uncommitted or untracked changes get a warning. In either case the board's Send panel offers **Commit and push…**:
    it lists the changed files (untracked ones unticked), and after a confirm that names the files and the branch it runs
    `tkt commit-push <id> --file <path>... --message <text>`, which commits exactly those files and pushes the branch to
-   `origin` (never forced; `-u` for a branch origin does not have; refused when origin has commits you lack). A ticket you planned here is
+   `origin` (never forced; `-u` for a branch origin does not have; refused when origin has commits you lack). When files are changed the panel numbers the steps (Step 1: Commit and push, Step 2: Create issue): a changed tracked file keeps **Create issue** disabled until the push succeeds or you tick "Send without these changes (the cloud will not see them)"; files that are only untracked get a one-line note and do not block. Unpushed commits still refuse. A ticket you planned here is
    `in_progress`; it can still be sent once no session is working on it, and it goes back to `open` as it leaves. The
    board's GitHub option and `--dry-run` show exactly what the command says.
 3. Start the session. One command does steps 2 and 3: `tkt send-issue <id> --launch` shows the issue, asks `[y/N]`
@@ -222,6 +222,9 @@ On the board these are one button per card stage: Issue ↗, PR ↗, Import resu
 session that pushed its branch without opening a PR shows "branch, no PR" and a **Create PR** button (`tkt open-pr <id>`),
 which opens it with `Fixes #N` after you confirm. The worktree picker's "GitHub · new issue" row reads the readiness
 checks first and, when something is missing, reads "GitHub · set up first (n of m ready)" and opens Factory › GitHub.
+The tickets already out on GitHub fold into one collapsed line there ("2 tickets on GitHub"). A send with no PR and no
+activity on its issue (`tkt github-status --json`'s `issue_updated`, which a comment moves too) for 3 days reads "no activity for N days"
+and has a **Take back** button: the same dialog as the card's `take back` link, and nothing else.
 
 **Letting Claude Code run the merge.** In auto mode, Claude Code blocks a merge as "Merge Without Review" even after
 you said yes in chat. To let it run `merge-pr` for you, allow the command once, with `/permissions` › Allow or in the

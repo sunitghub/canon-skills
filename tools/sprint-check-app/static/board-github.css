@@ -81,3 +81,6 @@ html[data-theme="light"] .ck-gh-box .ck-gh-note p { color: var(--th-warn-ink, #9
 .gh-sync-table tr.gh-sync-skip td { color: var(--text-muted); }
 .gh-sync-table input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
 .gh-sync-table input[type=checkbox]:disabled { cursor: not-allowed; opacity: .45; }
+/* t-6f51: a stale send's Take back, and the numbered steps of the Send panel */
+.ck-gh-stale .ck-gh-takeback { align-self: flex-start; margin-top: 3px; font: inherit; font-size: 11px; cursor: pointer; }
+.ck-gh-box .ck-gh-step { margin: 4px 0 0; font-size: 13px; }

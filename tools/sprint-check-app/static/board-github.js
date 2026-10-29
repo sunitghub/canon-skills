@@ -11,6 +11,7 @@ import { resetPanelDrag, resetPanelResize } from './board-panels.js';
 
 const POLL_MS = 120000;          // github-status per card out on GitHub; the server caches each for 30 s
 const MERGE_POLL_MS = 2000;
+const STALE_DAYS = 3;          // t-6f51: a send with no PR and no issue activity for this long reads as stale in the picker
 const MERGE_LOST_POLLS = 5;   // failed polls in a row before the merge dialog stops waiting
 const statusById = new Map();    // id -> {ok, status?, output, pending?}
 const mergeById = new Map();     // id -> {status, output, exit_code, elapsed} while a merge job is followed
@@ -489,6 +490,11 @@ function bindPlaceRow() {
 // The picker calls this once its rows are in the page; onPick(row) is what picking the GitHub place does there.
 export function bindGithubPickerRows(box, tab, onPick) {
   place = { tab, onPick };
+  box.querySelectorAll('.ck-gh-takeback').forEach(b => b.addEventListener('click', e => {
+    e.stopPropagation();
+    const t = state.tickets.find(x => x.id === b.dataset.id);
+    if (t) takeBack(t);   // t-6f51: the card's own dialog; nothing else takes a ticket back
+  }));
   bindPlaceRow();
   swapPlaceRow();   // an answer that landed while the picker was still building its rows
 }
@@ -521,10 +527,24 @@ export function githubPickerRowsHTML(t, tab) {
   // A closed or cancelled ticket is not busy in the cloud: one closed by hand never gets merged: (t-093a). ghOut() stays
   // true for it, because a closed, imported ticket still needs its Check & merge button.
   const busy = (state.tickets || []).filter(x => ghOut(x) && x.status !== 'closed' && x.status !== 'cancelled');
-  return busy.map(x => {
-    const p = ghParts(x);
-    return `<div class="ck-worktree-held-row ck-gh-busy"><span class="ck-worktree-held-branch">GitHub${p ? ` #${esc(p.issue)}` : ''}</span><span class="ck-worktree-held-why">cloud · busy: ${esc(x.id)}</span></div>`;
-  }).join('') + githubPlaceRowHTML(tab);
+  // t-6f51: the busy rows fold into one line, as "N worktrees unavailable" does; the place row to send another stays outside.
+  const fold = busy.length ? `<details class="ck-worktree-held ck-gh-busy-fold"><summary>${busy.length} ticket${busy.length === 1 ? '' : 's'} on GitHub</summary>`
+    + busy.map(x => {
+      const p = ghParts(x), idle = staleDays(x);
+      const why = idle ? `no activity for ${idle} days: ${esc(x.id)}` : `cloud · busy: ${esc(x.id)}`;
+      return `<div class="ck-worktree-held-row ck-gh-busy${idle ? ' ck-gh-stale' : ''}" data-id="${escAttr(x.id)}"><span class="ck-worktree-held-branch">GitHub${p ? ` #${esc(p.issue)}` : ''}</span><span class="ck-worktree-held-why">${why}</span>`
+        + (idle ? `<button type="button" class="ck-gh-takeback" data-id="${escAttr(x.id)}" title="Bring this ticket back to work on it here">Take back</button>` : '') + `</div>`;
+    }).join('') + `</details>` : '';
+  return fold + githubPlaceRowHTML(tab);
+}
+// t-6f51: whole days of silence on a send that has no PR (stage sent: no results branch, no session branch either), 0 when it is not stale.
+// issue_updated is github-status's one added field: the issue's updatedAt, which a comment moves too.
+function staleDays(t) {
+  const st = statusById.get(t.id)?.status;
+  if (!st || st.stage !== 'sent' || prOf(st) || !st.issue_updated) return 0;
+  const at = Date.parse(st.issue_updated);
+  const days = Number.isFinite(at) ? Math.floor((Date.now() - at) / 86400000) : 0;
+  return days >= STALE_DAYS ? days : 0;
 }
 
 // t-8627: a preview answer that arrives after a later call (or a hide) must not write: each call takes a number, and only the latest may.
@@ -569,18 +589,39 @@ export async function showGithubPanel(t, tab) {
   const preview = outLines.filter(l => !WARN.test(l)).join('\n');
   // t-32f9: unpushed commits refuse the send and uncommitted files only warn; either way the cloud would not see them, so offer
   // to commit and push from here (tkt commit-push, after a confirm that names the files and the branch).
-  const cpOffer = /are on no branch of origin/.test(pv.output || '') || warns.some(w => /have uncommitted or untracked changes/.test(w));
+  const localChanges = warns.some(w => /have uncommitted or untracked changes/.test(w));
+  const cpOffer = /are on no branch of origin/.test(pv.output || '') || localChanges;
+  // t-6f51: a changed tracked file is something the cloud would miss, so Create issue waits for Commit and push (or an explicit
+  // opt-out); untracked files only get a note. The kinds come from the same list the Commit and push form shows; unreadable = tracked.
+  let kinds = { tracked: 0, untracked: 0 };
+  if (localChanges) {
+    let cp;
+    try { cp = await getJSON(ghApi(t.id, 'commit-push-preview')); }
+    catch (e) { cp = { ok: false }; }
+    if (gen !== ghPanelGen) return;
+    if (tab && (tab !== cockpitState || !tab.ghPick)) return;
+    const files = cp.ok ? String(cp.output || '').split(/\r?\n/).map(l => /^file: (..) (.+)$/.exec(l)).filter(Boolean) : null;
+    kinds = files ? { tracked: files.filter(m => m[1] !== '??').length, untracked: files.filter(m => m[1] === '??').length } : { tracked: 1, untracked: 0 };
+  }
+  const needPush = pv.ok && kinds.tracked > 0;
   panel.innerHTML = `<div class="ck-gh-box"${pv.ok ? ` data-gh-send="${esc(t.id)}"` : ''}>
       <h3>Send ${esc(t.id)} to GitHub</h3>
       <p>${pv.ok ? 'The issue, exactly as it will be created. Nothing is sent until you press Create issue.' : 'The preview failed, so nothing can be sent yet:'}</p>
       ${warns.length ? `<div class="ck-gh-note" id="ck-gh-note" role="note">${warns.map(w => `<p>${esc(w)}</p>`).join('')}</div>` : ''}
+      ${localChanges ? `<h4 class="ck-gh-step" id="ck-gh-step1">Step 1: Commit and push — the cloud only sees what is on GitHub</h4>` : ''}
+      ${localChanges && !kinds.tracked && kinds.untracked ? `<p id="ck-gh-untracked">${kinds.untracked} new file${kinds.untracked === 1 ? ' is' : 's are'} not tracked, so the cloud will not see ${kinds.untracked === 1 ? 'it' : 'them'}. You can still create the issue.</p>` : ''}
       ${cpOffer ? `<div class="ck-gh-cp" id="ck-gh-cp"><div class="ck-gh-actions"><button type="button" id="ck-gh-cp-open">Commit and push…</button></div></div>` : ''}
       <pre class="ck-gh-pre" id="ck-gh-preview">${esc(preview)}</pre>
+      ${needPush ? `<label class="ck-gh-public"><input type="checkbox" id="ck-gh-skip"> Send without these changes (the cloud will not see them)</label>` : ''}
       ${isPublic ? `<label class="ck-gh-public"><input type="checkbox" id="ck-gh-public"> This repository is public: anyone could read the ticket's notes. Send anyway.</label>` : ''}
-      <div class="ck-gh-actions"><button type="button" class="ck-gh-create" id="ck-gh-create"${pv.ok ? '' : ' disabled'}>Create issue</button><span class="ck-gh-status" id="ck-gh-status" role="status"></span></div>
+      ${localChanges ? `<h4 class="ck-gh-step" id="ck-gh-step2">Step 2: Create issue</h4>` : ''}
+      <div class="ck-gh-actions"><button type="button" class="ck-gh-create" id="ck-gh-create"${pv.ok && !needPush ? '' : ' disabled'}>Create issue</button><span class="ck-gh-status" id="ck-gh-status" role="status"></span></div>
     </div>`;
   if (cpOffer) wireCommitPush(t, tab, gen);
   const create = document.getElementById('ck-gh-create');
+  const skip = document.getElementById('ck-gh-skip');
+  const canCreate = () => pv.ok && (!needPush || skip.checked);
+  skip?.addEventListener('change', () => { create.disabled = !canCreate(); });
   create?.addEventListener('click', async () => {
     const pub = document.getElementById('ck-gh-public');
     if (pub && !pub.checked) { document.getElementById('ck-gh-status').textContent = 'Tick the public-repository box first.'; return; }
@@ -591,7 +632,7 @@ export async function showGithubPanel(t, tab) {
     try { res = await postJSON(ghApi(t.id, 'send'), pub ? { public: true } : {}); }
     catch (e) { res = { ok: false, output: String(e.message || e) }; }
     if (!res.ok) {
-      create.disabled = false; create.textContent = 'Create issue';
+      create.disabled = !canCreate(); create.textContent = 'Create issue';
       statusEl.textContent = 'Not sent; nothing changed.';
       previewEl.textContent = res.output || '';
       return;
