@@ -440,6 +440,7 @@ SH
 cat > "$STUBS/powershell.exe" <<'SH'
 #!/usr/bin/env bash
 if [[ "$*" == *Get-Process* ]]; then [ -z "${STUB_PROCS:-}" ] || printf '%s\n' "$STUB_PROCS"; exit 0; fi
+if [[ "$*" == *Get-CimInstance* ]]; then [[ -z "${STUB_CMDLINE:-}" || "$*" != *"ProcessId=${STUB_CMDPID:-}"* ]] || printf '%s\r\n' "$STUB_CMDLINE"; exit 0; fi
 if [[ "$*" == *GetEnvironmentVariable* ]]; then printf 'C:\\Windows;%s;C:\\Users\\x\\Documents\\canon-skills\\tools;C:\\Other\r\n' "$STUB_WINPATH"; exit 0; fi
 printf '%s\n' "$*" > "$STUB_PSARGS"
 SH
@@ -481,6 +482,8 @@ chmod +x "$STUBS/uname" "$STUBS/cygpath" "$STUBS/powershell.exe"
   probe_daemon; [ "$DAEMON_STATUS" = ours ] && [ "$DAEMON_PID" = 4242 ] || fail "Windows: this install's daemon recorded in LocalAppData must be found (status $DAEMON_STATUS, pid $DAEMON_PID)"
   _proc_ident() { [ "$1" = 4242 ] && printf '"C:\\other\\tools\\canon-go-win.exe" daemon -addr 127.0.0.1:0\n'; }
   probe_daemon; [ "$DAEMON_STATUS" != ours ] || fail "Windows: another install's daemon recorded in LocalAppData must not be taken for ours"
+  cygpath() { :; }   # a conversion that prints nothing must never list a bare /canon-cockpit (uninstall deletes what this lists)
+  dirs="$(cockpit_state_dirs)"; ! grep -qx '/canon-cockpit' <<<"$dirs" || fail "Windows: an empty LOCALAPPDATA conversion listed /canon-cockpit"
 )
 (
   unset LOCALAPPDATA; export LOCALAPPDATA='C:\x'; source "$ROOT/tools/platform-lib.sh"; source "$ROOT/tools/cockpit-stop-lib.sh"
@@ -496,6 +499,12 @@ printf '{"projects":[{"path":"%s"},{"path":"%s"}]}\n' "$(printf '%s' "$winp" | s
 runw --dry-run; assert_eq 0 "$rc"; assert_contains "$out" "Windows user PATH entry: $winentry"; assert_contains "$out" "-> REMOVE"
 assert_contains "$out" "Projects to clean (1,"; refute_contains "$out" "clean   C:"
 assert_contains "$out" "Other PATH entries that mention canon"; assert_contains "$out" "C:\\Users\\x\\Documents\\canon-skills\\tools"
+# t-4872: this install's daemon, recorded in %LOCALAPPDATA%\canon-cockpit\daemon.json (where Go writes it on Windows), is planned for stopping and
+# is not reported as BLOCKED. Prod path: canon uninstall on Windows.
+la="$WORK/la16"; mkdir -p "$la/canon-cockpit"; printf '{"addr":"127.0.0.1:63951","pid":4343}\n' > "$la/canon-cockpit/daemon.json"
+LOCALAPPDATA="C:$(printf '%s' "$la" | tr '/' '\\')" STUB_CMDPID=4343 STUB_CMDLINE="\"C:$(printf '%s' "$inst" | tr '/' '\\')\\tools\\canon-go-win.exe\" daemon -addr 127.0.0.1:0" runw --dry-run
+assert_contains "$out" "will stop: the Cockpit daemon (pid 4343)"; refute_contains "$out" "BLOCKED"
+rm -rf "$la"
 # a process whose executable is in the install folder (asked of PowerShell on Windows) blocks the run and is listed
 PROCS="4242 C:\\fake\\canon-go-win.exe" runw --dry-run; assert_contains "$out" "BLOCKED: processes are running from the install folder"; assert_contains "$out" "4242 C:\\fake\\canon-go-win.exe"
 before="$(digest "$inst"; digest "$h")"; PROCS="4242 C:\\fake\\canon-go-win.exe" runw --yes; assert_eq 1 "$rc"; assert_contains "$out" "processes are running from $inst"; assert_eq "$before" "$(digest "$inst"; digest "$h")"

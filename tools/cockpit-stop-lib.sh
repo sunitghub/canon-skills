@@ -33,7 +33,8 @@ cockpit_state_dirs() {
   if [ -n "${XDG_RUNTIME_DIR:-}" ]; then printf '%s\n' "${XDG_RUNTIME_DIR%/}/canon-cockpit"; fi
   # t-4872: on Windows Go's os.UserCacheDir() is %LocalAppData%, so that is where the daemon writes daemon.json
   if _is_windows && [ -n "${LOCALAPPDATA:-}" ] && command -v cygpath >/dev/null 2>&1; then
-    printf '%s\n' "$(cygpath -u "$LOCALAPPDATA" 2>/dev/null)/canon-cockpit"
+    local la; la="$(cygpath -u "$LOCALAPPDATA" 2>/dev/null)" || la=""
+    [ -z "${la%/}" ] || printf '%s\n' "${la%/}/canon-cockpit"   # never a bare /canon-cockpit: uninstall deletes what this lists
   fi
   case "$(uname -s)" in
     Darwin) printf '%s\n' "$HOME/Library/Caches/canon-cockpit" ;;
