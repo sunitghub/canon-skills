@@ -8,6 +8,28 @@ _is_windows() {
   return 1
 }
 
+# utf8_locale — a UTF-8 locale to run ps under (the current one if it is UTF-8), or nothing and 1 when the machine has none (t-50f7).
+# Under the C locale ps escapes the bytes of a non-ASCII path in a command line (macOS: M-CM-), so matching a process to an install folder
+# by its path would silently miss; with a UTF-8 locale it prints them as they are.
+utf8_locale() {
+  local cur="${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" all c
+  case "$cur" in *.[Uu][Tt][Ff]-8|*.[Uu][Tt][Ff]8|*.[Uu][Tt][Ff]-8@*|*.[Uu][Tt][Ff]8@*) printf '%s\n' "$cur"; return 0 ;; esac
+  all="$(locale -a 2>/dev/null)" || all=""
+  for c in C.UTF-8 C.utf8 en_US.UTF-8 en_US.utf8; do
+    case $'\n'"$all"$'\n' in *$'\n'"$c"$'\n'*) printf '%s\n' "$c"; return 0 ;; esac
+  done
+  return 1
+}
+
+# ps_utf8 <ps arguments...> — ps under utf8_locale when there is one (command lines then carry non-ASCII paths as bytes).
+ps_utf8() {
+  local l
+  if l="$(utf8_locale)"; then LC_ALL="$l" ps "$@"; else ps "$@"; fi
+}
+
+# has_non_ascii <text> — the text has a byte outside printable ASCII (what a ps without a UTF-8 locale cannot show as it is).
+has_non_ascii() { [ -n "$(printf '%s' "$1" | LC_ALL=C tr -d ' -~')" ]; }
+
 # board_rel_path — the board server binary, relative to a canon install (t-15d8: the Go board on every OS). The one owner of
 # this path: cockpit-launch-lib.sh starts it and cockpit-stop-lib.sh recognises the running board by it. tools/fetch-daemon.sh's
 # component table names the same destination (it runs standalone, without this file).

@@ -132,6 +132,15 @@ bash -c 'exec -a "$0" sleep 300' "$U/packages/v1.0.0/tools/cockpit-daemon/cockpi
 printf '{"pid": %s}\n' "$DP" > "$W/state/daemon.json"; sleep 0.3
 out="$(run "$U" bash "$U/tools/canon" uninstall --dry-run 2>&1)" || fail "uninstall --dry-run failed: $out"
 assert_contains "$out" "Install folder: $U"; assert_contains "$out" "-> DELETE"; assert_contains "$out" "will stop: the Cockpit daemon (pid $DP)"
+# every package that is a git clone is checked for work only it holds, not only packages/main: the release clone moved in from the
+# single-tree install keeps its .git (prod path: canon-uninstall.sh install_verdict / clone_verdict)
+echo wip > "$U/packages/v1.0.0/wip.txt"
+out="$(run "$U" bash "$U/tools/canon" uninstall --dry-run 2>&1)" || fail "uninstall --dry-run failed: $out"
+assert_contains "$out" "-> KEEP: the git clone packages/v1.0.0 has uncommitted or untracked changes"
+rm "$U/packages/v1.0.0/wip.txt"; git -C "$U/packages/v1.0.0" checkout -q -b local-work; git -C "$U/packages/v1.0.0" "${ig[@]}" commit -q --allow-empty -m mine
+out="$(run "$U" bash "$U/tools/canon" uninstall --dry-run 2>&1)" || fail "uninstall --dry-run failed: $out"
+assert_contains "$out" "-> KEEP: the git clone packages/v1.0.0 has"
+git -C "$U/packages/v1.0.0" -c advice.detachedHead=false checkout -q --detach v1.0.0; git -C "$U/packages/v1.0.0" branch -q -D local-work
 out="$(run "$U" bash "$U/current/tools/canon" uninstall --yes --keep-data 2>&1)" || fail "uninstall --keep-data failed: $out"
 pid_alive "$DP" && fail "uninstall did not stop the daemon it recognised by its package path"
 wait "$DP" 2>/dev/null || true
@@ -154,6 +163,23 @@ else
   [ -z "$(git -C "$B" status --porcelain)" ] || fail "the rollback left the clone dirty"
   echo "canon-migrate: a move that fails part way is rolled back, the clone byte-identical"
 fi
+
+# ── C8: an interrupt (TERM) part way through the move puts everything back (prod path: the migration's INT/TERM/HUP trap) ─────────────────────
+# A stub mv on PATH holds the move of scripts/ for 2 s and drops a marker, so the TERM lands mid-move; it goes to the migrating process's own pid.
+I="$H/interrupt"; old_install "$I" v1.0.0; BEFORE="$(tree_sum "$I")"
+mkdir -p "$W/slowmv"; REAL_MV="$(command -v mv)"
+printf '#!/bin/sh\ncase "$*" in *"/scripts "*) if [ ! -e "$MV_MARK" ]; then : > "$MV_MARK"; sleep 2; fi ;; esac\nexec "%s" "$@"\n' "$REAL_MV" > "$W/slowmv/mv"; chmod +x "$W/slowmv/mv"
+env -u XDG_RUNTIME_DIR HOME="$H" TMPDIR="$W/tmp" XDG_CONFIG_HOME="$W/xdg" XDG_CACHE_HOME="$W/cache" COCKPIT_STATE_DIR="$W/state" CANON_COCKPIT_PORT=1 \
+  CANON_MANIFEST_URL="file://$W/releases.txt" SKILLS_SH_NO_TTY=1 CANON_HOME="$I" MV_MARK="$W/mv.mark" PATH="$W/slowmv:$PATH" \
+  "$I/tools/canon" update > "$W/int.out" 2>&1 </dev/null & IP=$!; PIDS+=("$IP")
+for i in $(seq 1 50); do [ -e "$W/mv.mark" ] && break; sleep 0.2; done
+[ -e "$W/mv.mark" ] || fail "the stub mv never ran (the move did not reach scripts/): $(cat "$W/int.out")"
+kill -TERM "$IP"; set +e; wait "$IP"; code=$?; set -e
+[ "$code" != 0 ] || fail "an interrupted move exited 0: $(cat "$W/int.out")"
+assert_contains "$(cat "$W/int.out")" "could not move $I into the versioned layout (interrupted); everything was moved back"
+assert_eq "$BEFORE" "$(tree_sum "$I")"; [ ! -e "$I/packages" ] && [ ! -L "$I/current" ] && [ ! -L "$I/tools" ] || fail "the interrupted move left layout pieces"
+[ ! -e "$I/.update.lock" ] || fail "the interrupted move left its lock"
+echo "canon-migrate: an interrupt mid-move puts everything back and releases the lock"
 
 # ── C9: the move refuses while this install's Cockpit runs, changing nothing ─────────────────────────────────────────────────────────────────────
 R="$H/running"; old_install "$R" v1.0.0; BEFORE="$(tree_sum "$R")"

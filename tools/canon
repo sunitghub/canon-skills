@@ -134,10 +134,14 @@ main_track_note() {
 }
 
 # t-50f7: the folder that holds this install's data and its .canon-track marker. In the versioned layout this script runs from
-# <home>/packages/<name>/tools (SCRIPT_DIR is physical), so the home is two levels above the package; a clone is its own home.
+# <home>/packages/<name>/tools (SCRIPT_DIR is physical), so the home is two levels above the package; a clone is its own home. A folder
+# named packages is the layout only when the home has its current link (as every other detector requires), or for the fresh install's
+# bootstrap clone (packages/.boot.*), which runs before current exists: a developer clone at <any>/packages/<x> stays a clone.
 install_home() {
-  local r; r="$(cd "$SCRIPT_DIR/.." && pwd)"
-  if [ "$(basename "$(dirname "$r")")" = packages ]; then dirname "$(dirname "$r")"; else printf '%s\n' "$r"; fi
+  local r h; r="$(cd "$SCRIPT_DIR/.." && pwd)"; h="$(dirname "$(dirname "$r")")"
+  if [ "$(basename "$(dirname "$r")")" = packages ] && { [ -L "$h/current" ] || case "$(basename "$r")" in .boot.*) true ;; *) false ;; esac; }; then
+    printf '%s\n' "$h"
+  else printf '%s\n' "$r"; fi
 }
 
 # t-50f7: the first refusal of an update in the layout and of the move into it (pkg-lib.sh sourced): it never stops or restarts anything.
@@ -155,7 +159,6 @@ refuse_while_cockpit_runs() {
 # project. Any failed step moves everything back and exits 1.
 migrate_to_packages() {
   local home="$1" name="$2" to="$3" pk="$1/packages" stage="" e n made_pk=0 why=""
-  local moved=()
   # shellcheck source=pkg-lib.sh
   source "$SCRIPT_DIR/pkg-lib.sh"
   refuse_while_cockpit_runs "$home"
@@ -169,12 +172,21 @@ migrate_to_packages() {
     [ ! -L "$home/tools" ] || rm -f -- "$home/tools"
     [ ! -L "$home/current" ] || rm -f -- "$home/current"
     [ -z "$stage" ] || [ -d "$stage" ] || stage="$pk/$name"
-    for n in ${moved[@]+"${moved[@]}"}; do mv -- "$stage/$n" "$home/" || echo "canon update: could not move $stage/$n back into $home" >&2; done
+    # everything in the stage goes back, not a list of what was moved: an interrupt runs this after the mv in flight has finished
+    if [ -n "$stage" ]; then
+      for e in "$stage"/* "$stage"/.[!.]* "$stage"/..?*; do
+        [ -e "$e" ] || [ -L "$e" ] || continue
+        mv -- "$e" "$home/" || echo "canon update: could not move $e back into $home" >&2
+      done
+    fi
     [ -z "$stage" ] || rmdir -- "$stage" 2>/dev/null || true
     [ "$made_pk" = 0 ] || rmdir -- "$pk" 2>/dev/null || true
+    trap - INT TERM HUP
     echo "canon update: could not move $home into the versioned layout ($why); everything was moved back. Nothing was changed." >&2
     exit 1
   }
+  # an interrupt (Ctrl+C, a closed terminal, a TERM) mid-move puts everything back too; bash runs it once the current mv has finished
+  trap 'why="interrupted"; _migrate_back' INT TERM HUP
   mkdir -- "$pk" && made_pk=1 || { why="could not create $pk"; _migrate_back; }
   stage="$(mktemp -d "$pk/.tmp-migrate.XXXXXX")" || { stage=""; why="could not create a temp folder in $pk"; _migrate_back; }
   for e in "$home"/* "$home"/.[!.]* "$home"/..?*; do
@@ -183,12 +195,12 @@ migrate_to_packages() {
     case "$n" in packages|.update.lock) continue ;; esac
     ! pkg_is_data "$n" || continue
     mv -- "$e" "$stage/" || { why="could not move $n"; _migrate_back; }
-    moved+=("$n")
   done
   mv -- "$stage" "$pk/$name" || { why="could not rename the new package"; _migrate_back; }
   stage="$pk/$name"
-  pkg_flip "$home" "$name" || { why="$PKG_ERR"; _migrate_back; }
+  pkg_flip "$home" "$name" 1 || { why="$PKG_ERR"; _migrate_back; }
   pkg_compat_tools "$home" || { why="could not link $home/tools"; _migrate_back; }
+  trap - INT TERM HUP
   echo "canon is now in $home/packages/$name; $home/current points at it, and $home/tools leads there for an existing PATH line."
   [ -z "$to" ] || [ "$to" = "$name" ] || echo "To move to $to, run: canon update --to $to"
   pkg_unlock; trap - EXIT
@@ -270,7 +282,7 @@ update_packages() {
     echo "$msg"
   fi
   pkg_compat_tools "$home" || echo "canon update: could not create the link $home/tools -> current/tools; use $home/current/tools instead." >&2
-  pkg_prune "$home"
+  pkg_prune "$home" "$cur"
   pkg_unlock; trap - EXIT
   # the refresh runs the new package's code (its skills.sh), not this one's
   exec bash "$home/current/tools/canon" update --refresh-only

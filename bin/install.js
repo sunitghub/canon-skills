@@ -67,6 +67,20 @@ function main() {
     // the update may have moved an older install into the layout
     if (fs.existsSync(path.join(TARGET, 'current', 'tools', 'skills.sh'))) tools = path.join(TARGET, 'current', 'tools');
   } else {
+    // The clone this replaced refused a folder with anything in it; so does this (as install.sh): canon never spreads into a folder of yours.
+    // Allowed: canon's own data, as `canon uninstall --keep-data` leaves it (tools/pkg-lib.sh pkg_is_data), packages/, .DS_Store.
+    const allowed = new Set(['cockpit', 'events', 'themes', 'settings.json', 'integrity', 'logs', '.canon-track', '.canon-cache', 'packages', '.DS_Store']);
+    if (fs.existsSync(TARGET)) {
+      if (!fs.statSync(TARGET).isDirectory()) {
+        console.error(`\n  \x1b[31m✗\x1b[0m  ${TARGET} exists and is not a folder. Nothing was written.`);
+        process.exit(1);
+      }
+      const other = fs.readdirSync(TARGET).find((e) => !allowed.has(e));
+      if (other !== undefined) {
+        console.error(`\n  \x1b[31m✗\x1b[0m  ${TARGET} is not empty and is not a canon install (it holds ${other}). Install into a new or empty folder (CANON_HOME=<folder>, or the folder as an argument). Nothing was written.`);
+        process.exit(1);
+      }
+    }
     header(`Installing canon → ${TARGET}`);
     // on failure remove only what this run made: an existing folder (empty, or holding data kept from an earlier install) is the user's
     const existed = fs.existsSync(TARGET);

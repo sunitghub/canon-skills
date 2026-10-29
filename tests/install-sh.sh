@@ -97,4 +97,18 @@ set +e; out="$(env_i node "$ROOT/bin/install.js" "$W/jsnorel" 2>&1)"; code=$?; s
 assert_eq "1" "$code"; [[ ! -e "$W/jsnorel" ]] || fail "install-js: a failed verification left $W/jsnorel behind"; assert_contains "$out" "nothing was installed"; assert_contains "$out" "CANON_REF=main"
 set +e; out="$(env_i node "$ROOT/bin/install.js" "$W/jsempty" 2>&1)"; code=$?; set -e
 assert_eq "1" "$code"; [[ -d "$W/jsempty" && -z "$(ls -A "$W/jsempty")" ]] || fail "install-js: a failed install into an existing empty folder left something in it: $(ls -A "$W/jsempty")"
+# t-50f7 review: like the git clone it replaced, a fresh install refuses a folder holding anything but canon's own data and writes nothing
+# there (install.sh ~/Documents must not spread canon into it); a folder with only data, as `canon uninstall --keep-data` leaves it, installs.
+# Prod path: install.sh and bin/install.js, the fresh-install branch.
+mkdir -p "$W/docs"; echo mine > "$W/docs/letter.txt"
+for inst in sh js; do
+  set +e
+  if [ "$inst" = sh ]; then out="$(env_i CANON_REF=main bash "$ROOT/install.sh" "$W/docs" 2>&1)"; else out="$(env_i CANON_REF=main node "$ROOT/bin/install.js" "$W/docs" 2>&1)"; fi
+  code=$?; set -e
+  assert_eq 1 "$code"; assert_contains "$out" "$W/docs is not empty and is not a canon install (it holds letter.txt)"; assert_contains "$out" "Nothing was written."
+  assert_eq "letter.txt" "$(ls -A "$W/docs")"; assert_eq mine "$(cat "$W/docs/letter.txt")"
+done
+mkdir -p "$W/kept/cockpit"; echo '[]' > "$W/kept/cockpit/projects.json"
+out="$(env_i CANON_REF=main bash "$ROOT/install.sh" "$W/kept" 2>&1)" || fail "install-sh: a folder with only kept data was refused: $out"
+assert_eq "packages/main" "$(readlink "$W/kept/current")"; assert_eq "[]" "$(cat "$W/kept/cockpit/projects.json")"
 echo "install-sh: ok (target resolution; the main track is a depth-1 clone in packages/main that updates in place; a failed verification installs nothing and leaves an existing folder empty; install.js takes the same steps)"

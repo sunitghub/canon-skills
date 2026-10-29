@@ -55,6 +55,16 @@ if [[ -f "$TARGET/current/tools/skills.sh" || -f "$TARGET/tools/skills.sh" ]]; t
   fi
   [[ ! -f "$TARGET/current/tools/skills.sh" ]] || TOOLS="$TARGET/current/tools"   # the update may have moved an older install into the layout
 else
+  # The clone this replaced refused a folder with anything in it; so does this, so canon never spreads into a folder of yours (~/Documents).
+  # Allowed: canon's own data, as `canon uninstall --keep-data` leaves it (the names of tools/pkg-lib.sh pkg_is_data), packages/, .DS_Store.
+  if [[ -e "$TARGET" && ! -d "$TARGET" ]]; then printf 'error: %s exists and is not a folder. Nothing was written.\n' "$TARGET" >&2; exit 1; fi
+  for e in "$TARGET"/* "$TARGET"/.[!.]* "$TARGET"/..?*; do
+    [[ -e "$e" || -L "$e" ]] || continue
+    case "${e##*/}" in
+      cockpit|events|themes|settings.json|integrity|logs|.canon-track|.canon-cache|packages|.DS_Store) ;;
+      *) printf 'error: %s is not empty and is not a canon install (it holds %s). Install into a new or empty folder (CANON_HOME=<folder>, or the folder as an argument). Nothing was written.\n' "$TARGET" "${e##*/}" >&2; exit 1 ;;
+    esac
+  done
   printf 'Installing canon → %s\n' "$TARGET"
   # on failure remove only what this run made: an existing folder (empty, or holding data kept from an earlier install) is the user's
   target_existed=0; [[ -e "$TARGET" ]] && target_existed=1

@@ -9,8 +9,10 @@
 # <home> is the folder the installer was given (CANON_HOME or ~/.canon). tools/canon's update_packages is the only caller.
 
 PKG_RELEASE_BASE="${CANON_RELEASE_BASE:-https://github.com/sunitghub/canon-skills/releases/download}"   # the override is a test seam
-PKG_ERR=""; PKG_NOTE=""; PKG_LOCK=""
+PKG_ERR=""; PKG_NOTE=""; PKG_LOCK=""; _PKG_BLIND_SAID=0
 _PKG_LIB_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=platform-lib.sh
+declare -F ps_utf8 >/dev/null || source "$_PKG_LIB_DIR/platform-lib.sh"   # ps_utf8, has_non_ascii
 
 # pkg_is_data <name>: an entry of the home that is user data, never part of a package (moving a single-tree install into the layout leaves it).
 pkg_is_data() {
@@ -31,6 +33,16 @@ _pkg_alive() {
   return 0
 }
 
+# pkg_home_ok <home>: the folder is a canon home in the versioned layout: current is a link, or a fresh install's bootstrap clone
+# (packages/.boot.*) is building it. pkg_flip, pkg_sweep and pkg_prune act on nothing else, so a folder that merely holds a packages/ (a
+# monorepo) is never changed by them.
+pkg_home_ok() {
+  local b
+  [ -L "$1/current" ] && return 0
+  for b in "$1"/packages/.boot.*; do [ -d "$b" ] && return 0; done
+  return 1
+}
+
 # pkg_current <home>: the package `current` points at (its folder name), or nothing and 1.
 pkg_current() {
   local t; t="$(readlink "$1/current" 2>/dev/null)" || return 1
@@ -39,7 +51,8 @@ pkg_current() {
 }
 
 # pkg_lock <home>: take the update lock or set PKG_ERR and return 1. A lock whose pid is gone is a crashed update: it is taken over
-# (PKG_NOTE says so). The pid is read again just before the takeover, so a lock another update took meanwhile is never removed.
+# (PKG_NOTE says so). The takeover renames the dead lock to a name of its own first: a rename is atomic, so of two updates that both saw it
+# dead only one moves it; the winner then checks it moved the dead one (not a lock taken meanwhile, which it puts back) before mkdir.
 pkg_lock() {
   local lock="$1/.update.lock" pid
   PKG_NOTE=""
@@ -48,8 +61,13 @@ pkg_lock() {
   # mkdir and the pid write are two steps: give a lock that was just made a moment to name its owner
   if [ -z "$pid" ]; then sleep 1; pid="$(cat "$lock/pid" 2>/dev/null)" || pid=""; fi
   if [ -n "$pid" ] && _pkg_alive "$pid"; then PKG_ERR="another canon update is running (pid $pid; its lock is $lock)"; return 1; fi
-  [ "$(cat "$lock/pid" 2>/dev/null)" = "$pid" ] || { PKG_ERR="another canon update just took the lock ($lock)"; return 1; }
-  rm -rf -- "$lock"
+  local grave="$lock.dead.$$"
+  mv -- "$lock" "$grave" 2>/dev/null || { PKG_ERR="another canon update just took the lock ($lock)"; return 1; }
+  if [ "$(cat "$grave/pid" 2>/dev/null)" != "$pid" ]; then
+    [ -e "$lock" ] || mv -- "$grave" "$lock" 2>/dev/null || true
+    PKG_ERR="another canon update just took the lock ($lock)"; return 1
+  fi
+  rm -rf -- "$grave"
   mkdir "$lock" 2>/dev/null || { PKG_ERR="another canon update just took the lock ($lock)"; return 1; }
   printf '%s\n' "$$" > "$lock/pid"; PKG_LOCK="$lock"
   PKG_NOTE="took over the update lock of an update that is no longer running (pid ${pid:-unknown})"
@@ -61,12 +79,14 @@ pkg_unlock() {
   PKG_LOCK=""
 }
 
-# pkg_flip <home> <name>: point current at packages/<name>. A new link under a temp name, then a rename over current: a reader sees the old
+# pkg_flip <home> <name> [first]: point current at packages/<name>. first=1 only from the move of a single-tree install, which creates the
+# layout in a home it has checked itself; otherwise the home must already be one (pkg_home_ok). A new link under a temp name, then a rename over current: a reader sees the old
 # target or the new one, never none. mv must not follow current into the folder it points at (that would move the link inside the package):
 # GNU mv says so with -T, BSD mv (macOS) with -h.
 pkg_flip() {
   local home="$1" name="$2" tmp="$1/.current.tmp.$$" t
   PKG_ERR=""
+  [ "${3:-0}" = 1 ] || pkg_home_ok "$home" || { PKG_ERR="$home is not a canon home (no current link, no install in progress)"; return 1; }
   [ -d "$home/packages/$name" ] || { PKG_ERR="$home/packages/$name does not exist"; return 1; }
   rm -f -- "$tmp"
   ln -s "packages/$name" "$tmp" || { PKG_ERR="could not create a link in $home"; return 1; }
@@ -101,7 +121,10 @@ pkg_install() {
   tmp="$(mktemp -d "$pk/.tmp-$tag.XXXXXX")" || { tmp=""; PKG_ERR="could not create a temp folder in $pk"; return 1; }
   zip="$tmp/canon.zip"; url="$PKG_RELEASE_BASE/$tag/canon-${tag#v}.zip"
   command -v curl >/dev/null 2>&1 || { _pkg_fail "curl is required to download $tag"; return 1; }
-  curl -fsSL --proto '=https,file' --proto-redir '=https' --connect-timeout 10 --max-time 300 -o "$zip" "$url" 2>/dev/null \
+  # https only; file:// only when the URL comes from the test seam itself (CANON_RELEASE_BASE set to a file:// folder)
+  local proto='=https'
+  case "${CANON_RELEASE_BASE:-}" in file://*) [ "$PKG_RELEASE_BASE" = "$CANON_RELEASE_BASE" ] && proto='=file' ;; esac
+  curl -fsSL --proto "$proto" --proto-redir '=https' --connect-timeout 10 --max-time 300 -o "$zip" "$url" 2>/dev/null \
     || { _pkg_fail "the download of $tag failed ($url)"; return 1; }
   got="$(_pkg_sha256 "$zip")" || { _pkg_fail "no sha256sum or shasum to verify the download"; return 1; }
   [ "$got" = "$want" ] || { _pkg_fail "the downloaded $tag zip does not match the published checksum (got $got, the manifest says $want); it was discarded"; return 1; }
@@ -118,23 +141,36 @@ pkg_install() {
   rm -rf -- "$tmp"
 }
 
-# pkg_in_use <dir>: some process's command line runs a file under <dir>. When ps cannot answer, the answer is yes (never delete blind).
+# pkg_in_use <dir> [also]: some process's command line runs a file under <dir>, or, when <also> is 1, under <home>/current/ or <home>/tools/ (a
+# program started through the link while it named <dir>). When ps cannot answer, the answer is yes: never delete blind. That includes a path
+# with non-ASCII letters on a machine with no UTF-8 locale, where ps cannot print it as it is (said once).
 pkg_in_use() {
-  local all; all="$(ps -A -ww -o command= 2>/dev/null)" || return 0
+  local d="$1" home all; home="$(dirname "$(dirname "$1")")"
+  if has_non_ascii "$d" && ! utf8_locale >/dev/null; then
+    if [ "$_PKG_BLIND_SAID" = 0 ]; then
+      echo "canon update: $home has non-ASCII letters and this machine has no UTF-8 locale, so ps cannot show which programs run from it; old versions and leftovers there are kept." >&2
+      _PKG_BLIND_SAID=1
+    fi
+    return 0
+  fi
+  all="$(ps_utf8 -A -ww -o command= 2>/dev/null)" || return 0
   [ -n "$all" ] || return 0
-  case "$all" in *"$1/"*) return 0 ;; esac
+  case "$all" in *"$d/"*) return 0 ;; esac
+  if [ "${2:-0}" = 1 ]; then case "$all" in *"$home/current/"*|*"$home/tools/"*) return 0 ;; esac; fi
   return 1
 }
 
-# pkg_prune <home>: keep the current package, packages/main (a clone may hold work) and the 2 newest other releases; remove older ones that
-# no process runs from. Prints one line per package it removes or keeps for that reason.
+# pkg_prune <home> [<was current>]: keep the current package, packages/main (a clone may hold work) and the 2 newest other releases; remove
+# older ones that no process runs from. <was current> is the package current named before this update's flip: a program started through
+# <home>/current or <home>/tools may still run from it. Prints one line per package it removes or keeps for that reason.
 pkg_prune() {
-  local home="$1" pk="$1/packages" cur n i=0 re='^v[0-9]+\.[0-9]+\.[0-9]+$'
+  local home="$1" was="${2:-}" pk="$1/packages" cur n i=0 re='^v[0-9]+\.[0-9]+\.[0-9]+$'
+  pkg_home_ok "$home" || return 0
   cur="$(pkg_current "$home")" || cur=""
   for n in $(for d in "$pk"/v*; do n="$(basename "$d")"; [[ -d "$d" && "$n" =~ $re && "$n" != "$cur" ]] && echo "${n#v}"; done \
       | sort -t. -k1,1nr -k2,2nr -k3,3nr); do
     i=$((i + 1)); [ "$i" -gt 2 ] || continue
-    if pkg_in_use "$pk/v$n"; then echo "  kept old package v$n (a running program uses it)"
+    if pkg_in_use "$pk/v$n" "$([ "v$n" = "$was" ] && echo 1 || echo 0)"; then echo "  kept old package v$n (a running program uses it)"
     elif rm -rf -- "$pk/v$n"; then echo "  removed old package v$n"
     else echo "  could not remove old package v$n" >&2; fi
   done
@@ -157,11 +193,13 @@ pkg_running() (
   printf '%s' "$out"
 )
 
-# pkg_sweep <home>: folders an interrupted update or install left in packages/ (a temp package, a bootstrap clone). The caller holds the lock;
-# a bootstrap clone still in use (its installer runs `canon update` from it) is skipped by its command line.
+# pkg_sweep <home>: folders an interrupted update or install left in packages/: a temp release package (.tmp-v*), a temp main clone
+# (.tmp-main.*), a bootstrap clone (.boot.*). The caller holds the lock; a bootstrap clone still in use (its installer runs `canon update` from
+# it) is skipped by its command line. Never .tmp-migrate.*: an interrupted move into the layout may have left the user's files there.
 pkg_sweep() {
   local d
-  for d in "$1"/packages/.tmp-* "$1"/packages/.boot.*; do
+  pkg_home_ok "$1" || return 0
+  for d in "$1"/packages/.tmp-v* "$1"/packages/.tmp-main.* "$1"/packages/.boot.*; do
     [ -d "$d" ] || continue
     pkg_in_use "$d" || rm -rf -- "$d"
   done

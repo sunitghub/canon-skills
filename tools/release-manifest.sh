@@ -22,7 +22,8 @@ url="${CANON_MANIFEST_URL:-https://getcanon.dev/releases.txt}"
 command -v curl >/dev/null 2>&1 || die "curl is required to read $url"
 
 tmp="$(mktemp)"; trap 'rm -f "$tmp"' EXIT
-curl -fsSL --max-time 30 --max-filesize 1048576 --proto '=https,file' --proto-redir '=https' "$url" -o "$tmp" 2>/dev/null \
+proto='=https'; case "${CANON_MANIFEST_URL:-}" in file://*) proto='=file' ;; esac   # file:// only through the test seam (t-50f7)
+curl -fsSL --max-time 30 --max-filesize 1048576 --proto "$proto" --proto-redir '=https' "$url" -o "$tmp" 2>/dev/null \
   || die "cannot read the release manifest at $url; refusing to install ${tag#--} unverified (canon update --to main needs no manifest)"
 [ "$(tr -d '\0' < "$tmp" | wc -c)" = "$(wc -c < "$tmp")" ] || die "the release manifest at $url contains a NUL byte; refusing"
 

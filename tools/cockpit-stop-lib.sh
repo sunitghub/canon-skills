@@ -49,7 +49,7 @@ _proc_ident() {
     # an exited child that its parent has not reaped yet (a zombie, state Z) still shows in ps and answers kill -0: it is gone
     local st; st="$(ps -o stat= -p "$1" 2>/dev/null | tr -d ' ')" || st=""
     case "$st" in Z*) return 0 ;; esac
-    ps -o command= -p "$1" 2>/dev/null | sed 's/^ *//' || true
+    ps_utf8 -o command= -p "$1" 2>/dev/null | sed 's/^ *//' || true
   fi
 }
 # t-50f7: the folders this install's programs run from. In the versioned layout (<home>/packages/<x>, <home>/current) that is the home, current

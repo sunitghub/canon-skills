@@ -14,14 +14,14 @@
 set -euo pipefail
 
 # Bumped on every change to this command, and shown in the plan and --help, so a stale copy of the script is obvious on a machine that was updated by hand.
-UNINSTALL_REV=10
+UNINSTALL_REV=11
 SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 INSTALL="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 # t-50f7: run from a package of the versioned layout, the install is the whole home (packages/, current, the tools compat link, the data):
-# CODE is the package current names, CLONE the git clone whose unpushed work must never be deleted (packages/main, if any).
+# CODE is the package current names; CLONE is a single-tree install's own clone (every package clone is checked in the layout).
 LAYOUT=0; CODE="$INSTALL"; CLONE="$INSTALL"
 if [ "$(basename "$(dirname "$INSTALL")")" = packages ] && [ -L "$(dirname "$(dirname "$INSTALL")")/current" ]; then
-  LAYOUT=1; INSTALL="$(dirname "$(dirname "$INSTALL")")"; CODE="$INSTALL/current"; CLONE="$INSTALL/packages/main"
+  LAYOUT=1; INSTALL="$(dirname "$(dirname "$INSTALL")")"; CODE="$INSTALL/current"; CLONE=""
 fi
 # shellcheck source=platform-lib.sh
 source "$SCRIPT_DIR/platform-lib.sh"
@@ -69,6 +69,34 @@ PORT="${CANON_COCKPIT_PORT:-8899}"
 # ── the install-folder safety rule ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 # Sets VERDICT=ok|refuse and VERDICT_WHY. A folder is deleted only when every check passes; a git clone only when clean and fully pushed.
 VERDICT=refuse; VERDICT_WHY=""
+# clone_verdict <clone> <label>: 0 when deleting the git clone loses nothing, else 1 with VERDICT_WHY naming <label>.
+clone_verdict() {
+  local CLONE="$1" cl="$2"
+  local dirty up ahead excl=""
+  # The Cockpit data dir may live inside the clone (the default); it is not clone state.
+  case "$DATA_DIR" in "$CLONE"/*) excl=":(exclude)${DATA_DIR#"$CLONE"/}" ;; esac
+  if [ -n "$excl" ]; then dirty="$(git -C "$CLONE" status --porcelain -- . "$excl" 2>/dev/null)" || dirty="?"
+  else dirty="$(git -C "$CLONE" status --porcelain 2>/dev/null)" || dirty="?"; fi
+  if [ -n "$dirty" ]; then VERDICT_WHY="$cl has uncommitted or untracked changes"; return 1; fi
+  # t-50f7: a release install sits detached exactly on its release tag (and a clone moved into the layout keeps that): HEAD then holds
+  # nothing of the user's, so it needs no upstream; the checks below still cover local branches, stashes, worktrees and edits
+  if [ "$(git -C "$CLONE" rev-parse --abbrev-ref HEAD 2>/dev/null)" = HEAD ] && git -C "$CLONE" describe --tags --exact-match HEAD >/dev/null 2>&1; then :
+  else
+    up="$(git -C "$CLONE" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)" || up=""
+    if [ -z "$up" ]; then VERDICT_WHY="$cl has no upstream branch, so unpushed work cannot be ruled out"; return 1; fi
+    ahead="$(git -C "$CLONE" rev-list --count '@{u}..HEAD' 2>/dev/null)" || ahead="?"
+    if [ "$ahead" != 0 ]; then VERDICT_WHY="$cl has $ahead commit(s) not on its upstream ($up, as last fetched)"; return 1; fi
+  fi
+  # Work that is not in the working tree or on HEAD's upstream, and that deleting the clone would lose.
+  local other
+  other="$(git -C "$CLONE" rev-list --branches --not --remotes 2>/dev/null | head -1)" || other="?"
+  if [ -n "$other" ]; then VERDICT_WHY="$cl has a local branch with commits that are on no remote"; return 1; fi
+  if git -C "$CLONE" rev-parse -q --verify refs/stash >/dev/null 2>&1; then VERDICT_WHY="$cl has stashed changes"; return 1; fi
+  if [ "$(git -C "$CLONE" worktree list --porcelain 2>/dev/null | grep -c '^worktree ')" -gt 1 ]; then VERDICT_WHY="$cl has linked worktrees (they would be left pointing at a deleted folder)"; return 1; fi
+  if [ -n "$(git -C "$CLONE" ls-files -v 2>/dev/null | grep -m1 '^[Sh] ')" ]; then VERDICT_WHY="$cl has local edits hidden with skip-worktree or assume-unchanged"; return 1; fi
+  return 0
+}
+
 install_verdict() {
   VERDICT=refuse
   case "$INSTALL" in /*) ;; *) VERDICT_WHY="the install path is not absolute"; return 0 ;; esac
@@ -85,24 +113,16 @@ install_verdict() {
     case "$LAYOUT:$rec" in "1:$INSTALL/packages/"*) rec="$INSTALL" ;; esac
     if [ "$rec" != "$INSTALL" ]; then VERDICT_WHY="~/.config/canon/install_path names a different folder ($(cat "$ip"))"; return 0; fi
   fi
-  if [ -e "$CLONE/.git" ]; then
-    local dirty up ahead excl=""
-    # The Cockpit data dir may live inside the clone (the default); it is not clone state.
-    case "$DATA_DIR" in "$CLONE"/*) excl=":(exclude)${DATA_DIR#"$CLONE"/}" ;; esac
-    if [ -n "$excl" ]; then dirty="$(git -C "$CLONE" status --porcelain -- . "$excl" 2>/dev/null)" || dirty="?"
-    else dirty="$(git -C "$CLONE" status --porcelain 2>/dev/null)" || dirty="?"; fi
-    if [ -n "$dirty" ]; then VERDICT_WHY="the git clone has uncommitted or untracked changes"; return 0; fi
-    up="$(git -C "$CLONE" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)" || up=""
-    if [ -z "$up" ]; then VERDICT_WHY="the git clone has no upstream branch, so unpushed work cannot be ruled out"; return 0; fi
-    ahead="$(git -C "$CLONE" rev-list --count '@{u}..HEAD' 2>/dev/null)" || ahead="?"
-    if [ "$ahead" != 0 ]; then VERDICT_WHY="the git clone has $ahead commit(s) not on its upstream ($up, as last fetched)"; return 0; fi
-    # Work that is not in the working tree or on HEAD's upstream, and that deleting the clone would lose.
-    local other
-    other="$(git -C "$CLONE" rev-list --branches --not --remotes 2>/dev/null | head -1)" || other="?"
-    if [ -n "$other" ]; then VERDICT_WHY="the git clone has a local branch with commits that are on no remote"; return 0; fi
-    if git -C "$CLONE" rev-parse -q --verify refs/stash >/dev/null 2>&1; then VERDICT_WHY="the git clone has stashed changes"; return 0; fi
-    if [ "$(git -C "$CLONE" worktree list --porcelain 2>/dev/null | grep -c '^worktree ')" -gt 1 ]; then VERDICT_WHY="the git clone has linked worktrees (they would be left pointing at a deleted folder)"; return 0; fi
-    if [ -n "$(git -C "$CLONE" ls-files -v 2>/dev/null | grep -m1 '^[Sh] ')" ]; then VERDICT_WHY="the git clone has local edits hidden with skip-worktree or assume-unchanged"; return 0; fi
+  # t-50f7: in the versioned layout every package that is a git clone (packages/main, and a release clone moved in from the single-tree
+  # install, which keeps its .git) is checked, not only main
+  local c
+  if [ "$LAYOUT" = 1 ]; then
+    for c in "$INSTALL"/packages/*; do
+      [ -e "$c/.git" ] || continue
+      clone_verdict "$c" "the git clone packages/$(basename "$c")" || return 0
+    done
+  elif [ -e "$CLONE/.git" ]; then
+    clone_verdict "$CLONE" "the git clone" || return 0
   fi
   VERDICT=ok; VERDICT_WHY=""
 }
@@ -144,7 +164,7 @@ install_processes() {
     pid="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')" || pid=""
     [ -z "$pid" ] || skip="$skip$pid "
   done
-  ps -axo pid=,command= 2>/dev/null | while read -r p cmd; do
+  ps_utf8 -axo pid=,command= 2>/dev/null | while read -r p cmd; do
     case "$skip" in *" $p "*) continue ;; esac
     # this script's own subshells (command substitutions fork with the same command line; bash 3.2 has no $BASHPID to tell them apart)
     case "$cmd" in */canon-uninstall.sh*|*"/tools/canon uninstall"*) continue ;; esac

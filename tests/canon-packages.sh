@@ -247,5 +247,71 @@ for bad in "../../etc" "v1.0" "main" "v1.0.0/../x"; do
 done
 echo "canon-packages: a non-release tag is refused before anything is written"
 
+# ── review fixes (t-50f7 phase 3) ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
+# A developer clone under any folder named packages (a monorepo) stays a clone: canon update writes nothing outside it (prod path: tools/canon
+# install_home), and pkg_flip/pkg_sweep/pkg_prune refuse a folder with no current link and no install in progress (pkg_home_ok).
+mkdir -p "$W/mono/packages"; git clone -q "$W/upstream" "$W/mono/packages/canon"
+out="$(run env CANON_HOME="$H/not-this-one" "$W/mono/packages/canon/tools/canon" update --to main 2>&1)" || fail "a clone under packages/ failed its clone-mode update: $out"
+assert_contains "$out" "canon is up to date"; assert_eq "packages" "$(ls -A "$W/mono")"; assert_eq "canon" "$(ls -A "$W/mono/packages")"
+mkdir -p "$W/mono/packages/.tmp-v1.0.0.x" "$W/mono/packages/.boot-no" "$W/mono/packages/v1.0.0" "$W/mono/packages/v1.1.0" "$W/mono/packages/v1.2.0" "$W/mono/packages/v1.3.0"
+before="$(ls -A "$W/mono/packages" | tr '\n' ' ')"
+set +e; ( source "$ROOT/tools/pkg-lib.sh"; pkg_sweep "$W/mono"; pkg_prune "$W/mono"; pkg_flip "$W/mono" canon ) >/dev/null 2>&1; code=$?; set -e
+assert_eq 1 "$code"; assert_eq "$before" "$(ls -A "$W/mono/packages" | tr '\n' ' ')"; [ ! -e "$W/mono/current" ] && [ ! -L "$W/mono/current" ] || fail "pkg_flip made $W/mono/current"
+echo "canon-packages: a clone under a folder named packages stays a clone; the layout helpers refuse a folder that is not a canon home"
+
+# prune also counts a program started through <home>/current/ or <home>/tools/ while current named the package (prod path: pkg_prune, pkg_in_use)
+out="$(run "$C" update --to v1.1.0 2>&1)" || fail "repoint to v1.1.0 failed: $out"
+bash -c 'exec -a "$0" sleep 300' "$HOMEDIR/current/tools/cockpit-daemon/cockpit-daemon" & CP=$!; PIDS+=("$CP"); sleep 0.3
+release 1.4.0
+out="$(run "$C" update 2>&1)" || fail "update to v1.4.0 failed: $out"
+assert_eq "packages/v1.4.0" "$(target)"; assert_contains "$out" "kept old package v1.1.0 (a running program uses it)"; [ -d "$HOMEDIR/packages/v1.1.0" ] || fail "pruned a package a program runs from through current"
+kill "$CP"; wait "$CP" 2>/dev/null || true
+bash -c 'exec -a "$0" sleep 300' "$HOMEDIR/tools/tkt" & TP=$!; PIDS+=("$TP"); sleep 0.3
+( source "$ROOT/tools/pkg-lib.sh"; pkg_in_use "$HOMEDIR/packages/v1.1.0" 1 ) || fail "pkg_in_use does not count a program started through <home>/tools/"
+( source "$ROOT/tools/pkg-lib.sh"; pkg_in_use "$HOMEDIR/packages/v1.1.0" 0 ) && fail "pkg_in_use counts <home>/tools/ for a package current did not name"
+kill "$TP"; wait "$TP" 2>/dev/null || true
+echo "canon-packages: prune keeps the package current named when a program was started through current/ or tools/"
+
+# Under a C locale, ps prints a non-ASCII path escaped; ps runs under a UTF-8 locale, and with none on the machine nothing in a non-ASCII home
+# is deleted (fail closed), and it says so once (prod path: pkg_in_use, pkg_sweep, platform-lib ps_utf8)
+mkdir -p "$W/nolocale"; printf '#!/bin/sh\nprintf "C\\nPOSIX\\n"\n' > "$W/nolocale/locale"; chmod +x "$W/nolocale/locale"
+mkdir -p "$HOMEDIR/packages/.tmp-v9.9.9.Blind"
+out="$(run env -u LANG -u LC_ALL -u LC_CTYPE PATH="$W/nolocale:$PATH" "$C" update --to v1.4.0 2>&1)" || fail "update without a UTF-8 locale failed: $out"
+[ -d "$HOMEDIR/packages/.tmp-v9.9.9.Blind" ] || fail "with no UTF-8 locale, a leftover in a non-ASCII home was deleted"
+assert_eq 1 "$(grep -c 'has non-ASCII letters and this machine has no UTF-8 locale' <<<"$out")"
+out="$(run env -u LANG -u LC_ALL -u LC_CTYPE "$C" update --to v1.4.0 2>&1)" || fail "update under the C locale failed: $out"
+[ ! -e "$HOMEDIR/packages/.tmp-v9.9.9.Blind" ] || fail "under the C locale (a UTF-8 locale on the machine), the leftover was not swept"
+echo "canon-packages: no UTF-8 locale on the machine keeps everything in a non-ASCII home and says so once; the C locale alone does not"
+
+# A planted .tmp-migrate.* (an interrupted move into the layout: the user's files) survives an update's sweep (prod path: pkg_sweep)
+mkdir -p "$HOMEDIR/packages/.tmp-migrate.Keep"; echo mine > "$HOMEDIR/packages/.tmp-migrate.Keep/notes.txt"
+out="$(run "$C" update --to v1.4.0 2>&1)" || fail "update failed: $out"
+assert_eq mine "$(cat "$HOMEDIR/packages/.tmp-migrate.Keep/notes.txt")"
+echo "canon-packages: an update's sweep never deletes a .tmp-migrate.* folder"
+
+# file:// downloads only through the test seam: the same file:// base without CANON_RELEASE_BASE is refused (prod path: pkg_install's curl)
+mkdir -p "$W/proto-home/packages"
+( unset CANON_RELEASE_BASE; export CANON_DAEMON_RELEASE_BASE="file://$W/bin" CANON_FETCH_NO_BUILD=1   # a regression must not reach the network
+  source "$ROOT/tools/pkg-lib.sh"; PKG_RELEASE_BASE="file://$W/rel"
+  if pkg_install "$W/proto-home" v1.0.0 "$(sha "$W/rel/v1.0.0/canon-1.0.0.zip")"; then exit 3; fi; echo "$PKG_ERR" ) > "$W/proto.out" 2>&1 \
+  || fail "a file:// download without the seam was allowed: $(cat "$W/proto.out")"
+assert_contains "$(cat "$W/proto.out")" "the download of v1.0.0 failed"; [ ! -e "$W/proto-home/packages/v1.0.0" ] || fail "a refused download left a package"
+echo "canon-packages: a file:// release base is refused unless it is the CANON_RELEASE_BASE test seam"
+
+# a dead lock taken over by two updates at once: exactly one wins (prod path: pkg_lock). A stub rm on PATH holds each contender's removal under
+# the lock path for its own time (1 s, 2 s): the interleaving where a check-then-remove takeover lets both win (both see the dead pid; the
+# first removes it and makes its lock; the second then removes THAT lock and makes its own).
+mkdir -p "$W/slowrm"; printf '#!/bin/sh\ncase "$*" in *.update.lock*) sleep "${RM_SLEEP:-0}" ;; esac\nexec "%s" "$@"\n' "$(command -v rm)" > "$W/slowrm/rm"; chmod +x "$W/slowrm/rm"
+wins=0
+for i in 1 2 3; do
+  rm -rf "$W/lockhome"; mkdir -p "$W/lockhome/.update.lock"; echo 999999 > "$W/lockhome/.update.lock/pid"
+  for j in 1 2; do ( PATH="$W/slowrm:$PATH"; export RM_SLEEP="$j"; source "$ROOT/tools/pkg-lib.sh"; pkg_lock "$W/lockhome" && { echo won >> "$W/lockhome/wins"; sleep 3; } ) >/dev/null 2>&1 & done
+  wait
+  n="$(wc -l < "$W/lockhome/wins" 2>/dev/null | tr -d ' ')" || n=0
+  [ "${n:-0}" = 1 ] || fail "trial $i: ${n:-0} updates took over the same dead lock"
+  wins=$((wins + 1))
+done
+echo "canon-packages: $wins trials, one dead lock taken over by exactly one of two updates"
+
 assert_eq canary "$(cat "$H/canary")"; assert_eq canary "$(cat "$W/tmp/canary")"
 echo "canon-packages: ok"
