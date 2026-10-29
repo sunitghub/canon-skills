@@ -37,6 +37,7 @@ check_zip() {
   # 1. what is left out
   [[ ! -e "$top/tests" ]] || echo "tests/ is in the zip"
   [[ ! -e "$top/tools/canon-go/cmd" && ! -e "$top/tools/canon-go/internal" ]] || echo "the Go source is in the zip"
+  [[ ! -e "$top/tools/vendored.tsv" && ! -e "$top/tools/sprint-check-app/CLAUDE.md" ]] || echo "a developer-only file is in the zip"   # t-7299
   n="$( (cd "$top/meta" 2>/dev/null && find . -type f | wc -l | tr -d ' ') || echo 0)"
   # 2. what the install reads is there: the board's tour images (named by app.html itself) ...
   local shots; shots="$(grep -o 'src="/meta/screenshots/[A-Za-z0-9_.-]*"' "$top/tools/sprint-check-app/app.html" | sed 's#.*/##; s#"$##' | sort -u)"
@@ -70,7 +71,7 @@ tools/sprint-check-app/app.html	the board page (its tour images are checked abov
 REQ
   # 3. everything else shipped is byte-identical to the tag, and nothing but the exclusions is missing
   local want got
-  want="$(tree_files | grep -vE '^(tests/|tools/canon-go/cmd/|tools/canon-go/internal/)' | grep -vE '^meta/' || true)"
+  want="$(tree_files | grep -vE '^(tests/|tools/canon-go/cmd/|tools/canon-go/internal/|tools/vendored\.tsv$|tools/sprint-check-app/CLAUDE\.md$)' | grep -vE '^meta/' || true)"
   got="$(cd "$top" && find . -type f | sed 's#^\./##' | grep -v '^meta/' | LC_ALL=C sort)"
   [[ "$(printf '%s\n' "$want" | LC_ALL=C sort)" == "$got" ]] || echo "the files outside meta/ differ from the tag's tree minus the exclusions"
   if [[ -n "$full" ]]; then   # one git call per file: only for the zip the test expects to be good
@@ -122,7 +123,8 @@ bad() {   # bad <name> <sed expression on the script>
   [[ -n "$(check_zip "$d/out/canon-9.9.9.zip" "$d/u")" ]] || fail "release-zip-slim: the check passed a zip built with the list broken by '$1'"
 }
 bad also-scripts 's#^SLIM_EXCLUDE=\(tests #SLIM_EXCLUDE=(scripts tests #'
-bad also-gomod  's#tools/canon-go/cmd tools/canon-go/internal\)#tools/canon-go)#'
+bad also-gomod  's#tools/canon-go/cmd tools/canon-go/internal #tools/canon-go #'
+bad ship-devfiles 's# tools/vendored\.tsv tools/sprint-check-app/CLAUDE\.md\)#)#'
 bad forgot-tests 's#^SLIM_EXCLUDE=\(tests #SLIM_EXCLUDE=(#'
 bad no-keep-shots 's#^  keep_shots="\$\(git .*$#  keep_shots=""#'
-echo "release-zip-slim: ok (revert checks: dropping scripts/ or go.mod, forgetting tests/, or losing the tour images each fails the check)"
+echo "release-zip-slim: ok (revert checks: dropping scripts/ or go.mod, forgetting tests/ or the developer-only files, or losing the tour images each fails the check)"

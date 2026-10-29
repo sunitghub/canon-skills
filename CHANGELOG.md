@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Removed
+- `tools/llm-call`, an unused single-shot LLM adapter (nothing in canon called it). The release zip also leaves out two developer-only files, `tools/vendored.tsv` and `tools/sprint-check-app/CLAUDE.md` (t-7299).
+
 **Restart the Cockpit daemon after updating** (Admin > **Restart Daemon**): the terminal's files are built into the daemon, so a daemon started before the update keeps the old terminal.
 
 ### Changed

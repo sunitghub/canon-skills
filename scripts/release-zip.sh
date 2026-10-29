@@ -29,7 +29,8 @@ else die "no sha256sum or shasum on this machine"; fi
 #   meta/                     README screenshots and GIFs, EXCEPT the images the board's product tour shows (keep_shots below)
 #   tools/canon-go/{cmd,internal}   the Go source: a zip install picks its prebuilt binary from the release manifest, never the source;
 #                                   go.mod and go.sum stay (tools/cloud-env.sh reads the pinned toolchain from go.mod)
-SLIM_EXCLUDE=(tests tools/canon-go/cmd tools/canon-go/internal)
+#   tools/vendored.tsv, tools/sprint-check-app/CLAUDE.md   read only by canon's own CI (check-vendored) and its developers (t-7299)
+SLIM_EXCLUDE=(tests tools/canon-go/cmd tools/canon-go/internal tools/vendored.tsv tools/sprint-check-app/CLAUDE.md)
 tag_ref="refs/tags/$tag"
 keep_shots=""   # the screenshots the board's page names, read from the same tag so the list cannot drift from app.html
 if git -C "$REPO_ROOT" cat-file -e "$tag_ref:tools/sprint-check-app/app.html" 2>/dev/null; then
