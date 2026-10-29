@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-10-29
+
 **Restart the Cockpit daemon after updating** (Admin > **Restart Daemon**, or `canon stop` then `canon`): a daemon started before the update keeps running the old program, and the Cockpit shows it as out of date until it restarts.
 
 ### Changed
