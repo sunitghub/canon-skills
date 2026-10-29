@@ -74,9 +74,10 @@ for f in canon canon.cmd canon-win canon-win.cmd; do [[ -f "$ROOT/tools/$f" ]] |
 PORT="$(free_port)"
 set +e
 out="$(run status 2>&1)"; code=$?
-run wait t-wt01 --until done >/dev/null 2>&1; wcode=$?
+wout="$(run wait t-wt01 --until done 2>&1)"; wcode=$?
 set -e
 assert_eq "2" "$wcode"
+assert_eq "The Cockpit is not running on port $PORT. Start it with: canon" "$wout"   # t-9a2d: canon wait, board down
 assert_eq "1" "$code"
 assert_contains "$out" "The Cockpit is not running on port $PORT. Start it with: canon"
 set +e; out="$(run stop 2>&1)"; scode=$?; set -e
@@ -104,6 +105,10 @@ for c in status sessions; do
   assert_contains "$out" "does not support 'canon $c'"
   [[ "$out" != *"<html"* && "$out" != *"<!DOCTYPE"* ]] || fail "canon-cli: a stale board's error page was printed as output"
 done
+# t-9a2d: canon wait on a stale board exits 2 and says what to do
+set +e; out="$(run wait t-wt01 --until done --timeout 2000 2>&1)"; code=$?; set -e
+assert_eq "2" "$code"
+assert_eq "The board on port $PORT does not support 'canon wait' (it predates it, or failed). Close its window, then run canon." "$out"
 
 for b in main.go; do
   sd="$WORK/sd-$b"

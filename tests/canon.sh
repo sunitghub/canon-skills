@@ -43,8 +43,11 @@ chmod +x "$STUBDIR/open"
 CC_OPEN_LOG="$WORK/open.log"; : > "$CC_OPEN_LOG"
 # Run the launcher; because the port is in use it must hit the single-instance
 # branch (print "already running", open URL, exit 0) WITHOUT starting a server.
-out="$(CC_OPEN_LOG="$CC_OPEN_LOG" PATH="$STUBDIR:$PATH" "$ROOT/tools/canon" "$PORT" 2>&1)" || true
-echo "$out" | grep -F "The Cockpit is already running on port" >/dev/null || fail "canon: expected single-instance 'already running' message, got: $out"
+set +e; out="$(CC_OPEN_LOG="$CC_OPEN_LOG" PATH="$STUBDIR:$PATH" "$ROOT/tools/canon" "$PORT" 2>&1)"; code=$?; set -e
+assert_eq "0" "$code"   # t-9a2d: the single-instance branch opens the board and exits 0
+assert_eq "The Cockpit is already running on port $PORT. Opening it." "$(grep -F 'already running' <<<"$out")"
+# Windows' canon-win.cmd prints the same line (cmd syntax; it runs only on Windows, so its text is pinned here)
+grep -qxF '  echo The Cockpit is already running on port %PORT%. Opening it.' "$ROOT/tools/canon-win.cmd" || fail "canon: canon-win.cmd's already-running line drifted"
 
 # still exactly one listener on the port (the launcher didn't bind a second)
 n="$(lsof -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | sort -u | wc -l | tr -d ' ')"
