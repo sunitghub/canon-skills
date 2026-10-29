@@ -52,22 +52,40 @@ _proc_ident() {
     ps -o command= -p "$1" 2>/dev/null | sed 's/^ *//' || true
   fi
 }
+# t-50f7: the folders this install's programs run from. In the versioned layout (<home>/packages/<x>, <home>/current) that is the home, current
+# and every package, whichever of them INSTALL names (canon uninstall passes the home, canon stop the running package): a daemon started from
+# an older package, or through the current link, is still this install's. A single-tree install is just INSTALL.
+_install_roots() {
+  local h="$INSTALL" d
+  printf '%s\n' "$INSTALL"
+  if [ "$(basename "$(dirname "$INSTALL")")" = packages ]; then h="$(dirname "$(dirname "$INSTALL")")"; fi
+  [ -d "$h/packages" ] && [ -L "$h/current" ] || return 0
+  [ "$h" = "$INSTALL" ] || printf '%s\n' "$h"
+  printf '%s\n' "$h/current"
+  for d in "$h"/packages/*; do [ ! -d "$d" ] || [ "$d" = "$INSTALL" ] || printf '%s\n' "$d"; done
+  return 0
+}
+_ident_under_roots() { # <ident> <path relative to a root>: the command line runs that file of this install
+  local r
+  while IFS= read -r r; do
+    case "$1" in "$r/$2"|"$r/$2 "*) return 0 ;; esac
+  done < <(_install_roots)
+  return 1
+}
 _is_our_daemon() { # <ident>
   if _is_windows; then
     local w; w="$(_win_install)"
     case "$(printf '%s' "$1" | tr 'A-Z' 'a-z')" in "$(printf '%s' "$w" | tr 'A-Z' 'a-z')\\tools\\cockpit-daemon-win.exe"|"$(printf '%s' "$w" | tr 'A-Z' 'a-z')\\tools\\cockpit-daemon\\cockpit-daemon.exe") return 0 ;; esac
     return 1
   fi
-  case "$1" in "$INSTALL/tools/cockpit-daemon/cockpit-daemon"|"$INSTALL/tools/cockpit-daemon/cockpit-daemon "*) return 0 ;; esac
-  return 1
+  _ident_under_roots "$1" tools/cockpit-daemon/cockpit-daemon
 }
 _is_our_board() { # <ident>  (the path is board_rel_path's, t-15d8)
   if _is_windows; then
     local w; w="$(_win_install)"
     [ "$(printf '%s' "$1" | tr 'A-Z' 'a-z')" = "$(printf '%s\\%s' "$w" "$(board_rel_path | tr / '\\')" | tr 'A-Z' 'a-z')" ]; return
   fi
-  case "$1" in "$INSTALL/$(board_rel_path)"|"$INSTALL/$(board_rel_path) "*) return 0 ;; esac
-  return 1
+  _ident_under_roots "$1" "$(board_rel_path)"
 }
 _foreign_uses() { case $'\n'"$DAEMON_FOREIGN_DIRS" in *$'\n'"$1"$'\n'*) return 0 ;; esac; return 1; }
 
@@ -113,7 +131,7 @@ probe_board() {
     local pp; pp="$(ps -o ppid= -p "$BOARD_PID" 2>/dev/null | tr -d ' ')" || pp=""
     if [ -n "$pp" ]; then
       ident="$(_proc_ident "$pp")"
-      case "$ident" in "bash $INSTALL/tools/canon"|"bash $INSTALL/tools/canon "*|"$INSTALL/tools/canon"|"$INSTALL/tools/canon "*) LAUNCHER_PID="$pp" ;; esac
+      if _ident_under_roots "$ident" tools/canon || _ident_under_roots "${ident#bash }" tools/canon; then LAUNCHER_PID="$pp"; fi
     fi
   fi
 }

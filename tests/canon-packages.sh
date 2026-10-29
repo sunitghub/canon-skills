@@ -75,6 +75,7 @@ assert_eq "packages/v1.0.0" "$(target)"
 [ -x "$HOMEDIR/packages/v1.0.0/tools/cockpit-daemon/cockpit-daemon" ] && [ -x "$HOMEDIR/packages/v1.0.0/tools/sprint-check-bin/sprint-check" ] \
   || fail "the package's binaries are not inside it: $out"
 assert_eq "canon 1.0.0" "$(run "$C" version)"
+assert_eq "current/tools" "$(readlink "$HOMEDIR/tools")"; assert_eq "canon 1.0.0" "$(run "$HOMEDIR/tools/canon" version)"   # ~/.canon/tools/... as the docs name it
 assert_contains "$out" "canon is now on v1.0.0, verified against the published manifest."; assert_contains "$out" "Installed the verified release v1.0.0"
 [ -z "$(leftovers)" ] || fail "install left $(leftovers) behind"
 [ ! -e "$HOMEDIR/.canon-track" ] || fail "a release install wrote a track marker"
@@ -173,6 +174,15 @@ assert_eq "$OLD" "$(tree_hash "$HOMEDIR/packages/v1.2.0")"; assert_eq "$DATA" "$
 out="$(run "$C" update --to v1.1.0 2>&1)"; assert_contains "$out" "canon is up to date (v1.1.0"
 echo "canon-packages: rollback --to v1.1.0 repoints without a download; data unchanged"
 
+# leftovers of an interrupted update or install (a temp package, a bootstrap clone) go on the next update; one a live installer uses stays
+mkdir -p "$HOMEDIR/packages/.tmp-v9.9.9.AbC" "$HOMEDIR/packages/.boot.Old" "$HOMEDIR/packages/.boot.Live/tools"
+bash -c 'exec -a "$0" sleep 300' "$HOMEDIR/packages/.boot.Live/tools/canon" & BL=$!; PIDS+=("$BL"); sleep 0.3
+out="$(run "$C" update --to v1.1.0 2>&1)" || fail "update with leftovers failed: $out"
+[ ! -e "$HOMEDIR/packages/.tmp-v9.9.9.AbC" ] && [ ! -e "$HOMEDIR/packages/.boot.Old" ] || fail "an update did not sweep the leftovers"
+[ -d "$HOMEDIR/packages/.boot.Live" ] || fail "an update swept the bootstrap clone of a running installer"
+kill "$BL"; wait "$BL" 2>/dev/null || true; rm -rf "$HOMEDIR/packages/.boot.Live"
+echo "canon-packages: leftovers of an interrupted update are swept under the lock; a live installer's clone is kept"
+
 # ── C5: prune keeps the 2 newest old packages and never one a live process runs from (prod path: canon update) ──────────────────────────────────
 bash -c 'exec -a "$0" sleep 300' "$HOMEDIR/packages/v1.0.0/tools/cockpit-daemon/cockpit-daemon" & SP=$!; PIDS+=("$SP")
 release 1.3.0
@@ -200,7 +210,18 @@ mkdir -p "$W/other/tools/cockpit-daemon"; bash -c 'exec -a "$0" sleep 300' "$W/o
 printf '{"pid": %s}\n' "$DP" > "$W/state/daemon.json"; sleep 0.3
 out="$(run "$C" update --to v1.3.0 2>&1)" || fail "another install's daemon blocked the update: $out"
 kill "$DP"; wait "$DP" 2>/dev/null || true; rm -f "$W/state/daemon.json"
-echo "canon-packages: update refuses while this install's daemon runs (names it, says canon stop, stops nothing); another install's does not block"
+# the board: a listener on the Cockpit port whose command line is a package's board binary, started through current (t-50f7 phase 2)
+BP_PORT=$(( 20000 + $$ % 20000 ))
+bash -c 'exec -a "$0" perl -MIO::Socket::INET -e "my \$s = IO::Socket::INET->new(LocalAddr => q(127.0.0.1), LocalPort => \$ARGV[0], Listen => 5, ReuseAddr => 1) or die; sleep 300" "$1"' \
+  "$HOMEDIR/current/tools/sprint-check-bin/sprint-check" "$BP_PORT" & BP=$!; PIDS+=("$BP")
+listening() { if command -v lsof >/dev/null 2>&1; then lsof -nP -iTCP:"$1" -sTCP:LISTEN -t >/dev/null 2>&1; else [ -n "$(ss -ltnH "sport = :$1" 2>/dev/null)" ]; fi; }
+for i in 1 2 3 4 5 6 7 8 9 10; do listening "$BP_PORT" && break; sleep 0.3; done
+listening "$BP_PORT" || fail "the stub board never listened on $BP_PORT"
+set +e; out="$(run env CANON_COCKPIT_PORT="$BP_PORT" "$C" update --to v1.2.0 2>&1)"; code=$?; set -e
+assert_eq 1 "$code"; assert_contains "$out" "the board (pid $BP)"; assert_contains "$out" "Run 'canon stop'"; assert_eq "packages/v1.3.0" "$(target)"
+pid_alive "$BP" || fail "update stopped the board"
+kill "$BP"; wait "$BP" 2>/dev/null || true
+echo "canon-packages: update refuses while this install's daemon or board runs (names it, says canon stop, stops nothing); another install's daemon does not block"
 
 # ── C10: --to main keeps a clone in packages/main, updated in place, and current can point at it (prod path: canon update --to main) ─────────────
 out="$(run "$C" update --to main 2>&1)" || fail "--to main failed: $out"

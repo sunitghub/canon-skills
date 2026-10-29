@@ -14,9 +14,15 @@
 set -euo pipefail
 
 # Bumped on every change to this command, and shown in the plan and --help, so a stale copy of the script is obvious on a machine that was updated by hand.
-UNINSTALL_REV=9
+UNINSTALL_REV=10
 SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 INSTALL="$(cd "$SCRIPT_DIR/.." && pwd -P)"
+# t-50f7: run from a package of the versioned layout, the install is the whole home (packages/, current, the tools compat link, the data):
+# CODE is the package current names, CLONE the git clone whose unpushed work must never be deleted (packages/main, if any).
+LAYOUT=0; CODE="$INSTALL"; CLONE="$INSTALL"
+if [ "$(basename "$(dirname "$INSTALL")")" = packages ] && [ -L "$(dirname "$(dirname "$INSTALL")")/current" ]; then
+  LAYOUT=1; INSTALL="$(dirname "$(dirname "$INSTALL")")"; CODE="$INSTALL/current"; CLONE="$INSTALL/packages/main"
+fi
 # shellcheck source=platform-lib.sh
 source "$SCRIPT_DIR/platform-lib.sh"
 # shellcheck source=cockpit-stop-lib.sh
@@ -69,32 +75,34 @@ install_verdict() {
   if [ "$INSTALL" = "/" ]; then VERDICT_WHY="the install folder resolves to /"; return 0; fi
   if [ "$INSTALL" = "$HOME_P" ]; then VERDICT_WHY="the install folder is your home folder"; return 0; fi
   case "$HOME_P/" in "$INSTALL"/*) VERDICT_WHY="the install folder contains your home folder"; return 0 ;; esac
-  if [ ! -f "$INSTALL/tools/canon" ] || [ ! -f "$INSTALL/tools/skills.sh" ]; then
+  if [ ! -f "$CODE/tools/canon" ] || [ ! -f "$CODE/tools/skills.sh" ]; then
     VERDICT_WHY="it does not look like a canon install (tools/canon or tools/skills.sh is missing)"; return 0
   fi
   local ip="$CONFIG_DIR/install_path" rec
   if [ -f "$ip" ]; then
     rec="$(cd "$(cat "$ip")" 2>/dev/null && pwd -P)" || rec=""
+    # in the layout install_path names <home>/current (a package, physically); before an install moved into it, <home> itself
+    case "$LAYOUT:$rec" in "1:$INSTALL/packages/"*) rec="$INSTALL" ;; esac
     if [ "$rec" != "$INSTALL" ]; then VERDICT_WHY="~/.config/canon/install_path names a different folder ($(cat "$ip"))"; return 0; fi
   fi
-  if [ -e "$INSTALL/.git" ]; then
+  if [ -e "$CLONE/.git" ]; then
     local dirty up ahead excl=""
     # The Cockpit data dir may live inside the clone (the default); it is not clone state.
-    case "$DATA_DIR" in "$INSTALL"/*) excl=":(exclude)${DATA_DIR#"$INSTALL"/}" ;; esac
-    if [ -n "$excl" ]; then dirty="$(git -C "$INSTALL" status --porcelain -- . "$excl" 2>/dev/null)" || dirty="?"
-    else dirty="$(git -C "$INSTALL" status --porcelain 2>/dev/null)" || dirty="?"; fi
+    case "$DATA_DIR" in "$CLONE"/*) excl=":(exclude)${DATA_DIR#"$CLONE"/}" ;; esac
+    if [ -n "$excl" ]; then dirty="$(git -C "$CLONE" status --porcelain -- . "$excl" 2>/dev/null)" || dirty="?"
+    else dirty="$(git -C "$CLONE" status --porcelain 2>/dev/null)" || dirty="?"; fi
     if [ -n "$dirty" ]; then VERDICT_WHY="the git clone has uncommitted or untracked changes"; return 0; fi
-    up="$(git -C "$INSTALL" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)" || up=""
+    up="$(git -C "$CLONE" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)" || up=""
     if [ -z "$up" ]; then VERDICT_WHY="the git clone has no upstream branch, so unpushed work cannot be ruled out"; return 0; fi
-    ahead="$(git -C "$INSTALL" rev-list --count '@{u}..HEAD' 2>/dev/null)" || ahead="?"
+    ahead="$(git -C "$CLONE" rev-list --count '@{u}..HEAD' 2>/dev/null)" || ahead="?"
     if [ "$ahead" != 0 ]; then VERDICT_WHY="the git clone has $ahead commit(s) not on its upstream ($up, as last fetched)"; return 0; fi
     # Work that is not in the working tree or on HEAD's upstream, and that deleting the clone would lose.
     local other
-    other="$(git -C "$INSTALL" rev-list --branches --not --remotes 2>/dev/null | head -1)" || other="?"
+    other="$(git -C "$CLONE" rev-list --branches --not --remotes 2>/dev/null | head -1)" || other="?"
     if [ -n "$other" ]; then VERDICT_WHY="the git clone has a local branch with commits that are on no remote"; return 0; fi
-    if git -C "$INSTALL" rev-parse -q --verify refs/stash >/dev/null 2>&1; then VERDICT_WHY="the git clone has stashed changes"; return 0; fi
-    if [ "$(git -C "$INSTALL" worktree list --porcelain 2>/dev/null | grep -c '^worktree ')" -gt 1 ]; then VERDICT_WHY="the git clone has linked worktrees (they would be left pointing at a deleted folder)"; return 0; fi
-    if [ -n "$(git -C "$INSTALL" ls-files -v 2>/dev/null | grep -m1 '^[Sh] ')" ]; then VERDICT_WHY="the git clone has local edits hidden with skip-worktree or assume-unchanged"; return 0; fi
+    if git -C "$CLONE" rev-parse -q --verify refs/stash >/dev/null 2>&1; then VERDICT_WHY="the git clone has stashed changes"; return 0; fi
+    if [ "$(git -C "$CLONE" worktree list --porcelain 2>/dev/null | grep -c '^worktree ')" -gt 1 ]; then VERDICT_WHY="the git clone has linked worktrees (they would be left pointing at a deleted folder)"; return 0; fi
+    if [ -n "$(git -C "$CLONE" ls-files -v 2>/dev/null | grep -m1 '^[Sh] ')" ]; then VERDICT_WHY="the git clone has local edits hidden with skip-worktree or assume-unchanged"; return 0; fi
   fi
   VERDICT=ok; VERDICT_WHY=""
 }
@@ -152,7 +160,7 @@ rc_lines() {  # shell rc files naming <install>/tools: "file:line: text"
   local f
   for f in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile" "$HOME/.bash_profile" "$HOME/.zprofile"; do
     [ -f "$f" ] || continue
-    grep -nF "$INSTALL/tools" "$f" 2>/dev/null | sed "s#^#$f:#" || true
+    grep -nF -e "$INSTALL/tools" -e "$INSTALL/current/tools" "$f" 2>/dev/null | sed "s#^#$f:#" || true
   done
 }
 
@@ -206,7 +214,7 @@ probe_all() {
 probe_all
 
 print_plan() {
-  echo "canon uninstall — plan (nothing is changed until you confirm)   [canon $(tr -d '[:space:]' < "$INSTALL/VERSION" 2>/dev/null || echo unknown), uninstall rev $UNINSTALL_REV]"
+  echo "canon uninstall — plan (nothing is changed until you confirm)   [canon $(tr -d '[:space:]' < "$CODE/VERSION" 2>/dev/null || echo unknown), uninstall rev $UNINSTALL_REV]"
   echo ""
   echo "Install folder: $INSTALL"
   if [ "$VERDICT" = ok ]; then

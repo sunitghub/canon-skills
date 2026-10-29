@@ -25,6 +25,11 @@ need "the line canon version prints on main" "(development version, following ma
 need "the plain-update-only detached guard" "a *plain* update finds a detached commit"
 need "CANON_REF" "CANON_REF=main"
 need "a first install that cannot verify" "installs nothing"
+# t-50f7: the versioned layout, its rollback and the one-time move of an older install
+need "the versioned layout" "packages/vX.Y.Z/"
+need "the rollback without a download" "a rollback is one command and downloads nothing"
+need "the move of an older install" "Moving an older install into the layout"
+need "the compat link" "~/.canon/tools\` becomes the link to \`current/tools"
 for row in "Made by the installers at v0.4.0 or later" "A Windows zip install" "made before v0.4.0" "pinned at v0.3.0"; do need "the install-type row '$row'" "$row"; done
 
 # every refusal the docs name, with the text the code prints for it. The code text must sit in a PRINTED message (an echo/die/throw line), so the same words in
@@ -44,6 +49,13 @@ refusal "cannot fast-forward" "$CANON" "$PRINT" "can't fast-forward"
 refusal "another branch than \`main\`" "$CANON" "$PRINT" "not main — switch to main first"
 refusal "detached commit that is not a release tag" "$CANON" "$PRINT" "that is not a release tag"
 refusal "the folder is not a git clone" "$CANON" "$PRINT" "isn't a git clone"
+PKG="${DOC_UPDATE_PKG:-$ROOT/tools/pkg-lib.sh}"
+refusal "this install's Cockpit is running" "$CANON" "$PRINT" "Cockpit is running ("
+refusal "another \`canon update\` is running" "$PKG" 'PKG_ERR="' "another canon update is running"
+refusal "the download fails" "$PKG" '_pkg_fail "' "the download of"
+refusal "its SHA-256 does not match the manifest" "$PKG" '_pkg_fail "' "does not match the published checksum"
+refusal "it cannot be unpacked" "$PKG" '_pkg_fail "' "could not unpack"
+refusal "the board and daemon cannot be fetched for it" "$PKG" '_pkg_fail "' "could not be fetched"
 refusal "if canon's daemon is running" "${DOC_UPDATE_PS1:-$ROOT/install.ps1}" 'throw "' "canon's daemon is running"
 grep -qF ".canon-track" "$CANON" || fail "doc-update-behavior: tools/canon no longer uses the .canon-track marker the docs describe"
 grep -qF "(development version, following main)" "$CANON" || fail "doc-update-behavior: tools/canon no longer prints the '(development version, following main)' line the docs describe"

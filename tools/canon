@@ -140,21 +140,74 @@ install_home() {
   if [ "$(basename "$(dirname "$r")")" = packages ]; then dirname "$(dirname "$r")"; else printf '%s\n' "$r"; fi
 }
 
+# t-50f7: the first refusal of an update in the layout and of the move into it (pkg-lib.sh sourced): it never stops or restarts anything.
+refuse_while_cockpit_runs() {
+  local running; running="$(pkg_running "$1")"
+  if [ -n "$running" ]; then
+    echo "canon update: this install's Cockpit is running ($running). Run 'canon stop', then run canon update again. Nothing was changed." >&2; exit 1
+  fi
+}
+
+# t-50f7: a single-tree install (the clone at the canon home that install.sh made before the versioned layout) moves into it: every entry but
+# the data goes into packages/<name> (the release tag it is on, or main), current points there, and <home>/tools becomes a link to
+# current/tools so a PATH line naming <home>/tools keeps working. The data stays in place, byte for byte. The entries are renamed, never
+# rewritten, so this running script keeps reading the same file; the run ends by exec'ing current's canon to re-point every registered
+# project. Any failed step moves everything back and exits 1.
+migrate_to_packages() {
+  local home="$1" name="$2" to="$3" pk="$1/packages" stage="" e n made_pk=0 why=""
+  local moved=()
+  # shellcheck source=pkg-lib.sh
+  source "$SCRIPT_DIR/pkg-lib.sh"
+  refuse_while_cockpit_runs "$home"
+  pkg_lock "$home" || { echo "canon update: $PKG_ERR. Nothing was changed." >&2; exit 1; }
+  trap 'pkg_unlock' EXIT
+  if [ -e "$pk" ] || [ -e "$home/current" ] || [ -L "$home/current" ]; then
+    echo "canon update: $home already has packages/ or current but is not in the versioned layout; move them aside and run this again. Nothing was changed." >&2; exit 1
+  fi
+  echo "Moving canon in $home into the versioned layout (packages/$name, current); your data stays where it is..."
+  _migrate_back() {
+    [ ! -L "$home/tools" ] || rm -f -- "$home/tools"
+    [ ! -L "$home/current" ] || rm -f -- "$home/current"
+    [ -z "$stage" ] || [ -d "$stage" ] || stage="$pk/$name"
+    for n in ${moved[@]+"${moved[@]}"}; do mv -- "$stage/$n" "$home/" || echo "canon update: could not move $stage/$n back into $home" >&2; done
+    [ -z "$stage" ] || rmdir -- "$stage" 2>/dev/null || true
+    [ "$made_pk" = 0 ] || rmdir -- "$pk" 2>/dev/null || true
+    echo "canon update: could not move $home into the versioned layout ($why); everything was moved back. Nothing was changed." >&2
+    exit 1
+  }
+  mkdir -- "$pk" && made_pk=1 || { why="could not create $pk"; _migrate_back; }
+  stage="$(mktemp -d "$pk/.tmp-migrate.XXXXXX")" || { stage=""; why="could not create a temp folder in $pk"; _migrate_back; }
+  for e in "$home"/* "$home"/.[!.]* "$home"/..?*; do
+    [ -e "$e" ] || [ -L "$e" ] || continue
+    n="$(basename "$e")"
+    case "$n" in packages|.update.lock) continue ;; esac
+    ! pkg_is_data "$n" || continue
+    mv -- "$e" "$stage/" || { why="could not move $n"; _migrate_back; }
+    moved+=("$n")
+  done
+  mv -- "$stage" "$pk/$name" || { why="could not rename the new package"; _migrate_back; }
+  stage="$pk/$name"
+  pkg_flip "$home" "$name" || { why="$PKG_ERR"; _migrate_back; }
+  pkg_compat_tools "$home" || { why="could not link $home/tools"; _migrate_back; }
+  echo "canon is now in $home/packages/$name; $home/current points at it, and $home/tools leads there for an existing PATH line."
+  [ -z "$to" ] || [ "$to" = "$name" ] || echo "To move to $to, run: canon update --to $to"
+  pkg_unlock; trap - EXIT
+  exec bash "$home/current/tools/canon" update --refresh-only
+}
+
 # t-50f7: update an install in the versioned layout (tools/pkg-lib.sh). A release becomes a new package from its verified zip and `current`
 # flips to it; a release already in packages/ is a repoint (no download); main is a git clone in packages/main, pulled in place. The running
 # package is never written, and a failure at any step leaves `current` where it was. It refuses while this install's Cockpit runs: it never
 # stops or restarts anything. Ends by handing the project refresh to the package `current` now names (exec), so it never returns.
 update_packages() {
-  local home="$1" repo="$2" to="$3" marker="$1/.canon-track" cur running hint="" msg
+  local home="$1" repo="$2" to="$3" marker="$1/.canon-track" cur hint="" msg
   # shellcheck source=pkg-lib.sh
   source "$SCRIPT_DIR/pkg-lib.sh"
-  running="$(pkg_running "$home")"
-  if [ -n "$running" ]; then
-    echo "canon update: this install's Cockpit is running ($running). Run 'canon stop', then run canon update again. Nothing was changed." >&2; exit 1
-  fi
+  refuse_while_cockpit_runs "$home"
   pkg_lock "$home" || { echo "canon update: $PKG_ERR. Nothing was changed." >&2; exit 1; }
   trap 'pkg_unlock' EXIT
   [ -z "$PKG_NOTE" ] || echo "canon update: $PKG_NOTE."
+  pkg_sweep "$home"
   cur="$(pkg_current "$home")" || cur=""
   if [ -z "$to" ]; then
     if [ "$({ tr -d '[:space:]' < "$marker"; } 2>/dev/null)" = main ]; then to=main; else to=latest; fi
@@ -216,6 +269,7 @@ update_packages() {
     rm -f "$marker"
     echo "$msg"
   fi
+  pkg_compat_tools "$home" || echo "canon update: could not create the link $home/tools -> current/tools; use $home/current/tools instead." >&2
   pkg_prune "$home"
   pkg_unlock; trap - EXIT
   # the refresh runs the new package's code (its skills.sh), not this one's
@@ -265,6 +319,15 @@ update_cmd() {
     fi
   elif [ "$branch" != main ]; then
     echo "canon update: $repo is on '$branch', not main — switch to main first. Nothing was changed." >&2; exit 1
+  fi
+  # t-50f7: the clone at the canon home (what install.sh made before the versioned layout), on a release tag or following main, clean and with
+  # no work only it holds, moves into the layout. A clone anywhere else, or one with local work, is a developer's and keeps working as one.
+  if ! _is_windows && [ "$repo" = "$(cd "${CANON_HOME:-$HOME/.canon}" 2>/dev/null && pwd -P)" ] \
+    && { [ -n "$was_on" ] || { [ "$branch" = main ] && [ "$track" = main ]; }; } \
+    && [ -z "$(git -C "$repo" rev-list -n 1 --branches --not --remotes 2>/dev/null)" ] \
+    && ! git -C "$repo" rev-parse -q --verify refs/stash >/dev/null 2>&1 \
+    && [ "$(git -C "$repo" worktree list --porcelain 2>/dev/null | grep -c '^worktree ')" = 1 ]; then
+    if [ -n "$was_on" ]; then migrate_to_packages "$repo" "$was_on" "$to"; else migrate_to_packages "$repo" main "$to"; fi
   fi
   # What to install: an explicit --to wins; otherwise the remembered track (release unless the user chose main).
   if [ -z "$to" ]; then

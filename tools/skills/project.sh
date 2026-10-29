@@ -242,6 +242,9 @@ upsert_skills_symlinks() {
           mkdir -p "$skill_dir"
           ln -sfn "$skill_file" "$skill_dir/SKILL.md"
           echo "  [skill-dir]  created: $skill_dir"
+        elif [ -L "$skill_dir/SKILL.md" ] && [ "$(canon_current_path "$(readlink "$skill_dir/SKILL.md")")" = "$skill_file" ]; then
+          ln -sfn "$skill_file" "$skill_dir/SKILL.md"   # t-50f7: the old location's link, re-pointed at current
+          echo "  [skill-dir]  updated: $skill_dir"
         fi
       fi
     else

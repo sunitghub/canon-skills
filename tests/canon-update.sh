@@ -212,6 +212,8 @@ assert_eq 2 "$(git -C "$WORK/shallow" rev-list --count HEAD)"
 git -C "$ROOT" check-ignore -q cockpit/projects.json || fail "the repo .gitignore must ignore /cockpit/ (the Cockpit data dir inside a default install)"
 # t-2af0: the saved integrity list and its pin live in integrity/ under CANON_HOME, so they sit in the clone too.
 git -C "$ROOT" check-ignore -q integrity/v1.2.3.json || fail "the repo .gitignore must ignore /integrity/ (the saved Integrity lists inside a default install)"
+# t-50f7: the install-wide settings file too, or a single-tree install that has one could neither update nor move into the versioned layout
+git -C "$ROOT" check-ignore -q settings.json || fail "the repo .gitignore must ignore /settings.json (the install-wide settings inside a default install)"
 cp "$ROOT/.gitignore" "$WORK/seed/.gitignore"; git -C "$WORK/seed" "${ident[@]}" add .gitignore && git -C "$WORK/seed" "${ident[@]}" commit -qm "real gitignore" && git -C "$WORK/seed" push -q origin main 2>/dev/null
 git clone -q "$WORK/origin.git" "$WORK/inst2" 2>/dev/null; maintrack "$WORK/inst2"
 mkdir -p "$WORK/inst2/cockpit"; echo '{}' > "$WORK/inst2/cockpit/projects.json"
@@ -219,12 +221,14 @@ mkdir -p "$WORK/inst2/integrity"; echo "{}" > "$WORK/inst2/integrity/v1.2.3.json
 assert_eq "" "$(git -C "$WORK/inst2" status --porcelain)"
 echo cockpit-news > "$WORK/seed/NEWS"; git -C "$WORK/seed" "${ident[@]}" commit -qam cockpit-news && git -C "$WORK/seed" push -q origin main 2>/dev/null
 : > "$REFRESH_LOG"
-set +e; out="$(CANON_HOME="$WORK/inst2" "$WORK/inst2/tools/canon" update 2>&1)"; code=$?; set -e
+# t-50f7: a clone that IS CANON_HOME (a default install) now moves into the versioned layout on update (tests/canon-migrate.sh), so this keeps
+# CANON_HOME elsewhere: what it checks is the clone's .gitignore against update's dirty check, which does not read CANON_HOME.
+set +e; out="$("$WORK/inst2/tools/canon" update 2>&1)"; code=$?; set -e
 assert_eq "0" "$code"; assert_contains "$out" "canon updated"
 assert_eq "$(git -C "$WORK/origin.git" rev-parse --short HEAD)" "$(git -C "$WORK/inst2" rev-parse --short HEAD)"
 echo stray > "$WORK/inst2/stray.txt"
 echo more > "$WORK/seed/NEWS"; git -C "$WORK/seed" "${ident[@]}" commit -qam more-news && git -C "$WORK/seed" push -q origin main 2>/dev/null
-set +e; out="$(CANON_HOME="$WORK/inst2" "$WORK/inst2/tools/canon" update 2>&1)"; code=$?; set -e
+set +e; out="$("$WORK/inst2/tools/canon" update 2>&1)"; code=$?; set -e
 assert_eq "1" "$code"; assert_contains "$out" "has uncommitted changes"; assert_contains "$out" "Nothing was changed."
 rm -f "$WORK/inst2/stray.txt"
 # ── t-9383: the Windows exes are not committed any more. A git install on Windows keeps its old exes until the fetch has put

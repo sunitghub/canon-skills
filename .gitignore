@@ -10,6 +10,8 @@ DECISIONS-archive.md
 /themes/
 /logs/
 /integrity/
+# The install-wide settings ($CANON_HOME/settings.json, the Go settings package): untracked, it made canon update refuse too (t-50f7).
+/settings.json
 # Which track this install follows (`canon update --to main` writes it; absent = the latest verified release, t-65c9).
 /.canon-track
 # Opt-in headless-grader verdict cache (tools/gate-cache.sh) — always local, never shared.

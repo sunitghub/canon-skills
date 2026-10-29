@@ -1,6 +1,42 @@
 #!/usr/bin/env bash
 # tools/skills/cmd-refresh.sh — skills.sh refresh
 
+# t-50f7: once the install is in the versioned layout, an @-import in CLAUDE.md/AGENTS.md that names the old location (<home>/standards/...
+# or a package) is re-pointed at <home>/current, or dropped when the current line is already there. Only a line whose new target exists.
+_retarget_imports() {
+  local f line new tmp cr changed
+  for f in "$1/CLAUDE.md" "$1/AGENTS.md"; do
+    [ -f "$f" ] && grep -q '^@/' "$f" || continue
+    tmp="$(mktemp)"; changed=0
+    while IFS= read -r line || [ -n "$line" ]; do
+      cr=""; case "$line" in *$'\r') cr=$'\r'; line="${line%$'\r'}" ;; esac
+      if [[ "$line" == @/* ]] && new="$(canon_current_path "${line#@}")" && [ -e "$new" ]; then
+        changed=1
+        if has_line "@$new" "$f"; then echo "  [pruned]  @-import of the old location (current's is there): $line" >&2; continue; fi
+        echo "  [updated]  @-import now names current: @$new" >&2; line="@$new"
+      fi
+      printf '%s%s\n' "$line" "$cr"
+    done < "$f" > "$tmp"
+    if [ "$changed" = 1 ]; then cat "$tmp" > "$f"; fi
+    rm -f "$tmp"
+  done
+  return 0
+}
+
+# t-50f7: a linked worktree of the project whose skills link names the old location gets current's links (link_worktree is idempotent).
+_retarget_worktree_links() {
+  local pd wt link
+  pd="$(cd "$1" && pwd -P)" || return 0
+  git -C "$pd" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+  while IFS= read -r wt; do
+    [ -n "$wt" ] && [ "$wt" != "$pd" ] && [ -d "$wt" ] || continue
+    for link in "$wt/.claude/skills" "$wt/.agents/skills"; do
+      if _is_dir_link "$link" && canon_current_path "$(_read_dir_link "$link")" >/dev/null; then link_worktree "$wt"; break; fi
+    done
+  done < <(git -C "$pd" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p')
+  return 0
+}
+
 cmd_refresh() {
   local project_dir="${1:-$(pwd)}"
   local claude_file="$project_dir/CLAUDE.md"
@@ -11,6 +47,10 @@ cmd_refresh() {
     echo "Run: $(basename "$0") add <skill> $project_dir"
     exit 1
   fi
+
+  _retarget_imports "$project_dir"
+  _retarget_worktree_links "$project_dir"
+  retarget_install_paths
 
   # A registered inject skill (efficiency, agent-design) owns its @-import in AGENTS.md — not legacy.
   # Pruning it only for cmd_add to re-append it churned every refresh and moved the line (t-bd3e).

@@ -54,6 +54,37 @@ _prompt_move_hook() {
   [[ "$answer" =~ ^[Yy]$ ]]
 }
 
+# t-50f7: install paths stored outside any project, re-pointed at <home>/current once the install is in the versioned layout:
+# ~/.config/canon/install_path and the PATH line canon's own prompt writes to ~/.zshrc / ~/.bashrc (that exact line only; every other line
+# of the file is left byte for byte). A no-op for a single-tree install or paths that already name current.
+retarget_install_paths() {
+  local ip="$HOME/.config/canon/install_path" cur new f tmp
+  case "$SKILLS_ROOT" in */current) ;; *) return 0 ;; esac
+  if [ -f "$ip" ]; then
+    cur="$(cat "$ip")"
+    if new="$(canon_current_path "$cur")" && [ "$new" = "$SKILLS_ROOT" ]; then
+      printf '%s\n' "$new" > "$ip"; echo "  [updated]  ~/.config/canon/install_path -> $new"
+    fi
+  fi
+  for f in "$HOME/.zshrc" "$HOME/.bashrc"; do
+    [ -f "$f" ] && [ ! -L "$f" ] || continue
+    tmp="$(mktemp)"
+    if SR="$SKILLS_ROOT" H="${SKILLS_ROOT%/current}" awk '
+      BEGIN { h = ENVIRON["H"]; sr = ENVIRON["SR"]; pre = "export PATH=\"$PATH:"; suf = "/tools\""; n = 0 }
+      { l = $0; cr = ""; if (sub(/\r$/, "", l)) cr = "\r"
+        if (index(l, pre) == 1 && length(l) > length(pre) + length(suf) && substr(l, length(l) - length(suf) + 1) == suf) {
+          root = substr(l, length(pre) + 1, length(l) - length(pre) - length(suf)); rest = substr(root, length(h) + 11)
+          if (root == h || (index(root, h "/packages/") == 1 && rest != "" && index(rest, "/") == 0)) { print pre sr suf cr; n++; next }
+        }
+        print }
+      END { exit (n ? 0 : 1) }' "$f" > "$tmp"; then
+      cat "$tmp" > "$f"; echo "  [updated]  $f: the canon PATH line now names $SKILLS_ROOT/tools"
+    fi
+    rm -f "$tmp"
+  done
+  return 0
+}
+
 offer_tkt_path() {
   local tools_dir="$SKILLS_ROOT/tools"
   local rc_file="$HOME/.zshrc"

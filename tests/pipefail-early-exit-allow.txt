@@ -4,7 +4,7 @@ tools/canon-dev.sh	printf '%s' "$slug" | grep -qE '^[a-z0-9]+(-[a-z0-9]+)*$' \	w
 tools/canon-dev.sh	if [ -n "$category" ] && ! printf ' %s ' "$valid_categories" | grep -q " $category "; then	writer is one skill-frontmatter value (slug, category list, deps or description), under 1 KB
 tools/canon-dev.sh	printf '%s\n' "$deps" | grep -qx "$sib" \	writer is one skill-frontmatter value (slug, category list, deps or description), under 1 KB
 tools/canon-dev.sh	if [ -z "$deps" ] && printf '%s' "$desc" | grep -qiE '(^|[^[:alpha:]])and then([^[:alpha:]]|$)'; then	writer is one skill-frontmatter value (slug, category list, deps or description), under 1 KB
-tools/canon-uninstall.sh	other="$(git -C "$INSTALL" rev-list --branches --not --remotes 2>/dev/null | head -1)" || other="?"	the line ends `|| other="?"`; the writer prints one value; the writer prints one commit id per unmerged branch
+tools/canon-uninstall.sh	other="$(git -C "$CLONE" rev-list --branches --not --remotes 2>/dev/null | head -1)" || other="?"	the line ends `|| other="?"`; the writer prints one value; the writer prints one commit id per unmerged branch
 tools/canon-uninstall.sh	printf '%s\n' "$cur" | tr ';' '\n' | grep -qixF "$(windows_path_entry)"	writer is $PATH, bounded by the environment size
 tools/cockpit-launch-lib.sh	if printf '%s' "$resp" | grep -q '"ok": *true'; then	writer is one JSON reply from the local daemon, under 1 KB
 tools/cockpit-launch-lib.sh	id="$(printf '%s' "$resp" | sed -n 's/.*"project": *{[^}]*"id": *"\([^"]*\)".*/\1/p' | head -1)"	writer is one JSON reply from the local daemon, under 1 KB

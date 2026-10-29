@@ -7,6 +7,7 @@ cmd_init() {
 
   mkdir -p "$HOME/.config/canon"
   echo "$SKILLS_ROOT" > "$HOME/.config/canon/install_path"
+  retarget_install_paths
 
   local any_fail=0
 

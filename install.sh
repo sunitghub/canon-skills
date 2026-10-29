@@ -53,6 +53,7 @@ if [[ -f "$TARGET/current/tools/skills.sh" || -f "$TARGET/tools/skills.sh" ]]; t
   if ! bash "$TOOLS/canon" "${upd[@]}"; then
     printf 'warning: canon update did not finish — nothing was changed, or your local changes conflict. Skipping update.\n' >&2
   fi
+  [[ ! -f "$TARGET/current/tools/skills.sh" ]] || TOOLS="$TARGET/current/tools"   # the update may have moved an older install into the layout
 else
   printf 'Installing canon → %s\n' "$TARGET"
   # on failure remove only what this run made: an existing folder (empty, or holding data kept from an earlier install) is the user's
@@ -63,6 +64,7 @@ else
     if [[ "$target_existed" == 0 ]]; then rm -rf -- "$TARGET"; return 0; fi
     [[ "$packages_existed" == 1 ]] || rm -rf -- "$TARGET/packages"
     if [[ -L "$TARGET/current" ]]; then rm -f -- "$TARGET/current"; fi
+    if [[ -L "$TARGET/tools" ]]; then rm -f -- "$TARGET/tools"; fi
     return 0
   }
   mkdir -p "$TARGET/packages"

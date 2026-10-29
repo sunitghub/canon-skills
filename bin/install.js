@@ -64,6 +64,8 @@ function main() {
     if (r.status !== 0) {
       warn('canon update did not finish — nothing was changed, or your local changes conflict. Skipping update.');
     }
+    // the update may have moved an older install into the layout
+    if (fs.existsSync(path.join(TARGET, 'current', 'tools', 'skills.sh'))) tools = path.join(TARGET, 'current', 'tools');
   } else {
     header(`Installing canon → ${TARGET}`);
     // on failure remove only what this run made: an existing folder (empty, or holding data kept from an earlier install) is the user's
@@ -77,7 +79,9 @@ function main() {
       fs.rmSync(boot, { recursive: true, force: true });
       if (!existed) { fs.rmSync(TARGET, { recursive: true, force: true }); return; }
       if (!pkgsExisted) fs.rmSync(pkgs, { recursive: true, force: true });
-      try { if (fs.lstatSync(path.join(TARGET, 'current')).isSymbolicLink()) fs.rmSync(path.join(TARGET, 'current')); } catch (e) { /* none made */ }
+      for (const l of ['current', 'tools']) {
+        try { if (fs.lstatSync(path.join(TARGET, l)).isSymbolicLink()) fs.rmSync(path.join(TARGET, l)); } catch (e) { /* none made */ }
+      }
     };
     const r = spawnSync('git', ['clone', '--depth', '1', '--', REPO, boot], { stdio: 'inherit' });
     if (r.status !== 0) {

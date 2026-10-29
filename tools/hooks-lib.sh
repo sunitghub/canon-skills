@@ -491,7 +491,8 @@ _uninstall_install_path() {
   else
     local installed
     installed="$(cat "$config")"
-    if [ "$installed" = "$SKILLS_ROOT" ]; then
+    # t-50f7: or the same install's path from before it moved into the versioned layout
+    if [ "$installed" = "$SKILLS_ROOT" ] || { declare -F canon_current_path >/dev/null && [ "$(canon_current_path "$installed")" = "$SKILLS_ROOT" ]; }; then
       rm -f "$config"
       echo "  [removed]  install_path"
     else

@@ -3,6 +3,7 @@
 #   <home>/packages/<vX.Y.Z>/   a release, unpacked from its manifest-verified zip (no .git), its two binaries already inside
 #   <home>/packages/main/       the development track: a git clone, updated in place
 #   <home>/current              a RELATIVE symlink to packages/<name>, replaced by a rename so it is never missing or half-written
+#   <home>/tools                a link to current/tools (pkg_compat_tools): the path every doc and older PATH line names
 #   <home>/.update.lock/        one update at a time (mkdir is atomic; the pid file inside says who holds it)
 # Data (cockpit/, events/, themes/, settings.json, integrity/, .canon-track) lives in <home> beside these, never inside a package.
 # <home> is the folder the installer was given (CANON_HOME or ~/.canon). tools/canon's update_packages is the only caller.
@@ -10,6 +11,12 @@
 PKG_RELEASE_BASE="${CANON_RELEASE_BASE:-https://github.com/sunitghub/canon-skills/releases/download}"   # the override is a test seam
 PKG_ERR=""; PKG_NOTE=""; PKG_LOCK=""
 _PKG_LIB_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+
+# pkg_is_data <name>: an entry of the home that is user data, never part of a package (moving a single-tree install into the layout leaves it).
+pkg_is_data() {
+  case "$1" in cockpit|events|themes|settings.json|integrity|logs|.canon-track|.canon-cache) return 0 ;; esac
+  return 1
+}
 
 _pkg_sha256() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'
@@ -69,6 +76,12 @@ pkg_flip() {
   [ "$t" = "packages/$name" ] || { PKG_ERR="$home/current points at '$t', not packages/$name"; return 1; }
 }
 
+# pkg_compat_tools <home>: <home>/tools, a relative link to current/tools, so `~/.canon/tools/...` (the docs, a PATH line written before the
+# layout, the cloud setup) keeps reaching the current version. Never replaces anything already there.
+pkg_compat_tools() {
+  [ -e "$1/tools" ] || [ -L "$1/tools" ] || ln -s current/tools "$1/tools"
+}
+
 _pkg_unzip() { # <zip> <dir>
   if command -v unzip >/dev/null 2>&1; then unzip -q "$1" -d "$2"
   elif command -v bsdtar >/dev/null 2>&1; then bsdtar -xf "$1" -C "$2"
@@ -84,8 +97,6 @@ pkg_install() {
   _pkg_fail() { PKG_ERR="$1"; [ -z "$tmp" ] || rm -rf -- "$tmp"; return 1; }
   [ ! -e "$pk/$tag" ] || { PKG_ERR="$pk/$tag already exists"; return 1; }
   mkdir -p "$pk" || { PKG_ERR="could not create $pk"; return 1; }
-  # temp folders of an update that was interrupted: the lock is ours, so nothing else is using them
-  for v in "$pk"/.tmp-*; do [ ! -e "$v" ] || rm -rf -- "$v"; done
   tmp="$(mktemp -d "$pk/.tmp-$tag.XXXXXX")" || { tmp=""; PKG_ERR="could not create a temp folder in $pk"; return 1; }
   zip="$tmp/canon.zip"; url="$PKG_RELEASE_BASE/$tag/canon-${tag#v}.zip"
   command -v curl >/dev/null 2>&1 || { _pkg_fail "curl is required to download $tag"; return 1; }
@@ -129,23 +140,29 @@ pkg_prune() {
   return 0
 }
 
-# pkg_running <home>: what of this install's Cockpit runs (the daemon, the board), as one line; empty when nothing does. Uses the verified probes
-# of cockpit-stop-lib.sh against current and every package, so another install's daemon or an unrelated listener on the port never counts.
+# pkg_running <home>: what of this install's Cockpit runs (the daemon, the board), as one line; empty when nothing does. The verified probes of
+# cockpit-stop-lib.sh, which count the home, current and every package as this install, so another install's daemon or an unrelated listener on
+# the port never counts. Also used before a single-tree install moves into the layout (the home is then the clone).
 pkg_running() (
-  local home="$1" d out="" seen=" "
   # shellcheck source=platform-lib.sh
   source "$_PKG_LIB_DIR/platform-lib.sh"
   # shellcheck source=cockpit-stop-lib.sh
   source "$_PKG_LIB_DIR/cockpit-stop-lib.sh"
-  PORT="${CANON_COCKPIT_PORT:-8899}"
+  INSTALL="$1"; PORT="${CANON_COCKPIT_PORT:-8899}"
   board_up() { curl -s -o /dev/null --max-time 3 "http://127.0.0.1:$PORT/api/version" 2>/dev/null; }
-  for d in "$home/current" "$home"/packages/*; do
-    [ -d "$d" ] || continue
-    INSTALL="$d"
-    probe_daemon
-    if [ "$DAEMON_STATUS" = ours ] && [[ "$seen" != *" $DAEMON_PID "* ]]; then out="$out, the Cockpit daemon (pid $DAEMON_PID)"; seen="$seen$DAEMON_PID "; fi
-    probe_board
-    if [ "$BOARD_STATUS" = ours ] && [[ "$seen" != *" $BOARD_PID "* ]]; then out="$out, the board (pid $BOARD_PID)"; seen="$seen$BOARD_PID "; fi
-  done
-  printf '%s' "${out#, }"
+  local out=""
+  probe_daemon; [ "$DAEMON_STATUS" != ours ] || out="the Cockpit daemon (pid $DAEMON_PID)"
+  probe_board; [ "$BOARD_STATUS" != ours ] || out="${out:+$out, }the board (pid $BOARD_PID)"
+  printf '%s' "$out"
 )
+
+# pkg_sweep <home>: folders an interrupted update or install left in packages/ (a temp package, a bootstrap clone). The caller holds the lock;
+# a bootstrap clone still in use (its installer runs `canon update` from it) is skipped by its command line.
+pkg_sweep() {
+  local d
+  for d in "$1"/packages/.tmp-* "$1"/packages/.boot.*; do
+    [ -d "$d" ] || continue
+    pkg_in_use "$d" || rm -rf -- "$d"
+  done
+  return 0
+}

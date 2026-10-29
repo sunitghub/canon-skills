@@ -34,8 +34,32 @@ if [ -z "${SKILLS_ROOT:-}" ]; then
     unset _skills_lib_self
 fi
 
+# t-50f7: run from a package of the versioned layout (<home>/packages/<x>/tools, reached by any path: current, the package, the <home>/tools
+# compat link), every path canon stores names <home>/current, so an update's flip needs no project rewrite. Detected from this file's physical
+# location: a logical path through the compat link would look like a single-tree install at <home>.
+_skills_pkg="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+if [ "$(basename "$(dirname "$_skills_pkg")")" = packages ] && [ -L "$(dirname "$(dirname "$_skills_pkg")")/current" ]; then
+  SKILLS_ROOT="$(dirname "$(dirname "$_skills_pkg")")/current"
+fi
+unset _skills_pkg
+
 SEARCH_DIRS=("$SKILLS_ROOT/standards" "$SKILLS_ROOT/tools" "$SKILLS_ROOT/skills")
 PROJECTS_FILE="$HOME/.config/canon/projects"
+
+# t-50f7: canon_current_path <path> — in the versioned layout, a path stored before it (<home>/X from the single-tree install, or
+# <home>/packages/<v>/X) as <home>/current/X; prints nothing and fails for any other path, and for any path outside a versioned install.
+canon_current_path() {
+  local p="$1" home rest
+  case "$SKILLS_ROOT" in */current) home="${SKILLS_ROOT%/current}" ;; *) return 1 ;; esac
+  [ -d "$home/packages" ] || return 1
+  case "$p" in
+    "$SKILLS_ROOT"|"$SKILLS_ROOT"/*) return 1 ;;
+    "$home"|"$home"/packages/*) rest="${p#"$home"}"; rest="${rest#/packages/}"; case "$rest" in */*) rest="/${rest#*/}" ;; *) rest="" ;; esac ;;
+    "$home"/*) rest="/${p#"$home"/}" ;;
+    *) return 1 ;;
+  esac
+  printf '%s%s\n' "$SKILLS_ROOT" "$rest"
+}
 
 # Extract a single frontmatter field value from a file
 registered_skill_rows() {
