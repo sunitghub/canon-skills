@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-29-2026 08:18
+learnings-sweep last run: 10-29-2026 10:00
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-29 | [t-4872](.tickets/t-4872/learnings.md) | Two sides that must name one folder need one owner or a test that pins both: Go writes the daemon's state to os.UserCacheDir() (LocalAppData on Windows) while the shell listed only Unix-shaped dirs, so Windows uninstall blocked on its own daemon; and a list that feeds a delete must never emit a path built from an empty conversion. | UNPROMOTED |
 | 2026-10-29 | [t-7299](.tickets/t-7299/learnings.md) | Removing a file from the release zip also removes it from every doc that points there: the board's CLAUDE.md is named by AGENTS.md and the reviewer gate, so grep for readers in prose, not only in code, before excluding a file. | UNPROMOTED |
 | 2026-10-29 | [t-d689](.tickets/t-d689/learnings.md) | A revert check that exits early tests nothing: check-vendored's mutants ran where no manifest existed, so each exited 2 on "no manifest" and every one looked caught. Make a mutant fail on its own assertion, not on setup. | UNPROMOTED |
 | 2026-10-29 | [t-cb66](.tickets/t-cb66/learnings.md) | A second copy of a name list is a silent behaviour switch: uninstall's sweepable-temp list repeats `pkg_sweep`'s, so a new temp kind would make uninstall keep the home as "unknown" with no test failing; give such lists one owner, as `pkg_is_data` does. | UNPROMOTED |
