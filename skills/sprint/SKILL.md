@@ -53,32 +53,13 @@ Work directly, then report verification.
 
 ### Bugfix (eval-only)
 
-A lighter tier between Trivial and Normal for a small, well-contained fix. It is **eval-only**:
-it keeps the binding fresh-context **evaluator** and drops the *advisory* reviewer + the heavier
-wrapup gates. It **never drops below the binding evaluator** — that is the whole point of the trim.
-
-Eligibility is **structural**, decided at close from the actual diff (not planned scope), and
-requires **all** of:
-- the change is a single logic file **plus its covering test** (no wider surface);
-- a covering test exists that asserts an **independent** invariant (not a re-derivation of the
-  code — see `reference/root-why.md`);
-- **none** of the four categorical not-trivial triggers is present (new file beyond the test,
-  test/build-infrastructure wiring, hook/pipeline/post-commit change, or coordinated multi-file
-  intent). If any is present, the sprint stays Normal.
-
-Bugfix is a *complete-time downgrade* (mirrors the trivial valve): planning runs as Normal; at
-close, if the diff qualifies, write `Tier: bugfix` in `plan.md`'s `## Sign-off`. Because bugfix is
-non-trivial, the CLI still requires the eval-report, sign-off, and acceptance gates — only the
-advisory reviewer and heavy wrapup are skipped (`complete.md` steps 1-2). It is strictly safer
-than the trivial tier, which skips the evaluator too.
-
-`sprint suggest-tier` surfaces this eligibility mechanically — it reads the diff (never plan prose)
-and *proposes* `bugfix` or `normal`; it never writes `Tier:` or auto-downgrades. It checks only the
-structural shape (single logic file + covering test, none of the four triggers); whether the test
-asserts an *independent* invariant stays a judgment for the binding evaluator.
-
-Pairs naturally with a `type: bug` job (see Job types below): `root-why` produces the independent
-invariant, and the covering test that asserts it is exactly the bugfix-tier eligibility precondition.
+A close-time downgrade for a small fix: it keeps the binding fresh-context evaluator and skips the
+advisory reviewer and heavy wrapup, so it **never drops below the binding evaluator**. Planning runs as
+Normal; at close `sprint suggest-tier` reads the diff and proposes `bugfix` only for one logic file plus
+its covering test with none of the four not-trivial triggers above (a new file beyond the test is one). The
+evaluator judges whether that test asserts an independent invariant (`reference/root-why.md`). Then write
+`Tier: bugfix` in `plan.md`'s `## Sign-off` (`complete.md` steps 1-2); the CLI still requires the eval-report,
+sign-off and acceptance gates.
 
 ### Normal
 
