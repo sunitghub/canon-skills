@@ -110,6 +110,7 @@ tests=(
   "$ROOT/tests/sprint-check-interrupted.sh"
   "$ROOT/tests/canon-cli.sh"
   "$ROOT/tests/canon-update.sh"
+  "$ROOT/tests/canon-packages.sh"
   "$ROOT/tests/canon-uninstall.sh"
   "$ROOT/tests/fetch-daemon.sh"
   "$ROOT/tests/fetch-win-binaries.sh"

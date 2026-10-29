@@ -1,0 +1,151 @@
+#!/usr/bin/env bash
+# pkg-lib.sh — the versioned install layout (t-50f7). Source, don't execute. macOS and Linux (Windows keeps its single-tree install).
+#   <home>/packages/<vX.Y.Z>/   a release, unpacked from its manifest-verified zip (no .git), its two binaries already inside
+#   <home>/packages/main/       the development track: a git clone, updated in place
+#   <home>/current              a RELATIVE symlink to packages/<name>, replaced by a rename so it is never missing or half-written
+#   <home>/.update.lock/        one update at a time (mkdir is atomic; the pid file inside says who holds it)
+# Data (cockpit/, events/, themes/, settings.json, integrity/, .canon-track) lives in <home> beside these, never inside a package.
+# <home> is the folder the installer was given (CANON_HOME or ~/.canon). tools/canon's update_packages is the only caller.
+
+PKG_RELEASE_BASE="${CANON_RELEASE_BASE:-https://github.com/sunitghub/canon-skills/releases/download}"   # the override is a test seam
+PKG_ERR=""; PKG_NOTE=""; PKG_LOCK=""
+_PKG_LIB_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+
+_pkg_sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | awk '{print $1}'
+  else return 1; fi
+}
+
+# A pid is alive when ps lists it and it is not a zombie (an unreaped child still answers kill -0).
+_pkg_alive() {
+  local st; st="$(ps -o stat= -p "$1" 2>/dev/null | tr -d ' ')" || st=""
+  case "$st" in ''|Z*) return 1 ;; esac
+  return 0
+}
+
+# pkg_current <home>: the package `current` points at (its folder name), or nothing and 1.
+pkg_current() {
+  local t; t="$(readlink "$1/current" 2>/dev/null)" || return 1
+  [ -n "$t" ] || return 1
+  basename "$t"
+}
+
+# pkg_lock <home>: take the update lock or set PKG_ERR and return 1. A lock whose pid is gone is a crashed update: it is taken over
+# (PKG_NOTE says so). The pid is read again just before the takeover, so a lock another update took meanwhile is never removed.
+pkg_lock() {
+  local lock="$1/.update.lock" pid
+  PKG_NOTE=""
+  if mkdir "$lock" 2>/dev/null; then printf '%s\n' "$$" > "$lock/pid"; PKG_LOCK="$lock"; return 0; fi
+  pid="$(cat "$lock/pid" 2>/dev/null)" || pid=""
+  # mkdir and the pid write are two steps: give a lock that was just made a moment to name its owner
+  if [ -z "$pid" ]; then sleep 1; pid="$(cat "$lock/pid" 2>/dev/null)" || pid=""; fi
+  if [ -n "$pid" ] && _pkg_alive "$pid"; then PKG_ERR="another canon update is running (pid $pid; its lock is $lock)"; return 1; fi
+  [ "$(cat "$lock/pid" 2>/dev/null)" = "$pid" ] || { PKG_ERR="another canon update just took the lock ($lock)"; return 1; }
+  rm -rf -- "$lock"
+  mkdir "$lock" 2>/dev/null || { PKG_ERR="another canon update just took the lock ($lock)"; return 1; }
+  printf '%s\n' "$$" > "$lock/pid"; PKG_LOCK="$lock"
+  PKG_NOTE="took over the update lock of an update that is no longer running (pid ${pid:-unknown})"
+}
+
+pkg_unlock() {
+  [ -n "$PKG_LOCK" ] || return 0
+  if [ "$(cat "$PKG_LOCK/pid" 2>/dev/null)" = "$$" ]; then rm -rf -- "$PKG_LOCK"; fi
+  PKG_LOCK=""
+}
+
+# pkg_flip <home> <name>: point current at packages/<name>. A new link under a temp name, then a rename over current: a reader sees the old
+# target or the new one, never none. mv must not follow current into the folder it points at (that would move the link inside the package):
+# GNU mv says so with -T, BSD mv (macOS) with -h.
+pkg_flip() {
+  local home="$1" name="$2" tmp="$1/.current.tmp.$$" t
+  PKG_ERR=""
+  [ -d "$home/packages/$name" ] || { PKG_ERR="$home/packages/$name does not exist"; return 1; }
+  rm -f -- "$tmp"
+  ln -s "packages/$name" "$tmp" || { PKG_ERR="could not create a link in $home"; return 1; }
+  if mv --version >/dev/null 2>&1; then mv -fT -- "$tmp" "$home/current"; else mv -fh "$tmp" "$home/current"; fi \
+    || { rm -f -- "$tmp"; PKG_ERR="could not replace $home/current"; return 1; }
+  t="$(readlink "$home/current" 2>/dev/null)" || t=""
+  [ "$t" = "packages/$name" ] || { PKG_ERR="$home/current points at '$t', not packages/$name"; return 1; }
+}
+
+_pkg_unzip() { # <zip> <dir>
+  if command -v unzip >/dev/null 2>&1; then unzip -q "$1" -d "$2"
+  elif command -v bsdtar >/dev/null 2>&1; then bsdtar -xf "$1" -C "$2"
+  else echo "neither unzip nor bsdtar is installed" >&2; return 1; fi
+}
+
+# pkg_install <home> <tag> <zip sha256>: build packages/<tag> from the release zip. Everything happens in a temp folder inside packages/ (the same
+# file system, so the last step is a rename); only a complete, verified package is renamed into place. On any failure nothing but that temp
+# folder was written, it is removed, and PKG_ERR says why. The caller holds the lock and has read the sha from the published manifest.
+pkg_install() {
+  local home="$1" tag="$2" want="$3" pk="$1/packages" tmp="" zip url got top v
+  PKG_ERR=""
+  _pkg_fail() { PKG_ERR="$1"; [ -z "$tmp" ] || rm -rf -- "$tmp"; return 1; }
+  [ ! -e "$pk/$tag" ] || { PKG_ERR="$pk/$tag already exists"; return 1; }
+  mkdir -p "$pk" || { PKG_ERR="could not create $pk"; return 1; }
+  # temp folders of an update that was interrupted: the lock is ours, so nothing else is using them
+  for v in "$pk"/.tmp-*; do [ ! -e "$v" ] || rm -rf -- "$v"; done
+  tmp="$(mktemp -d "$pk/.tmp-$tag.XXXXXX")" || { tmp=""; PKG_ERR="could not create a temp folder in $pk"; return 1; }
+  zip="$tmp/canon.zip"; url="$PKG_RELEASE_BASE/$tag/canon-${tag#v}.zip"
+  command -v curl >/dev/null 2>&1 || { _pkg_fail "curl is required to download $tag"; return 1; }
+  curl -fsSL --proto '=https,file' --proto-redir '=https' --connect-timeout 10 --max-time 300 -o "$zip" "$url" 2>/dev/null \
+    || { _pkg_fail "the download of $tag failed ($url)"; return 1; }
+  got="$(_pkg_sha256 "$zip")" || { _pkg_fail "no sha256sum or shasum to verify the download"; return 1; }
+  [ "$got" = "$want" ] || { _pkg_fail "the downloaded $tag zip does not match the published checksum (got $got, the manifest says $want); it was discarded"; return 1; }
+  mkdir "$tmp/x" && _pkg_unzip "$zip" "$tmp/x" >/dev/null || { _pkg_fail "could not unpack the $tag zip"; return 1; }
+  rm -f -- "$zip"
+  top="$tmp/x/canon-${tag#v}"
+  [ -f "$top/tools/canon" ] && [ -f "$top/tools/fetch-daemon.sh" ] || { _pkg_fail "the $tag zip does not hold canon-${tag#v}/tools"; return 1; }
+  v="$(tr -d '[:space:]' < "$top/VERSION" 2>/dev/null)" || v=""
+  [ "$v" = "${tag#v}" ] || { _pkg_fail "the $tag zip says it is version '${v:-none}'"; return 1; }
+  # the board and the daemon, checked against the package's own tools/cockpit-daemon.sha256, land inside the temp package
+  bash "$top/tools/fetch-daemon.sh" --quiet >&2 || { _pkg_fail "the board and daemon for $tag could not be fetched (see above)"; return 1; }
+  [ ! -e "$pk/$tag" ] || { _pkg_fail "$pk/$tag appeared while it was being built"; return 1; }
+  mv -- "$top" "$pk/$tag" || { _pkg_fail "could not move the new package into $pk/$tag"; return 1; }
+  rm -rf -- "$tmp"
+}
+
+# pkg_in_use <dir>: some process's command line runs a file under <dir>. When ps cannot answer, the answer is yes (never delete blind).
+pkg_in_use() {
+  local all; all="$(ps -A -ww -o command= 2>/dev/null)" || return 0
+  [ -n "$all" ] || return 0
+  case "$all" in *"$1/"*) return 0 ;; esac
+  return 1
+}
+
+# pkg_prune <home>: keep the current package, packages/main (a clone may hold work) and the 2 newest other releases; remove older ones that
+# no process runs from. Prints one line per package it removes or keeps for that reason.
+pkg_prune() {
+  local home="$1" pk="$1/packages" cur n i=0 re='^v[0-9]+\.[0-9]+\.[0-9]+$'
+  cur="$(pkg_current "$home")" || cur=""
+  for n in $(for d in "$pk"/v*; do n="$(basename "$d")"; [[ -d "$d" && "$n" =~ $re && "$n" != "$cur" ]] && echo "${n#v}"; done \
+      | sort -t. -k1,1nr -k2,2nr -k3,3nr); do
+    i=$((i + 1)); [ "$i" -gt 2 ] || continue
+    if pkg_in_use "$pk/v$n"; then echo "  kept old package v$n (a running program uses it)"
+    elif rm -rf -- "$pk/v$n"; then echo "  removed old package v$n"
+    else echo "  could not remove old package v$n" >&2; fi
+  done
+  return 0
+}
+
+# pkg_running <home>: what of this install's Cockpit runs (the daemon, the board), as one line; empty when nothing does. Uses the verified probes
+# of cockpit-stop-lib.sh against current and every package, so another install's daemon or an unrelated listener on the port never counts.
+pkg_running() (
+  local home="$1" d out="" seen=" "
+  # shellcheck source=platform-lib.sh
+  source "$_PKG_LIB_DIR/platform-lib.sh"
+  # shellcheck source=cockpit-stop-lib.sh
+  source "$_PKG_LIB_DIR/cockpit-stop-lib.sh"
+  PORT="${CANON_COCKPIT_PORT:-8899}"
+  board_up() { curl -s -o /dev/null --max-time 3 "http://127.0.0.1:$PORT/api/version" 2>/dev/null; }
+  for d in "$home/current" "$home"/packages/*; do
+    [ -d "$d" ] || continue
+    INSTALL="$d"
+    probe_daemon
+    if [ "$DAEMON_STATUS" = ours ] && [[ "$seen" != *" $DAEMON_PID "* ]]; then out="$out, the Cockpit daemon (pid $DAEMON_PID)"; seen="$seen$DAEMON_PID "; fi
+    probe_board
+    if [ "$BOARD_STATUS" = ours ] && [[ "$seen" != *" $BOARD_PID "* ]]; then out="$out, the board (pid $BOARD_PID)"; seen="$seen$BOARD_PID "; fi
+  done
+  printf '%s' "${out#, }"
+)

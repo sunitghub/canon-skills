@@ -50,62 +50,66 @@ function main() {
   // development track, CANON_REF=vX.Y.Z a version.
 
   const ref = process.env.CANON_REF || '';
-  const canon = path.join(TARGET, 'tools', 'canon');
+  // t-50f7: the install is versioned: TARGET/packages/<vX.Y.Z>/ (or packages/main, a clone) and TARGET/current, a link to one of them.
+  // TARGET stays the home: it also holds the data (cockpit/, events/, ...). An older install is a clone at TARGET itself.
+  let tools = path.join(TARGET, 'current', 'tools');
 
-  if (fs.existsSync(path.join(TARGET, 'tools', 'skills.sh'))) {
+  if (fs.existsSync(path.join(tools, 'skills.sh')) || fs.existsSync(path.join(TARGET, 'tools', 'skills.sh'))) {
+    if (!fs.existsSync(path.join(tools, 'skills.sh'))) tools = path.join(TARGET, 'tools');
     ok(`canon already installed at ${TARGET}`);
     info('Updating…');
     // an explicit CANON_REF picks the version; otherwise the install keeps its own track
+    const canon = path.join(tools, 'canon');
     const r = spawnSync('bash', ref ? [canon, 'update', '--to', ref] : [canon, 'update'], { stdio: 'inherit' });
     if (r.status !== 0) {
       warn('canon update did not finish — nothing was changed, or your local changes conflict. Skipping update.');
     }
   } else {
-    header(`Cloning canon → ${TARGET}`);
-    fs.mkdirSync(path.dirname(TARGET), { recursive: true });
-    // an existing (empty) folder is the user's: on failure clean its contents, never the folder itself
+    header(`Installing canon → ${TARGET}`);
+    // on failure remove only what this run made: an existing folder (empty, or holding data kept from an earlier install) is the user's
     const existed = fs.existsSync(TARGET);
-    const r = spawnSync('git', ['clone', '--depth', '1', '--', REPO, TARGET], { stdio: 'inherit' });
+    const pkgs = path.join(TARGET, 'packages');
+    const pkgsExisted = fs.existsSync(pkgs);
+    fs.mkdirSync(pkgs, { recursive: true });
+    // the clone only carries the code that builds the layout: inside packages/ under a dot name, removed once it is done (as install.sh)
+    const boot = fs.mkdtempSync(path.join(pkgs, '.boot.'));
+    const undo = () => {
+      fs.rmSync(boot, { recursive: true, force: true });
+      if (!existed) { fs.rmSync(TARGET, { recursive: true, force: true }); return; }
+      if (!pkgsExisted) fs.rmSync(pkgs, { recursive: true, force: true });
+      try { if (fs.lstatSync(path.join(TARGET, 'current')).isSymbolicLink()) fs.rmSync(path.join(TARGET, 'current')); } catch (e) { /* none made */ }
+    };
+    const r = spawnSync('git', ['clone', '--depth', '1', '--', REPO, boot], { stdio: 'inherit' });
     if (r.status !== 0) {
+      undo();
       console.error('\n  \x1b[31m✗\x1b[0m  Clone failed. Check your git config and try again.');
       process.exit(1);
     }
-    // move the clone to the verified release (or the requested ref); if that cannot be verified nothing is left installed
-    const u = spawnSync('bash', [canon, 'update', '--to', ref || 'latest'], { stdio: 'inherit' });
+    // install the verified release (or the requested ref); if that cannot be verified nothing is left installed
+    const u = spawnSync('bash', [path.join(boot, 'tools', 'canon'), 'update', '--to', ref || 'latest'], { stdio: 'inherit' });
     if (u.status !== 0) {
-      if (existed) {
-        for (const e of fs.readdirSync(TARGET)) fs.rmSync(path.join(TARGET, e), { recursive: true, force: true });
-      } else {
-        fs.rmSync(TARGET, { recursive: true, force: true });
-      }
+      undo();
       console.error('\n  \x1b[31m✗\x1b[0m  Could not install a verified canon release, so nothing was installed.');
       console.error('     To install the development version instead: CANON_REF=main  (then run this again)');
       process.exit(1);
     }
-    ok('Cloned.');
+    fs.rmSync(boot, { recursive: true, force: true });
+    ok('Installed.');
   }
 
   // ── Run init ──────────────────────────────────────────────────────────────
 
   header('Wiring agent hooks…');
-  const init = spawnSync('bash', [path.join(TARGET, 'tools', 'skills.sh'), 'init'], { stdio: 'inherit' });
+  const init = spawnSync('bash', [path.join(tools, 'skills.sh'), 'init'], { stdio: 'inherit' });
   if (init.status !== 0) {
     warn('skills.sh init reported an issue — check output above.');
-  }
-
-  // ── Cockpit daemon ────────────────────────────────────────────────────────
-  // gitignored, so a clone has none: fetch the verified prebuilt (or build it). Never fatal.
-
-  const daemon = spawnSync('bash', [path.join(TARGET, 'tools', 'fetch-daemon.sh')], { stdio: 'inherit' });
-  if (daemon.status !== 0) {
-    warn('agent sessions in the Cockpit need the daemon; see the message above, or run: canon update');
   }
 
   // ── Done ──────────────────────────────────────────────────────────────────
 
   header('Done.');
   console.log(`
-  Full setup guide: ${TARGET}/docs/setup.md
+  Full setup guide: ${path.join(tools, '..', 'docs', 'setup.md')}
 `);
 }
 

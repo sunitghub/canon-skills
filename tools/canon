@@ -40,7 +40,9 @@ Usage:
   canon update             Move this canon install to the latest verified release (checked
                            against the published manifest; it refuses, changing nothing, if
                            that cannot be done, or if the install has uncommitted changes or
-                           local commits), then run `skills.sh refresh` on every project
+                           local commits, or while its Cockpit runs: canon stop first; a new
+                           release goes into its own folder and a failed one leaves the
+                           running version untouched), then run `skills.sh refresh` on every project
                            registered in the Cockpit. An install that follows main (see --to
                            main) fast-forwards main instead. A Windows install without git
                            (the one-line installer) is updated by re-running that installer.
@@ -131,6 +133,95 @@ main_track_note() {
   echo "For the latest release instead, run: canon update --to latest"
 }
 
+# t-50f7: the folder that holds this install's data and its .canon-track marker. In the versioned layout this script runs from
+# <home>/packages/<name>/tools (SCRIPT_DIR is physical), so the home is two levels above the package; a clone is its own home.
+install_home() {
+  local r; r="$(cd "$SCRIPT_DIR/.." && pwd)"
+  if [ "$(basename "$(dirname "$r")")" = packages ]; then dirname "$(dirname "$r")"; else printf '%s\n' "$r"; fi
+}
+
+# t-50f7: update an install in the versioned layout (tools/pkg-lib.sh). A release becomes a new package from its verified zip and `current`
+# flips to it; a release already in packages/ is a repoint (no download); main is a git clone in packages/main, pulled in place. The running
+# package is never written, and a failure at any step leaves `current` where it was. It refuses while this install's Cockpit runs: it never
+# stops or restarts anything. Ends by handing the project refresh to the package `current` now names (exec), so it never returns.
+update_packages() {
+  local home="$1" repo="$2" to="$3" marker="$1/.canon-track" cur running hint="" msg
+  # shellcheck source=pkg-lib.sh
+  source "$SCRIPT_DIR/pkg-lib.sh"
+  running="$(pkg_running "$home")"
+  if [ -n "$running" ]; then
+    echo "canon update: this install's Cockpit is running ($running). Run 'canon stop', then run canon update again. Nothing was changed." >&2; exit 1
+  fi
+  pkg_lock "$home" || { echo "canon update: $PKG_ERR. Nothing was changed." >&2; exit 1; }
+  trap 'pkg_unlock' EXIT
+  [ -z "$PKG_NOTE" ] || echo "canon update: $PKG_NOTE."
+  cur="$(pkg_current "$home")" || cur=""
+  if [ -z "$to" ]; then
+    if [ "$({ tr -d '[:space:]' < "$marker"; } 2>/dev/null)" = main ]; then to=main; else to=latest; fi
+  fi
+  if [ "$to" = main ]; then
+    local m="$home/packages/main" before="" after url branch dirty
+    if [ -d "$m" ]; then
+      # [ -e .git ], not git -C: a home inside another repository (a dotfiles home) would answer for it
+      [ -e "$m/.git" ] || { echo "canon update: $m isn't a git clone. Nothing was changed." >&2; exit 1; }
+      dirty="$(git -C "$m" status --porcelain)"
+      if [ -n "$dirty" ]; then
+        echo "canon update: $m has uncommitted changes — commit or stash them first. Nothing was changed." >&2
+        printf '%s\n' "$dirty" | sed -n '1,10s/^/  /p' >&2
+        exit 1
+      fi
+      branch="$(git -C "$m" rev-parse --abbrev-ref HEAD)"
+      [ "$branch" = main ] || { echo "canon update: $m is on '$branch', not main — switch to main first. Nothing was changed." >&2; exit 1; }
+      before="$(git -C "$m" rev-parse --short HEAD)"
+      git -C "$m" pull --ff-only --quiet || { echo "canon update: $m can't fast-forward (local commits, or no upstream). Nothing was changed." >&2; exit 1; }
+    else
+      # the remote this code came from when it is a clone (the installer's bootstrap clone), else the published repository
+      url=""; [ ! -e "$repo/.git" ] || url="$(git -C "$repo" remote get-url origin 2>/dev/null)" || url=""
+      [ -n "$url" ] || url="${CANON_REPO:-https://github.com/sunitghub/canon-skills.git}"
+      local t; t="$(mkdir -p "$home/packages" && mktemp -d "$home/packages/.tmp-main.XXXXXX")" || { echo "canon update: could not create a temp folder in $home/packages. Nothing was changed." >&2; exit 1; }
+      if ! git clone -q --depth 1 -- "$url" "$t" || ! mv -- "$t" "$m"; then
+        rm -rf -- "$t"; echo "canon update: could not clone main from $url. Nothing was changed." >&2; exit 1
+      fi
+    fi
+    after="$(git -C "$m" rev-parse --short HEAD)"
+    bash "$m/tools/fetch-daemon.sh" --quiet || echo "canon update: a prebuilt binary is missing or stale (see above); the Cockpit needs it." >&2
+    pkg_flip "$home" main || { echo "canon update: $PKG_ERR. current still points at ${cur:-nothing}." >&2; exit 1; }
+    printf 'main\n' > "$marker" 2>/dev/null || true
+    if [ "$cur" = main ] && [ "$before" = "$after" ]; then echo "canon is up to date ($after)."
+    elif [ "$cur" = main ]; then echo "canon updated $before..$after."
+    else echo "canon now follows main ($after)."; fi
+    main_track_note
+  else
+    if [ "$to" = latest ]; then
+      local lf; lf="$(bash "$SCRIPT_DIR/release-manifest.sh" --latest)" \
+        || { echo "canon update: Nothing was changed. 'canon update --to main' follows main and needs no manifest." >&2; exit 1; }
+      read -r to _ <<<"$lf"
+      hint=" 'canon update --to main' follows main and needs no manifest."
+    fi
+    if [ -d "$home/packages/$to" ]; then
+      # a package is renamed into place only when complete and verified, so one that is there is a repoint: nothing is downloaded
+      [ -f "$home/packages/$to/tools/canon" ] || { echo "canon update: $home/packages/$to is not a complete package; remove it and run this again. Nothing was changed." >&2; exit 1; }
+      if [ "$cur" = "$to" ]; then msg="canon is up to date ($to, verified against the published manifest)."
+      else msg="canon is now on $to (already installed; nothing was downloaded)."; fi
+    else
+      # t-34f1: a release is installed only if the published manifest lists it; the zip must hash to the manifest's value
+      local mf zipsha
+      mf="$(bash "$SCRIPT_DIR/release-manifest.sh" "$to")" || { echo "canon update: Nothing was changed.$hint" >&2; exit 1; }
+      read -r zipsha _ <<<"$mf"
+      echo "Downloading canon $to..."
+      pkg_install "$home" "$to" "$zipsha" || { echo "canon update: $PKG_ERR. Nothing was changed.$hint" >&2; exit 1; }
+      msg="canon is now on $to, verified against the published manifest."
+    fi
+    pkg_flip "$home" "$to" || { echo "canon update: $PKG_ERR. current still points at ${cur:-nothing}." >&2; exit 1; }
+    rm -f "$marker"
+    echo "$msg"
+  fi
+  pkg_prune "$home"
+  pkg_unlock; trap - EXIT
+  # the refresh runs the new package's code (its skills.sh), not this one's
+  exec bash "$home/current/tools/canon" update --refresh-only
+}
+
 # t-e3d2: update the canon install, then refresh every Cockpit project. The install is often
 # also a development checkout, so anything but a clean fast-forward on main is refused —
 # never merged or stashed.
@@ -149,6 +240,8 @@ update_cmd() {
   [[ $# -eq 0 ]] || { echo "canon update takes no arguments (except --refresh-only, --to <ref>)" >&2; exit 2; }
   local repo; repo="$(cd "$SCRIPT_DIR/.." && pwd)"
   if [ "$refresh_only" = 1 ]; then refresh_projects; fi
+  local home; home="$(install_home)"
+  if [ "$home" != "$repo" ]; then update_packages "$home" "$repo" "$to"; fi
   if ! git -C "$repo" rev-parse --git-dir >/dev/null 2>&1; then
     update_without_git "$repo" "$to"
   fi
@@ -459,7 +552,7 @@ main() {
     version|--version|-V)
       v="canon $({ tr -d '[:space:]' < "$SCRIPT_DIR/../VERSION"; } 2>/dev/null || echo unknown)"
       # t-65c9: say so when this install follows main; the release track is the default and needs no note
-      if [ "$({ tr -d '[:space:]' < "$SCRIPT_DIR/../.canon-track"; } 2>/dev/null)" = main ]; then main_track_note "$v"; else echo "$v"; fi
+      if [ "$({ tr -d '[:space:]' < "$(install_home)/.canon-track"; } 2>/dev/null)" = main ]; then main_track_note "$v"; else echo "$v"; fi
       exit 0 ;;
     status|sessions|stop|restart) board_cmd "$@"; exit 0 ;;
     wait) shift; wait_cmd "$@"; exit $? ;;       # t-b2ff: a subcommand never falls through to the start path and its folder guard

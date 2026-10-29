@@ -6,7 +6,7 @@
 #   zip install has only the source until this runs. (t-b62a: the board binary's helpers replaced the headless JSON helper.)
 # Every binary is gitignored. This downloads the one published by scripts/release-daemon.sh and moves it into place only
 # after its SHA-256 equals the line for <source key> <target> in tools/cockpit-daemon.sha256 (read from the install itself).
-# The key is tools/src-key.sh's hash of the component's sources; an install with no .git (a Windows zip install) uses the
+# The key is tools/src-key.sh's hash of the component's sources; an install with no .git (a Windows zip install, a release package) uses the
 # newest manifest line for the target instead. A failure never touches a binary that is already in place. If no download is
 # possible it builds from source when Go is new enough, else says what to do. Called by install.sh, install.ps1,
 # `canon update` and `canon`.
@@ -125,8 +125,9 @@ fetch_one() {
   # The key comes from the git trees of the component's sources (tools/src-key.sh): the same in a shallow or partial clone and
   # after a history rewrite, unlike the last commit that touched them.
   full="$(canon_src_key "$REPO" "$COMP")" || full=""
-  if [ -z "$full" ] && [ "$os" = windows ]; then
-    # A zip install has no .git: the newest manifest line for this target names what was released with this copy of the tools.
+  if [ -z "$full" ] && { [ "$os" = windows ] || [ ! -e "$REPO/.git" ]; }; then
+    # A zip install (Windows) or a release package (t-50f7, macOS/Linux) has no .git: the newest manifest line for this target names
+    # what was released with this copy of the tools.
     full="$(manifest_lines | awk -v t="$TARGET" '$2==t {k=$1} END{print k}')" || full=""
     case "$full" in *[!0-9a-f]*) full="" ;; esac
   fi

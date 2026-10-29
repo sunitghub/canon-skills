@@ -161,14 +161,29 @@ touch "$R/tools/cockpit-daemon/.cockpit-daemon.AbC123"
 [[ -z "$(git -C "$R" status --porcelain -- tools/cockpit-daemon)" ]] || fail "a leftover fetch temp file shows in git status: $(git -C "$R" status --porcelain)"
 rm -f "$R/tools/cockpit-daemon/.cockpit-daemon.AbC123"; reset
 
-# 8. not a git checkout: say so, do not guess a name
-cp -R "$R" "$WORK/nogit"; rm -rf "$WORK/nogit/.git"
+# 8. not a git checkout. t-50f7: a release package (macOS/Linux) takes the NEWEST manifest line for its target, as a Windows zip install does
+#    (prod path: pkg_install in tools/pkg-lib.sh, which runs the package's own fetch-daemon.sh); with no line for its target there is no name
+#    to guess, and it says so. (Before t-50f7 a non-git copy always refused here: that was the git-only behaviour this replaces.)
+cp -R "$R" "$WORK/nogit"; rm -rf "$WORK/nogit/.git" "$WORK/nogit/tools/cockpit-daemon/cockpit-daemon" "$WORK/nogit/tools/sprint-check-bin"
+printf '# header
+000000000000 darwin-arm64 %s
+%s darwin-arm64 %s
+%s sprint-check-darwin-arm64 %s
+' "$GOODSHA" "$key" "$GOODSHA" "$keyb" "$GOODSHAB" > "$WORK/nogit/tools/cockpit-daemon.sha256"
+: > "$STUB_LOG"; set +e; out="$(STUB_ASSET="$GOOD" PATH="$STUBS:$BASEPATH" bash "$WORK/nogit/tools/fetch-daemon.sh" 2>&1)"; rc=$?; set -e
+[[ "$rc" == 0 ]] || fail "a release package must fetch by its newest manifest line ($rc): $out"
+assert_contains "$(cat "$STUB_LOG")" "/cockpit-daemon-$key/cockpit-daemon-darwin-arm64"; assert_contains "$(cat "$STUB_LOG")" "/sprint-check-$keyb/sprint-check-darwin-arm64"
+assert_eq "$GOODSHA" "$(shasum -a 256 "$WORK/nogit/tools/cockpit-daemon/cockpit-daemon" | awk '{print $1}')"
+rm -rf "$WORK/nogit/tools/cockpit-daemon/cockpit-daemon" "$WORK/nogit/tools/sprint-check-bin"; printf '# header
+' > "$WORK/nogit/tools/cockpit-daemon.sha256"
 set +e; out="$(PATH="$STUBS:$BASEPATH" bash "$WORK/nogit/tools/fetch-daemon.sh" 2>&1)"; rc=$?; set -e
-[[ "$rc" == 1 ]] || fail "a copy with no .git must exit 1 ($rc): $out"; assert_contains "$out" "is not a git checkout"
+[[ "$rc" == 1 ]] || fail "a copy with no .git and no manifest line must exit 1 ($rc): $out"; assert_contains "$out" "is not a git checkout"
 
 # 9. who calls it, and the resolvers say the same thing
-assert_eq 1 "$(grep -c 'fetch-daemon.sh' "$ROOT/install.sh")"
-assert_eq 2 "$(grep -c 'fetch-daemon.sh' "$ROOT/tools/canon")"   # canon update; canon at start for a missing Windows exe (t-9383)
+# t-50f7: install.sh no longer fetches on its own: a release package arrives with its binaries (pkg_install) and canon update fetches for a clone
+assert_eq 0 "$(grep -c 'fetch-daemon.sh' "$ROOT/install.sh")"
+assert_eq 3 "$(grep -c 'fetch-daemon.sh' "$ROOT/tools/canon")"   # canon update (a clone; packages/main, t-50f7); canon at start for a missing Windows exe (t-9383)
+assert_eq 1 "$(grep -c 'bash "$top/tools/fetch-daemon.sh"' "$ROOT/tools/pkg-lib.sh")"   # t-50f7: a new release package, inside its temp folder
 grep -qF 'CANON_FETCH_NO_BUILD=1 bash "$SCRIPT_DIR/fetch-daemon.sh" --quiet' "$ROOT/tools/canon" || fail "canon at start on Windows must call the fetch with CANON_FETCH_NO_BUILD=1 (no Go there to build with)"
 # t-15d8: start_cockpit_server owns the start-time fetch for canon and sprint-check: on Windows a missing exe, never built; on
 # macOS/Linux every start, building an unreleased change (tests/cockpit-launch-lib.sh runs both)
