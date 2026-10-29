@@ -22,12 +22,12 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
      (`mutant-sweep --check` first), triage every survivor; after the interim commit
      `evidence.sh stamp <id> mutant-sweep -- mutant-sweep …`. Non-binding; not skippable without a reason:
      `mutation-test | skipped | <reason>`.
-   - **Skill eval** if a skill or gate agent changed: `tools/skill-eval-scope.sh`; for each `run <skill>`
+   - **Skill eval** if a skill or gate agent changed (canon checkout only): `tools/skill-eval-scope.sh`; for each `run <skill>`
      follow `skills/skill-eval/SKILL.md` from this session; advisory. Commit its `history.jsonl` line.
    - **Interim commit** (specific paths, no `git add -A`) before any gate.
    - **Evidence:** in a `git clone` of the final commit, run
-     `CANON_TICKETS_DIR=<project>/.tickets evidence.sh stamp <id> test-sh -- scripts/test.sh`; re-stamp after
-     any tracked change.
+     `CANON_TICKETS_DIR=<project>/.tickets evidence.sh stamp <id> test-sh -- <project test command>`
+     (`scripts/test.sh` in canon); re-stamp after any tracked change.
    - `## Wrapup Gates` in `acceptance.md`: a row per gate (`ran`/`skipped` + evidence);
      `reviewer` and `code-reviewer` are separate.
    - No push to `origin/main` from first dispatch until both gates report.
@@ -55,8 +55,8 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
    escape `|`), plus a paragraph naming gate models, any reviewer NO. Run `tkt learn <id>`;
    if it writes a file, run `/learnings-sweep <id>`. Say which in chat and summary.
 9. **Close:** `sprint complete <id>`, never a hand-edited status. On refusal, report and stop.
-10. **Commit & push:** stage specific files, `Closes: <id>` in the body, show them; ask. Public: only `tkt push-main`.
-    A push is not a release: `VERSION` bumps need `scripts/release.sh --dry-run` and a yes. Worktree, after the merge: `tkt worktree-reset`.
+10. **Commit & push:** stage specific files, `Closes: <id>` in the body, show them; ask. Worktree, after the merge:
+    `tkt worktree-reset`. In canon, `public` pushes and releases follow `complete.md` step 10.
 
 ## Gate dispatch inputs
 
