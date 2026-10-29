@@ -173,6 +173,73 @@ for b in main.go; do
   echo "canon-cli: $b ok"
 done
 
+# canon stop / canon restart report each outcome (tools/canon board_cmd): a stub board answers /api/version and the stop/restart POSTs, so each message
+# and exit code is produced by the real command. stub_board <port> <stop-json> <restart-json> <exit-after-post: 0|1>.
+stub_board() {
+  python3 - "$1" "$2" "$3" "$4" <<'PY' >/dev/null 2>&1 &
+import http.server, sys, threading
+port, stop, restart, quit_after = int(sys.argv[1]), sys.argv[2], sys.argv[3], sys.argv[4] == "1"
+class H(http.server.BaseHTTPRequestHandler):
+    def reply(self, body):
+        self.send_response(200); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body); self.wfile.flush()
+    def do_GET(self): self.reply(b'{"version":"0.2.0"}')
+    def do_POST(self):
+        self.reply((stop if self.path.endswith("stop") else restart).encode())
+        if quit_after: threading.Thread(target=self.server.shutdown).start()
+    def log_message(self, *a): pass
+http.server.HTTPServer(("127.0.0.1", port), H).serve_forever()
+PY
+  local pid=$!; disown "$pid" 2>/dev/null || true; PIDS+=("$pid")
+  wait_for "http://127.0.0.1:$1/api/version" || fail "canon-cli: stub board did not start"
+}
+# canon stop: the daemon stopped and the board is gone by the time canon looks for it
+PORT="$(free_port)"; stub_board "$PORT" '{"running": false}' '{}' 1
+set +e; out="$(run stop 2>&1)"; code=$?; set -e
+assert_eq "0" "$code"
+assert_eq "Stopped the daemon. The board had already exited." "$out"
+# canon stop: the daemon did not stop without --force
+PORT="$(free_port)"; stub_board "$PORT" '{"running": true}' '{}' 0
+set +e; out="$(run stop 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"
+assert_eq "The daemon is still running. Try: canon stop --force" "$out"
+# canon restart: success, then failure (the daemon's answer is shown)
+PORT="$(free_port)"; stub_board "$PORT" '{}' '{"restarted": true}' 0
+set +e; out="$(run restart 2>&1)"; code=$?; set -e
+assert_eq "0" "$code"
+assert_eq "Restarted the daemon." "$out"
+PORT="$(free_port)"; stub_board "$PORT" '{}' '{"restarted": false}' 0
+set +e; out="$(run restart 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"
+assert_eq 'The daemon did not restart: {"restarted": false}' "$out"
+
+# canon stop: this install's board (a stub whose command line is the install's canon-go board <port>, so canon verifies it as ours) ignores SIGTERM
+# until $stuck/release exists, so canon names its pid and exits 1 after CANON_STOP_WAIT
+if command -v lsof >/dev/null 2>&1 || command -v ss >/dev/null 2>&1; then
+  stuck="$WORK/stuck"; mkdir -p "$stuck"; PORT="$(free_port)"
+  cat > "$stuck/board" <<'PY'
+import http.server, os, signal, sys
+def term(*a):
+    if os.path.exists("release"): os._exit(0)
+signal.signal(signal.SIGTERM, term)
+class H(http.server.BaseHTTPRequestHandler):
+    def reply(self, body):
+        self.send_response(200); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
+    def do_GET(self): self.reply(b'{"version":"0.2.0"}')
+    def do_POST(self): self.reply(b'{"running": false}')
+    def log_message(self, *a): pass
+http.server.HTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
+PY
+  # python3 finds its libraries from argv[0], which the command line below replaces: point it at them
+  py_home="$(python3 -c 'import sys; print(sys.prefix)')"
+  ( cd "$stuck" && PYTHONHOME="$py_home" exec -a "$(cd "$ROOT" && pwd -P)/tools/canon-go-bin/canon-go" python3 board "$PORT" >/dev/null 2>&1 ) &
+  bp=$!; disown "$bp" 2>/dev/null || true; PIDS+=("$bp")
+  wait_for "http://127.0.0.1:$PORT/api/version" || fail "canon-cli: the SIGTERM-proof board did not start"
+  set +e; out="$(CANON_STOP_WAIT=1 run stop 2>&1)"; code=$?; set -e
+  touch "$stuck/release"; kill "$bp" 2>/dev/null || true
+  assert_eq "1" "$code"
+  assert_eq "Stopped the daemon. The board (pid $bp) did not exit within 1s. Press Ctrl+C in the terminal running canon, or close its window." "$out"
+fi
+
 # canon stop also ends THIS install's own board (tools/canon-go-bin/canon-go board <port>, found by its port and verified by its path and mode
 # word, t-bdb0), on an isolated state dir and port.
 if [[ -x "$ROOT/tools/canon-go-bin/canon-go" ]]; then
