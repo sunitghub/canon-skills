@@ -1678,16 +1678,68 @@ func evalDefault(doc map[string]any) string {
 	return s
 }
 
-// auditTiers runs one Model tiers write and, when it succeeded, records the Review & Eval default before and after.
-func auditTiers(r *http.Request, action string, run func() map[string]any) map[string]any {
-	old := evalDefault(loadModelTiers())
-	res := run()
-	if ok, _ := res["ok"].(bool); ok {
-		now := evalDefault(loadModelTiers())
-		// A save or reset that left the default as it was changed no setting (t-71c8); the other writes stay one line each.
-		if (action != "save" && action != "reset") || now != old {
-			emitSetting(r, "model-tiers."+action, old, now)
+// tierDefaults flattens the registry's defaults to "<tier>.<provider>" -> model id, the values a Model tiers save can change.
+func tierDefaults(doc map[string]any) map[string]string {
+	out := map[string]string{}
+	d, _ := doc["defaults"].(map[string]any)
+	for tier, v := range d {
+		if p, ok := v.(map[string]any); ok {
+			for prov, m := range p {
+				if id, ok := m.(string); ok {
+					out[tier+"."+prov] = id
+				}
+			}
 		}
+	}
+	return out
+}
+
+// auditTiers runs one Model tiers write and, when it succeeded, records what it changed (t-71c8): one setting.changed line per changed
+// default (the Review & Eval default keeps the name model-tiers.<action>; any other is model-tiers.<action>.<tier>.<provider>), one
+// line with the Review & Eval default as old and new when only other registry text changed (a model card, a price), and none when a
+// save or reset changed nothing. Retire, remove and apply always write one line.
+func auditTiers(r *http.Request, action string, run func() map[string]any) map[string]any {
+	before := loadModelTiers()
+	beforeRaw, _ := json.Marshal(before)
+	res := run()
+	ok, _ := res["ok"].(bool)
+	if !ok {
+		return res
+	}
+	after := loadModelTiers()
+	afterRaw, _ := json.Marshal(after)
+	oldEval, newEval := evalDefault(before), evalDefault(after)
+	if action != "save" && action != "reset" {
+		emitSetting(r, "model-tiers."+action, oldEval, newEval)
+		return res
+	}
+	od, nd := tierDefaults(before), tierDefaults(after)
+	keys := map[string]bool{}
+	for k := range od {
+		keys[k] = true
+	}
+	for k := range nd {
+		keys[k] = true
+	}
+	names := make([]string, 0, len(keys))
+	for k := range keys {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	wrote := false
+	for _, k := range names {
+		if od[k] == nd[k] {
+			continue
+		}
+		name := "model-tiers." + action
+		if k != "eval.anthropic" {
+			name += "." + k
+		}
+		emitSetting(r, name, od[k], nd[k])
+		wrote = true
+	}
+	if !wrote && string(beforeRaw) != string(afterRaw) {
+		emitSetting(r, "model-tiers."+action, oldEval, newEval)
 	}
 	return res
 }

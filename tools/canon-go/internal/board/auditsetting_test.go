@@ -278,3 +278,53 @@ func TestModelTiersSaveOrResetThatChangesNothingLogsNothing(t *testing.T) {
 		t.Fatalf("a reset that changed the default should log one line: %d", n)
 	}
 }
+
+// t-71c8 (user, 2026-10-29: log every changed value): a save that changes another tier's default writes one line named for that tier;
+// a save that changes only a model card writes one line; nothing changed writes none. Prod path: POST /api/admin/model-tiers and the
+// activity log Tower > Activity reads.
+func TestModelTiersSaveLogsEveryChangedValue(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CANON_HOME", dir)
+	seed := filepath.Join(dir, "seed.json")
+	old := modelTiersPath
+	modelTiersPath = seed
+	defer func() { modelTiersPath = old }()
+	raw, _ := json.Marshal(regDoc())
+	if err := os.WriteFile(seed, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	save := func(doc map[string]any) {
+		t.Helper()
+		if res := auditTiers(clickReq(), "save", func() map[string]any { return saveModelTiers(doc) }); res["ok"] != true {
+			t.Fatalf("save: %v", res)
+		}
+	}
+	light := regDoc()
+	light["defaults"].(map[string]any)["light"].(map[string]any)["anthropic"] = "claude-haiku-5-5"
+	save(light)
+	got := settingEvents(t, dir)
+	if len(got) != 1 {
+		t.Fatalf("a save that changed the light default should log one line, got %d: %v", len(got), got)
+	}
+	d := got[0]["data"].(map[string]any)
+	if d["name"] != "model-tiers.save.light.anthropic" || d["old"] != "claude-haiku-4-5" || d["new"] != "claude-haiku-5-5" {
+		t.Fatalf("wrong line for the light default: %v", d)
+	}
+	card := regDoc()
+	card["defaults"].(map[string]any)["light"].(map[string]any)["anthropic"] = "claude-haiku-5-5"
+	ms := card["models"].(map[string]any)["anthropic"].([]any)
+	ms[0].(map[string]any)["name"] = "Claude Opus 5.5 (renamed)"
+	save(card)
+	got = settingEvents(t, dir)
+	if len(got) != 2 {
+		t.Fatalf("a save that changed only a model card should log one line, got %d", len(got)-1)
+	}
+	d = got[1]["data"].(map[string]any)
+	if d["name"] != "model-tiers.save" || d["old"] != d["new"] {
+		t.Fatalf("a card-only change should log model-tiers.save with the Review & Eval default as old and new: %v", d)
+	}
+	save(card)
+	if n := len(settingEvents(t, dir)); n != 2 {
+		t.Fatalf("the same save again changed nothing but logged %d more line(s)", n-2)
+	}
+}
