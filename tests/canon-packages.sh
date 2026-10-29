@@ -365,7 +365,7 @@ if git -C "$ROOT" cat-file -e "v0.29.0^{commit}" 2>/dev/null; then
   D2="$(sed -n 's/.*"pid"[^0-9]*\([0-9][0-9]*\).*/\1/p' "$S2/daemon.json")"; [ -n "$D2" ] || fail "the daemon wrote no pid: $ck"; PIDS+=("$D2")
   assert_contains "$(ps -ww -o command= -p "$D2")" "tools/canon-go-bin/canon-go daemon -addr 127.0.0.1:0"
   out="$(run2 env CANON_COCKPIT_PORT="$P2" "$C2" stop 2>&1)" || fail "canon stop failed: $out"
-  assert_contains "$out" "Canon stopped: the Cockpit daemon and the board."
+  assert_contains "$out" "Stopped the Cockpit: the board and the daemon have exited."
   for i in $(seq 1 50); do pid_alive "$D2" || pid_alive "$B2" || break; sleep 0.1; done
   ! pid_alive "$D2" && ! pid_alive "$B2" || fail "canon stop left the daemon ($D2) or the board ($B2) running"
   wait "$L2" 2>/dev/null || true

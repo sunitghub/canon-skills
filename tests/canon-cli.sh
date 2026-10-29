@@ -74,12 +74,15 @@ for f in canon canon.cmd canon-win canon-win.cmd; do [[ -f "$ROOT/tools/$f" ]] |
 PORT="$(free_port)"
 set +e
 out="$(run status 2>&1)"; code=$?
-run wait t-wt01 --until done >/dev/null 2>&1; wcode=$?
+wout="$(run wait t-wt01 --until done 2>&1)"; wcode=$?
 set -e
 assert_eq "2" "$wcode"
+assert_eq "The Cockpit is not running on port $PORT. Start it with: canon" "$wout"   # t-9a2d: canon wait, board down
 assert_eq "1" "$code"
-assert_contains "$out" "Canon isn't running on port $PORT"
-assert_eq "Canon isn't running on port $PORT — nothing to stop." "$(run stop)"
+assert_contains "$out" "The Cockpit is not running on port $PORT. Start it with: canon"
+set +e; out="$(run stop 2>&1)"; scode=$?; set -e
+assert_eq "0" "$scode"
+assert_eq "The Cockpit is not running on port $PORT. Nothing to stop." "$out"
 
 # A board that predates these subcommands: /api/version answers, the new routes 404.
 PORT="$(free_port)"
@@ -99,9 +102,13 @@ wait_for "http://127.0.0.1:$PORT/api/version" || fail "canon-cli: stale-board st
 for c in status sessions; do
   set +e; out="$(run "$c" 2>&1)"; code=$?; set -e
   assert_eq "1" "$code"
-  assert_contains "$out" "doesn't support 'canon $c'"
+  assert_contains "$out" "does not support 'canon $c'"
   [[ "$out" != *"<html"* && "$out" != *"<!DOCTYPE"* ]] || fail "canon-cli: a stale board's error page was printed as output"
 done
+# t-9a2d: canon wait on a stale board exits 2 and says what to do
+set +e; out="$(run wait t-wt01 --until done --timeout 2000 2>&1)"; code=$?; set -e
+assert_eq "2" "$code"
+assert_eq "The board on port $PORT does not support 'canon wait' (it predates it, or failed). Close its window, then run canon." "$out"
 
 for b in main.go; do
   sd="$WORK/sd-$b"
@@ -131,7 +138,7 @@ for b in main.go; do
   assert_eq "needs-you" "$out"
   (( SECONDS - t0 >= 2 && SECONDS - t0 < 9 )) || fail "canon-cli: wait returned at the wrong time ($((SECONDS - t0))s)"
   set +e; out="$(run wait t-wt01 --until done --timeout 2000 2>&1)"; code=$?; set -e
-  assert_eq "1" "$code"; assert_contains "$out" "timed out after 2000ms — t-wt01 is needs-you"
+  assert_eq "1" "$code"; assert_contains "$out" "timed out after 2000ms. t-wt01 is needs-you"
   assert_eq "needs-you" "$(run wait t-wt01 --until working,needs-you --timeout 3000)"
   j="$(run wait t-wt01 --until needs-you --json)"; no_token "$j"
   assert_eq "t-wt01 needs-you" "$(python3 -c 'import json,sys;d=json.loads(sys.argv[1]);print(d["ticket"],d["state"])' "$j")"
@@ -159,17 +166,84 @@ for b in main.go; do
   for c in stop restart; do
     set +e; out="$(run "$c" 2>&1)"; code=$?; set -e
     assert_eq "1" "$code"
-    assert_contains "$out" "2 session(s) running — canon $c --force ends them"
+    assert_contains "$out" "2 session(s) running. Run canon $c --force to end them"
     no_token "$out"
   done
   # --force stops it (the board ends the stub daemon by its recorded pid).
   out="$(run stop --force)"; no_token "$out"
   # this test's board is built outside the install, so canon stop must name it and leave it running (an install's own board is stopped: see below)
-  assert_eq "Cockpit daemon stopped. The board on port $PORT is not this install's, or cannot be identified, so it was left running; Ctrl+C in the terminal running canon (or close its window) stops it." "$out"
+  assert_eq "Stopped the daemon. The board on port $PORT is not from this install, or cannot be identified, so it was left running. Press Ctrl+C in the terminal running canon, or close its window." "$out"
   assert_contains "$(run status)" "daemon:   not running"
   assert_eq "No sessions running." "$(run sessions)"
   echo "canon-cli: $b ok"
 done
+
+# canon stop / canon restart report each outcome (tools/canon board_cmd): a stub board answers /api/version and the stop/restart POSTs, so each message
+# and exit code is produced by the real command. stub_board <port> <stop-json> <restart-json> <exit-after-post: 0|1>.
+stub_board() {
+  python3 - "$1" "$2" "$3" "$4" <<'PY' >/dev/null 2>&1 &
+import http.server, sys, threading
+port, stop, restart, quit_after = int(sys.argv[1]), sys.argv[2], sys.argv[3], sys.argv[4] == "1"
+class H(http.server.BaseHTTPRequestHandler):
+    def reply(self, body):
+        self.send_response(200); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body); self.wfile.flush()
+    def do_GET(self): self.reply(b'{"version":"0.2.0"}')
+    def do_POST(self):
+        self.reply((stop if self.path.endswith("stop") else restart).encode())
+        if quit_after: threading.Thread(target=self.server.shutdown).start()
+    def log_message(self, *a): pass
+http.server.HTTPServer(("127.0.0.1", port), H).serve_forever()
+PY
+  local pid=$!; disown "$pid" 2>/dev/null || true; PIDS+=("$pid")
+  wait_for "http://127.0.0.1:$1/api/version" || fail "canon-cli: stub board did not start"
+}
+# canon stop: the daemon stopped and the board is gone by the time canon looks for it
+PORT="$(free_port)"; stub_board "$PORT" '{"running": false}' '{}' 1
+set +e; out="$(run stop 2>&1)"; code=$?; set -e
+assert_eq "0" "$code"
+assert_eq "Stopped the daemon. The board had already exited." "$out"
+# canon stop: the daemon did not stop without --force
+PORT="$(free_port)"; stub_board "$PORT" '{"running": true}' '{}' 0
+set +e; out="$(run stop 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"
+assert_eq "The daemon is still running. Try: canon stop --force" "$out"
+# canon restart: success, then failure (the daemon's answer is shown)
+PORT="$(free_port)"; stub_board "$PORT" '{}' '{"restarted": true}' 0
+set +e; out="$(run restart 2>&1)"; code=$?; set -e
+assert_eq "0" "$code"
+assert_eq "Restarted the daemon." "$out"
+PORT="$(free_port)"; stub_board "$PORT" '{}' '{"restarted": false}' 0
+set +e; out="$(run restart 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"
+assert_eq 'The daemon did not restart: {"restarted": false}' "$out"
+
+# canon stop: this install's board (a stub whose command line is the install's canon-go board <port>, so canon verifies it as ours) ignores SIGTERM
+# until $stuck/release exists, so canon names its pid and exits 1 after CANON_STOP_WAIT
+if command -v lsof >/dev/null 2>&1 || command -v ss >/dev/null 2>&1; then
+  stuck="$WORK/stuck"; mkdir -p "$stuck"; PORT="$(free_port)"
+  cat > "$stuck/board" <<'PY'
+import http.server, os, signal, sys
+def term(*a):
+    if os.path.exists("release"): os._exit(0)
+signal.signal(signal.SIGTERM, term)
+class H(http.server.BaseHTTPRequestHandler):
+    def reply(self, body):
+        self.send_response(200); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
+    def do_GET(self): self.reply(b'{"version":"0.2.0"}')
+    def do_POST(self): self.reply(b'{"running": false}')
+    def log_message(self, *a): pass
+http.server.HTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
+PY
+  # python3 finds its libraries from argv[0], which the command line below replaces: point it at them
+  py_home="$(python3 -c 'import sys; print(sys.prefix)')"
+  ( cd "$stuck" && PYTHONHOME="$py_home" exec -a "$(cd "$ROOT" && pwd -P)/tools/canon-go-bin/canon-go" python3 board "$PORT" >/dev/null 2>&1 ) &
+  bp=$!; disown "$bp" 2>/dev/null || true; PIDS+=("$bp")
+  wait_for "http://127.0.0.1:$PORT/api/version" || fail "canon-cli: the SIGTERM-proof board did not start"
+  set +e; out="$(CANON_STOP_WAIT=1 run stop 2>&1)"; code=$?; set -e
+  touch "$stuck/release"; kill "$bp" 2>/dev/null || true
+  assert_eq "1" "$code"
+  assert_eq "Stopped the daemon. The board (pid $bp) did not exit within 1s. Press Ctrl+C in the terminal running canon, or close its window." "$out"
+fi
 
 # canon stop also ends THIS install's own board (tools/canon-go-bin/canon-go board <port>, found by its port and verified by its path and mode
 # word, t-bdb0), on an isolated state dir and port.
@@ -179,7 +253,7 @@ if [[ -x "$ROOT/tools/canon-go-bin/canon-go" ]]; then
   bp="$(cat "$own/pid")"; PIDS+=("$bp")
   wait_for "http://127.0.0.1:$PORT/api/version" || fail "canon-cli: the install's own board did not start"
   out="$(COCKPIT_STATE_DIR="$own/state" HOME="$own" run stop)"
-  assert_eq "Canon stopped: the Cockpit daemon and the board." "$out"
+  assert_eq "Stopped the Cockpit: the board and the daemon have exited." "$out"
   ! kill -0 "$bp" 2>/dev/null || fail "canon-cli: canon stop left this install's board running"
 fi
 

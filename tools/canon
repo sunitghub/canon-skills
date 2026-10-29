@@ -521,13 +521,13 @@ wait_cmd() {
   [[ -z "$timeout" || "$timeout" =~ ^[0-9]+$ ]] || { echo "canon wait: --timeout is milliseconds, got '$timeout'" >&2; exit 2; }
   local port="${CANON_COCKPIT_PORT:-8899}"
   local base="http://127.0.0.1:$port"
-  curl -s -o /dev/null --max-time 3 "$base/api/version" || { echo "Canon isn't running on port $port — start it with: canon" >&2; exit 2; }
+  curl -s -o /dev/null --max-time 3 "$base/api/version" || { echo "The Cockpit is not running on port $port. Start it with: canon" >&2; exit 2; }
   local q=(--data-urlencode "id=$id")
   [[ -n "$root" ]] && q+=(--data-urlencode "root=$root")
   local start=$SECONDS now
   while :; do
     if ! now="$(curl -sfG --max-time 10 "${q[@]}" --data format=state "$base/api/cockpit-sessions")"; then
-      echo "The board on port $port doesn't support 'canon wait' (it predates it, or failed) — restart it: close its window, then run canon." >&2
+      echo "The board on port $port does not support 'canon wait' (it predates it, or failed). Close its window, then run canon." >&2
       exit 2
     fi
     if [[ ",$until," == *",$now,"* ]]; then
@@ -541,7 +541,7 @@ wait_cmd() {
       exit 0
     fi
     if [[ -n "$timeout" ]] && (( (SECONDS - start) * 1000 >= timeout )); then
-      echo "canon wait: timed out after ${timeout}ms — $id is $now" >&2
+      echo "canon wait: timed out after ${timeout}ms. $id is $now" >&2
       exit 1
     fi
     sleep 1
@@ -560,10 +560,10 @@ stop_board() {
   probe_board
   case "$BOARD_STATUS" in
     ours)
-      if stop_verified "$BOARD_PID" board; then echo "Canon stopped: the Cockpit daemon and the board."
-      else echo "Cockpit daemon stopped, but the board (pid $BOARD_PID) did not exit within ${CANON_STOP_WAIT}s; Ctrl+C in the terminal running canon (or close its window) stops it." >&2; exit 1; fi ;;
-    none) echo "Cockpit daemon stopped. The board had already ended." ;;
-    *) echo "Cockpit daemon stopped. The board on port $PORT is not this install's, or cannot be identified, so it was left running; Ctrl+C in the terminal running canon (or close its window) stops it." ;;
+      if stop_verified "$BOARD_PID" board; then echo "Stopped the Cockpit: the board and the daemon have exited."
+      else echo "Stopped the daemon. The board (pid $BOARD_PID) did not exit within ${CANON_STOP_WAIT}s. Press Ctrl+C in the terminal running canon, or close its window." >&2; exit 1; fi ;;
+    none) echo "Stopped the daemon. The board had already exited." ;;
+    *) echo "Stopped the daemon. The board on port $PORT is not from this install, or cannot be identified, so it was left running. Press Ctrl+C in the terminal running canon, or close its window." ;;
   esac
 }
 
@@ -584,8 +584,8 @@ board_cmd() {
   local base="http://127.0.0.1:$port"
   if ! curl -s -o /dev/null --max-time 3 "$base/api/version"; then
     case "$cmd" in
-      stop) echo "Canon isn't running on port $port — nothing to stop."; exit 0 ;;
-      *) echo "Canon isn't running on port $port — start it with: canon" >&2; exit 1 ;;
+      stop) echo "The Cockpit is not running on port $port. Nothing to stop."; exit 0 ;;
+      *) echo "The Cockpit is not running on port $port. Start it with: canon" >&2; exit 1 ;;
     esac
   fi
   case "$cmd" in
@@ -596,7 +596,7 @@ board_cmd() {
       local out
       # --fail: a board started before this command existed answers 404 here; say so, don't print its error page.
       if ! out="$(curl -sf --max-time 10 "$base$route")"; then
-        echo "The board on port $port doesn't support 'canon $cmd' (it predates it, or failed) — restart it: close its window, then run canon." >&2
+        echo "The board on port $port does not support 'canon $cmd' (it predates it, or failed). Close its window, then run canon." >&2
         exit 1
       fi
       printf '%s\n' "${out%$'\n'}"
@@ -607,14 +607,14 @@ board_cmd() {
         -d "{\"force\": $([[ "$force" -eq 1 ]] && echo true || echo false)}" "$base/api/cockpit-$cmd")"
       if grep -qE '"busy": ?true' <<<"$out"; then
         local n; n="$(sed -nE 's/.*"sessions": ?([0-9]+).*/\1/p' <<<"$out")"
-        echo "$n session(s) running — canon $cmd --force ends them (Save & End them first to keep their state)." >&2
+        echo "$n session(s) running. Run canon $cmd --force to end them (Save & End them first to keep their state)." >&2
         exit 1
       fi
       if [[ "$cmd" == stop ]]; then
-        if grep -qE '"running": ?true' <<<"$out"; then echo "The daemon is still running — try: canon stop --force" >&2; exit 1; fi
+        if grep -qE '"running": ?true' <<<"$out"; then echo "The daemon is still running. Try: canon stop --force" >&2; exit 1; fi
         stop_board "$port"
       else
-        if grep -qE '"restarted": ?true' <<<"$out"; then echo "Cockpit daemon restarted."
+        if grep -qE '"restarted": ?true' <<<"$out"; then echo "Restarted the daemon."
         else echo "The daemon did not restart: $out" >&2; exit 1; fi
       fi
       ;;
@@ -647,7 +647,7 @@ main() {
   # Single-instance: if something is already serving that port, assume it's the
   # Cockpit and just open its URL — never start a second server.
   if _port_in_use "$port"; then
-    echo "Canon Cockpit already running on port $port — opening it." >&2
+    echo "The Cockpit is already running on port $port. Opening it." >&2
     open_browser "$url"
     exit 0
   fi

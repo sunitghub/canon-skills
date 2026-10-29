@@ -16,7 +16,7 @@ set "URL=http://127.0.0.1:%PORT%/cockpit"
 REM Single-instance: if the port is already serving, just open the URL.
 netstat -ano | findstr /r /c:"127.0.0.1:%PORT% .*LISTENING" >nul 2>&1
 if %ERRORLEVEL%==0 (
-  echo Canon Cockpit already running on port %PORT% - opening it.
+  echo The Cockpit is already running on port %PORT%. Opening it.
   start "" "%URL%"
   exit /b 0
 )
