@@ -242,6 +242,7 @@ update_packages() {
     # the new copy is built and verified beside the live one (a failed or mismatched download leaves everything as it was), then swapped in
     pkg_install "$home" "$to" "$zipsha" "${t#packages/}" || { echo "canon update: $PKG_ERR. Nothing was changed." >&2; exit 1; }
     undo() { [ ! -d "$home/$old" ] || [ -e "$home/packages/$to" ] || mv -- "$home/$old" "$home/packages/$to"; [ "$cur" != "$to" ] || pkg_flip "$home" "$to" >/dev/null 2>&1; rm -rf -- "$home/$t"; }
+    trap 'undo; echo "canon update: interrupted; current still points at ${cur:-nothing}." >&2; exit 1' INT TERM HUP   # current is never left dangling
     if [ "$cur" = "$to" ]; then
       pkg_flip "$home" "${t#packages/}" || { echo "canon update: $PKG_ERR. current still points at $cur." >&2; rm -rf -- "$home/$t"; exit 1; }
     fi
@@ -249,6 +250,7 @@ update_packages() {
       undo; echo "canon update: could not swap in the new $to package. current still points at ${cur:-nothing}." >&2; exit 1
     fi
     if [ "$cur" = "$to" ]; then pkg_flip "$home" "$to" || { echo "canon update: $PKG_ERR. current still points at ${cur:-nothing}." >&2; exit 1; }; fi
+    trap - INT TERM HUP
     # a program that is not this update and still runs from the old copy keeps it (named); this process reads its script by an open handle
     if ps_utf8 -A -ww -o pid=,command= 2>/dev/null | D="$home/packages/$to/" awk -v me="$$" '$1 != me && index($0, ENVIRON["D"]) { f = 1 } END { exit !f }'; then
       echo "  kept the replaced $to package at $home/$old (a running program uses it)"
