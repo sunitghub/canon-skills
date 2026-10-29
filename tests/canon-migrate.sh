@@ -8,6 +8,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 source "$ROOT/tests/helpers.sh"
+assert_not_contains() { case "$1" in *"$2"*) fail "expected the output NOT to contain '$2': $1" ;; esac; }
 refute_contains() { [[ "$1" != *"$2"* ]] || fail "expected output NOT to contain '$2'; got: $1"; }
 case "$(uname -s)" in Darwin|Linux) ;; *) echo "canon-migrate: SKIPPED on $(uname -s): the versioned layout is macOS/Linux only"; exit 0 ;; esac
 
@@ -137,10 +138,23 @@ assert_contains "$out" "Install folder: $U"; assert_contains "$out" "-> DELETE";
 echo wip > "$U/packages/v1.0.0/wip.txt"
 out="$(run "$U" bash "$U/tools/canon" uninstall --dry-run 2>&1)" || fail "uninstall --dry-run failed: $out"
 assert_contains "$out" "-> KEEP: the git clone packages/v1.0.0 has uncommitted or untracked changes"
+assert_contains "$out" "rm -rf"   # other KEEP reasons still print the manual-remove hint
 rm "$U/packages/v1.0.0/wip.txt"; git -C "$U/packages/v1.0.0" checkout -q -b local-work; git -C "$U/packages/v1.0.0" "${ig[@]}" commit -q --allow-empty -m mine
 out="$(run "$U" bash "$U/tools/canon" uninstall --dry-run 2>&1)" || fail "uninstall --dry-run failed: $out"
 assert_contains "$out" "-> KEEP: the git clone packages/v1.0.0 has"
 git -C "$U/packages/v1.0.0" -c advice.detachedHead=false checkout -q --detach v1.0.0; git -C "$U/packages/v1.0.0" branch -q -D local-work
+# anything in the home canon did not put there (a file, a folder) keeps the whole home, as an untracked file kept a single-tree clone; neither
+# --yes, --force nor --keep-data deletes it (prod path: canon-uninstall.sh install_verdict, the layout's home check)
+echo mine > "$U/notes.txt"; mkdir -p "$U/mydir"; echo f > "$U/mydir/f"
+out="$(run "$U" bash "$U/tools/canon" uninstall --dry-run 2>&1)" || fail "uninstall --dry-run failed: $out"
+assert_contains "$out" "-> KEEP: it holds 2 item(s) canon did not put there (mydir/, notes.txt); move them out of $U, then run this again"
+assert_not_contains "$out" "rm -rf"   # the usual manual-remove hint would delete the user's own files
+out="$(run "$U" bash "$U/tools/canon" uninstall --yes --keep-data --force 2>&1)" || true
+assert_not_contains "$out" "rm -rf"; assert_contains "$out" "[kept]  $U"; assert_eq mine "$(cat "$U/notes.txt")"; assert_eq f "$(cat "$U/mydir/f")"
+[ -d "$U/packages/v1.0.0" ] && [ -L "$U/current" ] && [ -L "$U/tools" ] || fail "a kept home lost part of the install"
+rm -rf "$U/notes.txt" "$U/mydir"
+mkdir -p "$W/p3/.claude"; ln -s "$U/current/skills" "$W/p3/.claude/skills"   # the run above cleaned p3; register it again for the real uninstall
+printf '%s\n' "$U/current" > "$H/.config/canon/install_path"; printf '%s\n' "$W/p3" > "$H/.config/canon/projects"
 out="$(run "$U" bash "$U/current/tools/canon" uninstall --yes --keep-data 2>&1)" || fail "uninstall --keep-data failed: $out"
 pid_alive "$DP" && fail "uninstall did not stop the daemon it recognised by its package path"
 wait "$DP" 2>/dev/null || true

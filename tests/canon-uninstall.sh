@@ -28,7 +28,7 @@ digest() {  # names and contents of everything under a folder (not .git: git sta
 mk_install() { # <dir> [clone]
   local d="$1"
   mkdir -p "$d/tools"
-  cp "$ROOT/tools/canon" "$ROOT/tools/canon-uninstall.sh" "$ROOT/tools/canon-uninstall.ps1" "$ROOT/tools/cockpit-launch-lib.sh" "$ROOT/tools/platform-lib.sh" "$ROOT/tools/ticket-root.sh" "$ROOT/tools/cockpit-stop-lib.sh" "$d/tools/"
+  cp "$ROOT/tools/canon" "$ROOT/tools/canon-uninstall.sh" "$ROOT/tools/canon-uninstall.ps1" "$ROOT/tools/cockpit-launch-lib.sh" "$ROOT/tools/platform-lib.sh" "$ROOT/tools/ticket-root.sh" "$ROOT/tools/cockpit-stop-lib.sh" "$ROOT/tools/pkg-lib.sh" "$d/tools/"
   echo "0.0.0" > "$d/VERSION"
   cat > "$d/tools/skills.sh" <<'SH'
 #!/usr/bin/env bash

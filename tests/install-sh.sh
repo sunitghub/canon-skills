@@ -111,4 +111,14 @@ done
 mkdir -p "$W/kept/cockpit"; echo '[]' > "$W/kept/cockpit/projects.json"
 out="$(env_i CANON_REF=main bash "$ROOT/install.sh" "$W/kept" 2>&1)" || fail "install-sh: a folder with only kept data was refused: $out"
 assert_eq "packages/main" "$(readlink "$W/kept/current")"; assert_eq "[]" "$(cat "$W/kept/cockpit/projects.json")"
+# t-50f7: the installers cannot source tools/pkg-lib.sh (install.sh runs from curl), so they carry a copy of pkg_is_data's names (plus packages/
+# and .DS_Store): the three lists must stay equal, or a reinstall over kept data is refused, or a stray file is let through. Each is read from
+# the line that uses it. Prod path: install.sh and bin/install.js fresh-install folder check, tools/pkg-lib.sh pkg_is_data (migration, uninstall).
+names_of() { tr '|,' '\n\n' | sed "s/[[:space:]']//g; /^\$/d; /^packages\$/d; /^\.DS_Store\$/d" | LC_ALL=C sort | tr '\n' ' '; }
+lib_names="$(sed -n '/^pkg_is_data() {/,/^}/s/.*case "$1" in \([^)]*\)).*/\1/p' "${PARITY_PKG_LIB:-$ROOT/tools/pkg-lib.sh}" | names_of)"
+sh_names="$(sed -n 's/^[[:space:]]*\(cockpit|[^)]*\)) ;;$/\1/p' "${PARITY_INSTALL_SH:-$ROOT/install.sh}" | names_of)"
+js_names="$(sed -n "s/.*const allowed = new Set(\[\(.*\)\]);.*/\1/p" "${PARITY_INSTALL_JS:-$ROOT/bin/install.js}" | names_of)"
+[ -n "$lib_names" ] && [ -n "$sh_names" ] && [ -n "$js_names" ] || fail "install-sh: could not read a data-name list (pkg-lib: '$lib_names', install.sh: '$sh_names', install.js: '$js_names')"
+assert_eq "$lib_names" "$sh_names"; assert_eq "$lib_names" "$js_names"
+echo "install-sh: the installers' data names equal pkg_is_data's ($lib_names)"
 echo "install-sh: ok (target resolution; the main track is a depth-1 clone in packages/main that updates in place; a failed verification installs nothing and leaves an existing folder empty; install.js takes the same steps)"

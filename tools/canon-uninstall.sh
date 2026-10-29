@@ -14,7 +14,7 @@
 set -euo pipefail
 
 # Bumped on every change to this command, and shown in the plan and --help, so a stale copy of the script is obvious on a machine that was updated by hand.
-UNINSTALL_REV=11
+UNINSTALL_REV=12
 SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 INSTALL="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 # t-50f7: run from a package of the versioned layout, the install is the whole home (packages/, current, the tools compat link, the data):
@@ -27,6 +27,8 @@ fi
 source "$SCRIPT_DIR/platform-lib.sh"
 # shellcheck source=cockpit-stop-lib.sh
 source "$SCRIPT_DIR/cockpit-stop-lib.sh"
+# shellcheck source=pkg-lib.sh
+source "$SCRIPT_DIR/pkg-lib.sh"   # pkg_is_data: what the home may hold besides the packages
 
 usage() {
   echo "canon uninstall — remove canon from this machine   [uninstall rev $UNINSTALL_REV]"
@@ -117,6 +119,24 @@ install_verdict() {
   # install, which keeps its .git) is checked, not only main
   local c
   if [ "$LAYOUT" = 1 ]; then
+    # In the layout the whole home is deleted, so, as an untracked file kept a single-tree clone, anything canon did not put there keeps it.
+    # Neither --yes, --force nor --keep-data overrides this (they never overrode a refusal).
+    local e n unknown="" k=0
+    for e in "$INSTALL"/* "$INSTALL"/.[!.]* "$INSTALL"/..?*; do
+      [ -e "$e" ] || [ -L "$e" ] || continue
+      n="$(basename "$e")"
+      case "$n" in
+        packages|.update.lock|.update.lock.dead.*|.DS_Store) continue ;;
+        current|tools) [ -L "$e" ] && continue ;;
+      esac
+      ! pkg_is_data "$n" || continue
+      k=$((k + 1)); [ -d "$e" ] && [ ! -L "$e" ] && n="$n/"
+      [ "$k" -gt 3 ] || unknown="$unknown${unknown:+, }$n"
+    done
+    if [ "$k" -gt 0 ]; then
+      [ "$k" -le 3 ] || unknown="$unknown, ..."
+      VERDICT_HOLDS_USER_FILES=1; VERDICT_WHY="it holds $k item(s) canon did not put there ($unknown); move them out of $INSTALL, then run this again"; return 0
+    fi
     for c in "$INSTALL"/packages/*; do
       [ -e "$c/.git" ] || continue
       clone_verdict "$c" "the git clone packages/$(basename "$c")" || return 0
@@ -242,7 +262,8 @@ print_plan() {
     else echo "  -> DELETE"; fi
   else
     echo "  -> KEEP: $VERDICT_WHY"
-    echo "     Remove it yourself when you are sure:  rm -rf \"$INSTALL\""
+    # Not for a home that holds the user's own files: that rm -rf would delete them.
+    [ -n "${VERDICT_HOLDS_USER_FILES:-}" ] || echo "     Remove it yourself when you are sure:  rm -rf \"$INSTALL\""
   fi
   echo ""
   echo "Projects to clean ($n_projects, from ~/.config/canon/projects and the Cockpit registry):"
@@ -392,7 +413,7 @@ echo ""
 echo "[4/5] Install folder: $INSTALL"
 if [ "$VERDICT" != ok ]; then
   echo "  [kept]  $INSTALL ($VERDICT_WHY)"
-  echo "  To remove it:  rm -rf \"$INSTALL\""
+  [ -n "${VERDICT_HOLDS_USER_FILES:-}" ] || echo "  To remove it:  rm -rf \"$INSTALL\""
 elif _is_windows; then
   echo "  Deleted by PowerShell after this command exits (a running script cannot delete its own folder)."
   echo ""
