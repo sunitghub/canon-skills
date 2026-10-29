@@ -4,12 +4,15 @@ package events
 // export, and Delete. Every read goes through the same safe opener as Verify (regular files only, size caps).
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -154,18 +157,100 @@ func ExportCheck(home string) error {
 }
 
 // ExportStream writes every day, oldest first, as one JSON-lines stream: a gzipped day is gunzipped, a link or other non-regular file is
-// left out, and seals.jsonl is not part of it. Call ExportCheck first.
+// left out, and seals.jsonl is not part of it. A project path under the user's home folder is written with ~ for that folder, so an export
+// can be shared without the account name; the day files on disk are not touched. Call ExportCheck first.
 func ExportStream(w io.Writer, home string) error {
 	paths, err := exportPaths(home)
 	if err != nil {
 		return err
 	}
+	userHome, _ := os.UserHomeDir()
+	tw := &tildeWriter{w: w, home: userHome}
 	for _, p := range paths {
-		if _, err := copyDay(w, p); err != nil {
+		if _, err := copyDay(tw, p); err != nil {
 			return fmt.Errorf("%s: %s", filepath.Base(p)[:10], herrWord(err))
 		}
 	}
 	return nil
+}
+
+// tildeWriter passes whole lines to w, rewriting the home folder at the start of the top-level "project" value to ~. Only that value is
+// replaced, byte for byte in place, so key order and every other byte stay; a line that is not a JSON object is passed unchanged.
+type tildeWriter struct {
+	w    io.Writer
+	home string
+	buf  []byte
+}
+
+func (t *tildeWriter) Write(b []byte) (int, error) {
+	t.buf = append(t.buf, b...)
+	for {
+		i := bytes.IndexByte(t.buf, '\n')
+		if i < 0 {
+			return len(b), nil
+		}
+		line := t.buf[:i+1]
+		out := tildeProject(line, t.home)
+		if _, err := t.w.Write(out); err != nil {
+			return 0, err
+		}
+		t.buf = t.buf[i+1:]
+	}
+}
+
+func tildeProject(line []byte, home string) []byte {
+	home = strings.TrimRight(home, `/\`)
+	if home == "" || line[0] != '{' {
+		return line
+	}
+	dec := json.NewDecoder(bytes.NewReader(line))
+	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
+		return line
+	}
+	for dec.More() {
+		k, err := dec.Token()
+		key, ok := k.(string)
+		if err != nil || !ok {
+			return line
+		}
+		var raw json.RawMessage
+		if dec.Decode(&raw) != nil {
+			return line
+		}
+		if key != "project" {
+			continue
+		}
+		var proj string
+		if json.Unmarshal(raw, &proj) != nil || !underHome(proj, home) {
+			return line
+		}
+		var nv bytes.Buffer
+		enc := json.NewEncoder(&nv)
+		enc.SetEscapeHTML(false)
+		enc.Encode("~" + proj[len(home):])
+		end := int(dec.InputOffset())
+		start := end - len(raw)
+		out := append([]byte{}, line[:start]...)
+		out = append(out, bytes.TrimRight(nv.Bytes(), "\n")...)
+		return append(out, line[end:]...)
+	}
+	return line
+}
+
+// underHome reports whether p is the (separator-trimmed) home folder or inside it (a separator after it), ignoring case on Windows.
+func underHome(p, home string) bool {
+	if len(p) < len(home) {
+		return false
+	}
+	head := p[:len(home)]
+	if runtime.GOOS == "windows" {
+		if !strings.EqualFold(head, home) {
+			return false
+		}
+	} else if head != home {
+		return false
+	}
+	return len(p) == len(home) || p[len(home)] == '/' || p[len(home)] == '\\'
 }
 
 // copyDay copies one day's uncompressed bytes to w, adding a final newline when the file lacks one, and returns the byte count.
@@ -202,6 +287,14 @@ func (l *lastByteWriter) Write(b []byte) (int, error) {
 		l.last = b[n-1]
 	}
 	return n, err
+}
+
+func failedMessage(failed []string) string {
+	noun := "files"
+	if len(failed) == 1 {
+		noun = "file"
+	}
+	return fmt.Sprintf("%d %s could not be removed: %s", len(failed), noun, strings.Join(failed, ", "))
 }
 
 // Cleared is what Clear removed: files and days, the oldest and newest day, and the names it could not remove.
@@ -261,7 +354,7 @@ func Clear(home string) (Cleared, error) {
 	}
 	sort.Strings(c.Failed)
 	if len(c.Failed) > 0 {
-		return c, fmt.Errorf("%d file(s) could not be removed: %s", len(c.Failed), strings.Join(c.Failed, ", "))
+		return c, errors.New(failedMessage(c.Failed))
 	}
 	return c, nil
 }

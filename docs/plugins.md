@@ -8,6 +8,7 @@ renamed or removed.
 ## Where events are
 
 - `$CANON_HOME/events/YYYY-MM-DD.jsonl`, one file per **UTC** day. `CANON_HOME` defaults to `~/.canon`.
+- The files hold paths as written. **Export .jsonl** (Admin > Logging) writes the user's home folder as `~` in the `project` field only (`~/work/app`, `~\work\app` on Windows); no other field and no file on disk is changed, and a line that is not JSON is exported as it is.
 - Read the files in name order, then each file's lines in order. That is append order, which is not always strict
   `ts` order: two writers can finish a few milliseconds apart. Use `id` to drop a line you have already seen.
 - To resume where you left off, keep the file name and the byte offset you had read up to. A day's file only grows,

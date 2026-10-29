@@ -182,3 +182,62 @@ func exportAll(w io.Writer, home string) error {
 	}
 	return ExportStream(w, home)
 }
+
+// t-71c8. Protects Export .jsonl (the Logging page's Export button): the home folder at the start of a top-level "project" becomes ~, the
+// rest of every line is byte for byte as written (key order, a "project" inside data, a path outside the home folder, a sibling folder
+// that merely starts with the same letters), a line that is not JSON is unchanged, and the day file on disk is never rewritten.
+func TestExportWritesHomeAsTilde(t *testing.T) {
+	uh := t.TempDir()
+	t.Setenv("HOME", uh)
+	t.Setenv("USERPROFILE", uh)
+	if got, _ := os.UserHomeDir(); got != uh {
+		t.Skipf("home is %q, not the pinned %q", got, uh)
+	}
+	in := strings.Join([]string{
+		`{"schema":1,"kind":"a","project":"` + uh + `/work/app","data":{"project":"` + uh + `/x"}}`,
+		`{"schema":1,"kind":"b","project":"` + uh + `"}`,
+		`{"schema":1,"kind":"w","project":"` + uh + `\\work\\app"}`, // a Windows-style path: the backslash after the home folder counts as its separator
+		`{"schema":1,"kind":"c","project":"` + uh + `-other/app"}`,
+		`{"schema":1,"kind":"d","project":"/elsewhere/app"}`,
+		`{"schema":1,"kind":"e","project":""}`,
+		`not json ` + uh + `/work`,
+		`{"torn":"` + uh,
+	}, "\n") + "\n"
+	home, dir := logWith(t, map[string]string{"2026-10-01.jsonl": in})
+	var out bytes.Buffer
+	if err := exportAll(&out, home); err != nil {
+		t.Fatal(err)
+	}
+	want := strings.Join([]string{
+		`{"schema":1,"kind":"a","project":"~/work/app","data":{"project":"` + uh + `/x"}}`,
+		`{"schema":1,"kind":"b","project":"~"}`,
+		`{"schema":1,"kind":"w","project":"~\\work\\app"}`,
+		`{"schema":1,"kind":"c","project":"` + uh + `-other/app"}`,
+		`{"schema":1,"kind":"d","project":"/elsewhere/app"}`,
+		`{"schema":1,"kind":"e","project":""}`,
+		`not json ` + uh + `/work`,
+		`{"torn":"` + uh,
+	}, "\n") + "\n"
+	if out.String() != want {
+		t.Errorf("export =\n%s\nwant\n%s", out.String(), want)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "2026-10-01.jsonl")); string(b) != in {
+		t.Errorf("the day file on disk was changed by an export")
+	}
+}
+
+// t-71c8. Protects Delete's partial-failure message on the Logging page: one file reads "1 file could not be removed: x" and several read
+// "N files could not be removed: x, y". (A file that cannot be removed only happens on Windows, so the wording is tested on its own.)
+func TestClearFailureMessageCounts(t *testing.T) {
+	for _, c := range []struct {
+		names []string
+		want  string
+	}{
+		{[]string{"2026-10-01.jsonl"}, "1 file could not be removed: 2026-10-01.jsonl"},
+		{[]string{"2026-10-01.jsonl", "2026-10-02.jsonl"}, "2 files could not be removed: 2026-10-01.jsonl, 2026-10-02.jsonl"},
+	} {
+		if got := failedMessage(c.names); got != c.want {
+			t.Errorf("failedMessage(%v) = %q, want %q", c.names, got, c.want)
+		}
+	}
+}

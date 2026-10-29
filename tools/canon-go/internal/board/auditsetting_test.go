@@ -202,16 +202,16 @@ func TestModelTiersRoutesRecordTheirAction(t *testing.T) {
 	if c := post("/api/admin/model-tiers", string(cur)); c != http.StatusOK {
 		t.Fatalf("save = %d", c)
 	}
-	if d := last(); count() != 4 || d["name"] != "model-tiers.save" {
+	if d := last(); count() != 3 || d["name"] != "model-tiers.apply" { // a save of the registry as it is changed nothing (t-71c8): no new line
 		t.Fatalf("save route: %d line(s), last %v", count(), d)
 	}
 	if c := post("/api/admin/model-tiers", `{"reset":true}`); c != http.StatusOK {
 		t.Fatalf("reset = %d", c)
 	}
-	if d := last(); count() != 5 || d["name"] != "model-tiers.reset" {
+	if d := last(); count() != 4 || d["name"] != "model-tiers.reset" {
 		t.Fatalf("reset route: %d line(s), last %v", count(), d)
 	}
-	if c := post("/api/admin/model-tiers", `{"models":"nope"}`); c == http.StatusOK || count() != 5 {
+	if c := post("/api/admin/model-tiers", `{"models":"nope"}`); c == http.StatusOK || count() != 4 {
 		t.Fatalf("an invalid save: status %d, %d line(s)", c, count())
 	}
 	// no Origin (a script or an agent's shell): the write goes through as today, and the line claims no actor
@@ -219,15 +219,62 @@ func TestModelTiersRoutesRecordTheirAction(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	handlePost(w, req)
-	if w.Code != http.StatusOK || count() != 6 {
+	if w.Code != http.StatusOK || count() != 5 {
 		t.Fatalf("an apply without an Origin: status %d, %d line(s)", w.Code, count())
 	}
-	if got := settingEvents(t, dir); got[5]["actor"] != nil {
-		t.Fatalf("a request without an Origin was logged as %v", got[5]["actor"])
+	if got := settingEvents(t, dir); got[4]["actor"] != nil {
+		t.Fatalf("a request without an Origin was logged as %v", got[4]["actor"])
 	}
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 4; i++ {
 		if got := settingEvents(t, dir); got[i]["actor"] != "user" {
 			t.Fatalf("line %d: a click should be logged as user, got %v", i, got[i]["actor"])
 		}
+	}
+}
+
+// t-71c8. Protects the Admin Model tiers page's Save and Reset buttons: one that leaves the Review & Eval default as it was (a save of the
+// registry unchanged, a reset with no override) writes no setting.changed line, and one that changes it still writes exactly one.
+func TestModelTiersSaveOrResetThatChangesNothingLogsNothing(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CANON_HOME", dir)
+	seed := filepath.Join(dir, "seed.json")
+	old := modelTiersPath
+	modelTiersPath = seed
+	defer func() { modelTiersPath = old }()
+	raw, _ := json.Marshal(regDoc())
+	if err := os.WriteFile(seed, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	save := func(doc map[string]any) {
+		t.Helper()
+		if res := auditTiers(clickReq(), "save", func() map[string]any { return saveModelTiers(doc) }); res["ok"] != true {
+			t.Fatalf("save: %v", res)
+		}
+	}
+	reset := func() {
+		t.Helper()
+		if res := auditTiers(clickReq(), "reset", func() map[string]any { return saveModelTiers(map[string]any{"reset": true}) }); res["ok"] != true {
+			t.Fatalf("reset: %v", res)
+		}
+	}
+	reset() // nothing overridden yet
+	save(regDoc())
+	if n := len(settingEvents(t, dir)); n != 0 {
+		t.Fatalf("a reset and a save that changed nothing logged %d event(s)", n)
+	}
+	changed := regDoc()
+	changed["defaults"].(map[string]any)["eval"].(map[string]any)["anthropic"] = "claude-sonnet-5-5"
+	save(changed)
+	got := settingEvents(t, dir)
+	if len(got) != 1 || got[0]["data"].(map[string]any)["old"] != "claude-sonnet-5" || got[0]["data"].(map[string]any)["new"] != "claude-sonnet-5-5" {
+		t.Fatalf("a save that changed the default should log one line: %v", got)
+	}
+	save(changed) // the same again: nothing changed
+	if n := len(settingEvents(t, dir)); n != 1 {
+		t.Fatalf("a repeat save logged: %d line(s)", n)
+	}
+	reset() // back to the seed's default: one line
+	if n := len(settingEvents(t, dir)); n != 2 {
+		t.Fatalf("a reset that changed the default should log one line: %d", n)
 	}
 }

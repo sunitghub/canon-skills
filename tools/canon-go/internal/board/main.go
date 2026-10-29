@@ -1683,7 +1683,11 @@ func auditTiers(r *http.Request, action string, run func() map[string]any) map[s
 	old := evalDefault(loadModelTiers())
 	res := run()
 	if ok, _ := res["ok"].(bool); ok {
-		emitSetting(r, "model-tiers."+action, old, evalDefault(loadModelTiers()))
+		now := evalDefault(loadModelTiers())
+		// A save or reset that left the default as it was changed no setting (t-71c8); the other writes stay one line each.
+		if (action != "save" && action != "reset") || now != old {
+			emitSetting(r, "model-tiers."+action, old, now)
+		}
 	}
 	return res
 }
