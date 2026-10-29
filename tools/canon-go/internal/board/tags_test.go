@@ -182,3 +182,14 @@ func TestParseTicketTags(t *testing.T) {
 		t.Errorf("a ticket without tags carries one: %v", b["tags"])
 	}
 }
+
+// t-0447: the board's NOW lane reads the `now` tag, so the dropdown must offer it (a user never has to type it in).
+// Prod path: GET /api/tags's starter list behind the Tags dropdown.
+func TestStarterTagsOfferNow(t *testing.T) {
+	for _, s := range starterTags {
+		if s.Tag == "now" {
+			return
+		}
+	}
+	t.Fatal("starterTags has no now: the NOW lane's tag must be offered in the Tags dropdown")
+}
