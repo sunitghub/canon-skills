@@ -31,7 +31,7 @@ maintrack() { printf 'main\n' > "$1/.canon-track"; echo '/.canon-track' >> "$1/.
 git init -q --bare -b main "$WORK/origin.git"
 git clone -q "$WORK/origin.git" "$WORK/seed" 2>/dev/null
 mkdir -p "$WORK/seed/tools"
-cp "$ROOT/tools/canon" "$ROOT/tools/cockpit-launch-lib.sh" "$ROOT/tools/platform-lib.sh" "$ROOT/tools/ticket-root.sh" "$WORK/seed/tools/"
+cp "$ROOT/tools/canon" "$ROOT/tools/cockpit-launch-lib.sh" "$ROOT/tools/platform-lib.sh" "$ROOT/tools/pkg-lib.sh" "$ROOT/tools/ticket-root.sh" "$WORK/seed/tools/"
 cat > "$WORK/seed/tools/skills.sh" <<'SH'
 #!/usr/bin/env bash
 # stub: log each refresh; a project folder named "bad" fails
@@ -295,7 +295,7 @@ out="$("$CANON" update 2>&1)"; refute_contains "$out" "kept your previous"
 O3="$WORK/o3.git"; git init -q --bare -b main "$O3"
 git clone -q "$O3" "$WORK/seed3" 2>/dev/null
 mkdir -p "$WORK/seed3/tools"
-cp "$ROOT/tools/canon" "$ROOT/tools/cockpit-launch-lib.sh" "$ROOT/tools/platform-lib.sh" "$ROOT/tools/ticket-root.sh" "$WORK/seed3/tools/"
+cp "$ROOT/tools/canon" "$ROOT/tools/cockpit-launch-lib.sh" "$ROOT/tools/platform-lib.sh" "$ROOT/tools/pkg-lib.sh" "$ROOT/tools/ticket-root.sh" "$WORK/seed3/tools/"
 cp "$WORK/seed/tools/skills.sh" "$WORK/seed/tools/fetch-daemon.sh" "$ROOT/tools/release-manifest.sh" "$WORK/seed3/tools/"
 printf "tools/*-win.exe\n/.canon-track\n" > "$WORK/seed3/.gitignore"   # as the real .gitignore: the fetch stub writes these
 echo 0.3.0 > "$WORK/seed3/VERSION"; git -C "$WORK/seed3" "${ident[@]}" add -A -f; git -C "$WORK/seed3" "${ident[@]}" commit -qm "release 0.3.0"
@@ -473,7 +473,31 @@ assert_eq "1" "$code"; assert_contains "$out" "git tag -d v0.3.1"
 # the real .gitignore must ignore the marker, or a main-track install would show an untracked file and `canon update` would refuse it
 grep -qx '/.canon-track' "$ROOT/.gitignore" || fail "canon-update: the repo .gitignore does not ignore /.canon-track"
 # and so must every directory canon writes under CANON_HOME, which on a default install is this clone: a run of the board creates them, and the next update would refuse (events/ and themes/ did, on a second Mac)
-for d in cockpit events themes logs; do grep -qx "/$d/" "$ROOT/.gitignore" || fail "canon-update: the repo .gitignore does not ignore /$d/ (CANON_HOME's runtime dir)"; done
+# t-c724: pkg_is_data (tools/pkg-lib.sh) is the one list of those names; the .gitignore is its copy, and a name missing there fails here
+source "$ROOT/tools/pkg-lib.sh"
+data_names="$(sed -n '/^pkg_is_data()/,/^}/p' "$ROOT/tools/pkg-lib.sh" | sed -n 's/^  case "\$1" in \(.*\)) return 0.*/\1/p' | tr '|' ' ')"
+[[ -n "$data_names" ]] || fail "canon-update: could not read the names out of pkg_is_data"
+for d in $data_names; do
+  pkg_is_data "$d" || fail "canon-update: pkg_is_data does not accept its own name $d"
+  git -C "$ROOT" check-ignore -q "$d" || git -C "$ROOT" check-ignore -q "$d/x" || fail "canon-update: the repo .gitignore does not ignore $d (a pkg_is_data name: CANON_HOME's runtime entry)"
+done
+# t-c724: untracked runtime entries never make a plain update refuse (even with no .gitignore), but a user's own untracked file or a tracked edit still does, changing nothing
+O4="$WORK/origin4.git"; S4="$WORK/seed4"; I4="$WORK/inst4"
+git init -q --bare -b main "$O4"; git init -q -b main "$S4"; mkdir -p "$S4/tools"; cp "$ROOT/tools/canon" "$ROOT/tools/pkg-lib.sh" "$ROOT/tools/platform-lib.sh" "$ROOT/tools/cockpit-launch-lib.sh" "$ROOT/tools/ticket-root.sh" "$S4/tools/"
+echo one > "$S4/NEWS"; git -C "$S4" "${ident[@]}" add -A; git -C "$S4" "${ident[@]}" commit -qm init; git -C "$S4" remote add origin "$O4"; git -C "$S4" push -q origin main 2>/dev/null
+git clone -q "$O4" "$I4" 2>/dev/null; maintrack "$I4"
+mkdir -p "$I4/cockpit" "$I4/events" "$I4/themes" "$I4/logs" "$I4/integrity" "$I4/.canon-cache"; : > "$I4/cockpit/p.json"; : > "$I4/events/e.jsonl"; : > "$I4/settings.json"
+assert_contains "$(git -C "$I4" status --porcelain)" "?? events/"
+assert_eq "" "$(. "$ROOT/tools/pkg-lib.sh"; pkg_dirty "$I4" | grep -v '^?? \.canon-track' || true)"
+echo more > "$S4/NEWS"; git -C "$S4" "${ident[@]}" commit -qam more; git -C "$S4" push -q origin main 2>/dev/null
+set +e; out="$("$I4/tools/canon" update 2>&1)"; code=$?; set -e
+refute_contains "$out" "has uncommitted changes"
+echo wip > "$I4/scratch.txt"; tip4="$(git -C "$I4" rev-parse HEAD)"
+set +e; out="$("$I4/tools/canon" update 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"; assert_contains "$out" "has uncommitted changes"; assert_contains "$out" "scratch.txt"; refute_contains "$out" "events/"; assert_eq "$tip4" "$(git -C "$I4" rev-parse HEAD)"
+rm "$I4/scratch.txt"; echo edit >> "$I4/NEWS"
+set +e; out="$("$I4/tools/canon" update 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"; assert_contains "$out" "has uncommitted changes"; assert_contains "$out" "NEWS"; assert_eq "$tip4" "$(git -C "$I4" rev-parse HEAD)"
 # a bad value after --to latest never reaches git
 rm -f "$WORK/git.calls"; set +e; out="$(PATH="$GSTUB:$PATH" "$CA" update --to latest extra 2>&1)"; code=$?; set -e
 assert_eq "2" "$code"; [[ ! -e "$WORK/git.calls" ]] || fail "canon-update: a bad --to latest reached git: $(cat "$WORK/git.calls")"

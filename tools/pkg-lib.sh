@@ -20,6 +20,17 @@ pkg_is_data() {
   return 1
 }
 
+# pkg_dirty <repo>: the repo's `git status --porcelain` without its untracked runtime entries (t-c724). A single-tree install is its own CANON_HOME,
+# so the board, event log and themes write pkg_is_data folders into the clone; those never count as the user's edits. A tracked-file edit or any
+# other untracked file still shows, so the update still refuses on it.
+pkg_dirty() {
+  local l n
+  git -C "$1" status --porcelain | while IFS= read -r l; do
+    if [ "${l:0:3}" = '?? ' ]; then n="${l:3}"; n="${n%/}"; pkg_is_data "$n" && continue; fi
+    printf '%s\n' "$l"
+  done
+}
+
 _pkg_sha256() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'
   elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | awk '{print $1}'
