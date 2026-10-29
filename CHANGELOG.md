@@ -7,7 +7,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 ## [Unreleased]
 
 ### Changed
-- `canon stop`, `canon restart`, the not-running messages and the "already running" line use one plain style, with no em-dash joins: "Stopped the Cockpit: the board and the daemon have exited.", "The Cockpit is not running on port 8899. Nothing to stop." / "Start it with: canon", "Stopped the daemon. The board had already exited.", "Restarted the daemon.". Exit codes are unchanged. The board's own start banner (`Canon Cockpit X listening on ...`) is left as is, since rewording it would need a new canon-go release (t-9a2d).
+- `canon stop`, `canon restart`, the not-running messages and the "already running" line use one plain style, with no em-dash joins: "Stopped the Cockpit: the board and the daemon have exited.", "The Cockpit is not running on port 8899. Nothing to stop." / "Start it with: canon", "Stopped the daemon. The board had already exited.", "Restarted the daemon.". `canon wait`'s timeout line, `canon status`/`canon sessions` when the Cockpit is not running, and the "board does not support" line follow the same style. Exit codes are unchanged. The board's own start banner (`Canon Cockpit X listening on ...`) is left as is, since rewording it would need a new canon-go release (t-9a2d).
 
 ## [0.30.2] - 2026-10-29
 
