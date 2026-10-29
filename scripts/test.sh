@@ -147,6 +147,7 @@ tests=(
   "$ROOT/tests/board-branch-divergence.sh"
   "$ROOT/tests/canon.sh"
   "$ROOT/tests/no-browser-in-tests.sh"
+  "$ROOT/tests/shell-portability.sh"
   "$ROOT/tests/pipefail-early-exit.sh"
   "$ROOT/tests/pipefail-rewrites.sh"
   "$ROOT/tests/pi-gate-recipe.sh"
