@@ -60,6 +60,14 @@ assert_eq 1 "$(notices "$out")"; assert_contains "$out" "Installed the developme
 assert_contains "$out" "You're on the development version (main): the newest changes, before they're released and without a release's verification."$'\n'"For the latest release instead, run: canon update --to latest"
 assert_eq "main" "$(tr -d '[:space:]' < "$W/home/.canon/.canon-track")"   # the marker is data: in the home, not in the package
 [[ -z "$(find "$W/home/.canon/packages" -maxdepth 1 -name '.boot.*')" ]] || fail "install-sh: the bootstrap clone was left behind"
+# t-6450: a home reached through a symlink (a dotfiles-managed ~/.canon, /var on macOS): the bootstrap clone must be spelled physically, or
+# `canon update`'s sweep does not recognise the running clone in ps and deletes it. Prod path: install.sh and bin/install.js.
+mkdir -p "$W/real-home"; ln -s "$W/real-home" "$W/link-home"
+for inst in "bash $ROOT/install.sh" "node $ROOT/bin/install.js"; do
+  rm -rf "$W/real-home"; mkdir -p "$W/real-home"
+  out="$(env_i CANON_REF=main $inst "$W/link-home" 2>&1)" || fail "symlinked home: '$inst' failed: $out"
+  assert_eq "packages/main" "$(readlink "$W/real-home/current")"
+done
 echo 4 > "$up/f"; git -C "$up" add -A; git -C "$up" -c user.email=t@e -c user.name=t commit -qm c4
 out="$(env_i bash "$ROOT/install.sh" "$W/home/.canon" 2>&1)" || fail "install.sh over an existing install failed: $out"   # a plain re-run keeps following main
 assert_eq true "$(git -C "$M" rev-parse --is-shallow-repository)"

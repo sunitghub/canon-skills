@@ -88,7 +88,7 @@ function main() {
     const pkgsExisted = fs.existsSync(pkgs);
     fs.mkdirSync(pkgs, { recursive: true });
     // the clone only carries the code that builds the layout: inside packages/ under a dot name, removed once it is done (as install.sh)
-    const boot = fs.mkdtempSync(path.join(pkgs, '.boot.'));
+    const boot = fs.realpathSync(fs.mkdtempSync(path.join(pkgs, '.boot.'))); // t-6450: canon update matches ps by physical path
     const undo = () => {
       fs.rmSync(boot, { recursive: true, force: true });
       if (!existed) { fs.rmSync(TARGET, { recursive: true, force: true }); return; }

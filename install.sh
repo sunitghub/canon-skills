@@ -81,6 +81,7 @@ else
   # t-0d25: depth 1 (sizes and how to get full history: docs/setup.md). The clone only carries the code that builds the layout: inside
   # packages/ (where `canon update` finds its home), under a dot name no update counts as a package, and removed once it is done.
   boot="$(mktemp -d "$TARGET/packages/.boot.XXXXXX")"
+  boot="$(cd -P -- "$boot" && pwd -P)"   # t-6450: canon update finds its home by physical path; ps must show the same spelling
   if ! git clone --depth 1 -- "$CANON_REPO" "$boot"; then
     undo
     printf 'error: clone failed. Check your git config and try again.\n' >&2
