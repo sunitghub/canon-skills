@@ -25,6 +25,7 @@ publish; run v0.9.1 --manifest-line "$ML" --integrity-line "$IL"
 assert_eq 0 "$rc"; assert_contains "$out" "check-release-live: v0.9.1 is live"
 for f in releases.txt integrity.txt updated.js; do grep -q "^  ok       $f" <<< "$out" || fail "no ok line for $f: $out"; done
 run v0.9.1; assert_eq 0 "$rc"; assert_contains "$out" "  ok       releases.txt: a line for v0.9.1"
+run v0.9.1 --manifest-line "$ML"; assert_eq 0 "$rc"   # a flag with its value as the last arguments
 
 # Each file missing in turn: exit 1, that file named missing, the others ok.
 publish; grep -v '^v0.9.1 ' "$SITE/releases.txt" > "$W/x" && mv "$W/x" "$SITE/releases.txt"
@@ -54,7 +55,7 @@ assert_eq 1 "$rc"; assert_contains "$out" "  could not read $(furl "$SITE")/upda
 
 # Usage: a bad tag, a line for another tag, a bad --wait: exit 2 before any fetch.
 publish
-for args in "0.9.1" "v0.9" "xv0.9.1" "v0.9.1x" "v0.9.1 --manifest-line v0.9.0_x" "v0.9.1 --wait soon" "v0.9.1 --wait 5s" "v0.9.1 --wait" \
+for args in "0.9.1" "v0.9" "xv0.9.1" "v0.9.1x" "v0.9.1 --manifest-line v0.9.0_x" "v0.9.1 --wait soon" "v0.9.1 --wait 5s" "v0.9.1 --wait x5" "v0.9.1 --wait" \
             "v0.9.1 --manifest-line" "v0.9.1 --integrity-line" "v0.9.1 --bogus"; do
   # shellcheck disable=SC2086  # the args are split on purpose
   run $args; assert_eq 2 "$rc"
