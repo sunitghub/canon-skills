@@ -64,7 +64,7 @@ assert_contains "$out" "WARNING"
 # 7. approve refuses a missing id, a missing plan, and a plan with no approval box
 out="$(run_fail "$SPRINT" approve)"; assert_contains "$out" "Usage: sprint approve"
 out="$(run_fail "$SPRINT" approve t-nope)"; assert_contains "$out" "no plan.md"
-printf '# Plan\n\n## Approach\nx\n' > "$plan"
+printf '# Plan\n\n## Sign-off\nTier: normal\n\n## Approach\nx\n\n## Files\n- [ ] Plan approved\n' > "$plan"   # box outside ## Sign-off
 out="$(run_fail "$SPRINT" approve "$id")"; assert_contains "$out" "no '- [ ] Plan approved' box"
 
 # 8. trailing spaces on Approach lines do not change the pin

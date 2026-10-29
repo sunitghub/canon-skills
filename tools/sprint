@@ -394,12 +394,13 @@ _approach_digest() {
 }
 
 cmd_approve() {
-  local id="${1:-}" root plan digest stamp tmp
+  local id="${1:-}" root plan digest stamp tmp signoff
   [[ -n "$id" ]] || { echo "Usage: sprint approve <ticket-id>" >&2; exit 1; }
   root="$(project_root)"
   plan="$root/.tickets/$id/plan.md"
   [[ -f "$plan" ]] || { echo "sprint approve: no plan.md for $id" >&2; exit 1; }
-  grep -qE '^[[:space:]]*[-*] \[[ xX]\] Plan approved' "$plan" \
+  signoff="$(_acceptance_section "Sign-off" "$plan")"
+  grep -qE '^[[:space:]]*[-*] \[[ xX]\] Plan approved' <<< "$signoff" \
     || { echo "sprint approve: plan.md has no '- [ ] Plan approved' box under ## Sign-off" >&2; exit 1; }
   digest="$(_approach_digest "$plan")"
   stamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
