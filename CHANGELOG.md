@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.30.3] - 2026-10-29
+
+Update with `canon update` (stop the Cockpit first), then restart the daemon (Admin's **Restart Daemon**): the board changed.
+
 ### Added
 - `canon update --reinstall [--to vX.Y.Z]` puts an installed release package back as published, so a changed gate file is restored (t-9df0). Admin > Integrity's restore hint for a release package is now this command.
 
