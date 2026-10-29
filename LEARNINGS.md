@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-29-2026 05:20
+learnings-sweep last run: 10-29-2026 06:20
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-29 | [t-cb66](.tickets/t-cb66/learnings.md) | A second copy of a name list is a silent behaviour switch: uninstall's sweepable-temp list repeats `pkg_sweep`'s, so a new temp kind would make uninstall keep the home as "unknown" with no test failing; give such lists one owner, as `pkg_is_data` does. | UNPROMOTED |
 | 2026-10-29 | [t-bdb0](.tickets/t-bdb0/learnings.md) | Merging two programs into one moves every "which binary changed" signal: mtime staleness and path-only process identity had to become an embedded source key and path plus mode word. | UNPROMOTED |
 | 2026-10-29 | [t-50f7](.tickets/t-50f7/learnings.md) | When a layout change replaces a thing that gave a safety check for free, rebuild the check: the single-tree clone made `canon uninstall` keep a home with an untracked file, and the first versioned layout deleted the whole home without looking; the advisory reviewer caught it on its second pass, after the evaluator-bound tests were already green. | UNPROMOTED |
 | 2026-10-29 | [t-4fbe](.tickets/t-4fbe/learnings.md) | Mutate a measurement fixture before baselining it: the first `clean` gate fixture's test discarded stderr, so the evaluator's own mutants survived and it split pass/fail on identical runs; the gate was right and the fixture wrong. A trim is also only measured if the eval can see it, so add cases for what a trim keeps before editing. | UNPROMOTED |
