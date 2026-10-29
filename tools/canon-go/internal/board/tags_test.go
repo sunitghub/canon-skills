@@ -185,6 +185,16 @@ func TestParseTicketTags(t *testing.T) {
 
 // t-0447: the board's NOW lane reads the `now` tag, so the dropdown must offer it (a user never has to type it in).
 // Prod path: GET /api/tags's starter list behind the Tags dropdown.
+// t-4371: protects the Tags dropdown (GET /api/tags) offering the sample tag.
+func TestStarterTagsOfferSample(t *testing.T) {
+	for _, s := range starterTags {
+		if s.Tag == "sample" {
+			return
+		}
+	}
+	t.Fatal("starterTags has no sample: tickets that add to samples/ must be taggable from the dropdown")
+}
+
 func TestStarterTagsOfferNow(t *testing.T) {
 	for _, s := range starterTags {
 		if s.Tag == "now" {

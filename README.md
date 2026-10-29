@@ -78,7 +78,7 @@ Run these from the project root; in practice your agent runs `sprint start` and 
 - **Save & End.** One click saves the sprint's state to `HANDOFF.md` and ends the session cleanly.
 - **Loopback-only and token-gated.** Agent control is never exposed off the machine.
 
-**[Cockpit and board →](docs/sprint-check.md)** · **[Headless CI grading →](docs/headless-ci.md)** (reviewer, evaluator and security review against an open PR, unattended) · **[Event stream →](docs/plugins.md)** (what canon records about tickets and sprints, for plugins and scripts)
+**[Cockpit and board →](docs/sprint-check.md)** · **[Headless CI grading →](docs/headless-ci.md)** (reviewer, evaluator and security review against an open PR, unattended) · **[Event stream →](docs/plugins.md)** (what canon records about tickets and sprints, for plugins and scripts) · **[Samples →](samples/README.md)** (canon's own hooks to read and copy)
 
 ## What the Gates Actually Caught
 

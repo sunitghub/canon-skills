@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# tail-closes: print one line per close.confirmed and github.merged event in canon's activity log.
+# A sample to read and copy: canon never runs it. It reads the log the way docs/plugins.md says to:
+# files in name order, lines in order, resume by file name + byte offset, drop an id already seen.
+#
+#   tail-closes [--events DIR] [--state FILE]
+#
+# DIR defaults to ${CANON_HOME:-~/.canon}/events. With --state, the file name and byte offset
+# reached (line 1) and the last 1000 ids seen (the rest) are saved there, and the next run starts
+# from them. Output: <ts> <kind> <project> <ticket>
+set -euo pipefail
+export LC_ALL=C   # ${#var} must count bytes: the saved offset is a byte offset
+
+events="${CANON_HOME:-$HOME/.canon}/events"
+state=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --events) [[ $# -ge 2 ]] || { echo "tail-closes: --events needs a folder" >&2; exit 2; }; events="$2"; shift 2 ;;
+    --state)  [[ $# -ge 2 ]] || { echo "tail-closes: --state needs a file" >&2; exit 2; }; state="$2"; shift 2 ;;
+    *) echo "usage: tail-closes [--events DIR] [--state FILE]" >&2; exit 2 ;;
+  esac
+done
+[[ -d "$events" ]] || { echo "tail-closes: no events folder at $events" >&2; exit 1; }
+
+saved_name=""; saved_off=0; seen_ids=""
+if [[ -n "$state" && -f "$state" ]]; then
+  { read -r saved_name saved_off || true; seen_ids="$(cat)"; } <"$state"
+  [[ "$saved_off" =~ ^[0-9]+$ ]] || { echo "tail-closes: $state is not a state file" >&2; exit 1; }
+fi
+
+all=""; last_name="$saved_name"; last_off="$saved_off"
+for f in "$events"/*.jsonl; do   # the shell sorts a glob by name: that is day order
+  [[ -f "$f" ]] || continue
+  name="${f##*/}"
+  [[ -z "$saved_name" || "$name" > "$saved_name" || "$name" == "$saved_name" ]] || continue
+  off=0; [[ "$name" == "$saved_name" ]] && off="$saved_off"
+  chunk="$(tail -c +$((off + 1)) "$f"; printf x)"; chunk="${chunk%x}"
+  # keep whole lines only: a line still being appended is read on the next run
+  tailpart="${chunk##*$'\n'}"; chunk="${chunk%"$tailpart"}"
+  all="$all$chunk"
+  last_name="$name"; last_off=$((off + ${#chunk}))
+done
+
+new_ids="$(mktemp "${TMPDIR:-/tmp}/tail-closes.XXXXXX")"; trap 'rm -f "$new_ids"' EXIT
+printf '%s' "$all" | PRIOR_IDS="$seen_ids" awk -v out="$new_ids" '
+  function field(line, key,   m) {
+    if (match(line, "\"" key "\":\"[^\"]*\"")) { m = substr(line, RSTART + length(key) + 4, RLENGTH - length(key) - 5); return m }
+    return ""
+  }
+  BEGIN { n = split(ENVIRON["PRIOR_IDS"], p, "\n"); for (i = 1; i <= n; i++) if (p[i] != "") seen[p[i]] = 1 }
+  { id = field($0, "id"); kind = field($0, "kind")
+    if (id == "" || (id in seen)) next
+    seen[id] = 1; print id >> out
+    if (kind != "close.confirmed" && kind != "github.merged") next
+    print field($0, "ts"), kind, field($0, "project"), field($0, "ticket") }'
+
+if [[ -n "$state" && -n "$last_name" ]]; then
+  { printf '%s %s\n' "$last_name" "$last_off"; { printf '%s\n' "$seen_ids"; cat "$new_ids"; } | grep -v '^$' | tail -n 1000 || true; } >"$state.tmp"
+  mv "$state.tmp" "$state"
+fi

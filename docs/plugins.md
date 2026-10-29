@@ -91,6 +91,10 @@ Sprint progress kinds (t-5ef8; the Cockpit card reads these; "Build" has no kind
 An event never carries a ticket's description, documents or session text. Each field has a length limit, and longer
 values are cut.
 
+## Samples
+
+[`samples/events/tail-closes`](../samples/events/tail-closes/README.md) is a small reader that follows these files by the rules above (name order, resume by file name and offset, drop a seen `id`). It is a sample to copy; canon never runs it.
+
 ## Guarantees
 
 - **Observer-only.** Writing an event never blocks, slows down or fails the change it describes. If the folder can't be

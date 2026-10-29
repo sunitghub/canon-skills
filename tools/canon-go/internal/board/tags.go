@@ -29,7 +29,8 @@ var starterTags = []starterTag{
 	{"logging", "Logging"}, {"events", "Events"}, {"tracing", "Tracing"}, {"board", "Board"}, {"cockpit", "Cockpit"},
 	{"cli", "CLI"}, {"windows", "Windows"}, {"installer", "Installer"}, {"docs", "Docs"}, {"tests", "Tests"},
 	{"release", "Release"}, {"performance", "Performance"}, {"cloud", "Cloud"}, {"skills", "Skills"}, {"ci", "CI"},
-	{"now", "Now"}, // t-0447: the board's NOW lane reads this tag, so it is offered, never typed in
+	{"now", "Now"},       // t-0447: the board's NOW lane reads this tag, so it is offered, never typed in
+	{"sample", "Sample"}, // t-4371: tickets that add to samples/
 }
 
 // normalizeTags turns a comma list into the stored form: lowercase, trimmed, empty entries dropped, duplicates dropped with the
