@@ -108,10 +108,13 @@ test.beforeEach(async ({ context }) => {
   // lane counts and widths stay what each test expects. The NOW group's own page.route wins over this context route.
   await context.route('**/api/tickets*', async r => {
     if (r.request().method() !== 'GET') return r.fallback();
-    const res = await r.fetch(); let list;
-    try { list = await res.json(); } catch { return r.fulfill({ response: res }); }
-    if (Array.isArray(list)) for (const t of list) if (typeof t.tags === 'string') t.tags = t.tags.split(',').filter(x => x.trim() !== 'now').join(',');
-    return r.fulfill({ response: res, json: list });
+    // a test may close or navigate the page while this request is in flight: then there is nothing left to answer
+    try {
+      const res = await r.fetch(); let list;
+      try { list = await res.json(); } catch { return await r.fulfill({ response: res }); }
+      if (Array.isArray(list)) for (const t of list) if (typeof t.tags === 'string') t.tags = t.tags.split(',').filter(x => x.trim() !== 'now').join(',');
+      return await r.fulfill({ response: res, json: list });
+    } catch { /* page or context closed mid-request */ }
   });
   // t-9d93: the board's sidebar starts collapsed; most tests read it, so open it unless the URL has ?sbdefault=1.
   await context.addInitScript(() => {
