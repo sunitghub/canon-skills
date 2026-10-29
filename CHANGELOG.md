@@ -6,6 +6,24 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-10-29
+
+macOS and Linux only; Windows installs are unchanged (t-05c9). Update with `canon update`. No daemon restart is needed, but **stop the Cockpit first**: from this release `canon update` refuses while this install's Cockpit daemon or board runs, and never stops or restarts it for you (Admin > **Stop**, or `canon stop`).
+
+### Changed
+- **A release install is now a versioned package.** `~/.canon` holds `packages/<vX.Y.Z>/` (the release, no `.git`), a `current` link to the one in use, and your data beside them (`cockpit/`, `events/`, `themes/`, `settings.json`, `integrity/`). An update installs the new package, then switches `current` in one step, so a failed or interrupted update leaves the old version running. The two newest older releases are kept, and `canon update --to vX.Y.Z` of one of those switches back with no download. `canon update --to main` installs a clone in `packages/main`.
+- **The first update of an older install moves it into this layout.** The clone becomes `packages/<tag or main>`, your data stays where it is, and `~/.canon/tools` stays as a link so existing PATH lines keep working. Project links, imports, git hooks, `~/.config/canon/install_path` and the PATH line are rewritten to name `current`, so later updates never touch them again. A migration that fails or is interrupted puts everything back.
+- `canon uninstall` knows the new layout, and it keeps the home (and says so) when it holds files that are not canon's. A clone detached on a release tag no longer blocks it.
+
+### Fixed
+- A fresh install no longer fails when `CANON_HOME` is reached through a symlink (a dotfiles-managed `~/.canon`).
+
+### Known
+- Local, gitignored files inside an old clone (for example `.tickets/` of a developer checkout) move with it into `packages/`, and pruning an old release package deletes its folder. Keep your own files in the home, not in a package.
+- An install that holds a `settings.json` cannot update with its old updater (it sees a changed tree and refuses). Move the file aside once, then put it back:
+  `mv ~/.canon/settings.json ~/.canon/settings.json.bak && canon update && mv ~/.canon/settings.json.bak ~/.canon/settings.json`
+- A kill (SIGKILL) in the middle of the migration can leave your files in `~/.canon/packages/.tmp-migrate.*`; they are not deleted, so move them back by hand.
+
 ## [0.28.2] - 2026-10-29
 
 Update with `canon update`, then restart the daemon (Admin's **Restart Daemon**): the board's Integrity check lists one more gate file.
