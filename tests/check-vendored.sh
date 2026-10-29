@@ -40,6 +40,12 @@ TPLF="$WORK/template.yml"
 printf '%s\n' 'jobs:' '  grade:' '    steps:' '      - name: Set up a patched Node' '        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0' \
   '        with:' '          node-version: 22.23.4         # exact' '          package-manager-cache: false' '      - name: Install Claude Code CLI' \
   '        run: npm install -g @anthropic-ai/claude-code@2.1.309' '      - name: Checkout the PR' '        with:' '          node-version: 99.9.9' > "$TPLF"
+# a fixture manifest with fixed rows (xterm 5.3.0 as first vendored): the cases test the checker, not the vendored release,
+# so they never move when tools/vendored.tsv is bumped (t-d689)
+MANF="$WORK/vendored.tsv"
+printf '%s\t%s\t%s\t%s\thttps://github.com/xtermjs/xterm.js\tMIT\t%s\t%s\n' \
+  xterm.js xterm @xterm/xterm 5.3.0 f0aea0f7 terminal xterm.css xterm @xterm/xterm 5.3.0 832f3f2c stylesheet \
+  xterm-addon-fit.js xterm-addon-fit @xterm/addon-fit 0.8.0 10f3194c fit > "$MANF"
 NODEIDX='[{"version":"v24.1.0","date":"2026-10-01","lts":false,"security":true},{"version":"v22.23.4","date":"2026-10-20","files":["linux-x64"],"npm":"10.9.0","lts":"Jod","security":true},{"version":"v22.23.3","date":"2026-10-12","lts":"Jod","security":false}]'
 
 ADV='{"vulns":[{"id":"GHSA-test-plnt-0001","summary":"planted","aliases":["CVE-2099-0001"],"affected":[{"package":{"name":"xterm","ecosystem":"npm"},"ranges":[{"type":"SEMVER","events":[{"introduced":"0"},{"fixed":"5.3.1"}]}]}],"severity":[{"type":"CVSS_V3","score":"CVSS:3.1/AV:N"}],"database_specific":{"severity":"HIGH"}}]}'
@@ -57,7 +63,7 @@ stubs() {   # stubs <xterm latest> <addon latest>: a fresh STUB_DIR, both regist
 }
 run() {   # run <script> [args]: OUT and RC, with the mode in $NOJQ
   set +e
-  OUT="$(PATH="$WORK/nonet:$PATH" VENDORED_CURL="$WORK/bin/stub-curl" VENDORED_NO_JQ="$NOJQ" VENDORED_TEMPLATE="${TEMPLATE_FILE:-$TPLF}" GITHUB_STEP_SUMMARY="${SUMMARY_FILE:-}" bash "$@" 2>&1)"
+  OUT="$(PATH="$WORK/nonet:$PATH" VENDORED_MANIFEST="$MANF" VENDORED_CURL="$WORK/bin/stub-curl" VENDORED_NO_JQ="$NOJQ" VENDORED_TEMPLATE="${TEMPLATE_FILE:-$TPLF}" GITHUB_STEP_SUMMARY="${SUMMARY_FILE:-}" bash "$@" 2>&1)"
   RC=$?
   set -e
 }
@@ -248,7 +254,7 @@ revert case_node_security "0 1" 's/\(\( k > pk && k > fixedk \)\)/(( 0 ))/'
 revert case_node_other_major "0 1" 's/^  \(\( found \)\) \|\|/  true ||/'
 revert case_node_garbage "0" 's/all\(\.\[\]; type == "object" and \(\.version \| type\) == "string" and \(\.security \| type\) == "boolean"\)/true/'
 revert case_node_garbage "1" 's/if \(ver != "" && \(sec == "true" \|\| sec == "false"\)\)/if (ver != "")/'
-revert case_node_decoy "1" 's/if \(d == 2\) \{ if \(st == "key"\) key = s;/if (1) { if (st == "key") key = s;/'
+revert case_node_decoy "1" 's/d = 3; st = "after"; continue \}/d = 2; st = "key"; continue }/'   # a nested object read as the entry's own keys
 revert case_cli_advisory "0 1" 's/^      AFFECTED=1$/      AFFECTED=0/;s/^(.*NOTES\+=\("ADVISORY: \$CLI.*)$/\1/'
 
 echo "check-vendored: ok (24 cases on modes [$MODES], template pins, version gaps, advisory columns, manifest rows, --summary, --sha, usage; $n reverts caught)"
