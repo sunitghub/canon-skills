@@ -466,6 +466,26 @@ chmod +x "$STUBS/uname" "$STUBS/cygpath" "$STUBS/powershell.exe"
   ! _is_our_board "\"${w}x\\tools\\canon-go-win.exe\" board 1" || fail "another install's board is not ours"
   _is_our_board "\"$w\\tools\\sprint-check-win.exe\" 8899" || fail "an older layout's board exe must still be recognised"
 )
+# t-4872: on Windows the daemon writes daemon.json to Go's os.UserCacheDir(), %LocalAppData%\canon-cockpit. The probe must look there, find this
+# install's daemon (path plus mode word) and leave another install's process recorded there alone. Prod path: canon uninstall, canon stop, the
+# update guard (probe_daemon via pkg_running) on Windows.
+(
+  export PATH="$STUBS:$PATH"; INSTALL="$WORK/i15"; PORT=1; HOME="$WORK/hx"; unset XDG_RUNTIME_DIR COCKPIT_STATE_DIR
+  la="$WORK/la15"; export LOCALAPPDATA="C:$(printf '%s' "$la" | tr '/' '\\')"; mkdir -p "$la/canon-cockpit"
+  source "$ROOT/tools/platform-lib.sh"; source "$ROOT/tools/cockpit-stop-lib.sh"
+  dirs="$(cockpit_state_dirs)"   # captured, not piped into grep -q: under pipefail an early-exit grep fails the pipe
+  grep -qxF "$la/canon-cockpit" <<<"$dirs" || fail "Windows: the state dirs must include %LOCALAPPDATA%/canon-cockpit, got: $(tr '\n' ' ' <<<"$dirs")"
+  e="C:$(printf '%s' "$INSTALL" | tr '/' '\\')\\tools\\canon-go-win.exe"
+  printf '{"addr":"127.0.0.1:63951","pid":4242}\n' > "$la/canon-cockpit/daemon.json"
+  _proc_ident() { [ "$1" = 4242 ] && printf '"%s" daemon -addr 127.0.0.1:0\n' "$e"; }
+  probe_daemon; [ "$DAEMON_STATUS" = ours ] && [ "$DAEMON_PID" = 4242 ] || fail "Windows: this install's daemon recorded in LocalAppData must be found (status $DAEMON_STATUS, pid $DAEMON_PID)"
+  _proc_ident() { [ "$1" = 4242 ] && printf '"C:\\other\\tools\\canon-go-win.exe" daemon -addr 127.0.0.1:0\n'; }
+  probe_daemon; [ "$DAEMON_STATUS" != ours ] || fail "Windows: another install's daemon recorded in LocalAppData must not be taken for ours"
+)
+(
+  unset LOCALAPPDATA; export LOCALAPPDATA='C:\x'; source "$ROOT/tools/platform-lib.sh"; source "$ROOT/tools/cockpit-stop-lib.sh"
+  dirs="$(cockpit_state_dirs)"; ! grep -q '^/x/canon-cockpit$' <<<"$dirs" || fail "macOS/Linux: LOCALAPPDATA must not add a state dir"
+)
 inst="$WORK/i15"; h="$WORK/h15"; mk_install "$inst"; mk_home "$h" "$inst"; mk_project "$WORK/p15" "$h"
 winentry="C:$(printf '%s' "$inst" | tr '/' '\\')\\tools"
 runw() { set +e; out="$(PATH="$STUBS:$PATH" HOME="$h" STUB_LOG="$WORK/stub.log" STUB_WINPATH="$winentry" STUB_PROCS="${PROCS:-}" STUB_PSARGS="$WORK/psargs" CANON_UNINSTALL_POWERSHELL="$STUBS/powershell.exe" CANON_COCKPIT_PORT=1 CANON_HOME= "$inst/tools/canon" uninstall "$@" </dev/null 2>&1)"; rc=$?; set -e; }

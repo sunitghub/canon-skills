@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Fixed
+- On Windows, `canon uninstall`, `canon stop` and the update guard now find the Cockpit daemon: it records itself in `%LOCALAPPDATA%\canon-cockpit`, a folder the scripts did not look in, so uninstall reported the daemon as an unknown `canon-go-win.exe` and refused (t-4872). Until you have this release, run `canon stop` before `canon uninstall`.
+
 ## [0.30.2] - 2026-10-29
 
 Update with `canon update` (stop the Cockpit first). **Restart the Cockpit daemon after updating** (Admin > **Restart Daemon**): the terminal's files are built into the daemon, so a daemon started before the update keeps the old terminal.
