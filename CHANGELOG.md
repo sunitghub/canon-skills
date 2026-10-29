@@ -6,6 +6,17 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.28.2] - 2026-10-29
+
+Update with `canon update`, then restart the daemon (Admin's **Restart Daemon**): the board's Integrity check lists one more gate file.
+
+### Changed
+- A normal sprint loads about 7k fewer tokens. The sprint skill and its close checklist drop a stale note and repeated wording, and the reviewer and evaluator gates no longer read the generic subagent-report guide or the browser-render detail unless a UI change is being rendered (that detail now lives in `reference/visual-verify.md`). Every rule a gate follows stays, and a fixed set of four known-verdict changes grades the same before and after.
+- The close checklist no longer tells a user project to run canon's own `scripts/test.sh` or release steps.
+
+### Added
+- The sprint skill's evals cover the light close, the bugfix tier and skills-path lookup.
+
 ## [0.28.1] - 2026-10-28
 
 Update with `canon update`. No daemon restart is needed.
