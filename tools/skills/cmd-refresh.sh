@@ -43,7 +43,7 @@ _retarget_worktree_links() {
 _is_old_skill_import() {
   local path="${1%$'\r'}" root name
   [[ "$path" == @*/skills/*.md ]] || return 1
-  path="${path#@}"; root="${path%/skills/*}"; name="${path##*/}"; name="${name%.md}"
+  path="${path#@}"; root="${path%/skills/*}"; name="${path#"$root"/skills/}"; name="${name%.md}"
   [ -n "$root" ] && [ -n "$name" ] && [[ "$name" != */* ]] || return 1
   [ "$root" = "$SKILLS_ROOT" ] || [ -f "$root/tools/skills.sh" ] || return 1
   [ -f "$root/skills/$name/SKILL.md" ]

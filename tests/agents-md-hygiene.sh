@@ -6,9 +6,9 @@ set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 
-project="$(make_project)"; projectb="$(make_project)"; projectc="$(make_project)"
+project="$(make_project)"; projectb="$(make_project)"; projectc="$(make_project)"; projectd="$(make_project)"
 tmp_home="$(mktemp -d)"; fake="$(mktemp -d)"; notcanon="$(mktemp -d)"
-trap 'rm -rf "$project" "$projectb" "$projectc" "$tmp_home" "$fake" "$notcanon"' EXIT
+trap 'rm -rf "$project" "$projectb" "$projectc" "$projectd" "$tmp_home" "$fake" "$notcanon"' EXIT
 
 touch "$tmp_home/.zshrc"
 export HOME="$tmp_home" SHELL="/bin/zsh" SKILLS_SH_NO_TTY=1 PATH="$TOOLS_DIR:$PATH"
@@ -34,6 +34,7 @@ User text after its own blank run.
 @$fake/skills/sprint.md
 @$fake/skills/nosuch.md
 @$notcanon/skills/sprint.md
+@$fake/skills/sub/sprint.md
 @/elsewhere/skills/x.md
 User note before its own two blank lines.
 
@@ -45,6 +46,12 @@ User note before its own two blank lines.
 <!-- MODEL-TIERS:BEGIN -->
 old note
 <!-- MODEL-TIERS:END -->
+
+
+@/other/standards/x.md
+
+
+@/other/skills/y/SKILL.md
 
 
 <!-- AI-SKILLS:BEGIN -->
@@ -64,6 +71,9 @@ assert_contains "$out" "collapsed stacked blank lines"
 assert_count 0 "@$fake/skills/sprint.md" "$project/AGENTS.md"       # guard: canon-root old import removed
 assert_count 1 "@$fake/skills/nosuch.md" "$project/AGENTS.md"       # guard: only a canon skill name
 assert_count 1 "@$notcanon/skills/sprint.md" "$project/AGENTS.md"   # guard: only under a canon root
+assert_count 1 "@$fake/skills/sub/sprint.md" "$project/AGENTS.md"   # guard: a skill is skills/<name>.md, nothing deeper
+assert_count 1 "@/other/standards/x.md" "$project/AGENTS.md"
+assert_count 1 "@/other/skills/y/SKILL.md" "$project/AGENTS.md"
 assert_count 1 "@/elsewhere/skills/x.md" "$project/AGENTS.md"
 assert_count 1 "@PROMOTED.md" "$project/AGENTS.md"
 # guard: the user's own blank runs are untouched, even the one that ends at a canon line
@@ -98,3 +108,12 @@ printf '# Agents\n\n' > "$projectc/AGENTS.md"
 assert_count 1 "AI-SKILLS:BEGIN" "$projectc/AGENTS.md"
 stacked="$(runs_of_blanks "$projectc/AGENTS.md" | awk -F: '$2 > 1')"
 [[ -z "$stacked" ]] || fail "the AI-SKILLS writer stacked blank lines: $stacked"
+
+# No trailing newline and no blank line: each block still gets exactly one separating blank line above it.
+blank_before() { awk -v p="$1" '{ sub(/\r$/, "") } $0 == p { exit (prev == "" && NR > 1) ? 0 : 1 } { prev = $0 }' "$2"; }
+printf '# Agents' > "$projectd/AGENTS.md"
+"$SKILLS" add sprint "$projectd" >/dev/null 2>&1
+SKILLS_SH_ASSUME_YES=1 "$SKILLS" add efficiency "$projectd" >/dev/null 2>&1
+blank_before "<!-- AI-SKILLS:BEGIN -->" "$projectd/AGENTS.md" || fail "no separator above the AI-SKILLS block"
+blank_before "<!-- MODEL-TIERS:BEGIN -->" "$projectd/AGENTS.md" || fail "no separator above the MODEL-TIERS block"
+assert_eq "# Agents" "$(head -c 8 "$projectd/AGENTS.md")"
