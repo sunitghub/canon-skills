@@ -37,8 +37,6 @@ cd "$(dirname "$0")/.." || exit 1
 [ "$(bash lib/slug.sh "Hello World")" = "hello-world" ] || { echo "FAIL c1"; exit 1; }
 [ "$(bash lib/slug.sh "A&B c")" = "ab-c" ] || { echo "FAIL c2"; exit 1; }
 echo ok'
-TEST_123="$TEST_12"'
-'
 TEST_123="${TEST_12%echo ok}"'err="$(bash lib/slug.sh "" 2>&1 >/dev/null)"; rc=$?
 [ "$rc" -eq 2 ] && [ "$err" = "usage: slug.sh <text>" ] || { echo "FAIL c3"; exit 1; }
 echo ok'
