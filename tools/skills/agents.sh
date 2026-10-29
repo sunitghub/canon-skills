@@ -46,8 +46,8 @@ skills_table_upsert() {
   fi
 
   if [ ! -f "$agents_file" ] || ! grep -qF "$block_begin" "$agents_file"; then
+    ensure_blank_sep "$agents_file"
     {
-      echo ""
       echo "$block_begin"
       echo "## Active canon skills"
       echo "$SKILLS_TABLE_NOTE"

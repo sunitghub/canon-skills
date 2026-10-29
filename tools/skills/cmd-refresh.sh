@@ -37,6 +37,38 @@ _retarget_worktree_links() {
   return 0
 }
 
+# t-351c: a pre-June project carries `@<root>/skills/<name>.md` (skills moved to skills/<name>/SKILL.md, and the code that recognised
+# these lines went with the old layout). True only when <root> is a canon root (this install, or a checkout with tools/skills.sh)
+# and <name> is a skill there; any other @ line, look-alikes included, is the user's.
+_is_old_skill_import() {
+  local path="${1%$'\r'}" root name
+  [[ "$path" == @*/skills/*.md ]] || return 1
+  path="${path#@}"; root="${path%/skills/*}"; name="${path##*/}"; name="${name%.md}"
+  [ -n "$root" ] && [ -n "$name" ] && [[ "$name" != */* ]] || return 1
+  [ "$root" = "$SKILLS_ROOT" ] || [ -f "$root/tools/skills.sh" ] || return 1
+  [ -f "$root/skills/$name/SKILL.md" ]
+}
+
+# t-351c: a run of 2+ blank lines is collapsed to one only where canon left it: between a canon line (its @-import, @PROMOTED.md or a
+# block's END marker) and the next canon line (an import or a block's BEGIN marker). A blank run in the user's own text stays.
+_collapse_canon_blank_runs() {
+  local f="$1" tmp
+  [ -f "$f" ] || return 0
+  tmp="$(mktemp)"
+  awk '
+    function canon(l) { return l ~ /^@PROMOTED\.md$/ || l ~ /^@.*\/standards\/[^\/]+\.md$/ || l ~ /^@.*\/skills\/[^\/]+\/SKILL\.md$/ }
+    function isend(l) { return l ~ /^<!-- (MODEL-TIERS|AI-SKILLS|canon:[a-z-]+):END -->$/ }
+    function isbegin(l) { return l ~ /^<!-- (MODEL-TIERS|AI-SKILLS|canon:[a-z-]+):BEGIN -->$/ }
+    { l = $0; sub(/\r$/, "", l) }
+    l == "" { buf[++n] = $0; next }
+    { if (n >= 2 && prev && (canon(l) || isbegin(l))) n = 1
+      for (i = 1; i <= n; i++) print buf[i]
+      n = 0; print; prev = canon(l) || isend(l) }
+    END { for (i = 1; i <= n; i++) print buf[i] }' "$f" > "$tmp"
+  if cmp -s "$tmp" "$f"; then rm -f "$tmp"; else cat "$tmp" > "$f"; rm -f "$tmp"; echo "  [AGENTS.md]  collapsed stacked blank lines canon left between its blocks" >&2; fi
+  return 0
+}
+
 cmd_refresh() {
   local project_dir="${1:-$(pwd)}"
   local claude_file="$project_dir/CLAUDE.md"
@@ -72,6 +104,10 @@ cmd_refresh() {
         printf '%s\n' "$line"
         continue
       fi
+      if _is_old_skill_import "$line"; then
+        echo "  [pruned]  old skill import (skills moved to skills/<name>/SKILL.md): $line" >&2
+        continue
+      fi
       if [[ "$line" == @"$SKILLS_ROOT"/* ]]; then
         echo "  [pruned]  legacy @-import: $line" >&2
         continue
@@ -103,6 +139,8 @@ cmd_refresh() {
       done < "$claude_file" > "$tmp" && mv "$tmp" "$claude_file"
     fi
   fi
+
+  _collapse_canon_blank_runs "$agents_file"
 
   echo ""
 
