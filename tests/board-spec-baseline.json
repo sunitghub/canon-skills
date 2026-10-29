@@ -7,6 +7,14 @@
   "failing": [],
   "flaky": [
     {
+      "title": "cockpit stale-daemon banner (t-74d6) > a tab opening a live session offers Attach with the agent locked, and both windows get the shared notice",
+      "browsers": [
+        "chromium"
+      ],
+      "ticket": "t-3741",
+      "reason": "failed once in the t-71c8 evaluator's full run on a busy machine (chromium and webkit at once, 2026-10-29); passed on a solo chromium rerun at 0d7ffe43"
+    },
+    {
       "title": "cockpit in board (t-ddc8) > cross-project Sessions row (t-2d2e) > project tab keys (t-ccf5): ctrl+. then P then n reaches the active board; Esc after P cancels; lowercase p still opens Projects",
       "browsers": [
         "chromium"
