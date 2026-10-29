@@ -29,7 +29,8 @@ Do the thing.
 PLAN
 
 # The gate is called directly: a full `sprint complete` needs reviewer/evaluator reports.
-gate() { ( source <(sed -n '/^_acceptance_section()/,/^}/p;/^_gate_plan_signoff()/,/^}/p;/^_approach_digest()/,/^}/p' "$SPRINT"); _gate_plan_signoff "$id" "$plan" 2>&1 ); }
+# eval, not source <(...): macOS's bash 3.2 sources nothing from a process substitution.
+gate() { ( eval "$(sed -n '/^_acceptance_section()/,/^}/p;/^_gate_plan_signoff()/,/^}/p;/^_approach_digest()/,/^}/p' "$SPRINT")"; _gate_plan_signoff "$id" "$plan" 2>&1 ); }
 
 # 1. approve ticks the box and writes the pin under it
 out="$("$SPRINT" approve "$id")"
