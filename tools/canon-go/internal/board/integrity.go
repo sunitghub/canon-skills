@@ -368,7 +368,7 @@ func checkIntegrityCore(d integrityDeps) integrityResult {
 	}
 	tag := "v" + ver
 	res.Tag = tag
-	if tb, _ := os.ReadFile(filepath.Join(root, ".canon-track")); strings.TrimSpace(string(tb)) == "main" {
+	if tb, _ := os.ReadFile(filepath.Join(trackDir(root), ".canon-track")); strings.TrimSpace(string(tb)) == "main" {
 		res.State, res.Reason = integrityNotFromRelease, "this install follows main: there is no released copy to compare with"
 		return res
 	}
@@ -489,6 +489,19 @@ func readAgent(root, rel string) integrityAgent {
 	}
 	a.Prompt = strings.TrimSpace(strings.Join(body, "\n"))
 	return a
+}
+
+// trackDir is the folder that holds the install's .canon-track marker (t-cb66): in the versioned layout (root is <home>/packages/<name>
+// and <home>/current is a link, the rule install_home in tools/canon uses) that is the home; a flat or developer clone holds its own.
+// Never CANON_HOME: the marker belongs to the install that runs, not to whichever home the caller names.
+func trackDir(root string) string {
+	if pk := filepath.Dir(root); filepath.Base(pk) == "packages" {
+		home := filepath.Dir(pk)
+		if fi, err := os.Lstat(filepath.Join(home, "current")); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+			return home
+		}
+	}
+	return root
 }
 
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }

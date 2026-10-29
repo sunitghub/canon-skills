@@ -84,6 +84,20 @@ git -C "$inst" init -q && git -C "$inst" add -A >/dev/null 2>&1 && git -C "$inst
 complete; not_refused "a checkout that is not at the tag"; assert_contains "$out" "not exactly at v9.8.7"
 rm -rf "$inst/.git"
 
+# t-cb66, the versioned layout (prod path: `sprint complete` run as <home>/current/tools/sprint, its board in the package). A release package
+# with a changed gate file still refuses, even with `main` in CANON_HOME's .canon-track (never read); packages/main with `main` in
+# <home>/.canon-track is the main track, read from the home, not "not exactly at" from the package.
+L="$work/lhome"; mkdir -p "$L/packages"; new_install "$L/packages/v9.8.7"; ln -s packages/v9.8.7 "$L/current"
+printf '#' >> "$L/packages/v9.8.7/tools/gate-model.sh"; echo main > "$CANON_HOME/.canon-track"
+set +e; out="$("$L/current/tools/sprint" complete 2>&1)"; rc=$?; set -e
+[[ "$rc" -eq 1 && "$out" == *"tools/gate-model.sh: changed"* ]] || fail "a changed gate file in a release package must refuse: rc=$rc $out"
+rm -f "$CANON_HOME/.canon-track"
+mv "$L/packages/v9.8.7" "$L/packages/main"; rm "$L/current"; ln -s packages/main "$L/current"; echo main > "$L/.canon-track"
+git -C "$L/packages/main" init -q && git -C "$L/packages/main" add -A >/dev/null 2>&1 && git -C "$L/packages/main" -c gc.auto=0 -c maintenance.auto=false -c user.email=t@t -c user.name=t commit -q -m main
+set +e; out="$("$L/current/tools/sprint" complete 2>&1)"; rc=$?; set -e
+not_refused "packages/main with the home marker"; assert_contains "$out" "this install follows main"
+rm -rf "$L"
+
 # a corrupt saved list (it no longer equals its pin) and no saved list at all: never a refusal, whatever the network answers
 printf '{"tag":"v9.8.7","files":{}}' > "$CANON_HOME/integrity/v9.8.7.json"
 complete; not_refused "a corrupt saved list"

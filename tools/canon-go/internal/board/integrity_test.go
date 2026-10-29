@@ -323,6 +323,59 @@ func TestIntegrityStatesThatNeverCountOrBlock(t *testing.T) {
 	}
 }
 
+// intoLayout moves the fixture install to <home>/packages/<name> with <home>/current linking to it, as the versioned layout has it.
+func (f *integFx) intoLayout(name string) string {
+	f.t.Helper()
+	home := f.t.TempDir()
+	pkg := filepath.Join(home, "packages", name)
+	if err := os.MkdirAll(filepath.Dir(pkg), 0o755); err != nil {
+		f.t.Fatal(err)
+	}
+	if err := os.Rename(f.root, pkg); err != nil {
+		f.t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join("packages", name), filepath.Join(home, "current")); err != nil {
+		f.t.Fatal(err)
+	}
+	f.root, f.deps.root = pkg, filepath.Join(home, "current")
+	return home
+}
+
+// t-cb66: in the versioned layout the .canon-track marker lives in the home, not in the package (prod path: the sprint-close integrity gate
+// and Admin > Integrity run from <home>/packages/<name>).
+func TestIntegrityLayoutReadsTheTrackMarkerFromTheHome(t *testing.T) {
+	// packages/main with `main` in <home>/.canon-track: the main-track reason, not "not exactly at", and no network
+	f := newIntegFx(t)
+	home := f.intoLayout("main")
+	_ = os.WriteFile(filepath.Join(home, ".canon-track"), []byte("main\n"), 0o644)
+	f.deps.atTag = func(string, string) (bool, bool, error) { return true, false, nil } // a main clone is not at the release tag
+	r := checkIntegrity(f.deps)
+	if r.State != integrityNotFromRelease || !strings.Contains(r.Reason, "follows main") || r.Blocking || f.calls != 0 {
+		t.Errorf("packages/main with the home marker: %+v (calls %d)", r, f.calls)
+	}
+	// a release package with no marker verifies, and a marker left inside the package (or in the cache home) is not the install's
+	f = newIntegFx(t)
+	f.intoLayout("v1.2.3")
+	_ = os.WriteFile(filepath.Join(f.root, ".canon-track"), []byte("main\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(f.home, ".canon-track"), []byte("main\n"), 0o644)
+	if r := checkIntegrity(f.deps); r.State != integrityVerified || r.Match != r.Total || r.Total == 0 {
+		t.Errorf("a release package without a home marker: %+v", r)
+	}
+	// a flat clone that merely sits in a folder named packages (no current link) reads its own root
+	f = newIntegFx(t)
+	parent := filepath.Join(t.TempDir(), "packages")
+	_ = os.MkdirAll(parent, 0o755)
+	if err := os.Rename(f.root, filepath.Join(parent, "canon")); err != nil {
+		t.Fatal(err)
+	}
+	f.root = filepath.Join(parent, "canon")
+	f.deps.root = f.root
+	_ = os.WriteFile(filepath.Join(f.root, ".canon-track"), []byte("main\n"), 0o644)
+	if r := checkIntegrity(f.deps); r.State != integrityNotFromRelease || !strings.Contains(r.Reason, "follows main") {
+		t.Errorf("a clone under packages/ without a current link must read its own marker: %+v", r)
+	}
+}
+
 func TestIntegrityHostileListIsNotFollowed(t *testing.T) {
 	for _, bad := range []string{"../secret", "/etc/passwd", "tools/../../secret", "tools//sprint", "tools/sp rint", "tools\\sprint"} {
 		f := newIntegFx(t)
