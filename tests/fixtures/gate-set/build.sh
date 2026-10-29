@@ -39,7 +39,8 @@ cd "$(dirname "$0")/.." || exit 1
 echo ok'
 TEST_123="$TEST_12"'
 '
-TEST_123="${TEST_12%echo ok}"'bash lib/slug.sh "" 2>/dev/null; [ $? -eq 2 ] || { echo "FAIL c3"; exit 1; }
+TEST_123="${TEST_12%echo ok}"'err="$(bash lib/slug.sh "" 2>&1 >/dev/null)"; rc=$?
+[ "$rc" -eq 2 ] && [ "$err" = "usage: slug.sh <text>" ] || { echo "FAIL c3"; exit 1; }
 echo ok'
 
 g() { git -C "$R" "$@"; }
