@@ -2338,7 +2338,7 @@ cmd_commit_push() {
   elif ! $new && [[ "$ahead" == 0 ]]; then
     echo "commit-push: nothing to commit (no --file) and nothing to push on $b; nothing changed" >&2; exit 1
   fi
-  local sha out
+  local sha="" out=""   # set, not just declared: bash 5 leaves a bare `local sha` unset and set -u then stops the push path
   if [[ ${#files[@]} -gt 0 ]]; then
     # Only the named paths: --only commits their worktree state and leaves anything else in the index staged, not committed.
     out="$(git -C "$wt" add -A -- "${files[@]}" 2>&1 && git -C "$wt" commit -q --only -m "$msg" -- "${files[@]}" 2>&1)" \
