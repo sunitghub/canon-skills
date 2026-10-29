@@ -78,8 +78,10 @@ run wait t-wt01 --until done >/dev/null 2>&1; wcode=$?
 set -e
 assert_eq "2" "$wcode"
 assert_eq "1" "$code"
-assert_contains "$out" "Canon isn't running on port $PORT"
-assert_eq "Canon isn't running on port $PORT — nothing to stop." "$(run stop)"
+assert_contains "$out" "The Cockpit is not running on port $PORT. Start it with: canon"
+set +e; out="$(run stop 2>&1)"; scode=$?; set -e
+assert_eq "0" "$scode"
+assert_eq "The Cockpit is not running on port $PORT. Nothing to stop." "$out"
 
 # A board that predates these subcommands: /api/version answers, the new routes 404.
 PORT="$(free_port)"
@@ -99,7 +101,7 @@ wait_for "http://127.0.0.1:$PORT/api/version" || fail "canon-cli: stale-board st
 for c in status sessions; do
   set +e; out="$(run "$c" 2>&1)"; code=$?; set -e
   assert_eq "1" "$code"
-  assert_contains "$out" "doesn't support 'canon $c'"
+  assert_contains "$out" "does not support 'canon $c'"
   [[ "$out" != *"<html"* && "$out" != *"<!DOCTYPE"* ]] || fail "canon-cli: a stale board's error page was printed as output"
 done
 
@@ -131,7 +133,7 @@ for b in main.go; do
   assert_eq "needs-you" "$out"
   (( SECONDS - t0 >= 2 && SECONDS - t0 < 9 )) || fail "canon-cli: wait returned at the wrong time ($((SECONDS - t0))s)"
   set +e; out="$(run wait t-wt01 --until done --timeout 2000 2>&1)"; code=$?; set -e
-  assert_eq "1" "$code"; assert_contains "$out" "timed out after 2000ms — t-wt01 is needs-you"
+  assert_eq "1" "$code"; assert_contains "$out" "timed out after 2000ms. t-wt01 is needs-you"
   assert_eq "needs-you" "$(run wait t-wt01 --until working,needs-you --timeout 3000)"
   j="$(run wait t-wt01 --until needs-you --json)"; no_token "$j"
   assert_eq "t-wt01 needs-you" "$(python3 -c 'import json,sys;d=json.loads(sys.argv[1]);print(d["ticket"],d["state"])' "$j")"
@@ -159,13 +161,13 @@ for b in main.go; do
   for c in stop restart; do
     set +e; out="$(run "$c" 2>&1)"; code=$?; set -e
     assert_eq "1" "$code"
-    assert_contains "$out" "2 session(s) running — canon $c --force ends them"
+    assert_contains "$out" "2 session(s) running. Run canon $c --force to end them"
     no_token "$out"
   done
   # --force stops it (the board ends the stub daemon by its recorded pid).
   out="$(run stop --force)"; no_token "$out"
   # this test's board is built outside the install, so canon stop must name it and leave it running (an install's own board is stopped: see below)
-  assert_eq "Cockpit daemon stopped. The board on port $PORT is not this install's, or cannot be identified, so it was left running; Ctrl+C in the terminal running canon (or close its window) stops it." "$out"
+  assert_eq "Stopped the daemon. The board on port $PORT is not from this install, or cannot be identified, so it was left running. Press Ctrl+C in the terminal running canon, or close its window." "$out"
   assert_contains "$(run status)" "daemon:   not running"
   assert_eq "No sessions running." "$(run sessions)"
   echo "canon-cli: $b ok"
@@ -179,7 +181,7 @@ if [[ -x "$ROOT/tools/canon-go-bin/canon-go" ]]; then
   bp="$(cat "$own/pid")"; PIDS+=("$bp")
   wait_for "http://127.0.0.1:$PORT/api/version" || fail "canon-cli: the install's own board did not start"
   out="$(COCKPIT_STATE_DIR="$own/state" HOME="$own" run stop)"
-  assert_eq "Canon stopped: the Cockpit daemon and the board." "$out"
+  assert_eq "Stopped the Cockpit: the board and the daemon have exited." "$out"
   ! kill -0 "$bp" 2>/dev/null || fail "canon-cli: canon stop left this install's board running"
 fi
 
