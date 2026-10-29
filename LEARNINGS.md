@@ -1,10 +1,12 @@
 # Learnings
 
-learnings-sweep last run: 10-29-2026 17:55
+learnings-sweep last run: 10-29-2026 18:53
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-29 | [t-0865](.tickets/t-0865/learnings.md) | A test that loads a script's functions with `source <(sed …)` passes on the cloud's Linux bash 5 and loads nothing on macOS bash 3.2: the gate it guards was never run on the Mac until merge (fixed with eval; tests/shell-portability.sh now fails on the pattern). | UNPROMOTED |
+| 2026-10-29 | [t-351c](.tickets/t-351c/learnings.md) | A refresh that prunes canon's lines must recognise only canon's own: the collapse treats any `@*/standards/*.md` line as canon's, so a user's look-alike import can be folded (reviewer, advisory). | UNPROMOTED |
 | 2026-10-29 | [t-6cf5](.tickets/t-6cf5/learnings.md) | Cloud sessions run Linux bash 5, so a bash-3.2 trap (`source <(...)` loads nothing on macOS) passes the cloud's gates and fails only at the Mac's merge; a repo lint catches it in the cloud's own run. | UNPROMOTED |
 | 2026-10-29 | [t-3741](.tickets/t-3741/learnings.md) | Every clause of a guard needs an input that only it rejects: the exited-session check had no spec, so treating every session as live still passed. And a mutant run that ran no tests (0 expected: a fresh clone without node_modules) proves nothing; read the counts. | UNPROMOTED |
 | 2026-10-29 | [t-71c8](.tickets/t-71c8/learnings.md) | A board-wide test fixture is a change to every test: the route that dropped real `now` tags fixed two lane-count tests and broke a sidebar test that closes its page mid-request; run the full board spec after any shared spec change, and read its JSON, not the exit code. | UNPROMOTED |
