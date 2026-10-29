@@ -15,7 +15,7 @@ board_bin="$(build_board "$work/board")"   # copied into each install
 sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
 
 GATE_FILES=(tools/sprint tools/gate-snapshot.sh tools/subagent-log.sh tools/evidence.sh tools/sprint-headless tools/sprint-headless-eval tools/gate-model.sh)
-GATE_PROMPTS=(agents/canon-reviewer.md agents/canon-evaluator.md skills/sprint/reference/review.md skills/sprint/reference/eval.md skills/sprint/reference/shared-gate-protocol.md)
+GATE_PROMPTS=(agents/canon-reviewer.md agents/canon-evaluator.md skills/sprint/reference/review.md skills/sprint/reference/eval.md skills/sprint/reference/shared-gate-protocol.md skills/sprint/reference/visual-verify.md)
 
 # An install copy whose list (saved under CANON_HOME/integrity, as a first online check would) matches the copy exactly.
 new_install() {
@@ -53,7 +53,7 @@ not_refused() {
 # Clean install: the gate passes with one line; the close stops later, at a gate that has nothing to do with integrity.
 complete
 not_refused "a clean install"
-assert_contains "$out" "integrity: 13 of 13 files match release v9.8.7"
+assert_contains "$out" "integrity: 14 of 14 files match release v9.8.7"
 
 # One byte appended to a gate file: refused, with the file and the restore command, and an event.
 printf '#' >> "$inst/tools/gate-model.sh"

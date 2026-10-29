@@ -49,10 +49,7 @@ Read `skills/sprint/reference/shared-gate-protocol.md ## Self-serve visual verif
 
 ## Report structure
 
-For general subagent return-shape guidance (Result, Output, Evidence, Learnings),
-read `skills/sprint/reference/subagent-report.md`. The eval-report template below
-is gate-specific and takes precedence for this close-gate report, but the
-right-sizing, snippet, and evidence principles apply.
+The eval-report template below is the whole return shape for this gate.
 
 ## Steps
 
@@ -60,11 +57,11 @@ right-sizing, snippet, and evidence principles apply.
    ```
    evaluator-run-id: <epoch-seconds>-<RANDOM>
    ```
-   Generate `<epoch-seconds>` via `date +%s` and `<RANDOM>` via `$RANDOM` in a Bash call. This anchors the report to *this* fresh subagent invocation and guards against a stale leftover report from a discarded prior pass. The run-id is a **correlation handle, not a security token**: the close gate (`_gate_eval_report`) matches it to a `.claude/subagent-runs.jsonl` entry only by timestamp window (±60 min) and never validates the id itself as tamper-proof authenticity — so `$RANDOM`'s low entropy is not a weakness here, and increasing it (e.g. `uuidgen`/`openssl`) would falsely imply a security property this field does not claim. **This value is provisional** — step 8 re-stamps it with a fresh timestamp right before writing the rest of the report, so the value written here only needs to survive until then.
+   Generate `<epoch-seconds>` via `date +%s` and `<RANDOM>` via `$RANDOM` in a Bash call. This anchors the report to *this* fresh subagent invocation. The close gate matches it to a `.claude/subagent-runs.jsonl` entry by a ±60 min window; it is a correlation handle, not a security token, so do not strengthen it. **This value is provisional** — step 8 re-stamps it.
 
-   `date +%s` and `$RANDOM` are chosen because they work identically in Git Bash on Windows — do not substitute `uuidgen`, PowerShell, or any other tool even on a Windows path; live-reproduced failure: an evaluator subagent second-guessed this instruction on a Windows machine, tried PowerShell GUID generation then `uuidgen` (neither works in Git Bash), and wrote a malformed run-id that would have hard-failed the close gate.
+   Use exactly `date +%s` and `$RANDOM`, on Windows Git Bash too; never `uuidgen` or PowerShell, which fail there and leave a malformed run-id that hard-fails the close.
 
-   The timestamp must be epoch **seconds** (`date +%s`, 10 digits) — **never milliseconds / a JS `Date.now()` value** (13 digits). The close gate matches within a ±60 min window, so a millisecond value is ~1000× off and would otherwise miss the window; the gate now defensively normalizes a ≥13-digit prefix down to seconds (`t-bdfb`), but emit seconds directly regardless.
+   The timestamp must be epoch **seconds** (10 digits), never milliseconds / a JS `Date.now()` value.
 
 2. **Derive changed files.** Follow `skills/sprint/reference/shared-gate-protocol.md ## Base-ref derivation` — use the explicit `Base ref` if passed, otherwise derive via `git merge-base HEAD origin/main`, with the same two-tier fallback for missing remotes/repos.
 
@@ -85,7 +82,7 @@ right-sizing, snippet, and evidence principles apply.
    - **Report.** Add one line to Findings: `Evidence reuse: <n> of <m> items from fresh builder logs (<file names>); own runs: <list>; elapsed: <minutes>` (`Evidence reuse: none` when nothing was reused).
 
 6. **Grade criteria.** For each item under `## Criteria` in `acceptance.md`:
-   - **pass** — evidence confirms the criterion is met; cite `file:line — \`quoted text\`` (the exact line content that satisfies the criterion). A line number without the quoted text is not evidence — it is unfalsifiable. If the quoted text itself contains a backtick (e.g. it's citing a line that has its own inline code), escape it as `` \` `` inside your citation — the board's renderer treats a backslash-escaped backtick as literal, so the whole citation still renders as one code span instead of breaking mid-quote. (This backtick-escape rule is intentionally self-contained in each gate doc — `shared-gate-protocol.md`, `eval.md`, and `review.md` are dispatched to fresh subagents independently; the invariant phrase is locked across all three by `tests/doc-mirror-parity.sh` Check F. Keep the escape rule in sync.)
+   - **pass** — evidence confirms the criterion is met; cite `file:line — \`quoted text\`` (the exact line content that satisfies the criterion). A line number without the quoted text is not evidence — it is unfalsifiable. If the quoted text itself contains a backtick (e.g. it's citing a line that has its own inline code), escape it as `` \` `` inside your citation — the board's renderer treats a backslash-escaped backtick as literal, so the whole citation still renders as one code span instead of breaking mid-quote.
    - **fail** — criterion is not met or contradicted by the code; cite what you found
    - **partial** — partially met; describe what is and isn't there
    - For a **visual criterion** (rendered appearance — styling, layout, theme, a rendered widget), grade against **actual rendered output** via the browser-binary recipe ("## Self-serve visual verification"), not static reading. A CSS selector or style present in the source is not proof it matches the *rendered* element — a widget/testid change can leave the code looking correct while the element renders unstyled (`t-b75f`). If a browser binary exists, render before grading.
@@ -96,14 +93,8 @@ right-sizing, snippet, and evidence principles apply.
    - **not-run** — cannot determine from static reading alone; flag for human verification. **For a visual/rendered item you must first attempt the browser-binary render (see "## Self-serve visual verification") — do not grade a renderable visual item `not-run` when a browser binary is available.** Likewise, for a **scenario-backed / runner item** — a `## Test Plan` line naming a runner command (e.g. `node dsl_runner.js specs/x.feature`) — you must actually execute the command: **do not grade it `not-run` from static reading when the command is present and runnable.** Reserve `not-run` for when the runner genuinely cannot execute (e.g. a missing interpreter or dependency in the eval environment), and disclose why — that is distinct from `fail` (a runner that ran and reported non-zero).
    - **fail** — test is missing, wrong, or wouldn't catch the targeted failure
 
-8. **Re-stamp the run-id, then save the report.** `complete.md`'s freshness check compares
-   this id's embedded timestamp against wall-clock time when the orchestrator reads it
-   right after you hand back — so a run-id from step 1 makes that diff include your
-   *entire* grading time (reading files, re-running tests, rendering visuals), which can
-   legitimately exceed the check's threshold on a thorough eval. Fix: re-stamp it here,
-   as late as possible, immediately before writing the rest of the report — not earlier
-   in this step, so the gap between this timestamp and hand-back stays small regardless
-   of how long grading itself took.
+8. **Re-stamp the run-id, then save the report.** Re-stamp it here, immediately before writing the rest of
+   the report, so the close's freshness check measures hand-back time, not your grading time.
 
    Generate a fresh `<epoch-seconds>-<RANDOM>` the same way as step 1 (`date +%s`/`$RANDOM`,
    Windows-Git-Bash-safe — do not substitute `uuidgen`/PowerShell). Since nothing else has
@@ -113,10 +104,8 @@ right-sizing, snippet, and evidence principles apply.
    normally: append (`>>`) the rest of the report in sections, verify each append, and
    follow the retry pattern in "Report-writing safety" above. After the final append,
    `cat` the report once: Claude Code records tool output in your transcript, and `sprint complete`
-   looks for your `evaluator-run-id` there (t-0231) to prove this report came from a real dispatch. **HARD RULE (t-072d): the
-   `Model:` line below is mandatory — `sprint complete` blocks the close if
-   `eval-report.md` has no `^Model:` line. Do not drop it, even if you write the rest of
-   the report free-form.** The `graded-head:` line (t-1b74) is mandatory too: run `git rev-parse HEAD` yourself and record its output, so
+   looks for your `evaluator-run-id` there (t-0231) to prove this report came from a real dispatch. Keep the `Model:` line below:
+   `sprint complete` blocks an `eval-report.md` without a `^Model:` line, even if you write the rest free-form. The `graded-head:` line (t-1b74) is mandatory too: run `git rev-parse HEAD` yourself and record its output, so
    `sprint complete` can refuse a close whose tracked files changed after you graded; never copy a commit from your inputs.
 
 ```markdown
@@ -150,7 +139,7 @@ Model: <the model designation received in Inputs>
 pass: <one sentence> — OR — fail: <one sentence>
 ```
 
-The verdict line is binary — there is no `partial:` or `not-run:` line. If any criterion or test-plan item graded `partial` **or `not-run`** in the tables above, the verdict line must be `fail:`, summarizing what's partial or could-not-run; `pass:` requires every criterion and test-plan item to be `pass` — no `partial`, no `not-run`. `not-run` is **distinct from `fail`** — it means a load-bearing check *could not execute* (missing interpreter/dependency, un-renderable, un-runnable), not that it ran and failed — but it is **equally blocking**: a check whose result is unknown is not evidence of success, so it can never be silently coerced to `pass`. This is what makes the close gate (which only accepts `^pass:`, and separately rejects a `pass:` verdict contradicted by any `not-run`/`partial` status row — see `_gate_eval_report_consistency` in `tools/sprint`) fail closed on partial or un-run work instead of silently letting it through. Reserve `not-run` for a genuinely un-executable check and say why in Findings; if a re-run could resolve it, the fresh evaluator re-dispatch (step 1 overwrites this report with a new run-id each time) is the safe re-attempt.
+The verdict line is binary — there is no `partial:` or `not-run:` line. If any criterion or test-plan item graded `partial` **or `not-run`** in the tables above, the verdict line must be `fail:`, summarizing what's partial or could-not-run; `pass:` requires every criterion and test-plan item to be `pass` — no `partial`, no `not-run`. `not-run` is **distinct from `fail`** — it means a load-bearing check *could not execute* (missing interpreter/dependency, un-renderable, un-runnable), not that it ran and failed — but it is **equally blocking**: a check whose result is unknown is not evidence of success, so it can never be silently coerced to `pass`. The close gate accepts only `^pass:` and rejects a `pass:` contradicted by any `not-run`/`partial` row. Reserve `not-run` for a genuinely un-executable check and say why in Findings; if a re-run could resolve it, the fresh evaluator re-dispatch (step 1 overwrites this report with a new run-id each time) is the safe re-attempt.
 
 Return the verdict line in your response to the caller.
 

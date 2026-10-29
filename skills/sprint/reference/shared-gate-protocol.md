@@ -35,53 +35,41 @@ rules, canon's frame that **"the tests pass" is a claim, and it needs its own ev
 
 You will receive:
 - Ticket ID (e.g. `t-d53d`)
-- The model you are running on, as designated by the caller — exactly `haiku`, the exact session model id (e.g. `claude-sonnet-5`), or the exact value of an explicit `Gate model:` override, never a paraphrase like "session default" or a parenthetical addition. Record it verbatim in your report; do not infer or reformat it yourself. **HARD RULE (t-072d): the report body MUST carry a `Model: <designation>` line** — it is not optional and it is mechanically enforced at close (`sprint complete` blocks a `eval-report.md`, or an existing `review-notes.md`, that has no `^Model:` line). The caller is required to pass this designation in the dispatch prompt; if it is somehow absent, still emit the `Model:` line with the model you are actually running on rather than dropping it.
+- The model you are running on, as designated by the caller — exactly `haiku`, the exact session model id (e.g. `claude-sonnet-5`), or the exact value of an explicit `Gate model:` override, never a paraphrase like "session default" or a parenthetical addition. Record it verbatim as the report's `Model: <designation>` line, which the close requires (`sprint complete` blocks an `eval-report.md`, or an existing `review-notes.md`, without a `^Model:` line). If the dispatch prompt omits it, emit the line with the model you are actually running on.
 - Base ref (optional — only present for a headless CI dispatch grading an existing PR/diff; absent for a normal interactive sprint close, in which case the standard `git merge-base HEAD origin/main` derivation below applies unchanged).
 
 ## Tools
 
 Use Read, Grep, Glob, LS and your shell tool (`Bash` in Claude Code, `execute` in Copilot CLI) only — this matches what both real dispatch mechanisms actually grant (interactive dispatch as `canon-reviewer`/`canon-evaluator` grants Read, Grep, Glob and a shell — `Bash` in Claude Code, `execute` in Copilot CLI; list files with `ls` through it — and its `Plan` fallback excludes only Edit/Write/Agent at the harness level; headless CI's hardcoded `tools/sprint-headless` allowlist explicitly includes Grep/Glob/LS too). Do not use the Edit or Write tools, or Agent, or any other tool beyond that set — save output via Bash (e.g. `cat >>`), never the Write tool. Never write to, edit, or modify `acceptance.md`, `plan.md`, or any ticket file other than your own report — findings go there only.
 
-**Start and stop any server you launch in the same Bash call** — shell state, `$!` included, does not survive between calls (`t-d538`, live-reproduced: a gate lost its daemon PID and fell back to `pkill -f`). Never kill by name, and a process that is new since your baseline is not necessarily yours (`t-8765`): kill only PIDs you started yourself.
+**Start and stop any server you launch in the same Bash call** — shell state, `$!` included, does not survive between calls (a gate that lost its daemon PID fell back to `pkill -f`). Never kill by name, and a process that is new since your baseline is not necessarily yours: kill only PIDs you started yourself.
 
-**Never write into `tools/` outside this ticket's own files** (t-1781, live-reproduced twice: a
-gate dispatch corrupted the real `tools/sprint-headless` script with a test-stub-shaped
-replacement while verifying a headless/CI-grading criterion). If a Test Plan item needs to run a
-test suite that itself swaps a real file in `tools/` for a stub, that is a bug in the test
-harness, not something to replicate manually here — run the suite's own command as written
-(prefer a background/backgrounded invocation over a long foreground one that risks a hard
-timeout-kill mid-run) and report what it shows; never hand-write a replacement file into `tools/`
-yourself as a substitute.
+**Never write into `tools/` outside this ticket's own files** (gates have twice corrupted the real
+`tools/sprint-headless` with a stub-shaped replacement). If a Test Plan item runs a suite that itself swaps a
+real `tools/` file for a stub, run the suite's own command as written (backgrounded if long) and report what
+it shows; never hand-write a replacement.
 
 **Never run `git checkout`, `git reset`, `git clean`, or any other command that discards
-uncommitted changes** — in-scope or out-of-scope, ever (t-00e9, live-reproduced: a dispatched
-evaluator hit a pre-existing, unrelated test failure and "fixed" it by running `git checkout --
-<path>`, silently discarding the user's own uncommitted work just to make its own test run
-green). A pre-existing failure caused by files outside this ticket's own changed-files list is
+uncommitted changes** — in-scope or out-of-scope, ever (an evaluator once "fixed" an unrelated
+failing test with `git checkout -- <path>` and discarded the user's uncommitted work). A pre-existing failure caused by files outside this ticket's own changed-files list is
 out-of-scope — report it as such. The rule: never run git checkout, git reset, or git clean to make an unrelated failure disappear.
 If the full test suite can't run cleanly because of unrelated repo state, prefer running only
-the ticket's own named `## Test Plan` commands instead of the whole suite. (This rule is intentionally
-self-contained in each gate doc — `shared-gate-protocol.md`, `eval.md`, and `review.md` are
-dispatched to fresh subagents independently; the invariant phrase is locked across all three by
-`tests/doc-mirror-parity.sh` Check J. Keep it in sync.)
+the ticket's own named `## Test Plan` commands instead of the whole suite.
 
-**Probe only in a scratch copy** (`t-bb2d`, live-reproduced: an evaluator's probe script ran with the real checkout as its working directory because an unchecked `cd` failed, and renamed the branch, committed junk over the sprint's commits, wrote files in and outside the repo and overwrote `.claude/subagent-runs.jsonl`). The real repo is read-only for a gate except the one report file you were told to write: use only read-only git there (`git diff`, `log`, `show`, `rev-parse`, `merge-base`, `rev-list`, `status`). Run every test, mutant and probe from a scratch copy: `S="$(mktemp -d)" || exit 1`, copy the repo into it, and start every script with `set -u` and `cd "$S/…" || exit 1` — never a bare `cd`, never a variable in a path without checking it is non-empty. Never run `git init`, `add`, `commit`, `branch`, `config` or `worktree` where the working directory could be the real repo, and write nothing outside the scratch directory. The orchestrator compares the repo before and after every dispatch (`complete.md` step 7, `tools/gate-snapshot.sh`) and stops the close on any difference. (Locked verbatim across `shared-gate-protocol.md`, `eval.md` and `review.md` by `tests/doc-mirror-parity.sh` Check L.)
+**Probe only in a scratch copy** (a probe whose unchecked `cd` failed once ran in the real checkout and rewrote its branch, commits and `.claude/subagent-runs.jsonl`). The real repo is read-only for a gate except the one report file you were told to write: use only read-only git there (`git diff`, `log`, `show`, `rev-parse`, `merge-base`, `rev-list`, `status`). Run every test, mutant and probe from a scratch copy: `S="$(mktemp -d)" || exit 1`, copy the repo into it, and start every script with `set -u` and `cd "$S/…" || exit 1` — never a bare `cd`, never a variable in a path without checking it is non-empty. Never run `git init`, `add`, `commit`, `branch`, `config` or `worktree` where the working directory could be the real repo, and write nothing outside the scratch directory. The orchestrator compares the repo before and after every dispatch (`complete.md` step 7, `tools/gate-snapshot.sh`) and stops the close on any difference.
 
-**Pin the environment** (`t-ce0b`, live-reproduced: a reviewer ran `canon update` in a scratch clone and it re-linked the user's three registered projects to the scratch directory, rewrote their `AGENTS.md` and `.gitignore`, and replaced their git hooks). A scratch copy does not protect the registered projects: `canon update`, `skills.sh`, `install.sh`, an uninstall and the Cockpit daemon act on the user's registered projects, not on the working directory (they find them through `HOME` and `CANON_HOME`). Never run them, or a script that calls them, unless `HOME`, `CANON_HOME`, `TMPDIR` and `XDG_CONFIG_HOME` are pinned to fresh `mktemp -d` directories in that same command (`env HOME="$S/home" CANON_HOME="$S/canon" …`); otherwise read the code instead. (Mirrored in `agents/canon-reviewer.md`, `agents/canon-evaluator.md` and `agents/codex/*.toml`; the fragments are locked by `tests/doc-mirror-parity.sh` Check M.)
+**Pin the environment** (a reviewer's `canon update` in a scratch clone once re-linked the user's registered projects and rewrote their hooks). A scratch copy does not protect the registered projects: `canon update`, `skills.sh`, `install.sh`, an uninstall and the Cockpit daemon act on the user's registered projects, not on the working directory (they find them through `HOME` and `CANON_HOME`). Never run them, or a script that calls them, unless `HOME`, `CANON_HOME`, `TMPDIR` and `XDG_CONFIG_HOME` are pinned to fresh `mktemp -d` directories in that same command (`env HOME="$S/home" CANON_HOME="$S/canon" …`); otherwise read the code instead.
 
 ## Skills-path resolution
 
 Every `skills/...` reference in these docs (e.g. `skills/wrapup/SKILL.md`) is a plain relative
 path inside canon's own repo. In a consumer project, resolve via `.claude/skills/...` (Claude
 Code) or `.agents/skills/...` (Codex/Pi) instead — both are install symlinks into canon's real
-`skills/` tree. **Known gap:** if a project's `.claude/skills` already existed as a real
-(non-symlink) directory before `skills.sh add` ran, only the explicitly-added skill got linked
-there — a hidden sub-skill like `wrapup` may not be reachable via `.claude/skills` in that case;
-`.agents/skills` is unaffected (`t-1b2c`).
+`skills/` tree.
 
 ## Report-writing safety (Windows Git Bash)
 
-One-heredoc reports have failed on live Windows Git-Bash with `unexpected EOF while looking for matching \`''` — prose (contractions, possessives) plus quoted source citations (e.g. JS string literals) can push the total literal `'` count in one heredoc body to odd, which an outer quoting layer mishandles. Root cause not fully traced (live-reproduced only) — treat as defensive mitigation, not proven fix.
+One-heredoc reports have failed on live Windows Git-Bash with `unexpected EOF while looking for matching \`''` — prose (contractions, possessives) plus quoted source citations (e.g. JS string literals) can push the total literal `'` count in one heredoc body to odd, which an outer quoting layer mishandles.
 
 Write the report in separate `cat >>` calls, one per section — never one heredoc. Verify each append landed (Bash exit code, or re-read file tail) before the next section. Heredoc failure: retry the same chunk in smaller pieces until it succeeds. Never drop content or paraphrase a quoted citation to dodge the error — quoted source text stays byte-exact.
 
@@ -129,11 +117,8 @@ Streamlit AppTest). When you render, confirm the affected element AND the elemen
 around it still match their intended appearance, and flag any unintended visual
 regression as a finding even if it falls outside the sprint's stated focus.
 
-1. Find a browser binary: macOS `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`
-   (or Chromium/Edge at the equivalent path); Linux `which google-chrome`, `chromium`, or
-   `chromium-browser`; Windows `where chrome`, or check the default `Program Files\Google\Chrome\Application\chrome.exe`.
-   If none exist anywhere, the check stays `not-run` — this recipe only covers the common
-   case where a browser IS installed but wasn't being used.
+1. Find a browser binary (paths per OS: `skills/sprint/reference/visual-verify.md`). If none exists anywhere, the
+   check stays `not-run`.
 2. Render and capture in one call:
    ```
    "<browser>" --headless=new --disable-gpu --no-first-run --disable-background-networking \
@@ -141,38 +126,11 @@ regression as a finding even if it falls outside the sprint's stated focus.
      --use-mock-keychain --password-store=basic --screenshot="<out>.png" \
      --window-size=<W>,<H> --hide-scrollbars "file://<absolute-path-to-page>"
    ```
-   `<scratch>` is your own `mktemp -d`. `--user-data-dir` keeps the render off the user's real profile;
-   `--use-mock-keychain` (a macOS switch) and `--password-store=basic` (a Linux one; each is ignored elsewhere)
-   keep it off the system keychain and keyring. Without them macOS can show a "Keychain Not Found" dialog on the
-   user's desktop (t-3488); never click its Reset To Defaults. Run on Chrome on macOS only (exit 0, a PNG, no new
-   SecurityAgent process); Edge and Brave are expected to behave the same and are untested. On Windows a pinned
-   HOME does not move Chrome's profile (it lives under `%LOCALAPPDATA%`), so `--user-data-dir` is what isolates
-   it, and in Git Bash it must be Chrome's native form: `--user-data-dir="$(cygpath -m "<scratch>")/chrome-profile"`;
-   the Windows run is untested (`not-run`).
-   `--no-first-run --disable-background-networking --disable-sync --disable-default-apps`
-   avoids a live-reproduced hang: a fresh browser profile's background network calls (e.g.
-   GCM registration) can block the process from exiting. Size `<W>,<H>` to the full page —
-   a too-short window silently crops content below the fold rather than erroring.
-   **Windows + Git Bash `file://` path:** the `<absolute-path-to-page>` must be Chrome's native
-   form `file:///C:/Users/...`, not Git Bash's MSYS `/c/Users/...` — `file:///c/Users/...` loads a
-   blank page (silently, no error), so the shot is empty and the check mis-grades. Convert with
-   `cygpath -m` (emits `C:/Users/...` with forward slashes): `"file:///$(cygpath -m "<absolute-path>")"`.
-   macOS/Linux paths need no conversion.
-3. To check a specific theme rather than inheriting the host's OS setting:
-   `--blink-settings=preferredColorScheme=1` (light) is confirmed reliable, but `=2` (dark)
-   is **not** — live-reproduced on Chrome 149.0.7827.201: `=2` silently produced light
-   instead of erroring, and `--force-dark-mode`/`--enable-features=WebContentsForceDark`
-   don't help either — those invert page colors as an accessibility feature, they don't
-   affect the `prefers-color-scheme` media query at all (confirmed by combining them with
-   `=1` and still getting light). Never trust a color-scheme flag silently — verify with a
-   throwaway page (`window.matchMedia('(prefers-color-scheme: dark)').matches`) before
-   relying on it for a real check. For dark specifically, or for any page that has its own
-   explicit theme override (a `data-theme` attribute, a class toggle, a `localStorage` key
-   — common in dashboards with a light/dark button), the robust method is to make a scratch
-   copy of the page's HTML with that attribute/class pre-set directly, rather than
-   depending on browser-level scheme emulation at all — this works regardless of Chrome
-   version or host OS.
-4. `Read` the resulting PNG directly — Read supports images — and grade the test-plan item
+   `<scratch>` is your own `mktemp -d`; keep all three profile/keychain flags (`--user-data-dir`,
+   `--use-mock-keychain`, `--password-store=basic`): without them macOS can raise a "Keychain Not Found" dialog on
+   the user's desktop. Before a Windows `file://` path, a dark theme or a page with its own theme toggle, read
+   `skills/sprint/reference/visual-verify.md`.
+3. `Read` the resulting PNG directly — Read supports images — and grade the test-plan item
    against what you actually see, same evidentiary bar as any other citation.
 
 ## Base-ref derivation

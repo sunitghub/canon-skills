@@ -19,7 +19,7 @@ import (
 // install, and that nothing but a verified release install can block.
 
 var gateFiles = []string{"tools/sprint", "tools/gate-snapshot.sh", "tools/subagent-log.sh", "tools/evidence.sh", "tools/sprint-headless", "tools/sprint-headless-eval", "tools/gate-model.sh"}
-var gatePrompts = []string{"agents/canon-reviewer.md", "agents/canon-evaluator.md", "skills/sprint/reference/review.md", "skills/sprint/reference/eval.md", "skills/sprint/reference/shared-gate-protocol.md"}
+var gatePrompts = []string{"agents/canon-reviewer.md", "agents/canon-evaluator.md", "skills/sprint/reference/review.md", "skills/sprint/reference/eval.md", "skills/sprint/reference/shared-gate-protocol.md", "skills/sprint/reference/visual-verify.md"}
 
 type integFx struct {
 	t     *testing.T
@@ -106,7 +106,7 @@ func (f *integFx) status(r integrityResult, p string) string {
 func TestIntegrityVerifiedMatchesEverything(t *testing.T) {
 	f := newIntegFx(t)
 	r := checkIntegrity(f.deps)
-	if r.State != integrityVerified || r.Source != "online" || r.Blocking || r.Match != 13 || r.Total != 13 {
+	if r.State != integrityVerified || r.Source != "online" || r.Blocking || r.Match != 14 || r.Total != 14 {
 		t.Fatalf("a clean release install: %+v", r)
 	}
 	for _, g := range gateFiles {
@@ -129,7 +129,7 @@ func TestIntegrityOneByteInAGateFileBlocks(t *testing.T) {
 		f := newIntegFx(t)
 		f.edit(gate, "content of "+gate+"!\n") // one byte more
 		r := checkIntegrity(f.deps)
-		if r.State != integrityVerified || !r.Blocking || f.status(r, gate) != "changed" || r.Match != 12 {
+		if r.State != integrityVerified || !r.Blocking || f.status(r, gate) != "changed" || r.Match != 13 {
 			t.Errorf("%s: %+v", gate, r)
 		}
 		for _, x := range r.Files {
@@ -383,11 +383,11 @@ func TestIntegrityAssetFetchFailureFallsBackOnlyToAGoodSavedList(t *testing.T) {
 func TestIntegrityRunExitCodesAndOutput(t *testing.T) {
 	f := newIntegFx(t)
 	var out bytes.Buffer
-	if code := integrityRun(false, true, f.deps, &out); code != 0 || !strings.Contains(out.String(), "13 of 13 files match release v1.2.3") || strings.Count(out.String(), "\n") != 1 {
+	if code := integrityRun(false, true, f.deps, &out); code != 0 || !strings.Contains(out.String(), "14 of 14 files match release v1.2.3") || strings.Count(out.String(), "\n") != 1 {
 		t.Errorf("a clean verified gate check prints one line and exits 0: %d %q", code, out.String())
 	}
 	out.Reset()
-	if code := integrityRun(false, false, f.deps, &out); code != 0 || !strings.Contains(out.String(), "13 of 13 files match release v1.2.3") {
+	if code := integrityRun(false, false, f.deps, &out); code != 0 || !strings.Contains(out.String(), "14 of 14 files match release v1.2.3") {
 		t.Errorf("without --gate the summary prints: %d %q", code, out.String())
 	}
 	out.Reset()
@@ -397,7 +397,7 @@ func TestIntegrityRunExitCodesAndOutput(t *testing.T) {
 	f.edit("tools/gate-model.sh", "x")
 	f.edit(integrityManifest, "x")
 	out.Reset()
-	if code := integrityRun(false, true, f.deps, &out); code != 3 || !strings.Contains(out.String(), "differs from release v1.2.3 (11 of 13") ||
+	if code := integrityRun(false, true, f.deps, &out); code != 3 || !strings.Contains(out.String(), "differs from release v1.2.3 (12 of 14") ||
 		!strings.Contains(out.String(), "tools/gate-model.sh: changed. Put it back: canon update") || strings.Contains(out.String(), integrityManifest) {
 		t.Errorf("a changed gate file exits 3 and names only the gate file: %d %q", code, out.String())
 	}
@@ -530,7 +530,7 @@ func TestIntegrityGroupsAndJSONKeys(t *testing.T) {
 		}
 	}
 	b, _ := json.Marshal(r) // the page reads these names
-	for _, k := range []string{`"state":"verified"`, `"tag":"v1.2.3"`, `"source":"online"`, `"match":12`, `"total":13`, `"blocking":true`, `"files":[`, `"path":"tools/sprint"`, `"group":"tools"`, `"gate":true`, `"status":"changed"`, `"restore":"canon update"`} {
+	for _, k := range []string{`"state":"verified"`, `"tag":"v1.2.3"`, `"source":"online"`, `"match":13`, `"total":14`, `"blocking":true`, `"files":[`, `"path":"tools/sprint"`, `"group":"tools"`, `"gate":true`, `"status":"changed"`, `"restore":"canon update"`} {
 		if !strings.Contains(string(b), k) {
 			t.Errorf("the JSON lacks %s: %s", k, b)
 		}
@@ -636,14 +636,14 @@ func TestIntegrityPreviewListsFilesWithoutClaimingAnything(t *testing.T) {
 	f.deps.atTag = func(string, string) (bool, bool, error) { return true, false, nil }
 	f.edit("tools/sprint", "edited")
 	r := checkIntegrity(f.deps)
-	if r.State != integrityNotFromRelease || len(r.Files) != 13 || anyChecked(r) || len(r.Agents) != 2 {
+	if r.State != integrityNotFromRelease || len(r.Files) != 14 || anyChecked(r) || len(r.Agents) != 2 {
 		t.Fatalf("preview: %+v", r)
 	}
 	groups := map[string]int{}
 	for _, x := range r.Files {
 		groups[x.Group]++
 	}
-	if groups["agents"] != 2 || groups["prompts"] != 3 || groups["tools"] != 7 || groups["programs"] != 1 {
+	if groups["agents"] != 2 || groups["prompts"] != 4 || groups["tools"] != 7 || groups["programs"] != 1 {
 		t.Errorf("groups: %v", groups)
 	}
 	h := newIntegFx(t)

@@ -41,10 +41,7 @@ Read `skills/sprint/reference/shared-gate-protocol.md ## Self-serve visual verif
 
 ## Report structure
 
-For general subagent return-shape guidance (Result, Output, Evidence, Learnings),
-read `skills/sprint/reference/subagent-report.md`. The review-notes template below
-is gate-specific and takes precedence for this close-gate report, but the
-right-sizing, snippet, and evidence principles apply.
+The review-notes template below is the whole return shape for this gate.
 
 ## Steps
 
@@ -61,7 +58,7 @@ right-sizing, snippet, and evidence principles apply.
    - **Unnecessary complexity** — abstractions, layers, or indirection added without a clear reason
    - **Standards violations** — no comments unless WHY is non-obvious, no feature flags, no backwards-compat shims, no mocking what can be integration-tested cheaply, no reformatting adjacent code, no new or changed test that protects no prod path or repeats another test (the rule: `skills/sprint/reference/start-checklist.md` step 6); if the project registered efficiency, also anything that conflicts with `standards/efficiency.md` or its domain notes `standards/efficiency-notes.md`
 
-5. **Save findings.** Save via Bash to `.tickets/<id>/review-notes.md` — write it in sections, verify each append, and follow the retry pattern in "Report-writing safety" above. **HARD RULE (t-072d): the `Model:` line below is mandatory — `sprint complete` blocks the close if a `review-notes.md` that exists has no `^Model:` line. Do not drop it, even if you write the rest of the report free-form.**
+5. **Save findings.** Save via Bash to `.tickets/<id>/review-notes.md` — write it in sections, verify each append, and follow the retry pattern in "Report-writing safety" above. Keep the `Model:` line below: `sprint complete` blocks a `review-notes.md` without a `^Model:` line, even if you write the rest free-form.
 
 ```markdown
 # Review Notes
@@ -110,4 +107,4 @@ YES
 
 Your mandate is code quality and scope — not correctness against acceptance criteria (that is the evaluator's job). Flag what you see; the verdict is advisory. The sprint can close with a `NO` verdict — the agent will surface findings to the user before proceeding.
 
-Report for coverage, not confidence. Every real problem you find — bug, scope creep, dead code, unnecessary complexity, visual regression, or standards violation — must be reported with specific evidence (`file:line — <issue>`), **including low-confidence and low-severity ones**; tag each with its severity and confidence (`[severity: … · confidence: …]`) so the agent and the user can rank and filter downstream. Do not silently drop a real finding because you judge it minor or are unsure — surfacing one that later gets filtered out is cheaper than missing a real defect, and the human surfacing step plus the binding evaluator are the downstream filter, not you. This coverage rule is about *correctness and scope* findings; it does not license subjective style nagging — still do not flag pure style preferences, pre-existing issues you were not asked to fix, or items outside the changed-files list — except a rendered-output regression on an adjacent/related element per `shared-gate-protocol.md`'s "Check adjacent/related elements" rule, which is explicitly in scope even though the element itself is outside the changed-files list. If citing source text that itself contains a backtick, escape it as `` \` `` — the board's renderer treats a backslash-escaped backtick as literal, so the citation still renders as one code span. (This backtick-escape rule is intentionally self-contained in each gate doc — `shared-gate-protocol.md`, `eval.md`, and `review.md` are dispatched to fresh subagents independently; the invariant phrase is locked across all three by `tests/doc-mirror-parity.sh` Check F. Keep the escape rule in sync.)
+Report for coverage, not confidence. Every real problem you find — bug, scope creep, dead code, unnecessary complexity, visual regression, or standards violation — must be reported with specific evidence (`file:line — <issue>`), **including low-confidence and low-severity ones**; tag each with its severity and confidence (`[severity: … · confidence: …]`) so the agent and the user can rank and filter downstream. Do not silently drop a real finding because you judge it minor or are unsure — surfacing one that later gets filtered out is cheaper than missing a real defect, and the human surfacing step plus the binding evaluator are the downstream filter, not you. This coverage rule is about *correctness and scope* findings; it does not license subjective style nagging — still do not flag pure style preferences, pre-existing issues you were not asked to fix, or items outside the changed-files list — except a rendered-output regression on an adjacent/related element per `shared-gate-protocol.md`'s "Check adjacent/related elements" rule, which is explicitly in scope even though the element itself is outside the changed-files list. If citing source text that itself contains a backtick, escape it as `` \` `` — the board's renderer treats a backslash-escaped backtick as literal, so the citation still renders as one code span.

@@ -27,7 +27,7 @@ else die "no sha256sum or shasum on this machine"; fi
 # The seven files that decide a close or choose who grades it, and the prompts and protocol the gates read. One owner: the Go check
 # reads these lists from the signed-off JSON, never from the install it is checking.
 GATE_FILES=(tools/sprint tools/gate-snapshot.sh tools/subagent-log.sh tools/evidence.sh tools/sprint-headless tools/sprint-headless-eval tools/gate-model.sh)
-GATE_PROMPTS=(agents/canon-reviewer.md agents/canon-evaluator.md skills/sprint/reference/review.md skills/sprint/reference/eval.md skills/sprint/reference/shared-gate-protocol.md)
+GATE_PROMPTS=(agents/canon-reviewer.md agents/canon-evaluator.md skills/sprint/reference/review.md skills/sprint/reference/eval.md skills/sprint/reference/shared-gate-protocol.md skills/sprint/reference/visual-verify.md)
 
 work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
 git -C "$REPO_ROOT" archive --format=tar "$rev" | tar -x -C "$work" || die "git archive failed for $rev"

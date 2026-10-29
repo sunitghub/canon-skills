@@ -325,7 +325,7 @@ func checkIntegrity(d integrityDeps) integrityResult {
 // tests read scripts/integrity-list.sh and fail when these drift from its GATE_FILES and GATE_PROMPTS.
 var (
 	previewGateFiles   = []string{"tools/sprint", "tools/gate-snapshot.sh", "tools/subagent-log.sh", "tools/evidence.sh", "tools/sprint-headless", "tools/sprint-headless-eval", "tools/gate-model.sh"}
-	previewGatePrompts = []string{"agents/canon-reviewer.md", "agents/canon-evaluator.md", "skills/sprint/reference/review.md", "skills/sprint/reference/eval.md", "skills/sprint/reference/shared-gate-protocol.md"}
+	previewGatePrompts = []string{"agents/canon-reviewer.md", "agents/canon-evaluator.md", "skills/sprint/reference/review.md", "skills/sprint/reference/eval.md", "skills/sprint/reference/shared-gate-protocol.md", "skills/sprint/reference/visual-verify.md"}
 )
 
 func unverifiedPreview(root string) ([]integrityFile, []integrityAgent) {

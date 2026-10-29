@@ -1,6 +1,6 @@
 ---
 name: subagent-report
-description: Structured report format for dispatched subagents — Result, Output, Evidence, Learnings. Used by review.md and eval.md subagent prompts.
+description: Structured report format for dispatched subagents — Result, Output, Evidence, Learnings.
 category: dev
 tags: [subagent, dispatch, report, sprint]
 hidden: true

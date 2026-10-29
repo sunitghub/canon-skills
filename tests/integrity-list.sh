@@ -29,7 +29,7 @@ def verify(d):
       blob = subprocess.check_output(["git", "-C", root, "cat-file", "blob", "HEAD:" + p])
       assert hashlib.sha256(blob).hexdigest() == d["files"][p], p
   assert d["gate_files"] == ["tools/sprint", "tools/gate-snapshot.sh", "tools/subagent-log.sh", "tools/evidence.sh", "tools/sprint-headless", "tools/sprint-headless-eval", "tools/gate-model.sh"], d["gate_files"]
-  assert d["gate_prompts"] == ["agents/canon-reviewer.md", "agents/canon-evaluator.md", "skills/sprint/reference/review.md", "skills/sprint/reference/eval.md", "skills/sprint/reference/shared-gate-protocol.md"], d["gate_prompts"]
+  assert d["gate_prompts"] == ["agents/canon-reviewer.md", "agents/canon-evaluator.md", "skills/sprint/reference/review.md", "skills/sprint/reference/eval.md", "skills/sprint/reference/shared-gate-protocol.md", "skills/sprint/reference/visual-verify.md"], d["gate_prompts"]
   for p in d["gate_files"] + d["gate_prompts"]:
       assert p in d["files"], p
   return len(tree)
@@ -60,7 +60,7 @@ assert_contains "$r" "does not exist here"
 
 # 3. An odd file name (a space) stops the build: the JSON is hand-written, so the name is seen before it ships.
 mkdir -p "$W/repo/scripts" && cp "$LIST" "$W/repo/scripts/"
-g=(tools/sprint tools/gate-snapshot.sh tools/subagent-log.sh tools/evidence.sh tools/sprint-headless tools/sprint-headless-eval tools/gate-model.sh agents/canon-reviewer.md agents/canon-evaluator.md skills/sprint/reference/review.md skills/sprint/reference/eval.md skills/sprint/reference/shared-gate-protocol.md)
+g=(tools/sprint tools/gate-snapshot.sh tools/subagent-log.sh tools/evidence.sh tools/sprint-headless tools/sprint-headless-eval tools/gate-model.sh agents/canon-reviewer.md agents/canon-evaluator.md skills/sprint/reference/review.md skills/sprint/reference/eval.md skills/sprint/reference/shared-gate-protocol.md skills/sprint/reference/visual-verify.md)
 for f in "${g[@]}"; do mkdir -p "$W/repo/$(dirname "$f")"; echo x > "$W/repo/$f"; done
 git -C "$W/repo" init -q -b main; git -C "$W/repo" -c user.email=t@t -c user.name=t add -A
 git -C "$W/repo" -c user.email=t@t -c user.name=t commit -qm base
