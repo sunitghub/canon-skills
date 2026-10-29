@@ -112,11 +112,11 @@ _pkg_unzip() { # <zip> <dir>
 # file system, so the last step is a rename); only a complete, verified package is renamed into place. On any failure nothing but that temp
 # folder was written, it is removed, and PKG_ERR says why. The caller holds the lock and has read the sha from the published manifest.
 pkg_install() {
-  local home="$1" tag="$2" want="$3" pk="$1/packages" tmp="" zip url got top v
+  local home="$1" tag="$2" want="$3" pk="$1/packages" tmp="" zip url got top v dest="${4:-$2}"  # dest: the folder name in packages/ (t-9df0: a reinstall builds beside the live one)
   PKG_ERR=""
   _pkg_fail() { PKG_ERR="$1"; [ -z "$tmp" ] || rm -rf -- "$tmp"; return 1; }
   [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { PKG_ERR="not a release tag: $tag"; return 1; }  # the tag becomes a folder name and a download path
-  [ ! -e "$pk/$tag" ] || { PKG_ERR="$pk/$tag already exists"; return 1; }
+  [ ! -e "$pk/$dest" ] || { PKG_ERR="$pk/$dest already exists"; return 1; }
   mkdir -p "$pk" || { PKG_ERR="could not create $pk"; return 1; }
   tmp="$(mktemp -d "$pk/.tmp-$tag.XXXXXX")" || { tmp=""; PKG_ERR="could not create a temp folder in $pk"; return 1; }
   zip="$tmp/canon.zip"; url="$PKG_RELEASE_BASE/$tag/canon-${tag#v}.zip"
@@ -136,8 +136,8 @@ pkg_install() {
   [ "$v" = "${tag#v}" ] || { _pkg_fail "the $tag zip says it is version '${v:-none}'"; return 1; }
   # the board and the daemon, checked against the package's own tools/cockpit-daemon.sha256, land inside the temp package
   bash "$top/tools/fetch-daemon.sh" --quiet >&2 || { _pkg_fail "the board and daemon for $tag could not be fetched (see above)"; return 1; }
-  [ ! -e "$pk/$tag" ] || { _pkg_fail "$pk/$tag appeared while it was being built"; return 1; }
-  mv -- "$top" "$pk/$tag" || { _pkg_fail "could not move the new package into $pk/$tag"; return 1; }
+  [ ! -e "$pk/$dest" ] || { _pkg_fail "$pk/$dest appeared while it was being built"; return 1; }
+  mv -- "$top" "$pk/$dest" || { _pkg_fail "could not move the new package into $pk/$dest"; return 1; }
   rm -rf -- "$tmp"
 }
 

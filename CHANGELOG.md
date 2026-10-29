@@ -6,6 +6,14 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Added
+
+- `canon update --reinstall [--to vX.Y.Z]` puts an installed release package back as published, so a changed gate file is restored (t-9df0). Admin > Integrity's restore hint for a release package is now this command.
+
+### Fixed
+
+- A plain `canon update` on the current release says `canon is up to date (vX.Y.Z).` It no longer claims to have verified the package, which it never re-hashed (t-9df0).
+
 ## [0.30.2] - 2026-10-29
 
 Update with `canon update` (stop the Cockpit first). **Restart the Cockpit daemon after updating** (Admin > **Restart Daemon**): the terminal's files are built into the daemon, so a daemon started before the update keeps the old terminal.
