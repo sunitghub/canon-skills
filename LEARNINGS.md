@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-28-2026 23:19
+learnings-sweep last run: 10-29-2026 05:20
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-29 | [t-bdb0](.tickets/t-bdb0/learnings.md) | Merging two programs into one moves every "which binary changed" signal: mtime staleness and path-only process identity had to become an embedded source key and path plus mode word. | UNPROMOTED |
 | 2026-10-29 | [t-50f7](.tickets/t-50f7/learnings.md) | When a layout change replaces a thing that gave a safety check for free, rebuild the check: the single-tree clone made `canon uninstall` keep a home with an untracked file, and the first versioned layout deleted the whole home without looking; the advisory reviewer caught it on its second pass, after the evaluator-bound tests were already green. | UNPROMOTED |
 | 2026-10-29 | [t-4fbe](.tickets/t-4fbe/learnings.md) | Mutate a measurement fixture before baselining it: the first `clean` gate fixture's test discarded stderr, so the evaluator's own mutants survived and it split pass/fail on identical runs; the gate was right and the fixture wrong. A trim is also only measured if the eval can see it, so add cases for what a trim keeps before editing. | UNPROMOTED |
 | 2026-10-28 | [t-ea3a](.tickets/t-ea3a/learnings.md) | A process stays followed where a tool refuses or checks it and slips where it is only printed: the release was tool-enforced up to the tag, and the one printed-only step (the canon-site lines and badge) is the one that slipped. Run a new check against the real target before trusting it: the live site served the badge as `CANON_VERSION = "0.28.1"`, not the `v0.28.1` the first draft looked for. | UNPROMOTED |
