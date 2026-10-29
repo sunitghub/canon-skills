@@ -17707,7 +17707,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   // ── t-3741: Commit and push never ticks a file an agent may still be writing ──
-  // Prod path for the four tests below: showCommitPush (static/board-github.js), the Send panel's Commit and push form, fed by
+  // Prod path for the six tests below: showCommitPush (static/board-github.js), the Send panel's Commit and push form, fed by
   // tkt commit-push --dry-run's "file:" and "mtime:" lines; the sessions come from /api/cockpit-sessions like the rail's.
   const SESSION_ID = 't-9z41';   // a Cockpit session needs a t-xxxx id; it is never opened, so no ticket file backs it
   const sessionRow = project => ({ session: 's1', ticket: SESSION_ID, project_root: project, cwd: project, agent: 'claude', status: 'running', state: 'working', started: '2026-10-29T00:00:00Z' });
@@ -17779,6 +17779,14 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     const id = newTicketId(PROJECT_ROOT, 'gh74');
     ghTicket(id);
     await commitPushForm(page, id, { sessions: [sessionRow('/tmp/another-project')], files: `file:  M src/app.js\nmtime: ${nowS() - 3600} src/app.js` });
+    await expect(page.locator('#ck-gh-cp-busy')).toHaveCount(0);
+    await expect(page.locator('#ck-gh-cp-files input[type=checkbox]').nth(0)).toBeChecked();
+  });
+
+  test('an exited session in this checkout does not count: no note, changed files start ticked (t-3741)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh76');
+    ghTicket(id);
+    await commitPushForm(page, id, { sessions: [{ ...sessionRow(PROJECT_ROOT), status: 'exited', state: 'exited' }], files: `file:  M src/app.js\nmtime: ${nowS() - 3600} src/app.js` });
     await expect(page.locator('#ck-gh-cp-busy')).toHaveCount(0);
     await expect(page.locator('#ck-gh-cp-files input[type=checkbox]').nth(0)).toBeChecked();
   });
