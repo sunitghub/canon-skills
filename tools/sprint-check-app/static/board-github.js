@@ -336,7 +336,7 @@ async function checkAndMerge(t, pr) {
   if (!chk.ok) {
     const reason = refusalReason(chk.output), draft = isDraftRefusal(chk.output);
     // t-ca00: merge-pr names the conflicting files; the way out is the worktree fix the suite-failure case already offers.
-    const conflict = /cannot merge cleanly/.test(chk.output || '');
+    const conflict = /mergeable: CONFLICTING/.test(chk.output || '');   // only a real conflict: BEHIND, UNKNOWN or UNSTABLE refusals keep only Close
     const files = ((chk.output || '').match(/conflicts in: (.+)/) || [])[1];
     updateDialog({ body: `${(reason || 'Not mergeable here').replace(/[.:\s]+$/, '')}.${conflict && files ? ` Conflicts in: ${files.trim()}.` : ''} Nothing was run or changed.`, pre: chk.output || '', ok: draft ? 'Mark ready' : conflict ? 'Fix here' : '', cancel: 'Close', escape: true }, open.gen);
     if (draft) { const v = await open; if (v && v.ok) await markReady(t, pr); }

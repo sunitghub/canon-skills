@@ -17465,6 +17465,12 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.reload(); await openBoard(page, id);
     await page.locator(`.card[data-id="${id}"] .card-gh-btn`).click();
     await expect(page.locator('#gh-dialog-ok')).toHaveText('Mark ready');
+    // a refusal that is not a conflict (the branch is behind, GitHub still computing) offers no Fix here
+    check = { ok: false, exit_code: 1, output: 'merge-pr: PR #58 cannot merge cleanly (mergeable: MERGEABLE, state: BEHIND)' };
+    await page.reload(); await openBoard(page, id);
+    await page.locator(`.card[data-id="${id}"] .card-gh-btn`).click();
+    await expect(page.locator('#gh-dialog-body')).toContainText('Nothing was run or changed.');
+    await expect(page.locator('#gh-dialog-ok')).toBeHidden();
   });
 
   test('a public repo: the preview asks for a tick before Create issue sends with public (t-718b)', async ({ page }) => {
