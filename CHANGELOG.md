@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Changed
+- Close-gate reports, the Wrapup Gates rows and the gate-run log name the model with its id, e.g. `sonnet (claude-sonnet-5-5)`, not only the alias the dispatch passes, so a later remap of `sonnet` stays visible (t-7299).
+
 ### Removed
 - `tools/llm-call`, an unused single-shot LLM adapter (nothing in canon called it). The release zip also leaves out two developer-only files, `tools/vendored.tsv` and `tools/sprint-check-app/CLAUDE.md` (t-7299).
 
