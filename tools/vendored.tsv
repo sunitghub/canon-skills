@@ -1,6 +1,6 @@
 # t-93ff: one row per third-party file vendored into tools/canon-go/internal/daemon/web/vendor/ (kept outside that folder so the daemon's source key does not move).
 # package = as published when vendored; track = the npm package that carries newer releases. Guard: tests/vendored-manifest.sh. Report: scripts/check-vendored.sh.
 # file	package	track	version	upstream	license	sha256	why
-xterm.js	xterm	@xterm/xterm	5.3.0	https://github.com/xtermjs/xterm.js	MIT	f0aea0f75f48559013ae6643c2479dd737d26da42d5524e6d2b70915ae6523c7	the daemon's browser terminal; embedded so the Cockpit works offline with no npm or CDN at run time
-xterm.css	xterm	@xterm/xterm	5.3.0	https://github.com/xtermjs/xterm.js	MIT	832f3f2c603b43ad4351ff04970150cc7a873014276db126a6065c6dd81e4872	the stylesheet that xterm.js needs; same release as xterm.js
-xterm-addon-fit.js	xterm-addon-fit	@xterm/addon-fit	0.8.0	https://github.com/xtermjs/xterm.js	MIT	10f3194c5f17c1786fb7d5db865c1ec8539b6736a318063fd38bdaaf7c46848f	sizes the terminal to its pane; the addon release that matches xterm 5.3.0
+xterm.js	@xterm/xterm	@xterm/xterm	6.0.0	https://github.com/xtermjs/xterm.js	MIT	14903579ff54664cd72f8e8699e6961a6272c21863ec1c3b118cdc8af5d4a972	the daemon's browser terminal; embedded so the Cockpit works offline with no npm or CDN at run time
+xterm.css	@xterm/xterm	@xterm/xterm	6.0.0	https://github.com/xtermjs/xterm.js	MIT	854a7c0fb70e8b1a083c16797ab827299fb18744f5ad34f227b48337e33293c6	the stylesheet that xterm.js needs; same release as xterm.js
+xterm-addon-fit.js	@xterm/addon-fit	@xterm/addon-fit	0.11.0	https://github.com/xtermjs/xterm.js	MIT	ba3ea256ce0620a0992a197d6c9baea64823fc93d8da07a9e366ca9943c18527	sizes the terminal to its pane; the addon release that matches @xterm/xterm 6.0.0

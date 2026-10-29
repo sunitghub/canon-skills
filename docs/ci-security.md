@@ -82,9 +82,9 @@ It needs `vuln.go.dev`. Where that host is blocked but Google Cloud Storage is n
 
 ## Vendored third-party code: new versions and advisories
 
-The daemon embeds three files it copies from npm rather than installing: `xterm.js` and `xterm.css` (xterm 5.3.0) and
-`xterm-addon-fit.js` (0.8.0), in `tools/canon-go/internal/daemon/web/vendor/`. With no `package.json` or lockfile,
-neither `npm audit` nor Dependabot can see them (`t-93ff`). Three pieces cover them:
+The daemon embeds three files it copies from npm rather than installing: `xterm.js` and `xterm.css` (`@xterm/xterm`
+6.0.0) and `xterm-addon-fit.js` (`@xterm/addon-fit` 0.11.0), in `tools/canon-go/internal/daemon/web/vendor/`. With no
+`package.json` or lockfile, neither `npm audit` nor Dependabot can see them (`t-93ff`). Three pieces cover them:
 
 - **`tools/vendored.tsv`**, the manifest: one row per file with `file`, `package` (as published when vendored), `track`
   (the package that now carries new releases: xterm moved to `@xterm/xterm` and `@xterm/addon-fit`), `version`,
@@ -145,7 +145,7 @@ the file and runs Set up CI gate again.
 - **A security advisory on a vendored version** becomes a P0 ticket the same day: upgrade to the fixed version, or show
   why the advisory cannot reach canon's use of the file.
 - **A newer version with a performance or feature gain** becomes a ticket we weigh, like any other upgrade (the xterm 6
-  upgrade has its own ticket).
+  upgrade was `t-d689`).
 - **Nothing is upgraded or merged automatically.** The report never opens issues or PRs, and there is no Dependabot
   config (`t-8493`).
 
@@ -160,3 +160,13 @@ In a sprint:
    hash in `tools/canon-go/internal/daemon/web/cockpit.html`.
 4. Run `bash tests/vendored-manifest.sh` and `bash tests/fetch-daemon.sh`. The embedded files move the daemon's source
    key, so the change needs a daemon release.
+
+**Rolling back.** The old files stay in git history. To go back to xterm 5.3.0 (the release before `t-d689`), restore
+the four places together, then rebuild and release the daemon:
+
+```bash
+git checkout 67cb7e8c -- tools/canon-go/internal/daemon/web/vendor tools/canon-go/internal/daemon/web/cockpit.html tools/vendored.tsv THIRD-PARTY-NOTICES.md
+```
+
+Never restore `web/vendor/` alone: the Option/Alt+Left/Right mapping `t-d689` added to `cockpit.html` calls
+`term.input`, which 5.3.0 does not have (5.3.0 sends those keys itself), and the `integrity` hashes must match the files.

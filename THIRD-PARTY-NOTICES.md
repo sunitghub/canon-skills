@@ -303,7 +303,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-## xterm 5.3.0
+## @xterm/xterm 6.0.0
 
 Files: `tools/canon-go/internal/daemon/web/vendor/xterm.js`, `tools/canon-go/internal/daemon/web/vendor/xterm.css`.
 
@@ -331,7 +331,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-## xterm-addon-fit 0.8.0
+## @xterm/addon-fit 0.11.0
 
 File: `tools/canon-go/internal/daemon/web/vendor/xterm-addon-fit.js`.
 

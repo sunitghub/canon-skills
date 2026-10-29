@@ -6,6 +6,11 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+**Restart the Cockpit daemon after updating** (Admin > **Restart Daemon**): the terminal's files are built into the daemon, so a daemon started before the update keeps the old terminal.
+
+### Changed
+- **The Cockpit terminal runs on xterm.js 6** (t-d689): `@xterm/xterm` 6.0.0 and `@xterm/addon-fit` 0.11.0 replace the deprecated `xterm` 5.3.0 and `xterm-addon-fit` 0.8.0, which get no more fixes. It brings upstream fixes for IME input, screen-reader selection, a memory leak and a new scrollbar. Option/Alt+Left/Right still jump a word, as before. The hand check on Windows (ConPTY, IME) and Linux is a follow-up ticket; to go back, see `docs/ci-security.md` (Rolling back).
+
 ## [0.30.1] - 2026-10-29
 
 Update with `canon update` (stop the Cockpit first), then restart the daemon (Admin's **Restart Daemon**): the board changed.

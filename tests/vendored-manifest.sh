@@ -50,9 +50,9 @@ plant() {   # plant <expected substring> <shell snippet run in the copy>
 plant "no manifest row for $VENDOR/extra.js" "echo 'x' > $VENDOR/extra.js"
 plant "row xterm.css: no such file" "rm $VENDOR/xterm.css"
 plant "row xterm.js: SHA-256 differs" "printf '\n' >> $VENDOR/xterm.js"
-plant "row xterm-addon-fit.js: SHA-256 differs" "sed -i.bak 's/10f3194c/00f3194c/' $MANIFEST"
-plant "row xterm.js: no '## xterm 5.3.0' heading" "sed -i.bak 's/^## xterm 5.3.0\$/## xterm 5.2.0/' THIRD-PARTY-NOTICES.md"
-plant "row xterm-addon-fit.js: no '## xterm-addon-fit 0.9.0' heading" "sed -i.bak 's/	0\\.8\\.0	/	0.9.0	/' $MANIFEST"
+plant "row xterm-addon-fit.js: SHA-256 differs" "sed -i.bak 's/ba3ea256/0a3ea256/' $MANIFEST"
+plant "row xterm.js: no '## @xterm/xterm 6.0.0' heading" "sed -i.bak 's|^## @xterm/xterm 6.0.0\$|## @xterm/xterm 5.9.0|' THIRD-PARTY-NOTICES.md"
+plant "row xterm-addon-fit.js: no '## @xterm/addon-fit 0.12.0' heading" "sed -i.bak 's/	0\\.11\\.0	/	0.12.0	/' $MANIFEST"
 plant "fewer than 8 tab-separated columns" "sed -i.bak 's/	the stylesheet.*\$//' $MANIFEST"
 plant "missing $MANIFEST" "rm $MANIFEST"
 

@@ -4025,6 +4025,94 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect.poll(data).toBe('\x03|\x04|a|b|c|d|\r');
     });
 
+    // t-d689: the vendored xterm and fit addon the daemon embeds (web/vendor/, served on /cockpit), with the daemon page's own
+    // key wiring cut out of cockpit.html, in an iframe on a host page taller than the window, like the board's rail.
+    async function vendoredTerm(page, box) {
+      const web = path.join(__dirname, '..', 'tools', 'canon-go', 'internal', 'daemon', 'web');
+      const daemonPage = fs.readFileSync(path.join(web, 'cockpit.html'), 'utf8');
+      const a = daemonPage.indexOf('  // t-a198: the prefix key.');
+      const endMarker = '    if (nl) sendInput(nl);\n    return false;\n  });\n';
+      const b = daemonPage.indexOf(endMarker);
+      expect(a).toBeGreaterThan(0); expect(b).toBeGreaterThan(a);
+      const p0 = daemonPage.indexOf('  var PARENT = "__COCKPIT_PARENT__";');
+      const p1 = daemonPage.indexOf('\n', daemonPage.indexOf('  function toParent(msg)', p0));
+      const toParent = daemonPage.slice(p0, p1 + 1).replace('"__COCKPIT_PARENT__"', 'location.origin');
+      await page.route('**/__xt/host', r => r.fulfill({ status: 200, contentType: 'text/html', body: `<!doctype html><body style="margin:0;height:3000px">
+        <iframe id="t" src="/__xt/term" style="width:640px;height:320px;border:0;display:block"></iframe></body>` }));
+      await page.route('**/__xt/term', r => r.fulfill({ status: 200, contentType: 'text/html', body: `<!doctype html><link rel="stylesheet" href="/__xt/xterm.css">
+        <body style="margin:0"><div id="terminal" style="width:${box.w}px;height:${box.h}px"></div><select id="agentSel"><option value="claude" selected>claude</option></select>
+        <script src="/__xt/xterm.js"></script><script src="/__xt/xterm-addon-fit.js"></script><script>
+        var term = new Terminal({ fontFamily: "Menlo, monospace", fontSize: 14, lineHeight: 1.2 });
+        var fit = new FitAddon.FitAddon(); term.loadAddon(fit); term.open(document.getElementById("terminal")); fit.fit();
+        window.term = term; window.fit = fit;
+        window.__data = []; term.onData(function(d){ window.__data.push(d); });
+        var MODE = "", session = null, __sent = []; function sendInput(d){ __sent.push(d); }
+        ${toParent}
+        ${daemonPage.slice(a, b + endMarker.length)}
+        </script></body>` }));
+      for (const [f, type] of [['xterm.js', 'application/javascript'], ['xterm-addon-fit.js', 'application/javascript'], ['xterm.css', 'text/css']]) {
+        await page.route('**/__xt/' + f, r => r.fulfill({ status: 200, contentType: type, body: fs.readFileSync(path.join(web, 'vendor', f), 'utf8') }));
+      }
+      await page.goto(BASE + '/__xt/host');
+      const frame = page.frameLocator('#t');
+      await expect.poll(() => frame.locator('body').evaluate(() => !!(window.term && window.term.element))).toBe(true);
+      return frame;
+    }
+
+    // Protects the Cockpit terminal's size: fit gives the PTY the cols/rows that fill #terminal (cockpit.html's resize()).
+    test('vendored xterm (t-d689): fit fills the box with whole cells, and refits when the box shrinks', async ({ page }) => {
+      const frame = await vendoredTerm(page, { w: 600, h: 288 });
+      const measure = () => frame.locator('body').evaluate(() => {
+        const s = document.querySelector('.xterm-screen').getBoundingClientRect(), t = document.getElementById('terminal').getBoundingClientRect();
+        return { cols: term.cols, rows: term.rows, sw: s.width, sh: s.height, bw: t.width, bh: t.height };
+      });
+      const fits = m => {
+        const cw = m.sw / m.cols, ch = m.sh / m.rows;
+        expect(m.cols).toBeGreaterThan(20); expect(m.rows).toBeGreaterThan(5);
+        expect(m.sw).toBeLessThanOrEqual(m.bw + 0.5); expect(m.sh).toBeLessThanOrEqual(m.bh + 0.5);
+        expect(m.bw - m.sw).toBeLessThan(cw + 20);        // at most one cell plus the scrollbar left over
+        expect(m.bh - m.sh).toBeLessThan(ch);
+      };
+      const big = await measure(); fits(big);
+      await frame.locator('body').evaluate(() => { const t = document.getElementById('terminal'); t.style.width = '400px'; t.style.height = '200px'; fit.fit(); });
+      const small = await measure(); fits(small);
+      expect(small.cols).toBeLessThan(big.cols); expect(small.rows).toBeLessThan(big.rows);
+    });
+
+    // Protects scrollback in the Cockpit terminal: the wheel over it moves the terminal's scrollback, not the board page around it.
+    test('vendored xterm (t-d689): the wheel over the terminal scrolls its scrollback, not the page', async ({ page }) => {
+      const frame = await vendoredTerm(page, { w: 600, h: 288 });
+      await frame.locator('body').evaluate(() => new Promise(res => {
+        let s = ''; for (let i = 0; i < 500; i++) s += 'line ' + i + '\r\n';
+        term.write(s, () => { term.scrollToTop(); res(); });
+      }));
+      const view = () => frame.locator('body').evaluate(() => term.buffer.active.viewportY);
+      await expect.poll(view).toBe(0);
+      const box = await page.locator('#t').boundingBox();
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.wheel(0, 400);
+      await expect.poll(view).toBeGreaterThan(0);
+      await page.waitForTimeout(150);
+      expect(await page.evaluate(() => window.scrollY)).toBe(0);
+      // control: the same wheel below the terminal does scroll the page, so a page scroll would have been seen
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height + 100);
+      await page.mouse.wheel(0, 400);
+      await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    });
+
+    // Protects word jumps in the Cockpit terminal: Option/Alt+Left/Right sends what xterm 5.3 sent (ESC b / ESC f on macOS,
+    // Ctrl+arrow elsewhere) through term.onData, the path that posts to /session/<id>/input; other arrows are xterm's own.
+    test('vendored xterm (t-d689): Alt+Left/Right send the 5.3 word-jump sequences; other arrows are left to xterm', async ({ page }) => {
+      const frame = await vendoredTerm(page, { w: 600, h: 288 });
+      await frame.locator('.xterm-helper-textarea').focus();
+      const mac = await frame.locator('body').evaluate(() => ['Macintosh', 'MacIntel', 'MacPPC', 'Mac68K'].includes(navigator.platform));
+      const data = () => frame.locator('body').evaluate(() => window.__data.join('|'));
+      await page.keyboard.press('Alt+ArrowLeft'); await page.keyboard.press('Alt+ArrowRight');
+      await page.keyboard.press('ArrowLeft'); await page.keyboard.press('Shift+Alt+ArrowLeft'); await page.keyboard.press('Control+ArrowRight');
+      const want = (mac ? ['\x1bb', '\x1bf'] : ['\x1b[1;5D', '\x1b[1;5C']).concat(['\x1b[D', '\x1b[1;4D', '\x1b[1;5C']);
+      await expect.poll(data).toBe(want.join('|'));
+    });
+
     test('keyboard prefix (t-a198): the sidebar keyboard button opens the cheat sheet, and the footer still fits at the narrowest sidebar', async ({ page }) => {
       await openShell(page, []);
       const btn = page.locator('#keys-btn');
