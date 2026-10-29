@@ -287,12 +287,13 @@ assert_eq "$want" "$got"
 [[ ! -s "$STUB_CLAUDE_LOG" ]] || fail "claude ran without --launch"
 
 # No claude on PATH at all (the same PATH-without-one-command trick as the gh case below), the usage line, and the help text.
+# -L too: a folder listed twice on PATH that holds a broken symlink would otherwise be linked twice (ln: File exists).
 noclaude="$stub/noclaude"; mkdir "$noclaude"; path_nocl=""
 IFS=: read -ra cdirs <<<"$PATH"
 for dir in "${cdirs[@]}"; do
   [[ "$dir" == "$stub" ]] && continue
   if [[ -x "$dir/claude" ]]; then
-    for f in "$dir"/*; do [[ "${f##*/}" == claude || -e "$noclaude/${f##*/}" ]] || ln -s "$f" "$noclaude/${f##*/}"; done
+    for f in "$dir"/*; do [[ "${f##*/}" == claude || -e "$noclaude/${f##*/}" || -L "$noclaude/${f##*/}" ]] || ln -s "$f" "$noclaude/${f##*/}"; done
   else path_nocl="$path_nocl:$dir"; fi
 done
 idc="$(fresh noclaude)"
