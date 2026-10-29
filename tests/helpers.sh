@@ -85,14 +85,15 @@ shell_sources() {
   done
 }
 
-# build_board <dir> — build the Go board from this checkout to <dir>/sprint-check-bin/sprint-check and print that path (t-15d8: the only
+# build_board <dir> — build canon-go (the board, t-bdb0) from this checkout to <dir>/canon-go-bin/canon-go and print that path (t-15d8: the only
 # board). The same file name as an install's, so scripts/test.sh's leak check sees every test board. No Go is a failure, never a skip:
 # a suite that silently stopped testing the board would still pass.
+# An optional second argument is extra -ldflags (a test that needs a stamped build, e.g. -X main.daemonKey=...).
 build_board() {
-  local out="$1/sprint-check-bin/sprint-check"
+  local out="$1/canon-go-bin/canon-go"
   command -v go >/dev/null 2>&1 || fail "build_board: go is required to build the board (tools/canon-go)"
-  mkdir -p "$1/sprint-check-bin"
-  (cd "$ROOT/tools/canon-go" && go build -o "$out" ./cmd/sprint-check) || fail "build_board: go build of tools/canon-go/cmd/sprint-check failed"
+  mkdir -p "$1/canon-go-bin"
+  (cd "$ROOT/tools/canon-go" && go build ${2:+-ldflags "$2"} -o "$out" ./cmd/canon-go) || fail "build_board: go build of tools/canon-go/cmd/canon-go failed"
   printf '%s\n' "$out"
 }
 

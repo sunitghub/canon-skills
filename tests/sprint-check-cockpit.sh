@@ -22,8 +22,8 @@ if ! command -v python3 >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; th
   exit 0
 fi
 
-# t-e40a: the daemon resolver (Windows exe first, dev-build fallback, COCKPIT_DAEMON_BIN override) is pinned by
-# TestCockpitDaemonCandidates and TestResolveCockpitDaemonOverrideAndFallback in tools/canon-go/internal/board (t-15d8).
+# t-bdb0: the daemon resolver (the board's own binary, COCKPIT_DAEMON_BIN override) is pinned by
+# TestResolveCockpitDaemonIsSelfUnlessOverridden in tools/canon-go/internal/board.
 
 # t-2a71: reap any stub daemon leaked by a prior run this script's own
 # trap-on-EXIT couldn't reach (e.g. the process was SIGKILLed, or its parent
@@ -130,9 +130,10 @@ if not (d.get("running") is True and d.get("launched") is True and d.get("addr")
     sys.exit(1)
 PY
 
-  # the stub recorded a FIXED argv: exactly `-addr 127.0.0.1:0`, and NO token anywhere
+  # the stub recorded a FIXED argv: exactly `daemon -addr 127.0.0.1:0` (t-bdb0: the mode word first, the daemon is canon-go
+  # itself; protects ensureCockpit's launch), and NO token anywhere
   local argv; argv="$(cat "$sd/argv.txt")"
-  [[ "$argv" == $'-addr\n127.0.0.1:0' ]] || fail "sprint-check-cockpit: FAIL — $label spawned argv not fixed [-addr 127.0.0.1:0]: [$argv]"
+  [[ "$argv" == $'daemon\n-addr\n127.0.0.1:0' ]] || fail "sprint-check-cockpit: FAIL — $label spawned argv not fixed [daemon -addr 127.0.0.1:0]: [$argv]"
   if grep -qi 'token' "$sd/argv.txt"; then
     fail "sprint-check-cockpit: FAIL — $label leaked a token into the daemon argv: [$argv]"
   fi

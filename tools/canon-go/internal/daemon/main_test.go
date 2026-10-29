@@ -4131,12 +4131,13 @@ func waitLiveSessions(t *testing.T, s *server, want int) {
 	t.Fatalf("timed out waiting for %d live sessions (have %d)", want, liveSessionCount(s))
 }
 
-// TestVersionReportsExecMtime: /version is JSON carrying the version string AND
-// the daemon executable's startup mtime (the drift signal), and needs no token.
-func TestVersionReportsExecMtime(t *testing.T) {
-	old := execMtime
-	execMtime = 1700000000
-	defer func() { execMtime = old }()
+// TestVersionReportsDaemonKey: /version is JSON carrying the version string AND
+// the daemon source key stamped into the binary (t-bdb0: the board's stale
+// signal, read by /api/cockpit), and needs no token.
+func TestVersionReportsDaemonKey(t *testing.T) {
+	old := daemonKey
+	daemonKey = "0123456789abcdef0123456789abcdef01234567"
+	defer func() { daemonKey = old }()
 
 	_, base := newTestServer(t, "/bin/true")
 	resp, err := http.Get(base + "/version") // no Authorization header on purpose
@@ -4148,14 +4149,14 @@ func TestVersionReportsExecMtime(t *testing.T) {
 		t.Fatalf("/version status = %d, want 200", resp.StatusCode)
 	}
 	var v struct {
-		Version  string `json:"version"`
-		ExeMtime int64  `json:"exe_mtime"`
+		Version   string `json:"version"`
+		DaemonKey string `json:"daemon_key"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&v); err != nil {
 		t.Fatalf("decode /version JSON: %v", err)
 	}
-	if v.ExeMtime != 1700000000 {
-		t.Fatalf("exe_mtime = %d, want 1700000000", v.ExeMtime)
+	if v.DaemonKey != daemonKey {
+		t.Fatalf("daemon_key = %q, want %q", v.DaemonKey, daemonKey)
 	}
 	if v.Version == "" {
 		t.Fatal("version field empty")
@@ -7819,18 +7820,18 @@ func TestInstallVersion(t *testing.T) {
 		}
 	}
 	mk("canon/tools/skills.sh", "")
-	mk("canon/tools/cockpit-daemon/cockpit-daemon", "")
+	mk("canon/tools/canon-go-bin/canon-go", "")
 	mk("canon/VERSION", "0.9.9\n")
-	if got := installVersion(filepath.Join(root, "canon", "tools", "cockpit-daemon")); got != "0.9.9" {
-		t.Errorf("macOS/Linux layout (<root>/tools/cockpit-daemon/<bin>): got %q, want 0.9.9", got)
+	if got := installVersion(filepath.Join(root, "canon", "tools", "canon-go-bin")); got != "0.9.9" {
+		t.Errorf("macOS/Linux layout (<root>/tools/canon-go-bin/<bin>): got %q, want 0.9.9", got)
 	}
 	if got := installVersion(filepath.Join(root, "canon", "tools")); got != "0.9.9" {
 		t.Errorf("Windows layout (<root>/tools/<bin>.exe): got %q, want 0.9.9", got)
 	}
 	// A decoy: a VERSION in a folder that is not a canon root (no tools/skills.sh), as in a home folder.
 	mk("home/VERSION", "7.7.7\n")
-	mk("home/tools/cockpit-daemon/cockpit-daemon", "")
-	if got := installVersion(filepath.Join(root, "home", "tools", "cockpit-daemon")); got != "" {
+	mk("home/tools/canon-go-bin/canon-go", "")
+	if got := installVersion(filepath.Join(root, "home", "tools", "canon-go-bin")); got != "" {
 		t.Errorf("a VERSION outside a canon root must be ignored: got %q", got)
 	}
 	// A canon root whose VERSION is malformed, and one with no VERSION at all.
@@ -8315,7 +8316,7 @@ func TestTermSessionShape(t *testing.T) {
 	if want := "PATH=/bin HOME=/h NOT_COCKPIT_X=1"; strings.Join(got, " ") != want {
 		t.Errorf("termEnv = %q, want %q", strings.Join(got, " "), want)
 	}
-	if a := strings.Join(termArgs("sid1", "s-ab12", "/p"), " "); a != "term --session sid1 --ticket s-ab12 --project /p" {
+	if a := strings.Join(termArgs("sid1", "s-ab12", "/p"), " "); a != "daemon term --session sid1 --ticket s-ab12 --project /p" {
 		t.Errorf("termArgs = %q", a)
 	}
 	bin, _, _ := fakeSprint(t)
@@ -8411,7 +8412,7 @@ func TestSpawnTermRunsOwnBinaryWithoutDaemonSecrets(t *testing.T) {
 	if seen == "" {
 		t.Fatal("the stand-in terminal never ran")
 	}
-	if want := "args:term --session " + se.sid + " --ticket s-ab12 --project " + root; !strings.Contains(seen, want) {
+	if want := "args:daemon term --session " + se.sid + " --ticket s-ab12 --project " + root; !strings.Contains(seen, want) {
 		t.Errorf("argv: want %q in\n%s", want, seen)
 	}
 	if strings.Contains(seen, "COCKPIT_") || strings.Contains(seen, "boot-secret") {
@@ -8436,10 +8437,10 @@ func TestSpawnTermRunsOwnBinaryWithoutDaemonSecrets(t *testing.T) {
 	}
 }
 
-// t-57ab: `cockpit-daemon term ...` runs the restricted prompt, it does not start a daemon.
+// t-57ab: `canon-go daemon term ...` runs the restricted prompt, it does not start a daemon.
 func TestRunDispatchesTerm(t *testing.T) {
 	done := make(chan int, 1)
-	go func() { done <- Run("v", "c", []string{"term", "--no-such-flag"}) }()
+	go func() { done <- Run("v", "c", "", []string{"term", "--no-such-flag"}) }()
 	select {
 	case code := <-done:
 		if code != 2 {
@@ -8498,7 +8499,7 @@ func TestRunVersionIsNotTerm(t *testing.T) {
 	}
 	old := os.Stdout
 	os.Stdout = w
-	code := Run("v9.9.9", "c0ffee", []string{"-version"})
+	code := Run("v9.9.9", "c0ffee", "", []string{"-version"})
 	w.Close()
 	os.Stdout = old
 	b, _ := io.ReadAll(r)

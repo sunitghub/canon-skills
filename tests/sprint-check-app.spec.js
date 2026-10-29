@@ -81,7 +81,7 @@ function goBoardBin() {
   fs.mkdirSync(path.join(layout, 'tools', 'sprint-check-bin'), { recursive: true });
   fs.symlinkSync(path.join(__dirname, '..', 'tools', 'sprint-check-app'), path.join(layout, 'tools', 'sprint-check-app'));
   const out = path.join(layout, 'tools', 'sprint-check-bin', 'sprint-check');
-  execFileSync('go', ['build', '-o', out, './cmd/sprint-check'], { cwd: path.join(__dirname, '..', 'tools', 'canon-go'), stdio: 'ignore' });
+  execFileSync('go', ['build', '-o', out, './cmd/canon-go'], { cwd: path.join(__dirname, '..', 'tools', 'canon-go'), stdio: 'ignore' });
   goBoardBinPath = out;
   return out;
 }
@@ -12213,7 +12213,7 @@ test.describe('cockpit preview pane (t-b19b)', () => {
 // the t-8fbc fix (path-segment token) lets relative sibling assets load.
 test.describe('cockpit rendered-output preview (t-8f9d)', () => {
   const os = require('os');
-  const DAEMON_SRC = path.join(PROJECT_ROOT, 'tools', 'canon-go');   // t-8020: build ./cmd/cockpit-daemon in the module
+  const DAEMON_SRC = path.join(PROJECT_ROOT, 'tools', 'canon-go');   // t-bdb0: build ./cmd/canon-go, run as `canon-go daemon`
   const TICKET = 't-pv01';
   const hasGo = (() => {
     try { execFileSync('go', ['version'], { stdio: 'ignore' }); return true; } catch { return false; }
@@ -12260,10 +12260,10 @@ test.describe('cockpit rendered-output preview (t-8f9d)', () => {
 
     // Build and spawn the REAL daemon on an ephemeral loopback port.
     daemonBin = path.join(work, 'cockpit-daemon-test');
-    execFileSync('go', ['build', '-o', daemonBin, './cmd/cockpit-daemon'], { cwd: DAEMON_SRC, stdio: 'inherit' });
+    execFileSync('go', ['build', '-o', daemonBin, './cmd/canon-go'], { cwd: DAEMON_SRC, stdio: 'inherit' });
     stateDir = path.join(work, 'state');
     bootToken = 'test-boot-token-t8f9d';
-    daemonProc = spawn(daemonBin, ['-addr', '127.0.0.1:0'], {
+    daemonProc = spawn(daemonBin, ['daemon', '-addr', '127.0.0.1:0'], {
       env: {
         ...process.env,
         COCKPIT_TOKEN: bootToken,
@@ -12455,7 +12455,7 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
   // Anchor to the canon repo (this spec lives in <repo>/tests) rather than
   // PROJECT_ROOT — under SPRINT_CHECK_TEST_ROOT the board root is a fixture dir
   // that has no tools/cockpit-daemon, which would make the build cwd invalid.
-  const DAEMON_SRC = path.join(__dirname, '..', 'tools', 'canon-go');   // t-8020: build ./cmd/cockpit-daemon in the module
+  const DAEMON_SRC = path.join(__dirname, '..', 'tools', 'canon-go');   // t-bdb0: build ./cmd/canon-go, run as `canon-go daemon`
   test.describe.configure({ timeout: 120_000 });
 
   let work, daemonBin, bootToken, goOk = false;
@@ -12468,7 +12468,7 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
     catch { goOk = false; return; }
     work = fs.mkdtempSync(path.join(os.tmpdir(), 'ck-stale-'));
     daemonBin = path.join(work, 'cockpit-daemon-test');
-    execFileSync('go', ['build', '-o', daemonBin, './cmd/cockpit-daemon'], { cwd: DAEMON_SRC, stdio: 'inherit' });
+    execFileSync('go', ['build', '-o', daemonBin, './cmd/canon-go'], { cwd: DAEMON_SRC, stdio: 'inherit' });
     bootToken = 'test-boot-token-t74d6';
     // A real ticket dir so the busy-state test can start a session (the daemon
     // refuses /session/start for a ticket that doesn't physically exist).
@@ -12489,7 +12489,7 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
   async function startDaemon(stubPath) {
     const stateDir = fs.mkdtempSync(path.join(work, 'state-'));
     const stub = stubPath || path.join(work, 'stub-agent.sh');
-    const proc = spawn(daemonBin, ['-addr', '127.0.0.1:0'], {
+    const proc = spawn(daemonBin, ['daemon', '-addr', '127.0.0.1:0'], {
       env: { ...process.env, COCKPIT_TOKEN: bootToken, COCKPIT_SPRINT_BIN: stub, COCKPIT_COPILOT_BIN: stub, COPILOT_HOME: stateDir, COCKPIT_PROJECT_ROOT: work, COCKPIT_STATE_DIR: stateDir },
       stdio: 'ignore',
     });
@@ -12503,7 +12503,7 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
   }
 
   const relay = (info) => (i) => window.postMessage({ source: 'canon-cockpit', type: 'daemon-build', info: i }, '*');
-  const STALE = { stale: true, running_build: { version: 'oldbuild', exe_mtime: 1000 }, latest_build: { exe_mtime: 2000 } };
+  const STALE = { stale: true, running_build: { version: 'oldbuild', daemon_key: 'aaaaaaaa1111' }, latest_build: { daemon_key: 'bbbbbbbb2222' } };
 
   test('shows the banner (with running build id) when stale, hides it when fresh', async ({ page }) => {
     test.skip(!goOk, 'go toolchain not spawnable in this worker — cannot build cockpit-daemon');
@@ -12517,14 +12517,15 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
       await expect(banner).toBeVisible();
       await expect(page.locator('#sbMsg')).toContainText('out of date');
       await expect(page.locator('#sbMsg')).toContainText('oldbuild');   // running build id
-      await expect(page.locator('#sbMsg')).toContainText('latest built'); // latest shown too
+      await expect(page.locator('#sbMsg')).toContainText('aaaaaaaa');     // running daemon source key (t-bdb0)
+      await expect(page.locator('#sbMsg')).toContainText('latest source bbbbbbbb'); // latest shown too
       // idle → plain Restart enabled, no Force button.
       await expect(page.locator('#sbRestart')).toBeEnabled();
       await expect(page.locator('#sbForce')).toHaveCount(0);
 
       // A subsequent non-stale report clears the banner (the board relays this
       // after remounting a fresh daemon).
-      await page.evaluate(relay(), { stale: false, running_build: { version: 'oldbuild', exe_mtime: 2000 }, latest_build: { exe_mtime: 2000 } });
+      await page.evaluate(relay(), { stale: false, running_build: { version: 'oldbuild', daemon_key: 'bbbbbbbb2222' }, latest_build: { daemon_key: 'bbbbbbbb2222' } });
       await expect(banner).toBeHidden();
     } finally { proc.kill('SIGKILL'); }
   });

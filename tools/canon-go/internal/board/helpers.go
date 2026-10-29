@@ -432,16 +432,12 @@ func skillCheckCLI(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-// cliCanonRoot finds canon's root without a running board: beside the binary (tools/sprint-check-bin/ or
+// cliCanonRoot finds canon's root without a running board: beside the binary (tools/canon-go-bin/ or
 // tools/), else the project the current directory is in. "" (refuse) when neither is canon.
 func cliCanonRoot() string {
 	var candidates []string
 	if exe, err := os.Executable(); err == nil {
-		dir := filepath.Dir(exe)
-		if filepath.Base(dir) == "sprint-check-bin" {
-			dir = filepath.Dir(dir)
-		}
-		candidates = append(candidates, filepath.Dir(dir))
+		candidates = append(candidates, filepath.Dir(installToolsDir(exe)))
 	}
 	if wd, err := os.Getwd(); err == nil {
 		candidates = append(candidates, findProjectRoot(wd))

@@ -1,4 +1,4 @@
-// cockpit-daemon — a loopback-only, PTY-owning backend for the sprint-check
+// The Cockpit daemon (`canon-go daemon`, t-bdb0) — a loopback-only, PTY-owning backend for the sprint-check
 // cockpit. It launches an interactive `claude` session on the ticket in a real
 // pseudo-terminal, so the agent behaves as if on a TTY, and bridges that PTY to
 // the browser over stdlib SSE (output) + POST (input). No WebSocket.
@@ -247,14 +247,13 @@ func (s *server) handler() http.Handler {
 		io.WriteString(w, "ok")
 	})
 	// t-99fa: unauthenticated build-version readout (like /healthz) so the board
-	// can show which daemon build is running. t-74d6: also report the mtime of
-	// this daemon's own executable, captured at startup — the board compares it
-	// to the on-disk binary's mtime to detect a version-drifted (stale) daemon.
-	// A plain version string is insufficient: local `dev` builds all report the
-	// same string, so a string compare could never flag a rebuilt-in-place binary.
+	// can show which daemon build is running. t-bdb0: also report the daemon
+	// source key this binary was built from — the board compares it with the one
+	// compiled into itself to detect a stale daemon (the board and the daemon are
+	// one file, so its mtime moves with every board-only release too).
 	mux.HandleFunc("/version", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"version": canonVersion(), "commit": commit, "exe_mtime": execMtime, "uptime_secs": int64(time.Since(startTime).Seconds()), "debug_enabled": debugEnabled.Load(),
+		_ = json.NewEncoder(w).Encode(map[string]any{"version": canonVersion(), "commit": commit, "daemon_key": daemonKey, "uptime_secs": int64(time.Since(startTime).Seconds()), "debug_enabled": debugEnabled.Load(),
 			"idle_timeout_secs": int64(s.cfg.idleTimeout.Seconds()), "idle_timeout_main_secs": int64(s.cfg.idleTimeoutMain.Seconds())}) // t-824e: Admin's reaper line
 	})
 	// t-ffb9: toggles verbose session-lifecycle logging (see debugf). Deliberately
@@ -834,9 +833,10 @@ func termEnv(environ []string) []string {
 	return out
 }
 
-// termArgs is the argv after the daemon's own binary for a term session.
+// termArgs is the argv after the daemon's own binary for a term session: `canon-go daemon term ...` (t-bdb0: the mode word
+// first, as the board starts the daemon).
 func termArgs(sid, ticket, projectRoot string) []string {
-	return []string{"term", "--session", sid, "--ticket", ticket, "--project", projectRoot}
+	return []string{"daemon", "term", "--session", sid, "--ticket", ticket, "--project", projectRoot}
 }
 
 // agentSpawnArgs builds the PTY command args (after the program) for the chosen
@@ -4695,7 +4695,7 @@ func exeDir() string {
 var semverRe = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
 
 // installVersion reads VERSION from the canon root that holds dir: the binary
-// sits at <root>/tools/<bin> (Windows) or <root>/tools/cockpit-daemon/<bin>.
+// sits at <root>/tools/<bin> (Windows) or <root>/tools/canon-go-bin/<bin>.
 // A folder counts as a canon root only with tools/skills.sh in it, so a stray
 // VERSION elsewhere (a home folder) is never read; a malformed one is ignored.
 func installVersion(dir string) string {
@@ -4714,37 +4714,23 @@ func installVersion(dir string) string {
 	return ""
 }
 
-// execMtime is the Unix mtime of this daemon's own executable, captured once at
-// startup (see main). The board compares it to the on-disk binary's mtime to
-// detect a stale/version-drifted running daemon (t-74d6) — robust even for
-// `dev` builds where the version string never changes.
-var execMtime int64
+// daemonKey is the daemon source key stamped into the binary (cmd/canon-go's -X main.daemonKey, t-bdb0); "" when unstamped.
+// /version reports it so the board can tell a daemon built from other sources.
+var daemonKey string
 
 // startTime is captured once at daemon boot; /version reports uptime_secs =
 // seconds since this, so the Cockpit Admin panel can show daemon uptime (t-5dc2).
 var startTime = time.Now()
 
-func executableMtime() int64 {
-	exe, err := os.Executable()
-	if err != nil {
-		return 0
-	}
-	st, err := os.Stat(exe)
-	if err != nil {
-		return 0
-	}
-	return st.ModTime().Unix()
-}
-
-// Run is the daemon's entry point (cmd/cockpit-daemon, t-8020): args are the command-line arguments after the program
-// name; the result is the exit code. buildVersion and buildCommit are the -X stamps cmd/cockpit-daemon carries. Its own
+// Run is the daemon's entry point (`canon-go daemon`, t-bdb0): args are the command-line arguments after the mode word;
+// the result is the exit code. buildVersion, buildCommit and buildDaemonKey are the -X stamps cmd/canon-go carries. Its own
 // FlagSet, not the global one, so the flags parse from args whatever the caller.
-func Run(buildVersion, buildCommit string, args []string) int {
-	version, commit = buildVersion, buildCommit
+func Run(buildVersion, buildCommit, buildDaemonKey string, args []string) int {
+	version, commit, daemonKey = buildVersion, buildCommit, buildDaemonKey
 	if len(args) > 0 && args[0] == "term" { // t-57ab: the restricted prompt a term session runs in its pty
 		return term.Main(args[1:])
 	}
-	fs := flag.NewFlagSet("cockpit-daemon", flag.ContinueOnError)
+	fs := flag.NewFlagSet("canon-go daemon", flag.ContinueOnError)
 	versionFlag := fs.Bool("version", false, "print build version and exit")
 	addr := fs.String("addr", common.EnvOr("COCKPIT_ADDR", "127.0.0.1:8455"), "loopback bind address")
 	if err := fs.Parse(args); err != nil {
@@ -4754,8 +4740,6 @@ func Run(buildVersion, buildCommit string, args []string) int {
 		fmt.Println(versionString())
 		return 0
 	}
-	execMtime = executableMtime()
-
 	if !strings.HasPrefix(*addr, "127.0.0.1:") && !strings.HasPrefix(*addr, "localhost:") && !strings.HasPrefix(*addr, "[::1]:") {
 		fmt.Fprintln(os.Stderr, "refusing non-loopback bind:", *addr)
 		return 2

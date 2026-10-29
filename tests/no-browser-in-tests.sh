@@ -11,7 +11,7 @@
 # Per start, not per file: a start counts as safe when the variable is on that line, on one of the
 # few lines above it (the env-var continuation style several scripts use), or exported earlier in the
 # file. Comment lines never count, and `go build`, `cp` and `command -v` lines and plain path assignments are not starts. A start
-# is recognised by the binary spellings below ($GO_BIN, /sc-go, `go run …/cmd/sprint-check`, t-8020) and, since t-15d8,
+# is recognised by the binary spellings below ($GO_BIN, /sc-go, `go run …/cmd/canon-go`, t-bdb0) and, since t-15d8,
 # by any variable the file assigns from build_board (tests/helpers.sh), whatever its name; the pattern is checked for staleness below.
 set -euo pipefail
 
@@ -35,7 +35,7 @@ scan() {
       skip = ($0 ~ /go build|go test|rm -|dirname|mktemp|GO_BIN=|\[\[|(^|[^A-Za-z])cp |command -v go/) ||
              ($0 ~ /^[[:space:]]*[A-Za-z_]+="[^"]*"[[:space:]]*$/) ||   # a pure path assignment is not a start
              ($0 ~ /main\.go/)
-      start = !skip && (viaVar || $0 ~ /(\$\{?GO_BIN\}?|\/sc-go|go run [.\/]*cmd\/sprint-check)/)
+      start = !skip && (viaVar || $0 ~ /(\$\{?GO_BIN\}?|\/sc-go|go run [.\/]*cmd\/canon-go)/)
     }
     start {
       print "START " file

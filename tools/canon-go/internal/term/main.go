@@ -10,7 +10,7 @@ import (
 	"canon/internal/settings"
 )
 
-// Main runs the restricted prompt for the daemon: `cockpit-daemon term --session <id> --ticket <id> --project <root>`.
+// Main runs the restricted prompt for the daemon: `canon-go daemon term --session <id> --ticket <id> --project <root>`.
 // It works in the current directory, which the daemon set to the session's checkout.
 func Main(args []string) int {
 	fs := flag.NewFlagSet("term", flag.ContinueOnError)

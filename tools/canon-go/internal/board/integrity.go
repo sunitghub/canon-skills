@@ -500,11 +500,7 @@ func integrityRoot() string {
 	if err != nil {
 		return ""
 	}
-	dir := filepath.Dir(exe)
-	if strings.HasSuffix(filepath.ToSlash(dir), "/sprint-check-bin") {
-		dir = filepath.Dir(dir)
-	}
-	return filepath.Dir(dir)
+	return filepath.Dir(installToolsDir(exe))
 }
 
 func parseIntegrityArgs(args []string) (asJSON, gate, online, ok bool) {

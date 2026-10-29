@@ -79,6 +79,10 @@ var version = "dev"
 // commit is the build provenance short SHA, stamped via -X main.commit (t-5c20).
 var commit = "dev"
 
+// daemonKey is the daemon source key compiled into this binary (cmd/canon-go's -X main.daemonKey, t-bdb0): the daemon this
+// board would start is itself, so a running daemon reporting another key is stale. "" in an unstamped `go build`.
+var daemonKey string
+
 // canonVersion returns the semantic version: the repo-root VERSION file
 // (resolved relative to the canon tools dir, present in a real install), else
 // the stamped `version`, else "dev".
@@ -102,24 +106,25 @@ func startupBanner(addr string) string {
 // versionString renders "<semver> (<sha>)" when a real commit is stamped.
 func versionString() string { return common.VersionString(canonVersion(), commit) }
 
-// daemonVersion returns the cockpit-daemon binary's build id via `--version`,
+// daemonVersion returns the daemon's build id via `daemon --version`,
 // or "" if the binary isn't resolved or can't report one. Best-effort — a
 // stale daemon binary is otherwise invisible in the board UI (t-99fa).
 func daemonVersion() string {
 	if cockpitDaemonBin == "" {
 		return ""
 	}
-	out, err := exec.Command(cockpitDaemonBin, "--version").Output()
+	out, err := exec.Command(cockpitDaemonBin, "daemon", "--version").Output()
 	if err != nil {
 		return ""
 	}
 	return strings.TrimSpace(string(out))
 }
 
-// Run is the board's entry point (cmd/sprint-check, t-8020): args are the command-line arguments after the program
-// name; the result is the exit code. buildVersion and buildCommit are the -X stamps cmd/sprint-check carries.
-func Run(buildVersion, buildCommit string, args []string) int {
-	version, commit = buildVersion, buildCommit
+// Run is the board's entry point (`canon-go board`, or canon-go with no mode word, t-bdb0): args are the command-line
+// arguments after the mode word; the result is the exit code. buildVersion, buildCommit and buildDaemonKey are the -X
+// stamps cmd/canon-go carries.
+func Run(buildVersion, buildCommit, buildDaemonKey string, args []string) int {
+	version, commit, daemonKey = buildVersion, buildCommit, buildDaemonKey
 	if len(args) > 0 {
 		switch args[0] {
 		case "help", "--help", "-h":
@@ -157,16 +162,13 @@ func Run(buildVersion, buildCommit string, args []string) int {
 	}
 	projectRoot = findProjectRoot(common.EnvOr("SPRINT_CHECK_ROOT", cwd))
 	exe, _ := os.Executable()
-	toolsDir = filepath.Dir(exe)
-	if strings.HasSuffix(filepath.ToSlash(toolsDir), "/sprint-check-bin") {
-		toolsDir = filepath.Dir(toolsDir)
-	}
+	toolsDir = installToolsDir(exe)
 	appHTML = resolveAppHTML(toolsDir, projectRoot, cwd)
 	cockpitHTML = filepath.Join(filepath.Dir(appHTML), "cockpit.html")
 	modelTiersPath = filepath.Join(filepath.Dir(appHTML), "model-tiers.json")
 	sprintHeadless = resolveSprintHeadless(toolsDir, projectRoot, cwd)
 	canonGateTmpl = resolveCanonGateTemplate(toolsDir, projectRoot, cwd)
-	cockpitDaemonBin = resolveCockpitDaemon(toolsDir, projectRoot, cwd)
+	cockpitDaemonBin = resolveCockpitDaemon()
 	// Passes through an explicit COCKPIT_SPRINT_BIN override (e.g. a test
 	// stub); otherwise empty, so the daemon's own default ("claude", t-842b)
 	// applies — never the bash sprint CLI, which doesn't understand claude's
@@ -212,12 +214,14 @@ func Run(buildVersion, buildCommit string, args []string) int {
 }
 
 func usage() {
-	fmt.Println(`sprint-check-win — local kanban dashboard for canon projects
+	fmt.Println(`canon-go — canon's board server and Cockpit daemon (one program; the first word picks the mode)
 
 Usage:
-  sprint-check-win        Open the dashboard for the current project
-  sprint-check-win <port> Open the dashboard on a specific port
-  sprint-check-win --help Show this help
+  canon-go [board]          Open the dashboard for the current project
+  canon-go [board] <port>   Open the dashboard on a specific port
+  canon-go daemon [-addr <loopback host:port>]   Run the Cockpit daemon (the board starts it)
+  canon-go [board|daemon] --version              Print the build
+  canon-go --help           Show this help
 
 Helpers (used by canon's shell tools; see helpers.go):
   headless-json, json-strings <file>, skill-check <skill-dir>,
@@ -3984,53 +3988,30 @@ func resolveCanonGateTemplate(toolsDir, root string, extraRoots ...string) strin
 
 // ── Cockpit daemon integration (t-ddc8) ─────────────────────────────────────
 // The board never owns a PTY (t-1262 lesson): it discovers/launches the shipped
-// cockpit-daemon (which owns the PTY) and the frontend iframes its /cockpit
+// Cockpit daemon (which owns the PTY) and the frontend iframes its /cockpit
 // page. The board reads only the daemon's addr from the 0600 daemon.json; the
 // token stays daemon-side. The spawn argv is fixed — no board/user input is
 // interpolated. Behaviour pinned by tests/sprint-check-api.sh.
 
-// resolveCockpitDaemon finds the cockpit-daemon binary. COCKPIT_DAEMON_BIN
-// overrides (used by tests to point at a stub); otherwise the first existing of
-// cockpitDaemonCandidates, falling back to the first candidate for the
-// (not-found) error path.
-func resolveCockpitDaemon(toolsDir, root string, extraRoots ...string) string {
+// resolveCockpitDaemon finds the daemon program: this binary itself, started as `canon-go daemon` (t-bdb0: one program).
+// COCKPIT_DAEMON_BIN overrides (tests point it at a stub or at no file).
+func resolveCockpitDaemon() string {
 	if b := os.Getenv("COCKPIT_DAEMON_BIN"); b != "" {
 		return b
 	}
-	candidates := cockpitDaemonCandidates(toolsDir, root, runtime.GOOS, extraRoots...)
-	for _, candidate := range candidates {
-		if exists(candidate) {
-			return candidate
-		}
-	}
-	return candidates[0]
+	exe, _ := os.Executable()
+	return exe
 }
 
-// cockpitDaemonCandidates returns the ordered daemon-binary paths to try for a
-// given GOOS. On Windows the shipped, git-tracked tools/cockpit-daemon-win.exe
-// (built by scripts/build-zip.sh, mirroring the sprint-check-win.exe convention)
-// comes FIRST, then the dev build tools/cockpit-daemon/cockpit-daemon.exe. On
-// Unix it is the built tools/cockpit-daemon/cockpit-daemon. goos is a parameter
-// (not runtime.GOOS) so the Windows ordering is unit-testable on any host.
-func cockpitDaemonCandidates(toolsDir, root, goos string, extraRoots ...string) []string {
-	toolsDirs := []string{toolsDir, filepath.Join(root, "tools")}
-	for _, er := range extraRoots {
-		toolsDirs = append(toolsDirs, filepath.Join(er, "tools"))
+// installToolsDir is the tools folder of the install that holds the binary exe: it sits in tools/ (Windows,
+// canon-go-win.exe) or tools/canon-go-bin/ (macOS/Linux). The one owner of that rule (t-bdb0): main, integrity and the
+// CLI helpers all ask here.
+func installToolsDir(exe string) string {
+	dir := filepath.Dir(exe)
+	if filepath.Base(dir) == "canon-go-bin" {
+		dir = filepath.Dir(dir)
 	}
-	var candidates []string
-	if goos == "windows" {
-		for _, td := range toolsDirs { // shipped prebuilt first
-			candidates = append(candidates, filepath.Join(td, "cockpit-daemon-win.exe"))
-		}
-		for _, td := range toolsDirs { // dev build fallback
-			candidates = append(candidates, filepath.Join(td, "cockpit-daemon", "cockpit-daemon.exe"))
-		}
-	} else {
-		for _, td := range toolsDirs {
-			candidates = append(candidates, filepath.Join(td, "cockpit-daemon", "cockpit-daemon"))
-		}
-	}
-	return candidates
+	return dir
 }
 
 // cockpitStateDir is where the board expects the daemon to publish daemon.json.
@@ -4464,18 +4445,8 @@ func cockpitStop(force bool) map[string]any {
 	return map[string]any{"ok": true, "stopped": !running, "running": running}
 }
 
-// cockpitBinaryMtime is the on-disk daemon binary's mtime (unix) — the "latest"
-// build the board would launch. 0 if unresolvable. (t-74d6)
-func cockpitBinaryMtime() int64 {
-	st, err := os.Stat(cockpitDaemonBin)
-	if err != nil {
-		return 0
-	}
-	return st.ModTime().Unix()
-}
-
 // cockpitRunningBuild fetches the RUNNING daemon's unauthenticated /version JSON
-// ({version, exe_mtime}). nil if unreachable or not JSON (a daemon predating
+// ({version, commit, daemon_key, ...}). nil if unreachable or not JSON (a daemon predating
 // this build). The board never reads the daemon token; /version needs none.
 var buildStampRe = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
 
@@ -4492,7 +4463,7 @@ func cockpitRunningBuild(addr string) map[string]any {
 	var v struct {
 		Version         string `json:"version"`
 		Commit          any    `json:"commit"`
-		ExeMtime        int64  `json:"exe_mtime"`
+		DaemonKey       any    `json:"daemon_key"`
 		UptimeSecs      int64  `json:"uptime_secs"`
 		DebugEnabled    bool   `json:"debug_enabled"`
 		IdleTimeout     int64  `json:"idle_timeout_secs"`
@@ -4501,13 +4472,17 @@ func cockpitRunningBuild(addr string) map[string]any {
 	if json.NewDecoder(resp.Body).Decode(&v) != nil {
 		return nil
 	}
-	// t-4487: the build stamp `cockpit-daemon --version` prints: a plain stamp (hex, or "dev") or "" for an older daemon, a non-string, odd text
+	// t-4487: the build stamp `canon-go daemon --version` prints: a plain stamp (hex, or "dev") or "" for an older daemon, a non-string, odd text
 	// or an oversized value (parity with server.py)
 	commit, _ := v.Commit.(string)
 	if !buildStampRe.MatchString(commit) {
 		commit = ""
 	}
-	return map[string]any{"version": v.Version, "commit": commit, "exe_mtime": v.ExeMtime, "uptime_secs": v.UptimeSecs, "debug_enabled": v.DebugEnabled,
+	key, _ := v.DaemonKey.(string) // t-bdb0: "" for a daemon predating the key (it is then stale), or odd text
+	if !buildStampRe.MatchString(key) {
+		key = ""
+	}
+	return map[string]any{"version": v.Version, "commit": commit, "daemon_key": key, "uptime_secs": v.UptimeSecs, "debug_enabled": v.DebugEnabled,
 		"idle_timeout_secs": v.IdleTimeout, "idle_timeout_main_secs": v.IdleTimeoutMain}
 }
 
@@ -4536,24 +4511,26 @@ func cockpitSetDebug(enabled bool) map[string]any {
 }
 
 // cockpitBuildStatus reports {stale, running_build, latest_build} for a healthy
-// daemon. Stale when the running exec-mtime differs from the on-disk binary's,
-// or when the daemon exposes no JSON /version. Parity with server.py's
-// _cockpit_build_status — the drift signal is the exec-mtime, NOT the version
-// string (local `dev` builds all match). (t-74d6)
+// daemon (t-74d6). t-bdb0: stale when the running daemon's source key differs
+// from the daemonKey compiled into this board (the daemon it would start), when
+// it reports none (it predates the key), or when it exposes no JSON /version.
+// A board-only release keeps the daemon's key, so it never flags the daemon.
+// An unstamped dev build knows no key of its own and flags nothing that answers.
 func cockpitBuildStatus(addr string) map[string]any {
-	latestMtime := cockpitBinaryMtime()
-	latest := map[string]any{"exe_mtime": latestMtime}
+	latest := map[string]any{"daemon_key": daemonKey}
 	running := cockpitRunningBuild(addr)
 	if running == nil {
 		return map[string]any{"stale": true, "running_build": nil, "latest_build": latest}
 	}
-	rm, _ := running["exe_mtime"].(int64)
-	stale := latestMtime != 0 && rm != latestMtime
+	stale := daemonKeyStale(daemonKey, running["daemon_key"].(string))
 	return map[string]any{"stale": stale, "running_build": running, "latest_build": latest}
 }
 
+// daemonKeyStale: a daemon whose key is not this board's own is stale; an unstamped board ("") cannot tell, so says no.
+func daemonKeyStale(own, running string) bool { return own != "" && running != own }
+
 // ensureCockpit returns a running daemon's addr, launching one on demand if
-// none is healthy. The spawn argv is fixed (["-addr","127.0.0.1:0"]); the
+// none is healthy. The spawn argv is fixed (["daemon","-addr","127.0.0.1:0"]); the
 // project root + sprint bin are passed via env, never argv.
 func ensureCockpit() map[string]any {
 	if addr, ok := discoverCockpitAddr(); ok {
@@ -4571,7 +4548,7 @@ func ensureCockpit() map[string]any {
 		return map[string]any{"running": false, "addr": nil, "error": err.Error()}
 	}
 	os.Remove(filepath.Join(stateDir, "daemon.json")) // clear any stale addr
-	cmd := exec.Command(cockpitDaemonBin, "-addr", "127.0.0.1:0")
+	cmd := exec.Command(cockpitDaemonBin, "daemon", "-addr", "127.0.0.1:0")
 	env := append(os.Environ(),
 		"COCKPIT_STATE_DIR="+stateDir,
 		"COCKPIT_PROJECT_ROOT="+projectRoot,

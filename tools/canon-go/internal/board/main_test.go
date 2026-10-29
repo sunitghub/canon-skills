@@ -495,54 +495,18 @@ func TestSafeTicketDocAllowsFreshWriteThroughRealExistingParent(t *testing.T) {
 	}
 }
 
-// t-e40a: the shipped, git-tracked tools/cockpit-daemon-win.exe must be the
-// first Windows candidate (the board couldn't find the daemon on a stock
-// Windows clone because the resolver only looked for cockpit-daemon/cockpit-daemon.exe).
-func TestCockpitDaemonCandidates(t *testing.T) {
-	td := filepath.FromSlash("/x/tools")
-	root := filepath.FromSlash("/proj")
-
-	win := cockpitDaemonCandidates(td, root, "windows")
-	if len(win) == 0 || win[0] != filepath.Join(td, "cockpit-daemon-win.exe") {
-		t.Fatalf("windows first candidate = %v, want %s", win, filepath.Join(td, "cockpit-daemon-win.exe"))
-	}
-	// dev build must still appear as a fallback
-	dev := filepath.Join(td, "cockpit-daemon", "cockpit-daemon.exe")
-	foundDev := false
-	for _, c := range win {
-		if c == dev {
-			foundDev = true
+// t-bdb0: the install's tools folder from the binary's path, the one rule main (toolsDir), integrity (integrityRoot) and the
+// CLI helpers (cliCanonRoot) share. Protects the board finding app.html and the manifest in both install layouts.
+func TestInstallToolsDir(t *testing.T) {
+	for exe, want := range map[string]string{
+		filepath.FromSlash("/c/tools/canon-go-bin/canon-go"): filepath.FromSlash("/c/tools"), // macOS/Linux
+		filepath.FromSlash("/c/tools/canon-go-win.exe"):      filepath.FromSlash("/c/tools"), // Windows
+		filepath.FromSlash("/w/bin/canon-go"):                filepath.FromSlash("/w/bin"),   // a test build elsewhere
+		filepath.FromSlash("/c/tools/sprint-check-bin/x"):    filepath.FromSlash("/c/tools/sprint-check-bin"),
+	} {
+		if got := installToolsDir(exe); got != want {
+			t.Errorf("installToolsDir(%s) = %s, want %s", exe, got, want)
 		}
-	}
-	if !foundDev {
-		t.Fatalf("windows candidates missing dev fallback %s: %v", dev, win)
-	}
-
-	for _, goos := range []string{"darwin", "linux"} {
-		u := cockpitDaemonCandidates(td, root, goos)
-		want := filepath.Join(td, "cockpit-daemon", "cockpit-daemon")
-		if len(u) == 0 || u[0] != want {
-			t.Fatalf("%s first candidate = %v, want %s", goos, u, want)
-		}
-		for _, c := range u {
-			if filepath.Base(c) == "cockpit-daemon-win.exe" {
-				t.Fatalf("%s must not offer a -win.exe candidate: %v", goos, u)
-			}
-		}
-	}
-
-	// extraRoots contribute their own tools/ dirs on every platform.
-	er := filepath.FromSlash("/wt")
-	got := cockpitDaemonCandidates(td, root, "windows", er)
-	wantExtra := filepath.Join(er, "tools", "cockpit-daemon-win.exe")
-	foundExtra := false
-	for _, c := range got {
-		if c == wantExtra {
-			foundExtra = true
-		}
-	}
-	if !foundExtra {
-		t.Fatalf("extraRoot tools dir missing from candidates: %v", got)
 	}
 }
 
@@ -1252,8 +1216,8 @@ func TestCockpitRunningBuildPassesReaperTimeouts(t *testing.T) {
 		body           string
 		idle, idleMain float64
 	}{
-		{`{"version":"v","exe_mtime":1,"uptime_secs":2,"debug_enabled":true,"idle_timeout_secs":300,"idle_timeout_main_secs":1800}`, 300, 1800},
-		{`{"version":"v","exe_mtime":1,"uptime_secs":2,"debug_enabled":false}`, 0, 0},
+		{`{"version":"v","daemon_key":"k","uptime_secs":2,"debug_enabled":true,"idle_timeout_secs":300,"idle_timeout_main_secs":1800}`, 300, 1800},
+		{`{"version":"v","daemon_key":"k","uptime_secs":2,"debug_enabled":false}`, 0, 0},
 	} {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, c.body) }))
 		got := cockpitRunningBuild(strings.TrimPrefix(srv.URL, "http://"))
@@ -1798,25 +1762,56 @@ func TestScanTicketSafeRefusesLinks(t *testing.T) {
 	}
 }
 
-// t-15d8 (ported from tests/sprint-check-cockpit.sh's Python resolver case, t-e40a): COCKPIT_DAEMON_BIN wins; else the
-// first candidate that exists; with none, the first candidate (the path `canon update` will create).
-func TestResolveCockpitDaemonOverrideAndFallback(t *testing.T) {
-	td := filepath.Join(t.TempDir(), "tools")
-	root := t.TempDir()
+// t-bdb0: the daemon is this binary itself (`canon-go daemon`); COCKPIT_DAEMON_BIN still wins (tests point it at a stub or at
+// no file). Protects ensureCockpit's launch path.
+func TestResolveCockpitDaemonIsSelfUnlessOverridden(t *testing.T) {
 	t.Setenv("COCKPIT_DAEMON_BIN", "")
-	cands := cockpitDaemonCandidates(td, root, runtime.GOOS)
-	if got := resolveCockpitDaemon(td, root); got != cands[0] {
-		t.Fatalf("no binary anywhere: got %s, want the first candidate %s", got, cands[0])
-	}
-	later := cands[len(cands)-1]
-	os.MkdirAll(filepath.Dir(later), 0o755)
-	os.WriteFile(later, nil, 0o755)
-	if got := resolveCockpitDaemon(td, root); got != later {
-		t.Fatalf("only %s exists: got %s", later, got)
+	self, _ := os.Executable()
+	if got := resolveCockpitDaemon(); got != self {
+		t.Fatalf("no override: got %s, want this binary %s", got, self)
 	}
 	t.Setenv("COCKPIT_DAEMON_BIN", "/tmp/stub-daemon")
-	if got := resolveCockpitDaemon(td, root); got != "/tmp/stub-daemon" {
+	if got := resolveCockpitDaemon(); got != "/tmp/stub-daemon" {
 		t.Fatalf("override must win, got %s", got)
+	}
+}
+
+// t-bdb0: the stale banner compares the running daemon's source key with the daemonKey compiled into this board, never the
+// binary's mtime (board and daemon are one file now, so every board release moves it). A board-only release keeps the
+// daemon key: not stale. A daemon-source change, or a daemon predating the key, is stale. An unstamped dev board flags nothing
+// that answers. Protects /api/cockpit's stale flag (the Cockpit's "out of date" banner and its Restart).
+func TestCockpitBuildStatusByDaemonKey(t *testing.T) {
+	const k1, k2 = "1111111111111111111111111111111111111111", "2222222222222222222222222222222222222222"
+	old := daemonKey
+	t.Cleanup(func() { daemonKey = old })
+	for _, c := range []struct {
+		own, body string
+		stale     bool
+	}{
+		{k1, `{"version":"v","daemon_key":"` + k1 + `"}`, false},       // same daemon sources (a board-only release)
+		{k1, `{"version":"v","daemon_key":"` + k2 + `"}`, true},        // the daemon's sources changed
+		{k1, `{"version":"v","exe_mtime":1700000000}`, true},           // a daemon from before the key
+		{k1, `{"version":"v","daemon_key":"<b>` + k1 + `</b>"}`, true}, // odd text is no key
+		{"", `{"version":"v","daemon_key":"` + k2 + `"}`, false},       // unstamped dev board
+		{"", `{"version":"v"}`, false},
+	} {
+		daemonKey = c.own
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, c.body) }))
+		got := cockpitBuildStatus(strings.TrimPrefix(srv.URL, "http://"))
+		srv.Close()
+		if got["stale"] != c.stale {
+			t.Errorf("own key %q, daemon %s: stale = %v, want %v", c.own, c.body, got["stale"], c.stale)
+		}
+		if lb, _ := got["latest_build"].(map[string]any); lb["daemon_key"] != c.own {
+			t.Errorf("latest_build = %v, want daemon_key %q", got["latest_build"], c.own)
+		}
+	}
+	// No JSON /version at all: stale whatever the board's key.
+	daemonKey = ""
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "ok") }))
+	defer srv.Close()
+	if got := cockpitBuildStatus(strings.TrimPrefix(srv.URL, "http://")); got["stale"] != true {
+		t.Errorf("a daemon with no JSON /version: stale = %v, want true", got["stale"])
 	}
 }
 

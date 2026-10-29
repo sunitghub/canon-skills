@@ -431,7 +431,6 @@ function canonPrefixKeys(emit) {
   var sbBaseMsg = "";        // the stale message without any busy suffix
   var lastStatusCls = "";    // mirrors setStatus's cls so the banner knows if a session is live
   var sbRestarting = false;  // set once /shutdown answers 200; the status refresh must not overwrite the message
-  function sbFmtTime(unix){ try { return new Date(unix*1000).toLocaleTimeString(); } catch(e){ return String(unix); } }
   function sbSessionLive(){ return lastStatusCls === "running" || lastStatusCls === "needsyou"; }
   function sbEnsureForce(){
     if(!document.getElementById("sbForce")){
@@ -468,9 +467,10 @@ function canonPrefixKeys(emit) {
     if(!info || !info.stale){ staleBanner.hidden = true; return; }
     var rb = info.running_build || {}, lb = info.latest_build || {};
     var rlabel = rb.version ? rb.version : "unknown";
-    var rt = rb.exe_mtime ? sbFmtTime(rb.exe_mtime) : "?";
-    var lt = lb.exe_mtime ? sbFmtTime(lb.exe_mtime) : "?";
-    sbBaseMsg = "\u26A0 Cockpit daemon out of date (running " + rlabel + ", built " + rt + "; latest built " + lt + ")";
+    // t-bdb0: the daemon source keys (running vs. the one this board ships), first 8 characters
+    var rk = rb.daemon_key ? String(rb.daemon_key).slice(0, 8) : "?";
+    var lk = lb.daemon_key ? String(lb.daemon_key).slice(0, 8) : "?";
+    sbBaseMsg = "\u26A0 Cockpit daemon out of date (running " + rlabel + ", source " + rk + "; latest source " + lk + ")";
     sbRestart.textContent = "Restart";
     staleBanner.hidden = false;
     sbUpdateControls();

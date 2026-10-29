@@ -233,9 +233,11 @@ for k in sys.argv[1:]: d=d[k]
 print(d)' "$@"; }
 
 GO_PORT="$(free_port)"
-# The board binary sits in $BOARD_DIR/tools/sprint-check-bin, so its toolsDir is $BOARD_DIR/tools and it reads the
+# The board binary sits in $BOARD_DIR/tools/canon-go-bin, so its toolsDir is $BOARD_DIR/tools and it reads the
 # semver from $BOARD_DIR/VERSION (t-5c20); started from $ROOT so its app.html, cockpit.html and model-tiers seed resolve.
-GO_BIN="$(build_board "$BOARD_DIR/tools")"
+# t-bdb0: stamped with a daemon key the way a release is (-X main.daemonKey), so the stale check below runs on the real stamp.
+CK_KEY=0123456789abcdef0123456789abcdef01234567
+GO_BIN="$(build_board "$BOARD_DIR/tools" "-X main.daemonKey=$CK_KEY")"
 cp "$ROOT/VERSION" "$BOARD_DIR/VERSION"
 GO_CANON="$WORK/canon-go"
 
@@ -551,8 +553,9 @@ git -C "$WORK" worktree remove --force "$WT" 2>/dev/null || true
 rm -rf "$WT_PARENT"
 
 # ── /api/cockpit stale detection (t-74d6) ───────────────────────────────────
-# A stub daemon serves /healthz + /version{version,commit,exe_mtime}; daemon.json in CK_STATE points the board at it.
-# The board compares exe_mtime with CK_BIN's on-disk mtime: unequal → stale, equal → not.
+# A stub daemon serves /healthz + /version{version,commit,daemon_key}; daemon.json in CK_STATE points the board at it.
+# t-bdb0: the board compares daemon_key with the key stamped into it (CK_KEY): equal → not stale (a board-only release keeps
+# it), other or none → stale. Protects /api/cockpit's stale flag through the real -X main.daemonKey stamp.
 start_daemon_stub() { # <json for /version>
   CK_STUB_PORT="$(free_port)"
   python3 - "$CK_STUB_PORT" "$1" <<'PY' >/dev/null 2>&1 &
@@ -593,14 +596,14 @@ if d["running_build"].get("commit") != commit:
     print(f"/api/cockpit running_build.commit={d['running_build'].get('commit')!r}, want {commit!r}"); sys.exit(1)
 PY
 }
-start_daemon_stub '{"version": "stub", "commit": "abc12345", "exe_mtime": 1000000000}'
-python3 -c "import os,sys; os.utime(sys.argv[1], (1500000000, 1500000000))" "$CK_BIN"
-ck_check true abc12345 || fail "sprint-check-api: /api/cockpit with a stale daemon binary"
-python3 -c "import os,sys; os.utime(sys.argv[1], (1000000000, 1000000000))" "$CK_BIN"
-ck_check false abc12345 || fail "sprint-check-api: /api/cockpit with a current daemon binary"
+start_daemon_stub '{"version": "stub", "commit": "abc12345", "daemon_key": "fedcba9876543210fedcba9876543210fedcba98"}'
+ck_check true abc12345 || fail "sprint-check-api: /api/cockpit with a daemon built from other daemon sources"
+kill "$CK_STUB_PID" 2>/dev/null || true; wait "$CK_STUB_PID" 2>/dev/null || true; CK_STUB_PID=""
+start_daemon_stub "{\"version\": \"stub\", \"commit\": \"abc12345\", \"daemon_key\": \"$CK_KEY\"}"
+ck_check false abc12345 || fail "sprint-check-api: /api/cockpit with a daemon of this board's daemon key"
 kill "$CK_STUB_PID" 2>/dev/null || true; wait "$CK_STUB_PID" 2>/dev/null || true; CK_STUB_PID=""
 start_daemon_stub '{"version": "old", "exe_mtime": 1000000000}'
-ck_check false "" || fail "sprint-check-api: /api/cockpit with a daemon that sends no commit"
+ck_check true "" || fail "sprint-check-api: /api/cockpit with a daemon that predates the key (and sends no commit)"
 kill "$CK_STUB_PID" 2>/dev/null || true; wait "$CK_STUB_PID" 2>/dev/null || true; CK_STUB_PID=""
 rm -f "$CK_STATE/daemon.json"
 

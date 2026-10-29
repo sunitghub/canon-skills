@@ -1,5 +1,5 @@
 // Package term is the restricted prompt behind the board's Terminal button (t-57ab). The cockpit daemon runs it as
-// `cockpit-daemon term` in a pty. It is a convenience boundary, not a sandbox: it reads files inside the project, runs
+// `canon-go daemon term` in a pty. It is a convenience boundary, not a sandbox: it reads files inside the project, runs
 // read-only tkt commands, and gives a full shell only after `su` (see su.go).
 //
 // There is no shell here: each command is an argument list, and a line with a shell metacharacter is refused rather

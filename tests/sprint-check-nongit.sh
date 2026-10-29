@@ -30,7 +30,7 @@ printf 'draft\n' > "$PROJ/notes.md"
 free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'; }
 GO_PORT="$(free_port)"
 GO_BIN="$(build_board "$BIN_DIR")"
-(cd "$ROOT/tools/canon-go" && go build -o "$BIN_DIR/cockpit-daemon" ./cmd/cockpit-daemon)
+(cd "$ROOT/tools/canon-go" && go build -o "$BIN_DIR/canon-go" ./cmd/canon-go)
 
 # An empty PATH directory: no git for the boards or the daemon (a PM's machine).
 NOGIT_PATH="$BIN_DIR/empty"; mkdir -p "$NOGIT_PATH"
@@ -40,7 +40,7 @@ mkdir -p "$CANON_HOME/cockpit"; mkdir -p -m 700 "$COCKPIT_STATE_DIR"   # t-68ae:
 printf '[{"id":"aaaaaaaaaaaa","path":"%s","name":"pm-project","description":"","added":"2026-09-29"}]\n' "$PROJ" > "$CANON_HOME/cockpit/projects.json"
 # A stub agent: writes a file into its working directory, then stays alive like a live session.
 printf '#!/bin/sh\nprintf "the agent wrote this\\n" > "$PWD/agent-out.md"\nexec /bin/cat\n' > "$BIN_DIR/agent.sh"; chmod +x "$BIN_DIR/agent.sh"
-env PATH="$NOGIT_PATH" COCKPIT_TOKEN=tok COCKPIT_SPRINT_BIN="$BIN_DIR/agent.sh" COCKPIT_PROJECT_ROOT="$PROJ" "$BIN_DIR/cockpit-daemon" -addr 127.0.0.1:0 >/dev/null 2>&1 &
+env PATH="$NOGIT_PATH" COCKPIT_TOKEN=tok COCKPIT_SPRINT_BIN="$BIN_DIR/agent.sh" COCKPIT_PROJECT_ROOT="$PROJ" "$BIN_DIR/canon-go" daemon -addr 127.0.0.1:0 >/dev/null 2>&1 &
 D_PID=$!; disown "$D_PID" 2>/dev/null || true
 env PATH="$NOGIT_PATH" SPRINT_CHECK_ROOT="$PROJ" SPRINT_CHECK_NO_BROWSER=1 TMPDIR="$WORK" "$GO_BIN" "$GO_PORT" >/dev/null 2>&1 &
 GO_PID=$!; disown "$GO_PID" 2>/dev/null || true

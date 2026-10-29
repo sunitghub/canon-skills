@@ -173,7 +173,7 @@ tests=(
 # counts only if it started with exactly this run's value; one started by anything else (a developer's own
 # board, a concurrent board spec or test run) never does. Every suite has ended by the check, so any server
 # of ours still running is a leak, orphaned or not (a leaked wrapper can still be its parent).
-_server_pids() { { pgrep -f 'sprint-check-bin/sprint-check' 2>/dev/null || true; } | sort -u; }
+_server_pids() { { pgrep -f 'canon-go-bin/canon-go' 2>/dev/null || true; } | sort -u; }
 CANON_TEST_RUN="$$.$(date +%s).$RANDOM"; export CANON_TEST_RUN
 # t-f151: grep, not grep -q: under pipefail an early-exiting grep -q SIGPIPEs tr and reports a found marker as a miss (43/1000 under load).
 _ours() {   # _ours <pid>: the process started with exactly this run's CANON_TEST_RUN (an unreadable one is not ours)

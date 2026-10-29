@@ -20,7 +20,7 @@ func TestRunRefusesOpenStateDir(t *testing.T) {
 	r, w, _ := os.Pipe()
 	old := os.Stderr
 	os.Stderr = w
-	code := Run("test", "dev", []string{"-addr", "127.0.0.1:0"})
+	code := Run("test", "dev", "", []string{"-addr", "127.0.0.1:0"})
 	os.Stderr = old
 	w.Close()
 	out, _ := io.ReadAll(r)
