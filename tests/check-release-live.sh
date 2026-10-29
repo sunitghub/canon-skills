@@ -53,7 +53,7 @@ assert_eq 1 "$rc"; assert_contains "$out" "  could not read $(furl "$SITE")/inte
 publish; rm "$SITE/updated.js"; run v0.9.1
 assert_eq 1 "$rc"; assert_contains "$out" "  could not read $(furl "$SITE")/updated.js"
 
-# Usage: a bad tag, a line for another tag, a bad --wait: exit 2 before any fetch.
+# Usage: a bad tag, a line for another tag, a bad --wait or flag: exit 2 (a usage error, not 1 for a missing release).
 publish
 for args in "0.9.1" "v0.9" "xv0.9.1" "v0.9.1x" "v0.9.1 --manifest-line v0.9.0_x" "v0.9.1 --wait soon" "v0.9.1 --wait 5s" "v0.9.1 --wait x5" "v0.9.1 --wait" \
             "v0.9.1 --manifest-line" "v0.9.1 --integrity-line" "v0.9.1 --bogus"; do
@@ -71,11 +71,10 @@ start=$SECONDS; run v0.9.1 --wait 2
 assert_eq 1 "$rc"; assert_contains "$out" "is not fully published on $(furl "$SITE") after 2s"; (( SECONDS - start < 10 )) || fail "--wait 2 took $((SECONDS - start))s"
 
 # The docs that tell a maintainer, a contributor and the sprint close how a release ends name this check: renaming the script or
-# dropping the step from one of them fails here, so they cannot drift apart unnoticed.
+# dropping the step from one of them fails here, so they cannot drift apart unnoticed (release.sh's printed command: tests/release.sh).
 for doc in docs/releasing.md CONTRIBUTING.md skills/sprint/reference/complete.md; do
   grep -qF 'scripts/check-release-live.sh' "$ROOT/$doc" || fail "$doc does not name scripts/check-release-live.sh as the last release step"
 done
-grep -qF 'check-release-live.sh $tag --manifest-line' "$ROOT/scripts/release.sh" || fail "scripts/release.sh no longer prints the check as its last step"
 [[ -x "$SCRIPT" ]] || fail "the docs name $SCRIPT, which is missing or not executable"
 
 echo "check-release-live: ok"
