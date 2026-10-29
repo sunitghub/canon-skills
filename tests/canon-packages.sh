@@ -289,6 +289,19 @@ assert_contains "$out" "reinstalled"; assert_eq "packages/v1.3.0" "$(target)"; a
 [ -z "$(leftovers)" ] || fail "reinstall left $(leftovers)"; [ -f "$PK/tools/canon-go-bin/canon-go" ] || fail "the reinstalled package lost its binary"
 echo "canon-packages: --reinstall restores a changed file in the current release package byte-identical, data and other packages unchanged"
 
+# guards: --reinstall wants a tag (not latest); a git checkout is repaired with git; a program still running from the replaced copy keeps it, named
+CUR="$(tree_hash "$PK")"
+set +e; out="$(run "$C" update --reinstall --to latest 2>&1)"; code=$?; set -e
+assert_eq 2 "$code"; assert_contains "$out" "--reinstall takes a release tag"; assert_eq "$CUR" "$(tree_hash "$PK")"
+set +e; out="$(run "$ROOT/tools/canon" update --reinstall 2>&1)"; code=$?; set -e
+assert_eq 1 "$code"; assert_contains "$out" "this install is a git checkout"; assert_contains "$out" "checkout -- <file>"
+bash -c 'exec -a "$0" sleep 120' "$PK/tools/stub-running" & KP=$!; PIDS+=("$KP")
+sleep 0.5
+out="$(run "$C" update --reinstall 2>&1)" || fail "reinstall with a running program failed: $out"
+assert_contains "$out" "kept the replaced v1.3.0 package"; [ -d "$(find "$HOMEDIR/packages" -maxdepth 1 -name '.tmp-v1.3.0.old.*' | sed -n 1p)" ] || fail "the replaced package was not kept"
+kill "$KP"; wait "$KP" 2>/dev/null || true; rm -rf "$HOMEDIR"/packages/.tmp-v1.3.0.old.*
+echo "canon-packages: --reinstall refuses --to latest and a git checkout, and keeps the replaced package while a program runs from it"
+
 # pkg_install turns its tag into a folder name and a download path: a traversal or a non-release tag is refused before anything is made.
 for bad in "../../etc" "v1.0" "main" "v1.0.0/../x"; do
   set +e; ( source "$ROOT/tools/pkg-lib.sh"; pkg_install "$W/guard-home" "$bad" abc ) >/dev/null 2>&1; code=$?; set -e
