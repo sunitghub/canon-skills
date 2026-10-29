@@ -104,6 +104,15 @@ const FAKE_DAEMON_ADDR = '127.0.0.1:59999';
 // other paths are untouched. A test sets realLanding to exercise the redirect itself.
 let realLanding = false;
 test.beforeEach(async ({ context }) => {
+  // The spec runs on a copy of the real tickets, and a real `now` tag (t-0447) adds a NOW lane to every board: drop it here so
+  // lane counts and widths stay what each test expects. The NOW group's own page.route wins over this context route.
+  await context.route('**/api/tickets*', async r => {
+    if (r.request().method() !== 'GET') return r.fallback();
+    const res = await r.fetch(); let list;
+    try { list = await res.json(); } catch { return r.fulfill({ response: res }); }
+    if (Array.isArray(list)) for (const t of list) if (typeof t.tags === 'string') t.tags = t.tags.split(',').filter(x => x.trim() !== 'now').join(',');
+    return r.fulfill({ response: res, json: list });
+  });
   // t-9d93: the board's sidebar starts collapsed; most tests read it, so open it unless the URL has ?sbdefault=1.
   await context.addInitScript(() => {
     try {

@@ -7,6 +7,14 @@
   "failing": [],
   "flaky": [
     {
+      "title": "cockpit preview pane (t-b19b) > PREVIEW_SERVER_CMD shows a static run-yourself message with the exact command, no iframe",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-71c8",
+      "reason": "toContainText 'npm run dev' on #ck-preview-body failed inside two long WebKit runs on 2026-10-29 (t-71c8 full run and a 12-test rerun); --classify: passed 3/3 alone on the branch and 3/3 alone on origin/main 73f90ac7. The test clicks after a fixed waitForTimeout(100) (load-sensitive); not touched by t-71c8"
+    },
+    {
       "title": "cockpit preview pane (t-b19b) > no live session (e.g. idle Resume, pre-Start) shows a message, not an infinite \"Asking…\"",
       "browsers": [
         "webkit"
