@@ -2137,6 +2137,13 @@ cmd_github_status() {
     read -r sb def <<< "$sbout" || true
     [[ -n "$sb" ]] && stage=branch
   fi
+  # t-6f51: a send with no PR and no branch yet: when did anyone last touch the issue (a comment counts)? The board marks it
+  # stale from this. An unreadable answer is null (never stale), not a failed status: the stage above is still true.
+  local iupd=""
+  if [[ "$stage" == sent ]]; then
+    iupd="$(cd / && gh issue view "$issue" --repo "$repo" --json updatedAt --jq .updatedAt 2>/dev/null)" || iupd=""
+    [[ "$iupd" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z$ ]] || iupd=""
+  fi
   # t-c259: imported (a local eval-report.md), not closed, PR open: the card offers "Continue here" (tkt land).
   local land=false
   [[ "$pst" == OPEN && "$stage" != results-in && "$(get_field "$file" status)" == open && -f "$tdir/eval-report.md" ]] && land=true
@@ -2150,13 +2157,13 @@ cmd_github_status() {
   mirrors="$(git -C "$root" config --get-all canon.mirror 2>/dev/null || true)"
   while IFS= read -r m; do [[ -n "$m" ]] && { mj+="$sep$(json_str "$m")"; sep=,; }; done <<< "$mirrors"
   if $json; then
-    printf '{"id":%s,"issue":%s,"stage":%s,"pr":%s,"pr_state":%s,"pr_head":%s,"results_branch":%s,"branch":%s,"mirrors":[%s],"verdict":%s,"graded_head":%s,"graded_matches_pr":%s,"merged":%s,"land":%s,"close_here":%s,"landed":%s}\n' \
+    printf '{"id":%s,"issue":%s,"stage":%s,"pr":%s,"pr_state":%s,"pr_head":%s,"results_branch":%s,"branch":%s,"mirrors":[%s],"verdict":%s,"graded_head":%s,"graded_matches_pr":%s,"merged":%s,"land":%s,"close_here":%s,"landed":%s,"issue_updated":%s}\n' \
       "$(json_str "$id")" "$(json_str "$gh")" "$(json_str "$stage")" "$(json_num "$pr" null)" \
       "$([[ -n "$pst" ]] && json_str "$pst" || echo null)" "$([[ -n "$phead" ]] && json_str "$phead" || echo null)" "$branch" \
       "$([[ -n "$sb" ]] && json_str "$sb" || echo null)" "$mj" \
       "$([[ "$verdict" != - ]] && json_str "$verdict" || echo null)" "$([[ "$graded" != - ]] && json_str "$graded" || echo null)" "$match" \
       "$([[ -n "$merged" ]] && json_str "$merged" || echo null)" "$land" "$close_here" \
-      "$([[ -n "$landed" ]] && json_str "$landed" || echo null)"
+      "$([[ -n "$landed" ]] && json_str "$landed" || echo null)" "$([[ -n "$iupd" ]] && json_str "$iupd" || echo null)"
   else
     echo "$id · $gh · $stage"
     [[ -n "$pr" ]] && echo "  PR #$pr ($pst) head $phead"
@@ -2890,7 +2897,8 @@ Commands:
                             the ticket bound to it; --finish after sprint complete removes it.
   github-status <id> [--json]
                             Where a ticket sent to GitHub stands: sent, pr-open,
-                            results-ready, results-in or merged (read-only).
+                            results-ready, results-in or merged (read-only). While it is
+                            `sent`, --json also gives issue_updated (the issue's last activity).
   worktree-reset [--yes | --dry-run]
                             In a linked worktree whose PR merged: reset its tracking
                             branch to origin's default branch (fetches first; refuses

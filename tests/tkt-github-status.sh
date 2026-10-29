@@ -26,6 +26,9 @@ printf '%s\n' "$*" >> "$STUB_LOG"
 [[ "$1 $2" == "api repos/acme/app/compare/"* ]] && { cat "$STUB_W/cmp" 2>/dev/null || echo false; exit 0; }
 [[ "$1 $2" == "pr list" && " $* " == *" --head "* ]] && { cat "$STUB_W/headprs" 2>/dev/null || echo 0; exit 0; }
 [[ "$1 $2" == "pr list" ]] && { cat "$STUB_W/prs"; exit 0; }
+# t-6f51: the issue's last activity (a --jq .updatedAt answer), only asked for a send with no PR and no branch.
+[[ "$1 $2" == "issue view" && -n "${STUB_ISSUEFAIL:-}" ]] && { echo "HTTP 502: issue" >&2; exit 1; }
+[[ "$1 $2" == "issue view" ]] && { cat "$STUB_W/issue" 2>/dev/null || echo 2026-10-20T10:00:00Z; exit 0; }
 [[ "$1 $2" == "pr view" && "${STUB_CROSS:-}" == fail ]] && { echo "HTTP 502: pr view" >&2; exit 1; }
 [[ "$1 $2" == "pr view" ]] && {
   [[ "$*" =~ ^pr\ view\ [0-9]+\ --repo\ acme/app\ --json\ isCrossRepository\ --jq\ \.isCrossRepository$ ]] || { echo "bad PR question: $*" >&2; exit 9; }
@@ -107,6 +110,15 @@ printf 'evaluator-run-id: 1-1\ngraded-head: ffffffffffffffffffffffffffffffffffff
 # Merged: by GitHub's PR state, or by the ticket's merged: line.
 printf '24\tMERGED\t%s\n' "$HEAD7" > "$W/prs";  assert_eq "merged|24|MERGED|false|pass|false" "$(st)"
 printf '24\tCLOSED\t%s\n25\tOPEN\t%s\n' "$HEAD7" "$HEAD7" > "$W/prs"; assert_eq "25" "$(st | cut -d'|' -f2)"   # the open one wins
+# t-6f51: issue_updated (the board's stale rule reads it): the issue's updatedAt while the stage is sent, else null; an
+# unreadable answer is null with the stage kept. Protects: the worktree picker's stale send row.
+iu() { "$TKT" github-status "$id" --json | node -e 'const j=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write(j.stage+"|"+j.issue_updated)'; }
+: > "$W/prs"; echo 2026-10-20T10:00:00Z > "$W/issue";    assert_eq "sent|2026-10-20T10:00:00Z" "$(iu)"
+echo 'not a time' > "$W/issue";                         assert_eq "sent|null" "$(iu)"        # a bad value is never passed on
+echo 2026-10-20T10:00:00Z > "$W/issue"
+rc=0; out="$(STUB_ISSUEFAIL=1 iu)" || rc=$?;           assert_eq "sent|null" "$out"          # unreadable: null, the stage stays
+printf '24\tOPEN\t%s\n' "$HEAD7" > "$W/prs";           assert_eq "pr-open|null" "$(iu)"      # a PR: no read at all
+: > "$W/log"; st >/dev/null; grep -q '^issue view' "$W/log" && fail "issue view ran for a ticket with a PR"
 # Read-only: only a pr list call, and the ticket is unchanged.
 : > "$W/log"; before="$(cksum < "$f")"; st >/dev/null
 assert_eq "1" "$(grep -c . "$W/log")"; grep -q '^pr list --repo acme/app --state all --search Fixes #23 in:body' "$W/log" || fail "wrong gh call: $(cat "$W/log")"
