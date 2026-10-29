@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.30.1] - 2026-10-29
+
+Update with `canon update` (stop the Cockpit first), then restart the daemon (Admin's **Restart Daemon**): the board changed.
+
 ### Fixed
 - **`canon uninstall --keep-data` in the versioned layout keeps all your data** (t-cb66): every data entry of the home (`cockpit/`, `events/`, `themes/`, `settings.json`, `integrity/`, `logs/`, `.canon-track`, `.canon-cache`), not only `cockpit/`; only `packages/`, `current`, the `tools` link and the lock files go. A plain `canon uninstall` still removes the whole home.
 - `canon uninstall` in a home other than `~/.canon` with `CANON_HOME` unset now reads that home's data (its Cockpit registry, its `cockpit/`), not `~/.canon`'s.
