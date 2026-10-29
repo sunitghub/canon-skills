@@ -649,6 +649,7 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
      vague prose, uninspected generated output, or citations that do not point to changed or
      directly relevant files.
    - Proceed only when all criteria are ✓ or explicitly waived by the user.
+   - `sprint complete` also refuses when plan.md's `## Approach` changed after `sprint approve <id>` pinned it (`Approved: sha256:…`): show the user the change, then re-run `sprint approve <id>`. A ticked box with no pin only warns.
 
 6. **DECISIONS.md.** Append any durable decisions made during this sprint — non-obvious
    architectural choices, explicit tradeoffs, out-of-scope calls. One row per decision. Write

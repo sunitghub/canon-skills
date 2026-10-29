@@ -372,6 +372,46 @@ _gate_plan_signoff() {
     echo "Check the approval box in plan.md before closing."
     return 1
   fi
+  # t-0865: the box is pinned to ## Approach by `sprint approve`; a ticked box with no pin (approved before this) warns.
+  local pinned now
+  pinned="$(_acceptance_section "Sign-off" "$plan" | sed -n 's/^[[:space:]]*Approved:[[:space:]]*sha256:\([0-9a-f]*\).*/\1/p' | tail -1)"
+  if [[ -z "$pinned" ]]; then
+    echo "[sprint] WARNING: plan.md has no 'Approved: sha256:' pin, so Approach drift is unchecked; run sprint approve $id."
+    return 0
+  fi
+  now="$(_approach_digest "$plan")"
+  if [[ "$now" != "$pinned" ]]; then
+    echo "Sprint $id cannot close: plan.md's Approach changed after approval: show the user the change, then run sprint approve $id."
+    echo "Approved digest ${pinned:0:12}, now ${now:0:12} (compare ## Approach with the approved plan in git: git diff -- .tickets/$id/plan.md)."
+    return 1
+  fi
+}
+
+# _approach_digest <plan.md> — sha256 hex of ## Approach, trailing spaces trimmed (t-0865).
+_approach_digest() {
+  _acceptance_section "Approach" "$1" | sed 's/[[:space:]]*$//' \
+    | { sha256sum 2>/dev/null || shasum -a 256; } | cut -d' ' -f1
+}
+
+cmd_approve() {
+  local id="${1:-}" root plan digest stamp tmp
+  [[ -n "$id" ]] || { echo "Usage: sprint approve <ticket-id>" >&2; exit 1; }
+  root="$(project_root)"
+  plan="$root/.tickets/$id/plan.md"
+  [[ -f "$plan" ]] || { echo "sprint approve: no plan.md for $id" >&2; exit 1; }
+  grep -qE '^[[:space:]]*[-*] \[[ xX]\] Plan approved' "$plan" \
+    || { echo "sprint approve: plan.md has no '- [ ] Plan approved' box under ## Sign-off" >&2; exit 1; }
+  digest="$(_approach_digest "$plan")"
+  stamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  tmp="$(mktemp)"
+  # Tick the first approval box, drop any old pin, and write the new one right under the box.
+  awk -v line="Approved: sha256:$digest $stamp" '
+    /^##[[:space:]]/ { insign = ($0 ~ /^##[[:space:]]+Sign-off[[:space:]]*$/) }
+    insign && /^[[:space:]]*Approved:[[:space:]]*sha256:/ { next }
+    insign && !done && /^[[:space:]]*[-*] \[[ xX]\] Plan approved/ { sub(/\[ \]/, "[x]"); print; print line; done=1; next }
+    { print }' "$plan" > "$tmp" && cat "$tmp" > "$plan"
+  rm -f "$tmp"
+  echo "Approved $id: pinned ## Approach as sha256:${digest:0:12} at $stamp"
 }
 
 _gate_plan_content() {
@@ -1274,6 +1314,8 @@ Usage:
   sprint current            Show the active sprint ticket
   sprint status [--json]    Show active ticket and required sprint files; --json:
                             {"active":bool,"ticket":<tkt show --json>,"files":{name:bool}}
+  sprint approve <id>       Tick plan.md's "Plan approved" box and pin ## Approach by
+                            sha256; sprint complete refuses if Approach changes later
   sprint complete           Validate acceptance checklist and close ticket
   sprint suggest-tier [<id>]  Propose (never apply) a bugfix|normal tier from the
                             diff — structural, propose-only; the human still writes
@@ -1310,6 +1352,7 @@ main() {
     continue) cmd_continue "$@" ;;
     current) cmd_current ;;
     status) cmd_status "$@" ;;
+    approve) cmd_approve "$@" ;;
     complete) cmd_complete ;;
     suggest-tier) cmd_suggest_tier "$@" ;;
     eval-verdict) cmd_eval_verdict "$@" ;;
