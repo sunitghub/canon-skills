@@ -7,6 +7,14 @@
   "failing": [],
   "flaky": [
     {
+      "title": "Canon Cockpit \"?\" info popovers (t-576f) > it survives a card re-render while open, and keeps the reader's scroll position",
+      "browsers": [
+        "chromium"
+      ],
+      "ticket": "t-4371",
+      "reason": "failed in t-4371's full chromium run (2026-10-29, busy) and 1 of 3 solo chromium runs at load 2.8 (scrollTop 0, expected > 50); t-4371 touches no popover code"
+    },
+    {
       "title": "cockpit stale-daemon banner (t-74d6) > a tab opening a live session offers Attach with the agent locked, and both windows get the shared notice",
       "browsers": [
         "chromium"
