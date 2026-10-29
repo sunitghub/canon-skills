@@ -18328,3 +18328,148 @@ test.describe.serial('Canon Cockpit Admin > Logging (t-1bd5)', () => {
     }
   });
 });
+
+// t-0447: the NOW lane (the `now` tag) and hideable lanes. Prod paths: the board's lane placement in renderBoard (board-render.js), the
+// status drop, the 8 s loadData re-render, and /api/tickets and /api/ticket/<id>/tags over real ticket files; the lane fold is a view
+// preference in localStorage that never writes a ticket.
+test.describe('NOW lane and hidden lanes (t-0447)', () => {
+  const made = [];
+  const dir = id => path.join(PROJECT_ROOT, '.tickets', id);
+  const daysAgo = n => new Date(Date.now() - n * 86400000).toISOString().replace(/\.\d+Z$/, 'Z');
+  const write = ({ status = 'open', tags = 'now', closed = '', created = '2026-10-20T00:00:00Z', title = 'Now fixture' } = {}) => {
+    const id = newTicketId(PROJECT_ROOT);
+    fs.mkdirSync(dir(id), { recursive: true });
+    fs.writeFileSync(path.join(dir(id), 'ticket.md'), ['---', `id: ${id}`, `status: ${status}`, 'type: task', ...(tags ? [`tags: ${tags}`] : []), ...(closed ? [`closed: ${closed}`] : []), 'priority: 2', `created: ${created}`, '---', '', `# ${title}`, '', 'Body.', ''].join('\n'));
+    made.push(id);
+    return id;
+  };
+  const statusOnDisk = id => /^status: (.*)$/m.exec(fs.readFileSync(path.join(dir(id), 'ticket.md'), 'utf8'))[1];
+  test.afterEach(() => { while (made.length) removeTestTicket(PROJECT_ROOT, made.pop()); });
+  const open = async page => { await page.goto(BASE); await page.waitForLoadState('networkidle'); };
+  const cardsIn = (page, lane) => page.locator(`.column:has(.column-body[data-status="${lane}"]) .card`);
+  const ids = async loc => loc.evaluateAll(els => els.map(e => e.dataset.id));
+
+  // Protects renderBoard's lane list and placement: NOW is first and holds a tagged ticket once; the card is on the board one time.
+  test('NOW shows only with a tagged ticket, first, and the ticket is in NOW and in no other lane (t-0447)', async ({ page }) => {
+    const id = write({ status: 'open' });
+    await open(page);
+    await expect(page.locator('.column-body[data-status="now"]')).toHaveCount(1);
+    expect(await page.locator('#board .column-body').first().getAttribute('data-status')).toBe('now');
+    await expect(page.locator(`#board .card[data-id="${id}"]`)).toHaveCount(1);
+    expect(await ids(cardsIn(page, 'now'))).toContain(id);
+    expect(await ids(cardsIn(page, 'open'))).not.toContain(id);
+    // untag through the real route: the card returns to its status lane and NOW (holding nothing else) goes
+    const res = await page.request.post(`${BASE}/api/ticket/${id}/tags`, { data: { tags: [] } });
+    expect(res.ok()).toBe(true);
+    await page.reload(); await page.waitForLoadState('networkidle');
+    await expect(page.locator('.column-body[data-status="now"]')).toHaveCount(0);
+    await expect(page.locator(`#board .card[data-id="${id}"]`)).toHaveCount(1);
+    expect(await ids(cardsIn(page, 'open'))).toContain(id);
+  });
+
+  // Protects the same placement from the other side: a board with no `now` ticket has no NOW lane (the copy of the tree has none).
+  test('a board with no now-tagged ticket has no NOW lane (t-0447)', async ({ page }) => {
+    write({ status: 'open', tags: 'board' });
+    await open(page);
+    await expect(page.locator('#board .column')).toHaveCount(4);
+    await expect(page.locator('.column-body[data-status="now"]')).toHaveCount(0);
+  });
+
+  // Protects the NOW order (in progress, open, muted Done group) and the 7-day rule on the /api/tickets `closed` time.
+  test('NOW orders in progress, open, then a muted Done group; closed 8 days ago is in Done only (t-0447)', async ({ page }) => {
+    const wip = write({ status: 'in_progress' }), opn = write({ status: 'open' });
+    const recent = write({ status: 'closed', closed: daysAgo(2) }), old = write({ status: 'closed', closed: daysAgo(8), created: daysAgo(0) });   // newest created: first in Done, ahead of the 5-card cap
+    await open(page);
+    expect(await ids(cardsIn(page, 'now'))).toEqual([wip, opn, recent]);
+    await expect(page.locator('.column-body[data-status="now"] .column-subhead')).toHaveText('Done');
+    expect(await ids(page.locator('.column-body[data-status="now"] > *:is(.column-subhead, .card)'))).toEqual([wip, opn, undefined, recent]);
+    const op = el => el.evaluate(e => parseFloat(getComputedStyle(e).opacity));
+    expect(await op(page.locator(`.card[data-id="${recent}"]`))).toBeLessThan(1);
+    expect(await op(page.locator(`.card[data-id="${wip}"]`))).toBe(1);
+    await expect(page.locator(`.card[data-id="${wip}"] .card-status-chip`)).toHaveText('In progress');
+    await expect(page.locator(`.card[data-id="${opn}"] .card-status-chip`)).toHaveText('Open');
+    await expect(page.locator(`#board .card[data-id="${old}"]`)).toHaveCount(1);
+    expect(await ids(cardsIn(page, 'closed'))).toContain(old);
+    expect(await ids(cardsIn(page, 'closed'))).not.toContain(recent);
+    // the API carries `closed` for a closed ticket and omits it for an open one
+    const list = await (await page.request.get(`${BASE}/api/tickets`)).json();
+    expect(list.find(t => t.id === recent).closed).toBe(fs.readFileSync(path.join(dir(recent), 'ticket.md'), 'utf8').match(/^closed: (.*)$/m)[1]);
+    expect('closed' in list.find(t => t.id === opn)).toBe(false);
+  });
+
+  // Protects the status drop (POST /api/ticket/<id>/status) for a card that sits in NOW: it stays in NOW with the new chip, once.
+  test('dropping a NOW card on a status lane changes its status and it stays in NOW (t-0447)', async ({ page }) => {
+    const id = write({ status: 'open' });
+    await open(page);
+    await page.locator(`.card[data-id="${id}"]`).dragTo(page.locator('.column-body[data-status="in_progress"]'));
+    await expect.poll(() => statusOnDisk(id)).toBe('in_progress');
+    await expect(page.locator(`.card[data-id="${id}"] .card-status-chip`)).toHaveText('In progress');
+    await expect(page.locator(`#board .card[data-id="${id}"]`)).toHaveCount(1);
+    expect(await ids(cardsIn(page, 'now'))).toContain(id);
+    expect(await ids(cardsIn(page, 'in_progress'))).not.toContain(id);
+  });
+
+  // Protects the 8 s loadData re-render: past one tick nothing moves, vanishes or shows twice.
+  test('after a re-render nothing in NOW moves or duplicates (t-0447)', async ({ page }) => {
+    test.setTimeout(60000);
+    const a = write({ status: 'in_progress' }), b = write({ status: 'open' }), c = write({ status: 'closed', closed: daysAgo(1) });
+    let polls = 0;
+    page.on('request', q => { if (new URL(q.url()).pathname === '/api/tickets' && q.method() === 'GET') polls++; });
+    await open(page);
+    const before = await ids(page.locator('#board .card'));
+    const start = polls;
+    expect(await ids(cardsIn(page, 'now'))).toEqual([a, b, c]);
+    await expect.poll(() => polls, { timeout: 30000 }).toBeGreaterThan(start + 1);   // a poll after the first one has landed
+    await expect.poll(() => page.locator(`#board .card[data-id="${b}"]`).count()).toBe(1);
+    expect(await ids(cardsIn(page, 'now'))).toEqual([a, b, c]);
+    for (const id of [a, b, c]) expect(await page.locator(`#board .card[data-id="${id}"]`).count()).toBe(1);
+    expect(await ids(page.locator('#board .card'))).toEqual(before);
+  });
+
+  // Protects the lane fold: the eye, the strip, the saved choice across a reload, one lane always left, and no ticket written.
+  test('the eye folds a lane to a strip, a click restores it, it survives a reload, the last lane cannot be hidden (t-0447)', async ({ page }) => {
+    const id = write({ status: 'open', tags: '' });
+    const file = path.join(dir(id), 'ticket.md');
+    const text = fs.readFileSync(file, 'utf8');
+    await open(page);
+    await page.evaluate(() => localStorage.removeItem('sprint-check-hidden-lanes'));
+    await page.reload(); await page.waitForLoadState('networkidle');
+    const eye = label => page.getByRole('button', { name: `Hide ${label}`, exact: true });
+    const strip = label => page.getByRole('button', { name: `Show ${label}`, exact: true });
+    const openCount = (await page.locator('.column:has(.column-body[data-status="open"]) .column-count').textContent()).trim();
+    await eye('Open').click();
+    await expect(strip('Open')).toBeVisible();
+    await expect(page.locator('.column-body[data-status="open"]')).toHaveCount(0);
+    await expect(strip('Open')).toContainText('Open');
+    await expect(strip('Open')).toContainText(openCount);
+    // the strip is thin, inside the board, and on the same row as the next lane
+    const bw = await page.locator('#board').boundingBox(), sb = await strip('Open').boundingBox(), nb = await page.locator('.column:has(.column-body[data-status="in_progress"])').boundingBox();
+    expect(sb.width).toBeLessThan(60);
+    expect(sb.x).toBeGreaterThanOrEqual(bw.x - 1);
+    expect(sb.y).toBeLessThanOrEqual(nb.y + nb.height);
+    await page.reload(); await page.waitForLoadState('networkidle');
+    await expect(strip('Open')).toBeVisible();                              // remembered per browser
+    await strip('Open').click();
+    await expect(page.locator('.column-body[data-status="open"]')).toHaveCount(1);
+    await expect(eye('Open')).toBeEnabled();
+    for (const l of ['Open', 'In Progress', 'Done']) await eye(l).click();
+    await expect(eye('Discarded')).toBeDisabled();                           // the last shown lane stays
+    await expect(page.locator('#board .column-body')).toHaveCount(1);
+    expect(fs.readFileSync(file, 'utf8')).toBe(text);                        // a view preference: no ticket written
+  });
+
+  // Protects the fold's storage guard: a localStorage that throws for the fold's key must leave a normal board
+  // (only that key throws: other board code reads storage unguarded).
+  test('a throwing localStorage still renders every lane (t-0447)', async ({ page }) => {
+    await page.addInitScript(() => {
+      const get = Storage.prototype.getItem, set = Storage.prototype.setItem;
+      const mine = k => k === 'sprint-check-hidden-lanes';
+      Storage.prototype.getItem = function (k) { if (mine(k)) throw new Error('storage blocked'); return get.call(this, k); };
+      Storage.prototype.setItem = function (k, v) { if (mine(k)) throw new Error('storage blocked'); return set.call(this, k, v); };
+    });
+    await open(page);
+    await expect(page.locator('#board .column-body')).toHaveCount(4);
+    await page.getByRole('button', { name: 'Hide Open', exact: true }).click();    // folds for this page view, without saving
+    await expect(page.getByRole('button', { name: 'Show Open', exact: true })).toBeVisible();
+  });
+});

@@ -11,6 +11,12 @@ export const COLUMNS = [
 ];
 const STATUS_ORDER = COLUMNS.map(c => c.status);
 
+// t-0447: a ticket tagged `now` shows in this lane (first, only while it holds a card) instead of its status lane. Not in COLUMNS:
+// the sidebar counts by status, and a ticket is never "now" in the file.
+export const NOW_COLUMN = { status: 'now', label: 'NOW', cls: 'col-now' };
+export const NOW_TAG = 'now';
+export const NOW_DONE_DAYS = 7;   // a closed `now` ticket leaves NOW for Done this long after its `closed:` time
+
 // ── Mock data (fallback when server not running) ──────────────────────────
 
 const MOCK = {
@@ -213,10 +219,30 @@ export function availableDocTypes(t) {
 
 export const state = {
   tickets:[], handoff:null, git:null, selectedId:null, expandedCols: new Set(),
+  hiddenLanes: null,                            // t-0447: lanes folded to a strip, read from localStorage on first use
   boardFirstRender: true, query: '', queryMode: 'search', why: null,
   cockpitRows: new Map(), cockpitRowsKey: '',   // t-28ec: this project's live sessions by ticket id
   scratch: new Map(),                           // t-47f1: open scratch sessions (s-xxxx) — no ticket behind them
 };
+
+// t-0447: which lanes are folded to a strip is a view preference kept per browser (never in a ticket); a missing or
+// throwing localStorage just means nothing is hidden.
+const HIDDEN_LANES_KEY = 'sprint-check-hidden-lanes';
+export function hiddenLanes() {
+  if (!state.hiddenLanes) {
+    state.hiddenLanes = new Set();
+    try {
+      const v = JSON.parse(localStorage.getItem(HIDDEN_LANES_KEY) || '[]');
+      if (Array.isArray(v)) v.forEach(x => { if (typeof x === 'string') state.hiddenLanes.add(x); });
+    } catch {}
+  }
+  return state.hiddenLanes;
+}
+export function toggleHiddenLane(lane) {
+  const set = hiddenLanes();
+  if (set.has(lane)) set.delete(lane); else set.add(lane);
+  try { localStorage.setItem(HIDDEN_LANES_KEY, JSON.stringify([...set])); } catch {}
+}
 
 // ── Data layer ───────────────────────────────────────────────────────────
 

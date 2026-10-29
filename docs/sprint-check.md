@@ -107,6 +107,12 @@ Click or hover the indicator for a checklist popover. Acceptance and Sign-off re
 
 Drag any ticket card between columns to update its status. The board enforces two gates: dragging to **Done** is blocked if any acceptance criteria checkbox is unchecked (a toast explains why); dragging to **In Progress** without an acceptance doc shows an amber warning but allows the move. All other drags apply immediately.
 
+## NOW lane and hiding lanes
+
+Tag a ticket `now` (the card's **Tags** menu, or `tkt tags <id> now`) and a **NOW** lane appears first on the board (`t-0447`); with no such ticket there is no NOW lane. A `now` ticket shows in NOW and in no other lane, with a small status chip (Open, In progress). NOW lists In progress first, then Open, then a muted **Done** group of closed tickets, greyed. A closed ticket stays in NOW for 7 days after its `closed:` time, then shows in the Done lane only; untagging moves it out sooner. Canon never adds or clears the `now` tag, so closing a ticket changes nothing there. Cards keep their actions; dragging a NOW card onto a status lane changes its status as usual and it stays in NOW. The Done group keeps the lane cap (`N older`).
+
+Each lane header has an eye button (**Hide Open**, ...). It folds the lane to a thin vertical strip with its name and count; click the strip (**Show Open**) to bring it back. The choice is kept per browser, like the theme, and never changes a ticket. At least one lane always stays shown, so the last one's eye is disabled. `GET /api/tickets` carries `tags` and, for a closed ticket, `closed`.
+
 ## Attach Docs to a Ticket
 
 ![New doc dialog](../meta/screenshots/new-doc.png)

@@ -220,6 +220,27 @@ created: 2026-06-27
 	}
 }
 
+// Prod path: GET /api/tickets feeds the board's NOW lane (t-0447): `tags` picks the lane and `closed` (tkt's close marker)
+// decides when a closed ticket leaves it; an open ticket carries no `closed`.
+func TestTicketsServeClosedAndTags(t *testing.T) {
+	setupTestProject(t)
+	writeFile(t, filepath.Join(ticketsDir, "t-done", "ticket.md"), "---\nid: t-done\nstatus: closed\ntags: now,board\nclosed: 2026-10-20T08:30:00Z\n---\n# Done one\n")
+	writeFile(t, filepath.Join(ticketsDir, "t-open", "ticket.md"), "---\nid: t-open\nstatus: open\ntags: now\n---\n# Open one\n")
+	byID := map[string]ticket{}
+	for _, tk := range loadTickets("") {
+		byID[fmt.Sprint(tk["id"])] = tk
+	}
+	if got := byID["t-done"]["closed"]; got != "2026-10-20T08:30:00Z" {
+		t.Fatalf("closed = %v, want the frontmatter time", got)
+	}
+	if got := byID["t-done"]["tags"]; got != "now,board" {
+		t.Fatalf("tags = %v, want now,board", got)
+	}
+	if _, has := byID["t-open"]["closed"]; has {
+		t.Fatalf("an open ticket carries closed = %v", byID["t-open"]["closed"])
+	}
+}
+
 func TestCreateTicketDefaultsAndIDShape(t *testing.T) {
 	setupTestProject(t)
 	created := createTicket("", "", "", 2, "", false, "full", false, "", "", nil, "")

@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Added
+- The board has a **NOW** lane (t-0447): a ticket tagged `now` shows there, first, instead of in its status lane, with a status chip; In progress, then Open, then a muted Done group (a closed ticket stays 7 days after its `closed:` time, then shows in Done only). Canon never sets or clears the tag. Each lane header also has an eye button that folds the lane to a strip with its name and count; a click on the strip restores it, the choice is kept per browser, and one lane always stays shown. Board only (`docs/sprint-check.md`).
+
 ## [0.30.4] - 2026-10-29
 
 Update with `canon update` (stop the Cockpit first). No daemon restart is needed.

@@ -1,4 +1,4 @@
-import { COLLAPSE_STATUSES, COLUMNS, COL_LIMIT, SHELL_TAB, docSlug, loadData, state } from './board-core.js';
+import { COLLAPSE_STATUSES, COLUMNS, COL_LIMIT, NOW_COLUMN, NOW_DONE_DAYS, NOW_TAG, SHELL_TAB, docSlug, hiddenLanes, loadData, state, toggleHiddenLane } from './board-core.js';
 import { ticketTags, age, ciBadge, liteBadge, divergenceLine, effectiveStatus, esc, escAttr, idQueryDropped, normalizeSearch, outcomeRatio, ticketMatchesQuery, typeBadge, whyQueryFromInput, worktreePrefLine, worktreeRun } from './board-helpers.js';
 import { openModal } from './board-modal.js';
 import { tagChipsHTML } from './board-tags.js';
@@ -336,15 +336,51 @@ export function renderBoard() {
   // The 8 s poll re-renders every column; a fresh .column-body starts at 0, so keep each scroll offset (t-dba9).
   const savedScroll = {};
   board.querySelectorAll('.column-body').forEach(b => { savedScroll[b.dataset.status] = b.scrollTop; });
-  board.innerHTML = COLUMNS.map(col => {
-    const waiting = t => { const r = state.cockpitRows.get(t.id); return !!r && ckRowState(r) === 'needs-you'; };
-    const cards = tickets
-      .filter(t => effectiveStatus(t) === col.status)
-      .sort((a, b) => (col.status === 'in_progress' ? waiting(b) - waiting(a) : 0) || (b.created || '').localeCompare(a.created || ''));
-    const needsHere = col.status === 'in_progress' ? cards.filter(waiting).length : 0;
-    const limited = COLLAPSE_STATUSES.has(col.status) && !state.expandedCols.has(col.status);
-    const visible = limited ? cards.slice(0, COL_LIMIT) : cards;
+  const waiting = t => { const r = state.cockpitRows.get(t.id); return !!r && ckRowState(r) === 'needs-you'; };
+  const byNew = (a, b) => (b.created || '').localeCompare(a.created || '');
+  // t-0447: the `now` tag decides the lane; status and the closed time decide the order inside it. A closed ticket older than
+  // NOW_DONE_DAYS (or a cancelled one) is not NOW's, so it sits in its status lane. No closed time (a worktree's copy) counts as recent.
+  const inNow = t => {
+    if (!ticketTags(t).includes(NOW_TAG)) return false;
+    const st = effectiveStatus(t);
+    if (st === 'open' || st === 'in_progress') return true;
+    if (st !== 'closed') return false;
+    const at = Date.parse(t.closed);
+    return !(at < Date.now() - NOW_DONE_DAYS * 86400000);
+  };
+  const nowCards = tickets.filter(inNow);
+  const nowIds = new Set(nowCards.map(t => t.id));
+  const nowActive = [
+    ...nowCards.filter(t => effectiveStatus(t) === 'in_progress').sort((a, b) => (waiting(b) - waiting(a)) || byNew(a, b)),
+    ...nowCards.filter(t => effectiveStatus(t) === 'open').sort(byNew),
+  ];
+  const nowDone = nowCards.filter(t => effectiveStatus(t) === 'closed').sort(byNew);
+  const lanes = nowCards.length ? [NOW_COLUMN, ...COLUMNS] : COLUMNS;
+  // at least one lane stays shown: if every lane here is hidden (NOW came or went), none are
+  const folded = lanes.every(l => hiddenLanes().has(l.status)) ? new Set() : hiddenLanes();
+  const shownCount = lanes.filter(l => !folded.has(l.status)).length;
+  const eye = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/></svg>';
+  board.innerHTML = lanes.map(col => {
+    const isNow = col.status === NOW_COLUMN.status;
+    const cards = isNow ? [...nowActive, ...nowDone]
+      : tickets
+        .filter(t => effectiveStatus(t) === col.status && !nowIds.has(t.id))
+        .sort((a, b) => (col.status === 'in_progress' ? waiting(b) - waiting(a) : 0) || byNew(a, b));
+    if (folded.has(col.status)) {
+      return `
+      <div class="column column-folded ${esc(col.cls)}">
+        <button class="column-strip" type="button" data-lane="${esc(col.status)}" aria-label="Show ${esc(col.label)}" title="Show ${esc(col.label)}">
+          <span class="col-indicator"></span><span class="column-strip-name">${esc(col.label)}</span>${cards.length ? `<span class="column-count">${cards.length}</span>` : ''}
+        </button>
+      </div>`;
+    }
+    const needsHere = col.status === 'in_progress' || isNow ? cards.filter(t => effectiveStatus(t) === 'in_progress' && waiting(t)).length : 0;
+    // the cap holds the closed cards: Open and In Progress show all of theirs (NOW's Done group follows Done's rule)
+    const limited = isNow ? !state.expandedCols.has(col.status) : COLLAPSE_STATUSES.has(col.status) && !state.expandedCols.has(col.status);
+    const visible = limited ? (isNow ? [...nowActive, ...nowDone.slice(0, COL_LIMIT)] : cards.slice(0, COL_LIMIT)) : cards;
     const hidden  = cards.length - visible.length;
+    const capped  = isNow ? nowDone.length > COL_LIMIT : cards.length > COL_LIMIT;
+    const firstDone = isNow ? visible.findIndex(t => effectiveStatus(t) === 'closed') : -1;
     return `
       <div class="column ${esc(col.cls)}">
         <div class="column-header">
@@ -352,16 +388,17 @@ export function renderBoard() {
           ${needsHere ? `<span class="column-needs">${needsHere} needs you</span>` : ''}
           <span class="column-header-end">
             ${cards.length > 0 ? `<span class="column-count">${cards.length}</span>` : ''}
+            <button class="column-hide" type="button" data-lane="${esc(col.status)}" aria-label="Hide ${esc(col.label)}" title="Hide ${esc(col.label)}"${shownCount < 2 ? ' disabled' : ''}>${eye}</button>
           </span>
         </div>
         <div class="column-body" data-status="${esc(col.status)}">
           ${visible.length
-            ? visible.map((t, i) => cardHTML(t, state.boardFirstRender ? i : undefined)).join('')
+            ? visible.map((t, i) => (i === firstDone ? '<div class="column-subhead">Done</div>' : '') + cardHTML(t, state.boardFirstRender ? i : undefined, isNow)).join('')
             : '<div class="column-empty">empty</div>'}
           ${hidden > 0
             ? `<button class="col-show-more" data-status="${esc(col.status)}">${hidden} older</button>`
             : ''}
-          ${state.expandedCols.has(col.status) && cards.length > COL_LIMIT
+          ${state.expandedCols.has(col.status) && capped
             ? `<button class="col-show-more col-show-less" data-status="${esc(col.status)}">Show less ↑</button>`
             : ''}
         </div>
@@ -370,6 +407,10 @@ export function renderBoard() {
 
   state.boardFirstRender = false;
   board.querySelectorAll('.column-body').forEach(b => { b.scrollTop = savedScroll[b.dataset.status] || 0; });
+
+  board.querySelectorAll('.column-hide, .column-strip').forEach(btn => {
+    btn.addEventListener('click', () => { toggleHiddenLane(btn.dataset.lane); renderBoard(); });
+  });
 
   board.querySelectorAll('.col-show-more').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -562,6 +603,7 @@ export function renderBoard() {
   });
 
   board.querySelectorAll('.column-body').forEach(col => {
+    if (col.dataset.status === NOW_COLUMN.status) return;   // t-0447: NOW is a tag, not a status: nothing drops onto it
     col.addEventListener('dragover', e => {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
@@ -738,7 +780,9 @@ async function resumeWorking(t) {
   if (r && r.ok) openCockpit(t.id);
 }
 
-function cardHTML(t, idx) {
+const statusChipLabel = st => ({ open: 'Open', in_progress: 'In progress', closed: 'Done' })[st] || st;
+
+function cardHTML(t, idx, inNow) {
   const { ready, label, short, full, acceptanceIncomplete, acceptanceUnchecked, planIncomplete } = readiness(t);
   const animClass = (idx !== undefined) ? ' animate-in' : '';
   const animStyle = (idx !== undefined) ? ` style="--i:${idx}"` : '';
@@ -770,10 +814,11 @@ function cardHTML(t, idx) {
     startBtn = `<button class="card-start resume" data-id="${esc(t.id)}" title="Resume this sprint in the cockpit">▶ Resume</button>`;
   }
   return `
-    <div class="card${live && ckRowState(live) === 'needs-you' ? ' s-need' : ''}${animClass}" data-id="${esc(t.id)}" data-priority="${pri}" draggable="true" tabindex="0"${animStyle}>
+    <div class="card${live && ckRowState(live) === 'needs-you' ? ' s-need' : ''}${inNow && t.status === 'closed' ? ' card-now-done' : ''}${animClass}" data-id="${esc(t.id)}" data-priority="${pri}" draggable="true" tabindex="0"${animStyle}>
       ${live ? cardStateHTML(t, live) : ''}
       <div class="card-head">
         <span class="card-id">${esc(t.id)}</span>
+        ${inNow ? `<span class="card-status-chip st-${esc(effectiveStatus(t))}">${esc(statusChipLabel(effectiveStatus(t)))}</span>` : ''}
         <button class="card-menu-btn" type="button" data-id="${esc(t.id)}" aria-haspopup="menu" aria-expanded="false" aria-label="Card menu for ${esc(t.id)}" title="Copy ID, copy folder path, open">⋯</button>
         ${typeBadge(t.type)}
         ${ciBadge(t)}
