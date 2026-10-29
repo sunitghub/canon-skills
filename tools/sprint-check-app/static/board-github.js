@@ -509,7 +509,7 @@ function githubPlaceRowHTML(tab) {
   }
   return `<div class="ck-worktree-row ck-gh-row${tab.ghPick ? ' selected' : ''}" id="ck-gh-place" data-github="new" title="Sends this ticket as an issue to your repo; a Claude cloud session works it and opens a PR">
       <div class="ck-worktree-radio"></div>
-      <div class="ck-worktree-labels"><div class="ck-worktree-label">GitHub · new issue</div><div class="ck-worktree-sub">a Claude cloud session works it</div></div>
+      <div class="ck-worktree-labels"><div class="ck-worktree-label">GitHub · new issue</div><div class="ck-worktree-sub">A Cloud Agent works it</div></div>
     </div>`;
 }
 

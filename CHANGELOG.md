@@ -9,6 +9,16 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 ### Added
 - The worktree picker folds the tickets already out on GitHub into one collapsed "N tickets on GitHub" line, and a send with no PR and no issue activity for 3 days reads "no activity for N days" with a **Take back** button (the card's own dialog) (t-6f51). `tkt github-status --json` gains `issue_updated` (the issue's `updatedAt`, one `gh issue view` read, only while the stage is `sent`; `null` when unreadable). The Send panel numbers its steps when files are changed: a changed tracked file holds **Create issue** until Commit and push succeeds or "Send without these changes" is ticked; untracked files only get a note. `tkt send-issue` itself is unchanged (`docs/setup.md`).
 
+### Fixed
+- **Export .jsonl** writes your home folder as `~` in each event's `project` path (`~\work\app` on Windows), so a shared export does not carry your account name (t-71c8). The files on disk stay exact; no other field and no non-JSON line changes. Documented in `docs/sprint-check.md` and `docs/plugins.md`.
+- A danger confirm in the Cockpit (Delete the activity log, Stop, ...) shows a red `!` instead of the green one (t-71c8).
+- Delete's partial failure reads "1 file could not be removed: x" and "2 files could not be removed: x, y" (t-71c8).
+- A Model tiers save or reset that changes nothing no longer writes a `setting.changed` line (t-71c8).
+- `canon update` messages are plain sentences, not joined with em-dashes; exit codes are unchanged (t-71c8).
+- The removal command `canon uninstall` prints for a shell rc file now matches the `<install>/current/tools` PATH line as well as `<install>/tools` (t-71c8).
+- The folded lane stays at the board's right edge when few lanes show, and hidden lanes are remembered per project instead of once for the whole browser (t-0447, t-71c8). The old shared choice applies to a project until it saves its own.
+- The worktree picker's new-issue row reads "A Cloud Agent works it" (t-71c8).
+
 ## [0.30.5] - 2026-10-29
 
 Update with `canon update` (stop the Cockpit first), then restart the daemon (Admin's **Restart Daemon**): the board changed. Hidden lanes all fold into one thin lane at the end of the board, stacked top to bottom.

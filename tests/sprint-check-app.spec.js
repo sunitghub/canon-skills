@@ -9846,6 +9846,25 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
+  // Protects the worktree picker's GitHub row (githubPlaceRowHTML in board-github.js): it names a Cloud Agent, which also fits Codex and
+  // other cloud agents, not only Claude (t-71c8).
+  test('the picker\'s new-issue row says a Cloud Agent works it (t-71c8)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'wth-ca');
+    try {
+      writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN });
+      await stubWorktrees2241(page);
+      await githubDoctorReady(page);
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await expect(page.locator('#ck-worktree #ck-gh-place .ck-worktree-sub')).toHaveText('A Cloud Agent works it');
+    } finally {
+      removeTestTicket(PROJECT_ROOT, id);
+    }
+  });
+
   test('once its own worktree is selected the rail shows just that row + Change worktree (t-2241)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'wth-o');
     try {
@@ -18611,7 +18630,7 @@ test.describe('NOW lane and hidden lanes (t-0447)', () => {
   test('a throwing localStorage still renders every lane (t-0447)', async ({ page }) => {
     await page.addInitScript(() => {
       const get = Storage.prototype.getItem, set = Storage.prototype.setItem;
-      const mine = k => k === 'sprint-check-hidden-lanes';
+      const mine = k => k.startsWith('sprint-check-hidden-lanes');   // the old shared key and every per-project one (t-71c8)
       Storage.prototype.getItem = function (k) { if (mine(k)) throw new Error('storage blocked'); return get.call(this, k); };
       Storage.prototype.setItem = function (k, v) { if (mine(k)) throw new Error('storage blocked'); return set.call(this, k, v); };
     });
@@ -18619,5 +18638,81 @@ test.describe('NOW lane and hidden lanes (t-0447)', () => {
     await expect(page.locator('#board .column-body')).toHaveCount(4);
     await page.getByRole('button', { name: 'Hide Open', exact: true }).click();    // folds for this page view, without saving
     await expect(page.getByRole('button', { name: 'Show Open', exact: true })).toBeVisible();
+  });
+
+  // Protects the folded lane's place (board-lanes.css): with two lanes shown and two hidden, the one thin folded lane sits at the board's
+  // right edge, not right after the last shown lane (t-71c8; the t-0447 test only checked that it comes after them).
+  test('the folded lane is pinned to the board\'s right edge with two lanes shown and two hidden (t-71c8)', async ({ page }) => {
+    write({ status: 'open', tags: '' });
+    await page.addInitScript(() => { try { for (const k of Object.keys(localStorage)) if (k.startsWith('sprint-check-hidden-lanes')) localStorage.removeItem(k); } catch {} });
+    await open(page);
+    await page.getByRole('button', { name: 'Hide Open', exact: true }).click();
+    await page.getByRole('button', { name: 'Hide In Progress', exact: true }).click();
+    await expect(page.locator('#board .column-body')).toHaveCount(2);
+    await expect(page.locator('#board .column-folded .column-strip')).toHaveCount(2);
+    // the folded lane's right edge against the board's content edge (the board's own padding stays)
+    await expect.poll(async () => page.evaluate(() => {
+      const b = document.getElementById('board'), cs = getComputedStyle(b), r = b.getBoundingClientRect();
+      const f = document.querySelector('#board .column-folded').getBoundingClientRect();
+      return Math.abs(r.right - parseFloat(cs.paddingRight) - parseFloat(cs.borderRightWidth) - f.right);
+    })).toBeLessThanOrEqual(2);
+  });
+
+  // Protects the per-project hidden-lanes choice (board-core.js hiddenLanes/toggleHiddenLane): the key is the board's /api/git root, so a lane
+  // hidden under one root stays shown under another; the old shared key is the fallback until a root saves its own (t-71c8).
+  test('hidden lanes are kept per project root, with the old shared key as the fallback (t-71c8)', async ({ page }) => {
+    write({ status: 'open', tags: '' });
+    let root = '/tmp/t71c8-a';
+    await page.route('**/api/git*', async r => {
+      const res = await r.fetch(); const g = await res.json();
+      return r.fulfill({ response: res, json: { ...g, root } });
+    });
+    const stored = () => page.evaluate(() => Object.fromEntries(Object.keys(localStorage).filter(k => k.startsWith('sprint-check-hidden-lanes')).map(k => [k, localStorage.getItem(k)])));
+    const eye = l => page.getByRole('button', { name: `Hide ${l}`, exact: true });
+    const strip = l => page.getByRole('button', { name: `Show ${l}`, exact: true });
+    await open(page);
+    await page.evaluate(() => { for (const k of Object.keys(localStorage)) if (k.startsWith('sprint-check-hidden-lanes')) localStorage.removeItem(k); });
+    await page.reload(); await page.waitForLoadState('networkidle');
+    await eye('Open').click();
+    await expect(strip('Open')).toBeVisible();
+    expect(await stored()).toEqual({ 'sprint-check-hidden-lanes:/tmp/t71c8-a': '["open"]' });
+    root = '/tmp/t71c8-b';                                           // another project's board in the same browser
+    await page.reload(); await page.waitForLoadState('networkidle');
+    await expect(eye('Open')).toBeVisible();                         // not hidden here
+    await eye('In Progress').click();
+    await expect(strip('In Progress')).toBeVisible();
+    expect(await stored()).toEqual({ 'sprint-check-hidden-lanes:/tmp/t71c8-a': '["open"]', 'sprint-check-hidden-lanes:/tmp/t71c8-b': '["in_progress"]' });
+    root = '/tmp/t71c8-a';
+    await page.reload(); await page.waitForLoadState('networkidle');
+    await expect(strip('Open')).toBeVisible();
+    await expect(eye('In Progress')).toBeVisible();                  // the other project's choice does not leak back
+    // a root with no choice of its own starts from the old shared key
+    await page.evaluate(() => localStorage.setItem('sprint-check-hidden-lanes', '["closed"]'));
+    root = '/tmp/t71c8-c';
+    await page.reload(); await page.waitForLoadState('networkidle');
+    await expect(strip('Done')).toBeVisible();
+    await expect(eye('Open')).toBeVisible();
+  });
+});
+
+// Protects the Cockpit confirm dialog (cockpitConfirm in cockpit-core.js, shared by every confirm): a danger confirm paints its ! in the
+// theme's red, a plain confirm keeps the done colour, and the next plain confirm after a danger one is not left red (t-71c8).
+test.describe('Cockpit danger confirm icon (t-71c8)', () => {
+  test('a danger confirm shows a red ! and a plain one keeps its colour, in both themes (t-71c8)', async ({ page }) => {
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+      const color = () => page.locator('#cc-icon').evaluate(e => getComputedStyle(e).color);
+      const confirm = danger => page.evaluate(async d => { const { cockpitConfirm } = await import('/static/cockpit-core.js'); cockpitConfirm({ title: 'T', okLabel: 'Go', danger: d }); }, danger);
+      await confirm(true);
+      await expect(page.locator('#cconfirm')).toHaveClass(/show/);
+      await expect.poll(color).toBe(await themeColor(page, '--col-discarded'));
+      await page.locator('#cc-cancel').click();
+      await confirm(false);
+      await expect.poll(color).toBe(await themeColor(page, '--col-done'));
+      await page.locator('#cc-cancel').click();
+      await expect(page.locator('#cconfirm')).not.toHaveClass(/show/);
+    }
   });
 });

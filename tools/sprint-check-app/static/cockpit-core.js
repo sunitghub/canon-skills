@@ -36,6 +36,7 @@ export function cockpitConfirm(opts){
   const ok=document.getElementById('cc-ok'), cancel=document.getElementById('cc-cancel');
   ok.textContent=opts.okLabel||'OK';
   ok.className='btn '+(opts.danger?'b-danger-main':'b-primary');   // the dialog's main action
+  document.getElementById('cc-icon').classList.toggle('ci-danger',!!opts.danger);   // t-71c8: a danger confirm shows a red !
   cancel.textContent=opts.cancelLabel||'Cancel';
   cancel.style.display=opts.okOnly?'none':'';
   // optional read-only copyable command field (replaces the old prompt())

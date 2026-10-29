@@ -67,6 +67,7 @@
   /* Close-tab warning (t-0db3) — live agent session; never orphan/kill silently */
   .cmodal{width:440px;background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:22px;text-align:center}
   .cmodal .ci{width:44px;height:44px;border-radius:50%;background:var(--accent-dim);color:var(--col-done);display:grid;place-items:center;font-size:18px;margin:0 auto 12px}
+  .cmodal .ci.ci-danger{background:color-mix(in srgb,var(--col-discarded) 14%,transparent);color:var(--col-discarded)}
   .cmodal h2{font-size:16px;margin-bottom:8px}
   .cmodal p{font-size:13px;color:var(--text-body);margin-bottom:18px;line-height:1.5}
   .cmodal .cfoot{display:flex;gap:9px;justify-content:center;flex-wrap:wrap}

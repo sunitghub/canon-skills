@@ -219,20 +219,25 @@ export function availableDocTypes(t) {
 
 export const state = {
   tickets:[], handoff:null, git:null, selectedId:null, expandedCols: new Set(),
-  hiddenLanes: null,                            // t-0447: lanes folded to a strip, read from localStorage on first use
+  hiddenLanes: null, hiddenLanesKey: '',        // t-0447: lanes folded to a strip, read from localStorage on first use (per project root, t-71c8)
   boardFirstRender: true, query: '', queryMode: 'search', why: null,
   cockpitRows: new Map(), cockpitRowsKey: '',   // t-28ec: this project's live sessions by ticket id
   scratch: new Map(),                           // t-47f1: open scratch sessions (s-xxxx) — no ticket behind them
 };
 
 // t-0447: which lanes are folded to a strip is a view preference kept per browser (never in a ticket); a missing or
-// throwing localStorage just means nothing is hidden.
+// throwing localStorage just means nothing is hidden. t-71c8: one choice per project root (the board's own /api/git root), so hiding a
+// lane in one project's tab leaves every other project's board alone; the old single key every project shared is read as the
+// fallback until the project saves its own.
 const HIDDEN_LANES_KEY = 'sprint-check-hidden-lanes';
+const hiddenLanesKey = () => HIDDEN_LANES_KEY + ':' + ((state.git && state.git.root) || '');
 export function hiddenLanes() {
-  if (!state.hiddenLanes) {
+  const key = hiddenLanesKey();
+  if (!state.hiddenLanes || state.hiddenLanesKey !== key) {
     state.hiddenLanes = new Set();
+    state.hiddenLanesKey = key;
     try {
-      const v = JSON.parse(localStorage.getItem(HIDDEN_LANES_KEY) || '[]');
+      const v = JSON.parse(localStorage.getItem(key) ?? localStorage.getItem(HIDDEN_LANES_KEY) ?? '[]');
       if (Array.isArray(v)) v.forEach(x => { if (typeof x === 'string') state.hiddenLanes.add(x); });
     } catch {}
   }
@@ -241,7 +246,7 @@ export function hiddenLanes() {
 export function toggleHiddenLane(lane) {
   const set = hiddenLanes();
   if (set.has(lane)) set.delete(lane); else set.add(lane);
-  try { localStorage.setItem(HIDDEN_LANES_KEY, JSON.stringify([...set])); } catch {}
+  try { localStorage.setItem(hiddenLanesKey(), JSON.stringify([...set])); } catch {}
 }
 
 // ── Data layer ───────────────────────────────────────────────────────────
