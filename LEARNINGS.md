@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-28-2026 19:40
+learnings-sweep last run: 10-28-2026 20:42
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-29 | [t-4fbe](.tickets/t-4fbe/learnings.md) | Mutate a measurement fixture before baselining it: the first `clean` gate fixture's test discarded stderr, so the evaluator's own mutants survived and it split pass/fail on identical runs; the gate was right and the fixture wrong. A trim is also only measured if the eval can see it, so add cases for what a trim keeps before editing. | UNPROMOTED |
 | 2026-10-28 | [t-ea3a](.tickets/t-ea3a/learnings.md) | A process stays followed where a tool refuses or checks it and slips where it is only printed: the release was tool-enforced up to the tag, and the one printed-only step (the canon-site lines and badge) is the one that slipped. Run a new check against the real target before trusting it: the live site served the badge as `CANON_VERSION = "0.28.1"`, not the `v0.28.1` the first draft looked for. | UNPROMOTED |
 | 2026-10-28 | [t-d0a5](.tickets/t-d0a5/learnings.md) | Ask the environment before skipping a test that fails only there: the cloud output showed two causes, root (correct canon behaviour the tests did not expect) and macOS-only paths in a corpus (a test bug), not one "sandbox". And a test that counts lines in a shared folder races its parallel neighbours: give it a private copy. | UNPROMOTED |
 | 2026-10-28 | [t-2602](.tickets/t-2602/learnings.md) | Measure a cost-cutting rule on real data before building it: the ticket's first idea (output-only lines) saved 2% of t-41ff's mutants, while emptied quoted variables were 23%. And log a gate run only after its successor's post-snapshot, or the snapshot reports your own audit-log line as a gate write. | UNPROMOTED |
