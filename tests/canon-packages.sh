@@ -240,5 +240,12 @@ assert_eq "packages/v1.3.0" "$(target)"; [ ! -e "$HOMEDIR/.canon-track" ] || fai
 assert_eq "$DATA" "$(data_hash)"
 echo "canon-packages: --to main clones packages/main and pulls it in place; --to latest goes back; data unchanged"
 
+# pkg_install turns its tag into a folder name and a download path: a traversal or a non-release tag is refused before anything is made.
+for bad in "../../etc" "v1.0" "main" "v1.0.0/../x"; do
+  set +e; ( source "$ROOT/tools/pkg-lib.sh"; pkg_install "$W/guard-home" "$bad" abc ) >/dev/null 2>&1; code=$?; set -e
+  assert_eq 1 "$code"; [ ! -e "$W/guard-home" ] || fail "pkg_install made $W/guard-home for tag '$bad'"
+done
+echo "canon-packages: a non-release tag is refused before anything is written"
+
 assert_eq canary "$(cat "$H/canary")"; assert_eq canary "$(cat "$W/tmp/canary")"
 echo "canon-packages: ok"

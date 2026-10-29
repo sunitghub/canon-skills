@@ -95,6 +95,7 @@ pkg_install() {
   local home="$1" tag="$2" want="$3" pk="$1/packages" tmp="" zip url got top v
   PKG_ERR=""
   _pkg_fail() { PKG_ERR="$1"; [ -z "$tmp" ] || rm -rf -- "$tmp"; return 1; }
+  [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { PKG_ERR="not a release tag: $tag"; return 1; }  # the tag becomes a folder name and a download path
   [ ! -e "$pk/$tag" ] || { PKG_ERR="$pk/$tag already exists"; return 1; }
   mkdir -p "$pk" || { PKG_ERR="could not create $pk"; return 1; }
   tmp="$(mktemp -d "$pk/.tmp-$tag.XXXXXX")" || { tmp=""; PKG_ERR="could not create a temp folder in $pk"; return 1; }
