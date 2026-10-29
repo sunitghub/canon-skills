@@ -87,7 +87,7 @@ EOF
 # Refresh every project registered in the Cockpit; exit 1 if any refresh failed.
 refresh_projects() {
   local registry="${CANON_HOME:-$HOME/.canon}/cockpit/projects.json"
-  [ -f "$registry" ] || { echo "No Cockpit projects registered — nothing to refresh."; exit 0; }
+  [ -f "$registry" ] || { echo "No Cockpit projects registered. Nothing to refresh."; exit 0; }
   local failed=0 raw p outfile rc; outfile="$(mktemp)"
   # The board writes this file: pull each "path" string and undo JSON escaping (\\, \", \/).
   while IFS= read -r raw; do
@@ -123,9 +123,9 @@ update_without_git() {
       "${setref}irm $url | iex; if (\$? -and -not \$global:CanonInstallFailed) { Write-Host '==> Refreshing your projects (this can take a moment)'; & '$(cygpath -w "$SCRIPT_DIR/canon.cmd")' update --refresh-only }" </dev/null
   fi
   if _is_windows; then
-    echo "canon update: $repo isn't the installer's folder (%USERPROFILE%\\.canon) — re-run the installer to update the copy there." >&2
+    echo "canon update: $repo isn't the installer's folder (%USERPROFILE%\\.canon). Re-run the installer to update the copy there." >&2
   else
-    echo "canon update: $repo isn't a git clone — reinstall with: curl -fsSL https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.sh | bash" >&2
+    echo "canon update: $repo isn't a git clone. Reinstall with: curl -fsSL https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.sh | bash" >&2
   fi
   exit 1
 }
@@ -270,12 +270,12 @@ update_packages() {
       [ -e "$m/.git" ] || { echo "canon update: $m isn't a git clone. Nothing was changed." >&2; exit 1; }
       dirty="$(pkg_dirty "$m")"
       if [ -n "$dirty" ]; then
-        echo "canon update: $m has uncommitted changes — commit or stash them first. Nothing was changed." >&2
+        echo "canon update: $m has uncommitted changes. Commit or stash them first. Nothing was changed." >&2
         printf '%s\n' "$dirty" | sed -n '1,10s/^/  /p' >&2
         exit 1
       fi
       branch="$(git -C "$m" rev-parse --abbrev-ref HEAD)"
-      [ "$branch" = main ] || { echo "canon update: $m is on '$branch', not main — switch to main first. Nothing was changed." >&2; exit 1; }
+      [ "$branch" = main ] || { echo "canon update: $m is on '$branch', not main. Switch to main first. Nothing was changed." >&2; exit 1; }
       before="$(git -C "$m" rev-parse --short HEAD)"
       git -C "$m" pull --ff-only --quiet || { echo "canon update: $m can't fast-forward (local commits, or no upstream). Nothing was changed." >&2; exit 1; }
     else
@@ -357,7 +357,7 @@ update_cmd() {
   source "$SCRIPT_DIR/pkg-lib.sh"
   local dirty; dirty="$(pkg_dirty "$repo")"
   if [ -n "$dirty" ]; then
-    echo "canon update: $repo has uncommitted changes — commit or stash them first. Nothing was changed." >&2
+    echo "canon update: $repo has uncommitted changes. Commit or stash them first. Nothing was changed." >&2
     printf '%s\n' "$dirty" | sed -n '1,10s/^/  /p' >&2
     exit 1
   fi
@@ -374,7 +374,7 @@ update_cmd() {
       fi
     fi
   elif [ "$branch" != main ]; then
-    echo "canon update: $repo is on '$branch', not main — switch to main first. Nothing was changed." >&2; exit 1
+    echo "canon update: $repo is on '$branch', not main. Switch to main first. Nothing was changed." >&2; exit 1
   fi
   # t-50f7: the clone at the canon home (what install.sh made before the versioned layout), on a release tag or following main, clean and with
   # no work only it holds, moves into the layout. A clone anywhere else, or one with local work, is a developer's and keeps working as one.

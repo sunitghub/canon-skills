@@ -90,11 +90,11 @@ assert_eq "$(git -C "$WORK/seed" rev-parse HEAD)" "$(git -C "$INSTALL" rev-parse
 
 # Refusals: each leaves HEAD and every project untouched.
 echo wip > "$INSTALL/scratch.txt"
-refused "the install has uncommitted changes" "has uncommitted changes"
+refused "the install has uncommitted changes" "has uncommitted changes. Commit or stash them first."
 assert_contains "$out" "?? scratch.txt"
 rm "$INSTALL/scratch.txt"
 g "$INSTALL" checkout -q -b feature
-refused "the install is on another branch" "is on 'feature', not main"
+refused "the install is on another branch" "is on 'feature', not main. Switch to main first."
 g "$INSTALL" checkout -q main
 echo local > "$INSTALL/LOCAL"; git -C "$INSTALL" "${ident[@]}" add LOCAL && git -C "$INSTALL" "${ident[@]}" commit -qm local
 echo again > "$WORK/seed/NEWS"; git -C "$WORK/seed" "${ident[@]}" commit -qam news2 && git -C "$WORK/seed" push -q origin main 2>/dev/null
@@ -123,8 +123,7 @@ cp -R "$INSTALL" "$WORK/zipinstall" && rm -rf "$WORK/zipinstall/.git"
 : > "$REFRESH_LOG"
 set +e; out="$("$WORK/zipinstall/tools/canon" update 2>&1)"; code=$?; set -e
 assert_eq "1" "$code"
-assert_contains "$out" "isn't a git clone"
-assert_contains "$out" "install.sh | bash"
+assert_contains "$out" "isn't a git clone. Reinstall with: curl -fsSL https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.sh | bash"
 assert_eq "" "$(cat "$REFRESH_LOG")"
 sed -i.bak "s|\"$WORK/bad\"|\"$WORK/gone\"|" "$CANON_HOME/cockpit/projects.json"
 before="$(head_of)"
@@ -229,7 +228,7 @@ assert_eq "$(git -C "$WORK/origin.git" rev-parse --short HEAD)" "$(git -C "$WORK
 echo stray > "$WORK/inst2/stray.txt"
 echo more > "$WORK/seed/NEWS"; git -C "$WORK/seed" "${ident[@]}" commit -qam more-news && git -C "$WORK/seed" push -q origin main 2>/dev/null
 set +e; out="$("$WORK/inst2/tools/canon" update 2>&1)"; code=$?; set -e
-assert_eq "1" "$code"; assert_contains "$out" "has uncommitted changes"; assert_contains "$out" "Nothing was changed."
+assert_eq "1" "$code"; assert_contains "$out" "has uncommitted changes. Commit or stash them first."; assert_contains "$out" "Nothing was changed."
 rm -f "$WORK/inst2/stray.txt"
 # ── t-9383: the Windows exes are not committed any more. A git install on Windows keeps its old exes until the fetch has put
 # verified ones back, so a failed fetch never leaves it without a board or daemon. (Windows is faked with a stub `uname`; the
@@ -361,10 +360,10 @@ out="$("$C3" update 2>&1)"; assert_contains "$out" "canon is up to date"; assert
 good3
 echo wip > "$I3/scratch.txt"
 set +e; out="$("$C3" update --to v0.3.0 2>&1)"; code=$?; set -e
-assert_eq "1" "$code"; assert_contains "$out" "has uncommitted changes"; assert_eq "$tip3" "$(h3)"; rm "$I3/scratch.txt"
+assert_eq "1" "$code"; assert_contains "$out" "has uncommitted changes. Commit or stash them first."; assert_eq "$tip3" "$(h3)"; rm "$I3/scratch.txt"
 g "$I3" checkout -q -b feature
 set +e; out="$("$C3" update --to v0.3.0 2>&1)"; code=$?; set -e
-assert_eq "1" "$code"; assert_contains "$out" "is on 'feature', not main"; assert_eq "$tip3" "$(h3)"
+assert_eq "1" "$code"; assert_contains "$out" "is on 'feature', not main. Switch to main first."; assert_eq "$tip3" "$(h3)"
 g "$I3" checkout -q main
 
 # Pin to v0.3.0: HEAD is the tag's commit, detached; the daemon fetch and the project refresh still run.
@@ -395,6 +394,13 @@ out="$("$C3" update --to main 2>&1)"; assert_contains "$out" "canon is up to dat
 cp -R "$I3" "$WORK/zip3" && rm -rf "$WORK/zip3/.git"
 set +e; out="$("$WORK/zip3/tools/canon" update --to v0.3.0 2>&1)"; code=$?; set -e
 assert_eq "1" "$code"; assert_contains "$out" "isn't a git clone"
+# t-71c8: the update messages read as plain sentences (no em-dash joins), each asserted whole with its exit code. A reverted wording fails here.
+# Windows zip install outside the installer's folder (a stub uname fakes Windows): refused with the installer hint.
+set +e; out="$(PATH="$WSTUB:$PATH" "$WORK/zip3/tools/canon" update 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"; assert_contains "$out" "isn't the installer's folder (%USERPROFILE%\\.canon). Re-run the installer to update the copy there."
+# No registry: nothing to refresh, exit 0.
+set +e; out="$(CANON_HOME="$WORK/no-registry" "$CANON" update --refresh-only 2>&1)"; code=$?; set -e
+assert_eq "0" "$code"; assert_eq "No Cockpit projects registered. Nothing to refresh." "$out"
 # Windows zip install: the installer is re-run with the ref in CANON_REF (PowerShell cannot run here), and install.ps1 reads it.
 grep -q 'CANON_REF' "$ROOT/tools/canon" || fail "canon-update: the Windows non-git path does not pass CANON_REF to the installer"
 grep -q 'CANON_REF' "$ROOT/install.ps1" || fail "canon-update: install.ps1 ignores CANON_REF"
@@ -451,10 +457,10 @@ set +e; out="$("$C2/tools/canon" update 2>&1)"; code=$?; set -e
 assert_eq "1" "$code"; assert_contains "$out" "local commit(s) on main"; assert_contains "$out" "canon update --to main"; assert_contains "$out" "Nothing was changed."; assert_eq "$beforec" "$(hc)"
 echo wip > "$C2/scratch.txt"
 set +e; out="$("$C2/tools/canon" update 2>&1)"; code=$?; set -e
-assert_eq "1" "$code"; assert_contains "$out" "has uncommitted changes"; assert_eq "$beforec" "$(hc)"; rm "$C2/scratch.txt"
+assert_eq "1" "$code"; assert_contains "$out" "has uncommitted changes. Commit or stash them first."; assert_eq "$beforec" "$(hc)"; rm "$C2/scratch.txt"
 g "$C2" checkout -q -b feature
 set +e; out="$("$C2/tools/canon" update 2>&1)"; code=$?; set -e
-assert_eq "1" "$code"; assert_contains "$out" "is on 'feature', not main"
+assert_eq "1" "$code"; assert_contains "$out" "is on 'feature', not main. Switch to main first."
 # a detached HEAD that is not a release tag may carry commits only the reflog would keep: a plain update refuses; an explicit --to is the user's choice
 D2="$(leg legD)"; hd() { git -C "$D2" rev-parse HEAD; }
 g "$D2" checkout -q --detach; echo keepme > "$D2/keep.txt"; git -C "$D2" add keep.txt; git -C "$D2" "${ident[@]}" commit -qm "detached work"; befored="$(hd)"
@@ -494,10 +500,10 @@ set +e; out="$("$I4/tools/canon" update 2>&1)"; code=$?; set -e
 refute_contains "$out" "has uncommitted changes"
 echo wip > "$I4/scratch.txt"; tip4="$(git -C "$I4" rev-parse HEAD)"
 set +e; out="$("$I4/tools/canon" update 2>&1)"; code=$?; set -e
-assert_eq "1" "$code"; assert_contains "$out" "has uncommitted changes"; assert_contains "$out" "scratch.txt"; refute_contains "$out" "events/"; assert_eq "$tip4" "$(git -C "$I4" rev-parse HEAD)"
+assert_eq "1" "$code"; assert_contains "$out" "has uncommitted changes. Commit or stash them first."; assert_contains "$out" "scratch.txt"; refute_contains "$out" "events/"; assert_eq "$tip4" "$(git -C "$I4" rev-parse HEAD)"
 rm "$I4/scratch.txt"; echo edit >> "$I4/NEWS"
 set +e; out="$("$I4/tools/canon" update 2>&1)"; code=$?; set -e
-assert_eq "1" "$code"; assert_contains "$out" "has uncommitted changes"; assert_contains "$out" "NEWS"; assert_eq "$tip4" "$(git -C "$I4" rev-parse HEAD)"
+assert_eq "1" "$code"; assert_contains "$out" "has uncommitted changes. Commit or stash them first."; assert_contains "$out" "NEWS"; assert_eq "$tip4" "$(git -C "$I4" rev-parse HEAD)"
 # a bad value after --to latest never reaches git
 rm -f "$WORK/git.calls"; set +e; out="$(PATH="$GSTUB:$PATH" "$CA" update --to latest extra 2>&1)"; code=$?; set -e
 assert_eq "2" "$code"; [[ ! -e "$WORK/git.calls" ]] || fail "canon-update: a bad --to latest reached git: $(cat "$WORK/git.calls")"

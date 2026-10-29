@@ -335,7 +335,7 @@ print_plan() {
     if [ -n "$rc" ]; then
       echo "Shell rc lines naming $INSTALL/tools (reported, NOT edited):"
       printf '%s\n' "$rc" | sed 's/^/  /'
-      echo "  Remove with your editor, or:  sed -i.bak '\\#$INSTALL/tools#d' <file>   (macOS: sed -i '' ...)"
+      echo "  Remove with your editor, or:  sed -i.bak '\\#$INSTALL/\\(current/\\)\\{0,1\\}tools#d' <file>   (macOS: sed -i '' ...)"
     else echo "Shell rc files: no line names $INSTALL/tools."; fi
   fi
   echo ""

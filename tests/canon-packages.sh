@@ -237,8 +237,13 @@ out="$(run "$C" update 2>&1)" || fail "a plain update on main failed: $out"   # 
 assert_eq "$(git -C "$W/upstream" rev-parse HEAD)" "$(git -C "$HOMEDIR/packages/main" rev-parse HEAD)"; assert_contains "$out" "canon updated "
 echo wip > "$HOMEDIR/packages/main/scratch.txt"
 set +e; out="$(run "$C" update 2>&1)"; code=$?; set -e
-assert_eq 1 "$code"; assert_contains "$out" "has uncommitted changes"; assert_eq "packages/main" "$(target)"
+assert_eq 1 "$code"; assert_contains "$out" "has uncommitted changes. Commit or stash them first. Nothing was changed."; assert_eq "packages/main" "$(target)"
 rm "$HOMEDIR/packages/main/scratch.txt"
+# t-71c8: the packages/main clone on a branch other than main is refused with the plain-sentence message, changing nothing
+git -C "$HOMEDIR/packages/main" checkout -q -b feature
+set +e; out="$(run "$C" update 2>&1)"; code=$?; set -e
+assert_eq 1 "$code"; assert_contains "$out" "is on 'feature', not main. Switch to main first. Nothing was changed."; assert_eq "packages/main" "$(target)"
+git -C "$HOMEDIR/packages/main" checkout -q main
 out="$(run "$C" update --to latest 2>&1)" || fail "--to latest from main failed: $out"
 assert_eq "packages/v1.3.0" "$(target)"; [ ! -e "$HOMEDIR/.canon-track" ] || fail "the main marker survived --to latest"; [ -d "$HOMEDIR/packages/main/.git" ] || fail "the main clone was removed"
 assert_eq "$DATA" "$(data_hash)"

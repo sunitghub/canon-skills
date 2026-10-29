@@ -424,6 +424,20 @@ printf 'alias x=y\nexport PATH="$PATH:%s/tools"\n' "$inst" > "$h/.zshrc"; rcsum=
 run "$h" "$inst" --yes; [[ "$rc" == 0 ]] || fail "rc case failed: $out"
 assert_contains "$out" "$h/.zshrc:2:export PATH"; assert_contains "$out" "NOT edited"; assert_eq "$rcsum" "$(cksum < "$h/.zshrc")"
 
+# t-71c8: the sed the plan prints removes the PATH line in both forms (<install>/tools, and <install>/current/tools from the versioned layout)
+# and leaves an unrelated line. The printed command's own script is what runs here, on a temp rc file. Prod path: canon uninstall's plan.
+inst="$WORK/i14b"; h="$WORK/h14b"; mk_install "$inst"; mk_home "$h" "$inst"
+printf 'alias x=y\nexport PATH="$PATH:%s/tools"\nexport PATH="$PATH:%s/current/tools"\nexport PATH="$PATH:%s/toolsmith"\nexport PATH="$PATH:/other/current/tools"\n' "$inst" "$inst" "$WORK/elsewhere" > "$h/.zshrc"
+run "$h" "$inst" --yes; [[ "$rc" == 0 ]] || fail "rc hint case failed: $out"
+assert_contains "$out" "$h/.zshrc:2:"; assert_contains "$out" "$h/.zshrc:3:"
+hint="$(grep -F 'Remove with your editor, or:' <<<"$out")"
+script="${hint#*sed -i.bak \'}"; script="${script%%\' <file>*}"
+[[ "$script" == *'current/\)'* ]] || fail "the printed sed does not cover current/tools: $hint"
+sed -i.bak "$script" "$h/.zshrc"
+assert_eq 'alias x=y
+export PATH="$PATH:'"$WORK"'/elsewhere/toolsmith"
+export PATH="$PATH:/other/current/tools"' "$(cat "$h/.zshrc")"
+
 # ── Windows branch (stub uname/cygpath/powershell): PATH entry planned, the tail handed to PowerShell, the folder left for it to delete ─────────
 cat > "$STUBS/uname" <<'SH'
 #!/usr/bin/env bash
