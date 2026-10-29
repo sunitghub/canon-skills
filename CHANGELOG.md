@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Fixed
+- **A runtime folder in a single-tree install no longer makes `canon update` refuse** (t-c724). On a default install CANON_HOME is the git clone, so `cockpit/`, `events/`, `themes/`, `logs/` and the other data entries `pkg_is_data` names showed up as untracked changes. The update's clean-tree check now skips an untracked entry that `pkg_is_data` names; an edit to a tracked file or any other untracked file still refuses, changing nothing. Two tests keep it that way: every `pkg_is_data` name must be in `.gitignore`, and a board run in a scratch clone must leave `git status` empty.
+  - A machine the old updater already blocks (it runs first, so it cannot read this fix): run `printf '/<folder>/\n' >> ~/.canon/.git/info/exclude` for each folder it lists, for example `printf '/events/\n/themes/\n' >> ~/.canon/.git/info/exclude`, then `canon update`.
+
 ## [0.30.2] - 2026-10-29
 
 Update with `canon update` (stop the Cockpit first). **Restart the Cockpit daemon after updating** (Admin > **Restart Daemon**): the terminal's files are built into the daemon, so a daemon started before the update keeps the old terminal.

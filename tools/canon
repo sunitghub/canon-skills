@@ -229,7 +229,7 @@ update_packages() {
     if [ -d "$m" ]; then
       # [ -e .git ], not git -C: a home inside another repository (a dotfiles home) would answer for it
       [ -e "$m/.git" ] || { echo "canon update: $m isn't a git clone. Nothing was changed." >&2; exit 1; }
-      dirty="$(git -C "$m" status --porcelain)"
+      dirty="$(pkg_dirty "$m")"
       if [ -n "$dirty" ]; then
         echo "canon update: $m has uncommitted changes — commit or stash them first. Nothing was changed." >&2
         printf '%s\n' "$dirty" | sed -n '1,10s/^/  /p' >&2
@@ -311,7 +311,9 @@ update_cmd() {
   if ! git -C "$repo" rev-parse --git-dir >/dev/null 2>&1; then
     update_without_git "$repo" "$to"
   fi
-  local dirty; dirty="$(git -C "$repo" status --porcelain)"
+  # shellcheck source=pkg-lib.sh
+  source "$SCRIPT_DIR/pkg-lib.sh"
+  local dirty; dirty="$(pkg_dirty "$repo")"
   if [ -n "$dirty" ]; then
     echo "canon update: $repo has uncommitted changes — commit or stash them first. Nothing was changed." >&2
     printf '%s\n' "$dirty" | sed -n '1,10s/^/  /p' >&2
