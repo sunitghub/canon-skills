@@ -7,6 +7,30 @@
   "failing": [],
   "flaky": [
     {
+      "title": "cockpit in board (t-ddc8) > cross-project Sessions row (t-2d2e) > project tab keys (t-ccf5): ctrl+. then P then n reaches the active board; Esc after P cancels; lowercase p still opens Projects",
+      "browsers": [
+        "chromium"
+      ],
+      "ticket": "t-71c8",
+      "reason": "failed once in the t-71c8 full run at 7bdf842d (2026-10-29); --classify: passed 3/3 alone on the branch and 2/3 alone on origin/main 73f90ac7, so flaky before t-71c8; not touched by it"
+    },
+    {
+      "title": "session sub-tabs (t-8a2a) > a background tab's needs-you status renders in the tab strip",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-71c8",
+      "reason": "failed once in the t-71c8 full run at 7bdf842d (2026-10-29); passed on the first rerun at the same head (both browsers' reruns clean); not touched by t-71c8"
+    },
+    {
+      "title": "Logbook (t-c6bb) > the Logbook moves by its title bar, resizes from its corner and starts fresh on every open (t-c6bb)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-71c8",
+      "reason": "failed once in the t-71c8 full run at 7bdf842d (2026-10-29); passed on the first rerun at the same head (both browsers' reruns clean); not touched by t-71c8"
+    },
+    {
       "title": "cockpit preview pane (t-b19b) > PREVIEW_SERVER_CMD shows a static run-yourself message with the exact command, no iframe",
       "browsers": [
         "webkit"
