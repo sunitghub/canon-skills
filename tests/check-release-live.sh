@@ -43,13 +43,19 @@ run v0.9.1; assert_eq 1 "$rc"; assert_contains "$out" "  missing  releases.txt: 
 publish; run v0.9.1 --manifest-line "v0.9.1 $(printf 'f%.0s' {1..64}) $(printf 'b%.0s' {1..40})" --integrity-line "$IL"
 assert_eq 1 "$rc"; assert_contains "$out" "  missing  releases.txt"
 
+publish; printf '# x v0.9.1 %s\n' "$(printf 'a%.0s' {1..64})" > "$SITE/releases.txt"   # the tag mid-line is not a line for it
+run v0.9.1; assert_eq 1 "$rc"; assert_contains "$out" "  missing  releases.txt: a line for v0.9.1"
+
 # A file that cannot be read says so, never "missing".
 publish; rm "$SITE/integrity.txt"; run v0.9.1
 assert_eq 1 "$rc"; assert_contains "$out" "  could not read $(furl "$SITE")/integrity.txt"; [[ "$out" != *"missing  integrity.txt"* ]] || fail "an unreadable file read as missing: $out"
+publish; rm "$SITE/updated.js"; run v0.9.1
+assert_eq 1 "$rc"; assert_contains "$out" "  could not read $(furl "$SITE")/updated.js"
 
 # Usage: a bad tag, a line for another tag, a bad --wait: exit 2 before any fetch.
 publish
-for args in "0.9.1" "v0.9" "v0.9.1 --manifest-line v0.9.0_x" "v0.9.1 --wait soon" "v0.9.1 --bogus"; do
+for args in "0.9.1" "v0.9" "xv0.9.1" "v0.9.1x" "v0.9.1 --manifest-line v0.9.0_x" "v0.9.1 --wait soon" "v0.9.1 --wait 5s" "v0.9.1 --wait" \
+            "v0.9.1 --manifest-line" "v0.9.1 --integrity-line" "v0.9.1 --bogus"; do
   # shellcheck disable=SC2086  # the args are split on purpose
   run $args; assert_eq 2 "$rc"
 done
@@ -62,5 +68,13 @@ assert_eq 0 "$rc"; assert_contains "$out" "is live"
 publish; printf 'window.CANON_VERSION = "0.9.0";\n' > "$SITE/updated.js"
 start=$SECONDS; run v0.9.1 --wait 2
 assert_eq 1 "$rc"; assert_contains "$out" "is not fully published on $(furl "$SITE") after 2s"; (( SECONDS - start < 10 )) || fail "--wait 2 took $((SECONDS - start))s"
+
+# The docs that tell a maintainer, a contributor and the sprint close how a release ends name this check: renaming the script or
+# dropping the step from one of them fails here, so they cannot drift apart unnoticed.
+for doc in docs/releasing.md CONTRIBUTING.md skills/sprint/reference/complete.md; do
+  grep -qF 'scripts/check-release-live.sh' "$ROOT/$doc" || fail "$doc does not name scripts/check-release-live.sh as the last release step"
+done
+grep -qF 'check-release-live.sh $tag --manifest-line' "$ROOT/scripts/release.sh" || fail "scripts/release.sh no longer prints the check as its last step"
+[[ -x "$SCRIPT" ]] || fail "the docs name $SCRIPT, which is missing or not executable"
 
 echo "check-release-live: ok"
