@@ -523,6 +523,90 @@ inst="$WORK/i17"; h="$WORK/h17"; mk_install "$inst" clone; mk_home "$h" "$inst";
 run "$h" "$inst" --yes; assert_eq 0 "$rc"; b="$(digest "$inst"; digest "$h")"
 run "$h" "$inst" --yes; assert_eq 0 "$rc"; assert_contains "$out" "(none)"; assert_eq "$b" "$(digest "$inst"; digest "$h")"
 
+# ── t-cb66: the versioned layout (prod path: canon uninstall run as <home>/current/tools/canon, tools/canon-uninstall.sh's layout branches) ───
+# A home with packages/, current, the tools link and all 8 data entries (pkg_is_data). Every run pins HOME, TMPDIR, XDG_CONFIG_HOME,
+# COCKPIT_STATE_DIR and CANON_COCKPIT_PORT, and CANON_HOME (or unsets it, for a custom home); canaries outside the target must survive.
+case "$(uname -s)" in Darwin|Linux)
+DATA_NAMES=(cockpit events themes settings.json integrity logs .canon-track .canon-cache)
+mk_layout() { # <home> <HOME>: the layout home, install_path naming <home>/current as a layout install records it
+  local L="$1" hh="$2"
+  mkdir -p "$L/packages"; mk_install "$L/packages/v1.2.3"; ln -s packages/v1.2.3 "$L/current"; ln -s current/tools "$L/tools"
+  mkdir -p "$L/cockpit/changes/aa/t-x" "$L/events" "$L/themes" "$L/integrity" "$L/logs" "$L/.canon-cache"
+  echo s > "$L/cockpit/changes/aa/t-x/f"; echo '[]' > "$L/cockpit/projects.json"; echo '{"t":1}' > "$L/events/2026-10-29.jsonl"; echo dark > "$L/themes/t.css"
+  echo '{}' > "$L/settings.json"; echo x > "$L/integrity/v1.2.3.json"; echo l > "$L/logs/daemon.log"; echo main > "$L/.canon-track"; echo c > "$L/.canon-cache/k"
+  mk_home "$hh" "$L/current"
+}
+data_digest() { local d; for d in "${DATA_NAMES[@]}"; do printf '%s ' "$d"; if [ -d "$1/$d" ]; then digest "$1/$d"; else cksum < "$1/$d"; fi; done; }
+mkdir -p "$WORK/lxdg" "$WORK/lstate"; echo canary > "$WORK/lcanary"
+runL() { # <HOME> <layout home> <CANON_HOME, or - for unset> args...
+  local hh="$1" L="$2" ch="$3"; shift 3
+  local pin=(HOME="$hh" TMPDIR="$TMPDIR" XDG_CONFIG_HOME="$WORK/lxdg" COCKPIT_STATE_DIR="$WORK/lstate" CANON_COCKPIT_PORT=1 STUB_LOG="$WORK/stub.log")
+  set +e
+  if [ "$ch" = - ]; then out="$(env -u CANON_HOME "${pin[@]}" "$L/current/tools/canon" uninstall "$@" </dev/null 2>&1)"; rc=$?
+  else out="$(env "${pin[@]}" CANON_HOME="$ch" "$L/current/tools/canon" uninstall "$@" </dev/null 2>&1)"; rc=$?; fi
+  set -e
+}
+sorted_ls() { ls -A "$1" | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//'; }
+
+# --keep-data keeps every data entry byte for byte and removes packages/, current, tools and the lock files; the update lock is held while
+# the projects are cleaned (the skills.sh stub records the lock's pid)
+L="$WORK/LA/.canon"; hh="$WORK/LA"; mkdir -p "$hh"; echo canary > "$hh/canary"; mk_layout "$L" "$hh"; mkdir -p "$L/.update.lock.dead.77"; echo x > "$L/.DS_Store"
+sed -i.bak 's#^exit 0$#cat "'"$L"'/.update.lock/pid" >> "$STUB_LOG.lock" 2>/dev/null || echo none >> "$STUB_LOG.lock"; exit 0#' "$L/packages/v1.2.3/tools/skills.sh"; rm -f "$L/packages/v1.2.3/tools/skills.sh.bak"
+before="$(data_digest "$L")"; : > "$WORK/stub.log.lock"
+runL "$hh" "$L" "$L" --dry-run --keep-data; assert_eq 0 "$rc"
+assert_contains "$out" "-> DELETE packages/, current, the tools link and the update lock; KEEP the data (--keep-data): cockpit/, events/, integrity/, logs/, settings.json, themes/, .canon-cache/, .canon-track"
+runL "$hh" "$L" "$L" --yes --keep-data; [[ "$rc" == 0 ]] || fail "layout --keep-data failed ($rc): $out"
+assert_eq ".canon-cache .canon-track cockpit events integrity logs settings.json themes" "$(sorted_ls "$L")"
+assert_eq "$before" "$(data_digest "$L")"
+[[ "$(cat "$WORK/stub.log.lock")" =~ ^[0-9]+$ ]] || fail "the update lock must be held while the projects are cleaned, saw: $(cat "$WORK/stub.log.lock")"
+assert_eq canary "$(cat "$hh/canary")"
+
+# a custom home with CANON_HOME unset: the data root is the install, not ~/.canon (its Cockpit registry is read, its data kept)
+L="$WORK/LB/my canon"; hh="$WORK/hLB"; mkdir -p "$WORK/LB"; mk_layout "$L" "$hh"; mkdir -p "$WORK/pLB/.claude"
+printf '{"projects":[{"path":"%s"}]}\n' "$WORK/pLB" > "$L/cockpit/projects.json"; before="$(data_digest "$L")"
+runL "$hh" "$L" - --dry-run --keep-data; assert_eq 0 "$rc"; assert_contains "$out" "Cockpit data: $L/cockpit"; assert_contains "$out" "clean   $WORK/pLB"
+: > "$WORK/stub.log"; runL "$hh" "$L" - --yes --keep-data; [[ "$rc" == 0 ]] || fail "custom home --keep-data failed ($rc): $out"
+assert_contains "$(cat "$WORK/stub.log")" "cleaned $WORK/pLB"; assert_eq "$before" "$(data_digest "$L")"; [[ ! -e "$L/packages" && ! -L "$L/current" ]] || fail "custom home: the packages must go"
+
+# packages/ leftovers: a .tmp-migrate.* (may hold the user's files) or an unknown entry keeps the home, named, with no rm -rf hint; the
+# temps canon update sweeps do not block, unless a program still runs from one
+L="$WORK/LC/.canon"; hh="$WORK/LC"; mkdir -p "$hh"; mk_layout "$L" "$hh"
+mkdir -p "$L/packages/.tmp-migrate.ab12"; echo mine > "$L/packages/.tmp-migrate.ab12/notes.txt"; before="$(digest "$L")"
+runL "$hh" "$L" "$L" --yes; assert_eq 0 "$rc"; assert_contains "$out" "KEEP: it holds 1 item(s) canon did not put there (packages/.tmp-migrate.ab12/)"
+refute_contains "$out" "rm -rf"; assert_contains "$out" "[kept]  $L"; assert_eq mine "$(cat "$L/packages/.tmp-migrate.ab12/notes.txt")"
+rm -rf "$L/packages/.tmp-migrate.ab12"; mkdir -p "$L/packages/foo"; echo f > "$L/packages/stray.txt"
+runL "$hh" "$L" "$L" --dry-run; assert_contains "$out" "KEEP: it holds 2 item(s) canon did not put there (packages/foo/, packages/stray.txt)"; refute_contains "$out" "rm -rf"
+rm -rf "$L/packages/foo" "$L/packages/stray.txt"; mkdir -p "$L/packages/.tmp-v1.2.4.Qx" "$L/packages/.tmp-main.Qx" "$L/packages/.boot.Qx/tools"
+runL "$hh" "$L" "$L" --dry-run; assert_contains "$out" "Install folder: $L"$'\n'"  -> DELETE"
+( exec -a "$L/packages/.boot.Qx/tools/canon update" sleep 60 ) & bootpid=$!; bgpids+=("$bootpid"); sleep 0.3
+runL "$hh" "$L" "$L" --dry-run; assert_contains "$out" "KEEP: packages/.boot.Qx is in use by a running program"
+kill "$bootpid" 2>/dev/null || true; wait "$bootpid" 2>/dev/null || true
+# a plain uninstall (no --keep-data) still removes the whole home, data and temps included (unchanged default)
+runL "$hh" "$L" "$L" --yes; [[ "$rc" == 0 ]] || fail "plain layout uninstall failed ($rc): $out"
+[[ ! -e "$L" && ! -L "$L" ]] || fail "a plain uninstall must remove the whole home: $(ls -A "$L" 2>&1)"; [[ -d "$hh/.config" ]] || fail "HOME itself must stay"
+
+# the update lock: a live holder refuses before anything changes (no project cleaned); a stale one (its pid gone) is taken over; a refusal
+# after the lock was taken releases it
+L="$WORK/LD/.canon"; hh="$WORK/LD"; mkdir -p "$hh"; mk_layout "$L" "$hh"; mk_project "$WORK/pLD" "$hh"
+( exec sleep 120 ) & lockpid=$!; bgpids+=("$lockpid"); mkdir "$L/.update.lock"; echo "$lockpid" > "$L/.update.lock/pid"
+runL "$hh" "$L" "$L" --dry-run; assert_contains "$out" "BLOCKED: a canon update is running (pid $lockpid; its lock is $L/.update.lock)"
+before="$(digest "$WORK/LD")"; : > "$WORK/stub.log"
+runL "$hh" "$L" "$L" --yes; assert_eq 1 "$rc"; assert_contains "$out" "canon uninstall: another canon update is running (pid $lockpid; its lock is $L/.update.lock); let it finish, then run this again. Nothing was changed."
+assert_eq "$before" "$(digest "$WORK/LD")"; refute_contains "$(cat "$WORK/stub.log")" "skills.sh"
+kill "$lockpid" 2>/dev/null || true; wait "$lockpid" 2>/dev/null || true   # its pid is now gone: the lock is stale
+before="$(data_digest "$L")"
+runL "$hh" "$L" "$L" --yes --keep-data; [[ "$rc" == 0 ]] || fail "a stale update lock must not block ($rc): $out"
+assert_contains "$out" "took over the update lock of an update that is no longer running (pid $lockpid)"; assert_eq "$before" "$(data_digest "$L")"
+[[ ! -e "$L/.update.lock" && ! -e "$L/packages" ]] || fail "after the stale-lock run the lock and the packages must be gone"
+L="$WORK/LE/.canon"; hh="$WORK/LE"; mkdir -p "$hh"; mk_layout "$L" "$hh"
+( exec -a "$L/packages/v1.2.3/tools/fake-helper" sleep 120 ) & fhpid=$!; bgpids+=("$fhpid"); sleep 0.3
+before="$(digest "$WORK/LE")"; runL "$hh" "$L" "$L" --yes; assert_eq 1 "$rc"; assert_contains "$out" "processes are running from $L"
+[[ ! -e "$L/.update.lock" ]] || fail "a refusal after the lock was taken must release it"; assert_eq "$before" "$(digest "$WORK/LE")"
+kill "$fhpid" 2>/dev/null || true; wait "$fhpid" 2>/dev/null || true
+assert_eq canary "$(cat "$WORK/lcanary")"
+echo "canon-uninstall: layout ok (keep-data keeps all 8 data entries, custom home, packages/ leftovers, update lock, plain default)"
+;; esac
+
 # ── docs and completions list the command; the old two-step is gone ─────────────────────────────────────────────────────────────────────────
 help_out="$("$ROOT/tools/canon" --help)"; assert_contains "$help_out" "canon uninstall [--dry-run] [--yes] [--keep-data] [--force]"
 assert_contains "$("$ROOT/tools/canon" completion bash)" "update uninstall log completion"

@@ -122,7 +122,7 @@ assert_contains "$out" "canon is up to date (v1.0.0"; refute_contains "$out" "Mo
 assert_eq "$P" "$(proj_sum)"; assert_eq "$PK" "$(tree_sum "$A/packages")"; assert_eq "$DATA" "$(data_sum "$A")"; assert_eq "packages/v1.0.0" "$(readlink "$A/current")"
 echo "canon-migrate: a second update changes nothing"
 
-# ── C9, C12: canon uninstall in the layout recognises and removes the whole home, with today's --keep-data rule (prod path: canon uninstall) ──
+# ── C9, C12: canon uninstall in the layout recognises and removes the whole home; --keep-data keeps every data entry (t-cb66) (prod path: canon uninstall) ──
 U="$H/uninst me é"; old_install "$U" v1.0.0
 run "$U" "$U/tools/canon" update >/dev/null 2>&1 || fail "could not migrate the uninstall fixture"
 printf '%s\n' "$U/current" > "$H/.config/canon/install_path"; printf '[]\n' > "$U/cockpit/projects.json"
@@ -155,14 +155,15 @@ assert_not_contains "$out" "rm -rf"; assert_contains "$out" "[kept]  $U"; assert
 rm -rf "$U/notes.txt" "$U/mydir"
 mkdir -p "$W/p3/.claude"; ln -s "$U/current/skills" "$W/p3/.claude/skills"   # the run above cleaned p3; register it again for the real uninstall
 printf '%s\n' "$U/current" > "$H/.config/canon/install_path"; printf '%s\n' "$W/p3" > "$H/.config/canon/projects"
+UDATA="$(data_sum "$U")"
 out="$(run "$U" bash "$U/current/tools/canon" uninstall --yes --keep-data 2>&1)" || fail "uninstall --keep-data failed: $out"
 pid_alive "$DP" && fail "uninstall did not stop the daemon it recognised by its package path"
 wait "$DP" 2>/dev/null || true
-assert_eq "cockpit" "$(ls -A "$U")"; assert_eq "[]" "$(cat "$U/cockpit/projects.json")"
+assert_eq "cockpit events integrity logs settings.json themes" "$(ls -A "$U" | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')"; assert_eq "$UDATA" "$(data_sum "$U")"; assert_eq "[]" "$(cat "$U/cockpit/projects.json")"
 [ ! -e "$W/p3/.claude/skills" ] && [ ! -L "$W/p3/.claude/skills" ] || fail "uninstall left p3's skills link"
 grep -qF canon-managed-pre-commit-hook "$W/p3/.git/hooks/pre-commit" 2>/dev/null && fail "uninstall left p3's canon hook"
 rm -f "$W/state/daemon.json"
-echo "canon-migrate: uninstall in the layout stops the daemon run from a package and removes packages/, current and the tools link, keeping cockpit/"
+echo "canon-migrate: uninstall in the layout stops the daemon run from a package and removes packages/, current and the tools link, keeping the data"
 
 # ── C8: a failed step moves everything back (prod path: the migration's rollback) ─────────────────────────────────────────────────────────────
 if [ "$(id -u)" = 0 ]; then

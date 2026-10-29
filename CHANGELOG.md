@@ -6,6 +6,12 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Fixed
+- **`canon uninstall --keep-data` in the versioned layout keeps all your data** (t-cb66): every data entry of the home (`cockpit/`, `events/`, `themes/`, `settings.json`, `integrity/`, `logs/`, `.canon-track`, `.canon-cache`), not only `cockpit/`; only `packages/`, `current`, the `tools` link and the lock files go. A plain `canon uninstall` still removes the whole home.
+- `canon uninstall` in a home other than `~/.canon` with `CANON_HOME` unset now reads that home's data (its Cockpit registry, its `cockpit/`), not `~/.canon`'s.
+- `canon uninstall` keeps the home, naming what it found, when `packages/` holds a `.tmp-migrate.*` folder (it may hold your files) or an entry canon did not put there, and takes the update lock, so it refuses while `canon update` runs.
+- The integrity check (Admin > Integrity, and `sprint complete`'s gate) reads `.canon-track` from the home in the versioned layout, so `packages/main` shows as the main track instead of "not exactly at vX".
+
 ## [0.30.0] - 2026-10-29
 
 **Restart the Cockpit daemon after updating** (Admin > **Restart Daemon**, or `canon stop` then `canon`): a daemon started before the update keeps running the old program, and the Cockpit shows it as out of date until it restarts.

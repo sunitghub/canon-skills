@@ -7,14 +7,15 @@
 # only, never by name); any OTHER process started from the install folder blocks the run. `skills.sh uninstall` does the per-project work (hooks,
 # symlinks, imports, registrations); this script adds the Cockpit stop, the data, runtime-state and install-folder removal, empty .claude/.agents
 # folders, and on Windows the user PATH entry (tools/canon-uninstall.ps1, run detached after this process exits). Shell rc lines are reported, never
-# edited (t-f01d).
+# edited (t-f01d). In the versioned layout (t-50f7, t-cb66) it holds the update lock (pkg-lib.sh pkg_lock) while it deletes, so it refuses while an
+# update runs, and --keep-data keeps every data entry of the home (pkg_is_data).
 #
 # Usage: canon uninstall [--dry-run] [--yes] [--keep-data] [--force]
 # Exit: 0 done / dry-run / nothing to do, 1 refused or failed, 2 usage or no terminal and no --yes.
 set -euo pipefail
 
 # Bumped on every change to this command, and shown in the plan and --help, so a stale copy of the script is obvious on a machine that was updated by hand.
-UNINSTALL_REV=12
+UNINSTALL_REV=13
 SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 INSTALL="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 # t-50f7: run from a package of the versioned layout, the install is the whole home (packages/, current, the tools compat link, the data):
@@ -28,7 +29,7 @@ source "$SCRIPT_DIR/platform-lib.sh"
 # shellcheck source=cockpit-stop-lib.sh
 source "$SCRIPT_DIR/cockpit-stop-lib.sh"
 # shellcheck source=pkg-lib.sh
-source "$SCRIPT_DIR/pkg-lib.sh"   # pkg_is_data: what the home may hold besides the packages
+source "$SCRIPT_DIR/pkg-lib.sh"   # pkg_is_data: what the home may hold besides the packages; pkg_lock, pkg_in_use
 
 usage() {
   echo "canon uninstall — remove canon from this machine   [uninstall rev $UNINSTALL_REV]"
@@ -38,13 +39,17 @@ Usage: canon uninstall [--dry-run] [--yes] [--keep-data] [--force]
 
   --dry-run    Print what would be removed and change nothing
   --yes        Skip the confirmation prompt (never overrides a refusal)
-  --keep-data  Keep the Cockpit data (~/.canon/cockpit: project registrations and the
-               restore snapshots of projects without git) and the skills registrations
+  --keep-data  Keep the data and the skills registrations. In the versioned layout (packages/,
+               current) that is every data entry of the home: cockpit/ (project registrations and the
+               restore snapshots of projects without git), events/, themes/, settings.json, integrity/,
+               logs/, .canon-track and .canon-cache; only packages/, current, the tools link and the
+               update lock go. Otherwise it is the Cockpit data (<data root>/cockpit).
   --force      Also end live agent sessions (without it, running sessions make the uninstall refuse)
 
 With no terminal and no --yes it prints the plan and exits 2 without changing anything.
 It stops this install's Cockpit board and daemon itself (found by their recorded pid or port and
-verified against this install; never by name). Anything else running from the install folder still blocks it.
+verified against this install; never by name). Anything else running from the install folder still blocks it,
+and in the versioned layout so does a running canon update (it takes the same update lock).
 EOF
 }
 
@@ -64,7 +69,8 @@ done
 [ -n "${HOME:-}" ] && [ -d "$HOME" ] || { echo "canon uninstall: HOME is not set to an existing folder." >&2; exit 1; }
 HOME_P="$(cd "$HOME" && pwd -P)"
 CONFIG_DIR="$HOME/.config/canon"
-DATA_ROOT="${CANON_HOME:-$HOME/.canon}"
+# t-cb66: in the layout the data lives in the home this install is (a custom home with CANON_HOME unset is not ~/.canon)
+if [ "$LAYOUT" = 1 ]; then DATA_ROOT="$INSTALL"; else DATA_ROOT="${CANON_HOME:-$HOME/.canon}"; fi
 DATA_DIR="$DATA_ROOT/cockpit"
 PORT="${CANON_COCKPIT_PORT:-8899}"
 
@@ -133,10 +139,29 @@ install_verdict() {
       k=$((k + 1)); [ -d "$e" ] && [ ! -L "$e" ] && n="$n/"
       [ "$k" -gt 3 ] || unknown="$unknown${unknown:+, }$n"
     done
+    # t-cb66: packages/ holds the packages (a release name, main) and the temps an interrupted update or install leaves, which canon update
+    # sweeps (pkg_sweep); a .tmp-migrate.* (an interrupted move into the layout may have left the user's files there) or anything else keeps
+    # the home. A temp some program still runs from (an installer's bootstrap clone) keeps it too, as pkg_sweep skips it.
+    local busy="" re='^v[0-9]+\.[0-9]+\.[0-9]+$'
+    for e in "$INSTALL"/packages/* "$INSTALL"/packages/.[!.]* "$INSTALL"/packages/..?*; do
+      [ -e "$e" ] || [ -L "$e" ] || continue
+      n="$(basename "$e")"
+      if [ -d "$e" ] && [ ! -L "$e" ]; then
+        case "$n" in
+          main) continue ;;
+          .tmp-v*|.tmp-main.*|.boot.*) pkg_in_use "$e" && busy="${busy:-packages/$n}"; continue ;;
+        esac
+        [[ ! "$n" =~ $re ]] || continue
+        n="$n/"
+      elif [ "$n" = .DS_Store ]; then continue
+      fi
+      k=$((k + 1)); [ "$k" -gt 3 ] || unknown="$unknown${unknown:+, }packages/$n"
+    done
     if [ "$k" -gt 0 ]; then
       [ "$k" -le 3 ] || unknown="$unknown, ..."
       VERDICT_HOLDS_USER_FILES=1; VERDICT_WHY="it holds $k item(s) canon did not put there ($unknown); move them out of $INSTALL, then run this again"; return 0
     fi
+    if [ -n "$busy" ]; then VERDICT_WHY="$busy is in use by a running program (an install or update in progress); run this again when it has finished"; return 0; fi
     for c in "$INSTALL"/packages/*; do
       [ -e "$c/.git" ] || continue
       clone_verdict "$c" "the git clone packages/$(basename "$c")" || return 0
@@ -225,6 +250,22 @@ have_data=0; [ -d "$DATA_DIR" ] && have_data=1
 n_snapshots=0
 [ "$have_data" = 0 ] || [ ! -d "$DATA_DIR/changes" ] || n_snapshots="$(find "$DATA_DIR/changes" -mindepth 2 -maxdepth 2 -type d 2>/dev/null | wc -l | tr -d ' ')"
 data_inside=0; keep_top=cockpit; case "$DATA_DIR" in "$INSTALL"/*) data_inside=1; keep_top="${DATA_DIR#"$INSTALL"/}"; keep_top="${keep_top%%/*}" ;; esac
+# t-cb66: in the layout --keep-data keeps every data entry of the home (pkg_is_data), not only keep_top. Windows has no layout, so its
+# keep_top hand-over to canon-uninstall.ps1 (and Git Bash's single-tree path) is unchanged.
+keep_names=""
+if [ "$LAYOUT" = 1 ]; then
+  for e in "$INSTALL"/* "$INSTALL"/.[!.]* "$INSTALL"/..?*; do
+    [ -e "$e" ] || [ -L "$e" ] || continue
+    n="$(basename "$e")"; pkg_is_data "$n" || continue
+    [ ! -d "$e" ] || [ -L "$e" ] || n="$n/"
+    keep_names="$keep_names${keep_names:+, }$n"
+  done
+fi
+# the live pid holding the update lock, when it is not this command (which holds it itself after the confirmation)
+lock_holder() {
+  local p; p="$(cat "$INSTALL/.update.lock/pid" 2>/dev/null)" || p=""
+  if [ -n "$p" ] && [ "$p" != "$$" ] && _pkg_alive "$p"; then printf '%s\n' "$p"; fi
+}
 # The Cockpit board and daemon of THIS install are stopped by the command itself (cockpit-stop-lib.sh); anything else running from the install
 # folder still blocks it. A board that answers but cannot be identified as ours (another install, no lsof/ss) keeps the old refusal.
 # (a function, not an inline case: bash 3.2 mis-parses `case ... )` inside $( ))
@@ -250,6 +291,10 @@ probe_all() {
   if [ "$BOARD_STATUS" = unknown ]; then
     blockers="$blockers""something answers on port $PORT but it cannot be identified as this install's Cockpit board; close its window (the terminal running 'canon') and run this again."$'\n'
   fi
+  local lh; [ "$LAYOUT" != 1 ] || lh="$(lock_holder)" || lh=""
+  if [ -n "${lh:-}" ]; then
+    blockers="$blockers""a canon update is running (pid $lh; its lock is $INSTALL/.update.lock); let it finish, then run this again."$'\n'
+  fi
 }
 probe_all
 
@@ -258,7 +303,8 @@ print_plan() {
   echo ""
   echo "Install folder: $INSTALL"
   if [ "$VERDICT" = ok ]; then
-    if [ "$keep" = 1 ] && [ "$data_inside" = 1 ]; then echo "  -> DELETE everything in it except $keep_top/ (kept: --keep-data)"
+    if [ "$keep" = 1 ] && [ "$LAYOUT" = 1 ]; then echo "  -> DELETE packages/, current, the tools link and the update lock; KEEP the data (--keep-data): ${keep_names:-none}"
+    elif [ "$keep" = 1 ] && [ "$data_inside" = 1 ]; then echo "  -> DELETE everything in it except $keep_top/ (kept: --keep-data)"
     else echo "  -> DELETE"; fi
   else
     echo "  -> KEEP: $VERDICT_WHY"
@@ -319,6 +365,15 @@ if [ "$yes" != 1 ]; then
   fi
 fi
 
+# t-cb66: in the layout hold the update lock (as canon update does) from here to the end, so no update writes the home while it is deleted.
+# A live holder refuses before anything changes; a stale one (its pid is gone) is taken over. Every exit releases it (the trap; the default
+# run deletes it with the home, last).
+if [ "$LAYOUT" = 1 ]; then
+  pkg_lock "$INSTALL" || { echo "canon uninstall: $PKG_ERR; let it finish, then run this again. Nothing was changed." >&2; exit 1; }
+  trap 'pkg_unlock' EXIT
+  [ -z "$PKG_NOTE" ] || echo "canon uninstall: $PKG_NOTE."
+  [ "$VERDICT" != ok ] || install_verdict   # an update may have changed the home before the lock: decide again (a KEEP never becomes a DELETE)
+fi
 probe_all   # the world may have changed while the prompt was open (a new session, a process gone): decide again on what is true now
 echo ""
 echo "Working... (nothing below is undone by closing this window; each step prints when it finishes)"
@@ -422,6 +477,19 @@ elif _is_windows; then
   ps_keep=0; [ "$keep" = 1 ] && [ "$data_inside" = 1 ] && ps_keep=1
   exec "${CANON_UNINSTALL_POWERSHELL:-powershell.exe}" -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "$tmpd/canon-uninstall.ps1")" \
     -InstallDir "$(cygpath -w "$INSTALL")" -ToolsEntry "$(windows_path_entry)" -KeepCockpit "$ps_keep" -KeepName "$keep_top" -LogFile "$(cygpath -w "$tmpd/canon-uninstall.log")"
+elif [ "$LAYOUT" = 1 ]; then
+  # t-cb66: everything but the update lock (and, with --keep-data, the data) first, so no update starts on a half-deleted home; the lock last
+  lfail=0
+  for e in "$INSTALL"/* "$INSTALL"/.[!.]* "$INSTALL"/..?*; do
+    [ -e "$e" ] || [ -L "$e" ] || continue
+    n="$(basename "$e")"
+    [ "$n" != .update.lock ] || continue
+    if [ "$keep" = 1 ] && pkg_is_data "$n"; then continue; fi
+    rm -rf -- "$e" || lfail=1
+  done
+  if [ "$lfail" = 1 ]; then echo "  [fail]  could not clear $INSTALL" >&2; failed=1
+  elif [ "$keep" = 1 ]; then pkg_unlock; echo "  [removed]  packages/, current, the tools link and the update lock; kept the data: ${keep_names:-none}"
+  else rm -rf -- "$INSTALL" && echo "  [removed]  $INSTALL" || { echo "  [fail]  could not remove $INSTALL" >&2; failed=1; }; fi
 else
   if [ "$keep" = 1 ] && [ "$data_inside" = 1 ]; then
     find "$INSTALL" -mindepth 1 -maxdepth 1 ! -name "$keep_top" -exec rm -rf -- {} + && echo "  [removed]  everything in $INSTALL except $keep_top/" || { echo "  [fail]  could not clear $INSTALL" >&2; failed=1; }
