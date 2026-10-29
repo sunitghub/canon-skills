@@ -16,7 +16,8 @@ bad=""
 while IFS= read -r f; do
   [[ "$f" == "$SELF" || ! -f "$ROOT/$f" ]] && continue
   if [[ "$f" != *.sh ]]; then
-    head -1 "$ROOT/$f" | grep -qE '^#!.*\b(ba)?sh\b' || continue
+    IFS= read -r first < "$ROOT/$f" || true
+    [[ "$first" =~ ^\#!.*(/|[[:space:]])(ba)?sh([[:space:]]|$) ]] || continue
   fi
   hits="$(awk -v file="$f" '/^[[:space:]]*#/ { next } /(^|[^[:alnum:]_])(source|\.)[[:space:]]+<\(/ { print file ":" NR ": " $0 }' "$ROOT/$f")"
   [[ -n "$hits" ]] && bad+="$hits"$'\n'
