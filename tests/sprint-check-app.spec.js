@@ -17706,6 +17706,83 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#ck-gh-create')).toBeEnabled();
   });
 
+  // ── t-3741: Commit and push never ticks a file an agent may still be writing ──
+  // Prod path for the four tests below: showCommitPush (static/board-github.js), the Send panel's Commit and push form, fed by
+  // tkt commit-push --dry-run's "file:" and "mtime:" lines; the sessions come from /api/cockpit-sessions like the rail's.
+  const SESSION_ID = 't-9z41';   // a Cockpit session needs a t-xxxx id; it is never opened, so no ticket file backs it
+  const sessionRow = project => ({ session: 's1', ticket: SESSION_ID, project_root: project, cwd: project, agent: 'claude', status: 'running', state: 'working', started: '2026-10-29T00:00:00Z' });
+  async function commitPushForm(page, id, { sessions, files }) {
+    await page.route('**/api/cockpit-sessions', r => json(r, sessions));
+    await sendPanel(page, id, { preview: () => ({ ok: true, exit_code: 0, output: DIRTY }), files });
+    await page.locator('#ck-gh-cp-open').click();
+    await expect(page.locator('#ck-gh-cp-files')).toBeVisible();
+  }
+  const nowS = () => Math.floor(Date.now() / 1000);
+
+  test('a live session in this checkout shows the red note and starts every file unticked; an empty selection still posts nothing (t-3741)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh71');
+    ghTicket(id);
+    const posts = [];
+    await page.route(`**/api/ticket/${id}/github/commit-push`, r => { posts.push(JSON.parse(r.request().postData() || '{}')); return json(r, { ok: true, exit_code: 0, output: 'commit-push: pushed' }); });
+    await commitPushForm(page, id, { sessions: [sessionRow(PROJECT_ROOT)], files: `file:  M src/app.js\nmtime: ${nowS() - 4000} src/app.js\nfile:  M src/old.js\nfile: ?? notes.txt` });
+    await expect(page.locator('#ck-gh-cp-busy')).toContainText('An agent session is working in this checkout');
+    const boxes = page.locator('#ck-gh-cp-files input[type=checkbox]');
+    await expect(boxes).toHaveCount(3);
+    for (let i = 0; i < 3; i++) await expect(boxes.nth(i)).not.toBeChecked();   // even a tracked file last written an hour ago
+    await page.locator('#ck-gh-cp-go').click();
+    await expect(page.locator('#gh-dialog-body')).toHaveText('Pushes main to origin. Never forced.');
+    await page.locator('#gh-dialog-ok').click();
+    await expect.poll(() => posts.length).toBe(1);
+    expect(posts[0]).toEqual({});   // nothing ticked: no files, no commit
+  });
+
+  test('with no live session, old tracked files start ticked, untracked stay unticked, and there is no note (t-3741)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh72');
+    ghTicket(id);
+    await commitPushForm(page, id, { sessions: [], files: `file:  M src/app.js\nmtime: ${nowS() - 3600} src/app.js\nfile:  M src/nomtime.js\nfile: ?? notes.txt\nmtime: ${nowS() - 3600} notes.txt` });
+    await expect(page.locator('#ck-gh-cp-busy')).toHaveCount(0);
+    const boxes = page.locator('#ck-gh-cp-files input[type=checkbox]');
+    await expect(boxes).toHaveCount(3);
+    await expect(boxes.nth(0)).toBeChecked();
+    await expect(boxes.nth(1)).toBeChecked();      // an older tkt sends no mtime lines: as before
+    await expect(boxes.nth(2)).not.toBeChecked();
+    await expect(page.locator('.ck-gh-cp-ago')).toHaveCount(0);
+  });
+
+  test('a tracked file written in the last 5 minutes starts unticked with a "changed ... ago" label, with no session (t-3741)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh73');
+    ghTicket(id);
+    await commitPushForm(page, id, { sessions: [], files: `file:  M a.js\nmtime: ${nowS() - 20} a.js\nfile:  M b.js\nmtime: ${nowS() - 150} b.js\nfile:  M c.js\nmtime: ${nowS() - 400} c.js` });
+    await expect(page.locator('#ck-gh-cp-busy')).toHaveCount(0);
+    const boxes = page.locator('#ck-gh-cp-files input[type=checkbox]');
+    await expect(boxes.nth(0)).not.toBeChecked();
+    await expect(boxes.nth(1)).not.toBeChecked();
+    await expect(boxes.nth(2)).toBeChecked();   // 400 s ago is past the 5 minutes
+    await expect(page.locator('#ck-gh-cp-files li').nth(0).locator('.ck-gh-cp-ago')).toHaveText(/^changed (1?\d|2\d)s ago$/);
+    await expect(page.locator('#ck-gh-cp-files li').nth(1).locator('.ck-gh-cp-ago')).toHaveText('changed 2m ago');
+    await expect(page.locator('#ck-gh-cp-files li').nth(2).locator('.ck-gh-cp-ago')).toHaveCount(0);
+  });
+
+  test('an agent working outside the Cockpit on this ticket (t.working) counts as a live session (t-3741)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh75');
+    ghTicket(id);
+    await commitPushForm(page, id, { sessions: [], files: `file:  M src/app.js\nmtime: ${nowS() - 3600} src/app.js` });
+    await expect(page.locator('#ck-gh-cp-files input[type=checkbox]').nth(0)).toBeChecked();
+    await page.evaluate(async tid => { (await import('/static/board-core.js')).state.tickets.find(x => x.id === tid).working = { by: 'claude', age_s: 5, here: true }; }, id);
+    await page.locator('#ck-gh-cp-cancel').click();
+    await page.locator('#ck-gh-cp-open').click();
+    await expect(page.locator('#ck-gh-cp-busy')).toBeVisible();
+    await expect(page.locator('#ck-gh-cp-files input[type=checkbox]').nth(0)).not.toBeChecked();
+  });
+
+  test('a live session in another project does not count: no note, changed files start ticked (t-3741)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh74');
+    ghTicket(id);
+    await commitPushForm(page, id, { sessions: [sessionRow('/tmp/another-project')], files: `file:  M src/app.js\nmtime: ${nowS() - 3600} src/app.js` });
+    await expect(page.locator('#ck-gh-cp-busy')).toHaveCount(0);
+    await expect(page.locator('#ck-gh-cp-files input[type=checkbox]').nth(0)).toBeChecked();
+  });
+
   test('unpushed commits still refuse the send and show no steps (t-6f51)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gh64');
     ghTicket(id);

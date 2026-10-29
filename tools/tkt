@@ -2341,7 +2341,12 @@ cmd_commit_push() {
   if $dry; then
     echo "commit-push: $id in $wt"
     if $new; then echo "branch: $b -> origin/$b (new on origin)"; else echo "branch: $b -> origin/$b ($ahead commit(s) to push)"; fi
-    [[ -z "$list" ]] || printf '%s\n' "$list" | while IFS=$'\t' read -r xy p; do printf 'file: %s %s\n' "$xy" "$p"; done
+    [[ -z "$list" ]] || printf '%s\n' "$list" | while IFS=$'\t' read -r xy p; do
+      printf 'file: %s %s\n' "$xy" "$p"
+      # t-3741: when the file was last written (epoch seconds), so the form can leave a file changed moments ago unticked. GNU stat -c, BSD stat -f.
+      m="$(stat -c %Y -- "$wt/$p" 2>/dev/null || stat -f %m -- "$wt/$p" 2>/dev/null)" || m=""
+      if [[ "$m" =~ ^[0-9]+$ ]]; then printf 'mtime: %s %s\n' "$m" "$p"; fi
+    done
     return 0
   fi
   local f paths

@@ -168,7 +168,7 @@ After you change the setup script, start a new session: one that is already open
    could read the ticket's notes.
    The cloud session works from GitHub, not from your machine: commits that are on no branch of `origin` are
    refused (push first, or add `--allow-unpushed` in a terminal; for an in-progress ticket bound to a worktree it is that worktree's commits that count), and uncommitted or untracked changes get a warning. In either case the board's Send panel offers **Commit and push…**:
-   it lists the changed files (untracked ones unticked), and after a confirm that names the files and the branch it runs
+   it lists the changed files (untracked ones unticked; so is any file written in the last 5 minutes, marked "changed 20s ago", and every file when an agent session is working in this project, under a red note, since those files may be its work in progress), and after a confirm that names the files and the branch it runs
    `tkt commit-push <id> --file <path>... --message <text>`, which commits exactly those files and pushes the branch to
    `origin` (never forced; `-u` for a branch origin does not have; refused when origin has commits you lack). When files are changed the panel numbers the steps (Step 1: Commit and push, Step 2: Create issue): a changed tracked file keeps **Create issue** disabled until the push succeeds or you tick "Send without these changes (the cloud will not see them)"; files that are only untracked get a one-line note and do not block. Unpushed commits still refuse. A ticket you planned here is
    `in_progress`; it can still be sent once no session is working on it, and it goes back to `open` as it leaves. The

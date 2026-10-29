@@ -7,6 +7,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 ## [Unreleased]
 
 ### Added
+- The Send panel's **Commit and push…** no longer ticks files an agent may still be writing (t-3741). With a live agent session in the project (a Cockpit session, or an agent working outside it on this ticket), a red note says so and every file starts unticked; a file written in the last 5 minutes starts unticked with a "changed 20s ago" label, session or not. Nothing else changes: untracked files stay unticked and an empty selection commits nothing. `tkt commit-push <id> --dry-run` adds a `mtime: <epoch seconds> <path>` line after each `file:` line (omitted for a file that is gone); the `file:` lines are unchanged. Documented in `docs/setup.md`.
 - The worktree picker folds the tickets already out on GitHub into one collapsed "N tickets on GitHub" line, and a send with no PR and no issue activity for 3 days reads "no activity for N days" with a **Take back** button (the card's own dialog) (t-6f51). `tkt github-status --json` gains `issue_updated` (the issue's `updatedAt`, one `gh issue view` read, only while the stage is `sent`; `null` when unreadable). The Send panel numbers its steps when files are changed: a changed tracked file holds **Create issue** until Commit and push succeeds or "Send without these changes" is ticked; untracked files only get a note. `tkt send-issue` itself is unchanged (`docs/setup.md`).
 
 ### Fixed

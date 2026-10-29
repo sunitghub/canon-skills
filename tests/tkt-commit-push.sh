@@ -40,6 +40,14 @@ done
 [[ "$out" != *".tickets/$other/"* ]] || fail "the dry run listed another ticket's file: $out"
 assert_eq "$before" "$(sig)"
 
+# t-3741: each listed file also gets "mtime: <epoch seconds> <path>" (what the board's form reads to leave a file changed moments ago
+# unticked); the file: lines above are unchanged.
+touch -t 202001020304.00 a.txt; out="$("$TKT" commit-push "$id" --dry-run)"
+want="$(date -j -f '%Y%m%d%H%M%S' 20200102030400 +%s 2>/dev/null || date -d '2020-01-02 03:04:00' +%s)"
+grep -qxF "mtime: $want a.txt" <<< "$out" || fail "the dry run lacks a.txt's mtime ($want): $out"
+grep -qE '^mtime: [0-9]+ newdir/one.txt$' <<< "$out" || fail "an untracked file has no mtime line: $out"
+assert_eq "$before" "$(sig)"
+
 # Refusals: each changes nothing.
 refuses() {   # refuses <message part> <args...>
   local part="$1"; shift; local rc=0 b; b="$(sig)"

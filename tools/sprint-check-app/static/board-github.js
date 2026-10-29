@@ -12,6 +12,7 @@ import { resetPanelDrag, resetPanelResize } from './board-panels.js';
 const POLL_MS = 120000;          // github-status per card out on GitHub; the server caches each for 30 s
 const MERGE_POLL_MS = 2000;
 const STALE_DAYS = 3;          // t-6f51: a send with no PR and no issue activity for this long reads as stale in the picker
+const RECENT_S = 300;           // t-3741: a file written this recently starts unticked in Commit and push
 const MERGE_LOST_POLLS = 5;   // failed polls in a row before the merge dialog stops waiting
 const statusById = new Map();    // id -> {ok, status?, output, pending?}
 const mergeById = new Map();     // id -> {status, output, exit_code, elapsed} while a merge job is followed
@@ -671,9 +672,21 @@ async function showCommitPush(t, tab, gen) {
   const lines = String(pv.output || '').split(/\r?\n/);
   const branch = (lines.find(l => l.startsWith('branch: ')) || '').slice('branch: '.length);
   const name = branch.split(' ')[0];
-  const files = lines.map(l => /^file: (..) (.+)$/.exec(l)).filter(Boolean).map(m => ({ path: m[2], untracked: m[1] === '??' }));
+  // t-3741: "mtime: <epoch seconds> <path>" lines say when each file was last written (absent in an older tkt: nothing is recent).
+  const mtimes = new Map(lines.map(l => /^mtime: (\d+) (.+)$/.exec(l)).filter(Boolean).map(m => [m[2], +m[1]]));
+  const nowS = Date.now() / 1000;
+  const files = lines.map(l => /^file: (..) (.+)$/.exec(l)).filter(Boolean).map(m => {
+    const age = mtimes.has(m[2]) ? Math.max(0, Math.floor(nowS - mtimes.get(m[2]))) : Infinity;
+    return { path: m[2], untracked: m[1] === '??', age: age < RECENT_S ? age : null };
+  });
+  // An agent is working in this checkout: its files may be half done, so nothing starts ticked. state.cockpitRows holds this
+  // project's live sessions only (any ticket); t.working is an agent outside the Cockpit on this ticket (t-187e).
+  const busy = !!t.working || [...state.cockpitRows.values()].some(r => r.state !== 'exited');
+  const startTicked = f => !busy && !f.untracked && f.age === null;
+  const ago = s => s < 60 ? s + 's' : Math.floor(s / 60) + 'm';
   box.innerHTML = `<p>Branch: <code>${esc(branch)}</code></p>
-      ${files.length ? `<ul class="ck-gh-cp-files" id="ck-gh-cp-files">${files.map((f, i) => `<li><label><input type="checkbox" data-i="${i}"${f.untracked ? '' : ' checked'}> <code>${esc(f.path)}</code> <span class="ck-gh-cp-st">${f.untracked ? 'new, not tracked' : 'changed'}</span></label></li>`).join('')}</ul>` : '<p>No uncommitted files: only the commits already here are pushed.</p>'}
+      ${files.length && busy ? '<p class="ck-gh-cp-busy" id="ck-gh-cp-busy" role="note">An agent session is working in this checkout: these files may be its work in progress. Tick only what you mean to send.</p>' : ''}
+      ${files.length ? `<ul class="ck-gh-cp-files" id="ck-gh-cp-files">${files.map((f, i) => `<li><label><input type="checkbox" data-i="${i}"${startTicked(f) ? ' checked' : ''}> <code>${esc(f.path)}</code> <span class="ck-gh-cp-st">${f.untracked ? 'new, not tracked' : 'changed'}</span>${f.age === null ? '' : ` <span class="ck-gh-cp-ago">changed ${ago(f.age)} ago</span>`}</label></li>`).join('')}</ul>` : '<p>No uncommitted files: only the commits already here are pushed.</p>'}
       ${files.length ? `<label class="ck-gh-cp-msg">Commit message <input type="text" id="ck-gh-cp-msg" maxlength="200" value="${escAttr(`chore: ${t.id} work for the cloud session`)}"></label>` : ''}
       <div class="ck-gh-actions"><button type="button" class="ck-gh-create" id="ck-gh-cp-go">Commit and push</button><button type="button" id="ck-gh-cp-cancel">Cancel</button><span class="ck-gh-status" id="ck-gh-cp-status" role="status"></span></div>
       <pre class="ck-gh-pre" id="ck-gh-cp-out" hidden></pre>`;
