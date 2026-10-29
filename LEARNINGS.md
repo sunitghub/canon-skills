@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-29-2026 10:08
+learnings-sweep last run: 10-29-2026 11:43
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-29 | [t-ca00](.tickets/t-ca00/learnings.md) | Key a UI action on the exact refusal, not its family: matching 'cannot merge cleanly' put Fix here on BEHIND, UNKNOWN and UNSTABLE PRs too, where a worktree fix is the wrong advice; and a refusal must always say the next step, or the user is stuck at Close. | UNPROMOTED |
 | 2026-10-29 | [t-9a2d](.tickets/t-9a2d/learnings.md) | After an evaluator names N untested lines, check every changed line, not only the N: the cloud session claimed each new string was asserted, run 1 found 5 unasserted and run 2 found 3 more, spending two of the three tries. A diff of string changes is cheap to sweep in full (`git diff -U0 \| grep echo`). | UNPROMOTED |
 | 2026-10-29 | [t-4872](.tickets/t-4872/learnings.md) | Two sides that must name one folder need one owner or a test that pins both: Go writes the daemon's state to os.UserCacheDir() (LocalAppData on Windows) while the shell listed only Unix-shaped dirs, so Windows uninstall blocked on its own daemon; and a list that feeds a delete must never emit a path built from an empty conversion. | UNPROMOTED |
 | 2026-10-29 | [t-7299](.tickets/t-7299/learnings.md) | Removing a file from the release zip also removes it from every doc that points there: the board's CLAUDE.md is named by AGENTS.md and the reviewer gate, so grep for readers in prose, not only in code, before excluding a file. | UNPROMOTED |
