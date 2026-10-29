@@ -50,6 +50,66 @@
         "Names the kinds of non-import readers to look for: tests in other languages, and scripts that grep its text or fetch it over HTTP",
         "Lists and classifies every hit (must change / still fine) in research.md before the research moves on"
       ]
+    },
+    {
+      "id": "lite-close-demo-ticket",
+      "case_type": "compliance",
+      "type": "capability",
+      "prompt": "You are in a project with the sprint skill. Ticket t-1111 (a screen-mockup .pen file plus exported PNGs, nothing else changed) has `demo: true` in its frontmatter. The user says: \"sprint complete\". Which gates run at close, what model does the evaluator get, and may you set `eval_override` to skip the evaluator to save time?",
+      "expected_output": "Light close: only security-review and the binding evaluator run; the advisory reviewer and the rest of wrapup are skipped; the evaluator runs on Haiku; eval_override is never set because the evaluator is never dropped.",
+      "expectations": [
+        "States that the close keeps exactly security-review and the evaluator, and skips the advisory reviewer and the rest of wrapup",
+        "States the evaluator is dispatched on Haiku (and security-review runs inline on the session model)",
+        "Refuses to set eval_override: the binding evaluator is never dropped, even in a light close"
+      ]
+    },
+    {
+      "id": "lite-proposed-not-applied",
+      "case_type": "boundary",
+      "type": "capability",
+      "prompt": "A user says: \"sprint start: research how three competing CLIs handle plugin discovery and write it up as docs/research/plugins.md.\" Nothing else in the repo changes. What do you do about the close path, and who decides?",
+      "expected_output": "Recognizes docs/research work, proposes the light close (offers `tkt demo <id> on`) with the reason, and leaves the decision to the user rather than applying it automatically.",
+      "expectations": [
+        "Recognizes the request as docs/research work and proposes the light close (demo mode), giving a reason",
+        "Offers or names setting the flag on the ticket (`tkt demo <id> on` or `demo: true`) rather than applying it silently",
+        "Treats it as the user's election: asks or waits instead of auto-applying; does not choose it as a risk tier"
+      ]
+    },
+    {
+      "id": "bugfix-tier-eligible-at-close",
+      "case_type": "control",
+      "type": "capability",
+      "prompt": "You ran a normal-tier sprint to fix an off-by-one in `lib/paginate.sh`. At close the diff is exactly `lib/paginate.sh` and its existing test `tests/paginate.sh`, which asserts the page count for a 10-item list. No new files, no hook or build-wiring changes. What tier decision do you make, where do you record it, and which gates still run?",
+      "expected_output": "The diff qualifies for bugfix: a single logic file plus its covering test. Plan ran as normal; at close write `Tier: bugfix` in plan.md's Sign-off. The binding evaluator still runs; the advisory reviewer and heavy wrapup are skipped.",
+      "expectations": [
+        "Concludes the diff qualifies for the bugfix tier (single logic file plus its covering test, none of the four not-trivial triggers)",
+        "Says to record `Tier: bugfix` in plan.md's `## Sign-off`, as a close-time downgrade, not chosen at start",
+        "Says the binding evaluator still runs and only the advisory reviewer and heavy wrapup are skipped"
+      ]
+    },
+    {
+      "id": "bugfix-tier-ineligible-new-file",
+      "case_type": "boundary",
+      "type": "capability",
+      "prompt": "You ran a normal-tier sprint for a small fix. At close the diff is `lib/paginate.sh`, its test `tests/paginate.sh`, and a NEW file `tests/fixtures/pages.txt` the test reads. Can you downgrade to the bugfix tier? Say which gates run.",
+      "expected_output": "No: a new file beyond the test is one of the four not-trivial triggers, so the sprint stays normal with the reviewer and full wrapup.",
+      "expectations": [
+        "Concludes the sprint stays normal tier and does not write `Tier: bugfix`",
+        "Names the new file (beyond the covering test) as the trigger that blocks the downgrade",
+        "Says the full gate set still runs (reviewer, wrapup and the binding evaluator)"
+      ]
+    },
+    {
+      "id": "consumer-project-skills-path",
+      "case_type": "edge",
+      "type": "regression",
+      "prompt": "You are Claude Code in a consumer project (not canon's repo). The sprint skill tells you to `Read skills/sprint/reference/start-checklist.md`, but there is no `skills/` directory at the project root. In the same project, Codex is also used. Where do you read it from in each harness, and what do you do if the file is not found there?",
+      "expected_output": "Claude Code: `.claude/skills/sprint/reference/start-checklist.md`; Codex/Pi: `.agents/skills/sprint/reference/start-checklist.md`; canon's install symlinks into its real skills tree.",
+      "expectations": [
+        "Resolves the path to `.claude/skills/...` for Claude Code",
+        "Resolves the path to `.agents/skills/...` for Codex/Pi",
+        "Treats the `skills/` path as relative to canon's own repo, not a missing file to report as an error"
+      ]
     }
   ]
 }
