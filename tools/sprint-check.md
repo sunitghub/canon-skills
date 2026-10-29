@@ -135,7 +135,7 @@ Click `+ New` in the header. As you type the title, the type (Feature / Task / B
 
 - Refreshes automatically every 8 seconds
 - Dark/light mode toggle in the header — preference persisted in localStorage
-- `sprint-check` runs the Go board on macOS, Linux and WSL (`tools/sprint-check-bin/sprint-check`, fetched or built from source; no Python)
+- `sprint-check` runs the Go board on macOS, Linux and WSL (`tools/canon-go-bin/canon-go board`, the one program that is also the Cockpit daemon (t-bdb0); fetched or built from source; no Python)
 - `sprint-check-win` runs the same Go board for Windows/Git Bash users
 - Cockpit port defaults to 8899 (`CANON_COCKPIT_PORT` to change it) — shared across every project, not per-project
 

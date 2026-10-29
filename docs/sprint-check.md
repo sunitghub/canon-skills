@@ -160,7 +160,7 @@ sprint agent without leaving the browser — no second terminal.
 
 **Working (`t-187e`).** When you start an agent by hand in a plain terminal (`sprint start` there), the Cockpit knows nothing about it, and Resume would start a second agent on the same ticket. So the commands an agent runs (`sprint start` / `continue`, `tkt start`, `evidence.sh stamp`, `gate-snapshot.sh`, `subagent-log.sh`) write a small heartbeat, `.tickets/ACTIVE.beat` (the ticket, the time, this machine and the agent's process id when it can be found; `tkt close` and `sprint complete` remove it). While `.tickets/ACTIVE` names the ticket and the heartbeat is fresh, its card shows a **● Working** pill instead of Resume. Fresh means: the agent's process is still alive and the last command was under 4 hours ago, or, when no process could be checked (another machine, Windows, an agent canon does not recognise), the last command was under 10 minutes ago. When the agent stops, or the machine restarts, the pill goes back to Resume within a few seconds with nothing to clean up. Click the pill for how long ago and where; **Resume anyway** starts the Cockpit session as Resume does. A live Cockpit session still shows Open / Answer. It is a label only: it never blocks anything, and only the ticket this checkout's `ACTIVE` names can show it (an agent in another worktree keeps its own `ACTIVE`).
 
-- **What it does:** a background daemon (`tools/cockpit-daemon`) owns a real
+- **What it does:** a background daemon (`canon-go daemon`, the same program as the board, t-bdb0) owns a real
   **PTY** running an interactive `claude` session on the ticket, and serves an
   embedded terminal (xterm.js). Click **Start sprint** (or **Resume**) → the
   agent runs in-page; you type to it there. The agent keeps running if you
@@ -293,8 +293,8 @@ sprint agent without leaving the browser — no second terminal.
   exec error surfaced in the terminal rather than hanging.
 - **Cockpit mode:** the kanban lanes collapse to a left ticket rail and an
   embedded terminal takes the center. The board never owns
-  a PTY — it discovers a running `cockpit-daemon` via `daemon.json`, or
-  launches one on demand (`/api/cockpit` in `tools/canon-go/internal/board/main.go`),
+  a PTY — it discovers a running daemon via `daemon.json`, or
+  launches one on demand (itself, as `canon-go daemon -addr 127.0.0.1:0`) (`/api/cockpit` in `tools/canon-go/internal/board/main.go`),
   with no secret ever passed via argv. **Esc / "← Board"** returns to the
   kanban view; only one sprint may be active at a time, so Start is disabled
   on other cards while a session is live. The rail can collapse to a 44px icon

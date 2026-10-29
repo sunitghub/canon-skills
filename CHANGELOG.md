@@ -6,6 +6,13 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+**Restart the Cockpit daemon after updating** (Admin > **Restart Daemon**, or `canon stop` then `canon`): a daemon started before the update keeps running the old program, and the Cockpit shows it as out of date until it restarts.
+
+### Changed
+- **The board and the Cockpit daemon are one program, `canon-go`** (t-bdb0). Its first word picks the mode: `canon-go board [<port>]` (or no word) is the board, `canon-go daemon` the daemon, `canon-go --version` prints the build. It lives at `tools/canon-go-bin/canon-go` on macOS/Linux and `tools/canon-go-win.exe` on Windows, replacing `tools/cockpit-daemon/cockpit-daemon`, `tools/sprint-check-bin/sprint-check`, `tools/cockpit-daemon-win.exe` and `tools/sprint-check-win.exe`, which `canon update` removes once `canon-go` is in place. A Windows install is about 7 MB smaller, and each update fetches and verifies one file instead of two.
+- The Cockpit's "out of date" banner now compares the daemon's source key, built into the program, instead of the file's time, so a board-only release no longer asks you to restart an unchanged daemon.
+- Release assets are `canon-go-<os>-<arch>` (and `canon-go-windows-amd64.exe`) in one `canon-go-<key>` release; older installs keep fetching the `cockpit-daemon-*` and `sprint-check-*` assets their own manifest names.
+
 ## [0.29.0] - 2026-10-29
 
 macOS and Linux only; Windows installs are unchanged (t-05c9). Update with `canon update`. No daemon restart is needed, but **stop the Cockpit first**: from this release `canon update` refuses while this install's Cockpit daemon or board runs, and never stops or restarts it for you (Admin > **Stop**, or `canon stop`).
