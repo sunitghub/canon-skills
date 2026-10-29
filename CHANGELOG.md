@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Removed
+- `subagent-log.sh` no longer writes the always-blank `session_id` and `transcript_path` keys, drops the `--session-id` and `--transcript-path` flags, and drops the unused stdin hook-payload mode. Old log rows that carry the keys still parse (t-d0f9).
+
 ## [0.30.2] - 2026-10-29
 
 Update with `canon update` (stop the Cockpit first). **Restart the Cockpit daemon after updating** (Admin > **Restart Daemon**): the terminal's files are built into the daemon, so a daemon started before the update keeps the old terminal.

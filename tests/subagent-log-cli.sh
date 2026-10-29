@@ -26,41 +26,44 @@ fi
 assert_count 1 '"agent_id":"abc123"' "$log"
 assert_count 1 '"agent_id":"def456"' "$log"
 
-# ── Legacy stdin-JSON hook mode still works (back-compat for un-migrated installs) ─
-# Legacy mode resolves the root from the script's own location (its install path), not the caller's cwd.
-# Run a COPY inside a throwaway git repo so the entry lands there: this test must never read or write
-# canon's own log (t-c8be: the old cleanup `grep -v … && mv` skipped its mv when the log held only that
-# entry, so a fresh clone counted 2 on the next run and left a .tmp behind).
-legacy="$(make_project)"
-trap 'rm -rf "$project" "$legacy"' EXIT
-mkdir -p "$legacy/tools"; cp "$SUBAGENT_LOG" "$legacy/tools/"
-cp "$ROOT/tools/ticket-root.sh" "$ROOT/tools/platform-lib.sh" "$ROOT/tools/work-beat" "$legacy/tools/"   # the files subagent-log.sh sources; a plain cp fails loudly if that changes
-log_sum() { if [[ -f "$canon_log" ]]; then shasum < "$canon_log" | cut -d' ' -f1; else echo none; fi; }
-canon_before="$(log_sum)"
-(cd "$project" && echo '{"agent_id":"ghi789","agent_type":"legacy"}' | "$legacy/tools/subagent-log.sh")
-assert_count 1 '"agent_id":"ghi789"' "$legacy/.claude/subagent-runs.jsonl"
-assert_eq "$canon_before" "$(log_sum)"
-[[ ! -e "$ROOT/.claude/subagent-runs.jsonl.tmp" ]] || fail "subagent-log-cli: left $ROOT/.claude/subagent-runs.jsonl.tmp"
+# ── t-d0f9: a row carries neither session_id nor transcript_path; both flags are refused ─
+assert_count 0 'session_id' "$log"
+assert_count 0 'transcript_path' "$log"
+for bad in "--session-id x" "--transcript-path /tmp/x"; do
+  set +e
+  # shellcheck disable=SC2086
+  (cd "$project" && "$SUBAGENT_LOG" --agent-id gone1 $bad 2>"$project/bad-err"); rc=$?
+  set -e
+  assert_eq 1 "$rc"
+  assert_count 1 'unrecognized argument' "$project/bad-err"
+done
+assert_count 0 '"agent_id":"gone1"' "$log"
+# No arguments is a usage error (the stdin hook-payload mode is gone).
+set +e
+(cd "$project" && echo '{"agent_id":"stdin1"}' | "$SUBAGENT_LOG" 2>"$project/bad-err"); rc=$?
+set -e
+assert_eq 1 "$rc"
+assert_count 0 '"agent_id":"stdin1"' "$log"
 
 # ── t-5ef3: cost flags land on the row; tier comes from the ticket's plan.md ─
 mkdir -p "$project/.tickets/t-cost"
 printf '## Sign-off\nTier: **Normal** | Risk: low\n' > "$project/.tickets/t-cost/plan.md"
 (cd "$project" && "$SUBAGENT_LOG" --agent-id cost1 --agent-type evaluator --tokens 0099000 --minutes 12.5 --tool-uses 40 --ticket t-cost --outcome budget)
-assert_count 1 '"agent_id":"cost1","agent_type":"evaluator","transcript_path":"","tokens":99000,"minutes":12.5,"tool_uses":40,"ticket":"t-cost","tier":"normal","outcome":"budget"}' "$log"
+assert_count 1 '"agent_id":"cost1","agent_type":"evaluator","tokens":99000,"minutes":12.5,"tool_uses":40,"ticket":"t-cost","tier":"normal","outcome":"budget"}' "$log"
 # An explicit --tier wins over plan.md's, lowercased like it so gate-cost groups them together.
 (cd "$project" && "$SUBAGENT_LOG" --agent-id cost2 --tokens 1 --ticket t-cost --tier Bugfix)
-assert_count 1 '"agent_id":"cost2","agent_type":"","transcript_path":"","tokens":1,"ticket":"t-cost","tier":"bugfix"}' "$log"
+assert_count 1 '"agent_id":"cost2","agent_type":"","tokens":1,"ticket":"t-cost","tier":"bugfix"}' "$log"
 # Without the flags the row keeps its old shape exactly.
 (cd "$project" && "$SUBAGENT_LOG" --agent-id plain1 --agent-type reviewer)
-assert_grep '"agent_id":"plain1","agent_type":"reviewer","transcript_path":""}$' "$log"
+assert_grep '"agent_id":"plain1","agent_type":"reviewer"}$' "$log"
 
 # ── t-3a14: --model lands last; without it the row is byte-identical to the same flags' row ─
 (cd "$project" && "$SUBAGENT_LOG" --agent-id mod1 --agent-type evaluator --tokens 5 --ticket t-cost --outcome pass --model claude-sonnet-5)
-assert_count 1 '"agent_id":"mod1","agent_type":"evaluator","transcript_path":"","tokens":5,"ticket":"t-cost","tier":"normal","outcome":"pass","model":"claude-sonnet-5"}' "$log"
+assert_count 1 '"agent_id":"mod1","agent_type":"evaluator","tokens":5,"ticket":"t-cost","tier":"normal","outcome":"pass","model":"claude-sonnet-5"}' "$log"
 (cd "$project" && "$SUBAGENT_LOG" --agent-id mod2 --model openai:gpt-5.1)
-assert_grep '"agent_id":"mod2","agent_type":"","transcript_path":"","model":"openai:gpt-5.1"}$' "$log"
+assert_grep '"agent_id":"mod2","agent_type":"","model":"openai:gpt-5.1"}$' "$log"
 (cd "$project" && "$SUBAGENT_LOG" --agent-id same1 --agent-type evaluator --tokens 5 --ticket t-cost --outcome pass)
-assert_grep '"agent_id":"same1","agent_type":"evaluator","transcript_path":"","tokens":5,"ticket":"t-cost","tier":"normal","outcome":"pass"}$' "$log"
+assert_grep '"agent_id":"same1","agent_type":"evaluator","tokens":5,"ticket":"t-cost","tier":"normal","outcome":"pass"}$' "$log"
 
 # ── A bad cost value fails loudly and writes nothing ─────────────────────────
 rows_before="$(wc -l < "$log" | tr -d " ")"
@@ -109,7 +112,7 @@ assert_eq 1 "$rc"
 assert_count 1 'agent-id is required' "$err_file"
 
 # ── t-0b61: a Claude Code gate row with no --tokens warns on stderr; the row is still written, exit 0 ──
-warn_err="$(mktemp)"; trap 'rm -rf "$project" "$legacy" "$warn_err"' EXIT
+warn_err="$(mktemp)"; trap 'rm -rf "$project" "$warn_err"' EXIT
 set +e
 (cd "$project" && CLAUDECODE=1 "$SUBAGENT_LOG" --agent-id warn1 --agent-type reviewer 2>"$warn_err"); rc=$?
 set -e
@@ -127,8 +130,6 @@ for tk in "" "--tokens 5"; do
   assert_eq 0 "$(wc -c < "$warn_err" | tr -d ' ')"
 done
 (cd "$project" && CLAUDECODE=1 "$SUBAGENT_LOG" --agent-id warn4 2>"$warn_err")
-assert_eq 0 "$(wc -c < "$warn_err" | tr -d ' ')"
-(cd "$project" && echo '{"agent_id":"warn5","agent_type":"reviewer"}' | CLAUDECODE=1 "$legacy/tools/subagent-log.sh" 2>"$warn_err")
 assert_eq 0 "$(wc -c < "$warn_err" | tr -d ' ')"
 
 # ── -h/--help prints usage and exits 0 ──────────────────────────────────────
