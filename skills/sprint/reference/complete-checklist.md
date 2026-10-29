@@ -56,7 +56,7 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
    if it writes a file, run `/learnings-sweep <id>`. Say which in chat and summary.
 9. **Close:** `sprint complete <id>`, never a hand-edited status. On refusal, report and stop.
 10. **Commit & push:** stage specific files, `Closes: <id>` in the body, show them; ask. Worktree, after the merge:
-    `tkt worktree-reset`. In canon, `public` pushes and releases follow `complete.md` step 10.
+    `tkt worktree-reset`. In canon, `public` only via `tkt push-main`; a push is not a release.
 
 ## Gate dispatch inputs
 
