@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-28-2026 18:42
+learnings-sweep last run: 10-28-2026 19:40
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-28 | [t-ea3a](.tickets/t-ea3a/learnings.md) | A process stays followed where a tool refuses or checks it and slips where it is only printed: the release was tool-enforced up to the tag, and the one printed-only step (the canon-site lines and badge) is the one that slipped. Run a new check against the real target before trusting it: the live site served the badge as `CANON_VERSION = "0.28.1"`, not the `v0.28.1` the first draft looked for. | UNPROMOTED |
 | 2026-10-28 | [t-d0a5](.tickets/t-d0a5/learnings.md) | Ask the environment before skipping a test that fails only there: the cloud output showed two causes, root (correct canon behaviour the tests did not expect) and macOS-only paths in a corpus (a test bug), not one "sandbox". And a test that counts lines in a shared folder races its parallel neighbours: give it a private copy. | UNPROMOTED |
 | 2026-10-28 | [t-2602](.tickets/t-2602/learnings.md) | Measure a cost-cutting rule on real data before building it: the ticket's first idea (output-only lines) saved 2% of t-41ff's mutants, while emptied quoted variables were 23%. And log a gate run only after its successor's post-snapshot, or the snapshot reports your own audit-log line as a gate write. | UNPROMOTED |
 | 2026-10-28 | [t-32f9](.tickets/t-32f9/learnings.md) | A failed preview that reloads on the next mount (t-8627, so the reason is not lost) will also wipe any form a user opened inside it: give the open form its own keep-the-panel guard and pin it with a forced second mount, since the race only showed up once in the board spec. And a git command that takes file names from a list still needs literal pathspecs: a real file named `*.txt` is a pattern to `git add`. | UNPROMOTED |
