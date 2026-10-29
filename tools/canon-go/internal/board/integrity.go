@@ -422,7 +422,7 @@ func checkIntegrityCore(d integrityDeps) integrityResult {
 			if gitErr == nil {
 				f.Restore = "git -C " + shellQuote(root) + " checkout -- " + p
 			} else {
-				f.Restore = "canon update"
+				f.Restore = "canon update --reinstall"
 			}
 			if f.Gate {
 				res.Blocking = true

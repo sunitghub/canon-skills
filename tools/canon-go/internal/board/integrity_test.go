@@ -166,8 +166,8 @@ func TestIntegrityRestoreCommand(t *testing.T) {
 	f := newIntegFx(t)
 	f.edit("tools/sprint", "x")
 	r := checkIntegrity(f.deps)
-	if got := r.Files[0].Restore; got != "canon update" {
-		t.Errorf("a zip install is put back with canon update, got %q", got)
+	if got := r.Files[0].Restore; got != "canon update --reinstall" {
+		t.Errorf("a release package is put back with canon update --reinstall, got %q", got)
 	}
 	if err := os.Mkdir(filepath.Join(f.root, ".git"), 0o755); err != nil {
 		t.Fatal(err)
@@ -583,7 +583,7 @@ func TestIntegrityGroupsAndJSONKeys(t *testing.T) {
 		}
 	}
 	b, _ := json.Marshal(r) // the page reads these names
-	for _, k := range []string{`"state":"verified"`, `"tag":"v1.2.3"`, `"source":"online"`, `"match":13`, `"total":14`, `"blocking":true`, `"files":[`, `"path":"tools/sprint"`, `"group":"tools"`, `"gate":true`, `"status":"changed"`, `"restore":"canon update"`} {
+	for _, k := range []string{`"state":"verified"`, `"tag":"v1.2.3"`, `"source":"online"`, `"match":13`, `"total":14`, `"blocking":true`, `"files":[`, `"path":"tools/sprint"`, `"group":"tools"`, `"gate":true`, `"status":"changed"`, `"restore":"canon update --reinstall"`} {
 		if !strings.Contains(string(b), k) {
 			t.Errorf("the JSON lacks %s: %s", k, b)
 		}

@@ -89,7 +89,7 @@ assert_eq "packages/v1.0.0" "$(readlink "$H/js home/current")"; [ -z "$(find "$H
 echo "canon-packages: fresh install.js builds the same layout"
 # re-running an installer over a release install updates it through canon update (moved here from install-sh.sh: it needs a release zip)
 out="$(run bash "$ROOT/install.sh" 2>&1)" || fail "install.sh over a release install failed: $out"
-assert_contains "$out" "canon is up to date (v1.0.0, verified"; [[ "$out" != *"development version"* ]] || fail "a release install printed the main-track note: $out"
+assert_contains "$out" "canon is up to date (v1.0.0)."; refute_contains "$out" "up to date (v1.0.0, verified"; [[ "$out" != *"development version"* ]] || fail "a release install printed the main-track note: $out"
 out="$(env -u XDG_RUNTIME_DIR "${PIN[@]}" CANON_HOME="$H/js home" CANON_REF=v9.9.9 node "$ROOT/bin/install.js" 2>&1)" || fail "install.js failed on a failed update: $out"
 assert_contains "$out" "Skipping update."; assert_eq "packages/v1.0.0" "$(readlink "$H/js home/current")"
 echo "canon-packages: an installer re-run updates through canon update; a failed one keeps the install"
@@ -243,6 +243,64 @@ out="$(run "$C" update --to latest 2>&1)" || fail "--to latest from main failed:
 assert_eq "packages/v1.3.0" "$(target)"; [ ! -e "$HOMEDIR/.canon-track" ] || fail "the main marker survived --to latest"; [ -d "$HOMEDIR/packages/main/.git" ] || fail "the main clone was removed"
 assert_eq "$DATA" "$(data_hash)"
 echo "canon-packages: --to main clones packages/main and pulls it in place; --to latest goes back; data unchanged"
+
+# ── t-9df0: canon update --reinstall puts a release package back as published (prod path: canon update --reinstall, integrity's restore hint) ──
+PK="$HOMEDIR/packages/v1.3.0"; GATE="tools/pkg-lib.sh"; PUB="$W/src/1.3.0/canon-1.3.0/$GATE"
+echo '# tampered' >> "$PK/$GATE"
+out="$(run "$C" update 2>&1)" || fail "a plain update on the current release failed: $out"   # a plain update repoints: no download, no repair
+assert_contains "$out" "canon is up to date (v1.3.0)."; refute_contains "$out" "verified"; refute_contains "$out" "Downloading"
+cmp -s "$PUB" "$PK/$GATE" && fail "a plain update repaired a changed file (it must not download)"
+mv "$W/rel/v1.3.0/canon-1.3.0.zip" "$W/zip.bak"
+CUR="$(tree_hash "$PK")"; DATA="$(data_hash)"
+set +e; out="$(run "$C" update --reinstall 2>&1)"; code=$?; set -e
+assert_eq 1 "$code"; assert_contains "$out" "Nothing was changed"
+assert_eq "$CUR" "$(tree_hash "$PK")"; assert_eq "$DATA" "$(data_hash)"; assert_eq "packages/v1.3.0" "$(target)"; [ -z "$(leftovers)" ] || fail "a failed reinstall left $(leftovers)"
+{ cat "$W/zip.bak"; echo junk; } > "$W/rel/v1.3.0/canon-1.3.0.zip"   # downloads, but hashes differently from the manifest
+set +e; out="$(run "$C" update --reinstall 2>&1)"; code=$?; set -e
+assert_eq 1 "$code"; assert_contains "$out" "does not match the published checksum"
+assert_eq "$CUR" "$(tree_hash "$PK")"; assert_eq "$DATA" "$(data_hash)"; assert_eq "packages/v1.3.0" "$(target)"; [ -z "$(leftovers)" ] || fail "a mismatched reinstall left $(leftovers)"
+cp "$W/zip.bak" "$W/rel/v1.3.0/canon-1.3.0.zip"
+echo "canon-packages: a failed or mismatched reinstall download changes nothing; a plain update on the current release downloads nothing and does not claim verification"
+
+# refusals change nothing: the Cockpit running (the board stub, as above), packages/main, a tag that is not installed
+bash -c 'exec -a "$0" perl -MIO::Socket::INET -e "my \$s = IO::Socket::INET->new(LocalAddr => q(127.0.0.1), LocalPort => \$ARGV[0], Listen => 5, ReuseAddr => 1) or die; sleep 300" "$1"' \
+  "$HOMEDIR/current/tools/canon-go-bin/canon-go board" "$BP_PORT" & BP=$!; PIDS+=("$BP")
+for i in 1 2 3 4 5 6 7 8 9 10; do listening "$BP_PORT" && break; sleep 0.3; done
+listening "$BP_PORT" || fail "the stub board never listened on $BP_PORT"
+set +e; out="$(run env CANON_COCKPIT_PORT="$BP_PORT" "$C" update --reinstall 2>&1)"; code=$?; set -e
+assert_eq 1 "$code"; assert_contains "$out" "Run 'canon stop'"; assert_eq "$CUR" "$(tree_hash "$PK")"
+kill "$BP"; wait "$BP" 2>/dev/null || true
+set +e; out="$(run "$C" update --reinstall --to main 2>&1)"; code=$?; set -e
+assert_eq 1 "$code"; assert_contains "$out" "git -C $HOMEDIR/packages/main checkout --"; assert_eq "$CUR" "$(tree_hash "$PK")"
+set +e; out="$(run "$C" update --reinstall --to v9.9.9 2>&1)"; code=$?; set -e
+assert_eq 1 "$code"; assert_contains "$out" "is not installed"; assert_eq "$CUR" "$(tree_hash "$PK")"
+run "$C" update --to main >/dev/null 2>&1 || fail "--to main failed"
+MAINH="$(git -C "$HOMEDIR/packages/main" rev-parse HEAD)"
+set +e; out="$(run "$C" update --reinstall 2>&1)"; code=$?; set -e   # current is main
+assert_eq 1 "$code"; assert_contains "$out" "git -C $HOMEDIR/packages/main checkout --"; assert_eq packages/main "$(target)"; assert_eq "$MAINH" "$(git -C "$HOMEDIR/packages/main" rev-parse HEAD)"
+run "$C" update --to v1.3.0 >/dev/null 2>&1 || fail "back to v1.3.0 failed"; rm -f "$HOMEDIR/.canon-track"
+echo "canon-packages: --reinstall refuses while the Cockpit runs, on main, and for a tag that is not installed, changing nothing"
+
+# the repair: the changed gate file is byte-identical to the release again; current, the data and the other packages are untouched
+ODIR="$(find "$HOMEDIR/packages" -maxdepth 1 -name 'v*' ! -name v1.3.0 | sort | sed -n 1p)"; OTHER="$(tree_hash "$ODIR")"
+out="$(run "$C" update --reinstall 2>&1)" || fail "reinstall failed: $out"
+cmp -s "$PUB" "$PK/$GATE" || fail "reinstall did not restore $GATE byte-identical"
+assert_contains "$out" "reinstalled"; assert_eq "packages/v1.3.0" "$(target)"; assert_eq "$DATA" "$(data_hash)"; assert_eq "$OTHER" "$(tree_hash "$ODIR")"
+[ -z "$(leftovers)" ] || fail "reinstall left $(leftovers)"; [ -f "$PK/tools/canon-go-bin/canon-go" ] || fail "the reinstalled package lost its binary"
+echo "canon-packages: --reinstall restores a changed file in the current release package byte-identical, data and other packages unchanged"
+
+# guards: --reinstall wants a tag (not latest); a git checkout is repaired with git; a program still running from the replaced copy keeps it, named
+CUR="$(tree_hash "$PK")"
+set +e; out="$(run "$C" update --reinstall --to latest 2>&1)"; code=$?; set -e
+assert_eq 2 "$code"; assert_contains "$out" "--reinstall takes a release tag"; assert_eq "$CUR" "$(tree_hash "$PK")"
+set +e; out="$(run "$ROOT/tools/canon" update --reinstall 2>&1)"; code=$?; set -e
+assert_eq 1 "$code"; assert_contains "$out" "this install is a git checkout"; assert_contains "$out" "checkout -- <file>"
+bash -c 'exec -a "$0" sleep 120' "$PK/tools/stub-running" & KP=$!; PIDS+=("$KP")
+sleep 0.5
+out="$(run "$C" update --reinstall 2>&1)" || fail "reinstall with a running program failed: $out"
+assert_contains "$out" "kept the replaced v1.3.0 package"; [ -d "$(find "$HOMEDIR/packages" -maxdepth 1 -name '.tmp-v1.3.0.old.*' | sed -n 1p)" ] || fail "the replaced package was not kept"
+kill "$KP"; wait "$KP" 2>/dev/null || true; rm -rf "$HOMEDIR"/packages/.tmp-v1.3.0.old.*
+echo "canon-packages: --reinstall refuses --to latest and a git checkout, and keeps the replaced package while a program runs from it"
 
 # pkg_install turns its tag into a folder name and a download path: a traversal or a non-release tag is refused before anything is made.
 for bad in "../../etc" "v1.0" "main" "v1.0.0/../x"; do
