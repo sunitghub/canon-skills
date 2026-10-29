@@ -103,10 +103,8 @@ High-risk sprints run orient, grill, impact-analysis, required mitigation tests,
 ### Lite (light close)
 
 **Orthogonal to the risk tiers above** — a user-elected close modifier, not a fifth risk level.
-Set by the `tkt`-owned frontmatter flag `demo: true` on the ticket (absent = false), so it can
-ride on top of a normal or high-risk sprint. It is **not** chosen at `sprint start`; it is set on
-the ticket — via the shipped `tkt demo <id> on` command or by hand-setting `demo: true`; the
-board surfaces (New-Ticket **Lite** option, Plan-tab toggle) are shipped — the headless `ci + demo` guard/warning (Phase C) is the only piece still outstanding.
+Set by `demo: true` in ticket frontmatter (`tkt demo <id> on`, or the board's **Lite** option); it rides
+on top of a normal or high-risk sprint and is never chosen at `sprint start`.
 
 One light-close covers **two intents**, both explicit and user-elected:
 - **Live demo** (20–30 min time-box) — trim the close so a demo isn't gated on full wrapup.
@@ -124,18 +122,10 @@ For either intent, `sprint complete` runs a **fast close-path**:
 user-elected `bugfix`-lite and **never drops below the binding evaluator** — so it never needs,
 and must never set, `eval_override`.
 
-**Keyword recognition at `sprint start`.** When a request reads as docs/research/UX work —
-signals like *study, research, docs, documentation, UX, mockup, screen mockup, wireframe,
-design* — propose the light-close (offer to set `tkt demo <id> on`) rather than a full close,
-and say why. It stays user-elected: propose, don't auto-apply. A request that also touches code
-is a normal/high-risk sprint, not a light-close, regardless of keywords.
-
-Unlike `bugfix`/`trivial` (structural, decided from the diff), this reduction is driven by an
-explicit **user flag, not structural risk** — the one documented place canon bends its
-"only structural risk may reduce gates" invariant, justified as the same explicit/auditable
-override class as `eval_override` / `Gate model:` and paid for by being loud (Lite markers on
-the Wrapup Gates rows + a `summary.md` demo line). See `reference/complete.md`'s "Demo mode"
-(step 1) for the full close-path and the north-star exception in canon's own `AGENTS.md` (`## Model Tiers: canon internals`, not copied to projects).
+It is the one gate reduction set by a user flag rather than the diff, so it is loud (Lite markers on the
+Wrapup Gates rows, a `summary.md` demo line). Docs/research/UX requests (study, research, docs, mockup,
+wireframe) get the light close **proposed** with a reason (`tkt demo <id> on`), never auto-applied; a
+request that also touches code is a normal/high-risk sprint. The close-path is `reference/complete.md`'s "Demo mode" (step 1).
 **Headless/CI never reduces the gate set for `demo`: `sprint-headless` runs its full pipeline and ignores `demo` entirely; `sprint-headless-eval` (already eval-only) also runs its full gate set but reads `demo: true` to default the evaluator to Haiku when no `--model` is given — a model choice, never a skipped gate.**
 (ticket-id mode; explicit `--model` wins.)
 
