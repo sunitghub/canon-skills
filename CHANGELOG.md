@@ -6,16 +6,16 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.30.2] - 2026-10-29
+
+Update with `canon update` (stop the Cockpit first). **Restart the Cockpit daemon after updating** (Admin > **Restart Daemon**): the terminal's files are built into the daemon, so a daemon started before the update keeps the old terminal.
+
 ### Changed
 - Close-gate reports, the Wrapup Gates rows and the gate-run log name the model with its id, e.g. `sonnet (claude-sonnet-5-5)`, not only the alias the dispatch passes, so a later remap of `sonnet` stays visible (t-7299).
+- **The Cockpit terminal runs on xterm.js 6** (t-d689): `@xterm/xterm` 6.0.0 and `@xterm/addon-fit` 0.11.0 replace the deprecated `xterm` 5.3.0 and `xterm-addon-fit` 0.8.0, which get no more fixes. It brings upstream fixes for IME input, screen-reader selection, a memory leak and a new scrollbar. The keys send what they sent before: Option/Alt+Left/Right (word jump), Alt+Up/Down on Windows and Linux, and Ctrl+Backspace (DEL, not 6.0's ^H). The hand check on Windows (ConPTY, IME) and Linux is t-f04d; to go back, see `docs/ci-security.md` (Rolling back).
 
 ### Removed
 - `tools/llm-call`, an unused single-shot LLM adapter (nothing in canon called it). The release zip also leaves out two developer-only files, `tools/vendored.tsv` and `tools/sprint-check-app/CLAUDE.md` (t-7299).
-
-**Restart the Cockpit daemon after updating** (Admin > **Restart Daemon**): the terminal's files are built into the daemon, so a daemon started before the update keeps the old terminal.
-
-### Changed
-- **The Cockpit terminal runs on xterm.js 6** (t-d689): `@xterm/xterm` 6.0.0 and `@xterm/addon-fit` 0.11.0 replace the deprecated `xterm` 5.3.0 and `xterm-addon-fit` 0.8.0, which get no more fixes. It brings upstream fixes for IME input, screen-reader selection, a memory leak and a new scrollbar. The keys send what they sent before: Option/Alt+Left/Right (word jump), Alt+Up/Down on Windows and Linux, and Ctrl+Backspace (DEL, not 6.0's ^H). The hand check on Windows (ConPTY, IME) and Linux is t-f04d; to go back, see `docs/ci-security.md` (Rolling back).
 
 ## [0.30.1] - 2026-10-29
 
