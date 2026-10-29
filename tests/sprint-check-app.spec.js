@@ -18345,6 +18345,15 @@ test.describe('NOW lane and hidden lanes (t-0447)', () => {
   };
   const statusOnDisk = id => /^status: (.*)$/m.exec(fs.readFileSync(path.join(dir(id), 'ticket.md'), 'utf8'))[1];
   test.afterEach(() => { while (made.length) removeTestTicket(PROJECT_ROOT, made.pop()); });
+  // the spec runs on a copy of the real tickets, which may carry a real `now` tag: only this group's fixtures may count as NOW
+  test.beforeEach(async ({ page }) => {
+    await page.route('**/api/tickets*', async r => {
+      if (r.request().method() !== 'GET') return r.fallback();
+      const res = await r.fetch(); const list = await res.json();
+      if (Array.isArray(list)) for (const t of list) if (!made.includes(t.id) && typeof t.tags === 'string') t.tags = t.tags.split(',').filter(x => x.trim() !== 'now').join(',');
+      return r.fulfill({ response: res, json: list });
+    });
+  });
   const open = async page => { await page.goto(BASE); await page.waitForLoadState('networkidle'); };
   const cardsIn = (page, lane) => page.locator(`.column:has(.column-body[data-status="${lane}"]) .card`);
   const ids = async loc => loc.evaluateAll(els => els.map(e => e.dataset.id));
@@ -18455,6 +18464,15 @@ test.describe('NOW lane and hidden lanes (t-0447)', () => {
     for (const l of ['Open', 'In Progress', 'Done']) await eye(l).click();
     await expect(eye('Discarded')).toBeDisabled();                           // the last shown lane stays
     await expect(page.locator('#board .column-body')).toHaveCount(1);
+    // every hidden lane folds into ONE thin lane at the end, its strips stacked top to bottom, not a lane each
+    await expect(page.locator('#board .column-folded')).toHaveCount(1);
+    await expect(page.locator('#board .column-folded .column-strip')).toHaveCount(3);
+    const sbs = await Promise.all(['Open', 'In Progress', 'Done'].map(l => strip(l).boundingBox()));
+    for (const b of sbs.slice(1)) expect(Math.abs(b.x - sbs[0].x)).toBeLessThan(2);
+    expect(sbs[1].y).toBeGreaterThanOrEqual(sbs[0].y + sbs[0].height - 1); expect(sbs[2].y).toBeGreaterThanOrEqual(sbs[1].y + sbs[1].height - 1);
+    expect((await page.locator('#board .column-folded').boundingBox()).width).toBeLessThan(60);
+    const lastLane = await page.locator('.column:has(.column-body[data-status="cancelled"])').boundingBox(), rail = await page.locator('#board .column-folded').boundingBox();
+    expect(rail.x).toBeGreaterThanOrEqual(lastLane.x + lastLane.width - 1);   // the rail sits after the shown lanes
     expect(fs.readFileSync(file, 'utf8')).toBe(text);                        // a view preference: no ticket written
   });
 

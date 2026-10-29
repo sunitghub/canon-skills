@@ -360,20 +360,20 @@ export function renderBoard() {
   const folded = lanes.every(l => hiddenLanes().has(l.status)) ? new Set() : hiddenLanes();
   const shownCount = lanes.filter(l => !folded.has(l.status)).length;
   const eye = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/></svg>';
-  board.innerHTML = lanes.map(col => {
+  const laneCards = col => col.status === NOW_COLUMN.status ? [...nowActive, ...nowDone]
+    : tickets
+      .filter(t => effectiveStatus(t) === col.status && !nowIds.has(t.id))
+      .sort((a, b) => (col.status === 'in_progress' ? waiting(b) - waiting(a) : 0) || byNew(a, b));
+  // every hidden lane folds into ONE thin lane at the end, its strips stacked top to bottom (not one lane each)
+  const strips = lanes.filter(l => folded.has(l.status)).map(col => {
+    const n = laneCards(col).length;
+    return `<button class="column-strip ${esc(col.cls)}" type="button" data-lane="${esc(col.status)}" aria-label="Show ${esc(col.label)}" title="Show ${esc(col.label)}">
+          <span class="col-indicator"></span><span class="column-strip-name">${esc(col.label)}</span>${n ? `<span class="column-count">${n}</span>` : ''}
+        </button>`;
+  }).join('');
+  board.innerHTML = lanes.filter(l => !folded.has(l.status)).map(col => {
     const isNow = col.status === NOW_COLUMN.status;
-    const cards = isNow ? [...nowActive, ...nowDone]
-      : tickets
-        .filter(t => effectiveStatus(t) === col.status && !nowIds.has(t.id))
-        .sort((a, b) => (col.status === 'in_progress' ? waiting(b) - waiting(a) : 0) || byNew(a, b));
-    if (folded.has(col.status)) {
-      return `
-      <div class="column column-folded ${esc(col.cls)}">
-        <button class="column-strip" type="button" data-lane="${esc(col.status)}" aria-label="Show ${esc(col.label)}" title="Show ${esc(col.label)}">
-          <span class="col-indicator"></span><span class="column-strip-name">${esc(col.label)}</span>${cards.length ? `<span class="column-count">${cards.length}</span>` : ''}
-        </button>
-      </div>`;
-    }
+    const cards = laneCards(col);
     const needsHere = col.status === 'in_progress' || isNow ? cards.filter(t => effectiveStatus(t) === 'in_progress' && waiting(t)).length : 0;
     // the cap holds the closed cards: Open and In Progress show all of theirs (NOW's Done group follows Done's rule)
     const limited = isNow ? !state.expandedCols.has(col.status) : COLLAPSE_STATUSES.has(col.status) && !state.expandedCols.has(col.status);
@@ -403,7 +403,7 @@ export function renderBoard() {
             : ''}
         </div>
       </div>`;
-  }).join('');
+  }).join('') + (strips ? `<div class="column column-folded">${strips}</div>` : '');
 
   state.boardFirstRender = false;
   board.querySelectorAll('.column-body').forEach(b => { b.scrollTop = savedScroll[b.dataset.status] || 0; });

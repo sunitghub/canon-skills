@@ -174,7 +174,7 @@
     }
     .column-hide:hover:not(:disabled) { color: var(--text); background: var(--surface-hover); }
     .column-hide:disabled { opacity: .35; cursor: default; }
-    .column.column-folded { flex: 0 0 auto; min-width: 0; max-width: none; padding: 0 var(--sp-1); }
+    .column.column-folded { flex: 0 0 auto; min-width: 0; max-width: none; padding: 0 var(--sp-1); flex-direction: column; align-items: center; gap: var(--sp-3); }
     .column-strip {
       display: flex; flex-direction: column; align-items: center; gap: var(--sp-2);
       width: 32px; padding: var(--sp-3) 0; border: 0; border-radius: var(--radius-sm);
