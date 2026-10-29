@@ -63,10 +63,10 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
 - **Model:** `Gate model:` in plan.md's Sign-off wins (`session` = your own alias). Else the Admin default:
   `$CANON_HOME/cockpit/model-tiers.json` (else `tools/sprint-check-app/model-tiers.json`)
   `defaults.eval.anthropic` → its `alias` in `models.anthropic`; pass it as `model` if it is `fable`,
-  `opus`, `sonnet` or `haiku`. Else omit `model` (definition floor `claude-sonnet-5`). Record the source:
-  `Gate model override`, `Admin Review & Eval default`, `definition floor`.
+  `opus`, `sonnet` or `haiku`. Else omit `model` (floor `claude-sonnet-5`). Name it `<alias> (<id>)`
+  (`--model <id>`). Source: `Gate model override`, `Admin Review & Eval default`, `definition floor`.
 - **The prompt says:** ticket id, repo path and branch; read `reference/review.md` (reviewer) or
-  `reference/eval.md` (evaluator) and follow it; the model designation to record as `Model:`; write
+  `reference/eval.md` (evaluator) and follow it; the `Model:` designation; write
   `.tickets/<id>/review-notes.md` / `eval-report.md` and return the verdict line; read-only except
   that report; run tools only in its own `mktemp -d` with `CANON_HOME`, `HOME`, `TMPDIR`,
   `XDG_CONFIG_HOME` pinned inside it; never kill by name or pattern; evaluator only: take the

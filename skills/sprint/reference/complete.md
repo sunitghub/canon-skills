@@ -147,10 +147,10 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    |------|--------|--------|
    | code-simplifier | skipped | docs-only change |
    | code-reviewer | ran | no findings — reviewed the 8-dimension checklist in-context |
-   | reviewer | ran | verdict: YES (model: sonnet — Admin Review & Eval default) |
+   | reviewer | ran | verdict: YES (model: sonnet (claude-sonnet-5-5) — Admin Review & Eval default) |
    | security-review | skipped | no security-sensitive patterns |
    | doc-audit | ran | README updated |
-   | eval | ran | verdict: pass — eval-report.md written (model: sonnet — Admin Review & Eval default; 12m) |
+   | eval | ran | verdict: pass — eval-report.md written (model: sonnet (claude-sonnet-5-5) — Admin Review & Eval default; 12m) |
    | skill-eval | skipped | advisory — no skill or gate agent changed |
    | mutation-test | skipped | no logic files changed |
    | break-it | skipped | advisory — not high-risk, no untrusted-input surface |
@@ -169,7 +169,8 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
 
    For the `reviewer`/`eval` rows, always suffix the reason with `(model: <model> — <source>)` —
    the value and source applied by the model-tier check below: an explicit `Gate model:` value,
-   the Admin Review & Eval default's alias, `claude-sonnet-5` (the `canon-*` definition floor) when both
+   the Admin Review & Eval default as `<alias> (<id>)` (e.g. `sonnet (claude-sonnet-5-5)`: the alias is what the dispatch
+   passes, the id is the registry's, so a later remap of the alias stays visible), `claude-sonnet-5` (the `canon-*` definition floor) when both
    fall through, or the exact session model id (e.g. `claude-sonnet-5`) on the fallback;
    never a paraphrase. Records which tier ran and why. On the `eval` row, also put the evaluator's elapsed minutes after the source (`; 12m`, from the dispatch
    result's duration or the gap between dispatch and report), so evaluator runtime is no longer unrecorded (`t-e3cd`); the report's `Evidence reuse:` line says what was reused.
@@ -329,7 +330,7 @@ Opus` default, scoped only to the two close-gate dispatches below.
    expected — proceed, don't retry or treat it as fatal.
 
 4. Each subagent records its model designation in its report — the exact value applied above
-   (an explicit `Gate model:` value, the Admin Review & Eval default's alias, or the exact
+   (an explicit `Gate model:` value, the Admin Review & Eval default as `<alias> (<id>)`, or the exact
    session model id, e.g. `claude-sonnet-5`), never a paraphrase — same value as the Wrapup
    Gates table's `(model: <model> — <source>)` suffix. **The orchestrator MUST
    state that model designation in each gate's dispatch prompt (its Inputs)**, because the
@@ -352,7 +353,7 @@ Opus` default, scoped only to the two close-gate dispatches below.
    never guess one. In Claude Code the totals are in the background task's completion notice
    (`<usage>`), which can arrive after the agent's report: wait for it before logging (`subagent-log.sh` warns when a Claude Code gate row has no `--tokens`).
    Pass `--model <id>` too (t-3a14): the model this dispatch resolved to and passed (the Admin
-   default, the ticket's `Gate model:`, or the agent's floor), not one read back from the report.
+   default's registry id, e.g. `claude-sonnet-5-5`, never its alias; the ticket's `Gate model:`; or the agent's floor), not one read back from the report.
    Leave it out when the model is unknown; never write a guessed one.
    `sprint gate-cost` summarizes these rows.
 
@@ -684,7 +685,7 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    |---|---|---|
    | <criterion verbatim> | delivered / waived / deferred / partial | reason if not delivered |
 
-   <one paragraph: what shipped, test results, any waived/deferred items and why, follow-up recorded. For normal+ tier, name which model the reviewer/evaluator gates ran on (pulled from the Wrapup Gates table's `(model: <model> — <source>)` suffix) — e.g. "reviewer and evaluator ran on sonnet (Admin Review & Eval default).">
+   <one paragraph: what shipped, test results, any waived/deferred items and why, follow-up recorded. For normal+ tier, name which model the reviewer/evaluator gates ran on (pulled from the Wrapup Gates table's `(model: <model> — <source>)` suffix) — e.g. "reviewer and evaluator ran on sonnet (claude-sonnet-5-5) (Admin Review & Eval default).">
    ```
 
    **If the advisory reviewer's verdict was NO, this paragraph must say so explicitly** — name
