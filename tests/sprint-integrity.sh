@@ -21,7 +21,7 @@ GATE_PROMPTS=(agents/canon-reviewer.md agents/canon-evaluator.md skills/sprint/r
 new_install() {
   local inst="$1" ver=9.8.7 p sep
   rm -rf "$inst"; copy_canon_tree "$inst"
-  mkdir -p "$inst/tools/sprint-check-bin"; cp "$board_bin" "$inst/tools/sprint-check-bin/sprint-check"
+  mkdir -p "$inst/tools/canon-go-bin"; cp "$board_bin" "$inst/tools/canon-go-bin/canon-go"
   printf '%s\n' "$ver" > "$inst/VERSION"
   rm -f "$inst/.canon-track"; rm -rf "$CANON_HOME/integrity"; mkdir -p "$CANON_HOME/integrity"
   {
@@ -100,9 +100,9 @@ done
 
 # a missing board binary and a board that predates the command: fail open
 new_install "$inst"; printf '#' >> "$inst/tools/gate-model.sh"
-mv "$inst/tools/sprint-check-bin/sprint-check" "$work/moved-board"
+mv "$inst/tools/canon-go-bin/canon-go" "$work/moved-board"
 complete; not_refused "a missing board"
-printf '#!/bin/sh\necho "old board"\n' > "$inst/tools/sprint-check-bin/sprint-check"; chmod +x "$inst/tools/sprint-check-bin/sprint-check"
+printf '#!/bin/sh\necho "old board"\n' > "$inst/tools/canon-go-bin/canon-go"; chmod +x "$inst/tools/canon-go-bin/canon-go"
 complete; not_refused "a board without the command"
 
 echo "sprint-integrity: ok"

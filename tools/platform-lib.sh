@@ -30,14 +30,15 @@ ps_utf8() {
 # has_non_ascii <text> — the text has a byte outside printable ASCII (what a ps without a UTF-8 locale cannot show as it is).
 has_non_ascii() { [ -n "$(printf '%s' "$1" | LC_ALL=C tr -d ' -~')" ]; }
 
-# board_rel_path — the board server binary, relative to a canon install (t-15d8: the Go board on every OS). The one owner of
-# this path: cockpit-launch-lib.sh starts it and cockpit-stop-lib.sh recognises the running board by it. tools/fetch-daemon.sh's
-# component table names the same destination (it runs standalone, without this file).
+# board_rel_path — canon's program, canon-go (the board server and the Cockpit daemon in one, t-bdb0), relative to a canon install
+# (t-15d8: the Go board on every OS). The one owner of this path: cockpit-launch-lib.sh starts it (`canon-go board <port>`) and
+# cockpit-stop-lib.sh recognises the running board and daemon by it plus their mode word. tools/fetch-daemon.sh's component table
+# names the same destination (it runs standalone, without this file).
 board_rel_path() {
-  if _is_windows; then echo tools/sprint-check-win.exe; else echo tools/sprint-check-bin/sprint-check; fi
+  if _is_windows; then echo tools/canon-go-win.exe; else echo tools/canon-go-bin/canon-go; fi
 }
 
-# board_bin — the board binary of this install: <install>/$(board_rel_path), or SPRINT_CHECK_BIN when set (a test's build).
+# board_bin — canon-go of this install: <install>/$(board_rel_path), or SPRINT_CHECK_BIN when set (a test's build).
 board_bin() {
   if [[ -n "${SPRINT_CHECK_BIN:-}" ]]; then echo "$SPRINT_CHECK_BIN"; return; fi
   echo "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/$(board_rel_path)"
@@ -45,7 +46,8 @@ board_bin() {
 
 # board_helper_bin — board_bin when it has the helper subcommands (t-b62a: they replaced inline python3); else says how to get it
 # and fails. Callers check first, so a missing binary never surfaces after a paid `claude -p` run. Checked through --help: an older
-# board takes an unknown first word for a port and would start serving instead of answering.
+# board takes an unknown first word for a port and would start serving instead of answering. canon-go takes a helper word as the
+# board's (only `daemon` and `board` are mode words, t-bdb0), so callers run `<bin> headless-json` as before.
 board_helper_bin() {
   local b h; b="$(board_bin)"
   h="$("$b" --help 2>/dev/null)" || h=""

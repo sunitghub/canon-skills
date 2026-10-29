@@ -1,31 +1,30 @@
 #!/usr/bin/env bash
-# fetch-daemon.sh — put verified prebuilt binaries where canon expects them (t-60f7, t-9383).
-#   macOS and Linux: the cockpit daemon at tools/cockpit-daemon/cockpit-daemon and the board server at
-#   tools/sprint-check-bin/sprint-check (t-15d8: the Go board is the only board).
-#   Windows (Git Bash): the daemon and the board server at tools/*-win.exe — they are no longer committed, so a checkout or a
-#   zip install has only the source until this runs. (t-b62a: the board binary's helpers replaced the headless JSON helper.)
-# Every binary is gitignored. This downloads the one published by scripts/release-daemon.sh and moves it into place only
-# after its SHA-256 equals the line for <source key> <target> in tools/cockpit-daemon.sha256 (read from the install itself).
-# The key is tools/src-key.sh's hash of the component's sources; an install with no .git (a Windows zip install, a release package) uses the
+# fetch-daemon.sh — put canon's verified prebuilt program where canon expects it (t-60f7, t-9383, t-bdb0).
+#   canon-go is one program holding the board server and the Cockpit daemon (`canon-go board`, `canon-go daemon`, t-bdb0):
+#   macOS and Linux: tools/canon-go-bin/canon-go. Windows (Git Bash): tools/canon-go-win.exe. A checkout or a zip install has
+#   only the source until this runs. (t-b62a: the board's helpers replaced the headless JSON helper.)
+# The binary is gitignored. This downloads the one published by scripts/release-daemon.sh (release canon-go-<key>) and moves it
+# into place only after its SHA-256 equals the line for <source key> canon-go-<target> in tools/cockpit-daemon.sha256 (read from
+# the install itself; the file keeps its name, older trees read their own lines from it).
+# The key is tools/src-key.sh's `canon-go` key; an install with no .git (a Windows zip install, a release package) uses the
 # newest manifest line for the target instead. A failure never touches a binary that is already in place. If no download is
-# possible it builds from source when Go is new enough, else says what to do. Called by install.sh, install.ps1,
-# `canon update` and `canon`.
-# Usage: fetch-daemon.sh [--quiet]     exit 0 = every required binary is in place, 1 = one could not be provided.
-# Both are required.
+# possible it builds from source when Go is new enough, else says what to do. Once canon-go is in place the two programs it
+# replaced (cockpit-daemon, sprint-check) are removed from this install. Called by install.ps1, pkg_install, `canon update` and `canon`.
+# Usage: fetch-daemon.sh [--quiet]     exit 0 = the binary is in place, 1 = it could not be provided.
 # CANON_FETCH_NO_BUILD=1 skips the build-from-source fallback (canon on Windows uses it at start). On macOS/Linux canon
 # lets it build, so a committed but unreleased board or daemon change runs from source on a machine with Go (t-15d8).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO="$(cd "$SCRIPT_DIR/.." && pwd -P)"
-MODULE_DIR="$REPO/tools/canon-go"   # t-8020: the board and the daemon are one Go module (cmd/sprint-check, cmd/cockpit-daemon)
+MODULE_DIR="$REPO/tools/canon-go"   # t-bdb0: the board and the daemon are one program, cmd/canon-go
 # shellcheck source=tools/src-key.sh
-source "$SCRIPT_DIR/src-key.sh"   # canon_src_key: what each binary's release key is built from
+source "$SCRIPT_DIR/src-key.sh"   # canon_src_key and canon_ldflags: what the release key is built from, and the stamps
 MANIFEST="$SCRIPT_DIR/cockpit-daemon.sha256"
 RELEASE_BASE="${CANON_DAEMON_RELEASE_BASE:-https://github.com/sunitghub/canon-skills/releases/download}"
 quiet=0; [ "${1:-}" = --quiet ] && quiet=1
 
-LABEL="cockpit-daemon"
+LABEL="canon-go"
 say() { echo "$LABEL: $*"; }
 die() { echo "$LABEL: $*" >&2; exit 1; }
 
@@ -39,7 +38,7 @@ if [ "$os" != windows ]; then
   case "$(uname -m)" in
     arm64|aarch64) arch=arm64 ;;
     x86_64|amd64) arch=amd64 ;;
-    *) die "no prebuilt binaries for CPU '$(uname -m)'. Build them: cd tools/canon-go && go build -o ../cockpit-daemon/cockpit-daemon ./cmd/cockpit-daemon && go build -o ../sprint-check-bin/sprint-check ./cmd/sprint-check" ;;
+    *) die "no prebuilt binaries for CPU '$(uname -m)'. Build it: cd tools/canon-go && go build -o ../canon-go-bin/canon-go ./cmd/canon-go" ;;
   esac
 fi
 
@@ -58,7 +57,7 @@ trap cleanup EXIT
 
 # Per-component settings, set by the loop at the bottom:
 #   COMP (component name for tools/src-key.sh: its key and its sources), TARGET (manifest column 2), ASSET (file name in the release), TAG (release prefix),
-#   DEST (absolute path the binary must land at), VERSION_CHECK (1 = the binary prints its commit stamp: macOS/Linux daemon and board).
+#   DEST (absolute path the binary must land at), VERSION_CHECK (1 = the binary prints its commit stamp: macOS/Linux).
 COMP=""; TARGET=""; ASSET=""; TAG=""; DEST=""; VERSION_CHECK=0; NEXT=""
 key=""; full=""; stamp=""; fail_reason=""
 
@@ -69,7 +68,7 @@ install_tmp() {
   tmp=""
 }
 
-# A binary already in place is current if it carries this commit's stamp (daemon on macOS/Linux) or hashes to the manifest line.
+# A binary already in place is current if it carries this commit's stamp (macOS/Linux) or hashes to the manifest line.
 is_current() {
   [ -f "$DEST" ] || return 1
   if [ "$VERSION_CHECK" = 1 ]; then
@@ -107,7 +106,9 @@ build_from_source() {
   local semver; semver="$(tr -d ' \t\n\r' < "$REPO/VERSION" 2>/dev/null)" || semver=dev
   mkdir -p "$(dirname "$DEST")"
   tmp="$(mktemp "$(dirname "$DEST")/.$(basename "$DEST").XXXXXX")"
-  local ok=1 ldflags="-X main.version=$semver -X main.commit=$stamp"
+  local ok=1 stamps ldflags
+  stamps="$(canon_ldflags "$REPO")" || stamps="-X main.commit=$stamp"   # the daemon key needs the git trees; without them, no stale check
+  ldflags="-X main.version=$semver $stamps"
   ( cd "$MODULE_DIR" && GOTOOLCHAIN=local go build -buildvcs=false -ldflags "$ldflags" -o "$tmp" "./cmd/$COMP" ) >/dev/null 2>&1 || ok=0
   if [ "$ok" = 1 ]; then
     install_tmp || return 1
@@ -152,13 +153,29 @@ fetch_one() {
 }
 
 # The component list: label|component (tools/src-key.sh)|manifest target|release asset|release prefix|destination|required|version-check
+# t-bdb0: one program; the release prefix and the target both say canon-go, so its lines never mix with the older programs' lines.
 if [ "$os" = windows ]; then
-  COMPONENTS="cockpit-daemon|cockpit-daemon|windows-amd64|cockpit-daemon-windows-amd64.exe|cockpit-daemon|tools/cockpit-daemon-win.exe|1|0
-sprint-check-win|sprint-check|sprint-check-windows-amd64|sprint-check-windows-amd64.exe|sprint-check|tools/sprint-check-win.exe|1|0"
+  COMPONENTS="canon-go|canon-go|canon-go-windows-amd64|canon-go-windows-amd64.exe|canon-go|tools/canon-go-win.exe|1|0"
+  LEGACY="tools/cockpit-daemon-win.exe tools/sprint-check-win.exe"
 else
-  COMPONENTS="cockpit-daemon|cockpit-daemon|$os-$arch|cockpit-daemon-$os-$arch|cockpit-daemon|tools/cockpit-daemon/cockpit-daemon|1|1
-sprint-check|sprint-check|sprint-check-$os-$arch|sprint-check-$os-$arch|sprint-check|tools/sprint-check-bin/sprint-check|1|1"
+  COMPONENTS="canon-go|canon-go|canon-go-$os-$arch|canon-go-$os-$arch|canon-go|tools/canon-go-bin/canon-go|1|1"
+  LEGACY="tools/cockpit-daemon/cockpit-daemon tools/sprint-check-bin/sprint-check"
 fi
+
+# remove_legacy: t-bdb0, once canon-go is in place, delete the two programs it replaced from THIS install (an update from an older tree
+# leaves them; on Windows they are ~7 MB more than canon-go). Only a regular file at exactly those paths, never through a symlink; a
+# program that is still running on Windows cannot be deleted and is named, never forced.
+remove_legacy() {
+  local rel f
+  for rel in $LEGACY; do
+    f="$REPO/$rel"
+    [ -f "$f" ] && [ ! -L "$f" ] && [ ! -L "$(dirname "$f")" ] || continue
+    if rm -f -- "$f" 2>/dev/null && [ ! -e "$f" ]; then say "removed $rel (replaced by canon-go)"
+    else echo "$LABEL: could not remove $rel (still running?); run canon stop, then canon update" >&2; fi
+    [ "$(dirname "$rel")" = tools ] || rmdir -- "$(dirname "$f")" 2>/dev/null || true   # its own folder, only when empty
+  done
+  return 0
+}
 
 rc=0
 while IFS='|' read -r LABEL COMP TARGET ASSET TAG rel required VERSION_CHECK; do
@@ -174,4 +191,5 @@ while IFS='|' read -r LABEL COMP TARGET ASSET TAG rel required VERSION_CHECK; do
 done <<EOF
 $COMPONENTS
 EOF
+if [ "$rc" = 0 ]; then remove_legacy; fi
 exit "$rc"

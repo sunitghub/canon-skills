@@ -41,9 +41,11 @@ leftovers() { find "$HOMEDIR" -maxdepth 2 \( -name '.tmp-*' -o -name '.boot.*' -
 # ── the stub release: binaries (published once, per key), and a zip + manifest line per version ─────────────────────────────────────────────
 KEY=abcdef012345; BADKEY=0123456789ab
 mkbin() { printf '#!/bin/sh\n[ "$1" = --version ] && { echo "x (%s)"; exit 0; }\nsleep "${1:-0}"\n' "${KEY:0:8}" > "$1"; chmod +x "$1"; }
-mkdir -p "$W/bin/cockpit-daemon-$KEY" "$W/bin/sprint-check-$KEY"
-mkbin "$W/bin/cockpit-daemon-$KEY/cockpit-daemon-$os-$arch"; mkbin "$W/bin/sprint-check-$KEY/sprint-check-$os-$arch"
-DSHA="$(sha "$W/bin/cockpit-daemon-$KEY/cockpit-daemon-$os-$arch")"; BSHA="$(sha "$W/bin/sprint-check-$KEY/sprint-check-$os-$arch")"
+# t-bdb0: one program, canon-go, released as canon-go-<key>/canon-go-<target>; the manifest keeps the two older programs' lines (as canon's
+# does), and the fetch must take only the canon-go line
+mkdir -p "$W/bin/canon-go-$KEY" "$W/bin/cockpit-daemon-$KEY" "$W/bin/sprint-check-$KEY"
+mkbin "$W/bin/canon-go-$KEY/canon-go-$os-$arch"; mkbin "$W/bin/cockpit-daemon-$KEY/cockpit-daemon-$os-$arch"; mkbin "$W/bin/sprint-check-$KEY/sprint-check-$os-$arch"
+CSHA="$(sha "$W/bin/canon-go-$KEY/canon-go-$os-$arch")"; DSHA="$(sha "$W/bin/cockpit-daemon-$KEY/cockpit-daemon-$os-$arch")"; BSHA="$(sha "$W/bin/sprint-check-$KEY/sprint-check-$os-$arch")"
 COMMIT="$(printf 'c%.0s' $(seq 1 40))"
 : > "$W/releases.txt"
 fill_tree() {   # <dir> <version> [daemon key]: canon's real update code, a stub skills.sh that logs who refreshed what
@@ -52,7 +54,7 @@ fill_tree() {   # <dir> <version> [daemon key]: canon's real update code, a stub
   cp "$ROOT/tools/canon" "$ROOT/tools/pkg-lib.sh" "$ROOT/tools/cockpit-launch-lib.sh" "$ROOT/tools/platform-lib.sh" "$ROOT/tools/ticket-root.sh" \
     "$ROOT/tools/release-manifest.sh" "$ROOT/tools/fetch-daemon.sh" "$ROOT/tools/src-key.sh" "$ROOT/tools/cockpit-stop-lib.sh" "$d/tools/"
   printf '#!/usr/bin/env bash\necho "$(cd "$(dirname "$0")/.." && pwd -P) $*" >> "${REFRESH_LOG:-/dev/null}"\n' > "$d/tools/skills.sh"; chmod +x "$d/tools/skills.sh"
-  printf '%s %s %s\n%s sprint-check-%s %s\n' "$k" "$os-$arch" "$DSHA" "$k" "$os-$arch" "$BSHA" > "$d/tools/cockpit-daemon.sha256"
+  printf '%s %s %s\n%s sprint-check-%s %s\n%s canon-go-%s %s\n' "$k" "$os-$arch" "$DSHA" "$k" "$os-$arch" "$BSHA" "$k" "$os-$arch" "$CSHA" > "$d/tools/cockpit-daemon.sha256"
 }
 release() {   # <version> [daemon key]: build canon-<version>.zip and publish its manifest line
   local v="$1" z="$W/rel/v$1/canon-$1.zip"
@@ -72,8 +74,8 @@ out="$(run bash "$ROOT/install.sh" 2>&1)" || fail "install.sh failed: $out"
 assert_eq "packages/v1.0.0" "$(target)"
 [ -L "$HOMEDIR/current" ] || fail "current is not a symlink"
 [ ! -e "$HOMEDIR/packages/v1.0.0/.git" ] || fail "a release package carries .git"
-[ -x "$HOMEDIR/packages/v1.0.0/tools/cockpit-daemon/cockpit-daemon" ] && [ -x "$HOMEDIR/packages/v1.0.0/tools/sprint-check-bin/sprint-check" ] \
-  || fail "the package's binaries are not inside it: $out"
+[ -x "$HOMEDIR/packages/v1.0.0/tools/canon-go-bin/canon-go" ] || fail "the package's binary is not inside it: $out"
+[ ! -e "$HOMEDIR/packages/v1.0.0/tools/cockpit-daemon" ] && [ ! -e "$HOMEDIR/packages/v1.0.0/tools/sprint-check-bin" ] || fail "a package holds a program canon-go replaced"
 assert_eq "canon 1.0.0" "$(run "$C" version)"
 assert_eq "current/tools" "$(readlink "$HOMEDIR/tools")"; assert_eq "canon 1.0.0" "$(run "$HOMEDIR/tools/canon" version)"   # ~/.canon/tools/... as the docs name it
 assert_contains "$out" "canon is now on v1.0.0, verified against the published manifest."; assert_contains "$out" "Installed the verified release v1.0.0"
@@ -184,7 +186,7 @@ kill "$BL"; wait "$BL" 2>/dev/null || true; rm -rf "$HOMEDIR/packages/.boot.Live
 echo "canon-packages: leftovers of an interrupted update are swept under the lock; a live installer's clone is kept"
 
 # ── C5: prune keeps the 2 newest old packages and never one a live process runs from (prod path: canon update) ──────────────────────────────────
-bash -c 'exec -a "$0" sleep 300' "$HOMEDIR/packages/v1.0.0/tools/cockpit-daemon/cockpit-daemon" & SP=$!; PIDS+=("$SP")
+bash -c 'exec -a "$0" sleep 300' "$HOMEDIR/packages/v1.0.0/tools/canon-go-bin/canon-go daemon" & SP=$!; PIDS+=("$SP")
 release 1.3.0
 out="$(run "$C" update 2>&1)" || fail "update to v1.3.0 failed: $out"
 assert_eq "packages/v1.3.0" "$(target)"; assert_contains "$out" "kept old package v1.0.0 (a running program uses it)"
@@ -196,8 +198,9 @@ assert_eq "v1.1.0 v1.2.0 v1.3.0" "$(cd "$HOMEDIR/packages" && echo v*)"
 echo "canon-packages: prune keeps current + 2 old, skips a package a process runs from, removes it once idle"
 
 # ── C9: update refuses while this install's daemon runs, names it and canon stop, and changes nothing; it stops nothing (prod path: canon update)
+# (t-bdb0: the stub daemon's argv0 carries the mode word, so ps shows what `canon-go daemon -addr ...` shows)
 OLD="$(tree_hash "$HOMEDIR/packages/v1.3.0")"
-bash -c 'exec -a "$0" sleep 300' "$HOMEDIR/packages/v1.3.0/tools/cockpit-daemon/cockpit-daemon" & DP=$!; PIDS+=("$DP")
+bash -c 'exec -a "$0" sleep 300' "$HOMEDIR/packages/v1.3.0/tools/canon-go-bin/canon-go daemon" & DP=$!; PIDS+=("$DP")
 printf '{"pid": %s}\n' "$DP" > "$W/state/daemon.json"
 sleep 0.3
 set +e; out="$(run "$C" update --to v1.2.0 2>&1)"; code=$?; set -e
@@ -206,14 +209,15 @@ assert_eq "packages/v1.3.0" "$(target)"; assert_eq "$OLD" "$(tree_hash "$HOMEDIR
 pid_alive "$DP" || fail "update stopped the daemon"
 # another install's daemon (a path outside this home) does not block
 kill "$DP"; wait "$DP" 2>/dev/null || true
-mkdir -p "$W/other/tools/cockpit-daemon"; bash -c 'exec -a "$0" sleep 300' "$W/other/tools/cockpit-daemon/cockpit-daemon" & DP=$!; PIDS+=("$DP")
+mkdir -p "$W/other/tools/canon-go-bin"; bash -c 'exec -a "$0" sleep 300' "$W/other/tools/canon-go-bin/canon-go daemon" & DP=$!; PIDS+=("$DP")
 printf '{"pid": %s}\n' "$DP" > "$W/state/daemon.json"; sleep 0.3
 out="$(run "$C" update --to v1.3.0 2>&1)" || fail "another install's daemon blocked the update: $out"
 kill "$DP"; wait "$DP" 2>/dev/null || true; rm -f "$W/state/daemon.json"
-# the board: a listener on the Cockpit port whose command line is a package's board binary, started through current (t-50f7 phase 2)
+# the board: a listener on the Cockpit port whose command line is a package's canon-go in board mode, started through current (t-50f7 phase 2;
+# t-bdb0: the stub's argv0 carries the mode word, so ps shows what `canon-go board <port>` shows)
 BP_PORT=$(( 20000 + $$ % 20000 ))
 bash -c 'exec -a "$0" perl -MIO::Socket::INET -e "my \$s = IO::Socket::INET->new(LocalAddr => q(127.0.0.1), LocalPort => \$ARGV[0], Listen => 5, ReuseAddr => 1) or die; sleep 300" "$1"' \
-  "$HOMEDIR/current/tools/sprint-check-bin/sprint-check" "$BP_PORT" & BP=$!; PIDS+=("$BP")
+  "$HOMEDIR/current/tools/canon-go-bin/canon-go board" "$BP_PORT" & BP=$!; PIDS+=("$BP")
 listening() { if command -v lsof >/dev/null 2>&1; then lsof -nP -iTCP:"$1" -sTCP:LISTEN -t >/dev/null 2>&1; else [ -n "$(ss -ltnH "sport = :$1" 2>/dev/null)" ]; fi; }
 for i in 1 2 3 4 5 6 7 8 9 10; do listening "$BP_PORT" && break; sleep 0.3; done
 listening "$BP_PORT" || fail "the stub board never listened on $BP_PORT"
@@ -261,7 +265,7 @@ echo "canon-packages: a clone under a folder named packages stays a clone; the l
 
 # prune also counts a program started through <home>/current/ or <home>/tools/ while current named the package (prod path: pkg_prune, pkg_in_use)
 out="$(run "$C" update --to v1.1.0 2>&1)" || fail "repoint to v1.1.0 failed: $out"
-bash -c 'exec -a "$0" sleep 300' "$HOMEDIR/current/tools/cockpit-daemon/cockpit-daemon" & CP=$!; PIDS+=("$CP"); sleep 0.3
+bash -c 'exec -a "$0" sleep 300' "$HOMEDIR/current/tools/canon-go-bin/canon-go daemon" & CP=$!; PIDS+=("$CP"); sleep 0.3
 release 1.4.0
 out="$(run "$C" update 2>&1)" || fail "update to v1.4.0 failed: $out"
 assert_eq "packages/v1.4.0" "$(target)"; assert_contains "$out" "kept old package v1.1.0 (a running program uses it)"; [ -d "$HOMEDIR/packages/v1.1.0" ] || fail "pruned a package a program runs from through current"
@@ -312,6 +316,63 @@ for i in 1 2 3; do
   wins=$((wins + 1))
 done
 echo "canon-packages: $wins trials, one dead lock taken over by exactly one of two updates"
+
+# ── t-bdb0: an update from the v0.29.0 layout (a package holding the two programs cockpit-daemon and sprint-check, updated by v0.29.0's own
+# canon and pkg-lib) to a package holding canon-go works; the new package then starts the board and the daemon (`canon-go board <port>`, which
+# starts `canon-go daemon`), and canon stop ends both by path and mode word. Prod path: canon update from an older install, the new package's
+# fetch-daemon.sh, start_cockpit_server, ensureCockpit, canon stop. The new release's binary is the real canon-go built from this checkout and
+# stamped as a release is (tools/src-key.sh canon_ldflags); v0.29.0's tools come from its tag.
+if git -C "$ROOT" cat-file -e "v0.29.0^{commit}" 2>/dev/null; then
+  K2FULL="$(bash -c 'source "$1/tools/src-key.sh"; canon_src_key "$1" canon-go' _ "$ROOT")"; K2="${K2FULL:0:12}"
+  export SPRINT_CHECK_NO_BROWSER=1   # the board started below must never open a browser (tests/no-browser-in-tests.sh)
+  REAL="$(build_board "$W/realbin" "$(bash -c 'source "$1/tools/src-key.sh"; canon_ldflags "$1"' _ "$ROOT")")"
+  mkdir -p "$W/bin/canon-go-$K2"; cp "$REAL" "$W/bin/canon-go-$K2/canon-go-$os-$arch"; RSHA="$(sha "$REAL")"
+  # v0.29.0: its own tools, a manifest naming only the two older programs (published above under $KEY)
+  d="$W/src/0.29.0/canon-0.29.0"; mkdir -p "$d/tools"; echo 0.29.0 > "$d/VERSION"
+  for f in canon pkg-lib.sh cockpit-launch-lib.sh platform-lib.sh ticket-root.sh release-manifest.sh fetch-daemon.sh src-key.sh cockpit-stop-lib.sh; do
+    git -C "$ROOT" show "v0.29.0:tools/$f" > "$d/tools/$f"
+  done
+  chmod +x "$d/tools/canon"; cp "$W/src/1.0.0/canon-1.0.0/tools/skills.sh" "$d/tools/"
+  printf '%s %s %s\n%s sprint-check-%s %s\n' "$KEY" "$os-$arch" "$DSHA" "$KEY" "$os-$arch" "$BSHA" > "$d/tools/cockpit-daemon.sha256"
+  mkdir -p "$W/rel/v0.29.0"; ( cd "$W/src/0.29.0" && zip -qr "$W/rel/v0.29.0/canon-0.29.0.zip" canon-0.29.0 )
+  printf 'v0.29.0 %s %s\n' "$(sha "$W/rel/v0.29.0/canon-0.29.0.zip")" "$COMMIT" >> "$W/releases.txt"
+  # v0.30.0: this checkout's tools and board files; its manifest keeps the older lines and adds canon-go's
+  fill_tree "$W/src/0.30.0/canon-0.30.0" 0.30.0; d="$W/src/0.30.0/canon-0.30.0"; cp -R "$ROOT/tools/sprint-check-app" "$d/tools/"
+  printf '%s %s %s\n%s sprint-check-%s %s\n%s canon-go-%s %s\n' "$KEY" "$os-$arch" "$DSHA" "$KEY" "$os-$arch" "$BSHA" "$K2" "$os-$arch" "$RSHA" > "$d/tools/cockpit-daemon.sha256"
+  mkdir -p "$W/rel/v0.30.0"; ( cd "$W/src/0.30.0" && zip -qr "$W/rel/v0.30.0/canon-0.30.0.zip" canon-0.30.0 )
+  printf 'v0.30.0 %s %s\n' "$(sha "$W/rel/v0.30.0/canon-0.30.0.zip")" "$COMMIT" >> "$W/releases.txt"
+
+  H2="$H/old home"; C2="$H2/current/tools/canon"; S2="$W/state2"; mkdir -m 700 "$S2"
+  run2() { run env CANON_HOME="$H2" COCKPIT_STATE_DIR="$S2" "$@"; }
+  out="$(run2 env CANON_REF=v0.29.0 bash "$ROOT/install.sh" 2>&1)" || fail "installing the v0.29.0 fixture failed: $out"
+  assert_eq "packages/v0.29.0" "$(readlink "$H2/current")"
+  [ -x "$H2/packages/v0.29.0/tools/cockpit-daemon/cockpit-daemon" ] && [ -x "$H2/packages/v0.29.0/tools/sprint-check-bin/sprint-check" ] \
+    || fail "fixture: the v0.29.0 package does not hold the two older programs: $out"
+  OLD2="$(tree_hash "$H2/packages/v0.29.0")"
+  out="$(run2 "$C2" update --to v0.30.0 2>&1)" || fail "update from the v0.29.0 layout failed: $out"
+  assert_eq "packages/v0.30.0" "$(readlink "$H2/current")"; assert_eq "$OLD2" "$(tree_hash "$H2/packages/v0.29.0")"
+  cmp -s "$REAL" "$H2/packages/v0.30.0/tools/canon-go-bin/canon-go" || fail "the new package does not hold the verified canon-go: $out"
+  [ ! -e "$H2/packages/v0.30.0/tools/cockpit-daemon" ] && [ ! -e "$H2/packages/v0.30.0/tools/sprint-check-bin" ] || fail "the new package holds a program canon-go replaced"
+  # start it as a user does (`canon <port>` in a project), launch the daemon as the Cockpit does, then canon stop
+  mkdir -p "$W/nobrowser"; printf '#!/bin/sh\nexit 0\n' > "$W/nobrowser/open"; cp "$W/nobrowser/open" "$W/nobrowser/xdg-open"; chmod +x "$W/nobrowser/"*
+  P2="$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1])')"
+  ( cd "$W/proj" && run2 env SPRINT_CHECK_NO_BROWSER=1 PATH="$W/nobrowser:$PATH" "$C2" "$P2" ) > "$W/launch2.out" 2>&1 & L2=$!; PIDS+=("$L2")
+  for i in $(seq 1 100); do curl -s -o /dev/null --max-time 1 "http://127.0.0.1:$P2/api/version" && break; sleep 0.1; done
+  B2="$(lsof -nP -iTCP:"$P2" -sTCP:LISTEN -t 2>/dev/null | sed -n 1p)" || B2=""; [ -n "$B2" ] || fail "the new package's board never listened: $(cat "$W/launch2.out")"; PIDS+=("$B2")
+  assert_contains "$(ps -ww -o command= -p "$B2")" "tools/canon-go-bin/canon-go board $P2"
+  ck="$(curl -s --max-time 10 -X POST -H "Origin: http://127.0.0.1:$P2" -H 'Content-Type: application/json' -d '{}' "http://127.0.0.1:$P2/api/cockpit")"
+  assert_contains "$ck" '"running":true'; assert_contains "$ck" '"stale":false'
+  D2="$(sed -n 's/.*"pid"[^0-9]*\([0-9][0-9]*\).*/\1/p' "$S2/daemon.json")"; [ -n "$D2" ] || fail "the daemon wrote no pid: $ck"; PIDS+=("$D2")
+  assert_contains "$(ps -ww -o command= -p "$D2")" "tools/canon-go-bin/canon-go daemon -addr 127.0.0.1:0"
+  out="$(run2 env CANON_COCKPIT_PORT="$P2" "$C2" stop 2>&1)" || fail "canon stop failed: $out"
+  assert_contains "$out" "Canon stopped: the Cockpit daemon and the board."
+  for i in $(seq 1 50); do pid_alive "$D2" || pid_alive "$B2" || break; sleep 0.1; done
+  ! pid_alive "$D2" && ! pid_alive "$B2" || fail "canon stop left the daemon ($D2) or the board ($B2) running"
+  wait "$L2" 2>/dev/null || true
+  echo "canon-packages: an update from the v0.29.0 layout installs canon-go, starts the board and its daemon, and canon stop ends both"
+else
+  echo "canon-packages: SKIPPED the v0.29.0 update case: this clone has no v0.29.0 tag (a shallow clone); run it in a full clone"
+fi
 
 assert_eq canary "$(cat "$H/canary")"; assert_eq canary "$(cat "$W/tmp/canary")"
 echo "canon-packages: ok"

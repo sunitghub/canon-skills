@@ -1,9 +1,9 @@
 @echo off
 setlocal
 
-set "EXE=%~dp0sprint-check-win.exe"
+set "EXE=%~dp0canon-go-win.exe"
 if not exist "%EXE%" (
-  echo Error: sprint-check-win.exe was not found. Run canon update (or the installer again) to fetch it.
+  echo Error: canon-go-win.exe was not found. Run canon update (or the installer again) to fetch it.
   exit /b 1
 )
 
@@ -26,5 +26,5 @@ rem the bare root ~400ms later, alongside the /cockpit URL opened below).
 set "SPRINT_CHECK_NO_BROWSER=1"
 rem t-302d: open the URL only once the board answers (the exe below runs in the foreground, so poll from a background window).
 start "" /b powershell -NoProfile -WindowStyle Hidden -Command "for($i=0;$i -lt 100;$i++){try{Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 -Uri 'http://127.0.0.1:%PORT%/api/version' | Out-Null; Start-Process '%URL%'; break}catch{Start-Sleep -Milliseconds 100}}"
-"%EXE%" %PORT%
+"%EXE%" board %PORT%
 exit /b %ERRORLEVEL%

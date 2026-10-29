@@ -2,10 +2,11 @@
 # cockpit-stop-lib.sh — find and stop THIS install's Cockpit board and daemon, and clear their runtime state (t-70a2). Source, don't execute.
 #
 # The rule: identify a process positively, or leave it alone. Nothing is ever matched by name. The daemon is found through the pid it records in
-# daemon.json (in its state dir), the board through whatever listens on its port; both are then checked against their full command line / exe
-# path, which must belong to this install. A recycled pid, another install's daemon or an unrelated listener is reported and never signalled.
+# daemon.json (in its state dir), the board through whatever listens on its port; both are then checked against their full command line, which
+# must run this install's canon-go AND carry the right mode word (t-bdb0: one program, `canon-go daemon ...` or `canon-go [board] [<port>]`).
+# A recycled pid, another install's daemon, a canon-go in the other mode or an unrelated listener is reported and never signalled.
 # Stopping is SIGTERM only (the daemon's handler reaps every agent session cleanly), a bounded wait, and a report if the process stays; there
-# is no SIGKILL. On Windows the processes of this install are stopped by exact exe path, as install.ps1 does.
+# is no SIGKILL. On Windows the command line comes from Win32_Process (Get-Process has no arguments) and is matched the same way.
 #
 # Needs from the caller: INSTALL (the physical install folder), PORT (the board's port), a `board_up` function (does something answer on PORT), and
 # platform-lib.sh already sourced.
@@ -40,11 +41,11 @@ _state_dir_name_ok() { case "$(basename "$1")" in canon-cockpit-board|canon-cock
 # own layout (hooks/ and scratch/, as seen on a real install after a clean stop) counts too, and so does an empty dir of that exact name.
 _has_state_file() { [ -f "$1/daemon.json" ] || [ -f "$1/sessions.json" ] || [ -f "$1/interrupted.json" ] || [ -d "$1/hooks" ] || [ -d "$1/scratch" ] || [ -z "$(ls -A "$1" 2>/dev/null)" ]; }
 
-# What a process is, as one string: its full command line (Unix) or its exe path (Windows). Empty when it does not exist.
+# What a process is, as one string: its full command line. Empty when it does not exist.
 _win_install() { cygpath -w "$INSTALL" 2>/dev/null; }
 _proc_ident() {
   if _is_windows && command -v powershell.exe >/dev/null 2>&1; then
-    powershell.exe -NoProfile -Command "(Get-Process -Id $1 -ErrorAction SilentlyContinue).Path" 2>/dev/null | tr -d '\r' | sed '/^[[:space:]]*$/d' | head -1 || true
+    powershell.exe -NoProfile -Command "(Get-CimInstance Win32_Process -Filter 'ProcessId=$1' -ErrorAction SilentlyContinue).CommandLine" 2>/dev/null | tr -d '\r' | sed '/^[[:space:]]*$/d' | head -1 || true
   else
     # an exited child that its parent has not reaped yet (a zombie, state Z) still shows in ps and answers kill -0: it is gone
     local st; st="$(ps -o stat= -p "$1" 2>/dev/null | tr -d ' ')" || st=""
@@ -66,26 +67,44 @@ _install_roots() {
   return 0
 }
 _ident_under_roots() { # <ident> <path relative to a root>: the command line runs that file of this install
+  _ident_args "$1" "$2" >/dev/null
+}
+# _ident_args <ident> <path relative to a root>: when the command line runs that file of this install, print its arguments (maybe none)
+# and return 0. Windows: the exe path (quoted or not, as CreateProcess takes it) is compared case-insensitively with <install>\<path>.
+_ident_args() {
   local r
+  if _is_windows; then
+    local id exe rest want
+    id="$1"
+    case "$id" in
+      '"'*) id="${id#\"}"; exe="${id%%\"*}"; rest="${id#*\"}" ;;
+      *) exe="${id%% *}"; rest="${id#"$exe"}" ;;
+    esac
+    rest="${rest# }"
+    want="$(printf '%s\\%s' "$(_win_install)" "$(printf '%s' "$2" | tr / '\\')")"
+    [ -n "$exe" ] && [ "$(printf '%s' "$exe" | tr 'A-Z' 'a-z')" = "$(printf '%s' "$want" | tr 'A-Z' 'a-z')" ] || return 1
+    printf '%s\n' "$rest"; return 0
+  fi
   while IFS= read -r r; do
-    case "$1" in "$r/$2"|"$r/$2 "*) return 0 ;; esac
+    case "$1" in "$r/$2") printf '\n'; return 0 ;; "$r/$2 "*) printf '%s\n' "${1#"$r/$2 "}"; return 0 ;; esac
   done < <(_install_roots)
   return 1
 }
+# t-bdb0: canon-go (board_rel_path) is both programs, so the mode word decides: `daemon` (never `daemon term`, the Terminal helper a daemon runs)
+# is the daemon; no argument, `board`, or a port first is the board, as cockpit-launch-lib.sh and older launchers start it. The two programs
+# canon-go replaced are still recognised by their own paths, so canon stop and uninstall reach a daemon an older install started before an update.
+_legacy_daemon_path() { if _is_windows; then echo tools/cockpit-daemon-win.exe; else echo tools/cockpit-daemon/cockpit-daemon; fi; }
+_legacy_board_path() { if _is_windows; then echo tools/sprint-check-win.exe; else echo tools/sprint-check-bin/sprint-check; fi; }
 _is_our_daemon() { # <ident>
-  if _is_windows; then
-    local w; w="$(_win_install)"
-    case "$(printf '%s' "$1" | tr 'A-Z' 'a-z')" in "$(printf '%s' "$w" | tr 'A-Z' 'a-z')\\tools\\cockpit-daemon-win.exe"|"$(printf '%s' "$w" | tr 'A-Z' 'a-z')\\tools\\cockpit-daemon\\cockpit-daemon.exe") return 0 ;; esac
-    return 1
-  fi
-  _ident_under_roots "$1" tools/cockpit-daemon/cockpit-daemon
+  local args; args="$(_ident_args "$1" "$(board_rel_path)")" || { _ident_under_roots "$1" "$(_legacy_daemon_path)"; return; }
+  case "$args" in "daemon term"|"daemon term "*) return 1 ;; daemon|"daemon "*) return 0 ;; esac
+  return 1
 }
 _is_our_board() { # <ident>  (the path is board_rel_path's, t-15d8)
-  if _is_windows; then
-    local w; w="$(_win_install)"
-    [ "$(printf '%s' "$1" | tr 'A-Z' 'a-z')" = "$(printf '%s\\%s' "$w" "$(board_rel_path | tr / '\\')" | tr 'A-Z' 'a-z')" ]; return
-  fi
-  _ident_under_roots "$1" "$(board_rel_path)"
+  local args first; args="$(_ident_args "$1" "$(board_rel_path)")" || { _ident_under_roots "$1" "$(_legacy_board_path)"; return; }
+  first="${args%% *}"
+  case "$first" in "") return 0 ;; board) return 0 ;; *[!0-9]*) return 1 ;; esac
+  return 0   # a port
 }
 _foreign_uses() { case $'\n'"$DAEMON_FOREIGN_DIRS" in *$'\n'"$1"$'\n'*) return 0 ;; esac; return 1; }
 

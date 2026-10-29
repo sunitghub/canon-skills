@@ -240,7 +240,8 @@ cat > "$WORK/seed/tools/fetch-daemon.sh" <<'SH'
 echo "fetch $*" >> "$REFRESH_LOG.fetch"
 [ "${STUB_FETCH:-ok}" = ok ] || { echo "fetch-daemon: download failed (stub)" >&2; exit 1; }
 d="$(cd "$(dirname "$0")" && pwd)"
-for n in cockpit-daemon sprint-check sprint-headless-json; do echo "new-$n" > "$d/$n-win.exe"; done
+for n in ${STUB_FETCH_NAMES:-canon-go}; do echo "new-$n" > "$d/$n-win.exe"; done
+[ "${STUB_FETCH_RMOLD:-0}" = 0 ] || rm -f "$d/cockpit-daemon-win.exe" "$d/sprint-check-win.exe"   # as fetch-daemon.sh does once canon-go is in place (t-bdb0)
 SH
 chmod +x "$WORK/seed/tools/fetch-daemon.sh"
 for n in cockpit-daemon sprint-check sprint-headless-json; do echo "old-$n" > "$WORK/seed/tools/$n-win.exe"; done
@@ -258,8 +259,8 @@ assert_contains "$out" "kept your previous sprint-check-win.exe"; assert_contain
 assert_eq "fetch --quiet" "$(cat "$REFRESH_LOG.fetch")"; assert_eq "" "$(git -C "$INSTALL" status --porcelain)"
 # the next update with a working fetch replaces them (the fetcher writes new bytes over the kept ones)
 echo again > "$WORK/seed/NEWS2"; git -C "$WORK/seed" "${ident[@]}" add NEWS2; git -C "$WORK/seed" "${ident[@]}" commit -qm news3 && git -C "$WORK/seed" push -q origin main 2>/dev/null
-out="$(STUB_FETCH=ok PATH="$WSTUB:$PATH" "$CANON" update 2>&1)"
-for n in cockpit-daemon sprint-check sprint-headless-json; do assert_eq "new-$n" "$(cat "$INSTALL/tools/$n-win.exe")"; done
+out="$(STUB_FETCH=ok STUB_FETCH_NAMES="cockpit-daemon sprint-check sprint-headless-json canon-go" PATH="$WSTUB:$PATH" "$CANON" update 2>&1)"
+for n in cockpit-daemon sprint-check sprint-headless-json canon-go; do assert_eq "new-$n" "$(cat "$INSTALL/tools/$n-win.exe")"; done
 refute_contains "$out" "kept your previous"
 # a pull that cannot fast-forward leaves no backup folder behind and changes nothing
 echo local > "$INSTALL/LOCAL2"; git -C "$INSTALL" "${ident[@]}" add LOCAL2; git -C "$INSTALL" "${ident[@]}" commit -qm local2
@@ -268,13 +269,20 @@ export TMPDIR="$WORK/updtmp"; mkdir -p "$TMPDIR"   # the backup folder is made u
 set +e; out="$(PATH="$WSTUB:$PATH" "$CANON" update 2>&1)"; code=$?; set -e
 assert_eq "1" "$code"; assert_contains "$out" "can't fast-forward"
 assert_eq 0 "$(find "$TMPDIR" -maxdepth 1 -name 'canon-update-bak.*' | wc -l | tr -d ' ')"; unset TMPDIR
-for n in cockpit-daemon sprint-check sprint-headless-json; do assert_eq "new-$n" "$(cat "$INSTALL/tools/$n-win.exe")"; done
+for n in cockpit-daemon sprint-check sprint-headless-json canon-go; do assert_eq "new-$n" "$(cat "$INSTALL/tools/$n-win.exe")"; done
 g "$INSTALL" reset -q --hard origin/main~0 2>/dev/null || true; git -C "$INSTALL" reset -q --hard origin/main
 # a fetch that fails with nothing to restore (the exes were never there) is a failed update: exit 1 and say which programs are missing
 rm -f "$INSTALL"/tools/*-win.exe; echo more4 > "$WORK/seed/NEWS4"; git -C "$WORK/seed" "${ident[@]}" add NEWS4; git -C "$WORK/seed" "${ident[@]}" commit -qm news5 && git -C "$WORK/seed" push -q origin main 2>/dev/null
 set +e; out="$(STUB_FETCH=fail PATH="$WSTUB:$PATH" "$CANON" update 2>&1)"; code=$?; set -e
-assert_eq "1" "$code"; assert_contains "$out" "cockpit-daemon-win.exe sprint-check-win.exe"; assert_contains "$out" "could not be fetched"
+assert_eq "1" "$code"; assert_contains "$out" "canon-go-win.exe is missing"; assert_contains "$out" "could not be fetched"
 assert_contains "$out" "download failed (stub)"; assert_eq "" "$(git -C "$INSTALL" status --porcelain)"
+# t-bdb0: a fetch that worked and removed the two exes canon-go replaced (as fetch-daemon.sh does) is not undone from the backup, and
+# canon-go-win.exe alone is a complete Windows install
+for n in cockpit-daemon sprint-check; do echo "old-$n" > "$INSTALL/tools/$n-win.exe"; done
+echo more6 > "$WORK/seed/NEWS6"; git -C "$WORK/seed" "${ident[@]}" add NEWS6; git -C "$WORK/seed" "${ident[@]}" commit -qm news7 && git -C "$WORK/seed" push -q origin main 2>/dev/null
+set +e; out="$(STUB_FETCH_RMOLD=1 PATH="$WSTUB:$PATH" "$CANON" update 2>&1)"; code=$?; set -e
+assert_eq "0" "$code"; refute_contains "$out" "kept your previous"; refute_contains "$out" "could not be fetched"
+[[ ! -e "$INSTALL/tools/cockpit-daemon-win.exe" && ! -e "$INSTALL/tools/sprint-check-win.exe" && -f "$INSTALL/tools/canon-go-win.exe" ]] || fail "the update brought back the exes canon-go replaced: $(ls "$INSTALL/tools" | grep win.exe)"
 # the same state on macOS/Linux is NOT an error (no Windows exes exist there)
 echo more5 > "$WORK/seed/NEWS5"; git -C "$WORK/seed" "${ident[@]}" add NEWS5; git -C "$WORK/seed" "${ident[@]}" commit -qm news6 && git -C "$WORK/seed" push -q origin main 2>/dev/null
 set +e; out="$(STUB_FETCH=fail "$CANON" update 2>&1)"; code=$?; set -e

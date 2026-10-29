@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
-# release-daemon.sh — build canon's prebuilt binaries, publish them as GitHub releases on canon-skills and record their SHA-256
-# in tools/cockpit-daemon.sha256 (t-60f7, t-9383). Maintainer step: run it after the source is committed and before the manifest
+# release-daemon.sh — build canon's prebuilt program, publish it as a GitHub release on canon-skills and record its SHA-256
+# in tools/cockpit-daemon.sha256 (t-60f7, t-9383, t-bdb0). Maintainer step: run it after the source is committed and before the manifest
 # (and the commit that carries it) is pushed to public, because installs verify what they download against it.
-#   cockpit-daemon  macOS + Linux (4 targets) and Windows amd64   release cockpit-daemon-<its key>
-#   board           macOS + Linux (4 targets, t-15d8) and Windows amd64 (tools/sprint-check-win.exe)   release sprint-check-<its key>
-# The daemon and the board are one Go module, tools/canon-go (t-8020), built from cmd/cockpit-daemon and cmd/sprint-check; each key
-# covers only the paths that binary is built from (tools/src-key.sh), so a board-only change does not re-release the daemon.
+#   canon-go  macOS + Linux (4 targets) and Windows amd64   release canon-go-<key>, assets canon-go-<os>-<arch>[.exe]
+# canon-go is one program (tools/canon-go/cmd/canon-go) holding the board and the daemon (t-bdb0); its key is tools/src-key.sh's
+# `canon-go` key (the hash of the daemon and board part keys), and every build stamps the daemon part's key (-X main.daemonKey) so a
+# board-only release does not mark a running daemon stale. Manifest lines are `<key> canon-go-<target> <sha256>`, appended: the lines
+# of the older cockpit-daemon-* and sprint-check-* releases stay, because older trees still fetch those (never deleted) assets.
 # Every build uses -trimpath -buildvcs=false, so the same source gives the same bytes at any checkout path. A release that exists
 # keeps its assets (a published asset is never overwritten); missing ones are added. No build carries VERSION (t-0859): the
 # binaries read it from the install at run time, so a version bump leaves every key's bytes unchanged. A release that already
 # existed before this run is recorded from its published asset, not rebuild-compared (t-7f09); a new one must equal its build.
 # The Go toolchain is pinned, not whatever is installed: tools/canon-go/go.mod has a `toolchain` line (t-b62a retired the headless helper and
 # its GO_TOOLCHAIN file). Every build sets GOTOOLCHAIN to the pin explicitly (go.mod's `toolchain` line is only a minimum, and an
-# exported GOTOOLCHAIN=local would ignore it), and every built binary is checked with `go version -m` against the pin before anything is published. The pin lives in go.mod on purpose: raising it changes both keys (go.mod is in each, tools/src-key.sh), so the fixed
+# exported GOTOOLCHAIN=local would ignore it), and every built binary is checked with `go version -m` against the pin before anything is published. The pin lives in go.mod on purpose: raising it changes the key (go.mod is in it, tools/src-key.sh), so the fixed
 # build is a NEW release and the old release (which an older tag's manifest still points at) keeps its assets (t-7efe).
 # Usage: scripts/release-daemon.sh [--dry-run]   (--dry-run builds and prints the manifest lines, publishes and writes nothing)
 set -euo pipefail
@@ -28,10 +29,10 @@ if [ "$dry" = 0 ]; then command -v gh >/dev/null 2>&1 || { echo "release-daemon:
 [ -z "$(git -C "$REPO_ROOT" status --porcelain -- tools/canon-go)" ] || { echo "release-daemon: tools/canon-go has uncommitted changes; commit them first so the release names the source it was built from" >&2; exit 1; }
 
 # shellcheck source=tools/src-key.sh
-source "$REPO_ROOT/tools/src-key.sh"   # each component's key: the same name tools/fetch-daemon.sh computes in any clone
-src_key() { canon_src_key "$REPO_ROOT" "$1" || { echo "release-daemon: cannot name the $1 source at HEAD (tools/src-key.sh)" >&2; exit 1; }; }
-full_d="$(src_key cockpit-daemon)"; key_d="${full_d:0:12}"
-full_b="$(src_key sprint-check)"; key_b="${full_b:0:12}"
+source "$REPO_ROOT/tools/src-key.sh"   # the key and the stamps: the same names tools/fetch-daemon.sh computes in any clone
+full="$(canon_src_key "$REPO_ROOT" canon-go)" && stamps="$(canon_ldflags "$REPO_ROOT")" \
+  || { echo "release-daemon: cannot name the canon-go source at HEAD (tools/src-key.sh)" >&2; exit 1; }
+key="${full:0:12}"
 MODULE="$REPO_ROOT/tools/canon-go"
 out="$(mktemp -d)"; chk=""; trap 'rm -rf "$out" "$chk"' EXIT
 
@@ -47,31 +48,23 @@ check_built() { # <binary> <pin>: the file must say it was built with exactly th
 
 # Build everything first; nothing is published until every build has worked.
 lines=""   # <key> <target> <sha256>
-build_module() { # <cmd name> <commit stamp> <goos-goarch> <output file>: one binary from the canon-go module, with its pin
-  ( cd "$MODULE" && GOTOOLCHAIN="$module_pin" CGO_ENABLED=0 GOOS="${3%-*}" GOARCH="${3#*-}" go build -trimpath -buildvcs=false \
-      -ldflags "-s -w -X main.commit=$2" -o "$4" "./cmd/$1" )
-  check_built "$4" "$module_pin"
+build_module() { # <goos-goarch> <output file>: canon-go for one target, stamped (canon_ldflags), with its pin
+  ( cd "$MODULE" && GOTOOLCHAIN="$module_pin" CGO_ENABLED=0 GOOS="${1%-*}" GOARCH="${1#*-}" go build -trimpath -buildvcs=false \
+      -ldflags "-s -w $stamps" -o "$2" ./cmd/canon-go )
+  check_built "$2" "$module_pin"
 }
 for t in $UNIX_TARGETS; do
-  build_module cockpit-daemon "${full_d:0:8}" "$t" "$out/cockpit-daemon-$t"
-  lines="$lines$key_d $t $(sha256_of "$out/cockpit-daemon-$t")"$'\n'
+  build_module "$t" "$out/canon-go-$t"
+  lines="$lines$key canon-go-$t $(sha256_of "$out/canon-go-$t")"$'\n'
 done
-build_module cockpit-daemon "${full_d:0:8}" windows-amd64 "$out/cockpit-daemon-windows-amd64.exe"
-lines="$lines$key_d windows-amd64 $(sha256_of "$out/cockpit-daemon-windows-amd64.exe")"$'\n'
-for t in $UNIX_TARGETS; do   # t-15d8: the Go board is the only board on macOS/Linux too
-  build_module sprint-check "${full_b:0:8}" "$t" "$out/sprint-check-$t"
-  lines="$lines$key_b sprint-check-$t $(sha256_of "$out/sprint-check-$t")"$'\n'
-done
-build_module sprint-check "${full_b:0:8}" windows-amd64 "$out/sprint-check-windows-amd64.exe"
-lines="$lines$key_b sprint-check-windows-amd64 $(sha256_of "$out/sprint-check-windows-amd64.exe")"$'\n'
+build_module windows-amd64 "$out/canon-go-windows-amd64.exe"
+lines="$lines$key canon-go-windows-amd64 $(sha256_of "$out/canon-go-windows-amd64.exe")"$'\n'
 cp "$REPO_ROOT/THIRD-PARTY-NOTICES.md" "$out/THIRD-PARTY-NOTICES.md"
 
-if [ "$dry" = 1 ]; then printf '%s' "$lines"; echo "release-daemon: dry run for cockpit-daemon-$key_d and sprint-check-$key_b; nothing published or written"; exit 0; fi
+if [ "$dry" = 1 ]; then printf '%s' "$lines"; echo "release-daemon: dry run for canon-go-$key; nothing published or written"; exit 0; fi
 
-# Which releases existed before this run: their assets were published from an earlier build and are never replaced.
-existed() { gh release view "$1" --repo "$RELEASE_REPO" >/dev/null 2>&1; }
-ex_d=0; if existed "cockpit-daemon-$key_d"; then ex_d=1; fi
-ex_b=0; if existed "sprint-check-$key_b"; then ex_b=1; fi
+# Whether the release existed before this run: its assets were published from an earlier build and are never replaced.
+ex=0; if gh release view "canon-go-$key" --repo "$RELEASE_REPO" >/dev/null 2>&1; then ex=1; fi
 
 # publish <tag> <full source hash> <asset file name>... : create the release if absent, else add only the assets it lacks.
 publish() {
@@ -87,8 +80,7 @@ publish() {
     grep -qx "$(basename "$f")" <<<"$have" || gh release upload "$tag" "$f" --repo "$RELEASE_REPO"
   done
 }
-publish "cockpit-daemon-$key_d" "$full_d" "$out"/cockpit-daemon-darwin-* "$out"/cockpit-daemon-linux-* "$out/cockpit-daemon-windows-amd64.exe"
-publish "sprint-check-$key_b" "$full_b" "$out"/sprint-check-darwin-* "$out"/sprint-check-linux-* "$out/sprint-check-windows-amd64.exe"
+publish "canon-go-$key" "$full" "$out"/canon-go-darwin-* "$out"/canon-go-linux-* "$out/canon-go-windows-amd64.exe"
 
 # Prove what users will download: fetch every asset back and record its hash. An asset of a release created in this run
 # must equal this build. An existing release's asset is recorded as published (t-7f09: an earlier build, or one made before
@@ -110,10 +102,8 @@ record() { # <key> <target> <tag> <asset> <existed 0|1>
   fi
   final="$final$1 $2 $got"$'\n'
 }
-for t in $UNIX_TARGETS; do record "$key_d" "$t" "cockpit-daemon-$key_d" "cockpit-daemon-$t" "$ex_d"; done
-record "$key_d" windows-amd64 "cockpit-daemon-$key_d" cockpit-daemon-windows-amd64.exe "$ex_d"
-for t in $UNIX_TARGETS; do record "$key_b" "sprint-check-$t" "sprint-check-$key_b" "sprint-check-$t" "$ex_b"; done
-record "$key_b" sprint-check-windows-amd64 "sprint-check-$key_b" sprint-check-windows-amd64.exe "$ex_b"
+for t in $UNIX_TARGETS; do record "$key" "canon-go-$t" "canon-go-$key" "canon-go-$t" "$ex"; done
+record "$key" canon-go-windows-amd64 "canon-go-$key" canon-go-windows-amd64.exe "$ex"
 
 # Replace any earlier line for the same key and target, then append: the newest line for a target is the last one.
 tmpm="$MANIFEST.new"; cp "$MANIFEST" "$tmpm"
@@ -124,4 +114,4 @@ done <<EOF
 $final
 EOF
 printf '%s' "$final" >> "$tmpm"; mv "$tmpm" "$MANIFEST"
-echo "release-daemon: published cockpit-daemon-$key_d and sprint-check-$key_b and updated tools/cockpit-daemon.sha256; commit it, run scripts/check-binaries-released.sh --download, then push to public"
+echo "release-daemon: published canon-go-$key and updated tools/cockpit-daemon.sha256; commit it, run scripts/check-binaries-released.sh --download, then push to public"

@@ -69,7 +69,7 @@ async function expectCornersHold(page, panelSel) {
 }
 
 // t-15d8: a test that needs its own board starts the Go board (the only board), built once per worker into a miniature
-// install: <tmp>/tools/sprint-check-bin/sprint-check (the name an install uses, so test.sh's leak check sees it) beside a
+// install: <tmp>/tools/canon-go-bin/canon-go (the name an install uses, so test.sh's leak check sees it) beside a
 // link to this checkout's tools/sprint-check-app, which the board finds relative to its own binary.
 let goBoardBinPath = '';
 const goBoardTemps = [];   // removed when the worker exits
@@ -78,9 +78,9 @@ function goBoardBin() {
   if (goBoardBinPath) return goBoardBinPath;
   const layout = fs.mkdtempSync(path.join(require('os').tmpdir(), 'spec-board-'));
   goBoardTemps.push(layout);
-  fs.mkdirSync(path.join(layout, 'tools', 'sprint-check-bin'), { recursive: true });
+  fs.mkdirSync(path.join(layout, 'tools', 'canon-go-bin'), { recursive: true });
   fs.symlinkSync(path.join(__dirname, '..', 'tools', 'sprint-check-app'), path.join(layout, 'tools', 'sprint-check-app'));
-  const out = path.join(layout, 'tools', 'sprint-check-bin', 'sprint-check');
+  const out = path.join(layout, 'tools', 'canon-go-bin', 'canon-go');
   execFileSync('go', ['build', '-o', out, './cmd/canon-go'], { cwd: path.join(__dirname, '..', 'tools', 'canon-go'), stdio: 'ignore' });
   goBoardBinPath = out;
   return out;

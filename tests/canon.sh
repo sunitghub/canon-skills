@@ -362,7 +362,8 @@ echo 0.0.0 > "$WORK/VERSION"
 cat > "$WORK/board-stub" <<'PY'
 #!/usr/bin/env python3
 import http.server, os, sys, time
-port = int(sys.argv[1]); mode = os.environ.get('STUB_MODE', 'serve')
+if sys.argv[1] != 'board': sys.exit(9)   # t-bdb0: the launcher starts `canon-go board <port>`
+port = int(sys.argv[2]); mode = os.environ.get('STUB_MODE', 'serve')
 open(os.environ['STUB_PIDFILE'], 'w').write(str(os.getpid()))
 if mode == 'exit': sys.exit(3)
 if mode == 'never': time.sleep(600)

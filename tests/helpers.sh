@@ -89,11 +89,15 @@ shell_sources() {
 # board). The same file name as an install's, so scripts/test.sh's leak check sees every test board. No Go is a failure, never a skip:
 # a suite that silently stopped testing the board would still pass.
 # An optional second argument is extra -ldflags (a test that needs a stamped build, e.g. -X main.daemonKey=...).
+# t-bdb0: canon-go holds the daemon too, whose third-party modules a test that pinned HOME would download again into a read-only module
+# cache under its temp home (network, and an rm -rf that fails): the build runs with the HOME this file was first sourced under,
+# exported so a suite run from a suite that pinned HOME (tests/worktree-suites.sh) keeps it.
+export _BUILD_BOARD_HOME="${_BUILD_BOARD_HOME:-${HOME:-}}"
 build_board() {
   local out="$1/canon-go-bin/canon-go"
   command -v go >/dev/null 2>&1 || fail "build_board: go is required to build the board (tools/canon-go)"
   mkdir -p "$1/canon-go-bin"
-  (cd "$ROOT/tools/canon-go" && go build ${2:+-ldflags "$2"} -o "$out" ./cmd/canon-go) || fail "build_board: go build of tools/canon-go/cmd/canon-go failed"
+  (cd "$ROOT/tools/canon-go" && HOME="$_BUILD_BOARD_HOME" go build ${2:+-ldflags "$2"} -o "$out" ./cmd/canon-go) || fail "build_board: go build of tools/canon-go/cmd/canon-go failed"
   printf '%s\n' "$out"
 }
 

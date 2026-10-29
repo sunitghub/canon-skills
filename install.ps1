@@ -138,16 +138,18 @@ function Install-CanonFiles($Dest) {
     if (-not $src -or -not (Test-Path (Join-Path $src.FullName "tools"))) { throw "The download did not contain canon's tools folder." }
     # Windows will not overwrite a running .exe, and robocopy's default is to retry a locked file a million
     # times at 30s each, silently (live: the update hung with the board open). Ask first, and fail fast below.
-    $running = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith("$Dest\", [StringComparison]::OrdinalIgnoreCase) })
+    # Win32_Process, not Get-Process: t-bdb0 made the board and the daemon one exe (canon-go-win.exe), so only the command line's mode word
+    # (`canon-go-win.exe daemon ...`) tells them apart. An older install's daemon is still cockpit-daemon-win.exe.
+    $running = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith("$Dest\", [StringComparison]::OrdinalIgnoreCase) })
     # The daemon owns live agent sessions, so only `canon stop` (which refuses while agents run) may end it.
-    if (@($running | Where-Object { $_.ProcessName -like "cockpit-daemon*" }).Count -gt 0) {
+    if (@($running | Where-Object { $_.Name -like "cockpit-daemon*" -or $_.CommandLine -match '^\s*("[^"]*"|\S+)\s+daemon(\s|$)' }).Count -gt 0) {
       throw "canon's daemon is running. Run 'canon stop', then run this again."
     }
     # The board server holds no state: end exactly the processes running from the folder we are replacing.
     foreach ($p in $running) {
-      Write-Host "==> Closing the running canon board ($($p.ProcessName))"
-      Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
-      $p.WaitForExit(5000) | Out-Null
+      Write-Host "==> Closing the running canon board ($($p.Name))"
+      Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
+      Wait-Process -Id $p.ProcessId -Timeout 5 -ErrorAction SilentlyContinue
     }
     New-Item -ItemType Directory -Force -Path $Dest | Out-Null
     # No /MIR: cockpit\ (registry, change store) must survive an update. Stale removed files linger; acceptable.
@@ -162,9 +164,9 @@ function Install-CanonFiles($Dest) {
   }
 }
 
-# t-9383: the board and daemon exes are release assets, not part of the zip. tools\fetch-daemon.sh (run by Git Bash,
-# which canon needs anyway) downloads each one and moves it into place only after its SHA-256 matches tools\cockpit-daemon.sha256;
-# a failure leaves any exe that is already there untouched. Returns $false only when the board or the daemon exe is still missing.
+# t-9383: canon's program is a release asset, not part of the zip. tools\fetch-daemon.sh (run by Git Bash, which canon needs anyway)
+# downloads it and moves it into place only after its SHA-256 matches tools\cockpit-daemon.sha256; a failure leaves an exe that is
+# already there untouched. t-bdb0: one exe, tools\canon-go-win.exe, is the board and the daemon. Returns $false only when it is still missing.
 function Install-CanonBinaries($Dest) {
   $ErrorActionPreference = "Continue"  # bash writes its messages to stderr; PowerShell 5.1 would turn each line into a terminating error under "Stop"
   $bash = Find-GitBash
@@ -175,11 +177,9 @@ function Install-CanonBinaries($Dest) {
   } else {
     Write-Host "    Could not run the fetch (Git Bash or tools\fetch-daemon.sh not found)."
   }
-  $board = Test-Path (Join-Path $Dest "tools\sprint-check-win.exe")
-  $daemon = Test-Path (Join-Path $Dest "tools\cockpit-daemon-win.exe")
-  if (-not ($board -and $daemon)) {
+  if (-not (Test-Path (Join-Path $Dest "tools\canon-go-win.exe"))) {
     Write-Host ""
-    Write-Host "canon needs its board and daemon programs and could not get them (see above). Check your internet connection, then run this again:"
+    Write-Host "canon needs its program (canon-go-win.exe: the board and the daemon) and could not get it (see above). Check your internet connection, then run this again:"
     Write-Host "  $RerunCmd"
     return $false
   }

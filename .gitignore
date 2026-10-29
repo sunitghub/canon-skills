@@ -54,5 +54,8 @@ examples/
 /.claude/agents
 # The Windows exes are release assets fetched by tools/fetch-daemon.sh, never committed (t-9383).
 /tools/*-win.exe
-# The macOS/Linux board binary, fetched the same way (t-15d8).
+# The macOS/Linux program (board and daemon, t-bdb0), fetched the same way.
+/tools/canon-go-bin/
+# The two programs canon-go replaced (t-bdb0): fetch-daemon.sh removes them, but an older tree's leftovers must not dirty the clone.
 /tools/sprint-check-bin/
+/tools/cockpit-daemon/

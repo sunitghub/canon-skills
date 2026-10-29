@@ -70,4 +70,25 @@ code "$PS1" | grep -E '\$ref = if \(\$env:CANON_REF\) \{ \$env:CANON_REF \} else
 code "$PS1" | grep '\.canon-track' >/dev/null && code "$PS1" | grep 'WriteAllText(\$trackFile' >/dev/null && code "$PS1" | grep 'Could not record the update track' >/dev/null || fail "install.ps1 does not record the track with .NET and read it back"
 code "$PS1" | grep -E 'cmatch .\^v\(0\|\[1-9\]\[0-9\]\{0,5\}\)' >/dev/null || fail "install.ps1's latest-release line rule drifted from tools/release-manifest.sh (the oracle in tests/release-manifest.sh reads it)"
 
+# t-bdb0: one exe, tools\canon-go-win.exe, is the board and the daemon. Install-CanonBinaries checks that one file (and no longer the two it
+# replaced), and the update refuses while the DAEMON runs, telling it from the board only by the command line's mode word (prod path: a zip
+# update over a running Cockpit). The mode-word regex is run here on the command lines Windows reports (Python's re reads this subset as
+# .NET does): the daemon, quoted or not, and the older daemon exe by name; never the board or a helper.
+code "$PS1" | grep -F 'Test-Path (Join-Path $Dest "tools\canon-go-win.exe")' >/dev/null || fail "install.ps1 does not check tools\\canon-go-win.exe"
+if code "$PS1" | grep -E 'sprint-check-win\.exe|cockpit-daemon-win\.exe' >/dev/null; then fail "install.ps1 still checks a program canon-go replaced"; fi
+code "$PS1" | grep -F 'Get-CimInstance Win32_Process' >/dev/null || fail "install.ps1 must read command lines (Win32_Process): Get-Process has no arguments to tell the daemon from the board"
+re="$(code "$PS1" | grep -F 'CommandLine -match' | sed -n "s/.*CommandLine -match '\([^']*\)'.*/\1/p")"
+[[ -n "$re" ]] || fail "install.ps1 lost its daemon mode-word match"
+python3 - "$re" <<'PY2' || fail "install.ps1's daemon mode-word match is wrong"
+import re, sys
+rx = re.compile(sys.argv[1])
+daemon = ['"C:\\Users\\a b\\.canon\\tools\\canon-go-win.exe" daemon -addr 127.0.0.1:0', 'C:\\c\\tools\\canon-go-win.exe daemon -addr 127.0.0.1:0',
+          '"C:\\c\\tools\\canon-go-win.exe" daemon', '"C:\\c\\tools\\canon-go-win.exe" daemon term --session s']
+other = ['"C:\\c\\tools\\canon-go-win.exe" board 8899', '"C:\\c\\tools\\canon-go-win.exe" 8899', '"C:\\c\\tools\\canon-go-win.exe"',
+         '"C:\\c\\tools\\canon-go-win.exe" headless-json', '"C:\\daemon dir\\tools\\canon-go-win.exe" board 1', '"C:\\c\\tools\\canon-go-win.exe" daemonx']
+bad = [c for c in daemon if not rx.search(c)] + [c for c in other if rx.search(c)]
+if bad: print("wrong:", bad); sys.exit(1)
+PY2
+code "$PS1" | grep -F '$_.Name -like "cockpit-daemon*"' >/dev/null || fail "install.ps1 must still refuse while an older install's daemon (cockpit-daemon-win.exe) runs"
+
 printf 'windows-install: ok\n'

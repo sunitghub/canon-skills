@@ -18,12 +18,12 @@ if [ ! -d "$HOOKS_DIR" ]; then
   exit 0
 fi
 
-# ── post-commit: rebuild the local native cockpit-daemon (t-9383: nothing is committed any more) ──────────────
+# ── post-commit: rebuild the local native canon-go (t-9383: nothing is committed any more; t-bdb0: one program) ──
 POST_COMMIT="$HOOKS_DIR/post-commit"
 cat > "$POST_COMMIT" << 'HOOK'
 #!/usr/bin/env bash
 # The Windows exes used to be rebuilt and committed here ("chore: update dist zips"); they are release assets now.
-# This only refreshes the gitignored local daemon so a dev machine's Admin panel shows a real build id.
+# This only refreshes the gitignored local canon-go so a dev machine's Admin panel shows a real build id.
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 bash "$REPO_ROOT/scripts/build-zip.sh" || true
 HOOK

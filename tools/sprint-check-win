@@ -13,4 +13,4 @@ fi
 
 [[ -d "$ROOT/tools/canon-go/cmd" ]] || { echo "Error: this install does not carry the Go source (the end-user zip leaves it out); clone the repository to run sprint-check-win from source." >&2; exit 1; }
 cd "$ROOT/tools/canon-go"   # the module; the board still roots at the checkout, as when it ran from $ROOT (t-8020)
-SPRINT_CHECK_ROOT="${SPRINT_CHECK_ROOT:-$ROOT}" exec go run ./cmd/sprint-check "$@"
+SPRINT_CHECK_ROOT="${SPRINT_CHECK_ROOT:-$ROOT}" exec go run ./cmd/canon-go board "$@"

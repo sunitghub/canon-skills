@@ -7,9 +7,9 @@ rem own -- delegates into the single canon instance (starting it if
 rem none is running), registers the current project, and deep-links into its
 rem tab. Mirrors tools/sprint-check (bash) and tools/canon-win.cmd.
 
-set "EXE=%~dp0sprint-check-win.exe"
+set "EXE=%~dp0canon-go-win.exe"
 if not exist "%EXE%" (
-  echo Error: sprint-check-win.exe was not found. Run canon update (or the installer again) to fetch it.
+  echo Error: canon-go-win.exe was not found. Run canon update (or the installer again) to fetch it.
   exit /b 1
 )
 
@@ -29,7 +29,7 @@ if %ERRORLEVEL%==0 (
 rem No cockpit instance running yet -- start it in its own console window
 rem (suppress its own browser-open; this script owns opening the right URL).
 set "SPRINT_CHECK_NO_BROWSER=1"
-start "Canon Cockpit (%PORT%) - close this window to stop it" "%EXE%" %PORT%
+start "Canon Cockpit (%PORT%) - close this window to stop it" "%EXE%" board %PORT%
 
 for /l %%i in (1,1,50) do (
   netstat -ano | findstr /r /c:"127.0.0.1:%PORT% .*LISTENING" >nul 2>&1

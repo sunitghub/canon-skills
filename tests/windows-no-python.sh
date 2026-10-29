@@ -78,9 +78,9 @@ for b in "$tmp/no-such-board" "$tmp/old-board"; do
   done
   [[ ! -e "$settings" ]] || fail "settings.json written without a usable board ($b)"
 done
-# With no SPRINT_CHECK_BIN, the board is the install's own: tools/sprint-check-bin/sprint-check, or tools/sprint-check-win.exe on Windows.
-assert_eq "$ROOT/tools/sprint-check-bin/sprint-check" "$(env -u SPRINT_CHECK_BIN bash -c 'source "$1/tools/platform-lib.sh"; _is_windows() { return 1; }; board_bin' _ "$ROOT")"
-assert_eq "$ROOT/tools/sprint-check-win.exe" "$(env -u SPRINT_CHECK_BIN bash -c 'source "$1/tools/platform-lib.sh"; _is_windows() { return 0; }; board_bin' _ "$ROOT")"
+# With no SPRINT_CHECK_BIN, the board is the install's own canon-go (t-bdb0): tools/canon-go-bin/canon-go, or tools/canon-go-win.exe on Windows.
+assert_eq "$ROOT/tools/canon-go-bin/canon-go" "$(env -u SPRINT_CHECK_BIN bash -c 'source "$1/tools/platform-lib.sh"; _is_windows() { return 1; }; board_bin' _ "$ROOT")"
+assert_eq "$ROOT/tools/canon-go-win.exe" "$(env -u SPRINT_CHECK_BIN bash -c 'source "$1/tools/platform-lib.sh"; _is_windows() { return 0; }; board_bin' _ "$ROOT")"
 no_trap_ran "invalid/symlink/no board"
 
 # --- end to end with the traps first on PATH: skills add + refresh write the rules; the tkt/sprint flow runs ---------------

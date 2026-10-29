@@ -410,7 +410,10 @@ update_cmd() {
     if [ "$before" = "$after" ]; then echo "canon is up to date ($after)."; else echo "canon updated $before..$after."; fi
     main_track_note
   fi
-  bash "$SCRIPT_DIR/fetch-daemon.sh" --quiet || echo "canon update: a prebuilt binary is missing or stale (see above); the Cockpit needs it." >&2
+  local fetched=1
+  bash "$SCRIPT_DIR/fetch-daemon.sh" --quiet || { fetched=0; echo "canon update: a prebuilt binary is missing or stale (see above); the Cockpit needs it." >&2; }
+  # t-bdb0: a fetch that worked removed the two exes canon-go replaced on purpose; only a failed one gets the previous exes back.
+  if [ -n "$bak" ] && [ "$fetched" = 1 ]; then rm -rf "$bak"; bak=""; fi
   if [ -n "$bak" ]; then
     local f
     for f in "$bak"/*-win.exe; do
@@ -421,14 +424,11 @@ update_cmd() {
     done
     rm -rf "$bak"
   fi
-  # t-9383: on Windows the board and the daemon exe are required (install.ps1 fails the same way): an update that leaves one missing is not a success.
-  if _is_windows; then
-    local missing="" n
-    for n in cockpit-daemon-win.exe sprint-check-win.exe; do [ -f "$SCRIPT_DIR/$n" ] || missing="$missing $n"; done
-    if [ -n "$missing" ]; then
-      echo "canon update: these programs are missing and could not be fetched:$missing. Check your internet connection and run canon update again; canon cannot start without them." >&2
-      exit 1
-    fi
+  # t-9383: on Windows canon's program is required (install.ps1 fails the same way): an update that leaves it missing is not a success.
+  # t-bdb0: one exe, canon-go-win.exe (the board and the daemon).
+  if _is_windows && [ ! -f "$SCRIPT_DIR/canon-go-win.exe" ]; then
+    echo "canon update: canon-go-win.exe is missing and could not be fetched. Check your internet connection and run canon update again; canon cannot start without it." >&2
+    exit 1
   fi
   refresh_projects
 }
@@ -654,7 +654,7 @@ main() {
 
   # t-60f7/t-9383: the binaries are gitignored release assets. On Windows fetch a missing one here (never building); on
   # macOS/Linux start_cockpit_server fetches the board and the daemon at every start (t-15d8).
-  if _is_windows && [[ ! -f "$SCRIPT_DIR/cockpit-daemon-win.exe" || ! -f "$SCRIPT_DIR/sprint-check-win.exe" ]]; then
+  if _is_windows && [[ ! -f "$SCRIPT_DIR/canon-go-win.exe" ]]; then   # t-bdb0: one exe, the board and the daemon
     CANON_FETCH_NO_BUILD=1 bash "$SCRIPT_DIR/fetch-daemon.sh" --quiet >&2 || echo "canon: a prebuilt binary is missing; agent sessions or the board may not start until it is fetched (canon update)." >&2
   fi
 

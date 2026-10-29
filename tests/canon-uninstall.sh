@@ -162,9 +162,10 @@ assert_eq "$before" "$(digest "$WORK/i13"; digest "$h")"
 runb --dry-run; assert_eq 0 "$rc"; assert_contains "$out" "BLOCKED: something answers on port 1"
 
 # ── t-70a2: the command stops THIS install's Cockpit board and daemon itself, found by recorded pid / port and verified against the install ───────
-# Real throwaway processes under a fake install: a daemon stub (argv0 = <install>/tools/cockpit-daemon/cockpit-daemon, writes daemon.json with its own pid,
-# removes it on SIGTERM), the real Go board built from this checkout at <install>/$(board_rel_path) (t-15d8; the path cockpit-stop-lib.sh recognises) under a launcher stub
-# (argv0 "bash <install>/tools/canon") that exits when the board dies.
+# Real throwaway processes under a fake install: a daemon stub whose command line reads `<install>/tools/canon-go-bin/canon-go daemon ...` (t-bdb0:
+# argv0 carries the mode word, so ps shows exactly what the real `canon-go daemon -addr ...` shows; it writes daemon.json with its own pid and
+# removes it on SIGTERM), the real canon-go built from this checkout at <install>/$(board_rel_path) (t-15d8; the path cockpit-stop-lib.sh recognises),
+# started as `canon-go board <port>` under a launcher stub (argv0 "bash <install>/tools/canon") that exits when the board dies.
 killlist=()
 trap 'for p in ${killlist[@]+"${killlist[@]}"}; do kill -9 "$p" 2>/dev/null || true; done; cleanup' EXIT
 free_port() { python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1])'; }
@@ -186,17 +187,17 @@ PY
 cat > "$WORK/lstub.sh" <<'SH'
 #!/usr/bin/env bash
 # lstub.sh <board> <port>: a launcher that runs the board and exits when it dies
-SPRINT_CHECK_NO_BROWSER=1 "$1" "$2" & b=$!
+SPRINT_CHECK_NO_BROWSER=1 "$1" board "$2" & b=$!
 trap 'kill "$b" 2>/dev/null; exit 0' TERM
 wait "$b"
 SH
 mk_live() { # <install> <state dir> <port> [daemon mode]  sets DPID BPID LPID (board and launcher only when a port is given)
   local inst="$1" state="$2" port="$3" mode="${4:-}"
-  mkdir -p "$inst/tools/sprint-check-bin"; cp "$BOARD" "$inst/tools/sprint-check-bin/sprint-check"
-  ( exec -a "$inst/tools/cockpit-daemon/cockpit-daemon" bash "$WORK/dstub.sh" "$state" $mode ) & DPID=$!; killlist+=("$DPID")
+  mkdir -p "$inst/tools/canon-go-bin"; cp "$BOARD" "$inst/tools/canon-go-bin/canon-go"
+  ( exec -a "${DAEMON_ARGV0:-$inst/tools/canon-go-bin/canon-go daemon}" bash "$WORK/dstub.sh" "$state" $mode ) & DPID=$!; killlist+=("$DPID")
   BPID=""; LPID=""
   if [ -n "$port" ]; then
-    ( export CANON_HOME="$WORK/board-home" COCKPIT_STATE_DIR="$state"; exec -a "bash $inst/tools/canon" bash "$WORK/lstub.sh" "$inst/tools/sprint-check-bin/sprint-check" "$port" ) & LPID=$!; killlist+=("$LPID")
+    ( export CANON_HOME="$WORK/board-home" COCKPIT_STATE_DIR="$state"; exec -a "bash $inst/tools/canon" bash "$WORK/lstub.sh" "$inst/tools/canon-go-bin/canon-go" "$port" ) & LPID=$!; killlist+=("$LPID")
     for _ in $(seq 1 50); do curl -s -o /dev/null --max-time 1 "http://127.0.0.1:$port/" && break; sleep 0.1; done
     BPID="$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t | head -1)"; killlist+=("$BPID")
   fi
@@ -284,7 +285,7 @@ subprocess.Popen(["bash", "-c", 'exec -a "$0" bash "$1" "$2"', d, stub, state])
 time.sleep(300)
 PY
   inst="$WORK/L9"; h="$WORK/hL9"; t="$WORK/tL9"; mkdir -p "$t/canon-cockpit-board"; mk_install "$inst"; mk_home "$h" "$inst"
-  ( exec env DPATH="$inst/tools/cockpit-daemon/cockpit-daemon" python3 "$WORK/zparent.py" "$WORK/dstub.sh" "$t/canon-cockpit-board" ) & zp=$!; killlist+=("$zp")
+  ( exec env DPATH="$inst/tools/canon-go-bin/canon-go daemon" python3 "$WORK/zparent.py" "$WORK/dstub.sh" "$t/canon-cockpit-board" ) & zp=$!; killlist+=("$zp")
   for _ in $(seq 1 50); do [ -f "$t/canon-cockpit-board/daemon.json" ] && break; sleep 0.1; done
   zd="$(sed -n 's/.*"pid": "\([0-9]*\)".*/\1/p' "$t/canon-cockpit-board/daemon.json")"; killlist+=("$zd")
   # (the zombie check on its own: a TERMed child whose parent never reaps it must read as no process at all, independent of the identity re-check)
@@ -356,11 +357,42 @@ while :; do sleep 0.2; done
 SH
   inst="$WORK/L15"; h="$WORK/hL15"; t="$WORK/tL15"; mkdir -p "$t/canon-cockpit-board"; mk_install "$inst"; mk_home "$h" "$inst"; mkdir -p "$inst/tools/sprint-check-app"
   printf '{"sid": "x"}' > /dev/null
-  ( export HOME="$h" TMPDIR="$t" CANON_COCKPIT_PORT="$(free_port)" CANON_STOP_WAIT=3 CANON_HOME=; exec -a "$inst/tools/cockpit-daemon/cockpit-daemon" bash "$WORK/dstub2.sh" "$t/canon-cockpit-board" "$WORK/inside.out" "$inst/tools/canon" uninstall --yes --force ) & dp=$!; killlist+=("$dp")
+  ( export HOME="$h" TMPDIR="$t" CANON_COCKPIT_PORT="$(free_port)" CANON_STOP_WAIT=3 CANON_HOME=; exec -a "$inst/tools/canon-go-bin/canon-go daemon" bash "$WORK/dstub2.sh" "$t/canon-cockpit-board" "$WORK/inside.out" "$inst/tools/canon" uninstall --yes --force ) & dp=$!; killlist+=("$dp")
   for _ in $(seq 1 100); do grep -q "EXIT=" "$WORK/inside.out" 2>/dev/null && break; sleep 0.1; done
   grep -q "EXIT=1" "$WORK/inside.out" || fail "uninstall run inside the Cockpit must refuse (exit 1): $(cat "$WORK/inside.out" 2>/dev/null)"
   grep -q "running inside the Cockpit" "$WORK/inside.out" || fail "the refusal must say it is running inside the Cockpit: $(cat "$WORK/inside.out")"
   alive "$dp" || fail "the daemon that parents the command was signalled"; [[ -d "$inst/tools" ]] || fail "the install must be intact after the refusal"; kill "$dp" 2>/dev/null || true
+  # 14b. t-bdb0, identity is path AND mode word (prod path: canon stop and canon uninstall). A canon-go of this install in the OTHER mode, or the
+  #      daemon's Terminal helper (`daemon term`), named by daemon.json is never signalled (it blocks, as any other process from the install
+  #      folder does); a daemon an older install started (the v0.29.0 path
+  #      tools/cockpit-daemon/cockpit-daemon, before an update) still is.
+  for wrong in "board" "daemon term" "headless-json"; do
+    inst="$WORK/L16"; h="$WORK/hL16"; t="$WORK/tL16"; rm -rf "$inst" "$h" "$t"; mkdir -p "$t"; mk_install "$inst"; mk_home "$h" "$inst"
+    DAEMON_ARGV0="$inst/tools/canon-go-bin/canon-go $wrong" mk_live "$inst" "$t/canon-cockpit-board" ""
+    runl "$inst" "$h" "$(free_port)" "$t" --yes; [[ "$rc" == 1 ]] || fail "a '$wrong' canon-go of the install must block, not be stopped as the daemon ($rc): $out"
+    alive "$DPID" || fail "canon-go '$wrong' named by daemon.json was signalled as the daemon"; assert_contains "$out" "(not this install's Cockpit board or daemon)"
+    assert_contains "$out" "canon-go $wrong"; [[ -d "$inst/tools" ]] || fail "the install was removed around a live canon-go '$wrong'"
+    kill "$DPID" 2>/dev/null || true
+  done
+  inst="$WORK/L17"; h="$WORK/hL17"; t="$WORK/tL17"; mkdir -p "$t"; mk_install "$inst"; mk_home "$h" "$inst"
+  DAEMON_ARGV0="$inst/tools/cockpit-daemon/cockpit-daemon" mk_live "$inst" "$t/canon-cockpit-board" ""
+  runl "$inst" "$h" "$(free_port)" "$t" --yes; [[ "$rc" == 0 ]] || fail "a daemon of the older layout must be stopped ($rc): $out"
+  ! alive "$DPID" || fail "the older layout's daemon (tools/cockpit-daemon/cockpit-daemon) was not stopped"
+  # the unit rules, both ways (Unix): daemon and board by mode word; a port or nothing is the board; another install never
+  (
+    INSTALL="$WORK/U1"; PORT=1; HOME="$WORK/hx"; mkdir -p "$INSTALL"
+    source "$ROOT/tools/platform-lib.sh"; source "$ROOT/tools/cockpit-stop-lib.sh"
+    b="$INSTALL/tools/canon-go-bin/canon-go"
+    _is_our_daemon "$b daemon -addr 127.0.0.1:0" || fail "canon-go daemon is the daemon"; _is_our_daemon "$b daemon" || fail "bare canon-go daemon is the daemon"
+    ! _is_our_daemon "$b daemon term --session s" || fail "the Terminal helper is not the daemon"; ! _is_our_daemon "$b" || fail "a bare canon-go is the board, not the daemon"
+    ! _is_our_daemon "$b board 8899" || fail "the board is not the daemon"; ! _is_our_daemon "$b 8899" || fail "a port is the board, not the daemon"
+    ! _is_our_daemon "$b daemonx" || fail "a longer word is not the mode"; ! _is_our_daemon "${INSTALL}x/tools/canon-go-bin/canon-go daemon" || fail "another install's daemon is not ours"
+    _is_our_board "$b board 8899" || fail "canon-go board <port> is the board"; _is_our_board "$b 8899" || fail "canon-go <port> is the board"; _is_our_board "$b" || fail "a bare canon-go is the board"
+    _is_our_board "$b board" || fail "canon-go board is the board"
+    ! _is_our_board "$b daemon -addr 127.0.0.1:0" || fail "the daemon is not the board"; ! _is_our_board "$b headless-json" || fail "a helper is not the board"
+    ! _is_our_board "${b}x board 1" || fail "a longer file name is not the board"
+    _is_our_board "$INSTALL/tools/sprint-check-bin/sprint-check 8899" || fail "an older layout's board is still recognised"
+  )
   # 15. CANON_STOP_WAIT spellings: only whole seconds of at most three digits are taken literally (a leading zero is decimal, never octal); 0 means 1
   #     (0 would signal and then report 'stuck' without looking); everything else falls back to 8.
   for spec in "abc:8" "1e3:8" "-1:8" " 5:8" "0:1" "08:8" "09:9" "010:10" "7:7" "99999999999999999999:8" ":8"; do
@@ -412,22 +444,27 @@ if [[ "$*" == *GetEnvironmentVariable* ]]; then printf 'C:\\Windows;%s;C:\\Users
 printf '%s\n' "$*" > "$STUB_PSARGS"
 SH
 chmod +x "$STUBS/uname" "$STUBS/cygpath" "$STUBS/powershell.exe"
-# t-70a2, Windows identity rules: a process is this install's daemon or board only by the EXACT exe path (case-insensitive); another exe in the
-# same folder, a longer name, another install whose folder merely shares the prefix, and a process elsewhere are all someone else's.
+# t-70a2, t-bdb0, Windows identity rules: a process is this install's daemon or board only by the EXACT exe path (case-insensitive, quoted or not,
+# as Win32_Process's CommandLine has it) AND its mode word; another exe in the same folder, a longer name, another install whose folder merely shares
+# the prefix, and a process elsewhere are all someone else's. The two exes canon-go replaced are still recognised by their own paths.
 (
   export PATH="$STUBS:$PATH"; INSTALL="$WORK/i15"; PORT=1; HOME="$WORK/hx"
   source "$ROOT/tools/platform-lib.sh"; source "$ROOT/tools/cockpit-stop-lib.sh"
-  w="C:$(printf '%s' "$INSTALL" | tr '/' '\\')"
-  _is_our_daemon "$w\\tools\\cockpit-daemon-win.exe" || fail "the install's own daemon exe must be recognised"
-  _is_our_daemon "$(printf '%s' "$w" | tr 'a-z' 'A-Z')\\TOOLS\\COCKPIT-DAEMON-WIN.EXE" || fail "Windows paths ignore case"
-  ! _is_our_daemon "$w\\tools\\sprint-check-win.exe" || fail "the board exe is not the daemon"
-  ! _is_our_daemon "$w\\tools\\cockpit-daemon-win.exe.bak" || fail "a longer name is not the daemon"
-  ! _is_our_daemon "${w}x\\tools\\cockpit-daemon-win.exe" || fail "another install whose folder shares the prefix is not ours"
-  ! _is_our_daemon "C:\\other\\tools\\cockpit-daemon-win.exe" || fail "a daemon elsewhere is not ours"
-  _is_our_board "$w\\tools\\sprint-check-win.exe" || fail "the install's own board exe must be recognised"
-  _is_our_board "$(printf '%s' "$w" | tr 'a-z' 'A-Z')\\TOOLS\\SPRINT-CHECK-WIN.EXE" || fail "Windows paths ignore case (board)"
-  ! _is_our_board "$w\\tools\\cockpit-daemon-win.exe" || fail "the daemon exe is not the board"
-  ! _is_our_board "${w}x\\tools\\sprint-check-win.exe" || fail "another install's board is not ours"
+  w="C:$(printf '%s' "$INSTALL" | tr '/' '\\')"; e="$w\\tools\\canon-go-win.exe"
+  _is_our_daemon "\"$e\" daemon -addr 127.0.0.1:0" || fail "the install's own canon-go daemon (quoted path) must be recognised"
+  _is_our_daemon "$e daemon -addr 127.0.0.1:0" || fail "the install's own canon-go daemon (unquoted path) must be recognised"
+  _is_our_daemon "$(printf '%s' "$e" | tr 'a-z' 'A-Z') daemon" || fail "Windows paths ignore case"
+  ! _is_our_daemon "\"$e\" board 8899" || fail "the board is not the daemon"; ! _is_our_daemon "\"$e\"" || fail "a bare canon-go is not the daemon"
+  ! _is_our_daemon "\"$e\" daemon term --session s" || fail "the Terminal helper is not the daemon"
+  ! _is_our_daemon "\"$e.bak\" daemon" || fail "a longer name is not the daemon"
+  ! _is_our_daemon "\"${w}x\\tools\\canon-go-win.exe\" daemon" || fail "another install whose folder shares the prefix is not ours"
+  ! _is_our_daemon "C:\\other\\tools\\canon-go-win.exe daemon" || fail "a daemon elsewhere is not ours"
+  _is_our_daemon "\"$w\\tools\\cockpit-daemon-win.exe\" -addr 127.0.0.1:0" || fail "an older layout's daemon exe must still be recognised"
+  _is_our_board "\"$e\" board 8899" || fail "the install's own board must be recognised"; _is_our_board "\"$e\" 8899" || fail "canon-go <port> is the board"
+  _is_our_board "$(printf '%s' "$e" | tr 'a-z' 'A-Z') board" || fail "Windows paths ignore case (board)"
+  ! _is_our_board "\"$e\" daemon -addr 127.0.0.1:0" || fail "the daemon is not the board"
+  ! _is_our_board "\"${w}x\\tools\\canon-go-win.exe\" board 1" || fail "another install's board is not ours"
+  _is_our_board "\"$w\\tools\\sprint-check-win.exe\" 8899" || fail "an older layout's board exe must still be recognised"
 )
 inst="$WORK/i15"; h="$WORK/h15"; mk_install "$inst"; mk_home "$h" "$inst"; mk_project "$WORK/p15" "$h"
 winentry="C:$(printf '%s' "$inst" | tr '/' '\\')\\tools"
@@ -440,8 +477,8 @@ runw --dry-run; assert_eq 0 "$rc"; assert_contains "$out" "Windows user PATH ent
 assert_contains "$out" "Projects to clean (1,"; refute_contains "$out" "clean   C:"
 assert_contains "$out" "Other PATH entries that mention canon"; assert_contains "$out" "C:\\Users\\x\\Documents\\canon-skills\\tools"
 # a process whose executable is in the install folder (asked of PowerShell on Windows) blocks the run and is listed
-PROCS="4242 C:\\fake\\cockpit-daemon-win.exe" runw --dry-run; assert_contains "$out" "BLOCKED: processes are running from the install folder"; assert_contains "$out" "4242 C:\\fake\\cockpit-daemon-win.exe"
-before="$(digest "$inst"; digest "$h")"; PROCS="4242 C:\\fake\\cockpit-daemon-win.exe" runw --yes; assert_eq 1 "$rc"; assert_contains "$out" "processes are running from $inst"; assert_eq "$before" "$(digest "$inst"; digest "$h")"
+PROCS="4242 C:\\fake\\canon-go-win.exe" runw --dry-run; assert_contains "$out" "BLOCKED: processes are running from the install folder"; assert_contains "$out" "4242 C:\\fake\\canon-go-win.exe"
+before="$(digest "$inst"; digest "$h")"; PROCS="4242 C:\\fake\\canon-go-win.exe" runw --yes; assert_eq 1 "$rc"; assert_contains "$out" "processes are running from $inst"; assert_eq "$before" "$(digest "$inst"; digest "$h")"
 runw --yes; [[ "$rc" == 0 ]] || fail "windows branch failed ($rc): $out"
 ps="$(cat "$WORK/psargs")"; assert_contains "$ps" "-File"; assert_contains "$ps" "-InstallDir C:$(printf '%s' "$inst" | tr '/' '\\')"; assert_contains "$ps" "-ToolsEntry $winentry"; assert_contains "$ps" "-KeepName cockpit"; assert_contains "$ps" "-KeepCockpit 0"; assert_contains "$ps" "-LogFile"
 [[ -d "$inst/tools" ]] || fail "on Windows bash must leave the install folder for the PowerShell helper"
@@ -462,7 +499,7 @@ fi
 
 # ── the real skills.sh uninstall end to end (minus the large binaries): hooks, symlinks, imports, empty dirs, install folder ───────────────────
 inst="$WORK/i16"; h="$WORK/h16"; mkdir -p "$inst"
-rsync -a --exclude '*.exe' --exclude 'cockpit-daemon' --exclude '*.zip' --exclude 'node_modules' --exclude '*.go' --exclude 'go.*' "$ROOT/tools/" "$inst/tools/" 2>/dev/null || cp -R "$ROOT/tools/." "$inst/tools/"
+rsync -a --exclude '*.exe' --exclude 'cockpit-daemon' --exclude 'canon-go-bin' --exclude 'sprint-check-bin' --exclude '*.zip' --exclude 'node_modules' --exclude '*.go' --exclude 'go.*' "$ROOT/tools/" "$inst/tools/" 2>/dev/null || cp -R "$ROOT/tools/." "$inst/tools/"
 for d in skills standards scripts agents; do cp -R "$ROOT/$d" "$inst/$d" 2>/dev/null || true; done; cp "$ROOT/VERSION" "$ROOT/AGENTS.md" "$inst/" 2>/dev/null || true
 mkdir -p "$h"; proj="$WORK/p16"; mkdir -p "$proj"; git -C "$proj" init -q; echo a > "$proj/a.txt"; git -C "$proj" "${ident[@]}" add -A; git -C "$proj" "${ident[@]}" commit -qm base
 set +e

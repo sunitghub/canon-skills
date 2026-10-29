@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # check-binaries-released.sh — the push guard for the prebuilt binaries (t-9383, and the "release before push" rule of t-60f7).
-# Run it before pushing to public: for every binary canon ships as a release asset, the newest line in tools/cockpit-daemon.sha256
-# must carry that component's CURRENT source key (tools/src-key.sh: the git trees it is built from). A Go change without a re-run of scripts/release-daemon.sh
+# Run it before pushing to public: for every target canon-go ships as a release asset (t-bdb0: one program), the newest line in
+# tools/cockpit-daemon.sha256 must carry its CURRENT source key (tools/src-key.sh: the git trees it is built from). A Go change without a re-run of scripts/release-daemon.sh
 # leaves the manifest naming an older build, so an install would fetch an exe built from different source (or none).
 # Not part of scripts/test.sh on purpose: it is red between a source commit and its release, which is the state it exists to catch.
 #   scripts/check-binaries-released.sh              exit 0 = every component is released at HEAD, 1 = names what is not
@@ -57,15 +57,10 @@ while IFS='|' read -r src target prefix asset; do
     echo "ok            $target ($key)"
   fi
 done <<LIST
-cockpit-daemon|darwin-arm64|cockpit-daemon|cockpit-daemon-darwin-arm64
-cockpit-daemon|darwin-amd64|cockpit-daemon|cockpit-daemon-darwin-amd64
-cockpit-daemon|linux-amd64|cockpit-daemon|cockpit-daemon-linux-amd64
-cockpit-daemon|linux-arm64|cockpit-daemon|cockpit-daemon-linux-arm64
-cockpit-daemon|windows-amd64|cockpit-daemon|cockpit-daemon-windows-amd64.exe
-sprint-check|sprint-check-darwin-arm64|sprint-check|sprint-check-darwin-arm64
-sprint-check|sprint-check-darwin-amd64|sprint-check|sprint-check-darwin-amd64
-sprint-check|sprint-check-linux-amd64|sprint-check|sprint-check-linux-amd64
-sprint-check|sprint-check-linux-arm64|sprint-check|sprint-check-linux-arm64
-sprint-check|sprint-check-windows-amd64|sprint-check|sprint-check-windows-amd64.exe
+canon-go|canon-go-darwin-arm64|canon-go|canon-go-darwin-arm64
+canon-go|canon-go-darwin-amd64|canon-go|canon-go-darwin-amd64
+canon-go|canon-go-linux-amd64|canon-go|canon-go-linux-amd64
+canon-go|canon-go-linux-arm64|canon-go|canon-go-linux-arm64
+canon-go|canon-go-windows-amd64|canon-go|canon-go-windows-amd64.exe
 LIST
 exit "$bad"

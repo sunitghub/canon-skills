@@ -59,7 +59,7 @@ start_cockpit_server() {
     echo "Error: no board server at $bin — run canon update (or the installer again) to fetch it." >&2
     return 1
   fi
-  SPRINT_CHECK_NO_BROWSER=1 "$bin" "$port" &
+  SPRINT_CHECK_NO_BROWSER=1 "$bin" board "$port" &   # t-bdb0: the mode word, so canon stop knows the board by it
   SERVER_PID=$!
 }
 
