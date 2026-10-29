@@ -219,14 +219,20 @@ function canonPrefixKeys(emit) {
     return ev.type === "keydown" ? "\x1b\r" : "";
   }
   // canon:shift-enter:end
-  // t-d689: xterm 6 dropped 5.3's Alt+Left/Right word jump (xterm.js PR #5346); send exactly what 5.3 sent, so Option/Alt+arrow
-  // still moves a word in the shell: ESC b / ESC f on macOS (5.3's navigator.platform test, whatever macOptionIsMeta is),
-  // Ctrl+arrow elsewhere. Only a bare Alt, as in 5.3; every other arrow is left to xterm.
+  // t-d689: keys whose 5.3 sequence xterm 6 changed (xterm.js PR #5346 and its Backspace change); send exactly what 5.3 sent
+  // (common/input/Keyboard.ts), so word jumps and word deletes still work in the shell. isMac is 5.3's navigator.platform
+  // test, whatever macOptionIsMeta is. Bare Alt+Left/Right: ESC b / ESC f on macOS, Ctrl+arrow elsewhere. Bare Alt+Up/Down:
+  // Ctrl+arrow off macOS only (on macOS 5.3 and 6 both send Alt+arrow). Bare Ctrl+Backspace: DEL on every platform (6 sends
+  // ^H). Every other key is left to xterm.
   var IS_MAC = ["Macintosh", "MacIntel", "MacPPC", "Mac68K"].indexOf(navigator.platform) !== -1;
-  function canonAltArrow(ev) {
-    if (ev.type !== "keydown" || !ev.altKey || ev.ctrlKey || ev.shiftKey || ev.metaKey || ev.isComposing) return null;
+  function canonXterm53Keys(ev) {
+    if (ev.type !== "keydown" || ev.shiftKey || ev.metaKey || ev.isComposing) return null;
+    if (ev.ctrlKey && !ev.altKey) return ev.key === "Backspace" ? "\x7f" : null;
+    if (!ev.altKey || ev.ctrlKey) return null;
     if (ev.key === "ArrowLeft") return IS_MAC ? "\x1bb" : "\x1b[1;5D";
     if (ev.key === "ArrowRight") return IS_MAC ? "\x1bf" : "\x1b[1;5C";
+    if (ev.key === "ArrowUp") return IS_MAC ? null : "\x1b[1;5A";
+    if (ev.key === "ArrowDown") return IS_MAC ? null : "\x1b[1;5B";
     return null;
   }
   var prefixKeys = null;
@@ -239,8 +245,8 @@ function canonPrefixKeys(emit) {
   // attached whether or not the page is embedded.
   term.attachCustomKeyEventHandler(function (ev) {
     if (prefixKeys && prefixKeys.handle(ev)) return false;
-    var wj = canonAltArrow(ev);
-    if (wj) { ev.preventDefault(); ev.stopPropagation(); term.input(wj, true); return false; }   // as 5.3 did: onData, then cancel
+    var k53 = canonXterm53Keys(ev);
+    if (k53) { ev.preventDefault(); ev.stopPropagation(); term.input(k53, true); return false; }   // as 5.3 did: onData, then cancel
     var nl = session ? canonShiftEnter(ev, MODE, (document.getElementById("agentSel") || {}).value) : null;
     if (nl === null) return true;
     if (nl) sendInput(nl);

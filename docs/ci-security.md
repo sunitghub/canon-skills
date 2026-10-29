@@ -168,5 +168,5 @@ the four places together, then rebuild and release the daemon:
 git checkout 67cb7e8c -- tools/canon-go/internal/daemon/web/vendor tools/canon-go/internal/daemon/web/cockpit.html tools/vendored.tsv THIRD-PARTY-NOTICES.md
 ```
 
-Never restore `web/vendor/` alone: the Option/Alt+Left/Right mapping `t-d689` added to `cockpit.html` calls
+Never restore `web/vendor/` alone: the 5.3 key mapping `t-d689` added to `cockpit.html` (`canonXterm53Keys`) calls
 `term.input`, which 5.3.0 does not have (5.3.0 sends those keys itself), and the `integrity` hashes must match the files.

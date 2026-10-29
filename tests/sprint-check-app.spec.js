@@ -4027,7 +4027,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
     // t-d689: the vendored xterm and fit addon the daemon embeds (web/vendor/, served on /cockpit), with the daemon page's own
     // key wiring cut out of cockpit.html, in an iframe on a host page taller than the window, like the board's rail.
-    async function vendoredTerm(page, box) {
+    async function vendoredTerm(page, box, platform) {   // platform: fake navigator.platform in every frame (xterm and the page read it)
+      if (platform) await page.addInitScript(p => Object.defineProperty(Navigator.prototype, 'platform', { get: () => p }), platform);
       const web = path.join(__dirname, '..', 'tools', 'canon-go', 'internal', 'daemon', 'web');
       const daemonPage = fs.readFileSync(path.join(web, 'cockpit.html'), 'utf8');
       const a = daemonPage.indexOf('  // t-a198: the prefix key.');
@@ -4100,17 +4101,28 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
     });
 
-    // Protects word jumps in the Cockpit terminal: Option/Alt+Left/Right sends what xterm 5.3 sent (ESC b / ESC f on macOS,
-    // Ctrl+arrow elsewhere) through term.onData, the path that posts to /session/<id>/input; other arrows are xterm's own.
-    test('vendored xterm (t-d689): Alt+Left/Right send the 5.3 word-jump sequences; other arrows are left to xterm', async ({ page }) => {
-      const frame = await vendoredTerm(page, { w: 600, h: 288 });
-      await frame.locator('.xterm-helper-textarea').focus();
-      const mac = await frame.locator('body').evaluate(() => ['Macintosh', 'MacIntel', 'MacPPC', 'Mac68K'].includes(navigator.platform));
-      const data = () => frame.locator('body').evaluate(() => window.__data.join('|'));
-      await page.keyboard.press('Alt+ArrowLeft'); await page.keyboard.press('Alt+ArrowRight');
-      await page.keyboard.press('ArrowLeft'); await page.keyboard.press('Shift+Alt+ArrowLeft'); await page.keyboard.press('Control+ArrowRight');
-      const want = (mac ? ['\x1bb', '\x1bf'] : ['\x1b[1;5D', '\x1b[1;5C']).concat(['\x1b[D', '\x1b[1;4D', '\x1b[1;5C']);
-      await expect.poll(data).toBe(want.join('|'));
+    // Protects word jumps and word deletes in the Cockpit terminal: these keys send what xterm 5.3 sent (its Keyboard.ts, which
+    // decides macOS by navigator.platform) through term.onData, the path that posts to /session/<id>/input; the controls are
+    // xterm's own and the same in 5.3 and 6.
+    test('vendored xterm (t-d689): Alt+arrows and Ctrl+Backspace send the 5.3 sequences on macOS, Windows and Linux; other keys are left to xterm', async ({ page }) => {
+      const keys = ['Alt+ArrowLeft', 'Alt+ArrowRight', 'Alt+ArrowUp', 'Alt+ArrowDown', 'Control+Backspace',
+        'ArrowLeft', 'Shift+Alt+ArrowLeft', 'Control+ArrowRight', 'Backspace', 'Alt+Backspace'];
+      const controls = ['\x1b[D', '\x1b[1;4D', '\x1b[1;5C', '\x7f', '\x1b\x7f'];
+      const want = {
+        MacIntel: ['\x1bb', '\x1bf', '\x1b[1;3A', '\x1b[1;3B', '\x7f'],
+        Win32: ['\x1b[1;5D', '\x1b[1;5C', '\x1b[1;5A', '\x1b[1;5B', '\x7f'],
+        'Linux x86_64': ['\x1b[1;5D', '\x1b[1;5C', '\x1b[1;5A', '\x1b[1;5B', '\x7f'],
+      };
+      for (const platform of Object.keys(want)) {
+        const p = await page.context().newPage();
+        const frame = await vendoredTerm(p, { w: 600, h: 288 }, platform);
+        expect(await frame.locator('body').evaluate(() => navigator.platform)).toBe(platform);
+        await frame.locator('.xterm-helper-textarea').focus();
+        for (const k of keys) await p.keyboard.press(k);
+        await expect.poll(() => frame.locator('body').evaluate(() => JSON.stringify(window.__data)), { message: platform })
+          .toBe(JSON.stringify(want[platform].concat(controls)));
+        await p.close();
+      }
     });
 
     test('keyboard prefix (t-a198): the sidebar keyboard button opens the cheat sheet, and the footer still fits at the narrowest sidebar', async ({ page }) => {
