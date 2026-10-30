@@ -1455,6 +1455,17 @@ cmd_import_issue() {
   elif [[ -n "$repo" && -z "$(get_field "$tdir/ticket.md" github)" ]]; then
     set_or_add_field "$tdir/ticket.md" github "$repo#$n"
   fi
+  # t-4b34: a PR that says "Fixes #<n>" is the evidence a cloud session ran, so the recovered ticket is out on GitHub again (runs: github) and the card shows its
+  # state. Only when the issue was read through gh: the cloud session's own --body-file call and sync-issues have no PR to find and must not claim a session (t-718b).
+  if [[ -z "$bodyf" && -n "$repo" && -z "$(get_field "$tdir/ticket.md" runs)" ]]; then
+    local pr_rc=0 pr_msg
+    pr_msg="$(_issue_has_pr "$repo" "$n")" || pr_rc=$?
+    case "$pr_rc" in
+      0) set_or_add_field "$tdir/ticket.md" runs github ;;
+      1) ;;
+      *) echo "import-issue: could not check $repo for a PR that fixes #$n ($pr_msg); the card shows no cloud state until one is found" >&2 ;;
+    esac
+  fi
   echo "import-issue: rebuilt .tickets/$id/ from issue #$n" >&2
   printf '%s\n' "$id"
 }
@@ -1707,6 +1718,14 @@ cmd_cloud_env() {
 # mergeable and clean; it merges into base in a scratch clone. Then one question: run the PR's tests here (they are its
 # code) and merge if they pass. The merge uses --match-head-commit (GitHub refuses if the head moved) and runs from
 # outside any checkout, so --delete-branch never touches the user's local branches.
+# _issue_has_pr <repo> <issue> — t-4b34: 0 when an open or merged PR says "Fixes #<issue>", 1 when none does, 2 (the reason on stdout) when gh could not
+# say. REST, not `gh pr list`: a Claude cloud session's GitHub proxy refuses GraphQL (t-35d2), and the answer there is simply "none yet".
+_issue_has_pr() {
+  local out
+  out="$(gh api "repos/$1/pulls?state=all&per_page=100" \
+    --jq ".[] | select(.state == \"open\" or .merged_at != null) | select((.body // \"\") | test(\"(?i)\\\\bfixes #$2\\\\b\")) | .number" 2>&1)" || { printf '%s' "$out"; return 2; }
+  [[ -n "$out" ]]
+}
 # _fixes_prs <repo> <issue> <state>: one "number<TAB>state<TAB>head" line per PR on <repo> whose body says "Fixes #<issue>"
 # (a whole word, any case; state open|closed|merged|all). Exit 1 with gh's message when gh fails.
 _fixes_prs() {
@@ -2831,6 +2850,8 @@ cmd_import_results() {
   done < <(find "$tmp/$rel" -type f -print0)
   [[ -n "$gh_line" && -z "$(get_field "$tdir/ticket.md" github)" ]] && set_or_add_field "$tdir/ticket.md" github "$gh_line"
   [[ -n "$runs_line" && -z "$(get_field "$tdir/ticket.md" runs)" ]] && set_or_add_field "$tdir/ticket.md" runs "$runs_line"
+  # t-4b34: a cloud sprint's results coming back are the same evidence: a ticket with a github: link and no runs: is out on GitHub
+  [[ -n "$(get_field "$tdir/ticket.md" github)" && -z "$(get_field "$tdir/ticket.md" runs)" ]] && set_or_add_field "$tdir/ticket.md" runs github
   local st cst="" verdict graded rc=0 prline=""
   st="$(get_field "$tdir/ticket.md" status)"
   # t-1cf5: an in_progress import would bind to this checkout and block its local close; the close happens in a
@@ -2952,6 +2973,8 @@ Commands:
   import-issue <N> [--body-file F] [--force]
                             Rebuild .tickets/<id>/ from a send-issue body (used by
                             sprint import-issue in the cloud session).
+                            Read through gh (no --body-file) it also sets runs: github
+                            when a PR saying "Fixes #N" exists (a recovered ticket).
   sync-issues [--dry-run [--json]]
                             Make a ticket of each open issue on origin labelled canon
                             that no ticket links to (labels set type and pN priority).
