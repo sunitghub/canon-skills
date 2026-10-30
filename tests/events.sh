@@ -201,7 +201,7 @@ assert_contains "$(event_line gate.finished "$gid")" '"role":"evaluator","ticket
 (cd "$G" && "$ROOT/tools/subagent-log.sh" --agent-id reviewer-x --agent-type reviewer --ticket "$gid" --tokens 1500 --minutes 3 >/dev/null)
 [[ "$(cat "$EV"/*.jsonl | grep -c '"kind":"gate.finished"')" == 3 ]] || fail "a repeated agent id made a second gate.finished event"
 assert_eq 1 "$(grep -c '"agent_id":"reviewer-x"' "$G/.claude/subagent-runs.jsonl")"
-grep '"agent_id":"reviewer-x"' "$G/.claude/subagent-runs.jsonl" | grep -q '"tokens":1500' || fail "the later row's numbers did not win"
+[[ "$(grep '"agent_id":"reviewer-x"' "$G/.claude/subagent-runs.jsonl" | grep -c '"tokens":1500')" == 1 ]] || fail "the later row's numbers did not win"
 # t-7c89: CANON_EVENT_ACTOR=system puts actor:system on an event canon records itself.
 (source "$ROOT/tools/platform-lib.sh"; CANON_EVENT_ACTOR=system canon_event github.merged tkt "$G" "ticket=$gid" pr=7)
 assert_contains "$(event_line github.merged "$gid")" '"actor":"system"'
