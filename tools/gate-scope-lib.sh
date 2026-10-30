@@ -9,6 +9,9 @@
 
 gate_scope_registry() { printf '%s/canon-gate-scope-%s' "${TMPDIR:-/tmp}" "$(id -u)"; }
 
+# _gate_scope_reg_ok <registry>: ours alone (a shared /tmp folder someone else pre-made, or a symlink, is never trusted: its records name what we delete)
+_gate_scope_reg_ok() { [[ -d "$1" && ! -L "$1" && -O "$1" ]]; }
+
 _gate_scope_key() {  # <snapshot path> -> a file name
   local abs; abs="$(cd "$(dirname "$1")" 2>/dev/null && pwd -P)/$(basename "$1")"
   if command -v sha256sum >/dev/null 2>&1; then printf '%s' "$abs" | sha256sum | cut -c1-16
@@ -19,7 +22,7 @@ _gate_scope_key() {  # <snapshot path> -> a file name
 # gate_scope_create <snapshot>: make and register the scratch scope; prints its directory.
 gate_scope_create() {
   local reg dir; reg="$(gate_scope_registry)"
-  mkdir -p "$reg" || return 1
+  mkdir -p "$reg" && chmod 700 "$reg" && _gate_scope_reg_ok "$reg" || return 1
   gate_scope_remove "$1"   # a second `pre` for the same snapshot replaces the first
   dir="$(mktemp -d)" || return 1
   mkdir -p "$dir/home" "$dir/canon" "$dir/tmp" "$dir/xdg"
@@ -30,7 +33,7 @@ gate_scope_create() {
 # gate_scope_remove <snapshot>: delete its scratch dir and registration (what `post` does).
 gate_scope_remove() {
   local f dir; f="$(gate_scope_registry)/$(_gate_scope_key "$1")"
-  [[ -f "$f" ]] || return 0
+  _gate_scope_reg_ok "$(gate_scope_registry)" && [[ -f "$f" ]] || return 0
   dir="$(sed -n 's/^dir=//p;T;q' "$f")"
   [[ -n "$dir" && -d "$dir" && "$(basename "$dir")" != / ]] && rm -rf "$dir"
   rm -f "$f"
@@ -48,7 +51,7 @@ _gate_scope_under() {  # <path> <dir>: the path is the dir or inside it (raw or 
 # gate_scope_guard <what>: 0 to go ahead; 1 (with a message) while a live gate scope exists and HOME/CANON_HOME are outside it.
 gate_scope_guard() {
   local reg f dir created now ttl home="${HOME:-}" chome="${CANON_HOME:-${HOME:-}/.canon}"
-  reg="$(gate_scope_registry)"; [[ -d "$reg" ]] || return 0
+  reg="$(gate_scope_registry)"; _gate_scope_reg_ok "$reg" || return 0
   now="$(date +%s)"; ttl="${CANON_GATE_SCOPE_TTL:-7200}"
   for f in "$reg"/*; do
     [[ -f "$f" ]] || continue
