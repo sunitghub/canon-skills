@@ -55,6 +55,11 @@ HOME="$realhome/" CANON_HOME="$realhome/.canon/" guard && fail "a trailing slash
 HOME="$scratch/realhome/../realhome" CANON_HOME="$scratch/realhome/../realhome/.canon" guard && fail "a .. spelling must not hide the real home"
 (cd "$realhome" && HOME=. CANON_HOME=./.canon guard) && fail "a relative HOME that is the real home must be refused"
 HOME="" CANON_HOME="" guard && fail "an empty HOME must be refused (fail closed)"
+# a spelling that differs only in case reaches the same folder on a case-insensitive disk (macOS): identity, not text, decides
+up="$(printf '%s' "$realhome" | tr 'a-z' 'A-Z')"
+if [[ "$up" != "$realhome" && -d "$up" ]]; then HOME="$up" CANON_HOME="$up/.canon" guard && fail "a case spelling of the real home is the real home"; fi
+# a path that does not exist cannot reach the real home: allowed
+HOME="$realhome/no-such-dir/.." CANON_HOME="$sh_/canon" guard || fail "a nonexistent spelling cannot reach the real home (kernel and bash cd refuse it)"
 out="$(HOME="$sh_/home" CANON_HOME="$sh_/canon" "$ROOT/tools/skills.sh" remove no-such-skill 2>&1 || true)"
 [[ "$out" != *"close gate"* ]] || fail "skills.sh with a scratch HOME was refused by the gate scope: $out"
 # a record from an older version (no home=/canon= lines) keeps the old rule: refuse unless both are inside the scope

@@ -41,7 +41,7 @@ gate_scope_remove() {
   rm -f "$f"
 }
 
-_gate_scope_phys() { local p="$1"; (cd -P "$p" 2>/dev/null && pwd -P) || printf '%s' "$p"; }   # t-9fb1: the physical spelling, so a symlink to the real home is the real home
+_gate_scope_phys() { local p="$1"; (cd -P "$p" 2>/dev/null && pwd -P) || printf '%s' "$p"; }   # t-9fb1: the physical spelling `pre` records; the guard compares identity (-ef)
 
 _gate_scope_under() {  # <path> <dir>: the path is the dir or inside it (raw or physical spelling)
   local p="$1" d="$2" pp dp
@@ -69,7 +69,9 @@ gate_scope_guard() {
     # cannot touch the user's projects. A record without them (an older version) keeps the old rule: refuse unless both are inside the scope.
     rhome="$(sed -n '/^home=/{s/^home=//p;q;}' "$f")"; rcanon="$(sed -n '/^canon=/{s/^canon=//p;q;}' "$f")"
     if [[ -n "$rhome" && -n "$rcanon" ]]; then
-      if [[ -n "$home" && "$(_gate_scope_phys "$home")" != "$rhome" && "$(_gate_scope_phys "$chome")" != "$rcanon" ]]; then continue; fi
+      # -ef: the same device and inode, so a spelling (case on a case-insensitive disk, Unicode form, a symlink, .., a trailing slash) cannot pass for another folder;
+      # a path that does not exist cannot reach the real home either way (bash cd and the kernel both refuse it), so it is allowed
+      if [[ -n "$home" && ! "$home" -ef "$rhome" && ! "$chome" -ef "$rcanon" ]]; then continue; fi
     elif _gate_scope_under "$home" "$dir" && _gate_scope_under "$chome" "$dir"; then continue; fi
     {
       echo "$1: refused. A canon close gate (reviewer/evaluator) is running and its scope is active ($dir)."
