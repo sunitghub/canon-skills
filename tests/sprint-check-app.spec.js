@@ -7188,7 +7188,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     });
 
     // Protects the Cockpit's `m` key: the pane's size is remembered per project, so closing the Terminal and opening another restores it.
-    test('Terminal pane (t-ccf5): the size you set is restored when the pane is opened again', async ({ page }) => {
+    test('Terminal pane (t-ccf5): the size you set is restored when the pane is opened again @webkit', async ({ page }) => {
       await page.setViewportSize({ width: 1280, height: 900 });
       await stubCockpit(page);
       await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: termStub }));
@@ -10222,7 +10222,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     expect(posts[2].body.body).toContain('my unsaved words');
   });
 
-  test('a status move on a bound ticket keeps the page current, so the next Description save is not stale (t-8be2)', async ({ page }) => {
+  test('a status move on a bound ticket keeps the page current, so the next Description save is not stale (t-8be2) @webkit', async ({ page }) => {
     const { live, posts } = await ownBoard(page);
     await page.locator(`.card[data-id="${live}"]`).dragTo(page.locator('.column-body[data-status="open"]'));   // a real drag, not a direct call
     await expect.poll(() => posts.length).toBe(1);
@@ -18683,7 +18683,7 @@ test.describe('NOW lane and hidden lanes (t-0447)', () => {
   });
 
   // Protects the status drop (POST /api/ticket/<id>/status) for a card that sits in NOW: it stays in NOW with the new chip, once.
-  test('dropping a NOW card on a status lane changes its status and it stays in NOW (t-0447)', async ({ page }) => {
+  test('dropping a NOW card on a status lane changes its status and it stays in NOW (t-0447) @webkit', async ({ page }) => {
     const id = write({ status: 'open' });
     await open(page);
     await page.locator(`.card[data-id="${id}"]`).dragTo(page.locator('.column-body[data-status="in_progress"]'));
