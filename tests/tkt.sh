@@ -551,3 +551,48 @@ json_project="$(make_project)"
   [[ "$rc" -eq 1 && -z "$out" ]] || fail "show --json with no id must exit 1 with empty stdout"
 )
 rm -rf "$json_project"
+
+# t-3abc: a ticket closed where it lives in a worktree's OWN copy (an adopted worktree, .tickets/ gitignored) is copied back to the main
+# checkout's folder, so main is not left 'open' once the worktree goes. Where the ticket is main's (a plain worktree) or .tickets/ is tracked,
+# nothing is copied. tkt close is what sprint complete calls for every worktree-bound sprint.
+(
+  cb="$(mktemp -d)"; trap 'rm -rf "$cb"' EXIT
+  m="$cb/main"; mkdir -p "$m"; git -C "$m" init -q; cd "$m"
+  git config user.name t; git config user.email t@e; printf '.tickets/\n' > .gitignore; git add .gitignore; git commit -qm base
+  cid="$("$TKT" create "copy back" -t task)"; mf=".tickets/$cid/ticket.md"
+  printf 'github: acme/app#9\n' > "$cb/gh"; awk -v l="$(cat "$cb/gh")" '/^---$/ && ++n == 2 { print l } { print }' "$mf" > "$cb/t" && mv "$cb/t" "$mf"
+  echo "main-lock" > ".tickets/$cid/.cockpit-cwd"
+  wt="$cb/wt"; git worktree add -q "$wt" -b feat/cb
+  mkdir -p "$wt/.tickets"; cp -R ".tickets/$cid" "$wt/.tickets/$cid"   # what the adopt handler does
+  sed -i.bak '/^github:/d' "$wt/.tickets/$cid/ticket.md" && rm -f "$wt/.tickets/$cid/ticket.md.bak"   # main got its github: line after the copy was made
+  echo "wt-lock" > "$wt/.tickets/$cid/.cockpit-cwd"   # the worktree's own marker differs from main's
+  (cd "$wt" && "$TKT" close "$cid" --no-sprint >/dev/null)
+  echo "evidence" > "$wt/.tickets/$cid/summary.md"
+  ln -s /etc/hosts "$wt/.tickets/$cid/link.md"
+  # reopen-and-close again so the copy carries the new files (the first close ran before they existed)
+  (cd "$wt" && "$TKT" reopen "$cid" >/dev/null 2>&1; out="$("$TKT" close "$cid" --no-sprint 2>&1)"; printf '%s' "$out" > "$cb/out")
+  assert_contains "$(cat "$cb/out")" "copied $cid's closed folder back to"
+  assert_grep "^status: closed$" "$mf"
+  assert_file_exists ".tickets/$cid/summary.md"
+  [[ ! -e ".tickets/$cid/link.md" ]] || fail "copy-back followed or copied a symlink"
+  assert_eq "main-lock" "$(cat ".tickets/$cid/.cockpit-cwd")"   # main's lock marker is main's
+  assert_grep "^github: acme/app#9$" "$mf"                        # main's per-machine line survived the copy
+  # no worktree copy: the close writes main's own folder and prints no copy-back line
+  pid2="$("$TKT" create "plain wt" -t task)"; wt2="$cb/wt2"; git worktree add -q "$wt2" -b feat/cb2
+  out="$(cd "$wt2" && "$TKT" close "$pid2" --no-sprint 2>&1)"
+  [[ "$out" != *"copied"* ]] || fail "a worktree with no copy printed a copy-back line: $out"
+  assert_grep "^status: closed$" ".tickets/$pid2/ticket.md"
+  # .tickets/ tracked in git: the merge carries the ticket, so nothing is copied back and main's copy is left as it is
+  tm="$cb/tracked"; mkdir -p "$tm"; git -C "$tm" init -q; ( cd "$tm"; git config user.name t; git config user.email t@e
+    tid="$("$TKT" create "tracked" -t task)"; git add -A; git commit -qm base; git worktree add -q "$cb/twt" -b feat/tr
+    out="$(cd "$cb/twt" && "$TKT" close "$tid" --no-sprint 2>&1)"
+    [[ "$out" != *"copied"* ]] || fail "a tracked .tickets/ printed a copy-back line: $out"
+    assert_grep "^status: open$" ".tickets/$tid/ticket.md" )
+  # a copy that cannot be made: a warning, and the close still succeeds
+  uid="$("$TKT" create "unwritable" -t task)"; wt3="$cb/wt3"; git worktree add -q "$wt3" -b feat/cb3
+  mkdir -p "$wt3/.tickets"; cp -R ".tickets/$uid" "$wt3/.tickets/$uid"; mkdir "$wt3/.tickets/$uid/sub"; echo x > "$wt3/.tickets/$uid/sub/eval-report.md"
+  echo "a file where the copy needs a folder" > ".tickets/$uid/sub"   # the copy cannot be made, as root or not
+  rc=0; out="$(cd "$wt3" && "$TKT" close "$uid" --no-sprint 2>&1)" || rc=$?
+  assert_eq 0 "$rc"; assert_contains "$out" "warning: could not copy $uid back to"
+)
+echo "tkt: close copies a worktree's own ticket copy back to main (t-3abc)"

@@ -181,3 +181,36 @@ require_project_folder() {
   echo "$tool: $shown is not a project ($why with no git repository). Make a folder for your work, for example: $mk \"$demo\", cd into it, run git init, then run $tool again." >&2
   exit 1
 }
+
+# copy_ticket_back <id> <ticket.md of that ticket> — t-3abc: a sprint closed in a worktree that holds its OWN copy of the ticket (an
+# adopted worktree, .tickets/ gitignored) leaves main's copy 'open' once the worktree is removed. Copy the closed folder to the main
+# checkout's .tickets/<id>/: regular files and subfolders only (find -type f never follows a link), never a .cockpit-* marker (main's
+# lock and adopt files), and main's per-machine ticket.md lines (github, runs, merged, cloud_status) stay main's. Nothing happens when
+# the ticket is already main's (no worktree copy: tkt land, a plain worktree), when .tickets/ is tracked (the merge carries it), or when
+# main has no folder for it. A failure prints one warning and returns 0: it never fails the close.
+copy_ticket_back() {
+  local id="$1" file="$2" own proj common main old k val
+  [[ "$id" =~ ^[A-Za-z0-9][A-Za-z0-9-]*$ ]] || return 0
+  own="$(dirname "$(dirname "$file")")"; proj="$(dirname "$own")"
+  common="$(git -C "$proj" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || return 0
+  [[ "$(basename "$common")" == .git ]] || return 0
+  main="$(dirname "$common")/.tickets"
+  [[ -d "$main/$id" ]] || return 0
+  [[ "$(cd "$own" && pwd -P)" != "$(cd "$main" && pwd -P)" ]] || return 0
+  git -C "$proj" check-ignore -q .tickets 2>/dev/null || return 0
+  old="$(mktemp)" || return 0
+  cp "$main/$id/ticket.md" "$old" 2>/dev/null || : > "$old"
+  if ! { (cd "$own/$id" && find . -type f ! -name '.cockpit-*' -print0) \
+         | while IFS= read -r -d '' f; do mkdir -p "$main/$id/$(dirname "$f")" && cp -p "$own/$id/$f" "$main/$id/$f" || exit 1; done; }; then
+    echo "warning: could not copy $id back to $main/$id" >&2; rm -f "$old"; return 0
+  fi
+  for k in github runs merged cloud_status; do
+    val="$(grep -m1 "^$k:" "$old" || true)"; [[ -n "$val" ]] || continue
+    awk -v key="$k" -v line="$val" 'BEGIN { n = 0; rep = 0 }
+      /^---$/ { n++; if (n == 2 && !rep) { print line; rep = 1 } }
+      n == 1 && index($0, key ":") == 1 && !rep { print line; rep = 1; next }
+      { print }' "$main/$id/ticket.md" > "$main/$id/ticket.md.tmp" && mv "$main/$id/ticket.md.tmp" "$main/$id/ticket.md"
+  done
+  rm -f "$old"
+  echo "copied $id's closed folder back to $main/$id"
+}

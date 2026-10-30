@@ -504,6 +504,7 @@ cmd_close() {
   fi
 
   cmd_set_status "$id" closed
+  copy_ticket_back "$id" "$file"   # t-3abc: where the ticket lives in a worktree's own copy, main's copy follows
 }
 
 # json_str <value> — print <value> as a quoted JSON string (no newline). Pure awk so it runs on Git Bash with no
