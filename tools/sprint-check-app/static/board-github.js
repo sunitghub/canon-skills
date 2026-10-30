@@ -685,7 +685,7 @@ async function showCommitPush(t, tab, gen) {
   const startTicked = f => !busy && !f.untracked && f.age === null;
   const ago = s => s < 60 ? s + 's' : Math.floor(s / 60) + 'm';
   box.innerHTML = `<p>Branch: <code>${esc(branch)}</code></p>
-      ${files.length && busy ? '<p class="ck-gh-cp-busy" id="ck-gh-cp-busy" role="note">An agent session is working in this checkout: these files may be its work in progress. Tick only what you mean to send.</p>' : ''}
+      ${files.length && busy ? '<p class="ck-gh-cp-busy" id="ck-gh-cp-busy" role="note"><strong>An agent session is working in this checkout:</strong> these files may be its work in progress. Tick only what you mean to send.</p>' : ''}
       ${files.length ? `<ul class="ck-gh-cp-files" id="ck-gh-cp-files">${files.map((f, i) => `<li><label><input type="checkbox" data-i="${i}"${startTicked(f) ? ' checked' : ''}> <code>${esc(f.path)}</code> <span class="ck-gh-cp-st">${f.untracked ? 'new, not tracked' : 'changed'}</span>${f.age === null ? '' : ` <span class="ck-gh-cp-ago">changed ${ago(f.age)} ago</span>`}</label></li>`).join('')}</ul>` : '<p>No uncommitted files: only the commits already here are pushed.</p>'}
       ${files.length ? `<label class="ck-gh-cp-msg">Commit message <input type="text" id="ck-gh-cp-msg" maxlength="200" value="${escAttr(`chore: ${t.id} work for the cloud session`)}"></label>` : ''}
       <div class="ck-gh-actions"><button type="button" class="ck-gh-create" id="ck-gh-cp-go">Commit and push</button><button type="button" id="ck-gh-cp-cancel">Cancel</button><span class="ck-gh-status" id="ck-gh-cp-status" role="status"></span></div>

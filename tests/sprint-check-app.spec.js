@@ -7954,16 +7954,23 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#ck-iframe')).toHaveCSS('visibility', 'hidden');
       await expect(page.locator('#ck-term-msg')).toContainText('gitignored');
 
-      // Legible in both themes: distinct, non-transparent tinted background.
-      await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
-      const darkBg = await warn.evaluate(el => getComputedStyle(el).backgroundColor);
-      await page.screenshot({ path: '/tmp/e5ff-dark.png' });
-      await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
-      const lightBg = await warn.evaluate(el => getComputedStyle(el).backgroundColor);
-      await page.screenshot({ path: '/tmp/e5ff-light.png' });
-      expect(lightBg).toBe('rgb(254, 226, 226)'); // #fee2e2, the light-mode block tint
-      expect(darkBg).not.toBe(lightBg);
-      expect(darkBg).not.toBe('rgba(0, 0, 0, 0)'); // not transparent in dark
+      // t-3942 (user: red on a red tint was hard to read): in both themes the text is the body colour on the panel's own
+      // background, and red is only the left bar and the bold lead. Prod path: the worktree picker's gitignored note.
+      for (const theme of ['dark', 'light']) {
+        await page.evaluate(th => document.documentElement.setAttribute('data-theme', th), theme);
+        const look = await warn.evaluate(el => {
+          const cs = getComputedStyle(el), lead = getComputedStyle(el.querySelector('strong'));
+          const probe = document.createElement('span'); probe.style.color = 'var(--text-body)'; el.appendChild(probe);
+          const body = getComputedStyle(probe).color; probe.remove();
+          return { color: cs.color, body, bg: cs.backgroundColor, bar: cs.borderLeftColor, barW: cs.borderLeftWidth, lead: lead.color };
+        });
+        const red = c => { const [r, g, b] = c.match(/\d+/g).map(Number); return r > g + 60 && r > b + 60; };
+        expect(look.color, theme).toBe(look.body);
+        expect(look.bg, theme).toBe('rgba(0, 0, 0, 0)');
+        expect(red(look.bar) && look.barW === '3px', `${theme} left bar ${look.bar} ${look.barW}`).toBe(true);
+        expect(red(look.lead), `${theme} lead ${look.lead}`).toBe(true);
+        expect(red(look.color), `${theme} text ${look.color}`).toBe(false);
+      }
     } finally {
       removeTestTicket(PROJECT_ROOT, id);
     }
@@ -17771,6 +17778,16 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.route(`**/api/ticket/${id}/github/commit-push`, r => { posts.push(JSON.parse(r.request().postData() || '{}')); return json(r, { ok: true, exit_code: 0, output: 'commit-push: pushed' }); });
     await commitPushForm(page, id, { sessions: [sessionRow(PROJECT_ROOT)], files: `file:  M src/app.js\nmtime: ${nowS() - 4000} src/app.js\nfile:  M src/old.js\nfile: ?? notes.txt` });
     await expect(page.locator('#ck-gh-cp-busy')).toContainText('An agent session is working in this checkout');
+    // t-3942: body text, a red left bar and a red bold lead, no tint. Prod path: the Send panel's Commit and push note.
+    const busyLook = await page.locator('#ck-gh-cp-busy').evaluate(el => {
+      const cs = getComputedStyle(el), probe = document.createElement('span'); probe.style.color = 'var(--text-body)'; el.appendChild(probe);
+      const body = getComputedStyle(probe).color; probe.remove();
+      return { color: cs.color, body, bg: cs.backgroundColor, barW: cs.borderLeftWidth, lead: getComputedStyle(el.querySelector('strong')).color };
+    });
+    expect(busyLook.color).toBe(busyLook.body);
+    expect(busyLook.bg).toBe('rgba(0, 0, 0, 0)');
+    expect(busyLook.barW).toBe('3px');
+    expect(busyLook.lead).not.toBe(busyLook.body);
     const boxes = page.locator('#ck-gh-cp-files input[type=checkbox]');
     await expect(boxes).toHaveCount(3);
     for (let i = 0; i < 3; i++) await expect(boxes.nth(i)).not.toBeChecked();   // even a tracked file last written an hour ago

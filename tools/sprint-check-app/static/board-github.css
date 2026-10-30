@@ -57,7 +57,9 @@ html[data-theme="light"] .ck-gh-box .ck-gh-note p { color: var(--th-warn-ink, #9
 .ck-gh-cp-files { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow: auto; display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
 .ck-gh-cp-st { color: var(--text-muted); }
 .ck-gh-cp-ago { color: var(--text-muted); font-size: 11px; }
-.ck-gh-cp-busy { margin: 0; padding: 8px 12px; border-radius: 8px; font-size: 12.5px; border: 1px solid var(--th-bad-line, var(--bad-ink)); color: var(--th-bad-ink, var(--bad-ink)); background: var(--th-bad-soft, var(--bad-soft)); }
+/* t-3942: body text on the panel's own colour, a red left bar and a red lead (red on a red tint was hard to read) */
+.ck-gh-box .ck-gh-cp-busy, .ck-gh-cp-busy { margin: 0; padding: 8px 12px; border-radius: 8px; font-size: 12.5px; border: 1px solid var(--border); border-left: 3px solid var(--th-bad-line, var(--bad-ink)); color: var(--text-body); background: transparent; }
+.ck-gh-cp-busy strong { color: var(--th-bad-ink, var(--bad-ink)); }
 .ck-gh-cp-msg { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--text-muted); }
 .ck-gh-cp-msg input { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; }
 .ck-gh-actions button {

@@ -313,17 +313,17 @@
     /* t-e5ff: persistent danger bubble shown below the worktree rows when a
        listed worktree can't see .tickets/ (gitignored). Mirrors the
        #drop-toast.block palette so dark/light both stay legible. */
+    /* t-3942: body text on the panel's own colour; red only on the left bar and the bold lead (red on a red tint was hard to read). */
     .ck-worktree-warn {
       margin: 8px 0 0 0; padding: 8px 10px; border-radius: 8px;
       font-size: 11px; line-height: 1.45;
-      border: 1px solid var(--th-bad-line, rgba(248,113,113,.35)); color: var(--col-discarded);
-      background: var(--th-bad-soft, rgba(248,113,113,.07));
+      border: 1px solid var(--border); border-left: 3px solid var(--th-bad-line, var(--col-discarded)); color: var(--text-body);
+      background: transparent;
     }
-    .ck-worktree-warn strong { font-weight: 700; }
+    .ck-worktree-warn strong { font-weight: 700; color: var(--th-bad-ink, var(--col-discarded)); }
     .ck-worktree-warn code { font-family: var(--mono, monospace); font-size: 10px; }
-    html[data-theme="light"] .ck-worktree-warn {
-      border-color: var(--th-bad-line, #dc2626); color: var(--th-bad-ink, #7f1d1d); background: var(--th-bad-soft, #fee2e2);
-    }
+    html[data-theme="light"] .ck-worktree-warn { border-left-color: var(--th-bad-line, #dc2626); }
+    html[data-theme="light"] .ck-worktree-warn strong { color: var(--th-bad-ink, #7f1d1d); }
 
     /* t-fe3c: Unlock button in the worktree rail — reuses theme tokens so it
        stays legible in both dark and light, matching the rail's other buttons. */
