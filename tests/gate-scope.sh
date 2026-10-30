@@ -76,6 +76,11 @@ HOME="$scratch/link2" CANON_HOME="$sh_/canon" guard || fail "a symlink to a fold
 nl=$'x\n'
 HOME="$realhome/$nl/.." CANON_HOME="$sh_/canon" guard && fail "a HOME with a newline in a component must be refused"
 HOME="$sh_/home" CANON_HOME="$realhome/.canon/$nl/.." guard && fail "a CANON_HOME with a newline in a component must be refused"
+# a newline in the CURRENT directory's path with a relative CANON_HOME or HOME that has a missing folder and ..: the walk must not split on lines (eval run 2)
+mkdir -p "$realhome/sub"; ln -sfn "$realhome/sub" "$scratch/a"$'\n'"b"
+(cd "$scratch/a"$'\n'"b" && HOME="$sh_/home" CANON_HOME="nx/../../.canon" guard) && fail "a relative CANON_HOME that leads to the real canon home from a newline-named cwd must be refused"
+(cd "$scratch/a"$'\n'"b" && HOME="nx/../.." CANON_HOME="$sh_/canon" guard) && fail "a relative HOME that leads to the real home from a newline-named cwd must be refused"
+mkdir -p "$realhome/d"$'\n'"x"; (cd "$realhome/d"$'\n'"x" && HOME="$sh_/home" CANON_HOME="../.canon/nx/.." guard) && fail "a relative CANON_HOME from a real cwd with a newline in its name must be refused"
 # a scratch path that does not exist yet and does not lead to the real home is fine
 HOME="$sh_/deep/a/b/c" CANON_HOME="$sh_/deep/a/b/c/.canon" guard || fail "a deep nonexistent scratch path must pass"
 HOME="$realhome/a/b/c" CANON_HOME="$realhome/a/b/c/.canon" guard || fail "a (nonexistent) folder INSIDE the real home is not the real home and must pass"
@@ -127,6 +132,12 @@ if [[ -d "$scratch/$nfd" ]]; then
   HOME="$sh_/home" CANON_HOME="$scratch/$nfd/.canon/nx/.." guard && fail "an NFD spelling of the real canon home plus a missing folder and .. must be refused"
   "$TOOL" post "$scratch/snap4" >/dev/null
 fi
+
+# a real home whose own name has a newline cannot live in the line-based record: pre writes no home=/canon= lines, so the old rule applies and a scratch HOME outside the scope is refused (fail closed)
+nlh="$scratch/nlhome"$'\n'"x"; mkdir -p "$nlh/.canon"; HOME="$nlh" CANON_HOME="$nlh/.canon" "$TOOL" pre "$scratch/snap5" >/dev/null
+! grep -q '^home=' "$reg"/$(ls -t "$reg" | head -1) || fail "a newline in the real home must not be written as home="
+HOME="$sh_/home" CANON_HOME="$sh_/canon" guard && fail "with no home=/canon= (a newline in the real home) the old rule applies: a scratch HOME outside the scope is refused"
+"$TOOL" post "$scratch/snap5" >/dev/null
 
 # a gate that crashed before post: the scope goes stale by age, and by its scratch dir being gone
 g() { HOME="$realhome" CANON_HOME="$realhome/.canon" "$@" bash -c 'source "$1"; gate_scope_guard x' _ "$ROOT/tools/gate-scope-lib.sh" 2>/dev/null; }

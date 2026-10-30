@@ -29,7 +29,12 @@ gate_scope_create() {
   dir="$(mktemp -d)" || return 1
   mkdir -p "$dir/home" "$dir/canon" "$dir/tmp" "$dir/xdg"
   # t-9fb1: the dispatcher runs in the user's REAL environment, so it records the home and canon home the guard must keep a gate away from
-  printf 'dir=%s\ncreated=%s\nhome=%s\ncanon=%s\n' "$dir" "$(date +%s)" "$(_gate_scope_resolve "${HOME:-}")" "$(_gate_scope_resolve "${CANON_HOME:-${HOME:-}/.canon}")" > "$reg/$(_gate_scope_key "$1")"
+  local rhome rcanon; rhome="$(_gate_scope_resolve "${HOME:-}")"; rcanon="$(_gate_scope_resolve "${CANON_HOME:-${HOME:-}/.canon}")"
+  if [[ "$rhome$rcanon" == *$'\n'* ]]; then   # a newline cannot live in a line-based record: no home=/canon= lines, so the old rule applies (fail closed)
+    printf 'dir=%s\ncreated=%s\n' "$dir" "$(date +%s)" > "$reg/$(_gate_scope_key "$1")"
+  else
+    printf 'dir=%s\ncreated=%s\nhome=%s\ncanon=%s\n' "$dir" "$(date +%s)" "$rhome" "$rcanon" > "$reg/$(_gate_scope_key "$1")"
+  fi
   printf '%s' "$dir"
 }
 
@@ -47,10 +52,12 @@ gate_scope_remove() {
 # not there: walks the components left to right, follows each existing one physically (a symlink to a folder inside the real home included) and pops `..` from the
 # physical path so far. So "$link/nx/../.." with $link -> <real home>/sub resolves to the real home, though nx does not exist yet.
 _gate_scope_resolve() {
-  local p="$1" part cur="/" next parts
+  local p="$1" part cur="/" next rest
   [[ "$p" == /* ]] || p="$PWD/$p"
-  IFS=/ read -ra parts <<< "$p"
-  for part in ${parts[@]+"${parts[@]}"}; do
+  # Split with parameter expansion, not `read` (read stops at a newline, and a newline can be in any component, in $PWD too).
+  rest="${p#/}"
+  while [[ -n "$rest" ]]; do
+    part="${rest%%/*}"; if [[ "$rest" == */* ]]; then rest="${rest#*/}"; else rest=""; fi
     case "$part" in
       ''|.) ;;
       ..) cur="${cur%/*}"; [[ -n "$cur" ]] || cur="/" ;;
@@ -89,10 +96,9 @@ gate_scope_guard() {
     if [[ -n "$rhome" && -n "$rcanon" ]]; then
       # Two checks, so a spelling cannot pass for another folder: -ef (the same device and inode: Unicode form and other case rules on some disks), and the
       # resolved path (a path that does not exist yet and leads to the real home through .. or a symlink: a later mkdir -p makes it, "$HOME/x/..").
-      # A path with a newline cannot be walked (read stops at the line end) and no real scratch dir has one: refused. The resolved path is compared by identity too
-      # (a Unicode-form spelling plus a missing folder: the text differs, the folder is the same).
+      # The resolved path is compared by identity too (a Unicode-form spelling plus a missing folder: the text differs, the folder is the same).
       rh="$(_gate_scope_resolve "$home")"; rc="$(_gate_scope_resolve "$chome")"
-      if [[ -n "$home" && "$home$chome" != *$'\n'* && ! "$home" -ef "$rhome" && ! "$chome" -ef "$rcanon" \
+      if [[ -n "$home" && ! "$home" -ef "$rhome" && ! "$chome" -ef "$rcanon" \
             && "$rh" != "$rhome" && "$rc" != "$rcanon" && ! "$rh" -ef "$rhome" && ! "$rc" -ef "$rcanon" ]]; then continue; fi
     elif _gate_scope_under "$home" "$dir" && _gate_scope_under "$chome" "$dir"; then continue; fi
     {
