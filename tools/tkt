@@ -2122,11 +2122,12 @@ _ff_here() {
   rm -rf "$bk"
 }
 
-# cmd_github_status <id> [--json] — t-d271: where a ticket sent to GitHub stands, for the board to poll. Read-only: one
+# cmd_github_status <id> [--json] — t-d271: where a ticket sent to GitHub stands, for the board to poll. Reads: one
 # gh call (the PR that says "Fixes #<issue>") and one ls-remote (canon-results/<id>), plus the local ticket; t-c8d4 adds one
 # object fetch of the PR head, only when a passed, closed ticket's PR head is past graded-head and not local yet. Stages:
 # sent (no PR yet) → pr-open → results-ready (canon-results/<id> is on origin: import it) → results-in (imported, the
-# evaluator passed on the PR's head) → merged. A gh or git failure exits 1 with the reason, never a guessed stage.
+# evaluator passed on the PR's head) → merged. Its one write (t-7c89): a PR GitHub says is merged, on a ticket with no
+# merged:, is recorded once, as the system. A gh or git failure exits 1 with the reason, never a guessed stage.
 cmd_github_status() {
   local id="" json=false
   while [[ $# -gt 0 ]]; do
@@ -2979,7 +2980,8 @@ Commands:
                             base, then writes merged:, the github.md trail and the github.merged event.
   github-status <id> [--json]
                             Where a ticket sent to GitHub stands: sent, pr-open,
-                            results-ready, results-in or merged (read-only). While it is
+                            results-ready, results-in or merged. Reads GitHub; its one write (t-7c89)
+                            is recording a PR merged outside merge-pr. While it is
                             `sent`, --json also gives issue_updated (the issue's last activity).
   worktree-reset [--yes | --dry-run]
                             In a linked worktree whose PR merged: reset its tracking

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # t-d271: tkt github-status reports where a ticket sent to GitHub stands (sent → pr-open → results-ready → results-in →
-# merged) from one gh read and one ls-remote, read-only; a gh or origin failure exits 1 with the reason.
+# merged) from one gh read and one ls-remote; its one write (t-7c89) records a merge GitHub already made; a gh or origin failure exits 1 with the reason.
 set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
