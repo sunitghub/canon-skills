@@ -7,7 +7,8 @@
 # Stale scopes (a gate that crashed before `post`) expire: older than CANON_GATE_SCOPE_TTL seconds (default 7200) or with the
 # scratch dir gone. No scope registered = no change in behaviour. Sourced; defines functions only.
 
-gate_scope_registry() { printf '%s/canon-gate-scope-%s' "${TMPDIR:-/tmp}" "$(id -u)"; }
+# Fixed under /tmp, not TMPDIR: a gate launched with its own TMPDIR (the pi recipe) must still find the registry. CANON_GATE_SCOPE_DIR relocates it (tests).
+gate_scope_registry() { printf '%s' "${CANON_GATE_SCOPE_DIR:-/tmp/canon-gate-scope-$(id -u)}"; }
 
 # _gate_scope_reg_ok <registry>: ours alone (a shared /tmp folder someone else pre-made, or a symlink, is never trusted: its records name what we delete)
 _gate_scope_reg_ok() { [[ -d "$1" && ! -L "$1" && -O "$1" ]]; }

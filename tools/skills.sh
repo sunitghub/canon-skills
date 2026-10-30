@@ -65,7 +65,7 @@ case "${1:-}" in
 esac
 
 # t-b7df: while a close gate's scope is live, nothing that rewrites registered projects runs on the real HOME/CANON_HOME
-source "$(dirname "$SCRIPT")/gate-scope-lib.sh"
+[[ -f "$(dirname "$SCRIPT")/gate-scope-lib.sh" ]] && source "$(dirname "$SCRIPT")/gate-scope-lib.sh" || gate_scope_guard() { return 0; }   # a tools/ copy without the lib has no scope to enforce
 case "$cmd" in add|refresh|remove|init|uninstall|link-worktree) gate_scope_guard "skills.sh $cmd" || exit 1 ;; esac
 
 case "$cmd" in

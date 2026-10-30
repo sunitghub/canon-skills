@@ -9,12 +9,12 @@ source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 TOOL="$ROOT/tools/gate-snapshot.sh"
 proj="$(make_project)"; scratch="$(mktemp -d)"
 trap 'rm -rf "$proj" "$scratch"' EXIT
-export TMPDIR="$scratch"   # the scope registry lives under TMPDIR: this test never registers a scope the rest of the suite could see
+export CANON_GATE_SCOPE_DIR="$scratch/registry"   # this test never registers a scope the rest of the suite could see
 cd "$proj"; git config user.email t@example.com; git config user.name test
 echo a > a.txt; git add -A >/dev/null; git commit -qm base
 snap="$scratch/snap"
 realhome="$scratch/realhome"; mkdir -p "$realhome/.canon"   # stands in for the user's real home and canon home
-reg="$scratch/canon-gate-scope-$(id -u)"
+reg="$CANON_GATE_SCOPE_DIR"
 CANON="$ROOT/tools/canon"
 
 # no scope registered: nothing is refused
@@ -38,6 +38,10 @@ HOME="$scope/home" CANON_HOME="$scope/canon" bash -c 'source "$1"; gate_scope_gu
 # read-only commands are untouched
 out="$(HOME="$realhome" CANON_HOME="$realhome/.canon" "$ROOT/tools/skills.sh" list 2>&1 || true)"
 [[ "$out" != *refused* ]] || fail "skills.sh list must not be guarded: $out"
+
+# the pi launch environment (scope CANON_HOME + TMPDIR, real HOME) and a bare TMPDIR change are still refused (reviewer t-b7df: the registry must not hide behind TMPDIR)
+(env $(cat "$snap.scope") HOME="$realhome" bash -c 'source "$1"; gate_scope_guard x' _ "$ROOT/tools/gate-scope-lib.sh" 2>/dev/null) && fail "pi env with a real HOME must be refused"
+(HOME="$realhome" CANON_HOME="$realhome/.canon" TMPDIR="$scratch/other" bash -c 'source "$1"; gate_scope_guard x' _ "$ROOT/tools/gate-scope-lib.sh" 2>/dev/null) && fail "a changed TMPDIR must not hide the scope"
 
 # post ends the scope
 "$TOOL" post "$snap" >/dev/null
