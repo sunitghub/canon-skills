@@ -1,5 +1,5 @@
 import { COLLAPSE_STATUSES, COLUMNS, COL_LIMIT, NOW_COLUMN, NOW_DONE_DAYS, NOW_TAG, SHELL_TAB, docSlug, hiddenLanes, loadData, state, toggleHiddenLane } from './board-core.js';
-import { ticketTags, age, ciBadge, liteBadge, divergenceLine, effectiveStatus, esc, escAttr, idQueryDropped, normalizeSearch, outcomeRatio, ticketMatchesQuery, typeBadge, whyQueryFromInput, worktreePrefLine, worktreeRun } from './board-helpers.js';
+import { ticketTags, age, ciBadge, liteBadge, divergenceLine, effectiveStatus, esc, escAttr, idQueryDropped, normalizeSearch, outcomeRatio, ticketMatchesQuery, ticketTitleMatches, typeBadge, whyQueryFromInput, worktreePrefLine, worktreeRun } from './board-helpers.js';
 import { openModal } from './board-modal.js';
 import { tagChipsHTML } from './board-tags.js';
 import { moveCard } from './board-docs.js';
@@ -337,6 +337,8 @@ export function renderBoard() {
   const savedScroll = {};
   board.querySelectorAll('.column-body').forEach(b => { savedScroll[b.dataset.status] = b.scrollTop; });
   const waiting = t => { const r = state.cockpitRows.get(t.id); return !!r && ckRowState(r) === 'needs-you'; };
+  // t-3942: while searching, a title hit leads its lane; the sort is stable, so the order is otherwise unchanged
+  const titleHit = query ? (a, b) => ticketTitleMatches(b) - ticketTitleMatches(a) : () => 0;
   const byNew = (a, b) => (b.created || '').localeCompare(a.created || '');
   // t-0447: the `now` tag decides the lane; status and the closed time decide the order inside it. A closed ticket older than
   // NOW_DONE_DAYS (or a cancelled one) is not NOW's, so it sits in its status lane. No closed time (a worktree's copy) counts as recent.
@@ -351,10 +353,10 @@ export function renderBoard() {
   const nowCards = tickets.filter(inNow);
   const nowIds = new Set(nowCards.map(t => t.id));
   const nowActive = [
-    ...nowCards.filter(t => effectiveStatus(t) === 'in_progress').sort((a, b) => (waiting(b) - waiting(a)) || byNew(a, b)),
-    ...nowCards.filter(t => effectiveStatus(t) === 'open').sort(byNew),
+    ...nowCards.filter(t => effectiveStatus(t) === 'in_progress').sort((a, b) => titleHit(a, b) || (waiting(b) - waiting(a)) || byNew(a, b)),
+    ...nowCards.filter(t => effectiveStatus(t) === 'open').sort((a, b) => titleHit(a, b) || byNew(a, b)),
   ];
-  const nowDone = nowCards.filter(t => effectiveStatus(t) === 'closed').sort(byNew);
+  const nowDone = nowCards.filter(t => effectiveStatus(t) === 'closed').sort((a, b) => titleHit(a, b) || byNew(a, b));
   const lanes = nowCards.length ? [NOW_COLUMN, ...COLUMNS] : COLUMNS;
   // at least one lane stays shown: if every lane here is hidden (NOW came or went), none are
   const folded = lanes.every(l => hiddenLanes().has(l.status)) ? new Set() : hiddenLanes();
@@ -363,7 +365,7 @@ export function renderBoard() {
   const laneCards = col => col.status === NOW_COLUMN.status ? [...nowActive, ...nowDone]
     : tickets
       .filter(t => effectiveStatus(t) === col.status && !nowIds.has(t.id))
-      .sort((a, b) => (col.status === 'in_progress' ? waiting(b) - waiting(a) : 0) || byNew(a, b));
+      .sort((a, b) => titleHit(a, b) || (col.status === 'in_progress' ? waiting(b) - waiting(a) : 0) || byNew(a, b));
   // every hidden lane folds into ONE thin lane at the end, its strips stacked top to bottom (not one lane each)
   const strips = lanes.filter(l => folded.has(l.status)).map(col => {
     const n = laneCards(col).length;

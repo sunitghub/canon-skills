@@ -1481,6 +1481,51 @@ test.describe('board modal', () => {
     }
   });
 
+  // t-3942. Protects the board's Search box (ticketMatchesQuery in board-helpers.js) and the lane sort (renderBoard): a file name, a path or a
+  // "quoted phrase" matches the text as typed, plain words keep matching every word anywhere, title: / desc: scope the match, and a title hit leads its lane.
+  test('search: exact file names, paths and phrases, title:/desc: scopes, and title hits first (t-3942)', async ({ page }) => {
+    const a = newTicketId(PROJECT_ROOT, 'xs1'), b = newTicketId(PROJECT_ROOT, 'xs2'), c = newTicketId(PROJECT_ROOT, 'xs3');
+    const mk = (id, title, body, created) => {
+      const dir = path.join(PROJECT_ROOT, '.tickets', id);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'ticket.md'), ['---', `id: ${id}`, 'status: open', 'type: task', 'priority: 2', `created: ${created}`, '---', '', `# ${title}`, '', body, ''].join('\n'));
+    };
+    try {
+      mk(a, 'Fix settings.json hook', 'Nothing else to add.', '2026-01-01T00:00:00Z');                       // title hit, the OLDEST: byNew alone would list it last
+      mk(b, 'Docs notes', 'Edit settings.json by hand, see tools/tkt.', '2026-06-01T00:00:00Z');            // body hit
+      mk(c, 'Split words', 'The settings here and the json there; tools and tkt apart.', '2026-06-02T00:00:00Z');   // both words, never together
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      const input = page.locator('#board-search');
+      const mine = [a, b, c];
+      const shown = async () => (await page.locator('.card').evaluateAll(els => els.map(e => e.dataset.id))).filter(i => mine.includes(i));
+      const laneOrder = async () => (await page.locator('.column-body[data-status="open"] .card').evaluateAll(els => els.map(e => e.dataset.id))).filter(i => mine.includes(i));
+      const search = async (q, want, message) => { await input.fill(q); await expect.poll(async () => (await shown()).sort(), { message: message || q }).toEqual([...want].sort()); };
+
+      await search('settings.json', [a, b]);
+      await expect.poll(laneOrder, { message: 'title hit first, though it is the oldest' }).toEqual([a, b]);
+      await search('SETTINGS.JSON', [a, b]);
+      await search('settings json', [a, b, c], 'plain words keep matching every word anywhere');
+      await input.fill('');
+      await expect.poll(laneOrder, { message: 'no search: newest first, no title key' }).toEqual([c, b, a]);
+      await search('"here settings"', [], 'a quoted phrase is matched in the order typed');
+      await search('here settings', [c], 'the same words unquoted match anywhere');
+      await search('"json there"', [c]);
+      await search('tools/tkt', [b]);
+      await search('tools tkt', [b, c]);
+      await search('settings.json hook', [a], 'every term is needed; the exact one matched as typed');
+      await search('settings.json hand', [b]);
+      await search('title:settings.json', [a]);
+      await search('Desc: settings.json', [b]);
+      await search('title:"here settings"', []);
+      await search('desc:"json there"', [c]);
+      await search('title:hand', []);
+      await search('desc:hand', [b]);
+    } finally {
+      for (const id of [a, b, c]) removeTestTicket(PROJECT_ROOT, id);
+    }
+  });
+
   // t-a5c9. Protects the board's search box: ids typed without `t-` (2, 3 or 4 characters, spaces or commas between) show every ticket whose
   // id contains any of them; a query that is not a list of ids is the ordinary search, and nothing the ordinary search found is lost.
   test('search takes several ticket ids at once, partial or full, and leaves the ordinary search alone (t-a5c9)', async ({ page }) => {

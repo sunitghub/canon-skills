@@ -323,6 +323,7 @@ export function initUi() {
       { query: 'bug', hint: 'Bug tickets' },
       { query: 'p0', hint: 'Critical priority' },
       { query: 'tag:github', hint: 'Tickets tagged GitHub' },
+      { query: 'settings.json', hint: 'Exact file or path; "a phrase", title:x, desc:x' },
     ];
     const WHY_TIPS = [
       { query: 'src/app.js', hint: 'Why was this file built this way?' },

@@ -106,10 +106,50 @@ function idTermsFor(raw) { const s = idSplitFor(raw); return s ? s.terms : null;
 // The ids the search ignored for this query, as typed (`t-1212`); empty when none, or when the query is not an id list.
 export function idQueryDropped(raw) { const s = idSplitFor(raw); return s ? s.dropped.map(x => 't-' + x) : []; }
 
+// t-3942: a file name or path (`settings.json`, `tools/tkt`, `a\\b`) or a "quoted phrase" is an EXACT term: it matches the raw lowercased
+// text as typed, because normalizeSearch would turn `settings.json` into `settings json` and match any ticket with both words.
+// `title:<text>` / `desc:<text>` (any case, spaces after the colon) limit the match to the title / the body. Plain words are untouched.
+function parseSearch(raw) {
+  const sc = /^\s*(title|desc)\s*:\s*([\s\S]*)$/i.exec(String(raw ?? ''));
+  const text = sc ? sc[2] : String(raw ?? '');
+  const terms = [];
+  for (const m of text.matchAll(/"([^"]*)"|(\S+)/g)) {
+    const word = (m[1] ?? m[2].replace(/"/g, '').replace(/[.,;]+$/, '')).toLowerCase();
+    if (!word.trim()) continue;
+    terms.push({ word, exact: m[1] !== undefined || /[./\\]/.test(word) });
+  }
+  return { scope: sc ? sc[1].toLowerCase() : '', terms, special: !!sc || terms.some(x => x.exact) };
+}
+
+// Does ticket t match every term of a parsed search that has a scope or an exact term? `fields` limits it to the title or the body
+// (the body without its leading `# title` line: the board's body field starts with the title heading).
+function matchesParsed(t, p, fields) {
+  const parts = fields ? fields.map(f => f === 'body' ? String(t.body ?? '').replace(/^\s*#[^\n]*\n?/, '') : t[f] ?? '') : [t.id, t.title, t.body, ticketTags(t).join(' '), ...(t.docs || []).flatMap(d => [d.name, docSlug(t, d.file)])];
+  const raw = parts.join('\n').toLowerCase();
+  const norm = fields ? normalizeSearch(parts.join(' ')) : searchableText(t);
+  return p.terms.every(x => {
+    if (x.exact) return raw.includes(x.word);
+    const n = normalizeSearch(x.word);
+    return !n || norm.includes(n);
+  });
+}
+
+// t-3942: while a search is active a ticket whose title matches sorts above the others in its lane (the lane sort adds this key).
+export function ticketTitleMatches(t) {
+  if (state.queryMode !== 'search' || !String(state.query ?? '').trim()) return false;
+  const p = parseSearch(state.query);
+  if (p.scope === 'desc' || /^\s*tag\s*:/i.test(String(state.query))) return false;
+  if (p.special) return p.terms.length > 0 && matchesParsed(t, p, ['title']);
+  const words = normalizeSearch(state.query).split(/\s+/).filter(Boolean);
+  const title = normalizeSearch(t.title);
+  return words.length > 0 && words.every(w => title.includes(w));
+}
+
 export function ticketMatchesQuery(t) {
   const q = normalizeSearch(state.query);
   if (state.queryMode !== 'search') return true;
-  if (!q) return true;
+  const parsed = parseSearch(state.query);
+  if (!q && !parsed.special) return true;
   // t-37e8: `tag:github` (any case, spaces allowed after the colon) matches the tickets that carry that tag. From 3 characters on
   // the text only has to be part of a tag (`tag:git` finds github); shorter text must be the whole tag (`tag:go` is not `golang`).
   const tagQuery = /^\s*tag\s*:\s*(.*?)\s*$/i.exec(String(state.query ?? ''));
@@ -117,6 +157,7 @@ export function ticketMatchesQuery(t) {
     const want = tagQuery[1].toLowerCase();
     return ticketTags(t).some(x => want.length >= 3 ? x.includes(want) : x === want);
   }
+  if (parsed.special) return parsed.terms.length === 0 || matchesParsed(t, parsed, parsed.scope ? [parsed.scope === 'desc' ? 'body' : 'title'] : null);
   const idTerms = idTermsFor(state.query);
   if (idTerms) { const id = String(t.id ?? '').toLowerCase().replace(/^t-/, ''); if (idTerms.some(x => id.includes(x))) return true; }   // else the ordinary search below: nothing it found before is lost
   // Direct field queries — bypass prose search entirely (zero false positives)
