@@ -1279,10 +1279,12 @@ cmd_gate_cost() {
       return (n % 2) ? a[(n + 1) / 2] + 0 : (a[n / 2] + a[n / 2 + 1]) / 2
     }
     { tok = field("tokens"); if (tok == "") next
-      n++; T[n] = tok; M[n] = field("minutes"); O[n] = field("outcome")
+      id = field("agent_id")   # t-7c89: one run per agent id; a later measured row replaces the earlier one in place
+      if (id != "" && (id in at)) k = at[id]; else { k = ++n; if (id != "") at[id] = k }
+      T[k] = tok; M[k] = field("minutes"); O[k] = field("outcome")
       ty = field("agent_type"); ti = field("tier"); mo = field("model")
       if (ti ~ /^high/) ti = "high-risk"   # t-63a7: rows logged before the tier was named high-risk
-      G[n] = (ty == "" ? "-" : ty) "\t" (ti == "" ? "-" : ti) "\t" (mo == "" ? "-" : mo) }
+      G[k] = (ty == "" ? "-" : ty) "\t" (ti == "" ? "-" : ti) "\t" (mo == "" ? "-" : mo) }
     END {
       if (n == 0) { print "No measured gate runs yet: log them with subagent-log.sh --tokens N --minutes M --tool-uses K."; exit }
       start = (n > last) ? n - last + 1 : 1

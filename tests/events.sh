@@ -197,6 +197,38 @@ printf 'evaluator-run-id: 1-2\n\npartial: half done\n' > "$gt/eval-report.md"
 assert_contains "$(event_line gate.finished "$gid")" '"role":"evaluator","ticket":"'"$gid"'","tokens":"","verdict":"partial"'
 (cd "$G" && "$ROOT/tools/subagent-log.sh" --agent-id plain --agent-type general-purpose --ticket "$gid" >/dev/null)
 [[ "$(cat "$EV"/*.jsonl | grep -c '"kind":"gate.finished"')" == 3 ]] || fail "a non-gate subagent run made a gate.finished event"
+# t-7c89: a second log call for the same agent id (the totals arrive late) replaces that run's row and writes no second gate.finished.
+(cd "$G" && "$ROOT/tools/subagent-log.sh" --agent-id reviewer-x --agent-type reviewer --ticket "$gid" --tokens 1500 --minutes 3 >/dev/null)
+[[ "$(cat "$EV"/*.jsonl | grep -c '"kind":"gate.finished"')" == 3 ]] || fail "a repeated agent id made a second gate.finished event"
+assert_eq 1 "$(grep -c '"agent_id":"reviewer-x"' "$G/.claude/subagent-runs.jsonl")"
+[[ "$(grep '"agent_id":"reviewer-x"' "$G/.claude/subagent-runs.jsonl" | grep -c '"tokens":1500')" == 1 ]] || fail "the later row's numbers did not win"
+# t-7c89: the only row for an agent id is replaced too (grep -v finds no other line), and still no second gate.finished.
+SG="$(mktemp -d)"; git -C "$SG" init -q; (cd "$SG" && "$ROOT/tools/subagent-log.sh" --agent-id solo --agent-type general-purpose >/dev/null 2>&1 && "$ROOT/tools/subagent-log.sh" --agent-id solo --agent-type general-purpose --tokens 900 --minutes 1 >/dev/null 2>&1)
+assert_eq 1 "$(wc -l < "$SG/.claude/subagent-runs.jsonl" | tr -d ' ')"
+grep -q '"tokens":900' "$SG/.claude/subagent-runs.jsonl" || fail "the lone row was not replaced by the later one"
+rm -rf "$SG"
+# t-7c89: CANON_EVENT_ACTOR=system puts actor:system on an event canon records itself.
+(source "$ROOT/tools/platform-lib.sh"; CANON_EVENT_ACTOR=system canon_event github.merged tkt "$G" "ticket=$gid" pr=7)
+assert_contains "$(event_line github.merged "$gid")" '"actor":"system"'
+# t-7c89: canon_event passes --actor only when the board advertises it and CANON_EVENT_ACTOR is set; a failing board never fails it.
+FB="$(mktemp -d)"
+printf '#!/bin/sh\n[ "$1" = --help ] && { echo "  event <kind> --project <dir> [--actor user|agent|system] key=value..."; exit 0; }\necho "$*" >> "%s/args"\nexit 1\n' "$FB" > "$FB/with"
+printf '#!/bin/sh\n[ "$1" = --help ] && { echo "  event <kind> --project <dir> key=value..."; exit 0; }\necho "$*" >> "%s/args"\n' "$FB" > "$FB/without"
+chmod +x "$FB/with" "$FB/without"
+actors() { ( source "$ROOT/tools/platform-lib.sh"
+  rc=0; board_bin() { echo "$FB/$FBIN"; }
+  CANON_EVENT_ACTOR=system canon_event k1 src "$FB" a=1 || rc=1
+  CANON_EVENT_ACTOR= canon_event k2 src "$FB" a=2 || rc=1
+  unset CANON_EVENT_ACTOR; canon_event k3 src "$FB" a=3 || rc=1
+  echo "rc=$rc" >> "$FB/args" ); }
+: > "$FB/args"; FBIN=with actors; a="$(cat "$FB/args")"
+assert_contains "$a" "event k1 --source src --project"; assert_contains "$a" "--actor system a=1"
+[[ "$(grep '^event k2' "$FB/args")" != *--actor* && "$(grep '^event k3' "$FB/args")" != *--actor* ]] || fail "an unset or empty CANON_EVENT_ACTOR passed --actor (or kept the previous call's): $a"
+assert_contains "$a" "rc=0"   # the board exits 1 and canon_event still returns 0
+: > "$FB/args"; FBIN=without actors >/dev/null; [[ "$(cat "$FB/args")" != *--actor* ]] || fail "--actor went to a board that does not list it: $(cat "$FB/args")"
+rm -rf "$FB"
+# the replace leaves another agent's row alone (the grep -v pattern is the agent id, not empty)
+grep -q '"agent_id":"plain"' "$G/.claude/subagent-runs.jsonl" || fail "replacing a row removed another agent's row"
 # t-ff14: under Claude Code, an evaluator's gate.finished names the agent type of the harness transcript holding its run-id
 # (a fallback shows as general-purpose), and leaves the field out when no transcript holds it.
 FX="$(mktemp -d)"; mkdir -p "$FX/projects/-p/s1/subagents"
