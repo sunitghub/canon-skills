@@ -43,6 +43,23 @@ gate_scope_remove() {
 
 _gate_scope_phys() { local p="$1"; (cd -P "$p" 2>/dev/null && pwd -P) || printf '%s' "$p"; }   # t-9fb1: the physical spelling `pre` records; the guard compares identity (-ef)
 
+_gate_scope_lexnorm() {  # t-9fb1: an absolute path with //, . and .. resolved as text (nothing is looked up, so it works for a path that does not exist)
+  local p="$1" part out="" parts; [[ "$p" == /* ]] || p="$PWD/$p"
+  IFS=/ read -ra parts <<< "$p"
+  for part in ${parts[@]+"${parts[@]}"}; do
+    case "$part" in ''|.) ;; ..) out="${out%/*}" ;; *) out="$out/$part" ;; esac
+  done
+  printf '%s' "${out:-/}"
+}
+
+_gate_scope_lexphys() {  # t-9fb1: the text-resolved path with its existing part resolved physically (/var -> /private/var), so it is comparable with a recorded physical path
+  local n base suffix="" phys; n="$(_gate_scope_lexnorm "$1")"; base="$n"
+  while [[ ! -d "$base" && "$base" != / && -n "$base" ]]; do suffix="/${base##*/}$suffix"; base="${base%/*}"; done
+  [[ -n "$base" ]] || base=/
+  phys="$(_gate_scope_phys "$base")"; [[ "$phys" == / ]] && phys=""
+  printf '%s%s' "$phys" "${suffix:-${phys:+}}"
+}
+
 _gate_scope_under() {  # <path> <dir>: the path is the dir or inside it (raw or physical spelling)
   local p="$1" d="$2" pp dp
   pp="$(cd -P "$p" 2>/dev/null && pwd -P)" || pp="$p"
@@ -69,9 +86,10 @@ gate_scope_guard() {
     # cannot touch the user's projects. A record without them (an older version) keeps the old rule: refuse unless both are inside the scope.
     rhome="$(sed -n '/^home=/{s/^home=//p;q;}' "$f")"; rcanon="$(sed -n '/^canon=/{s/^canon=//p;q;}' "$f")"
     if [[ -n "$rhome" && -n "$rcanon" ]]; then
-      # -ef: the same device and inode, so a spelling (case on a case-insensitive disk, Unicode form, a symlink, .., a trailing slash) cannot pass for another folder;
-      # a path that does not exist cannot reach the real home either way (bash cd and the kernel both refuse it), so it is allowed
-      if [[ -n "$home" && ! "$home" -ef "$rhome" && ! "$chome" -ef "$rcanon" ]]; then continue; fi
+      # Two checks, so a spelling cannot pass for another folder: -ef (the same device and inode: case on a case-insensitive disk, Unicode form, a symlink, a
+      # trailing slash), and the text with . and .. resolved (a path that does not exist yet, "$HOME/x/..": a later mkdir -p makes x and the same spelling is the real home).
+      if [[ -n "$home" && ! "$home" -ef "$rhome" && ! "$chome" -ef "$rcanon" \
+            && "$(_gate_scope_lexphys "$home")" != "$rhome" && "$(_gate_scope_lexphys "$chome")" != "$rcanon" ]]; then continue; fi
     elif _gate_scope_under "$home" "$dir" && _gate_scope_under "$chome" "$dir"; then continue; fi
     {
       echo "$1: refused. A canon close gate (reviewer/evaluator) is running and its scope is active ($dir)."
