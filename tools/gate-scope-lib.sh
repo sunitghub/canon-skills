@@ -27,7 +27,8 @@ gate_scope_create() {
   gate_scope_remove "$1"   # a second `pre` for the same snapshot replaces the first
   dir="$(mktemp -d)" || return 1
   mkdir -p "$dir/home" "$dir/canon" "$dir/tmp" "$dir/xdg"
-  printf 'dir=%s\ncreated=%s\n' "$dir" "$(date +%s)" > "$reg/$(_gate_scope_key "$1")"
+  # t-9fb1: the dispatcher runs in the user's REAL environment, so it records the home and canon home the guard must keep a gate away from
+  printf 'dir=%s\ncreated=%s\nhome=%s\ncanon=%s\n' "$dir" "$(date +%s)" "$(_gate_scope_phys "${HOME:-}")" "$(_gate_scope_phys "${CANON_HOME:-${HOME:-}/.canon}")" > "$reg/$(_gate_scope_key "$1")"
   printf '%s' "$dir"
 }
 
@@ -40,6 +41,8 @@ gate_scope_remove() {
   rm -f "$f"
 }
 
+_gate_scope_phys() { local p="$1"; (cd -P "$p" 2>/dev/null && pwd -P) || printf '%s' "$p"; }   # t-9fb1: the physical spelling, so a symlink to the real home is the real home
+
 _gate_scope_under() {  # <path> <dir>: the path is the dir or inside it (raw or physical spelling)
   local p="$1" d="$2" pp dp
   pp="$(cd -P "$p" 2>/dev/null && pwd -P)" || pp="$p"
@@ -49,9 +52,9 @@ _gate_scope_under() {  # <path> <dir>: the path is the dir or inside it (raw or 
   return 1
 }
 
-# gate_scope_guard <what>: 0 to go ahead; 1 (with a message) while a live gate scope exists and HOME/CANON_HOME are outside it.
+# gate_scope_guard <what>: 0 to go ahead; 1 (with a message) while a live gate scope exists and HOME or CANON_HOME is the real one it recorded.
 gate_scope_guard() {
-  local reg f dir created now ttl home="${HOME:-}" chome="${CANON_HOME:-${HOME:-}/.canon}"
+  local reg f dir created now ttl rhome rcanon home="${HOME:-}" chome="${CANON_HOME:-${HOME:-}/.canon}"
   reg="$(gate_scope_registry)"; _gate_scope_reg_ok "$reg" || return 0
   now="$(date +%s)"; ttl="${CANON_GATE_SCOPE_TTL:-7200}"
   for f in "$reg"/*; do
@@ -62,11 +65,16 @@ gate_scope_guard() {
       [[ -n "$dir" && -d "$dir" && "$created" =~ ^[0-9]+$ ]] && rm -rf "$dir"
       rm -f "$f"; continue
     fi
-    if _gate_scope_under "$home" "$dir" && _gate_scope_under "$chome" "$dir"; then continue; fi
+    # t-9fb1: a record that names the real home and canon home refuses only those; any other HOME/CANON_HOME (a test's scratch dirs, the gate's own scope)
+    # cannot touch the user's projects. A record without them (an older version) keeps the old rule: refuse unless both are inside the scope.
+    rhome="$(sed -n '/^home=/{s/^home=//p;q;}' "$f")"; rcanon="$(sed -n '/^canon=/{s/^canon=//p;q;}' "$f")"
+    if [[ -n "$rhome" && -n "$rcanon" ]]; then
+      if [[ -n "$home" && "$(_gate_scope_phys "$home")" != "$rhome" && "$(_gate_scope_phys "$chome")" != "$rcanon" ]]; then continue; fi
+    elif _gate_scope_under "$home" "$dir" && _gate_scope_under "$chome" "$dir"; then continue; fi
     {
       echo "$1: refused. A canon close gate (reviewer/evaluator) is running and its scope is active ($dir)."
-      echo "  While it runs, commands that act on your registered projects are blocked unless HOME and CANON_HOME point inside that scope,"
-      echo "  so a gate's probe cannot re-link or rewrite your projects (t-b7df). This is not a fault in your install."
+      echo "  While it runs, commands that act on your REAL home and canon home are blocked, so a gate's probe cannot re-link or rewrite your projects (t-b7df);"
+      echo "  a scratch HOME and CANON_HOME (a test, a gate's own scope) are fine. This is not a fault in your install."
       echo "  It clears when the gate ends (gate-snapshot.sh post), or on its own after ${ttl}s if the gate crashed."
       echo "  Run it again once the gate has finished."
     } >&2
