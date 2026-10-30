@@ -7,28 +7,12 @@
   "failing": [],
   "flaky": [
     {
-      "title": "Canon Cockpit \"?\" info popovers (t-576f) > it survives a card re-render while open, and keeps the reader's scroll position @webkit",
-      "browsers": [
-        "chromium"
-      ],
-      "ticket": "t-4371",
-      "reason": "failed in t-4371's full chromium run (2026-10-29, busy) and 1 of 3 solo chromium runs at load 2.8 (scrollTop 0, expected > 50); t-4371 touches no popover code"
-    },
-    {
       "title": "cockpit stale-daemon banner (t-74d6) > a tab opening a live session offers Attach with the agent locked, and both windows get the shared notice @webkit",
       "browsers": [
         "chromium"
       ],
       "ticket": "t-3741",
       "reason": "failed once in the t-71c8 evaluator's full run on a busy machine (chromium and webkit at once, 2026-10-29); passed on a solo chromium rerun at 0d7ffe43"
-    },
-    {
-      "title": "cockpit in board (t-ddc8) > cross-project Sessions row (t-2d2e) > project tab keys (t-ccf5): ctrl+. then P then n reaches the active board; Esc after P cancels; lowercase p still opens Projects",
-      "browsers": [
-        "chromium"
-      ],
-      "ticket": "t-71c8",
-      "reason": "failed once in the t-71c8 full run at 7bdf842d (2026-10-29); --classify: passed 3/3 alone on the branch and 2/3 alone on origin/main 73f90ac7, so flaky before t-71c8; not touched by it"
     },
     {
       "title": "session sub-tabs (t-8a2a) > a background tab's needs-you status renders in the tab strip @webkit",

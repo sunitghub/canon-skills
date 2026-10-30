@@ -7348,6 +7348,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.frameLocator('#view-proj-a iframe').locator('.ck-tab-pill-close').first().click();
       await pressPrefix(page, 'M');
       await expect(page.frameLocator('#view-proj-a iframe').locator('#cockpit-overlay')).toHaveClass(/ck-pane-beside/);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });                                             // the opened panes fetch /api/git: no route may still be answering when the page closes (t-23f6)
     });
 
     // Protects the shell's prefix relay: a key typed in the pane's Terminal (not the active tab's) still reaches the shell, so `P n` works there.
@@ -10991,6 +10992,13 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
     await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
   }
 
+  // Wait until the board has taken this ticket's tab as live: a click on End session before the fake page's status message lands
+  // takes the async detached-session path instead of opening the confirm (the fixed 100 ms wait this replaces lost that race, t-23f6).
+  const waitTabLive = (page, id) => expect.poll(() => page.evaluate(async (tid) => {
+    const m = await import('/static/board-cockpit.js');
+    return !!m.cockpitState && m.cockpitState.id === tid && m.sessionIsLive();
+  }, id)).toBe(true);
+
   test('leaving while running shows the confirm dialog with Save & End and Cancel (no Leave running)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'lcrun');
     try {
@@ -11525,7 +11533,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       // (openLeaveConfirm is the only thing that resets it).
       await openResumedCockpit(page, id1, fakeCockpitPage({ initialStatus: 'running', endDelayMs: 60000 }));
       await page.evaluate(() => { window.__cockpitSaveFallbackMs = 200; });
-      await page.waitForTimeout(100);
+      await waitTabLive(page, id1);
       await page.locator('#ck-end-session').click();
       await page.locator('#ck-leave-save').click();
       await expect(page.locator('#ck-leave-cancel')).toBeDisabled();
@@ -11535,7 +11543,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       // reload) — must not inherit session 1's stuck-disabled buttons or
       // leftover "Saving state…" text.
       await reopenCockpitNoReload(page, id2, fakeCockpitPage({ initialStatus: 'running' }));
-      await page.waitForTimeout(100);
+      await waitTabLive(page, id2);
       await page.locator('#ck-end-session').click();
       await expect(page.locator('#ck-leave-confirm')).toHaveClass(/open/);
       await expect(page.locator('#ck-leave-cancel')).toBeEnabled();
@@ -13335,7 +13343,9 @@ test.describe('Canon Cockpit "?" info popovers (t-576f)', () => {
     await open(page);
     await btn(page).click({ force: true });
     const body = pop(page).locator('.rc-pop-body');
-    await body.evaluate(el => { el.scrollTop = 120; });
+    // The panel remembers the reader's place from the scroll EVENT, which fires a frame after scrollTop is set: re-render before
+    // it and the place is lost (flaky, t-23f6). The document's capture listener runs before this one, so waiting for the event waits for it.
+    await body.evaluate(el => new Promise(res => { el.addEventListener('scroll', () => res(), { once: true }); el.scrollTop = 120; }));
     await expect.poll(() => body.evaluate(el => el.scrollTop)).toBeGreaterThan(50);
     await page.evaluate(async () => { const { seRender } = await import('/static/cockpit-skill-eval.js'); return ( seRender()); });
     await expect(pop(page)).toBeVisible();
