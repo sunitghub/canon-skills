@@ -19,7 +19,7 @@ cp "$ROOT/tests/run-board-spec.sh" "$ROOT/tests/machine-load.sh" "$FAKE/tests/"
 echo 'console.log("board-spec-guard: 1 violation(s)"); process.exit(1)' > "$FAKE/tests/board-spec-guard.js"   # a guard that always fails
 git -C "$FAKE" init -q
 printf '#!/bin/sh\nfor a; do last="$prev"; prev="$a"; done\ncp -a "$last." "$prev" 2>/dev/null || cp -a "$last" "$prev"\n' > "$WORK/bin/rsync"   # rsync -a --exclude.. SRC/ DST/
-printf '#!/bin/sh\necho "$SPRINT_CHECK_ROOT $COCKPIT_STATE_DIR $COCKPIT_DAEMON_BIN" >> "$STATE/boards"\nexec sleep 600\n' > "$WORK/bin/go"   # records the board's env (its root is the copy)
+printf '#!/bin/sh\necho "$SPRINT_CHECK_ROOT $COCKPIT_STATE_DIR $COCKPIT_DAEMON_BIN" >> "$STATE/boards"\ngit -C "$SPRINT_CHECK_ROOT" worktree list >> "$STATE/copy-worktrees" 2>&1\nexec sleep 600\n' > "$WORK/bin/go"   # records the board's env (its root is the copy) and the worktrees the copy sees (t-cab4)
 printf '#!/bin/sh\nexit 0\n' > "$WORK/bin/curl"
 cat > "$WORK/bin/npx" <<'STUB'
 #!/bin/bash
@@ -46,6 +46,14 @@ assert_eq 0 "$rc"; assert_contains "$out" "no process left running from the copy
 read -r d sd bin < "$WORK/state/boards"
 assert_eq "$d/.spec-cockpit-state" "$sd"   # never the real daemon's $TMPDIR/canon-cockpit-board
 assert_eq "$d/.spec-no-daemon" "$bin"; [ ! -e "$bin" ] || fail "run-board-spec: the spec board's daemon bin exists: $bin"
+
+# t-cab4: the copy sees none of the source's worktrees (the board in it listed real leftovers and t-8a2a failed), and the run records them
+git -C "$FAKE" -c user.name=t -c user.email=t@e commit -q --allow-empty -m base; git -C "$FAKE" worktree add -q "$WORK/wt2" -b wt2
+RUN_ENV=""; run worktrees --runs 1 --browsers chromium --no-guard
+assert_eq 0 "$rc"; assert_eq 1 "$(wc -l < "$WORK/state/copy-worktrees" | tr -d ' ')"   # the copy itself only
+[[ "$(cat "$WORK/state/copy-worktrees")" != *wt2* ]] || fail "run-board-spec: the copy lists the source's worktree: $(cat "$WORK/state/copy-worktrees")"
+assert_eq 2 "$(grep -c 'machine-load: worktrees: ' "$WORK/out-worktrees/machine-load.txt")"; assert_contains "$(cat "$WORK/out-worktrees/machine-load.txt")" "wt2"
+git -C "$FAKE" worktree remove --force "$WORK/wt2"
 
 # a leak exits 2 with the guard skipped, and still 2 when the guard fails (exit 1) too
 RUN_ENV="LEAK=1"; run leak --runs 1 --browsers chromium --no-guard

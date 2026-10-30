@@ -68,6 +68,8 @@ if [ "$ALLOW_BUSY" = 0 ] && ! machine_wait_quiet "$OUT/machine-load.txt" "$$"; t
   exit 2
 fi
 machine_load start "$OUT/machine-load.txt" "$$"
+# t-cab4: the source's worktrees, beside the load, so a failure that depends on them can be told from a regression
+{ git -C "$ROOT" worktree list 2>/dev/null || echo "unknown"; } | sed 's/^/machine-load: worktrees: /' >> "$OUT/machine-load.txt" || true
 BOARD_PID=""; BASE_COPY=""; BASE_PID=""; BASE_PORT=""
 
 stop_pid() {
@@ -101,6 +103,9 @@ echo "run-board-spec: canon tree before: $BEFORE"
 
 echo "run-board-spec: copying the working tree (incl. .tickets) to $COPY"
 rsync -a --exclude node_modules --exclude test-results --exclude playwright-report "$ROOT/" "$COPY/"
+# t-cab4: the copy's .git carries this machine's worktrees (.git/worktrees/*), so the board in it listed real leftovers and
+# t-8a2a failed on them while --classify's git-archive base copy (no .git) passed; the copy sees none, like the base copy.
+rm -rf "$COPY/.git/worktrees"
 ln -s "$ROOT/node_modules" "$COPY/node_modules"
 
 # Start the Go board from copy $1; sets STARTED_PORT and STARTED_PID. Called directly, never in $(...), so the PID it
