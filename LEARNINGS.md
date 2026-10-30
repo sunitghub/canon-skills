@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-29-2026 19:08
+learnings-sweep last run: 10-29-2026 22:04
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-29 | [t-3942](.tickets/t-3942/learnings.md) | Restyling a shared class restyles every element that carries it: the red-on-lead rule left a third `.ck-worktree-warn` note with no lead and no red; grep every user of a class before changing what it means (reviewer). | UNPROMOTED |
 | 2026-10-29 | [t-4371](.tickets/t-4371/learnings.md) | A second guard can hide a missing first one: with the saved ids de-duplicating, a sample that ignored its resume offset still passed; an assertion that disables the other guard (offset only, no ids) is what proves each rule. | UNPROMOTED |
 | 2026-10-29 | [t-0865](.tickets/t-0865/learnings.md) | A test that loads a script's functions with `source <(sed …)` passes on the cloud's Linux bash 5 and loads nothing on macOS bash 3.2: the gate it guards was never run on the Mac until merge (fixed with eval; tests/shell-portability.sh now fails on the pattern). | UNPROMOTED |
 | 2026-10-29 | [t-351c](.tickets/t-351c/learnings.md) | A refresh that prunes canon's lines must recognise only canon's own: the collapse treats any `@*/standards/*.md` line as canon's, so a user's look-alike import can be folded (reviewer, advisory). | UNPROMOTED |

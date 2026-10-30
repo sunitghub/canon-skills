@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.30.7] - 2026-10-29
+
 ### Changed
 - The worktree picker's ".tickets/ is gitignored" note and Commit and push's agent-session note are easier to read: body text on the panel's own colour, red only on a left bar and the bold lead (t-3942).
 - The Logbook's Handoff and Learnings tabs each start with one line saying what the file is and who writes it (t-3942).
