@@ -8017,6 +8017,10 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(warn).toBeVisible();
       await expect(warn).toContainText(PROJECT_ROOT);
       await expect(warn).toContainText('not the worktree you selected');
+      // t-3942 (reviewer): this note shares .ck-worktree-warn, so it needs the red bold lead too, or it shows no red at all.
+      await expect(warn.locator('strong')).toHaveText('⚠ Wrong worktree:');
+      const leadVsText = await warn.evaluate(el => [getComputedStyle(el.querySelector('strong')).color, getComputedStyle(el).color]);
+      expect(leadVsText[0]).not.toBe(leadVsText[1]);
     } finally {
       removeTestTicket(PROJECT_ROOT, id);
     }

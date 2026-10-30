@@ -631,7 +631,7 @@ export function applyActualWorkingCwd(cwd, requested) {
   const reqKey = (requested == null) ? selKey : cockpitPathKey(requested);
   if (actualKey && selKey && actualKey !== selKey && actualKey !== reqKey) {
     note.innerHTML = `Working in: <strong>${esc(label)}</strong>`
-      + `<div class="ck-worktree-warn">⚠ The session is running in <code>${esc(cwd)}</code>, `
+      + `<div class="ck-worktree-warn"><strong>⚠ Wrong worktree:</strong> the session is running in <code>${esc(cwd)}</code>, `
       + `not the worktree you selected. Kill it, then Unlock and pick the worktree again to redirect.</div>`;
   } else {
     note.textContent = `Working in: ${label}`;
