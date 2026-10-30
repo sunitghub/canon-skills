@@ -202,6 +202,11 @@ assert_contains "$(event_line gate.finished "$gid")" '"role":"evaluator","ticket
 [[ "$(cat "$EV"/*.jsonl | grep -c '"kind":"gate.finished"')" == 3 ]] || fail "a repeated agent id made a second gate.finished event"
 assert_eq 1 "$(grep -c '"agent_id":"reviewer-x"' "$G/.claude/subagent-runs.jsonl")"
 [[ "$(grep '"agent_id":"reviewer-x"' "$G/.claude/subagent-runs.jsonl" | grep -c '"tokens":1500')" == 1 ]] || fail "the later row's numbers did not win"
+# t-7c89: the only row for an agent id is replaced too (grep -v finds no other line), and still no second gate.finished.
+SG="$(mktemp -d)"; git -C "$SG" init -q; (cd "$SG" && "$ROOT/tools/subagent-log.sh" --agent-id solo --agent-type general-purpose >/dev/null 2>&1 && "$ROOT/tools/subagent-log.sh" --agent-id solo --agent-type general-purpose --tokens 900 --minutes 1 >/dev/null 2>&1)
+assert_eq 1 "$(wc -l < "$SG/.claude/subagent-runs.jsonl" | tr -d ' ')"
+grep -q '"tokens":900' "$SG/.claude/subagent-runs.jsonl" || fail "the lone row was not replaced by the later one"
+rm -rf "$SG"
 # t-7c89: CANON_EVENT_ACTOR=system puts actor:system on an event canon records itself.
 (source "$ROOT/tools/platform-lib.sh"; CANON_EVENT_ACTOR=system canon_event github.merged tkt "$G" "ticket=$gid" pr=7)
 assert_contains "$(event_line github.merged "$gid")" '"actor":"system"'

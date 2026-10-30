@@ -195,6 +195,12 @@ wj() { "$TKT" github-status "$id" --json | node -e 'const j=JSON.parse(require("
 assert_contains "$(wj)" "merged||"; assert_contains "$(wj)" "is not on main; nothing recorded"
 grep -q '^merged:' "$f" && fail "a failed check wrote merged:"
 [[ "$(grep -c '^## ' "$gt" 2>/dev/null || echo 0)" == "$blocks" ]] || fail "a failed check wrote the trail"
+assert_contains "$("$TKT" github-status "$id")" "  warning: GitHub says PR #24 is merged but its head"   # the text view says why too
+printf '24\tOPEN\t%s\n' "$HEAD7" > "$W/prs"   # an open PR is not a failed check: no warning, nothing recorded
+[[ "$("$TKT" github-status "$id" --json)" == *'"warning":null'* ]] || fail "an open PR came back with a warning"
+[[ "$("$TKT" github-status "$id")" != *"warning:"* ]] || fail "an open PR printed a warning"
+grep -q '^merged:' "$f" && fail "an open PR was recorded as merged"
+printf '24\tMERGED\t%s\n' "$HEAD7" > "$W/prs"
 printf '%s' "$HEAD7" > "$W/rmhead"; git push -q origin "+$HEAD7:refs/pull/24/head"
 assert_eq "merged|mergesha1|" "$(wj)"
 grep -q '^merged: mergesha1$' "$f" || fail "the poll did not write merged:"
