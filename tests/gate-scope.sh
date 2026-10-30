@@ -91,6 +91,12 @@ cp "$scratch/rec.keep" "$f"; sed -i.bak '/^canon=/d' "$f"; rm -f "$f.bak"
 HOME="$sh_/home" CANON_HOME="$sh_/canon" guard && fail "a record with only home= must keep the old rule"
 cp "$scratch/rec.keep" "$f"; sed -i.bak '/^home=/d' "$f"; rm -f "$f.bak"
 HOME="$sh_/home" CANON_HOME="$sh_/canon" guard && fail "a record with only canon= must keep the old rule"
+# the old-rule refusal says so (it must not tell the user a scratch HOME is fine when it is not), for an old record and for a partial one
+out="$(HOME="$sh_/home" CANON_HOME="$sh_/canon" bash -c 'source "$1"; gate_scope_guard x' _ "$ROOT/tools/gate-scope-lib.sh" 2>&1 || true)"
+assert_contains "$out" "made by an older canon"; [[ "$out" != *"are fine"* ]] || fail "the old-rule refusal must not say a scratch HOME is fine: $out"
+cp "$scratch/rec.keep" "$f"; sed -i.bak '/^canon=/d' "$f"; rm -f "$f.bak"
+out="$(HOME="$sh_/home" CANON_HOME="$sh_/canon" bash -c 'source "$1"; gate_scope_guard x' _ "$ROOT/tools/gate-scope-lib.sh" 2>&1 || true)"
+assert_contains "$out" "made by an older canon"
 cp "$scratch/rec.keep" "$f"
 grep -q "^home=$(cd -P "$realhome" && pwd -P)\$" "$f" && grep -q "^canon=$(cd -P "$realhome/.canon" && pwd -P)\$" "$f" || fail "pre did not record the real home and canon home: $(cat "$f")"
 
