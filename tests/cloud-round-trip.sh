@@ -23,7 +23,10 @@ fi
 case "$1 $2" in
   "repo view")    echo "${STUB_VIS:-PRIVATE}" ;;
   api\ repos/*/pulls*) [[ "${STUB_FAIL:-}" == prlist ]] && { echo "HTTP 502: pulls" >&2; exit 1; }   # t-4b34: REST; prints what --jq would (the PR numbers)
-                  printf '%b' "${STUB_PRS_FIXING:-}" ;;
+                  if [[ -n "${STUB_PULLS_JSON:-}" ]]; then   # run the real --jq filter over a fixture (gh's --jq is jq syntax)
+                    expr=""; while [[ $# -gt 0 ]]; do [[ "$1" == --jq ]] && expr="$2"; shift; done
+                    jq -r "$expr" "$STUB_PULLS_JSON"
+                  else printf '%b' "${STUB_PRS_FIXING:-}"; fi ;;
   api\ repos/*/issues/*) [[ "${STUB_FAIL:-}" == api ]] && { echo "HTTP 404: Not Found" >&2; exit 1; }
                   if [[ "${STUB_CRLF:-}" == 1 ]]; then sed 's/$/\r/' "$STUB_BODY"; else cat "$STUB_BODY"; fi ;;
   api\ repos/*)   v="${STUB_VIS:-PRIVATE}"; echo "$v" | tr '[:upper:]' '[:lower:]' ;;
@@ -116,6 +119,17 @@ assert_eq "" "$(runs_of "$W/lf")"   # the plain import above found no PR
 mkdir "$W/pr-open" && git -C "$W/pr-open" init -q && git -C "$W/pr-open" remote add origin https://github.com/acme/app.git
 (cd "$W/pr-open" && STUB_PRS_FIXING='58\n' "$TKT" import-issue 57 >/dev/null 2>&1) || fail "import-issue with an open PR failed"
 assert_eq "github" "$(runs_of "$W/pr-open")"
+# the filter itself (needs jq): an open PR and a merged PR count; a closed-unmerged one, an empty body and #570 do not
+if command -v jq >/dev/null 2>&1; then
+  printf '%s' '[{"number":6,"state":"closed","merged_at":null,"body":"Fixes #57"},{"number":8,"state":"open","merged_at":null,"body":null},{"number":9,"state":"open","merged_at":null,"body":"Fixes #570"}]' > "$W/pulls-none.json"
+  printf '%s' '[{"number":6,"state":"closed","merged_at":null,"body":"Fixes #57"},{"number":7,"state":"closed","merged_at":"2026-01-01T00:00:00Z","body":"fixes #57."}]' > "$W/pulls-merged.json"
+  printf '%s' '[{"number":5,"state":"open","merged_at":null,"body":"Fixes #57 and more"}]' > "$W/pulls-open.json"
+  for case in none:"" merged:github open:github; do
+    k="${case%%:*}"; want="${case#*:}"; mkdir "$W/pj-$k" && git -C "$W/pj-$k" init -q && git -C "$W/pj-$k" remote add origin https://github.com/acme/app.git
+    out="$(cd "$W/pj-$k" && STUB_PULLS_JSON="$W/pulls-$k.json" "$TKT" import-issue 57 2>&1)" || fail "import-issue ($k pulls) failed: $out"
+    assert_eq "$want" "$(runs_of "$W/pj-$k")"; [[ "$out" != *"could not check"* ]] || fail "a plain answer printed the could-not-check note ($k): $out"
+  done
+fi
 mkdir "$W/pr-fail" && git -C "$W/pr-fail" init -q && git -C "$W/pr-fail" remote add origin https://github.com/acme/app.git
 rc=0; out="$(cd "$W/pr-fail" && STUB_FAIL=prlist "$TKT" import-issue 57 2>&1)" || rc=$?
 assert_eq 0 "$rc"; assert_contains "$out" "could not check acme/app for a PR that fixes #57"; assert_contains "$out" "the card shows no cloud state until one is found"
