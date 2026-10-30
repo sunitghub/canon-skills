@@ -19,8 +19,8 @@ cp "$ROOT/tests/run-board-spec.sh" "$ROOT/tests/machine-load.sh" "$FAKE/tests/"
 echo 'console.log("board-spec-guard: 1 violation(s)"); process.exit(1)' > "$FAKE/tests/board-spec-guard.js"   # a guard that always fails
 git -C "$FAKE" init -q
 printf '#!/bin/sh\nfor a; do last="$prev"; prev="$a"; done\ncp -a "$last." "$prev" 2>/dev/null || cp -a "$last" "$prev"\n' > "$WORK/bin/rsync"   # rsync -a --exclude.. SRC/ DST/
-printf '#!/bin/sh\necho "$SPRINT_CHECK_ROOT $COCKPIT_STATE_DIR $COCKPIT_DAEMON_BIN" >> "$STATE/boards"\ngit -C "$SPRINT_CHECK_ROOT" worktree list >> "$STATE/copy-worktrees" 2>&1\ngit -C "$SPRINT_CHECK_ROOT" rev-parse --abbrev-ref HEAD >> "$STATE/copy-branch" 2>&1\ngit -C "$SPRINT_CHECK_ROOT" diff --cached --name-only >> "$STATE/copy-staged" 2>&1\nexec sleep 600\n' > "$WORK/bin/go"   # records the board's env (its root is the copy) and the worktrees, branch and staged files the copy sees (t-cab4)
-printf '#!/bin/sh\nexit 0\n' > "$WORK/bin/curl"
+printf '#!/bin/sh\necho "$SPRINT_CHECK_ROOT $COCKPIT_STATE_DIR $COCKPIT_DAEMON_BIN" >> "$STATE/boards"\ngit -C "$SPRINT_CHECK_ROOT" worktree list >> "$STATE/copy-worktrees" 2>&1\ngit -C "$SPRINT_CHECK_ROOT" rev-parse --abbrev-ref HEAD >> "$STATE/copy-branch" 2>&1\ngit -C "$SPRINT_CHECK_ROOT" diff --cached --name-only >> "$STATE/copy-staged" 2>&1\ntouch "$STATE/ready"\nexec sleep 600\n' > "$WORK/bin/go"   # records the board's env (its root is the copy) and the worktrees, branch and staged files the copy sees (t-cab4)
+printf '#!/bin/sh\n[ -e "$STATE/ready" ]\n' > "$WORK/bin/curl"   # the board is up once the stub has recorded all it sees (the runner kills it right after: no race)
 cat > "$WORK/bin/npx" <<'STUB'
 #!/bin/bash
 # npx playwright test ...: optionally leave a process behind in the copy, then write a report
