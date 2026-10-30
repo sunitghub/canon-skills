@@ -91,6 +91,10 @@ func handleLoggingGet(w http.ResponseWriter, r *http.Request, path string) bool 
 		sendJSONStatus(w, st, code)
 	case loggingPrefix + "/verify":
 		results, ok := events.Verify(events.Home(), time.Now().UTC())
+		if len(results) == 1 && results[0].Result == "busy" {
+			sendJSONStatus(w, map[string]any{"ok": false, "error": "canon is sealing or pruning the log right now: try again in a moment"}, http.StatusConflict)
+			return true
+		}
 		counts := map[string]int{"intact": 0, "broken": 0, "missing": 0, "unsealed": 0}
 		for _, d := range results {
 			counts[d.Result]++

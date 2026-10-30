@@ -21,6 +21,10 @@ func logCLI(args []string, stdout, stderr io.Writer) int {
 	case "verify":
 		results, ok := events.Verify(home, at)
 		counts := map[string]int{}
+		if len(results) == 1 && results[0].Result == "busy" {
+			fmt.Fprintln(stderr, "canon log verify: "+results[0].Why)
+			return 1
+		}
 		for _, r := range results {
 			counts[r.Result]++
 			line := fmt.Sprintf("%-12s %s", r.Day, r.Result)
