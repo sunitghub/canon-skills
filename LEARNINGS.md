@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-30-2026 16:20
+learnings-sweep last run: 10-30-2026 17:04
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-30 | [t-4b34](.tickets/t-4b34/learnings.md) | A plan's claim about how another component is called must be verified, not remembered: the plan said the cloud session imports with `--body-file` (it reads over REST), so a lookup meant to skip the cloud ran there; and a stub that hands back the answer instead of running the filter hides the predicate: run the real `jq` over fixtures, and treat a full page of results as "maybe truncated", never "none" | UNPROMOTED |
 | 2026-10-30 | [t-8ae5](.tickets/t-8ae5/learnings.md) | Two numbers on one screen from two producers drift: the warning came from the CLI's `git status` with `.tickets` excluded and step 1's line from the browser's count of another list that included it, so they always differed by one with no reason shown; derive both from one rule, or say why they differ. A stamp can fail on another project's gate (t-9fb1): read the refusal text before blaming the change | UNPROMOTED |
 | 2026-10-30 | [t-b7df](.tickets/t-b7df/learnings.md) | A registry the guard keys on the caller's `TMPDIR` is invisible to any caller with another one (a pi gate): put it at a fixed path. And the cloud's Linux `sed` accepts GNU-only `T` that macOS rejects: the cloud's gates passed and only Check & merge on the Mac caught it (`tests/gate-scope.sh`), so a cloud PR's own gate pass is not a macOS pass | UNPROMOTED |
 | 2026-10-30 | [t-3abc](.tickets/t-3abc/learnings.md) | A guard test needs an input that makes the guard matter: `../<id>` is refused whether or not the id check exists (the path does not exist), `..` names a real folder and fails without it; and a plan's claim about another component ("the board's close path calls tkt close") must be grepped before it is written down: the reviewer found it false | UNPROMOTED |
@@ -82,5 +83,4 @@ learnings-sweep last run: 10-30-2026 16:20
 | 2026-10-23 | [t-5ff5](.tickets/t-5ff5/learnings.md) | Allowing `git diff/log` under dontAsk lets `--output=<file>` write anywhere (abbreviations such as `--outp=` too); the fix is an argv-refusing wrapper (`tools/git-read`), and the reviewer found a plain `Bash(git diff:*)` grant still in `tools/upkeep-run:169`, outside the change. | `promoted → standards/efficiency-notes.md` |
 | 2026-10-23 | [t-2ea4](.tickets/t-2ea4/learnings.md) | A mutant (`skills.sh init` to `initx`) survived because the test's `skills.sh` stub is a silent `exit 0`, so no test proves `bin/install.js` calls init before the daemon fetch; a stub that records its calls is what makes an ordering line testable. | `promoted → standards/efficiency-notes.md` |
 | 2026-10-23 | [t-89b0](.tickets/t-89b0/learnings.md) | The reviewer said NO: the pin covered only the first doc a gate prompt names, but those docs read other `skills/...` paths relative to the PR checkout, and `claude -p` still loads the PR's own `.claude/settings.json` and CLAUDE.md; pinning one file does not pin what it loads. | `promoted → standards/efficiency-notes.md` |
-| 2026-10-23 | [t-0e8b](.tickets/t-0e8b/learnings.md) | A permanent board-spec test that writes its screenshots to `.tickets/<id>/visuals/` ties shared test output to whichever ticket last edited it (t-67ab, then t-0e8b); the reviewer flagged it as a standards issue, not a defect. | `promoted → tools/sprint-check-app/CLAUDE.md` |
 <!-- canon:learnings:END -->
