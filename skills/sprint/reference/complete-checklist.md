@@ -68,8 +68,7 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
 - **The prompt says:** ticket id, repo path and branch; read `reference/review.md` (reviewer) or
   `reference/eval.md` (evaluator) and follow it; the `Model:` designation; write
   `.tickets/<id>/review-notes.md` / `eval-report.md` and return the verdict line; read-only except
-  that report; run tools only in its own `mktemp -d` with `CANON_HOME`, `HOME`, `TMPDIR`,
-  `XDG_CONFIG_HOME` pinned inside it; never kill by name or pattern; evaluator only: take the
+  that report; never kill by name or pattern; evaluator only: take the
   `evaluator-run-id` as the very last command. Never pass a changed-files list.
 - `Plan` fallback: `sprint relay-report <id> [reviewer]` writes its report (the main session never types one).
 

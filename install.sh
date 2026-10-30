@@ -40,6 +40,10 @@ if ! command -v git >/dev/null 2>&1; then
   exit 1
 fi
 
+# t-b7df: best effort (a curl|bash run has no tools/ beside it; the canon update it calls is guarded on its own)
+_gl="$(dirname "${BASH_SOURCE[0]:-$0}")/tools/gate-scope-lib.sh"
+if [[ -f "$_gl" ]]; then source "$_gl"; gate_scope_guard "install.sh" || exit 1; fi
+
 TARGET="$(_resolve_target "${1-}")"
 
 # t-50f7: the install is versioned: $TARGET/packages/<vX.Y.Z>/ (or packages/main, a clone) and $TARGET/current, a link to one of them.

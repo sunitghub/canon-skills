@@ -6,6 +6,7 @@
 set -euo pipefail
 export SPRINT_CHECK_NO_BROWSER=1   # the board starts here
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
+export TMPDIR="$(mktemp -d)"   # t-b7df: gate-snapshot pre registers a gate scope under TMPDIR; keep it out of the shared /tmp
 command -v python3 >/dev/null 2>&1 || fail "events: python3 is required (this test's JSON reader)"
 
 W="$(mktemp -d)"; W="$(cd "$W" && pwd -P)"

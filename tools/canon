@@ -20,6 +20,7 @@ done
 SCRIPT_DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
 # shellcheck source=cockpit-launch-lib.sh
 source "$SCRIPT_DIR/cockpit-launch-lib.sh"
+source "$SCRIPT_DIR/gate-scope-lib.sh"   # t-b7df: gate_scope_guard
 source "$SCRIPT_DIR/ticket-root.sh"   # t-b2ff: folder_guard_reason, require_project_folder
 
 usage() {
@@ -333,6 +334,7 @@ update_packages() {
 # --refresh-only is internal: the Windows zip update hands over to PowerShell (the installer cannot overwrite this
 # running script), which then calls it to do just the project refresh. It is deliberately left out of --help.
 update_cmd() {
+  gate_scope_guard "canon update" || return 1   # t-b7df
   local refresh_only=0 reinstall=0 to="" re='^v[0-9]+\.[0-9]+\.[0-9]+$'
   [[ "${1:-}" == --refresh-only ]] && { refresh_only=1; shift; }
   [[ "${1:-}" == --reinstall && "$refresh_only" = 0 ]] && { reinstall=1; shift; }

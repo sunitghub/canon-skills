@@ -64,6 +64,10 @@ case "${1:-}" in
   --h|--help|-h) cmd_help "$cmd"; exit 0 ;;
 esac
 
+# t-b7df: while a close gate's scope is live, nothing that rewrites registered projects runs on the real HOME/CANON_HOME
+source "$(dirname "$SCRIPT")/gate-scope-lib.sh"
+case "$cmd" in add|refresh|remove|init|uninstall|link-worktree) gate_scope_guard "skills.sh $cmd" || exit 1 ;; esac
+
 case "$cmd" in
   list)    cmd_list    "$@" ;;
   add)     cmd_add     "$@" ;;

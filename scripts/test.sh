@@ -166,6 +166,7 @@ tests=(
   "$ROOT/tests/gate-ticket-check.sh"
   "$ROOT/tests/git-read.sh"
   "$ROOT/tests/gate-snapshot.sh"
+  "$ROOT/tests/gate-scope.sh"
   "$ROOT/tests/jtbd-routing.sh"
   "$ROOT/tests/why-cap.sh"
   "$ROOT/tests/sprint-headless.sh"
