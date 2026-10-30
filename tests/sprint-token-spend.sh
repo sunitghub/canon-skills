@@ -67,14 +67,17 @@ ev 09-30T08:10:00.000 sprint.completed t-dddd | gzip | cat >> "$events/2026-09-3
   ev 10-01T13:10:00.000 sprint.started t-ffff
   ev 10-01T13:20:00.000 sprint.completed t-ffff
   ev 10-01T13:30:00.000 sprint.started t-eeee   # never completed: no row
+  ev 10-01T13:40:00.000 sprint.started ../t-evil
+  ev 10-01T13:50:00.000 sprint.completed ../t-evil
 } > "$events/2026-10-01.jsonl"
 mkdir -p .tickets/t-aaaa .tickets/t-bbbb
 printf '## Sign-off\nTier: normal | Risk: x\n\n- [x] Plan approved\nApproved: sha256:%s 2026-10-01T10:30:00Z\n' "$(printf 'a%.0s' {1..64})" > .tickets/t-aaaa/plan.md
 printf '## Sign-off\nTier: high | Risk: x\n\n- [x] Plan approved\n' > .tickets/t-bbbb/plan.md
+mkdir -p t-evil && printf 'Tier: high\n' > t-evil/plan.md   # an id from the events never names a path outside .tickets/
 
-before="$(find "$cfg" "$events" .tickets -type f -exec cksum {} + | sort)"
+before="$(find "$cfg" "$events" .tickets t-evil -type f -exec cksum {} + | sort)"
 out="$("$SPRINT" token-spend)"
-after="$(find "$cfg" "$events" .tickets -type f -exec cksum {} + | sort)"
+after="$(find "$cfg" "$events" .tickets t-evil -type f -exec cksum {} + | sort)"
 assert_eq "$before" "$after"   # read-only
 
 row() { printf '%s\n' "$out" | awk -v t="$1" '$1 == t' | tr -s ' '; }
@@ -84,6 +87,7 @@ assert_eq "t-bbbb high-risk - 600* 900 0" "$(row t-bbbb)"
 assert_eq "t-cccc - - 11* 0 0 ~ partial" "$(row t-cccc)"
 assert_eq "t-dddd - no transcript turns (older than the transcripts kept)" "$(row t-dddd)"
 assert_eq "" "$(row t-eeee)"
+assert_eq "../t-evil - no transcript turns (older than the transcripts kept)" "$(row ../t-evil)"
 assert_eq "t-ffff - - 0* 50 0" "$(row t-ffff)"   # no Approved: stamp and no build turns: still "-", not 0
 phase() { printf '%s\n' "$out" | awk -v p="$1" -v m="$2" '$1 == p && $2 == m' | tr -s ' '; }
 # phase model turns fresh-in cache-read output
@@ -100,8 +104,8 @@ assert_eq "t-bbbb high-risk - 600* 900 0" "$(row t-bbbb)"
 assert_eq "" "$(row t-aaaa)"
 assert_eq "" "$(phase overlap claude-opus-5-5)"
 
-# --last 2: the two newest closed sprints.
-out="$("$SPRINT" token-spend --last 2)"
+# --last 3: the three newest closed sprints.
+out="$("$SPRINT" token-spend --last 3)"
 assert_eq "t-bbbb high-risk - 600* 900 0" "$(row t-bbbb)"
 assert_eq "" "$(row t-aaaa)"
 

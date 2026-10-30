@@ -1363,13 +1363,14 @@ cmd_token_spend() {
   # Approval time and tier from each window ticket's plan.md (the Approved: stamp exists since 0.30.6).
   local plans="" t pl
   for t in $(printf '%s\n' "$windows" | cut -f1 | sort -u); do
+    [[ "$t" =~ ^[A-Za-z0-9_-]+$ ]] || continue   # an id from the events names a path
     pl="$root/.tickets/$t/plan.md"; [[ -f "$pl" ]] || continue
     plans+="$t	$(awk '/^Approved: sha256:/ { a = $3 } END { print a }' "$pl")	$(awk '/^Tier:/ { sub(/^Tier: */, ""); sub(/[^A-Za-z-].*/, ""); print; exit }' "$pl")"$'\n'
   done
   # Subagent files first, so a message id seen in both is claimed by its subagent.
   {
-    printf '%s\n' "$windows" | sed 's/^/W\t/'
-    printf '%s' "$plans" | sed 's/^/A\t/'
+    printf '%s\n' "$windows" | awk '{ print "W\t" $0 }'
+    printf '%s' "$plans" | awk '{ print "A\t" $0 }'
     for f in ${subs[@]+"${subs[@]}"}; do
       [[ -f "${f%.jsonl}.meta.json" ]] && printf 'M\t%s\t%s\n' "$f" "$(tr -d '\n' < "${f%.jsonl}.meta.json")"
     done
@@ -1386,7 +1387,7 @@ cmd_token_spend() {
     BEGIN { FS = "\t"; np = split(ENVIRON["TS_PATHS"], P, "\n"); while (np > 0 && P[np] == "") np-- }
     $1 == "W" { nw++; WT[nw] = $2; WP[nw] = $3; WS[nw] = $4; WG[nw] = $5; WE[nw] = $6; next }
     $1 == "A" { AP[$2] = $3; TI[$2] = ($4 ~ /^high/ ? "high-risk" : $4); next }
-    $1 == "M" { MT[$2] = jf($3, "agentType"); MD[$2] = $3; next }
+    $1 == "M" { MT[$2] = jf($3, "agentType"); MD[$2] = jf($3, "description"); next }
     {
       i = index($0, ":{\""); f = substr($0, 1, i - 1); j = substr($0, i + 1)
       if (!match(j, /"id":"msg_[^"]*"/)) next   # a harness-made <synthetic> turn has no msg_ id
