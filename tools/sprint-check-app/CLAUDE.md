@@ -26,6 +26,7 @@ Any change to `app.html` or `static/` requires Playwright verification — not j
 ## Writing board tests that hold under load
 
 - Never `waitForTimeout` for something the page will tell you: poll the state (`expect.poll(() => page.evaluate(() => cockpitState.status))`). Twenty-four fixed 100 ms waits in the leave-session group (`t-359b`) are the suspected cause of its flakes. For a layout measurement after opening a modal, wait for the text and `getAnimations()` to finish (two tests passed only by luck at a fixed 700 ms); a scrolling-card test needs a dialog taller than the document (`t-5648`).
+- Waiting for animations: `getAnimations()` includes infinite ones (spinners, pulses), whose `finished` never resolves; filter to finite ones (`effect.getComputedTiming().endTime` finite) before awaiting (`t-23f6`). A `--grep` fragment cannot contain ` > `: Playwright joins titles with `›`, and a fragment that matches nothing reports 0 expected, which reads like a pass.
 - Before pressing keys in a frame, wait until that frame's handler exists (`boardKeys` in the board); a key pressed earlier goes nowhere.
 - Mock every new endpoint in the shared page helper so a real daemon or real data never leaks in; assert the stable part of UI strings, not the whole sentence.
 - A menu that closes on `focusout` must exempt pointer clicks: WebKit does not focus a clicked button, so a click inside the menu reports a `focusout` with no `relatedTarget` and the menu closes before the click lands. Tag the Tab-away test `@webkit` (`t-9d93`).
