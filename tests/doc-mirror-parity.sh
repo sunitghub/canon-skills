@@ -274,7 +274,7 @@ for file in "$SHARED" "$ROOT/agents/canon-reviewer.md" "$ROOT/agents/canon-evalu
   done
 done
 # The verb and the condition carry the rule: a flipped "Never run ... unless" must not pass on its nouns alone.
-grep -qF -- 'refuse unless `HOME` and `CANON_HOME` are inside it' "$SHARED" || fail "doc-mirror-parity: shared-gate-protocol.md lost the dispatcher-scope rule 'refuse unless `HOME` and `CANON_HOME` are inside it' (t-b7df, Check M)"
+grep -qF -- "refuse the user's REAL \`HOME\` and \`CANON_HOME\`" "$SHARED" || fail "doc-mirror-parity: shared-gate-protocol.md lost the dispatcher-scope rule 'refuse the user's REAL HOME and CANON_HOME' (t-b7df, t-9fb1, Check M)"
 for file in "$ROOT/agents/canon-reviewer.md" "$ROOT/agents/canon-evaluator.md" "$ROOT/agents/codex/canon-reviewer.toml" "$ROOT/agents/codex/canon-evaluator.toml"; do
   grep -qF -- 'Never run `canon update`, `skills.sh`, `install.sh`, an uninstall or the daemon with your real `HOME`/`CANON_HOME`' "$file" || fail "doc-mirror-parity: ${file#"$ROOT"/} lost the 'Never run ... unless' sentence (t-ce0b, Check M)"
 done
