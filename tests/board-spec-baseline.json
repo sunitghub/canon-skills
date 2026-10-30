@@ -1,13 +1,13 @@
 {
-  "_about": "t-8627: only a test that failed for a reason other than a navigation stall in the quiet runs is listed (the stalls were display sleep and are fixed in the spec). failing = failed in every run (quarantined: needs a ticket id and a QUARANTINE marker in the spec; none now); flaky = may fail any number of runs: needs a reason and a ticket id; skipped = allowed to be skipped; min_tests = per-browser floor on the tests reported.",
+  "_about": "t-8627: only a test that failed for a reason other than a navigation stall in the quiet runs is listed (the stalls were display sleep and are fixed in the spec). failing = failed in every run (quarantined: needs a ticket id and a QUARANTINE marker in the spec; none now); flaky = may fail any number of runs: needs a reason and a ticket id; skipped = allowed to be skipped; min_tests = per-browser floor on the tests reported (t-23f6: chromium runs every test, webkit only those tagged @webkit).",
   "min_tests": {
-    "chromium": 471,
-    "webkit": 471
+    "chromium": 619,
+    "webkit": 176
   },
   "failing": [],
   "flaky": [
     {
-      "title": "Canon Cockpit \"?\" info popovers (t-576f) > it survives a card re-render while open, and keeps the reader's scroll position",
+      "title": "Canon Cockpit \"?\" info popovers (t-576f) > it survives a card re-render while open, and keeps the reader's scroll position @webkit",
       "browsers": [
         "chromium"
       ],
@@ -15,7 +15,7 @@
       "reason": "failed in t-4371's full chromium run (2026-10-29, busy) and 1 of 3 solo chromium runs at load 2.8 (scrollTop 0, expected > 50); t-4371 touches no popover code"
     },
     {
-      "title": "cockpit stale-daemon banner (t-74d6) > a tab opening a live session offers Attach with the agent locked, and both windows get the shared notice",
+      "title": "cockpit stale-daemon banner (t-74d6) > a tab opening a live session offers Attach with the agent locked, and both windows get the shared notice @webkit",
       "browsers": [
         "chromium"
       ],
@@ -31,7 +31,7 @@
       "reason": "failed once in the t-71c8 full run at 7bdf842d (2026-10-29); --classify: passed 3/3 alone on the branch and 2/3 alone on origin/main 73f90ac7, so flaky before t-71c8; not touched by it"
     },
     {
-      "title": "session sub-tabs (t-8a2a) > a background tab's needs-you status renders in the tab strip",
+      "title": "session sub-tabs (t-8a2a) > a background tab's needs-you status renders in the tab strip @webkit",
       "browsers": [
         "webkit"
       ],
@@ -39,7 +39,7 @@
       "reason": "failed once in the t-71c8 full run at 7bdf842d (2026-10-29); passed on the first rerun at the same head (both browsers' reruns clean); not touched by t-71c8"
     },
     {
-      "title": "Logbook (t-c6bb) > the Logbook moves by its title bar, resizes from its corner and starts fresh on every open (t-c6bb)",
+      "title": "Logbook (t-c6bb) > the Logbook moves by its title bar, resizes from its corner and starts fresh on every open (t-c6bb) @webkit",
       "browsers": [
         "webkit"
       ],
@@ -47,7 +47,7 @@
       "reason": "failed once in the t-71c8 full run at 7bdf842d (2026-10-29); passed on the first rerun at the same head (both browsers' reruns clean); not touched by t-71c8"
     },
     {
-      "title": "cockpit preview pane (t-b19b) > PREVIEW_SERVER_CMD shows a static run-yourself message with the exact command, no iframe",
+      "title": "cockpit preview pane (t-b19b) > PREVIEW_SERVER_CMD shows a static run-yourself message with the exact command, no iframe @webkit",
       "browsers": [
         "webkit"
       ],
@@ -55,7 +55,7 @@
       "reason": "toContainText 'npm run dev' on #ck-preview-body failed inside two long WebKit runs on 2026-10-29 (t-71c8 full run and a 12-test rerun); --classify: passed 3/3 alone on the branch and 3/3 alone on origin/main 73f90ac7. The test clicks after a fixed waitForTimeout(100) (load-sensitive); not touched by t-71c8"
     },
     {
-      "title": "cockpit preview pane (t-b19b) > no live session (e.g. idle Resume, pre-Start) shows a message, not an infinite \"Asking…\"",
+      "title": "cockpit preview pane (t-b19b) > no live session (e.g. idle Resume, pre-Start) shows a message, not an infinite \"Asking…\" @webkit",
       "browsers": [
         "webkit"
       ],

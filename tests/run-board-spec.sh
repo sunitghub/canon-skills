@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # run-board-spec — t-4469: run the full board Playwright spec (tests/sprint-check-app.spec.js) the one reproducible way.
+# t-23f6: Chromium runs every test, WebKit only those tagged @webkit in their title (engine-sensitive: scroll, focus, layout, clipboard...).
 #
 #   tests/run-board-spec.sh [--runs N] [--browsers chromium,webkit] [--out DIR] [--grep PATTERN] [--strict] [--no-guard] [--keep] [--allow-busy]
 #                           [--classify [--solo-runs N] [--base REF]]
@@ -129,11 +130,21 @@ if [ "$RUNS_SET" = 1 ]; then RUNS_NOTE="$RUNS run(s)"; else RUNS_NOTE="one pass 
 echo "run-board-spec: board from the copy on port $PORT; $RUNS_NOTE; browsers: $BROWSERS; reports go to $OUT"
 
 IFS=',' read -r -a BLIST <<< "$BROWSERS"
+# t-23f6: Chromium runs every test; WebKit only the engine-sensitive ones, tagged @webkit in the title. A user --grep narrows
+# both: for WebKit a lookahead pair makes a title need @webkit AND the user's pattern (Playwright matches the whole
+# "project file suite test" line, so each lookahead scans it from the start).
+grep_for() {   # grep_for <browser>: the --grep pattern for that browser, empty for none
+  if [ "$1" != webkit ]; then printf '%s' "$GREP"
+  elif [ -n "$GREP" ]; then printf '^(?=.*@webkit)(?=.*(?:%s))' "$GREP"
+  else printf '@webkit'
+  fi
+}
 run_pass() {   # run_pass <browser> <n>
-  local b="$1" n="$2" report="$OUT/board-spec-$1-run$2.json"
+  local b="$1" n="$2" report="$OUT/board-spec-$1-run$2.json" bgrep
+  bgrep="$(grep_for "$b")"
   if [ "$RUNS_SET" = 1 ]; then echo "run-board-spec: $b run $n/$RUNS"; else echo "run-board-spec: $b run $n (first pass; up to $RUNS only if rejected)"; fi
   (cd "$COPY" && PLAYWRIGHT_JSON_OUTPUT_NAME="$report" SPRINT_CHECK_BASE="http://127.0.0.1:$PORT" SPRINT_CHECK_TEST_ROOT="$COPY" \
-    npx playwright test tests/sprint-check-app.spec.js --browser="$b" --reporter=json,line ${GREP:+--grep "$GREP"} >"$OUT/board-spec-$b-run$n.log" 2>&1) || true
+    npx playwright test tests/sprint-check-app.spec.js --browser="$b" --reporter=json,line ${bgrep:+--grep "$bgrep"} >"$OUT/board-spec-$b-run$n.log" 2>&1) || true
   [ -s "$report" ] || { echo "run-board-spec: no JSON report for $b run $n (see $OUT/board-spec-$b-run$n.log)" >&2; exit 2; }
 }
 # t-43a2: without --runs, one pass per browser, and a browser is repeated (up to $RUNS) only when the guard rejects its first report.

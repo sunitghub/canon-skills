@@ -25,6 +25,7 @@ cat > "$WORK/bin/npx" <<'STUB'
 #!/bin/bash
 # npx playwright test ...: optionally leave a process behind in the copy, then write a report
 [ -n "${LEAK:-}" ] && { bash -c 'sleep 20; :' "spec-isolation-leakmark" "$PWD" >/dev/null 2>&1 & echo "$!" >> "$STATE/../leakpids"; }
+echo "$*" >> "$STATE/npx-args"
 echo '{"suites":[]}' > "$PLAYWRIGHT_JSON_OUTPUT_NAME"
 exit 0
 STUB
@@ -83,4 +84,12 @@ echo 'process.exit(0)' > "$FAKE/tests/board-spec-guard.js"
 mkdir -p "$WORK/out-reuse"; echo '{"suites":[]}' > "$WORK/out-reuse/board-spec-chromium-run2.json"; echo '{"suites":[]}' > "$WORK/out-reuse/board-spec-chromium-run3.json"
 run reuse --browsers chromium
 assert_eq 0 "$rc"; assert_eq 1 "$(nreports reuse chromium)"; [ ! -e "$WORK/out-reuse/board-spec-chromium-run3.json" ] || fail "run-board-spec: a stale run3 report survived a reused --out"
+# t-23f6: Chromium runs every test; WebKit gets --grep @webkit, and a user --grep must match as well (a lookahead pair, not a replacement)
+echo 'process.exit(0)' > "$FAKE/tests/board-spec-guard.js"
+run tags --runs 1 --browsers chromium,webkit --no-guard
+assert_eq 1 "$(grep -c -- '--browser=chromium' "$WORK/state/npx-args")"; grep -- '--browser=chromium' "$WORK/state/npx-args" | grep -q -- '--grep' && fail "run-board-spec: chromium was given a --grep"
+grep -- '--browser=webkit' "$WORK/state/npx-args" | grep -q -- '--grep @webkit$' || fail "run-board-spec: webkit did not get --grep @webkit: $(cat "$WORK/state/npx-args")"
+run tags-user --runs 1 --browsers chromium,webkit --no-guard --grep 'popover|menu'
+grep -- '--browser=chromium' "$WORK/state/npx-args" | grep -q -- '--grep popover|menu$' || fail "run-board-spec: chromium lost the user --grep: $(cat "$WORK/state/npx-args")"
+grep -- '--browser=webkit' "$WORK/state/npx-args" | grep -qF -- '--grep ^(?=.*@webkit)(?=.*(?:popover|menu))' || fail "run-board-spec: webkit --grep is not @webkit AND the user pattern: $(cat "$WORK/state/npx-args")"
 echo "run-board-spec-isolation: ok"

@@ -83,6 +83,8 @@ function evaluate({ reports, baseline, specText, partial }) {
       const where = `baseline ${kind} entry "${e.title}"`;
       if (!e.title || !e.reason) violations.push(`${where} needs a title and a reason`);
       if (!Array.isArray(e.browsers) || !e.browsers.length) violations.push(`${where} needs a browsers list`);
+      // t-23f6: WebKit runs only @webkit tests, so a webkit entry for an untagged title would hide a flake that WebKit can no longer show.
+      if ((e.browsers || []).includes('webkit') && !String(e.title || '').includes('@webkit')) violations.push(`${where} lists webkit but the title has no @webkit tag (WebKit runs only tagged tests)`);
       if (kind === 'failing' && !TICKET.test(e.ticket || '')) violations.push(`${where} needs a ticket id (t-xxxx)`);
       if (kind !== 'failing' && !TICKET.test(e.ticket || '')) violations.push(`${where} needs a ticket id (t-xxxx)`);
       if (!known.has(e.title) && reports.length && !partial) violations.push(`${where} matches no test in the reports (stale or renamed)`);

@@ -11,6 +11,7 @@ const ok = (name, cond, detail) => { if (cond) console.log('  ok   ' + name); el
 
 const rep = (browser, run, tests) => ({ browser, run: `board-spec-${browser}-run${run}.json`, tests });
 const TITLE = 'cockpit leave-session confirm > a fresh modal open resets buttons';
+const TITLE_W = TITLE + ' @webkit';
 const TITLE2 = "cockpit leave-session confirm > a refused Save & End keeps the session, explains why, and re-enables the controls";
 const spec = (marker, line) => `describe(...)\n${marker}\n  ${line}\n`;
 const marked = spec('  // QUARANTINE t-aaaa: stale expectation', `test('a fresh modal open resets buttons', async () => {`);
@@ -30,7 +31,7 @@ const failing = { failing: [{ title: TITLE, browsers: ['chromium'], ticket: 't-a
   ok('a test failing in every run and not listed is a violation', v(r).length === 1 && /failed in every run and is not listed/.test(v(r)[0]), v(r));
   const asFlaky = evaluate({ reports, baseline: { failing: [], flaky: [{ title: TITLE, browsers: ['chromium'], ticket: 't-dddd', reason: 'timing' }] }, specText: '' });
   ok('a listed flaky test that failed in EVERY run is allowed, with a warning', v(asFlaky).length === 0 && asFlaky.warnings.length === 1 && /listed as flaky/.test(asFlaky.warnings[0]), [v(asFlaky), asFlaky.warnings]);
-  const wrongBrowser = evaluate({ reports, baseline: { failing: [], flaky: [{ title: TITLE, browsers: ['webkit'], ticket: 't-dddd', reason: 'timing' }] }, specText: '' });
+  const wrongBrowser = evaluate({ reports: [1, 2, 3].map((i) => rep('chromium', i, { [TITLE_W]: 'unexpected', [TITLE2]: 'expected', other: 'expected' })), baseline: { failing: [], flaky: [{ title: TITLE_W, browsers: ['webkit'], ticket: 't-dddd', reason: 'timing' }] }, specText: '' });
   ok('a flaky entry for another browser does not cover this one', v(wrongBrowser).length === 1, v(wrongBrowser));
 }
 {
@@ -119,12 +120,12 @@ const failing = { failing: [{ title: TITLE, browsers: ['chromium'], ticket: 't-a
   const run = (...args) => spawnSync(process.execPath, [path.join(__dirname, 'board-spec-guard.js'), '--baseline', baselineFile, '--spec', specFile, ...args], { encoding: 'utf8' });
   const clean = [w('board-spec-chromium-run1.json', report({ a: 'expected' })), w('board-spec-chromium-run2.json', report({ a: 'expected' }))];
   ok('CLI exits 0 on a clean run', run(...clean).status === 0);
-  const bad = [w('board-spec-webkit-run1.json', report({ a: 'unexpected' })), w('board-spec-webkit-run2.json', report({ a: 'unexpected' }))];
+  const bad = [w('board-spec-webkit-run1.json', report({ 'a @webkit': 'unexpected' })), w('board-spec-webkit-run2.json', report({ 'a @webkit': 'unexpected' }))];
   const out = run(...bad);
-  ok('CLI exits 1 and names an unlisted failure', out.status === 1 && /VIOLATION: webkit: "group > a"/.test(out.stdout), out.stdout);
+  ok('CLI exits 1 and names an unlisted failure', out.status === 1 && /VIOLATION: webkit: "group > a @webkit"/.test(out.stdout), out.stdout);
   ok('CLI exits 2 with no reports', run().status === 2);
   // a listed flaky test failing in every run: exit 0 with a visible warning line, exit 1 with --strict
-  const flakyBaseline = w('flaky-baseline.json', { failing: [], flaky: [{ title: 'group > a', browsers: ['webkit'], ticket: 't-dddd', reason: 'timing' }] });
+  const flakyBaseline = w('flaky-baseline.json', { failing: [], flaky: [{ title: 'group > a @webkit', browsers: ['webkit'], ticket: 't-dddd', reason: 'timing' }] });
   const runB = (...args) => spawnSync(process.execPath, [path.join(__dirname, 'board-spec-guard.js'), '--baseline', flakyBaseline, '--spec', specFile, ...args], { encoding: 'utf8' });
   const lenient = runB(...bad);
   ok('CLI exits 0 for a listed flaky test failing every run and says "ok with 1 warning(s)", not a plain ok', lenient.status === 0 && /ok with 1 warning\(s\)/.test(lenient.stdout) && !/ok \(every failure/.test(lenient.stdout), lenient.stdout);
@@ -132,6 +133,22 @@ const failing = { failing: [{ title: TITLE, browsers: ['chromium'], ticket: 't-a
   ok('CLI --strict turns that warning into exit 1', strict.status === 1 && /VIOLATION: \(--strict\)/.test(strict.stdout), strict.stdout);
   ok('CLI exits 2 when the browser cannot be read from the file name', run(w('whatever.json', report({ a: 'expected' }))).status === 2);
 }
+// ── t-23f6: WebKit runs only @webkit tests, so a webkit baseline entry must carry the tag ──
+{
+  const entry = (title, browsers) => ({ failing: [], flaky: [{ title, browsers, ticket: 't-dddd', reason: 'timing' }] });
+  const reports = [1, 2].map((i) => rep('webkit', i, { [TITLE]: 'expected', [TITLE_W]: 'expected', other: 'expected' }));
+  const untagged = evaluate({ reports, baseline: entry(TITLE, ['webkit']), specText: '' });
+  ok('a webkit flaky entry whose title has no @webkit is a violation', v(untagged).length === 1 && /lists webkit but the title has no @webkit tag/.test(v(untagged)[0]), v(untagged));
+  const both = evaluate({ reports, baseline: entry(TITLE, ['chromium', 'webkit']), specText: '' });
+  ok('an untagged entry listing chromium and webkit is a violation too', v(both).some((x) => /no @webkit tag/.test(x)), v(both));
+  const tagged = evaluate({ reports, baseline: entry(TITLE_W, ['webkit']), specText: '' });
+  ok('the same entry with the @webkit title is clean', v(tagged).length === 0, v(tagged));
+  const chromiumOnly = evaluate({ reports: allPass('chromium', 2), baseline: entry(TITLE, ['chromium']), specText: '' });
+  ok('a chromium-only entry needs no tag', v(chromiumOnly).length === 0, v(chromiumOnly));
+  const skippedKind = evaluate({ reports, baseline: { failing: [], flaky: [], skipped: [{ title: TITLE, browsers: ['webkit'], ticket: 't-dddd', reason: 'r' }] }, specText: '' });
+  ok('the rule covers the skipped list too', v(skippedKind).some((x) => /no @webkit tag/.test(x)), v(skippedKind));
+}
+
 // ── t-fb37: zero tests run must fail ──
 {
   const none = [1, 2].map((i) => rep('chromium', i, {}));
