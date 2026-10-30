@@ -133,7 +133,12 @@ script's Go block:
     chmod +x "/usr/local/bin/$t"
   done
   mkdir -p "$HOME/.claude/agents"
-  cp "$HOME/.canon/agents/canon-reviewer.md" "$HOME/.canon/agents/canon-evaluator.md" "$HOME/.claude/agents/" || true
+  for a in canon-reviewer canon-evaluator; do
+    for d in "$HOME/.canon/current/agents" "$HOME/.canon/agents"; do
+      if [ -f "$d/$a.md" ] && cp "$d/$a.md" "$HOME/.claude/agents/"; then continue 2; fi
+    done
+    echo "setup: $a.md not copied (looked in \$HOME/.canon/current/agents and \$HOME/.canon/agents); the close will run on fallback agents" >&2
+  done
   git config --global user.name >/dev/null || git config --global user.name "canon cloud session"
   git config --global user.email >/dev/null || git config --global user.email "noreply@getcanon.dev"
   ```
@@ -141,8 +146,9 @@ script's Go block:
   checklist calls `skills.sh`, `evidence.sh`, `gate-snapshot.sh`, `subagent-log.sh` and `mutant-sweep` by bare name,
   and a refusal can print a bare `skills.sh refresh`, so they get wrappers too. Wrappers work with
   every canon release; symlinks work too from 0.11.2, but before it `sprint` and `tkt` could not find their helpers
-  through a link. The last two lines give the session canon's reviewer and evaluator agents, which `sprint complete`
-  runs at the close. The session clones your repo itself: the script needs no `git` lines. The Go block installs the
+  through a link. The agent loop gives the session canon's reviewer and evaluator agents, which `sprint complete`
+  runs at the close; a missing file is named on stderr and never stops the session (check with `ls $HOME/.claude/agents`;
+  an environment created before this fix keeps its old setup script until it is recreated or its script is replaced). The session clones your repo itself: the script needs no `git` lines. The Go block installs the
   version canon pins, so a raised pin follows on the next release; if the download fails, the session starts anyway on the
   image's Go and the setup log says why. Check it in a session with `go version`. The two `git config` lines set an
   identity only where the image has none.
