@@ -453,23 +453,26 @@ func cliCanonRoot() string {
 // isCanonRoot: canon's own checkout or install, marked by tools/src-key.sh (t-8020's release-key owner).
 func isCanonRoot(dir string) bool { return isRegularFile(filepath.Join(dir, "tools", "src-key.sh")) }
 
-// emitEventCLI is the shell tools' event writer: `event <kind> --project <dir> --source <name> key=value...`. A bad
-// argument is noted in events/emit-errors.log like any other failure; nothing is printed.
+// emitEventCLI is the shell tools' event writer: `event <kind> --project <dir> --source <name> [--actor user|agent|system]
+// key=value...` (t-7c89: --actor, for a record canon itself makes). A bad argument is noted in events/emit-errors.log like any other failure; nothing is printed.
 func emitEventCLI(args []string) {
 	home := events.Home()
 	if len(args) == 0 {
 		events.Emit(home, "", "", "", nil) // notes the missing kind
 		return
 	}
-	kind, project, source := args[0], "", ""
+	kind, project, source, actor := args[0], "", "", ""
 	data := map[string]string{}
 	for i := 1; i < len(args); i++ {
 		switch a := args[i]; {
-		case (a == "--project" || a == "--source") && i+1 < len(args):
-			if a == "--project" {
+		case (a == "--project" || a == "--source" || a == "--actor") && i+1 < len(args):
+			switch a {
+			case "--project":
 				project = args[i+1]
-			} else {
+			case "--source":
 				source = args[i+1]
+			default:
+				actor = args[i+1]
 			}
 			i++
 		case strings.Contains(a, "="):
@@ -479,7 +482,7 @@ func emitEventCLI(args []string) {
 			data[a] = "" // an argument that is not key=value is an unknown field: refused by the schema
 		}
 	}
-	events.Emit(home, kind, source, project, data)
+	events.EmitActor(home, kind, source, actor, project, data)
 }
 
 // transcriptReport prints a gate's report from the harness's own transcript of the subagent (t-ff14), so a read-only

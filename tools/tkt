@@ -1863,6 +1863,9 @@ cmd_merge_pr() {
     || echo "  note: this PR changes scripts/test.sh itself, the script that would run"
   # --check (t-bad4): every check that runs no PR code has passed; report and stop. The board fills its dialog from this.
   if $check; then
+    # t-7c89: this checkout's base has commits GitHub's lacks: the merge tests and merges without them. The clone's origin/ is this checkout.
+    local ahead; ahead="$(git -C "$tmp/w" rev-list --count "o/$base..origin/$base" < /dev/null 2>/dev/null || true)"
+    [[ "$ahead" =~ ^[1-9][0-9]*$ ]] && echo "merge-pr: local $base has $ahead commit$([[ "$ahead" == 1 ]] || echo s) that aren't on GitHub"
     if [[ -n "$tcmd" ]]; then echo "merge-pr: ready: would run $tcmd on $base + PR #$pr, then merge${issue:+ (closes #$issue)}"
     else echo "merge-pr: ready: no test command (pass --test); would merge PR #$pr on the gates alone${issue:+ (closes #$issue)}"; fi
     return 0
@@ -1921,6 +1924,62 @@ cmd_merge_pr() {
   # t-41ff: written after the local update, so ticket.md is not yet dirty from this merge when the fast-forward runs.
   set_or_add_field "$file" merged "${sha:-PR #$pr}"
   _gh_trail "$tdir" merged "PR: #$pr" "merge commit: ${sha:-unknown}" "base: $base"
+}
+
+# _record_merge <label> <ticket.md> <owner/repo> <pr> [<sha>] [<actor>] — t-7c89: record a merge done outside merge-pr, the way merge-pr
+# does (merged:, the github.md trail, the github.merged event). Only when GitHub says the PR is MERGED, it is from this repository,
+# and its head is on origin's base branch. Nothing is written otherwise: the reason goes to stderr and the return is 1. A ticket that
+# already has merged: is left alone (return 0), so a second run, or the board's poll, records once. <actor> (system for the poll)
+# goes on the event.
+_record_merge() {
+  local label="$1" file="$2" repo="$3" pr="$4" sha="${5:-}" actor="${6:-}"
+  local tdir id root info st head base cross mc ph bt err
+  [[ -z "$(get_field "$file" merged)" ]] || return 0
+  tdir="$(dirname "$file")"; id="$(get_field "$file" id)"
+  root="$(git -C "$tdir" rev-parse --show-toplevel)" || { echo "$label: $id is not in a git checkout" >&2; return 1; }
+  info="$(cd / && gh pr view "$pr" --repo "$repo" --json state,headRefOid,baseRefName,isCrossRepository,mergeCommit \
+    --jq '[.state, .headRefOid, .baseRefName, .isCrossRepository, .mergeCommit.oid] | map(if . == null or . == "" then "-" else tostring end) | @tsv' 2>&1)" \
+    || { echo "$label: gh could not read PR #$pr on $repo: $info" >&2; return 1; }
+  IFS=$'\t' read -r st head base cross mc <<< "$info"
+  [[ "$st" == MERGED ]] || { echo "$label: GitHub says PR #$pr is $st, not merged; nothing recorded" >&2; return 1; }
+  [[ "$cross" == false ]] || { echo "$label: PR #$pr comes from a fork; nothing recorded" >&2; return 1; }
+  _branch_ok "$base" && [[ "$head" =~ ^[0-9a-f]{40}$ ]] || { echo "$label: GitHub gave an unusable base or head for PR #$pr; nothing recorded" >&2; return 1; }
+  err="$(git -C "$root" fetch -q origin "refs/heads/$base" < /dev/null 2>&1)" \
+    && bt="$(git -C "$root" rev-parse FETCH_HEAD)" \
+    && err="$(git -C "$root" fetch -q origin "refs/pull/$pr/head" < /dev/null 2>&1)" \
+    && ph="$(git -C "$root" rev-parse FETCH_HEAD)" \
+    || { echo "$label: could not fetch $base and PR #$pr's head from origin: $err" >&2; return 1; }
+  [[ "$ph" == "$head" ]] || { echo "$label: PR #$pr's head on origin is not the head GitHub reports; nothing recorded" >&2; return 1; }
+  git -C "$root" merge-base --is-ancestor "$head" "$bt" \
+    || { echo "$label: GitHub says PR #$pr is merged but its head ${head:0:8} is not on $base; nothing recorded" >&2; return 1; }
+  [[ "$mc" != - ]] || mc=""
+  sha="${sha:-$mc}"
+  CANON_EVENT_ACTOR="$actor" canon_event github.merged tkt "$root" "ticket=$id" "pr=$pr"
+  set_or_add_field "$file" merged "${sha:-PR #$pr}"
+  _gh_trail "$tdir" merged "PR: #$pr" "merge commit: ${sha:-unknown}" "base: $base" "recorded by: $label"
+  echo "$label: recorded PR #$pr as merged into $base${sha:+ ($sha)}"
+}
+
+# cmd_merged <id> --pr N [--sha S] — t-7c89: the terminal path for a PR merged outside merge-pr (by hand, or on GitHub).
+cmd_merged() {
+  local id="" pr="" sha=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --pr)  pr="${2:-}"; shift 2 || { echo "Error: --pr needs a number" >&2; exit 1; } ;;
+      --sha) sha="${2:-}"; shift 2 || { echo "Error: --sha needs a commit" >&2; exit 1; } ;;
+      -*)    echo "Unknown option: $1" >&2; exit 1 ;;
+      *)     [[ -z "$id" ]] && id="$1"; shift ;;
+    esac
+  done
+  [[ -n "$id" && -n "$pr" ]] || { echo "Usage: tkt merged <id> --pr N [--sha S]" >&2; exit 1; }
+  [[ "$pr" =~ ^[0-9]+$ ]] || { echo "merged: --pr takes a PR number" >&2; exit 1; }
+  [[ -z "$sha" || "$sha" =~ ^[0-9a-f]{7,40}$ ]] || { echo "merged: --sha takes a commit hash" >&2; exit 1; }
+  local file tdir root repo; file="$(find_ticket "$id")"; tdir="$(dirname "$file")"; id="$(get_field "$file" id)"
+  root="$(git -C "$tdir" rev-parse --show-toplevel)" || exit 1
+  repo="$(_gh_origin_repo "$root" merged)" || exit 1
+  command -v gh >/dev/null 2>&1 || { echo "merged: needs the GitHub CLI: install gh, then run: gh auth login" >&2; exit 1; }
+  if [[ -n "$(get_field "$file" merged)" ]]; then echo "merged: $id already has merged: $(get_field "$file" merged); nothing changed"; return 0; fi
+  _record_merge merged "$file" "$repo" "$pr" "$sha" || exit 1
 }
 
 # cmd_pr_ready <id> [--pr N] — t-a463: mark the ticket's own open, same-repo DRAFT PR ready (`gh pr ready`), so merge-pr can merge it. The board's
@@ -2125,6 +2184,13 @@ cmd_github_status() {
       [[ $prc == 0 ]] && trk=true
     fi
   fi
+  # t-7c89: a PR GitHub says is merged that this ticket has no merged: for (merged by hand, or on GitHub): record it once, as the
+  # system. A failed check writes nothing and is returned as a warning, never as a failed status.
+  local warn=""
+  if [[ -z "$merged" && "$pst" == MERGED && "$pr" =~ ^[0-9]+$ ]]; then
+    if warn="$(_record_merge github-status "$file" "$repo" "$pr" "" system 2>&1 >/dev/null)"; then warn=""; merged="$(get_field "$file" merged)"
+    else warn="$(printf '%s' "${warn%%$'\n'*}" | sed 's/^github-status: //')"; fi
+  fi
   if [[ -n "$merged" || "$pst" == MERGED ]]; then stage=merged
   elif [[ "$verdict" == pass ]] && { $match || $late; } && [[ "$(get_field "$file" status)" == closed ]]; then stage=results-in
   elif $branch || $trk; then stage=results-ready
@@ -2157,13 +2223,14 @@ cmd_github_status() {
   mirrors="$(git -C "$root" config --get-all canon.mirror 2>/dev/null || true)"
   while IFS= read -r m; do [[ -n "$m" ]] && { mj+="$sep$(json_str "$m")"; sep=,; }; done <<< "$mirrors"
   if $json; then
-    printf '{"id":%s,"issue":%s,"stage":%s,"pr":%s,"pr_state":%s,"pr_head":%s,"results_branch":%s,"branch":%s,"mirrors":[%s],"verdict":%s,"graded_head":%s,"graded_matches_pr":%s,"merged":%s,"land":%s,"close_here":%s,"landed":%s,"issue_updated":%s}\n' \
+    printf '{"id":%s,"issue":%s,"stage":%s,"pr":%s,"pr_state":%s,"pr_head":%s,"results_branch":%s,"branch":%s,"mirrors":[%s],"verdict":%s,"graded_head":%s,"graded_matches_pr":%s,"merged":%s,"land":%s,"close_here":%s,"landed":%s,"issue_updated":%s,"warning":%s}\n' \
       "$(json_str "$id")" "$(json_str "$gh")" "$(json_str "$stage")" "$(json_num "$pr" null)" \
       "$([[ -n "$pst" ]] && json_str "$pst" || echo null)" "$([[ -n "$phead" ]] && json_str "$phead" || echo null)" "$branch" \
       "$([[ -n "$sb" ]] && json_str "$sb" || echo null)" "$mj" \
       "$([[ "$verdict" != - ]] && json_str "$verdict" || echo null)" "$([[ "$graded" != - ]] && json_str "$graded" || echo null)" "$match" \
       "$([[ -n "$merged" ]] && json_str "$merged" || echo null)" "$land" "$close_here" \
-      "$([[ -n "$landed" ]] && json_str "$landed" || echo null)" "$([[ -n "$iupd" ]] && json_str "$iupd" || echo null)"
+      "$([[ -n "$landed" ]] && json_str "$landed" || echo null)" "$([[ -n "$iupd" ]] && json_str "$iupd" || echo null)" \
+      "$([[ -n "$warn" ]] && json_str "$warn" || echo null)"
   else
     echo "$id · $gh · $stage"
     [[ -n "$pr" ]] && echo "  PR #$pr ($pst) head $phead"
@@ -2172,6 +2239,7 @@ cmd_github_status() {
     [[ -n "$sb" ]] && echo "  $sb is on origin with no PR: tkt open-pr $id"
     [[ "$verdict" != - ]] && echo "  evaluator: $verdict on ${graded}$($match && echo ' (the PR head)' || { $late && echo ' (the PR head plus late docs)'; } || echo '')"
     [[ -n "$merged" ]] && echo "  merged: $merged"
+    [[ -n "$warn" ]] && echo "  warning: $warn"
   fi
   return 0
 }
@@ -2906,6 +2974,9 @@ Commands:
   land <id> [--pr N] [--fix] | land <id> --finish
                             Close an imported cloud ticket here: a worktree at the PR head,
                             the ticket bound to it; --finish after sprint complete removes it.
+  merged <id> --pr N [--sha S]
+                            Record a PR merged outside merge-pr: checks GitHub says MERGED and its head is on the
+                            base, then writes merged:, the github.md trail and the github.merged event.
   github-status <id> [--json]
                             Where a ticket sent to GitHub stands: sent, pr-open,
                             results-ready, results-in or merged (read-only). While it is
@@ -2965,6 +3036,7 @@ main() {
     worktree-reset) cmd_worktree_reset "$@" ;;
     take-back)      cmd_take_back "$@" ;;
     pr-ready)       cmd_pr_ready "$@" ;;
+    merged)         cmd_merged "$@" ;;
     github-status)  cmd_github_status "$@" ;;
     export)         cmd_export "$@" ;;
     import-results) cmd_import_results "$@" ;;

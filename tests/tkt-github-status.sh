@@ -30,6 +30,8 @@ printf '%s\n' "$*" >> "$STUB_LOG"
 [[ "$1 $2" == "issue view" && -n "${STUB_ISSUEFAIL:-}" ]] && { echo "HTTP 502: issue" >&2; exit 1; }
 [[ "$1 $2" == "issue view" ]] && { cat "$STUB_W/issue" 2>/dev/null || echo 2026-10-20T10:00:00Z; exit 0; }
 [[ "$1 $2" == "pr view" && "${STUB_CROSS:-}" == fail ]] && { echo "HTTP 502: pr view" >&2; exit 1; }
+# t-7c89: _record_merge's read of a merged PR (state, head, base, fork flag, merge commit).
+[[ "$1 $2" == "pr view" && "$*" == *headRefOid* ]] && { printf '%s\tHEADSHA\tmain\tfalse\tmergesha1\n' "${STUB_RM_STATE:-MERGED}" | sed "s/HEADSHA/$(cat "$STUB_W/rmhead")/"; exit 0; }
 [[ "$1 $2" == "pr view" ]] && {
   [[ "$*" =~ ^pr\ view\ [0-9]+\ --repo\ acme/app\ --json\ isCrossRepository\ --jq\ \.isCrossRepository$ ]] || { echo "bad PR question: $*" >&2; exit 9; }
   echo "${STUB_CROSS:-false}"; exit 0; }
@@ -183,4 +185,19 @@ done
 # Mirrors come from git config canon.mirror, in order.
 git config --add canon.mirror public; git config --add canon.mirror backup
 assert_eq "branch|claude/brave-x1|[\"public\",\"backup\"]" "$(bs)"
+# t-7c89: a PR GitHub says is merged, with no merged: on the ticket, is recorded once by the poll itself; a failed check writes
+# nothing and comes back as a warning, the stage unchanged.
+sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; printf '24\tMERGED\t%s\n' "$HEAD7" > "$W/prs"
+git push -q origin "+$HEAD7:refs/pull/24/head"
+git -C "$W/c" commit -q --allow-empty -m "not on main"; OFF="$(git -C "$W/c" rev-parse HEAD)"; git -C "$W/c" push -q origin "+$OFF:refs/pull/24/head"
+printf '%s' "$OFF" > "$W/rmhead"; gt=".tickets/$id/github.md"; blocks="$(grep -c '^## ' "$gt" 2>/dev/null || echo 0)"
+wj() { "$TKT" github-status "$id" --json | node -e 'const j=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write([j.stage,j.merged,j.warning].join("|"))'; }
+assert_contains "$(wj)" "merged||"; assert_contains "$(wj)" "is not on main; nothing recorded"
+grep -q '^merged:' "$f" && fail "a failed check wrote merged:"
+[[ "$(grep -c '^## ' "$gt" 2>/dev/null || echo 0)" == "$blocks" ]] || fail "a failed check wrote the trail"
+printf '%s' "$HEAD7" > "$W/rmhead"; git push -q origin "+$HEAD7:refs/pull/24/head"
+assert_eq "merged|mergesha1|" "$(wj)"
+grep -q '^merged: mergesha1$' "$f" || fail "the poll did not write merged:"
+assert_eq "$((blocks + 1))" "$(grep -c '^## ' "$gt")"
+assert_eq "merged|mergesha1|" "$(wj)"; assert_eq "$((blocks + 1))" "$(grep -c '^## ' "$gt")"   # once
 echo "tkt-github-status: ok"

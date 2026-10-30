@@ -40,6 +40,8 @@ printf '%s\n' "$*" >> "$STUB_LOG"
 case "$1 $2" in
   "pr list")  cat "$STUB_W/prlist" ;;
   "pr view")  [[ -n "${STUB_VIEW_FAIL:-}" && "$*" != *mergeCommit* ]] && { echo "HTTP 502" >&2; exit 1; }
+              if [[ "$*" == *"--json state,headRefOid,baseRefName"* ]]; then   # t-7c89: tkt merged's read of a PR merged outside merge-pr
+                printf '%s\t%s\tmain\t%s\t%s\n' "${STUB_RM_STATE:-MERGED}" "${STUB_HEAD:?}" "${STUB_CROSS:-false}" "${STUB_RM_MC:-mergesha0000000000000000000000000000000000}"; exit 0; fi
               if [[ "$*" == *mergeCommit* ]]; then   # STUB_NO_SHA: GitHub has no merge commit; gh's --jq then prints "null" unless "// empty"
                 if [[ -z "${STUB_NO_SHA:-}" ]]; then echo "mergesha0000000000000000000000000000000000"; elif [[ "$*" != *"// empty"* ]]; then echo null; fi
                 exit 0; fi
@@ -568,3 +570,45 @@ assert_contains "$out" "cannot merge cleanly (mergeable: CONFLICTING, state: DIR
 refuses "a blocked PR (no conflict lines)" "blocked by a branch rule" STUB_MS=BLOCKED -- --pr 9 --check
 [[ "$out" != *"conflicts in"* && "$out" != *"next: tkt land"* ]] || fail "a non-conflict refusal printed conflict lines: $out"
 echo "merge-pr: names the conflicting files and the land --fix next step (t-ca00)"
+
+# t-7c89: --check says when this checkout's main has commits GitHub's main lacks (ahead), and stays quiet when even or behind.
+sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; eval_ok
+bare_main() { git --git-dir="$W/origin.git" rev-parse refs/heads/main; }
+git -C "$P" fetch -q "$W/origin.git" main && git -C "$P" checkout -q main && git -C "$P" reset -q --hard FETCH_HEAD
+out="$("$TKT" merge-pr "$id" --pr 7 --check 2>&1)" || fail "--check (even) failed: $out"
+[[ "$out" != *"aren't on GitHub"* ]] || fail "--check (even) named local commits: $out"
+git -C "$P" commit -q --allow-empty -m "local one"; git -C "$P" commit -q --allow-empty -m "local two"
+out="$("$TKT" merge-pr "$id" --pr 7 --check 2>&1)" || fail "--check (ahead) failed: $out"
+assert_contains "$out" "merge-pr: local main has 2 commits that aren't on GitHub"
+git -C "$P" reset -q --hard HEAD~1
+out="$("$TKT" merge-pr "$id" --pr 7 --check 2>&1)" || fail "--check (ahead by one) failed: $out"
+assert_contains "$out" "merge-pr: local main has 1 commit that aren't on GitHub"
+git -C "$P" reset -q --hard HEAD~1
+git clone -q "$W/origin.git" "$W/ahead" 2>/dev/null; git -C "$W/ahead" commit -q --allow-empty -m "only on GitHub"; git -C "$W/ahead" push -q origin HEAD:main
+out="$("$TKT" merge-pr "$id" --pr 7 --check 2>&1)" || fail "--check (behind) failed: $out"
+[[ "$out" != *"aren't on GitHub"* ]] || fail "--check (behind) named local commits: $out"
+echo "merge-pr --check: local main ahead / even / behind (t-7c89)"
+
+# t-7c89: tkt merged records a PR merged outside merge-pr: GitHub says MERGED and the head is on origin's main; then merged:, the
+# trail and the github.merged event. Any failed check writes nothing.
+git --git-dir="$W/origin.git" update-ref refs/heads/main "$PRHEAD"   # the hand merge: the PR head is now on main
+sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; blocks="$(grep -c '^## ' "$gt")"; before="$(sig)"
+if out="$("$TKT" merged "$id" 2>&1)"; then fail "merged without --pr succeeded"; fi
+assert_contains "$out" "Usage: tkt merged"
+if out="$(STUB_RM_STATE=OPEN "$TKT" merged "$id" --pr 7 2>&1)"; then fail "merged recorded an open PR"; fi
+assert_contains "$out" "is OPEN, not merged"
+if out="$(STUB_CROSS=true "$TKT" merged "$id" --pr 7 2>&1)"; then fail "merged recorded a fork PR"; fi
+git --git-dir="$W/origin.git" update-ref refs/heads/main "$(git --git-dir="$W/origin.git" rev-parse "$PRHEAD^")"
+if out="$("$TKT" merged "$id" --pr 7 2>&1)"; then fail "merged recorded a head that is not on main"; fi
+assert_contains "$out" "is not on main; nothing recorded"
+[[ "$(sig)" == "$before" && "$(grep -c '^## ' "$gt")" == "$blocks" ]] || fail "a refused tkt merged wrote something"
+git --git-dir="$W/origin.git" update-ref refs/heads/main "$PRHEAD"
+out="$("$TKT" merged "$id" --pr 7 2>&1)" || fail "tkt merged failed: $out"
+assert_contains "$out" "recorded PR #7 as merged into main"
+grep -q '^merged: mergesha0000000000000000000000000000000000$' "$f" || fail "merged: was not written"
+assert_contains "$(cat "$gt")" "merge commit: mergesha0000000000000000000000000000000000"
+assert_eq "$((blocks + 1))" "$(grep -c '^## ' "$gt")"
+before="$(sig)"; out="$("$TKT" merged "$id" --pr 7 2>&1)" || fail "second tkt merged failed: $out"
+assert_contains "$out" "already has merged:"
+[[ "$(sig)" == "$before" && "$(grep -c '^## ' "$gt")" == "$((blocks + 1))" ]] || fail "a second tkt merged wrote again"
+echo "tkt merged: records once, refuses without writing (t-7c89)"

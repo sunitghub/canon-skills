@@ -60,6 +60,7 @@ export function ghChipHTML(t) {
   else if (st.stage === 'results-in') text += ' · results in';
   else if (st.stage === 'merging') { const m = mergeById.get(t.id); text += ` · merging… ${mmss(m.elapsed)}`; title = lastLine(m.output) || title; }
   else if (st.stage === 'error') { text += " · can't check"; title = st.output || title; }
+  else if (st.warning) { text += ' · ⚠ merge not recorded'; title = String(st.warning); }   // t-7c89: merged on GitHub, a check failed
   return `<span class="card-gh-chip" data-id="${esc(t.id)}" title="${escAttr(title)}">${esc(text)}</span>`
     + (st.stage === 'merging' ? '' : `<button class="card-gh-takeback" type="button" data-id="${esc(t.id)}" title="Bring this ticket back to work on it here">take back</button>`);
 }
@@ -345,8 +346,11 @@ async function checkAndMerge(t, pr) {
     else if (conflict) { const v = await open; if (v && v.ok) await continueHere(t, pr, true); }
     return;
   }
+  // t-7c89: informational only; the merge works the same.
+  const ahead = ((chk.output || '').match(/local (\S+) has (\d+) commits? that aren't on GitHub/) || []);
+  const aheadNote = ahead[2] ? ` Your local ${ahead[1]} has ${ahead[2]} commit${ahead[2] === '1' ? '' : 's'} that aren't on GitHub. This merge tests and merges the PR without ${ahead[2] === '1' ? 'it' : 'them'}; afterwards, run git pull (or push first).` : '';
   updateDialog({
-    body: 'Running the tests runs the PR\'s code on this machine. Nothing from the PR runs before you press the button.',
+    body: `Running the tests runs the PR's code on this machine. Nothing from the PR runs before you press the button.${aheadNote}`,
     pre: chk.output || '', ok: 'Run tests & merge', cancel: 'Cancel', escape: true,
   }, open.gen);
   const choice = await open;

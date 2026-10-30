@@ -6,6 +6,13 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Added
+- `tkt merged <id> --pr N [--sha S]` records a PR merged outside `merge-pr`: it checks GitHub says MERGED and the head is on the base, then writes `merged:`, the `github.md` trail and the `github.merged` event. The board's GitHub poll (`tkt github-status`) does the same on its own, once, with `actor: system`; when a check fails nothing is written and the card shows a short warning. `sprint-check event` takes `--actor user|agent|system` (t-7c89).
+- Check & merge says when this checkout's main has commits GitHub's main lacks ("Your local main has N commits that aren't on GitHub…"); `merge-pr --check` prints the count (t-7c89).
+
+### Fixed
+- A second `subagent-log.sh` call with the same `--agent-id` replaces that run's row and writes no second `gate.finished`; `sprint gate-cost` counts each agent id once, the later measured row winning. The event keeps the numbers of the first call (t-7c89).
+
 ## [0.31.0] - 2026-10-30
 
 ### Added

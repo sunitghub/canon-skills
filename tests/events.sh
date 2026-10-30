@@ -197,6 +197,14 @@ printf 'evaluator-run-id: 1-2\n\npartial: half done\n' > "$gt/eval-report.md"
 assert_contains "$(event_line gate.finished "$gid")" '"role":"evaluator","ticket":"'"$gid"'","tokens":"","verdict":"partial"'
 (cd "$G" && "$ROOT/tools/subagent-log.sh" --agent-id plain --agent-type general-purpose --ticket "$gid" >/dev/null)
 [[ "$(cat "$EV"/*.jsonl | grep -c '"kind":"gate.finished"')" == 3 ]] || fail "a non-gate subagent run made a gate.finished event"
+# t-7c89: a second log call for the same agent id (the totals arrive late) replaces that run's row and writes no second gate.finished.
+(cd "$G" && "$ROOT/tools/subagent-log.sh" --agent-id reviewer-x --agent-type reviewer --ticket "$gid" --tokens 1500 --minutes 3 >/dev/null)
+[[ "$(cat "$EV"/*.jsonl | grep -c '"kind":"gate.finished"')" == 3 ]] || fail "a repeated agent id made a second gate.finished event"
+assert_eq 1 "$(grep -c '"agent_id":"reviewer-x"' "$G/.claude/subagent-runs.jsonl")"
+grep '"agent_id":"reviewer-x"' "$G/.claude/subagent-runs.jsonl" | grep -q '"tokens":1500' || fail "the later row's numbers did not win"
+# t-7c89: CANON_EVENT_ACTOR=system puts actor:system on an event canon records itself.
+(source "$ROOT/tools/platform-lib.sh"; CANON_EVENT_ACTOR=system canon_event github.merged tkt "$G" "ticket=$gid" pr=7)
+assert_contains "$(event_line github.merged "$gid")" '"actor":"system"'
 # t-ff14: under Claude Code, an evaluator's gate.finished names the agent type of the harness transcript holding its run-id
 # (a fallback shows as general-purpose), and leaves the field out when no transcript holds it.
 FX="$(mktemp -d)"; mkdir -p "$FX/projects/-p/s1/subagents"

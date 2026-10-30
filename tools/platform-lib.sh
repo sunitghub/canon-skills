@@ -75,9 +75,13 @@ canon_event() {
     _CANON_EVENT_BOARD=-
     b="$(board_bin)"; h="$("$b" --help 2>/dev/null)" || h=""
     case "$h" in *"event <kind>"*) _CANON_EVENT_BOARD="$b" ;; esac
+    case "$h" in *"[--actor "*) _CANON_EVENT_ACTOR_OK=1 ;; *) _CANON_EVENT_ACTOR_OK= ;; esac
   fi
   [ "$_CANON_EVENT_BOARD" != - ] || return 0
   root="$(cd "$3" 2>/dev/null && pwd -P)" || root="$3"
-  "$_CANON_EVENT_BOARD" event "$1" --source "$2" --project "$root" "${@:4}" </dev/null >/dev/null 2>&1 || true
+  # t-7c89: CANON_EVENT_ACTOR=system marks a record canon makes itself; a board without --actor writes the line without it.
+  local actor=()
+  [ -z "${CANON_EVENT_ACTOR:-}" ] || [ -z "${_CANON_EVENT_ACTOR_OK:-}" ] || actor=(--actor "$CANON_EVENT_ACTOR")
+  "$_CANON_EVENT_BOARD" event "$1" --source "$2" --project "$root" ${actor[@]+"${actor[@]}"} "${@:4}" </dev/null >/dev/null 2>&1 || true
   return 0
 }
