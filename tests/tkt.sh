@@ -592,7 +592,8 @@ rm -rf "$json_project"
   zid=t-zzz1; mkdir -p "$wt/.tickets/$zid"; printf -- '---\nid: %s\nstatus: open\n---\n# only here\n' "$zid" > "$wt/.tickets/$zid/ticket.md"
   (cd "$wt" && "$TKT" close "$zid" --no-sprint >/dev/null 2>&1)
   [[ ! -e ".tickets/$zid" ]] || fail "copy-back created a folder in main for a ticket main never had"
-  out="$(source "$ROOT/tools/ticket-root.sh"; copy_ticket_back "../$cid" "$wt/.tickets/$cid/ticket.md" 2>&1)"
+  # ".." names a folder that exists under main's .tickets, so only the id check stops it copying a whole worktree root over main's
+  out="$(source "$ROOT/tools/ticket-root.sh"; copy_ticket_back ".." "$wt/.tickets/$cid/ticket.md" 2>&1)"
   assert_eq "" "$out"
   # a project that is not a git repository: the close just closes
   np="$(mktemp -d)"; ( cd "$np"; nid="$("$TKT" create "no git" -t task)"; out="$("$TKT" close "$nid" --no-sprint 2>&1)"; assert_contains "$out" "$nid: closed"; [[ "$out" != *copied* ]] ); rm -rf "$np"
