@@ -54,6 +54,9 @@ assert_eq 0 "$rc"; assert_eq 1 "$(wc -l < "$WORK/state/copy-worktrees" | tr -d '
 [[ "$(cat "$WORK/state/copy-worktrees")" != *wt2* ]] || fail "run-board-spec: the copy lists the source's worktree: $(cat "$WORK/state/copy-worktrees")"
 assert_eq 2 "$(grep -c 'machine-load: worktrees: ' "$WORK/out-worktrees/machine-load.txt")"; assert_contains "$(cat "$WORK/out-worktrees/machine-load.txt")" "wt2"
 git -C "$FAKE" worktree remove --force "$WORK/wt2"
+# a source that is not a git checkout is recorded as unknown, never an empty line that reads as "no worktrees"
+mv "$FAKE/.git" "$WORK/fake-git-aside"; run nogit --runs 1 --browsers chromium --no-guard; mv "$WORK/fake-git-aside" "$FAKE/.git"
+assert_eq 0 "$rc"; assert_contains "$(cat "$WORK/out-nogit/machine-load.txt")" "machine-load: worktrees: unknown"
 
 # a leak exits 2 with the guard skipped, and still 2 when the guard fails (exit 1) too
 RUN_ENV="LEAK=1"; run leak --runs 1 --browsers chromium --no-guard
