@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-29-2026 22:04
+learnings-sweep last run: 10-30-2026 01:46
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-30 | [t-23f6](.tickets/t-23f6/learnings.md) | Most board-spec time was WebKit re-running tests no engine difference can break: tagging the 179 engine-sensitive tests @webkit cut a full run from 36 to 21 min, while the duplicate hunt found only 3 cuts; and a flake fix proven only on a quiet machine proves nothing, prove it under load. | UNPROMOTED |
 | 2026-10-29 | [t-3942](.tickets/t-3942/learnings.md) | Restyling a shared class restyles every element that carries it: the red-on-lead rule left a third `.ck-worktree-warn` note with no lead and no red; grep every user of a class before changing what it means (reviewer). | UNPROMOTED |
 | 2026-10-29 | [t-4371](.tickets/t-4371/learnings.md) | A second guard can hide a missing first one: with the saved ids de-duplicating, a sample that ignored its resume offset still passed; an assertion that disables the other guard (offset only, no ids) is what proves each rule. | UNPROMOTED |
 | 2026-10-29 | [t-0865](.tickets/t-0865/learnings.md) | A test that loads a script's functions with `source <(sed …)` passes on the cloud's Linux bash 5 and loads nothing on macOS bash 3.2: the gate it guards was never run on the Mac until merge (fixed with eval; tests/shell-portability.sh now fails on the pattern). | UNPROMOTED |

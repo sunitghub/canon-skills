@@ -6,6 +6,11 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.30.8] - 2026-10-30
+
+### Changed
+- For contributors: the board spec runs WebKit only on the 179 engine-sensitive tests tagged `@webkit` (Chromium still runs all 619), so a full run takes about 21 minutes instead of 36; the flaky list is empty and the guard refuses an untagged WebKit entry (t-23f6).
+
 ## [0.30.7] - 2026-10-29
 
 ### Changed
