@@ -3,7 +3,8 @@
 # A reviewer's `canon update` in a scratch clone once re-linked the user's registered projects (2026-10-09). The Claude Code Agent
 # tool cannot set a subagent's environment, so the scope is enforced where the damage happens: gate-snapshot.sh `pre` creates a
 # scratch dir and registers it; while one is live, the commands that act on registered projects (canon update, skills.sh
-# add/refresh/remove/init/uninstall, canon uninstall, install.sh) refuse unless HOME and CANON_HOME point inside it.
+# add/refresh/remove/init/uninstall, canon uninstall, install.sh) refuse the user's REAL home and canon home, which `pre` recorded (t-9fb1); a scratch
+# HOME/CANON_HOME (a test's, the gate's own scope) is allowed. A record made before t-9fb1 keeps the old rule (refuse unless both are inside the scope).
 # Stale scopes (a gate that crashed before `post`) expire: older than CANON_GATE_SCOPE_TTL seconds (default 7200) or with the
 # scratch dir gone. No scope registered = no change in behaviour. Sourced; defines functions only.
 
@@ -43,21 +44,22 @@ gate_scope_remove() {
 
 _gate_scope_phys() { local p="$1"; (cd -P "$p" 2>/dev/null && pwd -P) || printf '%s' "$p"; }   # t-9fb1: the physical spelling `pre` records; the guard compares identity (-ef)
 
-_gate_scope_lexnorm() {  # t-9fb1: an absolute path with //, . and .. resolved as text (nothing is looked up, so it works for a path that does not exist)
-  local p="$1" part out="" parts; [[ "$p" == /* ]] || p="$PWD/$p"
+# _gate_scope_resolve <path> — t-9fb1: where the path leads once every missing folder exists as a plain folder (what a later mkdir -p makes), nothing looked up that is
+# not there: walks the components left to right, follows each existing one physically (a symlink to a folder inside the real home included) and pops `..` from the
+# physical path so far. So "$link/nx/../.." with $link -> <real home>/sub resolves to the real home, though nx does not exist yet.
+_gate_scope_resolve() {
+  local p="$1" part cur="/" next parts
+  [[ "$p" == /* ]] || p="$PWD/$p"
   IFS=/ read -ra parts <<< "$p"
   for part in ${parts[@]+"${parts[@]}"}; do
-    case "$part" in ''|.) ;; ..) out="${out%/*}" ;; *) out="$out/$part" ;; esac
+    case "$part" in
+      ''|.) ;;
+      ..) cur="${cur%/*}"; [[ -n "$cur" ]] || cur="/" ;;
+      *)  next="${cur%/}/$part"
+          if [[ -d "$next" ]]; then cur="$(cd -P "$next" 2>/dev/null && pwd -P)" || cur="$next"; else cur="$next"; fi ;;
+    esac
   done
-  printf '%s' "${out:-/}"
-}
-
-_gate_scope_lexphys() {  # t-9fb1: the text-resolved path with its existing part resolved physically (/var -> /private/var), so it is comparable with a recorded physical path
-  local n base suffix="" phys; n="$(_gate_scope_lexnorm "$1")"; base="$n"
-  while [[ ! -d "$base" && "$base" != / && -n "$base" ]]; do suffix="/${base##*/}$suffix"; base="${base%/*}"; done
-  [[ -n "$base" ]] || base=/
-  phys="$(_gate_scope_phys "$base")"; [[ "$phys" == / ]] && phys=""
-  printf '%s%s' "$phys" "${suffix:-${phys:+}}"
+  printf '%s' "$cur"
 }
 
 _gate_scope_under() {  # <path> <dir>: the path is the dir or inside it (raw or physical spelling)
@@ -86,15 +88,20 @@ gate_scope_guard() {
     # cannot touch the user's projects. A record without them (an older version) keeps the old rule: refuse unless both are inside the scope.
     rhome="$(sed -n '/^home=/{s/^home=//p;q;}' "$f")"; rcanon="$(sed -n '/^canon=/{s/^canon=//p;q;}' "$f")"
     if [[ -n "$rhome" && -n "$rcanon" ]]; then
-      # Two checks, so a spelling cannot pass for another folder: -ef (the same device and inode: case on a case-insensitive disk, Unicode form, a symlink, a
-      # trailing slash), and the text with . and .. resolved (a path that does not exist yet, "$HOME/x/..": a later mkdir -p makes x and the same spelling is the real home).
+      # Two checks, so a spelling cannot pass for another folder: -ef (the same device and inode: Unicode form and other case rules on some disks), and the
+      # resolved path (a path that does not exist yet and leads to the real home through .. or a symlink: a later mkdir -p makes it, "$HOME/x/..").
       if [[ -n "$home" && ! "$home" -ef "$rhome" && ! "$chome" -ef "$rcanon" \
-            && "$(_gate_scope_lexphys "$home")" != "$rhome" && "$(_gate_scope_lexphys "$chome")" != "$rcanon" ]]; then continue; fi
+            && "$(_gate_scope_resolve "$home")" != "$rhome" && "$(_gate_scope_resolve "$chome")" != "$rcanon" ]]; then continue; fi
     elif _gate_scope_under "$home" "$dir" && _gate_scope_under "$chome" "$dir"; then continue; fi
     {
       echo "$1: refused. A canon close gate (reviewer/evaluator) is running and its scope is active ($dir)."
-      echo "  While it runs, commands that act on your REAL home and canon home are blocked, so a gate's probe cannot re-link or rewrite your projects (t-b7df);"
-      echo "  a scratch HOME and CANON_HOME (a test, a gate's own scope) are fine. This is not a fault in your install."
+      if [[ -n "$rhome" && -n "$rcanon" ]]; then
+        echo "  While it runs, commands that act on your REAL home and canon home are blocked, so a gate's probe cannot re-link or rewrite your projects (t-b7df);"
+        echo "  a scratch HOME and CANON_HOME (a test, a gate's own scope) are fine. This is not a fault in your install."
+      else
+        echo "  This scope was made by an older canon: until it clears, commands that act on your registered projects are blocked unless HOME and CANON_HOME point inside it (t-b7df)."
+        echo "  This is not a fault in your install."
+      fi
       echo "  It clears when the gate ends (gate-snapshot.sh post), or on its own after ${ttl}s if the gate crashed."
       echo "  Run it again once the gate has finished."
     } >&2

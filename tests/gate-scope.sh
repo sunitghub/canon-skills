@@ -65,6 +65,13 @@ HOME="$realhome//./x/.." CANON_HOME="$sh_/canon" guard && fail "//, . and .. spe
 (cd "$realhome" && HOME="no-such-dir/.." CANON_HOME="$sh_/canon" guard) && fail "a relative nonexistent .. spelling of the real home must be refused"
 HOME="$realhome/a/b/c/../../.." CANON_HOME="$sh_/canon" guard && fail "several nonexistent components then .. back to the real home must be refused"
 HOME="$sh_/home" CANON_HOME="$realhome/.canon/a/b/../.." guard && fail "several nonexistent components then .. back to the real canon home must be refused"
+# a symlink into a folder INSIDE the real home, then a missing folder, then ..: the kernel follows the link before it pops .., so this is the real home
+mkdir -p "$realhome/sub" "$realhome/.canon/sub"; ln -s "$realhome/sub" "$scratch/link2"; ln -s "$realhome/.canon/sub" "$scratch/link3"
+HOME="$scratch/link2/nx/../.." CANON_HOME="$sh_/canon" guard && fail "a symlinked prefix, a missing folder and .. that lead to the real home must be refused"
+HOME="$sh_/home" CANON_HOME="$scratch/link3/nx/../.." guard && fail "the same through a symlink into the real canon home must be refused"
+HOME="$scratch/link2/.." CANON_HOME="$sh_/canon" guard && fail "a symlink into the real home then .. (no missing folder) is the real home and must be refused"
+HOME="$scratch/link2/../.." CANON_HOME="$sh_/canon" guard || fail "the folder that holds the real home is not the real home and must pass"
+HOME="$scratch/link2" CANON_HOME="$sh_/canon" guard || fail "a symlink to a folder inside the real home is not the real home and must pass"
 # a scratch path that does not exist yet and does not lead to the real home is fine
 HOME="$sh_/deep/a/b/c" CANON_HOME="$sh_/deep/a/b/c/.canon" guard || fail "a deep nonexistent scratch path must pass"
 HOME="$realhome/a/b/c" CANON_HOME="$realhome/a/b/c/.canon" guard || fail "a (nonexistent) folder INSIDE the real home is not the real home and must pass"
