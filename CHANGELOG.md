@@ -6,9 +6,13 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
-## [0.30.8] - 2026-10-30
+## [0.31.0] - 2026-10-30
+
+### Added
+- `sprint token-spend [--last N] [--ticket <id>]`: where each closed sprint's tokens went (planning, implementation, gates) by model, with fresh input, cache reads and output kept apart. It reads Claude Code's own transcripts read-only and stores nothing; under other harnesses it says there is no data. First result over 40 sprints: the gates phase is 59% of fresh + output tokens (t-63a7).
 
 ### Changed
+- `sprint gate-cost` groups rows logged under the old `high` / `highrisk` tier names as `high-risk` (t-63a7).
 - For contributors: the board spec runs WebKit only on the 179 engine-sensitive tests tagged `@webkit` (Chromium still runs all 619), so a full run takes about 21 minutes instead of 36; the flaky list is empty and the guard refuses an untagged WebKit entry (t-23f6).
 
 ## [0.30.7] - 2026-10-29
