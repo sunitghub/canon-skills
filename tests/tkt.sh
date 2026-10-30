@@ -608,6 +608,6 @@ rm -rf "$json_project"
   mkdir -p "$wt3/.tickets"; cp -R ".tickets/$uid" "$wt3/.tickets/$uid"; mkdir "$wt3/.tickets/$uid/sub"; echo x > "$wt3/.tickets/$uid/sub/eval-report.md"
   echo "a file where the copy needs a folder" > ".tickets/$uid/sub"   # the copy cannot be made, as root or not
   rc=0; out="$(cd "$wt3" && "$TKT" close "$uid" --no-sprint 2>&1)" || rc=$?
-  assert_eq 0 "$rc"; assert_contains "$out" "warning: could not copy $uid back to"
+  assert_eq 0 "$rc"; assert_contains "$out" "warning: could not copy $uid back to"; assert_contains "$out" "(is the folder writable?)"
 )
 echo "tkt: close copies a worktree's own ticket copy back to main (t-3abc)"

@@ -202,14 +202,15 @@ copy_ticket_back() {
   cp "$main/$id/ticket.md" "$old" 2>/dev/null || : > "$old"
   if ! { (cd "$own/$id" && find . -type f ! -name '.cockpit-*' -print0) \
          | while IFS= read -r -d '' f; do mkdir -p "$main/$id/$(dirname "$f")" && cp -p "$own/$id/$f" "$main/$id/$f" || exit 1; done; }; then
-    echo "warning: could not copy $id back to $main/$id" >&2; rm -f "$old"; return 0
+    echo "warning: could not copy $id back to $main/$id: a file could not be written there (is the folder writable?)" >&2; rm -f "$old"; return 0
   fi
   for k in github runs merged cloud_status; do
     val="$(grep -m1 "^$k:" "$old" || true)"; [[ -n "$val" ]] || continue
     awk -v key="$k" -v line="$val" 'BEGIN { n = 0; rep = 0 }
       /^---$/ { n++; if (n == 2 && !rep) { print line; rep = 1 } }
       n == 1 && index($0, key ":") == 1 && !rep { print line; rep = 1; next }
-      { print }' "$main/$id/ticket.md" > "$main/$id/ticket.md.tmp" && mv "$main/$id/ticket.md.tmp" "$main/$id/ticket.md"
+      { print }' "$main/$id/ticket.md" > "$main/$id/ticket.md.tmp" && mv "$main/$id/ticket.md.tmp" "$main/$id/ticket.md" \
+      || { echo "warning: could not restore main's $k line in $main/$id/ticket.md: the file could not be rewritten" >&2; rm -f "$main/$id/ticket.md.tmp"; }
   done
   rm -f "$old"
   echo "copied $id's closed folder back to $main/$id"
