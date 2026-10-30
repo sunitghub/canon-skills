@@ -16,6 +16,7 @@ mkdir -p src .claude .tickets/t-x; echo 'a' > src/app.js; echo 'k' > keep.txt; e
 printf '.claude/\n' > .gitignore   # .tickets/ is tracked here, as in a consumer project
 git add -A >/dev/null && git commit -qm base
 snap="$scratch/snap"
+export CANON_GATE_SCOPE_DIR="$scratch/registry"   # t-b7df: pre registers a gate scope; none of these runs ever posts one
 orig="$(git branch --show-current)"   # the default branch name depends on the machine
 
 take() { "$TOOL" pre "$snap" > "$scratch/pre.out" 2>&1; }

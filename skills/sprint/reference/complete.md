@@ -285,6 +285,7 @@ Opus` default, scoped only to the two close-gate dispatches below.
   sub-agents** (by design), so dispatch each fresh-context gate as a `pi -p` subprocess from
   Bash:
   `pi -p --no-session --no-context-files --no-skills --no-prompt-templates --no-extensions --no-mcp --tools read,bash,grep,find,ls --model "<provider>/<current session model>" "<gate prompt>"`.
+  **Prefix it with the scope env** `gate-snapshot.sh pre` wrote beside the snapshot (`env $(cat .tickets/<id>/gate-snapshot.txt.scope) pi -p …`: `CANON_HOME` and `TMPDIR` in the gate's scratch scope, t-b7df): a subprocess is the one dispatch whose environment the orchestrator can set. Leave `HOME` alone (pi's own config lives there); the guard still refuses `canon update` on a real `HOME`.
   `-p`/`--print` is fresh — it does not load prior session memory (verified: a bare `pi -p`
   reports `memory=no`) — and `--no-session` keeps it ephemeral. The **model MUST be passed
   explicitly and set to the current pi session model**: a bare `pi -p` runs on pi's
