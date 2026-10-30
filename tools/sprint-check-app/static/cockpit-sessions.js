@@ -182,6 +182,12 @@ function ensureTicketTitles(views){
       .catch(()=>ticketTitles.set(key,''));
   }
 }
+// t-d00c: the ambient meter line: cache %, LLM calls, tool calls, sub-agents. Hidden (not 0) when the daemon sends none.
+export function meterText(m){
+  if(!m || typeof m!=='object') return '';
+  const n=v=>(typeof v==='number' && isFinite(v) && v>=0) ? Math.round(v) : 0;
+  return n(m.cache_pct)+'% cache \u00b7 '+n(m.llm_calls)+' calls \u00b7 '+n(m.tool_calls)+' tools \u00b7 '+n(m.sub_agents)+' sub-agents';
+}
 export function sessionView(s){
   s=s||{};
   const state=(typeof s.state==='string' && STATE_LABEL[s.state]) ? s.state : (s.status==='needs-you' ? 'needs-you' : 'running');
@@ -203,6 +209,7 @@ export function sessionView(s){
     scrTitle:SCRATCH_ID_RE.test(ticket)?String(s.title||(s.agent==='term'?'Terminal':'')).slice(0,80):'',   // t-f553: its user-given title
     proot, name:proot.split(/[\\/]/).filter(Boolean).pop()||proot,
     agent:String(s.agent||''), cwd:String(s.cwd||''), sid:String(s.session||''),
+    meter:meterText(s.meter),   // t-d00c: '' on a daemon or agent without one
     shared:s.shared===true,   // t-5a4b: another live session works in this same folder, and there is no git to keep them apart
   };
 }
@@ -285,7 +292,7 @@ export function renderSessionSurfaces(){
     `<div class="ag-proj" title="${escAttr(g[0].proot)}"><b>${esc(g[0].projName||g[0].name)}</b><span>${g.length}</span>${g[0].pid?`<button class="ag-plus" data-scratch="${escAttr(g[0].pid)}" title="New scratch session in ${escAttr(g[0].projName||g[0].name)}" aria-label="New scratch session">+</button>`:''}</div>`+g.map(v=>{
       const title=ticketTitle(v.pid,v.ticket), time=sessionTime(v);
       const inView=!!v.pid && v.pid===activeTab && (v.ticket||v.scratch)===boardActive.get(activeTab) && document.getElementById('view-'+activeTab)?.classList.contains('active');   // t-7456
-      return `<button class="ag-row st st-${v.state}${inView?' on':''}"${inView?' aria-current="true"':''} data-i="${rail.indexOf(v)}" title="${escAttr((title?title+' \u2014 ':'')+v.label+(v.signal?(' \u00b7 state from: '+v.signal):''))}">`+
+      return `<button class="ag-row st st-${v.state}${inView?' on':''}"${inView?' aria-current="true"':''} data-i="${rail.indexOf(v)}" title="${escAttr((title?title+' \u2014 ':'')+v.label+(v.meter?(' \u00b7 '+v.meter):'')+(v.signal?(' \u00b7 state from: '+v.signal):''))}">`+
       `<span class="sdot"></span>`+
       `<span class="ag-t1">${v.ticket?`<span class="ag-id">${esc(v.ticket)}</span>${esc(title)}`:(v.scratch?`${scratchIcon(v.agent)}${esc(v.scrTitle||'Scratch session')}`:'<span class="ag-none">no ticket</span>')}</span>`+
       `<span class="ag-s">${esc(agentLine(v))}</span>`+

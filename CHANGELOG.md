@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Added
+- Cockpit: an ambient per-session token meter (cache % of input, LLM calls, tool calls, sub-agents) in the session's top bar and the Agents sidebar tooltip, read from the claude transcripts token-spend already uses; nothing new is stored and there is no setting (t-d00c)
+
 ## [0.31.0] - 2026-10-30
 
 ### Added

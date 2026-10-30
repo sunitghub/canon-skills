@@ -1105,14 +1105,15 @@ func (s *server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		Status      string `json:"status"`
 		Started     string `json:"started"`
 		// t-824e: the one place session state is decided; the pages only display it.
-		State         string `json:"state"`           // needs-you | done | working | idle
-		StateSecs     int64  `json:"state_secs"`      // seconds in this state (idle: since last activity)
-		IdleSecs      int64  `json:"idle_secs"`       // seconds since terminal output or input
-		IdleLimitSecs int64  `json:"idle_limit_secs"` // the reaper's timeout for this session
-		Signal        string `json:"signal"`          // where needs-you comes from: hook | copilot-menu | activity
-		Title         string `json:"title,omitempty"` // t-f553: a scratch session's user-given title
-		Attached      int    `json:"attached"`        // t-61c7: browser streams attached right now
-		Shared        bool   `json:"shared"`          // t-5a4b: another live session works in the same folder, and it has no git to keep them apart
+		State         string        `json:"state"`           // needs-you | done | working | idle
+		StateSecs     int64         `json:"state_secs"`      // seconds in this state (idle: since last activity)
+		IdleSecs      int64         `json:"idle_secs"`       // seconds since terminal output or input
+		IdleLimitSecs int64         `json:"idle_limit_secs"` // the reaper's timeout for this session
+		Signal        string        `json:"signal"`          // where needs-you comes from: hook | copilot-menu | activity
+		Title         string        `json:"title,omitempty"` // t-f553: a scratch session's user-given title
+		Attached      int           `json:"attached"`        // t-61c7: browser streams attached right now
+		Shared        bool          `json:"shared"`          // t-5a4b: another live session works in the same folder, and it has no git to keep them apart
+		Meter         *sessionMeter `json:"meter,omitempty"` // t-d00c: cache %, LLM/tool calls, sub-agents from the claude transcript
 	}
 	// Lock order is s.mu (outer) then se.mu (inner), matching handleShutdown.
 	s.mu.Lock()
@@ -1161,6 +1162,9 @@ func (s *server) handleSessions(w http.ResponseWriter, r *http.Request) {
 	}
 	// idleTimeoutFor resolves symlinks on disk — done outside the locks.
 	for i := range out {
+		if out[i].Agent == "claude" {
+			out[i].Meter = meterFor(out[i].Session) // t-d00c: reads transcripts, so outside the locks
+		}
 		out[i].IdleLimitSecs = int64(s.idleTimeoutFor(out[i].ProjectRoot, out[i].Cwd).Seconds())
 	}
 	w.Header().Set("Content-Type", "application/json")
