@@ -74,7 +74,7 @@ before the reviewer and evaluator run:
 1. **Fix a test** — state the expectation independently (see README's "test that could not fail"
    example) so the mutant fails it, then re-run the sweep; or
 2. **Delete a redundant check** the mutant shows does nothing; or
-3. **Mark it equivalent, with a reason** (why no input can tell the mutant from the code).
+3. **Mark it equivalent, with a reason** (why no input can tell the mutant from the code): the reason is a probe showing no input reaches the difference, not an argument (t-2af0; class: equivalent-mutant-unproven).
 
 Append the triage under the tool's table in `.tickets/<id>/mutation-report.md`:
 

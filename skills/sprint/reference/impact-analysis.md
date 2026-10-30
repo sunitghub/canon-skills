@@ -30,6 +30,7 @@ Useful questions:
 - Is there an undo path, or is this permanent? *(Reversibility)*
 - Which other features, tables, or queues read the data this modifies? *(Cascade risk)*
 - Does this touch anything that sends messages, emails, or notifications externally? *(Audience, Reversibility)*
+- What did the old shape check for free (git's untracked-file refusal, mtime staleness, process identity by path)? List each and rebuild it in the new shape with a test. *(Reversibility, Cascade risk)* (t-50f7, t-bdb0; class: implicit-check-lost-in-restructure)
 
 Ask only when relevant:
 - Does this action have a confirmation step — and is that step enforced server-side?

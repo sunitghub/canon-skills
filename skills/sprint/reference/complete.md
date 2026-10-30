@@ -512,6 +512,7 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    auto-retries on a stubborn finding — it does not change `_gate_eval_report_verdict`'s close
    gate mechanics or add a second enforcement layer on top of `eval_override`, which stays the
    sole, intentionally human-only escape hatch.
+   Before re-dispatching after a fail that names N untested lines, sweep every changed line of that kind (`git diff -U0 <base> | grep echo`), not only the N (t-9a2d; class: fix-only-named-findings).
 
    Invoke a fresh Agent subagent with a clean context, per the model-tier check above. Pass
    `subagent_type: "canon-evaluator"` (`agents/canon-evaluator.md`), with the same `model`
