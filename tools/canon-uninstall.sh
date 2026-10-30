@@ -29,7 +29,7 @@ source "$SCRIPT_DIR/platform-lib.sh"
 # shellcheck source=cockpit-stop-lib.sh
 source "$SCRIPT_DIR/cockpit-stop-lib.sh"
 # shellcheck source=pkg-lib.sh
-source "$SCRIPT_DIR/gate-scope-lib.sh"   # t-b7df: gate_scope_guard
+[[ -f "$SCRIPT_DIR/gate-scope-lib.sh" ]] && source "$SCRIPT_DIR/gate-scope-lib.sh" || gate_scope_guard() { return 0; }   # t-b7df (as in tools/canon)
 source "$SCRIPT_DIR/pkg-lib.sh"   # pkg_is_data: what the home may hold besides the packages; pkg_lock, pkg_in_use
 
 usage() {

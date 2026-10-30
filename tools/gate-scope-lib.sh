@@ -31,7 +31,7 @@ gate_scope_create() {
 gate_scope_remove() {
   local f dir; f="$(gate_scope_registry)/$(_gate_scope_key "$1")"
   [[ -f "$f" ]] || return 0
-  dir="$(sed -n 's/^dir=//p' "$f" | head -1)"
+  dir="$(sed -n 's/^dir=//p;T;q' "$f")"
   [[ -n "$dir" && -d "$dir" && "$(basename "$dir")" != / ]] && rm -rf "$dir"
   rm -f "$f"
 }
@@ -52,7 +52,7 @@ gate_scope_guard() {
   now="$(date +%s)"; ttl="${CANON_GATE_SCOPE_TTL:-7200}"
   for f in "$reg"/*; do
     [[ -f "$f" ]] || continue
-    dir="$(sed -n 's/^dir=//p' "$f" | head -1)"; created="$(sed -n 's/^created=//p' "$f" | head -1)"
+    dir="$(sed -n 's/^dir=//p;T;q' "$f")"; created="$(sed -n 's/^created=//p;T;q' "$f")"
     # stale: scratch dir gone, unreadable record, or older than the TTL (a gate that crashed before `post`)
     if [[ -z "$dir" || ! -d "$dir" || ! "$created" =~ ^[0-9]+$ ]] || (( now - created > ttl )); then
       [[ -n "$dir" && -d "$dir" && "$created" =~ ^[0-9]+$ ]] && rm -rf "$dir"

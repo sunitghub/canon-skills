@@ -20,7 +20,8 @@ done
 SCRIPT_DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
 # shellcheck source=cockpit-launch-lib.sh
 source "$SCRIPT_DIR/cockpit-launch-lib.sh"
-source "$SCRIPT_DIR/gate-scope-lib.sh"   # t-b7df: gate_scope_guard
+# t-b7df: gate_scope_guard. A tools/ folder copied without the lib (a test fixture, a partial copy) has no gate scope to enforce.
+[[ -f "$SCRIPT_DIR/gate-scope-lib.sh" ]] && source "$SCRIPT_DIR/gate-scope-lib.sh" || gate_scope_guard() { return 0; }
 source "$SCRIPT_DIR/ticket-root.sh"   # t-b2ff: folder_guard_reason, require_project_folder
 
 usage() {
