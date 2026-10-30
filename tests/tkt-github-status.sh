@@ -6,6 +6,7 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 
 W="$(cd "$(mktemp -d)" && pwd -P)"; trap 'rm -rf "$W"' EXIT
+use_fresh_board "$W/board"   # t-7c89: the poll's github.merged event goes through the board binary (built before HOME moves)
 export HOME="$W/home" XDG_CONFIG_HOME="$W/home/.config"; mkdir -p "$HOME"
 git config --global user.name t; git config --global user.email t@e; git config --global init.defaultBranch main
 git init -q --bare "$W/origin.git"; P="$W/p"; git clone -q "$W/origin.git" "$P" 2>/dev/null; cd "$P"
@@ -206,4 +207,7 @@ assert_eq "merged|mergesha1|" "$(wj)"
 grep -q '^merged: mergesha1$' "$f" || fail "the poll did not write merged:"
 assert_eq "$((blocks + 1))" "$(grep -c '^## ' "$gt")"
 assert_eq "merged|mergesha1|" "$(wj)"; assert_eq "$((blocks + 1))" "$(grep -c '^## ' "$gt")"   # once
+# the poll wrote one github.merged event for the ticket, as the system, across all the polls above (failed, open, recorded, repeated)
+[[ "$(cat "$CANON_HOME"/events/*.jsonl | grep -F '"kind":"github.merged"' | grep -cF "\"ticket\":\"$id\"")" == 1 ]] || fail "the poll did not write exactly one github.merged event"
+gm="$(event_line github.merged "$id")"; assert_contains "$gm" '"actor":"system"'; assert_contains "$gm" '"pr":"24"'; assert_contains "$gm" '"source":"tkt"'
 echo "tkt-github-status: ok"
