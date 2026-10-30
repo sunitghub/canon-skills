@@ -30,6 +30,7 @@ assert_contains "$(cat "$snap.scope")" "TMPDIR=$scope/tmp"   # what a pi gate is
 # the real-path canon update is rejected, and says why and when it clears (a concurrent run of the user's own gets this message)
 out="$(HOME="$realhome" CANON_HOME="$realhome/.canon" run_fail "$CANON" update)"
 assert_contains "$out" "refused"; assert_contains "$out" "clears when the gate ends"
+assert_contains "$out" "REAL home and canon home"; assert_contains "$out" "a scratch HOME and CANON_HOME"   # t-9fb1: the message says what is blocked and what is fine
 out="$(HOME="$realhome" CANON_HOME="$realhome/.canon" run_fail "$ROOT/tools/skills.sh" refresh)"
 assert_contains "$out" "refused"
 out="$(HOME="$realhome" CANON_HOME="$realhome/.canon" run_fail "$ROOT/tools/canon-uninstall.sh" --yes)"
@@ -60,6 +61,14 @@ out="$(HOME="$sh_/home" CANON_HOME="$sh_/canon" "$ROOT/tools/skills.sh" remove n
 f="$(ls "$reg"/*)"; cp "$f" "$scratch/rec.keep"; sed -i.bak '/^home=/d;/^canon=/d' "$f"; rm -f "$f.bak"
 HOME="$sh_/home" CANON_HOME="$sh_/canon" guard && fail "an old-format record must keep the old rule (scratch outside the scope is refused)"
 HOME="$scope/home" CANON_HOME="$scope/canon" guard || fail "an old-format record must let the gate's own scope through"
+# the old rule needs BOTH inside the scope: one inside and one outside is refused
+HOME="$scope/home" CANON_HOME="$sh_/canon" guard && fail "old rule: HOME in the scope but CANON_HOME outside must be refused"
+HOME="$sh_/home" CANON_HOME="$scope/canon" guard && fail "old rule: CANON_HOME in the scope but HOME outside must be refused"
+# a record naming only one of home= / canon= is not a new-format record: the old rule applies too
+cp "$scratch/rec.keep" "$f"; sed -i.bak '/^canon=/d' "$f"; rm -f "$f.bak"
+HOME="$sh_/home" CANON_HOME="$sh_/canon" guard && fail "a record with only home= must keep the old rule"
+cp "$scratch/rec.keep" "$f"; sed -i.bak '/^home=/d' "$f"; rm -f "$f.bak"
+HOME="$sh_/home" CANON_HOME="$sh_/canon" guard && fail "a record with only canon= must keep the old rule"
 cp "$scratch/rec.keep" "$f"
 grep -q "^home=$(cd -P "$realhome" && pwd -P)\$" "$f" && grep -q "^canon=$(cd -P "$realhome/.canon" && pwd -P)\$" "$f" || fail "pre did not record the real home and canon home: $(cat "$f")"
 
