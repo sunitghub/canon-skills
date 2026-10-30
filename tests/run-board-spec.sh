@@ -105,6 +105,14 @@ echo "run-board-spec: copying the working tree (incl. .tickets) to $COPY"
 rsync -a --exclude node_modules --exclude test-results --exclude playwright-report "$ROOT/" "$COPY/"
 # t-cab4: the copy's .git carries this machine's worktrees (.git/worktrees/*), so the board in it listed real leftovers and
 # t-8a2a failed on them while --classify's git-archive base copy (no .git) passed; the copy sees none, like the base copy.
+# From a linked worktree .git is a file pointing into the main repo, so the copy gets its own git dir: the common one, with this
+# worktree's HEAD and index.
+if [ -f "$COPY/.git" ]; then
+  GITDIR="$(cd "$ROOT" && git rev-parse --absolute-git-dir)"; GITCOMMON="$(cd "$ROOT" && cd "$(git rev-parse --git-common-dir)" && pwd -P)"
+  rm -f "$COPY/.git"; rsync -a --exclude /worktrees "$GITCOMMON/" "$COPY/.git/"
+  cp "$GITDIR/HEAD" "$COPY/.git/HEAD"
+  if [ -f "$GITDIR/index" ]; then cp "$GITDIR/index" "$COPY/.git/index"; fi
+fi
 rm -rf "$COPY/.git/worktrees"
 ln -s "$ROOT/node_modules" "$COPY/node_modules"
 
