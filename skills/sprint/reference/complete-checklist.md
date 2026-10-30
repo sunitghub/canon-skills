@@ -55,7 +55,7 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
    escape `|`), plus a paragraph naming gate models, any reviewer NO. Run `tkt learn <id>`;
    if it writes a file, run `/learnings-sweep <id>`. Say which in chat and summary.
 9. **Close:** `sprint complete <id>`, never a hand-edited status. On refusal, report and stop.
-10. **Commit & push:** stage specific files, `Closes: <id>` in the body, show them; ask. Worktree, after the merge:
+10. **Commit & push:** stage specific files, `Closes: <id>` in the body, show them; ask. No remote: "No remote is configured: committed locally, nothing pushed". "pushed" only after a push that succeeded, else "not pushed" + reason. Worktree, after the merge:
     `tkt worktree-reset`. In canon, `public` only via `tkt push-main`; a push is not a release.
 
 ## Gate dispatch inputs

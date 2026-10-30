@@ -31,4 +31,11 @@ for phase in start complete; do
   grep -qF "$phase-checklist.md" "$full" || fail "sprint-checklists: $phase.md does not name $phase-checklist.md"
 done
 
+# t-e75d — close step 10 never reports "pushed" for a commit that stayed local: both pages an agent executes at close carry
+# the no-remote sentence and the "pushed only after a push that succeeded" rule.
+for f in "$REF/complete-checklist.md" "$REF/complete.md"; do
+  grep -qF -- 'No remote is configured: committed locally, nothing pushed' "$f" || fail "sprint-checklists: ${f#"$ROOT"/} lost the no-remote sentence from close step 10 (t-e75d)"
+  grep -qF -- 'only after a push that succeeded' "$f" || fail "sprint-checklists: ${f#"$ROOT"/} lost the 'pushed only after a push that succeeded' rule from close step 10 (t-e75d)"
+done
+
 echo "PASS: sprint-checklists"
