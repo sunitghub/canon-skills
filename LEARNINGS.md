@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-30-2026 14:13
+learnings-sweep last run: 10-30-2026 14:57
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-30 | [t-3abc](.tickets/t-3abc/learnings.md) | A guard test needs an input that makes the guard matter: `../<id>` is refused whether or not the id check exists (the path does not exist), `..` names a real folder and fails without it; and a plan's claim about another component ("the board's close path calls tkt close") must be grepped before it is written down: the reviewer found it false | UNPROMOTED |
 | 2026-10-30 | [t-cab4](.tickets/t-cab4/learnings.md) | A fix that clears `.git/worktrees` in a copy does nothing when the source is a linked worktree (`.git` is a file pointing into the main repo): the test covered only a `.git` directory and the reviewer caught it; test every shape the tool runs from. A fake service that reports ready before it records what the test reads races the runner's kill: gate readiness on its last write | UNPROMOTED |
 | 2026-10-30 | [t-7c89](.tickets/t-7c89/learnings.md) | A test whose suite builds no board cannot see an event the code writes: `tests/tkt-github-status.sh` passed with the poll's `system` actor dropped until the evaluator mutated it; a test of any `canon_event` write needs `use_fresh_board` and an exact-count assertion (an earlier event can satisfy a last-line check) | UNPROMOTED |
 | 2026-10-30 | [t-63a7](.tickets/t-63a7/learnings.md) | A gate sandbox cannot read ~/.claude, so a criterion checked against real harness transcripts fails as not-run: make it a stamped evidence log from an independent checker (shown to fail on a broken copy) before dispatching the evaluator. | `promoted → skills/sprint/reference/start.md` |
@@ -82,5 +83,4 @@ learnings-sweep last run: 10-30-2026 14:13
 | 2026-10-23 | [t-0e8b](.tickets/t-0e8b/learnings.md) | A permanent board-spec test that writes its screenshots to `.tickets/<id>/visuals/` ties shared test output to whichever ticket last edited it (t-67ab, then t-0e8b); the reviewer flagged it as a standards issue, not a defect. | `promoted → tools/sprint-check-app/CLAUDE.md` |
 | 2026-10-23 | [t-8627](.tickets/t-8627/learnings.md) | A "random" WebKit stall was deterministic: the display slept and Playwright WebKit never navigated the ~64th page; a retry and a looser guard had been added before the cause was measured (31 of 31 retried stalls stalled again), and a stall entry stayed in the baseline as a "non-stall" failure until the evaluator read its logged error | `promoted → tools/sprint-check-app/CLAUDE.md` |
 | 2026-10-22 | [t-fcb3](.tickets/t-fcb3/learnings.md) | A gate rule that names a pattern as a finding (CI `permissions:`/unpinned actions) collided with the same gate's "no hardening" exclusion; the reviewer caught it and a behaviour check reproduced it, so new gate rules need their condition for being a finding stated next to them. | `promoted → standards/efficiency-notes.md` |
-| 2026-10-22 | [t-d40b](.tickets/t-d40b/learnings.md) | A check done only when data is saved does not protect a later reader of the same file, and a load-then-slow-call-then-save handler overwrites changes made meanwhile: Refresh loaded the registry, fetched for seconds, wrote it back, and would have sent an API key to whatever host a hand-edited source named; re-check at the point of use and re-load before the write. | `promoted → standards/efficiency-notes.md` |
 <!-- canon:learnings:END -->
