@@ -44,6 +44,7 @@ const (
 	resultBroken = "broken"
 	resultMiss   = "missing"
 	resultUnseal = "unsealed"
+	resultBusy   = "busy"
 )
 
 // dayMaxBytes: a day file, or one after gunzip, larger than this is refused. A variable so a test can lower it.
@@ -279,7 +280,9 @@ func closed(day string, at time.Time) bool {
 
 // Verify checks every day file and seal in home's events folder as of at. A day is intact (its file hashes to its seal, the chain
 // holds), broken, missing (sealed, file gone, not pruned), or unsealed (a file with no seal: today's, a day inside the grace period,
-// or one a sealer has not reached). Days removed by a prune are not listed. The second result is false when any day is broken or missing.
+// or one a sealer has not reached). Days removed by a prune are not listed. A day has one result: its worst finding. The second result
+// is false when any day is broken or missing. Verify holds the log lock, so a gzip or prune running at the same time cannot show a
+// false verdict; when another run holds it, the only result is one busy line (and false): no verdict was reached.
 func Verify(home string, at time.Time) ([]DayResult, bool) {
 	dir, err := eventsDir(home)
 	if err != nil {
@@ -287,6 +290,13 @@ func Verify(home string, at time.Time) ([]DayResult, bool) {
 			return nil, true
 		}
 		return []DayResult{{"seals.jsonl", resultBroken, err.Error()}}, false
+	}
+	release, lerr := lock(dir)
+	if errors.Is(lerr, ErrBusy) {
+		return []DayResult{{"seals.jsonl", resultBusy, "another run is sealing or pruning the log; try again"}}, false
+	}
+	if lerr == nil { // any other lock error is an unwritable folder: Verify only reads, so it goes on without
+		defer release()
 	}
 	var out []DayResult
 	fail := func(day, why string) { out = append(out, DayResult{day, resultBroken, why}) }
@@ -371,6 +381,7 @@ func Verify(home string, at time.Time) ([]DayResult, bool) {
 			out = append(out, DayResult{d, resultUnseal, "still open"})
 		}
 	}
+	out = worstPerDay(out)
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Day < out[j].Day })
 	ok := true
 	for _, r := range out {
@@ -379,6 +390,25 @@ func Verify(home string, at time.Time) ([]DayResult, bool) {
 		}
 	}
 	return out, ok
+}
+
+// worstPerDay keeps one result per day: broken > missing > unsealed > intact, the first finding of the worst kind. The findings about
+// seals.jsonl itself are not a day and all stay.
+func worstPerDay(in []DayResult) []DayResult {
+	rank := map[string]int{resultBroken: 4, resultMiss: 3, resultUnseal: 2, resultIntact: 1}
+	at := map[string]int{}
+	var out []DayResult
+	for _, r := range in {
+		i, seen := at[r.Day]
+		switch {
+		case r.Day == sealsName || !seen:
+			at[r.Day] = len(out)
+			out = append(out, r)
+		case rank[r.Result] > rank[out[i].Result]:
+			out[i] = r
+		}
+	}
+	return out
 }
 
 func herrWord(err error) string {
@@ -511,10 +541,14 @@ func sealClosed(dir string, at time.Time) error {
 		}
 	}
 	sort.Strings(days)
+	var first error
 	for _, d := range days {
 		sum, lines, err := hashDay(files[d])
-		if err != nil {
-			return fmt.Errorf("%s: %s", d, herrWord(err))
+		if err != nil { // the day stays unsealed; the chain only grows in day order, so the later days are sealed past it
+			if first == nil {
+				first = fmt.Errorf("%s: %s", d, herrWord(err))
+			}
+			continue
 		}
 		line, _ := json.Marshal(struct {
 			Day    string `json:"day"`
@@ -527,7 +561,7 @@ func sealClosed(dir string, at time.Time) error {
 		}
 		tail = hashHex(line)
 	}
-	return nil
+	return first
 }
 
 // gzipSealed compresses each sealed plain day file older than gzipAfter days. The .gz is written beside it, read back to the sealed

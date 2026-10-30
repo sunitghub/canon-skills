@@ -2732,13 +2732,19 @@ cmd_import_results() {
   local tmp; tmp="$(mktemp -d "${TMPDIR:-/tmp}/tkt-results.XXXXXX")"
   # shellcheck disable=SC2064  # expand now: $tmp is local
   trap "rm -rf '$tmp'" EXIT
-  local arc=0; git -C "$root" archive "$head" "$rel" 2>/dev/null | tar -x -C "$tmp" 2>/dev/null || arc=$?
+  local arc=0 trc=0 pst
+  # t-6278: tar's own exit code is told apart from git archive's (a missing path); either way nothing in $tdir was touched yet.
+  if ! git -C "$root" archive "$head" "$rel" 2>/dev/null | tar -x -C "$tmp" 2>/dev/null; then pst=("${PIPESTATUS[@]}"); arc="${pst[0]}"; trc="${pst[1]}"; fi
+  [[ "$trc" == 0 || "$arc" != 0 ]] || { echo "import-results: tar failed (exit $trc) unpacking $src; $rel/ is as it was" >&2; exit 1; }
   [[ -f "$tmp/$rel/ticket.md" ]] || arc=1
   [[ $arc == 0 ]] \
     || { echo "import-results: $src has no $rel/ticket.md$([[ "$src" == canon-results/* ]] || echo "; origin has no branch canon-results/$id either: did the cloud session commit .tickets/ or run tkt export $id?")" >&2
        # t-d0a5: a cloud run that stopped before its close brought nothing back; it closes here instead
        [[ "$src" == canon-results/* || -z "$pr" ]] || echo "  next: tkt land $id --pr $pr   (close it here, in a worktree at the PR head)" >&2
        exit 1; }
+  # t-6278: a ticket.md whose id: is another ticket's would, once imported, be read as that ticket; refuse before writing anything.
+  local fid; fid="$(get_field "$tmp/$rel/ticket.md" id)"
+  [[ "$fid" == "$id" ]] || { echo "import-results: $src has $rel/ticket.md with id: ${fid:-none}, not $id; nothing imported, $rel/ is as it was" >&2; exit 1; }
   local gh_line="" runs_line=""
   [[ -f "$tdir/ticket.md" ]] && { gh_line="$(get_field "$tdir/ticket.md" github)"; runs_line="$(get_field "$tdir/ticket.md" runs)"; }
   local f n=0 kept=0
