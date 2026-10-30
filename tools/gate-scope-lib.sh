@@ -29,7 +29,7 @@ gate_scope_create() {
   dir="$(mktemp -d)" || return 1
   mkdir -p "$dir/home" "$dir/canon" "$dir/tmp" "$dir/xdg"
   # t-9fb1: the dispatcher runs in the user's REAL environment, so it records the home and canon home the guard must keep a gate away from
-  printf 'dir=%s\ncreated=%s\nhome=%s\ncanon=%s\n' "$dir" "$(date +%s)" "$(_gate_scope_phys "${HOME:-}")" "$(_gate_scope_phys "${CANON_HOME:-${HOME:-}/.canon}")" > "$reg/$(_gate_scope_key "$1")"
+  printf 'dir=%s\ncreated=%s\nhome=%s\ncanon=%s\n' "$dir" "$(date +%s)" "$(_gate_scope_resolve "${HOME:-}")" "$(_gate_scope_resolve "${CANON_HOME:-${HOME:-}/.canon}")" > "$reg/$(_gate_scope_key "$1")"
   printf '%s' "$dir"
 }
 
@@ -42,7 +42,6 @@ gate_scope_remove() {
   rm -f "$f"
 }
 
-_gate_scope_phys() { local p="$1"; (cd -P "$p" 2>/dev/null && pwd -P) || printf '%s' "$p"; }   # t-9fb1: the physical spelling `pre` records; the guard compares identity (-ef)
 
 # _gate_scope_resolve <path> — t-9fb1: where the path leads once every missing folder exists as a plain folder (what a later mkdir -p makes), nothing looked up that is
 # not there: walks the components left to right, follows each existing one physically (a symlink to a folder inside the real home included) and pops `..` from the
@@ -73,7 +72,7 @@ _gate_scope_under() {  # <path> <dir>: the path is the dir or inside it (raw or 
 
 # gate_scope_guard <what>: 0 to go ahead; 1 (with a message) while a live gate scope exists and HOME or CANON_HOME is the real one it recorded.
 gate_scope_guard() {
-  local reg f dir created now ttl rhome rcanon home="${HOME:-}" chome="${CANON_HOME:-${HOME:-}/.canon}"
+  local reg f dir created now ttl rhome rcanon rh rc home="${HOME:-}" chome="${CANON_HOME:-${HOME:-}/.canon}"
   reg="$(gate_scope_registry)"; _gate_scope_reg_ok "$reg" || return 0
   now="$(date +%s)"; ttl="${CANON_GATE_SCOPE_TTL:-7200}"
   for f in "$reg"/*; do
@@ -90,8 +89,11 @@ gate_scope_guard() {
     if [[ -n "$rhome" && -n "$rcanon" ]]; then
       # Two checks, so a spelling cannot pass for another folder: -ef (the same device and inode: Unicode form and other case rules on some disks), and the
       # resolved path (a path that does not exist yet and leads to the real home through .. or a symlink: a later mkdir -p makes it, "$HOME/x/..").
-      if [[ -n "$home" && ! "$home" -ef "$rhome" && ! "$chome" -ef "$rcanon" \
-            && "$(_gate_scope_resolve "$home")" != "$rhome" && "$(_gate_scope_resolve "$chome")" != "$rcanon" ]]; then continue; fi
+      # A path with a newline cannot be walked (read stops at the line end) and no real scratch dir has one: refused. The resolved path is compared by identity too
+      # (a Unicode-form spelling plus a missing folder: the text differs, the folder is the same).
+      rh="$(_gate_scope_resolve "$home")"; rc="$(_gate_scope_resolve "$chome")"
+      if [[ -n "$home" && "$home$chome" != *$'\n'* && ! "$home" -ef "$rhome" && ! "$chome" -ef "$rcanon" \
+            && "$rh" != "$rhome" && "$rc" != "$rcanon" && ! "$rh" -ef "$rhome" && ! "$rc" -ef "$rcanon" ]]; then continue; fi
     elif _gate_scope_under "$home" "$dir" && _gate_scope_under "$chome" "$dir"; then continue; fi
     {
       echo "$1: refused. A canon close gate (reviewer/evaluator) is running and its scope is active ($dir)."

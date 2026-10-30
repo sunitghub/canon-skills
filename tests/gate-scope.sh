@@ -72,6 +72,10 @@ HOME="$sh_/home" CANON_HOME="$scratch/link3/nx/../.." guard && fail "the same th
 HOME="$scratch/link2/.." CANON_HOME="$sh_/canon" guard && fail "a symlink into the real home then .. (no missing folder) is the real home and must be refused"
 HOME="$scratch/link2/../.." CANON_HOME="$sh_/canon" guard || fail "the folder that holds the real home is not the real home and must pass"
 HOME="$scratch/link2" CANON_HOME="$sh_/canon" guard || fail "a symlink to a folder inside the real home is not the real home and must pass"
+# a path with a newline cannot be walked (read stops at the line end): refused, and the kernel does treat "$R/x<NL>/.." as R once x<NL> exists
+nl=$'x\n'
+HOME="$realhome/$nl/.." CANON_HOME="$sh_/canon" guard && fail "a HOME with a newline in a component must be refused"
+HOME="$sh_/home" CANON_HOME="$realhome/.canon/$nl/.." guard && fail "a CANON_HOME with a newline in a component must be refused"
 # a scratch path that does not exist yet and does not lead to the real home is fine
 HOME="$sh_/deep/a/b/c" CANON_HOME="$sh_/deep/a/b/c/.canon" guard || fail "a deep nonexistent scratch path must pass"
 HOME="$realhome/a/b/c" CANON_HOME="$realhome/a/b/c/.canon" guard || fail "a (nonexistent) folder INSIDE the real home is not the real home and must pass"
@@ -108,6 +112,21 @@ grep -q "^home=$(cd -P "$realhome" && pwd -P)\$" "$f" && grep -q "^canon=$(cd -P
 "$TOOL" post "$snap" >/dev/null
 [[ ! -d "$scope" && ! -e "$snap.scope" ]] || fail "post must delete the scratch scope"
 HOME="$realhome" CANON_HOME="$realhome/.canon" bash -c 'source "$1"; gate_scope_guard x' _ "$ROOT/tools/gate-scope-lib.sh" || fail "after post the real path must pass"
+
+# a second gate with its own stand-in real home. (1) A real canon home that does not exist when pre runs is recorded as it will be, so a symlinked spelling of it is
+# refused. (2) A Unicode-form spelling of the real home plus a missing folder plus .. leads to the same folder (APFS treats NFC and NFD as one name): refused.
+rh3="$scratch/rh3"; mkdir -p "$rh3"; HOME="$rh3" CANON_HOME="$rh3/.canon" "$TOOL" pre "$scratch/snap3" >/dev/null
+ln -s "$rh3" "$scratch/lnk3"
+HOME="$sh_/home" CANON_HOME="$scratch/lnk3/.canon" guard && fail "a symlinked spelling of a real canon home that did not exist at pre time must be refused"
+HOME="$sh_/home" CANON_HOME="$rh3/.canon" guard && fail "a real canon home that did not exist at pre time must be refused"
+"$TOOL" post "$scratch/snap3" >/dev/null
+nfc="$(printf 'r\303\251al')"; nfd="$(printf 're\314\201al')"; mkdir -p "$scratch/$nfc/.canon"
+if [[ -d "$scratch/$nfd" ]]; then
+  HOME="$scratch/$nfc" CANON_HOME="$scratch/$nfc/.canon" "$TOOL" pre "$scratch/snap4" >/dev/null
+  HOME="$scratch/$nfd/nx/.." CANON_HOME="$sh_/canon" guard && fail "an NFD spelling of the real home plus a missing folder and .. must be refused"
+  HOME="$sh_/home" CANON_HOME="$scratch/$nfd/.canon/nx/.." guard && fail "an NFD spelling of the real canon home plus a missing folder and .. must be refused"
+  "$TOOL" post "$scratch/snap4" >/dev/null
+fi
 
 # a gate that crashed before post: the scope goes stale by age, and by its scratch dir being gone
 g() { HOME="$realhome" CANON_HOME="$realhome/.canon" "$@" bash -c 'source "$1"; gate_scope_guard x' _ "$ROOT/tools/gate-scope-lib.sh" 2>/dev/null; }
