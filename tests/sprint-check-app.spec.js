@@ -15349,8 +15349,12 @@ test.describe('ticket modal polish (t-612f)', () => {
     await expect(kids(page, 'acceptance')).toHaveCount(3);
     await editDoc(page);
     await page.locator('#m-edit-area').fill('# Acceptance\n\n## Criteria\n- [x] a\n\n## Test Plan\n- [ ] b\n\n## QA\n- [ ] c\n\n## Extra\nnotes\n');
+    // t-23f6: the sections refresh from a background re-read after the save lands; under a full run's load that can take
+    // longer than the default 5 s, so wait for the save itself, then give the re-read room.
+    const saved = page.waitForResponse(r => /\/api\/doc\//.test(r.url()) && r.request().method() !== 'GET');
     await page.locator('#btn-save-top').click();
-    await expect(kids(page, 'acceptance')).toHaveCount(4);
+    await saved;
+    await expect(kids(page, 'acceptance')).toHaveCount(4, { timeout: 20000 });
   });
 
   test('Lite is a green switch and the Codex note is gone @webkit', async ({ page }) => {
