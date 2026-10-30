@@ -135,7 +135,7 @@ fi
 
 # a real home whose own name has a newline cannot live in the line-based record: pre writes no home=/canon= lines, so the old rule applies and a scratch HOME outside the scope is refused (fail closed)
 nlh="$scratch/nlhome"$'\n'"x"; mkdir -p "$nlh/.canon"; HOME="$nlh" CANON_HOME="$nlh/.canon" "$TOOL" pre "$scratch/snap5" >/dev/null
-! grep -q '^home=' "$reg"/$(ls -t "$reg" | head -1) || fail "a newline in the real home must not be written as home="
+rec5="$(cat "$reg"/*)"; [[ "$rec5" != *$'\nhome='* ]] || fail "a newline in the real home must not be written as home="
 HOME="$sh_/home" CANON_HOME="$sh_/canon" guard && fail "with no home=/canon= (a newline in the real home) the old rule applies: a scratch HOME outside the scope is refused"
 "$TOOL" post "$scratch/snap5" >/dev/null
 
