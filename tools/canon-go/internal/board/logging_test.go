@@ -549,3 +549,20 @@ func TestLoggingExportHeadersAndRefusal(t *testing.T) {
 		}
 	}
 }
+
+// Protects Admin > Logging > Verify and `canon log verify` (t-6278): while a seal, gzip or prune holds the log lock they say "try again"
+// (409, exit 1), never a verdict.
+func TestVerifyWhileTheLogIsBusy(t *testing.T) {
+	g := newLogRig(t, map[string]string{"2020-01-01.jsonl": "{}\n"})
+	events.Seal(g.home, time.Now().UTC())
+	os.Remove(filepath.Join(g.dir, "2020-01-01.jsonl")) // would read as missing without the lock
+	os.WriteFile(filepath.Join(g.dir, ".maintain.lock"), nil, 0o600)
+	code, v, _ := g.get("/api/admin/logging/verify")
+	if code != http.StatusConflict || v["ok"] != false || !strings.Contains(v["error"].(string), "try again") {
+		t.Errorf("busy route: %d %v", code, v)
+	}
+	var out, errb strings.Builder
+	if rc := logCLI([]string{"verify"}, &out, &errb); rc != 1 || out.Len() != 0 || !strings.Contains(errb.String(), "canon log verify: another run is sealing or pruning the log; try again") {
+		t.Errorf("busy cli: rc=%d out=%q err=%q", rc, out.String(), errb.String())
+	}
+}

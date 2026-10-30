@@ -393,6 +393,27 @@ rc=0; out="$(STUB_PR_HEAD="$TRK" "$TKT" import-results "$id" --pr 62 2>&1)" || r
 [[ "$rc" == 1 ]] || fail "a PR with no head on origin should exit 1: $out"; assert_contains "$out" "PR #62's head could not be fetched"
 rc=0; out="$("$TKT" import-results "$id" 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "no branch and no PR should exit 1"; assert_contains "$out" "origin has no branch canon-results/$id, and there is no PR"
+
+# t-6278: an imported ticket.md whose id: is not its folder is refused, and a failed tar is reported with its exit code; both leave the folder as it was.
+publish_results() {   # <folder-id> <ticket.md id: line>: a results branch for <folder-id> on origin
+  local m="$W/mk-$1"; git clone -q "$W/origin.git" "$m" 2>/dev/null
+  mkdir -p "$m/.tickets/$1" && printf -- '---\n%s\nstatus: closed\n---\n# cloud\n' "$2" > "$m/.tickets/$1/ticket.md"
+  git -C "$m" add -f .tickets && git -C "$m" commit -qm results && git -C "$m" push -q origin "HEAD:refs/heads/canon-results/$1"
+}
+publish_results t-idbad "id: t-other"
+rc=0; out="$("$TKT" import-results t-idbad 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "a ticket.md with another id should exit 1: $out"
+assert_contains "$out" "id: t-other, not t-idbad"
+[[ ! -e .tickets/t-idbad ]] || fail "a refused id mismatch wrote the folder"
+git --git-dir="$W/origin.git" rev-parse -q --verify refs/heads/canon-results/t-idbad >/dev/null || fail "a refused import deleted the results branch"
+publish_results t-tarbad "id: t-tarbad"
+mkdir -p .tickets/t-tarbad "$W/tarbin"; printf 'mine\n' > .tickets/t-tarbad/ticket.md
+printf '#!/bin/sh\nexit 3\n' > "$W/tarbin/tar"; chmod +x "$W/tarbin/tar"
+rc=0; out="$(PATH="$W/tarbin:$PATH" "$TKT" import-results t-tarbad 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "a failed tar should exit 1: $out"
+assert_contains "$out" "tar failed (exit 3)"
+assert_eq "mine" "$(cat .tickets/t-tarbad/ticket.md)"
+[[ -z "$(ls -A .tickets/t-tarbad | grep -v '^ticket.md$')" ]] || fail "a failed tar left files in the folder"
 cd "$W"
 
 # No results branch: a clear refusal.

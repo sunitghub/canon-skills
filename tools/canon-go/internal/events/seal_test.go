@@ -915,3 +915,129 @@ func TestVerifyReasonsForFileFaults(t *testing.T) {
 		t.Errorf("anchor lie: %q", got)
 	}
 }
+
+// Protects Admin > Logging > Verify (t-6278): a tampered seal line made one day print `broken` then `intact`, so the totals passed the day count.
+func TestVerifyOneResultPerDayWorstWins(t *testing.T) {
+	home, dir := logWith(t, threeDays)
+	if _, err := Seal(home, at("2026-10-05T00:00:00Z")); err != nil {
+		t.Fatal(err)
+	}
+	l := sealLines(t, dir)
+	l[1] = strings.Replace(l[1], `"lines":1`, `"lines":9`, 1) // day 2 mismatches its seal; day 3's seal no longer chains
+	os.WriteFile(filepath.Join(dir, sealsName), []byte(strings.Join(l, "\n")+"\n"), 0o600)
+	rs, ok := Verify(home, at("2026-10-05T12:00:00Z"))
+	if ok || len(rs) != 3 {
+		t.Fatalf("want 3 results (one per day) and not ok, got %v %v", rs, ok)
+	}
+	for _, d := range []string{"2026-10-02", "2026-10-03"} {
+		if r, _ := find(rs, d); r.Result != resultBroken {
+			t.Errorf("%s = %v, want broken", d, r)
+		}
+	}
+}
+
+// Protects Verify under the log lock (t-6278): a gzip or prune in flight must give "busy", never a false broken or missing.
+func TestVerifyIsBusyWhileLocked(t *testing.T) {
+	home, dir := logWith(t, threeDays)
+	Seal(home, at("2026-10-05T00:00:00Z"))
+	os.WriteFile(filepath.Join(dir, lockName), nil, 0o600)
+	os.Remove(filepath.Join(dir, "2026-10-02.jsonl")) // would read as missing without the lock
+	rs, ok := Verify(home, at("2026-10-05T12:00:00Z"))
+	if ok || len(rs) != 1 || rs[0].Result != resultBusy {
+		t.Fatalf("a locked log must report one busy line, got %v %v", rs, ok)
+	}
+	os.Remove(filepath.Join(dir, lockName))
+	if rs, _ := Verify(home, at("2026-10-05T12:00:00Z")); func() bool { r, _ := find(rs, "2026-10-02"); return r.Result != resultMiss }() {
+		t.Errorf("without the lock the gone day is missing, got %v", rs)
+	}
+	if _, err := os.Stat(filepath.Join(dir, lockName)); err == nil {
+		t.Error("Verify left the lock behind")
+	}
+}
+
+// Protects the daily seal (t-6278): one unreadable closed day must not stop the days after it from being sealed.
+func TestSealPastAnUnreadableDay(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on Windows")
+	}
+	home, dir := logWith(t, map[string]string{"2026-10-01.jsonl": "{}\n", "2026-10-03.jsonl": "{}\n"})
+	os.Symlink(filepath.Join(t.TempDir(), "nowhere"), filepath.Join(dir, "2026-10-02.jsonl"))
+	n, err := Seal(home, at("2026-10-06T00:00:00Z"))
+	if err == nil || !strings.Contains(err.Error(), "2026-10-02") {
+		t.Fatalf("the error must name the bad day, got %v", err)
+	}
+	if n != 2 {
+		t.Errorf("sealed %d days, want the 2 readable ones", n)
+	}
+}
+
+// Protects the gzip step (t-6278): a link planted where a .jsonl.gz should be is never followed or written through.
+func TestSymlinkInPlaceOfGzIsRefused(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on Windows")
+	}
+	home, dir := logWith(t, map[string]string{"2026-10-01.jsonl": "{\"a\":1}\n"})
+	Seal(home, at("2026-10-03T00:00:00Z"))
+	outside := filepath.Join(t.TempDir(), "secret.txt")
+	os.WriteFile(outside, []byte("do not read\n"), 0o600)
+	gz := filepath.Join(dir, "2026-10-01.jsonl.gz")
+	os.Symlink(outside, gz)
+	Maintain(home, at("2026-10-20T00:00:00Z"), "tkt")
+	if b, _ := os.ReadFile(outside); string(b) != "do not read\n" {
+		t.Errorf("the link target was written through: %q", b)
+	}
+	if fi, err := os.Lstat(gz); err != nil || !fi.Mode().IsRegular() {
+		t.Errorf("the link must be replaced by the real .gz, not followed: %v %v", fi, err)
+	}
+	if rs, ok := Verify(home, at("2026-10-20T12:00:00Z")); !ok {
+		t.Errorf("the replaced day should verify, got %v", rs)
+	}
+	// with no plain file to gzip, a link standing in for the .gz is read as nothing and Verify says broken
+	os.Remove(gz)
+	os.Symlink(outside, gz)
+	if rs, ok := Verify(home, at("2026-10-20T12:00:00Z")); ok {
+		t.Errorf("a linked .gz must not verify, got %v", rs)
+	} else if r, _ := find(rs, "2026-10-01"); r.Result != resultBroken || strings.Contains(r.Why, "do not read") {
+		t.Errorf("linked .gz = %v", r)
+	}
+}
+
+// Protects the gzip step (t-6278): a day older than 7 days with no seal is never gzipped (the sealed-only rule, outside the 7-day window).
+func TestOldUnsealedDayIsNeverGzipped(t *testing.T) {
+	home, dir := logWith(t, map[string]string{"2026-10-05.jsonl": "{}\n"})
+	Seal(home, at("2026-10-07T00:00:00Z"))
+	os.WriteFile(filepath.Join(dir, "2026-09-20.jsonl"), []byte("{}\n"), 0o600) // older than the newest seal: the sealer skips it
+	if err := Maintain(home, at("2026-10-20T00:00:00Z"), "tkt"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "2026-09-20.jsonl")); err != nil {
+		t.Errorf("the unsealed day is gone: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "2026-09-20.jsonl.gz")); err == nil {
+		t.Error("an unsealed day was gzipped")
+	}
+}
+
+// Protects Latest (t-6278): it reads a gunzipped day only up to dayMaxBytes+1, so a bomb cannot be read whole.
+func TestLatestStopsAtTheByteBound(t *testing.T) {
+	old := dayMaxBytes
+	dayMaxBytes = 1 << 10
+	defer func() { dayMaxBytes = old }()
+	mk := func(n string) string {
+		return `{"schema":1,"id":"aaaaaaaaaaaaaaaa","ts":"2026-10-01T09:00:00.000Z","kind":"github.synced","source":"tkt","project":"/p","data":{"count":"` + n + `"}}` + "\n"
+	}
+	var raw bytes.Buffer
+	raw.WriteString(mk("1"))
+	raw.WriteString(strings.Repeat("x\n", 2<<10)) // past the bound
+	raw.WriteString(mk("2"))
+	var gz bytes.Buffer
+	zw := gzip.NewWriter(&gz)
+	zw.Write(raw.Bytes())
+	zw.Close()
+	home, dir := logWith(t, nil)
+	os.WriteFile(filepath.Join(dir, "2026-10-01.jsonl.gz"), gz.Bytes(), 0o600)
+	ev, ok := Latest(home, "github.synced", "/p", nil)
+	if !ok || ev.Data["count"] != "1" {
+		t.Errorf("Latest read past the bound: %+v %v", ev, ok)
+	}
+}
