@@ -233,7 +233,7 @@ test.describe('board modal', () => {
     await expect(page.locator('#tour-versions')).toBeVisible();
   });
 
-  test('a column keeps its scroll position across the board refresh (t-dba9)', async ({ page }) => {
+  test('a column keeps its scroll position across the board refresh (t-dba9) @webkit', async ({ page }) => {
     await page.route('**/api/tickets**', async route => {
       const resp = await route.fetch();
       const json = await resp.json();
@@ -1107,7 +1107,7 @@ test.describe('board modal', () => {
     }
   });
 
-  test('sidebar type legend shows the type_outcome ratio once per type, not repeated on cards (t-5a09)', async ({ page }) => {
+  test('sidebar type legend shows the type_outcome ratio once per type, not repeated on cards (t-5a09) @webkit', async ({ page }) => {
     const stamp = Date.now();
     // Short type name, matching real-world type length (bug/feature/task/chore/epic, <=7
     // chars): the legend's grid column width is shared across all rows and sizes to the
@@ -1317,7 +1317,7 @@ test.describe('board modal', () => {
     }
   });
 
-  test('archive button: Done card can be archived; archived ticket appears in search but not board columns', async ({ page }) => {
+  test('archive button: Done card can be archived; archived ticket appears in search but not board columns @webkit', async ({ page }) => {
     const title = `Archive test ${Date.now()}`;
     const createdId = newTicketId(PROJECT_ROOT, 'arch');
 
@@ -1779,7 +1779,7 @@ test.describe('board modal', () => {
     }
   });
 
-  test('pasting a clipboard image into New Ticket lands it in visuals/ and renders (t-626d)', async ({ page }) => {
+  test('pasting a clipboard image into New Ticket lands it in visuals/ and renders (t-626d) @webkit', async ({ page }) => {
     const title = `Paste image test ${Date.now()}`;
     let createdId = '';
 
@@ -1819,7 +1819,7 @@ test.describe('board modal', () => {
     }
   });
 
-  test('pasting two images into the same New Ticket produces two distinct files (t-626d)', async ({ page }) => {
+  test('pasting two images into the same New Ticket produces two distinct files (t-626d) @webkit', async ({ page }) => {
     const title = `Paste two images test ${Date.now()}`;
     let createdId = '';
 
@@ -1850,7 +1850,7 @@ test.describe('board modal', () => {
     }
   });
 
-  test('pasting an image into edit mode inserts a real embed without reload (t-626d)', async ({ page }) => {
+  test('pasting an image into edit mode inserts a real embed without reload (t-626d) @webkit', async ({ page }) => {
     const title = `Paste edit mode test ${Date.now()}`;
     let createdId = '';
 
@@ -1890,7 +1890,7 @@ test.describe('board modal', () => {
     }
   });
 
-  test('pasting an image into a companion doc (plan.md) edit mode inserts a real embed (t-626d)', async ({ page }) => {
+  test('pasting an image into a companion doc (plan.md) edit mode inserts a real embed (t-626d) @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT);
     const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
 
@@ -1934,7 +1934,7 @@ test.describe('board modal', () => {
     }
   });
 
-  test('a failed visual upload in New Ticket leaves a visible marker, not a dangling pending: reference (t-626d)', async ({ page }) => {
+  test('a failed visual upload in New Ticket leaves a visible marker, not a dangling pending: reference (t-626d) @webkit', async ({ page }) => {
     const title = `Paste upload failure test ${Date.now()}`;
     let createdId = '';
 
@@ -1968,7 +1968,7 @@ test.describe('board modal', () => {
     }
   });
 
-  test('pasting plain text is unaffected by the image-paste handler (t-626d)', async ({ page }) => {
+  test('pasting plain text is unaffected by the image-paste handler (t-626d) @webkit', async ({ page }) => {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
 
@@ -3856,7 +3856,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/);
     });
 
-    test('same-project row (slash/case/trailing-slash variants) posts nothing to the parent and opens the overlay', async ({ page }) => {
+    test('same-project row (slash/case/trailing-slash variants) posts nothing to the parent and opens the overlay @webkit', async ({ page }) => {
       writeTicket(XID, 'in_progress');
       try {
         await stubCockpit(page);
@@ -3914,7 +3914,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     const boardsKeyReady = (page, ids) => Promise.all(ids.map(id => expect.poll(() => page.frameLocator('#view-' + id + ' iframe').locator('body')
       .evaluate(async () => { const { boardKeys } = await import('/static/board-cockpit-rail.js'); try { return !!boardKeys; } catch (e) { return false; } }).catch(() => false)).toBe(true)));
 
-    test('keyboard prefix (t-a198): ctrl+. then a key drives the tabs; Escape, unbound and missing tabs do nothing', async ({ page }) => {
+    test('keyboard prefix (t-a198): ctrl+. then a key drives the tabs; Escape, unbound and missing tabs do nothing @webkit', async ({ page }) => {
       await openShell(page, []);
       await page.evaluate(async () => { const { activateTab, openProject } = await import('/static/cockpit-tabs.js'); openProject('proj-x', 'proj-x'); activateTab('projects'); });
       await boardsKeyReady(page, ['proj-a', 'proj-x']);
@@ -3969,7 +3969,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('keyboard prefix (t-a198): never hijacks typing in a field or a dialog, and ignores a forged or background relay', async ({ page }) => {
+    test('keyboard prefix (t-a198): never hijacks typing in a field or a dialog, and ignores a forged or background relay @webkit', async ({ page }) => {
       const frame = await openShell(page, []);
       await page.evaluate(async () => { const { activateTab, openProject } = await import('/static/cockpit-tabs.js'); openProject('proj-x', 'proj-x'); activateTab('proj-a'); });
       await boardsKeyReady(page, ['proj-a', 'proj-x']);
@@ -3999,7 +3999,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('keyboard prefix (t-a198): works with focus inside a board; prefix then / focuses that board\'s search', async ({ page }) => {
+    test('keyboard prefix (t-a198): works with focus inside a board; prefix then / focuses that board\'s search @webkit', async ({ page }) => {
       const frame = await openShell(page, []);
       await page.evaluate(async () => { const { openProject } = await import('/static/cockpit-tabs.js'); openProject('proj-x', 'proj-x'); });
       await boardsKeyReady(page, ['proj-a', 'proj-x']);
@@ -4029,7 +4029,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
     // The real xterm, the real snippet and the real wiring lines (cut out of the daemon page itself), in an iframe like the
     // board's rail: only the prefix and the key after it are withheld from term.onData; ctrl+c and friends reach it.
-    test('keyboard prefix (t-a198): in a real xterm only the prefix chord is withheld; ctrl+c, ctrl+d and typing reach the terminal', async ({ page }) => {
+    test('keyboard prefix (t-a198): in a real xterm only the prefix chord is withheld; ctrl+c, ctrl+d and typing reach the terminal @webkit', async ({ page }) => {
       const web = path.join(__dirname, '..', 'tools', 'canon-go', 'internal', 'daemon', 'web');
       const daemonPage = fs.readFileSync(path.join(web, 'cockpit.html'), 'utf8');
       const a = daemonPage.indexOf('  // t-a198: the prefix key.');
@@ -4118,7 +4118,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
 
     // Protects the Cockpit terminal's size: fit gives the PTY the cols/rows that fill #terminal (cockpit.html's resize()).
-    test('vendored xterm (t-d689): fit fills the box with whole cells, and refits when the box shrinks', async ({ page }) => {
+    test('vendored xterm (t-d689): fit fills the box with whole cells, and refits when the box shrinks @webkit', async ({ page }) => {
       const frame = await vendoredTerm(page, { w: 600, h: 288 });
       const measure = () => frame.locator('body').evaluate(() => {
         const s = document.querySelector('.xterm-screen').getBoundingClientRect(), t = document.getElementById('terminal').getBoundingClientRect();
@@ -4138,7 +4138,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     });
 
     // Protects scrollback in the Cockpit terminal: the wheel over it moves the terminal's scrollback, not the board page around it.
-    test('vendored xterm (t-d689): the wheel over the terminal scrolls its scrollback, not the page', async ({ page }) => {
+    test('vendored xterm (t-d689): the wheel over the terminal scrolls its scrollback, not the page @webkit', async ({ page }) => {
       const frame = await vendoredTerm(page, { w: 600, h: 288 });
       await frame.locator('body').evaluate(() => new Promise(res => {
         let s = ''; for (let i = 0; i < 500; i++) s += 'line ' + i + '\r\n';
@@ -4182,7 +4182,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       }
     });
 
-    test('keyboard prefix (t-a198): the sidebar keyboard button opens the cheat sheet, and the footer still fits at the narrowest sidebar', async ({ page }) => {
+    test('keyboard prefix (t-a198): the sidebar keyboard button opens the cheat sheet, and the footer still fits at the narrowest sidebar @webkit', async ({ page }) => {
       await openShell(page, []);
       const btn = page.locator('#keys-btn');
       await expect(btn).toBeVisible();
@@ -4212,7 +4212,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     });
 
     // The terminal frame's relay goes terminal page -> board -> shell. The board must only pass on what its own terminal frame sent.
-    test('keyboard prefix (t-a198): the terminal frame\'s keys reach the shell through the board; a forged or over-long relay is dropped', async ({ page }) => {
+    test('keyboard prefix (t-a198): the terminal frame\'s keys reach the shell through the board; a forged or over-long relay is dropped @webkit', async ({ page }) => {
       const relayPage = `<!doctype html><html><body>
         <button id="arm" onclick="parent.postMessage({source:'canon-cockpit',type:'prefix-armed',key:''},'*')">arm</button>
         <button id="home" onclick="parent.postMessage({source:'canon-cockpit',type:'prefix-key',key:'p'},'*')">home</button>
@@ -4351,7 +4351,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('split view (t-416c): the divider drags, clamps, answers the keyboard and resets on a double click', async ({ page }) => {
+    test('split view (t-416c): the divider drags, clamps, answers the keyboard and resets on a double click @webkit', async ({ page }) => {
       await page.setViewportSize({ width: 1300, height: 800 });
       await openShell(page, []);
       await splitTabs(page);
@@ -4403,7 +4403,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('split view (t-416c): a project is never in two panes; a third tab replaces the focused one; closing ends the split', async ({ page }) => {
+    test('split view (t-416c): a project is never in two panes; a third tab replaces the focused one; closing ends the split @webkit', async ({ page }) => {
       await openShell(page, []);
       await splitTabs(page);
       await page.locator('.tab.project[data-tab="proj-a"]').click({ button: 'right' });   // the active tab cannot be paired with itself
@@ -4497,7 +4497,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('split view (t-416c): focusing inside a pane makes it the active one', async ({ page }) => {
+    test('split view (t-416c): focusing inside a pane makes it the active one @webkit', async ({ page }) => {
       await openShell(page, []);
       await splitTabs(page);
       await splitVia(page, 'proj-x', 'beside');
@@ -4607,7 +4607,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('split view (t-f769): a pane focus that lands late does not bounce the active pane back', async ({ page }) => {
+    test('split view (t-f769): a pane focus that lands late does not bounce the active pane back @webkit', async ({ page }) => {
       const warns = []; page.on('console', m => { if (m.type() === 'warning' && /t-f769/.test(m.text())) warns.push(m.text()); });
       await openShell(page, []);
       await splitTabs(page);
@@ -4645,7 +4645,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('split view (t-416c): keys o s r focus, swap and rotate the split on screen without reloading a board; with no split they only say so', async ({ page }) => {
+    test('split view (t-416c): keys o s r focus, swap and rotate the split on screen without reloading a board; with no split they only say so @webkit', async ({ page }) => {
       await openShell(page, []);
       await splitTabs(page);
       await pressPrefix(page, 'o');
@@ -4682,7 +4682,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('keyboard sheet (t-416c): the keys are grouped into Tabs, Split view, and Sessions and search, in two columns', async ({ page }) => {
+    test('keyboard sheet (t-416c): the keys are grouped into Tabs, Split view, and Sessions and search, in two columns @webkit', async ({ page }) => {
       await page.setViewportSize({ width: 1300, height: 800 });
       await openShell(page, []);
       await pressPrefix(page, '?');
@@ -4727,7 +4727,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     const paneAttr = (page, id, name) => page.frameLocator(`#view-${id} iframe`).locator('html').evaluate((h, n) => h.dataset[n] ?? null, name);
     const hdrColor = (page, id) => page.frameLocator(`#view-${id} iframe`).locator('#h-project').evaluate(e => getComputedStyle(e).color);
 
-    test('split view (t-416c): a tab click moves keyboard focus into its pane; the focused pane reads brighter and pulses until first used', async ({ page }) => {
+    test('split view (t-416c): a tab click moves keyboard focus into its pane; the focused pane reads brighter and pulses until first used @webkit', async ({ page }) => {
       await openShell(page, []);
       await splitTabs(page);
       expect(await paneAttr(page, 'proj-a', 'pane')).toBeNull();                      // no split yet: boards are untouched
@@ -4761,7 +4761,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
     // t-d34e: no top bar. A sidebar brand row shares the tab strip's height (tops and dividers align), and the Projects view
     // opens with a section bar: title, "N registered · M active", + Add Project — aligned with the card grid.
-    test('shell (t-d34e): no top bar; brand row level with the tab strip; Projects section bar', async ({ page }) => {
+    test('shell (t-d34e): no top bar; brand row level with the tab strip; Projects section bar @webkit', async ({ page }) => {
       await openShell(page, []);
       for (const sel of ['.topbar', '#projFilter', '#needpill']) await expect(page.locator(sel)).toHaveCount(0);
       const box = sel => page.locator(sel).first().boundingBox();
@@ -4790,7 +4790,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     // t-2758: the ◐ Theme switcher (themes slice A). Mode decides light or dark, Theme lists only that mode's themes.
     const boardTheme = board => board.locator('html').evaluate(h => h.getAttribute('data-theme') || 'dark');
     const saved = page => page.evaluate(() => JSON.parse(localStorage.getItem('canon-theme')));
-    test('shell (t-2758): ◐ Theme opens a popover in the footer; Mode filters Theme; the choice is saved and every board follows', async ({ page }) => {
+    test('shell (t-2758): ◐ Theme opens a popover in the footer; Mode filters Theme; the choice is saved and every board follows @webkit', async ({ page }) => {
       await page.emulateMedia({ colorScheme: 'dark' });
       const board = await openShell(page, []);
       await expect(board.locator('#board')).toBeVisible();
@@ -4868,7 +4868,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('board (t-2758): a canon-theme message is believed only from the parent shell on the same origin', async ({ page }) => {
+    test('board (t-2758): a canon-theme message is believed only from the parent shell on the same origin @webkit', async ({ page }) => {
       const board = await openShell(page, []);
       await expect(board.locator('#board')).toBeVisible();
       await expect.poll(() => boardTheme(board)).toBe(await page.evaluate(() => document.documentElement.dataset.theme));
@@ -4884,7 +4884,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('first paint (t-3735, t-2758): a saved light choice is on the page before any module script has run, in the shell and on the board', async ({ page }) => {
+    test('first paint (t-3735, t-2758): a saved light choice is on the page before any module script has run, in the shell and on the board @webkit', async ({ page }) => {
       // hold every module back, so only the blocking theme-boot.js can have set the theme
       let release; const held = new Promise(r => { release = r; });
       await page.route(/\/static\/(cockpit|board)-main\.js$/, async r => { await held; await r.continue(); });
@@ -4939,7 +4939,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('themes (t-4fa5): hovering or focusing a card previews it without saving; leaving, Esc or closing puts the saved theme back', async ({ page }) => {
+    test('themes (t-4fa5): hovering or focusing a card previews it without saving; leaving, Esc or closing puts the saved theme back @webkit', async ({ page }) => {
       await page.emulateMedia({ colorScheme: 'dark' });
       const board = await openShell(page, []);
       await expect(board.locator('#board')).toBeVisible();
@@ -5153,7 +5153,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('user themes (t-f889): a board that must look up a new user theme never applies it over a later message', async ({ page }) => {
+    test('user themes (t-f889): a board that must look up a new user theme never applies it over a later message @webkit', async ({ page }) => {
       await page.emulateMedia({ colorScheme: 'dark' });
       let list = userList([]), open = null;
       const held = new Promise(r => { open = r; });
@@ -5181,7 +5181,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('shell (t-2758): footer buttons stop growing on a wide sidebar and stay centred, and the keyboard button is 36px with an 18px icon', async ({ page }) => {
+    test('shell (t-2758): footer buttons stop growing on a wide sidebar and stay centred, and the keyboard button is 36px with an 18px icon @webkit', async ({ page }) => {
       await openShell(page, []);
       const boxes = async () => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.foot button')].map(b => [b.id, b.getBoundingClientRect().toJSON()])));
       for (const w of [230, 420]) {   // the default and the widest the divider allows
@@ -5231,7 +5231,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('shell (t-2758): the popover works from the keyboard: focus stays on the choice, Tab goes through it, and leaving it closes it', async ({ page, browserName }) => {
+    test('shell (t-2758): the popover works from the keyboard: focus stays on the choice, Tab goes through it, and leaving it closes it @webkit', async ({ page, browserName }) => {
       await openShell(page, []);
       const TAB = browserName === 'webkit' ? 'Alt+Tab' : 'Tab';   // Safari's default Tab skips buttons; Option+Tab reaches every control
       const btn = page.locator('#theme-btn'), pop = page.locator('#theme-pop');
@@ -5389,7 +5389,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     });
 
     // t-7456: the Agents row of the session the project tab's board has in view carries a short bar in the theme's accent.
-    test('t-7456: the Agents row of the session in view has the accent bar; forged messages change nothing', async ({ page }) => {
+    test('t-7456: the Agents row of the session in view has the accent bar; forged messages change nothing @webkit', async ({ page }) => {
       const mk = (session, ticket) => ({ session, ticket, project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', status: 'running', state: 'working', state_secs: 3, idle_secs: 3, idle_limit_secs: 1800, signal: 'hook', started: agoIso(session === 'a1' ? 20 : 10) });
       await openShell(page, [mk('a1', 't-aaa1'), mk('a2', 't-aaa2')]);
       await page.evaluate(async () => { const m = await import('/static/cockpit-sessions.js'); m.boardScratch.set('proj-a', [{ id: 's-ab12', title: '' }]); await m.pollSessions(); });
@@ -5464,7 +5464,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('t-aca6: a third line that would be cut off drops "in session"; the title keeps everything', async ({ page }) => {
+    test('t-aca6: a third line that would be cut off drops "in session"; the title keeps everything @webkit', async ({ page }) => {
       await openShell(page, []);
       // a long registered name, then the same rows under it
       await page.evaluate(async () => {
@@ -5500,7 +5500,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     const agentRow = (page, id) => page.locator('#ag-list .ag-row', { hasText: id });
     const menuItems = page => page.locator('#tabmenu button');
 
-    test('t-3c9a: an Agents row opens Open / Reap now / Kill by right-click or Shift+F10; Reap now is off unless idle', async ({ page }) => {
+    test('t-3c9a: an Agents row opens Open / Reap now / Kill by right-click or Shift+F10; Reap now is off unless idle @webkit', async ({ page }) => {
       await stubRelay(page);
       await openShell(page, endRows());
       await page.evaluate(async () => (await import('/static/cockpit-sessions.js')).pollSessions());
@@ -5530,7 +5530,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('t-3c9a: Kill asks first, opens on Cancel, and sends the session to the relay only on Kill', async ({ page }) => {
+    test('t-3c9a: Kill asks first, opens on Cancel, and sends the session to the relay only on Kill @webkit', async ({ page }) => {
       const calls = await stubRelay(page);
       await openShell(page, endRows());
       await page.evaluate(async () => (await import('/static/cockpit-sessions.js')).pollSessions());
@@ -5562,7 +5562,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('t-3c9a: Admin rows offer Reap now (idle only) and Kill; stopped rows keep Resume/Dismiss; a refusal is shown', async ({ page }) => {
+    test('t-3c9a: Admin rows offer Reap now (idle only) and Kill; stopped rows keep Resume/Dismiss; a refusal is shown @webkit', async ({ page }) => {
       interruptedStubbed.add(page);
       await page.route('**/api/cockpit-interrupted', r => r.fulfill({ status: 200, contentType: 'application/json',
         body: JSON.stringify([{ id: 't-zzz9', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', started: '2026-10-12T10:00:00Z', resumable: true, reason: '' }]) }));
@@ -5589,7 +5589,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('t-3c9a: after a daemon restart (the framed relay holds the old token) the shell re-frames it and retries once', async ({ page }) => {
+    test('t-3c9a: after a daemon restart (the framed relay holds the old token) the shell re-frames it and retries once @webkit', async ({ page }) => {
       let loads = 0;
       const calls = [];
       await page.exposeBinding('__relayCall', (_src, d) => { calls.push(d); return d.__boot === 1 ? { status: 401, text: 'unauthorized\n' } : { status: 200, text: '{"ok":true,"mode":"kill"}' }; });
@@ -5608,7 +5608,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('t-3c9a: ctrl+. then t opens the session menu for this tab\'s agent, asking its board which session is open', async ({ page }) => {
+    test('t-3c9a: ctrl+. then t opens the session menu for this tab\'s agent, asking its board which session is open @webkit', async ({ page }) => {
       await stubRelay(page);
       await openShell(page, endRows());
       await boardsKeyReady(page, ['proj-a']);
@@ -5981,7 +5981,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('hostile open-session / open-ticket messages are inert', async ({ page }) => {
+    test('hostile open-session / open-ticket messages are inert @webkit', async ({ page }) => {
       writeTicket(XID, 'in_progress');   // real ticket, so a wrongly-accepted open-ticket WOULD open the overlay
       // t-a2f9: the proj-a board iframe commits its navigation some time after openShell returns (slower in WebKit).
       // Hold its document request so that is true on every run — a lookup that doesn't wait then fails every time.
@@ -6079,7 +6079,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       }
     });
 
-    test('shell Admin (t-824e): session table, Needs you tile, daemon line and reaper line; no Save & End or Stop', async ({ page }) => {
+    test('shell Admin (t-824e): session table, Needs you tile, daemon line and reaper line; no Save & End or Stop @webkit', async ({ page }) => {
       await openShell(page, stateRows());
       await page.route('**/api/cockpit', route => route.fulfill({ status: 200, contentType: 'application/json',
         body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR, stale: false, running_build: { version: 'x', uptime_secs: 60, idle_timeout_secs: 300, idle_timeout_main_secs: 1800 } }) }));
@@ -6231,7 +6231,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('shell Admin (t-e69b): sessions block under the tiles, ticket titles, mockup table type, 0s durations', async ({ page }) => {
+    test('shell Admin (t-e69b): sessions block under the tiles, ticket titles, mockup table type, 0s durations @webkit', async ({ page }) => {
       await stubTicketDocs(page);
       const rows = stateRows().map(r => (r.session === 's3' ? { ...r, state_secs: 0, idle_secs: 0 } : r));
       await openShell(page, rows);
@@ -6331,7 +6331,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       } finally { removeTestTicket(PROJECT_ROOT, id); }
     });
 
-    test('board cards (t-28ec): state strips, Answer/Open, needs-you first, counts, Herdr colours, re-render only on change', async ({ page }) => {
+    test('board cards (t-28ec): state strips, Answer/Open, needs-you first, counts, Herdr colours, re-render only on change @webkit', async ({ page }) => {
       for (const id of Object.values(Q)) writeTicket(id, 'in_progress');
       try {
         let rows = cardRows();
@@ -6439,7 +6439,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('shell (t-28ec): the sidebar divider resizes (drag, bounds, keyboard, double-click reset, remembered); Admin headings read as headings', async ({ page }) => {
+    test('shell (t-28ec): the sidebar divider resizes (drag, bounds, keyboard, double-click reset, remembered); Admin headings read as headings @webkit', async ({ page }) => {
       await openShell(page, []);
       const side = page.locator('aside.side'), handle = page.locator('#side-resize');
       const width = async () => Math.round((await side.boundingBox()).width);
@@ -6474,7 +6474,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('shell (t-4077): the divider button collapses the sidebar to an icon strip and restores the dragged width; the choice is remembered', async ({ page }) => {
+    test('shell (t-4077): the divider button collapses the sidebar to an icon strip and restores the dragged width; the choice is remembered @webkit', async ({ page }) => {
       await openShell(page, []);
       const side = page.locator('aside.side'), btn = page.locator('#side-collapse'), handle = page.locator('#side-resize');
       const width = async () => Math.round((await side.boundingBox()).width);
@@ -6502,7 +6502,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('shell (t-4077): collapsed, labels and the Agents list are hidden, the Projects/Admin icons still switch views', async ({ page }) => {
+    test('shell (t-4077): collapsed, labels and the Agents list are hidden, the Projects/Admin icons still switch views @webkit', async ({ page }) => {
       await openShell(page, stateRows());
       await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
       await expect(page.locator('#ag-list .ag-row').first()).toBeVisible();
@@ -6528,7 +6528,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('shell (t-4077): ctrl+. then w toggles the sidebar; p and a still work; the shortcuts sheet lists w', async ({ page }) => {
+    test('shell (t-4077): ctrl+. then w toggles the sidebar; p and a still work; the shortcuts sheet lists w @webkit', async ({ page }) => {
       await openShell(page, []);
       const side = page.locator('aside.side');
       const width = async () => Math.round((await side.boundingBox()).width);
@@ -6697,7 +6697,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('interrupted (t-6a05): a row is one line plus the reason; Admin rows too', async ({ page }) => {
+    test('interrupted (t-6a05): a row is one line plus the reason; Admin rows too @webkit', async ({ page }) => {
       const list = [stoppedEntry('t-cc33', '/tmp/proj-a', { resumable: false, reason: 'ticket is closed' })];
       await stubInterrupted(page, list, []);
       await openShell(page, []);
@@ -6759,7 +6759,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('board path bar (t-67ab, t-0e8b, t-c6bb, t-57ab): branch under the path, no counts, + New · Logbook · Sync · Scratch · Terminal · CI on the right, no Upkeep button', async ({ page }) => {
+    test('board path bar (t-67ab, t-0e8b, t-c6bb, t-57ab): branch under the path, no counts, + New · Logbook · Sync · Scratch · Terminal · CI on the right, no Upkeep button @webkit', async ({ page }) => {
       const board = await openShell(page, []);
       await expect(board.locator('#h-branch')).not.toHaveText('\u2014', { timeout: 8000 });   // data loaded
       for (const id of ['h-open', 'h-active', 'h-needs-stat', 'h-archived-stat']) await expect(board.locator('#' + id)).toHaveCount(0);
@@ -6820,7 +6820,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('scratch (t-f553): an open scratch tab shows on the rail before its agent starts, with the scribble mark', async ({ page }) => {
+    test('scratch (t-f553): an open scratch tab shows on the rail before its agent starts, with the scribble mark @webkit', async ({ page }) => {
       await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: fakeLivePage }));
       await openShell(page, []);
       await stubEmbeddedCockpit(page);
@@ -6907,7 +6907,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('scratch (t-47f1): rail and Admin show a SCRATCH row; the group + and a row click open it; hostile ids are inert', async ({ page }) => {
+    test('scratch (t-47f1): rail and Admin show a SCRATCH row; the group + and a row click open it; hostile ids are inert @webkit', async ({ page }) => {
       await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: fakeLivePage }));
       await openShell(page, [scratchRow('s-q7s1', 'c:/users/me/proj-x/')]);
       await stubEmbeddedCockpit(page);
@@ -6949,7 +6949,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('scratch (t-e162): the board path bar has + Scratch; the scratch view says where it runs', async ({ page }) => {
+    test('scratch (t-e162): the board path bar has + Scratch; the scratch view says where it runs @webkit', async ({ page }) => {
       const where = [];
       await stubCockpit(page);
       await page.route('**/cockpit?**', r => {
@@ -7082,7 +7082,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.frameLocator('#ck-term iframe').locator('body')).not.toHaveAttribute('data-started', '1');   // an agent session keeps the manual Start (t-9a49)   // the plain Scratch button starts an agent as before
     });
 
-    test('Open tabs (t-5157): the tab strip under the board header lines up with the Search group', async ({ page }) => {
+    test('Open tabs (t-5157): the tab strip under the board header lines up with the Search group @webkit', async ({ page }) => {
       await stubCockpit(page);
       await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>cockpit</body></html>' }));
       await page.goto(BASE);
@@ -7096,7 +7096,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       expect(Math.abs(c.x - s.x)).toBeLessThan(1.5);
     });
 
-    test('Terminal shortcut (t-57ab): the prefix then m opens a Terminal tab in the active project', async ({ page }) => {
+    test('Terminal shortcut (t-57ab): the prefix then m opens a Terminal tab in the active project @webkit', async ({ page }) => {
       const urls = [];
       await page.route('**/cockpit?**', r => { urls.push(r.request().url()); return r.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>cockpit</body></html>' }); });
       await openShell(page, []);
@@ -7123,7 +7123,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     };
 
     // Protects the Cockpit's `m` / `M` keys: the Board stays on screen and clickable while a Terminal runs in a pane below or beside it.
-    test('Terminal pane (t-ccf5): below the Board with the Board still clickable; the handle resizes, resets and is remembered; closing restores the Board', async ({ page }) => {
+    test('Terminal pane (t-ccf5): below the Board with the Board still clickable; the handle resizes, resets and is remembered; closing restores the Board @webkit', async ({ page }) => {
       await page.setViewportSize({ width: 1280, height: 900 });
       await stubCockpit(page);
       await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: termStub }));
@@ -7163,7 +7163,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     });
 
     // Protects closing the Terminal pane: with another session tab open the Board comes back whole (that tab stays open in the strip).
-    test('Terminal pane (t-ccf5): closing the pane under the Board restores the Board even when another session tab is open', async ({ page }) => {
+    test('Terminal pane (t-ccf5): closing the pane under the Board restores the Board even when another session tab is open @webkit', async ({ page }) => {
       await page.setViewportSize({ width: 1280, height: 900 });
       await stubCockpit(page);
       await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: termStub }));
@@ -7207,7 +7207,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
     // Protects the Cockpit's `m` key and the To Claude Cloud button: next to a session tab both iframes show, the session keeps its
     // screen (same element, no reload), and a narrow window falls back to a full tab.
-    test('Terminal pane (t-ccf5): next to a session tab both tabs show; the session is never reloaded (positive control); no room means a full tab', async ({ page }) => {
+    test('Terminal pane (t-ccf5): next to a session tab both tabs show; the session is never reloaded (positive control); no room means a full tab @webkit', async ({ page }) => {
       await page.setViewportSize({ width: 1280, height: 900 });
       await stubCockpit(page);
       await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: termStub }));
@@ -7351,7 +7351,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     });
 
     // Protects the shell's prefix relay: a key typed in the pane's Terminal (not the active tab's) still reaches the shell, so `P n` works there.
-    test('Terminal pane (t-ccf5): the prefix typed inside the pane\'s Terminal reaches the shell (P n), not only the active tab\'s', async ({ page }) => {
+    test('Terminal pane (t-ccf5): the prefix typed inside the pane\'s Terminal reaches the shell (P n), not only the active tab\'s @webkit', async ({ page }) => {
       await openShell(page, []);
       await stubCockpit(page);
       await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>cockpit</body></html>' }));
@@ -7372,7 +7372,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
     const waitSessionLive = (board) => expect.poll(() => board.locator('body').evaluate(async () => (await import('/static/board-cockpit.js')).sessionIsLive()), { timeout: 10000 }).toBe(true);
 
-    test('Terminal close (t-57ab): x on a live agent session (not a Terminal) never offers to close a Terminal', async ({ page }) => {
+    test('Terminal close (t-57ab): x on a live agent session (not a Terminal) never offers to close a Terminal @webkit', async ({ page }) => {
       const stubPage = `<!doctype html><html><body><script>parent.postMessage({source:'canon-cockpit',type:'status',status:'running'},'*');</script></body></html>`;
       await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: stubPage }));
       await openShell(page, []);
@@ -7390,7 +7390,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       expect(title).not.toBe('Close this Terminal?');
     });
 
-    test('Close (t-5157): x on an open Scratch tab closes just that tab and lands on the board; x again closes the project tab', async ({ page }) => {
+    test('Close (t-5157): x on an open Scratch tab closes just that tab and lands on the board; x again closes the project tab @webkit', async ({ page }) => {
       const stubPage = `<!doctype html><html><body><script>parent.postMessage({source:'canon-cockpit',type:'status',status:'running'},'*');</script></body></html>`;
       await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: stubPage }));
       await openShell(page, []);
@@ -7409,7 +7409,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('Terminal close (t-57ab): the prefix then x asks to close just the Terminal; c cancels and the project tab stays, Enter ends it', async ({ page }) => {
+    test('Terminal close (t-57ab): the prefix then x asks to close just the Terminal; c cancels and the project tab stays, Enter ends it @webkit', async ({ page }) => {
       const stubPage = `<!doctype html><html><body><script>
         parent.postMessage({source:'canon-cockpit',type:'status',status:'running'},'*');
         addEventListener('message',function(e){ var d=e.data; if(d&&d.source==='canon-cockpit'&&d.type==='end-scratch') parent.postMessage({source:'canon-cockpit',type:'ended'},'*'); });
@@ -7444,7 +7444,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
     // t-2aed: a Terminal starts when it opens (no agent to start), so its tab x ends it through the "Close this Terminal?" dialog; every other tab's x
     // still only hides the tab. Protects the Cockpit tab strip, End Session on a Terminal, and the rule that closing an agent tab never ends it.
-    test('Terminal x (t-2aed): the x on a live Terminal asks to end it, Cancel keeps it, Enter ends it; End Session is enabled; an agent tab\'s x never ends it', async ({ page }) => {
+    test('Terminal x (t-2aed): the x on a live Terminal asks to end it, Cancel keeps it, Enter ends it; End Session is enabled; an agent tab\'s x never ends it @webkit', async ({ page }) => {
       const stubPage = `<!doctype html><html><body><script>
         parent.postMessage({source:'canon-cockpit',type:'status',status:'running'},'*');
         addEventListener('message',function(e){ var d=e.data; if(d&&d.source==='canon-cockpit'&&d.type==='end-scratch'){ parent.postMessage({source:'t2aed-spy',type:'end-seen'},'*'); parent.postMessage({source:'canon-cockpit',type:'ended'},'*'); } });
@@ -7518,7 +7518,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     });
 
     // A Terminal that is no longer live (idle: reaped or its shell exited) has nothing to end: its x and End Session just close the tab, no dialog.
-    test('Terminal x (t-2aed): a Terminal that is not live closes at once from its x and from End Session, with no dialog', async ({ page }) => {
+    test('Terminal x (t-2aed): a Terminal that is not live closes at once from its x and from End Session, with no dialog @webkit', async ({ page }) => {
       const stubPage = `<!doctype html><html><body><script>parent.postMessage({source:'canon-cockpit',type:'status',status:'idle'},'*');</script></body></html>`;
       await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: stubPage }));
       await openShell(page, []);
@@ -7543,7 +7543,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('Terminal exit (t-5157): when the Terminal ends (exit, Kill, reaper) the board closes its tab', async ({ page }) => {
+    test('Terminal exit (t-5157): when the Terminal ends (exit, Kill, reaper) the board closes its tab @webkit', async ({ page }) => {
       const stubPage = `<!doctype html><html><body><script>parent.postMessage({source:'canon-cockpit',type:'status',status:'running'},'*');
         addEventListener('message',function(e){ var d=e.data; if(d&&d.type==='test-exit') parent.postMessage({source:'canon-cockpit',type:'status',status:'done'},'*'); });</script></body></html>`;
       await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: stubPage }));
@@ -7562,7 +7562,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('Rail shortcut (t-5157): the prefix then w folds and unfolds the open tab\'s side panel; c folds the Workspace sidebar', async ({ page }) => {
+    test('Rail shortcut (t-5157): the prefix then w folds and unfolds the open tab\'s side panel; c folds the Workspace sidebar @webkit', async ({ page }) => {
       const stubPage = `<!doctype html><html><body><script>parent.postMessage({source:'canon-cockpit',type:'status',status:'running'},'*');</script></body></html>`;
       await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: stubPage }));
       await openShell(page, []);
@@ -7636,7 +7636,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       }
     });
 
-    test('promote (t-f553): a ticket created in a background scratch tab is offered when that tab is shown, and only there', async ({ page }) => {
+    test('promote (t-f553): a ticket created in a background scratch tab is offered when that tab is shown, and only there @webkit', async ({ page }) => {
       await stubCockpit(page);
       await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: promotePage('t-bg01') }));
       await page.goto(BASE);
@@ -7766,7 +7766,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('promote (t-f553): the title input stops at 80 characters; a refused promote shows the reason', async ({ page }) => {
+    test('promote (t-f553): the title input stops at 80 characters; a refused promote shows the reason @webkit', async ({ page }) => {
       await stubCockpit(page);
       await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: `<!doctype html><html><body><script>
         window.parent.postMessage({source:'canon-cockpit', type:'status', status:'running'}, '*');
@@ -7846,7 +7846,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     });
   });
 
-  test('collapse toggle is top-anchored + STATUS shows HANDOFF Next Steps (t-6ecc)', async ({ page }) => {
+  test('collapse toggle is top-anchored + STATUS shows HANDOFF Next Steps (t-6ecc) @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, '6ecc');
     try {
       writeTicket(id, 'in_progress', {
@@ -8753,7 +8753,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     const CONTROLS = ['#ck-back', '#ck-id', '#ck-status', '#ck-title', '#ck-tab-strip-topbar', '#ck-state-chip', '#ck-reaper', '#ck-end-session', '#ck-model'];
     const ONE_LINE = { '#ck-back': 42, '#ck-id': 22, '#ck-status': 22, '#ck-state-chip': 28, '#ck-end-session': 36, '#ck-tab-strip-topbar': 32 };
 
-    test('collapsed rail: every control lies inside the bar and the window, nothing wraps (t-b91f)', async ({ page }) => {
+    test('collapsed rail: every control lies inside the bar and the window, nothing wraps (t-b91f) @webkit', async ({ page }) => {
       const id = newTicketId(PROJECT_ROOT, 'b91fa');
       try {
         await openBar(page, id, { collapse: true });
@@ -8787,7 +8787,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       }
     });
 
-    test('long text gives way with an ellipsis, the title keeps a tooltip, End Session is reachable (t-b91f)', async ({ page }) => {
+    test('long text gives way with an ellipsis, the title keeps a tooltip, End Session is reachable (t-b91f) @webkit', async ({ page }) => {
       const id = newTicketId(PROJECT_ROOT, 'b91fb');
       try {
         await openBar(page, id, { collapse: true });
@@ -8829,7 +8829,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       }
     });
 
-    test('expanded rail: id, status and title stay hidden and the rest still fits (t-b91f)', async ({ page }) => {
+    test('expanded rail: id, status and title stay hidden and the rest still fits (t-b91f) @webkit', async ({ page }) => {
       const id = newTicketId(PROJECT_ROOT, 'b91fc');
       try {
         await openBar(page, id, { collapse: false });
@@ -9005,7 +9005,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       }
     });
 
-    test('the dialog is inert for hostile names, keyboard-operable, and returns focus (t-ccd6)', async ({ page }) => {
+    test('the dialog is inert for hostile names, keyboard-operable, and returns focus (t-ccd6) @webkit', async ({ page }) => {
       const id = newTicketId(PROJECT_ROOT, 'ccd6e');
       const evil = '<img src=x onerror=window.__pwn=1> a"b';
       try {
@@ -9045,7 +9045,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       }
     });
 
-    test('the dialog lies inside the viewport in both themes at desktop and phone width (t-ccd6)', async ({ page }) => {
+    test('the dialog lies inside the viewport in both themes at desktop and phone width (t-ccd6) @webkit', async ({ page }) => {
       const id = newTicketId(PROJECT_ROOT, 'ccd6f');
       try {
         const longBranch = 'feature/' + 'a-very-long-branch-name-'.repeat(6);
@@ -10179,7 +10179,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     expect(posts[1].body.base_hash).toBe('tk-2');
   });
 
-  test('a stale Description keeps the text and offers Reload theirs or Overwrite, both using a fresh etag (t-8be2)', async ({ page }) => {
+  test('a stale Description keeps the text and offers Reload theirs or Overwrite, both using a fresh etag (t-8be2) @webkit', async ({ page }) => {
     let stale = true;
     const { live, posts, data } = await ownBoard(page, { post: route => stale
       ? route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ ok: false, code: 'stale', error: 'ticket.md changed since you read it' }) })
@@ -10252,7 +10252,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     expect(posts[1].body.base_hash).toBe('tk-2');                          // the Demo write's etag, not the stale tk-1
   });
 
-  test('with a long branch name and a narrow window the working note still leaves the Edit hint inside the modal (t-26f9)', async ({ page }) => {
+  test('with a long branch name and a narrow window the working note still leaves the Edit hint inside the modal (t-26f9) @webkit', async ({ page }) => {
     await page.setViewportSize({ width: 900, height: 700 });
     await liveBoard(page, { working: true, branch: 'sprint/a-very-long-branch-name-for-an-end-user-demo' });
     await expect(page.locator('#doc-working-note')).toBeVisible();
@@ -10267,7 +10267,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     await expect(page.locator('#m-edit-area')).toBeVisible();
   });
 
-  test('a working agent shows one warning line and never blocks the edit (t-26f9)', async ({ page }) => {
+  test('a working agent shows one warning line and never blocks the edit (t-26f9) @webkit', async ({ page }) => {
     await liveBoard(page, { working: true });
     await expect(page.locator('#doc-working-note')).toContainText('the agent is working in sprint/e7lv');
     await expect(page.locator('.doc-edit-hint')).toBeVisible();
@@ -10574,7 +10574,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
-  test('Start stays visible on a card that is both ci:true and demo:true (card-head has no slack for a 6th badge)', async ({ page }) => {
+  test('Start stays visible on a card that is both ci:true and demo:true (card-head has no slack for a 6th badge) @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'ckoverf');
     try {
       writeTicket(id, 'open', { ci: true, demo: true });
@@ -10619,7 +10619,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
-  test('rail is drag-resizable, and collapse still reaches 44px after a manual resize', async ({ page }) => {
+  test('rail is drag-resizable, and collapse still reaches 44px after a manual resize @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'ckresize');
     try {
       writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] Something'] });
@@ -10771,7 +10771,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
-  test('the sprint writing the plan badges the Ticket details row; opening it clears the badge (t-6254)', async ({ page }) => {
+  test('the sprint writing the plan badges the Ticket details row; opening it clears the badge (t-6254) @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'ckbadge');
     const dir = path.join(PROJECT_ROOT, '.tickets', id);
     try {
@@ -10908,7 +10908,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
-  test('opening the cockpit fetches acceptance.md once, not twice (t-96a8)', async ({ page }) => {
+  test('opening the cockpit fetches acceptance.md once, not twice (t-96a8) @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'ckfetch');
     try {
       writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] a criterion'] });
@@ -11411,7 +11411,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
     }
   });
 
-  test('Save & End resolves immediately if the session already ended while the modal sat open (t-8efc)', async ({ page }) => {
+  test('Save & End resolves immediately if the session already ended while the modal sat open (t-8efc) @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'lcrace');
     try {
       writeTicket(id, 'in_progress');
@@ -11450,7 +11450,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
     }
   });
 
-  test('a forged ended message not actually from the iframe is ignored', async ({ page }) => {
+  test('a forged ended message not actually from the iframe is ignored @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'lcforge');
     try {
       writeTicket(id, 'in_progress');
@@ -11472,7 +11472,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
     }
   });
 
-  test('fallback timeout force-ends and warns the save may be incomplete', async ({ page }) => {
+  test('fallback timeout force-ends and warns the save may be incomplete @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'lctimeout');
     try {
       writeTicket(id, 'in_progress');
@@ -11546,7 +11546,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
     }
   });
 
-  test('state chip (t-2e7e, t-824e): needs you on needs-you, running fallback otherwise, cleared on reopen', async ({ page }) => {
+  test('state chip (t-2e7e, t-824e): needs you on needs-you, running fallback otherwise, cleared on reopen @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'badge');
     try {
       writeTicket(id, 'in_progress');
@@ -11591,7 +11591,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       removeTestTicket(PROJECT_ROOT, id);
     }
   });
-  test('ticket cockpit state chip + reaper line (t-824e): working, done, Copilot needs-you, old daemon', async ({ page }) => {
+  test('ticket cockpit state chip + reaper line (t-824e): working, done, Copilot needs-you, old daemon @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'chip');
     let rows = [];
     try {
@@ -11854,7 +11854,7 @@ test.describe('session sub-tabs (t-8a2a)', () => {
     }
   });
 
-  test('the shared poll relays daemon-build to a background tab without rendering its rail', async ({ page }) => {
+  test('the shared poll relays daemon-build to a background tab without rendering its rail @webkit', async ({ page }) => {
     const id1 = newTicketId(PROJECT_ROOT, '8a2apoll1');
     const id2 = newTicketId(PROJECT_ROOT, '8a2apoll2');
     try {
@@ -11906,7 +11906,7 @@ test.describe('session sub-tabs (t-8a2a)', () => {
     }
   });
 
-  test('a background tab\'s needs-you status renders in the tab strip', async ({ page }) => {
+  test('a background tab\'s needs-you status renders in the tab strip @webkit', async ({ page }) => {
     const id1 = newTicketId(PROJECT_ROOT, '8a2aneedsyou1');
     const id2 = newTicketId(PROJECT_ROOT, '8a2aneedsyou2');
     try {
@@ -12010,7 +12010,7 @@ test.describe('cockpit preview pane (t-b19b)', () => {
   // --- t-533f: the sandbox silently blocks forms/storage — say so and offer the real file ---
   const NOTE = 'Preview is sandboxed — forms and storage are disabled. Open it in your browser to use the app.';
 
-  test('a static preview shows the sandbox note and Copy file link; the iframe stays sandboxed on the daemon URL (t-533f)', async ({ page, context, browserName }) => {
+  test('a static preview shows the sandbox note and Copy file link; the iframe stays sandboxed on the daemon URL (t-533f) @webkit', async ({ page, context, browserName }) => {
     const id = newTicketId(PROJECT_ROOT, 'pvnote');
     // t-df8e: clipboard permissions (and reading the clipboard back) are Chromium-only in Playwright.
     if (browserName === 'chromium') await context.grantPermissions(['clipboard-read', 'clipboard-write']);
@@ -12079,7 +12079,7 @@ test.describe('cockpit preview pane (t-b19b)', () => {
     }
   });
 
-  test('if the clipboard is blocked, the file link is shown selected for a manual copy (t-533f)', async ({ page }) => {
+  test('if the clipboard is blocked, the file link is shown selected for a manual copy (t-533f) @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'pvclip');
     await page.addInitScript(() => {
       Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.reject(new Error('denied')) } });
@@ -12101,7 +12101,7 @@ test.describe('cockpit preview pane (t-b19b)', () => {
     }
   });
 
-  test('PREVIEW_SERVER_CMD shows a static run-yourself message with the exact command, no iframe', async ({ page }) => {
+  test('PREVIEW_SERVER_CMD shows a static run-yourself message with the exact command, no iframe @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'pvcmd');
     try {
       writeTicket(id, 'in_progress');
@@ -12128,7 +12128,7 @@ test.describe('cockpit preview pane (t-b19b)', () => {
     }
   });
 
-  test('no live session (e.g. idle Resume, pre-Start) shows a message, not an infinite "Asking…"', async ({ page }) => {
+  test('no live session (e.g. idle Resume, pre-Start) shows a message, not an infinite "Asking…" @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'pvnosess');
     try {
       writeTicket(id, 'in_progress');
@@ -12156,7 +12156,7 @@ test.describe('cockpit preview pane (t-b19b)', () => {
     }
   });
 
-  test('a fresh cockpit open never inherits a prior session\'s stale preview content', async ({ page }) => {
+  test('a fresh cockpit open never inherits a prior session\'s stale preview content @webkit', async ({ page }) => {
     const id1 = newTicketId(PROJECT_ROOT, 'pvst1');
     const id2 = newTicketId(PROJECT_ROOT, 'pvst2');
     try {
@@ -12293,7 +12293,7 @@ test.describe('cockpit preview pane (t-b19b)', () => {
     }
   });
 
-  test('preview pane is resizable and collapse still works (t-bc04)', async ({ page }) => {
+  test('preview pane is resizable and collapse still works (t-bc04) @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT);
     try {
       writeTicket(id, 'in_progress');
@@ -12429,7 +12429,7 @@ test.describe('cockpit rendered-output preview (t-8f9d)', () => {
     throw new Error('daemon.json addr never appeared');
   }
 
-  test('renders a real served app-under-test through the real daemon preview endpoint', async ({ page, request }) => {
+  test('renders a real served app-under-test through the real daemon preview endpoint @webkit', async ({ page, request }) => {
     const base = `http://${await daemonAddr()}`;
 
     // 1. Start a real session (real daemon, stub agent). Returns the session id,
@@ -12481,7 +12481,7 @@ test.describe('cockpit rendered-output preview (t-8f9d)', () => {
     expect(rightTok.status()).toBe(200);
     expect(await rightTok.text()).toContain('#marker');
   });
-  test('the real daemon page relays the accepted absolute path with preview-file (t-533f)', async ({ page, context, browserName }) => {
+  test('the real daemon page relays the accepted absolute path with preview-file (t-533f) @webkit', async ({ page, context, browserName }) => {
     // Playwright's Chromium blocks a page framing a loopback daemon port under Local Network
     // Access checks unless granted (net::ERR_BLOCKED_BY_LOCAL_NETWORK_ACCESS_CHECKS).
     if (browserName === 'chromium') await context.grantPermissions(['local-network-access']);   // t-df8e: WebKit has no such permission
@@ -12519,7 +12519,7 @@ test.describe('cockpit rendered-output preview (t-8f9d)', () => {
   }
   const liveSids = async (request, base) => (await (await request.get(`${base}/sessions`)).json()).map(x => x.session);
 
-  test('t-3c9a: Kill from the shell ends a real daemon session through /relay', async ({ page, context, request, browserName }) => {
+  test('t-3c9a: Kill from the shell ends a real daemon session through /relay @webkit', async ({ page, context, request, browserName }) => {
     if (browserName === 'chromium') await context.grantPermissions(['local-network-access']);
     const addr = await daemonAddr(), base = `http://${addr}`;
     const sid = await startReal(request, base);
@@ -12539,7 +12539,7 @@ test.describe('cockpit rendered-output preview (t-8f9d)', () => {
 
   // The relay acts only on an exact message from its own loopback parent: a foreign parent, a sibling frame and
   // every wrong shape send nothing; a valid message from the parent does reach /end-session (the observer works).
-  test('t-3c9a: the /relay page ignores a foreign parent, a sibling frame and wrong shapes', async ({ page, context, request, browserName }) => {
+  test('t-3c9a: the /relay page ignores a foreign parent, a sibling frame and wrong shapes @webkit', async ({ page, context, request, browserName }) => {
     if (browserName === 'chromium') await context.grantPermissions(['local-network-access']);
     const addr = await daemonAddr(), base = `http://${addr}`;
     const sid = await startReal(request, base);
@@ -12715,7 +12715,7 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
 
   // t-61c7: a second window on a live session offers Attach (agent locked to the live
   // one), and both windows are told once two are attached.
-  test('a tab opening a live session offers Attach with the agent locked, and both windows get the shared notice', async ({ page, context }) => {
+  test('a tab opening a live session offers Attach with the agent locked, and both windows get the shared notice @webkit', async ({ page, context }) => {
     test.skip(!goOk, 'go toolchain not spawnable in this worker — cannot build cockpit-daemon');
     const { addr, proc } = await startDaemon();
     try {
@@ -12995,7 +12995,7 @@ test.describe('Canon Cockpit Projects card and Skill Eval view (t-7d8d, t-0e8b)'
     expect(reg.calls).toBe(0);
   });
 
-  test('the register spinner does not animate under prefers-reduced-motion (t-7d8d)', async ({ page }) => {
+  test('the register spinner does not animate under prefers-reduced-motion (t-7d8d) @webkit', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     const reg = await stubRegister(page);
     const sprint = regBtn(page, 'sprint');
@@ -13264,7 +13264,7 @@ test.describe('Canon Cockpit Skill Eval card (t-23d8)', () => {
     expect(href).toContain(encodeURIComponent('/tmp/proj-a/skills/api'));
   });
 
-  test('a skill with hooks needs an explicit acknowledgement before Run is enabled', async ({ page }) => {
+  test('a skill with hooks needs an explicit acknowledgement before Run is enabled @webkit', async ({ page }) => {
     const capture = {};
     await setup(page, { check: HOOKS, capture });
     await pick(page);
@@ -13331,7 +13331,7 @@ test.describe('Canon Cockpit "?" info popovers (t-576f)', () => {
     await expect(pop(page)).toHaveCount(0);
   });
 
-  test('it survives a card re-render while open, and keeps the reader\'s scroll position', async ({ page }) => {
+  test('it survives a card re-render while open, and keeps the reader\'s scroll position @webkit', async ({ page }) => {
     await open(page);
     await btn(page).click({ force: true });
     const body = pop(page).locator('.rc-pop-body');
@@ -13346,7 +13346,7 @@ test.describe('Canon Cockpit "?" info popovers (t-576f)', () => {
     await expect.poll(() => pop(page).locator('.rc-pop-body').evaluate(el => el.scrollTop)).toBe(0);
   });
 
-  test('Escape and the close button return focus to the "?"; an outside click does not steal focus', async ({ page }) => {
+  test('Escape and the close button return focus to the "?"; an outside click does not steal focus @webkit', async ({ page }) => {
     await open(page);
     await btn(page).click({ force: true });
     await page.keyboard.press('Escape');
@@ -13381,7 +13381,7 @@ test.describe('Canon Cockpit "?" info popovers (t-576f)', () => {
   });
 
   for (const width of [1100, 600]) {
-    test(`the popover stays inside the window and clear of the sidebar at ${width}px`, async ({ page }) => {
+    test(`the popover stays inside the window and clear of the sidebar at ${width}px @webkit`, async ({ page }) => {
       await open(page, width);
       await btn(page).click({ force: true });
       const b = await pop(page).boundingBox();
@@ -13514,7 +13514,7 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
     expect(posts.length).toBe(0);
   });
 
-  test('+ Add creates the model with a seeded alias and opens it in edit mode (t-294b)', async ({ page }) => {
+  test('+ Add creates the model with a seeded alias and opens it in edit mode (t-294b) @webkit', async ({ page }) => {
     const posts = await openModelTiers(page);
     await page.locator('.mt-add-card').click();
     const editing = page.locator('.mt-card.editing');
@@ -13600,7 +13600,7 @@ function contrastOf(a, b) {
 
 // t-4064: a header button's hover label must contrast with its hover fill. A button that set only the fill inherited
 // the on-accent label from `.create-btn:hover` and read white on pale in light themes.
-test('board header buttons (t-4064): the hover label contrasts with the hover fill in every theme', async ({ page }) => {
+test('board header buttons (t-4064): the hover label contrasts with the hover fill in every theme @webkit', async ({ page }) => {
   await page.goto(BASE + '/');
   await page.waitForLoadState('networkidle');
   const themes = await page.evaluate(async () => (await import('/static/theme-data.js')).THEMES.map(t => ({ id: t.id, css: !!t.css, mode: t.mode })));
@@ -13647,7 +13647,7 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
     expect(contrastOf(got.line, got.behind), JSON.stringify(got)).toBeGreaterThanOrEqual(1.05);   // without the light .mt-tabs rule: 1.001
   });
 
-  test('Model Tiers shows provider tabs, default pickers, seeded Anthropic cards, and the one-line OpenAI note (t-9e5c)', async ({ page }) => {
+  test('Model Tiers shows provider tabs, default pickers, seeded Anthropic cards, and the one-line OpenAI note (t-9e5c) @webkit', async ({ page }) => {
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
     await page.locator('#nav-admin').click();
@@ -13704,7 +13704,7 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
     ]);
   });
 
-  test('Review & Eval card states that gate effort comes from the agent definitions (t-c774)', async ({ page }) => {
+  test('Review & Eval card states that gate effort comes from the agent definitions (t-c774) @webkit', async ({ page }) => {
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
     await page.locator('#nav-admin').click();
@@ -13738,7 +13738,7 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
 
   // t-d40b. Protects the Admin page: its own tab strip (Model tiers by default, Logging beside it), with the daemon panel and agent list above
   // both, the arrow keys stepping between tabs, and no Desktop notifications switch any more.
-  test('Admin has Model tiers and Logging tabs; the daemon panel stays; the notifications switch is gone (t-d40b)', async ({ page }) => {
+  test('Admin has Model tiers and Logging tabs; the daemon panel stays; the notifications switch is gone (t-d40b) @webkit', async ({ page }) => {
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
     await page.locator('#nav-admin').click();
@@ -14394,7 +14394,7 @@ test.describe('Canon Cockpit Projects card: Git status icon (t-8d72)', () => {
   })[pid];
   const icon = (page, pid) => page.locator(`.gitstate[data-id="${pid}"]`);
 
-  test('each card shows On, Off or None from the status, hides itself when it cannot tell, and the old chip is gone', async ({ page }) => {
+  test('each card shows On, Off or None from the status, hides itself when it cannot tell, and the old chip is gone @webkit', async ({ page }) => {
     await stubBoard(page, { status: defaultStatus });
     await expect(icon(page, 'proj-git')).toHaveClass(/is-on/);
     await expect(icon(page, 'proj-git')).toHaveAttribute('title', TIP.on);
@@ -14465,7 +14465,7 @@ test.describe('Canon Cockpit Projects card: Git status icon (t-8d72)', () => {
     await expect(icon(page, 'proj-plain')).toHaveClass(/is-off/);
   });
 
-  test('rendered: state colours differ, None is faded, the hit target is at least 28px, focus shows a ring, and a long name never runs under the icon (dark and light)', async ({ page }) => {
+  test('rendered: state colours differ, None is faded, the hit target is at least 28px, focus shows a ring, and a long name never runs under the icon (dark and light) @webkit', async ({ page }) => {
     await stubBoard(page, { status: defaultStatus });
     for (const theme of ['dark', 'light']) {
       await page.evaluate(t => { document.documentElement.dataset.theme = t; }, theme);
@@ -14588,7 +14588,7 @@ test.describe('Canon Cockpit help', () => {
         await expect(page.locator('#hv-daemon')).toHaveText(want);
       });
     }
-    test("Admin's daemon panel shows the same three rows as Help (canon, board build, cockpit-daemon)", async ({ page }) => {
+    test("Admin's daemon panel shows the same three rows as Help (canon, board build, cockpit-daemon) @webkit", async ({ page }) => {
       await page.route('**/api/version', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ version: '9.9.9', commit: 'abc1234', daemon: '9.9.9 (23efca20)' }) }));
       await page.route('**/api/cockpit', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ running: true, stale: false, running_build: { version: '9.9.9', commit: '0e2fd866' } }) }));
       await page.goto(BASE + '/cockpit');
@@ -14601,7 +14601,7 @@ test.describe('Canon Cockpit help', () => {
       await expect(page.locator('#ad-ver-board')).toHaveText('abc1234');
       await expect(page.locator('#ad-ver-daemon')).toHaveText('9.9.9 (0e2fd866)');   // the running daemon's own build wins, as in Help
     });
-    test('a 64-character stamp wraps inside the panel on a phone instead of overflowing', async ({ page }) => {
+    test('a 64-character stamp wraps inside the panel on a phone instead of overflowing @webkit', async ({ page }) => {
       await page.setViewportSize({ width: 390, height: 844 });
       await daemonRow(page, { version: '0.3.0 (23efca20)', cockpit: { version: '0.3.0', commit: 'a'.repeat(64) } });
       await expect(page.locator('#hv-daemon')).toContainText('a'.repeat(64));
@@ -14613,7 +14613,7 @@ test.describe('Canon Cockpit help', () => {
     // rendered, not just present: the stamped row stays on one line inside the panel in both themes at a desktop and a phone width
     for (const vp of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
       for (const theme of ['dark', 'light']) {
-        test(`the stamped row fits on one line (${vp.width}px, ${theme})`, async ({ page }) => {
+        test(`the stamped row fits on one line (${vp.width}px, ${theme}) @webkit`, async ({ page }) => {
           await page.setViewportSize(vp);
           await daemonRow(page, { version: '0.3.0 (23efca20)', cockpit: { version: '0.3.0', commit: '0e2fd866' } });
           await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
@@ -14723,7 +14723,7 @@ test.describe('board header and card footer (t-7723)', () => {
   });
 
   for (const vp of [{ width: 1400, height: 900 }, { width: 520, height: 900 }]) {
-    test(`Start sits in the footer, right-aligned, inside the card (${vp.width}px)`, async ({ page }) => {
+    test(`Start sits in the footer, right-aligned, inside the card (${vp.width}px) @webkit`, async ({ page }) => {
       const id = newTicketId(PROJECT_ROOT, `fp-start-${vp.width}`);
       writeTicket(id);
       await openBoard(page, id);   // the search box is hidden at narrow widths, so find the card first, then resize
@@ -14742,7 +14742,7 @@ test.describe('board header and card footer (t-7723)', () => {
     });
   }
 
-  test('the card menu button is hidden at rest, shown on hover and keyboard focus; the menu opens, opens the ticket and closes on Esc (t-9d93)', async ({ page }) => {
+  test('the card menu button is hidden at rest, shown on hover and keyboard focus; the menu opens, opens the ticket and closes on Esc (t-9d93) @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'fp-menu');
     writeTicket(id);
     await openBoard(page, id);
@@ -14773,7 +14773,7 @@ test.describe('board header and card footer (t-7723)', () => {
   // t-8627: a card whose menu button is clipped by its column's bottom edge. Chrome scrolls the button into view as the click focuses
   // it, and the scroll event arrived after the menu opened, so the menu closed at once. Protects the card menu's scroll-close rule
   // (static/board-render.js).
-  test('the card menu stays open when its button sat partly below the column edge (t-8627)', async ({ page }) => {
+  test('the card menu stays open when its button sat partly below the column edge (t-8627) @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'fp-clip');
     writeTicket(id);
     await openBoard(page, id);
@@ -14832,7 +14832,7 @@ test.describe('board header and card footer (t-7723)', () => {
     expect(r.text).toBe('task');
   });
 
-  test('the sidebar starts collapsed, remembers the choice per project and keeps the donut; Current focus is clamped (t-9d93)', async ({ page }) => {
+  test('the sidebar starts collapsed, remembers the choice per project and keeps the donut; Current focus is clamped (t-9d93) @webkit', async ({ page }) => {
     await page.goto(`${BASE}?sbdefault=1`);
     await page.waitForLoadState('networkidle');
     await expect(page.locator('#sidebar')).toHaveClass(/collapsed/);                        // no saved choice: starts collapsed
@@ -14875,7 +14875,7 @@ test.describe('ticket modal document tree (t-e946)', () => {
   const tab = (page, name) => page.locator('#m-docs .doc-tab', { hasText: name });
 
   for (const vp of [{ width: 1280, height: 900 }, { width: 700, height: 900 }]) {
-    test(`tree and pane geometry (${vp.width}px)`, async ({ page }) => {
+    test(`tree and pane geometry (${vp.width}px) @webkit`, async ({ page }) => {
       const id = newTicketId(PROJECT_ROOT, `tree-geo-${vp.width}`);
       writeTicket(id);
       await openModalFor(page, id);
@@ -14900,7 +14900,7 @@ test.describe('ticket modal document tree (t-e946)', () => {
     });
   }
 
-  test('top-level nodes are a vertical list; Description is active on open; a click switches the doc', async ({ page }) => {
+  test('top-level nodes are a vertical list; Description is active on open; a click switches the doc @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'tree-nodes');
     writeTicket(id);
     await openModalFor(page, id);
@@ -14918,7 +14918,7 @@ test.describe('ticket modal document tree (t-e946)', () => {
     await expect(page.locator('#m-body')).toContainText('Notes only');
   });
 
-  test('child rows list a doc\'s ## headings, scroll to one, and keep the active doc; one heading shows none', async ({ page }) => {
+  test('child rows list a doc\'s ## headings, scroll to one, and keep the active doc; one heading shows none @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'tree-kids');
     writeTicket(id);
     await openModalFor(page, id);
@@ -14978,7 +14978,7 @@ test.describe('ticket modal document tree (t-e946)', () => {
     await expect(page.locator('#m-docs #btn-save-top')).toHaveCount(0);
   });
 
-  test('during edit a tree click does nothing and the tree is dimmed', async ({ page }) => {
+  test('during edit a tree click does nothing and the tree is dimmed @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'tree-edit');
     writeTicket(id);
     await openModalFor(page, id);
@@ -15104,7 +15104,7 @@ test.describe('ticket modal editor (t-a205)', () => {
     await expect(page.locator('#m-body')).not.toContainText('must not be saved');
   });
 
-  test('the toolbar is a rounded card with image and line-number buttons, shown only while editing', async ({ page }) => {
+  test('the toolbar is a rounded card with image and line-number buttons, shown only while editing @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'ed-tb');
     writeTicket(id);
     await openModalFor(page, id);
@@ -15176,7 +15176,7 @@ test.describe('ticket modal editor (t-a205)', () => {
     await expect(page.locator('#m-gutter')).toBeHidden();
   });
 
-  test('a long line wraps without a horizontal scrollbar and the gutter stays the same height as the text, also after narrowing', async ({ page }) => {
+  test('a long line wraps without a horizontal scrollbar and the gutter stays the same height as the text, also after narrowing @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'ed-wrap');
     writeTicket(id);
     await page.addInitScript(() => { try { localStorage.removeItem('sprint-check-editor-lines'); } catch {} });
@@ -15198,7 +15198,7 @@ test.describe('ticket modal editor (t-a205)', () => {
     await expect.poll(async () => { const y = await m(); return Math.abs(y.gH - y.tH) <= 2 && y.over <= 1; }).toBe(true);
   });
   // t-9b2d: the editor helpers are an ES module (static/editor.js) reached through a bridge; drive them in the real page.
-  test('Tab and Shift+Tab indent the selected lines, and Enter continues a list item', async ({ page }) => {
+  test('Tab and Shift+Tab indent the selected lines, and Enter continues a list item @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'ed-keys');
     writeTicket(id);
     await openModalFor(page, id);
@@ -15243,7 +15243,7 @@ test.describe('ticket modal polish (t-612f)', () => {
   const node = (page, name) => page.locator(`#m-docs .doc-node[data-key${name ? `$="${name}.md"` : '=""'}]`);
   const kids = (page, name) => page.locator(`#m-docs .doc-node[data-key${name ? `$="${name}.md"` : '=""'}] + .doc-children .doc-child`);
 
-  test('nodes with two or more sections show + or −, the others an equal spacer, all in one column', async ({ page }) => {
+  test('nodes with two or more sections show + or −, the others an equal spacer, all in one column @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'pol-exp');
     writeTicket(id);
     await openModalFor(page, id);
@@ -15281,7 +15281,7 @@ test.describe('ticket modal polish (t-612f)', () => {
     await expect(kids(page, '')).toHaveCount(0);
   });
 
-  test('a section row of a doc that is not open opens that doc and scrolls to the section', async ({ page }) => {
+  test('a section row of a doc that is not open opens that doc and scrolls to the section @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'pol-jump');
     writeTicket(id);
     await openModalFor(page, id);
@@ -15296,7 +15296,7 @@ test.describe('ticket modal polish (t-612f)', () => {
     })).toBe(true);
   });
 
-  test('a section row clicked while its doc is still loading scrolls once the doc has rendered', async ({ page }) => {
+  test('a section row clicked while its doc is still loading scrolls once the doc has rendered @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'pol-gap');
     writeTicket(id);
     await openModalFor(page, id);
@@ -15311,7 +15311,7 @@ test.describe('ticket modal polish (t-612f)', () => {
     })).toBe(true);
   });
 
-  test('a section whose heading carries markup still scrolls: the row and the rendered heading agree on the id', async ({ page }) => {
+  test('a section whose heading carries markup still scrolls: the row and the rendered heading agree on the id @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'pol-slug');
     writeTicket(id, { withDesign: true });
     await openModalFor(page, id);
@@ -15341,7 +15341,7 @@ test.describe('ticket modal polish (t-612f)', () => {
     await expect(kids(page, 'acceptance')).toHaveCount(4);
   });
 
-  test('Lite is a green switch and the Codex note is gone', async ({ page }) => {
+  test('Lite is a green switch and the Codex note is gone @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT), cid = newTicketId(PROJECT_ROOT);   // the demo endpoint wants exactly t- plus four characters
     writeTicket(id); writeTicket(cid, { status: 'closed' });
     await openModalFor(page, id);
@@ -15367,7 +15367,7 @@ test.describe('ticket modal polish (t-612f)', () => {
     await expect(page.locator('.signoff-demo-toggle')).toBeDisabled();
   });
 
-  test('the top-left grip resizes with the bottom-right corner fixed; the bottom-right grip still resizes', async ({ page }) => {
+  test('the top-left grip resizes with the bottom-right corner fixed; the bottom-right grip still resizes @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'pol-grip');
     writeTicket(id);
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -15399,7 +15399,7 @@ test.describe('ticket modal polish (t-612f)', () => {
     expect(Math.abs((d.height - c.height) - 50)).toBeLessThanOrEqual(2);
   });
 
-  test('a selected card has no outline of its own; a card with keyboard focus does', async ({ page }) => {
+  test('a selected card has no outline of its own; a card with keyboard focus does @webkit', async ({ page }) => {
     const a = newTicketId(PROJECT_ROOT, 'pol-card-a'), b = newTicketId(PROJECT_ROOT, 'pol-card-b');
     writeTicket(a); writeTicket(b);
     await page.goto(BASE);
@@ -15419,7 +15419,7 @@ test.describe('ticket modal polish (t-612f)', () => {
     expect(f.s).not.toBe((await look(b)).s);
   });
 
-  test('a section click scrolls the text inside the rounded card; the card keeps its edges under the pane bar (t-5648)', async ({ page }) => {
+  test('a section click scrolls the text inside the rounded card; the card keeps its edges under the pane bar (t-5648) @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT);
     writeTicket(id);
     await page.setViewportSize({ width: 1300, height: 800 });
@@ -15447,7 +15447,7 @@ test.describe('ticket modal polish (t-612f)', () => {
     expect((await geo()).cardTop).toBe(before.cardTop);                                     // and the card still has not moved
   });
 
-  test('on the Plan tab the sign-off bar stays above the card and the card, not the body, scrolls (t-5648)', async ({ page }) => {
+  test('on the Plan tab the sign-off bar stays above the card and the card, not the body, scrolls (t-5648) @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT);
     writeTicket(id);
     await page.setViewportSize({ width: 1300, height: 800 });
@@ -15463,7 +15463,7 @@ test.describe('ticket modal polish (t-612f)', () => {
     expect(r.bodyOverflow).toBeLessThanOrEqual(1);                                          // the body has nothing of its own to scroll
   });
 
-  test('a short doc keeps a card as tall as its text: no stretch to the pane bottom, no scrollbar (t-5648)', async ({ page }) => {
+  test('a short doc keeps a card as tall as its text: no stretch to the pane bottom, no scrollbar (t-5648) @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT);
     writeTicket(id);
     await page.setViewportSize({ width: 1300, height: 950 });
@@ -15482,7 +15482,7 @@ test.describe('ticket modal polish (t-612f)', () => {
     expect(r.scrolls).toBeLessThanOrEqual(1);                                               // and shows no scrollbar
   });
 
-  test('a Feature card with the Lite badge fits its header in a narrow column: id on one line, no badge clipped (t-d0c4)', async ({ page }) => {
+  test('a Feature card with the Lite badge fits its header in a narrow column: id on one line, no badge clipped (t-d0c4) @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT);
     writeTicket(id, { type: 'feature', demo: true, status: 'in_progress' });
     await page.setViewportSize({ width: 760, height: 900 });
@@ -15530,7 +15530,7 @@ test.describe('ticket modal polish (t-612f)', () => {
     await expect(flag).toHaveAttribute('title', new RegExp(`^${want} to check: unchecked items`));
   });
 
-  test('the sign-off bar is one full-width row: tier, a wide Risk field, model; the controls share a height (t-d0c4, t-bb97)', async ({ page }) => {
+  test('the sign-off bar is one full-width row: tier, a wide Risk field, model; the controls share a height (t-d0c4, t-bb97) @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT);
     writeTicket(id);
     await page.setViewportSize({ width: 1400, height: 900 });
@@ -15555,7 +15555,7 @@ test.describe('ticket modal polish (t-612f)', () => {
     expect(r.model.width).toBeCloseTo(156, 0);
   });
 
-  test('a new ticket shows Acceptance, Plan and Research as ghost nodes; the pane explains and offers + Acceptance; Cancel writes nothing, Save creates the file (t-bb97)', async ({ page }) => {
+  test('a new ticket shows Acceptance, Plan and Research as ghost nodes; the pane explains and offers + Acceptance; Cancel writes nothing, Save creates the file (t-bb97) @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT);
     writeTicket(id);
     const dir = path.join(PROJECT_ROOT, '.tickets', id);
@@ -15650,7 +15650,7 @@ test.describe('ticket modal polish (t-612f)', () => {
     await expect(page.locator('#m-meta .signoff-demo-toggle')).toHaveAttribute('aria-checked', 'true');   // still there on the Plan tab
   });
 
-  test('with Lite on and a model picked, tier, Risk, model and the hint stay on one row in the default dialog (t-887e, t-bb97)', async ({ page }) => {
+  test('with Lite on and a model picked, tier, Risk, model and the hint stay on one row in the default dialog (t-887e, t-bb97) @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT);
     writeTicket(id, { demo: true });
     await page.setViewportSize({ width: 1400, height: 900 });
@@ -15669,7 +15669,7 @@ test.describe('ticket modal polish (t-612f)', () => {
     expect(r.hint.right).toBeLessThanOrEqual(r.pane.right + 1);                             // the hint is not clipped
   });
 
-  test('a narrow dialog puts the Risk field alone on a full-width line; the Risk tooltip carries its text (t-d0c4)', async ({ page }) => {
+  test('a narrow dialog puts the Risk field alone on a full-width line; the Risk tooltip carries its text (t-d0c4) @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT);
     writeTicket(id);
     await page.setViewportSize({ width: 1400, height: 900 });
@@ -15737,7 +15737,7 @@ test('cockpit dark theme (t-be64): --text-dim text reads at 4.5:1 on --bg and --
 });
 
 // t-b5c7: `.modal input` is for text fields; it also matched the Show hidden checkbox, which WebKit then drew 0px wide.
-test('shell (t-b5c7): the Add Project Show hidden checkbox has a visible box inside its label, and text fields keep their width', async ({ page }) => {
+test('shell (t-b5c7): the Add Project Show hidden checkbox has a visible box inside its label, and text fields keep their width @webkit', async ({ page }) => {
   await page.route('**/api/browse-dirs*', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ path: '/home/me', parent: '/home', entries: [] }) }));
   await page.goto(BASE + '/cockpit');
   await page.waitForLoadState('networkidle');
@@ -15857,7 +15857,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   // Prod path: Ctrl+. m / M opens the Terminal as a pane under or beside a ticket's GitHub panel (t-ccf5). Beside, an iframe given
   // top + bottom + height:auto stayed at the 150px default, so the Terminal was a short strip with its text cut off (t-3d04).
   for (const dir of ['below', 'beside']) {
-    test(`a Terminal pane placed ${dir} fills its half and gets the keys (t-3d04)`, async ({ page }) => {
+    test(`a Terminal pane placed ${dir} fills its half and gets the keys (t-3d04) @webkit`, async ({ page }) => {
       const id = newTicketId(PROJECT_ROOT);
       ghTicket(id);
       await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
@@ -15892,7 +15892,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   // Prod path: the Sent panel's To Claude Cloud button (t-0aa7): the Terminal opens with `tkt send-issue <id> --launch` typed for the
   // user to send, never sent; on Windows the same button copies the line and says where to paste it.
   for (const windows of [false, true]) {
-    test(`To Claude Cloud ${windows ? 'copies the line on Windows' : 'types the line in the Terminal without sending it'} (t-0aa7)`, async ({ page }) => {
+    test(`To Claude Cloud ${windows ? 'copies the line on Windows' : 'types the line in the Terminal without sending it'} (t-0aa7) @webkit`, async ({ page }) => {
       const id = newTicketId(PROJECT_ROOT);   // a real t-xxxx id: the button refuses any other
       ghTicket(id);
       const prompt = `Work on Issue#57 for ticket ${id}. Read its section "Working on this" thoroughly before starting and follow it step by step. Work on a new branch, never main.`;
@@ -16363,7 +16363,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     return { job, seen, stat, button: page.locator(`.card[data-id="${id}"] .card-gh-btn`) };
   }
 
-  test('Check & merge: Cancel at the confirm runs nothing; a merge that cannot start says so (t-718b)', async ({ page }) => {
+  test('Check & merge: Cancel at the confirm runs nothing; a merge that cannot start says so (t-718b) @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gh16');
     const { seen, button } = await mergeFlow(page, id, { startStatus: 500 });
     await button.click();
@@ -16469,7 +16469,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#gh-dialog-body')).not.toContainText('Continue here on the card');
   });
 
-  test('Take back that fails says so; Tab and Shift+Tab wrap inside the dialog (t-718b)', async ({ page }) => {
+  test('Take back that fails says so; Tab and Shift+Tab wrap inside the dialog (t-718b) @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gh22');
     ghTicket(id, { github: 'acme/app#57' });
     await routeStatus(page, id, { stage: 'sent' });
@@ -16552,7 +16552,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   // Prod path: a board's "set up first" message to the Cockpit shell, which opens Factory › GitHub for that board's project (t-9641).
-  test('the shell opens Factory › GitHub for the board that asked, and ignores a message from no board (t-24b1)', async ({ page }) => {
+  test('the shell opens Factory › GitHub for the board that asked, and ignores a message from no board (t-24b1) @webkit', async ({ page }) => {
     const projects = [
       { id: 'proj-a', path: '/tmp/proj-a', name: 'proj-a', description: '', added: '2026-09-26' },
       { id: 'proj-b', path: '/tmp/proj-b', name: 'proj-b', description: '', added: '2026-09-26' },
@@ -16653,7 +16653,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   // Prod path: the header's GitHub Sync button (tkt sync-issues through t-d271's routes; the table and its ticked rows are t-b045).
-  test('GitHub Sync lists the issues in a table, creates only the ticked ones, and disables Create when there is nothing to make (t-b045)', async ({ page }) => {
+  test('GitHub Sync lists the issues in a table, creates only the ticked ones, and disables Create when there is nothing to make (t-b045) @webkit', async ({ page }) => {
     const waiting = [{ issue: 61, title: 'Export tasks as CSV', type: 'feature', priority: 2 }, { issue: 62, title: 'Dark mode flickers', type: 'bug', priority: 1 }];
     const skipped = [{ issue: 57, title: 'An old one', reason: 'already t-3b90 (closed here): close #57 on GitHub', ticket: 't-3b90', ticket_status: 'closed' }];
     let intake = { ok: true, exit_code: 0, intake: { repo: 'a/b', label: 'canon', waiting, skipped } };
@@ -16724,7 +16724,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     expect((await page.locator('#btn-gh-sync').boundingBox()).width).toBeLessThan(50);
   });
 
-  test('GitHub Sync works from the keyboard: focus starts on a row, Space ticks without moving focus or creating anything, Esc closes (t-b045)', async ({ page }) => {
+  test('GitHub Sync works from the keyboard: focus starts on a row, Space ticks without moving focus or creating anything, Esc closes (t-b045) @webkit', async ({ page }) => {
     const posts = [];
     await page.route('**/api/github/intake**', r => json(r, { ok: true, exit_code: 0, intake: { repo: 'a/b', label: 'canon', waiting: [{ issue: 9, title: 'x'.repeat(300), type: 'task', priority: 2 }, { issue: 8, title: 'Two', type: 'bug', priority: 1 }], skipped: [{ issue: 7, title: 'Seven', reason: 'already t-0007', ticket: 't-0007', ticket_status: 'open' }] } }));
     await page.route(u => u.pathname === '/api/github/sync', r => { posts.push(r.request().postData()); return json(r, { ok: true, exit_code: 0, output: 'sync-issues: 2 created\n' }); });
@@ -16773,7 +16773,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.keyboard.press('Escape');
   });
 
-  test('a late preview reply for a closed GitHub Sync dialog does not take focus from the open one (t-b045)', async ({ page }) => {
+  test('a late preview reply for a closed GitHub Sync dialog does not take focus from the open one (t-b045) @webkit', async ({ page }) => {
     let calls = 0, release;
     const held = new Promise(r => { release = r; });
     const intake = { ok: true, exit_code: 0, intake: { repo: 'a/b', label: 'canon', waiting: [{ issue: 9, title: 'One', type: 'task', priority: 2 }], skipped: [] } };
@@ -16791,7 +16791,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.keyboard.press('Escape');
   });
 
-  test('GitHub Sync rows tint on hover, and every base dialog resizes from both corners (t-b045)', async ({ page }) => {
+  test('GitHub Sync rows tint on hover, and every base dialog resizes from both corners (t-b045) @webkit', async ({ page }) => {
     await page.route('**/api/github/intake**', r => json(r, { ok: true, exit_code: 0, intake: { repo: 'a/b', label: 'canon', waiting: [{ issue: 9, title: 'One', type: 'task', priority: 2 }, { issue: 8, title: 'Two', type: 'bug', priority: 1 }], skipped: [] } }));
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
@@ -16834,7 +16834,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
 
   // A dialog moved by its header and then resized from a corner must never grow past the window: the old floor of 420px
   // pushed a dialog with 388px of room 20px out (found by the evaluator, t-4803).
-  test('a dialog dragged by its header and then resized from a corner stays inside a small window (t-4803)', async ({ page }) => {
+  test('a dialog dragged by its header and then resized from a corner stays inside a small window (t-4803) @webkit', async ({ page }) => {
     await page.setViewportSize({ width: 500, height: 500 });
     await page.route('**/api/github/intake**', r => json(r, { ok: true, exit_code: 0, intake: { repo: 'a/b', label: 'canon', waiting: [], skipped: [] } }));
     await page.goto(BASE);
@@ -16893,7 +16893,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   // Prod path: Factory › GitHub (t-9641; was Admin's), rendering GET /api/github/doctor (tkt github-doctor) for the chosen project.
-  test('Factory GitHub shows the doctor checks with their fixes, rechecks, and copies the recipe (t-90a3)', async ({ page }) => {
+  test('Factory GitHub shows the doctor checks with their fixes, rechecks, and copies the recipe (t-90a3) @webkit', async ({ page }) => {
     const projects = [
       { id: 'proj-a', path: '/tmp/proj-a', name: 'proj-a', description: '', added: '2026-09-26' },
       { id: 'proj-b', path: '/tmp/proj-b', name: 'proj-b', description: '', added: '2026-09-26' },
@@ -16943,7 +16943,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   // Prod path: the Cockpit sidebar's Factory entry and its two tabs (t-9641).
-  test('Factory sits between Projects and Admin; its tabs switch and Agentic factory is a planned notice (t-9641)', async ({ page }) => {
+  test('Factory sits between Projects and Admin; its tabs switch and Agentic factory is a planned notice (t-9641) @webkit', async ({ page }) => {
     await page.route('**/api/projects', r => json(r, [{ id: 'proj-a', path: '/tmp/proj-a', name: 'proj-a', description: '', added: '2026-09-26' }]));
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
@@ -17300,7 +17300,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     expect(bodies).toEqual([{ pr: 58 }]);
   });
 
-  test('Finish: shown once the land worktree exists, names its path, and posts finish (t-6623)', async ({ page }) => {
+  test('Finish: shown once the land worktree exists, names its path, and posts finish (t-6623) @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gh32');
     ghTicket(id, { github: 'acme/app#57' });
     await routeStatus(page, id, { stage: 'pr-open', pr: 58, land: false, landed: `/w/land-${id}` });
@@ -17414,7 +17414,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   // t-a463: a cloud PR is always a draft and GitHub will not merge one. Check & merge now says so in seconds, with the reason ABOVE the log and a
   // Mark ready button (the click is the consent; tkt pr-ready re-checks); after it, Check & merge runs again. Protects the card's merge dialog.
   for (const theme of ['dark', 'light']) {
-    test(`Check & merge: a draft PR shows the reason above the log and a Mark ready button that marks it ready and checks again (${theme}, t-a463)`, async ({ page }) => {
+    test(`Check & merge: a draft PR shows the reason above the log and a Mark ready button that marks it ready and checks again (${theme}, t-a463) @webkit`, async ({ page }) => {
       const id = newTicketId(PROJECT_ROOT, 'gh8');
       ghTicket(id, { github: 'acme/app#57' });
       await routeStatus(page, id, { stage: 'results-in', pr: 58 });
@@ -17532,7 +17532,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     expect(sends).toEqual([{ public: true }]);
   });
 
-  test('the dialog takes focus, keeps Tab inside, closes on Escape from anywhere and gives focus back (t-718b)', async ({ page }) => {
+  test('the dialog takes focus, keeps Tab inside, closes on Escape from anywhere and gives focus back (t-718b) @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gh10');
     ghTicket(id, { github: 'acme/app#57' });
     await routeStatus(page, id, { stage: 'sent' });
@@ -17859,7 +17859,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     }
   });
 
-  test('the Cockpit shell uses the same roles: Cancel a red outline, a danger confirm fills red, only on hover (t-e523)', async ({ page }) => {
+  test('the Cockpit shell uses the same roles: Cancel a red outline, a danger confirm fills red, only on hover (t-e523) @webkit', async ({ page }) => {
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
     for (const theme of ['dark', 'light']) {
@@ -17885,7 +17885,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     expect(missing).toEqual([]);
   });
 
-  test('the merge log shows 16 lines, follows new output unless scrolled up, and keeps one live progress line (t-e523)', async ({ page }) => {
+  test('the merge log shows 16 lines, follows new output unless scrolled up, and keeps one live progress line (t-e523) @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gh-e523b');
     const { job, button } = await mergeFlow(page, id);
     const pre = page.locator('#gh-dialog-pre');
@@ -17921,7 +17921,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(pre).not.toContainText(tick(15));
   });
 
-  test('the GitHub dialog moves by its title, resizes from its corner, and opens at its default place again (t-e523)', async ({ page }) => {
+  test('the GitHub dialog moves by its title, resizes from its corner, and opens at its default place again (t-e523) @webkit', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 1100 });   // t-4803: a corner drag now stops at the window edge, so leave room to grow
     await page.route('**/api/github/intake**', r => json(r, { ok: true, exit_code: 0, intake: { repo: 'a/b', label: 'canon', waiting: [], skipped: Array.from({ length: 40 }, (_, i) => ({ issue: i + 1, title: `Issue ${i + 1}`, reason: 'already t-0000', ticket: 't-0000', ticket_status: 'open' })) } }));
     await page.goto(BASE);
@@ -18049,7 +18049,7 @@ test.describe('Logbook (t-c6bb)', () => {
   }));
   const open = async page => { await page.locator('#btn-logbook').click(); await expect(page.locator('#logbook-overlay')).toHaveClass(/open/); };
 
-  test('header button, tabs, Handoff cards, Learnings chips and table, Esc and focus (t-c6bb)', async ({ page }) => {
+  test('header button, tabs, Handoff cards, Learnings chips and table, Esc and focus (t-c6bb) @webkit', async ({ page }) => {
     await serve(page);
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
@@ -18123,7 +18123,7 @@ test.describe('Logbook (t-c6bb)', () => {
     await expect(page.locator('#m-id')).toHaveText(id);
   });
 
-  test('nothing unpromoted: no badge, and the status column never wraps its file name (t-5157)', async ({ page }) => {
+  test('nothing unpromoted: no badge, and the status column never wraps its file name (t-5157) @webkit', async ({ page }) => {
     await serve(page, undefined, file('# Learnings\n\n<!-- canon:learnings:BEGIN -->\n| Date | Ticket | Finding | Status |\n|---|---|---|---|\n'
       + row('2026-10-13', 't-0514', 'Data-check evidence must come from the same dataset the app shows: the first evaluator failed it because the check read a day-old CSV (296 rows) while the live-synced app showed 295; per-class counts read from the app\'s own filters reconciled it.', '`promoted → PROMOTED.md`')
       + '<!-- canon:learnings:END -->\n'));
@@ -18172,7 +18172,7 @@ test.describe('Logbook (t-c6bb)', () => {
     await expect(page.locator('.lb-sec h3').first()).toHaveText('Current Focus');
   });
 
-  test('the Logbook moves by its title bar, resizes from its corner and starts fresh on every open (t-c6bb)', async ({ page }) => {
+  test('the Logbook moves by its title bar, resizes from its corner and starts fresh on every open (t-c6bb) @webkit', async ({ page }) => {
     await serve(page);
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
@@ -18233,7 +18233,7 @@ test.describe('Logbook (t-c6bb)', () => {
     await open(page);
     await expectCornersHold(page, '#logbook-modal');
   });
-  test('a click outside closes it, a selection dragged out onto the overlay does not, and a closed dialog is out of the tab order (t-c6bb)', async ({ page }) => {
+  test('a click outside closes it, a selection dragged out onto the overlay does not, and a closed dialog is out of the tab order (t-c6bb) @webkit', async ({ page }) => {
     await serve(page);
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
@@ -18313,7 +18313,7 @@ test.describe('Tags (t-37e8)', () => {
   });
   const find = async (page, q) => { await page.goto(BASE); await page.waitForLoadState('networkidle'); await page.locator('#board-search').fill(q); };
 
-  test('cards show three chips and +n; the modal edits tags from the dropdown, saves them, and a closed ticket is read-only (t-37e8)', async ({ page }) => {
+  test('cards show three chips and +n; the modal edits tags from the dropdown, saves them, and a closed ticket is read-only (t-37e8) @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT), done = newTicketId(PROJECT_ROOT);
     writeTagged(id, { tags: 'security,nodejs,go,github' });
     writeTagged(done, { tags: 'go', status: 'closed' });
@@ -18651,7 +18651,7 @@ test.describe('NOW lane and hidden lanes (t-0447)', () => {
   });
 
   // Protects the NOW order (in progress, open, muted Done group) and the 7-day rule on the /api/tickets `closed` time.
-  test('NOW orders in progress, open, then a muted Done group; closed 8 days ago is in Done only (t-0447)', async ({ page }) => {
+  test('NOW orders in progress, open, then a muted Done group; closed 8 days ago is in Done only (t-0447) @webkit', async ({ page }) => {
     const wip = write({ status: 'in_progress' }), opn = write({ status: 'open' });
     const recent = write({ status: 'closed', closed: daysAgo(2) }), old = write({ status: 'closed', closed: daysAgo(8), created: daysAgo(0) });   // newest created: first in Done, ahead of the 5-card cap
     await open(page);
@@ -18702,7 +18702,7 @@ test.describe('NOW lane and hidden lanes (t-0447)', () => {
   });
 
   // Protects the lane fold: the eye, the strip, the saved choice across a reload, one lane always left, and no ticket written.
-  test('the eye folds a lane to a strip, a click restores it, it survives a reload, the last lane cannot be hidden (t-0447)', async ({ page }) => {
+  test('the eye folds a lane to a strip, a click restores it, it survives a reload, the last lane cannot be hidden (t-0447) @webkit', async ({ page }) => {
     const id = write({ status: 'open', tags: '' });
     const file = path.join(dir(id), 'ticket.md');
     const text = fs.readFileSync(file, 'utf8');
@@ -18759,7 +18759,7 @@ test.describe('NOW lane and hidden lanes (t-0447)', () => {
 
   // Protects the folded lane's place (board-lanes.css): with two lanes shown and two hidden, the one thin folded lane sits at the board's
   // right edge, not right after the last shown lane (t-71c8; the t-0447 test only checked that it comes after them).
-  test('the folded lane is pinned to the board\'s right edge with two lanes shown and two hidden (t-71c8)', async ({ page }) => {
+  test('the folded lane is pinned to the board\'s right edge with two lanes shown and two hidden (t-71c8) @webkit', async ({ page }) => {
     write({ status: 'open', tags: '' });
     await page.addInitScript(() => { try { for (const k of Object.keys(localStorage)) if (k.startsWith('sprint-check-hidden-lanes')) localStorage.removeItem(k); } catch {} });
     await open(page);
