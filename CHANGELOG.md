@@ -6,12 +6,20 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-10-30
+
+The prebuilt `canon-go` program changed: after `canon update`, restart the daemon (Admin's **Restart Daemon** button) so a running one picks it up.
+
 ### Added
 - `tkt merged <id> --pr N [--sha S]` records a PR merged outside `merge-pr`: it checks GitHub says MERGED and the head is on the base, then writes `merged:`, the `github.md` trail and the `github.merged` event. The board's GitHub poll (`tkt github-status`) does the same on its own, once, with `actor: system`; when a check fails nothing is written and the card shows a short warning. `sprint-check event` takes `--actor user|agent|system` (t-7c89).
 - Check & merge says when this checkout's main has commits GitHub's main lacks ("Your local main has N commits that aren't on GitHub…"); `merge-pr --check` prints the count (t-7c89).
+- `tkt close` run in a worktree that holds its own copy of the ticket (an adopted worktree, `.tickets/` gitignored) copies the closed ticket folder back to the main checkout's `.tickets/<id>/`, so main no longer stays `open` once the worktree is removed. Main's `.cockpit-*` files and its `github`, `runs`, `merged` and `cloud_status` lines are kept; a failed copy warns and never fails the close. Where `.tickets/` is tracked, or the ticket is main's already, nothing is copied (t-3abc).
 
 ### Fixed
 - A second `subagent-log.sh` call with the same `--agent-id` replaces that run's row and writes no second `gate.finished`; `sprint gate-cost` counts each agent id once, the later measured row winning. The event keeps the numbers of the first call (t-7c89).
+
+### Changed
+- For contributors: the board spec's copy no longer carries this machine's git worktrees (`.git/worktrees`), and each run records the source's `git worktree list` in `machine-load.txt`, so a leftover worktree cannot fail a spec test that passes on the base copy (t-cab4).
 
 ## [0.31.0] - 2026-10-30
 
