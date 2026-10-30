@@ -113,27 +113,27 @@ const none = tally([{ ran: 0, passed: false }, { ran: 0, passed: false }, { ran:
   const baselineFile = w('baseline.json', { min_tests: {}, failing: [], flaky: [], skipped: [] });
   // two full runs: the load test failed one of them, the assertion both
   const fullRun = [
-    w('board-spec-webkit-run1.json', report({ load: rec('timedOut', [GOTO]), assert: rec('unexpected', [EXPECT]), fine: rec('expected', [{ status: 'passed' }]) })),
-    w('board-spec-webkit-run2.json', report({ load: rec('expected', [{ status: 'passed' }]), assert: rec('unexpected', [EXPECT]), fine: rec('expected', [{ status: 'passed' }]) })),
+    w('board-spec-webkit-run1.json', report({ 'load @webkit': rec('timedOut', [GOTO]), assert: rec('unexpected', [EXPECT]), fine: rec('expected', [{ status: 'passed' }]) })),
+    w('board-spec-webkit-run2.json', report({ 'load @webkit': rec('expected', [{ status: 'passed' }]), assert: rec('unexpected', [EXPECT]), fine: rec('expected', [{ status: 'passed' }]) })),
   ];
   const cli = (...args) => spawnSync(process.execPath, [path.join(__dirname, 'board-spec-classify.js'), ...args], { encoding: 'utf8' });
   const list = cli('list', '--baseline', baselineFile, ...fullRun);
-  ok('list prints one browser<TAB>pattern line per unlisted failure', list.status === 0 && list.stdout === 'webkit\t g assert$\nwebkit\t g load$\n', list.stdout);
-  // test 1 = g > assert, test 2 = g > load; every solo run passes and ran one test
+  ok('list prints one browser<TAB>pattern line per unlisted failure', list.status === 0 && list.stdout === 'webkit\t g assert$\nwebkit\t g load @webkit$\n', list.stdout);
+  // test 1 = g > assert, test 2 = g > load @webkit (t-23f6: WebKit runs only tagged tests, so a WebKit failure's title carries the tag); every solo run passes and ran one test
   for (const side of ['branch', 'base']) for (const i of [1, 2]) for (const k of [1, 2, 3]) {
-    w(`solo/${side}-${i}-run${k}.json`, report({ [i === 1 ? 'assert' : 'load']: rec('expected', [{ status: 'passed' }]) }));
+    w(`solo/${side}-${i}-run${k}.json`, report({ [i === 1 ? 'assert' : 'load @webkit']: rec('expected', [{ status: 'passed' }]) }));
   }
   const out = cli('report', '--baseline', baselineFile, '--solo', path.join(dir, 'solo'), '--solo-runs', '3', '--head', 'abc1234', '--base-ref', 'main', '--base-sha', 'def5678', ...fullRun);
   ok('report exits 0', out.status === 0, out.stderr);
   ok('report prints its header with the counts and both refs', out.stdout.startsWith('== classify: 2 unlisted failure(s); 3 solo run(s) each on the branch (abc1234) and on main (def5678)\n'), out.stdout.split('\n')[0]);
   ok('report announces one entry in the singular', /\n== 1 baseline entry to paste into "flaky" in tests\/board-spec-baseline\.json/.test(out.stdout), out.stdout);
-  ok('report prints the kind and counts for the timeout', /-- webkit: g > load\n   kind: timeout \(page\.goto, 30 s\); full run: failed 1\/2\n   alone on the branch: passed 3\/3; alone on the base: passed 3\/3\n   verdict: baseline candidate/.test(out.stdout), out.stdout);
+  ok('report prints the kind and counts for the timeout', /-- webkit: g > load @webkit\n   kind: timeout \(page\.goto, 30 s\); full run: failed 1\/2\n   alone on the branch: passed 3\/3; alone on the base: passed 3\/3\n   verdict: baseline candidate/.test(out.stdout), out.stdout);
   ok('report calls the passing assertion a likely regression', /-- webkit: g > assert\n[^]*?verdict: likely regression: an assertion failed/.test(out.stdout), out.stdout);
   const json = out.stdout.slice(out.stdout.indexOf('{'));
   let entry = null; try { entry = JSON.parse(json); } catch (e) { /* reported below */ }
-  ok('exactly one entry is printed and it parses as JSON', entry && entry.title === 'g > load' && entry.ticket === 't-5989' && entry.failed_runs && entry.failed_runs.webkit === '1/2', json);
+  ok('exactly one entry is printed and it parses as JSON', entry && entry.title === 'g > load @webkit' && entry.ticket === 't-5989' && entry.failed_runs && entry.failed_runs.webkit === '1/2', json);
   ok('the reason names both refs and the counts', entry && /30 s webkit page\.goto timeout in a full run \(1\/2 runs at abc1234, \d{4}-\d\d-\d\d\); passed alone 3\/3 on the branch and 3\/3 on main def5678/.test(entry.reason), entry && entry.reason);
-  const g = entry && evaluate({ reports: [{ browser: 'webkit', tests: { 'g > load': 'unexpected' } }], baseline: { failing: [], flaky: [entry] }, specText: '' });
+  const g = entry && evaluate({ reports: [{ browser: 'webkit', tests: { 'g > load @webkit': 'unexpected' } }], baseline: { failing: [], flaky: [entry] }, specText: '' });
   ok('the guard accepts the pasted entry with no violation', g && g.violations.length === 0, g && g.violations);
   const noBase = cli('report', '--baseline', baselineFile, '--solo', path.join(dir, 'solo'), '--solo-runs', '3', '--head', 'abc1234', ...fullRun);
   ok('without --base the report prints no entry and says the base was not run', noBase.status === 0 && /alone on the base: not run/.test(noBase.stdout) && /no entry: pass --base/.test(noBase.stdout) && /== no baseline candidates/.test(noBase.stdout) && !/"ticket"/.test(noBase.stdout), noBase.stdout);
@@ -144,22 +144,22 @@ const none = tally([{ ran: 0, passed: false }, { ran: 0, passed: false }, { ran:
   const caseDir = (name, failSide, failRun) => {
     for (const side of ['branch', 'base']) for (const k of [1, 2, 3]) {
       w(`${name}/${side}-1-run${k}.json`, pass('assert'));
-      w(`${name}/${side}-2-run${k}.json`, side === failSide && k === failRun ? flop('load') : pass('load'));
+      w(`${name}/${side}-2-run${k}.json`, side === failSide && k === failRun ? flop('load @webkit') : pass('load @webkit'));
     }
     return cli('report', '--baseline', baselineFile, '--solo', path.join(dir, name), '--solo-runs', '3', '--head', 'abc1234', '--base-ref', 'main', '--base-sha', 'def5678', ...fullRun);
   };
   for (const k of [1, 2, 3]) {
     const b = caseDir(`branch-fails-run${k}`, 'branch', k);
-    ok(`a branch failure in solo run ${k} of 3 is a likely regression with no entry`, /-- webkit: g > load\n[^]*?alone on the branch: passed 2\/3; alone on the base: passed 3\/3\n   verdict: likely regression: failed alone on the branch \(passed 2\/3\)/.test(b.stdout) && !/"ticket"/.test(b.stdout), b.stdout);
+    ok(`a branch failure in solo run ${k} of 3 is a likely regression with no entry`, /-- webkit: g > load @webkit\n[^]*?alone on the branch: passed 2\/3; alone on the base: passed 3\/3\n   verdict: likely regression: failed alone on the branch \(passed 2\/3\)/.test(b.stdout) && !/"ticket"/.test(b.stdout), b.stdout);
     const a = caseDir(`base-fails-run${k}`, 'base', k);
-    ok(`a base failure in solo run ${k} of 3 is a likely regression with no entry`, /-- webkit: g > load\n[^]*?alone on the branch: passed 3\/3; alone on the base: passed 2\/3\n   verdict: likely regression: failed alone on main too \(passed 2\/3\)/.test(a.stdout) && !/"ticket"/.test(a.stdout), a.stdout);
+    ok(`a base failure in solo run ${k} of 3 is a likely regression with no entry`, /-- webkit: g > load @webkit\n[^]*?alone on the branch: passed 3\/3; alone on the base: passed 2\/3\n   verdict: likely regression: failed alone on main too \(passed 2\/3\)/.test(a.stdout) && !/"ticket"/.test(a.stdout), a.stdout);
   }
   // the branch solo runs for test 2 (g > load) matched a second test too: not isolated, no entry
   for (const k of [1, 2, 3]) w(`wide/branch-1-run${k}.json`, report({ assert: rec('expected', [{ status: 'passed' }]) }));
-  for (const k of [1, 2, 3]) w(`wide/branch-2-run${k}.json`, report({ load: rec('expected', [{ status: 'passed' }]), 'load more': rec('expected', [{ status: 'passed' }]) }));
-  for (const i of [1, 2]) for (const k of [1, 2, 3]) w(`wide/base-${i}-run${k}.json`, report({ [i === 1 ? 'assert' : 'load']: rec('expected', [{ status: 'passed' }]) }));
+  for (const k of [1, 2, 3]) w(`wide/branch-2-run${k}.json`, report({ 'load @webkit': rec('expected', [{ status: 'passed' }]), 'load more': rec('expected', [{ status: 'passed' }]) }));
+  for (const i of [1, 2]) for (const k of [1, 2, 3]) w(`wide/base-${i}-run${k}.json`, report({ [i === 1 ? 'assert' : 'load @webkit']: rec('expected', [{ status: 'passed' }]) }));
   const wide = cli('report', '--baseline', baselineFile, '--solo', path.join(dir, 'wide'), '--solo-runs', '3', '--head', 'abc1234', '--base-ref', 'main', '--base-sha', 'def5678', ...fullRun);
-  ok('a branch solo run that matched two tests prints not isolated and no entry', wide.status === 0 && /-- webkit: g > load\n[^]*?verdict: not isolated: the solo runs on the branch matched 2,2,2 tests/.test(wide.stdout) && /== no baseline candidates/.test(wide.stdout) && !/"ticket"/.test(wide.stdout), wide.stdout);
+  ok('a branch solo run that matched two tests prints not isolated and no entry', wide.status === 0 && /-- webkit: g > load @webkit\n[^]*?verdict: not isolated: the solo runs on the branch matched 2,2,2 tests/.test(wide.stdout) && /== no baseline candidates/.test(wide.stdout) && !/"ticket"/.test(wide.stdout), wide.stdout);
   const noSha = cli('report', '--baseline', baselineFile, '--solo', path.join(dir, 'solo'), '--solo-runs', '3', '--head', 'abc1234', '--base-ref', 'main', ...fullRun);
   ok('report with --base-ref but no --base-sha exits 2', noSha.status === 2, [noSha.status, noSha.stdout]);
   const full = ['--baseline', baselineFile, '--solo', path.join(dir, 'solo'), '--solo-runs', '3', '--head', 'abc1234'];

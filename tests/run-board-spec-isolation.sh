@@ -87,9 +87,13 @@ assert_eq 0 "$rc"; assert_eq 1 "$(nreports reuse chromium)"; [ ! -e "$WORK/out-r
 # t-23f6: Chromium runs every test; WebKit gets --grep @webkit, and a user --grep must match as well (a lookahead pair, not a replacement)
 echo 'process.exit(0)' > "$FAKE/tests/board-spec-guard.js"
 run tags --runs 1 --browsers chromium,webkit --no-guard
-assert_eq 1 "$(grep -c -- '--browser=chromium' "$WORK/state/npx-args")"; grep -- '--browser=chromium' "$WORK/state/npx-args" | grep -q -- '--grep' && fail "run-board-spec: chromium was given a --grep"
-grep -- '--browser=webkit' "$WORK/state/npx-args" | grep -q -- '--grep @webkit$' || fail "run-board-spec: webkit did not get --grep @webkit: $(cat "$WORK/state/npx-args")"
+A="$WORK/state/npx-args"
+assert_eq 1 "$(grep -c -- '--browser=chromium' "$A")"
+ch="$(grep -- '--browser=chromium' "$A")"; wk="$(grep -- '--browser=webkit' "$A")"   # whole-stream reads: no early-exit reader under pipefail
+[[ "$ch" != *--grep* ]] || fail "run-board-spec: chromium was given a --grep"
+[[ "$wk" == *'--grep @webkit' ]] || fail "run-board-spec: webkit did not get --grep @webkit: $(cat "$A")"
 run tags-user --runs 1 --browsers chromium,webkit --no-guard --grep 'popover|menu'
-grep -- '--browser=chromium' "$WORK/state/npx-args" | grep -q -- '--grep popover|menu$' || fail "run-board-spec: chromium lost the user --grep: $(cat "$WORK/state/npx-args")"
-grep -- '--browser=webkit' "$WORK/state/npx-args" | grep -qF -- '--grep ^(?=.*@webkit)(?=.*(?:popover|menu))' || fail "run-board-spec: webkit --grep is not @webkit AND the user pattern: $(cat "$WORK/state/npx-args")"
+ch="$(grep -- '--browser=chromium' "$A")"; wk="$(grep -- '--browser=webkit' "$A")"
+[[ "$ch" == *'--grep popover|menu' ]] || fail "run-board-spec: chromium lost the user --grep: $(cat "$A")"
+[[ "$wk" == *'--grep ^(?=.*@webkit)(?=.*(?:popover|menu))'* ]] || fail "run-board-spec: webkit --grep is not @webkit AND the user pattern: $(cat "$A")"
 echo "run-board-spec-isolation: ok"
