@@ -1456,14 +1456,15 @@ cmd_import_issue() {
     set_or_add_field "$tdir/ticket.md" github "$repo#$n"
   fi
   # t-4b34: a PR that says "Fixes #<n>" is the evidence a cloud session ran, so the recovered ticket is out on GitHub again (runs: github) and the card shows its
-  # state. Only when the issue was read through gh: the cloud session's own --body-file call and sync-issues have no PR to find and must not claim a session (t-718b).
+  # state. Only when the issue was read through gh: a --body-file import and sync-issues never look and must not claim a session (t-718b). A cloud session's own
+  # REST read does look (REST: its proxy refuses GraphQL); before its PR exists the answer is "none", silently.
   if [[ -z "$bodyf" && -n "$repo" && -z "$(get_field "$tdir/ticket.md" runs)" ]]; then
     local pr_rc=0 pr_msg
     pr_msg="$(_issue_has_pr "$repo" "$n")" || pr_rc=$?
     case "$pr_rc" in
       0) set_or_add_field "$tdir/ticket.md" runs github ;;
       1) ;;
-      *) echo "import-issue: could not check $repo for a PR that fixes #$n ($pr_msg); the card shows no cloud state until one is found" >&2 ;;
+      *) echo "import-issue: could not check $repo for a PR that fixes #$n (${pr_msg%%$'\n'*}); the card shows no cloud state until one is found" >&2 ;;
     esac
   fi
   echo "import-issue: rebuilt .tickets/$id/ from issue #$n" >&2
@@ -1719,11 +1720,13 @@ cmd_cloud_env() {
 # code) and merge if they pass. The merge uses --match-head-commit (GitHub refuses if the head moved) and runs from
 # outside any checkout, so --delete-branch never touches the user's local branches.
 # _issue_has_pr <repo> <issue> — t-4b34: 0 when an open or merged PR says "Fixes #<issue>", 1 when none does, 2 (the reason on stdout) when gh could not
-# say. REST, not `gh pr list`: a Claude cloud session's GitHub proxy refuses GraphQL (t-35d2), and the answer there is simply "none yet".
+# say, or when the newest 100 PRs (one page, GitHub sorts newest first) held none and there may be older ones: a truncated read must not look like "none".
+# REST, not `gh pr list`: a Claude cloud session's GitHub proxy refuses GraphQL (t-35d2), and a session that has no PR yet simply gets "none".
 _issue_has_pr() {
-  local out
-  out="$(gh api "repos/$1/pulls?state=all&per_page=100" \
-    --jq ".[] | select(.state == \"open\" or .merged_at != null) | select((.body // \"\") | test(\"(?i)\\\\bfixes #$2\\\\b\")) | .number" 2>&1)" || { printf '%s' "$out"; return 2; }
+  local out expr='[.[] | select(.state == "open" or .merged_at != null) | select((.body // "") | test("(?i)\\bfixes #@ISSUE@\\b"))] as $m | if ($m | length) > 0 then $m[].number elif length >= 100 then "full" else empty end'
+  expr="${expr//@ISSUE@/$2}"
+  out="$(gh api "repos/$1/pulls?state=all&per_page=100" --jq "$expr" 2>&1)" || { printf '%s' "$out"; return 2; }
+  [[ "$out" != full ]] || { printf 'only the newest 100 PRs were checked and none says Fixes #%s' "$2"; return 2; }
   [[ -n "$out" ]]
 }
 # _fixes_prs <repo> <issue> <state>: one "number<TAB>state<TAB>head" line per PR on <repo> whose body says "Fixes #<issue>"
