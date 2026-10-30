@@ -632,12 +632,18 @@ refuse_merged "comes from a fork" env STUB_CROSS=true "$TKT" merged "$id" --pr 7
 refuse_merged "unusable base or head" env STUB_HEAD=abc123 "$TKT" merged "$id" --pr 7
 refuse_merged "is not the head GitHub reports" env STUB_HEAD=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa "$TKT" merged "$id" --pr 7
 refuse_merged "could not fetch" "$TKT" merged "$id" --pr 99
+refuse_merged "unusable base or head" env STUB_HEAD="x$PRHEAD" "$TKT" merged "$id" --pr 7
+refuse_merged "unusable base or head" env STUB_HEAD="${PRHEAD}0" "$TKT" merged "$id" --pr 7
+refuse_merged "--sha takes a commit hash" "$TKT" merged "$id" --pr 7 --sha "abc1234!"
+refuse_merged "--sha takes a commit hash" "$TKT" merged "$id" --pr 7 --sha "!abc1234"
 [[ -z "$(git --git-dir="$W/origin.git" rev-parse -q --verify refs/pull/99/head || true)" ]] || fail "PR 99 has a ref"
 # the recorded merge: merged:, a full trail block, and a github.merged event with the ticket and PR (no actor from the CLI)
+merged_events="$(cat "$CANON_HOME"/events/*.jsonl | grep -F '"kind":"github.merged"' | grep -cF "\"ticket\":\"$id\"")"
 out="$("$TKT" merged "$id" --pr 7 --sha abc1234 2>&1)" || fail "tkt merged --sha failed: $out"
 grep -q '^merged: abc1234$' "$f" || fail "--sha did not win over GitHub's merge commit"
 trail="$(tail -8 "$gt")"; assert_contains "$trail" "PR: #7"; assert_contains "$trail" "merge commit: abc1234"
 assert_contains "$trail" "base: main"; assert_contains "$trail" "recorded by: merged"
+[[ "$(cat "$CANON_HOME"/events/*.jsonl | grep -F '"kind":"github.merged"' | grep -cF "\"ticket\":\"$id\"")" == "$((merged_events + 1))" ]] || fail "tkt merged did not write exactly one github.merged event"
 gm="$(event_line github.merged "$id")"; assert_contains "$gm" '"pr":"7"'; assert_contains "$gm" '"ticket":"'"$id"'"'; [[ "$gm" != *'"actor"'* ]] || fail "tkt merged claimed an actor: $gm"
 # no merge commit on GitHub: merged: falls back to the PR number, and the trail says unknown
 sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"

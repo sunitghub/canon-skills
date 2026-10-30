@@ -210,6 +210,25 @@ rm -rf "$SG"
 # t-7c89: CANON_EVENT_ACTOR=system puts actor:system on an event canon records itself.
 (source "$ROOT/tools/platform-lib.sh"; CANON_EVENT_ACTOR=system canon_event github.merged tkt "$G" "ticket=$gid" pr=7)
 assert_contains "$(event_line github.merged "$gid")" '"actor":"system"'
+# t-7c89: canon_event passes --actor only when the board advertises it and CANON_EVENT_ACTOR is set; a failing board never fails it.
+FB="$(mktemp -d)"
+printf '#!/bin/sh\n[ "$1" = --help ] && { echo "  event <kind> --project <dir> [--actor user|agent|system] key=value..."; exit 0; }\necho "$*" >> "%s/args"\nexit 1\n' "$FB" > "$FB/with"
+printf '#!/bin/sh\n[ "$1" = --help ] && { echo "  event <kind> --project <dir> key=value..."; exit 0; }\necho "$*" >> "%s/args"\n' "$FB" > "$FB/without"
+chmod +x "$FB/with" "$FB/without"
+actors() { ( source "$ROOT/tools/platform-lib.sh"
+  rc=0; board_bin() { echo "$FB/$FBIN"; }
+  CANON_EVENT_ACTOR=system canon_event k1 src "$FB" a=1 || rc=1
+  CANON_EVENT_ACTOR= canon_event k2 src "$FB" a=2 || rc=1
+  unset CANON_EVENT_ACTOR; canon_event k3 src "$FB" a=3 || rc=1
+  echo "rc=$rc" >> "$FB/args" ); }
+: > "$FB/args"; FBIN=with actors; a="$(cat "$FB/args")"
+assert_contains "$a" "event k1 --source src --project"; assert_contains "$a" "--actor system a=1"
+[[ "$(grep '^event k2' "$FB/args")" != *--actor* && "$(grep '^event k3' "$FB/args")" != *--actor* ]] || fail "an unset or empty CANON_EVENT_ACTOR passed --actor (or kept the previous call's): $a"
+assert_contains "$a" "rc=0"   # the board exits 1 and canon_event still returns 0
+: > "$FB/args"; FBIN=without actors >/dev/null; [[ "$(cat "$FB/args")" != *--actor* ]] || fail "--actor went to a board that does not list it: $(cat "$FB/args")"
+rm -rf "$FB"
+# the replace leaves another agent's row alone (the grep -v pattern is the agent id, not empty)
+grep -q '"agent_id":"plain"' "$G/.claude/subagent-runs.jsonl" || fail "replacing a row removed another agent's row"
 # t-ff14: under Claude Code, an evaluator's gate.finished names the agent type of the harness transcript holding its run-id
 # (a fallback shows as general-purpose), and leaves the field out when no transcript holds it.
 FX="$(mktemp -d)"; mkdir -p "$FX/projects/-p/s1/subagents"
