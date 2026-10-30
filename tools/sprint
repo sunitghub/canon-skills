@@ -1325,7 +1325,7 @@ cmd_token_spend() {
     esac
   done
   [[ "$last" =~ ^[1-9][0-9]*$ ]] || { echo "Error: --last must be a positive whole number" >&2; exit 1; }
-  root="$(project_root)"
+  root="$(cd "$(project_root)" && pwd -P)"   # physical, as the events record it (canon_event)
   cfg="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}"
   evdir="${CANON_HOME:-${HOME:-}/.canon}/events"
   # The checkout and its worktrees: a turn belongs to the longest of these its cwd starts with.

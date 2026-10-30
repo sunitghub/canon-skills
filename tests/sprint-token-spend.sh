@@ -6,7 +6,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 
 project="$(make_project)"
 cfg="$(mktemp -d)"
-trap 'rm -rf "$project" "$cfg"' EXIT
+wt="$(mktemp -d)"
+trap 'rm -rf "$project" "$cfg" "$wt"' EXIT
 cd "$project"
 root="$(pwd -P)"
 export CLAUDE_CONFIG_DIR="$cfg"
@@ -14,8 +15,14 @@ events="$CANON_HOME/events"
 mkdir -p "$events"
 
 # No transcripts: says so, exit 0, no table.
-out="$("$SPRINT" token-spend)"
-assert_contains "$out" "No Claude Code transcripts"
+assert_eq "No Claude Code transcripts for $root under $cfg/projects: token-spend reads only Claude Code's (other harnesses keep none it can read)." "$("$SPRINT" token-spend)"
+
+# A sprint in a worktree: its events and its session both carry the worktree's path.
+git -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+git worktree add -q "$wt/w1" 2>/dev/null
+wtp="$(cd "$wt/w1" && pwd -P)"
+wdir="$cfg/projects/$(printf '%s' "$wtp" | sed 's/[^A-Za-z0-9]/-/g')"
+mkdir -p "$wdir"
 
 tdir="$cfg/projects/$(printf '%s' "$root" | sed 's/[^A-Za-z0-9]/-/g')"
 mkdir -p "$tdir/s1/subagents"
@@ -41,6 +48,7 @@ main="$tdir/s1.jsonl"
   # A user line quoting usage-shaped text is not a turn.
   printf '%s\n' '{"type":"user","message":{"role":"user","content":"{\"type\":\"assistant\",\"id\":\"msg_fake\",\"usage\":{\"input_tokens\":777}}"},"timestamp":"2026-10-01T10:20:00.000Z","cwd":"'"$root"'"}'
 } > "$main"
+turn 15:05:00 msg_w1 claude-opus-5-5 44 0 0 0 "$wtp" > "$wdir/s2.jsonl"   # t-gggg, in the worktree
 turn 10:45:00 msg_i1 claude-sonnet-5-5 50 0 0 0 > "$tdir/s1/subagents/agent-i1.jsonl"   # implementer: implementation
 printf '{"agentType":"general-purpose","description":"implement"}' > "$tdir/s1/subagents/agent-i1.meta.json"
 turn 10:50:00 msg_g1 claude-sonnet-5-5 40 0 0 0 > "$tdir/s1/subagents/agent-g1.jsonl"   # before gate.started, still a gate
@@ -63,6 +71,7 @@ ev 09-30T08:10:00.000 sprint.completed t-dddd | gzip | cat >> "$events/2026-09-3
   ev 10-01T11:30:00.000 sprint.started t-bbbb
   ev 10-01T12:00:00.000 sprint.completed t-aaaa
   ev 10-01T12:30:00.000 gate.started t-bbbb
+  ev 10-01T12:50:00.000 gate.started t-bbbb    # a re-grade: the gates phase still starts at the first
   ev 10-01T13:00:00.000 sprint.completed t-bbbb
   ev 10-01T13:10:00.000 sprint.started t-ffff
   ev 10-01T13:20:00.000 sprint.completed t-ffff
@@ -70,6 +79,7 @@ ev 09-30T08:10:00.000 sprint.completed t-dddd | gzip | cat >> "$events/2026-09-3
   ev 10-01T13:40:00.000 sprint.started ../t-evil
   ev 10-01T13:50:00.000 sprint.completed ../t-evil
 } > "$events/2026-10-01.jsonl"
+printf '{"schema":1,"ts":"2026-10-01T15:00:00.000Z","kind":"sprint.started","project":"%s","data":{"ticket":"t-gggg"}}\n{"schema":1,"ts":"2026-10-01T15:10:00.000Z","kind":"sprint.completed","project":"%s","data":{"ticket":"t-gggg"}}\n' "$wtp" "$wtp" >> "$events/2026-10-01.jsonl"
 mkdir -p .tickets/t-aaaa .tickets/t-bbbb
 printf '## Sign-off\nTier: normal | Risk: x\n\n- [x] Plan approved\nApproved: sha256:%s 2026-10-01T10:30:00Z\n' "$(printf 'a%.0s' {1..64})" > .tickets/t-aaaa/plan.md
 printf '## Sign-off\nTier: high | Risk: x\n\n- [x] Plan approved\n' > .tickets/t-bbbb/plan.md
@@ -87,6 +97,7 @@ assert_eq "t-bbbb high-risk - 600* 900 0" "$(row t-bbbb)"
 assert_eq "t-cccc - - 11* 0 0 ~ partial" "$(row t-cccc)"
 assert_eq "t-dddd - no transcript turns (older than the transcripts kept)" "$(row t-dddd)"
 assert_eq "" "$(row t-eeee)"
+assert_eq "t-gggg - - 44* 0 0 ~ partial" "$(row t-gggg)"
 assert_eq "../t-evil - no transcript turns (older than the transcripts kept)" "$(row ../t-evil)"
 assert_eq "t-ffff - - 0* 50 0" "$(row t-ffff)"   # no Approved: stamp and no build turns: still "-", not 0
 phase() { printf '%s\n' "$out" | awk -v p="$1" -v m="$2" '$1 == p && $2 == m' | tr -s ' '; }
@@ -104,8 +115,8 @@ assert_eq "t-bbbb high-risk - 600* 900 0" "$(row t-bbbb)"
 assert_eq "" "$(row t-aaaa)"
 assert_eq "" "$(phase overlap claude-opus-5-5)"
 
-# --last 3: the three newest closed sprints.
-out="$("$SPRINT" token-spend --last 3)"
+# --last 4: the four newest closed sprints.
+out="$("$SPRINT" token-spend --last 4)"
 assert_eq "t-bbbb high-risk - 600* 900 0" "$(row t-bbbb)"
 assert_eq "" "$(row t-aaaa)"
 
@@ -117,13 +128,14 @@ assert_eq "t-aaaa normal 0^ 170 343 1k" "$(row t-aaaa)"
 out="$("$SPRINT" token-spend --ticket t-zzzz)"
 assert_contains "$out" "No completed sprint for t-zzzz."
 
-for bad in "--last 0" "--last x" "--last" "--ticket" "--bogus"; do
+for bad in "--last 0" "--last x" "--last x1" "--last 1x" "--last" "--ticket" "--bogus"; do
   set +e
   # shellcheck disable=SC2086  # split on purpose
   "$SPRINT" token-spend $bad >/dev/null 2>&1; rc=$?
   set -e
   assert_eq 1 "$rc"
 done
-assert_eq "Usage: sprint token-spend [--last N] [--ticket <id>]" "$("$SPRINT" token-spend --help)"
+out="$("$SPRINT" token-spend --help)"   # exits 0
+assert_eq "Usage: sprint token-spend [--last N] [--ticket <id>]" "$out"
 
 printf 'sprint-token-spend: ok\n'
