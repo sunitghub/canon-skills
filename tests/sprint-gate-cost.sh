@@ -37,7 +37,7 @@ out="$("$SPRINT" gate-cost --last 4)"
 assert_contains "$out" "last 4 measured run(s)"
 assert_eq "reviewer normal - 2 55000 60000 7.0 9.0 50%" "$(row reviewer normal | tr -s ' ')"
 
-assert_contains "$out" "gate       tier     model              runs    tok-med  tok-worst  min-med min-worst fail/budget"
+assert_contains "$out" "gate       tier      model              runs    tok-med  tok-worst  min-med min-worst fail/budget"
 
 # A row without a type or tier groups under "-".
 "$SUBAGENT_LOG" --agent-id x1 --tokens 1000
@@ -55,6 +55,11 @@ assert_contains "$out" "last 4 measured run(s)"
 assert_eq "evaluator normal claude-sonnet-5 2 40000 50000 - - 50%" "$(row evaluator normal claude-sonnet-5 | tr -s ' ')"
 assert_eq "evaluator normal claude-opus-5 1 70000 70000 - - 0%" "$(row evaluator normal claude-opus-5 | tr -s ' ')"
 assert_eq "evaluator normal - 1 20000 20000 - - 0%" "$(row evaluator normal | tr -s ' ')"
+
+# t-63a7: rows logged under the old spellings group as high-risk.
+printf '%s\n' '{"agent_type":"reviewer","tier":"high","tokens":8000}' '{"agent_type":"reviewer","tier":"highrisk","tokens":6000}' >> .claude/subagent-runs.jsonl
+out="$("$SPRINT" gate-cost --last 2)"
+assert_eq "reviewer high-risk - 2 7000 8000 - - 0%" "$(row reviewer high-risk | tr -s ' ')"
 
 for bad in "--last 0" "--last x" "--last" "--bogus"; do
   set +e

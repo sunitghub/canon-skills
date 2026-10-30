@@ -1281,6 +1281,7 @@ cmd_gate_cost() {
     { tok = field("tokens"); if (tok == "") next
       n++; T[n] = tok; M[n] = field("minutes"); O[n] = field("outcome")
       ty = field("agent_type"); ti = field("tier"); mo = field("model")
+      if (ti ~ /^high/) ti = "high-risk"   # t-63a7: rows logged before the tier was named high-risk
       G[n] = (ty == "" ? "-" : ty) "\t" (ti == "" ? "-" : ti) "\t" (mo == "" ? "-" : mo) }
     END {
       if (n == 0) { print "No measured gate runs yet: log them with subagent-log.sh --tokens N --minutes M --tool-uses K."; exit }
@@ -1292,13 +1293,165 @@ cmd_gate_cost() {
         if (O[i] == "fail" || O[i] == "budget") F[g]++
       }
       printf "Close-gate cost, last %d measured run(s):\n", n - start + 1
-      printf "%-10s %-8s %-18s %4s %10s %10s %8s %9s %11s\n", "gate", "tier", "model", "runs", "tok-med", "tok-worst", "min-med", "min-worst", "fail/budget"
+      printf "%-10s %-9s %-18s %4s %10s %10s %8s %9s %11s\n", "gate", "tier", "model", "runs", "tok-med", "tok-worst", "min-med", "min-worst", "fail/budget"
       for (k = 1; k <= ng; k++) {
         g = order[k]; split(g, p, "\t")
         mm = MC[g] ? sprintf("%.1f", median(ML[g])) : "-"; mw = MC[g] ? sprintf("%.1f", MW[g]) : "-"
-        printf "%-10s %-8s %-18s %4d %10d %10d %8s %9s %10d%%\n", p[1], p[2], p[3], C[g], median(TL[g]), TW[g], mm, mw, int(100 * F[g] / C[g] + 0.5)
+        printf "%-10s %-9s %-18s %4d %10d %10d %8s %9s %10d%%\n", p[1], p[2], p[3], C[g], median(TL[g]), TW[g], mm, mw, int(100 * F[g] / C[g] + 0.5)
       }
     }' "$jsonl"
+}
+
+# Prints each event file named on stdin, gunzipping the rotated ones.
+_token_spend_events() {
+  local f
+  while IFS= read -r f; do
+    if [[ "$f" == *.gz ]]; then gzip -dc "$f" 2>/dev/null || true; else cat "$f"; fi
+  done
+}
+
+# cmd_token_spend [--last N] [--ticket <id>] — t-63a7: where a closed sprint's tokens went, planning (sprint.started →
+# plan.md's Approved: stamp) / implementation (→ first gate.started) / gates (→ sprint.completed), by model. Canon logs no
+# session tokens, so the turns come from Claude Code's own transcripts (main loop + subagents/), read-only; nothing is
+# written. A turn in two sprints' windows counts once, as overlap. Plain awk (no python, for Git Bash), like gate-cost.
+cmd_token_spend() {
+  local last=10 only="" root cfg evdir enc p f
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --last) last="${2:-}"; shift 2 || { echo "Error: --last requires a value" >&2; exit 1; } ;;
+      --ticket) only="${2:-}"; shift 2 || { echo "Error: --ticket requires a value" >&2; exit 1; } ;;
+      -h|--help) echo "Usage: sprint token-spend [--last N] [--ticket <id>]"; return 0 ;;
+      *) echo "Error: unknown argument: $1" >&2; exit 1 ;;
+    esac
+  done
+  [[ "$last" =~ ^[1-9][0-9]*$ ]] || { echo "Error: --last must be a positive whole number" >&2; exit 1; }
+  root="$(project_root)"
+  cfg="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}"
+  evdir="${CANON_HOME:-${HOME:-}/.canon}/events"
+  # The checkout and its worktrees: a turn belongs to the longest of these its cwd starts with.
+  local -a paths=("$root") mains=() subs=()
+  while IFS= read -r p; do [[ -n "$p" && "$p" != "$root" ]] && paths+=("$p"); done \
+    < <(git -C "$root" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p')
+  # Claude Code names a project's transcript folder after its native path (C:\x on Windows), every other character a '-'.
+  for p in "${paths[@]}"; do
+    command -v cygpath >/dev/null 2>&1 && p="$(cygpath -w "$p")"
+    enc="$cfg/projects/$(printf '%s' "$p" | sed 's/[^A-Za-z0-9]/-/g')"
+    for f in "$enc"/*/subagents/agent-*.jsonl; do [[ -f "$f" ]] && subs+=("$f"); done
+    for f in "$enc"/*.jsonl; do [[ -f "$f" ]] && mains+=("$f"); done
+  done
+  if [[ ${#mains[@]} -eq 0 && ${#subs[@]} -eq 0 ]]; then
+    echo "No Claude Code transcripts for $root under $cfg/projects: token-spend reads only Claude Code's (other harnesses keep none it can read)."
+    return 0
+  fi
+  local tspaths; tspaths="$(printf '%s\n' "${paths[@]}")"   # via the environment: BSD awk refuses a newline in -v
+  local -a evfiles=()
+  for f in "$evdir"/*.jsonl "$evdir"/*.jsonl.gz; do [[ -f "$f" ]] && evfiles+=("$f"); done
+  if [[ ${#evfiles[@]} -eq 0 ]]; then echo "No canon events under $evdir: sprint start and complete times are unknown."; return 0; fi
+  # Sprint windows from the events, oldest file first: ticket, project, start, first gate.started, end.
+  local windows
+  windows="$(printf '%s\n' "${evfiles[@]}" | sort | _token_spend_events | TS_PATHS="$tspaths" awk '
+      function field(name,   m) { if (!match($0, "\"" name "\":\"[^\"]*\"")) return ""; m = substr($0, RSTART, RLENGTH); sub(/^[^:]*:"/, "", m); sub(/"$/, "", m); return m }
+      BEGIN { n = split(ENVIRON["TS_PATHS"], P, "\n"); for (i = 1; i <= n; i++) if (P[i] != "") OK[P[i]] = 1 }
+      /"kind":"(sprint\.started|gate\.started|sprint\.completed)"/ {
+        pr = field("project"); if (!(pr in OK)) next
+        t = field("ticket"); k = field("kind"); ts = substr(field("ts"), 1, 19); key = t SUBSEP pr
+        if (k == "sprint.started") { if (!(key in S)) { S[key] = ts; G[key] = "" } }
+        else if (k == "gate.started") { if ((key in S) && G[key] == "") G[key] = ts }
+        else if (key in S) { print t "\t" pr "\t" S[key] "\t" G[key] "\t" ts; delete S[key] }
+      }')"
+  [[ -n "$windows" ]] || { echo "No completed sprints in $evdir for $root."; return 0; }
+  # Approval time and tier from each window ticket's plan.md (the Approved: stamp exists since 0.30.6).
+  local plans="" t pl
+  for t in $(printf '%s\n' "$windows" | cut -f1 | sort -u); do
+    pl="$root/.tickets/$t/plan.md"; [[ -f "$pl" ]] || continue
+    plans+="$t	$(awk '/^Approved: sha256:/ { a = $3 } END { print a }' "$pl")	$(awk '/^Tier:/ { sub(/^Tier: */, ""); sub(/[^A-Za-z-].*/, ""); print; exit }' "$pl")"$'\n'
+  done
+  # Subagent files first, so a message id seen in both is claimed by its subagent.
+  {
+    printf '%s\n' "$windows" | sed 's/^/W\t/'
+    printf '%s' "$plans" | sed 's/^/A\t/'
+    for f in ${subs[@]+"${subs[@]}"}; do
+      [[ -f "${f%.jsonl}.meta.json" ]] && printf 'M\t%s\t%s\n' "$f" "$(tr -d '\n' < "${f%.jsonl}.meta.json")"
+    done
+    grep -H '"type":"assistant"' ${subs[@]+"${subs[@]}"} ${mains[@]+"${mains[@]}"} 2>/dev/null
+  } | TS_PATHS="$tspaths" awk -v last="$last" -v only="$only" '
+    function jf(s, name,   m) { if (!match(s, "\"" name "\":\"[^\"]*\"")) return ""; m = substr(s, RSTART, RLENGTH); sub(/^[^:]*:"/, "", m); sub(/"$/, "", m); return m }
+    function jn(s, name,   m) { if (!match(s, "\"" name "\":[0-9]+")) return 0; m = substr(s, RSTART, RLENGTH); sub(/^[^:]*:/, "", m); return m + 0 }
+    function winpath(c,   q, i, best) {  # Windows cwds are C:\\x; canon paths are /c/x
+      gsub(/\\\\/, "/", c); if (c ~ /^[A-Za-z]:\//) c = "/" tolower(substr(c, 1, 1)) substr(c, 3)
+      best = ""; for (i = 1; i <= np; i++) { q = P[i]; if ((c == q || index(c, q "/") == 1) && length(q) > length(best)) best = q }
+      return best
+    }
+    function h(v) { return v >= 1e6 ? sprintf("%.1fM", v / 1e6) : v >= 1e3 ? sprintf("%.0fk", v / 1e3) : sprintf("%d", v) }
+    BEGIN { FS = "\t"; np = split(ENVIRON["TS_PATHS"], P, "\n"); while (np > 0 && P[np] == "") np-- }
+    $1 == "W" { nw++; WT[nw] = $2; WP[nw] = $3; WS[nw] = $4; WG[nw] = $5; WE[nw] = $6; next }
+    $1 == "A" { AP[$2] = $3; TI[$2] = ($4 ~ /^high/ ? "high-risk" : $4); next }
+    $1 == "M" { MT[$2] = jf($3, "agentType"); MD[$2] = $3; next }
+    {
+      i = index($0, ":{\""); f = substr($0, 1, i - 1); j = substr($0, i + 1)
+      if (!match(j, /"id":"msg_[^"]*"/)) next   # a harness-made <synthetic> turn has no msg_ id
+      id = substr(j, RSTART, RLENGTH); if (id in SEEN) next
+      mo = jf(j, "model")
+      u = index(j, "\"usage\":{"); if (!u) next
+      SEEN[id] = 1; u = substr(j, u)
+      ts = substr(jf(j, "timestamp"), 1, 19); pr = winpath(jf(j, "cwd"))
+      if (pr != "" && (!(pr in FIRST) || ts < FIRST[pr])) FIRST[pr] = ts
+      gate = (MT[f] == "canon-reviewer" || MT[f] == "canon-evaluator")
+      hit = 0
+      if (gate && match(MD[f], /t-[0-9a-z]+/)) {  # a gate names its ticket in its description
+        tk = substr(MD[f], RSTART, RLENGTH); for (w = nw; w >= 1; w--) if (WT[w] == tk && WP[w] == pr) { hit = w; break }
+      }
+      if (!hit) { c = 0; for (w = 1; w <= nw; w++) if (WP[w] == pr && WS[w] <= ts && ts < WE[w]) { c++; hit = w }
+        if (c == 0) next
+        if (c > 1) hit = 0 }
+      # Kept, and given a phase at END: a gate dispatched before its gate.started event moves the gates start back.
+      nt++; XH[nt] = hit; XT[nt] = ts; XM[nt] = mo; XG[nt] = gate
+      XF[nt] = jn(u, "input_tokens") + jn(u, "cache_creation_input_tokens"); XC[nt] = jn(u, "cache_read_input_tokens"); XO[nt] = jn(u, "output_tokens")
+      if (hit && gate && (WG[hit] == "" || ts < WG[hit])) WG[hit] = ts
+    }
+    END {
+      for (x = 1; x <= nt; x++) {
+        hit = XH[x]; ts = XT[x]
+        if (!hit) ph = "overlap"
+        else {
+          # An approval before sprint start (planned during another sprint) leaves this window no planning.
+          a = substr(AP[WT[hit]], 1, 19); if (a > WE[hit]) a = ""; else if (a != "" && a < WS[hit]) PRE[hit] = 1
+          if (a == "") BUILD[hit] = 1
+          if (XG[x] || (WG[hit] != "" && ts >= WG[hit])) ph = "gates"
+          else if (a == "") ph = "build"
+          else ph = (ts < a) ? "planning" : "implementation"
+        }
+        k = hit SUBSEP ph SUBSEP XM[x]; if (!(k in TN)) KO[++nk] = k; TN[k]++; TF[k] += XF[x]; TC[k] += XC[x]; TO[k] += XO[x]
+        if (hit) { tk = WT[hit] SUBSEP hit; PF[tk, ph] += XF[x] + XO[x]; PC[tk] += XC[x]; TURNS[hit]++ }
+      }
+      # The last N windows (or the one ticket asked for), newest last.
+      for (w = nw; w >= 1 && shown < last; w--) if (only == "" || WT[w] == only) { L[++shown] = w }
+      if (shown == 0) { print (only == "" ? "No completed sprints." : "No completed sprint for " only "."); exit }
+      any = 0; for (s = 1; s <= shown; s++) if (TURNS[L[s]]) any = 1
+      if (!any) { print "No transcript turns inside these sprints (Claude Code keeps about 9 days of transcripts)."; exit }
+      print "Token spend per closed sprint (fresh input + output; cache reads apart), from Claude Code transcripts:"
+      printf "%-8s %-10s %10s %15s %10s %11s\n", "ticket", "tier", "planning", "implementation", "gates", "cache-read"
+      for (s = shown; s >= 1; s--) {
+        w = L[s]; tk = WT[w] SUBSEP w; pr = WP[w]
+        if (!TURNS[w]) { printf "%-8s %-10s  no transcript turns (older than the transcripts kept)\n", WT[w], (TI[WT[w]] == "" ? "-" : TI[WT[w]]); continue }
+        pl = BUILD[w] ? "-" : h(PF[tk, "planning"]) (PRE[w] ? "^" : "")
+        im = BUILD[w] ? h(PF[tk, "build"]) "*" : h(PF[tk, "implementation"])
+        printf "%-8s %-10s %10s %15s %10s %11s%s\n", WT[w], (TI[WT[w]] == "" ? "-" : TI[WT[w]]), pl, im, h(PF[tk, "gates"]), h(PC[tk]), (WS[w] < FIRST[pr] ? "  ~ partial" : "")
+      }
+      print ""
+      # Overlap turns belong to no one sprint (hit 0); they show only in the full listing.
+      for (s = 1; s <= shown; s++) IN[L[s]] = 1
+      if (only == "") IN[0] = 1
+      for (i = 1; i <= nk; i++) { split(KO[i], q, SUBSEP); if (!(q[1] in IN)) continue
+        g = q[2] SUBSEP q[3]; if (!(g in BN)) GO[++ng] = g; BN[g] += TN[KO[i]]; BF[g] += TF[KO[i]]; BC[g] += TC[KO[i]]; BO[g] += TO[KO[i]] }
+      print "By phase and model, the sprints above:"
+      printf "%-15s %-22s %6s %10s %11s %9s\n", "phase", "model", "turns", "fresh-in", "cache-read", "output"
+      for (i = 1; i <= ng; i++) { split(GO[i], q, SUBSEP); printf "%-15s %-22s %6d %10s %11s %9s\n", q[1], q[2], BN[GO[i]], h(BF[GO[i]]), h(BC[GO[i]]), h(BO[GO[i]]) }
+      print ""
+      print "* build: no Approved: time in plan.md (before 0.30.6), so planning and implementation are one number."
+      print "^ approved before sprint start: the plan was written outside this sprint."
+      print "~ partial: the sprint began before the oldest transcript kept. overlap: a turn inside two sprints, counted once."
+    }'
 }
 
 cmd_help() {
@@ -1333,6 +1486,9 @@ Usage:
   sprint gate-cost [--last N]  Close-gate cost from .claude/subagent-runs.jsonl: the
                             last N (30) measured runs by gate type × tier — median and
                             worst tokens and minutes, % fail or budget stop (read-only)
+  sprint token-spend [--last N] [--ticket <id>]  Where the last N (10) closed sprints'
+                            tokens went: planning / implementation / gates, by model,
+                            from Claude Code transcripts (read-only; stores nothing)
   sprint check-evidence <id>  Pre-flight before the evaluator: every stamped
                             evidence log is fresh with exit 0, or covered
                             (read-only; exit 1 names each log and the fix)
@@ -1361,6 +1517,7 @@ main() {
     check-review-notes) cmd_check_review_notes "$@" ;;
     check-evidence) cmd_check_evidence "$@" ;;
     gate-cost) cmd_gate_cost "$@" ;;
+    token-spend) cmd_token_spend "$@" ;;
     help|--help|-h) cmd_help ;;
     *) echo "Unknown command: $cmd" >&2; cmd_help; exit 1 ;;
   esac
