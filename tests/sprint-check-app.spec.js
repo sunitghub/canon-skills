@@ -18109,6 +18109,8 @@ test.describe('Logbook (t-c6bb)', () => {
     await expect(page.locator('#logbook-modal')).toHaveAttribute('role', 'dialog');
     await expect(page.locator('#lb-title')).toHaveText('Logbook');
     await expect(page.locator('#lb-note')).toHaveText('HANDOFF.md · updated by the sprint skill');
+    // t-3942: each tab says what it is under the tab bar. Prod path: the Logbook dialog.
+    await expect(page.locator('#lb-intro')).toContainText('Where work stands between sessions');
     // Handoff: the five sections between the markers, in file order, and not the Scratch section after them; Current Focus is accented
     await expect(page.locator('.lb-sec h3')).toHaveText(['Current Focus', 'In Progress', 'Discoveries', 'Next Steps', 'Resume Checklist']);
     await expect(page.locator('.lb-sec').first()).toHaveClass(/lb-focus/);
@@ -18123,6 +18125,8 @@ test.describe('Logbook (t-c6bb)', () => {
     // Learnings: badge = unpromoted rows, chips count each status, a Dismissed chip only because a dismissed row exists
     await page.locator('#lb-tab-l').click();
     await expect(page.locator('#lb-note')).toHaveText('LEARNINGS.md · written by tkt learn, reviewed by promote-learnings');
+    await expect(page.locator('#lb-intro')).toContainText('Lessons from closed sprints');
+    await expect(page.locator('#lb-intro')).toContainText('/promote-learnings');
     await expect(page.locator('#lb-count')).toHaveText('2');
     await expect(page.locator('.lb-chip')).toHaveText(['All 4', 'Unpromoted 2', 'Promoted 1', 'Dismissed 1']);
     await expect(page.locator('.lb-table tbody tr')).toHaveCount(4);

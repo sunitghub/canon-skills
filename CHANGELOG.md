@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Changed
+- The worktree picker's ".tickets/ is gitignored" note and Commit and push's agent-session note are easier to read: body text on the panel's own colour, red only on a left bar and the bold lead (t-3942).
+- The Logbook's Handoff and Learnings tabs each start with one line saying what the file is and who writes it (t-3942).
+
 ### Fixed
 - Board search: a file name or path (`settings.json`, `tools/tkt`) or a "quoted phrase" matches the text as typed instead of any ticket holding both words, `title:<text>` and `desc:<text>` search only the title or the description, and a title match sorts above the others in its lane while a search is on. Plain words search as before; the search tips show the forms (t-3942).
 

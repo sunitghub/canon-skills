@@ -14,6 +14,11 @@ const NOTES = {
   h: 'HANDOFF.md · updated by the sprint skill',
   l: 'LEARNINGS.md · written by tkt learn, reviewed by promote-learnings',
 };
+// t-3942: what each tab is, under the tab bar (user: the tabs gave no hint)
+const INTROS = {
+  h: 'Where work stands between sessions: what is in progress, what is next, and gotchas found along the way. An agent reads it when a session starts and updates it as work moves.',
+  l: 'Lessons from closed sprints, one row per ticket, written by tkt learn at close. Unpromoted rows wait for a fresh-eyes review (/promote-learnings) that moves the keepers into canon\'s standards; Promoted and Dismissed show what that review decided.',
+};
 let tab = 'h';
 let flt = 'all';
 let data = null;      // the last /api/logbook answer, or { fetchError }
@@ -111,6 +116,7 @@ function render() {
   el('lb-tab-h').setAttribute('aria-selected', tab === 'h');
   el('lb-tab-l').setAttribute('aria-selected', tab === 'l');
   el('lb-note').textContent = NOTES[tab];
+  el('lb-intro').textContent = INTROS[tab];
   const body = el('lb-body');
   const count = el('lb-count');
   if (!data) { body.innerHTML = '<div class="lb-empty">Loading…</div>'; count.hidden = true; return; }
