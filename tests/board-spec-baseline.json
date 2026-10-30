@@ -5,47 +5,6 @@
     "webkit": 179
   },
   "failing": [],
-  "flaky": [
-    {
-      "title": "cockpit stale-daemon banner (t-74d6) > a tab opening a live session offers Attach with the agent locked, and both windows get the shared notice @webkit",
-      "browsers": [
-        "chromium"
-      ],
-      "ticket": "t-3741",
-      "reason": "failed once in the t-71c8 evaluator's full run on a busy machine (chromium and webkit at once, 2026-10-29); passed on a solo chromium rerun at 0d7ffe43"
-    },
-    {
-      "title": "session sub-tabs (t-8a2a) > a background tab's needs-you status renders in the tab strip @webkit",
-      "browsers": [
-        "webkit"
-      ],
-      "ticket": "t-71c8",
-      "reason": "failed once in the t-71c8 full run at 7bdf842d (2026-10-29); passed on the first rerun at the same head (both browsers' reruns clean); not touched by t-71c8"
-    },
-    {
-      "title": "Logbook (t-c6bb) > the Logbook moves by its title bar, resizes from its corner and starts fresh on every open (t-c6bb) @webkit",
-      "browsers": [
-        "webkit"
-      ],
-      "ticket": "t-71c8",
-      "reason": "failed once in the t-71c8 full run at 7bdf842d (2026-10-29); passed on the first rerun at the same head (both browsers' reruns clean); not touched by t-71c8"
-    },
-    {
-      "title": "cockpit preview pane (t-b19b) > PREVIEW_SERVER_CMD shows a static run-yourself message with the exact command, no iframe @webkit",
-      "browsers": [
-        "webkit"
-      ],
-      "ticket": "t-71c8",
-      "reason": "toContainText 'npm run dev' on #ck-preview-body failed inside two long WebKit runs on 2026-10-29 (t-71c8 full run and a 12-test rerun); --classify: passed 3/3 alone on the branch and 3/3 alone on origin/main 73f90ac7. The test clicks after a fixed waitForTimeout(100) (load-sensitive); not touched by t-71c8"
-    },
-    {
-      "title": "cockpit preview pane (t-b19b) > no live session (e.g. idle Resume, pre-Start) shows a message, not an infinite \"Asking…\" @webkit",
-      "browsers": [
-        "webkit"
-      ],
-      "ticket": "t-8627",
-      "reason": "toContainText on #ck-preview failed in one WebKit run of 4 pre-display-fix runs (t-8627 evidence/after run1); passed in the other 3 and in chromium, and in both stamped bs-run runs"
-    }
-  ],
+  "flaky": [],
   "skipped": []
 }

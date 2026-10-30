@@ -11920,6 +11920,8 @@ test.describe('session sub-tabs (t-8a2a)', () => {
     try {
       writeTicket(id1, 'in_progress');
       writeTicket(id2, 'in_progress');
+      // the board drops a tab's message until it knows that tab's addr and iframe: wait for the tab's own 'running' status (the fixed 100 ms waits here lost that race under load, t-23f6)
+      const tabRunning = tid => expect.poll(() => page.evaluate(async t => { const { cockpitTabs } = await import('/static/board-cockpit.js'); return cockpitTabs[t] && cockpitTabs[t].status; }, tid)).toBe('running');
       await stubCockpitTabs(page);
       await page.route('**/cockpit?**', route => route.fulfill({ status: 200, contentType: 'text/html', body: fakeCockpitPageWithKill('shared') }));
       await page.goto(BASE);
@@ -11928,13 +11930,13 @@ test.describe('session sub-tabs (t-8a2a)', () => {
       await page.locator('#board-search').fill(id1);
       await page.locator(`.card[data-id="${id1}"] .card-start`).click();
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
-      await page.waitForTimeout(100);
+      await tabRunning(id1);
       await page.locator('#ck-back').click();
       await page.locator('#board-search').fill('');
       await page.locator('#board-search').fill(id2);
       await page.locator(`.card[data-id="${id2}"] .card-start`).click();
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
-      await page.waitForTimeout(100);
+      await tabRunning(id2);
       // Tab 1 (id1) is now backgrounded.
 
       // Must originate FROM the background tab's own iframe context (its
@@ -11945,7 +11947,6 @@ test.describe('session sub-tabs (t-8a2a)', () => {
       await page.frameLocator(`iframe[data-tab-id="${id1}"]`).locator('body').evaluate(() => {
         window.parent.postMessage({ source: 'canon-cockpit', type: 'status', status: 'needs-you' }, '*');
       });
-      await page.waitForTimeout(100);
 
       await expect(page.locator(`#ck-tab-strip-topbar .ck-tab-pill[data-tab-id="${id1}"] .ck-tab-pill-needsyou`)).toBeVisible();
       // The topbar state chip stays scoped to the ACTIVE tab (id2), which never
@@ -12003,6 +12004,8 @@ test.describe('cockpit preview pane (t-b19b)', () => {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
     await reopenCockpitNoReload(page, id);
+    // requestPreview() returns silently until the iframe has loaded and reported its status: poll that, not a fixed wait (t-23f6)
+    await expect.poll(() => page.evaluate(async () => { const { cockpitState } = await import('/static/board-cockpit.js'); return !!cockpitState && cockpitState.status === 'running' && !!cockpitState.addr; })).toBe(true);
   }
 
   async function reopenCockpitNoReload(page, id, cockpitHtml) {
@@ -12114,7 +12117,6 @@ test.describe('cockpit preview pane (t-b19b)', () => {
     try {
       writeTicket(id, 'in_progress');
       await openResumedCockpit(page, id, fakePreviewCockpitPage({ respondWith: 'server-cmd' }));
-      await page.waitForTimeout(100);
       await page.locator('#ck-preview-label').click();
       await expect(page.locator('#ck-preview-body')).toContainText('npm run dev');
       await expect(page.locator('#ck-preview-body iframe')).toHaveCount(0);
@@ -12141,7 +12143,6 @@ test.describe('cockpit preview pane (t-b19b)', () => {
     try {
       writeTicket(id, 'in_progress');
       await openResumedCockpit(page, id, fakePreviewCockpitPage({ respondWith: 'no-session' }));
-      await page.waitForTimeout(100);
       await page.locator('#ck-preview-label').click();
       await expect(page.locator('#ck-preview-body')).toContainText('No active sprint session');
       await expect(page.locator('#ck-preview-body iframe')).toHaveCount(0);
@@ -12731,22 +12732,23 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
       await expect(page.locator('#startBtn')).toHaveText(/Start sprint/);
       await page.selectOption('#agentSel', 'copilot');
       await page.locator('#startBtn').click();
-      await expect(page.locator('#dot')).toHaveClass(/running/, { timeout: 8000 });
+      await expect(page.locator('#dot')).toHaveClass(/running/, { timeout: 30_000 });
 
       const b = await context.newPage();
       await b.goto(`http://${addr}/cockpit?ticket=t-bnr1&embed=1`);
-      await expect(b.locator('#agentHint')).toContainText('Running in another window · Copilot CLI · ');
+      // the hint comes from an async /sessions fetch (checkLive): under load it can land well after the 5 s default (t-23f6)
+      await expect(b.locator('#agentHint')).toContainText('Running in another window · Copilot CLI · ', { timeout: 30_000 });
       await expect(b.locator('#startBtn')).toHaveText(/Attach/);
       await expect(b.locator('#agentSel')).toBeDisabled();
       await expect(b.locator('#agentSel')).toHaveValue('copilot');
       await b.screenshot({ path: test.info().outputPath('attach.png') });
 
       await b.locator('#startBtn').click();
-      await expect(b.locator('#dot')).toHaveClass(/running/, { timeout: 8000 });
+      await expect(b.locator('#dot')).toHaveClass(/running/, { timeout: 30_000 });
       const rows = await (await fetch(`http://${addr}/sessions`)).json();
       expect(rows.filter(r => r.ticket === 't-bnr1')).toHaveLength(1);
-      await expect(b.locator('#agentHint')).toContainText('Also open in another window', { timeout: 12000 });
-      await expect(page.locator('#agentHint')).toContainText('Also open in another window', { timeout: 12000 });
+      await expect(b.locator('#agentHint')).toContainText('Also open in another window', { timeout: 30_000 });
+      await expect(page.locator('#agentHint')).toContainText('Also open in another window', { timeout: 30_000 });
     } finally { proc.kill('SIGKILL'); }
   });
 
@@ -18191,6 +18193,9 @@ test.describe('Logbook (t-c6bb)', () => {
     // the open animation scales the panel: measure only once it has settled at its default size
     const vw = page.viewportSize().width;
     await expect.poll(async () => Math.round((await panel.boundingBox()).width)).toBe(Math.min(900, vw - 24));
+    // width rounds to its final value before the scale animation ends, so wait for the animations themselves (x/y/height were still 1px off under load)
+    const settle = () => page.evaluate(() => Promise.all(document.getAnimations().filter(a => a.effect && isFinite(a.effect.getComputedTiming().endTime)).map(a => a.finished.catch(() => {}))).then(() => true));
+    await settle();
     const start = await panel.boundingBox();
     // resize first (a moved panel's corner can leave the window): drag the bottom-right corner inward
     const grip = await page.locator('#logbook-modal .modal-resize-handle:not(.modal-resize-handle-tl)').boundingBox();
@@ -18232,8 +18237,8 @@ test.describe('Logbook (t-c6bb)', () => {
     await expect(page.locator('#logbook-overlay')).not.toHaveClass(/open/);
     // reopening puts it back where it started, at its default size
     await open(page);
-    await expect.poll(async () => { const b = await panel.boundingBox(); return [Math.round(b.x), Math.round(b.y), Math.round(b.width), Math.round(b.height)].join(','); })
-      .toBe([Math.round(start.x), Math.round(start.y), Math.round(start.width), Math.round(start.height)].join(','));
+    await settle();
+    await expect.poll(async () => { const b = await panel.boundingBox(); return Math.max(Math.abs(b.x - start.x), Math.abs(b.y - start.y), Math.abs(b.width - start.width), Math.abs(b.height - start.height)) <= 2; }).toBe(true);
   });
 
   test('the Logbook keeps the opposite corner fixed when a corner is dragged (t-4803)', async ({ page }) => {
