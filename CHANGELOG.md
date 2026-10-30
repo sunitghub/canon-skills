@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.30.6] - 2026-10-29
+
 ### Added
 - `sprint approve <id>` pins plan.md's `## Approach` by sha256 when the plan is approved, and `sprint complete` now refuses when the Approach changed after approval (a ticked box with no pin only warns) (t-0865).
 - A `samples/` folder of canon's own samples, shipped in the release zip and never run by canon (t-4371): `samples/events/tail-closes` prints one line per `close.confirmed` and `github.merged` event, reading the activity log by the rules in `docs/plugins.md` (`tests/samples-events.sh` keeps it honest). `samples/plugins/` and `samples/executors/` hold their README until those APIs exist. `sample` is a starter tag in the Tags dropdown. `examples/` stays local-only.
@@ -17,7 +19,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 - **Export .jsonl** writes your home folder as `~` in each event's `project` path (`~\work\app` on Windows), so a shared export does not carry your account name (t-71c8). The files on disk stay exact; no other field and no non-JSON line changes. Documented in `docs/sprint-check.md` and `docs/plugins.md`.
 - A danger confirm in the Cockpit (Delete the activity log, Stop, ...) shows a red `!` instead of the green one (t-71c8).
 - Delete's partial failure reads "1 file could not be removed: x" and "2 files could not be removed: x, y" (t-71c8).
-- A Model tiers save or reset that changes nothing no longer writes a `setting.changed` line (t-71c8).
+- A Model tiers save writes one `setting.changed` line per changed default (`model-tiers.save.<tier>.<provider>` for any tier but Review & Eval), one for a change to other registry text, and none when nothing changed (t-71c8).
 - `canon update` messages are plain sentences, not joined with em-dashes; exit codes are unchanged (t-71c8).
 - The removal command `canon uninstall` prints for a shell rc file now matches the `<install>/current/tools` PATH line as well as `<install>/tools` (t-71c8).
 - The folded lane stays at the board's right edge when few lanes show, and hidden lanes are remembered per project instead of once for the whole browser (t-0447, t-71c8). The old shared choice applies to a project until it saves its own.
