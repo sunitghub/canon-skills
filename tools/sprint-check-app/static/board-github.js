@@ -606,7 +606,9 @@ export async function showGithubPanel(t, tab) {
     if (gen !== ghPanelGen) return;
     if (tab && (tab !== cockpitState || !tab.ghPick)) return;
     const files = cp.ok ? String(cp.output || '').split(/\r?\n/).map(l => /^file: (..) (.+)$/.exec(l)).filter(Boolean) : null;
-    kinds = files ? { tracked: files.filter(m => m[1] !== '??').length, untracked: files.filter(m => m[1] === '??').length } : { tracked: 1, untracked: 0 };
+    // t-8ae5: the warning (tkt send-issue) leaves .tickets/ out because the cloud rebuilds the ticket from the issue; the counts here follow it.
+    const counted = files && files.filter(m => !/^\.tickets\//.test(m[2]));
+    kinds = files ? { tracked: counted.filter(m => m[1] !== '??').length, untracked: counted.filter(m => m[1] === '??').length } : { tracked: 1, untracked: 0 };
   }
   const needPush = pv.ok && kinds.tracked > 0;
   panel.innerHTML = `<div class="ck-gh-box"${pv.ok ? ` data-gh-send="${esc(t.id)}"` : ''}>
@@ -690,7 +692,7 @@ async function showCommitPush(t, tab, gen) {
   const ago = s => s < 60 ? s + 's' : Math.floor(s / 60) + 'm';
   box.innerHTML = `<p>Branch: <code>${esc(branch)}</code></p>
       ${files.length && busy ? '<p class="ck-gh-cp-busy" id="ck-gh-cp-busy" role="note"><strong>An agent session is working in this checkout:</strong> these files may be its work in progress. Tick only what you mean to send.</p>' : ''}
-      ${files.length ? `<ul class="ck-gh-cp-files" id="ck-gh-cp-files">${files.map((f, i) => `<li><label><input type="checkbox" data-i="${i}"${startTicked(f) ? ' checked' : ''}> <code>${esc(f.path)}</code> <span class="ck-gh-cp-st">${f.untracked ? 'new, not tracked' : 'changed'}</span>${f.age === null ? '' : ` <span class="ck-gh-cp-ago">changed ${ago(f.age)} ago</span>`}</label></li>`).join('')}</ul>` : '<p>No uncommitted files: only the commits already here are pushed.</p>'}
+      ${files.length ? `<ul class="ck-gh-cp-files" id="ck-gh-cp-files">${files.map((f, i) => `<li><label><input type="checkbox" data-i="${i}"${startTicked(f) ? ' checked' : ''}> <code>${esc(f.path)}</code> <span class="ck-gh-cp-st">${f.untracked ? 'new, not tracked' : 'changed'}</span>${/^\.tickets\//.test(f.path) ? ` <span class="ck-gh-cp-ago ck-gh-cp-own">this ticket's own folder: the cloud rebuilds it from the issue</span>` : ''}${f.age === null ? '' : ` <span class="ck-gh-cp-ago">changed ${ago(f.age)} ago</span>`}</label></li>`).join('')}</ul>` : '<p>No uncommitted files: only the commits already here are pushed.</p>'}
       ${files.length ? `<label class="ck-gh-cp-msg">Commit message <input type="text" id="ck-gh-cp-msg" maxlength="200" value="${escAttr(`chore: ${t.id} work for the cloud session`)}"></label>` : ''}
       <div class="ck-gh-actions"><button type="button" class="ck-gh-create" id="ck-gh-cp-go">Commit and push</button><button type="button" id="ck-gh-cp-cancel">Cancel</button><span class="ck-gh-status" id="ck-gh-cp-status" role="status"></span></div>
       <pre class="ck-gh-pre" id="ck-gh-cp-out" hidden></pre>`;

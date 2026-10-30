@@ -17719,6 +17719,29 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#ck-gh-create')).toBeEnabled();
   });
 
+  // t-8ae5: the warning leaves .tickets/ out (the cloud rebuilds the ticket from the issue), so step 1's count does too; the list still offers it, with the reason.
+  test('step 1 counts the same files as the warning: the ticket\'s own folder is listed with a reason, not counted (t-8ae5)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh64');
+    ghTicket(id);
+    await sendPanel(page, id, { preview: () => ({ ok: true, exit_code: 0, output: DIRTY.replace('1 file(s)', '2 file(s)') }), files: `file: ?? .tickets/${id}/ticket.md\nfile: ?? a.txt\nfile: ?? b.txt` });
+    await expect(page.locator('#ck-gh-untracked')).toHaveText('2 new files are not tracked, so the cloud will not see them. You can still create the issue.');
+    await page.locator('#ck-gh-cp-open').click();
+    await expect(page.locator('#ck-gh-cp-files li')).toHaveCount(3);
+    await expect(page.locator('#ck-gh-cp-files li').first()).toContainText(`.tickets/${id}/ticket.md`);
+    await expect(page.locator('#ck-gh-cp-files .ck-gh-cp-own')).toHaveCount(1);
+    await expect(page.locator('#ck-gh-cp-files .ck-gh-cp-own')).toHaveText("this ticket's own folder: the cloud rebuilds it from the issue");
+    await expect(page.locator('#ck-gh-cp-files input[type=checkbox]').first()).not.toBeChecked();   // untracked files start unticked, as before
+  });
+
+  test('only the ticket\'s own folder changed: no not-tracked note and Create issue is not held (t-8ae5)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh65');
+    ghTicket(id);
+    await sendPanel(page, id, { preview: () => ({ ok: true, exit_code: 0, output: DIRTY }), files: `file:  M .tickets/${id}/ticket.md` });
+    await expect(page.locator('#ck-gh-untracked')).toHaveCount(0);
+    await expect(page.locator('#ck-gh-skip')).toHaveCount(0);
+    await expect(page.locator('#ck-gh-create')).toBeEnabled();
+  });
+
   test('only untracked files give a one-line note and leave Create issue enabled (t-6f51)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gh63');
     ghTicket(id);
