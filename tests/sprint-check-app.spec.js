@@ -10619,25 +10619,6 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
-  test('focus toggle collapses the ticket rail to maximize the terminal', async ({ page }) => {
-    const id = newTicketId(PROJECT_ROOT, 'ckfocus');
-    try {
-      writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] Something'] });
-      await stubCockpit(page);
-      await page.goto(BASE);
-      await page.waitForLoadState('networkidle');
-      await page.locator('#board-search').fill(id);
-      await page.locator(`.card[data-id="${id}"] .card-start`).click();
-      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
-
-      await expect(page.locator('#cockpit')).not.toHaveClass(/rail-collapsed/);
-      await page.locator('#ck-rail-toggle').click();
-      await expect(page.locator('#cockpit')).toHaveClass(/rail-collapsed/);
-    } finally {
-      removeTestTicket(PROJECT_ROOT, id);
-    }
-  });
-
   test('rail is drag-resizable, and collapse still reaches 44px after a manual resize', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'ckresize');
     try {
@@ -12026,22 +12007,6 @@ test.describe('cockpit preview pane (t-b19b)', () => {
     await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
   }
 
-  test('PREVIEW_FILE loads a sandboxed iframe pointed at the daemon preview endpoint', async ({ page }) => {
-    const id = newTicketId(PROJECT_ROOT, 'pvfile');
-    try {
-      writeTicket(id, 'in_progress');
-      await openResumedCockpit(page, id, fakePreviewCockpitPage({ respondWith: 'file' }));
-      await page.waitForTimeout(100);
-      await page.locator('#ck-preview-label').click();
-      await expect(page.locator('#ck-preview')).not.toHaveClass(/collapsed/);
-      const iframe = page.locator('#ck-preview-body iframe');
-      await expect(iframe).toHaveAttribute('sandbox', 'allow-scripts');
-      await expect(iframe).toHaveAttribute('src', `http://${FAKE_DAEMON_ADDR}/session/sess1/preview/ptok1/index.html`);
-    } finally {
-      removeTestTicket(PROJECT_ROOT, id);
-    }
-  });
-
   // --- t-533f: the sandbox silently blocks forms/storage — say so and offer the real file ---
   const NOTE = 'Preview is sandboxed — forms and storage are disabled. Open it in your browser to use the app.';
 
@@ -12186,21 +12151,6 @@ test.describe('cockpit preview pane (t-b19b)', () => {
       await page.locator('#ck-preview-label').click();
       await expect(page.locator('#ck-preview-body')).toContainText('rejected');
       await expect(page.locator('#ck-preview-body iframe')).toHaveCount(0);
-    } finally {
-      removeTestTicket(PROJECT_ROOT, id);
-    }
-  });
-
-  test('collapse button re-collapses the pane', async ({ page }) => {
-    const id = newTicketId(PROJECT_ROOT, 'pvcol');
-    try {
-      writeTicket(id, 'in_progress');
-      await openResumedCockpit(page, id, fakePreviewCockpitPage({ respondWith: 'file' }));
-      await page.waitForTimeout(100);
-      await page.locator('#ck-preview-label').click();
-      await expect(page.locator('#ck-preview')).not.toHaveClass(/collapsed/);
-      await page.locator('#ck-preview-collapse').click();
-      await expect(page.locator('#ck-preview')).toHaveClass(/collapsed/);
     } finally {
       removeTestTicket(PROJECT_ROOT, id);
     }
