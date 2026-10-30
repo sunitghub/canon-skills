@@ -63,7 +63,12 @@ HOME="$realhome/no-such-dir/.." CANON_HOME="$sh_/canon" guard && fail "a nonexis
 HOME="$sh_/home" CANON_HOME="$realhome/.canon/no-such-dir/.." guard && fail "a nonexistent .. spelling of the real canon home must be refused"
 HOME="$realhome//./x/.." CANON_HOME="$sh_/canon" guard && fail "//, . and .. spellings of the real home must be refused"
 (cd "$realhome" && HOME="no-such-dir/.." CANON_HOME="$sh_/canon" guard) && fail "a relative nonexistent .. spelling of the real home must be refused"
+HOME="$realhome/a/b/c/../../.." CANON_HOME="$sh_/canon" guard && fail "several nonexistent components then .. back to the real home must be refused"
+HOME="$sh_/home" CANON_HOME="$realhome/.canon/a/b/../.." guard && fail "several nonexistent components then .. back to the real canon home must be refused"
 # a scratch path that does not exist yet and does not lead to the real home is fine
+HOME="$sh_/deep/a/b/c" CANON_HOME="$sh_/deep/a/b/c/.canon" guard || fail "a deep nonexistent scratch path must pass"
+HOME="$realhome/a/b/c" CANON_HOME="$realhome/a/b/c/.canon" guard || fail "a (nonexistent) folder INSIDE the real home is not the real home and must pass"
+HOME="/" CANON_HOME="/no-such-canon-root" guard || fail "the filesystem root is not the real home"
 HOME="$sh_/not-made-yet" CANON_HOME="$sh_/not-made-yet/.canon" guard || fail "a nonexistent scratch HOME elsewhere must pass"
 out="$(HOME="$sh_/home" CANON_HOME="$sh_/canon" "$ROOT/tools/skills.sh" remove no-such-skill 2>&1 || true)"
 [[ "$out" != *"close gate"* ]] || fail "skills.sh with a scratch HOME was refused by the gate scope: $out"
