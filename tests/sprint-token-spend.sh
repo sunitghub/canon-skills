@@ -7,7 +7,9 @@ source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 project="$(make_project)"
 cfg="$(mktemp -d)"
 wt="$(mktemp -d)"
-trap 'rm -rf "$project" "$cfg" "$wt"' EXIT
+# Its own CANON_HOME: scripts/test.sh shares one across suites, and their events would fill this one's log.
+CANON_HOME="$(mktemp -d)"; export CANON_HOME
+trap 'rm -rf "$project" "$cfg" "$wt" "$CANON_HOME"' EXIT
 cd "$project"
 root="$(pwd -P)"
 export CLAUDE_CONFIG_DIR="$cfg"
