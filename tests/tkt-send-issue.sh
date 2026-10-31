@@ -212,7 +212,7 @@ printf '# Plan\n\n## Approach\nAdd a note.\n\n## Files\n`HANDOFF.md`, `notes.md`
 issue_body() { "$TKT" send-issue "$id7" --dry-run 2>/dev/null | awk '/^--- body ---$/ { f = 1; next } /^--- dry run/ { f = 0 } f'; }
 handoff() { { echo '<!-- canon:handoff:BEGIN -->'; for ((i = 0; i < $1; i++)); do echo "line $i"; done; echo '<!-- canon:handoff:END -->'; } > HANDOFF.md; }
 handoff 75; issue_body > "$stub/capped"
-work="$(awk '/^# Working on this$/ { f = 1; next } f' "$stub/capped" | head -4)"
+work="$(awk '/^# Working on this$/ { f = 1; next } f && n++ < 4' "$stub/capped")"
 assert_eq "Capped files this plan lists (make room before adding to them):
 HANDOFF.md: 75 of 80 lines, 5 left: make room first
 
