@@ -763,7 +763,13 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
       the body — this step always has the ticket ID in hand. Add more body for breaking
       changes or non-obvious reasoning.
     - Show the staged files and commit message. Ask: **"Commit and push? (y to proceed)"**
-    - On yes: commit, then push to the current branch's remote. Report the pushed ref. In canon, `public` is pushed only
+    - On yes: commit, then check before pushing that the repository has a remote and the branch can be pushed to one
+      (`git remote` is not empty; the branch has an upstream or `origin` accepts it). With no remote, say plainly
+      "No remote is configured: committed locally, nothing pushed", and give the fix: `git remote add origin <url>`, then
+      `git push -u origin <branch>`. A remote but no upstream needs that same `git push -u origin <branch>` (a plain `git push` fails); a detached
+      HEAD has no branch to push, so report "not pushed: detached HEAD" and name the commit. Report "pushed <ref>" only after a push that succeeded (the ref from the push's own
+      output or `git rev-parse --abbrev-ref @{u}`); a skipped, refused or failed push is "not pushed" plus the reason, and
+      "pushed" never describes a commit that stayed local. In canon, `public` is pushed only
       with `tkt push-main`, never `git push public` (it and the pre-push hook refuse unreleased binaries, t-4ea4).
     - If criticals from the review pipeline are unresolved: warn before asking — do not block,
       but make the risk explicit.
