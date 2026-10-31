@@ -37,7 +37,7 @@ size_problem() { local kb; kb="$(unpacked_kb "$1")"; (( kb <= SIZE_CAP_KB )) || 
 
 # check_zip <zip> <unpack folder>: prints the problems found, one per line (nothing = a good zip)
 check_zip() {
-  local zip="$1" u="$2" full="${3:-}" top p f n kb files
+  local zip="$1" u="$2" full="${3:-}" top p f n files
   rm -rf "$u"; mkdir -p "$u"; unzip -q "$zip" -d "$u"; top="$u/canon-9.9.9"
   [[ -d "$top" ]] || { echo "no canon-9.9.9/ folder"; return; }
   # 1. what is left out
