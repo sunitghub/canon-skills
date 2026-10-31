@@ -32,8 +32,8 @@ build() {
 # unpacked_kb <dir>: the bytes of its files in KB, rounded up. Not `du`: that counts disk blocks, which differ by filesystem (the same zip read 4364 KB on
 # APFS and 4656 KB on Linux, where every folder costs a 4 KB block; t-0d96).
 SIZE_CAP_KB=4096
-unpacked_kb() { local b; b="$(find "$1" -type f -exec cat {} + | wc -c)"; echo $(( (b + 1023) / 1024 )); }
-size_problem() { local kb; kb="$(unpacked_kb "$1")"; (( kb <= SIZE_CAP_KB )) || echo "unpacked size ${kb} KB is over the ${SIZE_CAP_KB} KB cap by $(( kb - SIZE_CAP_KB )) KB"; }
+unpacked_kb() { local b; b="$(find "$1" -type f -exec cat {} + | wc -c)" || return 1; echo $(( (b + 1023) / 1024 )); }   # a file it cannot read fails the pipeline: no silent small number
+size_problem() { local kb; kb="$(unpacked_kb "$1")" || { echo "unpacked size could not be read under $1"; return; }; (( kb <= SIZE_CAP_KB )) || echo "unpacked size ${kb} KB is over the ${SIZE_CAP_KB} KB cap by $(( kb - SIZE_CAP_KB )) KB"; }
 
 # check_zip <zip> <unpack folder>: prints the problems found, one per line (nothing = a good zip)
 check_zip() {
@@ -141,6 +141,25 @@ for i in $(seq 1 100); do mkdir "$ft/.dir$i"; done
 [[ -z "$(size_problem "$ft")" ]] || fail "release-zip-slim: the filler alone put the zip over the size cap"
 head -c 716800 /dev/zero > "$ft/.pad"
 [[ "$(size_problem "$ft")" == "unpacked size "*" KB is over the 4096 KB cap by "*" KB" ]] || fail "release-zip-slim: a 700 KB file did not take the zip over the size cap: '$(size_problem "$ft")'"
-echo "release-zip-slim: the size bound counts file bytes (folders and tiny files cost nothing) and fails past $SIZE_CAP_KB KB"
+# check_zip itself reports an oversize zip (the call to size_problem must stay in it)
+if command -v zip >/dev/null 2>&1; then
+  (cd "$fat" && zip -qr "$WORK/fat.zip" canon-9.9.9)
+  [[ "$(check_zip "$WORK/fat.zip" "$WORK/u2")" == *"is over the 4096 KB cap by"* ]] || fail "release-zip-slim: check_zip did not report a zip over the size cap"
+fi
+# the boundary and the rounding: the cap itself is fine, one byte more is 1 KB over; 1 byte reads 1 KB, 1024 reads 1, 1025 reads 2
+bd="$WORK/bd"; mkdir -p "$bd"; head -c $(( SIZE_CAP_KB * 1024 )) /dev/zero > "$bd/f"
+[[ -z "$(size_problem "$bd")" ]] || fail "release-zip-slim: exactly $SIZE_CAP_KB KB of bytes was reported over the cap"
+printf x >> "$bd/f"
+assert_eq "unpacked size $(( SIZE_CAP_KB + 1 )) KB is over the ${SIZE_CAP_KB} KB cap by 1 KB" "$(size_problem "$bd")"
+printf x > "$bd/f"; assert_eq 1 "$(unpacked_kb "$bd")"
+head -c 1024 /dev/zero > "$bd/f"; assert_eq 1 "$(unpacked_kb "$bd")"
+head -c 1025 /dev/zero > "$bd/f"; assert_eq 2 "$(unpacked_kb "$bd")"
+# a file that cannot be read is reported, never left out of the sum (root reads anything: skipped there)
+if [[ "$(id -u)" != 0 ]]; then
+  ub="$WORK/ub"; mkdir -p "$ub"; printf x > "$ub/f"; chmod 000 "$ub/f"
+  [[ "$(size_problem "$ub" 2>/dev/null)" == *"could not be read"* ]] || fail "release-zip-slim: an unreadable file was left out of the size sum without a word"
+  chmod 600 "$ub/f"
+fi
+echo "release-zip-slim: the size bound counts file bytes (folders and tiny files cost nothing), rounds up, fails past $SIZE_CAP_KB KB and reports a file it cannot read"
 
 echo "release-zip-slim: ok (revert checks: dropping scripts/ or go.mod, forgetting tests/ or the developer-only files, or losing the tour images each fails the check)"
