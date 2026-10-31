@@ -225,7 +225,8 @@ _in_system_temp() {
 _rewrite_projects() {
   local drop="$1" add="${2:-}" tmp p gone=0 seen=0
   mkdir -p "$(dirname "$PROJECTS_FILE")"
-  tmp="$(mktemp "$(dirname "$PROJECTS_FILE")/.projects.XXXXXX")" || return 0
+  tmp="$(mktemp "$(dirname "$PROJECTS_FILE")/.projects.XXXXXX")" \
+    || { echo "  [registry]  could not write $PROJECTS_FILE: the project list is unchanged" >&2; return 0; }
   if [ -f "$PROJECTS_FILE" ]; then
     while IFS= read -r p || [ -n "$p" ]; do
       [ -n "$p" ] || continue

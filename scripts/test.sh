@@ -352,7 +352,7 @@ done
 if (( ${#FAILED[@]} )); then
   { printf '\n'; printf 'FAILED: %s\n' "${FAILED[@]}"; } >&2
 fi
-# (cat and grep only: the runner's own tool set, which tests/test-sh-runner.sh pins with a minimal PATH)
+# (cat, grep, sed and awk only: the runner's own tool set, which tests/test-sh-runner.sh pins with a minimal PATH)
 _reg_before="$(cat "$REGISTRY_BEFORE" 2>/dev/null || true)"; _reg_after="$(cat "$REGISTRY" 2>/dev/null || true)"
 if [[ "$_reg_before" != "$_reg_after" ]]; then
   printf '\nFAIL: the test run changed your project registry %s (a suite ran skills.sh add with the real HOME; pin HOME in it):\n' "$REGISTRY" >&2
