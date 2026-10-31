@@ -29,6 +29,12 @@ build() {
   (cd "$R" && bash scripts/release-zip.sh v9.9.9 "$2" >"$2/line" 2>&1) || { cat "$2/line" >&2; return 1; }
 }
 
+# unpacked_kb <dir>: the bytes of its files in KB, rounded up. Not `du`: that counts disk blocks, which differ by filesystem (the same zip read 4364 KB on
+# APFS and 4656 KB on Linux, where every folder costs a 4 KB block; t-0d96).
+SIZE_CAP_KB=4096
+unpacked_kb() { local b; b="$(find "$1" -type f -exec cat {} + | wc -c)"; echo $(( (b + 1023) / 1024 )); }
+size_problem() { local kb; kb="$(unpacked_kb "$1")"; (( kb <= SIZE_CAP_KB )) || echo "unpacked size ${kb} KB is over the ${SIZE_CAP_KB} KB cap by $(( kb - SIZE_CAP_KB )) KB"; }
+
 # check_zip <zip> <unpack folder>: prints the problems found, one per line (nothing = a good zip)
 check_zip() {
   local zip="$1" u="$2" full="${3:-}" top p f n kb files
@@ -81,8 +87,8 @@ REQ
     done < <(printf '%s\n' "$want")
   fi
   # 4. size: the point of the exclusions
-  kb="$(du -sk "$top" | cut -f1)"; files="$(find "$top" -type f | wc -l | tr -d ' ')"
-  (( kb <= 4608 )) || echo "unpacked size ${kb} KB is over 4608 KB"
+  files="$(find "$top" -type f | wc -l | tr -d ' ')"
+  size_problem "$top"
   (( files <= 300 )) || echo "$files files is over 300"
 }
 
@@ -127,4 +133,14 @@ bad also-gomod  's#tools/canon-go/cmd tools/canon-go/internal #tools/canon-go #'
 bad ship-devfiles 's# tools/vendored\.tsv tools/sprint-check-app/CLAUDE\.md\)#)#'
 bad forgot-tests 's#^SLIM_EXCLUDE=\(tests #SLIM_EXCLUDE=(#'
 bad no-keep-shots 's#^  keep_shots="\$\(git .*$#  keep_shots=""#'
+# the size bound measures bytes, not disk blocks, and can fail: filler that costs blocks but no bytes leaves the reading alone, real bytes push it over the cap
+fat="$WORK/fat"; cp -R "$WORK/u1" "$fat"; ft="$fat/canon-9.9.9"; base_kb="$(unpacked_kb "$ft")"
+for i in $(seq 1 200); do printf x > "$ft/.tiny$i"; done
+for i in $(seq 1 100); do mkdir "$ft/.dir$i"; done
+(( $(unpacked_kb "$ft") - base_kb < 10 )) || fail "release-zip-slim: 200 one-byte files and 100 empty folders moved the size reading from $base_kb to $(unpacked_kb "$ft") KB: it measures disk blocks"
+[[ -z "$(size_problem "$ft")" ]] || fail "release-zip-slim: the filler alone put the zip over the size cap"
+head -c 716800 /dev/zero > "$ft/.pad"
+[[ "$(size_problem "$ft")" == "unpacked size "*" KB is over the 4096 KB cap by "*" KB" ]] || fail "release-zip-slim: a 700 KB file did not take the zip over the size cap: '$(size_problem "$ft")'"
+echo "release-zip-slim: the size bound counts file bytes (folders and tiny files cost nothing) and fails past $SIZE_CAP_KB KB"
+
 echo "release-zip-slim: ok (revert checks: dropping scripts/ or go.mod, forgetting tests/ or the developer-only files, or losing the tour images each fails the check)"
