@@ -100,6 +100,7 @@ tests=(
   "$ROOT/tests/skill-eval-scope.sh"
   "$ROOT/tests/mutant-sweep.sh"
   "$ROOT/tests/sprint-checklists.sh"
+  "$ROOT/tests/caps.sh"
   "$ROOT/tests/machine-load-unit.sh"
   "$ROOT/tests/run-board-spec-isolation.sh"
   "$ROOT/tests/evidence.sh"

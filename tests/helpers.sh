@@ -92,6 +92,14 @@ shell_sources() {
 # t-bdb0: canon-go holds the daemon too, whose third-party modules a test that pinned HOME would download again into a read-only module
 # cache under its temp home (network, and an rm -rf that fails): the build runs with the HOME this file was first sourced under,
 # exported so a suite run from a suite that pinned HOME (tests/worktree-suites.sh) keeps it.
+# cap_check <board> <name> [path] (t-19bb): the row's line from the board's cap meter against tools/caps.tsv; fails the test when the
+# file is over its cap, cannot be measured, or has no row (a missing row must never read as "no cap").
+cap_check() {
+  local out rc=0; out="$("$1" caps --table "$ROOT/tools/caps.tsv" "${@:2}" 2>&1)" || rc=$?
+  [[ $rc -eq 0 && "$out" == *" left" ]] || fail "cap: $out"
+  printf '%s\n' "$out"
+}
+
 export _BUILD_BOARD_HOME="${_BUILD_BOARD_HOME:-${HOME:-}}"
 build_board() {
   local out="$1/canon-go-bin/canon-go"
