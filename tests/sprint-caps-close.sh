@@ -37,6 +37,8 @@ assert_contains "$(event_line gate.rejected "$id")" '"reason":"cap_exceeded"'
 # ... and sprint complete stops on it too, before any other gate
 rc=0; out="$("$SPRINT" complete 2>&1)" || rc=$?
 assert_eq 1 "$rc"; assert_contains "$out" "this branch changed it"
+[[ "${out##*$'\n'}" == "Sprint $id cannot close: a capped file this branch changed is over its cap (tools/caps.tsv)." ]] \
+  || fail "sprint complete went past the cap check: $out"   # the cap refusal is the last word, no later gate ran
 
 # 2. an uncommitted or untracked change counts as the branch's
 git reset -q --hard HEAD~1; handoff 81
