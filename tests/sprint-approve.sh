@@ -83,7 +83,7 @@ echo notes > notes.md
 handoff 75; out="$(approve_with '`HANDOFF.md`, `notes.md` (new)')"
 assert_eq "HANDOFF.md: 75 of 80 lines, 5 left: make room first" "$(caplines "$out")"
 assert_grep '^Approved: sha256:' "$plan"
-handoff 82; out="$(approve_with '- HANDOFF.md')"   # a bare bullet
+handoff 82; out="$(approve_with '- HANDOFF.md.')"   # a bare bullet, a sentence's full stop
 assert_eq "HANDOFF.md: 82 of 80 lines, over by 2: make room first" "$(caplines "$out")"
 handoff 72; out="$(approve_with '`HANDOFF.md`')"; assert_eq "" "$(caplines "$out")"   # 8 left of 80: exactly 10%
 out="$(approve_with '`notes.md`, `LEARNINGS.md`')"; assert_eq "" "$(caplines "$out")"   # no row; a row whose file is absent
@@ -95,5 +95,11 @@ printf '#!/usr/bin/env bash\n[[ "$1" == --help ]] && { echo "usage: sprint-check
 handoff 75; out="$(SPRINT_CHECK_BIN="$stub/board" approve_with '`HANDOFF.md`')"
 assert_eq "" "$(caplines "$out")"; [[ ! -e "$stub/called" ]] || fail "an older board was called with caps"
 assert_grep '^- \[x\] Plan approved' "$plan"
+# no board binary at all: approve still ticks and pins (the --help call fails under set -e)
+out="$(SPRINT_CHECK_BIN="$stub/missing" approve_with '`HANDOFF.md`')" || fail "approve failed with no board binary"
+assert_eq "" "$(caplines "$out")"
+# a CRLF plan.md still names its files
+printf '# Plan\r\n\r\n## Sign-off\r\n- [ ] Plan approved\r\n\r\n## Approach\r\nstep one\r\n\r\n## Files\r\n- HANDOFF.md\r\n' > "$plan"
+assert_eq "HANDOFF.md: 75 of 80 lines, 5 left: make room first" "$(caplines "$("$SPRINT" approve "$id")")"
 
 echo "sprint-approve: ok"
