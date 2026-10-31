@@ -6,6 +6,15 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.34.0] - 2026-10-31
+
+The prebuilt `canon-go` program changed, the daemon included: after `canon update`, restart the daemon (Admin's **Restart Daemon** button) so a running one picks it up.
+
+### Added
+- `sprint approve` and `tkt send-issue` name each capped file the plan's `## Files` lists that has under 10% left or is over its cap: `HANDOFF.md: 75 of 80 lines, 5 left: make room first`. The issue carries it at the top of "Working on this", so a cloud session sees it before editing. A file the meter cannot measure says so; an older board is skipped (t-cc88).
+- The close checks every capped file before the evaluator (`sprint check-evidence`) and again at `sprint complete`: a file this branch changed that is over its cap refuses the close; one it did not change, a project with no `origin/main`, and `LEARNINGS.md` (learnings-sweep never blocks on it) only warn. In a linked worktree it measures that worktree (t-c990).
+- Two activity-log kinds, `budget.warned` and `budget.exceeded` (the cap's name and numbers, never a path; stage `plan`, `send` or `close`), and a `cap_exceeded` reason on `gate.rejected` (t-c990).
+
 ## [0.33.0] - 2026-10-31
 
 The prebuilt `canon-go` program changed (the board part only): `canon update` fetches it; the daemon is unchanged, nothing to restart.
