@@ -43,7 +43,7 @@ func loadCaps(file string) ([]capRow, error) {
 	var rows []capRow
 	sc := bufio.NewScanner(f)
 	for n := 1; sc.Scan(); n++ {
-		line := strings.TrimRight(sc.Text(), "\r")
+		line := sc.Text() // bufio.ScanLines already drops a CRLF line's \r
 		if strings.TrimSpace(line) == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
