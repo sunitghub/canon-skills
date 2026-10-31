@@ -10,8 +10,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 No change to the prebuilt `canon-go` program: nothing to restart.
 
+### Added
+- While a close gate (the reviewer or evaluator) runs, `canon update`, `skills.sh` and `canon uninstall` refuse your real home and canon home, so a gate's probe cannot re-link or rewrite your projects; they work again when the gate ends, or after two hours if it crashed. A scratch `HOME` and `CANON_HOME`, as every test pins, still go through. The comparison is by folder identity: a symlink, a `..`, a case or Unicode-form spelling, or a newline in a path cannot pass for another folder (t-b7df, t-9fb1). New since 0.32.0: strictly a minor change, released as a patch.
+
 ### Fixed
-- While a close gate (the reviewer or evaluator) runs, `canon update`, `skills.sh` and `canon uninstall` refuse only your real home and canon home. A scratch `HOME` and `CANON_HOME`, as every test pins, goes through, so another project's gate no longer fails your stamps. The comparison is by folder identity: a symlink, a `..`, a case or Unicode-form spelling, or a newline in a path cannot pass for another folder (t-b7df, t-9fb1).
 - The Send panel counts the same files as its warning (t-8ae5).
 - A recovered ticket gets `runs: github` when a PR fixes its issue, and the PR lookup says when it read only the newest 100 (t-4b34).
 
