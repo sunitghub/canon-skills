@@ -12,19 +12,14 @@ import (
 // The units on hand-counted inputs (t-19bb). Protects `canon-go caps`, which the checklist and release-zip gates read their caps
 // through.
 func TestCapUnits(t *testing.T) {
-	if n := capWords([]byte("one two\tthree\nfour\r\nfive  \v six\f")); n != 6 {
-		t.Fatalf("words = %d, want 6", n)
+	if n := capWords([]byte("one two\tthree\nfour\r\nfive  \v six\fseven\reight")); n != 8 {
+		t.Fatalf("words = %d, want 8 (each ASCII space, tab, newline, \\v, \\f and \\r separates)", n)
 	}
 	if n := capWords([]byte("a b c")); n != 2 { // NBSP is not ASCII whitespace: "a b" is one word, as wc -w in the C locale
 		t.Fatalf("words with NBSP = %d, want 2", n)
 	}
 	if n := capWords(nil); n != 0 {
 		t.Fatalf("words of empty = %d", n)
-	}
-	for in, want := range map[string]int64{"": 0, "a": 1, "a\n": 1, "a\nb": 2, "a\nb\n": 2, "\n\n": 2, "a\r\nb\r\n": 2} {
-		if n := capLines([]byte(in)); n != want {
-			t.Fatalf("lines(%q) = %d, want %d", in, n, want)
-		}
 	}
 	doc := "x\n<!-- canon:t:BEGIN -->\n1\n\n3\n<!-- canon:t:END -->\ny\n"
 	if n, err := capBlockLines([]byte(doc), "canon:t"); err != nil || n != 3 {
@@ -102,7 +97,7 @@ func TestCapsCLI(t *testing.T) {
 	if out, code := runCaps(t, "--table", tab, "nothing.md"); code != 0 || out != "nothing.md: not capped\n" {
 		t.Fatalf("not capped: %q %d", out, code)
 	}
-	if out, code := runCaps(t, "--table", tab, "list", filepath.Join(d, "gone.md")); code != 0 || !strings.Contains(out, "list: not present") {
+	if out, code := runCaps(t, "--table", tab, "list", filepath.Join(d, "gone.md")); code != 0 || out != "list: not present ("+filepath.Join(d, "gone.md")+")\n" {
 		t.Fatalf("not present: %q %d", out, code)
 	}
 	if out, code := runCaps(t, "--table", tab, "zip"); code != 2 || !strings.Contains(out, "needs a path") {
@@ -110,7 +105,7 @@ func TestCapsCLI(t *testing.T) {
 	}
 	bad := filepath.Join(d, "bad.tsv")
 	os.WriteFile(bad, []byte("x\ty\t0\twords\t-\n"), 0o644)
-	if out, code := runCaps(t, "--table", bad, "x", list); code != 2 || !strings.Contains(out, "not a positive whole number") {
+	if out, code := runCaps(t, "--table", bad, "x", list); code != 2 || !strings.HasPrefix(out, "caps: ") || !strings.Contains(out, "not a positive whole number") {
 		t.Fatalf("bad limit: %q %d", out, code)
 	}
 	os.WriteFile(bad, []byte("x\ty\t5\tbytes\t-\n"), 0o644)
@@ -180,5 +175,47 @@ func TestCapsListPathAndErrors(t *testing.T) {
 		if out, code := runCaps(t, "--table", tab, "zip", tree); code != 2 || !strings.Contains(out, "caps: zip:") {
 			t.Fatalf("unreadable folder: %q %d", out, code)
 		}
+	}
+}
+
+// The table's own shape and the remaining branches (t-19bb sweep survivors).
+func TestCapsTableAndInstall(t *testing.T) {
+	d := t.TempDir()
+	list := filepath.Join(d, "l.md")
+	os.WriteFile(list, []byte("a b"), 0o644)
+	tab := filepath.Join(d, "t.tsv")
+	for body, want := range map[string]string{
+		"x\tl.md\t5\twords\n":          "want 5 tab-separated columns, got 4",
+		"x\tl.md\t5\tblock-lines\t-\n": "block-lines needs a marker",
+		"x\tl.md\t5\tlines\t-\n":       "unknown unit \"lines\"",
+	} {
+		os.WriteFile(tab, []byte(body), 0o644)
+		if out, code := runCaps(t, "--table", tab, "x", list); code != 2 || !strings.Contains(out, want) {
+			t.Fatalf("table %q: %q %d, want %q", body, out, code, want)
+		}
+	}
+	os.WriteFile(tab, []byte("# crlf\r\nx\tl.md\t5\twords\t-\r\n"), 0o644) // a table saved with CRLF still reads
+	if out, code := runCaps(t, "--table", tab, "x", list); code != 0 || out != "x: 2 of 5 words, 3 left\n" {
+		t.Fatalf("CRLF table: %q %d", out, code)
+	}
+	if _, code := runCaps(t, "--table", tab, "x", list, "extra"); code != 2 {
+		t.Fatal("three words must be a usage error")
+	}
+	if runtime.GOOS != "windows" && os.Geteuid() != 0 { // a path it cannot stat is an error, not "not present"
+		locked := filepath.Join(d, "locked")
+		os.MkdirAll(locked, 0o755)
+		os.WriteFile(filepath.Join(locked, "l.md"), []byte("a"), 0o644)
+		os.Chmod(locked, 0)
+		defer os.Chmod(locked, 0o755)
+		if out, code := runCaps(t, "--table", tab, "x", filepath.Join(locked, "l.md")); code != 2 || !strings.Contains(out, "caps: x:") {
+			t.Fatalf("unstatable path: %q %d", out, code)
+		}
+	}
+	// no --table and no canon install around: says so and exits 2 (never measures against nothing)
+	wd, _ := os.Getwd()
+	defer os.Chdir(wd)
+	os.Chdir(d)
+	if out, code := runCaps(t, "x", list); code != 2 || !strings.Contains(out, "no canon install found") {
+		t.Fatalf("no install: %q %d", out, code)
 	}
 }

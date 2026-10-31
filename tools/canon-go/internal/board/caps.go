@@ -28,7 +28,7 @@ type capRow struct {
 }
 
 // capUnits maps a unit to the word printed after the numbers.
-var capUnits = map[string]string{"words": "words", "lines": "lines", "block-lines": "lines", "kb": "KB", "files": "files"}
+var capUnits = map[string]string{"words": "words", "block-lines": "lines", "kb": "KB", "files": "files"}
 
 var errCapAbsent = errors.New("not present")
 
@@ -78,15 +78,6 @@ func capWords(b []byte) int64 {
 			in = true
 			n++
 		}
-	}
-	return n
-}
-
-// capLines counts lines as grep -c with an empty pattern does: a last line without a newline still counts.
-func capLines(b []byte) int64 {
-	n := int64(strings.Count(string(b), "\n"))
-	if len(b) > 0 && b[len(b)-1] != '\n' {
-		n++
 	}
 	return n
 }
@@ -155,14 +146,10 @@ func measureCap(r capRow, target string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	switch r.Unit {
-	case "words":
+	if r.Unit == "words" {
 		return capWords(b), nil
-	case "lines":
-		return capLines(b), nil
-	default:
-		return capBlockLines(b, r.Marker)
 	}
+	return capBlockLines(b, r.Marker)
 }
 
 type capResult struct {
@@ -251,8 +238,6 @@ func capsCLI(args []string, stdout, stderr io.Writer) int {
 	} else if row.Path == "-" {
 		fmt.Fprintf(stderr, "caps: %s needs a path (the table leaves it to the caller)\n", row.Name)
 		return 2
-	} else if rest[0] != row.Name {
-		target = rest[0]
 	}
 	res, err := runCap(row, target)
 	if errors.Is(err, errCapAbsent) {
