@@ -41,12 +41,16 @@ run_checks() {
   fm t-lv01 open > "$repo/.tickets/t-lv01/ticket.md"
   printf '# Acceptance\n\n## Criteria\n\n- [ ]\n\n## Test Plan\n\n- [ ]\n' > "$repo/.tickets/t-lv01/acceptance.md"
   fm t-lv02 open > "$repo/.tickets/t-lv02/ticket.md"
+  mkdir -p "$repo/.tickets/t-lv03" "$repo/.tickets/t-lv04" "$repo/.tickets/t-lv05"   # t-1aa7: main's copies; in_progress ones in the worktree
+  fm t-lv03 closed > "$repo/.tickets/t-lv03/ticket.md"; fm t-lv04 closed > "$repo/.tickets/t-lv04/ticket.md"; fm t-lv05 open > "$repo/.tickets/t-lv05/ticket.md"
   git -C "$repo" add -A && git -C "$repo" commit -q -m init
   git -C "$repo" worktree add -q -b sprint/t-lv01 "$wt"
   # The sprint's live, uncommitted edits in the worktree.
   printf '# Acceptance\n\n## Criteria\n\n- [ ] live criterion\n\n## Test Plan\n\n- [ ] live test\n' > "$wt/.tickets/t-lv01/acceptance.md"
   printf '# Plan\n\n## Approach\n\nlive approach\n' > "$wt/.tickets/t-lv01/plan.md"
   fm t-lv01 in_progress > "$wt/.tickets/t-lv01/ticket.md"
+  fm t-lv03 in_progress > "$wt/.tickets/t-lv03/ticket.md"; fm t-lv04 in_progress > "$wt/.tickets/t-lv04/ticket.md"; fm t-lv05 in_progress > "$wt/.tickets/t-lv05/ticket.md"
+  echo "$repo" > "$repo/.tickets/t-lv03/.cockpit-cwd"; echo "$repo" > "$repo/.tickets/t-lv05/.cockpit-cwd"   # those sessions ran on the main checkout
   # A decoy folder shaped like a worktree but NOT registered with git.
   fm t-lv01 in_progress > "$TMP/$kind/outside/.tickets/t-lv01/ticket.md"
   printf 'decoy\n' > "$TMP/$kind/outside/.tickets/t-lv01/plan.md"
@@ -66,6 +70,13 @@ run_checks() {
     || fail "$label: in-progress copy should overlay live docs, got $(tfield t-lv01)"
   [[ "$(tfield t-lv02)" == '{"acceptance_has_items": null, "docs_from": null, "plan_has_approach": null}' ]] \
     || fail "$label: unbound ticket must stay main's, got $(tfield t-lv02)"
+
+  # t-1aa7: a lock naming the main checkout binds the ticket to main (no divergence guess), and a closed ticket on main is never
+  # shown with a worktree copy's status; its branch_divergence note still names the stale copy.
+  tstat() { curl -s "$base/api/tickets" | python3 -c 'import json,sys; t={x["id"]:x for x in json.load(sys.stdin)}[sys.argv[1]]; print(t.get("status"), t.get("docs_from"), bool(t.get("branch_divergence")))' "$1"; }
+  [[ "$(tstat t-lv03)" == "closed None True" ]] || fail "$label: closed on main, lock = main: want closed, no docs_from, a divergence note; got $(tstat t-lv03)"
+  [[ "$(tstat t-lv04)" == "closed None True" ]] || fail "$label: closed on main, bound by divergence only: want closed, no docs_from; got $(tstat t-lv04)"
+  [[ "$(tstat t-lv05)" == "open None True" ]] || fail "$label: open on main, lock = main: want main's open, no docs_from (no divergence guess); got $(tstat t-lv05)"
 
   # 2. Lock to the worktree → bound; GET reads the live copy with an etag; POST is guarded by base_hash.
   echo "$wt" > "$repo/.tickets/t-lv01/.cockpit-cwd"
