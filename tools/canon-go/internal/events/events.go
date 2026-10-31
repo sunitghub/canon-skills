@@ -76,6 +76,9 @@ var kinds = map[string][]field{
 	"terminal.su_expired":  {{"session", 64}, {"ticket", 64}, {"how", 16}},
 	// t-0aa7: a tkt command that changes things, run in the Terminal without su. "sub" is the subcommand name only.
 	"terminal.tkt": {{"session", 64}, {"ticket", 64}, {"sub", 32}},
+	// t-c990: a capped file (tools/caps.tsv) near or over its cap. "cap" is the row name, never the path; stage is plan, send or close.
+	"budget.warned":   {{"ticket", 64}, {"cap", 48}, {"used", 12}, {"limit", 12}, {"unit", 8}, {"stage", 8}},
+	"budget.exceeded": {{"ticket", 64}, {"cap", 48}, {"used", 12}, {"limit", 12}, {"unit", 8}, {"stage", 8}},
 }
 
 // Sources are the programs that write events.

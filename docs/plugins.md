@@ -44,10 +44,12 @@ renamed or removed.
 | `sprint.completed` | `ticket` | `sprint complete`, after the ticket is closed |
 | `gate.started` | `ticket`, `role` (`reviewer`/`evaluator`, empty if not given), `attempt` (the evaluator's failed attempts so far + 1), `docs` (12 hex: the hash of the ticket's acceptance.md and plan.md) | `gate-snapshot.sh pre … --role <role>`, right before a close gate runs |
 | `gate.finished` | `ticket`, `role`, `verdict` (`YES`/`NO` for the reviewer; `pass`/`fail`/`partial`/`not-run` for the evaluator; `unknown` if its report has none), `model`, `tokens`, `minutes`, `tier`, `agent` (the evaluator transcript's agent type: `canon-evaluator`, or `Plan` on the fallback; absent when none is found, t-ff14) | `subagent-log.sh`, after a gate's run is logged; one per agent id: a second call for the same `--agent-id` replaces that run's log row but writes no second event (t-7c89) |
-| `gate.rejected` | `ticket`, `role`, `reason` | a close refusal: `missing_report`, `unverified_run`, `missing_transcript`, `verdict_not_pass`, `report_inconsistent`, `report_model`, `graded_head_stale` (evaluator); `review_model`, `review_shape` (reviewer); `stale_evidence` (`sprint check-evidence`) |
+| `gate.rejected` | `ticket`, `role`, `reason` | a close refusal: `missing_report`, `unverified_run`, `missing_transcript`, `verdict_not_pass`, `report_inconsistent`, `report_model`, `graded_head_stale` (evaluator); `review_model`, `review_shape` (reviewer); `stale_evidence` (`sprint check-evidence`); `cap_exceeded` (`sprint check-evidence` and `sprint complete`, role `sprint`, t-c990) |
 | `session.needs_you` | `session`, `ticket`, `agent` | a Cockpit agent session starts waiting for you |
 | `session.exited` | `session`, `ticket`, `agent`, `reason` (`exited` on its own, or `killed` by the Cockpit), `models`, `peak_context_pct`, `tokens_new`, `turns` | a session ends |
 | `session.saved` | `session`, `ticket`, `agent`, `by` (`marker` or `file-settle`) | Save & End saved the session's state |
+| `budget.warned` | `ticket`, `cap` (the `tools/caps.tsv` row name, never a path), `used`, `limit`, `unit`, `stage` (`plan` or `send`) | a capped file the plan lists has under 10% left: `sprint approve` (`plan`), `tkt send-issue` (`send`) (t-c990) |
+| `budget.exceeded` | the same fields; `stage` is `plan`, `send` or `close` | a capped file is over its cap: at those two commands, and at `sprint check-evidence` / `sprint complete` (`close`), which refuse when this branch changed that file (t-c990) |
 
 Audit kinds (t-4c09; the schema is fixed here, each emitter is built by the ticket named):
 

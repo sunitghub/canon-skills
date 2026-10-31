@@ -413,7 +413,7 @@ cmd_approve() {
     { print }' "$plan" > "$tmp" && cat "$tmp" > "$plan"
   rm -f "$tmp"
   echo "Approved $id: pinned ## Approach as sha256:${digest:0:12} at $stamp"
-  cap_headroom "$root" "$plan"   # t-cc88: a capped file this plan lists that is nearly full
+  cap_headroom "$root" "$plan" sprint "$id" plan   # t-cc88: a capped file this plan lists that is nearly full (t-c990: and its event)
 }
 
 _gate_plan_content() {
@@ -818,6 +818,41 @@ _gate_integrity() {
   return 1
 }
 
+# _gate_caps <id> <ticket dir> — t-c990: every tools/caps.tsv row with a project path, measured before the evaluator (check-evidence)
+# and again at the close. A row over its cap prints its line and writes budget.exceeded (stage close); the close refuses only when this
+# branch changed that file (git diff from merge-base HEAD origin/main, uncommitted and untracked included), so an old HANDOFF.md or a
+# LEARNINGS.md at its cap (learnings-sweep never blocks on it) cannot stop an unrelated close. No baseline, an older board: no refusal.
+_gate_caps() {
+  local id="$1" tdir="$2" root b table base changed="" nobase="" name path out rc err refuse=0 line
+  root="$(project_root)"
+  b="$(cap_board)" || return 0
+  table="$(cap_table)"
+  if base="$(git -C "$root" merge-base HEAD origin/main 2>/dev/null)"; then
+    changed="$( { git -C "$root" diff --name-only "$base"; git -C "$root" ls-files --others --exclude-standard; } 2>/dev/null || true)"
+  else nobase=1; fi
+  err="$(mktemp)" || return 0
+  while IFS=$'\t' read -r name path; do
+    rc=0; out="$(cd "$root" && "$b" caps --json --table "$table" "$name" </dev/null 2>"$err")" || rc=$?
+    if [[ "$rc" -eq 2 ]]; then echo "$path: cap not measured: $(head -1 "$err")"; continue; fi
+    cap_read "$out" || continue   # not present here
+    [[ "$CAP_OVER" == true ]] || continue
+    line="$path: $CAP_USED of $CAP_LIMIT $CAP_UNIT, over by $((CAP_USED - CAP_LIMIT))"
+    canon_event budget.exceeded sprint "$root" "ticket=$id" "cap=$CAP_NAME" "used=$CAP_USED" "limit=$CAP_LIMIT" "unit=$CAP_UNIT" "stage=close"
+    if [[ -z "$nobase" ]] && grep -qxF -- "$path" <<< "$changed"; then
+      echo "$line: this branch changed it; make room in it before closing (lower nothing in tools/caps.tsv)"; refuse=1
+    else
+      echo "$line: not changed by this branch${nobase:+ (no origin/main to compare with)}, so the close goes on"
+    fi
+  done < <(awk -F'\t' '!/^#/ && NF == 5 && $2 != "-" { print $1 "\t" $2 }' "$table")
+  rm -f "$err"
+  if (( refuse )); then
+    echo "Sprint $id cannot close: a capped file this branch changed is over its cap (tools/caps.tsv)."
+    _gate_reject "$id" "$tdir" sprint cap_exceeded
+    return 1
+  fi
+  return 0
+}
+
 _gate_eval_report() {
   local id="$1" tdir="$2"
   local plan="$tdir/plan.md"
@@ -957,6 +992,7 @@ cmd_complete() {
   acceptance="$tdir/acceptance.md"
 
   _gate_integrity           "$id" "$tdir"                || exit 1
+  _gate_caps                "$id" "$tdir"                || exit 1
   _gate_sprint_files        "$id" "$tdir" "$acceptance"  || exit 1
   _gate_acceptance_sections "$id" "$acceptance"          || exit 1
   _gate_wrapup_gates        "$id" "$acceptance"          || exit 1
@@ -1019,6 +1055,7 @@ cmd_check_review_notes() {
 cmd_check_evidence() {
   local id="${1:-}" out line bad=0 n=0 edir f name
   [[ "$id" =~ ^t-[a-z0-9]{4}$ ]] || { echo "usage: sprint check-evidence <ticket-id>" >&2; exit 2; }
+  _gate_caps "$id" "$(ticket_dir_for "$id")" || exit 1   # t-c990: a cap miss is found before the evaluator, not by a cloud close
   out="$("$SCRIPT_DIR/evidence.sh" check "$id" 2>&1)" || { echo "check-evidence: evidence.sh check failed: $out" >&2; exit 2; }
   # A log name `evidence.sh stamp` can never write (a space, `;`, a control character) could carry a fake `exit=0` inside the
   # line check prints for it, so such a name is refused outright; every name left then holds no space, and the matches below are exact.

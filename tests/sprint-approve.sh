@@ -83,9 +83,14 @@ echo notes > notes.md
 handoff 75; out="$(approve_with '`HANDOFF.md`, `notes.md` (new)')"
 assert_eq "HANDOFF.md: 75 of 80 lines, 5 left: make room first" "$(caplines "$out")"
 assert_grep '^Approved: sha256:' "$plan"
+# t-c990: the line also writes budget.warned with the row name, never the path; over the cap, budget.exceeded
+assert_eq '"data":{"cap":"handoff","limit":"80","stage":"plan","ticket":"'"$id"'","unit":"lines","used":"75"}}' "$(sed -n 's/.*\("data":.*\)/\1/p' <<< "$(event_line budget.warned "$id")")"
 handoff 82; out="$(approve_with '- HANDOFF.md.')"   # a bare bullet, a sentence's full stop
 assert_eq "HANDOFF.md: 82 of 80 lines, over by 2: make room first" "$(caplines "$out")"
+assert_contains "$(event_line budget.exceeded "$id")" '"cap":"handoff","limit":"80","stage":"plan"'
 handoff 72; out="$(approve_with '`HANDOFF.md`')"; assert_eq "" "$(caplines "$out")"   # 8 left of 80: exactly 10%
+warned() { cat "$CANON_HOME"/events/*.jsonl 2>/dev/null | grep -F '"kind":"budget.warned"' | grep -cF "\"ticket\":\"$id\"" || true; }
+assert_eq 1 "$(warned)"   # within the cap: no event
 out="$(approve_with '`notes.md`, `LEARNINGS.md`')"; assert_eq "" "$(caplines "$out")"   # no row; a row whose file is absent
 echo 'no markers' > HANDOFF.md; out="$(approve_with '`HANDOFF.md`')"
 [[ "$(caplines "$out")" == "HANDOFF.md: cap not measured: caps: handoff: no <!-- canon:handoff:BEGIN -->"* ]] || fail "unmeasured cap: $out"

@@ -86,27 +86,41 @@ canon_event() {
   return 0
 }
 
-# cap_headroom <project root> <plan.md> — t-cc88: one line per file named under plan.md's ## Files that has a tools/caps.tsv row
-# with under 10% left or over it ("<file>: 895 of 900 words, 5 left: make room first"), so a plan sees a nearly full file before
-# editing it. A capped file the meter cannot measure says so; silence means room. Information only: never fails, never waits on a
-# board without `caps` (checked through --help: an older board takes the word for a port and serves).
+# cap_board — the board binary when it has `caps` (checked through --help: an older board takes the word for a port and serves); else fails.
+cap_board() {
+  local b h; b="$(board_bin)"; h="$("$b" --help 2>/dev/null)" || h=""
+  case "$h" in *"caps [--json]"*) echo "$b" ;; *) return 1 ;; esac
+}
+# cap_table — this install's tools/caps.tsv (t-19bb), the table the tools that run here enforce.
+cap_table() { echo "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/caps.tsv"; }
+# cap_read <caps --json output> — sets CAP_NAME CAP_USED CAP_LIMIT CAP_UNIT CAP_LEFT CAP_OVER; fails unless it is a reading:
+# "not capped" and "not present" exit 0 too, so exit 0 alone never means within (t-19bb).
+cap_read() {
+  CAP_USED="$(sed -n 's/.*"used":\([0-9-]*\).*/\1/p' <<< "$1")"; [ -n "$CAP_USED" ] || return 1
+  CAP_NAME="$(sed -n 's/.*"name":"\([^"]*\)".*/\1/p' <<< "$1")"
+  CAP_LIMIT="$(sed -n 's/.*"limit":\([0-9]*\).*/\1/p' <<< "$1")"; CAP_UNIT="$(sed -n 's/.*"unit":"\([^"]*\)".*/\1/p' <<< "$1")"
+  CAP_LEFT="$(sed -n 's/.*"left":\([0-9-]*\).*/\1/p' <<< "$1")"; CAP_OVER="$(sed -n 's/.*"over":\([a-z]*\).*/\1/p' <<< "$1")"
+}
+
+# cap_headroom <project root> <plan.md> [<source> <ticket> <stage>] — t-cc88: one line per file named under plan.md's ## Files that
+# has a tools/caps.tsv row with under 10% left or over it ("<file>: 895 of 900 words, 5 left: make room first"), so a plan sees a
+# nearly full file before editing it. A capped file the meter cannot measure says so; silence means room. With a stage, each line
+# also writes budget.warned / budget.exceeded (t-c990; the row name, never the path). Information only: never fails.
 cap_headroom() {
-  local root="$1" plan="$2" b h f out err rc used limit unit left over
+  local root="$1" plan="$2" src="${3:-}" ticket="${4:-}" stage="${5:-}" b f out err rc kind
   [ -f "$plan" ] || return 0
-  b="$(board_bin)"; h="$("$b" --help 2>/dev/null)" || h=""
-  case "$h" in *"caps [--json]"*) ;; *) return 0 ;; esac
-  local table; table="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/caps.tsv"
+  b="$(cap_board)" || return 0
+  local table; table="$(cap_table)"
   err="$(mktemp)" || return 0
   while IFS= read -r f; do
     [ -f "$root/$f" ] || continue
     rc=0; out="$(cd "$root" && "$b" caps --json --table "$table" "$f" </dev/null 2>"$err")" || rc=$?
     if [ "$rc" -eq 2 ]; then printf '%s: cap not measured: %s\n' "$f" "$(head -1 "$err")"; continue; fi
-    # only a reading counts: "not capped" and "not present" exit 0 too (t-19bb)
-    used="$(sed -n 's/.*"used":\([0-9-]*\).*/\1/p' <<< "$out")"; [ -n "$used" ] || continue
-    limit="$(sed -n 's/.*"limit":\([0-9]*\).*/\1/p' <<< "$out")"; unit="$(sed -n 's/.*"unit":"\([^"]*\)".*/\1/p' <<< "$out")"
-    left="$(sed -n 's/.*"left":\([0-9-]*\).*/\1/p' <<< "$out")"; over="$(sed -n 's/.*"over":\([a-z]*\).*/\1/p' <<< "$out")"
-    if [ "$over" = true ]; then printf '%s: %s of %s %s, over by %s: make room first\n' "$f" "$used" "$limit" "$unit" "$((used - limit))"
-    elif [ $((left * 10)) -lt "$limit" ]; then printf '%s: %s of %s %s, %s left: make room first\n' "$f" "$used" "$limit" "$unit" "$left"; fi
+    cap_read "$out" || continue
+    if [ "$CAP_OVER" = true ]; then kind=budget.exceeded; printf '%s: %s of %s %s, over by %s: make room first\n' "$f" "$CAP_USED" "$CAP_LIMIT" "$CAP_UNIT" "$((CAP_USED - CAP_LIMIT))"
+    elif [ $((CAP_LEFT * 10)) -lt "$CAP_LIMIT" ]; then kind=budget.warned; printf '%s: %s of %s %s, %s left: make room first\n' "$f" "$CAP_USED" "$CAP_LIMIT" "$CAP_UNIT" "$CAP_LEFT"
+    else continue; fi
+    [ -z "$stage" ] || canon_event "$kind" "$src" "$root" "ticket=$ticket" "cap=$CAP_NAME" "used=$CAP_USED" "limit=$CAP_LIMIT" "unit=$CAP_UNIT" "stage=$stage"
   done < <(awk '/^```/ { fence = !fence } !fence && /^## / { f = ($0 ~ /^## Files[[:space:]]*$/); next } f' "$plan" | tr -d '\r' \
             | tr -s ' \t,;()`' '\n' | sed 's/[.:]$//' | awk 'NF && !seen[$0]++')
   rm -f "$err"

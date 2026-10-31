@@ -1294,7 +1294,7 @@ cmd_send_issue() {
   _has_criteria "$acc" || echo "send-issue: warning: $id has no acceptance criteria: the session will draft them and wait for your approval" >&2
   [[ -n "$(_si_section "$plan" Approach)" ]] || echo "send-issue: warning: $id has no plan (plan.md ## Approach is empty): the session will draft it and wait for your approval" >&2
   rbody=""; [[ -f "$res" ]] && rbody="$(awk 'NR == 1 && /^# / { next } { print }' "$res" | awk 'NF { s = 1 } s')"
-  local caps; caps="$(cap_headroom "$root" "$plan")"   # t-cc88: in # Working on this, which import-issue never writes back
+  local caps; caps="$(cap_headroom "$root" "$plan" tkt "$id" "$($dry || echo send)")"   # t-cc88: in # Working on this, which import-issue never writes back
 
   local body; body="$(mktemp "${TMPDIR:-/tmp}/tkt-issue.XXXXXX")"
   # shellcheck disable=SC2064  # expand now: $body is local

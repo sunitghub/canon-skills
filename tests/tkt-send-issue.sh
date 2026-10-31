@@ -226,6 +226,10 @@ for b in capped roomy; do
   cp "$imp/.tickets/$id7/plan.md" "$stub/$b.plan"; cp "$imp/.tickets/$id7/acceptance.md" "$stub/$b.acc"; rm -rf "$imp"
 done
 cmp -s "$stub/capped.plan" "$stub/roomy.plan" && cmp -s "$stub/capped.acc" "$stub/roomy.acc" || fail "the cap lines changed what import-issue rebuilds"
+# t-c990: a dry run (the board's preview) writes no budget event; the real send writes budget.warned with stage send
+assert_eq "" "$(event_line budget.warned "$id7")"
+handoff 75; "$TKT" send-issue "$id7" >/dev/null 2>&1 || fail "send-issue of the capped ticket failed"
+assert_contains "$(event_line budget.warned "$id7")" '"cap":"handoff","limit":"80","stage":"send","ticket":"'"$id7"'"'
 rm -f HANDOFF.md
 
 # gh fails on create, or is signed out: exit 1, the error shown, ticket byte-identical.

@@ -59,6 +59,7 @@ tests=(
   "$ROOT/tests/ticket-skeleton.sh"
   "$ROOT/tests/sprint.sh"
   "$ROOT/tests/sprint-approve.sh"
+  "$ROOT/tests/sprint-caps-close.sh"
   "$ROOT/tests/ticket-root-worktree.sh"
   "$ROOT/tests/frontmatter-lib.sh"
   "$ROOT/tests/skills-add-sprint.sh"

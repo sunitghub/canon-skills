@@ -498,7 +498,7 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    needs approval" is not acceptable for normal/high-risk sprints. If the runtime can't spawn
    the evaluator subagent, stop closeout and report the blocker.
 
-   **Evidence pre-flight (t-a3d7).** Before dispatching, run `sprint check-evidence <id>` (bare, on PATH; read-only). It runs
+   **Evidence pre-flight (t-a3d7).** Before dispatching, run `sprint check-evidence <id>` (bare, on PATH; read-only). It first runs the cap check (t-c990): a `tools/caps.tsv` file this branch changed that is over its cap refuses here and again at `sprint complete`; one the branch did not change only warns. It runs
    `evidence.sh check` at HEAD and exits 1, naming each log and its fix, unless every top-level log in `.tickets/<id>/evidence/` is
    `fresh` with `exit=0` or `covered`. On exit 1, do not dispatch: re-stamp or fix what it names, and move a log kept for history or
    produced off-tree (a probe commit, a deliberate mutant run) into a subfolder of `evidence/`, which `check` never scans. A stale
