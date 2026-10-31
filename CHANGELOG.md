@@ -6,6 +6,19 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.35.2] - 2026-10-31
+
+The prebuilt `canon-go` program changed (the board part only): `canon update` fetches it; the daemon is unchanged, nothing to restart.
+
+### Fixed
+- The board no longer shows a closed ticket as In Progress because a stale worktree still has it in progress: a ticket whose session ran on the main checkout, or that is closed, cancelled or archived on main, is shown (card, plan and docs) from main; the card's divergence note still points at the stale copy (t-1aa7).
+- `skills.sh add` never registers a project inside the system temp folder (`$TMPDIR`, macOS's `/var/folders/…/T` even with `TMPDIR` unset, Windows `%TEMP%`): such a folder is still set up, only not listed for `canon uninstall`, which edits every registered folder. Each change to the project list also drops folders that no longer exist and says how many (one on an unmounted drive counts as gone). `/tmp` and `/private/tmp` on macOS and Linux are still registered (t-acfa).
+- For contributors: test runs no longer write your real project list (`~/.config/canon/projects`) or activity log (`~/.canon/events`); `scripts/test.sh` fails a run that changes the project list, and the board spec's own daemons use a scratch `CANON_HOME` (t-acfa).
+
+### Removed
+- The stale `ROADMAP.md`: what is planned lives in the tickets.
+
+
 ## [0.35.1] - 2026-10-31
 
 The prebuilt `canon-go` program changed, the daemon included: after `canon update`, restart the daemon (Admin's **Restart Daemon** button) so a running one picks it up.
