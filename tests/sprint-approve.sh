@@ -74,4 +74,37 @@ printf '# Plan\n\n## Sign-off\n- [ ] Plan approved\n\n## Approach\nstep one\n' >
 sed -i.bak 's/step one/step one   /' "$plan"; rm -f "$plan.bak"
 gate >/dev/null || fail "trailing spaces in Approach must not trip the plan gate"
 
+# 9. t-cc88: a capped file plan.md ## Files names prints one headroom line when under 10% is left (HANDOFF.md: 80 block-lines,
+# tools/caps.tsv); exactly 10%, no row, an absent capped file and an older board print nothing; a failed read says so.
+handoff() { { echo '<!-- canon:handoff:BEGIN -->'; for ((i = 0; i < $1; i++)); do echo "line $i"; done; echo '<!-- canon:handoff:END -->'; } > HANDOFF.md; }
+approve_with() { printf '# Plan\n\n## Sign-off\n- [ ] Plan approved\n\n## Approach\nstep one\n\n## Files\n%s\n' "$1" > "$plan"; "$SPRINT" approve "$id"; }
+caplines() { grep -v '^Approved ' <<< "$1" || true; }
+echo notes > notes.md
+handoff 75; out="$(approve_with '`HANDOFF.md`, `notes.md` (new)')"
+assert_eq "HANDOFF.md: 75 of 80 lines, 5 left: make room first" "$(caplines "$out")"
+assert_grep '^Approved: sha256:' "$plan"
+# t-c990: the line also writes budget.warned with the row name, never the path; over the cap, budget.exceeded
+assert_eq '"data":{"cap":"handoff","limit":"80","stage":"plan","ticket":"'"$id"'","unit":"lines","used":"75"}}' "$(sed -n 's/.*\("data":.*\)/\1/p' <<< "$(event_line budget.warned "$id")")"
+handoff 82; out="$(approve_with '- HANDOFF.md.')"   # a bare bullet, a sentence's full stop
+assert_eq "HANDOFF.md: 82 of 80 lines, over by 2: make room first" "$(caplines "$out")"
+assert_contains "$(event_line budget.exceeded "$id")" '"cap":"handoff","limit":"80","stage":"plan"'
+handoff 72; out="$(approve_with '`HANDOFF.md`')"; assert_eq "" "$(caplines "$out")"   # 8 left of 80: exactly 10%
+warned() { cat "$CANON_HOME"/events/*.jsonl 2>/dev/null | grep -F '"kind":"budget.warned"' | grep -cF "\"ticket\":\"$id\"" || true; }
+assert_eq 1 "$(warned)"   # within the cap: no event
+out="$(approve_with '`notes.md`, `LEARNINGS.md`')"; assert_eq "" "$(caplines "$out")"   # no row; a row whose file is absent
+echo 'no markers' > HANDOFF.md; out="$(approve_with '`HANDOFF.md`')"
+[[ "$(caplines "$out")" == "HANDOFF.md: cap not measured: caps: handoff: no <!-- canon:handoff:BEGIN -->"* ]] || fail "unmeasured cap: $out"
+# an older board (no `caps` in --help) is never asked: it would take the word for a port and serve
+stub="$(mktemp -d)"; trap 'rm -rf "$project" "$stub"' EXIT
+printf '#!/usr/bin/env bash\n[[ "$1" == --help ]] && { echo "usage: sprint-check [port]"; exit 0; }\ntouch "%s/called"; sleep 30\n' "$stub" > "$stub/board"; chmod +x "$stub/board"
+handoff 75; out="$(SPRINT_CHECK_BIN="$stub/board" approve_with '`HANDOFF.md`')"
+assert_eq "" "$(caplines "$out")"; [[ ! -e "$stub/called" ]] || fail "an older board was called with caps"
+assert_grep '^- \[x\] Plan approved' "$plan"
+# no board binary at all: approve still ticks and pins (the --help call fails under set -e)
+out="$(SPRINT_CHECK_BIN="$stub/missing" approve_with '`HANDOFF.md`')" || fail "approve failed with no board binary"
+assert_eq "" "$(caplines "$out")"
+# a CRLF plan.md still names its files
+printf '# Plan\r\n\r\n## Sign-off\r\n- [ ] Plan approved\r\n\r\n## Approach\r\nstep one\r\n\r\n## Files\r\n- HANDOFF.md\r\n' > "$plan"
+assert_eq "HANDOFF.md: 75 of 80 lines, 5 left: make room first" "$(caplines "$("$SPRINT" approve "$id")")"
+
 echo "sprint-approve: ok"

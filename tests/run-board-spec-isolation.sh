@@ -19,8 +19,8 @@ cp "$ROOT/tests/run-board-spec.sh" "$ROOT/tests/machine-load.sh" "$FAKE/tests/"
 echo 'console.log("board-spec-guard: 1 violation(s)"); process.exit(1)' > "$FAKE/tests/board-spec-guard.js"   # a guard that always fails
 git -C "$FAKE" init -q
 printf '#!/bin/sh\nfor a; do last="$prev"; prev="$a"; done\ncp -a "$last." "$prev" 2>/dev/null || cp -a "$last" "$prev"\n' > "$WORK/bin/rsync"   # rsync -a --exclude.. SRC/ DST/
-printf '#!/bin/sh\necho "$SPRINT_CHECK_ROOT $COCKPIT_STATE_DIR $COCKPIT_DAEMON_BIN" >> "$STATE/boards"\nexec sleep 600\n' > "$WORK/bin/go"   # records the board's env (its root is the copy)
-printf '#!/bin/sh\nexit 0\n' > "$WORK/bin/curl"
+printf '#!/bin/sh\necho "$SPRINT_CHECK_ROOT $COCKPIT_STATE_DIR $COCKPIT_DAEMON_BIN" >> "$STATE/boards"\ngit -C "$SPRINT_CHECK_ROOT" worktree list >> "$STATE/copy-worktrees" 2>&1\ngit -C "$SPRINT_CHECK_ROOT" rev-parse --abbrev-ref HEAD >> "$STATE/copy-branch" 2>&1\ngit -C "$SPRINT_CHECK_ROOT" diff --cached --name-only >> "$STATE/copy-staged" 2>&1\ntouch "$STATE/ready"\nexec sleep 600\n' > "$WORK/bin/go"   # records the board's env (its root is the copy) and the worktrees, branch and staged files the copy sees (t-cab4)
+printf '#!/bin/sh\n[ -e "$STATE/ready" ]\n' > "$WORK/bin/curl"   # the board is up once the stub has recorded all it sees (the runner kills it right after: no race)
 cat > "$WORK/bin/npx" <<'STUB'
 #!/bin/bash
 # npx playwright test ...: optionally leave a process behind in the copy, then write a report
@@ -46,6 +46,29 @@ assert_eq 0 "$rc"; assert_contains "$out" "no process left running from the copy
 read -r d sd bin < "$WORK/state/boards"
 assert_eq "$d/.spec-cockpit-state" "$sd"   # never the real daemon's $TMPDIR/canon-cockpit-board
 assert_eq "$d/.spec-no-daemon" "$bin"; [ ! -e "$bin" ] || fail "run-board-spec: the spec board's daemon bin exists: $bin"
+
+# t-cab4: the copy sees none of the source's worktrees (the board in it listed real leftovers and t-8a2a failed), and the run records them
+git -C "$FAKE" -c user.name=t -c user.email=t@e commit -q --allow-empty -m base; git -C "$FAKE" worktree add -q "$WORK/wt2" -b wt2
+RUN_ENV=""; run worktrees --runs 1 --browsers chromium --no-guard
+assert_eq 0 "$rc"; assert_eq 1 "$(wc -l < "$WORK/state/copy-worktrees" | tr -d ' ')"   # the copy itself only
+[[ "$(cat "$WORK/state/copy-worktrees")" != *wt2* ]] || fail "run-board-spec: the copy lists the source's worktree: $(cat "$WORK/state/copy-worktrees")"
+assert_eq 2 "$(grep -c 'machine-load: worktrees: ' "$WORK/out-worktrees/machine-load.txt")"; assert_contains "$(cat "$WORK/out-worktrees/machine-load.txt")" "wt2"
+git -C "$FAKE" worktree remove --force "$WORK/wt2"
+# a source that is not a git checkout is recorded as unknown, never an empty line that reads as "no worktrees"
+mv "$FAKE/.git" "$WORK/fake-git-aside"; run nogit --runs 1 --browsers chromium --no-guard; mv "$WORK/fake-git-aside" "$FAKE/.git"
+assert_eq 0 "$rc"; assert_contains "$(cat "$WORK/out-nogit/machine-load.txt")" "machine-load: worktrees: unknown"
+# a linked-worktree source (its .git is a file pointing into the main repo): the copy gets its own git dir, keeps the branch, sees no worktrees
+LWT="$WORK/linked"; git -C "$FAKE" worktree add -q "$LWT" -b linked
+mkdir -p "$LWT/tests" "$LWT/tools/canon-go" "$LWT/node_modules"
+cp "$FAKE/tests/run-board-spec.sh" "$FAKE/tests/machine-load.sh" "$FAKE/tests/board-spec-guard.js" "$LWT/tests/"
+[ -f "$LWT/.git" ] || fail "run-board-spec-isolation: the linked worktree's .git is not a file"
+echo staged > "$LWT/staged.txt"; git -C "$LWT" add staged.txt   # only this worktree's own index has it
+MAIN_FAKE="$FAKE"; FAKE="$LWT"; run linked --runs 1 --browsers chromium --no-guard; FAKE="$MAIN_FAKE"
+assert_eq 0 "$rc"; assert_eq 1 "$(wc -l < "$WORK/state/copy-worktrees" | tr -d ' ')"
+[[ "$(cat "$WORK/state/copy-worktrees")" != *"$MAIN_FAKE"* ]] || fail "run-board-spec: the copy of a linked worktree lists the main checkout: $(cat "$WORK/state/copy-worktrees")"
+assert_eq linked "$(cat "$WORK/state/copy-branch")"
+assert_eq staged.txt "$(cat "$WORK/state/copy-staged")"   # the copy kept this worktree's index, not the main checkout's
+git -C "$FAKE" worktree remove --force "$LWT"
 
 # a leak exits 2 with the guard skipped, and still 2 when the guard fails (exit 1) too
 RUN_ENV="LEAK=1"; run leak --runs 1 --browsers chromium --no-guard

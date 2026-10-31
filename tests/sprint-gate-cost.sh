@@ -70,4 +70,10 @@ for bad in "--last 0" "--last x" "--last" "--bogus"; do
 done
 assert_eq "Usage: sprint gate-cost [--last N]" "$("$SPRINT" gate-cost --help)"
 
+# t-7c89: a run in the log twice (an older log, or a hand edit) counts once, the later measured row winning.
+"$SUBAGENT_LOG" --agent-id dupe --agent-type reviewer --tier dupetier
+printf '{"ts":"2026-10-29T10:00:00Z","agent_id":"dupe","agent_type":"reviewer","tokens":1000,"tier":"dupetier"}\n{"ts":"2026-10-29T10:01:00Z","agent_id":"dupe","agent_type":"reviewer","tokens":3000,"tier":"dupetier"}\n{"ts":"2026-10-29T10:02:00Z","agent_id":"dupe","agent_type":"reviewer","tier":"dupetier"}\n' >> .claude/subagent-runs.jsonl
+out="$("$SPRINT" gate-cost --last 50)"
+assert_eq "reviewer dupetier - 1 3000 3000 - - 0%" "$(printf '%s\n' "$out" | awk '$1 == "reviewer" && $2 == "dupetier"' | tr -s ' ')"
+
 printf 'sprint-gate-cost: ok\n'

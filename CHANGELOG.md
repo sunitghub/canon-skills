@@ -9,6 +9,51 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 ### Added
 - Cockpit: an ambient per-session token meter (cache % of input, LLM calls, tool calls, sub-agents) in the session's top bar and the Agents sidebar tooltip, read from the claude transcripts token-spend already uses; nothing new is stored and there is no setting (t-d00c)
 
+## [0.34.0] - 2026-10-31
+
+The prebuilt `canon-go` program changed, the daemon included: after `canon update`, restart the daemon (Admin's **Restart Daemon** button) so a running one picks it up.
+
+### Added
+- `sprint approve` and `tkt send-issue` name each capped file the plan's `## Files` lists that has under 10% left or is over its cap: `HANDOFF.md: 75 of 80 lines, 5 left: make room first`. The issue carries it at the top of "Working on this", so a cloud session sees it before editing. A file the meter cannot measure says so; an older board is skipped (t-cc88).
+- The close checks every capped file before the evaluator (`sprint check-evidence`) and again at `sprint complete`: a file this branch changed that is over its cap refuses the close; one it did not change, a project with no `origin/main`, and `LEARNINGS.md` (learnings-sweep never blocks on it) only warn. In a linked worktree it measures that worktree (t-c990).
+- Two activity-log kinds, `budget.warned` and `budget.exceeded` (the cap's name and numbers, never a path; stage `plan`, `send` or `close`), and a `cap_exceeded` reason on `gate.rejected` (t-c990).
+
+## [0.33.0] - 2026-10-31
+
+The prebuilt `canon-go` program changed (the board part only): `canon update` fetches it; the daemon is unchanged, nothing to restart.
+
+### Added
+- `canon-go caps` measures a capped file against one table, `tools/caps.tsv`: it prints `<name>: <used> of <limit> <unit>, <N> left` or `over by <M>` (exit 0 or 1; 2 for a bad table or file), with `--json` and `--list`. Units are words, lines between a marker pair, KB of file bytes and files, counted the same on every OS. canon's checklist and release-zip checks now read their caps through it, and a cap row that goes missing fails the check instead of dropping the cap (t-19bb).
+
+## [0.32.1] - 2026-10-31
+
+No change to the prebuilt `canon-go` program: nothing to restart.
+
+### Added
+- While a close gate (the reviewer or evaluator) runs, `canon update`, `skills.sh` and `canon uninstall` refuse your real home and canon home, so a gate's probe cannot re-link or rewrite your projects; they work again when the gate ends, or after two hours if it crashed. A scratch `HOME` and `CANON_HOME`, as every test pins, still go through. The comparison is by folder identity: a symlink, a `..`, a case or Unicode-form spelling, or a newline in a path cannot pass for another folder (t-b7df, t-9fb1). New since 0.32.0: strictly a minor change, released as a patch.
+
+### Fixed
+- The Send panel counts the same files as its warning (t-8ae5).
+- A recovered ticket gets `runs: github` when a PR fixes its issue, and the PR lookup says when it read only the newest 100 (t-4b34).
+
+### Changed
+- For contributors: the release-zip size check counts file bytes (a 4096 KB cap; 3743 KB today) instead of disk blocks, so it reads the same on macOS and Linux. The block count made every cloud sprint close fail its stamp on Linux (t-0d96).
+
+## [0.32.0] - 2026-10-30
+
+The prebuilt `canon-go` program changed: after `canon update`, restart the daemon (Admin's **Restart Daemon** button) so a running one picks it up.
+
+### Added
+- `tkt merged <id> --pr N [--sha S]` records a PR merged outside `merge-pr`: it checks GitHub says MERGED and the head is on the base, then writes `merged:`, the `github.md` trail and the `github.merged` event. The board's GitHub poll (`tkt github-status`) does the same on its own, once, with `actor: system`; when a check fails nothing is written and the card shows a short warning. `sprint-check event` takes `--actor user|agent|system` (t-7c89).
+- Check & merge says when this checkout's main has commits GitHub's main lacks ("Your local main has N commits that aren't on GitHub…"); `merge-pr --check` prints the count (t-7c89).
+- `tkt close` run in a worktree that holds its own copy of the ticket (an adopted worktree, `.tickets/` gitignored) copies the closed ticket folder back to the main checkout's `.tickets/<id>/`, so main no longer stays `open` once the worktree is removed. Main's `.cockpit-*` files and its `github`, `runs`, `merged` and `cloud_status` lines are kept; a failed copy warns and never fails the close. Where `.tickets/` is tracked, or the ticket is main's already, nothing is copied (t-3abc).
+
+### Fixed
+- A second `subagent-log.sh` call with the same `--agent-id` replaces that run's row and writes no second `gate.finished`; `sprint gate-cost` counts each agent id once, the later measured row winning. The event keeps the numbers of the first call (t-7c89).
+
+### Changed
+- For contributors: the board spec's copy no longer carries this machine's git worktrees (`.git/worktrees`), and each run records the source's `git worktree list` in `machine-load.txt`, so a leftover worktree cannot fail a spec test that passes on the base copy (t-cab4).
+
 ## [0.31.0] - 2026-10-30
 
 ### Added

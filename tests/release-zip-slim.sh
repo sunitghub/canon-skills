@@ -29,9 +29,29 @@ build() {
   (cd "$R" && bash scripts/release-zip.sh v9.9.9 "$2" >"$2/line" 2>&1) || { cat "$2/line" >&2; return 1; }
 }
 
+# The size and file bounds come from tools/caps.tsv through the board's cap meter (t-19bb), which counts file bytes, never `du`'s disk
+# blocks (the same zip read 4364 KB on APFS and 4656 KB on Linux, where every folder costs a 4 KB block; t-0d96).
+export SPRINT_CHECK_NO_BROWSER=1   # an older board would take `caps` for a port and start (t-269d)
+CAPS="$ROOT/tools/caps.tsv"; BOARD="$(build_board "$WORK")"
+SIZE_CAP_KB="$("$BOARD" caps --list --table "$CAPS" | sed -n 's/^release-zip: \([0-9]*\) KB .*/\1/p')"
+[[ "$SIZE_CAP_KB" =~ ^[0-9]+$ ]] || fail "release-zip-slim: tools/caps.tsv has no release-zip row"
+unpacked_kb() { local out rc=0; out="$("$BOARD" caps --json --table "$CAPS" release-zip "$1" 2>&1)" || rc=$?; (( rc < 2 )) && [[ "$out" == *'"used":'* ]] || return 1; out="${out#*\"used\":}"; echo "${out%%,*}"; }
+# cap_problem <row> <dir>: the meter's line when over ("release-zip: 4097 of 4096 KB, over by 1"); nothing within the cap. Exit 0
+# alone is not "within": a missing row ("not capped") or path ("not present") is a problem too, never a dropped cap.
+cap_problem() {
+  local out rc=0; out="$("$BOARD" caps --table "$CAPS" "$1" "$2" 2>&1)" || rc=$?
+  case "$rc:$out" in
+    0:*" left") ;;
+    1:*", over by "*) echo "$out" ;;
+    0:*) echo "$1: no cap was measured for $2: $out" ;;
+    *) echo "$1 could not be read under $2: $out" ;;
+  esac
+}
+size_problem() { cap_problem release-zip "$1"; }
+
 # check_zip <zip> <unpack folder>: prints the problems found, one per line (nothing = a good zip)
 check_zip() {
-  local zip="$1" u="$2" full="${3:-}" top p f n kb files
+  local zip="$1" u="$2" full="${3:-}" top p f n
   rm -rf "$u"; mkdir -p "$u"; unzip -q "$zip" -d "$u"; top="$u/canon-9.9.9"
   [[ -d "$top" ]] || { echo "no canon-9.9.9/ folder"; return; }
   # 1. what is left out
@@ -81,9 +101,8 @@ REQ
     done < <(printf '%s\n' "$want")
   fi
   # 4. size: the point of the exclusions
-  kb="$(du -sk "$top" | cut -f1)"; files="$(find "$top" -type f | wc -l | tr -d ' ')"
-  (( kb <= 4608 )) || echo "unpacked size ${kb} KB is over 4608 KB"
-  (( files <= 300 )) || echo "$files files is over 300"
+  size_problem "$top"
+  cap_problem release-zip-files "$top"
 }
 
 # the working copy's script builds a good zip
@@ -127,4 +146,36 @@ bad also-gomod  's#tools/canon-go/cmd tools/canon-go/internal #tools/canon-go #'
 bad ship-devfiles 's# tools/vendored\.tsv tools/sprint-check-app/CLAUDE\.md\)#)#'
 bad forgot-tests 's#^SLIM_EXCLUDE=\(tests #SLIM_EXCLUDE=(#'
 bad no-keep-shots 's#^  keep_shots="\$\(git .*$#  keep_shots=""#'
+# the size bound measures bytes, not disk blocks, and can fail: filler that costs blocks but no bytes leaves the reading alone, real bytes push it over the cap
+fat="$WORK/fat"; cp -R "$WORK/u1" "$fat"; ft="$fat/canon-9.9.9"; base_kb="$(unpacked_kb "$ft")"
+for i in $(seq 1 200); do printf x > "$ft/.tiny$i"; done
+for i in $(seq 1 100); do mkdir "$ft/.dir$i"; done
+(( $(unpacked_kb "$ft") - base_kb < 10 )) || fail "release-zip-slim: 200 one-byte files and 100 empty folders moved the size reading from $base_kb to $(unpacked_kb "$ft") KB: it measures disk blocks"
+[[ -z "$(size_problem "$ft")" ]] || fail "release-zip-slim: the filler alone put the zip over the size cap"
+head -c 716800 /dev/zero > "$ft/.pad"
+[[ "$(size_problem "$ft")" == "release-zip: "*" of $SIZE_CAP_KB KB, over by "* ]] || fail "release-zip-slim: a 700 KB file did not take the zip over the size cap: '$(size_problem "$ft")'"
+# check_zip itself reports an oversize zip (the call to size_problem must stay in it)
+if command -v zip >/dev/null 2>&1; then
+  (cd "$fat" && zip -qr "$WORK/fat.zip" canon-9.9.9)
+  [[ "$(check_zip "$WORK/fat.zip" "$WORK/u2")" == *"of $SIZE_CAP_KB KB, over by"* ]] || fail "release-zip-slim: check_zip did not report a zip over the size cap"
+fi
+# the boundary and the rounding: the cap itself is fine, one byte more is 1 KB over; 1 byte reads 1 KB, 1024 reads 1, 1025 reads 2
+bd="$WORK/bd"; mkdir -p "$bd"; head -c $(( SIZE_CAP_KB * 1024 )) /dev/zero > "$bd/f"
+[[ -z "$(size_problem "$bd")" ]] || fail "release-zip-slim: exactly $SIZE_CAP_KB KB of bytes was reported over the cap"
+printf x >> "$bd/f"
+assert_eq "release-zip: $(( SIZE_CAP_KB + 1 )) of $SIZE_CAP_KB KB, over by 1" "$(size_problem "$bd")"
+printf x > "$bd/f"; assert_eq 1 "$(unpacked_kb "$bd")"
+head -c 1024 /dev/zero > "$bd/f"; assert_eq 1 "$(unpacked_kb "$bd")"
+head -c 1025 /dev/zero > "$bd/f"; assert_eq 2 "$(unpacked_kb "$bd")"
+# a file that cannot be read still counts (its size, not its content), and a folder that cannot be read is reported, never left out
+# of the sum (root reads anything: skipped there)
+if [[ "$(id -u)" != 0 ]]; then
+  ub="$WORK/ub"; mkdir -p "$ub/d"; head -c 1025 /dev/zero > "$ub/f"; chmod 000 "$ub/f"
+  assert_eq 2 "$(unpacked_kb "$ub")"
+  chmod 000 "$ub/d"
+  [[ "$(size_problem "$ub")" == *"could not be read"* ]] || fail "release-zip-slim: an unreadable folder was left out of the size sum without a word"
+  chmod 700 "$ub/d"; chmod 600 "$ub/f"
+fi
+echo "release-zip-slim: the size bound counts file bytes (folders and tiny files cost nothing), rounds up, fails past $SIZE_CAP_KB KB (tools/caps.tsv) and reports a folder it cannot read"
+
 echo "release-zip-slim: ok (revert checks: dropping scripts/ or go.mod, forgetting tests/ or the developer-only files, or losing the tour images each fails the check)"

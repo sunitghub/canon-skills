@@ -50,7 +50,12 @@ for t in canon sprint tkt sprint-check skills.sh evidence.sh gate-snapshot.sh su
   chmod +x "/usr/local/bin/$t"
 done
 mkdir -p "$HOME/.claude/agents"
-cp "$HOME/.canon/agents/canon-reviewer.md" "$HOME/.canon/agents/canon-evaluator.md" "$HOME/.claude/agents/" || true
+for a in canon-reviewer canon-evaluator; do
+  for d in "$HOME/.canon/current/agents" "$HOME/.canon/agents"; do
+    if [ -f "$d/$a.md" ] && cp "$d/$a.md" "$HOME/.claude/agents/"; then continue 2; fi
+  done
+  echo "setup: $a.md not copied (looked in \$HOME/.canon/current/agents and \$HOME/.canon/agents); the close will run on fallback agents" >&2
+done
 git config --global user.name >/dev/null || git config --global user.name "canon cloud session"
 git config --global user.email >/dev/null || git config --global user.email "noreply@getcanon.dev"
 SH

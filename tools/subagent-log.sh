@@ -8,6 +8,7 @@
 #     [--tokens N --minutes M --tool-uses K] [--ticket <id>] [--tier <tier>] [--outcome pass|fail|budget] [--model <id>]
 # The cost fields (t-5ef3) come from the harness's hand-back for that run; each is written only when given,
 # so a row without them keeps the old shape. `sprint gate-cost` summarizes the rows that carry them.
+# A second call with the same --agent-id replaces that run's row (t-7c89): one row and one gate.finished per agent id.
 # --model (t-3a14) records the model the orchestrator resolved and dispatched, not one verified from the transcript;
 # leave it out when the model is unknown.
 
@@ -104,6 +105,13 @@ EXTRA=""
 [[ -n "$TIER" ]] && EXTRA+=",\"tier\":\"$TIER\""
 [[ -n "$OUTCOME" ]] && EXTRA+=",\"outcome\":\"$OUTCOME\""
 [[ -n "$MODEL" ]] && EXTRA+=",\"model\":\"$MODEL\""
+# t-7c89: one row per agent id. A second call for the same run (the totals arrive after the first log) replaces its row, so the later
+# numbers win; the run's gate.finished is then already written (below) and is not written again.
+SEEN=0
+if [[ -f "$LOG" ]] && grep -qF -e "\"agent_id\":\"$AGENT_ID\"" "$LOG"; then
+  SEEN=1
+  { grep -vF -e "\"agent_id\":\"$AGENT_ID\"" "$LOG" || true; } > "${LOG}.tmp" && mv "${LOG}.tmp" "$LOG"
+fi
 printf '{"ts":"%s","agent_id":"%s","agent_type":"%s"%s}\n' "$TS" "$AGENT_ID" "$AGENT_TYPE" "$EXTRA" >> "$LOG"
 
 # Prune to last 500 lines (~75KB cap)
@@ -113,7 +121,7 @@ fi
 
 # t-8854: a close gate's run is also a gate.finished event, with the verdict its own report states (unknown if none yet).
 # Observer-only: canon_event never fails and never prints.
-if [[ -n "$TICKET" && ( "$AGENT_TYPE" == reviewer || "$AGENT_TYPE" == evaluator ) ]]; then
+if [[ $SEEN -eq 0 && -n "$TICKET" && ( "$AGENT_TYPE" == reviewer || "$AGENT_TYPE" == evaluator ) ]]; then
   _tdir="$REPO_ROOT/.tickets/$TICKET" _verdict=unknown
   if [[ "$AGENT_TYPE" == reviewer && -f "$_tdir/review-notes.md" ]]; then
     _verdict="$(awk '/^## Verdict/ { on = 1; next } on && NF { print $1; exit }' "$_tdir/review-notes.md" | tr -d '*')"

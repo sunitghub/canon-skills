@@ -30,6 +30,7 @@ done
 SCRIPT_DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
 source "$SCRIPT_DIR/ticket-root.sh"
 source "$SCRIPT_DIR/platform-lib.sh"   # canon_event (t-8854)
+source "$SCRIPT_DIR/gate-scope-lib.sh"   # t-b7df: the gate's scratch scope
 "$SCRIPT_DIR/work-beat" touch || true   # t-187e: a gate around this ticket is a sign an agent is on it
 
 mode="${1:-}"; file="${2:-}"; role=""
@@ -102,10 +103,16 @@ if [[ "$mode" == pre ]]; then
   else
     echo "gate-snapshot: recovery: nothing to recover, the tree has no uncommitted tracked changes."
   fi
+  # t-b7df: register the gate's scratch scope (the guard in canon update / skills.sh enforces it); post removes it
+  if scope="$(gate_scope_create "$file")"; then
+    printf 'CANON_HOME=%s/canon\nTMPDIR=%s/tmp\n' "$scope" "$scope" > "$file.scope"
+    echo "gate-snapshot: gate scope active until post: canon update, skills.sh and uninstall refuse real HOME/CANON_HOME meanwhile; a pi gate runs under: env \$(cat $file.scope) pi -p …"
+  fi
   emit_gate_started
   exit 0
 fi
 
+if [[ "$mode" == post ]]; then gate_scope_remove "$file" || true; rm -f "$file.scope"; fi   # t-b7df: the gate is over, its scope ends
 if [[ ! -f "$file" ]]; then
   echo "gate-snapshot: no pre snapshot at $file — run 'gate-snapshot.sh pre $file' before the dispatch." >&2
   exit 1

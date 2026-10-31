@@ -226,11 +226,12 @@ Usage:
 Helpers (used by canon's shell tools; see helpers.go):
   headless-json, json-strings <file>, skill-check <skill-dir>,
   settings <status|add|remove> <settings.json> <allow|deny> <rule>...
-  event <kind> --project <dir> --source <name> key=value...
+  event <kind> --project <dir> --source <name> [--actor user|agent|system] key=value...
   log verify | seal        the activity log's day seals (canon log)
   transcript-report <agent-transcript.jsonl> <first-line-prefix>
   integrity [--json] [--gate] [--online]
   gate-clusters [--days N] [--json]
+  caps [--json] [--table <file>] <name|path> [path] | caps --list   a capped file's use (tools/caps.tsv)
 
 The dashboard reads .tickets/, HANDOFF.md, and git history from the current
 project. It starts a local Go HTTP server and opens the board in your default

@@ -101,6 +101,13 @@ build_board() {
   printf '%s\n' "$out"
 }
 
+# cap_check <board> <name> [path] (t-19bb): the row's line from the board's cap meter against tools/caps.tsv; fails the test when the
+# file is over its cap, cannot be measured, or has no row (a missing row must never read as "no cap").
+cap_check() {
+  local out rc=0; out="$("$1" caps --table "$ROOT/tools/caps.tsv" "${@:2}" 2>&1)" || rc=$?
+  [[ $rc -eq 0 && "$out" == *" left" ]] || fail "cap: $out"
+}
+
 # use_fresh_board <dir> — build the board into <dir> and export SPRINT_CHECK_BIN to it (t-b62a: skills.sh's settings edits and
 # sprint-headless run the board binary's helpers, and the fetched binary may be older than the tools under test).
 use_fresh_board() {

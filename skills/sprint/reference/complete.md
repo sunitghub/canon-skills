@@ -285,6 +285,7 @@ Opus` default, scoped only to the two close-gate dispatches below.
   sub-agents** (by design), so dispatch each fresh-context gate as a `pi -p` subprocess from
   Bash:
   `pi -p --no-session --no-context-files --no-skills --no-prompt-templates --no-extensions --no-mcp --tools read,bash,grep,find,ls --model "<provider>/<current session model>" "<gate prompt>"`.
+  **Prefix it with the scope env** `gate-snapshot.sh pre` wrote beside the snapshot (`env $(cat .tickets/<id>/gate-snapshot.txt.scope) pi -p …`: `CANON_HOME` and `TMPDIR` in the gate's scratch scope, t-b7df): a subprocess is the one dispatch whose environment the orchestrator can set. Leave `HOME` alone (pi's own config lives there); the guard still refuses `canon update` on a real `HOME`.
   `-p`/`--print` is fresh — it does not load prior session memory (verified: a bare `pi -p`
   reports `memory=no`) — and `--no-session` keeps it ephemeral. The **model MUST be passed
   explicitly and set to the current pi session model**: a bare `pi -p` runs on pi's
@@ -497,7 +498,7 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    needs approval" is not acceptable for normal/high-risk sprints. If the runtime can't spawn
    the evaluator subagent, stop closeout and report the blocker.
 
-   **Evidence pre-flight (t-a3d7).** Before dispatching, run `sprint check-evidence <id>` (bare, on PATH; read-only). It runs
+   **Evidence pre-flight (t-a3d7).** Before dispatching, run `sprint check-evidence <id>` (bare, on PATH; read-only but for the events it writes). It first runs the cap check (t-c990): a `tools/caps.tsv` file this branch changed that is over its cap refuses here and again at `sprint complete` (and writes `budget.exceeded` on each run); one the branch did not change, and `LEARNINGS.md` always, only warn. It runs
    `evidence.sh check` at HEAD and exits 1, naming each log and its fix, unless every top-level log in `.tickets/<id>/evidence/` is
    `fresh` with `exit=0` or `covered`. On exit 1, do not dispatch: re-stamp or fix what it names, and move a log kept for history or
    produced off-tree (a probe commit, a deliberate mutant run) into a subfolder of `evidence/`, which `check` never scans. A stale
@@ -762,7 +763,13 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
       the body — this step always has the ticket ID in hand. Add more body for breaking
       changes or non-obvious reasoning.
     - Show the staged files and commit message. Ask: **"Commit and push? (y to proceed)"**
-    - On yes: commit, then push to the current branch's remote. Report the pushed ref. In canon, `public` is pushed only
+    - On yes: commit, then check before pushing that the repository has a remote and the branch can be pushed to one
+      (`git remote` is not empty; the branch has an upstream or `origin` accepts it). With no remote, say plainly
+      "No remote is configured: committed locally, nothing pushed", and give the fix: `git remote add origin <url>`, then
+      `git push -u origin <branch>`. A remote but no upstream needs that same `git push -u origin <branch>` (a plain `git push` fails); a detached
+      HEAD has no branch to push, so report "not pushed: detached HEAD" and name the commit. Report "pushed <ref>" only after a push that succeeded (the ref from the push's own
+      output or `git rev-parse --abbrev-ref @{u}`); a skipped, refused or failed push is "not pushed" plus the reason, and
+      "pushed" never describes a commit that stayed local. In canon, `public` is pushed only
       with `tkt push-main`, never `git push public` (it and the pre-push hook refuse unreleased binaries, t-4ea4).
     - If criticals from the review pipeline are unresolved: warn before asking — do not block,
       but make the risk explicit.
