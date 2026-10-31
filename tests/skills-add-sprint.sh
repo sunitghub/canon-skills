@@ -336,5 +336,10 @@ mv "$projects_file.tmp" "$projects_file"
 out="$("$SKILLS" add sprint "$fresh" 2>&1)"
 [[ "$out" != *"[registry]  dropped"* ]] || fail "a blank line or an unterminated last line was counted as a vanished folder: $out"
 assert_count 1 "$kept" "$projects_file"; assert_count 1 "$under_cwd" "$projects_file"
+# ... and on the remove path too (deregister rewrites the file with the removed line as the one it drops)
+{ printf '\n'; cat "$projects_file"; } > "$projects_file.tmp" && mv "$projects_file.tmp" "$projects_file"
+out="$("$SKILLS" remove sprint "$under_cwd" 2>&1)"
+[[ "$out" != *"[registry]  dropped"* ]] || fail "remove counted a blank line as a vanished folder: $out"
+assert_count 0 "$under_cwd" "$projects_file"; assert_count 1 "$kept" "$projects_file"
 
 printf 'skills-add-sprint: ok\n'
