@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-30-2026 17:04
+learnings-sweep last run: 10-30-2026 19:54
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-31 | [t-9fb1](.tickets/t-9fb1/learnings.md) | A path that crosses a lossy channel (`read`, a line-based record, `$(...)` dropping a trailing newline) is silently changed: three evaluator fails on a guard were one flaw (a folder named `h<NL>` recorded as `h`), not three spelling bugs; remove the channel (a global, not printed output) instead of patching each spelling, and test the shape one level deeper than the named one. | UNPROMOTED |
 | 2026-10-30 | [t-4b34](.tickets/t-4b34/learnings.md) | A plan's claim about how another component is called must be verified, not remembered: the plan said the cloud session imports with `--body-file` (it reads over REST), so a lookup meant to skip the cloud ran there; and a stub that hands back the answer instead of running the filter hides the predicate: run the real `jq` over fixtures, and treat a full page of results as "maybe truncated", never "none" | UNPROMOTED |
 | 2026-10-30 | [t-8ae5](.tickets/t-8ae5/learnings.md) | Two numbers on one screen from two producers drift: the warning came from the CLI's `git status` with `.tickets` excluded and step 1's line from the browser's count of another list that included it, so they always differed by one with no reason shown; derive both from one rule, or say why they differ. A stamp can fail on another project's gate (t-9fb1): read the refusal text before blaming the change | UNPROMOTED |
 | 2026-10-30 | [t-b7df](.tickets/t-b7df/learnings.md) | A registry the guard keys on the caller's `TMPDIR` is invisible to any caller with another one (a pi gate): put it at a fixed path. And the cloud's Linux `sed` accepts GNU-only `T` that macOS rejects: the cloud's gates passed and only Check & merge on the Mac caught it (`tests/gate-scope.sh`), so a cloud PR's own gate pass is not a macOS pass | UNPROMOTED |
@@ -82,5 +83,4 @@ learnings-sweep last run: 10-30-2026 17:04
 | 2026-10-23 | [t-9a49](.tickets/t-9a49/learnings.md) | A security fix's browser check was narrowed in the cloud (chromium no-regression run exited 1 on a known flake, WebKit not run), so the evaluator's pass rested on a pre-existing-flake argument its own base/branch pair (0/2 vs 1/2) did not prove; the Mac full-spec re-grade is the real gate, and the reviewer found a comment left above the wrong function when `framePageOK` was inserted. | `promoted → standards/efficiency-notes.md` |
 | 2026-10-23 | [t-5ff5](.tickets/t-5ff5/learnings.md) | Allowing `git diff/log` under dontAsk lets `--output=<file>` write anywhere (abbreviations such as `--outp=` too); the fix is an argv-refusing wrapper (`tools/git-read`), and the reviewer found a plain `Bash(git diff:*)` grant still in `tools/upkeep-run:169`, outside the change. | `promoted → standards/efficiency-notes.md` |
 | 2026-10-23 | [t-2ea4](.tickets/t-2ea4/learnings.md) | A mutant (`skills.sh init` to `initx`) survived because the test's `skills.sh` stub is a silent `exit 0`, so no test proves `bin/install.js` calls init before the daemon fetch; a stub that records its calls is what makes an ordering line testable. | `promoted → standards/efficiency-notes.md` |
-| 2026-10-23 | [t-89b0](.tickets/t-89b0/learnings.md) | The reviewer said NO: the pin covered only the first doc a gate prompt names, but those docs read other `skills/...` paths relative to the PR checkout, and `claude -p` still loads the PR's own `.claude/settings.json` and CLAUDE.md; pinning one file does not pin what it loads. | `promoted → standards/efficiency-notes.md` |
 <!-- canon:learnings:END -->
