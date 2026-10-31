@@ -139,6 +139,22 @@ rec5="$(cat "$reg"/*)"; [[ "$rec5" != *$'\nhome='* ]] || fail "a newline in the 
 HOME="$sh_/home" CANON_HOME="$sh_/canon" guard && fail "with no home=/canon= (a newline in the real home) the old rule applies: a scratch HOME outside the scope is refused"
 "$TOOL" post "$scratch/snap5" >/dev/null
 
+# eval run 3: a component that ENDS in a newline must not lose it (a command substitution strips it, so "h<NL>/inner" was recorded as "h/inner", a folder that is not there).
+# (1) a real home under such a component, reached through a symlink: the symlink spelling is refused; (2) a real home that itself ends in a newline: fail closed (old rule);
+# (3) the caller side: a symlink inside such a folder to the real home, then a missing folder and ..
+rh6="$scratch/h6"$'\n'; mkdir -p "$rh6/inner/.canon"; ln -s "$rh6/inner" "$scratch/lnk6"
+HOME="$rh6/inner" CANON_HOME="$rh6/inner/.canon" "$TOOL" pre "$scratch/snap6" >/dev/null
+HOME="$scratch/lnk6" CANON_HOME="$sh_/canon" guard && fail "a symlink to a real home under a component that ends in a newline must be refused"
+HOME="$sh_/home" CANON_HOME="$scratch/lnk6/.canon" guard && fail "a symlink to a real canon home under a component that ends in a newline must be refused"
+"$TOOL" post "$scratch/snap6" >/dev/null
+rh7="$scratch/h7"$'\n'; mkdir -p "$rh7/.canon"; HOME="$rh7" CANON_HOME="$rh7/.canon" "$TOOL" pre "$scratch/snap7" >/dev/null
+[[ "$(cat "$reg"/*)" != *$'\nhome='* ]] || fail "a real home that ends in a newline must not be written as home="
+HOME="$sh_/home" CANON_HOME="$sh_/canon" guard && fail "a real home that ends in a newline falls back to the old rule: a scratch HOME outside the scope is refused"
+"$TOOL" post "$scratch/snap7" >/dev/null
+rh8="$scratch/h8"; mkdir -p "$rh8/.canon" "$scratch/q8"$'\n'; ln -s "$rh8" "$scratch/q8"$'\n'"/to"; HOME="$rh8" CANON_HOME="$rh8/.canon" "$TOOL" pre "$scratch/snap8" >/dev/null
+HOME="$scratch/q8"$'\n'"/to/nx/.." CANON_HOME="$sh_/canon" guard && fail "a symlink to the real home inside a folder that ends in a newline, then a missing folder and .., must be refused"
+"$TOOL" post "$scratch/snap8" >/dev/null
+
 # a gate that crashed before post: the scope goes stale by age, and by its scratch dir being gone
 g() { HOME="$realhome" CANON_HOME="$realhome/.canon" "$@" bash -c 'source "$1"; gate_scope_guard x' _ "$ROOT/tools/gate-scope-lib.sh" 2>/dev/null; }
 real_env "$TOOL" pre "$snap" >/dev/null

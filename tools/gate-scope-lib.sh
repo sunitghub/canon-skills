@@ -29,7 +29,7 @@ gate_scope_create() {
   dir="$(mktemp -d)" || return 1
   mkdir -p "$dir/home" "$dir/canon" "$dir/tmp" "$dir/xdg"
   # t-9fb1: the dispatcher runs in the user's REAL environment, so it records the home and canon home the guard must keep a gate away from
-  local rhome rcanon; rhome="$(_gate_scope_resolve "${HOME:-}")"; rcanon="$(_gate_scope_resolve "${CANON_HOME:-${HOME:-}/.canon}")"
+  local rhome rcanon; _gate_scope_resolve "${HOME:-}"; rhome="$_GS_R"; _gate_scope_resolve "${CANON_HOME:-${HOME:-}/.canon}"; rcanon="$_GS_R"
   if [[ "$rhome$rcanon" == *$'\n'* ]]; then   # a newline cannot live in a line-based record: no home=/canon= lines, so the old rule applies (fail closed)
     printf 'dir=%s\ncreated=%s\n' "$dir" "$(date +%s)" > "$reg/$(_gate_scope_key "$1")"
   else
@@ -48,7 +48,7 @@ gate_scope_remove() {
 }
 
 
-# _gate_scope_resolve <path> — t-9fb1: where the path leads once every missing folder exists as a plain folder (what a later mkdir -p makes), nothing looked up that is
+# _gate_scope_resolve <path> — t-9fb1: result in $_GS_R, not printed ($(...) drops a trailing newline, which turns "h<NL>/inner" into "h/inner"; the cd step below keeps it with a sentinel). Where the path leads once every missing folder exists as a plain folder (what a later mkdir -p makes), nothing looked up that is
 # not there: walks the components left to right, follows each existing one physically (a symlink to a folder inside the real home included) and pops `..` from the
 # physical path so far. So "$link/nx/../.." with $link -> <real home>/sub resolves to the real home, though nx does not exist yet.
 _gate_scope_resolve() {
@@ -62,10 +62,10 @@ _gate_scope_resolve() {
       ''|.) ;;
       ..) cur="${cur%/*}"; [[ -n "$cur" ]] || cur="/" ;;
       *)  next="${cur%/}/$part"
-          if [[ -d "$next" ]]; then cur="$(cd -P "$next" 2>/dev/null && pwd -P)" || cur="$next"; else cur="$next"; fi ;;
+          if [[ -d "$next" ]]; then cur="$(cd -P "$next" 2>/dev/null && { pwd -P; echo x; })" && cur="${cur%$'\n'x}" || cur="$next"; else cur="$next"; fi ;;
     esac
   done
-  printf '%s' "$cur"
+  _GS_R="$cur"
 }
 
 _gate_scope_under() {  # <path> <dir>: the path is the dir or inside it (raw or physical spelling)
@@ -97,7 +97,7 @@ gate_scope_guard() {
       # Two checks, so a spelling cannot pass for another folder: -ef (the same device and inode: Unicode form and other case rules on some disks), and the
       # resolved path (a path that does not exist yet and leads to the real home through .. or a symlink: a later mkdir -p makes it, "$HOME/x/..").
       # The resolved path is compared by identity too (a Unicode-form spelling plus a missing folder: the text differs, the folder is the same).
-      rh="$(_gate_scope_resolve "$home")"; rc="$(_gate_scope_resolve "$chome")"
+      _gate_scope_resolve "$home"; rh="$_GS_R"; _gate_scope_resolve "$chome"; rc="$_GS_R"
       if [[ -n "$home" && ! "$home" -ef "$rhome" && ! "$chome" -ef "$rcanon" \
             && "$rh" != "$rhome" && "$rc" != "$rcanon" && ! "$rh" -ef "$rhome" && ! "$rc" -ef "$rcanon" ]]; then continue; fi
     elif _gate_scope_under "$home" "$dir" && _gate_scope_under "$chome" "$dir"; then continue; fi
