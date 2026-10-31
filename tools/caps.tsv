@@ -1,5 +1,5 @@
 # caps.tsv (t-19bb) — the one table of capped files: name, path (from the project root; "-" = the caller gives it), limit, unit, marker.
-# Units are defined in tools/canon-go/internal/board/caps.go: words (ASCII-whitespace fields, as wc -w), block-lines (lines between
+# Units are defined in tools/canon-go/internal/board/caps.go: words (ASCII-whitespace fields, as wc -w in the C locale), block-lines (lines between
 # <!-- marker:BEGIN --> and :END -->), kb (bytes of a file or of every file in a tree, rounded up; never du), files. Tab-separated.
 # Lower a cap or fix the file; never raise a cap to hide a miss.
 start-checklist	skills/sprint/reference/start-checklist.md	900	words	-

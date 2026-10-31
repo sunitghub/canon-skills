@@ -225,3 +225,25 @@ func TestCapsTableAndInstall(t *testing.T) {
 		t.Fatalf("no install: %q %d", out, code)
 	}
 }
+
+// A path that is a link measures its target; --json gives JSON for every outcome (review findings, t-19bb).
+func TestCapsLinkAndJSONOutcomes(t *testing.T) {
+	d := t.TempDir()
+	tab := writeCapTable(t, d)
+	tree := filepath.Join(d, "tree")
+	os.MkdirAll(tree, 0o755)
+	os.WriteFile(filepath.Join(tree, "a"), bytes.Repeat([]byte("x"), 1500), 0o644)
+	if err := os.Symlink(tree, filepath.Join(d, "link")); err != nil {
+		t.Skip("no symlinks here")
+	}
+	if out, code := runCaps(t, "--table", tab, "zip", filepath.Join(d, "link")); code != 0 || out != "zip: 2 of 2 KB, 0 left\n" {
+		t.Fatalf("link to a tree: %q %d", out, code)
+	}
+	if out, _ := runCaps(t, "--json", "--table", tab, "nothing.md"); out != `{"capped":false,"name":"nothing.md"}`+"\n" {
+		t.Fatalf("json not capped: %q", out)
+	}
+	gone := filepath.Join(d, "gone.md")
+	if out, _ := runCaps(t, "--json", "--table", tab, "list", gone); out != `{"name":"list","path":"`+gone+`","present":false}`+"\n" {
+		t.Fatalf("json not present: %q", out)
+	}
+}

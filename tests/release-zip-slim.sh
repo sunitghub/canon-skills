@@ -33,11 +33,20 @@ build() {
 # blocks (the same zip read 4364 KB on APFS and 4656 KB on Linux, where every folder costs a 4 KB block; t-0d96).
 export SPRINT_CHECK_NO_BROWSER=1   # an older board would take `caps` for a port and start (t-269d)
 CAPS="$ROOT/tools/caps.tsv"; BOARD="$(build_board "$WORK")"
-SIZE_CAP_KB="$("$BOARD" caps --json --table "$CAPS" release-zip "$CAPS" | sed -n 's/.*"limit":\([0-9]*\).*/\1/p')"
+SIZE_CAP_KB="$("$BOARD" caps --list --table "$CAPS" | sed -n 's/^release-zip: \([0-9]*\) KB .*/\1/p')"
 [[ "$SIZE_CAP_KB" =~ ^[0-9]+$ ]] || fail "release-zip-slim: tools/caps.tsv has no release-zip row"
-unpacked_kb() { local out rc=0; out="$("$BOARD" caps --json --table "$CAPS" release-zip "$1" 2>&1)" || rc=$?; (( rc < 2 )) || return 1; out="${out#*\"used\":}"; echo "${out%%,*}"; }
-# cap_problem <row> <dir>: the meter's line when over ("release-zip: 4097 of 4096 KB, over by 1"); nothing within the cap
-cap_problem() { local out rc=0; out="$("$BOARD" caps --table "$CAPS" "$1" "$2" 2>&1)" || rc=$?; (( rc == 0 )) || { (( rc == 1 )) && echo "$out" || echo "$1 could not be read under $2: $out"; }; }
+unpacked_kb() { local out rc=0; out="$("$BOARD" caps --json --table "$CAPS" release-zip "$1" 2>&1)" || rc=$?; (( rc < 2 )) && [[ "$out" == *'"used":'* ]] || return 1; out="${out#*\"used\":}"; echo "${out%%,*}"; }
+# cap_problem <row> <dir>: the meter's line when over ("release-zip: 4097 of 4096 KB, over by 1"); nothing within the cap. Exit 0
+# alone is not "within": a missing row ("not capped") or path ("not present") is a problem too, never a dropped cap.
+cap_problem() {
+  local out rc=0; out="$("$BOARD" caps --table "$CAPS" "$1" "$2" 2>&1)" || rc=$?
+  case "$rc:$out" in
+    0:*" left") ;;
+    1:*", over by "*) echo "$out" ;;
+    0:*) echo "$1: no cap was measured for $2: $out" ;;
+    *) echo "$1 could not be read under $2: $out" ;;
+  esac
+}
 size_problem() { cap_problem release-zip "$1"; }
 
 # check_zip <zip> <unpack folder>: prints the problems found, one per line (nothing = a good zip)

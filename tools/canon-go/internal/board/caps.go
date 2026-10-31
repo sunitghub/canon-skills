@@ -6,7 +6,9 @@
 //	sprint-check caps --list [--table <file>]                       every row with its current use; always exits 0 unless the table is bad
 //
 // A name or path with no row prints "not capped" and exits 0; a row whose file is absent (a consumer project lacks canon's own
-// files) prints "not present". It never edits a file and never raises a cap.
+// files) prints "not present" (with --json: {"name","capped":false} and {"name","present":false,"path"}). A caller that enforces
+// a cap must require the "left"/"over by" line, never read exit 0 alone as within the cap. --list is information: it exits 0 even
+// over a cap. It never edits a file and never raises a cap.
 package board
 
 import (
@@ -133,6 +135,9 @@ func measureCap(r capRow, target string) (int64, error) {
 		return 0, err
 	}
 	if r.Unit == "kb" || r.Unit == "files" {
+		if real, err := filepath.EvalSymlinks(target); err == nil { // a path that is a link measures what it points at
+			target = real
+		}
 		b, f, err := capTree(target)
 		if r.Unit == "files" {
 			return f, err
@@ -229,7 +234,12 @@ func capsCLI(args []string, stdout, stderr io.Writer) int {
 	}
 	row, ok := findCapRow(rows, rest[0], project)
 	if !ok {
-		fmt.Fprintf(stdout, "%s: not capped\n", rest[0])
+		if asJSON { // slices t-cc88/t-c990 parse --json: every outcome is JSON there
+			b, _ := json.Marshal(map[string]any{"name": rest[0], "capped": false})
+			fmt.Fprintln(stdout, string(b))
+		} else {
+			fmt.Fprintf(stdout, "%s: not capped\n", rest[0])
+		}
 		return 0
 	}
 	target := filepath.Join(project, row.Path)
@@ -241,7 +251,12 @@ func capsCLI(args []string, stdout, stderr io.Writer) int {
 	}
 	res, err := runCap(row, target)
 	if errors.Is(err, errCapAbsent) {
-		fmt.Fprintf(stdout, "%s: not present (%s)\n", row.Name, target)
+		if asJSON {
+			b, _ := json.Marshal(map[string]any{"name": row.Name, "present": false, "path": target})
+			fmt.Fprintln(stdout, string(b))
+		} else {
+			fmt.Fprintf(stdout, "%s: not present (%s)\n", row.Name, target)
+		}
 		return 0
 	} else if err != nil {
 		fmt.Fprintf(stderr, "caps: %s: %v\n", row.Name, err)
