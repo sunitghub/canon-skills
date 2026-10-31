@@ -18,4 +18,9 @@ bad="$(awk '
 n="$(grep -cE 'spawn\((goBoardBin\(\)|daemonBin),' "$SPEC" || true)"
 [[ "$n" -ge 3 ]] || fail "spec-canon-home: found $n board/daemon spawns, expected at least 3 (did the spawn calls change shape?)"
 [[ -z "$bad" ]] || fail "spec-canon-home: a spawn without CANON_HOME in tests/sprint-check-app.spec.js at line(s): $(echo $bad)"
-echo "spec-canon-home: ok ($n spawns, each sets CANON_HOME)"
+# ... and every Playwright run in the runner sets it too (its daemons inherit Playwright's environment)
+RUNNER="${SPEC_CANON_HOME_RUNNER:-$ROOT/tests/run-board-spec.sh}"
+runs="$(grep -c 'npx playwright test' "$RUNNER" || true)"
+pinned="$(grep -cE 'CANON_HOME="[^"]+/\.spec-canon-home".*PLAYWRIGHT_JSON_OUTPUT_NAME' "$RUNNER" || true)"
+[[ "$runs" -ge 2 && "$pinned" == "$runs" ]] || fail "spec-canon-home: $RUNNER runs Playwright $runs time(s) but sets CANON_HOME on $pinned of them"
+echo "spec-canon-home: ok ($n spawns and $runs Playwright runs, each sets CANON_HOME)"

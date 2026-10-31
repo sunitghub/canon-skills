@@ -213,4 +213,22 @@ assert_eq 10 "$(wc -l < "$WORK/srv-pids" | tr -d ' ')"
 while read -r p; do kill "$p" 2>/dev/null || true; done < "$WORK/srv-pids"; sleep 0.5
 while read -r p; do ! pid_alive "$p" || fail "fake server $p still running"; done < "$WORK/srv-pids"
 
+# t-acfa: a suite that writes the user's project registry ($HOME/.config/canon/projects, which uninstall walks and edits) fails
+# the run, naming the file and each added line, even when every suite passes; a run that leaves it alone passes. A scratch HOME
+# stands in for the user's.
+for mode in writes clean; do
+  G="$WORK/reg-$mode"; runner_copy "$G" tests/ok.sh
+  mkdir -p "$G/home/.config/canon"; printf '/Users/x/real-project\n' > "$G/home/.config/canon/projects"
+  if [[ "$mode" == writes ]]; then printf 'echo /Users/x/scratch-project >> "$HOME/.config/canon/projects"\n' > "$G/tests/ok.sh"
+  else echo 'true' > "$G/tests/ok.sh"; fi
+  set +e; out="$(HOME="$G/home" PATH="$WORK/bin" bash "$G/scripts/test.sh" 2>&1)"; rc=$?; set -e
+  if [[ "$mode" == writes ]]; then
+    assert_eq 1 "$rc"
+    assert_contains "$out" "FAIL: the test run changed your project registry $G/home/.config/canon/projects"
+    assert_contains "$out" "  added:   /Users/x/scratch-project"
+  else
+    assert_eq 0 "$rc"; [[ "$out" != *"changed your project registry"* ]] || fail "a run that left the registry alone was failed: $out"
+  fi
+done
+
 echo "test-sh-runner: ok"

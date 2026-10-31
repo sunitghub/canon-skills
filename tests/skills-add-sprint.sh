@@ -325,5 +325,16 @@ assert_contains "$out" "[registry]  dropped 1 entry whose folder no longer exist
 assert_count 0 "$gone" "$projects_file"; assert_count 1 "$kept" "$projects_file"; assert_count 1 "$fresh" "$projects_file"
 out="$("$SKILLS" add sprint "$fresh" 2>&1)"
 [[ "$out" != *"[registry]  dropped"* ]] || fail "the dropped line printed when nothing was dropped"
+# an empty TEMP/TMP must not make the current folder count as temp (a project under the cwd is still registered)
+under_cwd="$(reg_project)"
+out="$(cd "$tmp_home" && TEMP= TMP= "$SKILLS" add sprint "$under_cwd" 2>&1)"
+[[ "$out" != *"not registered"* ]] || fail "a project under the cwd was refused as temp: $out"
+assert_count 1 "$under_cwd" "$projects_file"
+# a hand-edited registry: a blank line is not a vanished folder, and a last line without a newline is kept
+{ printf '\n'; grep -vxF "$under_cwd" "$projects_file"; printf '%s' "$under_cwd"; } > "$projects_file.tmp"   # blank first line, no final newline
+mv "$projects_file.tmp" "$projects_file"
+out="$("$SKILLS" add sprint "$fresh" 2>&1)"
+[[ "$out" != *"[registry]  dropped"* ]] || fail "a blank line or an unterminated last line was counted as a vanished folder: $out"
+assert_count 1 "$kept" "$projects_file"; assert_count 1 "$under_cwd" "$projects_file"
 
 printf 'skills-add-sprint: ok\n'
