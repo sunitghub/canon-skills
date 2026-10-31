@@ -6,8 +6,16 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.35.0] - 2026-10-31
+
+The prebuilt `canon-go` program changed, the daemon included: after `canon update`, restart the daemon (Admin's **Restart Daemon** button) so a running one picks it up.
+
 ### Added
 - Cockpit: an ambient per-session token meter (cache % of input, LLM calls, tool calls, sub-agents) in the session's top bar and the Agents sidebar tooltip, read from the claude transcripts token-spend already uses; nothing new is stored and there is no setting (t-d00c)
+
+### Fixed
+- The close never reports "pushed" for a commit that stayed local: it checks that a remote exists and the branch can be pushed, says when there is no remote (with the fix), needs `git push -u origin <branch>` for a branch with no upstream, and reports a detached HEAD as not pushed (t-e75d).
+- The cloud setup script finds canon's reviewer and evaluator agents in either install layout and says on stderr when one could not be copied ("the close will run on fallback agents") instead of hiding it; `docs/setup.md` says how to check and to recreate an older environment (t-39a8).
 
 ## [0.34.0] - 2026-10-31
 
