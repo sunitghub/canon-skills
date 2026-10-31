@@ -338,7 +338,7 @@ if (( LIST )); then DRY=1; run_all; printf '%s\n' "${LABELS[@]}"; exit 0; fi
 # t-acfa: no suite may write the user's real project registry (skills.sh add appends to it, and uninstall walks it and edits every
 # folder it names that exists). Copied before the run and compared after, so a new writer fails the run whoever it is.
 REGISTRY="$HOME/.config/canon/projects"; REGISTRY_BEFORE="$(mktemp)"
-if [[ -f "$REGISTRY" ]]; then cp "$REGISTRY" "$REGISTRY_BEFORE"; else rm -f "$REGISTRY_BEFORE"; fi
+if [[ -f "$REGISTRY" ]]; then cat "$REGISTRY" > "$REGISTRY_BEFORE"; else rm -f "$REGISTRY_BEFORE"; fi
 trap 'stop_workers; print_timings; rm -f "$REGISTRY_BEFORE"' EXIT
 FIRST_RC=0; FAILED=(); XARGS_PID=""; RUN=""
 if (( JOBS == 1 )); then run_all; else run_parallel; fi
@@ -352,9 +352,12 @@ done
 if (( ${#FAILED[@]} )); then
   { printf '\n'; printf 'FAILED: %s\n' "${FAILED[@]}"; } >&2
 fi
-if { [[ -f "$REGISTRY_BEFORE" ]] || [[ -f "$REGISTRY" ]]; } && ! cmp -s "$REGISTRY_BEFORE" "$REGISTRY" 2>/dev/null; then
+# (cat and grep only: the runner's own tool set, which tests/test-sh-runner.sh pins with a minimal PATH)
+_reg_before="$(cat "$REGISTRY_BEFORE" 2>/dev/null || true)"; _reg_after="$(cat "$REGISTRY" 2>/dev/null || true)"
+if [[ "$_reg_before" != "$_reg_after" ]]; then
   printf '\nFAIL: the test run changed your project registry %s (a suite ran skills.sh add with the real HOME; pin HOME in it):\n' "$REGISTRY" >&2
-  diff "$REGISTRY_BEFORE" "$REGISTRY" 2>/dev/null | sed -n 's/^> /  added:   /p; s/^< /  removed: /p' | awk 'NR <= 20' >&2
+  { grep -vxF -f <(printf '%s\n' "$_reg_before") <<< "$_reg_after" | sed 's/^/  added:   /'
+    grep -vxF -f <(printf '%s\n' "$_reg_after") <<< "$_reg_before" | sed 's/^/  removed: /'; } | awk 'NR <= 20' >&2 || true
   exit 1
 fi
 if [[ -n "${LEAKED_SERVERS// /}" ]]; then
