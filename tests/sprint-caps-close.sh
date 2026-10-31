@@ -6,6 +6,7 @@ set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 export SPRINT_CHECK_NO_BROWSER=1
+unset CANON_TICKETS_DIR   # a stamp clone sets it to the real project's .tickets; these scratch projects use their own
 work="$(mktemp -d)"
 trap 'chmod -R u+w "$work" 2>/dev/null; rm -rf "$work"' EXIT
 use_fresh_board "$work/bin"
