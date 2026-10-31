@@ -6,6 +6,13 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.35.1] - 2026-10-31
+
+The prebuilt `canon-go` program changed, the daemon included: after `canon update`, restart the daemon (Admin's **Restart Daemon** button) so a running one picks it up.
+
+### Fixed
+- The Cockpit session meter (new in 0.35.0) now shows: it read the transcript named after the daemon's own session id, but Claude Code names it after the conversation id the daemon passes as `--session-id` or `--resume`, so the meter never appeared in a real session (t-b1c8).
+
 ## [0.35.0] - 2026-10-31
 
 The prebuilt `canon-go` program changed, the daemon included: after `canon update`, restart the daemon (Admin's **Restart Daemon** button) so a running one picks it up.
