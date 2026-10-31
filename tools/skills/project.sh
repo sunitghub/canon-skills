@@ -204,13 +204,14 @@ link_worktree() {
   _ensure_mirror_gitignored "$wt_dir"
 }
 
-# _in_system_temp <dir> — t-acfa: 0 when <dir> is inside the system temp folder: $TMPDIR (on macOS that is /var/folders/…/T), %TEMP%
+# _in_system_temp <dir> — t-acfa: 0 when <dir> is inside the system temp folder: $TMPDIR (on macOS /var/folders/…/T, also when TMPDIR is unset), %TEMP%
 # and %TMP% on Windows, where Git Bash's /tmp is that folder too. A project there is a scratch copy (tests, gates), and the registry
 # is what uninstall walks and edits, so it is never registered. /tmp and /private/tmp elsewhere stay allowed: people keep demos there.
 _in_system_temp() {
   local d t r
   d="$(cd "$1" 2>/dev/null && pwd -P)" || return 1
-  for t in "${TMPDIR:-}" "${TEMP:-}" "${TMP:-}"; do
+  # with TMPDIR unset (cron, env -i), macOS's per-user temp folder is still /var/folders/…/T: ask the system for it
+  for t in "${TMPDIR:-$(getconf DARWIN_USER_TEMP_DIR 2>/dev/null || true)}" "${TEMP:-}" "${TMP:-}"; do
     [ -n "$t" ] || continue
     case "$t" in *\\*|?:*) t="$(cygpath -u "$t" 2>/dev/null)" || continue ;; esac
     r="$(cd "$t" 2>/dev/null && pwd -P)" || continue

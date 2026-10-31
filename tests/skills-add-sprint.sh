@@ -316,6 +316,14 @@ out="$("$SKILLS" add sprint "$inside_tmp" 2>&1)"
 assert_contains "$out" "[registry]  not registered: $(cd "$inside_tmp" && pwd) is in the system temp folder"
 [[ ! -f "$projects_file" ]] || ! grep -qxF "$(cd "$inside_tmp" && pwd)" "$projects_file" || fail "a project in TMPDIR was registered"
 [[ -e "$inside_tmp/.claude/skills" || -e "$inside_tmp/.agents/skills" ]] || fail "a project in TMPDIR was not set up (only its registration is skipped)"
+# ... and with TMPDIR unset, a project in macOS's own temp folder (/var/folders/…/T, from getconf) is refused too
+if sys_tmp="$(getconf DARWIN_USER_TEMP_DIR 2>/dev/null)" && [[ -n "$sys_tmp" && -d "$sys_tmp" ]]; then
+  in_sys="$(mktemp -d "${sys_tmp%/}/canon-acfa.XXXXXX")"; git -C "$in_sys" init -q
+  out="$(env -u TMPDIR "$SKILLS" add sprint "$in_sys" 2>&1)"
+  [[ "$out" == *"not registered: "*" is in the system temp folder"* ]] || fail "TMPDIR unset: a project in $sys_tmp was not refused: $out"
+  ! grep -qxF "$(cd "$in_sys" && pwd)" "$projects_file" 2>/dev/null || fail "TMPDIR unset: a project in the system temp folder was registered"
+  rm -rf "$in_sys"
+fi
 kept="$(reg_project)"; gone="$(reg_project)"
 "$SKILLS" add sprint "$kept" >/dev/null; "$SKILLS" add sprint "$gone" >/dev/null
 rm -rf "$gone"
