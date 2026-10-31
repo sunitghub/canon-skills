@@ -198,6 +198,12 @@ func TestCapsTableAndInstall(t *testing.T) {
 	if out, code := runCaps(t, "--table", tab, "x", list); code != 0 || out != "x: 2 of 5 words, 3 left\n" {
 		t.Fatalf("CRLF table: %q %d", out, code)
 	}
+	blk := filepath.Join(d, "b.md")
+	os.WriteFile(blk, []byte("<!-- canon:b:BEGIN -->\n1\n<!-- canon:b:END -->\n"), 0o644)
+	os.WriteFile(tab, []byte("x\tl.md\t5\twords\t-\r\nb\tb.md\t5\tblock-lines\tcanon:b\r\n"), 0o644) // the last column too
+	if out, code := runCaps(t, "--table", tab, "b", blk); code != 0 || out != "b: 1 of 5 lines, 4 left\n" {
+		t.Fatalf("CRLF table, marker column: %q %d", out, code)
+	}
 	if _, code := runCaps(t, "--table", tab, "x", list, "extra"); code != 2 {
 		t.Fatal("three words must be a usage error")
 	}
