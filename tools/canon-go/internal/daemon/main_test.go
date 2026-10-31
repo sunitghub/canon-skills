@@ -4436,6 +4436,8 @@ func TestResolveProjectForCwd(t *testing.T) {
 // like /version so the token-free board can read it), lists active sessions with
 // the documented shape, and never leaks a token.
 func TestSessionsEndpoint(t *testing.T) {
+	cfgDir := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", cfgDir) // t-d00c: the meter reads transcripts here, never the real ~/.claude
 	bin, _ := fakeSprintCwd(t)
 	root := t.TempDir()
 	initGitRepo(t, root)
@@ -4493,6 +4495,27 @@ func TestSessionsEndpoint(t *testing.T) {
 	}
 	if strings.Contains(string(body), "token") {
 		t.Fatalf("/sessions leaked a token field: %s", body)
+	}
+
+	// t-d00c: a claude row carries its transcript's meter under the exact keys the board reads (the board spec mocks /sessions).
+	if sessions[0]["agent"] != "claude" {
+		t.Fatalf("agent = %v, want claude", sessions[0]["agent"])
+	}
+	if _, present := sessions[0]["meter"]; present {
+		t.Fatalf("a row with no transcript yet has a meter: %s", body)
+	}
+	sid, _ := sessions[0]["session"].(string)
+	tdir := filepath.Join(cfgDir, "projects", "-p")
+	os.MkdirAll(tdir, 0o755)
+	os.WriteFile(filepath.Join(tdir, sid+".jsonl"), []byte(`{"type":"assistant","message":{"id":"msg_1","content":[{"type":"tool_use"}],"usage":{"input_tokens":50,"cache_read_input_tokens":50}}}`+"\n"), 0o644)
+	_, body = get("")
+	var rows []map[string]any
+	json.Unmarshal(body, &rows)
+	meter, _ := rows[0]["meter"].(map[string]any)
+	for k, want := range map[string]float64{"cache_pct": 50, "llm_calls": 1, "tool_calls": 1, "sub_agents": 0} {
+		if meter[k] != want {
+			t.Fatalf("/sessions meter[%q] = %v, want %v (%s)", k, meter[k], want, body)
+		}
 	}
 }
 
