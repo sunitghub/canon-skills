@@ -96,6 +96,7 @@ func meterScan(path string, seen map[string]bool, m *sessionMeter, fresh, cread 
 				ID      string `json:"id"`
 				Content []struct {
 					Type string `json:"type"`
+					ID   string `json:"id"`
 				} `json:"content"`
 				Usage struct {
 					In     int64 `json:"input_tokens"`
@@ -108,15 +109,20 @@ func meterScan(path string, seen map[string]bool, m *sessionMeter, fresh, cread 
 			continue
 		}
 		id := line.Message.ID
-		if id == "" || seen[id] { // synthetic turns have no msg_ id; streamed partials repeat one
+		if id == "" { // synthetic turns have no msg_ id
 			continue
 		}
-		seen[id] = true
-		m.LLMCalls++
-		*fresh += line.Message.Usage.In + line.Message.Usage.Create
-		*cread += line.Message.Usage.Read
+		// Claude Code writes each content block of one API message as its own line, all with the message's id and usage: the call
+		// and its tokens count once per message id, each tool_use once per block id (the t-d00c review: by message id, 74% were lost).
+		if !seen["m:"+id] {
+			seen["m:"+id] = true
+			m.LLMCalls++
+			*fresh += line.Message.Usage.In + line.Message.Usage.Create
+			*cread += line.Message.Usage.Read
+		}
 		for _, c := range line.Message.Content {
-			if c.Type == "tool_use" {
+			if c.Type == "tool_use" && (c.ID == "" || !seen["t:"+c.ID]) {
+				seen["t:"+c.ID] = true
 				m.ToolCalls++
 			}
 		}

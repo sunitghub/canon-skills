@@ -17,17 +17,20 @@ func TestSessionMeter(t *testing.T) {
 		t.Fatal(err)
 	}
 	main := `{"type":"user","message":{"content":"usage text"}}
-{"type":"assistant","message":{"id":"msg_1","content":[{"type":"tool_use"},{"type":"tool_use"}],"usage":{"input_tokens":10,"cache_creation_input_tokens":10,"cache_read_input_tokens":80,"iterations":[{"input_tokens":99999}]}}}
-{"type":"assistant","message":{"id":"msg_1","content":[{"type":"tool_use"}],"usage":{"input_tokens":10}}}
+{"type":"assistant","message":{"id":"msg_1","content":[{"type":"tool_use","id":"toolu_a"},{"type":"tool_use","id":"toolu_b"}],"usage":{"input_tokens":10,"cache_creation_input_tokens":10,"cache_read_input_tokens":80,"iterations":[{"input_tokens":99999}]}}}
+{"type":"assistant","message":{"id":"msg_1","content":[{"type":"tool_use","id":"toolu_c"}],"usage":{"input_tokens":10,"cache_creation_input_tokens":10,"cache_read_input_tokens":80}}}
+{"type":"assistant","message":{"id":"msg_1","content":[{"type":"tool_use","id":"toolu_c"}],"usage":{"input_tokens":10,"cache_creation_input_tokens":10,"cache_read_input_tokens":80}}}
 {"type":"assistant","message":{"content":[],"usage":{"input_tokens":5}}}
 `
-	agent := `{"type":"assistant","message":{"id":"msg_2","content":[{"type":"tool_use"}],"usage":{"input_tokens":0,"cache_read_input_tokens":0}}}
+	agent := `{"type":"assistant","message":{"id":"msg_2","content":[{"type":"tool_use","id":"toolu_d"}],"usage":{"input_tokens":0,"cache_read_input_tokens":0}}}
 `
 	os.WriteFile(filepath.Join(dir, "sid1.jsonl"), []byte(main), 0o644)
 	os.WriteFile(filepath.Join(sub, "agent-a.jsonl"), []byte(agent), 0o644)
 	m := meterFor("sid1")
-	if m == nil || m.LLMCalls != 2 || m.ToolCalls != 3 || m.SubAgents != 1 || m.CachePct != 80 {
-		t.Fatalf("meter = %+v, want calls 2, tools 3, sub-agents 1, cache 80%%", m)
+	// msg_1 is one API call written as three lines (one per content block, as Claude Code writes them): its tokens count once,
+	// each tool_use block once (toolu_a, toolu_b, toolu_c; the repeated toolu_c line is the same block); the sub-agent adds 1.
+	if m == nil || m.LLMCalls != 2 || m.ToolCalls != 4 || m.SubAgents != 1 || m.CachePct != 80 {
+		t.Fatalf("meter = %+v, want calls 2, tools 4, sub-agents 1, cache 80%%", m)
 	}
 	if meterFor("nosuch") != nil {
 		t.Fatal("a session without a transcript must have no meter")
