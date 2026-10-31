@@ -8,6 +8,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/tests/helpers.sh"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
+export SPRINT_CHECK_NO_BROWSER=1   # an older board would take `caps` for a port and start (t-269d)
 BOARD="$(build_board "$T")"
 CAPS="$ROOT/tools/caps.tsv"
 

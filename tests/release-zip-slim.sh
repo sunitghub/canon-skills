@@ -31,6 +31,7 @@ build() {
 
 # The size and file bounds come from tools/caps.tsv through the board's cap meter (t-19bb), which counts file bytes, never `du`'s disk
 # blocks (the same zip read 4364 KB on APFS and 4656 KB on Linux, where every folder costs a 4 KB block; t-0d96).
+export SPRINT_CHECK_NO_BROWSER=1   # an older board would take `caps` for a port and start (t-269d)
 CAPS="$ROOT/tools/caps.tsv"; BOARD="$(build_board "$WORK")"
 SIZE_CAP_KB="$("$BOARD" caps --json --table "$CAPS" release-zip "$CAPS" | sed -n 's/.*"limit":\([0-9]*\).*/\1/p')"
 [[ "$SIZE_CAP_KB" =~ ^[0-9]+$ ]] || fail "release-zip-slim: tools/caps.tsv has no release-zip row"

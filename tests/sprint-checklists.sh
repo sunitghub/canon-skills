@@ -9,6 +9,7 @@ source "$ROOT/tests/helpers.sh"
 REF="$ROOT/skills/sprint/reference"
 SKILL="$ROOT/skills/sprint/SKILL.md"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
+export SPRINT_CHECK_NO_BROWSER=1   # an older board would take `caps` for a port and start (t-269d)
 BOARD="$(build_board "$T")"   # the 900-word caps live in tools/caps.tsv and are measured by the board's cap meter (t-19bb)
 
 for phase in start complete; do
