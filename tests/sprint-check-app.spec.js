@@ -92,7 +92,7 @@ function spawnGoBoard(port, { cwd, env = {}, stdio = 'ignore' }) {
   goBoardTemps.push(state);
   return spawn(goBoardBin(), [String(port)], {
     cwd,
-    env: { ...process.env, COCKPIT_STATE_DIR: state, COCKPIT_DAEMON_BIN: path.join(state, 'no-daemon'), SPRINT_CHECK_NO_BROWSER: '1', ...env },
+    env: { ...process.env, CANON_HOME: path.join(state, 'canon-home'), COCKPIT_STATE_DIR: state, COCKPIT_DAEMON_BIN: path.join(state, 'no-daemon'), SPRINT_CHECK_NO_BROWSER: '1', ...env },   // t-acfa: CANON_HOME, so no event reaches ~/.canon/events
     stdio,
   });
 }
@@ -12415,6 +12415,7 @@ test.describe('cockpit rendered-output preview (t-8f9d)', () => {
     daemonProc = spawn(daemonBin, ['daemon', '-addr', '127.0.0.1:0'], {
       env: {
         ...process.env,
+        CANON_HOME: path.join(work, 'canon-home'),   // t-acfa: its events never reach the user's ~/.canon/events
         COCKPIT_TOKEN: bootToken,
         COCKPIT_SPRINT_BIN: stub,
         COCKPIT_PROJECT_ROOT: work,
@@ -12639,7 +12640,7 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
     const stateDir = fs.mkdtempSync(path.join(work, 'state-'));
     const stub = stubPath || path.join(work, 'stub-agent.sh');
     const proc = spawn(daemonBin, ['daemon', '-addr', '127.0.0.1:0'], {
-      env: { ...process.env, COCKPIT_TOKEN: bootToken, COCKPIT_SPRINT_BIN: stub, COCKPIT_COPILOT_BIN: stub, COPILOT_HOME: stateDir, COCKPIT_PROJECT_ROOT: work, COCKPIT_STATE_DIR: stateDir },
+      env: { ...process.env, CANON_HOME: path.join(stateDir, 'canon-home'), COCKPIT_TOKEN: bootToken, COCKPIT_SPRINT_BIN: stub, COCKPIT_COPILOT_BIN: stub, COPILOT_HOME: stateDir, COCKPIT_PROJECT_ROOT: work, COCKPIT_STATE_DIR: stateDir },   // t-acfa: CANON_HOME, so no event reaches ~/.canon/events
       stdio: 'ignore',
     });
     daemons.push(proc);

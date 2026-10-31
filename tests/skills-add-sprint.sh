@@ -10,6 +10,10 @@ trap 'rm -rf "$project" "$tmp_home"' EXIT
 
 touch "$tmp_home/.zshrc"
 export HOME="$tmp_home"
+# t-acfa: skills.sh never registers a project inside the system temp folder ($TMPDIR); this test is about registration, so its
+# projects live beside the scratch TMPDIR, not in it.
+mkdir "$tmp_home/tmp"; export TMPDIR="$tmp_home/tmp"
+reg_project() { local d; d="$(mktemp -d "$tmp_home/proj.XXXXXX")" && git -C "$d" init -q && printf '%s\n' "$d"; }
 export SHELL="/bin/zsh"
 export PATH="$TOOLS_DIR:$PATH"
 
@@ -86,7 +90,7 @@ assert_count 1 "$project" "$projects_file"
 "$SKILLS" add sprint "$project" >/dev/null
 assert_count 1 "$project" "$projects_file"
 
-second_project="$(make_project)"
+second_project="$(reg_project)"
 printf '# Claude\n' > "$second_project/CLAUDE.md"
 printf '# Agents\n' > "$second_project/AGENTS.md"
 
@@ -114,7 +118,7 @@ assert_count 1 "$second_project" "$projects_file"
 # --- CLAUDE.md <-> AGENTS.md bridge (ensure_claude_bridge) ---
 
 # Fresh project, no CLAUDE.md at all: add creates it with @AGENTS.md.
-bridge_project="$(make_project)"
+bridge_project="$(reg_project)"
 trap 'rm -rf "$project" "$tmp_home" "$second_project" "$bridge_project"' EXIT
 "$SKILLS" add sprint "$bridge_project" >/dev/null
 assert_file_exists "$bridge_project/CLAUDE.md"
@@ -125,7 +129,7 @@ assert_eq "@AGENTS.md" "$(cat "$bridge_project/CLAUDE.md")"
 assert_count 1 "@AGENTS.md" "$bridge_project/CLAUDE.md"
 
 # Existing CLAUDE.md that already has @AGENTS.md: byte-identical after add.
-bridge_project2="$(make_project)"
+bridge_project2="$(reg_project)"
 trap 'rm -rf "$project" "$tmp_home" "$second_project" "$bridge_project" "$bridge_project2"' EXIT
 printf '@AGENTS.md\n' > "$bridge_project2/CLAUDE.md"
 before_hash="$(md5sum "$bridge_project2/CLAUDE.md" | cut -d' ' -f1)"
@@ -135,7 +139,7 @@ assert_eq "$before_hash" "$after_hash"
 
 # Non-interactive (test harness has no tty): existing CLAUDE.md without
 # @AGENTS.md must be left untouched, no hang.
-bridge_project3="$(make_project)"
+bridge_project3="$(reg_project)"
 trap 'rm -rf "$project" "$tmp_home" "$second_project" "$bridge_project" "$bridge_project2" "$bridge_project3"' EXIT
 printf '# Custom instructions\n' > "$bridge_project3/CLAUDE.md"
 "$SKILLS" add sprint "$bridge_project3" >/dev/null
@@ -303,5 +307,23 @@ ga8="$(mktemp -d)"; ga_trap "$ga8"
 printf '# Agents\n' > "$ga8/AGENTS.md"
 "$SKILLS" add sprint "$ga8" >/dev/null
 [ ! -e "$ga8/.gitattributes" ] || fail "a folder without git got a .gitattributes"
+
+# t-acfa: a project inside the system temp folder ($TMPDIR) is set up but never registered (the registry is what uninstall walks and
+# edits); a registered folder that no longer exists is dropped the next time the registry is written, with one line saying so.
+inside_tmp="$(mktemp -d "$TMPDIR/scratch.XXXXXX")"; git -C "$inside_tmp" init -q
+printf '# Agents\n' > "$inside_tmp/AGENTS.md"
+out="$("$SKILLS" add sprint "$inside_tmp" 2>&1)"
+assert_contains "$out" "[registry]  not registered: $(cd "$inside_tmp" && pwd) is in the system temp folder"
+[[ ! -f "$projects_file" ]] || ! grep -qxF "$(cd "$inside_tmp" && pwd)" "$projects_file" || fail "a project in TMPDIR was registered"
+[[ -e "$inside_tmp/.claude/skills" || -e "$inside_tmp/.agents/skills" ]] || fail "a project in TMPDIR was not set up (only its registration is skipped)"
+kept="$(reg_project)"; gone="$(reg_project)"
+"$SKILLS" add sprint "$kept" >/dev/null; "$SKILLS" add sprint "$gone" >/dev/null
+rm -rf "$gone"
+fresh="$(reg_project)"
+out="$("$SKILLS" add sprint "$fresh" 2>&1)"
+assert_contains "$out" "[registry]  dropped 1 entry whose folder no longer exists"
+assert_count 0 "$gone" "$projects_file"; assert_count 1 "$kept" "$projects_file"; assert_count 1 "$fresh" "$projects_file"
+out="$("$SKILLS" add sprint "$fresh" 2>&1)"
+[[ "$out" != *"[registry]  dropped"* ]] || fail "the dropped line printed when nothing was dropped"
 
 printf 'skills-add-sprint: ok\n'

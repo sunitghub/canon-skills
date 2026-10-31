@@ -156,7 +156,8 @@ run_pass() {   # run_pass <browser> <n>
   local b="$1" n="$2" report="$OUT/board-spec-$1-run$2.json" bgrep
   bgrep="$(grep_for "$b")"
   if [ "$RUNS_SET" = 1 ]; then echo "run-board-spec: $b run $n/$RUNS"; else echo "run-board-spec: $b run $n (first pass; up to $RUNS only if rejected)"; fi
-  (cd "$COPY" && PLAYWRIGHT_JSON_OUTPUT_NAME="$report" SPRINT_CHECK_BASE="http://127.0.0.1:$PORT" SPRINT_CHECK_TEST_ROOT="$COPY" \
+  # t-acfa: CANON_HOME too, not only for the board: spec groups spawn their own daemon, which writes events to $CANON_HOME/events
+  (cd "$COPY" && CANON_HOME="$COPY/.spec-canon-home" PLAYWRIGHT_JSON_OUTPUT_NAME="$report" SPRINT_CHECK_BASE="http://127.0.0.1:$PORT" SPRINT_CHECK_TEST_ROOT="$COPY" \
     npx playwright test tests/sprint-check-app.spec.js --browser="$b" --reporter=json,line ${bgrep:+--grep "$bgrep"} >"$OUT/board-spec-$b-run$n.log" 2>&1) || true
   [ -s "$report" ] || { echo "run-board-spec: no JSON report for $b run $n (see $OUT/board-spec-$b-run$n.log)" >&2; exit 2; }
 }
@@ -212,7 +213,7 @@ stop_and_check() {
 solo_runs() { # side copy port browser pattern index
   local k
   for k in $(seq 1 "$SOLO_RUNS"); do
-    (cd "$2" && PLAYWRIGHT_JSON_OUTPUT_NAME="$OUT/solo/$1-$6-run$k.json" SPRINT_CHECK_BASE="http://127.0.0.1:$3" SPRINT_CHECK_TEST_ROOT="$2" \
+    (cd "$2" && CANON_HOME="$2/.spec-canon-home" PLAYWRIGHT_JSON_OUTPUT_NAME="$OUT/solo/$1-$6-run$k.json" SPRINT_CHECK_BASE="http://127.0.0.1:$3" SPRINT_CHECK_TEST_ROOT="$2" \
       npx playwright test tests/sprint-check-app.spec.js --browser="$4" --reporter=json,line --grep "$5" >"$OUT/solo/$1-$6-run$k.log" 2>&1) || true
   done
 }

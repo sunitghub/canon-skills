@@ -145,6 +145,7 @@ tests=(
   "$ROOT/tests/board-origin-guard.sh"
   "$ROOT/tests/sprint-check-worktree-holds.sh"
   "$ROOT/tests/sprint-check-live-docs.sh"
+  "$ROOT/tests/spec-canon-home.sh"
   "$ROOT/tests/sprint-check-live-ticket.sh"
   "$ROOT/tests/helpers-sweep.sh"
   "$ROOT/tests/sprint-check-api.sh"
@@ -334,7 +335,11 @@ stop_workers() {   # on any exit: stop a batch still running (an interrupted run
 }
 
 if (( LIST )); then DRY=1; run_all; printf '%s\n' "${LABELS[@]}"; exit 0; fi
-trap 'stop_workers; print_timings' EXIT
+# t-acfa: no suite may write the user's real project registry (skills.sh add appends to it, and uninstall walks it and edits every
+# folder it names that exists). Copied before the run and compared after, so a new writer fails the run whoever it is.
+REGISTRY="$HOME/.config/canon/projects"; REGISTRY_BEFORE="$(mktemp)"
+if [[ -f "$REGISTRY" ]]; then cp "$REGISTRY" "$REGISTRY_BEFORE"; else rm -f "$REGISTRY_BEFORE"; fi
+trap 'stop_workers; print_timings; rm -f "$REGISTRY_BEFORE"' EXIT
 FIRST_RC=0; FAILED=(); XARGS_PID=""; RUN=""
 if (( JOBS == 1 )); then run_all; else run_parallel; fi
 
@@ -346,6 +351,11 @@ for _ in 1 2 3 4 5; do
 done
 if (( ${#FAILED[@]} )); then
   { printf '\n'; printf 'FAILED: %s\n' "${FAILED[@]}"; } >&2
+fi
+if { [[ -f "$REGISTRY_BEFORE" ]] || [[ -f "$REGISTRY" ]]; } && ! cmp -s "$REGISTRY_BEFORE" "$REGISTRY" 2>/dev/null; then
+  printf '\nFAIL: the test run changed your project registry %s (a suite ran skills.sh add with the real HOME; pin HOME in it):\n' "$REGISTRY" >&2
+  diff "$REGISTRY_BEFORE" "$REGISTRY" 2>/dev/null | sed -n 's/^> /  added:   /p; s/^< /  removed: /p' | awk 'NR <= 20' >&2
+  exit 1
 fi
 if [[ -n "${LEAKED_SERVERS// /}" ]]; then
   printf '\nFAIL: the test run left sprint-check servers running (PIDs): %s\n' "$LEAKED_SERVERS" >&2

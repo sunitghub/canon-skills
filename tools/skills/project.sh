@@ -204,23 +204,60 @@ link_worktree() {
   _ensure_mirror_gitignored "$wt_dir"
 }
 
+# _in_system_temp <dir> — t-acfa: 0 when <dir> is inside the system temp folder: $TMPDIR (on macOS that is /var/folders/…/T), %TEMP%
+# and %TMP% on Windows, where Git Bash's /tmp is that folder too. A project there is a scratch copy (tests, gates), and the registry
+# is what uninstall walks and edits, so it is never registered. /tmp and /private/tmp elsewhere stay allowed: people keep demos there.
+_in_system_temp() {
+  local d t r
+  d="$(cd "$1" 2>/dev/null && pwd -P)" || return 1
+  for t in "${TMPDIR:-}" "${TEMP:-}" "${TMP:-}"; do
+    [ -n "$t" ] || continue
+    case "$t" in *\\*|?:*) t="$(cygpath -u "$t" 2>/dev/null)" || continue ;; esac
+    r="$(cd "$t" 2>/dev/null && pwd -P)" || continue
+    case "$d/" in "${r%/}"/*) return 0 ;; esac
+  done
+  case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*) case "$d/" in /tmp/*) return 0 ;; esac ;; esac
+  return 1
+}
+
+# _rewrite_projects <line to drop, or ""> [<line to add>] — t-acfa: rewrites the registry without the dropped line and
+# without entries whose folder no longer exists, adding <line> once; says how many vanished folders went, only when any did.
+_rewrite_projects() {
+  local drop="$1" add="${2:-}" tmp p gone=0 seen=0
+  mkdir -p "$(dirname "$PROJECTS_FILE")"
+  tmp="$(mktemp "$(dirname "$PROJECTS_FILE")/.projects.XXXXXX")" || return 0
+  if [ -f "$PROJECTS_FILE" ]; then
+    while IFS= read -r p || [ -n "$p" ]; do
+      [ -n "$p" ] || continue
+      [ "$p" = "$drop" ] && continue
+      if [ ! -d "$p" ]; then gone=$((gone + 1)); continue; fi
+      [ "$p" = "$add" ] && seen=1
+      printf '%s\n' "$p" >> "$tmp"
+    done < "$PROJECTS_FILE"
+  fi
+  if [ -n "$add" ] && [ "$seen" = 0 ]; then printf '%s\n' "$add" >> "$tmp"; fi
+  mv "$tmp" "$PROJECTS_FILE"
+  [ -s "$PROJECTS_FILE" ] || rm -f "$PROJECTS_FILE"
+  if [ "$gone" -gt 0 ]; then echo "  [registry]  dropped $gone entr$([ "$gone" = 1 ] && echo y || echo ies) whose folder no longer exists"; fi
+  return 0
+}
+
 register_project() {
   local project_dir
   project_dir="$(cd "$1" 2>/dev/null && pwd)" || return 0
   [[ "$project_dir" == "$SKILLS_ROOT" ]] && return 0
-  mkdir -p "$(dirname "$PROJECTS_FILE")"
-  grep -qxF "$project_dir" "$PROJECTS_FILE" 2>/dev/null || echo "$project_dir" >> "$PROJECTS_FILE"
+  if _in_system_temp "$project_dir"; then
+    echo "  [registry]  not registered: $project_dir is in the system temp folder (uninstall will not touch it)"
+    return 0
+  fi
+  _rewrite_projects "" "$project_dir"
 }
 
 deregister_project() {
   local project_dir
   project_dir="$(cd "$1" 2>/dev/null && pwd)" || return 0
   [ -f "$PROJECTS_FILE" ] || return 0
-  local tmp
-  tmp=$(mktemp)
-  grep -vxF "$project_dir" "$PROJECTS_FILE" > "$tmp" || true
-  mv "$tmp" "$PROJECTS_FILE"
-  [ -s "$PROJECTS_FILE" ] || rm -f "$PROJECTS_FILE"
+  _rewrite_projects "$project_dir"
 }
 
 upsert_skills_symlinks() {

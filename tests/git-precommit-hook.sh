@@ -3,10 +3,13 @@
 set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
+# t-acfa: skills.sh add registers each project in $HOME/.config/canon/projects; a scratch HOME keeps these scratch projects out of the
+# user's real registry (which uninstall walks and edits). Every commit below passes its own identity, so no global git config is needed.
+scratch_home="$(mktemp -d)"; HOME="$scratch_home"; export HOME
 
 # ── Fresh install ────────────────────────────────────────────────────────────
 project="$(make_project)"
-trap 'rm -rf "$project"' EXIT
+trap 'rm -rf "$project" "$scratch_home"' EXIT
 
 "$SKILLS" add sprint "$project" >/dev/null
 
@@ -23,7 +26,7 @@ assert_eq "$before_sum" "$after_sum"
 
 # ── Conflict with a pre-existing non-canon hook ─────────────────────────────
 conflict_project="$(make_project)"
-trap 'rm -rf "$project" "$conflict_project"' EXIT
+trap 'rm -rf "$project" "$conflict_project" "$scratch_home"' EXIT
 mkdir -p "$conflict_project/.git/hooks"
 cat > "$conflict_project/.git/hooks/pre-commit" <<'EOF'
 #!/usr/bin/env bash
@@ -39,7 +42,7 @@ assert_contains "$(cat "$conflict_project/.git/hooks/pre-commit")" "user's own h
 
 # ── Behavior: blocks a direct ticket-close edit ─────────────────────────────
 behavior_project="$(make_project)"
-trap 'rm -rf "$project" "$conflict_project" "$behavior_project"' EXIT
+trap 'rm -rf "$project" "$conflict_project" "$behavior_project" "$scratch_home"' EXIT
 "$SKILLS" add sprint "$behavior_project" >/dev/null
 
 (
@@ -153,7 +156,7 @@ assert_contains "$handclose_output" "BLOCKED — ticket closed by direct file ed
 # committed the staged files as "init". The fixture suite below does exactly that and records the variables it sees; the commit is
 # made from a linked worktree (where the leak is worst), with GIT_WORK_TREE exported by the caller so all four variables are checked.
 leak_root="$(mktemp -d)"
-trap 'rm -rf "$project" "$conflict_project" "$behavior_project" "$leak_root"' EXIT
+trap 'rm -rf "$project" "$conflict_project" "$behavior_project" "$leak_root" "$scratch_home"' EXIT
 leak_host="$leak_root/host"
 leak_wt="$leak_root/wt"
 leak_out="$leak_root/env-seen.txt"
@@ -220,7 +223,7 @@ assert_contains "$leak_block" "BLOCKED — ticket closed by direct file edit"
 
 # ── Non-git project: skip cleanly ───────────────────────────────────────────
 nogit_project="$(mktemp -d)"
-trap 'rm -rf "$project" "$conflict_project" "$behavior_project" "$leak_root" "$nogit_project"' EXIT
+trap 'rm -rf "$project" "$conflict_project" "$behavior_project" "$leak_root" "$nogit_project" "$scratch_home"' EXIT
 printf '# Claude\n' > "$nogit_project/CLAUDE.md"
 printf '# Agents\n' > "$nogit_project/AGENTS.md"
 nogit_output="$("$SKILLS" add sprint "$nogit_project" 2>&1)"
@@ -230,7 +233,7 @@ assert_contains "$("$SKILLS" status "$nogit_project" 2>&1)" "[skipped — not a 
 
 # ── Remove uninstalls the hook (t-0bcd) ─────────────────────────────────────
 remove_project="$(make_project)"
-trap 'rm -rf "$project" "$conflict_project" "$behavior_project" "$leak_root" "$nogit_project" "$remove_project"' EXIT
+trap 'rm -rf "$project" "$conflict_project" "$behavior_project" "$leak_root" "$nogit_project" "$remove_project" "$scratch_home"' EXIT
 "$SKILLS" add sprint "$remove_project" >/dev/null
 assert_file_exists "$remove_project/.git/hooks/pre-commit"
 "$SKILLS" remove sprint "$remove_project" >/dev/null
@@ -238,7 +241,7 @@ assert_file_exists "$remove_project/.git/hooks/pre-commit"
 
 # ── A linked worktree (.git is a FILE): add, status and remove use the common hooks dir (t-80fc) ──
 wt_main="$(make_project)"; wt_tree="$(mktemp -d)"; rm -rf "$wt_tree"
-trap 'rm -rf "$project" "$conflict_project" "$behavior_project" "$leak_root" "$nogit_project" "$remove_project" "$wt_main" "$wt_tree"' EXIT
+trap 'rm -rf "$project" "$conflict_project" "$behavior_project" "$leak_root" "$nogit_project" "$remove_project" "$wt_main" "$wt_tree" "$scratch_home"' EXIT
 git -C "$wt_main" -c user.email=t@t -c user.name=t commit -q --allow-empty -m seed
 git -C "$wt_main" worktree add -q "$wt_tree"
 [[ -f "$wt_tree/.git" ]] || fail "expected the linked worktree to have a .git FILE"
@@ -255,7 +258,7 @@ assert_contains "$("$SKILLS" status "$wt_tree" 2>&1)" "pre-commit (git)         
 assert_contains "$("$SKILLS" status "$wt_tree" 2>&1)" "pre-commit (git)          [not wired]"
 # a .git pointer whose git dir is gone skips cleanly, as "not a git repo"
 broken="$(mktemp -d)"; printf 'gitdir: %s/missing\n' "$broken" > "$broken/.git"
-trap 'rm -rf "$project" "$conflict_project" "$behavior_project" "$leak_root" "$nogit_project" "$remove_project" "$wt_main" "$wt_tree" "$broken"' EXIT
+trap 'rm -rf "$project" "$conflict_project" "$behavior_project" "$leak_root" "$nogit_project" "$remove_project" "$wt_main" "$wt_tree" "$broken" "$scratch_home"' EXIT
 broken_out="$("$SKILLS" add sprint "$broken" 2>&1)" || fail "skills.sh add failed on a broken .git pointer: $(printf '%s' "$broken_out" | tail -3)"
 assert_contains "$broken_out" "$broken/.git/hooks/pre-commit not found (not a git repo?)"
 
