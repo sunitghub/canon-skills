@@ -97,7 +97,6 @@ shell_sources() {
 cap_check() {
   local out rc=0; out="$("$1" caps --table "$ROOT/tools/caps.tsv" "${@:2}" 2>&1)" || rc=$?
   [[ $rc -eq 0 && "$out" == *" left" ]] || fail "cap: $out"
-  printf '%s\n' "$out"
 }
 
 export _BUILD_BOARD_HOME="${_BUILD_BOARD_HOME:-${HOME:-}}"

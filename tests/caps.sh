@@ -52,5 +52,11 @@ list="$(cd "$ROOT" && "$BOARD" caps --list --table "$CAPS")"
 mkdir -p "$T/root/tools"; grep -v '^start-checklist' "$CAPS" > "$T/root/tools/caps.tsv"
 rc=0; (ROOT="$T/root"; cap_check "$BOARD" start-checklist "$ROOT/skills/sprint/reference/start-checklist.md") >/dev/null 2>&1 || rc=$?
 [[ $rc -ne 0 ]] || fail "caps: cap_check passed a file whose row is missing"
+# ... on a file over its cap and on one it cannot measure, and passes one within it; the default table is the install's tools/caps.tsv
+mkdir -p "$T/root2/tools"; printf '%s\n' "x	f.md	3	words	-" > "$T/root2/tools/caps.tsv"
+rc=0; (ROOT="$T/root2"; cap_check "$BOARD" x "$T/f.md") >/dev/null 2>&1 || rc=$?; [[ $rc -ne 0 ]] || fail "caps: cap_check passed a file over its cap"
+rc=0; (ROOT="$T/root2"; cap_check "$BOARD" x "$T") >/dev/null 2>&1 || rc=$?; [[ $rc -ne 0 ]] || fail "caps: cap_check passed a file it could not measure"
+printf 'a b' > "$T/f.md"; (ROOT="$T/root2"; cap_check "$BOARD" x "$T/f.md") || fail "caps: cap_check refused a file within its cap"
+[[ "$(cd "$ROOT" && "$BOARD" caps start-checklist)" == "start-checklist: "*" of 900 words, "*" left" ]] || fail "caps: without --table it does not read the install's tools/caps.tsv"
 
 echo "caps: ok (table pinned, --help lists it, words equal wc -w in two locales, line, exit codes, --json, --list, not capped, a missing row fails)"

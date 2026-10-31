@@ -131,3 +131,54 @@ func TestCapsCLI(t *testing.T) {
 		}
 	}
 }
+
+// --list, a row found by its path, the error branches (t-19bb sweep survivors).
+func TestCapsListPathAndErrors(t *testing.T) {
+	d := t.TempDir()
+	tab := writeCapTable(t, d)
+	os.WriteFile(filepath.Join(d, "list.md"), []byte("a b c d e f"), 0o644)
+	wd, _ := os.Getwd()
+	defer os.Chdir(wd)
+	os.Mkdir(filepath.Join(d, ".git"), 0o755) // the project root for row paths
+	os.Chdir(d)
+	out, code := runCaps(t, "--list", "--table", tab)
+	want := "list: 6 of 5 words, over by 1\nzip: 2 KB (the caller gives the path)\nzipfiles: 3 files (the caller gives the path)\nblock: not present (B.md)\n"
+	if code != 0 || out != want {
+		t.Fatalf("--list = %q %d, want %q", out, code, want)
+	}
+	os.WriteFile(filepath.Join(d, "B.md"), []byte("no block here\n"), 0o644)
+	if out, _ := runCaps(t, "--list", "--table", tab); !strings.Contains(out, "block: cannot be measured: no <!-- canon:b:BEGIN -->") {
+		t.Fatalf("--list with a broken block: %q", out)
+	}
+	if out, code := runCaps(t, "--list", "--table", tab, "list"); code != 2 || !strings.Contains(out, "usage") {
+		t.Fatalf("--list with a name: %q %d", out, code)
+	}
+	// a row found by its path, relative or absolute; the name alone reads the table's path
+	for _, arg := range []string{"list.md", "./list.md", filepath.Join(d, "list.md")} {
+		if out, code := runCaps(t, "--table", tab, arg); code != 1 || out != "list: 6 of 5 words, over by 1\n" {
+			t.Fatalf("by path %q: %q %d", arg, out, code)
+		}
+	}
+	if out, code := runCaps(t, "--table", tab, "list"); code != 1 || out != "list: 6 of 5 words, over by 1\n" {
+		t.Fatalf("by name: %q %d", out, code)
+	}
+	// errors exit 2: a folder for a file unit, a missing --table value, an unknown option, an unreadable folder in a tree
+	if out, code := runCaps(t, "--table", tab, "list", d); code != 2 || !strings.Contains(out, "is a folder") {
+		t.Fatalf("folder for words: %q %d", out, code)
+	}
+	if _, code := runCaps(t, "list", "--table"); code != 2 {
+		t.Fatal("--table with no value must be a usage error")
+	}
+	if out, code := runCaps(t, "--table", tab, "--nope", "list"); code != 2 || !strings.Contains(out, "unknown option --nope") {
+		t.Fatalf("unknown option: %q %d", out, code)
+	}
+	if runtime.GOOS != "windows" && os.Geteuid() != 0 {
+		tree := filepath.Join(d, "tree")
+		os.MkdirAll(filepath.Join(tree, "locked"), 0o755)
+		os.Chmod(filepath.Join(tree, "locked"), 0)
+		defer os.Chmod(filepath.Join(tree, "locked"), 0o755)
+		if out, code := runCaps(t, "--table", tab, "zip", tree); code != 2 || !strings.Contains(out, "caps: zip:") {
+			t.Fatalf("unreadable folder: %q %d", out, code)
+		}
+	}
+}

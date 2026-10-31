@@ -15,7 +15,7 @@ BOARD="$(build_board "$T")"   # the 900-word caps live in tools/caps.tsv and are
 for phase in start complete; do
   list="$REF/$phase-checklist.md"; full="$REF/$phase.md"
   [[ -f "$list" ]] || fail "sprint-checklists: $list is missing"
-  cap_check "$BOARD" "$phase-checklist" "$list" >/dev/null
+  cap_check "$BOARD" "$phase-checklist" "$list"
   table="$(awk '/^## Read the detail when/{f=1; next} f && /^## /{exit} f' "$list")"
   [[ "$(printf '%s\n' "$table" | grep -c '^| ')" -ge 4 ]] || fail "sprint-checklists: $phase-checklist.md has no 'Read the detail when' table"
   n=0

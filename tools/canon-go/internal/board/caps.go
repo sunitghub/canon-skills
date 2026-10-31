@@ -82,7 +82,7 @@ func capWords(b []byte) int64 {
 	return n
 }
 
-// capLines counts lines as `grep -c ''` does: a last line without a newline still counts.
+// capLines counts lines as grep -c with an empty pattern does: a last line without a newline still counts.
 func capLines(b []byte) int64 {
 	n := int64(strings.Count(string(b), "\n"))
 	if len(b) > 0 && b[len(b)-1] != '\n' {
@@ -289,9 +289,9 @@ func findCapRow(rows []capRow, arg, project string) (capRow, bool) {
 			return r, true
 		}
 	}
-	abs, _ := filepath.Abs(arg)
+	abs := resolvedOrAbs(arg) // symlinks resolved on both sides: macOS's /var is /private/var
 	for _, r := range rows {
-		if r.Path != "-" && (filepath.Clean(arg) == filepath.Clean(r.Path) || abs == filepath.Join(project, r.Path)) {
+		if r.Path != "-" && (filepath.Clean(arg) == filepath.Clean(r.Path) || abs == resolvedOrAbs(filepath.Join(project, r.Path))) {
 			return r, true
 		}
 	}
