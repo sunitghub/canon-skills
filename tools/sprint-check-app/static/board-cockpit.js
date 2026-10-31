@@ -133,9 +133,9 @@ function fmtWait(secs) {
   return m >= 60 ? Math.floor(m / 60) + 'h ' + (m % 60) + 'm' : m > 0 ? m + 'm' : 'under a minute';
 }
 export function renderSessionStateChip() {
-  const chip = document.getElementById('ck-state-chip'), reaper = document.getElementById('ck-reaper');
+  const chip = document.getElementById('ck-state-chip'), reaper = document.getElementById('ck-reaper'), meter = document.getElementById('ck-meter');
   // A Terminal is not an agent: no working state and no auto-save countdown.
-  if (!sessionIsLive() || state.scratch.get(cockpitState.id)?.term === true) { chip.hidden = true; reaper.hidden = true; return; }
+  if (!sessionIsLive() || state.scratch.get(cockpitState.id)?.term === true) { chip.hidden = true; reaper.hidden = true; meter.hidden = true; return; }
   const row = cockpitState.daemonRow || null;
   const num = v => (typeof v === 'number' && isFinite(v) && v >= 0) ? v : null;
   let st = row ? ckRowState(row) : 'running';
@@ -154,6 +154,10 @@ export function renderSessionStateChip() {
   reaper.textContent = reaperText;
   if (reaperTip) reaper.title = reaperTip; else reaper.removeAttribute('title');
   reaper.hidden = !reaperText;
+  // t-d00c: the ambient token meter, shown only when the daemon row carries one (a claude session).
+  const mt = row && row.meter && typeof row.meter === 'object' ? row.meter : null;
+  meter.textContent = mt ? [mt.cache_pct + '% cache', mt.llm_calls + ' calls', mt.tool_calls + ' tools', mt.sub_agents + ' sub'].join(' \u00b7 ') : '';
+  meter.hidden = !mt;
 }
 export async function refreshSessionStateChip() {
   const tab = cockpitState, id = activeTabId;

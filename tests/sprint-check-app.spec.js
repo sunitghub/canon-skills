@@ -11606,7 +11606,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       writeTicket(id, 'in_progress');
       await page.route('**/api/cockpit-sessions', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rows) }));
       const base = { session: 's1', ticket: id, project_root: PROJECT_ROOT, cwd: PROJECT_ROOT, agent: 'claude', status: 'running' };
-      rows = [{ ...base, state: 'working', state_secs: 4, idle_secs: 10, idle_limit_secs: 300, signal: 'hook' }];
+      rows = [{ ...base, state: 'working', state_secs: 4, idle_secs: 10, idle_limit_secs: 300, signal: 'hook', meter: { cache_pct: 87, llm_calls: 42, tool_calls: 130, sub_agents: 2 } }];
       await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running' }));
       const chip = page.locator('#ck-state-chip'), reaper = page.locator('#ck-reaper');
       const poke = () => page.frameLocator('#ck-iframe').locator('body').evaluate(() => {
@@ -11615,6 +11615,8 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await poke();
       await expect(chip).toHaveText('working');
       await expect(chip).toHaveAttribute('title', 'State from: Claude Code notification hook');
+      // t-d00c: the ambient token meter, from the daemon row
+      await expect(page.locator('#ck-meter')).toHaveText('87% cache · 42 calls · 130 tools · 2 sub');
       // t-91c5: the Agents sidebar already shows the countdown, so the top bar says only "Auto Save"; the sentence is the tooltip.
       await expect(reaper).toHaveText('Auto Save');
       await expect(reaper).toHaveAttribute('title', 'Auto-save & end in 4m · resets on activity');
@@ -11639,6 +11641,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await poke();
       await expect(chip).toHaveText('running');
       await expect(reaper).toBeHidden();
+      await expect(page.locator('#ck-meter')).toBeHidden();   // t-d00c: no meter on a row without one, not "0%"
       await expect(reaper).not.toHaveAttribute('title', /Auto-save/);   // no stale tooltip once the text is gone
       await expect(page.locator('#cockpit-overlay')).not.toContainText('undefined');
     } finally {

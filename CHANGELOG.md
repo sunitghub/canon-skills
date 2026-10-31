@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Added
+- Cockpit: an ambient per-session token meter (cache % of input, LLM calls, tool calls, sub-agents) in the session's top bar and the Agents sidebar tooltip, read from the claude transcripts token-spend already uses; nothing new is stored and there is no setting (t-d00c)
+
 ## [0.34.0] - 2026-10-31
 
 The prebuilt `canon-go` program changed, the daemon included: after `canon update`, restart the daemon (Admin's **Restart Daemon** button) so a running one picks it up.
