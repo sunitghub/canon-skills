@@ -16,8 +16,34 @@ grep -q 'GOV=' <<< "$go" || fail "the --go script lacks the Go block"
 for s in "$base" "$go"; do
   assert_eq "#!/bin/bash" "$(head -1 <<< "$s")"
   assert_contains "$s" "https://getcanon.dev/install.sh | bash"
-  assert_contains "$s" 'cp "$HOME/.canon/agents/canon-reviewer.md"'
+  assert_contains "$s" '"$HOME/.canon/current/agents" "$HOME/.canon/agents"'
+  assert_contains "$s" 'the close will run on fallback agents'
+  grep -q '|| true$' <<< "$(grep 'canon-reviewer' <<< "$s")" && fail "the agent copy still swallows failure with || true"
 done
+
+# The setup tail under a fake HOME (tail_run sets rc and err): current/ layout, flat layout, neither (loud on stderr, exit 0, nothing copied).
+tail_run() { # $1 = fake HOME
+  local t; t="$(sed -n '/^mkdir -p "\$HOME\/.claude\/agents"$/,/^done$/p' <<< "$base")"
+  rc=0; err="$(HOME="$1" bash -c "set -e; $t" 2>&1 >/dev/null)" || rc=$?
+}
+fh="$(mktemp -d)"
+for lay in current/agents agents; do
+  rm -rf "$fh/.canon" "$fh/.claude"; mkdir -p "$fh/.canon/$lay"; touch "$fh/.canon/$lay/canon-reviewer.md" "$fh/.canon/$lay/canon-evaluator.md"
+  tail_run "$fh"; assert_eq 0 "$rc"; assert_eq "" "$err"
+  [[ -f "$fh/.claude/agents/canon-reviewer.md" && -f "$fh/.claude/agents/canon-evaluator.md" ]] || fail "$lay: agents not copied"
+done
+# found but the copy fails (the destination name is taken by a folder: fails as root too, as a cloud session runs): loud, exit 0
+rm -rf "$fh/.canon" "$fh/.claude"; mkdir -p "$fh/.canon/agents" "$fh/.claude/agents/canon-reviewer.md"
+touch "$fh/.canon/agents/canon-reviewer.md" "$fh/.canon/agents/canon-evaluator.md"
+tail_run "$fh"; assert_eq 0 "$rc"
+assert_contains "$err" "canon-reviewer.md not copied"; assert_contains "$err" "fallback agents"
+[[ "$err" != *"canon-evaluator.md not copied"* && -f "$fh/.claude/agents/canon-evaluator.md" ]] || fail "copy failure: the other agent was not copied"
+rm -rf "$fh/.canon" "$fh/.claude"; mkdir -p "$fh/.canon"
+tail_run "$fh"; assert_eq 0 "$rc"
+assert_contains "$err" "canon-reviewer.md not copied"; assert_contains "$err" "canon-evaluator.md not copied"
+assert_contains "$err" '$HOME/.canon/current/agents and $HOME/.canon/agents'; assert_contains "$err" "fallback agents"
+[[ -z "$(ls "$fh/.claude/agents")" ]] || fail "neither: something was copied"
+rm -rf "$fh"
 [[ "$(grep -n 'GOV=' <<< "$go" | cut -d: -f1)" -lt "$(grep -n '^for t in' <<< "$go" | cut -d: -f1)" ]] || fail "the Go block is not before the wrappers"
 rc=0; bash "$CE" domains --python >/dev/null 2>&1 || rc=$?; assert_eq 1 "$rc"
 rc=0; bash "$CE" >/dev/null 2>&1 || rc=$?; assert_eq 1 "$rc"
