@@ -6,6 +6,18 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.32.1] - 2026-10-31
+
+No change to the prebuilt `canon-go` program: nothing to restart.
+
+### Fixed
+- While a close gate (the reviewer or evaluator) runs, `canon update`, `skills.sh` and `canon uninstall` refuse only your real home and canon home. A scratch `HOME` and `CANON_HOME`, as every test pins, goes through, so another project's gate no longer fails your stamps. The comparison is by folder identity: a symlink, a `..`, a case or Unicode-form spelling, or a newline in a path cannot pass for another folder (t-b7df, t-9fb1).
+- The Send panel counts the same files as its warning (t-8ae5).
+- A recovered ticket gets `runs: github` when a PR fixes its issue, and the PR lookup says when it read only the newest 100 (t-4b34).
+
+### Changed
+- For contributors: the release-zip size check counts file bytes (a 4096 KB cap; 3743 KB today) instead of disk blocks, so it reads the same on macOS and Linux. The block count made every cloud sprint close fail its stamp on Linux (t-0d96).
+
 ## [0.32.0] - 2026-10-30
 
 The prebuilt `canon-go` program changed: after `canon update`, restart the daemon (Admin's **Restart Daemon** button) so a running one picks it up.
