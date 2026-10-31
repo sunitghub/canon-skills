@@ -52,6 +52,7 @@ run_checks() {
   fm t-lv01 in_progress > "$wt/.tickets/t-lv01/ticket.md"
   fm t-lv03 in_progress > "$wt/.tickets/t-lv03/ticket.md"; fm t-lv04 in_progress > "$wt/.tickets/t-lv04/ticket.md"; fm t-lv05 in_progress > "$wt/.tickets/t-lv05/ticket.md"
   fm t-lv06 in_progress > "$wt/.tickets/t-lv06/ticket.md"
+  printf '# Plan\n\n## Approach\n\nstale worktree plan\n' > "$wt/.tickets/t-lv04/plan.md"   # t-1aa7 review: the doc route too
   echo "$repo" > "$repo/.tickets/t-lv03/.cockpit-cwd"; echo "$repo" > "$repo/.tickets/t-lv05/.cockpit-cwd"   # those sessions ran on the main checkout
   # A decoy folder shaped like a worktree but NOT registered with git.
   fm t-lv01 in_progress > "$TMP/$kind/outside/.tickets/t-lv01/ticket.md"
@@ -78,6 +79,8 @@ run_checks() {
   tstat() { curl -s "$base/api/tickets" | python3 -c 'import json,sys; t={x["id"]:x for x in json.load(sys.stdin)}[sys.argv[1]]; print(t.get("status"), t.get("docs_from"), bool(t.get("branch_divergence")))' "$1"; }
   [[ "$(tstat t-lv03)" == "closed None True" ]] || fail "$label: closed on main, lock = main: want closed, no docs_from, a divergence note; got $(tstat t-lv03)"
   [[ "$(tstat t-lv04)" == "closed None True" ]] || fail "$label: closed on main, bound by divergence only: want closed, no docs_from; got $(tstat t-lv04)"
+  # ... and the doc route reads main's copy, not the stale worktree's (the card and the docs never show two states)
+  [[ "$(curl -s "$base/api/doc/t-lv04/plan.md")" != *"stale worktree plan"* ]] || fail "$label: closed on main: /api/doc served the stale worktree plan"
   for st in cancelled:t-lv06; do   # the other terminal status a lane shows (archived never reaches /api/tickets), bound by divergence only
     [[ "$(tstat "${st#*:}")" == "${st%%:*} None"* ]] || fail "$label: ${st%%:*} on main: want main's status, no docs_from; got $(tstat "${st#*:}")"
   done

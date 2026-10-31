@@ -2761,6 +2761,12 @@ func liveWorktreeFull(t ticket, root string, wts []map[string]any) (string, stri
 	if t["layout"] != "folder" || tid == "" || tid == "." || tid == ".." || strings.ContainsAny(tid, "/\\") {
 		return "", "", "", false
 	}
+	switch t["status"] {
+	case "closed", "cancelled", "archived":
+		// t-1aa7: main's terminal status is the record; a worktree copy is stale (branch_divergence still shows it). Here, not in
+		// one caller, so the card, the doc reads and the doc writes all treat the ticket as main's.
+		return "", "", "", false
+	}
 	var cand map[string]any
 	if raw, err := os.ReadFile(filepath.Join(ticketsDirForRoot(root), tid, ".cockpit-cwd")); err == nil {
 		if cwd := strings.TrimSpace(string(raw)); cwd != "" {
@@ -3153,10 +3159,6 @@ func annotateLiveDocs(tickets []ticket, root string) {
 		return
 	}
 	for _, t := range tickets {
-		switch t["status"] {
-		case "closed", "cancelled", "archived":
-			continue // t-1aa7: main's terminal status is the record; a worktree copy is stale (branch_divergence still shows it)
-		}
 		dir, branch, wtPath, ok := liveWorktreeFull(t, root, wts)
 		if !ok || !liveSafe(fmt.Sprint(t["id"]), dir, wtPath) {
 			continue
