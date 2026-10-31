@@ -141,6 +141,7 @@ type session struct {
 	projectRoot  string    // t-391a: per-session project root (git toplevel of cwd) — scopes ticket/preview, so one daemon serves many projects (nebula model)
 	ticketsDir   string    // t-ffb9: parent of the session's state dir, resolved once at spawn() — .tickets/ for a ticket, the daemon's scratch dir for a scratch session (t-47f1) — lets debugf (no *server access) find it without re-walking
 	agent        string    // t-391a: agent kind ("claude"/"pi"/"copilot") for the /sessions listing
+	convID       string    // t-b1c8: the conversation id given to claude (--session-id or --resume), which names its transcript; empty for other agents
 	started      time.Time // t-391a: spawn time for the /sessions listing
 	// copilotResumeAttempt is true iff this spawn used copilot's --resume=<id>
 	// (t-6ce0) — read-only after spawn(), same convention as agent/cwd above.
@@ -979,7 +980,7 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	}
 	sid, tok, statusTok, previewTok := randToken()[:16], randToken(), randToken(), randToken()
 	var args []string
-	var hookDir string
+	var hookDir, convID string
 	// t-0d67: agent-aware spawn. claude keeps its exact pre-t-0d67 argv (--model,
 	// --settings Notification hook, --session-id/--resume). pi uses documented
 	// flags only and no shell hooks. copilot (t-66b2) mirrors claude's argv shape
@@ -1028,6 +1029,7 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 		// --resume — that mints a NEW id instead of continuing the real
 		// conversation, defeating the whole point.
 		claudeSessionID, resuming := s.resolveClaudeSessionIDIn(projectRoot, ticket)
+		convID = claudeSessionID
 		args = agentSpawnArgs("claude", ticket, resuming, !resuming && inProgress, claudeSessionID, s.gateModelIn(projectRoot, ticket), settingsPath)
 		if resuming && s.adoptedTicket(projectRoot, ticket) && s.ticketStatusIn(projectRoot, ticket) == "open" {
 			// t-f553: the scratch conversation continues — as this ticket's sprint.
@@ -1052,7 +1054,7 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	se := &session{
 		sid: sid, ticket: ticket, token: tok, statusToken: statusTok, previewToken: previewTok,
 		hookDir: hookDir, cwd: cwd, projectRoot: projectRoot, ticketsDir: filepath.Dir(s.sessionStateDir(projectRoot, ticket)), // Join(ticketsDir, ticket) = the session's state dir (t-47f1)
-		agent: kind, started: time.Now(), copilotResumeAttempt: copilotResuming,
+		agent: kind, convID: convID, started: time.Now(), copilotResumeAttempt: copilotResuming,
 		pty: p, cmd: c, max: s.cfg.scrollback, status: "running", statusSince: time.Now(),
 		subs: map[chan frame]struct{}{}, done: make(chan struct{}), reaped: make(chan struct{}),
 		lastActivity: time.Now(), // not the zero value, or it reads as instantly idle
@@ -1114,6 +1116,7 @@ func (s *server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		Attached      int           `json:"attached"`        // t-61c7: browser streams attached right now
 		Shared        bool          `json:"shared"`          // t-5a4b: another live session works in the same folder, and it has no git to keep them apart
 		Meter         *sessionMeter `json:"meter,omitempty"` // t-d00c: cache %, LLM/tool calls, sub-agents from the claude transcript
+		convID        string        // t-b1c8: never sent; the id meterFor reads by
 	}
 	// Lock order is s.mu (outer) then se.mu (inner), matching handleShutdown.
 	s.mu.Lock()
@@ -1124,7 +1127,7 @@ func (s *server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		info := sessionInfo{
 			Session: se.sid, Ticket: se.ticket, ProjectRoot: se.projectRoot,
 			Cwd: se.cwd, Agent: se.agent, Status: se.status,
-			Started: se.started.UTC().Format(time.RFC3339),
+			Started: se.started.UTC().Format(time.RFC3339), convID: se.convID,
 		}
 		info.State, info.StateSecs, info.IdleSecs, info.Signal = sessionStateLocked(se, time.Now())
 		info.Title = se.title
@@ -1162,8 +1165,8 @@ func (s *server) handleSessions(w http.ResponseWriter, r *http.Request) {
 	}
 	// idleTimeoutFor resolves symlinks on disk — done outside the locks.
 	for i := range out {
-		if out[i].Agent == "claude" {
-			out[i].Meter = meterFor(out[i].Session) // t-d00c: reads transcripts, so outside the locks
+		if out[i].Agent == "claude" && out[i].convID != "" {
+			out[i].Meter = meterFor(out[i].convID) // t-b1c8: by claude's conversation id, not the daemon's session id; reads transcripts, so outside the locks
 		}
 		out[i].IdleLimitSecs = int64(s.idleTimeoutFor(out[i].ProjectRoot, out[i].Cwd).Seconds())
 	}

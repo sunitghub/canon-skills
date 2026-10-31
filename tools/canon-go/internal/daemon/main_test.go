@@ -4438,7 +4438,12 @@ func TestResolveProjectForCwd(t *testing.T) {
 func TestSessionsEndpoint(t *testing.T) {
 	cfgDir := t.TempDir()
 	t.Setenv("CLAUDE_CONFIG_DIR", cfgDir) // t-d00c: the meter reads transcripts here, never the real ~/.claude
-	bin, _ := fakeSprintCwd(t)
+	// t-b1c8: the stub agent records the argv the daemon gave it, so the test learns claude's conversation id the way claude does
+	argsFile := filepath.Join(t.TempDir(), "args.txt")
+	bin := filepath.Join(t.TempDir(), "stub-agent.sh")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\nfor a in \"$@\"; do printf '%s\\n' \"$a\" >> \""+argsFile+"\"; done\nprintf 'READY\\n'\ncat\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	root := t.TempDir()
 	initGitRepo(t, root)
 	seedTicketDir(t, root, "t-aaaa")
@@ -4497,24 +4502,78 @@ func TestSessionsEndpoint(t *testing.T) {
 		t.Fatalf("/sessions leaked a token field: %s", body)
 	}
 
-	// t-d00c: a claude row carries its transcript's meter under the exact keys the board reads (the board spec mocks /sessions).
+	// t-d00c, t-b1c8: a claude row carries the meter of the transcript named by the conversation id the daemon passed to claude
+	// (--session-id), under the exact keys the board reads (the board spec mocks /sessions); never the daemon's own session id.
 	if sessions[0]["agent"] != "claude" {
 		t.Fatalf("agent = %v, want claude", sessions[0]["agent"])
 	}
 	if _, present := sessions[0]["meter"]; present {
 		t.Fatalf("a row with no transcript yet has a meter: %s", body)
 	}
+	argAfter := func(flag string) string { // the stub writes its argv once it runs: wait for it
+		t.Helper()
+		var b []byte
+		for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+			b, _ = os.ReadFile(argsFile)
+			lines := strings.Split(strings.TrimSpace(string(b)), "\n")
+			for i := len(lines) - 2; i >= 0; i-- {
+				if lines[i] == flag {
+					return lines[i+1]
+				}
+			}
+		}
+		t.Fatalf("the agent was not given %s: %q", flag, b)
+		return ""
+	}
+	conv := argAfter("--session-id")
 	sid, _ := sessions[0]["session"].(string)
+	if conv == sid {
+		t.Fatalf("the conversation id equals the daemon session id (%s), so this test could not tell them apart", sid)
+	}
 	tdir := filepath.Join(cfgDir, "projects", "-p")
-	os.MkdirAll(tdir, 0o755)
-	os.WriteFile(filepath.Join(tdir, sid+".jsonl"), []byte(`{"type":"assistant","message":{"id":"msg_1","content":[{"type":"tool_use"}],"usage":{"input_tokens":50,"cache_read_input_tokens":50}}}`+"\n"), 0o644)
-	_, body = get("")
-	var rows []map[string]any
-	json.Unmarshal(body, &rows)
-	meter, _ := rows[0]["meter"].(map[string]any)
-	for k, want := range map[string]float64{"cache_pct": 50, "llm_calls": 1, "tool_calls": 1, "sub_agents": 0} {
-		if meter[k] != want {
-			t.Fatalf("/sessions meter[%q] = %v, want %v (%s)", k, meter[k], want, body)
+	if err := os.MkdirAll(tdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	line := func(calls int, read int) string {
+		var b strings.Builder
+		for i := 0; i < calls; i++ {
+			fmt.Fprintf(&b, `{"type":"assistant","message":{"id":"msg_%d","content":[{"type":"tool_use","id":"toolu_%d"}],"usage":{"input_tokens":50,"cache_read_input_tokens":%d}}}`+"\n", i, i, read)
+		}
+		return b.String()
+	}
+	// a decoy under the daemon id (the old lookup) with other numbers: it must never be read
+	if err := os.WriteFile(filepath.Join(tdir, sid+".jsonl"), []byte(line(5, 0)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tdir, conv+".jsonl"), []byte(line(1, 50)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	meterOf := func() map[string]any {
+		t.Helper()
+		_, b := get("")
+		var rows []map[string]any
+		if err := json.Unmarshal(b, &rows); err != nil || len(rows) != 1 {
+			t.Fatalf("/sessions: %v (%s)", err, b)
+		}
+		m, _ := rows[0]["meter"].(map[string]any)
+		return m
+	}
+	want := map[string]float64{"cache_pct": 50, "llm_calls": 1, "tool_calls": 1, "sub_agents": 0}
+	for k, v := range want {
+		if got := meterOf()[k]; got != v {
+			t.Fatalf("/sessions meter[%q] = %v, want %v (the transcript named by --session-id %s)", k, got, v, conv)
+		}
+	}
+	// a resumed session (the ticket in progress, its conversation on disk) is given --resume <the same id> and reads the same transcript
+	killAllSessions(s)
+	writeTicketStatus(t, root, "t-aaaa", "in_progress")
+	startSessionCwd(t, ts.URL, "t-aaaa", root, bootTok).Body.Close()
+	if got := argAfter("--resume"); got != conv {
+		t.Fatalf("resumed with %q, want the first conversation %s", got, conv)
+	}
+	for k, v := range want {
+		if got := meterOf()[k]; got != v {
+			t.Fatalf("resumed: /sessions meter[%q] = %v, want %v", k, got, v)
 		}
 	}
 }
