@@ -204,6 +204,30 @@ printf '# Plan\n\n## Approach\nProfile, then fix.\n' > ".tickets/$id3/plan.md"
 [[ ! -s "$stub/num.err" ]] || fail "numbered criteria or a written approach still warned: $(cat "$stub/num.err")"
 rm ".tickets/$id3/acceptance.md" ".tickets/$id3/plan.md"
 
+# t-cc88: a capped file the plan lists with under 10% left is named at the top of "Working on this" (HANDOFF.md: 80 block-lines,
+# tools/caps.tsv), so the cloud plan sees it before editing; import-issue rebuilds the same ticket with or without it.
+id7="$("$TKT" create "Capped" -t task -p 3)"
+printf '# Acceptance\n\n## Criteria\n- [ ] Notes fit\n' > ".tickets/$id7/acceptance.md"
+printf '# Plan\n\n## Approach\nAdd a note.\n\n## Files\n`HANDOFF.md`, `notes.md`\n' > ".tickets/$id7/plan.md"
+issue_body() { "$TKT" send-issue "$id7" --dry-run 2>/dev/null | awk '/^--- body ---$/ { f = 1; next } /^--- dry run/ { f = 0 } f'; }
+handoff() { { echo '<!-- canon:handoff:BEGIN -->'; for ((i = 0; i < $1; i++)); do echo "line $i"; done; echo '<!-- canon:handoff:END -->'; } > HANDOFF.md; }
+handoff 75; issue_body > "$stub/capped"
+work="$(awk '/^# Working on this$/ { f = 1; next } f' "$stub/capped" | head -4)"
+assert_eq "Capped files this plan lists (make room before adding to them):
+HANDOFF.md: 75 of 80 lines, 5 left: make room first
+
+This repository uses canon. Work in this order:" "$work"
+handoff 60; issue_body > "$stub/roomy"
+assert_eq "This repository uses canon. Work in this order:" "$(awk '/^# Working on this$/ { getline; print; exit }' "$stub/roomy")"
+# import-issue reads back the same plan.md and acceptance.md from either body
+for b in capped roomy; do
+  imp="$(make_project)"
+  (cd "$imp" && "$TKT" import-issue 1 --body-file "$stub/$b" >/dev/null) || fail "import-issue of the $b body failed"
+  cp "$imp/.tickets/$id7/plan.md" "$stub/$b.plan"; cp "$imp/.tickets/$id7/acceptance.md" "$stub/$b.acc"; rm -rf "$imp"
+done
+cmp -s "$stub/capped.plan" "$stub/roomy.plan" && cmp -s "$stub/capped.acc" "$stub/roomy.acc" || fail "the cap lines changed what import-issue rebuilds"
+rm -f HANDOFF.md
+
 # gh fails on create, or is signed out: exit 1, the error shown, ticket byte-identical.
 for mode in create view; do
   export STUB_FAIL=$mode; before="$(cksum < ".tickets/$id3/ticket.md")"

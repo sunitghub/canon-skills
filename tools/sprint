@@ -413,6 +413,7 @@ cmd_approve() {
     { print }' "$plan" > "$tmp" && cat "$tmp" > "$plan"
   rm -f "$tmp"
   echo "Approved $id: pinned ## Approach as sha256:${digest:0:12} at $stamp"
+  cap_headroom "$root" "$plan"   # t-cc88: a capped file this plan lists that is nearly full
 }
 
 _gate_plan_content() {

@@ -1294,6 +1294,7 @@ cmd_send_issue() {
   _has_criteria "$acc" || echo "send-issue: warning: $id has no acceptance criteria: the session will draft them and wait for your approval" >&2
   [[ -n "$(_si_section "$plan" Approach)" ]] || echo "send-issue: warning: $id has no plan (plan.md ## Approach is empty): the session will draft it and wait for your approval" >&2
   rbody=""; [[ -f "$res" ]] && rbody="$(awk 'NR == 1 && /^# / { next } { print }' "$res" | awk 'NF { s = 1 } s')"
+  local caps; caps="$(cap_headroom "$root" "$plan")"   # t-cc88: in # Working on this, which import-issue never writes back
 
   local body; body="$(mktemp "${TMPDIR:-/tmp}/tkt-issue.XXXXXX")"
   # shellcheck disable=SC2064  # expand now: $body is local
@@ -1306,6 +1307,7 @@ cmd_send_issue() {
     printf '\n# Plan\n'; _si_or_none "$psecs"
     printf '\n# Research\n'; _si_or_none "$rbody"
     printf '\n# Working on this\n'
+    [[ -z "$caps" ]] || printf 'Capped files this plan lists (make room before adding to them):\n%s\n\n' "$caps"
     printf 'This repository uses canon. Work in this order:\n\n'
     printf '1. Run `sprint import-issue <this issue number>` first: it rebuilds .tickets/%s/ from the sections above and starts the\n' "$id"
     printf '   sprint. Edit no file before it has run. If gh cannot read this issue, save its text to a file and add `--body-file <file>`.\n'

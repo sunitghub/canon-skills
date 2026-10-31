@@ -85,3 +85,30 @@ canon_event() {
   "$_CANON_EVENT_BOARD" event "$1" --source "$2" --project "$root" ${actor[@]+"${actor[@]}"} "${@:4}" </dev/null >/dev/null 2>&1 || true
   return 0
 }
+
+# cap_headroom <project root> <plan.md> — t-cc88: one line per file named under plan.md's ## Files that has a tools/caps.tsv row
+# with under 10% left or over it ("<file>: 895 of 900 words, 5 left: make room first"), so a plan sees a nearly full file before
+# editing it. A capped file the meter cannot measure says so; silence means room. Information only: never fails, never waits on a
+# board without `caps` (checked through --help: an older board takes the word for a port and serves).
+cap_headroom() {
+  local root="$1" plan="$2" b h f out err rc used limit unit left over
+  [ -f "$plan" ] || return 0
+  b="$(board_bin)"; h="$("$b" --help 2>/dev/null)" || h=""
+  case "$h" in *"caps [--json]"*) ;; *) return 0 ;; esac
+  local table; table="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/caps.tsv"
+  err="$(mktemp)" || return 0
+  while IFS= read -r f; do
+    [ -f "$root/$f" ] || continue
+    rc=0; out="$(cd "$root" && "$b" caps --json --table "$table" "$f" </dev/null 2>"$err")" || rc=$?
+    if [ "$rc" -eq 2 ]; then printf '%s: cap not measured: %s\n' "$f" "$(head -1 "$err")"; continue; fi
+    # only a reading counts: "not capped" and "not present" exit 0 too (t-19bb)
+    used="$(sed -n 's/.*"used":\([0-9-]*\).*/\1/p' <<< "$out")"; [ -n "$used" ] || continue
+    limit="$(sed -n 's/.*"limit":\([0-9]*\).*/\1/p' <<< "$out")"; unit="$(sed -n 's/.*"unit":"\([^"]*\)".*/\1/p' <<< "$out")"
+    left="$(sed -n 's/.*"left":\([0-9-]*\).*/\1/p' <<< "$out")"; over="$(sed -n 's/.*"over":\([a-z]*\).*/\1/p' <<< "$out")"
+    if [ "$over" = true ]; then printf '%s: %s of %s %s, over by %s: make room first\n' "$f" "$used" "$limit" "$unit" "$((used - limit))"
+    elif [ $((left * 10)) -lt "$limit" ]; then printf '%s: %s of %s %s, %s left: make room first\n' "$f" "$used" "$limit" "$unit" "$left"; fi
+  done < <(awk '/^```/ { fence = !fence } !fence && /^## / { f = ($0 ~ /^## Files[[:space:]]*$/); next } f' "$plan" | tr -d '\r' \
+            | tr -s ' \t,;()`' '\n' | sed 's/[.:]$//' | awk 'NF && !seen[$0]++')
+  rm -f "$err"
+  return 0
+}
