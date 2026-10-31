@@ -6,6 +6,13 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-10-31
+
+The prebuilt `canon-go` program changed (the board part only): `canon update` fetches it; the daemon is unchanged, nothing to restart.
+
+### Added
+- `canon-go caps` measures a capped file against one table, `tools/caps.tsv`: it prints `<name>: <used> of <limit> <unit>, <N> left` or `over by <M>` (exit 0 or 1; 2 for a bad table or file), with `--json` and `--list`. Units are words, lines between a marker pair, KB of file bytes and files, counted the same on every OS. canon's checklist and release-zip checks now read their caps through it, and a cap row that goes missing fails the check instead of dropping the cap (t-19bb).
+
 ## [0.32.1] - 2026-10-31
 
 No change to the prebuilt `canon-go` program: nothing to restart.
