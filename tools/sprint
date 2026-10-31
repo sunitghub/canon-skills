@@ -413,7 +413,7 @@ cmd_approve() {
     { print }' "$plan" > "$tmp" && cat "$tmp" > "$plan"
   rm -f "$tmp"
   echo "Approved $id: pinned ## Approach as sha256:${digest:0:12} at $stamp"
-  cap_headroom "$root" "$plan" sprint "$id" plan   # t-cc88: a capped file this plan lists that is nearly full (t-c990: and its event)
+  cap_headroom "$(worktree_root 2>/dev/null || echo "$root")" "$plan" sprint "$id" plan   # t-cc88: a capped file this plan lists that is nearly full (t-c990: and its event)
 }
 
 _gate_plan_content() {
@@ -821,24 +821,28 @@ _gate_integrity() {
 # _gate_caps <id> <ticket dir> — t-c990: every tools/caps.tsv row with a project path, measured before the evaluator (check-evidence)
 # and again at the close. A row over its cap prints its line and writes budget.exceeded (stage close); the close refuses only when this
 # branch changed that file (git diff from merge-base HEAD origin/main, uncommitted and untracked included), so an old HANDOFF.md or a
-# LEARNINGS.md at its cap (learnings-sweep never blocks on it) cannot stop an unrelated close. No baseline, an older board: no refusal.
+# LEARNINGS.md at its cap cannot stop an unrelated close; the learnings row never refuses (learnings-sweep never blocks on it, and its
+# row is still uncommitted at the close). Measured in the worktree being closed. No baseline, an older board: no refusal.
 _gate_caps() {
-  local id="$1" tdir="$2" root b table base changed="" nobase="" name path out rc err refuse=0 line
+  local id="$1" tdir="$2" root wroot b table base changed="" nobase="" name path out rc err refuse=0 line
   root="$(project_root)"
+  wroot="$(worktree_root 2>/dev/null)" || wroot="$root"   # a linked worktree's own files and branch, not the main checkout's
   b="$(cap_board)" || return 0
   table="$(cap_table)"
-  if base="$(git -C "$root" merge-base HEAD origin/main 2>/dev/null)"; then
-    changed="$( { git -C "$root" diff --name-only "$base"; git -C "$root" ls-files --others --exclude-standard; } 2>/dev/null || true)"
+  if base="$(git -C "$wroot" merge-base HEAD origin/main 2>/dev/null)"; then
+    changed="$( { git -C "$wroot" diff --name-only "$base"; git -C "$wroot" ls-files --others --exclude-standard; } 2>/dev/null || true)"
   else nobase=1; fi
   err="$(mktemp)" || return 0
   while IFS=$'\t' read -r name path; do
-    rc=0; out="$(cd "$root" && "$b" caps --json --table "$table" "$name" </dev/null 2>"$err")" || rc=$?
+    rc=0; out="$(cd "$wroot" && "$b" caps --json --table "$table" "$name" </dev/null 2>"$err")" || rc=$?
     if [[ "$rc" -eq 2 ]]; then echo "$path: cap not measured: $(head -1 "$err")"; continue; fi
     cap_read "$out" || continue   # not present here
     [[ "$CAP_OVER" == true ]] || continue
     line="$path: $CAP_USED of $CAP_LIMIT $CAP_UNIT, over by $((CAP_USED - CAP_LIMIT))"
     canon_event budget.exceeded sprint "$root" "ticket=$id" "cap=$CAP_NAME" "used=$CAP_USED" "limit=$CAP_LIMIT" "unit=$CAP_UNIT" "stage=close"
-    if [[ -z "$nobase" ]] && grep -qxF -- "$path" <<< "$changed"; then
+    if [[ "$CAP_NAME" == learnings ]]; then   # learnings-sweep never blocks on it: an UNPROMOTED row must stay visible
+      echo "$line: learnings-sweep keeps pending rows, so this never blocks a close; a promotion pass is due"
+    elif [[ -z "$nobase" ]] && grep -qxF -- "$path" <<< "$changed"; then
       echo "$line: this branch changed it; make room in it before closing (lower nothing in tools/caps.tsv)"; refuse=1
     else
       echo "$line: not changed by this branch${nobase:+ (no origin/main to compare with)}, so the close goes on"

@@ -80,4 +80,18 @@ printf 'no markers\n' > HANDOFF.md; git commit -qam broken
 check
 assert_eq 0 "$rc"; assert_contains "$out" "HANDOFF.md: cap not measured: caps: handoff: no <!-- canon:handoff:BEGIN -->"
 
-echo "sprint-caps-close: ok (refused when the branch changed the file, committed, uncommitted or untracked; warned when it did not or with no baseline; silent within; older board skipped; unmeasurable reported)"
+# 8. a linked worktree is measured itself, not the main checkout it shares .tickets/ with (the t-c990 review's probe)
+cd "$(project 70)"
+id="$("$SPRINT" start "In a worktree" | awk '/Sprint started:/ { print $3 }')"
+git worktree add -q "$work/tmp/wt" -b wt-branch
+(cd "$work/tmp/wt" && handoff 90 && git commit -qam over)
+rc=0; out="$(cd "$work/tmp/wt" && "$SPRINT" check-evidence "$id" 2>&1)" || rc=$?
+assert_eq 1 "$rc"; assert_contains "$out" "HANDOFF.md: 90 of 80 lines, over by 10: this branch changed it"
+
+# 9. LEARNINGS.md never refuses: learnings-sweep's row is still uncommitted at the close, and it never blocks on the cap
+lrows() { { echo '<!-- canon:learnings:BEGIN -->'; for ((i = 0; i < $1; i++)); do echo "| row $i |"; done; echo '<!-- canon:learnings:END -->'; } > LEARNINGS.md; }
+lrows 80; git add LEARNINGS.md; git commit -qm learnings; git push -q origin HEAD:main; lrows 81
+check
+assert_eq 0 "$rc"; assert_contains "$out" "LEARNINGS.md: 81 of 80 lines, over by 1: learnings-sweep keeps pending rows, so this never blocks a close"
+
+echo "sprint-caps-close: ok (refused when the branch changed the file, committed, uncommitted or untracked; warned when it did not or with no baseline; silent within; older board skipped; unmeasurable reported; a worktree measured itself; LEARNINGS.md never refuses)"
