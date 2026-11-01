@@ -756,7 +756,9 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
     finishes; committing any earlier would miss them. (`HANDOFF.md` is refreshed inside
     wrapup's own refresh-docs step, so it is already current by the time this step commits.)
     - List all modified and untracked files (`git status`). Stage only the files relevant to
-      this session's work — never `git add -A`.
+      this session's work — never `git add -A`. `DECISIONS.md`, `HANDOFF.md` and `LEARNINGS.md` are this session's
+      work whenever the project does not gitignore them, even when this sprint created them (checklist step 10 owns the
+      rule; t-ba62: left untracked in a worktree they exist nowhere else and `tkt worktree-reset` refuses).
     - Draft a commit message: imperative mood, type prefix, 50-char target / 72-char hard
       limit, no trailing period (plus `standards/efficiency.md`'s Git conventions if the
       project registered efficiency). Every sprint-backed commit includes `Closes: t-xxxx` in

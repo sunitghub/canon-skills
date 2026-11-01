@@ -1015,10 +1015,15 @@ cmd_complete() {
   canon_event close.confirmed sprint "$(project_root)" "ticket=$id" ${_tier:+"tier=$_tier"}
   echo "Sprint completed: $id"
   # t-8f48: in a linked worktree, the step after the merge is resetting its tracking branch.
-  local gd common
+  local gd common f
   if gd="$(git rev-parse --absolute-git-dir 2>/dev/null)" && common="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" \
-    && [[ "$gd" != "$common" && "$(git symbolic-ref -q --short HEAD)" != land/* ]]; then   # a tkt land worktree ends with `tkt land <id> --finish`
-    echo "After its PR merges: run tkt worktree-reset here to reset this worktree's tracking branch to origin's default branch."
+    && [[ "$gd" != "$common" ]]; then
+    # t-ba62: the sprint's record, untracked here, exists nowhere else and makes tkt worktree-reset refuse. Warn only.
+    while IFS= read -r f; do
+      [[ -n "$f" ]] && echo "warning: $f is untracked in this worktree: commit it with the close (complete-checklist step 10), or tkt worktree-reset will refuse."
+    done < <(git -C "$(worktree_root)" ls-files --others --exclude-standard -- DECISIONS.md HANDOFF.md LEARNINGS.md 2>/dev/null || true)
+    [[ "$(git symbolic-ref -q --short HEAD)" == land/* ]] \
+      || echo "After its PR merges: run tkt worktree-reset here to reset this worktree's tracking branch to origin's default branch."   # a tkt land worktree ends with `tkt land <id> --finish`
   fi
 
   # t-2fb6: shrink old closed tickets' evidence/ (never this one: it is younger than the cut-off). The close already

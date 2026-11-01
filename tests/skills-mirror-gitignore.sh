@@ -83,17 +83,24 @@ upsert_skills_symlinks "$SYM" >/dev/null; _ensure_mirror_gitignored "$SYM" >/dev
 _is_dir_link "$SYM/.claude/skills" && _is_dir_link "$SYM/.agents/skills" || fail "symlink fixture: mirror links not created"
 [ -z "$(mirror_listed "$SYM")" ] || fail "symlinked mirror listed by git status: $(mirror_listed "$SYM")"
 git -C "$SYM" check-ignore -q .claude/skills && git -C "$SYM" check-ignore -q .agents/skills || fail "git check-ignore misses a symlinked mirror"
-[ "$(cat "$SYM/.gitignore")" = "$(printf '/.claude/skills\n/.agents/skills')" ] || fail "fresh .gitignore content: $(cat "$SYM/.gitignore")"
+[ "$(cat "$SYM/.gitignore")" = "$(printf '/.claude/skills\n/.agents/skills\n/.claude/subagent-runs.jsonl\n/.tickets/*/gate-snapshot.txt*')" ] || fail "fresh .gitignore content: $(cat "$SYM/.gitignore")"
 RD="$(mktemp -d)"; git -C "$RD" init -q
 mkdir -p "$RD/.claude/skills/x" "$RD/.agents/skills/x"; echo s > "$RD/.claude/skills/x/f"; echo s > "$RD/.agents/skills/x/f"
 _ensure_mirror_gitignored "$RD" >/dev/null
 [ -z "$(mirror_listed "$RD")" ] || fail "real-dir mirror listed by git status: $(mirror_listed "$RD")"
+# t-ba62: the close's run records are ignored, so a worktree sprint leaves nothing untracked for tkt worktree-reset to refuse
+# (prod path: skills.sh add/refresh, then sprint complete in a linked worktree).
+mkdir -p "$RD/.tickets/t-ab12"; : > "$RD/.claude/subagent-runs.jsonl"; : > "$RD/.tickets/t-ab12/gate-snapshot.txt"; : > "$RD/.tickets/t-ab12/gate-snapshot.txt.scope"
+for f in .claude/subagent-runs.jsonl .tickets/t-ab12/gate-snapshot.txt .tickets/t-ab12/gate-snapshot.txt.scope; do
+  git -C "$RD" check-ignore -q "$f" || fail "run record not gitignored: $f"
+done
+: > "$RD/.tickets/t-ab12/summary.md"; git -C "$RD" check-ignore -q .tickets/t-ab12/summary.md && fail "the ignore line also hides the ticket's own docs"
 
 # ── 7. t-c433: repair an old directory-only line in place; idempotent; no leftover or duplicate ──
 RP="$(mktemp -d)"; git -C "$RP" init -q
 printf 'node_modules/\n/.claude/skills/\ndist/\n' > "$RP/.gitignore"
 _ensure_mirror_gitignored "$RP" >/dev/null
-[ "$(cat "$RP/.gitignore")" = "$(printf 'node_modules/\n/.claude/skills\ndist/\n/.agents/skills')" ] || fail "repaired .gitignore: $(cat "$RP/.gitignore")"
+[ "$(cat "$RP/.gitignore")" = "$(printf 'node_modules/\n/.claude/skills\ndist/\n/.agents/skills\n/.claude/subagent-runs.jsonl\n/.tickets/*/gate-snapshot.txt*')" ] || fail "repaired .gitignore: $(cat "$RP/.gitignore")"
 before="$(cksum < "$RP/.gitignore")"; _ensure_mirror_gitignored "$RP" >/dev/null
 [ "$(cksum < "$RP/.gitignore")" = "$before" ] || fail "repair is not idempotent"
 printf '/.claude/skills/\n/.claude/skills\n' > "$RP/.gitignore"        # both forms already present
@@ -105,7 +112,7 @@ grep -qxF "/.claude/skills/" "$RP/.gitignore" && fail "both forms: directory-onl
 NN="$(mktemp -d)"; git -C "$NN" init -q
 printf 'dist/' > "$NN/.gitignore"
 _ensure_mirror_gitignored "$NN" >/dev/null
-[ "$(cat "$NN/.gitignore")" = "$(printf 'dist/\n/.claude/skills\n/.agents/skills')" ] || fail "no-trailing-newline .gitignore: $(cat "$NN/.gitignore")"
+[ "$(cat "$NN/.gitignore")" = "$(printf 'dist/\n/.claude/skills\n/.agents/skills\n/.claude/subagent-runs.jsonl\n/.tickets/*/gate-snapshot.txt*')" ] || fail "no-trailing-newline .gitignore: $(cat "$NN/.gitignore")"
 
 # ── 9. t-c433 end to end through the real client: skills.sh add, then refresh over the old lines ──
 E2E="$(mktemp -d)"; E2E_HOME="$(mktemp -d)"

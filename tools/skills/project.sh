@@ -89,6 +89,15 @@ _ensure_mirror_gitignored() {
       echo "  [gitignore] untracked previously-committed mirror: $rel"
     fi
   done
+  # t-ba62: the close's run records (the gates' run log, gate-snapshot.sh's snapshot and scope) are never committed; left
+  # untracked in a worktree they made `tkt worktree-reset` refuse. Added only, never untracked from an earlier commit.
+  for entry in "/.claude/subagent-runs.jsonl" "/.tickets/*/gate-snapshot.txt*"; do
+    if ! has_line "$entry" "$gi"; then
+      [ -s "$gi" ] && [ -n "$(tail -c1 "$gi")" ] && echo >> "$gi"
+      printf '%s\n' "$entry" >> "$gi"
+      echo "  [gitignore] $entry"
+    fi
+  done
 }
 
 # t-c774: canon's close-gate agent definitions (agents/canon-reviewer.md, canon-evaluator.md) give the

@@ -1694,6 +1694,8 @@ wt_main="$(make_project)"; wt_dir="$(mktemp -d)/wt"
   out="$(env -u CLAUDECODE "$SPRINT" complete 2>&1)"; assert_contains "$out" "Sprint completed: $wid"
   # t-8f48: a close in a linked worktree names the step after the merge.
   assert_contains "$out" "After its PR merges: run tkt worktree-reset here"
+  # t-ba62: the record lives in the main checkout here (no .tickets/ in the worktree), so nothing in this worktree is flagged
+  [[ "$out" != *"is untracked in this worktree"* ]] || fail "warned about the main checkout's files: $out"
 )
 rm -rf "$wt_main" "$(dirname "$wt_dir")"
 
@@ -1711,6 +1713,33 @@ wt_main="$(make_project)"; wt_dir="$(mktemp -d)/wt"
 )
 rm -rf "$wt_main" "$(dirname "$wt_dir")"
 
+# t-ba62: a project that tracks .tickets/ (the t-1bd9 rehearsal's shape): sprint start in the worktree makes DECISIONS.md and HANDOFF.md
+# there, untracked, and the close names each one (prod path: sprint complete in a worktree, whose untracked record made
+# tkt worktree-reset refuse); a tracked or ignored one is not named, and the close still succeeds.
+wt_main="$(make_project)"; wt_dir="$(mktemp -d)/wt"
+(
+  cd "$wt_main"; git config user.email t@example.com; git config user.name test
+  mkdir -p src .claude .tickets; echo 'a' > src/app.js; : > .tickets/.keep; git add -A >/dev/null && git commit -qm base
+  git worktree add -q -b wtt "$wt_dir"
+  cd "$wt_dir"; mkdir -p .claude
+  out="$("$SPRINT" start "tracked tickets worktree")"; wid="$(printf '%s\n' "$out" | awk '/Sprint started:/ { print $3 }')"
+  [[ -f "$wt_dir/DECISIONS.md" && -f "$wt_dir/HANDOFF.md" ]] || fail "fixture: sprint start did not make the record in the worktree"
+  echo 'b' >> src/app.js; git add src/app.js ".tickets/$wid"; git commit -qm "work done in the worktree"
+  fr_gate_docs "$wt_dir/.tickets/$wid" "$wt_dir/.claude/subagent-runs.jsonl" "$(date +%s)-7000" "$(git rev-parse HEAD)"
+  out="$(env -u CLAUDECODE "$SPRINT" complete 2>&1)"; assert_contains "$out" "Sprint completed: $wid"
+  assert_contains "$out" "warning: DECISIONS.md is untracked in this worktree"
+  assert_contains "$out" "warning: HANDOFF.md is untracked in this worktree"
+  [[ "$out" != *"LEARNINGS.md is untracked"* ]] || fail "warned about a LEARNINGS.md that does not exist"
+  # tracked and ignored: no warning
+  out="$("$SPRINT" start "tracked tickets worktree 2")"; wid2="$(printf '%s\n' "$out" | awk '/Sprint started:/ { print $3 }')"
+  git add DECISIONS.md HANDOFF.md ".tickets/$wid" ".tickets/$wid2"; git commit -qm "the record"
+  echo 'x' > LEARNINGS.md; echo 'LEARNINGS.md' >> "$(git rev-parse --git-common-dir)/info/exclude"
+  fr_gate_docs "$wt_dir/.tickets/$wid2" "$wt_dir/.claude/subagent-runs.jsonl" "$(date +%s)-7001" "$(git rev-parse HEAD)"
+  out="$(env -u CLAUDECODE "$SPRINT" complete 2>&1)"; assert_contains "$out" "Sprint completed: $wid2"
+  [[ "$out" != *"is untracked in this worktree"* ]] || fail "warned about a tracked or ignored record: $out"
+)
+rm -rf "$wt_main" "$(dirname "$wt_dir")"
+
 # t-1b74: a project that is a subdirectory of a larger repository is graded on its own subtree only
 sub_top="$(make_project)"
 (
@@ -1722,6 +1751,7 @@ sub_top="$(make_project)"
   echo 'b' >> ../other/x.js; git add ../other/x.js; git commit -qm "outside the project"
   out="$(env -u CLAUDECODE "$SPRINT" complete 2>&1)"; assert_contains "$out" "Sprint completed: $sid"
   [[ "$out" != *"tkt worktree-reset"* ]] || fail "a close in the main checkout named tkt worktree-reset"   # t-8f48
+  [[ "$out" != *"is untracked in this worktree"* ]] || fail "the main checkout's close warned about an untracked record"   # t-ba62
   out="$("$SPRINT" start "subtree stale eval 2")"; sid2="$(printf '%s\n' "$out" | awk '/Sprint started:/ { print $3 }')"
   fr_gate_docs ".tickets/$sid2" ".claude/subagent-runs.jsonl" "$(date +%s)-7000" "$(git rev-parse HEAD)"
   echo 'c' >> src/app.js; git add src/app.js; git commit -qm "inside the project"

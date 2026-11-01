@@ -8,8 +8,7 @@ hidden: true
 
 # Sprint Complete — checklist
 
-The normal path; every tool named is on PATH. For a case in the last list, read only that section of
-`complete.md`.
+The normal path; every tool named is on PATH. A case in the last table: read only its `complete.md` section.
 
 **First** ask "Ready to close sprint `<id>`? This will run wrapup and move the ticket to Done.
 Confirm to proceed." A broad "continue"/"finish" is not close approval.
@@ -27,7 +26,7 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
    - **Interim commit** (specific paths, no `git add -A`) before any gate.
    - **Evidence:** in a `git clone` of the final commit, run
      `CANON_TICKETS_DIR=<project>/.tickets evidence.sh stamp <id> test-sh -- <project test command>`
-     (`scripts/test.sh` in canon); re-stamp after any tracked change.
+     (`scripts/test.sh` in canon); re-stamp after tracked changes.
    - `## Wrapup Gates` in `acceptance.md`: a row per gate (`ran`/`skipped` + evidence);
      `reviewer` and `code-reviewer` are separate.
    - No push to `origin/main` from first dispatch until both gates report.
@@ -55,8 +54,8 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
    escape `|`), plus a paragraph naming gate models, any reviewer NO. Run `tkt learn <id>`;
    if it writes a file, run `/learnings-sweep <id>`. Say which in chat and summary.
 9. **Close:** `sprint complete <id>`, never a hand-edited status. On refusal, report and stop.
-10. **Commit & push:** stage specific files, `Closes: <id>` in the body, show them; ask. "No remote is configured: committed locally, nothing pushed" if none; "pushed" only after a push that succeeded. Worktree, after the merge:
-    `tkt worktree-reset`. In canon, `public` only via `tkt push-main`; a push is not a release.
+10. **Commit & push:** stage specific files plus DECISIONS/HANDOFF/LEARNINGS, even new, unless gitignored; `Closes: <id>` in the body; show; ask. "No remote is configured: committed locally, nothing pushed" if none; "pushed" only after a push that succeeded. Worktree, post-merge:
+    `tkt worktree-reset`. Canon: `public` only via `tkt push-main`; a push is not a release.
 
 ## Gate dispatch inputs
 
