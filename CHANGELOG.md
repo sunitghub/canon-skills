@@ -6,6 +6,14 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.35.3] - 2026-11-01
+
+The prebuilt `canon-go` program changed, the daemon included: after `canon update`, restart the daemon (Admin's **Restart Daemon** button) so a running one picks it up.
+
+### Fixed
+- A Cockpit session waiting at Claude Code's "trust this folder?" screen now shows **needs you**, not idle, and is never ended by the idle reaper or typed into by Save & End. Every new worktree is a new folder, so a worktree sprint's first start always stops there; Claude Code shows that screen before it loads canon's notification hook, so the daemon now reads it off the screen, as it already did for Copilot's menus (t-9874).
+- A worktree sprint on a new project no longer leaves files behind that make `tkt worktree-reset` refuse: `skills.sh add` and `refresh` gitignore the close's run records (`.claude/subagent-runs.jsonl`, `.tickets/*/gate-snapshot.txt*`), the close commits `DECISIONS.md`, `HANDOFF.md` and `LEARNINGS.md` when the project does not ignore them, and `sprint complete` in a worktree warns about any of the three left untracked (t-ba62). Run `skills.sh refresh` (or `canon update`) to add the two lines to an existing project.
+
 ## [0.35.2] - 2026-10-31
 
 The prebuilt `canon-go` program changed (the board part only): `canon update` fetches it; the daemon is unchanged, nothing to restart.
