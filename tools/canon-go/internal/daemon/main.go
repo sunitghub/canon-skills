@@ -824,6 +824,32 @@ var termProgram = os.Executable
 
 // termEnv is the environment of a term session: the daemon's own, without its COCKPIT_* settings (the boot token may be
 // among them, and the su shell would inherit it).
+// promptSuggestionEnv turns off Claude Code's greyed prompt suggestions (t-e115): in a Cockpit session one Tab or Right
+// arrow then Enter would send an agent-written line such as "push and open a PR". The env var (Claude Code 2.1.238+) wins
+// over a user's own setting; writeHookSettings also sets promptSuggestionEnabled for older versions.
+const promptSuggestionEnv = "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION"
+
+// sessionEnv is the environment a session's process starts with: the restricted Terminal's own (termEnv); every agent
+// gets COCKPIT_TICKET; a claude session also gets prompt suggestions off, replacing any inherited value.
+func sessionEnv(kind, ticket string, environ []string) []string {
+	if kind == "term" {
+		return termEnv(environ)
+	}
+	claude := kind != "pi" && kind != "copilot"
+	env := make([]string, 0, len(environ)+2)
+	for _, kv := range environ {
+		if claude && strings.HasPrefix(kv, promptSuggestionEnv+"=") {
+			continue
+		}
+		env = append(env, kv)
+	}
+	env = append(env, "COCKPIT_TICKET="+ticket)
+	if claude {
+		env = append(env, promptSuggestionEnv+"=false")
+	}
+	return env
+}
+
 func termEnv(environ []string) []string {
 	out := make([]string, 0, len(environ))
 	for _, kv := range environ {
@@ -990,7 +1016,6 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	copilotResuming := false   // t-6ce0: surfaced onto the session below
 	copilotGate := ""          // t-d8b0: logged below when copilot can't take it
 	inProgress := s.ticketStatusIn(projectRoot, ticket) == "in_progress"
-	termSession := false
 	switch kind {
 	case "term":
 		// t-57ab: the daemon's own binary runs the restricted prompt in the pty; no agent, no hooks.
@@ -999,7 +1024,7 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 			p.Close()
 			return nil, err
 		}
-		program, args, termSession = exe, termArgs(sid, ticket, projectRoot), true
+		program, args = exe, termArgs(sid, ticket, projectRoot)
 	case "pi":
 		program = common.EnvOr("COCKPIT_PI_BIN", "pi")
 		// Resume (pi -c) when the ticket is already in_progress; else a fresh
@@ -1039,10 +1064,7 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	bin := resolveSpawnBin(program)
 	c := p.Command(bin, args...)
 	c.Dir = cwd
-	c.Env = append(os.Environ(), "COCKPIT_TICKET="+ticket)
-	if termSession {
-		c.Env = termEnv(os.Environ())
-	}
+	c.Env = sessionEnv(kind, ticket, os.Environ())
 	if err := c.Start(); err != nil {
 		p.Close()
 		os.RemoveAll(hookDir)
@@ -3897,7 +3919,8 @@ func (s *server) writeHookSettings(sid, statusToken string) (string, error) {
 			}},
 		})
 	}
-	hook := map[string]any{"hooks": map[string]any{"Notification": entries}}
+	// t-e115: no greyed prompt suggestions in a Cockpit session (the env var sessionEnv sets wins on 2.1.238+; this covers older versions).
+	hook := map[string]any{"hooks": map[string]any{"Notification": entries}, "promptSuggestionEnabled": false}
 	data, err := json.Marshal(hook)
 	if err != nil {
 		os.RemoveAll(dir)
