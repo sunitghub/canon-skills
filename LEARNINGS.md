@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-01-2026 09:50
+learnings-sweep last run: 11-01-2026 10:35
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-01 | [t-0d2b](.tickets/t-0d2b/learnings.md) | Removing a state reset (the rail's unconditional unfold) also changes the paths that relied on it: a rail folded by board-pane.js when a Terminal opens beside the Board now stays folded after the pane closes; list every caller that set the state before deleting the reset | UNPROMOTED |
 | 2026-11-01 | [t-5d4e](.tickets/t-5d4e/learnings.md) | A permission grant that looks read-only may not be: Claude Code treats a regex sed as a possible write, so denying Edit/Write there blocks the read too; probe the real permission behaviour with `claude -p --output-format json` (permission_denials) before choosing a grant | UNPROMOTED |
 | 2026-11-01 | [t-9874](.tickets/t-9874/learnings.md) | A prompt shown before an agent loads its settings (Claude Code's folder trust) never reaches a hook: the only signal is the rendered screen, so detect it there with every phrase required (the evaluator noted no test pins the agent-neutral refusal text) | UNPROMOTED |
 | 2026-11-01 | [t-ba62](.tickets/t-ba62/learnings.md) | Fitting a change into a word-capped checklist meant trimming unrelated phrases, which the reviewer read as scope creep: name the offsets in the plan (and keep phrases a test pins, e.g. sprint-checklists' 'only after a push that succeeded') | UNPROMOTED |
@@ -82,5 +83,4 @@ learnings-sweep last run: 11-01-2026 09:50
 | 2026-10-25 | [t-b2ff](.tickets/t-b2ff/learnings.md) | A path check keyed on a folder's alias name (`/etc`) misses its physical name on macOS (`/private/etc`), and resolving links works only forwards: list both spellings, and test the physical one. A launcher that sources a new sibling file breaks every test that copies a fixed file list into a fake install (five suites failed the first full run) | `promoted → standards/efficiency-notes.md` |
 | 2026-10-25 | [t-187e](.tickets/t-187e/learnings.md) | A new colour reused from a token that is fine in dark (`--st-work`) was 2.4:1 on a light card at 11px; a test that only asserts dark and light differ cannot see it, so assert the light value is not the known-pale token. A tool added to `tools/` also breaks every test that copies a fixed tool list (`subagent-log-cli.sh`) | `promoted → tools/sprint-check-app/CLAUDE.md, standards/efficiency-notes.md` |
 | 2026-10-25 | [t-862e](.tickets/t-862e/learnings.md) | A reader that keeps only the tail of a command's output is right for a log and wrong for a document someone parses: the cut JSON failed silently at about 85 issues; read documents whole under a cap and refuse over it. A `go test -run <name>` in a Test Plan that matches no test passes with "no tests to run" — run the plan's own command | `promoted → standards/efficiency-notes.md, skills/sprint/reference/start.md` |
-| 2026-10-25 | [t-b045](.tickets/t-b045/learnings.md) | A dialog body chosen once at open ("label admits…" warning) stayed after the user unticked every row; derive body text from the same count that drives the button, and write the "is this creatable" rule once (`_sync_blocker`) instead of in a pre-check and the loop | `promoted → tools/sprint-check-app/CLAUDE.md` |
 <!-- canon:learnings:END -->
