@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-01-2026 08:40
+learnings-sweep last run: 11-01-2026 15:41
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-01 | [t-0d2b](.tickets/t-0d2b/learnings.md) | Removing an unconditional UI-state reset (`openCockpit` unfolding the rail) makes a second writer's fold (`board-pane.js:79`) persist after its pane closes: the plan accepted it, but name every other writer of that state before deleting a reset. | UNPROMOTED |
 | 2026-11-01 | [t-9874](.tickets/t-9874/learnings.md) | A prompt shown before an agent loads its settings (Claude Code's folder trust) never reaches a hook: the only signal is the rendered screen, so detect it there with every phrase required (the evaluator noted no test pins the agent-neutral refusal text) | UNPROMOTED |
 | 2026-11-01 | [t-ba62](.tickets/t-ba62/learnings.md) | Fitting a change into a word-capped checklist meant trimming unrelated phrases, which the reviewer read as scope creep: name the offsets in the plan (and keep phrases a test pins, e.g. sprint-checklists' 'only after a push that succeeded') | UNPROMOTED |
 | 2026-10-31 | [t-acfa](.tickets/t-acfa/learnings.md) | A ticket written from a guess ("canon update walks the registry") set its priority; measuring first showed the real harm (uninstall edits every registered folder) and the one real writer (+7 lines per run). A criterion changed by a build decision must change in the same commit: the evaluator failed it once for naming /var/folders after the code had dropped that rule. And a guard proven only by a manual plant had no committed test until the mutation sweep asked. | UNPROMOTED |
