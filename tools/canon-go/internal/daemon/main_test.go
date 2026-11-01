@@ -5267,7 +5267,10 @@ func TestClaudeTrustPendingOnRealCapture(t *testing.T) {
 		{"folder-trust screen", trust, true},
 		{"empty buffer", nil, false},
 		{"answered: screen cleared and the composer drawn", append(append([]byte(nil), trust...), []byte("\x1b[2J\x1b[H> ")...), false},
-		{"two of the three phrases quoted by the agent", []byte("the prompt says: Yes, I trust this folder. Enter to confirm.\r\n> "), false},
+		// Each phrase is required: any two of the three (an agent quoting the screen) are not the screen.
+		{"no 'Esc to cancel'", []byte("Yes, I trust this folder\r\nEnter to confirm\r\n> "), false},
+		{"no 'Enter to confirm'", []byte("Yes, I trust this folder\r\nEsc to cancel\r\n> "), false},
+		{"no 'Yes, I trust this folder'", []byte("No, exit\r\nEnter to confirm · Esc to cancel\r\n> "), false},
 		{"trust words far above the live UI", append(append([]byte(nil), trust...), []byte(strings.Repeat("line of output\r\n", 60))...), false},
 		{"copilot's trust menu is not claude's", readMenuFixture(t, "copilot-trust-menu.bin"), false},
 	} {
