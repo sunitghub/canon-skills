@@ -1,5 +1,5 @@
 import { SHELL_TAB, loadData, state } from './board-core.js';
-import { CK_SIGNAL_LABEL, CK_STATE_LABEL, COCKPIT_TICKET_ID, SCRATCH_ID, announceScratchTabs, ckRowState, findTicketById, finishAdopt, newScratchId, openScratch, postToTab, render, renderBoard, renderScratchWhere, showPromotedChoice, showToast, startPromote } from './board-render.js';
+import { CK_SIGNAL_LABEL, CK_STATE_LABEL, COCKPIT_TICKET_ID, SCRATCH_ID, applyCardSessions, announceScratchTabs, ckRowState, findTicketById, finishAdopt, newScratchId, openScratch, postToTab, render, renderBoard, renderScratchWhere, showPromotedChoice, showToast, startPromote } from './board-render.js';
 import { closeCockpit, findLiveDaemonSession, openCockpit, openTicketWhenLoaded, renderCockpitRail, renderTabStrip, stopCockpitPoll } from './board-cockpit-rail.js';
 import { applyActualWorkingCwd, maybeMountCockpitTerminal } from './board-worktree.js';
 import { applyPane, clearPaneFor, paneHostId, paneRoom, paneTabId, setPane, shownIds } from './board-pane.js';
@@ -662,7 +662,7 @@ async function ckLeaveSaveAndEnd(skipSave, opts) {
     cockpitState._onEnded = null;
     cockpitState._onSaveRefused = null;
     cockpitState._ending = false;
-    statusEl.textContent = 'Copilot is waiting for your answer to a prompt in the terminal — answer it there, then Save & End again (or End without saving).';
+    statusEl.textContent = 'The agent is waiting for your answer to a prompt in the terminal — answer it there, then Save & End again (or End without saving).';   // t-90f5: the daemon refuses for Claude's trust screen too (t-9874)
     document.getElementById('ck-leave-cancel').disabled = false;
     document.getElementById('ck-leave-skip').disabled = false;
     saveBtn.disabled = false;
@@ -819,6 +819,13 @@ export function initCockpit() {
     if (e.source !== window.parent) return;               // only our embedding shell
     const d = e.data;
     if (!d || d.source !== 'canon-cockpit-shell') return;
+    if (d.type === 'sessions') {                           // t-90f5: the shell's poll answer drives the chip and the cards too
+      if (!Array.isArray(d.rows)) return;
+      state.shellSessions = { rows: d.rows, at: Date.now() };
+      applyCardSessions(d.rows);
+      refreshSessionStateChip();
+      return;
+    }
     if (d.type === 'open-ticket') {                        // t-2d2e: shell routed a cross-project Sessions row here
       if (typeof d.ticket === 'string' && COCKPIT_TICKET_ID.test(d.ticket)) openTicketWhenLoaded(d.ticket, 20);
       return;

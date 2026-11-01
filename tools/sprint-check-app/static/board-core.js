@@ -222,8 +222,18 @@ export const state = {
   hiddenLanes: null, hiddenLanesKey: '',        // t-0447: lanes folded to a strip, read from localStorage on first use (per project root, t-71c8)
   boardFirstRender: true, query: '', queryMode: 'search', why: null,
   cockpitRows: new Map(), cockpitRowsKey: '',   // t-28ec: this project's live sessions by ticket id
+  shellSessions: null,                          // t-90f5: the Cockpit shell's last /api/cockpit-sessions rows {rows, at}
   scratch: new Map(),                           // t-47f1: open scratch sessions (s-xxxx) — no ticket behind them
 };
+
+// t-90f5: one owner for session state inside the Cockpit. The shell polls /api/cockpit-sessions and posts every answer to
+// each board; the header chip, the cards and the shell's Agents list then show the same answer. Rows older than two polls
+// (or a board with no shell) fall back to the board's own fetch.
+export const SHELL_SESSIONS_FRESH_MS = 12000;
+export function freshShellSessions() {
+  const s = state.shellSessions;
+  return s && Date.now() - s.at < SHELL_SESSIONS_FRESH_MS ? s.rows : null;
+}
 
 // t-0447: which lanes are folded to a strip is a view preference kept per browser (never in a ticket); a missing or
 // throwing localStorage just means nothing is hidden. t-71c8: one choice per project root (the board's own /api/git root), so hiding a

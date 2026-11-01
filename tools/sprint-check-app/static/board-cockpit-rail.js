@@ -1,4 +1,4 @@
-import { SHELL_TAB, docSlug, state } from './board-core.js';
+import { SHELL_TAB, docSlug, freshShellSessions, state } from './board-core.js';
 import { displayTicketId, effectiveStatus, esc, escAttr } from './board-helpers.js';
 import { SCRATCH_ID, announceScratchTabs, findTicketById, normProjectPath, postWrite, renderScratchWhere, showToast } from './board-render.js';
 import { activateDoc, modalState, openModal } from './board-modal.js';
@@ -370,9 +370,12 @@ export function closeCockpit() {
 // tab down anyway looked like success while the session kept running — find it and say so.
 export async function findLiveDaemonSession(ticketId) {
   try {
-    const r = await fetch('/api/cockpit-sessions');
-    if (!r.ok) return null;
-    const list = await r.json();
+    let list = freshShellSessions();   // t-90f5: the shell's answer when there is one, so the chip agrees with the Agents list
+    if (!list) {
+      const r = await fetch('/api/cockpit-sessions');
+      if (!r.ok) return null;
+      list = await r.json();
+    }
     if (!Array.isArray(list)) return null;
     const root = state.git && state.git.root ? cockpitPathKey(state.git.root) : '';
     // Match the project too so two projects sharing a ticket id don't collide — but when either root is

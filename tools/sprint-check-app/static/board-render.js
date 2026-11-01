@@ -1,4 +1,4 @@
-import { COLLAPSE_STATUSES, COLUMNS, COL_LIMIT, NOW_COLUMN, NOW_DONE_DAYS, NOW_TAG, SHELL_TAB, docSlug, hiddenLanes, loadData, state, toggleHiddenLane } from './board-core.js';
+import { COLLAPSE_STATUSES, COLUMNS, COL_LIMIT, NOW_COLUMN, NOW_DONE_DAYS, NOW_TAG, SHELL_TAB, docSlug, freshShellSessions, hiddenLanes, loadData, state, toggleHiddenLane } from './board-core.js';
 import { ticketTags, age, ciBadge, liteBadge, divergenceLine, effectiveStatus, esc, escAttr, idQueryDropped, normalizeSearch, outcomeRatio, ticketMatchesQuery, ticketTitleMatches, typeBadge, whyQueryFromInput, worktreePrefLine, worktreeRun } from './board-helpers.js';
 import { openModal } from './board-modal.js';
 import { tagChipsHTML } from './board-tags.js';
@@ -41,11 +41,14 @@ export function ckRowState(row) {
 export async function refreshCockpitSessions() {
   const panel = document.getElementById('cockpit-sessions');
   if (!panel) return;
-  let sessions = [];
-  try {
-    const r = await fetch('/api/cockpit-sessions');
-    if (r.ok) sessions = await r.json();
-  } catch (e) { /* daemon absent → empty panel */ }
+  let sessions = freshShellSessions();   // t-90f5: inside the Cockpit, the shell's answer (the one its Agents list shows)
+  if (!sessions) {
+    sessions = [];
+    try {
+      const r = await fetch('/api/cockpit-sessions');
+      if (r.ok) sessions = await r.json();
+    } catch (e) { /* daemon absent → empty panel */ }
+  }
   if (!Array.isArray(sessions)) sessions = [];
   applyCardSessions(sessions);
   // t-d34e: inside a Cockpit tab the Agents rail, the card strips (applied above) and Admin already
@@ -85,7 +88,7 @@ export async function refreshCockpitSessions() {
 
 // t-28ec: this project's live sessions mark their board cards. The board re-renders only
 // when a card's state changes; the ages on the strips are refreshed in place every poll.
-function applyCardSessions(sessions) {
+export function applyCardSessions(sessions) {
   const root = normProjectPath(state.gitRoot);
   const rows = new Map();
   for (const s of sessions) {

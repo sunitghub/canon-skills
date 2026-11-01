@@ -3884,6 +3884,38 @@ test.describe('cockpit in board (t-ddc8)', () => {
       }
     });
 
+    // t-90f5, prod path: the Cockpit's state displays. One shell poll is the answer the Agents list, the card and the header
+    // chip's lookup all use, so a state change shows on all of them together; the board fetches nothing of its own meanwhile,
+    // and a 'sessions' message that is not from the parent shell changes nothing.
+    test('one shell poll drives the Agents list, the card and the header lookup together (t-90f5)', async ({ page }) => {
+      writeTicket(XID, 'in_progress');
+      try {
+        const r = { ...row(XID, PROJECT_ROOT), state: 'working', idle_secs: 0, signal: 'hook' };
+        const board = await openShell(page, [r]);
+        let boardFetches = 0;
+        page.on('request', rq => { if (rq.url().includes('/api/cockpit-sessions') && rq.frame() && rq.frame().parentFrame()) boardFetches++; });
+        const pollNow = () => page.evaluate(async () => (await import('/static/cockpit-sessions.js')).pollSessions());
+        await pollNow();
+        const card = board.locator(`.card-state[data-id="${XID}"]`);
+        await expect(card).toHaveClass(/st-working/);
+        r.state = 'idle'; r.idle_secs = 20;
+        const before = boardFetches;
+        await pollNow();
+        await expect(card).toHaveClass(/st-idle/);
+        await expect(page.locator('#ag-list .ag-row', { hasText: XID })).toContainText(/idle/i);
+        const looked = await board.locator('body').evaluate(async (_, id) => (await (await import('/static/board-cockpit-rail.js')).findLiveDaemonSession(id))?.state, XID);
+        expect(looked).toBe('idle');                     // the header chip's lookup reads the same answer
+        expect(boardFetches).toBe(before);               // and the board fetched nothing of its own for it
+        // forged: a 'sessions' message the board posts to itself (not from its parent shell) is ignored
+        await board.locator('body').evaluate((_, rows) => window.postMessage({ source: 'canon-cockpit-shell', type: 'sessions', rows }, location.origin),
+          [{ ...r, state: 'needs-you' }]);
+        await page.waitForTimeout(300);
+        await expect(card).toHaveClass(/st-idle/);
+      } finally {
+        removeTestTicket(PROJECT_ROOT, XID);
+      }
+    });
+
     const docsStubbed = new WeakSet();
     // Shell page with two registered projects; proj-x's board serves THIS repo's real ticket list.
     const interruptedStubbed = new WeakSet();
