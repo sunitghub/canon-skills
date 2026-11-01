@@ -7,6 +7,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 ## [Unreleased]
 
 ### Fixed
+- A ticket already sent to GitHub (from a terminal, or a board tab since closed) now has **To Claude Cloud** on its card, beside **Issue ↗**: it types `tkt send-issue <id> --launch` in a Terminal for you to send, as the Sent panel does. Before, only that panel offered it, so the board had no way to start the session for such a ticket (t-d7b7).
 - In a worktree sprint, the Cockpit rail's **Ticket details** now opens the plan and acceptance live and editable, as the ticket's board card does (edits save into the worktree's copy, guarded against overwriting the agent's changes); it used to show them read-only (t-b3fc).
 
 ## [0.36.0] - 2026-11-01

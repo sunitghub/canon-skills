@@ -82,7 +82,11 @@ export function ghButtonHTML(t) {
   if (st.stage === 'pr-open' && prOf(st)) return btn('pr', 'PR ↗', `PR #${prOf(st)} on GitHub`);
   if (st.stage === 'branch') return btn('open-pr', 'Create PR', `The session pushed ${st.branch} without a PR: create one`);
   const p = ghParts(t);
-  return btn('issue', 'Issue ↗', p ? `Issue #${p.issue} on GitHub` : 'The issue on GitHub');
+  const issue = btn('issue', 'Issue ↗', p ? `Issue #${p.issue} on GitHub` : 'The issue on GitHub');
+  // t-d7b7: a ticket sent earlier (from a terminal, or a board tab since closed) starts its cloud session from its card, the same
+  // To Claude Cloud as the Sent panel's (launchToCloud): the line is typed in a Terminal, never run for you.
+  if (st.stage === 'sent') return btn('to-cloud', 'To Claude Cloud', 'Open the Terminal with the command typed (you press Enter)') + issue;
+  return issue;
 }
 
 export function bindGithubCardButtons(root) {
@@ -110,6 +114,7 @@ async function ghAction(t, action) {
   if (action === 'land') return continueHere(t, pr);
   if (action === 'close-here') return closeHere(t, pr);
   if (action === 'finish') return finishHere(t);
+  if (action === 'to-cloud') return launchToCloud(t, msg => showToast(msg));
 }
 
 // ── Continue here (t-c259, renamed t-6623): a cloud PR whose gates did not pass on its head is closed on this machine ──────────────
@@ -730,6 +735,24 @@ async function showCommitPush(t, tab, gen) {
   });
 }
 
+// t-0aa7: To Claude Cloud opens the board's Terminal with `tkt send-issue <id> --launch` typed and not sent (the ticket is already sent:
+// tkt then starts the session on its issue and creates nothing). On Windows the Terminal cannot run it yet: copy the line instead.
+// One handler for the Sent panel and a sent card (t-d7b7); `say` puts the outcome where the caller shows status.
+async function launchToCloud(t, say) {
+  if (!/^t-[a-z0-9]{4}$/.test(t.id)) return;
+  const typed = `tkt send-issue ${t.id} --launch`;
+  let copied = false;
+  try { await navigator.clipboard.writeText(typed); copied = true; } catch { copied = false; }
+  if (isWindowsBrowser()) {
+    say(copied ? 'Copied. Windows: paste this in PowerShell or Git Bash in the project folder and press Enter. The board\'s Terminal cannot start a cloud session on Windows yet.'
+      : `Copy was blocked: type "${typed}" in PowerShell or Git Bash in the project folder. The board's Terminal cannot start a cloud session on Windows yet.`);
+    return;
+  }
+  // t-3d04: also copied, so it is ready to paste while the Terminal starts; t-ccf5: below, so the caller's panel stays on screen
+  await openTerminalPane('below', { fresh: true, typeLine: typed });
+  say(copied ? 'Copied. It is also typed in the Terminal: press Enter.' : 'Copy was blocked, but the command is typed in the Terminal: press Enter.');
+}
+
 function showSent(panel, t, tab) {
   const { n, url, line, cmd } = tab.ghSent;
   panel.innerHTML = `<div class="ck-gh-box ck-gh-sent" id="ck-gh-sent">
@@ -746,22 +769,10 @@ function showSent(panel, t, tab) {
   };
   document.getElementById('ck-gh-copy')?.addEventListener('click', () => copyText(line));
   document.getElementById('ck-gh-copy-cmd')?.addEventListener('click', () => copyText(cmd));
-  // t-0aa7: To Claude Cloud opens the board's Terminal with `tkt send-issue <id> --launch` typed and not sent (the ticket is already sent:
-  // tkt then starts the session on its issue and creates nothing). On Windows the Terminal cannot run it yet: copy the line instead.
-  document.getElementById('ck-gh-to-cloud')?.addEventListener('click', async () => {
-    if (!/^t-[a-z0-9]{4}$/.test(t.id)) return;
-    const typed = `tkt send-issue ${t.id} --launch`;
-    if (isWindowsBrowser()) {
-      await copyText(typed);
-      document.getElementById('ck-gh-status').textContent = 'Windows: paste this in PowerShell or Git Bash in the project folder and press Enter. The board\'s Terminal cannot start a cloud session on Windows yet.';
-      return;
-    }
-    const copied = await copyText(typed);   // t-3d04: also copied, so it is ready to paste while the Terminal starts
-    await openTerminalPane('below', { fresh: true, typeLine: typed });   // t-ccf5: under this tab, so the Sent panel stays on screen
-    // opening the Terminal rebuilds this panel, which clears the status: say it after
-    const status = document.getElementById('ck-gh-status');
-    if (status) status.textContent = copied ? 'Copied. It is also typed in the Terminal: press Enter.' : 'Copy was blocked, but the command is typed in the Terminal: press Enter.';
-  });
+  document.getElementById('ck-gh-to-cloud')?.addEventListener('click', () => launchToCloud(t, msg => {
+    const status = document.getElementById('ck-gh-status');   // opening the Terminal rebuilds this panel: look it up at say-time
+    if (status) status.textContent = msg;
+  }));
   document.getElementById('ck-gh-open')?.addEventListener('click', () => openUrl(url));
   // The work is in the cloud now, so the tab has nothing left to show: close it (closeTab never ends a session).
   document.getElementById('ck-gh-dismiss').addEventListener('click', () => {

@@ -15951,7 +15951,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     const card = page.locator(`.card[data-id="${id}"]`);
     await expect(page.locator('.column', { has: card }).locator('.col-title, .column-title, h2').first()).toContainText(/progress/i);
     await expect(card.locator('.card-gh-chip')).toHaveText('GitHub #57 · sent');
-    await expect(card.locator('.card-gh-btn')).toHaveText('Issue ↗');   // t-9955: goes to GitHub, changes nothing
+    await expect(card.locator('.card-gh-btn')).toHaveText(['To Claude Cloud', 'Issue ↗']);   // t-d7b7: start the session here; t-9955: Issue goes to GitHub, changes nothing
     await expect(card.locator('.card-start:not(.card-gh-btn)')).toHaveCount(0);
     for (const [stage, extra, chip, btn] of [
       ['pr-open', { pr: 58 }, 'GitHub #57 · PR #58', 'PR ↗'],
@@ -16748,6 +16748,35 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.locator('#gh-dialog-cancel').click();
     await expect(chip).toHaveText('GitHub #57 · PR #31');
   });
+
+  // t-d7b7, prod path: a ticket sent earlier (from a terminal, or a closed board tab) starts its cloud session from its card: the
+  // same To Claude Cloud as the Sent panel (launchToCloud), the line typed in a Terminal and never sent; Issue ↗ stays.
+  test('a sent card offers To Claude Cloud and Issue; the click types the launch line without sending it (t-d7b7) @webkit', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT);   // a real t-xxxx id: the launch refuses any other
+    ghTicket(id, { github: 'acme/app#57' });
+    await routeStatus(page, id, { stage: 'sent' });
+    await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
+    await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>cockpit<script>window.__msgs=[];window.addEventListener("message",function(e){window.__msgs.push(e.data)});</script></body></html>' }));
+    await page.addInitScript(() => { window.__copied = null; Object.defineProperty(navigator, 'clipboard', { value: { writeText: async (t) => { window.__copied = t; } }, configurable: true }); });
+    await openBoard(page, id);
+    const card = page.locator(`.card[data-id="${id}"]`);
+    await expect(card.locator('.card-gh-chip')).toHaveText('GitHub #57 · sent');
+    const btns = card.locator('.card-gh-btn');
+    await expect(btns).toHaveText(['To Claude Cloud', 'Issue ↗']);
+    // both buttons lie inside the card and share one row
+    const geo = await card.evaluate(c => { const r = c.getBoundingClientRect();
+      return [...c.querySelectorAll('.card-gh-btn')].map(b => { const q = b.getBoundingClientRect(); return { in: q.left >= r.left - 0.5 && q.right <= r.right + 0.5 && q.bottom <= r.bottom + 0.5, mid: (q.top + q.bottom) / 2 }; }); });
+    expect(geo.every(g => g.in)).toBe(true);
+    expect(Math.abs(geo[0].mid - geo[1].mid)).toBeLessThanOrEqual(2);   // one row (sub-pixel heights differ)
+    await page.evaluate(async () => { (await import('/static/board-core.js')).state.isGitProject = true; });   // the fixture project is not a git repository
+    await btns.first().click();
+    const line = `tkt send-issue ${id} --launch`;
+    await expect.poll(() => page.frames().some(f => f.url().includes('mode=term'))).toBe(true);
+    const frame = page.frames().find(f => f.url().includes('mode=term'));
+    await expect.poll(() => frame.evaluate(() => window.__msgs.filter(m => m.type === 'type-command').map(m => m.text))).toEqual([line]);   // typed once, never sent
+    await expect.poll(() => page.evaluate(() => window.__copied)).toBe(line);
+  });
+
 
   // Prod path: the merged dialog's push to the canon.mirror remotes (tkt push-main), offered only when some are named.
   test('Check & merge offers Push main only with canon.mirror remotes, naming them, and pushes once on the click (t-24b1)', async ({ page }) => {
