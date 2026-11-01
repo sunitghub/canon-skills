@@ -7885,6 +7885,68 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
+  test('rail state (t-0d2b): fold/unfold and a dragged width survive ← Board, a return and a tab switch @webkit', async ({ page }) => {
+    const a = newTicketId(PROJECT_ROOT, '0d2a');
+    const b = newTicketId(PROJECT_ROOT, '0d2b');
+    try {
+      for (const id of [a, b]) writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] a criterion'], plan: ['# Plan', '', '## Sign-off', 'Tier: normal', '', '- [x] Plan approved', '', '## Approach', 'x', ''] });
+      await stubCockpit(page);
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      const cockpit = page.locator('#cockpit');
+      const rail = page.locator('#cockpit .ck-rail');
+      const toggle = page.locator('#ck-rail-toggle');
+      const open = async id => {
+        await page.locator('#board-search').fill(id);
+        await page.locator(`.card[data-id="${id}"] .card-start`).click();
+        await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      };
+      const roundTrip = async id => {
+        await page.locator('#ck-back').click();
+        await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/);
+        await open(id);
+      };
+      await open(a);
+      await expect(cockpit).not.toHaveClass(/rail-collapsed/);
+
+      // folded stays folded across ← Board and back
+      await toggle.click();
+      await expect(cockpit).toHaveClass(/rail-collapsed/);
+      await roundTrip(a);
+      await expect(cockpit).toHaveClass(/rail-collapsed/);
+
+      // ...and across a switch to another open session tab
+      await page.locator('#ck-back').click();
+      await open(b);
+      await expect(cockpit).toHaveClass(/rail-collapsed/);
+      await roundTrip(a);
+      await expect(cockpit).toHaveClass(/rail-collapsed/);
+
+      // unfolded stays unfolded
+      await toggle.click();
+      await expect(cockpit).not.toHaveClass(/rail-collapsed/);
+      await roundTrip(a);
+      await expect(cockpit).not.toHaveClass(/rail-collapsed/);
+
+      // a dragged width survives fold, unfold and a round trip
+      const grip = await page.locator('#ck-rail-resize').boundingBox();
+      await page.mouse.move(grip.x + grip.width / 2, grip.y + 100);
+      await page.mouse.down();
+      await page.mouse.move(grip.x + grip.width / 2 + 60, grip.y + 100, { steps: 4 });
+      await page.mouse.up();
+      const dragged = await rail.evaluate(el => el.style.width);
+      expect(dragged).toMatch(/px$/);
+      await toggle.click();
+      await toggle.click();
+      await roundTrip(a);
+      await expect(cockpit).not.toHaveClass(/rail-collapsed/);
+      expect(await rail.evaluate(el => el.style.width)).toBe(dragged);
+    } finally {
+      removeTestTicket(PROJECT_ROOT, a);
+      removeTestTicket(PROJECT_ROOT, b);
+    }
+  });
+
   test('Resume on an in-progress card enters cockpit mode; acceptance renders; Esc returns', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'ckres');
     try {
