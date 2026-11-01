@@ -156,6 +156,58 @@ Run a real sprint end to end in your test project — ask the agent to run `spri
 
 ---
 
+## 8. Demo walkthrough: worktrees
+
+The flow a demo shows, written from two full rehearsals (t-1bd9, 2026-11-01). It is written for **Windows**: run commands in **Git Bash** unless a step says PowerShell; on macOS or Linux use a terminal. Needs canon 0.36.1 or later, Git, Claude Code signed in (`claude login`) and, for the merge, a GitHub repository (section 9 sets one up; for this flow alone a local `git merge` works too).
+
+**Set up a fresh project** (once):
+
+1. Make a folder with a small program and a test, commit it, then add canon:
+
+   ```bash
+   mkdir ~/demo-app && cd ~/demo-app && git init
+   # add a small program and its test, for example todo.py and test_todo.py
+   mkdir scripts && printf '#!/usr/bin/env bash\nset -e\npython -m pytest -q\n' > scripts/test.sh
+   git add -A && git commit -m "feat: tiny to-do app"
+   skills.sh add sprint
+   ```
+
+   `scripts/test.sh` is what **Check & merge** runs before a merge; without it the merge rests on the gates alone. Answer **y** to the prompts you want (install deny rules, the subagent-log rule). The last offer, canon's skills folder in `.claude/settings.local.json`, is optional and defaults to **no**: it lets a gate's regex `sed` on canon's docs through, and also lets agents edit canon's skills. If `git push` to GitHub later says "push declined due to email privacy", set `git config user.email <id>+<user>@users.noreply.github.com` in this folder before the first commit.
+
+2. Commit canon's files, as `skills.sh add` says ("commit .gitignore before you start a sprint"): `git add .gitignore .gitattributes AGENTS.md CLAUDE.md PROMOTED.md && git commit -m "chore: add canon"`.
+
+3. Run `canon`. In the Cockpit press **+ Add Project**, give the folder's path and a description, and open it with **›**. (`skills.sh add` registers the project for `canon update`, but the Cockpit's list is separate: a new project is added here.)
+
+**The worktree sprint:**
+
+4. **+ New**: a title, **Feature**, a line under **Outcome**, and under **Worktree** press **+ New** (a branch name is suggested). **Create**. The card sits in OPEN with "Worktree: sprint/…"; no worktree exists yet.
+5. On the card press **Start**. The Start panel says the ticket "isn't committed yet"; press **+ New** beside the branch name, read the dialog (the files it commits and the message `chore: add ticket <id>`), and press **Commit & create worktree**. The panel then says "Working in: sprint/…".
+6. **Start sprint**. Every new worktree is a new folder, so Claude Code first asks **"Yes, I trust this folder"**: the session reads **needs you** (since 0.35.3; before, it read idle). Choose it (↓ then Enter).
+7. The agent plans and asks **"Approve this plan?"** (about a minute). To edit the plan or acceptance first, open **Ticket details** in the rail: since 0.36.1 the docs open live, badge "Live from <branch> · edits save to its copy"; double-click, edit, **Save**. Approve in the terminal (type `Approved`). Do not leave a session waiting more than 5 minutes while you talk: the idle reaper saves and ends it (Auto Save), and **Resume** brings it back.
+8. The agent builds and reports. Type `sprint complete` and confirm: the reviewer and evaluator run (about 3 to 5 minutes) and the rail shows **CLOSED**. The agent asks to push and open a PR: say yes.
+9. Merge the PR on GitHub (its **Merge** button, or `gh pr merge <n> --merge`). Then, in Git Bash in the **worktree's** folder (the path is in the rail), run `tkt worktree-reset --dry-run`, then `tkt worktree-reset --yes`: the worktree keeps its name and is ready for the next sprint. In the main folder run `git pull`: the ticket now reads closed there too.
+10. Check the Cockpit Terminal's keys on Windows: the six checks in [Cockpit Terminal keys](#cockpit-terminal-keys-t-c8ff-native-windows).
+
+**Watch for, and note any:** the trust screen reading anything but needs you (t-9874); the header pill, the sidebar and the card showing different states (t-90f5); `tkt worktree-reset` refusing on leftover files (t-ba62 fixed the canon ones); stray `[K` text when a Terminal line redraws (t-c8ff). Each surprise is a ticket.
+
+## 9. Demo walkthrough: GitHub
+
+A ticket worked by a Claude cloud session and merged back here. Same project as section 8.
+
+**Set up** (once): push the project to a private GitHub repository (`gh repo create <name> --private --source . --push`), install the Claude GitHub App on it, and set up the **canon** cloud environment (Cockpit › Factory › GitHub › Cloud environment). `tkt github-doctor` checks the pieces.
+
+1. **+ New**: a title, **Feature**, a line under **Outcome**, Worktree **Main checkout**, **Create**. The cloud session needs the Description, Acceptance and Plan to work from: let `sprint start` write them, or write the acceptance and plan on the card before sending.
+2. **Start**, then in the Start panel pick **GitHub · new issue** and send. The Sent panel shows the issue number and **To Claude Cloud**. A ticket sent earlier (from a terminal, or from a tab since closed) has **To Claude Cloud** on its card instead (since 0.36.1).
+3. **To Claude Cloud**. On Windows it **copies** `tkt send-issue <id> --launch`: paste it in Git Bash in the project folder and press Enter (on macOS it is typed into the board's Terminal for you to send). Answer **y**, pick the **canon** environment if asked. It prints "Created cloud session" and a **View** link: open it to watch (there is no read-only watch from a terminal; `claude --teleport` takes the session over locally, so do not use it here).
+4. The cloud session plans, builds, runs its own gates and opens a PR. The card moves to **results ready** (GitHub Sync or a minute's poll).
+5. **Import results**: the dialog says whether a re-grade is needed here ("no re-grade needed" for a change without board code); the card moves to DONE, **results in**.
+6. **Check & merge**: it runs `scripts/test.sh` on main plus the PR, then **Run tests & merge** merges, closes the issue and fast-forwards your main.
+7. Afterwards your main shows the ticket's `runs:`/`merged:` lines and a `github.md` log as changes (t-8990, open): commit them or leave them.
+
+**Watch for:** the launch line refused in Git Bash; the card not moving after the PR appears; Check & merge saying "no test command" (then `scripts/test.sh` is missing or not executable).
+
+---
+
 ## Windows 11
 
 canon's CLI tools are bash scripts. The supported Windows 11 path is **Git for Windows (Git Bash) — no WSL required**: run **`install.cmd`** once (double-click it, or `install.cmd` from any terminal — it launches `install.ps1` without tripping PowerShell's execution policy) to add `tools/` to your user PATH, then use **Git Bash** to clone/update canon, and **PowerShell** for everything else. Each command has a `.cmd` wrapper, so run it by name: `sprint`, `tkt`, `skills` (for example `skills refresh`), and `canon` or `sprint-check-win` for the board. The board ships as a Go binary and settings are edited with Windows' built-in PowerShell, so no Python is needed. In a Git Bash window, use the script names instead (`skills.sh refresh`). See the [main setup guide](setup.md) and the README's **Windows 11 — no WSL required** section for the full steps.
@@ -314,6 +366,8 @@ Git for Windows stays installed (canon's tools need its bash); the folder is wha
 | Sprint gate (5) | `sprint complete` blocks on missing files and unchecked items |
 | Board (6) | Browser opens (or `curl` confirms server responds) |
 | Agent walkthrough (7) | Sprint's own explicit context/refresh steps run (no hooks needed); sprint complete closes with all criteria checked |
+| Demo: worktrees (8) | steps 4–9 run as written on a fresh project: worktree created and selected, trust screen reads needs you, sprint closes, PR merged, `tkt worktree-reset --yes` succeeds, main reads the ticket closed after `git pull` |
+| Demo: GitHub (9) | a cloud session opens a PR for the sent ticket; Import results and Check & merge (running `scripts/test.sh`) merge it and close the issue |
 | Cockpit Terminal keys (Windows) | all six checks in "Cockpit Terminal keys" behave as written |
 
 Any failing check is a regression or a hidden dependency on your dev box.
