@@ -188,7 +188,7 @@ The flow a demo shows, written from two full rehearsals (t-1bd9, 2026-11-01). It
 9. Merge the PR on GitHub (its **Merge** button, or `gh pr merge <n> --merge`). Then, in Git Bash in the **worktree's** folder (the path is in the rail), run `tkt worktree-reset --dry-run`, then `tkt worktree-reset --yes`: the worktree keeps its name and is ready for the next sprint. In the main folder run `git pull`: the ticket now reads closed there too.
 10. Check the Cockpit Terminal's keys on Windows: the six checks in [Cockpit Terminal keys](#cockpit-terminal-keys-t-c8ff-native-windows).
 
-**Watch for, and note any:** the trust screen reading anything but needs you (t-9874); the header pill, the sidebar and the card showing different states (t-90f5); `tkt worktree-reset` refusing on leftover files (t-ba62 fixed the canon ones); stray `[K` text when a Terminal line redraws (t-c8ff). Each surprise is a ticket.
+**Watch for, and note any:** the trust screen reading anything but needs you (t-9874); the header pill, the sidebar and the card showing different states (t-90f5); `tkt worktree-reset` refusing on leftover files (t-ba62 fixed the canon ones); stray `[K` text when a Terminal line redraws (t-c8ff); a greyed suggestion in a session's input box after the agent asks something (t-e115 turns them off: none should appear). Each surprise is a ticket.
 
 ## 9. Demo walkthrough: GitHub
 
