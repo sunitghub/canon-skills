@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Fixed
+- The Cockpit rail keeps its folded or unfolded state, and a width you dragged, when you press **← Board** and return to the session, or switch tabs. It used to unfold every time (t-0d2b).
+
 ## [0.35.3] - 2026-11-01
 
 The prebuilt `canon-go` program changed, the daemon included: after `canon update`, restart the daemon (Admin's **Restart Daemon** button) so a running one picks it up.

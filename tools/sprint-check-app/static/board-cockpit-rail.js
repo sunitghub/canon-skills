@@ -308,7 +308,6 @@ export async function openCockpit(id) {
   if (!t) return;
   state.selectedId = id;
   ensurePreviewResize();
-  document.getElementById('cockpit').classList.remove('rail-collapsed');
   document.getElementById('cockpit-overlay').classList.add('open');
 
   if (cockpitTabs[id]) {
