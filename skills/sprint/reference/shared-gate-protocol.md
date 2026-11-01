@@ -60,6 +60,8 @@ the ticket's own named `## Test Plan` commands instead of the whole suite.
 
 **Pin the environment** (a reviewer's `canon update` in a scratch clone once re-linked the user's registered projects and rewrote their hooks). The dispatcher does this, not the gate prompt (t-b7df): `gate-snapshot.sh pre` registers a gate scope (a scratch dir) and, until `post`, `canon update`, `skills.sh`, `install.sh` and `canon uninstall` refuse the user's REAL `HOME` and `CANON_HOME` (recorded by `pre`; a scratch `HOME`/`CANON_HOME` is allowed, t-9fb1; a crashed gate's scope expires after 2h). A scratch copy alone does not protect the registered projects. If a probe truly needs one of those commands, pin `HOME`, `CANON_HOME`, `TMPDIR` and `XDG_CONFIG_HOME` to fresh `mktemp -d` directories in that same command (`env HOME="$S/home" CANON_HOME="$S/canon" …`); otherwise read the code instead.
 
+**Read canon's docs without a regex `sed`** (t-5d4e: an evaluator's `sed -n '/## Inputs/,/^## Tools/p' .claude/skills/…` stopped a close on a permission prompt). A project's `.claude/skills/` and `.agents/skills/` link into canon's install, outside the project; Claude Code cannot prove a `sed` with a `/regex/` address only reads, so on such a path it asks for write permission (a headless or cloud run denies it). Read them with the Read tool, `grep -n` or `awk '/a/,/b/'`, which pass; `sed -n '<from>,<to>p'` with line numbers also passes. `skills.sh add sprint` can list canon's skills folder in `.claude/settings.local.json` `permissions.additionalDirectories` (opt-in, default no), which lets the `sed` through but also lets agents edit canon's skills there.
+
 ## Skills-path resolution
 
 Every `skills/...` reference in these docs (e.g. `skills/wrapup/SKILL.md`) is a plain relative

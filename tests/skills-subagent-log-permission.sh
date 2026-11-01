@@ -147,7 +147,9 @@ p6="$(make_project)"; p7="$(make_project)"
 trap 'rm -rf "$tmp_home" "$project" "$project_scope" "$project2" "$project3" "$project4" "$project5" "$p6" "$p7"' EXIT
 out="$("$SKILLS" add sprint "$p6" 2>&1)"                       # no terminal: nothing written, the skip line names file and entry
 [ ! -f "$p6/$LOCAL" ] || fail "no-tty add wrote $p6/$LOCAL"
-assert_contains "$out" "add \"$CANON_SKILLS_DIR\" to permissions.additionalDirectories in $p6/$LOCAL"
+assert_contains "$out" "optional: add \"$CANON_SKILLS_DIR\" to permissions.additionalDirectories in $p6/$LOCAL"
+SKILLS_SH_ASSUME_YES=1 "$SKILLS" add sprint "$p7" >/dev/null 2>&1      # opt-in, default no: assume-yes never answers it
+[ ! -f "$p7/$LOCAL" ] || ! grep -qF "$CANON_SKILLS_DIR" "$p7/$LOCAL" || fail "SKILLS_SH_ASSUME_YES added the folder; it is opt-in"
 run_with_tty "'$SKILLS' add sprint '$p7'" "n" >/dev/null           # no: nothing written
 [ ! -f "$p7/$LOCAL" ] || ! grep -qF "$CANON_SKILLS_DIR" "$p7/$LOCAL" || fail "answering no still added the folder"
 run_with_tty "'$SKILLS' add sprint '$p7'" "y" >/dev/null           # yes: written once
