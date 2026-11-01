@@ -61,6 +61,18 @@ run() { : > "$STUB_LOG"; : > "$GO_LOG"; set +e; out="$(cd "$R" && PATH="$STUBS:$
 assets() { ls "$FAKE_GH/$1" 2>/dev/null | LC_ALL=C sort | tr '\n' ' '; }
 
 T5="darwin-amd64 darwin-arm64 linux-amd64 linux-arm64 windows-amd64"
+# 0. --help prints the usage and an unknown argument is refused: neither builds, calls gh or touches the manifest (prod path: the
+# maintainer's release step; `--help` once published a release because any argument but --dry-run meant "publish").
+man0="$(cksum < "$R/tools/cockpit-daemon.sha256")"
+for a in --help -h --dryrun; do
+  : > "$STUB_LOG"; : > "$GO_LOG"; set +e; out="$(cd "$R" && PATH="$STUBS:$PATH" bash scripts/release-daemon.sh "$a" 2>&1)"; rc=$?; set -e
+  case "$a" in --dryrun) [ "$rc" -eq 2 ] || fail "release-daemon $a: exit $rc, want 2 (refused): $out" ;; *) [ "$rc" -eq 0 ] || fail "release-daemon $a: exit $rc, want 0: $out" ;; esac
+  assert_contains "$out" "usage: scripts/release-daemon.sh"
+  [ ! -s "$STUB_LOG" ] && [ ! -s "$GO_LOG" ] || fail "release-daemon $a: ran gh or go: $(cat "$STUB_LOG" "$GO_LOG")"
+  [ -z "$(ls -A "$FAKE_GH")" ] || fail "release-daemon $a: created a release: $(ls "$FAKE_GH")"
+  [ "$(cksum < "$R/tools/cockpit-daemon.sha256")" = "$man0" ] || fail "release-daemon $a: changed the manifest"
+done
+
 # 1. a first release creates one release with the five assets, verifies them, and appends the manifest lines (the older lines stay)
 run; [[ "$rc" == 0 ]] || fail "first publish failed ($rc): $out"
 assert_eq "THIRD-PARTY-NOTICES.md canon-go-darwin-amd64 canon-go-darwin-arm64 canon-go-linux-amd64 canon-go-linux-arm64 canon-go-windows-amd64.exe " "$(assets "canon-go-$k")"

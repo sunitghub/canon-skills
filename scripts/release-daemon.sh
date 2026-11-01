@@ -15,14 +15,22 @@
 # its GO_TOOLCHAIN file). Every build sets GOTOOLCHAIN to the pin explicitly (go.mod's `toolchain` line is only a minimum, and an
 # exported GOTOOLCHAIN=local would ignore it), and every built binary is checked with `go version -m` against the pin before anything is published. The pin lives in go.mod on purpose: raising it changes the key (go.mod is in it, tools/src-key.sh), so the fixed
 # build is a NEW release and the old release (which an older tag's manifest still points at) keeps its assets (t-7efe).
-# Usage: scripts/release-daemon.sh [--dry-run]   (--dry-run builds and prints the manifest lines, publishes and writes nothing)
+# Usage: scripts/release-daemon.sh [--dry-run | -h | --help]   (--dry-run builds and prints the manifest lines, publishes and writes nothing;
+# --help prints this usage and exits; any other argument is refused, exit 2, so a mistyped flag never publishes)
 set -euo pipefail
 
 REPO_ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 RELEASE_REPO="${CANON_DAEMON_RELEASE_REPO:-sunitghub/canon-skills}"
 MANIFEST="$REPO_ROOT/tools/cockpit-daemon.sha256"
 UNIX_TARGETS="darwin-arm64 darwin-amd64 linux-amd64 linux-arm64"
-dry=0; [ "${1:-}" = --dry-run ] && dry=1
+dry=0
+usage="usage: scripts/release-daemon.sh [--dry-run | --help]   (no argument: build and PUBLISH canon-go to $RELEASE_REPO; --dry-run builds and prints only)"
+case "${1:-}" in
+  "") ;;
+  --dry-run) dry=1 ;;
+  -h|--help) echo "$usage"; exit 0 ;;
+  *) echo "$usage" >&2; exit 2 ;;   # an unknown argument publishing for real is how --help once released canon-go (2026-11-01)
+esac
 
 command -v go >/dev/null 2>&1 || { echo "release-daemon: go is required" >&2; exit 1; }
 if [ "$dry" = 0 ]; then command -v gh >/dev/null 2>&1 || { echo "release-daemon: gh is required (gh auth login)" >&2; exit 1; }; fi
