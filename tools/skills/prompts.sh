@@ -277,6 +277,54 @@ offer_subagent_log_permission() {
   fi
 }
 
+# t-5d4e: a project's .claude/skills is a link into canon's install, outside the project, and Claude Code asks before a regex
+# `sed -n '/a/,/b/p'` on such a path (it cannot prove that sed only reads), which stopped a close gate on a permission prompt
+# (headless and cloud runs are denied outright). Listing canon's skills folder in permissions.additionalDirectories lets it run.
+# settings.local.json, never settings.json: the path is this machine's install. Opt-in, default no: it also lets agents edit canon's
+# skills there (deny rules for Edit/Write block the sed too), so SKILLS_SH_ASSUME_YES never answers it and the gates' first defence is
+# the shared-gate-protocol rule (read canon's docs with Read, grep or awk). Canon's own checkout needs none.
+_canon_skills_dir_setting() {
+  local d; d="$(cd -P "$SKILLS_ROOT/skills" 2>/dev/null && pwd -P)" || return 1
+  if _is_windows; then cygpath -w "$d"; else printf '%s\n' "$d"; fi
+}
+
+offer_canon_dir_access() {
+  local project_dir="$1" settings="$1/.claude/settings.local.json" dir status
+  [ "$(cd -P "$project_dir" && pwd -P)" = "$(cd -P "$SKILLS_ROOT" && pwd -P)" ] && return 0
+  dir="$(_canon_skills_dir_setting)" || return 0
+  _settings_ready "canon's skills folder as an allowed directory" || return 0
+  status="$(_settings status "$settings" additionalDirectories "$dir")"
+  if [ "$status" = "invalid" ]; then
+    echo "  [fail]  $settings is not valid JSON (or a symlink) — canon's skills folder not added to permissions.additionalDirectories"
+    return 0
+  fi
+  [ "$status" = "present" ] && return 0
+  if ! SKILLS_SH_ASSUME_YES= _prompt_or_auto_yes "Optional: add canon's skills folder ($dir) to permissions.additionalDirectories in $settings? A close gate that reads canon's docs with a regex sed then never stops on a permission prompt, but agents in this project can also edit canon's skills there."; then
+    echo "  [skip]  optional: add \"$dir\" to permissions.additionalDirectories in $settings so a gate's regex sed on canon's docs never stops on a permission prompt (it also lets agents edit canon's skills there)"
+    return 0
+  fi
+  mkdir -p "$(dirname "$settings")"
+  if [ "$(_settings add "$settings" additionalDirectories "$dir")" = ok ]; then
+    echo "  [ok]     $settings — added $dir to permissions.additionalDirectories"
+  else
+    echo "  [fail]   could not update $settings — left untouched"
+  fi
+}
+
+offer_remove_canon_dir_access() {
+  local project_dir="$1" settings="$1/.claude/settings.local.json" dir
+  [ -f "$settings" ] || return 0
+  dir="$(_canon_skills_dir_setting)" || return 0
+  CANON_BOARD="$(board_helper_bin 2>/dev/null)" || return 0
+  [ "$(_settings status "$settings" additionalDirectories "$dir")" = "present" ] || return 0
+  _prompt_or_auto_yes "Remove canon's skills folder ($dir) from permissions.additionalDirectories in $settings?" || return 0
+  if [ "$(_settings remove "$settings" additionalDirectories "$dir")" = ok ]; then
+    echo "  [ok]     $settings — removed $dir from permissions.additionalDirectories"
+  else
+    echo "  [fail]   could not update $settings — left untouched"
+  fi
+}
+
 offer_remove_subagent_log_permission() {
   local project_dir="$1"
   local settings="$project_dir/.claude/settings.json"
@@ -375,6 +423,7 @@ _post_register_prompts() {
     upsert_gate_agents "$project_dir"
     offer_subagent_log_permission "$project_dir"
     offer_install_deny_rules "$project_dir"
+    offer_canon_dir_access "$project_dir"
   fi
   _init_git_precommit "$project_dir"
   offer_tkt_path

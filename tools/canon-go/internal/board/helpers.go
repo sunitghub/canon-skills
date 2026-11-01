@@ -4,7 +4,7 @@
 //
 //	sprint-check headless-json                     claude -p's JSON on stdin -> one TSV line (tools/sprint-headless*)
 //	sprint-check json-strings <file>               a JSON array of strings -> one per line (--allowed-tools-file)
-//	sprint-check settings <status|add|remove> <settings.json> <allow|deny> <rule>...
+//	sprint-check settings <status|add|remove> <settings.json> <allow|deny|additionalDirectories> <rule>...
 //	                                               permissions rules in .claude/settings.json (tools/skills/prompts.sh)
 //	sprint-check skill-check <skill-dir>           the Skill Eval checks as JSON (was tools/skill-check)
 //	sprint-check event <kind> --project <dir> --source <name> key=value...   (sources: internal/events)
@@ -50,7 +50,7 @@ func runHelper(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 		return jsonStrings(args[1], stdout, stderr), true
 	case "settings":
 		if len(args) < 4 {
-			fmt.Fprintln(stderr, "usage: sprint-check settings <status|add|remove> <settings.json> <allow|deny> <rule>...")
+			fmt.Fprintln(stderr, "usage: sprint-check settings <status|add|remove> <settings.json> <allow|deny|additionalDirectories> <rule>...")
 			return 2, true
 		}
 		word, err := editSettings(args[1], args[2], args[3], args[4:])
@@ -244,8 +244,8 @@ func editSettings(mode, path, key string, rules []string) (string, error) {
 	if mode != "status" && mode != "add" && mode != "remove" {
 		return "", fmt.Errorf("mode must be status, add or remove, not %q", mode)
 	}
-	if key != "allow" && key != "deny" {
-		return "", fmt.Errorf("list must be allow or deny, not %q", key)
+	if key != "allow" && key != "deny" && key != "additionalDirectories" { // t-5d4e: canon's skills folder as a working directory
+		return "", fmt.Errorf("list must be allow, deny or additionalDirectories, not %q", key)
 	}
 	none := map[string]string{"status": "absent", "add": "", "remove": "ok"}[mode]
 	perm := os.FileMode(0o644)

@@ -278,6 +278,12 @@ grep -qF -- "refuse the user's REAL \`HOME\` and \`CANON_HOME\`" "$SHARED" || fa
 for file in "$ROOT/agents/canon-reviewer.md" "$ROOT/agents/canon-evaluator.md" "$ROOT/agents/codex/canon-reviewer.toml" "$ROOT/agents/codex/canon-evaluator.toml"; do
   grep -qF -- 'Never run `canon update`, `skills.sh`, `install.sh`, an uninstall or the daemon with your real `HOME`/`CANON_HOME`' "$file" || fail "doc-mirror-parity: ${file#"$ROOT"/} lost the 'Never run ... unless' sentence (t-ce0b, Check M)"
 done
+# t-5d4e: canon's docs sit behind a link outside the project; a regex sed there stops a gate on a permission prompt. The owner holds the
+# paragraph, the four gate agent files the same sentence (a gate may read only its agent file).
+grep -qF -- "**Read canon's docs without a regex \`sed\`**" "$SHARED" || fail "doc-mirror-parity: shared-gate-protocol.md lost the no-regex-sed paragraph (t-5d4e, Check M)"
+for file in "$ROOT/agents/canon-reviewer.md" "$ROOT/agents/canon-evaluator.md" "$ROOT/agents/codex/canon-reviewer.toml" "$ROOT/agents/codex/canon-evaluator.toml"; do
+  grep -qF -- 'never `sed` with a `/regex/` address' "$file" || fail "doc-mirror-parity: ${file#"$ROOT"/} lost the no-regex-sed sentence (t-5d4e, Check M)"
+done
 grep -qF -- '**Pin the environment**' "$SHARED" || fail "doc-mirror-parity: shared-gate-protocol.md is missing the '**Pin the environment**' paragraph (t-ce0b, Check M)"
 
 # ── Check N: the repo-check gate is gone (t-0a7c); its checks live elsewhere. The wrapup pipeline no longer names it, the gate file is
