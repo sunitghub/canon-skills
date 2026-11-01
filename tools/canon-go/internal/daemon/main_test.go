@@ -5530,7 +5530,7 @@ func TestIdleReaperSkipsCopilotOnMenu(t *testing.T) {
 				t.Fatalf("PTY received %d bytes, reaped=%v want %v", len(b), got, tc.reaped)
 			}
 			log, _ := os.ReadFile(filepath.Join(s.ticketsDirIn(s.cfg.projectRoot), "t-ab12", ".cockpit-debug.log"))
-			if skipped := strings.Contains(string(log), "idle reap skipped: copilot menu pending"); skipped == tc.reaped {
+			if skipped := strings.Contains(string(log), "idle reap skipped: menu pending"); skipped == tc.reaped {
 				t.Errorf("reaper skip logged=%v, want %v; log:\n%s", skipped, !tc.reaped, log)
 			}
 			_ = sid

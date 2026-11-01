@@ -166,7 +166,7 @@ type session struct {
 	onNaturalExit func()    // set by spawn(); schedules the reap-after-TTL cleanup
 	lastActivity  time.Time // t-2e7e: bumped on PTY output and on input; idle reaper's clock
 	cols, rows    int       // t-6291: last size from /resize (0 = unknown) — Save & End's screen model needs it to wrap and scroll like the terminal
-	menuSince     time.Time // t-7c4f: when a pending Copilot menu was first seen (zero when none)
+	menuSince     time.Time // t-7c4f: when a pending on-screen menu was first seen (zero when none)
 	humanInputAt  time.Time // t-2e7e: bumped ONLY by a real POST /input (not PTY output/echo);
 	// lets an in-flight save-and-kill detect a human actually came back and abort
 	previewRoot string // t-b19b: symlink-validated dir under projectRoot or the session's own worktree cwd (t-8e73); set once via /preview-root
@@ -1178,7 +1178,7 @@ func (s *server) handleSessions(w http.ResponseWriter, r *http.Request) {
 const workingWindow = 15 * time.Second
 
 // sessionStateLocked derives the displayed state (caller holds se.mu). needs-you: the hook saw a
-// question, or a Copilot menu is pending; done: the hook saw the agent finish / idle at its
+// question, or a menu is on screen (Copilot's, or Claude Code's folder trust, t-9874); done: the hook saw the agent finish / idle at its
 // prompt; otherwise working or idle by last activity.
 func sessionStateLocked(se *session, now time.Time) (state string, stateSecs, idleSecs int64, signal string) {
 	idle := now.Sub(se.lastActivity)
@@ -1497,7 +1497,7 @@ func promotePrompt(title string, thenEnd bool) string {
 }
 
 // handlePromote types the promote prompt into a scratch session — never into a pending
-// prompt (needs-you or a Copilot menu), which the keystrokes would answer (t-f91a).
+// prompt (needs-you or an on-screen menu), which the keystrokes would answer (t-f91a).
 func (s *server) handlePromote(w http.ResponseWriter, r *http.Request, se *session) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -2102,7 +2102,7 @@ func (s *server) handleSaveAndEnd(w http.ResponseWriter, r *http.Request, se *se
 	}
 	// t-f91a: never type into a pending copilot menu — that answers it.
 	if se.copilotHasPendingMenu() {
-		se.debugf("save-end refused: copilot menu pending")
+		se.debugf("save-end refused: menu pending")
 		http.Error(w, menuRefusal, http.StatusConflict)
 		return
 	}
@@ -2607,7 +2607,7 @@ func (s *server) reapIdleSessions() {
 		if idle {
 			why = reapBlockedLocked(se)
 			if why == reapBlockedMenu {
-				se.debugf("idle reap skipped: copilot menu pending")
+				se.debugf("idle reap skipped: menu pending")
 			}
 		}
 		if idle && why == "" {
@@ -2712,7 +2712,7 @@ func (s *server) handleEndSession(w http.ResponseWriter, r *http.Request) {
 	if body.Mode == "reap" {
 		why := reapBlockedLocked(se)
 		if state, _, _, _ := sessionStateLocked(se, time.Now()); why == "" && state != "idle" && state != "done" {
-			why = "it is working" // needs-you and a Copilot menu were already refused by reapBlockedLocked
+			why = "it is working" // needs-you and an on-screen menu were already refused by reapBlockedLocked
 		}
 		if why != "" {
 			se.mu.Unlock()
@@ -2830,7 +2830,7 @@ func (s *server) saveAndEnd(se *session) {
 	// this goroutine starting. Abort rather than write into it. (A caller that already
 	// answered 202 then waits out its own fallback; the window is that narrow.)
 	if se.copilotHasPendingMenu() {
-		se.debugf("save-end aborted: copilot menu pending")
+		se.debugf("save-end aborted: menu pending")
 		se.mu.Lock()
 		se.reaping = false
 		se.mu.Unlock()
