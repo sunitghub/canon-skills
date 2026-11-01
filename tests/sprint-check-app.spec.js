@@ -21,6 +21,17 @@ const PROJECT_ROOT = process.env.SPRINT_CHECK_TEST_ROOT || process.cwd();
 const themeColor = (page, v, fallback = '') => page.evaluate(([name, fb]) => { const e = document.createElement('span'); e.style.color = fb ? `var(${name}, ${fb})` : `var(${name})`; document.body.append(e); const c = getComputedStyle(e).color; e.remove(); return c; }, [v, fallback]);
 // t-e523: a button's colours, and that it shows its buttons.css role at rest and under the pointer
 const colors = (loc) => loc.evaluate(e => { const s = getComputedStyle(e); return { color: s.color, border: s.borderTopColor, fill: s.backgroundColor }; });
+// t-c8f6: worktree rows the ticket is not using fold under "N other worktrees" in the Start panel. A test that picks or
+// looks for such a row opens the fold first, as a person would (a re-render closes it again, so this runs per use).
+async function revealWt(page, selector) {
+  const row = page.locator(selector);
+  await row.waitFor({ state: 'attached' });   // the panel renders after its worktree fetch; a folded row is attached, hidden
+  if (!(await row.isVisible().catch(() => false))) {
+    const summary = page.locator('details.ck-worktree-others:not([open]) > summary');
+    if (await summary.count()) await summary.first().click();
+  }
+  return row;
+}
 async function expectRole(page, loc, role) {
   const red = await themeColor(page, '--col-discarded');
   const hover = {
@@ -8013,7 +8024,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
       // Selecting the blocked worktree must NOT mount the terminal iframe (so no
       // Start-sprint button is ever presented for it).
-      await page.locator(`.ck-worktree-row[data-cwd="${blockedCwd}"]`).click();
+      await (await revealWt(page, `.ck-worktree-row[data-cwd="${blockedCwd}"]`)).click();
       await expect(page.locator('#ck-iframe')).toHaveCSS('visibility', 'hidden');
       await expect(page.locator('#ck-term-msg')).toContainText('gitignored');
 
@@ -8064,7 +8075,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator('#board-search').fill(id);
       await page.locator(`.card[data-id="${id}"] .card-start`).click();
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
-      await expect(page.locator(`.ck-worktree-row[data-cwd="${wtPath}"]`)).toBeVisible();
+      await expect(await revealWt(page, `.ck-worktree-row[data-cwd="${wtPath}"]`)).toBeVisible();
 
       // User selected the verify2 worktree AND the daemon reports it actually
       // spawned there → label shows verify2, no mismatch warning.
@@ -8166,7 +8177,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
       // After the user clicks the Main checkout row (data-cwd=""), it — and only
       // it — becomes selected.
-      await page.locator('.ck-worktree-row[data-cwd=""]').click();
+      await (await revealWt(page, '.ck-worktree-row[data-cwd=""]')).click();
       await expect(page.locator('.ck-worktree-row[data-cwd=""]')).toHaveClass(/selected/);
       await expect(page.locator('.ck-worktree-row.selected')).toHaveCount(1);
       // …and the null-gate is released: the terminal-mount path runs, so the
@@ -8553,7 +8564,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator('#board-search').fill(id);
       await page.locator(`.card[data-id="${id}"] .card-start`).click();
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
-      await expect(page.locator(`.ck-worktree-row[data-cwd="${selWt}"]`)).toBeVisible();
+      await expect(await revealWt(page, `.ck-worktree-row[data-cwd="${selWt}"]`)).toBeVisible();
 
       // Symlink case: the board selected /tmp/x; the daemon reports it spawned in
       // /private/tmp/x AND echoes the resolved requested /private/tmp/x. Same real
@@ -9029,7 +9040,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const id = newTicketId(PROJECT_ROOT, 'ccd6a');
       try {
         const { state, otherCwd } = await openLockedRail(page, id, { mainDirty: true });
-        await page.locator(`.ck-worktree-row[data-cwd="${otherCwd}"]`).click();
+        await (await revealWt(page, `.ck-worktree-row[data-cwd="${otherCwd}"]`)).click();
         const text = await dialogText(page);
         expect(text).toContain('Switch this ticket to feat-y?');
         expect(text).toContain('locked to');
@@ -9043,7 +9054,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         expect(state.unlockPosts).toBe(0);
         await expect(page.locator('#ck-worktree-unlock')).toBeVisible();
         // OK: exactly one unlock, then the picked worktree is selected, with no second dialog.
-        await page.locator(`.ck-worktree-row[data-cwd="${otherCwd}"]`).click();
+        await (await revealWt(page, `.ck-worktree-row[data-cwd="${otherCwd}"]`)).click();
         await expect(page.locator('#app-dialog.open')).toBeVisible();
         await page.locator('#app-dialog-ok').click();
         await expect(page.locator(`.ck-worktree-row[data-cwd="${otherCwd}"]`)).toHaveClass(/selected/);
@@ -9059,14 +9070,14 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const id = newTicketId(PROJECT_ROOT, 'ccd6g');
       try {
         const { state, otherCwd } = await openLockedRail(page, id, { locked: false, mainDirty: true });
-        await page.locator(`.ck-worktree-row[data-cwd="${otherCwd}"]`).click();
+        await (await revealWt(page, `.ck-worktree-row[data-cwd="${otherCwd}"]`)).click();
         const text = await dialogText(page);
         expect(text).toContain('Use feat-y for this ticket?');
         expect(text).toContain('uncommitted changes that will NOT carry over');
         expect(text).toContain('locks this ticket to that worktree');
         await page.locator('#app-dialog-cancel').click();
         await expect(page.locator(`.ck-worktree-row[data-cwd="${otherCwd}"]`)).not.toHaveClass(/selected/);
-        await page.locator(`.ck-worktree-row[data-cwd="${otherCwd}"]`).click();
+        await (await revealWt(page, `.ck-worktree-row[data-cwd="${otherCwd}"]`)).click();
         await page.locator('#app-dialog-ok').click();
         await expect(page.locator(`.ck-worktree-row[data-cwd="${otherCwd}"]`)).toHaveClass(/selected/);
         expect(state.unlockPosts).toBe(0);
@@ -9081,7 +9092,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         const wanted = { false: 'future uncommitted work in the main checkout will not be shared', null: 'uncommitted work does not carry over between checkouts' };
         for (const dirty of [false, null]) {
           const { otherCwd } = await openLockedRail(page, id, { mainDirty: dirty });
-          await page.locator(`.ck-worktree-row[data-cwd="${otherCwd}"]`).click();
+          await (await revealWt(page, `.ck-worktree-row[data-cwd="${otherCwd}"]`)).click();
           expect(await dialogText(page)).toContain(wanted[dirty]);
           await page.locator('#app-dialog-cancel').click();
           await page.unroute('**/api/worktrees**'); await page.unroute('**/api/worktree-lock/**'); await page.unroute('**/api/worktree-unlock/**'); await page.unroute('**/api/cockpit');
@@ -9124,7 +9135,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await expect(page.locator('#app-dialog-cancel')).toBeHidden();
         await page.locator('#app-dialog-ok').click();
         await expect(page.locator('#ck-worktree-unlock')).toBeVisible();
-        await page.locator(`.ck-worktree-row[data-cwd="${otherCwd}"]`).click();
+        await (await revealWt(page, `.ck-worktree-row[data-cwd="${otherCwd}"]`)).click();
         await page.locator('#app-dialog-ok').click();
         expect(await dialogText(page)).toContain('Could not switch');
         await page.locator('#app-dialog-ok').click();
@@ -9139,7 +9150,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const evil = '<img src=x onerror=window.__pwn=1> a"b';
       try {
         const { state, otherCwd } = await openLockedRail(page, id, { extraWorktrees: [{ path: '/tmp/wt-ccd6/evil', branch: evil, is_main: false, tickets_visible: true }] });
-        await page.locator('.ck-worktree-row[data-cwd="/tmp/wt-ccd6/evil"]').click();
+        await (await revealWt(page, '.ck-worktree-row[data-cwd="/tmp/wt-ccd6/evil"]')).click();
         const box = page.locator('#app-dialog.open');
         expect(await dialogText(page)).toContain(`Switch this ticket to ${evil}?`);
         await expect(box.locator('img')).toHaveCount(0);
@@ -9181,7 +9192,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await openLockedRail(page, id, { extraWorktrees: [{ path: '/tmp/wt-ccd6/long', branch: longBranch, is_main: false, tickets_visible: true }] });
         for (const [w, h] of [[1280, 720], [360, 640], [360, 420]]) {
           await page.setViewportSize({ width: w, height: h });
-          await page.locator('.ck-worktree-row[data-cwd="/tmp/wt-ccd6/long"]').click();
+          await (await revealWt(page, '.ck-worktree-row[data-cwd="/tmp/wt-ccd6/long"]')).click();
           await expect(page.locator('#app-dialog.open')).toBeVisible();
           for (const theme of ['dark', 'light']) {
             await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
@@ -9284,7 +9295,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       // Clicking the Main row (data-cwd="") while locked must ask first — never
       // silently switch (the wrong-tree danger). The dialog appears after an
       // async lock fetch; Cancel leaves the lock and the selection alone.
-      await page.locator('.ck-worktree-row[data-cwd=""]').click();
+      await (await revealWt(page, '.ck-worktree-row[data-cwd=""]')).click();
       const switchMsg = await dialogText(page);
       expect(switchMsg).toContain('Switch this ticket to the Main checkout?');
       expect(switchMsg).toContain('fresh session');
@@ -9349,7 +9360,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#ck-iframe')).toHaveCSS('visibility', 'hidden');
 
       // Pick the Main checkout (row cwd="") → effective cwd is present → mounts.
-      await page.locator('.ck-worktree-row[data-cwd=""]').click();
+      await (await revealWt(page, '.ck-worktree-row[data-cwd=""]')).click();
       await expect(page.locator('#ck-iframe')).toHaveAttribute('src', /\/cockpit\?ticket=.*embed=1/);
       await expect(page.locator('#ck-iframe')).toHaveCSS('visibility', 'visible');
     } finally {
@@ -9793,11 +9804,11 @@ test.describe('cockpit in board (t-ddc8)', () => {
       writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN });
       await openRailWithPlan(page, id, d254Plan(id), log, { withOtherRow: true });
       await expect(page.locator('#ck-worktree-uncommitted')).toContainText(`${id} isn't committed yet`);
-      await page.locator('.ck-worktree-row[data-cwd=""]').click();
+      await (await revealWt(page, '.ck-worktree-row[data-cwd=""]')).click();
       await expect(page.locator('.ck-worktree-row[data-cwd=""]')).toHaveClass(/selected/);
       await expect(page.locator('#ck-worktree-uncommitted')).toBeHidden();
       // Picking a real worktree row brings the warning back: a new worktree would not contain the ticket.
-      await page.locator('.ck-worktree-row[data-cwd="/tmp/wt-165f/other"]').click();
+      await (await revealWt(page, '.ck-worktree-row[data-cwd="/tmp/wt-165f/other"]')).click();
       await expect(page.locator('#ck-worktree-uncommitted')).toBeVisible();
     } finally {
       removeTestTicket(PROJECT_ROOT, id);
@@ -9998,6 +10009,50 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }));
   }
 
+  // t-c8f6, prod path: the Start panel's worktree list. Main, the ticket's own worktree, the selected one and its preferred
+  // branch stay in view; every other usable worktree folds under "N other worktrees"; a merged one says so and stays pickable.
+  test('Start panel folds the other worktrees under one line and marks a merged one (t-c8f6) @webkit', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'wtf-r');
+    const WT = [
+      { path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true },
+      { path: '/tmp/wt-c8f6/mine', branch: 'sprint/mine', is_main: false, tickets_visible: true, ticket_present: true, own: true },
+      { path: '/tmp/wt-c8f6/a', branch: 'fix/t-aaaa', is_main: false, tickets_visible: true, ticket_present: true, merged: true },
+      { path: '/tmp/wt-c8f6/b', branch: 'fix/t-bbbb', is_main: false, tickets_visible: true, ticket_present: true },
+      { path: '/tmp/wt-c8f6/c', branch: 'fix/t-cccc', is_main: false, tickets_visible: true, ticket_present: true },
+    ];
+    try {
+      writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN });
+      await stubCockpit(page);
+      await page.route('**/api/worktrees**', route => route.request().method() === 'POST'
+        ? route.fulfill({ status: 500, body: 'no creates here' })
+        : route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(WT) }));
+      await page.route('**/api/worktree-lock/**', route => route.fulfill({
+        status: 200, contentType: 'application/json', body: JSON.stringify({ locked: false, cwd: null, main_dirty: false }) }));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      const box = page.locator('#ck-worktree');
+      const fold = box.locator('details.ck-worktree-others');
+      await expect(fold.locator('summary')).toHaveText('3 other worktrees');
+      await expect(fold).not.toHaveAttribute('open', '');
+      // in view: Main and the ticket's own; the three others are in the fold, hidden until it opens
+      await expect(box.locator('.ck-worktree-row:visible .ck-worktree-label')).toHaveText(['Main checkout (current)', 'sprint/mine']);
+      await expect(fold.locator('.ck-worktree-row')).toHaveCount(3);
+      await fold.locator('summary').focus();
+      await page.keyboard.press('Enter');   // keyboard opens the fold
+      await expect(fold).toHaveAttribute('open', '');
+      await expect(fold.locator('.ck-worktree-row:visible .ck-worktree-label')).toHaveText(['fix/t-aaaa', 'fix/t-bbbb', 'fix/t-cccc']);
+      await expect(fold.locator('.ck-worktree-row[data-cwd="/tmp/wt-c8f6/a"] .ck-worktree-merged')).toHaveText('merged · reset or remove');
+      await expect(fold.locator('.ck-worktree-merged')).toHaveCount(1);
+      await fold.locator('.ck-worktree-row[data-cwd="/tmp/wt-c8f6/b"]').click();   // picking from the fold selects it, as before
+      await expect(box.locator('.ck-worktree-row.selected[data-cwd="/tmp/wt-c8f6/b"]')).toHaveCount(1);
+    } finally {
+      removeTestTicket(PROJECT_ROOT, id);
+    }
+  });
+
   test('rail lists only Main, own and free worktrees; held ones collapse with owner + reason and cannot be picked (t-2241)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'wth-r');
     try {
@@ -10011,8 +10066,10 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
 
       const box = page.locator('#ck-worktree');
-      await expect(box.locator('.ck-worktree-row .ck-worktree-label')).toHaveText(['Main checkout (current)', 'sprint/free', 'sprint/mine', 'GitHub · new issue']);   // t-718b: the GitHub place
-      const group = box.locator('details.ck-worktree-held:not(.ck-gh-busy-fold)');   // t-6f51 folds the GitHub rows with the same class
+      // t-c8f6: Main and its own worktree stay in view; a free one folds under "1 other worktree" (still a pickable row)
+      await expect(box.locator('.ck-worktree-row .ck-worktree-label')).toHaveText(['Main checkout (current)', 'sprint/mine', 'sprint/free', 'GitHub · new issue']);   // t-718b: the GitHub place
+      await expect(box.locator('details.ck-worktree-others summary')).toHaveText('1 other worktree');
+      const group = box.locator('details.ck-worktree-held:not(.ck-gh-busy-fold):not(.ck-worktree-others)');   // t-6f51 folds the GitHub rows, t-c8f6 the other worktrees, with the same class
       await expect(group.locator('summary')).toHaveText('2 worktrees unavailable');
       await expect(group).not.toHaveAttribute('open', '');
       for (const theme of ['dark', 'light']) {
@@ -10086,7 +10143,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       }
       await box.locator('#ck-worktree-change').click();
       await expect(box.locator('.ck-worktree-full')).toBeVisible();
-      await expect(box.locator('.ck-worktree-row:visible .ck-worktree-label')).toHaveText(['Main checkout (current)', 'sprint/free', 'sprint/mine', 'GitHub · new issue']);   // t-718b: the GitHub place
+      await expect(box.locator('.ck-worktree-row:visible .ck-worktree-label')).toHaveText(['Main checkout (current)', 'sprint/mine', 'GitHub · new issue']);   // t-c8f6: sprint/free folds under "1 other worktree"
+      await expect(box.locator('details.ck-worktree-others summary')).toHaveText('1 other worktree');   // t-718b: the GitHub place
       await expect(box.locator('#ck-worktree-change')).toHaveCount(0);
     } finally {
       removeTestTicket(PROJECT_ROOT, id);

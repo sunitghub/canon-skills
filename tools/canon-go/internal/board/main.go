@@ -2663,7 +2663,31 @@ func annotateBranchDivergence(tickets []ticket, root string) {
 func listWorktrees(ticketID, root string) []map[string]any {
 	entries := listWorktreesBase(ticketID, root)
 	annotateWorktreeHolds(entries, ticketID, rootOr(root))
+	annotateWorktreeMerged(entries, rootOr(root))
 	return entries
+}
+
+// annotateWorktreeMerged (t-c8f6) marks a non-main worktree `merged` when its work has landed and it now only trails:
+// its head is a strict ancestor of the main checkout's HEAD and its folder is clean. A worktree at exactly HEAD (just
+// created, or just reset by tkt worktree-reset) is ready for use, not stale, so it is not marked. The Start panel shows
+// "merged · reset or remove" on the row; the row stays pickable.
+func annotateWorktreeMerged(entries []map[string]any, root string) {
+	mainHead, ok := gitCtx(root, "rev-parse", "HEAD")
+	if !ok || mainHead == "" {
+		return
+	}
+	for _, e := range entries {
+		if isMain, _ := e["is_main"].(bool); isMain {
+			continue
+		}
+		head, _ := e["head"].(string)
+		if head == "" || head == mainHead {
+			continue
+		}
+		if _, anc := gitCtx(root, "merge-base", "--is-ancestor", head, mainHead); anc && !worktreeDirty(fmt.Sprint(e["path"])) {
+			e["merged"] = true
+		}
+	}
 }
 
 func listWorktreesBase(ticketID, root string) []map[string]any {
