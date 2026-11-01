@@ -2647,7 +2647,7 @@ func (s *server) noteScratchOnce(se *session, wt *scratchWorktree, total, commit
 	return err
 }
 
-const reapBlockedMenu = "a Copilot menu is waiting"
+const reapBlockedMenu = "a prompt in its terminal is waiting for an answer"
 
 // reapBlockedLocked says why a session can't be reaped, or "" when it can (caller holds se.mu). Shared by
 // the idle reaper and Reap now (t-3c9a), so the two can't drift apart.
@@ -3609,6 +3609,30 @@ func copilotNeedsLogin(buf []byte) bool {
 // bordered box's "│" edges, on a narrow terminal still matches. Once the menu is
 // answered copilot erases those rows, so the match goes away by itself.
 func copilotMenuPending(buf []byte, cols, rows int) bool {
+	flat := screenTailFlat(buf, cols, rows)
+	// t-7c4f: the command-approval menu's last option reads "No, and tell Copilot what to
+	// do differently (Esc to stop)" — still three phrases with the footer.
+	return strings.Contains(flat, "entertoselect") && strings.Contains(flat, "esctocancel") &&
+		(strings.Contains(flat, "noesc") || strings.Contains(flat, "esctostop"))
+}
+
+// claudeTrustPending reports whether a Claude Code session is sitting on its folder-trust
+// screen (t-9874): "Accessing workspace … ❯ No, exit / Yes, I trust this folder / Enter to
+// confirm · Esc to cancel" (real capture: testdata/claude-trust-menu.bin). It comes before
+// Claude Code loads the daemon's --settings, so the needs-you hook cannot report it; every new
+// worktree is a new folder, so a worktree sprint's first start always shows it. Same rules as
+// copilotMenuPending: the rendered screen's last non-blank rows, letters and digits only, and
+// all three phrases, so an agent quoting one or two of them does not count.
+func claudeTrustPending(buf []byte, cols, rows int) bool {
+	flat := screenTailFlat(buf, cols, rows)
+	return strings.Contains(flat, "yesitrustthisfolder") && strings.Contains(flat, "entertoconfirm") &&
+		strings.Contains(flat, "esctocancel")
+}
+
+// screenTailFlat renders buf on a cols x rows screen and returns its last 15 non-blank rows,
+// top to bottom, as one lowercase string of letters and digits (a menu is the live UI at the
+// bottom; scrollback that once held one must not count).
+func screenTailFlat(buf []byte, cols, rows int) string {
 	v := newVTScreen(cols, rows)
 	v.feed(buf)
 	const lastRows = 15
@@ -3622,24 +3646,27 @@ func copilotMenuPending(buf []byte, cols, rows int) bool {
 	for i := len(picked) - 1; i >= 0; i-- {
 		b.WriteString(picked[i])
 	}
-	flat := strings.Map(func(r rune) rune {
+	return strings.Map(func(r rune) rune {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) {
 			return unicode.ToLower(r)
 		}
 		return -1
 	}, b.String())
-	// t-7c4f: the command-approval menu's last option reads "No, and tell Copilot what to
-	// do differently (Esc to stop)" — still three phrases with the footer.
-	return strings.Contains(flat, "entertoselect") && strings.Contains(flat, "esctocancel") &&
-		(strings.Contains(flat, "noesc") || strings.Contains(flat, "esctostop"))
 }
 
 // menuRefusal is the body of the 409 Save & End returns while a menu is pending.
-const menuRefusal = "Copilot is waiting for your answer to a prompt in the terminal — answer it there, then Save & End again (or End without saving)."
+const menuRefusal = "The agent is waiting for your answer to a prompt in the terminal — answer it there, then Save & End again (or End without saving)."
 
-// menuPendingLocked is copilotMenuPending over the session's own buffer (se.mu held).
+// menuPendingLocked reports a selection menu on the session's own screen (se.mu held): Copilot's
+// menus, or Claude Code's folder-trust screen (t-9874). Other agents have none.
 func (se *session) menuPendingLocked() bool {
-	return se.agent == "copilot" && copilotMenuPending(se.buf, se.cols, se.rows)
+	switch se.agent {
+	case "copilot":
+		return copilotMenuPending(se.buf, se.cols, se.rows)
+	case "claude":
+		return claudeTrustPending(se.buf, se.cols, se.rows)
+	}
+	return false
 }
 
 // copilotHasPendingMenu is menuPendingLocked for callers that don't hold se.mu.

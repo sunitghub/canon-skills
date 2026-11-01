@@ -5254,6 +5254,73 @@ func TestCopilotMenuPendingOnRealCaptures(t *testing.T) {
 	}
 }
 
+// t-9874: Claude Code's folder-trust screen comes before it loads the daemon's --settings, so the needs-you hook
+// never reports it; the screen is the only signal. Prod path: GET /sessions (the Cockpit, canon wait), the idle
+// reaper and Save & End all read menuPendingLocked.
+func TestClaudeTrustPendingOnRealCapture(t *testing.T) {
+	trust := readMenuFixture(t, "claude-trust-menu.bin")
+	for _, tc := range []struct {
+		name string
+		buf  []byte
+		want bool
+	}{
+		{"folder-trust screen", trust, true},
+		{"empty buffer", nil, false},
+		{"answered: screen cleared and the composer drawn", append(append([]byte(nil), trust...), []byte("\x1b[2J\x1b[H> ")...), false},
+		{"two of the three phrases quoted by the agent", []byte("the prompt says: Yes, I trust this folder. Enter to confirm.\r\n> "), false},
+		{"trust words far above the live UI", append(append([]byte(nil), trust...), []byte(strings.Repeat("line of output\r\n", 60))...), false},
+		{"copilot's trust menu is not claude's", readMenuFixture(t, "copilot-trust-menu.bin"), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := claudeTrustPending(tc.buf, 120, 40); got != tc.want {
+				t.Fatalf("claudeTrustPending = %v, want %v", got, tc.want)
+			}
+		})
+	}
+	if !claudeTrustPending([]byte("❯ No, exit\r\n  Yes, I trust this\r\nfolder\r\nEnter to confirm ·\r\nEsc to cancel\r\n"), 20, 12) {
+		t.Fatal("the phrases wrapped across rows on a narrow terminal must still match")
+	}
+}
+
+// t-9874 end to end through a real PTY: a claude session showing the trust screen reads needs-you, the idle
+// reaper refuses it, and Save & End answers 409 and types nothing (an Enter would trust the folder for the
+// person). The same screen under the pi agent is not a menu: only claude runs the check.
+func TestClaudeTrustScreenIsNeedsYouNotIdle(t *testing.T) {
+	bin, recv := fakeAgentOnMenu(t, "claude-trust-menu.bin")
+	s, ts, sid, tok := startMenuSessionAs(t, bin, config{
+		idleTimeout: time.Hour, idleTimeoutMain: time.Hour, idleCheckInterval: time.Hour,
+		saveFallback: 30 * time.Second, saveQuiesce: time.Hour,
+	}, "claude")
+	s.mu.Lock()
+	se := s.sessions[sid]
+	s.mu.Unlock()
+	se.mu.Lock()
+	// a minute later: past the working window, where the old code said "idle"
+	state, _, _, _ := sessionStateLocked(se, time.Now().Add(time.Minute))
+	blocked := reapBlockedLocked(se)
+	se.mu.Unlock()
+	if state != "needs-you" {
+		t.Fatalf("state = %q, want needs-you", state)
+	}
+	if blocked != reapBlockedMenu {
+		t.Fatalf("reapBlockedLocked = %q, want %q", blocked, reapBlockedMenu)
+	}
+	status, body := postSaveAndEnd(t, ts.URL, sid, tok)
+	if status != http.StatusConflict || !strings.Contains(body, "waiting for your answer") {
+		t.Fatalf("save-and-end = %d (%s), want 409 with the menu refusal", status, body)
+	}
+	if b := waitBytes(recv, 600*time.Millisecond); len(b) > 0 {
+		t.Fatalf("PTY received %d bytes (%q): Save & End typed into the trust screen", len(b), b)
+	}
+	se.mu.Lock()
+	se.agent = "pi"
+	piMenu := se.menuPendingLocked()
+	se.mu.Unlock()
+	if piMenu {
+		t.Fatal("a pi session must not run the claude trust check")
+	}
+}
+
 // fakeAgentOnMenu prints a captured menu at spawn, then records every byte it
 // receives on stdin into recvFile — so "Save & End wrote nothing" is a file-size check.
 func fakeAgentOnMenu(t *testing.T, fixture string) (bin, recvFile string) {
@@ -5302,6 +5369,12 @@ func waitBytes(recv string, d time.Duration) []byte {
 
 func startMenuSession(t *testing.T, bin string, cfg config) (*server, *httptest.Server, string, string) {
 	t.Helper()
+	return startMenuSessionAs(t, bin, cfg, "copilot")
+}
+
+// startMenuSessionAs is startMenuSession for a given agent kind (t-9874: claude's folder-trust screen).
+func startMenuSessionAs(t *testing.T, bin string, cfg config, agent string) (*server, *httptest.Server, string, string) {
+	t.Helper()
 	root := t.TempDir()
 	seedTicketDir(t, root, "t-ab12")
 	t.Setenv("COCKPIT_COPILOT_BIN", bin)
@@ -5312,7 +5385,7 @@ func startMenuSession(t *testing.T, bin string, cfg config) (*server, *httptest.
 	// stopVerbose (not bare killAllSessions): with verbose logging on, a session's async exit lines
 	// otherwise re-create .cockpit-debug.log mid t.TempDir removal ("directory not empty").
 	t.Cleanup(func() { stopVerbose(s, root) })
-	resp := startSessionWithAgent(t, ts.URL, "t-ab12", "copilot", bootTok)
+	resp := startSessionWithAgent(t, ts.URL, "t-ab12", agent, bootTok)
 	var out struct{ Session, Token string }
 	json.NewDecoder(resp.Body).Decode(&out)
 	resp.Body.Close()
@@ -5834,6 +5907,7 @@ func TestDebugfConcurrentAppendsKeepEveryLine(t *testing.T) {
 // t-824e: the daemon alone decides a session's displayed state.
 func TestSessionStateDerivation(t *testing.T) {
 	now := time.Now()
+	claudeTrust := readMenuFixture(t, "claude-trust-menu.bin")
 	menu := []byte("Do you want to allow this?\r\n1. Yes\r\n3. No (Esc)\r\n↑/↓ to navigate · enter to\r\nselect · esc to cancel\r\n")
 	cases := []struct {
 		name                string
@@ -5846,6 +5920,7 @@ func TestSessionStateDerivation(t *testing.T) {
 		{"output 5s ago", &session{agent: "claude", status: "running", statusSince: now.Add(-time.Hour), lastActivity: now.Add(-5 * time.Second)}, "working", "hook", 5, 5},
 		{"quiet 20s", &session{agent: "claude", status: "running", statusSince: now.Add(-time.Hour), lastActivity: now.Add(-20 * time.Second)}, "idle", "hook", 20, 20},
 		{"copilot menu pending (first sighting)", &session{agent: "copilot", status: "running", statusSince: now.Add(-time.Hour), lastActivity: now.Add(-30 * time.Second), buf: menu, cols: 30, rows: 12}, "needs-you", "copilot-menu", 0, 30},
+		{"claude folder-trust screen (t-9874)", &session{agent: "claude", status: "running", statusSince: now.Add(-time.Hour), lastActivity: now.Add(-30 * time.Second), buf: claudeTrust, cols: 120, rows: 40}, "needs-you", "hook", 0, 30},
 		{"copilot working", &session{agent: "copilot", status: "running", statusSince: now.Add(-time.Hour), lastActivity: now.Add(-2 * time.Second)}, "working", "copilot-menu", 2, 2},
 		{"pi quiet", &session{agent: "pi", status: "running", statusSince: now.Add(-time.Hour), lastActivity: now.Add(-3 * time.Minute)}, "idle", "activity", 180, 180},
 	}
@@ -8111,8 +8186,8 @@ func TestReapNowRefusesACopilotMenu(t *testing.T) {
 	bin, recv := fakeAgentOnMenu(t, "copilot-approval-menu.bin")
 	s, ts, sid, _ := startMenuSession(t, bin, config{idleTimeout: time.Hour, idleTimeoutMain: time.Hour, idleCheckInterval: time.Hour, saveFallback: time.Hour})
 	makeIdle(t, s, sid)
-	if code, body := endSessionReq(t, ts.URL, bootTok, endBody(s, sid, "reap")); code != http.StatusConflict || !strings.Contains(body, "Copilot menu") {
-		t.Fatalf("want 409 Copilot menu, got %d %s", code, body)
+	if code, body := endSessionReq(t, ts.URL, bootTok, endBody(s, sid, "reap")); code != http.StatusConflict || !strings.Contains(body, reapBlockedMenu) {
+		t.Fatalf("want 409 %q, got %d %s", reapBlockedMenu, code, body)
 	}
 	time.Sleep(300 * time.Millisecond)
 	if b, _ := os.ReadFile(recv); len(b) != 0 {
