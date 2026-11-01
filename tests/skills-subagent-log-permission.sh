@@ -158,7 +158,16 @@ grep -qF '"additionalDirectories"' "$p7/$LOCAL" || fail "the folder is not under
 [ ! -f "$p7/.claude/settings.json" ] || ! grep -qF "$CANON_SKILLS_DIR" "$p7/.claude/settings.json" || fail "the machine path went into the committed settings.json"
 before="$(cat "$p7/$LOCAL")"; run_with_tty "'$SKILLS' add sprint '$p7'" "y" >/dev/null
 assert_eq "$before" "$(cat "$p7/$LOCAL")"                          # a second add changes nothing
+out="$(run_with_tty "'$SKILLS' remove sprint '$p7'" "n")"          # remove asks first: no keeps it
+assert_count 1 "$CANON_SKILLS_DIR" "$p7/$LOCAL"
+assert_contains "$out" "Remove canon's skills folder"
+run_with_tty "'$SKILLS' add sprint '$p7'" "n" >/dev/null           # back for the yes case below
 run_with_tty "'$SKILLS' remove sprint '$p7'" "y" >/dev/null        # remove takes only that entry
 ! grep -qF "$CANON_SKILLS_DIR" "$p7/$LOCAL" || fail "remove left the folder in $p7/$LOCAL"
+printf '{"permissions": {"allow": ["Bash(x:*)"]}}\n' > "$p6/$LOCAL"     # a settings file without the entry
+before="$(cat "$p6/$LOCAL")"
+out="$(run_with_tty "'$SKILLS' remove sprint '$p6'" "y")"          # no question, nothing changed
+case "$out" in *"Remove canon's skills folder"*) fail "remove asked about an entry the project does not have";; esac
+assert_eq "$before" "$(cat "$p6/$LOCAL")"
 
 printf 'skills-subagent-log-permission: ok\n'
