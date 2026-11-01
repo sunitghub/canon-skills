@@ -113,6 +113,9 @@ NN="$(mktemp -d)"; git -C "$NN" init -q
 printf 'dist/' > "$NN/.gitignore"
 _ensure_mirror_gitignored "$NN" >/dev/null
 [ "$(cat "$NN/.gitignore")" = "$(printf 'dist/\n/.claude/skills\n/.agents/skills\n/.claude/subagent-runs.jsonl\n/.tickets/*/gate-snapshot.txt*')" ] || fail "no-trailing-newline .gitignore: $(cat "$NN/.gitignore")"
+# t-ba62: an older install's file (mirror lines present, no trailing newline) gets the run-record lines on their own lines
+printf '/.claude/skills\n/.agents/skills' > "$NN/.gitignore"; _ensure_mirror_gitignored "$NN" >/dev/null
+[ "$(cat "$NN/.gitignore")" = "$(printf '/.claude/skills\n/.agents/skills\n/.claude/subagent-runs.jsonl\n/.tickets/*/gate-snapshot.txt*')" ] || fail "run-record lines glued to an unterminated line: $(cat "$NN/.gitignore")"
 
 # ── 9. t-c433 end to end through the real client: skills.sh add, then refresh over the old lines ──
 E2E="$(mktemp -d)"; E2E_HOME="$(mktemp -d)"
