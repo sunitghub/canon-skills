@@ -261,6 +261,19 @@ claude login
 
 Then follow the walkthrough exactly as on Linux/macOS — hooks, sprint flow, and board all behave identically.
 
+### Cockpit Terminal keys (t-c8ff, native Windows)
+
+Open a project in the Cockpit, press **Terminal**, and at the Canon Console's `$` prompt check each key:
+
+1. Type **tkt sh** (half a command) and press **Tab**: it completes to **tkt show**.
+2. Type `pwd`, press **Enter**, then **Up**: `pwd` comes back; **Down** clears it again.
+3. Type `cat CLAUDE.md`, then press **Right** at the end of the line: nothing is added (before the fix it pasted the rest of the previous command).
+4. Type a few letters and press **Backspace**: they go, one at a time.
+5. Type something and press **Ctrl+C**: the line is dropped with `^C`, and a new `$` prompt appears.
+6. Type `exit`: the Terminal ends cleanly; open it again and the keys above still work.
+
+If any key misbehaves, note which one and what it printed: that is a new ticket (the prompt falls back to plain line reading only when the console refuses the mode, not when a key acts oddly).
+
 ## One-line install (t-8716, Windows VM with Git uninstalled, then restarted)
 
 1. In PowerShell: `irm https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.ps1 | iex`. Pass when it explains Git Bash, prompts `[Y/n]`, warns about UAC, installs via winget, fetches canon, and prints `canon` as the next command.
@@ -301,5 +314,6 @@ Git for Windows stays installed (canon's tools need its bash); the folder is wha
 | Sprint gate (5) | `sprint complete` blocks on missing files and unchecked items |
 | Board (6) | Browser opens (or `curl` confirms server responds) |
 | Agent walkthrough (7) | Sprint's own explicit context/refresh steps run (no hooks needed); sprint complete closes with all criteria checked |
+| Cockpit Terminal keys (Windows) | all six checks in "Cockpit Terminal keys" behave as written |
 
 Any failing check is a regression or a hidden dependency on your dev box.
