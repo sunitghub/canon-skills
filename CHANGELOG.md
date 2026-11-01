@@ -7,6 +7,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 ## [Unreleased]
 
 ### Fixed
+- Cockpit claude sessions no longer offer Claude Code's greyed prompt suggestions: one Tab or Right arrow and Enter could send an agent-written line such as "push and open a PR". The daemon sets `promptSuggestionEnabled: false` in the session's own settings and `CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false` in its environment; your Claude Code outside the Cockpit is unchanged (t-e115).
 - Windows: in the Cockpit Terminal's prompt, Tab completes, Up and Down walk the history and Right at the end of a line no longer pastes part of the previous command: the prompt now reads each key itself, as on macOS and Linux (the console's own line editing is turned off while you type, and put back after each line). Any console that refuses the mode keeps the old line reading (t-c8ff).
 - A ticket already sent to GitHub (from a terminal, or a board tab since closed) now has **To Claude Cloud** on its card, beside **Issue ↗**: it types `tkt send-issue <id> --launch` in a Terminal for you to send, as the Sent panel does. Before, only that panel offered it, so the board had no way to start the session for such a ticket (t-d7b7).
 - In a worktree sprint, the Cockpit rail's **Ticket details** now opens the plan and acceptance live and editable, as the ticket's board card does (edits save into the worktree's copy, guarded against overwriting the agent's changes); it used to show them read-only (t-b3fc).

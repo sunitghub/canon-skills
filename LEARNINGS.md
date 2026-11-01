@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-01-2026 15:40
+learnings-sweep last run: 11-01-2026 16:20
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-01 | [t-e115](.tickets/t-e115/learnings.md) | A live check of a conditional UI feature needs a control that shows the feature first: the 'before' run showed no prompt suggestion either, so the trial proved nothing; decide how to reproduce the condition before building the before/after | UNPROMOTED |
 | 2026-11-01 | [t-c8ff](.tickets/t-c8ff/learnings.md) | A criterion broader than its Test Plan command fails at the gate ("vet ./..." vs the planned "vet ./internal/term/"): write the criterion from the exact command, and cross-compile the whole module for the target OS early (an untagged test file broke the Windows test build) | UNPROMOTED |
 | 2026-11-01 | [t-d7b7](.tickets/t-d7b7/learnings.md) | An action reachable from only one transient panel strands every other way into the same state (a ticket sent from a terminal had no To Claude Cloud); put an action on the durable object (the card) and share one handler with the panel | UNPROMOTED |
 | 2026-11-01 | [t-b3fc](.tickets/t-b3fc/learnings.md) | Two entry points to one view drifted: the card got the editable live path (t-26f9) and a later rail feature (t-6254) kept a read-only override; when adding a second way into an existing view, reuse the view's own data path instead of an override | UNPROMOTED |
@@ -82,5 +83,4 @@ learnings-sweep last run: 11-01-2026 15:40
 | 2026-10-26 | [t-a5c9](.tickets/t-a5c9/learnings.md) | A cache key must name what the cached value depends on (the loaded list, not just its length), and a test for it needs inputs where the stale answer DIFFERS from the fresh one: my first memo test used ids that matched neither reading, so it passed with the memo broken | `promoted → standards/efficiency-notes.md` |
 | 2026-10-26 | [t-b874](.tickets/t-b874/learnings.md) | A reader of a log other agents write must count what the log means (one run per agent id), not its lines, and read per-ticket files once: the run log held two lines per run (29 lines for 24 runs) and a crafted log cost 217 s; test the counting on the REAL log's quirks, not a fixture that gives every run a unique id. Also: a cloud PR is a draft and GitHub will not merge it, but merge-pr found out only after 3.5 min of tests (t-a463) | `promoted → standards/efficiency-notes.md` |
 | 2026-10-26 | [t-ccf5](.tickets/t-ccf5/learnings.md) | Find where the user's flow really lives before the plan is approved: To Claude Cloud sits in a ticket tab's rail, so the approved "pane under the Board" would not have fixed it; and `scripts/test.sh` does not run the board specs, so a new focus line broke two older specs unseen until the evaluator ran them: stamp the related board specs too | `promoted → skills/sprint/reference/start.md, tools/sprint-check-app/CLAUDE.md` |
-| 2026-10-26 | [t-2af0](.tickets/t-2af0/learnings.md) | A guard test whose bad inputs also carry a wrong value is vacuous when a later check rejects them first (pin-file NUL/extra-field cases with an unrelated hash passed with the guards deleted): put the REAL value in the file and break only the one thing; and a mutation survivor is "equivalent" only after a probe shows no input reaches the difference | `promoted → standards/efficiency-notes.md, skills/mutation-test/SKILL.md` |
 <!-- canon:learnings:END -->

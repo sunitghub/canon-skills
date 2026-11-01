@@ -1026,6 +1026,12 @@ func TestHookSettingsFile(t *testing.T) {
 	if strings.Contains(string(raw), "sess-token-abc") {
 		t.Errorf("session token leaked into settings.json: %s", raw)
 	}
+	// t-e115: no greyed prompt suggestions in a Cockpit claude session (one Tab/Right + Enter would send an agent-written line)
+	var top map[string]any
+	_ = json.Unmarshal(raw, &top)
+	if v, ok := top["promptSuggestionEnabled"]; !ok || v != false {
+		t.Errorf("settings.json must set promptSuggestionEnabled false, got %v (present %v)", v, ok)
+	}
 	for _, e := range n {
 		status, known := want[e.Matcher]
 		if !known || len(e.Hooks) != 1 {
@@ -8797,5 +8803,41 @@ func TestSessionsListIsInOpenedOrder(t *testing.T) {
 		if got := order(); strings.Join(got, ",") != strings.Join(want, ",") {
 			t.Fatalf("call %d: /sessions order = %v, want %v (the opened order)", call, got, want)
 		}
+	}
+}
+
+// t-e115, prod path: the environment each Cockpit session starts with. A claude session gets prompt suggestions off,
+// replacing an inherited CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=true; pi and copilot keep theirs; the Terminal gets termEnv.
+func TestSessionEnvPromptSuggestions(t *testing.T) {
+	environ := []string{"PATH=/bin", "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=true"}
+	count := func(env []string, kv string) int {
+		n := 0
+		for _, e := range env {
+			if e == kv {
+				n++
+			}
+		}
+		return n
+	}
+	for _, kind := range []string{"claude", ""} {
+		env := sessionEnv(kind, "t-ab12", environ)
+		if count(env, "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false") != 1 || count(env, "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=true") != 0 {
+			t.Errorf("kind %q: want only CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false, got %v", kind, env)
+		}
+		if count(env, "COCKPIT_TICKET=t-ab12") != 1 || count(env, "PATH=/bin") != 1 {
+			t.Errorf("kind %q: lost COCKPIT_TICKET or the inherited env: %v", kind, env)
+		}
+	}
+	for _, kind := range []string{"pi", "copilot"} {
+		env := sessionEnv(kind, "t-ab12", environ)
+		if count(env, "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=true") != 1 || count(env, "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false") != 0 {
+			t.Errorf("kind %q must keep the inherited value untouched: %v", kind, env)
+		}
+		if count(env, "COCKPIT_TICKET=t-ab12") != 1 {
+			t.Errorf("kind %q lost COCKPIT_TICKET: %v", kind, env)
+		}
+	}
+	if env := sessionEnv("term", "t-ab12", environ); count(env, "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false") != 0 {
+		t.Errorf("the Terminal is not a claude session: %v", env)
 	}
 }
