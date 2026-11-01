@@ -41,7 +41,7 @@
 .lb-table tbody tr:hover { background: var(--accent-dim); }   /* one rule for every .lb-table: the Logbook and GitHub Sync */
 .lb-table td { padding: 9px 8px; border-bottom: 1px solid var(--border); vertical-align: top; color: var(--text); }
 .lb-date { white-space: nowrap; color: var(--text-muted); }
-.lb-find { overflow-wrap: anywhere; }
+.lb-find { overflow-wrap: anywhere; width: 100%; min-width: 220px; }   /* t-5036: Finding takes the free width; the other columns keep theirs */
 .lb-find .doc-heading-1, .lb-find .doc-heading-2, .lb-find .doc-heading-3 { font-size: inherit; }
 .lb-tk {
   font-family: var(--mono, ui-monospace, monospace); font-size: 11.5px; color: var(--accent); background: none; border: 0;
@@ -54,7 +54,9 @@
 .lb-st-un { border-color: var(--th-warn-line, rgba(251,191,36,.45)); color: var(--th-warn-ink, #fbbf24); }
 .lb-st-pr { border-color: var(--th-ok-line, rgba(74,222,128,.45)); color: var(--th-ok-ink, #4ade80); }
 .lb-target { margin-top: 3px; font-size: 11px; color: var(--text-muted); }
-.lb-table td:last-child { white-space: nowrap; }   /* the status badge and its destination file stay on one line each */
+.lb-stc { min-width: 110px; max-width: 190px; }   /* t-5036: Status is capped; a long promoted destination wraps under the badge (full text in title) */
+.lb-stc .lb-st { max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: top; }
+.lb-target { overflow-wrap: break-word; }   /* breaks only a word too long for the cap, so a short file name stays one line (t-5157) */
 
 .lb-empty { border: 1px dashed var(--border-hover); border-radius: 10px; padding: 16px; color: var(--text-muted); font-size: 12.5px; }
 .lb-empty b { display: block; color: var(--text); margin-bottom: 4px; }

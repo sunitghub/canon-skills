@@ -18307,6 +18307,40 @@ test.describe('Logbook (t-c6bb)', () => {
   }));
   const open = async page => { await page.locator('#btn-logbook').click(); await expect(page.locator('#logbook-overlay')).toHaveClass(/open/); };
 
+  // t-5036, prod path: the Logbook's Learnings tab. A long promoted destination and a malformed row's status must not
+  // take the table's width: Finding gets the free width, Status is capped, and an unknown status reads "unknown".
+  test('Learnings table: Finding gets the width, a long destination or an unknown status cannot take it (t-5036) @webkit', async ({ page }) => {
+    const dest = 'standards/efficiency-notes.md › Tests, guards and hermetic runs (a guard verified only by inputs it must reject)';
+    const junk = 'this sentence spilled into the status cell because a pipe in the finding was not escaped at all';
+    const text = LEARN.replace('<!-- canon:learnings:END -->',
+      row('2026-10-19', 't-eeee', 'A finding that should get most of the width of the table, wrapping only when it must.', '`promoted → ' + dest + '`')
+      + row('2026-10-18', 't-ffff', 'A row with an odd status.', junk) + '<!-- canon:learnings:END -->');
+    await serve(page, undefined, file(text));
+    await page.setViewportSize({ width: 1100, height: 800 });
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await open(page);
+    await page.locator('#lb-tab-l').click();
+    const odd = page.locator('.lb-table tbody tr', { hasText: 't-ffff' });
+    await expect(odd.locator('.lb-st')).toHaveText('unknown');
+    await expect(odd.locator('.lb-st')).toHaveAttribute('title', junk);
+    await expect(page.locator('.lb-table tbody tr', { hasText: 't-eeee' }).locator('.lb-target')).toHaveAttribute('title', dest);
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate(t => { if (t === 'light') document.documentElement.dataset.theme = 'light'; else document.documentElement.removeAttribute('data-theme'); }, theme);
+      const box = await page.locator('.lb-table').evaluate(t => {
+        const r = t.getBoundingClientRect(), row = [...t.querySelectorAll('tbody tr')].find(x => x.textContent.includes('t-eeee'));
+        const cells = [...t.querySelectorAll('td')].map(c => c.getBoundingClientRect());
+        return { find: row.querySelector('.lb-find').getBoundingClientRect().width, status: row.querySelector('.lb-stc').getBoundingClientRect().width,
+          table: r.width, inside: cells.every(c => c.left >= r.left - 1 && c.right <= r.right + 1),
+          pillsInside: [...t.querySelectorAll('.lb-st')].every(p => p.getBoundingClientRect().right <= p.closest('td').getBoundingClientRect().right + 1) };
+      });
+      expect(box.inside, theme + ': every cell inside the table').toBe(true);
+      expect(box.pillsInside, theme + ': every pill inside its cell').toBe(true);
+      expect(box.find, theme + ': Finding is the widest column').toBeGreaterThan(box.table * 0.45);
+      expect(box.status, theme + ': Status is capped').toBeLessThanOrEqual(200);
+    }
+  });
+
   test('header button, tabs, Handoff cards, Learnings chips and table, Esc and focus (t-c6bb) @webkit', async ({ page }) => {
     await serve(page);
     await page.goto(BASE);

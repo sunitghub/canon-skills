@@ -60,7 +60,7 @@ function statusOf(raw) {
   if (/^unpromoted/i.test(s)) return { kind: 'un', label: 'unpromoted', target: '' };
   if (/^promoted/i.test(s)) return { kind: 'pr', label: 'promoted', target: s.replace(/^promoted\s*(?:→|->)?\s*/i, '') };
   if (/^dismissed/i.test(s)) return { kind: 'dm', label: 'dismissed', target: '' };
-  return { kind: 'ot', label: s || 'unknown', target: '' };
+  return { kind: 'ot', label: 'unknown', target: '', raw: s };   // t-5036: a malformed row's text never sizes the pill
 }
 
 // Rows of the LEARNINGS.md table between its markers: | date | [t-id](path) | finding | status |
@@ -108,8 +108,8 @@ function renderLearnings() {
     + (n('dm') ? chip('dm', 'Dismissed', n('dm')) : '') + '</div><div class="lb-status" id="lb-msg" role="status" aria-live="polite"></div>'
     + '<table class="lb-table"><thead><tr><th>Date</th><th>Ticket</th><th>Finding</th><th>Status</th></tr></thead><tbody>'
     + shown.map(r => '<tr><td class="lb-date">' + esc(r.date) + '</td><td>' + (r.id ? '<button type="button" class="lb-tk" data-t="' + escAttr(r.id) + '">' + esc(r.id) + '</button>' : '')
-      + '</td><td class="lb-find">' + safeMd(r.finding) + '</td><td><span class="lb-st lb-st-' + r.kind + '">' + esc(r.label) + '</span>'
-      + (r.target ? '<div class="lb-target">' + esc(r.target) + '</div>' : '') + '</td></tr>').join('') + '</tbody></table>';
+      + '</td><td class="lb-find">' + safeMd(r.finding) + '</td><td class="lb-stc"><span class="lb-st lb-st-' + r.kind + '"' + (r.raw ? ' title="' + escAttr(r.raw) + '"' : '') + '>' + esc(r.label) + '</span>'
+      + (r.target ? '<div class="lb-target" title="' + escAttr(r.target) + '">' + esc(r.target) + '</div>' : '') + '</td></tr>').join('') + '</tbody></table>';
 }
 
 function render() {
