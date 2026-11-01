@@ -6,8 +6,17 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.36.0] - 2026-11-01
+
+The prebuilt `canon-go` program changed (the board's settings helper; the daemon part is unchanged): `canon update` fetches it.
+
+### Added
+- `skills.sh add sprint` offers, opt-in and default no, to list canon's `skills` folder in the project's `.claude/settings.local.json` `permissions.additionalDirectories`, so a close gate that reads canon's docs with a regex `sed` never stops on a permission prompt. It also lets agents in that project edit canon's skills there, so neither `SKILLS_SH_ASSUME_YES`, the board's register flow nor a run without a terminal ever adds it; `skills.sh remove sprint` offers to take it out (t-5d4e).
+
 ### Fixed
+- Close gates no longer stop on a permission prompt while reading canon's docs: a project's `.claude/skills` links outside the project, and Claude Code asks before a `sed` with a `/regex/` address there (a headless or cloud run denies it). The gates now read canon's docs with Read, `grep -n` or `awk`, which need no permission (t-5d4e).
 - The Cockpit rail keeps its folded or unfolded state, and a width you dragged, when you press **← Board** and return to the session, or switch tabs. It used to unfold every time (t-0d2b).
+- For maintainers: `scripts/release-daemon.sh --help` prints its usage; it used to publish a release, as did any argument other than `--dry-run`, which is now refused.
 
 ## [0.35.3] - 2026-11-01
 
