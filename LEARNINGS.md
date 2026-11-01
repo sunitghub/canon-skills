@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-01-2026 11:00
+learnings-sweep last run: 11-01-2026 12:30
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-01 | [t-b3fc](.tickets/t-b3fc/learnings.md) | Two entry points to one view drifted: the card got the editable live path (t-26f9) and a later rail feature (t-6254) kept a read-only override; when adding a second way into an existing view, reuse the view's own data path instead of an override | UNPROMOTED |
 | 2026-11-01 | [t-35a7](.tickets/t-35a7/learnings.md) | A test oracle that shells out to a platform tool (wc -w) can disagree with the code it checks on another OS; check against the code's own stated rule, and a comment edit in Go source still moves the canon-go key, so keep such edits out of test-only fixes | UNPROMOTED |
 | 2026-11-01 | [t-0d2b](.tickets/t-0d2b/learnings.md) | Removing a state reset (the rail's unconditional unfold) also changes the paths that relied on it: a rail folded by board-pane.js when a Terminal opens beside the Board now stays folded after the pane closes; list every caller that set the state before deleting the reset | UNPROMOTED |
 | 2026-11-01 | [t-5d4e](.tickets/t-5d4e/learnings.md) | A permission grant that looks read-only may not be: Claude Code treats a regex sed as a possible write, so denying Edit/Write there blocks the read too; probe the real permission behaviour with `claude -p --output-format json` (permission_denials) before choosing a grant | UNPROMOTED |
@@ -82,5 +83,4 @@ learnings-sweep last run: 11-01-2026 11:00
 | 2026-10-26 | [t-2af0](.tickets/t-2af0/learnings.md) | A guard test whose bad inputs also carry a wrong value is vacuous when a later check rejects them first (pin-file NUL/extra-field cases with an unrelated hash passed with the guards deleted): put the REAL value in the file and break only the one thing; and a mutation survivor is "equivalent" only after a probe shows no input reaches the difference | `promoted → standards/efficiency-notes.md, skills/mutation-test/SKILL.md` |
 | 2026-10-25 | [t-0aa7](.tickets/t-0aa7/learnings.md) | A global `sed` on a test id (`newTicketId(PROJECT_ROOT, 'gh8')`) also rewrote two unrelated tests: replace by line number or review the diff of every test file touched; and a Test Plan line that promises a case is graded by whether the case exists, so write the plan from the tests you will really add. A button that types a command at a prompt must be built from a validated id and accepted by the receiver only for that exact line | `promoted → standards/efficiency-notes.md, skills/sprint/reference/start.md` |
 | 2026-10-25 | [t-b2ff](.tickets/t-b2ff/learnings.md) | A path check keyed on a folder's alias name (`/etc`) misses its physical name on macOS (`/private/etc`), and resolving links works only forwards: list both spellings, and test the physical one. A launcher that sources a new sibling file breaks every test that copies a fixed file list into a fake install (five suites failed the first full run) | `promoted → standards/efficiency-notes.md` |
-| 2026-10-25 | [t-187e](.tickets/t-187e/learnings.md) | A new colour reused from a token that is fine in dark (`--st-work`) was 2.4:1 on a light card at 11px; a test that only asserts dark and light differ cannot see it, so assert the light value is not the known-pale token. A tool added to `tools/` also breaks every test that copies a fixed tool list (`subagent-log-cli.sh`) | `promoted → tools/sprint-check-app/CLAUDE.md, standards/efficiency-notes.md` |
 <!-- canon:learnings:END -->
