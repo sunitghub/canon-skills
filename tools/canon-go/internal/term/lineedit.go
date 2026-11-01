@@ -16,7 +16,8 @@ const prompt = "$ "
 
 // readLine reads one command line. On a terminal (RawMode set and working) it edits the line itself: Tab completes,
 // Backspace, Ctrl-U and Ctrl-W delete, Ctrl-C drops the line, Ctrl-D on an empty line leaves, and Up and Down walk
-// the history. Otherwise (a pipe, Windows) it reads a plain line. The terminal goes back to normal before the command runs.
+// the history. Otherwise (a pipe, or a Windows handle that is not a console) it reads a plain line. The terminal goes back
+// to normal before the command runs.
 func (c Config) readLine(rd *bufio.Reader, hist *[]string) (string, error) {
 	if c.RawMode == nil {
 		return rd.ReadString('\n')
