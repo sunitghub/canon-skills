@@ -822,8 +822,6 @@ func agentKind(a string) (string, bool) {
 // termProgram is the daemon's own binary, which runs the restricted prompt (a variable so tests can run a stand-in).
 var termProgram = os.Executable
 
-// termEnv is the environment of a term session: the daemon's own, without its COCKPIT_* settings (the boot token may be
-// among them, and the su shell would inherit it).
 // promptSuggestionEnv turns off Claude Code's greyed prompt suggestions (t-e115): in a Cockpit session one Tab or Right
 // arrow then Enter would send an agent-written line such as "push and open a PR". The env var (Claude Code 2.1.238+) wins
 // over a user's own setting; writeHookSettings also sets promptSuggestionEnabled for older versions.
@@ -850,6 +848,8 @@ func sessionEnv(kind, ticket string, environ []string) []string {
 	return env
 }
 
+// termEnv is the environment of a term session: the daemon's own, without its COCKPIT_* settings (the boot token may be
+// among them, and the su shell would inherit it).
 func termEnv(environ []string) []string {
 	out := make([]string, 0, len(environ))
 	for _, kv := range environ {
