@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Fixed
+- In a worktree sprint, the Cockpit rail's **Ticket details** now opens the plan and acceptance live and editable, as the ticket's board card does (edits save into the worktree's copy, guarded against overwriting the agent's changes); it used to show them read-only (t-b3fc).
+
 ## [0.36.0] - 2026-11-01
 
 The prebuilt `canon-go` program changed (the board's settings helper; the daemon part is unchanged): `canon update` fetches it.

@@ -504,13 +504,14 @@ export async function renderCockpitDocs(t) {
 }
 
 // Opens the ticket viewer over the cockpit on the newest New doc (or Description). A worktree session's plan and
-// acceptance are the worktree's copies, shown read-only.
+// acceptance are the worktree's copies: editable when the board serves the ticket live from that worktree (docs_from, t-26f9:
+// etag-guarded writes into its copy, the same view as its card, t-b3fc), else shown read-only.
 export function openCockpitDetails() {
   const t = findTicketById(activeTabId);
   const cs = cockpitState;
   if (!t || !cs) return;
   modalState.docOverride = {};
-  for (const [slug] of CK_WATCHED_DOCS) {
+  if (!(t.docs_from && t.docs_from.branch)) for (const [slug] of CK_WATCHED_DOCS) {
     const wd = (cs.worktreeDocs || {})[slug];
     const doc = (t.docs || []).find(d => docSlug(t, d.file) === slug);
     if (wd != null && doc) modalState.docOverride[doc.file] = wd;

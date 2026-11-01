@@ -8619,6 +8619,72 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
+  // t-b3fc: a ticket the board serves live from its worktree (docs_from, t-26f9) opens from the rail's Ticket details in the same
+  // editable, etag-guarded view as from its card; the t-1357 test below keeps the read-only copy for a session without docs_from.
+  // Prod path: the Cockpit's Ticket details during a worktree sprint (the presenter edits the plan from the session view).
+  test('cockpit rail Ticket details opens a worktree-bound ticket live and editable, like its card (t-b3fc)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'ckb3');
+    const wtPath = '/tmp/wt-b3fc/sprint-b3';
+    try {
+      writeTicket(id, 'in_progress', {
+        acceptanceCriteria: ['- [ ] MAIN-checkout criterion'],
+        plan: ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: low', '', '- [x] Plan approved', '', '## Approach', 'MAIN approach body', ''],
+      });
+      await stubCockpit(page);
+      await page.route('**/api/tickets**', async route => {
+        if (route.request().method() !== 'GET') return route.continue();
+        const res = await route.fetch(); const list = await res.json();
+        for (const t of list) if (t.id === id) t.docs_from = { branch: 'sprint-b3' };
+        return route.fulfill({ response: res, body: JSON.stringify(list) });
+      });
+      await page.route('**/api/worktrees**', route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify([
+          { path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true },
+          { path: wtPath, branch: 'sprint-b3', is_main: false, tickets_visible: true, ticket_present: true },
+        ]),
+      }));
+      await page.route('**/api/worktree-lock/**', route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ locked: true, cwd: wtPath, main_dirty: false }),
+      }));
+      await page.route('**/api/cockpit-docs/**', route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ plan: '# Plan\n\n## Approach\nWORKTREE approach body', acceptance: '# Acceptance\n', handoff: '' }),
+      }));
+      const gets = [], posts = [];
+      const plan = '# Plan\n\n## Sign-off\nTier: normal | Risk: low\n\n- [x] Plan approved\n- [ ] second box\n\n## Approach\n\nlive approach from the worktree\n';
+      await page.route('**/api/doc/**', route => {
+        const req = route.request();
+        if (req.method() === 'POST') {
+          posts.push(req.postDataJSON());
+          return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, etag: 'etag-after' }) });
+        }
+        gets.push(req.url());
+        return route.fulfill({ status: 200, contentType: 'application/json',
+          body: JSON.stringify({ content: req.url().includes('plan.md') ? plan : '# Acceptance\n', etag: `etag-${gets.length}` }) });
+      });
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+
+      await page.locator('#ck-details').click();
+      await page.locator('#m-docs .doc-tab', { hasText: 'Plan' }).click();
+      await expect(page.locator('#m-body')).toContainText('live approach from the worktree');
+      await expect(page.locator('#doc-live-badge')).toContainText('Live from sprint-b3');
+      await expect(page.locator('#doc-live-badge')).toContainText('edits save to its copy');
+      await expect(page.locator('.doc-locked-badge')).toHaveCount(0);   // not "worktree copy · read-only"
+      await page.locator('#m-body .doc-bullet[data-check-idx]', { hasText: 'second box' }).click();   // tick it: an edit, saved live
+      await expect.poll(() => posts.length).toBe(1);
+      expect(posts[0].base_hash).toMatch(/^etag-\d+$/);                 // guarded by the etag it read
+      expect(posts[0].content).toContain('- [x] second box');
+    } finally {
+      removeTestTicket(PROJECT_ROOT, id);
+    }
+  });
+
   test('cockpit rail shows the WORKTREE plan/acceptance when the session runs in a worktree (t-1357)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'ckwd');
     const wtPath = '/tmp/wt-1357/sprint-x';
