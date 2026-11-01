@@ -31,15 +31,18 @@ if pid == 0:
     os.environ.pop("SKILLS_SH_NO_TTY", None)  # t-2d74: this child has a real (pseudo) terminal
     os.execvp("/bin/bash", ["/bin/bash", "-c", cmd])
 else:
-    time.sleep(0.5)
-    os.write(master, (answer + "\n").encode())
-    chunks = []
+    # Answer every [y/N] prompt as it appears (t-5d4e: `skills.sh add sprint` asks up to three; a prompt left unanswered
+    # waits out its 15 s auto-skip). The same answer for each: the assertions below read only the file each case names.
+    chunks, seen = [], 0
     try:
         while True:
             chunk = os.read(master, 4096)
             if not chunk:
                 break
             chunks.append(chunk)
+            n = b"".join(chunks).count(b"[y/N]")
+            while seen < n:
+                os.write(master, (answer + "\n").encode()); seen += 1
     except OSError:
         pass
     os.waitpid(pid, 0)
@@ -134,5 +137,26 @@ trap 'rm -rf "$tmp_home" "$project" "$project_scope" "$project2" "$project3" "$p
 run_with_tty "stty -icrnl; '$SKILLS' add sprint '$project5'" $'y\r'
 assert_file_exists "$project5/.claude/settings.json"
 assert_count 1 "$RULE" "$project5/.claude/settings.json"
+
+# --- t-5d4e: canon's skills folder in permissions.additionalDirectories of .claude/settings.local.json ---
+# Prod path: `skills.sh add sprint` / `remove sprint`; without the entry a close gate's regex sed on .claude/skills/... (a link
+# outside the project) stops on a permission prompt (headless and cloud: denied).
+CANON_SKILLS_DIR="$(cd -P "$ROOT/skills" && pwd -P)"
+LOCAL=".claude/settings.local.json"
+p6="$(make_project)"; p7="$(make_project)"
+trap 'rm -rf "$tmp_home" "$project" "$project_scope" "$project2" "$project3" "$project4" "$project5" "$p6" "$p7"' EXIT
+out="$("$SKILLS" add sprint "$p6" 2>&1)"                       # no terminal: nothing written, the skip line names file and entry
+[ ! -f "$p6/$LOCAL" ] || fail "no-tty add wrote $p6/$LOCAL"
+assert_contains "$out" "add \"$CANON_SKILLS_DIR\" to permissions.additionalDirectories in $p6/$LOCAL"
+run_with_tty "'$SKILLS' add sprint '$p7'" "n" >/dev/null           # no: nothing written
+[ ! -f "$p7/$LOCAL" ] || ! grep -qF "$CANON_SKILLS_DIR" "$p7/$LOCAL" || fail "answering no still added the folder"
+run_with_tty "'$SKILLS' add sprint '$p7'" "y" >/dev/null           # yes: written once
+assert_count 1 "$CANON_SKILLS_DIR" "$p7/$LOCAL"
+grep -qF '"additionalDirectories"' "$p7/$LOCAL" || fail "the folder is not under additionalDirectories: $(cat "$p7/$LOCAL")"
+[ ! -f "$p7/.claude/settings.json" ] || ! grep -qF "$CANON_SKILLS_DIR" "$p7/.claude/settings.json" || fail "the machine path went into the committed settings.json"
+before="$(cat "$p7/$LOCAL")"; run_with_tty "'$SKILLS' add sprint '$p7'" "y" >/dev/null
+assert_eq "$before" "$(cat "$p7/$LOCAL")"                          # a second add changes nothing
+run_with_tty "'$SKILLS' remove sprint '$p7'" "y" >/dev/null        # remove takes only that entry
+! grep -qF "$CANON_SKILLS_DIR" "$p7/$LOCAL" || fail "remove left the folder in $p7/$LOCAL"
 
 printf 'skills-subagent-log-permission: ok\n'

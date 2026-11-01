@@ -50,6 +50,7 @@ cmd_remove() {
   echo "Unregistered: $skill"
 
   [ "$skill" = "sprint" ] && offer_remove_subagent_log_permission "$project_dir"
+  [ "$skill" = "sprint" ] && offer_remove_canon_dir_access "$project_dir"
   if [ "$skill" = "sprint" ]; then remove_gate_agents "$project_dir"; fi
   [[ "$skill" == "ticket" || "$skill" == "sprint-check" || "$skill" == "sprint" ]] && _uninstall_git_precommit "$project_dir"
 

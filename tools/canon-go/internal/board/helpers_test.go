@@ -324,3 +324,47 @@ func TestTranscriptReport(t *testing.T) {
 		t.Fatalf("a missing transcript did not fail")
 	}
 }
+
+// t-5d4e: canon's skills folder goes in permissions.additionalDirectories of a project's .claude/settings.local.json, so a gate's
+// regex sed on .claude/skills/... (a link that resolves outside the project) is not stopped by a permission prompt. Prod path:
+// `skills.sh add sprint` / `remove sprint` through `sprint-check settings ... additionalDirectories`.
+func TestEditSettingsAdditionalDirectories(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "settings.local.json")
+	dirArg := "/opt/canon/skills"
+	if w, _ := editSettings("status", p, "additionalDirectories", []string{dirArg}); w != "absent" {
+		t.Fatalf("status on a missing file = %q, want absent", w)
+	}
+	if w, err := editSettings("add", p, "additionalDirectories", []string{dirArg}); w != "ok" || err != nil {
+		t.Fatalf("add = %q, %v", w, err)
+	}
+	first, _ := os.ReadFile(p)
+	if !strings.Contains(string(first), `"additionalDirectories": [`) || !strings.Contains(string(first), dirArg) {
+		t.Fatalf("add wrote:\n%s", first)
+	}
+	if w, _ := editSettings("add", p, "additionalDirectories", []string{dirArg}); w != "ok" {
+		t.Fatalf("second add = %q", w)
+	}
+	if again, _ := os.ReadFile(p); string(again) != string(first) {
+		t.Fatalf("a second add changed the file:\n%s", again)
+	}
+	if w, _ := editSettings("status", p, "additionalDirectories", []string{dirArg}); w != "present" {
+		t.Fatalf("status after add = %q, want present", w)
+	}
+	// remove takes only its own entry: an allow rule and another directory stay
+	if w, _ := editSettings("add", p, "allow", []string{"Bash(x:*)"}); w != "ok" {
+		t.Fatal("add allow")
+	}
+	if w, _ := editSettings("add", p, "additionalDirectories", []string{"/home/me/other"}); w != "ok" {
+		t.Fatal("add other dir")
+	}
+	if w, _ := editSettings("remove", p, "additionalDirectories", []string{dirArg}); w != "ok" {
+		t.Fatalf("remove = %q", w)
+	}
+	got, _ := os.ReadFile(p)
+	if strings.Contains(string(got), dirArg) || !strings.Contains(string(got), "/home/me/other") || !strings.Contains(string(got), "Bash(x:*)") {
+		t.Fatalf("remove touched more than its entry:\n%s", got)
+	}
+	if _, err := editSettings("add", p, "ask", []string{"X"}); err == nil {
+		t.Fatal("a list name other than allow, deny or additionalDirectories must be refused")
+	}
+}
