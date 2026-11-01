@@ -9998,6 +9998,50 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }));
   }
 
+  // t-c8f6, prod path: the Start panel's worktree list. Main, the ticket's own worktree, the selected one and its preferred
+  // branch stay in view; every other usable worktree folds under "N other worktrees"; a merged one says so and stays pickable.
+  test('Start panel folds the other worktrees under one line and marks a merged one (t-c8f6) @webkit', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'wtf-r');
+    const WT = [
+      { path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true },
+      { path: '/tmp/wt-c8f6/mine', branch: 'sprint/mine', is_main: false, tickets_visible: true, ticket_present: true, own: true },
+      { path: '/tmp/wt-c8f6/a', branch: 'fix/t-aaaa', is_main: false, tickets_visible: true, ticket_present: true, merged: true },
+      { path: '/tmp/wt-c8f6/b', branch: 'fix/t-bbbb', is_main: false, tickets_visible: true, ticket_present: true },
+      { path: '/tmp/wt-c8f6/c', branch: 'fix/t-cccc', is_main: false, tickets_visible: true, ticket_present: true },
+    ];
+    try {
+      writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN });
+      await stubCockpit(page);
+      await page.route('**/api/worktrees**', route => route.request().method() === 'POST'
+        ? route.fulfill({ status: 500, body: 'no creates here' })
+        : route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(WT) }));
+      await page.route('**/api/worktree-lock/**', route => route.fulfill({
+        status: 200, contentType: 'application/json', body: JSON.stringify({ locked: false, cwd: null, main_dirty: false }) }));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      const box = page.locator('#ck-worktree');
+      const fold = box.locator('details.ck-worktree-others');
+      await expect(fold.locator('summary')).toHaveText('3 other worktrees');
+      await expect(fold).not.toHaveAttribute('open', '');
+      // in view: Main and the ticket's own; the three others are in the fold, hidden until it opens
+      await expect(box.locator('.ck-worktree-row:visible .ck-worktree-label')).toHaveText(['Main checkout (current)', 'sprint/mine']);
+      await expect(fold.locator('.ck-worktree-row')).toHaveCount(3);
+      await fold.locator('summary').focus();
+      await page.keyboard.press('Enter');   // keyboard opens the fold
+      await expect(fold).toHaveAttribute('open', '');
+      await expect(fold.locator('.ck-worktree-row:visible .ck-worktree-label')).toHaveText(['fix/t-aaaa', 'fix/t-bbbb', 'fix/t-cccc']);
+      await expect(fold.locator('.ck-worktree-row[data-cwd="/tmp/wt-c8f6/a"] .ck-worktree-merged')).toHaveText('merged · reset or remove');
+      await expect(fold.locator('.ck-worktree-merged')).toHaveCount(1);
+      await fold.locator('.ck-worktree-row[data-cwd="/tmp/wt-c8f6/b"]').click();   // picking from the fold selects it, as before
+      await expect(box.locator('.ck-worktree-row.selected[data-cwd="/tmp/wt-c8f6/b"]')).toHaveCount(1);
+    } finally {
+      removeTestTicket(PROJECT_ROOT, id);
+    }
+  });
+
   test('rail lists only Main, own and free worktrees; held ones collapse with owner + reason and cannot be picked (t-2241)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'wth-r');
     try {
@@ -10011,8 +10055,10 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
 
       const box = page.locator('#ck-worktree');
-      await expect(box.locator('.ck-worktree-row .ck-worktree-label')).toHaveText(['Main checkout (current)', 'sprint/free', 'sprint/mine', 'GitHub · new issue']);   // t-718b: the GitHub place
-      const group = box.locator('details.ck-worktree-held:not(.ck-gh-busy-fold)');   // t-6f51 folds the GitHub rows with the same class
+      // t-c8f6: Main and its own worktree stay in view; a free one folds under "1 other worktree" (still a pickable row)
+      await expect(box.locator('.ck-worktree-row .ck-worktree-label')).toHaveText(['Main checkout (current)', 'sprint/mine', 'sprint/free', 'GitHub · new issue']);   // t-718b: the GitHub place
+      await expect(box.locator('details.ck-worktree-others summary')).toHaveText('1 other worktree');
+      const group = box.locator('details.ck-worktree-held:not(.ck-gh-busy-fold):not(.ck-worktree-others)');   // t-6f51 folds the GitHub rows, t-c8f6 the other worktrees, with the same class
       await expect(group.locator('summary')).toHaveText('2 worktrees unavailable');
       await expect(group).not.toHaveAttribute('open', '');
       for (const theme of ['dark', 'light']) {
@@ -10086,7 +10132,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       }
       await box.locator('#ck-worktree-change').click();
       await expect(box.locator('.ck-worktree-full')).toBeVisible();
-      await expect(box.locator('.ck-worktree-row:visible .ck-worktree-label')).toHaveText(['Main checkout (current)', 'sprint/free', 'sprint/mine', 'GitHub · new issue']);   // t-718b: the GitHub place
+      await expect(box.locator('.ck-worktree-row:visible .ck-worktree-label')).toHaveText(['Main checkout (current)', 'sprint/mine', 'GitHub · new issue']);   // t-c8f6: sprint/free folds under "1 other worktree"
+      await expect(box.locator('details.ck-worktree-others summary')).toHaveText('1 other worktree');   // t-718b: the GitHub place
       await expect(box.locator('#ck-worktree-change')).toHaveCount(0);
     } finally {
       removeTestTicket(PROJECT_ROOT, id);

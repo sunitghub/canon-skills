@@ -2025,3 +2025,58 @@ func TestGitHubPostActionsAreAllHandled(t *testing.T) {
 		}
 	}
 }
+
+// t-c8f6, prod path: /api/worktrees (listWorktrees) marks a worktree `merged` only when it trails main with nothing of its
+// own and a clean folder — the Start panel's "merged · reset or remove" note. At main's HEAD (new or just reset), ahead of
+// main, or dirty: not marked.
+func TestAnnotateWorktreeMerged(t *testing.T) {
+	root := t.TempDir()
+	gitInitRepo(t, root)
+	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("a\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitCommitAll(t, root, "base")
+	parent := t.TempDir()
+	add := func(name string) string {
+		p := filepath.Join(parent, name)
+		if out, err := exec.Command("git", "-C", root, "worktree", "add", "-q", "-b", name, p).CombinedOutput(); err != nil {
+			t.Fatalf("worktree add %s: %v %s", name, err, out)
+		}
+		return p
+	}
+	behind, dirty, ahead := add("behind"), add("dirty"), add("ahead")
+	if err := os.WriteFile(filepath.Join(ahead, "b.txt"), []byte("b\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitCommitAll(t, ahead, "work main lacks")
+	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("a2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitCommitAll(t, root, "main moves on") // behind, dirty and ahead's base now trail main
+	if err := os.WriteFile(filepath.Join(dirty, "scratch.txt"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	atHead := add("athead") // created after main moved: exactly at HEAD
+	want := map[string]bool{behind: true, dirty: false, ahead: false, atHead: false}
+	got := map[string]bool{}
+	for _, e := range listWorktrees("", root) {
+		if isMain, _ := e["is_main"].(bool); isMain {
+			if _, has := e["merged"]; has {
+				t.Errorf("the main checkout must never be marked merged")
+			}
+			continue
+		}
+		p, _ := filepath.EvalSymlinks(fmt.Sprint(e["path"]))
+		m, _ := e["merged"].(bool)
+		for w := range want {
+			if rw, _ := filepath.EvalSymlinks(w); rw == p {
+				got[w] = m
+			}
+		}
+	}
+	for w, m := range want {
+		if got[w] != m {
+			t.Errorf("%s: merged = %v, want %v", filepath.Base(w), got[w], m)
+		}
+	}
+}

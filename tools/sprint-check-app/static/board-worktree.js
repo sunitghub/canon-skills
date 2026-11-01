@@ -94,7 +94,7 @@ export async function renderCockpitWorktree(t) {
     if (r.ok) entries = await r.json();
   } catch {}
 
-  const rowHTML = (cwd, label, sub, extraAttr) => {
+  const rowHTML = (cwd, label, sub, extraAttr, merged) => {
     // t-3e58: normalized compare (see selectCockpitWorktree) so a re-render keeps
     // the highlight even when worktreeCwd and this row's cwd differ in format.
     // t-470d: require an actual selection first — cockpitPathKey maps BOTH null
@@ -109,6 +109,7 @@ export async function renderCockpitWorktree(t) {
       <div class="ck-worktree-labels">
         <div class="ck-worktree-label">${esc(label)}</div>
         ${sub ? `<div class="ck-worktree-sub">${esc(sub)}</div>` : ''}
+        ${merged ? '<div class="ck-worktree-sub ck-worktree-merged">merged · reset or remove</div>' : ''}
       </div>
     </div>`;
   };
@@ -230,8 +231,19 @@ export async function renderCockpitWorktree(t) {
   }
   html += `<div class="ck-worktree-full"${compact ? ' hidden' : ''}>`;
   html += rowHTML('', 'Main checkout (current)', mainEntry ? mainEntry.path : '');
+  // t-c8f6: only the rows this ticket is likely to want stay in view (Main, its own worktree, the selected one, its preferred
+  // branch); every other usable worktree folds under one "N other worktrees" line, as "N worktrees unavailable" does. A worktree
+  // whose work already landed in main (server `merged`) says so and stays pickable.
+  const inView = e => e.own || (cockpitState.worktreeCwd && cockpitPathKey(e.path) === cockpitPathKey(cockpitState.worktreeCwd))
+    || (t.worktree_preference && e.branch === t.worktree_preference);
+  const wtRow = e => rowHTML(e.path, e.branch || '(detached)', e.path, '', e.merged === true);
+  const folded = usable.filter(e => !inView(e));
   for (const e of usable) {
-    if (!compact || e !== ownSelected) html += rowHTML(e.path, e.branch || '(detached)', e.path); // compact already shows it above
+    if (inView(e) && (!compact || e !== ownSelected)) html += wtRow(e); // compact already shows it above
+  }
+  if (folded.length) {
+    html += `<details class="ck-worktree-held ck-worktree-others"><summary>${folded.length} other worktree${folded.length === 1 ? '' : 's'}</summary>`
+      + folded.map(wtRow).join('') + `</details>`;
   }
   if (held.length) {
     html += `<details class="ck-worktree-held"><summary>${held.length} worktree${held.length === 1 ? '' : 's'} unavailable</summary>`

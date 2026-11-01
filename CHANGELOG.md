@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Changed
+- The Start panel's worktree list stays short: Main, the ticket's own worktree, the selected one and its preferred branch stay in view; every other worktree folds under one "N other worktrees" line, like "N worktrees unavailable". A worktree whose work already landed in main says "merged · reset or remove" (t-c8f6).
+
 ### Fixed
 - Cockpit claude sessions no longer offer Claude Code's greyed prompt suggestions: one Tab or Right arrow and Enter could send an agent-written line such as "push and open a PR". The daemon sets `promptSuggestionEnabled: false` in the session's own settings and `CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false` in its environment; your Claude Code outside the Cockpit is unchanged (t-e115).
 - Windows: in the Cockpit Terminal's prompt, Tab completes, Up and Down walk the history and Right at the end of a line no longer pastes part of the previous command: the prompt now reads each key itself, as on macOS and Linux (the console's own line editing is turned off while you type, and put back after each line). Any console that refuses the mode keeps the old line reading (t-c8ff).
