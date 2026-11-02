@@ -13,10 +13,10 @@ export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 XDG_CONFIG_HOME="$WORK/
 ident=(-c user.email=t@example.com -c user.name=test)
 
 R="$WORK/repo"; M="$R/tools/canon-go"
-mkdir -p "$M/cmd/canon-go" "$M/internal/board" "$M/internal/daemon" "$M/internal/common" "$M/internal/events" "$M/internal/term" "$M/internal/settings"
+mkdir -p "$M/cmd/canon-go" "$M/internal/board" "$M/internal/daemon" "$M/internal/common" "$M/internal/events" "$M/internal/machine" "$M/internal/term" "$M/internal/settings"
 cp "$ROOT/tools/src-key.sh" "$R/tools/"
 printf 'module canon\n' > "$M/go.mod"; : > "$M/go.sum"
-for d in cmd/canon-go internal/board internal/daemon internal/common internal/events internal/term internal/settings; do echo "package x // $d" > "$M/$d/x.go"; done
+for d in cmd/canon-go internal/board internal/daemon internal/common internal/events internal/machine internal/term internal/settings; do echo "package x // $d" > "$M/$d/x.go"; done
 git -C "$R" init -q -b main; git -C "$R" "${ident[@]}" add -A; git -C "$R" "${ident[@]}" commit -qm seed
 key() { bash -c 'source "$1/tools/src-key.sh"; canon_src_key "$1" "$2" ${3:+"$3"}' _ "${R2:-$R}" "$@"; }
 commit() { echo "// $1" >> "$M/$1/x.go" 2>/dev/null || echo "// $1" >> "$M/$1"; git -C "$R" "${ident[@]}" commit -qam "$1"; }
@@ -49,6 +49,7 @@ moved cmd/canon-go 1 1          # the one main package holds both parts
 moved internal/settings 1 1
 moved internal/common 1 1
 moved internal/events 1 1       # t-8854: the daemon emits events too
+moved internal/machine 1 1      # t-c542: every event names its host (both parts write events)
 echo "go 1.26.5" >> "$M/go.mod"; git -C "$R" "${ident[@]}" commit -qam go.mod; [[ "$(key board)" != "$b" && "$(key daemon)" != "$d" && "$(key canon-go)" != "$c" ]] || fail "a go.mod change must re-key all"
 # an unrelated file moves nothing
 b4="$(key board)"; d4="$(key daemon)"; c4="$(key canon-go)"; echo x > "$R/README.md"; git -C "$R" add README.md; git -C "$R" "${ident[@]}" commit -qm readme
@@ -56,7 +57,7 @@ assert_eq "$b4" "$(key board)"; assert_eq "$d4" "$(key daemon)"; assert_eq "$c4"
 # the same in a shallow clone, and for an older rev
 git clone -q --depth 1 "file://$R" "$WORK/shallow"; R2="$WORK/shallow"; cp "$ROOT/tools/src-key.sh" "$R2/tools/"
 assert_eq "$c4" "$(key canon-go)"; unset R2
-assert_eq "$c0" "$(key canon-go HEAD~9)"   # the seed commit, before the 9 commits above
+assert_eq "$c0" "$(key canon-go HEAD~10)"   # the seed commit, before the 10 commits above
 # unknown component, or a path missing from the commit: nothing printed, exit 1 (canon-go too: it needs both parts)
 set +e; out="$(key nope)"; rc=$?; set -e; assert_eq 1 "$rc"; assert_eq "" "$out"
 git -C "$R" rm -rq tools/canon-go/internal/term; git -C "$R" "${ident[@]}" commit -qm "drop term"

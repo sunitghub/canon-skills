@@ -63,8 +63,8 @@ assert_eq "# on macOS 26.1, Darwin 25.1.0, arm64, 10 cores, 32 GB; bash ${BASH_V
 SPRINT_CHECK_BIN="$WORK/stub/old" ev stamp "$ID" oldb -- true
 assert_eq "$os_line" "$(sed -n 3p "$ED/oldb.log")"; [[ ! -e "$WORK/served" ]] || fail "evidence: an older board was asked for \`machine\` (it would serve)"
 real="$(build_board "$WORK/fresh")"
-SPRINT_CHECK_BIN="$real" ev stamp "$ID" realb -- true
-assert_eq "# on $("$real" machine); bash ${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}.${BASH_VERSINFO[2]}" "$(sed -n 3p "$ED/realb.log")"
+SPRINT_CHECK_NO_BROWSER=1 SPRINT_CHECK_BIN="$real" ev stamp "$ID" realb -- true
+assert_eq "# on $(SPRINT_CHECK_NO_BROWSER=1 "$real" machine); bash ${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}.${BASH_VERSINFO[2]}" "$(sed -n 3p "$ED/realb.log")"
 assert_count 0 "$(hostname)" "$ED/realb.log"
 ev check "$ID"; assert_contains "$out" " on: macOS 26.1, Darwin 25.1.0, arm64, 10 cores, 32 GB, bash"
 rm -f "$ED/mline.log" "$ED/oldb.log" "$ED/realb.log"
