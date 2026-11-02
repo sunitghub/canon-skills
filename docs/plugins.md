@@ -30,6 +30,7 @@ renamed or removed.
 | `kind` | one of the kinds below |
 | `source` | the program that wrote it: `tkt`, `sprint`, `board`, `gate-snapshot`, `subagent-log` or `daemon` |
 | `actor` | optional: who caused it: `user` (a person at the board or the command line), `agent` (an agent in a session) or `system` (canon itself: a timer, the idle reaper, a retention job). Different from `source`, which is the program that wrote the line. Absent from every event written before it existed and from any emitter that does not know it: treat absent as unknown. The set is closed in v1: a line with any other value is not a v1 event |
+| `host` | optional: the hostname of the machine that wrote it (t-c542), as the OS reports it. Absent from every event written before it existed. It stays in this log: Admin > Logging's **Export .jsonl** includes it, and nothing canon sends to GitHub carries it |
 | `project` | the project's root folder, an absolute path (symlinks resolved) |
 | `data` | only the fields listed for the kind; every value is a string |
 
@@ -50,6 +51,7 @@ renamed or removed.
 | `session.saved` | `session`, `ticket`, `agent`, `by` (`marker` or `file-settle`) | Save & End saved the session's state |
 | `budget.warned` | `ticket`, `cap` (the `tools/caps.tsv` row name, never a path), `used`, `limit`, `unit`, `stage` (`plan` or `send`) | a capped file the plan lists has under 10% left: `sprint approve` (`plan`), `tkt send-issue` (`send`) (t-c990) |
 | `budget.exceeded` | the same fields; `stage` is `plan`, `send` or `close` | a capped file is over its cap: at those two commands, and at `sprint check-evidence` / `sprint complete` (`close`), which refuse when this branch changed that file (t-c990) |
+| `machine.seen` | `host`, `os` (`darwin`, `linux`, `windows`), `os_name`, `os_version`, `kernel`, `arch`, `cpus` (logical cores), `ram_gb` (total, whole GB); a fact canon cannot read is `unknown` | the board starts and this machine's facts differ from the newest `machine.seen` for its host (t-c542); its `project` is empty |
 
 Audit kinds (t-4c09; the schema is fixed here, each emitter is built by the ticket named):
 

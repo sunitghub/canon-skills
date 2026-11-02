@@ -1,4 +1,5 @@
 import { DOC_TYPES, LIVE_EDITABLE_SLUGS, docFileFor, docSlug, state } from './board-core.js';
+import { MACHINES_VIEW, renderMachinesPane } from './board-machines.js';
 import { LITE_LABEL, displayTicketId, divergenceInfo, esc, hydrateFeatureRefs, md, normalizeTicketLineId } from './board-helpers.js';
 import { findTicketById, postWrite, renderBoard, renderHeader, renderSidebar, updateDoc } from './board-render.js';
 import { adoptTicketWrite, fetchModalDoc, markDocHeadings, modalState, renderModalDocs, showStaleEditNotice, stopHeadlessPoll } from './board-modal.js';
@@ -221,6 +222,7 @@ export function renderModalBody(t) {
   const seq = ++modalState.renderSeq;
 
   if (modalState.ghost) { renderGhostPane(t); return; }
+  if (modalState.view === MACHINES_VIEW) { renderMachinesPane(t, seq); return; }   // t-c542
 
   if (!modalState.activeDoc) {
     const content = (t.body || '').trim();
@@ -277,7 +279,7 @@ export function renderModalBody(t) {
 
 // t-a205: one answer to "may the board edit the active doc?" for the hint, double-click, the E key and enterEditMode.
 export function docEditable(t) {
-  if (!t || t.status === 'closed' || t.status === 'cancelled' || modalState.ghost) return false;   // a ghost's pane (nothing to edit yet) owns the pane while it is open
+  if (!t || t.status === 'closed' || t.status === 'cancelled' || modalState.ghost || modalState.view) return false;   // a ghost's pane (nothing to edit yet) owns the pane while it is open
   if (modalState.docOverride[modalState.activeDoc] != null) return false;   // t-6254: the worktree's copy, shown read-only
   const liveBranch = t.docs_from && t.docs_from.branch;
   if (liveBranch && modalState.activeDoc && !LIVE_EDITABLE_SLUGS.includes(docSlug(t, modalState.activeDoc))) return false;
@@ -589,6 +591,7 @@ export function activateGhost(t, slug) {
   const dt = DOC_TYPES.find(d => d.slug === slug);
   if (!dt) return;
   modalState.ghost = slug;
+  modalState.view = '';
   modalState.activeDoc = docFileFor(t, slug);
   renderModalDocs(t);
   renderModalBody(t);
@@ -783,6 +786,7 @@ export function closeModal() {
   if (modalState.editMode) return; // don't close while editing
   document.getElementById('modal-overlay').classList.remove('open');
   modalState.ghost = '';
+  modalState.view = '';
   modalState.docOverride = {};
   state.selectedId = null;
   stopHeadlessPoll();

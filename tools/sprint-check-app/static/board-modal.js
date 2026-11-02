@@ -5,12 +5,13 @@ import { activateGhost, exitEditMode, refreshModalActions, renderModalBody, save
 import { cockpitState } from './board-cockpit.js';
 import { renderCockpitDetails } from './board-cockpit-rail.js';
 import { resetPanelDrag, resetPanelResize } from './board-panels.js';
+import { activateMachines, machinesNodeHTML } from './board-machines.js';
 import { setText } from './board-ui.js';
 import { openTagMenu, saveTicketTags, tagChipsHTML } from './board-tags.js';
 
 // ── Modal ─────────────────────────────────────────────────────────────────
 
-export const modalState = { docOverride: {}, editMode: false, activeDoc: null, renderSeq: 0, docEtag: '', sections: {}, expanded: new Set(), seen: new Set(), pendingScroll: '', prefetchSeq: 0 };
+export const modalState = { docOverride: {}, editMode: false, view: '', activeDoc: null, renderSeq: 0, docEtag: '', sections: {}, expanded: new Set(), seen: new Set(), pendingScroll: '', prefetchSeq: 0 };
 
 // t-26f9: the doc changed since the editor opened it (the agent may have edited it). The person's text stays in the
 // box; they choose to load theirs or to overwrite knowingly.
@@ -148,6 +149,7 @@ export function openModal(id) {
   state.selectedId = id;
   modalState.editMode = false;
   modalState.activeDoc = null;   // t-e946: a ticket opens on Description (the tree's first node)
+  modalState.view = '';
   modalState.ghost = '';
   // t-612f: every doc's ## sections, so the tree can show a + before a doc is opened (the rest arrive from prefetchDocSections)
   modalState.sections = { '': parseDocSections(t.body) };
@@ -344,7 +346,7 @@ export function renderModalDocs(t) {
   const locked = t.status === 'closed' || t.status === 'cancelled';
   const ghosts = locked ? [] : availableDocTypes(t);   // t-bb97: a doc that does not exist yet shows as a dashed ghost node
 
-  const descActive = modalState.activeDoc === null && !modalState.ghost;
+  const descActive = modalState.activeDoc === null && !modalState.ghost && !modalState.view;
   const cs = cockpitFor(t);   // t-6254: a doc the sprint changed since the rail was last opened
   const node = (key, active, name, isNew) =>
     `<div class="doc-node" data-key="${escAttr(key)}">${expanderHTML(key)}<button class="doc-tab${active ? ' active' : ''}" data-file="${escAttr(key)}">${esc(name)}${isNew ? '<span class="doc-new">New</span>' : ''}</button></div>`;
@@ -377,14 +379,15 @@ export function renderModalDocs(t) {
       ? `<div class="doc-tab-right">${navPrev}${navNext}<span class="doc-locked-badge" title="The worktree session's copy; edit it there">worktree copy · read-only</span></div>`
     : locked
       ? `<div class="doc-tab-right">${navPrev}${navNext}<span class="doc-locked-badge" title="Reopen ticket to edit">read-only</span></div>`
-      : `<div class="doc-tab-right">${navPrev}${navNext}${liveBadge}${modalState.ghost ? '' : '<span class="doc-edit-hint">Double-click to edit</span>'}</div>`;
+      : `<div class="doc-tab-right">${navPrev}${navNext}${liveBadge}${modalState.ghost || modalState.view ? '' : '<span class="doc-edit-hint">Double-click to edit</span>'}</div>`;
 
   bar.innerHTML = descTab + docs.map(d => {
-    return node(d.file ?? '', d.file === modalState.activeDoc, d.name, !!(cs && cs.fresh[docSlug(t, d.file)]));
-  }).join('') + ghosts.map(ghostNode).join('');
+    return node(d.file ?? '', d.file === modalState.activeDoc && !modalState.view, d.name, !!(cs && cs.fresh[docSlug(t, d.file)]));
+  }).join('') + ghosts.map(ghostNode).join('') + machinesNodeHTML();   // t-c542
   paneBar.innerHTML = rightControls;
 
-  bar.querySelectorAll('.doc-tab:not(.doc-ghost)').forEach(btn => {
+  bar.querySelector('.doc-view')?.addEventListener('click', () => activateMachines(t));
+  bar.querySelectorAll('.doc-tab:not(.doc-ghost):not(.doc-view)').forEach(btn => {
     btn.addEventListener('click', () => {
       if (modalState.editMode) return;
       activateDoc(t, btn.dataset.file || null);
@@ -477,6 +480,7 @@ function renderDocChildren() {
 export function activateDoc(t, file, scrollSlug = '') {
   const key = file || '';
   modalState.ghost = '';
+  modalState.view = '';
   modalState.activeDoc = file;
   if (!modalState.seen.has(key)) { modalState.seen.add(key); modalState.expanded.add(key); }   // opened for the first time: shown expanded; after that the choice is the user's
   const cs = cockpitFor(t);

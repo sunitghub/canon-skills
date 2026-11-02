@@ -56,7 +56,13 @@ assert_eq "ticket.created tkt $id
 ticket.status_changed tkt $id open>in_progress
 ticket.status_changed tkt $id in_progress>closed
 ticket.closed tkt $id" "$(events)"
-assert_eq "data id kind project schema source ts | priority ticket title type | 1 16 $P" "$(shape ticket.created tkt)"
+assert_eq "data host id kind project schema source ts | priority ticket title type | 1 16 $P" "$(shape ticket.created tkt)"
+# t-c542: a shell tool's event names this machine too: the one writer (the board binary) adds the host
+assert_eq "$(python3 -c 'import socket; print(socket.gethostname())')" "$(python3 - "$EV" <<'PY'
+import glob, json, os, sys
+print([json.loads(l) for f in sorted(glob.glob(os.path.join(sys.argv[1], "*.jsonl"))) for l in open(f)][-1].get("host", ""))
+PY
+)"
 # a no-op move (start on an in-progress ticket) is not a change: no event, from tkt as from the board
 nop="$(cd "$P" && "$TKT" create "No-op")"; (cd "$P" && "$TKT" start "$nop" >/dev/null && "$TKT" start "$nop" >/dev/null)
 assert_eq 1 "$(events ticket.status_changed | grep -c " $nop ")"
@@ -66,7 +72,7 @@ P2="$W/proj2"; mkproj "$P2"
 (cd "$P2" && "$SPRINT" start "Sprint one" >/dev/null)
 sid="$(cd "$P2" && "$TKT" list 2>/dev/null | awk 'NR==1{print $1}')"
 assert_contains "$(events sprint.started)" "sprint.started sprint $sid"
-assert_eq "data id kind project schema source ts | ticket | 1 16 $P2" "$(shape sprint.started sprint)"
+assert_eq "data host id kind project schema source ts | ticket | 1 16 $P2" "$(shape sprint.started sprint)"
 
 # 3. the board: + New and a status move, with the same shape as tkt's
 port="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"

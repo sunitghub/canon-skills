@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"canon/internal/common"
 	"canon/internal/events"
+	"canon/internal/machine"
 	"canon/internal/settings"
 	"context"
 	"crypto/rand"
@@ -192,6 +193,7 @@ func Run(buildVersion, buildCommit, buildDaemonKey string, args []string) int {
 	// supported launcher funnels into the one shared instance; there's no
 	// standalone board mode left. url is still used below for the browser-open.
 	fmt.Fprintln(os.Stderr, startupBanner(addr))
+	go noteMachineSeen(events.Home()) // t-c542: observer-only, never delays the start
 	fmt.Fprintf(os.Stderr, "tickets: %s\n", ticketsDir)
 
 	if os.Getenv("SPRINT_CHECK_NO_BROWSER") != "1" {
@@ -232,6 +234,7 @@ Helpers (used by canon's shell tools; see helpers.go):
   integrity [--json] [--gate] [--online]
   gate-clusters [--days N] [--json]
   caps [--json] [--table <file>] <name|path> [path] | caps --list   a capped file's use (tools/caps.tsv)
+  machine [--json]         this machine's OS, chip, cores and RAM (no hostname)
 
 The dashboard reads .tickets/, HANDOFF.md, and git history from the current
 project. It starts a local Go HTTP server and opens the board in your default
@@ -449,7 +452,20 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 	case "/api/cockpit-interrupted":
 		sendJSON(w, cockpitInterrupted())
 	case "/api/version":
-		sendJSON(w, map[string]string{"version": canonVersion(), "commit": commit, "daemon": daemonVersion()})
+		sendJSON(w, map[string]any{"version": canonVersion(), "commit": commit, "daemon": daemonVersion(), "machine": machine.Get(), "machine_line": machine.Get().Line()})
+	case "/api/ticket-machines":
+		id := r.URL.Query().Get("ticket")
+		if !machinesTicketRe.MatchString(id) {
+			http.Error(w, "bad ticket id", http.StatusBadRequest)
+			return
+		}
+		root, ok := effectiveRoot(r)
+		if !ok {
+			http.Error(w, "unknown project", http.StatusBadRequest)
+			return
+		}
+		root = resolvedOrAbs(root)
+		sendJSON(w, map[string]any{"machines": ticketMachines(events.Home(), root, filepath.Join(ticketsDirForRoot(root), id, "evidence"), id)})
 	case "/api/worktrees":
 		wtTicket := r.URL.Query().Get("ticket")
 		if !ticketCommitIDRe.MatchString(wtTicket) {

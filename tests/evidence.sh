@@ -12,6 +12,7 @@ EV="$ROOT/tools/evidence.sh"
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 XDG_CONFIG_HOME="$WORK/xdg" LC_ALL=C
 unset CANON_TICKETS_DIR   # a stamp taken for the whole suite sets it (plain-clone workflow); every call here must use the throwaway repo's own .tickets/
+export SPRINT_CHECK_BIN="$WORK/no-board"   # t-c542: the uname fallback below; the `canon-go machine` header has its own block
 REPO="$WORK/repo"; ID=t-abcd
 mkdir -p "$REPO" && cd "$REPO"
 git init -q -b main . && git config user.name t && git config user.email t@t
@@ -50,6 +51,23 @@ ev check "$ID" "$C1"; assert_contains "$out" "fresh forge.log exit=5 (HEAD ${C1:
 git commit -q --allow-empty -m later; echo b >> src/a.txt; git commit -qam moved
 ev check "$ID"; assert_contains "$out" "stale forge.log exit=5 (HEAD ${C1:0:7}; 1 tracked file(s) changed since: src/a.txt)$os_shown"
 git reset -q --hard "$C1"
+# t-c542: the header comes from `canon-go machine` when the board has it (OS and version, chip, cores, RAM; never the hostname); an older
+# board that does not list `machine` in --help is never asked (it would take the word for a port and serve) and uname is used.
+# Prod path: every evidence.sh stamp, read by sprint check-evidence and the ticket's Machines node.
+mkdir -p "$WORK/stub"
+printf '#!/usr/bin/env bash\ncase "$1" in --help) echo "  machine [--json]  this machine";; machine) echo "macOS 26.1, Darwin 25.1.0, arm64, 10 cores, 32 GB";; *) exit 9;; esac\n' > "$WORK/stub/new"
+printf '#!/usr/bin/env bash\ncase "$1" in --help) echo "  caps [--json]";; *) touch "%s/served"; exit 9;; esac\n' "$WORK" > "$WORK/stub/old"
+chmod +x "$WORK/stub/new" "$WORK/stub/old"
+SPRINT_CHECK_BIN="$WORK/stub/new" ev stamp "$ID" mline -- true
+assert_eq "# on macOS 26.1, Darwin 25.1.0, arm64, 10 cores, 32 GB; bash ${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}.${BASH_VERSINFO[2]}" "$(sed -n 3p "$ED/mline.log")"
+SPRINT_CHECK_BIN="$WORK/stub/old" ev stamp "$ID" oldb -- true
+assert_eq "$os_line" "$(sed -n 3p "$ED/oldb.log")"; [[ ! -e "$WORK/served" ]] || fail "evidence: an older board was asked for \`machine\` (it would serve)"
+real="$(build_board "$WORK/fresh")"
+SPRINT_CHECK_BIN="$real" ev stamp "$ID" realb -- true
+assert_eq "# on $("$real" machine); bash ${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}.${BASH_VERSINFO[2]}" "$(sed -n 3p "$ED/realb.log")"
+assert_count 0 "$(hostname)" "$ED/realb.log"
+ev check "$ID"; assert_contains "$out" " on: macOS 26.1, Darwin 25.1.0, arm64, 10 cores, 32 GB, bash"
+rm -f "$ED/mline.log" "$ED/oldb.log" "$ED/realb.log"
 # untracked files and .tickets changes do not make the tree dirty
 reset_repo; echo scratch > untracked.txt; echo more >> ".tickets/$ID/ticket.md"
 ev stamp "$ID" ok -- true; assert_eq 0 "$code"; git checkout -q -- ".tickets/$ID/ticket.md"

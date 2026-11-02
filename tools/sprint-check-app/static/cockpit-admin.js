@@ -71,7 +71,7 @@ export async function loadAdmin(){
   if(!ck.running){ st.className='dstatus down'; st.textContent='Not running'; }
   else if(ck.stale){ st.className='dstatus stale'; st.textContent='Out of date'; }
   else { st.className='dstatus healthy'; st.textContent='Healthy'; }
-  fillVersions({canon:'ad-ver-canon', board:'ad-ver-board', daemon:'ad-ver-daemon'});   // not awaited: the uptime rows below must not wait behind two fetches
+  fillVersions({canon:'ad-ver-canon', board:'ad-ver-board', daemon:'ad-ver-daemon', machine:'ad-machine'});   // not awaited: the uptime rows below must not wait behind two fetches
   document.getElementById('ad-shell-uptime').textContent=fmtUptime(ck.shell_uptime_secs);
   const up=(ck.running_build&&ck.running_build.uptime_secs);
   document.getElementById('ad-uptime').textContent=ck.running?fmtUptime(up):'—';

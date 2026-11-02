@@ -938,7 +938,7 @@ test.describe('board modal', () => {
       createdId = adoptBoardTicket(PROJECT_ROOT, await card.getAttribute('data-id') || '', title);
       await card.click();
 
-      await expect(page.locator('#m-docs .doc-tab:not(.doc-ghost)')).toHaveCount(1);   // only Description; Acceptance, Plan and Research are ghosts (t-bb97)
+      await expect(page.locator('#m-docs .doc-tab:not(.doc-ghost):not(.doc-view)')).toHaveCount(1);   // only Description; Acceptance, Plan and Research are ghosts (t-bb97)
       await expect(page.locator('#m-docs .doc-ghost')).toHaveCount(3);
       await expect(page.locator('#m-body')).toContainText('Ticket body should render without sprint docs.');
       await expect(page.locator('#m-body')).toContainText('Uses existing markdown renderer');
@@ -14865,17 +14865,18 @@ test.describe('Canon Cockpit help', () => {
       });
     }
     test("Admin's daemon panel shows the same three rows as Help (canon, board build, cockpit-daemon) @webkit", async ({ page }) => {
-      await page.route('**/api/version', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ version: '9.9.9', commit: 'abc1234', daemon: '9.9.9 (23efca20)' }) }));
+      await page.route('**/api/version', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ version: '9.9.9', commit: 'abc1234', daemon: '9.9.9 (23efca20)', machine: { host: 'build-mac.local' }, machine_line: 'macOS 26.1, Darwin 25.1.0, arm64, 10 cores, 32 GB' }) }));
       await page.route('**/api/cockpit', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ running: true, stale: false, running_build: { version: '9.9.9', commit: '0e2fd866' } }) }));
       await page.goto(BASE + '/cockpit');
       await page.locator('#nav-admin').click();
       await expect(page.locator('.dgrid .dtitle')).toContainText('Canon Cockpit');   // the panel covers the board and the daemon, so it takes the app's name
-      await expect(page.locator('.dgrid .drow .k')).toHaveText(['Canon', 'Board Build', 'Cockpit Daemon', 'Cockpit Uptime', 'Daemon Uptime']);   // one casing for every row
+      await expect(page.locator('.dgrid .drow .k')).toHaveText(['Canon', 'Board Build', 'This Machine', 'Cockpit Daemon', 'Cockpit Uptime', 'Daemon Uptime']);   // one casing for every row
       const fonts = await page.locator('.dgrid .drow .v').evaluateAll(els => els.map(e => getComputedStyle(e).fontFamily + '|' + getComputedStyle(e).fontWeight + '|' + getComputedStyle(e).fontSize));
       expect(new Set(fonts).size).toBe(1);   // and one font for every value (one `.drow .v` rule)
       await expect(page.locator('#ad-ver-canon')).toHaveText('9.9.9');
       await expect(page.locator('#ad-ver-board')).toHaveText('abc1234');
       await expect(page.locator('#ad-ver-daemon')).toHaveText('9.9.9 (0e2fd866)');   // the running daemon's own build wins, as in Help
+      await expect(page.locator('#ad-machine')).toHaveText('build-mac.local \u2014 macOS 26.1, Darwin 25.1.0, arm64, 10 cores, 32 GB');   // t-c542: /api/version's machine
     });
     test('a 64-character stamp wraps inside the panel on a phone instead of overflowing @webkit', async ({ page }) => {
       await page.setViewportSize({ width: 390, height: 844 });
@@ -15192,6 +15193,66 @@ test.describe('ticket modal document tree (t-e946)', () => {
     await tab(page, 'Acceptance').click();
     await expect(page.locator('#m-docs .doc-tab.active')).toHaveText('Acceptance');
     await expect(page.locator('#m-body')).toContainText('Notes only');
+  });
+
+  // t-c542: the read-only Machines node. Prod path: GET /api/ticket-machines and the modal tree. The rows' text is the server's
+  // (hostile text stays text); it is not a doc (no edit, no edit hint); an empty list and a failed read each say so.
+  test('Machines node: rows from /api/ticket-machines, read-only, empty and failed reads, both themes (t-c542) @webkit', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'tree-machines');
+    writeTicket(id);
+    let answer = { status: 200, body: { machines: [
+      { where: 'local', source: 'events', host: 'build-mac.local<img src=x onerror="window.__xss=1">', line: 'macOS 26.1, Darwin 25.1.0, arm64, 10 cores, 32 GB', count: 3, first: '2026-11-02T10:00:00Z', last: '2026-11-02T12:00:00Z' },
+      { where: 'cloud', source: 'evidence', line: 'Linux 6.18.44-fc-v185 x86_64', count: 2, first: '2026-11-01T10:00:00Z', last: '2026-11-01T11:00:00Z' }] } };
+    const asked = [];
+    await page.route('**/api/ticket-machines?*', r => { asked.push(new URL(r.request().url()).searchParams.get('ticket')); return r.fulfill({ status: answer.status, contentType: 'application/json', body: JSON.stringify(answer.body) }); });
+    await openModalFor(page, id);
+    const mach = page.locator('#m-docs .doc-tab.doc-view');
+    await expect(mach).toHaveText('Machines');
+    await mach.click();
+    await expect(mach).toHaveClass(/active/);
+    await expect(page.locator('#m-docs .doc-tab.active')).toHaveCount(1);
+    const rows = page.locator('#m-body .machines-table tbody tr');
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0)).toContainText('build-mac.local<img src=x');   // shown as text
+    await expect(rows.nth(0)).toContainText('macOS 26.1, Darwin 25.1.0, arm64, 10 cores, 32 GB');
+    await expect(rows.nth(0)).toContainText('3 events');
+    await expect(rows.nth(1)).toContainText('cloud');
+    await expect(rows.nth(1)).toContainText('cloud session');
+    await expect(rows.nth(1)).toContainText('Linux 6.18.44-fc-v185 x86_64');
+    await expect(rows.nth(1)).toContainText('2 evidence logs');
+    expect(await page.locator('#m-body img').count()).toBe(0);
+    expect(await page.evaluate(() => window.__xss)).toBeUndefined();
+    expect(asked).toEqual([id]);
+    await expect(page.locator('#m-pane-bar .doc-edit-hint')).toHaveCount(0);
+    await page.locator('#m-body').dblclick();
+    await expect(page.locator('#m-edit-area')).toBeHidden();   // not a doc: nothing to edit
+    for (const scheme of ['light', 'dark']) {
+      await page.emulateMedia({ colorScheme: scheme });
+      const c = await rows.nth(0).locator('td').nth(1).evaluate(el => [getComputedStyle(el).color, getComputedStyle(document.getElementById('m-body')).backgroundColor, getComputedStyle(document.getElementById('modal')).backgroundColor]);
+      expect(c[0]).not.toBe(c[1]); expect(c[0]).not.toBe(c[2]);
+    }
+    await tab(page, 'Description').click();
+    await expect(mach).not.toHaveClass(/active/);
+    await expect(page.locator('#m-body')).toContainText('Plain description text.');
+
+    answer = { status: 200, body: { machines: [] } };
+    await mach.click();
+    await expect(page.locator('#m-body .machines-pane h3')).toHaveText('No machine recorded yet');
+    await expect(rows).toHaveCount(0);
+    answer = { status: 500, body: {} };
+    await tab(page, 'Description').click(); await mach.click();
+    await expect(page.locator('#m-body .mc-err')).toContainText("Couldn't read the machines: HTTP 500");
+  });
+
+  // t-c542: the real route answers for a ticket this board has (no stub).
+  test('Machines node reads the real /api/ticket-machines (t-c542)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'tree-machines-real');
+    writeTicket(id);
+    await openModalFor(page, id);
+    const resp = page.waitForResponse(r => r.url().includes('/api/ticket-machines?ticket=' + id));
+    await page.locator('#m-docs .doc-tab.doc-view').click();
+    expect((await resp).status()).toBe(200);
+    await expect(page.locator('#m-body .machines-pane h3, #m-body .machines-table')).toHaveCount(1);
   });
 
   test('child rows list a doc\'s ## headings, scroll to one, and keep the active doc; one heading shows none @webkit', async ({ page }) => {
@@ -15842,7 +15903,7 @@ test.describe('ticket modal polish (t-612f)', () => {
     for (const f of ['acceptance.md', 'plan.md', 'research.md']) fs.rmSync(/* non-ticket */ path.join(dir, f), { force: true });   // a description-only ticket
     await openModalFor(page, id);
     await expect(page.locator('#m-docs .doc-ghost')).toHaveText(['Acceptance+', 'Plan+', 'Research+']);
-    await expect(page.locator('#m-docs .doc-tab:not(.doc-ghost)')).toHaveText(['Description']);
+    await expect(page.locator('#m-docs .doc-tab:not(.doc-ghost):not(.doc-view)')).toHaveText(['Description']);
     const dashed = await page.locator('#m-docs .doc-ghost').first().evaluate(el => getComputedStyle(el).borderLeftStyle);
     expect(dashed).toBe('dashed');
     await page.locator('#m-docs .doc-ghost[data-ghost="acceptance"]').click();
@@ -15863,7 +15924,7 @@ test.describe('ticket modal polish (t-612f)', () => {
     await expect(page.locator('#m-edit-area')).toBeHidden();
     expect(fs.readFileSync(path.join(dir, 'acceptance.md'), 'utf8')).toContain('first criterion');
     await expect(page.locator('#m-docs .doc-ghost[data-ghost="acceptance"]')).toHaveCount(0);   // the ghost became a real node
-    await expect(page.locator('#m-docs .doc-tab:not(.doc-ghost)')).toHaveText(['Description', 'Acceptance']);
+    await expect(page.locator('#m-docs .doc-tab:not(.doc-ghost):not(.doc-view)')).toHaveText(['Description', 'Acceptance']);
   });
 
   test('a closed ticket shows no ghost nodes (t-bb97)', async ({ page }) => {

@@ -121,6 +121,19 @@
     .doc-ghost-pane { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 18px 4px; max-width: 520px; }
     .doc-ghost-pane h3 { margin: 0; font-size: 15px; }
     .doc-ghost-pane p { margin: 0; color: var(--text-muted); font-size: 13px; line-height: 1.5; }
+    /* t-c542: the read-only Machines node */
+    .doc-tab.doc-view { font-style: italic; }
+    .machines-pane { padding: 14px 4px; max-width: 760px; display: flex; flex-direction: column; gap: 10px; }
+    .machines-pane h3 { margin: 0; font-size: 15px; }
+    .machines-pane p { margin: 0; color: var(--text-muted); font-size: 13px; line-height: 1.5; }
+    .machines-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    .machines-table th { text-align: left; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); font-weight: 600; padding: 4px 8px; border-bottom: 1px solid var(--border); }
+    .machines-table td { padding: 8px; border-bottom: 1px solid var(--border); vertical-align: top; overflow-wrap: anywhere; }
+    .machines-table tr:last-child td { border-bottom: 0; }
+    .machines-table code { font-family: var(--mono); font-size: 12px; }
+    .mc-dim { color: var(--text-muted); font-size: 11.5px; }
+    .mc-where { font-weight: 600; }
+    .mc-err { color: var(--bad-ink) !important; }
     .doc-node { display: flex; align-items: center; }
     .doc-node .doc-tab { flex: 1; min-width: 0; }
     .doc-expander, .doc-expander-spacer { flex: none; width: 20px; height: 24px; }
