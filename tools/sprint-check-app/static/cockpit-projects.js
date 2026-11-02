@@ -49,6 +49,7 @@ export async function load(){
             <div class="metarow"><span class="k">Updated</span><span class="v" data-f="updated">…</span></div>
             <div class="metarow"><span class="k">Total Tickets</span><span class="v" data-f="count">…</span></div>
             <div class="metarow"><span class="k">Skills</span><span class="v" data-f="skills">…</span></div>
+            <div class="metarow skhealth-row" data-f="skhealth-row" hidden><span class="k">Skill issue</span><span class="v"><span class="skhealth-text" data-f="skhealth"></span><button type="button" class="skrefresh b-accent" data-skrefresh="${escAttr(p.id)}" data-name="${escAttr(p.name)}" data-path="${escAttr(p.path)}" title="Run skills.sh refresh in this project: it re-links the skills and fixes the AGENTS.md rows">Refresh</button></span></div>
             <div class="metarow" data-f="sessions-row" hidden><span class="k">Sessions</span><span class="v" data-f="sessions"></span></div>
             <div class="metarow" data-f="stopped-row" hidden><span class="k">Stopped</span><span class="v" data-f="stopped"></span></div>
             <div class="metarow lb-link-row" data-logbook="${escAttr(p.id)}" title="Open the Logbook: this project's Handoff and Learnings"><span class="k">Learnings</span><span class="v">${LOGBOOK_ICON}<span data-f="learnings">…</span></span></div>
@@ -74,6 +75,7 @@ export async function load(){
   grid.querySelectorAll('.scratchbtn').forEach(b=>b.addEventListener('click',()=>startScratch(b.dataset.scratch)));
   grid.querySelectorAll('.go').forEach(b=>b.addEventListener('click',()=>openProject(b.dataset.open,b.dataset.name,{nudge:true})));
   grid.querySelectorAll('.se-link-row').forEach(r=>r.addEventListener('click',()=>openSkillEvalFor(r.dataset.skillEval)));
+  grid.querySelectorAll('.skrefresh').forEach(b=>b.addEventListener('click',()=>refreshSkills(b.dataset.skrefresh,b.dataset.name,b.dataset.path,b)));
   grid.querySelectorAll('.lb-link-row').forEach(r=>r.addEventListener('click',()=>openLogbookFor(r.dataset.logbook)));
   grid.querySelectorAll('.fac-row').forEach(r=>r.addEventListener('click',()=>openFactoryGithub(r.dataset.factory)));
   grid.querySelectorAll('.regskill').forEach(b=>b.addEventListener('click',()=>registerSkill(b.dataset.id,b.dataset.name,b.dataset.path,b.dataset.skill,b)));
@@ -122,6 +124,7 @@ async function fillCardStats(id,refresh){
   const el=document.querySelector('.meta[data-stats="'+(window.CSS&&CSS.escape?CSS.escape(id):id)+'"]');
   if(!el) return;
   fillCardLearnings(id,el,refresh);
+  fillCardSkillHealth(id,el,refresh);
   if(!refresh) fillCardFactory(id,el);   // Factory has its own refresh; re-reading it here would re-run gh every interval
   const up=el.querySelector('[data-f="updated"]'), ct=el.querySelector('[data-f="count"]'), sk=el.querySelector('[data-f="skills"]');
   try{
@@ -181,6 +184,42 @@ function setGitState(gs,st){
 // t-7d8d: one run per project at a time — two concurrent skills.sh add runs race on
 // AGENTS.md and settings.json.
 const _regBusy=new Set();
+// t-6541: the card's skill problems, from skills.sh's own check (GET /api/skills-health: status --json, cached on the server). A
+// problem shows with Refresh; a check that could not run says so (never "healthy"); a healthy project shows no row.
+async function fillCardSkillHealth(id,el,refresh){
+  const row=el.querySelector('[data-f="skhealth-row"]'), txt=el.querySelector('[data-f="skhealth"]'), btn=row&&row.querySelector('.skrefresh');
+  if(!row||!txt) return;
+  let h;
+  try{ const r=await fetch('/api/skills-health?project='+encodeURIComponent(id)); h=r.ok?await r.json():null; }catch(e){ h=null; }
+  if(!h){ if(refresh) return; h={ok:false,error:'could not check'}; }
+  if(!h.ok){ row.hidden=false; txt.textContent='\u26a0 '+(h.error||'could not check'); if(btn) btn.hidden=true; return; }
+  const bad=(h.skills||[]).filter(s=>s.problems&&s.problems.length);
+  row.hidden=!bad.length;
+  if(btn) btn.hidden=!bad.length;
+  txt.textContent=bad.map(s=>'\u26a0 '+s.name+': '+s.problems.join(', ')).join('; ');
+}
+
+// t-6541: Refresh runs skills.sh refresh in that project from the board (POST /api/skills-refresh: a fixed command, the board's
+// non-interactive defaults), busy like the Project tab's add, then the card re-reads.
+const _refreshBusy=new Set();
+async function refreshSkills(id,name,path,btn){
+  if(_refreshBusy.has(id)) return;
+  _refreshBusy.add(id);
+  const saved=btn.innerHTML; btn.disabled=true; btn.setAttribute('aria-busy','true');
+  btn.innerHTML='<span class="reg-spin" aria-hidden="true"></span>'+esc('Refreshing…');
+  try{
+    const r=await fetch('/api/skills-refresh?project='+encodeURIComponent(id),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    const res=await r.json().catch(()=>({}));
+    if(res&&res.ok){ toast('\u2713 Refreshed the skills in '+name); }
+    else if(res&&res.unsupported){ await cockpitConfirm({title:'Refresh the skills manually', body:'This host can\u2019t run it \u2014 run this in Git Bash, then reopen the project:', code: res.cmd||('skills.sh refresh '+path), okOnly:true, okLabel:'Done'}); }
+    else await cockpitConfirm({title:'Refresh did not finish', body:(res&&res.error)||'skills.sh refresh failed', code:(res&&res.output)||'', okOnly:true, okLabel:'Close'});
+  }catch(e){ toast('Request failed'); }
+  finally{
+    _refreshBusy.delete(id); btn.disabled=false; btn.removeAttribute('aria-busy'); btn.innerHTML=saved;
+    fillCardStats(id,true);
+  }
+}
+
 export async function registerSkill(id,name,path,skill,btn){
   skill=skill||'sprint';
   if(_regBusy.has(id)) return;

@@ -75,6 +75,7 @@
   .theme-pop .thm-rejected b{color:var(--text);font-weight:600}
   .theme-pop .thm-open{width:100%;max-width:none;padding:6px 0;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text);font:inherit;cursor:pointer}
   .theme-pop .thm-open:hover{border-color:var(--border-hover)}
+  .theme-pop .thm-open.thm-open-link{width:auto;padding:2px 0;border:0;color:var(--accent);text-decoration:underline;font-size:12px}   /* t-6541 */
   .main{overflow:hidden;display:flex;flex-direction:column}
   /* Tab bar: pinned Projects + closable project tabs */
   .tabstrip{display:flex;align-items:center;gap:4px;height:var(--strip-h);padding:var(--strip-pad) 14px 0;border-bottom:1px solid var(--border);background:var(--panel);flex-shrink:0;overflow-x:auto}

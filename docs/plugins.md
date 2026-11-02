@@ -8,7 +8,7 @@ renamed or removed.
 ## Where events are
 
 - `$CANON_HOME/events/YYYY-MM-DD.jsonl`, one file per **UTC** day. `CANON_HOME` defaults to `~/.canon`.
-- The files hold paths as written. **Export .jsonl** (Admin > Logging) writes the user's home folder as `~` in the `project` field only (`~/work/app`, `~\work\app` on Windows); no other field and no file on disk is changed, and a line that is not JSON is exported as it is.
+- The files hold paths as written. **Export** (Admin > Logging, one `.jsonl` file) writes the user's home folder as `~` in the `project` field only (`~/work/app`, `~\work\app` on Windows); no other field and no file on disk is changed, and a line that is not JSON is exported as it is.
 - Read the files in name order, then each file's lines in order. That is append order, which is not always strict
   `ts` order: two writers can finish a few milliseconds apart. Use `id` to drop a line you have already seen.
 - To resume where you left off, keep the file name and the byte offset you had read up to. A day's file only grows,
@@ -30,7 +30,7 @@ renamed or removed.
 | `kind` | one of the kinds below |
 | `source` | the program that wrote it: `tkt`, `sprint`, `board`, `gate-snapshot`, `subagent-log` or `daemon` |
 | `actor` | optional: who caused it: `user` (a person at the board or the command line), `agent` (an agent in a session) or `system` (canon itself: a timer, the idle reaper, a retention job). Different from `source`, which is the program that wrote the line. Absent from every event written before it existed and from any emitter that does not know it: treat absent as unknown. The set is closed in v1: a line with any other value is not a v1 event |
-| `host` | optional: the hostname of the machine that wrote it (t-c542), as the OS reports it. Absent from every event written before it existed. It stays in this log: Admin > Logging's **Export .jsonl** includes it, and nothing canon sends to GitHub carries it |
+| `host` | optional: the hostname of the machine that wrote it (t-c542), as the OS reports it. Absent from every event written before it existed. It stays in this log: Admin > Logging's **Export** includes it, and nothing canon sends to GitHub carries it |
 | `project` | the project's root folder, an absolute path (symlinks resolved) |
 | `data` | only the fields listed for the kind; every value is a string |
 

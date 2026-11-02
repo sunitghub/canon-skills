@@ -7,8 +7,8 @@ and its boards need from those 12.
 ## Where the files go
 
 `~/.canon/themes/` (or `$CANON_HOME/themes/` if you set `CANON_HOME`). Each `.json` file directly in that folder is
-one theme. Click **Open themes folder** at the bottom of the ◐ Theme menu: if the folder does not exist yet, canon
-creates it with a working `example.json` and a short `README.md`, then opens it. It never overwrites a file that is
+one theme. Click **Create a sample theme** at the bottom of the ◐ Theme menu: canon creates the folder with a working
+`example.json` and a short `README.md`, then opens it. Once the folder exists, the menu shows **Show themes folder** instead. It never overwrites a file that is
 already there, and it adds nothing to a folder that already exists.
 
 A new or changed file shows up the next time you open the menu. Your theme appears with the built-ins of its mode
@@ -92,5 +92,5 @@ it can still be used; its card says **Low contrast**, and hovering the mark show
 
 Anything can write to that folder, so canon treats its files as untrusted. Both board servers check every file with the
 rules above and the page checks each one again before using it. Colours are set one variable at a time, never as CSS
-text, and names and reasons are shown as plain text. **Open themes folder** opens that one folder in your file manager,
+text, and names and reasons are shown as plain text. **Create a sample theme** and **Show themes folder** open that one folder in your file manager,
 and nothing else.

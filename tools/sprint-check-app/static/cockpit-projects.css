@@ -9,6 +9,10 @@
   .card .meta{padding-left:12px;border-left:3px solid var(--accent);display:grid;grid-template-columns:auto auto;justify-content:start;column-gap:28px;row-gap:4px;align-content:center}
   .card .metarow{display:contents}
   .card .metarow[hidden]{display:none}
+  /* t-6541: a skill problem with its Refresh */
+  .card .metarow.skhealth-row .v{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;color:var(--warn-ink,var(--text));font-weight:600}
+  .card .skrefresh{font:inherit;font-size:12px;font-weight:600;border-radius:6px;padding:2px 10px;cursor:pointer}
+  .card .skrefresh[hidden]{display:none}
   .card .metarow .k{color:var(--text-muted);font-size:13px}
   .card .metarow .v{color:var(--card-stat);font-weight:700;font-size:13px;font-variant-numeric:tabular-nums}
   .card .regbtns{display:flex;gap:8px;flex-wrap:wrap}

@@ -452,6 +452,13 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		}
 	case "/api/cockpit-interrupted":
 		sendJSON(w, cockpitInterrupted())
+	case "/api/skills-health": // t-6541: the Projects card's skill problems (skills.sh status --json)
+		root, ok := effectiveRoot(r)
+		if !ok {
+			http.Error(w, "unknown project", http.StatusBadRequest)
+			return
+		}
+		sendJSON(w, skillsHealth(root))
 	case "/api/version":
 		sendJSON(w, map[string]any{"version": canonVersion(), "commit": commit, "daemon": daemonVersion(), "machine": machine.Get(), "machine_line": machine.Get().Line()})
 	case "/api/ticket-machines":
@@ -814,6 +821,10 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 			status = http.StatusBadRequest
 		}
 		sendJSONStatus(w, res, status)
+		return
+	}
+	if path == "/api/skills-refresh" { // t-6541: the Projects card's Refresh
+		sendJSON(w, skillsRefresh(eroot))
 		return
 	}
 	// t-7485: register the fixed `sprint` skill into the tab's project. eroot is
@@ -5336,6 +5347,7 @@ type themeList struct {
 	Themes   []userTheme     `json:"themes"`
 	Rejected []rejectedTheme `json:"rejected"`
 	Error    string          `json:"error,omitempty"`
+	Exists   bool            `json:"exists"` // t-6541: the folder is there (the popover offers Show, not Create)
 }
 
 func themesDir() string {
@@ -5468,9 +5480,11 @@ func listThemes() themeList {
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
 			out.Error = "the themes folder cannot be read"
+			out.Exists = true
 		}
 		return out
 	}
+	out.Exists = true
 	var files []string
 	for _, e := range entries {
 		n := e.Name()
@@ -5879,45 +5893,22 @@ func registerSkill(root, skill string) map[string]any {
 		return map[string]any{"ok": false, "error": "only sprint / efficiency can be registered from the Cockpit"}
 	}
 	hint := fmt.Sprintf("%s add %s %s", skillsShPath(), skill, root)
-	bash, berr := exec.LookPath("bash")
-	if berr != nil || !exists(skillsShPath()) {
+	// t-b47a: Stdin=nil alone does not make skills.sh's setup prompts non-interactive (they read /dev/tty directly), so
+	// SKILLS_SH_ASSUME_YES applies each project-scoped prompt's recommended default. t-6541: run through runSkillsSh, the one runner.
+	out, unsupported, err := runSkillsSh(root, 60*time.Second, []string{"SKILLS_SH_ASSUME_YES=1"}, "add", skill, root)
+	if unsupported {
 		return map[string]any{"ok": false, "unsupported": true, "cmd": hint}
 	}
-	cmd := exec.Command(bash, skillsShPath(), "add", skill, root)
-	cmd.Dir = root
-	cmd.Stdin = nil
-	// t-b47a: Stdin=nil alone does NOT make skills.sh's setup prompts
-	// non-interactive — they read from /dev/tty directly, independent of
-	// stdin, so a long-lived board process still finds its launch terminal's
-	// controlling tty and prompts there, unanswered. SKILLS_SH_ASSUME_YES
-	// tells the three project-scoped prompts (AGENTS.md bridge, model-tiers
-	// note, subagent-log.sh permission) to apply their recommended default
-	// immediately instead of waiting on that prompt.
-	cmd.Env = append(os.Environ(), "SKILLS_SH_ASSUME_YES=1")
-	timedOut := false
-	timer := time.AfterFunc(60*time.Second, func() {
-		timedOut = true
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
-		}
-	})
-	out, err := cmd.CombinedOutput()
-	timer.Stop()
 	if err != nil {
-		// Parity with server.py: a completed-but-nonzero run → {error}; a launch
-		// failure or our timeout kill → {unsupported} (same as no-bash), so the
-		// UI shows the copy-paste command rather than an error toast.
-		if _, isExit := err.(*exec.ExitError); isExit && !timedOut {
-			msg := strings.TrimSpace(string(out))
-			if msg == "" {
-				msg = "skills.sh failed"
-			}
-			if len(msg) > 400 {
-				msg = msg[:400]
-			}
-			return map[string]any{"ok": false, "error": msg, "cmd": hint}
+		// Parity with server.py: a completed-but-nonzero run → {error}.
+		msg := strings.TrimSpace(string(out))
+		if msg == "" {
+			msg = "skills.sh failed"
 		}
-		return map[string]any{"ok": false, "unsupported": true, "cmd": hint}
+		if len(msg) > 400 {
+			msg = msg[:400]
+		}
+		return map[string]any{"ok": false, "error": msg, "cmd": hint}
 	}
 	return map[string]any{"ok": true, "skills": registeredSkills(root)}
 }

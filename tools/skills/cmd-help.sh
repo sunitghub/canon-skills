@@ -40,7 +40,7 @@ _print_usage() {
   echo "  list                    Show all available skills"
   echo "  add <skill> [dir]       Register a skill into a project (default: cwd)"
   echo "  refresh [dir]           Prune stale @-imports and sync standards (default: cwd)"
-  echo "  status [dir]            Show registered skills and detect issues (default: cwd)"
+  echo "  status [--json] [dir]   Show registered skills and detect issues (default: cwd); --json for the board"
   echo "  remove <skill> [dir]    Unregister a skill from a project (default: cwd)"
   echo "  help <skill>            Show full documentation for a skill (alias: <skill> --h)"
   echo "  init                    Set up this canon install: wire project hooks,"
