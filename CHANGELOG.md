@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.36.2] - 2026-11-02
+
 ### Changed
 - A Lite ticket sent to GitHub now closes Lite in the Claude cloud session too: `tkt send-issue` marks it in the issue and `sprint import-issue` sets `demo: true`, so the session runs security-review and the evaluator (Haiku) and skips the reviewer. Before, the issue dropped the flag and the cloud always ran every gate. The mark counts only where `send-issue` writes it, so the same text in a ticket's notes or in an issue canon did not write (`tkt sync-issues`) never sets Lite (t-4d39).
 
