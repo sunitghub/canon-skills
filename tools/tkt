@@ -1592,8 +1592,8 @@ cmd_sync_issues() {
       printf '**%s** · %s · P%s · %s\n\n' "$id" "$type" "$pri" "$title"
       # A body that starts with one of send-issue's part headings keeps its parts. Anything else is the Description, with
       # any line that would start a part (outside code) demoted to "## …", so import-issue cannot drop the text after it.
-      # t-4d39: an issue canon did not write never sets Lite: its <!-- canon:lite --> lines (outside code) are dropped.
-      awk '{ l = $0; sub(/\r$/, "", l) } l ~ /^```/ { fence = !fence } fence || l != "<!-- canon:lite -->"' "$tmp/body-$n" > "$tmp/body-$n.x" && mv "$tmp/body-$n.x" "$tmp/body-$n"
+      # t-4d39: an issue canon did not write never sets Lite: its <!-- canon:lite --> lines (outside code) are dropped (_sync_clean took \r).
+      awk '/^```/ { fence = !fence } fence || $0 != "<!-- canon:lite -->"' "$tmp/body-$n" > "$tmp/body-$n.x" && mv "$tmp/body-$n.x" "$tmp/body-$n"
       if awk 'NF && !seen { seen = 1; ok = /^# (Description|Acceptance|Plan|Research)$/ } END { exit !ok }' "$tmp/body-$n"; then
         cat "$tmp/body-$n"
       else
