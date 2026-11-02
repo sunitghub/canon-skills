@@ -138,32 +138,29 @@ run_with_tty "stty -icrnl; '$SKILLS' add sprint '$project5'" $'y\r'
 assert_file_exists "$project5/.claude/settings.json"
 assert_count 1 "$RULE" "$project5/.claude/settings.json"
 
-# --- t-5d4e: canon's skills folder in permissions.additionalDirectories of .claude/settings.local.json ---
-# Prod path: `skills.sh add sprint` / `remove sprint`; without the entry a close gate's regex sed on .claude/skills/... (a link
-# outside the project) stops on a permission prompt (headless and cloud: denied).
+# --- t-1ed8 (was t-5d4e's opt-in offer): add never asks about canon's skills folder or writes it; remove still cleans it up ---
+# Prod path: `skills.sh add sprint` (a terminal, and the board's Project tab, which runs it with SKILLS_SH_ASSUME_YES=1 and whose
+# launch terminal showed the question and waited 15 s) and `skills.sh remove sprint` for a project that accepted it on 0.36.0-0.36.2.
 CANON_SKILLS_DIR="$(cd -P "$ROOT/skills" && pwd -P)"
 LOCAL=".claude/settings.local.json"
 p6="$(make_project)"; p7="$(make_project)"
 trap 'rm -rf "$tmp_home" "$project" "$project_scope" "$project2" "$project3" "$project4" "$project5" "$p6" "$p7"' EXIT
-out="$("$SKILLS" add sprint "$p6" 2>&1)"                       # no terminal: nothing written, the skip line names file and entry
-[ ! -f "$p6/$LOCAL" ] || fail "no-tty add wrote $p6/$LOCAL"
-assert_contains "$out" "optional: add \"$CANON_SKILLS_DIR\" to permissions.additionalDirectories in $p6/$LOCAL"
-SKILLS_SH_ASSUME_YES=1 "$SKILLS" add sprint "$p7" >/dev/null 2>&1      # opt-in, default no: assume-yes never answers it
-[ ! -f "$p7/$LOCAL" ] || ! grep -qF "$CANON_SKILLS_DIR" "$p7/$LOCAL" || fail "SKILLS_SH_ASSUME_YES added the folder; it is opt-in"
-run_with_tty "'$SKILLS' add sprint '$p7'" "n" >/dev/null           # no: nothing written
-[ ! -f "$p7/$LOCAL" ] || ! grep -qF "$CANON_SKILLS_DIR" "$p7/$LOCAL" || fail "answering no still added the folder"
-run_with_tty "'$SKILLS' add sprint '$p7'" "y" >/dev/null           # yes: written once
-assert_count 1 "$CANON_SKILLS_DIR" "$p7/$LOCAL"
-grep -qF '"additionalDirectories"' "$p7/$LOCAL" || fail "the folder is not under additionalDirectories: $(cat "$p7/$LOCAL")"
-[ ! -f "$p7/.claude/settings.json" ] || ! grep -qF "$CANON_SKILLS_DIR" "$p7/.claude/settings.json" || fail "the machine path went into the committed settings.json"
-before="$(cat "$p7/$LOCAL")"; run_with_tty "'$SKILLS' add sprint '$p7'" "y" >/dev/null
-assert_eq "$before" "$(cat "$p7/$LOCAL")"                          # a second add changes nothing
-out="$(run_with_tty "'$SKILLS' remove sprint '$p7'" "n")"          # remove asks first: no keeps it
-assert_count 1 "$CANON_SKILLS_DIR" "$p7/$LOCAL"
-assert_contains "$out" "Remove canon's skills folder"
-run_with_tty "'$SKILLS' add sprint '$p7'" "n" >/dev/null           # back for the yes case below
-run_with_tty "'$SKILLS' remove sprint '$p7'" "y" >/dev/null        # remove takes only that entry
+no_grant() {   # no_grant <project> <output>: nothing written, nothing asked or printed about the folder
+  [ ! -f "$1/$LOCAL" ] || ! grep -qF "$CANON_SKILLS_DIR" "$1/$LOCAL" || fail "add wrote canon's skills folder to $1/$LOCAL"
+  case "$2" in *"canon's skills folder"*|*additionalDirectories*) fail "add still offers the skills-folder entry: $2";; esac
+}
+out="$("$SKILLS" add sprint "$p6" 2>&1)"; no_grant "$p6" "$out"                         # no terminal
+out="$(SKILLS_SH_ASSUME_YES=1 "$SKILLS" add sprint "$p6" 2>&1)"; no_grant "$p6" "$out"   # the board's way
+out="$(run_with_tty "'$SKILLS' add sprint '$p7'" "y")"; no_grant "$p7" "$out"            # a terminal answering yes to everything
+# a project that accepted the entry on 0.36.x: remove asks first, no keeps it, yes takes only that entry
+mkdir -p "$p7/.claude"
+printf '{"permissions": {"allow": ["Bash(x:*)"], "additionalDirectories": ["%s"]}}\n' "$CANON_SKILLS_DIR" > "$p7/$LOCAL"
+out="$(run_with_tty "'$SKILLS' remove sprint '$p7'" "n")"
+assert_count 1 "$CANON_SKILLS_DIR" "$p7/$LOCAL"; assert_contains "$out" "Remove canon's skills folder"
+run_with_tty "'$SKILLS' add sprint '$p7'" "n" >/dev/null
+run_with_tty "'$SKILLS' remove sprint '$p7'" "y" >/dev/null
 ! grep -qF "$CANON_SKILLS_DIR" "$p7/$LOCAL" || fail "remove left the folder in $p7/$LOCAL"
+assert_count 1 'Bash(x:*)' "$p7/$LOCAL"
 printf '{"permissions": {"allow": ["Bash(x:*)"]}}\n' > "$p6/$LOCAL"     # a settings file without the entry
 before="$(cat "$p6/$LOCAL")"
 out="$(run_with_tty "'$SKILLS' remove sprint '$p6'" "y")"          # no question, nothing changed
