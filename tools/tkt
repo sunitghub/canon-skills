@@ -1990,6 +1990,109 @@ cmd_merge_pr() {
   _gh_trail "$tdir" merged "PR: #$pr" "merge commit: ${sha:-unknown}" "base: $base"
 }
 
+# cmd_merge <id> [--test CMD] [--yes | --check] — t-2906: Check & merge for any closed ticket, the one command the board runs. A
+# ticket sent to GitHub (runs: github) merges its PR: tkt merge-pr with the same arguments. Any other merges its worktree branch
+# (_merge_branch). The front end is chosen here and only here, so another one (a branch pushed as a PR, say) is one more case.
+cmd_merge() {
+  local id="" pr="" tcmd="" tset=false yes=false check=false args=("$@")
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --pr)    pr="${2:-}"; shift 2 || { echo "Error: --pr needs a number" >&2; exit 1; } ;;
+      --test)  tcmd="${2:-}"; tset=true; shift 2 || { echo "Error: --test needs a command" >&2; exit 1; } ;;
+      --yes)   yes=true; shift ;;
+      --check) check=true; shift ;;
+      -*) echo "Unknown option: $1" >&2; exit 1 ;;
+      *)  [[ -z "$id" ]] && id="$1"; shift ;;
+    esac
+  done
+  [[ -n "$id" ]] || { echo "Usage: tkt merge <id> [--test CMD] [--yes | --check]   (a ticket sent to GitHub also takes --pr N)" >&2; exit 1; }
+  local file; file="$(find_ticket "$id")"
+  if [[ "$(get_field "$file" runs)" == github ]]; then cmd_merge_pr "${args[@]}"; return; fi
+  [[ -z "$pr" ]] || { echo "merge: --pr is for a ticket sent to GitHub; $id merges its worktree branch" >&2; exit 1; }
+  $yes && $check && { echo "merge: --yes and --check do not go together: --check never runs or merges anything" >&2; exit 1; }
+  _merge_branch
+}
+
+# _merge_branch — t-2906: merges a closed ticket's worktree branch into the branch checked out in the main checkout, through
+# _merge_core (the same checks, report, question and tests as merge-pr). Reads cmd_merge's locals. The merge commit is built
+# from objects only (merge-tree, commit-tree) and must hold exactly the tree the tests ran on; then the main checkout's branch
+# moves to it through _advance_local, so an edited file there stops it with nothing changed, as merge-pr's update does.
+# Every refusal says why and changes nothing: no ref, no file, no ticket field.
+_merge_branch() {
+  local tdir root wt branch base head graded bsha dirty st
+  tdir="$(dirname "$file")"; id="$(get_field "$file" id)"
+  root="$(git -C "$tdir" rev-parse --show-toplevel)" || exit 1
+  _mb_no() { echo "merge: $1" >&2; exit 1; }
+  st="$(get_field "$file" status)"
+  [[ "$st" == closed ]] || _mb_no "$id is ${st:-without a status}, not closed: close it with sprint complete in its worktree first"
+  [[ -z "$(get_field "$file" merged)" ]] || _mb_no "$id is already merged ($(get_field "$file" merged))"
+  graded="$(_eval_pass_head merge "$tdir" "$id" "close it with sprint complete in its worktree first")" || exit 1
+  [[ -f "$tdir/.cockpit-cwd" ]] || _mb_no "$id is not bound to a worktree (no .tickets/$id/.cockpit-cwd), so there is no branch to merge"
+  wt="$(_ticket_cwd_binding "$file")"
+  [[ -d "$wt" ]] || _mb_no "$id's worktree $wt is gone; merge its branch by hand"
+  local wgc rgc
+  wgc="$(git -C "$wt" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" \
+    && rgc="$(git -C "$root" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" \
+    || _mb_no "git could not read the repository of $wt or $root"
+  [[ "$(cd "$wgc" && pwd -P)" == "$(cd "$rgc" && pwd -P)" ]] || _mb_no "$wt is not a worktree of $root"
+  [[ "$(cd "$wt" && pwd -P)" != "$(cd "$root" && pwd -P)" ]] || _mb_no "$id was worked on in the main checkout, not a worktree: there is no branch to merge"
+  branch="$(git -C "$wt" symbolic-ref -q --short HEAD)" || _mb_no "the worktree $wt has no branch checked out (a detached HEAD)"
+  base="$(git -C "$root" symbolic-ref -q --short HEAD)" || _mb_no "the main checkout $root has no branch checked out (a detached HEAD)"
+  { _branch_ok "$branch" && _branch_ok "$base"; } || _mb_no "a branch name git cannot use as given ($branch, $base)"
+  [[ "$branch" != "$base" ]] || _mb_no "the worktree has $base itself checked out; there is no separate branch to merge"
+  head="$(git -C "$root" rev-parse -q --verify "refs/heads/$branch^{commit}")" \
+    && bsha="$(git -C "$root" rev-parse -q --verify "refs/heads/$base^{commit}")" \
+    || _mb_no "git could not read $branch or $base"
+  ! git -C "$root" merge-base --is-ancestor "$head" "$bsha" || _mb_no "$branch is already in $base; nothing to merge"
+  dirty="$(git -C "$wt" status --porcelain --untracked-files=no 2>&1)" || _mb_no "git could not read the worktree's status: $dirty"
+  if [[ -n "$dirty" ]]; then
+    echo "merge: the worktree $wt has uncommitted changes the evaluator did not grade; commit or discard them, then Check & merge again:" >&2
+    printf '%s\n' "$dirty" | sed -n '1,10p' | sed 's/^/  /' >&2; exit 1
+  fi
+  local tmp err; tmp="$(mktemp -d "${TMPDIR:-/tmp}/tkt-merge.XXXXXX")"
+  # shellcheck disable=SC2064  # expand now: $tmp is local
+  trap "rm -rf '$tmp'" EXIT
+  # shellcheck disable=SC2034  # read by _merge_core (dynamic scope)
+  local label=merge subj="$branch" kind=branch title="$branch" logsfx="${branch//[^A-Za-z0-9._-]/-}" fetch_from="" closes="" also=""
+  _mc_fetch() {
+    err="$({ git clone -q --no-checkout "$root" "$tmp/w" \
+      && git -C "$tmp/w" fetch -q "$root" "+refs/heads/$base:refs/remotes/o/$base" "+refs/heads/$branch:refs/remotes/o/cand"; } < /dev/null 2>&1)" || return 1
+    [[ "$(git -C "$tmp/w" rev-parse "o/$base")" == "$bsha" ]] || { err="$base moved while it was read; run tkt merge again"; return 1; }
+  }
+  _mc_refuse() { exit 1; }   # the reason is printed already; a local merge keeps no trail
+  _mc_conflict_next() { echo "next: in $wt run git merge $base, resolve and commit; then tkt reopen $id and close it again (sprint complete) so the evaluator grades the new head; then Check & merge" >&2; }
+  # Files the merge changes that are edited in the main checkout: canon's own are set aside at the merge, any other stops it.
+  _mc_check_notes() {
+    local f hit=()
+    while IFS= read -r -d '' f; do
+      if git -C "$root" cat-file -e "$bsha:$f" 2>/dev/null; then git -C "$root" diff --quiet "$bsha" -- "$f" 2>/dev/null && continue
+      else [[ -e "$root/$f" || -L "$root/$f" ]] || continue; fi
+      hit+=("${f//[^[:print:]]/?}")
+    done < <(git -C "$tmp/w" diff --no-renames --name-only -z "o/$base" HEAD < /dev/null 2>/dev/null)
+    [[ ${#hit[@]} -eq 0 ]] || echo "merge: edited in the main checkout and changed by this merge (may stop the update unless canon's own): $(printf '%s, ' "${hit[@]}" | sed 's/, $//')"
+    return 0
+  }
+  local mrc=0; _merge_core || mrc=$?
+  [[ "$mrc" == 0 ]] || return 0
+  local tested tree new
+  tested="$(git -C "$tmp/w" rev-parse 'HEAD^{tree}')" || _mb_no "git could not read the tested tree; nothing merged"
+  [[ "$(git -C "$root" rev-parse -q --verify "refs/heads/$base")" == "$bsha" ]] || _mb_no "$base moved while the tests ran; nothing merged: Check & merge again"
+  [[ "$(git -C "$root" rev-parse -q --verify "refs/heads/$branch")" == "$head" ]] || _mb_no "$branch moved while the tests ran; nothing merged: Check & merge again"
+  tree="$(git -C "$root" merge-tree --write-tree "$bsha" "$head" < /dev/null 2>&1)" || _mb_no "git merge-tree could not build the merge here: $(head -1 <<< "$tree")"
+  tree="$(head -1 <<< "$tree")"
+  [[ "$tree" == "$tested" ]] || _mb_no "the merge here (tree ${tree:0:8}) is not the tree the tests ran on (${tested:0:8}); nothing merged"
+  new="$(git -C "$root" commit-tree "$tree" -p "$bsha" -p "$head" -m "Merge branch '$branch'" < /dev/null 2>&1)" \
+    || _mb_no "git could not write the merge commit: $new"
+  _advance_local "$root" "$base" "$id" "$bsha" "$new" "tkt merge $id" || _mb_no "not merged; $base is unchanged at ${bsha:0:8}"
+  echo "Merged $branch into $base ($new)."
+  canon_event branch.merged tkt "$root" "ticket=$id" "branch=$branch"
+  handoff_recent "$root"   # t-2db7
+  set_or_add_field "$file" merged "$new"
+  if git -C "$root" remote get-url origin >/dev/null 2>&1; then
+    echo "next: push $base (git push), then run tkt worktree-reset in $wt to start the next ticket there"
+  else echo "next: the worktree $wt is free: reuse it for the next ticket, or remove it (git worktree remove $wt)"; fi
+}
+
 # _record_merge <label> <ticket.md> <owner/repo> <pr> [<sha>] [<actor>] — t-7c89: record a merge done outside merge-pr, the way merge-pr
 # does (merged:, the github.md trail, the github.merged event). Only when GitHub says the PR is MERGED, it is from this repository,
 # and its head is on origin's base branch. Nothing is written otherwise: the reason goes to stderr and the return is 1. A ticket that
@@ -3092,6 +3195,11 @@ Commands:
                             its visibility, test command) and the cloud recipe.
   cloud-env [--json]        This project's Claude cloud environment recipe: allowed domains,
                             then the setup script (tools/cloud-env.sh; Go projects get the Go part).
+  merge <id> [--test CMD] [--yes | --check]
+                            Check & merge any closed ticket: one sent to GitHub merges its PR
+                            (merge-pr, same options plus --pr N); any other merges its worktree
+                            branch into the main checkout's branch here, as one merge commit,
+                            after the same checks and its tests on main + branch.
   merge-pr <id> [--pr N] [--test CMD] [--yes | --check]
                             Check a cloud ticket's PR (evaluator passed on its head,
                             mergeable, suite green on base + PR) and merge it after a y.
@@ -3157,6 +3265,7 @@ main() {
     push-main)      cmd_push_main "$@" ;;
     commit-push)    cmd_commit_push "$@" ;;
     release-check)  cmd_release_check "$@" ;;
+    merge)          cmd_merge "$@" ;;
     merge-pr)       cmd_merge_pr "$@" ;;
     land)           cmd_land "$@" ;;
     worktree-reset) cmd_worktree_reset "$@" ;;
