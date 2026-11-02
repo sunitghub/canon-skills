@@ -94,6 +94,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    headless `ci + demo` guard/warning (Phase C) is the only piece still outstanding — neither is
    required here. **Headless/CI never reduces the gate set for `demo`: `sprint-headless` runs its full pipeline and ignores `demo` entirely; `sprint-headless-eval` (already eval-only) also runs its full gate set but reads `demo: true` to default the evaluator to Haiku when no `--model` is given — a model choice, never a skipped gate.**
    (ticket-id mode; explicit `--model` wins.) See `docs/headless-ci.md` and `DECISIONS.md` 2026-08-06.
+   **A Claude cloud session closes Lite too (t-4d39):** `tkt send-issue` marks a `demo: true` ticket with a `<!-- canon:lite -->` line and a Lite step 5, and `sprint import-issue` sets `demo: true` from that line, so the cloud close takes this path (an interactive session, not headless). The line counts only directly above the issue's closing `canon:ticket` marker, where `send-issue` writes it: the same text in a ticket's notes or an issue `tkt sync-issues` wraps never sets Lite.
 
 
    **Mutation sweep (pre-evaluator, non-binding, normal+ tier, t-1fac, t-087c).** When the sprint changed shell, JS, Python

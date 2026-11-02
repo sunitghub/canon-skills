@@ -466,4 +466,55 @@ cd "$W"
 rc=0; out="$("$TKT" import-results "$id" 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "importing with no results branch should exit 1"; assert_contains "$out" "has no branch canon-results/$id"
 
+# ---- t-4d39: a Lite ticket closes Lite in the cloud: send-issue marks it, import-issue sets demo: true ----
+# Prod path: tkt send-issue's body and sprint import-issue, the Mac-to-cloud hand-off; complete.md's Demo mode keys on demo: true.
+mkrepo() { mkdir "$1" && git -C "$1" init -q && git -C "$1" remote add origin https://github.com/acme/app.git; }
+mkrepo "$W/lite-mac"; cd "$W/lite-mac"
+plain="$("$TKT" create "Plain one · with a dot" -t bug -p 1)"
+"$TKT" send-issue "$plain" >/dev/null
+grep -qxF '<!-- canon:lite -->' "$STUB_BODY" && fail "a ticket without demo: true was sent with the Lite marker"
+assert_grep '^5\. Run `sprint complete`: a fresh reviewer and a fresh evaluator are dispatched, and neither is skipped or written by hand\.$' "$STUB_BODY"
+cp "$STUB_BODY" "$W/plain-body.md"
+lite="$("$TKT" create "Lite one · with a dot" -t feature -p 3)"
+"$TKT" demo "$lite" on >/dev/null
+"$TKT" send-issue "$lite" >/dev/null
+assert_eq "<!-- canon:lite -->|<!-- canon:ticket $lite -->" "$(tail -2 "$STUB_BODY" | paste -sd'|' -)"
+assert_grep 'This is a Lite ticket \(demo: true\): it runs the Lite close, security-review and a fresh evaluator$' "$STUB_BODY"
+assert_grep 'the advisory reviewer and the rest of wrapup are skipped, their rows `skipped \| demo mode`' "$STUB_BODY"
+assert_grep '^   skipped or written by hand\.$' "$STUB_BODY"   # the floor: the kept gates are never skipped or hand-written
+grep -q 'neither is skipped or written by hand' "$STUB_BODY" && fail "a Lite body still carries the full-gates step 5"
+cp "$STUB_BODY" "$W/lite-body.md"
+# The cloud side: sprint import-issue reads demo=true, header fields intact; the plain one has no demo line.
+mkrepo "$W/lite-cloud"; cd "$W/lite-cloud"; export STUB_CLOUD=1
+"$SPRINT" import-issue 57 >/dev/null
+assert_eq "$lite: demo=true" "$("$TKT" demo "$lite")"
+assert_grep '^type: feature$' ".tickets/$lite/ticket.md"; assert_grep '^priority: 3$' ".tickets/$lite/ticket.md"
+assert_grep '^# Lite one · with a dot$' ".tickets/$lite/ticket.md"
+"$TKT" import-issue 57 --body-file "$W/plain-body.md" >/dev/null
+grep -q '^demo:' ".tickets/$plain/ticket.md" && fail "a plain import wrote a demo line"
+assert_grep '^# Plain one · with a dot$' ".tickets/$plain/ticket.md"
+# An existing ticket.md gains demo: true; a body without the marker never clears it.
+"$TKT" demo "$plain" off >/dev/null; sed -i.bak '/^demo:/d' ".tickets/$plain/ticket.md"
+sed "s/canon:ticket $lite/canon:ticket $plain/" "$W/lite-body.md" > "$W/plain-as-lite.md"
+"$TKT" import-issue 57 --body-file "$W/plain-as-lite.md" --force >/dev/null
+assert_eq "$plain: demo=true" "$("$TKT" demo "$plain")"
+"$TKT" import-issue 57 --body-file "$W/plain-body.md" --force >/dev/null
+assert_eq "$plain: demo=true" "$("$TKT" demo "$plain")"
+# The marker inside a code fence is content, not the flag (it is not the line above the ticket marker).
+fenced="$("$TKT" create "Fenced")"; rm -rf ".tickets/$fenced"
+printf '**%s** · task · P2 · Fenced\n\n# Description\n```\n<!-- canon:lite -->\n```\n\n<!-- canon:ticket %s -->\n' "$fenced" "$fenced" > "$W/fenced.md"
+"$TKT" import-issue 57 --body-file "$W/fenced.md" >/dev/null
+grep -q '^demo:' ".tickets/$fenced/ticket.md" && fail "a fenced canon:lite line set demo"
+# The reviewer's case: a plain ticket whose own notes hold the bare marker line is sent without Lite and imports without it.
+cd "$W/lite-mac"; unset STUB_CLOUD
+noted="$("$TKT" create "Notes quote the marker" -d '## Notes
+<!-- canon:lite -->
+is what send-issue writes for a Lite ticket.')"
+"$TKT" send-issue "$noted" >/dev/null
+assert_grep '^<!-- canon:lite -->$' "$STUB_BODY"   # the note is sent as written
+cd "$W/lite-cloud"; export STUB_CLOUD=1
+"$TKT" import-issue 57 >/dev/null
+grep -q '^demo:' ".tickets/$noted/ticket.md" && fail "a plain ticket's quoted marker set demo: $(cat ".tickets/$noted/ticket.md")"
+cd "$W"; unset STUB_CLOUD
+
 echo "cloud-round-trip: ok"
