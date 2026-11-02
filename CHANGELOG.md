@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Changed
+- Adding Sprint to a project (the Project tab, or `skills.sh add sprint`) no longer asks whether to list canon's skills folder in `.claude/settings.local.json`: from the board the question appeared in its launch terminal and stalled the add for 15 seconds, and the close gates no longer need it (they read canon's docs with Read, grep or awk). `skills.sh remove sprint` still offers to take out an entry an earlier version added (t-1ed8).
+
 ## [0.36.2] - 2026-11-02
 
 ### Changed
