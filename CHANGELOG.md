@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Added
+- `HANDOFF.md` gets a **Recent activity** block written by canon from the activity log at `sprint approve`, `sprint complete` and the merge (`tkt merge-pr`, `tkt land --finish`): plan approved, each gate's verdict, closed, sent, imported and merged, newest first. Only the project's main checkout gets it, also when the command runs in a worktree, so merges never conflict on it; `tkt merge-pr` sets a block-only difference aside and writes it again. `sprint recent` prints the list anywhere; `sprint recent --strip-handoff` removes the block. `sprint approve` now records a `plan.approved` event, which nothing wrote before (t-2db7).
+
 ## [0.37.0] - 2026-11-02
 
 The prebuilt `canon-go` program changed (the board and the daemon both write the machine's host on each event): `canon update` fetches it; restart the daemon.

@@ -235,6 +235,7 @@ Helpers (used by canon's shell tools; see helpers.go):
   gate-clusters [--days N] [--json]
   caps [--json] [--table <file>] <name|path> [path] | caps --list   a capped file's use (tools/caps.tsv)
   machine [--json]         this machine's OS, chip, cores and RAM (no hostname)
+  recent --project <root> [--n N] [--handoff <file>] | recent --strip   a project's recent stage events
 
 The dashboard reads .tickets/, HANDOFF.md, and git history from the current
 project. It starts a local Go HTTP server and opens the board in your default

@@ -94,6 +94,34 @@ machine_line() {
   case "$h" in *"machine [--json]"*) "$b" machine 2>/dev/null ;; *) return 1 ;; esac
 }
 
+# main_checkout <any checkout dir> — the project's main checkout (the folder holding git's common dir), physical path; fails for a
+# folder outside git or a layout without a .git folder (bare).
+main_checkout() {
+  local common
+  common="$(git -C "$1" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || return 1
+  [ "$(basename "$common")" = .git ] || return 1
+  (cd -P "$(dirname "$common")" 2>/dev/null && pwd -P)
+}
+
+# recent_board — the board binary when it has `recent` (t-2db7; checked through --help: an older board takes the word for a port and
+# serves); else fails.
+recent_board() {
+  local b h; b="$(board_bin)"; h="$("$b" --help 2>/dev/null)" || h=""
+  case "$h" in *"recent --project"*) echo "$b" ;; *) return 1 ;; esac
+}
+
+# handoff_recent <any checkout dir> — t-2db7: rewrite the Recent activity block of the MAIN checkout's HANDOFF.md from the activity
+# log, from whichever checkout a command runs in. A worktree's own HANDOFF.md never gets it (branches would conflict on it at every
+# merge). Observer-only like canon_event: no HANDOFF.md, no git, an older board or a failed write changes nothing and never fails.
+handoff_recent() {
+  local main b
+  main="$(main_checkout "$1")" || return 0
+  [ -f "$main/HANDOFF.md" ] || return 0
+  b="$(recent_board)" || return 0
+  "$b" recent --project "$main" --handoff "$main/HANDOFF.md" </dev/null >/dev/null 2>&1 || true
+  return 0
+}
+
 # cap_board — the board binary when it has `caps` (checked through --help: an older board takes the word for a port and serves); else fails.
 cap_board() {
   local b h; b="$(board_bin)"; h="$("$b" --help 2>/dev/null)" || h=""

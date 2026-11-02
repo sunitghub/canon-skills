@@ -1963,6 +1963,7 @@ cmd_merge_pr() {
   echo "Merged PR #$pr into $base${sha:+ ($sha)}$note."
   canon_event github.merged tkt "$root" "ticket=$id" "pr=$pr"   # t-4c09
   _ff_local_base "$root" "$base" "$id"
+  handoff_recent "$root"   # t-2db7: after the fast-forward, which set a block-only HANDOFF.md difference aside
   # t-41ff: written after the local update, so ticket.md is not yet dirty from this merge when the fast-forward runs.
   set_or_add_field "$file" merged "${sha:-PR #$pr}"
   _gh_trail "$tdir" merged "PR: #$pr" "merge commit: ${sha:-unknown}" "base: $base"
@@ -1997,6 +1998,7 @@ _record_merge() {
   [[ "$mc" != - ]] || mc=""
   sha="${sha:-$mc}"
   CANON_EVENT_ACTOR="$actor" canon_event github.merged tkt "$root" "ticket=$id" "pr=$pr"
+  handoff_recent "$root"   # t-2db7
   set_or_add_field "$file" merged "${sha:-PR #$pr}"
   _gh_trail "$tdir" merged "PR: #$pr" "merge commit: ${sha:-unknown}" "base: $base" "recorded by: $label"
   echo "$label: recorded PR #$pr as merged into $base${sha:+ ($sha)}"
@@ -2110,7 +2112,7 @@ _ff_local_base() {
 # staged one, stops it with nothing changed. A refused fast-forward restores every file set aside. Returns 1 when not moved.
 # The paths come from the PR, so they are untrusted: matched literally, never through a symlinked folder, printed sanitized.
 _ff_here() {
-  local root="$1" b="$2" id="$3" old="$4" new="$5" p m rp safe=() kinds=() differ=()
+  local root="$1" b="$2" id="$3" old="$4" new="$5" p m rp rb safe=() kinds=() differ=()
   local GIT_LITERAL_PATHSPECS=1; export GIT_LITERAL_PATHSPECS
   rp="$(cd "$root" && pwd -P)"
   while IFS= read -r -d '' p; do
@@ -2124,6 +2126,12 @@ _ff_here() {
       if [[ -n "$id" && "$p" == ".tickets/$id/ticket.md" ]] \
         && cmp -s <(git -C "$root" cat-file blob "$new:$p" | _ff_strip_fields) <(_ff_strip_fields < "$root/$p"); then safe+=("$p"); kinds+=(ticket); continue; fi
       if [[ "$p" == .claude/subagent-runs.jsonl ]]; then safe+=("$p"); kinds+=(log); continue; fi
+      # t-2db7: the main checkout's HANDOFF.md whose only local change (against HEAD) is canon's generated Recent activity block:
+      # the merged copy is taken (the PR may edit the narrative), and merge-pr writes the block again from the activity log.
+      if [[ "$p" == HANDOFF.md ]] && rb="$(recent_board)" && git -C "$root" cat-file -e "$old:$p" 2>/dev/null \
+        && cmp -s <(git -C "$root" cat-file blob "$old:$p" | "$rb" recent --strip) <("$rb" recent --strip < "$root/$p"); then
+        safe+=("$p"); kinds+=(handoff); continue
+      fi
     fi
     differ+=("$p")
   done < <(git -C "$root" diff --no-renames --name-only -z "$old" "$new")
@@ -2639,6 +2647,7 @@ cmd_land() {
     else kept="; $branch kept: it has commits beyond the PR head (push them to the PR branch, then git branch -D $branch)"; fi
     rm -f "$tdir/.land-head"
     if [[ -f "$tdir/.cockpit-cwd.before-land" ]]; then mv "$tdir/.cockpit-cwd.before-land" "$tdir/.cockpit-cwd"; else rm -f "$tdir/.cockpit-cwd"; fi
+    handoff_recent "$root"   # t-2db7
     echo "land: $id closed here; worktree removed$kept"
     echo "  next: tkt merge-pr $id"
     return 0
