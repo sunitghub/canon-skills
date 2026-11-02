@@ -2,7 +2,6 @@
 package board
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -12,10 +11,17 @@ import (
 // annotateWorktreeMerge marks a closed, unmerged ticket that was not sent to GitHub and is bound (.cockpit-cwd) to an existing
 // linked worktree whose branch is not yet in the main checkout's branch: wt_merge {branch, path}. The card then offers Check &
 // merge, which runs tkt merge; every check that decides a merge is tkt's, so this only decides whether the button shows.
-// `git worktree list` runs once per request, and only when some ticket could need it.
+// It runs on every GET /api/tickets, so the common case costs no git call: a ticket whose worktree folder is gone is skipped
+// with one stat; `git worktree list` runs once, only when a candidate is left; the ancestry check runs once per live worktree
+// (a branch already in main clears every ticket bound to it); the graded-head check only for a worktree with unmerged work.
 func annotateWorktreeMerge(tickets []ticket, root string) {
 	tdir := ticketsDirForRoot(root)
-	var wts []map[string]any
+	type cand struct {
+		t   ticket
+		id  string
+		key string
+	}
+	var cands []cand
 	for _, t := range tickets {
 		id, _ := t["id"].(string)
 		if st, _ := t["status"].(string); st != "closed" || id == "" {
@@ -32,30 +38,57 @@ func annotateWorktreeMerge(tickets []ticket, root string) {
 		if err != nil || cwd == "" {
 			continue
 		}
-		if wts == nil {
-			wts = listWorktreesBase("", root)
+		if fi, err := os.Stat(cwd); err != nil || !fi.IsDir() {
+			continue
 		}
-		for _, e := range wts {
-			path := fmt.Sprint(e["path"])
-			if isMain, _ := e["is_main"].(bool); isMain || pathKey(path) != pathKey(cwd) {
-				continue
+		cands = append(cands, cand{t, id, pathKey(cwd)})
+	}
+	if len(cands) == 0 {
+		return
+	}
+	type wt struct{ path, branch, head string }
+	var wts []wt
+	for i, block := range strings.Split(runGitIn(root, "worktree", "list", "--porcelain"), "\n\n") {
+		var w wt
+		for _, line := range strings.Split(block, "\n") {
+			switch {
+			case strings.HasPrefix(line, "worktree "):
+				w.path = strings.TrimPrefix(line, "worktree ")
+			case strings.HasPrefix(line, "HEAD "):
+				w.head = strings.TrimPrefix(line, "HEAD ")
+			case strings.HasPrefix(line, "branch "):
+				w.branch = strings.TrimPrefix(strings.TrimPrefix(line, "branch "), "refs/heads/")
 			}
-			branch, _ := e["branch"].(string)
-			head, _ := e["head"].(string)
-			// The ticket's own work is the commit its evaluator graded: once that is in main, this ticket is done even when a
-			// later ticket has moved the long-lived worktree branch on (review of t-2906).
-			if g := gradedHead(filepath.Join(tdir, id, "eval-report.md")); g != "" {
-				if _, in := gitCtx(root, "merge-base", "--is-ancestor", g, "HEAD"); in {
+		}
+		if i > 0 && w.path != "" && w.branch != "" && w.head != "" { // the first entry is the main checkout
+			wts = append(wts, w)
+		}
+	}
+	waiting := map[string]*wt{} // pathKey -> a live linked worktree whose branch is not in main; nil: in main, or not one
+	for _, c := range cands {
+		w, seen := waiting[c.key]
+		if !seen {
+			for i := range wts {
+				if pathKey(wts[i].path) == c.key {
+					if _, in := gitCtx(root, "merge-base", "--is-ancestor", wts[i].head, "HEAD"); !in {
+						w = &wts[i]
+					}
 					break
 				}
 			}
-			if fi, err := os.Stat(path); err == nil && fi.IsDir() && branch != "" && head != "" {
-				if _, in := gitCtx(root, "merge-base", "--is-ancestor", head, "HEAD"); !in {
-					t["wt_merge"] = map[string]any{"branch": branch, "path": path}
-				}
-			}
-			break
+			waiting[c.key] = w
 		}
+		if w == nil {
+			continue
+		}
+		// The ticket's own work is the commit its evaluator graded: once that is in main, this ticket is done even when a
+		// later ticket has moved the long-lived worktree branch on (review of t-2906).
+		if g := gradedHead(filepath.Join(tdir, c.id, "eval-report.md")); g != "" {
+			if _, in := gitCtx(root, "merge-base", "--is-ancestor", g, "HEAD"); in {
+				continue
+			}
+		}
+		c.t["wt_merge"] = map[string]any{"branch": w.branch, "path": w.path}
 	}
 }
 
