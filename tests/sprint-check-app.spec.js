@@ -18310,7 +18310,8 @@ test.describe('Logbook (t-c6bb)', () => {
   // t-5036, prod path: the Logbook's Learnings tab. A long promoted destination and a malformed row's status must not
   // take the table's width: Finding gets the free width, Status is capped, and an unknown status reads "unknown".
   test('Learnings table: Finding gets the width, a long destination or an unknown status cannot take it (t-5036) @webkit', async ({ page }) => {
-    const dest = 'standards/efficiency-notes.md › Tests, guards and hermetic runs (a guard verified only by inputs it must reject)';
+    // one unbroken token: it cannot wrap at a space, so only the Status cap keeps it from taking the table's width
+    const dest = 'standards_efficiency_notes.md#tests_guards_and_hermetic_runs_a_guard_verified_only_by_inputs_it_must_reject_and_a_revert';
     const junk = 'this sentence spilled into the status cell because a pipe in the finding was not escaped at all';
     const text = LEARN.replace('<!-- canon:learnings:END -->',
       row('2026-10-19', 't-eeee', 'A finding that should get most of the width of the table, wrapping only when it must.', '`promoted → ' + dest + '`')
@@ -18339,6 +18340,15 @@ test.describe('Logbook (t-c6bb)', () => {
       expect(box.find, theme + ': Finding is the widest column').toBeGreaterThan(box.table * 0.45);
       expect(box.status, theme + ': Status is capped').toBeLessThanOrEqual(200);
     }
+    // with only short findings shown, the free width still goes to Finding: Date keeps its content width
+    await page.evaluate(() => document.documentElement.removeAttribute('data-theme'));
+    await page.locator('.lb-chip', { hasText: 'Dismissed' }).click();
+    const date = await page.locator('.lb-table tbody tr').first().locator('.lb-date').evaluate(td => {
+      const r = document.createRange(); r.selectNodeContents(td);
+      const pad = parseFloat(getComputedStyle(td).paddingLeft) + parseFloat(getComputedStyle(td).paddingRight);
+      return { cell: td.getBoundingClientRect().width, content: r.getBoundingClientRect().width + pad };
+    });
+    expect(date.cell, 'Date keeps its content width').toBeLessThanOrEqual(date.content + 2);
   });
 
   test('header button, tabs, Handoff cards, Learnings chips and table, Esc and focus (t-c6bb) @webkit', async ({ page }) => {
