@@ -140,11 +140,45 @@ func indexDay(path string) *dayIndex {
 
 // belongsTo: an event's project is this root, one of its live worktrees, or a folder in the board's worktree folder
 // (<root>-worktrees/, createWorktree), so a worktree removed after its sprint still counts.
+// Paths are compared in one form (normPath): on Windows the board writes C:\Users\..., tkt C:/Users/... and Git Bash may give
+// /c/Users/... for the same folder (user's VM, 2026-11-02: every tkt event was missed).
 func belongsTo(project, root string, live map[string]bool) bool {
-	if project == root || live[project] {
+	p, r := normPath(project), normPath(root)
+	if p == r {
 		return true
 	}
-	return filepath.Dir(project) == filepath.Join(filepath.Dir(root), filepath.Base(root)+"-worktrees")
+	for l := range live {
+		if normPath(l) == p {
+			return true
+		}
+	}
+	return pathDir(p) == r+"-worktrees"
+}
+
+var msysDriveRe = regexp.MustCompile(`^/([a-zA-Z])(/|$)`)
+
+// normPath is a path in one comparable form: forward slashes, a Git Bash /c/... drive written C:/..., no trailing slash, and a
+// drive-letter path lowercased (Windows paths ignore case). Other paths keep their case.
+func normPath(p string) string {
+	s := strings.ReplaceAll(p, `\`, "/")
+	if m := msysDriveRe.FindStringSubmatch(s); m != nil {
+		s = strings.ToUpper(m[1]) + ":/" + strings.TrimPrefix(s[len(m[0]):], "/")
+	}
+	for len(s) > 1 && strings.HasSuffix(s, "/") && !strings.HasSuffix(s, ":/") {
+		s = strings.TrimSuffix(s, "/")
+	}
+	if len(s) >= 2 && s[1] == ':' {
+		s = strings.ToLower(s)
+	}
+	return s
+}
+
+// pathDir is the parent of a normPath path ("" for none).
+func pathDir(p string) string {
+	if i := strings.LastIndex(p, "/"); i > 0 {
+		return p[:i]
+	}
+	return ""
 }
 
 // machinesTicketRe is a ticket id the route accepts: t- and up to 62 lowercase letters, digits or dashes (events cut ticket at 64),

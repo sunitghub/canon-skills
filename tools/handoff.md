@@ -54,6 +54,12 @@ help the next agent act:
 
 When in doubt: if an entry wouldn't change how the next session starts, cut it.
 
+**Recent activity (t-2db7).** Above the narrative's markers, canon itself writes a `## Recent activity` block between
+`<!-- canon:recent:BEGIN -->` and `<!-- canon:recent:END -->`: the last stage events from the activity log (plan
+approved, gate verdicts, closed, sent, imported, merged), refreshed at `sprint approve`, `sprint complete` and the merge,
+in the project's main checkout only. Never edit or prune it: it is replaced whole on the next refresh, and it is not part
+of the 80-line count below. `sprint recent` prints the same list in any checkout.
+
 **Marker boundary.** All canon-managed content lives inside
 `<!-- canon:handoff:BEGIN -->` / `<!-- canon:handoff:END -->`. `wrapup`'s size
 check and any pruning it triggers operate **only** on lines between those

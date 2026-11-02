@@ -2129,7 +2129,7 @@ _ff_here() {
       # t-2db7: the main checkout's HANDOFF.md whose only local change (against HEAD) is canon's generated Recent activity block:
       # the merged copy is taken (the PR may edit the narrative), and merge-pr writes the block again from the activity log.
       if [[ "$p" == HANDOFF.md ]] && rb="$(recent_board)" && git -C "$root" cat-file -e "$old:$p" 2>/dev/null \
-        && cmp -s <(git -C "$root" cat-file blob "$old:$p" | "$rb" recent --strip) <("$rb" recent --strip < "$root/$p"); then
+        && cmp -s <(git -C "$root" cat-file blob "$old:$p" | "$rb" recent --strip | tr -d '\r') <("$rb" recent --strip < "$root/$p" | tr -d '\r'); then   # review: CRLF on disk (core.autocrlf=true, Git for Windows' default), LF in git
         safe+=("$p"); kinds+=(handoff); continue
       fi
     fi

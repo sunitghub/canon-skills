@@ -523,6 +523,12 @@ git -C "$B" push -qf origin "$BASE3:refs/heads/ho-base" "$H5:refs/pull/7/head"; 
 git checkout -q main; git reset -q "$BASE3"; git checkout -q -- .; ho_write
 out="$(BASE="$BASE3" STUB_HEAD="$H5" ff_merge)"; assert_contains "$out" "Local main: ${BASE3:0:8} -> ${H5:0:8} (fast-forward)"
 assert_grep '^new focus$' HANDOFF.md; assert_count 1 'canon:recent:BEGIN' HANDOFF.md; assert_grep "· $id · merged \(PR #7\)$" HANDOFF.md
+# review (Windows): core.autocrlf=true checks HANDOFF.md out with CRLF while git stores LF; a block-only change still fast-forwards
+git config core.autocrlf true; git checkout -q main; git reset -q "$BASE3"; git checkout -q -- .
+sed 's/$/\r/' HANDOFF.md > HANDOFF.md.x && mv HANDOFF.md.x HANDOFF.md; ho_write; assert_grep $'canon:recent:BEGIN -->\r$' HANDOFF.md
+sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; eval_ok "$H5"
+out="$(BASE="$BASE3" STUB_HEAD="$H5" ff_merge)"; assert_contains "$out" "Local main: ${BASE3:0:8} -> ${H5:0:8} (fast-forward)"
+git config --unset core.autocrlf
 git checkout -q main; git reset -q "$BASE3"; git checkout -q -- .; ho_write; sed -i.bak 's/^old$/mine/' HANDOFF.md && rm -f HANDOFF.md.bak
 sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; eval_ok "$H5"
 out="$(BASE="$BASE3" STUB_HEAD="$H5" ff_merge)"; assert_contains "$out" "Local main: 1 file(s) here differ from the merged copy; left at ${BASE3:0:8}:"

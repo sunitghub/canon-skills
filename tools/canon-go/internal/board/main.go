@@ -3303,7 +3303,7 @@ func worktreeDirty(path string) bool {
 		if strings.ContainsAny(entry[:2], "RC") {
 			i++
 		}
-		if !isWorktreeNoise(entry[3:]) && !isCanonSkillsLink(entry[:2], entry[3:]) {
+		if !isWorktreeNoise(entry[3:]) && !isCanonSkillsLink(entry[:2], entry[3:]) && !(entry[3:] == "HANDOFF.md" && handoffBlockOnly(path, entry[:2])) {
 			return true
 		}
 	}

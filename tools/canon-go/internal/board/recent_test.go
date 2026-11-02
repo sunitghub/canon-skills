@@ -175,3 +175,32 @@ func TestRecentBlockExact(t *testing.T) {
 		t.Fatal("a BEGIN with no END must be left alone by strip")
 	}
 }
+
+// t-2db7 review: main's HANDOFF.md with only canon's block changed (CRLF on disk or not) is not "uncommitted work" for the board's
+// worktree picker; a narrative edit still is. Prod path: worktreeDirty (the picker's carry-over warning).
+func TestWorktreeDirtyIgnoresTheBlock(t *testing.T) {
+	dir := t.TempDir()
+	git := func(args ...string) {
+		if out, err := exec.Command("git", append([]string{"-C", dir, "-c", "user.email=t@t", "-c", "user.name=t"}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	git("init", "-q")
+	narrative := "# Handoff\n\n<!-- canon:handoff:BEGIN -->\n## Current Focus\nx\n<!-- canon:handoff:END -->\n"
+	os.WriteFile(filepath.Join(dir, "HANDOFF.md"), []byte(narrative), 0o644)
+	git("add", "HANDOFF.md")
+	git("commit", "-qm", "base")
+	os.WriteFile(filepath.Join(dir, "HANDOFF.md"), []byte(setRecent(narrative, []string{"a"})), 0o644)
+	if worktreeDirty(dir) {
+		t.Fatal("a block-only HANDOFF.md counted as uncommitted work")
+	}
+	crlf := strings.ReplaceAll(narrative, "\n", "\r\n")
+	os.WriteFile(filepath.Join(dir, "HANDOFF.md"), []byte(setRecent(crlf, []string{"a"})), 0o644)
+	if worktreeDirty(dir) {
+		t.Fatal("a CRLF block-only HANDOFF.md counted as uncommitted work")
+	}
+	os.WriteFile(filepath.Join(dir, "HANDOFF.md"), []byte(setRecent(strings.Replace(narrative, "x\n", "mine\n", 1), []string{"a"})), 0o644)
+	if !worktreeDirty(dir) {
+		t.Fatal("a narrative edit must still count")
+	}
+}

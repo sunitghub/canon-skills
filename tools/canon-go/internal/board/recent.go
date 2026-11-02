@@ -214,6 +214,24 @@ func writeHandoff(file string, lines []string) error {
 	return os.Rename(tmp.Name(), file)
 }
 
+// handoffBlockOnly: the checkout's HANDOFF.md differs from HEAD's copy only in canon's Recent activity block (and line endings),
+// so a worktree picker never warns that main has uncommitted work canon itself wrote (t-2db7 review). Only an unstaged change.
+func handoffBlockOnly(dir, xy string) bool {
+	if xy != " M" {
+		return false
+	}
+	work, err := os.ReadFile(filepath.Join(dir, "HANDOFF.md"))
+	if err != nil {
+		return false
+	}
+	head, _, err := gitOutIn(dir, 10*time.Second, "show", "HEAD:HANDOFF.md")
+	if err != nil {
+		return false
+	}
+	lf := func(s string) string { return strings.ReplaceAll(s, "\r\n", "\n") }
+	return lf(stripRecent(string(work))) == lf(stripRecent(head))
+}
+
 func recentCLI(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("recent", flag.ContinueOnError)
 	fs.SetOutput(stderr)
