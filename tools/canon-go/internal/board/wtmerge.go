@@ -11,11 +11,12 @@ import (
 // annotateWorktreeMerge marks a closed, unmerged ticket that was not sent to GitHub and is bound (.cockpit-cwd) to an existing
 // linked worktree whose branch is not yet in the main checkout's branch: wt_merge {branch, path}. The card then offers Check &
 // merge, which runs tkt merge; every check that decides a merge is tkt's, so this only decides whether the button shows.
-// It runs on every GET /api/tickets, so the common case costs no git call: a ticket whose worktree folder is gone is skipped
-// with one stat; `git worktree list` runs once, only when a candidate is left; the ancestry check runs once per live worktree
+// It runs on every GET /api/tickets, so the common case costs no git call: a ticket bound to the main checkout, to a folder
+// that is gone, or to another repository's worktree is skipped by reading the folder's .git file (linkedWorktreeOf); `git worktree list` runs once, only when a candidate is left; the ancestry check runs once per live worktree
 // (a branch already in main clears every ticket bound to it); the graded-head check only for a worktree with unmerged work.
 func annotateWorktreeMerge(tickets []ticket, root string) {
 	tdir := ticketsDirForRoot(root)
+	wtDir := filepath.Join(rootOr(root), ".git", "worktrees") // where this repository keeps its linked worktrees
 	type cand struct {
 		t   ticket
 		id  string
@@ -38,7 +39,7 @@ func annotateWorktreeMerge(tickets []ticket, root string) {
 		if err != nil || cwd == "" {
 			continue
 		}
-		if fi, err := os.Stat(cwd); err != nil || !fi.IsDir() {
+		if !linkedWorktreeOf(cwd, wtDir) {
 			continue
 		}
 		cands = append(cands, cand{t, id, pathKey(cwd)})
@@ -104,4 +105,18 @@ func gradedHead(report string) string {
 		return string(m[1])
 	}
 	return ""
+}
+
+// linkedWorktreeOf reports whether dir is a linked worktree whose .git file points into wtDir (<repo>/.git/worktrees), read
+// from the file itself so the tickets poll runs no git for it. A main checkout (.git is a folder) or a gone folder is not one.
+func linkedWorktreeOf(dir, wtDir string) bool {
+	raw, err := os.ReadFile(filepath.Join(dir, ".git"))
+	if err != nil {
+		return false
+	}
+	gd := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(string(raw)), "gitdir:"))
+	if !filepath.IsAbs(gd) {
+		gd = filepath.Join(dir, gd)
+	}
+	return pathKey(filepath.Dir(filepath.Clean(gd))) == pathKey(wtDir)
 }
