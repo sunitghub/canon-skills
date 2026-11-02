@@ -368,9 +368,10 @@ export function closeCockpit() {
 // row and Start not yet pressed) has no session id/token, so the board can't end the daemon's
 // live session for that ticket (t-ddc8: the board never holds the daemon token). Tearing the
 // tab down anyway looked like success while the session kept running — find it and say so.
-export async function findLiveDaemonSession(ticketId) {
+// live: ask the daemon now. The close-tab guard needs it: a session started since the shell's last poll must not be missed.
+export async function findLiveDaemonSession(ticketId, { live = false } = {}) {
   try {
-    let list = freshShellSessions();   // t-90f5: the shell's answer when there is one, so the chip agrees with the Agents list
+    let list = live ? null : freshShellSessions();   // t-90f5: the shell's answer when there is one, so the chip agrees with the Agents list
     if (!list) {
       const r = await fetch('/api/cockpit-sessions');
       if (!r.ok) return null;
@@ -695,7 +696,7 @@ export function initCockpitRail() {
     }
     if (sessionIsLive()) { openLeaveConfirm(); return; }
     const tab = cockpitState;
-    const detached = await findLiveDaemonSession(tab.id);
+    const detached = await findLiveDaemonSession(tab.id, { live: true });
     if (cockpitState !== tab || tab._ending) return; // switched tabs (or an end began) during the lookup
     // Start sprint may have attached while we were looking: then this is a live tab, and tearing it down
     // (or calling it unattached) would be the original orphan bug again.

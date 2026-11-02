@@ -3906,6 +3906,9 @@ test.describe('cockpit in board (t-ddc8)', () => {
         const looked = await board.locator('body').evaluate(async (_, id) => (await (await import('/static/board-cockpit-rail.js')).findLiveDaemonSession(id))?.state, XID);
         expect(looked).toBe('idle');                     // the header chip's lookup reads the same answer
         expect(boardFetches).toBe(before);               // and the board fetched nothing of its own for it
+        // the close-tab guard never trusts a poll that may predate a just-started session: it asks the daemon now
+        await board.locator('body').evaluate(async (_, id) => (await import('/static/board-cockpit-rail.js')).findLiveDaemonSession(id, { live: true }), XID);
+        expect(boardFetches).toBe(before + 1);
         // forged: a 'sessions' message the board posts to itself (not from its parent shell) is ignored
         await board.locator('body').evaluate((_, rows) => window.postMessage({ source: 'canon-cockpit-shell', type: 'sessions', rows }, location.origin),
           [{ ...r, state: 'needs-you' }]);
