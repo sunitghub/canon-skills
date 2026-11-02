@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-02-2026 06:25
+learnings-sweep last run: 11-02-2026 08:14
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-02 | [t-1ed8](.tickets/t-1ed8/learnings.md) | A doc sweep for a removed feature must grep every doc, not only the plan's file list: docs/fresh-machine-test.md still described the removed offer until the reviewer caught it. | UNPROMOTED |
 | 2026-11-02 | [t-4d39](.tickets/t-4d39/learnings.md) | A marker that changes behavior must count only where its writer puts it (above the closing ticket marker), never anywhere in a body: a plain ticket quoting the marker line in its notes imported as Lite until the reviewer caught it. | UNPROMOTED |
 | 2026-11-01 | [t-90f5](.tickets/t-90f5/learnings.md) | A negative UI check that retries (toHaveClass for 5 s) can be undone by the next real poll and pass with the guard deleted: record every state with a MutationObserver, and stop the background timer when a test means to prove the message itself redraws | UNPROMOTED |
 | 2026-11-01 | [t-5036](.tickets/t-5036/learnings.md) | A layout guard needs a fixture the rule alone holds: a test string that wraps at spaces or hyphens passes with the width cap removed, so use an unbreakable token and revert each CSS rule on its own | UNPROMOTED |
@@ -82,5 +83,4 @@ learnings-sweep last run: 11-02-2026 06:25
 | 2026-10-26 | [t-2aed](.tickets/t-2aed/learnings.md) | A key listener added to a SHARED dialog must check that the dialog is still its own (title) and be disarmed by every other opener: a mouse Cancel left it armed and a later Enter ended an agent session without saving; and "never sends X" needs a spy on the receiving page, not a check on an element that is already gone. | `promoted → tools/sprint-check-app/CLAUDE.md, standards/efficiency-notes.md` |
 | 2026-10-26 | [t-dec4](.tickets/t-dec4/learnings.md) | A rule that must hold in three implementations needs one test table run through all three, and each fixture must be BARE for the case under test (a home with a .git or .tickets hid the started-in-home bug); match a folder by inode (`-ef`, `IsHome` via EvalSymlinks), never by name. | `promoted → standards/efficiency-notes.md` |
 | 2026-10-26 | [t-5738](.tickets/t-5738/learnings.md) | A fix that adds a message or next-step line to an installer must be checked on EVERY ending of that script (install.ps1 has a bootstrap `return` the reporter's own path used), and a path resolver copied into three languages needs all copies changed and one shared-case test; stale-looking UI numbers were a read-once-at-load card, not the suspected data bug (restart showed it). | `promoted → standards/efficiency-notes.md` |
-| 2026-10-26 | [t-b266](.tickets/t-b266/learnings.md) | A guard that replays a writer's output and byte-compares must be run under the platform setting that changes bytes (core.autocrlf, LF-only file): the Mac-only fixture passed while the same code refused canon's own lines on Windows; and an id validator copied by hand drifts, so grep for the old spelling in a test. | `promoted → standards/efficiency-notes.md` |
 <!-- canon:learnings:END -->
