@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.38.0] - 2026-11-02
+
+The prebuilt `canon-go` program changed (the board reads skill problems and runs Refresh, and writes the Recent activity block in `HANDOFF.md`): `canon update` fetches it; restart the daemon.
+
 ### Fixed
 - Send to GitHub, from a Windows run: the Commit and push list no longer offers a ticket's own files unless the project tracks `.tickets/` in git (the issue carries them, and the cloud rebuilds the folder from it), and says so in one line; on Windows, To Claude Cloud's tooltip says it copies the command for PowerShell or Git Bash; a branch pushed within an hour of the launch reads "cloud session working" and offers no Create PR, which would race the session's own PR; Check & merge reads "Merge (no tests)" when there is no test command; the local main fast-forwards past a file git itself sees as identical (a CRLF copy under `core.autocrlf=true` left it behind); and `tkt export` records the cloud machine, so a cloud ticket's Machines node shows it (t-2560).
 - A project's skill problems show on its Projects card, with a **Refresh** button that runs `skills.sh refresh` from the board (busy until it answers). `skills.sh status` now names every problem instead of one tag hiding another: a missing skill file, a row naming another copy, and a missing or wrong `.claude/skills` / `.agents/skills` link (a project copied from another folder had none, so agents could not load the sprint skill), plus the likely cause; `skills.sh status --json` is what the card reads. Admin > Logging's button reads **Export** (the row says it is one .jsonl file); the theme menu offers **Create a sample theme** until the themes folder exists, then a small **Show themes folder** link; the Machines node's header says "architecture" (t-6541).
