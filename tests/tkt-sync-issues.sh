@@ -141,7 +141,7 @@ assert_grep $'^body \\[2J with esc\tand tab$' "$f"
 assert_contains "$out22" "skip  #23  no title left once control characters are removed"
 assert_contains "$out22" "#24  After the bad one"
 # t-4d39: an issue canon did not write never sets Lite (the sprint's close gates). Prod path: tkt sync-issues → import-issue.
-# Plain LF and structured CRLF bodies holding the marker get no demo line; the marker inside a code fence stays as content.
+# Plain LF and structured CRLF bodies holding the marker, last line included, get no demo line.
 printf 'Plain lite\nx\n<!-- canon:lite -->\n' > "$stub/issue-25"
 printf 'Structured lite\r\n# Description\r\nWhy.\r\n<!-- canon:lite -->\r\n```\r\n<!-- canon:lite -->\r\n```\r\n' > "$stub/issue-26"
 mklist 25:issue:canon 26:issue:canon
@@ -151,7 +151,6 @@ for n in 25 26; do
   [[ -f "$f" ]] || fail "sync-issues made no ticket for #$n: $out25"
   grep -q '^demo:' "$f" && fail "issue #$n, not written by canon, set demo: $(cat "$f")"
 done
-[[ "$(grep -cxF '<!-- canon:lite -->' "$f")" == 1 ]] || fail "the fenced marker line should stay as content: $(cat "$f")"
 mklist 11:issue:canon,bug,P1 12:issue:canon 13:issue:canon 14:issue:canon 15:pr:canon '16:issue:canon,*'
 
 # A second run creates nothing, and still records that it ran (count 0).

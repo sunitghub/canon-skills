@@ -500,11 +500,21 @@ sed "s/canon:ticket $lite/canon:ticket $plain/" "$W/lite-body.md" > "$W/plain-as
 assert_eq "$plain: demo=true" "$("$TKT" demo "$plain")"
 "$TKT" import-issue 57 --body-file "$W/plain-body.md" --force >/dev/null
 assert_eq "$plain: demo=true" "$("$TKT" demo "$plain")"
-# The marker inside a code fence is content, not the flag.
+# The marker inside a code fence is content, not the flag (it is not the line above the ticket marker).
 fenced="$("$TKT" create "Fenced")"; rm -rf ".tickets/$fenced"
 printf '**%s** · task · P2 · Fenced\n\n# Description\n```\n<!-- canon:lite -->\n```\n\n<!-- canon:ticket %s -->\n' "$fenced" "$fenced" > "$W/fenced.md"
 "$TKT" import-issue 57 --body-file "$W/fenced.md" >/dev/null
 grep -q '^demo:' ".tickets/$fenced/ticket.md" && fail "a fenced canon:lite line set demo"
+# The reviewer's case: a plain ticket whose own notes hold the bare marker line is sent without Lite and imports without it.
+cd "$W/lite-mac"; unset STUB_CLOUD
+noted="$("$TKT" create "Notes quote the marker" -d '## Notes
+<!-- canon:lite -->
+is what send-issue writes for a Lite ticket.')"
+"$TKT" send-issue "$noted" >/dev/null
+assert_grep '^<!-- canon:lite -->$' "$STUB_BODY"   # the note is sent as written
+cd "$W/lite-cloud"; export STUB_CLOUD=1
+"$TKT" import-issue 57 >/dev/null
+grep -q '^demo:' ".tickets/$noted/ticket.md" && fail "a plain ticket's quoted marker set demo: $(cat ".tickets/$noted/ticket.md")"
 cd "$W"; unset STUB_CLOUD
 
 echo "cloud-round-trip: ok"

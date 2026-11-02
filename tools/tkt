@@ -1423,9 +1423,10 @@ cmd_import_issue() {
   type="$(awk -F' · ' '{print $2}' <<< "$hdr")"; pri="$(awk -F' · ' '{sub(/^P/, "", $3); print $3}' <<< "$hdr")"
   title="$(awk -F' · ' '{ t = $4; for (i = 5; i <= NF; i++) t = t " · " $i; print t }' <<< "$hdr")"
   [[ -n "$title" ]] || title="$id"
-  # t-4d39: send-issue marks a Lite ticket with this line (outside any code fence); sync-issues strips it from other bodies.
+  # t-4d39: send-issue marks a Lite ticket with this line directly above the closing ticket marker; the same text anywhere
+  # else (a ticket's own notes, a code block, an issue sync-issues wraps: it always leaves a blank line there) is content.
   local lite=false
-  awk '/^```/ { fence = !fence } !fence && $0 == "<!-- canon:lite -->" { found = 1 } END { exit !found }' "$tmp/body" && lite=true
+  [[ "$(grep -B1 -xF "<!-- canon:ticket $id -->" "$tmp/body" | tail -2 | head -1)" == "<!-- canon:lite -->" ]] && lite=true
   # Split the body into its "# " parts; "(none yet)" means the part was empty.
   # Only the five headings send-issue writes start a part; any other "# " line (a note, a shell comment) is content.
   awk -v d="$tmp" '/^```/ { fence = !fence }
@@ -1592,8 +1593,6 @@ cmd_sync_issues() {
       printf '**%s** · %s · P%s · %s\n\n' "$id" "$type" "$pri" "$title"
       # A body that starts with one of send-issue's part headings keeps its parts. Anything else is the Description, with
       # any line that would start a part (outside code) demoted to "## …", so import-issue cannot drop the text after it.
-      # t-4d39: an issue canon did not write never sets Lite: its <!-- canon:lite --> lines (outside code) are dropped (_sync_clean took \r).
-      awk '/^```/ { fence = !fence } fence || $0 != "<!-- canon:lite -->"' "$tmp/body-$n" > "$tmp/body-$n.x" && mv "$tmp/body-$n.x" "$tmp/body-$n"
       if awk 'NF && !seen { seen = 1; ok = /^# (Description|Acceptance|Plan|Research)$/ } END { exit !ok }' "$tmp/body-$n"; then
         cat "$tmp/body-$n"
       else
