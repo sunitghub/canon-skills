@@ -38,6 +38,10 @@ assert_contains "$out" "pinned ## Approach"
 assert_grep '^- \[x\] Plan approved' "$plan"
 assert_grep '^Approved: sha256:[0-9a-f]{64} [0-9TZ:-]+$' "$plan"
 first="$(grep -c '^Approved:' "$plan")"; assert_eq "1" "$first"
+# t-2db7: approve writes plan.approved (the kind had no writer) and the main checkout's HANDOFF.md Recent activity shows it
+assert_contains "$(event_line plan.approved "$id")" '"tier":"normal"'
+assert_grep "· $id · plan approved \(normal\)$" HANDOFF.md
+assert_contains "$("$SPRINT" recent)" "· $id · plan approved (normal)"
 
 # 2. unchanged Approach passes
 gate >/dev/null || fail "unchanged Approach must pass the plan gate"

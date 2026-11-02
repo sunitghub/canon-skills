@@ -242,6 +242,23 @@ cmd_import_issue() {
   cmd_start "$id"
 }
 
+# cmd_recent [--strip-handoff] — t-2db7: what the main checkout's HANDOFF.md Recent activity block shows, for an agent in any
+# checkout. --strip-handoff removes that block (before a git pull or merge by hand that git refuses because of it).
+cmd_recent() {
+  local main b
+  main="$(main_checkout "$(project_root)")" || { echo "sprint recent: not in a git checkout" >&2; exit 1; }
+  b="$(recent_board)" || { echo "sprint recent: this canon's board program has no 'recent'; run: canon update" >&2; exit 1; }
+  case "${1:-}" in
+    "") "$b" recent --project "$main" ;;
+    --strip-handoff)
+      [[ -f "$main/HANDOFF.md" && ! -L "$main/HANDOFF.md" ]] || { echo "sprint recent: no HANDOFF.md in $main" >&2; exit 1; }
+      local tmp; tmp="$(mktemp "$main/.handoff.XXXXXX")" || exit 1
+      if "$b" recent --strip < "$main/HANDOFF.md" > "$tmp"; then cat "$tmp" > "$main/HANDOFF.md"; rm -f "$tmp"; echo "Removed the Recent activity block from $main/HANDOFF.md"
+      else rm -f "$tmp"; echo "sprint recent: could not read $main/HANDOFF.md" >&2; exit 1; fi ;;
+    *) echo "Usage: sprint recent [--strip-handoff]" >&2; exit 1 ;;
+  esac
+}
+
 cmd_current() {
   "$TKT_BIN" current
 }
@@ -393,6 +410,12 @@ _approach_digest() {
     | { sha256sum 2>/dev/null || shasum -a 256; } | cut -d' ' -f1
 }
 
+# _signoff_tier <plan.md> — the word after "Tier:" in ## Sign-off (trivial, bugfix, normal, high-risk), or nothing.
+_signoff_tier() {
+  local t; t="$(_acceptance_section "Sign-off" "$1" 2>/dev/null | sed 's/\*//g' | tr 'A-Z' 'a-z' | sed -nE 's/^[[:space:]]*tier[[:space:]]*:[[:space:]]*(trivial|bugfix|normal|high-risk).*/\1/p' || true)"
+  printf '%s' "${t%%$'\n'*}"
+}
+
 cmd_approve() {
   local id="${1:-}" root plan digest stamp tmp signoff
   [[ -n "$id" ]] || { echo "Usage: sprint approve <ticket-id>" >&2; exit 1; }
@@ -413,6 +436,9 @@ cmd_approve() {
     { print }' "$plan" > "$tmp" && cat "$tmp" > "$plan"
   rm -f "$tmp"
   echo "Approved $id: pinned ## Approach as sha256:${digest:0:12} at $stamp"
+  local _tier; _tier="$(_signoff_tier "$plan")"
+  canon_event plan.approved sprint "$root" "ticket=$id" ${_tier:+"tier=$_tier"}   # t-2db7: the kind existed with no writer
+  handoff_recent "$root"
   cap_headroom "$(worktree_root 2>/dev/null || echo "$root")" "$plan" sprint "$id" plan   # t-cc88: a capped file this plan lists that is nearly full (t-c990: and its event)
 }
 
@@ -1011,8 +1037,9 @@ cmd_complete() {
   TKT_SPRINT_GATE_PASSED=1 "$TKT_BIN" close "$id"
   canon_event sprint.completed sprint "$(project_root)" "ticket=$id"
   # t-4c09: the audit line for the close: the plan's tier (the word after "Tier:" in the Sign-off), when it names one
-  local _tier; _tier="$(_acceptance_section "Sign-off" "$tdir/plan.md" 2>/dev/null | sed 's/\*//g' | tr 'A-Z' 'a-z' | sed -nE 's/^[[:space:]]*tier[[:space:]]*:[[:space:]]*(trivial|bugfix|normal|high-risk).*/\1/p' || true)"; _tier="${_tier%%$'\n'*}"
+  local _tier; _tier="$(_signoff_tier "$tdir/plan.md")"
   canon_event close.confirmed sprint "$(project_root)" "ticket=$id" ${_tier:+"tier=$_tier"}
+  handoff_recent "$(project_root)"   # t-2db7: the main checkout's HANDOFF.md Recent activity
   echo "Sprint completed: $id"
   # t-8f48: in a linked worktree, the step after the merge is resetting its tracking branch.
   local gd common f
@@ -1521,6 +1548,9 @@ Usage:
   sprint approve <id>       Tick plan.md's "Plan approved" box and pin ## Approach by
                             sha256; sprint complete refuses if Approach changes later
   sprint complete           Validate acceptance checklist and close ticket
+  sprint recent [--strip-handoff]  This project's recent stage events (plan approved, gate
+                            verdicts, closed, merged) from the activity log; --strip-handoff
+                            takes the generated block out of the main checkout's HANDOFF.md
   sprint suggest-tier [<id>]  Propose (never apply) a bugfix|normal tier from the
                             diff — structural, propose-only; the human still writes
                             `Tier: bugfix` in plan.md ## Sign-off
@@ -1560,6 +1590,7 @@ main() {
     current) cmd_current ;;
     status) cmd_status "$@" ;;
     approve) cmd_approve "$@" ;;
+    recent) cmd_recent "$@" ;;
     complete) cmd_complete ;;
     suggest-tier) cmd_suggest_tier "$@" ;;
     eval-verdict) cmd_eval_verdict "$@" ;;

@@ -199,3 +199,25 @@ func gzipCopy(src, dst string) error {
 	zw.Close()
 	return os.WriteFile(dst, buf.Bytes(), 0o600)
 }
+
+// t-2db7 (Windows VM, 2026-11-02): one folder written three ways by the board, tkt and Git Bash is one project; a sibling is not.
+// Prod path: the Machines node and the HANDOFF.md Recent activity block (both match events with belongsTo).
+func TestBelongsToWindowsPathForms(t *testing.T) {
+	root := `C:\Users\agentops\Documents\ToDo-App`
+	for _, p := range []string{`C:\Users\agentops\Documents\ToDo-App`, `C:/Users/agentops/Documents/ToDo-App`, `/c/Users/agentops/Documents/ToDo-App`, `c:/users/agentops/documents/todo-app/`, `C:/Users/agentops/Documents/ToDo-App-worktrees/feat-x`, `/c/Users/agentops/Documents/ToDo-App-worktrees/feat-x`} {
+		if !belongsTo(p, root, nil) {
+			t.Errorf("%q should belong to %q", p, root)
+		}
+	}
+	for _, p := range []string{`C:/Users/agentops/Documents/ToDo-App2`, `D:/Users/agentops/Documents/ToDo-App`, `C:/Users/agentops/Documents/ToDo-App-worktrees`, `/c/Users/agentops/Documents`} {
+		if belongsTo(p, root, nil) {
+			t.Errorf("%q must not belong to %q", p, root)
+		}
+	}
+	if !belongsTo(`C:/elsewhere/wt`, root, map[string]bool{`C:\elsewhere\wt`: true}) {
+		t.Error("a live worktree written with backslashes was not matched")
+	}
+	if belongsTo("/Users/Me/App", "/Users/me/app", nil) {
+		t.Error("a path without a drive letter must keep its case")
+	}
+}

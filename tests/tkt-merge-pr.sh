@@ -512,6 +512,30 @@ assert_grep '^dirty$' .gitignore; assert_eq y "$(cat '*')"
 git checkout -q .gitignore; git reset -q --hard "$BASE"; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; eval_ok "$PRHEAD"
 git push -qf origin "$PRHEAD:refs/pull/7/head"; git --git-dir="$W/origin.git" update-ref refs/heads/main "$BASE"
 
+# t-2db7: main's HANDOFF.md carries canon's generated Recent activity block (written only in the main checkout) and the PR edits the
+# narrative. The block-only local change is set aside, main fast-forwards to the PR's narrative, and merge-pr writes the block again
+# from the activity log (this merge's own line included). Any other local edit to HANDOFF.md still stops it. Protects `tkt merge-pr`.
+ho_write() { "$SPRINT_CHECK_BIN" recent --project "$(pwd -P)" --handoff HANDOFF.md; grep -q 'canon:recent:BEGIN' HANDOFF.md || fail "no block written"; }
+git -C "$B" checkout -q "$BASE"; printf '# Handoff\n\n<!-- canon:handoff:BEGIN -->\n## Current Focus\nold\n<!-- canon:handoff:END -->\n' > "$B/HANDOFF.md"
+git -C "$B" add HANDOFF.md; git -C "$B" commit -qm handoff; BASE3="$(git -C "$B" rev-parse HEAD)"
+sed 's/^old$/new focus/' "$B/HANDOFF.md" > "$B/HANDOFF.md.x" && mv "$B/HANDOFF.md.x" "$B/HANDOFF.md"; git -C "$B" commit -qam "narrative"; H5="$(git -C "$B" rev-parse HEAD)"
+git -C "$B" push -qf origin "$BASE3:refs/heads/ho-base" "$H5:refs/pull/7/head"; git fetch -q origin refs/heads/ho-base; eval_ok "$H5"
+git checkout -q main; git reset -q "$BASE3"; git checkout -q -- .; ho_write
+out="$(BASE="$BASE3" STUB_HEAD="$H5" ff_merge)"; assert_contains "$out" "Local main: ${BASE3:0:8} -> ${H5:0:8} (fast-forward)"
+assert_grep '^new focus$' HANDOFF.md; assert_count 1 'canon:recent:BEGIN' HANDOFF.md; assert_grep "· $id · merged \(PR #7\)$" HANDOFF.md
+# review (Windows): core.autocrlf=true checks HANDOFF.md out with CRLF while git stores LF; a block-only change still fast-forwards
+git config core.autocrlf true; git checkout -q main; git reset -q "$BASE3"; git checkout -q -- .
+sed 's/$/\r/' HANDOFF.md > HANDOFF.md.x && mv HANDOFF.md.x HANDOFF.md; ho_write; assert_grep $'canon:recent:BEGIN -->\r$' HANDOFF.md
+sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; eval_ok "$H5"
+out="$(BASE="$BASE3" STUB_HEAD="$H5" ff_merge)"; assert_contains "$out" "Local main: ${BASE3:0:8} -> ${H5:0:8} (fast-forward)"
+git config --unset core.autocrlf
+git checkout -q main; git reset -q "$BASE3"; git checkout -q -- .; ho_write; sed -i.bak 's/^old$/mine/' HANDOFF.md && rm -f HANDOFF.md.bak
+sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; eval_ok "$H5"
+out="$(BASE="$BASE3" STUB_HEAD="$H5" ff_merge)"; assert_contains "$out" "Local main: 1 file(s) here differ from the merged copy; left at ${BASE3:0:8}:"
+assert_contains "$out" $'\n  HANDOFF.md\n'; assert_eq "$BASE3" "$(git rev-parse main)"; assert_grep '^mine$' HANDOFF.md
+git checkout -q -- .; git reset -q --hard "$BASE"; rm -f HANDOFF.md; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; eval_ok "$PRHEAD"
+git push -qf origin "$PRHEAD:refs/pull/7/head"; git --git-dir="$W/origin.git" update-ref refs/heads/main "$BASE"
+
 # t-4718 also fixed import-results: a ticket that comes back without eval-report.md is reported, not a silent exit.
 other="t-0e0e"; X="$W/cloud"; git clone -q "$W/origin.git" "$X" 2>/dev/null
 mkdir -p "$X/.tickets/$other"; printf -- '---\nid: %s\nstatus: closed\ntype: task\npriority: 2\n---\n# Back\n' "$other" > "$X/.tickets/$other/ticket.md"

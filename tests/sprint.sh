@@ -564,6 +564,7 @@ assert_contains "$complete_output" "Sprint completed: $fresh_id"
 cc="$(event_line close.confirmed "$fresh_id")"   # t-4c09: the audit line of a real close: the plan's tier, no actor (a command cannot know)
 assert_contains "$cc" '"source":"sprint"'; assert_contains "$cc" '"tier":"normal"'; [[ "$cc" != *'"actor"'* ]] || fail "a CLI close claimed an actor: $cc"
 assert_contains "$(event_line sprint.completed "$fresh_id")" '"source":"sprint"'   # t-f182: after the close, never before
+assert_grep "· $fresh_id · sprint completed$" HANDOFF.md   # t-2db7: the close refreshes the main checkout's Recent activity
 assert_grep "^status: closed$" ".tickets/$fresh_id/ticket.md"
 assert_grep "^status: closed$" ".tickets/$id/ticket.md"
 [[ ! -f .tickets/ACTIVE ]] || fail "expected ACTIVE to be cleared after sprint complete"

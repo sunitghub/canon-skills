@@ -63,7 +63,7 @@ Rule of thumb: **tests keep the code honest; evals keep the agent honest.**
 
 ## Session Continuity
 
-`HANDOFF.md`, the active ticket, and recent closed tickets are read explicitly by `sprint start`'s context step — canon installs zero Claude Code hooks. A context reset or fresh session never loses the thread — the plan, decisions, and acceptance bar are in `.tickets/<id>/`, not the chat history.
+`HANDOFF.md`, the active ticket, and recent closed tickets are read explicitly by `sprint start`'s context step — canon installs zero Claude Code hooks. `HANDOFF.md`'s **Recent activity** block (between `<!-- canon:recent:BEGIN -->` and its END marker, above the narrative) is written by canon from the activity log at `sprint approve`, `sprint complete` and the merge (`tkt merge-pr`, `tkt land --finish`): the last ten stage events (plan approved, gate verdicts, closed, sent, imported, merged), newest first. Only the project's main checkout gets it, also when the command runs in a worktree, so no branch carries it and merges never conflict on it; `tkt merge-pr` sets a block-only difference aside and writes it again after main moves. `sprint recent` prints the same list in any checkout; if a `git pull` or merge you run by hand refuses because of the block, `sprint recent --strip-handoff` takes it out. The narrative sections stay the agent's (the wrapup step). A context reset or fresh session never loses the thread — the plan, decisions, and acceptance bar are in `.tickets/<id>/`, not the chat history.
 
 ## The Close Path
 
