@@ -130,6 +130,17 @@ echo more > a.txt; rc=0; out="$("$TKT" commit-push "$id" --file a.txt --message 
 assert_eq 1 "$rc"; assert_contains "$out" "here; push failed:"; assert_contains "$out" "retry: git push origin feat/new   undo the commit: git reset --soft HEAD^"
 assert_eq "chore: rejected" "$(git log -1 --format=%s)"; [[ "$(git --git-dir="$W/origin.git" rev-parse feat/new)" != "$(git rev-parse HEAD)" ]] || fail "the rejected push reached origin"
 
+# t-2560: a ticket whose folder is NOT tracked (the issue carries its text; the cloud rebuilds it) is never listed or committed;
+# a tracked one (above) still is. Prod path: the Send panel's Commit and push (commit-push-preview and commit-push).
+git checkout -q -- . 2>/dev/null || true; git reset -q
+loose="$("$TKT" create "Untracked ticket" -t task)"; printf '# Plan\n' > ".tickets/$loose/plan.md"; echo touch > a.txt
+out="$("$TKT" commit-push "$loose" --dry-run)"
+[[ "$out" != *".tickets/$loose/"* ]] || fail "an untracked ticket folder was listed: $out"
+grep -qxF "file:  M a.txt" <<< "$out" || fail "the project's own change is missing: $out"
+rc=0; out="$("$TKT" commit-push "$loose" --file ".tickets/$loose/plan.md" --message x 2>&1)" || rc=$?
+[[ "$rc" != 0 ]] || fail "commit-push accepted an untracked ticket file"; assert_contains "$out" "is not one of this checkout's changes"
+git checkout -q -- a.txt
+
 # Never forced: no push carried a force flag.
 ! grep -qE -- '(^| )(-f|--force|--force-with-lease[^ ]*|\+refs)' "$W/pushes" || fail "a push was forced: $(cat "$W/pushes")"
 [[ -s "$W/pushes" ]] || fail "the push log is empty: the shim saw no push"

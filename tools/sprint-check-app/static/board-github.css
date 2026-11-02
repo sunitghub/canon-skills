@@ -57,6 +57,7 @@ html[data-theme="light"] .ck-gh-box .ck-gh-note p { color: var(--th-warn-ink, #9
 .ck-gh-cp-files { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow: auto; display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
 .ck-gh-cp-st { color: var(--text-muted); }
 .ck-gh-cp-ago { color: var(--text-muted); font-size: 11px; }
+.ck-gh-box .ck-gh-cp-note { margin: 6px 0 0; color: var(--text-muted); font-size: 12px; }   /* t-2560 */
 /* t-3942: body text on the panel's own colour, a red left bar and a red lead (red on a red tint was hard to read) */
 .ck-gh-box .ck-gh-cp-busy, .ck-gh-cp-busy { margin: 0; padding: 8px 12px; border-radius: 8px; font-size: 12.5px; border: 1px solid var(--border); border-left: 3px solid var(--th-bad-line, var(--bad-ink)); color: var(--text-body); background: transparent; }
 .ck-gh-cp-busy strong { color: var(--th-bad-ink, var(--bad-ink)); }

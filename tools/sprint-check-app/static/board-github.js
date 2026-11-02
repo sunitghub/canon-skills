@@ -49,12 +49,27 @@ function lastLine(text) {
 }
 function mmss(sec) { sec = Math.max(0, Math.round(sec || 0)); return `${Math.floor(sec / 60)}m${String(sec % 60).padStart(2, '0')}s`; }
 
+// t-2560: a cloud session pushes its branch before its evaluator and opens the PR when it finishes, so "a branch, no PR" within an
+// hour of the trail's newest send or launch (github-status `started`) is the session still working, not one that stopped short.
+const CLOUD_WORKING_MS = 60 * 60 * 1000;
+function cloudWorking(st) {
+  if (st.stage !== 'branch' || !st.started) return false;
+  const at = Date.parse(st.started);
+  return !Number.isNaN(at) && Date.now() - at < CLOUD_WORKING_MS;
+}
+// t-2560: on Windows To Claude Cloud copies the command (the board's Terminal cannot start a cloud session there yet).
+function toCloudTip() {
+  return isWindowsBrowser() ? 'Copies the command: paste it in PowerShell or Git Bash in the project folder and press Enter'
+    : 'Open the Terminal with the command typed (you press Enter)';
+}
+
 export function ghChipHTML(t) {
   if (!ghOut(t)) return '';
   const p = ghParts(t), st = stageOf(t), n = p ? `GitHub #${p.issue}` : 'GitHub';
   let text = n, title = String(t.github);
   if (st.stage === 'sent') text += ' · sent';
   else if (st.stage === 'pr-open') text += prOf(st) ? ` · PR #${prOf(st)}` : ' · PR open';
+  else if (st.stage === 'branch' && cloudWorking(st)) { text += ' · cloud session working'; title = `${st.branch} is pushed; the session opens its PR when it finishes`; }
   else if (st.stage === 'branch') { text += ' · branch, no PR'; title = `${st.branch} is on GitHub with no PR`; }
   else if (st.stage === 'results-ready') text += ' · results ready';
   else if (st.stage === 'results-in') text += ' · results in';
@@ -80,12 +95,13 @@ export function ghButtonHTML(t) {
   if (st.stage === 'results-in' || st.stage === 'merging') return btn('merge', 'Check & merge', 'Check the PR and merge it after your confirmation');
   // t-9955: "↗" goes to GitHub and changes nothing; Create PR is the one that makes something.
   if (st.stage === 'pr-open' && prOf(st)) return btn('pr', 'PR ↗', `PR #${prOf(st)} on GitHub`);
-  if (st.stage === 'branch') return btn('open-pr', 'Create PR', `The session pushed ${st.branch} without a PR: create one`);
   const p = ghParts(t);
   const issue = btn('issue', 'Issue ↗', p ? `Issue #${p.issue} on GitHub` : 'The issue on GitHub');
+  if (st.stage === 'branch' && cloudWorking(st)) return issue;   // t-2560: no Create PR while the session may still open its own
+  if (st.stage === 'branch') return btn('open-pr', 'Create PR', `The session pushed ${st.branch} without a PR: create one. If its cloud session may still be running, wait: it opens the PR itself when it finishes`);
   // t-d7b7: a ticket sent earlier (from a terminal, or a board tab since closed) starts its cloud session from its card, the same
   // To Claude Cloud as the Sent panel's (launchToCloud): the line is typed in a Terminal, never run for you.
-  if (st.stage === 'sent') return btn('to-cloud', 'To Claude Cloud', 'Open the Terminal with the command typed (you press Enter)') + issue;
+  if (st.stage === 'sent') return btn('to-cloud', 'To Claude Cloud', toCloudTip()) + issue;
   return issue;
 }
 
@@ -356,7 +372,7 @@ async function checkAndMerge(t, pr) {
   const aheadNote = ahead[2] ? ` Your local ${ahead[1]} has ${ahead[2]} commit${ahead[2] === '1' ? '' : 's'} that aren't on GitHub. This merge tests and merges the PR without ${ahead[2] === '1' ? 'it' : 'them'}; afterwards, run git pull (or push first).` : '';
   updateDialog({
     body: `Running the tests runs the PR's code on this machine. Nothing from the PR runs before you press the button.${aheadNote}`,
-    pre: chk.output || '', ok: 'Run tests & merge', cancel: 'Cancel', escape: true,
+    pre: chk.output || '', ok: /no test command/.test(chk.output || '') ? 'Merge (no tests)' : 'Run tests & merge', cancel: 'Cancel', escape: true,   // t-2560
   }, open.gen);
   const choice = await open;
   if (!choice || !choice.ok) return;
@@ -697,7 +713,8 @@ async function showCommitPush(t, tab, gen) {
   const ago = s => s < 60 ? s + 's' : Math.floor(s / 60) + 'm';
   box.innerHTML = `<p>Branch: <code>${esc(branch)}</code></p>
       ${files.length && busy ? '<p class="ck-gh-cp-busy" id="ck-gh-cp-busy" role="note"><strong>An agent session is working in this checkout:</strong> these files may be its work in progress. Tick only what you mean to send.</p>' : ''}
-      ${files.length ? `<ul class="ck-gh-cp-files" id="ck-gh-cp-files">${files.map((f, i) => `<li><label><input type="checkbox" data-i="${i}"${startTicked(f) ? ' checked' : ''}> <code>${esc(f.path)}</code> <span class="ck-gh-cp-st">${f.untracked ? 'new, not tracked' : 'changed'}</span>${/^\.tickets\//.test(f.path) ? ` <span class="ck-gh-cp-ago ck-gh-cp-own">this ticket's own folder: the cloud rebuilds it from the issue</span>` : ''}${f.age === null ? '' : ` <span class="ck-gh-cp-ago">changed ${ago(f.age)} ago</span>`}</label></li>`).join('')}</ul>` : '<p>No uncommitted files: only the commits already here are pushed.</p>'}
+      ${files.length ? `<ul class="ck-gh-cp-files" id="ck-gh-cp-files">${files.map((f, i) => `<li><label><input type="checkbox" data-i="${i}"${startTicked(f) ? ' checked' : ''}> <code>${esc(f.path)}</code> <span class="ck-gh-cp-st">${f.untracked ? 'new, not tracked' : 'changed'}</span>${/^\.tickets\//.test(f.path) ? ` <span class="ck-gh-cp-ago ck-gh-cp-own">tracked in git here: commit it so the cloud's copy matches the issue</span>` : ''}${f.age === null ? '' : ` <span class="ck-gh-cp-ago">changed ${ago(f.age)} ago</span>`}</label></li>`).join('')}</ul>` : '<p>No uncommitted files: only the commits already here are pushed.</p>'}
+      <p class="ck-gh-cp-note" id="ck-gh-cp-note">This ticket's own files go in the issue below (Description, Acceptance, Plan, Research); the cloud session rebuilds <code>.tickets/${esc(t.id)}/</code> from it, so they are not committed here unless your project tracks them in git.</p>
       ${files.length ? `<label class="ck-gh-cp-msg">Commit message <input type="text" id="ck-gh-cp-msg" maxlength="200" value="${escAttr(`chore: ${t.id} work for the cloud session`)}"></label>` : ''}
       <div class="ck-gh-actions"><button type="button" class="ck-gh-create" id="ck-gh-cp-go">Commit and push</button><button type="button" id="ck-gh-cp-cancel">Cancel</button><span class="ck-gh-status" id="ck-gh-cp-status" role="status"></span></div>
       <pre class="ck-gh-pre" id="ck-gh-cp-out" hidden></pre>`;
@@ -760,7 +777,7 @@ function showSent(panel, t, tab) {
       ${line ? `<p>Start a Claude cloud session on the canon environment and type:</p><pre class="ck-gh-pre ck-gh-prompt" id="ck-gh-prompt">${esc(line)}</pre>${cmd ? `<p>Or paste this in a terminal window in this project (a real terminal; it is refused inside a Claude session):</p><pre class="ck-gh-pre ck-gh-prompt" id="ck-gh-cmd">${esc(cmd)}</pre>` : ''}` : `<p>Start a Claude cloud session on the canon environment and point it at issue #${esc(n)}.</p>`}
       <p>The card is in In progress and shows the next step.</p>
       <p class="ck-gh-prereq" id="ck-gh-prereq">First time on this repository? The cloud session needs the Claude GitHub App installed on it and the canon environment (Factory › GitHub › Cloud environment). After you change the environment's setup script, start a new session: an open one keeps the old script.</p>
-      <div class="ck-gh-actions">${cmd ? `<button type="button" class="ck-gh-create" id="ck-gh-to-cloud" title="Open the Terminal with the command typed (you press Enter)">To Claude Cloud</button><button type="button" id="ck-gh-copy-cmd">Copy command</button>` : ''}${line ? `<button type="button" id="ck-gh-copy">Copy prompt</button>` : ''}${url ? `<button type="button" id="ck-gh-open" title="Issue #${esc(n)} on GitHub">Issue ↗</button>` : ''}<button type="button" id="ck-gh-dismiss">Close tab</button><span class="ck-gh-status" id="ck-gh-status" role="status"></span></div>
+      <div class="ck-gh-actions">${cmd ? `<button type="button" class="ck-gh-create" id="ck-gh-to-cloud" title="${escAttr(toCloudTip())}">To Claude Cloud</button><button type="button" id="ck-gh-copy-cmd">Copy command</button>` : ''}${line ? `<button type="button" id="ck-gh-copy">Copy prompt</button>` : ''}${url ? `<button type="button" id="ck-gh-open" title="Issue #${esc(n)} on GitHub">Issue ↗</button>` : ''}<button type="button" id="ck-gh-dismiss">Close tab</button><span class="ck-gh-status" id="ck-gh-status" role="status"></span></div>
     </div>`;
   const copyText = async (text) => {
     const s = document.getElementById('ck-gh-status');

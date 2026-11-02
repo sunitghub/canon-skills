@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Fixed
+- Send to GitHub, from a Windows run: the Commit and push list no longer offers a ticket's own files unless the project tracks `.tickets/` in git (the issue carries them, and the cloud rebuilds the folder from it), and says so in one line; on Windows, To Claude Cloud's tooltip says it copies the command for PowerShell or Git Bash; a branch pushed within an hour of the launch reads "cloud session working" and offers no Create PR, which would race the session's own PR; Check & merge reads "Merge (no tests)" when there is no test command; the local main fast-forwards past a file git itself sees as identical (a CRLF copy under `core.autocrlf=true` left it behind); and `tkt export` records the cloud machine, so a cloud ticket's Machines node shows it (t-2560).
+
 ### Added
 - `HANDOFF.md` gets a **Recent activity** block written by canon from the activity log at `sprint approve`, `sprint complete` and the merge (`tkt merge-pr`, `tkt land --finish`): plan approved, each gate's verdict, closed, sent, imported and merged, newest first. Only the project's main checkout gets it, also when the command runs in a worktree, so merges never conflict on it; `tkt merge-pr` sets a block-only difference aside and writes it again. `sprint recent` prints the list anywhere; `sprint recent --strip-handoff` removes the block. `sprint approve` now records a `plan.approved` event, which nothing wrote before (t-2db7).
 

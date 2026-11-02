@@ -192,7 +192,11 @@ rc=0; out="$(STUB_VIS=PUBLIC "$TKT" export "$id" 2>&1)" || rc=$?
 out="$("$TKT" export "$id" 2>/dev/null)"
 assert_contains "$out" "pushed .tickets/$id/ to canon-results/$id. On your machine: tkt import-results $id --pr <N>, then tkt merge-pr $id"
 files="$(git --git-dir="$W/origin.git" ls-tree -r --name-only "canon-results/$id" | tr '\n' ' ')"
-assert_eq ".tickets/$id/acceptance.md .tickets/$id/eval-report.md .tickets/$id/evidence/a1.log .tickets/$id/evidence/a2.log .tickets/$id/evidence/empty.log .tickets/$id/evidence/here.log .tickets/$id/evidence/hostile.log .tickets/$id/evidence/longcmd.log .tickets/$id/evidence/old/hidden.log .tickets/$id/evidence/oldfmt.log .tickets/$id/evidence/report.json .tickets/$id/plan.md .tickets/$id/ticket.md " "$files"
+assert_eq ".tickets/$id/acceptance.md .tickets/$id/eval-report.md .tickets/$id/evidence/a1.log .tickets/$id/evidence/a2.log .tickets/$id/evidence/cloud/machine.log .tickets/$id/evidence/empty.log .tickets/$id/evidence/here.log .tickets/$id/evidence/hostile.log .tickets/$id/evidence/longcmd.log .tickets/$id/evidence/old/hidden.log .tickets/$id/evidence/oldfmt.log .tickets/$id/evidence/report.json .tickets/$id/plan.md .tickets/$id/ticket.md " "$files"
+# t-2560: export records the machine it ran on (the cloud's) for the ticket's Machines node: the evidence header form, no hostname
+ml=".tickets/$id/evidence/cloud/machine.log"
+assert_eq "# on $("$SPRINT_CHECK_BIN" machine); bash ${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}.${BASH_VERSINFO[2]}" "$(git --git-dir="$W/origin.git" show "canon-results/$id:$ml" | sed -n 3p)"
+assert_count 0 "$(hostname)" "$ml"
 assert_eq "$st_before" "$(git status --porcelain)"
 assert_eq "$idx_before" "$(git ls-files -s | cksum)"
 rm -rf ".tickets/$id/.before-import"
@@ -210,6 +214,7 @@ T="$W/tracked"; git clone -q "$W/origin.git" "$T" 2>/dev/null; cd "$T"
 git remote set-url origin https://github.com/acme/app.git
 rm -f .gitignore; mkdir -p ".tickets/$id" && cp "$e/ticket.md" ".tickets/$id/"
 out="$("$TKT" export "$id")"; assert_contains "$out" "commit it on the PR branch. On your machine: tkt import-results $id --pr <N>, then tkt merge-pr $id"
+assert_file_exists "$T/.tickets/$id/evidence/cloud/machine.log"   # t-2560: written before the tracked-folder answer, so it rides in the PR
 assert_eq "1" "$(git --git-dir="$W/origin.git" branch --list "canon-results/*" | grep -c .)"
 
 # Back on the laptop: files byte-for-byte, a local edit kept aside, github: kept, branch deleted, PR head checked.
@@ -252,7 +257,7 @@ assert_eq "$sent_block" "$(head -n "$(wc -l < "$A/$d/github.md")" "$gt")"
 assert_eq 1 "$(grep -c '^## .* — imported$' "$gt")"
 [[ "$(grep -c '^## .* — import refused$' "$gt")" -ge 6 ]] || fail "the mismatched imports were not logged as import refused: $(grep '^## ' "$gt")"
 imp="$(awk '/^## .* — imported$/ { b = "" } { b = b $0 "\n" } END { printf "%s", b }' "$gt")"; nblocks="$(grep -c '^## ' "$gt")"
-assert_contains "$imp" "files: 13"; assert_contains "$imp" "ticket status: closed"; assert_contains "$imp" "evaluator: pass"
+assert_contains "$imp" "files: 14"; assert_contains "$imp" "ticket status: closed"; assert_contains "$imp" "evaluator: pass"
 assert_contains "$imp" "graded head: $STUB_PR_HEAD"; assert_contains "$imp" "PR: #58 head $STUB_PR_HEAD: matches graded-head"
 assert_contains "$imp" "evidence: Plan9 4.0 mips (this machine:"
 # t-a83a: one line per foreign OS, sanitized and capped; this machine's OS and subfolders say nothing

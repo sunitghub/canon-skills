@@ -122,6 +122,12 @@ echo 2026-10-20T10:00:00Z > "$W/issue"
 rc=0; out="$(STUB_ISSUEFAIL=1 iu)" || rc=$?;           assert_eq "sent|null" "$out"          # unreadable: null, the stage stays
 printf '24\tOPEN\t%s\n' "$HEAD7" > "$W/prs";           assert_eq "pr-open|null" "$(iu)"      # a PR: no read at all
 : > "$W/log"; st >/dev/null; grep -q '^issue view' "$W/log" && fail "issue view ran for a ticket with a PR"
+# t-2560: started (the board's "cloud session working" rule reads it): the trail's newest sent or launched time, null without a trail
+sa() { "$TKT" github-status "$id" --json | node -e 'const j=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write(String(j.started))'; }
+rm -f ".tickets/$id/github.md"; assert_eq "null" "$(sa)"
+printf '# GitHub\n\n## 2026-11-02T17:05:55Z — sent\nissue: x\n\n## 2026-11-02T17:18:49Z — launched\ncommand: y\n\n## 2026-11-02T17:23:30Z — imported\n' > ".tickets/$id/github.md"
+assert_eq "2026-11-02T17:18:49Z" "$(sa)"   # the newest start, not a later import
+rm -f ".tickets/$id/github.md"
 # Read-only: only a pr list call, and the ticket is unchanged.
 : > "$W/log"; before="$(cksum < "$f")"; st >/dev/null
 assert_eq "1" "$(grep -c . "$W/log")"; grep -q '^pr list --repo acme/app --state all --search Fixes #23 in:body' "$W/log" || fail "wrong gh call: $(cat "$W/log")"
