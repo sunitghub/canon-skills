@@ -29,6 +29,22 @@
       ],
       "ticket": "t-8aa6",
       "reason": "failed 2 of 3 (webkit) in the t-d00c full run at 29925714 (2026-10-31, load 2.5 on 10 CPUs, 3 runs per browser); passed 3 of 3 alone in both browsers on that head and on main 73db7da7+; not in the code this PR changes"
+    },
+    {
+      "title": "board modal > New ticket starts from the intent skeleton; a bug adds Expected/Actual; hints never render (t-b0c9)",
+      "browsers": [
+        "chromium"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "failed 1 of 3 (chromium) in the t-5036 and t-90f5 full run (2026-11-01, load ~8 on 10 CPUs, 3 runs per browser); passed 3 of 3 alone on that head (cdce4060); a ticket-modal test, not in the code this PR changes"
+    },
+    {
+      "title": "ticket modal polish (t-612f) > sections come from a background read of every doc; an unreadable doc shows no +; a Save refreshes them",
+      "browsers": [
+        "chromium"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "failed 1 of 3 (chromium) in the t-5036 full run (2026-11-01, load ~8 on 10 CPUs, 3 runs per browser); passed 3 of 3 alone on that head (cdce4060); a ticket-modal test, not in the code this PR changes"
     }
   ],
   "skipped": []
