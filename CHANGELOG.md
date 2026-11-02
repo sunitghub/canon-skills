@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.36.1] - 2026-11-02
+
+The prebuilt `canon-go` program changed (the daemon, the Terminal and the board): `canon update` fetches it.
+
 ### Changed
 - The Start panel's worktree list stays short: Main, the ticket's own worktree, the selected one and its preferred branch stay in view; every other worktree folds under one "N other worktrees" line, like "N worktrees unavailable". A worktree whose work already landed in main says "merged · reset or remove" (t-c8f6).
 
