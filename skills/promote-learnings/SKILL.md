@@ -109,8 +109,9 @@ unchanged for every proposal the user confirms.
 Carry out every decision the user gives, the ticked proposals and any typed as free text (a dismissal,
 a reword, a split). A decision you cannot apply is named in the summary, never dropped. For each:
 
-1. Grep `PROMOTED.md` for the same rule. If it is already there, extend that entry instead of adding
-   a second copy.
+1. Grep `PROMOTED.md` for the same rule. If the rule is already there, write nothing: the row becomes
+   `` `dismissed (covered: PROMOTED.md)` `` (step 3). Extend an existing entry only when the lesson adds
+   a case to a related rule, and then the row is `promoted → PROMOTED.md`.
 2. Otherwise append the entry between `<!-- canon:promoted:BEGIN -->` and
    `<!-- canon:promoted:END -->`. If the file is missing, run `skills.sh refresh`, which seeds it.
 3. Only after that write, flip the row's `Status` in `LEARNINGS.md` to `` `promoted → PROMOTED.md` ``.
