@@ -148,7 +148,8 @@ to consolidate or retire entries. The cap is advisory and never blocks a write.
 ## Next Steps
 
 > In canon, this skill never writes these changes itself. (In a consumer project, confirmed
-> `PROMOTED.md` proposals go through the Apply step instead.) Apply them by hand: edit the destination
+> `PROMOTED.md` proposals go through the Apply step instead, so this section is omitted there; in canon the
+> report's `PROMOTED.md` lines read "not applicable".) Apply them by hand: edit the destination
 > file below, bump that file's frontmatter `version` and set `updated` to today (if it has
 > them), then flip each promoted row's Status in LEARNINGS.md away from UNPROMOTED. Record the
 > target in the cell — `` `promoted → standards/efficiency.md` `` (whole value in backticks so
