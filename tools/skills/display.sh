@@ -30,6 +30,33 @@ compute_hook_status() {
   fi
 }
 
+# skill_problems <name> <row path> — t-6541: one line per problem with a registered skill (the one owner of this check: status and
+# status --json, and through it the board's Projects card): "broken ref" (the AGENTS.md row's file is missing), "stale path" (the
+# row names another copy than this install's), "missing link .claude/skills" / ".agents/skills" (the folder agents load the skill
+# from has no <name>/SKILL.md) and "stale link …" (it resolves to another copy). Reads project_dir. Prints nothing when healthy.
+skill_problems() {
+  local name="$1" spath="$2" canon_file real link f
+  canon_file="$(find_skill "$name" 2>/dev/null || true)"
+  [ -f "$spath" ] || echo "broken ref"
+  [ -n "$canon_file" ] && [ "$canon_file" != "$spath" ] && echo "stale path"
+  [ -n "$canon_file" ] || return 0
+  real="$(cd -P "$(dirname "$canon_file")" 2>/dev/null && pwd -P)" || return 0
+  for link in .claude/skills .agents/skills; do
+    f="$project_dir/$link/$name/SKILL.md"
+    if [ ! -f "$f" ]; then echo "missing link $link"
+    elif [ "$(cd -P "$(dirname "$(_resolve_file "$f")")" 2>/dev/null && pwd -P)" != "$real" ]; then echo "stale link $link"; fi
+  done
+}
+
+# _resolve_file <path> — the file a path ends at, following a symlinked file (a per-skill folder's SKILL.md link) once per hop.
+_resolve_file() {
+  local f="$1" t n=0
+  while [ -L "$f" ] && [ $n -lt 8 ]; do
+    t="$(readlink "$f")"; case "$t" in /*|[A-Za-z]:*) f="$t" ;; *) f="$(dirname "$f")/$t" ;; esac; n=$((n + 1))
+  done
+  printf '%s\n' "$f"
+}
+
 # Reads: agents_file, _has_sprint, _has_wrapup (caller locals). Prints the
 # "Skills:" list. Updates caller locals: issues, _printed_skills_header.
 render_skill_status_list() {
@@ -43,14 +70,15 @@ render_skill_status_list() {
       spath=$(skill_row_path "$line")
       [ -z "$sname" ] && continue
 
-      local tag="ok"
-      [ ! -f "$spath" ] && tag="broken ref" && (( issues++ )) || true
-
-      local canon_file
-      canon_file=$(find_skill "$sname" 2>/dev/null || true)
-      if [ -n "$canon_file" ] && [ "$canon_file" != "$spath" ]; then
-        tag="stale path"
-        (( issues++ )) || true
+      # t-6541: every problem is named, never one tag over another (a broken row was also counted as stale, then hidden)
+      local probs tag
+      probs="$(skill_problems "$sname" "$spath")"
+      if [ -n "$probs" ]; then
+        tag="$(printf '%s' "$probs" | paste -sd, - | sed 's/,/, /g')"
+        (( issues += $(printf '%s\n' "$probs" | grep -c .) )) || true
+        _skills_moved=true
+      else
+        tag="ok"
       fi
 
       if [[ "$sname" == "wrapup" ]] && ! $_has_sprint && [ "$tag" = "ok" ]; then

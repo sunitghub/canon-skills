@@ -68,7 +68,9 @@ function own() {
   const err = listed.error ? `<div class="thm-note">${esc(listed.error)}</div>` : '';
   return `<h4 class="thm-own">Your own</h4><div class="thm-note">Add a theme file to <code>${esc(listed.dir)}</code>; it appears above, under its mode.</div>${err}`
     + (bad ? `<ul class="thm-rejected" aria-label="Theme files not used">${bad}</ul>` : '')
-    + `<button type="button" class="thm-open" data-open="1">Open themes folder</button>`;
+    // t-6541: before the folder exists the button makes it with a sample theme (and opens it); after, a small link opens it
+    + (listed.exists ? `<button type="button" class="thm-open thm-open-link" data-open="1">Show themes folder</button>`
+      : `<button type="button" class="thm-open" data-open="1" title="Makes ${esc(listed.dir)} with an example theme and a README, and opens it">Create a sample theme</button>`);
 }
 // Everything below is a fixed string from this file or passes through esc() (t-d2e1), so innerHTML is safe here; user
 // themes reach it only after validateTheme() (theme-data.js), and their colours only through paint().

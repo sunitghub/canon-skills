@@ -5164,6 +5164,23 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
+    // t-6541: no themes folder yet: a button makes it with a sample theme; once it exists, a small link opens it.
+    // Prod path: the theme popover's "Your own" (GET /api/themes exists, POST /api/themes/open).
+    test('themes folder (t-6541): Create a sample theme before the folder exists, Show themes folder after', async ({ page }) => {
+      let exists = false;
+      await routeThemes(page, () => ({ ...userList([]), exists }));
+      await openShell(page, []);
+      const pop = page.locator('#theme-pop');
+      await page.locator('#theme-btn').click();
+      await expect(pop.locator('.thm-open')).toHaveText('Create a sample theme');
+      await expect(pop.locator('.thm-open-link')).toHaveCount(0);
+      exists = true;
+      await page.locator('#theme-btn').click(); await page.locator('#theme-btn').click();   // closed and opened again: the folder is re-read
+      await expect(pop.locator('.thm-open')).toHaveText('Show themes folder');
+      await expect(pop.locator('.thm-open-link')).toHaveCount(1);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     test('user themes (t-f889): Low contrast is marked with its ratio and can still be picked; refused files and hostile entries stay text; Open themes folder posts once', async ({ page }) => {
       await page.emulateMedia({ colorScheme: 'dark' });
       const pale = { name: 'Pale', mode: 'light', colors: { ...INK.colors, bg: '#ffffff', surface: '#fafafa', text: '#eeeeee', body: '#dddddd', muted: '#dddddd' } };
@@ -6893,6 +6910,39 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await board.locator('#lb-close').click();
       await page.evaluate(async () => { const { showView } = await import('/static/cockpit-views.js'); return showView('admin'); });
       await expect(page.locator('#view-admin')).not.toContainText('Logbook');
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    // t-6541: the card shows a project's skill problems from skills.sh's own check and fixes them with Refresh (skills.sh refresh,
+    // busy until it answers, then the row re-reads); a check that could not run says so. Prod path: GET /api/skills-health,
+    // POST /api/skills-refresh and the Cockpit's Projects page.
+    test('Projects card (t-6541): a skill problem shows with Refresh; Refresh is busy, then the row clears; a failed check or refresh says so', async ({ page }) => {
+      let health = { 'proj-a': { ok: true, skills: [{ name: 'sprint', problems: ['missing link .claude/skills', 'stale path'] }], issues: 2 },
+        'proj-x': { ok: false, error: 'could not check this project’s skills: boom' } };
+      let release, answer = { ok: true, output: 'Done.' }; const posts = [];
+      await page.route('**/api/skills-health?*', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(health[new URL(r.request().url()).searchParams.get('project')] || { ok: true, skills: [], issues: 0 }) }));
+      await page.route('**/api/skills-refresh?*', async r => { posts.push(r.request().method() + ' ' + new URL(r.request().url()).searchParams.get('project')); await new Promise(res => { release = res; }); return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(answer) }); });
+      await openShell(page, []);
+      await page.locator('.tab.pinned').click();
+      const row = pid => page.locator(`.meta[data-stats="${pid}"] [data-f="skhealth-row"]`);
+      await expect(row('proj-a')).toBeVisible();
+      await expect(row('proj-a').locator('[data-f="skhealth"]')).toHaveText('⚠ sprint: missing link .claude/skills, stale path');
+      await expect(row('proj-x').locator('[data-f="skhealth"]')).toHaveText('⚠ could not check this project’s skills: boom');   // never "healthy"
+      await expect(row('proj-x').locator('.skrefresh')).toBeHidden();
+      const btn = row('proj-a').locator('.skrefresh');
+      await btn.click();
+      await expect(btn).toHaveAttribute('aria-busy', 'true'); await expect(btn).toContainText('Refreshing…'); await expect(btn).toBeDisabled();
+      health['proj-a'] = { ok: true, skills: [{ name: 'sprint', problems: [] }], issues: 0 };
+      release();
+      await expect(row('proj-a')).toBeHidden();   // the card re-read: healthy now
+      expect(posts).toEqual(['POST proj-a']);
+      health['proj-a'] = { ok: true, skills: [{ name: 'sprint', problems: ['broken ref'] }], issues: 1 };
+      await page.evaluate(async () => { const { refreshStats } = await import('/static/cockpit-projects.js'); refreshStats(); });
+      await expect(row('proj-a')).toBeVisible();
+      answer = { ok: false, error: 'skills.sh refresh failed', output: 'boom line' };
+      await btn.click(); release();
+      await expect(page.locator('#cconfirm')).toContainText('Refresh did not finish');
+      await expect(page.locator('#cc-code')).toHaveValue('boom line');   // the run's output, in the copyable box
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
@@ -15257,6 +15307,7 @@ test.describe('ticket modal document tree (t-e946)', () => {
     await expect(page.locator('#m-docs .doc-tab.active')).toHaveCount(1);
     const rows = page.locator('#m-body .machines-table tbody tr');
     await expect(rows).toHaveCount(2);
+    await expect(page.locator('#m-body .machines-table th').nth(1)).toHaveText('OS, architecture, cores, RAM');   // t-6541
     await expect(rows.nth(0)).toContainText('build-mac.local<img src=x');   // shown as text
     await expect(rows.nth(0)).toContainText('macOS 26.1, Darwin 25.1.0, arm64, 10 cores, 32 GB');
     await expect(rows.nth(0)).toContainText('3 events');
@@ -19054,6 +19105,8 @@ test.describe.serial('Canon Cockpit Admin > Logging (t-1bd5)', () => {
 
       // Export: the link is a download, and the route sends every day in order
       await expect(page.locator('#lg-export')).toHaveAttribute('href', '/api/admin/logging/export');
+      await expect(page.locator('#lg-export')).toHaveText('Export');   // t-6541: the row's text names the format
+      await expect(page.locator('#lg-export').locator('xpath=ancestor::div[contains(@class,"setting-row")][1]')).toContainText('one JSON-lines file (.jsonl)');
       const exp = await page.request.get(`${base}/api/admin/logging/export`);
       expect(exp.headers()['content-disposition']).toContain('canon-activity-log.jsonl');
       expect((await exp.text()).split('\n').filter(Boolean).slice(0, 3)).toEqual(['{"a":1}', '{"b":1}', '{"c":1}']);

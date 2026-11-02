@@ -133,4 +133,21 @@ assert_eq "$sum_before" "$(cksum < "$inj/AGENTS.md")"
 [[ "$out" != *"added the platforms line"* ]] || fail "CRLF: a refresh of a block that has the line claimed to add it"
 
 
+# --- t-6541: a project copied from elsewhere: its AGENTS.md row names a copy that is gone, .claude/skills is a real folder without
+# sprint and .agents/skills is missing. status names every problem (never one tag over another) and the cause; --json is what
+# the board's Projects card reads; refresh fixes all of it. Prod path: skills.sh status / status --json / refresh (the card's Refresh).
+cp_proj="$(make_project)"
+trap 'rm -rf "$project" "$tmp_home" "$inj" "$cp_proj"' EXIT
+"$SKILLS" add sprint "$cp_proj" >/dev/null 2>&1
+sed -i.bak 's#| skills/sprint/SKILL.md |#| /gone/canon/skills/sprint/SKILL.md |#' "$cp_proj/AGENTS.md" && rm -f "$cp_proj/AGENTS.md.bak"
+grep -qF '/gone/canon/skills/sprint/SKILL.md' "$cp_proj/AGENTS.md" || fail "the test could not plant the stale row: $(grep -F sprint "$cp_proj/AGENTS.md")"
+rm -rf "${cp_proj:?}/.claude/skills" "${cp_proj:?}/.agents/skills"; mkdir -p "$cp_proj/.claude/skills/other"
+out="$("$SKILLS" status "$cp_proj")"
+assert_contains "$out" "sprint                    [broken ref, stale path, missing link .claude/skills, missing link .agents/skills]"
+assert_contains "$out" "this project was moved or copied, or canon was installed again"
+assert_eq '{"skills":[{"name":"sprint","problems":["broken ref","stale path","missing link .claude/skills","missing link .agents/skills"]}],"issues":4}' "$("$SKILLS" status --json "$cp_proj")"
+"$SKILLS" refresh "$cp_proj" >/dev/null 2>&1
+assert_eq '{"skills":[{"name":"sprint","problems":[]}],"issues":0}' "$("$SKILLS" status --json "$cp_proj")"
+assert_contains "$("$SKILLS" status "$cp_proj")" "sprint                    [ok]"
+
 printf 'skills-refresh: ok\n'

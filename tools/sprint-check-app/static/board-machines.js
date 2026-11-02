@@ -52,6 +52,6 @@ export async function renderMachinesPane(t, seq) {
     body.innerHTML = '<div class="machines-pane"><h3>No machine recorded yet</h3><p>Every event now names the machine that wrote it, and every test-evidence log names its OS, cores and RAM. A ticket worked on since then shows its machines here; a cloud session\'s machine arrives with <code>tkt import-results</code>.</p></div>';
     return;
   }
-  body.innerHTML = `<div class="machines-pane"><table class="machines-table"><thead><tr><th>Machine</th><th>OS, chip, cores, RAM</th><th>Activity</th></tr></thead><tbody>${rows.map(rowHTML).join('')}</tbody></table>`
+  body.innerHTML = `<div class="machines-pane"><table class="machines-table"><thead><tr><th>Machine</th><th>OS, architecture, cores, RAM</th><th>Activity</th></tr></thead><tbody>${rows.map(rowHTML).join('')}</tbody></table>`
     + '<p class="mc-dim">From this ticket\'s events (each names the host that wrote it) and its test-evidence logs (they name the OS, never the host).</p></div>';
 }

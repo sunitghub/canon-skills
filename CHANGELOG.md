@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Fixed
+- A project's skill problems show on its Projects card, with a **Refresh** button that runs `skills.sh refresh` from the board (busy until it answers). `skills.sh status` now names every problem instead of one tag hiding another: a missing skill file, a row naming another copy, and a missing or wrong `.claude/skills` / `.agents/skills` link (a project copied from another folder had none, so agents could not load the sprint skill), plus the likely cause; `skills.sh status --json` is what the card reads. Admin > Logging's button reads **Export** (the row says it is one .jsonl file); the theme menu offers **Create a sample theme** until the themes folder exists, then a small **Show themes folder** link; the Machines node's header says "architecture" (t-6541).
+
 ### Added
 - `HANDOFF.md` gets a **Recent activity** block written by canon from the activity log at `sprint approve`, `sprint complete` and the merge (`tkt merge-pr`, `tkt land --finish`): plan approved, each gate's verdict, closed, sent, imported and merged, newest first. Only the project's main checkout gets it, also when the command runs in a worktree, so merges never conflict on it; `tkt merge-pr` sets a block-only difference aside and writes it again. `sprint recent` prints the list anywhere; `sprint recent --strip-handoff` removes the block. `sprint approve` now records a `plan.approved` event, which nothing wrote before (t-2db7).
 

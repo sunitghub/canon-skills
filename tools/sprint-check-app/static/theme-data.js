@@ -164,7 +164,7 @@ export function loadUserThemes() {
       for (const r of d.rejected.slice(0, 200)) if (isObj(r) && typeof r.file === 'string' && typeof r.reason === 'string') rejected.push({ file: r.file.slice(0, 80), reason: r.reason.slice(0, 120) });
     }
     userThemes = themes; userLoaded = true; userLoading = null;
-    return { themes, rejected, dir: ok && typeof d.dir === 'string' ? d.dir : '', error: !ok ? 'could not read the theme list' : (typeof d.error === 'string' ? d.error : '') };
+    return { themes, rejected, dir: ok && typeof d.dir === 'string' ? d.dir : '', exists: ok && d.exists === true, error: !ok ? 'could not read the theme list' : (typeof d.error === 'string' ? d.error : '') };
   });
   return userLoading;
 }
