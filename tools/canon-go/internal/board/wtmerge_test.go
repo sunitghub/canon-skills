@@ -52,8 +52,19 @@ func TestAnnotateWorktreeMerge(t *testing.T) {
 	if m := mark(nil); m != nil {
 		t.Fatalf("a branch already in main got wt_merge %v", m)
 	}
+	// Review of t-2906: the long-lived worktree branch moves on with the next ticket's commit; this ticket's graded work is in
+	// main, so it is done and gets no button, although the branch head is not in main.
+	out, _ := exec.Command("git", "-C", wt, "rev-parse", "HEAD").Output()
+	os.WriteFile(filepath.Join(td, "eval-report.md"), []byte("graded-head: "+string(out)), 0o644)
+	git(wt, "commit", "-q", "--allow-empty", "-m", "the next ticket")
+	if m := mark(nil); m != nil {
+		t.Fatalf("a ticket whose graded head is in main got wt_merge %v once the branch moved on", m)
+	}
+	os.Remove(filepath.Join(td, "eval-report.md"))
+	if m := mark(nil); m == nil {
+		t.Fatal("with no eval-report to read, a branch head outside main still shows the button (tkt merge then says why)")
+	}
 	os.Remove(filepath.Join(td, ".cockpit-cwd"))
-	git(wt, "commit", "-q", "--allow-empty", "-m", "more")
 	if m := mark(nil); m != nil {
 		t.Fatalf("an unbound ticket got wt_merge %v", m)
 	}

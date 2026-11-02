@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -41,6 +42,13 @@ func annotateWorktreeMerge(tickets []ticket, root string) {
 			}
 			branch, _ := e["branch"].(string)
 			head, _ := e["head"].(string)
+			// The ticket's own work is the commit its evaluator graded: once that is in main, this ticket is done even when a
+			// later ticket has moved the long-lived worktree branch on (review of t-2906).
+			if g := gradedHead(filepath.Join(tdir, id, "eval-report.md")); g != "" {
+				if _, in := gitCtx(root, "merge-base", "--is-ancestor", g, "HEAD"); in {
+					break
+				}
+			}
 			if fi, err := os.Stat(path); err == nil && fi.IsDir() && branch != "" && head != "" {
 				if _, in := gitCtx(root, "merge-base", "--is-ancestor", head, "HEAD"); !in {
 					t["wt_merge"] = map[string]any{"branch": branch, "path": path}
@@ -49,4 +57,18 @@ func annotateWorktreeMerge(tickets []ticket, root string) {
 			break
 		}
 	}
+}
+
+var gradedHeadRe = regexp.MustCompile(`(?m)^graded-head: *([0-9a-f]{7,40})`)
+
+// gradedHead is the commit an eval-report.md says its evaluator graded, or "" when there is none to read.
+func gradedHead(report string) string {
+	raw, err := os.ReadFile(report)
+	if err != nil {
+		return ""
+	}
+	if m := gradedHeadRe.FindSubmatch(raw); m != nil {
+		return string(m[1])
+	}
+	return ""
 }

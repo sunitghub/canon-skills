@@ -2920,7 +2920,6 @@ cmd_export() {
   echo "export: pushed $rel/ to canon-results/$id. On your machine: tkt import-results $id --pr <N>, then tkt merge-pr $id"
 }
 
-# _eval_verdict_head <ticket dir>: prints "<verdict> <graded-head>" from eval-report.md ("-" for either when absent).
 # _eval_pass_head <label> <ticket-dir> <id> <next-step> — t-2906: prints the graded-head of an evaluator pass a merge can rest on, or says
 # why not (ending with <next-step>) and returns 1. An irreversible merge rests on this report, so it must be unambiguous, as sprint
 # complete requires: one verdict, one head.
@@ -2936,6 +2935,7 @@ _eval_pass_head() {
   printf '%s\n' "$graded"
 }
 
+# _eval_verdict_head <ticket dir>: prints "<verdict> <graded-head>" from eval-report.md ("-" for either when absent).
 _eval_verdict_head() {
   local v g
   v="$(grep -m1 -E '^(pass|fail):' "$1/eval-report.md" 2>/dev/null | cut -d: -f1 || true)"
