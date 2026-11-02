@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-02-2026 12:53
+learnings-sweep last run: 11-02-2026 13:47
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-02 | [t-6541](.tickets/t-6541/learnings.md) | A health check over "every registered item" must know which items have the property it checks: efficiency's row (a standards file) got skill-link problems that Refresh could never clear, a permanent false alarm. | UNPROMOTED |
 | 2026-11-02 | [t-2560](.tickets/t-2560/learnings.md) | A board state read from GitHub alone cannot tell a cloud session still working from one that stopped: use the ticket's own trail time (launched/sent) before offering an action that would race the session. | UNPROMOTED |
 | 2026-11-02 | [t-2db7](.tickets/t-2db7/learnings.md) | A file canon writes in a tracked file must compare and match the way git does on Windows: CRLF on disk vs LF in git, and C:\ vs C:/ for one project, each hid a working feature until a Windows run. Also: never create a branch or worktree while a gate runs (the snapshot STOPs). | UNPROMOTED |
 | 2026-11-02 | [t-8381](.tickets/t-8381/learnings.md) | A layout fix pinned only by a combined assertion can lose its own rule: the Host label stayed on one line because its value got short, so removing `white-space:nowrap` alone survived. | UNPROMOTED |
@@ -82,5 +83,4 @@ learnings-sweep last run: 11-02-2026 12:53
 | 2026-10-27 | [t-d42a](.tickets/t-d42a/learnings.md) | A grep-built inventory is only as complete as its patterns: this one said no other path starts an agent while missing the Terminal's `tkt send-issue --launch` -> `claude --cloud` (the flow used that same day); search by capability (every way a process or remote session starts), name the patterns in the file, and keep the saved output from after the change. A landed cloud PR also needs main merged into its branch before `merge-pr` when a release went out meanwhile. | `promoted → standards/efficiency-notes.md` |
 | 2026-10-27 | [t-3d04](.tickets/t-3d04/learnings.md) | An evaluator can only reproduce a group result you stamped: cite the exact grep, run it with `--out` on a quiet machine, and never write counts from a run you did not keep (the first evaluator spent 50 minutes on a loaded machine and failed on 73/73 and 116/116); and an `<iframe>` given `top:0; bottom:0; height:auto` stays at 150px, so a split pane needs `height:100%`. | `promoted → skills/sprint/reference/start.md, tools/sprint-check-app/CLAUDE.md` |
 | 2026-10-27 | [t-be64](.tickets/t-be64/learnings.md) | A Test Plan line that lists assertions must be checked against the spec diff before close (the reviewer found radius, branch line and `N to check` promised but unasserted), and moving a shared palette to one file breaks older guards that grep the old files (`tests/canon.sh` failed only in the full-suite stamp, not in the board spec). | `promoted → skills/sprint/reference/start.md, standards/efficiency-notes.md, tools/sprint-check-app/CLAUDE.md` |
-| 2026-10-26 | [t-bb1b](.tickets/t-bb1b/learnings.md) | A test that checks a source file for a branch must search ONLY the handler it guards and strip comments: searching the whole file was satisfied by a comment and by a GET route's case of the same name; and a route default must be the safe one (404), never the dangerous one (a merge run). | `promoted → standards/efficiency-notes.md, tools/sprint-check-app/CLAUDE.md` |
 <!-- canon:learnings:END -->
