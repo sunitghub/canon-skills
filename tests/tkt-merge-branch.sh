@@ -96,6 +96,20 @@ assert_contains "$out" "then run: tkt merge $id"
 assert_eq mine "$(cat change.txt)"
 echo "merge: an edited file in the main checkout stops the update, nothing changed"
 
+# The merge built here must hold exactly the tree the tests ran on: a git that builds another one (shimmed) is refused.
+mkdir -p "$W/bin"; REAL_GIT="$(command -v git)"
+cat > "$W/bin/git" <<SH
+#!/usr/bin/env bash
+if [[ -n "\${STUB_TREE:-}" && " \$* " == *" merge-tree --write-tree "* && " \$* " != *" --name-only "* ]]; then echo "\$STUB_TREE"; exit 0; fi
+exec "$REAL_GIT" "\$@"
+SH
+chmod +x "$W/bin/git"
+m="$(git rev-parse main)"
+out="$(PATH="$W/bin:$PATH" STUB_TREE="$(git rev-parse "$BASE^{tree}")" "$TKT" merge "$id" --yes < /dev/null 2>&1)" && fail "merge should refuse a tree that is not the tested one: $out"
+assert_contains "$out" "is not the tree the tests ran on ("
+assert_eq "$m" "$(git rev-parse main)"; ! grep -q '^merged:' "$f" || fail "merged: written although the tree check refused"
+echo "merge: refused a merge tree that is not the tested tree"
+
 # A copy identical to the merged one is canon's own kind of difference (_ff_here sets it aside); the merge goes through.
 echo change > change.txt
 rm -f "$W/ran"
