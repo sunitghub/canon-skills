@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Changed
+- `/promote-learnings` writes its entries right the first time: every `PROMOTED.md` entry is one trigger and one action ("When <situation>, <do this>. (<ticket-id>)", one trigger per entry, never the ticket's story) and Apply writes the exact text the report showed; a row whose rule already exists is `dismissed (covered: <file>)`, never promoted; Apply carries out every decision, typed ones included, then re-reads `LEARNINGS.md` and `PROMOTED.md` and prints N promoted, M dismissed, K still waiting and the line count against 60. Four regression evals added (t-68dd).
+
 ## [0.38.0] - 2026-11-02
 
 The prebuilt `canon-go` program changed (the board reads skill problems and runs Refresh, and writes the Recent activity block in `HANDOFF.md`): `canon update` fetches it; restart the daemon.

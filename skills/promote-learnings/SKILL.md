@@ -87,7 +87,8 @@ The destinations depend on which project the session is in:
    - Needs its incident to be understood (why the obvious fix failed) → `critique/`.
    - A skill's own instruction caused it, and a prompt can reproduce it → that skill's `evals/evals.json`.
    Before proposing, grep the destination for the same rule and extend it instead of adding a
-   second copy. A row that spans two moments may be split into two proposals (as `t-6328` was).
+   second copy. If the grep finds the rule already there, the row needs no write: propose it as
+   `` `dismissed (covered: <file>)` ``, never as promoted. A row that spans two moments may be split into two proposals (as `t-6328` was).
    Keep any always-loaded rule to one or two lines; its cost is paid every session.
 4. For each non-durable row, recommend dismissal with a one-line reason.
 5. Never edit `LEARNINGS.md`, any file under `standards/`, `critique/canon-learnings.md`,
@@ -96,17 +97,28 @@ The destinations depend on which project the session is in:
 
 ## Apply (consumer projects, interactive only)
 
-After presenting the report, ask the user which `PROMOTED.md` proposals to apply. Write only the ones
-they explicitly confirm. Skip this step entirely in a headless run (`claude -p`),
-where the report is the only output. For each confirmed proposal:
+After presenting the report, ask the user which `PROMOTED.md` proposals to apply. Skip this step
+entirely in a headless run (`claude -p`), where the report is the only output.
+
+**Entry form.** Every `PROMOTED.md` entry is one trigger and one action, one or two lines, never the
+ticket's story (the ticket id already points to it), then the ticket id in brackets:
+`- When <situation>, <do this>. (<ticket-id>)`. One trigger per entry: a row with two lessons becomes
+two entries. The report shows each proposed entry in this exact form, and Apply writes that text
+unchanged for every proposal the user confirms.
+
+Carry out every decision the user gives, the ticked proposals and any typed as free text (a dismissal,
+a reword, a split). A decision you cannot apply is named in the summary, never dropped. For each:
 
 1. Grep `PROMOTED.md` for the same rule. If it is already there, extend that entry instead of adding
    a second copy.
-2. Otherwise append one entry between `<!-- canon:promoted:BEGIN -->` and
-   `<!-- canon:promoted:END -->`: `- <rule, one or two lines> (<ticket-id>)`. If the file is missing,
-   run `skills.sh refresh`, which seeds it.
-3. Flip that row's `Status` in `LEARNINGS.md` to `` `promoted → PROMOTED.md` ``, and each confirmed
-   dismissal to `dismissed`.
+2. Otherwise append the entry between `<!-- canon:promoted:BEGIN -->` and
+   `<!-- canon:promoted:END -->`. If the file is missing, run `skills.sh refresh`, which seeds it.
+3. Only after that write, flip the row's `Status` in `LEARNINGS.md` to `` `promoted → PROMOTED.md` ``.
+   A dismissal becomes `dismissed`; a row whose rule already exists becomes
+   `` `dismissed (covered: <file>)` `` (no write happened, so it is never `promoted`).
+
+Then re-read `LEARNINGS.md` and `PROMOTED.md` and print one summary: **N promoted, M dismissed, K still
+waiting** (their ticket ids, and why), and the managed block's line count against the 60-line cap.
 
 `PROMOTED.md` is loaded on every session. When the managed block passes **60 lines**, tell the user
 to consolidate or retire entries. The cap is advisory and never blocks a write.
@@ -124,10 +136,14 @@ to consolidate or retire entries. The cap is advisory and never blocks a write.
 
 ### <ticket-id>: <one-line summary of the learning>
 - **Durable:** yes/no — <why>
-- **Proposed destination:** standards/<file>.md | critique/canon-learnings.md | CLAUDE.md/AGENTS.md | <workflow reference doc>#<section> | dismiss
+- **Proposed destination:** standards/<file>.md | critique/canon-learnings.md | CLAUDE.md/AGENTS.md | <workflow reference doc>#<section> | dismiss | dismissed (covered: <file>)
 - **Starting point:** <example rule text, or outline/key points, or the dismissal reason>
+- **Entry (PROMOTED.md only):** the exact text Apply will write, `- When <situation>, <do this>. (<ticket-id>)`; one entry per trigger
 
 <repeat per row>
+
+## PROMOTED.md size
+<Consumer project: the managed block's current lines plus the proposed entries as written = <N> of 60.>
 
 ## Next Steps
 
