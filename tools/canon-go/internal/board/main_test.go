@@ -1,6 +1,7 @@
 package board
 
 import (
+	"canon/internal/machine"
 	"encoding/json"
 	"fmt"
 	"go/ast"
@@ -546,9 +547,13 @@ func TestVersionEndpoint(t *testing.T) {
 	if rec.Code != 200 {
 		t.Fatalf("/api/version status = %d", rec.Code)
 	}
-	var v map[string]string
+	var v map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &v); err != nil {
 		t.Fatal(err)
+	}
+	// t-c542: this machine's facts and their one-line form (Admin's This Machine row)
+	if m, _ := v["machine"].(map[string]any); m == nil || m["host"] != machine.Host() || m["cpus"] != machine.Get().CPUs || v["machine_line"] != machine.Get().Line() {
+		t.Fatalf("machine = %v, machine_line = %v", v["machine"], v["machine_line"])
 	}
 	if v["version"] != "testver123" {
 		t.Fatalf("version = %q, want testver123", v["version"])

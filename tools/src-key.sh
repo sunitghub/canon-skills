@@ -11,8 +11,8 @@
 canon_component_paths() {
   local m=tools/canon-go
   case "$1" in
-    daemon) echo "$m/go.mod $m/go.sum $m/cmd/canon-go $m/internal/daemon $m/internal/common $m/internal/events $m/internal/term $m/internal/settings" ;;
-    board) echo "$m/go.mod $m/go.sum $m/cmd/canon-go $m/internal/board $m/internal/common $m/internal/events $m/internal/settings" ;;
+    daemon) echo "$m/go.mod $m/go.sum $m/cmd/canon-go $m/internal/daemon $m/internal/common $m/internal/events $m/internal/machine $m/internal/term $m/internal/settings" ;;
+    board) echo "$m/go.mod $m/go.sum $m/cmd/canon-go $m/internal/board $m/internal/common $m/internal/events $m/internal/machine $m/internal/settings" ;;
     *) return 1 ;;
   esac
 }

@@ -2,7 +2,9 @@ package events
 
 import (
 	"bufio"
+	"canon/internal/machine"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -25,7 +27,7 @@ func TestLineShapeAndLimits(t *testing.T) {
 	if err := json.Unmarshal(b, &got); err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 7 || got["schema"] != float64(1) || got["kind"] != "ticket.created" || got["source"] != "tkt" || got["project"] != "/p" || got["ts"] != "2026-10-20T07:08:09.123Z" {
+	if len(got) != 8 || got["host"] != machine.Host() || got["schema"] != float64(1) || got["kind"] != "ticket.created" || got["source"] != "tkt" || got["project"] != "/p" || got["ts"] != "2026-10-20T07:08:09.123Z" {
 		t.Fatalf("shape: %v", got)
 	}
 	if id, _ := got["id"].(string); len(id) != 16 {
@@ -163,7 +165,7 @@ func TestHomeAndKinds(t *testing.T) {
 	if got := Home(); got != "/pinned" {
 		t.Errorf("Home() with CANON_HOME = %q", got)
 	}
-	want := "budget.exceeded budget.warned close.confirmed context.threshold gate.finished gate.rejected gate.started github.merged github.results_imported github.sent github.synced integrity.restored log.deleted log.pruned plan.approved plan.written session.exited session.needs_you session.saved setting.changed sprint.completed sprint.started terminal.su_denied terminal.su_expired terminal.su_granted terminal.su_prompted terminal.tkt ticket.closed ticket.created ticket.status_changed wrapup.gate_finished wrapup.gate_started"
+	want := "budget.exceeded budget.warned close.confirmed context.threshold gate.finished gate.rejected gate.started github.merged github.results_imported github.sent github.synced integrity.restored log.deleted log.pruned machine.seen plan.approved plan.written session.exited session.needs_you session.saved setting.changed sprint.completed sprint.started terminal.su_denied terminal.su_expired terminal.su_granted terminal.su_prompted terminal.tkt ticket.closed ticket.created ticket.status_changed wrapup.gate_finished wrapup.gate_started"
 	if got := strings.Join(Kinds(), " "); got != want {
 		t.Errorf("kinds %q, want %q", got, want)
 	}
@@ -391,12 +393,12 @@ func TestActorIsOptionalAndValidated(t *testing.T) {
 		if err != nil {
 			t.Fatalf("actor %q refused: %v", a, err)
 		}
-		ev, ok := parseLine(b, "github.synced", "/p")
+		ev, ok := parseAny(b)
 		if !ok || ev.Actor != a || ev.Kind != "github.synced" || ev.Source != "tkt" {
 			t.Fatalf("actor %q did not round-trip: %+v ok=%v (%s)", a, ev, ok, b)
 		}
 	}
-	if ev, ok := parseLine(plain, "github.synced", "/p"); !ok || ev.Actor != "" {
+	if ev, ok := parseAny(plain); !ok || ev.Actor != "" {
 		t.Fatalf("an old-format line must read with no actor: %+v ok=%v", ev, ok)
 	}
 
@@ -406,7 +408,7 @@ func TestActorIsOptionalAndValidated(t *testing.T) {
 		}
 	}
 	forged := `{"schema":1,"id":"aaaaaaaaaaaaaaaa","ts":"2026-10-27T09:00:00.000Z","kind":"github.synced","source":"tkt","actor":"root","project":"/p","data":{"count":"3"}}`
-	if _, ok := parseLine([]byte(forged), "github.synced", "/p"); ok {
+	if _, ok := parseAny([]byte(forged)); ok {
 		t.Fatal("a line with an unknown actor was read")
 	}
 
@@ -475,5 +477,48 @@ func TestEventsFolderAndFilePermissions(t *testing.T) {
 	}
 	if fi, _ := os.Stat(files[0]); fi.Mode().Perm() != 0o600 {
 		t.Errorf("day file mode = %o, want 600", fi.Mode().Perm())
+	}
+}
+
+// t-c542: every line carries the writing machine's host from the one Emit, so tkt, sprint, gate and session events all
+// name their machine; a line from before it still reads, and an over-long host is not a v1 line. EachIn yields every
+// valid line of a day in order (the ticket's Machines node), skipping what Latest skips.
+func TestHostEnvelopeAndEachIn(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CANON_HOME", home)
+	if err := Emit(home, "ticket.closed", "tkt", "/p", map[string]string{"ticket": "t-aaaa"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Emit(home, "gate.finished", "subagent-log", "/p", map[string]string{"ticket": "t-aaaa", "role": "evaluator"}); err != nil {
+		t.Fatal(err)
+	}
+	days := DayFiles(home)
+	if len(days) != 1 {
+		t.Fatalf("DayFiles = %v, want one", days)
+	}
+	f, err := os.OpenFile(days[0], os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := `{"schema":1,"id":"bbbbbbbbbbbbbbbb","ts":"2026-10-27T09:00:00.000Z","kind":"ticket.closed","source":"tkt","project":"/p","data":{"ticket":"t-old0"}}`
+	long := `{"schema":1,"id":"cccccccccccccccc","ts":"2026-10-27T09:00:00.000Z","kind":"ticket.closed","source":"tkt","host":"` + strings.Repeat("h", hostMax+1) + `","project":"/p","data":{"ticket":"t-long"}}`
+	edge := `{"schema":1,"id":"dddddddddddddddd","ts":"2026-10-27T09:00:00.000Z","kind":"ticket.closed","source":"tkt","host":"` + strings.Repeat("h", hostMax) + `","project":"/p","data":{"ticket":"t-edge"}}`
+	fmt.Fprintf(f, "%s\nnot json\n%s\n%s\n", old, long, edge)
+	f.Close()
+	var got []Event
+	if err := EachIn(days[0], func(ev Event) { got = append(got, ev) }); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 4 || got[3].Data["ticket"] != "t-edge" {
+		t.Fatalf("EachIn read %d lines, want 4 (two written, one old, one host of exactly hostMax; the junk and the over-long host skipped): %+v", len(got), got)
+	}
+	if got[0].Host != machine.Host() || got[1].Host != machine.Host() || got[1].Kind != "gate.finished" {
+		t.Fatalf("written lines carry host %q/%q, want %q", got[0].Host, got[1].Host, machine.Host())
+	}
+	if got[2].Host != "" || got[2].Data["ticket"] != "t-old0" {
+		t.Fatalf("a line without host should read with Host empty: %+v", got[2])
+	}
+	if ev, ok := Latest(home, "ticket.closed", "/p", nil); !ok || ev.Data["ticket"] != "t-edge" {
+		t.Fatalf("Latest through DayFiles/EachIn = %+v %v", ev, ok)
 	}
 }

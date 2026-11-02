@@ -68,6 +68,7 @@ export async function fillVersions(ids){
     if(v&&v.version) set(ids.canon,v.version);
     if(v&&v.commit) set(ids.board,v.commit);
     if(v&&v.daemon) set(ids.daemon,v.daemon);
+    if(ids.machine&&v&&v.machine_line) set(ids.machine,(v.machine&&v.machine.host?v.machine.host+' \u2014 ':'')+v.machine_line);   // t-c542
   }catch(e){}
   // daemon build (best-effort) from /api/cockpit running_build
   try{ const ck=await (await fetch('/api/cockpit')).json();

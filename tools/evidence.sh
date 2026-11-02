@@ -3,7 +3,8 @@
 #   evidence.sh stamp <ticket-id> <name> -- <command...>
 #   evidence.sh check <ticket-id> [<graded-head>]
 # stamp runs the command and writes .tickets/<id>/evidence/<name>.log: line 1 `HEAD <sha> <UTC time>`, line 2 `$ <command>`, line 3
-# `# on <uname -srm>; bash <x.y.z>` (t-a83a: the machine, never its hostname; the bash running this script, which a `bash <script>` command
+# `# on <machine>; bash <x.y.z>` (t-c542: `canon-go machine`, e.g. "macOS 26.1, Darwin 25.1.0, arm64, 10 cores, 32 GB", else
+# `uname -srm` when the board binary is missing or older; t-a83a: the machine, never its hostname; the bash running this script, which a `bash <script>` command
 # also uses, not a shebang's own interpreter), the combined output, and a last line `exit <rc>` (never the command's own output: ours is
 # appended after it). It exits with the command's own code.
 # It refuses, running nothing and writing nothing, with 125 (like `timeout`, so a command's own exit 2 is not mistaken for a refusal) when
@@ -34,6 +35,7 @@ while [ -L "$_SOURCE" ]; do
 done
 SCRIPT_DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
 source "$SCRIPT_DIR/ticket-root.sh"
+source "$SCRIPT_DIR/platform-lib.sh"   # machine_line (t-c542)
 
 usage() { echo "usage: evidence.sh stamp <ticket-id> <name> -- <command...> | evidence.sh check <ticket-id> [<graded-head>]" >&2; exit 2; }
 refuse() { echo "evidence: $*" >&2; exit 125; }
@@ -78,7 +80,7 @@ if [[ "$mode" == stamp ]]; then
   mkdir -p "$edir"
   tmp="$(mktemp "$edir/.stamp.XXXXXX")"; trap 'rm -f "$tmp"' EXIT
   cmd_text="$(printf '%q ' "$@")"; cmd_text="${cmd_text% }"   # %q keeps the quoting, so two commands that differ only in quoting give different lines
-  os="$(uname -srm 2>/dev/null)" || os=unknown
+  os="$(machine_line)" && [[ -n "$os" ]] || os="$(uname -srm 2>/dev/null)" || os=unknown   # t-c542: canon-go machine, else uname
   printf 'HEAD %s %s\n$ %s\n# on %s; bash %s.%s.%s\n' "$head_sha" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$cmd_text" "${os:-unknown}" \
     "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}" "${BASH_VERSINFO[2]}" > "$tmp"
   set +e; "$@" < /dev/null >> "$tmp" 2>&1; rc=$?; set -e

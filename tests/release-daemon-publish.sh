@@ -14,12 +14,12 @@ ident=(-c user.email=t@example.com -c user.name=test)
 # t-bdb0: one program, tools/canon-go/cmd/canon-go. Keys come from tools/src-key.sh (the release key `canon-go`, the stamped `daemon` part
 # key). t-b62a retired the headless helper and t-bdb0 the two separate programs: no new release names them.
 R="$WORK/repo"; M="$R/tools/canon-go"
-mkdir -p "$R/scripts" "$M/cmd/canon-go" "$M/internal/board" "$M/internal/daemon" "$M/internal/common" "$M/internal/events" "$M/internal/term" "$M/internal/settings"
+mkdir -p "$R/scripts" "$M/cmd/canon-go" "$M/internal/board" "$M/internal/daemon" "$M/internal/common" "$M/internal/events" "$M/internal/machine" "$M/internal/term" "$M/internal/settings"
 cp "$ROOT/scripts/release-daemon.sh" "$R/scripts/"; cp "$ROOT/tools/src-key.sh" "$R/tools/"; cp "$ROOT/THIRD-PARTY-NOTICES.md" "$R/"; echo 0.3.0 > "$R/VERSION"
 LV="$(go env GOVERSION)"   # the local Go: pins equal to it need no download in a hermetic test
 printf 'module canon\n\ngo 1.21\n\ntoolchain %s\n' "$LV" > "$M/go.mod"; : > "$M/go.sum"
 printf 'package main\n\nvar version, commit, daemonKey string\n\nfunc main() { println(version, commit, daemonKey) }\n' > "$M/cmd/canon-go/main.go"
-for d in internal/board internal/daemon internal/common internal/events internal/term internal/settings; do printf 'package x\n' > "$M/$d/x.go"; done
+for d in internal/board internal/daemon internal/common internal/events internal/machine internal/term internal/settings; do printf 'package x\n' > "$M/$d/x.go"; done
 # the manifest already holds the older programs' lines (as canon's does): older trees fetch those, so every run keeps them
 OLDLINES="$(printf '0123456789ab windows-amd64 %064d\n0123456789ab sprint-check-windows-amd64 %064d\n0123456789ab darwin-arm64 %064d' 1 2 3)"
 printf '# header\n%s\n' "$OLDLINES" > "$R/tools/cockpit-daemon.sha256"

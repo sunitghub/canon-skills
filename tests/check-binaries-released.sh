@@ -9,10 +9,10 @@ export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 XDG_CONFIG_HOME="$WORK/
 ident=(-c user.email=t@example.com -c user.name=test)
 # t-bdb0: one program, cmd/canon-go, built from the board and the daemon parts (tools/src-key.sh names what each covers); the release key
 # is `canon-go`, the hash of both. Protects the push guard (tkt push-main, the pre-push hook) for the five canon-go-<target> assets.
-R="$WORK/repo"; M="$R/tools/canon-go"; mkdir -p "$R/scripts" "$M/cmd/canon-go" "$M/internal/board" "$M/internal/daemon" "$M/internal/common" "$M/internal/events" "$M/internal/term" "$M/internal/settings"
+R="$WORK/repo"; M="$R/tools/canon-go"; mkdir -p "$R/scripts" "$M/cmd/canon-go" "$M/internal/board" "$M/internal/daemon" "$M/internal/common" "$M/internal/events" "$M/internal/machine" "$M/internal/term" "$M/internal/settings"
 cp "$ROOT/scripts/check-binaries-released.sh" "$R/scripts/"; cp "$ROOT/tools/src-key.sh" "$R/tools/"
 printf 'module canon\n' > "$M/go.mod"; : > "$M/go.sum"
-for d in cmd/canon-go internal/board internal/daemon internal/common internal/events internal/term internal/settings; do echo "package x // $d" > "$M/$d/x.go"; done
+for d in cmd/canon-go internal/board internal/daemon internal/common internal/events internal/machine internal/term internal/settings; do echo "package x // $d" > "$M/$d/x.go"; done
 git -C "$R" init -q -b main; git -C "$R" "${ident[@]}" add -A; git -C "$R" "${ident[@]}" commit -qm seed
 key() { bash -c 'source "$1/tools/src-key.sh"; canon_src_key "$1" "$2"' _ "$R" "$1" | cut -c1-12; }
 sha() { printf 'a%.0s' {1..64}; }

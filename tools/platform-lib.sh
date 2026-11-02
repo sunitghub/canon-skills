@@ -86,6 +86,14 @@ canon_event() {
   return 0
 }
 
+# machine_line — this machine in one line from the board binary (t-c542: OS and version, chip, cores, RAM; never the hostname),
+# when it has `machine` (checked through --help: an older board takes the word for a port and serves); else fails.
+machine_line() {
+  local b h; b="$(board_bin)"
+  h="$("$b" --help 2>/dev/null)" || h=""
+  case "$h" in *"machine [--json]"*) "$b" machine 2>/dev/null ;; *) return 1 ;; esac
+}
+
 # cap_board — the board binary when it has `caps` (checked through --help: an older board takes the word for a port and serves); else fails.
 cap_board() {
   local b h; b="$(board_bin)"; h="$("$b" --help 2>/dev/null)" || h=""

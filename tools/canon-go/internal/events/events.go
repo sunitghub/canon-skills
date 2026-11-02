@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -25,6 +26,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"canon/internal/machine"
 	"canon/internal/settings"
 )
 
@@ -79,7 +81,12 @@ var kinds = map[string][]field{
 	// t-c990: a capped file (tools/caps.tsv) near or over its cap. "cap" is the row name, never the path; stage is plan, send or close.
 	"budget.warned":   {{"ticket", 64}, {"cap", 48}, {"used", 12}, {"limit", 12}, {"unit", 8}, {"stage", 8}},
 	"budget.exceeded": {{"ticket", 64}, {"cap", 48}, {"used", 12}, {"limit", 12}, {"unit", 8}, {"stage", 8}},
+	// t-c542: this machine's facts (internal/machine), written by the board at start when they differ from the newest for this host.
+	"machine.seen": {{"host", hostMax}, {"os", 16}, {"os_name", 64}, {"os_version", 32}, {"kernel", 64}, {"arch", 16}, {"cpus", 6}, {"ram_gb", 8}},
 }
+
+// hostMax caps the envelope host (t-c542): DNS allows 253 characters.
+const hostMax = 253
 
 // Sources are the programs that write events.
 var sources = map[string]bool{"tkt": true, "sprint": true, "board": true, "gate-snapshot": true, "subagent-log": true, "daemon": true}
@@ -128,6 +135,7 @@ type line struct {
 	Kind    string            `json:"kind"`
 	Source  string            `json:"source"`
 	Actor   string            `json:"actor,omitempty"`
+	Host    string            `json:"host,omitempty"` // t-c542: the machine that wrote the line (raw hostname)
 	Project string            `json:"project"`
 	Data    map[string]string `json:"data"`
 }
@@ -165,11 +173,23 @@ func LineActor(kind, source, actor, project string, data map[string]string, at t
 	if _, err := rand.Read(id[:]); err != nil {
 		return nil, err
 	}
-	b, err := json.Marshal(line{Schema, hex.EncodeToString(id[:]), at.Format("2006-01-02T15:04:05.000Z"), kind, source, actor, cut(project, projectMax), out})
+	b, err := json.Marshal(line{Schema, hex.EncodeToString(id[:]), at.Format("2006-01-02T15:04:05.000Z"), kind, source, actor, cut(machine.Host(), hostMax), cut(project, projectMax), out})
 	if err != nil {
 		return nil, err
 	}
 	return b, nil
+}
+
+// Fit is data as Emit would store it for kind: every known field cut to its limit (t-c542: machine.seen compares against
+// this, so a fact longer than its field does not look changed on every start). Unknown fields are dropped.
+func Fit(kind string, data map[string]string) map[string]string {
+	out := map[string]string{}
+	for _, f := range kinds[kind] {
+		if v, ok := data[f.name]; ok {
+			out[f.name] = cut(v, f.max)
+		}
+	}
+	return out
 }
 
 // cut keeps at most max runes of valid UTF-8 (invalid bytes become U+FFFD, as json.Marshal would make them).
@@ -266,6 +286,7 @@ type Event struct {
 	Project string
 	Data    map[string]string
 	Actor   string // t-15b5: "" when the line has none (every line written before it, or an emitter that does not know it)
+	Host    string // t-c542: "" on a line written before it
 }
 
 // lineMax caps a line Latest will parse: a writer cuts every value, so a longer line was not written by Emit.
@@ -278,13 +299,25 @@ const lineMax = 64 << 10
 // valid, when not nil, is one more per-kind check on a line that passed the schema (t-f053): a line it rejects is skipped like
 // any other invalid line, so it cannot hide an older valid one. A minimal reader until t-0b89's read API.
 func Latest(home, kind, project string, valid func(Event) bool) (Event, bool) {
+	for _, path := range DayFiles(home) {
+		if ev, ok := latestIn(path, kind, project, valid); ok {
+			return ev, true
+		}
+	}
+	return Event{}, false
+}
+
+// DayFiles lists the day files a reader may read, newest first, within the retention setting: regular files named like a
+// day file only (no symlinks). A day with both a plain file and a .gz twin (a crashed gzip) lists the .gz first, which
+// holds the same lines. Nil when there is no home or no events folder.
+func DayFiles(home string) []string {
 	if home == "" {
-		return Event{}, false
+		return nil
 	}
 	dir := filepath.Join(home, "events")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return Event{}, false
+		return nil
 	}
 	var days []string
 	for _, e := range entries {
@@ -292,28 +325,24 @@ func Latest(home, kind, project string, valid func(Event) bool) (Event, bool) {
 			days = append(days, e.Name())
 		}
 	}
-	// newest day first; a day with both a plain file and a .gz twin (a crashed gzip) is read from the .gz first, which holds the same lines
 	sort.Slice(days, func(i, j int) bool { return days[i] > days[j] })
 	if keep := settings.RetentionDays(home) + 1; len(days) > keep {
 		days = days[:keep]
 	}
-	for _, name := range days {
-		if ev, ok := latestIn(filepath.Join(dir, name), kind, project, valid); ok {
-			return ev, true
-		}
+	for i, name := range days {
+		days[i] = filepath.Join(dir, name)
 	}
-	return Event{}, false
+	return days
 }
 
-// latestIn is the last valid matching line of one day file (append order). An over-long line is skipped whole.
-func latestIn(path, kind, project string, valid func(Event) bool) (Event, bool) {
+// EachIn calls fn for every valid v1 line of one day file, in append order (t-c542: the ticket's Machines node). Lines that
+// fail the schema, or are longer than any Emit writes, are skipped as Latest skips them.
+func EachIn(path string, fn func(Event)) error {
 	f, err := openDay(path)
 	if err != nil {
-		return Event{}, false
+		return err
 	}
 	defer f.Close()
-	var found Event
-	ok := false
 	r := bufio.NewReaderSize(f, 4096)
 	var buf []byte
 	long := false
@@ -328,20 +357,35 @@ func latestIn(path, kind, project string, valid func(Event) bool) (Event, bool) 
 			continue
 		}
 		if !long {
-			if ev, good := parseLine(buf, kind, project); good && (valid == nil || valid(ev)) {
-				found, ok = ev, true
+			if ev, good := parseAny(buf); good {
+				fn(ev)
 			}
 		}
 		buf, long = buf[:0], false
+		if err == io.EOF {
+			return nil
+		}
 		if err != nil {
-			return found, ok
+			return err
 		}
 	}
 }
 
-// parseLine checks one line against the v1 schema: known kind and source, only that kind's fields within their limits,
-// a parseable ts, and the wanted kind and project.
-func parseLine(b []byte, kind, project string) (Event, bool) {
+// latestIn is the last valid matching line of one day file (append order). An over-long line is skipped whole.
+func latestIn(path, kind, project string, valid func(Event) bool) (Event, bool) {
+	var found Event
+	ok := false
+	EachIn(path, func(ev Event) {
+		if ev.Kind == kind && ev.Project == project && (valid == nil || valid(ev)) {
+			found, ok = ev, true
+		}
+	})
+	return found, ok
+}
+
+// parseAny checks one line against the v1 schema: known kind and source, only that kind's fields within their limits,
+// a parseable ts, and a host no longer than any writer cuts.
+func parseAny(b []byte) (Event, bool) {
 	var l struct {
 		Schema  json.RawMessage   `json:"schema"`
 		ID      string            `json:"id"`
@@ -349,10 +393,11 @@ func parseLine(b []byte, kind, project string) (Event, bool) {
 		Kind    string            `json:"kind"`
 		Source  string            `json:"source"`
 		Actor   string            `json:"actor"`
+		Host    string            `json:"host"`
 		Project string            `json:"project"`
 		Data    map[string]string `json:"data"`
 	}
-	if json.Unmarshal(b, &l) != nil || (l.Actor != "" && !actors[l.Actor]) || string(l.Schema) != "1" || l.Kind != kind || l.Project != project || !sources[l.Source] {
+	if json.Unmarshal(b, &l) != nil || (l.Actor != "" && !actors[l.Actor]) || string(l.Schema) != "1" || !sources[l.Source] || utf8.RuneCountInString(l.Host) > hostMax {
 		return Event{}, false
 	}
 	fields, known := kinds[l.Kind]
@@ -374,5 +419,5 @@ func parseLine(b []byte, kind, project string) (Event, bool) {
 	if err != nil {
 		return Event{}, false
 	}
-	return Event{l.ID, ts.UTC(), l.Kind, l.Source, l.Project, l.Data, l.Actor}, true
+	return Event{l.ID, ts.UTC(), l.Kind, l.Source, l.Project, l.Data, l.Actor, l.Host}, true
 }

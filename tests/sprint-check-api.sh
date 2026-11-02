@@ -29,7 +29,7 @@ want_routes="/api/admin/model-tiers /api/admin/model-tiers/apply /api/admin/mode
 /api/cockpit-status /api/cockpit-stop /api/commit /api/doc /api/git /api/github/doctor /api/github/intake /api/github/push-main /api/github/sync
 /api/handoff /api/integrity /api/logbook /api/project-stats /api/projects /api/register-skill /api/settings /api/skill-eval/check
 /api/skill-eval/report /api/skill-eval/report.html /api/skill-eval/run /api/skill-eval/status /api/tags /api/themes /api/themes/open
-/api/ticket /api/ticket-feature /api/ticket-image /api/tickets /api/track-changes
+/api/ticket /api/ticket-feature /api/ticket-image /api/ticket-machines /api/tickets /api/track-changes
 /api/version /api/why /api/worktree-lock /api/worktree-unlock /api/worktrees"
 go="$(go_routes)"
 [[ "$go" == "$(printf '%s\n' $want_routes)" ]] || fail "sprint-check-api: the /api/ route set changed:
@@ -607,12 +607,14 @@ ck_check true "" || fail "sprint-check-api: /api/cockpit with a daemon that pred
 kill "$CK_STUB_PID" 2>/dev/null || true; wait "$CK_STUB_PID" 2>/dev/null || true; CK_STUB_PID=""
 rm -f "$CK_STATE/daemon.json"
 
-# ── /api/version (t-5c20): {version, commit, daemon}, version = the VERSION file ───────────────
+# ── /api/version (t-5c20): {version, commit, daemon}, version = the VERSION file; t-c542: + machine, machine_line ───────────────
 python3 - "$(curl -s "$B/api/version")" "$(tr -d ' \t\n\r' < "$ROOT/VERSION")" <<'PY' || fail "sprint-check-api: /api/version"
 import json, sys
 d, semver = json.loads(sys.argv[1]), sys.argv[2]
-if set(d) != {"version", "commit", "daemon"}:
-    print(f"/api/version keys {sorted(d)}, want commit/daemon/version"); sys.exit(1)
+if set(d) != {"version", "commit", "daemon", "machine", "machine_line"}:
+    print(f"/api/version keys {sorted(d)}, want commit/daemon/machine/machine_line/version"); sys.exit(1)
+if not d["machine"].get("host") or not d["machine"].get("cpus") or "cores" not in d["machine_line"]:
+    print(f"/api/version machine {d['machine']} / {d['machine_line']}"); sys.exit(1)
 if d["version"] != semver:
     print(f"/api/version semver {d['version']} != VERSION file {semver}"); sys.exit(1)
 PY
