@@ -2122,9 +2122,12 @@ _ff_here() {
     else [[ -e "$root/$p" || -L "$root/$p" ]] || continue; fi
     m="$(git -C "$root" ls-tree "$new" -- "$p" | cut -d' ' -f1)"
     if [[ -f "$root/$p" && ! -L "$root/$p" && ( "$m" == 100644 || "$m" == 100755 ) ]]; then
-      if cmp -s <(git -C "$root" cat-file blob "$new:$p") "$root/$p"; then safe+=("$p"); kinds+=(same); continue; fi
+      # t-2560: identical as git sees it (eol and attribute filters applied, so a CRLF copy under core.autocrlf=true matches)
+      if [[ "$(git -C "$root" hash-object --path="$p" -- "$root/$p" 2>/dev/null)" == "$(git -C "$root" rev-parse -q --verify "$new:$p" 2>/dev/null)" ]]; then
+        safe+=("$p"); kinds+=(same); continue
+      fi
       if [[ -n "$id" && "$p" == ".tickets/$id/ticket.md" ]] \
-        && cmp -s <(git -C "$root" cat-file blob "$new:$p" | _ff_strip_fields) <(_ff_strip_fields < "$root/$p"); then safe+=("$p"); kinds+=(ticket); continue; fi
+        && cmp -s <(git -C "$root" cat-file blob "$new:$p" | tr -d '\r' | _ff_strip_fields) <(tr -d '\r' < "$root/$p" | _ff_strip_fields); then safe+=("$p"); kinds+=(ticket); continue; fi
       if [[ "$p" == .claude/subagent-runs.jsonl ]]; then safe+=("$p"); kinds+=(log); continue; fi
       # t-2db7: the main checkout's HANDOFF.md whose only local change (against HEAD) is canon's generated Recent activity block:
       # the merged copy is taken (the PR may edit the narrative), and merge-pr writes the block again from the activity log.
@@ -2254,6 +2257,10 @@ cmd_github_status() {
     read -r sb def <<< "$sbout" || true
     [[ -n "$sb" ]] && stage=branch
   fi
+  # t-2560: when the cloud session was last started (the trail's newest launched or sent): a branch with no PR soon after is the
+  # session still working (it pushes before its evaluator and opens the PR at the end), not a session that stopped short.
+  local started=""
+  [[ -f "$tdir/github.md" ]] && started="$(sed -nE 's/^## ([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z) — (sent|launched)$/\1/p' "$tdir/github.md" | tail -n 1)"
   # t-6f51: a send with no PR and no branch yet: when did anyone last touch the issue (a comment counts)? The board marks it
   # stale from this. An unreadable answer is null (never stale), not a failed status: the stage above is still true.
   local iupd=""
@@ -2274,14 +2281,14 @@ cmd_github_status() {
   mirrors="$(git -C "$root" config --get-all canon.mirror 2>/dev/null || true)"
   while IFS= read -r m; do [[ -n "$m" ]] && { mj+="$sep$(json_str "$m")"; sep=,; }; done <<< "$mirrors"
   if $json; then
-    printf '{"id":%s,"issue":%s,"stage":%s,"pr":%s,"pr_state":%s,"pr_head":%s,"results_branch":%s,"branch":%s,"mirrors":[%s],"verdict":%s,"graded_head":%s,"graded_matches_pr":%s,"merged":%s,"land":%s,"close_here":%s,"landed":%s,"issue_updated":%s,"warning":%s}\n' \
+    printf '{"id":%s,"issue":%s,"stage":%s,"pr":%s,"pr_state":%s,"pr_head":%s,"results_branch":%s,"branch":%s,"mirrors":[%s],"verdict":%s,"graded_head":%s,"graded_matches_pr":%s,"merged":%s,"land":%s,"close_here":%s,"landed":%s,"issue_updated":%s,"started":%s,"warning":%s}\n' \
       "$(json_str "$id")" "$(json_str "$gh")" "$(json_str "$stage")" "$(json_num "$pr" null)" \
       "$([[ -n "$pst" ]] && json_str "$pst" || echo null)" "$([[ -n "$phead" ]] && json_str "$phead" || echo null)" "$branch" \
       "$([[ -n "$sb" ]] && json_str "$sb" || echo null)" "$mj" \
       "$([[ "$verdict" != - ]] && json_str "$verdict" || echo null)" "$([[ "$graded" != - ]] && json_str "$graded" || echo null)" "$match" \
       "$([[ -n "$merged" ]] && json_str "$merged" || echo null)" "$land" "$close_here" \
       "$([[ -n "$landed" ]] && json_str "$landed" || echo null)" "$([[ -n "$iupd" ]] && json_str "$iupd" || echo null)" \
-      "$([[ -n "$warn" ]] && json_str "$warn" || echo null)"
+      "$([[ -n "$started" ]] && json_str "$started" || echo null)" "$([[ -n "$warn" ]] && json_str "$warn" || echo null)"
   else
     echo "$id · $gh · $stage"
     [[ -n "$pr" ]] && echo "  PR #$pr ($pst) head $phead"
@@ -2406,14 +2413,17 @@ cmd_push_main() {
 # (untracked files one by one), less other tickets' .tickets/<other>/ files and canon's own skill links. A path with a tab or
 # a newline is left out (it could not be named back safely).
 _cp_files() {
-  local wt="$1" id="$2" entry xy path skip=false
+  local wt="$1" id="$2" entry xy path skip=false own=false
+  # t-2560: this ticket's files are listed only when its folder is tracked (the cloud's clone then holds the committed copy);
+  # an untracked folder travels in the issue text and import-issue rebuilds it, so committing it only adds a second copy.
+  [[ -n "$(git -C "$wt" ls-files -- ".tickets/$id" 2>/dev/null)" ]] && own=true
   while IFS= read -r -d '' entry; do
     if $skip; then skip=false; continue; fi
     [[ ${#entry} -ge 4 ]] || continue
     xy="${entry:0:2}"; path="${entry:3}"
     [[ "$xy" == *[RC]* ]] && skip=true   # a rename or copy carries its source path as the next entry
     case "$path" in *$'\t'*|*$'\n'*) continue ;; esac
-    case "$path" in .tickets/"$id"/*) ;; .tickets/*) continue ;; esac
+    case "$path" in .tickets/"$id"/*) $own || continue ;; .tickets/*) continue ;; esac
     if [[ "$xy" == '??' ]]; then
       case "$path" in .agents/skills|.agents/skills/*|.claude/skills|.claude/skills/*) continue ;; esac
     fi
@@ -2722,6 +2732,18 @@ cmd_take_back() {
 # cmd_export <id> — t-554c: at the close of a cloud sprint, sends .tickets/<id>/ back. A tracked .tickets/ rides in the PR;
 # an ignored one (canon's own) goes to the branch canon-results/<id>, built from a temporary index so the checkout and
 # the real index are never touched, holding only that folder.
+# _export_machine_log <root> <ticket dir> — t-2560: export runs in the cloud session, so it records that machine for the ticket's
+# Machines node in evidence/cloud/machine.log, in the evidence header form (no hostname). A subfolder: sprint check-evidence never
+# reads it. Skipped when the board program has no `machine` (an older canon): nothing is guessed.
+_export_machine_log() {
+  local line head
+  line="$(machine_line)" && [[ -n "$line" ]] || return 0
+  head="$(git -C "$1" rev-parse HEAD 2>/dev/null)" || head=unknown
+  mkdir -p "$2/evidence/cloud" || return 0
+  printf 'HEAD %s %s\n$ canon-go machine\n# on %s; bash %s.%s.%s\n%s\nexit 0\n' "$head" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$line" \
+    "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}" "${BASH_VERSINFO[2]}" "$line" > "$2/evidence/cloud/machine.log" || true
+}
+
 cmd_export() {
   local id="" public=false
   while [[ $# -gt 0 ]]; do
@@ -2743,6 +2765,7 @@ cmd_export() {
   grep -qiE '^[[:space:]]*- \[x\] Plan approved' "$tdir/plan.md" 2>/dev/null \
     || echo "export: WARNING: the plan in $id/plan.md is not approved (its Sign-off box is unticked)." >&2
   if ! git -C "$root" check-ignore -q "$rel/ticket.md"; then
+    _export_machine_log "$root" "$tdir"
     echo "export: .tickets/ is tracked here, so $rel/ goes back with the PR: commit it on the PR branch. On your machine: tkt import-results $id --pr <N>, then tkt merge-pr $id"; return 0
   fi
   # The folder holds notes and evidence logs: like send-issue, a public repo needs --public.
@@ -2752,6 +2775,7 @@ cmd_export() {
     else echo "export: could not tell whether origin is public (it is not on GitHub, or gh and github.com did not answer)." >&2; fi
     echo "  Push it anyway with: tkt export $id --public" >&2; exit 1
   fi
+  _export_machine_log "$root" "$tdir"
   local idx; idx="$(mktemp "${TMPDIR:-/tmp}/tkt-export-idx.XXXXXX")"; rm -f "$idx"
   # shellcheck disable=SC2064  # expand now: $idx is local
   trap "rm -f '$idx'" EXIT

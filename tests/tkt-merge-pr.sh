@@ -500,6 +500,10 @@ assert_eq "$BASE" "$(git rev-parse main)"; sed -i.bak '/^merged: /d' "$f" && rm 
 # A log with no local-only lines comes out byte-identical to the merged copy (no newline added to one that lacks it).
 recon_setup; printf 'a\nb\n' > .claude/subagent-runs.jsonl; out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" "(fast-forward)"
 printf 'a\nb\nc' | cmp -s - .claude/subagent-runs.jsonl || fail "a log with nothing local changed: $(od -c .claude/subagent-runs.jsonl)"
+# t-2560 (Windows VM): under core.autocrlf=true, import-results leaves CRLF copies of the merged files; identical as git sees them
+recon_setup; git config core.autocrlf true; printf 'same\r\n' > new.txt; out="$(STUB_HEAD="$H" ff_merge)"; git config --unset core.autocrlf
+assert_contains "$out" "Local main: ${BASE:0:8} -> ${H:0:8} (fast-forward)"
+recon_setup; printf 'other\r\n' > new.txt; out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" "differ from the merged copy"   # a real difference still stops it
 git checkout -q .gitignore scripts/test.sh; rm -rf new.txt newdir .claude; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
 # A PR path is matched literally (t-07b5: untrusted): a tracked file named '*' never stands for every file, so the
 # unrelated edit to .gitignore survives the set-aside of '*'.

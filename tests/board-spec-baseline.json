@@ -45,6 +45,14 @@
       ],
       "ticket": "t-8aa6",
       "reason": "failed 1 of 3 (chromium) in the t-5036 full run (2026-11-01, load ~8 on 10 CPUs, 3 runs per browser); passed 3 of 3 alone on that head (cdce4060); a ticket-modal test, not in the code this PR changes"
+    },
+    {
+      "title": "GitHub workflow on the board (t-718b) > Start offers GitHub places; picking GitHub mounts no terminal, previews, sends and hands back a message (t-718b)",
+      "browsers": [
+        "chromium"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "failed 2 of 3 (chromium) in t-2560's subset run and 1 of 3 on main 324814d4 alone (2026-11-02; .tickets/t-2560/evidence/history/flake-start-github-places-on-main.log): cockpitPosts was 1, not 0; not in the code t-2560 changes"
     }
   ],
   "skipped": []

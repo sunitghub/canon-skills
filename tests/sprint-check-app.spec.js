@@ -16729,12 +16729,12 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   // The merge flow with its routes stubbed; `job` is what the server reports, `seen` what the board asked.
-  async function mergeFlow(page, id, { startStatus = 200 } = {}) {
+  async function mergeFlow(page, id, { startStatus = 200, checkOutput = 'merge-pr: ready' } = {}) {
     ghTicket(id, { github: 'acme/app#57' });
     const stat = await routeStatus(page, id, { stage: 'results-in', pr: 58 });
     const job = { status: 'idle', output: '', exit_code: null, elapsed: 0 };
     const seen = { checks: 0, posts: 0, stops: 0, start: startStatus };
-    await page.route(`**/api/ticket/${id}/github/merge-check**`, r => { seen.checks++; return json(r, { ok: true, exit_code: 0, output: 'merge-pr: ready' }); });
+    await page.route(`**/api/ticket/${id}/github/merge-check**`, r => { seen.checks++; return json(r, { ok: true, exit_code: 0, output: checkOutput }); });
     await page.route(`**/api/ticket/${id}/github/merge`, r => {
       if (r.request().method() === 'POST') {
         seen.posts++;
@@ -16747,6 +16747,14 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await openBoard(page, id);
     return { job, seen, stat, button: page.locator(`.card[data-id="${id}"] .card-gh-btn`) };
   }
+
+  // t-2560: with no test command the merge rests on the gates alone, and the button says so. Prod path: the card's Check & merge.
+  test('Check & merge: the button reads "Merge (no tests)" when the check found no test command (t-2560)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh2560m');
+    const { button } = await mergeFlow(page, id, { checkOutput: 'merge-pr: ready: no test command (pass --test); would merge PR #58 on the gates alone (closes #57)' });
+    await button.click();
+    await expect(page.locator('#gh-dialog-ok')).toHaveText('Merge (no tests)');
+  });
 
   test('Check & merge: Cancel at the confirm runs nothing; a merge that cannot start says so (t-718b) @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gh16');
@@ -16961,6 +16969,35 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect.poll(() => asked.filter(p => p === 'proj-b').length).toBeGreaterThan(0);
   });
 
+  // t-2560: within an hour of the trail's newest send or launch, a branch with no PR is the cloud session still working (it pushes before
+  // its evaluator and opens its own PR at the end): no Create PR, which would race it. Prod path: the card's GitHub chip and button.
+  test('a branch pushed soon after the launch reads "cloud session working" with no Create PR; later, Create PR (t-2560)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh2560w');
+    ghTicket(id, { github: 'acme/app#57' });
+    const stat = await routeStatus(page, id, { stage: 'branch', branch: 'claude/work-1', started: new Date(Date.now() - 10 * 60e3).toISOString() });
+    await openBoard(page, id);
+    const chip = page.locator(`.card[data-id="${id}"] .card-gh-chip`), btns = page.locator(`.card[data-id="${id}"] .card-gh-btn`);
+    await expect(chip).toHaveText('GitHub #57 · cloud session working');
+    await expect(btns).toHaveCount(1); await expect(btns).toHaveText('Issue ↗');
+    stat.status = { stage: 'branch', branch: 'claude/work-1', started: new Date(Date.now() - 2 * 3600e3).toISOString() };
+    await page.reload(); await page.waitForLoadState('networkidle');
+    await expect(chip).toHaveText('GitHub #57 · branch, no PR');
+    await expect(btns.filter({ hasText: 'Create PR' })).toHaveCount(1);
+  });
+
+  // t-2560: on Windows To Claude Cloud copies the command; its tooltip says so (the card's and the panel's).
+  test('on Windows the card\'s To Claude Cloud tooltip says it copies the command (t-2560)', async ({ page }) => {
+    await page.addInitScript(() => {   // isWindowsBrowser reads userAgentData first (Chromium), then platform
+      Object.defineProperty(Navigator.prototype, 'platform', { get: () => 'Win32' });
+      Object.defineProperty(Navigator.prototype, 'userAgentData', { get: () => ({ platform: 'Windows' }) });
+    });
+    const id = newTicketId(PROJECT_ROOT, 'gh2560t');
+    ghTicket(id, { github: 'acme/app#57' });
+    await routeStatus(page, id, { stage: 'sent' });
+    await openBoard(page, id);
+    await expect(page.locator(`.card[data-id="${id}"] .card-gh-btn`, { hasText: 'To Claude Cloud' })).toHaveAttribute('title', /^Copies the command: paste it in PowerShell or Git Bash/);
+  });
+
   // Prod path: a card whose session pushed a branch with no PR (github-status stage "branch"), and its Create PR button (t-9955).
   test('a session branch with no PR shows Create PR; it asks, names the branch, and opens once (t-24b1)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gh24b');
@@ -16973,6 +17010,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     const chip = page.locator(`.card[data-id="${id}"] .card-gh-chip`), btn = page.locator(`.card[data-id="${id}"] .card-gh-btn`);
     await expect(chip).toHaveText('GitHub #57 · branch, no PR');
     await expect(btn).toHaveText('Create PR');
+    await expect(btn).toHaveAttribute('title', /may still be running, wait/);   // t-2560: no trail time here, so the warning
     await btn.click();
     await expect(page.locator('#gh-dialog-body')).toContainText('on acme/app from claude/brave-x1 into its default branch, with "Fixes #57"');
     await page.locator('#gh-dialog-cancel').click();
@@ -18121,14 +18159,15 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   test('step 1 counts the same files as the warning: the ticket\'s own folder is listed with a reason, not counted (t-8ae5)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gh64');
     ghTicket(id);
-    await sendPanel(page, id, { preview: () => ({ ok: true, exit_code: 0, output: DIRTY.replace('1 file(s)', '2 file(s)') }), files: `file: ?? .tickets/${id}/ticket.md\nfile: ?? a.txt\nfile: ?? b.txt` });
+    await sendPanel(page, id, { preview: () => ({ ok: true, exit_code: 0, output: DIRTY.replace('1 file(s)', '2 file(s)') }), files: `file:  M .tickets/${id}/ticket.md\nfile: ?? a.txt\nfile: ?? b.txt` });   // t-2560: listed only when tracked
     await expect(page.locator('#ck-gh-untracked')).toHaveText('2 new files are not tracked, so the cloud will not see them. You can still create the issue.');
     await page.locator('#ck-gh-cp-open').click();
     await expect(page.locator('#ck-gh-cp-files li')).toHaveCount(3);
     await expect(page.locator('#ck-gh-cp-files li').first()).toContainText(`.tickets/${id}/ticket.md`);
     await expect(page.locator('#ck-gh-cp-files .ck-gh-cp-own')).toHaveCount(1);
-    await expect(page.locator('#ck-gh-cp-files .ck-gh-cp-own')).toHaveText("this ticket's own folder: the cloud rebuilds it from the issue");
-    await expect(page.locator('#ck-gh-cp-files input[type=checkbox]').first()).not.toBeChecked();   // untracked files start unticked, as before
+    await expect(page.locator('#ck-gh-cp-files .ck-gh-cp-own')).toHaveText("tracked in git here: commit it so the cloud's copy matches the issue");
+    await expect(page.locator('#ck-gh-cp-note')).toContainText('go in the issue below');   // t-2560: one line says where the ticket travels
+    await expect(page.locator('#ck-gh-cp-files input[type=checkbox]').nth(1)).not.toBeChecked();   // untracked files start unticked, as before
   });
 
   test('only the ticket\'s own folder changed: no not-tracked note and Create issue is not held (t-8ae5)', async ({ page }) => {
