@@ -481,6 +481,7 @@ lite="$("$TKT" create "Lite one · with a dot" -t feature -p 3)"
 assert_eq "<!-- canon:lite -->|<!-- canon:ticket $lite -->" "$(tail -2 "$STUB_BODY" | paste -sd'|' -)"
 assert_grep 'This is a Lite ticket \(demo: true\): it runs the Lite close, security-review and a fresh evaluator$' "$STUB_BODY"
 assert_grep 'the advisory reviewer and the rest of wrapup are skipped, their rows `skipped \| demo mode`' "$STUB_BODY"
+assert_grep '^   skipped or written by hand\.$' "$STUB_BODY"   # the floor: the kept gates are never skipped or hand-written
 grep -q 'neither is skipped or written by hand' "$STUB_BODY" && fail "a Lite body still carries the full-gates step 5"
 cp "$STUB_BODY" "$W/lite-body.md"
 # The cloud side: sprint import-issue reads demo=true, header fields intact; the plain one has no demo line.
