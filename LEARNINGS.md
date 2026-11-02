@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-02-2026 11:54
+learnings-sweep last run: 11-02-2026 12:53
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-02 | [t-2560](.tickets/t-2560/learnings.md) | A board state read from GitHub alone cannot tell a cloud session still working from one that stopped: use the ticket's own trail time (launched/sent) before offering an action that would race the session. | UNPROMOTED |
 | 2026-11-02 | [t-2db7](.tickets/t-2db7/learnings.md) | A file canon writes in a tracked file must compare and match the way git does on Windows: CRLF on disk vs LF in git, and C:\ vs C:/ for one project, each hid a working feature until a Windows run. Also: never create a branch or worktree while a gate runs (the snapshot STOPs). | UNPROMOTED |
 | 2026-11-02 | [t-8381](.tickets/t-8381/learnings.md) | A layout fix pinned only by a combined assertion can lose its own rule: the Host label stayed on one line because its value got short, so removing `white-space:nowrap` alone survived. | UNPROMOTED |
 | 2026-11-02 | [t-c542](.tickets/t-c542/learnings.md) | A new owner of shared facts (an event envelope field) must update every place that pins the old shape in one pass: the release key, its five test fixtures, the API key set and the export docs each failed separately. | UNPROMOTED |
@@ -82,5 +83,4 @@ learnings-sweep last run: 11-02-2026 11:54
 | 2026-10-27 | [t-3d04](.tickets/t-3d04/learnings.md) | An evaluator can only reproduce a group result you stamped: cite the exact grep, run it with `--out` on a quiet machine, and never write counts from a run you did not keep (the first evaluator spent 50 minutes on a loaded machine and failed on 73/73 and 116/116); and an `<iframe>` given `top:0; bottom:0; height:auto` stays at 150px, so a split pane needs `height:100%`. | `promoted → skills/sprint/reference/start.md, tools/sprint-check-app/CLAUDE.md` |
 | 2026-10-27 | [t-be64](.tickets/t-be64/learnings.md) | A Test Plan line that lists assertions must be checked against the spec diff before close (the reviewer found radius, branch line and `N to check` promised but unasserted), and moving a shared palette to one file breaks older guards that grep the old files (`tests/canon.sh` failed only in the full-suite stamp, not in the board spec). | `promoted → skills/sprint/reference/start.md, standards/efficiency-notes.md, tools/sprint-check-app/CLAUDE.md` |
 | 2026-10-26 | [t-bb1b](.tickets/t-bb1b/learnings.md) | A test that checks a source file for a branch must search ONLY the handler it guards and strip comments: searching the whole file was satisfied by a comment and by a GET route's case of the same name; and a route default must be the safe one (404), never the dangerous one (a merge run). | `promoted → standards/efficiency-notes.md, tools/sprint-check-app/CLAUDE.md` |
-| 2026-10-26 | [t-a463](.tickets/t-a463/learnings.md) | An action that takes a number from a UI must re-check that the number is the ticket's own (an explicit `--pr` skipped the lookup), and a tab-separated shell read silently drops empty fields: map empty to a placeholder and refuse anything but the expected value (fail closed); a route table where an unlisted branch falls through to the dangerous default needs a 404 for it. | `promoted → tools/sprint-check-app/CLAUDE.md, standards/efficiency-notes.md` |
 <!-- canon:learnings:END -->
