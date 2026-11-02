@@ -15,6 +15,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 - A ticket already sent to GitHub (from a terminal, or a board tab since closed) now has **To Claude Cloud** on its card, beside **Issue ↗**: it types `tkt send-issue <id> --launch` in a Terminal for you to send, as the Sent panel does. Before, only that panel offered it, so the board had no way to start the session for such a ticket (t-d7b7).
 - In a worktree sprint, the Cockpit rail's **Ticket details** now opens the plan and acceptance live and editable, as the ticket's board card does (edits save into the worktree's copy, guarded against overwriting the agent's changes); it used to show them read-only (t-b3fc).
 - The Logbook's **Learnings** table gives the Finding column the free width: a long "promoted → …" destination now wraps under its badge in a capped Status column instead of squeezing Finding to a few words a line, and a status that is not unpromoted, promoted or dismissed shows as **unknown** (the text is in its tooltip) (t-5036).
+- In the Cockpit, a session's state (working, idle, needs you) now changes on the Agents list, its board card and the header chip together: all three read the Cockpit's one poll of the daemon instead of three polls ticking at different moments; the Save & End refusal names no agent (t-90f5).
 
 ## [0.36.0] - 2026-11-01
 

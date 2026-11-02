@@ -40,6 +40,11 @@ export async function pollSessions(){
   liveTabIds=next; needsTabIds=nextNeeds;
   lastSessions=sessions;
   renderSessionSurfaces();
+  // t-90f5: every open board renders its header chip and cards from this same answer, so they agree with the Agents list.
+  for(const t of openTabs){
+    const ifr=document.getElementById('view-'+t.id)?.querySelector('iframe');
+    try{ ifr?.contentWindow?.postMessage({source:'canon-cockpit-shell', type:'sessions', rows:sessions}, location.origin); }catch(e){}
+  }
   // A tab awaiting close (Save&End/End) is removed once its session has ended
   // — the daemon finished the save/end turn, so no orphan and no premature
   // iframe teardown.

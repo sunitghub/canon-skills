@@ -1,4 +1,4 @@
-import { SHELL_TAB, docSlug, state } from './board-core.js';
+import { SHELL_TAB, docSlug, freshShellSessions, state } from './board-core.js';
 import { displayTicketId, effectiveStatus, esc, escAttr } from './board-helpers.js';
 import { SCRATCH_ID, announceScratchTabs, findTicketById, normProjectPath, postWrite, renderScratchWhere, showToast } from './board-render.js';
 import { activateDoc, modalState, openModal } from './board-modal.js';
@@ -368,11 +368,15 @@ export function closeCockpit() {
 // row and Start not yet pressed) has no session id/token, so the board can't end the daemon's
 // live session for that ticket (t-ddc8: the board never holds the daemon token). Tearing the
 // tab down anyway looked like success while the session kept running — find it and say so.
-export async function findLiveDaemonSession(ticketId) {
+// live: ask the daemon now. The close-tab guard needs it: a session started since the shell's last poll must not be missed.
+export async function findLiveDaemonSession(ticketId, { live = false } = {}) {
   try {
-    const r = await fetch('/api/cockpit-sessions');
-    if (!r.ok) return null;
-    const list = await r.json();
+    let list = live ? null : freshShellSessions();   // t-90f5: the shell's answer when there is one, so the chip agrees with the Agents list
+    if (!list) {
+      const r = await fetch('/api/cockpit-sessions');
+      if (!r.ok) return null;
+      list = await r.json();
+    }
     if (!Array.isArray(list)) return null;
     const root = state.git && state.git.root ? cockpitPathKey(state.git.root) : '';
     // Match the project too so two projects sharing a ticket id don't collide — but when either root is
@@ -692,7 +696,7 @@ export function initCockpitRail() {
     }
     if (sessionIsLive()) { openLeaveConfirm(); return; }
     const tab = cockpitState;
-    const detached = await findLiveDaemonSession(tab.id);
+    const detached = await findLiveDaemonSession(tab.id, { live: true });
     if (cockpitState !== tab || tab._ending) return; // switched tabs (or an end began) during the lookup
     // Start sprint may have attached while we were looking: then this is a live tab, and tearing it down
     // (or calling it unattached) would be the original orphan bug again.
