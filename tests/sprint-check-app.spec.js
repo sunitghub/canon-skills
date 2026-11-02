@@ -8856,6 +8856,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       expect(posts[0].base_hash).toMatch(/^etag-\d+$/);                 // guarded by the etag it read
       expect(posts[0].content).toContain('- [x] second box');
     } finally {
+      await page.unrouteAll({ behavior: 'ignoreErrors' });   // a tickets poll still in flight at the end must not fail a passed test
       removeTestTicket(PROJECT_ROOT, id);
     }
   });

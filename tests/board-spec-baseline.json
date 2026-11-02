@@ -53,6 +53,14 @@
       ],
       "ticket": "t-8aa6",
       "reason": "failed 2 of 3 (chromium) in t-2560's subset run and 1 of 3 on main 324814d4 alone (2026-11-02; .tickets/t-2560/evidence/history/flake-start-github-places-on-main.log): cockpitPosts was 1, not 0; not in the code t-2560 changes"
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > cross-project Sessions row (t-2d2e) > Terminal shortcut (t-57ab): the prefix then m opens a Terminal tab in the active project @webkit",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "failed 1 of 5 (webkit) on main 327cdd19 alone and 2 of 5 on t-2906's branch (2026-11-02; .tickets/t-2906/evidence/history/flake-terminal-shortcut-on-main.log, -on-branch.log); the Cockpit Terminal shortcut, not in the code t-2906 changes"
     }
   ],
   "skipped": []
