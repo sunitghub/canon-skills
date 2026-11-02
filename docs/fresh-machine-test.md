@@ -172,7 +172,7 @@ The flow a demo shows, written from two full rehearsals (t-1bd9, 2026-11-01). It
    skills.sh add sprint
    ```
 
-   `scripts/test.sh` is what **Check & merge** runs before a merge; without it the merge rests on the gates alone. Answer **y** to the prompts you want (install deny rules, the subagent-log rule). The last offer, canon's skills folder in `.claude/settings.local.json`, is optional and defaults to **no**: it lets a gate's regex `sed` on canon's docs through, and also lets agents edit canon's skills. If `git push` to GitHub later says "push declined due to email privacy", set `git config user.email <id>+<user>@users.noreply.github.com` in this folder before the first commit.
+   `scripts/test.sh` is what **Check & merge** runs before a merge; without it the merge rests on the gates alone. Answer **y** to the prompts you want (install deny rules, the subagent-log rule). If `git push` to GitHub later says "push declined due to email privacy", set `git config user.email <id>+<user>@users.noreply.github.com` in this folder before the first commit.
 
 2. Commit canon's files, as `skills.sh add` says ("commit .gitignore before you start a sprint"): `git add .gitignore .gitattributes AGENTS.md CLAUDE.md PROMOTED.md && git commit -m "chore: add canon"`.
 

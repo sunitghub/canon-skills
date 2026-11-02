@@ -31,7 +31,7 @@ if pid == 0:
     os.environ.pop("SKILLS_SH_NO_TTY", None)  # t-2d74: this child has a real (pseudo) terminal
     os.execvp("/bin/bash", ["/bin/bash", "-c", cmd])
 else:
-    # Answer every [y/N] prompt as it appears (t-5d4e: `skills.sh add sprint` asks up to three; a prompt left unanswered
+    # Answer every [y/N] prompt as it appears (`skills.sh add sprint` asks up to two, t-1ed8; a prompt left unanswered
     # waits out its 15 s auto-skip). The same answer for each: the assertions below read only the file each case names.
     chunks, seen = [], 0
     try:
@@ -157,7 +157,8 @@ mkdir -p "$p7/.claude"
 printf '{"permissions": {"allow": ["Bash(x:*)"], "additionalDirectories": ["%s"]}}\n' "$CANON_SKILLS_DIR" > "$p7/$LOCAL"
 out="$(run_with_tty "'$SKILLS' remove sprint '$p7'" "n")"
 assert_count 1 "$CANON_SKILLS_DIR" "$p7/$LOCAL"; assert_contains "$out" "Remove canon's skills folder"
-run_with_tty "'$SKILLS' add sprint '$p7'" "n" >/dev/null
+before="$(cat "$p7/$LOCAL")"; run_with_tty "'$SKILLS' add sprint '$p7'" "y" >/dev/null   # add leaves an existing entry alone
+assert_eq "$before" "$(cat "$p7/$LOCAL")"
 run_with_tty "'$SKILLS' remove sprint '$p7'" "y" >/dev/null
 ! grep -qF "$CANON_SKILLS_DIR" "$p7/$LOCAL" || fail "remove left the folder in $p7/$LOCAL"
 assert_count 1 'Bash(x:*)' "$p7/$LOCAL"
