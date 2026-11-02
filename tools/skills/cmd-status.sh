@@ -136,23 +136,24 @@ cmd_status() {
   fi
 }
 
+# _json_str <text> — a JSON string: backslash and quote escaped, control characters dropped (skill names come from AGENTS.md).
+_json_str() { printf '"%s"' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr -d '\000-\037')"; }
+
 # _status_json <dir> — t-6541: the registered skills' problems as JSON for the board's Projects card (internal/board runs this; it
 # never re-implements the check): {"skills":[{"name":"sprint","problems":["missing link .claude/skills"]}],"issues":1}.
 _status_json() {
   local project_dir agents_file line sname spath probs p out="" sep="" n=0 ps psep
   project_dir="$(cd "$1" 2>/dev/null && pwd)" || { echo "skills.sh status --json: no such folder: $1" >&2; return 1; }
   agents_file="$project_dir/AGENTS.md"
-  _jq() { printf '"%s"' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr -d '\000-\037')"; }
   if [ -f "$agents_file" ] && grep -qF "AI-SKILLS:BEGIN" "$agents_file" 2>/dev/null; then
     while IFS= read -r line; do
       sname=$(skill_row_name "$line"); spath=$(skill_row_path "$line")
       [ -z "$sname" ] && continue
       probs="$(skill_problems "$sname" "$spath")"
       ps=""; psep=""
-      while IFS= read -r p; do [ -n "$p" ] || continue; ps="$ps$psep$(_jq "$p")"; psep=","; n=$((n + 1)); done <<< "$probs"
-      out="$out$sep{\"name\":$(_jq "$sname"),\"problems\":[$ps]}"; sep=","
+      while IFS= read -r p; do [ -n "$p" ] || continue; ps="$ps$psep$(_json_str "$p")"; psep=","; n=$((n + 1)); done <<< "$probs"
+      out="$out$sep{\"name\":$(_json_str "$sname"),\"problems\":[$ps]}"; sep=","
     done < <(registered_skill_rows "$agents_file")
   fi
   printf '{"skills":[%s],"issues":%d}\n' "$out" "$n"
 }
-

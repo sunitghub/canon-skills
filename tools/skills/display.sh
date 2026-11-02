@@ -40,6 +40,9 @@ skill_problems() {
   [ -f "$spath" ] || echo "broken ref"
   [ -n "$canon_file" ] && [ "$canon_file" != "$spath" ] && echo "stale path"
   [ -n "$canon_file" ] || return 0
+  # review: only a skill folder (skills/<name>/SKILL.md) is loaded through the links; a row such as efficiency's
+  # (standards/efficiency.md) has no folder to link, so it is checked by its row alone
+  [ "$(basename "$canon_file")" = SKILL.md ] && [ "$(basename "$(dirname "$canon_file")")" = "$name" ] || return 0
   real="$(cd -P "$(dirname "$canon_file")" 2>/dev/null && pwd -P)" || return 0
   for link in .claude/skills .agents/skills; do
     f="$project_dir/$link/$name/SKILL.md"

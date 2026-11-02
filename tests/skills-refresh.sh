@@ -149,5 +149,12 @@ assert_eq '{"skills":[{"name":"sprint","problems":["broken ref","stale path","mi
 "$SKILLS" refresh "$cp_proj" >/dev/null 2>&1
 assert_eq '{"skills":[{"name":"sprint","problems":[]}],"issues":0}' "$("$SKILLS" status --json "$cp_proj")"
 assert_contains "$("$SKILLS" status "$cp_proj")" "sprint                    [ok]"
+# review: a registered row that is not a skill folder (efficiency's standards/efficiency.md) has no links to check: it never shows
+# a problem Refresh cannot clear
+"$SKILLS" add efficiency "$cp_proj" >/dev/null 2>&1
+grep -qF 'efficiency' "$cp_proj/AGENTS.md" || fail "the test could not register efficiency"
+assert_eq "0" "$("$SKILLS" status --json "$cp_proj" | sed -E 's/.*"issues":([0-9]+).*/\1/')"
+assert_contains "$("$SKILLS" status --json "$cp_proj")" '{"name":"efficiency","problems":[]}'
+case "$("$SKILLS" status "$cp_proj")" in *"moved or copied"*) fail "a healthy project with efficiency printed the cause line";; esac
 
 printf 'skills-refresh: ok\n'

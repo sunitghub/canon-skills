@@ -57,10 +57,12 @@ func skillsHealthKey(root string) string {
 	var b strings.Builder
 	for _, p := range []string{filepath.Join(root, "AGENTS.md"), filepath.Join(root, ".claude", "skills"), filepath.Join(root, ".agents", "skills"),
 		filepath.Join(toolsDir, "..", "skills")} {
-		if fi, err := os.Lstat(p); err == nil {
-			fmt.Fprintf(&b, "%s:%d:%d|", p, fi.Size(), fi.ModTime().UnixNano())
-		} else {
-			fmt.Fprintf(&b, "%s:-|", p)
+		for _, stat := range []func(string) (os.FileInfo, error){os.Lstat, os.Stat} { // review: the link itself and, through it, its target
+			if fi, err := stat(p); err == nil {
+				fmt.Fprintf(&b, "%s:%d:%d|", p, fi.Size(), fi.ModTime().UnixNano())
+			} else {
+				fmt.Fprintf(&b, "%s:-|", p)
+			}
 		}
 	}
 	return b.String()

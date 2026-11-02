@@ -823,15 +823,15 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		sendJSONStatus(w, res, status)
 		return
 	}
+	if path == "/api/skills-refresh" { // t-6541: the Projects card's Refresh
+		sendJSON(w, skillsRefresh(eroot))
+		return
+	}
 	// t-7485: register the fixed `sprint` skill into the tab's project. eroot is
 	// the registry-resolved root (unknown id already 400'd above); the skill name
 	// t-7485/t-96c3: register a canon skill into the tab's project. eroot is the
 	// registry-resolved root (unknown id already 400'd above); the skill comes
 	// from the client but registerSkill validates it against a fixed allowlist.
-	if path == "/api/skills-refresh" { // t-6541: the Projects card's Refresh
-		sendJSON(w, skillsRefresh(eroot))
-		return
-	}
 	if path == "/api/register-skill" {
 		skill := r.URL.Query().Get("skill")
 		if skill == "" {
