@@ -3909,13 +3909,52 @@ test.describe('cockpit in board (t-ddc8)', () => {
         // the close-tab guard never trusts a poll that may predate a just-started session: it asks the daemon now
         await board.locator('body').evaluate(async (_, id) => (await import('/static/board-cockpit-rail.js')).findLiveDaemonSession(id, { live: true }), XID);
         expect(boardFetches).toBe(before + 1);
-        // forged: a 'sessions' message the board posts to itself (not from its parent shell) is ignored
-        await board.locator('body').evaluate((_, rows) => window.postMessage({ source: 'canon-cockpit-shell', type: 'sessions', rows }, location.origin),
-          [{ ...r, state: 'needs-you' }]);
-        await page.waitForTimeout(300);
-        await expect(card).toHaveClass(/st-idle/);
+        // forged: a 'sessions' message from a frame on another origin, and one the board posts to itself, change nothing.
+        // A MutationObserver records every class the card takes, so the shell's next (idle) poll cannot hide a forged change.
+        await page.route('http://evil.example/forge', rt => rt.fulfill({ status: 200, contentType: 'text/html', body:
+          `<!doctype html><script>parent.postMessage({ source: 'canon-cockpit-shell', type: 'sessions', rows: ${JSON.stringify([{ ...r, state: 'needs-you' }])} }, '*'); document.title = 'sent';</script>` }));
+        const seen = await board.locator('body').evaluate(async (_, { id, rows }) => {
+          const el = document.querySelector(`.card-state[data-id="${id}"]`), classes = [];
+          const mo = new MutationObserver(() => classes.push(el.className));
+          mo.observe(document.getElementById('board'), { subtree: true, attributes: true, attributeFilter: ['class'], childList: true });
+          const f = document.createElement('iframe'); f.src = 'http://evil.example/forge'; document.body.appendChild(f);
+          await new Promise(res => f.addEventListener('load', res));
+          window.postMessage({ source: 'canon-cockpit-shell', type: 'sessions', rows }, location.origin);
+          await new Promise(res => setTimeout(res, 400));
+          mo.disconnect(); f.remove();
+          return { classes, now: document.querySelector(`.card-state[data-id="${id}"]`).className };
+        }, { id: XID, rows: [{ ...r, state: 'needs-you' }] });
+        expect(seen.classes.join(' '), 'no forged state ever rendered').not.toContain('st-needs-you');
+        expect(seen.now).toContain('st-idle');
       } finally {
         removeTestTicket(PROJECT_ROOT, XID);
+      }
+    });
+
+    // t-90f5, prod path: the header state chip. The chip changes on the shell's message itself, not on the rail's next
+    // 5 s tick: the tick is stopped, so only the message handler can redraw it.
+    test('the header chip redraws from the shell\u2019s posted rows (t-90f5)', async ({ page }) => {
+      const id = newTicketId(PROJECT_ROOT, 'chip90');
+      try {
+        writeTicket(id, 'in_progress');
+        const base = { session: 's1', ticket: id, project_root: PROJECT_ROOT, cwd: PROJECT_ROOT, agent: 'claude', status: 'running', idle_limit_secs: 300, signal: 'hook' };
+        await page.route('**/api/cockpit-sessions', rt => rt.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ ...base, state: 'working', idle_secs: 0 }]) }));
+        await page.route('**/api/cockpit', rt => rt.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR, launched: true }) }));
+        await page.route('**/cockpit?**', rt => rt.fulfill({ status: 200, contentType: 'text/html', body: `<!doctype html><script>parent.postMessage({ source: 'canon-cockpit', type: 'status', status: 'running' }, '*');</script>` }));   // a live session page
+        await page.route('**/__host90f5', rt => rt.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><iframe id="b" src="/" style="width:1200px;height:800px"></iframe>' }));
+        await page.goto(BASE + '/__host90f5');
+        const board = page.frameLocator('#b');
+        await board.locator('#board-search').fill(id);
+        await board.locator(`.card[data-id="${id}"] .card-start`).click();
+        await expect(board.locator('#cockpit-overlay')).toHaveClass(/open/);
+        const chip = board.locator('#ck-state-chip');
+        await expect(chip).toHaveText('working');
+        await board.locator('body').evaluate(async () => (await import('/static/board-cockpit-rail.js')).stopCockpitPoll());
+        await page.evaluate(rows => document.getElementById('b').contentWindow.postMessage({ source: 'canon-cockpit-shell', type: 'sessions', rows }, location.origin),
+          [{ ...base, state: 'idle', idle_secs: 20 }]);
+        await expect(chip).toHaveText(/^idle/, { timeout: 2000 });
+      } finally {
+        removeTestTicket(PROJECT_ROOT, id);
       }
     });
 
