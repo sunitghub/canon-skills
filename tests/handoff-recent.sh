@@ -40,4 +40,20 @@ assert_contains "$("$SPRINT" recent)" "· t-aaaa · plan approved (normal)"
 assert_eq "$(git -C "$M" show HEAD:HANDOFF.md)" "$(cat "$M/HANDOFF.md")"
 [[ -z "$(git -C "$M" status --porcelain HANDOFF.md)" ]] || fail "strip left a change"
 
+# main_checkout: outside git and a bare repo fail (nothing to write into)
+if lib main_checkout "$W/stub" >/dev/null 2>&1; then fail "main_checkout found a checkout outside git"; fi
+git init -q --bare "$W/bare.git"; if lib main_checkout "$W/bare.git" >/dev/null 2>&1; then fail "main_checkout accepted a bare repo"; fi
+
+# a HANDOFF.md that is a link is refused by the writer; handoff_recent still returns 0 and the link and its target stay as they were
+mv "$M/HANDOFF.md" "$W/real-handoff.md"; ln -s "$W/real-handoff.md" "$M/HANDOFF.md"; before="$(cat "$W/real-handoff.md")"
+lib handoff_recent "$M"; assert_eq 0 $?; [[ -L "$M/HANDOFF.md" ]] || fail "the link was replaced"; assert_eq "$before" "$(cat "$W/real-handoff.md")"
+rm "$M/HANDOFF.md"; mv "$W/real-handoff.md" "$M/HANDOFF.md"
+
+# sprint recent refuses clearly: an older board, no HANDOFF.md to strip, an unknown option, outside git
+rc=0; out="$(SPRINT_CHECK_BIN="$W/stub/old" "$SPRINT" recent 2>&1)" || rc=$?; assert_eq 1 "$rc"; assert_contains "$out" "has no 'recent'; run: canon update"
+[[ ! -e "$W/served" ]] || fail "sprint recent asked an older board"
+mv HANDOFF.md "$W/h.md"; rc=0; out="$("$SPRINT" recent --strip-handoff 2>&1)" || rc=$?; assert_eq 1 "$rc"; assert_contains "$out" "no HANDOFF.md in"; mv "$W/h.md" HANDOFF.md
+rc=0; out="$("$SPRINT" recent --bogus 2>&1)" || rc=$?; assert_eq 1 "$rc"; assert_contains "$out" "Usage: sprint recent [--strip-handoff]"
+mkdir -p "$W/nogit/.tickets"; rc=0; out="$(cd "$W/nogit" && "$SPRINT" recent 2>&1)" || rc=$?; assert_eq 1 "$rc"; assert_contains "$out" "not in a git checkout"
+
 echo "handoff-recent: ok"

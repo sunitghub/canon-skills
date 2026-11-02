@@ -2,7 +2,9 @@ package board
 
 import (
 	"bytes"
+	"compress/gzip"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -105,5 +107,71 @@ func TestRecentCLI(t *testing.T) {
 		if code := recentCLI(bad, nil, &out, &errb); code != 2 {
 			t.Fatalf("%q = %d, want 2", bad, code)
 		}
+	}
+}
+
+// t-2db7 (sweep): every stage kind's words, a ticket-less event, a day with a .gz twin read once, and a live worktree outside
+// <root>-worktrees/ counted through git's own list.
+func TestRecentKindsTwinsAndLiveWorktree(t *testing.T) {
+	root := resolvedOrAbs(t.TempDir())
+	for _, c := range [][]string{{"init", "-q", "-b", "main"}, {"-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "x"}} {
+		if out, err := exec.Command("git", append([]string{"-C", root}, c...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", c, err, out)
+		}
+	}
+	far := filepath.Join(t.TempDir(), "elsewhere")
+	if out, err := exec.Command("git", "-C", root, "worktree", "add", "-q", far, "-b", "far").CombinedOutput(); err != nil {
+		t.Fatalf("worktree add: %v %s", err, out)
+	}
+	far = resolvedOrAbs(far)
+	home := t.TempDir()
+	emit := func(kind, project string, d map[string]string) {
+		if err := events.Emit(home, kind, "tkt", project, d); err != nil {
+			t.Fatal(err)
+		}
+	}
+	emit("github.sent", root, map[string]string{"ticket": "t-aaaa", "issue": "3"})
+	emit("github.results_imported", far, map[string]string{"ticket": "t-aaaa", "pr": "4"})
+	emit("sprint.completed", root, map[string]string{"ticket": "t-aaaa"})
+	emit("github.merged", root, map[string]string{"pr": "5"})
+	got := recentLines(home, root, 10)
+	want := []string{"· - · merged (PR #5)", "· t-aaaa · sprint completed", "· t-aaaa · cloud results imported (PR #4)", "· t-aaaa · sent to GitHub (issue #3)"}
+	if len(got) != len(want) {
+		t.Fatalf("recentLines = %q, want %d lines (the far worktree's event included)", got, len(want))
+	}
+	for i := range want {
+		if !strings.HasSuffix(got[i], want[i]) {
+			t.Fatalf("line %d = %q, want suffix %q", i, got[i], want[i])
+		}
+	}
+	day := events.DayFiles(home)[0]
+	b, _ := os.ReadFile(day)
+	var gz bytes.Buffer
+	zw := gzip.NewWriter(&gz)
+	zw.Write(b)
+	zw.Close()
+	os.WriteFile(day+".gz", gz.Bytes(), 0o600)
+	if again := recentLines(home, root, 10); len(again) != len(want) {
+		t.Fatalf("a day with a .gz twin was read twice: %q", again)
+	}
+}
+
+// t-2db7 (sweep): the block's exact text, CRLF on every line, a file that starts with the block, a BEGIN with no END left alone.
+func TestRecentBlockExact(t *testing.T) {
+	want := recentBegin + "\n## Recent activity\n\n_Written by canon from the activity log at plan approval, sprint close and merge; edits here are replaced._\n\n- one\n" + recentEnd + "\n"
+	if got := recentBlock([]string{"one"}, "\n"); got != want {
+		t.Fatalf("block =\n%q\nwant\n%q", got, want)
+	}
+	c := setRecent("# H\r\nx\r\n", []string{"one"})
+	if strings.Count(c, "\n") != strings.Count(c, "\r\n") {
+		t.Fatalf("a CRLF file got a bare LF: %q", c)
+	}
+	start := setRecent("", []string{"one"})
+	if again := setRecent(start, []string{"two"}); strings.Count(again, recentBegin) != 1 || !strings.Contains(again, "- two") {
+		t.Fatalf("a file that starts with the block got a second one: %q", again)
+	}
+	open := "# H\n" + recentBegin + "\nno end\n"
+	if stripRecent(open) != open {
+		t.Fatal("a BEGIN with no END must be left alone by strip")
 	}
 }
