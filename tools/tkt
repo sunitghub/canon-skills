@@ -1296,6 +1296,7 @@ cmd_send_issue() {
   rbody=""; [[ -f "$res" ]] && rbody="$(awk 'NR == 1 && /^# / { next } { print }' "$res" | awk 'NF { s = 1 } s')"
   local caps; caps="$(cap_headroom "$root" "$plan" tkt "$id" "$($dry || echo send)")"   # t-cc88: in # Working on this, which import-issue never writes back
 
+  local lite; lite="$(get_field "$file" demo)"
   local body; body="$(mktemp "${TMPDIR:-/tmp}/tkt-issue.XXXXXX")"
   # shellcheck disable=SC2064  # expand now: $body is local
   trap "rm -f '$body'" EXIT
@@ -1316,13 +1317,20 @@ cmd_send_issue() {
     printf '   plan.md). Then stop and wait for the user'"'"'s approval of the plan before editing anything else.\n'
     printf '3. Work on a new branch, never main: push that branch and open a PR with `Fixes #<this issue number>`. Do not push to main or force-push anything.\n'
     printf '4. Build it and run the tests; tick each acceptance item only when it is true.\n'
-    printf '5. Run `sprint complete`: a fresh reviewer and a fresh evaluator are dispatched, and neither is skipped or written by hand.\n'
+    if [[ "$lite" == true ]]; then   # t-4d39: a Lite ticket closes Lite in the cloud too; the binding evaluator still runs
+      printf '5. Run `sprint complete`. This is a Lite ticket (demo: true): it runs the Lite close, security-review and a fresh evaluator\n'
+      printf '   (Haiku); the advisory reviewer and the rest of wrapup are skipped, their rows `skipped | demo mode`. Neither kept gate is\n'
+      printf '   skipped or written by hand.\n'
+    else
+      printf '5. Run `sprint complete`: a fresh reviewer and a fresh evaluator are dispatched, and neither is skipped or written by hand.\n'
+    fi
     printf '6. Run `tkt export %s` and push nothing else for it: export prints where the ticket went.\n' "$id"
     printf '   If `sprint complete` could not pass, still run `tkt export %s`, and say in the PR which step failed and why.\n' "$id"
     printf '7. Then stop. Do not merge the PR, watch it, or act on CI results or review comments: the merge happens on the user'"'"'s machine\n'
     printf '   (`tkt import-results %s --pr <N>`, then `tkt merge-pr %s`, N being the PR number). Reply with both commands, N filled in,\n' "$id" "$id"
     printf '   and say you are done.\n'
     printf '\nIf a step cannot be done, say so in the PR description; do not skip it silently.\n'
+    [[ "$lite" == true ]] && printf '\n<!-- canon:lite -->'
     printf '\n<!-- canon:ticket %s -->\n' "$id"
   } > "$body"
 
@@ -1415,6 +1423,9 @@ cmd_import_issue() {
   type="$(awk -F' · ' '{print $2}' <<< "$hdr")"; pri="$(awk -F' · ' '{sub(/^P/, "", $3); print $3}' <<< "$hdr")"
   title="$(awk -F' · ' '{ t = $4; for (i = 5; i <= NF; i++) t = t " · " $i; print t }' <<< "$hdr")"
   [[ -n "$title" ]] || title="$id"
+  # t-4d39: send-issue marks a Lite ticket with this line (outside any code fence); sync-issues strips it from other bodies.
+  local lite=false
+  awk '/^```/ { fence = !fence } !fence && $0 == "<!-- canon:lite -->" { found = 1 } END { exit !found }' "$tmp/body" && lite=true
   # Split the body into its "# " parts; "(none yet)" means the part was empty.
   # Only the five headings send-issue writes start a part; any other "# " line (a note, a shell comment) is content.
   awk -v d="$tmp" '/^```/ { fence = !fence }
@@ -1450,12 +1461,16 @@ cmd_import_issue() {
       printf -- '---\nid: %s\nstatus: open\ncreated: %s\ntype: %s\npriority: %s\neval_override: false\neval_fail_count: 0\n' \
         "$id" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${type:-task}" "${pri:-2}"
       [[ -n "$repo" ]] && printf 'github: %s#%s\n' "$repo" "$n"
+      $lite && printf 'demo: true\n'
       printf -- '---\n# %s\n' "$title"
       [[ -n "$desc" ]] && printf '\n%s\n' "$desc"
     } > "$tdir/ticket.md"
     canon_event ticket.created tkt "$root" "ticket=$id" "title=$title" "type=${type:-task}" "priority=${pri:-2}"
-  elif [[ -n "$repo" && -z "$(get_field "$tdir/ticket.md" github)" ]]; then
-    set_or_add_field "$tdir/ticket.md" github "$repo#$n"
+  else
+    if [[ -n "$repo" && -z "$(get_field "$tdir/ticket.md" github)" ]]; then
+      set_or_add_field "$tdir/ticket.md" github "$repo#$n"
+    fi
+    if $lite; then set_or_add_field "$tdir/ticket.md" demo true; fi   # adds only: a body without the marker never clears it
   fi
   # t-4b34: a PR that says "Fixes #<n>" is the evidence a cloud session ran, so the recovered ticket is out on GitHub again (runs: github) and the card shows its
   # state. Only when the issue was read through gh: a --body-file import and sync-issues never look and must not claim a session (t-718b). A cloud session's own
@@ -1577,6 +1592,8 @@ cmd_sync_issues() {
       printf '**%s** · %s · P%s · %s\n\n' "$id" "$type" "$pri" "$title"
       # A body that starts with one of send-issue's part headings keeps its parts. Anything else is the Description, with
       # any line that would start a part (outside code) demoted to "## …", so import-issue cannot drop the text after it.
+      # t-4d39: an issue canon did not write never sets Lite: its <!-- canon:lite --> lines (outside code) are dropped.
+      awk '{ l = $0; sub(/\r$/, "", l) } l ~ /^```/ { fence = !fence } fence || l != "<!-- canon:lite -->"' "$tmp/body-$n" > "$tmp/body-$n.x" && mv "$tmp/body-$n.x" "$tmp/body-$n"
       if awk 'NF && !seen { seen = 1; ok = /^# (Description|Acceptance|Plan|Research)$/ } END { exit !ok }' "$tmp/body-$n"; then
         cat "$tmp/body-$n"
       else
