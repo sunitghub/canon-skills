@@ -9,6 +9,7 @@ import { initDialog } from './board-dialog.js';
 import { openModal } from './board-modal.js';
 import { findTicketById } from './board-render.js';
 import { LOGBOOK_ICON } from './logbook-icon.js';
+import { between, parseLearnings } from './learnings-parse.js';
 
 const NOTES = {
   h: 'HANDOFF.md · updated by the sprint skill',
@@ -24,14 +25,6 @@ let flt = 'all';
 let data = null;      // the last /api/logbook answer, or { fetchError }
 let dlg = null;       // the base dialog (board-dialog.js): open/close, Esc, click outside, focus return, move and resize
 
-function between(text, begin, end) {
-  const a = text.indexOf(begin);
-  if (a < 0) return text;
-  const from = a + begin.length;
-  const b = text.indexOf(end, from);
-  return b < 0 ? text.slice(from) : text.slice(from, b);
-}
-
 // ## sections of HANDOFF.md between its markers, in file order (text before the first ## heading is not a section).
 function parseHandoff(text) {
   const out = [];
@@ -41,39 +34,6 @@ function parseHandoff(text) {
     if (m) { cur = { title: m[1], body: [] }; out.push(cur); } else if (cur) cur.body.push(line);
   }
   return out.map(s => ({ title: s.title, body: s.body.join('\n').trim() }));
-}
-
-// A table row's cells: `\|` is a literal pipe, a bare `|` ends a cell.
-function splitRow(line) {
-  const cells = [];
-  let cur = '';
-  const s = line.trim().replace(/^\|/, '').replace(/\|$/, '');
-  for (let i = 0; i < s.length; i++) {
-    if (s[i] === '\\' && s[i + 1] === '|') { cur += '|'; i++; } else if (s[i] === '|') { cells.push(cur.trim()); cur = ''; } else cur += s[i];
-  }
-  cells.push(cur.trim());
-  return cells;
-}
-
-function statusOf(raw) {
-  const s = raw.replace(/`/g, '').trim();
-  if (/^unpromoted/i.test(s)) return { kind: 'un', label: 'unpromoted', target: '' };
-  if (/^promoted/i.test(s)) return { kind: 'pr', label: 'promoted', target: s.replace(/^promoted\s*(?:→|->)?\s*/i, '') };
-  if (/^dismissed/i.test(s)) return { kind: 'dm', label: 'dismissed', target: '' };
-  return { kind: 'ot', label: 'unknown', target: '', raw: s };   // t-5036: a malformed row's text never sizes the pill
-}
-
-// Rows of the LEARNINGS.md table between its markers: | date | [t-id](path) | finding | status |
-function parseLearnings(text) {
-  const rows = [];
-  for (const line of between(text, '<!-- canon:learnings:BEGIN -->', '<!-- canon:learnings:END -->').split('\n')) {
-    if (!line.trim().startsWith('|')) continue;
-    const c = splitRow(line);
-    if (c.length < 4 || /^date$/i.test(c[0]) || /^-+$/.test(c[0].replace(/[:\s]/g, ''))) continue;
-    const id = /\[?(t-[0-9a-z]+)\]?/i.exec(c[1]);
-    rows.push({ date: c[0], id: id ? id[1] : '', finding: c[2], ...statusOf(c.slice(3).join(' | ')) });
-  }
-  return rows;
 }
 
 const el = id => document.getElementById(id);

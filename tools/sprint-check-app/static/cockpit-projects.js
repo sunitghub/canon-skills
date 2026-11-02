@@ -6,6 +6,7 @@ import { showView } from './cockpit-views.js';
 import { openSkillEvalFor } from './cockpit-skill-eval.js';
 import { openLogbookFor } from './cockpit-logbook.js';
 import { LOGBOOK_ICON } from './logbook-icon.js';
+import { learningsSummary } from './learnings-parse.js';
 import { fillCardFactory, openFactoryGithub } from './cockpit-factory.js';
 import { closeTab, openProject, openTabs, restoreTabs, updateActiveCount } from './cockpit-tabs.js';
 
@@ -50,8 +51,7 @@ export async function load(){
             <div class="metarow"><span class="k">Skills</span><span class="v" data-f="skills">…</span></div>
             <div class="metarow" data-f="sessions-row" hidden><span class="k">Sessions</span><span class="v" data-f="sessions"></span></div>
             <div class="metarow" data-f="stopped-row" hidden><span class="k">Stopped</span><span class="v" data-f="stopped"></span></div>
-            <div class="metarow"><span class="k">Branch</span><span class="v mono" data-f="branch">…</span></div>
-            <div class="metarow lb-link-row" data-logbook="${escAttr(p.id)}" title="Read this project's Handoff and Learnings"><span class="k">Logbook</span><span class="v">${LOGBOOK_ICON}Open</span></div>
+            <div class="metarow lb-link-row" data-logbook="${escAttr(p.id)}" title="Open the Logbook: this project's Handoff and Learnings"><span class="k">Learnings</span><span class="v">${LOGBOOK_ICON}<span data-f="learnings">…</span></span></div>
             <div class="metarow se-link-row" data-skill-eval="${escAttr(p.id)}" title="Check a skill folder in this project"><span class="k">Skill Eval</span><span class="v">Open</span></div>
             <div class="metarow fac-row" data-factory="${escAttr(p.id)}" title="Open this project's Factory"><span class="k">Factory</span><span class="v" data-f="factory">…</span></div>
           </div>
@@ -82,20 +82,28 @@ export async function load(){
   renderSessionSurfaces();
 }
 
-// t-67ab: the card's Branch row (hidden when the project has no git, t-5a4b).
-async function fillCardBranch(id,el,refresh){
-  const br=el.querySelector('[data-f="branch"]');
+// t-8381: the card's Learnings row, from the project's LEARNINGS.md (one parser, learnings-parse.js). It says whether lessons wait for
+// /promote-learnings and when the sweep last ran; a failed read shows "—", never a count. A failed refresh keeps what is shown.
+const sweptWhen=d=>{ if(!d) return ''; const t=new Date(), today=`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`; return ' \u00b7 swept '+(d===today?'today':d.slice(5)); };
+function learningsText(lb){
+  const f=lb&&lb.learnings;
+  if(!f||f.error) return '\u2014';
+  if(f.missing) return 'Not needed yet';
+  const s=learningsSummary(f.text);
+  if(!s.rows) return 'Not needed yet';
+  return (s.pending?s.pending+' to promote':'None to promote')+sweptWhen(s.swept);
+}
+async function fillCardLearnings(id,el,refresh){
+  const v=el.querySelector('[data-f="learnings"]');
   try{
-    const r=await fetch('/api/git?project='+encodeURIComponent(id)); const g=r.ok?await r.json():null;
-    if(refresh&&!g) return;   // a failed refresh keeps the branch already shown
-    const row=br.closest('.metarow');
-    if(g&&g.is_git===false){ if(row) row.hidden=true; }
-    else{ if(row) row.hidden=false; br.textContent=(g&&g.branch)||'—'; }
-  }catch(e){ if(!refresh) br.textContent='—'; }
+    const r=await fetch('/api/logbook?project='+encodeURIComponent(id));
+    if(!r.ok) throw 0;
+    v.textContent=learningsText(await r.json());
+  }catch(e){ if(!refresh) v.textContent='\u2014'; }
 }
 
 // t-5738: the cards were filled once at load, so tickets made while the Cockpit stayed open never showed (Total Tickets 0 until a restart).
-// refreshStats re-reads every card (tickets, updated, skills, branch, git icon; not Factory) when the Projects page is shown again and
+// refreshStats re-reads every card (tickets, updated, skills, learnings, git icon; not Factory) when the Projects page is shown again and
 // every 30 s while it is on screen. A card has one read at a time: a request that arrives mid-read is remembered and re-read once, so
 // the newer state is never dropped. A failed refresh keeps the value already shown.
 const statsBusy=new Set(), statsAgain=new Set();
@@ -113,7 +121,7 @@ function projectsPageShown(){ const g=document.getElementById('grid'); return !!
 async function fillCardStats(id,refresh){
   const el=document.querySelector('.meta[data-stats="'+(window.CSS&&CSS.escape?CSS.escape(id):id)+'"]');
   if(!el) return;
-  fillCardBranch(id,el,refresh);
+  fillCardLearnings(id,el,refresh);
   if(!refresh) fillCardFactory(id,el);   // Factory has its own refresh; re-reading it here would re-run gh every interval
   const up=el.querySelector('[data-f="updated"]'), ct=el.querySelector('[data-f="count"]'), sk=el.querySelector('[data-f="skills"]');
   try{

@@ -6861,13 +6861,13 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('Projects card (t-67ab, t-0e8b): shows its branch and no Upkeep count; the Skill Eval row opens that project\u2019s Skill Eval', async ({ page }) => {
+    test('Projects card (t-67ab, t-0e8b, t-8381): no Branch row (the branch is per ticket) and no Upkeep count; the Skill Eval row opens that project\u2019s Skill Eval', async ({ page }) => {
       await openShell(page, []);
       await page.locator('.tab.pinned').click();
       const card = pid => page.locator(`.meta[data-stats="${pid}"]`);
-      const branch = await page.evaluate(async () => (await (await fetch('/api/git?project=proj-a')).json()).branch);
-      expect(branch).toBeTruthy();
-      await expect(card('proj-a').locator('[data-f="branch"]')).toHaveText(branch);
+      await expect(card('proj-a').locator('[data-f="skills"]')).not.toHaveText('…');   // the card has filled
+      await expect(card('proj-a').locator('[data-f="branch"]')).toHaveCount(0);
+      expect(await card('proj-a').locator('.metarow .k').allTextContents()).not.toContain('Branch');
       await expect(card('proj-a').locator('[data-f="upkeep"]')).toHaveCount(0);
       await expect(card('proj-a')).not.toContainText('never run');
       await page.locator('.meta[data-stats="proj-a"]').locator('xpath=ancestor::div[contains(@class,"card")][1]').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-0e8b', 'visuals', 'project-card.png') });
@@ -6877,12 +6877,13 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('Projects card (t-c6bb): the Logbook row opens that project\u2019s Logbook; Admin has no Logbook', async ({ page }) => {
+    test('Projects card (t-c6bb, t-8381): the Learnings row opens that project\u2019s Logbook; Admin has no Logbook', async ({ page }) => {
       await openShell(page, []);
       await page.locator('.tab.pinned').click();
       const row = page.locator('.meta[data-stats="proj-a"] .lb-link-row');
       await expect(row.locator('svg.lb-ico')).toHaveCount(1);
-      await expect(row).toContainText('Logbook');
+      await expect(row.locator('.k')).toHaveText('Learnings');
+      await expect(row.locator('[data-f="learnings"]')).not.toHaveText('…');   // the real /api/logbook answered
       await row.click();
       const board = page.frameLocator('#view-proj-a iframe');
       await expect(board.locator('#logbook-overlay')).toHaveClass(/open/, { timeout: 8000 });   // the shell asked the board to open it
@@ -6892,6 +6893,45 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await board.locator('#lb-close').click();
       await page.evaluate(async () => { const { showView } = await import('/static/cockpit-views.js'); return showView('admin'); });
       await expect(page.locator('#view-admin')).not.toContainText('Logbook');
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    // t-8381: the Learnings row says whether lessons wait for /promote-learnings and when the sweep ran, from LEARNINGS.md (the one parser,
+    // learnings-parse.js). Prod path: GET /api/logbook and the Cockpit's Projects page.
+    test('Projects card (t-8381): the Learnings row reads LEARNINGS.md: to promote, none to promote, not needed yet, a failed read', async ({ page }) => {
+      const t = new Date(), today = `${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}-${t.getFullYear()}`;
+      const table = rows => `# Learnings\n\nlearnings-sweep last run: ${today} 09:00\n\n<!-- canon:learnings:BEGIN -->\n| Date | Ticket | Finding | Status |\n|---|---|---|---|\n${rows}<!-- canon:learnings:END -->\n`;
+      const un = '| 2026-11-01 | [t-aaaa](x) | a \\| piped finding | UNPROMOTED |\n', pr = '| 2026-10-01 | [t-bbbb](x) | b | `promoted → PROMOTED.md` |\n';
+      const answers = {
+        'proj-a': { learnings: { text: table(un + un + pr) } },
+        'proj-x': { learnings: { missing: true } },
+      };
+      let abort = false;
+      await page.route('**/api/logbook?*', route => {
+        if (abort) return route.abort();
+        const pid = new URL(route.request().url()).searchParams.get('project');
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(answers[pid] || { learnings: { missing: true } }) });
+      });
+      await openShell(page, []);
+      await page.locator('.tab.pinned').click();
+      const val = pid => page.locator(`.meta[data-stats="${pid}"] [data-f="learnings"]`);
+      await expect(val('proj-a')).toHaveText('2 to promote · swept today');
+      await expect(val('proj-x')).toHaveText('Not needed yet');
+      answers['proj-a'] = { learnings: { text: table(pr).replace(today, '10-30-2026') } };
+      answers['proj-x'] = { learnings: { error: 'LEARNINGS.md is a symbolic link' } };
+      const refresh = () => page.evaluate(async () => { const { refreshStats } = await import('/static/cockpit-projects.js'); refreshStats(); });
+      await refresh();
+      await expect(val('proj-a')).toHaveText('None to promote · swept 10-30');
+      await expect(val('proj-x')).toHaveText('—');   // an unreadable file is never a count
+      answers['proj-a'] = { learnings: { text: table('').replace(/learnings-sweep.*\n/, '') } };
+      await refresh();
+      await expect(val('proj-a')).toHaveText('Not needed yet');   // the table has no rows
+      answers['proj-a'] = { learnings: { text: table(un).replace(/learnings-sweep.*\n/, '') } };
+      await refresh();
+      await expect(val('proj-a')).toHaveText('1 to promote');      // no sweep stamp: no "swept"
+      abort = true;
+      await refresh(); await page.waitForTimeout(300);
+      await expect(val('proj-a')).toHaveText('1 to promote');      // a failed refresh keeps what is shown
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
@@ -13128,7 +13168,8 @@ test.describe('Canon Cockpit Projects card and Skill Eval view (t-7d8d, t-0e8b)'
   test('a project card\'s Total Tickets follows new tickets without a reload: on coming back, on a timer, and a failed read keeps the number (t-5738)', async ({ page }) => {
     let count = 0, fail = false, reads = 0;
     await page.route('**/api/projects', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(PROJECTS) }));
-    await page.route('**/api/git*', route => fail ? route.abort() : route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ is_git: true, branch: 'main' }) }));
+    await page.route('**/api/logbook?*', route => fail ? route.abort() : route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ learnings: { text: '<!-- canon:learnings:BEGIN -->\n| 2026-11-01 | [t-aaaa](x) | f | UNPROMOTED |\n<!-- canon:learnings:END -->\n' } }) }));
     await page.route('**/api/project-stats*', route => {
       reads++;
       if (fail) return route.abort();
@@ -13151,7 +13192,7 @@ test.describe('Canon Cockpit Projects card and Skill Eval view (t-7d8d, t-0e8b)'
     await page.clock.fastForward('00:31');
     await page.waitForTimeout(300);
     await expect(total).toHaveText('5');
-    await expect(page.locator('.meta[data-stats="proj-a"] [data-f="branch"]')).toHaveText('main');   // the branch is kept too
+    await expect(page.locator('.meta[data-stats="proj-a"] [data-f="learnings"]')).toHaveText('1 to promote');   // the Learnings value is kept too
     // hidden Projects page: no reads on the timer
     fail = false;
     await page.evaluate(() => { document.getElementById('grid').style.display = 'none'; });
@@ -14870,13 +14911,16 @@ test.describe('Canon Cockpit help', () => {
       await page.goto(BASE + '/cockpit');
       await page.locator('#nav-admin').click();
       await expect(page.locator('.dgrid .dtitle')).toContainText('Canon Cockpit');   // the panel covers the board and the daemon, so it takes the app's name
-      await expect(page.locator('.dgrid .drow .k')).toHaveText(['Canon', 'Board Build', 'This Machine', 'Cockpit Daemon', 'Cockpit Uptime', 'Daemon Uptime']);   // one casing for every row
+      await expect(page.locator('.dgrid .drow .k')).toHaveText(['Canon', 'Board Build', 'Host', 'Cockpit Daemon', 'Cockpit Uptime', 'Daemon Uptime']);   // one casing for every row
       const fonts = await page.locator('.dgrid .drow .v').evaluateAll(els => els.map(e => getComputedStyle(e).fontFamily + '|' + getComputedStyle(e).fontWeight + '|' + getComputedStyle(e).fontSize));
       expect(new Set(fonts).size).toBe(1);   // and one font for every value (one `.drow .v` rule)
       await expect(page.locator('#ad-ver-canon')).toHaveText('9.9.9');
       await expect(page.locator('#ad-ver-board')).toHaveText('abc1234');
       await expect(page.locator('#ad-ver-daemon')).toHaveText('9.9.9 (0e2fd866)');   // the running daemon's own build wins, as in Help
-      await expect(page.locator('#ad-machine')).toHaveText('build-mac.local \u2014 macOS 26.1, Darwin 25.1.0, arm64, 10 cores, 32 GB');   // t-c542: /api/version's machine
+      await expect(page.locator('#ad-machine')).toHaveText('build-mac.local');   // t-c542, t-8381: the hostname; the rest in its tooltip
+      await expect(page.locator('#ad-machine')).toHaveAttribute('title', /^macOS 26\.1, Darwin 25\.1\.0, arm64, 10 cores, 32 GB/);
+      const lab = await page.locator('.dgrid .drow .k').evaluateAll(els => els.map(e => e.getClientRects().length));
+      expect(Math.max(...lab)).toBe(1);   // every label on one line (the Host row once wrapped)
     });
     test('a 64-character stamp wraps inside the panel on a phone instead of overflowing @webkit', async ({ page }) => {
       await page.setViewportSize({ width: 390, height: 844 });

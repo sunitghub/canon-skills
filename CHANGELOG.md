@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Changed
+- The Projects card's Logbook row is now **Learnings**: it says how many lessons wait for `/promote-learnings` and when the sweep last ran ("2 to promote · swept today"), "None to promote" when all are handled, and "Not needed yet" when the project has none; a click still opens the Logbook. The Branch row is gone (the branch is chosen per ticket). Admin's machine row is now **Host**: the hostname, with the OS, architecture, cores and RAM in its tooltip (t-8381).
+
 ## [0.37.0] - 2026-11-02
 
 The prebuilt `canon-go` program changed (the board and the daemon both write the machine's host on each event): `canon update` fetches it; restart the daemon.

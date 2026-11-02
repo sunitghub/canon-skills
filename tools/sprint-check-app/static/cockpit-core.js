@@ -68,7 +68,10 @@ export async function fillVersions(ids){
     if(v&&v.version) set(ids.canon,v.version);
     if(v&&v.commit) set(ids.board,v.commit);
     if(v&&v.daemon) set(ids.daemon,v.daemon);
-    if(ids.machine&&v&&v.machine_line) set(ids.machine,(v.machine&&v.machine.host?v.machine.host+' \u2014 ':'')+v.machine_line);   // t-c542
+    if(ids.machine&&v&&v.machine){   // t-c542, t-8381: the hostname; OS, architecture, cores and RAM in its tooltip
+      set(ids.machine,v.machine.host||'\u2014');
+      const e=document.getElementById(ids.machine); if(e&&v.machine_line) e.title=v.machine_line+' \u00b7 every event names this host';
+    }
   }catch(e){}
   // daemon build (best-effort) from /api/cockpit running_build
   try{ const ck=await (await fetch('/api/cockpit')).json();
