@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.37.0] - 2026-11-02
+
+The prebuilt `canon-go` program changed (the board and the daemon both write the machine's host on each event): `canon update` fetches it; restart the daemon.
+
 ### Added
 - Each ticket has a **Machines** node beside its docs: which computers worked on it, with the OS and version, architecture (arm64, amd64), cores and RAM. Every activity-log event now names the computer that wrote it (its hostname); the board records each computer's facts once in a new `machine.seen` event, when they change. Test-evidence logs name the OS, architecture, cores and RAM in their header (never the hostname), so a ticket worked in a Claude cloud session shows its Linux machine after `tkt import-results`. Admin shows **This Machine**, and `canon-go machine` prints the same line (t-c542).
 
