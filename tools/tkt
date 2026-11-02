@@ -1426,7 +1426,8 @@ cmd_import_issue() {
   # t-4d39: send-issue marks a Lite ticket with this line directly above the closing ticket marker; the same text anywhere
   # else (a ticket's own notes, a code block, an issue sync-issues wraps: it always leaves a blank line there) is content.
   local lite=false
-  [[ "$(grep -B1 -xF "<!-- canon:ticket $id -->" "$tmp/body" | tail -2 | head -1)" == "<!-- canon:lite -->" ]] && lite=true
+  awk -v t="<!-- canon:ticket $id -->" '$0 == t { found = (prev == "<!-- canon:lite -->") } { prev = $0 } END { exit !found }' "$tmp/body" \
+    && lite=true
   # Split the body into its "# " parts; "(none yet)" means the part was empty.
   # Only the five headings send-issue writes start a part; any other "# " line (a note, a shell comment) is content.
   awk -v d="$tmp" '/^```/ { fence = !fence }
