@@ -62,6 +62,9 @@ SPRINT_CHECK_BIN="$WORK/stub/new" ev stamp "$ID" mline -- true
 assert_eq "# on macOS 26.1, Darwin 25.1.0, arm64, 10 cores, 32 GB; bash ${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}.${BASH_VERSINFO[2]}" "$(sed -n 3p "$ED/mline.log")"
 SPRINT_CHECK_BIN="$WORK/stub/old" ev stamp "$ID" oldb -- true
 assert_eq "$os_line" "$(sed -n 3p "$ED/oldb.log")"; [[ ! -e "$WORK/served" ]] || fail "evidence: an older board was asked for \`machine\` (it would serve)"
+printf '#!/usr/bin/env bash\ncase "$1" in --help) echo "  machine [--json]";; machine) exit 0;; *) exit 9;; esac\n' > "$WORK/stub/empty"; chmod +x "$WORK/stub/empty"
+SPRINT_CHECK_BIN="$WORK/stub/empty" ev stamp "$ID" emptyb -- true   # a board that prints nothing: uname, never an empty "# on ;"
+assert_eq "$os_line" "$(sed -n 3p "$ED/emptyb.log")"; rm -f "$ED/emptyb.log"
 real="$(build_board "$WORK/fresh")"
 SPRINT_CHECK_NO_BROWSER=1 SPRINT_CHECK_BIN="$real" ev stamp "$ID" realb -- true
 assert_eq "# on $(SPRINT_CHECK_NO_BROWSER=1 "$real" machine); bash ${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}.${BASH_VERSINFO[2]}" "$(sed -n 3p "$ED/realb.log")"

@@ -371,17 +371,8 @@ func latestIn(path, kind, project string, valid func(Event) bool) (Event, bool) 
 	return found, ok
 }
 
-// parseLine checks one line against the v1 schema: known kind and source, only that kind's fields within their limits,
-// a parseable ts, and the wanted kind and project.
-func parseLine(b []byte, kind, project string) (Event, bool) {
-	ev, ok := parseAny(b)
-	if !ok || ev.Kind != kind || ev.Project != project {
-		return Event{}, false
-	}
-	return ev, true
-}
-
-// parseAny is parseLine without the kind and project filter.
+// parseAny checks one line against the v1 schema: known kind and source, only that kind's fields within their limits,
+// a parseable ts, and a host no longer than any writer cuts.
 func parseAny(b []byte) (Event, bool) {
 	var l struct {
 		Schema  json.RawMessage   `json:"schema"`

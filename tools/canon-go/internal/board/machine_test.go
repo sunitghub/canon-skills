@@ -3,12 +3,14 @@ package board
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"canon/internal/events"
 	"canon/internal/machine"
@@ -88,7 +90,7 @@ func TestTicketMachinesRoute(t *testing.T) {
 	home := events.Home()
 	os.RemoveAll(filepath.Join(home, "events"))
 	t.Cleanup(func() { os.RemoveAll(filepath.Join(home, "events")) })
-	for _, bad := range []string{"../x", "t-..%2Fx", "t-a%2Fb", "T-ABCD", "", "x-abcd"} {
+	for _, bad := range []string{"../x", "t-..%2Fx", "t-a%2Fb", "T-ABCD", "", "x-abcd", "..%2Ft-abcd", "x%2Ft-abcd", "t-abcd%2F.."} {
 		if code, _ := machinesGet(t, "/api/ticket-machines?ticket="+bad); code != http.StatusBadRequest {
 			t.Fatalf("id %q = %d, want 400", bad, code)
 		}
@@ -100,6 +102,12 @@ func TestTicketMachinesRoute(t *testing.T) {
 	writeFile(t, filepath.Join(ev, "test-sh.log"), "HEAD abc 2026-11-02T10:00:00Z\n$ scripts/test.sh\n# on macOS 26.1, Darwin 25.1.0, arm64, 10 cores, 32 GB; bash 3.2.57\nok\n")
 	writeFile(t, filepath.Join(ev, "cloud", "test-sh.log"), "HEAD abc 2026-11-02T10:00:00Z\n$ scripts/test.sh\n# on Linux 6.18.44-fc-v185 x86_64; bash 5.2.21\nok\n")
 	writeFile(t, filepath.Join(ev, "notes.txt"), "HEAD x\n$ y\n# on Fake OS; bash 1.0\n")
+	writeFile(t, filepath.Join(ev, "junk.log"), "HEAD x\n$ y\nnot # on Prefixed OS; bash 1.0\n")    // line 3 must START with "# on "
+	writeFile(t, filepath.Join(ev, "tail.log"), "HEAD x\n$ y\n# on Tailed OS; bash 1.0 and more\n") // and end at bash's version
+	writeFile(t, filepath.Join(ev, "cloud", "board-spec.log"), "HEAD abc 2026-11-02T10:00:00Z\n$ x\n# on Linux 6.18.44-fc-v185 x86_64; bash 5.2.21\nok\n")
+	older, newer := time.Now().Add(-2*time.Hour), time.Now().Add(-time.Hour)
+	os.Chtimes(filepath.Join(ev, "cloud", "test-sh.log"), older, older)
+	os.Chtimes(filepath.Join(ev, "cloud", "board-spec.log"), newer, newer)
 
 	// no events yet: the local and the cloud evidence machines
 	code, rows := machinesGet(t, "/api/ticket-machines?ticket=t-aaaa")
@@ -114,6 +122,19 @@ func TestTicketMachinesRoute(t *testing.T) {
 		if r.Host != "" || r.Source != "evidence" || (strings.HasPrefix(r.Line, "Linux") != (r.Where == "cloud")) {
 			t.Fatalf("evidence row %+v: no host, source evidence, cloud only under evidence/cloud/", r)
 		}
+		if r.Where == "cloud" && (r.Count != 2 || r.Last != newer.UTC().Format(time.RFC3339) || r.First != older.UTC().Format(time.RFC3339)) {
+			t.Fatalf("cloud row %+v: two logs of one machine are one row, first and last from their times", r)
+		}
+	}
+	// the route's JSON names are what board-machines.js reads
+	rec := httptest.NewRecorder()
+	handle(rec, httptest.NewRequest("GET", "http://127.0.0.1/api/ticket-machines?ticket=t-aaaa", nil))
+	var raw struct{ Machines []map[string]any }
+	json.Unmarshal(rec.Body.Bytes(), &raw)
+	for _, k := range []string{"where", "source", "line", "count", "first", "last"} {
+		if _, ok := raw.Machines[0][k]; !ok {
+			t.Fatalf("a row lacks %q: %v", k, raw.Machines[0])
+		}
 	}
 
 	noteMachineSeen(home)
@@ -121,9 +142,15 @@ func TestTicketMachinesRoute(t *testing.T) {
 	events.Emit(home, "sprint.started", "sprint", root, map[string]string{"ticket": "t-aaaa"})
 	events.Emit(home, "gate.finished", "subagent-log", wt, map[string]string{"ticket": "t-aaaa", "role": "evaluator"})
 	events.Emit(home, "gate.finished", "subagent-log", "/somewhere/else", map[string]string{"ticket": "t-aaaa", "role": "evaluator"})
+	events.Emit(home, "gate.finished", "subagent-log", "/somewhere/else", map[string]string{"ticket": "t-aaaa", "role": "reviewer"})
+	// a line written before hosts existed names no machine: it adds no row
+	day := events.DayFiles(home)[0]
+	f, _ := os.OpenFile(day, os.O_APPEND|os.O_WRONLY, 0)
+	fmt.Fprintf(f, `{"schema":1,"id":"eeeeeeeeeeeeeeee","ts":"2026-11-02T09:00:00.000Z","kind":"ticket.closed","source":"tkt","project":%q,"data":{"ticket":"t-aaaa"}}`+"\n", root)
+	f.Close()
 	events.Emit(home, "sprint.started", "sprint", root, map[string]string{"ticket": "t-bbbb"})
 	_, rows = machinesGet(t, "/api/ticket-machines?ticket=t-aaaa")
-	if len(rows) != 2 || rows[0].Source != "events" || rows[0].Host != machine.Host() || rows[0].Count != 2 {
+	if len(rows) != 2 || rows[0].Source != "events" || rows[0].Host != machine.Host() || rows[0].Count != 2 || rows[0].Where != "local" {
 		t.Fatalf("with events = %+v, want this host (2 events: root and its worktree, not another project) then the cloud evidence", rows)
 	}
 	if rows[0].Facts["cpus"] != machine.Get().CPUs || rows[0].Facts["os"] != machine.Get().OS || rows[0].Line != machine.Get().Line() {
@@ -133,7 +160,7 @@ func TestTicketMachinesRoute(t *testing.T) {
 		t.Fatalf("second row = %+v, want the cloud evidence (local evidence is dropped once a host is known)", rows[1])
 	}
 	events.Emit(home, "ticket.closed", "tkt", root, map[string]string{"ticket": "t-aaaa"})
-	if _, rows = machinesGet(t, "/api/ticket-machines?ticket=t-aaaa"); rows[0].Count != 3 {
+	if _, rows = machinesGet(t, "/api/ticket-machines?ticket=t-aaaa"); rows[0].Count != 3 || rows[0].Last < rows[0].First {
 		t.Fatalf("a new event did not reach the next read (stale day index): %+v", rows[0])
 	}
 	if _, rows = machinesGet(t, "/api/ticket-machines?ticket=t-cccc"); rows == nil || len(rows) != 0 {

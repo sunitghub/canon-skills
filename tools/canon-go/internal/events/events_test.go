@@ -393,12 +393,12 @@ func TestActorIsOptionalAndValidated(t *testing.T) {
 		if err != nil {
 			t.Fatalf("actor %q refused: %v", a, err)
 		}
-		ev, ok := parseLine(b, "github.synced", "/p")
+		ev, ok := parseAny(b)
 		if !ok || ev.Actor != a || ev.Kind != "github.synced" || ev.Source != "tkt" {
 			t.Fatalf("actor %q did not round-trip: %+v ok=%v (%s)", a, ev, ok, b)
 		}
 	}
-	if ev, ok := parseLine(plain, "github.synced", "/p"); !ok || ev.Actor != "" {
+	if ev, ok := parseAny(plain); !ok || ev.Actor != "" {
 		t.Fatalf("an old-format line must read with no actor: %+v ok=%v", ev, ok)
 	}
 
@@ -408,7 +408,7 @@ func TestActorIsOptionalAndValidated(t *testing.T) {
 		}
 	}
 	forged := `{"schema":1,"id":"aaaaaaaaaaaaaaaa","ts":"2026-10-27T09:00:00.000Z","kind":"github.synced","source":"tkt","actor":"root","project":"/p","data":{"count":"3"}}`
-	if _, ok := parseLine([]byte(forged), "github.synced", "/p"); ok {
+	if _, ok := parseAny([]byte(forged)); ok {
 		t.Fatal("a line with an unknown actor was read")
 	}
 
@@ -502,14 +502,15 @@ func TestHostEnvelopeAndEachIn(t *testing.T) {
 	}
 	old := `{"schema":1,"id":"bbbbbbbbbbbbbbbb","ts":"2026-10-27T09:00:00.000Z","kind":"ticket.closed","source":"tkt","project":"/p","data":{"ticket":"t-old0"}}`
 	long := `{"schema":1,"id":"cccccccccccccccc","ts":"2026-10-27T09:00:00.000Z","kind":"ticket.closed","source":"tkt","host":"` + strings.Repeat("h", hostMax+1) + `","project":"/p","data":{"ticket":"t-long"}}`
-	fmt.Fprintf(f, "%s\nnot json\n%s\n", old, long)
+	edge := `{"schema":1,"id":"dddddddddddddddd","ts":"2026-10-27T09:00:00.000Z","kind":"ticket.closed","source":"tkt","host":"` + strings.Repeat("h", hostMax) + `","project":"/p","data":{"ticket":"t-edge"}}`
+	fmt.Fprintf(f, "%s\nnot json\n%s\n%s\n", old, long, edge)
 	f.Close()
 	var got []Event
 	if err := EachIn(days[0], func(ev Event) { got = append(got, ev) }); err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 3 {
-		t.Fatalf("EachIn read %d lines, want 3 (two written, one old; the junk and the over-long host skipped): %+v", len(got), got)
+	if len(got) != 4 || got[3].Data["ticket"] != "t-edge" {
+		t.Fatalf("EachIn read %d lines, want 4 (two written, one old, one host of exactly hostMax; the junk and the over-long host skipped): %+v", len(got), got)
 	}
 	if got[0].Host != machine.Host() || got[1].Host != machine.Host() || got[1].Kind != "gate.finished" {
 		t.Fatalf("written lines carry host %q/%q, want %q", got[0].Host, got[1].Host, machine.Host())
@@ -517,7 +518,7 @@ func TestHostEnvelopeAndEachIn(t *testing.T) {
 	if got[2].Host != "" || got[2].Data["ticket"] != "t-old0" {
 		t.Fatalf("a line without host should read with Host empty: %+v", got[2])
 	}
-	if ev, ok := Latest(home, "ticket.closed", "/p", nil); !ok || ev.Data["ticket"] != "t-old0" {
+	if ev, ok := Latest(home, "ticket.closed", "/p", nil); !ok || ev.Data["ticket"] != "t-edge" {
 		t.Fatalf("Latest through DayFiles/EachIn = %+v %v", ev, ok)
 	}
 }
