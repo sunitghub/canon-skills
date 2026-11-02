@@ -46,9 +46,10 @@ func factsData(f machine.Facts) map[string]string {
 
 // noteMachineSeen writes machine.seen when this host's facts differ from its newest one, or it has none (a restart on an
 // unchanged machine writes nothing). Observer-only, like every event.
-func noteMachineSeen(home string) bool {
-	f := machine.Get()
-	want := factsData(f)
+func noteMachineSeen(home string) bool { return noteMachineSeenFor(home, machine.Get()) }
+
+func noteMachineSeenFor(home string, f machine.Facts) bool {
+	want := events.Fit("machine.seen", factsData(f))
 	last, ok := events.Latest(home, "machine.seen", "", func(e events.Event) bool { return e.Data["host"] == f.Host })
 	if ok && sameData(last.Data, want) {
 		return false
@@ -215,7 +216,13 @@ func ticketMachines(home, root, evidenceDir, id string) []ticketMachine {
 	hosts := map[string]*ticketMachine{}
 	seen := map[string]events.Event{}
 	days := events.DayFiles(home)
+	read := map[string]bool{}             // a day with a .gz twin (a crashed gzip) is listed twice, same lines: read it once
 	for i := len(days) - 1; i >= 0; i-- { // oldest first, so a newer machine.seen replaces an older one
+		day := strings.TrimSuffix(filepath.Base(days[i]), ".gz")
+		if read[day] {
+			continue
+		}
+		read[day] = true
 		d := indexDay(days[i])
 		if d == nil {
 			continue

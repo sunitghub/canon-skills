@@ -180,6 +180,18 @@ func LineActor(kind, source, actor, project string, data map[string]string, at t
 	return b, nil
 }
 
+// Fit is data as Emit would store it for kind: every known field cut to its limit (t-c542: machine.seen compares against
+// this, so a fact longer than its field does not look changed on every start). Unknown fields are dropped.
+func Fit(kind string, data map[string]string) map[string]string {
+	out := map[string]string{}
+	for _, f := range kinds[kind] {
+		if v, ok := data[f.name]; ok {
+			out[f.name] = cut(v, f.max)
+		}
+	}
+	return out
+}
+
 // cut keeps at most max runes of valid UTF-8 (invalid bytes become U+FFFD, as json.Marshal would make them).
 func cut(s string, max int) string {
 	if !utf8.ValidString(s) {

@@ -49,7 +49,7 @@ export async function renderMachinesPane(t, seq) {
   }
   if (seq !== modalState.renderSeq) return;   // the user moved on while this was loading
   if (!Array.isArray(rows) || !rows.length) {
-    body.innerHTML = '<div class="machines-pane"><h3>No machine recorded yet</h3><p>From canon 0.37 every event names the machine that wrote it, and every test-evidence log names its OS, cores and RAM. A ticket worked on after that shows its machines here; a cloud session\'s machine arrives with <code>tkt import-results</code>.</p></div>';
+    body.innerHTML = '<div class="machines-pane"><h3>No machine recorded yet</h3><p>Every event now names the machine that wrote it, and every test-evidence log names its OS, cores and RAM. A ticket worked on since then shows its machines here; a cloud session\'s machine arrives with <code>tkt import-results</code>.</p></div>';
     return;
   }
   body.innerHTML = `<div class="machines-pane"><table class="machines-table"><thead><tr><th>Machine</th><th>OS, chip, cores, RAM</th><th>Activity</th></tr></thead><tbody>${rows.map(rowHTML).join('')}</tbody></table>`

@@ -2,6 +2,7 @@ package board
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -43,6 +44,16 @@ func TestNoteMachineSeenOncePerChange(t *testing.T) {
 	events.Emit(home, "machine.seen", "board", "", other)
 	if noteMachineSeen(home) {
 		t.Fatal("another host's newer machine.seen made this host write again")
+	}
+}
+
+// t-c542 (review): a fact longer than its machine.seen field is stored cut, so it must not look changed on every start.
+func TestNoteMachineSeenLongFact(t *testing.T) {
+	home := t.TempDir()
+	f := machine.Get()
+	f.OSName = strings.Repeat("Distro ", 20)
+	if !noteMachineSeenFor(home, f) || noteMachineSeenFor(home, f) {
+		t.Fatal("a fact over its field limit wrote machine.seen again on an unchanged machine")
 	}
 }
 
@@ -163,7 +174,28 @@ func TestTicketMachinesRoute(t *testing.T) {
 	if _, rows = machinesGet(t, "/api/ticket-machines?ticket=t-aaaa"); rows[0].Count != 3 || rows[0].Last < rows[0].First {
 		t.Fatalf("a new event did not reach the next read (stale day index): %+v", rows[0])
 	}
+	// a crashed gzip leaves a day as both .jsonl and .jsonl.gz (same lines): counted once (review)
+	gz := day + ".gz"
+	if err := gzipCopy(day, gz); err != nil {
+		t.Fatal(err)
+	}
+	if _, rows = machinesGet(t, "/api/ticket-machines?ticket=t-aaaa"); rows[0].Count != 3 {
+		t.Fatalf("a day with a .gz twin was counted twice: %+v", rows[0])
+	}
+	os.Remove(gz)
 	if _, rows = machinesGet(t, "/api/ticket-machines?ticket=t-cccc"); rows == nil || len(rows) != 0 {
 		t.Fatalf("a ticket nothing ran for = %+v, want an empty list", rows)
 	}
+}
+
+func gzipCopy(src, dst string) error {
+	b, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	zw.Write(b)
+	zw.Close()
+	return os.WriteFile(dst, buf.Bytes(), 0o600)
 }

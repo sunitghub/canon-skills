@@ -157,8 +157,8 @@ func ExportCheck(home string) error {
 }
 
 // ExportStream writes every day, oldest first, as one JSON-lines stream: a gzipped day is gunzipped, a link or other non-regular file is
-// left out, and seals.jsonl is not part of it. A project path under the user's home folder is written with ~ for that folder, so an export
-// can be shared without the account name; the day files on disk are not touched. Call ExportCheck first.
+// left out, and seals.jsonl is not part of it. A project path under the user's home folder is written with ~ for that folder; each line's
+// host (t-c542) is kept as written, and it often holds the account name. The day files on disk are not touched. Call ExportCheck first.
 func ExportStream(w io.Writer, home string) error {
 	paths, err := exportPaths(home)
 	if err != nil {
