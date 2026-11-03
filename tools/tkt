@@ -3142,10 +3142,10 @@ Commands:
     --tags a,b              Tags (lowercase letters, digits, dashes; at most 8)
   start <id>                Set status to in_progress and mark ACTIVE
   close <id> [--no-sprint]  Set status to closed and clear ACTIVE if matched.
-  copy-back <id>            Copy a worktree's own ticket folder back to main (the board's Done/Discard runs it)
                             Refuses by default — use 'sprint complete' if the
                             ticket has sprint docs, or pass --no-sprint to
                             force-close a doc-less/backlog ticket directly.
+  copy-back <id>            Copy a worktree's own ticket folder back to main (the board's Done/Discard runs it)
   archive <id>              Set status to archived (hidden from board columns, searchable)
   ci <id> [on|off]          Mark ticket CI-eligible (headless grading); [default: on]
                             Reminds to 'git add -f' the ticket's docs — gitignored
