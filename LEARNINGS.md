@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-02-2026 21:27
+learnings-sweep last run: 11-03-2026 00:07
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-03 | [t-7f7c](.tickets/t-7f7c/learnings.md) | A UI rename must grep every string that names the old set: after the Logbook went from two tabs to four, the header button and the Projects card tooltips still said "Handoff and Learnings" (app.html:60, cockpit-projects.js:55). | UNPROMOTED |
 | 2026-11-03 | [t-92f2](.tickets/t-92f2/learnings.md) | A check written before a later redesign keeps enforcing the old rule: the daemon's t-e5ff "ticket must be in the worktree" guard predated t-cd06 (tkt resolves main's .tickets/), so a land worktree could not be resumed; when a resolution rule changes, grep every place that re-implements it (daemon guard, board API field, rail text, comments). | UNPROMOTED |
 | 2026-11-03 | [t-68dd](.tickets/t-68dd/learnings.md) | A new exception to a skill rule must grep the skill for the old wording: Apply still said "extend that entry" next to the new "covered → write nothing" rule until the reviewer caught it. | UNPROMOTED |
 | 2026-11-02 | [t-2906](.tickets/t-2906/learnings.md) | When a board feature adds work to a polled route (GET /api/tickets runs every 8 s per tab), measure the route against main before the gates: a git call per request slowed it 65 to 90 ms and made an unrelated board spec time out 4 of 5 runs; read files first and run git only when a candidate is real. | UNPROMOTED |
