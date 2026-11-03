@@ -126,29 +126,37 @@ func TestSessionMeterIncremental(t *testing.T) {
 	appendTo(f, first)
 	step("first read", int64(len(first)))
 	step("unchanged", 0)
-	more := line("msg_2", "toolu_3", 1, 3)
+	more := line("msg_2", "toolu_3", 1, 3) +
+		`{"type":"assistant","message":{"id":"msg_0","content":[{"type":"tool_use"},{"type":"tool_use"}],"usage":{"input_tokens":0}}}` + "\n" // two blocks with no id: each counts
 	appendTo(f, more)
 	step("append", int64(len(more)))
 	partial := `{"type":"assistant","message":{"id":"msg_3","con`
 	appendTo(f, partial)
 	step("a last line still being written", int64(len(partial))) // read, not counted, and not consumed
+	step("unchanged while a line is half written", 0)            // same size and mtime: served from the cache, nothing re-read
 	rest := `tent":[{"type":"tool_use","id":"toolu_4"}],"usage":{"input_tokens":2}}}` + "\n"
 	appendTo(f, rest)
 	step("the line completed", int64(len(partial)+len(rest)))
 	agent := line("msg_2", "toolu_3", 1, 3) + line("msg_9", "toolu_9", 4, 4) // msg_2/toolu_3 also in the main file: counted once
 	appendTo(filepath.Join(sub, "agent-a.jsonl"), agent)
 	step("a new sub-agent file", int64(len(agent)))
-	if m := meterFor("sid4"); m.SubAgents != 1 || m.LLMCalls != 4 || m.ToolCalls != 5 {
-		t.Fatalf("after the sub-agent: %+v, want 1 sub-agent, 4 calls, 5 tools", *m)
+	if m := meterFor("sid4"); m.SubAgents != 1 || m.LLMCalls != 5 || m.ToolCalls != 7 {
+		t.Fatalf("after the sub-agent: %+v, want 1 sub-agent, 5 calls, 7 tools", *m)
 	}
 	os.WriteFile(f, []byte(line("msg_5", "toolu_5", 1, 1)), 0o644) // rewritten shorter: count again from the start
 	step("shrunk", -1)
 	repl := f + ".new"
-	os.WriteFile(repl, []byte(line("msg_6", "toolu_6", 1, 1)+line("msg_7", "toolu_7", 1, 1)+strings.Repeat(" ", 200)+"\n"), 0o644)
+	// msg_6's tokens differ from msg_5's, so reading on from the old offset would give another cache %.
+	os.WriteFile(repl, []byte(line("msg_6", "toolu_6", 1, 99)+line("msg_7", "toolu_7", 1, 1)+strings.Repeat(" ", 200)+"\n"), 0o644)
 	os.Rename(repl, f) // replaced by a longer file: another file, not more of the same one
 	step("replaced", -1)
 	if m := meterFor("sid4"); m.LLMCalls != 4 { // msg_6, msg_7, and the sub-agent's msg_2 and msg_9
 		t.Fatalf("after the replace: %+v, want 4 calls (the old file's msg_1..3 gone)", *m)
+	}
+	os.Remove(filepath.Join(sub, "agent-a.jsonl")) // a counted file gone: its calls go with it
+	step("a sub-agent file removed", -1)
+	if m := meterFor("sid4"); m.SubAgents != 0 || m.LLMCalls != 2 {
+		t.Fatalf("after the sub-agent file went: %+v, want 0 sub-agents, 2 calls", *m)
 	}
 	meterPrune(map[string]bool{"other": true})
 	meterMu.Lock()

@@ -96,8 +96,7 @@ func meterFor(sid string) *sessionMeter {
 		f := e.files[files[i]]
 		e.files[files[i]] = meterFile{st, meterScan(files[i], f.off, e)}
 	}
-	e.m.CachePct = 0
-	if e.fresh+e.cread > 0 {
+	if e.fresh+e.cread > 0 { // the sums only grow within one count, and a new count starts at 0
 		e.m.CachePct = int(e.cread * 100 / (e.fresh + e.cread))
 	}
 	e.sig = sig

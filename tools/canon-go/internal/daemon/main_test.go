@@ -8861,3 +8861,39 @@ func TestSessionEnvPromptSuggestions(t *testing.T) {
 		t.Errorf("the Terminal is not a claude session: %v", env)
 	}
 }
+
+// t-c21a, prod path: GET /sessions. The meter keeps a running count per claude conversation; /sessions drops the count of a
+// session it no longer lists, so a long-lived daemon does not hold every ended session's dedupe map.
+func TestSessionsDropsAnEndedSessionsMeter(t *testing.T) {
+	cfg := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", cfg)
+	os.MkdirAll(filepath.Join(cfg, "projects", "-p"), 0o755)
+	for _, c := range []string{"conv-a", "conv-b"} {
+		os.WriteFile(filepath.Join(cfg, "projects", "-p", c+".jsonl"), []byte(`{"type":"assistant","message":{"id":"msg_`+c+`","content":[]}}`+"\n"), 0o644)
+	}
+	root := t.TempDir()
+	s := newServer(config{token: bootTok, projectRoot: root, stateDir: t.TempDir()})
+	for i, c := range []string{"conv-a", "conv-b"} {
+		sid := fmt.Sprintf("sid-%d", i)
+		s.sessions[sid] = &session{sid: sid, convID: c, projectRoot: root, cwd: root, agent: "claude", status: "running", started: time.Now(),
+			subs: map[chan frame]struct{}{}, lastActivity: time.Now(), statusSince: time.Now()}
+	}
+	cached := func() map[string]bool {
+		meterMu.Lock()
+		defer meterMu.Unlock()
+		out := map[string]bool{}
+		for k := range meterCache {
+			out[k] = true
+		}
+		return out
+	}
+	s.handleSessions(httptest.NewRecorder(), httptest.NewRequest("GET", "/sessions", nil))
+	if c := cached(); !c["conv-a"] || !c["conv-b"] {
+		t.Fatalf("both live sessions should have a meter count: %v", c)
+	}
+	delete(s.sessions, "sid-1")
+	s.handleSessions(httptest.NewRecorder(), httptest.NewRequest("GET", "/sessions", nil))
+	if c := cached(); !c["conv-a"] || c["conv-b"] {
+		t.Fatalf("after conv-b's session ended: %v, want only conv-a", c)
+	}
+}
