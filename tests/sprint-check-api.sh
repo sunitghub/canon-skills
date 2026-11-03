@@ -293,7 +293,7 @@ PY
 # ── /api/tickets `working` (t-187e): the ticket ACTIVE names, in progress, with a fresh ACTIVE.beat; stale or other-ticket beats add nothing ──
 tg="$WORK/.tickets/t-gate/ticket.md"; cp "$tg" "$WORK/t-gate.orig"
 sed 's/^status: open/status: in_progress/' "$WORK/t-gate.orig" > "$tg"
-working_of() { curl -s "$B/api/tickets" | python3 -c 'import json,sys; t={x["id"]:x for x in json.load(sys.stdin)}["t-gate"]; w=t.get("working"); print("none" if w is None else "%s|%s|%s" % (w["host"], w["here"], w["age_s"] < 120))'; }
+working_of() { curl -s "$B/api/tickets" | python3 -c 'import json,sys,time; t={x["id"]:x for x in json.load(sys.stdin)}["t-gate"]; w=t.get("working"); print("none" if w is None else "%s|%s|%s" % (w["host"], w["here"], time.time() - w["at"] < 120))'; }
 printf 't-gate\n' > "$WORK/.tickets/ACTIVE"
 printf 'ticket=t-gate\nts=%s\nhost=%s\npid=\n' "$(date +%s)" "$(hostname | tr -d '[:space:]')" > "$WORK/.tickets/ACTIVE.beat"
 assert_eq "$(hostname | tr -d '[:space:]')|True|True" "$(working_of)"

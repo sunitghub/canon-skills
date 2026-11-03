@@ -56,7 +56,7 @@ func readBeat(path string) (beat, bool) {
 	return b, b.ticket != "" && b.ts > 0
 }
 
-// annotateWorking sets t["working"] = {age_s, host, here, pid} on the ticket ACTIVE names when it is in progress and its
+// annotateWorking sets t["working"] = {at, host, here, pid} on the ticket ACTIVE names when it is in progress and its
 // beat is fresh. alive is the process check (injected for tests); a corrupt or missing file annotates nothing.
 func annotateWorking(tdir string, tickets []ticket, now time.Time, host string, alive func(int) bool) {
 	raw, err := os.ReadFile(tdir + string(os.PathSeparator) + "ACTIVE")
@@ -82,7 +82,8 @@ func annotateWorking(tdir string, tickets []ticket, now time.Time, host string, 
 	}
 	for _, t := range tickets {
 		if t["id"] == id && t["status"] == "in_progress" {
-			w := map[string]any{"age_s": int(age.Seconds()), "host": b.host, "here": here}
+			// at, the beat's own time, not its age: /api/tickets is polled with an ETag (t-c21a), and an age would change the reply every second.
+			w := map[string]any{"at": b.ts, "host": b.host, "here": here}
 			if b.pid > 0 {
 				w["pid"] = b.pid
 			}

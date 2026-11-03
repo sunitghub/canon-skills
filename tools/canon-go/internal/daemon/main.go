@@ -1183,12 +1183,15 @@ func (s *server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		out[i].Shared = g
 	}
 	// idleTimeoutFor resolves symlinks on disk — done outside the locks.
+	live := map[string]bool{}
 	for i := range out {
 		if out[i].Agent == "claude" && out[i].convID != "" {
 			out[i].Meter = meterFor(out[i].convID) // t-b1c8: by claude's conversation id, not the daemon's session id; reads transcripts, so outside the locks
+			live[out[i].convID] = true
 		}
 		out[i].IdleLimitSecs = int64(s.idleTimeoutFor(out[i].ProjectRoot, out[i].Cwd).Seconds())
 	}
+	meterPrune(live) // t-c21a: an ended session's running count goes with it
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(out)
 }

@@ -6,7 +6,7 @@ import { state } from './board-core.js';
 import { closeTab, cockpitState, openTerminalPane } from './board-cockpit.js';
 import { esc, escAttr, isWindowsBrowser } from './board-helpers.js';
 import { render, showToast } from './board-render.js';
-import { loadData, SHELL_TAB } from './board-core.js';
+import { boardHidden, loadData, SHELL_TAB } from './board-core.js';
 import { resetPanelDrag, resetPanelResize } from './board-panels.js';
 
 const POLL_MS = 120000;          // github-status per card out on GitHub; the server caches each for 30 s
@@ -247,7 +247,7 @@ async function fetchStatus(t) {
   }
 }
 export async function pollGithub(force) {
-  if (document.hidden && !force) return;   // nothing changes on screen while the page is hidden
+  if (boardHidden() && !force) return;   // nothing changes on screen while the page, or this Cockpit tab (t-c21a), is hidden
   const out = (state.tickets || []).filter(ghOut);
   if (!out.length) return;
   await Promise.all(out.map(fetchStatus));

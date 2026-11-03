@@ -1,6 +1,6 @@
 import { handleMarkdownEnter, handleTabIndent } from './editor.js';
 import { KEY as THEME_KEY, derive, effectiveMode, readChoice, setVars, themeById, themeFor, loadUserThemes } from './theme-data.js';
-import { fetchVersion, loadData, state } from './board-core.js';
+import { POLL_MS, fetchVersion, loadData, loadIfStale, pollData, state } from './board-core.js';
 import { normalizeSearch, whyQueryFromInput } from './board-helpers.js';
 import { renderBoard, showToast } from './board-render.js';
 import { activateDoc, modalState, refreshDocTree } from './board-modal.js';
@@ -535,6 +535,10 @@ export function initUi() {
 
   loadData();
   fetchVersion();
-  setInterval(loadData, 8000);
+  setInterval(pollData, POLL_MS);   // t-c21a: skipped while the board is hidden
+  // Shown again: a plain page fires visibilitychange; a Cockpit tab's frame does not (t-f053), and the focus the Cockpit
+  // gives it can miss, so an observer on the page sees the frame come back on screen.
+  document.addEventListener('visibilitychange', loadIfStale);
+  try { new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) loadIfStale(); }).observe(document.body); } catch { /* no observer: the next poll loads */ }
 }
 

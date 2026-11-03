@@ -6394,7 +6394,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const id = newTicketId(PROJECT_ROOT);
       writeTicket(id, 'in_progress');
       try {
-        let working = { age_s: 240, host: 'this-mac', here: true, pid: 4242 };
+        let working = { at: Math.floor(Date.now() / 1000) - 240, host: 'this-mac', here: true, pid: 4242 };
         let rows = [];
         await stubCockpit(page);
         await page.route('**/api/cockpit-sessions', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rows) }));
@@ -10715,6 +10715,65 @@ test.describe('cockpit in board (t-ddc8)', () => {
     await expect(toast).toHaveText(`⚠ ${warning}`);
     await expect(toast).toHaveClass(/block/);
     expect(await page.evaluate(i => import('/static/board-core.js').then(({ state }) => state.tickets.find(t => t.id === i).status), id)).toBe('closed');
+  });
+
+  // Prod path: the board's 8 s poll (board-core.js loadData, board-ui.js pollData) against the real board's ETags (t-c21a).
+  test('an unchanged poll is an empty 304 that leaves the cards as they are, with a full render once a minute (t-c21a)', async ({ page }) => {
+    const polls = [];
+    page.on('response', r => { if (new URL(r.url()).pathname === '/api/tickets') polls.push({ status: r.status(), inm: r.request().headers()['if-none-match'] || '' }); });
+    await page.clock.install();
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    const card = page.locator('.card').first();
+    await card.evaluate(e => { e.dataset.c21a = 'kept'; });   // a re-render replaces every card node
+    const n = polls.length;
+    await page.clock.fastForward('00:08');
+    await expect.poll(() => polls.length).toBeGreaterThan(n);
+    expect(polls[n]).toMatchObject({ status: 304 });
+    expect(polls[n].inm).not.toBe('');
+    await page.waitForTimeout(300);
+    await expect(page.locator('.card[data-c21a="kept"]')).toHaveCount(1);
+    await page.clock.fastForward('01:00');   // the next poll past a minute renders in full
+    await expect(page.locator('.card[data-c21a="kept"]')).toHaveCount(0);
+  });
+
+  test('a board in a Cockpit tab that is not shown does not poll, and loads as soon as it is shown (t-c21a)', async ({ page }) => {
+    await page.route(BASE + '/c21a-host', route => route.fulfill({ status: 200, contentType: 'text/html', body: '<div id="v" style="height:600px"><iframe src="/" style="width:100%;height:100%"></iframe></div>' }));
+    const reads = [];
+    page.on('request', r => { if (new URL(r.url()).pathname === '/api/tickets' && r.frame() !== page.mainFrame()) reads.push(Date.now()); });
+    await page.clock.install();
+    await page.goto(BASE + '/c21a-host');
+    await expect.poll(() => reads.length).toBeGreaterThan(0);
+    const board = page.frames().find(f => f !== page.mainFrame());
+    await board.waitForLoadState('networkidle');
+    await page.evaluate(() => { document.getElementById('v').style.display = 'none'; });   // what the Cockpit does to a tab not on screen
+    const n = reads.length;
+    await page.clock.fastForward('00:20');
+    await page.waitForTimeout(300);
+    expect(reads.length).toBe(n);
+    await page.evaluate(() => { document.getElementById('v').style.display = 'block'; });   // shown again, with no focus or visibilitychange
+    await expect.poll(() => reads.length).toBe(n + 1);
+  });
+
+  test('after a failed poll shows mock data, the next poll asks for the full reply (t-c21a)', async ({ page }) => {
+    let abort = false;
+    const inm = [];
+    await page.route(u => u.pathname === '/api/tickets', route => {
+      inm.push(route.request().headers()['if-none-match'] || '');
+      return abort ? route.abort() : route.continue();
+    });
+    await page.clock.install();
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    abort = true;
+    const n = inm.length;
+    await page.clock.fastForward('00:08');
+    await expect(page.locator('#refresh-dot')).toHaveClass(/mock/);
+    expect(inm[n]).not.toBe('');   // the poll before the failure did send its ETag
+    abort = false;
+    await page.clock.fastForward('00:08');
+    await expect(page.locator('#refresh-dot')).not.toHaveClass(/mock/);
+    expect(inm[inm.length - 1]).toBe('');
   });
 
   test('modal writes keep or revert their UI on failure: doc save, checkbox, demo, new doc, create ticket (t-1940)', async ({ page }) => {
@@ -18473,7 +18532,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     ghTicket(id);
     await commitPushForm(page, id, { sessions: [], files: `file:  M src/app.js\nmtime: ${nowS() - 3600} src/app.js` });
     await expect(page.locator('#ck-gh-cp-files input[type=checkbox]').nth(0)).toBeChecked();
-    await page.evaluate(async tid => { (await import('/static/board-core.js')).state.tickets.find(x => x.id === tid).working = { by: 'claude', age_s: 5, here: true }; }, id);
+    await page.evaluate(async tid => { (await import('/static/board-core.js')).state.tickets.find(x => x.id === tid).working = { by: 'claude', at: Math.floor(Date.now() / 1000) - 5, here: true }; }, id);
     await page.locator('#ck-gh-cp-cancel').click();
     await page.locator('#ck-gh-cp-open').click();
     await expect(page.locator('#ck-gh-cp-busy')).toBeVisible();

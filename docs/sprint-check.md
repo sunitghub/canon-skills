@@ -393,3 +393,34 @@ sprint agent without leaving the browser — no second terminal.
 - **Scope:** the board integration above, the rail accordion, the worktree
   picker, and the preview pane are done. Further visual polish is follow-up
   work — see `Future/Terminal-In-Board/` and tickets `t-8a63`/`t-ddc8`/`t-96a8`.
+
+## Polling budget
+
+Everything the board and the Cockpit poll, and what one request costs. A poll is paid on every tick for every open tab, so a
+process started per request, or a full reply when nothing changed, adds up. Measured on canon's own tree (1,379 tickets) on
+2026-11-03 (t-c21a) with `tests/sprint-check-poll-budget.sh --measure <root>`, which counts the `git`, `gh` and `tkt`
+processes each request starts. In the test suite, the same script fails when a poll on a tree with no bound ticket starts
+any process, when `/api/git` starts more than one, or when an unchanged poll gets more than an empty 304.
+
+| Poll | Who, how often | Median | Processes per request | Reply | Unchanged poll |
+|---|---|---|---|---|---|
+| `GET /api/tickets?all=1` | board, 8 s per shown tab | 65 ms | 0; 2 git while an open or in-progress ticket is bound to a worktree (its live docs) | 2.46 MB | 0 B (304) |
+| `GET /api/handoff` | board, 8 s per shown tab | <1 ms | 0 | 32.7 KB | 0 B (304) |
+| `GET /api/git` | board, 8 s per shown tab | 13 ms | 1 git (`status --porcelain=v2 --branch`); the log and count are read once per HEAD | 676 B | 0 B (304) |
+| branch divergence scan (inside `/api/tickets`) | at most every 10 s (`SPRINT_CHECK_DIVERGENCE_TTL`) | — | 2 git, more per linked worktree and unmerged branch when `.tickets/` is tracked | — | — |
+| `GET /api/cockpit-sessions` | board render, 8 s; Cockpit, 5 s | <1 ms | 0 (the daemon's `/sessions`) | small | full reply |
+| daemon meter (inside `/sessions`, per Claude session) | 5 s | — | 0 | — | reads only the transcript bytes added since the last poll; 0 B when unchanged |
+| `GET /api/cockpit` | Cockpit rail, 5 s while a session tab is open | <1 ms | 0 | 319 B | full reply |
+| `GET /api/cockpit-interrupted` | Cockpit, 15 s | <1 ms | 0 | small | full reply |
+| `GET /api/project-stats` | Projects page only, 30 s | 31 ms | 1 git (`log -1`) | 60 B | full reply |
+| GitHub status per card out on GitHub | board, 120 s per shown tab | — | `gh`, cached 30 s by the board | — | — |
+
+- **A hidden board does not poll.** A Cockpit tab that is not on screen, or a hidden page, skips the 8 s poll and the
+  GitHub poll, and loads as soon as it is shown again.
+- **Unchanged polls are free on the page too.** Each of the three board replies carries an ETag (a hash of the reply);
+  the board sends it back, and when all three answer 304 it does not redraw the cards (a full redraw still happens at
+  least once a minute).
+- **Not cached, on purpose:** `git status` (an unstaged edit changes nothing git exposes more cheaply), and the full
+  `/api/tickets` reply (most of it is the bodies of done tickets; taking those out of the poll is t-7ed9).
+- Before t-c21a, per shown tab every 8 s: 7 git processes and 2.5 MB whether or not anything changed, from hidden tabs
+  too, and the meter re-read the whole transcript (8 MB for a long session) every 5 s.

@@ -347,14 +347,14 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			}
 			tickets = filtered
 		}
-		sendJSON(w, tickets)
+		sendJSONCond(w, r, tickets)
 	case "/api/handoff":
 		root, ok := effectiveRoot(r)
 		if !ok {
 			http.Error(w, "unknown project", http.StatusBadRequest)
 			return
 		}
-		sendJSON(w, loadHandoff(root))
+		sendJSONCond(w, r, loadHandoff(root))
 	case "/api/logbook": // t-c6bb: HANDOFF.md and LEARNINGS.md text for the Logbook (logbook.go)
 		root, ok := effectiveRoot(r)
 		if !ok {
@@ -386,7 +386,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "unknown project", http.StatusBadRequest)
 			return
 		}
-		sendJSON(w, loadGit(root))
+		sendJSONCond(w, r, loadGit(root))
 	case "/api/why":
 		root, ok := effectiveRoot(r)
 		if !ok {
@@ -1459,16 +1459,69 @@ func loadHandoff(root string) map[string]any {
 	return map[string]any{"focus": focusAny, "raw": text}
 }
 
+// loadGit answers the board's 8 s /api/git poll with one git process (t-c21a): `status --porcelain=v2 --branch` gives the
+// branch, the HEAD oid and the modified entries; the log and the commit count depend only on HEAD, so they are read once per
+// oid. status itself is not cached: an unstaged edit changes nothing git exposes more cheaply.
 func loadGit(root string) map[string]any {
-	status := runGitIn(root, "status", "--porcelain")
-	modified := 0
-	for _, line := range strings.Split(status, "\n") {
-		if strings.TrimSpace(line) != "" {
+	cmd := exec.Command("git", "status", "--porcelain=v2", "--branch")
+	cmd.Dir = rootOr(root)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	isGit := cmd.Run() == nil
+	modified, branch, oid := 0, "", ""
+	for _, line := range strings.Split(out.String(), "\n") {
+		switch {
+		case strings.HasPrefix(line, "# branch.head "):
+			branch = strings.TrimPrefix(line, "# branch.head ")
+		case strings.HasPrefix(line, "# branch.oid "):
+			oid = strings.TrimPrefix(line, "# branch.oid ")
+		case strings.HasPrefix(line, "#"), strings.TrimSpace(line) == "":
+		default:
 			modified++
 		}
 	}
+	if branch == "(detached)" {
+		branch = "HEAD" // what rev-parse --abbrev-ref HEAD printed
+	}
+	switch {
+	case !isGit:
+		oid, branch = "", ""
+	case oid == "(initial)":
+		oid, branch = "", "HEAD" // no commit yet: what rev-parse --abbrev-ref HEAD printed
+	case branch == "":
+		branch = "main"
+	}
+	log, totalCommits := gitHeadInfo(root, oid)
+	cwd := rootOr(root)
+	// t-d218: parity with server.py — a repo with no commits yet has no total_commits but IS git (isGit above).
+	return map[string]any{"branch": branch, "project": filepath.Base(cwd), "root": cwd, "modified": modified, "log": log, "total_commits": totalCommits, "is_git": isGit}
+}
+
+type gitHeadEntry struct {
+	oid   string
+	log   []map[string]string
+	total any
+}
+
+var (
+	gitHeadMu    sync.Mutex
+	gitHeadCache = map[string]gitHeadEntry{} // root -> the last HEAD's log and count
+)
+
+// gitHeadInfo is the last 8 commits (handoff auto-commits skipped) and the commit count at oid; "" (no commit) has neither.
+func gitHeadInfo(root, oid string) ([]map[string]string, any) {
 	log := []map[string]string{}
-	for _, line := range strings.Split(runGitIn(root, "log", "--oneline", "-40"), "\n") {
+	if oid == "" {
+		return log, nil
+	}
+	key := rootOr(root)
+	gitHeadMu.Lock()
+	e, ok := gitHeadCache[key]
+	gitHeadMu.Unlock()
+	if ok && e.oid == oid {
+		return e.log, e.total
+	}
+	for _, line := range strings.Split(runGitIn(root, "log", "--oneline", "-40", oid), "\n") {
 		parts := strings.SplitN(line, " ", 2)
 		if len(parts) == 2 && !strings.HasPrefix(parts[1], "chore: auto-update handoff") && !strings.HasPrefix(parts[1], "chore: auto-handoff") {
 			log = append(log, map[string]string{"hash": parts[0], "message": parts[1]})
@@ -1477,19 +1530,14 @@ func loadGit(root string) map[string]any {
 			}
 		}
 	}
-	// t-5a4b: a project with no git has no branch — report "" rather than inventing "main".
-	isGit := strings.TrimSpace(runGitIn(root, "rev-parse", "--is-inside-work-tree")) == "true"
-	branch := runGitIn(root, "rev-parse", "--abbrev-ref", "HEAD")
-	if branch == "" && isGit {
-		branch = "main"
+	var total any
+	if n, err := strconv.Atoi(strings.TrimSpace(runGitIn(root, "rev-list", "--count", oid))); err == nil {
+		total = n
 	}
-	var totalCommits any
-	if n, err := strconv.Atoi(strings.TrimSpace(runGitIn(root, "rev-list", "--count", "HEAD"))); err == nil {
-		totalCommits = n
-	}
-	cwd := rootOr(root)
-	// t-d218: parity with server.py — a repo with no commits yet has no total_commits but IS git (isGit above).
-	return map[string]any{"branch": branch, "project": filepath.Base(cwd), "root": cwd, "modified": modified, "log": log, "total_commits": totalCommits, "is_git": isGit}
+	gitHeadMu.Lock()
+	gitHeadCache[key] = gitHeadEntry{oid, log, total}
+	gitHeadMu.Unlock()
+	return log, total
 }
 
 func loadCommit(hash string, root string) map[string]any {
@@ -3216,6 +3264,9 @@ func writeLiveTicket(id, kind string, payload map[string]any, root string) (hand
 
 func annotateLiveDocs(tickets []ticket, root string) {
 	root = rootOr(root)
+	if !anyLiveCandidate(tickets, root) {
+		return // t-c21a: /api/tickets is polled; no bound ticket, no git call
+	}
 	wts := registeredWorktrees(root)
 	if len(wts) == 0 {
 		return
@@ -3244,6 +3295,37 @@ func annotateLiveDocs(tickets []ticket, root string) {
 		t["ticket_etag"] = docEtag(raw)
 		t["docs_from"] = map[string]any{"branch": branch}
 	}
+}
+
+// anyLiveCandidate (t-c21a) is liveWorktreeFull's two ways to a worktree, read without git: an open or in-progress folder
+// ticket bound by .cockpit-cwd to a linked worktree of this repository (its .git file, as t-2906's linkedWorktreeOf), or one
+// whose divergence scan found it in progress on a worktree branch. A main checkout whose .git is not a folder keeps the git
+// listing: its worktrees' .git files point elsewhere.
+func anyLiveCandidate(tickets []ticket, root string) bool {
+	gitDir := filepath.Join(root, ".git")
+	if fi, err := os.Stat(gitDir); err != nil || !fi.IsDir() {
+		return true
+	}
+	wtDir, tdir := filepath.Join(gitDir, "worktrees"), ticketsDirForRoot(root)
+	for _, t := range tickets {
+		id, _ := t["id"].(string)
+		if t["layout"] != "folder" || id == "" {
+			continue
+		}
+		switch t["status"] {
+		case "closed", "cancelled", "archived":
+			continue
+		}
+		if d, ok := t["branch_divergence"].(map[string]any); ok && d["where"] == "worktree" && d["status"] == "in_progress" {
+			return true
+		}
+		if raw, err := os.ReadFile(filepath.Join(tdir, id, ".cockpit-cwd")); err == nil {
+			if cwd := strings.TrimSpace(string(raw)); cwd != "" && linkedWorktreeOf(cwd, wtDir) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // liveForDocFull computes a doc's ticket binding exactly like /api/tickets (full
@@ -5212,6 +5294,23 @@ func sendText(w http.ResponseWriter, text string) {
 
 func sendJSON(w http.ResponseWriter, data any) {
 	body, _ := json.Marshal(data)
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+	w.Write(body)
+}
+
+// sendJSONCond (t-c21a) is sendJSON for a polled route: the ETag is a hash of the exact reply, so any change to the reply
+// changes it, and a poll that already holds this reply gets an empty 304 instead of the body.
+func sendJSONCond(w http.ResponseWriter, r *http.Request, data any) {
+	body, _ := json.Marshal(data)
+	sum := sha256.Sum256(body)
+	etag := `"` + hex.EncodeToString(sum[:12]) + `"`
+	w.Header().Set("ETag", etag)
+	w.Header().Set("Cache-Control", "no-cache")
+	if r.Header.Get("If-None-Match") == etag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
 	w.Write(body)

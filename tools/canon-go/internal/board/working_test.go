@@ -78,7 +78,7 @@ func TestAnnotateWorking(t *testing.T) {
 		tickets := []ticket{{"id": "t-aa01", "status": "in_progress"}}
 		annotateWorking(dir, tickets, now, "me", alive)
 		w, _ := tickets[0]["working"].(map[string]any)
-		if w["age_s"] != 90 || w["host"] != "elsewhere" || w["here"] != false || w["pid"] != 4242 {
+		if w["at"] != now.Add(-90*time.Second).Unix() || w["host"] != "elsewhere" || w["here"] != false || w["pid"] != 4242 {
 			t.Errorf("working = %v", w)
 		}
 	})

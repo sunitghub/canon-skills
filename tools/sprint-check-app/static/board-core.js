@@ -1,5 +1,5 @@
 import { displayTicketId } from './board-helpers.js';
-import { render } from './board-render.js';
+import { refreshLive, render } from './board-render.js';
 
 // ── Config ───────────────────────────────────────────────────────────────
 
@@ -261,25 +261,55 @@ export function toggleHiddenLane(lane) {
 
 // ── Data layer ───────────────────────────────────────────────────────────
 
+// t-c21a: the board's poll. Each reply carries an ETag (a hash of the reply); a poll that already holds it gets an empty 304,
+// and when all three are unchanged the cards are not re-rendered (at least one full render a minute keeps time-based lanes
+// right). A hidden board (a Cockpit tab not on screen, or a hidden page) does not poll; it loads as soon as it is shown.
+export const POLL_MS = 8000;
+const FULL_RENDER_MS = 60000;
+const pollTags = {};   // url -> the ETag of the reply now in state
+let lastFullRender = 0;
+let lastLoad = 0;
+
+export function boardHidden() {
+  if (document.hidden) return true;
+  try { return !!window.frameElement && window.frameElement.getClientRects().length === 0; } catch { return false; }   // display:none view
+}
+
+export function pollData() { if (!boardHidden()) loadData(); }
+export function loadIfStale() { if (!boardHidden() && Date.now() - lastLoad >= POLL_MS) loadData(); }
+
+async function fetchPolled(url) {
+  const r = await fetch(url, { cache: 'no-store', headers: pollTags[url] ? { 'If-None-Match': pollTags[url] } : {} });
+  if (r.status === 304) return { same: true, ok: true };
+  const data = await r.json();
+  const tag = r.headers.get('ETag');
+  if (tag && r.ok) pollTags[url] = tag; else delete pollTags[url];
+  return { same: false, ok: r.ok, data };
+}
+
 export async function loadData() {
+  lastLoad = Date.now();
   setDot('loading');
   try {
     const [tr, hr, gr] = await Promise.all([
-      fetch('/api/tickets?all=1'),
-      fetch('/api/handoff'),
-      fetch('/api/git'),
+      fetchPolled('/api/tickets?all=1'),
+      fetchPolled('/api/handoff'),
+      fetchPolled('/api/git'),
     ]);
     if (!tr.ok) throw new Error();
-    state.tickets = await tr.json();
-    state.handoff = await hr.json();
-    state.git     = await gr.json();
+    if (!tr.same) state.tickets = tr.data;
+    if (!hr.same) state.handoff = hr.data;
+    if (!gr.same) state.git     = gr.data;
     setDot('live');
+    if (tr.same && hr.same && gr.same && Date.now() - lastFullRender < FULL_RENDER_MS) { refreshLive(); return; }
   } catch {
+    for (const url in pollTags) delete pollTags[url];   // mock data on screen: the next poll must fetch the real replies
     state.tickets = MOCK.tickets;
     state.handoff = MOCK.handoff;
     state.git     = MOCK.git;
     setDot('mock');
   }
+  lastFullRender = Date.now();
   render();
 }
 
