@@ -588,6 +588,13 @@ rm -rf "$json_project"
   out="$(cd "$wt2" && "$TKT" close "$pid2" --no-sprint 2>&1)"
   [[ "$out" != *"copied"* ]] || fail "a worktree with no copy printed a copy-back line: $out"
   assert_grep "^status: closed$" ".tickets/$pid2/ticket.md"
+  # t-cb0a: tkt copy-back (the board runs it after Done/Discard wrote the worktree's copy) copies without a status change of its own
+  sed -i.bak 's/^status: .*/status: cancelled/' "$wt/.tickets/$cid/ticket.md" && rm -f "$wt/.tickets/$cid/ticket.md.bak"
+  out="$(cd "$wt" && "$TKT" copy-back "$cid" 2>&1)"
+  assert_contains "$out" "copied $cid's closed folder back to"; assert_grep "^status: cancelled$" "$mf"; assert_grep "^github: acme/app#9$" "$mf"
+  out="$(cd "$wt2" && "$TKT" copy-back "$pid2" 2>&1)"; assert_eq "" "$out"   # no worktree copy: nothing to do, nothing said
+  rc=0; out="$(cd "$wt" && "$TKT" copy-back 2>&1)" || rc=$?; [[ $rc -ne 0 && "$out" == *"Usage: tkt copy-back <id>"* ]] || fail "copy-back with no id: rc=$rc $out"
+  [[ "$("$TKT" help | grep -A1 'force-close a doc-less/backlog ticket directly.')" == *"copy-back <id>            Copy a worktree's own ticket folder back to main"* ]] || fail "tkt help must list copy-back after close's own text, not inside it"
   # a ticket main has no folder for is not created there; an id that is not a plain ticket name is refused by the helper itself
   zid=t-zzz1; mkdir -p "$wt/.tickets/$zid"; printf -- '---\nid: %s\nstatus: open\n---\n# only here\n' "$zid" > "$wt/.tickets/$zid/ticket.md"
   (cd "$wt" && "$TKT" close "$zid" --no-sprint >/dev/null 2>&1)
