@@ -43,6 +43,40 @@ func TestLogbookRoute(t *testing.T) {
 		t.Errorf("want mtime on handoff and text on learnings, got %v", out)
 	}
 
+	// t-7f7c: the three newer files come back like the first two: absent = missing, present = text and mtime, symlink / directory / oversize = an error and no text
+	for _, f := range []struct{ key, name string }{{"promoted", "PROMOTED.md"}, {"decisions", "DECISIONS.md"}, {"learnings_archive", "LEARNINGS-archive.md"}} {
+		if out[f.key]["missing"] != true || out[f.key]["text"] != nil {
+			t.Errorf("absent %s = %v, want {missing:true}", f.name, out[f.key])
+		}
+		writeFile(t, filepath.Join(root, f.name), "# "+f.name+"\n")
+		_, o := logbookGet(t, "GET", "/api/logbook")
+		if o[f.key]["text"] != "# "+f.name+"\n" || o[f.key]["mtime"] == nil {
+			t.Errorf("%s = %v, want its text and mtime", f.name, o[f.key])
+		}
+		os.Remove(filepath.Join(root, f.name))
+		writeFile(t, filepath.Join(root, f.name), strings.Repeat("a", logbookMaxBytes+1))
+		_, o = logbookGet(t, "GET", "/api/logbook")
+		if e, _ := o[f.key]["error"].(string); !strings.Contains(e, "512 KB") || o[f.key]["text"] != nil {
+			t.Errorf("oversize %s = %v, want the size refusal and no text", f.name, o[f.key])
+		}
+		os.Remove(filepath.Join(root, f.name))
+		if err := os.Symlink(filepath.Join(root, "HANDOFF.md"), filepath.Join(root, f.name)); err == nil {
+			_, o = logbookGet(t, "GET", "/api/logbook")
+			if e, _ := o[f.key]["error"].(string); !strings.Contains(e, "symbolic link") || o[f.key]["text"] != nil {
+				t.Errorf("symlinked %s = %v, want the symlink refusal and no text", f.name, o[f.key])
+			}
+			os.Remove(filepath.Join(root, f.name))
+		}
+		if err := os.Mkdir(filepath.Join(root, f.name), 0755); err != nil {
+			t.Fatal(err)
+		}
+		_, o = logbookGet(t, "GET", "/api/logbook")
+		if e, _ := o[f.key]["error"].(string); !strings.Contains(e, "not a regular file") {
+			t.Errorf("directory %s error = %q", f.name, e)
+		}
+		os.Remove(filepath.Join(root, f.name))
+	}
+
 	// a missing file says so
 	os.Remove(filepath.Join(root, "LEARNINGS.md"))
 	_, out = logbookGet(t, "GET", "/api/logbook")

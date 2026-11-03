@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Changed
+- The board's Logbook has four tabs: Handoff, Learnings, Promoted and Decisions. Learnings lists only the rows still waiting for review (no filter chips, "Nothing waiting for review" when none); Promoted shows the `PROMOTED.md` rules with their ticket links and the line count against 60 (or, without a `PROMOTED.md`, the `LEARNINGS.md` rows marked promoted); Decisions shows `DECISIONS.md` newest first, as a table or as dated sections. The Learnings text names the right destination per project kind. `GET /api/logbook` also returns `promoted`, `decisions` and `learnings_archive`. Read-only (t-7f7c).
+
 ### Fixed
 - Done or Discard on the board for a ticket in a worktree with its own `.tickets/` copy (gitignored) now copies the ticket's folder back to the main checkout, as `tkt close` does, so main no longer says `open` once the worktree is removed. If the copy cannot be made, the status is still saved and the board says why. The board runs it through the new `tkt copy-back <id>` (t-cb0a).
 

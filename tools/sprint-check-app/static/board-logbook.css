@@ -24,6 +24,8 @@
 .lb-sec.lb-focus { border-color: var(--accent); }
 .lb-sec h3 { margin: 0 0 6px; font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-muted); font-weight: 600; }
 .lb-md .doc-check-marker { pointer-events: none; }
+.lb-decisions .doc-heading-1 { margin-bottom: 10px; }
+.lb-decisions .doc-heading-2 { text-transform: none; letter-spacing: 0; font-size: 13px; }   /* t-7f7c: a section title keeps its ticket id's case */
 .lb-none { color: var(--text-dim); margin: 0; }
 
 .lb-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
@@ -33,7 +35,7 @@
 }
 .lb-chip:hover { border-color: var(--border-hover); color: var(--text); }
 .lb-chip[aria-pressed="true"] { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
-.lb-status { min-height: 16px; font-size: 11.5px; color: var(--th-warn-ink, #fbbf24); margin-bottom: 4px; }
+.lb-status, .lb-cap-over { min-height: 16px; font-size: 11.5px; color: var(--th-warn-ink, #fbbf24); margin-bottom: 4px; }
 
 .lb-table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
 .lb-table th { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border); }
@@ -58,6 +60,13 @@
 .lb-stc .lb-st { max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: top; }
 .lb-target { overflow-wrap: break-word; }   /* breaks only a word too long for the cap, so a short file name stays one line (t-5157) */
 
+.lb-cap { font-size: 11.5px; margin-bottom: 8px; }
+.lb-cap:not(.lb-cap-over) { color: var(--text-muted); }
+.lb-cap-over { font-weight: 600; }   /* its amber is the .lb-status rule's */
+.lb-rules { list-style: none; margin: 0; padding: 0; }
+.lb-rules li { border: 1px solid var(--border); border-radius: 10px; background: var(--surface-raised); padding: 8px 12px; margin-bottom: 8px; font-size: 12.5px; line-height: 1.5; overflow-wrap: anywhere; }
+.lb-rule { display: inline; }
+.lb-rule p { display: inline; margin: 0; }
 .lb-empty { border: 1px dashed var(--border-hover); border-radius: 10px; padding: 16px; color: var(--text-muted); font-size: 12.5px; }
 .lb-empty b { display: block; color: var(--text); margin-bottom: 4px; }
 .lb-empty.lb-err { border-color: var(--th-bad-line, rgba(248,113,113,.45)); }
@@ -67,4 +76,5 @@ html[data-theme="light"] .lb-badge,
 html[data-theme="light"] .lb-st-un { border-color: var(--th-warn-line, #d97706); color: var(--th-warn-ink, #92400e); background: var(--th-warn-soft, #fef3c7); }
 html[data-theme="light"] .lb-st-un { background: transparent; }
 html[data-theme="light"] .lb-st-pr { border-color: var(--th-ok-line, #16a34a); color: var(--th-ok-ink, #14532d); }
+html[data-theme="light"] .lb-cap-over,
 html[data-theme="light"] .lb-status { color: var(--th-warn-ink, #92400e); }
