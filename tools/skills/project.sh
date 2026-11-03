@@ -55,6 +55,27 @@ _remove_dir_link() {
   fi
 }
 
+# t-f5e4: a branch or cloud PR controls what is in a worktree, so a link planted at .claude, .agents or deeper must not carry a
+# write out of it. Same rule as the Go side (worktreelinks.go underLink / notRegular), held by tests/worktree-links-parity.sh.
+# _under_link <root> <path>: 0 when a folder from <root> down to <path>'s parent is a symlink/junction or not a folder
+# (canon then writes nothing below it). Stricter than resolving the path: a link that points back inside is refused too.
+_under_link() {
+  local root="${1%/}" rel part cur
+  rel="$(dirname "$2")"; rel="${rel#"$root"}"; rel="${rel#/}"
+  [ -n "$rel" ] || return 1
+  cur="$root"
+  while [ -n "$rel" ]; do
+    part="${rel%%/*}"; cur="$cur/$part"
+    case "$rel" in */*) rel="${rel#*/}" ;; *) rel="" ;; esac
+    [ -e "$cur" ] || [ -L "$cur" ] || return 1   # not there yet: mkdir makes a real folder
+    _is_dir_link "$cur" && return 0
+    [ -d "$cur" ] || return 0
+  done
+  return 1
+}
+# _not_regular <path>: 0 when <path> exists and is not a plain file (a symlink, even a dangling one, or a folder).
+_not_regular() { { [ -e "$1" ] || [ -L "$1" ]; } && { [ -L "$1" ] || [ ! -f "$1" ]; }; }
+
 # t-f99b: the skill mirror (.claude/skills, .agents/skills) is a LOCAL link to
 # canon's skills — it must never be committed. On Windows a junction is
 # git-visible (git tracks its CONTENTS as files), so a consumer `git add -A`
@@ -68,6 +89,7 @@ _ensure_mirror_gitignored() {
   git -C "$project_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
   local gi entry rel tmp
   gi="$(_ignore_file "$project_dir")"
+  if _not_regular "$gi"; then echo "  [gitignore] $gi is not a regular file — left as is"; return 0; fi
   # t-c433: no trailing slash — git treats a symlink as a file, so "/.claude/skills/" (directories only) never
   # matched the link on macOS/Linux; the slash-less form matches a symlink, a directory and a Windows junction.
   for entry in "/.claude/skills" "/.agents/skills"; do
@@ -112,6 +134,7 @@ upsert_gate_agents() {
   local project_dir="$1" target="$SKILLS_ROOT/agents"
   local link="$project_dir/.claude/agents" cur src dst
   [ -d "$target" ] || return 0
+  if _under_link "$project_dir" "$link"; then echo "  [agents]  $link is under a link — left as is"; return 0; fi
   # canon's own root is linked too (like its .claude/skills), so canon's own closes run its gates.
   mkdir -p "$project_dir/.claude"
   if _is_dir_link "$link"; then
@@ -127,6 +150,10 @@ upsert_gate_agents() {
   elif [ -d "$link" ]; then
     for src in "$target"/canon-*.md; do
       dst="$link/$(basename "$src")"
+      if _not_regular "$dst"; then
+        echo "  [agents]  $dst is not a regular file — left as is"
+        continue
+      fi
       if [ -e "$dst" ] && ! grep -qF "canon:agent" "$dst"; then
         echo "  [agents]  $dst exists and is not canon-managed — left as is"
         continue
@@ -194,6 +221,7 @@ _ensure_agents_link_gitignored() {
   local project_dir="$1" gi entry="/.claude/agents"
   git -C "$project_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
   gi="$(_ignore_file "$project_dir")"
+  _not_regular "$gi" && return 0
   if ! has_line "$entry" "$gi"; then
     [ -s "$gi" ] && [ -n "$(tail -c1 "$gi")" ] && echo >> "$gi"
     printf '%s\n' "$entry" >> "$gi"
@@ -211,6 +239,7 @@ link_worktree() {
   wt_dir="$(cd "${1:-}" 2>/dev/null && pwd)" || { echo "link-worktree: no such dir: ${1:-}" >&2; return 1; }
   target="$SKILLS_ROOT/skills"
   for link in "$wt_dir/.claude/skills" "$wt_dir/.agents/skills"; do
+    if _under_link "$wt_dir" "$link"; then echo "  [worktree-link] $link is under a link — left as is"; continue; fi
     if _is_dir_link "$link"; then
       [ "$(_read_dir_link "$link")" = "$target" ] && continue
       _create_dir_link "$target" "$link"

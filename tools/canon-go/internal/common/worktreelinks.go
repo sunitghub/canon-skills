@@ -23,6 +23,10 @@ func LinkWorktree(canonRoot, wt string) []string {
 	if isDir(skills) {
 		for _, rel := range []string{".claude/skills", ".agents/skills"} {
 			link := filepath.Join(wt, filepath.FromSlash(rel))
+			if underLink(wt, link) {
+				did = append(did, link+" is under a link: left as is")
+				continue
+			}
 			switch {
 			case isDirLink(link):
 				if sameDir(readDirLink(link), skills) {
@@ -56,6 +60,9 @@ func linkGateAgents(canonRoot, wt string) []string {
 		return nil
 	}
 	link := filepath.Join(wt, ".claude", "agents")
+	if underLink(wt, link) {
+		return []string{link + " is under a link: left as is"}
+	}
 	_ = os.MkdirAll(filepath.Join(wt, ".claude"), 0o755)
 	switch {
 	case isDirLink(link):
@@ -73,6 +80,10 @@ func linkGateAgents(canonRoot, wt string) []string {
 		srcs, _ := filepath.Glob(filepath.Join(target, "canon-*.md"))
 		for _, src := range srcs {
 			dst := filepath.Join(link, filepath.Base(src))
+			if notRegular(dst) {
+				did = append(did, dst+" is not a regular file: left as is")
+				continue
+			}
 			if b, err := os.ReadFile(dst); err == nil && !bytes.Contains(b, []byte("canon:agent")) {
 				did = append(did, dst+" exists and is not canon-managed: left as is")
 				continue
@@ -82,7 +93,7 @@ func linkGateAgents(canonRoot, wt string) []string {
 				continue
 			}
 			if have, err := os.ReadFile(dst); err != nil || !bytes.Equal(have, want) {
-				if os.WriteFile(dst, want, 0o644) == nil {
+				if writeFileNoFollow(dst, want) == nil {
 					did = append(did, "copied: "+dst)
 				}
 			}
@@ -131,6 +142,9 @@ func ensureMirrorGitignored(wt string) []string {
 	}
 	var did []string
 	gi := ignoreFile(wt)
+	if notRegular(gi) {
+		return []string{gi + " is not a regular file: left as is"}
+	}
 	for _, entry := range []string{"/.claude/skills", "/.agents/skills"} {
 		if hasLine(gi, entry+"/") { // the directory-only line an earlier canon wrote: replace it, or drop it if the bare line exists
 			have := hasLine(gi, entry)
@@ -145,7 +159,7 @@ func ensureMirrorGitignored(wt string) []string {
 				}
 				out = append(out, l)
 			}
-			_ = os.WriteFile(gi, []byte(strings.Join(out, "")), 0o644)
+			_ = writeFileNoFollow(gi, []byte(strings.Join(out, "")))
 			did = append(did, "gitignore: "+entry+" (replaced "+entry+"/)")
 		}
 		did = append(did, ensureLine(wt, entry)...)
@@ -167,14 +181,14 @@ func ensureLine(wt, entry string) []string {
 		return nil
 	}
 	gi := ignoreFile(wt)
-	if hasLine(gi, entry) {
+	if notRegular(gi) || hasLine(gi, entry) {
 		return nil
 	}
 	raw, _ := os.ReadFile(gi)
 	if len(raw) > 0 && raw[len(raw)-1] != '\n' {
 		raw = append(raw, '\n')
 	}
-	if os.WriteFile(gi, append(raw, []byte(entry+"\n")...), 0o644) != nil {
+	if writeFileNoFollow(gi, append(raw, []byte(entry+"\n")...)) != nil {
 		return nil
 	}
 	return []string{"gitignore: " + entry}
@@ -206,6 +220,51 @@ func insideWorkTree(dir string) bool {
 func tracked(dir, rel string) bool {
 	out, err := exec.Command("git", "-C", dir, "ls-files", "--", rel).Output()
 	return err == nil && strings.TrimSpace(string(out)) != ""
+}
+
+// underLink (t-f5e4): a branch or cloud PR controls what is in a worktree, so a link planted at .claude, .agents or deeper must not
+// carry a write out of it. True when any folder from wt down to p's parent is a symlink or junction, or is not a folder: canon then
+// writes nothing below it. Stricter than resolving the path and checking it is inside wt: a link that points back inside is refused too.
+func underLink(wt, p string) bool {
+	rel, err := filepath.Rel(wt, filepath.Dir(p))
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return true
+	}
+	cur := wt
+	if rel == "." {
+		return false
+	}
+	for _, part := range strings.Split(rel, string(filepath.Separator)) {
+		cur = filepath.Join(cur, part)
+		fi, err := os.Lstat(cur)
+		if err != nil {
+			return false // not there yet: MkdirAll makes a real folder
+		}
+		if isDirLink(cur) || !fi.IsDir() {
+			return true
+		}
+	}
+	return false
+}
+
+// notRegular (t-f5e4): true when p exists and is not a plain file (a symlink, even a dangling one, a junction, a folder).
+func notRegular(p string) bool {
+	fi, err := os.Lstat(p)
+	return err == nil && !fi.Mode().IsRegular()
+}
+
+// writeFileNoFollow writes p without following a link at its last component (O_NOFOLLOW where the OS has it, noFollow): the
+// check in notRegular and this open cannot be raced into a write through a link swapped in between.
+func writeFileNoFollow(p string, data []byte) error {
+	f, err := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_TRUNC|noFollow, 0o644)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+	return f.Close()
 }
 
 func exists(p string) bool { _, err := os.Lstat(p); return err == nil }

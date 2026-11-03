@@ -36,7 +36,7 @@ state() {   # state <dir>: what a worktree link leaves behind, as text to compar
   printf -- '--- ignore\n'; cat "$(ignore_file "$d")" 2>/dev/null || true
   printf -- '--- .gitignore\n'; cat "$d/.gitignore" 2>/dev/null || true
   if [[ -d "$d/.claude/agents" && ! -L "$d/.claude/agents" ]]; then
-    printf -- '--- agents folder\n'; (cd "$d/.claude/agents" && for f in *; do printf '%s %s\n' "$f" "$(shasum -a 256 < "$f" | cut -c1-12)"; done)
+    printf -- '--- agents folder\n'; (cd "$d/.claude/agents" && for f in *; do printf '%s %s\n' "$f" "$([[ -f "$f" ]] && shasum -a 256 < "$f" | cut -c1-12 || echo -)"; done)
   fi
   linked "$d" && { printf -- '--- status\n'; git -C "$d" status --porcelain; }
   return 0
@@ -56,7 +56,7 @@ both() {   # both <name> <prep>: run prep on two fresh copies, link one with Go 
 $go
 --- skills.sh
 $bash"
-  [[ "$go" == *".claude/agents -> $(cd "$ROOT/agents" && pwd -P)"* || "$name" == own-agents ]] || fail "worktree-links-parity: $name: no .claude/agents link to canon's agents:
+  [[ "$go" == *".claude/agents -> $(cd "$ROOT/agents" && pwd -P)"* || "$name" == own-agents || "$name" == planted-* ]] || fail "worktree-links-parity: $name: no .claude/agents link to canon's agents:
 $go"
 }
 
@@ -85,4 +85,42 @@ both main-checkout main_checkout
 both own-agents own_agents
 both stale-links stale_links
 
-echo "worktree-links-parity: ok (Go and skills.sh link-worktree agree: fresh worktree, main checkout, a --separate-git-dir checkout, a project-owned agents folder, stale links)"
+# t-f5e4, prod path: `tkt land` (skills.sh link-worktree on a cloud PR's content) and the daemon's session start (Go) link a
+# worktree whose content a branch controls. A symlink planted there must leave every outside file and folder untouched, in both
+# languages. The victim is checked on each side: a green "Go and skills.sh agree" alone would pass if both wrote through it.
+planted_agent_file() {   # an agent file symlinked to an outside file that holds the canon marker
+  git -C "$1/main" worktree add -q -b w "$1/dir"; mkdir -p "$1/out" "$1/dir/.claude/agents"
+  printf '<!-- canon:agent -->\nmine\n' > "$1/out/victim"; ln -s "$1/out/victim" "$1/dir/.claude/agents/canon-evaluator.md"
+}
+planted_dangling() {     # the same, to a path that does not exist
+  git -C "$1/main" worktree add -q -b w "$1/dir"; mkdir -p "$1/out" "$1/dir/.claude/agents"
+  ln -s "$1/out/new-file" "$1/dir/.claude/agents/canon-evaluator.md"
+}
+planted_claude_dir() {   # .claude is a link to an outside folder
+  git -C "$1/main" worktree add -q -b w "$1/dir"; mkdir -p "$1/out"; echo keep > "$1/out/keep"; ln -s "$1/out" "$1/dir/.claude"
+}
+planted_agents_dir() {   # .agents is a link to an outside folder
+  git -C "$1/main" worktree add -q -b w "$1/dir"; mkdir -p "$1/out"; echo keep > "$1/out/keep"; ln -s "$1/out" "$1/dir/.agents"
+}
+planted_gitignore() {    # a main checkout whose .gitignore is a link to an outside file
+  mkdir -p "$1/out"; printf 'node_modules\n' > "$1/out/victim"; rm "$1/main/.gitignore"; ln -s "$1/out/victim" "$1/main/.gitignore"; ln -s main "$1/dir"
+}
+outside_untouched() {    # outside_untouched <case> <expected `ls -A out`> [<victim content>]: on both sides
+  local name="$1" want="$2" content="${3-}" side
+  for side in go bash; do
+    [[ "$(ls -A "$W/$name-$side/out" | tr '\n' ' ')" == "$want" ]] || fail "worktree-links-parity: $name ($side): the outside folder changed: $(ls -A "$W/$name-$side/out" | tr '\n' ' ')"
+    [[ -z "$content" ]] || [[ "$(cat "$W/$name-$side/out/victim")" == "$content" ]] || fail "worktree-links-parity: $name ($side): the outside file was written through the link"
+  done
+}
+both planted-agent-file planted_agent_file
+outside_untouched planted-agent-file "victim " "$(printf '<!-- canon:agent -->\nmine')"
+both planted-dangling planted_dangling
+outside_untouched planted-dangling ""
+both planted-claude-dir planted_claude_dir
+outside_untouched planted-claude-dir "keep "
+both planted-agents-dir planted_agents_dir
+outside_untouched planted-agents-dir "keep "
+both planted-gitignore planted_gitignore
+outside_untouched planted-gitignore "victim " "node_modules"
+
+echo "worktree-links-parity: ok (Go and skills.sh link-worktree agree: fresh worktree, main checkout, a --separate-git-dir checkout, a project-owned agents folder, stale links; planted links leave the outside untouched)"

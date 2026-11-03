@@ -287,3 +287,86 @@ func TestLinkWorktreeSeparateGitDirIsMainCheckout(t *testing.T) {
 		t.Error("a main checkout with a .git file must get its ignore lines in .gitignore")
 	}
 }
+
+// t-f5e4, prod path: the daemon's session start in a worktree, the board's create-worktree route and (through the bash twin)
+// `tkt land` link a worktree whose content a branch or cloud PR controls. A symlink planted there must never make canon write,
+// create or delete anything outside the worktree.
+func listing(t *testing.T, dir string) string {
+	t.Helper()
+	var b strings.Builder
+	must(t, filepath.Walk(dir, func(p string, fi os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(dir, p)
+		b.WriteString(rel + "|" + fi.Mode().String() + "|")
+		if fi.Mode().IsRegular() {
+			c, _ := os.ReadFile(p)
+			b.Write(c)
+		}
+		b.WriteString("\n")
+		return nil
+	}))
+	return b.String()
+}
+
+func plant(t *testing.T, target, link string) {
+	t.Helper()
+	must(t, os.MkdirAll(filepath.Dir(link), 0o755))
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+}
+
+func TestLinkWorktreeNeverWritesThroughPlantedLinks(t *testing.T) {
+	canon := fakeCanon(t)
+	t.Run("agent file symlinked to an outside file that holds the canon marker", func(t *testing.T) {
+		wt, out := gitRepo(t), t.TempDir()
+		victim := filepath.Join(out, "zshrc")
+		must(t, os.WriteFile(victim, []byte("<!-- canon:agent -->\nmine\n"), 0o644))
+		must(t, os.MkdirAll(filepath.Join(wt, ".claude", "agents"), 0o755))
+		plant(t, victim, filepath.Join(wt, ".claude", "agents", "canon-evaluator.md"))
+		did := LinkWorktree(canon, wt)
+		if b, _ := os.ReadFile(victim); string(b) != "<!-- canon:agent -->\nmine\n" {
+			t.Errorf("the outside file was written through the link: %q", b)
+		}
+		if !strings.Contains(strings.Join(did, "\n"), "not a regular file: left as is") {
+			t.Errorf("the refusal must be reported, got %q", did)
+		}
+	})
+	t.Run("agent file symlinked to a path that does not exist", func(t *testing.T) {
+		wt, out := gitRepo(t), t.TempDir()
+		victim := filepath.Join(out, "new-file")
+		must(t, os.MkdirAll(filepath.Join(wt, ".claude", "agents"), 0o755))
+		plant(t, victim, filepath.Join(wt, ".claude", "agents", "canon-evaluator.md"))
+		LinkWorktree(canon, wt)
+		if exists(victim) {
+			t.Error("a dangling link made canon create a file outside the worktree")
+		}
+	})
+	for _, dir := range []string{".claude", ".agents"} {
+		t.Run(dir+" symlinked to an outside folder", func(t *testing.T) {
+			wt, out := gitRepo(t), t.TempDir()
+			must(t, os.WriteFile(filepath.Join(out, "keep"), []byte("x"), 0o644))
+			plant(t, out, filepath.Join(wt, dir))
+			before := listing(t, out)
+			did := LinkWorktree(canon, wt)
+			if after := listing(t, out); after != before {
+				t.Errorf("the outside folder changed:\nbefore %q\nafter  %q", before, after)
+			}
+			if !strings.Contains(strings.Join(did, "\n"), "under a link: left as is") {
+				t.Errorf("the refusal must be reported, got %q", did)
+			}
+		})
+	}
+	t.Run(".gitignore symlinked to an outside file in a main checkout", func(t *testing.T) {
+		wt, out := gitRepo(t), t.TempDir()
+		victim := filepath.Join(out, "shared-ignore")
+		must(t, os.WriteFile(victim, []byte("node_modules\n"), 0o644))
+		plant(t, victim, filepath.Join(wt, ".gitignore"))
+		LinkWorktree(canon, wt)
+		if b, _ := os.ReadFile(victim); string(b) != "node_modules\n" {
+			t.Errorf("the outside .gitignore was appended to: %q", b)
+		}
+	})
+}
