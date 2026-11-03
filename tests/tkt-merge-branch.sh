@@ -140,6 +140,32 @@ out="$("$TKT" merge "$id2" --yes < /dev/null 2>&1)" && fail "merge of a branch a
 assert_contains "$out" "feat/old is already in main; nothing to merge"
 echo "merge: refused a branch already in main"
 
+# A project that tracks .tickets/ and HANDOFF.md (evaluator of t-2906): the main checkout holds canon's own local edits to files
+# the merge changes, a HANDOFF.md whose only change is the Recent activity block and this ticket's ticket.md differing only in
+# canon's per-machine fields. Both are set aside, the merge goes through, the branch's narrative and the closed ticket arrive,
+# the local fields are kept, and HANDOFF.md gets the "merged here" Recent line (handoff_recent).
+P2="$W/tracked"; mkdir "$P2"; cd "$P2"; git init -q
+printf '# Handoff\n\n<!-- canon:handoff:BEGIN -->\n## Current Focus\nbefore\n<!-- canon:handoff:END -->\n' > HANDOFF.md
+echo base > base.txt; git add -A; git commit -qm base
+id4="$("$TKT" create "Tracked" -t task)"; f4=".tickets/$id4/ticket.md"; git add "$f4"; git commit -qm "chore: add ticket"
+WT4="$W/wt4"; git worktree add -q "$WT4" -b feat/y; WT4="$(cd "$WT4" && pwd -P)"
+TKT_SPRINT_GATE_PASSED=1 "$TKT" close "$id4" >/dev/null
+cp "$f4" "$WT4/$f4"
+(cd "$WT4" && sed -i.bak 's/^before$/after the branch/' HANDOFF.md && rm -f HANDOFF.md.bak && echo y > y.txt && git add HANDOFF.md y.txt "$f4" && git commit -qm "the branch")
+printf '%s\n' "$WT4" > ".tickets/$id4/.cockpit-cwd"
+printf 'evaluator-run-id: 1-1\ngraded-head: %s\n## Verdict\npass: all met\n' "$(git rev-parse feat/y)" > ".tickets/$id4/eval-report.md"
+awk '/^---$/ && ++n == 2 { print "cloud_status: done" } { print }' "$f4" > "$W/t4" && mv "$W/t4" "$f4"   # a per-machine field, local only
+"$SPRINT_CHECK_BIN" event plan.approved --source sprint --project "$(pwd -P)" "ticket=$id4" tier=normal </dev/null >/dev/null 2>&1
+"$SPRINT_CHECK_BIN" recent --project "$(pwd -P)" --handoff HANDOFF.md </dev/null >/dev/null 2>&1
+assert_grep '^<!-- canon:recent:BEGIN -->$' HANDOFF.md   # the main checkout's HANDOFF.md now differs only in the block
+out="$("$TKT" merge "$id4" --yes < /dev/null 2>&1)" || fail "merge with canon's own local edits set aside failed: $out"
+assert_contains "$out" "Merged feat/y into main"
+assert_grep '^after the branch$' HANDOFF.md
+assert_contains "$(cat HANDOFF.md)" "merged here (feat/y)"
+assert_grep '^status: closed$' "$f4"; assert_grep '^cloud_status: done$' "$f4"; assert_grep '^merged: ' "$f4"
+echo "merge: a block-only HANDOFF.md and the ticket's per-machine fields are set aside and kept; the Recent line is written"
+cd "$P"
+
 # runs: github goes to merge-pr, unchanged.
 id3="$("$TKT" create "Cloud" -t task)"; f3=".tickets/$id3/ticket.md"
 awk '/^---$/ && ++n == 2 { print "runs: github" } { print }' "$f3" > "$W/t" && mv "$W/t" "$f3"
