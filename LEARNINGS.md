@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-03-2026 00:07
+learnings-sweep last run: 11-03-2026 01:15
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-03 | [t-cb0a](.tickets/t-cb0a/learnings.md) | Inserting a line after an anchor in help text must check what follows the anchor: the new copy-back line landed between `close` and its continuation lines, so close's refusal note read as copy-back's; a test that asserts presence passed, only one that asserts position catches it. | UNPROMOTED |
 | 2026-11-03 | [t-7f7c](.tickets/t-7f7c/learnings.md) | A UI rename must grep every string that names the old set: after the Logbook went from two tabs to four, the header button and the Projects card tooltips still said "Handoff and Learnings" (app.html:60, cockpit-projects.js:55). | UNPROMOTED |
 | 2026-11-03 | [t-92f2](.tickets/t-92f2/learnings.md) | A check written before a later redesign keeps enforcing the old rule: the daemon's t-e5ff "ticket must be in the worktree" guard predated t-cd06 (tkt resolves main's .tickets/), so a land worktree could not be resumed; when a resolution rule changes, grep every place that re-implements it (daemon guard, board API field, rail text, comments). | UNPROMOTED |
 | 2026-11-03 | [t-68dd](.tickets/t-68dd/learnings.md) | A new exception to a skill rule must grep the skill for the old wording: Apply still said "extend that entry" next to the new "covered → write nothing" rule until the reviewer caught it. | UNPROMOTED |
