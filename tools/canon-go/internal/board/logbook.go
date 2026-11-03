@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-// t-c6bb: the Logbook is the board's read-only view of a project's HANDOFF.md and LEARNINGS.md. The route serves each file's text
-// and the page parses it, so this side knows no format. Both files can come from a PR or a clone, so only these two fixed names
+// t-c6bb: the Logbook is the board's read-only view of a project's HANDOFF.md and LEARNINGS.md (t-7f7c: also PROMOTED.md, DECISIONS.md, LEARNINGS-archive.md). The route serves each file's text
+// and the page parses it, so this side knows no format. Both files can come from a PR or a clone, so only these fixed names
 // under the project root are read, regular files only, up to a size cap. A failed read says why (and a missing file says so): it
 // never looks like an empty file.
 const logbookMaxBytes = 512 * 1024
@@ -44,5 +44,9 @@ func loadLogbook(root string) map[string]any {
 	return map[string]any{
 		"handoff":   readLogbookFile(root, "HANDOFF.md"),
 		"learnings": readLogbookFile(root, "LEARNINGS.md"),
+		// t-7f7c: the Promoted and Decisions tabs; same reader, same checks
+		"promoted":          readLogbookFile(root, "PROMOTED.md"),
+		"decisions":         readLogbookFile(root, "DECISIONS.md"),
+		"learnings_archive": readLogbookFile(root, "LEARNINGS-archive.md"),
 	}
 }

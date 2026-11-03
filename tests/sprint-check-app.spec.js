@@ -18570,30 +18570,28 @@ test.describe('Logbook (t-c6bb)', () => {
     + row('2026-10-20', 't-dddd', 'Another unpromoted.', 'UNPROMOTED')
     + '<!-- canon:learnings:END -->\n';
   const file = text => ({ text, mtime: '2026-10-23T00:00:00Z' });
-  const serve = (page, handoff, learnings) => page.route(/\/api\/logbook(\?|$)/, r => r.fulfill({
+  // t-7f7c: promoted, decisions and learnings_archive default to absent (canon's own shape); `more` overrides them
+  const serve = (page, handoff, learnings, more) => page.route(/\/api\/logbook(\?|$)/, r => r.fulfill({
     status: 200, contentType: 'application/json',
-    body: JSON.stringify({ handoff: handoff === undefined ? file(HANDOFF) : handoff, learnings: learnings === undefined ? file(LEARN) : learnings }),
+    body: JSON.stringify({ handoff: handoff === undefined ? file(HANDOFF) : handoff, learnings: learnings === undefined ? file(LEARN) : learnings,
+      promoted: { missing: true }, decisions: { missing: true }, learnings_archive: { missing: true }, ...(more || {}) }),
   }));
   const open = async page => { await page.locator('#btn-logbook').click(); await expect(page.locator('#logbook-overlay')).toHaveClass(/open/); };
 
   // t-5036, prod path: the Logbook's Learnings tab. A long promoted destination and a malformed row's status must not
   // take the table's width: Finding gets the free width, Status is capped, and an unknown status reads "unknown".
-  test('Learnings table: Finding gets the width, a long destination or an unknown status cannot take it (t-5036) @webkit', async ({ page }) => {
+  test('Promoted table: Finding gets the width, a long destination cannot take it (t-5036, t-7f7c) @webkit', async ({ page }) => {
     // one unbroken token: it cannot wrap at a space, so only the Status cap keeps it from taking the table's width
     const dest = 'standards_efficiency_notes.md#tests_guards_and_hermetic_runs_a_guard_verified_only_by_inputs_it_must_reject_and_a_revert';
-    const junk = 'this sentence spilled into the status cell because a pipe in the finding was not escaped at all';
     const text = LEARN.replace('<!-- canon:learnings:END -->',
       row('2026-10-19', 't-eeee', 'A finding that should get most of the width of the table, wrapping only when it must.', '`promoted → ' + dest + '`')
-      + row('2026-10-18', 't-ffff', 'A row with an odd status.', junk) + '<!-- canon:learnings:END -->');
+      + '<!-- canon:learnings:END -->');
     await serve(page, undefined, file(text));
     await page.setViewportSize({ width: 1100, height: 800 });
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
     await open(page);
-    await page.locator('#lb-tab-l').click();
-    const odd = page.locator('.lb-table tbody tr', { hasText: 't-ffff' });
-    await expect(odd.locator('.lb-st')).toHaveText('unknown');
-    await expect(odd.locator('.lb-st')).toHaveAttribute('title', junk);
+    await page.locator('#lb-tab-p').click();   // no PROMOTED.md: the promoted LEARNINGS rows, with their destination
     await expect(page.locator('.lb-table tbody tr', { hasText: 't-eeee' }).locator('.lb-target')).toHaveAttribute('title', dest);
     for (const theme of ['dark', 'light']) {
       await page.evaluate(t => { if (t === 'light') document.documentElement.dataset.theme = 'light'; else document.documentElement.removeAttribute('data-theme'); }, theme);
@@ -18611,7 +18609,7 @@ test.describe('Logbook (t-c6bb)', () => {
     }
     // with only short findings shown, the free width still goes to Finding: Date keeps its content width
     await page.evaluate(() => document.documentElement.removeAttribute('data-theme'));
-    await page.locator('.lb-chip', { hasText: 'Dismissed' }).click();
+    await page.locator('#lb-tab-l').click();
     const date = await page.locator('.lb-table tbody tr').first().locator('.lb-date').evaluate(td => {
       const r = document.createRange(); r.selectNodeContents(td);
       const pad = parseFloat(getComputedStyle(td).paddingLeft) + parseFloat(getComputedStyle(td).paddingRight);
@@ -18647,35 +18645,144 @@ test.describe('Logbook (t-c6bb)', () => {
       expect(await page.locator('.lb-sec').nth(1).evaluate(e => getComputedStyle(e).borderTopColor)).not.toBe(await themeColor(page, '--accent'));
     }
     await page.evaluate(() => document.documentElement.removeAttribute('data-theme'));
-    // Learnings: badge = unpromoted rows, chips count each status, a Dismissed chip only because a dismissed row exists
+    // Learnings (t-7f7c): badge = unpromoted rows, only those rows listed, no filter pills; the tabs are in order
+    await expect(page.locator('.lb-tabs [role="tab"]')).toHaveText(['Handoff', 'Learnings 2', 'Promoted', 'Decisions']);
     await page.locator('#lb-tab-l').click();
     await expect(page.locator('#lb-note')).toHaveText('LEARNINGS.md · written by tkt learn, reviewed by promote-learnings');
-    await expect(page.locator('#lb-intro')).toContainText('Lessons from closed sprints');
     await expect(page.locator('#lb-intro')).toContainText('/promote-learnings');
     await expect(page.locator('#lb-count')).toHaveText('2');
-    await expect(page.locator('.lb-chip')).toHaveText(['All 4', 'Unpromoted 2', 'Promoted 1', 'Dismissed 1']);
-    await expect(page.locator('.lb-table tbody tr')).toHaveCount(4);
-    await expect(page.locator('.lb-table tbody tr').first().locator('.lb-find')).toContainText('a | pipe');   // an escaped pipe stays one cell
-    const promoted = page.locator('.lb-table tbody tr', { hasText: 't-bbbb' });
-    await expect(promoted.locator('.lb-st')).toHaveText('promoted');
-    await expect(promoted.locator('.lb-target')).toHaveText('standards/efficiency-notes.md');
-    // filter: each chip shows only its rows and leaves the other counts alone
-    await page.locator('.lb-chip', { hasText: 'Unpromoted' }).click();
+    await expect(page.locator('.lb-chip')).toHaveCount(0);
     await expect(page.locator('.lb-table tbody tr')).toHaveCount(2);
     await expect(page.locator('.lb-st')).toHaveText(['unpromoted', 'unpromoted']);
-    await expect(page.locator('.lb-chip')).toHaveText(['All 4', 'Unpromoted 2', 'Promoted 1', 'Dismissed 1']);
-    await page.locator('.lb-chip', { hasText: 'Dismissed' }).click();
-    await expect(page.locator('.lb-table tbody tr')).toHaveCount(1);
+    await expect(page.locator('.lb-table tbody tr').first().locator('.lb-find')).toContainText('a | pipe');   // an escaped pipe stays one cell
+    await expect(page.locator('#lb-body')).not.toContainText('t-bbbb');   // promoted and dismissed rows are hidden
+    await expect(page.locator('#lb-body')).not.toContainText('t-cccc');
     // Esc closes it and focus goes back to the button
     await page.keyboard.press('Escape');
     await expect(page.locator('#logbook-overlay')).not.toHaveClass(/open/);
     await expect(page.locator('#btn-logbook')).toBeFocused();
-    // without a dismissed row there is no Dismissed chip
+    // a dismissed row turned unpromoted joins the list
     await page.unrouteAll({ behavior: 'ignoreErrors' });
     await serve(page, undefined, file(LEARN.replace(/\| dismissed \|/, '| UNPROMOTED |')));
     await open(page);
     await page.locator('#lb-tab-l').click();
-    await expect(page.locator('.lb-chip')).toHaveText(['All 4', 'Unpromoted 3', 'Promoted 1']);
+    await expect(page.locator('.lb-table tbody tr')).toHaveCount(3);
+  });
+
+  // t-7f7c: Learnings / Promoted / Decisions tabs. Each test writes its screenshot (light theme, 1280 x 800) for the ticket's evidence.
+  const SHOTS = '.tickets/t-7f7c/evidence/screens';
+  const shoot = async (page, name) => {
+    await page.evaluate(() => { document.documentElement.dataset.theme = 'light'; });
+    await page.evaluate(() => Promise.all(document.getAnimations().filter(a => a.effect && isFinite(a.effect.getComputedTiming().endTime)).map(a => a.finished.catch(() => {}))));
+    fs.mkdirSync(SHOTS, { recursive: true });
+    await page.screenshot({ path: `${SHOTS}/${name}.png` });
+  };
+  const logbookAt = async (page, tabId, serveArgs) => {
+    await serve(page, ...serveArgs);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await open(page);
+    await page.locator('#lb-tab-' + tabId).click();
+  };
+  const PROM = '# Promoted\n\n<!-- canon:promoted:BEGIN -->\n- Never swap a real script in place to stub it; point main.go at a temp stub through an env var (t-1781)\n- A GET route that runs git is a side-effecting route: refuse a cross-site Origin (t-d271)\n- A rule with no ticket id\n<!-- canon:promoted:END -->\n';
+
+  test('Learnings lists only UNPROMOTED rows, counts them, and says so when none wait (t-7f7c) @webkit', async ({ page }) => {
+    await logbookAt(page, 'l', [undefined, file(LEARN.replace('A promoted one.', 'PROMOTED-ONLY-ROW').replace('Another unpromoted.', 'Second waiting row.'))]);
+    await expect(page.locator('.lb-table tbody tr')).toHaveCount(2);
+    await expect(page.locator('#lb-count')).toHaveText('2');
+    await expect(page.locator('#lb-body')).not.toContainText('PROMOTED-ONLY-ROW');
+    await expect(page.locator('#lb-body')).not.toContainText('A dismissed one.');
+    await shoot(page, 'learnings');
+    await page.keyboard.press('Escape');
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+    // dismissed, including `dismissed (covered: file)`, and promoted rows only: nothing waits
+    await logbookAt(page, 'l', [undefined, file('<!-- canon:learnings:BEGIN -->\n' + row('2026-10-22', 't-bbbb', 'p', '`promoted → x.md`') + row('2026-10-21', 't-cccc', 'd', 'dismissed (covered: standards/a.md)') + '<!-- canon:learnings:END -->\n')]);
+    await expect(page.locator('#lb-body')).toContainText('Nothing waiting for review');
+    await expect(page.locator('#lb-count')).toBeHidden();
+    await shoot(page, 'learnings-empty');
+  });
+
+  test('Learnings intro and header note name the destination for the kind of project; each tab has a one-line intro (t-7f7c)', async ({ page }) => {
+    await logbookAt(page, 'l', []);
+    await expect(page.locator('#lb-intro')).toContainText("canon's standards and reference docs");
+    await expect(page.locator('#lb-intro')).not.toContainText('PROMOTED.md');
+    await page.locator('#lb-tab-p').click();
+    await expect(page.locator('#lb-note')).toHaveText(/^LEARNINGS\.md/);
+    await expect(page.locator('#lb-intro')).toContainText('no PROMOTED.md');
+    await page.locator('#lb-tab-d').click();
+    await expect(page.locator('#lb-note')).toHaveText(/^DECISIONS\.md/);
+    await expect(page.locator('#lb-intro')).toContainText('newest first');
+    await page.keyboard.press('Escape');
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+    await logbookAt(page, 'l', [undefined, undefined, { promoted: file(PROM) }]);
+    await expect(page.locator('#lb-intro')).toContainText('PROMOTED.md');
+    await page.locator('#lb-tab-p').click();
+    await expect(page.locator('#lb-note')).toHaveText(/^PROMOTED\.md/);
+  });
+
+  test('Promoted, with a PROMOTED.md: its entries with linked ticket ids and the line count against 60 (t-7f7c)', async ({ page }) => {
+    await logbookAt(page, 'p', [undefined, undefined, { promoted: file(PROM) }]);
+    await expect(page.locator('#lb-intro')).toHaveText('The rules agents load at the start of every session, from PROMOTED.md. Read-only here: promote-learnings adds them.');
+    await expect(page.locator('.lb-rules li')).toHaveCount(3);
+    await expect(page.locator('.lb-rules li').first()).toContainText('Never swap a real script');
+    await expect(page.locator('.lb-rules .lb-tk')).toHaveText(['t-1781', 't-d271']);   // the entry without an id has no link
+    await expect(page.locator('#lb-cap')).toHaveText('3 of 60 lines');
+    await expect(page.locator('#lb-cap')).not.toHaveClass(/lb-cap-over/);
+    await expect(page.locator('#lb-body')).not.toContainText('t-bbbb');   // LEARNINGS rows are not used when PROMOTED.md exists
+    await shoot(page, 'promoted-file');
+    await page.keyboard.press('Escape');
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+    const many = '<!-- canon:promoted:BEGIN -->\n' + Array.from({ length: 61 }, (_, i) => `- rule ${i}`).join('\n') + '\n<!-- canon:promoted:END -->\n';
+    await logbookAt(page, 'p', [undefined, undefined, { promoted: file(many) }]);
+    await expect(page.locator('#lb-cap')).toHaveText('61 of 60 lines');
+    await expect(page.locator('#lb-cap')).toHaveClass(/lb-cap-over/);
+    expect(await page.locator('#lb-cap').evaluate(e => getComputedStyle(e).color), 'over the cap reads amber, not the muted grey').not.toBe(await themeColor(page, '--text-muted'));
+  });
+
+  test('Promoted, without a PROMOTED.md: the LEARNINGS and archive rows marked promoted, each with its file; none says so (t-7f7c)', async ({ page }) => {
+    const arch = file(row('2026-10-01', 't-9999', 'An archived promoted lesson.', '`promoted → standards/old.md`') + row('2026-10-02', 't-8888', 'Archived and dismissed.', 'dismissed'));
+    await logbookAt(page, 'p', [undefined, undefined, { learnings_archive: arch }]);
+    await expect(page.locator('.lb-table tbody tr')).toHaveCount(2);
+    await expect(page.locator('.lb-target')).toHaveText(['standards/efficiency-notes.md', 'standards/old.md']);
+    await expect(page.locator('#lb-body')).not.toContainText('Archived and dismissed.');
+    await expect(page.locator('#lb-body')).not.toContainText('A dismissed one.');
+    await expect(page.locator('#lb-body')).not.toContainText('unpromoted');
+    await shoot(page, 'promoted-canon');
+    await page.keyboard.press('Escape');
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+    await logbookAt(page, 'p', [undefined, file('<!-- canon:learnings:BEGIN -->\n' + row('2026-10-23', 't-aaaa', 'x', 'UNPROMOTED') + '<!-- canon:learnings:END -->\n')]);
+    await expect(page.locator('#lb-body')).toContainText('Nothing promoted yet');
+  });
+
+  test('Decisions: DECISIONS.md read-only as markdown, newest first, escaped; missing says so (t-7f7c)', async ({ page }) => {
+    const dec = '# Decisions\n\n| Date | Decision | Reason |\n|---|---|---|\n| 2026-09-01 | Oldest choice | because |\n| 2026-10-01 | Middle choice with `code` | why |\n| 2026-11-01 | Newest <img src=x onerror=window.__pwned=1> choice | now |\n';
+    await logbookAt(page, 'd', [undefined, undefined, { decisions: file(dec) }]);
+    await expect(page.locator('.lb-md table tbody tr')).toHaveCount(3);
+    await expect(page.locator('.lb-md table tbody tr td:nth-child(2)')).toContainText(['Newest', 'Middle choice', 'Oldest choice']);
+    await expect(page.locator('.lb-md img')).toHaveCount(0);
+    expect(await page.evaluate(() => window.__pwned)).toBeUndefined();
+    await expect(page.locator('#lb-body button, #lb-body input, #lb-body textarea')).toHaveCount(0);   // read-only
+    // the table starts right under the heading: no blank-line gap between the two blocks
+    const gap = await page.evaluate(() => document.querySelector('.lb-md table').getBoundingClientRect().top - document.querySelector('.lb-md h1, .lb-md .doc-heading-1').getBoundingClientRect().bottom);
+    expect(gap).toBeLessThan(24);
+    await shoot(page, 'decisions');
+    await page.keyboard.press('Escape');
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+    // canon's own shape: dated `## ` sections with prose, newest first, escaped
+    const secs = '# Decisions\n\n## 2026-09-03 — t-1111: Oldest section\n\nWhy the oldest.\n\n## 2026-10-22 — t-6623: Fix here never pushes <img src=x onerror=window.__pwned=2>\n\nA paragraph with `code`.\n\nSecond paragraph.\n\n## 2026-10-05 — t-2222: Middle section\n\nMiddle body.\n';
+    await logbookAt(page, 'd', [undefined, undefined, { decisions: file(secs) }]);
+    await expect(page.locator('.lb-md h2, .lb-md .doc-heading-2')).toHaveText([/t-6623: Fix here never pushes/, /t-2222/, /t-1111/]);
+    await expect(page.locator('.lb-md')).toContainText('Second paragraph.');
+    await expect(page.locator('.lb-md img')).toHaveCount(0);
+    expect(await page.evaluate(() => window.__pwned)).toBeUndefined();
+    await expect(page.locator('#lb-body button, #lb-body input, #lb-body textarea')).toHaveCount(0);
+    await shoot(page, 'decisions-sections');
+    await page.keyboard.press('Escape');
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+    await logbookAt(page, 'd', []);
+    await expect(page.locator('#lb-body')).toContainText('No DECISIONS.md in this project');
+    await shoot(page, 'decisions-missing');
   });
 
   test('a ticket id opens that ticket; one that is not on this board says so (t-c6bb)', async ({ page }) => {
@@ -18694,7 +18801,7 @@ test.describe('Logbook (t-c6bb)', () => {
     await expect(page.locator('#m-id')).toHaveText(id);
   });
 
-  test('nothing unpromoted: no badge, and the status column never wraps its file name (t-5157) @webkit', async ({ page }) => {
+  test('nothing unpromoted: no badge, and the Promoted tab never wraps a file name (t-5157, t-7f7c) @webkit', async ({ page }) => {
     await serve(page, undefined, file('# Learnings\n\n<!-- canon:learnings:BEGIN -->\n| Date | Ticket | Finding | Status |\n|---|---|---|---|\n'
       + row('2026-10-13', 't-0514', 'Data-check evidence must come from the same dataset the app shows: the first evaluator failed it because the check read a day-old CSV (296 rows) while the live-synced app showed 295; per-class counts read from the app\'s own filters reconciled it.', '`promoted → PROMOTED.md`')
       + '<!-- canon:learnings:END -->\n'));
@@ -18702,7 +18809,7 @@ test.describe('Logbook (t-c6bb)', () => {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
     await open(page);
-    await page.locator('#lb-tab-l').click();
+    await page.locator('#lb-tab-p').click();
     await expect(page.locator('.lb-table tbody tr')).toHaveCount(1);
     await expect(page.locator('#lb-count')).toBeHidden();   // all promoted: nothing to review, so no 0 bubble
     const target = page.locator('.lb-target').first();
@@ -18722,6 +18829,8 @@ test.describe('Logbook (t-c6bb)', () => {
     await expect(page.locator('#lb-body [role="alert"]')).toContainText('LEARNINGS.md could not be read');
     await expect(page.locator('#lb-body [role="alert"]')).toContainText('symbolic link');
     await expect(page.locator('#lb-count')).toBeHidden();
+    await page.locator('#lb-tab-d').click();
+    await expect(page.locator('#lb-body')).toContainText('No DECISIONS.md in this project');
     await page.keyboard.press('Escape');
     await page.unrouteAll({ behavior: 'ignoreErrors' });
     let fail = true;
@@ -18837,7 +18946,8 @@ test.describe('Logbook (t-c6bb)', () => {
     const split = '!<!-- c -->[x](https://attacker.example/bypass2.png) !<!-- c -->[a`x onmouseover=window.__pwned=8`z](https://attacker.example/p4.png)';
     const big = 'x'.repeat(1000000);
     await serve(page, file('<!-- canon:handoff:BEGIN -->\n## Current Focus\n' + hostile + '\n' + inAlt + '\n' + split + '\n\n## Discoveries\n' + big + '\n<!-- canon:handoff:END -->\n'),
-      file('<!-- canon:learnings:BEGIN -->\n' + row('2026-10-23', 't-aaaa', hostile + ' ' + inAlt.split('\n').join(' ') + ' ' + split, '`promoted → <img src=x onerror=window.__pwned=5>`') + '<!-- canon:learnings:END -->\n'));
+      file('<!-- canon:learnings:BEGIN -->\n' + row('2026-10-23', 't-aaaa', hostile + ' ' + inAlt.split('\n').join(' ') + ' ' + split, 'UNPROMOTED')
+        + row('2026-10-22', 't-bbbb', 'p', '`promoted → <img src=x onerror=window.__pwned=5>`') + '<!-- canon:learnings:END -->\n'));
     const seen = [];
     page.on('request', r => { if (/attacker\.example/.test(r.url())) seen.push(r.url()); });
     await page.route(/attacker\.example/, r => r.abort());
@@ -18850,12 +18960,14 @@ test.describe('Logbook (t-c6bb)', () => {
     await page.locator('#lb-tab-l').click();
     await expect(page.locator('.lb-table tbody tr')).toHaveCount(1);
     await expect(page.locator('.lb-find')).toContainText('<script>window.__pwned=2</script>');
-    for (const tab of ['#lb-tab-h', '#lb-tab-l']) {
+    await page.locator('#lb-tab-p').click();   // the promoted row's hostile destination
+    await expect(page.locator('.lb-target')).toContainText('<img src=x onerror=window.__pwned=5>');
+    for (const tab of ['#lb-tab-h', '#lb-tab-l', '#lb-tab-p']) {
       await page.locator(tab).click();
       expect(await page.locator('#logbook-overlay img, #logbook-overlay script, #logbook-overlay a, #logbook-overlay iframe, #logbook-overlay [onerror], #logbook-overlay b').count()).toBe(0);
     }
     // no element rendered from the file's text carries an event-handler or style attribute (the panel's own inline style is the drag engine's)
-    for (const tab of ['#lb-tab-h', '#lb-tab-l']) {
+    for (const tab of ['#lb-tab-h', '#lb-tab-l', '#lb-tab-p']) {
       await page.locator(tab).click();
       expect(await page.locator('#lb-body *').evaluateAll(els => els.filter(e => [...e.attributes].some(a => /^(on|style$)/i.test(a.name))).map(e => e.outerHTML.slice(0, 80)))).toEqual([]);
     }

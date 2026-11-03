@@ -42,6 +42,22 @@ export function parseLearnings(text) {
   return rows;
 }
 
+// t-7f7c: the managed block of PROMOTED.md: { entries, lines }. An entry is one `- ` line (a continuation line joins the entry above it),
+// with its trailing `(t-xxxx)` ticket id split off; lines is the block's length, counted against the 60-line advisory cap.
+export const PROMOTED_CAP = 60;
+export function parsePromoted(text) {
+  const block = between(text, '<!-- canon:promoted:BEGIN -->', '<!-- canon:promoted:END -->').replace(/^\r?\n/, '').replace(/\s+$/, '');
+  const entries = [];
+  for (const line of block.split('\n')) {
+    if (/^\s*-\s+/.test(line)) entries.push(line.replace(/^\s*-\s+/, '').trim());
+    else if (entries.length && line.trim()) entries[entries.length - 1] += ' ' + line.trim();
+  }
+  return {
+    entries: entries.map(e => { const m = /\s*\((t-[0-9a-z]+)\)\s*$/i.exec(e); return { text: m ? e.slice(0, m.index) : e, id: m ? m[1] : '' }; }),
+    lines: block ? block.split('\n').length : 0,
+  };
+}
+
 const STAMP_RE = /^learnings-sweep last run:\s*(\d{2})-(\d{2})-(\d{4})\b/m;
 
 // learningsSummary(text): { rows, pending, swept } for a Projects card. rows counts the table's rows, pending the UNPROMOTED ones;
