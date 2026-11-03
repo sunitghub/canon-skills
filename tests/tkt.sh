@@ -594,6 +594,7 @@ rm -rf "$json_project"
   assert_contains "$out" "copied $cid's closed folder back to"; assert_grep "^status: cancelled$" "$mf"; assert_grep "^github: acme/app#9$" "$mf"
   out="$(cd "$wt2" && "$TKT" copy-back "$pid2" 2>&1)"; assert_eq "" "$out"   # no worktree copy: nothing to do, nothing said
   rc=0; out="$(cd "$wt" && "$TKT" copy-back 2>&1)" || rc=$?; [[ $rc -ne 0 && "$out" == *"Usage: tkt copy-back <id>"* ]] || fail "copy-back with no id: rc=$rc $out"
+  [[ "$("$TKT" help)" == *"copy-back <id>            Copy a worktree's own ticket folder back to main"* ]] || fail "tkt help must list copy-back"
   # a ticket main has no folder for is not created there; an id that is not a plain ticket name is refused by the helper itself
   zid=t-zzz1; mkdir -p "$wt/.tickets/$zid"; printf -- '---\nid: %s\nstatus: open\n---\n# only here\n' "$zid" > "$wt/.tickets/$zid/ticket.md"
   (cd "$wt" && "$TKT" close "$zid" --no-sprint >/dev/null 2>&1)
