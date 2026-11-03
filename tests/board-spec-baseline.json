@@ -61,6 +61,14 @@
       ],
       "ticket": "t-8aa6",
       "reason": "failed 1 of 5 (webkit) on main 327cdd19 alone and 2 of 5 on t-2906's branch (2026-11-02; .tickets/t-2906/evidence/history/flake-terminal-shortcut-on-main.log, -on-branch.log); the Cockpit Terminal shortcut, not in the code t-2906 changes"
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > cross-project Sessions row (t-2d2e) > split view (t-416c): the divider drags, clamps, answers the keyboard and resets on a double click @webkit",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "failed 1 of 3 (webkit) in the t-0d77 full run at 7dc79ed4 (2026-11-03); passed 4 of 4 alone on the same branch right after; t-0d77 changes only the k key and the key sheet, not the split divider"
     }
   ],
   "skipped": []
