@@ -8901,7 +8901,7 @@ func TestSessionsDropsAnEndedSessionsMeter(t *testing.T) {
 // t-74d8, prod path: POST /session/start. A ticket session that runs in one of the project's worktrees gets canon's gate
 // agents (and skill links) there before the agent starts, so its close runs on canon-evaluator, not a fallback; a session
 // in the main checkout leaves the main checkout alone.
-func TestStartLinksWorktreeGateAgents(t *testing.T) {
+func TestStartWorktreeLinksGateAgents(t *testing.T) {
 	canon := t.TempDir()
 	for _, d := range []string{"skills/sprint", "agents"} {
 		if err := os.MkdirAll(filepath.Join(canon, d), 0o755); err != nil {
@@ -8926,11 +8926,28 @@ func TestStartLinksWorktreeGateAgents(t *testing.T) {
 	resp := startSessionCwd(t, ts.URL, "t-ab12", root, bootTok)
 	resp.Body.Close()
 	waitFile(t, cwdFile, 2*time.Second)
-	killAllSessions(s)
-	os.Remove(cwdFile)
 	if _, err := os.Lstat(filepath.Join(root, ".claude", "agents")); err == nil {
 		t.Fatal("a session in the main checkout must not link anything there")
 	}
+	killAllSessions(s)
+	// A scratch session gets its own worktree when the main checkout is busy (t-e162). A scratch has no gates, so it gets no
+	// links: the second of two live scratch sessions (fakeSprint stays alive) must run in a worktree that has none.
+	lbin, _, _ := fakeSprint(t)
+	s2 := newServer(config{token: bootTok, sprintBin: lbin, projectRoot: root, stateDir: t.TempDir()})
+	ts2 := httptest.NewServer(s2.handler())
+	t.Cleanup(ts2.Close)
+	t.Cleanup(func() { killAllSessions(s2) })
+	t.Cleanup(func() { exec.Command("git", "-C", root, "worktree", "prune").Run() })
+	startScratchSession(t, ts2.URL, "s-ab12", "")
+	sc := startScratchSession(t, ts2.URL, "s-ab13", "")
+	if sc.Cwd == "" || pathsEqual(sc.Cwd, root) {
+		t.Fatalf("the second scratch session should run in its own worktree, got cwd %q", sc.Cwd)
+	}
+	if _, err := os.Lstat(filepath.Join(sc.Cwd, ".claude", "agents")); err == nil {
+		t.Fatal("a scratch session's worktree must not be linked")
+	}
+	killAllSessions(s2)
+	os.Remove(cwdFile)
 
 	resp = startSessionCwd(t, ts.URL, "t-ab12", wt, bootTok)
 	if resp.StatusCode != http.StatusOK {
