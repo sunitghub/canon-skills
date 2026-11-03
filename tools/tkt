@@ -507,6 +507,15 @@ cmd_close() {
   copy_ticket_back "$id" "$file"   # t-3abc: where the ticket lives in a worktree's own copy, main's copy follows
 }
 
+# cmd_copy_back <id> — t-cb0a: the board's Done/Discard on a worktree-bound ticket writes the worktree's own ticket.md and
+# runs this there (cwd = the worktree), so main's copy follows by the same copy_ticket_back `tkt close` uses. No status change.
+cmd_copy_back() {
+  local id="${1:-}" file
+  [[ -n "$id" ]] || { echo "Usage: tkt copy-back <id>" >&2; exit 1; }
+  file="$(find_ticket "$id")"
+  copy_ticket_back "$(get_field "$file" id)" "$file"
+}
+
 # json_str <value> — print <value> as a quoted JSON string (no newline). Pure awk so it runs on Git Bash with no
 # jq/Python. The value goes in on stdin, one awk record per line, because `awk -v` would interpret backslash
 # escapes and an environment variable is capped near 32 KB on Windows. The trailing "\n" printf adds keeps a value that
@@ -3133,6 +3142,7 @@ Commands:
     --tags a,b              Tags (lowercase letters, digits, dashes; at most 8)
   start <id>                Set status to in_progress and mark ACTIVE
   close <id> [--no-sprint]  Set status to closed and clear ACTIVE if matched.
+  copy-back <id>            Copy a worktree's own ticket folder back to main (the board's Done/Discard runs it)
                             Refuses by default — use 'sprint complete' if the
                             ticket has sprint docs, or pass --no-sprint to
                             force-close a doc-less/backlog ticket directly.
@@ -3251,6 +3261,7 @@ main() {
     create)         cmd_create "$@" ;;
     start)          cmd_set_status "${1:-}" in_progress ;;
     close)          cmd_close "$@" ;;
+    copy-back)      cmd_copy_back "$@" ;;
     archive)        cmd_set_status "${1:-}" archived ;;
     ci)             cmd_ci "$@" ;;
     gate)           cmd_gate "$@" ;;

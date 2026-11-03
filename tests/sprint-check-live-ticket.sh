@@ -309,5 +309,47 @@ writes="$(board_sources "$ROOT" | grep -n 'postWrite(`/api/ticket/${[a-zA-Z.]*}/
 [[ "$(grep -c . <<<"$writes")" -eq 2 ]] || fail "expected exactly 2 body write sites in the board, got: $writes"
 [[ -z "$(grep -v base_hash <<<"$writes")" ]] || fail "a body write site in the board sends no base_hash: $(grep -v base_hash <<<"$writes")"
 
+# t-cb0a: an adopted worktree (gitignored .tickets/, its own copy): Done and Discard on the board copy the folder back to
+# main by tkt's copy_ticket_back, so main is not left 'open' once the worktree is removed; any other status copies nothing,
+# and a copy that cannot be made still saves the status and says so. Real board + real tkt (TKT_BIN is resolveTkt's override).
+run_ignored_checks() {
+  local repo="$TMP/ign/proj" wt="$TMP/ign/proj-worktrees/adopted" port base id code
+  mkdir -p "$repo/.tickets"
+  git -C "$repo" init -q -b master && git -C "$repo" config user.email t@t && git -C "$repo" config user.name t
+  echo ".tickets/" > "$repo/.gitignore"; git -C "$repo" add .gitignore && git -C "$repo" commit -q -m init
+  git -C "$repo" worktree add -q -b sprint/adopted "$wt"
+  for id in t-ig01 t-ig02 t-ig03 t-ig04; do
+    mkdir -p "$repo/.tickets/$id" "$wt/.tickets/$id"
+    printf -- '---\nid: %s\nstatus: open\ntype: task\ngithub: o/r#5\n---\n# %s\n' "$id" "$id" > "$repo/.tickets/$id/ticket.md"
+    fm "$id" in_progress > "$wt/.tickets/$id/ticket.md"; echo "plan of $id" > "$wt/.tickets/$id/plan.md"
+    echo "$wt" > "$repo/.tickets/$id/.cockpit-cwd"
+  done
+  mkdir "$wt/.tickets/t-ig04/sub"; echo x > "$wt/.tickets/t-ig04/sub/eval-report.md"; echo "a file where the copy needs a folder" > "$repo/.tickets/t-ig04/sub"
+  port="$(free_port)"; base="http://127.0.0.1:$port"
+  SPRINT_CHECK_ROOT="$repo" TKT_BIN="$TKT_BIN" CANON_HOME="$TMP/ign/canon" COCKPIT_STATE_DIR="$TMP/ign/ck" COCKPIT_DAEMON_BIN=/usr/bin/false SPRINT_CHECK_DIVERGENCE_TTL=0 SPRINT_CHECK_NO_BROWSER=1 \
+    "$GO_BIN" "$port" >/dev/null 2>&1 &
+  PIDS+=("$!"); disown "$!" 2>/dev/null || true
+  for _ in $(seq 1 50); do curl -s -o /dev/null "$base/api/git" && break; sleep 0.1; done
+  ipost() { curl -s -o "$TMP/ign/post.json" -w '%{http_code}' -X POST -H 'Content-Type: application/json' --data-binary "$2" "$base/api/ticket/$1"; }
+  ipj() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get(sys.argv[2], ""))' "$TMP/ign/post.json" "$1"; }
+  local before; before="$(sha "$repo/.tickets/t-ig03/ticket.md")"
+  code="$(ipost t-ig03/status '{"status":"open"}')"
+  [[ "$code" == 200 && -z "$(ipj warning)" && "$(sha "$repo/.tickets/t-ig03/ticket.md")" == "$before" && ! -e "$repo/.tickets/t-ig03/plan.md" ]] \
+    || fail "ignored: a status other than closed/cancelled must copy nothing to main, got $code $(cat "$TMP/ign/post.json")"
+  code="$(ipost t-ig01/status '{"status":"closed"}')"
+  [[ "$code" == 200 && "$(ipj ok)" == True && -z "$(ipj warning)" ]] || fail "ignored: Done must save with no warning, got $code $(cat "$TMP/ign/post.json")"
+  grep -q '^status: closed$' "$repo/.tickets/t-ig01/ticket.md" || fail "ignored: Done on an adopted worktree's ticket left main's copy $(grep '^status:' "$repo/.tickets/t-ig01/ticket.md")"
+  grep -q '^plan of t-ig01$' "$repo/.tickets/t-ig01/plan.md" 2>/dev/null || fail "ignored: the worktree's sprint files must be copied back with the status"
+  grep -q '^github: o/r#5$' "$repo/.tickets/t-ig01/ticket.md" || fail "ignored: main's github line must survive the copy-back"
+  [[ "$(cat "$repo/.tickets/t-ig01/.cockpit-cwd")" == "$wt" ]] || fail "ignored: main's .cockpit-cwd lock must survive the copy-back"
+  code="$(ipost t-ig02/status '{"status":"cancelled"}')"
+  [[ "$code" == 200 ]] && grep -q '^status: cancelled$' "$repo/.tickets/t-ig02/ticket.md" || fail "ignored: Discard must copy 'cancelled' back to main, got $code"
+  code="$(ipost t-ig04/status '{"status":"closed"}')"
+  [[ "$code" == 200 && "$(ipj ok)" == True ]] && grep -q '^status: closed$' "$wt/.tickets/t-ig04/ticket.md" || fail "ignored: a failed copy-back must not fail the status write, got $code $(cat "$TMP/ign/post.json")"
+  [[ "$(ipj warning)" == *"main's copy was not updated"*"could not copy t-ig04 back"* ]] || fail "ignored: a failed copy-back must come back as a warning, got $(cat "$TMP/ign/post.json")"
+  echo "  ignored .tickets/: Done/Discard copy back to main (t-cb0a)"
+}
+
 run_checks go main.go
+run_ignored_checks
 echo "sprint-check-live-ticket: ok"

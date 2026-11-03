@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Fixed
+- Done or Discard on the board for a ticket in a worktree with its own `.tickets/` copy (gitignored) now copies the ticket's folder back to the main checkout, as `tkt close` does, so main no longer says `open` once the worktree is removed. If the copy cannot be made, the status is still saved and the board says why. The board runs it through the new `tkt copy-back <id>` (t-cb0a).
+
 ## [0.40.0] - 2026-11-02
 
 ### Fixed

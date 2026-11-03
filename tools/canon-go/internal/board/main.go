@@ -3198,6 +3198,14 @@ func writeLiveTicket(id, kind string, payload map[string]any, root string) (hand
 		emitStatusChanged(id, oldStatus, newStatus, root)
 	}
 	out := map[string]any{"ok": true, "etag": docEtag(data)}
+	// t-cb0a: Done/Discard on a worktree's own copy (gitignored .tickets/) must reach main, as tkt close does: the same
+	// copy_ticket_back, through tkt. Still under liveDocMu, so no board write lands mid-copy. Never fails the write.
+	if kind == "status" && updated != text && (newStatus == "closed" || newStatus == "cancelled") {
+		cb := runTkt(wtPath, []string{"copy-back", id})
+		if msg, _ := cb["output"].(string); cb["ok"] != true || strings.Contains(msg, "warning:") {
+			out["warning"] = "status saved, but main's copy was not updated: " + strings.TrimSpace(msg)
+		}
+	}
 	if kind != "body" {
 		// The page keeps its text and its etag as a pair: hand back the Description this etag describes, so a later
 		// edit never starts from older text under a newer etag.

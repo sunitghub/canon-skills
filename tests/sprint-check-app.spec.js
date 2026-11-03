@@ -10695,6 +10695,28 @@ test.describe('cockpit in board (t-ddc8)', () => {
     expect(seen).toHaveLength(5);
   });
 
+  test('a saved Done whose copy back to main failed moves the card and says why; a plain save adds no toast (t-cb0a)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT);
+    await page.route('**/api/tickets**', route => route.request().method() === 'GET'
+      ? route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([T1940(id)]) }) : route.fallback());
+    const warning = `status saved, but main's copy was not updated: warning: could not copy ${id} back to /p/.tickets/${id}: a file could not be written there (is the folder writable?)`;
+    const replies = [{ ok: true }, { ok: true, warning }];
+    await page.route(`**/api/ticket/${id}/status`, route => route.request().method() !== 'POST' ? route.fallback()
+      : route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(replies.shift()) }));
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    const inCol = st => page.locator(`.column-body[data-status="${st}"] .card[data-id="${id}"]`);
+    const move = st => page.evaluate(async ([i, s]) => { const { state } = await import('/static/board-core.js'); const { moveCard } = await import('/static/board-docs.js'); return moveCard(state.tickets.find(t => t.id === i), s); }, [id, st]);
+    const toast = page.locator('#drop-toast');
+    await move('in_progress');
+    await expect(inCol('in_progress')).toBeVisible();
+    await expect(toast).not.toHaveClass(/show/);
+    await move('closed');
+    await expect(toast).toHaveText(`⚠ ${warning}`);
+    await expect(toast).toHaveClass(/block/);
+    expect(await page.evaluate(i => import('/static/board-core.js').then(({ state }) => state.tickets.find(t => t.id === i).status), id)).toBe('closed');
+  });
+
   test('modal writes keep or revert their UI on failure: doc save, checkbox, demo, new doc, create ticket (t-1940)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT);
     await page.route('**/api/tickets**', route => route.request().method() === 'GET'

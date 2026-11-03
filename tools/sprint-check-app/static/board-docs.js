@@ -1,7 +1,7 @@
 import { DOC_TYPES, LIVE_EDITABLE_SLUGS, docFileFor, docSlug, state } from './board-core.js';
 import { MACHINES_VIEW, renderMachinesPane } from './board-machines.js';
 import { LITE_LABEL, displayTicketId, divergenceInfo, esc, hydrateFeatureRefs, md, normalizeTicketLineId } from './board-helpers.js';
-import { findTicketById, postWrite, renderBoard, renderHeader, renderSidebar, updateDoc } from './board-render.js';
+import { findTicketById, postWrite, renderBoard, renderHeader, renderSidebar, showToast, updateDoc } from './board-render.js';
 import { adoptTicketWrite, fetchModalDoc, markDocHeadings, modalState, renderModalDocs, showStaleEditNotice, stopHeadlessPoll } from './board-modal.js';
 import { tagCheckboxes } from './board-panels.js';
 import { setText } from './board-ui.js';
@@ -815,6 +815,7 @@ export async function moveCard(t, newStatus) {
   if (!res.ok) { renderBoard(); return; }
   t.status = newStatus;
   adoptTicketWrite(t.id, res.data);   // t-8be2: a bound ticket's own write moved its etag (and says what its text is)
+  if (res.data?.warning) showToast(`⚠ ${res.data.warning}`, 'block');   // t-cb0a: the copy back to main's .tickets/ failed
   renderHeader();
   renderSidebar();
   const modalOpen = document.getElementById('modal-overlay').classList.contains('open');
