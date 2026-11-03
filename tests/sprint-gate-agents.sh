@@ -51,7 +51,8 @@ out="$(start noagents)"; assert_contains "$out" "start Claude Code again in $P (
 # 5b. started in a worktree with no agents: the fix line names that worktree, not the project
 newp; git -C "$P" commit -q --allow-empty -m init; WT="$W/wt"; git -C "$P" worktree add -q "$WT"
 agents "$P" $(( now - 86400 )); session "$WT" $(( now - 3600 ))
-out="$(start worktree)"; assert_contains "$out" "start Claude Code again in $WT (run"
+out="$(start worktree)"; assert_contains "$out" "start Claude Code again in $WT (run 'skills.sh link-worktree $WT' first"
+[[ "$out" != *"skills.sh refresh"* ]] || fail "a worktree start was told to run refresh, which can rewrite tracked files there (t-74d8): $out"
 # 5c. a transcript with no "cwd" line: silent, no gate_agents field
 newp; rm -rf "$CFG/projects"; mkdir -p "$CFG/projects/-x"
 printf '{"type":"mode","sessionId":"%s"}\n{"timestamp":"%s","type":"user"}\n' "$SID" "$(iso "$now")" > "$CFG/projects/-x/$SID.jsonl"

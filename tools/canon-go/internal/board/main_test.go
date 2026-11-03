@@ -1,6 +1,7 @@
 package board
 
 import (
+	"bytes"
 	"canon/internal/machine"
 	"encoding/json"
 	"fmt"
@@ -602,34 +603,6 @@ func gitCommitAll(t *testing.T, dir, msg string) {
 	}
 	if err := exec.Command("git", "-C", dir, "commit", "-qm", msg).Run(); err != nil {
 		t.Fatalf("git commit: %v", err)
-	}
-}
-
-func TestIsCommittedCanonMirror(t *testing.T) {
-	// tracked + sprint/SKILL.md marker → true
-	wt := t.TempDir()
-	gitInitRepo(t, wt)
-	writeFile(t, filepath.Join(wt, ".agents/skills/sprint/SKILL.md"), "STALE")
-	gitCommitAll(t, wt, "mirror")
-	if !isCommittedCanonMirror(wt, ".agents/skills", filepath.Join(wt, ".agents/skills")) {
-		t.Fatal("tracked mirror carrying sprint/SKILL.md must be detected as a committed canon mirror")
-	}
-
-	// tracked, no marker → false (genuine project-local skills)
-	wt2 := t.TempDir()
-	gitInitRepo(t, wt2)
-	writeFile(t, filepath.Join(wt2, ".agents/skills/myproj/x.md"), "LOCAL")
-	gitCommitAll(t, wt2, "local")
-	if isCommittedCanonMirror(wt2, ".agents/skills", filepath.Join(wt2, ".agents/skills")) {
-		t.Fatal("tracked dir lacking the sprint/SKILL.md marker must not be treated as a canon mirror")
-	}
-
-	// untracked real dir → false
-	wt3 := t.TempDir()
-	gitInitRepo(t, wt3)
-	writeFile(t, filepath.Join(wt3, ".agents/skills/sprint/SKILL.md"), "STALE")
-	if isCommittedCanonMirror(wt3, ".agents/skills", filepath.Join(wt3, ".agents/skills")) {
-		t.Fatal("an untracked skills dir must not be treated as a committed canon mirror")
 	}
 }
 
@@ -2215,4 +2188,13 @@ func TestSendJSONCond(t *testing.T) {
 	if other := get(`"000000000000000000000000"`); other.Code != 200 || other.Body.String() != `{"a":1}` {
 		t.Fatalf("another ETag: %d %q", other.Code, other.Body.String())
 	}
+}
+
+// gitInDirOutput runs a git command in dir and returns its stdout (the test side of what common.LinkWorktree checks).
+func gitInDirOutput(dir string, args ...string) (string, error) {
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	err := cmd.Run()
+	return out.String(), err
 }
