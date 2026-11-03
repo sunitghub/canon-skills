@@ -20,6 +20,7 @@ package board
 import (
 	"bufio"
 	"bytes"
+	"canon/internal/common"
 	"canon/internal/events"
 	"encoding/json"
 	"errors"
@@ -70,6 +71,15 @@ func runHelper(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 		return gateClustersCLI(args[1:], stdout, stderr), true
 	case "skill-check":
 		return skillCheckCLI(args[1:], stdout, stderr), true
+	case "link-worktree": // t-74d8: the Go side of the worktree-link rule, for tests/worktree-links-parity.sh
+		if len(args) != 3 {
+			fmt.Fprintln(stderr, "usage: canon-go link-worktree <canon-root> <dir>")
+			return 2, true
+		}
+		for _, line := range common.LinkWorktree(args[1], args[2]) {
+			fmt.Fprintln(stdout, "  "+line)
+		}
+		return 0, true
 	case "caps": // t-19bb: the cap meter; read-only
 		return capsCLI(args[1:], stdout, stderr), true
 	case "machine":

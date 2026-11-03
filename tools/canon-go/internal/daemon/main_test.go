@@ -8897,3 +8897,81 @@ func TestSessionsDropsAnEndedSessionsMeter(t *testing.T) {
 		t.Fatalf("after conv-b's session ended: %v, want only conv-a", c)
 	}
 }
+
+// t-74d8, prod path: POST /session/start. A ticket session that runs in one of the project's worktrees gets canon's gate
+// agents (and skill links) there before the agent starts, so its close runs on canon-evaluator, not a fallback; a session
+// in the main checkout leaves the main checkout alone.
+func TestStartWorktreeLinksGateAgents(t *testing.T) {
+	canon := t.TempDir()
+	for _, d := range []string{"skills/sprint", "agents"} {
+		if err := os.MkdirAll(filepath.Join(canon, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	os.WriteFile(filepath.Join(canon, "skills", "sprint", "SKILL.md"), []byte("x"), 0o644)
+	os.WriteFile(filepath.Join(canon, "agents", "canon-evaluator.md"), []byte("<!-- canon:agent -->"), 0o644)
+	saved := canonRoot
+	canonRoot = func() string { return canon }
+	t.Cleanup(func() { canonRoot = saved })
+
+	bin, cwdFile := fakeSprintCwd(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	wt := gitWorktreeFixture(t, root)
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	resp := startSessionCwd(t, ts.URL, "t-ab12", root, bootTok)
+	resp.Body.Close()
+	waitFile(t, cwdFile, 2*time.Second)
+	if _, err := os.Lstat(filepath.Join(root, ".claude", "agents")); err == nil {
+		t.Fatal("a session in the main checkout must not link anything there")
+	}
+	killAllSessions(s)
+	// A scratch session gets its own worktree when the main checkout is busy (t-e162). A scratch has no gates, so it gets no
+	// links: the second of two live scratch sessions (fakeSprint stays alive) must run in a worktree that has none.
+	lbin, _, _ := fakeSprint(t)
+	s2 := newServer(config{token: bootTok, sprintBin: lbin, projectRoot: root, stateDir: t.TempDir()})
+	ts2 := httptest.NewServer(s2.handler())
+	t.Cleanup(ts2.Close)
+	t.Cleanup(func() { killAllSessions(s2) })
+	t.Cleanup(func() { exec.Command("git", "-C", root, "worktree", "prune").Run() })
+	startScratchSession(t, ts2.URL, "s-ab12", "")
+	sc := startScratchSession(t, ts2.URL, "s-ab13", "")
+	if sc.Cwd == "" || pathsEqual(sc.Cwd, root) {
+		t.Fatalf("the second scratch session should run in its own worktree, got cwd %q", sc.Cwd)
+	}
+	if _, err := os.Lstat(filepath.Join(sc.Cwd, ".claude", "agents")); err == nil {
+		t.Fatal("a scratch session's worktree must not be linked")
+	}
+	killAllSessions(s2)
+	os.Remove(cwdFile)
+
+	resp = startSessionCwd(t, ts.URL, "t-ab12", wt, bootTok)
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("worktree start: want 200, got %d: %s", resp.StatusCode, body)
+	}
+	resp.Body.Close()
+	waitFile(t, cwdFile, 2*time.Second)
+	got, err := filepath.EvalSymlinks(filepath.Join(wt, ".claude", "agents", "canon-evaluator.md"))
+	want, _ := filepath.EvalSymlinks(filepath.Join(canon, "agents", "canon-evaluator.md"))
+	if err != nil || got != want {
+		t.Fatalf("the worktree's .claude/agents must reach canon's agents before the agent starts, got %q (err %v)", got, err)
+	}
+}
+
+// t-74d8: the daemon finds canon's skills and agents from where its own binary sits.
+func TestCanonRootFrom(t *testing.T) {
+	for in, want := range map[string]string{
+		filepath.Join("/c", "tools", "canon-go-bin"): filepath.Join("/c"), // macOS, Linux
+		filepath.Join("/c", "tools"):                 filepath.Join("/c"), // Windows: the exe sits in tools/
+		"":                                           "",
+	} {
+		if got := canonRootFrom(in); got != want {
+			t.Errorf("canonRootFrom(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

@@ -66,7 +66,8 @@ _remove_dir_link() {
 _ensure_mirror_gitignored() {
   local project_dir="$1"
   git -C "$project_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
-  local gi="$project_dir/.gitignore" entry rel tmp
+  local gi entry rel tmp
+  gi="$(_ignore_file "$project_dir")"
   # t-c433: no trailing slash — git treats a symlink as a file, so "/.claude/skills/" (directories only) never
   # matched the link on macOS/Linux; the slash-less form matches a symlink, a directory and a Windows junction.
   for entry in "/.claude/skills" "/.agents/skills"; do
@@ -163,12 +164,36 @@ remove_gate_agents() {
   return 0
 }
 
+# _is_linked_worktree <dir> — git's own folder differs from the repository's common one only in a linked worktree; a
+# submodule or a --separate-git-dir checkout also has a .git FILE but is a main checkout.
+_is_linked_worktree() {
+  local both
+  both="$(git -C "$1" rev-parse --path-format=absolute --git-dir --git-common-dir 2>/dev/null)" || return 1
+  [ "$(printf '%s\n' "$both" | sed -n 1p)" != "$(printf '%s\n' "$both" | sed -n 2p)" ]
+}
+# _ignore_file <dir> — t-74d8 (user's choice): where <dir>'s ignore lines go. In a linked worktree git's own info/exclude,
+# untracked and shared by the repository's worktrees, so linking never leaves a .gitignore change on a sprint's branch (one
+# blocked `tkt land --finish`); in a main checkout (a submodule and a --separate-git-dir one too) the project's .gitignore.
+# Same rule as the Go side (internal/common/worktreelinks.go ignoreFile), held by tests/worktree-links-parity.sh.
+_ignore_file() {
+  local dir="$1" p
+  if _is_linked_worktree "$dir"; then
+    p="$(git -C "$dir" rev-parse --git-path info/exclude 2>/dev/null)"
+    if [ -n "$p" ]; then
+      case "$p" in /*|[A-Za-z]:*) ;; *) p="$dir/$p" ;; esac
+      mkdir -p "$(dirname "$p")"
+      printf '%s\n' "$p"; return 0
+    fi
+  fi
+  printf '%s\n' "$dir/.gitignore"
+}
 # A linked .claude/agents is local (like the skills mirror, t-f99b) and must never be committed.
 _ensure_agents_link_gitignored() {
   # No trailing slash: git treats a symlink as a file, so "/.claude/agents/" (directories only) would not
   # match it on macOS/Linux — only a Windows junction, which git sees as a directory.
-  local project_dir="$1" gi="$1/.gitignore" entry="/.claude/agents"
+  local project_dir="$1" gi entry="/.claude/agents"
   git -C "$project_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+  gi="$(_ignore_file "$project_dir")"
   if ! has_line "$entry" "$gi"; then
     [ -s "$gi" ] && [ -n "$(tail -c1 "$gi")" ] && echo >> "$gi"
     printf '%s\n' "$entry" >> "$gi"

@@ -2835,6 +2835,8 @@ cmd_land() {
   [[ "$(git -C "$root" rev-parse FETCH_HEAD)" == "$head" ]] || { echo "land: PR #$pr moved while fetching it; run land again" >&2; exit 1; }
   mkdir -p "$(dirname "$wt")" && git -C "$root" worktree add -q -b "$branch" "$wt" "$head" < /dev/null \
     || { echo "land: could not create the worktree at $wt" >&2; exit 1; }
+  # t-74d8: the close runs in this worktree, and its gates need canon's agents (and skills) there; best effort, never fails land
+  [[ -f "$SCRIPT_DIR/skills.sh" ]] && bash "$SCRIPT_DIR/skills.sh" link-worktree "$wt" < /dev/null | sed 's/^/  /' || true
   printf '%s\n' "$head" > "$tdir/.land-head"; printf '%s\n' "$pr" > "$tdir/.land-pr"
   [[ -f "$tdir/.cockpit-cwd" ]] && mv "$tdir/.cockpit-cwd" "$tdir/.cockpit-cwd.before-land"
   printf '%s\n' "$(_normalize_path "$wt")" > "$tdir/.cockpit-cwd"

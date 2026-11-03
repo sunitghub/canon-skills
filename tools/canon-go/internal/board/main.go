@@ -3967,71 +3967,12 @@ func ticketCommit(ticketID string, raw any, root string) (map[string]any, int) {
 		"committed": chosen, "message": message}, http.StatusOK
 }
 
-// linkSkillsIntoWorktree creates the canon skills link inside a freshly-created
-// worktree so it resolves to CURRENT canon (t-f99b). The skill mirror is
-// gitignored (never committed), so a git worktree has no mirror of its own —
-// without this, an agent there finds no skills, or (pre-fix) a stale committed
-// copy. Done INLINE rather than shelling out to `skills.sh link-worktree`
-// because the board may run without `bash` on PATH on Windows (the platform this
-// bug affects), where a shell-out would silently no-op. Best-effort; non-fatal.
+// linkSkillsIntoWorktree links a freshly-created worktree to CURRENT canon: the skill mirrors (t-f99b, t-9e55) and, since
+// t-74d8, the gate agents. The rule is common.LinkWorktree, shared with the daemon's session start and kept equal to
+// skills.sh link-worktree by tests/worktree-links-parity.sh. Done in Go, not by shelling out, because the board may run
+// without bash on PATH on Windows. Best-effort; non-fatal.
 func linkSkillsIntoWorktree(path string) {
-	target := filepath.Join(toolsDir, "..", "skills")
-	if !exists(target) {
-		return
-	}
-	for _, rel := range []string{".agents/skills", ".claude/skills"} {
-		link := filepath.Join(path, filepath.FromSlash(rel))
-		if exists(link) {
-			// t-9e55: REPLACE a git-tracked committed canon mirror (carries the
-			// sprint/SKILL.md marker) so the worktree serves CURRENT canon —
-			// `git worktree add` materializes the stale committed copy before this
-			// runs, so the old skip served stale skills. Untrack it in the
-			// worktree's own index (main untouched; durable cross-checkout fix is
-			// the consumer's `skills.sh refresh` + commit). PRESERVE a genuine
-			// project-local skills dir / an already-correct link.
-			if isCommittedCanonMirror(path, rel, link) {
-				gitInDir(path, "rm", "-r", "--cached", "--quiet", "--", rel)
-				_ = os.RemoveAll(link)
-			} else {
-				continue
-			}
-		}
-		_ = os.MkdirAll(filepath.Dir(link), 0o755)
-		if runtime.GOOS == "windows" {
-			// Junction (no elevated rights); mklink needs cmd. MSYS path issues
-			// don't apply here (Go exec, not Git Bash).
-			_ = exec.Command("cmd", "/c", "mklink", "/J", link, target).Run()
-		} else {
-			_ = os.Symlink(target, link)
-		}
-	}
-}
-
-// isCommittedCanonMirror (t-9e55) reports whether a materialized mirror path in a
-// worktree is the git-tracked committed canon mirror t-f99b forbids: tracked in
-// the worktree's index AND carrying the canon marker (sprint/SKILL.md). A genuine
-// project-local skills dir (untracked, or lacking the marker) returns false and is
-// preserved. Parity with server.py's _is_committed_canon_mirror and project.sh.
-func isCommittedCanonMirror(worktree, rel, link string) bool {
-	out, err := gitInDirOutput(worktree, "ls-files", "--", rel)
-	if err != nil || strings.TrimSpace(out) == "" {
-		return false
-	}
-	return exists(filepath.Join(link, "sprint", "SKILL.md"))
-}
-
-// gitInDir runs a git command scoped to a specific worktree (best-effort).
-func gitInDir(dir string, args ...string) {
-	_ = exec.Command("git", append([]string{"-C", dir}, args...)...).Run()
-}
-
-// gitInDirOutput runs a git command scoped to a worktree and returns stdout.
-func gitInDirOutput(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	err := cmd.Run()
-	return out.String(), err
+	common.LinkWorktree(filepath.Dir(toolsDir), path)
 }
 
 func worktreeIncludePatterns(root string) []string {

@@ -81,6 +81,9 @@ out="$("$TKT" land "$id" < /dev/null 2>&1)"; assert_contains "$out" "worktree: $
 [[ "$(git -C "$WT" rev-parse --abbrev-ref HEAD)" == "land/$id" ]] || fail "worktree is not on land/$id"
 grep -q '^status: in_progress' "$f" || fail "ticket not in_progress"
 [[ "$(tr -d '[:space:]' < ".tickets/$id/.cockpit-cwd")" == "$WT" ]] || fail ".cockpit-cwd is not the worktree"
+# t-74d8: the close runs here, so its gates need canon's agents (and the skills) in this worktree
+[[ "$(cd "$WT/.claude/agents" 2>/dev/null && pwd -P)" == "$(cd "$ROOT/agents" && pwd -P)" ]] || fail "land worktree's .claude/agents does not reach canon's agents"
+[[ -f "$WT/.claude/skills/sprint/SKILL.md" ]] || fail "land worktree has no .claude/skills link"
 refuses "a second land (ticket already started)" "not open" --
 
 # Finish refusals: ticket not closed; closed with a verdict graded elsewhere; both leave the worktree.

@@ -595,7 +595,19 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 		startClean = err == nil && !dirty
 	}
 	s.baselineIfNoGit(projectRoot, body.Ticket) // t-5a4b: before the agent can change anything
+	// t-74d8: a ticket's worktree (resolveSpawnCwdForTicket checked it is one of the project's) gets canon's skill links and
+	// gate agents before the agent starts: Claude Code loads agents only at start, and a worktree made by the Cockpit, by
+	// `tkt land` or by an older canon may lack them, which sends the close's gates to fallback agents.
+	var linked []string
+	if !scratch && !pathsEqual(cwd, projectRoot) {
+		if root := canonRoot(); root != "" {
+			linked = common.LinkWorktree(root, cwd)
+		}
+	}
 	se, err := s.spawn(body.Ticket, cwd, projectRoot, kind)
+	if err == nil && len(linked) > 0 {
+		se.debugf("worktree links: %s", strings.Join(linked, "; "))
+	}
 	if err == nil && scratch {
 		se.mu.Lock()
 		se.startClean = startClean
@@ -4735,6 +4747,21 @@ func startupVersion(dir string) func() string {
 		}
 		return version
 	})
+}
+
+// canonRoot is the canon install this daemon belongs to: its binary sits at <root>/tools/canon-go-bin/ (macOS, Linux) or
+// <root>/tools/ (Windows). A var so a test can point it at a fake install.
+var canonRoot = func() string { return canonRootFrom(exeDir()) }
+
+// canonRootFrom is the install root for a binary in dir: <root>/tools/canon-go-bin or <root>/tools; "" for "".
+func canonRootFrom(dir string) string {
+	if dir == "" {
+		return ""
+	}
+	if filepath.Base(dir) == "canon-go-bin" {
+		dir = filepath.Dir(dir)
+	}
+	return filepath.Dir(dir)
 }
 
 // exeDir is the folder of this binary, symlinks resolved; "" if unknown.

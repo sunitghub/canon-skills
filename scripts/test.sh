@@ -150,6 +150,7 @@ tests=(
   "$ROOT/tests/spec-canon-home.sh"
   "$ROOT/tests/sprint-check-live-ticket.sh"
   "$ROOT/tests/sprint-check-poll-budget.sh"
+  "$ROOT/tests/worktree-links-parity.sh"
   "$ROOT/tests/helpers-sweep.sh"
   "$ROOT/tests/sprint-check-api.sh"
   "$ROOT/tests/theme-files-parity.sh"
