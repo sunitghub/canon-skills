@@ -10733,6 +10733,10 @@ test.describe('cockpit in board (t-ddc8)', () => {
     expect(polls[n].inm).not.toBe('');
     await page.waitForTimeout(300);
     await expect(page.locator('.card[data-c21a="kept"]')).toHaveCount(1);
+    // A user action's loadData() (an import, a sync, a take-back) always redraws, even when the server answers 304.
+    await page.evaluate(() => import('/static/board-core.js').then(m => m.loadData()));
+    await expect(page.locator('.card[data-c21a="kept"]')).toHaveCount(0);
+    await page.locator('.card').first().evaluate(e => { e.dataset.c21a = 'kept'; });
     await page.clock.fastForward('01:00');   // the next poll past a minute renders in full
     await expect(page.locator('.card[data-c21a="kept"]')).toHaveCount(0);
   });

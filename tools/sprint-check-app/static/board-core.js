@@ -262,8 +262,10 @@ export function toggleHiddenLane(lane) {
 // ── Data layer ───────────────────────────────────────────────────────────
 
 // t-c21a: the board's poll. Each reply carries an ETag (a hash of the reply); a poll that already holds it gets an empty 304,
-// and when all three are unchanged the cards are not re-rendered (at least one full render a minute keeps time-based lanes
-// right). A hidden board (a Cockpit tab not on screen, or a hidden page) does not poll; it loads as soon as it is shown.
+// and when all three are unchanged the timed poll does not re-render the cards (at least one full render a minute keeps
+// time-based lanes right). A loadData() a user action calls always renders: those callers drop client state (a GitHub
+// stage, a dialog's result) and count on the redraw. A hidden board (a Cockpit tab not on screen, or a hidden page) does
+// not poll; it loads as soon as it is shown.
 export const POLL_MS = 8000;
 const FULL_RENDER_MS = 60000;
 const pollTags = {};   // url -> the ETag of the reply now in state
@@ -275,8 +277,8 @@ export function boardHidden() {
   try { return !!window.frameElement && window.frameElement.getClientRects().length === 0; } catch { return false; }   // display:none view
 }
 
-export function pollData() { if (!boardHidden()) loadData(); }
-export function loadIfStale() { if (!boardHidden() && Date.now() - lastLoad >= POLL_MS) loadData(); }
+export function pollData() { if (!boardHidden()) loadData({ quiet: true }); }
+export function loadIfStale() { if (!boardHidden() && Date.now() - lastLoad >= POLL_MS) loadData({ quiet: true }); }
 
 async function fetchPolled(url) {
   const r = await fetch(url, { cache: 'no-store', headers: pollTags[url] ? { 'If-None-Match': pollTags[url] } : {} });
@@ -287,7 +289,7 @@ async function fetchPolled(url) {
   return { same: false, ok: r.ok, data };
 }
 
-export async function loadData() {
+export async function loadData(opts) {
   lastLoad = Date.now();
   setDot('loading');
   try {
@@ -301,7 +303,7 @@ export async function loadData() {
     if (!hr.same) state.handoff = hr.data;
     if (!gr.same) state.git     = gr.data;
     setDot('live');
-    if (tr.same && hr.same && gr.same && Date.now() - lastFullRender < FULL_RENDER_MS) { refreshLive(); return; }
+    if (opts?.quiet && tr.same && hr.same && gr.same && Date.now() - lastFullRender < FULL_RENDER_MS) { refreshLive(); return; }
   } catch {
     for (const url in pollTags) delete pollTags[url];   // mock data on screen: the next poll must fetch the real replies
     state.tickets = MOCK.tickets;
