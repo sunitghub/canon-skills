@@ -46,7 +46,7 @@ both() {   # both <name> <prep>: run prep on two fresh copies, link one with Go 
     repo "$W/$name-$side/main"
     "$prep" "$W/$name-$side"
   done
-  "$GO_BIN" link-worktree "$ROOT" "$W/$name-go/dir" > /dev/null
+  SPRINT_CHECK_NO_BROWSER=1 "$GO_BIN" link-worktree "$ROOT" "$W/$name-go/dir" > /dev/null
   bash "$ROOT/tools/skills.sh" link-worktree "$W/$name-bash/dir" > /dev/null
   go="$(state "$W/$name-go/dir" | sed "s#$W/$name-go#X#g")"
   bash="$(state "$W/$name-bash/dir" | sed "s#$W/$name-bash#X#g")"
