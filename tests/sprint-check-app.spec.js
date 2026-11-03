@@ -6930,8 +6930,17 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await pressPrefix(page, 'k');
       await expect(page.locator('#toast')).toHaveText('Open a project tab first');
       await expect(overlay).not.toHaveClass(/open/);
+      await page.evaluate(async () => { const { showView } = await import('/static/cockpit-views.js'); showView('factory'); });
+      await pressPrefix(page, 'k');
+      await expect(page.locator('#toast')).toHaveText('Open a project tab first');
       await page.evaluate(async () => { const { goTab } = await import('/static/cockpit-tabs.js'); goTab('proj-a'); });
       await expect.poll(() => shellTab(page)).toBe('proj-a');
+      // a pane Skill Eval covers is inert (cockpit-tabs.js applySplit): its board is on screen but not usable, so k says so too
+      await page.evaluate(() => { document.getElementById('toast').textContent = ''; document.getElementById('view-proj-a').setAttribute('inert', ''); });
+      await pressPrefix(page, 'k');
+      await expect(page.locator('#toast')).toHaveText('Open a project tab first');
+      await expect(overlay).not.toHaveClass(/open/);
+      await page.evaluate(() => document.getElementById('view-proj-a').removeAttribute('inert'));
       await page.evaluate(() => document.activeElement && document.activeElement.blur && document.activeElement.blur());
       await pressPrefix(page, 'k');
       await expect(overlay).toHaveClass(/open/, { timeout: 8000 });
