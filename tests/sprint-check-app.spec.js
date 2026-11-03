@@ -7,6 +7,9 @@ const net = require('net');
 const { newTicketId, claimTicketId, adoptBoardTicket, removeTestTicket } = require('./board-spec-ids');
 
 const BASE = process.env.SPRINT_CHECK_BASE || 'http://localhost:8423';
+// t-c21a: a handler that forwards a board poll and rewrites its reply needs the full body; the board's own If-None-Match
+// would get an empty 304 from the real server.
+const fetchFull = route => route.fetch({ headers: { ...route.request().headers(), 'if-none-match': '' } });
 // t-5a4b: acceptance visuals — light and dark, written under the ticket folder (gitignored in canon).
 async function shots5a4b(page, name, locator) {
   const dir = path.join(__dirname, '..', '.tickets', 't-5a4b', 'visuals');
@@ -121,7 +124,7 @@ test.beforeEach(async ({ context }) => {
     if (r.request().method() !== 'GET') return r.fallback();
     // a test may close or navigate the page while this request is in flight: then there is nothing left to answer
     try {
-      const res = await r.fetch(); let list;
+      const res = await r.fetch(); let list;   // a 304 (t-c21a) has no body: passed through as it is
       try { list = await res.json(); } catch { return await r.fulfill({ response: res }); }
       if (Array.isArray(list)) for (const t of list) if (typeof t.tags === 'string') t.tags = t.tags.split(',').filter(x => x.trim() !== 'now').join(',');
       return await r.fulfill({ response: res, json: list });
@@ -246,7 +249,7 @@ test.describe('board modal', () => {
 
   test('a column keeps its scroll position across the board refresh (t-dba9) @webkit', async ({ page }) => {
     await page.route('**/api/tickets**', async route => {
-      const resp = await route.fetch();
+      const resp = await fetchFull(route);
       const json = await resp.json();
       const base = json.find(t => t.status === 'open') || json[0];
       const pad = Array.from({ length: 60 }, (_, i) => ({ ...base, id: `t-pad${i}`, title: `pad ${i}`, status: 'open', created: `2026-01-01T00:${String(i).padStart(2, '0')}:00Z` }));
@@ -6399,7 +6402,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await stubCockpit(page);
         await page.route('**/api/cockpit-sessions', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rows) }));
         await page.route(u => u.pathname === '/api/tickets', async route => {
-          const res = await route.fetch(); const list = await res.json();
+          const res = await fetchFull(route); const list = await res.json();
           for (const t of list) if (t.id === id && working) t.working = working;
           await route.fulfill({ response: res, json: list });
         });
@@ -8439,7 +8442,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       // The sidebar asks about the first three in-progress tickets, and a real ticket out on GitHub counts as in progress (t-718b):
       // show only this test's own, so the project's real tickets cannot push it out of the first three.
       await page.route(/\/api\/tickets(\?.*)?$/, async route => {
-        const res = await route.fetch();
+        const res = await fetchFull(route);
         const list = await res.json();
         const out = t => t.runs === 'github' && t.github && !t.merged;
         await route.fulfill({ response: res, json: Array.isArray(list) ? list.filter(t => t.id === id || (t.status !== 'in_progress' && !out(t))) : list });
@@ -8559,7 +8562,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await stubCockpit(page);
       await page.route('**/api/worktrees**', mainAndFeat);
       await page.route('**/api/tickets**', async route => {
-        const resp = await route.fetch();
+        const resp = await fetchFull(route);
         const json = await resp.json();
         for (const t of json) if (t.id === id) t.branch_divergence = { branch: 'sprint/feat-19d1', status: 'in_progress', where: 'worktree', merged: false };
         // t-432d: the board runs on a copy of the real tree, where real tickets are in progress or out on GitHub (shown In progress);
@@ -8607,7 +8610,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       writeTicket(iso, 'open'); writeTicket(dateOnly, 'open');
       const today = new Date(); const ymd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
       await page.route('**/api/tickets**', async route => {
-        const resp = await route.fetch();
+        const resp = await fetchFull(route);
         const json = await resp.json();
         for (const t of json) {
           if (t.id === iso) t.created = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
@@ -8808,7 +8811,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await stubCockpit(page);
       await page.route('**/api/tickets**', async route => {
         if (route.request().method() !== 'GET') return route.continue();
-        const res = await route.fetch(); const list = await res.json();
+        const res = await fetchFull(route); const list = await res.json();
         for (const t of list) if (t.id === id) t.docs_from = { branch: 'sprint-b3' };
         return route.fulfill({ response: res, body: JSON.stringify(list) });
       });
@@ -14675,7 +14678,7 @@ test.describe('branch divergence badge (t-6328)', () => {
       // Real /api/tickets, with branch_divergence injected on two tickets.
       await page.route('**/api/tickets*', async route => {
         if (route.request().method() !== 'GET') return route.continue();
-        const res = await route.fetch();
+        const res = await fetchFull(route);
         const tickets = await res.json();
         for (const t of tickets) {
           if (t.id === divId) t.branch_divergence = { branch: 'sprint/t-91mc', status: 'closed', where: 'branch', merged: false };
@@ -18090,7 +18093,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     const wtId = newTicketId(PROJECT_ROOT, 'gh2906w');
     ghTicket(wtId, { status: 'closed' });
     await page.route('**/api/tickets**', async route => {
-      const resp = await route.fetch();
+      const resp = await fetchFull(route);
       const list = await resp.json();
       for (const t of list) if (t.id === wtId) t.wt_merge = { branch: 'feat/x', path: '/tmp/wt' };
       await route.fulfill({ response: resp, json: list });
@@ -19528,7 +19531,7 @@ test.describe('NOW lane and hidden lanes (t-0447)', () => {
   test.beforeEach(async ({ page }) => {
     await page.route('**/api/tickets*', async r => {
       if (r.request().method() !== 'GET') return r.fallback();
-      const res = await r.fetch(); const list = await res.json();
+      const res = await fetchFull(r); const list = await res.json();
       if (Array.isArray(list)) for (const t of list) if (!made.includes(t.id) && typeof t.tags === 'string') t.tags = t.tags.split(',').filter(x => x.trim() !== 'now').join(',');
       return r.fulfill({ response: res, json: list });
     });
@@ -19694,7 +19697,7 @@ test.describe('NOW lane and hidden lanes (t-0447)', () => {
     write({ status: 'open', tags: '' });
     let root = '/tmp/t71c8-a';
     await page.route('**/api/git*', async r => {
-      const res = await r.fetch(); const g = await res.json();
+      const res = await fetchFull(r); const g = await res.json();
       return r.fulfill({ response: res, json: { ...g, root } });
     });
     const stored = () => page.evaluate(() => Object.fromEntries(Object.keys(localStorage).filter(k => k.startsWith('sprint-check-hidden-lanes')).map(k => [k, localStorage.getItem(k)])));
