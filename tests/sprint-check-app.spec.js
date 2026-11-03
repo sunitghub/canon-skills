@@ -8856,6 +8856,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       expect(posts[0].base_hash).toMatch(/^etag-\d+$/);                 // guarded by the etag it read
       expect(posts[0].content).toContain('- [x] second box');
     } finally {
+      await page.unrouteAll({ behavior: 'ignoreErrors' });   // a tickets poll still in flight at the end must not fail a passed test
       removeTestTicket(PROJECT_ROOT, id);
     }
   });
@@ -17760,6 +17761,33 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#gh-dialog-title')).toHaveText('Imported, but the cloud sprint did not close');
     await expect(page.locator('#gh-dialog-body')).toContainText('Finish the close on this machine');
     await expect(page.locator('#gh-dialog-ok')).toBeHidden();
+    // t-92f2: t-68dd's import: it succeeded (exit 0) with a passing verdict, but the cloud stopped before sprint complete.
+    const notClosed = [
+      `import-results: 12 files into .tickets/${id}/\n  status: open (cloud: in_progress)  (expected closed: the cloud sprint did not finish)\n  evaluator: pass  graded-head: 9c41e2a\n  next: tkt land ${id} --pr 58\n    run the evaluator and sprint complete in that worktree`,
+      `import-results: 12 files into .tickets/${id}/\n  evaluator: pass  graded-head: 9c41e2a\n  next: tkt land ${id}`,   // the next line alone says it too
+    ];
+    for (const o of notClosed) {
+      await page.locator('#gh-dialog-cancel').click();
+      ok = true; out = o;
+      await page.locator(`.card[data-id="${id}"] .card-gh-btn`).click();
+      await expect(page.locator('#gh-dialog-title')).toHaveText('Imported; the cloud sprint did not close');
+      const steps = page.locator('#gh-dialog-table .gh-steps ol > li');
+      await expect(steps).toHaveCount(5);
+      await expect(steps.nth(0)).toContainText('Continue here');
+      await expect(steps.nth(1)).toContainText('Open a session in the worktree');
+      await expect(steps.nth(2)).toContainText('sprint complete');
+      await expect(steps.nth(3)).toContainText('Finish');
+      await expect(steps.nth(4)).toContainText('Check & merge');
+      await expect(page.locator('#gh-dialog-body')).not.toContainText('Next: Check & merge');
+      await expect(page.locator('#gh-dialog-table details')).not.toHaveAttribute('open', '');
+      await expect(page.locator('#gh-dialog-table details pre')).toHaveText(o);
+    }
+    // A cloud-closed import still says Check & merge, and carries no steps.
+    await page.locator('#gh-dialog-cancel').click();
+    out = `import-results: 10 files into .tickets/${id}/\n  status: closed\n  evaluator: pass  graded-head: 9c41e2a\n  PR #58 head 9c41e2a: matches graded-head`;
+    await page.locator(`.card[data-id="${id}"] .card-gh-btn`).click();
+    await expect(page.locator('#gh-dialog-body')).toHaveText('Next: Check & merge on the card.');
+    await expect(page.locator('#gh-dialog-table')).toBeHidden();
   });
 
   test('Continue here: shown for an imported, unclosed ticket; confirming posts the PR to land (t-c259, t-6623)', async ({ page }) => {
@@ -17767,7 +17795,8 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     ghTicket(id, { github: 'acme/app#57' });
     await routeStatus(page, id, { stage: 'results-ready', pr: 58, land: true });
     const bodies = [];
-    await page.route(`**/api/ticket/${id}/github/land`, r => { bodies.push(JSON.parse(r.request().postData() || '{}')); return json(r, { ok: true, exit_code: 0, output: `land: ${id} at PR #58 head 9c41e2a2\n  worktree: /w/land-${id}` }); });
+    const landOut = `land: ${id} at PR #58 head 9c41e2a2\n  worktree: /w/land-${id} (branch land/${id})\n  next: in that worktree run the evaluator and sprint complete ${id}, then: tkt land ${id} --finish`;
+    await page.route(`**/api/ticket/${id}/github/land`, r => { bodies.push(JSON.parse(r.request().postData() || '{}')); return json(r, { ok: true, exit_code: 0, output: landOut }); });
     await openBoard(page, id);
     const btn = page.locator(`.card[data-id="${id}"] .card-gh-btn`);
     await expect(btn).toHaveText('Continue here');
@@ -17777,7 +17806,19 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     expect(bodies).toEqual([]);
     await page.locator('#gh-dialog-ok').click();
     await expect(page.locator('#gh-dialog-title')).toHaveText('Worktree ready');
-    await expect(page.locator('#gh-dialog-pre')).toContainText(`worktree: /w/land-${id}`);
+    // t-92f2: numbered steps in the card's words; the path on its own line; tkt's output folded under a closed Details.
+    const steps = page.locator('#gh-dialog-table .gh-steps ol > li');
+    await expect(steps).toHaveCount(4);
+    await expect(steps.nth(0)).toContainText('Resume on the card');
+    await expect(steps.nth(0).locator('code.gh-steps-path')).toHaveText(`/w/land-${id}`);
+    await expect(steps.nth(1)).toContainText('sprint complete');
+    await expect(steps.nth(2)).toContainText('Finish');
+    await expect(steps.nth(3)).toContainText('Check & merge');
+    await expect(page.locator('#gh-dialog-pre')).toBeHidden();
+    const det = page.locator('#gh-dialog-table details');
+    await expect(det).not.toHaveAttribute('open', '');
+    await expect(det.locator('summary')).toHaveText('Details');
+    await expect(det.locator('pre')).toHaveText(landOut);
     expect(bodies).toEqual([{ pr: 58 }]);
   });
 
@@ -17787,7 +17828,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     ghTicket(id, { github: 'acme/app#57' });
     await routeStatus(page, id, { stage: 'pr-open', pr: 58, land: true, close_here: true });
     const bodies = [];
-    await page.route(`**/api/ticket/${id}/github/land`, r => { bodies.push(JSON.parse(r.request().postData() || '{}')); return json(r, { ok: true, exit_code: 0, output: `land: ${id} at PR #58 head 9c41e2a2\n  worktree: /w/land-${id}` }); });
+    await page.route(`**/api/ticket/${id}/github/land`, r => { bodies.push(JSON.parse(r.request().postData() || '{}')); return json(r, { ok: true, exit_code: 0, output: `land: ${id} at PR #58 head 9c41e2a2\n  worktree: /w/land-${id} (branch land/${id})\n  next: in that worktree run git merge origin/main, resolve the conflicting files, then run the evaluator and sprint complete ${id}, then: tkt land ${id} --finish` }); });
     await openBoard(page, id);
     const btn = page.locator(`.card[data-id="${id}"] .card-gh-btn`);
     await expect(btn).toHaveText('Close here');
@@ -17800,12 +17841,42 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await btn.click();
     await page.locator('#gh-dialog-ok').click();
     await expect(page.locator('#gh-dialog-title')).toHaveText('Worktree ready');
+    const steps = page.locator('#gh-dialog-table .gh-steps ol > li');   // t-92f2: a conflicting PR merges its base first
+    await expect(steps).toHaveCount(5);
+    await expect(steps.nth(0)).toContainText('merge origin/main');
+    await expect(steps.nth(0)).toContainText('push the branch to the PR');
+    await expect(steps.nth(1)).toContainText('Open a session in the worktree');
     expect(bodies).toEqual([{ pr: 58 }]);
   });
 
-  test('Finish: shown once the land worktree exists, names its path, and posts finish (t-6623) @webkit', async ({ page }) => {
+  // Prod path: the card's stage button and the Cockpit rail for a ticket tkt land made a worktree for (t-92f2). Until the close
+  // there, the card resumes the session in that worktree (no Finish), and the rail mounts the terminal, not the GitHub panel.
+  test('before the close in the land worktree: Resume and a closing chip, no Finish; the Cockpit mounts the session (t-92f2)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh34'), other = newTicketId(PROJECT_ROOT, 'gh35');
+    ghTicket(id, { github: 'acme/app#57', status: 'in_progress' }); ghTicket(other, { github: 'acme/app#58', status: 'in_progress' });
+    await routeStatus(page, id, { stage: 'pr-open', pr: 58, land: false, landed: `/w/land-${id}` });
+    await routeStatus(page, other, { stage: 'pr-open', pr: 59, land: false });
+    await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
+    await page.route('**/api/worktrees**', r => json(r, [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true }]));
+    await openBoard(page, id);
+    const card = page.locator(`.card[data-id="${id}"]`);
+    await expect(card.locator('.card-start.resume')).toHaveText('▶ Resume');
+    await expect(card.locator('.card-start.resume')).toHaveAttribute('title', new RegExp(`/w/land-${id}`));
+    await expect(card.locator('.card-gh-btn')).toHaveCount(0);
+    await expect(card.locator('.card-gh-chip')).toContainText(`closing in land/${id}`);
+    const panelShown = async tid => {
+      await page.evaluate(async x => (await import('/static/board-cockpit-rail.js')).openCockpit(x), tid);
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await expect(page.locator('#ck-worktree .ck-worktree-row').first()).toBeVisible();   // the rail rendered, so the mount decision ran
+      return page.locator('#ck-gh-panel');
+    };
+    await expect(await panelShown(other)).toBeVisible();   // control: a ticket out on GitHub, not landed, shows the panel
+    await expect(await panelShown(id)).toBeHidden();
+  });
+
+  test('Finish: shown once the land worktree exists and the ticket closed there, names its path, and posts finish (t-6623, t-92f2) @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gh32');
-    ghTicket(id, { github: 'acme/app#57' });
+    ghTicket(id, { github: 'acme/app#57', status: 'closed' });
     await routeStatus(page, id, { stage: 'pr-open', pr: 58, land: false, landed: `/w/land-${id}` });
     const bodies = [];
     await page.route(`**/api/ticket/${id}/github/land`, r => { bodies.push(JSON.parse(r.request().postData() || '{}')); return json(r, { ok: true, exit_code: 0, output: `land: ${id} closed here; worktree removed` }); });
@@ -17813,6 +17884,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     const card = page.locator(`.card[data-id="${id}"]`);
     const btn = card.locator('.card-gh-btn');
     await expect(btn).toHaveText('Finish');
+    await expect(card.locator('.card-gh-chip')).not.toContainText('closing in');
     await expect(btn).toHaveAttribute('title', new RegExp(`/w/land-${id}`));
     const [cb, bb] = [await card.boundingBox(), await btn.boundingBox()];
     expect(bb.x).toBeGreaterThanOrEqual(cb.x); expect(bb.x + bb.width).toBeLessThanOrEqual(cb.x + cb.width + 1);
@@ -17851,6 +17923,10 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     expect(bodies).toEqual([]);
     await page.locator('#gh-dialog-ok').click();
     await expect(page.locator('#gh-dialog-title')).toHaveText('Worktree ready');
+    const steps = page.locator('#gh-dialog-table .gh-steps ol > li');   // t-92f2: the fix comes before sprint complete
+    await expect(steps).toHaveCount(5);
+    await expect(steps.nth(1)).toContainText('Fix what failed');
+    await expect(steps.nth(2)).toContainText('sprint complete');
     expect(bodies).toEqual([{ pr: 58, fix: true }]);
   });
 
@@ -17885,6 +17961,70 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     Object.assign(job, { status: 'done', exit_code: 0, output: job.output + 'merge-pr: scripts/test.sh passed in 4m11s\nMerged PR #58 into main (424987f9).\nLocal main: 1111aaaa -> 424987f9 (fast-forward)\n' });
     await expect(page.locator('#gh-dialog-title')).toHaveText('Merged');
     await expect(page.locator('#gh-dialog-pre')).toContainText('Merged PR #58 into main');
+  });
+
+  // t-2906: a worktree ticket's Check & merge is the GitHub one: the same card button, check, confirm, progress, Stop and Merged
+  // result; only the words that must differ do. Prod path: the card's Check & merge for a worktree ticket (wt_merge on
+  // GET /api/tickets; the same /github/merge-check and /github/merge routes, which run tkt merge).
+  test('Check & merge: a worktree ticket walks the same dialog as a PR, only its words differ (t-2906)', async ({ page }) => {
+    async function walk(id, { checkOut, runOut, doneOut }) {
+      const job = { status: 'idle', output: '', exit_code: null, elapsed: 0 };
+      const posts = [];
+      await page.route(`**/api/ticket/${id}/github/merge-check**`, r => json(r, { ok: true, exit_code: 0, output: checkOut }));
+      await page.route(`**/api/ticket/${id}/github/merge`, r => {
+        if (r.request().method() === 'POST') { posts.push(JSON.parse(r.request().postData() || '{}')); Object.assign(job, { status: 'running', output: runOut, elapsed: 5 }); }
+        return json(r, job);
+      });
+      await openBoard(page, id);
+      const btn = page.locator(`.card[data-id="${id}"] .card-gh-btn`);
+      const text = async sel => (await page.locator(sel).textContent()).trim();
+      const steps = [(await btn.textContent()).trim()];
+      await btn.click();
+      await expect(page.locator('#gh-dialog-ok')).toHaveText('Run tests & merge');
+      steps.push(await text('#gh-dialog-ok'), await text('#gh-dialog-cancel'));
+      const confirmBody = await text('#gh-dialog-body');
+      expect(posts).toEqual([]);   // nothing runs before the confirm
+      await page.locator('#gh-dialog-ok').click();
+      await expect(page.locator('#gh-dialog-body')).toContainText('Running… 0m05s');
+      await expect(page.locator('#gh-dialog-pre')).toContainText('running scripts/test.sh');
+      steps.push(await text('#gh-dialog-cancel'));
+      Object.assign(job, { status: 'done', exit_code: 0, output: runOut + doneOut });
+      await expect(page.locator('#gh-dialog-title')).toHaveText('Merged');
+      steps.push(await text('#gh-dialog-title'), await text('#gh-dialog-cancel'));
+      const doneBody = await text('#gh-dialog-body');
+      await page.locator('#gh-dialog-cancel').click();
+      return { steps, confirmBody, doneBody, posts };
+    }
+    const prId = newTicketId(PROJECT_ROOT, 'gh2906p');
+    ghTicket(prId, { github: 'acme/app#57' });
+    await routeStatus(page, prId, { stage: 'results-in', pr: 58 });
+    const prRun = await walk(prId, {
+      checkOut: 'PR #58 (acme/app): 1 file changed\nmerge-pr: ready: would run scripts/test.sh on main + PR #58, then merge (closes #57)',
+      runOut: 'merge-pr: running scripts/test.sh on main + PR #58… 0m05s\n',
+      doneOut: 'merge-pr: scripts/test.sh passed in 4m11s\nMerged PR #58 into main (424987f9).\n' });
+    const wtId = newTicketId(PROJECT_ROOT, 'gh2906w');
+    ghTicket(wtId, { status: 'closed' });
+    await page.route('**/api/tickets**', async route => {
+      const resp = await route.fetch();
+      const list = await resp.json();
+      for (const t of list) if (t.id === wtId) t.wt_merge = { branch: 'feat/x', path: '/tmp/wt' };
+      await route.fulfill({ response: resp, json: list });
+    });
+    const wtRun = await walk(wtId, {
+      checkOut: 'feat/x: 1 file changed\nmerge: ready: would run scripts/test.sh on main + feat/x, then merge',
+      runOut: 'merge: running scripts/test.sh on main + feat/x… 0m05s\n',
+      doneOut: 'merge: scripts/test.sh passed in 4m11s\nMerged feat/x into main (424987f9).\nnext: the worktree /tmp/wt is free: reuse it for the next ticket, or remove it (git worktree remove /tmp/wt)\n' });
+    expect(wtRun.steps).toEqual(prRun.steps);   // Check & merge, Run tests & merge, Cancel, Stop, Merged, Close
+    expect(wtRun.posts).toEqual([{}]);
+    expect(prRun.posts).toEqual([{ pr: 58 }]);
+    expect(prRun.confirmBody).toContain("runs the PR's code on this machine");
+    expect(wtRun.confirmBody).toContain("runs the branch's code on this machine");
+    expect(wtRun.doneBody).toContain('feat/x is merged into main here.');
+    expect(wtRun.doneBody).toContain('Next: the worktree /tmp/wt is free');
+    // Once merged (merged: on the ticket, so no wt_merge), the card shows no Check & merge.
+    await page.unroute('**/api/tickets**');
+    await openBoard(page, wtId);
+    await expect(page.locator(`.card[data-id="${wtId}"] .card-gh-btn`)).toHaveCount(0);
   });
 
   test('Check & merge: a refused check runs nothing; Stop ends a running job (t-718b)', async ({ page }) => {

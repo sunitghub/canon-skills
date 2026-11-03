@@ -48,6 +48,57 @@
         "A note on the row names lesson (b) as the part still pending a destination or an explicit dismissal",
         "Lesson (b) is either given its own destination or explicitly dismissed in the report, not silently dropped"
       ]
+    },
+    {
+      "id": 5,
+      "case_type": "compliance",
+      "type": "regression",
+      "prompt": "Consumer project. LEARNINGS.md has one UNPROMOTED row t-aaaa whose source learnings.md tells a story: the sprint hit a stale cache, spent two hours, and finally cleared it. Propose the PROMOTED.md entry and apply it after the user confirms.",
+      "expected_output": "The proposed and written entry is one trigger and one action in 'When <situation>, <do this>.' form followed by (t-aaaa), not the story of the sprint; the report shows the same text that Apply writes.",
+      "expectations": [
+        "Entry starts with 'When' and states one situation and one action in one or two lines",
+        "Entry does not narrate the ticket's story (no hours spent, no 'we found')",
+        "Entry ends with the ticket id in brackets",
+        "The text written to PROMOTED.md is identical to the text shown in the report"
+      ]
+    },
+    {
+      "id": 6,
+      "case_type": "compliance",
+      "type": "regression",
+      "prompt": "Consumer project. UNPROMOTED row t-bbbb's source learnings.md holds two unrelated lessons: always run the formatter before commit, and never edit generated files by hand. Both are durable. Propose PROMOTED.md entries.",
+      "expected_output": "Two separate entries, each with one 'When ..., ...' trigger and action and the ticket id; no single bundled entry.",
+      "expectations": [
+        "Report proposes two entries for t-bbbb, not one bundled entry",
+        "Each entry has exactly one 'When' trigger and one action",
+        "The report's PROMOTED.md line estimate counts the two entries as written"
+      ]
+    },
+    {
+      "id": 7,
+      "case_type": "compliance",
+      "type": "regression",
+      "prompt": "Consumer project. UNPROMOTED row t-cccc's lesson is already written in PROMOTED.md as a real entry. Propose its handling and apply it after the user confirms.",
+      "expected_output": "The row is proposed and written as `dismissed (covered: PROMOTED.md)`, not as promoted; no new PROMOTED.md entry is added.",
+      "expectations": [
+        "Proposal destination reads dismissed (covered: PROMOTED.md), not promoted",
+        "Apply writes the Status as `dismissed (covered: PROMOTED.md)` in LEARNINGS.md",
+        "No second copy of the rule is appended to PROMOTED.md",
+        "The row is not marked promoted, since no write happened"
+      ]
+    },
+    {
+      "id": 8,
+      "case_type": "compliance",
+      "type": "regression",
+      "prompt": "Consumer project. The user ticks the proposals for groups 1 and 2, and in 'Type something' writes: dismiss t-dddd. t-dddd is a row not among the ticked proposals. Run Apply.",
+      "expected_output": "The ticked entries are written and their rows flipped, and t-dddd is flipped to dismissed too; the closing summary re-reads both files and names every row, including t-dddd.",
+      "expectations": [
+        "t-dddd's Status in LEARNINGS.md is flipped to dismissed, not left UNPROMOTED",
+        "The typed decision is carried out, not only the ticked proposals",
+        "The summary prints N promoted, M dismissed, K still waiting with ticket ids, after re-reading LEARNINGS.md",
+        "The summary gives PROMOTED.md's managed-block line count against the 60-line cap"
+      ]
     }
   ]
 }

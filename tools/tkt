@@ -1770,11 +1770,12 @@ _resolve_pr() {
   printf '%s\n' "$found"
 }
 
-# _merge_pr_run_tests <tmp> <cmd> <base> <pr>: runs <cmd> in <tmp>/w, output to <tmp>/test.log, showing progress (t-bad4):
+# _merge_run_tests <tmp> <cmd> <label> <what>: runs <cmd> in <tmp>/w, output to <tmp>/test.log, showing progress (t-bad4):
 # on a terminal one line rewritten every 2 s, else a plain line every CANON_PROGRESS_SECONDS (default 30; the board sets
-# it). The command runs in its own process group, so an interrupt stops all of it (recorded group id only).
-_merge_pr_run_tests() {
-  local tmp="$1" cmd="$2" base="$3" pr="$4" every="${CANON_PROGRESS_SECONDS:-30}" tty=false tpid="" rc=0 start last=0 now line
+# it). The command runs in its own process group, so an interrupt stops all of it (recorded group id only). <label> starts
+# each line (merge-pr, merge); <what> is what the tests run on ("main + PR #12", "main + feat/x"; t-2906).
+_merge_run_tests() {
+  local tmp="$1" cmd="$2" label="$3" what="$4" every="${CANON_PROGRESS_SECONDS:-30}" tty=false tpid="" rc=0 start last=0 now line
   local shown; shown="$(printf '%s' "$cmd" | cut -c1-40)"; [[ ${#cmd} -gt 40 ]] && shown="${shown}…"
   [[ "$every" =~ ^[1-9][0-9]*$ ]] || every=30
   [[ -t 1 ]] && { tty=true; every=2; }
@@ -1782,7 +1783,7 @@ _merge_pr_run_tests() {
   # then KILL after 2 s. Only the recorded group id is signalled.
   # shellcheck disable=SC2016  # $tpid is read when the trap fires
   trap '[[ -n "$tpid" ]] && { kill -TERM -- "-$tpid" 2>/dev/null; for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 -- "-$tpid" 2>/dev/null || break; sleep 0.2; done; kill -KILL -- "-$tpid" 2>/dev/null || true; }
-    printf "\nmerge-pr: stopped; the tests were ended and nothing was merged\n" >&2; exit 130' INT TERM HUP
+    printf "\n%s: stopped; the tests were ended and nothing was merged\n" "$label" >&2; exit 130' INT TERM HUP
   start=$SECONDS
   set -m
   # t-a36b: CANON_PROGRESS_SECONDS paces merge-pr itself (the board sets it); the code under test must not see it.
@@ -1795,14 +1796,83 @@ _merge_pr_run_tests() {
     # The newest line as a terminal would show it: after its last carriage return, escape sequences and controls removed.
     line="$(tail -n 1 "$tmp/test.log" 2>/dev/null | awk -F'\r' '{ print $NF }' | LC_ALL=C sed $'s/\033\\[[0-9;?]*[A-Za-z]//g' | LC_ALL=C tr -d '\000-\037\177' | cut -c1-50)"
     [[ -n "$line" ]] && line="  ($line)"   # t-e523: no empty "()" before the test log has a line
-    if $tty; then printf '\rmerge-pr: running %s on %s + PR #%s… %dm%02ds%s\033[K' "$shown" "$base" "$pr" $((now / 60)) $((now % 60)) "$line"
-    else printf 'merge-pr: running %s on %s + PR #%s… %dm%02ds%s\n' "$shown" "$base" "$pr" $((now / 60)) $((now % 60)) "$line"; fi
+    if $tty; then printf '\r%s: running %s on %s… %dm%02ds%s\033[K' "$label" "$shown" "$what" $((now / 60)) $((now % 60)) "$line"
+    else printf '%s: running %s on %s… %dm%02ds%s\n' "$label" "$shown" "$what" $((now / 60)) $((now % 60)) "$line"; fi
   done
   wait "$tpid" || rc=$?
   trap - INT TERM HUP
   now=$((SECONDS - start)); $tty && printf '\r\033[K'
-  [[ $rc == 0 ]] && printf 'merge-pr: %s passed in %dm%02ds\n' "$cmd" $((now / 60)) $((now % 60))
+  [[ $rc == 0 ]] && printf '%s: %s passed in %dm%02ds\n' "$label" "$cmd" $((now / 60)) $((now % 60))
   return "$rc"
+}
+
+# _merge_core — t-2906: the part of a merge every source shares, after its front end has read the candidate: the candidate in a
+# scratch clone, the graded-head and late-docs check, the merge there (conflicts named), the test command's default (from the
+# base, so a candidate that deletes scripts/test.sh cannot switch its gate off), the report, the question, the tests. Nothing
+# from the candidate runs before a yes. It reads its caller's locals (bash dynamic scope):
+#   label (merge-pr, merge)  subj ("PR #12", "feat/x")  kind (PR, branch)  title (the report's first words)  base  head (the
+#   candidate commit the front end read)  graded  id  tmp  tcmd  tset  check  yes  closes / also (the --check and question
+#   suffixes, may be empty)  logsfx (the kept log's name part)  fetch_from (where _mc_fetch reads, for its error; may be empty)
+# and calls its hooks: _mc_fetch (o/<base> and o/cand into $tmp/w; sets err on failure), _mc_refuse <reason> (records why,
+# exits 1), _mc_check_notes (extra --check lines), _mc_conflict_next (the way out of a conflict). Returns 0 to merge, 3 when
+# nothing more is to be done (the --check report printed, or the user said no).
+_merge_core() {
+  _mc_fetch || { echo "$label: could not fetch $base and $subj${fetch_from:+ from $fetch_from}: $err" >&2; _mc_refuse "could not fetch $base and the $kind${fetch_from:+ from $fetch_from}"; }
+  [[ "$(git -C "$tmp/w" rev-parse o/cand)" == "$head" ]] || { echo "$label: $subj moved while checking it; run $label again" >&2; _mc_refuse "$kind moved while it was checked"; }
+  # t-fdb1: a head past graded-head passes only when what came after is merge-safe late docs (the cloud's learnings sweep, complete.md
+  # step 8); read from the fetched objects, so a non-ancestor or a git failure refuses.
+  if [[ "$head" != "$graded"* ]]; then
+    local late lrc=0
+    late="$(late_docs_delta "$tmp/w" "$graded" "$head" "$id")" || lrc=$?
+    case "$lrc" in
+      0) echo "$label: $subj head is graded-head plus late docs only: $(printf '%s\n' "$late" | grep . | paste -sd, - | sed 's/,/, /g')" ;;
+      1) echo "$label: $subj head $head is not the commit the evaluator graded ($graded); since then it changes $(printf '%s\n' "$late" | sed -n '1,5p' | paste -sd, - | sed 's/,/, /g'): re-run the gates on it" >&2; _mc_refuse "$kind head $head is not the graded-head $graded and changes more than late docs" ;;
+      *) echo "$label: $subj head $head is not the commit the evaluator graded ($graded): $late; re-run the gates on it" >&2; _mc_refuse "$kind head $head is not the graded-head $graded" ;;
+    esac
+  fi
+  if ! { git -C "$tmp/w" checkout -q -B merge-check "o/$base" < /dev/null \
+    && git -C "$tmp/w" -c user.name=canon -c user.email=canon@localhost merge -q --no-edit o/cand < /dev/null >/dev/null 2>&1; }; then
+    echo "$label: $subj does not merge into $base here" >&2
+    # t-ca00: name the conflicting files (git merge-tree reads objects only) and the way out; a failure here never hides the refusal.
+    local mt mrc=0
+    mt="$(git -C "$tmp/w" merge-tree --write-tree --name-only --no-messages "o/$base" o/cand < /dev/null 2>&1)" || mrc=$?
+    if [[ "$mrc" == 1 ]]; then echo "$label: conflicts in: $(printf '%s\n' "$mt" | sed 1d | grep . | paste -sd, - | sed 's/,/, /g')" >&2; _mc_conflict_next; fi
+    _mc_refuse "$kind does not merge into $base"
+  fi
+  if ! $tset && git -C "$tmp/w" ls-tree "o/$base" -- scripts/test.sh < /dev/null | grep -q '^100755 '; then tcmd="scripts/test.sh"; fi
+  echo "$title: $(git -C "$tmp/w" diff --shortstat "o/$base...o/cand" < /dev/null | sed 's/^ *//')"
+  git -C "$tmp/w" diff --quiet "o/$base...o/cand" -- scripts/test.sh < /dev/null \
+    || echo "  note: this $kind changes scripts/test.sh itself, the script that would run"
+  # --check (t-bad4): every check that runs none of the candidate's code has passed; report and stop. The board fills its dialog from this.
+  if $check; then
+    _mc_check_notes
+    if [[ -n "$tcmd" ]]; then echo "$label: ready: would run $tcmd on $base + $subj, then merge$closes"
+    else echo "$label: ready: no test command (pass --test); would merge $subj on the gates alone$closes"; fi
+    return 3
+  fi
+  local ask
+  if [[ -n "$tcmd" ]]; then ask="Run $subj's code here ($tcmd on $base + $kind) and merge into $base if it passes?"
+  else ask="No test command (pass --test). Merge $subj into $base on the gates alone?"; fi
+  if $yes; then echo "$ask yes (--yes)"
+  else
+    [[ -t 0 ]] || { echo "$label: no terminal to ask on; pass --yes to run the tests and merge without asking" >&2; _mc_refuse "no terminal to ask on"; }
+    local ans; printf '%s%s [y/N] ' "$ask" "$also"
+    read -r ans || ans=""
+    [[ "$ans" == y || "$ans" == Y ]] || { echo "$label: nothing run, not merged"; return 3; }
+  fi
+  if [[ -n "$tcmd" ]]; then
+    echo "$label: running $tcmd on $base + ${subj}…"
+    _merge_run_tests "$tmp" "$tcmd" "$label" "$base + $subj" \
+      || {
+        # t-6b90: name the failing suites and keep the full log ($tmp is removed on exit); the tail alone is a timings table.
+        local kept failing
+        echo "$label: $tcmd failed on $base + $subj; not merging." >&2
+        failing="$(grep -E '^(FAILED|FAIL)' "$tmp/test.log" | head -20 || true)"
+        [[ -z "$failing" ]] || printf 'Failing:\n%s\n' "$failing" >&2
+        if kept="$(mktemp "${TMPDIR:-/tmp}/tkt-merge-$id-$logsfx.XXXXXX")" && cat "$tmp/test.log" > "$kept"; then echo "Full log kept at: $kept" >&2; fi
+        echo "Last lines:" >&2; tail -30 "$tmp/test.log" >&2; _mc_refuse "$tcmd failed on $base + $kind"; }
+  fi
+  return 0
 }
 
 cmd_merge_pr() {
@@ -1824,15 +1894,7 @@ cmd_merge_pr() {
   root="$(git -C "$tdir" rev-parse --show-toplevel)" || exit 1
   repo="$(_gh_origin_repo "$root" merge-pr)" || exit 1
   command -v gh >/dev/null 2>&1 || { echo "merge-pr: needs the GitHub CLI: install gh, then run: gh auth login" >&2; exit 1; }
-  local verdict graded; read -r verdict graded < <(_eval_verdict_head "$tdir")
-  [[ "$verdict" == pass && "$graded" != - ]] \
-    || { echo "merge-pr: $id has no passing evaluator verdict with a graded-head (eval-report.md: ${verdict/#-/none}); import the results first" >&2; exit 1; }
-  # An irreversible merge rests on this report, so it must be unambiguous, as sprint complete requires: one verdict, one head.
-  local nv ng
-  nv="$(grep -cE '^(pass|fail|partial|not-run):' "$tdir/eval-report.md" || true)"
-  ng="$(sed -n 's/^graded-head: *\([0-9a-f]\{7,40\}\).*/\1/p' "$tdir/eval-report.md" | sort -u | grep -c . || true)"
-  [[ "$nv" == 1 && "$ng" == 1 ]] \
-    || { echo "merge-pr: $id's eval-report.md has $nv verdict lines and $ng graded-heads; one of each is required" >&2; exit 1; }
+  local graded; graded="$(_eval_pass_head merge-pr "$tdir" "$id" "import the results first")" || exit 1
   local issue=""; issue="$(get_field "$file" github)"; [[ "$issue" == "$repo#"* && "${issue##*#}" =~ ^[0-9]+$ ]] && issue="${issue##*#}" || issue=""
   pr="$(_resolve_pr merge-pr "$file" "$repo" "$pr")" || exit 1
   local info st mg ms head base cross draft tries=1
@@ -1861,7 +1923,8 @@ cmd_merge_pr() {
   url="$(git -C "$root" remote get-url origin)"
   # Nothing before the prompt reads the terminal (</dev/null): a typed-ahead answer is the prompt's alone.
   _mp_fetch() { err="$({ git clone -q "$root" "$tmp/w" \
-    && git -C "$tmp/w" fetch -q "$url" "+refs/heads/$base:refs/remotes/o/$base" "+refs/pull/$pr/head:refs/remotes/o/pr"; } < /dev/null 2>&1)"; }
+    && git -C "$tmp/w" fetch -q "$url" "+refs/heads/$base:refs/remotes/o/$base" "+refs/pull/$pr/head:refs/remotes/o/cand"; } < /dev/null 2>&1)"; }
+  _mc_conflict_next() { echo "next: tkt land $id --pr $pr --fix (a worktree at the PR head: merge $base, resolve, close it again, then Check & merge)" >&2; }
   if [[ "$mg" != MERGEABLE || "$ms" != CLEAN ]]; then
     if [[ "$ms" == BLOCKED ]]; then echo "merge-pr: PR #$pr is blocked by a branch rule (a required review or check): https://github.com/$repo/pull/$pr" >&2
     else echo "merge-pr: PR #$pr cannot merge cleanly (mergeable: $mg, state: $ms)" >&2; fi
@@ -1870,70 +1933,28 @@ cmd_merge_pr() {
       local mt mrc=0
       if ! _mp_fetch; then echo "merge-pr: could not list the conflicting files: could not fetch $base and PR #$pr from origin: $err" >&2
       else
-        mt="$(git -C "$tmp/w" merge-tree --write-tree --name-only --no-messages "o/$base" o/pr < /dev/null 2>&1)" || mrc=$?
+        mt="$(git -C "$tmp/w" merge-tree --write-tree --name-only --no-messages "o/$base" o/cand < /dev/null 2>&1)" || mrc=$?
         if [[ "$mrc" == 1 ]]; then echo "merge-pr: conflicts in: $(printf '%s\n' "$mt" | sed 1d | grep . | paste -sd, - | sed 's/,/, /g')" >&2
         elif [[ "$mrc" == 0 ]]; then echo "merge-pr: git finds no conflict between $base and PR #$pr here; GitHub's view may be stale, check again" >&2
         else echo "merge-pr: could not list the conflicting files (git merge-tree needs git 2.38 or newer, exit $mrc)" >&2; fi
       fi
-      echo "next: tkt land $id --pr $pr --fix (a worktree at the PR head: merge $base, resolve, close it again, then Check & merge)" >&2
+      _mc_conflict_next
     fi
     _mp_refuse "PR cannot merge cleanly (mergeable: $mg, state: $ms)"
   fi
-  # The suite on what main will hold: base + the PR, in a scratch clone.
-  _mp_fetch \
-    || { echo "merge-pr: could not fetch $base and PR #$pr from origin: $err" >&2; _mp_refuse "could not fetch $base and the PR from origin"; }
-  [[ "$(git -C "$tmp/w" rev-parse o/pr)" == "$head" ]] || { echo "merge-pr: PR #$pr moved while checking it; run merge-pr again" >&2; _mp_refuse "PR moved while it was checked"; }
-  # t-fdb1: a head past graded-head passes only when what came after is merge-safe late docs (the cloud's learnings sweep, complete.md
-  # step 8); read from the fetched objects, so a non-ancestor or a git failure refuses.
-  if [[ "$head" != "$graded"* ]]; then
-    local late lrc=0
-    late="$(late_docs_delta "$tmp/w" "$graded" "$head" "$id")" || lrc=$?
-    case "$lrc" in
-      0) echo "merge-pr: PR #$pr head is graded-head plus late docs only: $(printf '%s\n' "$late" | grep . | paste -sd, - | sed 's/,/, /g')" ;;
-      1) echo "merge-pr: PR #$pr head $head is not the commit the evaluator graded ($graded); since then it changes $(printf '%s\n' "$late" | sed -n '1,5p' | paste -sd, - | sed 's/,/, /g'): re-run the gates on it" >&2; _mp_refuse "PR head $head is not the graded-head $graded and changes more than late docs" ;;
-      *) echo "merge-pr: PR #$pr head $head is not the commit the evaluator graded ($graded): $late; re-run the gates on it" >&2; _mp_refuse "PR head $head is not the graded-head $graded" ;;
-    esac
-  fi
-  git -C "$tmp/w" checkout -q -B merge-pr-check "o/$base" < /dev/null \
-    && git -C "$tmp/w" -c user.name=canon -c user.email=canon@localhost merge -q --no-edit o/pr < /dev/null >/dev/null 2>&1 \
-    || { echo "merge-pr: PR #$pr does not merge into $base here" >&2; _mp_refuse "PR does not merge into $base"; }
-  # The default comes from the base branch, not the merge: a PR that deletes scripts/test.sh must not switch its gate off.
-  if ! $tset && git -C "$tmp/w" ls-tree "o/$base" -- scripts/test.sh < /dev/null | grep -q '^100755 '; then tcmd="scripts/test.sh"; fi
-  # The test command runs the PR's code on this machine, so the question comes first: nothing from the PR runs before a y.
-  echo "PR #$pr ($repo): $(git -C "$tmp/w" diff --shortstat "o/$base...o/pr" < /dev/null | sed 's/^ *//')"
-  git -C "$tmp/w" diff --quiet "o/$base...o/pr" -- scripts/test.sh < /dev/null \
-    || echo "  note: this PR changes scripts/test.sh itself, the script that would run"
-  # --check (t-bad4): every check that runs no PR code has passed; report and stop. The board fills its dialog from this.
-  if $check; then
-    # t-7c89: this checkout's base has commits GitHub's lacks: the merge tests and merges without them. The clone's origin/ is this checkout.
+  # The suite on what main will hold: base + the PR, in a scratch clone (_merge_core, t-2906).
+  local label=merge-pr subj="PR #$pr" kind=PR title="PR #$pr ($repo)" logsfx="pr$pr" fetch_from=origin
+  local closes="${issue:+ (closes #$issue)}" also="${issue:+ This also closes #$issue.}"
+  _mc_fetch() { _mp_fetch; }
+  _mc_refuse() { _mp_refuse "$1"; }
+  # t-7c89: this checkout's base has commits GitHub's lacks: the merge tests and merges without them. The clone's origin/ is this checkout.
+  _mc_check_notes() {
     local ahead; ahead="$(git -C "$tmp/w" rev-list --count "o/$base..origin/$base" < /dev/null 2>/dev/null || true)"
     [[ "$ahead" =~ ^[1-9][0-9]*$ ]] && echo "merge-pr: local $base has $ahead commit$([[ "$ahead" == 1 ]] || echo s) that aren't on GitHub"
-    if [[ -n "$tcmd" ]]; then echo "merge-pr: ready: would run $tcmd on $base + PR #$pr, then merge${issue:+ (closes #$issue)}"
-    else echo "merge-pr: ready: no test command (pass --test); would merge PR #$pr on the gates alone${issue:+ (closes #$issue)}"; fi
     return 0
-  fi
-  local ask
-  if [[ -n "$tcmd" ]]; then ask="Run PR #$pr's code here ($tcmd on $base + PR) and merge into $base if it passes?"
-  else ask="No test command (pass --test). Merge PR #$pr into $base on the gates alone?"; fi
-  if $yes; then echo "$ask yes (--yes)"
-  else
-    [[ -t 0 ]] || { echo "merge-pr: no terminal to ask on; pass --yes to run the tests and merge without asking" >&2; _mp_refuse "no terminal to ask on"; }
-    local ans; printf '%s%s [y/N] ' "$ask" "${issue:+ This also closes #$issue.}"
-    read -r ans || ans=""
-    [[ "$ans" == y || "$ans" == Y ]] || { echo "merge-pr: nothing run, not merged"; return 0; }
-  fi
-  if [[ -n "$tcmd" ]]; then
-    echo "merge-pr: running $tcmd on $base + PR #${pr}…"
-    _merge_pr_run_tests "$tmp" "$tcmd" "$base" "$pr" \
-      || {
-        # t-6b90: name the failing suites and keep the full log ($tmp is removed on exit); the tail alone is a timings table.
-        local kept failing
-        echo "merge-pr: $tcmd failed on $base + PR #$pr; not merging." >&2
-        failing="$(grep -E '^(FAILED|FAIL)' "$tmp/test.log" | head -20 || true)"
-        [[ -z "$failing" ]] || printf 'Failing:\n%s\n' "$failing" >&2
-        if kept="$(mktemp "${TMPDIR:-/tmp}/tkt-merge-$id-pr$pr.XXXXXX")" && cat "$tmp/test.log" > "$kept"; then echo "Full log kept at: $kept" >&2; fi
-        echo "Last lines:" >&2; tail -30 "$tmp/test.log" >&2; _mp_refuse "$tcmd failed on $base + PR"; }
-  fi
+  }
+  local mrc=0; _merge_core || mrc=$?
+  [[ "$mrc" == 0 ]] || return 0
   # From /, never a checkout: --delete-branch then touches only the branch on GitHub.
   local out note=""
   if ! out="$(cd / && gh pr merge "$pr" --repo "$repo" --merge --delete-branch --match-head-commit "$head" 2>&1)"; then
@@ -1967,6 +1988,109 @@ cmd_merge_pr() {
   # t-41ff: written after the local update, so ticket.md is not yet dirty from this merge when the fast-forward runs.
   set_or_add_field "$file" merged "${sha:-PR #$pr}"
   _gh_trail "$tdir" merged "PR: #$pr" "merge commit: ${sha:-unknown}" "base: $base"
+}
+
+# cmd_merge <id> [--test CMD] [--yes | --check] — t-2906: Check & merge for any closed ticket, the one command the board runs. A
+# ticket sent to GitHub (runs: github) merges its PR: tkt merge-pr with the same arguments. Any other merges its worktree branch
+# (_merge_branch). The front end is chosen here and only here, so another one (a branch pushed as a PR, say) is one more case.
+cmd_merge() {
+  local id="" pr="" tcmd="" tset=false yes=false check=false args=("$@")
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --pr)    pr="${2:-}"; shift 2 || { echo "Error: --pr needs a number" >&2; exit 1; } ;;
+      --test)  tcmd="${2:-}"; tset=true; shift 2 || { echo "Error: --test needs a command" >&2; exit 1; } ;;
+      --yes)   yes=true; shift ;;
+      --check) check=true; shift ;;
+      -*) echo "Unknown option: $1" >&2; exit 1 ;;
+      *)  [[ -z "$id" ]] && id="$1"; shift ;;
+    esac
+  done
+  [[ -n "$id" ]] || { echo "Usage: tkt merge <id> [--test CMD] [--yes | --check]   (a ticket sent to GitHub also takes --pr N)" >&2; exit 1; }
+  local file; file="$(find_ticket "$id")"
+  if [[ "$(get_field "$file" runs)" == github ]]; then cmd_merge_pr "${args[@]}"; return; fi
+  [[ -z "$pr" ]] || { echo "merge: --pr is for a ticket sent to GitHub; $id merges its worktree branch" >&2; exit 1; }
+  $yes && $check && { echo "merge: --yes and --check do not go together: --check never runs or merges anything" >&2; exit 1; }
+  _merge_branch
+}
+
+# _merge_branch — t-2906: merges a closed ticket's worktree branch into the branch checked out in the main checkout, through
+# _merge_core (the same checks, report, question and tests as merge-pr). Reads cmd_merge's locals. The merge commit is built
+# from objects only (merge-tree, commit-tree) and must hold exactly the tree the tests ran on; then the main checkout's branch
+# moves to it through _advance_local, so an edited file there stops it with nothing changed, as merge-pr's update does.
+# Every refusal says why and changes nothing: no ref, no file, no ticket field.
+_merge_branch() {
+  local tdir root wt branch base head graded bsha dirty st
+  tdir="$(dirname "$file")"; id="$(get_field "$file" id)"
+  root="$(git -C "$tdir" rev-parse --show-toplevel)" || exit 1
+  _mb_no() { echo "merge: $1" >&2; exit 1; }
+  st="$(get_field "$file" status)"
+  [[ "$st" == closed ]] || _mb_no "$id is ${st:-without a status}, not closed: close it with sprint complete in its worktree first"
+  [[ -z "$(get_field "$file" merged)" ]] || _mb_no "$id is already merged ($(get_field "$file" merged))"
+  graded="$(_eval_pass_head merge "$tdir" "$id" "close it with sprint complete in its worktree first")" || exit 1
+  [[ -f "$tdir/.cockpit-cwd" ]] || _mb_no "$id is not bound to a worktree (no .tickets/$id/.cockpit-cwd), so there is no branch to merge"
+  wt="$(_ticket_cwd_binding "$file")"
+  [[ -d "$wt" ]] || _mb_no "$id's worktree $wt is gone; merge its branch by hand"
+  local wgc rgc
+  wgc="$(git -C "$wt" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" \
+    && rgc="$(git -C "$root" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" \
+    || _mb_no "git could not read the repository of $wt or $root"
+  [[ "$(cd "$wgc" && pwd -P)" == "$(cd "$rgc" && pwd -P)" ]] || _mb_no "$wt is not a worktree of $root"
+  [[ "$(cd "$wt" && pwd -P)" != "$(cd "$root" && pwd -P)" ]] || _mb_no "$id was worked on in the main checkout, not a worktree: there is no branch to merge"
+  branch="$(git -C "$wt" symbolic-ref -q --short HEAD)" || _mb_no "the worktree $wt has no branch checked out (a detached HEAD)"
+  base="$(git -C "$root" symbolic-ref -q --short HEAD)" || _mb_no "the main checkout $root has no branch checked out (a detached HEAD)"
+  { _branch_ok "$branch" && _branch_ok "$base"; } || _mb_no "a branch name git cannot use as given ($branch, $base)"
+  [[ "$branch" != "$base" ]] || _mb_no "the worktree has $base itself checked out; there is no separate branch to merge"
+  head="$(git -C "$root" rev-parse -q --verify "refs/heads/$branch^{commit}")" \
+    && bsha="$(git -C "$root" rev-parse -q --verify "refs/heads/$base^{commit}")" \
+    || _mb_no "git could not read $branch or $base"
+  ! git -C "$root" merge-base --is-ancestor "$head" "$bsha" || _mb_no "$branch is already in $base; nothing to merge"
+  dirty="$(git -C "$wt" status --porcelain --untracked-files=no 2>&1)" || _mb_no "git could not read the worktree's status: $dirty"
+  if [[ -n "$dirty" ]]; then
+    echo "merge: the worktree $wt has uncommitted changes the evaluator did not grade; commit or discard them, then Check & merge again:" >&2
+    printf '%s\n' "$dirty" | sed -n '1,10p' | sed 's/^/  /' >&2; exit 1
+  fi
+  local tmp err; tmp="$(mktemp -d "${TMPDIR:-/tmp}/tkt-merge.XXXXXX")"
+  # shellcheck disable=SC2064  # expand now: $tmp is local
+  trap "rm -rf '$tmp'" EXIT
+  # shellcheck disable=SC2034  # read by _merge_core (dynamic scope)
+  local label=merge subj="$branch" kind=branch title="$branch" logsfx="${branch//[^A-Za-z0-9._-]/-}" fetch_from="" closes="" also=""
+  _mc_fetch() {
+    err="$({ git clone -q --no-checkout "$root" "$tmp/w" \
+      && git -C "$tmp/w" fetch -q "$root" "+refs/heads/$base:refs/remotes/o/$base" "+refs/heads/$branch:refs/remotes/o/cand"; } < /dev/null 2>&1)" || return 1
+    [[ "$(git -C "$tmp/w" rev-parse "o/$base")" == "$bsha" ]] || { err="$base moved while it was read; run tkt merge again"; return 1; }
+  }
+  _mc_refuse() { exit 1; }   # the reason is printed already; a local merge keeps no trail
+  _mc_conflict_next() { echo "next: in $wt run git merge $base, resolve and commit; then tkt reopen $id and close it again (sprint complete) so the evaluator grades the new head; then Check & merge" >&2; }
+  # Files the merge changes that are edited in the main checkout: canon's own are set aside at the merge, any other stops it.
+  _mc_check_notes() {
+    local f hit=()
+    while IFS= read -r -d '' f; do
+      if git -C "$root" cat-file -e "$bsha:$f" 2>/dev/null; then git -C "$root" diff --quiet "$bsha" -- "$f" 2>/dev/null && continue
+      else [[ -e "$root/$f" || -L "$root/$f" ]] || continue; fi
+      hit+=("${f//[^[:print:]]/?}")
+    done < <(git -C "$tmp/w" diff --no-renames --name-only -z "o/$base" HEAD < /dev/null 2>/dev/null)
+    [[ ${#hit[@]} -eq 0 ]] || echo "merge: edited in the main checkout and changed by this merge (may stop the update unless canon's own): $(printf '%s, ' "${hit[@]}" | sed 's/, $//')"
+    return 0
+  }
+  local mrc=0; _merge_core || mrc=$?
+  [[ "$mrc" == 0 ]] || return 0
+  local tested tree new
+  tested="$(git -C "$tmp/w" rev-parse 'HEAD^{tree}')" || _mb_no "git could not read the tested tree; nothing merged"
+  [[ "$(git -C "$root" rev-parse -q --verify "refs/heads/$base")" == "$bsha" ]] || _mb_no "$base moved while the tests ran; nothing merged: Check & merge again"
+  [[ "$(git -C "$root" rev-parse -q --verify "refs/heads/$branch")" == "$head" ]] || _mb_no "$branch moved while the tests ran; nothing merged: Check & merge again"
+  tree="$(git -C "$root" merge-tree --write-tree "$bsha" "$head" < /dev/null 2>&1)" || _mb_no "git merge-tree could not build the merge here: $(head -1 <<< "$tree")"
+  tree="$(head -1 <<< "$tree")"
+  [[ "$tree" == "$tested" ]] || _mb_no "the merge here (tree ${tree:0:8}) is not the tree the tests ran on (${tested:0:8}); nothing merged"
+  new="$(git -C "$root" commit-tree "$tree" -p "$bsha" -p "$head" -m "Merge branch '$branch'" < /dev/null 2>&1)" \
+    || _mb_no "git could not write the merge commit: $new"
+  _advance_local "$root" "$base" "$id" "$bsha" "$new" "tkt merge $id" || _mb_no "not merged; $base is unchanged at ${bsha:0:8}"
+  echo "Merged $branch into $base ($new)."
+  canon_event branch.merged tkt "$root" "ticket=$id" "branch=$branch"
+  handoff_recent "$root"   # t-2db7
+  set_or_add_field "$file" merged "$new"
+  if git -C "$root" remote get-url origin >/dev/null 2>&1; then
+    echo "next: push $base (git push), then run tkt worktree-reset in $wt to start the next ticket there"
+  else echo "next: the worktree $wt is free: reuse it for the next ticket, or remove it (git worktree remove $wt)"; fi
 }
 
 # _record_merge <label> <ticket.md> <owner/repo> <pr> [<sha>] [<actor>] — t-7c89: record a merge done outside merge-pr, the way merge-pr
@@ -2091,28 +2215,37 @@ _ff_local_base() {
   [[ "$old" == "$new" ]] && { echo "Local $b: already at ${new:0:8}"; return 0; }
   git -C "$root" merge-base --is-ancestor "$old" "$new" \
     || { echo "Local $b: has commits origin/$b lacks, not a fast-forward; left at ${old:0:8}. Update it by hand: git pull"; return 0; }
-  wt="$(git -C "$root" worktree list --porcelain | awk -v r="branch refs/heads/$b" '/^worktree /{ w = substr($0, 10) } $0 == r { print w }')" \
-    && here="$(git -C "$root" rev-parse --show-toplevel)" \
-    || { echo "Local $b: git could not list its worktrees; left at ${old:0:8}. Update it by hand: git pull"; return 0; }
-  if [[ -z "$wt" ]]; then
-    git -C "$root" update-ref "refs/heads/$b" "$new" "$old" \
-      || { echo "Local $b: git refused to move it; left at ${old:0:8}. Update it by hand: git pull"; return 0; }
-  elif [[ "$(cd "$wt" && pwd -P)" == "$(cd "$here" && pwd -P)" ]]; then
-    _ff_here "$root" "$b" "$id" "$old" "$new" || return 0
-  else
-    echo "Local $b: checked out in $wt; left at ${old:0:8}. Update it there: git pull"; return 0
-  fi
+  _advance_local "$root" "$b" "$id" "$old" "$new" || return 0
   echo "Local $b: ${old:0:8} -> ${new:0:8} (fast-forward)"
 }
 
-# _ff_here <root> <branch> <id> <old> <new> — t-41ff: the fast-forward of the branch checked out here. What blocks it is a file
+# _advance_local <root> <branch> <id> <old> <new> [<retry>] — t-2906: moves local <branch> from <old> to <new>, a fast-forward
+# (merge-pr's update of local main, and tkt merge's local merge): a branch checked out in this checkout goes through _ff_here's
+# rules; one checked out in another worktree is left alone; one checked out nowhere moves only if it still reads <old>. Returns 1,
+# the reason printed, when it did not move. <retry> is the command a refusal tells the user to run afterwards (default git pull).
+_advance_local() {
+  local root="$1" b="$2" id="$3" old="$4" new="$5" retry="${6:-git pull}" wt here
+  wt="$(git -C "$root" worktree list --porcelain | awk -v r="branch refs/heads/$b" '/^worktree /{ w = substr($0, 10) } $0 == r { print w }')" \
+    && here="$(git -C "$root" rev-parse --show-toplevel)" \
+    || { echo "Local $b: git could not list its worktrees; left at ${old:0:8}. Update it by hand: $retry"; return 1; }
+  if [[ -z "$wt" ]]; then
+    git -C "$root" update-ref "refs/heads/$b" "$new" "$old" \
+      || { echo "Local $b: git refused to move it; left at ${old:0:8}. Update it by hand: $retry"; return 1; }
+  elif [[ "$(cd "$wt" && pwd -P)" == "$(cd "$here" && pwd -P)" ]]; then
+    _ff_here "$root" "$b" "$id" "$old" "$new" "$retry" || return 1
+  else
+    echo "Local $b: checked out in $wt; left at ${old:0:8}. Update it there: $retry"; return 1
+  fi
+}
+
+# _ff_here <root> <branch> <id> <old> <new> [<retry>] — t-41ff: the fast-forward of the branch checked out here. What blocks it is a file
 # the merge changes that is here but not as HEAD has it (edited, or untracked). One canon wrote that the merge carries anyway
 # is set aside and put back after: byte-identical to the merged copy, this ticket's ticket.md differing only in canon's
 # per-machine fields (kept as it is here), or the audit log (its lines the merged copy lacks are appended). Any other one, or a
 # staged one, stops it with nothing changed. A refused fast-forward restores every file set aside. Returns 1 when not moved.
 # The paths come from the PR, so they are untrusted: matched literally, never through a symlinked folder, printed sanitized.
 _ff_here() {
-  local root="$1" b="$2" id="$3" old="$4" new="$5" p m rp rb safe=() kinds=() differ=()
+  local root="$1" b="$2" id="$3" old="$4" new="$5" retry="${6:-git pull}" p m rp rb safe=() kinds=() differ=()
   local GIT_LITERAL_PATHSPECS=1; export GIT_LITERAL_PATHSPECS
   rp="$(cd "$root" && pwd -P)"
   while IFS= read -r -d '' p; do
@@ -2141,17 +2274,17 @@ _ff_here() {
   if [[ ${#differ[@]} -gt 0 ]]; then
     echo "Local $b: ${#differ[@]} file(s) here differ from the merged copy; left at ${old:0:8}:"
     for p in "${differ[@]}"; do printf '  %s\n' "${p//[^[:print:]]/?}"; done
-    echo "  Commit or move them, then run: git pull  (in the Cockpit Terminal, type su first)"
+    echo "  Commit or move them, then run: $retry  (in the Cockpit Terminal, type su first)"
     return 1
   fi
   if [[ ${#safe[@]} -eq 0 ]]; then
-    git -C "$root" merge -q --ff-only "$new" || { echo "Local $b: git refused the fast-forward; left at ${old:0:8}. Update it by hand: git pull"; return 1; }
+    git -C "$root" merge -q --ff-only "$new" || { echo "Local $b: git refused the fast-forward; left at ${old:0:8}. Update it by hand: $retry"; return 1; }
     return 0
   fi
-  local bk i err=""; bk="$(mktemp -d "${TMPDIR:-/tmp}/tkt-ff.XXXXXX")" || { echo "Local $b: no room to set files aside; left at ${old:0:8}. Update it by hand: git pull"; return 1; }
+  local bk i err=""; bk="$(mktemp -d "${TMPDIR:-/tmp}/tkt-ff.XXXXXX")" || { echo "Local $b: no room to set files aside; left at ${old:0:8}. Update it by hand: $retry"; return 1; }
   for i in "${!safe[@]}"; do
     p="${safe[$i]}"
-    cp -p "$root/$p" "$bk/$i" || { rm -rf "$bk"; echo "Local $b: could not set $p aside; left at ${old:0:8}. Update it by hand: git pull"; return 1; }
+    cp -p "$root/$p" "$bk/$i" || { rm -rf "$bk"; echo "Local $b: could not set $p aside; left at ${old:0:8}. Update it by hand: $retry"; return 1; }
     [[ "${kinds[$i]}" != log ]] || _ff_extra_lines <(git -C "$root" cat-file blob "$new:$p") "$root/$p" > "$bk/$i.extra"
   done
   for p in "${safe[@]}"; do
@@ -2160,7 +2293,7 @@ _ff_here() {
   if ! err="$(git -C "$root" merge -q --ff-only "$new" 2>&1)"; then
     for i in "${!safe[@]}"; do cp -p "$bk/$i" "$root/${safe[$i]}"; done
     rm -rf "$bk"
-    echo "Local $b: git refused the fast-forward; left at ${old:0:8}, every file set aside put back. Update it by hand: git pull"
+    echo "Local $b: git refused the fast-forward; left at ${old:0:8}, every file set aside put back. Update it by hand: $retry"
     [[ -z "$err" ]] || printf '%s\n' "$err" | sed 's/^/  git: /'
     return 1
   fi
@@ -2650,12 +2783,19 @@ cmd_land() {
     [[ "$verdict" == pass && "$graded" != - && "$whead" == "$graded"* ]] \
       || { echo "land: $id has no passing evaluator verdict graded on the worktree head ${whead:0:8} (eval-report.md: ${verdict/#-/none} ${graded/#-/none}); worktree kept" >&2; exit 1; }
     git -C "$root" worktree remove "$wt" < /dev/null 2>&1 || { echo "land: git would not remove $wt (uncommitted work?); worktree kept" >&2; exit 1; }
-    # The branch is deleted only when it holds nothing but the PR head it started from: commits made here that are not on the
-    # PR yet would otherwise be lost (branch -D, since the PR is unmerged, so branch -d never accepts it).
-    local kept=""
-    if [[ "$whead" == "$(tr -d '[:space:]' < "$tdir/.land-head" 2>/dev/null)" ]]; then git -C "$root" branch -q -D "$branch" < /dev/null
-    else kept="; $branch kept: it has commits beyond the PR head (push them to the PR branch, then git branch -D $branch)"; fi
-    rm -f "$tdir/.land-head"
+    # The branch is deleted only when it holds nothing the PR does not: its head is the PR head it started from, or (t-92f2) the
+    # PR's current head on origin, after a fix here was pushed to the PR branch. Commits not on the PR would otherwise be lost
+    # (branch -D, since the PR is unmerged, so branch -d never accepts it). An unreadable PR ref keeps the branch.
+    local kept="" lhead lpr prhead=""
+    lhead="$(tr -d '[:space:]' < "$tdir/.land-head" 2>/dev/null || true)"
+    lpr="$(tr -d '[:space:]' < "$tdir/.land-pr" 2>/dev/null || true)"
+    if [[ "$whead" != "$lhead" && "$lpr" =~ ^[0-9]+$ ]]; then
+      if git -C "$root" fetch -q origin "refs/pull/$lpr/head" < /dev/null 2>/dev/null; then prhead="$(git -C "$root" rev-parse FETCH_HEAD)"
+      else kept="; $branch kept: could not fetch PR #$lpr from origin to compare (if PR #$lpr's head is ${whead:0:8}: git branch -D $branch)"; fi
+    fi
+    if [[ "$whead" == "$lhead" || "$whead" == "$prhead" ]]; then git -C "$root" branch -q -D "$branch" < /dev/null
+    elif [[ -z "$kept" ]]; then kept="; $branch kept: it has commits beyond the PR head (push them to the PR branch, then git branch -D $branch)"; fi
+    rm -f "$tdir/.land-head" "$tdir/.land-pr"
     if [[ -f "$tdir/.cockpit-cwd.before-land" ]]; then mv "$tdir/.cockpit-cwd.before-land" "$tdir/.cockpit-cwd"; else rm -f "$tdir/.cockpit-cwd"; fi
     handoff_recent "$root"   # t-2db7
     echo "land: $id closed here; worktree removed$kept"
@@ -2686,7 +2826,7 @@ cmd_land() {
   [[ "$(git -C "$root" rev-parse FETCH_HEAD)" == "$head" ]] || { echo "land: PR #$pr moved while fetching it; run land again" >&2; exit 1; }
   mkdir -p "$(dirname "$wt")" && git -C "$root" worktree add -q -b "$branch" "$wt" "$head" < /dev/null \
     || { echo "land: could not create the worktree at $wt" >&2; exit 1; }
-  printf '%s\n' "$head" > "$tdir/.land-head"
+  printf '%s\n' "$head" > "$tdir/.land-head"; printf '%s\n' "$pr" > "$tdir/.land-pr"
   [[ -f "$tdir/.cockpit-cwd" ]] && mv "$tdir/.cockpit-cwd" "$tdir/.cockpit-cwd.before-land"
   printf '%s\n' "$(_normalize_path "$wt")" > "$tdir/.cockpit-cwd"
   set_field "$file" status in_progress && set_active "$id"
@@ -2785,6 +2925,21 @@ cmd_export() {
   commit="$(git -C "$root" commit-tree "$tree" -m "canon results: $id")" || exit 1
   git -C "$root" push --force origin "$commit:refs/heads/canon-results/$id" >&2 || { echo "export: push to origin failed" >&2; exit 1; }
   echo "export: pushed $rel/ to canon-results/$id. On your machine: tkt import-results $id --pr <N>, then tkt merge-pr $id"
+}
+
+# _eval_pass_head <label> <ticket-dir> <id> <next-step> — t-2906: prints the graded-head of an evaluator pass a merge can rest on, or says
+# why not (ending with <next-step>) and returns 1. An irreversible merge rests on this report, so it must be unambiguous, as sprint
+# complete requires: one verdict, one head.
+_eval_pass_head() {
+  local label="$1" tdir="$2" id="$3" next="$4" verdict graded nv ng
+  read -r verdict graded < <(_eval_verdict_head "$tdir")
+  [[ "$verdict" == pass && "$graded" != - ]] \
+    || { echo "$label: $id has no passing evaluator verdict with a graded-head (eval-report.md: ${verdict/#-/none}); $next" >&2; return 1; }
+  nv="$(grep -cE '^(pass|fail|partial|not-run):' "$tdir/eval-report.md" || true)"
+  ng="$(sed -n 's/^graded-head: *\([0-9a-f]\{7,40\}\).*/\1/p' "$tdir/eval-report.md" | sort -u | grep -c . || true)"
+  [[ "$nv" == 1 && "$ng" == 1 ]] \
+    || { echo "$label: $id's eval-report.md has $nv verdict lines and $ng graded-heads; one of each is required" >&2; return 1; }
+  printf '%s\n' "$graded"
 }
 
 # _eval_verdict_head <ticket dir>: prints "<verdict> <graded-head>" from eval-report.md ("-" for either when absent).
@@ -3047,6 +3202,11 @@ Commands:
                             its visibility, test command) and the cloud recipe.
   cloud-env [--json]        This project's Claude cloud environment recipe: allowed domains,
                             then the setup script (tools/cloud-env.sh; Go projects get the Go part).
+  merge <id> [--test CMD] [--yes | --check]
+                            Check & merge any closed ticket: one sent to GitHub merges its PR
+                            (merge-pr, same options plus --pr N); any other merges its worktree
+                            branch into the main checkout's branch here, as one merge commit,
+                            after the same checks and its tests on main + branch.
   merge-pr <id> [--pr N] [--test CMD] [--yes | --check]
                             Check a cloud ticket's PR (evaluator passed on its head,
                             mergeable, suite green on base + PR) and merge it after a y.
@@ -3112,6 +3272,7 @@ main() {
     push-main)      cmd_push_main "$@" ;;
     commit-push)    cmd_commit_push "$@" ;;
     release-check)  cmd_release_check "$@" ;;
+    merge)          cmd_merge "$@" ;;
     merge-pr)       cmd_merge_pr "$@" ;;
     land)           cmd_land "$@" ;;
     worktree-reset) cmd_worktree_reset "$@" ;;

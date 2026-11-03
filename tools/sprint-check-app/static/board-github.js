@@ -19,7 +19,11 @@ const mergeById = new Map();     // id -> {status, output, exit_code, elapsed} w
 let pollTimer = null;
 
 // github: is only the issue link (sync-issues and import-issue write it too); runs: github says a cloud session has it.
+// t-2906: the worktree branch a closed, unmerged local ticket waits to merge ({branch, path}, from the board's tickets API), or null.
+export function wtMerge(t) { return t && !ghOut(t) && t.wt_merge && t.wt_merge.branch ? t.wt_merge : null; }
 export function ghOut(t) { return !!(t && t.runs === 'github' && t.github && !t.merged); }
+// t-92f2: tkt land made its worktree and the close there has not happened yet: the card and the rail resume the session in it.
+export function ghClosingHere(t) { return ghOut(t) && !!stageOf(t).landed && t.status !== 'closed' && t.status !== 'cancelled'; }
 
 function ghParts(t) {
   const m = /^([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)#([0-9]+)$/.exec(String(t.github || ''));
@@ -76,17 +80,21 @@ export function ghChipHTML(t) {
   else if (st.stage === 'merging') { const m = mergeById.get(t.id); text += ` · merging… ${mmss(m.elapsed)}`; title = lastLine(m.output) || title; }
   else if (st.stage === 'error') { text += " · can't check"; title = st.output || title; }
   else if (st.warning) { text += ' · ⚠ merge not recorded'; title = String(st.warning); }   // t-7c89: merged on GitHub, a check failed
+  if (ghClosingHere(t)) { text += ` · closing in land/${t.id}`; title = `Closing in ${st.landed}: sprint complete there, then Finish`; }   // t-92f2
   return `<span class="card-gh-chip" data-id="${esc(t.id)}" title="${escAttr(title)}">${esc(text)}</span>`
     + (st.stage === 'merging' ? '' : `<button class="card-gh-takeback" type="button" data-id="${esc(t.id)}" title="Bring this ticket back to work on it here">take back</button>`);
 }
 
 export function ghButtonHTML(t) {
-  if (!ghOut(t)) return '';
-  const st = stageOf(t);
   const btn = (action, label, title) =>
     `<button class="card-start card-gh-btn" type="button" data-id="${esc(t.id)}" data-gh-action="${action}" title="${escAttr(title)}">${esc(label)}</button>`;
+  // t-2906: a closed worktree ticket whose branch is not in main yet gets the same Check & merge as a PR (tkt merge picks the branch).
+  if (!ghOut(t)) return wtMerge(t) ? btn('merge', 'Check & merge', `Check ${wtMerge(t).branch} and merge it into main here after your confirmation`) : '';
+  const st = stageOf(t);
   // t-c259: imported, not closed, PR open: the close finishes here, in a worktree at the PR head.
   // t-6623: once that worktree exists the card offers Finish (tkt land --finish), which removes it after the close.
+  // t-92f2: until sprint complete closes it there, the next step is a session in that worktree (the card's own Resume opens it).
+  if (ghClosingHere(t)) return `<button class="card-start resume" data-id="${esc(t.id)}" title="${escAttr(`Resume the close in the worktree at ${st.landed}: run sprint complete there, then Finish`)}">▶ Resume</button>`;
   if (st.landed) return btn('finish', 'Finish', `Remove the worktree at ${st.landed} once sprint complete has closed the ticket there (tkt land --finish)`);
   // t-d0a5: PR open but nothing came back (the cloud session stopped before its close): close it here, the same tkt land.
   if (st.land && st.close_here) return btn('close-here', 'Close here', 'The cloud session stopped before its close: make a worktree at the PR head and close the ticket there (tkt land)');
@@ -125,7 +133,7 @@ async function ghAction(t, action) {
   if (action === 'issue' && p) return openUrl(`https://github.com/${p.repo}/issues/${p.issue}`);
   if (action === 'pr' && p && pr) return openUrl(`https://github.com/${p.repo}/pull/${pr}`);
   if (action === 'import') return importResults(t, pr);
-  if (action === 'merge') return checkAndMerge(t, pr);
+  if (action === 'merge') return checkAndMerge(t, wtMerge(t) ? '' : pr);
   if (action === 'open-pr' && p) return openPr(t, p, st);
   if (action === 'land') return continueHere(t, pr);
   if (action === 'close-here') return closeHere(t, pr);
@@ -168,12 +176,46 @@ async function finishHere(t) {
   return landRun(t, { finish: true }, 'Finishing', 'Closed here');
 }
 
+// t-92f2: the close of a cloud ticket on this machine, as numbered steps in the card's words; tkt's own output stays under a
+// closed Details. continueFirst: not landed yet (the import dialog). merge: the base a conflicting PR must merge first. All text
+// goes in as textContent: the path and the output come from tkt and git.
+function closeStepsNode({ path = '', merge = '', fix = false, continueFirst = false, raw = '' }) {
+  const node = document.createElement('div'), ol = document.createElement('ol');
+  node.className = 'gh-steps';
+  const step = (...parts) => {
+    const li = document.createElement('li');
+    for (const p of parts) li.append(p);
+    ol.append(li);
+  };
+  const code = text => Object.assign(document.createElement('code'), { className: 'gh-steps-path', textContent: text });
+  if (continueFirst) step('Press Continue here on the card: it makes a worktree at the PR\'s head.');
+  if (merge) step(`In the worktree, merge ${merge} (git merge ${merge}), resolve the conflicting files, commit, and push the branch to the PR.`);
+  if (path) step('Open a session in the worktree: Resume on the card, or a terminal at', code(path));
+  else step('Open a session in the worktree: Resume on the card.');
+  if (fix) step('Fix what failed there, commit it, and push it to the PR branch.');
+  step('Ask the agent to run sprint complete: it runs the evaluator there and closes the ticket.');
+  step('Press Finish on the card: it removes the worktree.');
+  step('Press Check & merge.');
+  node.append(ol);
+  if (raw) {
+    const det = document.createElement('details'), sum = document.createElement('summary'), pre = document.createElement('pre');
+    sum.textContent = 'Details'; pre.className = 'gh-dialog-pre'; pre.textContent = raw;
+    det.append(sum, pre); node.append(det);
+  }
+  return node;
+}
+
 async function landRun(t, body, doing, done) {
   const run = openDialog({ title: `${doing} ${t.id}…`, pre: 'Running tkt land…', cancel: 'Close', escape: false });
   let res;
   try { res = await postJSON(ghApi(t.id, 'land'), body); }
   catch (e) { res = { ok: false, output: String(e.message || e) }; }
-  updateDialog({ title: res.ok ? done : 'Nothing was changed', body: '', pre: res.output || '', escape: true }, run.gen);
+  if (res.ok && !body.finish) {
+    const out = res.output || '';
+    const path = (out.match(/^\s*worktree: (.+?)(?: \(branch [^)]*\))?\s*$/m) || [])[1] || '';
+    const merge = (out.match(/git merge (origin\/\S+?),? /) || [])[1] || '';
+    updateDialog({ title: done, body: '', pre: '', table: closeStepsNode({ path, merge, fix: !!body.fix, raw: out }), escape: true }, run.gen);
+  } else updateDialog({ title: res.ok ? done : 'Nothing was changed', body: '', pre: res.output || '', escape: true }, run.gen);
   statusById.delete(t.id);
   await loadData();
 }
@@ -294,7 +336,7 @@ function setCancel(d, label) {
 }
 // merge-pr prints "running …" once, then again with the time every few seconds; the dialog shows only the newest of a
 // run of them (t-e523).
-const PROGRESS = /^merge-pr: running .*…/;
+const PROGRESS = /^merge(-pr)?: running .*…/;
 function oneProgressLine(text) {
   const lines = String(text).split('\n');
   return lines.filter((l, i) => !(PROGRESS.test(l) && PROGRESS.test(lines[i + 1] || ''))).join('\n');
@@ -308,6 +350,13 @@ async function importResults(t, pr) {
   catch (e) { res = { ok: false, output: String(e.message || e) }; }
   const noVerdict = /no eval-report\.md|graded-head: none|NOT match graded-head/.test(res.output || '');
   const fixCmd = ((res.output || '').match(/next: (tkt land [\w-]+ --pr \d+ --fix)/) || [])[1] || '';   // t-75f5: a cloud-closed ticket with a mismatched head: `land` needs --fix
+  // t-92f2: imported fine, but the cloud stopped before sprint complete: the close happens here (the card offers Continue here).
+  if (res.ok && !fixCmd && /expected closed: the cloud sprint did not finish|^\s*next: tkt land [\w-]+( --pr \d+)?\s*$/m.test(res.output || '')) {
+    updateDialog({ title: 'Imported; the cloud sprint did not close', body: 'Close it on this machine:', pre: '',
+      table: closeStepsNode({ continueFirst: true, raw: res.output }), escape: true }, shown.gen);
+    statusById.delete(t.id);
+    return loadData();
+  }
   updateDialog({
     title: res.ok ? `Results are back in .tickets/${t.id}/` : (noVerdict ? 'Imported, but the cloud sprint did not close' : 'Import failed'),
     body: res.ok ? 'Next: Check & merge on the card.'
@@ -324,8 +373,8 @@ async function importResults(t, pr) {
 // t-a463: the one line that says WHY, shown above the log (a long log tail buries it). Prefers the line that names the refusal.
 function refusalReason(out) {
   const lines = String(out || '').split('\n').map(s => s.trim()).filter(Boolean);
-  const hit = lines.find(s => /is a draft|GitHub refused|gh could not merge|failed on .* \+ PR|cannot merge cleanly|not open|blocked by|comes from a fork|not the commit the evaluator graded/.test(s)) || lines[0] || '';
-  return hit.replace(/^merge-pr:\s*/, '');
+  const hit = lines.find(s => /is a draft|GitHub refused|gh could not merge|failed on .* \+ |cannot merge cleanly|not open|blocked by|comes from a fork|not the commit the evaluator graded|does not merge into|already (merged|in )|not closed|uncommitted changes|is unchanged|moved while/.test(s)) || lines[0] || '';
+  return hit.replace(/^merge(-pr)?:\s*/, '');
 }
 // t-41ff: merge-pr's "Local <branch>:" line and the indented lines under it (the files that stopped the update, the next step).
 function localMainNote(out) {
@@ -349,20 +398,29 @@ async function markReady(t, pr) {
   await checkAndMerge(t, pr);
 }
 
+// t-2906: the words a merge's dialogs use: a worktree ticket's branch ("feat/x", merged into main here) or a PR.
+function mergeWords(t, pr) {
+  const wm = wtMerge(t);
+  return wm ? { wt: true, kind: 'branch', name: wm.branch } : { wt: false, kind: 'PR', name: pr ? `PR #${pr}` : '' };
+}
+const nextLine = out => ((String(out || '').match(/^next: (.+)$/m) || [])[1] || '').trim();
+
 async function checkAndMerge(t, pr) {
   const prQ = pr ? `?pr=${encodeURIComponent(pr)}` : '';
   const prB = pr ? { pr } : {};
+  const w = mergeWords(t, pr);
   if (mergeById.get(t.id)?.status === 'running') return followMerge(t, prB, true);
-  const open = openDialog({ title: `Check & merge${pr ? ` PR #${pr}` : ''}`, body: 'Running the checks that run none of the PR\'s code…', pre: '', ok: '', cancel: 'Cancel', escape: false });
+  const open = openDialog({ title: `Check & merge${w.name ? ` ${w.name}` : ''}`, body: `Running the checks that run none of the ${w.kind}'s code…`, pre: '', ok: '', cancel: 'Cancel', escape: false });
   let chk;
   try { chk = await getJSON(ghApi(t.id, 'merge-check') + prQ); }
   catch (e) { chk = { ok: false, output: String(e.message || e) }; }
   if (!chk.ok) {
     const reason = refusalReason(chk.output), draft = isDraftRefusal(chk.output);
     // t-ca00: merge-pr names the conflicting files; the way out is the worktree fix the suite-failure case already offers.
-    const conflict = /mergeable: CONFLICTING/.test(chk.output || '');   // only a real conflict: BEHIND, UNKNOWN or UNSTABLE refusals keep only Close
+    const conflict = !w.wt && /mergeable: CONFLICTING/.test(chk.output || '');   // only a real conflict: BEHIND, UNKNOWN or UNSTABLE refusals keep only Close
     const files = ((chk.output || '').match(/conflicts in: (.+)/) || [])[1];
-    updateDialog({ body: `${(reason || 'Not mergeable here').replace(/[.:\s]+$/, '')}.${conflict && files ? ` Conflicts in: ${files.trim()}.` : ''} Nothing was run or changed.`, pre: chk.output || '', ok: draft ? 'Mark ready' : conflict ? 'Fix here' : '', cancel: 'Close', escape: true }, open.gen);
+    const wtNext = w.wt ? nextLine(chk.output) : '';   // t-2906: a worktree branch's way out is in the worktree, said in words
+    updateDialog({ body: `${(reason || 'Not mergeable here').replace(/[.:\s]+$/, '')}.${(conflict || w.wt) && files ? ` Conflicts in: ${files.trim()}.` : ''}${wtNext ? ` Next: ${wtNext.replace(/[.\s]+$/, '')}.` : ''} Nothing was run or changed.`, pre: chk.output || '', ok: draft ? 'Mark ready' : conflict ? 'Fix here' : '', cancel: 'Close', escape: true }, open.gen);
     if (draft) { const v = await open; if (v && v.ok) await markReady(t, pr); }
     else if (conflict) { const v = await open; if (v && v.ok) await continueHere(t, pr, true); }
     return;
@@ -371,7 +429,7 @@ async function checkAndMerge(t, pr) {
   const ahead = ((chk.output || '').match(/local (\S+) has (\d+) commits? that aren't on GitHub/) || []);
   const aheadNote = ahead[2] ? ` Your local ${ahead[1]} has ${ahead[2]} commit${ahead[2] === '1' ? '' : 's'} that aren't on GitHub. This merge tests and merges the PR without ${ahead[2] === '1' ? 'it' : 'them'}; afterwards, run git pull (or push first).` : '';
   updateDialog({
-    body: `Running the tests runs the PR's code on this machine. Nothing from the PR runs before you press the button.${aheadNote}`,
+    body: `Running the tests runs the ${w.kind}'s code on this machine. Nothing from the ${w.kind} runs before you press the button.${aheadNote}`,
     pre: chk.output || '', ok: /no test command/.test(chk.output || '') ? 'Merge (no tests)' : 'Run tests & merge', cancel: 'Cancel', escape: true,   // t-2560
   }, open.gen);
   const choice = await open;
@@ -383,9 +441,10 @@ async function checkAndMerge(t, pr) {
 
 async function followMerge(t, prB, show) {
   let gen, finished = false, shown = null;
+  const w = mergeWords(t, prB.pr);
   const mirrors = (statusById.get(t.id)?.status?.mirrors || []).filter(m => typeof m === 'string' && m);
   if (show) {
-    shown = openDialog({ title: `Checking & merging ${t.id}`, body: 'Running the tests on the base branch + PR…', pre: '', ok: '', cancel: 'Stop', escape: false });
+    shown = openDialog({ title: `Checking & merging ${t.id}`, body: `Running the tests on the base branch + ${w.kind}…`, pre: '', ok: '', cancel: 'Stop', escape: false });
     gen = shown.gen;
     shown.then(v => { if (v && !v.ok && !finished) stopMerge(t); });
   }
@@ -409,7 +468,7 @@ async function followMerge(t, prB, show) {
   finished = true;
   const st = mergeById.get(t.id);
   mergeById.delete(t.id);
-  const merged = st && st.exit_code === 0 && /Merged PR #/.test(st.output || '');
+  const merged = st && st.exit_code === 0 && /^Merged (PR #\d+|\S+) into /m.test(st.output || '');
   // t-24b1: merge-pr fast-forwards local main itself (its last line says how); the canon.mirror remotes are offered here,
   // named, and pushed only on this click.
   const offer = merged && mirrors.length ? `Push main to ${mirrors.join(', ')}` : '';
@@ -419,7 +478,7 @@ async function followMerge(t, prB, show) {
   const local = merged ? localMainNote(st.output) : '';
   if (gen !== undefined) updateDialog({
     title: merged ? 'Merged' : 'Not merged',
-    body: merged ? `The PR is merged and the issue closed by its Fixes line.${local ? ` ${local}` : ''}${offer ? ` Also push main to ${mirrors.join(', ')} (git config canon.mirror)?` : ''}` : `${(refusalReason(st?.output) || 'Not merged').replace(/[.:\s]+$/, '')}. Nothing changed on GitHub. See the output.`,
+    body: merged ? `${w.wt ? `${w.name} is merged into ${(String(st.output).match(/^Merged \S+ into (\S+) /m) || [])[1] || 'main'} here.${nextLine(st.output) ? ` Next: ${nextLine(st.output).replace(/[.\s]+$/, '')}.` : ''}` : 'The PR is merged and the issue closed by its Fixes line.'}${local ? ` ${local}` : ''}${offer ? ` Also push main to ${mirrors.join(', ')} (git config canon.mirror)?` : ''}` : `${(refusalReason(st?.output) || 'Not merged').replace(/[.:\s]+$/, '')}. ${w.wt ? 'Nothing was merged; main is unchanged.' : 'Nothing changed on GitHub.'} See the output.`,
     pre: st?.output || '', ok: offer || (draftRefused ? 'Mark ready' : suiteFailed ? 'Fix here' : ''), cancel: 'Close', escape: true,
   }, gen);
   if (offer && shown) shown.then(v => { if (v && v.ok) pushMain(mirrors); });

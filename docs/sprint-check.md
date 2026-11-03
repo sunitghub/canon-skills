@@ -359,6 +359,17 @@ sprint agent without leaving the browser — no second terminal.
   30-minute safety net instead of never reaping. A session that needs you is never
   reaped; a done one is. Admin shows both timeouts, and the ticket cockpit shows the
   countdown next to End Session.
+- **Check & merge for a worktree ticket (`t-2906`):** once a sprint run in a worktree closes, its card shows the
+  same **Check & merge** a ticket out on GitHub gets, with the same dialog: the checks that run none of the branch's
+  code, then **Run tests & merge** (or **Merge (no tests)** when the project has no `scripts/test.sh`), progress with
+  **Stop**, then **Merged** or **Not merged** and why. It runs `tkt merge <id>`, which refuses, changing nothing, when the
+  evaluator did not pass on the branch's head (late docs after it are allowed), the worktree has uncommitted changes, the
+  branch is already in main, or the merge conflicts (the files are named, and the way out: merge main into the branch in
+  the worktree, reopen, close again). The tests run on main + branch in a scratch copy, never in your checkouts; the merge
+  is then one `Merge branch '<branch>'` commit holding exactly the tested files, and main moves to it under the same rules
+  as a PR's update of local main: canon's own files are set aside, any other file you edited that the merge changes stops
+  it with nothing changed. Then push main, and run `tkt worktree-reset` in the worktree to start the next ticket there.
+  The ticket gets `merged: <sha>`, the activity log a `branch.merged` event, and `HANDOFF.md` a Recent activity line.
 - **Reap now / Kill (`t-3c9a`):** end a session you aren't attached to. Right-click an
   Agents row (or Shift+F10 on it) for **Open / Reap now / Kill…**, or press the prefix
   then **t** for the menu of the active tab's agent; Admin's session rows have the same

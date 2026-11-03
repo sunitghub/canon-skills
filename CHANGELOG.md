@@ -9,6 +9,24 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 ### Changed
 - The board's Logbook has four tabs: Handoff, Learnings, Promoted and Decisions. Learnings lists only the rows still waiting for review (no filter chips, "Nothing waiting for review" when none); Promoted shows the `PROMOTED.md` rules with their ticket links and the line count against 60 (or, without a `PROMOTED.md`, the `LEARNINGS.md` rows marked promoted); Decisions shows `DECISIONS.md` newest first, as a table or as dated sections. The Learnings text names the right destination per project kind. `GET /api/logbook` also returns `promoted`, `decisions` and `learnings_archive`. Read-only (t-7f7c).
 
+## [0.40.0] - 2026-11-02
+
+### Fixed
+- Closing a cloud ticket on this machine reads as steps. An import the cloud did not close now says so ("Imported; the cloud sprint did not close") and lists what to do: Continue here, open a session in the worktree, `sprint complete`, Finish, Check & merge. "Worktree ready" shows the same numbered steps with the worktree path on its own line, and tkt's output folded under Details. A conflicting PR adds a merge step first; Fix here adds a fix step (t-92f2).
+- Until that close, the card shows **▶ Resume** and "closing in land/<id>" instead of an early Finish, and Resume opens a Cockpit session in the land worktree; Finish appears once the ticket is closed there (t-92f2).
+- `tkt land --finish` deletes `land/<id>` when its head is already the PR's current head on origin (a conflict fix you pushed), and still keeps it, saying why, when it holds commits the PR does not or the PR cannot be read (t-92f2).
+- The Cockpit starts a session in a worktree that has no `.tickets/` of its own (a gitignored `.tickets/` uses the main checkout's), and the rail no longer shows a false ".tickets/ is gitignored" block for it. A worktree whose own `.tickets/` lacks the ticket is still refused (t-6bae).
+
+### Changed
+- `/promote-learnings` writes its entries right the first time: every `PROMOTED.md` entry is one trigger and one action ("When <situation>, <do this>. (<ticket-id>)", one trigger per entry, never the ticket's story) and Apply writes the exact text the report showed; a row whose rule already exists is `dismissed (covered: <file>)`, never promoted; Apply carries out every decision, typed ones included, then re-reads `LEARNINGS.md` and `PROMOTED.md` and prints N promoted, M dismissed, K still waiting and the line count against 60. Four regression evals added (t-68dd).
+
+## [0.39.0] - 2026-11-02
+
+The prebuilt `canon-go` program changed (the board shows Check & merge for a worktree ticket): `canon update` fetches it; restart the daemon.
+
+### Added
+- A sprint run in a worktree ends with **Check & merge** on its card, the same button and dialog a ticket out on GitHub gets: the checks that run none of the branch's code, **Run tests & merge** (the tests on main + branch in a scratch copy), progress with **Stop**, then **Merged** or why not. Behind it, `tkt merge <id>` merges the worktree's branch into the main checkout's branch as one `Merge branch '<branch>'` commit holding exactly the tested files, after the evaluator's pass on the branch head; it refuses, changing nothing, on uncommitted changes in the worktree, a branch already in main, or a conflict (files named, with the way out). Main moves under the rules merge-pr already uses for local main, so a file you edited that the merge changes stops it. A ticket sent to GitHub still merges its PR (`tkt merge` runs `tkt merge-pr` for it). The worktree close now names this step, and the agent no longer opens a PR from a worktree.
+
 ## [0.38.0] - 2026-11-02
 
 The prebuilt `canon-go` program changed (the board reads skill problems and runs Refresh, and writes the Recent activity block in `HANDOFF.md`): `canon update` fetches it; restart the daemon.

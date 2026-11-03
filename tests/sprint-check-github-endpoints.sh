@@ -15,7 +15,7 @@ trap cleanup EXIT
 PROJ="$W/proj"; mkdir -p "$PROJ/.tickets/t-ab12" && (cd "$PROJ" && git init -q)
 printf -- '---\nid: t-ab12\nstatus: open\ntype: task\npriority: 2\n---\n# Sent one\n' > "$PROJ/.tickets/t-ab12/ticket.md"
 
-# The stub tkt: one log line per call ("<cwd> | <argv> | progress=<CANON_PROGRESS_SECONDS>"). merge-pr --yes prints a
+# The stub tkt: one log line per call ("<cwd> | <argv> | progress=<CANON_PROGRESS_SECONDS>"). merge --yes (t-2906: tkt merge, which runs merge-pr for a GitHub ticket) prints a
 # line, waits for $W/release (the test's go-ahead), prints another; $W/fail makes every call exit 3.
 cat > "$W/tkt" <<SH
 #!/usr/bin/env bash
@@ -31,7 +31,7 @@ printf '%s | %s | progress=%s\n' "\$PWD" "\$*" "\${CANON_PROGRESS_SECONDS:-}" >>
 [[ "\$1" == github-doctor ]] && { echo '{"checks":[{"id":"gh","status":"bad","title":"t","detail":"d","fix":{"url":"u"}}],"cloud":{"domains":[],"setup_script":""}}'; exit 0; }
 case "\$1 \$*" in
   *"--dry-run"*) echo "would do: \$*" ;;
-  "merge-pr "*"--yes"*) echo "progress one"; for _ in \$(seq 100); do [[ -e "$W/release" ]] && break; sleep 0.1; done; echo "progress two" ;;
+  "merge "*"--yes"*) echo "progress one"; for _ in \$(seq 100); do [[ -e "$W/release" ]] && break; sleep 0.1; done; echo "progress two" ;;
   *) echo "did: \$*" ;;
 esac
 SH
@@ -123,7 +123,7 @@ for P in "$GOP"; do
   expect_call "$srv import"        "$P" "$(post "$P" /api/ticket/t-ab12/github/import '{"pr":58}')" "import-results t-ab12 --pr 58"
   expect_call "$srv import str"    "$P" "$(post "$P" /api/ticket/t-ab12/github/import '{"pr":"58"}')" "import-results t-ab12 --pr 58"
   expect_call "$srv import no pr"  "$P" "$(post "$P" /api/ticket/t-ab12/github/import '{}')" "import-results t-ab12"
-  expect_call "$srv merge-check"   "$P" "$(get "$P" '/api/ticket/t-ab12/github/merge-check?pr=58')" "merge-pr t-ab12 --check --pr 58"
+  expect_call "$srv merge-check"   "$P" "$(get "$P" '/api/ticket/t-ab12/github/merge-check?pr=58')" "merge t-ab12 --check --pr 58"
   expect_call "$srv take-back"     "$P" "$(post "$P" /api/ticket/t-ab12/github/take-back '{}')" "take-back t-ab12"
   expect_call "$srv ready"         "$P" "$(post "$P" /api/ticket/t-ab12/github/ready '{"pr":58}')" "pr-ready t-ab12 --pr 58"   # t-a463
   expect_call "$srv ready no pr"   "$P" "$(post "$P" /api/ticket/t-ab12/github/ready '{}')" "pr-ready t-ab12"
@@ -191,8 +191,8 @@ for P in "$GOP"; do
   touch "$W/release"
   for _ in $(seq 50); do s="$(body "$(get "$P" /api/ticket/t-ab12/github/merge)")"; [[ "$(js 'j.status' <<< "$s")" == done ]] && break; sleep 0.1; done
   assert_eq "done|0|true" "$(js '[j.status,j.exit_code,j.output.includes("progress two")].join("|")' <<< "$s")"
-  assert_eq "1" "$(grep -c 'merge-pr t-ab12 --yes --pr 58' "$W/log")"   # one job, not two
-  assert_eq "$PROJ | merge-pr t-ab12 --yes --pr 58 | progress=5" "$(grep 'merge-pr' "$W/log")"
+  assert_eq "1" "$(grep -c 'merge t-ab12 --yes --pr 58' "$W/log")"   # one job, not two
+  assert_eq "$PROJ | merge t-ab12 --yes --pr 58 | progress=5" "$(grep ' merge t-ab12' "$W/log")"
   # Stop: TERM ends the running job; it reports done with a failing exit code.
   rm -f "$W/release"; post "$P" /api/ticket/t-ab12/github/merge '{"pr":58}' >/dev/null
   for _ in $(seq 50); do [[ "$(body "$(get "$P" /api/ticket/t-ab12/github/merge)" | js 'j.output')" == *"progress one"* ]] && break; sleep 0.1; done

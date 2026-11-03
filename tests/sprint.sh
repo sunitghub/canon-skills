@@ -1693,8 +1693,8 @@ wt_main="$(make_project)"; wt_dir="$(mktemp -d)/wt"
   out="$("$SPRINT" start "worktree stale eval")"; wid="$(printf '%s\n' "$out" | awk '/Sprint started:/ { print $3 }')"
   fr_gate_docs "$wt_main/.tickets/$wid" "$wt_main/.claude/subagent-runs.jsonl" "$(date +%s)-7000" "$(git rev-parse HEAD)"
   out="$(env -u CLAUDECODE "$SPRINT" complete 2>&1)"; assert_contains "$out" "Sprint completed: $wid"
-  # t-8f48: a close in a linked worktree names the step after the merge.
-  assert_contains "$out" "After its PR merges: run tkt worktree-reset here"
+  # t-8f48, t-2906: a close in a linked worktree names the next step, Check & merge.
+  assert_contains "$out" "Next: Check & merge on the board's card (or tkt merge $wid)"
   # t-ba62: the record lives in the main checkout here (no .tickets/ in the worktree), so nothing in this worktree is flagged
   [[ "$out" != *"is untracked in this worktree"* ]] || fail "warned about the main checkout's files: $out"
 )

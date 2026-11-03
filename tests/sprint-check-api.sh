@@ -504,10 +504,11 @@ check_ticket_feature "non-feature ext"   "t-mock/ticket.md" 404
 check_ticket_feature "missing file"      "t-mock/features/none.feature" 404
 rm -rf "$WORK/.tickets/t-mock/features"
 
-# ── /api/worktrees ticket_present (t-2a1c) ──────────────────────────────────
-# A real sibling worktree — a checkout of HEAD, whose commits are empty, so nothing under .tickets/ is materialized —
-# reports ticket_present:false; the main checkout (which physically holds .tickets/t-mock, untracked) is exempt → true.
-# Without ?ticket the field is absent.
+# ── /api/worktrees ticket_present (t-2a1c, t-6bae) ──────────────────────────
+# Protects the Cockpit rail's Start gate (the board reads ticket_present / tickets_visible per worktree row). A real sibling
+# worktree, a checkout of HEAD with nothing under .tickets/ materialized, has NO .tickets/ of its own, so tkt there uses the main
+# checkout's (t-cd06): ticket_present:true, tickets_visible:true. Given its own .tickets/ without the ticket (an adopted copy), it
+# reports ticket_present:false. The main checkout is exempt (true). Without ?ticket the field is absent.
 WT_PARENT="$(mktemp -d)"
 WT="$WT_PARENT/api-wt"
 git -C "$WORK" worktree add -q "$WT" -b api-wt
@@ -518,14 +519,22 @@ main = [e for e in wt if e.get("is_main")]
 other = [e for e in wt if not e.get("is_main")]
 if not main or main[0].get("ticket_present") is not True:
     print(f"sprint-check-api: FAIL — the main checkout should report ticket_present=true: {main}"); sys.exit(1)
-if not other or any(e.get("ticket_present") is not False for e in other):
-    print(f"sprint-check-api: FAIL — a sibling worktree (no committed .tickets/) should report ticket_present=false: {other}"); sys.exit(1)
+if not other or any(e.get("ticket_present") is not True or e.get("tickets_visible") is not True for e in other):
+    print(f"sprint-check-api: FAIL — a sibling worktree with no .tickets/ of its own should report ticket_present and tickets_visible true: {other}"); sys.exit(1)
 if any("ticket_present" in e for e in no):
     print(f"sprint-check-api: FAIL — ticket_present must be absent when no ticket is passed: {no}"); sys.exit(1)
 # t-2a1c reviewer finding: a trailing newline makes the id invalid, which reads as no ticket.
 if any("ticket_present" in e for e in nl):
     print(f"sprint-check-api: FAIL — a trailing-newline ?ticket must be rejected (no ticket_present): {nl}"); sys.exit(1)
 PY
+mkdir -p "$WT/.tickets/t-zz99"   # its own .tickets/ without t-mock: tkt there would not find it
+python3 - "$(curl -s "$B/api/worktrees?ticket=t-mock")" <<'PY'
+import json, sys
+other = [e for e in json.loads(sys.argv[1]) if not e.get("is_main")]
+if not other or any(e.get("ticket_present") is not False for e in other):
+    print(f"sprint-check-api: FAIL — a worktree whose own .tickets/ lacks the ticket should report ticket_present=false: {other}"); sys.exit(1)
+PY
+rm -rf "$WT/.tickets"
 
 # ── /api/cockpit-docs (t-1357): plan/acceptance/HANDOFF read from the session's WORKTREE, never an arbitrary path ─────
 mkdir -p "$WT/.tickets/t-mock"

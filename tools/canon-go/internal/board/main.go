@@ -337,6 +337,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		// ?all=1 request inside the TTL must not miss archived tickets.
 		annotateBranchDivergence(tickets, root)
 		annotateLiveDocs(tickets, root)
+		annotateWorktreeMerge(tickets, root) // t-2906
 		if !queryHasAll(r.URL.RawQuery) {
 			filtered := make([]ticket, 0, len(tickets))
 			for _, t := range tickets {
@@ -601,7 +602,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 					http.Error(w, "bad request", http.StatusBadRequest)
 					return
 				}
-				sendJSON(w, runTkt(groot, append([]string{"merge-pr", m[1], "--check"}, pr...)))
+				sendJSON(w, runTkt(groot, append([]string{"merge", m[1], "--check"}, pr...))) // t-2906: tkt merge picks the PR or the worktree branch
 			}
 			return
 		}
@@ -2758,7 +2759,9 @@ func listWorktreesBase(ticketID, root string) []map[string]any {
 	ticketsIgnored := runGitIn(root, "check-ignore", ".tickets") != ""
 	for _, e := range entries {
 		isMain, _ := e["is_main"].(bool)
-		e["tickets_visible"] = isMain || !ticketsIgnored
+		// t-6bae: a worktree with no .tickets/ of its own uses the main checkout's (t-cd06), so ignoring it hides nothing there.
+		_, ownErr := os.Lstat(filepath.Join(fmt.Sprint(e["path"]), ".tickets"))
+		e["tickets_visible"] = isMain || !ticketsIgnored || os.IsNotExist(ownErr)
 	}
 	// t-2a1c: parity with server.py — ticket-scoped physical presence mirroring
 	// the daemon's handleStart guard (stat <cwd>/.tickets/<id>, must be a dir),
@@ -2771,8 +2774,7 @@ func listWorktreesBase(ticketID, root string) []map[string]any {
 				e["ticket_present"] = true
 				continue
 			}
-			fi, err := os.Stat(filepath.Join(fmt.Sprint(e["path"]), ".tickets", ticketID))
-			e["ticket_present"] = err == nil && fi.IsDir()
+			e["ticket_present"] = common.TicketVisibleIn(fmt.Sprint(e["path"]), ticketID) // t-6bae: the daemon's start rule
 		}
 	}
 	if entries == nil {
@@ -5049,7 +5051,7 @@ func startMergeRun(root, id string, pr []string) map[string]any {
 	mergeRuns[key] = map[string]any{"status": "running", "output": "", "exit_code": nil, "started_at": time.Now()}
 	delete(mergeCmds, key) // t-718b: a stop before the new process registers must not reach the previous, finished one
 	mergeRunsMu.Unlock()
-	go runMerge(key, append([]string{"merge-pr", id, "--yes"}, pr...))
+	go runMerge(key, append([]string{"merge", id, "--yes"}, pr...)) // t-2906: merge-pr for a GitHub ticket, the worktree branch otherwise
 	return getMergeRunState(root, id)
 }
 
