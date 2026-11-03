@@ -8945,3 +8945,16 @@ func TestStartLinksWorktreeGateAgents(t *testing.T) {
 		t.Fatalf("the worktree's .claude/agents must reach canon's agents before the agent starts, got %q (err %v)", got, err)
 	}
 }
+
+// t-74d8: the daemon finds canon's skills and agents from where its own binary sits.
+func TestCanonRootFrom(t *testing.T) {
+	for in, want := range map[string]string{
+		filepath.Join("/c", "tools", "canon-go-bin"): filepath.Join("/c"), // macOS, Linux
+		filepath.Join("/c", "tools"):                 filepath.Join("/c"), // Windows: the exe sits in tools/
+		"":                                           "",
+	} {
+		if got := canonRootFrom(in); got != want {
+			t.Errorf("canonRootFrom(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

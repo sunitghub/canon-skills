@@ -202,3 +202,67 @@ func TestLinkWorktreeLinkedWorktreeUsesExclude(t *testing.T) {
 		t.Errorf("info/exclude must carry the link lines, got %q", b)
 	}
 }
+
+// t-74d8 (mutation sweep): the edges the first tests left open.
+func TestLinkWorktreeEdges(t *testing.T) {
+	canon := fakeCanon(t)
+	// a TRACKED project skills folder with no canon marker is the project's: kept (only a tracked canon mirror is replaced)
+	wt := gitRepo(t)
+	must(t, os.MkdirAll(filepath.Join(wt, ".claude", "skills", "mine"), 0o755))
+	must(t, os.WriteFile(filepath.Join(wt, ".claude", "skills", "mine", "x.md"), []byte("LOCAL"), 0o644))
+	must(t, exec.Command("git", "-C", wt, "add", "-A").Run())
+	must(t, exec.Command("git", "-C", wt, "commit", "-qm", "c").Run())
+	LinkWorktree(canon, wt)
+	if isDirLink(filepath.Join(wt, ".claude", "skills")) {
+		t.Error("a tracked project skills folder without canon's marker must be kept")
+	}
+	// a canon without agents/ links no agents
+	noAgents := t.TempDir()
+	must(t, os.MkdirAll(filepath.Join(noAgents, "skills"), 0o755))
+	wt = gitRepo(t)
+	LinkWorktree(noAgents, wt)
+	if exists(filepath.Join(wt, ".claude", "agents")) {
+		t.Error("with no agents/ in canon, no .claude/agents may be made")
+	}
+	// a re-pointed agents link is ignored too (the line is added on that path, not only on a fresh link)
+	wt = gitRepo(t)
+	must(t, os.MkdirAll(filepath.Join(wt, ".claude"), 0o755))
+	must(t, os.Symlink(filepath.Join(t.TempDir(), "gone"), filepath.Join(wt, ".claude", "agents")))
+	LinkWorktree(canon, wt)
+	if !hasLine(filepath.Join(wt, ".gitignore"), "/.claude/agents") {
+		t.Error("a re-pointed .claude/agents must be ignored")
+	}
+	// the user's own canon-reviewer.md (no canon:agent marker) makes their linked folder theirs: not re-pointed
+	wt = gitRepo(t)
+	mine := filepath.Join(t.TempDir(), "my-agents")
+	must(t, os.MkdirAll(mine, 0o755))
+	must(t, os.WriteFile(filepath.Join(mine, "canon-reviewer.md"), []byte("my own"), 0o644))
+	must(t, os.MkdirAll(filepath.Join(wt, ".claude"), 0o755))
+	must(t, os.Symlink(mine, filepath.Join(wt, ".claude", "agents")))
+	LinkWorktree(canon, wt)
+	if got := linkTarget(t, filepath.Join(wt, ".claude", "agents")); got != real(mine) {
+		t.Errorf("a folder whose canon-reviewer.md lacks the canon:agent marker is the user's: must stay, got %s", got)
+	}
+	// a project folder missing canon's files gets them copied in
+	wt = gitRepo(t)
+	must(t, os.MkdirAll(filepath.Join(wt, ".claude", "agents"), 0o755))
+	LinkWorktree(canon, wt)
+	if b, _ := os.ReadFile(filepath.Join(wt, ".claude", "agents", "canon-evaluator.md")); !strings.Contains(string(b), "canon:agent") {
+		t.Error("an absent canon-evaluator.md must be copied into a project-owned agents folder")
+	}
+	// Windows line endings: lines are recognized, nothing is added twice; a last line without a newline gets one first
+	wt = gitRepo(t)
+	must(t, os.WriteFile(filepath.Join(wt, ".gitignore"), []byte("/.claude/agents\r\n/.claude/skills/\r\n/.claude/skills\r\nnode_modules"), 0o644))
+	LinkWorktree(canon, wt)
+	LinkWorktree(canon, wt)
+	gi, _ := os.ReadFile(filepath.Join(wt, ".gitignore"))
+	if c := strings.Count(string(gi), "/.claude/agents"); c != 1 {
+		t.Errorf("a CRLF line must be recognized: /.claude/agents appears %d times in %q", c, gi)
+	}
+	if strings.Contains(string(gi), "/.claude/skills/") || strings.Count(string(gi), "/.claude/skills\r\n")+strings.Count(string(gi), "/.claude/skills\n") != 1 {
+		t.Errorf("the directory-only line must go when the bare one exists, leaving one: %q", gi)
+	}
+	if !strings.Contains(string(gi), "node_modules\n/.agents/skills\n") {
+		t.Errorf("a last line without a newline must get one before canon's lines: %q", gi)
+	}
+}

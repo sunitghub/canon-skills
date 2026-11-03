@@ -4751,8 +4751,10 @@ func startupVersion(dir string) func() string {
 
 // canonRoot is the canon install this daemon belongs to: its binary sits at <root>/tools/canon-go-bin/ (macOS, Linux) or
 // <root>/tools/ (Windows). A var so a test can point it at a fake install.
-var canonRoot = func() string {
-	dir := exeDir()
+var canonRoot = func() string { return canonRootFrom(exeDir()) }
+
+// canonRootFrom is the install root for a binary in dir: <root>/tools/canon-go-bin or <root>/tools; "" for "".
+func canonRootFrom(dir string) string {
 	if dir == "" {
 		return ""
 	}

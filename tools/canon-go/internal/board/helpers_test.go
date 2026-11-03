@@ -368,3 +368,12 @@ func TestEditSettingsAdditionalDirectories(t *testing.T) {
 		t.Fatal("a list name other than allow, deny or additionalDirectories must be refused")
 	}
 }
+
+// t-74d8: the parity test's Go entry point refuses a wrong call with its usage.
+func TestHelperLinkWorktreeUsage(t *testing.T) {
+	var out, errb strings.Builder
+	code, handled := runHelper([]string{"link-worktree", "only-one"}, strings.NewReader(""), &out, &errb)
+	if !handled || code != 2 || !strings.Contains(errb.String(), "usage: canon-go link-worktree") {
+		t.Fatalf("link-worktree with one argument: code %d handled %v stderr %q", code, handled, errb.String())
+	}
+}
