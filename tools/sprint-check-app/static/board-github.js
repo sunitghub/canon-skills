@@ -19,6 +19,8 @@ const mergeById = new Map();     // id -> {status, output, exit_code, elapsed} w
 let pollTimer = null;
 
 // github: is only the issue link (sync-issues and import-issue write it too); runs: github says a cloud session has it.
+// t-2906: the worktree branch a closed, unmerged local ticket waits to merge ({branch, path}, from the board's tickets API), or null.
+export function wtMerge(t) { return t && !ghOut(t) && t.wt_merge && t.wt_merge.branch ? t.wt_merge : null; }
 export function ghOut(t) { return !!(t && t.runs === 'github' && t.github && !t.merged); }
 
 function ghParts(t) {
@@ -81,10 +83,11 @@ export function ghChipHTML(t) {
 }
 
 export function ghButtonHTML(t) {
-  if (!ghOut(t)) return '';
-  const st = stageOf(t);
   const btn = (action, label, title) =>
     `<button class="card-start card-gh-btn" type="button" data-id="${esc(t.id)}" data-gh-action="${action}" title="${escAttr(title)}">${esc(label)}</button>`;
+  // t-2906: a closed worktree ticket whose branch is not in main yet gets the same Check & merge as a PR (tkt merge picks the branch).
+  if (!ghOut(t)) return wtMerge(t) ? btn('merge', 'Check & merge', `Check ${wtMerge(t).branch} and merge it into main here after your confirmation`) : '';
+  const st = stageOf(t);
   // t-c259: imported, not closed, PR open: the close finishes here, in a worktree at the PR head.
   // t-6623: once that worktree exists the card offers Finish (tkt land --finish), which removes it after the close.
   if (st.landed) return btn('finish', 'Finish', `Remove the worktree at ${st.landed} once sprint complete has closed the ticket there (tkt land --finish)`);
@@ -125,7 +128,7 @@ async function ghAction(t, action) {
   if (action === 'issue' && p) return openUrl(`https://github.com/${p.repo}/issues/${p.issue}`);
   if (action === 'pr' && p && pr) return openUrl(`https://github.com/${p.repo}/pull/${pr}`);
   if (action === 'import') return importResults(t, pr);
-  if (action === 'merge') return checkAndMerge(t, pr);
+  if (action === 'merge') return checkAndMerge(t, wtMerge(t) ? '' : pr);
   if (action === 'open-pr' && p) return openPr(t, p, st);
   if (action === 'land') return continueHere(t, pr);
   if (action === 'close-here') return closeHere(t, pr);
@@ -294,7 +297,7 @@ function setCancel(d, label) {
 }
 // merge-pr prints "running …" once, then again with the time every few seconds; the dialog shows only the newest of a
 // run of them (t-e523).
-const PROGRESS = /^merge-pr: running .*…/;
+const PROGRESS = /^merge(-pr)?: running .*…/;
 function oneProgressLine(text) {
   const lines = String(text).split('\n');
   return lines.filter((l, i) => !(PROGRESS.test(l) && PROGRESS.test(lines[i + 1] || ''))).join('\n');
@@ -324,8 +327,8 @@ async function importResults(t, pr) {
 // t-a463: the one line that says WHY, shown above the log (a long log tail buries it). Prefers the line that names the refusal.
 function refusalReason(out) {
   const lines = String(out || '').split('\n').map(s => s.trim()).filter(Boolean);
-  const hit = lines.find(s => /is a draft|GitHub refused|gh could not merge|failed on .* \+ PR|cannot merge cleanly|not open|blocked by|comes from a fork|not the commit the evaluator graded/.test(s)) || lines[0] || '';
-  return hit.replace(/^merge-pr:\s*/, '');
+  const hit = lines.find(s => /is a draft|GitHub refused|gh could not merge|failed on .* \+ |cannot merge cleanly|not open|blocked by|comes from a fork|not the commit the evaluator graded|does not merge into|already (merged|in )|not closed|uncommitted changes|is unchanged|moved while/.test(s)) || lines[0] || '';
+  return hit.replace(/^merge(-pr)?:\s*/, '');
 }
 // t-41ff: merge-pr's "Local <branch>:" line and the indented lines under it (the files that stopped the update, the next step).
 function localMainNote(out) {
@@ -349,20 +352,29 @@ async function markReady(t, pr) {
   await checkAndMerge(t, pr);
 }
 
+// t-2906: the words a merge's dialogs use: a worktree ticket's branch ("feat/x", merged into main here) or a PR.
+function mergeWords(t, pr) {
+  const wm = wtMerge(t);
+  return wm ? { wt: true, kind: 'branch', name: wm.branch } : { wt: false, kind: 'PR', name: pr ? `PR #${pr}` : '' };
+}
+const nextLine = out => ((String(out || '').match(/^next: (.+)$/m) || [])[1] || '').trim();
+
 async function checkAndMerge(t, pr) {
   const prQ = pr ? `?pr=${encodeURIComponent(pr)}` : '';
   const prB = pr ? { pr } : {};
+  const w = mergeWords(t, pr);
   if (mergeById.get(t.id)?.status === 'running') return followMerge(t, prB, true);
-  const open = openDialog({ title: `Check & merge${pr ? ` PR #${pr}` : ''}`, body: 'Running the checks that run none of the PR\'s code…', pre: '', ok: '', cancel: 'Cancel', escape: false });
+  const open = openDialog({ title: `Check & merge${w.name ? ` ${w.name}` : ''}`, body: `Running the checks that run none of the ${w.kind}'s code…`, pre: '', ok: '', cancel: 'Cancel', escape: false });
   let chk;
   try { chk = await getJSON(ghApi(t.id, 'merge-check') + prQ); }
   catch (e) { chk = { ok: false, output: String(e.message || e) }; }
   if (!chk.ok) {
     const reason = refusalReason(chk.output), draft = isDraftRefusal(chk.output);
     // t-ca00: merge-pr names the conflicting files; the way out is the worktree fix the suite-failure case already offers.
-    const conflict = /mergeable: CONFLICTING/.test(chk.output || '');   // only a real conflict: BEHIND, UNKNOWN or UNSTABLE refusals keep only Close
+    const conflict = !w.wt && /mergeable: CONFLICTING/.test(chk.output || '');   // only a real conflict: BEHIND, UNKNOWN or UNSTABLE refusals keep only Close
     const files = ((chk.output || '').match(/conflicts in: (.+)/) || [])[1];
-    updateDialog({ body: `${(reason || 'Not mergeable here').replace(/[.:\s]+$/, '')}.${conflict && files ? ` Conflicts in: ${files.trim()}.` : ''} Nothing was run or changed.`, pre: chk.output || '', ok: draft ? 'Mark ready' : conflict ? 'Fix here' : '', cancel: 'Close', escape: true }, open.gen);
+    const wtNext = w.wt ? nextLine(chk.output) : '';   // t-2906: a worktree branch's way out is in the worktree, said in words
+    updateDialog({ body: `${(reason || 'Not mergeable here').replace(/[.:\s]+$/, '')}.${(conflict || w.wt) && files ? ` Conflicts in: ${files.trim()}.` : ''}${wtNext ? ` Next: ${wtNext.replace(/[.\s]+$/, '')}.` : ''} Nothing was run or changed.`, pre: chk.output || '', ok: draft ? 'Mark ready' : conflict ? 'Fix here' : '', cancel: 'Close', escape: true }, open.gen);
     if (draft) { const v = await open; if (v && v.ok) await markReady(t, pr); }
     else if (conflict) { const v = await open; if (v && v.ok) await continueHere(t, pr, true); }
     return;
@@ -371,7 +383,7 @@ async function checkAndMerge(t, pr) {
   const ahead = ((chk.output || '').match(/local (\S+) has (\d+) commits? that aren't on GitHub/) || []);
   const aheadNote = ahead[2] ? ` Your local ${ahead[1]} has ${ahead[2]} commit${ahead[2] === '1' ? '' : 's'} that aren't on GitHub. This merge tests and merges the PR without ${ahead[2] === '1' ? 'it' : 'them'}; afterwards, run git pull (or push first).` : '';
   updateDialog({
-    body: `Running the tests runs the PR's code on this machine. Nothing from the PR runs before you press the button.${aheadNote}`,
+    body: `Running the tests runs the ${w.kind}'s code on this machine. Nothing from the ${w.kind} runs before you press the button.${aheadNote}`,
     pre: chk.output || '', ok: /no test command/.test(chk.output || '') ? 'Merge (no tests)' : 'Run tests & merge', cancel: 'Cancel', escape: true,   // t-2560
   }, open.gen);
   const choice = await open;
@@ -383,9 +395,10 @@ async function checkAndMerge(t, pr) {
 
 async function followMerge(t, prB, show) {
   let gen, finished = false, shown = null;
+  const w = mergeWords(t, prB.pr);
   const mirrors = (statusById.get(t.id)?.status?.mirrors || []).filter(m => typeof m === 'string' && m);
   if (show) {
-    shown = openDialog({ title: `Checking & merging ${t.id}`, body: 'Running the tests on the base branch + PR…', pre: '', ok: '', cancel: 'Stop', escape: false });
+    shown = openDialog({ title: `Checking & merging ${t.id}`, body: `Running the tests on the base branch + ${w.kind}…`, pre: '', ok: '', cancel: 'Stop', escape: false });
     gen = shown.gen;
     shown.then(v => { if (v && !v.ok && !finished) stopMerge(t); });
   }
@@ -409,7 +422,7 @@ async function followMerge(t, prB, show) {
   finished = true;
   const st = mergeById.get(t.id);
   mergeById.delete(t.id);
-  const merged = st && st.exit_code === 0 && /Merged PR #/.test(st.output || '');
+  const merged = st && st.exit_code === 0 && /^Merged (PR #\d+|\S+) into /m.test(st.output || '');
   // t-24b1: merge-pr fast-forwards local main itself (its last line says how); the canon.mirror remotes are offered here,
   // named, and pushed only on this click.
   const offer = merged && mirrors.length ? `Push main to ${mirrors.join(', ')}` : '';
@@ -419,7 +432,7 @@ async function followMerge(t, prB, show) {
   const local = merged ? localMainNote(st.output) : '';
   if (gen !== undefined) updateDialog({
     title: merged ? 'Merged' : 'Not merged',
-    body: merged ? `The PR is merged and the issue closed by its Fixes line.${local ? ` ${local}` : ''}${offer ? ` Also push main to ${mirrors.join(', ')} (git config canon.mirror)?` : ''}` : `${(refusalReason(st?.output) || 'Not merged').replace(/[.:\s]+$/, '')}. Nothing changed on GitHub. See the output.`,
+    body: merged ? `${w.wt ? `${w.name} is merged into ${(String(st.output).match(/^Merged \S+ into (\S+) /m) || [])[1] || 'main'} here.${nextLine(st.output) ? ` Next: ${nextLine(st.output).replace(/[.\s]+$/, '')}.` : ''}` : 'The PR is merged and the issue closed by its Fixes line.'}${local ? ` ${local}` : ''}${offer ? ` Also push main to ${mirrors.join(', ')} (git config canon.mirror)?` : ''}` : `${(refusalReason(st?.output) || 'Not merged').replace(/[.:\s]+$/, '')}. ${w.wt ? 'Nothing was merged; main is unchanged.' : 'Nothing changed on GitHub.'} See the output.`,
     pre: st?.output || '', ok: offer || (draftRefused ? 'Mark ready' : suiteFailed ? 'Fix here' : ''), cancel: 'Close', escape: true,
   }, gen);
   if (offer && shown) shown.then(v => { if (v && v.ok) pushMain(mirrors); });

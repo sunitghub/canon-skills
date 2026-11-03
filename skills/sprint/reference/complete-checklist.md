@@ -8,7 +8,7 @@ hidden: true
 
 # Sprint Complete — checklist
 
-The normal path; every tool named is on PATH. A case in the last table: read only its `complete.md` section.
+The normal path; every tool named is on PATH. Other cases: read only the last table's `complete.md` section.
 
 **First** ask "Ready to close sprint `<id>`? This will run wrapup and move the ticket to Done.
 Confirm to proceed." A broad "continue"/"finish" is not close approval.
@@ -22,7 +22,7 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
      `evidence.sh stamp <id> mutant-sweep -- mutant-sweep …`. Non-binding; not skippable without a reason:
      `mutation-test | skipped | <reason>`.
    - **Skill eval** if a skill or gate agent changed (canon checkout only): `tools/skill-eval-scope.sh`; for each `run <skill>`
-     follow `skills/skill-eval/SKILL.md` from this session; advisory. Commit its `history.jsonl` line.
+     follow `skills/skill-eval/SKILL.md` here; advisory. Commit its `history.jsonl` line.
    - **Interim commit** (specific paths, no `git add -A`) before any gate.
    - **Evidence:** in a `git clone` of the final commit, run
      `CANON_TICKETS_DIR=<project>/.tickets evidence.sh stamp <id> test-sh -- <project test command>`
@@ -54,8 +54,8 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
    escape `|`), plus a paragraph naming gate models, any reviewer NO. Run `tkt learn <id>`;
    if it writes a file, run `/learnings-sweep <id>`. Say which in chat and summary.
 9. **Close:** `sprint complete <id>`, never a hand-edited status. On refusal, report and stop.
-10. **Commit & push:** stage specific files plus DECISIONS/HANDOFF/LEARNINGS, even new, unless gitignored; `Closes: <id>` in the body; show; ask. "No remote is configured: committed locally, nothing pushed" if none; "pushed" only after a push that succeeded. Worktree, post-merge:
-    `tkt worktree-reset`. Canon: `public` only via `tkt push-main`; a push is not a release.
+10. **Commit & push:** stage specific files plus DECISIONS/HANDOFF/LEARNINGS, even new, unless gitignored; `Closes: <id>` in the body; show; ask. "No remote is configured: committed locally, nothing pushed" if none; "pushed" only after a push that succeeded. Worktree: no PR;
+    **Check & merge**, then `tkt worktree-reset`. Canon: `public` only via `tkt push-main`; a push is not a release.
 
 ## Gate dispatch inputs
 

@@ -8856,6 +8856,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       expect(posts[0].base_hash).toMatch(/^etag-\d+$/);                 // guarded by the etag it read
       expect(posts[0].content).toContain('- [x] second box');
     } finally {
+      await page.unrouteAll({ behavior: 'ignoreErrors' });   // a tickets poll still in flight at the end must not fail a passed test
       removeTestTicket(PROJECT_ROOT, id);
     }
   });
@@ -17885,6 +17886,70 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     Object.assign(job, { status: 'done', exit_code: 0, output: job.output + 'merge-pr: scripts/test.sh passed in 4m11s\nMerged PR #58 into main (424987f9).\nLocal main: 1111aaaa -> 424987f9 (fast-forward)\n' });
     await expect(page.locator('#gh-dialog-title')).toHaveText('Merged');
     await expect(page.locator('#gh-dialog-pre')).toContainText('Merged PR #58 into main');
+  });
+
+  // t-2906: a worktree ticket's Check & merge is the GitHub one: the same card button, check, confirm, progress, Stop and Merged
+  // result; only the words that must differ do. Prod path: the card's Check & merge for a worktree ticket (wt_merge on
+  // GET /api/tickets; the same /github/merge-check and /github/merge routes, which run tkt merge).
+  test('Check & merge: a worktree ticket walks the same dialog as a PR, only its words differ (t-2906)', async ({ page }) => {
+    async function walk(id, { checkOut, runOut, doneOut }) {
+      const job = { status: 'idle', output: '', exit_code: null, elapsed: 0 };
+      const posts = [];
+      await page.route(`**/api/ticket/${id}/github/merge-check**`, r => json(r, { ok: true, exit_code: 0, output: checkOut }));
+      await page.route(`**/api/ticket/${id}/github/merge`, r => {
+        if (r.request().method() === 'POST') { posts.push(JSON.parse(r.request().postData() || '{}')); Object.assign(job, { status: 'running', output: runOut, elapsed: 5 }); }
+        return json(r, job);
+      });
+      await openBoard(page, id);
+      const btn = page.locator(`.card[data-id="${id}"] .card-gh-btn`);
+      const text = async sel => (await page.locator(sel).textContent()).trim();
+      const steps = [(await btn.textContent()).trim()];
+      await btn.click();
+      await expect(page.locator('#gh-dialog-ok')).toHaveText('Run tests & merge');
+      steps.push(await text('#gh-dialog-ok'), await text('#gh-dialog-cancel'));
+      const confirmBody = await text('#gh-dialog-body');
+      expect(posts).toEqual([]);   // nothing runs before the confirm
+      await page.locator('#gh-dialog-ok').click();
+      await expect(page.locator('#gh-dialog-body')).toContainText('Running… 0m05s');
+      await expect(page.locator('#gh-dialog-pre')).toContainText('running scripts/test.sh');
+      steps.push(await text('#gh-dialog-cancel'));
+      Object.assign(job, { status: 'done', exit_code: 0, output: runOut + doneOut });
+      await expect(page.locator('#gh-dialog-title')).toHaveText('Merged');
+      steps.push(await text('#gh-dialog-title'), await text('#gh-dialog-cancel'));
+      const doneBody = await text('#gh-dialog-body');
+      await page.locator('#gh-dialog-cancel').click();
+      return { steps, confirmBody, doneBody, posts };
+    }
+    const prId = newTicketId(PROJECT_ROOT, 'gh2906p');
+    ghTicket(prId, { github: 'acme/app#57' });
+    await routeStatus(page, prId, { stage: 'results-in', pr: 58 });
+    const prRun = await walk(prId, {
+      checkOut: 'PR #58 (acme/app): 1 file changed\nmerge-pr: ready: would run scripts/test.sh on main + PR #58, then merge (closes #57)',
+      runOut: 'merge-pr: running scripts/test.sh on main + PR #58… 0m05s\n',
+      doneOut: 'merge-pr: scripts/test.sh passed in 4m11s\nMerged PR #58 into main (424987f9).\n' });
+    const wtId = newTicketId(PROJECT_ROOT, 'gh2906w');
+    ghTicket(wtId, { status: 'closed' });
+    await page.route('**/api/tickets**', async route => {
+      const resp = await route.fetch();
+      const list = await resp.json();
+      for (const t of list) if (t.id === wtId) t.wt_merge = { branch: 'feat/x', path: '/tmp/wt' };
+      await route.fulfill({ response: resp, json: list });
+    });
+    const wtRun = await walk(wtId, {
+      checkOut: 'feat/x: 1 file changed\nmerge: ready: would run scripts/test.sh on main + feat/x, then merge',
+      runOut: 'merge: running scripts/test.sh on main + feat/x… 0m05s\n',
+      doneOut: 'merge: scripts/test.sh passed in 4m11s\nMerged feat/x into main (424987f9).\nnext: the worktree /tmp/wt is free: reuse it for the next ticket, or remove it (git worktree remove /tmp/wt)\n' });
+    expect(wtRun.steps).toEqual(prRun.steps);   // Check & merge, Run tests & merge, Cancel, Stop, Merged, Close
+    expect(wtRun.posts).toEqual([{}]);
+    expect(prRun.posts).toEqual([{ pr: 58 }]);
+    expect(prRun.confirmBody).toContain("runs the PR's code on this machine");
+    expect(wtRun.confirmBody).toContain("runs the branch's code on this machine");
+    expect(wtRun.doneBody).toContain('feat/x is merged into main here.');
+    expect(wtRun.doneBody).toContain('Next: the worktree /tmp/wt is free');
+    // Once merged (merged: on the ticket, so no wt_merge), the card shows no Check & merge.
+    await page.unroute('**/api/tickets**');
+    await openBoard(page, wtId);
+    await expect(page.locator(`.card[data-id="${wtId}"] .card-gh-btn`)).toHaveCount(0);
   });
 
   test('Check & merge: a refused check runs nothing; Stop ends a running job (t-718b)', async ({ page }) => {

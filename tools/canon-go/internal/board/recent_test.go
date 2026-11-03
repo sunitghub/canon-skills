@@ -28,11 +28,12 @@ func TestRecentLines(t *testing.T) {
 	emit("ticket.status_changed", root, map[string]string{"ticket": "t-aaaa", "from": "open", "to": "in_progress"}) // not a stage
 	emit("sprint.completed", "/elsewhere", map[string]string{"ticket": "t-bbbb"})                                   // another project
 	emit("github.merged", root, map[string]string{"ticket": "t-aaaa", "pr": "12"})
+	emit("branch.merged", root, map[string]string{"ticket": "t-cccc", "branch": "feat/t-cccc"}) // t-2906: tkt merge of a worktree branch
 	got := recentLines(home, root, 10)
-	if len(got) != 3 {
-		t.Fatalf("recentLines = %q, want 3 stage lines of this project, newest first", got)
+	if len(got) != 4 {
+		t.Fatalf("recentLines = %q, want 4 stage lines of this project, newest first", got)
 	}
-	for i, want := range []string{"· t-aaaa · merged (PR #12)", "· t-aaaa · evaluator pass (claude-sonnet-5-5)", "· t-aaaa · plan approved (normal)"} {
+	for i, want := range []string{"· t-cccc · merged here (feat/t-cccc)", "· t-aaaa · merged (PR #12)", "· t-aaaa · evaluator pass (claude-sonnet-5-5)", "· t-aaaa · plan approved (normal)"} {
 		if !strings.HasSuffix(got[i], want) {
 			t.Fatalf("line %d = %q, want it to end %q (newest first)", i, got[i], want)
 		}

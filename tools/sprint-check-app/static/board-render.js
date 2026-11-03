@@ -8,7 +8,7 @@ import { openCockpit, renderSidebarChanges } from './board-cockpit-rail.js';
 import { cockpitForwardSlash, fetchWorktreeLock } from './board-worktree.js';
 import { openCommitPanel } from './board-panels.js';
 import { applySearch, setText } from './board-ui.js';
-import { bindGithubCardButtons, ensureGithubStatus, ghButtonHTML, ghChipHTML, ghOut, openDialog } from './board-github.js';
+import { bindGithubCardButtons, ensureGithubStatus, ghButtonHTML, ghChipHTML, ghOut, openDialog, wtMerge } from './board-github.js';
 
 // ── Render ────────────────────────────────────────────────────────────────
 
@@ -807,8 +807,8 @@ function cardHTML(t, idx, inNow) {
     startBtn = ckRowState(live) === 'needs-you'
       ? `<button class="card-start answer" data-id="${esc(t.id)}" title="Answer — this session is waiting on you">Answer ▸</button>`
       : `<button class="card-start open" data-id="${esc(t.id)}" title="Open this ticket's live session">Open ▸</button>`;
-  } else if (ghOut(t)) {
-    startBtn = ghButtonHTML(t);   // t-718b: out on GitHub — one stage button instead of Start (one place at a time)
+  } else if (ghOut(t) || wtMerge(t)) {
+    startBtn = ghButtonHTML(t);   // t-718b: out on GitHub — one stage button instead of Start (one place at a time); t-2906: a worktree branch to merge
   } else if (run) {
     startBtn = `<button class="card-start resume" data-id="${esc(t.id)}" title="Resume this sprint — it's in progress in worktree ${escAttr(run.branch)}">▶ Resume</button>`;
   } else if (t.status === 'open') {

@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Added
+- A sprint run in a worktree ends with **Check & merge** on its card, the same button and dialog a ticket out on GitHub gets: the checks that run none of the branch's code, **Run tests & merge** (the tests on main + branch in a scratch copy), progress with **Stop**, then **Merged** or why not. Behind it, `tkt merge <id>` merges the worktree's branch into the main checkout's branch as one `Merge branch '<branch>'` commit holding exactly the tested files, after the evaluator's pass on the branch head; it refuses, changing nothing, on uncommitted changes in the worktree, a branch already in main, or a conflict (files named, with the way out). Main moves under the rules merge-pr already uses for local main, so a file you edited that the merge changes stops it. A ticket sent to GitHub still merges its PR (`tkt merge` runs `tkt merge-pr` for it). The worktree close now names this step, and the agent no longer opens a PR from a worktree.
+
 ## [0.38.0] - 2026-11-02
 
 The prebuilt `canon-go` program changed (the board reads skill problems and runs Refresh, and writes the Recent activity block in `HANDOFF.md`): `canon update` fetches it; restart the daemon.
