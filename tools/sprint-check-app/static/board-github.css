@@ -89,3 +89,9 @@ html[data-theme="light"] .ck-gh-box .ck-gh-note p { color: var(--th-warn-ink, #9
 /* t-6f51: a stale send's Take back, and the numbered steps of the Send panel */
 .ck-gh-stale .ck-gh-takeback { align-self: flex-start; margin-top: 3px; font: inherit; font-size: 11px; cursor: pointer; }
 .ck-gh-box .ck-gh-step { margin: 4px 0 0; font-size: 13px; }
+/* t-92f2: a cloud ticket's close on this machine as numbered steps (closeStepsNode); tkt's own output folds under Details */
+.gh-dialog-table:has(> .gh-steps) { border: none; border-radius: 0; }
+.gh-steps ol { margin: 0; padding-left: 1.4em; display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text); }
+.gh-steps-path { display: block; margin-top: 4px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; overflow-wrap: anywhere; user-select: all; }
+.gh-steps details { margin-top: 10px; font-size: 12.5px; color: var(--text-muted); }
+.gh-steps summary { cursor: pointer; }

@@ -2783,12 +2783,19 @@ cmd_land() {
     [[ "$verdict" == pass && "$graded" != - && "$whead" == "$graded"* ]] \
       || { echo "land: $id has no passing evaluator verdict graded on the worktree head ${whead:0:8} (eval-report.md: ${verdict/#-/none} ${graded/#-/none}); worktree kept" >&2; exit 1; }
     git -C "$root" worktree remove "$wt" < /dev/null 2>&1 || { echo "land: git would not remove $wt (uncommitted work?); worktree kept" >&2; exit 1; }
-    # The branch is deleted only when it holds nothing but the PR head it started from: commits made here that are not on the
-    # PR yet would otherwise be lost (branch -D, since the PR is unmerged, so branch -d never accepts it).
-    local kept=""
-    if [[ "$whead" == "$(tr -d '[:space:]' < "$tdir/.land-head" 2>/dev/null)" ]]; then git -C "$root" branch -q -D "$branch" < /dev/null
-    else kept="; $branch kept: it has commits beyond the PR head (push them to the PR branch, then git branch -D $branch)"; fi
-    rm -f "$tdir/.land-head"
+    # The branch is deleted only when it holds nothing the PR does not: its head is the PR head it started from, or (t-92f2) the
+    # PR's current head on origin, after a fix here was pushed to the PR branch. Commits not on the PR would otherwise be lost
+    # (branch -D, since the PR is unmerged, so branch -d never accepts it). An unreadable PR ref keeps the branch.
+    local kept="" lhead lpr prhead=""
+    lhead="$(tr -d '[:space:]' < "$tdir/.land-head" 2>/dev/null || true)"
+    lpr="$(tr -d '[:space:]' < "$tdir/.land-pr" 2>/dev/null || true)"
+    if [[ "$whead" != "$lhead" && "$lpr" =~ ^[0-9]+$ ]]; then
+      if git -C "$root" fetch -q origin "refs/pull/$lpr/head" < /dev/null 2>/dev/null; then prhead="$(git -C "$root" rev-parse FETCH_HEAD)"
+      else kept="; $branch kept: could not fetch PR #$lpr from origin to compare (if PR #$lpr's head is ${whead:0:8}: git branch -D $branch)"; fi
+    fi
+    if [[ "$whead" == "$lhead" || "$whead" == "$prhead" ]]; then git -C "$root" branch -q -D "$branch" < /dev/null
+    elif [[ -z "$kept" ]]; then kept="; $branch kept: it has commits beyond the PR head (push them to the PR branch, then git branch -D $branch)"; fi
+    rm -f "$tdir/.land-head" "$tdir/.land-pr"
     if [[ -f "$tdir/.cockpit-cwd.before-land" ]]; then mv "$tdir/.cockpit-cwd.before-land" "$tdir/.cockpit-cwd"; else rm -f "$tdir/.cockpit-cwd"; fi
     handoff_recent "$root"   # t-2db7
     echo "land: $id closed here; worktree removed$kept"
@@ -2819,7 +2826,7 @@ cmd_land() {
   [[ "$(git -C "$root" rev-parse FETCH_HEAD)" == "$head" ]] || { echo "land: PR #$pr moved while fetching it; run land again" >&2; exit 1; }
   mkdir -p "$(dirname "$wt")" && git -C "$root" worktree add -q -b "$branch" "$wt" "$head" < /dev/null \
     || { echo "land: could not create the worktree at $wt" >&2; exit 1; }
-  printf '%s\n' "$head" > "$tdir/.land-head"
+  printf '%s\n' "$head" > "$tdir/.land-head"; printf '%s\n' "$pr" > "$tdir/.land-pr"
   [[ -f "$tdir/.cockpit-cwd" ]] && mv "$tdir/.cockpit-cwd" "$tdir/.cockpit-cwd.before-land"
   printf '%s\n' "$(_normalize_path "$wt")" > "$tdir/.cockpit-cwd"
   set_field "$file" status in_progress && set_active "$id"

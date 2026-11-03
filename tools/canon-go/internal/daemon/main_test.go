@@ -3549,40 +3549,60 @@ func TestSpawnLogsSessionStartDedupsCRLF(t *testing.T) {
 	}
 }
 
-// t-e5ff: a git worktree only materializes tracked files, so when .tickets/ is
-// gitignored the ticket dir is absent in the worktree cwd. handleStart must
-// refuse (400) and spawn nothing there, rather than launch an agent that can't
-// see its own ticket — while the SAME ticket still starts from the main
-// checkout, which physically holds .tickets/ even when it is gitignored.
-func TestStartRejectsWorktreeMissingTicketDir(t *testing.T) {
+// t-e5ff, t-6bae: protects the Cockpit's Start/Resume in a worktree (POST /session/start with a worktree cwd), e.g. the land
+// worktree tkt land makes for a cloud ticket. A worktree with NO .tickets/ of its own (a gitignored .tickets/) starts: tkt there
+// resolves the main checkout's ticket (t-cd06). A worktree with its own .tickets/ that lacks the ticket (an adopted copy) is
+// refused (400) and spawns nothing; the main checkout always starts.
+func TestStartWorktreeTicketVisibility(t *testing.T) {
 	bin, cwdFile := fakeSprintCwd(t)
 	root := t.TempDir()
 	seedTicketDir(t, root, "t-ab12")  // ticket exists in the MAIN checkout only
-	wt := gitWorktreeFixture(t, root) // worktree deliberately does NOT get .tickets/t-ab12
+	wt := gitWorktreeFixture(t, root) // worktree gets no .tickets/ at all
 	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
 	ts := httptest.NewServer(s.handler())
 	t.Cleanup(ts.Close)
 	t.Cleanup(func() { killAllSessions(s) })
 
+	// A worktree with its own .tickets/ that does not hold the ticket: refused, nothing spawned.
+	seedTicketDir(t, wt, "t-zz99")
 	resp := startSessionCwd(t, ts.URL, "t-ab12", wt, bootTok)
 	if resp.StatusCode != http.StatusBadRequest {
 		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("worktree missing ticket dir: want 400, got %d: %s", resp.StatusCode, body)
+		t.Fatalf("worktree whose own .tickets/ lacks the ticket: want 400, got %d: %s", resp.StatusCode, body)
 	}
 	resp.Body.Close()
 	if _, err := os.Stat(cwdFile); err == nil {
 		t.Fatal("a refused worktree spawn still ran a process (cwd file exists)")
 	}
 
-	// Control: the same ticket from the main checkout (empty cwd) still spawns.
-	resp2 := startSession(t, ts.URL, "t-ab12", bootTok)
+	// Its own .tickets/ holding the ticket (an adopted copy): starts there.
+	seedTicketDir(t, wt, "t-ab12")
+	resp1 := startSessionCwd(t, ts.URL, "t-ab12", wt, bootTok)
+	if resp1.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp1.Body)
+		t.Fatalf("worktree whose own .tickets/ holds the ticket: want 200, got %d: %s", resp1.StatusCode, body)
+	}
+	resp1.Body.Close()
+	waitFile(t, cwdFile, 2*time.Second)
+	killAllSessions(s)
+	if err := os.Remove(cwdFile); err != nil {
+		t.Fatal(err)
+	}
+
+	// The same worktree with no .tickets/ of its own: starts there.
+	if err := os.RemoveAll(filepath.Join(wt, ".tickets")); err != nil {
+		t.Fatal(err)
+	}
+	resp2 := startSessionCwd(t, ts.URL, "t-ab12", wt, bootTok)
 	if resp2.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp2.Body)
-		t.Fatalf("main checkout control: want 200, got %d: %s", resp2.StatusCode, body)
+		t.Fatalf("worktree with no .tickets/ of its own: want 200, got %d: %s", resp2.StatusCode, body)
 	}
 	resp2.Body.Close()
-	if got := strings.TrimSpace(waitFile(t, cwdFile, 2*time.Second)); got == "" {
-		t.Fatal("main-checkout spawn did not run")
+	got := strings.TrimSpace(waitFile(t, cwdFile, 2*time.Second))
+	want, _ := filepath.EvalSymlinks(wt)
+	if gotR, _ := filepath.EvalSymlinks(got); gotR != want {
+		t.Fatalf("session ran in %q, want the worktree %q", got, want)
 	}
 }
 
