@@ -156,4 +156,29 @@ awk '/^---$/ && ++n == 2 { print "github: acme/app#24" } { print }' "$f" > "$W/t
 out="$(STUB_MG=CONFLICTING "$TKT" land "$id" --fix < /dev/null 2>&1)"
 assert_contains "$out" "next: in that worktree run git merge origin/main, resolve the conflicting files, then run the evaluator and sprint complete $id, then: tkt land $id --finish"
 echo "land: a conflicting PR's next step says to merge the base first (t-ca00)"
+# t-92f2: protects `tkt land --finish` (the card's Finish) after a fix here was pushed to the PR branch: the worktree head is the
+# PR's current head on origin, so land/<id> holds nothing the PR lacks and goes; an unreadable PR ref keeps it.
+finish_after_push() {   # <issue> <.land-pr override or ""> -> sets id, WT, NEWHEAD, out
+  id="$("$TKT" create "Pushed fix $1" -t bug)"; f=".tickets/$id/ticket.md"; WT="$W/project-worktrees/land-$id"
+  awk -v gh="github: acme/app#$1" '/^---$/ && ++n == 2 { print gh } { print }' "$f" > "$W/t" && mv "$W/t" "$f"; echo plan > ".tickets/$id/plan.md"
+  git push -q -f "$W/origin.git" "$PRHEAD:refs/pull/8/head"; echo 8 > "$W/prlist"
+  "$TKT" land "$id" < /dev/null >/dev/null 2>&1 || fail "land for the pushed-fix case failed"
+  [[ "$(tr -d '[:space:]' < ".tickets/$id/.land-pr")" == 8 ]] || fail ".land-pr does not record PR 8"
+  echo "fix $1" > "$WT/h.txt"; git -C "$WT" add h.txt; git -C "$WT" commit -qm "conflict fix"; NEWHEAD="$(git -C "$WT" rev-parse HEAD)"
+  git -C "$WT" push -q -f "$W/origin.git" "HEAD:refs/pull/8/head"
+  [[ -z "$2" ]] || echo "$2" > ".tickets/$id/.land-pr"
+  sed -i.bak 's/^status: .*/status: closed/' "$f"; rm -f "$f.bak"
+  printf 'graded-head: %s\npass: all met\n' "$NEWHEAD" > ".tickets/$id/eval-report.md"
+  out="$("$TKT" land "$id" --finish < /dev/null 2>&1)" || fail "finish failed: $out"
+  [[ ! -e "$WT" ]] || fail "worktree still there"
+  [[ ! -e ".tickets/$id/.land-pr" ]] || fail ".land-pr left behind"
+}
+finish_after_push 25 ""
+! git show-ref --verify --quiet "refs/heads/land/$id" || fail "land/$id kept although its head is the PR's current head: $out"
+[[ "$out" != *kept* ]] || fail "finish says kept: $out"
+echo "land: finish deletes land/<id> when its head was pushed to the PR (t-92f2)"
+finish_after_push 26 99
+[[ "$(git rev-parse "refs/heads/land/$id")" == "$NEWHEAD" ]] || fail "land/$id deleted although the PR ref could not be read"
+assert_contains "$out" "could not fetch PR #99"
+echo "land: finish keeps land/<id> when the PR ref cannot be read (t-92f2)"
 echo "tkt land: ok"

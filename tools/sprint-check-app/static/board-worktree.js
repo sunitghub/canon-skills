@@ -3,7 +3,7 @@ import { WT_PREF_MAIN, esc, escAttr, md, worktreeRun } from './board-helpers.js'
 import { showToast } from './board-render.js';
 import { activeIframe, cockpitState, missingTicketMessage, requestPreview, setButtonBusy, setTermMessage } from './board-cockpit.js';
 import { closeCockpit, openCockpitDetails } from './board-cockpit-rail.js';
-import { bindGithubPickerRows, ghOut, githubPickerRowsHTML, hideGithubPanel, showGithubPanel } from './board-github.js';
+import { bindGithubPickerRows, ghClosingHere, ghOut, githubPickerRowsHTML, hideGithubPanel, showGithubPanel } from './board-github.js';
 
 // t-ccd6: promise-returning confirm/notice in the board's own style. okOnly = a
 // notice (resolves true on OK, false on Escape). Escape cancels, Enter confirms
@@ -671,7 +671,8 @@ export async function maybeMountCockpitTerminal(t) {
   const iframe = activeIframe();
   if (t.scratch) { hideGithubPanel(); await mountCockpitTerminal(t, ''); return; }   // t-47f1: always the main checkout
   // t-718b: a GitHub pick, or a ticket already out on GitHub, never mounts the terminal: the rail shows the GitHub panel.
-  if (cockpitState.ghPick || ghOut(t)) {
+  // t-92f2: except one closing here, in the worktree tkt land made: its session runs there (the daemon reuses its .cockpit-cwd).
+  if (cockpitState.ghPick || (ghOut(t) && !ghClosingHere(t))) {
     if (iframe) iframe.style.visibility = 'hidden';
     setTermMessage('');
     await showGithubPanel(t, cockpitState);

@@ -3,7 +3,7 @@ import { CK_SIGNAL_LABEL, CK_STATE_LABEL, COCKPIT_TICKET_ID, SCRATCH_ID, applyCa
 import { closeCockpit, findLiveDaemonSession, openCockpit, openTicketWhenLoaded, renderCockpitRail, renderTabStrip, stopCockpitPoll } from './board-cockpit-rail.js';
 import { applyActualWorkingCwd, maybeMountCockpitTerminal } from './board-worktree.js';
 import { applyPane, clearPaneFor, paneHostId, paneRoom, paneTabId, setPane, shownIds } from './board-pane.js';
-import { ghOut } from './board-github.js';
+import { ghClosingHere, ghOut } from './board-github.js';
 
 // ── Cockpit (t-ddc8): one-window mode ───────────────────────────────────────
 // Board↔cockpit switch. The board owns no PTY — it ensures the shipped
@@ -449,7 +449,8 @@ export async function openTerminalPane(placement, opts = {}) {
   // A host whose rail is the GitHub panel never mounted a terminal iframe, so rebuilding it touches no iframe; any other host is only
   // made active again, never remounted (a remount would reload its screen).
   if (placed && host && cockpitTabs[host]) {
-    if (cockpitTabs[host].ghPick || ghOut(findTicketById(host))) cockpitTabs[host].needsRemount = true;
+    const ht = findTicketById(host);
+    if (cockpitTabs[host].ghPick || (ghOut(ht) && !ghClosingHere(ht))) cockpitTabs[host].needsRemount = true;
     await openCockpit(host);
   }
   if (placed && cockpitTabs[id] && cockpitTabs[id].iframeEl) cockpitTabs[id].iframeEl.focus();   // the pane takes the keyboard, as a Terminal tab does
