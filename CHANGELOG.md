@@ -6,6 +6,14 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.40.0] - 2026-11-02
+
+### Fixed
+- Closing a cloud ticket on this machine reads as steps. An import the cloud did not close now says so ("Imported; the cloud sprint did not close") and lists what to do: Continue here, open a session in the worktree, `sprint complete`, Finish, Check & merge. "Worktree ready" shows the same numbered steps with the worktree path on its own line, and tkt's output folded under Details. A conflicting PR adds a merge step first; Fix here adds a fix step (t-92f2).
+- Until that close, the card shows **▶ Resume** and "closing in land/<id>" instead of an early Finish, and Resume opens a Cockpit session in the land worktree; Finish appears once the ticket is closed there (t-92f2).
+- `tkt land --finish` deletes `land/<id>` when its head is already the PR's current head on origin (a conflict fix you pushed), and still keeps it, saying why, when it holds commits the PR does not or the PR cannot be read (t-92f2).
+- The Cockpit starts a session in a worktree that has no `.tickets/` of its own (a gitignored `.tickets/` uses the main checkout's), and the rail no longer shows a false ".tickets/ is gitignored" block for it. A worktree whose own `.tickets/` lacks the ticket is still refused (t-6bae).
+
 ### Changed
 - `/promote-learnings` writes its entries right the first time: every `PROMOTED.md` entry is one trigger and one action ("When <situation>, <do this>. (<ticket-id>)", one trigger per entry, never the ticket's story) and Apply writes the exact text the report showed; a row whose rule already exists is `dismissed (covered: <file>)`, never promoted; Apply carries out every decision, typed ones included, then re-reads `LEARNINGS.md` and `PROMOTED.md` and prints N promoted, M dismissed, K still waiting and the line count against 60. Four regression evals added (t-68dd).
 
