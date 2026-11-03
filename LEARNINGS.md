@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-03-2026 01:15
+learnings-sweep last run: 11-03-2026 07:51
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-03 | [t-c21a](.tickets/t-c21a/learnings.md) | Before answering a polled route with an ETag and an empty 304, check that nothing in the reply changes with the clock alone (`working.age_s` changed every second, so no poll ever matched) and that every test route that forwards the request to the real server either passes the 304 through or clears `If-None-Match` (ten spec handlers crashed parsing the empty body, three tests failed every run). | UNPROMOTED |
 | 2026-11-03 | [t-cb0a](.tickets/t-cb0a/learnings.md) | Inserting a line after an anchor in help text must check what follows the anchor: the new copy-back line landed between `close` and its continuation lines, so close's refusal note read as copy-back's; a test that asserts presence passed, only one that asserts position catches it. | UNPROMOTED |
 | 2026-11-03 | [t-7f7c](.tickets/t-7f7c/learnings.md) | A UI rename must grep every string that names the old set: after the Logbook went from two tabs to four, the header button and the Projects card tooltips still said "Handoff and Learnings" (app.html:60, cockpit-projects.js:55). | UNPROMOTED |
 | 2026-11-03 | [t-92f2](.tickets/t-92f2/learnings.md) | A check written before a later redesign keeps enforcing the old rule: the daemon's t-e5ff "ticket must be in the worktree" guard predated t-cd06 (tkt resolves main's .tickets/), so a land worktree could not be resumed; when a resolution rule changes, grep every place that re-implements it (daemon guard, board API field, rail text, comments). | UNPROMOTED |
@@ -82,5 +83,4 @@ learnings-sweep last run: 11-03-2026 01:15
 | 2026-10-27 | [t-3488](.tickets/t-3488/learnings.md) | A "no dialog appeared" check that watches process names must be baseline-aware and self-tested: `CoreServicesUIAgent` is resident on every Mac, so a plain pgrep failed a clean run, and a copied `sleep` named SecurityAgent is killed by macOS (a compiled stand-in works). | `promoted → standards/efficiency-notes.md` |
 | 2026-10-27 | [t-7456](.tickets/t-7456/learnings.md) | A message handler must IGNORE a malformed value, not coerce it: a non-string id became `''` and cleared the marker, and only the forged-message spec caught it; and a test whose ids sort the same as the thing under test cannot kill a mutant that drops the sort. | `promoted → standards/efficiency-notes.md` |
 | 2026-10-27 | [t-6aaf](.tickets/t-6aaf/learnings.md) | Before replacing a line of a shared page, grep every test that slices it by its text: a board spec cut the page's wiring by the old one-line handler and broke, and the suite stamp (no board spec) stayed green; the reviewer caught it. And when a custom key handler turns one key into other input, swallow all its events: xterm still sends `\r` from the keypress of a swallowed keydown (checked in the real xterm.js, Chromium and WebKit). | `promoted → standards/efficiency-notes.md, tools/sprint-check-app/CLAUDE.md` |
-| 2026-10-27 | [t-6fb8](.tickets/t-6fb8/learnings.md) | A spec that fails on every dev checkout may be a harness difference, not a flake: `go run` puts the board's executable in a temp folder, so it has no VERSION and says `dev` (stamp it the way an install is, through GOFLAGS so the no-browser guard still finds the start). An unlisted failure that passes on rerun is only evidence once the solo reruns are saved with `--out`; and never run a spec check beside `scripts/test.sh` (its 0-second timing row fails under load). | `promoted → standards/efficiency-notes.md, skills/sprint/reference/start.md, tools/sprint-check-app/CLAUDE.md` |
 <!-- canon:learnings:END -->
