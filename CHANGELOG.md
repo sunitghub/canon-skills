@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.41.0] - 2026-11-03
+
+The prebuilt `canon-go` program changed (board only: the Logbook route and the board's Done/Discard): `canon update` fetches it; the daemon part is unchanged.
+
 ### Changed
 - The board's Logbook has four tabs: Handoff, Learnings, Promoted and Decisions. Learnings lists only the rows still waiting for review (no filter chips, "Nothing waiting for review" when none); Promoted shows the `PROMOTED.md` rules with their ticket links and the line count against 60 (or, without a `PROMOTED.md`, the `LEARNINGS.md` rows marked promoted); Decisions shows `DECISIONS.md` newest first, as a table or as dated sections. The Learnings text names the right destination per project kind. `GET /api/logbook` also returns `promoted`, `decisions` and `learnings_archive`. Read-only (t-7f7c).
 
