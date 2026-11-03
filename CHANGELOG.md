@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Added
+- A Cockpit key for the Logbook (t-0d77): `Ctrl+.` then `k` opens the Logbook of the project on screen (in a split, the focused pane's), from the shell or from inside its board. With no project tab on screen (Projects, Factory, Admin) it says "Open a project tab first". It is in the key sheet (`?`).
+
 ## [0.42.0] - 2026-11-03
 
 The prebuilt `canon-go` program changed, both the board and the daemon part (the Cockpit's session meter): `canon update` fetches it, then restart the daemon (Admin's **Restart Daemon**) so the meter change takes effect.

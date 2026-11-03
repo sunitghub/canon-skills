@@ -4031,7 +4031,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect.poll(() => shellTab(page)).toBe('projects');
       await pressPrefix(page, 'z');                       // unbound
       await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return ( activateTab('proj-a')); });
-      await pressPrefix(page, 'k');                       // k is not bound: the tab stays
+      await pressPrefix(page, 'j');                       // j is not bound: the tab stays (t-0d77 bound k to the Logbook)
       await page.waitForTimeout(150);
       expect(await shellTab(page)).toBe('proj-a');
       await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return ( activateTab('projects')); });
@@ -6914,6 +6914,50 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.evaluate(async () => { const { showView } = await import('/static/cockpit-views.js'); return showView('admin'); });
       await expect(page.locator('#view-admin')).not.toContainText('Logbook');
       await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    // t-0d77, prod path: the Cockpit's prefix keys (cockpit-keys.js prefixAction). ctrl+. then k opens the Logbook of the project on
+    // screen, from the shell and from inside its board; with no project tab on screen (Projects, Admin) it says so and opens nothing.
+    test('keyboard prefix (t-0d77): ctrl+. then k opens the Logbook of the project on screen; elsewhere it says to open one @webkit', async ({ page }) => {
+      await openShell(page, []);
+      await boardsKeyReady(page, ['proj-a']);
+      const board = page.frameLocator('#view-proj-a iframe');
+      const overlay = board.locator('#logbook-overlay');
+      await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); activateTab('projects'); });
+      await pressPrefix(page, 'k');
+      await expect(page.locator('#toast')).toHaveText('Open a project tab first');
+      // Admin and Factory hide a project tab without changing activeTab: open them FROM proj-a, so k must read the view, not the tab
+      await page.evaluate(async () => { const { goTab } = await import('/static/cockpit-tabs.js'); goTab('proj-a'); });
+      await expect.poll(() => shellTab(page)).toBe('proj-a');
+      for (const v of ['admin', 'factory']) {
+        await page.evaluate(() => { document.getElementById('toast').textContent = ''; });
+        await page.evaluate(async view => { const { showView } = await import('/static/cockpit-views.js'); showView(view); }, v);
+        // showView called directly leaves focus in the now-hidden board on WebKit; a click or ctrl+. a moves it to the shell
+        await page.evaluate(() => { const a = document.activeElement; if (a && a.blur) a.blur(); window.focus(); });
+        expect(await shellTab(page)).toBe('proj-a');
+        await pressPrefix(page, 'k');
+        await expect(page.locator('#toast')).toHaveText('Open a project tab first');
+        await expect(overlay).not.toHaveClass(/open/);
+      }
+      await page.evaluate(async () => { const { goTab } = await import('/static/cockpit-tabs.js'); goTab('proj-a'); });
+      await expect.poll(() => shellTab(page)).toBe('proj-a');
+      // a pane Skill Eval covers is inert (cockpit-tabs.js applySplit): its board is on screen but not usable, so k says so too
+      await page.evaluate(() => { document.getElementById('toast').textContent = ''; document.getElementById('view-proj-a').setAttribute('inert', ''); });
+      await pressPrefix(page, 'k');
+      await expect(page.locator('#toast')).toHaveText('Open a project tab first');
+      await expect(overlay).not.toHaveClass(/open/);
+      await page.evaluate(() => document.getElementById('view-proj-a').removeAttribute('inert'));
+      await page.evaluate(() => document.activeElement && document.activeElement.blur && document.activeElement.blur());
+      await pressPrefix(page, 'k');
+      await expect(overlay).toHaveClass(/open/, { timeout: 8000 });
+      await board.locator('#lb-close').click();
+      await expect(overlay).not.toHaveClass(/open/);
+      await board.locator('body').click({ position: { x: 5, y: 5 } });   // the key typed inside the board: it relays the prefix to the shell
+      await pressPrefix(page, 'k');
+      await expect(overlay).toHaveClass(/open/, { timeout: 8000 });
+      await board.locator('#lb-close').click();
+      await pressPrefix(page, '?');
+      await expect(page.locator('#keys-sheet')).toContainText('Logbook of the project on screen');
     });
 
     // t-6541: the card shows a project's skill problems from skills.sh's own check and fixes them with Refresh (skills.sh refresh,

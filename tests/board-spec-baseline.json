@@ -61,6 +61,30 @@
       ],
       "ticket": "t-8aa6",
       "reason": "failed 1 of 5 (webkit) on main 327cdd19 alone and 2 of 5 on t-2906's branch (2026-11-02; .tickets/t-2906/evidence/history/flake-terminal-shortcut-on-main.log, -on-branch.log); the Cockpit Terminal shortcut, not in the code t-2906 changes"
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > cross-project Sessions row (t-2d2e) > split view (t-416c): the divider drags, clamps, answers the keyboard and resets on a double click @webkit",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "failed 1 of 3 (webkit) in the t-0d77 full run at 7dc79ed4 (2026-11-03); passed 4 of 4 alone on the same branch right after; t-0d77 changes only the k key and the key sheet, not the split divider"
+    },
+    {
+      "title": "cockpit leave-session confirm (t-f6b6) > a forged ended message not actually from the iframe is ignored @webkit",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "failed 1 of 3 (webkit) in t-0d77's full runs at 1b35aff8 (2026-11-03, loaded and quiet); alternated solo, 6 runs each: main 15c81f5b 1 failure, branch 1 failure (.tickets/t-0d77/evidence/history/flake-ab-webkit.txt)"
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > cross-project Sessions row (t-2d2e) > promote (t-f553): the title input stops at 80 characters; a refused promote shows the reason @webkit",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "failed 2 of 3 (load 9.6) then 1 of 3 (load 1.7) in t-0d77's full runs at 1b35aff8 (2026-11-03); passed 12 of 12 solo, alternated main 15c81f5b / branch (.tickets/t-0d77/evidence/history/flake-ab-webkit.txt); the promote dialog, not in the code t-0d77 changes"
     }
   ],
   "skipped": []

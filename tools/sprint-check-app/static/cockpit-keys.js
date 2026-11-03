@@ -5,7 +5,7 @@ import { TICKET_ID_RE, liveTabIds } from './cockpit-sessions.js';
 import { toggleSide } from './cockpit-sidebar.js';
 import { showView } from './cockpit-views.js';
 import { openFactoryGithub } from './cockpit-factory.js';
-import { logbookOpened } from './cockpit-logbook.js';
+import { logbookOpened, openLogbookFor } from './cockpit-logbook.js';
 import { openTabSessionMenu } from './cockpit-end.js';
 import { activeTab, applySplit, closeSplit, closeTab, goTab, isProjectTab, onActiveSession, onScratchTabs, openSessionInTab, openSplit, openTabs, prevTab, renderTabs, saveSplit, senderTab, split, splitShown } from './cockpit-tabs.js';
 
@@ -87,6 +87,11 @@ function prefixAction(key){
     return;
   }
   if(key==='c'){ toggleSide(); return; }   // always the Workspace sidebar
+  if(key==='k'){   // t-0d77: the Logbook of the project on screen (Admin and Factory hide a tab without changing activeTab; Skill Eval makes a pane inert)
+    const v=isProjectTab(activeTab)&&document.getElementById('view-'+activeTab);
+    if(!v||!v.classList.contains('active')||v.hasAttribute('inert')){ toast('Open a project tab first'); return; }
+    openLogbookFor(activeTab); return;
+  }
   if(key==='a'){ showView('admin'); try{ window.focus(); }catch(e){} return; }   // Admin, like clicking it in the sidebar
   if(key==='f'||key==='l'){ if(openTabs.length) goTab(openTabs[key==='f'?0:openTabs.length-1].id); return; }   // first / last project tab
   if(key==='e'){
