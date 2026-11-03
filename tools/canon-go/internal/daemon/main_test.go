@@ -3575,6 +3575,20 @@ func TestStartWorktreeTicketVisibility(t *testing.T) {
 		t.Fatal("a refused worktree spawn still ran a process (cwd file exists)")
 	}
 
+	// Its own .tickets/ holding the ticket (an adopted copy): starts there.
+	seedTicketDir(t, wt, "t-ab12")
+	resp1 := startSessionCwd(t, ts.URL, "t-ab12", wt, bootTok)
+	if resp1.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp1.Body)
+		t.Fatalf("worktree whose own .tickets/ holds the ticket: want 200, got %d: %s", resp1.StatusCode, body)
+	}
+	resp1.Body.Close()
+	waitFile(t, cwdFile, 2*time.Second)
+	killAllSessions(s)
+	if err := os.Remove(cwdFile); err != nil {
+		t.Fatal(err)
+	}
+
 	// The same worktree with no .tickets/ of its own: starts there.
 	if err := os.RemoveAll(filepath.Join(wt, ".tickets")); err != nil {
 		t.Fatal(err)

@@ -181,4 +181,16 @@ finish_after_push 26 99
 [[ "$(git rev-parse "refs/heads/land/$id")" == "$NEWHEAD" ]] || fail "land/$id deleted although the PR ref could not be read"
 assert_contains "$out" "could not fetch PR #99"
 echo "land: finish keeps land/<id> when the PR ref cannot be read (t-92f2)"
+# Nothing committed here, but the PR moved on origin after land (another push): the head is still the one land started from
+# (.land-head), so the branch holds nothing new and goes.
+id="$("$TKT" create "PR moved after land" -t bug)"; f=".tickets/$id/ticket.md"; WT="$W/project-worktrees/land-$id"
+awk '/^---$/ && ++n == 2 { print "github: acme/app#27" } { print }' "$f" > "$W/t" && mv "$W/t" "$f"; echo plan > ".tickets/$id/plan.md"
+git push -q -f "$W/origin.git" "$PRHEAD:refs/pull/8/head"
+"$TKT" land "$id" < /dev/null >/dev/null 2>&1 || fail "land for the moved-PR case failed"
+git -C "$WT" commit -q --allow-empty -m "someone else's push"; git -C "$WT" push -q -f "$W/origin.git" "HEAD:refs/pull/8/head"; git -C "$WT" reset -q --hard "$PRHEAD"
+sed -i.bak 's/^status: .*/status: closed/' "$f"; rm -f "$f.bak"
+printf 'graded-head: %s\npass: all met\n' "$PRHEAD" > ".tickets/$id/eval-report.md"
+out="$("$TKT" land "$id" --finish < /dev/null 2>&1)" || fail "finish failed: $out"
+! git show-ref --verify --quiet "refs/heads/land/$id" || fail "land/$id kept although its head is the one land started from: $out"
+echo "land: finish deletes land/<id> at its start head even when the PR moved (t-92f2)"
 echo "tkt land: ok"
