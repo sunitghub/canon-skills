@@ -532,19 +532,16 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "cwd not allowed", http.StatusBadRequest)
 		return
 	}
-	// t-e5ff: a git worktree materializes only *tracked* files, so when
-	// `.tickets/` is gitignored the ticket dir is absent in a non-main worktree
-	// cwd — a sprint spawned there lands somewhere it can't see its own ticket.
-	// For any cwd other than the project's main checkout, require the ticket dir
-	// to be physically present at that cwd. The main checkout already passed the
-	// existence check above.
+	// t-e5ff, t-6bae: a cwd other than the main checkout must let tkt find the ticket: in the worktree's own .tickets/ when it
+	// has one, else in the main checkout's (tkt resolves a worktree's .git file back to it, t-cd06), which passed the check
+	// above. A worktree of a gitignored .tickets/ has none, so its sprint uses main's ticket.
 	if scratch && !pathsEqual(cwd, projectRoot) {
 		http.Error(w, "the daemon picks a scratch session's directory — start it from the project's main checkout", http.StatusBadRequest)
 		return
 	}
 	if !pathsEqual(cwd, projectRoot) {
-		if fi, serr := os.Stat(filepath.Join(cwd, ".tickets", body.Ticket)); serr != nil || !fi.IsDir() {
-			http.Error(w, "ticket not visible in this worktree (.tickets/ is gitignored) — start from the main checkout", http.StatusBadRequest)
+		if !common.TicketVisibleIn(cwd, body.Ticket) {
+			http.Error(w, "ticket not in this worktree's own .tickets/ — start from the main checkout", http.StatusBadRequest)
 			return
 		}
 	}

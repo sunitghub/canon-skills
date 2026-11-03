@@ -2759,7 +2759,9 @@ func listWorktreesBase(ticketID, root string) []map[string]any {
 	ticketsIgnored := runGitIn(root, "check-ignore", ".tickets") != ""
 	for _, e := range entries {
 		isMain, _ := e["is_main"].(bool)
-		e["tickets_visible"] = isMain || !ticketsIgnored
+		// t-6bae: a worktree with no .tickets/ of its own uses the main checkout's (t-cd06), so ignoring it hides nothing there.
+		_, ownErr := os.Lstat(filepath.Join(fmt.Sprint(e["path"]), ".tickets"))
+		e["tickets_visible"] = isMain || !ticketsIgnored || os.IsNotExist(ownErr)
 	}
 	// t-2a1c: parity with server.py — ticket-scoped physical presence mirroring
 	// the daemon's handleStart guard (stat <cwd>/.tickets/<id>, must be a dir),
@@ -2772,8 +2774,7 @@ func listWorktreesBase(ticketID, root string) []map[string]any {
 				e["ticket_present"] = true
 				continue
 			}
-			fi, err := os.Stat(filepath.Join(fmt.Sprint(e["path"]), ".tickets", ticketID))
-			e["ticket_present"] = err == nil && fi.IsDir()
+			e["ticket_present"] = common.TicketVisibleIn(fmt.Sprint(e["path"]), ticketID) // t-6bae: the daemon's start rule
 		}
 	}
 	if entries == nil {
