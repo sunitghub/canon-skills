@@ -98,7 +98,7 @@ function learningsText(lb){
 async function fillCardLearnings(id,el,refresh){
   const v=el.querySelector('[data-f="learnings"]');
   try{
-    const r=await fetch('/api/logbook?project='+encodeURIComponent(id));
+    const r=await fetch('/api/logbook?project='+encodeURIComponent(id)+'&files=learnings');   // t-40f8: polled every 30 s; the card shows only this
     if(!r.ok) throw 0;
     v.textContent=learningsText(await r.json());
   }catch(e){ if(!refresh) v.textContent='\u2014'; }

@@ -56,7 +56,7 @@ func TestLogbookRoute(t *testing.T) {
 		os.Remove(filepath.Join(root, f.name))
 		writeFile(t, filepath.Join(root, f.name), strings.Repeat("a", logbookMaxBytes+1))
 		_, o = logbookGet(t, "GET", "/api/logbook")
-		if e, _ := o[f.key]["error"].(string); !strings.Contains(e, "512 KB") || o[f.key]["text"] != nil {
+		if e, _ := o[f.key]["error"].(string); !strings.Contains(e, "4 MB") || o[f.key]["text"] != nil {
 			t.Errorf("oversize %s = %v, want the size refusal and no text", f.name, o[f.key])
 		}
 		os.Remove(filepath.Join(root, f.name))
@@ -105,13 +105,13 @@ func TestLogbookRoute(t *testing.T) {
 	os.Remove(filepath.Join(root, "LEARNINGS.md"))
 	writeFile(t, filepath.Join(root, "HANDOFF.md"), strings.Repeat("a", logbookMaxBytes+1))
 	_, out = logbookGet(t, "GET", "/api/logbook")
-	if e, _ := out["handoff"]["error"].(string); !strings.Contains(e, "512 KB") || out["handoff"]["text"] != nil {
+	if e, _ := out["handoff"]["error"].(string); !strings.Contains(e, "4 MB") || out["handoff"]["text"] != nil {
 		t.Errorf("oversize HANDOFF.md = %v, want the size refusal and no text", out["handoff"])
 	}
 	writeFile(t, filepath.Join(root, "HANDOFF.md"), strings.Repeat("a", logbookMaxBytes))
 	_, out = logbookGet(t, "GET", "/api/logbook")
 	if out["handoff"]["text"] == nil {
-		t.Errorf("a file of exactly 512 KB must still be served, got %v", out["handoff"])
+		t.Errorf("a file of exactly 4 MB must still be served, got %v", out["handoff"])
 	}
 
 	// not a write route, and an unknown project is refused like the other project-scoped reads
@@ -120,5 +120,33 @@ func TestLogbookRoute(t *testing.T) {
 	}
 	if code, _ := logbookGet(t, "GET", "/api/logbook?project=nope"); code != http.StatusBadRequest {
 		t.Errorf("GET /api/logbook?project=nope = %d, want 400", code)
+	}
+}
+
+// t-40f8, prod path: GET /api/logbook. canon's own DECISIONS.md (about 700 KB) is read whole; the Projects card, which polls
+// every 30 s and shows only the learnings count, asks for files=learnings and gets only that key, with no other file read.
+func TestLogbookSizeAndFiles(t *testing.T) {
+	root := setupTestProject(t)
+	big := "| Date | Decision | Reason |\n|---|---|---|\n" + strings.Repeat("| 2026-10-01 | "+strings.Repeat("d", 1400)+" | r |\n", 500)
+	writeFile(t, filepath.Join(root, "DECISIONS.md"), big)
+	writeFile(t, filepath.Join(root, "LEARNINGS.md"), "| 2026-10-23 | [t-1](.tickets/t-1/learnings.md) | f | UNPROMOTED |\n")
+	writeFile(t, filepath.Join(root, "HANDOFF.md"), "# Handoff\n")
+	_, out := logbookGet(t, "GET", "/api/logbook")
+	if len(big) < 700_000 || out["decisions"]["text"] != big {
+		t.Fatalf("a %d-byte DECISIONS.md must be read whole, got error %v", len(big), out["decisions"]["error"])
+	}
+	if len(out) != 5 {
+		t.Errorf("no files= must keep all five keys, got %d", len(out))
+	}
+	// over the cap DECISIONS.md is refused; the card's files=learnings never reads it, so its reply carries no error for it
+	writeFile(t, filepath.Join(root, "DECISIONS.md"), strings.Repeat("a", logbookMaxBytes+1))
+	for _, q := range []string{"files=learnings", "files=bogus,learnings", "files=learnings,../DECISIONS.md"} {
+		_, o := logbookGet(t, "GET", "/api/logbook?"+q)
+		if len(o) != 1 || o["learnings"]["text"] == nil {
+			t.Errorf("%s = %v, want only learnings with its text", q, o)
+		}
+	}
+	if _, o := logbookGet(t, "GET", "/api/logbook?files=decisions,handoff"); len(o) != 2 || o["handoff"]["text"] != "# Handoff\n" || o["decisions"]["error"] == nil {
+		t.Errorf("files=decisions,handoff = %v, want those two keys (decisions refused for size)", o)
 	}
 }

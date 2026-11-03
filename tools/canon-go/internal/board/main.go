@@ -361,7 +361,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "unknown project", http.StatusBadRequest)
 			return
 		}
-		sendJSON(w, loadLogbook(root))
+		sendJSON(w, loadLogbook(root, r.URL.Query().Get("files")))
 	case "/api/tags": // t-37e8: the starter tags and the project's own (tags.go)
 		root, ok := effectiveRoot(r)
 		if !ok {

@@ -97,37 +97,53 @@ function renderPromoted() {
   return learnTable(rows.map(r => learnRow(r, true)), 'Promoted to');
 }
 
-// newest first, by each entry's leading date (a later line wins a tie: the file is append-only). Two shapes: a table of dated rows, or dated
-// `## 2026-10-22 — t-xxxx: title` sections each followed by prose. Blank lines around headings and tables are dropped so a block starts right under the one above.
+// newest first, by each entry's leading date. Two shapes: a table of dated rows, or dated
+// `## 2026-10-22 — t-xxxx: title` sections each followed by prose; a file can hold both (canon's appends sections after its table),
+// so rows and sections are one list. t-40f8: only the newest DECISIONS_SHOWN are rendered (canon's file has 500+); the rest stay in
+// the file. A tie on the date keeps the block's own order of writing: a table whose first row is its newest (canon inserts rows under
+// the header) puts its earlier row first; appended sections put the later one first. Blank lines around headings and tables are dropped so
+// a block starts right under the one above.
+const DECISIONS_SHOWN = 150;
 const dateOf = t => (/(\d{4}-\d{2}-\d{2})/.exec(t) || [])[1] || '';
-const newestFirst = items => items.map((x, i) => ({ x, i, d: dateOf(x.key) })).sort((a, b) => (a.d < b.d ? 1 : a.d > b.d ? -1 : b.i - a.i)).map(o => o.x.text);
+const newestFirst = items => items.map(x => ({ x, d: dateOf(x.key) })).sort((a, b) => (a.d < b.d ? 1 : a.d > b.d ? -1 : b.x.ord - a.x.ord)).map(o => o.x);
 function decisionsMd(text) {
   const lines = text.split('\n');
   const isRow = l => l.trim().startsWith('|');
-  const first = lines.findIndex(isRow);
-  let md;
-  if (first >= 0) {
-    let last = first;
-    while (last + 1 < lines.length && isRow(lines[last + 1])) last++;
-    const rows = newestFirst(lines.slice(first + 2, last + 1).map(l => ({ key: l.split('|')[1] || '', text: l })));
-    md = lines.slice(0, first).concat(lines.slice(first, first + 2), rows, lines.slice(last + 1)).join('\n');
-  } else {
-    const at = lines.findIndex(l => /^##\s/.test(l));
-    if (at < 0) return text;
-    const secs = [];
-    for (const l of lines.slice(at)) { if (/^##\s/.test(l)) secs.push({ key: l, text: l }); else secs[secs.length - 1].text += '\n' + l; }
-    md = lines.slice(0, at).join('\n') + '\n' + newestFirst(secs).map(t => t.replace(/\s+$/, '')).join('\n\n');
+  const isSec = l => /^##\s/.test(l);
+  const first = lines.findIndex(l => isRow(l) || isSec(l));
+  if (first < 0) return { md: text, total: 0 };
+  const items = [], after = [];
+  let header = [], i = first;
+  if (isRow(lines[first])) {
+    header = lines.slice(first, first + 2);
+    for (i = first + 2; i < lines.length && isRow(lines[i]); i++) items.push({ key: lines[i].split('|')[1] || '', text: lines[i], row: true });
+    const rows = items.length, down = rows > 1 && dateOf(items[0].key) > dateOf(items[rows - 1].key);   // a newest-first table
+    items.forEach((it, k) => { it.ord = down ? rows - k : k; });
   }
-  return md.replace(/(^#{1,6}\s[^\n]*)\n\n+/gm, '$1\n').replace(/\n\n+(?=\|)/g, '\n').trim();
+  for (; i < lines.length; i++) {
+    if (isSec(lines[i])) items.push({ key: lines[i], text: lines[i], ord: items.length + 1 });
+    else if (items.length && !items[items.length - 1].row) items[items.length - 1].text += '\n' + lines[i];
+    else if (lines[i].trim()) after.push(lines[i]);   // prose between a table and the first section stays below
+  }
+  const shown = newestFirst(items).slice(0, DECISIONS_SHOWN);
+  const out = lines.slice(0, first);
+  shown.forEach((it, k) => {
+    if (it.row) { if (k === 0 || !shown[k - 1].row) out.push('', ...header); out.push(it.text); }
+    else out.push('', it.text.replace(/\s+$/, ''));
+  });
+  if (after.length) out.push('', ...after);
+  return { md: out.join('\n').replace(/(^#{1,6}\s[^\n]*)\n\n+/gm, '$1\n').trim(), total: items.length };
 }
 
 function renderDecisions() {
   const f = data.decisions;
   const st = fileState(f, 'DECISIONS.md');
   if (st) return st;
+  const { md, total } = decisionsMd(f.text);
   // a heading is a block: the line break after it would show as an empty line, so the next block starts right under it
-  const html = safeMd(decisionsMd(f.text)).replace(/(<strong class="doc-heading-[123]">[^<\n]*<\/strong>)\n+/g, '$1');
-  return '<div class="lb-md lb-decisions">' + html + '</div>';
+  const html = safeMd(md).replace(/(<strong class="doc-heading-[123]">[^<\n]*<\/strong>)\n+/g, '$1');
+  const note = total > DECISIONS_SHOWN ? '<p class="lb-cap" id="lb-dec-note">Showing the newest ' + DECISIONS_SHOWN + ' of ' + total + ' decisions. Older ones are in DECISIONS.md.</p>' : '';
+  return note + '<div class="lb-md lb-decisions">' + html + '</div>';
 }
 
 function render() {

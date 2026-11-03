@@ -19013,6 +19013,48 @@ test.describe('Logbook (t-c6bb)', () => {
     await shoot(page, 'decisions-missing');
   });
 
+  // t-40f8, prod path: Logbook > Decisions on a file like canon's own: a table of 500+ rows with dated sections appended after it. The
+  // newest 150 by date are shown (a trailing section is the newest) with a note giving the total; a short file has no note.
+  test('Decisions: a long file shows its newest 150 by date, sections after the table included, and says how many there are (t-40f8)', async ({ page }) => {
+    const day = n => new Date(Date.UTC(2025, 0, 1) + n * 86400000).toISOString().slice(0, 10);
+    let rows = '';
+    for (let n = 0; n < 397; n++) rows += `| ${day(n)} | Row ${n} | r |\n`;
+    const secs = `\n## ${day(500)} — t-9999: Newest section\n\nNewest body.\n\n## ${day(10)} — t-0010: Old section\n\nOld body.\n\n## ${day(499)} — t-9998: Second newest\n\nBody.\n`;
+    const dec = '# Decisions\n\n| Date | Decision | Reason |\n|---|---|---|\n' + rows + secs;
+    await logbookAt(page, 'd', [undefined, undefined, { decisions: file(dec) }]);
+    await expect(page.locator('#lb-dec-note')).toHaveText('Showing the newest 150 of 400 decisions. Older ones are in DECISIONS.md.');
+    await expect(page.locator('.lb-md h2, .lb-md .doc-heading-2')).toHaveText([/t-9999: Newest section/, /t-9998: Second newest/]);   // the old section is cut
+    await expect(page.locator('.lb-md table tbody tr')).toHaveCount(148);
+    await expect(page.locator('.lb-md table tbody tr').first()).toContainText('Row 396');
+    await expect(page.locator('.lb-md table tbody tr').last()).toContainText('Row 249');
+    const order = await page.locator('.lb-md').evaluate(m => { const h = m.querySelector('h2, .doc-heading-2'), t = m.querySelector('table'); return !!(h.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING); });
+    expect(order).toBe(true);   // the newest entry (a section) comes before the table
+    await page.keyboard.press('Escape');
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+    let short = '';
+    for (let n = 0; n < 20; n++) short += `| ${day(n)} | Row ${n} | r |\n`;
+    await logbookAt(page, 'd', [undefined, undefined, { decisions: file('# Decisions\n\n| Date | Decision | Reason |\n|---|---|---|\n' + short) }]);
+    await expect(page.locator('.lb-md table tbody tr')).toHaveCount(20);
+    await expect(page.locator('#lb-dec-note')).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+    // canon writes its table newest first (a row goes in under the header): of two rows on one day, the one higher up is the newer
+    const down = '# Decisions\n\n| Date | Decision | Reason |\n|---|---|---|\n| 2026-11-03 | Written second | r |\n| 2026-11-03 | Written first | r |\n| 2026-11-02 | Older | r |\n';
+    await logbookAt(page, 'd', [undefined, undefined, { decisions: file(down) }]);
+    await expect(page.locator('.lb-md table tbody tr td:nth-child(2)')).toHaveText(['Written second', 'Written first', 'Older']);
+  });
+
+  // t-40f8, prod path: the Projects card's learnings count, polled every 30 s, reads only LEARNINGS.md (files=learnings), not the
+  // whole Logbook: canon's DECISIONS.md alone is 700 KB.
+  test('the Projects card asks the Logbook route for learnings only (t-40f8)', async ({ page }) => {
+    const asked = [];
+    await page.route('**/api/projects', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ id: 'proj-a', name: 'A', path: '/tmp/a' }]) }));
+    await page.route('**/api/logbook?*', route => { asked.push(new URL(route.request().url()).searchParams.get('files')); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ learnings: { missing: true } }) }); });
+    await page.goto(BASE + '/cockpit');
+    await expect.poll(() => asked.length).toBeGreaterThan(0);
+    expect(asked.every(f => f === 'learnings')).toBe(true);
+  });
+
   test('a ticket id opens that ticket; one that is not on this board says so (t-c6bb)', async ({ page }) => {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');

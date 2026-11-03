@@ -9,6 +9,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 ### Changed
 - Polls cost less (t-c21a). `GET /api/tickets`, `/api/handoff` and `/api/git` send an ETag, and the board sends it back: an unchanged poll is an empty 304 (was 2.5 MB on canon's own tree), and the cards are not redrawn. A board in a Cockpit tab that is not on screen no longer polls; it loads as soon as it is shown. `/api/tickets` runs no git unless a ticket is bound to a worktree (was 2 git per request whenever the repository had a worktree), and `/api/git` runs one git process instead of five. The daemon's meter reads only the transcript lines added since the last poll instead of the whole transcript every 5 s. `/api/tickets`' `working` field now carries `at` (the agent's last beat, Unix seconds) instead of `age_s`, so the reply stays the same between beats. `docs/sprint-check.md` has the measured table (Polling budget), and `tests/sprint-check-poll-budget.sh` guards it.
 
+### Fixed
+- Logbook > Decisions opens canon's own DECISIONS.md (730 KB) instead of "larger than 512 KB" (t-40f8). The Logbook reads files up to 4 MB, and the tab shows the newest 150 decisions by date, from table rows and `##` sections alike (sections appended after a table included), with "Showing the newest 150 of N decisions" when it cuts. Two decisions on the same day now keep the order they were written in, for a table that is written newest first. The Projects card asks `/api/logbook` for `files=learnings` only, so its 30 s refresh reads LEARNINGS.md (30 KB) instead of every Logbook file (800 KB on canon).
+
 ## [0.41.0] - 2026-11-03
 
 The prebuilt `canon-go` program changed (board only: the Logbook route and the board's Done/Discard): `canon update` fetches it; the daemon part is unchanged.
