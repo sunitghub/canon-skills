@@ -97,8 +97,7 @@
         "t-dddd's Status in LEARNINGS.md is flipped to dismissed, not left UNPROMOTED",
         "The typed decision is carried out, not only the ticked proposals",
         "The summary prints N promoted, M dismissed, K still waiting with ticket ids, after re-reading LEARNINGS.md",
-        "The summary gives PROMOTED.md's managed-block line count against the 60-line cap",
-        "A decision that could not be applied would be named, not dropped"
+        "The summary gives PROMOTED.md's managed-block line count against the 60-line cap"
       ]
     }
   ]
