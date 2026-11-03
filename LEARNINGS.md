@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-02-2026 13:47
+learnings-sweep last run: 11-03-2026 00:16
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-03 | [t-68dd](.tickets/t-68dd/learnings.md) | A new exception to a skill rule must grep the skill for the old wording: Apply still said "extend that entry" next to the new "covered → write nothing" rule until the reviewer caught it. | UNPROMOTED |
 | 2026-11-02 | [t-6541](.tickets/t-6541/learnings.md) | A health check over "every registered item" must know which items have the property it checks: efficiency's row (a standards file) got skill-link problems that Refresh could never clear, a permanent false alarm. | UNPROMOTED |
 | 2026-11-02 | [t-2560](.tickets/t-2560/learnings.md) | A board state read from GitHub alone cannot tell a cloud session still working from one that stopped: use the ticket's own trail time (launched/sent) before offering an action that would race the session. | UNPROMOTED |
 | 2026-11-02 | [t-2db7](.tickets/t-2db7/learnings.md) | A file canon writes in a tracked file must compare and match the way git does on Windows: CRLF on disk vs LF in git, and C:\ vs C:/ for one project, each hid a working feature until a Windows run. Also: never create a branch or worktree while a gate runs (the snapshot STOPs). | UNPROMOTED |
