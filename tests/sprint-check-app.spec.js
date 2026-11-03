@@ -6932,6 +6932,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       for (const v of ['admin', 'factory']) {
         await page.evaluate(() => { document.getElementById('toast').textContent = ''; });
         await page.evaluate(async view => { const { showView } = await import('/static/cockpit-views.js'); showView(view); }, v);
+        // showView called directly leaves focus in the now-hidden board on WebKit; a click or ctrl+. a moves it to the shell
+        await page.evaluate(() => { const a = document.activeElement; if (a && a.blur) a.blur(); window.focus(); });
         expect(await shellTab(page)).toBe('proj-a');
         await pressPrefix(page, 'k');
         await expect(page.locator('#toast')).toHaveText('Open a project tab first');
