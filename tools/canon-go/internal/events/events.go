@@ -60,6 +60,7 @@ var kinds = map[string][]field{
 	"github.sent":             {{"ticket", 64}, {"issue", 12}},
 	"github.results_imported": {{"ticket", 64}, {"pr", 12}},
 	"github.merged":           {{"ticket", 64}, {"pr", 12}},
+	"branch.merged":           {{"ticket", 64}, {"branch", 100}}, // t-2906: tkt merge, a worktree branch merged into the main checkout's branch
 	"github.synced":           {{"count", 8}},
 	"setting.changed":         {{"name", 48}, {"old", 64}, {"new", 64}},
 	"integrity.restored":      {{"item", 64}, {"count", 8}},

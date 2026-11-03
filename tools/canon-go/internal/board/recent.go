@@ -39,6 +39,7 @@ var recentKinds = map[string]func(d map[string]string) string{
 	"github.sent":             func(d map[string]string) string { return "sent to GitHub" + hashN(d["issue"], "issue") },
 	"github.results_imported": func(d map[string]string) string { return "cloud results imported" + hashN(d["pr"], "PR") },
 	"github.merged":           func(d map[string]string) string { return "merged" + hashN(d["pr"], "PR") },
+	"branch.merged":           func(d map[string]string) string { return "merged here" + paren(d["branch"]) }, // t-2906
 }
 
 func paren(s string) string {
