@@ -6926,13 +6926,17 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); activateTab('projects'); });
       await pressPrefix(page, 'k');
       await expect(page.locator('#toast')).toHaveText('Open a project tab first');
-      await page.evaluate(async () => { const { showView } = await import('/static/cockpit-views.js'); showView('admin'); });
-      await pressPrefix(page, 'k');
-      await expect(page.locator('#toast')).toHaveText('Open a project tab first');
-      await expect(overlay).not.toHaveClass(/open/);
-      await page.evaluate(async () => { const { showView } = await import('/static/cockpit-views.js'); showView('factory'); });
-      await pressPrefix(page, 'k');
-      await expect(page.locator('#toast')).toHaveText('Open a project tab first');
+      // Admin and Factory hide a project tab without changing activeTab: open them FROM proj-a, so k must read the view, not the tab
+      await page.evaluate(async () => { const { goTab } = await import('/static/cockpit-tabs.js'); goTab('proj-a'); });
+      await expect.poll(() => shellTab(page)).toBe('proj-a');
+      for (const v of ['admin', 'factory']) {
+        await page.evaluate(() => { document.getElementById('toast').textContent = ''; });
+        await page.evaluate(async view => { const { showView } = await import('/static/cockpit-views.js'); showView(view); }, v);
+        expect(await shellTab(page)).toBe('proj-a');
+        await pressPrefix(page, 'k');
+        await expect(page.locator('#toast')).toHaveText('Open a project tab first');
+        await expect(overlay).not.toHaveClass(/open/);
+      }
       await page.evaluate(async () => { const { goTab } = await import('/static/cockpit-tabs.js'); goTab('proj-a'); });
       await expect.poll(() => shellTab(page)).toBe('proj-a');
       // a pane Skill Eval covers is inert (cockpit-tabs.js applySplit): its board is on screen but not usable, so k says so too
