@@ -6,7 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
-The daemon changed: after `canon update`, restart it (Admin's **Restart Daemon**).
+## [0.43.0] - 2026-11-03
+
+The prebuilt `canon-go` program changed, both the board and the daemon part: after `canon update`, restart the daemon (Admin's **Restart Daemon**). A worktree made by an older canon is repaired at its next session start.
 
 ### Fixed
 - Sprints in a worktree now close on canon's own reviewer and evaluator (t-74d8). A worktree created by the Cockpit, or by `tkt land` for a cloud close, had no `.claude/agents` link, so `sprint start` warned and the close fell back to general-purpose agents. The daemon now links a ticket's worktree to canon's skills and gate agents before it starts the agent, which also repairs a worktree made by an older canon at its next session start. The Cockpit links a new worktree, and `tkt land` links its worktree too. In a worktree, the ignore lines for these links now go to git's untracked `info/exclude`, never the tracked `.gitignore`, so linking leaves no change on the sprint's branch. A main checkout keeps `.gitignore`. When the gate agents are missing, `sprint start`'s warning now tells a worktree to run `skills.sh link-worktree <dir>`, not `skills.sh refresh`, which can rewrite tracked files there. The Go and bash sides of this rule are now held equal by `tests/worktree-links-parity.sh`.
