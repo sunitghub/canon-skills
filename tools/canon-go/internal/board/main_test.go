@@ -2085,3 +2085,134 @@ func TestAnnotateWorktreeMerged(t *testing.T) {
 		}
 	}
 }
+
+// t-c21a, prod path: GET /api/git, polled every 8 s. One `git status --porcelain=v2 --branch` gives what five calls gave; the reply
+// must be the same as before for every repository shape: a branch, a detached HEAD, no commit yet, and no git at all.
+func TestLoadGitShapes(t *testing.T) {
+	git := func(dir string, args ...string) string {
+		t.Helper()
+		out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).Output()
+		if err != nil {
+			t.Fatalf("git %v: %v", args, err)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	check := func(name string, got map[string]any, want map[string]any) {
+		t.Helper()
+		for k, v := range want {
+			if fmt.Sprint(got[k]) != fmt.Sprint(v) {
+				t.Errorf("%s: %s = %v, want %v (reply %v)", name, k, got[k], v, got)
+			}
+		}
+	}
+	repo := t.TempDir()
+	gitInitRepo(t, repo)
+	unborn := loadGit(repo)
+	check("no commit yet", unborn, map[string]any{"branch": "HEAD", "is_git": true, "modified": 0, "total_commits": nil, "project": filepath.Base(repo), "root": repo})
+	if l, _ := unborn["log"].([]map[string]string); len(l) != 0 {
+		t.Errorf("no commit yet: log = %v, want empty", unborn["log"])
+	}
+	writeFile(t, filepath.Join(repo, "a.txt"), "a")
+	gitCommitAll(t, repo, "first")
+	writeFile(t, filepath.Join(repo, "a.txt"), "b")
+	gitCommitAll(t, repo, "chore: auto-handoff skipped in the log")
+	writeFile(t, filepath.Join(repo, "a.txt"), "c")
+	gitCommitAll(t, repo, "third")
+	writeFile(t, filepath.Join(repo, "new.txt"), "untracked")
+	onBranch := loadGit(repo)
+	check("on a branch", onBranch, map[string]any{"branch": git(repo, "symbolic-ref", "--short", "HEAD"), "is_git": true, "modified": 1, "total_commits": 3})
+	if l, _ := onBranch["log"].([]map[string]string); len(l) != 2 || l[0]["message"] != "third" || l[1]["message"] != "first" || l[0]["hash"] == "" {
+		t.Errorf("on a branch: log = %v, want third then first (the auto-handoff commit skipped)", onBranch["log"])
+	}
+	git(repo, "checkout", "-q", "--detach", "HEAD~1")
+	check("detached", loadGit(repo), map[string]any{"branch": "HEAD", "is_git": true, "total_commits": 2})
+	plain := t.TempDir()
+	check("no git", loadGit(plain), map[string]any{"branch": "", "is_git": false, "modified": 0, "total_commits": nil})
+}
+
+// t-c21a, prod path: GET /api/tickets, polled every 8 s. annotateLiveDocs lists worktrees (two git calls) only when this says a
+// ticket may be bound to one; it must say yes for both of liveWorktreeFull's ways in, and no for everything else.
+func TestAnyLiveCandidate(t *testing.T) {
+	root := t.TempDir()
+	gitInitRepo(t, root)
+	writeFile(t, filepath.Join(root, "a.txt"), "a")
+	gitCommitAll(t, root, "init")
+	wt := filepath.Join(t.TempDir(), "wt")
+	if out, err := exec.Command("git", "-C", root, "worktree", "add", "-q", "-b", "sprint/x", wt).CombinedOutput(); err != nil {
+		t.Fatalf("worktree add: %v %s", err, out)
+	}
+	other := t.TempDir() // a folder that is not a worktree of this repository
+	gitInitRepo(t, other)
+	bind := func(id, cwd string) {
+		writeFile(t, filepath.Join(root, ".tickets", id, ".cockpit-cwd"), cwd+"\n")
+	}
+	tk := func(id, status string) ticket { return ticket{"id": id, "layout": "folder", "status": status} }
+	bind("t-0001", wt)
+	bind("t-0002", root)
+	bind("t-0003", other)
+	bind("t-0004", "")
+	cases := []struct {
+		name string
+		t    ticket
+		want bool
+	}{
+		{"open, bound to a linked worktree", tk("t-0001", "open"), true},
+		{"in progress, bound to a linked worktree", tk("t-0001", "in_progress"), true},
+		{"closed", tk("t-0001", "closed"), false},
+		{"cancelled", tk("t-0001", "cancelled"), false},
+		{"archived", tk("t-0001", "archived"), false},
+		{"not a folder ticket", ticket{"id": "t-0001", "layout": "flat", "status": "open"}, false},
+		{"no id", ticket{"layout": "folder", "status": "open"}, false},
+		{"bound to the main checkout", tk("t-0002", "open"), false},
+		{"bound to another repository", tk("t-0003", "open"), false},
+		{"an empty lock", tk("t-0004", "open"), false},
+		{"not bound", tk("t-0005", "open"), false},
+		{"in progress on a worktree branch", ticket{"id": "t-0005", "layout": "folder", "status": "open",
+			"branch_divergence": map[string]any{"where": "worktree", "status": "in_progress"}}, true},
+		{"diverged on a plain branch", ticket{"id": "t-0005", "layout": "folder", "status": "open",
+			"branch_divergence": map[string]any{"where": "branch", "status": "in_progress"}}, false},
+		{"closed on a worktree", ticket{"id": "t-0005", "layout": "folder", "status": "open",
+			"branch_divergence": map[string]any{"where": "worktree", "status": "closed"}}, false},
+	}
+	for _, c := range cases {
+		if got := anyLiveCandidate([]ticket{c.t}, root); got != c.want {
+			t.Errorf("%s: anyLiveCandidate = %v, want %v", c.name, got, c.want)
+		}
+	}
+	if anyLiveCandidate([]ticket{tk("t-0005", "open"), tk("t-0001", "open")}, root) != true {
+		t.Error("a bound ticket after an unbound one must still count")
+	}
+	// A main checkout whose .git is a file (its worktrees' .git files point elsewhere) keeps the git listing.
+	if !anyLiveCandidate(nil, wt) {
+		t.Error("a root whose .git is a file must answer yes")
+	}
+}
+
+// t-c21a, prod path: the reply of the three polled routes. A matching If-None-Match gets an empty 304; anything else the full
+// reply with its ETag.
+func TestSendJSONCond(t *testing.T) {
+	data := map[string]any{"a": 1}
+	get := func(inm string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("GET", "/api/git", nil)
+		if inm != "" {
+			r.Header.Set("If-None-Match", inm)
+		}
+		w := httptest.NewRecorder()
+		sendJSONCond(w, r, data)
+		return w
+	}
+	full := get("")
+	etag := full.Header().Get("ETag")
+	if full.Code != 200 || full.Body.String() != `{"a":1}` || !regexp.MustCompile(`^"[0-9a-f]{24}"$`).MatchString(etag) ||
+		full.Header().Get("Cache-Control") != "no-cache" || full.Header().Get("Content-Type") != "application/json" ||
+		full.Header().Get("Content-Length") != "7" {
+		t.Fatalf("full reply: %d %q headers %v", full.Code, full.Body.String(), full.Header())
+	}
+	same := get(etag)
+	if same.Code != http.StatusNotModified || same.Body.Len() != 0 || same.Header().Get("ETag") != etag || same.Header().Get("Content-Type") != "" {
+		t.Fatalf("matching If-None-Match: %d %q headers %v", same.Code, same.Body.String(), same.Header())
+	}
+	if other := get(`"000000000000000000000000"`); other.Code != 200 || other.Body.String() != `{"a":1}` {
+		t.Fatalf("another ETag: %d %q", other.Code, other.Body.String())
+	}
+}

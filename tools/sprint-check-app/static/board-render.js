@@ -16,6 +16,11 @@ export function render() {
   renderHeader();
   renderSidebar();
   renderBoard();
+  refreshLive();
+}
+
+// t-c21a: what a poll with no new data still refreshes, since neither is in the three replies loadData compares.
+export function refreshLive() {
   refreshCockpitSessions();
   ensureGithubStatus();   // t-718b: a card that just went out on GitHub gets its stage now, not at the next poll
 }
@@ -778,7 +783,7 @@ export function readiness(t) {
 // t-187e: how long ago and where the agent that holds the ticket last showed itself (the work-beat label).
 function workingAgo(sec) { return sec < 90 ? 'moments ago' : sec < 5400 ? `${Math.round(sec / 60)} min ago` : `${Math.round(sec / 3600)} h ago`; }
 function workingTip(w) {
-  return `An agent was last active on this ticket ${workingAgo(w.age_s)}, ${w.here ? 'on this machine' : `on ${w.host || 'another machine'}`}${w.pid ? ` (process ${w.pid})` : ''}.`;
+  return `An agent was last active on this ticket ${workingAgo(Math.max(0, Date.now() / 1000 - w.at))}, ${w.here ? 'on this machine' : `on ${w.host || 'another machine'}`}${w.pid ? ` (process ${w.pid})` : ''}.`;
 }
 async function resumeWorking(t) {
   const r = await openDialog({ title: `${t.id} is being worked on`, body: `${workingTip(t.working)} Resuming starts a second agent on the same ticket, which can collide with the first.`, ok: 'Resume anyway', cancel: 'Cancel' });

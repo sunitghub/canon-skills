@@ -7,6 +7,9 @@ const net = require('net');
 const { newTicketId, claimTicketId, adoptBoardTicket, removeTestTicket } = require('./board-spec-ids');
 
 const BASE = process.env.SPRINT_CHECK_BASE || 'http://localhost:8423';
+// t-c21a: a handler that forwards a board poll and rewrites its reply needs the full body; the board's own If-None-Match
+// would get an empty 304 from the real server.
+const fetchFull = route => route.fetch({ headers: { ...route.request().headers(), 'if-none-match': '' } });
 // t-5a4b: acceptance visuals — light and dark, written under the ticket folder (gitignored in canon).
 async function shots5a4b(page, name, locator) {
   const dir = path.join(__dirname, '..', '.tickets', 't-5a4b', 'visuals');
@@ -121,7 +124,7 @@ test.beforeEach(async ({ context }) => {
     if (r.request().method() !== 'GET') return r.fallback();
     // a test may close or navigate the page while this request is in flight: then there is nothing left to answer
     try {
-      const res = await r.fetch(); let list;
+      const res = await r.fetch(); let list;   // a 304 (t-c21a) has no body: passed through as it is
       try { list = await res.json(); } catch { return await r.fulfill({ response: res }); }
       if (Array.isArray(list)) for (const t of list) if (typeof t.tags === 'string') t.tags = t.tags.split(',').filter(x => x.trim() !== 'now').join(',');
       return await r.fulfill({ response: res, json: list });
@@ -246,7 +249,7 @@ test.describe('board modal', () => {
 
   test('a column keeps its scroll position across the board refresh (t-dba9) @webkit', async ({ page }) => {
     await page.route('**/api/tickets**', async route => {
-      const resp = await route.fetch();
+      const resp = await fetchFull(route);
       const json = await resp.json();
       const base = json.find(t => t.status === 'open') || json[0];
       const pad = Array.from({ length: 60 }, (_, i) => ({ ...base, id: `t-pad${i}`, title: `pad ${i}`, status: 'open', created: `2026-01-01T00:${String(i).padStart(2, '0')}:00Z` }));
@@ -6394,12 +6397,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const id = newTicketId(PROJECT_ROOT);
       writeTicket(id, 'in_progress');
       try {
-        let working = { age_s: 240, host: 'this-mac', here: true, pid: 4242 };
+        let working = { at: Math.floor(Date.now() / 1000) - 240, host: 'this-mac', here: true, pid: 4242 };
         let rows = [];
         await stubCockpit(page);
         await page.route('**/api/cockpit-sessions', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rows) }));
         await page.route(u => u.pathname === '/api/tickets', async route => {
-          const res = await route.fetch(); const list = await res.json();
+          const res = await fetchFull(route); const list = await res.json();
           for (const t of list) if (t.id === id && working) t.working = working;
           await route.fulfill({ response: res, json: list });
         });
@@ -8439,7 +8442,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       // The sidebar asks about the first three in-progress tickets, and a real ticket out on GitHub counts as in progress (t-718b):
       // show only this test's own, so the project's real tickets cannot push it out of the first three.
       await page.route(/\/api\/tickets(\?.*)?$/, async route => {
-        const res = await route.fetch();
+        const res = await fetchFull(route);
         const list = await res.json();
         const out = t => t.runs === 'github' && t.github && !t.merged;
         await route.fulfill({ response: res, json: Array.isArray(list) ? list.filter(t => t.id === id || (t.status !== 'in_progress' && !out(t))) : list });
@@ -8559,7 +8562,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await stubCockpit(page);
       await page.route('**/api/worktrees**', mainAndFeat);
       await page.route('**/api/tickets**', async route => {
-        const resp = await route.fetch();
+        const resp = await fetchFull(route);
         const json = await resp.json();
         for (const t of json) if (t.id === id) t.branch_divergence = { branch: 'sprint/feat-19d1', status: 'in_progress', where: 'worktree', merged: false };
         // t-432d: the board runs on a copy of the real tree, where real tickets are in progress or out on GitHub (shown In progress);
@@ -8607,7 +8610,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       writeTicket(iso, 'open'); writeTicket(dateOnly, 'open');
       const today = new Date(); const ymd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
       await page.route('**/api/tickets**', async route => {
-        const resp = await route.fetch();
+        const resp = await fetchFull(route);
         const json = await resp.json();
         for (const t of json) {
           if (t.id === iso) t.created = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
@@ -8808,7 +8811,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await stubCockpit(page);
       await page.route('**/api/tickets**', async route => {
         if (route.request().method() !== 'GET') return route.continue();
-        const res = await route.fetch(); const list = await res.json();
+        const res = await fetchFull(route); const list = await res.json();
         for (const t of list) if (t.id === id) t.docs_from = { branch: 'sprint-b3' };
         return route.fulfill({ response: res, body: JSON.stringify(list) });
       });
@@ -10715,6 +10718,69 @@ test.describe('cockpit in board (t-ddc8)', () => {
     await expect(toast).toHaveText(`⚠ ${warning}`);
     await expect(toast).toHaveClass(/block/);
     expect(await page.evaluate(i => import('/static/board-core.js').then(({ state }) => state.tickets.find(t => t.id === i).status), id)).toBe('closed');
+  });
+
+  // Prod path: the board's 8 s poll (board-core.js loadData, board-ui.js pollData) against the real board's ETags (t-c21a).
+  test('an unchanged poll is an empty 304 that leaves the cards as they are, with a full render once a minute (t-c21a)', async ({ page }) => {
+    const polls = [];
+    page.on('response', r => { if (new URL(r.url()).pathname === '/api/tickets') polls.push({ status: r.status(), inm: r.request().headers()['if-none-match'] || '' }); });
+    await page.clock.install();
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    const card = page.locator('.card').first();
+    await card.evaluate(e => { e.dataset.c21a = 'kept'; });   // a re-render replaces every card node
+    const n = polls.length;
+    await page.clock.fastForward('00:08');
+    await expect.poll(() => polls.length).toBeGreaterThan(n);
+    expect(polls[n]).toMatchObject({ status: 304 });
+    expect(polls[n].inm).not.toBe('');
+    await page.waitForTimeout(300);
+    await expect(page.locator('.card[data-c21a="kept"]')).toHaveCount(1);
+    // A user action's loadData() (an import, a sync, a take-back) always redraws, even when the server answers 304.
+    await page.evaluate(() => import('/static/board-core.js').then(m => m.loadData()));
+    await expect(page.locator('.card[data-c21a="kept"]')).toHaveCount(0);
+    await page.locator('.card').first().evaluate(e => { e.dataset.c21a = 'kept'; });
+    await page.clock.fastForward('01:00');   // the next poll past a minute renders in full
+    await expect(page.locator('.card[data-c21a="kept"]')).toHaveCount(0);
+  });
+
+  test('a board in a Cockpit tab that is not shown does not poll, and loads as soon as it is shown (t-c21a)', async ({ page }) => {
+    await page.route(BASE + '/c21a-host', route => route.fulfill({ status: 200, contentType: 'text/html', body: '<div id="v" style="height:600px"><iframe src="/" style="width:100%;height:100%"></iframe></div>' }));
+    const reads = [];
+    page.on('request', r => { if (new URL(r.url()).pathname === '/api/tickets' && r.frame() !== page.mainFrame()) reads.push(Date.now()); });
+    await page.clock.install();
+    await page.goto(BASE + '/c21a-host');
+    await expect.poll(() => reads.length).toBeGreaterThan(0);
+    const board = page.frames().find(f => f !== page.mainFrame());
+    await board.waitForLoadState('networkidle');
+    await page.evaluate(() => { document.getElementById('v').style.display = 'none'; });   // what the Cockpit does to a tab not on screen
+    const n = reads.length;
+    await page.clock.fastForward('00:20');
+    await page.waitForTimeout(300);
+    expect(reads.length).toBe(n);
+    await page.evaluate(() => { document.getElementById('v').style.display = 'block'; });   // shown again, with no focus or visibilitychange
+    await expect.poll(() => reads.length).toBe(n + 1);
+  });
+
+  test('after a failed poll shows mock data, the next poll asks for the full reply (t-c21a)', async ({ page }) => {
+    let abort = false;
+    const inm = [];
+    await page.route(u => u.pathname === '/api/tickets', route => {
+      inm.push(route.request().headers()['if-none-match'] || '');
+      return abort ? route.abort() : route.continue();
+    });
+    await page.clock.install();
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    abort = true;
+    const n = inm.length;
+    await page.clock.fastForward('00:08');
+    await expect(page.locator('#refresh-dot')).toHaveClass(/mock/);
+    expect(inm[n]).not.toBe('');   // the poll before the failure did send its ETag
+    abort = false;
+    await page.clock.fastForward('00:08');
+    await expect(page.locator('#refresh-dot')).not.toHaveClass(/mock/);
+    expect(inm[inm.length - 1]).toBe('');
   });
 
   test('modal writes keep or revert their UI on failure: doc save, checkbox, demo, new doc, create ticket (t-1940)', async ({ page }) => {
@@ -14612,7 +14678,7 @@ test.describe('branch divergence badge (t-6328)', () => {
       // Real /api/tickets, with branch_divergence injected on two tickets.
       await page.route('**/api/tickets*', async route => {
         if (route.request().method() !== 'GET') return route.continue();
-        const res = await route.fetch();
+        const res = await fetchFull(route);
         const tickets = await res.json();
         for (const t of tickets) {
           if (t.id === divId) t.branch_divergence = { branch: 'sprint/t-91mc', status: 'closed', where: 'branch', merged: false };
@@ -18027,7 +18093,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     const wtId = newTicketId(PROJECT_ROOT, 'gh2906w');
     ghTicket(wtId, { status: 'closed' });
     await page.route('**/api/tickets**', async route => {
-      const resp = await route.fetch();
+      const resp = await fetchFull(route);
       const list = await resp.json();
       for (const t of list) if (t.id === wtId) t.wt_merge = { branch: 'feat/x', path: '/tmp/wt' };
       await route.fulfill({ response: resp, json: list });
@@ -18473,7 +18539,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     ghTicket(id);
     await commitPushForm(page, id, { sessions: [], files: `file:  M src/app.js\nmtime: ${nowS() - 3600} src/app.js` });
     await expect(page.locator('#ck-gh-cp-files input[type=checkbox]').nth(0)).toBeChecked();
-    await page.evaluate(async tid => { (await import('/static/board-core.js')).state.tickets.find(x => x.id === tid).working = { by: 'claude', age_s: 5, here: true }; }, id);
+    await page.evaluate(async tid => { (await import('/static/board-core.js')).state.tickets.find(x => x.id === tid).working = { by: 'claude', at: Math.floor(Date.now() / 1000) - 5, here: true }; }, id);
     await page.locator('#ck-gh-cp-cancel').click();
     await page.locator('#ck-gh-cp-open').click();
     await expect(page.locator('#ck-gh-cp-busy')).toBeVisible();
@@ -19465,7 +19531,7 @@ test.describe('NOW lane and hidden lanes (t-0447)', () => {
   test.beforeEach(async ({ page }) => {
     await page.route('**/api/tickets*', async r => {
       if (r.request().method() !== 'GET') return r.fallback();
-      const res = await r.fetch(); const list = await res.json();
+      const res = await fetchFull(r); const list = await res.json();
       if (Array.isArray(list)) for (const t of list) if (!made.includes(t.id) && typeof t.tags === 'string') t.tags = t.tags.split(',').filter(x => x.trim() !== 'now').join(',');
       return r.fulfill({ response: res, json: list });
     });
@@ -19631,7 +19697,7 @@ test.describe('NOW lane and hidden lanes (t-0447)', () => {
     write({ status: 'open', tags: '' });
     let root = '/tmp/t71c8-a';
     await page.route('**/api/git*', async r => {
-      const res = await r.fetch(); const g = await res.json();
+      const res = await fetchFull(r); const g = await res.json();
       return r.fulfill({ response: res, json: { ...g, root } });
     });
     const stored = () => page.evaluate(() => Object.fromEntries(Object.keys(localStorage).filter(k => k.startsWith('sprint-check-hidden-lanes')).map(k => [k, localStorage.getItem(k)])));
