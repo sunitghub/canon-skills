@@ -266,3 +266,24 @@ func TestLinkWorktreeEdges(t *testing.T) {
 		t.Errorf("a last line without a newline must get one before canon's lines: %q", gi)
 	}
 }
+
+// t-74d8 (reviewer): a --separate-git-dir checkout (like a submodule) has a .git FILE but is a main checkout: its ignore
+// lines go to the committed .gitignore, not git's exclude, so a teammate's clone gets them.
+func TestLinkWorktreeSeparateGitDirIsMainCheckout(t *testing.T) {
+	canon := fakeCanon(t)
+	dir := filepath.Join(t.TempDir(), "proj")
+	gd := filepath.Join(t.TempDir(), "proj.git")
+	if out, err := exec.Command("git", "init", "-q", "--separate-git-dir", gd, dir).CombinedOutput(); err != nil {
+		t.Skipf("git init --separate-git-dir: %v %s", err, out)
+	}
+	if fi, err := os.Lstat(filepath.Join(dir, ".git")); err != nil || fi.IsDir() {
+		t.Fatal("the fixture must have a .git file")
+	}
+	if isLinkedWorktree(dir) {
+		t.Fatal("a --separate-git-dir checkout is not a linked worktree")
+	}
+	LinkWorktree(canon, dir)
+	if !hasLine(filepath.Join(dir, ".gitignore"), "/.claude/agents") {
+		t.Error("a main checkout with a .git file must get its ignore lines in .gitignore")
+	}
+}

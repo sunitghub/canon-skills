@@ -96,11 +96,22 @@ func linkGateAgents(canonRoot, wt string) []string {
 	}
 }
 
-// ignoreFile is where wt's ignore lines go (t-74d8, user's choice): in a linked worktree (its .git is a file) git's own
+// isLinkedWorktree: git's own folder differs from the repository's common one only in a linked worktree. A submodule or a
+// --separate-git-dir checkout also has a .git FILE, but is a main checkout (the reviewer's t-74d8 finding).
+func isLinkedWorktree(dir string) bool {
+	out, err := exec.Command("git", "-C", dir, "rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir").Output()
+	if err != nil {
+		return false
+	}
+	f := strings.Split(strings.TrimSpace(string(out)), "\n")
+	return len(f) == 2 && !sameDir(strings.TrimSpace(f[0]), strings.TrimSpace(f[1]))
+}
+
+// ignoreFile is where wt's ignore lines go (t-74d8, user's choice): in a linked worktree git's own
 // info/exclude, which is untracked and shared by the repository's worktrees, so linking never leaves a .gitignore change on
 // the sprint's branch (it blocked `tkt land --finish`); in a main checkout the project's .gitignore, as skills.sh add does.
 func ignoreFile(wt string) string {
-	if fi, err := os.Lstat(filepath.Join(wt, ".git")); err == nil && !fi.IsDir() {
+	if isLinkedWorktree(wt) {
 		out, err := exec.Command("git", "-C", wt, "rev-parse", "--git-path", "info/exclude").Output()
 		if p := strings.TrimSpace(string(out)); err == nil && p != "" {
 			if !filepath.IsAbs(p) {

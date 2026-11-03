@@ -28,7 +28,8 @@ repo() {   # repo <dir>: a project with one commit and a .gitignore of its own
   printf 'node_modules\n' > "$1/.gitignore"; echo x > "$1/f.txt"; git -C "$1" add -A; git -C "$1" commit -qm init
 }
 target() { [[ -L "$1" || -d "$1" ]] && (cd "$1" 2>/dev/null && pwd -P) || echo "-"; }
-ignore_file() { local p; p="$(git -C "$1" rev-parse --git-path info/exclude)"; [[ -f "$1/.git" ]] && { case "$p" in /*) ;; *) p="$1/$p" ;; esac; echo "$p"; } || echo "$1/.gitignore"; }
+linked() { [[ "$(git -C "$1" rev-parse --path-format=absolute --git-dir)" != "$(git -C "$1" rev-parse --path-format=absolute --git-common-dir)" ]]; }
+ignore_file() { local p; p="$(git -C "$1" rev-parse --git-path info/exclude)"; if linked "$1"; then case "$p" in /*) ;; *) p="$1/$p" ;; esac; echo "$p"; else echo "$1/.gitignore"; fi; }
 state() {   # state <dir>: what a worktree link leaves behind, as text to compare
   local d="$1" rel
   for rel in .claude/skills .agents/skills .claude/agents; do printf '%s -> %s\n' "$rel" "$(target "$d/$rel")"; done
@@ -37,7 +38,7 @@ state() {   # state <dir>: what a worktree link leaves behind, as text to compar
   if [[ -d "$d/.claude/agents" && ! -L "$d/.claude/agents" ]]; then
     printf -- '--- agents folder\n'; (cd "$d/.claude/agents" && for f in *; do printf '%s %s\n' "$f" "$(shasum -a 256 < "$f" | cut -c1-12)"; done)
   fi
-  [[ -f "$d/.git" ]] && { printf -- '--- status\n'; git -C "$d" status --porcelain; }
+  linked "$d" && { printf -- '--- status\n'; git -C "$d" status --porcelain; }
   return 0
 }
 both() {   # both <name> <prep>: run prep on two fresh copies, link one with Go and one with bash, compare
@@ -71,9 +72,17 @@ stale_links() {  # a worktree whose links point at an old canon folder
   ln -s "$1/old/agents" "$1/dir/.claude/agents"; ln -s "$1/old" "$1/dir/.claude/skills"
 }
 
+separate_gitdir() {   # a main checkout whose .git is a FILE (like a submodule): .gitignore, not git's exclude
+  rm -rf "$1/main"; git init -q --separate-git-dir "$1/main.git" "$1/dir"
+  git -C "$1/dir" config user.email t@t; git -C "$1/dir" config user.name t
+  printf 'node_modules\n' > "$1/dir/.gitignore"; git -C "$1/dir" add -A; git -C "$1/dir" commit -qm init
+}
+
 both fresh-worktree fresh_worktree
+both separate-gitdir separate_gitdir
+grep -qx '/.claude/agents' "$W/separate-gitdir-go/dir/.gitignore" || fail "worktree-links-parity: a --separate-git-dir main checkout must get its ignore lines in .gitignore, not git's exclude"
 both main-checkout main_checkout
 both own-agents own_agents
 both stale-links stale_links
 
-echo "worktree-links-parity: ok (Go and skills.sh link-worktree agree: fresh worktree, main checkout, a project-owned agents folder, stale links)"
+echo "worktree-links-parity: ok (Go and skills.sh link-worktree agree: fresh worktree, main checkout, a --separate-git-dir checkout, a project-owned agents folder, stale links)"
