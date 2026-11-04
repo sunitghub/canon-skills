@@ -9,7 +9,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 Board page and daemon page: run `canon update`, reload the board and restart the daemon (the pane's page changed).
 
 ### Changed
-- The session pane is a rounded card with a hairline border that tints toward the accent while it has focus. Its header keeps the agent picker, Start, the session's folder, the cache meter and the font size; Kill, the model text and the state text are gone from it (End session's dialog has "End without saving", and the Agents list shows the state).
+- The session pane is a rounded card with a hairline border that tints toward the accent while it has focus. Its header keeps the agent picker, Start, the session's folder, the cache meter and the font size; Kill, the model text and the state text are gone from it (End session's dialog has "End without saving", or "Just end" for a scratch session, and the Agents list shows the state).
 - The session top bar no longer repeats the ticket title, the model or the cache meter: it keeps Back, the id or SCRATCH tag, the tab pills, Auto save and End session, plus a "Needs you" chip only when the agent is waiting. Labels are sentence case (Needs you, Auto save, End session).
 
 ## [0.43.7] - 2026-11-04

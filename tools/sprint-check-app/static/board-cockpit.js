@@ -1,5 +1,5 @@
 import { SHELL_TAB, loadData, state } from './board-core.js';
-import { CK_SIGNAL_LABEL, CK_STATE_LABEL, COCKPIT_TICKET_ID, SCRATCH_ID, applyCardSessions, announceScratchTabs, ckRowState, findTicketById, finishAdopt, newScratchId, openScratch, postToTab, render, renderBoard, renderScratchWhere, showPromotedChoice, showToast, startPromote } from './board-render.js';
+import { CK_SIGNAL_LABEL, COCKPIT_TICKET_ID, SCRATCH_ID, applyCardSessions, announceScratchTabs, ckRowState, findTicketById, finishAdopt, newScratchId, openScratch, postToTab, render, renderBoard, renderScratchWhere, showPromotedChoice, showToast, startPromote } from './board-render.js';
 import { closeCockpit, findLiveDaemonSession, openCockpit, openTicketWhenLoaded, renderCockpitRail, renderTabStrip, stopCockpitPoll } from './board-cockpit-rail.js';
 import { applyActualWorkingCwd, maybeMountCockpitTerminal } from './board-worktree.js';
 import { applyPane, clearPaneFor, paneHostId, paneRoom, paneTabId, setPane, shownIds } from './board-pane.js';
@@ -504,7 +504,7 @@ export function unmountTab(id) {
       const nextId = remaining[remaining.length - 1];
       setActiveTab(nextId);
       // setActiveTab only swaps which iframe/message-buffer is active — the
-      // topbar/rail labels (ck-id, ck-title, worktree/plan/state panels) are
+      // topbar/rail labels (ck-id, worktree/plan/state panels) are
       // stale until re-rendered for the tab we just switched to.
       const nextTicket = findTicketById(nextId);
       if (nextTicket) renderCockpitRail(nextTicket);

@@ -58,9 +58,8 @@
   body.embed .brand{display:none}
   body.embed #ticket{display:none}
   body.embed header{padding:7px 12px}
-  /* the board's own #ck-model chip is the single model readout in cockpit
-     mode (t-ddc8) — this page's #model span is a static, never-updated
-     placeholder, so hide it in embed to avoid a second, dead "model:" chip */
+  /* this page's #model span is a static, never-updated placeholder; the board's pane header does not show a model at all (t-1917), so
+     hide it in embed to avoid a dead "model:" chip */
   body.embed .model{display:none}
   /* t-1917: in the board the Agents list owns the session's state and End session ends it (its dialog has "End without saving"), so the pane
      header keeps only what runs the agent: the picker, Start, the folder, the meter and the font size. Standalone, Kill and the state stay. */
@@ -588,7 +587,7 @@ function canonPrefixKeys(emit) {
     if(streamAbort) streamAbort.abort();
     streamAbort = new AbortController();
     var resp = await fetch("/session/"+session+"/stream", { headers: authHeaders(sessTok), signal: streamAbort.signal });
-    if(!resp.ok){ setStatus("error","stream "+resp.status); return; }
+    if(!resp.ok){ setStatus("error","stream "+resp.status); term.writeln("\r\n\x1b[31mstream "+resp.status+"\x1b[0m"); return; }   // t-1917: the state text is hidden in the board, so say it in the terminal too
     var reader = resp.body.getReader(), dec = new TextDecoder(), buf = "";
     while(true){
       var chunk = await reader.read();

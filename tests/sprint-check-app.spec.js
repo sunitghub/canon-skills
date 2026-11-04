@@ -9083,10 +9083,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       try {
         await openBar(page, id, { collapse: true });
         await page.setViewportSize({ width: 900, height: 720 });
-        for (const sel of ['#ck-reaper']) {
-          const css = await page.locator(sel).evaluate(el => { const c = getComputedStyle(el); return { o: c.overflow, t: c.textOverflow, w: c.whiteSpace }; });
-          expect(css, sel).toMatchObject({ o: 'hidden', t: 'ellipsis', w: 'nowrap' });
-        }
+        const css = await page.locator('#ck-reaper').evaluate(el => { const c = getComputedStyle(el); return { o: c.overflow, t: c.textOverflow, w: c.whiteSpace }; });
+        expect(css, '#ck-reaper').toMatchObject({ o: 'hidden', t: 'ellipsis', w: 'nowrap' });
         // A trial click checks the button is visible, stable and not covered by anything, without pressing it
         // (pressing it with no live session closes the cockpit).
         await page.locator('#ck-end-session').click({ trial: true });
@@ -13037,6 +13035,34 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
       m.bodies.length = 0;
       await m.wiggle();
       expect(m.reports()).toEqual([]);
+    } finally { proc.kill('SIGKILL'); }
+  });
+
+  // t-1917: the real daemon page, not a fake: the board's pane header holds the meter and the folder it is sent (as text), hides Kill and
+  // the state text, and says a refused stream in the terminal; the standalone page keeps Kill and the state.
+  test('the real page: pane-info fills the header as text, Kill and the state hide in the pane only, a refused stream is said in the terminal (t-1917)', async ({ page }) => {
+    test.skip(!goOk, 'go toolchain not spawnable in this worker — cannot build cockpit-daemon');
+    const stub = mouseStub('exec sleep 60');
+    const { addr, proc } = await startDaemon(stub);
+    try {
+      await page.goto(`http://${addr}/cockpit?ticket=t-bnr1&embed=1`);
+      await expect(page.locator('#killBtn')).toBeHidden();
+      await expect(page.locator('.status')).toBeHidden();
+      await expect(page.locator('#paneMeter')).toBeHidden();   // nothing sent yet: no empty chip
+      await page.evaluate(() => window.postMessage({ source: 'canon-cockpit', type: 'pane-info', meter: '87% cache · 42 calls · 130 tools', cwd: '/tmp/proj <img src=x onerror=1>' }, '*'));
+      await expect(page.locator('#paneMeter')).toHaveText('87% cache · 42 calls · 130 tools');
+      await expect(page.locator('#paneCwd')).toHaveText('/tmp/proj <img src=x onerror=1>');   // text, never markup
+      await expect(page.locator('#paneCwd img')).toHaveCount(0);
+      await page.evaluate(() => window.postMessage({ source: 'canon-cockpit', type: 'pane-info', meter: '', cwd: '' }, '*'));
+      await expect(page.locator('#paneMeter')).toBeHidden();   // an empty meter hides, as before a start
+      // A refused stream shows in the terminal, since the state text is hidden here.
+      await page.route('**/session/*/stream', r => r.fulfill({ status: 500, body: 'no' }));
+      await page.locator('#startBtn').click();
+      await expect(page.locator('.xterm-rows')).toContainText('stream 500', { timeout: 8000 });
+      // Standalone (no embed=1): Kill and the state are there.
+      await page.goto(`http://${addr}/cockpit?ticket=t-bnr1`);
+      await expect(page.locator('#killBtn')).toBeVisible();
+      await expect(page.locator('.status')).toBeVisible();
     } finally { proc.kill('SIGKILL'); }
   });
 
