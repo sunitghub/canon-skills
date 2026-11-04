@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-04-2026 10:54
+learnings-sweep last run: 11-04-2026 11:31
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-04 | [t-43a7](.tickets/t-43a7/learnings.md) | One prompt text written for one repo layout (`.tickets/` ignored) shipped to both: when text tells an agent what to do about a layout, branch on the same check the tool uses (one helper) and test both layouts; the old fixture silently ran the other layout, so check which one a fixture really is before trusting its assertions. | UNPROMOTED |
 | 2026-11-04 | [t-c91a](.tickets/t-c91a/learnings.md) | A fixture that performs a step in the same checkout the command later reads (t-2906's tracked-`.tickets/` case closed the ticket in main) hides the layout it was written for: build the fixture through the real flow (close only in the worktree) and add a second layout, or the gap ships and a Windows test finds it. | UNPROMOTED |
 | 2026-11-04 | [t-fe82](.tickets/t-fe82/learnings.md) | Removing a field also removes what it implicitly did (a saved preference kept a worktree row out of the "N other worktrees" fold): grep specs for the behaviour, not just the field name, and run the full board spec once, since a focused `-g` missed the one test that clicked the now-folded row. | UNPROMOTED |
 | 2026-11-04 | [t-0a80](.tickets/t-0a80/learnings.md) | When a change alters text a neighbouring test compares (a count capped at "99+"), grep the spec for every reader of that text before the focused run, and put the neighbours in the `--grep`: the focused runs passed and the 35-minute full spec found the old test line. | UNPROMOTED |
