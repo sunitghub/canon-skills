@@ -687,6 +687,15 @@ async function ckLeaveSaveAndEnd(skipSave, opts) {
 
 // t-1543: this file's load-time code; board-main.js runs it after every module has loaded.
 export function initCockpit() {
+  // t-1917: focus inside an iframe does not make :focus-within match its wrapper (Chromium), so the board marks the focused pane itself:
+  // the page window blurs when the frame takes focus, and focus returns through window focus or focusin.
+  const syncPaneFocus = () => {
+    const a = document.activeElement;
+    document.querySelectorAll('.ck-term').forEach(el => el.classList.toggle('pane-focus', !!a && a.tagName === 'IFRAME' && el.contains(a)));
+  };
+  window.addEventListener('blur', () => setTimeout(syncPaneFocus, 0));
+  window.addEventListener('focus', syncPaneFocus);
+  document.addEventListener('focusin', syncPaneFocus);
   // t-f6b6: the board and the daemon page are different origins (different
   // port), so the only channel for "is a session live" and "please save state
   // then end" is postMessage — and the only real trust boundary is validating

@@ -72,7 +72,10 @@ func TestCockpitPaneHeader(t *testing.T) {
 	page := rec.Body.String()
 	for _, want := range []string{
 		"body.embed .btn-kill, body.embed .status{display:none}", // hidden in the board's pane only
-		`id="killBtn"`, `id="statusText"`, // still there for the standalone page
+		"body.embed .model{display:none}",                        // the page's placeholder model text never shows in the pane
+		`textContent = "\u25B6 Start agent"`,                     // a scratch session says Start agent, not Start sprint
+		`▶ Start sprint</button>`,                                // a ticket session keeps Start sprint
+		`id="killBtn"`, `id="statusText"`,                        // still there for the standalone page
 		`id="paneMeter"`, `id="paneCwd"`, `d.type === "pane-info"`,
 		"pm.textContent = typeof d.meter", "pc.textContent = typeof d.cwd",
 	} {

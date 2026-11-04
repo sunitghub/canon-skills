@@ -9152,13 +9152,17 @@ test.describe('cockpit in board (t-ddc8)', () => {
         const term = page.locator('.ck-term');
         await expect(term).toHaveCSS('border-top-width', '1px');
         await expect(term).toHaveCSS('border-top-left-radius', '10px');
+        // Colours are read with the 0.12 s border transition off, and compared with exact expected values (a probe element carrying the
+        // same colour-mix), so a missing :focus-within rule cannot pass by the transition settling (the t-1917 evaluator's finding).
+        await page.addStyleTag({ content: '.ck-term{transition:none!important}' });
+        const mixed = mix => page.evaluate(m => { const d = document.createElement('div'); d.style.cssText = `position:absolute;border:1px solid ${m}`; document.body.appendChild(d); const c = getComputedStyle(d).borderTopColor; d.remove(); return c; }, mix);
         for (const theme of ['dark', 'light']) {
           await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
           await page.locator('#cockpit-overlay .ck-topbar').click();   // focus leaves the pane
           await expect(page.locator('#ck-iframe')).not.toBeFocused();
-          const rest = await term.evaluate(el => getComputedStyle(el).borderTopColor);
-          await page.locator('#ck-iframe').focus();
-          await expect.poll(() => term.evaluate(el => getComputedStyle(el).borderTopColor), `${theme}: the focused border differs from the resting one`).not.toBe(rest);
+          await expect(term, `${theme}: resting border`).toHaveCSS('border-top-color', await mixed('color-mix(in srgb, var(--text) 10%, transparent)'));
+          await page.locator('#ck-iframe').click();   // a real click inside the pane, as a user does (element.focus() does not move focus into a frame)
+          await expect(term, `${theme}: focused border is the accent at 42%`).toHaveCSS('border-top-color', await mixed('color-mix(in srgb, var(--accent) 42%, transparent)'));
         }
         // Gone from the bar: the title (the rail card keeps it), the model chip and the meter (the pane header shows the meter).
         for (const sel of ['#ck-title', '#ck-model', '#ck-meter']) await expect(page.locator(sel), `${sel} is gone`).toHaveCount(0);
@@ -9166,6 +9170,40 @@ test.describe('cockpit in board (t-ddc8)', () => {
         // Sentence case, and a session that will not answer still ends without a Kill button.
         await expect(page.locator('#ck-end-session')).toHaveText('End session');
         await expect(page.locator('#ck-leave-skip')).toHaveText('End without saving');
+      } finally {
+        removeTestTicket(PROJECT_ROOT, id);
+      }
+    });
+
+    // The criterion says no top-bar control is cut to an ellipsis: measure it (a box inside the bar is not the same as unclipped text).
+    test('no top-bar control is clipped at 1280, 1024 and 900 px, rail open or collapsed (t-1917)', async ({ page }) => {
+      const id = newTicketId(PROJECT_ROOT, '1917b');
+      try {
+        writeTicket(id, 'in_progress', {
+          acceptanceCriteria: ['- [ ] c'],
+          plan: ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: low', '', '- [x] Plan approved', '', '## Approach', 'x', ''],
+        });
+        await stubCockpit(page);
+        await page.goto(BASE);
+        await page.waitForLoadState('networkidle');
+        await page.locator('#board-search').fill(id);
+        await page.locator(`.card[data-id="${id}"] .card-start`).click();
+        await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+        // The widest real state: the Needs you chip and the paused auto-save text beside Back, the pill and End session.
+        await page.evaluate(() => {
+          const chip = document.getElementById('ck-state-chip'); chip.className = 'ck-state-chip st-needs-you'; chip.textContent = 'Needs you'; chip.hidden = false;
+          const r = document.getElementById('ck-reaper'); r.textContent = 'Auto save paused'; r.hidden = false;
+        });
+        for (const collapse of [false, true]) {
+          if (collapse) await page.locator('#ck-rail-toggle').click();
+          for (const w of [1280, 1024, 900]) {
+            await page.setViewportSize({ width: w, height: 720 });
+            for (const sel of ['#ck-back', '#ck-state-chip', '#ck-reaper', '#ck-end-session']) {
+              const m = await page.locator(sel).evaluate(el => ({ sw: el.scrollWidth, cw: el.clientWidth }));
+              expect(m.sw, `${sel} is clipped at ${w}px (rail ${collapse ? 'collapsed' : 'open'}): scrollWidth ${m.sw} > clientWidth ${m.cw}`).toBeLessThanOrEqual(m.cw + 1);
+            }
+          }
+        }
       } finally {
         removeTestTicket(PROJECT_ROOT, id);
       }
