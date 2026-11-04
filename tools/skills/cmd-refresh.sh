@@ -231,7 +231,7 @@ cmd_refresh() {
       [ -n "$rp" ] || continue
       any_problem=true
       case "$rp" in
-        "stale link "*|"missing link "*) rfix=" — remove ${rp#* link } (a real folder is where the link belongs and holds files canon cannot prove are its own), then run refresh again" ;;
+        "stale link "*|"missing link "*) rfix=" — remove ${rp#* link }/$rname (a real folder canon cannot prove is its own), then run refresh again" ;;
         *) rfix="" ;;
       esac
       printf "  %-22s  [needs attention] %s%s\n" "$rname" "$rp" "$rfix"

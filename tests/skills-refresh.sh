@@ -213,7 +213,8 @@ assert_contains "$out4" "[needs attention]"
 assert_contains "$out4" "stale link .claude/skills"
 case "$out4" in *"All up to date."*) fail "t-38ab: refresh said All up to date while status reports a problem";; esac
 assert_contains "$("$SKILLS" status "$e4")" "stale link .claude/skills"
-assert_contains "$("$SKILLS" status "$e4")" "remove .claude/skills"
+assert_contains "$("$SKILLS" status "$e4")" "remove .claude/skills/sprint"   # the skill's own folder, never the whole skills folder (it holds the user's mine/)
+assert_contains "$out4" "remove .claude/skills/sprint"
 
 # 5. agents: empty or canon-only real folder -> link; a folder with a user's own file keeps it
 rf_proj; e5="$RF_NEW"; mkdir -p "$e5/.claude/agents"
@@ -265,5 +266,17 @@ k7="$(make_project)"; RF_DIRS+=("$k7"); "$SKILLS" add sprint "$k7" >/dev/null 2>
 mkdir -p "$k7/.claude/skills/mine" "$k7/.claude/skills/sprint/reference"; printf 'x\n' > "$k7/.claude/skills/mine/SKILL.md"; printf 'mine\n' > "$k7/.claude/skills/sprint/reference/own.md"
 "$SKILLS" refresh "$k7" >/dev/null 2>&1
 [[ -d "$k7/.claude/skills/sprint/reference" && ! -L "$k7/.claude/skills/sprint/reference" && "$(cat "$k7/.claude/skills/sprint/reference/own.md")" == mine && ! -e "$k7/.claude/skills/sprint/reference/reference" ]] || fail "t-38ab: a reference/ the project already had was replaced or linked into"
+# a name starting with ".." is the user's too (a glob of dir/* and dir/.[!.]* never matched it, so the folder passed as canon-only and the file went)
+k8="$(make_project)"; RF_DIRS+=("$k8"); "$SKILLS" add sprint "$k8" >/dev/null 2>&1; rm -rf "${k8:?}/.claude/skills" "${k8:?}/.agents/skills" "${k8:?}/.claude/agents"
+mkdir -p "$k8/.claude/skills" "$k8/.claude/agents"; cp -R "$ROOT/skills/sprint" "$k8/.claude/skills/sprint"; printf 'keep\n' > "$k8/.claude/skills/..keep"
+cp "$ROOT"/agents/canon-*.md "$k8/.claude/agents/"; printf 'mine\n' > "$k8/.claude/agents/..mine"
+"$SKILLS" refresh "$k8" >/dev/null 2>&1
+keep_real "an identical copy beside a ..keep file" "$k8/.claude/skills"; assert_eq "keep" "$(cat "$k8/.claude/skills/..keep")"
+keep_real "canon's agent files beside a ..mine file" "$k8/.claude/agents"; assert_eq "mine" "$(cat "$k8/.claude/agents/..mine")"
+# a canon skill folder that is itself a link leaving the project gets nothing written behind it
+k9="$(make_project)"; RF_DIRS+=("$k9"); out9="$(mktemp -d)"; RF_DIRS+=("$out9"); "$SKILLS" add sprint "$k9" >/dev/null 2>&1; rm -rf "${k9:?}/.claude/skills" "${k9:?}/.agents/skills"
+mkdir -p "$k9/.claude/skills/mine"; printf 'x\n' > "$k9/.claude/skills/mine/SKILL.md"; printf 'out\n' > "$out9/file"; ln -s "$out9" "$k9/.claude/skills/sprint"
+"$SKILLS" refresh "$k9" >/dev/null 2>&1
+assert_eq "file" "$(ls -A "$out9" | tr '\n' ' ' | sed 's/ $//')"   # no reference/ or evals/ link planted outside the project
 
 printf 'skills-refresh: ok\n'

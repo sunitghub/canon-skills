@@ -37,7 +37,7 @@ cmd_status() {
     echo ""
     echo "  The skill paths or links point somewhere else: this project was moved or copied, or canon was installed again."
     # t-38ab: refresh replaces a real folder only when it holds nothing but canon's own files
-    [ -z "$_link_fix" ] || echo "  If refresh does not clear it, a real folder is where the link belongs: remove $_link_fix, then run skills.sh refresh $project_dir"
+    [ -z "$_link_fix" ] || echo "  If refresh does not clear it, a real folder canon cannot prove is its own is where the link belongs: remove $_link_fix (only that skill's own folder, never the whole skills folder), then run skills.sh refresh $project_dir"
   fi
 
   # ── Upgrade tip (merged with hook fix when both apply) ────────────────────

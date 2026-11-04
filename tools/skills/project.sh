@@ -338,8 +338,7 @@ _canon_only_skills_dir() {
   local dir="$1" e f rel cs t root_p
   [ -d "$dir" ] && ! _is_dir_link "$dir" || return 1
   root_p="$(cd -P "$SKILLS_ROOT" 2>/dev/null && pwd -P)" || root_p="$SKILLS_ROOT"
-  for e in "$dir"/* "$dir"/.[!.]*; do
-    [ -e "$e" ] || [ -L "$e" ] || continue
+  while IFS= read -r e; do   # find, not a glob: "$dir"/.[!.]* never matches a name starting with ".." (a user's file would be deleted)
     cs="$SKILLS_ROOT/skills/$(basename "$e")"
     { [ -d "$cs" ] && [ -d "$e" ] && [ ! -L "$e" ]; } || return 1
     while IFS= read -r f; do
@@ -353,7 +352,9 @@ _canon_only_skills_dir() {
         return 1
       fi
     done < <(find "$e" -mindepth 1 ! -type d 2>/dev/null)
-  done
+    # a folder inside one that is a junction (Windows) is not walked by find as a link: refuse it, never delete through it
+    while IFS= read -r f; do _is_dir_link "$f" && return 1; done < <(find "$e" -mindepth 1 -type d 2>/dev/null)
+  done < <(find "$dir" -mindepth 1 -maxdepth 1 2>/dev/null)
   return 0
 }
 # _canon_only_agents_dir: 0 when <dir> is empty or holds only canon-*.md files that carry the canon:agent marker (the files
@@ -361,11 +362,10 @@ _canon_only_skills_dir() {
 _canon_only_agents_dir() {
   local dir="$1" e
   [ -d "$dir" ] && ! _is_dir_link "$dir" || return 1
-  for e in "$dir"/* "$dir"/.[!.]*; do
-    [ -e "$e" ] || [ -L "$e" ] || continue
+  while IFS= read -r e; do
     case "$(basename "$e")" in canon-*.md) ;; *) return 1 ;; esac
     { [ -f "$e" ] && [ ! -L "$e" ] && grep -qF "canon:agent" "$e"; } || return 1
-  done
+  done < <(find "$dir" -mindepth 1 -maxdepth 1 2>/dev/null)
   return 0
 }
 # _remove_canon_only_dir <dir>: after one of the checks above. Deletes the files one by one, then the folders deepest first; rmdir
@@ -421,7 +421,7 @@ upsert_skills_symlinks() {
           ln -sfn "$skill_file" "$skill_dir/SKILL.md"   # t-50f7: the old location's link, re-pointed at current
           echo "  [skill-dir]  updated: $skill_dir"
         fi
-        [ -d "$skill_dir" ] && _link_skill_children "$skill_dir" "$(dirname "$skill_file")"
+        [ -d "$skill_dir" ] && [ ! -L "$skill_dir" ] && ! _is_dir_link "$skill_dir" && _link_skill_children "$skill_dir" "$(dirname "$skill_file")"
       fi
     else
       _create_dir_link "$target" "$link"
