@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-04-2026 11:31
+learnings-sweep last run: 11-04-2026 15:25
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-04 | [t-1917](.tickets/t-1917/learnings.md) | A CSS state spec that reads a colour while a transition runs passes whether or not the rule works, and `:focus-within` never matches across an iframe (so the tint never showed): turn transitions off, compare exact expected values, click as a user does, and prove the spec with a mutant that flips it, not by a revert that happened to fail once. | UNPROMOTED |
 | 2026-11-04 | [t-43a7](.tickets/t-43a7/learnings.md) | One prompt text written for one repo layout (`.tickets/` ignored) shipped to both: when text tells an agent what to do about a layout, branch on the same check the tool uses (one helper) and test both layouts; the old fixture silently ran the other layout, so check which one a fixture really is before trusting its assertions. | UNPROMOTED |
 | 2026-11-04 | [t-c91a](.tickets/t-c91a/learnings.md) | A fixture that performs a step in the same checkout the command later reads (t-2906's tracked-`.tickets/` case closed the ticket in main) hides the layout it was written for: build the fixture through the real flow (close only in the worktree) and add a second layout, or the gap ships and a Windows test finds it. | UNPROMOTED |
 | 2026-11-04 | [t-fe82](.tickets/t-fe82/learnings.md) | Removing a field also removes what it implicitly did (a saved preference kept a worktree row out of the "N other worktrees" fold): grep specs for the behaviour, not just the field name, and run the full board spec once, since a focused `-g` missed the one test that clicked the now-folded row. | UNPROMOTED |
