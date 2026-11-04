@@ -581,19 +581,19 @@ tproj="$(make_project)"; trap 'rm -rf "$project" "$stub" "$tproj"' EXIT
 cd "$tproj"; git remote add origin https://github.com/acme/app.git
 tid="$("$TKT" create "Tracked ticket" -t task -p 2 -d "## Problem
 x")"
-tbody="$("$TKT" send-issue "$tid" --dry-run 2>/dev/null)"
-printf '%s\n' "$tbody" | grep -qxF "6. Run \`tkt export $tid\`: .tickets/ is tracked in this repository, so it only writes the machine log. Then commit .tickets/$tid/" \
-  || fail "a tracked project's issue lacks the tracked step 6: $(printf '%s\n' "$tbody" | grep '^6\.')"
-printf '%s\n' "$tbody" | grep -qxF "   (the sprint docs, reports and that log) on the PR branch and push it." || fail "the tracked step 6 lacks its second line"
-printf '%s\n' "$tbody" | grep -qxF "   If \`sprint complete\` could not pass, still run \`tkt export $tid\` and commit .tickets/$tid/, and say in the PR which step failed and why." \
+"$TKT" send-issue "$tid" --dry-run > "$stub/tbody" 2>/dev/null
+grep -qxF "6. Run \`tkt export $tid\`: .tickets/ is tracked in this repository, so it only writes the machine log. Then commit .tickets/$tid/" "$stub/tbody" \
+  || fail "a tracked project's issue lacks the tracked step 6: $(grep '^6\.' "$stub/tbody")"
+grep -qxF "   (the sprint docs, reports and that log) on the PR branch and push it." "$stub/tbody" || fail "the tracked step 6 lacks its second line"
+grep -qxF "   If \`sprint complete\` could not pass, still run \`tkt export $tid\` and commit .tickets/$tid/, and say in the PR which step failed and why." "$stub/tbody" \
   || fail "the tracked 'could not pass' line does not say to commit the folder"
-! printf '%s\n' "$tbody" | grep -q "push nothing else" || fail "a tracked project's issue still says push nothing else"
+! grep -q "push nothing else" "$stub/tbody" || fail "a tracked project's issue still says push nothing else"
 # Follow it literally, as the cloud session would: export, then commit the folder.
 git add -A >/dev/null; git -c user.name=t -c user.email=t@t commit -qm "base"
 git switch -q -c work
 "$TKT" export "$tid" >/dev/null 2>&1 || fail "tkt export failed in the tracked project"
 git add ".tickets/$tid"; git -c user.name=t -c user.email=t@t commit -qm "ticket folder"
-git show --stat --format= HEAD | grep -q "evidence/cloud/machine.log" || fail "the PR branch's commit lacks evidence/cloud/machine.log: $(git show --stat --format= HEAD)"
+git show --stat --format= HEAD > "$stub/stat"; grep -q "evidence/cloud/machine.log" "$stub/stat" || fail "the PR branch's commit lacks evidence/cloud/machine.log: $(git show --stat --format= HEAD)"
 echo "send-issue: a tracked .tickets/ project gets the commit-the-folder step 6, and following it puts machine.log in the PR"
 cd "$project"
 
