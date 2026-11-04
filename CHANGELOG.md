@@ -6,7 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
-Board page and daemon: run `canon update`, reload the board and restart the daemon.
+## [0.43.5] - 2026-11-04
+
+Board page and board program: run `canon update`, then reload the board. The Cockpit daemon is unchanged, so there is nothing to restart.
 
 ### Changed
 - New Ticket no longer has a Worktree row: Sprint Start's Worktree section is the one place that choice is made. The saved `worktree_preference` is gone from the card, the ticket dialog and the rail, and a worktree is no longer listed as "reserved" (an old ticket file that still has the line loads fine; it is ignored).
