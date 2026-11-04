@@ -13112,6 +13112,7 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
       await page.evaluate(c => window.postMessage({ source: 'canon-cockpit', type: 'pane-info', meter: '', cwd: c }, '*'), fits);
       await expect(page.locator('#paneCwdText')).toHaveText(fits);
       expect(await page.locator('#paneCwd').evaluate(el => el.scrollWidth <= el.clientWidth), 'a short path is not clipped').toBe(true);
+      expect(await page.locator('#paneCwd').evaluate(el => getComputedStyle(el).color), 'the folder is a step brighter than the meter').toBe('rgb(139, 152, 169)');   // --dim, not --faint
       const long = '/Users/sunitjoshi/' + 'a-very-long-folder-name/'.repeat(12) + 'canon-site';
       await page.setViewportSize({ width: 700, height: 600 });
       await page.evaluate(c => window.postMessage({ source: 'canon-cockpit', type: 'pane-info', meter: '', cwd: c }, '*'), long);
