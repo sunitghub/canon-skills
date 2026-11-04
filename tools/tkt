@@ -1660,6 +1660,7 @@ cmd_github_doctor() {
   case "${1:-}" in --json) json=true ;; "") ;; *) echo "Usage: tkt github-doctor [--json]" >&2; exit 1 ;; esac
   local root; root="$(dirname "$(tickets_dir)")"
   local ids=() sts=() titles=() details=() fixk=() fixv=()
+  _doctor_windows() { case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*) return 0 ;; *) return 1 ;; esac; }
   _gd() { ids+=("$1"); sts+=("$2"); titles+=("$3"); details+=("$4"); fixk+=("${5:-}"); fixv+=("${6:-}"); }
   local login
   if ! command -v gh >/dev/null 2>&1; then
@@ -1685,7 +1686,10 @@ cmd_github_doctor() {
     else
       # t-9955: no origin at all is usually a project that has never been on GitHub: create it private (on a free plan the issue's
       # "never push main" text is the only guard) and connect it in one step.
-      _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: ${err}. No repo on GitHub yet? This creates one, private, and connects it. Already have a repo on GitHub? Run git remote add origin https://github.com/<owner>/<repo>.git" cmd "gh repo create $(basename "$root") --private --source=. --remote=origin --push"
+      # t-11e6: --source is the project's absolute folder (quoted; the Windows form on Windows), so the copied command works from any terminal
+      local srcdir="$root" winhint=""
+      if _doctor_windows; then srcdir="$(cygpath -w "$root" 2>/dev/null || echo "$root")"; winhint=" Run it in a terminal opened after Git was installed (a window opened earlier cannot find git)."; fi
+      _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: ${err}. No repo on GitHub yet? This creates one, private, and connects it, publishing the folder ${srcdir}.${winhint} Already have a repo on GitHub? Run git remote add origin https://github.com/<owner>/<repo>.git" cmd "gh repo create $(basename "$root") --private --source=\"${srcdir}\" --remote=origin --push"
     fi
   fi
   local tree; tree="$(git -C "$root" ls-tree HEAD -- scripts/test.sh 2>/dev/null)" || tree=""
@@ -1693,7 +1697,10 @@ cmd_github_doctor() {
     _gd tests ok "Check & merge test command: scripts/test.sh" "Before merging, Check & merge runs it on main + the PR in a scratch clone, after you confirm."
   else
     # t-9641: say what the command is for, that it is optional, and both ways to add one
-    _gd tests warn "No test command (optional)" "Check & merge can run your tests on main and the PR before it merges. This project has no executable scripts/test.sh, so it merges on the gates alone. To test first, either add scripts/test.sh and make it executable (chmod +x), or run tkt merge-pr <id> --test \"<your test command>\"."
+    local mkexec="make it executable (chmod +x)"
+    # t-11e6: chmod means nothing on Windows: the executable bit lives in git's index, and Git Bash runs a script without it
+    _doctor_windows && mkexec="make it executable (git update-index --chmod=+x scripts/test.sh; Git Bash runs it without the bit)"
+    _gd tests warn "No test command (optional)" "Check & merge can run your tests on main and the PR before it merges. This project has no executable scripts/test.sh, so it merges on the gates alone. To test first, either add scripts/test.sh and ${mkexec}, or run tkt merge-pr <id> --test \"<your test command>\"."
   fi
   local i n=${#ids[@]}
   if ! $json; then

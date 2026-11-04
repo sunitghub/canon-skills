@@ -29,11 +29,14 @@ gate_scope_create() {
   dir="$(mktemp -d)" || return 1
   mkdir -p "$dir/home" "$dir/canon" "$dir/tmp" "$dir/xdg"
   # t-9fb1: the dispatcher runs in the user's REAL environment, so it records the home and canon home the guard must keep a gate away from
-  local rhome rcanon; _gate_scope_resolve "${HOME:-}"; rhome="$_GS_R"; _gate_scope_resolve "${CANON_HOME:-${HOME:-}/.canon}"; rcanon="$_GS_R"
+  local rhome rcanon proj; _gate_scope_resolve "${HOME:-}"; rhome="$_GS_R"; _gate_scope_resolve "${CANON_HOME:-${HOME:-}/.canon}"; rcanon="$_GS_R"
+  proj="$(basename "$PWD")"; [[ "$proj" == *$'\n'* ]] && proj=""   # t-11e6: the refusal names the project the gate runs in; no name beats a split record
   if [[ "$rhome$rcanon" == *$'\n'* ]]; then   # a newline cannot live in a line-based record: no home=/canon= lines, so the old rule applies (fail closed)
-    printf 'dir=%s\ncreated=%s\n' "$dir" "$(date +%s)" > "$reg/$(_gate_scope_key "$1")"
+    printf 'dir=%s\ncreated=%s\n%s' "$dir" "$(date +%s)" "${proj:+project=$proj
+}" > "$reg/$(_gate_scope_key "$1")"
   else
-    printf 'dir=%s\ncreated=%s\nhome=%s\ncanon=%s\n' "$dir" "$(date +%s)" "$rhome" "$rcanon" > "$reg/$(_gate_scope_key "$1")"
+    printf 'dir=%s\ncreated=%s\nhome=%s\ncanon=%s\n%s' "$dir" "$(date +%s)" "$rhome" "$rcanon" "${proj:+project=$proj
+}" > "$reg/$(_gate_scope_key "$1")"
   fi
   printf '%s' "$dir"
 }
@@ -77,9 +80,12 @@ _gate_scope_under() {  # <path> <dir>: the path is the dir or inside it (raw or 
   return 1
 }
 
+# _gate_scope_hhmm <epoch>: local HH:MM (BSD/macOS date -r, GNU date -d); the epoch itself if neither works.
+_gate_scope_hhmm() { date -r "$1" +%H:%M 2>/dev/null || date -d "@$1" +%H:%M 2>/dev/null || echo "$1"; }
+
 # gate_scope_guard <what>: 0 to go ahead; 1 (with a message) while a live gate scope exists and HOME or CANON_HOME is the real one it recorded.
 gate_scope_guard() {
-  local reg f dir created now ttl rhome rcanon rh rc home="${HOME:-}" chome="${CANON_HOME:-${HOME:-}/.canon}"
+  local reg f dir created now ttl rhome rcanon rh rc proj home="${HOME:-}" chome="${CANON_HOME:-${HOME:-}/.canon}"
   reg="$(gate_scope_registry)"; _gate_scope_reg_ok "$reg" || return 0
   now="$(date +%s)"; ttl="${CANON_GATE_SCOPE_TTL:-7200}"
   for f in "$reg"/*; do
@@ -101,17 +107,23 @@ gate_scope_guard() {
       if [[ -n "$home" && ! "$home" -ef "$rhome" && ! "$chome" -ef "$rcanon" \
             && "$rh" != "$rhome" && "$rc" != "$rcanon" && ! "$rh" -ef "$rhome" && ! "$rc" -ef "$rcanon" ]]; then continue; fi
     elif _gate_scope_under "$home" "$dir" && _gate_scope_under "$chome" "$dir"; then continue; fi
+    # t-11e6: one line and one, no internals; the scope's path, the HOME rule and how it clears are for CANON_DEBUG=1
+    proj="$(sed -n '/^project=/{s/^project=//p;q;}' "$f")"
     {
-      echo "$1: refused. A canon close gate (reviewer/evaluator) is running and its scope is active ($dir)."
-      if [[ -n "$rhome" && -n "$rcanon" ]]; then
-        echo "  While it runs, commands that act on your REAL home and canon home are blocked, so a gate's probe cannot re-link or rewrite your projects (t-b7df);"
-        echo "  a scratch HOME and CANON_HOME (a test, a gate's own scope) are fine. This is not a fault in your install."
-      else
-        echo "  This scope was made by an older canon: until it clears, commands that act on your registered projects are blocked unless HOME and CANON_HOME point inside it (t-b7df)."
-        echo "  This is not a fault in your install."
+      if [[ -n "$proj" ]]; then echo "$1: refused — a canon close gate (reviewer/evaluator) started at $(_gate_scope_hhmm "$created") in $proj is still registered."
+      else echo "$1: refused — a canon close gate (reviewer/evaluator) is running."; fi
+      echo "  Run it again when it finishes; if no gate is running, it was interrupted and clears by $(_gate_scope_hhmm $((created + ttl)))."
+      if [[ -n "${CANON_DEBUG:-}" ]]; then
+        echo "  scope: $dir"
+        if [[ -n "$rhome" && -n "$rcanon" ]]; then
+          echo "  While it runs, commands that act on your REAL home and canon home are blocked, so a gate's probe cannot re-link or rewrite your projects (t-b7df);"
+          echo "  a scratch HOME and CANON_HOME (a test, a gate's own scope) are fine. This is not a fault in your install."
+        else
+          echo "  This scope was made by an older canon: until it clears, commands that act on your registered projects are blocked unless HOME and CANON_HOME point inside it (t-b7df)."
+          echo "  This is not a fault in your install."
+        fi
+        echo "  It clears when the gate ends (gate-snapshot.sh post), or on its own after ${ttl}s if the gate crashed."
       fi
-      echo "  It clears when the gate ends (gate-snapshot.sh post), or on its own after ${ttl}s if the gate crashed."
-      echo "  Run it again once the gate has finished."
     } >&2
     return 1
   done

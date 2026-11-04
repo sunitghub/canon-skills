@@ -29,8 +29,18 @@ assert_contains "$(cat "$snap.scope")" "TMPDIR=$scope/tmp"   # what a pi gate is
 
 # the real-path canon update is rejected, and says why and when it clears (a concurrent run of the user's own gets this message)
 out="$(HOME="$realhome" CANON_HOME="$realhome/.canon" run_fail "$CANON" update)"
-assert_contains "$out" "refused"; assert_contains "$out" "clears when the gate ends"
-assert_contains "$out" "REAL home and canon home"; assert_contains "$out" "a scratch HOME and CANON_HOME"   # t-9fb1: the message says what is blocked and what is fine
+assert_contains "$out" "refused"
+# t-11e6: one line and one, naming the gate's start and project; the internals are for CANON_DEBUG=1 only
+assert_contains "$out" "canon update: refused — a canon close gate (reviewer/evaluator) started at "
+assert_contains "$out" " in $(basename "$proj") is still registered."
+assert_contains "$out" "Run it again when it finishes; if no gate is running, it was interrupted and clears by "
+[[ "$(printf '%s\n' "$out" | grep -c .)" -le 2 ]] || fail "the default refusal must be at most two lines: $out"
+[[ "$out" != *REAL\ home* && "$out" != *t-b7df* && "$out" != *"$scope"* && "$out" != *gate-snapshot.sh* ]] || fail "the default refusal must not carry the internals: $out"
+started="$(printf '%s' "$out" | sed -n 's/.*started at \([0-2][0-9]\):[0-5][0-9] in .*/\1/p')"; clears="$(printf '%s' "$out" | sed -n 's/.*clears by \([0-2][0-9]\):[0-5][0-9]\..*/\1/p')"
+[[ -n "$started" && -n "$clears" && $(( (10#$started + 2) % 24 )) -eq $((10#$clears)) ]] || fail "start and clears-by are HH:MM, two hours (the TTL) apart: $out"
+dbg="$(HOME="$realhome" CANON_HOME="$realhome/.canon" CANON_DEBUG=1 run_fail "$CANON" update)"
+assert_contains "$dbg" "clears when the gate ends"; assert_contains "$dbg" "scope: $scope"
+assert_contains "$dbg" "REAL home and canon home"; assert_contains "$dbg" "a scratch HOME and CANON_HOME"   # t-9fb1: with CANON_DEBUG the message still says what is blocked and what is fine
 out="$(HOME="$realhome" CANON_HOME="$realhome/.canon" run_fail "$ROOT/tools/skills.sh" refresh)"
 assert_contains "$out" "refused"
 out="$(HOME="$realhome" CANON_HOME="$realhome/.canon" run_fail "$ROOT/tools/canon-uninstall.sh" --yes)"
@@ -101,12 +111,19 @@ HOME="$sh_/home" CANON_HOME="$sh_/canon" guard && fail "a record with only home=
 cp "$scratch/rec.keep" "$f"; sed -i.bak '/^home=/d' "$f"; rm -f "$f.bak"
 HOME="$sh_/home" CANON_HOME="$sh_/canon" guard && fail "a record with only canon= must keep the old rule"
 # the old-rule refusal says so (it must not tell the user a scratch HOME is fine when it is not), for an old record and for a partial one
-out="$(HOME="$sh_/home" CANON_HOME="$sh_/canon" bash -c 'source "$1"; gate_scope_guard x' _ "$ROOT/tools/gate-scope-lib.sh" 2>&1 || true)"
+out="$(HOME="$sh_/home" CANON_HOME="$sh_/canon" CANON_DEBUG=1 bash -c 'source "$1"; gate_scope_guard x' _ "$ROOT/tools/gate-scope-lib.sh" 2>&1 || true)"
 assert_contains "$out" "made by an older canon"; [[ "$out" != *"are fine"* ]] || fail "the old-rule refusal must not say a scratch HOME is fine: $out"
 cp "$scratch/rec.keep" "$f"; sed -i.bak '/^canon=/d' "$f"; rm -f "$f.bak"
-out="$(HOME="$sh_/home" CANON_HOME="$sh_/canon" bash -c 'source "$1"; gate_scope_guard x' _ "$ROOT/tools/gate-scope-lib.sh" 2>&1 || true)"
+out="$(HOME="$sh_/home" CANON_HOME="$sh_/canon" CANON_DEBUG=1 bash -c 'source "$1"; gate_scope_guard x' _ "$ROOT/tools/gate-scope-lib.sh" 2>&1 || true)"
 assert_contains "$out" "made by an older canon"
+# t-11e6: a record from an older canon has no project (and no start worth naming): the line falls back to "is running"
+cp "$scratch/rec.keep" "$f"; sed -i.bak '/^project=/d' "$f"; rm -f "$f.bak"
+out="$(HOME="$realhome" CANON_HOME="$realhome/.canon" bash -c 'source "$1"; gate_scope_guard x' _ "$ROOT/tools/gate-scope-lib.sh" 2>&1 || true)"
+assert_contains "$out" "x: refused — a canon close gate (reviewer/evaluator) is running."
+[[ "$out" != *"started at"* ]] || fail "a record without a project must not claim a start: $out"
+assert_contains "$out" "clears by "
 cp "$scratch/rec.keep" "$f"
+grep -qx "project=$(basename "$proj")" "$f" || fail "pre did not record the project the gate runs in: $(cat "$f")"
 grep -q "^home=$(cd -P "$realhome" && pwd -P)\$" "$f" && grep -q "^canon=$(cd -P "$realhome/.canon" && pwd -P)\$" "$f" || fail "pre did not record the real home and canon home: $(cat "$f")"
 
 # the pi launch environment (scope CANON_HOME + TMPDIR, real HOME) and a bare TMPDIR change are still refused (reviewer t-b7df: the registry must not hide behind TMPDIR)

@@ -27,6 +27,9 @@ id="$(printf '%s\n' "$start_output" | awk '/Sprint started:/ { print $3 }')"
 assert_file_exists ".tickets/$id/ticket.md"
 assert_file_exists "DECISIONS.md"
 assert_file_exists "HANDOFF.md"
+# t-11e6: the seed ends in a bare "## Next Steps": a "1." with nothing after it showed as an empty item in the Cockpit rail
+assert_grep '^## Next Steps$' HANDOFF.md
+! grep -qxE '[0-9]+\.' HANDOFF.md || fail "the HANDOFF seed must not carry an empty numbered Next Steps item: $(grep -nxE '[0-9]+\.' HANDOFF.md)"
 assert_eq "$id" "$(tr -d '[:space:]' < .tickets/ACTIVE)"
 
 # sprint start now scaffolds both docs with required headings
