@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.43.1] - 2026-11-03
+
+Security fix for 0.43.0. The prebuilt `canon-go` program changed, both the board and the daemon part: after `canon update`, restart the daemon (Admin's **Restart Daemon**). If you use worktrees, update from 0.43.0 now.
+
 ### Security
 - Linking a worktree no longer writes through a symlink or junction planted in it (t-f5e4). Found after 0.43.0: a branch or cloud PR whose worktree held `.claude/agents/canon-evaluator.md` (or `.claude`, `.agents`, `.gitignore`) as a link to a file outside the project could have that file overwritten with canon's agent text, created, or (a link where canon replaces a committed mirror) deleted. The daemon at a ticket's session start, the board's create-worktree and `tkt land` all link a worktree, so no user step was needed. Canon now refuses any write below a link or onto a non-regular file, says so in the link log ("is under a link" / "is not a regular file: left as is"), and the Go side opens files with `O_NOFOLLOW`. Both the Go and the bash (`skills.sh`) paths are fixed. Update from 0.43.0.
 
