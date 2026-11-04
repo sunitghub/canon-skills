@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-04-2026 03:50
+learnings-sweep last run: 11-04-2026 07:36
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-04 | [t-0a80](.tickets/t-0a80/learnings.md) | When a change alters text a neighbouring test compares (a count capped at "99+"), grep the spec for every reader of that text before the focused run, and put the neighbours in the `--grep`: the focused runs passed and the 35-minute full spec found the old test line. | UNPROMOTED |
 | 2026-11-04 | [t-11e6](.tickets/t-11e6/learnings.md) | A command text built from a folder name and meant to be pasted into a shell needs the whole denylist at once (double quote, dollar, backtick, backslash, `!`, control characters) or no command at all, and every quoted part, not only the one you were editing: the reviewer found the unquoted repo name, a security review found the missing `\`, `!` and newline. | UNPROMOTED |
 | 2026-11-04 | [t-38ab](.tickets/t-38ab/learnings.md) | A "only canon's files" check that gates a delete must list entries with `find -print0` (a `dir/* dir/.[!.]*` glob misses `..x`, line-reading splits a newline name into fragments judged against the cwd) and needs one case per proof where that proof is the ONLY reason the folder is kept; a sweep and two reviews found each hole, a green suite found none. | UNPROMOTED |
 | 2026-11-04 | [t-f5e4](.tickets/t-f5e4/learnings.md) | A guard layered under a stronger one is untested unless it has its own test: `O_NOFOLLOW` sat behind `notRegular`, so reverting it failed nothing until a direct `writeFileNoFollow` test; revert each layer alone, not the whole fix, before claiming the guards are pinned. | UNPROMOTED |
