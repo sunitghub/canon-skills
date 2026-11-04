@@ -16578,7 +16578,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.route(`**/api/ticket/${id}/github/send-preview`, async r => { await held; await json(r, { ok: true, exit_code: 0, output: 'repo: acme/app (PRIVATE)' }); });
     await openBoard(page, id);
     await page.locator(`.card[data-id="${id}"] .card-start`).click();
-    await page.locator(`.ck-worktree-row[data-cwd="${wtPath}"]`).click();
+    await (await revealWt(page, `.ck-worktree-row[data-cwd="${wtPath}"]`)).click();
     await expect(page.locator(`.ck-worktree-row[data-cwd="${wtPath}"]`)).toHaveClass(/selected/);
     await page.locator('#ck-worktree .ck-gh-row').click();
     await expect(page.locator('#ck-worktree .ck-gh-row')).toHaveClass(/selected/);
