@@ -6,6 +6,11 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+Shell tooling only: run `canon update`; nothing to restart.
+
+### Fixed
+- Check & merge no longer refuses a worktree ticket in a project that tracks `.tickets/` in git ("t-xxxx is open, not closed" although the worktree had closed it). `tkt merge` now reads the ticket's status, merged line and evaluator report from the worktree's own copy, which is where the close happened; with an ignored `.tickets/` the two copies were already equal, so nothing changes there.
+
 ## [0.43.5] - 2026-11-04
 
 Board page and board program: run `canon update`, then reload the board. The Cockpit daemon is unchanged, so there is nothing to restart.

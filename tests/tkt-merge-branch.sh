@@ -166,6 +166,49 @@ assert_grep '^status: closed$' "$f4"; assert_grep '^cloud_status: done$' "$f4"; 
 echo "merge: a block-only HANDOFF.md and the ticket's per-machine fields are set aside and kept; the Recent line is written"
 cd "$P"
 
+# t-c91a: a project that tracks .tickets/ and a ticket closed ONLY in its worktree (the real flow: copy_ticket_back does nothing
+# for a tracked .tickets/, the closed ticket and its eval-report.md reach main through this merge). Main's copy still says open.
+# The worktree's own copy decides. (The block above closes the ticket in main first, which is why this was never seen.)
+P3="$W/tracked-wt"; mkdir "$P3"; cd "$P3"; git init -q
+mkdir -p scripts; printf '#!/usr/bin/env bash\ntouch "$STUB_W/ran"\necho "suite: ok"\n' > scripts/test.sh; chmod +x scripts/test.sh
+echo base > base.txt; mkdir .tickets; printf '.cockpit-*\nACTIVE\n' > .tickets/.gitignore
+id5="$("$TKT" create "Tracked, closed in its worktree" -t task)"; f5=".tickets/$id5/ticket.md"
+git add -A; git commit -qm base
+WT5="$W/wt5"; git worktree add -q "$WT5" -b feat/z; WT5="$(cd "$WT5" && pwd -P)"
+printf '%s\n' "$WT5" > ".tickets/$id5/.cockpit-cwd"
+(cd "$WT5" && echo z > z.txt && TKT_SPRINT_GATE_PASSED=1 "$TKT" close "$id5" >/dev/null && git add -A && git commit -qm "the branch and the closed ticket")
+printf 'evaluator-run-id: 1-1\ngraded-head: %s\n## Verdict\npass: all met\n' "$(git -C "$WT5" rev-parse HEAD)" > "$WT5/.tickets/$id5/eval-report.md"
+(cd "$WT5" && git add -A && git commit -qm "eval report (late docs)")
+assert_grep '^status: open$' "$f5"; assert_grep '^status: closed$' "$WT5/$f5"   # the premise: main open, the worktree closed
+[[ ! -e ".tickets/$id5/eval-report.md" ]] || fail "the premise is wrong: main already has the eval report"
+id_s="$id"; f_s="$f"; WT_s="$WT"; id="$id5"; f="$f5"; WT="$WT5"   # refuses/sig read these
+out="$("$TKT" merge "$id5" --check < /dev/null 2>&1)" || fail "merge --check refused a tracked-.tickets ticket closed in its worktree: $out"
+assert_contains "$out" "merge: ready: would run scripts/test.sh on main + feat/z, then merge"
+echo "merge --check: a tracked .tickets/ ticket closed only in its worktree is ready"
+# The worktree's copy is the authority: main says closed, the worktree reopened it.
+sed -i.bak 's/^status: open$/status: closed/' "$f5" && rm -f "$f5.bak"
+sed -i.bak 's/^status: closed$/status: open/' "$WT5/$f5" && rm -f "$WT5/$f5.bak"
+refuses "a copy reopened in the worktree (main's copy says closed)" "is open, not closed" --yes
+git checkout -q -- "$f5"; git -C "$WT5" checkout -q -- "$f5"
+# A link in the worktree's path is never read: main's copy (open) decides.
+mv "$WT5/.tickets/$id5" "$W/ext5"; ln -s "$W/ext5" "$WT5/.tickets/$id5"
+refuses "a symlinked worktree ticket folder (main's copy is open)" "is open, not closed" --yes
+rm "$WT5/.tickets/$id5"; mv "$W/ext5" "$WT5/.tickets/$id5"
+# merged: in the worktree's copy refuses too.
+awk '/^---$/ && ++n == 2 { print "merged: abc1234" } { print }' "$WT5/$f5" > "$W/t5" && mv "$W/t5" "$WT5/$f5"
+refuses "a worktree copy that already says merged" "is already merged (abc1234)" --yes
+git -C "$WT5" checkout -q -- "$f5"
+# The merge: main moves, and main's own copy now reads closed (it arrived through the merge).
+rm -f "$W/ran"; m5="$(git rev-parse main)"
+out="$("$TKT" merge "$id5" --yes < /dev/null 2>&1)" || fail "merge --yes failed for a tracked-.tickets ticket closed in its worktree: $out"
+assert_file_exists "$W/ran"
+assert_contains "$out" "Merged feat/z into main ("
+assert_eq "$m5" "$(git rev-parse main^1)"
+assert_grep '^status: closed$' "$f5"
+[[ -f ".tickets/$id5/eval-report.md" ]] || fail "the eval report did not arrive with the merge"
+echo "merge --yes: a tracked .tickets/ ticket closed only in its worktree merges, and main's copy closes with it"
+id="$id_s"; f="$f_s"; WT="$WT_s"; cd "$P"
+
 # runs: github goes to merge-pr, unchanged.
 id3="$("$TKT" create "Cloud" -t task)"; f3=".tickets/$id3/ticket.md"
 awk '/^---$/ && ++n == 2 { print "runs: github" } { print }' "$f3" > "$W/t" && mv "$W/t" "$f3"

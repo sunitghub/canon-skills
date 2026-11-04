@@ -2040,14 +2040,26 @@ cmd_merge() {
 # moves to it through _advance_local, so an edited file there stops it with nothing changed, as merge-pr's update does.
 # Every refusal says why and changes nothing: no ref, no file, no ticket field.
 _merge_branch() {
-  local tdir root wt branch base head graded bsha dirty st
+  local tdir root wt branch base head graded bsha dirty st src
   tdir="$(dirname "$file")"; id="$(get_field "$file" id)"
   root="$(git -C "$tdir" rev-parse --show-toplevel)" || exit 1
   _mb_no() { echo "merge: $1" >&2; exit 1; }
-  st="$(get_field "$file" status)"
+  # t-c91a: the close happened in the worktree, so its own copy of the ticket (status, merged, eval-report.md) decides. Main's copy
+  # only equals it when .tickets is ignored (copy_ticket_back); a project that tracks .tickets/ gets the closed ticket through this
+  # merge, so main's copy is still open here. A link anywhere in that path is never read: main's copy stays the fallback.
+  src="$tdir"
+  if [[ -f "$tdir/.cockpit-cwd" ]]; then
+    wt="$(_ticket_cwd_binding "$file")"
+    if [[ -n "$wt" && ! -L "$wt/.tickets" && ! -L "$wt/.tickets/$id" && -f "$wt/.tickets/$id/ticket.md" && ! -L "$wt/.tickets/$id/ticket.md" && ! -L "$wt/.tickets/$id/eval-report.md" ]]; then
+      src="$wt/.tickets/$id"
+    fi
+  fi
+  st="$(get_field "$src/ticket.md" status)"
   [[ "$st" == closed ]] || _mb_no "$id is ${st:-without a status}, not closed: close it with sprint complete in its worktree first"
   [[ -z "$(get_field "$file" merged)" ]] || _mb_no "$id is already merged ($(get_field "$file" merged))"
-  graded="$(_eval_pass_head merge "$tdir" "$id" "close it with sprint complete in its worktree first")" || exit 1
+  [[ -z "$(get_field "$src/ticket.md" merged)" ]] || _mb_no "$id is already merged ($(get_field "$src/ticket.md" merged))"
+  [[ -f "$src/eval-report.md" ]] || src="$tdir"   # the report may live only in main's copy (the evaluator ran there)
+  graded="$(_eval_pass_head merge "$src" "$id" "close it with sprint complete in its worktree first")" || exit 1
   [[ -f "$tdir/.cockpit-cwd" ]] || _mb_no "$id is not bound to a worktree (no .tickets/$id/.cockpit-cwd), so there is no branch to merge"
   wt="$(_ticket_cwd_binding "$file")"
   [[ -d "$wt" ]] || _mb_no "$id's worktree $wt is gone; merge its branch by hand"
