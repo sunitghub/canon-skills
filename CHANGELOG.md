@@ -6,7 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
-Board page and daemon page: run `canon update`, reload the board and restart the daemon (the pane's page changed).
+## [0.44.0] - 2026-11-04
+
+Board page and daemon page: run `canon update`, reload the board and restart the daemon (Admin's **Restart Daemon**): the session pane's page changed.
 
 ### Changed
 - The session pane is a rounded card with a hairline border that tints toward the accent while it has focus. Its header keeps the agent picker, Start, the session's folder, the cache meter and the font size; Kill, the model text and the state text are gone from it (End session's dialog has "End without saving", or "Just end" for a scratch session, and the Agents list shows the state).
