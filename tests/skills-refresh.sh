@@ -225,4 +225,37 @@ rf_proj; e8="$RF_NEW"; out8="$(mktemp -d)"; RF_DIRS+=("$out8"); rm -rf "$e8/.cla
 [[ -d "$out8/skills" && ! -L "$out8/skills" ]] || fail "t-38ab: an empty skills/ behind a planted .claude link was replaced or removed"
 [[ ! -e "$out8/agents" ]] || fail "t-38ab: a link was made behind a planted .claude link"
 
+# 7. each proof is the ONLY reason a folder is kept (a guard no case fails without is no guard): nothing here may be replaced by the link
+keep_real() {   # keep_real <label> <dir that must stay a real folder>
+  [[ -d "$2" && ! -L "$2" ]] || fail "t-38ab: $1: a folder canon cannot prove is its own was replaced"
+}
+k1="$(make_project)"; RF_DIRS+=("$k1"); "$SKILLS" add sprint "$k1" >/dev/null 2>&1; rm -rf "${k1:?}/.claude/skills" "${k1:?}/.agents/skills"
+mkdir -p "$k1/.claude/skills/sprint"; printf 'OLD COPY\n' > "$k1/.claude/skills/sprint/SKILL.md"   # a stale copy and nothing else
+"$SKILLS" refresh "$k1" >/dev/null 2>&1; keep_real "a differing copy" "$k1/.claude/skills"
+assert_eq "OLD COPY" "$(cat "$k1/.claude/skills/sprint/SKILL.md")"
+k2="$(make_project)"; RF_DIRS+=("$k2"); "$SKILLS" add sprint "$k2" >/dev/null 2>&1; rm -rf "${k2:?}/.claude/skills" "${k2:?}/.agents/skills"
+mkdir -p "$k2/.claude/skills"; cp -R "$ROOT/skills/sprint" "$k2/.claude/skills/sprint"; printf 'my notes\n' > "$k2/.claude/skills/sprint/notes.md"   # identical copy plus the user's own file
+"$SKILLS" refresh "$k2" >/dev/null 2>&1; keep_real "a user file inside a canon skill folder" "$k2/.claude/skills"
+assert_eq "my notes" "$(cat "$k2/.claude/skills/sprint/notes.md")"
+k3="$(make_project)"; RF_DIRS+=("$k3"); "$SKILLS" add sprint "$k3" >/dev/null 2>&1; rm -rf "${k3:?}/.claude/skills" "${k3:?}/.agents/skills"
+mkdir -p "$k3/.claude/skills/sprint"; ln -s /etc/hosts "$k3/.claude/skills/sprint/SKILL.md"   # a link that lands outside canon
+"$SKILLS" refresh "$k3" >/dev/null 2>&1; keep_real "a link to a file outside canon" "$k3/.claude/skills"
+[[ "$(readlink "$k3/.claude/skills/sprint/SKILL.md")" == /etc/hosts ]] || fail "t-38ab: a link outside canon was re-pointed or removed"
+k4="$(make_project)"; RF_DIRS+=("$k4"); "$SKILLS" add sprint "$k4" >/dev/null 2>&1; rm -rf "${k4:?}/.claude/skills" "${k4:?}/.agents/skills"
+mkdir -p "$k4/.claude/skills"; printf 'a file\n' > "$k4/.claude/skills/sprint"   # a FILE named like a canon skill
+"$SKILLS" refresh "$k4" >/dev/null 2>&1; keep_real "a file named like a canon skill" "$k4/.claude/skills"
+assert_eq "a file" "$(cat "$k4/.claude/skills/sprint")"
+k5="$(make_project)"; RF_DIRS+=("$k5"); "$SKILLS" add sprint "$k5" >/dev/null 2>&1; rm -rf "${k5:?}/.claude/agents"
+mkdir -p "$k5/.claude/agents"; printf 'no marker, canon name\n' > "$k5/.claude/agents/canon-reviewer.md"
+"$SKILLS" refresh "$k5" >/dev/null 2>&1; keep_real "a canon-named agent file without the marker" "$k5/.claude/agents"
+assert_eq "no marker, canon name" "$(cat "$k5/.claude/agents/canon-reviewer.md")"
+k6="$(make_project)"; RF_DIRS+=("$k6"); "$SKILLS" add sprint "$k6" >/dev/null 2>&1; rm -rf "${k6:?}/.claude/agents"
+mkdir -p "$k6/.claude/agents"; ln -s "$ROOT/agents/canon-reviewer.md" "$k6/.claude/agents/canon-reviewer.md"   # a link, not canon's own copy
+"$SKILLS" refresh "$k6" >/dev/null 2>&1; keep_real "an agent file that is a link" "$k6/.claude/agents"
+# a child the project already has in a canon skill folder is its own: not replaced, nothing linked inside it
+k7="$(make_project)"; RF_DIRS+=("$k7"); "$SKILLS" add sprint "$k7" >/dev/null 2>&1; rm -rf "${k7:?}/.claude/skills" "${k7:?}/.agents/skills"
+mkdir -p "$k7/.claude/skills/mine" "$k7/.claude/skills/sprint/reference"; printf 'x\n' > "$k7/.claude/skills/mine/SKILL.md"; printf 'mine\n' > "$k7/.claude/skills/sprint/reference/own.md"
+"$SKILLS" refresh "$k7" >/dev/null 2>&1
+[[ -d "$k7/.claude/skills/sprint/reference" && ! -L "$k7/.claude/skills/sprint/reference" && "$(cat "$k7/.claude/skills/sprint/reference/own.md")" == mine && ! -e "$k7/.claude/skills/sprint/reference/reference" ]] || fail "t-38ab: a reference/ the project already had was replaced or linked into"
+
 printf 'skills-refresh: ok\n'
