@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -364,9 +365,42 @@ func TestLinkWorktreeNeverWritesThroughPlantedLinks(t *testing.T) {
 		victim := filepath.Join(out, "shared-ignore")
 		must(t, os.WriteFile(victim, []byte("node_modules\n"), 0o644))
 		plant(t, victim, filepath.Join(wt, ".gitignore"))
-		LinkWorktree(canon, wt)
+		did := LinkWorktree(canon, wt)
 		if b, _ := os.ReadFile(victim); string(b) != "node_modules\n" {
 			t.Errorf("the outside .gitignore was appended to: %q", b)
 		}
+		if !strings.Contains(strings.Join(did, "\n"), "is not a regular file: left as is") {
+			t.Errorf("the refusal must be reported, got %q", did)
+		}
 	})
+}
+
+// t-f5e4, prod path: every file canon writes into a worktree (the agent copies, the ignore file) goes through writeFileNoFollow.
+// notRegular refuses a link first, so this is the layer under it: a link swapped in between the check and the open must still not
+// be followed. Windows has no O_NOFOLLOW (noFollow is 0 there).
+func TestWriteFileNoFollowRefusesALink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("no O_NOFOLLOW on Windows")
+	}
+	dir, out := t.TempDir(), t.TempDir()
+	live := filepath.Join(out, "live")
+	must(t, os.WriteFile(live, []byte("keep"), 0o644))
+	plant(t, live, filepath.Join(dir, "to-live"))
+	plant(t, filepath.Join(out, "gone"), filepath.Join(dir, "to-gone"))
+	for _, l := range []string{"to-live", "to-gone"} {
+		if writeFileNoFollow(filepath.Join(dir, l), []byte("canon")) == nil {
+			t.Errorf("%s: a write through a link must fail", l)
+		}
+	}
+	if b, _ := os.ReadFile(live); string(b) != "keep" {
+		t.Errorf("the linked file was written: %q", b)
+	}
+	if exists(filepath.Join(out, "gone")) {
+		t.Error("a dangling link made the write create its target")
+	}
+	plain := filepath.Join(dir, "plain")
+	must(t, writeFileNoFollow(plain, []byte("canon")))
+	if b, _ := os.ReadFile(plain); string(b) != "canon" {
+		t.Errorf("a plain file must be written: %q", b)
+	}
 }
