@@ -59,10 +59,12 @@ out2="$(cd "$sp" && PATH="$NOGH_PATH" "$TKT" github-doctor --json)"
 assert_eq "bad|No GitHub repository for this project|gh repo create \"my project\" --private --source=\"$sproot\" --remote=origin --push|" "$(check "$out2" origin)"
 assert_contains "$(field "$out" "d['checks'][2]['detail']")" "make it executable (chmod +x)"
 # a folder name with a character that is unsafe in a pasted command gets no command at all, and says why
-bad="$W/bad\$name"; mkdir -p "$bad"; git -C "$bad" init -q
-outb="$(cd "$bad" && PATH="$NOGH_PATH" "$TKT" github-doctor --json)"
-assert_eq "bad|No GitHub repository for this project|nofix" "$(check "$outb" origin)"
-assert_contains "$(field "$outb" "d['checks'][1]['detail']")" "not safe in a command you paste"
+for unsafe in 'bad$name' 'bad`id`' 'bad"q' 'bad\slash' 'bad!x' $'bad\nline'; do
+  bad="$W/$unsafe"; mkdir -p "$bad"; git -C "$bad" init -q
+  outb="$(cd "$bad" && PATH="$NOGH_PATH" "$TKT" github-doctor --json)"
+  assert_eq "bad|No GitHub repository for this project|nofix" "$(check "$outb" origin)"
+  assert_contains "$(field "$outb" "d['checks'][1]['detail']")" "not safe in a command you paste"
+done
 # t-11e6, Windows (a stubbed uname and cygpath): the folder in Windows form, the new-terminal hint, and the git index way to make it executable
 mkdir -p "$W/win"
 printf '#!/usr/bin/env bash\necho MINGW64_NT-10.0-22631\n' > "$W/win/uname"; printf '#!/usr/bin/env bash\nprintf "%%s\\n" "C:\\Users\\me\\My Project"\n' > "$W/win/cygpath"; chmod +x "$W/win/uname" "$W/win/cygpath"

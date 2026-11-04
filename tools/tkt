@@ -1690,8 +1690,8 @@ cmd_github_doctor() {
       local srcdir="$root" winhint="" repo_name; repo_name="$(basename "$root")"
       if _doctor_windows; then srcdir="$(cygpath -w "$root" 2>/dev/null || echo "$root")"; winhint=" Run it in a terminal opened after Git was installed (a window opened earlier cannot find git)."; fi
       case "$root" in
-        *[\"\$\`]*)   # a command meant to be pasted into a shell must not carry a quote, a dollar or a backtick from a folder name
-          _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: ${err}. This folder's name has a character (a double quote, a dollar sign or a backtick) that is not safe in a command you paste: rename the folder, or run gh repo create yourself. Already have a repo on GitHub? Run git remote add origin https://github.com/<owner>/<repo>.git" ;;
+        *[\"\$\`\\!]*|*[[:cntrl:]]*)   # a command meant to be pasted into a shell must not carry a quote, dollar, backtick, backslash, "!" (history expansion) or a control character (a newline splits it in two) from a folder name
+          _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: ${err}. This folder's name has a character (a double quote, dollar sign, backtick, backslash, exclamation mark or control character) that is not safe in a command you paste: rename the folder, or run gh repo create yourself. Already have a repo on GitHub? Run git remote add origin https://github.com/<owner>/<repo>.git" ;;
         *)
           _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: ${err}. No repo on GitHub yet? This creates one, private, and connects it, publishing the folder ${srcdir}.${winhint} Already have a repo on GitHub? Run git remote add origin https://github.com/<owner>/<repo>.git" cmd "gh repo create \"${repo_name}\" --private --source=\"${srcdir}\" --remote=origin --push" ;;
       esac

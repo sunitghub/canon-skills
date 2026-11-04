@@ -183,4 +183,9 @@ g env || fail "a scope older than the TTL (default 2h) must be stale, not block 
 real_env "$TOOL" pre "$snap" >/dev/null; f="$(ls "$reg"/*)"; rm -rf "$(sed -n 's/^dir=//p' "$f")"
 g env || fail "a scope whose scratch dir is gone must be stale"
 
+# t-11e6: a control character in the working folder's name (a tab, an escape) never reaches the recorded project name, so it never reaches the terminal
+ctl="$scratch/ctl"$'\t'"x"$'\033'"y"; mkdir -p "$ctl"
+(cd "$ctl" && CANON_GATE_SCOPE_DIR="$scratch/registry-ctl" HOME="$realhome" CANON_HOME="$realhome/.canon" bash -c 'source "$1"; gate_scope_create "$2" >/dev/null' _ "$ROOT/tools/gate-scope-lib.sh" "$scratch/snap-ctl")
+recorded="$(sed -n 's/^project=//p' "$scratch"/registry-ctl/*)"
+[[ "$recorded" == "ctlxy" ]] || fail "the recorded project name must lose its control characters (ctl<TAB>x<ESC>y -> ctlxy): $(printf '%s' "$recorded" | od -c | head -2)"
 echo "gate-scope: ok (pre makes a scope, real-path canon update/skills/uninstall refused with reason and clear-time, pinned and read-only pass, post ends it, stale by age and by missing dir)"
