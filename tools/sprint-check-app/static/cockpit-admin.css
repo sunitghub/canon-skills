@@ -154,7 +154,7 @@
   .ag-row .sdot{width:8px;height:8px}
   .ag-ring{box-sizing:border-box;width:10px!important;height:10px!important;background:transparent!important;border:2px solid color-mix(in srgb,var(--st) 28%,transparent);border-top-color:var(--st);animation:ag-spin .9s linear infinite}
   @keyframes ag-spin{to{transform:rotate(360deg)}}
-  .ag-pill{font-size:10px;font-weight:700;letter-spacing:.02em;color:#2b1a06;background:#f0a64a;border-radius:6px;padding:1px 7px;white-space:nowrap}   /* Herdr's "Needs you": orange in both themes, dark ink */
+  .ag-pill{font-size:10px;font-weight:700;letter-spacing:.02em;color:var(--st-ink);background:var(--amber);border-radius:6px;padding:1px 7px;white-space:nowrap}   /* Herdr's orange "Needs you" pill, from the theme's own amber */
   .st-not-started .ag-t1{font-style:italic;color:var(--text-muted)}
   @media (prefers-reduced-motion:reduce){.ag-ring{animation:none}}
   @container ag (max-width:260px){.ag-row .ag-at{display:none}}
