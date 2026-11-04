@@ -80,8 +80,8 @@ export async function fetchWorktreeLock(ticketId) {
 export async function renderCockpitWorktree(t) {
   const tab = cockpitState; // the tab being rendered — cockpitState may move to another tab across the awaits below
   // t-644a: hide the whole accordion section for a non-git project — same
-  // live state.isGitProject check the New Ticket modal's Worktree row uses,
-  // not cached at registration so it reappears once git init happens.
+  // live state.isGitProject check, not cached at registration, so it reappears
+  // once git init happens.
   const section = document.getElementById('ck-worktree-section');
   if (section) section.style.display = state.isGitProject ? '' : 'none';
   // t-d218: no worktree choice exists outside git, so there's nothing to pick — run in the project

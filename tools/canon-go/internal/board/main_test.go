@@ -311,6 +311,30 @@ func TestCreateTicketSkills(t *testing.T) {
 	}
 }
 
+// t-fe82: POST /api/tickets ignores a worktree_preference in the payload (an old client or script may still send one).
+func TestPostTicketIgnoresWorktreePreference(t *testing.T) {
+	setupTestProject(t)
+	body := `{"title":"legacy client","type":"task","status":"open","priority":2,"body":"","worktree_preference":"sprint/legacy"}`
+	req := httptest.NewRequest("POST", "http://127.0.0.1/api/tickets", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handle(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("POST /api/tickets status = %d: %s", rec.Code, rec.Body.String())
+	}
+	var created ticket
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil || created["id"] == nil {
+		t.Fatalf("no ticket in reply: %v %s", err, rec.Body.String())
+	}
+	raw, err := os.ReadFile(filepath.Join(ticketsDir, created["id"].(string), "ticket.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "worktree_preference") {
+		t.Fatalf("ticket.md must not carry the retired field:\n%s", raw)
+	}
+}
+
 // t-fe82: ticketFM feeds /api/worktrees holds; a missing file or a file with no frontmatter is "not a ticket",
 // and a legacy worktree_preference line is just another ignored key.
 func TestTicketFMStatusOnly(t *testing.T) {
