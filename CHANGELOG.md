@@ -6,6 +6,11 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+Shell tooling only: run `canon update`; nothing to restart.
+
+### Fixed
+- A cloud session on a project that tracks `.tickets/` in git now reports its machine: the issue's step 6 told the session to run `tkt export` and "push nothing else", which is right only for an ignored `.tickets/` (export pushes a `canon-results` branch there). With a tracked `.tickets/` export only writes `evidence/cloud/machine.log`, so the log stayed uncommitted and the PR never carried the Linux machine. For a tracked project step 6 now says to commit `.tickets/<id>/` on the PR branch and push it; an ignored project's text is unchanged.
+
 ## [0.43.6] - 2026-11-04
 
 Shell tooling only: run `canon update`; nothing to restart.

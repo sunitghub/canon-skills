@@ -9,6 +9,8 @@ stub="$(mktemp -d "${TMPDIR:-/tmp}/tkt-send-issue.XXXXXX")"
 use_fresh_board "$stub/bin"   # t-4c09: the audit event goes through the board binary
 trap 'rm -rf "$project" "$stub"' EXIT
 cd "$project"
+# t-43a7: this project ignores .tickets/ (the canon-results layout), so step 6 below is the ignored text; a tracked project is further down.
+printf '.tickets/\n' >> .git/info/exclude   # not a .gitignore: an untracked file would count as a changed one below
 
 # A stub gh that logs every call and plays a repo: STUB_VIS (PRIVATE or PUBLIC), STUB_FAIL=create fails issue create,
 # STUB_FAIL=view fails repo view (signed out), STUB_FAIL=label fails label create, STUB_LABEL=empty lists no label
@@ -571,5 +573,28 @@ CEOF
   r="$(PTY_CWD="$project_real/sub" ptyrun "$(fresh subdir)" flag)" || fail "--launch from a subdirectory failed: $r"
   assert_grep "^cwd=$project_real$" "$STUB_CLAUDE_LOG"
 fi
+
+# t-43a7: a project that TRACKS .tickets/ (no ignore rule): export pushes nothing there, so step 6 tells the session to commit the folder
+# on the PR branch. The ignored text above ("push nothing else") must not appear, and following the new text literally puts the
+# machine log into the PR branch's commit (the Machines node reads it back after import-results).
+tproj="$(make_project)"; trap 'rm -rf "$project" "$stub" "$tproj"' EXIT
+cd "$tproj"; git remote add origin https://github.com/acme/app.git
+tid="$("$TKT" create "Tracked ticket" -t task -p 2 -d "## Problem
+x")"
+tbody="$("$TKT" send-issue "$tid" --dry-run 2>/dev/null)"
+printf '%s\n' "$tbody" | grep -qxF "6. Run \`tkt export $tid\`: .tickets/ is tracked in this repository, so it only writes the machine log. Then commit .tickets/$tid/" \
+  || fail "a tracked project's issue lacks the tracked step 6: $(printf '%s\n' "$tbody" | grep '^6\.')"
+printf '%s\n' "$tbody" | grep -qxF "   (the sprint docs, reports and that log) on the PR branch and push it." || fail "the tracked step 6 lacks its second line"
+printf '%s\n' "$tbody" | grep -qxF "   If \`sprint complete\` could not pass, still run \`tkt export $tid\` and commit .tickets/$tid/, and say in the PR which step failed and why." \
+  || fail "the tracked 'could not pass' line does not say to commit the folder"
+! printf '%s\n' "$tbody" | grep -q "push nothing else" || fail "a tracked project's issue still says push nothing else"
+# Follow it literally, as the cloud session would: export, then commit the folder.
+git add -A >/dev/null; git -c user.name=t -c user.email=t@t commit -qm "base"
+git switch -q -c work
+"$TKT" export "$tid" >/dev/null 2>&1 || fail "tkt export failed in the tracked project"
+git add ".tickets/$tid"; git -c user.name=t -c user.email=t@t commit -qm "ticket folder"
+git show --stat --format= HEAD | grep -q "evidence/cloud/machine.log" || fail "the PR branch's commit lacks evidence/cloud/machine.log: $(git show --stat --format= HEAD)"
+echo "send-issue: a tracked .tickets/ project gets the commit-the-folder step 6, and following it puts machine.log in the PR"
+cd "$project"
 
 echo "tkt-send-issue: ok"

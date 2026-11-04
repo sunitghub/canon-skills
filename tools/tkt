@@ -1333,8 +1333,14 @@ cmd_send_issue() {
     else
       printf '5. Run `sprint complete`: a fresh reviewer and a fresh evaluator are dispatched, and neither is skipped or written by hand.\n'
     fi
-    printf '6. Run `tkt export %s` and push nothing else for it: export prints where the ticket went.\n' "$id"
-    printf '   If `sprint complete` could not pass, still run `tkt export %s`, and say in the PR which step failed and why.\n' "$id"
+    if _tickets_tracked "$root" "$id"; then   # t-43a7: export pushes nothing here; the folder (docs, reports, machine log) rides in the PR
+      printf '6. Run `tkt export %s`: .tickets/ is tracked in this repository, so it only writes the machine log. Then commit .tickets/%s/\n' "$id" "$id"
+      printf '   (the sprint docs, reports and that log) on the PR branch and push it.\n'
+      printf '   If `sprint complete` could not pass, still run `tkt export %s` and commit .tickets/%s/, and say in the PR which step failed and why.\n' "$id" "$id"
+    else
+      printf '6. Run `tkt export %s` and push nothing else for it: export prints where the ticket went.\n' "$id"
+      printf '   If `sprint complete` could not pass, still run `tkt export %s`, and say in the PR which step failed and why.\n' "$id"
+    fi
     printf '7. Then stop. Do not merge the PR, watch it, or act on CI results or review comments: the merge happens on the user'"'"'s machine\n'
     printf '   (`tkt import-results %s --pr <N>`, then `tkt merge-pr %s`, N being the PR number). Reply with both commands, N filled in,\n' "$id" "$id"
     printf '   and say you are done.\n'
@@ -2913,6 +2919,10 @@ cmd_take_back() {
 # _export_machine_log <root> <ticket dir> — t-2560: export runs in the cloud session, so it records that machine for the ticket's
 # Machines node in evidence/cloud/machine.log, in the evidence header form (no hostname). A subfolder: sprint check-evidence never
 # reads it. Skipped when the board program has no `machine` (an older canon): nothing is guessed.
+# _tickets_tracked <root> <id> — t-43a7: true when the project tracks this ticket's folder (it is not gitignored), so the folder goes back
+# with the PR instead of on a canon-results branch. The one owner: cmd_export acts on it and send-issue words the issue's step 6 by it.
+_tickets_tracked() { ! git -C "$1" check-ignore -q ".tickets/$2/ticket.md"; }
+
 _export_machine_log() {
   local line head
   line="$(machine_line)" && [[ -n "$line" ]] || return 0
@@ -2942,7 +2952,7 @@ cmd_export() {
   fi
   grep -qiE '^[[:space:]]*- \[x\] Plan approved' "$tdir/plan.md" 2>/dev/null \
     || echo "export: WARNING: the plan in $id/plan.md is not approved (its Sign-off box is unticked)." >&2
-  if ! git -C "$root" check-ignore -q "$rel/ticket.md"; then
+  if _tickets_tracked "$root" "$id"; then
     _export_machine_log "$root" "$tdir"
     echo "export: .tickets/ is tracked here, so $rel/ goes back with the PR: commit it on the PR branch. On your machine: tkt import-results $id --pr <N>, then tkt merge-pr $id"; return 0
   fi
