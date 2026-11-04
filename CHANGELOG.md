@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Fixed
+
+- `tkt merge-pr` now reads the linked GitHub issue after the merge and closes it (comment "Landed in PR #N (merge <sha>)") if GitHub left it open; it says "issue #N closed" or "was already closed", and a failed read or close is reported while the merge stays recorded. The merge is recorded once: `merge-pr` and the board's `github-status` poll take a lock in the ticket folder, so there is one `MERGED` entry and one event (t-9807).
+
 ## [0.44.0] - 2026-11-04
 
 Board page and daemon page: run `canon update`, reload the board and restart the daemon (Admin's **Restart Daemon**): the session pane's page changed.
