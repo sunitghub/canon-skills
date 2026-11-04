@@ -905,6 +905,7 @@ export function editScratchTitle() {
       const v = input.value.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 80);
       t.title = v || 'Scratch session';
       announceScratchTabs();
+      window.dispatchEvent(new Event('canon:tabs-changed'));   // t-d0ed: the tab pill's tooltip carries the title
       postToTab(cockpitState, { type: 'set-title', title: v });
     }
     document.getElementById('ck-tc-title').textContent = t.title;

@@ -3,13 +3,14 @@
 // own beyond choosing which button a card shows. A ticket with runs: github (and its github: link, no merged: line) is
 // out on GitHub: it shows in In progress (board-helpers.js effectiveStatus) with a GitHub chip and one stage button instead of Start.
 import { state } from './board-core.js';
-import { closeTab, cockpitState, openTerminalPane } from './board-cockpit.js';
+import { cockpitState, openTerminalPane } from './board-cockpit.js';
 import { esc, escAttr, isWindowsBrowser } from './board-helpers.js';
 import { render, showToast } from './board-render.js';
 import { boardHidden, loadData, SHELL_TAB } from './board-core.js';
 import { resetPanelDrag, resetPanelResize } from './board-panels.js';
 
 const POLL_MS = 120000;          // github-status per card out on GitHub; the server caches each for 30 s
+const FAST_POLL_MS = 30000;      // t-d0ed: a card still waiting for its cloud session's first push or PR is checked this often (the server caches 30 s)
 const MERGE_POLL_MS = 2000;
 const STALE_DAYS = 3;          // t-6f51: a send with no PR and no issue activity for this long reads as stale in the picker
 const RECENT_S = 300;           // t-3741: a file written this recently starts unticked in Commit and push
@@ -62,6 +63,20 @@ function cloudWorking(st) {
   return !Number.isNaN(at) && Date.now() - at < CLOUD_WORKING_MS;
 }
 // t-2560: on Windows To Claude Cloud copies the command (the board's Terminal cannot start a cloud session there yet).
+// t-d0ed (t-c8c8): canon cannot see a cloud session start, so it remembers on this machine that the command was copied for a ticket
+// (memory and localStorage, with the time); the card then offers a quieter `Started?` and asks before copying it again.
+const CLOUD_COPIED_KEY = 'canon-cloud-copied';
+const cloudCopied = new Map();
+try {
+  for (const [k, v] of Object.entries(JSON.parse(localStorage.getItem(CLOUD_COPIED_KEY) || '{}'))) if (/^t-[a-z0-9]{4}$/.test(k) && Number.isFinite(v)) cloudCopied.set(k, v);
+} catch { /* storage refused or not JSON: start empty */ }
+function recordCloudCopy(id) {
+  cloudCopied.set(id, Date.now());
+  try { localStorage.setItem(CLOUD_COPIED_KEY, JSON.stringify(Object.fromEntries(cloudCopied))); } catch { /* the page's life only */ }
+  render();   // the card swaps To Claude Cloud for Started?
+}
+// The project's root as a person types it: backslashes on Windows. The board has it from /api/git.
+const projectRootText = () => { const r = state.gitRoot || ''; return r && isWindowsBrowser() ? r.replace(/\//g, '\\') : r; };
 function toCloudTip() {
   return isWindowsBrowser() ? 'Copies the command: paste it in PowerShell or Git Bash in the project folder and press Enter'
     : 'Open the Terminal with the command typed (you press Enter)';
@@ -109,7 +124,11 @@ export function ghButtonHTML(t) {
   if (st.stage === 'branch') return btn('open-pr', 'Create PR', `The session pushed ${st.branch} without a PR: create one. If its cloud session may still be running, wait: it opens the PR itself when it finishes`);
   // t-d7b7: a ticket sent earlier (from a terminal, or a board tab since closed) starts its cloud session from its card, the same
   // To Claude Cloud as the Sent panel's (launchToCloud): the line is typed in a Terminal, never run for you.
-  if (st.stage === 'sent') return btn('to-cloud', 'To Claude Cloud', toCloudTip()) + issue;
+  if (st.stage === 'sent') {
+    const at = cloudCopied.get(t.id);
+    const started = at ? btn('started', 'Started?', `Copied at ${new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}. If you started it, the card moves on once the session pushes; click to copy again`).replace('card-start card-gh-btn', 'card-start card-gh-btn quiet') : '';
+    return (started || btn('to-cloud', 'To Claude Cloud', toCloudTip())) + issue;
+  }
   return issue;
 }
 
@@ -139,6 +158,11 @@ async function ghAction(t, action) {
   if (action === 'close-here') return closeHere(t, pr);
   if (action === 'finish') return finishHere(t);
   if (action === 'to-cloud') return launchToCloud(t, msg => showToast(msg));
+  if (action === 'started') {
+    const v = await openDialog({ title: `Start another cloud session for ${t.id}?`, body: `A cloud session may already be running for issue #${p ? p.issue : '?'}. Start another one?`, ok: 'Start another', cancel: 'Cancel' });
+    if (!v || !v.ok) return;
+    return launchToCloud(t, msg => showToast(msg));
+  }
 }
 
 // ── Continue here (t-c259, renamed t-6623): a cloud PR whose gates did not pass on its head is closed on this machine ──────────────
@@ -251,6 +275,14 @@ export async function pollGithub(force) {
   const out = (state.tickets || []).filter(ghOut);
   if (!out.length) return;
   await Promise.all(out.map(fetchStatus));
+  render();
+}
+// The cards that wait on the cloud (sent, or a branch with no PR yet) are asked sooner than the 2-minute tick: that is when the first push shows.
+async function pollWaiting() {
+  if (boardHidden()) return;
+  const waiting = (state.tickets || []).filter(t => ghOut(t) && ['sent', 'branch'].includes(stageOf(t).stage));
+  if (!waiting.length) return;
+  await Promise.all(waiting.map(fetchStatus));
   render();
 }
 // A card that just appeared out on GitHub gets its stage at once, not at the next 2-minute tick.
@@ -819,24 +851,27 @@ async function launchToCloud(t, say) {
   const typed = `tkt send-issue ${t.id} --launch`;
   let copied = false;
   try { await navigator.clipboard.writeText(typed); copied = true; } catch { copied = false; }
+  const root = projectRootText(), where = root ? `${root} (the project's root folder, the one with .tickets/)` : 'the project\'s root folder';
   if (isWindowsBrowser()) {
-    say(copied ? 'Copied. Windows: paste this in PowerShell or Git Bash in the project folder and press Enter. The board\'s Terminal cannot start a cloud session on Windows yet.'
-      : `Copy was blocked: type "${typed}" in PowerShell or Git Bash in the project folder. The board's Terminal cannot start a cloud session on Windows yet.`);
+    say(copied ? `Copied. Windows: open PowerShell or Git Bash in ${where}, paste, and press Enter. The board's Terminal cannot start a cloud session on Windows yet.`
+      : `Copy was blocked: type "${typed}" in PowerShell or Git Bash in ${where}. The board's Terminal cannot start a cloud session on Windows yet.`);
+    recordCloudCopy(t.id);
     return;
   }
   // t-3d04: also copied, so it is ready to paste while the Terminal starts; t-ccf5: below, so the caller's panel stays on screen
   await openTerminalPane('below', { fresh: true, typeLine: typed });
+  recordCloudCopy(t.id);
   say(copied ? 'Copied. It is also typed in the Terminal: press Enter.' : 'Copy was blocked, but the command is typed in the Terminal: press Enter.');
 }
 
 function showSent(panel, t, tab) {
-  const { n, url, line, cmd } = tab.ghSent;
+  const { n, line, cmd } = tab.ghSent;
   panel.innerHTML = `<div class="ck-gh-box ck-gh-sent" id="ck-gh-sent">
       <h3>Sent ${esc(t.id)} as issue #${esc(n)}</h3>
-      ${line ? `<p>Start a Claude cloud session on the canon environment and type:</p><pre class="ck-gh-pre ck-gh-prompt" id="ck-gh-prompt">${esc(line)}</pre>${cmd ? `<p>Or paste this in a terminal window in this project (a real terminal; it is refused inside a Claude session):</p><pre class="ck-gh-pre ck-gh-prompt" id="ck-gh-cmd">${esc(cmd)}</pre>` : ''}` : `<p>Start a Claude cloud session on the canon environment and point it at issue #${esc(n)}.</p>`}
+      ${line ? `<p>Start a Claude cloud session on the canon environment and type:</p><pre class="ck-gh-pre ck-gh-prompt" id="ck-gh-prompt">${esc(line)}</pre>` : `<p>Start a Claude cloud session on the canon environment and point it at issue #${esc(n)}.</p>`}
       <p>The card is in In progress and shows the next step.</p>
-      <p class="ck-gh-prereq" id="ck-gh-prereq">First time on this repository? The cloud session needs the Claude GitHub App installed on it and the canon environment (Factory › GitHub › Cloud environment). After you change the environment's setup script, start a new session: an open one keeps the old script.</p>
-      <div class="ck-gh-actions">${cmd ? `<button type="button" class="ck-gh-create" id="ck-gh-to-cloud" title="${escAttr(toCloudTip())}">To Claude Cloud</button><button type="button" id="ck-gh-copy-cmd">Copy command</button>` : ''}${line ? `<button type="button" id="ck-gh-copy">Copy prompt</button>` : ''}${url ? `<button type="button" id="ck-gh-open" title="Issue #${esc(n)} on GitHub">Issue ↗</button>` : ''}<button type="button" id="ck-gh-dismiss">Close tab</button><span class="ck-gh-status" id="ck-gh-status" role="status"></span></div>
+      ${doctor.state === 'ready' ? '' : `<p class="ck-gh-prereq" id="ck-gh-prereq">First time on this repository? The cloud session needs the Claude GitHub App installed on it and the canon environment (Factory › GitHub › Cloud environment). After you change the environment's setup script, start a new session: an open one keeps the old script.</p>`}
+      <div class="ck-gh-actions">${cmd ? `<button type="button" class="ck-gh-create" id="ck-gh-to-cloud" title="${escAttr(toCloudTip())}">To Claude Cloud</button><button type="button" id="ck-gh-copy-cmd" title="For a real terminal in this project; refused inside a Claude session">Copy command</button>` : ''}${line ? `<button type="button" id="ck-gh-copy">Copy prompt</button>` : ''}<span class="ck-gh-status" id="ck-gh-status" role="status"></span></div>
     </div>`;
   const copyText = async (text) => {
     const s = document.getElementById('ck-gh-status');
@@ -849,12 +884,6 @@ function showSent(panel, t, tab) {
     const status = document.getElementById('ck-gh-status');   // opening the Terminal rebuilds this panel: look it up at say-time
     if (status) status.textContent = msg;
   }));
-  document.getElementById('ck-gh-open')?.addEventListener('click', () => openUrl(url));
-  // The work is in the cloud now, so the tab has nothing left to show: close it (closeTab never ends a session).
-  document.getElementById('ck-gh-dismiss').addEventListener('click', () => {
-    tab.ghSent = null; hideGithubPanel();
-    if (tab.id) closeTab(tab.id);
-  });
 }
 
 // ── GitHub Sync (t-90a3): the dry run first, then one sync on Create ──────────────────────────────────────────
@@ -931,7 +960,7 @@ export function initGithub() {
   pre.addEventListener('scroll', () => { dlgFollow = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 4; });
   document.getElementById('btn-gh-sync').addEventListener('click', syncFromGithub);
   ensureDoctor();   // t-9641: the Sync button's state
-  if (!pollTimer) pollTimer = setInterval(() => pollGithub(false), POLL_MS);
+  if (!pollTimer) { pollTimer = setInterval(() => pollGithub(false), POLL_MS); setInterval(pollWaiting, FAST_POLL_MS); }
   document.addEventListener('visibilitychange', () => { if (!document.hidden) { pollGithub(false); ensureDoctor(); } });
   // t-f053: the Cockpit hides a board with its view container, which fires no visibilitychange in an iframe; it focuses the
   // frame when the board comes back, so a Check fixed in Factory re-enables Sync. ensureDoctor stays bounded by DOCTOR_RETRY_MS.

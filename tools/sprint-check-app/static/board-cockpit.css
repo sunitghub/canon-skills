@@ -359,12 +359,11 @@
     .ck-accordion-section.collapsed .ck-accordion-chevron { transform: rotate(-90deg); }
     .ck-accordion-section.collapsed .ck-accordion-body { display: none; }
     .ck-term { flex: 1; min-width: 0; position: relative; background: var(--panel2, #0d131c);
-      /* t-1917: the session pane is a card: a hairline border and rounded corners, tinted toward the accent while it has focus (a focused
+      /* t-1917: the session pane is a card: a hairline border and rounded corners, tinted toward the accent whenever it is the visible session, stronger while the frame holds focus (a focused
          iframe does not make its wrapper match :focus-within, so initCockpit sets .pane-focus when the frame holds focus). */
-      border: 1px solid color-mix(in srgb, var(--text) 10%, transparent); border-radius: 10px; overflow: hidden; margin: 10px; transition: border-color .12s; }
-    .ck-term.pane-focus { border-color: color-mix(in srgb, var(--accent) 42%, transparent); }
+      border: 1px solid color-mix(in srgb, var(--accent) 42%, transparent); border-radius: 10px; overflow: hidden; margin: 10px; transition: border-color .12s; }
+    .ck-term.pane-focus { border-color: color-mix(in srgb, var(--accent) 64%, transparent); }
     .ck-term iframe { width: 100%; height: 100%; border: 0; display: block; }
-
     /* The message and (t-d538) the Track changes buttons stack in one centered column, so a
        message that wraps in a narrow pane pushes the buttons down instead of covering them. */
     .ck-term-msg-wrap {
@@ -542,6 +541,7 @@
     .card-start.answer { background: var(--st-need); color: var(--st-ink); }
     .card-start.open { background: var(--surface-hover); color: var(--text); border: 1px solid var(--border-hover); }
     .column-needs { font-size: 11px; font-weight: 600; color: var(--st-need); margin-left: auto; margin-right: 6px; }
+    .card-start.quiet { background: transparent; color: var(--text-muted); border: 1px solid var(--border); }   /* t-d0ed: Started? after the cloud command was copied */
     .card-start.working { background: transparent; color: var(--st-work); border: 1px solid var(--st-work); cursor: help; }   /* t-187e */
     html[data-theme="light"] .card-start.working { color: var(--th-warn-ink, #b45309); border-color: var(--th-warn-ink, #b45309); }   /* --st-work (#df8e1d) is too pale for 11px text on a light card (2.4:1), as .ready-flag found */
     .card-start.disabled, .card-start:disabled { background: var(--surface-raised); color: var(--text-muted); cursor: not-allowed; }
