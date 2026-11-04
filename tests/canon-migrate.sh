@@ -66,7 +66,8 @@ register() {   # <home> <project...>: the Cockpit registry plus a skills.sh add 
 # ── C8: the old updater moves the clone to v1.0.0 in place, then the new code's update moves it into the layout ─────────────────────────────────
 A="$H/my canon çé"   # CANON_HOME: a space and non-ASCII letters
 old_install "$A" v0.9.0
-mkdir -p "$W/p1" "$W/p2/.claude/skills"; git -C "$W/p1" init -q -b main; git -C "$W/p2" init -q -b main
+mkdir -p "$W/p1" "$W/p2/.claude/skills/mine"; git -C "$W/p1" init -q -b main; git -C "$W/p2" init -q -b main
+printf "mine\n" > "$W/p2/.claude/skills/mine/SKILL.md"   # t-38ab: a project-local skill keeps p2 in the per-skill layout (a folder of only canon files becomes the link)
 git -C "$W/p1" "${ig[@]}" commit -q --allow-empty -m init
 run "$A" bash "$A/tools/skills.sh" add sprint "$W/p1" >/dev/null 2>&1 || fail "skills.sh add sprint (old layout) failed"
 run "$A" bash "$A/tools/skills.sh" add efficiency "$W/p1" >/dev/null 2>&1 || fail "skills.sh add efficiency (old layout) failed"
