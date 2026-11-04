@@ -2913,16 +2913,16 @@ cmd_take_back() {
   if $close; then echo "take-back: $id is back on this machine; $gh closed"; else echo "take-back: $id is back on this machine ($gh left open)"; fi
 }
 
+# _tickets_tracked <root> <id> — t-43a7: true when the project tracks this ticket's folder (it is not gitignored), so the folder goes back
+# with the PR instead of on a canon-results branch. The one owner: cmd_export acts on it and send-issue words the issue's step 6 by it.
+_tickets_tracked() { ! git -C "$1" check-ignore -q ".tickets/$2/ticket.md"; }
+
 # cmd_export <id> — t-554c: at the close of a cloud sprint, sends .tickets/<id>/ back. A tracked .tickets/ rides in the PR;
 # an ignored one (canon's own) goes to the branch canon-results/<id>, built from a temporary index so the checkout and
 # the real index are never touched, holding only that folder.
 # _export_machine_log <root> <ticket dir> — t-2560: export runs in the cloud session, so it records that machine for the ticket's
 # Machines node in evidence/cloud/machine.log, in the evidence header form (no hostname). A subfolder: sprint check-evidence never
 # reads it. Skipped when the board program has no `machine` (an older canon): nothing is guessed.
-# _tickets_tracked <root> <id> — t-43a7: true when the project tracks this ticket's folder (it is not gitignored), so the folder goes back
-# with the PR instead of on a canon-results branch. The one owner: cmd_export acts on it and send-issue words the issue's step 6 by it.
-_tickets_tracked() { ! git -C "$1" check-ignore -q ".tickets/$2/ticket.md"; }
-
 _export_machine_log() {
   local line head
   line="$(machine_line)" && [[ -n "$line" ]] || return 0
