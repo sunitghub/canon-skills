@@ -8107,6 +8107,45 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
+  // t-0a80, protects the Cockpit rail's STATUS box (handoffNextSteps -> renderCockpitState): a "## Next Steps" with only the handoff END marker or a lone
+  // "1." (an old seed) draws no "Next steps:" label over nothing; a real step still draws both.
+  for (const [label, body, shows] of [
+    ['only the END marker', '\n\n<!-- canon:handoff:END -->\n', false],
+    ['a lone "1."', '\n1.\n\n<!-- canon:handoff:END -->\n', false],
+    ['a real step', '\n1.\n2. Run `sprint complete` to close TID.\n\n<!-- canon:handoff:END -->\n', true],
+  ]) {
+    test(`STATUS draws a Next steps block only when there is a step: ${label} (t-0a80) @webkit`, async ({ page }) => {
+      const id = newTicketId(PROJECT_ROOT, '0a80');
+      try {
+        writeTicket(id, 'in_progress', {
+          acceptanceCriteria: ['- [ ] a criterion'],
+          plan: ['# Plan', '', '## Sign-off', 'Tier: normal', '', '- [x] Plan approved', '', '## Approach', 'x', ''],
+        });
+        await stubCockpit(page);
+        await page.route('**/api/handoff', route => route.fulfill({
+          status: 200, contentType: 'application/json',
+          body: JSON.stringify({ raw: `# Handoff\n\n<!-- canon:handoff:BEGIN -->\n## Current Focus\n${id} — build it\n\n## Next Steps${body.replace('TID', id)}` }),
+        }));
+        await page.goto(BASE);
+        await page.waitForLoadState('networkidle');
+        await page.locator('#board-search').fill(id);
+        await page.locator(`.card[data-id="${id}"] .card-start`).click();
+        await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+        await expect(page.locator('#ck-state')).toContainText(`${id} — build it`);   // the Current Focus is there: the box rendered
+        if (shows) {
+          await expect(page.locator('#ck-state')).toContainText('Next steps');
+          await expect(page.locator('#ck-state')).toContainText('sprint complete');
+          await expect(page.locator('#ck-state')).not.toContainText('canon:handoff');
+        } else {
+          await expect(page.locator('#ck-state')).not.toContainText('Next steps');
+          await expect(page.locator('#ck-state .ck-state-source', { hasText: 'Next steps' })).toHaveCount(0);   // (the Current Focus has its own .ck-state-source label)
+        }
+      } finally {
+        removeTestTicket(PROJECT_ROOT, id);
+      }
+    });
+  }
+
   test('rail state (t-0d2b): fold/unfold and a dragged width survive ← Board, a return and a tab switch @webkit', async ({ page }) => {
     const a = newTicketId(PROJECT_ROOT, '0d2a');
     const b = newTicketId(PROJECT_ROOT, '0d2b');
@@ -19775,6 +19814,90 @@ test.describe('NOW lane and hidden lanes (t-0447)', () => {
       const f = document.querySelector('#board .column-folded').getBoundingClientRect();
       return Math.abs(r.right - parseFloat(cs.paddingRight) - parseFloat(cs.borderRightWidth) - f.right);
     })).toBeLessThanOrEqual(2);
+  });
+
+  // t-0a80, protects the folded lane's strip (renderBoard, board-lanes.css): the card count is a badge, horizontal, inside the 32 px strip, above the
+  // vertical name, with the count in the tooltip; it follows the lane's cards on the next poll; a lane with no cards has no badge; readable in both themes.
+  test('a folded lane\'s strip carries its card count as a badge, inside the strip, above the name, readable in both themes (t-0a80) @webkit', async ({ page }) => {
+    write({ status: 'open', tags: '' });
+    await page.addInitScript(() => { try { for (const k of Object.keys(localStorage)) if (k.startsWith('sprint-check-hidden-lanes')) localStorage.removeItem(k); } catch {} });
+    await open(page);
+    const n = Number((await page.locator('.column:has(.column-body[data-status="open"]) .column-count').textContent()).trim());
+    expect(n).toBeGreaterThan(0);
+    await page.getByRole('button', { name: 'Hide Open', exact: true }).click();
+    const strip = page.getByRole('button', { name: 'Show Open', exact: true });
+    await expect(strip).toBeVisible();
+    const badge = strip.locator('.column-count');
+    await expect(badge).toHaveText(n > 99 ? '99+' : String(n));   // past 99 the badge says 99+ so it fits the strip; the tooltip keeps the exact count
+    await expect(strip).toHaveAttribute('title', `Show Open (${n} hidden)`);
+    await expect(strip).toHaveAttribute('aria-description', `${n} card${n === 1 ? '' : 's'} hidden`);
+    const sb = await strip.boundingBox(), bb = await badge.boundingBox(), nb = await strip.locator('.column-strip-name').boundingBox();
+    expect(bb.width).toBeGreaterThanOrEqual(18); expect(bb.height).toBeGreaterThanOrEqual(18);   // a clipped or tiny badge still passes toBeVisible
+    const geo = `badge ${JSON.stringify(bb)} strip ${JSON.stringify(sb)}`;
+    expect(bb.x, geo).toBeGreaterThanOrEqual(sb.x - 0.5); expect(bb.x + bb.width, geo).toBeLessThanOrEqual(sb.x + sb.width + 0.5);   // inside the strip
+    expect(bb.y, geo).toBeGreaterThanOrEqual(sb.y - 0.5); expect(bb.y + bb.height, geo).toBeLessThanOrEqual(sb.y + sb.height + 0.5);
+    expect(bb.y + bb.height).toBeLessThanOrEqual(nb.y + 1);                                       // above the vertical name, not beside or under it
+    expect(bb.width).toBeGreaterThan(bb.height * 0.9); expect(sb.width).toBeLessThan(60);          // horizontal text in a thin strip
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+      const c = await badge.evaluate(e => { const cs = getComputedStyle(e); return { color: cs.color, bg: cs.backgroundColor }; });
+      expect(contrastOf(c.color, c.bg), `${theme}: badge ${c.color} on ${c.bg}`).toBeGreaterThanOrEqual(4.5);
+      await page.locator('#board .column-folded').screenshot({ path: test.info().outputPath(`strip-${n}-${theme}.png`) });   // the run's own output folder
+    }
+    // a second ticket lands in the lane while it is folded: the badge follows on the next poll, no reload
+    write({ status: 'open', tags: '', title: 'second open fixture' });
+    await expect(strip).toHaveAttribute('title', `Show Open (${n + 1} hidden)`, { timeout: 30000 });   // the tooltip carries the exact count, even past 99
+    await expect(badge).toHaveText(n + 1 > 99 ? '99+' : String(n + 1));
+  });
+
+  // t-0a80: the badge fits the 32 px strip at 1, 12 and past 99 cards ("99+", exact count in the tooltip), the same height each time, in both themes
+  // (screenshots in the run's output folder). The open lane's cards are replaced by k clones so the numbers do not depend on the copied tickets.
+  for (const k of [1, 12, 120]) {
+    test(`the folded strip's badge fits at ${k} card${k === 1 ? '' : 's'} (t-0a80) @webkit`, async ({ page }) => {
+      await page.route('**/api/tickets*', async r => {
+        if (r.request().method() !== 'GET') return r.fallback();
+        const res = await fetchFull(r); const list = await res.json();
+        if (!Array.isArray(list)) return r.fulfill({ response: res, json: list });
+        const tpl = list.find(t => t.status === 'open') || list[0];
+        const rest = list.filter(t => t.status !== 'open');
+        return r.fulfill({ response: res, json: [...rest, ...Array.from({ length: k }, (_, i) => ({ ...tpl, id: `t-fk${String(i).padStart(2, '0')}`, status: 'open', tags: '', title: `Fixture card ${i}` }))] });
+      });
+      await page.addInitScript(() => { try { for (const key of Object.keys(localStorage)) if (key.startsWith('sprint-check-hidden-lanes')) localStorage.removeItem(key); } catch {} });
+      await open(page);
+      await page.getByRole('button', { name: 'Hide Open', exact: true }).click();
+      const strip = page.getByRole('button', { name: 'Show Open', exact: true });
+      const badge = strip.locator('.column-count');
+      await expect(badge).toHaveText(k > 99 ? '99+' : String(k));
+      await expect(strip).toHaveAttribute('title', `Show Open (${k} hidden)`);        // the exact count, even past 99
+      const sb = await strip.boundingBox(), bb = await badge.boundingBox(), nb = await strip.locator('.column-strip-name').boundingBox();
+      const geo = `badge ${JSON.stringify(bb)} strip ${JSON.stringify(sb)}`;
+      expect(bb.height, geo).toBeGreaterThanOrEqual(18); expect(bb.width, geo).toBeGreaterThanOrEqual(18); expect(bb.height, geo).toBeLessThanOrEqual(22);
+      expect(bb.x, geo).toBeGreaterThanOrEqual(sb.x - 0.5); expect(bb.x + bb.width, geo).toBeLessThanOrEqual(sb.x + sb.width + 0.5);   // inside the strip
+      expect(bb.y + bb.height, geo).toBeLessThanOrEqual(nb.y + 1);                                                                      // above the name
+      for (const theme of ['dark', 'light']) {
+        await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+        const c = await badge.evaluate(e => { const cs = getComputedStyle(e); return { color: cs.color, bg: cs.backgroundColor }; });
+        expect(contrastOf(c.color, c.bg), `${theme}: badge ${c.color} on ${c.bg}`).toBeGreaterThanOrEqual(4.5);
+        await page.locator('#board .column-folded').screenshot({ path: test.info().outputPath(`strip-${k}-${theme}.png`) });
+      }
+    });
+  }
+
+  // t-0a80, the other half: a lane with no cards shows no badge and no count in its tooltip (the aria-label and tooltip stay the plain "Show <Lane>").
+  test('a folded lane with no cards has no badge and a plain tooltip (t-0a80) @webkit', async ({ page }) => {
+    await page.route('**/api/tickets*', async r => {
+      if (r.request().method() !== 'GET') return r.fallback();
+      const res = await fetchFull(r); const list = await res.json();
+      return r.fulfill({ response: res, json: Array.isArray(list) ? list.filter(t => t.status !== 'cancelled') : list });
+    });
+    await page.addInitScript(() => { try { for (const k of Object.keys(localStorage)) if (k.startsWith('sprint-check-hidden-lanes')) localStorage.removeItem(k); } catch {} });
+    await open(page);
+    await page.getByRole('button', { name: 'Hide Discarded', exact: true }).click();
+    const strip = page.getByRole('button', { name: 'Show Discarded', exact: true });
+    await expect(strip).toBeVisible();
+    await expect(strip.locator('.column-count')).toHaveCount(0);
+    await expect(strip).toHaveAttribute('title', 'Show Discarded');
+    expect(await strip.getAttribute('aria-description')).toBeNull();
   });
 
   // Protects the per-project hidden-lanes choice (board-core.js hiddenLanes/toggleHiddenLane): the key is the board's /api/git root, so a lane

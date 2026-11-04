@@ -614,7 +614,8 @@ export function handoffDisplayState(raw, ticketId, isActive) {
 // the active sprint OR the section names its id, so an unrelated ticket's steps are
 // never shown. Returns the section text, or '' when absent/out-of-scope.
 export function handoffNextSteps(raw, ticketId, isActive) {
-  const steps = raw ? sectionContent(raw, 'Next Steps') : '';
+  // t-0a80: a section holding only the handoff END marker, an empty list marker ("1.", "-", "*") or whitespace has no steps: no label over nothing
+  const steps = (raw ? sectionContent(raw, 'Next Steps') : '').replace(/<!--[\s\S]*?-->/g, '').split('\n').filter(l => !/^\s*(\d+\.|[-*])\s*$/.test(l)).join('\n').trim();
   if (!steps) return '';
   if (isActive) return steps;
   const idRe = new RegExp('\\b' + ticketId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b');

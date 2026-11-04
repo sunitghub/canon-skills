@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Changed
+- A folded board lane's strip shows its card count as a clear badge (it was small muted vertical text), above the lane name and readable in every theme; past 99 cards it reads "99+" and the tooltip keeps the exact number (t-0a80).
+- The Cockpit rail no longer draws a "Next steps:" label over nothing when HANDOFF.md's `## Next Steps` holds only the end marker or an empty "1." (t-0a80); older HANDOFF files with a lone "1." are fixed too.
+
 ## [0.43.3] - 2026-11-04
 
 Shell tooling only: no new program, so there is no daemon to restart. Run `canon update`.

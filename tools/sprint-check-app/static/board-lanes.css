@@ -183,7 +183,13 @@
     }
     .column-strip:hover { background: var(--surface-hover); color: var(--text); }
     .column-strip-name { writing-mode: vertical-rl; white-space: nowrap; }
-    .column-strip .column-count { writing-mode: vertical-rl; }
+    /* t-0a80: on a folded strip the count is a badge (a pill, horizontal), not small muted vertical text. The fill is the theme's --text and the ink its
+       --badge-fg (near-black in Canon Dark, white in Canon Light; a derived theme sets both): the two contrast, which the accent pair does not (white on Canon Dark's purple is 3.99:1). */
+    .column-strip .column-count {
+      box-sizing: border-box; min-width: 20px; height: 20px; padding: 0 4px; border-radius: 10px;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700; color: var(--badge-fg); background: var(--text);
+    }
 
     /* t-0447: NOW's Done group: a muted sub-header, closed cards greyed */
     .column-subhead {

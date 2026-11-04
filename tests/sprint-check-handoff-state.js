@@ -99,6 +99,16 @@ ok('(j) not active but section names the id → returned',
   /Run `sprint complete`/.test(handoffNextSteps(WITH_STEPS, 't-pdry', false)), handoffNextSteps(WITH_STEPS, 't-pdry', false));
 // (k) no ## Next Steps section → ''.
 ok('(k) missing Next Steps section → empty', handoffNextSteps(LIVE, 't-pdry', true) === '', handoffNextSteps(LIVE, 't-pdry', true));
+// t-0a80, prod path: the Cockpit rail's STATUS box (renderCockpitState draws the "Next steps:" label whenever this is non-empty). A section
+// holding nothing but the handoff END marker, an empty list marker or whitespace has no steps; a real step is returned untouched.
+const seeded = body => ['## Current Focus', 'x', '', '## Next Steps', ...body, '', '<!-- canon:handoff:END -->'].join('\n');
+ok('(l) a bare heading with only the END marker → empty', handoffNextSteps(seeded([]), 't-pdry', true) === '', JSON.stringify(handoffNextSteps(seeded([]), 't-pdry', true)));
+ok('(m) a lone "1." (an old seed) → empty', handoffNextSteps(seeded(['1.']), 't-pdry', true) === '', JSON.stringify(handoffNextSteps(seeded(['1.']), 't-pdry', true)));
+ok('(n) lone "-" and "*" markers and blank lines → empty', handoffNextSteps(seeded(['-', '  *  ', '   ', '2.']), 't-pdry', true) === '', JSON.stringify(handoffNextSteps(seeded(['-', '  *  ', '   ', '2.']), 't-pdry', true)));
+ok('(o) a real step beside an empty marker is kept, the marker and END comment are not',
+  handoffNextSteps(seeded(['1.', '2. Run `sprint complete` to close t-pdry.']), 't-pdry', true) === '2. Run `sprint complete` to close t-pdry.',
+  JSON.stringify(handoffNextSteps(seeded(['1.', '2. Run `sprint complete` to close t-pdry.']), 't-pdry', true)));
+ok('(p) the END marker is never part of a returned step', !/canon:handoff/.test(handoffNextSteps(seeded(['1. A real step.']), 't-pdry', true)), handoffNextSteps(seeded(['1. A real step.']), 't-pdry', true));
 
 if (fails) { console.log(`\nsprint-check-handoff-state: ${fails} FAILED`); process.exit(1); }
 console.log('sprint-check-handoff-state: ok');

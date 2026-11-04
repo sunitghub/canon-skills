@@ -377,8 +377,9 @@ export function renderBoard() {
   // every hidden lane folds into ONE thin lane at the end, its strips stacked top to bottom (not one lane each)
   const strips = lanes.filter(l => folded.has(l.status)).map(col => {
     const n = laneCards(col).length;
-    return `<button class="column-strip ${esc(col.cls)}" type="button" data-lane="${esc(col.status)}" aria-label="Show ${esc(col.label)}" title="Show ${esc(col.label)}">
-          <span class="col-indicator"></span><span class="column-strip-name">${esc(col.label)}</span>${n ? `<span class="column-count">${n}</span>` : ''}
+    // t-0a80: the count is a badge above the name (it was small muted vertical text, easy to miss), and the tooltip says what it counts; the aria-label stays "Show <Lane>" (the specs and the tour find a strip by that exact name), the count rides in aria-description; "99+" past 99 so the badge fits the 32 px strip (the tooltip keeps the exact number)
+    return `<button class="column-strip ${esc(col.cls)}" type="button" data-lane="${esc(col.status)}" aria-label="Show ${esc(col.label)}"${n ? ` aria-description="${n} card${n === 1 ? '' : 's'} hidden"` : ''} title="Show ${esc(col.label)}${n ? ` (${n} hidden)` : ''}">
+          <span class="col-indicator"></span>${n ? `<span class="column-count">${n > 99 ? '99+' : n}</span>` : ''}<span class="column-strip-name">${esc(col.label)}</span>
         </button>`;
   }).join('');
   board.innerHTML = lanes.filter(l => !folded.has(l.status)).map(col => {
