@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-03-2026 18:21
+learnings-sweep last run: 11-03-2026 22:27
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-04 | [t-38ab](.tickets/t-38ab/learnings.md) | A "only canon's files" check that gates a delete must list entries with `find -print0` (a `dir/* dir/.[!.]*` glob misses `..x`, line-reading splits a newline name into fragments judged against the cwd) and needs one case per proof where that proof is the ONLY reason the folder is kept; a sweep and two reviews found each hole, a green suite found none. | UNPROMOTED |
 | 2026-11-04 | [t-f5e4](.tickets/t-f5e4/learnings.md) | A guard layered under a stronger one is untested unless it has its own test: `O_NOFOLLOW` sat behind `notRegular`, so reverting it failed nothing until a direct `writeFileNoFollow` test; revert each layer alone, not the whole fix, before claiming the guards are pinned. | UNPROMOTED |
 | 2026-11-03 | [t-74d8](.tickets/t-74d8/learnings.md) | A rule kept in two languages (Go for the board and daemon, bash for skills.sh) drifts unless one test runs both over the same inputs: t-12f8 fixed only the bash side and every Cockpit worktree closed on fallback agents for weeks; tests/worktree-links-parity.sh now holds them equal. And "is a linked worktree" means --git-dir differs from --git-common-dir, not "the .git is a file" (a submodule has one too). | UNPROMOTED |
 | 2026-11-03 | [t-0d77](.tickets/t-0d77/learnings.md) | A test for a "not on screen" guard must build the exact state the guard tells apart: Admin and Factory opened from Projects left `activeTab` off the project, so dropping the view-active check still passed (evaluator round 1); and on WebKit a direct `showView()` from a test leaves focus in the hidden board, so the next key never reaches the shell (round 2). | UNPROMOTED |
