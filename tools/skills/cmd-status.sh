@@ -31,11 +31,13 @@ cmd_status() {
   compute_hook_status
 
   # ── Registered skills ────────────────────────────────────────────────────
-  local _printed_skills_header=false _skills_moved=false
+  local _printed_skills_header=false _skills_moved=false _link_fix=""
   render_skill_status_list
   if $_skills_moved; then
     echo ""
     echo "  The skill paths or links point somewhere else: this project was moved or copied, or canon was installed again."
+    # t-38ab: refresh replaces a real folder only when it holds nothing but canon's own files
+    [ -z "$_link_fix" ] || echo "  If refresh does not clear it, a real folder is where the link belongs: remove $_link_fix, then run skills.sh refresh $project_dir"
   fi
 
   # ── Upgrade tip (merged with hook fix when both apply) ────────────────────

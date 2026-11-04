@@ -221,8 +221,25 @@ cmd_refresh() {
     [[ "$sname" == "sprint" ]] && _refresh_has_sprint=true
   done < <(registered_skill_names "$agents_file")
 
+  # t-38ab: refresh and status read the same facts (skill_problems): never "All up to date." over a problem status reports
+  local any_problem=false srow rname rpath rprobs rp rfix=""
+  while IFS= read -r srow; do
+    rname=$(skill_row_name "$srow"); rpath=$(skill_row_path "$srow")
+    [ -z "$rname" ] && continue
+    rprobs="$(skill_problems "$rname" "$rpath")"
+    while IFS= read -r rp; do
+      [ -n "$rp" ] || continue
+      any_problem=true
+      case "$rp" in
+        "stale link "*|"missing link "*) rfix=" — remove ${rp#* link } (a real folder is where the link belongs and holds files canon cannot prove are its own), then run refresh again" ;;
+        *) rfix="" ;;
+      esac
+      printf "  %-22s  [needs attention] %s%s\n" "$rname" "$rp" "$rfix"
+    done <<< "$rprobs"
+  done < <(registered_skill_rows "$agents_file")
+
   echo ""
-  if $any_updated; then echo "Done."; else echo "All up to date."; fi
+  if $any_updated; then echo "Done."; elif ! $any_problem; then echo "All up to date."; fi
 
   if $_refresh_has_wrapup && ! $_refresh_has_sprint; then
     echo ""

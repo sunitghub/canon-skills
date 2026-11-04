@@ -80,6 +80,10 @@ render_skill_status_list() {
         tag="$(printf '%s' "$probs" | paste -sd, - | sed 's/,/, /g')"
         (( issues += $(printf '%s\n' "$probs" | grep -c .) )) || true
         _skills_moved=true
+        # t-38ab: the folders a refresh cannot repair (a real folder holding files canon cannot prove are its own)
+        while IFS= read -r _p; do
+          case "$_p" in "stale link "*|"missing link "*) case " $_link_fix " in *" ${_p#* link } "*) ;; *) _link_fix="${_link_fix:+$_link_fix }${_p#* link }" ;; esac ;; esac
+        done <<< "$probs"
       else
         tag="ok"
       fi

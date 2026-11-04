@@ -147,6 +147,11 @@ upsert_gate_agents() {
     else
       echo "  [agents]  $link links elsewhere (not canon) — left as is; gates fall back to Plan"
     fi
+  elif [ -d "$link" ] && _canon_only_agents_dir "$link" && _remove_canon_only_dir "$link"; then
+    # t-38ab: empty, or only canon's own marked files: the link, not copies that age between refreshes
+    _create_dir_link "$target" "$link"
+    echo "  [agents]  replaced a folder of canon's own files with a link: $link"
+    _ensure_agents_link_gitignored "$project_dir"
   elif [ -d "$link" ]; then
     for src in "$target"/canon-*.md; do
       dst="$link/$(basename "$src")"
@@ -325,6 +330,65 @@ deregister_project() {
   _rewrite_projects "$project_dir"
 }
 
+# t-38ab: a real folder where canon's link belongs (empty, or the copies Windows `ln` makes) may be replaced by the link only when
+# everything in it is proven canon's. _canon_only_skills_dir: 0 when <dir> is empty or holds only folders named after a canon skill whose
+# files are links into canon or byte-identical to canon's current ones. A project-local skill, a differing (stale) copy, a link
+# elsewhere or any other entry makes it 1: nothing is removed.
+_canon_only_skills_dir() {
+  local dir="$1" e f rel cs t root_p
+  [ -d "$dir" ] && ! _is_dir_link "$dir" || return 1
+  root_p="$(cd -P "$SKILLS_ROOT" 2>/dev/null && pwd -P)" || root_p="$SKILLS_ROOT"
+  for e in "$dir"/* "$dir"/.[!.]*; do
+    [ -e "$e" ] || [ -L "$e" ] || continue
+    cs="$SKILLS_ROOT/skills/$(basename "$e")"
+    { [ -d "$cs" ] && [ -d "$e" ] && [ ! -L "$e" ]; } || return 1
+    while IFS= read -r f; do
+      rel="${f#"$e"/}"
+      if [ -L "$f" ]; then
+        t="$(readlink "$f")"
+        case "$t" in "$SKILLS_ROOT"/skills/*|"$root_p"/skills/*) ;; *) [ -n "$(canon_current_path "$t" 2>/dev/null)" ] || return 1 ;; esac
+      elif [ -f "$f" ]; then
+        cmp -s "$f" "$cs/$rel" || return 1
+      else
+        return 1
+      fi
+    done < <(find "$e" -mindepth 1 ! -type d 2>/dev/null)
+  done
+  return 0
+}
+# _canon_only_agents_dir: 0 when <dir> is empty or holds only canon-*.md files that carry the canon:agent marker (the files
+# upsert_gate_agents itself writes and rewrites).
+_canon_only_agents_dir() {
+  local dir="$1" e
+  [ -d "$dir" ] && ! _is_dir_link "$dir" || return 1
+  for e in "$dir"/* "$dir"/.[!.]*; do
+    [ -e "$e" ] || [ -L "$e" ] || continue
+    case "$(basename "$e")" in canon-*.md) ;; *) return 1 ;; esac
+    { [ -f "$e" ] && [ ! -L "$e" ] && grep -qF "canon:agent" "$e"; } || return 1
+  done
+  return 0
+}
+# _remove_canon_only_dir <dir>: after one of the checks above. Deletes the files one by one, then the folders deepest first; rmdir
+# refuses a folder anything else appeared in, and the rest stays (returns 1). Never rm -rf: nothing unproven is deleted.
+_remove_canon_only_dir() {
+  local f
+  while IFS= read -r f; do rm -f -- "$f"; done < <(find "$1" -mindepth 1 ! -type d 2>/dev/null)
+  while IFS= read -r f; do rmdir -- "$f" 2>/dev/null || return 1; done < <(find "$1" -depth -type d 2>/dev/null)
+}
+# _link_skill_children <skill_dir> <canon skill dir>: the per-skill layout served only SKILL.md; every other child of canon's skill
+# (reference/, gates/, evals/, any file) is linked too (a junction for a folder and a copy for a file on Windows). Only what is absent
+# is added: a child the project already has is its own.
+_link_skill_children() {
+  local dst="$1" src="$2" c name
+  for c in "$src"/* "$src"/.[!.]*; do
+    [ -e "$c" ] || continue
+    name="$(basename "$c")"
+    [ "$name" = SKILL.md ] && continue
+    [ -e "$dst/$name" ] || [ -L "$dst/$name" ] && continue
+    if [ -d "$c" ] && _is_windows; then _create_dir_link "$c" "$dst/$name"; else ln -sfn "$c" "$dst/$name"; fi
+  done
+}
+
 upsert_skills_symlinks() {
   local project_dir="$1" skill_file="${2:-}" target="$SKILLS_ROOT/skills"
   local link
@@ -335,6 +399,15 @@ upsert_skills_symlinks() {
       _create_dir_link "$target" "$link"
       echo "  [symlink]  updated: $link"
     elif [ -d "$link" ]; then
+      # t-38ab: empty, or only canon's own files: the link, not a folder that ages
+      if ! _under_link "$project_dir" "$link" && _canon_only_skills_dir "$link"; then
+        if _remove_canon_only_dir "$link"; then
+          _create_dir_link "$target" "$link"
+          echo "  [symlink]  replaced a folder of canon's own files with a link: $link"
+          continue
+        fi
+        echo "  [symlink]  $link changed while it was being cleared — left as is"
+      fi
       # Real directory (project has local skills) — create per-skill entry instead
       if [ -n "$skill_file" ]; then
         local skill_name
@@ -348,6 +421,7 @@ upsert_skills_symlinks() {
           ln -sfn "$skill_file" "$skill_dir/SKILL.md"   # t-50f7: the old location's link, re-pointed at current
           echo "  [skill-dir]  updated: $skill_dir"
         fi
+        [ -d "$skill_dir" ] && _link_skill_children "$skill_dir" "$(dirname "$skill_file")"
       fi
     else
       _create_dir_link "$target" "$link"

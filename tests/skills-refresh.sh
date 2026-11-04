@@ -157,4 +157,72 @@ assert_eq "0" "$("$SKILLS" status --json "$cp_proj" | sed -E 's/.*"issues":([0-9
 assert_contains "$("$SKILLS" status --json "$cp_proj")" '{"name":"efficiency","problems":[]}'
 case "$("$SKILLS" status "$cp_proj")" in *"moved or copied"*) fail "a healthy project with efficiency printed the cause line";; esac
 
+# --- t-38ab: a real folder where canon's link belongs (empty, or the copies Windows `ln` makes) is replaced by the link when it
+# holds only what canon proved is its own; a project-local entry is never touched; refresh and status agree. Prod path: skills.sh
+# refresh / add (what `canon update` runs on every registered project, and the Projects card's Refresh).
+RF_DIRS=(/nonexistent-t38ab)
+rf_proj() {   # rf_proj: sets RF_NEW to a registered project with sprint linked, then its skills and agents links removed for the case to rebuild
+  RF_NEW="$(make_project)"; RF_DIRS+=("$RF_NEW")
+  "$SKILLS" add sprint "$RF_NEW" >/dev/null 2>&1
+  rm -rf "${RF_NEW:?}/.claude/skills" "${RF_NEW:?}/.agents/skills" "${RF_NEW:?}/.claude/agents"
+}
+trap 'rm -rf "$project" "$tmp_home" "$inj" "$cp_proj" "${RF_DIRS[@]}"' EXIT
+is_link_to() { [[ -L "$1" && "$(readlink "$1")" == "$2" ]]; }
+status_ok() { assert_eq '{"skills":[{"name":"sprint","problems":[]}],"issues":0}' "$("$SKILLS" status --json "$1")"; }
+
+# 1. empty real folders become links; a second refresh changes nothing and says so
+rf_proj; e1="$RF_NEW"; mkdir -p "$e1/.claude/skills" "$e1/.agents/skills"
+"$SKILLS" refresh "$e1" >/dev/null 2>&1
+is_link_to "$e1/.claude/skills" "$ROOT/skills" || fail "t-38ab: an empty .claude/skills was not replaced by a link"
+is_link_to "$e1/.agents/skills" "$ROOT/skills" || fail "t-38ab: an empty .agents/skills was not replaced by a link"
+status_ok "$e1"
+"$SKILLS" refresh "$e1" >/dev/null 2>&1
+export SKILLS_SH_ASSUME_YES=1   # the install-deny-rules offer is declined without a TTY, and its "[skip] ... not added" line counts as a refresh change
+"$SKILLS" refresh "$e1" >/dev/null 2>&1   # settles every one-time change
+assert_contains "$("$SKILLS" refresh "$e1" 2>&1)" "All up to date."
+
+# 2. a real folder of byte-identical canon copies (the Windows `ln` copies) becomes a link
+rf_proj; e2="$RF_NEW"; mkdir -p "$e2/.claude/skills" "$e2/.agents/skills"
+cp -R "$ROOT/skills/sprint" "$e2/.claude/skills/sprint"; cp -R "$ROOT/skills/sprint" "$e2/.agents/skills/sprint"
+"$SKILLS" refresh "$e2" >/dev/null 2>&1
+is_link_to "$e2/.claude/skills" "$ROOT/skills" || fail "t-38ab: a folder of identical canon copies was not replaced by a link"
+status_ok "$e2"
+
+# 3. a project-local skill keeps the folder real and byte-identical; canon's skill in it serves reference/ too
+rf_proj; e3="$RF_NEW"; mkdir -p "$e3/.claude/skills/mine"; printf 'MINE\n' > "$e3/.claude/skills/mine/SKILL.md"
+"$SKILLS" refresh "$e3" >/dev/null 2>&1
+[[ ! -L "$e3/.claude/skills" && -d "$e3/.claude/skills" ]] || fail "t-38ab: a folder with a project-local skill must stay a real folder"
+assert_eq "MINE" "$(cat "$e3/.claude/skills/mine/SKILL.md")"
+[[ -f "$e3/.claude/skills/sprint/reference/start-checklist.md" ]] || fail "t-38ab: sprint's reference/ is not served in the per-skill layout"
+status_ok "$e3"
+
+# 4. a stale copy that differs from canon's SKILL.md is left, named, and refresh does not claim all is well
+rf_proj; e4="$RF_NEW"; mkdir -p "$e4/.claude/skills/mine" "$e4/.claude/skills/sprint"
+printf 'MINE\n' > "$e4/.claude/skills/mine/SKILL.md"; printf 'OLD COPY\n' > "$e4/.claude/skills/sprint/SKILL.md"
+"$SKILLS" refresh "$e4" >/dev/null 2>&1   # settles the one-time changes, so the next run is only about the folder
+out4="$("$SKILLS" refresh "$e4" 2>&1)"
+assert_eq "OLD COPY" "$(cat "$e4/.claude/skills/sprint/SKILL.md")"
+assert_contains "$out4" "[needs attention]"
+assert_contains "$out4" "stale link .claude/skills"
+case "$out4" in *"All up to date."*) fail "t-38ab: refresh said All up to date while status reports a problem";; esac
+assert_contains "$("$SKILLS" status "$e4")" "stale link .claude/skills"
+assert_contains "$("$SKILLS" status "$e4")" "remove .claude/skills"
+
+# 5. agents: empty or canon-only real folder -> link; a folder with a user's own file keeps it
+rf_proj; e5="$RF_NEW"; mkdir -p "$e5/.claude/agents"
+"$SKILLS" refresh "$e5" >/dev/null 2>&1
+is_link_to "$e5/.claude/agents" "$ROOT/agents" || fail "t-38ab: an empty .claude/agents was not replaced by a link"
+rf_proj; e6="$RF_NEW"; mkdir -p "$e6/.claude/agents"; cp "$ROOT"/agents/canon-*.md "$e6/.claude/agents/"
+"$SKILLS" refresh "$e6" >/dev/null 2>&1
+is_link_to "$e6/.claude/agents" "$ROOT/agents" || fail "t-38ab: a .claude/agents of canon-marked files was not replaced by a link"
+rf_proj; e7="$RF_NEW"; mkdir -p "$e7/.claude/agents"; printf 'my own agent\n' > "$e7/.claude/agents/mine.md"
+"$SKILLS" refresh "$e7" >/dev/null 2>&1
+[[ ! -L "$e7/.claude/agents" && "$(cat "$e7/.claude/agents/mine.md")" == "my own agent" ]] || fail "t-38ab: a user's own agent file or its folder was touched"
+
+# 6. nothing is removed or replaced through a planted link (t-f5e4's rule): .claude is a link to an outside folder holding an empty skills/
+rf_proj; e8="$RF_NEW"; out8="$(mktemp -d)"; RF_DIRS+=("$out8"); rm -rf "$e8/.claude"; mkdir -p "$out8/skills"; ln -s "$out8" "$e8/.claude"
+"$SKILLS" refresh "$e8" >/dev/null 2>&1 || true
+[[ -d "$out8/skills" && ! -L "$out8/skills" ]] || fail "t-38ab: an empty skills/ behind a planted .claude link was replaced or removed"
+[[ ! -e "$out8/agents" ]] || fail "t-38ab: a link was made behind a planted .claude link"
+
 printf 'skills-refresh: ok\n'

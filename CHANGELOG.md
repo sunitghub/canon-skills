@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Fixed
+- `skills.sh refresh` (and the Projects card's Refresh) repairs a project whose `.claude/skills`, `.agents/skills` or `.claude/agents` is a real folder where canon's link belongs (t-38ab). An empty one, or one holding only canon's own files (byte-identical copies, the kind Windows `ln` makes, or links into canon), becomes the link. A project-local skill or agent file keeps the folder, byte for byte, and each canon skill in it now serves its whole folder (`reference/`, `gates/`), not only SKILL.md. Refresh no longer prints "All up to date." over a problem `skills.sh status` reports: it prints `[needs attention]` with the folder to remove, and status says the same.
+
 ## [0.43.1] - 2026-11-03
 
 Security fix for 0.43.0. The prebuilt `canon-go` program changed, both the board and the daemon part: after `canon update`, restart the daemon (Admin's **Restart Daemon**). If you use worktrees, update from 0.43.0 now.
