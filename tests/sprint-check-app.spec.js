@@ -19757,7 +19757,7 @@ test.describe('NOW lane and hidden lanes (t-0447)', () => {
     await expect(strip('Open')).toBeVisible();
     await expect(page.locator('.column-body[data-status="open"]')).toHaveCount(0);
     await expect(strip('Open')).toContainText('Open');
-    await expect(strip('Open')).toContainText(openCount);
+    await expect(strip('Open')).toContainText(Number(openCount) > 99 ? '99+' : openCount);   // t-0a80: past 99 the strip's badge says 99+ (the tooltip keeps the exact count)
     // the strip is thin, inside the board, and on the same row as the next lane
     const bw = await page.locator('#board').boundingBox(), sb = await strip('Open').boundingBox(), nb = await page.locator('.column:has(.column-body[data-status="in_progress"])').boundingBox();
     expect(sb.width).toBeLessThan(60);
