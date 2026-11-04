@@ -188,6 +188,13 @@ cp -R "$ROOT/skills/sprint" "$e2/.claude/skills/sprint"; cp -R "$ROOT/skills/spr
 is_link_to "$e2/.claude/skills" "$ROOT/skills" || fail "t-38ab: a folder of identical canon copies was not replaced by a link"
 status_ok "$e2"
 
+# 2b. the macOS/Linux per-skill layout an older canon made in a real folder (SKILL.md a symlink into canon) is canon's own too
+sl="$(make_project)"; RF_DIRS+=("$sl"); "$SKILLS" add sprint "$sl" >/dev/null 2>&1; rm -rf "${sl:?}/.claude/skills" "${sl:?}/.agents/skills"
+mkdir -p "$sl/.claude/skills/sprint"; ln -s "$ROOT/skills/sprint/SKILL.md" "$sl/.claude/skills/sprint/SKILL.md"
+"$SKILLS" refresh "$sl" >/dev/null 2>&1
+is_link_to "$sl/.claude/skills" "$ROOT/skills" || fail "t-38ab: a per-skill folder of symlinks into canon was not replaced by the link"
+status_ok "$sl"
+
 # 3. a project-local skill keeps the folder real and byte-identical; canon's skill in it serves reference/ too
 rf_proj; e3="$RF_NEW"; mkdir -p "$e3/.claude/skills/mine"; printf 'MINE\n' > "$e3/.claude/skills/mine/SKILL.md"
 "$SKILLS" refresh "$e3" >/dev/null 2>&1
@@ -212,6 +219,7 @@ assert_contains "$("$SKILLS" status "$e4")" "remove .claude/skills"
 rf_proj; e5="$RF_NEW"; mkdir -p "$e5/.claude/agents"
 "$SKILLS" refresh "$e5" >/dev/null 2>&1
 is_link_to "$e5/.claude/agents" "$ROOT/agents" || fail "t-38ab: an empty .claude/agents was not replaced by a link"
+grep -qxF '/.claude/agents' "$e5/.gitignore" || fail "t-38ab: the replacement link .claude/agents is not gitignored (it would be committed)"
 rf_proj; e6="$RF_NEW"; mkdir -p "$e6/.claude/agents"; cp "$ROOT"/agents/canon-*.md "$e6/.claude/agents/"
 "$SKILLS" refresh "$e6" >/dev/null 2>&1
 is_link_to "$e6/.claude/agents" "$ROOT/agents" || fail "t-38ab: a .claude/agents of canon-marked files was not replaced by a link"
