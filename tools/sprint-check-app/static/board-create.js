@@ -1,5 +1,5 @@
 import { TICKET_TYPES, TYPE_TEMPLATES, detectTicketType, state } from './board-core.js';
-import { LITE_LABEL, LITE_TIP, esc, escAttr, titleCase } from './board-helpers.js';
+import { LITE_LABEL, LITE_TIP, titleCase } from './board-helpers.js';
 import { editScratchTitle, newScratchId, openScratch, postWrite, renderBoard, startPromote } from './board-render.js';
 import { openTagMenu, tagChipsHTML } from './board-tags.js';
 import { blobToBase64, insertPlainText, nextPasteVisualIndex, readClipboardImages, resetPanelDrag, resetPanelResize, uploadVisual } from './board-panels.js';
