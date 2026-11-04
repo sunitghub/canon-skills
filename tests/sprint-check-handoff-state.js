@@ -108,6 +108,12 @@ ok('(n) lone "-" and "*" markers and blank lines → empty', handoffNextSteps(se
 ok('(o) a real step beside an empty marker is kept, the marker and END comment are not',
   handoffNextSteps(seeded(['1.', '2. Run `sprint complete` to close t-pdry.']), 't-pdry', true) === '2. Run `sprint complete` to close t-pdry.',
   JSON.stringify(handoffNextSteps(seeded(['1.', '2. Run `sprint complete` to close t-pdry.']), 't-pdry', true)));
+ok('(q) a real step that ends in digits and a dot is kept (only a line that is JUST a list marker is dropped)',
+  handoffNextSteps(seeded(['1. Run `sprint complete` to close t-0a80.']), 't-0a80', true) === '1. Run `sprint complete` to close t-0a80.',
+  JSON.stringify(handoffNextSteps(seeded(['1. Run `sprint complete` to close t-0a80.']), 't-0a80', true)));
+ok('(r) two real steps stay on their own lines',
+  handoffNextSteps(seeded(['1. First step.', '2. Second step.']), 't-pdry', true) === '1. First step.\n2. Second step.',
+  JSON.stringify(handoffNextSteps(seeded(['1. First step.', '2. Second step.']), 't-pdry', true)));
 ok('(p) the END marker is never part of a returned step', !/canon:handoff/.test(handoffNextSteps(seeded(['1. A real step.']), 't-pdry', true)), handoffNextSteps(seeded(['1. A real step.']), 't-pdry', true));
 
 if (fails) { console.log(`\nsprint-check-handoff-state: ${fails} FAILED`); process.exit(1); }
