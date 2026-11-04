@@ -2050,15 +2050,18 @@ _merge_branch() {
   src="$tdir"
   if [[ -f "$tdir/.cockpit-cwd" ]]; then
     wt="$(_ticket_cwd_binding "$file")"
-    if [[ -n "$wt" && ! -L "$wt/.tickets" && ! -L "$wt/.tickets/$id" && -f "$wt/.tickets/$id/ticket.md" && ! -L "$wt/.tickets/$id/ticket.md" && ! -L "$wt/.tickets/$id/eval-report.md" ]]; then
-      src="$wt/.tickets/$id"
+    if [[ -n "$wt" && ! -L "$wt/.tickets" && ! -L "$wt/.tickets/$id" && -f "$wt/.tickets/$id/ticket.md" && ! -L "$wt/.tickets/$id/ticket.md" && ! -L "$wt/.tickets/$id/eval-report.md" ]] \
+       && git -C "$wt" ls-files --error-unmatch -- ".tickets/$id/ticket.md" >/dev/null 2>&1; then
+      src="$wt/.tickets/$id"   # tracked on the branch: with the clean-worktree check below, what is read is what merges
     fi
   fi
   st="$(get_field "$src/ticket.md" status)"
   [[ "$st" == closed ]] || _mb_no "$id is ${st:-without a status}, not closed: close it with sprint complete in its worktree first"
   [[ -z "$(get_field "$file" merged)" ]] || _mb_no "$id is already merged ($(get_field "$file" merged))"
   [[ -z "$(get_field "$src/ticket.md" merged)" ]] || _mb_no "$id is already merged ($(get_field "$src/ticket.md" merged))"
-  [[ -f "$src/eval-report.md" ]] || src="$tdir"   # the report may live only in main's copy (the evaluator ran there)
+  # The report may live only in main's copy (the evaluator ran there). The worktree's own is trusted only when the branch carries it:
+  # an untracked file there is not part of what merges.
+  if [[ "$src" != "$tdir" ]] && ! { [[ -f "$src/eval-report.md" ]] && git -C "$wt" ls-files --error-unmatch -- ".tickets/$id/eval-report.md" >/dev/null 2>&1; }; then src="$tdir"; fi
   graded="$(_eval_pass_head merge "$src" "$id" "close it with sprint complete in its worktree first")" || exit 1
   [[ -f "$tdir/.cockpit-cwd" ]] || _mb_no "$id is not bound to a worktree (no .tickets/$id/.cockpit-cwd), so there is no branch to merge"
   wt="$(_ticket_cwd_binding "$file")"

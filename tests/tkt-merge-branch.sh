@@ -194,6 +194,10 @@ git checkout -q -- "$f5"; git -C "$WT5" checkout -q -- "$f5"
 mv "$WT5/.tickets/$id5" "$W/ext5"; ln -s "$W/ext5" "$WT5/.tickets/$id5"
 refuses "a symlinked worktree ticket folder (main's copy is open)" "is open, not closed" --yes
 rm "$WT5/.tickets/$id5"; mv "$W/ext5" "$WT5/.tickets/$id5"
+# An eval report that is only in the worktree's folder, not committed on the branch, is not part of what merges: not trusted.
+git -C "$WT5" rm -q --cached -- ".tickets/$id5/eval-report.md"
+refuses "an eval report the branch does not carry" "no passing evaluator verdict" --yes
+git -C "$WT5" reset -q HEAD -- ".tickets/$id5/eval-report.md"
 # merged: in the worktree's copy refuses too.
 awk '/^---$/ && ++n == 2 { print "merged: abc1234" } { print }' "$WT5/$f5" > "$W/t5" && mv "$W/t5" "$WT5/$f5"
 refuses "a worktree copy that already says merged" "is already merged (abc1234)" --yes
