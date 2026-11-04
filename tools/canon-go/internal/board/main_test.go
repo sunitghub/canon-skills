@@ -311,6 +311,29 @@ func TestCreateTicketSkills(t *testing.T) {
 	}
 }
 
+// t-fe82: ticketFM feeds /api/worktrees holds; a missing file or a file with no frontmatter is "not a ticket",
+// and a legacy worktree_preference line is just another ignored key.
+func TestTicketFMStatusOnly(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(body), 0644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	if st, ok := ticketFM(filepath.Join(dir, "absent.md")); ok || st != "" {
+		t.Fatalf("missing file: got (%q, %v), want (\"\", false)", st, ok)
+	}
+	if st, ok := ticketFM(write("plain.md", "# no frontmatter\n")); ok || st != "" {
+		t.Fatalf("no frontmatter: got (%q, %v), want (\"\", false)", st, ok)
+	}
+	legacy := write("legacy.md", "---\nid: t-x\nstatus: open\nworktree_preference: sprint/x\n---\n# x\n")
+	if st, ok := ticketFM(legacy); !ok || st != "open" {
+		t.Fatalf("legacy line: got (%q, %v), want (\"open\", true)", st, ok)
+	}
+}
+
 func TestWriteStatusUpdatesActive(t *testing.T) {
 	setupTestProject(t)
 	created := createTicket("Active test", "task", "open", 2, "", false, "full", false, "", nil, "")
