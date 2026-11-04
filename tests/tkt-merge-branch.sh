@@ -194,6 +194,17 @@ git checkout -q -- "$f5"; git -C "$WT5" checkout -q -- "$f5"
 mv "$WT5/.tickets/$id5" "$W/ext5"; ln -s "$W/ext5" "$WT5/.tickets/$id5"
 refuses "a symlinked worktree ticket folder (main's copy is open)" "is open, not closed" --yes
 rm "$WT5/.tickets/$id5"; mv "$W/ext5" "$WT5/.tickets/$id5"
+# A ticket.md or eval-report.md that is a link, or a .tickets that is one, is never read through (main's copy, open, decides).
+cp "$WT5/$f5" "$W/ticket-ext.md"; cp "$WT5/.tickets/$id5/eval-report.md" "$W/eval-ext.md"
+rm "$WT5/$f5"; ln -s "$W/ticket-ext.md" "$WT5/$f5"
+refuses "a ticket.md that is a symlink" "is open, not closed" --yes
+rm "$WT5/$f5"; git -C "$WT5" checkout -q -- "$f5"
+rm "$WT5/.tickets/$id5/eval-report.md"; ln -s "$W/eval-ext.md" "$WT5/.tickets/$id5/eval-report.md"
+refuses "an eval-report.md that is a symlink" "is open, not closed" --yes
+rm "$WT5/.tickets/$id5/eval-report.md"; git -C "$WT5" checkout -q -- ".tickets/$id5/eval-report.md"
+mv "$WT5/.tickets" "$W/tickets-ext"; ln -s "$W/tickets-ext" "$WT5/.tickets"
+refuses "a .tickets that is a symlink" "is open, not closed" --yes
+rm "$WT5/.tickets"; mv "$W/tickets-ext" "$WT5/.tickets"
 # An eval report that is only in the worktree's folder, not committed on the branch, is not part of what merges: not trusted.
 git -C "$WT5" rm -q --cached -- ".tickets/$id5/eval-report.md"
 refuses "an eval report the branch does not carry" "no passing evaluator verdict" --yes
