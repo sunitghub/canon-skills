@@ -1145,7 +1145,6 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 			stringValue(payload, "gate", "full"),
 			boolValue(payload["demo"]),
 			stringValue(payload, "skills", ""),
-			stringValue(payload, "worktree_preference", ""),
 			newTags,
 			eroot,
 		))
@@ -1995,7 +1994,7 @@ func ticketSkeleton(typ string) string {
 	return "## Problem\n<!-- What is wrong or missing, and for whom? -->\n\n" + skeletonRest
 }
 
-func createTicket(title, typ, status string, priority int, body string, ci bool, gate string, demo bool, skills string, worktreePreference string, tags []string, root string) ticket {
+func createTicket(title, typ, status string, priority int, body string, ci bool, gate string, demo bool, skills string, tags []string, root string) ticket {
 	td := ticketsDirForRoot(root)
 	os.MkdirAll(td, 0755)
 	existing := map[string]bool{}
@@ -2063,19 +2062,12 @@ func createTicket(title, typ, status string, priority int, body string, ci bool,
 			skillsLine = "skills: " + strings.Join(picked, ",") + "\n"
 		}
 	}
-	// t-644a: a declared worktree preference, applied only later at first
-	// Start (see renderCockpitWorktree's pre-fill) -- present/absent
-	// convention, parity with server.py's create_ticket.
-	wtLine := ""
-	if wt := strings.TrimSpace(strings.ReplaceAll(worktreePreference, "\n", " ")); wt != "" {
-		wtLine = "worktree_preference: " + wt + "\n"
-	}
 	tagsLine := ""
 	if l := tagsFrontmatterLine(tags); l != "" { // t-37e8: already validated by the caller (normalizeTags)
 		tagsLine = l + "\n"
 	}
 	evalLine := "eval_override: false"
-	text := fmt.Sprintf("---\nid: %s\ntitle: %s\nstatus: %s\ntype: %s\npriority: %d\ncreated: %s\n%s%s%s%s%s%s%s\n---\n\n%s\n", id, strings.ReplaceAll(title, "\n", " "), status, typ, priority, time.Now().UTC().Format("2006-01-02T15:04:05Z"), ciLine, gateLine, demoLine, skillsLine, wtLine, tagsLine, evalLine, strings.TrimSpace(body))
+	text := fmt.Sprintf("---\nid: %s\ntitle: %s\nstatus: %s\ntype: %s\npriority: %d\ncreated: %s\n%s%s%s%s%s%s\n---\n\n%s\n", id, strings.ReplaceAll(title, "\n", " "), status, typ, priority, time.Now().UTC().Format("2006-01-02T15:04:05Z"), ciLine, gateLine, demoLine, skillsLine, tagsLine, evalLine, strings.TrimSpace(body))
 	path := filepath.Join(dir, "ticket.md")
 	if os.WriteFile(path, []byte(text), 0644) == nil {
 		emitEvent("ticket.created", root, map[string]string{"ticket": id, "title": title, "type": typ, "priority": strconv.Itoa(priority)})
@@ -3352,11 +3344,9 @@ func liveForDocFull(docFile, root string) (string, string, string, bool) {
 
 // ── Worktree holds (t-2241) ───────────────────────────────────────────────
 // Tested by tests/sprint-check-worktree-holds.sh: which non-main worktrees another ticket
-// still needs — bound via .cockpit-cwd and not done ("in progress"), chosen by an
-// open ticket's worktree_preference ("reserved"), dirty ignoring runtime noise
+// still needs — bound via .cockpit-cwd and not done ("in progress"), dirty ignoring runtime noise
 // ("uncommitted changes"), or unmerged ("branch not merged"). The requesting
 // ticket's own worktree is marked own and never held.
-var wtPrefRe = regexp.MustCompile(`(?m)^worktree_preference:\s*(.+?)\s*$`)
 
 func pathKey(p string) string {
 	if r, err := filepath.EvalSymlinks(p); err == nil {
@@ -3413,22 +3403,17 @@ func worktreeDirty(path string) bool {
 	return false
 }
 
-// ticketFM returns (status, worktree_preference) from a ticket.md's frontmatter;
+// ticketFM returns the status from a ticket.md's frontmatter;
 // ok is false when the file is missing or has no frontmatter.
-func ticketFM(path string) (string, string, bool) {
+func ticketFM(path string) (string, bool) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return "", "", false
+		return "", false
 	}
-	m := frontmatterRe.FindStringSubmatch(string(raw))
-	if m == nil {
-		return "", "", false
+	if frontmatterRe.FindStringSubmatch(string(raw)) == nil {
+		return "", false
 	}
-	pref := ""
-	if pm := wtPrefRe.FindStringSubmatch(m[1]); pm != nil {
-		pref = unquoteYAMLScalar(pm[1])
-	}
-	return frontmatterStatus(string(raw)), pref, true
+	return frontmatterStatus(string(raw)), true
 }
 
 func annotateWorktreeHolds(entries []map[string]any, ticketID, root string) {
@@ -3443,7 +3428,6 @@ func annotateWorktreeHolds(entries []map[string]any, ticketID, root string) {
 	}
 	tdir := ticketsDirForRoot(root)
 	bound := map[string][]string{}
-	preferred := map[string][]string{}
 	mainStatus := map[string]string{}
 	dirs, _ := os.ReadDir(tdir)
 	names := []string{}
@@ -3454,14 +3438,11 @@ func annotateWorktreeHolds(entries []map[string]any, ticketID, root string) {
 	}
 	sort.Strings(names)
 	for _, id := range names {
-		st, pref, ok := ticketFM(filepath.Join(tdir, id, "ticket.md"))
+		st, ok := ticketFM(filepath.Join(tdir, id, "ticket.md"))
 		if !ok {
 			continue
 		}
 		mainStatus[id] = st
-		if st == "open" && pref != "" {
-			preferred[pref] = append(preferred[pref], id)
-		}
 		if raw, err := os.ReadFile(filepath.Join(tdir, id, ".cockpit-cwd")); err == nil {
 			if cwd := strings.TrimSpace(string(raw)); cwd != "" {
 				k := pathKey(cwd)
@@ -3484,7 +3465,7 @@ func annotateWorktreeHolds(entries []map[string]any, ticketID, root string) {
 		}
 		binders := bound[pathKey(path)]
 		statusOf := func(id string) string {
-			if st, _, ok := ticketFM(filepath.Join(path, ".tickets", id, "ticket.md")); ok && st != "" {
+			if st, ok := ticketFM(filepath.Join(path, ".tickets", id, "ticket.md")); ok && st != "" {
 				return st
 			}
 			return mainStatus[id]
@@ -3495,7 +3476,6 @@ func annotateWorktreeHolds(entries []map[string]any, ticketID, root string) {
 				active = append(active, id)
 			}
 		}
-		reservers := preferred[branch]
 		named := ""
 		if strings.HasPrefix(branch, "sprint/") {
 			if _, ok := mainStatus[strings.TrimPrefix(branch, "sprint/")]; ok {
@@ -3504,12 +3484,12 @@ func annotateWorktreeHolds(entries []map[string]any, ticketID, root string) {
 		}
 		if ticketID != "" {
 			own := named == ticketID
-			for _, list := range [][]string{active, reservers, binders} {
+			for _, list := range [][]string{active, binders} {
 				for _, id := range list {
 					own = own || id == ticketID
 				}
 			}
-			// Another ticket actively running here always wins over a mere preference.
+			// Another ticket actively running here always wins over a mere binding.
 			for _, id := range active {
 				own = own && id == ticketID
 			}
@@ -3529,8 +3509,6 @@ func annotateWorktreeHolds(entries []map[string]any, ticketID, root string) {
 		switch {
 		case len(active) > 0:
 			reason, holder = "in progress", active[0]
-		case len(reservers) > 0:
-			reason, holder = "reserved", reservers[0]
 		default:
 			owner := named
 			if len(binders) > 0 {

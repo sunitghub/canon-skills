@@ -1,5 +1,5 @@
 import { COLLAPSE_STATUSES, COLUMNS, COL_LIMIT, NOW_COLUMN, NOW_DONE_DAYS, NOW_TAG, SHELL_TAB, docSlug, freshShellSessions, hiddenLanes, loadData, state, toggleHiddenLane } from './board-core.js';
-import { ticketTags, age, ciBadge, liteBadge, divergenceLine, effectiveStatus, esc, escAttr, idQueryDropped, normalizeSearch, outcomeRatio, ticketMatchesQuery, ticketTitleMatches, typeBadge, whyQueryFromInput, worktreePrefLine, worktreeRun } from './board-helpers.js';
+import { ticketTags, age, ciBadge, liteBadge, divergenceLine, effectiveStatus, esc, escAttr, idQueryDropped, normalizeSearch, outcomeRatio, ticketMatchesQuery, ticketTitleMatches, typeBadge, whyQueryFromInput, worktreeRun } from './board-helpers.js';
 import { openModal } from './board-modal.js';
 import { tagChipsHTML } from './board-tags.js';
 import { moveCard } from './board-docs.js';
@@ -842,8 +842,7 @@ function cardHTML(t, idx, inNow) {
         ${ticketTags(t).length ? `<div class="card-tags">${tagChipsHTML(ticketTags(t), 3)}</div>` : ''}
         ${t.status === 'in_progress' ? `<span class="card-wt-chip" data-id="${esc(t.id)}"></span>` : ''}
         ${ghChipHTML(t)}
-        ${run ? `<div class="card-wt-pref card-wt-run" title="In progress in worktree ${escAttr(run.branch)} (this checkout's copy still says open until the branch merges).">Worktree: ${esc(run.branch)}</div>` : `${worktreePrefLine(t)}
-        ${divergenceLine(t)}`}
+        ${run ? `<div class="card-wt-pref card-wt-run" title="In progress in worktree ${escAttr(run.branch)} (this checkout's copy still says open until the branch merges).">Worktree: ${esc(run.branch)}</div>` : divergenceLine(t)}
       </div>
       <div class="card-footer">
         <span class="card-age" title="Created ${escAttr(age(t.created))}">${ico('clock')}${esc(age(t.created))}</span>

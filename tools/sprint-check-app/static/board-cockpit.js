@@ -124,7 +124,8 @@ export function setActiveTab(id) {
   else document.getElementById('ck-scratch-promoted').hidden = true;
 }
 
-// t-824e: the active tab's state chip + reaper line. The live status stream says
+// t-824e: the active tab's state chip + reaper line. The chip shows only `needs you` (t-fe82): the Agents sidebar and
+// the tab pills already carry working / idle / done, so the top bar keeps its room for the alert. The live status stream says
 // needs-you the instant the hook fires; the daemon's /sessions row (refreshed
 // by the shared cockpit poll) adds working / idle / done and the reaper clock.
 // A daemon older than t-824e sends no "state": fall back to needs-you / running (ckRowState).
@@ -144,7 +145,7 @@ export function renderSessionStateChip() {
   chip.textContent = CK_STATE_LABEL[st];
   const signal = row && CK_SIGNAL_LABEL[row.signal];
   chip.title = signal ? 'State from: ' + signal : 'State from the session\u2019s status';
-  chip.hidden = false;
+  chip.hidden = st !== 'needs-you';
   const idle = row && num(row.idle_secs), limit = row && num(row.idle_limit_secs);
   // t-91c5: the Agents sidebar already shows the countdown ("reaps in 29m"), so the top bar says only "Auto Save" and
   // keeps the full sentence as the tooltip.

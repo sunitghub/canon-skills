@@ -324,16 +324,14 @@ sprint agent without leaving the browser — no second terminal.
   (creates a sibling `<repo>-worktrees/<branch>` checkout via `git worktree
   add`, nebula's own convention). When there's a real choice, a fresh OPEN start
   gates the terminal — the daemon's own Start control — behind an explicit row pick.
-  Main is preselected instead when it's the only worktree or the ticket chose
-  **Main checkout** in New Ticket (the default, stored as `main-checkout`); a
+  Main is preselected instead when it's the only worktree; a
   project that isn't a git repo has no WORKTREE section and no gate (`t-19d1`). An
   open ticket already in progress in a worktree shows in **IN PROGRESS** with
-  **Resume**, which preselects that worktree. A worktree you
-  chose in **New Ticket** is stored on the ticket (`worktree_preference`) and shown on
-  the open card and in the ticket's meta row, but nothing is created until you click
-  **+ New** here (which asks to confirm); for such a ticket the button is ready
-  without editing the pre-filled name, whereas the default `sprint/<id>` suggestion
-  stays inert. Resume doesn't
+  **Resume**, which preselects that worktree. The worktree
+  choice is made here, not in **New Ticket** (`t-fe82`): nothing is created until you click
+  **+ New** (which asks to confirm); the default `sprint/<id>` suggestion stays inert
+  until you do. A ticket file that still carries an old `worktree_preference` line is
+  loaded as before and the line is ignored. Resume doesn't
   need to re-ask, since the daemon persists the resolved cwd per ticket
   (`.tickets/<id>/.cockpit-cwd`) and reuses it automatically (falling back to
   re-resolving if that worktree was since deleted). A `.worktreeinclude`
@@ -346,10 +344,9 @@ sprint agent without leaving the browser — no second terminal.
   session logs like `cockpit-sessions.md` are optional, and any other uncommitted
   files are listed but never included. It commits only the checked paths on the
   main checkout with a fixed `chore: add ticket <id>` message; anything you had
-  staged stays staged. Undo with `git reset --soft HEAD~1`. The picker (and New Ticket's
-  Worktree row) only offers worktrees this ticket can use (`t-2241`): Main, its own, and
+  staged stays staged. Undo with `git reset --soft HEAD~1`. The picker only offers worktrees this ticket can use (`t-2241`): Main, its own, and
   free ones. Any other worktree is collapsed under "N worktrees unavailable" with its
-  reason: *in progress* (bound to an active ticket), *reserved* (an open ticket chose it),
+  reason: *in progress* (bound to an active ticket),
   *uncommitted changes*, *branch not merged*, or *folder missing* (run `git worktree prune`). Once the
   ticket's own worktree is selected, the rail shows just that row plus **Change worktree**.
   The card/modal divergence note says "uncommitted changes in worktree" rather than

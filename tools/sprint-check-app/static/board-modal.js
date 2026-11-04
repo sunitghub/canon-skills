@@ -1,5 +1,5 @@
 import { DEBUG, LIVE_EDITABLE_SLUGS, availableDocTypes, docSlug, loadData, state } from './board-core.js';
-import { LITE_LABEL, LITE_TIP, WT_PREF_MAIN, ticketTags, age, effectiveStatus, esc, escAttr, openWorktreePreference, titleCase, typeBadge } from './board-helpers.js';
+import { LITE_LABEL, LITE_TIP, ticketTags, age, effectiveStatus, esc, escAttr, titleCase, typeBadge } from './board-helpers.js';
 import { ckRowState, fetchDoc, findTicketById, postWrite, readiness, renderBoard } from './board-render.js';
 import { activateGhost, exitEditMode, refreshModalActions, renderModalBody, saveEdit } from './board-docs.js';
 import { cockpitState } from './board-cockpit.js';
@@ -105,8 +105,6 @@ function renderModalMeta(t) {
     { label:'Priority', val: `P${t.priority ?? 2}` },
     { label:'Tags',     html: tagsMetaHTML(t) },
     { label:'Age',      val: age(t.created) || '—' },
-    ...(openWorktreePreference(t) === WT_PREF_MAIN ? [{ label:'Worktree', html:`<span title="Chosen at New Ticket — the sprint runs in the main checkout.">Main checkout</span>` }]
-      : openWorktreePreference(t) ? [{ label:'Worktree', html:`<span title="Chosen at New Ticket — created when you start the sprint">${esc(openWorktreePreference(t))} <span style="color:var(--text-muted)">· created when you start</span></span>` }] : []),
     { label:'Ready',    html:`<span style="color:${mReadyColor};font-weight:600;display:flex;align-items:center;gap:4px"><span style="width:7px;height:7px;border-radius:50%;background:${mReadyColor};display:inline-block;flex-shrink:0"></span>${esc(mReadyLabel)}</span>` },
   ].map(m => `<div class="meta-item"><span class="meta-label">${esc(m.label)}</span><span class="meta-val">${m.html ?? esc(m.val)}</span></div>`).join('');
   bindTagsMeta(t);

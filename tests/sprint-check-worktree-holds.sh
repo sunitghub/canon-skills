@@ -2,8 +2,7 @@
 # sprint-check-worktree-holds (t-2241) — /api/worktrees marks which worktrees
 # another ticket still needs (`held_by`) in the Go board (t-15d8: the only board),
 # and never hides the requesting ticket's own worktree (`own`). One fresh repo
-# with a worktree per state: bound + in progress, reserved by an open ticket's
-# preference, dirty, unmerged, runtime-noise-only, and free. Also checks the
+# with a worktree per state: bound + in progress, dirty, unmerged, runtime-noise-only, and free. Also checks the
 # footer signal `branch_divergence.dirty`.
 
 set -euo pipefail
@@ -39,10 +38,9 @@ mkdir -p "$GO_LAYOUT/tools"
 ln -s "$ROOT/skills" "$GO_LAYOUT/skills"; ln -s "$ROOT/tools/sprint-check-app" "$GO_LAYOUT/tools/sprint-check-app"
 GO_BIN="$(build_board "$GO_LAYOUT/tools")"
 
-ticket() { # dir id status [preference]
+ticket() { # dir id status
   mkdir -p "$1/.tickets/$2"
   { printf -- '---\nid: %s\nstatus: %s\ntype: task\npriority: 2\n' "$2" "$3"
-    [[ -n "${4:-}" ]] && printf 'worktree_preference: %s\n' "$4"
     printf -- '---\n# %s\n' "$2"; } > "$1/.tickets/$2/ticket.md"
 }
 
@@ -54,10 +52,11 @@ git -C "$REPO" config user.name test
 printf '.cockpit-*\nACTIVE\n' > "$REPO/.tickets.gitignore.tmp"
 mkdir -p "$REPO/.tickets" && mv "$REPO/.tickets.gitignore.tmp" "$REPO/.tickets/.gitignore"
 ticket "$REPO" t-bnd1 open               # bound; open on main, in progress in its worktree
-ticket "$REPO" t-res1 open sprint/res    # open, reserved sprint/res
 ticket "$REPO" t-cls1 closed             # closed, bound to the dirty worktree
-ticket "$REPO" t-mine open sprint/mine   # the requester in the own-view checks
-ticket "$REPO" t-want open sprint/bnd    # prefers a branch another ticket is running in
+ticket "$REPO" t-mine open              # the requester in the own-view checks (owns sprint/mine by name)
+ticket "$REPO" t-want open              # unrelated ticket viewing a worktree another ticket is running in
+mkdir -p "$REPO/.tickets/t-leg1"   # a legacy ticket file: the retired field must load and hold nothing
+printf -- '---\nid: t-leg1\nstatus: open\ntype: task\npriority: 2\nworktree_preference: sprint/res\n---\n# t-leg1\n' > "$REPO/.tickets/t-leg1/ticket.md"
 echo a > "$REPO/a.txt"
 git -C "$REPO" add -A && git -C "$REPO" commit -q -m init
 for b in bnd res dirty unmerged noise free mine gone lnk jnc cfg extra trk; do git -C "$REPO" worktree add -q -b "sprint/$b" "$WT/$b"; done
@@ -104,10 +103,8 @@ def by_branch(lst): return {e.get('branch'): e for e in lst if not e.get('is_mai
 a = by_branch(anon)
 want = {
   'sprint/bnd':      {'ticket': 't-bnd1', 'reason': 'in progress'},
-  'sprint/res':      {'ticket': 't-res1', 'reason': 'reserved'},
   'sprint/dirty':    {'ticket': 't-cls1', 'reason': 'uncommitted changes'},
   'sprint/unmerged': {'ticket': '',       'reason': 'branch not merged'},
-  'sprint/mine':     {'ticket': 't-mine', 'reason': 'reserved'},
   'sprint/gone':     {'ticket': '',       'reason': 'folder missing'},
   'sprint/cfg':      {'ticket': '',       'reason': 'uncommitted changes'},
   'sprint/extra':    {'ticket': '',       'reason': 'uncommitted changes'},
@@ -115,16 +112,16 @@ want = {
 }
 for br, hb in want.items():
     assert a[br].get('held_by') == hb, f'{label}: {br} held_by {a[br].get("held_by")} != {hb}'
-for br in ('sprint/noise', 'sprint/free', 'sprint/lnk', 'sprint/jnc'):
+for br in ('sprint/res', 'sprint/mine', 'sprint/noise', 'sprint/free', 'sprint/lnk', 'sprint/jnc'):
     assert 'held_by' not in a[br], f'{label}: {br} should be free, got {a[br].get("held_by")}'
 assert not any(e.get('own') for e in anon), f'{label}: no ticket given, nothing is own'
 m = by_branch(mine)
-assert m['sprint/mine'].get('own') is True and 'held_by' not in m['sprint/mine'], f'{label}: t-mine must see sprint/mine as own: {m["sprint/mine"]}'
+assert 'held_by' not in m['sprint/mine'], f'{label}: sprint/mine is free for t-mine: {m["sprint/mine"]}'
 assert m['sprint/bnd'].get('held_by') == want['sprint/bnd'], f'{label}: other holds unchanged for t-mine'
 b = by_branch(bnd)
 assert b['sprint/bnd'].get('own') is True and 'held_by' not in b['sprint/bnd'], f'{label}: the bound ticket must see its worktree as own: {b["sprint/bnd"]}'
 w = by_branch(want_view)
-assert 'own' not in w['sprint/bnd'] and w['sprint/bnd'].get('held_by') == want['sprint/bnd'], f'{label}: a preference must not claim a worktree another ticket is running in: {w["sprint/bnd"]}'
+assert 'own' not in w['sprint/bnd'] and w['sprint/bnd'].get('held_by') == want['sprint/bnd'], f'{label}: an unrelated ticket must not claim a worktree another ticket is running in: {w["sprint/bnd"]}'
 EOF
 
   # Footer signal: t-bnd1 is in_progress only in its worktree's uncommitted copy → dirty.

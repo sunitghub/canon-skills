@@ -1,5 +1,5 @@
 import { state } from './board-core.js';
-import { WT_PREF_MAIN, esc, escAttr, md, worktreeRun } from './board-helpers.js';
+import { esc, escAttr, md, worktreeRun } from './board-helpers.js';
 import { showToast } from './board-render.js';
 import { activeIframe, cockpitState, missingTicketMessage, requestPreview, setButtonBusy, setTermMessage } from './board-cockpit.js';
 import { closeCockpit, openCockpitDetails } from './board-cockpit-rail.js';
@@ -171,47 +171,18 @@ export async function renderCockpitWorktree(t) {
   // EFFECTIVE run cwd (the daemon reuses this locked cwd and ignores the picker).
   cockpitState.worktreeLock = lock;
 
-  // t-644a: pre-fill from a worktree_preference declared at New Ticket time —
-  // only when not already locked (a real binding always wins) and nothing has
-  // been explicitly picked yet this session. If the preference matches an
-  // EXISTING worktree, pre-select that row; otherwise it names a branch that
-  // doesn't exist yet, so pre-fill the +New input instead of pre-selecting a
-  // row that isn't there. An absent preference changes nothing (existing gate
-  // behavior: nothing pre-selected until the user picks).
-  // t-644a fix: line 5075 sets worktreeCwd='' (Main) for every non-open
-  // ticket before this function runs, so a `worktreeCwd === null` guard here
-  // never fires for the common unlocked-in_progress case (a board-side status
-  // flip that hasn't gone through tkt's in_progress write, so no
-  // .cockpit-cwd exists yet) — gate on the lock itself instead.
-  let wtNewDefault = `sprint/${t.id}`;
-  // t-15ee: an explicit choice from New Ticket that has no worktree yet — a stated intent, unlike
-  // the default `sprint/<id>` suggestion — so "+ New" starts enabled (still behind a confirm).
-  let wtPrefPending = '';
   const running = worktreeRun(t);
   const runRow = running ? others.find(e => e.branch === running.branch) : null;
   if (!lock.locked && runRow) {
     // t-19d1: the sprint is already in progress in this worktree (see worktreeRun) — Resume goes there.
     if (cockpitState.worktreeCwd === null) cockpitState.worktreeCwd = runRow.path;
-  } else if (!lock.locked && t.worktree_preference === WT_PREF_MAIN) {
-    // t-19d1: the ticket chose Main checkout at New Ticket — preselect it.
-    if (cockpitState.worktreeCwd === null && !tab.ghPick) cockpitState.worktreeCwd = '';
-  } else if (!lock.locked && t.worktree_preference && !tab.ghPick) {   // a GitHub pick selects no worktree row
-    const match = others.find(e => e.branch === t.worktree_preference && !e.held_by); // t-2241: never preselect a worktree another ticket holds
-    if (match) cockpitState.worktreeCwd = match.path;
-    else {
-      wtNewDefault = t.worktree_preference;
-      // Arm only when the list really loaded (a failed fetch leaves it empty) and the choice isn't the
-      // main checkout's own branch — otherwise the click could only end in an "already exists" alert.
-      if (mainEntry && mainEntry.branch !== t.worktree_preference) wtPrefPending = t.worktree_preference;
-    }
   }
-  // t-19d1: no preference and the main checkout is the only worktree — there's no real choice to
+  // t-19d1: the main checkout is the only worktree — there's no real choice to
   // protect (t-cd06/t-470d's explicit pick guards against the WRONG checkout), so preselect Main.
   // A GitHub pick (t-718b) leaves worktreeCwd null on purpose: that is not "nothing picked yet".
-  if (!lock.locked && !t.worktree_preference && mainEntry && others.length === 0 && cockpitState.worktreeCwd === null && !tab.ghPick) {
+  if (!lock.locked && mainEntry && others.length === 0 && cockpitState.worktreeCwd === null && !tab.ghPick) {
     cockpitState.worktreeCwd = '';
   }
-  tab.wtPrefPending = wtPrefPending;
 
   // t-2241: rows only for worktrees this ticket can use — Main, its own, and free
   // ones. Worktrees another ticket still needs (server `held_by`) collapse into one
@@ -231,11 +202,9 @@ export async function renderCockpitWorktree(t) {
   }
   html += `<div class="ck-worktree-full"${compact ? ' hidden' : ''}>`;
   html += rowHTML('', 'Main checkout (current)', mainEntry ? mainEntry.path : '');
-  // t-c8f6: only the rows this ticket is likely to want stay in view (Main, its own worktree, the selected one, its preferred
-  // branch); every other usable worktree folds under one "N other worktrees" line, as "N worktrees unavailable" does. A worktree
-  // whose work already landed in main (server `merged`) says so and stays pickable.
-  const inView = e => e.own || (cockpitState.worktreeCwd && cockpitPathKey(e.path) === cockpitPathKey(cockpitState.worktreeCwd))
-    || (t.worktree_preference && e.branch === t.worktree_preference);
+  // t-c8f6: only the rows this ticket is likely to want stay in view (Main, its own worktree, the selected one); every other usable worktree
+  // folds under one "N other worktrees" line, as "N worktrees unavailable" does. A worktree whose work already landed in main (server `merged`) says so and stays pickable.
+  const inView = e => e.own || (cockpitState.worktreeCwd && cockpitPathKey(e.path) === cockpitPathKey(cockpitState.worktreeCwd));
   const wtRow = e => rowHTML(e.path, e.branch || '(detached)', e.path, '', e.merged === true);
   const folded = usable.filter(e => !inView(e));
   for (const e of usable) {
@@ -256,11 +225,9 @@ export async function renderCockpitWorktree(t) {
   html += githubPickerRowsHTML(t, tab);   // t-718b: GitHub places (busy GitHub #N rows, and GitHub · new issue)
   html += `<div class="ck-worktree-new">
     <button type="button" class="ck-worktree-new-plus" title="Create a worktree for the branch named here (asks to confirm)">+ New</button>
-    <input id="ck-worktree-new-input" value="${esc(wtNewDefault)}" spellcheck="false" autocomplete="off">
+    <input id="ck-worktree-new-input" value="${esc(`sprint/${t.id}`)}" spellcheck="false" autocomplete="off">
   </div>
-  <div class="ck-add-hint">${wtPrefPending
-    ? `You chose <b>${esc(wtPrefPending)}</b> when creating this ticket — click + New to create it (you'll be asked to confirm), or pick Main checkout.`
-    : 'Click + New (or press Enter) to create this worktree — you\'ll be asked to confirm. Edit the name first to use a different branch.'}</div>`;
+  <div class="ck-add-hint">Click + New (or press Enter) to create this worktree — you'll be asked to confirm. Edit the name first to use a different branch.</div>`;
   if (anyBlocked) {
     html += `<div class="ck-worktree-warn" role="alert">
       <strong>.tickets/ is gitignored</strong> — a git worktree only carries tracked files, so a worktree can't see this ticket and a sprint started there can't find it. Use the <strong>Main checkout</strong>, or track <code>.tickets/</code> in git.
@@ -681,9 +648,7 @@ export async function maybeMountCockpitTerminal(t) {
   hideGithubPanel();
   if (cockpitState.worktreeCwd === null) {
     iframe.style.visibility = 'hidden';
-    setTermMessage(cockpitState.wtPrefPending
-      ? `Select a worktree above to continue. You chose "${cockpitState.wtPrefPending}" when creating this ticket — click + New to create it, or pick Main checkout. Start sprint is disabled until a row is selected.`
-      : 'Select a worktree above to continue — Start sprint is disabled until a row is selected.');
+    setTermMessage('Select a worktree above to continue — Start sprint is disabled until a row is selected.');
     return;
   }
   // t-2a1c: gate on the EFFECTIVE run cwd, not just the selected row. For a

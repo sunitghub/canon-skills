@@ -3799,13 +3799,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }));
   }
 
-  function writeTicket(id, status, { acceptanceCriteria = null, plan = null, ci = false, demo = false, worktreePreference = '' } = {}) {
+  function writeTicket(id, status, { acceptanceCriteria = null, plan = null, ci = false, demo = false } = {}) {
     const dir = path.join(PROJECT_ROOT, '.tickets', id);
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, 'ticket.md'), [
       '---', `id: ${id}`, `status: ${status}`, 'type: feature', 'priority: 2',
       `ci: ${ci}`, `demo: ${demo}`,
-      ...(worktreePreference ? [`worktree_preference: ${worktreePreference}`] : []),
       'created: 2026-08-24T00:00:00Z', '---', '', `# Cockpit test ${id}`, '',
     ].join('\n'));
     if (acceptanceCriteria) {
@@ -3951,11 +3950,11 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await board.locator(`.card[data-id="${id}"] .card-start`).click();
         await expect(board.locator('#cockpit-overlay')).toHaveClass(/open/);
         const chip = board.locator('#ck-state-chip');
-        await expect(chip).toHaveText('working');
+        await expect(chip).toBeHidden();   // t-fe82: working shows in the Agents sidebar, not the top bar
         await board.locator('body').evaluate(async () => (await import('/static/board-cockpit-rail.js')).stopCockpitPoll());
         await page.evaluate(rows => document.getElementById('b').contentWindow.postMessage({ source: 'canon-cockpit-shell', type: 'sessions', rows }, location.origin),
           [{ ...base, state: 'idle', idle_secs: 20 }]);
-        await expect(chip).toHaveText(/^idle/, { timeout: 2000 });
+        await expect(chip).toBeHidden();
       } finally {
         removeTestTicket(PROJECT_ROOT, id);
       }
@@ -5838,7 +5837,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const id = newTicketId(PROJECT_ROOT);
       const wtPath = `/tmp/wt/${XSS_ATTR}`;
       try {
-        writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] c'], worktreePreference: XSS_ATTR });
+        writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] c'] });
         await stubCockpit(page);
         await page.route('**/api/worktrees**', route => route.fulfill({ status: 200, contentType: 'application/json',
           body: JSON.stringify([{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true },
@@ -5882,41 +5881,6 @@ test.describe('cockpit in board (t-ddc8)', () => {
         removeTestTicket(PROJECT_ROOT, id);
         await page.unrouteAll({ behavior: 'ignoreErrors' });
       }
-    });
-
-    test('t-d2e1: a quote in the saved worktree preference stays inside the new-worktree input', async ({ page }) => {
-      const id = newTicketId(PROJECT_ROOT);
-      try {
-        writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], worktreePreference: XSS_ATTR });
-        await stubCockpit(page);
-        await page.route('**/api/worktrees**', route => route.fulfill({ status: 200, contentType: 'application/json',
-          body: JSON.stringify([{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true }]) }));
-        await page.goto(BASE);
-        await page.waitForLoadState('networkidle');
-        await page.locator('#board-search').fill(id);
-        await page.locator(`.card[data-id="${id}"] .card-start`).click();
-        await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
-        await expect(page.locator('#ck-worktree-new-input')).toHaveValue(XSS_ATTR);       // value= round-trips
-        expect(await onAttrs(page)).toEqual([]);
-      } finally {
-        removeTestTicket(PROJECT_ROOT, id);
-        await page.unrouteAll({ behavior: 'ignoreErrors' });
-      }
-    });
-
-    test('t-d2e1: a quote in a branch name stays inside the New Ticket worktree pill', async ({ page }) => {
-      await page.route('**/api/worktrees**', route => route.fulfill({ status: 200, contentType: 'application/json',
-        body: JSON.stringify([{ path: PROJECT_ROOT, branch: 'main', is_main: true },
-          { path: '/tmp/wt/q', branch: XSS_ATTR, is_main: false }]) }));
-      await page.goto(BASE);
-      await page.waitForLoadState('networkidle');
-      await page.locator('#btn-create').click();
-      await page.waitForSelector('#create-modal', { timeout: 3000 });
-      const pill = page.locator('#c-worktree-pills .create-pill', { hasText: XSS_ATTR });
-      await expect(pill).toHaveCount(1);
-      expect(await pill.getAttribute('data-wt')).toBe(XSS_ATTR);                          // data-wt round-trips
-      expect(await onAttrs(page)).toEqual([]);
-      await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
     test('shell (t-783a): no element carries an inline on*= handler, in any view or dialog', async ({ page }) => {
@@ -8587,57 +8551,6 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
-  test('New Ticket in a no-commits repo shows the Worktree row, and the default Main checkout saves main-checkout (t-d218, t-19d1)', async ({ page }) => {
-    await page.route('**/api/git', route => route.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify({ branch: 'master', project: 'fresh', root: PROJECT_ROOT, modified: 0, log: [], total_commits: null, is_git: true }) }));
-    await page.route('**/api/worktrees**', onlyMain);
-    const title = `Main default ${Date.now()}`;
-    let createdId = '';
-    try {
-      await page.goto(BASE);
-      await page.waitForLoadState('networkidle');
-      await page.locator('#btn-create').click();
-      await page.waitForSelector('#create-modal', { timeout: 3000 });
-      await expect(page.locator('#c-worktree-row')).toBeVisible();
-      await expect(page.locator('#c-worktree-pills .create-pill[data-wt="main"]')).toHaveClass(/active/);
-      await page.locator('#c-title').fill(title);
-      await page.locator('#c-submit').click();
-      const card = page.locator('.card', { hasText: title });
-      await expect(card).toBeVisible();
-      createdId = adoptBoardTicket(PROJECT_ROOT, await card.getAttribute('data-id') || '', title);
-      expect(fs.readFileSync(path.join(PROJECT_ROOT, '.tickets', createdId, 'ticket.md'), 'utf8')).toContain('worktree_preference: main-checkout');
-      await expect(card.locator('.card-wt-pref')).toHaveText('Worktree: Main checkout');
-    } finally {
-      if (createdId) removeTestTicket(PROJECT_ROOT, createdId);
-    }
-  });
-
-  test('New Ticket\'s Main checkout choice (main-checkout) shows on the card and preselects Main even with other worktrees (t-19d1)', async ({ page }) => {
-    const id = newTicketId(PROJECT_ROOT, 'ckmain');
-    try {
-      writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], worktreePreference: 'main-checkout' });
-      await stubCockpit(page);
-      await page.route('**/api/worktrees**', mainAndFeat);
-      await page.goto(BASE);
-      await page.waitForLoadState('networkidle');
-      await page.locator('#board-search').fill(id);
-      await expect(page.locator(`.card[data-id="${id}"] .card-wt-pref`)).toHaveText('Worktree: Main checkout');
-      await page.locator(`.card[data-id="${id}"]`).click();
-      const meta = page.locator('#m-meta .meta-item', { hasText: 'Worktree' });
-      await expect(meta).toContainText('Main checkout');
-      await expect(meta).not.toContainText('main-checkout');
-      await expect(meta).not.toContainText('created when you start');
-      await page.keyboard.press('Escape');
-      await page.locator(`.card[data-id="${id}"] .card-start`).click();
-      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
-      await expect(page.locator('.ck-worktree-row[data-cwd=""]')).toHaveClass(/selected/);
-      await expect(page.locator('.ck-worktree-row.selected')).toHaveCount(1);
-      await expect(page.locator('#ck-term-msg')).not.toContainText('Select a worktree above');
-    } finally {
-      removeTestTicket(PROJECT_ROOT, id);
-    }
-  });
-
   test('an open ticket in progress in a worktree sits in IN PROGRESS with Resume and a worktree chip, and Resume preselects that worktree (t-19d1)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'ckwtrun'), ipId = newTicketId(PROJECT_ROOT, 'ckwtrun-ip');
     try {
@@ -9619,149 +9532,35 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
-  test('New Ticket modal Worktree row: +New sets worktree_preference on the created ticket (t-644a)', async ({ page }) => {
-    await page.route('**/api/worktrees**', route => route.fulfill({
-      status: 200, contentType: 'application/json',
-      body: JSON.stringify([{ path: PROJECT_ROOT, branch: 'main', is_main: true }]),
-    }));
-    const title = `Worktree pref test ${Date.now()}`;
-    let createdId = '';
-    try {
-      await page.goto(BASE);
-      await page.waitForLoadState('networkidle');
-      await page.locator('#btn-create').click();
-      await page.waitForSelector('#create-modal', { timeout: 3000 });
-      await expect(page.locator('#c-worktree-row')).toBeVisible();
-      await page.locator('#c-worktree-pills .create-pill[data-wt="new"]').click();
-      await page.locator('#c-wt-new-input').fill('sprint/feat-644a');
-      await page.locator('#c-title').fill(title);
-      await page.locator('#c-submit').click();
-      const card = page.locator('.card', { hasText: title });
-      await expect(card).toBeVisible();
-      createdId = adoptBoardTicket(PROJECT_ROOT, await card.getAttribute('data-id') || '', title);
-      const raw = fs.readFileSync(path.join(PROJECT_ROOT, '.tickets', createdId, 'ticket.md'), 'utf8');
-      expect(raw).toContain('worktree_preference: sprint/feat-644a');
-    } finally {
-      if (createdId) removeTestTicket(PROJECT_ROOT, createdId);
-    }
-  });
-
-  test('New Ticket modal Worktree +New: suggests a branch name from the title, stops once edited directly', async ({ page }) => {
-    await page.route('**/api/worktrees**', route => route.fulfill({
-      status: 200, contentType: 'application/json',
-      body: JSON.stringify([{ path: PROJECT_ROOT, branch: 'main', is_main: true }]),
-    }));
-    let createdId = '';
-    try {
-      await page.goto(BASE);
-      await page.waitForLoadState('networkidle');
-      await page.locator('#btn-create').click();
-      await page.waitForSelector('#create-modal', { timeout: 3000 });
-      await page.locator('#c-worktree-pills .create-pill[data-wt="new"]').click();
-      await expect(page.locator('#c-wt-new-input')).toHaveValue('');
-
-      await page.locator('#c-title').fill('Fix login bug on Safari');
-      await expect(page.locator('#c-wt-new-input')).toHaveValue('sprint/fix-login-bug-on-safari', { timeout: 1000 });
-
-      // Editing the field directly stops further auto-updates from the title.
-      await page.locator('#c-wt-new-input').fill('sprint/my-custom-name');
-      await page.locator('#c-title').fill('Fix login bug on Safari and Chrome');
-      await page.waitForTimeout(450);
-      await expect(page.locator('#c-wt-new-input')).toHaveValue('sprint/my-custom-name');
-
-      await page.locator('#c-submit').click();
-      const card = page.locator('.card', { hasText: 'Fix login bug on Safari and Chrome' });
-      await expect(card).toBeVisible();
-      createdId = adoptBoardTicket(PROJECT_ROOT, await card.getAttribute('data-id') || '', 'Fix login bug on Safari and Chrome');
-      const raw = fs.readFileSync(path.join(PROJECT_ROOT, '.tickets', createdId, 'ticket.md'), 'utf8');
-      expect(raw).toContain('worktree_preference: sprint/my-custom-name');
-    } finally {
-      if (createdId) removeTestTicket(PROJECT_ROOT, createdId);
-    }
-  });
-
-  test('rail pre-fill: worktree_preference matching an existing worktree pre-selects its radio (t-644a)', async ({ page }) => {
-    const id = newTicketId(PROJECT_ROOT, 'wtpre');
-    const wtPath = '/tmp/wt-644a/feat-x';
-    try {
-      writeTicket(id, 'in_progress', {
-        acceptanceCriteria: ['- [ ] c'],
-        plan: ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: low', '', '- [x] Plan approved', '', '## Approach', 'x', ''],
-        worktreePreference: 'feat-x',
-      });
-      await stubCockpit(page);
-      await page.route('**/api/worktrees**', route => route.fulfill({
-        status: 200, contentType: 'application/json',
-        body: JSON.stringify([
-          { path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true },
-          { path: wtPath, branch: 'feat-x', is_main: false, tickets_visible: true, ticket_present: true },
-        ]),
-      }));
-      await page.route('**/api/worktree-lock/**', route => route.fulfill({
-        status: 200, contentType: 'application/json',
-        body: JSON.stringify({ locked: false, cwd: null, main_dirty: false }),
-      }));
-      await page.goto(BASE);
-      await page.waitForLoadState('networkidle');
-      await page.locator('#board-search').fill(id);
-      await page.locator(`.card[data-id="${id}"] .card-start`).click();
-      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
-      // No .cockpit-cwd binding yet (worktree-lock reports unlocked) → the row
-      // matching worktree_preference pre-selects, not Main.
-      await expect(page.locator(`.ck-worktree-row[data-cwd="${wtPath}"]`)).toHaveClass(/selected/);
-    } finally {
-      removeTestTicket(PROJECT_ROOT, id);
-    }
-  });
-
   const OPEN_PLAN = ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: low', '', '- [x] Plan approved', '', '## Approach', 'x', ''];
 
-  test('worktree preference (t-15ee): open card chip + modal item only when a choice was made; hostile names stay inert', async ({ page }) => {
-    const stamp = Date.now();
-    const withId = newTicketId(PROJECT_ROOT, 'wtp-a'), noneId = newTicketId(PROJECT_ROOT, 'wtp-b'), progId = newTicketId(PROJECT_ROOT, 'wtp-c'), evilId = newTicketId(PROJECT_ROOT, 'wtp-d');
-    const evil = '<img src=x onerror=1> a" onmouseover="window.__pwn=1';
+  test('New Ticket has no Worktree row; a legacy worktree_preference line shows nowhere and pre-selects nothing (t-fe82)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'wtleg');
     try {
-      writeTicket(withId, 'open', { worktreePreference: 'sprint/wt-15ee' });
-      writeTicket(noneId, 'open');
-      writeTicket(progId, 'in_progress', { worktreePreference: 'sprint/wt-progress' });
-      writeTicket(evilId, 'open', { worktreePreference: evil });
+      writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN });
+      const tf = path.join(PROJECT_ROOT, '.tickets', id, 'ticket.md');
+      fs.writeFileSync(tf, fs.readFileSync(tf, 'utf8').replace('\n---\n', '\nworktree_preference: sprint/legacy\n---\n'));
+      await stubCockpit(page);
+      await page.route('**/api/worktrees**', mainAndFeat);
+      await page.route('**/api/worktree-lock/**', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ locked: false, cwd: null, main_dirty: false }) }));
       await page.goto(BASE);
       await page.waitForLoadState('networkidle');
-
-      await page.locator('#board-search').fill(withId);
-      const card = page.locator(`.card[data-id="${withId}"]`);
-      await expect(card.locator('.card-wt-pref')).toHaveText('Worktree: sprint/wt-15ee');
-      await expect(card.locator('.card-wt-pref')).toHaveAttribute('title', /created when you start the sprint/);
-      await card.click();
-      const item = page.locator('#m-meta .meta-item', { hasText: 'Worktree' });
-      await expect(item).toContainText('sprint/wt-15ee');
-      await expect(item).toContainText('created when you start');
-      await page.keyboard.press('Escape');
-
-      await page.locator('#board-search').fill(noneId);
-      await expect(page.locator(`.card[data-id="${noneId}"] .card-wt-pref`)).toHaveCount(0);
-      await page.locator(`.card[data-id="${noneId}"]`).click();
+      await page.locator('#btn-create').click();
+      await page.waitForSelector('#create-modal', { timeout: 3000 });
+      await expect(page.locator('#c-worktree-row')).toHaveCount(0);
+      await page.locator('#c-cancel').click();
+      await page.locator('#board-search').fill(id);
+      await expect(page.locator(`.card[data-id="${id}"]`)).toBeVisible();
+      await expect(page.locator(`.card[data-id="${id}"] .card-wt-pref`)).toHaveCount(0);
+      await page.locator(`.card[data-id="${id}"]`).click();
       await expect(page.locator('#m-meta .meta-item', { hasText: 'Worktree' })).toHaveCount(0);
       await page.keyboard.press('Escape');
-
-      await page.locator('#board-search').fill(progId);
-      await expect(page.locator(`.card[data-id="${progId}"] .card-wt-pref`)).toHaveCount(0);
-      await page.locator(`.card[data-id="${progId}"]`).click();
-      await expect(page.locator('#m-meta .meta-item', { hasText: 'Worktree' })).toHaveCount(0); // open-only
-      await page.keyboard.press('Escape');
-
-      await page.locator('#board-search').fill(evilId);
-      const evilCard = page.locator(`.card[data-id="${evilId}"]`);
-      await expect(evilCard.locator('.card-wt-pref')).toContainText('<img src=x onerror=1>');
-      await expect(evilCard.locator('.card-wt-pref img')).toHaveCount(0);
-      const evilChip = evilCard.locator('.card-wt-pref');
-      expect(await evilChip.getAttribute('onmouseover')).toBeNull();
-      expect(await evilChip.getAttribute('title')).toContain('onmouseover="window.__pwn=1"');
-      await evilCard.click();
-      await expect(page.locator('#m-meta .meta-item', { hasText: 'Worktree' }).locator('img')).toHaveCount(0);
-      expect(await page.evaluate(() => window.__pwn)).toBeUndefined();
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await expect(page.locator('#ck-worktree-new-input')).toHaveValue(`sprint/${id}`);
+      await expect(page.locator('.ck-worktree-row.selected')).toHaveCount(0);
     } finally {
-      for (const id of [withId, noneId, progId, evilId]) removeTestTicket(PROJECT_ROOT, id);
+      removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
@@ -9785,91 +9584,6 @@ test.describe('cockpit in board (t-ddc8)', () => {
     await page.locator(`.card[data-id="${id}"] .card-start`).click();
     await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
   }
-
-  test('worktree preference (t-15ee): rail arms "+ New" for an explicit choice, names it, and still needs the confirm', async ({ page }) => {
-    const id = newTicketId(PROJECT_ROOT, 'wtp-r');
-    const posts = [];
-    try {
-      writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN, worktreePreference: 'sprint/wt-15ee' });
-      await openRailFor(page, id, posts);
-      await expect(page.locator('#ck-worktree-new-input')).toHaveValue('sprint/wt-15ee');
-      await expect(page.locator('.ck-worktree-new-plus')).toBeEnabled();
-      await expect(page.locator('#ck-worktree .ck-add-hint')).toContainText('You chose sprint/wt-15ee when creating this ticket');
-      await expect(page.locator('#ck-term-msg')).toContainText('You chose "sprint/wt-15ee" when creating this ticket');
-
-      // Dismissing the confirm creates nothing.
-      await page.locator('.ck-worktree-new-plus').click();
-      expect(await dialogText(page)).toContain('Create a new git worktree for branch "sprint/wt-15ee"');
-      await page.locator('#app-dialog-cancel').click();
-      expect(posts).toHaveLength(0);
-
-      // Accepting it creates exactly that worktree.
-      await page.locator('.ck-worktree-new-plus').click();
-      await page.locator('#app-dialog-ok').click();
-      await expect.poll(() => posts.length).toBe(1);
-      expect(JSON.parse(posts[0])).toEqual({ branch: 'sprint/wt-15ee' });
-    } finally {
-      removeTestTicket(PROJECT_ROOT, id);
-    }
-  });
-
-  test('worktree preference (t-15ee): edge cases — existing worktree, main branch, unlocked in_progress, hostile name in the rail', async ({ page }) => {
-    const stamp = Date.now();
-    const existId = newTicketId(PROJECT_ROOT, 'wtp-e'), mainId = newTicketId(PROJECT_ROOT, 'wtp-m'), progId = newTicketId(PROJECT_ROOT, 'wtp-p'), evilId = newTicketId(PROJECT_ROOT, 'wtp-h');
-    const evil = '<img src=x onerror=1> a" b';
-    const posts = [];
-    const wtPath = '/tmp/wt-15ee/existing';
-    const openRail = async id => {
-      await page.goto(BASE);
-      await page.waitForLoadState('networkidle');
-      await page.locator('#board-search').fill(id);
-      await page.locator(`.card[data-id="${id}"] .card-start`).click();
-      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
-    };
-    try {
-      writeTicket(existId, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN, worktreePreference: 'sprint/already-there' });
-      writeTicket(mainId, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN, worktreePreference: 'main' });
-      writeTicket(progId, 'in_progress', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN, worktreePreference: 'sprint/prog-15ee' });
-      writeTicket(evilId, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN, worktreePreference: evil });
-      await stubCockpit(page);
-      await page.route('**/api/worktrees**', route => route.request().method() === 'POST'
-        ? (posts.push(route.request().postData()), route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, path: '/tmp/x' }) }))
-        : route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([
-            { path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true },
-            { path: wtPath, branch: 'sprint/already-there', is_main: false, tickets_visible: true, ticket_present: true },
-          ]) }));
-      await page.route('**/api/worktree-lock/**', route => route.fulfill({
-        status: 200, contentType: 'application/json', body: JSON.stringify({ locked: false, cwd: null, main_dirty: false }),
-      }));
-
-      // Preference names a worktree that already exists: its row is pre-selected, "+ New" is NOT armed
-      // for it — the field keeps the default suggestion (creatable since t-29cc, still behind a confirm).
-      await openRail(existId);
-      await expect(page.locator(`.ck-worktree-row[data-cwd="${wtPath}"]`)).toHaveClass(/selected/);
-      await expect(page.locator('#ck-worktree-new-input')).toHaveValue(`sprint/${existId}`);
-      await expect(page.locator('#ck-worktree .ck-add-hint')).not.toContainText('You chose');
-
-      // Preference equals the main checkout's own branch: nothing to create, so not armed.
-      await openRail(mainId);
-      await expect(page.locator('.ck-worktree-new-plus')).toBeDisabled();
-      await expect(page.locator('#ck-term-msg')).not.toContainText('You chose');
-
-      // Unlocked in_progress ticket (board-flipped, nothing bound yet) behaves like open: armed.
-      await openRail(progId);
-      await expect(page.locator('.ck-worktree-new-plus')).toBeEnabled();
-      await expect(page.locator('#ck-worktree .ck-add-hint')).toContainText('You chose sprint/prog-15ee');
-
-      // Hostile name: inert text in the hint (element) and the gate message (textContent).
-      await openRail(evilId);
-      await expect(page.locator('#ck-worktree .ck-add-hint')).toContainText('<img src=x onerror=1>');
-      await expect(page.locator('#ck-worktree .ck-add-hint img')).toHaveCount(0);
-      await expect(page.locator('#ck-term-msg')).toContainText('<img src=x onerror=1>');
-      await expect(page.locator('#ck-term-msg img')).toHaveCount(0);
-      expect(posts).toHaveLength(0);
-    } finally {
-      for (const id of [existId, mainId, progId, evilId]) removeTestTicket(PROJECT_ROOT, id);
-    }
-  });
 
   test('+ New creates the untouched default suggestion after a confirm, by click or Enter (t-29cc)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'wtp-n');
@@ -9910,7 +9624,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     let dialogs = 0;
     page.on('dialog', d => { dialogs++; d.dismiss(); });
     try {
-      writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN, worktreePreference: 'main' });
+      writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN });
       await stubCockpit(page);
       await page.route('**/api/worktrees**', route => {
         if (route.request().method() === 'POST') {
@@ -9933,8 +9647,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
       const input = page.locator('#ck-worktree-new-input');
       const plus = page.locator('.ck-worktree-new-plus');
-      // A `main` preference pre-fills the main checkout's own branch: never creatable.
-      await expect(input).toHaveValue('main');
+      // The main checkout's own branch: never creatable.
+      await input.fill('main');
       await expect(plus).toBeDisabled();
       await input.press('Enter');
       // An existing worktree's branch: disabled, and Enter stops at an alert, not a POST.
@@ -10244,7 +9958,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     { path: '/tmp/wt-2241/free', branch: 'sprint/free', is_main: false, tickets_visible: true, ticket_present: true },
     withOwn
       ? { path: '/tmp/wt-2241/mine', branch: 'sprint/mine', is_main: false, tickets_visible: true, ticket_present: true, own: true }
-      : { path: '/tmp/wt-2241/mine', branch: 'sprint/mine', is_main: false, tickets_visible: true, held_by: { ticket: 't-mine', reason: 'reserved' } },
+      : { path: '/tmp/wt-2241/mine', branch: 'sprint/mine', is_main: false, tickets_visible: true, held_by: { ticket: 't-mine', reason: 'in progress' } },
     { path: '/tmp/wt-2241/bnd', branch: 'sprint/bnd', is_main: false, tickets_visible: true, ticket_present: false, held_by: { ticket: 't-bnd1', reason: 'in progress' } },
     { path: '/tmp/wt-2241/dirty', branch: 'sprint/dirty', is_main: false, tickets_visible: true, ticket_present: false, held_by: { ticket: '', reason: 'uncommitted changes' } },
   ];
@@ -10400,21 +10114,6 @@ test.describe('cockpit in board (t-ddc8)', () => {
     } finally {
       removeTestTicket(PROJECT_ROOT, id);
     }
-  });
-
-  test('New Ticket modal offers only Main, free worktrees and + New; held ones are counted with a tooltip (t-2241)', async ({ page }) => {
-    await stubWorktrees2241(page);
-    await page.goto(BASE);
-    await page.waitForLoadState('networkidle');
-    await page.locator('#btn-create').click();
-    const pills = page.locator('#c-worktree-pills');
-    await expect(pills.locator('.create-pill')).toHaveText(['Main checkout', 'sprint/free', '+ New']);
-    const held = pills.locator('.create-wt-held');
-    await expect(held).toHaveText('3 unavailable');
-    const tip = await held.getAttribute('title');
-    expect(tip).toContain('sprint/bnd — t-bnd1 · in progress');
-    expect(tip).toContain('sprint/mine — t-mine · reserved');
-    expect(tip).toContain('sprint/dirty — uncommitted changes');
   });
 
   test('divergence footer: uncommitted worktree work is never called "merged" (t-2241)', async ({ page }) => {
@@ -11020,31 +10719,6 @@ test.describe('cockpit in board (t-ddc8)', () => {
     } finally {
       for (const id of [wtId, mainId, goneId]) removeTestTicket(PROJECT_ROOT, id);
     }
-  });
-
-  test('non-git project hides the New Ticket Worktree row; it reappears once git becomes available (t-644a)', async ({ page }) => {
-    let gitBody = { branch: '', project: 'nogit', modified: 0, log: [] }; // no total_commits -> non-git
-    await page.route('**/api/git', route => route.fulfill({
-      status: 200, contentType: 'application/json',
-      body: JSON.stringify(gitBody),
-    }));
-    await page.goto(BASE);
-    await page.waitForLoadState('networkidle');
-
-    await page.locator('#btn-create').click();
-    await page.waitForSelector('#create-modal', { timeout: 3000 });
-    await expect(page.locator('#c-worktree-row')).toBeHidden();
-    await page.locator('#c-cancel').click();
-    await expect(page.locator('#create-overlay')).not.toHaveClass(/open/);
-
-    // Live re-check, not cached at registration: flip the mocked /api/git
-    // response and re-run the same poll loadData() already runs on a timer.
-    gitBody = { branch: 'main', project: 'nogit', root: PROJECT_ROOT, modified: 0, log: [], total_commits: 5 };
-    await page.evaluate(async () => { const { loadData } = await import('/static/board-core.js'); return ( loadData()); });
-    await page.waitForTimeout(100);
-    await page.locator('#btn-create').click();
-    await page.waitForSelector('#create-modal', { timeout: 3000 });
-    await expect(page.locator('#c-worktree-row')).toBeVisible();
   });
 
   test('non-git project hides the rail worktree accordion and the board chip (t-644a)', async ({ page }) => {
@@ -12076,7 +11750,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
     }
   });
 
-  test('state chip (t-2e7e, t-824e): needs you on needs-you, running fallback otherwise, cleared on reopen @webkit', async ({ page }) => {
+  test('state chip (t-2e7e, t-824e, t-fe82): only needs-you shows in the top bar, hidden otherwise, cleared on reopen @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'badge');
     try {
       writeTicket(id, 'in_progress');
@@ -12084,7 +11758,8 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await page.waitForTimeout(100);
       const badge = page.locator('#ck-state-chip');
       // No daemon row for this ticket → the status fallback, never a stale needs-you.
-      await expect(badge).toHaveText('running');
+      await expect(badge).toBeHidden();
+      await expect.poll(() => page.evaluate(async () => { const { cockpitState } = await import('/static/board-cockpit.js'); return !!cockpitState && cockpitState.status === 'running'; })).toBe(true);   // the chip text used to prove the frame had reported
 
       // The board only trusts a status message whose source is the cockpit
       // iframe's own contentWindow, so it must be posted FROM the iframe's
@@ -12101,7 +11776,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
 
       // Back to running clears it again.
       await postFromIframe('running');
-      await expect(badge).toHaveText('running');
+      await expect(badge).toBeHidden();
 
       // A fresh reopen must never inherit a prior session's stale badge state.
       await postFromIframe('needs-you');
@@ -12115,8 +11790,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/, { timeout: 5000 });
       await reopenCockpitNoReload(page, id, fakeCockpitPage({ initialStatus: 'running' }));
       await page.waitForTimeout(100);
-      await expect(badge).not.toHaveClass(/st-needs-you/);
-      await expect(badge).toHaveText('running');
+      await expect(badge).toBeHidden();
     } finally {
       removeTestTicket(PROJECT_ROOT, id);
     }
@@ -12135,8 +11809,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
         window.parent.postMessage({ source: 'canon-cockpit', type: 'status', status: 'running' }, '*');
       });
       await poke();
-      await expect(chip).toHaveText('working');
-      await expect(chip).toHaveAttribute('title', 'State from: Claude Code notification hook');
+      await expect(chip).toBeHidden();   // t-fe82: working lives in the Agents sidebar
       // t-d00c: the ambient token meter, from the daemon row
       await expect(page.locator('#ck-meter')).toHaveText('87% cache · 42 calls · 130 tools · 2 sub');
       // t-91c5: the Agents sidebar already shows the countdown, so the top bar says only "Auto Save"; the sentence is the tooltip.
@@ -12147,8 +11820,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
 
       rows = [{ ...base, status: 'awaiting-input', state: 'done', state_secs: 70, idle_secs: 70, idle_limit_secs: 1800, signal: 'hook' }];
       await poke();
-      await expect(chip).toHaveText('done · waiting for your next prompt');
-      await expect(chip).toHaveClass(/st-done/);
+      await expect(chip).toBeHidden();
       await expect(reaper).toHaveText('Auto Save');
       await expect(reaper).toHaveAttribute('title', 'Auto-save & end in 28m · resets on activity');
 
@@ -12161,7 +11833,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
 
       rows = [{ ...base }]; // pre-t-824e daemon: status only
       await poke();
-      await expect(chip).toHaveText('running');
+      await expect(chip).toBeHidden();
       await expect(reaper).toBeHidden();
       await expect(page.locator('#ck-meter')).toBeHidden();   // t-d00c: no meter on a row without one, not "0%"
       await expect(reaper).not.toHaveAttribute('title', /Auto-save/);   // no stale tooltip once the text is gone
@@ -16381,12 +16053,11 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   const made = [];
   test.afterEach(() => { while (made.length) removeTestTicket(PROJECT_ROOT, made.pop()); });
   // runs: github marks a ticket out on GitHub; github: alone is only the issue link (sync-issues, import-issue).
-  function ghTicket(id, { status = 'open', github = '', merged = '', runs = github ? 'github' : '', worktreePreference = '' } = {}) {
+  function ghTicket(id, { status = 'open', github = '', merged = '', runs = github ? 'github' : '' } = {}) {
     const dir = path.join(PROJECT_ROOT, '.tickets', id);
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, 'ticket.md'), ['---', `id: ${id}`, `status: ${status}`, 'type: task', 'priority: 2',
       ...(github ? [`github: ${github}`] : []), ...(runs ? [`runs: ${runs}`] : []), ...(merged ? [`merged: ${merged}`] : []),
-      ...(worktreePreference ? [`worktree_preference: ${worktreePreference}`] : []),
       'created: 2026-10-16T00:00:00Z', '---', '', `# GitHub test ${id}`, ''].join('\n'));
     fs.writeFileSync(path.join(dir, 'acceptance.md'), ['# Acceptance', '', '## Criteria', '- [ ] works', '', '## Test Plan', '- [ ] check', '', '## QA', '- [ ] Tested locally', ''].join('\n'));
     made.push(id);
@@ -16894,9 +16565,9 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(card.locator('.card-gh-btn')).toHaveCount(0);
   });
 
-  test('a GitHub pick selects no worktree row, even for a ticket with a worktree preference; a stale preview is dropped (t-718b)', async ({ page }) => {
+  test('a GitHub pick selects no worktree row, even after a worktree was picked; a stale preview is dropped (t-718b)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gh12'), wtPath = '/tmp/wt-gh12/feat-x';
-    ghTicket(id, { worktreePreference: 'feat-x' });
+    ghTicket(id);
     fs.writeFileSync(path.join(PROJECT_ROOT, '.tickets', id, 'plan.md'), ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: low', '', '- [x] Plan approved', '', '## Approach', 'x', ''].join('\n'));
     let release; const held = new Promise(r => { release = r; });
     await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
@@ -16907,7 +16578,8 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.route(`**/api/ticket/${id}/github/send-preview`, async r => { await held; await json(r, { ok: true, exit_code: 0, output: 'repo: acme/app (PRIVATE)' }); });
     await openBoard(page, id);
     await page.locator(`.card[data-id="${id}"] .card-start`).click();
-    await expect(page.locator(`.ck-worktree-row[data-cwd="${wtPath}"]`)).toHaveClass(/selected/);   // the preference preselects it
+    await page.locator(`.ck-worktree-row[data-cwd="${wtPath}"]`).click();
+    await expect(page.locator(`.ck-worktree-row[data-cwd="${wtPath}"]`)).toHaveClass(/selected/);
     await page.locator('#ck-worktree .ck-gh-row').click();
     await expect(page.locator('#ck-worktree .ck-gh-row')).toHaveClass(/selected/);
     await expect(page.locator(`.ck-worktree-row[data-cwd="${wtPath}"]`)).not.toHaveClass(/selected/);
@@ -17884,14 +17556,14 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   test('a local place replaces a GitHub pick, and a GitHub pick stays unselected on re-render (t-718b)', async ({ page }) => {
-    const plain = newTicketId(PROJECT_ROOT, 'gh28'), main = newTicketId(PROJECT_ROOT, 'gh29');
-    ghTicket(plain); ghTicket(main, { worktreePreference: 'main-checkout' });
-    for (const id of [plain, main]) fs.writeFileSync(path.join(PROJECT_ROOT, '.tickets', id, 'plan.md'), ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: low', '', '- [x] Plan approved', '', '## Approach', 'x', ''].join('\n'));
+    const plain = newTicketId(PROJECT_ROOT, 'gh28');
+    ghTicket(plain);
+    for (const id of [plain]) fs.writeFileSync(path.join(PROJECT_ROOT, '.tickets', id, 'plan.md'), ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: low', '', '- [x] Plan approved', '', '## Approach', 'x', ''].join('\n'));
     await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
     await page.route('**/api/worktrees**', r => json(r, [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true }]));
     await page.route('**/api/worktree-lock/**', r => json(r, { locked: false, cwd: null, main_dirty: false }));
     await page.route(/\/api\/ticket\/[^/]+\/github\/send-preview/, r => json(r, { ok: true, exit_code: 0, output: 'repo: acme/app (PRIVATE)' }));
-    for (const id of [plain, main]) {
+    for (const id of [plain]) {
       await openBoard(page, id);
       await page.locator(`.card[data-id="${id}"] .card-start`).click();
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);

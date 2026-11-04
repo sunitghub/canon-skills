@@ -269,23 +269,6 @@ export function divergenceLine(t) {
   return info ? `<div class="card-diverge" title="${escAttr(info.long)}">${esc(info.short)}</div>` : '';
 }
 
-// t-19d1: New Ticket's "Main checkout" choice is saved as this sentinel, not a branch name (the main
-// checkout's branch varies: main, master, …), so the rail can preselect Main and the card can say so.
-export const WT_PREF_MAIN = 'main-checkout';
-
-// t-15ee: the branch chosen in New Ticket (`worktree_preference`), while the ticket is still open —
-// nothing is created until the sprint starts, so without this the choice looks dropped.
-export function openWorktreePreference(t) {
-  return t && t.status === 'open' && t.worktree_preference ? String(t.worktree_preference) : '';
-}
-
-export function worktreePrefLine(t) {
-  const pref = openWorktreePreference(t);
-  if (!pref) return '';
-  if (pref === WT_PREF_MAIN) return `<div class="card-wt-pref" title="Chosen at New Ticket — the sprint runs in the main checkout.">Worktree: Main checkout</div>`;
-  return `<div class="card-wt-pref" title="${escAttr(`Chosen at New Ticket — the worktree "${pref}" is created when you start the sprint.`)}">Worktree: ${esc(pref)}</div>`;
-}
-
 // Fetch each referenced ticket-local .feature and replace its placeholder with a
 // rendered scenario panel (or a legible error state). Server-side _safe_ticket_doc /
 // safeTicketDoc is the real trust boundary; this only reads .feature under the ticket.
