@@ -62,6 +62,11 @@
      mode (t-ddc8) — this page's #model span is a static, never-updated
      placeholder, so hide it in embed to avoid a second, dead "model:" chip */
   body.embed .model{display:none}
+  /* t-1917: in the board the Agents list owns the session's state and End session ends it (its dialog has "End without saving"), so the pane
+     header keeps only what runs the agent: the picker, Start, the folder, the meter and the font size. Standalone, Kill and the state stay. */
+  body.embed .btn-kill, body.embed .status{display:none}
+  .paneinfo{font-family:var(--mono);font-size:11.5px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .paneinfo.cwd{flex:0 1 auto;max-width:34ch;margin-left:10px}
   /* t-74d6: stale-daemon banner — the board detects a version-drifted daemon
      and relays it in; the Restart button calls the token-gated /shutdown. */
   .stale-banner{display:flex;align-items:center;gap:10px;padding:7px 12px;
@@ -90,8 +95,10 @@
       <button class="btn-start" id="startBtn">▶ Start sprint</button>
       <button class="btn-kill" id="killBtn" disabled>Kill</button>
     </div>
+    <span class="paneinfo cwd" id="paneCwd" hidden></span>
     <div class="spacer"></div>
     <span class="agent-hint" id="agentHint"></span>
+    <span class="paneinfo" id="paneMeter" title="Cache share of input, LLM calls, tool calls, sub-agents (this session)" hidden></span>
     <span class="fontctl" title="Terminal font size">
       <button id="fontDec" type="button" title="Smaller terminal font">A−</button>
       <span class="fc-val" id="fontVal"></span>
@@ -419,6 +426,11 @@ function canonPrefixKeys(emit) {
             : { source: "canon-cockpit", type: "end-scratch-failed", reason: String(res.t || "") }); }catch(e){}
         })
         .catch(function(){ try{ toParent({ source: "canon-cockpit", type: "end-scratch-failed", reason: "Couldn't reach the daemon." }); }catch(e){} });
+    } else if(d.type === "pane-info"){
+      // t-1917: the board owns the daemon row and sends the meter and the session's folder; the text is set, never parsed as markup.
+      var pm = document.getElementById("paneMeter"), pc = document.getElementById("paneCwd");
+      pm.textContent = typeof d.meter === "string" ? d.meter : ""; pm.hidden = !pm.textContent;
+      pc.textContent = typeof d.cwd === "string" ? d.cwd : ""; pc.title = pc.textContent; pc.hidden = !pc.textContent;
     } else if(d.type === "set-title"){
       if(!session || typeof d.title !== "string") return;
       fetch("/session/"+session+"/title", { method:"POST", headers: Object.assign({"Content-Type":"application/json"}, authHeaders(sessTok)), body: JSON.stringify({ title: d.title }) }).catch(function(){});

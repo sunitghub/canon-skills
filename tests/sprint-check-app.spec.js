@@ -7799,7 +7799,6 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await page.locator('.ck-title-input').fill('Skill Eval on Windows');
         await page.keyboard.press('Enter');
         await expect(title).toHaveText('Skill Eval on Windows');
-        await expect(page.locator('#ck-title')).toHaveText('Skill Eval on Windows');
         await expect.poll(() => page.evaluate(() => window.__termSeen.find(m => m.type === 'set-title'))).toMatchObject({ title: 'Skill Eval on Windows' });
         // Esc cancels an edit.
         await title.click();
@@ -8195,8 +8194,6 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#m-body')).toContainText('First cockpit criterion');
       await page.keyboard.press('Escape');
       await expect(page.locator('#modal-overlay')).not.toHaveClass(/open/);
-      // Read-only model chip inherits from plan.md's Gate model.
-      await expect(page.locator('#ck-model')).toContainText('haiku');
       // The embedded terminal iframe points at the (stubbed) daemon /cockpit with embed=1.
       await expect(page.locator('#ck-iframe')).toHaveAttribute('src', /\/cockpit\?ticket=.*embed=1/);
 
@@ -8777,7 +8774,6 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#ck-tc-status')).toBeVisible();
       await expect(page.locator('#ck-id')).toBeHidden();
       await expect(page.locator('#ck-status')).toBeHidden();
-      await expect(page.locator('#ck-title')).toBeHidden();
 
       // Collapse the rail: the topbar context becomes the visible fallback so
       // ticket context is never lost.
@@ -8787,7 +8783,6 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#ck-tab-strip-topbar .ck-tab-pill-id')).toContainText(id);
       await expect(page.locator('#ck-id')).toBeHidden();
       await expect(page.locator('#ck-status')).toBeVisible();
-      await expect(page.locator('#ck-title')).toBeVisible();
     } finally {
       removeTestTicket(PROJECT_ROOT, id);
     }
@@ -9019,14 +9014,11 @@ test.describe('cockpit in board (t-ddc8)', () => {
   // rail collapsed (which shows id/status/title too) and the worst-case right-hand content. Asserted from
   // measured boxes, not from a screenshot (the t-26f9 lesson).
   test.describe('cockpit top bar fits (t-b91f)', () => {
-    const LONG = 'Read the Anthropic API key from the environment only and refuse to start when it is missing or malformed ' + 'x'.repeat(40);
     async function openBar(page, id, { collapse }) {
       writeTicket(id, 'in_progress', {
         acceptanceCriteria: ['- [ ] c'],
         plan: ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: low', '', '- [x] Plan approved', '', '## Approach', 'x', ''],
       });
-      const tf = path.join(PROJECT_ROOT, '.tickets', id, 'ticket.md');
-      fs.writeFileSync(tf, fs.readFileSync(tf, 'utf8').replace(/^# .*$/m, `# ${LONG}`));
       await stubCockpit(page);
       await page.goto(BASE);
       await page.waitForLoadState('networkidle');
@@ -9034,18 +9026,17 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator(`.card[data-id="${id}"] .card-start`).click();
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
       if (collapse) await page.locator('#ck-rail-toggle').click();
-      // Worst case for the right-hand side: a state chip, the auto-save text, four tab pills, a long model.
+      // Worst case for the right-hand side: the Needs you chip, the auto-save text, four tab pills.
       await page.evaluate(() => {
-        const chip = document.getElementById('ck-state-chip'); chip.className = 'ck-state-chip st-working'; chip.textContent = 'working'; chip.hidden = false;
+        const chip = document.getElementById('ck-state-chip'); chip.className = 'ck-state-chip st-needs-you'; chip.textContent = 'Needs you'; chip.hidden = false;
         const r = document.getElementById('ck-reaper'); r.textContent = 'Auto-save & end in 30m \u00b7 resets on activity'; r.hidden = false;
         const ts = document.getElementById('ck-tab-strip-topbar'); ts.hidden = false;
         ts.innerHTML = ['t-a319', 't-b91f', 't-ccd6', 't-07a8'].map(n => `<span class="ck-tab-pill"><span class="ck-tab-pill-id">${n}</span><button class="ck-tab-pill-close" type="button">\u00d7</button></span>`).join('');   // the real pill markup (renderTabStrip)
-        document.getElementById('ck-model').textContent = 'model: claude-sonnet-5 (Admin Review & Eval default)';
         // The page's own renderers (its 5s poll, the sessions and plan.md fetches) would overwrite this a moment later
         // (the stubbed session is never live), so freeze what was set: the test then measures it, not a race. The
         // board's functions are module-private (t-1543), so the freeze is on the elements, not the renderers.
         const desc = (el, p) => { for (let o = el; o; o = Object.getPrototypeOf(o)) { const d = Object.getOwnPropertyDescriptor(o, p); if (d) return d; } };
-        for (const el of [chip, r, document.getElementById('ck-model')]) {
+        for (const el of [chip, r]) {
           for (const p of ['textContent', 'className', 'hidden', 'title']) {
             const d = desc(el, p);
             Object.defineProperty(el, p, { configurable: true, get() { return d.get.call(this); }, set() {} });
@@ -9054,7 +9045,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         }
       });
     }
-    const CONTROLS = ['#ck-back', '#ck-id', '#ck-status', '#ck-title', '#ck-tab-strip-topbar', '#ck-state-chip', '#ck-reaper', '#ck-end-session', '#ck-model'];
+    const CONTROLS = ['#ck-back', '#ck-id', '#ck-status', '#ck-tab-strip-topbar', '#ck-state-chip', '#ck-reaper', '#ck-end-session'];
     const ONE_LINE = { '#ck-back': 42, '#ck-id': 22, '#ck-status': 22, '#ck-state-chip': 28, '#ck-end-session': 36, '#ck-tab-strip-topbar': 32 };
 
     test('collapsed rail: every control lies inside the bar and the window, nothing wraps (t-b91f) @webkit', async ({ page }) => {
@@ -9067,8 +9058,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
             await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
             const bar = await page.locator('.ck-topbar').boundingBox();
             expect(bar.x + bar.width, `bar right ${w}`).toBeLessThanOrEqual(w + 0.5);
-            // t-614c: the pill already names the ticket, so the id text is gone; the title is gone at or below 1000px.
-            const gone = ['#ck-id', ...(w <= 1000 ? ['#ck-title'] : [])];
+            // t-614c: the pill already names the ticket, so the id text is gone (t-1917: the bar has no title or model at any width).
+            const gone = ['#ck-id'];
             for (const sel of CONTROLS) {
               const loc = page.locator(sel);
               if (gone.includes(sel)) { await expect(loc, `${sel} hidden at ${w}`).toBeHidden(); continue; }
@@ -9079,10 +9070,6 @@ test.describe('cockpit in board (t-ddc8)', () => {
               expect(b.x + b.width, `${tag} right (bar ${bar.x + bar.width}, window ${w})`).toBeLessThanOrEqual(Math.min(bar.x + bar.width, w) + 0.5);
               if (ONE_LINE[sel]) expect(b.height, `${tag} wrapped (height ${b.height})`).toBeLessThanOrEqual(ONE_LINE[sel]);
             }
-            if (w > 1000) {
-              const tw = (await page.locator('#ck-title').boundingBox()).width;
-              expect(tw, `the title is squeezed to nothing at ${w}`).toBeGreaterThanOrEqual(60);
-            }
             expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `page scrolls sideways at ${w}`).toBe(true);
           }
         }
@@ -9091,16 +9078,15 @@ test.describe('cockpit in board (t-ddc8)', () => {
       }
     });
 
-    test('long text gives way with an ellipsis, the title keeps a tooltip, End Session is reachable (t-b91f) @webkit', async ({ page }) => {
+    test('long text gives way with an ellipsis, End session is reachable (t-b91f) @webkit', async ({ page }) => {
       const id = newTicketId(PROJECT_ROOT, 'b91fb');
       try {
         await openBar(page, id, { collapse: true });
         await page.setViewportSize({ width: 900, height: 720 });
-        for (const sel of ['#ck-title', '#ck-reaper', '#ck-model']) {
+        for (const sel of ['#ck-reaper']) {
           const css = await page.locator(sel).evaluate(el => { const c = getComputedStyle(el); return { o: c.overflow, t: c.textOverflow, w: c.whiteSpace }; });
           expect(css, sel).toMatchObject({ o: 'hidden', t: 'ellipsis', w: 'nowrap' });
         }
-        expect(await page.locator('#ck-title').getAttribute('title')).toBe(LONG);
         // A trial click checks the button is visible, stable and not covered by anything, without pressing it
         // (pressing it with no live session closes the cockpit).
         await page.locator('#ck-end-session').click({ trial: true });
@@ -9109,7 +9095,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       }
     });
 
-    test('collapsed rail: the id shows once (the pill) and the title drops on narrow widths (t-614c)', async ({ page }) => {
+    test('collapsed rail: the id shows once (the pill) (t-614c)', async ({ page }) => {
       const id = newTicketId(PROJECT_ROOT, '614ca');
       try {
         await openBar(page, id, { collapse: true });
@@ -9118,12 +9104,10 @@ test.describe('cockpit in board (t-ddc8)', () => {
           await page.setViewportSize({ width: w, height: 720 });
           await expect(pill, `pill at ${w}`).toBeVisible();
           await expect(page.locator('#ck-id'), `the id text repeats the pill at ${w}`).toBeHidden();
-          await expect(page.locator('#ck-title'), `title at ${w}`).toBeHidden();
           await expect(page.locator('#ck-status'), `status chip at ${w}`).toBeVisible();
           await page.locator('#ck-end-session').click({ trial: true });
         }
         await page.setViewportSize({ width: 1400, height: 720 });
-        await expect(page.locator('#ck-title'), 'a wide window keeps the title').toBeVisible();
         await expect(page.locator('#ck-id')).toBeHidden();
         // Only hidden while the pills show: with no pill strip the id text is the one place that names the ticket.
         await page.evaluate(() => { document.getElementById('ck-tab-strip-topbar').hidden = true; });
@@ -9133,19 +9117,57 @@ test.describe('cockpit in board (t-ddc8)', () => {
       }
     });
 
-    test('expanded rail: id, status and title stay hidden and the rest still fits (t-b91f) @webkit', async ({ page }) => {
+    test('expanded rail: id and status stay hidden and the rest still fits (t-b91f) @webkit', async ({ page }) => {
       const id = newTicketId(PROJECT_ROOT, 'b91fc');
       try {
         await openBar(page, id, { collapse: false });
         for (const w of [1280, 900]) {
           await page.setViewportSize({ width: w, height: 720 });
-          for (const sel of ['#ck-id', '#ck-status', '#ck-title']) await expect(page.locator(sel), `${sel} hidden at ${w}`).toBeHidden();
-          for (const sel of ['#ck-back', '#ck-state-chip', '#ck-reaper', '#ck-end-session', '#ck-model']) {
+          for (const sel of ['#ck-id', '#ck-status']) await expect(page.locator(sel), `${sel} hidden at ${w}`).toBeHidden();
+          for (const sel of ['#ck-back', '#ck-state-chip', '#ck-reaper', '#ck-end-session']) {
             const b = await page.locator(sel).boundingBox();
             expect(b.x + b.width, `${sel} right at ${w}`).toBeLessThanOrEqual(w + 0.5);
             if (ONE_LINE[sel]) expect(b.height, `${sel} wrapped at ${w}`).toBeLessThanOrEqual(ONE_LINE[sel]);
           }
         }
+      } finally {
+        removeTestTicket(PROJECT_ROOT, id);
+      }
+    });
+  });
+
+  // t-1917: the session pane is a card, and the bar and pane header say nothing the Agents list already says.
+  test.describe('cockpit pane and top bar (t-1917)', () => {
+    test('the pane is a rounded hairline card tinted toward the accent while it has focus; the bar has no title, model or meter; Kill is not needed', async ({ page }) => {
+      const id = newTicketId(PROJECT_ROOT, '1917a');
+      try {
+        writeTicket(id, 'in_progress', {
+          acceptanceCriteria: ['- [ ] c'],
+          plan: ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: low', '', '- [x] Plan approved', '', '## Approach', 'x', ''],
+        });
+        await stubCockpit(page);
+        await page.goto(BASE);
+        await page.waitForLoadState('networkidle');
+        await page.locator('#board-search').fill(id);
+        await page.locator(`.card[data-id="${id}"] .card-start`).click();
+        await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+        const term = page.locator('.ck-term');
+        await expect(term).toHaveCSS('border-top-width', '1px');
+        await expect(term).toHaveCSS('border-top-left-radius', '10px');
+        for (const theme of ['dark', 'light']) {
+          await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+          await page.locator('#cockpit-overlay .ck-topbar').click();   // focus leaves the pane
+          await expect(page.locator('#ck-iframe')).not.toBeFocused();
+          const rest = await term.evaluate(el => getComputedStyle(el).borderTopColor);
+          await page.locator('#ck-iframe').focus();
+          await expect.poll(() => term.evaluate(el => getComputedStyle(el).borderTopColor), `${theme}: the focused border differs from the resting one`).not.toBe(rest);
+        }
+        // Gone from the bar: the title (the rail card keeps it), the model chip and the meter (the pane header shows the meter).
+        for (const sel of ['#ck-title', '#ck-model', '#ck-meter']) await expect(page.locator(sel), `${sel} is gone`).toHaveCount(0);
+        await expect(page.locator('#ck-tc-title')).toHaveText(/Cockpit test/);
+        // Sentence case, and a session that will not answer still ends without a Kill button.
+        await expect(page.locator('#ck-end-session')).toHaveText('End session');
+        await expect(page.locator('#ck-leave-skip')).toHaveText('End without saving');
       } finally {
         removeTestTicket(PROJECT_ROOT, id);
       }
@@ -11148,6 +11170,8 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
         } else if(d.type === 'force-end'){
           window.parent.postMessage({source:'canon-cockpit', type:'__received', received:'force-end'}, '*');
           setTimeout(function(){ window.parent.postMessage({source:'canon-cockpit', type:'ended'}, '*'); }, ${forceEndDelayMs});
+        } else if(d.type === 'pane-info'){
+          window.__paneInfo = { meter: d.meter, cwd: d.cwd };   // t-1917: what the board sends for the pane header
         }
       });
     </script></body></html>`;
@@ -11771,7 +11795,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
 
       // Flip the fake daemon's status to needs-you without navigating.
       await postFromIframe('needs-you');
-      await expect(badge).toHaveText('needs you');
+      await expect(badge).toHaveText('Needs you');
       await expect(badge).toHaveClass(/st-needs-you/);
 
       // Back to running clears it again.
@@ -11780,7 +11804,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
 
       // A fresh reopen must never inherit a prior session's stale badge state.
       await postFromIframe('needs-you');
-      await expect(badge).toHaveText('needs you');
+      await expect(badge).toHaveText('Needs you');
       // "Leave running" was removed (t-a852) — a needs-you session must be
       // resolved before it can be left, so flip to running, then Save & End
       // closes it (fake daemon replies 'ended').
@@ -11805,15 +11829,17 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       rows = [{ ...base, state: 'working', state_secs: 4, idle_secs: 10, idle_limit_secs: 300, signal: 'hook', meter: { cache_pct: 87, llm_calls: 42, tool_calls: 130, sub_agents: 2 } }];
       await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running' }));
       const chip = page.locator('#ck-state-chip'), reaper = page.locator('#ck-reaper');
+      const paneInfo = () => page.frameLocator('#ck-iframe').locator('body').evaluate(() => window.__paneInfo || null);
       const poke = () => page.frameLocator('#ck-iframe').locator('body').evaluate(() => {
         window.parent.postMessage({ source: 'canon-cockpit', type: 'status', status: 'running' }, '*');
       });
       await poke();
       await expect(chip).toBeHidden();   // t-fe82: working lives in the Agents sidebar
-      // t-d00c: the ambient token meter, from the daemon row
-      await expect(page.locator('#ck-meter')).toHaveText('87% cache · 42 calls · 130 tools · 2 sub');
-      // t-91c5: the Agents sidebar already shows the countdown, so the top bar says only "Auto Save"; the sentence is the tooltip.
-      await expect(reaper).toHaveText('Auto Save');
+      // t-d00c, t-1917: the ambient token meter and the session's folder go to the pane header (the page), not the bar
+      await expect.poll(paneInfo).toEqual({ meter: '87% cache · 42 calls · 130 tools · 2 sub', cwd: PROJECT_ROOT });
+      await expect(page.locator('#ck-meter')).toHaveCount(0);
+      // t-91c5: the Agents sidebar already shows the countdown, so the top bar says only "Auto save"; the sentence is the tooltip.
+      await expect(reaper).toHaveText('Auto save');
       await expect(reaper).toHaveAttribute('title', 'Auto-save & end in 4m · resets on activity');
       fs.mkdirSync(path.join(PROJECT_ROOT, '.tickets', 't-824e', 'visuals'), { recursive: true });
       await page.locator('#cockpit-overlay .ck-topbar').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-824e', 'visuals', 'ticket-cockpit.png') });
@@ -11821,21 +11847,21 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       rows = [{ ...base, status: 'awaiting-input', state: 'done', state_secs: 70, idle_secs: 70, idle_limit_secs: 1800, signal: 'hook' }];
       await poke();
       await expect(chip).toBeHidden();
-      await expect(reaper).toHaveText('Auto Save');
+      await expect(reaper).toHaveText('Auto save');
       await expect(reaper).toHaveAttribute('title', 'Auto-save & end in 28m · resets on activity');
 
       rows = [{ ...base, agent: 'copilot', state: 'needs-you', state_secs: 12, idle_secs: 12, idle_limit_secs: 300, signal: 'copilot-menu' }];
       await poke();
-      await expect(chip).toHaveText('needs you');
+      await expect(chip).toHaveText('Needs you');
       await expect(chip).toHaveAttribute('title', 'State from: Copilot approval menu');
-      await expect(reaper).toHaveText('Auto Save paused');
+      await expect(reaper).toHaveText('Auto save paused');
       await expect(reaper).toHaveAttribute('title', 'Auto-save paused · waiting on you');
 
       rows = [{ ...base }]; // pre-t-824e daemon: status only
       await poke();
       await expect(chip).toBeHidden();
       await expect(reaper).toBeHidden();
-      await expect(page.locator('#ck-meter')).toBeHidden();   // t-d00c: no meter on a row without one, not "0%"
+      await expect.poll(paneInfo).toMatchObject({ meter: '' });   // t-d00c: no meter on a row without one, not "0%"
       await expect(reaper).not.toHaveAttribute('title', /Auto-save/);   // no stale tooltip once the text is gone
       await expect(page.locator('#cockpit-overlay')).not.toContainText('undefined');
     } finally {

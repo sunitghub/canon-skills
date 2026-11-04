@@ -134,32 +134,34 @@ function fmtWait(secs) {
   return m >= 60 ? Math.floor(m / 60) + 'h ' + (m % 60) + 'm' : m > 0 ? m + 'm' : 'under a minute';
 }
 export function renderSessionStateChip() {
-  const chip = document.getElementById('ck-state-chip'), reaper = document.getElementById('ck-reaper'), meter = document.getElementById('ck-meter');
+  const chip = document.getElementById('ck-state-chip'), reaper = document.getElementById('ck-reaper');
   // A Terminal is not an agent: no working state and no auto-save countdown.
-  if (!sessionIsLive() || state.scratch.get(cockpitState.id)?.term === true) { chip.hidden = true; reaper.hidden = true; meter.hidden = true; return; }
+  if (!sessionIsLive() || state.scratch.get(cockpitState.id)?.term === true) { chip.hidden = true; reaper.hidden = true; postPaneInfo('', ''); return; }
   const row = cockpitState.daemonRow || null;
   const num = v => (typeof v === 'number' && isFinite(v) && v >= 0) ? v : null;
   let st = row ? ckRowState(row) : 'running';
   if (cockpitState.status === 'needs-you') st = 'needs-you';
   chip.className = 'ck-state-chip st-' + st;
-  chip.textContent = CK_STATE_LABEL[st];
+  chip.textContent = 'Needs you';   // t-1917: the only state the bar shows, in sentence case
   const signal = row && CK_SIGNAL_LABEL[row.signal];
   chip.title = signal ? 'State from: ' + signal : 'State from the session\u2019s status';
   chip.hidden = st !== 'needs-you';
   const idle = row && num(row.idle_secs), limit = row && num(row.idle_limit_secs);
-  // t-91c5: the Agents sidebar already shows the countdown ("reaps in 29m"), so the top bar says only "Auto Save" and
+  // t-91c5: the Agents sidebar already shows the countdown ("reaps in 29m"), so the top bar says only "Auto save" and
   // keeps the full sentence as the tooltip.
   let reaperText = '', reaperTip = '';
-  if (st === 'needs-you') { reaperText = 'Auto Save paused'; reaperTip = 'Auto-save paused \u00b7 waiting on you'; }
-  else if (idle !== null && limit !== null) { reaperText = 'Auto Save'; reaperTip = 'Auto-save & end in ' + fmtWait(Math.max(0, limit - idle)) + ' \u00b7 resets on activity'; }
+  if (st === 'needs-you') { reaperText = 'Auto save paused'; reaperTip = 'Auto-save paused \u00b7 waiting on you'; }
+  else if (idle !== null && limit !== null) { reaperText = 'Auto save'; reaperTip = 'Auto-save & end in ' + fmtWait(Math.max(0, limit - idle)) + ' \u00b7 resets on activity'; }
   reaper.textContent = reaperText;
   if (reaperTip) reaper.title = reaperTip; else reaper.removeAttribute('title');
   reaper.hidden = !reaperText;
-  // t-d00c: the ambient token meter, shown only when the daemon row carries one (a claude session).
+  // t-d00c, t-1917: the ambient token meter and the session's folder show in the pane's own header strip, not in the bar. The board
+  // owns the daemon row, so it sends the text in; sub-agents are named only when there are some.
   const mt = row && row.meter && typeof row.meter === 'object' ? row.meter : null;
-  meter.textContent = mt ? [mt.cache_pct + '% cache', mt.llm_calls + ' calls', mt.tool_calls + ' tools', mt.sub_agents + ' sub'].join(' \u00b7 ') : '';
-  meter.hidden = !mt;
+  postPaneInfo(mt ? [mt.cache_pct + '% cache', mt.llm_calls + ' calls', mt.tool_calls + ' tools'].concat(mt.sub_agents > 0 ? [mt.sub_agents + ' sub'] : []).join(' \u00b7 ') : '', row && typeof row.cwd === 'string' ? row.cwd : '');
 }
+// Sent on every render (the 5 s poll): a reloaded pane has no memory, so there is nothing to dedupe.
+function postPaneInfo(meter, cwd) { postToTab(cockpitState, { type: 'pane-info', meter, cwd }); }
 export async function refreshSessionStateChip() {
   const tab = cockpitState, id = activeTabId;
   if (!tab || !document.getElementById('cockpit-overlay').classList.contains('open') || !sessionIsLive()) { renderSessionStateChip(); return; }
@@ -509,7 +511,7 @@ export function unmountTab(id) {
       // The ticket vanished from state.tickets between that tab opening and
       // this switch (e.g. archived/deleted elsewhere while backgrounded) —
       // don't leave the previous tab's stale labels on screen.
-      else { document.getElementById('ck-id').textContent = nextId; document.getElementById('ck-title').textContent = ''; document.getElementById('ck-title').title = ''; }
+      else { document.getElementById('ck-id').textContent = nextId; }
       if (boardPane) closeCockpit();   // t-ccf5: the Board it sat under comes back whole; the other tabs stay open in the strip
     } else {
       activeTabId = null;

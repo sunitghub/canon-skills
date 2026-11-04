@@ -171,8 +171,13 @@ sprint agent without leaving the browser — no second terminal.
   embedded terminal (xterm.js). Click **Start sprint** (or **Resume**) → the
   agent runs in-page; you type to it there. The agent keeps running if you
   close the tab and reattaches (scrollback replayed) when you reopen;
-  **Kill** stops it cleanly with no orphaned process. A reopened tab only
-  reattaches once you press **Start sprint** again; until then **End Session**
+  **End session** saves and ends it, and **End without saving** in its dialog stops it with no orphaned
+  process (the board's pane has no Kill button; the standalone page keeps one, `t-1917`). The pane
+  is a rounded card whose header holds only the agent picker, **Start sprint** (**Start agent** for a
+  scratch session), the session's folder, the cache meter and the font size; the top bar keeps Back,
+  the id or SCRATCH tag, the tab pills, **Auto save** and **End session**, and shows a **Needs you**
+  chip only when the agent is waiting on you. The state itself is in the Agents list. A reopened tab only
+  reattaches once you press **Start sprint** again; until then **End session**
   can't reach the still-running agent, so it says so (and leaves the tab open)
   instead of closing as if it had ended it.
 - **It is a real agent, with this project's own permissions.** The daemon execs

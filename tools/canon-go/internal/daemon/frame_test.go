@@ -59,3 +59,29 @@ func TestCockpitFramePolicy(t *testing.T) {
 		t.Fatal("http://localhost without a port is a loopback parent")
 	}
 }
+
+// t-1917: in the board's pane (embed=1) the Agents list owns the session's state and End session ends it, so the page header keeps only
+// the picker, Start, the folder, the meter and the font size: Kill and the state are hidden, and the meter and folder are set by the
+// board's pane-info message as text, never as markup. Standalone, Kill and the state stay.
+func TestCockpitPaneHeader(t *testing.T) {
+	s := newServer(config{token: "boot", projectRoot: t.TempDir(), stateDir: t.TempDir()})
+	req := httptest.NewRequest("GET", "http://127.0.0.1:8455/cockpit?ticket=t-abcd&embed=1", nil)
+	req.Header.Set("Sec-Fetch-Site", "same-site")
+	rec := httptest.NewRecorder()
+	s.handler().ServeHTTP(rec, req)
+	page := rec.Body.String()
+	for _, want := range []string{
+		"body.embed .btn-kill, body.embed .status{display:none}", // hidden in the board's pane only
+		`id="killBtn"`, `id="statusText"`, // still there for the standalone page
+		`id="paneMeter"`, `id="paneCwd"`, `d.type === "pane-info"`,
+		"pm.textContent = typeof d.meter", "pc.textContent = typeof d.cwd",
+	} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("the cockpit page lacks %q", want)
+		}
+	}
+	i := strings.Index(page, `d.type === "pane-info"`)
+	if strings.Contains(page[i:i+700], "innerHTML") {
+		t.Fatal("pane-info must set text, never markup")
+	}
+}

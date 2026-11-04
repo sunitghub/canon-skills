@@ -908,8 +908,6 @@ export function editScratchTitle() {
       postToTab(cockpitState, { type: 'set-title', title: v });
     }
     document.getElementById('ck-tc-title').textContent = t.title;
-    document.getElementById('ck-title').textContent = t.title;
-    document.getElementById('ck-title').title = t.title || '';   // t-b91f: the full title when the bar truncates it
   };
   // Esc/Enter belong to this field — not the board's own Escape (which closes the cockpit).
   input.addEventListener('keydown', e => {

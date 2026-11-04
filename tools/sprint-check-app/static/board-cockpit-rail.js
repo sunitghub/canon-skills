@@ -2,7 +2,7 @@ import { SHELL_TAB, docSlug, freshShellSessions, state } from './board-core.js';
 import { displayTicketId, effectiveStatus, esc, escAttr } from './board-helpers.js';
 import { SCRATCH_ID, announceScratchTabs, findTicketById, normProjectPath, postWrite, renderScratchWhere, showToast } from './board-render.js';
 import { activateDoc, modalState, openModal } from './board-modal.js';
-import { hasFilledCheckbox, hasUsefulSectionText, parseGateModel, sectionContent } from './board-docs.js';
+import { hasFilledCheckbox, hasUsefulSectionText, sectionContent } from './board-docs.js';
 import { applyPane, initPane } from './board-pane.js';
 import { activeTabId, announceActiveSession, closeTab, cockpitState, cockpitTabs, newCockpitTabState, openLeaveConfirm, openTerminalCloseConfirm, refreshSessionStateChip, renderSessionStateChip, sessionIsLive, setActiveTab, teardownCockpit } from './board-cockpit.js';
 import { cockpitPathKey, fetchWorktreeLock, formatStateAsParagraphs, maybeMountCockpitTerminal, renderCockpitWorktree } from './board-worktree.js';
@@ -237,23 +237,18 @@ export async function renderCockpitRail(t) {
   endBtn.disabled = false;
   endBtn.title = t.term ? 'End this Terminal (same as Ctrl+. then x)' : 'Save state and end this session';
   document.getElementById('ck-id').textContent = displayTicketId(t);
-  document.getElementById('ck-title').textContent = t.title || '';
-  document.getElementById('ck-title').title = t.title || '';   // t-b91f: the full title when the bar truncates it
   document.getElementById('ck-tc-id').textContent = displayTicketId(t);
   document.getElementById('ck-tc-title').textContent = t.title || '';
   renderCockpitStatusBadge(t);
   if (t.scratch) {   // t-47f1: no worktree, plan, acceptance or state to show
-    document.getElementById('ck-model').textContent = 'model: agent default';
     renderScratchWhere(cockpitState);
     return;
   }
-  renderCockpitModel(t);
   await renderCockpitWorktree(t);
   // t-1357: once the worktree lock/main path are known, pull the active
   // ticket's docs from the worktree the session runs in (if any) so the rail
   // reflects that tree, not the main checkout. Then (re)render the doc panels.
   await fetchCockpitWorktreeDocs(t);
-  renderCockpitModel(t);
   await renderCockpitDocs(t);
   await renderCockpitState(t);
 }
@@ -400,7 +395,7 @@ function openDetachedSessionNotice(s) {
   document.getElementById('ck-leave-confirm-title').textContent = scratch ? 'A scratch session is still running' : 'A sprint session is still running';
   document.getElementById('ck-leave-confirm-body').textContent =
     `A ${String(s.agent || 'agent')} session for this ${scratch ? 'scratch session' : 'ticket'} is still running in the daemon but isn't attached to this tab, ` +
-    `so End Session can't end it from here. Click ▶ ${scratch ? 'Start agent' : 'Start sprint'} to reattach, then End Session.`;
+    `so End session can't end it from here. Click ▶ ${scratch ? 'Start agent' : 'Start sprint'} to reattach, then End session.`;
   document.getElementById('ck-leave-confirm-status').textContent = '';
   document.getElementById('ck-leave-confirm').classList.add('open');
 }
@@ -429,24 +424,6 @@ async function fetchCockpitWorktreeDocs(t) {
   } catch {
     cockpitState.worktreeDocs = null;
   }
-}
-
-// Model chip is read-only, sourced from plan.md's `Gate model:` (or the default).
-async function renderCockpitModel(t) {
-  const el = document.getElementById('ck-model');
-  el.textContent = 'model: from plan.md';
-  let planContent = (cockpitState.worktreeDocs || {}).plan; // t-1357: worktree plan wins
-  if (planContent == null) {
-    const planDoc = (t.docs || []).find(d => docSlug(t, d.file) === 'plan');
-    if (!planDoc) return;
-    try {
-      const r = await fetch(`/api/doc/${encodeURIComponent(planDoc.file)}`);
-      if (!r.ok) return;
-      planContent = (await r.json()).content || '';
-    } catch { return; }
-  }
-  const gm = parseGateModel(planContent || '');
-  if (gm.filled && gm.value) el.textContent = `model: ${gm.value} · plan.md`;
 }
 
 // t-6254: the rail's Ticket details row. The poll already reads plan.md and acceptance.md (the worktree's copy wins,
