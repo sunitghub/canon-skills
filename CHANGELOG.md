@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.43.3] - 2026-11-04
+
+Shell tooling only: no new program, so there is no daemon to restart. Run `canon update`.
+
 ### Changed
 - A command refused during a close gate now says so in one line and one more, naming the gate's start time and project: "canon update: refused — a canon close gate (reviewer/evaluator) started at 14:02 in my-app is still registered. Run it again when it finishes; if no gate is running, it was interrupted and clears by 16:02." The scratch path, the HOME rule and the clearing how-to print only with `CANON_DEBUG=1` (t-11e6). Nothing about what is refused changed.
 - `sprint start` seeds HANDOFF.md with a bare `## Next Steps`, not an empty "1." that showed in the Cockpit rail (t-11e6). Existing files keep theirs.
