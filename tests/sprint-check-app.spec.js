@@ -6502,17 +6502,17 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await openShell(page, stateRows());
       await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
       const read = () => page.evaluate(() => {
-        const c = sel => getComputedStyle(document.querySelector(sel)).color;
-        return {
-          need: c('#ag-list .ag-row.st-needs-you .ag-s'), work: c('#ag-list .ag-row.st-working .ag-s'), done: c('#ag-list .ag-row.st-done .ag-s'),
+        const g = (sel, prop) => getComputedStyle(document.querySelector(sel))[prop];
+        return {   // t-d0ed: the state is a glyph now: the orange pill, the spinning ring's lit edge, the solid dot
+          need: g('#ag-list .ag-row.st-needs-you .ag-pill', 'backgroundColor'), work: g('#ag-list .ag-row.st-working .ag-ring', 'borderTopColor'), done: g('#ag-list .ag-row.st-done .sdot', 'backgroundColor'),
           tab: getComputedStyle(document.querySelector('.tab[data-tab="proj-a"] .live.needs')).backgroundColor,
           ring: getComputedStyle(document.querySelector('#ag-list .ag-row.st-idle .sdot')).boxShadow,
         };
       });
-      expect(await read()).toMatchObject({ need: 'rgb(243, 139, 168)', work: 'rgb(249, 226, 175)', done: 'rgb(148, 226, 213)', tab: 'rgb(243, 139, 168)' });
+      expect(await read()).toMatchObject({ need: 'rgb(251, 191, 36)', work: 'rgb(249, 226, 175)', done: 'rgb(148, 226, 213)', tab: 'rgb(243, 139, 168)' });
       expect((await read()).ring).toContain('rgb(166, 227, 161)');
       await page.evaluate(() => { document.documentElement.dataset.theme = 'light'; });
-      expect(await read()).toMatchObject({ need: 'rgb(210, 15, 57)', work: 'rgb(223, 142, 29)', done: 'rgb(23, 146, 153)' });
+      expect(await read()).toMatchObject({ need: 'rgb(180, 83, 9)', work: 'rgb(223, 142, 29)', done: 'rgb(23, 146, 153)' });
       fs.mkdirSync(path.join(PROJECT_ROOT, '.tickets', 't-28ec', 'visuals'), { recursive: true });
       await page.locator('aside.side').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-28ec', 'visuals', 'rail-light.png') });
       await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
@@ -9173,9 +9173,9 @@ test.describe('cockpit in board (t-ddc8)', () => {
           await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
           await page.locator('#cockpit-overlay .ck-topbar').click();   // focus leaves the pane
           await expect(page.locator('#ck-iframe')).not.toBeFocused();
-          await expect(term, `${theme}: resting border is the accent at 42% (always on)`).toHaveCSS('border-top-color', await mixed('color-mix(in srgb, var(--accent) 42%, transparent)'));
+          await expect(term, `${theme}: resting border is the accent at 60% (always on)`).toHaveCSS('border-top-color', await mixed('color-mix(in srgb, var(--accent) 60%, transparent)'));
           await page.locator('#ck-iframe').click();   // a real click inside the pane, as a user does (element.focus() does not move focus into a frame)
-          await expect(term, `${theme}: focused border is the accent at 64%`).toHaveCSS('border-top-color', await mixed('color-mix(in srgb, var(--accent) 64%, transparent)'));
+          await expect(term, `${theme}: focused border is the accent at 85%`).toHaveCSS('border-top-color', await mixed('color-mix(in srgb, var(--accent) 85%, transparent)'));
         }
         // Gone from the bar: the title (the rail card keeps it), the model chip and the meter (the pane header shows the meter).
         for (const sel of ['#ck-title', '#ck-model', '#ck-meter']) await expect(page.locator(sel), `${sel} is gone`).toHaveCount(0);

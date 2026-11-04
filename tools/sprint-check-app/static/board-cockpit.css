@@ -361,8 +361,8 @@
     .ck-term { flex: 1; min-width: 0; position: relative; background: var(--panel2, #0d131c);
       /* t-1917: the session pane is a card: a hairline border and rounded corners, tinted toward the accent whenever it is the visible session, stronger while the frame holds focus (a focused
          iframe does not make its wrapper match :focus-within, so initCockpit sets .pane-focus when the frame holds focus). */
-      border: 1px solid color-mix(in srgb, var(--accent) 42%, transparent); border-radius: 10px; overflow: hidden; margin: 10px; transition: border-color .12s; }
-    .ck-term.pane-focus { border-color: color-mix(in srgb, var(--accent) 64%, transparent); }
+      border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent); border-radius: 10px; overflow: hidden; margin: 10px; transition: border-color .12s; }
+    .ck-term.pane-focus { border-color: color-mix(in srgb, var(--accent) 85%, transparent); }
     .ck-term iframe { width: 100%; height: 100%; border: 0; display: block; }
     /* The message and (t-d538) the Track changes buttons stack in one centered column, so a
        message that wraps in a narrow pane pushes the buttons down instead of covering them. */
