@@ -478,7 +478,7 @@ async function followMerge(t, prB, show) {
   const local = merged ? localMainNote(st.output) : '';
   if (gen !== undefined) updateDialog({
     title: merged ? 'Merged' : 'Not merged',
-    body: merged ? `${w.wt ? `${w.name} is merged into ${(String(st.output).match(/^Merged \S+ into (\S+) /m) || [])[1] || 'main'} here.${nextLine(st.output) ? ` Next: ${nextLine(st.output).replace(/[.\s]+$/, '')}.` : ''}` : (m => m ? `The PR is merged; ${m[1].toLowerCase()}.` : 'The PR is merged and the issue closed by its Fixes line.')(String(st.output).match(/^(Issue #\d+ (?:closed|was already closed))/im))}${local ? ` ${local}` : ''}${offer ? ` Also push main to ${mirrors.join(', ')} (git config canon.mirror)?` : ''}` : `${(refusalReason(st?.output) || 'Not merged').replace(/[.:\s]+$/, '')}. ${w.wt ? 'Nothing was merged; main is unchanged.' : 'Nothing changed on GitHub.'} See the output.`,
+    body: merged ? `${w.wt ? `${w.name} is merged into ${(String(st.output).match(/^Merged \S+ into (\S+) /m) || [])[1] || 'main'} here.${nextLine(st.output) ? ` Next: ${nextLine(st.output).replace(/[.\s]+$/, '')}.` : ''}` : 'The PR is merged and the issue closed by its Fixes line.'}${local ? ` ${local}` : ''}${offer ? ` Also push main to ${mirrors.join(', ')} (git config canon.mirror)?` : ''}` : `${(refusalReason(st?.output) || 'Not merged').replace(/[.:\s]+$/, '')}. ${w.wt ? 'Nothing was merged; main is unchanged.' : 'Nothing changed on GitHub.'} See the output.`,
     pre: st?.output || '', ok: offer || (draftRefused ? 'Mark ready' : suiteFailed ? 'Fix here' : ''), cancel: 'Close', escape: true,
   }, gen);
   if (offer && shown) shown.then(v => { if (v && v.ok) pushMain(mirrors); });
