@@ -278,5 +278,21 @@ k9="$(make_project)"; RF_DIRS+=("$k9"); out9="$(mktemp -d)"; RF_DIRS+=("$out9");
 mkdir -p "$k9/.claude/skills/mine"; printf 'x\n' > "$k9/.claude/skills/mine/SKILL.md"; printf 'out\n' > "$out9/file"; ln -s "$out9" "$k9/.claude/skills/sprint"
 "$SKILLS" refresh "$k9" >/dev/null 2>&1
 assert_eq "file" "$(ls -A "$out9" | tr '\n' ' ' | sed 's/ $//')"   # no reference/ or evals/ link planted outside the project
+# a name with a newline must not split into fragments judged against the cwd: "SKILL.md\nSKILL.md" made both halves look like canon's files,
+# so the folder passed as canon-only and the cwd's own SKILL.md was deleted
+k10="$(make_project)"; RF_DIRS+=("$k10"); cwd10="$(mktemp -d)"; RF_DIRS+=("$cwd10"); "$SKILLS" add sprint "$k10" >/dev/null 2>&1; rm -rf "${k10:?}/.claude/skills" "${k10:?}/.agents/skills"
+mkdir -p "$k10/.claude/skills"; cp -R "$ROOT/skills/sprint" "$k10/.claude/skills/sprint"; nl_name="$(printf 'SKILL.md\nSKILL.md')"
+printf 'mine\n' > "$k10/.claude/skills/sprint/$nl_name"; cp "$ROOT/skills/sprint/SKILL.md" "$cwd10/SKILL.md"
+( cd "$cwd10" && "$SKILLS" refresh "$k10" >/dev/null 2>&1 )
+keep_real "a user file whose name has a newline" "$k10/.claude/skills"; assert_eq "mine" "$(cat "$k10/.claude/skills/sprint/$nl_name")"
+cmp -s "$cwd10/SKILL.md" "$ROOT/skills/sprint/SKILL.md" || fail "t-38ab: a file in the cwd was deleted through a fragment of a split name"
+# a clearing that stops part way (a read-only subfolder) leaves the skill served, not "missing link" (skipped as root, where chmod does not block)
+if [[ "$(id -u)" != 0 ]]; then
+  k11="$(make_project)"; RF_DIRS+=("$k11"); "$SKILLS" add sprint "$k11" >/dev/null 2>&1; rm -rf "${k11:?}/.claude/skills" "${k11:?}/.agents/skills"
+  mkdir -p "$k11/.claude/skills"; cp -R "$ROOT/skills/sprint" "$k11/.claude/skills/sprint"; chmod a-w "$k11/.claude/skills/sprint/reference"
+  "$SKILLS" refresh "$k11" >/dev/null 2>&1; chmod -R u+w "$k11/.claude/skills"
+  [[ -e "$k11/.claude/skills/sprint/SKILL.md" ]] || fail "t-38ab: a removal that stopped part way left sprint without its SKILL.md"
+  status_ok "$k11"
+fi
 
 printf 'skills-refresh: ok\n'

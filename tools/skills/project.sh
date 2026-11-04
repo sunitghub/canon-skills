@@ -338,10 +338,10 @@ _canon_only_skills_dir() {
   local dir="$1" e f rel cs t root_p
   [ -d "$dir" ] && ! _is_dir_link "$dir" || return 1
   root_p="$(cd -P "$SKILLS_ROOT" 2>/dev/null && pwd -P)" || root_p="$SKILLS_ROOT"
-  while IFS= read -r e; do   # find, not a glob: "$dir"/.[!.]* never matches a name starting with ".." (a user's file would be deleted)
+  while IFS= read -r -d '' e; do   # find -print0, not a glob ("$dir"/.[!.]* never matches "..x") and not lines (a name with a newline splits into fragments judged against the cwd)
     cs="$SKILLS_ROOT/skills/$(basename "$e")"
     { [ -d "$cs" ] && [ -d "$e" ] && [ ! -L "$e" ]; } || return 1
-    while IFS= read -r f; do
+    while IFS= read -r -d '' f; do
       rel="${f#"$e"/}"
       if [ -L "$f" ]; then
         t="$(readlink "$f")"
@@ -351,10 +351,10 @@ _canon_only_skills_dir() {
       else
         return 1
       fi
-    done < <(find "$e" -mindepth 1 ! -type d 2>/dev/null)
+    done < <(find "$e" -mindepth 1 ! -type d -print0 2>/dev/null)
     # a folder inside one that is a junction (Windows) is not walked by find as a link: refuse it, never delete through it
-    while IFS= read -r f; do _is_dir_link "$f" && return 1; done < <(find "$e" -mindepth 1 -type d 2>/dev/null)
-  done < <(find "$dir" -mindepth 1 -maxdepth 1 2>/dev/null)
+    while IFS= read -r -d '' f; do _is_dir_link "$f" && return 1; done < <(find "$e" -mindepth 1 -type d -print0 2>/dev/null)
+  done < <(find "$dir" -mindepth 1 -maxdepth 1 -print0 2>/dev/null)
   return 0
 }
 # _canon_only_agents_dir: 0 when <dir> is empty or holds only canon-*.md files that carry the canon:agent marker (the files
@@ -362,18 +362,18 @@ _canon_only_skills_dir() {
 _canon_only_agents_dir() {
   local dir="$1" e
   [ -d "$dir" ] && ! _is_dir_link "$dir" || return 1
-  while IFS= read -r e; do
+  while IFS= read -r -d '' e; do
     case "$(basename "$e")" in canon-*.md) ;; *) return 1 ;; esac
     { [ -f "$e" ] && [ ! -L "$e" ] && grep -qF "canon:agent" "$e"; } || return 1
-  done < <(find "$dir" -mindepth 1 -maxdepth 1 2>/dev/null)
+  done < <(find "$dir" -mindepth 1 -maxdepth 1 -print0 2>/dev/null)
   return 0
 }
 # _remove_canon_only_dir <dir>: after one of the checks above. Deletes the files one by one, then the folders deepest first; rmdir
 # refuses a folder anything else appeared in, and the rest stays (returns 1). Never rm -rf: nothing unproven is deleted.
 _remove_canon_only_dir() {
   local f
-  while IFS= read -r f; do rm -f -- "$f"; done < <(find "$1" -mindepth 1 ! -type d 2>/dev/null)
-  while IFS= read -r f; do rmdir -- "$f" 2>/dev/null || return 1; done < <(find "$1" -depth -type d 2>/dev/null)
+  while IFS= read -r -d '' f; do rm -f -- "$f"; done < <(find "$1" -mindepth 1 ! -type d -print0 2>/dev/null)
+  while IFS= read -r -d '' f; do rmdir -- "$f" 2>/dev/null || return 1; done < <(find "$1" -depth -type d -print0 2>/dev/null)
 }
 # _link_skill_children <skill_dir> <canon skill dir>: the per-skill layout served only SKILL.md; every other child of canon's skill
 # (reference/, gates/, evals/, any file) is linked too (a junction for a folder and a copy for a file on Windows). Only what is absent
@@ -417,6 +417,9 @@ upsert_skills_symlinks() {
           mkdir -p "$skill_dir"
           ln -sfn "$skill_file" "$skill_dir/SKILL.md"
           echo "  [skill-dir]  created: $skill_dir"
+        elif [ ! -e "$skill_dir/SKILL.md" ] && [ ! -L "$skill_dir/SKILL.md" ] && [ ! -L "$skill_dir" ]; then
+          ln -sfn "$skill_file" "$skill_dir/SKILL.md"   # t-38ab: a folder whose clearing stopped part way
+          echo "  [skill-dir]  created: $skill_dir/SKILL.md"
         elif [ -L "$skill_dir/SKILL.md" ] && [ "$(canon_current_path "$(readlink "$skill_dir/SKILL.md")")" = "$skill_file" ]; then
           ln -sfn "$skill_file" "$skill_dir/SKILL.md"   # t-50f7: the old location's link, re-pointed at current
           echo "  [skill-dir]  updated: $skill_dir"
