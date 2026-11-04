@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-04-2026 10:09
+learnings-sweep last run: 11-04-2026 10:54
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-04 | [t-c91a](.tickets/t-c91a/learnings.md) | A fixture that performs a step in the same checkout the command later reads (t-2906's tracked-`.tickets/` case closed the ticket in main) hides the layout it was written for: build the fixture through the real flow (close only in the worktree) and add a second layout, or the gap ships and a Windows test finds it. | UNPROMOTED |
 | 2026-11-04 | [t-fe82](.tickets/t-fe82/learnings.md) | Removing a field also removes what it implicitly did (a saved preference kept a worktree row out of the "N other worktrees" fold): grep specs for the behaviour, not just the field name, and run the full board spec once, since a focused `-g` missed the one test that clicked the now-folded row. | UNPROMOTED |
 | 2026-11-04 | [t-0a80](.tickets/t-0a80/learnings.md) | When a change alters text a neighbouring test compares (a count capped at "99+"), grep the spec for every reader of that text before the focused run, and put the neighbours in the `--grep`: the focused runs passed and the 35-minute full spec found the old test line. | UNPROMOTED |
 | 2026-11-04 | [t-11e6](.tickets/t-11e6/learnings.md) | A command text built from a folder name and meant to be pasted into a shell needs the whole denylist at once (double quote, dollar, backtick, backslash, `!`, control characters) or no command at all, and every quoted part, not only the one you were editing: the reviewer found the unquoted repo name, a security review found the missing `\`, `!` and newline. | UNPROMOTED |
