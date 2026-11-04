@@ -1687,9 +1687,14 @@ cmd_github_doctor() {
       # t-9955: no origin at all is usually a project that has never been on GitHub: create it private (on a free plan the issue's
       # "never push main" text is the only guard) and connect it in one step.
       # t-11e6: --source is the project's absolute folder (quoted; the Windows form on Windows), so the copied command works from any terminal
-      local srcdir="$root" winhint=""
+      local srcdir="$root" winhint="" repo_name; repo_name="$(basename "$root")"
       if _doctor_windows; then srcdir="$(cygpath -w "$root" 2>/dev/null || echo "$root")"; winhint=" Run it in a terminal opened after Git was installed (a window opened earlier cannot find git)."; fi
-      _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: ${err}. No repo on GitHub yet? This creates one, private, and connects it, publishing the folder ${srcdir}.${winhint} Already have a repo on GitHub? Run git remote add origin https://github.com/<owner>/<repo>.git" cmd "gh repo create $(basename "$root") --private --source=\"${srcdir}\" --remote=origin --push"
+      case "$root" in
+        *[\"\$\`]*)   # a command meant to be pasted into a shell must not carry a quote, a dollar or a backtick from a folder name
+          _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: ${err}. This folder's name has a character (a double quote, a dollar sign or a backtick) that is not safe in a command you paste: rename the folder, or run gh repo create yourself. Already have a repo on GitHub? Run git remote add origin https://github.com/<owner>/<repo>.git" ;;
+        *)
+          _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: ${err}. No repo on GitHub yet? This creates one, private, and connects it, publishing the folder ${srcdir}.${winhint} Already have a repo on GitHub? Run git remote add origin https://github.com/<owner>/<repo>.git" cmd "gh repo create \"${repo_name}\" --private --source=\"${srcdir}\" --remote=origin --push" ;;
+      esac
     fi
   fi
   local tree; tree="$(git -C "$root" ls-tree HEAD -- scripts/test.sh 2>/dev/null)" || tree=""

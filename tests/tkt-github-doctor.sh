@@ -50,19 +50,24 @@ assert_eq "bad|GitHub CLI (gh) is not installed||https://github.com/cli/cli" "$(
 # t-9955: no origin at all offers to create the repo, private, named after the folder; the detail keeps the remote-add way.
 # t-11e6: --source names the project's absolute folder, quoted, so the copied command works from any terminal (not just from inside the project)
 proot="$project"   # as the project is spelled (macOS /var, not /private/var)
-assert_eq "bad|No GitHub repository for this project|gh repo create $(basename "$project") --private --source=\"$proot\" --remote=origin --push|" "$(check "$out" origin)"
+assert_eq "bad|No GitHub repository for this project|gh repo create \"$(basename "$project")\" --private --source=\"$proot\" --remote=origin --push|" "$(check "$out" origin)"
 assert_contains "$(field "$out" "d['checks'][1]['detail']")" "publishing the folder $proot."
 assert_contains "$(field "$out" "d['checks'][1]['detail']")" "no git remote named origin"
 # ...a folder with a space in its name works, and macOS/Linux keep chmod +x in the no-test-command text
 sp="$W/my project"; mkdir -p "$sp"; git -C "$sp" init -q; sproot="$(cd "$sp" && pwd)"
 out2="$(cd "$sp" && PATH="$NOGH_PATH" "$TKT" github-doctor --json)"
-assert_eq "bad|No GitHub repository for this project|gh repo create my project --private --source=\"$sproot\" --remote=origin --push|" "$(check "$out2" origin)"
+assert_eq "bad|No GitHub repository for this project|gh repo create \"my project\" --private --source=\"$sproot\" --remote=origin --push|" "$(check "$out2" origin)"
 assert_contains "$(field "$out" "d['checks'][2]['detail']")" "make it executable (chmod +x)"
+# a folder name with a character that is unsafe in a pasted command gets no command at all, and says why
+bad="$W/bad\$name"; mkdir -p "$bad"; git -C "$bad" init -q
+outb="$(cd "$bad" && PATH="$NOGH_PATH" "$TKT" github-doctor --json)"
+assert_eq "bad|No GitHub repository for this project|nofix" "$(check "$outb" origin)"
+assert_contains "$(field "$outb" "d['checks'][1]['detail']")" "not safe in a command you paste"
 # t-11e6, Windows (a stubbed uname and cygpath): the folder in Windows form, the new-terminal hint, and the git index way to make it executable
 mkdir -p "$W/win"
 printf '#!/usr/bin/env bash\necho MINGW64_NT-10.0-22631\n' > "$W/win/uname"; printf '#!/usr/bin/env bash\nprintf "%%s\\n" "C:\\Users\\me\\My Project"\n' > "$W/win/cygpath"; chmod +x "$W/win/uname" "$W/win/cygpath"
 outw="$(PATH="$W/win:$NOGH_PATH" "$TKT" github-doctor --json)"
-assert_eq "bad|No GitHub repository for this project|gh repo create $(basename "$project") --private --source=\"C:\\Users\\me\\My Project\" --remote=origin --push|" "$(check "$outw" origin)"
+assert_eq "bad|No GitHub repository for this project|gh repo create \"$(basename "$project")\" --private --source=\"C:\\Users\\me\\My Project\" --remote=origin --push|" "$(check "$outw" origin)"
 assert_contains "$(field "$outw" "d['checks'][1]['detail']")" "terminal opened after Git was installed"
 assert_contains "$(field "$outw" "d['checks'][2]['detail']")" "git update-index --chmod=+x scripts/test.sh; Git Bash runs it without the bit"
 assert_contains "$(field "$out" "d['checks'][1]['detail']")" "Already have a repo on GitHub? Run git remote add origin https://github.com/<owner>/<repo>.git"

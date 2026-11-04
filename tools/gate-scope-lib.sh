@@ -30,7 +30,7 @@ gate_scope_create() {
   mkdir -p "$dir/home" "$dir/canon" "$dir/tmp" "$dir/xdg"
   # t-9fb1: the dispatcher runs in the user's REAL environment, so it records the home and canon home the guard must keep a gate away from
   local rhome rcanon proj; _gate_scope_resolve "${HOME:-}"; rhome="$_GS_R"; _gate_scope_resolve "${CANON_HOME:-${HOME:-}/.canon}"; rcanon="$_GS_R"
-  proj="$(basename "$PWD")"; [[ "$proj" == *$'\n'* ]] && proj=""   # t-11e6: the refusal names the project the gate runs in; no name beats a split record
+  proj="$(basename "$PWD")"; [[ "$proj" == *$'\n'* ]] && proj=""; proj="$(printf '%s' "$proj" | tr -d '\000-\037\177')"   # t-11e6: the refusal names the project the gate runs in; no name beats a split record
   if [[ "$rhome$rcanon" == *$'\n'* ]]; then   # a newline cannot live in a line-based record: no home=/canon= lines, so the old rule applies (fail closed)
     printf 'dir=%s\ncreated=%s\n%s' "$dir" "$(date +%s)" "${proj:+project=$proj
 }" > "$reg/$(_gate_scope_key "$1")"

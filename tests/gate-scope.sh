@@ -37,7 +37,8 @@ assert_contains "$out" "Run it again when it finishes; if no gate is running, it
 [[ "$(printf '%s\n' "$out" | grep -c .)" -le 2 ]] || fail "the default refusal must be at most two lines: $out"
 [[ "$out" != *REAL\ home* && "$out" != *t-b7df* && "$out" != *"$scope"* && "$out" != *gate-snapshot.sh* ]] || fail "the default refusal must not carry the internals: $out"
 started="$(printf '%s' "$out" | sed -n 's/.*started at \([0-2][0-9]\):[0-5][0-9] in .*/\1/p')"; clears="$(printf '%s' "$out" | sed -n 's/.*clears by \([0-2][0-9]\):[0-5][0-9]\..*/\1/p')"
-[[ -n "$started" && -n "$clears" && $(( (10#$started + 2) % 24 )) -eq $((10#$clears)) ]] || fail "start and clears-by are HH:MM, two hours (the TTL) apart: $out"
+gap=$(( (10#$clears - 10#$started + 24) % 24 ))   # the TTL is two hours; a daylight-saving change on the day shifts the local clock by one
+[[ -n "$started" && -n "$clears" && $gap -ge 1 && $gap -le 3 ]] || fail "start and clears-by are HH:MM, about two hours (the TTL) apart: $out"
 dbg="$(HOME="$realhome" CANON_HOME="$realhome/.canon" CANON_DEBUG=1 run_fail "$CANON" update)"
 assert_contains "$dbg" "clears when the gate ends"; assert_contains "$dbg" "scope: $scope"
 assert_contains "$dbg" "REAL home and canon home"; assert_contains "$dbg" "a scratch HOME and CANON_HOME"   # t-9fb1: with CANON_DEBUG the message still says what is blocked and what is fine
