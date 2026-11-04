@@ -161,14 +161,14 @@ func TestTicketMachinesRoute(t *testing.T) {
 	f.Close()
 	events.Emit(home, "sprint.started", "sprint", root, map[string]string{"ticket": "t-bbbb"})
 	_, rows = machinesGet(t, "/api/ticket-machines?ticket=t-aaaa")
-	if len(rows) != 2 || rows[0].Source != "events" || rows[0].Host != machine.Host() || rows[0].Count != 2 || rows[0].Where != "local" {
-		t.Fatalf("with events = %+v, want this host (2 events: root and its worktree, not another project) then the cloud evidence", rows)
+	if len(rows) != 3 || rows[0].Source != "events" || rows[0].Host != machine.Host() || rows[0].Count != 2 || rows[0].Where != "local" {
+		t.Fatalf("with events = %+v, want this host (2 events: root and its worktree, not another project) then the cloud and the other-machine evidence", rows)
 	}
 	if rows[0].Facts["cpus"] != machine.Get().CPUs || rows[0].Facts["os"] != machine.Get().OS || rows[0].Line != machine.Get().Line() {
 		t.Fatalf("the host row lacks its machine.seen facts: %+v", rows[0])
 	}
-	if rows[1].Where != "cloud" {
-		t.Fatalf("second row = %+v, want the cloud evidence (local evidence is dropped once a host is known)", rows[1])
+	if rows[2].Where != "cloud" || rows[1].Where != "other" || !strings.Contains(rows[1].Line, "macOS 26.1") { // newest last-seen first
+		t.Fatalf("rows = %+v, want the cloud evidence, then the macOS log as another machine (t-fb18)", rows[1:])
 	}
 	events.Emit(home, "ticket.closed", "tkt", root, map[string]string{"ticket": "t-aaaa"})
 	if _, rows = machinesGet(t, "/api/ticket-machines?ticket=t-aaaa"); rows[0].Count != 3 || rows[0].Last < rows[0].First {
@@ -219,5 +219,42 @@ func TestBelongsToWindowsPathForms(t *testing.T) {
 	}
 	if belongsTo("/Users/Me/App", "/Users/me/app", nil) {
 		t.Error("a path without a drive letter must keep its case")
+	}
+}
+
+// t-fb18: a cloud log merged into a tracked .tickets/ lands at evidence/, not evidence/cloud/. Prod path: the Machines node.
+func TestTicketMachinesEvidenceRows(t *testing.T) {
+	root := resolvedOrAbs(setupTestProject(t))
+	home := events.Home()
+	os.RemoveAll(filepath.Join(home, "events"))
+	t.Cleanup(func() { os.RemoveAll(filepath.Join(home, "events")) })
+	ev := filepath.Join(ticketsDirForRoot(root), "t-fb18", "evidence")
+	ubuntu := "HEAD abc 2026-11-04T10:00:00Z\n$ scripts/test.sh\n# on Fedora 41, Linux 6.11.4, arm64, 2 cores, 8 GB; bash 5.2.21\nok\n" // never this host's line
+	writeFile(t, filepath.Join(ev, "test-sh.log"), ubuntu)
+
+	// no host rows: the evidence machine still shows (local)
+	if _, rows := machinesGet(t, "/api/ticket-machines?ticket=t-fb18"); len(rows) != 1 || rows[0].Where != "local" || rows[0].Count != 1 {
+		t.Fatalf("no host rows = %+v, want the one evidence machine", rows)
+	}
+
+	noteMachineSeen(home)
+	events.Emit(home, "sprint.started", "sprint", root, map[string]string{"ticket": "t-fb18"})
+	// a host with events plus a log naming a different OS: two rows
+	_, rows := machinesGet(t, "/api/ticket-machines?ticket=t-fb18")
+	if len(rows) != 2 || rows[0].Source != "events" || rows[1].Where != "other" || rows[1].Count != 1 ||
+		!strings.HasPrefix(rows[1].Line, "Fedora 41, Linux 6.11.4, arm64, 2 cores, 8 GB") {
+		t.Fatalf("host + other-OS log = %+v, want the host then the other machine", rows)
+	}
+
+	// a log naming the host's own machine line (any case): no extra row
+	writeFile(t, filepath.Join(ev, "test-sh.log"), "HEAD a 2026-11-04T10:00:00Z\n$ x\n# on "+strings.ToUpper(machine.Get().Line())+"; bash 5.2.21\nok\n")
+	if _, rows = machinesGet(t, "/api/ticket-machines?ticket=t-fb18"); len(rows) != 1 || rows[0].Source != "events" {
+		t.Fatalf("log of the host's own machine = %+v, want only the host row", rows)
+	}
+
+	// under evidence/cloud/: still a cloud session
+	writeFile(t, filepath.Join(ev, "cloud", "test-sh.log"), ubuntu)
+	if _, rows = machinesGet(t, "/api/ticket-machines?ticket=t-fb18"); len(rows) != 2 || rows[1].Where != "cloud" {
+		t.Fatalf("cloud log = %+v, want the host then a cloud row", rows)
 	}
 }

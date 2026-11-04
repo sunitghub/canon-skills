@@ -30,7 +30,7 @@ function rowHTML(m) {
   const what = m.line ? esc(m.line) : '<span class="mc-dim" title="This host wrote no machine.seen yet: it appears when its board next starts">facts not recorded yet</span>';
   const n = Number(m.count) || 0;
   const count = m.source === 'events' ? `${n} event${n === 1 ? '' : 's'}` : `${n} evidence log${n === 1 ? '' : 's'}`;
-  return `<tr><td>${who}<div class="mc-dim">${m.where === 'cloud' ? 'cloud session' : 'local'}</div></td><td>${what}</td>`
+  return `<tr><td>${who}<div class="mc-dim">${m.where === 'cloud' ? 'cloud session' : m.where === 'other' ? 'other machine' : 'local'}</div></td><td>${what}</td>`
     + `<td>${esc(count)}<div class="mc-dim" title="${escAttr(m.first ? 'first ' + when(m.first) : '')}">last ${esc(when(m.last))}</div></td></tr>`;
 }
 

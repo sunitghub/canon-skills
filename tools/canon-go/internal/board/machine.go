@@ -78,7 +78,7 @@ func sameData(a, b map[string]string) bool {
 
 // ticketMachine is one row of the ticket's Machines node.
 type ticketMachine struct {
-	Where  string            `json:"where"`           // local | cloud
+	Where  string            `json:"where"`           // local | cloud | other
 	Source string            `json:"source"`          // events | evidence
 	Host   string            `json:"host,omitempty"`  // events only; evidence headers never name the host
 	Facts  map[string]string `json:"facts,omitempty"` // the host's newest machine.seen; absent when none was written
@@ -210,7 +210,7 @@ func evidenceMachines(dir string) []ticketMachine {
 		if m == nil {
 			return nil
 		}
-		where := "local"
+		where := "evidence" // ticketMachines turns this into "local" when a host row has the same machine line, else "other"
 		if rel, _ := filepath.Rel(dir, p); strings.HasPrefix(filepath.ToSlash(rel), "cloud/") {
 			where = "cloud"
 		}
@@ -240,8 +240,9 @@ func evidenceMachines(dir string) []ticketMachine {
 }
 
 // ticketMachines is the Machines node: one row per host from the ticket's events in this project (with its newest
-// machine.seen), then every cloud machine from the evidence headers, then the local evidence machines only when no event
-// named a host (a ticket worked before hosts were recorded). Newest last-seen first within each group.
+// machine.seen), then every evidence machine: cloud (under evidence/cloud/), local when no event named a host (a ticket worked
+// before hosts were recorded), other when its machine line matches no host row (a cloud log merged into evidence/);
+// a log naming a host's own machine line adds no row. Newest last-seen first within each group.
 func ticketMachines(home, root, evidenceDir, id string) []ticketMachine {
 	live := map[string]bool{}
 	for _, e := range registeredWorktrees(root) {
@@ -297,10 +298,23 @@ func ticketMachines(home, root, evidenceDir, id string) []ticketMachine {
 	byLast(out)
 	ev := evidenceMachines(evidenceDir)
 	byLast(ev)
-	for _, r := range ev {
-		if r.Where == "cloud" || len(hosts) == 0 {
-			out = append(out, r)
+	hostLines := map[string]bool{}
+	for _, h := range out {
+		if h.Line != "" {
+			hostLines[strings.ToLower(strings.TrimSpace(h.Line))] = true
 		}
+	}
+	for _, r := range ev {
+		switch {
+		case r.Where == "cloud":
+		case len(hosts) == 0:
+			r.Where = "local"
+		case hostLines[strings.ToLower(strings.TrimSpace(r.Line))]:
+			continue // the same machine as a host row: already shown there
+		default:
+			r.Where = "other"
+		}
+		out = append(out, r)
 	}
 	if out == nil {
 		out = []ticketMachine{}
