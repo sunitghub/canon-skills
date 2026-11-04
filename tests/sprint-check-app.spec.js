@@ -13008,7 +13008,8 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
       await page.locator('#startBtn').click();
       await expect(page.locator('#dot')).toHaveClass(/running/, { timeout: 8000 });
       await expect.poll(async () => { await m.wiggle(); return m.reports().length }, { timeout: 8000 }).toBeGreaterThan(0);   // control: tracking is on
-      await page.locator('#killBtn').click();
+      // t-1917: the board's pane has no Kill button; End session's "End without saving" sends the page force-end, which kills the session.
+      await page.evaluate(() => window.postMessage({ source: 'canon-cockpit', type: 'force-end' }, '*'));
       await expect(page.locator('#startBtn')).toBeEnabled();
       m.bodies.length = 0;
       await page.locator('#startBtn').click();                     // agent B: plain cat, never enables mouse
