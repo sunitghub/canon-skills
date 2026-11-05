@@ -2227,9 +2227,12 @@ cmd_finish() {
     --check)
       if $on_origin; then echo "finish: push: $into is already on origin"
       else
-        ahead="$(git -C "$root" log --format='  %h %s' "refs/remotes/origin/$into..refs/heads/$into" 2>/dev/null || true)"
-        echo "finish: push: git push origin $into sends $(printf '%s\n' "$ahead" | grep -c .) commit(s) (as last fetched):"
-        printf '%s\n' "$ahead" | sed -n '1,20p'
+        if git -C "$root" rev-parse -q --verify "refs/remotes/origin/$into^{commit}" >/dev/null 2>&1; then
+          ahead="$(git -C "$root" log --format='  %h %s' "refs/remotes/origin/$into..refs/heads/$into" 2>/dev/null | LC_ALL=C tr -d '\000-\010\013-\037\177')" \
+            || _fin_no "git could not list the commits to push"
+          echo "finish: push: git push origin $into sends $(printf '%s\n' "$ahead" | grep -c .) commit(s) (as last fetched):"
+          printf '%s\n' "$ahead" | sed -n '1,20p'
+        else echo "finish: push: origin has no $into as last fetched (git fetch origin); a push sends the whole branch"; fi
       fi
       case "$wtstate" in
         on-branch) if $on_origin; then echo "finish: reset: $wt is still on $mb; tkt worktree-reset there starts the next ticket"

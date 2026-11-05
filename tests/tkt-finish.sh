@@ -47,15 +47,15 @@ assert_contains "$out" "merge: the main checkout is on chore/other; merging into
 echo "merge --check: names main and says by ref"
 
 # A default branch checked out in another worktree is refused in --check, before any test, and nothing changes.
-OW="$W/ow"; git worktree add -q "$OW" main 2>/dev/null || { git switch -q main 2>/dev/null; true; }
-if [[ -d "$OW" ]]; then
+OW="$W/ow"; git worktree add -q "$OW" main
+{
   rc=0; out="$("$TKT" merge "$id" --check < /dev/null 2>&1)" || rc=$?
   [[ "$rc" == 1 ]] || fail "merge should refuse a default branch checked out in another worktree (rc $rc): $out"
   assert_contains "$out" "main is checked out in $(cd "$OW" && pwd -P)"
   [[ "$(git rev-parse main)" == "$MAIN0" && "$(CHECKOUT_SIG)" == "$before" ]] || fail "something changed although merge refused"
   git worktree remove --force "$OW"
   echo "merge: refused a default branch checked out in another worktree"
-fi
+}
 
 # The merge: main moves by ref (first parent the old tip), the checkout stays on its branch with its edit, nothing is stashed.
 out="$("$TKT" merge "$id" --yes < /dev/null 2>&1)" || fail "merge --yes by ref failed: $out"
@@ -109,6 +109,10 @@ TKT_SPRINT_GATE_PASSED=1 "$TKT" close "$id2" >/dev/null
 "$TKT" merge "$id2" --yes < /dev/null >/dev/null 2>&1 || fail "second merge failed"
 git clone -q "$W/origin.git" "$W/other" && (cd "$W/other" && echo z > z.txt && git add z.txt && git commit -qm "someone else" && git push -q origin main)
 OLD_ORIGIN="$(git -C "$W/origin.git" rev-parse main)"
+# An origin ref never fetched is said, not shown as "0 commits".
+git update-ref -d refs/remotes/origin/main
+out="$("$TKT" finish "$id2" --check < /dev/null 2>&1)"; assert_contains "$out" "origin has no main as last fetched"
+git fetch -q origin
 rc=0; out="$("$TKT" finish "$id2" --push --yes < /dev/null 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "a refused push should fail (rc $rc): $out"
 assert_contains "$out" "was refused or failed (not forced)"

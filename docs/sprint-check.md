@@ -372,10 +372,10 @@ sprint agent without leaving the browser — no second terminal.
   with the checkout on another branch `merging into main by ref, the checkout stays on <other>`, so nothing is switched
   or stashed; a default branch checked out in another worktree is refused. Afterwards `tkt finish <id> --push --yes`
   pushes it (never forced, the one branch) and `tkt finish <id> --reset --yes` resets the worktree once it is pushed;
-  `tkt finish <id>` alone lists the commits a push sends. The tests run on main + branch in a scratch copy, never in your checkouts; the merge
-  is then one `Merge branch '<branch>'` commit holding exactly the tested files, and main moves to it under the same rules
+  `tkt finish <id>` alone lists the commits a push sends. The tests run on main + branch in a scratch copy, never in
+  your checkouts; the merge is then one `Merge branch '<branch>'` commit holding exactly the tested files, and main moves to it under the same rules
   as a PR's update of local main: canon's own files are set aside, any other file you edited that the merge changes stops
-  it with nothing changed. Then push main, and run `tkt worktree-reset` in the worktree to start the next ticket there.
+  it with nothing changed (a merge by ref touches no file of the checkout). Then push and reset with `tkt finish`.
   The ticket gets `merged: <sha>`, the activity log a `branch.merged` event, and `HANDOFF.md` a Recent activity line.
 - **Reap now / Kill (`t-3c9a`):** end a session you aren't attached to. Right-click an
   Agents row (or Shift+F10 on it) for **Open / Reap now / Kill…**, or press the prefix
