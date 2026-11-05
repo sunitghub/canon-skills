@@ -2182,7 +2182,7 @@ _merge_branch() {
   else echo "next: the worktree $wt is free: reuse it for the next ticket, or remove it (git worktree remove $wt)"; fi
 }
 
-# cmd_finish <id> [--check | --push --yes | --reset --yes] — t-e1a2: what comes after tkt merge puts a worktree ticket's branch on the
+# cmd_finish <id> [--check | --push --yes | --reset --yes | --dismiss] — t-e1a2: what comes after tkt merge puts a worktree ticket's branch on the
 # project's default branch: push that branch, then reset the worktree. The board's Finish step runs it; each action needs --yes
 # (the board's confirm), --check changes nothing. The push is one refspec for the one default ref (never forced, no tags, no other
 # branch). The reset is tkt worktree-reset --yes run inside the ticket's worktree, and waits for the push: until the merge is on
@@ -2191,16 +2191,16 @@ cmd_finish() {
   local id="" mode="" yes=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --check|--push|--reset) [[ -z "$mode" || "$mode" == "$1" ]] || { echo "finish: use one of --check, --push, --reset" >&2; exit 1; }; mode="$1"; shift ;;
+      --check|--push|--reset|--dismiss) [[ -z "$mode" || "$mode" == "$1" ]] || { echo "finish: use one of --check, --push, --reset, --dismiss" >&2; exit 1; }; mode="$1"; shift ;;
       --yes) yes=true; shift ;;
       -*) echo "Unknown option: $1" >&2; exit 1 ;;
       *)  [[ -z "$id" ]] && id="$1"; shift ;;
     esac
   done
-  [[ -n "$id" ]] || { echo "Usage: tkt finish <id> [--check | --push --yes | --reset --yes]" >&2; exit 1; }
+  [[ -n "$id" ]] || { echo "Usage: tkt finish <id> [--check | --push --yes | --reset --yes | --dismiss]" >&2; exit 1; }
   mode="${mode:---check}"
-  [[ "$mode" == --check ]] && $yes && { echo "finish: --yes goes with --push or --reset; --check never changes anything" >&2; exit 1; }
-  [[ "$mode" == --check ]] || $yes || { echo "finish: ${mode#--} changes things; run it with --yes (the board asks first)" >&2; exit 1; }
+  case "$mode" in --check|--dismiss) $yes && { echo "finish: --yes goes with --push or --reset; $mode needs none" >&2; exit 1; } ;; esac
+  [[ "$mode" == --check || "$mode" == --dismiss ]] || $yes || { echo "finish: ${mode#--} changes things; run it with --yes (the board asks first)" >&2; exit 1; }
   _fin_no() { echo "finish: $1" >&2; exit 1; }
   local file tdir root merged into mb wt
   file="$(find_ticket "$id")"; tdir="$(dirname "$file")"; id="$(get_field "$file" id)"
@@ -2208,6 +2208,10 @@ cmd_finish() {
   merged="$(get_field "$file" merged)"; into="$(get_field "$file" merged_into)"; mb="$(get_field "$file" merged_branch)"
   [[ -n "$merged" && -n "$into" && -n "$mb" ]] || _fin_no "$id was not merged by tkt merge on this machine, so there is nothing to finish"
   _branch_ok "$into" && _branch_ok "$mb" || _fin_no "a branch name git cannot use as given ($into, $mb)"
+  if [[ "$mode" == --dismiss ]]; then
+    set_or_add_field "$file" finish_dismissed "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "finish: dismissed; the card stops offering the Finish step for $id"; return 0
+  fi
   git -C "$root" remote get-url origin >/dev/null 2>&1 || _fin_no "this project has no origin remote; there is nothing to push"
   git -C "$root" cat-file -e "$merged^{commit}" 2>/dev/null || _fin_no "the merge commit ${merged:0:8} is not in this repository"
   git -C "$root" merge-base --is-ancestor "$merged" "refs/heads/$into" 2>/dev/null || _fin_no "$into does not contain the merge commit ${merged:0:8} (it was moved since); nothing to finish from here"

@@ -370,9 +370,12 @@ sprint agent without leaving the browser — no second terminal.
   the worktree, reopen, close again). Since 0.45.0 (`t-e1a2`) the branch merges into the project's **default branch**
   (origin/HEAD, else `main` or `master`), whatever branch the main checkout is on: the report says `merge: into main`, and
   with the checkout on another branch `merging into main by ref, the checkout stays on <other>`, so nothing is switched
-  or stashed; a default branch checked out in another worktree is refused. Afterwards `tkt finish <id> --push --yes`
-  pushes it (never forced, the one branch) and `tkt finish <id> --reset --yes` resets the worktree once it is pushed;
-  `tkt finish <id>` alone lists the commits a push sends. The tests run on main + branch in a scratch copy, never in
+  or stashed; a default branch checked out in another worktree is refused. The dialog's title and button name the target
+  (**Run tests & merge into main**). After **Merged**, **Finish…** walks two steps, each its own dialog and button:
+  **Push main** (the commits it sends are listed; a normal push, never forced, only that branch) and **Reset the worktree**
+  (`tkt worktree-reset`, run in the worktree's folder; it refuses uncommitted work). Until both are done the card shows
+  **Finish** (and a small **dismiss** if you push and reset yourself). The same steps are `tkt finish <id> --check`,
+  `--push --yes`, `--reset --yes` and `--dismiss` in a terminal. The tests run on main + branch in a scratch copy, never in
   your checkouts; the merge is then one `Merge branch '<branch>'` commit holding exactly the tested files, and main moves to it under the same rules
   as a PR's update of local main: canon's own files are set aside, any other file you edited that the merge changes stops
   it with nothing changed (a merge by ref touches no file of the checkout). Then push and reset with `tkt finish`.

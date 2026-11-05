@@ -5,11 +5,12 @@
   border: 1px solid var(--accent); border-radius: 999px; padding: 0 8px; color: var(--accent); white-space: nowrap;
   max-width: 100%; overflow: hidden; text-overflow: ellipsis;
 }
-.card-gh-takeback {
+.card-gh-takeback, .card-gh-dismiss {
   margin-left: 6px; font: inherit; font-size: 10.5px; background: none; border: 0; padding: 0; cursor: pointer;
   color: var(--text-muted); text-decoration: underline;
 }
-.card-gh-takeback:hover, .card-gh-takeback:focus-visible { color: var(--text); }
+.card-gh-takeback:hover, .card-gh-takeback:focus-visible, .card-gh-dismiss:hover, .card-gh-dismiss:focus-visible { color: var(--text); }
+
 .ck-gh-busy { opacity: .7; }
 /* t-24b1: "GitHub · set up first" is a link to Factory › GitHub (t-9641), not a held place */
 .ck-gh-setup { cursor: pointer; border-style: solid; }

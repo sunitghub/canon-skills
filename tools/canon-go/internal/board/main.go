@@ -337,7 +337,8 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		// ?all=1 request inside the TTL must not miss archived tickets.
 		annotateBranchDivergence(tickets, root)
 		annotateLiveDocs(tickets, root)
-		annotateWorktreeMerge(tickets, root) // t-2906
+		annotateWorktreeMerge(tickets, root)  // t-2906
+		annotateWorktreeFinish(tickets, root) // t-607a
 		if !queryHasAll(r.URL.RawQuery) {
 			filtered := make([]ticket, 0, len(tickets))
 			for _, t := range tickets {
@@ -596,6 +597,8 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 				sendJSON(w, getMergeRunState(groot, m[1]))
 			case "status":
 				sendJSON(w, githubStatus(groot, m[1]))
+			case "finish-check": // t-607a: the commits a push sends and what a reset does, as tkt finish --check prints them
+				sendJSON(w, runTkt(groot, []string{"finish", m[1], "--check"}))
 			default:
 				pr, ok := prArg(r.URL.Query().Get("pr"))
 				if !ok {
@@ -1020,6 +1023,19 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		}
 		if m[2] == "merge" {
 			sendJSON(w, startMergeRun(eroot, id, pr))
+			return
+		}
+		// t-607a: the Finish step. Each is one tkt finish call; the push and the reset carry --yes because the dialog's own confirm
+		// came first, and tkt refuses a reset before the push.
+		switch m[2] {
+		case "finish-push":
+			sendJSON(w, runTkt(eroot, []string{"finish", id, "--push", "--yes"}))
+			return
+		case "finish-reset":
+			sendJSON(w, runTkt(eroot, []string{"finish", id, "--reset", "--yes"}))
+			return
+		case "finish-dismiss":
+			sendJSON(w, runTkt(eroot, []string{"finish", id, "--dismiss"}))
 			return
 		}
 		// t-bb1b: an action in apiGitHubPostRe with no branch above must NOT fall through to a merge run (which runs the PR's tests here and
@@ -2300,7 +2316,7 @@ var (
 	apiDocRe            = regexp.MustCompile(`^/api/doc/(.+)$`)
 	apiTicketImageRe    = regexp.MustCompile(`^/api/ticket-image/(t-[a-z0-9]{4})/(.+)$`)
 	apiTicketFeatureRe  = regexp.MustCompile(`^/api/ticket-feature/(t-[a-z0-9]{4})/(.+)$`)
-	apiGitHubGetRe      = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/github/(send-preview|commit-push-preview|merge-check|merge|status)$`)
+	apiGitHubGetRe      = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/github/(send-preview|commit-push-preview|merge-check|merge|status|finish-check)$`)
 	apiHeadlessRunRe    = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/headless-run$`)
 	apiWorktreeLockRe   = regexp.MustCompile(`^/api/worktree-lock/(t-[a-z0-9]{4})$`)
 	apiCockpitDocsRe    = regexp.MustCompile(`^/api/cockpit-docs/(t-[a-z0-9]{4})$`)
@@ -2309,7 +2325,7 @@ var (
 	apiTicketVisualRe   = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/visual$`)
 	apiTicketDemoRe     = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/demo$`)
 	apiTicketTagsRe     = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/tags$`)
-	apiGitHubPostRe     = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/github/(send|import|merge|merge-stop|take-back|open-pr|land|ready|commit-push)$`)
+	apiGitHubPostRe     = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/github/(send|import|merge|merge-stop|take-back|open-pr|land|ready|commit-push|finish-push|finish-reset|finish-dismiss)$`)
 	apiWorktreeUnlockRe = regexp.MustCompile(`^/api/worktree-unlock/([^/]+)$`)
 	checkboxItemRe      = regexp.MustCompile(`(?m)^\s*[-*]\s+\[[ xX]\]\s+\S`)
 	uncheckedItemRe     = regexp.MustCompile(`(?m)^\s*[-*]\s+\[ \]\s+\S`)

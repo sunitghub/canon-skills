@@ -61,6 +61,18 @@ for P in "$GOP"; do
   expect_call "$srv send"          "$P" "$(post "$P" /api/ticket/t-ab12/github/send '{}')" "send-issue t-ab12"
   expect_call "$srv send public"   "$P" "$(post "$P" /api/ticket/t-ab12/github/send '{"public":true}')" "send-issue t-ab12 --public"
   expect_call "$srv send public?"  "$P" "$(post "$P" /api/ticket/t-ab12/github/send '{"public":"yes"}')" "send-issue t-ab12"   # only a real true
+  # t-607a: the Finish step after a worktree merge: one tkt finish call each; the push and the reset carry --yes (the dialog's own
+  # confirm came first), a GET never does, and an id that is not a ticket id runs nothing.
+  expect_call "$srv finish-check"   "$P" "$(get "$P" /api/ticket/t-ab12/github/finish-check)" "finish t-ab12 --check"
+  expect_call "$srv finish-push"    "$P" "$(post "$P" /api/ticket/t-ab12/github/finish-push '{}')" "finish t-ab12 --push --yes"
+  expect_call "$srv finish-reset"   "$P" "$(post "$P" /api/ticket/t-ab12/github/finish-reset '{}')" "finish t-ab12 --reset --yes"
+  expect_call "$srv finish-dismiss" "$P" "$(post "$P" /api/ticket/t-ab12/github/finish-dismiss '{}')" "finish t-ab12 --dismiss"
+  : > "$W/log"
+  for bad in 't-ab12x' 'x-ab12' 't-AB12' '..%2Ft-ab12'; do
+    r="$(post "$P" "/api/ticket/$bad/github/finish-push" '{}')"; [[ "$(code "$r")" == 404 ]] || fail "$srv: finish-push on $bad was $(code "$r")"
+  done
+  r="$(get "$P" /api/ticket/t-ab12/github/finish-push)"; [[ "$(code "$r")" != 200 ]] || fail "$srv: a GET to finish-push answered 200"
+  [[ ! -s "$W/log" ]] || fail "$srv: a refused finish call still ran tkt: $(cat "$W/log")"
   expect_call "$srv sync"          "$P" "$(post "$P" /api/github/sync '{}')" "sync-issues"
   # t-b045: the ticked rows become --only <numbers>; anything but 1-200 positive whole numbers is a 400 and runs nothing
   expect_call "$srv sync only"     "$P" "$(post "$P" /api/github/sync '{"issues":[134,7]}')" "sync-issues --only 134,7"

@@ -18093,6 +18093,104 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator(`.card[data-id="${wtId}"] .card-gh-btn`)).toHaveCount(0);
   });
 
+  // t-607a: the dialog names the target (tkt merge's `merge: into <branch>` line) and, once merged, walks the Finish step: Push main
+  // and Reset the worktree, each its own dialog and button, nothing sent before its click. Prod path: the card's Check & merge for a
+  // worktree ticket (/github/merge-check, /github/merge) and the Finish routes (/github/finish-check, finish-push, finish-reset).
+  test('Check & merge into main, then the Finish step: Push main and Reset the worktree, each behind its own click (t-607a)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT);
+    ghTicket(id, { status: 'closed' });
+    await page.route('**/api/tickets**', async route => {
+      const resp = await fetchFull(route);
+      const list = await resp.json();
+      for (const t of list) if (t.id === id) t.wt_merge = { branch: 'feat/x', path: '/tmp/wt' };   // no `into`: the dialog takes the target from tkt's own report
+      await route.fulfill({ response: resp, json: list });
+    });
+    const job = { status: 'idle', output: '', exit_code: null, elapsed: 0 };
+    const calls = [];
+    let pushed = false;
+    const finishCheck = () => `finish: push: ${pushed ? 'main is already on origin' : 'git push origin main sends 2 commit(s) (as last fetched):\n  abc1234 the branch\n  def5678 Merge branch \'feat/x\''}\nfinish: reset: /tmp/wt is still on feat/x; ${pushed ? 'tkt worktree-reset there starts the next ticket' : 'reset after the push'}`;
+    await page.route(`**/api/ticket/${id}/github/merge-check**`, r => json(r, { ok: true, exit_code: 0, output: 'feat/x: 1 file changed\nmerge: into main\nmerge: the main checkout is on chore/other; merging into main by ref, the checkout stays on chore/other\nmerge: ready: would run scripts/test.sh on main + feat/x, then merge' }));
+    await page.route(`**/api/ticket/${id}/github/merge`, r => {
+      if (r.request().method() === 'POST') { calls.push('merge'); Object.assign(job, { status: 'done', exit_code: 0, output: 'Merged feat/x into main (424987f9).\nnext: tkt finish ' + id + ' --push --yes && tkt finish ' + id + ' --reset --yes   (pushes main, then resets /tmp/wt)\n', elapsed: 5 }); }
+      return json(r, job);
+    });
+    await page.route(`**/api/ticket/${id}/github/finish-check`, r => { calls.push('check'); return json(r, { ok: true, exit_code: 0, output: finishCheck() }); });
+    await page.route(`**/api/ticket/${id}/github/finish-push`, r => { calls.push('push'); pushed = true; return json(r, { ok: true, exit_code: 0, output: 'finish: pushed main to origin' }); });
+    await page.route(`**/api/ticket/${id}/github/finish-reset`, r => { calls.push('reset'); return json(r, { ok: true, exit_code: 0, output: 'worktree-reset: reset feat/x' }); });
+    await openBoard(page, id);
+    const card = page.locator(`.card[data-id="${id}"] .card-gh-btn`);
+    await card.click();
+    await expect(page.locator('#gh-dialog-title')).toHaveText('Check & merge feat/x into main');
+    await expect(page.locator('#gh-dialog-ok')).toHaveText('Run tests & merge into main');
+    expect(calls).toEqual([]);
+    await page.locator('#gh-dialog-ok').click();
+    await expect(page.locator('#gh-dialog-title')).toHaveText('Merged');
+    await expect(page.locator('#gh-dialog-body')).toContainText('Next: Finish pushes it to origin and resets the worktree');
+    await expect(page.locator('#gh-dialog-body')).not.toContainText('tkt finish');   // the command is for a terminal; the dialog has the buttons
+    await expect(page.locator('#gh-dialog-ok')).toHaveText('Finish…');
+    // Push main: its own dialog, the commits listed, nothing pushed until the button.
+    await page.locator('#gh-dialog-ok').click();
+    await expect(page.locator('#gh-dialog-title')).toHaveText('Push main');
+    await expect(page.locator('#gh-dialog-pre')).toContainText('abc1234 the branch');
+    await expect(page.locator('#gh-dialog-ok')).toHaveText('Push main');
+    expect(calls).toEqual(['merge', 'check']);
+    await page.locator('#gh-dialog-ok').click();
+    await expect(page.locator('#gh-dialog-title')).toHaveText('Pushed');
+    expect(calls).toEqual(['merge', 'check', 'push']);
+    // Reset the worktree: a second, separate confirm; the reset is not sent by the push's click.
+    await page.locator('#gh-dialog-ok').click();
+    await expect(page.locator('#gh-dialog-title')).toHaveText('Reset the worktree');
+    await expect(page.locator('#gh-dialog-ok')).toHaveText('Reset the worktree');
+    expect(calls).toEqual(['merge', 'check', 'push', 'check']);
+    await page.locator('#gh-dialog-ok').click();
+    await expect(page.locator('#gh-dialog-title')).toHaveText('Reset');
+    expect(calls).toEqual(['merge', 'check', 'push', 'check', 'reset']);
+  });
+
+  // t-607a: a merged worktree ticket whose push or reset is left shows Finish on its card until both are done or it is dismissed.
+  // Prod path: GET /api/tickets' finish and the card's Finish and dismiss buttons.
+  test('The card shows Finish until the push and the reset are done, and dismiss hides it (t-607a)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT);
+    ghTicket(id, { status: 'closed' });
+    let finish = { into: 'main', branch: 'feat/x', push_done: false, reset_done: false };
+    await page.route('**/api/tickets**', async route => {
+      const resp = await fetchFull(route);
+      const list = await resp.json();
+      for (const t of list) if (t.id === id) { t.merged = 'abc1234'; if (finish) t.finish = finish; }
+      await route.fulfill({ response: resp, json: list });
+    });
+    const dismissals = [];
+    await page.route(`**/api/ticket/${id}/github/finish-dismiss`, r => { dismissals.push(r.request().method()); finish = null; return json(r, { ok: true, exit_code: 0, output: 'finish: dismissed' }); });
+    await openBoard(page, id);
+    const btn = page.locator(`.card[data-id="${id}"] .card-gh-btn`);
+    await expect(btn).toHaveText('Finish');
+    await expect(btn).toHaveAttribute('title', /feat\/x is merged into main: push main to origin and reset the worktree/);
+    // The card button names the target the board read (wt_merge.into), not a literal main.
+    const wid = newTicketId(PROJECT_ROOT);
+    ghTicket(wid, { status: 'closed' });
+    await page.unroute('**/api/tickets**');
+    await page.route('**/api/tickets**', async route => {
+      const resp = await fetchFull(route);
+      const list = await resp.json();
+      for (const t of list) { if (t.id === wid) t.wt_merge = { branch: 'feat/w', path: '/tmp/w', into: 'develop' }; if (t.id === id) { t.merged = 'abc1234'; if (finish) t.finish = finish; } }
+      await route.fulfill({ response: resp, json: list });
+    });
+    await openBoard(page, wid);
+    await expect(page.locator(`.card[data-id="${wid}"] .card-gh-btn`)).toHaveAttribute('title', /into develop here after your confirmation/);
+    finish = { ...finish, push_done: true };   // the push done, the reset left: still shown
+    await openBoard(page, id);
+    await expect(page.locator(`.card[data-id="${id}"] .card-gh-btn`)).toHaveText('Finish');
+    finish = { ...finish, reset_done: true };  // both done: nothing
+    await openBoard(page, id);
+    await expect(page.locator(`.card[data-id="${id}"] .card-gh-btn`)).toHaveCount(0);
+    await expect(page.locator(`.card[data-id="${id}"] .card-gh-dismiss`)).toHaveCount(0);
+    finish = { into: 'main', branch: 'feat/x', push_done: false, reset_done: false };
+    await openBoard(page, id);
+    await page.locator(`.card[data-id="${id}"] .card-gh-dismiss`).click();
+    await expect(page.locator(`.card[data-id="${id}"] .card-gh-btn`)).toHaveCount(0);
+    expect(dismissals).toEqual(['POST']);
+  });
+
   test('Check & merge: a refused check runs nothing; Stop ends a running job (t-718b)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gh7');
     ghTicket(id, { github: 'acme/app#57' });

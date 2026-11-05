@@ -65,13 +65,14 @@ func annotateWorktreeMerge(tickets []ticket, root string) {
 			wts = append(wts, w)
 		}
 	}
+	base := defaultBranchRef(root)
 	waiting := map[string]*wt{} // pathKey -> a live linked worktree whose branch is not in main; nil: in main, or not one
 	for _, c := range cands {
 		w, seen := waiting[c.key]
 		if !seen {
 			for i := range wts {
 				if pathKey(wts[i].path) == c.key {
-					if _, in := gitCtx(root, "merge-base", "--is-ancestor", wts[i].head, "HEAD"); !in {
+					if _, in := gitCtx(root, "merge-base", "--is-ancestor", wts[i].head, base); !in {
 						w = &wts[i]
 					}
 					break
@@ -85,11 +86,15 @@ func annotateWorktreeMerge(tickets []ticket, root string) {
 		// The ticket's own work is the commit its evaluator graded: once that is in main, this ticket is done even when a
 		// later ticket has moved the long-lived worktree branch on (review of t-2906).
 		if g := gradedHead(filepath.Join(tdir, c.id, "eval-report.md")); g != "" {
-			if _, in := gitCtx(root, "merge-base", "--is-ancestor", g, "HEAD"); in {
+			if _, in := gitCtx(root, "merge-base", "--is-ancestor", g, base); in {
 				continue
 			}
 		}
-		c.t["wt_merge"] = map[string]any{"branch": w.branch, "path": w.path}
+		wm := map[string]any{"branch": w.branch, "path": w.path}
+		if base != "HEAD" {
+			wm["into"] = strings.TrimPrefix(base, "refs/heads/") // t-607a: the dialog and button name the target
+		}
+		c.t["wt_merge"] = wm
 	}
 }
 
@@ -119,4 +124,22 @@ func linkedWorktreeOf(dir, wtDir string) bool {
 		gd = filepath.Join(dir, gd)
 	}
 	return pathKey(filepath.Dir(filepath.Clean(gd))) == pathKey(wtDir)
+}
+
+// defaultBranchRef is the ref tkt merge merges into (t-e1a2): origin/HEAD's branch, else main, else master, as a local ref; HEAD when
+// none exists (a project with no such branch: tkt merge itself refuses, and this keeps the old behaviour).
+func defaultBranchRef(root string) string {
+	if out, ok := gitCtx(root, "symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD"); ok {
+		if b := strings.TrimPrefix(strings.TrimSpace(out), "origin/"); b != "" {
+			if _, ok := gitCtx(root, "rev-parse", "-q", "--verify", "refs/heads/"+b); ok {
+				return "refs/heads/" + b
+			}
+		}
+	}
+	for _, b := range []string{"main", "master"} {
+		if _, ok := gitCtx(root, "rev-parse", "-q", "--verify", "refs/heads/"+b); ok {
+			return "refs/heads/" + b
+		}
+	}
+	return "HEAD"
 }

@@ -69,3 +69,32 @@ func TestAnnotateWorktreeMerge(t *testing.T) {
 		t.Fatalf("an unbound ticket got wt_merge %v", m)
 	}
 }
+
+// t-607a: the button's "already merged" test compares with the default branch tkt merge targets, not the main checkout's HEAD: a
+// checkout on another branch that holds the work must not hide the button while the default branch lacks it.
+func TestAnnotateWorktreeMergeUsesTheDefaultBranch(t *testing.T) {
+	root := resolvedOrAbs(t.TempDir())
+	git := func(dir string, args ...string) {
+		t.Helper()
+		if out, err := exec.Command("git", append([]string{"-C", dir, "-c", "user.email=t@t", "-c", "user.name=t"}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	git(root, "init", "-q", "-b", "main")
+	git(root, "commit", "-q", "--allow-empty", "-m", "base")
+	wt := filepath.Join(resolvedOrAbs(t.TempDir()), "wt")
+	git(root, "worktree", "add", "-q", wt, "-b", "feat/x")
+	git(wt, "commit", "-q", "--allow-empty", "-m", "work")
+	git(root, "switch", "-q", "-c", "other")
+	git(root, "merge", "-q", "--no-ff", "-m", "m", "feat/x") // the checkout's branch holds the work; main does not
+	td := filepath.Join(root, ".tickets", "t-aaaa")
+	os.MkdirAll(td, 0o755)
+	os.WriteFile(filepath.Join(td, ".cockpit-cwd"), []byte(wt+"\n"), 0o644)
+	tk := ticket{"id": "t-aaaa", "status": "closed"}
+	annotateWorktreeMerge([]ticket{tk}, root)
+	if m, _ := tk["wt_merge"].(map[string]any); m == nil || m["branch"] != "feat/x" {
+		t.Fatalf("the checkout is on a branch holding the work but main lacks it: wt_merge = %v, want feat/x", tk["wt_merge"])
+	} else if m["into"] != "main" {
+		t.Fatalf("wt_merge names the target %v, want main", m["into"])
+	}
+}

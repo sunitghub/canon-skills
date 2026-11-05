@@ -133,6 +133,14 @@ assert_contains "$out" "origin's default branch main does not exist here"
 git branch -m main-gone main
 echo "merge: refused a default branch that does not exist here"
 
+# --dismiss sets finish_dismissed (no --yes, it touches only the ticket's own field) and is refused with --yes.
+rc=0; out="$("$TKT" finish "$id" --dismiss --yes < /dev/null 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "--dismiss --yes should be refused (rc $rc): $out"
+out="$("$TKT" finish "$id" --dismiss < /dev/null 2>&1)" || fail "finish --dismiss failed: $out"
+assert_contains "$out" "dismissed"
+assert_grep '^finish_dismissed: ' "$f"
+echo "finish --dismiss: the ticket records it"
+
 # A ticket tkt merge did not merge has nothing to finish.
 id3="$("$TKT" create "Plain" -t task)"
 rc=0; out="$("$TKT" finish "$id3" --check < /dev/null 2>&1)" || rc=$?

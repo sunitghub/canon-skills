@@ -6,6 +6,16 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.46.0] - 2026-11-05
+
+Board page: run `canon update` and reload the board; no daemon restart is needed.
+
+### Added
+- After Check & merge on a worktree ticket, **Finish…** in the Merged dialog walks two steps, each its own dialog and button: **Push main** (the commits it sends are listed; a normal push, never forced, only that branch) and **Reset the worktree** (run in the worktree's folder, so nothing is typed or `cd`ed). The ticket's card shows **Finish** until both are done, with a small **dismiss** for someone who pushes and resets by hand. The same four actions are `tkt finish <id> --check | --push --yes | --reset --yes | --dismiss`.
+
+### Changed
+- The Check & merge dialog for a worktree ticket names its target: `Check & merge feat/x into main`, `Run tests & merge into main`, and the card button says which branch it merges into. The button also stays until the default branch has the work, even when the main checkout sits on a branch that already holds it.
+
 ## [0.45.0] - 2026-11-05
 
 Shell only: run `canon update`; no board or daemon restart is needed.
