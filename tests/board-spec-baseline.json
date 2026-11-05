@@ -120,6 +120,17 @@
       "failed_runs": {
         "webkit": "1/3"
       }
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > cross-project Sessions row (t-2d2e) > keyboard prefix (t-0d77): ctrl+. then k opens the Logbook of the project on screen; elsewhere it says to open one @webkit",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "webkit: #toast stayed empty for 5 s where the spec expects \"Open a project tab first\" (the no-project-tab path, before any Logbook opens), 1/3 runs at 6079f4fb (2026-11-05); passed alone 3/3 on the branch and 3/3 on 88107a94 (run-board-spec --classify); the classifier called it a likely regression because it is an assertion, not a timeout",
+      "failed_runs": {
+        "webkit": "1/3"
+      }
     }
   ],
   "skipped": []
