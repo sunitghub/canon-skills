@@ -6,7 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
-Board page and daemon page: run `canon update` and reload the board; no daemon restart is needed.
+## [0.46.4] - 2026-11-05
+
+Board page, daemon page and `tkt`: run `canon update`, then restart the daemon (the pane button is on the daemon page) and reload the board.
 
 ### Changed
 - The Send panel's Sent view: "The card moved to In progress" (was "is in In progress"), one line saying what To Claude Cloud, Copy command and Copy prompt each do, a hover on the plain buttons, and the copy message ends "Then close this panel: the card on the board follows the session."
