@@ -6,7 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
-Board page and daemon page: run `canon update` and reload the board.
+## [0.46.2] - 2026-11-05
+
+Board page: run `canon update` and reload the board; no daemon restart is needed.
 
 ### Fixed
 - A registered project whose folder was deleted no longer opens an empty window. Its card on the Projects page shows a ! beside the path with *This folder no longer exists. Restore it, or deregister the project (✕).* under it, reads nothing for it (no more blank "could not check this project's skills"), and disables › and Scratch; ✕ still deregisters it. Nothing opens it from any other entry point, and a launch restores no tab for it. When the folder comes back the card is normal again.
