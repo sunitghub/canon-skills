@@ -1100,6 +1100,15 @@ _si_description() {
     END { flush(); printf "%s%s", pre, out }' | awk 'NF { s = 1 } s'
 }
 
+# t-10ac: does <owner>/<repo> exist on GitHub? Prints exists, missing or unknown. Only gh's clear "no such repository" is missing; signed out,
+# no gh, a network error or a placeholder name is unknown (the caller then keeps its safe default).
+_gh_repo_state() {
+  local o="$1" n="$2" out
+  [[ "$o" != "<owner>" && "$n" != "<repo>" ]] && command -v gh >/dev/null 2>&1 || { echo unknown; return 0; }
+  if out="$(gh repo view "$o/$n" --json name 2>&1 < /dev/null)"; then echo exists
+  elif grep -qiE 'could not resolve to a repository|not found|404' <<< "$out"; then echo missing
+  else echo unknown; fi
+}
 _gh_origin_repo() {   # _gh_origin_repo <root> <label>: prints origin's GitHub owner/repo, or explains why not (exit 1)
   local url
   url="$(git -C "$1" remote get-url origin 2>/dev/null)" || { echo "$2: this project has no git remote named origin" >&2; return 1; }
@@ -1683,8 +1692,14 @@ cmd_github_doctor() {
   [[ "${login:-}" =~ ^[A-Za-z0-9][A-Za-z0-9-]*$ ]] && own="$login"
   [[ "$(basename "$root")" =~ ^[A-Za-z0-9._-]+$ ]] && rname="$(basename "$root")"
   ghurl="https://github.com/$own/$rname.git"
-  local repo err vis
-  if repo="$(_gh_origin_repo "$root" origin 2>&1)"; then
+  # t-11e6: --source is the project's absolute folder (quoted; the Windows form on Windows), so a copied command works from any terminal
+  local srcdir="$root" winhint="" repo_name; repo_name="$(basename "$root")"
+  if _doctor_windows; then srcdir="$(cygpath -w "$root" 2>/dev/null || echo "$root")"; winhint=" Run it in a terminal opened after Git was installed (a window opened earlier cannot find git)."; fi
+  local repo err vis rstate=unknown
+  local safe_root=true; case "$root" in *[\"\$\`\\!]*|*[[:cntrl:]]*) safe_root=false ;; esac
+  local origin_ok=true
+  repo="$(_gh_origin_repo "$root" origin 2>&1)" || { origin_ok=false; rstate="$(_gh_repo_state "$own" "$rname")"; }   # asked only when origin is not already a GitHub repo
+  if $origin_ok; then
     vis="$(_repo_visibility "$repo")"
     case "$vis" in
       PRIVATE) _gd origin ok "Repository found, and private" "Issues go to $repo (origin, private)." ;;
@@ -1695,18 +1710,25 @@ cmd_github_doctor() {
     err="${repo#origin: }"
     if git -C "$root" remote get-url origin >/dev/null 2>&1; then
       # origin exists but is not a GitHub repo: add would fail ("remote origin already exists"), so the command points origin at GitHub
-      _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: ${err}. Point origin at your repo on GitHub (it must exist there); no repo yet? Run git remote remove origin, check again, and canon offers to create it." cmd "git remote set-url origin $ghurl"
+      if [[ "$rstate" == missing && "$safe_root" == true ]]; then
+        # the repo GitHub would hold is not there yet: replace the old origin with a new private one, connecting and publishing in one step
+        _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: ${err}. $own/$rname is not on GitHub yet: this removes the current origin and creates it, private, publishing the folder ${srcdir}.${winhint}" cmd "git remote remove origin && gh repo create \"${rname}\" --private --source=\"${srcdir}\" --remote=origin --push"
+      else
+        _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: ${err}. Point origin at your repo on GitHub${rstate:+ ($own/$rname ${rstate/unknown/could not be checked})}; if it is not there yet, run git remote remove origin, check again, and canon offers to create it." cmd "git remote set-url origin $ghurl"
+      fi
     else
       # t-9955: no origin at all is usually a project that has never been on GitHub: create it private (on a free plan the issue's
       # "never push main" text is the only guard) and connect it in one step.
       # t-11e6: --source is the project's absolute folder (quoted; the Windows form on Windows), so the copied command works from any terminal
-      local srcdir="$root" winhint="" repo_name; repo_name="$(basename "$root")"
-      if _doctor_windows; then srcdir="$(cygpath -w "$root" 2>/dev/null || echo "$root")"; winhint=" Run it in a terminal opened after Git was installed (a window opened earlier cannot find git)."; fi
       case "$root" in
         *[\"\$\`\\!]*|*[[:cntrl:]]*)   # a command meant to be pasted into a shell must not carry a quote, dollar, backtick, backslash, "!" (history expansion) or a control character (a newline splits it in two) from a folder name
           _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: ${err}. This folder's name has a character (a double quote, dollar sign, backtick, backslash, exclamation mark or control character) that is not safe in a command you paste: rename the folder, or run gh repo create yourself. Already have a repo on GitHub? Run git remote add origin $ghurl" ;;
         *)
-          _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: ${err}. No repo on GitHub yet? This creates one, private, and connects it, publishing the folder ${srcdir}.${winhint} Already have a repo on GitHub? Run git remote add origin $ghurl" cmd "gh repo create \"${repo_name}\" --private --source=\"${srcdir}\" --remote=origin --push" ;;
+          if [[ "$rstate" == exists ]]; then
+            _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: ${err}. $own/$rname already exists on GitHub: this connects it (then publish with git push -u origin HEAD)." cmd "git remote add origin $ghurl"
+          else
+          _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: ${err}. No repo on GitHub yet? This creates one, private, and connects it, publishing the folder ${srcdir}.${winhint} Already have a repo on GitHub? Run git remote add origin $ghurl" cmd "gh repo create \"${repo_name}\" --private --source=\"${srcdir}\" --remote=origin --push"
+          fi ;;
       esac
     fi
   fi

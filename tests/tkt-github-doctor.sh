@@ -21,6 +21,11 @@ case "$1 $2" in
   "auth status") [[ "${STUB_GH:-}" == out ]] && exit 1; exit 0 ;;
   "api user")    [[ "${STUB_GH:-}" == nouser ]] && exit 1; echo octo ;;
   "api repos/"*) [[ "${STUB_GH:-}" == out || "${STUB_VIS:-}" == none ]] && exit 1; echo "${STUB_VIS:-private}" ;;
+  "repo view")   case "${STUB_REPO:-exists}" in
+                   exists) echo '{"name":"x"}' ;;
+                   missing) echo "GraphQL: Could not resolve to a Repository with the name '$3'. (repository)" >&2; exit 1 ;;
+                   *) echo "dial tcp: lookup api.github.com: no such host" >&2; exit 1 ;;
+                 esac ;;
   *) echo "unexpected gh call: $*" >&2; exit 9 ;;
 esac
 EOF
@@ -58,6 +63,14 @@ sp="$W/my project"; mkdir -p "$sp"; git -C "$sp" init -q; sproot="$(cd "$sp" && 
 out2="$(cd "$sp" && PATH="$NOGH_PATH" "$TKT" github-doctor --json)"
 assert_eq "bad|No GitHub repository for this project|gh repo create \"my project\" --private --source=\"$sproot\" --remote=origin --push|" "$(check "$out2" origin)"
 assert_contains "$(field "$out" "d['checks'][2]['detail']")" "make it executable (chmod +x)"
+# t-10ac: gh says whether octo/<folder> exists. Missing: replace the old origin with a new private repo in one pasted command. Unknown (a network
+# error): the safe set-url, said as could not be checked. Exists: set-url. With no origin at all: an existing repo is connected, a missing one created.
+no="$W/noorigin"; mkdir -p "$no"; git -C "$no" init -q; noroot="$(cd "$no" && pwd)"
+oe="$(cd "$no" && PATH="$W/bin:$PATH" STUB_REPO=exists "$TKT" github-doctor --json)"
+assert_eq "bad|No GitHub repository for this project|git remote add origin https://github.com/octo/noorigin.git|" "$(check "$oe" origin)"
+assert_contains "$(field "$oe" "d['checks'][1]['detail']")" "already exists on GitHub"
+om="$(cd "$no" && PATH="$W/bin:$PATH" STUB_REPO=missing "$TKT" github-doctor --json)"
+assert_eq "bad|No GitHub repository for this project|gh repo create \"noorigin\" --private --source=\"$noroot\" --remote=origin --push|" "$(check "$om" origin)"
 # t-10ac: with a non-GitHub origin the pasted set-url never carries a folder name GitHub cannot take as a repo name (a space, a quote, a
 # dollar sign): the repo part stays the <repo> placeholder, the signed-in login still fills the owner
 for odd in "my project" 'dollar$name'; do
@@ -94,6 +107,12 @@ assert_eq "bad|No GitHub repository for this project|git remote set-url origin h
 out="$(PATH="$W/bin:$PATH" doctor)"
 assert_eq "bad|No GitHub repository for this project|git remote set-url origin https://github.com/octo/$(basename "$project").git|" "$(check "$out" origin)"
 assert_contains "$(field "$out" "d['checks'][1]['detail']")" "git remote remove origin"
+out="$(PATH="$W/bin:$PATH" STUB_REPO=missing doctor)"
+assert_eq "bad|No GitHub repository for this project|git remote remove origin && gh repo create \"$(basename "$project")\" --private --source=\"$project\" --remote=origin --push|" "$(check "$out" origin)"
+assert_contains "$(field "$out" "d['checks'][1]['detail']")" "octo/$(basename "$project") is not on GitHub yet"
+out="$(PATH="$W/bin:$PATH" STUB_REPO=error doctor)"
+assert_eq "bad|No GitHub repository for this project|git remote set-url origin https://github.com/octo/$(basename "$project").git|" "$(check "$out" origin)"
+assert_contains "$(field "$out" "d['checks'][1]['detail']")" "could not be checked"
 assert_contains "$(field "$out" "d['checks'][1]['detail']")" "https://gitlab.com/acme/app.git"
 
 # Signed in; a private GitHub origin; an executable scripts/test.sh committed.
