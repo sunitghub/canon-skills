@@ -6,7 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
-Board page and daemon page: run `canon update` and reload the board; no daemon restart is needed.
+## [0.46.3] - 2026-11-05
+
+Board page: run `canon update` and reload the board; no daemon restart is needed.
 
 ### Fixed
 - The board's left rail no longer shows "## In Progress" as the Current Focus when `HANDOFF.md`'s Current Focus is empty; it says "No HANDOFF.md Current Focus found."
