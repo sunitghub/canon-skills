@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-05-2026 08:48
+learnings-sweep last run: 11-05-2026 11:09
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-05 | [t-3ba0](.tickets/t-3ba0/learnings.md) | A guard added in only one of two paths (load skipped a missing project, the refresh tick did not) shipped because the spec never exercised the second path, and a Playwright wait that is already true before the action (reads of the healthy card) lets the assertion run before anything happens: wait for NEW reads after the action; and a state flag (a remembered Not now) must be read after the live status, not before. | UNPROMOTED |
 | 2026-11-05 | [t-b213](.tickets/t-b213/learnings.md) | A warning wrapped around update_cmd in a subshell broke canon-migrate's interrupt test (the signal no longer reached the rollback trap): put it in the one tail every success shares (refresh_projects); tests that run `canon update` need a PATH with no tkt, and windows-install.sh pins installer source text, so a change to install.ps1 must update it; two acceptance criteria that cannot both hold (list every other entry vs a silent re-run) failed the first evaluator. | UNPROMOTED |
 | 2026-11-05 | [t-607a](.tickets/t-607a/learnings.md) | State keyed on a branch name misfires when a long-lived worktree reuses the name for the next ticket (an old ticket's Finish reset came back): decide whose work it is by ancestry, not name; and a new board route is pinned in two suites (the route list in sprint-check-api.sh, the argv in sprint-check-github-endpoints.sh), so grep for both before the full suite. | UNPROMOTED |
 | 2026-11-05 | [t-e1a2](.tickets/t-e1a2/learnings.md) | Two resolvers now answer 'which branch is the default' with different fallbacks (`_default_branch` local main/master, `worktree-reset` ls-remote), and a fixture guard `add || { switch; true; }` + `if -d` could silently skip an assertion: give a fact one owner, and make a setup step fail the test instead of falling back. | UNPROMOTED |
