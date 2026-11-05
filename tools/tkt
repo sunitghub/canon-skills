@@ -2223,7 +2223,10 @@ cmd_finish() {
   local wtstate=gone otip
   if [[ -n "$wt" && -d "$wt" ]]; then
     otip="$(git -C "$root" rev-parse -q --verify "refs/remotes/origin/$into^{commit}" 2>/dev/null || true)"
-    if [[ "$(git -C "$wt" symbolic-ref -q --short HEAD 2>/dev/null || true)" == "$mb" && ( -z "$otip" || "$(git -C "$wt" rev-parse HEAD)" != "$otip" ) ]]; then
+    # A long-lived worktree branch keeps its name for the next ticket: once it holds commits $into does not, it has moved on and
+    # this ticket's reset is no longer a thing to offer.
+    if [[ "$(git -C "$wt" symbolic-ref -q --short HEAD 2>/dev/null || true)" == "$mb" && ( -z "$otip" || "$(git -C "$wt" rev-parse HEAD)" != "$otip" ) ]] \
+       && git -C "$root" merge-base --is-ancestor "$(git -C "$wt" rev-parse HEAD)" "refs/heads/$into" 2>/dev/null; then
       wtstate=on-branch
     else wtstate=reset; fi
   fi
@@ -2241,7 +2244,7 @@ cmd_finish() {
       case "$wtstate" in
         on-branch) if $on_origin; then echo "finish: reset: $wt is still on $mb; tkt worktree-reset there starts the next ticket"
                    else echo "finish: reset: $wt is still on $mb; reset after the push"; fi ;;
-        reset) echo "finish: reset: $wt is already at origin's $into; nothing to reset" ;;
+        reset) echo "finish: reset: $wt is at origin's $into or has moved on to new work; nothing to reset" ;;
         gone) echo "finish: reset: the worktree is gone; nothing to reset" ;;
       esac ;;
     --push)
@@ -3402,10 +3405,11 @@ Commands:
                             master) here, as one merge commit, after the same checks and its tests
                             on that branch + the work branch. A main checkout on another branch
                             stays there: the default branch moves by ref.
-  finish <id> [--check | --push --yes | --reset --yes]
+  finish <id> [--check | --push --yes | --reset --yes | --dismiss]
                             After tkt merge: --check lists the commits a push sends; --push pushes
                             the default branch to origin (never forced); --reset runs
-                            tkt worktree-reset in the ticket's worktree once the push is done.
+                            tkt worktree-reset in the ticket's worktree once the push is done;
+                            --dismiss hides the board's Finish step for the ticket.
   merge-pr <id> [--pr N] [--test CMD] [--yes | --check]
                             Check a cloud ticket's PR (evaluator passed on its head,
                             mergeable, suite green on base + PR) and merge it after a y.

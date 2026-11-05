@@ -27,7 +27,7 @@ func TestAnnotateWorktreeFinish(t *testing.T) {
 		pushTodo  = "finish: push: git push origin main sends 2 commit(s) (as last fetched):\n  abc1234 x\n"
 		pushDone  = "finish: push: main is already on origin\n"
 		resetTodo = "finish: reset: /w is still on feat/x; tkt worktree-reset there starts the next ticket\n"
-		resetDone = "finish: reset: /w is already at origin's main; nothing to reset\n"
+		resetDone = "finish: reset: /w is at origin's main or has moved on to new work; nothing to reset\n"
 	)
 	mark := func(root string, fields ticket) map[string]any {
 		t.Helper()

@@ -47,7 +47,7 @@ func annotateWorktreeFinish(tickets []ticket, root string) {
 }
 
 // parseFinishCheck reads tkt finish --check's two lines: "finish: push: ..." is done when origin already has the branch,
-// "finish: reset: ..." when the worktree needs nothing (already at origin's tip, or gone).
+// "finish: reset: ..." when the worktree needs nothing (at origin's tip, moved on to new work, or gone).
 func parseFinishCheck(out string) (push, reset bool) {
 	for _, line := range strings.Split(out, "\n") {
 		switch {

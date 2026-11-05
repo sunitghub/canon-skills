@@ -94,7 +94,13 @@ out="$("$TKT" finish "$id" --reset --yes < /dev/null 2>&1)" || fail "finish --re
 assert_eq "feat/x" "$(git -C "$WT" symbolic-ref --short HEAD)"
 assert_eq "$NEW" "$(git -C "$WT" rev-parse HEAD)"
 out="$("$TKT" finish "$id" --reset --yes < /dev/null 2>&1)"; assert_contains "$out" "nothing to reset"
-out="$("$TKT" finish "$id" --check < /dev/null 2>&1)"; assert_contains "$out" "already at origin's main"
+out="$("$TKT" finish "$id" --check < /dev/null 2>&1)"; assert_contains "$out" "at origin's main or has moved on to new work; nothing to reset"
+# A long-lived worktree branch keeps its name for the next ticket: once it has commits main does not, the old ticket's reset is
+# not offered again (its Finish card would come back).
+(cd "$WT" && echo next > next.txt && git add next.txt && git commit -qm "the next ticket's work")
+out="$("$TKT" finish "$id" --check < /dev/null 2>&1)"; assert_contains "$out" "has moved on to new work; nothing to reset"
+out="$("$TKT" finish "$id" --reset --yes < /dev/null 2>&1)"; assert_contains "$out" "nothing to reset"
+[[ "$(git -C "$WT" log -1 --format=%s)" == "the next ticket's work" ]] || fail "finish --reset touched a worktree that had moved on"
 echo "finish --reset: the worktree branch is back at origin's main"
 
 # A push origin refuses (it moved) is not forced.

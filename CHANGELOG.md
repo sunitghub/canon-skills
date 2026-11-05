@@ -6,8 +6,6 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
-## [0.46.0] - 2026-11-05
-
 Board page: run `canon update` and reload the board; no daemon restart is needed.
 
 ### Added
