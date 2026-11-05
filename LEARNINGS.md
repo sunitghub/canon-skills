@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-05-2026 05:20
+learnings-sweep last run: 11-05-2026 07:30
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-05 | [t-607a](.tickets/t-607a/learnings.md) | State keyed on a branch name misfires when a long-lived worktree reuses the name for the next ticket (an old ticket's Finish reset came back): decide whose work it is by ancestry, not name; and a new board route is pinned in two suites (the route list in sprint-check-api.sh, the argv in sprint-check-github-endpoints.sh), so grep for both before the full suite. | UNPROMOTED |
 | 2026-11-05 | [t-e1a2](.tickets/t-e1a2/learnings.md) | Two resolvers now answer 'which branch is the default' with different fallbacks (`_default_branch` local main/master, `worktree-reset` ls-remote), and a fixture guard `add || { switch; true; }` + `if -d` could silently skip an assertion: give a fact one owner, and make a setup step fail the test instead of falling back. | UNPROMOTED |
 | 2026-11-05 | [t-9807](.tickets/t-9807/learnings.md) | Merging main into a graded PR to clear a CHANGELOG conflict moves its head off the graded commit, so merge-pr refuses and the gates run again; keep the PR's CHANGELOG line out of the conflict (an own subsection) or expect a re-grade. | UNPROMOTED |
 | 2026-11-05 | [t-fb18](.tickets/t-fb18/learnings.md) | A land worktree has no `.tickets/`, so the full board spec finds no cards and fails 10 specs by timeout; a copied `.tickets/` there is read by `sprint eval-verdict` instead of the real one, so remove it before recording the verdict. | UNPROMOTED |
