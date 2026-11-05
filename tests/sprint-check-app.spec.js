@@ -5597,9 +5597,10 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const row = page.locator('#ag-list .ag-row', { hasText: 't-aaa1' });
       await expect(row.locator('.ag-pill')).toHaveText('Needs you');
       expect(Math.round((await page.locator('aside.side').boundingBox()).width), 'the default rail').toBe(230);
-      await expect(row.locator('.ag-age')).toBeHidden();
+      await expect(row.locator('.ag-age')).toBeVisible();                   // t-10ac: the age stays at every width; the description is what goes first
+      await expect(row.locator('.ag-d')).toBeHidden();
       const name = await row.locator('.ag-t1').evaluate(el => ({ w: el.clientWidth, cut: el.scrollWidth > el.clientWidth }));
-      expect(name.w, `the name keeps room beside the pill (${name.w}px)`).toBeGreaterThanOrEqual(85);
+      expect(name.cut, `the id is not cut (${name.w}px)`).toBe(false);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
@@ -6264,6 +6265,50 @@ test.describe('cockpit in board (t-ddc8)', () => {
       });
       return hits;
     }
+
+    // t-10ac: the Agents row at each rail width. The default 230 px rail reads icon, id, age, state (nothing cut mid-word); the description
+    // comes back from a rail of about 280 px, the agent name from about 350 px. Prod path: the Cockpit's Agents list.
+    test('t-10ac: a row keeps its id, age and state at every width; the description and then the agent name come back as the rail widens', async ({ page }) => {
+      await stubTicketDocs(page);
+      await openShell(page, stateRows());
+      await page.evaluate(async () => (await import('/static/cockpit-sessions.js')).pollSessions());
+      const at = w => page.evaluate(async w => {
+        (await import('/static/cockpit-sidebar.js')).setSideWidth(w); (await import('/static/cockpit-sessions.js')).renderSessionSurfaces();
+        const shown = (r, s) => { const e = r.querySelector(s); return !!e && getComputedStyle(e).display !== 'none'; };
+        const rows = [...document.querySelectorAll('#ag-list .ag-row')];
+        const info = r => {
+          const x = s => { const e = r.querySelector(s); return e ? e.getBoundingClientRect() : null; }, rr = r.getBoundingClientRect();
+          return { id: shown(r, '.ag-id'), d: shown(r, '.ag-d'), at: shown(r, '.ag-at'), age: shown(r, '.ag-age'), g: shown(r, '.ag-g'),
+            idOk: shown(r, '.ag-id') && x('.ag-id').right <= x('.ag-t1').right + 1,   // the id sits whole inside the name cell (the description after it is what truncates)
+            order: x('.ag-id').right <= x('.ag-age').left + 1 && x('.ag-age').right <= x('.ag-g').left + 1, inside: x('.ag-g').right <= rr.right + 1 && r.scrollWidth <= r.clientWidth + 1 };
+        };
+        return { done: info(rows.find(r => r.textContent.includes('t-ccc3'))), need: info(rows.find(r => r.textContent.includes('t-aaa1'))) };
+      }, w);
+      for (const [w, d, a] of [[200, 0, 0], [230, 0, 0], [300, 1, 0], [360, 1, 1]]) {
+        const { done, need } = await at(w);
+        for (const [name, r] of [['done', done], ['needs-you', need]]) {
+          expect(r.id && r.age && r.g, `${name} at ${w}: id, age and state are shown`).toBe(true);
+          expect(r.idOk && r.order && r.inside, `${name} at ${w}: the id is whole and the parts sit in order inside the row (${JSON.stringify(r)})`).toBe(true);
+          expect([r.d, r.at], `${name} at ${w}: description, agent name`).toEqual([!!d, !!a]);
+        }
+      }
+      await expect(page.locator('#ag-list .ag-row', { hasText: 't-aaa1' }).locator('.ag-pill')).toHaveText('Needs you');
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('t-10ac: a Claude row leads with the Claude mark in its orange in both themes; another agent keeps its lettered tile', async ({ page }) => {
+      await openShell(page, stateRows());
+      await page.evaluate(async () => (await import('/static/cockpit-sessions.js')).pollSessions());
+      const claude = page.locator('#ag-list .ag-row', { hasText: 't-ccc3' }).locator('.ag-i svg.ag-mk-claude path');
+      for (const theme of ['dark', 'light']) {
+        await page.evaluate(t => { if (t === 'light') document.documentElement.dataset.theme = 'light'; else document.documentElement.removeAttribute('data-theme'); }, theme);
+        expect(await claude.evaluate(p => getComputedStyle(p).stroke), `the Claude mark, ${theme} theme`).toBe('rgb(217, 119, 87)');
+      }
+      const copilot = page.locator('#ag-list .ag-row', { hasText: XID });
+      await expect(copilot.locator('svg.ag-mk-claude')).toHaveCount(0);   // the Copilot row has no Claude mark ...
+      await expect(copilot.locator('.ag-badge')).toHaveText('C');         // ... it keeps its lettered tile
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
 
     test('shell sidebar (t-e69b): mockup rows, agent codes, group counts, titles fetched once and inert', async ({ page }) => {
       const hits = await stubTicketDocs(page);

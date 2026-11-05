@@ -203,7 +203,7 @@ sprint agent without leaving the browser — no second terminal.
   `agent_needs_input`) mean needs you, `idle_prompt`/`agent_completed` mean done,
   and other notifications change nothing. The daemon's `/sessions` turns this
   into one state per session — needs you, working (output or input in the last
-  15 s), idle, or done — shown in the shell's Agents sidebar (one line per agent: icon, name, agent type, age and a state glyph: a ring while working, a solid dot when done, a hollow dot when idle, an orange **Needs you** pill; the tooltip is the ticket's title, `t-d0ed`), the "N needs you"
+  15 s), idle, or done — shown in the shell's Agents sidebar (one line per agent: a mark (the Claude mark in its orange for a Claude session, a pencil for a scratch session, a lettered tile for another agent), the ticket id, the agent type, the age and a state glyph: a ring while working, a solid dot when done, a hollow dot when idle, an orange **Needs you** pill; the tooltip is the ticket's title, `t-d0ed`. As the rail narrows the description goes first, then the agent type: the default rail reads mark, id, age and state, with the description from a rail of about 280 px and the agent type from about 350 px, `t-10ac`), the "N needs you"
   pill, a tab dot, the Projects cards, Admin's session table, the
   ticket cockpit's state chip and the board's cards (`t-28ec`: a state strip,
   **Answer ▸** / **Open ▸**, waiting cards first in In Progress). Colours follow

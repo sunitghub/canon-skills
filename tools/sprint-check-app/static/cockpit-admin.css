@@ -157,8 +157,12 @@
   .ag-pill{font-size:10px;font-weight:700;letter-spacing:.02em;color:var(--st-ink);background:var(--amber);border-radius:6px;padding:1px 7px;white-space:nowrap}   /* Herdr's orange "Needs you" pill, from the theme's own amber */
   .st-not-started .ag-t1{font-style:italic;color:var(--text-muted)}
   @media (prefers-reduced-motion:reduce){.ag-ring{animation:none}}
-  @container ag (max-width:260px){.ag-row .ag-at{display:none}}
-  @container ag (max-width:240px){.ag-row .ag-age{display:none}.ag-row{column-gap:6px}.ag-row .ag-pill{font-size:10px;padding:1px 5px}}   /* the default 230px rail: a Needs-you pill leaves the name about 90px */
+  /* t-10ac: as the rail narrows the description goes first, then the agent name; the ticket id, the age and the state glyph stay at every width
+     (the default 230px rail reads icon, id, age, state: nothing cut mid-word). */
+  @container ag (max-width:260px){.ag-row .ag-d{display:none}.ag-row .ag-id{margin-right:0}.ag-row{column-gap:6px}.ag-row .ag-pill{font-size:10px;padding:1px 5px}}
+  @container ag (max-width:330px){.ag-row .ag-at{display:none}}
+  .ag-row .ag-mark{width:16px;height:16px;display:block}
+  .ag-row .ag-mk-gh{color:var(--text)}   /* the default 230px rail: a Needs-you pill leaves the name about 90px */
   .ad-reaper{font-size:12px;color:var(--text-muted);padding:0 14px 8px}
   /* the session table needs more room than the 620px Admin column; it grows right, and scrolls when the window can't fit it */
   #view-admin .sessions{margin-bottom:16px}

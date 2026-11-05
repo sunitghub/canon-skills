@@ -6,6 +6,12 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+Board page and daemon page: run `canon update` and reload the board; no daemon restart is needed.
+
+### Changed
+- The Agents list's default-width row now reads **mark, ticket id, age, state**: the age no longer disappears, and the description (which used to be cut mid-word) shows only when the rail is wide enough (from about 280 px), then the agent type (from about 350 px). The title and detail are still in the tooltip.
+- A Claude session leads with the Claude mark in its orange instead of a letter tile; a scratch session keeps its pencil, and Copilot and the others keep a lettered tile.
+
 ## [0.46.3] - 2026-11-05
 
 Board page: run `canon update` and reload the board; no daemon restart is needed.

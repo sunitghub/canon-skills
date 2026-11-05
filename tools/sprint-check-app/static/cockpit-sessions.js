@@ -244,6 +244,10 @@ export function sessionTime(v){
 // t-d0ed: the Agents row's pieces. The agent's name in words, the age in one unit, and the state as a glyph (ring working, solid done,
 // hollow idle or not started, an orange "Needs you" pill); the words move into the row's accessible name (agentLine).
 const AGENT_NAME={claude:'Claude',copilot:'Copilot',pi:'Pi',term:'Terminal'};
+// t-10ac: the mark that leads a Claude row, inline SVG in its brand orange, the same in both themes. A simplified shape: swap in the official
+// asset and check its usage rules before a release leans on it. (The bare GitHub mark for the cloud rows is t-761b's.)
+const CLAUDE_ORANGE='#d97757';   // a brand colour, the same in both themes: not a theme variable (the theme guard reads CSS; this is an SVG attribute)
+const markClaude=()=>'<svg class="ag-mark ag-mk-claude" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v6M12 16v6M2 12h6M16 12h6M5 5l4 4M15 15l4 4M19 5l-4 4M5 19l4-4" fill="none" stroke="'+CLAUDE_ORANGE+'" stroke-width="2.6" stroke-linecap="round"/></svg>';
 export const agentName=a=>AGENT_NAME[a]||'';
 export function ageShort(secs){ return secs<60 ? '<1m' : secs<3600 ? Math.floor(secs/60)+'m' : secs<86400 ? Math.floor(secs/3600)+'h' : Math.floor(secs/86400)+'d'; }
 function stateGlyph(state){
@@ -311,8 +315,8 @@ export function renderSessionSurfaces(){
       // the detail the old three lines carried is the accessible name, so a screen reader still gets state, time, meter and signal.
       const tip=title||v.scrTitle||(v.scratch?'Scratch session':v.ticket);
       const aria=[(title||v.scrTitle||v.ticket||'Scratch session')+': '+agentLine(v), time.tip, v.meter, v.signal?'state from: '+v.signal:''].filter(Boolean).join(' \u00b7 ');
-      const name=v.ticket?`<span class="ag-id">${esc(v.ticket)}</span>${esc(title)}`:(v.scratch?esc(v.scrTitle||'Scratch session'):'<span class="ag-none">no ticket</span>');
-      const icon=v.scratch?scratchIcon(v.agent):`<span class="ag-badge">${esc(agentName(v.agent).charAt(0)||'?')}</span>`;
+      const name=v.ticket?`<span class="ag-id">${esc(v.ticket)}</span><span class="ag-d">${esc(title)}</span>`:(v.scratch?esc(v.scrTitle||'Scratch session'):'<span class="ag-none">no ticket</span>');
+      const icon=v.scratch?scratchIcon(v.agent):v.agent==='claude'?markClaude():`<span class="ag-badge">${esc(agentName(v.agent).charAt(0)||'?')}</span>`;
       return `<button class="ag-row st st-${v.state}${inView?' on':''}"${inView?' aria-current="true"':''} data-i="${rail.indexOf(v)}" title="${escAttr(tip)}" aria-label="${escAttr(aria)}">`+
       `<span class="ag-i">${icon}</span>`+
       `<span class="ag-t1">${name}</span>`+
