@@ -6,6 +6,15 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+Board page and daemon page: run `canon update` and reload the board.
+
+### Fixed
+- A registered project whose folder was deleted no longer opens an empty window. Its card on the Projects page shows a ! beside the path with *This folder no longer exists. Restore it, or deregister the project (✕).* under it, reads nothing for it (no more blank "could not check this project's skills"), and disables › and Scratch; ✕ still deregisters it. Nothing opens it from any other entry point, and a launch restores no tab for it. When the folder comes back the card is normal again.
+- A project whose skills have a problem Refresh can fix (for example a missing `.claude/skills` link) has its open button disabled until the card re-reads clean. A skills check that could not run never locks a project.
+
+### Changed
+- **+ sprint**, and opening a project that is not a git repository, first ask *Turn on version history?* (once per session per project), because the sprint skill's git pre-commit hook needs git. **Not now** goes on, and the Register dialog says the hook is skipped.
+
 ## [0.46.1] - 2026-11-05
 
 Shell only: run `canon update` (on Windows, run the installer once more to reorder your PATH); no board or daemon restart is needed.

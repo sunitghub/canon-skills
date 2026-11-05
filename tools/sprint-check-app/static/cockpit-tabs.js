@@ -3,7 +3,7 @@
 import { bindSplitHandle, clampRatio as clampBy, validRatio } from './split-handle.js';
 import { esc, toast } from './cockpit-core.js';
 import { SCRATCH_ID_RE, TICKET_ID_RE, _projKey, boardScratch, interrupted, liveTabIds, needsTabIds, openCloseWarn, renderInterrupted, renderSessionSurfaces } from './cockpit-sessions.js';
-import { getProjects, registerSkill } from './cockpit-projects.js';
+import { ensureGit, getProjects, registerSkill } from './cockpit-projects.js';
 
 // ── Tabs (t-a55a) ────────────────────────────────────────────────────────
 // Pinned Projects tab + closable, folder-named project tabs. Each project tab
@@ -256,9 +256,15 @@ export function activateTab(id){
 }
 export function openProject(id,name,opts){
   opts=opts||{};
+  // t-3ba0: a project whose folder is gone opens no window, from any caller (the card disables its own button; Logbook, Factory,
+  // Skill Eval, Scratch and the rail rows all land here).
+  const proj=getProjects().find(p=>p.id===id);
+  if(proj&&proj.missing){ toast('Cannot open “'+(name||proj.name)+'”: its folder no longer exists. Restore it, or deregister the project.'); return; }
   if(!openTabs.some(t=>t.id===id)){ openTabs.push({id,name}); ensureView(id,name); }
   activateTab(id);
-  if(opts.nudge) maybeNudgeSkill(id,name,opts.quiet);   // t-5c3c: only on explicit open, never on restore
+  // t-5c3c: only on explicit open, never on restore. t-3ba0: version history is asked first (the hook the sprint skill installs needs it);
+  // Not now opens anyway.
+  if(opts.nudge) ensureGit(id,name,'The sprint skill installs a git pre-commit hook, which needs a git repository.').finally(()=>maybeNudgeSkill(id,name,opts.quiet));
 }
 async function hasSprintSkill(id){
   try{ const s=await fetch('/api/project-stats?project='+encodeURIComponent(id)); if(s.ok) return ((await s.json()).skills||[]).includes('sprint'); }catch(e){}
@@ -319,9 +325,9 @@ export function restoreTabs(){
   const byId=new Map(getProjects().map(p=>[p.id,p]));
   for(const id of saved.openIds){
     const p=byId.get(id);
-    if(p && !openTabs.some(t=>t.id===id)){ openTabs.push({id:p.id,name:p.name}); ensureView(p.id,p.name); }
+    if(p && !p.missing && !openTabs.some(t=>t.id===id)){ openTabs.push({id:p.id,name:p.name}); ensureView(p.id,p.name); }   // t-3ba0: a deleted folder restores no window
   }
-  if(saved.active && (saved.active==='projects' || byId.has(saved.active))) activeTab=saved.active;
+  if(saved.active && (saved.active==='projects' || (byId.has(saved.active) && !byId.get(saved.active).missing))) activeTab=saved.active;
   restoreSplit();
   renderTabs(); activateTab(activeTab);
 }

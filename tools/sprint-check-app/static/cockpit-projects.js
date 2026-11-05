@@ -14,6 +14,8 @@ import { closeTab, openProject, openTabs, restoreTabs, updateActiveCount } from 
 // display order. Single source of truth — the card buttons are generated from
 // this (mirrors the server-side REGISTERABLE_SKILLS allowlist).
 const IMPORTANT_SKILLS=['efficiency','sprint'];
+// t-3ba0: a registered project whose folder was deleted or moved.
+const MISSING_MSG='This folder no longer exists. Restore it, or deregister the project (\u2715).';
 // Per-skill confirm() copy for the register action (co-located with the list).
 const REG_SKILL_DETAIL={
   sprint:'wires the sprint workflow into the project — updates AGENTS.md/CLAUDE.md, installs a git pre-commit hook, creates .tickets/, and links the skills dir',
@@ -39,9 +41,10 @@ export async function load(){
     return;
   }
   grid.innerHTML=projects.map(p=>`
-      <div class="card">
+      <div class="card${p.missing?' is-missing':''}">
         <div class="cardhead"><h3 title="${escAttr(p.name)}">${esc(p.name)}</h3><button type="button" class="gitstate" hidden data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}">${GIT_ICON}</button></div>
-        <div class="path" title="${escAttr(p.path)}">${esc(p.path)}</div>
+        <div class="path" title="${escAttr(p.path)}">${esc(p.path)}${p.missing?`<span class="miss-bang" role="img" aria-label="Folder missing" title="${escAttr(MISSING_MSG)}">\u26a0</span>`:''}</div>
+        ${p.missing?`<div class="miss-msg" role="alert">${esc(MISSING_MSG)}</div>`:''}
         <div class="desc">${esc(p.description||'')}</div>
         <div class="cardfoot">
           <div class="meta" data-stats="${escAttr(p.id)}">
@@ -62,9 +65,9 @@ export async function load(){
               ${IMPORTANT_SKILLS.map(sk=>`<button class="regskill b-accent" data-skill="${sk}" title="Not set up in this project yet — click to register the ${sk} skill" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}" data-path="${escAttr(p.path)}" style="display:none">+ ${sk}${sk==='efficiency'?' (optional)':''}</button>`).join('')}
             </div>
             <div class="actions">
-              <button class="scratchbtn b-accent" title="Start an agent in this project with no ticket" data-scratch="${escAttr(p.id)}">${SCRATCH_ICON}Scratch</button>
+              <button class="scratchbtn b-accent" ${p.missing?`disabled title="${escAttr('Cannot start here: '+MISSING_MSG)}"`:'title="Start an agent in this project with no ticket"'} data-scratch="${escAttr(p.id)}">${SCRATCH_ICON}Scratch</button>
               <button class="dereg b-danger-main" title="Deregister" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}">&#10005;</button>
-              <button class="go" title="Open project" data-open="${escAttr(p.id)}" data-name="${escAttr(p.name)}">&#8250;</button>
+              <button class="go" ${p.missing?`disabled title="${escAttr('Cannot open: '+MISSING_MSG)}"`:'title="Open project"'} data-open="${escAttr(p.id)}" data-name="${escAttr(p.name)}">&#8250;</button>
             </div>
           </div>
         </div>
@@ -80,7 +83,7 @@ export async function load(){
   grid.querySelectorAll('.fac-row').forEach(r=>r.addEventListener('click',()=>openFactoryGithub(r.dataset.factory)));
   grid.querySelectorAll('.regskill').forEach(b=>b.addEventListener('click',()=>registerSkill(b.dataset.id,b.dataset.name,b.dataset.path,b.dataset.skill,b)));
   grid.querySelectorAll('.gitstate').forEach(b=>b.addEventListener('click',()=>{ if(b.classList.contains('is-off')) trackChanges(b.dataset.id,b.dataset.name,b); }));
-  projects.forEach(p=>fillCardStats(p.id));
+  projects.forEach(p=>{ if(!p.missing) fillCardStats(p.id); });   // t-3ba0: nothing to read in a folder that is gone
   renderSessionSurfaces();
 }
 
@@ -192,11 +195,20 @@ async function fillCardSkillHealth(id,el,refresh){
   let h;
   try{ const r=await fetch('/api/skills-health?project='+encodeURIComponent(id)); h=r.ok?await r.json():null; }catch(e){ h=null; }
   if(!h){ if(refresh) return; h={ok:false,error:'could not check'}; }
-  if(!h.ok){ row.hidden=false; txt.textContent='\u26a0 '+(h.error||'could not check'); if(btn) btn.hidden=true; return; }
+  if(!h.ok){ row.hidden=false; txt.textContent='\u26a0 '+(h.error||'could not check'); if(btn) btn.hidden=true; setOpenBlocked(id,false); return; }   // a check that could not run never locks the project
   const bad=(h.skills||[]).filter(s=>s.problems&&s.problems.length);
   row.hidden=!bad.length;
   if(btn) btn.hidden=!bad.length;
   txt.textContent=bad.map(s=>'\u26a0 '+s.name+': '+s.problems.join(', ')).join('; ');
+  setOpenBlocked(id,bad.length>0);
+}
+// t-3ba0: a skill problem Refresh can fix disables the card's open button until the re-read shows none. Scratch is left alone (the user
+// may be in this very project to fix it). The button's own title says why; a missing folder is handled at render time.
+function setOpenBlocked(id,blocked){
+  const go=document.querySelector('.go[data-open="'+(window.CSS&&CSS.escape?CSS.escape(id):id)+'"]');
+  if(!go||go.closest('.card.is-missing')) return;
+  go.disabled=blocked;
+  go.title=blocked?'Refresh this project\u2019s skills first':'Open project';
 }
 
 // t-6541: Refresh runs skills.sh refresh in that project from the board (POST /api/skills-refresh: a fixed command, the board's
@@ -224,7 +236,12 @@ export async function registerSkill(id,name,path,skill,btn){
   skill=skill||'sprint';
   if(_regBusy.has(id)) return;
   const detail = REG_SKILL_DETAIL[skill] || ('registers the “'+skill+'” skill');
-  if(!(await cockpitConfirm({title:'Register the “'+skill+'” skill in “'+name+'”?', body:'This '+detail+'. Safe to re-run.', okLabel:'Register'}))) return;
+  let noGit='';
+  if(skill==='sprint'){   // t-3ba0: git first, so the pre-commit hook can be installed
+    const g=await ensureGit(id,name,'The sprint skill installs a git pre-commit hook, which needs this folder to be a git repository first.');
+    if(g==='declined') noGit=' Git is not on here, so the pre-commit hook is skipped; turn on version history and press + sprint again to add it.';
+  }
+  if(!(await cockpitConfirm({title:'Register the “'+skill+'” skill in “'+name+'”?', body:'This '+detail+'. Safe to re-run.'+noGit, okLabel:'Register'}))) return;
   if(_regBusy.has(id)) return;
   _regBusy.add(id);
   const btns=[...document.querySelectorAll('.regskill')].filter(b=>b.dataset.id===id);
@@ -251,21 +268,41 @@ export async function registerSkill(id,name,path,skill,btn){
 // t-d538: opt-in local history (git init + a .gitignore-only first commit) for a registered
 // non-git folder. The server re-resolves the folder from the registry and refuses on any
 // existing .git; this only explains and confirms.
-async function trackChanges(id,name,btn){
-  if(btn.disabled) return;
-  const synced=btn.dataset.synced;
+async function trackChanges(id,name,btn,opts){
+  opts=opts||{};
+  if(btn&&btn.disabled) return false;
+  const synced=opts.synced!==undefined?opts.synced:(btn&&btn.dataset.synced);
   const body='Keeps a full history of this folder\u2019s files on this computer, so you can go back to earlier versions. It needs Git installed. Nothing is uploaded and your files stay exactly as they are. Agents can run here without it.'
-    +(synced?' Note: this folder is in '+synced+'. Sync services can damage this history — consider moving the project out of '+synced+' first.':'');
-  if(!(await cockpitConfirm({title:'Turn on version history for “'+name+'”?', body, okLabel:'Turn on'}))) return;
-  const saved=btn.innerHTML;
-  btn.disabled=true; btn.setAttribute('aria-busy','true'); btn.innerHTML='<span class="reg-spin" aria-hidden="true"></span>';
+    +(synced?' Note: this folder is in '+synced+'. Sync services can damage this history — consider moving the project out of '+synced+' first.':'')
+    +(opts.why?' '+opts.why:'');
+  if(!(await cockpitConfirm({title:'Turn on version history for “'+name+'”?', body, okLabel:'Turn on', cancelLabel:opts.why?'Not now':'Cancel'}))) return false;
+  const saved=btn&&btn.innerHTML;
+  if(btn){ btn.disabled=true; btn.setAttribute('aria-busy','true'); btn.innerHTML='<span class="reg-spin" aria-hidden="true"></span>'; }
   try{
     const r=await fetch('/api/track-changes?project='+encodeURIComponent(id),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:true})});
     const res=await r.json().catch(()=>({}));
-    if(res&&res.ok){ toast('✓ '+name+' now keeps a version history'); load(); return; }
+    if(res&&res.ok){ toast('✓ '+name+' now keeps a version history'); load(); return true; }
     toast((res&&res.error)?res.error:'Could not turn on version history (HTTP '+r.status+')');
   }catch(e){ toast('Request failed'); }
-  finally{ btn.disabled=false; btn.removeAttribute('aria-busy'); btn.innerHTML=saved; }
+  finally{ if(btn){ btn.disabled=false; btn.removeAttribute('aria-busy'); btn.innerHTML=saved; } }
+  return false;
+}
+
+// t-3ba0 (t-8a24's decision, with the user's + sprint case): ask to turn on version history BEFORE a sprint is set up or a project is
+// opened, because the sprint skill installs its git pre-commit hook only in a git repository. It asks once per session per project;
+// Not now is remembered and never blocks (canon supports non-git projects). Not asked when git is on, git is not installed, the check
+// cannot say, or the folder is missing. Returns 'on', 'declined' or 'skip'.
+const _gitDeclined=new Set();
+export async function ensureGit(id,name,why){
+  if(_gitDeclined.has(id)) return 'declined';
+  const p=registeredProjects.find(x=>x.id===id);
+  if(p&&p.missing) return 'skip';
+  let st=null;
+  try{ const r=await fetch('/api/track-changes?project='+encodeURIComponent(id)); if(r.ok) st=await r.json(); }catch(e){}
+  if(!st||!st.ok||st.tracking!==false||st.git_available===false) return 'skip';
+  const done=await trackChanges(id,name,null,{synced:st.synced||'',why});
+  if(!done){ _gitDeclined.add(id); return 'declined'; }
+  return 'on';
 }
 
 function openAdd(){document.getElementById('addErr').textContent='';document.getElementById('addPath').value='';document.getElementById('addDesc').value='';hideBrowse();document.getElementById('addModal').classList.add('show');document.getElementById('addPath').focus();}

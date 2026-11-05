@@ -312,7 +312,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			serveFile(w, appHTML, "text/html; charset=utf-8")
 		}
 	case "/api/projects":
-		sendJSON(w, registryLoad())
+		sendJSON(w, projectsView())
 	case "/api/admin/model-tiers":
 		sendJSON(w, loadModelTiers())
 	case "/api/settings": // t-dba0: the project's merged settings with the source of each
@@ -5272,6 +5272,23 @@ type registryProject struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Added       string `json:"added"`
+}
+
+// projectView is what GET /api/projects answers: a registry entry plus whether its folder still exists (t-3ba0). It is computed on
+// every read and never saved, so a folder that comes back is normal on the next load.
+type projectView struct {
+	registryProject
+	Missing bool `json:"missing,omitempty"`
+}
+
+func projectsView() []projectView {
+	entries := registryLoad()
+	out := make([]projectView, 0, len(entries))
+	for _, e := range entries {
+		_, err := os.Stat(e.Path)
+		out = append(out, projectView{registryProject: e, Missing: os.IsNotExist(err)})
+	}
+	return out
 }
 
 func registryDir() string {

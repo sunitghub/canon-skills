@@ -216,6 +216,16 @@ sprint agent without leaving the browser — no second terminal.
   which keeps `DECISIONS.md`'s 2026-07-02 "zero Claude Code hooks in a project's
   settings" intact. The hook's callback credential lives in a `0600` curl `-K`
   config file, so it never appears in `ps`.
+- **A deleted folder, a skill problem, and git first (`t-3ba0`):** `GET /api/projects` marks a registered project whose
+  folder no longer exists (`missing`, a stat on every read, never saved). Its card shows a ! beside the path and, under it,
+  *This folder no longer exists. Restore it, or deregister the project (✕).*; it reads no stats, skills or Factory for it, the
+  open button (›) and Scratch are disabled, the ✕ still deregisters, and no window opens for it from any entry point
+  (the card, Logbook, Factory, Skill Eval, the rail rows) or when the Cockpit restores last session's tabs. When the folder
+  comes back the next load shows the card as normal. A skill problem that Refresh can fix (for example *missing link
+  .claude/skills*) disables › until the card re-reads clean; a check that could not run never does, and Scratch stays
+  enabled. Pressing **+ sprint**, or explicitly opening a project that is not a git repository, first asks *Turn on version
+  history?* (once per session per project), because the sprint skill installs its git pre-commit hook only in a git
+  repository; **Not now** goes on (a project without git is first-class) and the Register dialog says the hook is skipped.
 - **Git icon on each project card (`t-8d72`):** a git icon beside the project name shows whether the folder keeps a
   version history. Hover it for the state: *Git enabled — this project keeps a version history*; *Git not enabled —
   click to turn on version history*; or *Version history needs Git, which isn't installed on this computer*, where the

@@ -19951,3 +19951,128 @@ test.describe('Cockpit danger confirm icon (t-71c8)', () => {
     }
   });
 });
+
+// t-3ba0: the Projects card for a project whose folder was deleted, a skill problem that blocks open until refreshed, and the git-first
+// question before a sprint is set up or a project is opened (t-8a24's decision: Not now opens anyway). Prod path: GET /api/projects
+// (`missing`), the Cockpit's Projects page and its openProject / restoreTabs, POST /api/track-changes and /api/register-skill.
+test.describe('Projects card: a missing folder, a skill problem, git first (t-3ba0)', () => {
+  const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+  const P = (id, extra = {}) => ({ id, path: '/tmp/' + id, name: id, description: '', added: '2026-11-05', ...extra });
+  const seen = [];   // every per-project read the card made: "<route> <pid>"
+  // projects: the list; health(pid): the skills-health answer; git(pid): the track-changes status; stats(pid): the project-stats body.
+  async function stub(page, { projects, health = () => ({ ok: true, skills: [{ name: 'sprint', problems: [] }], issues: 0 }),
+    git = () => ({ ok: true, tracking: true, synced: null, git_available: true }), stats = () => ({ updated: '2026-11-05', ticket_count: 0, skills: ['sprint'] }), init } = {}) {
+    const calls = { track: [], register: [], dereg: [], refresh: [] };
+    seen.length = 0;
+    if (init) await page.addInitScript(init);
+    await page.route('**/api/projects', route => json(route, projects));
+    await page.route('**/api/projects/*', route => { calls.dereg.push(route.request().method() + ' ' + decodeURIComponent(new URL(route.request().url()).pathname.split('/').pop())); return json(route, { ok: true }); });
+    await page.route('**/api/project-stats*', route => { const pid = new URL(route.request().url()).searchParams.get('project'); seen.push('stats ' + pid); return json(route, stats(pid)); });
+    await page.route('**/api/skills-health*', route => { const pid = new URL(route.request().url()).searchParams.get('project'); seen.push('health ' + pid); return json(route, health(pid)); });
+    await page.route('**/api/logbook*', route => json(route, { learnings: { missing: true } }));
+    await page.route('**/api/track-changes*', route => {
+      const pid = new URL(route.request().url()).searchParams.get('project');
+      if (route.request().method() === 'POST') { calls.track.push(pid); return json(route, { ok: true, commit: 'abc1234' }); }
+      seen.push('track ' + pid); return json(route, git(pid));
+    });
+    await page.route('**/api/register-skill*', route => { calls.register.push(new URL(route.request().url()).searchParams.get('project')); return json(route, { ok: true }); });
+    await page.route('**/api/skills-refresh*', route => { calls.refresh.push(new URL(route.request().url()).searchParams.get('project')); return json(route, { ok: true, output: '' }); });
+    await page.goto(BASE + '/cockpit');
+    await expect(page.locator('.card')).toHaveCount(projects.length);
+    return calls;
+  }
+  const go = (page, pid) => page.locator(`.go[data-open="${pid}"]`);
+  const scratch = (page, pid) => page.locator(`.scratchbtn[data-scratch="${pid}"]`);
+
+  test('a deleted folder: a ! alert and message, open and Scratch disabled, the x deregisters, nothing is read for it', async ({ page }) => {
+    const calls = await stub(page, { projects: [P('gone1', { missing: true }), P('here1')] });
+    const card = page.locator('.card.is-missing');
+    await expect(card).toHaveCount(1);
+    await expect(card.locator('.path .miss-bang')).toBeVisible();
+    await expect(card.locator('.miss-msg')).toHaveText('This folder no longer exists. Restore it, or deregister the project (✕).');
+    await expect(go(page, 'gone1')).toBeDisabled();
+    await expect(go(page, 'gone1')).toHaveAttribute('title', /no longer exists/);
+    await expect(scratch(page, 'gone1')).toBeDisabled();
+    await expect(go(page, 'here1')).toBeEnabled();
+    await expect(page.locator('.card:not(.is-missing) .miss-bang, .card:not(.is-missing) .miss-msg')).toHaveCount(0);
+    await expect.poll(() => seen.filter(s => s.endsWith(' here1')).length).toBeGreaterThan(0);   // the healthy card is read ...
+    expect(seen.filter(s => s.endsWith(' gone1'))).toEqual([]);                                    // ... the missing one is not
+    await card.locator('.dereg').click();
+    await expect(page.locator('#cc-title')).toHaveText('Deregister “gone1”?');
+    await page.locator('#cc-ok').click();
+    await expect.poll(() => calls.dereg).toEqual(['DELETE gone1']);
+  });
+
+  test('no window opens for a deleted folder: openProject refuses with a toast, and a launch restores no tab for it', async ({ page }) => {
+    await stub(page, { projects: [P('gone2', { missing: true }), P('here2')],
+      init: () => { try { localStorage.setItem('canon-cockpit-tabs', JSON.stringify({ openIds: ['gone2', 'here2'], active: 'gone2' })); } catch (e) {} } });
+    await expect(page.locator('#view-here2')).toHaveCount(1);        // a healthy saved tab is restored
+    await expect(page.locator('#view-gone2')).toHaveCount(0);        // the deleted one is not
+    await page.evaluate(async () => { const { openProject } = await import('/static/cockpit-tabs.js'); openProject('gone2', 'gone2', { nudge: true }); });
+    await expect(page.locator('#toast')).toContainText('its folder no longer exists');
+    await expect(page.locator('#view-gone2')).toHaveCount(0);
+  });
+
+  test('a skill problem disables open until refreshed; a failed check does not; Scratch stays', async ({ page }) => {
+    let bad = true;
+    await stub(page, { projects: [P('sk1'), P('ck1')], health: pid => pid === 'ck1' ? { ok: false, error: 'could not check this project’s skills: boom' }
+      : { ok: true, skills: [{ name: 'sprint', problems: bad ? ['missing link .claude/skills', 'missing link .agents/skills'] : [] }], issues: bad ? 2 : 0 } });
+    await expect(go(page, 'sk1')).toBeDisabled();
+    await expect(go(page, 'sk1')).toHaveAttribute('title', 'Refresh this project’s skills first');
+    await expect(scratch(page, 'sk1')).toBeEnabled();
+    await expect(go(page, 'ck1')).toBeEnabled();                      // a check that could not run never locks the project
+    bad = false;
+    await page.locator('.meta[data-stats="sk1"] .skrefresh').click();
+    await expect(go(page, 'sk1')).toBeEnabled();                      // the re-read found no problem
+    await expect(go(page, 'sk1')).toHaveAttribute('title', 'Open project');
+    bad = true;
+    await page.evaluate(async () => { const { refreshStats } = await import('/static/cockpit-projects.js'); refreshStats(); });
+    await expect(go(page, 'sk1')).toBeDisabled();                     // a problem again (or a refresh that did not fix it)
+  });
+
+  test('+ sprint and the open button ask about version history first; Not now goes on and is not asked again; git on asks nothing', async ({ page }) => {
+    const gitOf = { off1: false, off2: false, on1: true };
+    const calls = await stub(page, { projects: [P('off1'), P('off2'), P('on1')],
+      git: pid => ({ ok: true, tracking: gitOf[pid], synced: null, git_available: true }),
+      stats: () => ({ updated: '2026-11-05', ticket_count: 0, skills: [] }) });   // no skills: every card offers + sprint
+    const reg = pid => page.locator(`.regskill[data-id="${pid}"][data-skill="sprint"]`);
+    // Not now: the Register dialog follows, saying the hook is skipped; asked once.
+    await reg('off1').click();
+    await expect(page.locator('#cc-title')).toHaveText('Turn on version history for “off1”?');
+    await expect(page.locator('#cc-body')).toContainText('pre-commit hook');
+    await expect(page.locator('#cc-cancel')).toHaveText('Not now');
+    await page.locator('#cc-cancel').click();
+    await expect(page.locator('#cc-title')).toHaveText('Register the “sprint” skill in “off1”?');
+    await expect(page.locator('#cc-body')).toContainText('pre-commit hook is skipped');
+    await page.locator('#cc-cancel').click();
+    expect(calls.track).toEqual([]);
+    await reg('off1').click();                                         // the second press: no second question
+    await expect(page.locator('#cc-title')).toHaveText('Register the “sprint” skill in “off1”?');
+    await page.locator('#cc-cancel').click();
+    // Turn on: one POST, then the Register dialog without the "skipped" note.
+    await reg('off2').click();
+    await page.locator('#cc-ok').click();
+    await expect.poll(() => calls.track).toEqual(['off2']);
+    await expect(page.locator('#cc-title')).toHaveText('Register the “sprint” skill in “off2”?');
+    await expect(page.locator('#cc-body')).not.toContainText('skipped');
+    await page.locator('#cc-cancel').click();
+    // Git already on: no question.
+    await reg('on1').click();
+    await expect(page.locator('#cc-title')).toHaveText('Register the “sprint” skill in “on1”?');
+    await page.locator('#cc-cancel').click();
+    expect(calls.track).toEqual(['off2']);
+  });
+
+  test('opening a non-git project asks first and Not now opens it anyway; a git project opens with no question', async ({ page }) => {
+    await stub(page, { projects: [P('nog3'), P('git3')], git: pid => ({ ok: true, tracking: pid === 'git3', synced: null, git_available: true }) });
+    await go(page, 'git3').click();
+    await expect(page.locator('#view-git3')).toHaveCount(1);
+    await expect(page.locator('#cc-title')).not.toHaveText(/version history/);
+    await page.locator('.tab.pinned').click();                         // back to the Projects list
+    await go(page, 'nog3').click();
+    await expect(page.locator('#cc-title')).toHaveText('Turn on version history for “nog3”?');
+    await expect(page.locator('#view-nog3')).toHaveCount(1);          // the window is not held back by the question
+    await page.locator('#cc-cancel').click();                          // Not now
+    await expect(page.locator('#view-nog3')).toHaveCount(1);
+  });
+});

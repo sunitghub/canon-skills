@@ -21,6 +21,12 @@
   .card .actions{display:flex;gap:10px;margin-left:auto}
   .go{width:40px;height:40px;border-radius:9px;border:none;background:var(--col-done);color:var(--th-on-ok, #04210f);font-size:19px;font-weight:700;cursor:pointer}
   .go:hover{filter:brightness(1.08)}
+  /* t-3ba0: a disabled open (a deleted folder, or a skill problem Refresh must fix first) reads as disabled, never as the green action */
+  .go:disabled{background:var(--surface-2,transparent);color:var(--text-muted);border:1px solid var(--border,currentColor);opacity:.55;cursor:not-allowed;filter:none}
+  .card .scratchbtn:disabled{opacity:.5;cursor:not-allowed}
+  .card.is-missing{border-color:var(--warn-ink,var(--border))}
+  .card .miss-bang{margin-left:8px;color:var(--warn-ink,var(--text));font-size:13px;font-weight:700;font-family:inherit}
+  .card .miss-msg{margin-top:4px;color:var(--warn-ink,var(--text));font-size:12.5px;font-weight:600}
   .dereg{width:40px;height:40px;border-radius:9px;font-size:15px;cursor:pointer}
   /* A visible + <skill> button means that skill is missing here: a sub-action (buttons.css .b-accent, t-e523). Busy/disabled keeps the accent (below). */
   .regskill{height:32px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
