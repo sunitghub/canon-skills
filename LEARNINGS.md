@@ -1,10 +1,12 @@
 # Learnings
 
-learnings-sweep last run: 11-04-2026 21:59
+learnings-sweep last run: 11-05-2026 04:43
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-05 | [t-9807](.tickets/t-9807/learnings.md) | Merging main into a graded PR to clear a CHANGELOG conflict moves its head off the graded commit, so merge-pr refuses and the gates run again; keep the PR's CHANGELOG line out of the conflict (an own subsection) or expect a re-grade. | UNPROMOTED |
+| 2026-11-05 | [t-fb18](.tickets/t-fb18/learnings.md) | A land worktree has no `.tickets/`, so the full board spec finds no cards and fails 10 specs by timeout; a copied `.tickets/` there is read by `sprint eval-verdict` instead of the real one, so remove it before recording the verdict. | UNPROMOTED |
 | 2026-11-05 | [t-d0ed](.tickets/t-d0ed/learnings.md) | A spec that asserts something is absent passes when its fixture never renders it (the 'no Worktree line' spec used an `open` ticket and the wrong element; a launch spec used an id the launch refuses): seed the state that renders it and revert the fix to see the spec fail. | UNPROMOTED |
 | 2026-11-04 | [t-1917](.tickets/t-1917/learnings.md) | A CSS state spec that reads a colour while a transition runs passes whether or not the rule works, and `:focus-within` never matches across an iframe (so the tint never showed): turn transitions off, compare exact expected values, click as a user does, and prove the spec with a mutant that flips it, not by a revert that happened to fail once. | UNPROMOTED |
 | 2026-11-04 | [t-43a7](.tickets/t-43a7/learnings.md) | One prompt text written for one repo layout (`.tickets/` ignored) shipped to both: when text tells an agent what to do about a layout, branch on the same check the tool uses (one helper) and test both layouts; the old fixture silently ran the other layout, so check which one a fixture really is before trusting its assertions. | UNPROMOTED |
