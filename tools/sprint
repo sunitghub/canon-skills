@@ -443,6 +443,7 @@ cmd_approve() {
   local _tier; _tier="$(_signoff_tier "$plan")"
   canon_event plan.approved sprint "$root" "ticket=$id" ${_tier:+"tier=$_tier"}   # t-2db7: the kind existed with no writer
   handoff_recent "$root"
+  _handoff_mark "$(dirname "$plan")"   # t-10ac: what the Handoff narrative reads now, to notice at close that nobody refreshed it
   cap_headroom "$(worktree_root 2>/dev/null || echo "$root")" "$plan" sprint "$id" plan   # t-cc88: a capped file this plan lists that is nearly full (t-c990: and its event)
 }
 
@@ -848,15 +849,44 @@ _gate_integrity() {
   return 1
 }
 
+# The project's (or, in a worktree sprint, the worktree's) HANDOFF.md: a worktree sprint fills its own copy.
+_handoff_file() { local r; r="$(worktree_root 2>/dev/null)" || r="$(project_root)"; echo "$r/HANDOFF.md"; }
+# 0 when HANDOFF.md has a Current Focus section with no text (comment lines and blanks do not count); 1 otherwise, also with no file or section.
+_handoff_focus_empty() {
+  [[ -f "$1" ]] || return 1
+  awk 'BEGIN { has = 0; txt = 0 } /^##[ \t]+Current Focus[ \t\r]*$/ { has = 1; inf = 1; next } inf && /^##[ \t]/ { inf = 0 } inf && /[^ \t\r]/ && !/^[ \t]*<!--/ { txt = 1 } END { exit !(has && !txt) }' "$1"
+}
+# A checksum of the narrative between the handoff markers; nothing when the file or its markers are missing.
+_handoff_sum() {
+  local f; f="$(_handoff_file)"
+  [[ -f "$f" ]] && grep -q 'canon:handoff:BEGIN' "$f" || return 0
+  awk '/<!-- canon:handoff:BEGIN -->/ { p = 1; next } /<!-- canon:handoff:END -->/ { p = 0 } p' "$f" | tr -d '\r' | cksum | awk '{ print $1 "-" $2 }'
+}
+# t-10ac: what the Handoff narrative read when the plan was approved, kept beside the ticket (nothing when there is no narrative).
+_handoff_mark() {
+  local hs; hs="$(_handoff_sum)"
+  [[ -z "$hs" ]] || printf '%s\n' "$hs" > "$1/.handoff-at-approve" 2>/dev/null || true
+  return 0
+}
 # _notice_handoff_focus — t-eecb: one line, never a refusal, when this project's HANDOFF.md has a Current Focus section with no text:
 # the wrapup step (skills/wrapup/SKILL.md) tells the agent to refresh it, and nothing checked that a close did. Nothing when the file or
 # the section is missing, or the section has text. Always returns 0.
 _notice_handoff_focus() {
-  local root f; root="$(worktree_root 2>/dev/null)" || root="$(project_root)"   # a worktree sprint fills the worktree's own HANDOFF.md
-  f="$root/HANDOFF.md"
-  [[ -f "$f" ]] || return 0
-  if awk 'BEGIN { has = 0; txt = 0 } /^##[ \t]+Current Focus[ \t\r]*$/ { has = 1; inf = 1; next } inf && /^##[ \t]/ { inf = 0 } inf && /[^ \t\r]/ && !/^[ \t]*<!--/ { txt = 1 } END { exit !(has && !txt) }' "$f"; then
+  if _handoff_focus_empty "$(_handoff_file)"; then
     echo "HANDOFF.md: Current Focus is empty; the wrapup step \"refresh HANDOFF.md\" fills it (this never blocks the close)"
+  fi
+  return 0
+}
+# _notice_handoff_stale <ticket dir> — t-10ac: one line, never a refusal, when the Handoff narrative is byte-for-byte what it was when the
+# plan was approved: the agent wrote "plan not approved yet" at the start and never refreshed it (seen on a Windows close). Silent when no
+# mark was taken (an older sprint), when the narrative has no markers, or when Current Focus is empty (that notice speaks). Always returns 0.
+_notice_handoff_stale() {
+  local mark now; mark="$(cat "$1/.handoff-at-approve" 2>/dev/null)" || return 0
+  [[ -n "$mark" ]] || return 0
+  _handoff_focus_empty "$(_handoff_file)" && return 0
+  now="$(_handoff_sum)"
+  if [[ -n "$now" && "$now" == "$mark" ]]; then
+    echo "HANDOFF.md: the narrative has not changed since this plan was approved; the wrapup step \"refresh HANDOFF.md\" brings Current Focus, In Progress and Next Steps up to date (this never blocks the close)"
   fi
   return 0
 }
@@ -1044,6 +1074,7 @@ cmd_complete() {
   _gate_acceptance_sections "$id" "$acceptance"          || exit 1
   _gate_wrapup_gates        "$id" "$acceptance"          || exit 1
   _notice_handoff_focus
+  _notice_handoff_stale "$tdir"
   _gate_no_unchecked        "$id" "$acceptance"          || exit 1
   _gate_plan_content        "$id" "$tdir/plan.md"        || exit 1
   _gate_visual_embed        "$id" "$tdir/plan.md" "$acceptance" || exit 1

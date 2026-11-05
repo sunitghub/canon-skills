@@ -392,12 +392,12 @@ function openDetachedSessionNotice(s) {
   const ok = document.getElementById('ck-leave-cancel');
   ok.disabled = false;
   ok.textContent = 'OK';
-  // t-f553: a scratch tab has no sprint; its button is Start agent.
+  // t-f553: a scratch tab has no sprint; its button is Run agent.
   const scratch = SCRATCH_ID.test(String(s.ticket || ''));
   document.getElementById('ck-leave-confirm-title').textContent = scratch ? 'A scratch session is still running' : 'A sprint session is still running';
   document.getElementById('ck-leave-confirm-body').textContent =
     `A ${String(s.agent || 'agent')} session for this ${scratch ? 'scratch session' : 'ticket'} is still running in the daemon but isn't attached to this tab, ` +
-    `so End session can't end it from here. Click ▶ ${scratch ? 'Start agent' : 'Start sprint'} to reattach, then End session.`;
+    `so End session can't end it from here. Click ▶ ${scratch ? 'Run agent' : 'Run sprint'} to reattach, then End session.`;
   document.getElementById('ck-leave-confirm-status').textContent = '';
   document.getElementById('ck-leave-confirm').classList.add('open');
 }
@@ -679,7 +679,7 @@ export function initCockpitRail() {
     const tab = cockpitState;
     const detached = await findLiveDaemonSession(tab.id, { live: true });
     if (cockpitState !== tab || tab._ending) return; // switched tabs (or an end began) during the lookup
-    // Start sprint may have attached while we were looking: then this is a live tab, and tearing it down
+    // Run sprint may have attached while we were looking: then this is a live tab, and tearing it down
     // (or calling it unattached) would be the original orphan bug again.
     if (sessionIsLive()) { openLeaveConfirm(); return; }
     if (detached) { openDetachedSessionNotice(detached); return; }

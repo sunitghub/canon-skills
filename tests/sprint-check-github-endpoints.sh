@@ -63,7 +63,7 @@ for P in "$GOP"; do
   expect_call "$srv send public?"  "$P" "$(post "$P" /api/ticket/t-ab12/github/send '{"public":"yes"}')" "send-issue t-ab12"   # only a real true
   # t-607a: the Finish step after a worktree merge: one tkt finish call each; the push and the reset carry --yes (the dialog's own
   # confirm came first), a GET never does, and an id that is not a ticket id runs nothing.
-  expect_call "$srv finish-check"   "$P" "$(get "$P" /api/ticket/t-ab12/github/finish-check)" "finish t-ab12 --check"
+  expect_call "$srv finish-check"   "$P" "$(get "$P" /api/ticket/t-ab12/github/finish-check)" "finish t-ab12 --check --fetch"
   expect_call "$srv finish-push"    "$P" "$(post "$P" /api/ticket/t-ab12/github/finish-push '{}')" "finish t-ab12 --push --yes"
   expect_call "$srv finish-reset"   "$P" "$(post "$P" /api/ticket/t-ab12/github/finish-reset '{}')" "finish t-ab12 --reset --yes"
   expect_call "$srv finish-dismiss" "$P" "$(post "$P" /api/ticket/t-ab12/github/finish-dismiss '{}')" "finish t-ab12 --dismiss"

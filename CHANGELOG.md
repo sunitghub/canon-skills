@@ -9,6 +9,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 Board page and daemon page: run `canon update` and reload the board; no daemon restart is needed.
 
 ### Changed
+- The pane's start button reads **▶ Run sprint** for a ticket session and **▶ Run agent** for a scratch session (was "Start sprint" and "Start agent"): shorter, and the board's hint messages use the same words.
+- The Finish dialog reads origin's branch before it lists the commits a push would send (offline, it says so and shows what was last fetched), says "origin already had master; nothing was sent" when git reports nothing to send, and no longer shows the raw `tkt finish …` line in the Merged dialog's log.
+- `sprint complete` also prints one non-blocking line when `HANDOFF.md`'s narrative has not changed since the plan was approved (the Handoff said "plan not approved yet" after the sprint had merged); `sprint approve` records what it read then.
 - The Agents list's default-width row now reads **mark, ticket id, age, state**: the age no longer disappears, and the description (which used to be cut mid-word) shows only when the rail is wide enough (from about 280 px), then the agent type (from about 350 px). The title and detail are still in the tooltip.
 - A Claude session leads with the Claude mark in its orange instead of a letter tile; a scratch session keeps its pencil, and Copilot and the others keep a lettered tile.
 

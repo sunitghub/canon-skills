@@ -2182,22 +2182,23 @@ _merge_branch() {
   else echo "next: the worktree $wt is free: reuse it for the next ticket, or remove it (git worktree remove $wt)"; fi
 }
 
-# cmd_finish <id> [--check | --push --yes | --reset --yes | --dismiss] — t-e1a2: what comes after tkt merge puts a worktree ticket's branch on the
+# cmd_finish <id> [--check [--fetch] | --push --yes | --reset --yes | --dismiss] — t-e1a2: what comes after tkt merge puts a worktree ticket's branch on the
 # project's default branch: push that branch, then reset the worktree. The board's Finish step runs it; each action needs --yes
 # (the board's confirm), --check changes nothing. The push is one refspec for the one default ref (never forced, no tags, no other
 # branch). The reset is tkt worktree-reset --yes run inside the ticket's worktree, and waits for the push: until the merge is on
 # origin, the work branch's commits are on no remote and worktree-reset would refuse them.
 cmd_finish() {
-  local id="" mode="" yes=false
+  local id="" mode="" yes=false fetch=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
+      --fetch) fetch=true; shift ;;
       --check|--push|--reset|--dismiss) [[ -z "$mode" || "$mode" == "$1" ]] || { echo "finish: use one of --check, --push, --reset, --dismiss" >&2; exit 1; }; mode="$1"; shift ;;
       --yes) yes=true; shift ;;
       -*) echo "Unknown option: $1" >&2; exit 1 ;;
       *)  [[ -z "$id" ]] && id="$1"; shift ;;
     esac
   done
-  [[ -n "$id" ]] || { echo "Usage: tkt finish <id> [--check | --push --yes | --reset --yes | --dismiss]" >&2; exit 1; }
+  [[ -n "$id" ]] || { echo "Usage: tkt finish <id> [--check [--fetch] | --push --yes | --reset --yes | --dismiss]" >&2; exit 1; }
   mode="${mode:---check}"
   case "$mode" in --check|--dismiss) $yes && { echo "finish: --yes goes with --push or --reset; $mode needs none" >&2; exit 1; } ;; esac
   [[ "$mode" == --check || "$mode" == --dismiss ]] || $yes || { echo "finish: ${mode#--} changes things; run it with --yes (the board asks first)" >&2; exit 1; }
@@ -2215,6 +2216,11 @@ cmd_finish() {
   git -C "$root" remote get-url origin >/dev/null 2>&1 || _fin_no "this project has no origin remote; there is nothing to push"
   git -C "$root" cat-file -e "$merged^{commit}" 2>/dev/null || _fin_no "the merge commit ${merged:0:8} is not in this repository"
   git -C "$root" merge-base --is-ancestor "$merged" "refs/heads/$into" 2>/dev/null || _fin_no "$into does not contain the merge commit ${merged:0:8} (it was moved since); nothing to finish from here"
+  # --fetch (the board's dialog, never its poll): read origin's branch first, so the list is what a push would really send and a push done
+  # elsewhere reads as done. Offline: say so and show what was last fetched.
+  if $fetch && [[ "$mode" == --check ]]; then
+    git -C "$root" fetch -q origin "$into" < /dev/null 2>/dev/null || echo "finish: could not reach origin; showing what was last fetched"
+  fi
   wt=""; [[ -f "$tdir/.cockpit-cwd" ]] && wt="$(_ticket_cwd_binding "$file")"
   local on_origin=false ahead
   git -C "$root" merge-base --is-ancestor "$merged" "refs/remotes/origin/$into" 2>/dev/null && on_origin=true
@@ -2249,9 +2255,10 @@ cmd_finish() {
       esac ;;
     --push)
       $on_origin && { echo "finish: $into is already on origin; nothing to push"; return 0; }
-      git -C "$root" push origin "refs/heads/$into:refs/heads/$into" < /dev/null 2>&1 \
-        || _fin_no "git push origin $into was refused or failed (not forced); if origin has new commits, update $into first (git pull --ff-only in the main checkout), then Push again"
-      echo "finish: pushed $into to origin" ;;
+      local pout; pout="$(git -C "$root" push origin "refs/heads/$into:refs/heads/$into" < /dev/null 2>&1)" \
+        || { printf '%s\n' "$pout" >&2; _fin_no "git push origin $into was refused or failed (not forced); if origin has new commits, update $into first (git pull --ff-only in the main checkout), then Push again"; }
+      printf '%s\n' "$pout"
+      if grep -q 'Everything up-to-date' <<< "$pout"; then echo "finish: origin already had $into; nothing was sent"; else echo "finish: pushed $into to origin"; fi ;;
     --reset)
       [[ "$wtstate" == on-branch ]] || { echo "finish: the worktree is already reset (or gone); nothing to reset"; return 0; }
       $on_origin || _fin_no "$into is not on origin yet; push it first (tkt finish $id --push --yes), or the work branch's commits would be on no remote"
@@ -3405,7 +3412,7 @@ Commands:
                             master) here, as one merge commit, after the same checks and its tests
                             on that branch + the work branch. A main checkout on another branch
                             stays there: the default branch moves by ref.
-  finish <id> [--check | --push --yes | --reset --yes | --dismiss]
+  finish <id> [--check [--fetch] | --push --yes | --reset --yes | --dismiss]
                             After tkt merge: --check lists the commits a push sends; --push pushes
                             the default branch to origin (never forced); --reset runs
                             tkt worktree-reset in the ticket's worktree once the push is done;

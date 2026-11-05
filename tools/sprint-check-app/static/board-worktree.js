@@ -631,7 +631,7 @@ export function formatStateAsParagraphs(bullet, t) {
 // t-cd06: a fresh OPEN start gates the terminal behind an explicit WORKTREE
 // row pick (cockpitState.worktreeCwd === null means nothing picked yet) — the
 // terminal is where the daemon's own Start control lives, so not mounting it
-// yet is what "Start sprint stays disabled" means in practice. A Resume
+// yet is what "Run sprint stays disabled" means in practice. A Resume
 // mounts immediately: the daemon reuses its persisted cwd for an in_progress
 // ticket regardless of what the board sends.
 export async function maybeMountCockpitTerminal(t) {
@@ -648,7 +648,7 @@ export async function maybeMountCockpitTerminal(t) {
   hideGithubPanel();
   if (cockpitState.worktreeCwd === null) {
     iframe.style.visibility = 'hidden';
-    setTermMessage('Select a worktree above to continue — Start sprint is disabled until a row is selected.');
+    setTermMessage('Select a worktree above to continue — Run sprint is disabled until a row is selected.');
     return;
   }
   // t-2a1c: gate on the EFFECTIVE run cwd, not just the selected row. For a
@@ -669,7 +669,7 @@ export async function maybeMountCockpitTerminal(t) {
   if (presentByCwd[effectiveCwd] === false) {
     iframe.style.visibility = 'hidden';
     setTermMessage(isLocked
-      ? "This ticket is locked to a worktree that doesn't contain it, so a Start here would fail — Start sprint is disabled. Click \u201CUnlock worktree\u201D above to run in the Main checkout, or commit .tickets/ into that worktree."
+      ? "This ticket is locked to a worktree that doesn't contain it, so a Start here would fail — Run sprint is disabled. Click \u201CUnlock worktree\u201D above to run in the Main checkout, or commit .tickets/ into that worktree."
       : missingTicketMessage(t.id, effectiveCwd, cockpitState.worktreeMainBranch));
     return;
   }
@@ -678,7 +678,7 @@ export async function maybeMountCockpitTerminal(t) {
   const visByCwd = cockpitState.worktreeVisibleByCwd || {};
   if (visByCwd[cockpitState.worktreeCwd] === false) {
     iframe.style.visibility = 'hidden';
-    setTermMessage(".tickets/ is gitignored, so this worktree can't see the ticket — Start sprint is disabled here. Use the Main checkout, or track .tickets/ in git.");
+    setTermMessage(".tickets/ is gitignored, so this worktree can't see the ticket — Run sprint is disabled here. Use the Main checkout, or track .tickets/ in git.");
     return;
   }
   await mountCockpitTerminal(t, cockpitState.worktreeCwd);
@@ -705,7 +705,7 @@ export async function mountCockpitTerminal(t, cwd) {
     return;
   }
   cockpitState.addr = addr;
-  // The terminal always loads idle with Start sprint pulsing, for both a fresh
+  // The terminal always loads idle with Run sprint pulsing, for both a fresh
   // OPEN ticket and a Resume: a launch is always a deliberate click (the daemon
   // page has no autostart since t-9a49).
   let url = `http://${addr}/cockpit?ticket=${encodeURIComponent(t.id)}&embed=1${t.term ? '&mode=term' : ''}`;   // t-57ab: the Terminal button

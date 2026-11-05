@@ -77,7 +77,7 @@ A ticket can carry up to eight **tags** (`t-37e8`), stored as one frontmatter li
 
 ## Logbook — a project's Handoff, Learnings, Promoted rules and Decisions
 
-The **Logbook** button (a notepad icon, right after **+ New** in the board header) opens a read-only window over the project's own `HANDOFF.md`, `LEARNINGS.md`, `PROMOTED.md` and `DECISIONS.md`; the Projects card has a **Logbook** row that opens the same window in that project's tab. **Handoff** shows the sections of `HANDOFF.md` between its markers as cards (Current Focus first), and, above them, **Recent activity** (`t-eecb`): the lines canon itself writes from the activity log at plan approval, sprint close and merge, read-only, shown only when there are some. An empty section reads *Empty.*; the board's left rail shows *No HANDOFF.md Current Focus found.* for an empty Current Focus. `sprint complete` prints one non-blocking line when Current Focus is empty, naming the wrapup step that fills it. **Learnings** lists only the rows still waiting for review (UNPROMOTED), with their count as a badge; a ticket id opens that ticket, and promoted or dismissed rows are hidden (they stay in `LEARNINGS.md` and its archive). **Promoted** shows the entries between the `canon:promoted` markers of `PROMOTED.md` (the rules every session loads), each with its linked ticket id, and "N of 60 lines" against the advisory cap (amber over 60); a project with no `PROMOTED.md` (canon itself) lists the `LEARNINGS.md` and `LEARNINGS-archive.md` rows marked `promoted → <file>`, each with its file. **Decisions** shows `DECISIONS.md` as markdown, newest first, whether it is a table of dated rows, dated `## ` sections, or both (sections added after a table); a long file shows its newest 150 and says how many it has in all ("Showing the newest 150 of N decisions"). The files stay the source: nothing here edits them, runs a skill or starts an agent. Their text is shown as text (an image reference in them is not loaded), and a missing, unreadable, symlinked or over-4 MB file says so. The window moves by its title bar and resizes from either top-left or bottom-right corner, like the ticket dialog, and opens at its default place and size each time. In a git worktree it reads that worktree's copy. The window reads `GET /api/logbook`.
+The **Logbook** button (a notepad icon, right after **+ New** in the board header) opens a read-only window over the project's own `HANDOFF.md`, `LEARNINGS.md`, `PROMOTED.md` and `DECISIONS.md`; the Projects card has a **Logbook** row that opens the same window in that project's tab. **Handoff** shows the sections of `HANDOFF.md` between its markers as cards (Current Focus first), and, above them, **Recent activity** (`t-eecb`): the lines canon itself writes from the activity log at plan approval, sprint close and merge, read-only, shown only when there are some. An empty section reads *Empty.*; the board's left rail shows *No HANDOFF.md Current Focus found.* for an empty Current Focus. `sprint complete` prints one non-blocking line when Current Focus is empty, or when the narrative is byte-for-byte what it was when the plan was approved (`sprint approve` records a checksum), naming the wrapup step that refreshes it. **Learnings** lists only the rows still waiting for review (UNPROMOTED), with their count as a badge; a ticket id opens that ticket, and promoted or dismissed rows are hidden (they stay in `LEARNINGS.md` and its archive). **Promoted** shows the entries between the `canon:promoted` markers of `PROMOTED.md` (the rules every session loads), each with its linked ticket id, and "N of 60 lines" against the advisory cap (amber over 60); a project with no `PROMOTED.md` (canon itself) lists the `LEARNINGS.md` and `LEARNINGS-archive.md` rows marked `promoted → <file>`, each with its file. **Decisions** shows `DECISIONS.md` as markdown, newest first, whether it is a table of dated rows, dated `## ` sections, or both (sections added after a table); a long file shows its newest 150 and says how many it has in all ("Showing the newest 150 of N decisions"). The files stay the source: nothing here edits them, runs a skill or starts an agent. Their text is shown as text (an image reference in them is not loaded), and a missing, unreadable, symlinked or over-4 MB file says so. The window moves by its title bar and resizes from either top-left or bottom-right corner, like the ticket dialog, and opens at its default place and size each time. In a git worktree it reads that worktree's copy. The window reads `GET /api/logbook`.
 
 ## Create Tickets from the Board
 
@@ -168,16 +168,16 @@ sprint agent without leaving the browser — no second terminal.
 
 - **What it does:** a background daemon (`canon-go daemon`, the same program as the board, t-bdb0) owns a real
   **PTY** running an interactive `claude` session on the ticket, and serves an
-  embedded terminal (xterm.js). Click **Start sprint** (or **Resume**) → the
+  embedded terminal (xterm.js). Click **Run sprint** (or **Resume**) → the
   agent runs in-page; you type to it there. The agent keeps running if you
   close the tab and reattaches (scrollback replayed) when you reopen;
   **End session** saves and ends it, and **End without saving** in its dialog (**Just end** for a scratch session) stops it with no orphaned
   process (the board's pane has no Kill button; the standalone page keeps one, `t-1917`). The pane
-  is a rounded card whose header holds only the agent picker, **Start sprint** (**Start agent** for a
+  is a rounded card whose header holds only the agent picker, **Run sprint** (**Run agent** for a
   scratch session), the session's folder, the cache meter and the font size; the top bar keeps Back,
   the id or SCRATCH tag, the tab pills, **Auto save** and **End session**, and shows a **Needs you**
   chip only when the agent is waiting on you. The state itself is in the Agents list. A reopened tab only
-  reattaches once you press **Start sprint** again; until then **End session**
+  reattaches once you press **Run sprint** again; until then **End session**
   can't reach the still-running agent, so it says so (and leaves the tab open)
   instead of closing as if it had ended it.
 - **It is a real agent, with this project's own permissions.** The daemon execs
@@ -382,7 +382,7 @@ sprint agent without leaving the browser — no second terminal.
   with the checkout on another branch `merging into main by ref, the checkout stays on <other>`, so nothing is switched
   or stashed; a default branch checked out in another worktree is refused. The dialog's title and button name the target
   (**Run tests & merge into main**). After **Merged**, **Finish…** walks two steps, each its own dialog and button:
-  **Push main** (the commits it sends are listed; a normal push, never forced, only that branch) and **Reset the worktree**
+  **Push main** (the dialog first reads origin's branch, so the commits it lists are what a push would really send, and a push origin already had says so; a normal push, never forced, only that branch) and **Reset the worktree**
   (`tkt worktree-reset`, run in the worktree's folder; it refuses uncommitted work). Until both are done the card shows
   **Finish** (and a small **dismiss** if you push and reset yourself). The same steps are `tkt finish <id> --check`,
   `--push --yes`, `--reset --yes` and `--dismiss` in a terminal. The tests run on main + branch in a scratch copy, never in

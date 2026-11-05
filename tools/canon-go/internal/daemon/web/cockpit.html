@@ -30,7 +30,7 @@
   .dot.needsyou{background:var(--red);animation:pulse 1.1s ease-in-out infinite}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
   /* The page never starts a session on load (t-9a49 removed autostart): the
-     terminal sits idle until Start sprint is clicked manually,
+     terminal sits idle until Run sprint is clicked manually,
      easy to miss otherwise. Pulse the button itself (not a separate label —
      a label next to Kill read as pointing at Kill) whenever it's waiting on
      that click. */
@@ -93,7 +93,7 @@
         <option value="pi">Pi</option>
         <option value="copilot">Copilot CLI</option>
       </select>
-      <button class="btn-start" id="startBtn">▶ Start sprint</button>
+      <button class="btn-start" id="startBtn">▶ Run sprint</button>
       <button class="btn-kill" id="killBtn" disabled>Kill</button>
     </div>
     <span class="paneinfo cwd" id="paneCwd" hidden><bdo dir="ltr" id="paneCwdText"></bdo></span>
@@ -282,18 +282,18 @@ function canonPrefixKeys(emit) {
   // t-842b: say plainly what Start does — a real agent session with this
   // project's own tool permissions, not a read-only status view. The message is
   // context-aware: framed by the board (EMBED), the ticket is already chosen and
-  // the button is "Start sprint" — there is no ticket id to enter, so don't tell
+  // the button is "Run sprint" — there is no ticket id to enter, so don't tell
   // the user to enter one. Standalone, the page's own ticket-id input applies.
   // t-47f1: a scratch session (s-xxxx) has no ticket and runs the plain agent.
   var SCRATCH = /^s-[a-z0-9]{4}$/.test(PREFILL || "");
   if (MODE === "term" && SCRATCH) {
     document.getElementById("startBtn").style.display = "none";   // the board opens it (Terminal button, prefix m): nothing to press here
   } else if (SCRATCH) {
-    document.getElementById("startBtn").textContent = "\u25B6 Start agent";
-    term.writeln("\x1b[38;5;244mcanon cockpit — scratch session: press \x1b[1m\u25B6 Start agent\x1b[0m\x1b[38;5;244m to launch a real \x1b[1minteractive agent\x1b[0m\x1b[38;5;244m in this project's main checkout. No ticket, no sprint, no gates.\x1b[0m");
+    document.getElementById("startBtn").textContent = "\u25B6 Run agent";
+    term.writeln("\x1b[38;5;244mcanon cockpit — scratch session: press \x1b[1m\u25B6 Run agent\x1b[0m\x1b[38;5;244m to launch a real \x1b[1minteractive agent\x1b[0m\x1b[38;5;244m in this project's main checkout. No ticket, no sprint, no gates.\x1b[0m");
   } else if (EMBED === "1") {
     var who = PREFILL ? "\x1b[1m" + PREFILL + "\x1b[0m\x1b[38;5;244m" : "this ticket";
-    term.writeln("\x1b[38;5;244mcanon cockpit — press \x1b[1m\u25B6 Start sprint\x1b[0m\x1b[38;5;244m to launch a real \x1b[1minteractive agent session\x1b[0m\x1b[38;5;244m for " + who + ".\x1b[0m");
+    term.writeln("\x1b[38;5;244mcanon cockpit — press \x1b[1m\u25B6 Run sprint\x1b[0m\x1b[38;5;244m to launch a real \x1b[1minteractive agent session\x1b[0m\x1b[38;5;244m for " + who + ".\x1b[0m");
   } else {
     term.writeln("\x1b[38;5;244mcanon cockpit — enter a ticket id and press Start to launch a real \x1b[1minteractive agent session\x1b[0m\x1b[38;5;244m on it (\x1b[1msprint start <id>\x1b[0m\x1b[38;5;244m).\x1b[0m");
   }

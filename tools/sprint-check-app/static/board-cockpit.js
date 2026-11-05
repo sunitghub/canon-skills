@@ -42,7 +42,7 @@ export function newCockpitTabState(id, iframeEl) {
 // instead of a vague "commit .tickets/" — shown as text via setTermMessage.
 export function missingTicketMessage(ticketId, worktreePath, mainBranch) {
   const main = mainBranch || 'main';
-  return `This worktree doesn't contain ${ticketId}, so a Start here would fail — Start sprint is disabled. `
+  return `This worktree doesn't contain ${ticketId}, so a Start here would fail — Run sprint is disabled. `
     + `Use the Main checkout, or bring the ticket in: on the Main checkout run `
     + `git add .tickets/${ticketId} then git commit -m "chore: add ticket ${ticketId}" -- .tickets/${ticketId}, `
     + `then git -C "${worktreePath}" merge ${main}`;

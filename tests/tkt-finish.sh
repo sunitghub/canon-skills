@@ -103,6 +103,23 @@ out="$("$TKT" finish "$id" --reset --yes < /dev/null 2>&1)"; assert_contains "$o
 [[ "$(git -C "$WT" log -1 --format=%s)" == "the next ticket's work" ]] || fail "finish --reset touched a worktree that had moved on"
 echo "finish --reset: the worktree branch is back at origin's main"
 
+# --fetch (the dialog's check): with origin's branch only as last fetched, a push done elsewhere is not seen; --fetch reads origin first.
+refute() { [[ "$1" != *"$2"* ]] || fail "expected output NOT to contain '$2'; got: $1"; }
+git -C "$P" update-ref -d refs/remotes/origin/main
+out="$("$TKT" finish "$id" --check < /dev/null 2>&1)"; assert_contains "$out" "origin has no main as last fetched"          # the stale copy: no news
+out="$("$TKT" finish "$id" --check --fetch < /dev/null 2>&1)"; assert_contains "$out" "main is already on origin"            # origin read first: it has it
+refute "$out" "could not reach origin"
+git -C "$P" rev-parse -q --verify refs/remotes/origin/main >/dev/null || fail "--fetch did not read origin's main"
+# ... and a push of what origin already has says so instead of claiming it pushed
+git -C "$P" update-ref -d refs/remotes/origin/main
+out="$("$TKT" finish "$id" --push --yes < /dev/null 2>&1)" || fail "finish --push of what origin has failed: $out"
+assert_contains "$out" "origin already had main; nothing was sent"; refute "$out" "finish: pushed main to origin"
+# offline: say so and show what was last fetched
+git -C "$P" remote set-url origin "$W/nowhere.git"
+out="$("$TKT" finish "$id" --check --fetch < /dev/null 2>&1)"; assert_contains "$out" "could not reach origin; showing what was last fetched"
+git -C "$P" remote set-url origin "$W/origin.git"; git -C "$P" fetch -q origin
+echo "finish --fetch: origin is read first; a push origin already had says so; offline is said"
+
 # A push origin refuses (it moved) is not forced.
 id2="$("$TKT" create "Second" -t task)"; f2=".tickets/$id2/ticket.md"
 git switch -q main 2>/dev/null || true

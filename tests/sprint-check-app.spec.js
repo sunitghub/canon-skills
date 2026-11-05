@@ -11427,7 +11427,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       const modal = page.locator('#ck-leave-confirm');
       await expect(modal).toHaveClass(/open/);
       await expect(page.locator('#ck-leave-confirm-body')).toContainText("still running in the daemon but isn't attached to this tab");
-      await expect(page.locator('#ck-leave-confirm-body')).toContainText('Start sprint to reattach');
+      await expect(page.locator('#ck-leave-confirm-body')).toContainText('Run sprint to reattach');
       await expect(page.locator('#ck-leave-confirm-title')).toHaveText('A sprint session is still running');
       await expect(page.locator('#ck-leave-confirm-body')).toContainText('<img src=x onerror=1>'); // textContent — inert
       await expect(page.locator('#ck-leave-confirm-body img')).toHaveCount(0);
@@ -11453,7 +11453,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
     }
   });
 
-  test('End Session on an unattached scratch tab names Start agent, not a sprint (t-f553)', async ({ page }) => {
+  test('End Session on an unattached scratch tab names Run agent, not a sprint (t-f553)', async ({ page }) => {
     await stubSessions(page, [{ session: 's1', ticket: 's-dt01', project_root: PROJECT_ROOT, cwd: PROJECT_ROOT, agent: 'claude', status: 'running' }]);
     await page.route('**/api/cockpit', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR, launched: true }) }));
     await page.route('**/cockpit?**', route => route.fulfill({ status: 200, contentType: 'text/html', body: fakeCockpitPage({ initialStatus: 'idle' }) }));
@@ -11465,7 +11465,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
     await expect(page.locator('#ck-leave-confirm')).toHaveClass(/open/);
     await expect(page.locator('#ck-leave-confirm-title')).toHaveText('A scratch session is still running');
     await expect(page.locator('#ck-leave-confirm-body')).toContainText('for this scratch session');
-    await expect(page.locator('#ck-leave-confirm-body')).toContainText('Start agent to reattach');
+    await expect(page.locator('#ck-leave-confirm-body')).toContainText('Run agent to reattach');
     await expect(page.locator('#ck-leave-cancel')).toHaveText('OK');
   });
 
@@ -11542,7 +11542,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
   });
 
   for (const [label, list] of [['finds a session', 'DETACHED'], ['finds nothing', []]]) {
-    test(`Start sprint attaching during the sessions lookup gives the live dialog, never a notice or teardown, when the lookup ${label} (t-2687)`, async ({ page }) => {
+    test(`Run sprint attaching during the sessions lookup gives the live dialog, never a notice or teardown, when the lookup ${label} (t-2687)`, async ({ page }) => {
       const id = newTicketId(PROJECT_ROOT, 'lcrace');
       try {
         writeTicket(id, 'in_progress');
@@ -11557,7 +11557,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
             list === 'DETACHED' ? [{ session: 's1', ticket: id, project_root: PROJECT_ROOT, agent: 'claude', status: 'running' }] : list) });
         });
         await page.locator('#ck-end-session').click();               // lookup pending; tab still un-attached
-        await page.evaluate(async () => { const b_cockpit = await import('/static/board-cockpit.js'); b_cockpit.cockpitState.status = 'running'; }); // ...Start sprint attaches meanwhile
+        await page.evaluate(async () => { const b_cockpit = await import('/static/board-cockpit.js'); b_cockpit.cockpitState.status = 'running'; }); // ...Run sprint attaches meanwhile
         release();
         await expect(page.locator('#ck-leave-confirm')).toHaveClass(/open/);
         await expect(page.locator('#ck-leave-save')).toBeVisible();
@@ -13064,7 +13064,7 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
     const { addr, proc } = await startDaemon();
     try {
       await page.goto(`http://${addr}/cockpit?ticket=t-bnr1&embed=1`);
-      await expect(page.locator('#startBtn')).toHaveText(/Start sprint/);
+      await expect(page.locator('#startBtn')).toHaveText(/Run sprint/);
       await page.selectOption('#agentSel', 'copilot');
       await page.locator('#startBtn').click();
       await expect(page.locator('#dot')).toHaveClass(/running/, { timeout: 30_000 });
@@ -13166,7 +13166,7 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
       await expect(page.locator('#paneMeter')).toHaveText('87% cache · 42 calls · 130 tools');
       await expect(page.locator('#paneCwdText')).toHaveText('/tmp/proj <img src=x onerror=1>');   // text, never markup
       expect(await page.locator('#paneMeter').evaluate(el => getComputedStyle(el).color), 'the meter is --dim, not the faint grey').toBe('rgb(139, 152, 169)');
-      expect(await page.locator('#startBtn').evaluate(el => getComputedStyle(el).whiteSpace), 'Start agent stays on one line').toBe('nowrap');
+      expect(await page.locator('#startBtn').evaluate(el => getComputedStyle(el).whiteSpace), 'Run agent stays on one line').toBe('nowrap');
       await expect(page.locator('#paneCwd img')).toHaveCount(0);
       // t-d0ed: a path that fits is never cut (no ellipsis); one that does not fit is clipped at the START, keeping the folder name,
       // with the whole path as the tooltip. (A 33-character path lost its last letter to the old 34ch cap.)
@@ -13200,7 +13200,7 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
     const { addr, proc } = await startDaemon();
     try {
       await page.goto(`http://${addr}/cockpit?ticket=t-bnr1&embed=1`);
-      await expect(page.locator('#startBtn')).toHaveText(/Start sprint/);
+      await expect(page.locator('#startBtn')).toHaveText(/Run sprint/);
       await expect(page.locator('#agentSel')).toBeEnabled();
       await expect(page.locator('#agentHint')).not.toContainText('another window');
     } finally { proc.kill('SIGKILL'); }
@@ -18172,6 +18172,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#gh-dialog-title')).toHaveText('Merged');
     await expect(page.locator('#gh-dialog-body')).toContainText('Next: Finish pushes it to origin and resets the worktree');
     await expect(page.locator('#gh-dialog-body')).not.toContainText('tkt finish');   // the command is for a terminal; the dialog has the buttons
+    await expect(page.locator('#gh-dialog-pre')).not.toContainText('tkt finish');    // nor does the log show the raw command (a Windows Console cannot run it)
     await expect(page.locator('#gh-dialog-ok')).toHaveText('Finish…');
     // Push main: its own dialog, the commits listed, nothing pushed until the button.
     await page.locator('#gh-dialog-ok').click();

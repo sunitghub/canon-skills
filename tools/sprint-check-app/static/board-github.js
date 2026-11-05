@@ -528,7 +528,7 @@ async function followMerge(t, prB, show) {
   if (gen !== undefined) updateDialog({
     title: merged ? 'Merged' : 'Not merged',
     body: merged ? `${w.wt ? `${w.name} is merged into ${(String(st.output).match(/^Merged \S+ into (\S+) /m) || [])[1] || 'main'} here.${finishOffer ? ' Next: Finish pushes it to origin and resets the worktree, each after its own confirmation.' : nextLine(st.output) ? ` Next: ${nextLine(st.output).replace(/[.\s]+$/, '')}.` : ''}` : 'The PR is merged and the issue closed by its Fixes line.'}${local ? ` ${local}` : ''}${offer ? ` Also push main to ${mirrors.join(', ')} (git config canon.mirror)?` : ''}` : `${(refusalReason(st?.output) || 'Not merged').replace(/[.:\s]+$/, '')}. ${w.wt ? 'Nothing was merged; main is unchanged.' : 'Nothing changed on GitHub.'} See the output.`,
-    pre: st?.output || '', ok: finishOffer ? 'Finish…' : offer || (draftRefused ? 'Mark ready' : suiteFailed ? 'Fix here' : ''), cancel: 'Close', escape: true,
+    pre: (finishOffer ? String(st.output || '').replace(/^next: tkt finish .*\n?/m, '') : st?.output) || '', ok: finishOffer ? 'Finish…' : offer || (draftRefused ? 'Mark ready' : suiteFailed ? 'Fix here' : ''), cancel: 'Close', escape: true,
   }, gen);
   if (finishOffer && shown) shown.then(v => { if (v && v.ok) finishStep(t, (String(st.output).match(/^Merged \S+ into (\S+) /m) || [])[1]); });
   else if (offer && shown) shown.then(v => { if (v && v.ok) pushMain(mirrors); });

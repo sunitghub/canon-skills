@@ -598,7 +598,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			case "status":
 				sendJSON(w, githubStatus(groot, m[1]))
 			case "finish-check": // t-607a: the commits a push sends and what a reset does, as tkt finish --check prints them
-				sendJSON(w, runTkt(groot, []string{"finish", m[1], "--check"}))
+				sendJSON(w, runTkt(groot, []string{"finish", m[1], "--check", "--fetch"}))
 			default:
 				pr, ok := prArg(r.URL.Query().Get("pr"))
 				if !ok {
