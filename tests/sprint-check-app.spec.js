@@ -13118,6 +13118,8 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
       await page.evaluate(() => window.postMessage({ source: 'canon-cockpit', type: 'pane-info', meter: '87% cache · 42 calls · 130 tools', cwd: '/tmp/proj <img src=x onerror=1>' }, '*'));
       await expect(page.locator('#paneMeter')).toHaveText('87% cache · 42 calls · 130 tools');
       await expect(page.locator('#paneCwdText')).toHaveText('/tmp/proj <img src=x onerror=1>');   // text, never markup
+      expect(await page.locator('#paneMeter').evaluate(el => getComputedStyle(el).color), 'the meter is --dim, not the faint grey').toBe('rgb(139, 152, 169)');
+      expect(await page.locator('#startBtn').evaluate(el => getComputedStyle(el).whiteSpace), 'Start agent stays on one line').toBe('nowrap');
       await expect(page.locator('#paneCwd img')).toHaveCount(0);
       // t-d0ed: a path that fits is never cut (no ellipsis); one that does not fit is clipped at the START, keeping the folder name,
       // with the whole path as the tooltip. (A 33-character path lost its last letter to the old 34ch cap.)
@@ -13125,7 +13127,7 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
       await page.evaluate(c => window.postMessage({ source: 'canon-cockpit', type: 'pane-info', meter: '', cwd: c }, '*'), fits);
       await expect(page.locator('#paneCwdText')).toHaveText(fits);
       expect(await page.locator('#paneCwd').evaluate(el => el.scrollWidth <= el.clientWidth), 'a short path is not clipped').toBe(true);
-      expect(await page.locator('#paneCwd').evaluate(el => getComputedStyle(el).color), 'the folder is a step brighter than the meter').toBe('rgb(139, 152, 169)');   // --dim, not --faint
+      expect(await page.locator('#paneCwd').evaluate(el => getComputedStyle(el).color), 'the folder is brighter than the meter').toBe('rgb(230, 237, 243)');   // --text; the meter is --dim
       const long = '/Users/sunitjoshi/' + 'a-very-long-folder-name/'.repeat(12) + 'canon-site';
       await page.setViewportSize({ width: 700, height: 600 });
       await page.evaluate(c => window.postMessage({ source: 'canon-cockpit', type: 'pane-info', meter: '', cwd: c }, '*'), long);
