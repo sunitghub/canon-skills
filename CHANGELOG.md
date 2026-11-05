@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.46.1] - 2026-11-05
+
+Shell only: run `canon update` (on Windows, run the installer once more to reorder your PATH); no board or daemon restart is needed.
+
 ### Fixed
 - Windows: an older canon folder ahead of this install on your PATH no longer runs an older `tkt` or `sprint` (a 0.37.0 `tkt` answered "Unknown command: send-issue"). The installer now puts this install's `tools` folder first in your user PATH (moved, never duplicated), and names any folder with a `tkt` that was ahead of it; it removes nothing and says nothing on a re-run with ours already first. `canon update` ends with one warning naming both folders when the `tkt` that runs is not this install's.
 
