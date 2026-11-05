@@ -852,7 +852,8 @@ _gate_integrity() {
 # the wrapup step (skills/wrapup/SKILL.md) tells the agent to refresh it, and nothing checked that a close did. Nothing when the file or
 # the section is missing, or the section has text. Always returns 0.
 _notice_handoff_focus() {
-  local f; f="$(project_root)/HANDOFF.md"
+  local root f; root="$(worktree_root 2>/dev/null)" || root="$(project_root)"   # a worktree sprint fills the worktree's own HANDOFF.md
+  f="$root/HANDOFF.md"
   [[ -f "$f" ]] || return 0
   if awk 'BEGIN { has = 0; txt = 0 } /^##[ \t]+Current Focus[ \t\r]*$/ { has = 1; inf = 1; next } inf && /^##[ \t]/ { inf = 0 } inf && /[^ \t\r]/ && !/^[ \t]*<!--/ { txt = 1 } END { exit !(has && !txt) }' "$f"; then
     echo "HANDOFF.md: Current Focus is empty; the wrapup step \"refresh HANDOFF.md\" fills it (this never blocks the close)"

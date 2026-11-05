@@ -6295,13 +6295,15 @@ func emitProjectSetting(r *http.Request, root, name, old, new string) {
 // characters; "" when the section is missing or empty (t-eecb: an empty section must never read as the next heading).
 func currentFocusOf(text string) string {
 	in, lines := false, []string{}
-	for _, line := range strings.Split(text, "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "##") {
+	for _, raw := range strings.Split(text, "\n") {
+		line := strings.TrimSpace(raw)
+		// a level-2 heading is "##" then white space (the Logbook's sectionContent and the close notice read it the same way);
+		// "###" and deeper are the section's own content
+		if strings.HasPrefix(line, "##") && (len(line) == 2 || line[2] == ' ' || line[2] == '\t') {
 			if in {
 				break
 			}
-			in = strings.TrimSpace(strings.TrimLeft(line, "#")) == "Current Focus" && strings.HasPrefix(line, "## ")
+			in = strings.TrimSpace(line[2:]) == "Current Focus"
 			continue
 		}
 		if in && line != "" && !strings.HasPrefix(line, "<!--") {

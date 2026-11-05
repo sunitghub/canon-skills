@@ -20143,4 +20143,16 @@ test.describe('Logbook Handoff: Recent activity (t-eecb)', () => {
     expect(await titles(page)).toEqual(['Current Focus', 'In Progress', 'Discoveries', 'Next Steps']);
     await expect(page.locator('.lb-recent')).toHaveCount(0);
   });
+
+  test('the shapes canon and a hand edit really produce: the "no stage recorded yet" block is no section; a BEGIN with no END is no section', async ({ page }) => {
+    await serve(page, recent('- No stage recorded yet.\n') + SECS);          // what canon writes for a block with no events
+    await open(page);
+    expect(await titles(page)).toEqual(['Current Focus', 'In Progress', 'Discoveries', 'Next Steps']);
+    await page.unroute(/\/api\/logbook(\?|$)/);
+    await serve(page, '# Handoff\n\n<!-- canon:recent:BEGIN -->\n## Recent activity\n' + SECS.replace('## In Progress\n', '## In Progress\n- t-0001 one\n'));   // the END marker is missing
+    await page.locator('#lb-close').click();
+    await open(page);
+    await expect(page.locator('.lb-recent')).toHaveCount(0);                 // in-progress bullets are not shown as canon's activity
+    await expect(page.locator('#logbook-overlay')).not.toContainText('Recent activity');
+  });
 });

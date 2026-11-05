@@ -44,10 +44,12 @@ function parseHandoff(text) {
 // t-eecb: the lines canon itself wrote between the canon:recent markers ("- 11-05 09:47 · t-c662 · sprint completed"), in file order.
 // Not a section of the handoff block (edits there are replaced), so it is parsed apart and shown read-only. None: [].
 function parseRecent(text) {
-  const a = text.indexOf('<!-- canon:recent:BEGIN -->');
-  if (a < 0) return [];
-  return between(text, '<!-- canon:recent:BEGIN -->', '<!-- canon:recent:END -->').split('\n')
-    .map(l => l.trim()).filter(l => l.startsWith('- ')).map(l => l.slice(2).trim()).filter(Boolean);
+  const A = '<!-- canon:recent:BEGIN -->', Z = '<!-- canon:recent:END -->';
+  const a = text.indexOf(A), z = a < 0 ? -1 : text.indexOf(Z, a + A.length);
+  if (a < 0 || z < 0) return [];   // both markers, or nothing: a stray BEGIN in prose must not turn the rest of the file into "activity"
+  return text.slice(a + A.length, z).split('\n')
+    .map(l => l.trim()).filter(l => l.startsWith('- ')).map(l => l.slice(2).trim())
+    .filter(l => l && l !== 'No stage recorded yet.');   // what canon writes for a block with no events
 }
 
 const el = id => document.getElementById(id);

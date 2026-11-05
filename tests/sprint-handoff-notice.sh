@@ -13,7 +13,9 @@ trap 'rm -rf "$work"' EXIT
 fn="$(awk '/^_notice_handoff_focus\(\) \{/ { p = 1 } p { print } p && /^}/ { exit }' "$SPRINT")"
 [[ -n "$fn" ]] || fail "could not find _notice_handoff_focus in tools/sprint"
 run_notice() {   # <folder>: the notice text, and its exit status
-  ( cd "$1" && project_root() { pwd; } && eval "$fn" && _notice_handoff_focus; echo "rc=$?" )
+  # project_root is the main checkout, worktree_root the folder being closed (a worktree sprint fills the worktree's own file); with no
+  # second argument they are the same folder
+  ( cd "$1" && MAIN="${2:-$1}" && project_root() { echo "$MAIN"; } && worktree_root() { pwd; } && eval "$fn" && _notice_handoff_focus; echo "rc=$?" )
 }
 NOTE='HANDOFF.md: Current Focus is empty; the wrapup step "refresh HANDOFF.md" fills it (this never blocks the close)'
 mk() { local d="$work/$1"; mkdir -p "$d"; printf '%s' "$2" > "$d/HANDOFF.md"; echo "$d"; }
@@ -30,5 +32,10 @@ mkdir -p "$work/nofile"; out="$(run_notice "$work/nofile")"
 assert_eq "rc=0" "$out"                                    # no HANDOFF.md: nothing
 out="$(run_notice "$(mk crlf $'## Current Focus\r\n\r\n## In Progress\r\nx\r\n')")"
 assert_contains "$out" "$NOTE"                             # a Windows file with CRLF line ends reads as empty too
+# a worktree sprint: the main checkout's Current Focus is empty but the worktree's is filled -> silent; and the other way round -> the notice
+main_empty="$(mk mainempty $'## Current Focus\n\n## In Progress\n')"; wt_full="$(mk wtfull $'## Current Focus\nthe worktree\'s own focus\n')"
+out="$(run_notice "$wt_full" "$main_empty")"; assert_eq "rc=0" "$out"
+main_full="$(mk mainfull $'## Current Focus\nmain has text\n')"; wt_empty="$(mk wtempty $'## Current Focus\n\n## In Progress\n')"
+out="$(run_notice "$wt_empty" "$main_full")"; assert_contains "$out" "$NOTE"
 grep -q '^  _notice_handoff_focus$' "$SPRINT" || fail "sprint complete no longer calls _notice_handoff_focus"
 echo "sprint-handoff-notice: ok (empty, comment-only and CRLF notice; filled, missing section and missing file silent; never blocks; called from complete)"

@@ -14,6 +14,8 @@ func TestCurrentFocusOf(t *testing.T) {
 		{"text at the end of the file", "# Handoff\n## Current Focus\nlast section\n", "last section"},
 		{"a missing section", "## In Progress\nsomething\n", ""},
 		{"a deeper heading is not the section", "### Current Focus\ntext\n", ""},
+		{"a ### line inside the section is content, not its end", "## Current Focus\n### Sub\ntext\n## Next\n", "### Sub text"},
+		{"a tab after the hashes is still a heading", "##\tCurrent Focus\ntext\n", "text"},
 		{"a heading that only starts like it", "## Current Focus Notes\ntext\n", ""},
 		{"cut to 80 characters", "## Current Focus\n" + string(make([]byte, 0)) + "aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeeeeeeeeeffffffffffgggggggggghhhhhhhhhhiiiiiiiiii\n", "aaaaaaaaaabbbbbbbbbbccccccccccddddddddddeeeeeeeeeeffffffffffgggggggggghhhhhhhhhh"},
 	}
