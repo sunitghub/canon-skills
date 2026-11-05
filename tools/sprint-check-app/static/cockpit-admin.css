@@ -98,7 +98,7 @@
   .srow .snone{color:var(--text-muted);padding:6px 4px}
   /* t-824e: session state, owned by the daemon (/sessions "state") */
   .st{--st:var(--text-muted)}
-  .stc,.st .ag-s,.st .stcell{color:var(--st)}
+  .stc,.st .stcell{color:var(--st)}
   .st-needs-you{--st:var(--st-need)} .st-working,.st-running{--st:var(--st-work)} .st-done{--st:var(--st-done)} .st-idle{--st:var(--text-muted)}
   .sdot{width:7px;height:7px;border-radius:50%;background:var(--st);flex-shrink:0}
   .st-needs-you .sdot{outline:1.5px solid var(--st-need);outline-offset:2px}   /* ringed dot, like Herdr's blocked */
@@ -123,8 +123,8 @@
   .ad-table .s3{font-size:11.5px;color:var(--text-muted);font-style:italic;white-space:normal}
   .ad-table .acts{display:flex;gap:6px;justify-content:flex-end}
   .side{min-height:0} .side .foot,.side .nav{flex-shrink:0} /* a long Agents list scrolls; the footer stays put */
-  .agents{padding:0 10px 6px;display:flex;flex-direction:column;gap:2px;overflow-y:auto;min-height:0}
-  /* t-e69b: rows follow the t-f139 mockup — dot | id + title | agent code, state line below */
+  .agents{padding:0 10px 6px;display:flex;flex-direction:column;gap:2px;overflow-y:auto;min-height:0;container:ag/inline-size}   /* t-d0ed: the rail is resizable, so a row's extras hide by the list's own width */
+  /* t-d0ed: one line per row — icon | id + title | agent type | age | state glyph */
   .ag-label{display:flex;justify-content:space-between;align-items:baseline;padding-right:18px;border-top:1px solid var(--border-muted);margin-top:8px;padding-top:14px;font-size:14px;letter-spacing:0;text-transform:none;color:var(--text-body)}
   .ag-label span+span{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-muted)}
   .ag-empty{font-size:12px;color:var(--text-muted);padding:4px 8px}
@@ -133,26 +133,32 @@
   .scratchbtn .scr-ico{margin-right:5px;color:inherit}
   .st-not-started{--st:var(--text-muted)}
   .st-not-started .sdot{background:transparent;box-shadow:inset 0 0 0 1.5px var(--text-muted);opacity:.6}
-  .ag-row.st-not-started .ag-s{color:var(--text-muted);font-style:italic}
   .ag-plus{margin-left:auto;border:0;background:transparent;color:var(--text-muted);font-size:15px;line-height:1;cursor:pointer;padding:0 6px;border-radius:5px}
   .ag-plus:hover,.ag-plus:focus-visible{color:var(--text);background:var(--border-muted)}
   .scratchbtn{display:inline-flex;align-items:center;height:40px;padding:0 12px;border-radius:9px;border-style:dashed;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap}
   .ag-proj{display:flex;gap:6px;align-items:baseline;font-size:11.5px;color:var(--text-muted);padding:8px 8px 4px;white-space:nowrap;overflow:hidden}
   .ag-proj b{color:var(--text-body);font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis}
-  .ag-row{position:relative;display:grid;grid-template-columns:12px minmax(0,1fr);column-gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer;border:0;background:transparent;text-align:left;font:inherit;color:var(--text-body);width:100%}
+  /* t-d0ed: one line (the t-1917 mockup, tab 17): icon | name | agent type | age | state glyph; the detail is the tooltip. */
+  .ag-row{position:relative;display:grid;grid-template-columns:18px minmax(0,1fr) auto auto auto;column-gap:8px;align-items:center;padding:6px 8px;border-radius:8px;cursor:pointer;border:0;background:transparent;text-align:left;font:inherit;color:var(--text-body);width:100%}
   .ag-row:hover{background:var(--border-muted)}
   .ag-row.on::before{content:'';position:absolute;left:0;top:7px;bottom:7px;width:3px;border-radius:2px;background:var(--accent)}   /* t-7456: the session in view, as the Projects page's bar */
-  .ag-row .sdot{width:8px;height:8px;margin-top:6px}
+  .ag-row .ag-i{display:grid;place-items:center}
+  .ag-row .scr-ico{margin:0;width:15px;height:15px}
+  .ag-badge{width:16px;height:16px;border-radius:5px;display:grid;place-items:center;font-size:9px;font-weight:700;background:color-mix(in srgb,var(--st-work) 24%,transparent);color:var(--st-work)}
   .ag-row .ag-t1{font-size:14px;color:var(--text-body);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   /* the ticket id reads like Herdr's agent name: bright and bold, the title softer after it */
   .ag-id{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:.92em;font-weight:700;color:var(--text);margin-right:6px}
   .ag-row .ag-none{color:var(--text-muted)}
-  .ag-row .ag-s,.ag-row .ag-p{grid-column:2/-1;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .ag-row .ag-p{color:var(--text-muted)}   /* t-aca6: project + time in session, its own class so .ag-s stays the state line */
-  .ag-row.st-idle .ag-s,.ag-row.st-running .ag-s{color:var(--text-muted)}
-  .ag-row.st-needs-you .sdot{animation:ag-pulse 1.6s ease-in-out infinite}
-  @keyframes ag-pulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb, var(--st-need) 55%, transparent)}50%{box-shadow:0 0 0 5px transparent}}
-  @media (prefers-reduced-motion:reduce){.ag-row.st-needs-you .sdot{animation:none}}
+  .ag-row .ag-at,.ag-row .ag-age{font-size:11px;color:var(--text-muted);white-space:nowrap}
+  .ag-row .ag-g{display:grid;justify-items:end;min-width:12px}
+  .ag-row .sdot{width:8px;height:8px}
+  .ag-ring{box-sizing:border-box;width:10px!important;height:10px!important;background:transparent!important;border:2px solid color-mix(in srgb,var(--st) 28%,transparent);border-top-color:var(--st);animation:ag-spin .9s linear infinite}
+  @keyframes ag-spin{to{transform:rotate(360deg)}}
+  .ag-pill{font-size:10px;font-weight:700;letter-spacing:.02em;color:var(--st-ink);background:var(--amber);border-radius:6px;padding:1px 7px;white-space:nowrap}   /* Herdr's orange "Needs you" pill, from the theme's own amber */
+  .st-not-started .ag-t1{font-style:italic;color:var(--text-muted)}
+  @media (prefers-reduced-motion:reduce){.ag-ring{animation:none}}
+  @container ag (max-width:260px){.ag-row .ag-at{display:none}}
+  @container ag (max-width:240px){.ag-row .ag-age{display:none}.ag-row{column-gap:6px}.ag-row .ag-pill{font-size:10px;padding:1px 5px}}   /* the default 230px rail: a Needs-you pill leaves the name about 90px */
   .ad-reaper{font-size:12px;color:var(--text-muted);padding:0 14px 8px}
   /* the session table needs more room than the 620px Admin column; it grows right, and scrolls when the window can't fit it */
   #view-admin .sessions{margin-bottom:16px}

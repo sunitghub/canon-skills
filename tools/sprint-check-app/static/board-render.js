@@ -840,7 +840,7 @@ function cardHTML(t, idx, inNow) {
         ${t.status === 'closed' ? `<button class="card-archive" data-id="${esc(t.id)}" title="Archive this ticket">archive</button>` : ''}
         <p class="card-title">${esc(t.title)}</p>
         ${ticketTags(t).length ? `<div class="card-tags">${tagChipsHTML(ticketTags(t), 3)}</div>` : ''}
-        ${t.status === 'in_progress' ? `<span class="card-wt-chip" data-id="${esc(t.id)}"></span>` : ''}
+        ${t.status === 'in_progress' && !ghOut(t) ? `<span class="card-wt-chip" data-id="${esc(t.id)}"></span>` : ''}
         ${ghChipHTML(t)}
         ${run ? `<div class="card-wt-pref card-wt-run" title="In progress in worktree ${escAttr(run.branch)} (this checkout's copy still says open until the branch merges).">Worktree: ${esc(run.branch)}</div>` : divergenceLine(t)}
       </div>
@@ -905,6 +905,7 @@ export function editScratchTitle() {
       const v = input.value.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 80);
       t.title = v || 'Scratch session';
       announceScratchTabs();
+      window.dispatchEvent(new Event('canon:tabs-changed'));   // t-d0ed: the tab pill's tooltip carries the title
       postToTab(cockpitState, { type: 'set-title', title: v });
     }
     document.getElementById('ck-tc-title').textContent = t.title;

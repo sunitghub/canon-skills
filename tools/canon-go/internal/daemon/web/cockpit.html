@@ -18,7 +18,7 @@
   .start select{background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 8px;font-family:var(--mono);font-size:13px}
   button{border:0;border-radius:8px;padding:7px 12px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--ui)}
   button:disabled{opacity:.4;cursor:not-allowed}
-  .btn-start{background:var(--accent);color:#fff}
+  .btn-start{background:var(--accent);color:#fff;white-space:nowrap}   /* one line in a crowded pane header */
   .btn-kill{background:var(--panel2);color:var(--dim);border:1px solid var(--border)}
   .btn-kill:hover{color:var(--red);border-color:var(--red)}
   .spacer{flex:1}
@@ -64,8 +64,10 @@
   /* t-1917: in the board the Agents list owns the session's state and End session ends it (its dialog has "End without saving"), so the pane
      header keeps only what runs the agent: the picker, Start, the folder, the meter and the font size. Standalone, Kill and the state stay. */
   body.embed .btn-kill, body.embed .status{display:none}
-  .paneinfo{font-family:var(--mono);font-size:11.5px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-  .paneinfo.cwd{flex:0 1 auto;max-width:34ch;margin-left:10px}
+  .paneinfo{font-family:var(--mono);font-size:11.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  /* t-d0ed: no width cap (a 33-character path lost its last letter to one); when the pane is too narrow the START of the path is clipped,
+     so the folder name stays: the span is rtl and its text is an ltr run (bdo), or the leading slash would jump to the end. */
+  .paneinfo.cwd{flex:0 1 auto;margin-left:10px;direction:rtl;text-align:left;color:var(--text)}   /* the folder is the thing to read; the meter beside it is a step softer */
   /* t-74d6: stale-daemon banner — the board detects a version-drifted daemon
      and relays it in; the Restart button calls the token-gated /shutdown. */
   .stale-banner{display:flex;align-items:center;gap:10px;padding:7px 12px;
@@ -94,7 +96,7 @@
       <button class="btn-start" id="startBtn">▶ Start sprint</button>
       <button class="btn-kill" id="killBtn" disabled>Kill</button>
     </div>
-    <span class="paneinfo cwd" id="paneCwd" hidden></span>
+    <span class="paneinfo cwd" id="paneCwd" hidden><bdo dir="ltr" id="paneCwdText"></bdo></span>
     <div class="spacer"></div>
     <span class="agent-hint" id="agentHint"></span>
     <span class="paneinfo" id="paneMeter" title="Cache share of input, LLM calls, tool calls, sub-agents (this session)" hidden></span>
@@ -429,7 +431,8 @@ function canonPrefixKeys(emit) {
       // t-1917: the board owns the daemon row and sends the meter and the session's folder; the text is set, never parsed as markup.
       var pm = document.getElementById("paneMeter"), pc = document.getElementById("paneCwd");
       pm.textContent = typeof d.meter === "string" ? d.meter : ""; pm.hidden = !pm.textContent;
-      pc.textContent = typeof d.cwd === "string" ? d.cwd : ""; pc.title = pc.textContent; pc.hidden = !pc.textContent;
+      var pt = document.getElementById("paneCwdText");
+      pt.textContent = typeof d.cwd === "string" ? d.cwd : ""; pc.title = pt.textContent; pc.hidden = !pt.textContent;
     } else if(d.type === "set-title"){
       if(!session || typeof d.title !== "string") return;
       fetch("/session/"+session+"/title", { method:"POST", headers: Object.assign({"Content-Type":"application/json"}, authHeaders(sessTok)), body: JSON.stringify({ title: d.title }) }).catch(function(){});

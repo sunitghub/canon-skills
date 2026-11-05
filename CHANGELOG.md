@@ -7,8 +7,21 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 ## [Unreleased]
 
 ### Fixed
-
+- The Machines node shows a cloud machine whose evidence log arrives in `evidence/` (a tracked `.tickets/`), not only one under `evidence/cloud/`: a log whose machine line differs from every host row is its own row, labelled "other machine"; one naming a host's own machine adds no row (t-fb18).
 - `tkt merge-pr` now reads the linked GitHub issue after the merge and closes it (comment "Landed in PR #N (merge <sha>)") if GitHub left it open; it says "issue #N closed" or "was already closed", and a failed read or close is reported while the merge stays recorded. The merge is recorded once: `merge-pr` and the board's `github-status` poll take a lock in the ticket folder, so there is one `MERGED` entry and one event (t-9807).
+
+## [0.44.1] - 2026-11-05
+
+Board page and daemon page: run `canon update`, reload the board and restart the daemon (Admin's **Restart Daemon**): the pane header's folder text and button changed.
+
+### Changed
+- The Agents sidebar shows one line per agent: icon, name, the agent type (Claude, Copilot), its age and a state glyph (a ring while working, a solid dot when done, a hollow dot when idle or not started, an orange **Needs you** pill). A scratch session shows a pencil. The tooltip is the ticket's title alone; the detail is the row's accessible name.
+- The session pane is tinted toward the accent whenever it is the session you are looking at, and stronger while you type in it. (0.44.0 promised the focus tint but it never showed across the terminal's frame; the board now sets it itself.)
+- The folder shown in the pane header is never cut when it fits, and a long path is shortened from the left so the folder name stays. The folder is the brightest text in the bar, the cache meter beside it a step softer, and **Start agent** stays on one line.
+- Hovering a tab's id in the top bar shows the ticket's title and status (a scratch session's own title, also after a rename).
+- The "Sent as issue" panel keeps To Claude Cloud, Copy command and Copy prompt, prints only the prompt, shows the first-time note only while Factory > GitHub is not ready, and tells you to run the command in the project's root folder by its path. A card whose launch command was copied shows a quieter **Started?** and asks before copying it again.
+- A card waiting for its cloud session's first push is checked every 30 seconds instead of every 2 minutes.
+- A card that is out on GitHub no longer shows a worktree chip: an old local session's lock made it say "Main checkout".
 
 ## [0.44.0] - 2026-11-04
 

@@ -203,7 +203,7 @@ sprint agent without leaving the browser — no second terminal.
   `agent_needs_input`) mean needs you, `idle_prompt`/`agent_completed` mean done,
   and other notifications change nothing. The daemon's `/sessions` turns this
   into one state per session — needs you, working (output or input in the last
-  15 s), idle, or done — shown in the shell's Agents sidebar, the "N needs you"
+  15 s), idle, or done — shown in the shell's Agents sidebar (one line per agent: icon, name, agent type, age and a state glyph: a ring while working, a solid dot when done, a hollow dot when idle, an orange **Needs you** pill; the tooltip is the ticket's title, `t-d0ed`), the "N needs you"
   pill, a tab dot, the Projects cards, Admin's session table, the
   ticket cockpit's state chip and the board's cards (`t-28ec`: a state strip,
   **Answer ▸** / **Open ▸**, waiting cards first in In Progress). Colours follow
@@ -360,7 +360,7 @@ sprint agent without leaving the browser — no second terminal.
   own project's main checkout (whichever project it runs in, `t-824e`) gets a longer
   30-minute safety net instead of never reaping. A session that needs you is never
   reaped; a done one is. Admin shows both timeouts, and the ticket cockpit shows the
-  countdown next to End Session.
+  countdown next to End session.
 - **Check & merge for a worktree ticket (`t-2906`):** once a sprint run in a worktree closes, its card shows the
   same **Check & merge** a ticket out on GitHub gets, with the same dialog: the checks that run none of the branch's
   code, then **Run tests & merge** (or **Merge (no tests)** when the project has no `scripts/test.sh`), progress with

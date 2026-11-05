@@ -77,7 +77,7 @@ func TestCockpitPaneHeader(t *testing.T) {
 		`▶ Start sprint</button>`,                                // a ticket session keeps Start sprint
 		`id="killBtn"`, `id="statusText"`,                        // still there for the standalone page
 		`id="paneMeter"`, `id="paneCwd"`, `d.type === "pane-info"`,
-		"pm.textContent = typeof d.meter", "pc.textContent = typeof d.cwd",
+		"pm.textContent = typeof d.meter", "pt.textContent = typeof d.cwd", `id="paneCwdText"`, "direction:rtl", "color:var(--text)",
 	} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("the cockpit page lacks %q", want)

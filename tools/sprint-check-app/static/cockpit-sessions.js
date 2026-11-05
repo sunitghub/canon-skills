@@ -232,14 +232,24 @@ function notStartedScratch(live){
   }
   return out;
 }
-// t-aca6: the sidebar's third line and Admin's sub-line: the project and the time spent in the session so far.
-// full fits most rows; short drops "in session" when full would be cut off; tip spells everything out.
+// t-aca6: a row's accessible name and Admin's sub-line: the project and the time spent in the session so far.
+// tip spells everything out (the row's accessible name); dur is the one-unit-pair duration the Admin table reuses.
 export function sessionTime(v){
   const proj=v.projName||v.name;
-  if(v.elapsed===null) return { full:proj, short:proj, tip:proj, dur:'' };
+  if(v.elapsed===null) return { tip:proj, dur:'' };
   const dur=fmtDur(v.elapsed);
   const at=new Date(v.startMs).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
-  return { full:proj+' \u00b7 '+dur+' in session', short:proj+' \u00b7 '+dur, tip:proj+' \u2014 '+dur+' in session (started '+at+')', dur };
+  return { tip:proj+' \u2014 '+dur+' in session (started '+at+')', dur };
+}
+// t-d0ed: the Agents row's pieces. The agent's name in words, the age in one unit, and the state as a glyph (ring working, solid done,
+// hollow idle or not started, an orange "Needs you" pill); the words move into the row's accessible name (agentLine).
+const AGENT_NAME={claude:'Claude',copilot:'Copilot',pi:'Pi',term:'Terminal'};
+export const agentName=a=>AGENT_NAME[a]||'';
+export function ageShort(secs){ return secs<60 ? '<1m' : secs<3600 ? Math.floor(secs/60)+'m' : secs<86400 ? Math.floor(secs/3600)+'h' : Math.floor(secs/86400)+'d'; }
+function stateGlyph(state){
+  if(state==='needs-you') return '<span class="ag-pill">Needs you</span>';
+  if(state==='working' || state==='running') return '<span class="sdot ag-ring"></span>';
+  return '<span class="sdot"></span>';   // done: solid (the state colour); idle and not-started: hollow (CSS)
 }
 // Sidebar state line: short, with the countdown where the reaper applies.
 // Sidebar state line, Herdr-style: state (+ age), the agent, then the reap countdown where it applies.
@@ -297,16 +307,20 @@ export function renderSessionSurfaces(){
     `<div class="ag-proj" title="${escAttr(g[0].proot)}"><b>${esc(g[0].projName||g[0].name)}</b><span>${g.length}</span>${g[0].pid?`<button class="ag-plus" data-scratch="${escAttr(g[0].pid)}" title="New scratch session in ${escAttr(g[0].projName||g[0].name)}" aria-label="New scratch session">+</button>`:''}</div>`+g.map(v=>{
       const title=ticketTitle(v.pid,v.ticket), time=sessionTime(v);
       const inView=!!v.pid && v.pid===activeTab && (v.ticket||v.scratch)===boardActive.get(activeTab) && document.getElementById('view-'+activeTab)?.classList.contains('active');   // t-7456
-      return `<button class="ag-row st st-${v.state}${inView?' on':''}"${inView?' aria-current="true"':''} data-i="${rail.indexOf(v)}" title="${escAttr((title?title+' \u2014 ':'')+v.label+(v.meter?(' \u00b7 '+v.meter):'')+(v.signal?(' \u00b7 state from: '+v.signal):''))}">`+
-      `<span class="sdot"></span>`+
-      `<span class="ag-t1">${v.ticket?`<span class="ag-id">${esc(v.ticket)}</span>${esc(title)}`:(v.scratch?`${scratchIcon(v.agent)}${esc(v.scrTitle||'Scratch session')}`:'<span class="ag-none">no ticket</span>')}</span>`+
-      `<span class="ag-s">${esc(agentLine(v))}</span>`+
-      `<span class="ag-p" title="${escAttr(time.tip)}" data-short="${escAttr(time.short)}">${esc(time.full)}</span></button>`;
+      // t-d0ed: one line (icon, name, agent type, age, state glyph). The tooltip is the title alone (the glyph, type and age are on the row);
+      // the detail the old three lines carried is the accessible name, so a screen reader still gets state, time, meter and signal.
+      const tip=title||v.scrTitle||(v.scratch?'Scratch session':v.ticket);
+      const aria=[(title||v.scrTitle||v.ticket||'Scratch session')+': '+agentLine(v), time.tip, v.meter, v.signal?'state from: '+v.signal:''].filter(Boolean).join(' \u00b7 ');
+      const name=v.ticket?`<span class="ag-id">${esc(v.ticket)}</span>${esc(title)}`:(v.scratch?esc(v.scrTitle||'Scratch session'):'<span class="ag-none">no ticket</span>');
+      const icon=v.scratch?scratchIcon(v.agent):`<span class="ag-badge">${esc(agentName(v.agent).charAt(0)||'?')}</span>`;
+      return `<button class="ag-row st st-${v.state}${inView?' on':''}"${inView?' aria-current="true"':''} data-i="${rail.indexOf(v)}" title="${escAttr(tip)}" aria-label="${escAttr(aria)}">`+
+      `<span class="ag-i">${icon}</span>`+
+      `<span class="ag-t1">${name}</span>`+
+      `<span class="ag-at">${esc(agentName(v.agent))}</span>`+
+      `<span class="ag-age">${esc(v.elapsed===null?'\u2013':ageShort(v.elapsed))}</span>`+
+      `<span class="ag-g">${stateGlyph(v.state)}</span></button>`;
     }).join('')
   ).join('');
-  // t-aca6 (user): when "<project> · <dur> in session" would be cut off, show "<project> · <dur>"; the title has it all.
-  // Measure every line before changing any, so the browser lays out once, not once per row.
-  [...list.querySelectorAll('.ag-p')].filter(el=>el.scrollWidth>el.clientWidth).forEach(el=>{ el.textContent=el.dataset.short; });
   syncSharedWarnings(views);
   list.querySelectorAll('.ag-row').forEach(b=>{
     const v=rail[+b.dataset.i];
