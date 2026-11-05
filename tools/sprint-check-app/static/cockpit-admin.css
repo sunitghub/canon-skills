@@ -162,7 +162,6 @@
   @container ag (max-width:260px){.ag-row .ag-d{display:none}.ag-row .ag-id{margin-right:0}.ag-row{column-gap:6px}.ag-row .ag-pill{font-size:10px;padding:1px 5px}}
   @container ag (max-width:330px){.ag-row .ag-at{display:none}}
   .ag-row .ag-mark{width:16px;height:16px;display:block}
-  .ag-row .ag-mk-gh{color:var(--text)}   /* the default 230px rail: a Needs-you pill leaves the name about 90px */
   .ad-reaper{font-size:12px;color:var(--text-muted);padding:0 14px 8px}
   /* the session table needs more room than the 620px Admin column; it grows right, and scrolls when the window can't fit it */
   #view-admin .sessions{margin-bottom:16px}

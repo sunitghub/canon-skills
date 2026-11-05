@@ -865,7 +865,7 @@ _handoff_sum() {
 # t-10ac: what the Handoff narrative read when the plan was approved, kept beside the ticket (nothing when there is no narrative).
 _handoff_mark() {
   local hs; hs="$(_handoff_sum)"
-  [[ -z "$hs" ]] || printf '%s\n' "$hs" > "$1/.handoff-at-approve" 2>/dev/null || true
+  [[ -z "$hs" ]] || printf '%s\n' "$hs" > "$1/.cockpit-handoff-at-approve" 2>/dev/null || true
   return 0
 }
 # _notice_handoff_focus — t-eecb: one line, never a refusal, when this project's HANDOFF.md has a Current Focus section with no text:
@@ -881,7 +881,7 @@ _notice_handoff_focus() {
 # plan was approved: the agent wrote "plan not approved yet" at the start and never refreshed it (seen on a Windows close). Silent when no
 # mark was taken (an older sprint), when the narrative has no markers, or when Current Focus is empty (that notice speaks). Always returns 0.
 _notice_handoff_stale() {
-  local mark now; mark="$(cat "$1/.handoff-at-approve" 2>/dev/null)" || return 0
+  local mark now; mark="$(cat "$1/.cockpit-handoff-at-approve" 2>/dev/null)" || return 0
   [[ -n "$mark" ]] || return 0
   _handoff_focus_empty "$(_handoff_file)" && return 0
   now="$(_handoff_sum)"

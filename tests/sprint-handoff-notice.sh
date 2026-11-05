@@ -45,14 +45,14 @@ H=$'# Handoff\n<!-- canon:handoff:BEGIN -->\n## Current Focus\nBuilding t-l17n.\
 STALE='HANDOFF.md: the narrative has not changed since this plan was approved'
 d="$(mk stale "$H")"; td="$work/t-stale"; mkdir -p "$td"
 out="$(run_notice "$d" "$d" stale "$td")"; assert_eq "rc=0" "$out"                      # never marked (an older sprint): silent
-run_notice "$d" "$d" mark "$td" >/dev/null; [[ -s "$td/.handoff-at-approve" ]] || fail "the approval mark was not written"
+run_notice "$d" "$d" mark "$td" >/dev/null; [[ -s "$td/.cockpit-handoff-at-approve" ]] || fail "the approval mark was not written"
 out="$(run_notice "$d" "$d" stale "$td")"; assert_contains "$out" "$STALE"; assert_contains "$out" "rc=0"   # unchanged since approval: the notice
 printf '%s' "${H/plan NOT yet approved/work done and merged}" > "$d/HANDOFF.md"
 out="$(run_notice "$d" "$d" stale "$td")"; assert_eq "rc=0" "$out"                      # refreshed after approval: silent
 printf '%s\r\n' "$H" > "$d/HANDOFF.md"; run_notice "$d" "$d" mark "$td" >/dev/null; printf '%s' "${H//$'\n'/$'\r\n'}" > "$d/HANDOFF.md"
 out="$(run_notice "$d" "$d" stale "$td")"; assert_contains "$out" "$STALE"             # CRLF line ends do not read as a change
 d2="$(mk stalenomark $'## Current Focus\ntext\n')"; td2="$work/t-nomark"; mkdir -p "$td2"; run_notice "$d2" "$d2" mark "$td2" >/dev/null
-[[ ! -s "$td2/.handoff-at-approve" ]] || fail "a file with no handoff markers was marked"   # no markers: nothing to compare
+[[ ! -s "$td2/.cockpit-handoff-at-approve" ]] || fail "a file with no handoff markers was marked"   # no markers: nothing to compare
 d3="$(mk staleempty $'<!-- canon:handoff:BEGIN -->\n## Current Focus\n\n## In Progress\n\n<!-- canon:handoff:END -->\n')"; td3="$work/t-empty"; mkdir -p "$td3"
 run_notice "$d3" "$d3" mark "$td3" >/dev/null
 out="$(run_notice "$d3" "$d3" stale "$td3")"; assert_eq "rc=0" "$out"                    # an empty focus is the other notice's job

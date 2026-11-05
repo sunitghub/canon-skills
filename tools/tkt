@@ -1704,7 +1704,10 @@ cmd_github_doctor() {
   $origin_ok && rstate="$(_gh_repo_state "${repo%%/*}" "${repo#*/}")"
   if $origin_ok && [[ "$rstate" == missing ]]; then
     local oname="${repo#*/}"
-    if [[ "$safe_root" == true ]]; then
+    if [[ "${repo%%/*}" != "${login:-}" ]]; then
+      # gh repo create makes <login>/<name>: for someone else's name (or a private repo of theirs, which answers the same way) there is no command to give
+      _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: GitHub has no $repo for you (it does not exist, or it is private to someone else). Point origin at a repo you can use: git remote set-url origin https://github.com/${login:-<owner>}/${oname}.git"
+    elif [[ "$safe_root" == true ]]; then
       _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: $repo is not on GitHub yet. This removes that origin and creates it, private, publishing the folder ${srcdir}.${winhint}" cmd "git remote remove origin && gh repo create \"${oname}\" --private --source=\"${srcdir}\" --remote=origin --push"
     else
       _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: $repo is not on GitHub yet. This folder's name has a character that is not safe in a command you paste: rename the folder, or run gh repo create yourself."
@@ -2294,7 +2297,7 @@ cmd_finish() {
       esac ;;
     --push)
       $on_origin && { echo "finish: $into is already on origin; nothing to push"; return 0; }
-      local pout; pout="$(git -C "$root" push origin "refs/heads/$into:refs/heads/$into" < /dev/null 2>&1)" \
+      local pout; pout="$(LC_ALL=C git -C "$root" push origin "refs/heads/$into:refs/heads/$into" < /dev/null 2>&1)" \
         || { printf '%s\n' "$pout" >&2; _fin_no "git push origin $into was refused or failed (not forced); if origin has new commits, update $into first (git pull --ff-only in the main checkout), then Push again"; }
       printf '%s\n' "$pout"
       if grep -q 'Everything up-to-date' <<< "$pout"; then echo "finish: origin already had $into; nothing was sent"; else echo "finish: pushed $into to origin"; fi ;;

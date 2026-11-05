@@ -119,8 +119,13 @@ assert_contains "$(field "$out" "d['checks'][1]['detail']")" "https://gitlab.com
 git remote set-url origin git@github.com:acme/app.git
 # t-10ac: origin names a GitHub repo that is not there yet (set-url done before the repo exists): not a green "found, and private"
 out="$(PATH="$W/bin:$PATH" STUB_REPO=missing doctor)"
-assert_eq "bad|No GitHub repository for this project|git remote remove origin && gh repo create \"app\" --private --source=\"$project\" --remote=origin --push|" "$(check "$out" origin)"
-assert_contains "$(field "$out" "d['checks'][1]['detail']")" "acme/app is not on GitHub yet"
+assert_eq "bad|No GitHub repository for this project|nofix" "$(check "$out" origin)"   # acme is not the signed-in login (octo): no create command for someone else's name
+assert_contains "$(field "$out" "d['checks'][1]['detail']")" "GitHub has no acme/app for you"
+git remote set-url origin git@github.com:octo/app.git
+out="$(PATH="$W/bin:$PATH" STUB_REPO=missing doctor)"
+assert_eq "bad|No GitHub repository for this project|git remote remove origin && gh repo create \"app\" --private --source=\"$project\" --remote=origin --push|" "$(check "$out" origin)"   # owner is the signed-in login: create it
+assert_contains "$(field "$out" "d['checks'][1]['detail']")" "octo/app is not on GitHub yet"
+git remote set-url origin git@github.com:acme/app.git
 mkdir -p scripts; printf '#!/bin/sh\n' > scripts/test.sh; chmod +x scripts/test.sh
 git add scripts/test.sh; git -c user.name=t -c user.email=t@t commit -q -m tests
 before="$(git status --porcelain; git for-each-ref)"; : > "$STUB_LOG"
