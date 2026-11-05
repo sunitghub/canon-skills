@@ -914,7 +914,7 @@ async function launchToCloud(t, say) {
   try { await navigator.clipboard.writeText(typed); copied = true; } catch { copied = false; }
   const root = projectRootText(), where = root ? `${root} (the project's root folder, the one with .tickets/)` : 'the project\'s root folder';
   if (isWindowsBrowser()) {
-    say(copied ? `Copied. Windows: open PowerShell or Git Bash in ${where}, paste, and press Enter. The board's Terminal cannot start a cloud session on Windows yet.`
+    say(copied ? `Copied. Windows: open PowerShell or Git Bash in ${where}, paste, and press Enter. The board's Terminal cannot start a cloud session on Windows yet. Then close this panel: the card on the board follows the session.`
       : `Copy was blocked: type "${typed}" in PowerShell or Git Bash in ${where}. The board's Terminal cannot start a cloud session on Windows yet.`);
     if (copied) recordCloudCopy(t.id);   // a blocked copy launched nothing: the card keeps To Claude Cloud
     return;
@@ -923,7 +923,7 @@ async function launchToCloud(t, say) {
   await openTerminalPane('below', { fresh: true, typeLine: typed });
   recordCloudCopy(t.id);
   const here = root || 'the project\'s root folder';
-  say(copied ? `Copied. It is also typed in the Terminal in ${here}: press Enter. To run it elsewhere, paste it in a terminal window in ${here}.` : `Copy was blocked, but the command is typed in the Terminal in ${here}: press Enter.`);
+  say(copied ? `Copied. It is also typed in the Terminal in ${here}: press Enter. To run it elsewhere, paste it in a terminal window in ${here}. Then close this panel: the card on the board follows the session.` : `Copy was blocked, but the command is typed in the Terminal in ${here}: press Enter.`);
 }
 
 function showSent(panel, t, tab) {
@@ -931,7 +931,8 @@ function showSent(panel, t, tab) {
   panel.innerHTML = `<div class="ck-gh-box ck-gh-sent" id="ck-gh-sent">
       <h3>Sent ${esc(t.id)} as issue #${esc(n)}</h3>
       ${line ? `<p>Start a Claude cloud session on the canon environment and type:</p><pre class="ck-gh-pre ck-gh-prompt" id="ck-gh-prompt">${esc(line)}</pre>` : `<p>Start a Claude cloud session on the canon environment and point it at issue #${esc(n)}.</p>`}
-      <p>The card is in In progress and shows the next step.</p>
+      <p>The card moved to In progress and shows the next step.</p>
+      ${cmd ? `<p class="ck-gh-hint" id="ck-gh-hint">To Claude Cloud starts the session (on Windows it copies the command to paste); Copy command is for a terminal you open yourself; Copy prompt is the text above, for claude.ai/code.</p>` : ''}
       ${doctor.state === 'ready' ? '' : `<p class="ck-gh-prereq" id="ck-gh-prereq">First time on this repository? The cloud session needs the Claude GitHub App installed on it and the canon environment (Factory › GitHub › Cloud environment). After you change the environment's setup script, start a new session: an open one keeps the old script.</p>`}
       <div class="ck-gh-actions">${cmd ? `<button type="button" class="ck-gh-create" id="ck-gh-to-cloud" title="${escAttr(toCloudTip())}">To Claude Cloud</button><button type="button" id="ck-gh-copy-cmd" title="For a real terminal in this project; refused inside a Claude session">Copy command</button>` : ''}${line ? `<button type="button" id="ck-gh-copy">Copy prompt</button>` : ''}<span class="ck-gh-status" id="ck-gh-status" role="status"></span></div>
     </div>`;

@@ -16370,6 +16370,13 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
       await page.locator('#ck-worktree .ck-gh-row').click();
       await page.locator('#ck-gh-create').click();
       await expect(page.locator('#ck-gh-sent')).toContainText(`Sent ${id} as issue #57`);
+      // the Sent panel's wording and hover: no "in In progress", one line saying what each button does, and the plain buttons answer a hover
+      await expect(page.locator('#ck-gh-sent')).not.toContainText('in In progress');
+      await expect(page.locator('#ck-gh-hint')).toContainText('Copy command is for a terminal');
+      const copy = page.locator('#ck-gh-copy');
+      const bg0 = await copy.evaluate(e => getComputedStyle(e).backgroundColor);
+      await copy.hover();
+      expect(await copy.evaluate(e => getComputedStyle(e).backgroundColor)).not.toBe(bg0);
       const line = `tkt send-issue ${id} --launch`;
       await page.evaluate(async () => { (await import('/static/board-core.js')).state.isGitProject = true; });   // the fixture project is not a git repository
       await expect(page.locator('#ck-gh-to-cloud')).toHaveText('To Claude Cloud');
@@ -16377,6 +16384,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
       if (windows) {
         await expect.poll(() => page.evaluate(() => window.__copied)).toBe(line);
         await expect(page.locator('#ck-gh-status')).toContainText('PowerShell or Git Bash');
+        await expect(page.locator('#ck-gh-status')).toContainText('close this panel: the card on the board follows the session');   // the copy ends by saying you are done here
         // t-d0ed: it names the project's root (backslashes on Windows), not "the project folder"
         const root = await page.evaluate(async () => (await import('/static/board-core.js')).state.gitRoot);
         await expect(page.locator('#ck-gh-status')).toContainText(root.replace(/\//g, '\\') + ' (the project\'s root folder, the one with .tickets/)');
