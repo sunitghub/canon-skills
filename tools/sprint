@@ -848,6 +848,18 @@ _gate_integrity() {
   return 1
 }
 
+# _notice_handoff_focus — t-eecb: one line, never a refusal, when this project's HANDOFF.md has a Current Focus section with no text:
+# the wrapup step (skills/wrapup/SKILL.md) tells the agent to refresh it, and nothing checked that a close did. Nothing when the file or
+# the section is missing, or the section has text. Always returns 0.
+_notice_handoff_focus() {
+  local f; f="$(project_root)/HANDOFF.md"
+  [[ -f "$f" ]] || return 0
+  if awk 'BEGIN { has = 0; txt = 0 } /^##[ \t]+Current Focus[ \t\r]*$/ { has = 1; inf = 1; next } inf && /^##[ \t]/ { inf = 0 } inf && /[^ \t\r]/ && !/^[ \t]*<!--/ { txt = 1 } END { exit !(has && !txt) }' "$f"; then
+    echo "HANDOFF.md: Current Focus is empty; the wrapup step \"refresh HANDOFF.md\" fills it (this never blocks the close)"
+  fi
+  return 0
+}
+
 # _gate_caps <id> <ticket dir> — t-c990: every tools/caps.tsv row with a project path, measured before the evaluator (check-evidence)
 # and again at the close. A row over its cap prints its line and writes budget.exceeded (stage close); the close refuses only when this
 # branch changed that file (git diff from merge-base HEAD origin/main, uncommitted and untracked included), so an old HANDOFF.md or a
@@ -1030,6 +1042,7 @@ cmd_complete() {
   _gate_sprint_files        "$id" "$tdir" "$acceptance"  || exit 1
   _gate_acceptance_sections "$id" "$acceptance"          || exit 1
   _gate_wrapup_gates        "$id" "$acceptance"          || exit 1
+  _notice_handoff_focus
   _gate_no_unchecked        "$id" "$acceptance"          || exit 1
   _gate_plan_content        "$id" "$tdir/plan.md"        || exit 1
   _gate_visual_embed        "$id" "$tdir/plan.md" "$acceptance" || exit 1

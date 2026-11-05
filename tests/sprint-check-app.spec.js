@@ -20103,3 +20103,44 @@ test.describe('Projects card: a missing folder, a skill problem, git first (t-3b
     await expect(page.locator('#view-nog3')).toHaveCount(1);
   });
 });
+
+// t-eecb: the Logbook's Handoff tab shows what canon itself wrote between the canon:recent markers, first and read-only, and the
+// four handoff sections stay as they were. Prod path: the Logbook dialog (static/board-logbook.js, GET /api/logbook).
+test.describe('Logbook Handoff: Recent activity (t-eecb)', () => {
+  const NOTE = '_Written by canon from the activity log at plan approval, sprint close and merge; edits here are replaced._';
+  const SECS = '<!-- canon:handoff:BEGIN -->\n## Current Focus\n\n## In Progress\n\n## Discoveries\n\n## Next Steps\n\n<!-- canon:handoff:END -->\n';
+  const recent = lines => `# Handoff\n\n<!-- canon:recent:BEGIN -->\n## Recent activity\n\n${NOTE}\n\n${lines}<!-- canon:recent:END -->\n\n`;
+  const serve = (page, text) => page.route(/\/api\/logbook(\?|$)/, r => r.fulfill({ status: 200, contentType: 'application/json',
+    body: JSON.stringify({ handoff: { text, mtime: '2026-11-05T00:00:00Z' }, learnings: { missing: true }, promoted: { missing: true },
+      decisions: { missing: true }, learnings_archive: { missing: true } }) }));
+  const open = async page => { await page.goto(BASE); await page.waitForLoadState('networkidle'); await page.locator('#btn-logbook').click();
+    await expect(page.locator('#logbook-overlay')).toHaveClass(/open/); };
+  const titles = page => page.locator('#logbook-overlay .lb-sec h3').evaluateAll(hs => hs.map(h => h.firstChild.textContent.trim()));
+
+  test('the canon-written activity is the first section, in file order, without its note line, and its text is escaped', async ({ page }) => {
+    await serve(page, recent('- 11-05 09:47 · t-c662 · sprint completed\n- 11-05 09:46 · t-c662 · evaluator pass (claude-sonnet-5)\n- 11-05 09:24 · t-c662 · <img src=x onerror=window.__pwned=1> plan approved\n') + SECS);
+    await open(page);
+    expect(await titles(page)).toEqual(['Recent activity', 'Current Focus', 'In Progress', 'Discoveries', 'Next Steps']);
+    const items = page.locator('.lb-recent li');
+    await expect(items).toHaveCount(3);
+    await expect(items.nth(0)).toHaveText('11-05 09:47 · t-c662 · sprint completed');
+    await expect(items.nth(1)).toContainText('evaluator pass');
+    await expect(page.locator('.lb-recent')).not.toContainText('Written by canon');   // the note line is not an activity line
+    await expect(page.locator('.lb-recent .lb-gen')).toContainText('written by canon');
+    await expect(page.locator('.lb-recent img')).toHaveCount(0);                      // text, never markup
+    expect(await page.evaluate(() => window.__pwned)).toBeUndefined();
+    await expect(page.locator('.lb-sec', { hasText: 'Current Focus' }).locator('.lb-none')).toHaveText('Empty.');   // the four sections read as before
+  });
+
+  test('no recent block, or a block with no lines, adds no Recent activity section', async ({ page }) => {
+    await serve(page, '# Handoff\n\n' + SECS);
+    await open(page);
+    expect(await titles(page)).toEqual(['Current Focus', 'In Progress', 'Discoveries', 'Next Steps']);
+    await page.unroute(/\/api\/logbook(\?|$)/);
+    await serve(page, recent('') + SECS);
+    await page.locator('#lb-close').click();
+    await open(page);
+    expect(await titles(page)).toEqual(['Current Focus', 'In Progress', 'Discoveries', 'Next Steps']);
+    await expect(page.locator('.lb-recent')).toHaveCount(0);
+  });
+});

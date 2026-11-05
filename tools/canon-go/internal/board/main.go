@@ -1450,23 +1450,7 @@ func loadHandoff(root string) map[string]any {
 		return map[string]any{"focus": nil, "raw": ""}
 	}
 	text := string(raw)
-	focus := ""
-	if m := currentFocusRe.FindStringSubmatch(text); m != nil {
-		lines := []string{}
-		for _, line := range strings.Split(strings.TrimSpace(m[1]), "\n") {
-			line = strings.TrimSpace(line)
-			if line != "" && !strings.HasPrefix(line, "<!--") {
-				lines = append(lines, line)
-			}
-			if len(lines) == 3 {
-				break
-			}
-		}
-		focus = strings.Join(lines, " ")
-		if len(focus) > 80 {
-			focus = focus[:80]
-		}
-	}
+	focus := currentFocusOf(text)
 	var focusAny any
 	if focus != "" {
 		focusAny = focus
@@ -2330,7 +2314,6 @@ var (
 	checkboxItemRe      = regexp.MustCompile(`(?m)^\s*[-*]\s+\[[ xX]\]\s+\S`)
 	uncheckedItemRe     = regexp.MustCompile(`(?m)^\s*[-*]\s+\[ \]\s+\S`)
 	docSuffixRe         = regexp.MustCompile(`^.+-(blueprint|acceptance|plan|decisions|qa|notes)$`)
-	currentFocusRe      = regexp.MustCompile(`(?s)##\s+Current Focus\s*\n+(.+?)(?:\n##|\z)`)
 	ticketRefGroupRe    = regexp.MustCompile(`\b([A-Za-z]+-[a-z0-9]{3,})\b`)
 	ticketRefRe         = regexp.MustCompile(`\b[A-Za-z]+-[a-z0-9]{3,}\b`)
 	statusFieldRe       = regexp.MustCompile(`(?m)^(status:\s*)(\S+)$`)
@@ -6306,4 +6289,31 @@ func emitProjectSetting(r *http.Request, root, name, old, new string) {
 		abs = root
 	}
 	events.EmitActor(events.Home(), "setting.changed", "board", actor, resolvedOrAbs(abs), map[string]string{"name": name, "old": old, "new": new})
+}
+
+// currentFocusOf is the first three non-blank, non-comment lines of HANDOFF.md's `## Current Focus` section, joined and cut to 80
+// characters; "" when the section is missing or empty (t-eecb: an empty section must never read as the next heading).
+func currentFocusOf(text string) string {
+	in, lines := false, []string{}
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "##") {
+			if in {
+				break
+			}
+			in = strings.TrimSpace(strings.TrimLeft(line, "#")) == "Current Focus" && strings.HasPrefix(line, "## ")
+			continue
+		}
+		if in && line != "" && !strings.HasPrefix(line, "<!--") {
+			lines = append(lines, line)
+			if len(lines) == 3 {
+				break
+			}
+		}
+	}
+	focus := strings.Join(lines, " ")
+	if len(focus) > 80 {
+		focus = focus[:80]
+	}
+	return focus
 }

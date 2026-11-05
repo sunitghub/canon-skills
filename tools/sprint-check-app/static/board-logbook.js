@@ -41,6 +41,15 @@ function parseHandoff(text) {
   return out.map(s => ({ title: s.title, body: s.body.join('\n').trim() }));
 }
 
+// t-eecb: the lines canon itself wrote between the canon:recent markers ("- 11-05 09:47 · t-c662 · sprint completed"), in file order.
+// Not a section of the handoff block (edits there are replaced), so it is parsed apart and shown read-only. None: [].
+function parseRecent(text) {
+  const a = text.indexOf('<!-- canon:recent:BEGIN -->');
+  if (a < 0) return [];
+  return between(text, '<!-- canon:recent:BEGIN -->', '<!-- canon:recent:END -->').split('\n')
+    .map(l => l.trim()).filter(l => l.startsWith('- ')).map(l => l.slice(2).trim()).filter(Boolean);
+}
+
 const el = id => document.getElementById(id);
 
 function fileState(f, name) {
@@ -55,8 +64,11 @@ function renderHandoff() {
   const st = fileState(f, 'HANDOFF.md');
   if (st) return st;
   const secs = parseHandoff(f.text);
-  if (!secs.length) return '<div class="lb-empty">HANDOFF.md has no sections between its markers.</div>';
-  return secs.map((s, i) => '<section class="lb-sec' + (i === 0 && /^current focus$/i.test(s.title) ? ' lb-focus' : '') + '"><h3>' + esc(s.title) + '</h3><div class="lb-md">'
+  const recent = parseRecent(f.text);
+  const recentHtml = recent.length ? '<section class="lb-sec lb-recent"><h3>Recent activity <span class="lb-gen">written by canon from the activity log</span></h3><div class="lb-md"><ul>'
+    + recent.map(l => '<li>' + esc(l) + '</li>').join('') + '</ul></div></section>' : '';
+  if (!secs.length) return recentHtml || '<div class="lb-empty">HANDOFF.md has no sections between its markers.</div>';
+  return recentHtml + secs.map((s, i) => '<section class="lb-sec' + (i === 0 && /^current focus$/i.test(s.title) ? ' lb-focus' : '') + '"><h3>' + esc(s.title) + '</h3><div class="lb-md">'
     + (s.body ? safeMd(s.body) : '<p class="lb-none">Empty.</p>') + '</div></section>').join('');
 }
 

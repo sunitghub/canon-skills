@@ -6,6 +6,15 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+Board page and daemon page: run `canon update` and reload the board; no daemon restart is needed.
+
+### Fixed
+- The board's left rail no longer shows "## In Progress" as the Current Focus when `HANDOFF.md`'s Current Focus is empty; it says "No HANDOFF.md Current Focus found."
+
+### Added
+- The Logbook's Handoff tab shows **Recent activity** first: the lines canon writes from the activity log at plan approval, sprint close and merge (for example "t-c662 · sprint completed"), read-only. It appears only when canon wrote some.
+- `sprint complete` prints one non-blocking line when `HANDOFF.md`'s Current Focus is empty, naming the wrapup step that fills it. It never refuses a close.
+
 ## [0.46.2] - 2026-11-05
 
 Board page: run `canon update` and reload the board; no daemon restart is needed.
