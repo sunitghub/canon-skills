@@ -109,6 +109,17 @@
       ],
       "ticket": "t-8aa6",
       "reason": "failed 1 of 3 (webkit) in t-d0ed's full run at 260ae720 (2026-11-05): the clipboard write had not happened after 5 s (a click that did not land under load); passed 2 of 2 in the other runs and 3 of 3 alone on the branch; the failing step is the part of the spec t-d0ed did not change"
+    },
+    {
+      "title": "Tags (t-37e8) > cards show three chips and +n; the modal edits tags from the dropdown, saves them, and a closed ticket is read-only (t-37e8) @webkit",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "30 s webkit locator.click timeout in a full run (1/3 runs at 64c6a0ff, 2026-11-05); passed alone 3/3 on the branch and 3/3 on 91bb9366 (run-board-spec --classify)",
+      "failed_runs": {
+        "webkit": "1/3"
+      }
     }
   ],
   "skipped": []
