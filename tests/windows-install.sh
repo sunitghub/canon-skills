@@ -57,7 +57,13 @@ if code "$PS1" | grep -E '^\s*exit\b' >/dev/null; then fail "install.ps1 uses ex
 
 # Finish-mode PATH logic still adds tools\ to the user PATH without duplicating.
 code "$PS1" | grep 'SetEnvironmentVariable("PATH", $nextUserPath, "User")' >/dev/null || fail "finish mode no longer sets the user PATH"
-code "$PS1" | grep "notcontains \$ToolsPath" >/dev/null || fail "finish mode no longer guards against duplicate PATH entries"
+# t-b213: the tools folder is put FIRST and any earlier copy of it dropped (so never duplicated), the user PATH is written only when it changed,
+# and another folder holding a tkt is named, not removed (the PowerShell itself is proven by the Windows run).
+code "$PS1" | grep 'function Move-ToolsFirst' >/dev/null || fail "install.ps1 no longer puts the tools folder first on PATH"
+code "$PS1" | grep -F -- "-ne \$Tools.TrimEnd" >/dev/null || fail "install.ps1 no longer drops an earlier copy of the tools folder (duplicate PATH entries)"
+code "$PS1" | grep -F 'if ($nextUserPath -ne $UserPath)' >/dev/null || fail "install.ps1 rewrites the user PATH even when nothing changed"
+if code "$PS1" | grep -E 'SetEnvironmentVariable\("PATH", *\$[a-z]+, *"User"\)' | grep -v 'nextUserPath' >/dev/null; then fail "install.ps1 writes a user PATH other than the reordered one"; fi
+code "$PS1" | grep -F 'Another folder with a tkt is on your user PATH' >/dev/null || fail "install.ps1 no longer names another folder with a tkt"
 
 # install.cmd fetches install.ps1 when it is not beside it.
 code "$CMD" | grep 'curl.exe' >/dev/null || fail "install.cmd does not download install.ps1 when missing"
