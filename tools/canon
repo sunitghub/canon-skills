@@ -86,10 +86,27 @@ never need or print a session token.
 EOF
 }
 
+# t-b213: the tkt that PATH finds is not this install's: an older canon folder is ahead on PATH (the Windows VM ran a 0.37.0 tkt with no
+# send-issue after an update). Says so once, naming both; nothing when they match, when no tkt is on PATH, or when it cannot tell.
+# Nothing on PATH is changed or removed.
+warn_stale_tkt_path() {
+  local found fdir here
+  found="$(command -v tkt 2>/dev/null)" || return 0
+  [ -n "$found" ] || return 0
+  fdir="$(cd "$(dirname "$found")" 2>/dev/null && pwd -P)" || return 0
+  here="$(cd "$SCRIPT_DIR" 2>/dev/null && pwd -P)" || return 0
+  [ "$fdir" != "$here" ] || return 0
+  {
+    echo "canon update: the tkt on your PATH is $found, not this install's $here/tkt."
+    echo "  An older canon folder comes first on your PATH, so tkt, sprint and canon may run an older version."
+    echo "  Remove $fdir from your PATH (Windows: Settings > Environment Variables > Path), then open a new terminal."
+  } >&2
+}
+
 # Refresh every project registered in the Cockpit; exit 1 if any refresh failed.
 refresh_projects() {
   local registry="${CANON_HOME:-$HOME/.canon}/cockpit/projects.json"
-  [ -f "$registry" ] || { echo "No Cockpit projects registered. Nothing to refresh."; exit 0; }
+  [ -f "$registry" ] || { echo "No Cockpit projects registered. Nothing to refresh."; warn_stale_tkt_path; exit 0; }
   local failed=0 raw p outfile rc; outfile="$(mktemp)"
   # The board writes this file: pull each "path" string and undo JSON escaping (\\, \", \/).
   while IFS= read -r raw; do
@@ -109,6 +126,7 @@ refresh_projects() {
     else echo "  refresh FAILED: $p (run: skills.sh refresh \"$p\")"; echo "    $(tail -n 1 "$outfile")"; failed=1; fi
   done < <(grep -oE '"path"[[:space:]]*:[[:space:]]*"([^"\\]|\\.)*"' "$registry")
   rm -f "$outfile"
+  [ "$failed" != 0 ] || warn_stale_tkt_path   # t-b213: the last thing a successful update says (every success ends here)
   exit "$failed"
 }
 

@@ -17,7 +17,10 @@ trap 'rm -rf "$WORK"' EXIT
 # run (Git Bash) that assumption fails at the first update, so the platform is pinned here; t-9383's section fakes Windows per call
 # with its own stub, which comes first in PATH and still wins.
 REAL_UNAME="$(command -v uname)"; LSTUB="$WORK/linuxstub"; mkdir -p "$LSTUB"
-printf '#!/bin/sh\ncase "$1" in -s) echo Linux ;; *) exec "%s" "$@" ;; esac\n' "$REAL_UNAME" > "$LSTUB/uname"; chmod +x "$LSTUB/uname"; export PATH="$LSTUB:$PATH"
+printf '#!/bin/sh\ncase "$1" in -s) echo Linux ;; *) exec "%s" "$@" ;; esac\n' "$REAL_UNAME" > "$LSTUB/uname"; chmod +x "$LSTUB/uname"; # t-b213: `canon update` now warns when the tkt on PATH is not the install's, and a developer's own canon/tools is on PATH: the throwaway
+# installs here run with a PATH that holds no tkt, so a section sets one on purpose.
+CLEAN_PATH="$(printf '%s' "$PATH" | tr ':' '\n' | while IFS= read -r d; do [ -e "$d/tkt" ] || printf '%s:' "$d"; done)"; PATH="${CLEAN_PATH%:}"
+export PATH="$LSTUB:$PATH"
 g() { git -C "$1" "${@:2}" >/dev/null 2>&1; }
 ident=(-c user.email=t@example.com -c user.name=test)
 # t-d744: the plain-words main-track notice (tools/canon main_track_note; install.ps1 prints the same lines, install.sh leaves them to canon update)
@@ -511,6 +514,34 @@ assert_eq "2" "$code"; [[ ! -e "$WORK/git.calls" ]] || fail "canon-update: a bad
 grep -q '\.canon-track' "$ROOT/install.ps1" || fail "canon-update: install.ps1 does not read the track marker"
 grep -q 'Get-CanonLatestRelease' "$ROOT/install.ps1" || fail "canon-update: install.ps1 cannot resolve the latest release"
 echo "canon-update: plain update follows the latest verified release; --to main is the remembered opt-in; a rollback is not sticky; every refusal changes nothing (t-65c9)"
+
+# t-b213: after an update, the tkt that PATH finds must be this install's. An older canon folder ahead of it is named in one warning
+# (the Windows VM ran a 0.37.0 tkt with no send-issue); a match, no tkt on PATH, a link to this folder, or a refused update say nothing.
+printf '#!/bin/sh\necho tkt\n' > "$WORK/seed/tools/tkt"; chmod +x "$WORK/seed/tools/tkt"
+git -C "$WORK/seed" "${ident[@]}" add -A && git -C "$WORK/seed" "${ident[@]}" commit -qm "tkt" && git -C "$WORK/seed" push -q origin main 2>/dev/null
+I5="$WORK/i5"; git clone -q "$WORK/origin.git" "$I5" 2>/dev/null; maintrack "$I5"
+STALE="$WORK/stale-tools"; mkdir -p "$STALE"; printf '#!/bin/sh\necho old\n' > "$STALE/tkt"; chmod +x "$STALE/tkt"
+HERE5="$(cd "$I5/tools" && pwd -P)"; STALE5="$(cd "$STALE" && pwd -P)"
+BARE="$LSTUB:/usr/bin:/bin"
+set +e; out="$(PATH="$STALE:$I5/tools:$BARE" "$I5/tools/canon" update 2>&1)"; code=$?; set -e
+assert_eq "0" "$code"
+assert_contains "$out" "the tkt on your PATH is $STALE/tkt, not this install's $HERE5/tkt."
+assert_contains "$out" "Remove $STALE5 from your PATH"
+assert_eq "Remove" "$(printf '%s\n' "$out" | tail -n1 | sed -E 's/^ +//; s/ .*//')"   # the warning is the last thing it says
+# a fresh install has no registry of projects: that path ends the update too, and warns too
+mkdir -p "$WORK/emptyhome"
+out="$(CANON_HOME="$WORK/emptyhome" PATH="$STALE:$I5/tools:$BARE" "$I5/tools/canon" update 2>&1)"
+assert_contains "$out" "No Cockpit projects registered. Nothing to refresh."; assert_contains "$out" "the tkt on your PATH is $STALE/tkt"
+for ok in "$I5/tools:$STALE:$BARE" "$BARE"; do
+  out="$(PATH="$ok" "$I5/tools/canon" update 2>&1)"; refute_contains "$out" "the tkt on your PATH"
+done
+ln -s "$I5/tools" "$WORK/linkdir"
+out="$(PATH="$WORK/linkdir:$STALE:$BARE" "$I5/tools/canon" update 2>&1)"; refute_contains "$out" "the tkt on your PATH"
+echo edit >> "$I5/NEWS"   # a refused update warns about nothing else
+set +e; out="$(PATH="$STALE:$I5/tools:$BARE" "$I5/tools/canon" update 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"; refute_contains "$out" "the tkt on your PATH"
+git -C "$I5" checkout -q -- NEWS 2>/dev/null || rm -f "$I5/NEWS"
+echo "canon-update: a stale tkt ahead on PATH is named once after an update; a match, no tkt, a link or a refused update say nothing (t-b213)"
 
 ps="$("$CANON" completion powershell)"
 for w in Register-ArgumentCompleter status sessions stop restart wait update uninstall --dry-run --keep-data --yes completion version help needs-you working done idle exited --json --force --until --timeout --project; do

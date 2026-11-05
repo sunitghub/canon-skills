@@ -225,15 +225,26 @@ if (-not $Bootstrap) {
   Write-Host ""
 }
 
-$CurrentPath = [Environment]::GetEnvironmentVariable("PATH", "Process")
-if (($CurrentPath -split ';') -notcontains $ToolsPath) {
-  $env:PATH = "$CurrentPath;$ToolsPath"
+# t-b213: this install's tools folder goes FIRST on PATH, moved and never duplicated. An older canon folder ahead of it ran a tkt with
+# no send-issue (Windows VM, 0.37.0). Any other entry that holds a tkt is named, never removed: it may be a checkout the user keeps.
+function Move-ToolsFirst([string]$PathValue, [string]$Tools) {
+  $rest = @($PathValue -split ';' | Where-Object { $_ -and ($_.TrimEnd('\') -ne $Tools.TrimEnd('\')) })
+  return (@($Tools) + $rest) -join ';'
 }
 
+$CurrentPath = [Environment]::GetEnvironmentVariable("PATH", "Process")
+$nextProcessPath = Move-ToolsFirst $CurrentPath $ToolsPath
+if ($nextProcessPath -ne $CurrentPath) { $env:PATH = $nextProcessPath }
+
 $UserPath = [Environment]::GetEnvironmentVariable("PATH", "User")
-if (($UserPath -split ';') -notcontains $ToolsPath) {
-  $nextUserPath = if ([string]::IsNullOrWhiteSpace($UserPath)) { $ToolsPath } else { "$UserPath;$ToolsPath" }
+$nextUserPath = Move-ToolsFirst $UserPath $ToolsPath
+if ($nextUserPath -ne $UserPath) {
   [Environment]::SetEnvironmentVariable("PATH", $nextUserPath, "User")
+}
+foreach ($entry in @($UserPath -split ';' | Where-Object { $_ -and ($_.TrimEnd('\') -ne $ToolsPath.TrimEnd('\')) })) {
+  if (Test-Path -LiteralPath (Join-Path $entry 'tkt')) {
+    Write-Warning "Another folder with a tkt is on your user PATH: $entry. If it is an older canon, remove it (Settings > Environment Variables > Path); canon leaves it as it is."
+  }
 }
 
 if (-not $Bootstrap -and -not (Get-Command bash -ErrorAction SilentlyContinue)) {
