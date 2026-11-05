@@ -5590,6 +5590,19 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
+    // t-d0ed (reviewer): at the default 230 px rail the longest row, a Needs-you one with its pill, still shows a readable name.
+    test('the default rail keeps a Needs-you row\'s name readable (t-d0ed) @webkit', async ({ page }) => {
+      await openShell(page, stateRows());
+      await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return pollSessions(); });
+      const row = page.locator('#ag-list .ag-row', { hasText: 't-aaa1' });
+      await expect(row.locator('.ag-pill')).toHaveText('Needs you');
+      expect(Math.round((await page.locator('aside.side').boundingBox()).width), 'the default rail').toBe(230);
+      await expect(row.locator('.ag-age')).toBeHidden();
+      const name = await row.locator('.ag-t1').evaluate(el => ({ w: el.clientWidth, cut: el.scrollWidth > el.clientWidth }));
+      expect(name.w, `the name keeps room beside the pill (${name.w}px)`).toBeGreaterThanOrEqual(85);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     // t-3c9a: Reap now / Kill from the Agents row menu and Admin. The shell frames the daemon's /relay page; here a fake
     // relay at the stub daemon's address records every message it is sent and answers as the test says.
     const endRows = () => [
@@ -17016,6 +17029,27 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator(`.card[data-id="${id}"] .card-gh-btn`, { hasText: 'To Claude Cloud' })).toHaveAttribute('title', /^Copies the command: paste it in PowerShell or Git Bash/);
   });
 
+  // t-d0ed (reviewer): a copy the browser blocked launched nothing, so the card keeps To Claude Cloud; a copy that worked becomes Started?.
+  test('on Windows a blocked copy keeps To Claude Cloud and a successful copy shows Started? (t-d0ed)', async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(Navigator.prototype, 'platform', { get: () => 'Win32' });
+      Object.defineProperty(Navigator.prototype, 'userAgentData', { get: () => ({ platform: 'Windows' }) });
+      window.__allow = false;
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText: async () => { if (!window.__allow) throw new Error('blocked'); } }, configurable: true });
+    });
+    const id = newTicketId(PROJECT_ROOT);   // a real t-xxxx id: the launch refuses any other
+    ghTicket(id, { github: 'acme/app#57' });
+    await routeStatus(page, id, { stage: 'sent' });
+    await openBoard(page, id);
+    const btn = page.locator(`.card[data-id="${id}"] .card-gh-btn`).first();
+    await expect(btn).toHaveText('To Claude Cloud');
+    await btn.click();
+    await expect(page.locator(`.card[data-id="${id}"] .card-gh-btn`).first(), 'blocked copy: nothing was launched').toHaveText('To Claude Cloud');
+    await page.evaluate(() => { window.__allow = true; });
+    await page.locator(`.card[data-id="${id}"] .card-gh-btn`).first().click();
+    await expect(page.locator(`.card[data-id="${id}"] .card-gh-btn`).first()).toHaveText('Started?');
+  });
+
   // Prod path: a card whose session pushed a branch with no PR (github-status stage "branch"), and its Create PR button (t-9955).
   test('a session branch with no PR shows Create PR; it asks, names the branch, and opens once (t-24b1)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gh24b');
@@ -17046,7 +17080,8 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   // same To Claude Cloud as the Sent panel (launchToCloud), the line typed in a Terminal and never sent; Issue ↗ stays.
   test('a sent card offers To Claude Cloud and Issue; the click types the launch line without sending it (t-d7b7) @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT);   // a real t-xxxx id: the launch refuses any other
-    ghTicket(id, { github: 'acme/app#57' });
+    ghTicket(id, { status: 'in_progress', github: 'acme/app#57' });   // in progress, with a lock left by an earlier local session (its chip said "Main checkout")
+    await page.route(`**/api/worktree-lock/${id}`, r => json(r, { locked: true, cwd: PROJECT_ROOT }));
     await routeStatus(page, id, { stage: 'sent' });
     await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
     await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>cockpit<script>window.__msgs=[];window.addEventListener("message",function(e){window.__msgs.push(e.data)});</script></body></html>' }));
@@ -17054,7 +17089,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await openBoard(page, id);
     const card = page.locator(`.card[data-id="${id}"]`);
     await expect(card.locator('.card-gh-chip')).toHaveText('GitHub #57 · sent');
-    await expect(card.locator('.card-wt-pref'), 't-d0ed (t-c8c8): a card that runs on GitHub has no Worktree line').toHaveCount(0);
+    await expect(card.locator('.card-wt-pref, .card-wt-chip'), 't-d0ed (t-c8c8): a card that runs on GitHub has no Worktree line or chip').toHaveCount(0);
     const btns = card.locator('.card-gh-btn');
     await expect(btns).toHaveText(['To Claude Cloud', 'Issue ↗']);
     // both buttons lie inside the card and share one row
@@ -17072,7 +17107,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     // t-d0ed (t-c8c8): canon cannot see a cloud start, so after the copy the card offers a quieter Started? and asks before copying again.
     await expect(btns).toHaveText(['Started?', 'Issue \u2197']);
     await expect(btns.first()).toHaveClass(/quiet/);
-    await expect(btns.first()).toHaveAttribute('title', /^Copied at .+\. If you started it, the card moves on once the session pushes; click to copy again$/);
+    await expect(btns.first()).toHaveAttribute('title', /^Command ready at .+\. If you started it, the card moves on once the session pushes; click to copy again$/);
     await page.evaluate(() => { window.__copied = null; });
     await btns.first().dispatchEvent('click');   // the Terminal pane the first click opened covers the board's lower half
     await expect(page.locator('#gh-dialog')).toContainText('A cloud session may already be running for issue #57. Start another one?');

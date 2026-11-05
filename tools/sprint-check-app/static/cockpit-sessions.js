@@ -232,7 +232,7 @@ function notStartedScratch(live){
   }
   return out;
 }
-// t-aca6: the sidebar's third line and Admin's sub-line: the project and the time spent in the session so far.
+// t-aca6: a row's accessible name and Admin's sub-line: the project and the time spent in the session so far.
 // tip spells everything out (the row's accessible name); dur is the one-unit-pair duration the Admin table reuses.
 export function sessionTime(v){
   const proj=v.projName||v.name;
@@ -242,7 +242,7 @@ export function sessionTime(v){
   return { tip:proj+' \u2014 '+dur+' in session (started '+at+')', dur };
 }
 // t-d0ed: the Agents row's pieces. The agent's name in words, the age in one unit, and the state as a glyph (ring working, solid done,
-// hollow idle or not started, an orange "Needs you" pill); the words move into the row's tooltip (agentLine).
+// hollow idle or not started, an orange "Needs you" pill); the words move into the row's accessible name (agentLine).
 const AGENT_NAME={claude:'Claude',copilot:'Copilot',pi:'Pi',term:'Terminal'};
 export const agentName=a=>AGENT_NAME[a]||'';
 export function ageShort(secs){ return secs<60 ? '<1m' : secs<3600 ? Math.floor(secs/60)+'m' : secs<86400 ? Math.floor(secs/3600)+'h' : Math.floor(secs/86400)+'d'; }

@@ -126,7 +126,7 @@ export function ghButtonHTML(t) {
   // To Claude Cloud as the Sent panel's (launchToCloud): the line is typed in a Terminal, never run for you.
   if (st.stage === 'sent') {
     const at = cloudCopied.get(t.id);
-    const started = at ? btn('started', 'Started?', `Copied at ${new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}. If you started it, the card moves on once the session pushes; click to copy again`).replace('card-start card-gh-btn', 'card-start card-gh-btn quiet') : '';
+    const started = at ? btn('started', 'Started?', `Command ready at ${new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}. If you started it, the card moves on once the session pushes; click to copy again`).replace('card-start card-gh-btn', 'card-start card-gh-btn quiet') : '';
     return (started || btn('to-cloud', 'To Claude Cloud', toCloudTip())) + issue;
   }
   return issue;
@@ -855,7 +855,7 @@ async function launchToCloud(t, say) {
   if (isWindowsBrowser()) {
     say(copied ? `Copied. Windows: open PowerShell or Git Bash in ${where}, paste, and press Enter. The board's Terminal cannot start a cloud session on Windows yet.`
       : `Copy was blocked: type "${typed}" in PowerShell or Git Bash in ${where}. The board's Terminal cannot start a cloud session on Windows yet.`);
-    recordCloudCopy(t.id);
+    if (copied) recordCloudCopy(t.id);   // a blocked copy launched nothing: the card keeps To Claude Cloud
     return;
   }
   // t-3d04: also copied, so it is ready to paste while the Terminal starts; t-ccf5: below, so the caller's panel stays on screen

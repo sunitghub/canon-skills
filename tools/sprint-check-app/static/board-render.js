@@ -840,7 +840,7 @@ function cardHTML(t, idx, inNow) {
         ${t.status === 'closed' ? `<button class="card-archive" data-id="${esc(t.id)}" title="Archive this ticket">archive</button>` : ''}
         <p class="card-title">${esc(t.title)}</p>
         ${ticketTags(t).length ? `<div class="card-tags">${tagChipsHTML(ticketTags(t), 3)}</div>` : ''}
-        ${t.status === 'in_progress' ? `<span class="card-wt-chip" data-id="${esc(t.id)}"></span>` : ''}
+        ${t.status === 'in_progress' && !ghOut(t) ? `<span class="card-wt-chip" data-id="${esc(t.id)}"></span>` : ''}
         ${ghChipHTML(t)}
         ${run ? `<div class="card-wt-pref card-wt-run" title="In progress in worktree ${escAttr(run.branch)} (this checkout's copy still says open until the branch merges).">Worktree: ${esc(run.branch)}</div>` : divergenceLine(t)}
       </div>

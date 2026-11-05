@@ -124,7 +124,7 @@
   .ad-table .acts{display:flex;gap:6px;justify-content:flex-end}
   .side{min-height:0} .side .foot,.side .nav{flex-shrink:0} /* a long Agents list scrolls; the footer stays put */
   .agents{padding:0 10px 6px;display:flex;flex-direction:column;gap:2px;overflow-y:auto;min-height:0;container:ag/inline-size}   /* t-d0ed: the rail is resizable, so a row's extras hide by the list's own width */
-  /* t-e69b: rows follow the t-f139 mockup — dot | id + title | agent code, state line below */
+  /* t-d0ed: one line per row — icon | id + title | agent type | age | state glyph */
   .ag-label{display:flex;justify-content:space-between;align-items:baseline;padding-right:18px;border-top:1px solid var(--border-muted);margin-top:8px;padding-top:14px;font-size:14px;letter-spacing:0;text-transform:none;color:var(--text-body)}
   .ag-label span+span{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-muted)}
   .ag-empty{font-size:12px;color:var(--text-muted);padding:4px 8px}
@@ -158,7 +158,7 @@
   .st-not-started .ag-t1{font-style:italic;color:var(--text-muted)}
   @media (prefers-reduced-motion:reduce){.ag-ring{animation:none}}
   @container ag (max-width:260px){.ag-row .ag-at{display:none}}
-  @container ag (max-width:200px){.ag-row .ag-age{display:none}}
+  @container ag (max-width:240px){.ag-row .ag-age{display:none}.ag-row{column-gap:6px}.ag-row .ag-pill{font-size:10px;padding:1px 5px}}   /* the default 230px rail: a Needs-you pill leaves the name about 90px */
   .ad-reaper{font-size:12px;color:var(--text-muted);padding:0 14px 8px}
   /* the session table needs more room than the 620px Admin column; it grows right, and scrolls when the window can't fit it */
   #view-admin .sessions{margin-bottom:16px}
