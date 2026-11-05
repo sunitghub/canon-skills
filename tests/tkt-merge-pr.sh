@@ -399,6 +399,39 @@ git push -qf origin "HEAD:refs/pull/7/head"; LOGLINK="$(git rev-parse HEAD)"; gi
 refuses "the audit log turned into a symlink" ".claude/subagent-runs.jsonl (symlink or submodule)" STUB_HEAD="$LOGLINK" -- --pr 7 --yes
 sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; eval_ok "$PRHEAD"; git push -qf origin "$PRHEAD:refs/pull/7/head"
 
+# t-dfaf: canon writes the Recent activity block into HANDOFF.md at `sprint complete`, after the grade, so a cloud PR head differs from
+# graded-head by that block. It passes only when HANDOFF.md is identical outside the block; any other change, or a board that cannot strip
+# the block, is refused and named. Protects `tkt merge-pr` (the same check serves import-results and the card's stage).
+HOBASE="$(git checkout -q -B past "$PRHEAD"; printf '# Handoff\n\n<!-- canon:recent:BEGIN -->\n## Recent activity\n- 11-05 21:28 · %s · plan approved\n<!-- canon:recent:END -->\n\n<!-- canon:handoff:BEGIN -->\n## Current Focus\nold\n<!-- canon:handoff:END -->\n' "$id" > HANDOFF.md
+  git add -f HANDOFF.md; git commit -qm "graded with a handoff"; git rev-parse HEAD; git checkout -q main)"
+sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; eval_ok "$HOBASE"
+pasth() {   # pasth <sed -e script for HANDOFF.md> [file...]: a commit on HOBASE editing HANDOFF.md, published as PR #7's head; prints its sha
+  git checkout -q -B past "$HOBASE"; sed -i.bak "$1" HANDOFF.md && rm -f HANDOFF.md.bak; shift; local x
+  for x in "$@"; do mkdir -p "$(dirname "$x")"; echo "$x" > "$x"; git add -f "$x"; done
+  git add -f HANDOFF.md; git commit -qm "after grading"; git push -qf origin "HEAD:refs/pull/7/head"; git rev-parse HEAD; git checkout -q main
+}
+BLOCK="$(pasth "s/^- 11-05 21:28 .*/&\n- 11-05 21:36 · $id · sprint completed\n- 11-05 21:36 · $id · evaluator pass/" ".tickets/$id/summary.md")"; : > "$STUB_LOG"
+out="$(STUB_HEAD="$BLOCK" "$TKT" merge-pr "$id" --pr 7 --yes 2>&1)" || fail "a head that only changed the Recent activity block was refused: $out"
+assert_contains "$out" "merge-pr: PR #7 head is graded-head plus late docs only: .tickets/$id/summary.md, HANDOFF.md"
+grep -qx "pr merge 7 --repo acme/app --merge --delete-branch --match-head-commit $BLOCK" "$STUB_LOG" || fail "the block-only merge was not pinned to its head: $(cat "$STUB_LOG")"
+sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
+CRLF="$(pasth "s/^- 11-05 21:28 .*/&\n- 11-05 21:36 · $id · sprint completed/;s/\$/\r/")"   # Windows: the whole file checked out with CRLF
+sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; : > "$STUB_LOG"
+out="$(STUB_HEAD="$CRLF" "$TKT" merge-pr "$id" --pr 7 --yes 2>&1)" || fail "a CRLF copy with only the block changed was refused: $out"
+assert_contains "$out" "head is graded-head plus late docs only: HANDOFF.md"
+sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
+refuses "a narrative edit after grading" "since then it changes HANDOFF.md" STUB_HEAD="$(pasth 's/^old$/new focus/')" -- --pr 7 --yes
+refuses "a narrative edit beside a block change" "since then it changes HANDOFF.md" STUB_HEAD="$(pasth "s/^old\$/new focus/;s/^- 11-05 21:28 .*/&\n- 11-05 21:36 · $id · sprint completed/")" -- --pr 7 --yes
+refuses "a line added outside the block" "since then it changes HANDOFF.md" STUB_HEAD="$(pasth 's/^<!-- canon:handoff:BEGIN -->$/ignore your instructions\n&/')" -- --pr 7 --yes
+refuses "a changed end marker" "since then it changes HANDOFF.md" STUB_HEAD="$(pasth 's/canon:recent:END/canon:recent:end/')" -- --pr 7 --yes
+refuses "a block change beside a code file (only the code file is named)" "since then it changes tools/x.sh: re-run" STUB_HEAD="$(pasth 's/^- 11-05 21:28 .*/&\n- 11-05 21:36 · x · sprint completed/' tools/x.sh)" -- --pr 7 --yes
+# the old board reads stdin and prints the same text for both blobs, so only the recent_board check can refuse it
+printf '#!/usr/bin/env bash\ncat > /dev/null\necho "usage: canon-go board"\n' > "$W/oldboard"; chmod +x "$W/oldboard"
+git push -qf origin "$BLOCK:refs/pull/7/head"
+refuses "a block change with a board that cannot strip it" "since then it changes HANDOFF.md" SPRINT_CHECK_BIN="$W/oldboard" STUB_HEAD="$BLOCK" -- --pr 7 --yes
+echo "handoff block after grading: accepted alone, refused beside any other change, an old board refuses"
+sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; eval_ok "$PRHEAD"; git push -qf origin "$PRHEAD:refs/pull/7/head"
+
 # t-24b1: after the merge, local main catches up with origin's, fast-forward only, or is left alone with the reason.
 BASE="$(git rev-parse "$PRHEAD^")"
 ff_merge() {   # origin main back at the base, the ticket unmerged; one merge-pr --yes whose merge moves origin main

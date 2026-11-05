@@ -103,6 +103,17 @@ assert_eq "results-in|24|OPEN|false|pass|false" "$(st)"
 assert_contains "$("$TKT" github-status "$id")" "(the PR head plus late docs)"
 git -C "$W/c" push -q origin "+$R2:refs/pull/24/head"; printf '24\tOPEN\t%s\n' "$R2" > "$W/prs"
 assert_eq "pr-open|24|OPEN|false|pass|false" "$(st)"
+# t-dfaf: canon's Recent activity block in HANDOFF.md is written after the grade (sprint complete), so the head past graded-head by only that
+# block is results-in, as merge-pr accepts it; a narrative edit is not. Protects the card's stage and Import results.
+git -C "$W/c" checkout -q -B ho "$G"; printf '# H\n\n<!-- canon:recent:BEGIN -->\n## Recent activity\n- 11-05 21:28 · t · plan approved\n<!-- canon:recent:END -->\n\n<!-- canon:handoff:BEGIN -->\nold\n<!-- canon:handoff:END -->\n' > "$W/c/HANDOFF.md"
+git -C "$W/c" add HANDOFF.md; git -C "$W/c" commit -qm "graded with a handoff"; G3="$(git -C "$W/c" rev-parse HEAD)"
+sed -i.bak 's/^- 11-05 21:28 .*/&\n- 11-05 21:36 · t · sprint completed/' "$W/c/HANDOFF.md"; rm -f "$W/c/HANDOFF.md.bak"; git -C "$W/c" commit -qam "block grew"; B3="$(git -C "$W/c" rev-parse HEAD)"
+git -C "$W/c" reset -q --hard "$G3"; sed -i.bak 's/^old$/new focus/' "$W/c/HANDOFF.md"; rm -f "$W/c/HANDOFF.md.bak"; git -C "$W/c" commit -qam "narrative edited"; N3="$(git -C "$W/c" rev-parse HEAD)"
+printf 'evaluator-run-id: 1-1\ngraded-head: %s\npass: all met\n' "$G3" > ".tickets/$id/eval-report.md"
+git -C "$W/c" push -q origin "+$B3:refs/pull/24/head"; printf '24\tOPEN\t%s\n' "$B3" > "$W/prs"
+assert_eq "results-in|24|OPEN|false|pass|false" "$(st)"
+git -C "$W/c" push -q origin "+$N3:refs/pull/24/head"; printf '24\tOPEN\t%s\n' "$N3" > "$W/prs"
+assert_eq "pr-open|24|OPEN|false|pass|false" "$(st)"
 git push -q origin "HEAD:refs/heads/canon-results/$id"; assert_eq "results-ready|24|OPEN|true|pass|false" "$(st)"   # a results branch makes it importable, not merge-ready
 git push -q origin --delete "canon-results/$id"
 # A head that is not local and cannot be fetched exits 1, never a guessed stage.

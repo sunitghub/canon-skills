@@ -16944,7 +16944,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     const id = newTicketId(PROJECT_ROOT, 'gh21b');
     ghTicket(id, { github: 'acme/app#57' });
     await routeStatus(page, id, { stage: 'results-ready', pr: 58 });
-    const out = `  PR #58 head abc1234 does NOT match graded-head def5678: the evaluator graded other code\n  next: tkt land ${id} --pr 58 --fix   (the cloud closed the ticket)`;
+    const out = `  PR #58 head abc1234 does NOT match graded-head def5678; since then it changes: HANDOFF.md\n  next: tkt land ${id} --pr 58 --fix   (the cloud closed the ticket)`;
     await page.route(`**/api/ticket/${id}/github/import`, r => json(r, { ok: false, exit_code: 1, output: out }));
     await openBoard(page, id);
     await page.locator(`.card[data-id="${id}"] .card-gh-btn`).click();

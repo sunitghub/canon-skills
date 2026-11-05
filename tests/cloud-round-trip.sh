@@ -326,7 +326,7 @@ cd "$X" && "$TKT" export "$id" >/dev/null 2>&1 && mkdir -p tools && printf 'x\n'
 STUB_PR_HEAD="$(git -C "$X" rev-parse sweep)"
 rc=0; out="$(STUB_PR_FILES="LEARNINGS.md tools/x.sh" "$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "a code commit after grading should exit 1: $out"
-assert_contains "$out" "does NOT match graded-head"; assert_contains "$out" "(tools/x.sh)"
+assert_contains "$out" "does NOT match graded-head"; assert_contains "$out" "since then it changes: tools/x.sh"
 assert_contains "$out" "next: tkt land $id --pr 58 --fix"   # t-75f5: the cloud closed the ticket; `land` without --fix refuses a closed one, so the way out is named
 [[ -n "$(git --git-dir="$W/origin.git" branch --list "canon-results/$id")" ]] || fail "a code delta deleted canon-results/$id"
 # An import that cannot write keeps the branch on origin, so nothing is lost.

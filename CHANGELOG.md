@@ -6,6 +6,11 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+Shell tooling only: run `canon update`; no daemon restart is needed.
+
+### Fixed
+- A cloud PR whose only change since grading is canon's own **Recent activity block** in `HANDOFF.md` (`sprint complete` writes it after the evaluator, so every cloud run had it) now imports and merges as graded: `import-results`, the card's stage and `merge-pr` accept it, with no `tkt land --fix` detour. `HANDOFF.md` must be identical outside the block (CRLF ignored) and the install's board must be able to strip it; any other change to the file after grading is still refused. The refusal now says what changed ("does NOT match graded-head …; since then it changes: <files>") instead of "the evaluator graded other code".
+
 ## [0.46.4] - 2026-11-05
 
 Board page, daemon page and `tkt`: run `canon update`, then restart the daemon (the pane button is on the daemon page) and reload the board.

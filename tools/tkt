@@ -3337,9 +3337,9 @@ cmd_import_results() {
         late="$(late_docs_delta "$root" "$graded" "$prh" "$id")" && lrc=0 || lrc=$?
       fi
       if [[ $lrc == 0 ]]; then echo "  PR #$pr head $prh: graded-head plus late docs only: $(printf '%s\n' "$late" | grep . | paste -sd, - | sed 's/,/, /g')"; prline="PR: #$pr head $prh: graded-head plus late docs only"
-      else echo "  PR #$pr head $prh does NOT match graded-head ${graded:-none}: the evaluator graded other code${late:+ ($(printf '%s\n' "$late" | sed -n '1,5p' | paste -sd, - | sed 's/,/, /g'))}" >&2; rc=1; prline="PR: #$pr head $prh: does NOT match graded-head ${graded:-none}"
+      else echo "  PR #$pr head $prh does NOT match graded-head ${graded:-none}${late:+; since then it changes: $(printf '%s\n' "$late" | sed -n '1,5p' | paste -sd, - | sed 's/,/, /g')}" >&2; rc=1; prline="PR: #$pr head $prh: does NOT match graded-head ${graded:-none}"
         # t-75f5: a cloud-closed ticket cannot go through `land` without --fix, and the card offers only Import results: name the way out.
-        [[ "$st" != closed || -z "$graded" ]] || echo "  next: tkt land $id --pr $pr --fix   (the cloud closed the ticket, but its evaluator graded other code than the PR head: close it again here)" >&2
+        [[ "$st" != closed || -z "$graded" ]] || echo "  next: tkt land $id --pr $pr --fix   (the cloud closed the ticket, but the PR head has changes its evaluator did not grade: close it again here)" >&2
       fi
     fi
   fi

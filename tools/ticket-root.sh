@@ -109,6 +109,20 @@ late_docs_delta() {
     done <<< "$other"
     other="$kept"
   fi
+  # t-dfaf: canon writes the Recent activity block into HANDOFF.md at `sprint complete`, always after the grade, so a cloud run's PR head
+  # differs from graded-head by that block. HANDOFF.md passes only when graded and head are identical with the block removed (CRs ignored;
+  # `recent --strip` is the rule merge-pr uses for a local copy). Any other change, an unreadable blob or a board without `recent` keeps it refused.
+  if [[ $'\n'"$other"$'\n' == *$'\nHANDOFF.md\n'* ]]; then
+    local rb t1 t2 same=false
+    if rb="$(recent_board 2>/dev/null)"; then
+      t1="$(mktemp)"; t2="$(mktemp)"
+      if ( set -o pipefail; git -C "$dir" cat-file blob "$graded:HANDOFF.md" 2>/dev/null | "$rb" recent --strip | tr -d '\r' ) > "$t1" \
+        && ( set -o pipefail; git -C "$dir" cat-file blob "$head:HANDOFF.md" 2>/dev/null | "$rb" recent --strip | tr -d '\r' ) > "$t2" \
+        && [[ -s "$t1" ]] && cmp -s "$t1" "$t2"; then same=true; fi
+      rm -f "$t1" "$t2"
+    fi
+    $same && other="$(printf '%s\n' "$other" | grep -vx 'HANDOFF.md' || true)"
+  fi
   # A name is not the content: a symlink (120000) or submodule (160000) under an allowed name points somewhere else.
   local raw; raw="$(git -C "$dir" -c core.quotepath=off diff --raw --no-renames "$graded" "$head" 2>&1)" \
     || { echo "git could not list the file modes from ${graded:0:7} to ${head:0:7}: $raw"; return 2; }
