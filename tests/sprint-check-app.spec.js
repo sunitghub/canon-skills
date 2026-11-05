@@ -19997,6 +19997,12 @@ test.describe('Projects card: a missing folder, a skill problem, git first (t-3b
     await expect(page.locator('.card:not(.is-missing) .miss-bang, .card:not(.is-missing) .miss-msg')).toHaveCount(0);
     await expect.poll(() => seen.filter(s => s.endsWith(' here1')).length).toBeGreaterThan(0);   // the healthy card is read ...
     expect(seen.filter(s => s.endsWith(' gone1'))).toEqual([]);                                    // ... the missing one is not
+    const before = seen.filter(s => s.endsWith(' here1')).length;
+    await page.evaluate(async () => { const { refreshStats } = await import('/static/cockpit-projects.js'); refreshStats(); });   // the 30 s tick, a re-show
+    await expect.poll(() => seen.filter(s => s.endsWith(' here1')).length).toBeGreaterThan(before);   // the healthy card was re-read ...
+    expect(seen.filter(s => s.endsWith(' gone1'))).toEqual([]);                                    // a refresh does not read it either
+    await expect(card.locator('.regskill:visible')).toHaveCount(0);                                // no + sprint for a folder that is gone
+    await expect(card.locator('.gitstate:not([hidden])')).toHaveCount(0);
     await card.locator('.dereg').click();
     await expect(page.locator('#cc-title')).toHaveText('Deregister “gone1”?');
     await page.locator('#cc-ok').click();
@@ -20061,6 +20067,27 @@ test.describe('Projects card: a missing folder, a skill problem, git first (t-3b
     await expect(page.locator('#cc-title')).toHaveText('Register the “sprint” skill in “on1”?');
     await page.locator('#cc-cancel').click();
     expect(calls.track).toEqual(['off2']);
+  });
+
+  test('a Not now is forgotten once git is on, and git missing from the computer asks nothing', async ({ page }) => {
+    const state = { late1: false };
+    const calls = await stub(page, { projects: [P('late1'), P('nogit1')],
+      git: pid => pid === 'nogit1' ? { ok: true, tracking: false, synced: null, git_available: false } : { ok: true, tracking: state.late1, synced: null, git_available: true },
+      stats: () => ({ updated: '2026-11-05', ticket_count: 0, skills: [] }) });
+    const reg = pid => page.locator(`.regskill[data-id="${pid}"][data-skill="sprint"]`);
+    await reg('late1').click();
+    await page.locator('#cc-cancel').click();                          // Not now
+    await expect(page.locator('#cc-body')).toContainText('pre-commit hook is skipped');
+    await page.locator('#cc-cancel').click();
+    state.late1 = true;                                                // git turned on elsewhere (the icon, a terminal)
+    await reg('late1').click();
+    await expect(page.locator('#cc-title')).toHaveText('Register the “sprint” skill in “late1”?');
+    await expect(page.locator('#cc-body')).not.toContainText('skipped');   // the old decline does not apply any more
+    await page.locator('#cc-cancel').click();
+    await reg('nogit1').click();                                       // git is not installed: nothing to turn on, nothing asked
+    await expect(page.locator('#cc-title')).toHaveText('Register the “sprint” skill in “nogit1”?');
+    await page.locator('#cc-cancel').click();
+    expect(calls.track).toEqual([]);
   });
 
   test('opening a non-git project asks first and Not now opens it anyway; a git project opens with no question', async ({ page }) => {

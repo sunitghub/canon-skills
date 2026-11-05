@@ -124,6 +124,8 @@ export function refreshStats(){
 }
 function projectsPageShown(){ const g=document.getElementById('grid'); return !!g && g.offsetParent!==null && document.visibilityState==='visible'; }
 async function fillCardStats(id,refresh){
+  const pr=registeredProjects.find(x=>x.id===id);
+  if(pr&&pr.missing) return;   // t-3ba0: nothing to read in a folder that is gone, on load and on every refresh tick
   const el=document.querySelector('.meta[data-stats="'+(window.CSS&&CSS.escape?CSS.escape(id):id)+'"]');
   if(!el) return;
   fillCardLearnings(id,el,refresh);
@@ -294,12 +296,12 @@ async function trackChanges(id,name,btn,opts){
 // cannot say, or the folder is missing. Returns 'on', 'declined' or 'skip'.
 const _gitDeclined=new Set();
 export async function ensureGit(id,name,why){
-  if(_gitDeclined.has(id)) return 'declined';
   const p=registeredProjects.find(x=>x.id===id);
   if(p&&p.missing) return 'skip';
   let st=null;
   try{ const r=await fetch('/api/track-changes?project='+encodeURIComponent(id)); if(r.ok) st=await r.json(); }catch(e){}
   if(!st||!st.ok||st.tracking!==false||st.git_available===false) return 'skip';
+  if(_gitDeclined.has(id)) return 'declined';   // read AFTER the status: once git is on the answer is skip, so an old Not now never shows
   const done=await trackChanges(id,name,null,{synced:st.synced||'',why});
   if(!done){ _gitDeclined.add(id); return 'declined'; }
   return 'on';
