@@ -233,13 +233,13 @@ function notStartedScratch(live){
   return out;
 }
 // t-aca6: the sidebar's third line and Admin's sub-line: the project and the time spent in the session so far.
-// full fits most rows; short drops "in session" when full would be cut off; tip spells everything out.
+// tip spells everything out (the row's accessible name); dur is the one-unit-pair duration the Admin table reuses.
 export function sessionTime(v){
   const proj=v.projName||v.name;
-  if(v.elapsed===null) return { full:proj, short:proj, tip:proj, dur:'' };
+  if(v.elapsed===null) return { tip:proj, dur:'' };
   const dur=fmtDur(v.elapsed);
   const at=new Date(v.startMs).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
-  return { full:proj+' \u00b7 '+dur+' in session', short:proj+' \u00b7 '+dur, tip:proj+' \u2014 '+dur+' in session (started '+at+')', dur };
+  return { tip:proj+' \u2014 '+dur+' in session (started '+at+')', dur };
 }
 // t-d0ed: the Agents row's pieces. The agent's name in words, the age in one unit, and the state as a glyph (ring working, solid done,
 // hollow idle or not started, an orange "Needs you" pill); the words move into the row's tooltip (agentLine).
