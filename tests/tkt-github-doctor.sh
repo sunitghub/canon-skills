@@ -117,6 +117,10 @@ assert_contains "$(field "$out" "d['checks'][1]['detail']")" "https://gitlab.com
 
 # Signed in; a private GitHub origin; an executable scripts/test.sh committed.
 git remote set-url origin git@github.com:acme/app.git
+# t-10ac: origin names a GitHub repo that is not there yet (set-url done before the repo exists): not a green "found, and private"
+out="$(PATH="$W/bin:$PATH" STUB_REPO=missing doctor)"
+assert_eq "bad|No GitHub repository for this project|git remote remove origin && gh repo create \"app\" --private --source=\"$project\" --remote=origin --push|" "$(check "$out" origin)"
+assert_contains "$(field "$out" "d['checks'][1]['detail']")" "acme/app is not on GitHub yet"
 mkdir -p scripts; printf '#!/bin/sh\n' > scripts/test.sh; chmod +x scripts/test.sh
 git add scripts/test.sh; git -c user.name=t -c user.email=t@t commit -q -m tests
 before="$(git status --porcelain; git for-each-ref)"; : > "$STUB_LOG"
@@ -125,7 +129,7 @@ assert_eq "ok|Signed in to GitHub|nofix" "$(check "$out" gh)"; assert_eq "Signed
 assert_eq "ok|Repository found, and private|nofix" "$(check "$out" origin)"; assert_eq "Issues go to acme/app (origin, private)." "$(field "$out" "d['checks'][1]['detail']")"
 assert_eq "ok|Check & merge test command: scripts/test.sh|nofix" "$(check "$out" tests)"
 # Read-only: only these gh reads ran, and the repo is as it was.
-assert_eq "auth status|api user --jq .login|api repos/acme/app --jq .visibility" "$(paste -sd'|' "$STUB_LOG")"
+assert_eq "auth status|api user --jq .login|repo view acme/app --json name|api repos/acme/app --jq .visibility" "$(paste -sd'|' "$STUB_LOG")"
 assert_eq "$before" "$(git status --porcelain; git for-each-ref)"
 # The plain form: one line per check, no fix line for a check without one, and no JSON after it.
 plain="$(PATH="$W/bin:$PATH" "$TKT" github-doctor)"

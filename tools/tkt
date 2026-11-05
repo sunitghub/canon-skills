@@ -1699,7 +1699,17 @@ cmd_github_doctor() {
   local safe_root=true; case "$root" in *[\"\$\`\\!]*|*[[:cntrl:]]*) safe_root=false ;; esac
   local origin_ok=true
   repo="$(_gh_origin_repo "$root" origin 2>&1)" || { origin_ok=false; rstate="$(_gh_repo_state "$own" "$rname")"; }   # asked only when origin is not already a GitHub repo
-  if $origin_ok; then
+  # origin names a GitHub repo: ask GitHub whether it exists before trusting _repo_visibility, whose anonymous fallback reads a missing
+  # repo's 404 as private (a set-url to a repo not yet created showed a green "found, and private")
+  $origin_ok && rstate="$(_gh_repo_state "${repo%%/*}" "${repo#*/}")"
+  if $origin_ok && [[ "$rstate" == missing ]]; then
+    local oname="${repo#*/}"
+    if [[ "$safe_root" == true ]]; then
+      _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: $repo is not on GitHub yet. This removes that origin and creates it, private, publishing the folder ${srcdir}.${winhint}" cmd "git remote remove origin && gh repo create \"${oname}\" --private --source=\"${srcdir}\" --remote=origin --push"
+    else
+      _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: $repo is not on GitHub yet. This folder's name has a character that is not safe in a command you paste: rename the folder, or run gh repo create yourself."
+    fi
+  elif $origin_ok; then
     vis="$(_repo_visibility "$repo")"
     case "$vis" in
       PRIVATE) _gd origin ok "Repository found, and private" "Issues go to $repo (origin, private)." ;;
