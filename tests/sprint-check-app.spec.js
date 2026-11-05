@@ -7194,6 +7194,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#ck-id')).not.toHaveText(first);
       await expect(page.locator('#ck-scratch-where')).toHaveText('Running in the main checkout.');
       await expect(page.locator('#ck-tab-strip-topbar .ck-tab-pill')).toHaveCount(2);
+      // t-d0ed: the pill of the tab behind this one carries its tooltip too (a scratch session: its title, no status)
+      await expect(page.locator('#ck-tab-strip-topbar .ck-tab-pill:not(.active)')).toHaveAttribute('title', 'Scratch session');
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
@@ -16348,6 +16350,9 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
         // t-3d04: the line is on the clipboard on every OS, and the panel is the host pane only: its box ends where the Terminal begins
         await expect.poll(() => page.evaluate(() => window.__copied)).toBe(line);
         await expect(page.locator('#ck-gh-status')).toContainText('Copied');
+        // t-d0ed: and it names the project's root, so the user knows where to paste it
+        const posixRoot = await page.evaluate(async () => (await import('/static/board-core.js')).state.gitRoot);
+        await expect(page.locator('#ck-gh-status')).toContainText(`in ${posixRoot}`);
         const geo = () => page.evaluate(() => {
           const p = document.getElementById('ck-gh-panel').getBoundingClientRect(), t = document.querySelector('#ck-term iframe.ck-pane2').getBoundingClientRect();
           return { panelBottom: p.bottom, panelRight: p.right, termTop: t.top, termLeft: t.left, panelH: p.height };

@@ -861,7 +861,8 @@ async function launchToCloud(t, say) {
   // t-3d04: also copied, so it is ready to paste while the Terminal starts; t-ccf5: below, so the caller's panel stays on screen
   await openTerminalPane('below', { fresh: true, typeLine: typed });
   recordCloudCopy(t.id);
-  say(copied ? 'Copied. It is also typed in the Terminal: press Enter.' : 'Copy was blocked, but the command is typed in the Terminal: press Enter.');
+  const here = root || 'the project\'s root folder';
+  say(copied ? `Copied. It is also typed in the Terminal in ${here}: press Enter. To run it elsewhere, paste it in a terminal window in ${here}.` : `Copy was blocked, but the command is typed in the Terminal in ${here}: press Enter.`);
 }
 
 function showSent(panel, t, tab) {
@@ -873,13 +874,13 @@ function showSent(panel, t, tab) {
       ${doctor.state === 'ready' ? '' : `<p class="ck-gh-prereq" id="ck-gh-prereq">First time on this repository? The cloud session needs the Claude GitHub App installed on it and the canon environment (Factory › GitHub › Cloud environment). After you change the environment's setup script, start a new session: an open one keeps the old script.</p>`}
       <div class="ck-gh-actions">${cmd ? `<button type="button" class="ck-gh-create" id="ck-gh-to-cloud" title="${escAttr(toCloudTip())}">To Claude Cloud</button><button type="button" id="ck-gh-copy-cmd" title="For a real terminal in this project; refused inside a Claude session">Copy command</button>` : ''}${line ? `<button type="button" id="ck-gh-copy">Copy prompt</button>` : ''}<span class="ck-gh-status" id="ck-gh-status" role="status"></span></div>
     </div>`;
-  const copyText = async (text) => {
+  const copyText = async (text, note = 'Copied.') => {
     const s = document.getElementById('ck-gh-status');
-    try { await navigator.clipboard.writeText(text); s.textContent = 'Copied.'; return true; }
+    try { await navigator.clipboard.writeText(text); s.textContent = note; return true; }
     catch { s.textContent = `Copy was blocked: select "${text}" above.`; return false; }
   };
   document.getElementById('ck-gh-copy')?.addEventListener('click', () => copyText(line));
-  document.getElementById('ck-gh-copy-cmd')?.addEventListener('click', () => copyText(cmd));
+  document.getElementById('ck-gh-copy-cmd')?.addEventListener('click', () => { const r = projectRootText(); copyText(cmd, r ? `Copied. Paste it in a terminal window in ${r}.` : 'Copied.'); });
   document.getElementById('ck-gh-to-cloud')?.addEventListener('click', () => launchToCloud(t, msg => {
     const status = document.getElementById('ck-gh-status');   // opening the Terminal rebuilds this panel: look it up at say-time
     if (status) status.textContent = msg;
