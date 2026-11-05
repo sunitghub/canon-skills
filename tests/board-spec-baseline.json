@@ -85,6 +85,30 @@
       ],
       "ticket": "t-8aa6",
       "reason": "failed 2 of 3 (load 9.6) then 1 of 3 (load 1.7) in t-0d77's full runs at 1b35aff8 (2026-11-03); passed 12 of 12 solo, alternated main 15c81f5b / branch (.tickets/t-0d77/evidence/history/flake-ab-webkit.txt); the promote dialog, not in the code t-0d77 changes"
+    },
+    {
+      "title": "cockpit leave-session confirm (t-f6b6) > Save & End resolves immediately if the session already ended while the modal sat open (t-8efc) @webkit",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "failed 2 of 3 (webkit) in t-d0ed's full run at 44efc5b9 (2026-11-05); solo on the branch 2 failures of 10 repeats, solo on base 8e318549 the timeout one passed 2 of 3 (flaky there too); t-d0ed changes no leave-session code, only the Agents rows, pane tint, Sent panel and pane header"
+    },
+    {
+      "title": "cockpit leave-session confirm (t-f6b6) > fallback timeout force-ends and warns the save may be incomplete @webkit",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "failed 2 of 3 (webkit) in t-d0ed's full run at 44efc5b9 (2026-11-05); solo on the branch 2 failures of 10 repeats, solo on base 8e318549 the timeout one passed 2 of 3 (flaky there too); t-d0ed changes no leave-session code, only the Agents rows, pane tint, Sent panel and pane header"
+    },
+    {
+      "title": "GitHub workflow on the board (t-718b) > To Claude Cloud copies the line on Windows (t-0aa7) @webkit",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "failed 1 of 3 (webkit) in t-d0ed's full run at 260ae720 (2026-11-05): the clipboard write had not happened after 5 s (a click that did not land under load); passed 2 of 2 in the other runs and 3 of 3 alone on the branch; the failing step is the part of the spec t-d0ed did not change"
     }
   ],
   "skipped": []

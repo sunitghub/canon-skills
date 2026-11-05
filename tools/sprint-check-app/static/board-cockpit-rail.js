@@ -151,7 +151,9 @@ export function renderTabStrip() {
     const t = findTicketById(id);
     const label = t ? displayTicketId(t) : id;
     const needsYou = tab.status === 'needs-you';
-    return `<span class="ck-tab-pill${id === activeTabId ? ' active' : ''}" data-tab-id="${esc(id)}">`
+    // t-d0ed: the top bar no longer repeats the title, so hovering the pill gives it (a scratch session: its own title) and the status.
+    const tip = t ? [t.title || (t.scratch ? 'Scratch session' : ''), t.scratch ? '' : String(t.status || '').replace(/_/g, ' ').replace(/^./, c => c.toUpperCase())].filter(Boolean).join('\n') : '';
+    return `<span class="ck-tab-pill${id === activeTabId ? ' active' : ''}" data-tab-id="${esc(id)}"${tip ? ` title="${escAttr(tip)}"` : ''}>`
       + (needsYou ? '<span class="ck-tab-pill-needsyou" title="Agent is waiting on you"></span>' : '')
       + `<span class="ck-tab-pill-id">${esc(label)}</span>`
       + `<button class="ck-tab-pill-close b-close" data-tab-id="${esc(id)}" title="${isTerminalTab(id) ? 'End this Terminal' : 'Close tab (session stays running)'}" type="button">×</button>`
@@ -659,6 +661,7 @@ async function renderCockpitState(t) {
 
 // t-1543: this file's load-time code; board-main.js runs it after every module has loaded.
 export function initCockpitRail() {
+  window.addEventListener('canon:tabs-changed', () => renderTabStrip());   // t-d0ed: a scratch rename changes a pill's tooltip
   initPane(() => applyPane(activeTabId, document.getElementById('cockpit-overlay').classList.contains('open'), cockpitTabs));   // t-ccf5
   ['keydown', 'keypress', 'keyup'].forEach(type => document.addEventListener(type, e => {
     if (window.parent === window) return;

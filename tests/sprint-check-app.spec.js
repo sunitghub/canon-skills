@@ -3904,7 +3904,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         const before = boardFetches;
         await pollNow();
         await expect(card).toHaveClass(/st-idle/);
-        await expect(page.locator('#ag-list .ag-row', { hasText: XID })).toContainText(/idle/i);
+        await expect(page.locator('#ag-list .ag-row', { hasText: XID })).toHaveAttribute('aria-label', /idle/i);   // t-d0ed: the state words are the row's accessible name (its tooltip is the title alone)
         const looked = await board.locator('body').evaluate(async (_, id) => (await (await import('/static/board-cockpit-rail.js')).findLiveDaemonSession(id))?.state, XID);
         expect(looked).toBe('idle');                     // the header chip's lookup reads the same answer
         expect(boardFetches).toBe(before);               // and the board fetched nothing of its own for it
@@ -5550,16 +5550,18 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('t-aca6: each Agents row shows the project and time in session; Admin\'s sub-line ends with the same total', async ({ page }) => {
+    test('t-aca6: each Agents row shows the time in session (its age cell and tooltip); Admin\'s sub-line ends with the same total', async ({ page }) => {
       await openShell(page, timeRows());
       await page.evaluate(async () => (await import('/static/cockpit-sessions.js')).pollSessions());
-      const third = id => page.locator('#ag-list .ag-row', { hasText: id }).locator('.ag-p');
-      await expect(third('t-aaa1')).toHaveText('proj-a \u00b7 32m in session');
-      await expect(third('t-bbb2')).toHaveText('proj-a \u00b7 1h 5m in session');
-      await expect(third('t-ccc3')).toHaveText('proj-a');                                    // no `started`: the project alone
-      await expect(third('t-ddd4')).toHaveText('proj-a \u00b7 0s in session');               // a start in the future is clamped
-      await expect(third('t-aaa1')).toHaveAttribute('title', /^proj-a \u2014 32m in session \(started .+\)$/);
-      await expect(third('t-ccc3')).toHaveAttribute('title', 'proj-a');
+      const rowOf = id => page.locator('#ag-list .ag-row', { hasText: id });
+      // t-d0ed: the age cell is one unit; the full "<project> — <dur> in session (started …)" is in the tooltip.
+      await expect(rowOf('t-aaa1').locator('.ag-age')).toHaveText('32m');
+      await expect(rowOf('t-bbb2').locator('.ag-age')).toHaveText('1h');
+      await expect(rowOf('t-ccc3').locator('.ag-age')).toHaveText('\u2013');                 // no `started`: no age
+      await expect(rowOf('t-ddd4').locator('.ag-age')).toHaveText('<1m');                    // a start in the future is clamped
+      await expect(rowOf('t-aaa1')).toHaveAttribute('aria-label', /proj-a \u2014 32m in session \(started .+\)/);
+      await expect(rowOf('t-bbb2')).toHaveAttribute('aria-label', /proj-a \u2014 1h 5m in session \(started .+\)/);
+      await expect(rowOf('t-ccc3')).toHaveAttribute('aria-label', /proj-a/);
       await page.locator('#nav-admin').click();
       const sub = id => page.locator('#ad-sessions tbody tr', { hasText: id }).locator('.s2');
       await expect(sub('t-aaa1')).toHaveText(/ \u00b7 32m in session$/);
@@ -5568,7 +5570,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('t-aca6: a third line that would be cut off drops "in session"; the title keeps everything @webkit', async ({ page }) => {
+    test('t-aca6: a long project name stays whole in the row\'s tooltip, and the agent type hides first in a narrow rail (t-d0ed) @webkit', async ({ page }) => {
       await openShell(page, []);
       // a long registered name, then the same rows under it
       await page.evaluate(async () => {
@@ -5577,11 +5579,27 @@ test.describe('cockpit in board (t-ddc8)', () => {
       });
       await page.route('**/api/cockpit-sessions', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ session: 'a2', ticket: 't-bbb2', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', status: 'running', state: 'working', state_secs: 3, idle_secs: 3, idle_limit_secs: 1800, signal: 'hook', started: agoIso(65) }]) }));
       await page.evaluate(async () => (await import('/static/cockpit-sessions.js')).pollSessions());
-      const line = page.locator('#ag-list .ag-row', { hasText: 't-bbb2' }).locator('.ag-p');
-      await expect(line).toHaveText('a-rather-long-project-name-for-t-aca6 \u00b7 1h 5m');      // short form at the default width
-      await expect(line).toHaveAttribute('title', /^a-rather-long-project-name-for-t-aca6 \u2014 1h 5m in session \(started .+\)$/);
+      const row = page.locator('#ag-list .ag-row', { hasText: 't-bbb2' });
+      await expect(row).toHaveAttribute('aria-label', /a-rather-long-project-name-for-t-aca6 \u2014 1h 5m in session \(started .+\)/);
+      // The rail is resizable: wide, the agent type shows; narrow, it is the first thing to go (the name keeps its room).
       await page.evaluate(async () => { (await import('/static/cockpit-sidebar.js')).setSideWidth(420); (await import('/static/cockpit-sessions.js')).renderSessionSurfaces(); });
-      await expect(line).toHaveText('a-rather-long-project-name-for-t-aca6 \u00b7 1h 5m in session');   // wide enough again: full form
+      await expect(row.locator('.ag-at')).toBeVisible();
+      await page.evaluate(async () => { (await import('/static/cockpit-sidebar.js')).setSideWidth(220); (await import('/static/cockpit-sessions.js')).renderSessionSurfaces(); });
+      await expect(row.locator('.ag-at')).toBeHidden();
+      await expect(row.locator('.ag-t1')).toBeVisible();
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    // t-d0ed (reviewer): at the default 230 px rail the longest row, a Needs-you one with its pill, still shows a readable name.
+    test('the default rail keeps a Needs-you row\'s name readable (t-d0ed) @webkit', async ({ page }) => {
+      await openShell(page, stateRows());
+      await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return pollSessions(); });
+      const row = page.locator('#ag-list .ag-row', { hasText: 't-aaa1' });
+      await expect(row.locator('.ag-pill')).toHaveText('Needs you');
+      expect(Math.round((await page.locator('aside.side').boundingBox()).width), 'the default rail').toBe(230);
+      await expect(row.locator('.ag-age')).toBeHidden();
+      const name = await row.locator('.ag-t1').evaluate(el => ({ w: el.clientWidth, cut: el.scrollWidth > el.clientWidth }));
+      expect(name.w, `the name keeps room beside the pill (${name.w}px)`).toBeGreaterThanOrEqual(85);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
@@ -6115,11 +6133,14 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await expect(list.locator('.ag-row')).toHaveCount(6);
         await expect(list.locator('.ag-proj b')).toHaveText(['proj-a', 'proj-x']);
         await expect(list.locator('.ag-row.st-needs-you')).toHaveCount(2);
-        await expect(list.locator('.ag-row', { hasText: 't-aaa1' })).toContainText('needs you · 30s');
-        await expect(list.locator('.ag-row', { hasText: 't-ccc3' })).toContainText('done 1m · claude · reaps in 28m');
-        await expect(list.locator('.ag-row', { hasText: 't-bbb2' })).toContainText('working · claude');
-        await expect(list.locator('.ag-row', { hasText: 't-ddd4' })).toContainText('running'); // old-daemon fallback
-        await expect(list.locator('.ag-row', { hasText: 't-aaa1' })).toHaveAttribute('title', 'needs you · state from: Claude Code notification hook');
+        // t-d0ed: one line per row; the words are the tooltip, the state is the glyph (pill, ring, solid, hollow)
+        await expect(list.locator('.ag-row', { hasText: 't-aaa1' }).locator('.ag-pill')).toHaveText('Needs you');
+        await expect(list.locator('.ag-row', { hasText: 't-aaa1' })).toHaveAttribute('aria-label', /needs you · 30s/);
+        await expect(list.locator('.ag-row', { hasText: 't-ccc3' })).toHaveAttribute('aria-label', /done 1m · claude · reaps in 28m/);
+        await expect(list.locator('.ag-row', { hasText: 't-bbb2' })).toHaveAttribute('aria-label', /working · claude/);
+        await expect(list.locator('.ag-row', { hasText: 't-bbb2' }).locator('.ag-ring')).toHaveCount(1);
+        await expect(list.locator('.ag-row', { hasText: 't-ddd4' })).toHaveAttribute('aria-label', /running/); // old-daemon fallback
+        await expect(list.locator('.ag-row', { hasText: 't-aaa1' })).toHaveAttribute('aria-label', /: needs you .*state from: Claude Code notification hook$/);
         await expect(list.locator('.ag-row.st-idle')).toContainText('no ticket'); // hostile ticket id is dropped, not rendered
         await expect(list).not.toContainText('undefined');
         await expect(list.locator('img')).toHaveCount(0);
@@ -6205,7 +6226,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const errors = [];
       page.on('pageerror', e => errors.push(e.message));
       await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
-      await expect(page.locator('#ag-list .ag-row')).toContainText('needs you');
+      await expect(page.locator('#ag-list .ag-row .ag-pill')).toHaveText('Needs you');
       await expect(page.locator('#ag-list')).not.toContainText('undefined');
       await page.locator('#nav-admin').click();
       await expect(page.locator('#ad-sessions tbody tr td').nth(2)).toHaveText('paused · waiting on you');
@@ -6261,28 +6282,32 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(list.locator('.ag-proj span')).toHaveText(['3', '3']);
       const row = id => list.locator('.ag-row', { has: page.locator('.ag-id', { hasText: id }) });
       await expect(row('t-aaa1').locator('.ag-t1')).toHaveText('t-aaa1Test scripts leak board servers');
-      // Herdr-style state line: state (+ age) · agent name (· reap countdown).
-      await expect(row('t-aaa1').locator('.ag-s')).toHaveText('needs you · 30s · claude');
-      await expect(row(XID).locator('.ag-s')).toHaveText('needs you · 1m · copilot');
+      // t-d0ed: the state line (state + age, agent, reap countdown) is the tooltip; the agent's name is its own cell.
+      await expect(row('t-aaa1')).toHaveAttribute('aria-label', /needs you · 30s · claude/);
+      await expect(row('t-aaa1').locator('.ag-at')).toHaveText('Claude');
+      await expect(row('t-aaa1')).toHaveAttribute('title', 'Test scripts leak board servers');   // t-d0ed: the tooltip is the title alone, no state, time or meter
+      await expect(row(XID)).toHaveAttribute('aria-label', /needs you · 1m · copilot/);
+      await expect(row(XID).locator('.ag-at')).toHaveText('Copilot');
       await expect(list.locator('.ag-a')).toHaveCount(0);
       await expect(row('t-bbb2').locator('.ag-t1')).toHaveText('t-bbb2');            // 404 → id alone
-      await expect(row('t-bbb2').locator('.ag-s')).toHaveText('working · claude');
+      await expect(row('t-bbb2')).toHaveAttribute('aria-label', /working · claude/);
       await expect(row('t-ccc3').locator('.ag-t1')).toHaveText('t-ccc3Due-date reminders'); // no frontmatter
-      await expect(row('t-ccc3').locator('.ag-s')).toHaveText('done 1m · claude · reaps in 28m');
-      await expect(row('t-ddd4').locator('.ag-s')).toHaveText('running · claude');  // older daemon row
+      await expect(row('t-ccc3')).toHaveAttribute('aria-label', /done 1m · claude · reaps in 28m/);
+      await expect(row('t-ddd4')).toHaveAttribute('aria-label', /running · claude/);  // older daemon row
       await expect(row('t-ddd4').locator('.ag-t1')).toHaveText('t-ddd4Export ToDo to CSV'); // frontmatter title, quotes stripped
-      await expect(list.locator('.ag-row.st-idle .ag-s')).toHaveText('idle 6m · <img src=x onerror=window.__pwned=1>'); // no countdown; agent inert
-      // Mockup type: 14px title line (t-25f9, was 13px), 12px state line, 8px dot.
+      await expect(list.locator('.ag-row.st-idle')).toHaveAttribute('aria-label', /idle 6m · <img src=x onerror=window.__pwned=1>/); // no countdown; agent inert (an unknown agent has no name cell)
+      // Type: 14px name (t-25f9, was 13px), 11px agent type (t-d0ed); the solid done dot is 8px.
+      const dotWidth = await row('t-ccc3').evaluate(el => getComputedStyle(el.querySelector('.sdot')).width);
+      expect(dotWidth).toBe('8px');
       const css = await row('t-aaa1').evaluate(el => ({
         t1: getComputedStyle(el.querySelector('.ag-t1')).fontSize,
-        s: getComputedStyle(el.querySelector('.ag-s')).fontSize,
-        dot: getComputedStyle(el.querySelector('.sdot')).width,
+        at: getComputedStyle(el.querySelector('.ag-at')).fontSize,
         id: getComputedStyle(el.querySelector('.ag-id')).fontFamily,
         t1font: getComputedStyle(el.querySelector('.ag-t1')).fontFamily,
         idColor: getComputedStyle(el.querySelector('.ag-id')).color,
         idWeight: getComputedStyle(el.querySelector('.ag-id')).fontWeight,
       }));
-      expect(css).toMatchObject({ t1: '14px', s: '12px', dot: '8px', idWeight: '700' });  // t-25f9: 13px -> 14px
+      expect(css).toMatchObject({ t1: '14px', at: '11px', idWeight: '700' });  // t-25f9: 13px -> 14px
       expect(css.idColor).toBe('rgb(245, 248, 252)');                                 // t-25f9: id is Herdr-bright white (was: body text)
       expect(css.id).toMatch(/monospace/);
       expect(css.t1font).not.toMatch(/monospace/);
@@ -6490,17 +6515,17 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await openShell(page, stateRows());
       await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
       const read = () => page.evaluate(() => {
-        const c = sel => getComputedStyle(document.querySelector(sel)).color;
-        return {
-          need: c('#ag-list .ag-row.st-needs-you .ag-s'), work: c('#ag-list .ag-row.st-working .ag-s'), done: c('#ag-list .ag-row.st-done .ag-s'),
+        const g = (sel, prop) => getComputedStyle(document.querySelector(sel))[prop];
+        return {   // t-d0ed: the state is a glyph now: the orange pill, the spinning ring's lit edge, the solid dot
+          need: g('#ag-list .ag-row.st-needs-you .ag-pill', 'backgroundColor'), work: g('#ag-list .ag-row.st-working .ag-ring', 'borderTopColor'), done: g('#ag-list .ag-row.st-done .sdot', 'backgroundColor'),
           tab: getComputedStyle(document.querySelector('.tab[data-tab="proj-a"] .live.needs')).backgroundColor,
           ring: getComputedStyle(document.querySelector('#ag-list .ag-row.st-idle .sdot')).boxShadow,
         };
       });
-      expect(await read()).toMatchObject({ need: 'rgb(243, 139, 168)', work: 'rgb(249, 226, 175)', done: 'rgb(148, 226, 213)', tab: 'rgb(243, 139, 168)' });
+      expect(await read()).toMatchObject({ need: 'rgb(251, 191, 36)', work: 'rgb(249, 226, 175)', done: 'rgb(148, 226, 213)', tab: 'rgb(243, 139, 168)' });
       expect((await read()).ring).toContain('rgb(166, 227, 161)');
       await page.evaluate(() => { document.documentElement.dataset.theme = 'light'; });
-      expect(await read()).toMatchObject({ need: 'rgb(210, 15, 57)', work: 'rgb(223, 142, 29)', done: 'rgb(23, 146, 153)' });
+      expect(await read()).toMatchObject({ need: 'rgb(180, 83, 9)', work: 'rgb(223, 142, 29)', done: 'rgb(23, 146, 153)' });
       fs.mkdirSync(path.join(PROJECT_ROOT, '.tickets', 't-28ec', 'visuals'), { recursive: true });
       await page.locator('aside.side').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-28ec', 'visuals', 'rail-light.png') });
       await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
@@ -7023,8 +7048,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(row).toHaveCount(1);
       await expect(row).toHaveClass(/st-not-started/);
       await expect(row.locator('.ag-t1')).toHaveText('Scratch session');
-      await expect(row.locator('.ag-t1 svg.scr-ico')).toHaveCount(1);
-      await expect(row.locator('.ag-s')).toHaveText('not started');
+      await expect(row.locator('.ag-i svg.scr-ico')).toHaveCount(1);   // t-d0ed: the pencil is the row's icon cell
+      await expect(row).toHaveAttribute('aria-label', /: not started/);
       fs.mkdirSync(path.join(PROJECT_ROOT, '.tickets', 't-f553', 'visuals'), { recursive: true });
       await page.locator('aside.side').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-f553', 'visuals', 'rail-not-started.png') });
       // Once the daemon reports it, the one row is the live one.
@@ -7100,8 +7125,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); window.__pwned = 0; return pollSessions(); });
       const row = page.locator('#ag-list .ag-row');
       await expect(row.locator('.ag-t1')).toHaveText('Scratch session');
-      await expect(row.locator('.ag-t1 svg.scr-ico')).toHaveCount(1);   // t-f553: the scribble mark, not a SCRATCH tag
-      await expect(row.locator('.ag-s')).toHaveText('working · claude');
+      await expect(row.locator('.ag-i svg.scr-ico')).toHaveCount(1);   // t-f553: the scribble mark, not a SCRATCH tag
+      await expect(row).toHaveAttribute('aria-label', /working · claude/);
       await expect(page.locator('#ag-list .ag-plus')).toHaveCount(1);
       await row.click();
       await expect(page.locator('#view-proj-x')).toHaveClass(/active/);
@@ -7125,7 +7150,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return pollSessions(); });
       const row = page.locator('#ag-list .ag-row');
       await expect(row.locator('.ag-t1')).toHaveText('Terminal');
-      await expect(row.locator('.ag-t1 svg.scr-ico')).toHaveAttribute('aria-label', 'Terminal');
+      await expect(row.locator('.ag-i svg.scr-ico')).toHaveAttribute('aria-label', 'Terminal');
       await page.locator('#nav-admin').click();
       await expect(page.locator('#ad-sessions .s1')).toHaveText('Terminal');
       await expect(page.locator('#ad-sessions .s1 svg.scr-ico')).toHaveAttribute('aria-label', 'Terminal');
@@ -7169,6 +7194,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#ck-id')).not.toHaveText(first);
       await expect(page.locator('#ck-scratch-where')).toHaveText('Running in the main checkout.');
       await expect(page.locator('#ck-tab-strip-topbar .ck-tab-pill')).toHaveCount(2);
+      // t-d0ed: the pill of the tab behind this one carries its tooltip too (a scratch session: its title, no status)
+      await expect(page.locator('#ck-tab-strip-topbar .ck-tab-pill:not(.active)')).toHaveAttribute('title', 'Scratch session');
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
@@ -7799,6 +7826,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await page.locator('.ck-title-input').fill('Skill Eval on Windows');
         await page.keyboard.press('Enter');
         await expect(title).toHaveText('Skill Eval on Windows');
+        await expect(page.locator('.ck-tab-pill.active').first(), 't-d0ed: the pill tooltip follows the rename').toHaveAttribute('title', 'Skill Eval on Windows');
         await expect.poll(() => page.evaluate(() => window.__termSeen.find(m => m.type === 'set-title'))).toMatchObject({ title: 'Skill Eval on Windows' });
         // Esc cancels an edit.
         await title.click();
@@ -9136,7 +9164,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
   // t-1917: the session pane is a card, and the bar and pane header say nothing the Agents list already says.
   test.describe('cockpit pane and top bar (t-1917)', () => {
-    test('the pane is a rounded hairline card tinted toward the accent while it has focus; the bar has no title, model or meter; Kill is not needed', async ({ page }) => {
+    test('the pane is a rounded accent-tinted card, stronger while it has focus; the bar has no title, model or meter; Kill is not needed @webkit', async ({ page }) => {
       const id = newTicketId(PROJECT_ROOT, '1917a');
       try {
         writeTicket(id, 'in_progress', {
@@ -9160,13 +9188,15 @@ test.describe('cockpit in board (t-ddc8)', () => {
           await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
           await page.locator('#cockpit-overlay .ck-topbar').click();   // focus leaves the pane
           await expect(page.locator('#ck-iframe')).not.toBeFocused();
-          await expect(term, `${theme}: resting border`).toHaveCSS('border-top-color', await mixed('color-mix(in srgb, var(--text) 10%, transparent)'));
+          await expect(term, `${theme}: resting border is the accent at 60% (always on)`).toHaveCSS('border-top-color', await mixed('color-mix(in srgb, var(--accent) 60%, transparent)'));
           await page.locator('#ck-iframe').click();   // a real click inside the pane, as a user does (element.focus() does not move focus into a frame)
-          await expect(term, `${theme}: focused border is the accent at 42%`).toHaveCSS('border-top-color', await mixed('color-mix(in srgb, var(--accent) 42%, transparent)'));
+          await expect(term, `${theme}: focused border is the accent at 85%`).toHaveCSS('border-top-color', await mixed('color-mix(in srgb, var(--accent) 85%, transparent)'));
         }
         // Gone from the bar: the title (the rail card keeps it), the model chip and the meter (the pane header shows the meter).
         for (const sel of ['#ck-title', '#ck-model', '#ck-meter']) await expect(page.locator(sel), `${sel} is gone`).toHaveCount(0);
         await expect(page.locator('#ck-tc-title')).toHaveText(/Cockpit test/);
+        // t-d0ed: the bar has no title, so hovering the tab pill gives the title and the status.
+        await expect(page.locator('.ck-tab-pill.active').first()).toHaveAttribute('title', `Cockpit test ${id}\nIn progress`);
         // Sentence case, and a session that will not answer still ends without a Kill button.
         await expect(page.locator('#ck-end-session')).toHaveText('End session');
         await expect(page.locator('#ck-leave-skip')).toHaveText('End without saving');
@@ -9176,7 +9206,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     });
 
     // The criterion says no top-bar control is cut to an ellipsis: measure it (a box inside the bar is not the same as unclipped text).
-    test('no top-bar control is clipped at 1280, 1024 and 900 px, rail open or collapsed (t-1917)', async ({ page }) => {
+    test('no top-bar control is clipped at 1280, 1024 and 900 px, rail open or collapsed (t-1917) @webkit', async ({ page }) => {
       const id = newTicketId(PROJECT_ROOT, '1917b');
       try {
         writeTicket(id, 'in_progress', {
@@ -9198,7 +9228,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
           if (collapse) await page.locator('#ck-rail-toggle').click();
           for (const w of [1280, 1024, 900]) {
             await page.setViewportSize({ width: w, height: 720 });
-            for (const sel of ['#ck-back', '#ck-state-chip', '#ck-reaper', '#ck-end-session']) {
+            for (const sel of ['#ck-back', '#ck-state-chip', '#ck-reaper', '#ck-end-session', '#ck-tab-strip-topbar']) {
               const m = await page.locator(sel).evaluate(el => ({ sw: el.scrollWidth, cw: el.clientWidth }));
               expect(m.sw, `${sel} is clipped at ${w}px (rail ${collapse ? 'collapsed' : 'open'}): scrollWidth ${m.sw} > clientWidth ${m.cw}`).toBeLessThanOrEqual(m.cw + 1);
             }
@@ -13089,8 +13119,24 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
       await expect(page.locator('#paneMeter')).toBeHidden();   // nothing sent yet: no empty chip
       await page.evaluate(() => window.postMessage({ source: 'canon-cockpit', type: 'pane-info', meter: '87% cache · 42 calls · 130 tools', cwd: '/tmp/proj <img src=x onerror=1>' }, '*'));
       await expect(page.locator('#paneMeter')).toHaveText('87% cache · 42 calls · 130 tools');
-      await expect(page.locator('#paneCwd')).toHaveText('/tmp/proj <img src=x onerror=1>');   // text, never markup
+      await expect(page.locator('#paneCwdText')).toHaveText('/tmp/proj <img src=x onerror=1>');   // text, never markup
+      expect(await page.locator('#paneMeter').evaluate(el => getComputedStyle(el).color), 'the meter is --dim, not the faint grey').toBe('rgb(139, 152, 169)');
+      expect(await page.locator('#startBtn').evaluate(el => getComputedStyle(el).whiteSpace), 'Start agent stays on one line').toBe('nowrap');
       await expect(page.locator('#paneCwd img')).toHaveCount(0);
+      // t-d0ed: a path that fits is never cut (no ellipsis); one that does not fit is clipped at the START, keeping the folder name,
+      // with the whole path as the tooltip. (A 33-character path lost its last letter to the old 34ch cap.)
+      const fits = '/Users/sunitjoshi/Developer/canon';
+      await page.evaluate(c => window.postMessage({ source: 'canon-cockpit', type: 'pane-info', meter: '', cwd: c }, '*'), fits);
+      await expect(page.locator('#paneCwdText')).toHaveText(fits);
+      expect(await page.locator('#paneCwd').evaluate(el => el.scrollWidth <= el.clientWidth), 'a short path is not clipped').toBe(true);
+      expect(await page.locator('#paneCwd').evaluate(el => getComputedStyle(el).color), 'the folder is brighter than the meter').toBe('rgb(230, 237, 243)');   // --text; the meter is --dim
+      const long = '/Users/sunitjoshi/' + 'a-very-long-folder-name/'.repeat(12) + 'canon-site';
+      await page.setViewportSize({ width: 700, height: 600 });
+      await page.evaluate(c => window.postMessage({ source: 'canon-cockpit', type: 'pane-info', meter: '', cwd: c }, '*'), long);
+      await expect(page.locator('#paneCwd')).toHaveAttribute('title', long);
+      const clip = await page.locator('#paneCwd').evaluate(el => ({ dir: getComputedStyle(el).direction, inner: getComputedStyle(el.firstElementChild).direction, over: el.scrollWidth > el.clientWidth, ell: getComputedStyle(el).textOverflow }));
+      expect(clip).toEqual({ dir: 'rtl', inner: 'ltr', over: true, ell: 'ellipsis' });   // the end of the path is what stays visible
+      await page.setViewportSize({ width: 1280, height: 720 });
       await page.evaluate(() => window.postMessage({ source: 'canon-cockpit', type: 'pane-info', meter: '', cwd: '' }, '*'));
       await expect(page.locator('#paneMeter')).toBeHidden();   // an empty meter hides, as before a start
       // A refused stream shows in the terminal, since the state text is hidden here.
@@ -16286,6 +16332,9 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
       if (windows) {
         await expect.poll(() => page.evaluate(() => window.__copied)).toBe(line);
         await expect(page.locator('#ck-gh-status')).toContainText('PowerShell or Git Bash');
+        // t-d0ed: it names the project's root (backslashes on Windows), not "the project folder"
+        const root = await page.evaluate(async () => (await import('/static/board-core.js')).state.gitRoot);
+        await expect(page.locator('#ck-gh-status')).toContainText(root.replace(/\//g, '\\') + ' (the project\'s root folder, the one with .tickets/)');
         expect(page.frames().filter(f => f.url().includes('mode=term'))).toHaveLength(0);   // no Terminal was opened
       } else {
         await expect.poll(() => page.frames().some(f => f.url().includes('mode=term'))).toBe(true);
@@ -16301,6 +16350,9 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
         // t-3d04: the line is on the clipboard on every OS, and the panel is the host pane only: its box ends where the Terminal begins
         await expect.poll(() => page.evaluate(() => window.__copied)).toBe(line);
         await expect(page.locator('#ck-gh-status')).toContainText('Copied');
+        // t-d0ed: and it names the project's root, so the user knows where to paste it
+        const posixRoot = await page.evaluate(async () => (await import('/static/board-core.js')).state.gitRoot);
+        await expect(page.locator('#ck-gh-status')).toContainText(`in ${posixRoot}`);
         const geo = () => page.evaluate(() => {
           const p = document.getElementById('ck-gh-panel').getBoundingClientRect(), t = document.querySelector('#ck-term iframe.ck-pane2').getBoundingClientRect();
           return { panelBottom: p.bottom, panelRight: p.right, termTop: t.top, termLeft: t.left, panelH: p.height };
@@ -16447,14 +16499,19 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.locator('#ck-gh-create').click();
     await expect(page.locator('#ck-gh-sent')).toContainText(`Sent ${id} as issue #57`);
     await expect(page.locator('#ck-gh-prompt')).toHaveText(prompt);   // the line send-issue printed, verbatim
-    // t-32f9: the first run's prerequisites are named here, before the cloud fails on them.
-    await expect(page.locator('#ck-gh-prereq')).toHaveText("First time on this repository? The cloud session needs the Claude GitHub App installed on it and the canon environment (Factory › GitHub › Cloud environment). After you change the environment's setup script, start a new session: an open one keeps the old script.");
-    // t-0da2: the terminal command send-issue printed next is shown and copied as is; the board runs nothing (cockpitPosts stays 0 below).
-    await expect(page.locator('#ck-gh-cmd')).toHaveText(`claude --cloud '${prompt}'`);
+    // t-d0ed: exactly three buttons and one code block (the prompt); no Issue ↗ (the card has it) and no Close tab (the tab's x closes it).
+    await expect(page.locator('#ck-gh-sent button')).toHaveText(['To Claude Cloud', 'Copy command', 'Copy prompt']);
+    await expect(page.locator('#ck-gh-sent pre')).toHaveCount(1);
+    await expect(page.locator('#ck-gh-cmd')).toHaveCount(0);
+    await expect(page.locator('#ck-gh-open')).toHaveCount(0);
+    await expect(page.locator('#ck-gh-dismiss')).toHaveCount(0);
+    // t-32f9, t-d0ed: the first-time note shows only while Factory > GitHub is not ready (the doctor here says ready).
+    await expect(page.locator('#ck-gh-prereq')).toHaveCount(0);
+    await expect(page.locator('#ck-gh-copy-cmd')).toHaveAttribute('title', 'For a real terminal in this project; refused inside a Claude session');
+    // t-0da2: Copy command still copies the terminal command send-issue printed, as is; the board runs nothing (cockpitPosts stays 0 below).
     await page.evaluate(() => { window.__copied = null; Object.defineProperty(navigator, 'clipboard', { value: { writeText: async (t) => { window.__copied = t; } }, configurable: true }); });
     await page.locator('#ck-gh-copy-cmd').click();
     await expect.poll(() => page.evaluate(() => window.__copied)).toBe(`claude --cloud '${prompt}'`);
-    await expect(page.locator('#ck-gh-open')).toHaveText('Issue ↗');   // t-f053: goes to GitHub and changes nothing
     await page.evaluate(async (tid) => {   // the panel is shown again (a tab switch): the sent message is kept, not the preview
       const { cockpitState } = await import('/static/board-cockpit.js');
       const t = (await import('/static/board-core.js')).state.tickets.find(x => x.id === tid);
@@ -16463,13 +16520,8 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#ck-gh-sent')).toBeVisible();
     expect(sendBody).toEqual({});
     expect(cockpitPosts).toBe(0);
-    // t-093a: the work is in the cloud, so the button closes the ticket's tab and the board shows again.
-    await expect(page.locator('#ck-gh-dismiss')).toHaveText('Close tab');
+    // t-d0ed: the panel stays until the tab's own x closes it; there is no Close tab button.
     await expect(page.locator(`#ck-tab-strip-topbar .ck-tab-pill[data-tab-id="${id}"]`)).toHaveCount(1);
-    await page.locator('#ck-gh-dismiss').click();
-    await expect(page.locator('#ck-gh-panel')).toBeHidden();
-    await expect(page.locator(`#ck-tab-strip-topbar .ck-tab-pill[data-tab-id="${id}"]`)).toHaveCount(0);
-    await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/);
   });
 
   // t-8627: the t-9641 flake. The preview of a first showGithubPanel call answers after a later call showed the Sent panel; the late answer
@@ -16984,6 +17036,27 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator(`.card[data-id="${id}"] .card-gh-btn`, { hasText: 'To Claude Cloud' })).toHaveAttribute('title', /^Copies the command: paste it in PowerShell or Git Bash/);
   });
 
+  // t-d0ed (reviewer): a copy the browser blocked launched nothing, so the card keeps To Claude Cloud; a copy that worked becomes Started?.
+  test('on Windows a blocked copy keeps To Claude Cloud and a successful copy shows Started? (t-d0ed)', async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(Navigator.prototype, 'platform', { get: () => 'Win32' });
+      Object.defineProperty(Navigator.prototype, 'userAgentData', { get: () => ({ platform: 'Windows' }) });
+      window.__allow = false;
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText: async () => { if (!window.__allow) throw new Error('blocked'); } }, configurable: true });
+    });
+    const id = newTicketId(PROJECT_ROOT);   // a real t-xxxx id: the launch refuses any other
+    ghTicket(id, { github: 'acme/app#57' });
+    await routeStatus(page, id, { stage: 'sent' });
+    await openBoard(page, id);
+    const btn = page.locator(`.card[data-id="${id}"] .card-gh-btn`).first();
+    await expect(btn).toHaveText('To Claude Cloud');
+    await btn.click();
+    await expect(page.locator(`.card[data-id="${id}"] .card-gh-btn`).first(), 'blocked copy: nothing was launched').toHaveText('To Claude Cloud');
+    await page.evaluate(() => { window.__allow = true; });
+    await page.locator(`.card[data-id="${id}"] .card-gh-btn`).first().click();
+    await expect(page.locator(`.card[data-id="${id}"] .card-gh-btn`).first()).toHaveText('Started?');
+  });
+
   // Prod path: a card whose session pushed a branch with no PR (github-status stage "branch"), and its Create PR button (t-9955).
   test('a session branch with no PR shows Create PR; it asks, names the branch, and opens once (t-24b1)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gh24b');
@@ -17014,7 +17087,8 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   // same To Claude Cloud as the Sent panel (launchToCloud), the line typed in a Terminal and never sent; Issue ↗ stays.
   test('a sent card offers To Claude Cloud and Issue; the click types the launch line without sending it (t-d7b7) @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT);   // a real t-xxxx id: the launch refuses any other
-    ghTicket(id, { github: 'acme/app#57' });
+    ghTicket(id, { status: 'in_progress', github: 'acme/app#57' });   // in progress, with a lock left by an earlier local session (its chip said "Main checkout")
+    await page.route(`**/api/worktree-lock/${id}`, r => json(r, { locked: true, cwd: PROJECT_ROOT }));
     await routeStatus(page, id, { stage: 'sent' });
     await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
     await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>cockpit<script>window.__msgs=[];window.addEventListener("message",function(e){window.__msgs.push(e.data)});</script></body></html>' }));
@@ -17022,6 +17096,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await openBoard(page, id);
     const card = page.locator(`.card[data-id="${id}"]`);
     await expect(card.locator('.card-gh-chip')).toHaveText('GitHub #57 · sent');
+    await expect(card.locator('.card-wt-pref, .card-wt-chip'), 't-d0ed (t-c8c8): a card that runs on GitHub has no Worktree line or chip').toHaveCount(0);
     const btns = card.locator('.card-gh-btn');
     await expect(btns).toHaveText(['To Claude Cloud', 'Issue ↗']);
     // both buttons lie inside the card and share one row
@@ -17036,6 +17111,63 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     const frame = page.frames().find(f => f.url().includes('mode=term'));
     await expect.poll(() => frame.evaluate(() => window.__msgs.filter(m => m.type === 'type-command').map(m => m.text))).toEqual([line]);   // typed once, never sent
     await expect.poll(() => page.evaluate(() => window.__copied)).toBe(line);
+    // t-d0ed (t-c8c8): canon cannot see a cloud start, so after the copy the card offers a quieter Started? and asks before copying again.
+    await expect(btns).toHaveText(['Started?', 'Issue \u2197']);
+    await expect(btns.first()).toHaveClass(/quiet/);
+    await expect(btns.first()).toHaveAttribute('title', /^Command ready at .+\. If you started it, the card moves on once the session pushes; click to copy again$/);
+    await page.evaluate(() => { window.__copied = null; });
+    await btns.first().dispatchEvent('click');   // the Terminal pane the first click opened covers the board's lower half
+    await expect(page.locator('#gh-dialog')).toContainText('A cloud session may already be running for issue #57. Start another one?');
+    await page.locator('#gh-dialog button', { hasText: 'Cancel' }).click();
+    await page.waitForTimeout(200);
+    expect(await page.evaluate(() => window.__copied)).toBeNull();   // Cancel copies nothing
+    await btns.first().dispatchEvent('click');
+    await page.locator('#gh-dialog button', { hasText: 'Start another' }).click();
+    await expect.poll(() => page.evaluate(() => window.__copied)).toBe(line);
+    // it is remembered on this machine: a reload still shows Started?
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+    await expect(page.locator(`.card[data-id="${id}"] .card-gh-btn`).first()).toHaveText('Started?');
+  });
+
+  // t-d0ed: a card waiting for its cloud session's first push is asked every 30 s, not every 2 minutes; a card past that stage keeps the 2-minute tick.
+  test('a sent card is checked every 30 s, a card with a PR only every 2 minutes (t-d0ed)', async ({ page }) => {
+    const waiting = newTicketId(PROJECT_ROOT, 'gh6w'), later = newTicketId(PROJECT_ROOT, 'gh6p');
+    ghTicket(waiting, { github: 'acme/app#61' }); ghTicket(later, { github: 'acme/app#62' });
+    const w = await routeStatus(page, waiting, { stage: 'sent' });
+    const l = await routeStatus(page, later, { stage: 'pr-open', pr: 7 });
+    await page.clock.install();
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await expect(page.locator(`.card[data-id="${waiting}"] .card-gh-chip`)).toHaveText('GitHub #61 · sent');
+    const [w0, l0] = [w.calls, l.calls];
+    await page.clock.fastForward('00:31');
+    await expect.poll(() => w.calls).toBeGreaterThan(w0);   // the waiting card was asked again
+    expect(l.calls).toBe(l0);                                 // the PR card was not
+    await page.clock.fastForward('01:35');                    // past the 2-minute tick: now it is
+    await expect.poll(() => l.calls).toBeGreaterThan(l0);
+  });
+
+  // t-d0ed: the first-time note is for a repository whose cloud setup is not confirmed.
+  test('the Sent panel shows the first-time note only while Factory > GitHub is not ready (t-d0ed)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh5n');
+    ghTicket(id);
+    await page.route('**/api/github/doctor**', r => r.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ ok: true, exit_code: 0, output: '', doctor: { checks: [{ id: 'gh', status: 'ok', title: 'Signed in to GitHub', detail: '' }, { id: 'cloud', status: 'bad', title: 'Cloud environment', detail: 'not set up' }], cloud: { domains: [], setup_script: '' } } }) }));
+    await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
+    await page.route('**/api/worktrees**', r => json(r, [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true }]));
+    await openBoard(page, id);
+    await page.locator(`.card[data-id="${id}"] .card-start`).click();
+    await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+    await page.evaluate(async (tid) => {   // the Sent panel as a send leaves it
+      const { cockpitState } = await import('/static/board-cockpit.js');
+      const gh = await import('/static/board-github.js');
+      const t = (await import('/static/board-core.js')).state.tickets.find(x => x.id === tid);
+      cockpitState.ghSent = { id: tid, n: 57, line: `Work on Issue#57 for ticket ${tid}.`, cmd: `claude --cloud 'Work on Issue#57 for ticket ${tid}.'` };
+      gh.hideGithubPanel(); await gh.showGithubPanel(t, cockpitState);
+    }, id);
+    await expect(page.locator('#ck-gh-sent')).toBeVisible();
+    await expect(page.locator('#ck-gh-prereq')).toContainText('First time on this repository?');   // the doctor says the cloud environment is not set up
   });
 
 
