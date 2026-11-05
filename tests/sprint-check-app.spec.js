@@ -6267,7 +6267,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
 
     // t-10ac: the Agents row at each rail width. The default 230 px rail reads icon, id, age, state (nothing cut mid-word); the description
-    // comes back from a rail of about 280 px, the agent name from about 340 px. Prod path: the Cockpit's Agents list.
+    // comes back from a rail of about 280 px, the agent name from about 330 px. Prod path: the Cockpit's Agents list.
     test('t-10ac: a row keeps its id, age and state at every width; the description and then the agent name come back as the rail widens', async ({ page }) => {
       await stubTicketDocs(page);
       await openShell(page, stateRows());
