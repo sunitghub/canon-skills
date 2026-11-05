@@ -2009,12 +2009,32 @@ cmd_merge_pr() {
       || echo "merge-pr: note: could not delete canon-results/$id on origin; delete it by hand" >&2
   fi
   echo "Merged PR #$pr into $base${sha:+ ($sha)}$note."
-  canon_event github.merged tkt "$root" "ticket=$id" "pr=$pr"   # t-4c09
+  # t-9807: recorded once. The board's github-status poll may see MERGED first; under the lock merged: is read again.
+  _ticket_lock "$tdir"
+  local rec=false; [[ -n "$(get_field "$file" merged)" ]] || rec=true
+  $rec && canon_event github.merged tkt "$root" "ticket=$id" "pr=$pr"   # t-4c09
   _ff_local_base "$root" "$base" "$id"
   handoff_recent "$root"   # t-2db7: after the fast-forward, which set a block-only HANDOFF.md difference aside
   # t-41ff: written after the local update, so ticket.md is not yet dirty from this merge when the fast-forward runs.
-  set_or_add_field "$file" merged "${sha:-PR #$pr}"
-  _gh_trail "$tdir" merged "PR: #$pr" "merge commit: ${sha:-unknown}" "base: $base"
+  if $rec; then
+    set_or_add_field "$file" merged "${sha:-PR #$pr}"
+    _gh_trail "$tdir" merged "PR: #$pr" "merge commit: ${sha:-unknown}" "base: $base"
+  fi
+  _ticket_unlock "$tdir"
+  # t-9807: GitHub's Fixes keyword may not run for a merge made this way: read the issue, close it if still open. Always reported.
+  if [[ -n "$issue" ]]; then
+    local ist ierr
+    if ! ist="$(cd / && gh issue view "$issue" --repo "$repo" --json state --jq .state 2>&1)"; then
+      echo "merge-pr: could not read issue #$issue on $repo: $ist; the merge is recorded, close the issue by hand" >&2
+    elif [[ "$ist" == OPEN ]]; then
+      if ierr="$(cd / && gh issue close "$issue" --repo "$repo" --comment "Landed in PR #$pr (merge ${sha:-unknown})" 2>&1)"; then
+        echo "issue #$issue closed"
+      else
+        echo "merge-pr: could not close issue #$issue on $repo: $ierr; the merge is recorded, close the issue by hand" >&2
+      fi
+    elif [[ "$ist" == CLOSED ]]; then echo "issue #$issue was already closed"
+    else echo "merge-pr: issue #$issue on $repo reads as '$ist'; not closing it" >&2; fi
+  fi
 }
 
 # cmd_merge <id> [--test CMD] [--yes | --check] — t-2906: Check & merge for any closed ticket, the one command the board runs. A
@@ -2135,12 +2155,34 @@ _merge_branch() {
   else echo "next: the worktree $wt is free: reuse it for the next ticket, or remove it (git worktree remove $wt)"; fi
 }
 
+# _ticket_lock <ticket dir> / _ticket_unlock — t-9807: an mkdir lock (atomic, also in Git Bash). Waits up to ~15 s; a lock older than
+# 5 minutes is stale and taken over. If it cannot be had the caller goes on anyway (the merged: re-check still guards).
+_ticket_lock() {
+  local l="$1/.merge-lock" i
+  for ((i = 0; i < 75; i++)); do
+    mkdir "$l" 2>/dev/null && return 0
+    [[ -n "$(find "$l" -maxdepth 0 -mmin +5 2>/dev/null)" ]] && rmdir "$l" 2>/dev/null
+    sleep 0.2
+  done
+  echo "warning: could not take $l; going on without it" >&2
+}
+_ticket_unlock() { rmdir "$1/.merge-lock" 2>/dev/null || true; }
+
 # _record_merge <label> <ticket.md> <owner/repo> <pr> [<sha>] [<actor>] — t-7c89: record a merge done outside merge-pr, the way merge-pr
 # does (merged:, the github.md trail, the github.merged event). Only when GitHub says the PR is MERGED, it is from this repository,
 # and its head is on origin's base branch. Nothing is written otherwise: the reason goes to stderr and the return is 1. A ticket that
 # already has merged: is left alone (return 0), so a second run, or the board's poll, records once. <actor> (system for the poll)
 # goes on the event.
+# t-9807: merge-pr and the poll record the same merge; one at a time, merged: read again under the lock.
 _record_merge() {
+  local rrc=0 d; d="$(dirname "$2")"
+  [[ -z "$(get_field "$2" merged)" ]] || return 0
+  _ticket_lock "$d"
+  _record_merge_locked "$@" || rrc=$?
+  _ticket_unlock "$d"
+  return "$rrc"
+}
+_record_merge_locked() {
   local label="$1" file="$2" repo="$3" pr="$4" sha="${5:-}" actor="${6:-}"
   local tdir id root info st head base cross mc ph bt err
   [[ -z "$(get_field "$file" merged)" ]] || return 0

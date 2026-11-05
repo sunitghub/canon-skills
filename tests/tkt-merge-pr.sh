@@ -58,6 +58,9 @@ case "$1 $2" in
   "pr merge") printf 'cwd %s\n' "$PWD" >> "$STUB_LOG"; [[ -n "${STUB_MERGE_FAIL:-}" ]] && { echo "could not delete branch" >&2; exit 1; }
               # STUB_MERGE_PUSH: GitHub's merge moves main on origin (here: to the PR head, a fast-forward of the base).
               [[ -n "${STUB_MERGE_PUSH:-}" ]] && git --git-dir="$STUB_W/origin.git" update-ref refs/heads/main "$STUB_HEAD"; exit 0 ;;
+  # t-9807: STUB_ISSUE is the issue's state after the PR merged (default CLOSED: GitHub's Fixes keyword ran); the *_FAIL vars break a call.
+  "issue view")  [[ -n "${STUB_ISSUE_VIEW_FAIL:-}" ]] && { echo "HTTP 500" >&2; exit 1; }; echo "${STUB_ISSUE:-CLOSED}" ;;
+  "issue close") [[ -n "${STUB_ISSUE_CLOSE_FAIL:-}" ]] && { echo "HTTP 403" >&2; exit 1; }; exit 0 ;;
   *) echo "unexpected gh call: $*" >&2; exit 9 ;;
 esac
 SH
@@ -69,6 +72,7 @@ cat > "$W/bin/git" <<SH
 [[ -n "\${STUB_PR_FETCH_FAIL:-}" && " \$* " == *" fetch -q "*" +refs/pull/"* ]] && { echo "fatal: unable to access origin" >&2; exit 128; }
 [[ -n "\${STUB_UPDATE_REF_FAIL:-}" && " \$* " == *" update-ref refs/heads/main "* ]] && { echo "fatal: forced update-ref failure" >&2; exit 128; }
 if [[ " \$* " == *" merge -q --ff-only "* ]]; then
+  [[ -z "\${STUB_FF_SLEEP:-}" ]] || sleep "\$STUB_FF_SLEEP"   # t-9807: widens the window the race test needs
   [[ -z "\${STUB_FF_SPY:-}" ]] || grep -c '^merged:' "\$STUB_FF_SPY" > "$W/ff-spy" || true
   [[ -z "\${STUB_FF_MERGE_FAIL:-}" ]] || { echo "error: forced ff failure" >&2; exit 1; }
 fi
@@ -679,3 +683,27 @@ out="$(env STUB_RM_MC=- "$TKT" merged "$id" --pr 7 2>&1)" || fail "tkt merged wi
 grep -q '^merged: PR #7$' "$f" || fail "no merge commit: merged: is not the PR number"
 assert_contains "$(tail -6 "$gt")" "merge commit: unknown"
 echo "tkt merged: every refusal names its reason; the record has the fields merge-pr writes (t-7c89)"
+
+# t-9807: after the merge, the linked issue (acme/app#21) is read; one still OPEN is closed with a comment, and every outcome is said.
+nsmerge() { sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; : > "$STUB_LOG"; }
+nsmerge; out="$(STUB_ISSUE=OPEN "$TKT" merge-pr "$id" --pr 7 --yes 2>&1)" || fail "merge-pr with an open issue failed: $out"
+assert_contains "$out" "issue #21 closed"
+grep -qx 'issue close 21 --repo acme/app --comment Landed in PR #7 (merge mergesha0000000000000000000000000000000000)' "$STUB_LOG" || fail "wrong close call: $(cat "$STUB_LOG")"
+nsmerge; out="$("$TKT" merge-pr "$id" --pr 7 --yes 2>&1)" || fail "merge-pr with a closed issue failed: $out"
+assert_contains "$out" "issue #21 was already closed"; ! grep -q '^issue close' "$STUB_LOG" || fail "closed an already closed issue"
+nsmerge; out="$(STUB_ISSUE_VIEW_FAIL=1 "$TKT" merge-pr "$id" --pr 7 --yes 2>&1)" || fail "a failed issue view failed the merge: $out"
+assert_contains "$out" "could not read issue #21"; assert_contains "$out" "HTTP 500"; assert_grep '^merged: mergesha' "$f"
+nsmerge; out="$(STUB_ISSUE=OPEN STUB_ISSUE_CLOSE_FAIL=1 "$TKT" merge-pr "$id" --pr 7 --yes 2>&1)" || fail "a failed issue close failed the merge: $out"
+assert_contains "$out" "could not close issue #21"; assert_contains "$out" "HTTP 403"; assert_grep '^merged: mergesha' "$f"
+echo "merge-pr: the linked issue is closed when GitHub left it open, and every outcome is reported (t-9807)"
+
+# t-9807: merge-pr and a poll's _record_merge (tkt merged shares it with github-status) at once record ONE trail entry and ONE event.
+nsmerge; mt="$(grep -c ' — merged$' "$gt")"; me="$(cat "$CANON_HOME"/events/*.jsonl | grep -F '"kind":"github.merged"' | grep -cF "\"ticket\":\"$id\"")"
+STUB_FF_SLEEP=3 STUB_MERGE_PUSH=1 "$TKT" merge-pr "$id" --pr 7 --yes > "$W/race.out" 2>&1 &
+mp=$!; for _ in $(seq 50); do grep -q '^pr merge' "$STUB_LOG" && break; sleep 0.1; done; sleep 1
+"$TKT" merged "$id" --pr 7 > "$W/race2.out" 2>&1 || true
+wait "$mp" || fail "the raced merge-pr failed: $(cat "$W/race.out")"
+assert_eq "$((mt + 1))" "$(grep -c ' — merged$' "$gt")"
+assert_eq "$((me + 1))" "$(cat "$CANON_HOME"/events/*.jsonl | grep -F '"kind":"github.merged"' | grep -cF "\"ticket\":\"$id\"")"
+[[ ! -e ".tickets/$id/.merge-lock" ]] || fail "the merge lock was left behind"
+echo "merge-pr raced with a poll's recording: one MERGED entry, one event (t-9807)"
