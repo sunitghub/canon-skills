@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.44.2] - 2026-11-05
+
+Board: run `canon update` and reload the board: the Machines node changed.
+
 ### Fixed
 - The Machines node shows a cloud machine whose evidence log arrives in `evidence/` (a tracked `.tickets/`), not only one under `evidence/cloud/`: a log whose machine line differs from every host row is its own row, labelled "other machine"; one naming a host's own machine adds no row (t-fb18).
 - `tkt merge-pr` now reads the linked GitHub issue after the merge and closes it (comment "Landed in PR #N (merge <sha>)") if GitHub left it open; it says "issue #N closed" or "was already closed", and a failed read or close is reported while the merge stays recorded. The merge is recorded once: `merge-pr` and the board's `github-status` poll take a lock in the ticket folder, so there is one `MERGED` entry and one event (t-9807).
