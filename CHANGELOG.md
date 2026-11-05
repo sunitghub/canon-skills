@@ -9,6 +9,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 Board page and daemon page: run `canon update` and reload the board; no daemon restart is needed.
 
 ### Changed
+- Factory > GitHub: with a project whose origin is not a GitHub repo, step 2 now gives a command that works and is filled in: `git remote set-url origin https://github.com/<your login>/<folder name>.git` (the signed-in login from step 1 and the project's folder name; a name GitHub cannot take as a repo name stays `<repo>`), instead of a placeholder `git remote add` that fails when an origin already exists. With no origin at all, the "already have a repo?" hint is filled in the same way.
 - The pane's start button reads **▶ Run sprint** for a ticket session and **▶ Run agent** for a scratch session (was "Start sprint" and "Start agent"): shorter, and the board's hint messages use the same words.
 - The Finish dialog reads origin's branch before it lists the commits a push would send (offline, it says so and shows what was last fetched), says "origin already had master; nothing was sent" when git reports nothing to send, and no longer shows the raw `tkt finish …` line in the Merged dialog's log.
 - `sprint complete` also prints one non-blocking line when `HANDOFF.md`'s narrative has not changed since the plan was approved (the Handoff said "plan not approved yet" after the sprint had merged); `sprint approve` records what it read then.

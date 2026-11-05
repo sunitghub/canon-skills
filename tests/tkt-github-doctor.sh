@@ -58,6 +58,13 @@ sp="$W/my project"; mkdir -p "$sp"; git -C "$sp" init -q; sproot="$(cd "$sp" && 
 out2="$(cd "$sp" && PATH="$NOGH_PATH" "$TKT" github-doctor --json)"
 assert_eq "bad|No GitHub repository for this project|gh repo create \"my project\" --private --source=\"$sproot\" --remote=origin --push|" "$(check "$out2" origin)"
 assert_contains "$(field "$out" "d['checks'][2]['detail']")" "make it executable (chmod +x)"
+# t-10ac: with a non-GitHub origin the pasted set-url never carries a folder name GitHub cannot take as a repo name (a space, a quote, a
+# dollar sign): the repo part stays the <repo> placeholder, the signed-in login still fills the owner
+for odd in "my project" 'dollar$name'; do
+  od="$W/$odd"; mkdir -p "$od"; git -C "$od" init -q; git -C "$od" remote add origin https://gitlab.com/acme/app.git
+  oo="$(cd "$od" && PATH="$W/bin:$PATH" "$TKT" github-doctor --json)"
+  assert_eq "bad|No GitHub repository for this project|git remote set-url origin https://github.com/octo/<repo>.git|" "$(check "$oo" origin)"
+done
 # a folder name with a character that is unsafe in a pasted command gets no command at all, and says why
 for unsafe in 'bad$name' 'bad`id`' 'bad"q' 'bad\slash' 'bad!x' $'bad\nline'; do
   bad="$W/$unsafe"; mkdir -p "$bad"; git -C "$bad" init -q
@@ -72,7 +79,7 @@ outw="$(PATH="$W/win:$NOGH_PATH" "$TKT" github-doctor --json)"
 assert_eq "bad|No GitHub repository for this project|gh repo create \"$(basename "$project")\" --private --source=\"C:\\Users\\me\\My Project\" --remote=origin --push|" "$(check "$outw" origin)"
 assert_contains "$(field "$outw" "d['checks'][1]['detail']")" "terminal opened after Git was installed"
 assert_contains "$(field "$outw" "d['checks'][2]['detail']")" "git update-index --chmod=+x scripts/test.sh; Git Bash runs it without the bit"
-assert_contains "$(field "$out" "d['checks'][1]['detail']")" "Already have a repo on GitHub? Run git remote add origin https://github.com/<owner>/<repo>.git"
+assert_contains "$(field "$out" "d['checks'][1]['detail']")" "Already have a repo on GitHub? Run git remote add origin https://github.com/<owner>/$(basename "$project").git"
 assert_eq "warn|No test command (optional)|nofix" "$(check "$out" tests)"
 git -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
 assert_contains "$(field "$out" "d['checks'][2]['detail']")" "merges on the gates alone"
@@ -82,7 +89,11 @@ assert_contains "$(field "$out" "d['checks'][2]['detail']")" 'run tkt merge-pr <
 git remote add origin https://gitlab.com/acme/app.git
 out="$(PATH="$W/bin:$PATH" STUB_GH=out doctor)"
 assert_eq "bad|gh is installed, but not signed in|gh auth login|" "$(check "$out" gh)"
-assert_eq "bad|No GitHub repository for this project|git remote add origin https://github.com/<owner>/<repo>.git|" "$(check "$out" origin)"
+assert_eq "bad|No GitHub repository for this project|git remote set-url origin https://github.com/<owner>/$(basename "$project").git|" "$(check "$out" origin)"   # signed out: the owner is a placeholder
+# t-10ac: signed in, origin not on GitHub: the command is set-url (add would fail) with the signed-in login and the folder's name filled in
+out="$(PATH="$W/bin:$PATH" doctor)"
+assert_eq "bad|No GitHub repository for this project|git remote set-url origin https://github.com/octo/$(basename "$project").git|" "$(check "$out" origin)"
+assert_contains "$(field "$out" "d['checks'][1]['detail']")" "git remote remove origin"
 assert_contains "$(field "$out" "d['checks'][1]['detail']")" "https://gitlab.com/acme/app.git"
 
 # Signed in; a private GitHub origin; an executable scripts/test.sh committed.
