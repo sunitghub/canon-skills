@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Fixed
+- The Machines node shows a cloud machine whose evidence log arrives in `evidence/` (a tracked `.tickets/`), not only one under `evidence/cloud/`: a log whose machine line differs from every host row is its own row, labelled "other machine"; one naming a host's own machine adds no row (t-fb18).
+
 ## [0.44.1] - 2026-11-05
 
 Board page and daemon page: run `canon update`, reload the board and restart the daemon (Admin's **Restart Daemon**): the pane header's folder text and button changed.
