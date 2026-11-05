@@ -63,7 +63,7 @@ code "$PS1" | grep 'function Move-ToolsFirst' >/dev/null || fail "install.ps1 no
 code "$PS1" | grep -F -- "-ne \$Tools.TrimEnd" >/dev/null || fail "install.ps1 no longer drops an earlier copy of the tools folder (duplicate PATH entries)"
 code "$PS1" | grep -F 'if ($nextUserPath -ne $UserPath)' >/dev/null || fail "install.ps1 rewrites the user PATH even when nothing changed"
 if code "$PS1" | grep -E 'SetEnvironmentVariable\("PATH", *\$[a-z]+, *"User"\)' | grep -v 'nextUserPath' >/dev/null; then fail "install.ps1 writes a user PATH other than the reordered one"; fi
-code "$PS1" | grep -F 'Another folder with a tkt is on your user PATH' >/dev/null || fail "install.ps1 no longer names another folder with a tkt"
+code "$PS1" | grep -F 'A folder with a tkt was ahead of this install on your user PATH' >/dev/null || fail "install.ps1 no longer names an older folder with a tkt that was ahead"
 
 # install.cmd fetches install.ps1 when it is not beside it.
 code "$CMD" | grep 'curl.exe' >/dev/null || fail "install.cmd does not download install.ps1 when missing"

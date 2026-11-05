@@ -241,9 +241,17 @@ $nextUserPath = Move-ToolsFirst $UserPath $ToolsPath
 if ($nextUserPath -ne $UserPath) {
   [Environment]::SetEnvironmentVariable("PATH", $nextUserPath, "User")
 }
-foreach ($entry in @($UserPath -split ';' | Where-Object { $_ -and ($_.TrimEnd('\') -ne $ToolsPath.TrimEnd('\')) })) {
-  if (Test-Path -LiteralPath (Join-Path $entry 'tkt')) {
-    Write-Warning "Another folder with a tkt is on your user PATH: $entry. If it is an older canon, remove it (Settings > Environment Variables > Path); canon leaves it as it is."
+# Only a folder that was AHEAD of this install can have run its tkt; one behind it is harmless, so a re-run with ours first says nothing.
+$ahead = @()
+foreach ($entry in @($UserPath -split ';' | Where-Object { $_ })) {
+  if ($entry.TrimEnd('\') -eq $ToolsPath.TrimEnd('\')) { break }
+  $ahead += $entry
+}
+foreach ($entry in $ahead) {
+  $holdsTkt = $false
+  try { $holdsTkt = Test-Path -LiteralPath (Join-Path $entry 'tkt') -ErrorAction Stop } catch { }
+  if ($holdsTkt) {
+    Write-Warning "A folder with a tkt was ahead of this install on your user PATH: $entry. It is behind canon's now; if it is an older canon, remove it (Settings > Environment Variables > Path). canon leaves it as it is."
   }
 }
 
