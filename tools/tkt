@@ -2060,13 +2060,24 @@ cmd_merge() {
   _merge_branch
 }
 
+# _default_branch <root> — t-e1a2: the project's default branch: origin/HEAD's, else main, else master (the first that exists
+# locally). Prints it; returns 1 with nothing printed when none is there.
+_default_branch() {
+  local b
+  b="$(git -C "$1" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null || true)"; b="${b#origin/}"
+  if [[ -z "$b" ]]; then
+    for b in main master; do git -C "$1" rev-parse -q --verify "refs/heads/$b^{commit}" >/dev/null 2>&1 && break || b=""; done
+  fi
+  [[ -n "$b" ]] && _branch_ok "$b" && printf '%s\n' "$b"
+}
+
 # _merge_branch — t-2906: merges a closed ticket's worktree branch into the branch checked out in the main checkout, through
 # _merge_core (the same checks, report, question and tests as merge-pr). Reads cmd_merge's locals. The merge commit is built
 # from objects only (merge-tree, commit-tree) and must hold exactly the tree the tests ran on; then the main checkout's branch
 # moves to it through _advance_local, so an edited file there stops it with nothing changed, as merge-pr's update does.
 # Every refusal says why and changes nothing: no ref, no file, no ticket field.
 _merge_branch() {
-  local tdir root wt branch base head graded bsha dirty st src
+  local tdir root wt branch base cur head graded bsha dirty st src
   tdir="$(dirname "$file")"; id="$(get_field "$file" id)"
   root="$(git -C "$tdir" rev-parse --show-toplevel)" || exit 1
   _mb_no() { echo "merge: $1" >&2; exit 1; }
@@ -2099,13 +2110,21 @@ _merge_branch() {
   [[ "$(cd "$wgc" && pwd -P)" == "$(cd "$rgc" && pwd -P)" ]] || _mb_no "$wt is not a worktree of $root"
   [[ "$(cd "$wt" && pwd -P)" != "$(cd "$root" && pwd -P)" ]] || _mb_no "$id was worked on in the main checkout, not a worktree: there is no branch to merge"
   branch="$(git -C "$wt" symbolic-ref -q --short HEAD)" || _mb_no "the worktree $wt has no branch checked out (a detached HEAD)"
-  base="$(git -C "$root" symbolic-ref -q --short HEAD)" || _mb_no "the main checkout $root has no branch checked out (a detached HEAD)"
+  # t-e1a2: the target is the project's default branch, whichever branch the main checkout happens to be on.
+  cur="$(git -C "$root" symbolic-ref -q --short HEAD 2>/dev/null || true)"
+  base="$(_default_branch "$root")" || _mb_no "cannot tell the default branch: origin/HEAD is not set and there is no local main or master; run git remote set-head origin --auto, then Check & merge again"
+  git -C "$root" rev-parse -q --verify "refs/heads/$base^{commit}" >/dev/null 2>&1 || _mb_no "origin's default branch $base does not exist here; create it (git branch $base origin/$base), then Check & merge again"
   { _branch_ok "$branch" && _branch_ok "$base"; } || _mb_no "a branch name git cannot use as given ($branch, $base)"
   [[ "$branch" != "$base" ]] || _mb_no "the worktree has $base itself checked out; there is no separate branch to merge"
   head="$(git -C "$root" rev-parse -q --verify "refs/heads/$branch^{commit}")" \
     && bsha="$(git -C "$root" rev-parse -q --verify "refs/heads/$base^{commit}")" \
     || _mb_no "git could not read $branch or $base"
   ! git -C "$root" merge-base --is-ancestor "$head" "$bsha" || _mb_no "$branch is already in $base; nothing to merge"
+  local bwt here
+  bwt="$(git -C "$root" worktree list --porcelain | awk -v r="branch refs/heads/$base" '/^worktree /{ w = substr($0, 10) } $0 == r { print w }')" \
+    && here="$(git -C "$root" rev-parse --show-toplevel)" || _mb_no "git could not list the worktrees of $root"
+  [[ -z "$bwt" || "$(cd "$bwt" && pwd -P)" == "$(cd "$here" && pwd -P)" ]] \
+    || _mb_no "$base is checked out in $bwt, so it cannot be moved from here; switch that worktree to another branch (or finish there), then Check & merge again"
   dirty="$(git -C "$wt" status --porcelain --untracked-files=no 2>&1)" || _mb_no "git could not read the worktree's status: $dirty"
   if [[ -n "$dirty" ]]; then
     echo "merge: the worktree $wt has uncommitted changes the evaluator did not grade; commit or discard them, then Check & merge again:" >&2
@@ -2126,6 +2145,7 @@ _merge_branch() {
   # Files the merge changes that are edited in the main checkout: canon's own are set aside at the merge, any other stops it.
   _mc_check_notes() {
     local f hit=()
+    [[ "$cur" == "$base" ]] || return 0   # t-e1a2: a merge by ref touches no file of the checkout
     while IFS= read -r -d '' f; do
       if git -C "$root" cat-file -e "$bsha:$f" 2>/dev/null; then git -C "$root" diff --quiet "$bsha" -- "$f" 2>/dev/null && continue
       else [[ -e "$root/$f" || -L "$root/$f" ]] || continue; fi
@@ -2134,6 +2154,12 @@ _merge_branch() {
     [[ ${#hit[@]} -eq 0 ]] || echo "merge: edited in the main checkout and changed by this merge (may stop the update unless canon's own): $(printf '%s, ' "${hit[@]}" | sed 's/, $//')"
     return 0
   }
+  local by_ref=false; [[ "$cur" == "$base" ]] || by_ref=true
+  echo "merge: into $base"
+  if $by_ref; then
+    if [[ -n "$cur" ]]; then echo "merge: the main checkout is on $cur; merging into $base by ref, the checkout stays on $cur"
+    else echo "merge: the main checkout has no branch checked out; merging into $base by ref"; fi
+  fi
   local mrc=0; _merge_core || mrc=$?
   [[ "$mrc" == 0 ]] || return 0
   local tested tree new
@@ -2150,9 +2176,78 @@ _merge_branch() {
   canon_event branch.merged tkt "$root" "ticket=$id" "branch=$branch"
   handoff_recent "$root"   # t-2db7
   set_or_add_field "$file" merged "$new"
+  set_or_add_field "$file" merged_into "$base"; set_or_add_field "$file" merged_branch "$branch"   # t-e1a2: what tkt finish reads
   if git -C "$root" remote get-url origin >/dev/null 2>&1; then
-    echo "next: push $base (git push), then run tkt worktree-reset in $wt to start the next ticket there"
+    echo "next: tkt finish $id --push --yes && tkt finish $id --reset --yes   (pushes $base, then resets $wt to start the next ticket there)"
   else echo "next: the worktree $wt is free: reuse it for the next ticket, or remove it (git worktree remove $wt)"; fi
+}
+
+# cmd_finish <id> [--check | --push --yes | --reset --yes] — t-e1a2: what comes after tkt merge puts a worktree ticket's branch on the
+# project's default branch: push that branch, then reset the worktree. The board's Finish step runs it; each action needs --yes
+# (the board's confirm), --check changes nothing. The push is one refspec for the one default ref (never forced, no tags, no other
+# branch). The reset is tkt worktree-reset --yes run inside the ticket's worktree, and waits for the push: until the merge is on
+# origin, the work branch's commits are on no remote and worktree-reset would refuse them.
+cmd_finish() {
+  local id="" mode="" yes=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --check|--push|--reset) [[ -z "$mode" || "$mode" == "$1" ]] || { echo "finish: use one of --check, --push, --reset" >&2; exit 1; }; mode="$1"; shift ;;
+      --yes) yes=true; shift ;;
+      -*) echo "Unknown option: $1" >&2; exit 1 ;;
+      *)  [[ -z "$id" ]] && id="$1"; shift ;;
+    esac
+  done
+  [[ -n "$id" ]] || { echo "Usage: tkt finish <id> [--check | --push --yes | --reset --yes]" >&2; exit 1; }
+  mode="${mode:---check}"
+  [[ "$mode" == --check ]] && $yes && { echo "finish: --yes goes with --push or --reset; --check never changes anything" >&2; exit 1; }
+  [[ "$mode" == --check ]] || $yes || { echo "finish: ${mode#--} changes things; run it with --yes (the board asks first)" >&2; exit 1; }
+  _fin_no() { echo "finish: $1" >&2; exit 1; }
+  local file tdir root merged into mb wt
+  file="$(find_ticket "$id")"; tdir="$(dirname "$file")"; id="$(get_field "$file" id)"
+  root="$(git -C "$tdir" rev-parse --show-toplevel)" || exit 1
+  merged="$(get_field "$file" merged)"; into="$(get_field "$file" merged_into)"; mb="$(get_field "$file" merged_branch)"
+  [[ -n "$merged" && -n "$into" && -n "$mb" ]] || _fin_no "$id was not merged by tkt merge on this machine, so there is nothing to finish"
+  _branch_ok "$into" && _branch_ok "$mb" || _fin_no "a branch name git cannot use as given ($into, $mb)"
+  git -C "$root" remote get-url origin >/dev/null 2>&1 || _fin_no "this project has no origin remote; there is nothing to push"
+  git -C "$root" cat-file -e "$merged^{commit}" 2>/dev/null || _fin_no "the merge commit ${merged:0:8} is not in this repository"
+  git -C "$root" merge-base --is-ancestor "$merged" "refs/heads/$into" 2>/dev/null || _fin_no "$into does not contain the merge commit ${merged:0:8} (it was moved since); nothing to finish from here"
+  wt=""; [[ -f "$tdir/.cockpit-cwd" ]] && wt="$(_ticket_cwd_binding "$file")"
+  local on_origin=false ahead
+  git -C "$root" merge-base --is-ancestor "$merged" "refs/remotes/origin/$into" 2>/dev/null && on_origin=true
+  # worktree-reset moves the worktree's branch to origin's default branch, so it still needs one while it has the merged work branch
+  # checked out at anything but that tip.
+  local wtstate=gone otip
+  if [[ -n "$wt" && -d "$wt" ]]; then
+    otip="$(git -C "$root" rev-parse -q --verify "refs/remotes/origin/$into^{commit}" 2>/dev/null || true)"
+    if [[ "$(git -C "$wt" symbolic-ref -q --short HEAD 2>/dev/null || true)" == "$mb" && ( -z "$otip" || "$(git -C "$wt" rev-parse HEAD)" != "$otip" ) ]]; then
+      wtstate=on-branch
+    else wtstate=reset; fi
+  fi
+  case "$mode" in
+    --check)
+      if $on_origin; then echo "finish: push: $into is already on origin"
+      else
+        ahead="$(git -C "$root" log --format='  %h %s' "refs/remotes/origin/$into..refs/heads/$into" 2>/dev/null || true)"
+        echo "finish: push: git push origin $into sends $(printf '%s\n' "$ahead" | grep -c .) commit(s) (as last fetched):"
+        printf '%s\n' "$ahead" | sed -n '1,20p'
+      fi
+      case "$wtstate" in
+        on-branch) if $on_origin; then echo "finish: reset: $wt is still on $mb; tkt worktree-reset there starts the next ticket"
+                   else echo "finish: reset: $wt is still on $mb; reset after the push"; fi ;;
+        reset) echo "finish: reset: $wt is already at origin's $into; nothing to reset" ;;
+        gone) echo "finish: reset: the worktree is gone; nothing to reset" ;;
+      esac ;;
+    --push)
+      $on_origin && { echo "finish: $into is already on origin; nothing to push"; return 0; }
+      git -C "$root" push origin "refs/heads/$into:refs/heads/$into" < /dev/null 2>&1 \
+        || _fin_no "git push origin $into was refused or failed (not forced); if origin has new commits, update $into first (git pull --ff-only in the main checkout), then Push again"
+      echo "finish: pushed $into to origin" ;;
+    --reset)
+      [[ "$wtstate" == on-branch ]] || { echo "finish: the worktree is already reset (or gone); nothing to reset"; return 0; }
+      $on_origin || _fin_no "$into is not on origin yet; push it first (tkt finish $id --push --yes), or the work branch's commits would be on no remote"
+      local self; self="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/$(basename "${BASH_SOURCE[0]}")"   # absolute: the subshell changes folder
+      ( cd "$wt" && "$self" worktree-reset --yes ) ;;
+  esac
 }
 
 # _ticket_lock <ticket dir> / _ticket_unlock — t-9807: an mkdir lock (atomic, also in Git Bash). Waits up to ~15 s; a lock older than
@@ -3296,8 +3391,14 @@ Commands:
   merge <id> [--test CMD] [--yes | --check]
                             Check & merge any closed ticket: one sent to GitHub merges its PR
                             (merge-pr, same options plus --pr N); any other merges its worktree
-                            branch into the main checkout's branch here, as one merge commit,
-                            after the same checks and its tests on main + branch.
+                            branch into the project's default branch (origin/HEAD, else main or
+                            master) here, as one merge commit, after the same checks and its tests
+                            on that branch + the work branch. A main checkout on another branch
+                            stays there: the default branch moves by ref.
+  finish <id> [--check | --push --yes | --reset --yes]
+                            After tkt merge: --check lists the commits a push sends; --push pushes
+                            the default branch to origin (never forced); --reset runs
+                            tkt worktree-reset in the ticket's worktree once the push is done.
   merge-pr <id> [--pr N] [--test CMD] [--yes | --check]
                             Check a cloud ticket's PR (evaluator passed on its head,
                             mergeable, suite green on base + PR) and merge it after a y.
@@ -3365,6 +3466,7 @@ main() {
     commit-push)    cmd_commit_push "$@" ;;
     release-check)  cmd_release_check "$@" ;;
     merge)          cmd_merge "$@" ;;
+    finish)         cmd_finish "$@" ;;
     merge-pr)       cmd_merge_pr "$@" ;;
     land)           cmd_land "$@" ;;
     worktree-reset) cmd_worktree_reset "$@" ;;

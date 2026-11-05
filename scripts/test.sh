@@ -47,6 +47,7 @@ tests=(
   "$ROOT/tests/tkt-sync-issues.sh"
   "$ROOT/tests/tkt-merge-pr.sh"
   "$ROOT/tests/tkt-merge-branch.sh"
+  "$ROOT/tests/tkt-finish.sh"
   "$ROOT/tests/handoff-recent.sh"
   "$ROOT/tests/tkt-land.sh"
   "$ROOT/tests/tkt-take-back.sh"

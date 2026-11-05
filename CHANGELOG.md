@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Changed
+- Check & merge for a worktree ticket merges into the project's default branch (origin/HEAD, else `main` or `master`), not into whichever branch the main checkout happens to be on. When the checkout is on another branch the default branch moves by ref: nothing is switched or stashed, and your local edits stay as they are. A default branch checked out in another worktree is refused with that worktree named, before any test runs.
+- New `tkt finish <id>`: `--check` lists the commits a push sends, `--push --yes` pushes the default branch to origin (never forced), `--reset --yes` resets the worktree once that is done. The merge's Next line now prints both commands chained with `&&`.
+
 ## [0.44.2] - 2026-11-05
 
 Board: run `canon update` and reload the board: the Machines node changed.

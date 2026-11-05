@@ -367,7 +367,12 @@ sprint agent without leaving the browser — no second terminal.
   **Stop**, then **Merged** or **Not merged** and why. It runs `tkt merge <id>`, which refuses, changing nothing, when the
   evaluator did not pass on the branch's head (late docs after it are allowed), the worktree has uncommitted changes, the
   branch is already in main, or the merge conflicts (the files are named, and the way out: merge main into the branch in
-  the worktree, reopen, close again). The tests run on main + branch in a scratch copy, never in your checkouts; the merge
+  the worktree, reopen, close again). Since 0.45.0 (`t-e1a2`) the branch merges into the project's **default branch**
+  (origin/HEAD, else `main` or `master`), whatever branch the main checkout is on: the report says `merge: into main`, and
+  with the checkout on another branch `merging into main by ref, the checkout stays on <other>`, so nothing is switched
+  or stashed; a default branch checked out in another worktree is refused. Afterwards `tkt finish <id> --push --yes`
+  pushes it (never forced, the one branch) and `tkt finish <id> --reset --yes` resets the worktree once it is pushed;
+  `tkt finish <id>` alone lists the commits a push sends. The tests run on main + branch in a scratch copy, never in your checkouts; the merge
   is then one `Merge branch '<branch>'` commit holding exactly the tested files, and main moves to it under the same rules
   as a PR's update of local main: canon's own files are set aside, any other file you edited that the merge changes stops
   it with nothing changed. Then push main, and run `tkt worktree-reset` in the worktree to start the next ticket there.
