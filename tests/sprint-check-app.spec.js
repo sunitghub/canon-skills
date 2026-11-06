@@ -6312,11 +6312,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
     // ── t-761b: the Cloud group in the Agents list. The board server's /api/remote-agents is stubbed; prod path: the Cockpit's Agents list. ──
     const ago = secs => new Date(Date.now() - secs * 1000).toISOString();   // the server sends the newest activity as a time; the shell turns it into an age
+    // `since` is a getter: the rows are read when each test runs, not when the file loads, or a long full run would age them
     const CLOUD_ROWS = [
-      { id: 't-cl01', title: 'Export to CSV', state: 'sent', issue: '11', since: ago(120), pending: false },
-      { id: 't-cl02', title: 'Tighten address validation', state: 'working', issue: '12', since: ago(480), pending: false },
-      { id: 't-cl03', title: 'Add retry to the importer', state: 'results-ready', issue: '13', since: ago(3600), pending: false },
-      { id: 't-cl04', title: 'Fix CI checks detail link', state: 'imported', issue: '14', since: ago(60), pending: false },
+      { id: 't-cl01', title: 'Export to CSV', state: 'sent', issue: '11', get since() { return ago(120); }, pending: false },
+      { id: 't-cl02', title: 'Tighten address validation', state: 'working', issue: '12', get since() { return ago(480); }, pending: false },
+      { id: 't-cl03', title: 'Add retry to the importer', state: 'results-ready', issue: '13', get since() { return ago(3600); }, pending: false },
+      { id: 't-cl04', title: 'Fix CI checks detail link', state: 'imported', issue: '14', get since() { return ago(60); }, pending: false },
       { id: 't-cl05', title: 'Unreadable status', state: 'unknown', issue: '15', since: '', pending: false },
     ];
     const cloudRoute = (page, get) => page.route('**/api/remote-agents**', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ rows: get() }) }));
