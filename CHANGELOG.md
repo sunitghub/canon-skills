@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.47.4] - 2026-11-06
+
 Board page: run `canon update` and reload the board.
 
 ### Changed
