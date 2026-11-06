@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-05-2026 16:09
+learnings-sweep last run: 11-05-2026 19:27
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-06 | [t-dfaf](.tickets/t-dfaf/learnings.md) | A guard that parses a file with one rule (whole lines) while the tool it trusts parses it with another (substring markers) is bypassed at the seam: make one marker rule, count occurrences, reject NUL, and count matching lines instead of printing the first miss; and a guard the end-to-end test cannot see (a redundant check) is either tested directly or removed. | UNPROMOTED |
 | 2026-11-05 | [t-10ac](.tickets/t-10ac/learnings.md) | An anonymous 404 means 'missing' as often as 'private': the doctor showed a green 'found, and private' for a repo that did not exist until it asked the authenticated API first (the export path still has the old fallback: t-ee26); and a gate's late-doc list must match between the local close and the merge check (HANDOFF.md: t-dfaf). | UNPROMOTED |
 | 2026-11-05 | [t-eecb](.tickets/t-eecb/learnings.md) | A regex that eats the newline it then needs (`\n+(.+?)(?:\n##`) reads the next heading for an empty section: parse by lines, and give every reader of one file (Go rail, Logbook JS, the close notice's awk) the same heading rule; a state read by a close step must use the worktree's file, not the main checkout's (worktree_root, not project_root); a mutant that is equivalent or aimed at a line with the same text proves nothing, so check the mutant actually changed the code path. | UNPROMOTED |
 | 2026-11-05 | [t-3ba0](.tickets/t-3ba0/learnings.md) | A guard added in only one of two paths (load skipped a missing project, the refresh tick did not) shipped because the spec never exercised the second path, and a Playwright wait that is already true before the action (reads of the healthy card) lets the assertion run before anything happens: wait for NEW reads after the action; and a state flag (a remembered Not now) must be read after the live status, not before. | UNPROMOTED |
