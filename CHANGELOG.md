@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.47.6] - 2026-11-06
+
 Board and `tkt`: run `canon update`, then restart the board (`canon`) and reload.
 
 ### Fixed
