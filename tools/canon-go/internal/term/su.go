@@ -36,6 +36,7 @@ func (c Config) su(_ *bufio.Reader) (closeTerminal bool) {
 	}
 	if c.ShellCheck != nil {
 		if err := c.ShellCheck(); err != nil { // before the OS prompt: nobody approves a UAC prompt for a shell that cannot start
+			c.emit("terminal.su_denied", map[string]string{"reason": "shell"})
 			fmt.Fprintf(c.Out, "su is not available here: %v.\n", err)
 			return false
 		}

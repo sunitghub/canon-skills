@@ -5,18 +5,27 @@ package term
 import (
 	"context"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 )
 
-// Protects su on Windows (prod path: RealShell's job ends the shell and what it started at the ten minutes). Runs on the
-// Windows VM only: this was written on a Mac and has not run there.
-func TestJobEndsTheProgramAndItsChild(t *testing.T) {
+func pingRunning() bool {
+	out, _ := exec.Command("tasklist", "/FI", "IMAGENAME eq PING.EXE", "/NH").Output()
+	return strings.Contains(strings.ToUpper(string(out)), "PING.EXE")
+}
+
+// Protects su on Windows (prod path: RealShell's job ends the shell and what it started when the ten minutes run out). Runs on
+// the Windows VM only: this was written on a Mac and has not run there. It needs no other PING.EXE running on the machine.
+func TestJobEndsTheProgramAndItsChildAtTheLimit(t *testing.T) {
+	if pingRunning() {
+		t.Skip("another PING.EXE is running")
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	// cmd starts ping (the child); both must end when ctx does
 	go func() {
-		done <- runInJob(ctx, "cmd.exe", []string{"/c", "ping -n 60 127.0.0.1 >nul"}, t.TempDir(), true)
+		done <- runOnConsole(ctx, "cmd.exe", []string{"/c", "ping -n 60 127.0.0.1 >nul"}, t.TempDir(), true)
 	}()
 	time.Sleep(2 * time.Second)
 	cancel()
@@ -25,16 +34,21 @@ func TestJobEndsTheProgramAndItsChild(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("the job was not ended when ctx ended")
 	}
-	if out, _ := exec.Command("tasklist", "/FI", "IMAGENAME eq PING.EXE", "/NH").Output(); len(out) > 0 && containsPing(string(out)) {
-		t.Errorf("the child outlived the job:\n%s", out)
+	if pingRunning() {
+		t.Errorf("the child outlived the job")
 	}
 }
 
-func containsPing(s string) bool {
-	for i := 0; i+8 <= len(s); i++ {
-		if s[i:i+8] == "PING.EXE" || s[i:i+8] == "ping.exe" {
-			return true
-		}
+// Same prod path, the `exit` case the docs promise: the shell leaves a background program running, and closing the job ends it.
+func TestJobEndsWhatTheShellLeftBehindWhenItExits(t *testing.T) {
+	if pingRunning() {
+		t.Skip("another PING.EXE is running")
 	}
-	return false
+	if err := runOnConsole(context.Background(), "cmd.exe", []string{"/c", "start /b ping -n 60 127.0.0.1 >nul"}, t.TempDir(), true); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Second)
+	if pingRunning() {
+		t.Errorf("a program the shell started outlived the shell")
+	}
 }

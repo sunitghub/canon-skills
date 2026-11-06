@@ -22,6 +22,14 @@ var ErrElevated = errors.New("this Terminal runs as administrator")
 // elevated reports whether the process is elevated; Windows only (processElevated is false elsewhere). A var so tests set it.
 var elevated = processElevated
 
+// elevatedRefusal is ErrElevated on Windows when the process is elevated; nothing anywhere else.
+func elevatedRefusal(goos string) error {
+	if goos == "windows" && elevated() {
+		return ErrElevated
+	}
+	return nil
+}
+
 // authCommand is the OS's own password prompt for the signed-in account, one that asks for the password whatever sudo is
 // set to (sudo -v passes silently for a NOPASSWD user, so it is not used): macOS checks it against Open Directory with
 // dscl -authonly, Linux with su to the same account, which asks PAM for that account's password (root is never asked, so for root there is no provider). canon never sees the
@@ -81,8 +89,8 @@ func OSAuth(ctx context.Context, out io.Writer) error {
 	if account == "" {
 		account = os.Getenv("USER")
 	}
-	if goos == "windows" && elevated() {
-		return ErrElevated
+	if err := elevatedRefusal(goos); err != nil {
+		return err
 	}
 	name, args, ok := authCommand(goos, account, os.Geteuid() == 0, exec.LookPath, windowsSudoOn)
 	if !ok {

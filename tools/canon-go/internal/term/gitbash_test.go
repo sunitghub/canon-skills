@@ -31,6 +31,7 @@ func TestFindGitBash(t *testing.T) {
 		{"a bash.exe in a folder that is merely named git is refused", has(), func() []string { return []string{`C:\src\git\app\bash.exe`, `D:\work\Git\bash.exe`} }, ""},
 		{"WSL's System32 bash is refused", has(), func() []string { return []string{`C:\Windows\System32\bash.exe`} }, ""},
 		{"a Git folder that is not bash.exe is refused", has(), func() []string { return []string{`D:\Git\bin\git.exe`} }, ""},
+		{"a line from where is trimmed", has(), func() []string { return []string{"  D:\\Tools\\Git\\bin\\bash.exe \r"} }, `D:\Tools\Git\bin\bash.exe`},
 		{"nothing found", has(), none, ""},
 	} {
 		if got := findGitBash(get, c.exist, c.where); got != c.want {

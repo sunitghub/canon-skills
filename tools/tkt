@@ -1676,7 +1676,8 @@ cmd_github_doctor() {
   local root; root="$(dirname "$(tickets_dir)")"
   local ids=() sts=() titles=() details=() fixk=() fixv=()
   _doctor_windows() { case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*) return 0 ;; *) return 1 ;; esac; }
-  _gd() { ids+=("$1"); sts+=("$2"); titles+=("$3"); details+=("$4"); fixk+=("${5:-}"); fixv+=("${6:-}"); }
+  # a check that gives a command to paste says where to run it (user, 2026-11-06): git and gh act on the folder they are started in
+  _gd() { local d="$4"; [[ "${5:-}" == cmd && -n "${6:-}" ]] && d+=" The command below needs to be run from the project root."; ids+=("$1"); sts+=("$2"); titles+=("$3"); details+=("$d"); fixk+=("${5:-}"); fixv+=("${6:-}"); }
   local login
   if ! command -v gh >/dev/null 2>&1; then
     _gd gh bad "GitHub CLI (gh) is not installed" "Every GitHub step runs gh as you. Install it, then check again; signing in comes next." url https://github.com/cli/cli

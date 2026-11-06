@@ -636,31 +636,34 @@ func TestSuNeedsAShellBeforeTheOSPrompt(t *testing.T) {
 		t.Fatalf("exit %d", code)
 	}
 	out := buf.String()
-	if asked || f.shells != 0 || f.log() != "" {
-		t.Errorf("the OS was asked (%v), shells=%d, events %q: want none of it", asked, f.shells, f.log())
+	if asked || f.shells != 0 || f.log() != "terminal.su_denied reason=shell" {
+		t.Errorf("the OS was asked (%v), shells=%d, events %q: want no OS prompt, no shell, one su_denied reason=shell", asked, f.shells, f.log())
 	}
 	if !strings.Contains(out, "Git for Windows is required") || !strings.Contains(out, "a.go") {
 		t.Errorf("su should name Git for Windows and leave the prompt running:\n%s", out)
 	}
 }
 
-// Protects su on Windows: sudo gives an elevated caller no UAC prompt, so OSAuth must refuse BEFORE running sudo, and an
-// unelevated process still reaches the provider lookup (no sudo here: ErrNoAuth).
-func TestOSAuthRefusesWhenElevated(t *testing.T) {
-	oldGoos, oldElev := goos, elevated
-	defer func() { goos, elevated = oldGoos, oldElev }()
-	goos = "windows"
-	elevated = func() bool { return true }
+// Protects su on Windows: sudo gives an elevated caller no UAC prompt, so OSAuth must refuse BEFORE running sudo; the rule is
+// Windows only. (The test never runs the OS prompt: a real one would raise a UAC dialog on a Windows machine.)
+func TestElevatedRefusal(t *testing.T) {
+	old := elevated
+	defer func() { elevated = old }()
+	for _, c := range []struct {
+		goos string
+		elev bool
+		want error
+	}{{"windows", true, ErrElevated}, {"windows", false, nil}, {"darwin", true, nil}, {"linux", true, nil}} {
+		elevated = func() bool { return c.elev }
+		if got := elevatedRefusal(c.goos); !errors.Is(got, c.want) && got != c.want {
+			t.Errorf("%s elevated=%v: got %v, want %v", c.goos, c.elev, got, c.want)
+		}
+	}
+	// OSAuth itself uses it before it looks for a provider
+	oldGoos := goos
+	defer func() { goos = oldGoos }()
+	goos, elevated = "windows", func() bool { return true }
 	if err := OSAuth(context.Background(), io.Discard); !errors.Is(err, ErrElevated) {
-		t.Fatalf("elevated: got %v, want ErrElevated", err)
-	}
-	elevated = func() bool { return false }
-	if err := OSAuth(context.Background(), io.Discard); errors.Is(err, ErrElevated) {
-		t.Fatalf("unelevated must not read as elevated: %v", err)
-	}
-	goos = "darwin"
-	elevated = func() bool { return true }
-	if err := OSAuth(context.Background(), io.Discard); errors.Is(err, ErrElevated) {
-		t.Fatalf("elevation is a Windows rule: got %v on darwin", err)
+		t.Fatalf("OSAuth elevated: got %v, want ErrElevated", err)
 	}
 }

@@ -58,6 +58,8 @@ proot="$project"   # as the project is spelled (macOS /var, not /private/var)
 assert_eq "bad|No GitHub repository for this project|gh repo create \"$(basename "$project")\" --private --source=\"$proot\" --remote=origin --push|" "$(check "$out" origin)"
 assert_contains "$(field "$out" "d['checks'][1]['detail']")" "publishing the folder $proot."
 assert_contains "$(field "$out" "d['checks'][1]['detail']")" "no git remote named origin"
+# a check that hands over a command to paste says where it runs (user, 2026-11-06); one without a command does not
+assert_contains "$(field "$out" "d['checks'][1]['detail']")" "The command below needs to be run from the project root."
 # ...a folder with a space in its name works, and macOS/Linux keep chmod +x in the no-test-command text
 sp="$W/my project"; mkdir -p "$sp"; git -C "$sp" init -q; sproot="$(cd "$sp" && pwd)"
 out2="$(cd "$sp" && PATH="$NOGH_PATH" "$TKT" github-doctor --json)"
@@ -84,6 +86,7 @@ for unsafe in 'bad$name' 'bad`id`' 'bad"q' 'bad\slash' 'bad!x' $'bad\nline'; do
   outb="$(cd "$bad" && PATH="$NOGH_PATH" "$TKT" github-doctor --json)"
   assert_eq "bad|No GitHub repository for this project|nofix" "$(check "$outb" origin)"
   assert_contains "$(field "$outb" "d['checks'][1]['detail']")" "not safe in a command you paste"
+  case "$(field "$outb" "d['checks'][1]['detail']")" in *"run from the project root"*) fail "a check with no command to paste says where to run it" ;; esac
 done
 # t-11e6, Windows (a stubbed uname and cygpath): the folder in Windows form, the new-terminal hint, and the git index way to make it executable
 mkdir -p "$W/win"
@@ -107,6 +110,7 @@ assert_eq "bad|No GitHub repository for this project|git remote set-url origin h
 out="$(PATH="$W/bin:$PATH" doctor)"
 assert_eq "bad|No GitHub repository for this project|git remote set-url origin https://github.com/octo/$(basename "$project").git|" "$(check "$out" origin)"
 assert_contains "$(field "$out" "d['checks'][1]['detail']")" "git remote remove origin"
+assert_contains "$(field "$out" "d['checks'][1]['detail']")" "The command below needs to be run from the project root."
 out="$(PATH="$W/bin:$PATH" STUB_REPO=missing doctor)"
 assert_eq "bad|No GitHub repository for this project|git remote remove origin && gh repo create \"$(basename "$project")\" --private --source=\"$project\" --remote=origin --push|" "$(check "$out" origin)"
 assert_contains "$(field "$out" "d['checks'][1]['detail']")" "octo/$(basename "$project") is not on GitHub yet"
