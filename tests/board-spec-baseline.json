@@ -131,6 +131,14 @@
       "failed_runs": {
         "webkit": "1/3"
       }
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > cross-project Sessions row (t-2d2e) > promote (t-f553): a ticket created in a background scratch tab is offered when that tab is shown, and only there @webkit",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "failed 1 of 3 (webkit) in the t-d287 full run at 83ad65b1 (2026-11-06, load ~3 on 10 CPUs, 3 runs per browser): the promoted banner stayed hidden for the 5 s expect; passed 3 of 3 alone on that head and on 4efed52a; a scratch-tab test, not in the code this change touches (board-github.js, cockpit-factory.js, tools/tkt)"
     }
   ],
   "skipped": []
