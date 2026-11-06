@@ -1128,7 +1128,7 @@ _pr_in_repo() {
 }
 
 # _repo_visibility <repo>: PUBLIC or PRIVATE, from gh when it can answer, else from an anonymous request (a public repo
-# answers 200, a private one 404). Prints nothing when neither can tell.
+# answers 200, a private one 404; a repo that does not exist answers 404 too, so the doctor asks _gh_repo_state first, and export's push to a missing repo fails on its own). Prints nothing when neither can tell.
 _repo_visibility() {
   local v
   # REST (`private`/`public`), not `gh repo view`: export runs in cloud sessions, whose proxy refuses GraphQL (t-35d2).
