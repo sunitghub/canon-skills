@@ -61,10 +61,14 @@ async function ghLoad(force){
   const pid=ghPickProject();
   if(!pid || (!force && pid===ghPid)) return;
   ghPid=pid; const gen=++ghGen;
-  document.getElementById('fac-gh-count').textContent='Checks · checking…';
+  // the same spinner the registry uses (reg-spin), in the header and on the button; the rows stay until the answer lands
+  const again=document.getElementById('fac-gh-recheck');
+  document.getElementById('fac-gh-count').innerHTML='<span class="reg-spin" aria-hidden="true"></span>Checks · checking…';
+  again.disabled=true; again.setAttribute('aria-busy','true'); again.innerHTML='<span class="reg-spin" aria-hidden="true"></span>Checking…';
   intakeWaiting('Checking…');
   const res=await fetchDoctor(pid,force);
   if(gen!==ghGen) return;
+  again.disabled=false; again.removeAttribute('aria-busy'); again.textContent='Check again';
   if(force) refreshCardRow(pid);
   ghDoctor=res.ok&&res.doctor?res.doctor:null;
   if(!ghDoctor) ghPid=null;   // a failed read is tried again the next time Factory opens

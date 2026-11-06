@@ -17726,8 +17726,19 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     // The reopen's fetch (if any) is sent before Check again's, so once Check again has rendered both are counted.
     await page.locator('#nav-projects').click(); await page.locator('#nav-factory').click();
     doctor.checks[0] = { id: 'gh', status: 'ok', title: 'Signed in to GitHub', detail: 'Signed in as octo.' };
+    // t-d287 follow-up: while gh answers, the header and the button each show the registry's spinner, the rows stay, and both return after
+    let release; const held = new Promise(res => { release = res; });
+    await page.route('**/api/github/doctor**', async r => { await held; await r.fallback(); });
     await page.locator('#fac-gh-recheck').click();
+    await expect(page.locator('#fac-gh-count')).toHaveText('Checks · checking…');
+    await expect(page.locator('#fac-gh-count .reg-spin')).toHaveCount(1);
+    await expect(page.locator('#fac-gh-recheck')).toHaveAttribute('aria-busy', 'true');
+    await expect(page.locator('#fac-gh-recheck')).toBeDisabled();
+    await expect(page.locator('#fac-gh-checks .gh-row')).toHaveCount(3);
+    release();
     await expect(page.locator('#fac-gh-count')).toHaveText('Checks · 2 of 3 ready on this machine');
+    await expect(page.locator('#fac-gh-recheck')).toHaveText('Check again');
+    await expect(page.locator('#fac-gh-recheck')).toBeEnabled();
     expect(calls).toEqual(['proj-a', 'proj-b', 'proj-a']);
     await page.locator('#fac-gh-project').selectOption('proj-b');
     await expect(page.locator('#fac-gh-count')).toHaveText('Checks · 1 of 3 ready on this machine');   // proj-b's cached answer
