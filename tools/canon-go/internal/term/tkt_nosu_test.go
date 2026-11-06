@@ -119,11 +119,11 @@ func TestSendIssueLaunchUsesTheTerminal(t *testing.T) {
 	if out := run(t, cfg, "tkt send-issue t-ab12 --dry-run\nexit\n"); !strings.Contains(out, "ran-send-issue") || gotPath != "" {
 		t.Errorf("send-issue without --launch must not use the terminal runner:\n%s", out)
 	}
-	// No runner: Windows.
+	// No runner (a platform without one): refuse and say where to paste it.
 	_ = os.Remove(marker)
 	cfg.RunOnTerminal = nil
 	out := run(t, cfg, "tkt send-issue t-ab12 --launch\nexit\n")
-	if _, err := os.Stat(marker); err == nil || !strings.Contains(out, "PowerShell or Git Bash") {
+	if _, err := os.Stat(marker); err == nil || !strings.Contains(out, "Paste the same line in a terminal") {
 		t.Errorf("without a runner --launch must refuse and say where to paste it:\n%s", out)
 	}
 }

@@ -34,6 +34,12 @@ func (c Config) su(_ *bufio.Reader) (closeTerminal bool) {
 	if st == nil {
 		st = &suState{}
 	}
+	if c.ShellCheck != nil {
+		if err := c.ShellCheck(); err != nil { // before the OS prompt: nobody approves a UAC prompt for a shell that cannot start
+			fmt.Fprintf(c.Out, "su is not available here: %v.\n", err)
+			return false
+		}
+	}
 	c.emit("terminal.su_prompted", nil)
 	if c.Auth == nil {
 		c.unavailable()
@@ -47,6 +53,11 @@ func (c Config) su(_ *bufio.Reader) (closeTerminal bool) {
 	}
 	if errors.Is(err, ErrNoAuth) {
 		c.unavailable()
+		return false
+	}
+	if errors.Is(err, ErrElevated) { // like unavailable: logged, never counted toward the three tries
+		c.emit("terminal.su_denied", map[string]string{"reason": "elevated"})
+		fmt.Fprintln(c.Out, "su is not available: this Terminal runs as administrator, where Windows sudo asks for no approval, so nothing would check that you are there. Start canon from a normal (not Administrator) window.")
 		return false
 	}
 	// A failed or cancelled OS prompt counts: three in all, across every su, close the terminal.

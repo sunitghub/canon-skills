@@ -15,6 +15,13 @@ import (
 // fallback: without the account password there is no admin shell).
 var ErrNoAuth = errors.New("no OS authentication available")
 
+// ErrElevated means this process already runs as administrator (Windows): sudo shows no UAC prompt to an elevated caller, so
+// nothing would check that a person is there, and su refuses rather than open a shell on a silent pass.
+var ErrElevated = errors.New("this Terminal runs as administrator")
+
+// elevated reports whether the process is elevated; Windows only (processElevated is false elsewhere). A var so tests set it.
+var elevated = processElevated
+
 // authCommand is the OS's own password prompt for the signed-in account, one that asks for the password whatever sudo is
 // set to (sudo -v passes silently for a NOPASSWD user, so it is not used): macOS checks it against Open Directory with
 // dscl -authonly, Linux with su to the same account, which asks PAM for that account's password (root is never asked, so for root there is no provider). canon never sees the
@@ -73,6 +80,9 @@ func OSAuth(ctx context.Context, out io.Writer) error {
 	}
 	if account == "" {
 		account = os.Getenv("USER")
+	}
+	if goos == "windows" && elevated() {
+		return ErrElevated
 	}
 	name, args, ok := authCommand(goos, account, os.Geteuid() == 0, exec.LookPath, windowsSudoOn)
 	if !ok {

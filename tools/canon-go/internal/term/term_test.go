@@ -480,6 +480,7 @@ func TestSuUsesOSAuth(t *testing.T) {
 		{"fail", "su\nexit\n", "terminal.su_prompted|terminal.su_denied reason=auth", []error{fail}, false, 0, 0, "Authentication failed: still in the restricted prompt."},
 		{"three fails", "su\nsu\nsu\nexit\n", "terminal.su_prompted|terminal.su_denied reason=auth|terminal.su_prompted|terminal.su_denied reason=auth|terminal.su_prompted|terminal.su_denied reason=locked", []error{fail, fail, fail}, false, 0, 1, "closing the terminal"},
 		{"no provider", "su\nexit\n", "terminal.su_prompted|terminal.su_denied reason=unavailable", []error{ErrNoAuth}, false, 0, 0, "su is not available here"},
+		{"elevated", "su\nsu\nsu\nsu\nexit\n", "terminal.su_prompted|terminal.su_denied reason=elevated|terminal.su_prompted|terminal.su_denied reason=elevated|terminal.su_prompted|terminal.su_denied reason=elevated|terminal.su_prompted|terminal.su_denied reason=elevated", []error{ErrElevated, ErrElevated, ErrElevated, ErrElevated}, false, 0, 0, "this Terminal runs as administrator"},
 		{"no Auth at all", "su\nexit\n", "terminal.su_prompted|terminal.su_denied reason=unavailable", nil, true, 0, 0, "su is not available here"},
 	} {
 		f := newFakeSu()
@@ -616,5 +617,50 @@ func TestSudoEnabledIn(t *testing.T) {
 		if got := sudoEnabledIn(in); got != want {
 			t.Errorf("%q: got %v, want %v", in, got, want)
 		}
+	}
+}
+
+// Protects su on Windows: with no Git bash there is nothing to start, so su says so BEFORE the OS prompt (nobody approves a
+// UAC prompt for a shell that cannot start), logs nothing, and the prompt keeps running.
+func TestSuNeedsAShellBeforeTheOSPrompt(t *testing.T) {
+	root, _ := project(t)
+	f := newFakeSu()
+	close(f.stop)
+	cfg := f.cfg(root)
+	cfg.ShellCheck = func() error { return ErrNoGitBash }
+	asked := false
+	cfg.Auth = func(context.Context, io.Writer) error { asked = true; return nil }
+	var buf bytes.Buffer
+	cfg.In, cfg.Out = strings.NewReader("su\nls\nexit\n"), &buf
+	if code := Run(cfg); code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	out := buf.String()
+	if asked || f.shells != 0 || f.log() != "" {
+		t.Errorf("the OS was asked (%v), shells=%d, events %q: want none of it", asked, f.shells, f.log())
+	}
+	if !strings.Contains(out, "Git for Windows is required") || !strings.Contains(out, "a.go") {
+		t.Errorf("su should name Git for Windows and leave the prompt running:\n%s", out)
+	}
+}
+
+// Protects su on Windows: sudo gives an elevated caller no UAC prompt, so OSAuth must refuse BEFORE running sudo, and an
+// unelevated process still reaches the provider lookup (no sudo here: ErrNoAuth).
+func TestOSAuthRefusesWhenElevated(t *testing.T) {
+	oldGoos, oldElev := goos, elevated
+	defer func() { goos, elevated = oldGoos, oldElev }()
+	goos = "windows"
+	elevated = func() bool { return true }
+	if err := OSAuth(context.Background(), io.Discard); !errors.Is(err, ErrElevated) {
+		t.Fatalf("elevated: got %v, want ErrElevated", err)
+	}
+	elevated = func() bool { return false }
+	if err := OSAuth(context.Background(), io.Discard); errors.Is(err, ErrElevated) {
+		t.Fatalf("unelevated must not read as elevated: %v", err)
+	}
+	goos = "darwin"
+	elevated = func() bool { return true }
+	if err := OSAuth(context.Background(), io.Discard); errors.Is(err, ErrElevated) {
+		t.Fatalf("elevation is a Windows rule: got %v on darwin", err)
 	}
 }

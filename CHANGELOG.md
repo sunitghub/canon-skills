@@ -6,6 +6,11 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+Daemon page and the Terminal: run `canon update`, restart the daemon and open a new Terminal.
+
+### Added
+- **Windows: `su` gives Git Bash, and `tkt send-issue --launch` runs in the Terminal (`t-353a`).** After the OS prompt (Windows 11 24H2+ with sudo switched on), `su` starts Git's `bash.exe -l -i` in the project folder inside the same terminal, ends it and everything it started at the ten minutes, and `tkt send-issue <id> --launch` runs with the Terminal's console attached. `su` refuses when canon was started from an Administrator window (Windows sudo shows no prompt to an elevated caller, so nothing would check that you are there), and says so before the OS prompt when Git for Windows is missing. The board's To Claude Cloud button still copies the line on Windows.
+
 ## [0.47.0] - 2026-11-06
 
 Board page, daemon page and the board server: run `canon update`, restart the daemon and reload the board.

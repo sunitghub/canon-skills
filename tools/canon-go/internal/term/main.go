@@ -43,6 +43,7 @@ func Main(args []string) int {
 		},
 		RunShell:      RealShell,
 		RunOnTerminal: RunOnTerminal,
+		ShellCheck:    shellCheck,
 		Auth:          osAuth,
 		Limit:         *limit,
 		Warn:          *warn,

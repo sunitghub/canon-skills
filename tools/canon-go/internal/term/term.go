@@ -40,6 +40,8 @@ type Config struct {
 	// RunOnTerminal runs one program as the foreground of the user's real terminal (tkt send-issue --launch needs one for
 	// claude --cloud); nil: not available here (Windows has no runner yet, t-57ab).
 	RunOnTerminal func(ctx context.Context, path string, args []string, dir string) error
+	// ShellCheck says before su asks the OS whether the full shell can start here (Windows: Git's bash is installed); nil: always.
+	ShellCheck func() error
 	// Auth asks the OS for the account password; nil, or ErrNoAuth, means su is unavailable.
 	Auth    func(ctx context.Context, out io.Writer) error
 	Limit   time.Duration  // how long su lasts
@@ -408,7 +410,7 @@ func hasArg(args []string, want string) bool {
 // start unless stdin and stdout are a terminal.
 func (c Config) launch(bin string, args []string) {
 	if c.RunOnTerminal == nil {
-		fmt.Fprintln(c.Out, "tkt send-issue --launch needs a full terminal, which this Terminal cannot give on Windows yet.\nPaste the same line in PowerShell or Git Bash in the project folder instead.")
+		fmt.Fprintln(c.Out, "tkt send-issue --launch needs a full terminal, which this Terminal cannot give here.\nPaste the same line in a terminal in the project folder instead.")
 		return
 	}
 	path, err := exec.LookPath(bin)
