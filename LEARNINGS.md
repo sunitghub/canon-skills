@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-06-2026 05:47
+learnings-sweep last run: 11-06-2026 07:57
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-06 | [t-353a](.tickets/t-353a/learnings.md) | A gate that leans on an OS prompt must ask whether the OS will show it: Windows sudo shows no UAC prompt to an elevated caller, so an elevated Console would have opened a shell with no check (found from a screenshot of an Administrator window, not from the code); `where` looks in the current folder first, so a finder run from a project folder can be made to run a planted binary; and a failed step in a job-object setup must kill the child, not ignore the error, or the time limit never fires | UNPROMOTED |
 | 2026-11-06 | [t-761b](.tickets/t-761b/learnings.md) | A fixture with times built when the spec file loads ages during a 17-minute run (2m read 6m): compute relative times when each test runs; and a sidebar poll that waited on `gh` took 11 s, so serve the cache and refresh in the background; an age that changes every second defeats the ETag, so send a time. Still open: the stage mapping has three copies (card, route, shell), the full REMOTE state machine is unbuilt, and a slow poll can overwrite a newer one | UNPROMOTED |
 | 2026-11-06 | [t-dfaf](.tickets/t-dfaf/learnings.md) | A guard that parses a file with one rule (whole lines) while the tool it trusts parses it with another (substring markers) is bypassed at the seam: make one marker rule, count occurrences, reject NUL, and count matching lines instead of printing the first miss; and a guard the end-to-end test cannot see (a redundant check) is either tested directly or removed. | UNPROMOTED |
 | 2026-11-05 | [t-10ac](.tickets/t-10ac/learnings.md) | An anonymous 404 means 'missing' as often as 'private': the doctor showed a green 'found, and private' for a repo that did not exist until it asked the authenticated API first (the export path still has the old fallback: t-ee26); and a gate's late-doc list must match between the local close and the merge check (HANDOFF.md: t-dfaf). | UNPROMOTED |
