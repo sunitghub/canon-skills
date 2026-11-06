@@ -89,7 +89,7 @@ MERGE_SAFE_AUDIT_LOG='.claude/subagent-runs.jsonl'
 # instruction fails it: the head's block is text an agent reads at session start, so the late-doc exemption is for canon's own lines only.
 # (tools/canon-go/internal/board/recent.go recentBlock and recentKinds are the owners of this shape; tests/tkt-merge-pr.sh pins both ends.)
 _handoff_block_ok() {
-  local f="$1" inner n total ok dot='·' par='[A-Za-z0-9 ._,/-]{1,60}' pat
+  local f="$1" inner n total ok dot='·' pat tier='[a-z-]{1,16}' model='[A-Za-z0-9._:/-]{1,80}' branch='[A-Za-z0-9._/-]{1,100}'   # no space in any class: a value is one word, a sentence is not a value
   # `recent --strip` finds the markers as substrings anywhere in the text; this check reads whole lines. They must see the same block, so the
   # marker text occurs exactly twice in the file (once as a whole BEGIN line, once as a whole END line), and the file holds no NUL (bash
   # would drop it from the lines below, so what is checked would not be what is merged).
@@ -101,8 +101,8 @@ _handoff_block_ok() {
   total="$(printf '%s\n' "$inner" | wc -l)"; total="${total//[[:space:]]/}"
   pat="## Recent activity|_Written by canon from the activity log at plan approval, sprint close and merge; edits here are replaced\\._|- No stage recorded yet\\.|"
   pat+="- [0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2} $dot (t-[a-z0-9]{4}|-) $dot ("
-  pat+="plan approved( \\($par\\))?|(reviewer|evaluator) (pass|fail|partial|not-run|YES|NO|unknown|-)( \\($par\\))?|sprint completed"
-  pat+="|sent to GitHub( \\(issue #[0-9]{1,7}\\))?|cloud results imported( \\(PR #[0-9]{1,7}\\))?|merged( \\(PR #[0-9]{1,7}\\))?|merged here( \\($par\\))?)"
+  pat+="plan approved( \\($tier\\))?|(reviewer|evaluator) (pass|fail|partial|not-run|YES|NO|unknown|-)( \\($model\\))?|sprint completed"
+  pat+="|sent to GitHub( \\(issue #[0-9]{1,7}\\))?|cloud results imported( \\(PR #[0-9]{1,7}\\))?|merged( \\(PR #[0-9]{1,7}\\))?|merged here( \\($branch\\))?)"
   # count, not "print the first miss": a grep that errors, or reads binary data, counts fewer lines and fails the check (a blank line matches the empty alternative)
   ok="$(printf '%s\n' "$inner" | LC_ALL=C grep -acxE "($pat)?" || true)"; ok="${ok//[[:space:]]/}"
   [[ -n "$ok" && "$ok" == "$total" ]]
@@ -141,9 +141,9 @@ late_docs_delta() {
     local rb t1 t2 same=false
     if rb="$(recent_board 2>/dev/null)"; then
       t1="$(mktemp)"; t2="$(mktemp)"
-      if ( set -o pipefail; git -C "$dir" cat-file blob "$graded:HANDOFF.md" 2>/dev/null | "$rb" recent --strip | tr -d '\r' ) > "$t1" \
-        && ( set -o pipefail; git -C "$dir" cat-file blob "$head:HANDOFF.md" 2>/dev/null | "$rb" recent --strip | tr -d '\r' ) > "$t2" \
-        && [[ -s "$t1" ]] && cmp -s "$t1" "$t2"; then
+      if ( set -o pipefail; git -C "$dir" cat-file blob "$graded:HANDOFF.md" 2>/dev/null | "$rb" recent --strip | LC_ALL=C tr -d '\r' ) > "$t1" \
+        && ( set -o pipefail; git -C "$dir" cat-file blob "$head:HANDOFF.md" 2>/dev/null | "$rb" recent --strip | LC_ALL=C tr -d '\r' ) > "$t2" \
+        && cmp -s "$t1" "$t2"; then
         git -C "$dir" cat-file blob "$head:HANDOFF.md" 2>/dev/null > "$t2" && _handoff_block_ok "$t2" && same=true
       fi
       rm -f "$t1" "$t2"

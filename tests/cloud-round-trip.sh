@@ -277,6 +277,7 @@ cd "$X" && "$TKT" export "$id" >/dev/null 2>&1 && cd "$L"
 STUB_PR_HEAD=0000000000000000000000000000000000000000
 rc=0; out="$("$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "a PR head that differs from graded-head should exit 1"; assert_contains "$out" "does NOT match graded-head"; assert_contains "$out" "kept canon-results/$id on origin, since a check failed: fix it and run import-results again"
+[[ "$out" != *"since then it changes"* ]] || fail "an unfetchable PR head (no delta to list) must not claim a list of changed files: $out"   # t-dfaf: rc 2 is a reason, not a file list
 # t-1dec: the refused import is on the trail too, as its own block.
 assert_eq "$((nblocks + 1))" "$(grep -c '^## ' ".tickets/$id/github.md")"
 assert_eq "import refused" "$(grep '^## ' ".tickets/$id/github.md" | tail -1 | sed 's/^## [^ ]* — //')"
