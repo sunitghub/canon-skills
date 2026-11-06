@@ -5150,7 +5150,7 @@ const cloudStalledAfter = 7 * 24 * time.Hour
 // (cached 30 s per ticket), read without waiting (githubStatusSoft): a poll costs no process when nothing is out on GitHub, and
 // otherwise answers at once, with at most one background tkt per ticket per 30 s. A ticket not yet checked is `unknown` and
 // `pending`; tkt github-status asks GitHub and takes seconds, which a poll must never wait for. t-1148: a ticket closed here whose
-// stage is only branch or sent reads `closed-here`, and a sent or working row with no activity for 7 days reads `stalled`.
+// stage is only branch or sent reads `closed-here`, and a ticket waiting on GitHub (stage sent or branch) with no activity for 7 days reads `stalled`; an open PR waiting on review never does.
 func remoteAgents(root string) []map[string]any {
 	field := func(t ticket, k string) string {
 		if v, ok := t[k].(string); ok {
@@ -5206,8 +5206,8 @@ func remoteAgents(root string) []map[string]any {
 		if _, err := time.Parse(time.RFC3339, newest); err == nil {
 			since = newest
 		}
-		// t-1148: waiting on GitHub for 7 days with no activity is not "working": the session is gone or never started.
-		if at, err := time.Parse(time.RFC3339, since); (state == "sent" || state == "working") && err == nil && cloudNow().Sub(at) > cloudStalledAfter {
+		// t-1148: a send or a branch with no activity for 7 days is not "working": the session is gone or never started. An open PR (pr-open) is waiting on a person, not a session.
+		if at, err := time.Parse(time.RFC3339, since); (stage == "sent" || stage == "branch") && state != "closed-here" && err == nil && cloudNow().Sub(at) > cloudStalledAfter {
 			state = "stalled"
 		}
 		issue := ""

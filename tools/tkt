@@ -2614,16 +2614,16 @@ _ff_here() {
   rm -rf "$bk"
 }
 
-# _record_branch_merge <ticket.md> <id> <root> <commit> <base> — t-1148: a ticket closed here whose graded commit is already on origin's <base>
+# _record_branch_merge <ticket.md> <commit> <base> — t-1148: a ticket closed here whose graded commit is already on origin's <base>
 # (a branch with no PR, or a send nobody picked up, the work landed some other way) is recorded as merged, once, so its Cloud row and
-# card leave by themselves. No PR, so no github.merged event (that kind carries a PR number); the github.md trail says who recorded it.
+# card leave by themselves. No PR, so no github.merged event (that kind carries a PR number) and no HANDOFF line; the github.md trail
+# says who recorded it. Two polls at once: the lock is taken and merged: read again inside it.
 _record_branch_merge() {
-  local file="$1" id="$2" root="$3" sha="$4" base="$5" d rrc=0; d="$(dirname "$file")"
+  local file="$1" sha="$2" base="$3" d rrc=0; d="$(dirname "$file")"
   [[ -z "$(get_field "$file" merged)" ]] || return 0
   _ticket_lock "$d"
   if [[ -z "$(get_field "$file" merged)" ]]; then
     set_or_add_field "$file" merged "$sha" && _gh_trail "$d" merged "commit: $sha" "base: $base" "recorded by: github-status (the graded commit is already on origin/$base, no PR)" || rrc=1
-    handoff_recent "$root"
   fi
   _ticket_unlock "$d"
   return "$rrc"
@@ -2720,7 +2720,7 @@ cmd_github_status() {
     [[ -n "$gb" ]] || { gb="$(git -C "$root" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null || true)"; gb="${gb#origin/}"; }
     if _branch_ok "$gb" && gfull="$(git -C "$root" rev-parse -q --verify "$graded^{commit}" 2>/dev/null)" \
       && git -C "$root" merge-base --is-ancestor "$gfull" "refs/remotes/origin/$gb" 2>/dev/null; then
-      if _record_branch_merge "$file" "$id" "$root" "$gfull" "$gb"; then merged="$(get_field "$file" merged)"; stage=merged; fi
+      if _record_branch_merge "$file" "$gfull" "$gb"; then merged="$(get_field "$file" merged)"; stage=merged; fi
     fi
   fi
   # t-2560: when the cloud session was last started (the trail's newest launched or sent): a branch with no PR soon after is the

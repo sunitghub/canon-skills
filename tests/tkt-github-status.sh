@@ -218,7 +218,16 @@ assert_eq "merged|$HEAD7" "$(bm)"; grep -q "^merged: $HEAD7\$" "$f" || fail "the
 assert_eq "$((b0 + 1))" "$(tb)"; assert_contains "$(tail -4 "$gt")" "recorded by: github-status (the graded commit is already on origin/main, no PR)"
 ! grep -q '^pr view\|^issue view' "$W/log" || fail "the recorder asked gh something it should not: $(cat "$W/log")"
 assert_eq "merged|$HEAD7" "$(bm)"; assert_eq "$((b0 + 1))" "$(tb)"                  # once
-sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; sed -i.bak 's/^status: closed$/status: open/' "$f" && rm -f "$f.bak" ".tickets/$id/eval-report.md"
+# the sent stage (no session branch: the base comes from origin/HEAD) and a short graded sha; no origin/HEAD, no recording
+unmerge() { sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; }
+unmerge; printf 'main\n' > "$W/graphql"; ev "${HEAD7:0:8}" pass; git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+assert_eq "merged|$HEAD7" "$(bm)"                                                    # a short sha is recorded as the full commit
+unmerge; git symbolic-ref --delete refs/remotes/origin/HEAD;                        assert_eq "sent|" "$(bm)"   # no base to compare with
+# two polls at once record once: the lock, and merged: read again inside it
+unmerge; printf 'main\nclaude/brave-x1\n' > "$W/graphql"; ev "$HEAD7" pass; b1="$(tb)"
+"$TKT" github-status "$id" --json > /dev/null 2>&1 & p1=$!; "$TKT" github-status "$id" --json > /dev/null 2>&1 & p2=$!; wait "$p1" "$p2"
+assert_eq "$((b1 + 1))" "$(tb)"; assert_eq 1 "$(grep -c '^merged: ' "$f")"
+unmerge; sed -i.bak 's/^status: closed$/status: open/' "$f" && rm -f "$f.bak" ".tickets/$id/eval-report.md"
 # Mirrors come from git config canon.mirror, in order.
 git config --add canon.mirror public; git config --add canon.mirror backup
 assert_eq "branch|claude/brave-x1|[\"public\",\"backup\"]" "$(bs)"

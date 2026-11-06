@@ -2263,6 +2263,7 @@ func TestRemoteAgentsClosedHereAndStalled(t *testing.T) {
 		{"t-cc09", "closed", "branch", ago(19 * day), "closed-here"}, // t-3b90: 19 days, closed here, a branch and no PR
 		{"t-cc0a", "open", "branch", ago(time.Hour), "working"},
 		{"t-cc0b", "open", "pr-open", "", "working"},
+		{"t-cc0c", "open", "pr-open", ago(30 * day), "working"}, // a PR waiting on review is not a dead session, however old
 	}
 	script := "#!/bin/sh\ncase \"$2\" in\n"
 	for _, r := range rows {
