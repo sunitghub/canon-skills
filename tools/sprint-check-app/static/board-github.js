@@ -916,7 +916,7 @@ async function launchToCloud(t, say) {
   const root = projectRootText();
   if (isWindowsBrowser()) {
     const steps = 'Press Ctrl+. then m to open the Terminal below as a split view.\nType su and press Enter, then approve the Windows prompt: you get a Git Bash shell.\n';
-    const after = 'When the session is created, type exit, then press Ctrl+. and x to close the Terminal.\nClose this panel once you have run the command. You can follow the rest of the progress on the board.';
+    const after = 'When the session is created, type exit, then press Ctrl+. and x, then Enter to close the Terminal.\nClose this panel once you have run the command. You can follow the rest of the progress on the board.';
     say(copied ? `Copied.\n${steps}Paste the command in it and press Enter.\n${after}`
       : `Copy was blocked.\n${steps}Type ${typed} and press Enter.\n${after}`);
     if (copied) recordCloudCopy(t.id);   // a blocked copy launched nothing: the card keeps To Claude Cloud

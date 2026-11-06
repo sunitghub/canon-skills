@@ -16541,7 +16541,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
         await expect.poll(() => page.evaluate(() => window.__copied)).toBe(line);
         // t-df13: the steps the user takes: open the Terminal (Ctrl+. m), su, paste, exit, close it; one line each
         const ROUTE = ['Press Ctrl+. then m to open the Terminal below as a split view.', 'Type su and press Enter, then approve the Windows prompt: you get a Git Bash shell.'];
-        const AFTER = ['When the session is created, type exit, then press Ctrl+. and x to close the Terminal.', 'Close this panel once you have run the command. You can follow the rest of the progress on the board.'];
+        const AFTER = ['When the session is created, type exit, then press Ctrl+. and x, then Enter to close the Terminal.', 'Close this panel once you have run the command. You can follow the rest of the progress on the board.'];
         const winLines = (await page.locator('#ck-gh-status').textContent()).split('\n');
         expect(winLines).toEqual(['Copied.', ...ROUTE, 'Paste the command in it and press Enter.', ...AFTER]);
         expect(await page.locator('#ck-gh-status').evaluate(e => getComputedStyle(e).whiteSpace)).toBe('pre-line');   // the lines really break
