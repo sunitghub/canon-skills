@@ -2,7 +2,7 @@
 // load-time code is initTabs(), which cockpit-main.js runs in order once every module has loaded.
 import { bindSplitHandle, clampRatio as clampBy, validRatio } from './split-handle.js';
 import { esc, toast } from './cockpit-core.js';
-import { SCRATCH_ID_RE, TICKET_ID_RE, _projKey, boardScratch, interrupted, liveTabIds, needsTabIds, openCloseWarn, renderInterrupted, renderSessionSurfaces } from './cockpit-sessions.js';
+import { SCRATCH_ID_RE, TICKET_ID_RE, _projKey, boardScratch, cloudTabsChanged, interrupted, liveTabIds, needsTabIds, openCloseWarn, renderInterrupted, renderSessionSurfaces } from './cockpit-sessions.js';
 import { ensureGit, getProjects, registerSkill } from './cockpit-projects.js';
 
 // ── Tabs (t-a55a) ────────────────────────────────────────────────────────
@@ -72,6 +72,7 @@ export function updateActiveCount(){
 }
 let placedPaneTab='';
 export function renderTabs(){
+  cloudTabsChanged();   // t-761b: a project opened or closed asks for its Cloud rows now
   const strip=document.getElementById('tabstrip');
   // keep the pinned Projects tab (first child), rebuild the rest
   document.querySelectorAll('#tabstrip .tab.project,#panebar .tab.project').forEach(n=>n.remove());

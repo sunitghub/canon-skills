@@ -326,6 +326,13 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, listThemes())
 	case "/api/integrity": // t-2af0: read-only; ?refresh=1 re-checks the list against getcanon.dev
 		sendJSON(w, checkIntegrity(defaultIntegrityDeps(filepath.Dir(toolsDir), r.URL.Query().Get("refresh") == "1")))
+	case "/api/remote-agents": // t-761b: the Agents list's Cloud group; read-only, answers an empty 304 when nothing changed
+		root, ok := effectiveRoot(r)
+		if !ok {
+			http.Error(w, "unknown project", http.StatusBadRequest)
+			return
+		}
+		sendJSONCond(w, r, map[string]any{"rows": remoteAgents(root)})
 	case "/api/tickets":
 		root, ok := effectiveRoot(r)
 		if !ok {
@@ -5095,6 +5102,91 @@ func githubStatus(root, id string) map[string]any {
 	statusCache[key] = statusHit{time.Now(), res}
 	mergeRunsMu.Unlock()
 	return res
+}
+
+// githubStatusSoft is githubStatus for a poll that must not wait on GitHub: it answers at once from the cache, however old, and
+// starts one background refresh per ticket when the entry is missing or past its 30 s. ok is false until the first answer lands.
+var statusInflight = map[mergeKey]bool{}
+
+func githubStatusSoft(root, id string) (map[string]any, bool) {
+	key := mergeKey{root, id}
+	mergeRunsMu.Lock()
+	h, have := statusCache[key]
+	if (!have || time.Since(h.at) >= statusTTL) && !statusInflight[key] {
+		statusInflight[key] = true
+		go func() {
+			githubStatus(root, id)
+			mergeRunsMu.Lock()
+			delete(statusInflight, key)
+			mergeRunsMu.Unlock()
+		}()
+	}
+	mergeRunsMu.Unlock()
+	return h.res, have
+}
+
+var issueNumRe = regexp.MustCompile(`#([0-9]+)$`) // the issue number of a github: line (owner/repo#N)
+
+// remoteAgents (t-761b) is the Agents list's Cloud group: a row per ticket out on GitHub (runs: github, a github: line, no
+// merged:), from the send until Check & merge lands it. The state is the card's own github-status stage, served by githubStatus
+// (cached 30 s per ticket), read without waiting (githubStatusSoft): a poll costs no process when nothing is out on GitHub, and
+// otherwise answers at once, with at most one background tkt per ticket per 30 s. A ticket not yet checked is `unknown` and
+// `pending`; tkt github-status asks GitHub and takes seconds, which a poll must never wait for.
+func remoteAgents(root string) []map[string]any {
+	field := func(t ticket, k string) string {
+		if v, ok := t[k].(string); ok {
+			return strings.TrimSpace(v)
+		}
+		return ""
+	}
+	type cand struct{ id, title, created, gh string }
+	var cands []cand
+	for _, t := range loadTickets(root) {
+		id := field(t, "id")
+		st := field(t, "status")
+		if id == "" || field(t, "runs") != "github" || field(t, "github") == "" || field(t, "merged") != "" || st == "archived" || st == "cancelled" {
+			continue
+		}
+		cands = append(cands, cand{id, field(t, "title"), field(t, "created"), field(t, "github")})
+	}
+	sort.Slice(cands, func(i, j int) bool { return cands[i].id < cands[j].id })
+	rows := []map[string]any{}
+	for _, c := range cands {
+		state, newest := "unknown", c.created
+		res, have := githubStatusSoft(root, c.id)
+		if have && res["ok"] == true {
+			if st, ok := res["status"].(map[string]any); ok {
+				stage, _ := st["stage"].(string)
+				switch stage {
+				case "merged":
+					continue // landed: the row leaves
+				case "sent":
+					state = "sent"
+				case "branch", "pr-open":
+					state = "working"
+				case "results-ready":
+					state = "results-ready"
+				case "results-in":
+					state = "imported"
+				}
+				for _, k := range []string{"started", "issue_updated"} {
+					if v, _ := st[k].(string); v > newest { // RFC 3339 UTC strings order as times
+						newest = v
+					}
+				}
+			}
+		}
+		age := int64(0)
+		if at, err := time.Parse(time.RFC3339, newest); err == nil && time.Since(at) > 0 {
+			age = int64(time.Since(at).Seconds())
+		}
+		issue := ""
+		if m := issueNumRe.FindStringSubmatch(c.gh); m != nil {
+			issue = m[1]
+		}
+		rows = append(rows, map[string]any{"id": c.id, "title": c.title, "state": state, "issue": issue, "age_s": age, "pending": !have})
+	}
+	return rows
 }
 
 // githubDoctor: t-90a3's readiness checks for Factory › GitHub (t-9641), parsed into "doctor".

@@ -4,6 +4,8 @@
 # Guard (the default): with git/gh/tkt on PATH replaced by counting shims, an unbound tree's /api/tickets starts no process,
 # /api/git starts one at an unchanged HEAD, and each of the three answers a matching If-None-Match with an empty 304 and a
 # change with a new ETag. A ticket bound to a worktree still gets its live docs (the positive control: the shims count).
+# t-761b: /api/remote-agents (the Agents list's Cloud group, polled by the Cockpit shell) starts no process when nothing is out on GitHub,
+# one background `tkt github-status` per ticket out on GitHub on a cold poll (the poll answers at once, never waits for GitHub) and none within the board's 30 s cache, and answers an empty 304.
 #   --measure <root>   print the docs table (docs/sprint-check.md "Polling budget") for the project at <root>; read-only GETs
 
 set -euo pipefail
@@ -78,7 +80,7 @@ if [[ -n "$MEASURE" ]]; then
   start_board "$MEASURE" real
   echo "| Poll | Median | p95 | Processes per request | Reply | Unchanged poll |"
   echo "|---|---|---|---|---|---|"
-  for ep in '/api/tickets?all=1' /api/handoff /api/git /api/cockpit /api/cockpit-sessions /api/cockpit-interrupted /api/project-stats; do
+  for ep in '/api/tickets?all=1' /api/handoff /api/git /api/cockpit /api/cockpit-sessions /api/cockpit-interrupted /api/project-stats /api/remote-agents; do
     p="$(procs "$ep" 15)"
     times=""; for _ in $(seq 1 15); do times+="$(curl -s -o /dev/null -w '%{time_total}' "$BASE$ep") "; done
     size="$(curl -s -o /dev/null -w '%{size_download}' "$BASE$ep")"
@@ -140,5 +142,23 @@ echo "$wt" > "$repo/.tickets/t-pb02/.cockpit-cwd"
 [[ "$(procs '/api/tickets?all=1')" != 0.0 ]] || fail "poll-budget: a bound ticket's poll ran no git: the shims are not counting"
 curl -s "$BASE/api/tickets" | python3 -c 'import json,sys; t={x["id"]:x for x in json.load(sys.stdin)}["t-pb02"]; sys.exit(0 if (t.get("docs_from") or {}).get("branch") == "sprint/t-pb02" and "live text" in t["body"] else 1)' \
   || fail "poll-budget: the bound ticket lost its live docs"
+
+# 5. t-761b: /api/remote-agents. Nothing out on GitHub: no process, an ETag, an empty 304.
+[[ "$(procs /api/remote-agents)" == 0.0 ]] || fail "poll-budget: /api/remote-agents with nothing out on GitHub started processes per request: $(sort "$CALLS" | uniq -c)"
+tag="$(etag /api/remote-agents)"; [[ -n "$tag" ]] || fail "poll-budget: /api/remote-agents sent no ETag"
+[[ "$(cond /api/remote-agents "$tag")" == "304 0" ]] || fail "poll-budget: an unchanged /api/remote-agents did not answer an empty 304: $(cond /api/remote-agents "$tag")"
+# Two tickets out on GitHub: the first poll runs one tkt github-status each (read together), a poll inside the 30 s cache runs none.
+for n in 1 2; do
+  mkdir -p "$repo/.tickets/t-pc0$n"
+  printf -- '---\nid: t-pc0%s\nstatus: in_progress\ntype: task\npriority: 2\nruns: github\ngithub: acme/app#%s\n---\n# cloud %s\n' "$n" "$n" "$n" > "$repo/.tickets/t-pc0$n/ticket.md"
+done
+: > "$CALLS"; curl -s -o "$TMP/ra.json" "$BASE/api/remote-agents"
+for _ in $(seq 1 100); do [[ "$(grep -c '^tkt github-status' "$CALLS")" -ge 2 ]] && break; sleep 0.1; done   # the statuses load in the background; the poll itself answers at once
+for _ in $(seq 1 150); do curl -s -o "$TMP/ra.json" "$BASE/api/remote-agents"; grep -q '"pending":true' "$TMP/ra.json" || break; sleep 0.2; done   # until both statuses landed
+[[ "$(grep -c '^tkt github-status' "$CALLS")" == 2 ]] || fail "poll-budget: the first /api/remote-agents poll ran $(grep -c '^tkt github-status' "$CALLS") tkt github-status, want 2 (one per ticket out on GitHub): $(sort "$CALLS" | uniq -c)"
+python3 -c 'import json,sys; r=json.load(open(sys.argv[1]))["rows"]; sys.exit(0 if [x["id"] for x in r]==["t-pc01","t-pc02"] else 1)' "$TMP/ra.json" \
+  || fail "poll-budget: /api/remote-agents rows: $(cat "$TMP/ra.json")"
+: > "$CALLS"; curl -s -o /dev/null "$BASE/api/remote-agents"
+[[ ! -s "$CALLS" ]] || fail "poll-budget: a second /api/remote-agents poll inside the 30 s cache started processes: $(sort "$CALLS" | uniq -c)"
 
 echo "sprint-check-poll-budget: ok"

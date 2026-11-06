@@ -2229,3 +2229,140 @@ func gitInDirOutput(dir string, args ...string) (string, error) {
 	err := cmd.Run()
 	return out.String(), err
 }
+
+// t-761b: the Agents list's Cloud group. A project with a ticket per stage, a merged one, a local one and one whose status fails:
+// the rows, their states and ages, the scope (only runs: github, no merged:), and the cost (one tkt per ticket the first time, none
+// within the 30 s cache, none when nothing is out on GitHub). Protects GET /api/remote-agents, which the Cockpit's Agents list polls.
+func TestRemoteAgents(t *testing.T) {
+	root := t.TempDir()
+	mk := func(id, extra string) {
+		dir := filepath.Join(root, ".tickets", id)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		fm := "---\nid: " + id + "\nstatus: in_progress\ntype: task\ncreated: 2026-11-05T10:00:00Z\n" + extra + "---\n# Title of " + id + "\n"
+		if err := os.WriteFile(filepath.Join(dir, "ticket.md"), []byte(fm), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	gh := "runs: github\ngithub: acme/app#"
+	mk("t-ab01", gh+"11\n")                               // sent
+	mk("t-ab02", gh+"12\n")                               // branch -> working
+	mk("t-ab03", gh+"13\n")                               // pr-open -> working
+	mk("t-ab04", gh+"14\n")                               // results-ready
+	mk("t-ab05", gh+"15\n")                               // results-in -> imported
+	mk("t-ab06", gh+"16\n")                               // merged stage: the row leaves
+	mk("t-ab07", gh+"17\n")                               // status fails: unknown
+	mk("t-ab08", gh+"18\nmerged: 2026-11-05T11:00:00Z\n") // merged: recorded: absent
+	mk("t-ab0b", gh+"20\n")                               // archived: hidden from the board, so absent here
+	tp := filepath.Join(root, ".tickets", "t-ab0b", "ticket.md")
+	if b, err := os.ReadFile(tp); err != nil || os.WriteFile(tp, []byte(strings.Replace(string(b), "status: in_progress", "status: archived", 1)), 0o644) != nil {
+		t.Fatal("could not archive the fixture", err)
+	}
+	mk("t-ab09", "")                                   // a local ticket: absent
+	mk("t-ab0a", "runs: local\ngithub: acme/app#19\n") // an issue link only (sync-issues): absent
+	dir := t.TempDir()
+	calls := filepath.Join(dir, "calls.log")
+	stub := filepath.Join(dir, "tkt")
+	script := "#!/bin/sh\necho \"$*\" >> " + calls + "\ncase \"$2\" in\n" +
+		"t-ab01) echo '{\"stage\":\"sent\",\"started\":\"2026-11-05T12:00:00Z\"}';;\n" +
+		"t-ab02) echo '{\"stage\":\"branch\",\"started\":\"2026-11-05T12:00:00Z\",\"issue_updated\":\"2026-11-05T12:30:00Z\"}';;\n" +
+		"t-ab03) echo '{\"stage\":\"pr-open\"}';;\n" +
+		"t-ab04) echo '{\"stage\":\"results-ready\"}';;\n" +
+		"t-ab05) echo '{\"stage\":\"results-in\"}';;\n" +
+		"t-ab06) echo '{\"stage\":\"merged\"}';;\n" +
+		"*) echo 'gh: not signed in' >&2; exit 1;;\nesac\n"
+	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TKT_BIN", stub)
+	statusCache = map[mergeKey]statusHit{}
+	// A cold poll answers at once: every ticket out on GitHub is a pending `unknown` row while the statuses load in the background.
+	cold := remoteAgents(root)
+	for _, r := range cold {
+		if r["state"] != "unknown" || r["pending"] != true {
+			t.Fatalf("a cold poll must not wait for GitHub: %v", r)
+		}
+	}
+	if len(cold) != 7 {
+		t.Fatalf("a cold poll listed %d rows, want the 7 tickets out on GitHub", len(cold))
+	}
+	var rows []map[string]any
+	for i := 0; i < 100; i++ { // the background refresh fills the cache
+		rows = remoteAgents(root)
+		pending := false
+		for _, r := range rows {
+			pending = pending || r["pending"] == true
+		}
+		if !pending {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	got := map[string]map[string]any{}
+	var ids []string
+	for _, r := range rows {
+		id := r["id"].(string)
+		got[id] = r
+		ids = append(ids, id)
+	}
+	if strings.Join(ids, ",") != "t-ab01,t-ab02,t-ab03,t-ab04,t-ab05,t-ab07" {
+		t.Fatalf("rows = %v, want the five stages and the failing one, ordered by id (no merged, local or link-only ticket)", ids)
+	}
+	want := map[string]string{"t-ab01": "sent", "t-ab02": "working", "t-ab03": "working", "t-ab04": "results-ready", "t-ab05": "imported", "t-ab07": "unknown"}
+	for id, state := range want {
+		if got[id]["state"] != state {
+			t.Errorf("%s state = %v, want %s", id, got[id]["state"], state)
+		}
+	}
+	if got["t-ab01"]["title"] != "Title of t-ab01" || got["t-ab01"]["issue"] != "11" {
+		t.Errorf("title/issue = %v / %v", got["t-ab01"]["title"], got["t-ab01"]["issue"])
+	}
+	// age: the newer of started and issue_updated (12:30); a ticket with neither falls back to created; all in the past
+	a2, a1, a3 := got["t-ab02"]["age_s"].(int64), got["t-ab01"]["age_s"].(int64), got["t-ab03"]["age_s"].(int64)
+	if !(a2 < a1 && a1 < a3 && a2 > 0) {
+		t.Errorf("ages = started+updated %d, started %d, created only %d: want newest activity first", a2, a1, a3)
+	}
+	raw, _ := os.ReadFile(calls)
+	if n := strings.Count(string(raw), "github-status"); n != 7 {
+		t.Fatalf("first poll ran %d tkt github-status, want one per ticket out on GitHub (7)", n)
+	}
+	remoteAgents(root)
+	raw, _ = os.ReadFile(calls)
+	if n := strings.Count(string(raw), "github-status"); n != 7 {
+		t.Fatalf("a second poll inside the cache ran tkt again (%d calls in all)", n)
+	}
+	// an entry older than the 30 s is still served at once (the stale answer) and refreshed once in the background
+	mergeRunsMu.Lock()
+	for k, h := range statusCache {
+		h.at = time.Now().Add(-time.Minute)
+		statusCache[k] = h
+	}
+	mergeRunsMu.Unlock()
+	stale := remoteAgents(root)
+	if len(stale) != 6 || stale[0]["pending"] == true {
+		t.Fatalf("a stale entry must be served as it is, not as pending: %v", stale)
+	}
+	refreshed := false
+	for i := 0; i < 100 && !refreshed; i++ {
+		raw, _ = os.ReadFile(calls)
+		refreshed = strings.Count(string(raw), "github-status") >= 14
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !refreshed {
+		t.Fatalf("a stale poll never refreshed the statuses in the background (%d calls)", strings.Count(string(raw), "github-status"))
+	}
+	// nothing out on GitHub: no process at all
+	empty := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(empty, ".tickets", "t-cd01"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(empty, ".tickets", "t-cd01", "ticket.md"), []byte("---\nid: t-cd01\nstatus: open\ntype: task\n---\n# local\n"), 0o644)
+	os.Remove(calls)
+	if rows := remoteAgents(empty); len(rows) != 0 {
+		t.Fatalf("a project with nothing out on GitHub got rows: %v", rows)
+	}
+	if _, err := os.Stat(calls); err == nil {
+		t.Fatal("a project with nothing out on GitHub started a process")
+	}
+}

@@ -285,6 +285,75 @@ function syncSharedWarnings(views){
     v.classList.add('has-shared'); v.insertBefore(bar,v.firstChild);
   }
 }
+// ── Cloud group (t-761b): a row per ticket out on GitHub, from the send until Check & merge ──────────────────────────────────────
+// The board server owns the state (/api/remote-agents, project-scoped, an empty 304 when nothing changed, never waiting on GitHub); the
+// shell only asks. One answer per open project is kept: a failed poll keeps it. A hidden page does not poll.
+const CLOUD_POLL_MS=60000, CLOUD_FAST_MS=5000, CLOUD_FAST_MAX=12;   // fast while a row's status is still loading on the server
+const CLOUD_STATES={sent:'st-idle',working:'st-working',unknown:'st-idle','results-ready':'st-results','imported':'st-results'};
+const cloudRows=new Map();   // project id -> {rows:[{pid,id,title,state,issue,age,pending}], at}
+let cloudTimer=0, cloudFast=0;
+// The bare GitHub mark (Octicons mark-github, MIT, (c) GitHub): currentColor, no disc, centred in the 18px icon slot.
+function markGitHub(){
+  return '<svg class="ag-mark" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>';
+}
+function cloudRow(pid,r){
+  if(!r || typeof r!=='object' || !TICKET_ID_RE.test(String(r.id||'')) || !Object.prototype.hasOwnProperty.call(CLOUD_STATES,r.state)) return null;
+  const age=(typeof r.age_s==='number' && isFinite(r.age_s) && r.age_s>=0) ? r.age_s : null;
+  return { pid, id:r.id, title:String(r.title||'').slice(0,200), state:r.state, issue:/^\d{1,7}$/.test(String(r.issue||''))?String(r.issue):'', age, pending:r.pending===true };
+}
+async function pollCloud(){
+  cloudTimer=0;
+  if(document.hidden){ scheduleCloud(CLOUD_POLL_MS); return; }
+  const ids=openTabs.map(t=>t.id).filter(id=>getProjects().some(p=>p.id===id));
+  let pending=false;
+  await Promise.all(ids.map(async id=>{
+    try{
+      const r=await fetch('/api/remote-agents?project='+encodeURIComponent(id));
+      if(!r.ok) return;
+      const j=await r.json();
+      if(!j || !Array.isArray(j.rows)) return;
+      const rows=j.rows.slice(0,50).map(x=>cloudRow(id,x)).filter(Boolean);
+      cloudRows.set(id,{rows,at:Date.now()});
+      if(rows.some(x=>x.pending)) pending=true;
+    }catch(e){ /* a failed poll keeps the last answer */ }
+  }));
+  for(const k of [...cloudRows.keys()]) if(!ids.includes(k)) cloudRows.delete(k);   // a closed project's rows go with its tab
+  renderSessionSurfaces();
+  cloudFast=pending ? cloudFast+1 : 0;
+  scheduleCloud(pending && cloudFast<=CLOUD_FAST_MAX ? CLOUD_FAST_MS : CLOUD_POLL_MS);
+}
+function scheduleCloud(ms){ if(!cloudTimer) cloudTimer=setTimeout(pollCloud,ms); }
+// A project opened (or closed) in a tab: ask now, not at the next minute. renderTabs calls this; the same set of tabs asks nothing.
+let cloudKey='';
+export function cloudTabsChanged(){
+  const key=openTabs.map(t=>t.id).join(',');
+  if(key===cloudKey) return;
+  cloudKey=key; clearTimeout(cloudTimer); cloudTimer=setTimeout(pollCloud,200);
+}
+export function startCloudPolling(){
+  document.addEventListener('visibilitychange',()=>{ if(!document.hidden){ clearTimeout(cloudTimer); cloudTimer=0; pollCloud(); } });
+  pollCloud();
+}
+const CLOUD_LABEL={sent:'sent to GitHub, waiting for a cloud session',working:'working on GitHub','results-ready':'results ready: Import results',imported:'imported: Check & merge'};
+function cloudHtml(rows){
+  if(!rows.length) return '';
+  return `<div class="ag-cloudh"><b>Cloud</b><span>${rows.length}</span></div>`+rows.map(r=>{
+    const what=r.state==='unknown' ? (r.pending?'checking GitHub':'GitHub could not be checked') : CLOUD_LABEL[r.state];
+    const at=cloudAt(r), tip=(r.title||r.id)+(r.issue?' · GitHub issue #'+r.issue:'')+' · '+what;
+    const glyph=r.state==='working' ? '<span class="sdot ag-ring"></span>'
+      : r.state==='results-ready' ? '<span class="ag-pill ag-pill-go"><span class="ag-pl">Results ready</span><span class="ag-ps">Results</span></span>'
+      : r.state==='imported' ? '<span class="ag-pill ag-pill-go"><span class="ag-pl">Merge ready</span><span class="ag-ps">Merge</span></span>'
+      : '<span class="sdot"></span>';
+    return `<button class="ag-row ag-cloud st ${CLOUD_STATES[r.state]}" data-cloud="${escAttr(r.pid+'/'+r.id)}" data-state="${escAttr(r.state)}" title="${escAttr(tip)}" aria-label="${escAttr(r.id+(r.title?' '+r.title:'')+': '+what+(r.issue?', GitHub issue #'+r.issue:'')+(at?', '+at:''))}">`+
+      `<span class="ag-i">${markGitHub()}</span><span class="ag-t1"><span class="ag-id">${esc(r.id)}</span><span class="ag-d">${esc(r.title)}</span></span>`+
+      `<span class="ag-at"></span><span class="ag-age">${esc(at||'–')}</span><span class="ag-g">${glyph}</span></button>`;
+  }).join('');
+}
+function cloudAt(r){ const c=cloudRows.get(r.pid); return r.age===null ? '' : ageShort(r.age+Math.max(0,Math.round((Date.now()-(c?c.at:Date.now()))/1000))); }
+function openCloudRow(key){
+  const i=key.indexOf('/'), pid=key.slice(0,i), id=key.slice(i+1), proj=getProjects().find(p=>p.id===pid);
+  if(proj && TICKET_ID_RE.test(id)) openSessionInTab({proot:proj.path,ticket:id});   // the project's tab, then its board shows the ticket; nothing starts
+}
 // t-565f: lastSessions is written from Admin's refresh too; the owner exports this instead of the binding.
 export function setLastSessions(rows){ lastSessions=rows; }
 export function renderSessionSurfaces(){
@@ -299,16 +368,23 @@ export function renderSessionSurfaces(){
   rail.sort((a,b)=>opened(a)<opened(b) ? -1 : opened(a)>opened(b) ? 1 : 0);
   const groups=new Map();
   for(const v of rail){ const k=_projKey(v.proot); if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(v); }
+  const heads=new Map(), cloudBy=new Map();   // t-761b: a group's header facts, and its Cloud rows
+  for(const [k,g] of groups) heads.set(k,{proot:g[0].proot,projName:g[0].projName,name:g[0].name,pid:g[0].pid});
+  for(const p of getProjects()){
+    const c=cloudRows.get(p.id); if(!c || !c.rows.length) continue;
+    const k=_projKey(p.path); cloudBy.set(k,c.rows);
+    if(!groups.has(k)){ groups.set(k,[]); heads.set(k,{proot:p.path,projName:p.name,name:p.name,pid:p.id}); }   // cloud rows and no local agent
+  }
   if(views.length) for(const k of [...groupRank.keys()]) if(!groups.has(k)) groupRank.delete(k);   // a group that left comes back at the bottom (an empty list is a failed poll or nothing running: keep every rank)
   const firstSeen=[...groups.keys()].filter(k=>!groupRank.has(k)).map(k=>{
-    const g=groups.get(k), at=openTabs.findIndex(t=>t.id===g[0].pid);
+    const g=groups.get(k), at=openTabs.findIndex(t=>t.id===heads.get(k).pid);
     return { k, start:Math.min(...g.map(opened)), tab:at<0 ? Infinity : at };
   }).sort((a,b)=>a.start<b.start ? -1 : a.start>b.start ? 1 : a.tab<b.tab ? -1 : a.tab>b.tab ? 1 : 0);   // a group with only not-started rows: the project tabs' opening order
   for(const f of firstSeen) groupRank.set(f.k,nextGroupRank++);
-  const ordered=[...groups.entries()].sort((a,b)=>groupRank.get(a[0])-groupRank.get(b[0])).map(e=>e[1]);
+  const ordered=[...groups.entries()].sort((a,b)=>groupRank.get(a[0])-groupRank.get(b[0])).map(e=>({g:e[1],h:heads.get(e[0]),cloud:cloudBy.get(e[0])||[]}));
   const list=document.getElementById('ag-list');
-  list.innerHTML=rail.length===0 ? '<div class="ag-empty">No agents running</div>' : ordered.map(g=>
-    `<div class="ag-proj" title="${escAttr(g[0].proot)}"><b>${esc(g[0].projName||g[0].name)}</b><span>${g.length}</span>${g[0].pid?`<button class="ag-plus" data-scratch="${escAttr(g[0].pid)}" title="New scratch session in ${escAttr(g[0].projName||g[0].name)}" aria-label="New scratch session">+</button>`:''}</div>`+g.map(v=>{
+  list.innerHTML=ordered.length===0 ? '<div class="ag-empty">No agents running</div>' : ordered.map(({g,h,cloud})=>
+    `<div class="ag-proj" title="${escAttr(h.proot)}"><b>${esc(h.projName||h.name)}</b><span>${g.length}</span>${h.pid?`<button class="ag-plus" data-scratch="${escAttr(h.pid)}" title="New scratch session in ${escAttr(h.projName||h.name)}" aria-label="New scratch session">+</button>`:''}</div>`+g.map(v=>{
       const title=ticketTitle(v.pid,v.ticket), time=sessionTime(v);
       const inView=!!v.pid && v.pid===activeTab && (v.ticket||v.scratch)===boardActive.get(activeTab) && document.getElementById('view-'+activeTab)?.classList.contains('active');   // t-7456
       // t-d0ed: one line (icon, name, agent type, age, state glyph). The tooltip is the title alone (the glyph, type and age are on the row);
@@ -323,10 +399,11 @@ export function renderSessionSurfaces(){
       `<span class="ag-at">${esc(agentName(v.agent))}</span>`+
       `<span class="ag-age">${esc(v.elapsed===null?'\u2013':ageShort(v.elapsed))}</span>`+
       `<span class="ag-g">${stateGlyph(v.state)}</span></button>`;
-    }).join('')
+    }).join('')+cloudHtml(cloud)
   ).join('');
   syncSharedWarnings(views);
-  list.querySelectorAll('.ag-row').forEach(b=>{
+  list.querySelectorAll('.ag-cloud').forEach(b=>b.addEventListener('click',()=>openCloudRow(b.dataset.cloud)));
+  list.querySelectorAll('.ag-row:not(.ag-cloud)').forEach(b=>{
     const v=rail[+b.dataset.i];
     b.addEventListener('click',()=>openSessionInTab(v));
     // t-3c9a: Open / Reap now / Kill — right-click, or Shift+F10 / the ContextMenu key on the focused row.
@@ -416,4 +493,5 @@ export const _projKey=p=>String(p||'').replace(/\\/g,'/').replace(/\/+$/,'').toL
 // t-565f: sessions's load-time code, run once at the end (the module version keeps it in initSessions()).
 export function initSessions(){
 try{ hiddenHere=new Set(JSON.parse(localStorage.getItem(HIDE_KEY)||'[]')); }catch(e){}
+startCloudPolling();
 }

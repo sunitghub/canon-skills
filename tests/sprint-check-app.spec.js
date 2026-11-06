@@ -6310,6 +6310,151 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
+    // ── t-761b: the Cloud group in the Agents list. The board server's /api/remote-agents is stubbed; prod path: the Cockpit's Agents list. ──
+    const CLOUD_ROWS = [
+      { id: 't-cl01', title: 'Export to CSV', state: 'sent', issue: '11', age_s: 120, pending: false },
+      { id: 't-cl02', title: 'Tighten address validation', state: 'working', issue: '12', age_s: 480, pending: false },
+      { id: 't-cl03', title: 'Add retry to the importer', state: 'results-ready', issue: '13', age_s: 3600, pending: false },
+      { id: 't-cl04', title: 'Fix CI checks detail link', state: 'imported', issue: '14', age_s: 60, pending: false },
+      { id: 't-cl05', title: 'Unreadable status', state: 'unknown', issue: '15', age_s: 0, pending: false },
+    ];
+    const cloudRoute = (page, get) => page.route('**/api/remote-agents**', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ rows: get() }) }));
+    const cloudRow = (page, id) => page.locator('#ag-list .ag-cloud', { has: page.locator('.ag-id', { hasText: id }) });
+
+    test('t-761b: a Cloud group under the project lists each ticket out on GitHub with its mark, id, age and state glyph', async ({ page }) => {
+      await cloudRoute(page, () => CLOUD_ROWS);
+      await stubTicketDocs(page);
+      await openShell(page, stateRows());
+      await page.evaluate(async () => (await import('/static/cockpit-sessions.js')).pollSessions());
+      await expect(page.locator('#ag-list .ag-cloudh').first()).toHaveText('Cloud5');
+      // the Cloud group sits after the project's local rows, inside that project's group
+      const order = await page.evaluate(() => { const kids = [...document.querySelector('#ag-list').children]; const h = kids.findIndex(e => e.classList.contains('ag-cloudh')); const lastLocal = kids.map((e, i) => e.classList.contains('ag-row') && !e.classList.contains('ag-cloud') ? i : -1).filter(i => i >= 0 && i < h).pop(); return { h, lastLocal, projBefore: kids.slice(0, h).some(e => e.classList.contains('ag-proj')) }; });
+      expect(order.projBefore && order.lastLocal >= 0 && order.lastLocal < order.h, `the Cloud heading follows a local row of its project (${JSON.stringify(order)})`).toBe(true);
+      // each state's glyph
+      await expect(cloudRow(page, 't-cl01').locator('.sdot')).toBeVisible();
+      await expect(cloudRow(page, 't-cl01').locator('.ag-ring, .ag-pill')).toHaveCount(0);           // sent: a hollow ring only
+      await expect(cloudRow(page, 't-cl02').locator('.sdot.ag-ring')).toHaveCount(1);                // working: the spinner ring
+      await expect(cloudRow(page, 't-cl03').locator('.ag-pill-go .ag-pl')).toHaveText('Results ready');
+      await expect(cloudRow(page, 't-cl04').locator('.ag-pill-go .ag-pl')).toHaveText('Merge ready');
+      await expect(cloudRow(page, 't-cl05').locator('.ag-pill, .ag-ring')).toHaveCount(0);           // unknown: a dim hollow ring
+      await expect(cloudRow(page, 't-cl05')).toHaveAttribute('title', /GitHub could not be checked/);
+      // id, age (right-aligned), the tooltip carries the title and the issue; the age follows the server's age_s
+      await expect(cloudRow(page, 't-cl01').locator('.ag-t1')).toHaveText('t-cl01Export to CSV');
+      await expect(cloudRow(page, 't-cl01')).toHaveAttribute('title', /Export to CSV · GitHub issue #11 · sent to GitHub/);
+      await expect(cloudRow(page, 't-cl01').locator('.ag-age')).toHaveText('2m');
+      await expect(cloudRow(page, 't-cl03').locator('.ag-age')).toHaveText('1h');
+      await expect(cloudRow(page, 't-cl02')).toHaveAttribute('aria-label', /t-cl02 Tighten address validation: working on GitHub, GitHub issue #12/);
+      // the bare mark: no disc, in the text colour on both themes (white on dark, black on light), centred in the icon slot
+      for (const theme of ['dark', 'light']) {
+        await page.evaluate(t => { if (t === 'light') document.documentElement.dataset.theme = 'light'; else document.documentElement.removeAttribute('data-theme'); }, theme);
+        const m = await cloudRow(page, 't-cl01').evaluate(r => { const svg = r.querySelector('.ag-i svg.ag-mark'), slot = r.querySelector('.ag-i').getBoundingClientRect(), b = svg.getBoundingClientRect(); return { color: getComputedStyle(svg).color, text: getComputedStyle(document.body).color, fill: getComputedStyle(svg.querySelector('path')).fill, bg: getComputedStyle(r.querySelector('.ag-i')).backgroundColor, dx: Math.abs((b.left + b.width / 2) - (slot.left + slot.width / 2)) }; });
+        expect(m.fill, `${theme}: the mark is filled with its current colour`).toBe(m.color);
+        expect(m.bg, `${theme}: the mark has no disc behind it`).toBe('rgba(0, 0, 0, 0)');
+        expect(m.dx, `${theme}: the mark is centred in the icon slot`).toBeLessThan(1);
+      }
+      const ink = await page.evaluate(() => { const r = [...document.querySelectorAll('#ag-list .ag-cloud')][0]; return getComputedStyle(r.querySelector('.ag-mark')).color === getComputedStyle(r.querySelector('.ag-id')).color; });
+      expect(ink, 'the mark takes the id\'s text colour').toBe(true);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('t-761b: at rail widths 200, 230 and 300 a Cloud row keeps its id, age and glyph; the pill shortens before anything is cut', async ({ page }) => {
+      await cloudRoute(page, () => CLOUD_ROWS);
+      await stubTicketDocs(page);
+      await openShell(page, stateRows());
+      await page.evaluate(async () => (await import('/static/cockpit-sessions.js')).pollSessions());
+      await expect(cloudRow(page, 't-cl03')).toHaveCount(1);
+      const at = w => page.evaluate(async w => {
+        (await import('/static/cockpit-sidebar.js')).setSideWidth(w); (await import('/static/cockpit-sessions.js')).renderSessionSurfaces();
+        const shown = (r, s) => { const e = r.querySelector(s); return !!e && getComputedStyle(e).display !== 'none'; };
+        return [...document.querySelectorAll('#ag-list .ag-cloud')].map(r => {
+          const x = s => { const e = r.querySelector(s); return e ? e.getBoundingClientRect() : null; }, rr = r.getBoundingClientRect();
+          return { id: r.querySelector('.ag-id').textContent, d: shown(r, '.ag-d'), long: shown(r, '.ag-pl'), short: shown(r, '.ag-ps'),
+            idOk: x('.ag-id').right <= x('.ag-t1').right + 1, order: x('.ag-id').right <= x('.ag-age').left + 1 && x('.ag-age').right <= x('.ag-g').left + 1,
+            inside: x('.ag-g').right <= rr.right + 1 && r.scrollWidth <= r.clientWidth + 1 };
+        });
+      }, w);
+      for (const [w, d] of [[200, 0], [230, 0], [300, 1]]) {
+        const rows = await at(w);
+        for (const r of rows) {
+          expect(r.idOk && r.order && r.inside, `${r.id} at ${w}: the id is whole and the parts sit in order inside the row (${JSON.stringify(r)})`).toBe(true);
+          expect(r.d, `${r.id} at ${w}: the description`).toBe(!!d);
+        }
+        const pill = rows.find(r => r.id === 't-cl03');
+        expect([pill.long, pill.short], `the Results ready pill at ${w}: long text, short text`).toEqual(w >= 300 ? [true, false] : [false, true]);
+      }
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('t-761b: a project with only cloud rows lists them; a merged ticket leaves on the next poll; No agents running returns when none is left', async ({ page }) => {
+      let rows = CLOUD_ROWS.slice(0, 2);
+      await cloudRoute(page, () => rows);
+      await openShell(page, []);
+      await expect(page.locator('#ag-list .ag-proj b')).toHaveText(['proj-a']);                    // no local agent, still a group
+      await expect(page.locator('#ag-list .ag-cloudh')).toHaveText('Cloud2');
+      await expect(page.locator('#ag-list .ag-empty')).toHaveCount(0);
+      rows = CLOUD_ROWS.slice(1, 2);                                                               // t-cl01 merged
+      await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+      await expect(page.locator('#ag-list .ag-cloudh')).toHaveText('Cloud1');
+      await expect(cloudRow(page, 't-cl01')).toHaveCount(0);
+      rows = [];
+      await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+      await expect(page.locator('#ag-list .ag-empty')).toHaveText('No agents running');
+      await expect(page.locator('#ag-list .ag-cloud')).toHaveCount(0);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('t-761b: clicking a Cloud row opens that ticket on the project\'s board and starts nothing', async ({ page }) => {
+      await cloudRoute(page, () => CLOUD_ROWS);
+      const board = await openShell(page, []);
+      await board.locator('body').evaluate(() => { window.__msgs = []; window.addEventListener('message', e => window.__msgs.push(e.data)); });
+      const starts = [], errors = [];
+      page.on('request', r => { if (r.method() === 'POST' && /\/api\/(cockpit|ticket)/.test(r.url())) starts.push(r.url()); });
+      page.on('pageerror', e => errors.push(e.message));
+      await cloudRow(page, 't-cl03').click();
+      await expect.poll(() => board.locator('body').evaluate(() => window.__msgs.filter(m => m && m.type === 'open-ticket').map(m => m.ticket))).toEqual(['t-cl03']);
+      expect(starts, 'a click only opens the ticket: no session, no POST').toEqual([]);
+      expect(errors, 'a Cloud row is not a session row: no local handler runs on it').toEqual([]);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('t-761b: a malformed or hostile row from the server is ignored, never rendered as markup', async ({ page }) => {
+      const errors = []; page.on('pageerror', e => errors.push(e.message));
+      await cloudRoute(page, () => [null, 'x', { id: '<img src=x onerror=window.__pwned=1>', state: 'sent', title: 'bad id' },
+        { id: 't-cl09', state: '<b>x</b>', title: 'bad state' }, { id: 't-cl08', state: 'sent', title: '<img src=x onerror=window.__pwned=1>', issue: '<b>1</b>', age_s: 'soon' }, CLOUD_ROWS[0]]);
+      await openShell(page, []);
+      await expect(page.locator('#ag-list .ag-cloudh')).toHaveText('Cloud2');                        // the good row and the one with a bad title, issue and age
+      await expect(cloudRow(page, 't-cl08').locator('.ag-d')).toHaveText('<img src=x onerror=window.__pwned=1>');   // shown as text
+      await expect(page.locator('#ag-list img')).toHaveCount(0);
+      expect(await page.evaluate(() => window.__pwned), 'nothing ran from a row').toBeUndefined();
+      await expect(cloudRow(page, 't-cl08')).not.toHaveAttribute('title', /<b>/);                     // the issue number is digits or nothing
+      await expect(cloudRow(page, 't-cl08').locator('.ag-age')).toHaveText('\u2013');                  // no usable age: a dash
+      expect(errors, 'a bad row never breaks the list').toEqual([]);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('t-761b: the Cloud poll asks once a minute per open project, not at all while the page is hidden, and fast only while a status is still loading', async ({ page }) => {
+      let hits = 0, pending = true;
+      await page.route('**/api/remote-agents**', r => { hits++; return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ rows: [{ ...CLOUD_ROWS[0], pending }] }) }); });
+      await page.clock.install();
+      await openShell(page, []);
+      // the clock is faked, the network is not: after a step of fake time, let the real request land before counting
+      const step = async ms => { await page.clock.runFor(ms); await page.waitForTimeout(400); };
+      await step(500);
+      const base = hits; expect(base, 'the opened project asked at once').toBeGreaterThanOrEqual(1);
+      await step(5200);                                                                            // a pending row: asked again within 5 s
+      expect(hits, 'a pending row is asked again fast').toBeGreaterThan(base);
+      pending = false; await step(6000);
+      await step(6000);                                                                            // the poll that saw the settled row has run; its next ask is a minute away
+      const settled = hits;
+      await step(30000); expect(hits, 'nothing is asked inside a minute once settled').toBe(settled);
+      await step(31000); expect(hits, 'one ask a minute').toBe(settled + 1);
+      await page.evaluate(() => Object.defineProperty(document, 'hidden', { configurable: true, get: () => true }));
+      const hid = hits; await step(180000); expect(hits, 'a hidden page does not poll').toBe(hid);
+      await page.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, get: () => false }); document.dispatchEvent(new Event('visibilitychange')); });
+      await page.waitForTimeout(400); expect(hits, 'showing the page asks at once').toBe(hid + 1);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     test('shell sidebar (t-e69b): mockup rows, agent codes, group counts, titles fetched once and inert', async ({ page }) => {
       const hits = await stubTicketDocs(page);
       await openShell(page, stateRows());

@@ -6,6 +6,11 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+Board page, daemon page and the board server: run `canon update`, restart the daemon and reload the board.
+
+### Added
+- **Cloud group in the Agents list.** Under a project's local agents, a `Cloud <n>` heading lists each ticket out on GitHub from the send until Check & merge lands it: the bare GitHub mark, the id, the age and a state glyph (a hollow ring when only sent, a spinning ring while the cloud session works, an accent **Results ready** pill when Import results is next, **Merge ready** when Check & merge is next, a dim ring when GitHub cannot be checked). A project with only cloud rows still lists them; a click opens the ticket on its board and starts nothing. The rows come from the new read-only `GET /api/remote-agents`, which answers at once from the board's 30 s status cache and refreshes in the background (the poll is once a minute per open project, 5 s while a status loads, never from a hidden page); `tests/sprint-check-poll-budget.sh` now guards its cost.
+
 ## [0.46.5] - 2026-11-06
 
 Shell tooling only: run `canon update`; no daemon restart is needed.
