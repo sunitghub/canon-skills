@@ -9,7 +9,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 Board page: run `canon update` and reload the board.
 
 ### Changed
-- Windows To Claude Cloud: the copied-command message is one idea per line (Copied; what to run; why not the Terminal; close the panel).
+- Windows To Claude Cloud: the message walks through the steps, one per line: open the Terminal (`Ctrl+.` then `m`), `su`, paste, `exit`, close it (`Ctrl+.` then `x`). The "Terminal cannot start a cloud session" line is gone (t-df13).
 
 ## [0.47.3] - 2026-11-06
 

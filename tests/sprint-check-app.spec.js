@@ -16539,28 +16539,19 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
       await page.locator('#ck-gh-to-cloud').click();
       if (windows) {
         await expect.poll(() => page.evaluate(() => window.__copied)).toBe(line);
-        await expect(page.locator('#ck-gh-status')).toContainText('PowerShell or Git Bash');
-        // t-d287: one line each: Copied, what to run, why not the Terminal, then that the panel can be closed and the board follows the rest
+        // t-df13: the steps the user takes: open the Terminal (Ctrl+. m), su, paste, exit, close it; one line each
+        const ROUTE = ['Press Ctrl+. then m to open the Terminal below as a split view.', 'Type su and press Enter, then approve the Windows prompt: you get a Git Bash shell.'];
+        const AFTER = ['When the session is created, type exit, then press Ctrl+. and x to close the Terminal.', 'Close this panel once you have run the command. You can follow the rest of the progress on the board.'];
         const winLines = (await page.locator('#ck-gh-status').textContent()).split('\n');
-        expect(winLines).toHaveLength(4);
-        expect(winLines[0]).toBe('Copied.');
-        expect(winLines[1]).toMatch(/^Windows: open PowerShell or Git Bash in .*, paste, and press Enter\.$/);
-        expect(winLines[2]).toBe("The board's Terminal cannot start a cloud session on Windows yet.");
-        expect(winLines[3]).toBe('Close this panel once you have run the command. You can follow the rest of the progress on the board.');
-        expect(await page.locator('#ck-gh-status').evaluate(e => getComputedStyle(e).whiteSpace)).toBe('pre-line');   // the second line really breaks
-        // t-d0ed: it names the project's root (backslashes on Windows), not "the project folder"
-        const root = await page.evaluate(async () => (await import('/static/board-core.js')).state.gitRoot);
-        await expect(page.locator('#ck-gh-status')).toContainText(root.replace(/\//g, '\\') + ' (the project\'s root folder, the one with .tickets/)');
+        expect(winLines).toEqual(['Copied.', ...ROUTE, 'Paste the command in it and press Enter.', ...AFTER]);
+        expect(await page.locator('#ck-gh-status').evaluate(e => getComputedStyle(e).whiteSpace)).toBe('pre-line');   // the lines really break
+        await expect(page.locator('#ck-gh-hint span').nth(0)).toContainText('on Windows it copies that line: paste it in the board\'s Terminal after su');
         expect(page.frames().filter(f => f.url().includes('mode=term'))).toHaveLength(0);   // no Terminal was opened
-        // t-d287: a blocked copy is told the same way, two lines
+        // a blocked copy gives the same route, typed instead of pasted
         await page.evaluate(() => { Object.defineProperty(navigator, 'clipboard', { value: { writeText: async () => { throw new Error('blocked'); } }, configurable: true }); });
         await page.locator('#ck-gh-to-cloud').click();
-        await expect(page.locator('#ck-gh-status')).toContainText('Copy was blocked: type');
-        const blockedLines = (await page.locator('#ck-gh-status').textContent()).split('\n');
-        expect(blockedLines).toHaveLength(3);
-        expect(blockedLines[0]).toMatch(/^Copy was blocked: type .* in PowerShell or Git Bash in .*\.$/);
-        expect(blockedLines[1]).toBe("The board's Terminal cannot start a cloud session on Windows yet.");
-        expect(blockedLines[2]).toBe('Close this panel once you have run the command. You can follow the rest of the progress on the board.');
+        await expect(page.locator('#ck-gh-status')).toContainText('Copy was blocked.');
+        expect((await page.locator('#ck-gh-status').textContent()).split('\n')).toEqual(['Copy was blocked.', ...ROUTE, `Type ${line} and press Enter.`, ...AFTER]);
       } else {
         await expect.poll(() => page.frames().some(f => f.url().includes('mode=term'))).toBe(true);
         const frame = page.frames().find(f => f.url().includes('mode=term'));
