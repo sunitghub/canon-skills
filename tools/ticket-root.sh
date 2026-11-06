@@ -89,17 +89,23 @@ MERGE_SAFE_AUDIT_LOG='.claude/subagent-runs.jsonl'
 # instruction fails it: the head's block is text an agent reads at session start, so the late-doc exemption is for canon's own lines only.
 # (tools/canon-go/internal/board/recent.go recentBlock and recentKinds are the owners of this shape; tests/tkt-merge-pr.sh pins both ends.)
 _handoff_block_ok() {
-  local f="$1" inner bad dot='·' par='[A-Za-z0-9 ._,/-]{1,60}' pat
+  local f="$1" inner n total ok dot='·' par='[A-Za-z0-9 ._,/-]{1,60}' pat
+  # `recent --strip` finds the markers as substrings anywhere in the text; this check reads whole lines. They must see the same block, so the
+  # marker text occurs exactly twice in the file (once as a whole BEGIN line, once as a whole END line), and the file holds no NUL (bash
+  # would drop it from the lines below, so what is checked would not be what is merged).
+  [[ "$(wc -c < "$f")" == "$(tr -d '\000' < "$f" | wc -c)" ]] || return 1
+  n="$(LC_ALL=C grep -ao '<!-- canon:recent:' "$f" | wc -l)"; [[ "${n//[[:space:]]/}" == 2 ]] || return 1
   inner="$(tr -d '\r' < "$f" | sed -n '/^<!-- canon:recent:BEGIN -->$/,/^<!-- canon:recent:END -->$/p')"
-  [[ "$(printf '%s\n' "$inner" | sed -n '$p')" == '<!-- canon:recent:END -->' ]] || return 1   # END came before BEGIN: the range ran to the end of the file
+  [[ "$(printf '%s\n' "$inner" | sed -n '$p')" == '<!-- canon:recent:END -->' ]] || return 1   # END came before BEGIN, or a marker is not a whole line
   inner="$(printf '%s\n' "$inner" | sed '1d;$d')"
-  [[ "$(printf '%s\n' "$inner" | wc -l)" -le 80 ]] || return 1
+  total="$(printf '%s\n' "$inner" | wc -l)"; total="${total//[[:space:]]/}"
   pat="## Recent activity|_Written by canon from the activity log at plan approval, sprint close and merge; edits here are replaced\\._|- No stage recorded yet\\.|"
   pat+="- [0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2} $dot (t-[a-z0-9]{4}|-) $dot ("
   pat+="plan approved( \\($par\\))?|(reviewer|evaluator) (pass|fail|partial|not-run|YES|NO|unknown|-)( \\($par\\))?|sprint completed"
   pat+="|sent to GitHub( \\(issue #[0-9]{1,7}\\))?|cloud results imported( \\(PR #[0-9]{1,7}\\))?|merged( \\(PR #[0-9]{1,7}\\))?|merged here( \\($par\\))?)"
-  bad="$(printf '%s\n' "$inner" | grep -vxE "($pat)?" | head -1 || true)"   # a blank line matches the empty alternative; the first other miss is the one
-  [[ -z "$bad" ]]
+  # count, not "print the first miss": a grep that errors, or reads binary data, counts fewer lines and fails the check (a blank line matches the empty alternative)
+  ok="$(printf '%s\n' "$inner" | LC_ALL=C grep -acxE "($pat)?" || true)"; ok="${ok//[[:space:]]/}"
+  [[ -n "$ok" && "$ok" == "$total" ]]
 }
 
 # late_docs_delta <git-dir> <graded> <head> <ticket-id> — t-fdb1: prints the files changed from graded to head, one per line.
