@@ -83,6 +83,25 @@ MERGE_SAFE_LATE_ALT='LEARNINGS\.md$|LEARNINGS-archive\.md$'
 # list builds its regex from this name.
 MERGE_SAFE_AUDIT_LOG='.claude/subagent-runs.jsonl'
 
+# _handoff_block_ok <file>: t-dfaf: is the Recent activity block in this HANDOFF.md copy exactly what canon writes? One BEGIN and one END marker
+# line, in that order (a second block or a stray marker is not a line the pattern below allows), and between them only the fixed header, the fixed "Written by canon" line, the empty-state line, blank lines and
+# event lines of the writer's shape: `- MM-DD HH:MM · <ticket id or -> · <one of its known phrases>`. A line of free text, a link or an
+# instruction fails it: the head's block is text an agent reads at session start, so the late-doc exemption is for canon's own lines only.
+# (tools/canon-go/internal/board/recent.go recentBlock and recentKinds are the owners of this shape; tests/tkt-merge-pr.sh pins both ends.)
+_handoff_block_ok() {
+  local f="$1" inner bad dot='·' par='[A-Za-z0-9 ._,/-]{1,60}' pat
+  inner="$(tr -d '\r' < "$f" | sed -n '/^<!-- canon:recent:BEGIN -->$/,/^<!-- canon:recent:END -->$/p')"
+  [[ "$(printf '%s\n' "$inner" | sed -n '$p')" == '<!-- canon:recent:END -->' ]] || return 1   # END came before BEGIN: the range ran to the end of the file
+  inner="$(printf '%s\n' "$inner" | sed '1d;$d')"
+  [[ "$(printf '%s\n' "$inner" | wc -l)" -le 80 ]] || return 1
+  pat="## Recent activity|_Written by canon from the activity log at plan approval, sprint close and merge; edits here are replaced\\._|- No stage recorded yet\\.|"
+  pat+="- [0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2} $dot (t-[a-z0-9]{4}|-) $dot ("
+  pat+="plan approved( \\($par\\))?|(reviewer|evaluator) (pass|fail|partial|not-run|YES|NO|unknown|-)( \\($par\\))?|sprint completed"
+  pat+="|sent to GitHub( \\(issue #[0-9]{1,7}\\))?|cloud results imported( \\(PR #[0-9]{1,7}\\))?|merged( \\(PR #[0-9]{1,7}\\))?|merged here( \\($par\\))?)"
+  bad="$(printf '%s\n' "$inner" | grep -vxE "($pat)?" | head -1 || true)"   # a blank line matches the empty alternative; the first other miss is the one
+  [[ -z "$bad" ]]
+}
+
 # late_docs_delta <git-dir> <graded> <head> <ticket-id> — t-fdb1: prints the files changed from graded to head, one per line.
 # Returns 0 when head descends from graded and every file is a merge-safe late doc, the audit log with lines only added, or sits in
 # .tickets/<ticket-id>/ (no dotfile component; an empty delta included), 1 when a file is not, or any changed path becomes a symlink or a submodule (they are the
@@ -118,7 +137,9 @@ late_docs_delta() {
       t1="$(mktemp)"; t2="$(mktemp)"
       if ( set -o pipefail; git -C "$dir" cat-file blob "$graded:HANDOFF.md" 2>/dev/null | "$rb" recent --strip | tr -d '\r' ) > "$t1" \
         && ( set -o pipefail; git -C "$dir" cat-file blob "$head:HANDOFF.md" 2>/dev/null | "$rb" recent --strip | tr -d '\r' ) > "$t2" \
-        && [[ -s "$t1" ]] && cmp -s "$t1" "$t2"; then same=true; fi
+        && [[ -s "$t1" ]] && cmp -s "$t1" "$t2"; then
+        git -C "$dir" cat-file blob "$head:HANDOFF.md" 2>/dev/null > "$t2" && _handoff_block_ok "$t2" && same=true
+      fi
       rm -f "$t1" "$t2"
     fi
     $same && other="$(printf '%s\n' "$other" | grep -vx 'HANDOFF.md' || true)"

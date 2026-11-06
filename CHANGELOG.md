@@ -9,7 +9,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 Shell tooling only: run `canon update`; no daemon restart is needed.
 
 ### Fixed
-- A cloud PR whose only change since grading is canon's own **Recent activity block** in `HANDOFF.md` (`sprint complete` writes it after the evaluator, so every cloud run had it) now imports and merges as graded: `import-results`, the card's stage and `merge-pr` accept it, with no `tkt land --fix` detour. `HANDOFF.md` must be identical outside the block (CRLF ignored) and the install's board must be able to strip it; any other change to the file after grading is still refused. The refusal now says what changed ("does NOT match graded-head …; since then it changes: <files>") instead of "the evaluator graded other code".
+- A cloud PR whose only change since grading is canon's own **Recent activity block** in `HANDOFF.md` (`sprint complete` writes it after the evaluator, so every cloud run had it) now imports and merges as graded: `import-results`, the card's stage and `merge-pr` accept it, with no `tkt land --fix` detour. `HANDOFF.md` must be identical outside the block (CRLF ignored), the install's board must be able to strip it, and every line of the head's block must be of canon's own shape (its header, its note, and `- MM-DD HH:MM · <ticket> · <known event>` lines; free text, links or an unknown phrase are refused); any other change to the file after grading is still refused. The refusal now says what changed ("does NOT match graded-head …; since then it changes: <files>") instead of "the evaluator graded other code".
 
 ## [0.46.4] - 2026-11-05
 
