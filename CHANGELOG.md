@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.46.5] - 2026-11-06
+
 Shell tooling only: run `canon update`; no daemon restart is needed.
 
 ### Fixed
