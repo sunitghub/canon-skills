@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-06-2026 12:05
+learnings-sweep last run: 11-06-2026 13:30
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-06 | [t-df13](.tickets/t-df13/learnings.md) | Changing user-facing text: grep tests/ and docs/ for the old strings first; scripts/test.sh does not run the board spec, so a second spec pinning the old tooltip passed until the evaluator ran it | UNPROMOTED |
 | 2026-11-06 | [t-e566](.tickets/t-e566/learnings.md) | A criterion that needs a machine you cannot reach (the Windows VM) fails the evaluator as not-run: plan it as another ticket's checklist item; xterm.js cancels Ctrl+V so the browser never pastes | UNPROMOTED |
 | 2026-11-06 | [t-d287](.tickets/t-d287/learnings.md) | A command shown with a Copy button must be pasteable as shown: a placeholder like `<repo>` is a redirection in bash and a parse error in PowerShell, and `&&` does not exist in Windows PowerShell 5.1 (found only because the user pasted it on a Windows VM); and writing to `.tickets/` while a board-spec run is going makes it exit 2 (the run compares the tree before and after): hold ideas in chat until the run ends | UNPROMOTED |
 | 2026-11-06 | [t-353a](.tickets/t-353a/learnings.md) | A gate that leans on an OS prompt must ask whether the OS will show it: Windows sudo shows no UAC prompt to an elevated caller, so an elevated Console would have opened a shell with no check (found from a screenshot of an Administrator window, not from the code); `where` looks in the current folder first, so a finder run from a project folder can be made to run a planted binary; and a failed step in a job-object setup must kill the child, not ignore the error, or the time limit never fires | UNPROMOTED |
