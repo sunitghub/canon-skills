@@ -1991,7 +1991,7 @@ cmd_merge_pr() {
   # merged, recorded or logged a second time.
   if ! $check && [[ -n "$(get_field "$file" merged)" ]]; then
     local mpr="$pr" mst="" mbase=""
-    [[ -n "$mpr" || -z "$issue" ]] || mpr="$(_fixes_prs "$repo" "$issue" merged 2>/dev/null | cut -f1 | head -n 1)"
+    local mfound=""; [[ -n "$mpr" || -z "$issue" ]] || { mfound="$(_fixes_prs "$repo" "$issue" merged 2>/dev/null | cut -f1 || true)"; mpr="${mfound%%$'\n'*}"; }
     [[ -z "$mpr" ]] || IFS=$'\t' read -r mst mbase < <(gh pr view "$mpr" --repo "$repo" --json state,baseRefName --jq '[.state, .baseRefName] | @tsv' 2>/dev/null || true) || true
     if [[ "$mst" == MERGED && -n "$mbase" ]]; then
       echo "merge-pr: PR #$mpr is already merged; updating local $mbase only"
