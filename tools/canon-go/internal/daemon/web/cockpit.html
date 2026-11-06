@@ -243,6 +243,14 @@ function canonPrefixKeys(emit) {
     if (ev.key === "ArrowDown") return IS_MAC ? null : "\x1b[1;5B";
     return null;
   }
+  // canon:paste-key:begin (t-e566) — unit-tested by tests/shift-enter.js
+  // xterm.js turns Ctrl+V into ^V and cancels the key, so the browser's paste never fires on Windows (right-click Paste worked).
+  // true: a Windows Ctrl(+Shift)+V keydown, which the key handler lets through so the browser pastes. Mac Cmd+V and Linux ^V are untouched.
+  function canonPasteKey(ev, isWin) {
+    return !!isWin && ev.type === "keydown" && ev.ctrlKey && !ev.altKey && !ev.metaKey && !ev.isComposing && (ev.key === "v" || ev.key === "V");
+  }
+  // canon:paste-key:end
+  var IS_WIN = /^Win/.test(navigator.platform);
   var prefixKeys = null;
   if (window.parent !== window) {
     prefixKeys = canonPrefixKeys(function (type, key) {
@@ -253,6 +261,7 @@ function canonPrefixKeys(emit) {
   // attached whether or not the page is embedded.
   term.attachCustomKeyEventHandler(function (ev) {
     if (prefixKeys && prefixKeys.handle(ev)) return false;
+    if (canonPasteKey(ev, IS_WIN)) return false;   // no preventDefault: the browser's paste event reaches xterm
     var k53 = canonXterm53Keys(ev);
     if (k53) { ev.preventDefault(); ev.stopPropagation(); term.input(k53, true); return false; }   // as 5.3 did: onData, then cancel
     var nl = session ? canonShiftEnter(ev, MODE, (document.getElementById("agentSel") || {}).value) : null;

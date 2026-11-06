@@ -37,6 +37,15 @@ ok('another key with Shift is left alone', f(ev('keydown', 'a', { shift: true })
 ok('the restricted Terminal (mode "term") keeps Enter as it is', f(ev('keydown', 'Enter', { shift: true }), 'term', 'claude') === null);
 ok('an unknown or empty agent gets nothing special', f(ev('keydown', 'Enter', { shift: true }), '', 'codex') === null && f(ev('keydown', 'Enter', { shift: true }), '', undefined) === null && f(ev('keydown', 'Enter', { shift: true }), '', '') === null);
 
+// t-e566: Windows Ctrl(+Shift)+V is let through to the browser's paste; nothing else changes.
+const pa = page.indexOf('// canon:paste-key:begin'), pb = page.indexOf('// canon:paste-key:end');
+ok('the paste-key block is in the page', pa > 0 && pb > pa);
+vm.runInContext(page.slice(pa, pb) + '\nthis.canonPasteKey = canonPasteKey;', ctx);
+const pk = ctx.canonPasteKey;
+ok('Windows: Ctrl+V and Ctrl+Shift+V keydown pass through (v and V)', pk(ev('keydown', 'v', { ctrl: true }), true) && pk(ev('keydown', 'V', { ctrl: true, shift: true }), true));
+ok('Windows: keyup/keypress, Alt, Meta, composing and other keys do not', !pk(ev('keyup', 'v', { ctrl: true }), true) && !pk(ev('keypress', 'v', { ctrl: true }), true) && !pk(ev('keydown', 'v', { ctrl: true, alt: true }), true) && !pk(ev('keydown', 'v', { ctrl: true, meta: true }), true) && !pk(ev('keydown', 'v', { ctrl: true, composing: true }), true) && !pk(ev('keydown', 'c', { ctrl: true }), true) && !pk(ev('keydown', 'v'), true));
+ok('Mac and Linux keep their behavior: nothing passes when not Windows', !pk(ev('keydown', 'v', { ctrl: true }), false) && !pk(ev('keydown', 'v', { meta: true }), false));
+
 // The wiring, read from the page's source.
 const attaches = page.match(/attachCustomKeyEventHandler\(/g) || [];
 ok('the page attaches exactly one custom key handler (xterm keeps only the last)', attaches.length === 1, attaches.length);
@@ -46,6 +55,7 @@ let depth = 0, end = open;
 for (let i = open; i < page.length; i++) { if (page[i] === '{') depth++; else if (page[i] === '}') { depth--; if (depth === 0) { end = i; break; } } }
 const handler = page.slice(at, end + 1);
 ok('that handler runs the prefix keys first, then Shift+Enter', handler.indexOf('prefixKeys.handle(ev)') > 0 && handler.indexOf('canonShiftEnter(') > handler.indexOf('prefixKeys.handle(ev)'));
+ok('it lets a Windows Ctrl+V through after the prefix keys and before the 5.3 key map, never preventing the default', handler.indexOf('canonPasteKey(ev, IS_WIN)') > handler.indexOf('prefixKeys.handle(ev)') && handler.indexOf('canonPasteKey(ev, IS_WIN)') < handler.indexOf('canonXterm53Keys(ev)') && /canonPasteKey\(ev, IS_WIN\)\) return false;/.test(handler) && page.includes('/^Win/.test(navigator.platform)'));
 ok('it sends only when a session is running, through the same path as typed keys', /session \? canonShiftEnter\(/.test(handler) && handler.includes('sendInput(nl)') && page.includes('term.onData(sendInput);'));
 const emb = page.indexOf('if (window.parent !== window) {');
 let d2 = 0, e2 = emb;

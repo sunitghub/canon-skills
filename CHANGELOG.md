@@ -6,6 +6,14 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+Terminal page (daemon): run `canon update`, then restart the daemon and reload the board.
+
+### Fixed
+- Windows: Ctrl+V (and Ctrl+Shift+V) pastes in the Terminal and the Git Bash tab. It used to send ^V and paste nothing; right-click Paste was the only way (t-e566).
+
+### Changed
+- Factory › GitHub shows a spinner in the "Checks · checking…" header and on Check again while the checks run; the rows stay in place.
+
 ## [0.47.2] - 2026-11-06
 
 Board page and `tkt`: run `canon update` and reload the board.
