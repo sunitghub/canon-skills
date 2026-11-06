@@ -5140,11 +5140,17 @@ func githubStatusSoft(root, id string) (map[string]any, bool) {
 
 var issueNumRe = regexp.MustCompile(`#([0-9]+)$`) // the issue number of a github: line (owner/repo#N)
 
+// cloudNow is the clock the Cloud rows' 7-day stall reads; a test pins it (a fixture's fixed dates would otherwise age into stalled).
+var cloudNow = time.Now
+
+const cloudStalledAfter = 7 * 24 * time.Hour
+
 // remoteAgents (t-761b) is the Agents list's Cloud group: a row per ticket out on GitHub (runs: github, a github: line, no
 // merged:), from the send until Check & merge lands it. The state is the card's own github-status stage, served by githubStatus
 // (cached 30 s per ticket), read without waiting (githubStatusSoft): a poll costs no process when nothing is out on GitHub, and
 // otherwise answers at once, with at most one background tkt per ticket per 30 s. A ticket not yet checked is `unknown` and
-// `pending`; tkt github-status asks GitHub and takes seconds, which a poll must never wait for.
+// `pending`; tkt github-status asks GitHub and takes seconds, which a poll must never wait for. t-1148: a ticket closed here whose
+// stage is only branch or sent reads `closed-here`, and a sent or working row with no activity for 7 days reads `stalled`.
 func remoteAgents(root string) []map[string]any {
 	field := func(t ticket, k string) string {
 		if v, ok := t[k].(string); ok {
@@ -5152,7 +5158,10 @@ func remoteAgents(root string) []map[string]any {
 		}
 		return ""
 	}
-	type cand struct{ id, title, created, gh string }
+	type cand struct {
+		id, title, created, gh string
+		closed                 bool
+	}
 	var cands []cand
 	for _, t := range loadTickets(root) {
 		id := field(t, "id")
@@ -5160,16 +5169,16 @@ func remoteAgents(root string) []map[string]any {
 		if id == "" || field(t, "runs") != "github" || field(t, "github") == "" || field(t, "merged") != "" || st == "archived" || st == "cancelled" {
 			continue
 		}
-		cands = append(cands, cand{id, field(t, "title"), field(t, "created"), field(t, "github")})
+		cands = append(cands, cand{id, field(t, "title"), field(t, "created"), field(t, "github"), st == "closed"})
 	}
 	sort.Slice(cands, func(i, j int) bool { return cands[i].id < cands[j].id })
 	rows := []map[string]any{}
 	for _, c := range cands {
-		state, newest := "unknown", c.created
+		state, newest, stage := "unknown", c.created, ""
 		res, have := githubStatusSoft(root, c.id)
 		if have && res["ok"] == true {
 			if st, ok := res["status"].(map[string]any); ok {
-				stage, _ := st["stage"].(string)
+				stage, _ = st["stage"].(string)
 				switch stage {
 				case "merged":
 					continue // landed: the row leaves
@@ -5189,9 +5198,17 @@ func remoteAgents(root string) []map[string]any {
 				}
 			}
 		}
+		// t-1148: a ticket closed here with only a branch (or a send) on GitHub has nothing running there; the row says so instead of "working".
+		if c.closed && (stage == "branch" || stage == "sent") {
+			state = "closed-here"
+		}
 		since := "" // the newest activity as the server read it: stable between polls, so an unchanged poll is an empty 304 (the shell turns it into an age)
 		if _, err := time.Parse(time.RFC3339, newest); err == nil {
 			since = newest
+		}
+		// t-1148: waiting on GitHub for 7 days with no activity is not "working": the session is gone or never started.
+		if at, err := time.Parse(time.RFC3339, since); (state == "sent" || state == "working") && err == nil && cloudNow().Sub(at) > cloudStalledAfter {
+			state = "stalled"
 		}
 		issue := ""
 		if m := issueNumRe.FindStringSubmatch(c.gh); m != nil {

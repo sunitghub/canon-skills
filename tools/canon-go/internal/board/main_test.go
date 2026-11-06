@@ -2233,8 +2233,93 @@ func gitInDirOutput(dir string, args ...string) (string, error) {
 // t-761b: the Agents list's Cloud group. A project with a ticket per stage, a merged one, a local one and one whose status fails:
 // the rows, their states and ages, the scope (only runs: github, no merged:), and the cost (one tkt per ticket the first time, none
 // within the 30 s cache, none when nothing is out on GitHub). Protects GET /api/remote-agents, which the Cockpit's Agents list polls.
+// pinCloudNow fixes the clock the Cloud rows' stall reads for one test (t-1148).
+func pinCloudNow(t *testing.T, at time.Time) {
+	t.Helper()
+	old := cloudNow
+	cloudNow = func() time.Time { return at }
+	t.Cleanup(func() { cloudNow = old })
+}
+
+// Protects the Agents sidebar's Cloud group (t-1148): a ticket closed here with only a branch or a send reads closed-here (the t-3b90
+// shape), a sent or working row silent for more than 7 days reads stalled, a closed ticket with an open PR and a row waiting on the
+// user (results ready, imported) never do.
+func TestRemoteAgentsClosedHereAndStalled(t *testing.T) {
+	now := time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)
+	pinCloudNow(t, now)
+	root := t.TempDir()
+	ago := func(d time.Duration) string { return now.Add(-d).Format(time.RFC3339) }
+	day := 24 * time.Hour
+	type row struct{ id, status, stage, started, want string }
+	rows := []row{
+		{"t-cc01", "closed", "branch", ago(time.Hour), "closed-here"},
+		{"t-cc02", "closed", "sent", ago(time.Hour), "closed-here"},
+		{"t-cc03", "closed", "pr-open", "", "working"},
+		{"t-cc04", "open", "branch", ago(7*day - time.Minute), "working"},
+		{"t-cc05", "open", "branch", ago(7*day + time.Minute), "stalled"},
+		{"t-cc06", "open", "sent", ago(8 * day), "stalled"},
+		{"t-cc07", "open", "results-ready", ago(30 * day), "results-ready"},
+		{"t-cc08", "closed", "results-in", ago(30 * day), "imported"},
+		{"t-cc09", "closed", "branch", ago(19 * day), "closed-here"}, // t-3b90: 19 days, closed here, a branch and no PR
+		{"t-cc0a", "open", "branch", ago(time.Hour), "working"},
+		{"t-cc0b", "open", "pr-open", "", "working"},
+	}
+	script := "#!/bin/sh\ncase \"$2\" in\n"
+	for _, r := range rows {
+		dir := filepath.Join(root, ".tickets", r.id)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		created := ago(time.Hour)
+		if r.started != "" {
+			created = r.started // since is the newest of created and started: the ticket is as old as its last activity
+		}
+		fm := "---\nid: " + r.id + "\nstatus: " + r.status + "\ntype: task\ncreated: " + created + "\nruns: github\ngithub: acme/app#1\n---\n# Title\n"
+		if err := os.WriteFile(filepath.Join(dir, "ticket.md"), []byte(fm), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		js := `{"stage":"` + r.stage + `"`
+		if r.started != "" {
+			js += `,"started":"` + r.started + `"`
+		}
+		script += r.id + ") echo '" + js + "}';;\n"
+	}
+	script += "esac\n"
+	stub := filepath.Join(t.TempDir(), "tkt")
+	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TKT_BIN", stub)
+	mergeRunsMu.Lock()
+	statusCache = map[mergeKey]statusHit{}
+	statusInflight = map[mergeKey]bool{}
+	mergeRunsMu.Unlock()
+	var got []map[string]any
+	for i := 0; i < 100; i++ {
+		got = remoteAgents(root)
+		pending := false
+		for _, r := range got {
+			pending = pending || r["pending"] == true
+		}
+		if !pending {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	state := map[string]any{}
+	for _, r := range got {
+		state[r["id"].(string)] = r["state"]
+	}
+	for _, r := range rows {
+		if state[r.id] != r.want {
+			t.Errorf("%s (%s, stage %s) state = %v, want %s", r.id, r.status, r.stage, state[r.id], r.want)
+		}
+	}
+}
+
 func TestRemoteAgents(t *testing.T) {
 	root := t.TempDir()
+	pinCloudNow(t, time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)) // the fixtures' dates are fixed: the 7-day stall must not age them (t-1148)
 	mk := func(id, extra string) {
 		dir := filepath.Join(root, ".tickets", id)
 		if err := os.MkdirAll(dir, 0o755); err != nil {

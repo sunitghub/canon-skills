@@ -6361,6 +6361,30 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
+    // t-1148: a ticket closed here with only a branch on GitHub, and a send nobody picked up for 7 days, are not "working".
+    test('t-1148: a closed-here row and a stalled row are dim with their own tooltips and no spinner; a working row keeps its ring', async ({ page }) => {
+      const rows = [
+        { id: 't-cl02', title: 'Tighten address validation', state: 'working', issue: '12', get since() { return ago(480); }, pending: false },
+        { id: 't-cl06', title: 'Closed here with a branch', state: 'closed-here', issue: '41', get since() { return ago(19 * 86400); }, pending: false },
+        { id: 't-cl07', title: 'Sent and forgotten', state: 'stalled', issue: '42', get since() { return ago(8 * 86400); }, pending: false },
+      ];
+      await cloudRoute(page, () => rows);
+      await stubTicketDocs(page);
+      await openShell(page, stateRows());
+      await page.evaluate(async () => (await import('/static/cockpit-sessions.js')).pollSessions());
+      await expect(cloudRow(page, 't-cl02').locator('.sdot.ag-ring')).toHaveCount(1);
+      for (const id of ['t-cl06', 't-cl07']) {
+        await expect(cloudRow(page, id).locator('.ag-ring, .ag-pill')).toHaveCount(0);
+        await expect(cloudRow(page, id)).toHaveClass(/st-idle/);
+        await expect(cloudRow(page, id).locator('.sdot')).toBeVisible();
+      }
+      await expect(cloudRow(page, 't-cl06')).toHaveAttribute('title', /closed here; nothing is open on GitHub \(tkt take-back <id> clears this\)/);
+      await expect(cloudRow(page, 't-cl07')).toHaveAttribute('title', /no activity for 7 days; if the session is gone, tkt take-back <id> clears this/);
+      await expect(cloudRow(page, 't-cl06').locator('.ag-age')).toHaveText('19d');
+      await expect(cloudRow(page, 't-cl02')).toHaveAttribute('title', /working on GitHub/);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     test('t-761b: at rail widths 200, 230 and 300 a Cloud row keeps its id, age and glyph; the pill shortens before anything is cut', async ({ page }) => {
       await cloudRoute(page, () => CLOUD_ROWS);
       await stubTicketDocs(page);
@@ -17238,6 +17262,26 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.reload(); await page.waitForLoadState('networkidle');
     await expect(chip).toHaveText('GitHub #57 · branch, no PR');
     await expect(btns.filter({ hasText: 'Create PR' })).toHaveCount(1);
+  });
+
+  // t-1148: a ticket closed here whose only trace on GitHub is a branch (or a send) reads "closed here" and offers nothing to create or start;
+  // an open ticket with the same stage keeps Create PR. Prod path: the card's GitHub chip and button.
+  test('a closed ticket with a branch and no PR reads "closed here" with no Create PR; an open one keeps it (t-1148)', async ({ page }) => {
+    const closed = newTicketId(PROJECT_ROOT, 'gh1148c'), open = newTicketId(PROJECT_ROOT, 'gh1148o');
+    ghTicket(closed, { github: 'acme/app#41', status: 'closed' });
+    ghTicket(open, { github: 'acme/app#42' });
+    const old = new Date(Date.now() - 19 * 86400e3).toISOString();
+    await routeStatus(page, closed, { stage: 'branch', branch: 'claude/old-1', started: old });
+    await routeStatus(page, open, { stage: 'branch', branch: 'claude/old-2', started: old });
+    await openBoard(page, closed);
+    const chipC = page.locator(`.card[data-id="${closed}"] .card-gh-chip`), btnC = page.locator(`.card[data-id="${closed}"] .card-gh-btn`);
+    await expect(chipC).toHaveText('GitHub #41 · closed here');
+    await expect(chipC).toHaveAttribute('title', new RegExp(`tkt take-back ${closed} clears this`));
+    await expect(btnC.filter({ hasText: 'Create PR' })).toHaveCount(0);
+    await expect(btnC.filter({ hasText: 'Issue ↗' })).toHaveCount(1);
+    await openBoard(page, open);   // the board shows the one ticket it is opened on
+    await expect(page.locator(`.card[data-id="${open}"] .card-gh-chip`)).toHaveText('GitHub #42 · branch, no PR');
+    await expect(page.locator(`.card[data-id="${open}"] .card-gh-btn`, { hasText: 'Create PR' })).toHaveCount(1);
   });
 
   // t-2560: on Windows To Claude Cloud copies the command; its tooltip says so (the card's and the panel's).

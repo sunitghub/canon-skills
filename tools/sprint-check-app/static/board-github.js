@@ -64,6 +64,8 @@ function cloudWorking(st) {
   const at = Date.parse(st.started);
   return !Number.isNaN(at) && Date.now() - at < CLOUD_WORKING_MS;
 }
+// t-1148: a ticket closed here whose only trace on GitHub is a branch or a send has nothing running there (the Cloud row says the same).
+const closedHere = (t, st) => t.status === 'closed' && (st.stage === 'branch' || st.stage === 'sent');
 // t-2560: on Windows To Claude Cloud copies the command; the message walks through the Terminal and su (t-df13).
 // t-d0ed (t-c8c8): canon cannot see a cloud session start, so it remembers on this machine that the command was copied for a ticket
 // (memory and localStorage, with the time); the card then offers a quieter `Started?` and asks before copying it again.
@@ -88,7 +90,8 @@ export function ghChipHTML(t) {
   if (!ghOut(t)) return '';
   const p = ghParts(t), st = stageOf(t), n = p ? `GitHub #${p.issue}` : 'GitHub';
   let text = n, title = String(t.github);
-  if (st.stage === 'sent') text += ' · sent';
+  if (closedHere(t, st)) { text += ' · closed here'; title = `Closed here; nothing is open on GitHub (tkt take-back ${t.id} clears this)`; }   // t-1148
+  else if (st.stage === 'sent') text += ' · sent';
   else if (st.stage === 'pr-open') text += prOf(st) ? ` · PR #${prOf(st)}` : ' · PR open';
   else if (st.stage === 'branch' && cloudWorking(st)) { text += ' · cloud session working'; title = `${st.branch} is pushed; the session opens its PR when it finishes`; }
   else if (st.stage === 'branch') { text += ' · branch, no PR'; title = `${st.branch} is on GitHub with no PR`; }
@@ -127,6 +130,7 @@ export function ghButtonHTML(t) {
   if (st.stage === 'pr-open' && prOf(st)) return btn('pr', 'PR ↗', `PR #${prOf(st)} on GitHub`);
   const p = ghParts(t);
   const issue = btn('issue', 'Issue ↗', p ? `Issue #${p.issue} on GitHub` : 'The issue on GitHub');
+  if (closedHere(t, st)) return issue;   // t-1148: closed here: nothing to create or start
   if (st.stage === 'branch' && cloudWorking(st)) return issue;   // t-2560: no Create PR while the session may still open its own
   if (st.stage === 'branch') return btn('open-pr', 'Create PR', `The session pushed ${st.branch} without a PR: create one. If its cloud session may still be running, wait: it opens the PR itself when it finishes`);
   // t-d7b7: a ticket sent earlier (from a terminal, or a board tab since closed) starts its cloud session from its card, the same

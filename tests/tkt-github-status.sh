@@ -200,6 +200,25 @@ for v in STUB_CMPFAIL STUB_HEADFAIL; do
   rc=0; out="$(env "$v=1" "$TKT" github-status "$id" 2>&1)" || rc=$?
   [[ "$rc" == 1 ]] || fail "$v: a gh failure while checking the candidate should exit 1, not read as no branch"; assert_contains "$out" "HTTP 502"
 done
+# t-1148: a ticket closed here whose graded commit is already on origin's base, with only a branch (or a send) on GitHub (the t-3b90 shape), is
+# recorded as merged once, so its Cloud row and card leave; nothing else is. The local origin/main ref only: no fetch, no extra gh call.
+printf '' > "$W/prs"; printf 'main\nclaude/brave-x1\n' > "$W/graphql"; echo true > "$W/cmp"; echo 0 > "$W/headprs"
+gt=".tickets/$id/github.md"; ev() { printf 'evaluator-run-id: 1-1\ngraded-head: %s\n%s: all met\n' "$1" "$2" > ".tickets/$id/eval-report.md"; }
+bm() { "$TKT" github-status "$id" --json | node -e 'const j=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write([j.stage,j.merged].join("|"))'; }
+tb() { grep -c '^## ' "$gt" 2>/dev/null || true; }
+ev "$HEAD7" pass;                               assert_eq "branch|" "$(bm)"      # open ticket: nothing is recorded
+sed -i.bak 's/^status: open$/status: closed/' "$f" && rm -f "$f.bak"
+ev "$HEAD7" fail;                               assert_eq "branch|" "$(bm)"      # a failing verdict
+ev ffffffffffffffffffffffffffffffffffffffff pass; assert_eq "branch|" "$(bm)"    # a graded commit this checkout does not have
+git commit -q --allow-empty -m "local only"; LOCAL="$(git rev-parse HEAD)"; ev "$LOCAL" pass; assert_eq "branch|" "$(bm)"   # a commit origin/main lacks
+git reset -q --hard "$HEAD7"
+grep -q '^merged:' "$f" && fail "a case that must not record wrote merged:"
+b0="$(tb)"; ev "$HEAD7" pass; : > "$W/log"
+assert_eq "merged|$HEAD7" "$(bm)"; grep -q "^merged: $HEAD7\$" "$f" || fail "the poll did not write merged: for a branch-only closed ticket"
+assert_eq "$((b0 + 1))" "$(tb)"; assert_contains "$(tail -4 "$gt")" "recorded by: github-status (the graded commit is already on origin/main, no PR)"
+! grep -q '^pr view\|^issue view' "$W/log" || fail "the recorder asked gh something it should not: $(cat "$W/log")"
+assert_eq "merged|$HEAD7" "$(bm)"; assert_eq "$((b0 + 1))" "$(tb)"                  # once
+sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; sed -i.bak 's/^status: closed$/status: open/' "$f" && rm -f "$f.bak" ".tickets/$id/eval-report.md"
 # Mirrors come from git config canon.mirror, in order.
 git config --add canon.mirror public; git config --add canon.mirror backup
 assert_eq "branch|claude/brave-x1|[\"public\",\"backup\"]" "$(bs)"

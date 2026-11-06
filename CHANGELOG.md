@@ -6,6 +6,11 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+Board and `tkt`: run `canon update`, then restart the board (`canon`) and reload.
+
+### Fixed
+- A ticket closed here that only has a branch or a send left on GitHub no longer reads "working on GitHub" (Agents Cloud row) or offers Create PR (card): both say **closed here** and name `tkt take-back <id>`. A row with no activity for 7 days reads **stalled**. When the graded commit is already on `origin/<base>`, `tkt github-status` records the ticket as merged by itself and the row leaves (t-1148).
+
 ## [0.47.5] - 2026-11-06
 
 Daemon and `tkt`: run `canon update`, then restart the daemon and reload the board.
