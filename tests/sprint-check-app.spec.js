@@ -6968,7 +6968,6 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const banner = page.locator('#view-proj-a > .intr-banner');
       await expect(banner).toBeVisible();
       await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
-      const css = (loc, prop) => loc.evaluate((el, p) => getComputedStyle(el)[p], prop);
       const dismiss = banner.locator('.intr-row[data-id="t-cc33"] [data-act="dismiss"]');
       const resume = banner.locator('.intr-row[data-id="t-d9e6"] [data-act="resume"]');
       // t-e523: Dismiss is a plain secondary button, Resume a sub-action (buttons.css)
@@ -6976,13 +6975,15 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expectRole(page, resume, 'b-accent');
       await page.keyboard.press('Shift');
       await dismiss.focus();
-      expect(await css(dismiss, 'outlineStyle')).toBe('solid');
+      await expect(dismiss).toHaveCSS('outline-style', 'solid');
       const meta = await banner.locator('.intr-row[data-id="t-d9e6"] .intr-meta').textContent();
       expect(meta).toMatch(/^claude · since .*\d{1,2}:\d{2}/);
       expect(meta).not.toContain('2026');      // no 9/28/2026, 10:00:00 AM
-      expect(await css(banner.locator('.intr-row[data-id="t-d9e6"] b'), 'color')).toBe('rgb(245, 248, 252)');
+      // pollInterrupted re-renders the banner every 15 s: a read in two steps (find, then evaluate) can land on a detached row and give "" (flaked 2 of 3 full runs, t-d287);
+      // toHaveCSS finds the live row again on every retry
+      await expect(banner.locator('.intr-row[data-id="t-d9e6"] b')).toHaveCSS('color', 'rgb(245, 248, 252)');
       await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
-      expect(await css(banner.locator('.intr-row[data-id="t-d9e6"] b'), 'color')).toBe('rgb(26, 26, 46)');
+      await expect(banner.locator('.intr-row[data-id="t-d9e6"] b')).toHaveCSS('color', 'rgb(26, 26, 46)');
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
