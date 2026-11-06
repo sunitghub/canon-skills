@@ -16540,11 +16540,13 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
       if (windows) {
         await expect.poll(() => page.evaluate(() => window.__copied)).toBe(line);
         await expect(page.locator('#ck-gh-status')).toContainText('PowerShell or Git Bash');
-        // t-d287: two lines: what to run, then (its own line) that the panel can be closed and the board follows the rest
+        // t-d287: one line each: Copied, what to run, why not the Terminal, then that the panel can be closed and the board follows the rest
         const winLines = (await page.locator('#ck-gh-status').textContent()).split('\n');
-        expect(winLines).toHaveLength(2);
-        expect(winLines[0]).toMatch(/^Copied\. Windows: open PowerShell or Git Bash in /);
-        expect(winLines[1]).toBe('Close this panel once you have run the command. You can follow the rest of the progress on the board.');
+        expect(winLines).toHaveLength(4);
+        expect(winLines[0]).toBe('Copied.');
+        expect(winLines[1]).toMatch(/^Windows: open PowerShell or Git Bash in .*, paste, and press Enter\.$/);
+        expect(winLines[2]).toBe("The board's Terminal cannot start a cloud session on Windows yet.");
+        expect(winLines[3]).toBe('Close this panel once you have run the command. You can follow the rest of the progress on the board.');
         expect(await page.locator('#ck-gh-status').evaluate(e => getComputedStyle(e).whiteSpace)).toBe('pre-line');   // the second line really breaks
         // t-d0ed: it names the project's root (backslashes on Windows), not "the project folder"
         const root = await page.evaluate(async () => (await import('/static/board-core.js')).state.gitRoot);
@@ -16555,8 +16557,10 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
         await page.locator('#ck-gh-to-cloud').click();
         await expect(page.locator('#ck-gh-status')).toContainText('Copy was blocked: type');
         const blockedLines = (await page.locator('#ck-gh-status').textContent()).split('\n');
-        expect(blockedLines).toHaveLength(2);
-        expect(blockedLines[1]).toBe('Close this panel once you have run the command. You can follow the rest of the progress on the board.');
+        expect(blockedLines).toHaveLength(3);
+        expect(blockedLines[0]).toMatch(/^Copy was blocked: type .* in PowerShell or Git Bash in .*\.$/);
+        expect(blockedLines[1]).toBe("The board's Terminal cannot start a cloud session on Windows yet.");
+        expect(blockedLines[2]).toBe('Close this panel once you have run the command. You can follow the rest of the progress on the board.');
       } else {
         await expect.poll(() => page.frames().some(f => f.url().includes('mode=term'))).toBe(true);
         const frame = page.frames().find(f => f.url().includes('mode=term'));

@@ -915,8 +915,8 @@ async function launchToCloud(t, say) {
   try { await navigator.clipboard.writeText(typed); copied = true; } catch { copied = false; }
   const root = projectRootText(), where = root ? `${root} (the project's root folder, the one with .tickets/)` : 'the project\'s root folder';
   if (isWindowsBrowser()) {
-    say(copied ? `Copied. Windows: open PowerShell or Git Bash in ${where}, paste, and press Enter. The board's Terminal cannot start a cloud session on Windows yet.\nClose this panel once you have run the command. You can follow the rest of the progress on the board.`
-      : `Copy was blocked: type "${typed}" in PowerShell or Git Bash in ${where}. The board's Terminal cannot start a cloud session on Windows yet.\nClose this panel once you have run the command. You can follow the rest of the progress on the board.`);
+    say(copied ? `Copied.\nWindows: open PowerShell or Git Bash in ${where}, paste, and press Enter.\nThe board's Terminal cannot start a cloud session on Windows yet.\nClose this panel once you have run the command. You can follow the rest of the progress on the board.`
+      : `Copy was blocked: type "${typed}" in PowerShell or Git Bash in ${where}.\nThe board's Terminal cannot start a cloud session on Windows yet.\nClose this panel once you have run the command. You can follow the rest of the progress on the board.`);
     if (copied) recordCloudCopy(t.id);   // a blocked copy launched nothing: the card keeps To Claude Cloud
     return;
   }

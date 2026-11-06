@@ -6,6 +6,11 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+Board page: run `canon update` and reload the board.
+
+### Changed
+- Windows To Claude Cloud: the copied-command message is one idea per line (Copied; what to run; why not the Terminal; close the panel).
+
 ## [0.47.3] - 2026-11-06
 
 Terminal page (daemon): run `canon update`, then restart the daemon and reload the board.
