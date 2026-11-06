@@ -6311,12 +6311,13 @@ test.describe('cockpit in board (t-ddc8)', () => {
     });
 
     // ── t-761b: the Cloud group in the Agents list. The board server's /api/remote-agents is stubbed; prod path: the Cockpit's Agents list. ──
+    const ago = secs => new Date(Date.now() - secs * 1000).toISOString();   // the server sends the newest activity as a time; the shell turns it into an age
     const CLOUD_ROWS = [
-      { id: 't-cl01', title: 'Export to CSV', state: 'sent', issue: '11', age_s: 120, pending: false },
-      { id: 't-cl02', title: 'Tighten address validation', state: 'working', issue: '12', age_s: 480, pending: false },
-      { id: 't-cl03', title: 'Add retry to the importer', state: 'results-ready', issue: '13', age_s: 3600, pending: false },
-      { id: 't-cl04', title: 'Fix CI checks detail link', state: 'imported', issue: '14', age_s: 60, pending: false },
-      { id: 't-cl05', title: 'Unreadable status', state: 'unknown', issue: '15', age_s: 0, pending: false },
+      { id: 't-cl01', title: 'Export to CSV', state: 'sent', issue: '11', since: ago(120), pending: false },
+      { id: 't-cl02', title: 'Tighten address validation', state: 'working', issue: '12', since: ago(480), pending: false },
+      { id: 't-cl03', title: 'Add retry to the importer', state: 'results-ready', issue: '13', since: ago(3600), pending: false },
+      { id: 't-cl04', title: 'Fix CI checks detail link', state: 'imported', issue: '14', since: ago(60), pending: false },
+      { id: 't-cl05', title: 'Unreadable status', state: 'unknown', issue: '15', since: '', pending: false },
     ];
     const cloudRoute = (page, get) => page.route('**/api/remote-agents**', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ rows: get() }) }));
     const cloudRow = (page, id) => page.locator('#ag-list .ag-cloud', { has: page.locator('.ag-id', { hasText: id }) });
@@ -6338,6 +6339,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(cloudRow(page, 't-cl04').locator('.ag-pill-go .ag-pl')).toHaveText('Merge ready');
       await expect(cloudRow(page, 't-cl05').locator('.ag-pill, .ag-ring')).toHaveCount(0);           // unknown: a dim hollow ring
       await expect(cloudRow(page, 't-cl05')).toHaveAttribute('title', /GitHub could not be checked/);
+      await expect(cloudRow(page, 't-cl05').locator('.sdot')).toHaveCSS('opacity', '0.55');          // dimmer than the sent row's ring
+      await expect(cloudRow(page, 't-cl01').locator('.sdot')).toHaveCSS('opacity', '1');
       // id, age (right-aligned), the tooltip carries the title and the issue; the age follows the server's age_s
       await expect(cloudRow(page, 't-cl01').locator('.ag-t1')).toHaveText('t-cl01Export to CSV');
       await expect(cloudRow(page, 't-cl01')).toHaveAttribute('title', /Export to CSV · GitHub issue #11 · sent to GitHub/);
@@ -6392,6 +6395,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#ag-list .ag-proj b')).toHaveText(['proj-a']);                    // no local agent, still a group
       await expect(page.locator('#ag-list .ag-cloudh')).toHaveText('Cloud2');
       await expect(page.locator('#ag-list .ag-empty')).toHaveCount(0);
+      await expect(page.locator('#ag-list .ag-proj span')).toHaveCount(0);                         // no local rows: no "0" beside the project
       rows = CLOUD_ROWS.slice(1, 2);                                                               // t-cl01 merged
       await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
       await expect(page.locator('#ag-list .ag-cloudh')).toHaveText('Cloud1');
@@ -6420,7 +6424,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     test('t-761b: a malformed or hostile row from the server is ignored, never rendered as markup', async ({ page }) => {
       const errors = []; page.on('pageerror', e => errors.push(e.message));
       await cloudRoute(page, () => [null, 'x', { id: '<img src=x onerror=window.__pwned=1>', state: 'sent', title: 'bad id' },
-        { id: 't-cl09', state: '<b>x</b>', title: 'bad state' }, { id: 't-cl08', state: 'sent', title: '<img src=x onerror=window.__pwned=1>', issue: '<b>1</b>', age_s: 'soon' }, CLOUD_ROWS[0]]);
+        { id: 't-cl09', state: '<b>x</b>', title: 'bad state' }, { id: 't-cl08', state: 'sent', title: '<img src=x onerror=window.__pwned=1>', issue: '<b>1</b>', since: 'soon' }, CLOUD_ROWS[0]]);
       await openShell(page, []);
       await expect(page.locator('#ag-list .ag-cloudh')).toHaveText('Cloud2');                        // the good row and the one with a bad title, issue and age
       await expect(cloudRow(page, 't-cl08').locator('.ag-d')).toHaveText('<img src=x onerror=window.__pwned=1>');   // shown as text

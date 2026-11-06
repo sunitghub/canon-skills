@@ -2246,13 +2246,18 @@ func TestRemoteAgents(t *testing.T) {
 		}
 	}
 	gh := "runs: github\ngithub: acme/app#"
-	mk("t-ab01", gh+"11\n")                               // sent
-	mk("t-ab02", gh+"12\n")                               // branch -> working
-	mk("t-ab03", gh+"13\n")                               // pr-open -> working
-	mk("t-ab04", gh+"14\n")                               // results-ready
-	mk("t-ab05", gh+"15\n")                               // results-in -> imported
-	mk("t-ab06", gh+"16\n")                               // merged stage: the row leaves
-	mk("t-ab07", gh+"17\n")                               // status fails: unknown
+	mk("t-ab01", gh+"11\n") // sent
+	mk("t-ab02", gh+"12\n") // branch -> working
+	mk("t-ab03", gh+"13\n") // pr-open -> working
+	mk("t-ab04", gh+"14\n") // results-ready
+	mk("t-ab05", gh+"15\n") // results-in -> imported
+	mk("t-ab06", gh+"16\n") // merged stage: the row leaves
+	mk("t-ab07", gh+"17\n") // status fails: unknown
+	// its created: is a date only (20 tickets here have one): no usable time, so no since
+	tp7 := filepath.Join(root, ".tickets", "t-ab07", "ticket.md")
+	if b, err := os.ReadFile(tp7); err != nil || os.WriteFile(tp7, []byte(strings.Replace(string(b), "created: 2026-11-05T10:00:00Z", "created: 2026-11-05", 1)), 0o644) != nil {
+		t.Fatal("could not change the fixture's created", err)
+	}
 	mk("t-ab08", gh+"18\nmerged: 2026-11-05T11:00:00Z\n") // merged: recorded: absent
 	mk("t-ab0b", gh+"20\n")                               // archived: hidden from the board, so absent here
 	tp := filepath.Join(root, ".tickets", "t-ab0b", "ticket.md")
@@ -2276,7 +2281,10 @@ func TestRemoteAgents(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("TKT_BIN", stub)
+	mergeRunsMu.Lock()
 	statusCache = map[mergeKey]statusHit{}
+	statusInflight = map[mergeKey]bool{}
+	mergeRunsMu.Unlock()
 	// A cold poll answers at once: every ticket out on GitHub is a pending `unknown` row while the statuses load in the background.
 	cold := remoteAgents(root)
 	for _, r := range cold {
@@ -2318,10 +2326,23 @@ func TestRemoteAgents(t *testing.T) {
 	if got["t-ab01"]["title"] != "Title of t-ab01" || got["t-ab01"]["issue"] != "11" {
 		t.Errorf("title/issue = %v / %v", got["t-ab01"]["title"], got["t-ab01"]["issue"])
 	}
-	// age: the newer of started and issue_updated (12:30); a ticket with neither falls back to created; all in the past
-	a2, a1, a3 := got["t-ab02"]["age_s"].(int64), got["t-ab01"]["age_s"].(int64), got["t-ab03"]["age_s"].(int64)
-	if !(a2 < a1 && a1 < a3 && a2 > 0) {
-		t.Errorf("ages = started+updated %d, started %d, created only %d: want newest activity first", a2, a1, a3)
+	// since: the newer of started and issue_updated; a ticket with neither falls back to created; stable between polls (an ETag needs that)
+	for id, want := range map[string]string{"t-ab01": "2026-11-05T12:00:00Z", "t-ab02": "2026-11-05T12:30:00Z", "t-ab03": "2026-11-05T10:00:00Z"} {
+		if got[id]["since"] != want {
+			t.Errorf("%s since = %v, want %s", id, got[id]["since"], want)
+		}
+	}
+	if got["t-ab07"]["since"] != "" {
+		t.Errorf("t-ab07 since = %v, want none: a date-only created is not a time", got["t-ab07"]["since"])
+	}
+	if _, has := got["t-ab01"]["age_s"]; has {
+		t.Errorf("a row carries age_s, which changes every second and defeats the ETag")
+	}
+	b1, _ := json.Marshal(remoteAgents(root))
+	time.Sleep(1100 * time.Millisecond)
+	b2, _ := json.Marshal(remoteAgents(root))
+	if string(b1) != string(b2) {
+		t.Errorf("two polls a second apart differ: an unchanged poll must be byte-identical\n%s\n%s", b1, b2)
 	}
 	raw, _ := os.ReadFile(calls)
 	if n := strings.Count(string(raw), "github-status"); n != 7 {
@@ -2332,7 +2353,8 @@ func TestRemoteAgents(t *testing.T) {
 	if n := strings.Count(string(raw), "github-status"); n != 7 {
 		t.Fatalf("a second poll inside the cache ran tkt again (%d calls in all)", n)
 	}
-	// an entry older than the 30 s is still served at once (the stale answer) and refreshed once in the background
+	// an entry older than the 30 s is still served at once (the stale answer) and refreshed once in the background; a ticket waiting on
+	// the user (results ready, imported) keeps its answer for 5 minutes, so the 2 that wait are not asked again after a minute
 	mergeRunsMu.Lock()
 	for k, h := range statusCache {
 		h.at = time.Now().Add(-time.Minute)
@@ -2343,14 +2365,34 @@ func TestRemoteAgents(t *testing.T) {
 	if len(stale) != 6 || stale[0]["pending"] == true {
 		t.Fatalf("a stale entry must be served as it is, not as pending: %v", stale)
 	}
-	refreshed := false
-	for i := 0; i < 100 && !refreshed; i++ {
-		raw, _ = os.ReadFile(calls)
-		refreshed = strings.Count(string(raw), "github-status") >= 14
-		time.Sleep(50 * time.Millisecond)
+	count := func() int { b, _ := os.ReadFile(calls); return strings.Count(string(b), "github-status") }
+	waitFor := func(n int) bool {
+		for i := 0; i < 100; i++ {
+			if count() >= n {
+				return true
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		return false
 	}
-	if !refreshed {
-		t.Fatalf("a stale poll never refreshed the statuses in the background (%d calls)", strings.Count(string(raw), "github-status"))
+	// 5 of the 7 are stale (the merged one, the failing one and the three working or sent); the 2 waiting on the user keep their answer
+	if !waitFor(12) {
+		t.Fatalf("a stale poll never refreshed the statuses in the background (%d calls, want 12)", count())
+	}
+	time.Sleep(300 * time.Millisecond)
+	if n := count(); n != 12 {
+		t.Fatalf("a ticket waiting on the user was asked again inside 5 minutes (%d calls, want 12)", n)
+	}
+	// past 5 minutes the waiting ones are refreshed too
+	mergeRunsMu.Lock()
+	for k, h := range statusCache {
+		h.at = time.Now().Add(-6 * time.Minute)
+		statusCache[k] = h
+	}
+	mergeRunsMu.Unlock()
+	remoteAgents(root)
+	if !waitFor(19) {
+		t.Fatalf("an entry past 5 minutes was not refreshed (%d calls, want 19)", count())
 	}
 	// nothing out on GitHub: no process at all
 	empty := t.TempDir()

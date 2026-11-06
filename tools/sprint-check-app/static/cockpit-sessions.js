@@ -289,8 +289,8 @@ function syncSharedWarnings(views){
 // The board server owns the state (/api/remote-agents, project-scoped, an empty 304 when nothing changed, never waiting on GitHub); the
 // shell only asks. One answer per open project is kept: a failed poll keeps it. A hidden page does not poll.
 const CLOUD_POLL_MS=60000, CLOUD_FAST_MS=5000, CLOUD_FAST_MAX=12;   // fast while a row's status is still loading on the server
-const CLOUD_STATES={sent:'st-idle',working:'st-working',unknown:'st-idle','results-ready':'st-results','imported':'st-results'};
-const cloudRows=new Map();   // project id -> {rows:[{pid,id,title,state,issue,age,pending}], at}
+const CLOUD_STATES={sent:'st-idle',working:'st-working',unknown:'st-unknown','results-ready':'','imported':''};   // the row's colour class; the two pills carry their own accent
+const cloudRows=new Map();   // project id -> {rows:[{pid,id,title,state,issue,since,pending}], at}
 let cloudTimer=0, cloudFast=0;
 // The bare GitHub mark (Octicons mark-github, MIT, (c) GitHub): currentColor, no disc, centred in the 18px icon slot.
 function markGitHub(){
@@ -298,8 +298,8 @@ function markGitHub(){
 }
 function cloudRow(pid,r){
   if(!r || typeof r!=='object' || !TICKET_ID_RE.test(String(r.id||'')) || !Object.prototype.hasOwnProperty.call(CLOUD_STATES,r.state)) return null;
-  const age=(typeof r.age_s==='number' && isFinite(r.age_s) && r.age_s>=0) ? r.age_s : null;
-  return { pid, id:r.id, title:String(r.title||'').slice(0,200), state:r.state, issue:/^\d{1,7}$/.test(String(r.issue||''))?String(r.issue):'', age, pending:r.pending===true };
+  const since=typeof r.since==='string' ? Date.parse(r.since) : NaN;   // the server's newest activity; the age is read at render time, so a repeat poll's body is unchanged (an empty 304)
+  return { pid, id:r.id, title:String(r.title||'').slice(0,200), state:r.state, issue:/^\d{1,7}$/.test(String(r.issue||''))?String(r.issue):'', since:isNaN(since)?null:since, pending:r.pending===true };
 }
 async function pollCloud(){
   cloudTimer=0;
@@ -317,7 +317,7 @@ async function pollCloud(){
       if(rows.some(x=>x.pending)) pending=true;
     }catch(e){ /* a failed poll keeps the last answer */ }
   }));
-  for(const k of [...cloudRows.keys()]) if(!ids.includes(k)) cloudRows.delete(k);   // a closed project's rows go with its tab
+  for(const k of [...cloudRows.keys()]) if(!ids.includes(k)) cloudRows.delete(k);   // a closed project's rows go with its tab (a slow poll can delete a just-opened tab's rows; the next poll puts them back)
   renderSessionSurfaces();
   cloudFast=pending ? cloudFast+1 : 0;
   scheduleCloud(pending && cloudFast<=CLOUD_FAST_MAX ? CLOUD_FAST_MS : CLOUD_POLL_MS);
@@ -349,7 +349,7 @@ function cloudHtml(rows){
       `<span class="ag-at"></span><span class="ag-age">${esc(at||'–')}</span><span class="ag-g">${glyph}</span></button>`;
   }).join('');
 }
-function cloudAt(r){ const c=cloudRows.get(r.pid); return r.age===null ? '' : ageShort(r.age+Math.max(0,Math.round((Date.now()-(c?c.at:Date.now()))/1000))); }
+function cloudAt(r){ return r.since===null ? '' : ageShort(Math.max(0,Math.round((Date.now()-r.since)/1000))); }
 function openCloudRow(key){
   const i=key.indexOf('/'), pid=key.slice(0,i), id=key.slice(i+1), proj=getProjects().find(p=>p.id===pid);
   if(proj && TICKET_ID_RE.test(id)) openSessionInTab({proot:proj.path,ticket:id});   // the project's tab, then its board shows the ticket; nothing starts
@@ -384,7 +384,7 @@ export function renderSessionSurfaces(){
   const ordered=[...groups.entries()].sort((a,b)=>groupRank.get(a[0])-groupRank.get(b[0])).map(e=>({g:e[1],h:heads.get(e[0]),cloud:cloudBy.get(e[0])||[]}));
   const list=document.getElementById('ag-list');
   list.innerHTML=ordered.length===0 ? '<div class="ag-empty">No agents running</div>' : ordered.map(({g,h,cloud})=>
-    `<div class="ag-proj" title="${escAttr(h.proot)}"><b>${esc(h.projName||h.name)}</b><span>${g.length}</span>${h.pid?`<button class="ag-plus" data-scratch="${escAttr(h.pid)}" title="New scratch session in ${escAttr(h.projName||h.name)}" aria-label="New scratch session">+</button>`:''}</div>`+g.map(v=>{
+    `<div class="ag-proj" title="${escAttr(h.proot)}"><b>${esc(h.projName||h.name)}</b>${g.length?`<span>${g.length}</span>`:''}${h.pid?`<button class="ag-plus" data-scratch="${escAttr(h.pid)}" title="New scratch session in ${escAttr(h.projName||h.name)}" aria-label="New scratch session">+</button>`:''}</div>`+g.map(v=>{
       const title=ticketTitle(v.pid,v.ticket), time=sessionTime(v);
       const inView=!!v.pid && v.pid===activeTab && (v.ticket||v.scratch)===boardActive.get(activeTab) && document.getElementById('view-'+activeTab)?.classList.contains('active');   // t-7456
       // t-d0ed: one line (icon, name, agent type, age, state glyph). The tooltip is the title alone (the glyph, type and age are on the row);

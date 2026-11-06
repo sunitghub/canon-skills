@@ -5104,15 +5104,28 @@ func githubStatus(root, id string) map[string]any {
 	return res
 }
 
-// githubStatusSoft is githubStatus for a poll that must not wait on GitHub: it answers at once from the cache, however old, and
-// starts one background refresh per ticket when the entry is missing or past its 30 s. ok is false until the first answer lands.
 var statusInflight = map[mergeKey]bool{}
 
+const waitingTTL = 5 * time.Minute
+
+func softTTL(res map[string]any) time.Duration {
+	if st, ok := res["status"].(map[string]any); ok && res["ok"] == true {
+		if stage, _ := st["stage"].(string); stage == "results-ready" || stage == "results-in" {
+			return waitingTTL
+		}
+	}
+	return statusTTL
+}
+
+// githubStatusSoft is githubStatus for a poll that must not wait on GitHub: it answers at once from the cache, however old, and
+// starts one background refresh per ticket when the entry is missing or stale. ok is false until the first answer lands. A ticket
+// waiting on the user (results ready, imported) changes only when the user acts, so its entry is stale after 5 minutes, not 30 s:
+// a refresh is a `git fetch` and several `gh` calls, and the rate limit is shared with the board's cards.
 func githubStatusSoft(root, id string) (map[string]any, bool) {
 	key := mergeKey{root, id}
 	mergeRunsMu.Lock()
 	h, have := statusCache[key]
-	if (!have || time.Since(h.at) >= statusTTL) && !statusInflight[key] {
+	if (!have || time.Since(h.at) >= softTTL(h.res)) && !statusInflight[key] {
 		statusInflight[key] = true
 		go func() {
 			githubStatus(root, id)
@@ -5176,15 +5189,15 @@ func remoteAgents(root string) []map[string]any {
 				}
 			}
 		}
-		age := int64(0)
-		if at, err := time.Parse(time.RFC3339, newest); err == nil && time.Since(at) > 0 {
-			age = int64(time.Since(at).Seconds())
+		since := "" // the newest activity as the server read it: stable between polls, so an unchanged poll is an empty 304 (the shell turns it into an age)
+		if _, err := time.Parse(time.RFC3339, newest); err == nil {
+			since = newest
 		}
 		issue := ""
 		if m := issueNumRe.FindStringSubmatch(c.gh); m != nil {
 			issue = m[1]
 		}
-		rows = append(rows, map[string]any{"id": c.id, "title": c.title, "state": state, "issue": issue, "age_s": age, "pending": !have})
+		rows = append(rows, map[string]any{"id": c.id, "title": c.title, "state": state, "issue": issue, "since": since, "pending": !have})
 	}
 	return rows
 }

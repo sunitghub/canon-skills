@@ -356,3 +356,33 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
+
+## @primer/octicons mark-github (an inline path, not a vendored file)
+
+Used in: `tools/sprint-check-app/static/cockpit-sessions.js` (`markGitHub`, the GitHub mark on a Cloud row in the Agents list).
+
+The path is Octicons' `mark-github` (16 px), copyright (c) GitHub, Inc., under the MIT licence:
+
+```text
+Copyright (c) 2024 GitHub Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+```
+
+The GitHub name and logo are trademarks of GitHub, Inc. and are outside this grant (Octicons says so, and points to GitHub's logo guidelines). canon uses the mark unaltered, only to say "this row is on GitHub", in the text colour of the theme (white on the dark themes, black on the light ones); it implies no endorsement.

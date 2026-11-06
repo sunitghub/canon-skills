@@ -160,5 +160,8 @@ python3 -c 'import json,sys; r=json.load(open(sys.argv[1]))["rows"]; sys.exit(0 
   || fail "poll-budget: /api/remote-agents rows: $(cat "$TMP/ra.json")"
 : > "$CALLS"; curl -s -o /dev/null "$BASE/api/remote-agents"
 [[ ! -s "$CALLS" ]] || fail "poll-budget: a second /api/remote-agents poll inside the 30 s cache started processes: $(sort "$CALLS" | uniq -c)"
+# With rows, an unchanged poll is still an empty 304: the body carries the newest activity as a time, not an age that ticks every second.
+tag="$(etag /api/remote-agents)"; sleep 1.3
+[[ "$(cond /api/remote-agents "$tag")" == "304 0" ]] || fail "poll-budget: /api/remote-agents with rows did not answer an empty 304 a second later (does a row carry an age that changes each second?): $(cond /api/remote-agents "$tag")"
 
 echo "sprint-check-poll-budget: ok"

@@ -166,8 +166,8 @@
      as a local row's (a spinner while working, a hollow ring when only sent), an accent pill when the next step is the user's. */
   .ag-cloudh{display:flex;gap:6px;align-items:baseline;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);padding:8px 8px 2px}
   .ag-row.ag-cloud .ag-mark{color:var(--text)}
-  .st-results{--st:var(--accent)}
-  .ag-pill-go{background:var(--accent);color:var(--on-accent)}
+  .ag-pill-go{background:var(--accent);color:var(--th-on-accent,var(--on-accent))}   /* the theme's own ink on its accent, else the base white */
+  .st-unknown{--st:var(--text-muted)} .st-unknown .sdot{background:transparent;box-shadow:inset 0 0 0 1.5px var(--text-muted);opacity:.55}   /* a dim ring: GitHub could not be asked */
   .ag-ps{display:none}
   @container ag (max-width:260px){.ag-pill-go .ag-pl{display:none}.ag-pill-go .ag-ps{display:inline}}
   .ad-reaper{font-size:12px;color:var(--text-muted);padding:0 14px 8px}
