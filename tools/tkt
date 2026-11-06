@@ -1100,7 +1100,7 @@ _si_description() {
     END { flush(); printf "%s%s", pre, out }' | awk 'NF { s = 1 } s'
 }
 
-# t-10ac: does <owner>/<repo> exist on GitHub? Prints exists, missing or unknown. Only gh's clear "no such repository" is missing; signed out,
+# t-10ac: does <owner>/<repo> exist on GitHub? Prints exists, empty (it exists but has no commits yet: t-d287), missing or unknown. Only gh's clear "no such repository" is missing; signed out,
 # no gh, a network error or a placeholder name is unknown (the caller then keeps its safe default).
 _gh_repo_state() {
   local o="$1" n="$2" out
@@ -1678,6 +1678,7 @@ cmd_github_doctor() {
   _doctor_windows() { case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*) return 0 ;; *) return 1 ;; esac; }
   # a check that gives a command to paste says where to run it (user, 2026-11-06): git and gh act on the folder they are started in
   local groups=() opts=()
+  unset GD_GROUP GD_OPT   # inherited from the caller's environment they would mark every check optional
   _gd() { local d="$4"; [[ "${5:-}" == cmd && -n "${6:-}" ]] && d+=" The command below needs to be run from the project root."; ids+=("$1"); sts+=("$2"); titles+=("$3"); details+=("$d"); fixk+=("${5:-}"); fixv+=("${6:-}"); groups+=("${GD_GROUP:-}"); opts+=("${GD_OPT:-}"); }
   local login
   if ! command -v gh >/dev/null 2>&1; then
@@ -1702,7 +1703,6 @@ cmd_github_doctor() {
   # The repo asked about is origin's own when origin names one this user can use; otherwise the one a new origin would name.
   local repo err vis rstate=unknown origin_ok=true target t_owner t_name
   repo="$(_gh_origin_repo "$root" origin 2>&1)" || origin_ok=false
-  err="${repo#origin: }"
   if $origin_ok; then
     target="$repo"; t_owner="${repo%%/*}"; t_name="${repo#*/}"
     rstate="$(_gh_repo_state "$t_owner" "$t_name")"   # asked before _repo_visibility, whose anonymous fallback reads a missing repo's 404 as private (t-10ac)
@@ -1710,9 +1710,17 @@ cmd_github_doctor() {
       target="$own/$rname"; t_owner="$own"; t_name="$rname"; rstate="$(_gh_repo_state "$t_owner" "$t_name")"
     fi
   else
+    err="${repo#origin: }"
     target="$own/$rname"; t_owner="$own"; t_name="$rname"; rstate="$(_gh_repo_state "$t_owner" "$t_name")"
   fi
   local points=false; $origin_ok && [[ "$repo" == "$target" ]] && points=true
+  # A pasted command never carries a placeholder: `<repo>` is a redirection in bash and a parse error in PowerShell. With no signed-in login or a
+  # folder name GitHub cannot take, the check says why and gives no command (the user's own words are in detail, never in a command).
+  local urlok=false; [[ "$ghurl" != *"<"* ]] && urlok=true
+  local why=""
+  if [[ "$own" == "<owner>" ]]; then why="Sign in first (step 1): the owner of the repository is your GitHub account."
+  elif [[ "$rname" == "<repo>" ]] && ! $origin_ok; then why="This folder's name is not one GitHub accepts as a repository name (letters, digits, . _ -): rename the folder, or create the repository yourself and connect it with git remote add origin <its URL>."; fi
+  local ofix=()   # the origin command, only when the URL it carries is real; set per branch below
   case "$rstate" in
     exists|empty)
       if $points; then
@@ -1728,17 +1736,24 @@ cmd_github_doctor() {
     missing)   # missing implies a valid name and the user's own account: the retarget above and _gh_repo_state's placeholders see to that
       GD_GROUP=repo-setup _gd repo bad "No repository on GitHub yet" "$target is not on GitHub. This creates it, private, under your account; the next steps connect this folder to it." cmd "gh repo create \"$t_name\" --private" ;;
     *)
-      GD_GROUP=repo-setup _gd repo bad "Could not check GitHub for the repository" "Sign in first (step 1) and check again; canon asks GitHub whether $target exists." ;;
+      if [[ "$own" != "<owner>" && "$rname" == "<repo>" ]] && ! $origin_ok; then
+        GD_GROUP=repo-setup _gd repo bad "This folder's name cannot be a GitHub repository name" "$why"
+      else
+        GD_GROUP=repo-setup _gd repo bad "Could not check GitHub for the repository" "${why:-GitHub could not be asked just now (is the network up?): check again.}"
+      fi ;;
   esac
   if $points; then
     GD_GROUP=repo-setup _gd origin ok "origin points at it" "origin is $repo."
   elif $origin_ok; then
-    GD_GROUP=repo-setup _gd origin bad "origin points elsewhere" "origin is $repo, a repository this account cannot use. Point it at $target.${winhint}" cmd "git remote set-url origin $ghurl"
+    $urlok && ofix=(cmd "git remote set-url origin $ghurl")
+    GD_GROUP=repo-setup _gd origin bad "origin points elsewhere" "origin is $repo, a repository this account cannot use. Point it at $target.${winhint}${why:+ $why}" ${ofix[@]+"${ofix[@]}"}
   elif git -C "$root" remote get-url origin >/dev/null 2>&1; then
     # origin exists but is not a GitHub repo: add would fail ("remote origin already exists"), so the command points origin at GitHub
-    GD_GROUP=repo-setup _gd origin bad "origin is not a GitHub repository" "Issues go to origin's GitHub repo: ${err}. Point origin at $target (set-url overwrites it).${winhint}" cmd "git remote set-url origin $ghurl"
+    $urlok && ofix=(cmd "git remote set-url origin $ghurl")
+    GD_GROUP=repo-setup _gd origin bad "origin is not a GitHub repository" "Issues go to origin's GitHub repo: ${err}. Point origin at $target (set-url overwrites it).${winhint}${why:+ $why}" ${ofix[@]+"${ofix[@]}"}
   else
-    GD_GROUP=repo-setup _gd origin bad "No git remote named origin" "Issues go to origin's GitHub repo, and this project has none. Connect it to $target.${winhint}" cmd "git remote add origin $ghurl"
+    $urlok && ofix=(cmd "git remote add origin $ghurl")
+    GD_GROUP=repo-setup _gd origin bad "No git remote named origin" "Issues go to origin's GitHub repo, and this project has none. Connect it to $target.${winhint}${why:+ $why}" ${ofix[@]+"${ofix[@]}"}
   fi
   if [[ "$rstate" == empty ]] && $points; then
     GD_GROUP=repo-setup _gd push bad "First push" "The repository is empty: send your current branch so the cloud session has code to work on (it clones what origin holds).${winhint}" cmd "git push -u origin HEAD"

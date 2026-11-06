@@ -16549,6 +16549,13 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
         const root = await page.evaluate(async () => (await import('/static/board-core.js')).state.gitRoot);
         await expect(page.locator('#ck-gh-status')).toContainText(root.replace(/\//g, '\\') + ' (the project\'s root folder, the one with .tickets/)');
         expect(page.frames().filter(f => f.url().includes('mode=term'))).toHaveLength(0);   // no Terminal was opened
+        // t-d287: a blocked copy is told the same way, two lines
+        await page.evaluate(() => { Object.defineProperty(navigator, 'clipboard', { value: { writeText: async () => { throw new Error('blocked'); } }, configurable: true }); });
+        await page.locator('#ck-gh-to-cloud').click();
+        await expect(page.locator('#ck-gh-status')).toContainText('Copy was blocked: type');
+        const blockedLines = (await page.locator('#ck-gh-status').textContent()).split('\n');
+        expect(blockedLines).toHaveLength(2);
+        expect(blockedLines[1]).toBe('Close this panel once you have run the command. You can follow the rest of the progress on the board.');
       } else {
         await expect.poll(() => page.frames().some(f => f.url().includes('mode=term'))).toBe(true);
         const frame = page.frames().find(f => f.url().includes('mode=term'));

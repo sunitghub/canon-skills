@@ -29,7 +29,7 @@ function checksOf(res){ return res&&res.ok&&res.doctor&&Array.isArray(res.doctor
 function factoryRow(res){
   const checks=checksOf(res);
   if(!checks) return {text:'GitHub · could not check ›', muted:true};
-  if(checks.some(c=>(c.id==='origin'||c.group==='repo-setup')&&c.status==='bad')) return {text:'Not set up', muted:true};
+  if(checks.some(c=>(c.id==='origin'||c.id==='repo')&&c.status==='bad')) return {text:'Not set up', muted:true};
   return {text:(checks.some(c=>c.status==='bad')?'GitHub needs setup':'GitHub ready')+' · agentic off ›', muted:false};
 }
 export function fillCardFactory(pid, el){
