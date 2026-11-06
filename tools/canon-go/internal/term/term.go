@@ -38,7 +38,7 @@ type Config struct {
 	RunShell func(ctx context.Context, root string) error
 	After    func(time.Duration) <-chan time.Time
 	// RunOnTerminal runs one program as the foreground of the user's real terminal (tkt send-issue --launch needs one for
-	// claude --cloud); nil: not available here (Windows has no runner yet, t-57ab).
+	// claude --cloud); nil: not available on this platform.
 	RunOnTerminal func(ctx context.Context, path string, args []string, dir string) error
 	// ShellCheck says before su asks the OS whether the full shell can start here (Windows: Git's bash is installed); nil: always.
 	ShellCheck func() error

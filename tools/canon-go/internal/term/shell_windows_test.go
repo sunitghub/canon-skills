@@ -52,3 +52,12 @@ func TestJobEndsWhatTheShellLeftBehindWhenItExits(t *testing.T) {
 		t.Errorf("a program the shell started outlived the shell")
 	}
 }
+
+// Protects su on Windows (prod path: OSAuth's elevation refusal reads this): the process token's elevation must match what Windows
+// itself says, `net session` succeeding only for an elevated caller. Runs on the Windows VM only; written on a Mac, not run there.
+func TestProcessElevatedMatchesWindows(t *testing.T) {
+	want := exec.Command("net", "session").Run() == nil
+	if got := processElevated(); got != want {
+		t.Errorf("processElevated() = %v, but `net session` says elevated = %v", got, want)
+	}
+}

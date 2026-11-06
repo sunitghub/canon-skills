@@ -667,3 +667,18 @@ func TestElevatedRefusal(t *testing.T) {
 		t.Fatalf("OSAuth elevated: got %v, want ErrElevated", err)
 	}
 }
+
+// Protects su (prod path: the shell's run result): a shell that could not start is said, an exit status of the shell is not.
+func TestSuSaysWhenTheShellCannotStart(t *testing.T) {
+	root, _ := project(t)
+	f := newFakeSu()
+	close(f.stop)
+	cfg := f.cfg(root)
+	cfg.RunShell = func(context.Context, string) error { return errors.New("boom") }
+	var buf bytes.Buffer
+	cfg.In, cfg.Out = strings.NewReader("su\nexit\n"), &buf
+	Run(cfg)
+	if !strings.Contains(buf.String(), "su: the shell could not run: boom") {
+		t.Errorf("a shell that could not start must be said:\n%s", buf.String())
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os/exec"
 	"time"
 )
 
@@ -103,7 +104,11 @@ func (c Config) grant(limit, warn time.Duration) (closeTerminal bool) {
 			c.emit("terminal.su_expired", map[string]string{"how": "ended"})
 			fmt.Fprint(c.Out, "\r\n— full shell time is up; back in the restricted prompt (type su to start again) —\r\n")
 			return false
-		case <-done:
+		case err := <-done:
+			var exit *exec.ExitError
+			if err != nil && !errors.As(err, &exit) { // the shell's own exit status is its business; a shell that could not start is said
+				fmt.Fprintf(c.Out, "su: the shell could not run: %v\n", err)
+			}
 			c.emit("terminal.su_expired", map[string]string{"how": "exited"})
 			fmt.Fprintln(c.Out, "Back in the restricted prompt.")
 			return false
