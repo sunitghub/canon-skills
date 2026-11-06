@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-06-2026 14:30
+learnings-sweep last run: 11-06-2026 16:00
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-06 | [t-1148](.tickets/t-1148/learnings.md) | A poll that writes must be tested with two parallel runs (a sequential second run is stopped by the outer check and cannot kill a record-twice mutant); a state that reads a clock needs an injectable one | UNPROMOTED |
 | 2026-11-06 | [t-e7fb](.tickets/t-e7fb/learnings.md) | Advice a refusal prints must be a command that works (git pull could not, so users moved files by hand and lost github.md); changing output text means grepping the board for code that matches it | UNPROMOTED |
 | 2026-11-06 | [t-df13](.tickets/t-df13/learnings.md) | Changing user-facing text: grep tests/ and docs/ for the old strings first; scripts/test.sh does not run the board spec, so a second spec pinning the old tooltip passed until the evaluator ran it | UNPROMOTED |
 | 2026-11-06 | [t-e566](.tickets/t-e566/learnings.md) | A criterion that needs a machine you cannot reach (the Windows VM) fails the evaluator as not-run: plan it as another ticket's checklist item; xterm.js cancels Ctrl+V so the browser never pastes | UNPROMOTED |
