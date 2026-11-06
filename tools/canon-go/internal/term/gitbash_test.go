@@ -28,6 +28,7 @@ func TestFindGitBash(t *testing.T) {
 		{"x86 before the per-user install", has(`C:\Program Files (x86)\Git\bin\bash.exe`, `C:\Users\u\AppData\Local\Programs\Git\bin\bash.exe`), none, `C:\Program Files (x86)\Git\bin\bash.exe`},
 		{"per-user install", has(`C:\Users\u\AppData\Local\Programs\Git\bin\bash.exe`), none, `C:\Users\u\AppData\Local\Programs\Git\bin\bash.exe`},
 		{"where finds a Git folder elsewhere", has(), func() []string { return []string{`C:\Windows\System32\bash.exe`, `D:\Tools\Git\usr\bin\bash.exe`} }, `D:\Tools\Git\usr\bin\bash.exe`},
+		{"a bash.exe in a folder that is merely named git is refused", has(), func() []string { return []string{`C:\src\git\app\bash.exe`, `D:\work\Git\bash.exe`} }, ""},
 		{"WSL's System32 bash is refused", has(), func() []string { return []string{`C:\Windows\System32\bash.exe`} }, ""},
 		{"a Git folder that is not bash.exe is refused", has(), func() []string { return []string{`D:\Git\bin\git.exe`} }, ""},
 		{"nothing found", has(), none, ""},

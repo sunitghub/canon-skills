@@ -19,7 +19,10 @@ import (
 func fileExists(p string) bool { st, err := os.Stat(p); return err == nil && !st.IsDir() }
 
 func whereBash() []string {
-	out, err := exec.Command("where", "bash.exe").Output()
+	// where looks in the current folder first, and this one is the project: ask from a folder nobody else writes to
+	cmd := exec.Command("where", "bash.exe")
+	cmd.Dir = os.Getenv("SystemRoot")
+	out, err := cmd.Output()
 	if err != nil {
 		return nil
 	}

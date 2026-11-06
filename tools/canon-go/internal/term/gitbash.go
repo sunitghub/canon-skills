@@ -9,7 +9,7 @@ import (
 var ErrNoGitBash = errors.New("Git for Windows is required (https://git-scm.com/download/win): its bash.exe was not found")
 
 // findGitBash finds Git's bash.exe in the order tools/tkt.cmd uses, so the Console and the board run the same bash. The path
-// from `where` counts only inside a Git folder: System32\bash.exe is WSL's, which does not run canon's tools. Paths use
+// from `where` counts only in Git's own layout (\Git\bin\ or \Git\usr\bin\): System32\bash.exe is WSL's, and a bash.exe a project folder happens to hold (where looks in the current folder first) is not Git's. Paths use
 // backslashes on every OS so the order is testable anywhere. "" means none.
 func findGitBash(getenv func(string) string, exists func(string) bool, where func() []string) string {
 	var cands []string
@@ -29,7 +29,7 @@ func findGitBash(getenv func(string) string, exists func(string) bool, where fun
 	}
 	for _, p := range where() {
 		p = strings.TrimSpace(p)
-		if i := strings.Index(strings.ToLower(p), `\git\`); i >= 0 && strings.HasSuffix(strings.ToLower(p), `bash.exe`) {
+		if l := strings.ToLower(p); strings.HasSuffix(l, `\git\bin\bash.exe`) || strings.HasSuffix(l, `\git\usr\bin\bash.exe`) {
 			return p
 		}
 	}

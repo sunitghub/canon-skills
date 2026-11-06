@@ -15,7 +15,9 @@ func TestJobEndsTheProgramAndItsChild(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	// cmd starts ping (the child); both must end when ctx does
-	go func() { done <- runInJob(ctx, "cmd.exe", []string{"/c", "ping -n 60 127.0.0.1 >nul"}, t.TempDir(), true) }()
+	go func() {
+		done <- runInJob(ctx, "cmd.exe", []string{"/c", "ping -n 60 127.0.0.1 >nul"}, t.TempDir(), true)
+	}()
 	time.Sleep(2 * time.Second)
 	cancel()
 	select {
