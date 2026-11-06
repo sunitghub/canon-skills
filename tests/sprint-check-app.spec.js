@@ -17415,9 +17415,9 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#gh-dialog')).not.toHaveClass(/open/);
     await button.click();
     await page.locator('#gh-dialog-ok').click();
-    Object.assign(job, { status: 'done', exit_code: 0, output: 'Merged PR #58 into main (abc).\nLocal main: 1 file(s) here differ from the merged copy; left at 1111aaaa:\n  new.txt\n  Commit or move them, then run: git pull  (in the Cockpit Terminal, type su first)\nlater line\n' });
+    Object.assign(job, { status: 'done', exit_code: 0, output: 'Merged PR #58 into main (abc).\nThe PR is merged on GitHub, but local main was not updated: this file has changes here that the merge would overwrite:\n  new.txt\n  Look at the changes (git diff <file>), then commit them or drop them (git checkout -- <file>), then run: tkt merge-pr t-ab12\n  (in the Cockpit Terminal, type su first)\nlater line\n' });
     await expect(page.locator('#gh-dialog-title')).toHaveText('Merged');
-    await expect(page.locator('#gh-dialog-body')).toHaveText('The PR is merged and the issue closed by its Fixes line. Local main: 1 file(s) here differ from the merged copy; left at 1111aaaa: new.txt Commit or move them, then run: git pull  (in the Cockpit Terminal, type su first)');
+    await expect(page.locator('#gh-dialog-body')).toHaveText('The PR is merged and the issue closed by its Fixes line. The PR is merged on GitHub, but local main was not updated: this file has changes here that the merge would overwrite: new.txt Look at the changes (git diff <file>), then commit them or drop them (git checkout -- <file>), then run: tkt merge-pr t-ab12 (in the Cockpit Terminal, type su first)');
     await page.locator('#gh-dialog-cancel').click();
     stat.status = { stage: 'results-in', pr: 58, mirrors: ['public'] };
     await page.evaluate(async () => (await import('/static/board-github.js')).pollGithub(true));

@@ -600,7 +600,7 @@ out="$(BASE="$BASE3" STUB_HEAD="$H5" ff_merge)"; assert_contains "$out" "local m
 assert_contains "$out" $'\n  HANDOFF.md\n'; assert_eq "$BASE3" "$(git rev-parse main)"; assert_grep '^mine$' HANDOFF.md
 # t-e7fb: canon's own `## Scratch` entries in HANDOFF.md are not a person's edit: the update goes through and they are put back; a person's
 # line there still stops it; and after that refusal the named retry (tkt merge-pr again) only moves the local branch. Protects `tkt merge-pr`.
-SC1='- 2026-11-06 14:02 — s-ki7k "kept": 3 files changed in the main checkout — kept on End'
+SC1='- 2026-11-06 14:02 — s-ki7k "fix "x" bug": 3 files changed in the main checkout — kept on End'
 sc_setup() { git checkout -q main; git reset -q "$BASE3"; git checkout -q -- .; ho_write; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; eval_ok "$H5"; }
 sc_setup; printf '\n## Scratch\n\n%s\n' "$SC1" >> HANDOFF.md
 out="$(BASE="$BASE3" STUB_HEAD="$H5" ff_merge)"; assert_contains "$out" "Local main: ${BASE3:0:8} -> ${H5:0:8} (fast-forward)"

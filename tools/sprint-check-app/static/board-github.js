@@ -421,10 +421,10 @@ function refusalReason(out) {
   const hit = lines.find(s => /is a draft|GitHub refused|gh could not merge|failed on .* \+ |cannot merge cleanly|not open|blocked by|comes from a fork|not the commit the evaluator graded|does not merge into|already (merged|in )|not closed|uncommitted changes|is unchanged|moved while/.test(s)) || lines[0] || '';
   return hit.replace(/^merge(-pr)?:\s*/, '');
 }
-// t-41ff: merge-pr's "Local <branch>:" line and the indented lines under it (the files that stopped the update, the next step).
+// t-41ff: merge-pr's "Local <branch>:" line (or t-e7fb's "The PR is merged on GitHub, but local <branch> was not updated" refusal) and the indented lines under it (the files that stopped the update, the next step).
 function localMainNote(out) {
   const lines = String(out || '').split('\n');
-  const i = lines.findIndex(s => /^Local [^:]+: /.test(s));
+  const i = lines.findIndex(s => /^(Local [^:]+: |The PR is merged on GitHub, but local )/.test(s));   // t-e7fb: the refusal's first line is now plain words
   if (i < 0) return '';
   const rest = [];
   for (const s of lines.slice(i + 1)) { if (!/^ {2}\S/.test(s)) break; rest.push(s.trim()); }

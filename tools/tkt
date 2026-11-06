@@ -2475,7 +2475,7 @@ _ff_extra_lines() { awk 'FILENAME == ARGV[1] { c[$0]++; next } c[$0] > 0 { c[$0]
 # _ff_scratch_lines / _ff_scratch_strip — t-e7fb: the `## Scratch` entries canon's daemon writes into HANDOFF.md (scratchNoteLine's
 # shape: "- <date> <time> — s-xxxx[ "title"]: <what is left> in <where> — <why>", under that heading only), and the file without them.
 # Anything else under the heading is a person's and stays. A CR is dropped first (core.autocrlf=true on Windows).
-_ff_scratch_lines() { tr -d '\r' | awk '/^## / { s = ($0 == "## Scratch"); next } s && /^- [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9] — s-[a-z0-9][a-z0-9][a-z0-9][a-z0-9]( "[^"]*")?: .+ — .+$/ { print }'; }
+_ff_scratch_lines() { tr -d '\r' | awk '/^## / { s = ($0 == "## Scratch"); next } s && /^- [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9] — s-[a-z0-9][a-z0-9][a-z0-9][a-z0-9]( ".*")?: .+ — .+$/ { print }'; }
 _ff_scratch_strip() {
   tr -d '\r' | awk '
     function endsec(  i) { if (!insec) return
@@ -2483,7 +2483,7 @@ _ff_scratch_strip() {
       insec = 0; nb = 0; keep = 0 }
     { l = $0 }
     insec && l ~ /^## / { endsec() }
-    insec { if (l ~ /^- [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9] — s-[a-z0-9][a-z0-9][a-z0-9][a-z0-9]( "[^"]*")?: .+ — .+$/) next; buf[++nb] = l; if (l != "") keep = 1; next }
+    insec { if (l ~ /^- [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9] — s-[a-z0-9][a-z0-9][a-z0-9][a-z0-9]( ".*")?: .+ — .+$/) next; buf[++nb] = l; if (l != "") keep = 1; next }
     l == "## Scratch" { insec = 1; head = l; hpend = pend; pend = 0; nb = 0; keep = 0; next }
     l == "" { pend++; next }
     { for (i = 0; i < pend; i++) print ""; pend = 0; print l }
@@ -2604,7 +2604,8 @@ _ff_here() {
   for i in "${!safe[@]}"; do
     case "${kinds[$i]}" in
       ticket) cp -p "$bk/$i" "$root/${safe[$i]}" ;;
-      handoff) [[ ! -s "$bk/$i.extra" ]] || _ff_put_scratch "$root/${safe[$i]}" "$bk/$i.extra" ;;
+      handoff) [[ ! -s "$bk/$i.extra" ]] || _ff_put_scratch "$root/${safe[$i]}" "$bk/$i.extra" \
+                 || { echo "warning: could not put canon's Scratch lines back into ${safe[$i]}; they are:" >&2; cat "$bk/$i.extra" >&2; } ;;
       log)    # a merged copy without a final newline must not glue the first local line onto its last one
               [[ ! -s "$bk/$i.extra" || ! -s "$root/${safe[$i]}" || -z "$(tail -c 1 "$root/${safe[$i]}")" ]] || printf '\n' >> "$root/${safe[$i]}"
               cat "$bk/$i.extra" >> "$root/${safe[$i]}" ;;
