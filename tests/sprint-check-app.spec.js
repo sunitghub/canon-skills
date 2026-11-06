@@ -17250,7 +17250,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     ghTicket(id, { github: 'acme/app#57' });
     await routeStatus(page, id, { stage: 'sent' });
     await openBoard(page, id);
-    await expect(page.locator(`.card[data-id="${id}"] .card-gh-btn`, { hasText: 'To Claude Cloud' })).toHaveAttribute('title', /^Copies the command: paste it in PowerShell or Git Bash/);
+    await expect(page.locator(`.card[data-id="${id}"] .card-gh-btn`, { hasText: 'To Claude Cloud' })).toHaveAttribute('title', /^Copies the command: open the Terminal \(Ctrl\+\. then m\), type su, paste it and press Enter$/);
   });
 
   // t-d0ed (reviewer): a copy the browser blocked launched nothing, so the card keeps To Claude Cloud; a copy that worked becomes Started?.
