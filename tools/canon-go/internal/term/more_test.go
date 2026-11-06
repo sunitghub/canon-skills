@@ -295,7 +295,7 @@ func TestTktOutputIsFiltered(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := run(t, Config{Root: root, Tkt: fake}, "tkt show t-ab12\nexit\n")
-	rest := regexp.MustCompile("\\x1b\\[[0-9;]*m").ReplaceAllString(out, "") // the prompt's own bold title
+	rest := regexp.MustCompile("\\x1b\\[[0-9;]*m").ReplaceAllString(strings.TrimPrefix(out, bracketedPasteOff), "") // the prompt's own bold title and its first bracketed-paste switch-off (t-e7fb)
 	if strings.ContainsRune(rest, 0x1b) || strings.ContainsRune(rest, 0x07) {
 		t.Errorf("a control character from tkt reached the terminal: %q", out)
 	}

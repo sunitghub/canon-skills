@@ -20,11 +20,11 @@ const prompt = "$ "
 // to normal before the command runs.
 func (c Config) readLine(rd *bufio.Reader, hist *[]string) (string, error) {
 	if c.RawMode == nil {
-		return rd.ReadString('\n')
+		return plainLine(rd)
 	}
 	restore := c.RawMode()
 	if restore == nil {
-		return rd.ReadString('\n')
+		return plainLine(rd)
 	}
 	defer restore()
 	var buf []byte
@@ -99,6 +99,19 @@ func (c Config) readLine(rd *bufio.Reader, hist *[]string) (string, error) {
 		}
 	}
 }
+
+// bracketedPasteOff switches the page's bracketed-paste mode off. A full shell (su) switches it on and a killed or exited one may
+// leave it on, and the restricted prompt does not understand the markers a paste is then wrapped in (t-e7fb).
+const bracketedPasteOff = "\x1b[?2004l"
+
+// plainLine reads one line the cooked way (a pipe, or a handle that is not a console). A paste may still arrive wrapped in the
+// bracketed-paste markers ESC[200~ and ESC[201~: they are not part of the command.
+func plainLine(rd *bufio.Reader) (string, error) {
+	s, err := rd.ReadString('\n')
+	return bracketedPaste.Replace(s), err
+}
+
+var bracketedPaste = strings.NewReplacer("\x1b[200~", "", "\x1b[201~", "")
 
 // readEscape consumes the rest of an escape sequence (arrow keys and the like) and says whether it was Up or Down.
 func readEscape(rd *bufio.Reader) (up, down bool) {

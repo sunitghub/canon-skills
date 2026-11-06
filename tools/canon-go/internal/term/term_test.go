@@ -207,7 +207,7 @@ func TestCatNeverEmitsFileEscapes(t *testing.T) {
 	}
 	out := run(t, Config{Root: root}, "cat evil.txt\nexit\n")
 	// chroma adds its own colour codes (ESC [ ... m); after removing those, nothing may be left.
-	rest := regexp.MustCompile("\x1b\\[[0-9;]*m").ReplaceAllString(out, "")
+	rest := regexp.MustCompile("\x1b\\[[0-9;]*m").ReplaceAllString(strings.TrimPrefix(out, bracketedPasteOff), "") // the Terminal's own first switch-off (t-e7fb)
 	if strings.ContainsRune(rest, 0x1b) || strings.ContainsRune(rest, 0x07) {
 		t.Errorf("a control character from the file reached the terminal: %q", out)
 	}

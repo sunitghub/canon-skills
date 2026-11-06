@@ -269,3 +269,27 @@ func TestPagerStopEndsTkt(t *testing.T) {
 		t.Fatal("q did not end tkt: the prompt is still waiting on it")
 	}
 }
+
+// Protects the restricted Terminal after a full shell (t-e7fb): a paste wrapped in the bracketed-paste markers (a browser Ctrl+V while
+// the page believes the mode is on) runs as the command it holds, not as "ESC[200~pwd"; and the page is told to switch the mode off when the
+// Terminal starts and when su hands the prompt back, which is what stops the markers being sent.
+func TestBracketedPasteIsNotPartOfTheCommand(t *testing.T) {
+	root, _ := project(t)
+	f := newFakeSu()
+	out := run(t, f.cfg(root), "\x1b[200~pwd\x1b[201~\nexit\n")
+	if !strings.Contains(out, Visible(root)) {
+		t.Errorf("a bracket-pasted pwd did not run:\n%q", out)
+	}
+	if strings.Contains(out, "200~") || strings.Contains(out, "201~") {
+		t.Errorf("the markers reached the command or its error:\n%q", out)
+	}
+	if !strings.HasPrefix(out, bracketedPasteOff) {
+		t.Errorf("the Terminal did not switch bracketed paste off first:\n%q", out)
+	}
+	g := newFakeSu()
+	close(g.stop)
+	out2 := run(t, g.cfg(root), "su\nexit\n")
+	if !strings.Contains(out2, bracketedPasteOff+"Back in the restricted prompt.") {
+		t.Errorf("su did not switch bracketed paste off when it handed the prompt back:\n%q", out2)
+	}
+}

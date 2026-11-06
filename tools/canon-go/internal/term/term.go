@@ -175,7 +175,7 @@ func Run(cfg Config) int {
 		cfg.pg = &p
 	}
 	rd := bufio.NewReader(cfg.In)
-	fmt.Fprint(cfg.Out, welcome())
+	fmt.Fprint(cfg.Out, bracketedPasteOff+welcome())
 	// A Ctrl-C while a command runs is a SIGINT to this whole foreground group. Catching it keeps the prompt alive while the
 	// command (which gets the default action on exec) stops; ignoring it would be inherited by tkt and leave it unstoppable.
 	sigc := make(chan os.Signal, 1)

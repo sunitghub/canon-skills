@@ -6,6 +6,13 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+Daemon and `tkt`: run `canon update`, then restart the daemon and reload the board.
+
+### Fixed
+- Check & merge on Windows: after a cloud merge, a `## Scratch` entry canon wrote in `HANDOFF.md` no longer stops the local branch from updating; the entry is put back after. A line you wrote still stops it, and the message now says so in plain words: the PR is merged on GitHub, your local branch was not updated, which file, and the steps (`git diff`, commit or `git checkout --`, then `tkt merge-pr <id>`).
+- `tkt merge-pr <id>` on a ticket already merged only retries the local update (nothing is merged, recorded or logged twice). It replaces the `git pull` the refusal used to name, which aborted on the PR's untracked ticket files and led people to move `github.md` aside by hand (t-e7fb).
+- Terminal: a pasted command no longer starts with `^[[200~` (the bracketed-paste marker): the prompt ignores the markers and switches the mode off at start and after `su` (t-e7fb).
+
 ## [0.47.4] - 2026-11-06
 
 Board page: run `canon update` and reload the board.

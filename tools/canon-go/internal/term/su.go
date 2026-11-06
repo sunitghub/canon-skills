@@ -102,7 +102,7 @@ func (c Config) grant(limit, warn time.Duration) (closeTerminal bool) {
 			cancel()
 			<-done
 			c.emit("terminal.su_expired", map[string]string{"how": "ended"})
-			fmt.Fprint(c.Out, "\r\n— full shell time is up; back in the restricted prompt (type su to start again) —\r\n")
+			fmt.Fprint(c.Out, bracketedPasteOff+"\r\n— full shell time is up; back in the restricted prompt (type su to start again) —\r\n")
 			return false
 		case err := <-done:
 			var exit *exec.ExitError
@@ -110,7 +110,7 @@ func (c Config) grant(limit, warn time.Duration) (closeTerminal bool) {
 				fmt.Fprintf(c.Out, "su: the shell could not run: %v\n", err)
 			}
 			c.emit("terminal.su_expired", map[string]string{"how": "exited"})
-			fmt.Fprintln(c.Out, "Back in the restricted prompt.")
+			fmt.Fprintln(c.Out, bracketedPasteOff+"Back in the restricted prompt.")
 			return false
 		}
 	}

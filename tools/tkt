@@ -1987,6 +1987,17 @@ cmd_merge_pr() {
   command -v gh >/dev/null 2>&1 || { echo "merge-pr: needs the GitHub CLI: install gh, then run: gh auth login" >&2; exit 1; }
   local graded; graded="$(_eval_pass_head merge-pr "$tdir" "$id" "import the results first")" || exit 1
   local issue=""; issue="$(get_field "$file" github)"; [[ "$issue" == "$repo#"* && "${issue##*#}" =~ ^[0-9]+$ ]] && issue="${issue##*#}" || issue=""
+  # t-e7fb: the retry a refused local update names. A ticket already recorded as merged runs only that update again: nothing is
+  # merged, recorded or logged a second time.
+  if ! $check && [[ -n "$(get_field "$file" merged)" ]]; then
+    local mpr="$pr" mst="" mbase=""
+    [[ -n "$mpr" || -z "$issue" ]] || mpr="$(_fixes_prs "$repo" "$issue" merged 2>/dev/null | cut -f1 | head -n 1)"
+    [[ -z "$mpr" ]] || IFS=$'\t' read -r mst mbase < <(gh pr view "$mpr" --repo "$repo" --json state,baseRefName --jq '[.state, .baseRefName] | @tsv' 2>/dev/null || true) || true
+    if [[ "$mst" == MERGED && -n "$mbase" ]]; then
+      echo "merge-pr: PR #$mpr is already merged; updating local $mbase only"
+      _ff_local_base "$root" "$mbase" "$id"; handoff_recent "$root"; return 0
+    fi
+  fi
   pr="$(_resolve_pr merge-pr "$file" "$repo" "$pr")" || exit 1
   local info st mg ms head base cross draft tries=1
   # t-fefb: right after another merge GitHub reads mergeable UNKNOWN while it recomputes; wait it out (6 reads, 5 s apart).
@@ -2461,6 +2472,35 @@ _ff_strip_fields() { awk 'NR == 1 && $0 == "---" { fm = 1; print; next } fm && $
 # accounts for one equal local line).
 _ff_extra_lines() { awk 'FILENAME == ARGV[1] { c[$0]++; next } c[$0] > 0 { c[$0]--; next } { print }' "$1" "$2"; }
 
+# _ff_scratch_lines / _ff_scratch_strip — t-e7fb: the `## Scratch` entries canon's daemon writes into HANDOFF.md (scratchNoteLine's
+# shape: "- <date> <time> — s-xxxx[ "title"]: <what is left> in <where> — <why>", under that heading only), and the file without them.
+# Anything else under the heading is a person's and stays. A CR is dropped first (core.autocrlf=true on Windows).
+_ff_scratch_lines() { tr -d '\r' | awk '/^## / { s = ($0 == "## Scratch"); next } s && /^- [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9] — s-[a-z0-9][a-z0-9][a-z0-9][a-z0-9]( "[^"]*")?: .+ — .+$/ { print }'; }
+_ff_scratch_strip() {
+  tr -d '\r' | awk '
+    function endsec(  i) { if (!insec) return
+      if (keep) { for (i = 0; i < hpend; i++) print ""; print head; for (i = 1; i <= nb; i++) print buf[i]; pend = 0 } else pend = hpend
+      insec = 0; nb = 0; keep = 0 }
+    { l = $0 }
+    insec && l ~ /^## / { endsec() }
+    insec { if (l ~ /^- [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9] — s-[a-z0-9][a-z0-9][a-z0-9][a-z0-9]( "[^"]*")?: .+ — .+$/) next; buf[++nb] = l; if (l != "") keep = 1; next }
+    l == "## Scratch" { insec = 1; head = l; hpend = pend; pend = 0; nb = 0; keep = 0; next }
+    l == "" { pend++; next }
+    { for (i = 0; i < pend; i++) print ""; pend = 0; print l }
+    END { endsec() }'
+}
+# _ff_put_scratch <HANDOFF.md> <lines file> — t-e7fb: the lines go in right under the `## Scratch` heading (newest first, as the daemon
+# writes them), or in a new section at the end when the merged copy has none.
+_ff_put_scratch() {
+  local f="$1" x="$2" t; t="$(mktemp "${TMPDIR:-/tmp}/tkt-scratch.XXXXXX")" || return 1
+  awk -v xf="$x" 'BEGIN { while ((getline l < xf) > 0) ex = ex l "\n" }
+    { h = $0; sub(/\r$/, "", h) }
+    !done && h == "## Scratch" { print; if ((getline nx) > 0) { if (nx == "" || nx == "\r") { print nx; printf "%s", ex } else { print ""; printf "%s", ex; print nx } } else { print ""; printf "%s", ex } done = 1; next }
+    { print }
+    END { if (!done) printf "\n## Scratch\n\n%s", ex }' "$f" > "$t" && cat "$t" > "$f"
+  rm -f "$t"
+}
+
 # _ff_local_base <root> <branch> [<id>] — t-24b1: after a merge, move the local <branch> to origin's, fast-forward only. Never a
 # merge, rebase, reset or force: when it cannot (a file here differs from the merged copy, checked out in another worktree,
 # local commits origin lacks), it changes nothing and says why. Checked out here: `merge --ff-only`; checked out nowhere: a
@@ -2475,7 +2515,7 @@ _ff_local_base() {
   [[ "$old" == "$new" ]] && { echo "Local $b: already at ${new:0:8}"; return 0; }
   git -C "$root" merge-base --is-ancestor "$old" "$new" \
     || { echo "Local $b: has commits origin/$b lacks, not a fast-forward; left at ${old:0:8}. Update it by hand: git pull"; return 0; }
-  _advance_local "$root" "$b" "$id" "$old" "$new" || return 0
+  _advance_local "$root" "$b" "$id" "$old" "$new" "${id:+tkt merge-pr $id}" || return 0   # t-e7fb: the retry runs canon's own update, not git pull
   echo "Local $b: ${old:0:8} -> ${new:0:8} (fast-forward)"
 }
 
@@ -2523,18 +2563,21 @@ _ff_here() {
         && cmp -s <(git -C "$root" cat-file blob "$new:$p" | tr -d '\r' | _ff_strip_fields) <(tr -d '\r' < "$root/$p" | _ff_strip_fields); then safe+=("$p"); kinds+=(ticket); continue; fi
       if [[ "$p" == .claude/subagent-runs.jsonl ]]; then safe+=("$p"); kinds+=(log); continue; fi
       # t-2db7: the main checkout's HANDOFF.md whose only local change (against HEAD) is canon's generated Recent activity block:
-      # the merged copy is taken (the PR may edit the narrative), and merge-pr writes the block again from the activity log.
+      # the merged copy is taken (the PR may edit the narrative), and merge-pr writes the block again from the activity log. t-e7fb: canon's own
+      # `## Scratch` entries count the same; those the merged copy lacks are put back under its heading after the fast-forward.
       if [[ "$p" == HANDOFF.md ]] && rb="$(recent_board)" && git -C "$root" cat-file -e "$old:$p" 2>/dev/null \
-        && cmp -s <(git -C "$root" cat-file blob "$old:$p" | "$rb" recent --strip | tr -d '\r') <("$rb" recent --strip < "$root/$p" | tr -d '\r'); then   # review: CRLF on disk (core.autocrlf=true, Git for Windows' default), LF in git
+        && cmp -s <(git -C "$root" cat-file blob "$old:$p" | "$rb" recent --strip | _ff_scratch_strip) <("$rb" recent --strip < "$root/$p" | _ff_scratch_strip); then   # review: CRLF on disk (core.autocrlf=true, Git for Windows' default), LF in git; t-e7fb: canon's Scratch entries are not a person's edit
         safe+=("$p"); kinds+=(handoff); continue
       fi
     fi
     differ+=("$p")
   done < <(git -C "$root" diff --no-renames --name-only -z "$old" "$new")
   if [[ ${#differ[@]} -gt 0 ]]; then
-    echo "Local $b: ${#differ[@]} file(s) here differ from the merged copy; left at ${old:0:8}:"
+    # t-e7fb: plain words. What is left (merged on GitHub, local branch behind), which files, and the steps that end it.
+    echo "The PR is merged on GitHub, but local $b was not updated: $([[ ${#differ[@]} == 1 ]] && echo "this file has" || echo "these ${#differ[@]} files have") changes here that the merge would overwrite:"
     for p in "${differ[@]}"; do printf '  %s\n' "${p//[^[:print:]]/?}"; done
-    echo "  Commit or move them, then run: $retry  (in the Cockpit Terminal, type su first)"
+    echo "  Look at the changes (git diff <file>), then commit them or drop them (git checkout -- <file>), then run: $retry"
+    echo "  (in the Cockpit Terminal, type su first)"
     return 1
   fi
   if [[ ${#safe[@]} -eq 0 ]]; then
@@ -2546,6 +2589,7 @@ _ff_here() {
     p="${safe[$i]}"
     cp -p "$root/$p" "$bk/$i" || { rm -rf "$bk"; echo "Local $b: could not set $p aside; left at ${old:0:8}. Update it by hand: $retry"; return 1; }
     [[ "${kinds[$i]}" != log ]] || _ff_extra_lines <(git -C "$root" cat-file blob "$new:$p") "$root/$p" > "$bk/$i.extra"
+    [[ "${kinds[$i]}" != handoff ]] || _ff_extra_lines <(git -C "$root" cat-file blob "$new:$p" | _ff_scratch_lines) <(_ff_scratch_lines < "$root/$p") > "$bk/$i.extra"
   done
   for p in "${safe[@]}"; do
     if git -C "$root" cat-file -e "$old:$p" 2>/dev/null; then git -C "$root" checkout -q -- "$p"; else rm -f "$root/$p"; fi
@@ -2560,6 +2604,7 @@ _ff_here() {
   for i in "${!safe[@]}"; do
     case "${kinds[$i]}" in
       ticket) cp -p "$bk/$i" "$root/${safe[$i]}" ;;
+      handoff) [[ ! -s "$bk/$i.extra" ]] || _ff_put_scratch "$root/${safe[$i]}" "$bk/$i.extra" ;;
       log)    # a merged copy without a final newline must not glue the first local line onto its last one
               [[ ! -s "$bk/$i.extra" || ! -s "$root/${safe[$i]}" || -z "$(tail -c 1 "$root/${safe[$i]}")" ]] || printf '\n' >> "$root/${safe[$i]}"
               cat "$bk/$i.extra" >> "$root/${safe[$i]}" ;;

@@ -51,6 +51,7 @@ case "$1 $2" in
               if [[ -n "${STUB_SCRIPT:-}" ]]; then n=$(( $(cat "$STUB_W/reads" 2>/dev/null || echo 0) + 1 )); echo $n > "$STUB_W/reads"
                 read -r STUB_MG STUB_MS < <(sed -n "${n}p" "$STUB_SCRIPT" | grep . || tail -1 "$STUB_SCRIPT"); fi
               if [[ "$*" == *"--json isDraft,mergeStateStatus,mergeable"* ]]; then printf '%s\t%s\t%s\n' "${STUB_REREAD_DRAFT:-${STUB_DRAFT:-false}}" "${STUB_REREAD_MS:-${STUB_MS:-CLEAN}}" "${STUB_MG:-MERGEABLE}"; exit 0; fi   # t-a463: the re-read after a refused merge
+              if [[ "$*" == *"--json state,baseRefName"* ]]; then printf '%s\t%s\n' "${STUB_BASE_STATE:-MERGED}" main; exit 0; fi   # t-e7fb: merge-pr run again on a merged ticket
               if [[ "$*" == *"--json state,isCrossRepository,isDraft"* ]]; then printf '%s\t%s\t%s\n' "${STUB_STATE:-OPEN}" "${STUB_CROSS:-false}" "${STUB_DRAFT:-false}"; exit 0; fi   # t-a463: pr-ready's read
               printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "${STUB_STATE:-OPEN}" "${STUB_MG:-MERGEABLE}" "${STUB_MS:-CLEAN}" \
                 "${STUB_HEAD:?}" main "${STUB_CROSS:-false}" "${STUB_DRAFT:-false}" ;;
@@ -470,17 +471,17 @@ git reset -q --hard "$BASE"; echo dirty >> .gitignore                      # t-4
 out="$(ff_merge)"; assert_contains "$out" "Local main: ${BASE:0:8} -> ${PRHEAD:0:8} (fast-forward)"
 assert_eq "$PRHEAD" "$(git rev-parse main)"; assert_grep '^dirty$' .gitignore; git checkout -q .gitignore; git reset -q --hard "$BASE"
 git reset -q --hard "$BASE"; echo mine > change.txt                        # a file the merge changes, edited here: left alone
-out="$(ff_merge)"; assert_contains "$out" "Local main: 1 file(s) here differ from the merged copy; left at ${BASE:0:8}:"
-assert_contains "$out" $'\n  change.txt\n  Commit or move them, then run: git pull  (in the Cockpit Terminal, type su first)'
+out="$(ff_merge)"; assert_contains "$out" "local main was not updated: this file has changes here that the merge would overwrite:"
+assert_contains "$out" $'\n  change.txt\n  Look at the changes (git diff <file>), then commit them or drop them (git checkout -- <file>), then run: tkt merge-pr '"$id"$'\n  (in the Cockpit Terminal, type su first)'
 assert_eq "$BASE" "$(git rev-parse main)"; assert_eq mine "$(cat change.txt)"; rm change.txt
 git checkout -q -b side                                                    # main checked out nowhere: the ref moves
 out="$(ff_merge)"; assert_contains "$out" "Local main: ${BASE:0:8} -> ${PRHEAD:0:8} (fast-forward)"
 assert_eq "$PRHEAD" "$(git rev-parse main)"; assert_eq side "$(git branch --show-current)"
 git branch -qf main "$BASE"   # t-41ff: a git failure in the local update (set -e) still lets merge-pr record merged: and exit 0
-out="$(STUB_UPDATE_REF_FAIL=1 ff_merge)"; assert_contains "$out" "Local main: git refused to move it; left at ${BASE:0:8}. Update it by hand: git pull"
+out="$(STUB_UPDATE_REF_FAIL=1 ff_merge)"; assert_contains "$out" "Local main: git refused to move it; left at ${BASE:0:8}. Update it by hand: tkt merge-pr $id"
 assert_eq "$BASE" "$(git rev-parse main)"; assert_grep '^merged: mergesha' "$f"; git branch -qf main "$PRHEAD"
 git branch -qf main "$BASE"; git worktree add -q "$W/wt" main              # main checked out in another worktree: left alone
-out="$(ff_merge)"; assert_contains "$out" "Local main: checked out in $(cd "$W/wt" && pwd -P); left at ${BASE:0:8}. Update it there: git pull"
+out="$(ff_merge)"; assert_contains "$out" "Local main: checked out in $(cd "$W/wt" && pwd -P); left at ${BASE:0:8}. Update it there: tkt merge-pr $id"
 assert_eq "$BASE" "$(git rev-parse main)"; git worktree remove -f "$W/wt"
 git checkout -q main; echo local > local.txt; git add local.txt; git commit -qm "local only"; LOCAL="$(git rev-parse HEAD)"
 out="$(ff_merge)"; assert_contains "$out" "Local main: has commits origin/main lacks, not a fast-forward; left at ${LOCAL:0:8}"
@@ -529,11 +530,11 @@ recon_setup; git show "$H:scripts/test.sh" > scripts/test.sh; out="$(STUB_HEAD="
 assert_eq "" "$(git status --porcelain --untracked-files=no -- scripts/test.sh)"
 # Not identical: an untracked file, or ticket.md's title (the near miss of the field rule). Nothing changes; each is named.
 recon_setup; echo other > new.txt; before="$(tree_sig)"
-out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" "Local main: 1 file(s) here differ from the merged copy; left at ${BASE:0:8}:"
-assert_contains "$out" $'\n  new.txt\n  Commit or move them, then run: git pull  (in the Cockpit Terminal, type su first)'; [[ "$out" != *"(fast-forward)"* ]] || fail "a refused update still printed a fast-forward: $out"
+out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" "local main was not updated: this file has changes here that the merge would overwrite:"
+assert_contains "$out" $'\n  new.txt\n  Look at the changes (git diff <file>), then commit them or drop them (git checkout -- <file>), then run: tkt merge-pr '"$id"$'\n  (in the Cockpit Terminal, type su first)'; [[ "$out" != *"(fast-forward)"* ]] || fail "a refused update still printed a fast-forward: $out"
 assert_eq "$BASE" "$(git rev-parse main)"; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; assert_eq "$before" "$(tree_sig)"
 recon_setup; sed -i.bak 's/^# Cloud ticket$/# Cloud ticket, renamed here/' "$f" && rm -f "$f.bak"; assert_grep '^# Cloud ticket, renamed here$' "$f"; before="$(tree_sig)"
-out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" $'\n  .tickets/'"$id"$'/ticket.md\n  Commit or move them'
+out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" $'\n  .tickets/'"$id"$'/ticket.md\n  Look at the changes'
 assert_eq "$BASE" "$(git rev-parse main)"; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; assert_eq "$before" "$(tree_sig)"
 sed -i.bak 's/^# Cloud ticket, renamed here$/# Cloud ticket/' "$f" && rm -f "$f.bak"
 # Staged, a symlink here (even to identical text), or a near miss of the log's name: each differs.
@@ -547,13 +548,13 @@ assert_contains "$out" $'\n  .claude/subagent-runs.jsonl.bak\n'; assert_eq mine 
 git -C "$B" checkout -q "$BASE"; mkdir -p "$B/lnk"; echo same2 > "$B/lnk/new2.txt"; git -C "$B" add lnk/new2.txt; git -C "$B" commit -qm "under a link"
 H2="$(git -C "$B" rev-parse HEAD)"; git -C "$B" push -qf origin "HEAD:refs/pull/7/head"; eval_ok "$H2"
 recon_setup; mkdir -p "$W/outside"; echo same2 > "$W/outside/new2.txt"; ln -s "$W/outside" lnk
-out="$(STUB_HEAD="$H2" ff_merge)"; assert_contains "$out" $'\n  lnk/new2.txt (inside a symlinked folder)\n  Commit or move them'
+out="$(STUB_HEAD="$H2" ff_merge)"; assert_contains "$out" $'\n  lnk/new2.txt (inside a symlinked folder)\n  Look at the changes'
 assert_eq "$BASE" "$(git rev-parse main)"; assert_eq same2 "$(cat "$W/outside/new2.txt")"
 rm lnk; git -C "$B" push -qf origin "$H:refs/pull/7/head"; eval_ok "$G"
 # git refuses after the files were set aside: each comes back byte for byte, main stays.
 recon_setup; before="$(tree_sig)"
 out="$(STUB_HEAD="$H" STUB_FF_MERGE_FAIL=1 ff_merge)"
-assert_contains "$out" "Local main: git refused the fast-forward; left at ${BASE:0:8}, every file set aside put back. Update it by hand: git pull"
+assert_contains "$out" "Local main: git refused the fast-forward; left at ${BASE:0:8}, every file set aside put back. Update it by hand: tkt merge-pr $id"
 assert_eq 0 "$(find "$TMPDIR" -maxdepth 1 -name 'tkt-ff.*' | grep -c . || true)"   # the set-aside copies are removed here too
 assert_contains "$out" "  git: error: forced ff failure"; [[ "$out" != *"(fast-forward)"* ]] || fail "a refused update still printed a fast-forward: $out"
 assert_eq "$BASE" "$(git rev-parse main)"; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; assert_eq "$before" "$(tree_sig)"
@@ -563,7 +564,7 @@ printf 'a\nb\nc' | cmp -s - .claude/subagent-runs.jsonl || fail "a log with noth
 # t-2560 (Windows VM): under core.autocrlf=true, import-results leaves CRLF copies of the merged files; identical as git sees them
 recon_setup; git config core.autocrlf true; printf 'same\r\n' > new.txt; out="$(STUB_HEAD="$H" ff_merge)"; git config --unset core.autocrlf
 assert_contains "$out" "Local main: ${BASE:0:8} -> ${H:0:8} (fast-forward)"
-recon_setup; printf 'other\r\n' > new.txt; out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" "differ from the merged copy"   # a real difference still stops it
+recon_setup; printf 'other\r\n' > new.txt; out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" "would overwrite"   # a real difference still stops it
 git checkout -q .gitignore scripts/test.sh; rm -rf new.txt newdir .claude; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
 # A PR path is matched literally (t-07b5: untrusted): a tracked file named '*' never stands for every file, so the
 # unrelated edit to .gitignore survives the set-aside of '*'.
@@ -595,8 +596,26 @@ out="$(BASE="$BASE3" STUB_HEAD="$H5" ff_merge)"; assert_contains "$out" "Local m
 git config --unset core.autocrlf
 git checkout -q main; git reset -q "$BASE3"; git checkout -q -- .; ho_write; sed -i.bak 's/^old$/mine/' HANDOFF.md && rm -f HANDOFF.md.bak
 sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; eval_ok "$H5"
-out="$(BASE="$BASE3" STUB_HEAD="$H5" ff_merge)"; assert_contains "$out" "Local main: 1 file(s) here differ from the merged copy; left at ${BASE3:0:8}:"
+out="$(BASE="$BASE3" STUB_HEAD="$H5" ff_merge)"; assert_contains "$out" "local main was not updated: this file has changes here that the merge would overwrite:"
 assert_contains "$out" $'\n  HANDOFF.md\n'; assert_eq "$BASE3" "$(git rev-parse main)"; assert_grep '^mine$' HANDOFF.md
+# t-e7fb: canon's own `## Scratch` entries in HANDOFF.md are not a person's edit: the update goes through and they are put back; a person's
+# line there still stops it; and after that refusal the named retry (tkt merge-pr again) only moves the local branch. Protects `tkt merge-pr`.
+SC1='- 2026-11-06 14:02 — s-ki7k "kept": 3 files changed in the main checkout — kept on End'
+sc_setup() { git checkout -q main; git reset -q "$BASE3"; git checkout -q -- .; ho_write; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; eval_ok "$H5"; }
+sc_setup; printf '\n## Scratch\n\n%s\n' "$SC1" >> HANDOFF.md
+out="$(BASE="$BASE3" STUB_HEAD="$H5" ff_merge)"; assert_contains "$out" "Local main: ${BASE3:0:8} -> ${H5:0:8} (fast-forward)"
+assert_grep '^new focus$' HANDOFF.md; assert_count 1 '## Scratch' HANDOFF.md; grep -qF -- "$SC1" HANDOFF.md || fail "the Scratch entry was lost in the update"
+sc_setup; printf '\n## Scratch\n\n%s\n- my own note\n' "$SC1" >> HANDOFF.md
+GH0="$PWD/.tickets/$id/github.md"; printf '# GitHub\n\n## 2026-11-06T20:11:52Z — sent\nissue: x\n' > "$GH0"
+out="$(BASE="$BASE3" STUB_HEAD="$H5" ff_merge)"; assert_contains "$out" "local main was not updated: this file has changes here that the merge would overwrite:"
+assert_contains "$out" $'\n  HANDOFF.md\n'; assert_eq "$BASE3" "$(git rev-parse main)"; grep -q '^merged: ' "$f" || fail "merged: was not recorded before the refusal"
+GHSUM="$(cksum < "$GH0")"; MERGED0="$(grep -c '' "$f")"; TRAIL0="$(grep -c '— merged' "$GH0" || true)"
+git checkout -q -- HANDOFF.md                                               # the person resolves it (drops their edit), then runs what the refusal named
+out="$(STUB_HEAD="$H5" "$TKT" merge-pr "$id" --pr 7 --yes --test true 2>&1)"; assert_contains "$out" "PR #7 is already merged; updating local main only"
+assert_contains "$out" "Local main: ${BASE3:0:8} -> ${H5:0:8} (fast-forward)"; assert_eq "$H5" "$(git rev-parse main)"
+[[ "$out" != *"Merged PR #7 into"* ]] || fail "the retry merged again: $out"
+assert_eq "$MERGED0" "$(grep -c '' "$f")"; assert_eq "$TRAIL0" "$(grep -c '— merged' "$GH0" || true)"; assert_eq "$GHSUM" "$(cksum < "$GH0")"   # nothing logged twice; github.md untouched
+rm -f "$GH0"
 git checkout -q -- .; git reset -q --hard "$BASE"; rm -f HANDOFF.md; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; eval_ok "$PRHEAD"
 git push -qf origin "$PRHEAD:refs/pull/7/head"; git --git-dir="$W/origin.git" update-ref refs/heads/main "$BASE"
 
