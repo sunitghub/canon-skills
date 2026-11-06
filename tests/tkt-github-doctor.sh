@@ -22,7 +22,7 @@ case "$1 $2" in
   "api user")    [[ "${STUB_GH:-}" == nouser ]] && exit 1; echo octo ;;
   "api repos/"*) [[ "${STUB_GH:-}" == out || "${STUB_VIS:-}" == none ]] && exit 1; echo "${STUB_VIS:-private}" ;;
   "repo view")   case "${STUB_REPO:-exists}" in
-                   exists) echo '{"name":"x"}' ;;
+                   exists) echo "${STUB_EMPTY:-false}" ;;   # --json isEmpty --jq .isEmpty
                    missing) echo "GraphQL: Could not resolve to a Repository with the name '$3'. (repository)" >&2; exit 1 ;;
                    *) echo "dial tcp: lookup api.github.com: no such host" >&2; exit 1 ;;
                  esac ;;
@@ -46,113 +46,118 @@ doctor() { "$TKT" github-doctor --json; }
 # field <json> <python expression over d>: the expressions are this file's own literals, never input.
 field() { python3 -c 'import json,sys; d=json.loads(sys.argv[1]); print(eval(sys.argv[2]))' "$1" "$2"; }
 # check <json> <id>: "status|title|fix cmd|fix url", and "nofix" in place of the fix fields when the check has no fix key.
-check() { field "$1" "'|'.join([c['status'], c['title']] + ([c['fix'].get('cmd',''), c['fix'].get('url','')] if 'fix' in c else ['nofix'])) if (c := next(c for c in d['checks'] if c['id'] == '$2')) else ''"; }
+check() { field "$1" "'|'.join([c['status'], c['title']] + ([c['fix'].get('cmd',''), c['fix'].get('url','')] if 'fix' in c else ['nofix'])) if (c := next((c for c in d['checks'] if c['id'] == '$2'), None)) else ''"; }
 before="$(git status --porcelain; git for-each-ref)"
 
-# Not installed; no origin; no commit yet, so no scripts/test.sh.
+# t-d287: step 2 is three ordered sub-steps (repo on GitHub, origin points at it, first push), each with at most one command, and
+# no command is chained: Windows PowerShell 5.1 has no &&. Every state below reads the repo/origin/push checks; every fix is checked.
+nochain() {   # no pasted command contains && ; | or a backtick/dollar: each pastes into PowerShell 5.1, 7 and Git Bash
+  local cmds; cmds="$(field "$1" "'\n'.join(c['fix']['cmd'] for c in d['checks'] if c.get('fix',{}).get('cmd'))")"
+  case "$cmds" in *'&&'*|*';'*|*'|'*|*'$'*|*'`'*) fail "a fix command is chained or unsafe: $cmds" ;; esac
+}
+grp() { field "$1" "','.join((c['id']+':'+c.get('group','-')+(':optional' if c.get('optional') else '')) for c in d['checks'])"; }
+
+# Not installed; no origin; no commit yet, so no scripts/test.sh. gh cannot be asked, so the repo is not checked and the owner is a placeholder.
 out="$(PATH="$NOGH_PATH" "$TKT" github-doctor --json)"
 assert_eq "bad|GitHub CLI (gh) is not installed||https://github.com/cli/cli" "$(check "$out" gh)"
-# t-9955: no origin at all offers to create the repo, private, named after the folder; the detail keeps the remote-add way.
-# t-11e6: --source names the project's absolute folder, quoted, so the copied command works from any terminal (not just from inside the project)
-proot="$project"   # as the project is spelled (macOS /var, not /private/var)
-assert_eq "bad|No GitHub repository for this project|gh repo create \"$(basename "$project")\" --private --source=\"$proot\" --remote=origin --push|" "$(check "$out" origin)"
-assert_contains "$(field "$out" "d['checks'][1]['detail']")" "publishing the folder $proot."
-assert_contains "$(field "$out" "d['checks'][1]['detail']")" "no git remote named origin"
-# a check that hands over a command to paste says where it runs (user, 2026-11-06); one without a command does not
-assert_contains "$(field "$out" "d['checks'][1]['detail']")" "The command below needs to be run from the project root."
-# ...a folder with a space in its name works, and macOS/Linux keep chmod +x in the no-test-command text
-sp="$W/my project"; mkdir -p "$sp"; git -C "$sp" init -q; sproot="$(cd "$sp" && pwd)"
-out2="$(cd "$sp" && PATH="$NOGH_PATH" "$TKT" github-doctor --json)"
-assert_eq "bad|No GitHub repository for this project|gh repo create \"my project\" --private --source=\"$sproot\" --remote=origin --push|" "$(check "$out2" origin)"
-assert_contains "$(field "$out" "d['checks'][2]['detail']")" "make it executable (chmod +x)"
-# t-10ac: gh says whether octo/<folder> exists. Missing: replace the old origin with a new private repo in one pasted command. Unknown (a network
-# error): the safe set-url, said as could not be checked. Exists: set-url. With no origin at all: an existing repo is connected, a missing one created.
-no="$W/noorigin"; mkdir -p "$no"; git -C "$no" init -q; noroot="$(cd "$no" && pwd)"
-oe="$(cd "$no" && PATH="$W/bin:$PATH" STUB_REPO=exists "$TKT" github-doctor --json)"
-assert_eq "bad|No GitHub repository for this project|git remote add origin https://github.com/octo/noorigin.git|" "$(check "$oe" origin)"
-assert_contains "$(field "$oe" "d['checks'][1]['detail']")" "already exists on GitHub"
-om="$(cd "$no" && PATH="$W/bin:$PATH" STUB_REPO=missing "$TKT" github-doctor --json)"
-assert_eq "bad|No GitHub repository for this project|gh repo create \"noorigin\" --private --source=\"$noroot\" --remote=origin --push|" "$(check "$om" origin)"
-# t-10ac: with a non-GitHub origin the pasted set-url never carries a folder name GitHub cannot take as a repo name (a space, a quote, a
-# dollar sign): the repo part stays the <repo> placeholder, the signed-in login still fills the owner
-for odd in "my project" 'dollar$name'; do
-  od="$W/$odd"; mkdir -p "$od"; git -C "$od" init -q; git -C "$od" remote add origin https://gitlab.com/acme/app.git
+assert_eq "bad|Could not check GitHub for the repository|nofix" "$(check "$out" repo)"
+assert_eq "bad|No git remote named origin|git remote add origin https://github.com/<owner>/$(basename "$project").git|" "$(check "$out" origin)"
+assert_eq "gh:-,repo:repo-setup,origin:repo-setup,tests:-:optional" "$(grp "$out")"   # the order is the order to do them in; the test command is optional
+assert_contains "$(field "$out" "[c for c in d['checks'] if c['id']=='origin'][0]['detail']")" "The command below needs to be run from the project root."
+assert_contains "$(field "$out" "[c for c in d['checks'] if c['id']=='tests'][0]['detail']")" "make it executable (chmod +x)"
+nochain "$out"
+# a folder name GitHub cannot take as a repo name, or unsafe in a command, never reaches a pasted command: the placeholder stays
+for odd in "my project" 'dollar$name' 'bad`id`' 'bad"q' 'bad\slash' 'bad!x' $'bad\nline'; do
+  od="$W/$odd"; mkdir -p "$od"; git -C "$od" init -q
   oo="$(cd "$od" && PATH="$W/bin:$PATH" "$TKT" github-doctor --json)"
-  assert_eq "bad|No GitHub repository for this project|git remote set-url origin https://github.com/octo/<repo>.git|" "$(check "$oo" origin)"
+  assert_eq "bad|No git remote named origin|git remote add origin https://github.com/octo/<repo>.git|" "$(check "$oo" origin)"
+  assert_eq "bad|Could not check GitHub for the repository|nofix" "$(check "$oo" repo)"
+  nochain "$oo"
 done
-# a folder name with a character that is unsafe in a pasted command gets no command at all, and says why
-for unsafe in 'bad$name' 'bad`id`' 'bad"q' 'bad\slash' 'bad!x' $'bad\nline'; do
-  bad="$W/$unsafe"; mkdir -p "$bad"; git -C "$bad" init -q
-  outb="$(cd "$bad" && PATH="$NOGH_PATH" "$TKT" github-doctor --json)"
-  assert_eq "bad|No GitHub repository for this project|nofix" "$(check "$outb" origin)"
-  assert_contains "$(field "$outb" "d['checks'][1]['detail']")" "not safe in a command you paste"
-  case "$(field "$outb" "d['checks'][1]['detail']")" in *"run from the project root"*) fail "a check with no command to paste says where to run it" ;; esac
-done
-# t-11e6, Windows (a stubbed uname and cygpath): the folder in Windows form, the new-terminal hint, and the git index way to make it executable
-mkdir -p "$W/win"
-printf '#!/usr/bin/env bash\necho MINGW64_NT-10.0-22631\n' > "$W/win/uname"; printf '#!/usr/bin/env bash\nprintf "%%s\\n" "C:\\Users\\me\\My Project"\n' > "$W/win/cygpath"; chmod +x "$W/win/uname" "$W/win/cygpath"
-outw="$(PATH="$W/win:$NOGH_PATH" "$TKT" github-doctor --json)"
-assert_eq "bad|No GitHub repository for this project|gh repo create \"$(basename "$project")\" --private --source=\"C:\\Users\\me\\My Project\" --remote=origin --push|" "$(check "$outw" origin)"
-assert_contains "$(field "$outw" "d['checks'][1]['detail']")" "terminal opened after Git was installed"
-assert_contains "$(field "$outw" "d['checks'][2]['detail']")" "git update-index --chmod=+x scripts/test.sh; Git Bash runs it without the bit"
-assert_contains "$(field "$out" "d['checks'][1]['detail']")" "Already have a repo on GitHub? Run git remote add origin https://github.com/<owner>/$(basename "$project").git"
-assert_eq "warn|No test command (optional)|nofix" "$(check "$out" tests)"
-git -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
-assert_contains "$(field "$out" "d['checks'][2]['detail']")" "merges on the gates alone"
-assert_contains "$(field "$out" "d['checks'][2]['detail']")" 'run tkt merge-pr <id> --test "<your test command>"'   # t-9641: both ways to add one
-
-# Installed but signed out; a non-GitHub origin.
+# Signed in, no origin at all: 2.1 creates the repo when GitHub has none (the repo only: no --source, no --push), 2.2 adds origin; an existing repo
+# needs only 2.2; an existing EMPTY repo with origin set needs the first push (2.3).
+no="$W/noorigin"; mkdir -p "$no"; git -C "$no" init -q
+om="$(cd "$no" && PATH="$W/bin:$PATH" STUB_REPO=missing "$TKT" github-doctor --json)"
+assert_eq "bad|No repository on GitHub yet|gh repo create \"noorigin\" --private|" "$(check "$om" repo)"
+assert_eq "bad|No git remote named origin|git remote add origin https://github.com/octo/noorigin.git|" "$(check "$om" origin)"
+assert_eq "gh:-,repo:repo-setup,origin:repo-setup,tests:-:optional" "$(grp "$om")"
+nochain "$om"
+oe="$(cd "$no" && PATH="$W/bin:$PATH" STUB_REPO=exists "$TKT" github-doctor --json)"
+assert_eq "ok|Repository found on GitHub|nofix" "$(check "$oe" repo)"
+assert_eq "bad|No git remote named origin|git remote add origin https://github.com/octo/noorigin.git|" "$(check "$oe" origin)"
+git -C "$no" remote add origin https://github.com/octo/noorigin.git
+op="$(cd "$no" && PATH="$W/bin:$PATH" STUB_REPO=exists STUB_EMPTY=true "$TKT" github-doctor --json)"
+assert_eq "ok|origin points at it|nofix" "$(check "$op" origin)"
+assert_eq "bad|First push|git push -u origin HEAD|" "$(check "$op" push)"
+assert_eq "gh:-,repo:repo-setup,origin:repo-setup,push:repo-setup,tests:-:optional" "$(grp "$op")"
+nochain "$op"
+on="$(cd "$no" && PATH="$W/bin:$PATH" STUB_REPO=exists STUB_EMPTY=false "$TKT" github-doctor --json)"
+assert_eq "" "$(check "$on" push)"   # a populated repo has no push sub-step
+ou="$(cd "$no" && PATH="$W/bin:$PATH" STUB_REPO=error "$TKT" github-doctor --json)"
+assert_eq "bad|Could not check GitHub for the repository|nofix" "$(check "$ou" repo)"
+assert_eq "" "$(check "$ou" push)"
+# Signed in; a non-GitHub origin: set-url overwrites it (no remove step), pointing at the signed-in login and the folder's name.
 git remote add origin https://gitlab.com/acme/app.git
 out="$(PATH="$W/bin:$PATH" STUB_GH=out doctor)"
 assert_eq "bad|gh is installed, but not signed in|gh auth login|" "$(check "$out" gh)"
-assert_eq "bad|No GitHub repository for this project|git remote set-url origin https://github.com/<owner>/$(basename "$project").git|" "$(check "$out" origin)"   # signed out: the owner is a placeholder
-# t-10ac: signed in, origin not on GitHub: the command is set-url (add would fail) with the signed-in login and the folder's name filled in
+assert_eq "bad|origin is not a GitHub repository|git remote set-url origin https://github.com/<owner>/$(basename "$project").git|" "$(check "$out" origin)"   # signed out: the owner is a placeholder
 out="$(PATH="$W/bin:$PATH" doctor)"
-assert_eq "bad|No GitHub repository for this project|git remote set-url origin https://github.com/octo/$(basename "$project").git|" "$(check "$out" origin)"
-assert_contains "$(field "$out" "d['checks'][1]['detail']")" "git remote remove origin"
-assert_contains "$(field "$out" "d['checks'][1]['detail']")" "The command below needs to be run from the project root."
+assert_eq "bad|origin is not a GitHub repository|git remote set-url origin https://github.com/octo/$(basename "$project").git|" "$(check "$out" origin)"
+assert_contains "$(field "$out" "[c for c in d['checks'] if c['id']=='origin'][0]['detail']")" "https://gitlab.com/acme/app.git"
+assert_contains "$(field "$out" "[c for c in d['checks'] if c['id']=='origin'][0]['detail']")" "The command below needs to be run from the project root."
+nochain "$out"
 out="$(PATH="$W/bin:$PATH" STUB_REPO=missing doctor)"
-assert_eq "bad|No GitHub repository for this project|git remote remove origin && gh repo create \"$(basename "$project")\" --private --source=\"$project\" --remote=origin --push|" "$(check "$out" origin)"
-assert_contains "$(field "$out" "d['checks'][1]['detail']")" "octo/$(basename "$project") is not on GitHub yet"
+assert_eq "bad|No repository on GitHub yet|gh repo create \"$(basename "$project")\" --private|" "$(check "$out" repo)"
+assert_eq "bad|origin is not a GitHub repository|git remote set-url origin https://github.com/octo/$(basename "$project").git|" "$(check "$out" origin)"
 out="$(PATH="$W/bin:$PATH" STUB_REPO=error doctor)"
-assert_eq "bad|No GitHub repository for this project|git remote set-url origin https://github.com/octo/$(basename "$project").git|" "$(check "$out" origin)"
-assert_contains "$(field "$out" "d['checks'][1]['detail']")" "could not be checked"
-assert_contains "$(field "$out" "d['checks'][1]['detail']")" "https://gitlab.com/acme/app.git"
+assert_eq "bad|Could not check GitHub for the repository|nofix" "$(check "$out" repo)"
+# t-11e6, Windows (a stubbed uname): the git commands say to use a terminal opened after Git was installed
+mkdir -p "$W/win"; printf '#!/usr/bin/env bash\necho MINGW64_NT-10.0-22631\n' > "$W/win/uname"; chmod +x "$W/win/uname"
+outw="$(PATH="$W/win:$W/bin:$PATH" doctor)"
+assert_contains "$(field "$outw" "[c for c in d['checks'] if c['id']=='origin'][0]['detail']")" "terminal opened after Git was installed"
+assert_contains "$(field "$out" "[c for c in d['checks'] if c['id']=='tests'][0]['detail']")" "make it executable (chmod +x)"
+assert_contains "$(field "$outw" "[c for c in d['checks'] if c['id']=='tests'][0]['detail']")" "git update-index --chmod=+x scripts/test.sh; Git Bash runs it without the bit"
+assert_eq "warn|No test command (optional)|nofix" "$(check "$out" tests)"
+git -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+assert_contains "$(field "$out" "[c for c in d['checks'] if c['id']=='tests'][0]['detail']")" "merges on the gates alone"
+assert_contains "$(field "$out" "[c for c in d['checks'] if c['id']=='tests'][0]['detail']")" 'run tkt merge-pr <id> --test "<your test command>"'   # t-9641: both ways to add one
 
-# Signed in; a private GitHub origin; an executable scripts/test.sh committed.
+# Signed in; origin names a GitHub repo that is not there yet (set-url done before the repo exists): 2.1 says so, 2.2 is satisfied.
 git remote set-url origin git@github.com:acme/app.git
-# t-10ac: origin names a GitHub repo that is not there yet (set-url done before the repo exists): not a green "found, and private"
-out="$(PATH="$W/bin:$PATH" STUB_REPO=missing doctor)"
-assert_eq "bad|No GitHub repository for this project|nofix" "$(check "$out" origin)"   # acme is not the signed-in login (octo): no create command for someone else's name
-assert_contains "$(field "$out" "d['checks'][1]['detail']")" "GitHub has no acme/app for you"
+out="$(PATH="$W/bin:$PATH" STUB_REPO=missing doctor)"   # acme is not the signed-in login (octo): ask about octo/<folder> instead, and offer its create command
+assert_eq "bad|No repository on GitHub yet|gh repo create \"$(basename "$project")\" --private|" "$(check "$out" repo)"
+assert_eq "bad|origin points elsewhere|git remote set-url origin https://github.com/octo/$(basename "$project").git|" "$(check "$out" origin)"
 git remote set-url origin git@github.com:octo/app.git
-out="$(PATH="$W/bin:$PATH" STUB_REPO=missing doctor)"
-assert_eq "bad|No GitHub repository for this project|git remote remove origin && gh repo create \"app\" --private --source=\"$project\" --remote=origin --push|" "$(check "$out" origin)"   # owner is the signed-in login: create it
-assert_contains "$(field "$out" "d['checks'][1]['detail']")" "octo/app is not on GitHub yet"
+out="$(PATH="$W/bin:$PATH" STUB_REPO=missing doctor)"   # the signed-in login's own name: create exactly that repo, origin already points at it
+assert_eq "bad|No repository on GitHub yet|gh repo create \"app\" --private|" "$(check "$out" repo)"
+assert_eq "ok|origin points at it|nofix" "$(check "$out" origin)"
+nochain "$out"
 git remote set-url origin git@github.com:acme/app.git
 mkdir -p scripts; printf '#!/bin/sh\n' > scripts/test.sh; chmod +x scripts/test.sh
 git add scripts/test.sh; git -c user.name=t -c user.email=t@t commit -q -m tests
 before="$(git status --porcelain; git for-each-ref)"; : > "$STUB_LOG"
 out="$(PATH="$W/bin:$PATH" doctor)"
 assert_eq "ok|Signed in to GitHub|nofix" "$(check "$out" gh)"; assert_eq "Signed in as octo." "$(field "$out" "d['checks'][0]['detail']")"
-assert_eq "ok|Repository found, and private|nofix" "$(check "$out" origin)"; assert_eq "Issues go to acme/app (origin, private)." "$(field "$out" "d['checks'][1]['detail']")"
+assert_eq "ok|Repository found, and private|nofix" "$(check "$out" repo)"; assert_eq "Issues go to acme/app (origin, private)." "$(field "$out" "[c for c in d['checks'] if c['id']=='repo'][0]['detail']")"
+assert_eq "ok|origin points at it|nofix" "$(check "$out" origin)"
+assert_eq "" "$(check "$out" push)"
 assert_eq "ok|Check & merge test command: scripts/test.sh|nofix" "$(check "$out" tests)"
 # Read-only: only these gh reads ran, and the repo is as it was.
-assert_eq "auth status|api user --jq .login|repo view acme/app --json name|api repos/acme/app --jq .visibility" "$(paste -sd'|' "$STUB_LOG")"
+assert_eq "auth status|api user --jq .login|repo view acme/app --json isEmpty --jq .isEmpty|api repos/acme/app --jq .visibility" "$(paste -sd'|' "$STUB_LOG")"
 assert_eq "$before" "$(git status --porcelain; git for-each-ref)"
 # The plain form: one line per check, no fix line for a check without one, and no JSON after it.
 plain="$(PATH="$W/bin:$PATH" "$TKT" github-doctor)"
-assert_eq "ok    Repository found, and private — Issues go to acme/app (origin, private)." "$(sed -n 2p <<< "$plain")"
+assert_eq "ok    2.1 Repository found, and private — Issues go to acme/app (origin, private)." "$(sed -n 2p <<< "$plain")"
 [[ "$plain" != *"fix:"* && "$plain" != *'{"checks"'* ]] || fail "plain output of an all-ok doctor: $plain"
 # A gh that cannot name the account, and one that cannot read the repo (curl gives no answer either): still exit 0.
 out="$(PATH="$W/bin:$PATH" STUB_GH=nouser STUB_VIS=none doctor)"
 assert_eq "ok|Signed in to GitHub|nofix" "$(check "$out" gh)"; assert_eq "" "$(field "$out" "d['checks'][0]['detail']")"
-assert_eq "warn|Repository found; visibility unknown|nofix" "$(check "$out" origin)"
+assert_eq "warn|Repository found; visibility unknown|nofix" "$(check "$out" repo)"
 
 # Public origin: a warning naming --public. A scripts/test.sh that is not executable is no test command.
 chmod -x scripts/test.sh; git -c user.name=t -c user.email=t@t commit -q -am 'not executable'
 out="$(PATH="$W/bin:$PATH" STUB_VIS=public doctor)"
-assert_eq "warn|Repository found, and public|nofix" "$(check "$out" origin)"; assert_contains "$(field "$out" "d['checks'][1]['detail']")" "Send needs --public"
+assert_eq "warn|Repository found, and public|nofix" "$(check "$out" repo)"; assert_contains "$(field "$out" "[c for c in d['checks'] if c['id']=='repo'][0]['detail']")" "Send needs --public"
 assert_eq "warn|No test command (optional)|nofix" "$(check "$out" tests)"
 
 # t-9955: the cloud recipe is this project's `tkt cloud-env --json`, from tools/cloud-env.sh: no go.mod here, so the base only.
@@ -167,6 +172,6 @@ assert_eq "[]|" "$(field "$out" "str(d['cloud']['domains']) + '|' + d['cloud']['
 # Exits 0 when checks fail, and the plain form shows each fix.
 rc=0; plain="$(PATH="$NOGH_PATH" "$TKT" github-doctor)" || rc=$?
 assert_eq 0 "$rc"; assert_contains "$plain" "fix: https://github.com/cli/cli"
-assert_contains "$plain" "bad   GitHub CLI (gh) is not installed — Every GitHub step runs gh as you."
+assert_contains "$plain" "bad   1. GitHub CLI (gh) is not installed — Every GitHub step runs gh as you."
 rc=0; "$TKT" github-doctor --jsn >/dev/null 2>&1 || rc=$?; assert_eq 1 "$rc"
 echo "tkt-github-doctor: ok"

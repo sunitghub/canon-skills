@@ -6,6 +6,11 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+Board page and `tkt`: run `canon update` and reload the board.
+
+### Changed
+- **GitHub readiness, step 2, as ordered sub-steps (`t-d287`).** Factory › GitHub (and `tkt github-doctor`) now show **2.1** the repository on GitHub, **2.2** origin points at it and **2.3** the first push (only while the repository is empty), each with its own status, one command and its own Copy button; a done step shows no command after Check again. The commands no longer use `&&` (Windows PowerShell 5.1 rejects it), and a wrong origin is fixed with `git remote set-url` instead of remove-then-create. The header counts required checks and names the optional test command apart ("2 of 2 required ready · 1 optional"). The Sent panel's hint is one line per button and names `tkt send-issue <id> --launch`; its "Copied." result puts "Close this panel once you have run the command…" on its own line.
+
 ## [0.47.1] - 2026-11-06
 
 Daemon page and the Terminal: run `canon update`, restart the daemon and open a new Terminal.

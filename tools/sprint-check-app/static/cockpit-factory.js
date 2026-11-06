@@ -29,7 +29,7 @@ function checksOf(res){ return res&&res.ok&&res.doctor&&Array.isArray(res.doctor
 function factoryRow(res){
   const checks=checksOf(res);
   if(!checks) return {text:'GitHub · could not check ›', muted:true};
-  if(checks.some(c=>c.id==='origin'&&c.status==='bad')) return {text:'Not set up', muted:true};
+  if(checks.some(c=>(c.id==='origin'||c.group==='repo-setup')&&c.status==='bad')) return {text:'Not set up', muted:true};
   return {text:(checks.some(c=>c.status==='bad')?'GitHub needs setup':'GitHub ready')+' · agentic off ›', muted:false};
 }
 export function fillCardFactory(pid, el){
@@ -75,13 +75,19 @@ function ghRender(res){
   const box=document.getElementById('fac-gh-checks'), count=document.getElementById('fac-gh-count');
   if(!ghDoctor){ count.textContent='Checks'; document.getElementById('fac-gh-copy-domains').disabled=document.getElementById('fac-gh-copy-script').disabled=true; box.innerHTML=`<div class="gh-row gh-bad"><i></i><em class="gh-n"></em><div><b>Could not run the checks</b><pre>${esc(res.output||'')}</pre></div></div>`; return; }
   const checks=ghDoctor.checks||[];
-  count.textContent=`Checks · ${checks.filter(c=>c.status!=='bad').length} of ${checks.length} ready on this machine`;   // t-32f9: the cloud setup is not one of them
+  // t-d287: only required checks count toward ready; an optional one (the test command) is said apart, never as ready or as missing
+  const req=checks.filter(c=>!c.optional), opt=checks.length-req.length;
+  count.textContent=opt?`Checks · ${req.filter(c=>c.status!=='bad').length} of ${req.length} required ready · ${opt} optional`
+    :`Checks · ${req.filter(c=>c.status!=='bad').length} of ${req.length} ready on this machine`;   // t-32f9: the cloud setup is not one of them
+  // t-d287: a check with a group is a sub-step of the step it opens: 2.1, 2.2, 2.3 (the grouping comes from the doctor, not from ids)
+  let top=0, sub=0, lastg='';
+  const labels=checks.map(c=>{ if(c.group){ if(c.group===lastg) sub++; else { top++; sub=1; } lastg=c.group; return top+'.'+sub; } lastg=''; top++; sub=0; return top+'.'; });
   box.innerHTML=checks.map((c,i)=>{
     const f=c.fix||{};
     const fix=f.cmd?`<code>${esc(f.cmd)}</code><button type="button" class="btn b-primary" data-gh-copy="${escAttr(f.cmd)}">Copy</button>`
       :/^https:\/\//.test(f.url||'')?`<a href="${escAttr(f.url)}" target="_blank" rel="noopener">${esc(f.url)} \u2197</a>`:'';
     // numbered like the steps below; the fix sits under the text so a long command never squeezes the title
-    return `<div class="gh-row gh-${escAttr(c.status)}" data-check="${escAttr(c.id)}"><i></i><em class="gh-n">${i+1}.</em><div><b>${esc(c.title)}</b><span>${esc(c.detail||'')}</span>${fix?`<div class="gh-fix">${fix}</div>`:''}</div></div>`;
+    return `<div class="gh-row gh-${escAttr(c.status)}" data-check="${escAttr(c.id)}"><i></i><em class="gh-n">${esc(labels[i])}</em><div><b>${esc(c.title)}</b><span>${esc(c.detail||'')}</span>${fix?`<div class="gh-fix">${fix}</div>`:''}</div></div>`;
   }).join('');
   const cloud=ghDoctor.cloud||{};
   document.getElementById('fac-gh-copy-domains').disabled=!(cloud.domains||[]).length;

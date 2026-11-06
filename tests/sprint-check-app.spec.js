@@ -16522,7 +16522,12 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
       await expect(page.locator('#ck-gh-sent')).toContainText(`Sent ${id} as issue #57`);
       // the Sent panel's wording and hover: no "in In progress", one line saying what each button does, and the plain buttons answer a hover
       await expect(page.locator('#ck-gh-sent')).not.toContainText('in In progress');
-      await expect(page.locator('#ck-gh-hint')).toContainText('Copy command is for a terminal');
+      // t-d287: one line per button, in the buttons' order, naming the real command (To Claude Cloud is `tkt send-issue <id> --launch`)
+      const hint = page.locator('#ck-gh-hint span');
+      await expect(hint).toHaveCount(3);
+      await expect(hint.nth(0)).toContainText(`To Claude Cloud: runs canon's command tkt send-issue ${id} --launch`);
+      await expect(hint.nth(1)).toContainText("Copy command: copies the claude --cloud '…' command");
+      await expect(hint.nth(2)).toContainText('Copy prompt: copies the text above, for claude.ai/code');
       const copy = page.locator('#ck-gh-copy');
       const bg0 = await copy.evaluate(e => getComputedStyle(e).backgroundColor);
       await copy.hover();
@@ -16534,7 +16539,12 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
       if (windows) {
         await expect.poll(() => page.evaluate(() => window.__copied)).toBe(line);
         await expect(page.locator('#ck-gh-status')).toContainText('PowerShell or Git Bash');
-        await expect(page.locator('#ck-gh-status')).toContainText('close this panel: the card on the board follows the session');   // the copy ends by saying you are done here
+        // t-d287: two lines: what to run, then (its own line) that the panel can be closed and the board follows the rest
+        const winLines = (await page.locator('#ck-gh-status').textContent()).split('\n');
+        expect(winLines).toHaveLength(2);
+        expect(winLines[0]).toMatch(/^Copied\. Windows: open PowerShell or Git Bash in /);
+        expect(winLines[1]).toBe('Close this panel once you have run the command. You can follow the rest of the progress on the board.');
+        expect(await page.locator('#ck-gh-status').evaluate(e => getComputedStyle(e).whiteSpace)).toBe('pre-line');   // the second line really breaks
         // t-d0ed: it names the project's root (backslashes on Windows), not "the project folder"
         const root = await page.evaluate(async () => (await import('/static/board-core.js')).state.gitRoot);
         await expect(page.locator('#ck-gh-status')).toContainText(root.replace(/\//g, '\\') + ' (the project\'s root folder, the one with .tickets/)');
@@ -16553,6 +16563,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
         // t-3d04: the line is on the clipboard on every OS, and the panel is the host pane only: its box ends where the Terminal begins
         await expect.poll(() => page.evaluate(() => window.__copied)).toBe(line);
         await expect(page.locator('#ck-gh-status')).toContainText('Copied');
+        expect((await page.locator('#ck-gh-status').textContent()).split('\n')[1]).toBe('Close this panel once you have run the command. You can follow the rest of the progress on the board.');   // t-d287
         // t-d0ed: and it names the project's root, so the user knows where to paste it
         const posixRoot = await page.evaluate(async () => (await import('/static/board-core.js')).state.gitRoot);
         await expect(page.locator('#ck-gh-status')).toContainText(`in ${posixRoot}`);
@@ -17713,6 +17724,55 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.locator('#fac-gh-project').selectOption('proj-b');
     await expect(page.locator('#fac-gh-count')).toHaveText('Checks · 1 of 3 ready on this machine');   // proj-b's cached answer
     expect(calls).toEqual(['proj-a', 'proj-b', 'proj-a']);
+  });
+
+  // Prod path: Factory › GitHub (t-d287): the doctor's repo-setup group renders as sub-steps 2.1, 2.2, 2.3, each with its own Copy,
+  // a satisfied one shows no command, and the header counts the required checks and says the optional one apart.
+  test('Factory GitHub numbers step 2 as sub-steps with a Copy each, hides a satisfied one, and counts required checks only (t-d287) @webkit', async ({ page }) => {
+    const projects = [{ id: 'proj-a', path: '/tmp/proj-a', name: 'proj-a', description: '', added: '2026-09-26' }];
+    const G = 'repo-setup';
+    const gh = { id: 'gh', status: 'ok', title: 'Signed in to GitHub', detail: 'Signed in as octo.' };
+    const repoBad = { id: 'repo', group: G, status: 'bad', title: 'No repository on GitHub yet', detail: 'octo/app is not on GitHub.', fix: { cmd: 'gh repo create "app" --private' } };
+    const repoOk = { id: 'repo', group: G, status: 'ok', title: 'Repository found on GitHub', detail: 'octo/app exists on GitHub.' };
+    const originBad = { id: 'origin', group: G, status: 'bad', title: 'No git remote named origin', detail: 'Connect it.', fix: { cmd: 'git remote add origin https://github.com/octo/app.git' } };
+    const originOk = { id: 'origin', group: G, status: 'ok', title: 'origin points at it', detail: 'origin is octo/app.' };
+    const push = { id: 'push', group: G, status: 'bad', title: 'First push', detail: 'The repository is empty.', fix: { cmd: 'git push -u origin HEAD' } };
+    const tests = { id: 'tests', optional: true, status: 'warn', title: 'No test command (optional)', detail: 'merges on the gates alone' };
+    let checks = [gh, repoBad, originBad, tests];
+    await page.addInitScript(() => { window.__copied = []; navigator.clipboard.writeText = t => { window.__copied.push(t); return Promise.resolve(); }; });
+    await page.route('**/api/projects', r => json(r, projects));
+    await page.route('**/api/github/doctor**', r => json(r, { ok: true, exit_code: 0, output: '', doctor: { checks, cloud: { domains: [], setup_script: '' } } }));
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    await page.evaluate(async () => { const m = await import('/static/cockpit-tabs.js'); await m.openProject('proj-a', 'proj-a'); });
+    await page.locator('#nav-factory').click();
+    const rows = page.locator('#fac-gh-checks .gh-row');
+    const labels = () => rows.locator('.gh-n').allTextContents();
+    const copies = () => rows.evaluateAll(rs => rs.map(r => r.querySelectorAll('[data-gh-copy]').length));
+    await expect(rows).toHaveCount(4);
+    expect(await labels()).toEqual(['1.', '2.1', '2.2', '3.']);
+    expect(await copies()).toEqual([0, 1, 1, 0]);
+    await expect(page.locator('#fac-gh-count')).toHaveText('Checks · 1 of 3 required ready · 1 optional');   // the optional warning is neither ready nor missing
+    await rows.nth(1).locator('[data-gh-copy]').click();
+    await expect.poll(() => page.evaluate(() => window.__copied.at(-1))).toBe('gh repo create "app" --private');   // exactly that sub-step's command
+    await rows.nth(2).locator('[data-gh-copy]').click();
+    await expect.poll(() => page.evaluate(() => window.__copied.at(-1))).toBe('git remote add origin https://github.com/octo/app.git');
+    // the repo exists now: 2.1 is satisfied and loses its command; 2.2 keeps its own
+    checks = [gh, repoOk, originBad, tests];
+    await page.locator('#fac-gh-recheck').click();
+    await expect(page.locator('#fac-gh-count')).toHaveText('Checks · 2 of 3 required ready · 1 optional');
+    expect(await copies()).toEqual([0, 0, 1, 0]);
+    // origin set, the repo empty: a third sub-step appears, still numbered under step 2, and the test command stays step 3
+    checks = [gh, repoOk, originOk, push, tests];
+    await page.locator('#fac-gh-recheck').click();
+    await expect(rows).toHaveCount(5);
+    expect(await labels()).toEqual(['1.', '2.1', '2.2', '2.3', '3.']);
+    expect(await copies()).toEqual([0, 0, 0, 1, 0]);
+    // everything done: no command and no Copy button anywhere
+    checks = [gh, repoOk, originOk, tests];
+    await page.locator('#fac-gh-recheck').click();
+    await expect(page.locator('#fac-gh-count')).toHaveText('Checks · 3 of 3 required ready · 1 optional');
+    expect(await copies()).toEqual([0, 0, 0, 0]);
   });
 
   // Prod path: the Cockpit sidebar's Factory entry and its two tabs (t-9641).

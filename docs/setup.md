@@ -86,7 +86,11 @@ You can hand a ticket to a Claude cloud session (Claude desktop's Code tab, or c
 Claude subscription, with no API key. The ticket goes to your repo as a GitHub issue; the session works on it there.
 
 Before the first send, the Cockpit's Factory › GitHub (or `tkt github-doctor`) checks that gh is installed and signed in
-and that origin is a GitHub repo, and has Copy buttons for the recipe below. Issues labelled `canon` come in with the
+(step 1), then three sub-steps in the order they must happen: **2.1** the repository exists on GitHub, **2.2** origin points at
+it, **2.3** the first push, shown only while the repository is empty. Each has its own status and at most one command with its own
+Copy button; a step that is done shows none after **Check again**. No command is chained with `&&`, so each pastes into Windows
+PowerShell 5.1, PowerShell 7 and Git Bash, run from the project root. The header counts the required checks and names the optional one
+(the test command) apart. It also has Copy buttons for the recipe below. Issues labelled `canon` come in with the
 board's header button **GitHub Sync** (`tkt sync-issues`), which stays greyed out until those checks pass. It opens a table
 (Idx, Issue, Reason and a checkbox per row): the issues it would create are ticked, the others are disabled with the reason (a
 ticket that is closed here is marked so you can close its issue on GitHub), and **Create N selected** makes only the ticked

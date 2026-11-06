@@ -1105,7 +1105,7 @@ _si_description() {
 _gh_repo_state() {
   local o="$1" n="$2" out
   [[ "$o" != "<owner>" && "$n" != "<repo>" ]] && command -v gh >/dev/null 2>&1 || { echo unknown; return 0; }
-  if out="$(gh repo view "$o/$n" --json name 2>&1 < /dev/null)"; then echo exists
+  if out="$(gh repo view "$o/$n" --json isEmpty --jq .isEmpty 2>&1 < /dev/null)"; then [[ "$out" == true ]] && echo empty || echo exists   # empty: no commits yet, the first push is still to do (t-d287)
   elif grep -qiE 'could not resolve to a repository|not found|404' <<< "$out"; then echo missing
   else echo unknown; fi
 }
@@ -1677,7 +1677,8 @@ cmd_github_doctor() {
   local ids=() sts=() titles=() details=() fixk=() fixv=()
   _doctor_windows() { case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*) return 0 ;; *) return 1 ;; esac; }
   # a check that gives a command to paste says where to run it (user, 2026-11-06): git and gh act on the folder they are started in
-  _gd() { local d="$4"; [[ "${5:-}" == cmd && -n "${6:-}" ]] && d+=" The command below needs to be run from the project root."; ids+=("$1"); sts+=("$2"); titles+=("$3"); details+=("$d"); fixk+=("${5:-}"); fixv+=("${6:-}"); }
+  local groups=() opts=()
+  _gd() { local d="$4"; [[ "${5:-}" == cmd && -n "${6:-}" ]] && d+=" The command below needs to be run from the project root."; ids+=("$1"); sts+=("$2"); titles+=("$3"); details+=("$d"); fixk+=("${5:-}"); fixv+=("${6:-}"); groups+=("${GD_GROUP:-}"); opts+=("${GD_OPT:-}"); }
   local login
   if ! command -v gh >/dev/null 2>&1; then
     _gd gh bad "GitHub CLI (gh) is not installed" "Every GitHub step runs gh as you. Install it, then check again; signing in comes next." url https://github.com/cli/cli
@@ -1693,73 +1694,76 @@ cmd_github_doctor() {
   [[ "${login:-}" =~ ^[A-Za-z0-9][A-Za-z0-9-]*$ ]] && own="$login"
   [[ "$(basename "$root")" =~ ^[A-Za-z0-9._-]+$ ]] && rname="$(basename "$root")"
   ghurl="https://github.com/$own/$rname.git"
-  # t-11e6: --source is the project's absolute folder (quoted; the Windows form on Windows), so a copied command works from any terminal
-  local srcdir="$root" winhint="" repo_name; repo_name="$(basename "$root")"
-  if _doctor_windows; then srcdir="$(cygpath -w "$root" 2>/dev/null || echo "$root")"; winhint=" Run it in a terminal opened after Git was installed (a window opened earlier cannot find git)."; fi
-  local repo err vis rstate=unknown
-  local safe_root=true; case "$root" in *[\"\$\`\\!]*|*[[:cntrl:]]*) safe_root=false ;; esac
-  local origin_ok=true
-  repo="$(_gh_origin_repo "$root" origin 2>&1)" || { origin_ok=false; rstate="$(_gh_repo_state "$own" "$rname")"; }   # asked only when origin is not already a GitHub repo
-  # origin names a GitHub repo: ask GitHub whether it exists before trusting _repo_visibility, whose anonymous fallback reads a missing
-  # repo's 404 as private (a set-url to a repo not yet created showed a green "found, and private")
-  $origin_ok && rstate="$(_gh_repo_state "${repo%%/*}" "${repo#*/}")"
-  if $origin_ok && [[ "$rstate" == missing ]]; then
-    local oname="${repo#*/}"
-    if [[ "${repo%%/*}" != "${login:-}" ]]; then
-      # gh repo create makes <login>/<name>: for someone else's name (or a private repo of theirs, which answers the same way) there is no command to give
-      _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: GitHub has no $repo for you (it does not exist, or it is private to someone else). Point origin at a repo you can use: git remote set-url origin https://github.com/${login:-<owner>}/${oname}.git"
-    elif [[ "$safe_root" == true ]]; then
-      _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: $repo is not on GitHub yet. This removes that origin and creates it, private, publishing the folder ${srcdir}.${winhint}" cmd "git remote remove origin && gh repo create \"${oname}\" --private --source=\"${srcdir}\" --remote=origin --push"
-    else
-      _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: $repo is not on GitHub yet. This folder's name has a character that is not safe in a command you paste: rename the folder, or run gh repo create yourself."
+  # t-11e6: a window opened before Git was installed cannot find git, so the git commands say to use a new one on Windows
+  local winhint=""
+  _doctor_windows && winhint=" Run it in a terminal opened after Git was installed (a window opened earlier cannot find git)."
+  # t-d287: step 2 is three sub-steps in the order they must happen, each with its own status and at most one command, none chained
+  # (Windows PowerShell 5.1 has no &&): 2.1 the repo is on GitHub, 2.2 origin points at it, 2.3 the first push when the repo is empty.
+  # The repo asked about is origin's own when origin names one this user can use; otherwise the one a new origin would name.
+  local repo err vis rstate=unknown origin_ok=true target t_owner t_name
+  repo="$(_gh_origin_repo "$root" origin 2>&1)" || origin_ok=false
+  err="${repo#origin: }"
+  if $origin_ok; then
+    target="$repo"; t_owner="${repo%%/*}"; t_name="${repo#*/}"
+    rstate="$(_gh_repo_state "$t_owner" "$t_name")"   # asked before _repo_visibility, whose anonymous fallback reads a missing repo's 404 as private (t-10ac)
+    if [[ "$rstate" == missing && "$t_owner" != "${login:-}" ]]; then   # someone else's (or private) name: there is no command for it, so ask about the user's own
+      target="$own/$rname"; t_owner="$own"; t_name="$rname"; rstate="$(_gh_repo_state "$t_owner" "$t_name")"
     fi
-  elif $origin_ok; then
-    vis="$(_repo_visibility "$repo")"
-    case "$vis" in
-      PRIVATE) _gd origin ok "Repository found, and private" "Issues go to $repo (origin, private)." ;;
-      PUBLIC)  _gd origin warn "Repository found, and public" "Issues go to $repo (origin, public). Send needs --public: tickets carry paths, notes and decisions." ;;
-      *)       _gd origin warn "Repository found; visibility unknown" "Issues go to $repo (origin). GitHub did not say whether it is public; Send asks again." ;;
-    esac
   else
-    err="${repo#origin: }"
-    if git -C "$root" remote get-url origin >/dev/null 2>&1; then
-      # origin exists but is not a GitHub repo: add would fail ("remote origin already exists"), so the command points origin at GitHub
-      if [[ "$rstate" == missing && "$safe_root" == true ]]; then
-        # the repo GitHub would hold is not there yet: replace the old origin with a new private one, connecting and publishing in one step
-        _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: ${err}. $own/$rname is not on GitHub yet: this removes the current origin and creates it, private, publishing the folder ${srcdir}.${winhint}" cmd "git remote remove origin && gh repo create \"${rname}\" --private --source=\"${srcdir}\" --remote=origin --push"
+    target="$own/$rname"; t_owner="$own"; t_name="$rname"; rstate="$(_gh_repo_state "$t_owner" "$t_name")"
+  fi
+  local points=false; $origin_ok && [[ "$repo" == "$target" ]] && points=true
+  case "$rstate" in
+    exists|empty)
+      if $points; then
+        vis="$(_repo_visibility "$repo")"
+        case "$vis" in
+          PRIVATE) GD_GROUP=repo-setup _gd repo ok "Repository found, and private" "Issues go to $repo (origin, private)." ;;
+          PUBLIC)  GD_GROUP=repo-setup _gd repo warn "Repository found, and public" "Issues go to $repo (origin, public). Send needs --public: tickets carry paths, notes and decisions." ;;
+          *)       GD_GROUP=repo-setup _gd repo warn "Repository found; visibility unknown" "Issues go to $repo (origin). GitHub did not say whether it is public; Send asks again." ;;
+        esac
       else
-        _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: ${err}. Point origin at your repo on GitHub${rstate:+ ($own/$rname ${rstate/unknown/could not be checked})}; if it is not there yet, run git remote remove origin, check again, and canon offers to create it." cmd "git remote set-url origin $ghurl"
-      fi
-    else
-      # t-9955: no origin at all is usually a project that has never been on GitHub: create it private (on a free plan the issue's
-      # "never push main" text is the only guard) and connect it in one step.
-      # t-11e6: --source is the project's absolute folder (quoted; the Windows form on Windows), so the copied command works from any terminal
-      case "$root" in
-        *[\"\$\`\\!]*|*[[:cntrl:]]*)   # a command meant to be pasted into a shell must not carry a quote, dollar, backtick, backslash, "!" (history expansion) or a control character (a newline splits it in two) from a folder name
-          _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: ${err}. This folder's name has a character (a double quote, dollar sign, backtick, backslash, exclamation mark or control character) that is not safe in a command you paste: rename the folder, or run gh repo create yourself. Already have a repo on GitHub? Run git remote add origin $ghurl" ;;
-        *)
-          if [[ "$rstate" == exists ]]; then
-            _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: ${err}. $own/$rname already exists on GitHub: this connects it (then publish with git push -u origin HEAD)." cmd "git remote add origin $ghurl"
-          else
-          _gd origin bad "No GitHub repository for this project" "Issues go to origin's GitHub repo: ${err}. No repo on GitHub yet? This creates one, private, and connects it, publishing the folder ${srcdir}.${winhint} Already have a repo on GitHub? Run git remote add origin $ghurl" cmd "gh repo create \"${repo_name}\" --private --source=\"${srcdir}\" --remote=origin --push"
-          fi ;;
-      esac
-    fi
+        GD_GROUP=repo-setup _gd repo ok "Repository found on GitHub" "$target exists on GitHub."
+      fi ;;
+    missing)   # missing implies a valid name and the user's own account: the retarget above and _gh_repo_state's placeholders see to that
+      GD_GROUP=repo-setup _gd repo bad "No repository on GitHub yet" "$target is not on GitHub. This creates it, private, under your account; the next steps connect this folder to it." cmd "gh repo create \"$t_name\" --private" ;;
+    *)
+      GD_GROUP=repo-setup _gd repo bad "Could not check GitHub for the repository" "Sign in first (step 1) and check again; canon asks GitHub whether $target exists." ;;
+  esac
+  if $points; then
+    GD_GROUP=repo-setup _gd origin ok "origin points at it" "origin is $repo."
+  elif $origin_ok; then
+    GD_GROUP=repo-setup _gd origin bad "origin points elsewhere" "origin is $repo, a repository this account cannot use. Point it at $target.${winhint}" cmd "git remote set-url origin $ghurl"
+  elif git -C "$root" remote get-url origin >/dev/null 2>&1; then
+    # origin exists but is not a GitHub repo: add would fail ("remote origin already exists"), so the command points origin at GitHub
+    GD_GROUP=repo-setup _gd origin bad "origin is not a GitHub repository" "Issues go to origin's GitHub repo: ${err}. Point origin at $target (set-url overwrites it).${winhint}" cmd "git remote set-url origin $ghurl"
+  else
+    GD_GROUP=repo-setup _gd origin bad "No git remote named origin" "Issues go to origin's GitHub repo, and this project has none. Connect it to $target.${winhint}" cmd "git remote add origin $ghurl"
+  fi
+  if [[ "$rstate" == empty ]] && $points; then
+    GD_GROUP=repo-setup _gd push bad "First push" "The repository is empty: send your current branch so the cloud session has code to work on (it clones what origin holds).${winhint}" cmd "git push -u origin HEAD"
   fi
   local tree; tree="$(git -C "$root" ls-tree HEAD -- scripts/test.sh 2>/dev/null)" || tree=""
   if [[ "$tree" == 100755* ]]; then
-    _gd tests ok "Check & merge test command: scripts/test.sh" "Before merging, Check & merge runs it on main + the PR in a scratch clone, after you confirm."
+    GD_OPT=1 _gd tests ok "Check & merge test command: scripts/test.sh" "Before merging, Check & merge runs it on main + the PR in a scratch clone, after you confirm."
   else
     # t-9641: say what the command is for, that it is optional, and both ways to add one
     local mkexec="make it executable (chmod +x)"
     # t-11e6: chmod means nothing on Windows: the executable bit lives in git's index, and Git Bash runs a script without it
     _doctor_windows && mkexec="make it executable (git update-index --chmod=+x scripts/test.sh; Git Bash runs it without the bit)"
-    _gd tests warn "No test command (optional)" "Check & merge can run your tests on main and the PR before it merges. This project has no executable scripts/test.sh, so it merges on the gates alone. To test first, either add scripts/test.sh and ${mkexec}, or run tkt merge-pr <id> --test \"<your test command>\"."
+    GD_OPT=1 _gd tests warn "No test command (optional)" "Check & merge can run your tests on main and the PR before it merges. This project has no executable scripts/test.sh, so it merges on the gates alone. To test first, either add scripts/test.sh and ${mkexec}, or run tkt merge-pr <id> --test \"<your test command>\"."
   fi
   local i n=${#ids[@]}
   if ! $json; then
+    local top=0 sub=0 lastg="" label
     for ((i = 0; i < n; i++)); do
-      printf '%-5s %s%s\n' "${sts[i]}" "${titles[i]}" "${details[i]:+ — ${details[i]}}"
+      # numbered like the Cockpit's list: a group's members are n.k (t-d287)
+      if [[ -n "${groups[i]}" ]]; then
+        [[ "${groups[i]}" == "$lastg" ]] && sub=$((sub + 1)) || { top=$((top + 1)); sub=1; }
+        label="$top.$sub"
+      else top=$((top + 1)); sub=0; label="$top."; fi
+      lastg="${groups[i]}"
+      printf '%-5s %s %s%s\n' "${sts[i]}" "$label" "${titles[i]}" "${details[i]:+ — ${details[i]}}"
       [[ -n "${fixk[i]}" ]] && printf '      fix: %s\n' "${fixv[i]}"
     done
     return 0
@@ -1768,6 +1772,8 @@ cmd_github_doctor() {
   for ((i = 0; i < n; i++)); do
     out+="$sep{\"id\":$(json_str "${ids[i]}"),\"status\":$(json_str "${sts[i]}"),\"title\":$(json_str "${titles[i]}"),\"detail\":$(json_str "${details[i]}")"
     [[ -n "${fixk[i]}" ]] && out+=",\"fix\":{$(json_str "${fixk[i]}"):$(json_str "${fixv[i]}")}"
+    [[ -n "${groups[i]}" ]] && out+=",\"group\":$(json_str "${groups[i]}")"
+    [[ -n "${opts[i]}" ]] && out+=',"optional":true'
     out+='}'; sep=','
   done
   out+="],\"cloud\":$(_cloud_env_json "$root")}"   # t-9955: this project's recipe, the same as tkt cloud-env --json
