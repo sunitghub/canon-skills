@@ -31,7 +31,6 @@
   /* A visible + <skill> button means that skill is missing here: a sub-action (buttons.css .b-accent, t-e523). Busy/disabled keeps the accent (below). */
   .regskill{height:32px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
   .regskill:disabled{cursor:default;opacity:.55;background:var(--accent-dim);color:var(--accent);border-color:var(--accent)}
-  .regskill[aria-busy="true"],.sn-reg[aria-busy="true"]{opacity:1}
   /* t-8d72: Git status icon beside the project name. On = accent, off = muted and clickable, none = faded. */
   .card .cardhead{display:flex;align-items:center;gap:8px;min-width:0;min-height:28px}
   .card .cardhead h3{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -42,7 +41,6 @@
   .gitstate.is-off:hover{color:var(--accent);background:var(--accent-dim)}
   .gitstate.is-none{opacity:.45;cursor:default}
   .gitstate:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-  .gitstate[aria-busy="true"]{cursor:progress}
   .gitstate{--spin-size:12px;--spin-gap:0}   /* t-ae96: its busy spinner is the shared one */
   .empty{border:1.5px dashed var(--border-hover);border-radius:12px;padding:40px;text-align:center;color:var(--text-muted)}
   .scrim{position:fixed;inset:0;background:var(--scrim);display:none;place-items:center;z-index:20}

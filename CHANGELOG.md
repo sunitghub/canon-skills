@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+- Changed (board and shell): one spinner and one busy button everywhere. Every spinner now turns once per second (they ran at 0.7 to 0.9 s) and is one shared ring; a busy button (Check again in Factory, Refresh, + skill, Turn on history, and the board's commit and create-worktree steps) shows it through one helper that always puts the button back, even if the request fails. `.btn` is defined once instead of twice: a disabled board button is now 45 % opaque (was 30 %), the board's buttons get the same 2 px focus ring as the shell's, and the shell's buttons fade on hover over 0.1 s (t-ae96).
+
 ## [0.47.11] - 2026-11-07
 
 Board page: run `canon update`, restart the board (`canon`) and reload.

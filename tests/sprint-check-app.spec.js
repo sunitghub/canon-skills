@@ -17951,6 +17951,13 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.locator('#fac-gh-project').selectOption('proj-b');
     await expect(page.locator('#fac-gh-count')).toHaveText('Checks · 1 of 3 ready on this machine');   // proj-b's cached answer
     expect(calls).toEqual(['proj-a', 'proj-b', 'proj-a']);
+    // t-ae96: a failed request puts the button back too (withBusy restores in its finally), never stuck on "Checking…"
+    await page.route('**/api/github/doctor**', r => r.fulfill({ status: 500, contentType: 'application/json', body: '{"ok":false}' }));
+    await page.locator('#fac-gh-recheck').click();
+    await expect(page.locator('#fac-gh-recheck')).toHaveText('Check again');
+    await expect(page.locator('#fac-gh-recheck')).toBeEnabled();
+    await expect(page.locator('#fac-gh-recheck')).not.toHaveAttribute('aria-busy', 'true');
+    await expect(page.locator('#fac-gh-count')).not.toHaveText('Checks · checking…');
   });
 
   // Prod path: Factory › GitHub (t-d287): the doctor's repo-setup group renders as sub-steps 2.1, 2.2, 2.3, each with its own Copy,
