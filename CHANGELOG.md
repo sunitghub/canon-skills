@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.47.15] - 2026-11-07
+
+Board page: run `canon update`, restart the board (`canon`) and reload.
+
 - Fixed (Cockpit): opening another ticket's tab while a ticket's Worktree picker is still loading no longer writes that ticket's worktree choice and lock into the other tab (t-c505).
 
 ## [0.47.14] - 2026-11-07
