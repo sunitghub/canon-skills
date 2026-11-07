@@ -13,7 +13,7 @@ trap 'rm -rf "$W"' EXIT
 export HOME="$W/home" TMPDIR="$W/tmp"; mkdir -p "$HOME" "$TMPDIR"
 
 # the function under test, exactly as shipped (tkt is a script, not a library)
-eval "$(sed -n '/^_import_learnings_row() {/,/^}/p' "$TKT")"   # (bash 3.2 cannot `source <(...)`)
+eval "$(sed -n '/^_import_learnings_row() {/,/^}/p' "$TKT")"   # (a script, not a library: pulled out by name)
 declare -F _import_learnings_row >/dev/null || fail "_import_learnings_row not found in tkt"
 
 STAMP_OLD="11-01-2026 09:00"
