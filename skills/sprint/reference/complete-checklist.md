@@ -20,9 +20,9 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
    - **Pre-gate:** `tools/pre-gate-check.sh <id>` first; non-zero stops the close.
    - **Mutation sweep** (pre-evaluator) for shell, JS, Python or Go logic: `skills/mutation-test/SKILL.md`
      (`mutant-sweep --check` first), triage every survivor; after the interim commit
-     `evidence.sh stamp <id> mutant-sweep -- mutant-sweep …`. Non-binding; skipping needs
+     `evidence.sh stamp <id> mutant-sweep -- mutant-sweep …`. Non-binding; not skippable without a reason:
      `mutation-test | skipped | <reason>`.
-   - **Skill eval** if a skill or gate agent changed (canon checkout only): `tools/skill-eval-scope.sh`; for each `run <skill>`
+   - **Skill eval** if a skill or gate agent changed `tools/skill-eval-scope.sh`; for each `run <skill>`
      follow `skills/skill-eval/SKILL.md`; advisory. Commit its `history.jsonl` line.
    - **Interim commit** (specific paths, no `git add -A`) before any gate.
    - **Evidence:** in a clone of the final commit, run
@@ -37,11 +37,10 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
    `sprint check-review-notes <id>` (`shape refused`: re-dispatch). Row: `verdict: YES|NO — …
    (model: <m> — <source>)`. A NO is surfaced, not blocking.
 3. **Evaluator** (binding). `mutation-test` row filled; `sprint check-evidence <id>` ok; `eval_fail_count` below 3; snapshot
-   pre (`--role evaluator`); `Agent` with `subagent_type: "canon-evaluator"`; snapshot post. Then:
+   pre (`--role evaluator`); `Agent` with `subagent_type: "canon-evaluator"`; snapshot post:
    - Line 1 `evaluator-run-id: <epoch>-<n>`: run `date +%s`; skew over 300 s → discard, re-dispatch. Never
      write a run-id yourself.
-   - `subagent-log.sh --agent-id <run-id> --agent-type evaluator` + cost flags, `--model`, then `sprint eval-verdict <id>`
-     (also on pass).
+   - `subagent-log.sh --agent-id <run-id> --agent-type evaluator` + cost flags, `--model`, then `sprint eval-verdict <id>`.
    - `fail`, `partial` or `not-run`: surface it, stop. A tracked change after grading needs a fresh
      evaluator (`graded-head:`), except the late docs (`.tickets/`, LEARNINGS, DECISIONS, HANDOFF).
    - Row: `verdict: pass — … (model: <m> — <source>; <N>m)`.
@@ -70,7 +69,7 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
   `.tickets/<id>/review-notes.md` / `eval-report.md` and return the verdict line; read-only except
   that report; never kill by name or pattern; evaluator only: take the
   `evaluator-run-id` as the very last command. Never pass a changed-files list.
-- `Plan` fallback: `sprint relay-report <id> [reviewer]` writes its report.
+- `Plan` fallback: `sprint relay-report <id> [reviewer]` writes its report (the main session never types one).
 
 ## Read the detail when
 
