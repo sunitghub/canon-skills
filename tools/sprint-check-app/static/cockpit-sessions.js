@@ -22,8 +22,8 @@ let closingTabs=new Set();  // tabs told to Save&End/End — removed once their 
 // guard. Idle tabs are never trapped.
 export function _normPath(p){ return String(p||'').replace(/[\\/]+$/,''); }
 export async function pollSessions(){
-  let sessions=[];
-  try{ const s=await fetch('/api/cockpit-sessions'); if(s.ok) sessions=await s.json(); }catch(e){}
+  let sessions=[], up=false;   // up: the daemon really answered (t-27bc), so an empty list means no sessions and not a failed poll
+  try{ const s=await fetch('/api/cockpit-sessions'); if(s.ok){ sessions=await s.json(); up=s.headers.get('X-Cockpit-Daemon')==='up'; } }catch(e){}
   if(!Array.isArray(sessions)) sessions=[];
   const liveRoots=new Set(sessions.map(s=>_normPath(s&&s.project_root)).filter(Boolean));
   const needRoots=new Set(sessions.filter(s=>sessionView(s).state==='needs-you').map(s=>_normPath(s.project_root)).filter(Boolean));
@@ -43,7 +43,7 @@ export async function pollSessions(){
   // t-90f5: every open board renders its header chip and cards from this same answer, so they agree with the Agents list.
   for(const t of openTabs){
     const ifr=document.getElementById('view-'+t.id)?.querySelector('iframe');
-    try{ ifr?.contentWindow?.postMessage({source:'canon-cockpit-shell', type:'sessions', rows:sessions}, location.origin); }catch(e){}
+    try{ ifr?.contentWindow?.postMessage({source:'canon-cockpit-shell', type:'sessions', rows:sessions, up}, location.origin); }catch(e){}
   }
   // A tab awaiting close (Save&End/End) is removed once its session has ended
   // — the daemon finished the save/end turn, so no orphan and no premature

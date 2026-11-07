@@ -83,4 +83,33 @@ out="$("$TKT" finish "$id4" --push --yes 2>&1)" || fail "finish --push failed: $
 [[ "$(git rev-parse chore/other)" == "$before" ]] || fail "a commit was made on the checkout's other branch"
 [[ "$out" != *"committed canon's merge record"* ]] || fail "it claims to have committed the record on another branch: $out"
 echo "finish: a checkout on another branch commits nothing"
+git switch -q main; git checkout -q -- . ; git clean -fdq .tickets   # back on main with a clean tree for the cases below
+
+# 5. a ticket.md the user also edited by hand is not canon's record: left dirty and named, never committed under canon's message
+ticket five; id5="$id"
+echo "my own note on the ticket" >> ".tickets/$id5/ticket.md"
+echo "cockpit-sessions: w" > ".tickets/$id5/cockpit-sessions.md"
+out="$("$TKT" finish "$id5" --push --yes 2>&1)" || fail "finish --push failed: $out"
+[[ "$(git show --name-only --format= HEAD | grep -c 'ticket.md' || true)" == 0 ]] || fail "a hand-edited ticket.md went into canon's record commit"
+assert_contains "$(git status --porcelain)" ".tickets/$id5/ticket.md"
+git show origin/main:".tickets/$id5/ticket.md" 2>/dev/null | grep -q "my own note" && fail "the user's note was pushed"
+git checkout -q -- ".tickets/$id5/ticket.md"
+echo "finish: a hand-edited ticket.md is never committed or pushed"
+
+# 6. a file the user staged is not swept into the record commit and stays staged
+ticket six; id6="$id"
+echo "cockpit-sessions: v" > ".tickets/$id6/cockpit-sessions.md"
+echo staged > staged.txt; git add staged.txt
+out="$("$TKT" finish "$id6" --push --yes 2>&1)" || fail "finish --push failed: $out"
+[[ "$(git show --name-only --format= HEAD | grep -c 'staged.txt' || true)" == 0 ]] || fail "a staged unrelated file went into the record commit"
+[[ "$(git status --porcelain staged.txt)" == "A  staged.txt" ]] || fail "the user's staged file is no longer staged: $(git status --porcelain staged.txt)"
+git reset -q staged.txt; rm -f staged.txt
+echo "finish: a staged unrelated file stays staged and out of the record commit"
+
+# 7. a record file git ignores is never committed (and never an error)
+ticket seven; id7="$id"
+echo "cockpit-sessions: u" > ".tickets/$id7/cockpit-sessions.md"; echo ".tickets/$id7/cockpit-sessions.md" >> .git/info/exclude
+out="$("$TKT" finish "$id7" --push --yes 2>&1)" || fail "finish --push failed: $out"
+[[ "$(git show --name-only --format= HEAD | grep -c 'cockpit-sessions.md' || true)" == 0 ]] || fail "an ignored file was committed"
+echo "finish: an ignored record file is left out"
 echo "tkt-finish-record: ok"

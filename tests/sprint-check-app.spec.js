@@ -12090,13 +12090,36 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
         window.__received = [];
         window.addEventListener('message', (e) => { if (e.data && e.data.type === '__received') window.__received.push(e.data.received); });
         const { state } = await import('/static/board-core.js');
-        state.shellSessions = { at: Date.now(), rows: [{ session: 'other', ticket: 't-zzzz', agent: 'claude' }] };   // the Agents list: no session for this ticket
+        state.shellSessions = { at: Date.now(), up: true, rows: [] };   // the Agents list, answered by the daemon: "No agents running"
       });
       await page.locator('#ck-end-session').click();
       await expect(page.locator('#ck-leave-confirm')).toHaveClass(/open/);
       await page.locator('#ck-leave-save').click();
       await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/, { timeout: 3000 });
       expect(await page.evaluate(() => window.__received)).toEqual([]);   // nothing was sent to a session that is not there
+    } finally {
+      removeTestTicket(PROJECT_ROOT, id);
+    }
+  });
+
+  // Protects t-27bc (the reviewer's probe): an empty list from a poll the daemon did NOT answer (down, slow, errored) is not "no sessions". The tab of
+  // a session that is still running must not be dropped: End goes the old way and the end message is sent to the daemon.
+  test('End does not drop a live tab on an empty list the daemon did not answer (t-27bc) @webkit', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'lcdown');
+    try {
+      writeTicket(id, 'in_progress');
+      await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running', endDelayMs: 60000 }));
+      await page.waitForTimeout(100);
+      await page.evaluate(async () => {
+        window.__received = [];
+        window.addEventListener('message', (e) => { if (e.data && e.data.type === '__received') window.__received.push(e.data.received); });
+        const { state } = await import('/static/board-core.js');
+        state.shellSessions = { at: Date.now(), up: false, rows: [] };   // the shell's poll failed: an empty list, but the daemon did not answer
+      });
+      await page.locator('#ck-end-session').click();
+      await expect(page.locator('#ck-leave-confirm')).toHaveClass(/open/);
+      await page.locator('#ck-leave-skip').click();                                         // End without saving
+      await expect.poll(() => page.evaluate(() => window.__received)).toContain('force-end');   // the daemon is asked to end it: the tab was not dropped on the empty list
     } finally {
       removeTestTicket(PROJECT_ROOT, id);
     }

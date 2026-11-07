@@ -86,4 +86,38 @@ out="$("$TKT" merge "$id" --yes < /dev/null 2>&1)" || rc=$?
 assert_contains "$out" "conflicts in: LEARNINGS.md"
 [[ "$(sig)" == "$before" ]] || fail "something changed although the merge refused"
 echo "merge: refused a LEARNINGS.md conflict with no managed block"
+
+# regraded <head> — the ticket is graded at that head again, and unmerged
+regraded() { printf 'evaluator-run-id: 1-9\ngraded-head: %s\n## Verdict\npass: all met\n' "$1" > ".tickets/$id/eval-report.md"; unmerge; }
+
+# 4. a row both sides added (in different places, so git keeps both copies) appears once, not twice
+git reset -q --hard "$BASE"; git -C "$WT" reset -q --hard "$BHEAD"
+ROW_SHARED="$(row 2026-11-07 t-cccc)"
+learn "11-06-2026 19:00" "$ROW_SHARED" "$ROW_MAIN" "$ROW_OLD" > LEARNINGS.md; git commit -qam "main adds the shared row at the top"
+(cd "$WT" && learn "11-07-2026 12:00" "$ROW_BR" "$ROW_OLD" "$ROW_SHARED" > LEARNINGS.md && git commit -qam "branch adds the same row at the bottom"); H4="$(git -C "$WT" rev-parse HEAD)"
+regraded "$H4"
+out="$("$TKT" merge "$id" --yes < /dev/null 2>&1)" || fail "a shared row should still merge: $out"
+[[ "$(git show main:LEARNINGS.md | grep -cF 'finding of t-cccc')" == 1 ]] || fail "the shared row is not exactly one row"
+[[ "$(git show main:LEARNINGS.md | grep -c '^| 20')" == 4 ]] || fail "expected 4 rows (shared once, main's, the branch's, the old one): $(git show main:LEARNINGS.md)"
+echo "merge: an identical row both sides added is kept once"
+
+# 5. a line a person wrote inside the managed block is never dropped: the conflict stays
+git reset -q --hard "$BASE"; git -C "$WT" reset -q --hard "$BHEAD"
+learn "11-06-2026 19:00" "$ROW_MAIN" "$ROW_OLD" | awk '/^\| Date \|/ { print "a note I wrote by hand" } { print }' > LEARNINGS.md; git commit -qam "main has a hand note inside the block"
+(cd "$WT" && learn "11-07-2026 13:00" "$ROW_BR" "$ROW_OLD" > LEARNINGS.md && git commit -qam "branch adds its row"); H5="$(git -C "$WT" rev-parse HEAD)"
+regraded "$H5"; before="$(sig)"; rc=0
+out="$("$TKT" merge "$id" --yes < /dev/null 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "a hand-written line inside the block must refuse (rc $rc): $out"
+assert_contains "$out" "conflicts in: LEARNINGS.md"; [[ "$(sig)" == "$before" ]] || fail "something changed although the merge refused"
+echo "merge: refused a hand-written line inside the managed block"
+
+# 6. a hand edit outside the block that both sides made differently (the heading) is a real conflict, not two headings
+git reset -q --hard "$BASE"; git -C "$WT" reset -q --hard "$BHEAD"
+learn "11-06-2026 19:00" "$ROW_MAIN" "$ROW_OLD" | sed '1s/.*/# Learnings (main)/' > LEARNINGS.md; git commit -qam "main retitles the file"
+(cd "$WT" && learn "11-07-2026 14:00" "$ROW_BR" "$ROW_OLD" | sed '1s/.*/# Learnings (branch)/' > LEARNINGS.md && git commit -qam "branch retitles it differently"); H6="$(git -C "$WT" rev-parse HEAD)"
+regraded "$H6"; before="$(sig)"; rc=0
+out="$("$TKT" merge "$id" --yes < /dev/null 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "two different hand edits outside the block must refuse (rc $rc): $out"
+[[ "$(sig)" == "$before" ]] || fail "something changed although the merge refused"
+echo "merge: refused two different hand edits outside the managed block"
 echo "tkt-merge-learnings: ok"

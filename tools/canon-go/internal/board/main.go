@@ -429,7 +429,9 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, cockpitChanges(root, id))
 	case "/api/cockpit-sessions":
 		q := r.URL.Query()
-		sessions := cockpitSessions()
+		sessions, up := cockpitSessionsAnswer()
+		// t-27bc: an empty list from a daemon that did not answer is not "no sessions"
+		w.Header().Set("X-Cockpit-Daemon", map[bool]string{true: "up", false: "down"}[up])
 		if sid := q.Get("id"); sid != "" { // t-180d: one session (canon wait); root= narrows it to one project
 			if !common.SessionIDRe.MatchString(sid) {
 				http.Error(w, "bad request", http.StatusBadRequest)
@@ -4219,25 +4221,33 @@ func cockpitDiscover() map[string]any {
 // non-nil empty slice when no healthy daemon or on any error, so the board (and
 // the parity check) always sees a JSON array.
 func cockpitSessions() []map[string]any {
+	rows, _ := cockpitSessionsAnswer()
+	return rows
+}
+
+// cockpitSessionsAnswer is cockpitSessions plus whether the daemon really answered (t-27bc): an empty list means "no sessions" only when it
+// did; a daemon that is down, slow (600 ms) or errored gives the same empty list, and a page that reads it as "this session is gone" would drop
+// the tab of a session that is still running. The route sends it as the X-Cockpit-Daemon header.
+func cockpitSessionsAnswer() ([]map[string]any, bool) {
 	empty := []map[string]any{}
 	addr, ok := discoverCockpitAddr()
 	if !ok || addr == "" {
-		return empty
+		return empty, false
 	}
 	client := &http.Client{Timeout: 600 * time.Millisecond}
 	resp, err := client.Get("http://" + addr + "/sessions")
 	if err != nil {
-		return empty
+		return empty, false
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return empty
+		return empty, false
 	}
 	var sessions []map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&sessions); err != nil || sessions == nil {
-		return empty
+		return empty, false
 	}
-	return sessions
+	return sessions, true
 }
 
 // cockpitChanges proxies the daemon's read-only GET /changes (t-5a4b): what changed in a project without

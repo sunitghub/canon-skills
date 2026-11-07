@@ -234,6 +234,11 @@ export function freshShellSessions() {
   const s = state.shellSessions;
   return s && Date.now() - s.at < SHELL_SESSIONS_FRESH_MS ? s.rows : null;
 }
+// t-27bc: the same list, only when the daemon itself answered it (the shell sends up:true): an empty list from a failed poll must not read as "no sessions".
+export function freshDaemonSessions() {
+  const s = state.shellSessions;
+  return s && s.up === true && Date.now() - s.at < SHELL_SESSIONS_FRESH_MS ? s.rows : null;
+}
 
 // t-0447: which lanes are folded to a strip is a view preference kept per browser (never in a ticket); a missing or
 // throwing localStorage just means nothing is hidden. t-71c8: one choice per project root (the board's own /api/git root), so hiding a

@@ -1,4 +1,4 @@
-import { SHELL_TAB, freshShellSessions, loadData, state } from './board-core.js';
+import { SHELL_TAB, freshDaemonSessions, loadData, state } from './board-core.js';
 import { CK_SIGNAL_LABEL, COCKPIT_TICKET_ID, SCRATCH_ID, applyCardSessions, announceScratchTabs, ckRowState, findTicketById, finishAdopt, newScratchId, openScratch, postToTab, render, renderBoard, renderScratchWhere, showPromotedChoice, showToast, startPromote } from './board-render.js';
 import { closeCockpit, findLiveDaemonSession, openCockpit, openTicketWhenLoaded, renderCockpitRail, showTicketWhenLoaded, renderTabStrip, stopCockpitPoll } from './board-cockpit-rail.js';
 import { applyActualWorkingCwd, maybeMountCockpitTerminal } from './board-worktree.js';
@@ -662,8 +662,8 @@ async function ckLeaveSaveAndEnd(skipSave, opts) {
   if (done) return; // idle-reap already ended us during the fetch — nothing to send
   // t-27bc: the tab's last-known status can say running after the agent has exited (sprint complete, then the agent ends) and the daemon
   // has dropped the session; force-end then reaches nothing, no 'ended' ever comes, and the tab sat on "Ending…" for the 90 s fallback. The
-  // shell's fresh session list is the Agents list's own answer: no row for this ticket means it is already over, so finish at once.
-  const freshRows = freshShellSessions();
+  // shell's fresh session list is the Agents list's own answer, when the daemon answered it: no row for this ticket means it is already over, so finish at once.
+  const freshRows = freshDaemonSessions();   // only an answer the daemon really gave: a failed poll is an empty list too
   if (freshRows && !freshRows.some(r => r && r.ticket === cockpitState.id)) {
     clearTimeout(fallbackTimer);
     finish(closed ? 'Ended — ticket already closed, no state to save.' : 'Ended — the session was already over.');
@@ -827,7 +827,7 @@ export function initCockpit() {
     if (!d || d.source !== 'canon-cockpit-shell') return;
     if (d.type === 'sessions') {                           // t-90f5: the shell's poll answer drives the chip and the cards too
       if (!Array.isArray(d.rows)) return;
-      state.shellSessions = { rows: d.rows, at: Date.now() };
+      state.shellSessions = { rows: d.rows, at: Date.now(), up: d.up === true };
       applyCardSessions(d.rows);
       refreshSessionStateChip();
       return;

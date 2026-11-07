@@ -1919,6 +1919,11 @@ _resolve_learnings_conflict() {
   d="$(mktemp -d "${TMPDIR:-/tmp}/tkt-learn.XXXXXX")" || return 1
   git -C "$w" show :1:LEARNINGS.md > "$d/base" 2>/dev/null || : > "$d/base"   # add/add: no common version
   { git -C "$w" show :2:LEARNINGS.md > "$d/ours" && git -C "$w" show :3:LEARNINGS.md > "$d/theirs"; } 2>/dev/null || { rm -rf "$d"; return 1; }
+  # outside the managed block and the stamp, only one side may have changed: a hand edit both sides made differently is a real conflict
+  local o t b
+  _lc_outside() { sed -e '/<!-- canon:learnings:BEGIN -->/,/<!-- canon:learnings:END -->/d' -e '/^learnings-sweep last run:/d' "$1"; }
+  o="$(_lc_outside "$d/ours")"; t="$(_lc_outside "$d/theirs")"; b="$(_lc_outside "$d/base")"
+  if [[ "$o" != "$t" && "$o" != "$b" && "$t" != "$b" ]]; then rm -rf "$d"; return 1; fi
   git merge-file -p --union "$d/ours" "$d/base" "$d/theirs" > "$d/union" 2>/dev/null || rc=$?
   [[ "$rc" -lt 128 ]] || { rm -rf "$d"; return 1; }
   awk '
@@ -1939,7 +1944,10 @@ _resolve_learnings_conflict() {
       }
       if (nb != 1 || ne != 1 || bi + 3 > ei || ns < 1 || L[bi + 2] !~ /^\|---/) exit 1
       m = 0
-      for (i = bi + 3; i < ei; i++) if (L[i] ~ /^\|/ && !(L[i] in seen)) { seen[L[i]] = 1; m++; R[m] = L[i] }
+      for (i = bi + 3; i < ei; i++) {
+        if (L[i] !~ /^\|/ && L[i] != "") exit 1   # a line a person wrote inside the block is not a row: never dropped, so refuse
+        if (L[i] ~ /^\|/ && !(L[i] in seen)) { seen[L[i]] = 1; m++; R[m] = L[i] }
+      }
       for (i = 2; i <= m; i++) {   # newest first by the Date cell, stable
         x = R[i]; split(x, c, "|"); kx = c[2]; j = i - 1
         while (j >= 1) { split(R[j], c, "|"); if (c[2] >= kx) break; R[j + 1] = R[j]; j-- }
@@ -2301,7 +2309,8 @@ _merge_branch() {
     tree="$tested"   # t-27bc: git's own merge conflicts here; the resolved tree is the one the tests ran on, and it is what lands
     # its objects are in the scratch clone only: bring that commit (parents: base and branch head, both already here) into the repository
     git -C "$root" fetch -q "$tmp/w" refs/heads/merge-check < /dev/null >/dev/null 2>&1 \
-      && [[ "$(git -C "$root" cat-file -t "$tree" 2>/dev/null)" == tree ]] || _mb_no "git could not bring the resolved merge into $root; nothing merged"
+      && [[ "$(git -C "$root" cat-file -t "$tree" 2>/dev/null)" == tree && "$(git -C "$root" rev-parse -q --verify 'FETCH_HEAD^{tree}' 2>/dev/null)" == "$tree" ]] \
+      || _mb_no "git could not bring the resolved merge into $root, or it is not the tree the tests ran on; nothing merged"
   else
     tree="$(git -C "$root" merge-tree --write-tree "$bsha" "$head" < /dev/null 2>&1)" || _mb_no "git merge-tree could not build the merge here: $(head -1 <<< "$tree")"
     tree="$(head -1 <<< "$tree")"
@@ -2325,10 +2334,14 @@ _merge_branch() {
 # (the board's confirm), --check changes nothing. The push is one refspec for the one default ref (never forced, no tags, no other
 # branch). The reset is tkt worktree-reset --yes run inside the ticket's worktree, and waits for the push: until the merge is on
 # origin, the work branch's commits are on no remote and worktree-reset would refuse them.
+# _rec_strip_fields — t-27bc: a ticket.md on stdin without the frontmatter lines canon writes when it records a merge or a GitHub step
+# (_ff_strip_fields leaves merged_into: and merged_branch:, which are canon's too), to tell canon's change from a person's edit.
+_rec_strip_fields() { awk 'NR == 1 && $0 == "---" { fm = 1; print; next } fm && $0 == "---" { fm = 0 } fm && /^(github|runs|merged|merged_into|merged_branch|finish_dismissed|cloud_status):/ { next } { print }'; }
+
 # _merge_record_paths <root> <ticket dir> <branch> — t-27bc: the files canon itself wrote when it recorded a merge, still uncommitted in the
 # main checkout: the ticket's ticket.md (merged:, merged_into:, merged_branch:) and cockpit-sessions.md, and HANDOFF.md only when its whole
 # difference from HEAD is canon's generated Recent activity block and Scratch lines (the check _ff_here makes). One path per line; nothing when
-# the checkout is not on <branch> (a merge by ref touched no file there) or the file is git-ignored. Never a wildcard, never anyone's edit.
+# the checkout is not on <branch> (a merge by ref touched no file there); an ignored file never shows in git status, so it is never listed. Never a wildcard, never anyone's edit.
 _merge_record_paths() {
   local root="$1" tdir="$2" into="$3" cur prefix name p rb
   cur="$(git -C "$root" symbolic-ref -q --short HEAD 2>/dev/null || true)"
@@ -2337,10 +2350,15 @@ _merge_record_paths() {
   for name in ticket.md cockpit-sessions.md; do
     p="${prefix}${name}"
     [[ -f "$root/$p" && ! -L "$root/$p" ]] || continue
-    git -C "$root" check-ignore -q -- "$p" < /dev/null 2>/dev/null && continue
-    [[ -n "$(git -C "$root" status --porcelain -- "$p" < /dev/null 2>/dev/null)" ]] && printf '%s\n' "$p"
+    [[ -n "$(git -C "$root" status --porcelain -- "$p" < /dev/null 2>/dev/null)" ]] || continue
+    # ticket.md may hold a person's edit too: it counts only when, set against HEAD's copy, it differs in canon's own frontmatter fields
+    # (merged:, merged_into:, merged_branch:, github, runs, cloud_status) and nothing else. cockpit-sessions.md is written whole by canon.
+    if [[ "$name" == ticket.md ]] && git -C "$root" cat-file -e "HEAD:$p" 2>/dev/null; then
+      cmp -s <(git -C "$root" cat-file blob "HEAD:$p" | tr -d '\r' | _rec_strip_fields) <(tr -d '\r' < "$root/$p" | _rec_strip_fields) || continue
+    fi
+    printf '%s\n' "$p"
   done
-  if [[ -f "$root/HANDOFF.md" && ! -L "$root/HANDOFF.md" ]] && ! git -C "$root" check-ignore -q -- HANDOFF.md < /dev/null 2>/dev/null \
+  if [[ -f "$root/HANDOFF.md" && ! -L "$root/HANDOFF.md" ]] \
      && [[ -n "$(git -C "$root" status --porcelain -- HANDOFF.md < /dev/null 2>/dev/null)" ]] \
      && rb="$(recent_board)" && git -C "$root" cat-file -e HEAD:HANDOFF.md 2>/dev/null \
      && cmp -s <(git -C "$root" cat-file blob HEAD:HANDOFF.md | tr -d '\r' | "$rb" recent --strip | _ff_scratch_strip) <(tr -d '\r' < "$root/HANDOFF.md" | "$rb" recent --strip | _ff_scratch_strip); then
@@ -2360,7 +2378,10 @@ _commit_merge_record() {
     if git -C "$root" add -- "${paths[@]}" < /dev/null >/dev/null 2>&1 \
        && git -C "$root" ${ident[@]+"${ident[@]}"} commit -q -m "chore: record merge of $id" -- "${paths[@]}" < /dev/null >/dev/null 2>&1; then
       echo "finish: committed canon's merge record for $id: $(printf '%s, ' "${paths[@]}" | sed 's/, $//')"
-    else echo "finish: could not commit canon's merge record ($(printf '%s, ' "${paths[@]}" | sed 's/, $//')); pushing without it" >&2; fi
+    else
+      git -C "$root" reset -q -- "${paths[@]}" < /dev/null >/dev/null 2>&1 || true   # leave nothing staged by us
+      echo "finish: could not commit canon's merge record ($(printf '%s, ' "${paths[@]}" | sed 's/, $//')); pushing without it" >&2
+    fi
   fi
   rest="$(git -C "$root" status --porcelain --untracked-files=no < /dev/null 2>/dev/null | sed -n '1,5p' | cut -c4- | paste -sd, - | sed 's/,/, /g')"
   [[ -z "$rest" ]] || echo "finish: these files are modified and are not canon's merge record, left as they are: $rest"
