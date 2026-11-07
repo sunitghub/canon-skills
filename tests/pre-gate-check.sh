@@ -112,5 +112,10 @@ git checkout -q tools/caller.sh
 set +e; out="$(cd "$R" && env -u PRE_GATE_BASE bash "$PG" "$ID" 2>&1)"; code=$?; set -e
 assert_eq 2 "$code"; assert_contains "$out" "no git baseline" "pre-gate-check: no baseline fails loudly"
 
+# --- a long dead-code list is capped with a count, never cut silently ---
+reset
+{ printf '#!/usr/bin/env bash\n'; for i in 1 2 3 4 5 6 7 8 9 10; do printf 'dead_fn_%s() { :; }\n' "$i"; done; } > tools/many.sh; commit
+run "$ID"; assert_eq 0 "$code"; assert_contains "$out" "+2 more" "pre-gate-check: dead-code list capped with a count"
+
 [[ -f "$CANON_HOME/canary" && -z "$(ls -A "$TMPDIR")" ]] || fail "pre-gate-check: left a temp file behind"
 echo "pre-gate-check: ok"

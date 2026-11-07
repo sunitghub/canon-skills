@@ -17,6 +17,8 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
 
 1. **Wrapup** (`skills/wrapup/SKILL.md`): code-simplifier, code-reviewer (inline), security-review,
    doc-audit (`tools/doc-check` first), then refresh docs.
+   - **Pre-gate check** (before the mutation sweep, on the clean interim commit): `tools/pre-gate-check.sh <id>` stamps
+     shellcheck / `node --check` / `go vet` on the changed files as `evidence/pre-gate.log`; non-zero stops the close.
    - **Mutation sweep** (pre-evaluator) for shell, JS, Python or Go logic: `skills/mutation-test/SKILL.md`
      (`mutant-sweep --check` first), triage every survivor; after the interim commit
      `evidence.sh stamp <id> mutant-sweep -- mutant-sweep …`. Non-binding; not skippable without a reason:

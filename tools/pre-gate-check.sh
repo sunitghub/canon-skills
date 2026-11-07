@@ -66,7 +66,7 @@ run_checks() {
   while IFS= read -r f; do [[ -n "$f" ]] && args+=(--changed "$f"); done <<<"$files"
   if ((${#args[@]})); then
     scan="$("$SCRIPT_DIR/dead-code-scan.sh" "${args[@]}" 2>/dev/null)" || scan=""
-    dead="$(awk -F'\t' '$1=="DEAD" && n++ < 8 { print $2 ":" $3 }' <<<"$scan" | paste -sd' ' -)"
+    dead="$(awk -F'\t' '$1=="DEAD" { if (++n <= 8) l = l (l == "" ? "" : " ") $2 ":" $3 } END { if (n > 8) l = l " +" (n - 8) " more"; if (l != "") print l }' <<<"$scan")"
     ns="$(sed -n 's/^# not scanned: //p' <<<"$scan")"
   fi
   line+=" | dead code (advisory): ${dead:-none} | not scanned: ${ns:-none}"
