@@ -246,6 +246,8 @@ assert_grep "^runs: github$" ".tickets/$id/ticket.md"     # t-718b: the laptop's
 assert_contains "$out" "status: closed"
 assert_contains "$out" "evaluator: pass"
 assert_contains "$out" "matches graded-head"
+assert_contains "$out" "no LEARNINGS.md row added: "   # t-8a0d: the import reaches _import_learnings_row (this project has no LEARNINGS.md and the cloud ticket no learnings.md), in place of the old hint
+[[ "$out" != *"Add its LEARNINGS.md row locally"* ]] || fail "the old manual hint is still printed: $out"
 # t-4c09: only the clean import leaves an audit line; the six mismatched imports above were refused
 ri="$(cat "$CANON_HOME"/events/*.jsonl | grep -F '"kind":"github.results_imported"' | grep -F "\"ticket\":\"$id\"" || true)"
 assert_eq 1 "$(printf '%s\n' "$ri" | grep -c . || true)"
