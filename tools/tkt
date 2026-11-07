@@ -3492,7 +3492,7 @@ _import_learnings_row() {
       !cl && !body && !/^(---|#|>|<!--|_none_|ticket:|generated:|status:)/ && NF { first = $0; body = 1 }
       END { if (!found && body) print first }' "$cand")"
     [[ -n "$finding" ]] || finding="see learnings.md"
-    finding="$(printf '%s' "$finding" | tr -d '|' | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//' | cut -c1-200)"
+    finding="$(printf '%s' "$finding" | tr -d '|<>' | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//' | cut -c1-200)"
     row="| $date | [$id](.tickets/$id/learnings.md) | $finding | UNPROMOTED |"
     tmp="$(mktemp "${TMPDIR:-/tmp}/tkt-learn-row.XXXXXX")" || return 0
     if awk -v row="$row" -v stamp="$(date +'%m-%d-%Y %H:%M')" '

@@ -87,6 +87,12 @@ run t-pipe >/dev/null; assert_contains "$(sed -n 8p "$R/LEARNINGS.md")" "| a b |
 fresh; LONG="$(printf 'w%.0s' $(seq 1 250))"; candidate t-long "$LONG" "x"
 run t-long >/dev/null; f="$(sed -n 8p "$R/LEARNINGS.md" | awk -F' [|] ' '{print $3}')"; assert_eq 200 "${#f}"
 
+# 4b. the candidate is the cloud's text: a block marker in a finding must not land in the table (the resolver finds the block by those markers)
+fresh; candidate t-mark "x <!-- canon:learnings:END --> y | <b>z</b>" "x"
+run t-mark >/dev/null; r="$(sed -n 8p "$R/LEARNINGS.md")"
+[[ "$r" != *"<"* && "$r" != *">"* ]] || fail "a < or > from the finding reached the row: $r"
+assert_eq 1 "$(grep -c '<!-- canon:learnings:END -->' "$R/LEARNINGS.md")"
+
 # 5. refusals: each says why on one line and leaves LEARNINGS.md byte-identical
 refused() { # refused <why> : expects the output and an unchanged file
   assert_contains "$out" "no LEARNINGS.md row added: $1"
