@@ -146,7 +146,7 @@
   .ag-row .scr-id{margin:0}
   .scr-id .ag-mark,.scr-id .ag-badge{width:16px;height:16px;display:block}
   .scr-id .ag-badge{display:grid}
-  .scr-id .scr-badge,.ag-row .scr-id .scr-badge{position:absolute;right:-5px;bottom:-4px;width:10px;height:10px;margin:0;padding:1px;box-sizing:border-box;border-radius:50%;background:var(--bg);color:var(--text-body);vertical-align:baseline}
+  .scr-id .scr-badge{position:absolute;right:-5px;bottom:-4px;width:10px;height:10px;margin:0;padding:1px;box-sizing:border-box;border-radius:50%;background:var(--bg);color:var(--text-body);vertical-align:baseline}
   .ag-badge{width:16px;height:16px;border-radius:5px;display:grid;place-items:center;font-size:9px;font-weight:700;background:color-mix(in srgb,var(--st-work) 24%,transparent);color:var(--st-work)}
   .ag-row .ag-t1{font-size:14px;color:var(--text-body);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   /* the ticket id reads like Herdr's agent name: bright and bold, the title softer after it */
@@ -186,6 +186,7 @@
   .ad-table td.sess{width:100%;max-width:0;white-space:nowrap}
   .ad-table .s1,.ad-table .s2{overflow:hidden;text-overflow:ellipsis}
   .ad-table .s1{color:var(--text)}
+  .ad-table .s1:has(.scr-id){padding-bottom:4px}   /* t-f183: the overflow clip above would cut the badge that hangs below the icon */
   .ad-table .s2{font-size:11.5px;color:var(--text-muted)}
   /* t-25f9: names read as bright white in dark, like Herdr's; light keeps its own colours */
   html[data-theme="dark"] .ag-proj b,html[data-theme="dark"] .ag-row .ag-t1,html[data-theme="dark"] .ag-id,html[data-theme="dark"] .ad-table .s1,html[data-theme="dark"] .intr-what b{color:var(--th-text, #f5f8fc)}

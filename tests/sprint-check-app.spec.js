@@ -7462,6 +7462,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
     test('Agents rail (t-f183): a scratch row shows the agent mark with a pencil badge; Terminal, ticket and not-started rows keep theirs @webkit', async ({ page }) => {
       await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: fakeLivePage }));
       let at = 10; const row = (n, extra) => ({ ...scratchRow('s-' + n, '/tmp/proj-a/'), session: 'sx' + n, started: new Date(Date.now() - (at--) * 1000).toISOString(), ...extra });
+      interruptedStubbed.add(page);                                                          // a stopped scratch session shows the same icon in Admin's stopped list
+      await page.route('**/api/cockpit-interrupted', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ id: 's-e5e5', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', started: '2026-10-12T10:00:00Z', resumable: false, reason: '' }]) }));
       await openShell(page, [row('a1c1', { title: 'Claude scratch' }), row('b2p2', { agent: 'copilot', title: 'Copilot scratch' }), row('c3t3', { agent: 'term' }),
         { ...row('d4k4'), ticket: 't-d4k4', agent: 'claude' }]);
       await stubEmbeddedCockpit(page);
@@ -7490,8 +7492,10 @@ test.describe('cockpit in board (t-ddc8)', () => {
         expect(await claude.evaluate(el => el.getBoundingClientRect().width)).toBeLessThanOrEqual(18.5);
       }
       await page.locator('#nav-admin').click();                                              // Admin's table uses the same icon
-      await expect(page.locator('#ad-sessions .s1 .scr-id svg.ag-mk-claude')).toHaveCount(1);
-      await expect(page.locator('#ad-sessions .s1 .scr-id svg.scr-badge')).toHaveCount(2);
+      await expect(page.locator('#ad-sessions .s1 .scr-id svg.ag-mk-claude')).toHaveCount(2);                // the live Claude scratch and the stopped one
+      await expect(page.locator('#ad-sessions .s1 .scr-id svg.scr-badge')).toHaveCount(3);                  // two live scratch rows and the stopped one
+      const clipped = await page.locator('#ad-sessions .s1:has(.scr-id)').evaluateAll(cells => cells.filter(c => { const b = c.querySelector('.scr-badge').getBoundingClientRect(), r = c.getBoundingClientRect(); return b.bottom > r.bottom + 0.5 || b.top < r.top - 0.5; }).length);
+      expect(clipped).toBe(0);                                                              // the cell's own overflow clip must not cut the badge
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
