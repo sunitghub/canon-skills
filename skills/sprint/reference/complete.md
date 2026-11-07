@@ -745,6 +745,11 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    promotion into the durable store is the one step that stays manual and fresh-context, exactly
    as before — `promote-learnings` runs with no memory of this sprint, per its own SKILL.md.
 
+   **A cloud ticket does not run the sweep (t-8a0d).** A ticket with `runs: github` in its `ticket.md` (sent to a Claude cloud
+   session) still runs `tkt learn <id>`, so `.tickets/<id>/learnings.md` exists, but it does not run the `learnings-sweep`
+   skill and commits no change to root `LEARNINGS.md`: that commit conflicts with every release that lands on main first.
+   `tkt import-results` on the user's machine adds the row from the candidate instead.
+
 9. **Close.** Run `sprint complete` — never write `ticket.md` status directly. If it refuses
    because a required file is missing or checklist items remain unchecked, report the blockers
    and stop. After closing it runs `tkt compact` (`t-2fb6`), which shrinks `evidence/` of tickets
