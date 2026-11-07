@@ -3,7 +3,11 @@
 # the skill's prose sampled candidates instead of checking each one and missed most of them, so the scan is code.
 # Bash + git + POSIX awk only, so it runs in Git Bash on Windows (no Python: tests/no-python-windows-paths.sh).
 #
-# Usage: dead-code-scan.sh [<pathspec>...]   (default: the whole repo)
+# Usage: dead-code-scan.sh [--changed <file>]... [<pathspec>...]   (default: the whole repo)
+# --changed (t-014f): declarations are read only from the named files, references from the whole pathspec scope, so a
+# symbol in a changed file that only an unchanged file calls stays live. It adds a "# not scanned: <files>" line naming
+# every named file the scan could not read (an unsupported type such as .css or .json, or an untracked or excluded
+# path; docs .md/.txt are never code and are left out), so a silent skip never reads as a clean pass.
 # Output, tab-separated, one row per candidate, grouped DEAD, TESTONLY, OVEREXP:
 #   <class>  <file>:<line>  <symbol>  <lang>  <entry|->  <refs>
 # then "# scanned: <langs>", "# skipped: <.ext>=<files> ..." (or "none") and "# checked: <n> declarations".
@@ -12,11 +16,16 @@
 
 set -euo pipefail
 
+changed=()
+while [[ "${1-}" == --changed ]]; do [[ $# -ge 2 ]] || { echo "dead-code-scan: --changed needs a file" >&2; exit 2; }; changed+=("$2"); shift 2; done
+
 root="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "dead-code-scan: not a git repository — refusing to scan" >&2; exit 2; }
 cd "$root"
 
 list="$(mktemp "${TMPDIR:-/tmp}/dead-code-scan.XXXXXX")"
-trap 'rm -f "$list"' EXIT
+dlist="$(mktemp "${TMPDIR:-/tmp}/dead-code-scan.XXXXXX")"
+trap 'rm -f "$list" "$dlist"' EXIT
+if ((${#changed[@]})); then printf '%s\n' "${changed[@]}" > "$dlist"; fi
 
 # Tracked text files (git grep -I skips binaries) minus vendored/built dirs and docs. Docs are never read:
 # a mention in prose, a ticket, a changelog or an earlier report keeps no code alive.
@@ -25,7 +34,7 @@ git -c core.quotePath=false grep -I -l -e '' -- "$@" 2>/dev/null \
   | grep -vE '(^|/)(node_modules|\.git|dist|build|__pycache__|vendor)/' \
   | grep -vE '\.(md|txt)$|(^|/)CHANGELOG[^/]*$|^\.tickets/|^\.reports/' > "$list" || true
 
-awk -v list="$list" '
+awk -v list="$list" -v dlist="$dlist" -v hasdecl="${#changed[@]}" '
 function lang_of(f, first,   b) {
   b = f; sub(/.*\//, "", b)
   if (b ~ /\.(js|ts|jsx|tsx)$/) return "js"
@@ -74,17 +83,21 @@ BEGIN {
   nf = 0
   while ((getline f < list) > 0) files[++nf] = f
   close(list)
+  for (i = 1; i <= nf; i++) inlist[files[i]] = 1
+  while ((getline f < dlist) > 0) { dset[f] = 1; dord[++nd] = f }
+  close(dlist)
   nskip = split(".cs .rs .java .kt .rb .php .swift .c .h .cpp .scala .lua .ps1", skipext, " ")
 
   # Pass 1: declarations.
   nc = 0
   for (i = 1; i <= nf; i++) {
     f = files[i]; first = ""; ln = 0; lang = ""
+    if (hasdecl + 0 > 0 && !(f in dset)) continue   # references only: this file is read in pass 2
     lower = tolower(f)
     for (k = 1; k <= nskip; k++) if (substr(lower, length(lower) - length(skipext[k]) + 1) == skipext[k]) skipped[skipext[k]]++
     while ((getline s < ("./" f)) > 0) {   # "./": gawk reads a file named "-" or "/dev/stdin" as stdin
       sub(/\r$/, "", s)   # CRLF checkouts (Git for Windows autocrlf) would hide the shebang
-      if (++ln == 1) { first = s; lang = lang_of(f, first); if (lang == "") break; scanned[lang] = 1 }
+      if (++ln == 1) { first = s; lang = lang_of(f, first); if (lang == "") { nscan[f] = 1; break }; scanned[lang] = 1 }
       n = decl(lang, s)
       if (n == "") continue
       nc++; cname[nc] = n; cfile[nc] = f; cline[nc] = ln; clang[nc] = lang
@@ -136,4 +149,13 @@ BEGIN {
   for (k = 1; k <= nskip; k++) if (skipped[skipext[k]]) out = out (out == "" ? "" : " ") skipext[k] "=" skipped[skipext[k]]
   print "# skipped: " (out == "" ? "none" : out)
   print "# checked: " nc " declarations"
+  if (hasdecl + 0 > 0) {
+    out = ""
+    for (i = 1; i <= nd; i++) {
+      f = dord[i]
+      if (f ~ /\.(md|txt)$|(^|\/)CHANGELOG[^\/]*$|^\.tickets\/|^\.reports\// || seen[f]++) continue
+      if (inlist[f] ? nscan[f] : (system("test -f \"./" f "\"") == 0)) out = out (out == "" ? "" : " ") f
+    }
+    print "# not scanned: " (out == "" ? "none" : out)
+  }
 }'
