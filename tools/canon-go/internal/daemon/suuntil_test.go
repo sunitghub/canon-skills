@@ -36,10 +36,11 @@ func TestSessionsSuUntil(t *testing.T) {
 	emit("terminal.su_granted", "again", "10", now.Add(-9*time.Minute))    // expired, then granted again
 	emit("terminal.su_expired", "again", "", now.Add(-8*time.Minute))
 	emit("terminal.su_granted", "again", "10", now.Add(-1*time.Minute))
+	emit("terminal.su_granted", "future", "10", now.Add(48*time.Hour))  // a forged line stamped far ahead
 	emit("terminal.su_granted", "agent", "10", now.Add(-1*time.Minute)) // a granted line for a session that is not a Terminal
 	root := t.TempDir()
 	s := newServer(config{token: bootTok, projectRoot: root, stateDir: t.TempDir()})
-	for _, c := range []struct{ sid, agent string }{{"on", "term"}, {"ended", "term"}, {"crashed", "term"}, {"again", "term"}, {"agent", "claude"}, {"quiet", "term"}} {
+	for _, c := range []struct{ sid, agent string }{{"on", "term"}, {"ended", "term"}, {"crashed", "term"}, {"again", "term"}, {"agent", "claude"}, {"quiet", "term"}, {"future", "term"}} {
 		s.sessions[c.sid] = &session{sid: c.sid, projectRoot: root, cwd: root, agent: c.agent, status: "running", started: now,
 			subs: map[chan frame]struct{}{}, lastActivity: time.Now(), statusSince: time.Now()}
 	}
@@ -66,7 +67,7 @@ func TestSessionsSuUntil(t *testing.T) {
 			t.Errorf("%s: su_until %q, want about %s", sid, got[sid], want.Format(time.RFC3339))
 		}
 	}
-	for _, sid := range []string{"ended", "crashed", "agent", "quiet"} {
+	for _, sid := range []string{"ended", "crashed", "agent", "quiet", "future"} {
 		if got[sid] != "" {
 			t.Errorf("%s: su_until %q, want none", sid, got[sid])
 		}

@@ -7435,9 +7435,13 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return pollSessions(); });
       const line = page.locator('#ag-list .ag-su');
       await expect(line).toHaveCount(1);                                                    // the Terminal's only
-      await expect(line).toHaveText(/^su · 1:(3\d|2\d)$/);
+      await expect(line).toHaveText(/^su · 1:\d\d$/);
       await expect(page.locator('#ag-list .ag-row').filter({ has: page.locator('.ag-su') })).toContainText('Terminal');
-      await expect.poll(async () => (await line.textContent())).not.toBe('su · 1:35');       // it ticks on its own
+      await line.evaluate(el => { el.textContent = 'stale'; });                              // tickSu rewrites the text from data-su, nothing else
+      await page.evaluate(async () => (await import('/static/cockpit-sessions.js')).tickSu());
+      await expect(line).toHaveText(/^su · 1:\d\d$/);
+      await line.evaluate(el => { el.textContent = 'stale'; });                              // and the 1 s interval does it alone, well before the 5 s poll re-renders
+      await expect(line).toHaveText(/^su · 1:\d\d$/, { timeout: 1600 });
       await expect(line).not.toHaveClass(/warn/);
       await page.evaluate(() => { document.querySelector('#ag-list .ag-su').dataset.su = String(Date.now() + 20000); });   // 20 s left
       await expect(line).toHaveClass(/warn/);

@@ -45,7 +45,7 @@ func suUntil(now time.Time) map[string]time.Time {
 				sid := ev.Data["session"]
 				switch ev.Kind {
 				case "terminal.su_granted":
-					if min, err := strconv.Atoi(ev.Data["minutes"]); err == nil && min > 0 && min <= suUntilMax && sid != "" {
+					if min, err := strconv.Atoi(ev.Data["minutes"]); err == nil && min > 0 && min <= suUntilMax && sid != "" && !ev.TS.After(time.Now().Add(time.Minute)) { // a line stamped in the future is not a grant
 						m[sid] = ev.TS.Add(time.Duration(min) * time.Minute)
 					}
 				case "terminal.su_expired":
