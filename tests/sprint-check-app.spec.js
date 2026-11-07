@@ -7827,6 +7827,35 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });                                             // the opened panes fetch /api/git: no route may still be answering when the page closes (t-23f6)
     });
 
+    // Protects t-15d0: the Terminal pane over the Board leaves the Board only its own share, so a lane never runs under the pane and scrolls to every card.
+    test('Terminal pane (t-15d0): the Board takes only its share, so its lanes end above the pane and scroll; beside narrows it; closing restores @webkit', async ({ page }) => {
+      await page.setViewportSize({ width: 1280, height: 900 });
+      const cards = Array.from({ length: 8 }, (_, i) => ({ id: 't-d' + i + '15', title: 'Done card ' + i, status: 'closed', priority: 2, tags: [], created: '2026-01-01T00:00:00Z' }));
+      await page.route(/\/api\/tickets(\?.*)?$/, route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(cards) }));
+      await stubCockpit(page);
+      await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: termStub }));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      const lane = page.locator('.column-body[data-status="closed"]');
+      await expect.poll(() => lane.locator('.card').count()).toBeGreaterThanOrEqual(5);   // the lane shows a capped list
+      const geo = () => page.evaluate(() => { const l = document.querySelector('.column-body[data-status="closed"]'), o = document.getElementById('cockpit-overlay'); return { laneBottom: l.getBoundingClientRect().bottom, scrollH: l.scrollHeight, clientH: l.clientHeight, ovTop: o.getBoundingClientRect().top, appW: document.getElementById('app').getBoundingClientRect().width, ovLeft: o.getBoundingClientRect().left }; });
+      await askBoard(page, { type: 'open-terminal-request', placement: 'below' });
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/ck-pane-below/);
+      await expect.poll(async () => { const g = await geo(); return g.laneBottom <= g.ovTop; }).toBe(true);
+      const g = await geo();
+      expect(g.scrollH).toBeGreaterThan(g.clientH);                                      // more cards than fit: it scrolls, none is out of reach
+      await lane.hover();
+      await page.mouse.wheel(0, 400);
+      await expect.poll(() => lane.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
+      await askBoard(page, { type: 'open-terminal-request', placement: 'beside' });
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/ck-pane-beside/);
+      await expect.poll(async () => { const b = await geo(); return b.appW <= b.ovLeft + 1; }).toBe(true);
+      await page.locator('#cockpit-overlay .ck-tab-pill-close').first().click();
+      await expect.poll(() => page.evaluate(() => document.documentElement.className.includes('pane-board') || document.documentElement.style.getPropertyValue('--ckr'))).toBeFalsy();
+      expect((await geo()).laneBottom).toBeGreaterThan(800);                              // the Board has the whole window again
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     // Protects the shell's prefix relay: a key typed in the pane's Terminal (not the active tab's) still reaches the shell, so `P n` works there.
     test('Terminal pane (t-ccf5): the prefix typed inside the pane\'s Terminal reaches the shell (P n), not only the active tab\'s @webkit', async ({ page }) => {
       await openShell(page, []);

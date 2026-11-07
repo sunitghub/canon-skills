@@ -64,10 +64,15 @@ export function applyPane(activeId, open, tabs) {
   }
   const on = onBoard || onSess;
   h.hidden = !on;
-  if (!on) { ov.style.removeProperty('--ckr'); term.style.removeProperty('--ckr'); return; }
+  // t-15d0: the pane is laid over the Board, so the Board takes only its own share; else a lane's lower cards sit under the pane with nothing to scroll
+  const root = document.documentElement;
+  root.classList.toggle('pane-board-below', onBoard && dir === 'below');
+  root.classList.toggle('pane-board-beside', onBoard && dir === 'beside');
+  if (!on) { ov.style.removeProperty('--ckr'); term.style.removeProperty('--ckr'); root.style.removeProperty('--ckr'); return; }
   const b = boxOf(pane.host);
   ratio = clampRatio(ratio, dir === 'beside' ? b.width : b.height, MIN[dir]);
   (onBoard ? ov : term).style.setProperty('--ckr', ratio);
+  if (onBoard) root.style.setProperty('--ckr', ratio);
   // the handle sits on the seam, in window coordinates
   const px = dir === 'beside' ? b.left + ratio * b.width : b.top + ratio * b.height;
   Object.assign(h.style, dir === 'beside'

@@ -16,6 +16,9 @@
 
     /* ── App shell ────────────────────────────── */
     #app { display: grid; grid-template-rows: var(--header-h) 1fr; height: 100vh; }
+    /* t-15d0: with a Terminal pane over the Board (board-pane.js), the Board is only its own share, so each lane's height is bounded and it scrolls */
+    html.pane-board-below #app { height: calc(var(--ckr, .5) * 100vh - 3px); }
+    html.pane-board-beside #app { width: calc(var(--ckr, .5) * 100vw - 3px); }
 
     /* ── Header ───────────────────────────────── */
     #header {
