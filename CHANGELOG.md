@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.47.13] - 2026-11-07
+
+Board page and daemon: run `canon update`, end your sessions, restart the board (`canon`) and reload.
+
 - Fixed (Check & merge, worktrees): a worktree ticket no longer conflicts on `LEARNINGS.md` every time. When that is the only conflicted file, `tkt merge` keeps both sides' rows (newest first) and the newest `last run` line, runs the tests on the resolved files and lands exactly that tree; any other conflict still stops with the files named. **Push** in the Finish step first commits canon's own merge record for the ticket (`chore: record merge of <id>`), so the main checkout is not left showing modified files; your own edits stay as they are. A closed ticket's session tab now says it can be closed, and ending a tab whose session is already gone finishes at once (it waited 90 s) (t-27bc).
 
 ## [0.47.12] - 2026-11-07
