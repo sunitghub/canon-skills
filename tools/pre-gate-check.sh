@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # pre-gate-check.sh <ticket-id> — t-014f: cheap deterministic checks on the sprint's changed files, stamped as
 # evidence before any gate is dispatched, so the evaluator reads the result instead of rediscovering it.
-#   shellcheck on changed .sh, node --check on changed .js, go vet on the changed Go packages. A failing tool exits
+#   Runs shellcheck on changed .sh, node --check on changed .js, go vet on the changed Go packages. A failing tool exits
 #   non-zero (the stamped log then ends `exit 1`, which `sprint check-evidence` refuses). A MISSING tool is never a
 #   pass: the line says `<tool> skipped | no <tool>`.
 #   Advisory only (never a refusal): symbols declared in a changed file and referenced nowhere (dead-code-scan.sh
@@ -79,9 +79,10 @@ if [[ "${1-}" == --run ]]; then run_checks; exit $?; fi
 
 id="${1-}"
 [[ "$id" =~ ^t-[a-z0-9]{4}$ ]] || { echo "usage: pre-gate-check.sh <ticket-id>" >&2; exit 2; }
-set +e; "$SCRIPT_DIR/evidence.sh" stamp "$id" pre-gate -- bash "$SCRIPT_DIR/pre-gate-check.sh" --run; rc=$?; set -e
-if [[ $rc -eq 125 || $rc -eq 2 && ! -f "$(git rev-parse --show-toplevel)/.tickets/$id/evidence/pre-gate.log" ]]; then exit "$rc"; fi
-# Show the stamped result: everything between the three header lines and the final `exit` line.
 log="$(git rev-parse --show-toplevel)/.tickets/$id/evidence/pre-gate.log"
+set +e; msg="$("$SCRIPT_DIR/evidence.sh" stamp "$id" pre-gate -- bash "$SCRIPT_DIR/pre-gate-check.sh" --run 2>&1)"; rc=$?; set -e
+# 125 or 2 from evidence.sh itself (a refusal, a missing ticket): nothing was stamped, say why.
+if [[ $rc -eq 125 || ( $rc -eq 2 && "$msg" != "evidence: wrote "* ) ]]; then printf '%s\n' "$msg" >&2; exit "$rc"; fi
+# Show the stamped result: everything between the three header lines and the final `exit` line.
 sed -e '1,3d' -e '$d' "$log"
 exit "$rc"
