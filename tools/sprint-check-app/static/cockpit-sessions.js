@@ -262,6 +262,11 @@ const AGENT_NAME={claude:'Claude',copilot:'Copilot',pi:'Pi',term:'Terminal'};
 // t-10ac: the mark that leads a Claude row, inline SVG in its brand orange, the same in both themes. A simplified shape: swap in the official
 // asset and check its usage rules before a release leans on it. (The bare GitHub mark for the cloud rows is t-761b's.)
 const CLAUDE_ORANGE='#d97757';   // a brand colour, the same in both themes: not a theme variable (the theme guard reads CSS; this is an SVG attribute)
+// t-f183: an agent's mark in one place, for ticket rows and scratch rows. A new agent's own icon is one entry here (Copilot's later);
+// an agent without one gets the lettered tile.
+const agentTile=agent=>`<span class="ag-badge">${esc(agentName(agent).charAt(0)||'?')}</span>`;
+const AGENT_MARK={claude:()=>markClaude()};
+export const agentMark=agent=>(AGENT_MARK[agent]||(()=>agentTile(agent)))();
 const markClaude=()=>'<svg class="ag-mark ag-mk-claude" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v6M12 16v6M2 12h6M16 12h6M5 5l4 4M15 15l4 4M19 5l-4 4M5 19l4-4" fill="none" stroke="'+CLAUDE_ORANGE+'" stroke-width="2.6" stroke-linecap="round"/></svg>';
 export const agentName=a=>AGENT_NAME[a]||'';
 export function ageShort(secs){ return secs<60 ? '<1m' : secs<3600 ? Math.floor(secs/60)+'m' : secs<86400 ? Math.floor(secs/3600)+'h' : Math.floor(secs/86400)+'d'; }
@@ -409,7 +414,7 @@ export function renderSessionSurfaces(){
       const su=v.suUntilMs!==null ? suLine(v.suUntilMs,Date.now()) : '';
       const aria=[(title||v.scrTitle||v.ticket||'Scratch session')+': '+agentLine(v), time.tip, su?'full shell on':'', v.meter, v.signal?'state from: '+v.signal:''].filter(Boolean).join(' \u00b7 ');
       const name=v.ticket?`<span class="ag-id">${esc(v.ticket)}</span><span class="ag-d">${esc(title)}</span>`:(v.scratch?esc(v.scrTitle||'Scratch session'):'<span class="ag-none">no ticket</span>');
-      const icon=v.scratch?scratchIcon(v.agent):v.agent==='claude'?markClaude():`<span class="ag-badge">${esc(agentName(v.agent).charAt(0)||'?')}</span>`;
+      const icon=v.scratch?scratchIcon(v.agent):agentMark(v.agent);
       return `<button class="ag-row st st-${v.state}${inView?' on':''}"${inView?' aria-current="true"':''} data-i="${rail.indexOf(v)}" title="${escAttr(tip)}" aria-label="${escAttr(aria)}">`+
       `<span class="ag-i">${icon}</span>`+
       `<span class="ag-t1">${name}</span>`+
@@ -489,7 +494,10 @@ export const GIT_ICON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor
 // t-f553: a scribble and a pencil, the scratch session mark on the rail, Admin and the Scratch buttons.
 export const TERMINAL_ICON='<svg class="scr-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Terminal"><rect x="2.5" y="3.5" width="19" height="17" rx="2.5"/><path d="M2.5 8.5h19"/><path d="M8.5 12.5l3 2.5-3 2.5"/></svg>';
 // A Terminal is a scratch session whose agent is "term": it gets the Terminal button's icon, not the pencil.
-export const scratchIcon=agent=>agent==='term'?TERMINAL_ICON:SCRATCH_ICON;
+// A scratch session shows its agent's mark with the pencil as a badge (t-f553's "no ticket" cue); a Terminal keeps its own icon; no agent yet
+// (the picker is still up) is the plain pencil.
+export const scratchIcon=agent=>agent==='term'?TERMINAL_ICON:!agent?SCRATCH_ICON:
+  `<span class="scr-id" role="img" aria-label="Scratch session">${agentMark(agent)}${SCRATCH_ICON.replace('class="scr-ico"','class="scr-ico scr-badge" aria-hidden="true"').replace(' role="img" aria-label="Scratch session"','')}</span>`;
 export const SCRATCH_ICON='<svg class="scr-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Scratch session"><path d="M1.5 19c1.2-1.5 2.3-1.5 3.3 0s2.2 1.5 3.3 0 2-1 2.9.2"/><path d="M19.3 3.9a1.9 1.9 0 0 1 2.7 2.7L12.3 16.3l-3.6 1 1-3.6z"/><path d="M17.6 5.6l2.7 2.7"/></svg>';
 // t-f553: scratch tabs each board has open, keyed by project id — shown on the rail before
 // their agent starts (the daemon only reports running sessions).

@@ -142,6 +142,11 @@
   .ag-row.on::before{content:'';position:absolute;left:0;top:7px;bottom:7px;width:3px;border-radius:2px;background:var(--accent)}   /* t-7456: the session in view, as the Projects page's bar */
   .ag-row .ag-i{display:grid;place-items:center}
   .ag-row .scr-ico{margin:0;width:15px;height:15px}
+  .scr-id{position:relative;display:inline-grid;place-items:center;width:16px;height:16px;margin-right:5px;vertical-align:-3px;flex-shrink:0}   /* t-f183: an agent's mark with the scratch pencil at its corner */
+  .ag-row .scr-id{margin:0}
+  .scr-id .ag-mark,.scr-id .ag-badge{width:16px;height:16px;display:block}
+  .scr-id .ag-badge{display:grid}
+  .scr-id .scr-badge,.ag-row .scr-id .scr-badge{position:absolute;right:-5px;bottom:-4px;width:10px;height:10px;margin:0;padding:1px;box-sizing:border-box;border-radius:50%;background:var(--bg);color:var(--text-body);vertical-align:baseline}
   .ag-badge{width:16px;height:16px;border-radius:5px;display:grid;place-items:center;font-size:9px;font-weight:700;background:color-mix(in srgb,var(--st-work) 24%,transparent);color:var(--st-work)}
   .ag-row .ag-t1{font-size:14px;color:var(--text-body);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   /* the ticket id reads like Herdr's agent name: bright and bold, the title softer after it */

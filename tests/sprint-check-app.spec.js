@@ -7457,6 +7457,44 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
+    // Protects t-f183: a scratch session shows its agent's mark with the pencil as a badge (rail and Admin share scratchIcon); a Terminal, a ticket
+    // session and a not-started scratch keep their own icons; the badge has a background of its own on both themes.
+    test('Agents rail (t-f183): a scratch row shows the agent mark with a pencil badge; Terminal, ticket and not-started rows keep theirs @webkit', async ({ page }) => {
+      await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: fakeLivePage }));
+      let at = 10; const row = (n, extra) => ({ ...scratchRow('s-' + n, '/tmp/proj-a/'), session: 'sx' + n, started: new Date(Date.now() - (at--) * 1000).toISOString(), ...extra });
+      await openShell(page, [row('a1c1', { title: 'Claude scratch' }), row('b2p2', { agent: 'copilot', title: 'Copilot scratch' }), row('c3t3', { agent: 'term' }),
+        { ...row('d4k4'), ticket: 't-d4k4', agent: 'claude' }]);
+      await stubEmbeddedCockpit(page);
+      await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return pollSessions(); });
+      const icon = t => page.locator('#ag-list .ag-row').filter({ hasText: t }).locator('.ag-i');
+      const claude = icon('Claude scratch');
+      await expect(claude.locator('.scr-id[aria-label="Scratch session"] svg.ag-mk-claude')).toHaveCount(1);
+      await expect(claude.locator('.scr-id svg.scr-badge')).toHaveCount(1);
+      const cop = icon('Copilot scratch');
+      await expect(cop.locator('.scr-id .ag-badge')).toHaveText('C');
+      await expect(cop.locator('.scr-id svg.scr-badge')).toHaveCount(1);
+      await expect(page.locator('#ag-list .ag-row').filter({ hasText: 'Terminal' }).locator('.ag-i svg.scr-ico[aria-label="Terminal"]')).toHaveCount(1);
+      const tk = page.locator('#ag-list .ag-row').filter({ hasText: 't-d4k4' }).locator('.ag-i');
+      await expect(tk.locator('svg.ag-mk-claude')).toHaveCount(1);
+      await expect(tk.locator('.scr-badge, .scr-id')).toHaveCount(0);                      // a ticket session carries no scratch cue
+      const plain = await page.evaluate(async () => { const m = await import('/static/cockpit-sessions.js'); return { none: m.scratchIcon(''), pi: m.scratchIcon('pi') }; });
+      expect(plain.none).toBe(await page.evaluate(async () => (await import('/static/cockpit-sessions.js')).SCRATCH_ICON));   // not started yet: the plain pencil
+      expect(plain.pi).toContain('ag-badge');
+      await page.evaluate(async () => { const { renderSessionSurfaces } = await import('/static/cockpit-sessions.js'); renderSessionSurfaces(); });
+      // the badge paints its own ground on both themes, and the icon cell keeps its width
+      for (const theme of ['dark', 'light']) {
+        await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+        const b = await claude.locator('svg.scr-badge').evaluate(el => { const c = getComputedStyle(el); return { bg: c.backgroundColor, w: el.getBoundingClientRect().width }; });
+        expect(b.bg).not.toBe('rgba(0, 0, 0, 0)');
+        expect(b.w).toBeGreaterThan(8);
+        expect(await claude.evaluate(el => el.getBoundingClientRect().width)).toBeLessThanOrEqual(18.5);
+      }
+      await page.locator('#nav-admin').click();                                              // Admin's table uses the same icon
+      await expect(page.locator('#ad-sessions .s1 .scr-id svg.ag-mk-claude')).toHaveCount(1);
+      await expect(page.locator('#ad-sessions .s1 .scr-id svg.scr-badge')).toHaveCount(2);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     test('scratch (t-e162): the board path bar has + Scratch; the scratch view says where it runs @webkit', async ({ page }) => {
       const where = [];
       await stubCockpit(page);
