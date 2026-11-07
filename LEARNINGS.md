@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-06-2026 17:30
+learnings-sweep last run: 11-06-2026 18:30
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-07 | [t-4456](.tickets/t-4456/learnings.md) | A second animation on an element that already animates (card-in on first render) loses on equal specificity when its sheet loads later, and a resend loop in the spec hides it: put the old class back in the test; read the evidence result before saying the suite passed | UNPROMOTED |
 | 2026-11-06 | [t-e28c](.tickets/t-e28c/learnings.md) | Copy a user's own numbering into the criterion verbatim: the ticket said the click was step 0, the user had said step 1, and a correct doc failed the evaluator on the gap | UNPROMOTED |
 | 2026-11-06 | [t-1148](.tickets/t-1148/learnings.md) | A poll that writes must be tested with two parallel runs (a sequential second run is stopped by the outer check and cannot kill a record-twice mutant); a state that reads a clock needs an injectable one | UNPROMOTED |
 | 2026-11-06 | [t-e7fb](.tickets/t-e7fb/learnings.md) | Advice a refusal prints must be a command that works (git pull could not, so users moved files by hand and lost github.md); changing output text means grepping the board for code that matches it | UNPROMOTED |
