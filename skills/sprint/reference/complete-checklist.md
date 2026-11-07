@@ -17,16 +17,15 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
 
 1. **Wrapup** (`skills/wrapup/SKILL.md`): code-simplifier, code-reviewer (inline), security-review,
    doc-audit (`tools/doc-check` first), then refresh docs.
-   - **Pre-gate check** (before the mutation sweep, on the clean interim commit): `tools/pre-gate-check.sh <id>` stamps
-     shellcheck / `node --check` / `go vet` on the changed files as `evidence/pre-gate.log`; non-zero stops the close.
+   - **Pre-gate:** `tools/pre-gate-check.sh <id>` first; non-zero stops the close.
    - **Mutation sweep** (pre-evaluator) for shell, JS, Python or Go logic: `skills/mutation-test/SKILL.md`
      (`mutant-sweep --check` first), triage every survivor; after the interim commit
-     `evidence.sh stamp <id> mutant-sweep -- mutant-sweep …`. Non-binding; not skippable without a reason:
+     `evidence.sh stamp <id> mutant-sweep -- mutant-sweep …`. Non-binding; skipping needs
      `mutation-test | skipped | <reason>`.
    - **Skill eval** if a skill or gate agent changed (canon checkout only): `tools/skill-eval-scope.sh`; for each `run <skill>`
-     follow `skills/skill-eval/SKILL.md` here; advisory. Commit its `history.jsonl` line.
+     follow `skills/skill-eval/SKILL.md`; advisory. Commit its `history.jsonl` line.
    - **Interim commit** (specific paths, no `git add -A`) before any gate.
-   - **Evidence:** in a `git clone` of the final commit, run
+   - **Evidence:** in a clone of the final commit, run
      `CANON_TICKETS_DIR=<project>/.tickets evidence.sh stamp <id> test-sh -- <project test command>`
      (`scripts/test.sh` in canon); re-stamp after tracked changes.
    - `## Wrapup Gates` in `acceptance.md`: a row per gate (`ran`/`skipped` + evidence);
@@ -71,7 +70,7 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
   `.tickets/<id>/review-notes.md` / `eval-report.md` and return the verdict line; read-only except
   that report; never kill by name or pattern; evaluator only: take the
   `evaluator-run-id` as the very last command. Never pass a changed-files list.
-- `Plan` fallback: `sprint relay-report <id> [reviewer]` writes its report (the main session never types one).
+- `Plan` fallback: `sprint relay-report <id> [reviewer]` writes its report.
 
 ## Read the detail when
 
