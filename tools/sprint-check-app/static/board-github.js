@@ -944,7 +944,7 @@ function showSent(panel, t, tab) {
       <h3>Sent ${esc(t.id)} as issue #${esc(n)}</h3>
       <p>Run it in the cloud:</p>
       <ol class="ck-gh-steps">
-        <li>One time only: in claude.ai/code create an environment named <b>canon</b>, set Network access to Limited, and paste the allowed domains and the setup script. Both are in Factory › GitHub (Copy domains, Copy setup script), or print them with <code>tkt cloud-env</code>.</li>
+        <li>One time only: in claude.ai/code create an environment named <b>canon</b>, set Network access to Limited with Allow package managers ticked, and paste the allowed domains and the setup script. Both are in Factory › GitHub (Copy domains, Copy setup script), or print them with <code>tkt cloud-env</code>.</li>
         <li>${line ? `Start a Claude cloud session on the canon environment and type:<pre class="ck-gh-pre ck-gh-prompt" id="ck-gh-prompt">${esc(line)}</pre>` : `Start a Claude cloud session on the canon environment and point it at issue #${esc(n)}.`}</li>
         <li>The card moves to In progress. When the session finishes it shows Results ready: press Import results, then Check &amp; merge.</li>
       </ol>

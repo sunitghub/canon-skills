@@ -16556,6 +16556,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
       await expect(topSteps.nth(0)).toContainText('tkt cloud-env');
       await expect(topSteps.nth(1)).toContainText('Start a Claude cloud session on the canon environment and type:');
       await expect(topSteps.nth(1).locator('#ck-gh-prompt')).toHaveCount(1);
+      await expect(topSteps.nth(0)).toContainText('Allow package managers ticked');
       await expect(topSteps.nth(2)).toContainText('The card moves to In progress. When the session finishes it shows Results ready: press Import results, then Check & merge.');
       await expect(page.locator('#ck-gh-sent')).not.toContainText('The card moved to In progress');
       // t-d287: one line per button, in the buttons' order, naming the real command (To Claude Cloud is `tkt send-issue <id> --launch`)
@@ -16568,6 +16569,9 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
       const bg0 = await copy.evaluate(e => getComputedStyle(e).backgroundColor);
       await copy.hover();
       expect(await copy.evaluate(e => getComputedStyle(e).backgroundColor)).not.toBe(bg0);
+      const promptText = await page.locator('#ck-gh-prompt').textContent();   // t-e28c: the prompt now sits inside step 2; Copy prompt still copies it
+      await copy.click();
+      await expect.poll(() => page.evaluate(() => window.__copied)).toBe(promptText);
       const line = `tkt send-issue ${id} --launch`;
       await page.evaluate(async () => { (await import('/static/board-core.js')).state.isGitProject = true; });   // the fixture project is not a git repository
       await expect(page.locator('#ck-gh-to-cloud')).toHaveText('To Claude Cloud');
