@@ -178,6 +178,12 @@ export async function renderCockpitWorktree(t) {
     // t-19d1: the sprint is already in progress in this worktree (see worktreeRun) — Resume goes there.
     if (cockpitState.worktreeCwd === null) cockpitState.worktreeCwd = runRow.path;
   }
+  // t-8be9: a ticket closing here (tkt land made land/<id>) opens in that worktree. openCockpit starts an in_progress tab at '' (the
+  // daemon reuses its saved cwd), which with no saved cwd means Main, so '' is the placeholder replaced here. Once per tab: a later pick of Main stays.
+  if (!lock.locked && !tab.landDefaultDone && !tab.ghPick && ghClosingHere(t) && (cockpitState.worktreeCwd === null || cockpitState.worktreeCwd === '')) {
+    const landRow = others.find(e => e.own && !e.held_by && e.branch === `land/${t.id}`);
+    if (landRow) { cockpitState.worktreeCwd = landRow.path; tab.landDefaultDone = true; }
+  }
   // t-19d1: the main checkout is the only worktree — there's no real choice to
   // protect (t-cd06/t-470d's explicit pick guards against the WRONG checkout), so preselect Main.
   // A GitHub pick (t-718b) leaves worktreeCwd null on purpose: that is not "nothing picked yet".

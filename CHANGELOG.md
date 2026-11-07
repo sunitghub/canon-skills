@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+- Fixed (Continue here): a ticket closing in its `land/<id>` worktree now opens its session there. The Worktree picker no longer lists that worktree as "unavailable (branch not merged)" with no owner, and a new tab for it starts in that worktree, not on the main checkout, even when its saved worktree (`.cockpit-cwd`) is missing; a saved worktree or a later pick of Main still wins (t-8be9).
+
 ## [0.47.13] - 2026-11-07
 
 Board page and daemon: run `canon update`, end your sessions, restart the board (`canon`) and reload.
