@@ -1342,6 +1342,9 @@ cmd_send_issue() {
     else
       printf '5. Run `sprint complete`: a fresh reviewer and a fresh evaluator are dispatched, and neither is skipped or written by hand.\n'
     fi
+    # t-8a0d: this body is the one thing a cloud session reads first (its own ticket.md has no runs: github yet, import-issue sets it only once a PR exists)
+    printf '   Close step 8: let `tkt learn %s` write .tickets/%s/learnings.md, but do NOT run the learnings-sweep skill and do not edit LEARNINGS.md.\n' "$id" "$id"
+    printf '   The user'"'"'s `tkt import-results` adds its row on their machine, so this PR cannot conflict there.\n'
     if _tickets_tracked "$root" "$id"; then   # t-43a7: export pushes nothing here; the folder (docs, reports, machine log) rides in the PR
       printf '6. Run `tkt export %s`: .tickets/ is tracked in this repository, so it only writes the machine log. Then commit .tickets/%s/\n' "$id" "$id"
       printf '   (the sprint docs, reports and that log) on the PR branch and push it.\n'
@@ -3465,10 +3468,6 @@ _evidence_os_lines() {
   return 0
 }
 
-# cmd_import_results <id> [--pr N] — t-554c: brings a cloud sprint's .tickets/<id>/ back from canon-results/<id> (t-07b5: or, with no branch, from the PR's head, which is where a tracked .tickets/ goes). Files
-# arrive byte-for-byte (but an in_progress ticket.md comes back open, t-1cf5); a differing local file is kept in
-# .before-import/; the close already happened in the cloud, so this only reports it. The remote branch is deleted only
-# after the files are written.
 # _import_learnings_row <root> <ticket dir> <id> — t-8a0d: a cloud session no longer runs learnings-sweep, so its PR carries no LEARNINGS.md row (that
 # commit was the guaranteed conflict with main). The row is added here instead, from the imported .tickets/<id>/learnings.md: one row at the top of the
 # canon:learnings table, the stamp line rewritten, nothing else touched, left uncommitted. The finding is the first filled Candidate lessons item, else the first body
@@ -3485,6 +3484,7 @@ _import_learnings_row() {
     date="$(awk 'match($0, /^generated: *[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/) { d = substr($0, RSTART, RLENGTH); sub(/^generated: */, "", d); print d; exit }' "$cand")"
     [[ -n "$date" ]] || date="$(date +%Y-%m-%d)"
     finding="$(awk '
+      { sub(/\r$/, "") }
       /^## Candidate lessons/ { cl = 1; next }
       /^## / { cl = 0 }
       cl && /^- \[[ xX]\] / { t = $0; sub(/^- \[[ xX]\] */, "", t)
@@ -3495,9 +3495,10 @@ _import_learnings_row() {
     finding="$(printf '%s' "$finding" | tr -d '|<>' | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//' | cut -c1-200)"
     row="| $date | [$id](.tickets/$id/learnings.md) | $finding | UNPROMOTED |"
     tmp="$(mktemp "${TMPDIR:-/tmp}/tkt-learn-row.XXXXXX")" || return 0
-    if awk -v row="$row" -v stamp="$(date +'%m-%d-%Y %H:%M')" '
+    if row="$row" awk -v stamp="$(date +'%m-%d-%Y %H:%M')" '
         { L[NR] = $0 }
         END {
+          row = ENVIRON["row"]   # not -v: awk -v would process backslash escapes in the finding (\n, \|)
           for (i = 1; i <= NR; i++) {
             if (L[i] == "<!-- canon:learnings:BEGIN -->") { nb++; bi = i }
             if (L[i] == "<!-- canon:learnings:END -->") { ne++; ei = i }
@@ -3507,7 +3508,8 @@ _import_learnings_row() {
             if (!st && L[i] ~ /^learnings-sweep last run: /) { print "learnings-sweep last run: " stamp; st = 1; continue }
             print L[i]; if (i == bi + 2) print row
           }
-        }' "$lf" > "$tmp" 2>/dev/null; then cat "$tmp" > "$lf"; echo "  added its LEARNINGS.md row for $id (uncommitted): $finding"
+        }' "$lf" > "$tmp" 2>/dev/null; then
+      if cat "$tmp" > "$lf" 2>/dev/null; then echo "  added its LEARNINGS.md row for $id (uncommitted): $finding"; else why="LEARNINGS.md is not writable"; fi
     else why="LEARNINGS.md has no single canon:learnings table"; fi
     rm -f "$tmp"
   fi
@@ -3515,6 +3517,10 @@ _import_learnings_row() {
   return 0
 }
 
+# cmd_import_results <id> [--pr N] — t-554c: brings a cloud sprint's .tickets/<id>/ back from canon-results/<id> (t-07b5: or, with no branch, from the PR's head, which is where a tracked .tickets/ goes). Files
+# arrive byte-for-byte (but an in_progress ticket.md comes back open, t-1cf5); a differing local file is kept in
+# .before-import/; the close already happened in the cloud, so this only reports it. The remote branch is deleted only
+# after the files are written.
 cmd_import_results() {
   local id="" pr=""
   while [[ $# -gt 0 ]]; do
