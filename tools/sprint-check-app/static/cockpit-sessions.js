@@ -272,7 +272,7 @@ export const agentName=a=>AGENT_NAME[a]||'';
 export function ageShort(secs){ return secs<60 ? '<1m' : secs<3600 ? Math.floor(secs/60)+'m' : secs<86400 ? Math.floor(secs/3600)+'h' : Math.floor(secs/86400)+'d'; }
 function stateGlyph(state){
   if(state==='needs-you') return '<span class="ag-pill">Needs you</span>';
-  if(state==='working' || state==='running') return '<span class="sdot ag-ring"></span>';
+  if(state==='working' || state==='running') return '<span class="sdot spin ag-ring"></span>';
   return '<span class="sdot"></span>';   // done: solid (the state colour); idle and not-started: hollow (CSS)
 }
 // Sidebar state line: short, with the countdown where the reaper applies.
@@ -361,7 +361,7 @@ function cloudHtml(rows){
   return `<div class="ag-cloudh"><b>Cloud</b><span>${rows.length}</span></div>`+rows.map(r=>{
     const what=r.state==='unknown' ? (r.pending?'checking GitHub':'GitHub could not be checked') : CLOUD_LABEL[r.state];
     const at=cloudAt(r), tip=(r.title||r.id)+(r.issue?' · GitHub issue #'+r.issue:'')+' · '+what;
-    const glyph=r.state==='working' ? '<span class="sdot ag-ring"></span>'
+    const glyph=r.state==='working' ? '<span class="sdot spin ag-ring"></span>'
       : r.state==='results-ready' ? '<span class="ag-pill ag-pill-go"><span class="ag-pl">Results ready</span><span class="ag-ps">Results</span></span>'
       : r.state==='imported' ? '<span class="ag-pill ag-pill-go"><span class="ag-pl">Merge ready</span><span class="ag-ps">Merge</span></span>'
       : '<span class="sdot"></span>';

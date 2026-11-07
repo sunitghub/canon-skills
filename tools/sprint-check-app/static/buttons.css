@@ -7,6 +7,15 @@
      .b-accent       a sub-action beside the main one (Scratch, CI, + efficiency): accent outline and tint on hover
      .b-neutral      any other secondary button (Copy, Browse…): brighter border and text on hover
    Theme variables only (tests/sprint-check-theme.js scans this file for both pages). */
+/* t-ae96: the base every .btn builds from, defined once (it was two copies, one per page). A page sets its own size through --btn-pad,
+   --btn-fs, --btn-radius and --btn-bg on :root; the roles below sit on top of it, and a busy button is the aria-busy rule in tokens.css. */
+.btn {
+  padding: var(--btn-pad, 8px 14px); border-radius: var(--btn-radius, 8px); font-size: var(--btn-fs, 12.5px); font-weight: 600; cursor: pointer;
+  border: 1px solid var(--border); background: var(--btn-bg, var(--surface-raised)); color: var(--text);
+  transition: background .1s, border-color .1s;
+}
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* The shape every role button shares; :where adds no specificity, so a button's own rule can still drop the border or
    change the background (an icon-only close, the board's raised .btn). */
 :where(.b-neutral, .b-close, .b-danger, .b-danger-main, .b-accent, .b-primary) { border-width: 1px; border-style: solid; }

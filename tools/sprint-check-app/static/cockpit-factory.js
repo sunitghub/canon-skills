@@ -1,6 +1,7 @@
 // t-9641: the Cockpit shell's Factory page (per project; GitHub moved here from Admin, t-90a3). Declarations only:
 // the load-time code is initFactory(), which cockpit-main.js runs in order once every module has loaded.
 import { esc, escAttr, toast } from './cockpit-core.js';
+import { withBusy } from './busy.js';
 import { activeTab, isProjectTab, openProject } from './cockpit-tabs.js';
 import { getProjects } from './cockpit-projects.js';
 import { showView } from './cockpit-views.js';
@@ -61,14 +62,12 @@ async function ghLoad(force){
   const pid=ghPickProject();
   if(!pid || (!force && pid===ghPid)) return;
   ghPid=pid; const gen=++ghGen;
-  // the same spinner the registry uses (reg-spin), in the header and on the button; the rows stay until the answer lands
+  // the one spinner (.spin), in the header and, through withBusy, on the button; the rows stay until the answer lands
   const again=document.getElementById('fac-gh-recheck');
-  document.getElementById('fac-gh-count').innerHTML='<span class="reg-spin" aria-hidden="true"></span>Checks · checking…';
-  again.disabled=true; again.setAttribute('aria-busy','true'); again.innerHTML='<span class="reg-spin" aria-hidden="true"></span>Checking…';
+  document.getElementById('fac-gh-count').innerHTML='<span class="spin" aria-hidden="true"></span>Checks · checking…';
   intakeWaiting('Checking…');
-  const res=await fetchDoctor(pid,force);
+  const res=await withBusy(again,'Checking…',()=>fetchDoctor(pid,force));
   if(gen!==ghGen) return;
-  again.disabled=false; again.removeAttribute('aria-busy'); again.textContent='Check again';
   if(force) refreshCardRow(pid);
   ghDoctor=res.ok&&res.doctor?res.doctor:null;
   if(!ghDoctor) ghPid=null;   // a failed read is tried again the next time Factory opens

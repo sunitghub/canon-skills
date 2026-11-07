@@ -7,6 +7,8 @@ const net = require('net');
 const { newTicketId, claimTicketId, adoptBoardTicket, removeTestTicket } = require('./board-spec-ids');
 
 const BASE = process.env.SPRINT_CHECK_BASE || 'http://localhost:8423';
+// t-ae96: a busy button's spinner is its ::before; read it the way the page paints it.
+const busySpin = loc => loc.evaluate(e => { const c = getComputedStyle(e, '::before'); return { shown: c.content !== 'none' && c.content !== 'normal' && c.display !== 'none', animation: c.animationName, duration: c.animationDuration, top: c.borderTopColor }; });
 // t-c21a: a handler that forwards a board poll and rewrites its reply needs the full body; the board's own If-None-Match
 // would get an empty 304 from the real server.
 const fetchFull = route => route.fetch({ headers: { ...route.request().headers(), 'if-none-match': '' } });
@@ -6140,6 +6142,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await expect(list.locator('.ag-row', { hasText: 't-ccc3' })).toHaveAttribute('aria-label', /done 1m · claude · reaps in 28m/);
         await expect(list.locator('.ag-row', { hasText: 't-bbb2' })).toHaveAttribute('aria-label', /working · claude/);
         await expect(list.locator('.ag-row', { hasText: 't-bbb2' }).locator('.ag-ring')).toHaveCount(1);
+        expect(await list.locator('.ag-row', { hasText: 't-bbb2' }).locator('.ag-ring').evaluate(e => getComputedStyle(e).animationDuration)).toBe('1s');   // t-ae96: the rail's ring turns at the shared speed
         await expect(list.locator('.ag-row', { hasText: 't-ddd4' })).toHaveAttribute('aria-label', /running/); // old-daemon fallback
         await expect(list.locator('.ag-row', { hasText: 't-aaa1' })).toHaveAttribute('aria-label', /: needs you .*state from: Claude Code notification hook$/);
         await expect(list.locator('.ag-row.st-idle')).toContainText('no ticket'); // hostile ticket id is dropped, not rendered
@@ -10353,14 +10356,14 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await commitBtn.click();
       // Commit in flight: spinner + label, busy, Cancel locked.
       await expect(commitBtn).toHaveText('Committing…');
-      await expect(commitBtn.locator('.ck-spin')).toBeVisible();
+      await expect.poll(async () => (await busySpin(commitBtn)).shown).toBe(true);
       await expect(commitBtn).toHaveAttribute('aria-busy', 'true');
       await expect(page.locator('#ck-tcm-cancel')).toBeDisabled();
       releaseCommit();
       // Worktree creation in flight: the dialog is gone, + New carries the spinner.
       await expect(page.locator('#ck-tcommit')).not.toHaveClass(/open/);
       await expect(plus).toHaveText('Creating…');
-      await expect(plus.locator('.ck-spin')).toBeVisible();
+      await expect.poll(async () => (await busySpin(plus)).shown).toBe(true);
       await expect(plus).toHaveAttribute('aria-busy', 'true');
       await expect(commitBtn).toHaveText('Commit & create worktree'); // label restored for next time
       releaseWorktree();
@@ -13616,7 +13619,7 @@ test.describe('Canon Cockpit Projects card and Skill Eval view (t-7d8d, t-0e8b)'
     await sprint.click();
     await page.locator('#cc-ok').click();
     await expect(sprint).toContainText('Adding sprint…');
-    await expect(sprint.locator('.reg-spin')).toBeVisible();
+    await expect.poll(async () => (await busySpin(sprint)).shown).toBe(true);
     await expect(sprint).toHaveAttribute('aria-busy', 'true');
     await expect(sprint).toBeDisabled();
     await expect(eff).toBeDisabled();
@@ -13628,7 +13631,7 @@ test.describe('Canon Cockpit Projects card and Skill Eval view (t-7d8d, t-0e8b)'
     for (const theme of ['dark', 'light']) {
       await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
       const accent = await themeColor(page, '--accent');   // resolved to rgb() the same way the spinner's colour is
-      const spin = await sprint.locator('.reg-spin').evaluate(e => getComputedStyle(e).borderTopColor);
+      const spin = (await busySpin(sprint)).top;
       expect(spin).toBe(accent);
       seen.add(spin);
       await page.locator('.regbtns[data-reg="proj-a"]').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-7d8d', 'visuals', `busy-${theme}.png`) });
@@ -13685,7 +13688,7 @@ test.describe('Canon Cockpit Projects card and Skill Eval view (t-7d8d, t-0e8b)'
     await bar.click();
     await page.locator('#cc-ok').click();
     await expect(bar).toContainText('Adding sprint…');
-    await expect(bar.locator('.reg-spin')).toBeVisible();
+    await expect.poll(async () => (await busySpin(bar)).shown).toBe(true);
     await expect(bar).toHaveAttribute('aria-busy', 'true');
     await expect(bar).toBeDisabled();
     expect(await bar.evaluate(e => getComputedStyle(e).opacity)).toBe('1');   // busy, not the dimmed .btn:disabled look
@@ -13715,9 +13718,9 @@ test.describe('Canon Cockpit Projects card and Skill Eval view (t-7d8d, t-0e8b)'
     const sprint = regBtn(page, 'sprint');
     await sprint.click();
     await page.locator('#cc-ok').click();
-    expect(await sprint.locator('.reg-spin').evaluate(e => getComputedStyle(e).animationName)).toBe('none');
+    expect((await busySpin(sprint)).animation).toBe('none');
     await page.emulateMedia({ reducedMotion: 'no-preference' });
-    expect(await sprint.locator('.reg-spin').evaluate(e => getComputedStyle(e).animationName)).toBe('reg-spin');
+    expect((await busySpin(sprint)).animation).toBe('spin');
     reg.release({ ok: false, error: 'x' });
   });
 
@@ -15153,7 +15156,7 @@ test.describe('Canon Cockpit Projects card: Git status icon (t-8d72)', () => {
     await expect.poll(() => posts.length).toBe(1);
     expect(posts[0]).toEqual({ pid: 'proj-plain', body: { confirm: true } });
     await expect(icon(page, 'proj-plain')).toHaveAttribute('aria-busy', 'true');
-    await expect(icon(page, 'proj-plain').locator('.reg-spin')).toBeVisible();
+    await expect.poll(async () => (await busySpin(icon(page, 'proj-plain'))).shown).toBe(true);
     await expect(icon(page, 'proj-plain')).toBeDisabled();
     release();
     await expect(page.locator('#toast')).toContainText('✓ proj-plain now keeps a version history');
@@ -17933,7 +17936,10 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.route('**/api/github/doctor**', async r => { await held; await r.fallback(); });
     await page.locator('#fac-gh-recheck').click();
     await expect(page.locator('#fac-gh-count')).toHaveText('Checks · checking…');
-    await expect(page.locator('#fac-gh-count .reg-spin')).toHaveCount(1);
+    await expect(page.locator('#fac-gh-count .spin')).toHaveCount(1);
+    await expect.poll(async () => (await busySpin(page.locator('#fac-gh-recheck'))).shown).toBe(true);
+    expect((await busySpin(page.locator('#fac-gh-recheck'))).duration).toBe('1s');                       // one turn per second, the same as every spinner
+    expect(await page.locator('#fac-gh-count .spin').evaluate(e => getComputedStyle(e).animationDuration)).toBe('1s');
     await expect(page.locator('#fac-gh-recheck')).toHaveAttribute('aria-busy', 'true');
     await expect(page.locator('#fac-gh-recheck')).toBeDisabled();
     await expect(page.locator('#fac-gh-checks .gh-row')).toHaveCount(3);

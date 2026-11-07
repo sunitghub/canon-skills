@@ -48,22 +48,6 @@ export function missingTicketMessage(ticketId, worktreePath, mainBranch) {
     + `then git -C "${worktreePath}" merge ${main}`;
 }
 
-// t-d254: swap a button into a busy "spinner + label" state and back. The label is
-// text (textContent), the spinner a fixed element, so nothing here parses HTML.
-export function setButtonBusy(btn, busyLabel, idleLabel) {
-  btn.textContent = '';
-  if (busyLabel) {
-    const sp = document.createElement('span');
-    sp.className = 'ck-spin';
-    sp.setAttribute('aria-hidden', 'true');
-    btn.append(sp, busyLabel);
-    btn.setAttribute('aria-busy', 'true');
-  } else {
-    btn.textContent = idleLabel;
-    btn.removeAttribute('aria-busy');
-  }
-}
-
 export function setTermMessage(text) {
   const el = document.getElementById('ck-term-msg');
   if (el) el.textContent = text;

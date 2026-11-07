@@ -1,5 +1,6 @@
 // t-565f: the Cockpit shell's projects code (was part of cockpit.html's one script). Declarations only: the
 // load-time code is initProjects(), which cockpit-main.js runs in order once every module has loaded.
+import { withBusy } from './busy.js';
 import { cockpitConfirm, esc, escAttr, openHelp, toast } from './cockpit-core.js';
 import { GIT_ICON, SCRATCH_ICON, renderSessionSurfaces, startScratch, startSessionPoll } from './cockpit-sessions.js';
 import { showView } from './cockpit-views.js';
@@ -219,17 +220,17 @@ const _refreshBusy=new Set();
 async function refreshSkills(id,name,path,btn){
   if(_refreshBusy.has(id)) return;
   _refreshBusy.add(id);
-  const saved=btn.innerHTML; btn.disabled=true; btn.setAttribute('aria-busy','true');
-  btn.innerHTML='<span class="reg-spin" aria-hidden="true"></span>'+esc('Refreshing…');
   try{
-    const r=await fetch('/api/skills-refresh?project='+encodeURIComponent(id),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-    const res=await r.json().catch(()=>({}));
+    const res=await withBusy(btn,'Refreshing…',async()=>{
+      const r=await fetch('/api/skills-refresh?project='+encodeURIComponent(id),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+      return r.json().catch(()=>({}));
+    });
     if(res&&res.ok){ toast('\u2713 Refreshed the skills in '+name); }
     else if(res&&res.unsupported){ await cockpitConfirm({title:'Refresh the skills manually', body:'This host can\u2019t run it \u2014 run this in Git Bash, then reopen the project:', code: res.cmd||('skills.sh refresh '+path), okOnly:true, okLabel:'Done'}); }
     else await cockpitConfirm({title:'Refresh did not finish', body:(res&&res.error)||'skills.sh refresh failed', code:(res&&res.output)||'', okOnly:true, okLabel:'Close'});
   }catch(e){ toast('Request failed'); }
   finally{
-    _refreshBusy.delete(id); btn.disabled=false; btn.removeAttribute('aria-busy'); btn.innerHTML=saved;
+    _refreshBusy.delete(id);
     fillCardStats(id,true);
   }
 }
@@ -246,20 +247,22 @@ export async function registerSkill(id,name,path,skill,btn){
   if(!(await cockpitConfirm({title:'Register the “'+skill+'” skill in “'+name+'”?', body:'This '+detail+'. Safe to re-run.'+noGit, okLabel:'Register'}))) return;
   if(_regBusy.has(id)) return;
   _regBusy.add(id);
-  const btns=[...document.querySelectorAll('.regskill')].filter(b=>b.dataset.id===id);
-  if(btn&&!btns.includes(btn)) btns.push(btn);
-  const saved=btns.map(b=>b.innerHTML);
-  btns.forEach(b=>{ b.disabled=true; });
-  if(btn){ btn.setAttribute('aria-busy','true'); btn.innerHTML='<span class="reg-spin" aria-hidden="true"></span>'+esc('Adding '+skill+'…'); }
+  const others=[...document.querySelectorAll('.regskill')].filter(b=>b.dataset.id===id&&b!==btn);   // the project's other add buttons wait too
+  const was=others.map(b=>b.disabled);
+  others.forEach(b=>{ b.disabled=true; });
   let restored=false;
   const restore=()=>{
     if(restored) return; restored=true;
     _regBusy.delete(id);
-    btns.forEach((b,i)=>{ b.disabled=false; b.removeAttribute('aria-busy'); b.innerHTML=saved[i]; });
+    others.forEach((b,i)=>{ b.disabled=was[i]; });
   };
   try{
-    const r=await fetch('/api/register-skill?project='+encodeURIComponent(id)+'&skill='+encodeURIComponent(skill),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-    const res=await r.json().catch(()=>({}));
+    const call=async()=>{
+      const r=await fetch('/api/register-skill?project='+encodeURIComponent(id)+'&skill='+encodeURIComponent(skill),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+      return r.json().catch(()=>({}));
+    };
+    const res=await (btn ? withBusy(btn,'Adding '+skill+'…',call) : call());
+    restore();
     if(res&&res.ok){ toast('✓ Registered '+skill+' in '+name); load(); return; }
     if(res&&res.unsupported){ restore(); await cockpitConfirm({title:'Register '+skill+' manually', body:'This host can’t run it — run this in a terminal, then reopen the project:', code: res.cmd||('skills.sh add '+skill+' '+path), okOnly:true, okLabel:'Done'}); return; }
     toast((res&&res.error)?('Could not register: '+res.error):('Could not register '+skill));
@@ -278,15 +281,15 @@ async function trackChanges(id,name,btn,opts){
     +(synced?' Note: this folder is in '+synced+'. Sync services can damage this history — consider moving the project out of '+synced+' first.':'')
     +(opts.why?' '+opts.why:'');
   if(!(await cockpitConfirm({title:'Turn on version history for “'+name+'”?', body, okLabel:'Turn on', cancelLabel:opts.why?'Not now':'Cancel'}))) return false;
-  const saved=btn&&btn.innerHTML;
-  if(btn){ btn.disabled=true; btn.setAttribute('aria-busy','true'); btn.innerHTML='<span class="reg-spin" aria-hidden="true"></span>'; }
   try{
-    const r=await fetch('/api/track-changes?project='+encodeURIComponent(id),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:true})});
-    const res=await r.json().catch(()=>({}));
+    const call=async()=>{
+      const r=await fetch('/api/track-changes?project='+encodeURIComponent(id),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:true})});
+      return { r, res: await r.json().catch(()=>({})) };
+    };
+    const { r, res } = await (btn ? withBusy(btn,'',call) : call());   // no label: the spinner alone keeps the button its width
     if(res&&res.ok){ toast('✓ '+name+' now keeps a version history'); load(); return true; }
     toast((res&&res.error)?res.error:'Could not turn on version history (HTTP '+r.status+')');
   }catch(e){ toast('Request failed'); }
-  finally{ if(btn){ btn.disabled=false; btn.removeAttribute('aria-busy'); btn.innerHTML=saved; } }
   return false;
 }
 

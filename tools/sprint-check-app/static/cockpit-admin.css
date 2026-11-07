@@ -83,8 +83,6 @@
   .mt-prop-h{padding:8px 14px 4px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);background:var(--bg);border-bottom:1px solid var(--border-muted)}
   .mt-prop footer{display:flex;gap:8px;align-items:center;padding:10px 14px;flex-wrap:wrap}
   .mt-prop footer span{flex:1;min-width:200px;color:var(--text-muted);font-size:11.5px}
-  .mt-spin{display:inline-block;width:11px;height:11px;border:2px solid var(--border-hover);border-top-color:var(--accent);border-radius:50%;animation:mtsp .7s linear infinite;vertical-align:-2px;margin-right:6px}
-  @keyframes mtsp{to{transform:rotate(360deg)}}
   .mt-legacy{margin-top:12px;border:1px dashed var(--border);border-radius:12px;padding:8px 12px}
   .mt-legacy summary{cursor:pointer;font-size:12px;color:var(--text-muted)}
   .mt-legacy p{font-size:11.5px;color:var(--text-muted);margin:6px 0}
@@ -157,11 +155,9 @@
   .ag-row .ag-su{grid-column:2 / -1;font-size:11px;color:var(--text-muted);font-variant-numeric:tabular-nums;white-space:nowrap}   /* t-a4f8: su is on; the last 30 s are amber, as the Terminal's own warning */
   .ag-row .ag-su.warn{color:var(--th-warn-ink,var(--amber))}
   .ag-row .sdot{width:8px;height:8px}
-  .ag-ring{box-sizing:border-box;width:10px!important;height:10px!important;background:transparent!important;border:2px solid color-mix(in srgb,var(--st) 28%,transparent);border-top-color:var(--st);animation:ag-spin .9s linear infinite}
-  @keyframes ag-spin{to{transform:rotate(360deg)}}
+  .ag-ring{--spin-size:10px;--spin-gap:0;--spin-head:var(--st);--spin-track:color-mix(in srgb,var(--st) 28%,transparent);width:10px!important;height:10px!important;background:transparent!important}   /* t-ae96: the .spin ring, in the state's colour */
   .ag-pill{font-size:10px;font-weight:700;letter-spacing:.02em;color:var(--st-ink);background:var(--amber);border-radius:6px;padding:1px 7px;white-space:nowrap}   /* Herdr's orange "Needs you" pill, from the theme's own amber */
   .st-not-started .ag-t1{font-style:italic;color:var(--text-muted)}
-  @media (prefers-reduced-motion:reduce){.ag-ring{animation:none}}
   /* t-10ac: as the rail narrows the description goes first, then the agent name; the ticket id, the age and the state glyph stay at every width
      (the default 230px rail reads icon, id, age, state: nothing cut mid-word). */
   @container ag (max-width:260px){.ag-row .ag-d{display:none}.ag-row .ag-id{margin-right:0}.ag-row{column-gap:6px}.ag-row .ag-pill{font-size:10px;padding:1px 5px}}

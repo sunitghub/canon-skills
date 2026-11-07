@@ -25,13 +25,7 @@
     }
     .modal-actions { display: flex; gap: 8px; }
 
-    .btn {
-      padding: 7px 14px; border-radius: 7px;
-      border: 1px solid var(--border); background: var(--surface-raised);
-      color: var(--text); font-size: 12px; font-weight: 600; cursor: pointer;
-      transition: background .1s, border-color .1s;
-    }
-    .btn:disabled { opacity: .3; cursor: not-allowed; }
+    :root { --btn-pad: 7px 14px; --btn-fs: 12px; --btn-radius: 7px; }   /* the board's .btn size; the base is in buttons.css */
 
     .theme-toggle {
       width: 28px; height: 28px; border-radius: 6px;

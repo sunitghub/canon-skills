@@ -106,3 +106,18 @@ html[data-theme="light"] {
   --shadow-2: 0 4px 14px rgba(30,30,60,.12);
   --shadow-3: 0 12px 32px rgba(30,30,60,.18);
 }
+
+/* t-ae96: the one spinner. Every spin in the UI is this ring at --spin (one turn per second); a variant only sets the ring's size
+   (--spin-size), colours (--spin-head, --spin-track) or gap (--spin-gap). The busy button's ::before shares the declaration, because a
+   pseudo-element cannot carry a class. */
+:root { --spin: 1s; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin, button[aria-busy="true"]::before {
+  content: ""; display: inline-block; box-sizing: border-box; flex: none;
+  width: var(--spin-size, 10px); height: var(--spin-size, 10px); margin-right: var(--spin-gap, 6px); vertical-align: -1px;
+  border: 2px solid var(--spin-track, color-mix(in srgb, currentColor 28%, transparent)); border-top-color: var(--spin-head, currentColor);
+  border-radius: 50%; animation: spin var(--spin) linear infinite;
+}
+/* a busy button keeps full strength (it reads as working, not disabled) and shows the progress cursor */
+button[aria-busy="true"], button[aria-busy="true"]:disabled { opacity: 1; cursor: progress; }
+@media (prefers-reduced-motion: reduce) { .spin, button[aria-busy="true"]::before { animation: none; border-top-color: var(--spin-head, currentColor); } }

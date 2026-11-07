@@ -1,7 +1,8 @@
 import { state } from './board-core.js';
 import { esc, escAttr, md, worktreeRun } from './board-helpers.js';
 import { showToast } from './board-render.js';
-import { activeIframe, cockpitState, missingTicketMessage, requestPreview, setButtonBusy, setTermMessage } from './board-cockpit.js';
+import { activeIframe, cockpitState, missingTicketMessage, requestPreview, setTermMessage } from './board-cockpit.js';
+import { withBusy } from './busy.js';
 import { closeCockpit, openCockpitDetails } from './board-cockpit-rail.js';
 import { bindGithubPickerRows, ghClosingHere, ghOut, githubPickerRowsHTML, hideGithubPanel, showGithubPanel } from './board-github.js';
 
@@ -352,19 +353,17 @@ export async function renderCockpitWorktree(t) {
       if (await openTicketCommitDialog(t.id, commitPlan, branch) === 'cancel') return;
     } else if (!await appDialog({ title: 'Create a new worktree?', body: `Create a new git worktree for branch "${branch}"?`, okLabel: 'Create worktree' })) return;
     input.disabled = true;
-    btn.disabled = true;
-    setButtonBusy(btn, 'Creating…');
     try {
-      const r = await fetch('/api/worktrees', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ branch })
+      const { r, d } = await withBusy(btn, 'Creating…', async () => {
+        const r = await fetch('/api/worktrees', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ branch })
+        });
+        return { r, d: await r.json() };
       });
-      const d = await r.json();
       if (!r.ok || !d.ok) {
         await appDialog({ title: 'Could not create worktree', body: d && d.error ? d.error : `HTTP ${r.status}`, okOnly: true });
-        setButtonBusy(btn, null, '+ New');
         input.disabled = false;
-        btn.disabled = false;
         return;
       }
       await renderCockpitWorktree(t);
@@ -378,9 +377,7 @@ export async function renderCockpitWorktree(t) {
       selectCockpitWorktree(t, createdRow ? createdRow.dataset.cwd : d.path);
     } catch (err) {
       await appDialog({ title: 'Could not create worktree', body: String(err), okOnly: true });
-      setButtonBusy(btn, null, '+ New');
       input.disabled = false;
-      btn.disabled = false;
     }
   };
   btn.addEventListener('click', create);
@@ -450,32 +447,28 @@ function openTicketCommitDialog(ticketId, plan, branch) {
       overlay.onkeydown = null;
       resolve(result);
     };
-    const setBusy = (busy) => { commitBtn.disabled = cancelBtn.disabled = busy; };
     commitBtn.onclick = async () => {
       const paths = [...files.querySelectorAll('input[type=checkbox]')].filter(cb => cb.checked).map(cb => cb.dataset.path);
-      setBusy(true);
-      setButtonBusy(commitBtn, 'Committing…');
+      cancelBtn.disabled = true;   // Escape and Cancel wait while the commit runs; the button itself is busy through withBusy
       status.textContent = '';
       try {
-        const r = await fetch('/api/ticket-commit/' + encodeURIComponent(ticketId), {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ paths }),
+        const { r, d } = await withBusy(commitBtn, 'Committing…', async () => {
+          const r = await fetch('/api/ticket-commit/' + encodeURIComponent(ticketId), {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ paths }),
+          });
+          return { r, d: await r.json().catch(() => ({})) };
         });
-        const d = await r.json().catch(() => ({}));
+        cancelBtn.disabled = false;
         if (!r.ok || !d.ok) {
           status.textContent = 'Commit failed: ' + (d && d.error ? d.error : `HTTP ${r.status}`);
-          setButtonBusy(commitBtn, null, 'Commit & create worktree');
-          setBusy(false);
           return;
         }
         showToast(`✓ Committed ${d.commit} — ${d.message}`, 'warn');
-        setButtonBusy(commitBtn, null, 'Commit & create worktree');
-        setBusy(false);
         done('committed');
       } catch (err) {
+        cancelBtn.disabled = false;
         status.textContent = 'Commit failed: ' + err;
-        setButtonBusy(commitBtn, null, 'Commit & create worktree');
-        setBusy(false);
       }
     };
     cancelBtn.onclick = () => done('cancel');
