@@ -18,6 +18,7 @@ export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 XDG_CONFIG_HOME="$WORK/
 mkdir -p "$WORK/tmp" "$WORK/home"; : > "$WORK/home/canary"
 export TMPDIR="$WORK/tmp" CANON_HOME="$WORK/home"
 unset CANON_TICKETS_DIR
+export GOCACHE="$WORK/gocache" GOPATH="$WORK/gopath" GOTOOLCHAIN=local GOFLAGS=-mod=mod
 
 ID=t-abcd
 R="$WORK/repo"; mkdir -p "$R/tools" && cd "$R"
@@ -43,12 +44,37 @@ assert_contains "$out" "not scanned: none" "pre-gate-check: nothing unscanned"
 
 # --- seeded shellcheck error: fails ---
 reset
-printf '#!/usr/bin/env bash\necho $1\nrm $2 $3\n' > tools/bad.sh; commit
+printf '#!/usr/bin/env bash\ncd "$1"\nls\n' > tools/bad.sh; commit
 run "$ID"
 [[ "$code" != 0 ]] || fail "pre-gate-check: a seeded shellcheck error passed"
 assert_contains "$out" "shellcheck FAIL" "pre-gate-check: failure line"
-assert_contains "$out" "SC2086" "pre-gate-check: the tool's own finding is shown"
+assert_contains "$out" "SC2164" "pre-gate-check: the tool's own finding is shown"
 [[ "$(tail -n1 ".tickets/$ID/evidence/pre-gate.log")" == "exit 1" ]] || fail "pre-gate-check: failing log not stamped exit 1"
+
+# --- info-level findings alone never refuse a close (SC2086 is info) ---
+reset
+printf '#!/usr/bin/env bash\necho $1\n' > tools/info.sh; commit
+run "$ID"
+assert_eq 0 "$code"
+
+# --- node --check and go vet: pass, fail, one vet per package, nested package under its module ---
+reset
+printf 'const a = 1;\n' > tools/ok.js; commit
+run "$ID"; assert_eq 0 "$code"; assert_contains "$out" "node --check 1 ok" "pre-gate-check: node ok"
+printf 'function (\n' > tools/broken.js; commit
+run "$ID"
+[[ "$code" != 0 ]] || fail "pre-gate-check: a syntax error passed node --check"
+assert_contains "$out" "node --check FAIL" "pre-gate-check: node failure line"
+reset
+mkdir -p gomod/sub
+printf 'module m\n\ngo 1.21\n' > gomod/go.mod
+printf 'package m\n\nfunc A() {}\n' > gomod/a.go; printf 'package m\n\nfunc B() {}\n' > gomod/b.go
+printf 'package sub\n\nfunc C() {}\n' > gomod/sub/c.go; commit
+run "$ID"; assert_eq 0 "$code"; assert_contains "$out" "go vet 2 pkg ok" "pre-gate-check: two packages (a.go and b.go share one), nested under the module root"
+printf 'package sub\n\nimport "fmt"\n\nfunc D() { fmt.Printf("%%d", "x") }\n' > gomod/sub/d.go; commit
+run "$ID"
+[[ "$code" != 0 ]] || fail "pre-gate-check: a vet error passed"
+assert_contains "$out" "go vet FAIL" "pre-gate-check: go vet failure line"
 
 # --- shellcheck absent from PATH: skipped, never a pass ---
 reset
@@ -60,6 +86,10 @@ done
 set +e; out="$(cd "$R" && PATH="$NOSC" PRE_GATE_BASE="$BASE" "$NOSC/bash" "$PG" "$ID" 2>&1)"; code=$?; set -e
 assert_eq 0 "$code"
 assert_contains "$out" "shellcheck skipped | no shellcheck" "pre-gate-check: missing tool is skipped"
+printf 'const a = 1;\n' > tools/ok.js; printf 'package m\n' > gomod-x.go; commit
+set +e; out="$(cd "$R" && PATH="$NOSC" PRE_GATE_BASE="$BASE" "$NOSC/bash" "$PG" "$ID" 2>&1)"; code=$?; set -e
+assert_contains "$out" "node --check skipped | no node" "pre-gate-check: no node is skipped"
+assert_contains "$out" "go vet skipped | no go" "pre-gate-check: no go is skipped"
 [[ "$out" != *"shellcheck 1 ok"* ]] || fail "pre-gate-check: a missing shellcheck reported ok"
 
 # --- dead code (advisory), a caller in an unchanged file, and a .css file ---
@@ -71,6 +101,16 @@ assert_eq 0 "$code"   # dead code never fails the check
 assert_contains "$out" "tools/lib.sh:3:orphan_fn" "pre-gate-check: unreferenced function listed"
 [[ "$out" != *shared_helper* ]] || fail "pre-gate-check: a symbol only an unchanged file calls was reported dead"
 assert_contains "$out" "not scanned: tools/style.css" "pre-gate-check: .css named under not scanned"
+
+# --- refusals: a bad id, a dirty tree (nothing stamped), no baseline ---
+reset
+run "bad"; assert_eq 2 "$code"; assert_contains "$out" "usage: pre-gate-check.sh" "pre-gate-check: usage"
+printf 'x\n' >> tools/caller.sh
+run "$ID"; assert_eq 125 "$code"; assert_contains "$out" "commit first" "pre-gate-check: a dirty tree refuses"
+[[ ! -e ".tickets/$ID/evidence/pre-gate.log" ]] || fail "pre-gate-check: a refused run wrote a log"
+git checkout -q tools/caller.sh
+set +e; out="$(cd "$R" && env -u PRE_GATE_BASE bash "$PG" "$ID" 2>&1)"; code=$?; set -e
+assert_eq 2 "$code"; assert_contains "$out" "no git baseline" "pre-gate-check: no baseline fails loudly"
 
 [[ -f "$CANON_HOME/canary" && -z "$(ls -A "$TMPDIR")" ]] || fail "pre-gate-check: left a temp file behind"
 echo "pre-gate-check: ok"

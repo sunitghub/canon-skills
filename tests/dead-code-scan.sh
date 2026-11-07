@@ -140,7 +140,16 @@ assert_eq "$(printf 'DEAD cliDead\nDEAD idxDead\nDEAD tested\nOVEREXP ownAndTest
 printf '{}\n' > data.json; git add data.json
 chg="$(bash "$SCAN" --changed tools/lib.sh --changed src/Main.cs --changed data.json --changed docs/notes.md)"
 assert_eq "$(printf 'DEAD kw_dead\nTESTONLY test_only_fn')" "$(grep -v '^#' <<<"$chg" | awk -F'\t' '{ print $1, $3 }' | sort)" "dead-code-scan: --changed reads declarations from the named file only"
-assert_contains "$chg" "# not scanned: src/Main.cs data.json" "dead-code-scan: --changed names every unread file"
+assert_eq "# not scanned: src/Main.cs data.json" "$(grep '^# not scanned' <<<"$chg")" "dead-code-scan: --changed names every unread file, and only those"
+# A file named twice is listed once; a deleted path is not listed; an untracked file the scan never saw is.
+printf 'a {}\n' > untracked.css
+chg2="$(bash "$SCAN" --changed data.json --changed data.json --changed gone.css --changed untracked.css)"
+assert_eq "# not scanned: data.json untracked.css" "$(grep '^# not scanned' <<<"$chg2")" "dead-code-scan: dedup, deleted and untracked paths"
+rm untracked.css
+assert_eq "# not scanned: none" "$(bash "$SCAN" --changed tools/lib.sh | grep '^# not scanned')" "dead-code-scan: nothing unread"
+set +e; err="$(bash "$SCAN" --changed 2>&1)"; code=$?; set -e
+assert_eq "2" "$code" "dead-code-scan: --changed without a file"
+assert_contains "$err" "--changed needs a file" "dead-code-scan: says why"
 
 # A scope with no source: no rows, and every summary line still printed.
 assert_eq "$(printf '# scanned: none\n# skipped: none\n# checked: 0 declarations')" "$(bash "$SCAN" docs)" "dead-code-scan: empty scope"

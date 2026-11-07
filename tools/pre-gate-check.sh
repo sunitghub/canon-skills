@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # pre-gate-check.sh <ticket-id> — t-014f: cheap deterministic checks on the sprint's changed files, stamped as
 # evidence before any gate is dispatched, so the evaluator reads the result instead of rediscovering it.
-#   Runs shellcheck on changed .sh, node --check on changed .js, go vet on the changed Go packages. A failing tool exits
+#   Runs shellcheck (warning severity and up: info notes such as SC1091 must not refuse a close) on changed .sh, node --check on changed .js, go vet on the changed Go packages. A failing tool exits
 #   non-zero (the stamped log then ends `exit 1`, which `sprint check-evidence` refuses). A MISSING tool is never a
 #   pass: the line says `<tool> skipped | no <tool>`.
 #   Advisory only (never a refusal): symbols declared in a changed file and referenced nowhere (dead-code-scan.sh
@@ -37,7 +37,7 @@ run_checks() {
 
   if ((${#sc[@]})); then
     if command -v shellcheck >/dev/null 2>&1; then
-      if out="$(shellcheck -x "${sc[@]}" 2>&1)"; then line+=" | shellcheck ${#sc[@]} ok"
+      if out="$(shellcheck -x -S warning "${sc[@]}" 2>&1)"; then line+=" | shellcheck ${#sc[@]} ok"
       else line+=" | shellcheck FAIL"; fails+="$out"$'\n'; rc=1; fi
     else line+=" | shellcheck skipped | no shellcheck"; fi
   fi
