@@ -6432,7 +6432,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('t-761b: clicking a Cloud row opens that ticket on the project\'s board and starts nothing', async ({ page }) => {
+    test('t-761b: clicking a Cloud row shows that ticket on the project\'s board and starts nothing (t-4456)', async ({ page }) => {
       await cloudRoute(page, () => CLOUD_ROWS);
       const board = await openShell(page, []);
       await board.locator('body').evaluate(() => { window.__msgs = []; window.addEventListener('message', e => window.__msgs.push(e.data)); });
@@ -6440,10 +6440,50 @@ test.describe('cockpit in board (t-ddc8)', () => {
       page.on('request', r => { if (r.method() === 'POST' && /\/api\/(cockpit|ticket)/.test(r.url())) starts.push(r.url()); });
       page.on('pageerror', e => errors.push(e.message));
       await cloudRow(page, 't-cl03').click();
-      await expect.poll(() => board.locator('body').evaluate(() => window.__msgs.filter(m => m && m.type === 'open-ticket').map(m => m.ticket))).toEqual(['t-cl03']);
-      expect(starts, 'a click only opens the ticket: no session, no POST').toEqual([]);
+      // t-4456: the shell sends show-ticket (the board pulses the card), never open-ticket (which opens a session view)
+      await expect.poll(() => board.locator('body').evaluate(() => window.__msgs.filter(m => m && m.type === 'show-ticket').map(m => m.ticket))).toEqual(['t-cl03']);
+      expect(await board.locator('body').evaluate(() => window.__msgs.filter(m => m && m.type === 'open-ticket').length), 'a Cloud row never opens a session view').toBe(0);
+      expect(starts, 'a click only shows the ticket: no session, no POST').toEqual([]);
       expect(errors, 'a Cloud row is not a session row: no local handler runs on it').toEqual([]);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    // t-4456: the shell asks the embedded board to show a ticket: the card is scrolled to and pulsed, nothing opens or is written.
+    test('t-4456: a show-ticket message pulses the card without opening a session view or writing; a hidden card says so', async ({ page }) => {
+      const id = 't-pz46', dir = path.join(PROJECT_ROOT, '.tickets', id);   // a real-format id: the board accepts only t- plus four characters
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'ticket.md'), ['---', `id: ${id}`, 'status: open', 'type: task', 'priority: 2', 'runs: github', 'github: acme/app#57', 'created: 2026-10-16T00:00:00Z', '---', '', `# Pulse ${id}`, ''].join('\n'));
+      try {
+        await cloudRoute(page, () => CLOUD_ROWS);
+        const board = await openShell(page, []);
+        const posts = [], errors = [];
+        page.on('request', r => { if (r.method() === 'POST') posts.push(r.url()); });
+        page.on('pageerror', e => errors.push(e.message));
+        const card = board.locator(`.card[data-id="${id}"]`);
+        await expect(card).toBeVisible({ timeout: 10000 });
+        const send = tid => page.evaluate(t => document.querySelector('#view-proj-a iframe').contentWindow.postMessage({ source: 'canon-cockpit-shell', type: 'show-ticket', ticket: t }, location.origin), tid);
+        // the board's message listener is the last thing its script sets up: send again until it answers
+        await expect.poll(async () => { await send(id); return card.getAttribute('data-pulse'); }, { timeout: 10000 }).toBe('1');
+        expect(await card.evaluate(e => getComputedStyle(e).animationName)).toBe('pane-pulse');                    // the existing keyframes, no new colour
+        await expect(board.locator('#cockpit-overlay.open')).toHaveCount(0);                                       // no session view
+        await board.locator('body').click({ position: { x: 5, y: 5 } });                                           // the first interaction ends it
+        await expect(card).not.toHaveAttribute('data-pulse', '1');
+        await send(id);
+        await expect(card).toHaveAttribute('data-pulse', '1');
+        await expect(card).not.toHaveAttribute('data-pulse', '1', { timeout: 6000 });                              // and it ends by itself
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        await send(id);
+        await expect(card).toHaveAttribute('data-pulse', '1');
+        expect(await card.evaluate(e => getComputedStyle(e).animationName)).toBe('none');                          // motion reduced: a static outline
+        expect(await card.evaluate(e => getComputedStyle(e).boxShadow)).not.toBe('none');
+        await send('t-zzzz');                                                                                       // a ticket this board does not show: said, never an error
+        await expect(board.locator('#drop-toast')).toContainText('t-zzzz is not on this board right now', { timeout: 8000 });
+        await send('t-../x"><img src=x onerror=window.__pwn=1>');                                                   // a hostile id runs nothing
+        await page.waitForTimeout(300);
+        expect(await board.locator('body').evaluate(() => window.__pwn), 'a hostile id ran nothing').toBeUndefined();
+        expect(posts.filter(u => /\/api\/(cockpit|ticket)/.test(u)), 'showing a ticket writes nothing').toEqual([]);
+        expect(errors).toEqual([]);
+      } finally { fs.rmSync(dir, { recursive: true, force: true }); await page.unrouteAll({ behavior: 'ignoreErrors' }); }
     });
 
     test('t-761b: a malformed or hostile row from the server is ignored, never rendered as markup', async ({ page }) => {
@@ -7347,7 +7387,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(row.locator('.ag-t1')).toHaveText('Scratch session');
       await expect(row.locator('.ag-i svg.scr-ico')).toHaveCount(1);   // t-f553: the scribble mark, not a SCRATCH tag
       await expect(row).toHaveAttribute('aria-label', /working · claude/);
-      await expect(page.locator('#ag-list .ag-plus')).toHaveCount(1);
+      await expect(page.locator('#ag-list .ag-plus')).toHaveCount(0);   // t-4456: no + beside the project name; a scratch session starts from the Projects grid or the board's Scratch button
       await row.click();
       await expect(page.locator('#view-proj-x')).toHaveClass(/active/);
       await expect(page.frameLocator('#view-proj-x iframe').locator('#ck-id')).toHaveText('s-q7s1', { timeout: 8000 });

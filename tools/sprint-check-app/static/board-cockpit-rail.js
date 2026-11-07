@@ -69,6 +69,25 @@ export function openTicketWhenLoaded(ticket, tries) {
   showToast(`⚠ ${ticket} not found in this project`, 'warn');
 }
 
+// t-4456: a Cloud row in the shell's Agents list shows its ticket on the board: back to the board (an open session view stays alive under
+// it), the card scrolled into its lane and pulsed once. Nothing opens a session view and nothing is written. A card the board does not
+// show (a filtered or archived ticket, one this board does not have) is said in a toast, never an error.
+const CARD_PULSE_MS = 2400;
+export function showTicketWhenLoaded(ticket, tries) {
+  const card = [...document.querySelectorAll('#board .card')].find(c => c.dataset.id === ticket);
+  if (card) {
+    if (document.getElementById('cockpit-overlay')?.classList.contains('open')) closeCockpit();
+    card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    card.dataset.pulse = '1';
+    const off = () => { delete card.dataset.pulse; document.removeEventListener('pointerdown', off, true); };
+    document.addEventListener('pointerdown', off, true);
+    setTimeout(off, CARD_PULSE_MS);
+    return;
+  }
+  if (tries > 0) { setTimeout(() => showTicketWhenLoaded(ticket, tries - 1), 250); return; }
+  showToast(`${ticket} is not on this board right now (a filter or an archived ticket hides it)`, 'warn');
+}
+
 // t-bc04: ticket status badge (topbar #ck-status + rail #ck-tc-status), colored
 // to match the board's status columns (--col-* vars). Live-updates via the poll.
 export function statusBadgeInfo(status) {

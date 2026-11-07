@@ -1,6 +1,6 @@
 import { SHELL_TAB, loadData, state } from './board-core.js';
 import { CK_SIGNAL_LABEL, COCKPIT_TICKET_ID, SCRATCH_ID, applyCardSessions, announceScratchTabs, ckRowState, findTicketById, finishAdopt, newScratchId, openScratch, postToTab, render, renderBoard, renderScratchWhere, showPromotedChoice, showToast, startPromote } from './board-render.js';
-import { closeCockpit, findLiveDaemonSession, openCockpit, openTicketWhenLoaded, renderCockpitRail, renderTabStrip, stopCockpitPoll } from './board-cockpit-rail.js';
+import { closeCockpit, findLiveDaemonSession, openCockpit, openTicketWhenLoaded, renderCockpitRail, showTicketWhenLoaded, renderTabStrip, stopCockpitPoll } from './board-cockpit-rail.js';
 import { applyActualWorkingCwd, maybeMountCockpitTerminal } from './board-worktree.js';
 import { applyPane, clearPaneFor, paneHostId, paneRoom, paneTabId, setPane, shownIds } from './board-pane.js';
 import { ghClosingHere, ghOut } from './board-github.js';
@@ -841,6 +841,10 @@ export function initCockpit() {
     }
     if (d.type === 'open-ticket') {                        // t-2d2e: shell routed a cross-project Sessions row here
       if (typeof d.ticket === 'string' && COCKPIT_TICKET_ID.test(d.ticket)) openTicketWhenLoaded(d.ticket, 20);
+      return;
+    }
+    if (d.type === 'show-ticket') {                        // t-4456: a Cloud row of the Agents list: pulse the card, open nothing
+      if (typeof d.ticket === 'string' && COCKPIT_TICKET_ID.test(d.ticket)) showTicketWhenLoaded(d.ticket, 20);
       return;
     }
     if (d.type === 'session-menu-request') {               // t-3c9a: prefix then t. Says which live session this board has open (or none); the shell does the rest

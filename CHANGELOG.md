@@ -6,6 +6,11 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+Board page: run `canon update`, restart the board (`canon`) and reload.
+
+### Changed
+- Agents list: the `+` beside a project's name is gone (it started a scratch session and read as a second way to add to the Cloud group); scratch sessions start from the Projects grid or the board's Scratch button. A Cloud row now takes you to that project's board and pulses the ticket's card instead of opening a session view that does not apply to a ticket running in the cloud (t-4456).
+
 ## [0.47.7] - 2026-11-06
 
 Board page: run `canon update` and reload the board.

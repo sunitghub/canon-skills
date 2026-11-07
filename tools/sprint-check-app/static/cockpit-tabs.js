@@ -51,7 +51,7 @@ export function openSessionInTab(v){
   if(!proj){ toast('Project not registered: '+v.proot); return; }
   openProject(proj.id,proj.name,{nudge:true,quiet:true});   // t-5a4b: Scratch / Continue / rail rows nudge too
   let msg=null;
-  if(typeof v.ticket==='string'&&TICKET_ID_RE.test(v.ticket)) msg={source:'canon-cockpit-shell',type:'open-ticket',ticket:v.ticket};
+  if(typeof v.ticket==='string'&&TICKET_ID_RE.test(v.ticket)) msg={source:'canon-cockpit-shell',type:v.show===true?'show-ticket':'open-ticket',ticket:v.ticket};   // t-4456: a Cloud row shows the card on the board; a local row opens the session
   else if(typeof v.scratch==='string'&&SCRATCH_ID_RE.test(v.scratch)) msg={source:'canon-cockpit-shell',type:'open-scratch',id:v.scratch};
   if(!msg) return;
   const ifr=document.getElementById('view-'+proj.id).querySelector('iframe');

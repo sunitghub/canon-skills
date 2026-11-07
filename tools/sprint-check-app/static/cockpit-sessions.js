@@ -353,7 +353,7 @@ function cloudHtml(rows){
 function cloudAt(r){ return r.since===null ? '' : ageShort(Math.max(0,Math.round((Date.now()-r.since)/1000))); }
 function openCloudRow(key){
   const i=key.indexOf('/'), pid=key.slice(0,i), id=key.slice(i+1), proj=getProjects().find(p=>p.id===pid);
-  if(proj && TICKET_ID_RE.test(id)) openSessionInTab({proot:proj.path,ticket:id});   // the project's tab, then its board shows the ticket; nothing starts
+  if(proj && TICKET_ID_RE.test(id)) openSessionInTab({proot:proj.path,ticket:id,show:true});   // t-4456: the project's tab, then its board pulses the card: no session view opens, nothing starts
 }
 // t-565f: lastSessions is written from Admin's refresh too; the owner exports this instead of the binding.
 export function setLastSessions(rows){ lastSessions=rows; }
@@ -385,7 +385,7 @@ export function renderSessionSurfaces(){
   const ordered=[...groups.entries()].sort((a,b)=>groupRank.get(a[0])-groupRank.get(b[0])).map(e=>({g:e[1],h:heads.get(e[0]),cloud:cloudBy.get(e[0])||[]}));
   const list=document.getElementById('ag-list');
   list.innerHTML=ordered.length===0 ? '<div class="ag-empty">No agents running</div>' : ordered.map(({g,h,cloud})=>
-    `<div class="ag-proj" title="${escAttr(h.proot)}"><b>${esc(h.projName||h.name)}</b>${g.length?`<span>${g.length}</span>`:''}${h.pid?`<button class="ag-plus" data-scratch="${escAttr(h.pid)}" title="New scratch session in ${escAttr(h.projName||h.name)}" aria-label="New scratch session">+</button>`:''}</div>`+g.map(v=>{
+    `<div class="ag-proj" title="${escAttr(h.proot)}"><b>${esc(h.projName||h.name)}</b>${g.length?`<span>${g.length}</span>`:''}</div>`+g.map(v=>{
       const title=ticketTitle(v.pid,v.ticket), time=sessionTime(v);
       const inView=!!v.pid && v.pid===activeTab && (v.ticket||v.scratch)===boardActive.get(activeTab) && document.getElementById('view-'+activeTab)?.classList.contains('active');   // t-7456
       // t-d0ed: one line (icon, name, agent type, age, state glyph). The tooltip is the title alone (the glyph, type and age are on the row);
@@ -414,7 +414,6 @@ export function renderSessionSurfaces(){
       e.preventDefault(); const r=b.getBoundingClientRect(); openSessionMenu(v,r.left+24,r.bottom-4);
     });
   });
-  list.querySelectorAll('.ag-plus').forEach(b=>b.addEventListener('click',()=>startScratch(b.dataset.scratch)));
   // Projects cards: counts by state.
   for(const p of getProjects()){
     const sel=window.CSS&&CSS.escape?CSS.escape(p.id):p.id;
