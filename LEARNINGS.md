@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-07-2026 12:30
+learnings-sweep last run: 11-07-2026 15:30
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-07 | [t-ae96](.tickets/t-ae96/learnings.md) | A shared base must not change a component's cascade: put it in `:where()` (zero specificity) so a component's own one-class rule still wins whatever order the files load in, and keep only a property whose old rule had normal specificity (the background) at normal; prove it by comparing every element's computed style before and after, driven through the real states, not by reading the CSS. A new unit-count anywhere pinned (test-sh-runner's `--list` 20 to 21) fails the suite, so run the suite before the long board spec. | UNPROMOTED |
 | 2026-11-07 | [t-f183](.tickets/t-f183/learnings.md) | A badge that hangs outside its icon box is clipped by any ancestor with overflow:hidden (Admin's `.s1` cut 3.5 px): measure the badge inside every place the icon renders (rail, Admin table, stopped list), and assert its bounding box lies inside the cell, not only that it exists. | UNPROMOTED |
 | 2026-11-07 | [t-a4f8](.tickets/t-a4f8/learnings.md) | A spec that polls for "the text changed" passes on a re-render too: to prove a tick, plant stale text and assert it is rewritten within less than the re-poll, and run a revert mutant; a cache needs a planted-sentinel test (kept while unchanged, dropped when it grows), and a rule that must not count (a pre-refusal is not a try) needs a sequence where the count would show (two refusals, then one failed prompt). | UNPROMOTED |
 | 2026-11-07 | [t-15d0](.tickets/t-15d0/learnings.md) | A panel laid over a view (fixed overlay) must shrink the view it covers, or its scroll areas end under it and a list that fits the full height has nothing to scroll; reproduce a "platform" bug in the other engine at a smaller window before blaming the platform, and measure the box the user sees (#board/#header edges), not the wrapper's own width (the reviewer caught the assertion that passed on the broken layout). | UNPROMOTED |
