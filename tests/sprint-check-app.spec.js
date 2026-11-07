@@ -18516,7 +18516,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   // Prod path: the Cockpit rail's Worktree picker for a ticket tkt land made a worktree for (t-8be9). VM: the binding (.cockpit-cwd) was gone, the
   // picker showed Main selected and the land worktree "unavailable", so the session opened on the main checkout. The board's /api/worktrees now
   // marks land/<id> as the ticket's own; with no lock and no pick the rail selects it. A lock still wins.
-  test('a ticket closing here opens in its land worktree; a lock still wins (t-8be9) @webkit', async ({ page }) => {
+  test('a ticket closing here opens in its land worktree; a pick and a lock still win (t-8be9, t-c505)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gh36'), landPath = `/w/land-${id}`;
     ghTicket(id, { github: 'acme/app#57', status: 'in_progress' });
     await routeStatus(page, id, { stage: 'pr-open', pr: 58, land: false, landed: landPath });
@@ -18543,10 +18543,79 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect.poll(selectedCwd).toBe(landPath);   // unlocked, nothing picked: the land worktree, not Main ('')
     await expect(page.locator('#ck-worktree .ck-worktree-row.selected')).toHaveAttribute('data-cwd', landPath);
     await expect(page.locator('#ck-worktree .ck-worktree-held')).toHaveCount(0);   // no "1 worktree unavailable"
+    // t-c505 control: the user picks Main on purpose (no dialog for Main); closing and reopening the tab keeps that pick, the default is once per tab
+    await page.locator('#ck-worktree-change').click();
+    await page.locator('#ck-worktree .ck-worktree-row[data-cwd=""]').click();
+    await expect.poll(selectedCwd).toBe('');
+    await page.evaluate(async () => (await import('/static/board-cockpit-rail.js')).closeCockpit());
+    await open();
+    await expect.poll(selectedCwd).toBe('');
     await page.evaluate(async () => (await import('/static/board-cockpit-rail.js')).closeCockpit());
     lock = { locked: true, cwd: PROJECT_ROOT, main_dirty: false };   // control: a lock on Main is the user's earlier choice
     await open();
     await expect.poll(selectedCwd).toBe('');
+  });
+
+  // Prod path: the same picker when the land worktree is held by another ticket (t-c505): it is not the ticket's to take, so Main stays and the row is listed unavailable.
+  test('a land worktree another ticket holds is not selected for a ticket closing here (t-c505)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh37'), landPath = `/w/land-${id}`;
+    ghTicket(id, { github: 'acme/app#57', status: 'in_progress' });
+    await routeStatus(page, id, { stage: 'pr-open', pr: 58, land: false, landed: landPath });
+    await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
+    await page.route('**/api/worktrees**', r => json(r, [
+      { path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true },
+      { path: landPath, branch: `land/${id}`, held_by: { ticket: 't-zz99', reason: 'in progress' }, tickets_visible: true, ticket_present: true },
+    ]));
+    await page.route(`**/api/worktree-lock/${id}`, r => json(r, { locked: false, cwd: null, main_dirty: false }));
+    await openBoard(page, id);
+    await expect.poll(() => page.evaluate(async x => {
+      const [c, g] = await Promise.all([import('/static/board-core.js'), import('/static/board-github.js')]);
+      const t = c.state.tickets.find(q => q.id === x);
+      return c.state.isGitProject === true && !!t && g.ghClosingHere(t);
+    }, id)).toBe(true);
+    await page.evaluate(async x => (await import('/static/board-cockpit-rail.js')).openCockpit(x), id);
+    await expect(page.locator('#ck-worktree .ck-worktree-held')).toHaveCount(1);   // listed unavailable
+    expect(await page.evaluate(async () => (await import('/static/board-cockpit.js')).cockpitState.worktreeCwd)).toBe('');
+  });
+
+  // Prod path: the Cockpit rail's Worktree picker when the user opens another ticket's tab while it is still loading (t-c505). renderCockpitWorktree
+  // awaits /api/worktrees and the lock; whatever it writes afterwards belongs to the ticket it was called for, never to the tab that is active by then.
+  test('opening another tab while a ticket\'s Worktree picker loads leaves that other tab alone (t-c505)', async ({ page }) => {
+    const a = newTicketId(PROJECT_ROOT, 'gh38'), b = newTicketId(PROJECT_ROOT, 'gh39'), landPath = `/w/land-${a}`;
+    ghTicket(a, { github: 'acme/app#57', status: 'in_progress' });
+    ghTicket(b, { status: 'in_progress' });
+    await routeStatus(page, a, { stage: 'pr-open', pr: 58, land: false, landed: landPath });
+    await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
+    let release; const gate = new Promise(res => { release = res; });
+    const main = { path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true };
+    await page.route('**/api/worktrees**', async r => {
+      if (r.request().url().includes(`ticket=${a}`)) {
+        await gate;
+        return json(r, [main, { path: landPath, branch: `land/${a}`, own: true, tickets_visible: true, ticket_present: true }]);
+      }
+      return json(r, [main]);
+    });
+    await page.route('**/api/worktree-lock/*', r => json(r, { locked: false, cwd: null, main_dirty: false }));
+    await openBoard(page, a);
+    await expect.poll(() => page.evaluate(async x => {
+      const [c, g] = await Promise.all([import('/static/board-core.js'), import('/static/board-github.js')]);
+      const t = c.state.tickets.find(q => q.id === x);
+      return c.state.isGitProject === true && !!t && g.ghClosingHere(t);
+    }, a)).toBe(true);
+    await page.evaluate(x => { window.__openA = import('/static/board-cockpit-rail.js').then(m => m.openCockpit(x)); }, a);   // held on the route
+    await expect.poll(() => page.evaluate(async x => x in (await import('/static/board-cockpit.js')).cockpitTabs, a)).toBe(true);
+    await page.evaluate(async x => (await import('/static/board-cockpit-rail.js')).openCockpit(x), b);   // the user moves on: B is the active tab now
+    release();
+    await page.evaluate(() => window.__openA);
+    const tabs = await page.evaluate(async ([x, y]) => {
+      const { cockpitTabs } = await import('/static/board-cockpit.js');
+      const pick = t => ({ cwd: t.worktreeCwd, present: Object.keys(t.worktreePresentByCwd || {}), lock: t.worktreeLock });
+      return { a: pick(cockpitTabs[x]), b: pick(cockpitTabs[y]) };
+    }, [a, b]);
+    expect(tabs.a.cwd).toBe(landPath);                       // its own render landed on its own tab
+    expect(tabs.a.present).toContain(landPath);
+    expect(tabs.b.cwd).toBe('');                             // B kept what it had: the Main placeholder
+    expect(tabs.b.present).not.toContain(landPath);          // and none of A's worktrees
   });
 
   test('Finish: shown once the land worktree exists and the ticket closed there, names its path, and posts finish (t-6623, t-92f2) @webkit', async ({ page }) => {
