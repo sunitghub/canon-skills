@@ -72,8 +72,18 @@ func TestSessionsSuUntil(t *testing.T) {
 			t.Errorf("%s: su_until %q, want none", sid, got[sid])
 		}
 	}
+	// the answer is kept while the log is unchanged: a planted entry survives a second call, and goes when a line is appended
+	suCache.mu.Lock()
+	suCache.until["planted"] = now.Add(time.Hour)
+	suCache.mu.Unlock()
+	if _, ok := suUntil(now)["planted"]; !ok {
+		t.Error("an unchanged log was read again: the cache was not reused")
+	}
 	emit("terminal.su_expired", "on", "", now) // su ended: the log grew, so the next answer drops it
 	if got := read(); got["on"] != "" || got["again"] == "" {
 		t.Errorf("after su_expired for 'on': %v", got)
+	}
+	if _, ok := suUntil(time.Now())["planted"]; ok {
+		t.Error("a log that grew was not read again")
 	}
 }

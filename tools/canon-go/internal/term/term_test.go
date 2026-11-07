@@ -733,3 +733,36 @@ func TestAuthReadyRefusesWithoutAPrompt(t *testing.T) {
 		t.Errorf("no provider: AuthReady = %v, want ErrNoAuth", err)
 	}
 }
+
+// Protects the default start line and the three-tries rule for a refusal known beforehand (t-a4f8): the default limit prints 10:00, and
+// two su commands refused by AuthReady (an Administrator window) do not count, so the one failed prompt after them is the first try, not the third.
+func TestSuDefaultStartLineAndPreRefusalIsNotATry(t *testing.T) {
+	root, _ := project(t)
+	f := newFakeSu()
+	close(f.stop)
+	cfg := f.cfg(root)
+	cfg.Limit = 0 // the default: ten minutes
+	var buf bytes.Buffer
+	cfg.In, cfg.Out = strings.NewReader("su\nexit\n"), &buf
+	Run(cfg)
+	if !strings.Contains(buf.String(), "Full shell on: 10:00 left, type exit to leave.") {
+		t.Errorf("no start line:\n%s", buf.String())
+	}
+	f = newFakeSu()
+	close(f.stop)
+	f.auth = []error{errors.New("Authentication failed")} // the one prompt that is shown fails
+	cfg = f.cfg(root)
+	calls := 0
+	cfg.AuthReady = func() error { // two Administrator-window refusals, then a prompt that can appear
+		calls++
+		if calls <= 2 {
+			return ErrElevated
+		}
+		return nil
+	}
+	buf.Reset()
+	cfg.In, cfg.Out = strings.NewReader("su\nsu\nsu\nexit\n"), &buf
+	if code := Run(cfg); code != 0 || strings.Contains(buf.String(), "closing the terminal") || !strings.Contains(buf.String(), "Authentication failed: still in the restricted prompt.") {
+		t.Errorf("a refusal known beforehand was counted toward the three tries (exit %d):\n%s", code, buf.String())
+	}
+}
