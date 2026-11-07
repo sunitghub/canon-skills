@@ -6450,7 +6450,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
     // t-4456: the shell asks the embedded board to show a ticket: the card is scrolled to and pulsed, nothing opens or is written.
     test('t-4456: a show-ticket message pulses the card without opening a session view or writing; a hidden card says so', async ({ page }) => {
-      const id = 't-pz46', dir = path.join(PROJECT_ROOT, '.tickets', id);   // a real-format id: the board accepts only t- plus four characters
+      const id = claimTicketId(PROJECT_ROOT, 't-pz46'), dir = path.join(PROJECT_ROOT, '.tickets', id);   // a real-format id: the board accepts only t- plus four characters
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(path.join(dir, 'ticket.md'), ['---', `id: ${id}`, 'status: open', 'type: task', 'priority: 2', 'runs: github', 'github: acme/app#57', 'created: 2026-10-16T00:00:00Z', '---', '', `# Pulse ${id}`, ''].join('\n'));
       try {
@@ -6483,7 +6483,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         expect(await board.locator('body').evaluate(() => window.__pwn), 'a hostile id ran nothing').toBeUndefined();
         expect(posts.filter(u => /\/api\/(cockpit|ticket)/.test(u)), 'showing a ticket writes nothing').toEqual([]);
         expect(errors).toEqual([]);
-      } finally { fs.rmSync(dir, { recursive: true, force: true }); await page.unrouteAll({ behavior: 'ignoreErrors' }); }
+      } finally { removeTestTicket(PROJECT_ROOT, id); await page.unrouteAll({ behavior: 'ignoreErrors' }); }
     });
 
     test('t-761b: a malformed or hostile row from the server is ignored, never rendered as markup', async ({ page }) => {
