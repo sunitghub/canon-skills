@@ -72,6 +72,9 @@ html[data-theme="light"] .ck-gh-box .ck-gh-note p { color: var(--th-warn-ink, #9
 .ck-gh-actions button:disabled { opacity: .5; cursor: default; }
 .ck-gh-actions button:hover:not(:disabled), .ck-gh-actions button:focus-visible:not(:disabled) { background: var(--surface-hover); border-color: var(--border-hover); }
 .ck-gh-actions .ck-gh-create:hover:not(:disabled), .ck-gh-actions .ck-gh-create:focus-visible:not(:disabled) { background: var(--accent); border-color: var(--accent); opacity: .88; }
+.ck-gh-box .ck-gh-steps { margin: 0 0 10px; padding-left: 1.4em; }   /* t-e28c */
+.ck-gh-box .ck-gh-steps li { margin: 0 0 6px; }
+.ck-gh-box .ck-gh-steps .ck-gh-pre { margin: 6px 0 0; }
 .ck-gh-box .ck-gh-hint { margin: 0 0 10px; color: var(--text-muted); font-size: 12px; }
 .ck-gh-box .ck-gh-hint span { display: block; }
 .ck-gh-box .ck-gh-hint code { font-size: 11.5px; }

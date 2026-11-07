@@ -6,6 +6,11 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+Board page: run `canon update` and reload the board.
+
+### Changed
+- The Sent panel's steps are numbered: a list of three on top (create the `canon` Cloud environment once, with Copy domains / Copy setup script or `tkt cloud-env`; start the session and type the prompt; Import results, then Check & merge) and, on Windows, five numbered steps after To Claude Cloud (`Ctrl+.` `m`, `su`, paste, `exit` and `Ctrl+.` `x`, close the panel) (t-e28c).
+
 ## [0.47.6] - 2026-11-06
 
 Board and `tkt`: run `canon update`, then restart the board (`canon`) and reload.

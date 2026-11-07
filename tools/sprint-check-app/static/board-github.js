@@ -919,10 +919,15 @@ async function launchToCloud(t, say) {
   try { await navigator.clipboard.writeText(typed); copied = true; } catch { copied = false; }
   const root = projectRootText();
   if (isWindowsBrowser()) {
-    const steps = 'Press Ctrl+. then m to open the Terminal below as a split view.\nType su and press Enter, then approve the Windows prompt: you get a Git Bash shell.\n';
-    const after = 'When the session is created, type exit, then press Ctrl+. and x, then Enter to close the Terminal.\nClose this panel once you have run the command. You can follow the rest of the progress on the board.';
-    say(copied ? `Copied.\n${steps}Paste the command in it and press Enter.\n${after}`
-      : `Copy was blocked.\n${steps}Type ${typed} and press Enter.\n${after}`);
+    // t-e28c: numbered, one step per line; the heading says whether the command is on the clipboard
+    const run = [
+      'Press Ctrl+. then m to open the Terminal below as a split view.',
+      'Type su and press Enter, then approve the Windows prompt: you get a Git Bash shell.',
+      copied ? 'Paste the command in it and press Enter.' : `Type ${typed} and press Enter.`,
+      'When the session is created, type exit, then press Ctrl+. and x, then Enter to close the Terminal.',
+      'Close this panel. You can follow the rest of the progress on the board.',
+    ];
+    say([copied ? 'Copied. The command is on your clipboard. Now:' : 'Copy was blocked. Now:', ...run.map((l, i) => `${i + 1}. ${l}`)].join('\n'));
     if (copied) recordCloudCopy(t.id);   // a blocked copy launched nothing: the card keeps To Claude Cloud
     return;
   }
@@ -937,8 +942,12 @@ function showSent(panel, t, tab) {
   const { n, line, cmd } = tab.ghSent;
   panel.innerHTML = `<div class="ck-gh-box ck-gh-sent" id="ck-gh-sent">
       <h3>Sent ${esc(t.id)} as issue #${esc(n)}</h3>
-      ${line ? `<p>Start a Claude cloud session on the canon environment and type:</p><pre class="ck-gh-pre ck-gh-prompt" id="ck-gh-prompt">${esc(line)}</pre>` : `<p>Start a Claude cloud session on the canon environment and point it at issue #${esc(n)}.</p>`}
-      <p>The card moved to In progress and shows the next step.</p>
+      <p>Run it in the cloud:</p>
+      <ol class="ck-gh-steps">
+        <li>One time only: in claude.ai/code create an environment named <b>canon</b>, set Network access to Limited, and paste the allowed domains and the setup script. Both are in Factory › GitHub (Copy domains, Copy setup script), or print them with <code>tkt cloud-env</code>.</li>
+        <li>${line ? `Start a Claude cloud session on the canon environment and type:<pre class="ck-gh-pre ck-gh-prompt" id="ck-gh-prompt">${esc(line)}</pre>` : `Start a Claude cloud session on the canon environment and point it at issue #${esc(n)}.`}</li>
+        <li>The card moves to In progress. When the session finishes it shows Results ready: press Import results, then Check &amp; merge.</li>
+      </ol>
       ${cmd ? `<p class="ck-gh-hint" id="ck-gh-hint"><span>To Claude Cloud: runs canon's command <code>tkt send-issue ${esc(t.id)} --launch</code> (on Windows it copies that line: paste it in the board's Terminal after <code>su</code>, steps below).</span><span>Copy command: copies the <code>claude --cloud '…'</code> command, for a terminal you open yourself.</span><span>Copy prompt: copies the text above, for claude.ai/code.</span></p>` : ''}
       ${doctor.state === 'ready' ? '' : `<p class="ck-gh-prereq" id="ck-gh-prereq">First time on this repository? The cloud session needs the Claude GitHub App installed on it and the canon environment (Factory › GitHub › Cloud environment). After you change the environment's setup script, start a new session: an open one keeps the old script.</p>`}
       <div class="ck-gh-actions">${cmd ? `<button type="button" class="ck-gh-create" id="ck-gh-to-cloud" title="${escAttr(toCloudTip())}">To Claude Cloud</button><button type="button" id="ck-gh-copy-cmd" title="For a real terminal in this project; refused inside a Claude session">Copy command</button>` : ''}${line ? `<button type="button" id="ck-gh-copy">Copy prompt</button>` : ''}<span class="ck-gh-status" id="ck-gh-status" role="status"></span></div>

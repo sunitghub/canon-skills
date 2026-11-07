@@ -198,7 +198,15 @@ A ticket worked by a Claude cloud session and merged back here. Same project as 
 
 1. **+ New**: a title, **Feature**, a line under **Outcome**, Worktree **Main checkout**, **Create**. The cloud session needs the Description, Acceptance and Plan to work from: let `sprint start` write them, or write the acceptance and plan on the card before sending.
 2. **Start**, then in the Start panel pick **GitHub · new issue** and send. The Sent panel shows the issue number and **To Claude Cloud**. A ticket sent earlier (from a terminal, or from a tab since closed) has **To Claude Cloud** on its card instead (since 0.36.1).
-3. **To Claude Cloud**. On Windows it **copies** `tkt send-issue <id> --launch` and the panel lists the steps: press `Ctrl+.` then `m` to open the Terminal below, type `su` and approve the Windows prompt, paste the command and press Enter, then `exit`, then `Ctrl+.` then `x` and Enter to close the Terminal (on macOS it is typed into the board's Terminal for you to send). Answer **y**, pick the **canon** environment if asked. It prints "Created cloud session" and a **View** link: open it to watch (there is no read-only watch from a terminal; `claude --teleport` takes the session over locally, so do not use it here).
+3. **To Claude Cloud**. The Sent panel opens with the numbered steps for the cloud side: (1) once, create the `canon` environment in claude.ai/code (the allowed domains and the setup script are under Factory › GitHub, or `tkt cloud-env`), (2) start a session on it and type the prompt, (3) when it finishes the card shows Results ready. On macOS the button types `tkt send-issue <id> --launch` into the board's Terminal for you to send. On Windows:
+   1. Click **To Claude Cloud**: it copies the command.
+   2. Press `Ctrl+.` then `m` to open the Terminal below as a split view.
+   3. Type `su` and press Enter, then approve the Windows prompt: you get a Git Bash shell.
+   4. Paste the command in it and press Enter.
+   5. When the session is created, type `exit`, then press `Ctrl+.` and `x`, then Enter to close the Terminal.
+   6. Close the panel. You can follow the rest on the board.
+
+   Answer **y**, pick the **canon** environment if asked. It prints "Created cloud session" and a **View** link: open it to watch (there is no read-only watch from a terminal; `claude --teleport` takes the session over locally, so do not use it here).
 4. The cloud session plans, builds, runs its own gates and opens a PR. The card moves to **results ready** (GitHub Sync or a minute's poll).
 5. **Import results**: the dialog says whether a re-grade is needed here ("no re-grade needed" for a change without board code); the card moves to DONE, **results in**.
 6. **Check & merge**: it runs `scripts/test.sh` on main plus the PR, then **Run tests & merge** merges, closes the issue and fast-forwards your main.

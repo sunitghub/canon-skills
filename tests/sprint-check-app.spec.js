@@ -16547,6 +16547,17 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
       await expect(page.locator('#ck-gh-sent')).toContainText(`Sent ${id} as issue #57`);
       // the Sent panel's wording and hover: no "in In progress", one line saying what each button does, and the plain buttons answer a hover
       await expect(page.locator('#ck-gh-sent')).not.toContainText('in In progress');
+      // t-e28c: the top of the panel is a numbered list of three; the prompt sits inside step 2
+      await expect(page.locator('#ck-gh-sent > p').first()).toHaveText('Run it in the cloud:');
+      const topSteps = page.locator('#ck-gh-sent ol.ck-gh-steps > li');
+      await expect(topSteps).toHaveCount(3);
+      await expect(topSteps.nth(0)).toContainText('One time only: in claude.ai/code create an environment named canon');
+      await expect(topSteps.nth(0)).toContainText('Copy domains, Copy setup script');
+      await expect(topSteps.nth(0)).toContainText('tkt cloud-env');
+      await expect(topSteps.nth(1)).toContainText('Start a Claude cloud session on the canon environment and type:');
+      await expect(topSteps.nth(1).locator('#ck-gh-prompt')).toHaveCount(1);
+      await expect(topSteps.nth(2)).toContainText('The card moves to In progress. When the session finishes it shows Results ready: press Import results, then Check & merge.');
+      await expect(page.locator('#ck-gh-sent')).not.toContainText('The card moved to In progress');
       // t-d287: one line per button, in the buttons' order, naming the real command (To Claude Cloud is `tkt send-issue <id> --launch`)
       const hint = page.locator('#ck-gh-hint span');
       await expect(hint).toHaveCount(3);
@@ -16563,11 +16574,11 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
       await page.locator('#ck-gh-to-cloud').click();
       if (windows) {
         await expect.poll(() => page.evaluate(() => window.__copied)).toBe(line);
-        // t-df13: the steps the user takes: open the Terminal (Ctrl+. m), su, paste, exit, close it; one line each
-        const ROUTE = ['Press Ctrl+. then m to open the Terminal below as a split view.', 'Type su and press Enter, then approve the Windows prompt: you get a Git Bash shell.'];
-        const AFTER = ['When the session is created, type exit, then press Ctrl+. and x, then Enter to close the Terminal.', 'Close this panel once you have run the command. You can follow the rest of the progress on the board.'];
+        // t-e28c: the steps the user takes, numbered one per line: Ctrl+. m, su, paste, exit and close it, close the panel
+        const STEPS = (third) => ['1. Press Ctrl+. then m to open the Terminal below as a split view.', '2. Type su and press Enter, then approve the Windows prompt: you get a Git Bash shell.', `3. ${third}`,
+          '4. When the session is created, type exit, then press Ctrl+. and x, then Enter to close the Terminal.', '5. Close this panel. You can follow the rest of the progress on the board.'];
         const winLines = (await page.locator('#ck-gh-status').textContent()).split('\n');
-        expect(winLines).toEqual(['Copied.', ...ROUTE, 'Paste the command in it and press Enter.', ...AFTER]);
+        expect(winLines).toEqual(['Copied. The command is on your clipboard. Now:', ...STEPS('Paste the command in it and press Enter.')]);
         expect(await page.locator('#ck-gh-status').evaluate(e => getComputedStyle(e).whiteSpace)).toBe('pre-line');   // the lines really break
         await expect(page.locator('#ck-gh-hint span').nth(0)).toContainText('on Windows it copies that line: paste it in the board\'s Terminal after su');
         expect(page.frames().filter(f => f.url().includes('mode=term'))).toHaveLength(0);   // no Terminal was opened
@@ -16575,7 +16586,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
         await page.evaluate(() => { Object.defineProperty(navigator, 'clipboard', { value: { writeText: async () => { throw new Error('blocked'); } }, configurable: true }); });
         await page.locator('#ck-gh-to-cloud').click();
         await expect(page.locator('#ck-gh-status')).toContainText('Copy was blocked.');
-        expect((await page.locator('#ck-gh-status').textContent()).split('\n')).toEqual(['Copy was blocked.', ...ROUTE, `Type ${line} and press Enter.`, ...AFTER]);
+        expect((await page.locator('#ck-gh-status').textContent()).split('\n')).toEqual(['Copy was blocked. Now:', ...STEPS(`Type ${line} and press Enter.`)]);
       } else {
         await expect.poll(() => page.frames().some(f => f.url().includes('mode=term'))).toBe(true);
         const frame = page.frames().find(f => f.url().includes('mode=term'));
