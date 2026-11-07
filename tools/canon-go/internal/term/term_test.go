@@ -682,3 +682,54 @@ func TestSuSaysWhenTheShellCannotStart(t *testing.T) {
 		t.Errorf("a shell that could not start must be said:\n%s", buf.String())
 	}
 }
+
+// Protects su's banner (t-a4f8): "Approve the OS prompt" is said only when a prompt will really appear. A refusal known beforehand
+// (no provider, an elevated Terminal) says only the refusal, logs the same event, never calls Auth and never counts as a failed try;
+// a ready su prints the banner and then the start line with the real limit.
+func TestSuBannerOnlyWhenAPromptWillAppear(t *testing.T) {
+	root, _ := project(t)
+	for _, c := range []struct {
+		name   string
+		ready  error
+		banner bool
+		events string
+		say    string
+	}{
+		{"ready", nil, true, "terminal.su_prompted|terminal.su_granted minutes=1|terminal.su_expired how=exited", "Full shell on: 1:30 left, type exit to leave."},
+		{"no provider", ErrNoAuth, false, "terminal.su_prompted|terminal.su_denied reason=unavailable", "su is not available here"},
+		{"elevated", ErrElevated, false, "terminal.su_prompted|terminal.su_denied reason=elevated", "this Terminal runs as administrator"},
+	} {
+		f := newFakeSu()
+		close(f.stop)
+		cfg := f.cfg(root)
+		cfg.Limit = 90 * time.Second
+		cfg.AuthReady = func() error { return c.ready }
+		asked := false
+		auth := cfg.Auth
+		cfg.Auth = func(ctx context.Context, w io.Writer) error { asked = true; return auth(ctx, w) }
+		var buf bytes.Buffer
+		cfg.In, cfg.Out = strings.NewReader("su\nexit\n"), &buf
+		Run(cfg)
+		out := buf.String()
+		if got := strings.Contains(out, "Approve the OS prompt") || strings.Contains(out, "Full shell mode lasts"); got != c.banner {
+			t.Errorf("%s: banner shown = %v, want %v:\n%s", c.name, got, c.banner, out)
+		}
+		if !strings.Contains(out, c.say) || f.log() != c.events || asked != c.banner {
+			t.Errorf("%s: events %q (want %q), Auth asked %v, output lacks %q:\n%s", c.name, f.log(), c.events, asked, c.say, out)
+		}
+	}
+}
+
+// Protects AuthReady (t-a4f8): it decides what OSAuth would do without prompting, and an elevated Windows process is refused before any provider is looked up.
+func TestAuthReadyRefusesWithoutAPrompt(t *testing.T) {
+	was, wasGoos := elevated, goos
+	t.Cleanup(func() { elevated, goos = was, wasGoos })
+	goos, elevated = "windows", func() bool { return true }
+	if err := AuthReady(); !errors.Is(err, ErrElevated) {
+		t.Errorf("elevated Windows: AuthReady = %v, want ErrElevated", err)
+	}
+	goos = "plan9"
+	if err := AuthReady(); !errors.Is(err, ErrNoAuth) {
+		t.Errorf("no provider: AuthReady = %v, want ErrNoAuth", err)
+	}
+}

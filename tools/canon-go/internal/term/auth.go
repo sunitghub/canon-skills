@@ -82,6 +82,23 @@ var osAuth = OSAuth
 // OSAuth asks the OS for the signed-in account's password. It returns ErrNoAuth when there is no provider, nil when the
 // user passed.
 func OSAuth(ctx context.Context, out io.Writer) error {
+	name, args, err := authPlan()
+	if err != nil {
+		return err
+	}
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, out, out
+	return cmd.Run()
+}
+
+// AuthReady is whether OSAuth would show a prompt, decided without showing one: ErrElevated, ErrNoAuth or nil.
+func AuthReady() error {
+	_, _, err := authPlan()
+	return err
+}
+
+// authPlan is the one place that decides what OSAuth would run: the refusals first, then the provider's command.
+func authPlan() (name string, args []string, err error) {
 	account := ""
 	if u, err := user.Current(); err == nil {
 		account = u.Username
@@ -90,13 +107,11 @@ func OSAuth(ctx context.Context, out io.Writer) error {
 		account = os.Getenv("USER")
 	}
 	if err := elevatedRefusal(goos); err != nil {
-		return err
+		return "", nil, err
 	}
 	name, args, ok := authCommand(goos, account, os.Geteuid() == 0, exec.LookPath, windowsSudoOn)
 	if !ok {
-		return ErrNoAuth
+		return "", nil, ErrNoAuth
 	}
-	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, out, out
-	return cmd.Run()
+	return name, args, nil
 }

@@ -51,7 +51,21 @@ export async function pollSessions(){
   for(const id of [...closingTabs]){ if(!next.has(id)){ closingTabs.delete(id); _removeTab(id); } }
   if(changed) renderTabs();
 }
-export function startSessionPoll(){ pollSessions(); setInterval(pollSessions, 5000); pollInterrupted(); setInterval(pollInterrupted, 15000); }
+// t-a4f8: the Terminal row's second line while su is on. m:ss left; amber in the last 30 s; '' once the time is up (the line goes).
+export function suLine(untilMs, nowMs){
+  const left=Math.ceil((untilMs-nowMs)/1000);
+  if(!(left>0)) return '';
+  return 'su \u00b7 '+Math.floor(left/60)+':'+String(left%60).padStart(2,'0');
+}
+// Only the line's text and class change each second; the list is not rendered again.
+export function tickSu(){
+  document.querySelectorAll('#ag-list .ag-su').forEach(el=>{
+    const until=+el.dataset.su, txt=suLine(until,Date.now());
+    if(!txt){ el.remove(); return; }
+    el.textContent=txt; el.classList.toggle('warn',until-Date.now()<=30000);
+  });
+}
+export function startSessionPoll(){ setInterval(tickSu,1000); pollSessions(); setInterval(pollSessions, 5000); pollInterrupted(); setInterval(pollInterrupted, 15000); }
 
 // ── t-d9e6: sessions that were running when the daemon stopped ─────────────
 // The board server lists them (resumable, or why not); Resume dismisses the entry and
@@ -214,6 +228,7 @@ export function sessionView(s){
     scrTitle:SCRATCH_ID_RE.test(ticket)?String(s.title||(s.agent==='term'?'Terminal':'')).slice(0,80):'',   // t-f553: its user-given title
     proot, name:proot.split(/[\\/]/).filter(Boolean).pop()||proot,
     agent:String(s.agent||''), cwd:String(s.cwd||''), sid:String(s.session||''),
+    suUntilMs:(()=>{ const t=Date.parse(s.su_until); return (s.agent==='term' && !isNaN(t)) ? t : null; })(),   // t-a4f8: a Terminal whose full shell (su) is on: when it ends
     meter:meterText(s.meter),   // t-d00c: '' on a daemon or agent without one
     shared:s.shared===true,   // t-5a4b: another live session works in this same folder, and there is no git to keep them apart
   };
@@ -391,7 +406,8 @@ export function renderSessionSurfaces(){
       // t-d0ed: one line (icon, name, agent type, age, state glyph). The tooltip is the title alone (the glyph, type and age are on the row);
       // the detail the old three lines carried is the accessible name, so a screen reader still gets state, time, meter and signal.
       const tip=title||v.scrTitle||(v.scratch?'Scratch session':v.ticket);
-      const aria=[(title||v.scrTitle||v.ticket||'Scratch session')+': '+agentLine(v), time.tip, v.meter, v.signal?'state from: '+v.signal:''].filter(Boolean).join(' \u00b7 ');
+      const su=v.suUntilMs!==null ? suLine(v.suUntilMs,Date.now()) : '';
+      const aria=[(title||v.scrTitle||v.ticket||'Scratch session')+': '+agentLine(v), time.tip, su?'full shell on':'', v.meter, v.signal?'state from: '+v.signal:''].filter(Boolean).join(' \u00b7 ');
       const name=v.ticket?`<span class="ag-id">${esc(v.ticket)}</span><span class="ag-d">${esc(title)}</span>`:(v.scratch?esc(v.scrTitle||'Scratch session'):'<span class="ag-none">no ticket</span>');
       const icon=v.scratch?scratchIcon(v.agent):v.agent==='claude'?markClaude():`<span class="ag-badge">${esc(agentName(v.agent).charAt(0)||'?')}</span>`;
       return `<button class="ag-row st st-${v.state}${inView?' on':''}"${inView?' aria-current="true"':''} data-i="${rail.indexOf(v)}" title="${escAttr(tip)}" aria-label="${escAttr(aria)}">`+
@@ -399,7 +415,8 @@ export function renderSessionSurfaces(){
       `<span class="ag-t1">${name}</span>`+
       `<span class="ag-at">${esc(agentName(v.agent))}</span>`+
       `<span class="ag-age">${esc(v.elapsed===null?'\u2013':ageShort(v.elapsed))}</span>`+
-      `<span class="ag-g">${stateGlyph(v.state)}</span></button>`;
+      `<span class="ag-g">${stateGlyph(v.state)}</span>`+
+      (su?`<span class="ag-su${v.suUntilMs-Date.now()<=30000?' warn':''}" data-su="${v.suUntilMs}">${esc(su)}</span>`:'')+`</button>`;
     }).join('')+cloudHtml(cloud)
   ).join('');
   syncSharedWarnings(views);

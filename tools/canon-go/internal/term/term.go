@@ -42,6 +42,8 @@ type Config struct {
 	RunOnTerminal func(ctx context.Context, path string, args []string, dir string) error
 	// ShellCheck says before su asks the OS whether the full shell can start here (Windows: Git's bash is installed); nil: always.
 	ShellCheck func() error
+	// AuthReady says, without asking, whether Auth could prompt: ErrNoAuth or ErrElevated when it cannot (t-a4f8); nil: not checked.
+	AuthReady func() error
 	// Auth asks the OS for the account password; nil, or ErrNoAuth, means su is unavailable.
 	Auth    func(ctx context.Context, out io.Writer) error
 	Limit   time.Duration  // how long su lasts

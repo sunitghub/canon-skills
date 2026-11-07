@@ -47,19 +47,18 @@ func (c Config) su(_ *bufio.Reader) (closeTerminal bool) {
 		c.unavailable()
 		return false
 	}
+	if c.AuthReady != nil { // t-a4f8: refuse before the banner, so "Approve the OS prompt" is only ever said when a prompt will appear
+		if err := c.AuthReady(); err != nil && c.authRefused(err) {
+			return false
+		}
+	}
 	fmt.Fprintf(c.Out, "Full shell mode lasts %s, then you drop back to this prompt.\nNothing you run there is restricted. This is logged.\nApprove the OS prompt to continue (your account password; UAC on Windows). Ctrl+C cancels:\n", limit)
 	err := c.Auth(context.Background(), c.Out)
 	if err == nil {
 		st.wrong = 0
 		return c.grant(limit, warn)
 	}
-	if errors.Is(err, ErrNoAuth) {
-		c.unavailable()
-		return false
-	}
-	if errors.Is(err, ErrElevated) { // like unavailable: logged, never counted toward the three tries
-		c.emit("terminal.su_denied", map[string]string{"reason": "elevated"})
-		fmt.Fprintln(c.Out, "su is not available: this Terminal runs as administrator, where Windows sudo asks for no approval, so nothing would check that you are there. Start canon from a normal (not Administrator) window.")
+	if c.authRefused(err) {
 		return false
 	}
 	// A failed or cancelled OS prompt counts: three in all, across every su, close the terminal.
@@ -72,6 +71,21 @@ func (c Config) su(_ *bufio.Reader) (closeTerminal bool) {
 	}
 	c.emit("terminal.su_denied", map[string]string{"reason": "auth"})
 	fmt.Fprintln(c.Out, "Authentication failed: still in the restricted prompt.")
+	return false
+}
+
+// authRefused says and logs the two refusals that are not a failed password: no provider (unavailable) and an elevated
+// Terminal. Both are logged and never counted toward the three tries. False: the error is something else.
+func (c Config) authRefused(err error) bool {
+	switch {
+	case errors.Is(err, ErrNoAuth):
+		c.unavailable()
+		return true
+	case errors.Is(err, ErrElevated):
+		c.emit("terminal.su_denied", map[string]string{"reason": "elevated"})
+		fmt.Fprintln(c.Out, "su is not available: this Terminal runs as administrator, where Windows sudo asks for no approval, so nothing would check that you are there. Start canon from a normal (not Administrator) window.")
+		return true
+	}
 	return false
 }
 
@@ -88,6 +102,7 @@ func (c Config) grant(limit, warn time.Duration) (closeTerminal bool) {
 		fmt.Fprintln(c.Out, "su refused: the audit log cannot be written, so nothing was started.")
 		return false
 	}
+	fmt.Fprintf(c.Out, "Full shell on: %d:%02d left, type exit to leave.\r\n", int(limit/time.Minute), int(limit/time.Second)%60) // t-a4f8: the reference for the warning near the end
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)

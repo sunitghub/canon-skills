@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+- Added (Terminal): `su` is visible. The shell says `Full shell on: 10:00 left, type exit to leave.` when it starts, the Terminal's row in the Agents list shows `su · m:ss` counting down while it is on (amber in the last 30 s), and the "Approve the OS prompt" banner prints only when a prompt will really appear (sudo off, no prompt available or an Administrator window now get just the refusal). The daemon sends `su_until` on a Terminal's session row, read from the `terminal.su_*` events the Terminal already writes (t-a4f8). Daemon change: restart `canon` after updating.
+
 ## [0.47.9] - 2026-11-07
 
 Board page: run `canon update`, restart the board (`canon`) and reload.

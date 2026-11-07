@@ -45,6 +45,7 @@ func Main(args []string) int {
 		RunOnTerminal: RunOnTerminal,
 		ShellCheck:    shellCheck,
 		Auth:          osAuth,
+		AuthReady:     AuthReady,
 		Limit:         *limit,
 		Warn:          *warn,
 		Rows:          terminalRows,

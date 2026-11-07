@@ -7423,6 +7423,36 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
+    // Protects t-a4f8: the Terminal row shows `su · m:ss` while the daemon sends su_until, ticks it without a re-render, turns it amber in the last
+    // 30 s and drops it at the end or when the row loses the field; a session that is not a Terminal never shows one.
+    test('Terminal row (t-a4f8): su · m:ss under the row ticks, turns amber in the last 30 s, and goes when su ends @webkit', async ({ page }) => {
+      await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: fakeLivePage }));
+      const until = ms => new Date(Date.now() + ms).toISOString();
+      const rows = [{ ...scratchRow('s-q7s1', 'c:/users/me/proj-x/'), agent: 'term', su_until: until(95000) },
+        { ...scratchRow('s-q7s2', 'c:/users/me/proj-x/'), session: 'sy', agent: 'claude', su_until: until(95000) }];
+      await openShell(page, rows);
+      await stubEmbeddedCockpit(page);
+      await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return pollSessions(); });
+      const line = page.locator('#ag-list .ag-su');
+      await expect(line).toHaveCount(1);                                                    // the Terminal's only
+      await expect(line).toHaveText(/^su · 1:(3\d|2\d)$/);
+      await expect(page.locator('#ag-list .ag-row').filter({ has: page.locator('.ag-su') })).toContainText('Terminal');
+      await expect.poll(async () => (await line.textContent())).not.toBe('su · 1:35');       // it ticks on its own
+      await expect(line).not.toHaveClass(/warn/);
+      await page.evaluate(() => { document.querySelector('#ag-list .ag-su').dataset.su = String(Date.now() + 20000); });   // 20 s left
+      await expect(line).toHaveClass(/warn/);
+      await page.evaluate(() => { document.querySelector('#ag-list .ag-su').dataset.su = String(Date.now() - 1000); });     // the time is up
+      await expect(line).toHaveCount(0);
+      rows[0].su_until = until(60000);
+      await page.route('**/api/cockpit-sessions', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rows) }));
+      await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return pollSessions(); });
+      await expect(line).toHaveCount(1);
+      delete rows[0].su_until;                                                              // su exited: the next answer has no field
+      await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return pollSessions(); });
+      await expect(line).toHaveCount(0);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     test('scratch (t-e162): the board path bar has + Scratch; the scratch view says where it runs @webkit', async ({ page }) => {
       const where = [];
       await stubCockpit(page);

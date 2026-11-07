@@ -149,6 +149,8 @@
   .ag-row .ag-none{color:var(--text-muted)}
   .ag-row .ag-at,.ag-row .ag-age{font-size:11px;color:var(--text-muted);white-space:nowrap}
   .ag-row .ag-g{display:grid;justify-items:end;min-width:12px}
+  .ag-row .ag-su{grid-column:2 / -1;font-size:11px;color:var(--text-muted);font-variant-numeric:tabular-nums;white-space:nowrap}   /* t-a4f8: su is on; the last 30 s are amber, as the Terminal's own warning */
+  .ag-row .ag-su.warn{color:var(--th-warn-ink,var(--amber))}
   .ag-row .sdot{width:8px;height:8px}
   .ag-ring{box-sizing:border-box;width:10px!important;height:10px!important;background:transparent!important;border:2px solid color-mix(in srgb,var(--st) 28%,transparent);border-top-color:var(--st);animation:ag-spin .9s linear infinite}
   @keyframes ag-spin{to{transform:rotate(360deg)}}

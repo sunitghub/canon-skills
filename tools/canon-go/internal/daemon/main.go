@@ -1138,15 +1138,16 @@ func (s *server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		Status      string `json:"status"`
 		Started     string `json:"started"`
 		// t-824e: the one place session state is decided; the pages only display it.
-		State         string        `json:"state"`           // needs-you | done | working | idle
-		StateSecs     int64         `json:"state_secs"`      // seconds in this state (idle: since last activity)
-		IdleSecs      int64         `json:"idle_secs"`       // seconds since terminal output or input
-		IdleLimitSecs int64         `json:"idle_limit_secs"` // the reaper's timeout for this session
-		Signal        string        `json:"signal"`          // where needs-you comes from: hook | copilot-menu | activity
-		Title         string        `json:"title,omitempty"` // t-f553: a scratch session's user-given title
-		Attached      int           `json:"attached"`        // t-61c7: browser streams attached right now
-		Shared        bool          `json:"shared"`          // t-5a4b: another live session works in the same folder, and it has no git to keep them apart
-		Meter         *sessionMeter `json:"meter,omitempty"` // t-d00c: cache %, LLM/tool calls, sub-agents from the claude transcript
+		State         string        `json:"state"`              // needs-you | done | working | idle
+		StateSecs     int64         `json:"state_secs"`         // seconds in this state (idle: since last activity)
+		IdleSecs      int64         `json:"idle_secs"`          // seconds since terminal output or input
+		IdleLimitSecs int64         `json:"idle_limit_secs"`    // the reaper's timeout for this session
+		Signal        string        `json:"signal"`             // where needs-you comes from: hook | copilot-menu | activity
+		Title         string        `json:"title,omitempty"`    // t-f553: a scratch session's user-given title
+		Attached      int           `json:"attached"`           // t-61c7: browser streams attached right now
+		Shared        bool          `json:"shared"`             // t-5a4b: another live session works in the same folder, and it has no git to keep them apart
+		Meter         *sessionMeter `json:"meter,omitempty"`    // t-d00c: cache %, LLM/tool calls, sub-agents from the claude transcript
+		SuUntil       string        `json:"su_until,omitempty"` // t-a4f8: a Terminal whose full shell (su) is on: when it ends, RFC 3339
 		convID        string        // t-b1c8: never sent; the id meterFor reads by
 	}
 	// Lock order is s.mu (outer) then se.mu (inner), matching handleShutdown.
@@ -1193,6 +1194,18 @@ func (s *server) handleSessions(w http.ResponseWriter, r *http.Request) {
 			noGit[out[i].ProjectRoot] = g
 		}
 		out[i].Shared = g
+	}
+	var su map[string]time.Time // t-a4f8: the audit log is looked at only when a Terminal is listed
+	for i := range out {
+		if out[i].Agent != "term" {
+			continue
+		}
+		if su == nil {
+			su = suUntil(time.Now())
+		}
+		if t, ok := su[out[i].Session]; ok {
+			out[i].SuUntil = t.UTC().Format(time.RFC3339)
+		}
 	}
 	// idleTimeoutFor resolves symlinks on disk — done outside the locks.
 	live := map[string]bool{}
