@@ -18513,6 +18513,42 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(await panelShown(id)).toBeHidden();
   });
 
+  // Prod path: the Cockpit rail's Worktree picker for a ticket tkt land made a worktree for (t-8be9). VM: the binding (.cockpit-cwd) was gone, the
+  // picker showed Main selected and the land worktree "unavailable", so the session opened on the main checkout. The board's /api/worktrees now
+  // marks land/<id> as the ticket's own; with no lock and no pick the rail selects it. A lock still wins.
+  test('a ticket closing here opens in its land worktree; a lock still wins (t-8be9) @webkit', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh36'), landPath = `/w/land-${id}`;
+    ghTicket(id, { github: 'acme/app#57', status: 'in_progress' });
+    await routeStatus(page, id, { stage: 'pr-open', pr: 58, land: false, landed: landPath });
+    await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
+    await page.route('**/api/worktrees**', r => json(r, [
+      { path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true },
+      { path: landPath, branch: `land/${id}`, own: true, tickets_visible: true, ticket_present: true },
+    ]));
+    let lock = { locked: false, cwd: null, main_dirty: false };
+    await page.route(`**/api/worktree-lock/${id}`, r => json(r, lock));
+    await openBoard(page, id);
+    const open = async () => {
+      // the rail's first render decides the default: the board must already know it is a git project and the ticket's landed stage
+      await expect.poll(() => page.evaluate(async x => {
+        const [c, g] = await Promise.all([import('/static/board-core.js'), import('/static/board-github.js')]);
+        const t = c.state.tickets.find(q => q.id === x);
+        return c.state.isGitProject === true && !!t && g.ghClosingHere(t);
+      }, id)).toBe(true);
+      await page.evaluate(async x => (await import('/static/board-cockpit-rail.js')).openCockpit(x), id);
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+    };
+    const selectedCwd = () => page.evaluate(async () => (await import('/static/board-cockpit.js')).cockpitState.worktreeCwd);
+    await open();
+    await expect.poll(selectedCwd).toBe(landPath);   // unlocked, nothing picked: the land worktree, not Main ('')
+    await expect(page.locator('#ck-worktree .ck-worktree-row.selected')).toHaveAttribute('data-cwd', landPath);
+    await expect(page.locator('#ck-worktree .ck-worktree-held')).toHaveCount(0);   // no "1 worktree unavailable"
+    await page.evaluate(async () => (await import('/static/board-cockpit-rail.js')).closeCockpit());
+    lock = { locked: true, cwd: PROJECT_ROOT, main_dirty: false };   // control: a lock on Main is the user's earlier choice
+    await open();
+    await expect.poll(selectedCwd).toBe('');
+  });
+
   test('Finish: shown once the land worktree exists and the ticket closed there, names its path, and posts finish (t-6623, t-92f2) @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gh32');
     ghTicket(id, { github: 'acme/app#57', status: 'closed' });
