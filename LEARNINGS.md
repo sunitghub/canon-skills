@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-07-2026 13:32
+learnings-sweep last run: 11-07-2026 22:25
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-07 | [t-014f](.tickets/t-014f/learnings.md) | A new test only protects once it is registered in `scripts/test.sh`: four full-suite stamps passed without running `tests/pre-gate-check.sh` until the evaluator grepped the stamped log for its `ok` line, so grep for it. Piping the suite through `tail` also hid a failing exit code, and the check run on its own sprint found its shellcheck default failed on info notes. | UNPROMOTED |
 | 2026-11-07 | [t-27bc](.tickets/t-27bc/learnings.md) | Code that edits or commits files on a person's behalf needs a test per refusal, not per success: the first mutation sweep left 120 survivors, every guard (stray line, outside edit, symlink, hand-edited record file, tree mismatch, failed commit) passing with its test absent, and 13 rejecting cases killed them; a reviewer's "probe" is the cheapest way to find which. Also read the guard's own verdict, never a wrapper's exit code: a board-spec run whose Playwright browsers were gone printed `exit 0` from the `echo` after it while the guard reported 871 violations. | UNPROMOTED |
 | 2026-11-07 | [t-ae96](.tickets/t-ae96/learnings.md) | A shared base must not change a component's cascade: put it in `:where()` (zero specificity) so a component's own one-class rule still wins whatever order the files load in, and keep only a property whose old rule had normal specificity (the background) at normal; prove it by comparing every element's computed style before and after, driven through the real states, not by reading the CSS. A new unit-count anywhere pinned (test-sh-runner's `--list` 20 to 21) fails the suite, so run the suite before the long board spec. | UNPROMOTED |
 | 2026-11-07 | [t-f183](.tickets/t-f183/learnings.md) | A badge that hangs outside its icon box is clipped by any ancestor with overflow:hidden (Admin's `.s1` cut 3.5 px): measure the badge inside every place the icon renders (rail, Admin table, stopped list), and assert its bounding box lies inside the cell, not only that it exists. | UNPROMOTED |
