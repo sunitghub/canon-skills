@@ -12076,6 +12076,59 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
     }
   });
 
+  // Protects t-27bc: the tab's last-known status can say running after the agent exited and the daemon dropped the session. End then reached
+  // nothing, no 'ended' came, and the tab sat on "Ending…" for the 90 s fallback. The shell's fresh session list has no row for the ticket, so
+  // it finishes at once and never sends the end message.
+  test('End on a tab whose session is already gone ends at once, without waiting out the fallback (t-27bc) @webkit', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'lcgone');
+    try {
+      writeTicket(id, 'in_progress');
+      await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running', endDelayMs: 60000 }));
+      await page.waitForTimeout(100);
+      writeTicket(id, 'closed');
+      await page.evaluate(async () => {
+        window.__received = [];
+        window.addEventListener('message', (e) => { if (e.data && e.data.type === '__received') window.__received.push(e.data.received); });
+        const { state } = await import('/static/board-core.js');
+        state.shellSessions = { at: Date.now(), rows: [{ session: 'other', ticket: 't-zzzz', agent: 'claude' }] };   // the Agents list: no session for this ticket
+      });
+      await page.locator('#ck-end-session').click();
+      await expect(page.locator('#ck-leave-confirm')).toHaveClass(/open/);
+      await page.locator('#ck-leave-save').click();
+      await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/, { timeout: 3000 });
+      expect(await page.evaluate(() => window.__received)).toEqual([]);   // nothing was sent to a session that is not there
+    } finally {
+      removeTestTicket(PROJECT_ROOT, id);
+    }
+  });
+
+  // Protects t-27bc: a closed ticket's session view says what to do (close the tab; for worktree work, Check & merge on the board), and only
+  // when no session is running, never for an open ticket, a Terminal or a scratch.
+  test('a closed ticket with no running session says it can be closed; not for an open or live one (t-27bc) @webkit', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'lchint');
+    try {
+      writeTicket(id, 'in_progress');                                                       // a closed card has no Start: open it while it runs
+      await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running' }));
+      await page.waitForTimeout(150);
+      const hint = page.locator('#ck-tc-closed');
+      await expect(hint).toBeHidden();                                                      // the session is still running
+      const text = await page.evaluate(async () => {
+        const rail = await import('/static/board-cockpit-rail.js'), cc = await import('/static/board-cockpit.js');
+        const t = { id: 't-x', status: 'closed' };
+        const out = { live: rail.closedHintText(t, true), open: rail.closedHintText({ ...t, status: 'open' }, false), term: rail.closedHintText({ ...t, term: true }, false), scratch: rail.closedHintText({ ...t, scratch: true }, false), done: rail.closedHintText(t, false) };
+        cc.cockpitState.status = 'ended';
+        rail.renderClosedHint(t);
+        return out;
+      });
+      expect(text.live).toBe(''); expect(text.open).toBe(''); expect(text.term).toBe(''); expect(text.scratch).toBe('');
+      expect(text.done).toContain('You can close this tab'); expect(text.done).toContain('Check & merge');
+      await expect(hint).toBeVisible();
+      await expect(hint).toContainText('This ticket is closed. You can close this tab.');
+    } finally {
+      removeTestTicket(PROJECT_ROOT, id);
+    }
+  });
+
   test('Save & End resolves immediately if the session already ended while the modal sat open (t-8efc) @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'lcrace');
     try {

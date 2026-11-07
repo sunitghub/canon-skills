@@ -103,6 +103,7 @@
     #cockpit.term-mode .ck-scratch-ico { display: none; }
     #cockpit.term-mode #ck-promote { display: none; }   /* t-57ab: promote types an agent prompt; a terminal has no agent */
     /* t-f553: editable scratch title, promote */
+    .ck-tc-closed { margin-top: 8px; font-size: var(--fs-sm); line-height: 1.45; color: var(--text-muted); }   /* t-27bc */
     #cockpit.scratch-mode #ck-tc-title { cursor: text; border-radius: 4px; }
     #cockpit.scratch-mode #ck-tc-title:hover { text-decoration: underline dotted; text-underline-offset: 3px; }
     #cockpit.scratch-mode #ck-tc-title::after { content: " \270E"; opacity: 0; font-weight: 400; color: var(--text-muted); }

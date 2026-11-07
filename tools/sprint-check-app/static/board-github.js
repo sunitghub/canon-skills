@@ -558,7 +558,7 @@ export async function finishStep(t, target) {
     const pushing = !pushed;
     updateDialog({
       title: pushing ? `Push ${into}` : 'Reset the worktree',
-      body: pushing ? `Sends the commits below to origin's ${into}: a normal push, never forced, no other branch.`
+      body: pushing ? `Sends the commits below to origin's ${into}: a normal push, never forced, no other branch.${/also commits canon's merge record/.test(chk.output || '') ? ` It first commits canon's own merge record for ${t.id} (the files named below), so ${into} is not left showing modified files.` : ''}`
         : `Puts the worktree back at origin's ${into} so the next ticket starts clean (tkt worktree-reset, run in the worktree's folder). It refuses uncommitted work.`,
       pre: chk.output || '', ok: pushing ? `Push ${into}` : 'Reset the worktree', cancel: 'Not now', escape: true,
     }, reading.gen);

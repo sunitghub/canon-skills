@@ -110,6 +110,20 @@ function renderCockpitStatusBadge(t) {
     el.textContent = t && t.term ? 'terminal' : info.label;
     el.className = 'ck-status-badge ' + info.cls;
   }
+  renderClosedHint(t);
+}
+// t-27bc: a closed ticket whose session is over says what to do, instead of leaving an empty tab: close it (the tab's own x), and for work done
+// in a worktree the next step is on the board, Check & merge on the card in Done. Not for a Terminal, a scratch or an open ticket, and not
+// while a session is still running (the agent may still be printing its summary).
+export function closedHintText(t, live) {
+  if (!t || t.term || t.scratch || t.status !== 'closed' || live) return '';
+  return 'This ticket is closed. You can close this tab. If the work was done in a worktree, the next step is Check & merge on its card in Done.';
+}
+export function renderClosedHint(t) {
+  const el = document.getElementById('ck-tc-closed');
+  if (!el) return;
+  const text = closedHintText(t, sessionIsLive());
+  el.textContent = text; el.hidden = !text;
 }
 
 // t-bc04: clamp the preview width to a sane range so a stale/huge persisted

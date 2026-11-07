@@ -1907,6 +1907,55 @@ _merge_run_tests() {
 # and calls its hooks: _mc_fetch (o/<base> and o/cand into $tmp/w; sets err on failure), _mc_refuse <reason> (records why,
 # exits 1), _mc_check_notes (extra --check lines), _mc_conflict_next (the way out of a conflict). Returns 0 to merge, 3 when
 # nothing more is to be done (the --check report printed, or the user said no).
+# _resolve_learnings_conflict <clone> — t-27bc: a merge that conflicts ONLY in LEARNINGS.md (every close appends a row inside the canon:learnings
+# block and rewrites the "learnings-sweep last run:" line, so two tickets closed in different checkouts always collide there) is resolved here, in
+# the scratch clone, and committed: both sides' rows kept (git's union merge), one copy of an identical row, rows newest first, and the newest
+# stamp. It refuses (return 1, the clone untouched) when LEARNINGS.md is not the only conflicted file, the file has no single canon:learnings
+# block, or no stamp line: a conflict is never hidden, and no other file is ever resolved. Reads the merge in progress; the user's repo is not touched.
+_resolve_learnings_conflict() {
+  local w="$1" files d rc=0
+  files="$(git -C "$w" diff --name-only --diff-filter=U < /dev/null 2>/dev/null)" || return 1
+  [[ "$files" == "LEARNINGS.md" ]] || return 1
+  d="$(mktemp -d "${TMPDIR:-/tmp}/tkt-learn.XXXXXX")" || return 1
+  git -C "$w" show :1:LEARNINGS.md > "$d/base" 2>/dev/null || : > "$d/base"   # add/add: no common version
+  { git -C "$w" show :2:LEARNINGS.md > "$d/ours" && git -C "$w" show :3:LEARNINGS.md > "$d/theirs"; } 2>/dev/null || { rm -rf "$d"; return 1; }
+  git merge-file -p --union "$d/ours" "$d/base" "$d/theirs" > "$d/union" 2>/dev/null || rc=$?
+  [[ "$rc" -lt 128 ]] || { rm -rf "$d"; return 1; }
+  awk '
+    { L[NR] = $0 }
+    END {
+      n = NR; bi = ei = 0; nb = ne = 0; best = ""; bestline = ""
+      for (i = 1; i <= n; i++) {
+        if (L[i] == "<!-- canon:learnings:BEGIN -->") { nb++; bi = i }
+        if (L[i] == "<!-- canon:learnings:END -->") { ne++; ei = i }
+        if (L[i] ~ /^learnings-sweep last run: /) {
+          t = L[i]; sub(/^learnings-sweep last run: */, "", t)
+          if (match(t, /^[0-9][0-9]-[0-9][0-9]-[0-9][0-9][0-9][0-9] [0-9][0-9]:[0-9][0-9]/)) {
+            k = substr(t, 7, 4) substr(t, 1, 2) substr(t, 4, 2) substr(t, 12, 2) substr(t, 15, 2)
+            if (k > best) { best = k; bestline = L[i] }
+          }
+          if (bestline == "") bestline = L[i]; ns++
+        }
+      }
+      if (nb != 1 || ne != 1 || bi + 3 > ei || ns < 1 || L[bi + 2] !~ /^\|---/) exit 1
+      m = 0
+      for (i = bi + 3; i < ei; i++) if (L[i] ~ /^\|/ && !(L[i] in seen)) { seen[L[i]] = 1; m++; R[m] = L[i] }
+      for (i = 2; i <= m; i++) {   # newest first by the Date cell, stable
+        x = R[i]; split(x, c, "|"); kx = c[2]; j = i - 1
+        while (j >= 1) { split(R[j], c, "|"); if (c[2] >= kx) break; R[j + 1] = R[j]; j-- }
+        R[j + 1] = x
+      }
+      stamped = 0
+      for (i = 1; i <= bi + 2; i++) { if (L[i] ~ /^learnings-sweep last run: /) { if (!stamped) { print bestline; stamped = 1 } } else print L[i] }
+      for (i = 1; i <= m; i++) print R[i]
+      for (i = ei; i <= n; i++) { if (L[i] ~ /^learnings-sweep last run: /) continue; print L[i] }
+    }' "$d/union" > "$d/out" 2>/dev/null || { rm -rf "$d"; return 1; }
+  grep -q '^<<<<<<<\|^>>>>>>>' "$d/out" && { rm -rf "$d"; return 1; }
+  cat "$d/out" > "$w/LEARNINGS.md" && git -C "$w" add -- LEARNINGS.md < /dev/null >/dev/null 2>&1 \
+    && git -C "$w" -c user.name=canon -c user.email=canon@localhost commit -q --no-edit < /dev/null >/dev/null 2>&1 || { rm -rf "$d"; return 1; }
+  rm -rf "$d"; return 0
+}
+
 _merge_core() {
   _mc_fetch || { echo "$label: could not fetch $base and $subj${fetch_from:+ from $fetch_from}: $err" >&2; _mc_refuse "could not fetch $base and the $kind${fetch_from:+ from $fetch_from}"; }
   [[ "$(git -C "$tmp/w" rev-parse o/cand)" == "$head" ]] || { echo "$label: $subj moved while checking it; run $label again" >&2; _mc_refuse "$kind moved while it was checked"; }
@@ -1923,12 +1972,18 @@ _merge_core() {
   fi
   if ! { git -C "$tmp/w" checkout -q -B merge-check "o/$base" < /dev/null \
     && git -C "$tmp/w" -c user.name=canon -c user.email=canon@localhost merge -q --no-edit o/cand < /dev/null >/dev/null 2>&1; }; then
+    # t-27bc: tkt merge (a worktree branch) resolves a LEARNINGS.md-only conflict itself; merge-pr does not, because its PR lives on GitHub.
+    if ${learn_resolve:-false} && _resolve_learnings_conflict "$tmp/w"; then
+      echo "$label: $subj conflicted only in LEARNINGS.md: resolved it here, both sides' rows kept and the newest 'last run' line"
+      mc_resolved=true
+    else
     echo "$label: $subj does not merge into $base here" >&2
     # t-ca00: name the conflicting files (git merge-tree reads objects only) and the way out; a failure here never hides the refusal.
     local mt mrc=0
     mt="$(git -C "$tmp/w" merge-tree --write-tree --name-only --no-messages "o/$base" o/cand < /dev/null 2>&1)" || mrc=$?
     if [[ "$mrc" == 1 ]]; then echo "$label: conflicts in: $(printf '%s\n' "$mt" | sed 1d | grep . | paste -sd, - | sed 's/,/, /g')" >&2; _mc_conflict_next; fi
     _mc_refuse "$kind does not merge into $base"
+    fi
   fi
   if ! $tset && git -C "$tmp/w" ls-tree "o/$base" -- scripts/test.sh < /dev/null | grep -q '^100755 '; then tcmd="scripts/test.sh"; fi
   echo "$title: $(git -C "$tmp/w" diff --shortstat "o/$base...o/cand" < /dev/null | sed 's/^ *//')"
@@ -2209,6 +2264,7 @@ _merge_branch() {
   # shellcheck disable=SC2064  # expand now: $tmp is local
   trap "rm -rf '$tmp'" EXIT
   # shellcheck disable=SC2034  # read by _merge_core (dynamic scope)
+  local learn_resolve=true mc_resolved=false   # t-27bc: _merge_core may resolve a LEARNINGS.md-only conflict in its scratch clone
   local label=merge subj="$branch" kind=branch title="$branch" logsfx="${branch//[^A-Za-z0-9._-]/-}" fetch_from="" closes="" also=""
   _mc_fetch() {
     err="$({ git clone -q --no-checkout "$root" "$tmp/w" \
@@ -2241,9 +2297,16 @@ _merge_branch() {
   tested="$(git -C "$tmp/w" rev-parse 'HEAD^{tree}')" || _mb_no "git could not read the tested tree; nothing merged"
   [[ "$(git -C "$root" rev-parse -q --verify "refs/heads/$base")" == "$bsha" ]] || _mb_no "$base moved while the tests ran; nothing merged: Check & merge again"
   [[ "$(git -C "$root" rev-parse -q --verify "refs/heads/$branch")" == "$head" ]] || _mb_no "$branch moved while the tests ran; nothing merged: Check & merge again"
-  tree="$(git -C "$root" merge-tree --write-tree "$bsha" "$head" < /dev/null 2>&1)" || _mb_no "git merge-tree could not build the merge here: $(head -1 <<< "$tree")"
-  tree="$(head -1 <<< "$tree")"
-  [[ "$tree" == "$tested" ]] || _mb_no "the merge here (tree ${tree:0:8}) is not the tree the tests ran on (${tested:0:8}); nothing merged"
+  if $mc_resolved; then
+    tree="$tested"   # t-27bc: git's own merge conflicts here; the resolved tree is the one the tests ran on, and it is what lands
+    # its objects are in the scratch clone only: bring that commit (parents: base and branch head, both already here) into the repository
+    git -C "$root" fetch -q "$tmp/w" refs/heads/merge-check < /dev/null >/dev/null 2>&1 \
+      && [[ "$(git -C "$root" cat-file -t "$tree" 2>/dev/null)" == tree ]] || _mb_no "git could not bring the resolved merge into $root; nothing merged"
+  else
+    tree="$(git -C "$root" merge-tree --write-tree "$bsha" "$head" < /dev/null 2>&1)" || _mb_no "git merge-tree could not build the merge here: $(head -1 <<< "$tree")"
+    tree="$(head -1 <<< "$tree")"
+    [[ "$tree" == "$tested" ]] || _mb_no "the merge here (tree ${tree:0:8}) is not the tree the tests ran on (${tested:0:8}); nothing merged"
+  fi
   new="$(git -C "$root" commit-tree "$tree" -p "$bsha" -p "$head" -m "Merge branch '$branch'" < /dev/null 2>&1)" \
     || _mb_no "git could not write the merge commit: $new"
   _advance_local "$root" "$base" "$id" "$bsha" "$new" "tkt merge $id" || _mb_no "not merged; $base is unchanged at ${bsha:0:8}"
@@ -2262,6 +2325,48 @@ _merge_branch() {
 # (the board's confirm), --check changes nothing. The push is one refspec for the one default ref (never forced, no tags, no other
 # branch). The reset is tkt worktree-reset --yes run inside the ticket's worktree, and waits for the push: until the merge is on
 # origin, the work branch's commits are on no remote and worktree-reset would refuse them.
+# _merge_record_paths <root> <ticket dir> <branch> — t-27bc: the files canon itself wrote when it recorded a merge, still uncommitted in the
+# main checkout: the ticket's ticket.md (merged:, merged_into:, merged_branch:) and cockpit-sessions.md, and HANDOFF.md only when its whole
+# difference from HEAD is canon's generated Recent activity block and Scratch lines (the check _ff_here makes). One path per line; nothing when
+# the checkout is not on <branch> (a merge by ref touched no file there) or the file is git-ignored. Never a wildcard, never anyone's edit.
+_merge_record_paths() {
+  local root="$1" tdir="$2" into="$3" cur prefix name p rb
+  cur="$(git -C "$root" symbolic-ref -q --short HEAD 2>/dev/null || true)"
+  [[ "$cur" == "$into" ]] || return 0
+  prefix="$(git -C "$tdir" rev-parse --show-prefix 2>/dev/null)" || return 0
+  for name in ticket.md cockpit-sessions.md; do
+    p="${prefix}${name}"
+    [[ -f "$root/$p" && ! -L "$root/$p" ]] || continue
+    git -C "$root" check-ignore -q -- "$p" < /dev/null 2>/dev/null && continue
+    [[ -n "$(git -C "$root" status --porcelain -- "$p" < /dev/null 2>/dev/null)" ]] && printf '%s\n' "$p"
+  done
+  if [[ -f "$root/HANDOFF.md" && ! -L "$root/HANDOFF.md" ]] && ! git -C "$root" check-ignore -q -- HANDOFF.md < /dev/null 2>/dev/null \
+     && [[ -n "$(git -C "$root" status --porcelain -- HANDOFF.md < /dev/null 2>/dev/null)" ]] \
+     && rb="$(recent_board)" && git -C "$root" cat-file -e HEAD:HANDOFF.md 2>/dev/null \
+     && cmp -s <(git -C "$root" cat-file blob HEAD:HANDOFF.md | tr -d '\r' | "$rb" recent --strip | _ff_scratch_strip) <(tr -d '\r' < "$root/HANDOFF.md" | "$rb" recent --strip | _ff_scratch_strip); then
+    printf '%s\n' HANDOFF.md
+  fi
+  return 0
+}
+
+# _commit_merge_record <root> <ticket dir> <branch> <id> — t-27bc: commit exactly those files as "chore: record merge of <id>" so the default branch
+# is not left showing modified files (which block the next fast-forward and the board's count). Only those paths are committed (`git commit
+# -- <paths>` leaves anything else staged out), the user's own identity is used when set, and a failure says so and never stops the push.
+_commit_merge_record() {
+  local root="$1" tdir="$2" into="$3" id="$4" paths=() p rest
+  while IFS= read -r p; do [[ -n "$p" ]] && paths+=("$p"); done < <(_merge_record_paths "$root" "$tdir" "$into")
+  if [[ ${#paths[@]} -gt 0 ]]; then
+    local ident=(); [[ -n "$(git -C "$root" config user.name 2>/dev/null)" && -n "$(git -C "$root" config user.email 2>/dev/null)" ]] || ident=(-c user.name=canon -c user.email=canon@localhost)
+    if git -C "$root" add -- "${paths[@]}" < /dev/null >/dev/null 2>&1 \
+       && git -C "$root" ${ident[@]+"${ident[@]}"} commit -q -m "chore: record merge of $id" -- "${paths[@]}" < /dev/null >/dev/null 2>&1; then
+      echo "finish: committed canon's merge record for $id: $(printf '%s, ' "${paths[@]}" | sed 's/, $//')"
+    else echo "finish: could not commit canon's merge record ($(printf '%s, ' "${paths[@]}" | sed 's/, $//')); pushing without it" >&2; fi
+  fi
+  rest="$(git -C "$root" status --porcelain --untracked-files=no < /dev/null 2>/dev/null | sed -n '1,5p' | cut -c4- | paste -sd, - | sed 's/,/, /g')"
+  [[ -z "$rest" ]] || echo "finish: these files are modified and are not canon's merge record, left as they are: $rest"
+  return 0
+}
+
 cmd_finish() {
   local id="" mode="" yes=false fetch=false
   while [[ $# -gt 0 ]]; do
@@ -2297,7 +2402,7 @@ cmd_finish() {
     git -C "$root" fetch -q origin "$into" < /dev/null 2>/dev/null || echo "finish: could not reach origin; showing what was last fetched"
   fi
   wt=""; [[ -f "$tdir/.cockpit-cwd" ]] && wt="$(_ticket_cwd_binding "$file")"
-  local on_origin=false ahead
+  local on_origin=false ahead rp
   git -C "$root" merge-base --is-ancestor "$merged" "refs/remotes/origin/$into" 2>/dev/null && on_origin=true
   # worktree-reset moves the worktree's branch to origin's default branch, so it still needs one while it has the merged work branch
   # checked out at anything but that tip.
@@ -2322,6 +2427,10 @@ cmd_finish() {
           printf '%s\n' "$ahead" | sed -n '1,20p'
         else echo "finish: push: origin has no $into as last fetched (git fetch origin); a push sends the whole branch"; fi
       fi
+      if ! $on_origin; then
+        rp="$(_merge_record_paths "$root" "$tdir" "$into" | paste -sd, - | sed 's/,/, /g')"
+        [[ -z "$rp" ]] || echo "finish: push: also commits canon's merge record first: $rp"
+      fi
       case "$wtstate" in
         on-branch) if $on_origin; then echo "finish: reset: $wt is still on $mb; tkt worktree-reset there starts the next ticket"
                    else echo "finish: reset: $wt is still on $mb; reset after the push"; fi ;;
@@ -2330,6 +2439,7 @@ cmd_finish() {
       esac ;;
     --push)
       $on_origin && { echo "finish: $into is already on origin; nothing to push"; return 0; }
+      _commit_merge_record "$root" "$tdir" "$into" "$id"   # t-27bc
       local pout; pout="$(LC_ALL=C git -C "$root" push origin "refs/heads/$into:refs/heads/$into" < /dev/null 2>&1)" \
         || { printf '%s\n' "$pout" >&2; _fin_no "git push origin $into was refused or failed (not forced); if origin has new commits, update $into first (git pull --ff-only in the main checkout), then Push again"; }
       printf '%s\n' "$pout"

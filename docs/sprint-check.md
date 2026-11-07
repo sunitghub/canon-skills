@@ -389,7 +389,11 @@ sprint agent without leaving the browser — no second terminal.
   your checkouts; the merge is then one `Merge branch '<branch>'` commit holding exactly the tested files, and main moves to it under the same rules
   as a PR's update of local main: canon's own files are set aside, any other file you edited that the merge changes stops
   it with nothing changed (a merge by ref touches no file of the checkout). Then push and reset with `tkt finish`.
-  The ticket gets `merged: <sha>`, the activity log a `branch.merged` event, and `HANDOFF.md` a Recent activity line.
+  The ticket gets `merged: <sha>`, the activity log a `branch.merged` event, and `HANDOFF.md` a Recent activity line. Two tickets closed in different checkouts always collide in `LEARNINGS.md` (each close appends a row and rewrites the `last run`
+  line): when that is the only conflicted file, the merge resolves it in the scratch copy (both sides' rows, newest first, an identical row once, the newest stamp), runs the tests on the
+  resolved files and lands exactly that tree, saying so; a conflict in any other file still stops it with the files named and nothing changed (`t-27bc`).
+  That record is left uncommitted in the main checkout, so **Push** first commits exactly canon's own files for the ticket (`ticket.md`, `cockpit-sessions.md`, and `HANDOFF.md` only when its whole change is the generated Recent activity block)
+  as `chore: record merge of <id>`, then pushes; any file you edited stays as it is and is named. A closed ticket's session tab says it can be closed once no session is running, and an End on a tab whose session is already gone finishes at once instead of waiting out the 90 s fallback.
 - **Reap now / Kill (`t-3c9a`):** end a session you aren't attached to. Right-click an
   Agents row (or Shift+F10 on it) for **Open / Reap now / Kill…**, or press the prefix
   then **t** for the menu of the active tab's agent; Admin's session rows have the same

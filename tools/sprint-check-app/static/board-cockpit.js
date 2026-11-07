@@ -1,4 +1,4 @@
-import { SHELL_TAB, loadData, state } from './board-core.js';
+import { SHELL_TAB, freshShellSessions, loadData, state } from './board-core.js';
 import { CK_SIGNAL_LABEL, COCKPIT_TICKET_ID, SCRATCH_ID, applyCardSessions, announceScratchTabs, ckRowState, findTicketById, finishAdopt, newScratchId, openScratch, postToTab, render, renderBoard, renderScratchWhere, showPromotedChoice, showToast, startPromote } from './board-render.js';
 import { closeCockpit, findLiveDaemonSession, openCockpit, openTicketWhenLoaded, renderCockpitRail, showTicketWhenLoaded, renderTabStrip, stopCockpitPoll } from './board-cockpit-rail.js';
 import { applyActualWorkingCwd, maybeMountCockpitTerminal } from './board-worktree.js';
@@ -660,6 +660,15 @@ async function ckLeaveSaveAndEnd(skipSave, opts) {
   // is fetched fresh (isTicketClosed), failing safe to the save path on error.
   closed = await isTicketClosed(cockpitState.id);
   if (done) return; // idle-reap already ended us during the fetch — nothing to send
+  // t-27bc: the tab's last-known status can say running after the agent has exited (sprint complete, then the agent ends) and the daemon
+  // has dropped the session; force-end then reaches nothing, no 'ended' ever comes, and the tab sat on "Ending…" for the 90 s fallback. The
+  // shell's fresh session list is the Agents list's own answer: no row for this ticket means it is already over, so finish at once.
+  const freshRows = freshShellSessions();
+  if (freshRows && !freshRows.some(r => r && r.ticket === cockpitState.id)) {
+    clearTimeout(fallbackTimer);
+    finish(closed ? 'Ended — ticket already closed, no state to save.' : 'Ended — the session was already over.');
+    return;
+  }
   if (closed || skipSave) {
     if (!skipSave) statusEl.textContent = 'Ticket already closed — ending…'; // skipSave's modal is already closed
     iframe.contentWindow.postMessage(scratchEnd || { source: 'canon-cockpit', type: 'force-end' }, 'http://' + cockpitState.addr);
