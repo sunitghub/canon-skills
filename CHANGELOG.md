@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.47.11] - 2026-11-07
+
+Board page: run `canon update`, restart the board (`canon`) and reload.
+
 - Changed (board): a scratch session in the Agents list, Admin's Sessions table and the stopped list shows its agent's mark (the Claude mark for Claude, a lettered tile for another agent) with a small pencil badge, so you can tell the agent and that there is no ticket. A Terminal keeps its icon, and a scratch with no agent yet keeps the plain pencil (t-f183).
 
 ## [0.47.10] - 2026-11-07
