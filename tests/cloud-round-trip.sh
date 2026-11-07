@@ -224,6 +224,7 @@ mkdir -p ".tickets/$id" && cp "$A/$d/ticket.md" "$A/$d/plan.md" "$A/$d/github.md
 export STUB_PR_HEAD; # every board and Go path is a trigger on its own (the failed check keeps the branch, so the head still mismatches); a high-risk plan is one too
 for f in tests/run-board-spec.sh tests/board-spec-baseline.json tools/sprint-check-app/x.js; do
   out="$(STUB_PR_HEAD=0000000000000000000000000000000000000000 STUB_PR_FILES="$f" "$TKT" import-results "$id" --pr 58 2>&1)" || true; assert_contains "$out" "re-grade needed on this Mac: board change (full board spec), PR head"
+  [[ "$out" != *"LEARNINGS.md row"* ]] || fail "a refused import (rc != 0) still reached the LEARNINGS.md row step (t-8a0d): $out"
 done
 for f in tools/canon-go/internal/board/x.go tools/canon-go/go.mod tools/canon-go/internal/daemon/x.go; do   # t-8020: the board+daemon module
   out="$(STUB_PR_HEAD=0000000000000000000000000000000000000000 STUB_PR_FILES="$f" "$TKT" import-results "$id" --pr 58 2>&1)" || true; assert_contains "$out" "re-grade needed on this Mac: Go change (needs a release), PR head"
@@ -482,6 +483,7 @@ plain="$("$TKT" create "Plain one · with a dot" -t bug -p 1)"
 "$TKT" send-issue "$plain" >/dev/null
 grep -qxF '<!-- canon:lite -->' "$STUB_BODY" && fail "a ticket without demo: true was sent with the Lite marker"
 assert_grep '^5\. Run `sprint complete`: a fresh reviewer and a fresh evaluator are dispatched, and neither is skipped or written by hand\.$' "$STUB_BODY"
+grep -qF 'do NOT run the learnings-sweep skill and do not edit LEARNINGS.md' "$STUB_BODY" || fail "the issue body does not tell the cloud session to skip learnings-sweep (t-8a0d): the cloud's own ticket.md has no runs: github to key on"
 cp "$STUB_BODY" "$W/plain-body.md"
 lite="$("$TKT" create "Lite one · with a dot" -t feature -p 3)"
 "$TKT" demo "$lite" on >/dev/null

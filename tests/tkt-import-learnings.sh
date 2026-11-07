@@ -93,6 +93,17 @@ run t-mark >/dev/null; r="$(sed -n 8p "$R/LEARNINGS.md")"
 [[ "$r" != *"<"* && "$r" != *">"* ]] || fail "a < or > from the finding reached the row: $r"
 assert_eq 1 "$(grep -c '<!-- canon:learnings:END -->' "$R/LEARNINGS.md")"
 
+# 4c. a finding with backslashes (real lessons quote \n, \| and \r) comes through literally, on one line
+fresh; candidate t-back 'Pass printf %s not echo -e "a\nb"; use \| in tables' "x"
+run t-back >/dev/null; r="$(sed -n 8p "$R/LEARNINGS.md")"
+assert_contains "$r" 'Pass printf %s not echo -e "a\nb"; use \ in tables'; assert_eq 11 "$(wc -l < "$R/LEARNINGS.md" | tr -d ' ')"
+# 4d. a candidate with Windows line endings: the template lessons are still skipped
+fresh; candidate t-crlf - "No blocking findings."; sed -i.bak 's/$/\r/' "$R/.tickets/t-crlf/learnings.md"; rm "$R/.tickets/t-crlf/learnings.md.bak"
+run t-crlf >/dev/null; assert_contains "$(sed -n 8p "$R/LEARNINGS.md")" "| No blocking findings. |"
+# 4e. a LEARNINGS.md that cannot be written is a reason, not an exit
+fresh; candidate t-ro10 "x" "x"; chmod 444 "$R/LEARNINGS.md"; out="$(run t-ro10)"; chmod 644 "$R/LEARNINGS.md"
+if [[ "$(id -u)" != 0 ]]; then assert_contains "$out" "no LEARNINGS.md row added: LEARNINGS.md is not writable"; cmp -s "$R/LEARNINGS.orig" "$R/LEARNINGS.md" || fail "an unwritable LEARNINGS.md changed"; fi
+
 # 5. refusals: each says why on one line and leaves LEARNINGS.md byte-identical
 refused() { # refused <why> : expects the output and an unchanged file
   assert_contains "$out" "no LEARNINGS.md row added: $1"
@@ -118,7 +129,7 @@ fresh; candidate t-ten0 "x" "x"; printf '# Learnings\n<!-- canon:learnings:BEGIN
 cp "$R/LEARNINGS.md" "$R/LEARNINGS.orig"; out="$(run t-ten0)"; refused "LEARNINGS.md has no single canon:learnings table"      # an empty block with a separator-looking line after it
 
 # 6. the two instruction lines that keep the row off a cloud PR (a prompt edit: the evaluator reads the wording, this pins that it exists)
-grep -qi "runs: github" "$ROOT/skills/sprint/reference/complete.md" && grep -qi "does not run the .learnings-sweep" "$ROOT/skills/sprint/reference/complete.md" \
-  || fail "complete.md step 8 does not say a cloud (runs: github) ticket skips learnings-sweep"
-grep -qi "learnings-sweep" "$ROOT/docs/setup.md" || fail "docs/setup.md does not say a cloud session skips learnings-sweep"
+grep -qi "does not run the .learnings-sweep" "$ROOT/skills/sprint/reference/complete.md" && grep -qi "leave root .LEARNINGS.md. alone" "$ROOT/skills/sprint/reference/complete.md" \
+  || fail "complete.md step 8 does not say a cloud session, told by its issue, skips learnings-sweep"
+grep -qi "Learnings (t-8a0d)" "$ROOT/docs/setup.md" || fail "docs/setup.md › Claude cloud sessions does not say a cloud session skips learnings-sweep"
 echo "tkt-import-learnings: ok"
