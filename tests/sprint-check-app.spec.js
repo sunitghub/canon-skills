@@ -18595,7 +18595,8 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
       }
       return json(r, [main]);
     });
-    await page.route('**/api/worktree-lock/*', r => json(r, { locked: false, cwd: null, main_dirty: false }));
+    await page.route(`**/api/worktree-lock/${a}`, r => json(r, { locked: false, cwd: null, main_dirty: false }));
+    await page.route(`**/api/worktree-lock/${b}`, r => json(r, { locked: true, cwd: PROJECT_ROOT, main_dirty: false }));   // different locks, so a mixed-up write shows
     await openBoard(page, a);
     await expect.poll(() => page.evaluate(async x => {
       const [c, g] = await Promise.all([import('/static/board-core.js'), import('/static/board-github.js')]);
@@ -18607,15 +18608,21 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.evaluate(async x => (await import('/static/board-cockpit-rail.js')).openCockpit(x), b);   // the user moves on: B is the active tab now
     release();
     await page.evaluate(() => window.__openA);
-    const tabs = await page.evaluate(async ([x, y]) => {
+    const tabs = await page.evaluate(async ([x, y, lp]) => {
       const { cockpitTabs } = await import('/static/board-cockpit.js');
-      const pick = t => ({ cwd: t.worktreeCwd, present: Object.keys(t.worktreePresentByCwd || {}), lock: t.worktreeLock });
+      const pick = t => ({ cwd: t.worktreeCwd, present: Object.keys(t.worktreePresentByCwd || {}), visible: Object.keys(t.worktreeVisibleByCwd || {}), lock: t.worktreeLock, label: t.worktreeLabel ? t.worktreeLabel(lp) : null });
       return { a: pick(cockpitTabs[x]), b: pick(cockpitTabs[y]) };
-    }, [a, b]);
+    }, [a, b, landPath]);
     expect(tabs.a.cwd).toBe(landPath);                       // its own render landed on its own tab
     expect(tabs.a.present).toContain(landPath);
+    expect(tabs.a.visible).toContain(landPath);
+    expect(tabs.a.lock.locked).toBe(false);                  // A's own lock answer
+    expect(tabs.a.label).toBe(`land/${a}`);                  // A knows the worktree by its branch
     expect(tabs.b.cwd).toBe('');                             // B kept what it had: the Main placeholder
     expect(tabs.b.present).not.toContain(landPath);          // and none of A's worktrees
+    expect(tabs.b.visible).not.toContain(landPath);
+    expect(tabs.b.lock.locked).toBe(true);                   // B's own lock answer, not A's
+    expect(tabs.b.label).toBe(`land-${a}`);                  // B does not know A's worktree: the folder name, not A's branch
   });
 
   test('Finish: shown once the land worktree exists and the ticket closed there, names its path, and posts finish (t-6623, t-92f2) @webkit', async ({ page }) => {
