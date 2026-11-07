@@ -6,7 +6,11 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
-- Fixed (board): with the Terminal open below or beside the Board, the Board now takes only its own share of the window. Before, a lane ran under the Terminal, so its lower cards were hidden and, when they all fitted the full height, it had no scrollbar to reach them. Each lane now ends above the Terminal and scrolls (t-15d0).
+## [0.47.9] - 2026-11-07
+
+Board page: run `canon update`, restart the board (`canon`) and reload.
+
+- Fixed (board): with the Terminal open below or beside the Board, the Board now takes only its own share of the window. Before, a lane ran under the Terminal, so its lower cards were hidden and, when they all fitted the full height, it had no scrollbar to reach them. Each lane now ends above the Terminal (also beside it) and scrolls (t-15d0).
 
 ## [0.47.8] - 2026-11-07
 
