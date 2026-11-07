@@ -6464,12 +6464,15 @@ test.describe('cockpit in board (t-ddc8)', () => {
         const send = tid => page.evaluate(t => document.querySelector('#view-proj-a iframe').contentWindow.postMessage({ source: 'canon-cockpit-shell', type: 'show-ticket', ticket: t }, location.origin), tid);
         // the board's message listener is the last thing its script sets up: send again until it answers
         await expect.poll(async () => { await send(id); return card.getAttribute('data-pulse'); }, { timeout: 10000 }).toBe('1');
+        await expect(card).not.toHaveClass(/animate-in/);                                                          // the first-render animation is spent: it would otherwise override the pulse
         expect(await card.evaluate(e => getComputedStyle(e).animationName)).toBe('pane-pulse');                    // the existing keyframes, no new colour
         await expect(board.locator('#cockpit-overlay.open')).toHaveCount(0);                                       // no session view
         await board.locator('body').click({ position: { x: 5, y: 5 } });                                           // the first interaction ends it
         await expect(card).not.toHaveAttribute('data-pulse', '1');
+        await card.evaluate(e => e.classList.add('animate-in'));                                                   // a freshly rendered card still carries card-in (board-lanes.css): the pulse must win
         await send(id);
         await expect(card).toHaveAttribute('data-pulse', '1');
+        expect(await card.evaluate(e => getComputedStyle(e).animationName)).toBe('pane-pulse');
         await expect(card).not.toHaveAttribute('data-pulse', '1', { timeout: 6000 });                              // and it ends by itself
         await page.emulateMedia({ reducedMotion: 'reduce' });
         await send(id);
@@ -6477,7 +6480,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         expect(await card.evaluate(e => getComputedStyle(e).animationName)).toBe('none');                          // motion reduced: a static outline
         expect(await card.evaluate(e => getComputedStyle(e).boxShadow)).not.toBe('none');
         await send('t-zzzz');                                                                                       // a ticket this board does not show: said, never an error
-        await expect(board.locator('#drop-toast')).toContainText('t-zzzz is not on this board right now', { timeout: 8000 });
+        await expect(board.locator('#drop-toast')).toContainText('t-zzzz is not shown on this board right now', { timeout: 8000 });
         await send('t-../x"><img src=x onerror=window.__pwn=1>');                                                   // a hostile id runs nothing
         await page.waitForTimeout(300);
         expect(await board.locator('body').evaluate(() => window.__pwn), 'a hostile id ran nothing').toBeUndefined();

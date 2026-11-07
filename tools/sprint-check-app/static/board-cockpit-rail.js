@@ -70,7 +70,7 @@ export function openTicketWhenLoaded(ticket, tries) {
 }
 
 // t-4456: a Cloud row in the shell's Agents list shows its ticket on the board: back to the board (an open session view stays alive under
-// it), the card scrolled into its lane and pulsed once. Nothing opens a session view and nothing is written. A card the board does not
+// it), the card scrolled into its lane and pulsed (twice). Nothing opens a session view and nothing is written. A card the board does not
 // show (a filtered or archived ticket, one this board does not have) is said in a toast, never an error.
 const CARD_PULSE_MS = 2400;
 export function showTicketWhenLoaded(ticket, tries) {
@@ -78,6 +78,7 @@ export function showTicketWhenLoaded(ticket, tries) {
   if (card) {
     if (document.getElementById('cockpit-overlay')?.classList.contains('open')) closeCockpit();
     card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    card.classList.remove('animate-in');   // its first-render animation (board-lanes.css, same specificity, loaded later) would override the pulse
     card.dataset.pulse = '1';
     const off = () => { delete card.dataset.pulse; document.removeEventListener('pointerdown', off, true); };
     document.addEventListener('pointerdown', off, true);
@@ -85,7 +86,7 @@ export function showTicketWhenLoaded(ticket, tries) {
     return;
   }
   if (tries > 0) { setTimeout(() => showTicketWhenLoaded(ticket, tries - 1), 250); return; }
-  showToast(`${ticket} is not on this board right now (a filter or an archived ticket hides it)`, 'warn');
+  showToast(`${ticket} is not shown on this board right now (a filter, an archived ticket, a folded lane or "N older" hides it)`, 'warn');
 }
 
 // t-bc04: ticket status badge (topbar #ck-status + rail #ck-tc-status), colored
