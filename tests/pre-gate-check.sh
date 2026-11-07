@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# pre-gate-check (t-014f) — tools/pre-gate-check.sh, the stamped deterministic step before `sprint complete`'s gates, in a scratch
+# git repo: a seeded shellcheck error must fail (non-zero, stamped `exit 1`, which `sprint check-evidence` refuses), a clean
+# change prints exactly one line, a missing shellcheck is `skipped | no shellcheck` and never a pass, an unreadable .css is named
+# under "not scanned", an unreferenced Bash function is listed as dead code while one an UNCHANGED file calls is not, and dead
+# code never fails the check. Needs shellcheck installed: it fails loudly, never skips, when it is missing.
+# Protects the pre-gate step of `sprint complete` (skills/sprint/reference/complete.md).
+
+set -euo pipefail
+
+source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
+command -v shellcheck >/dev/null 2>&1 || fail "pre-gate-check: shellcheck is not installed (apt install shellcheck / brew install shellcheck); this test needs it"
+
+PG="$ROOT/tools/pre-gate-check.sh"
+WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 XDG_CONFIG_HOME="$WORK/xdg" LC_ALL=C
+# Hermetic: a canary proves nothing here writes into the caller's TMPDIR or CANON_HOME.
+mkdir -p "$WORK/tmp" "$WORK/home"; : > "$WORK/home/canary"
+export TMPDIR="$WORK/tmp" CANON_HOME="$WORK/home"
+unset CANON_TICKETS_DIR
+
+ID=t-abcd
+R="$WORK/repo"; mkdir -p "$R/tools" && cd "$R"
+git init -q -b main . && git config user.name t && git config user.email t@t
+mkdir -p ".tickets/$ID"; echo '# t' > ".tickets/$ID/ticket.md"
+printf '#!/usr/bin/env bash\nunchanged_caller() { shared_helper; }\nunchanged_caller\n' > tools/caller.sh
+git add tools && git add -f ".tickets/$ID/ticket.md" && git commit -qm base
+BASE="$(git rev-parse HEAD)"
+
+run() { set +e; out="$(cd "$R" && PRE_GATE_BASE="$BASE" bash "$PG" "$@" 2>&1)"; code=$?; set -e; }
+reset() { git reset -q --hard "$BASE"; git clean -fdq -e .tickets; rm -rf ".tickets/$ID/evidence"; }
+commit() { git add -A && git commit -qm change; }
+
+# --- clean change: one line, stamped ---
+reset
+printf '#!/usr/bin/env bash\necho ok\n' > tools/clean.sh; commit
+run "$ID"
+assert_eq 0 "$code"
+assert_eq 1 "$(wc -l <<<"$out" | tr -d ' ')"
+assert_contains "$out" "pre-gate | shellcheck 1 ok" "pre-gate-check: clean line"
+assert_contains "$out" "not scanned: none" "pre-gate-check: nothing unscanned"
+[[ "$(tail -n1 ".tickets/$ID/evidence/pre-gate.log")" == "exit 0" ]] || fail "pre-gate-check: log not stamped with exit 0"
+
+# --- seeded shellcheck error: fails ---
+reset
+printf '#!/usr/bin/env bash\necho $1\nrm $2 $3\n' > tools/bad.sh; commit
+run "$ID"
+[[ "$code" != 0 ]] || fail "pre-gate-check: a seeded shellcheck error passed"
+assert_contains "$out" "shellcheck FAIL" "pre-gate-check: failure line"
+assert_contains "$out" "SC2086" "pre-gate-check: the tool's own finding is shown"
+[[ "$(tail -n1 ".tickets/$ID/evidence/pre-gate.log")" == "exit 1" ]] || fail "pre-gate-check: failing log not stamped exit 1"
+
+# --- shellcheck absent from PATH: skipped, never a pass ---
+reset
+printf '#!/usr/bin/env bash\necho ok\n' > tools/clean.sh; commit
+NOSC="$WORK/nosc"; mkdir -p "$NOSC"
+for c in bash git awk sed grep head tail paste dirname mktemp date uname rm mv chmod mkdir cat tr cut sort readlink wc env test; do
+  p="$(command -v "$c" 2>/dev/null || true)"; [[ -x "$p" ]] && ln -sf "$p" "$NOSC/$c"
+done
+set +e; out="$(cd "$R" && PATH="$NOSC" PRE_GATE_BASE="$BASE" "$NOSC/bash" "$PG" "$ID" 2>&1)"; code=$?; set -e
+assert_eq 0 "$code"
+assert_contains "$out" "shellcheck skipped | no shellcheck" "pre-gate-check: missing tool is skipped"
+[[ "$out" != *"shellcheck 1 ok"* ]] || fail "pre-gate-check: a missing shellcheck reported ok"
+
+# --- dead code (advisory), a caller in an unchanged file, and a .css file ---
+reset
+printf '#!/usr/bin/env bash\nshared_helper() { :; }\norphan_fn() { :; }\n' > tools/lib.sh
+printf 'a { color: red; }\n' > tools/style.css; commit
+run "$ID"
+assert_eq 0 "$code"   # dead code never fails the check
+assert_contains "$out" "tools/lib.sh:3:orphan_fn" "pre-gate-check: unreferenced function listed"
+[[ "$out" != *shared_helper* ]] || fail "pre-gate-check: a symbol only an unchanged file calls was reported dead"
+assert_contains "$out" "not scanned: tools/style.css" "pre-gate-check: .css named under not scanned"
+
+[[ -f "$CANON_HOME/canary" && -z "$(ls -A "$TMPDIR")" ]] || fail "pre-gate-check: left a temp file behind"
+echo "pre-gate-check: ok"

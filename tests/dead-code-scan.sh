@@ -5,7 +5,7 @@
 # that a test also imports (live: the test needs the export), unexported
 # Go and Go init, Go in main.go, Python, test files outside tests/, each entry-point pattern, CRLF and non-ASCII paths,
 # and .cs/.rs files it must list as skipped; plus a pathspec, an empty scope and a run from a subdirectory.
-# Protects the shipped dead-code-cleanup scan.
+# --changed (t-014f) declares from named files and references from all. Protects the shipped dead-code-cleanup scan.
 
 set -euo pipefail
 
@@ -133,6 +133,14 @@ assert_contains "$out" "# skipped: .cs=1 .rs=1" "dead-code-scan: an unscanned so
 scoped="$(bash "$SCAN" static)"
 assert_eq "$(printf 'DEAD cliDead\nDEAD idxDead\nDEAD tested\nOVEREXP ownAndTest\nOVEREXP rowFor\nTESTONLY fmtTested')" \
   "$(grep -v '^#' <<<"$scoped" | awk -F'\t' '{ print $1, $3 }' | sort)" "dead-code-scan: pathspec scope"
+
+# --changed (t-014f): declarations from the named files only, references from the whole scope. lib_helper is declared in
+# tools/lib.sh and called only from tools/build, so naming lib.sh must not report it; kw_dead is declared there and never called.
+# An unsupported type (.cs, .json) is named under "not scanned", never silently clean; a doc is not.
+printf '{}\n' > data.json; git add data.json
+chg="$(bash "$SCAN" --changed tools/lib.sh --changed src/Main.cs --changed data.json --changed docs/notes.md)"
+assert_eq "$(printf 'DEAD kw_dead\nTESTONLY test_only_fn')" "$(grep -v '^#' <<<"$chg" | awk -F'\t' '{ print $1, $3 }' | sort)" "dead-code-scan: --changed reads declarations from the named file only"
+assert_contains "$chg" "# not scanned: src/Main.cs data.json" "dead-code-scan: --changed names every unread file"
 
 # A scope with no source: no rows, and every summary line still printed.
 assert_eq "$(printf '# scanned: none\n# skipped: none\n# checked: 0 declarations')" "$(bash "$SCAN" docs)" "dead-code-scan: empty scope"
