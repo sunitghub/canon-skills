@@ -154,7 +154,7 @@ BEGIN {
     for (i = 1; i <= nd; i++) {
       f = dord[i]
       if (f ~ /\.(md|txt)$|(^|\/)CHANGELOG[^\/]*$|^\.tickets\/|^\.reports\// || seen[f]++) continue
-      if (inlist[f] ? nscan[f] : (system("test -f \"./" f "\"") == 0)) out = out (out == "" ? "" : " ") f
+      if (inlist[f] ? nscan[f] : ((getline junk < ("./" f)) >= 0)) out = out (out == "" ? "" : " ") f
     }
     print "# not scanned: " (out == "" ? "none" : out)
   }

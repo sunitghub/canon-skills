@@ -146,6 +146,11 @@ printf 'a {}\n' > untracked.css
 chg2="$(bash "$SCAN" --changed data.json --changed data.json --changed gone.css --changed untracked.css)"
 assert_eq "# not scanned: data.json untracked.css" "$(grep '^# not scanned' <<<"$chg2")" "dead-code-scan: dedup, deleted and untracked paths"
 rm untracked.css
+# A changed file's name is data, never a command: this name would run `touch` if it reached a shell.
+evil='x";touch PWNED;".css'; printf 'a {}\n' > "$evil"
+bash "$SCAN" --changed "$evil" >/dev/null
+[[ ! -e PWNED ]] || fail "dead-code-scan: a changed file's name reached a shell"
+rm -f "$evil" PWNED
 assert_eq "# not scanned: none" "$(bash "$SCAN" --changed tools/lib.sh | grep '^# not scanned')" "dead-code-scan: nothing unread"
 set +e; err="$(bash "$SCAN" --changed 2>&1)"; code=$?; set -e
 assert_eq "2" "$code" "dead-code-scan: --changed without a file"
