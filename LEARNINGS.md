@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-07-2026 04:55
+learnings-sweep last run: 11-07-2026 11:10
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-07 | [t-a4f8](.tickets/t-a4f8/learnings.md) | A spec that polls for "the text changed" passes on a re-render too: to prove a tick, plant stale text and assert it is rewritten within less than the re-poll, and run a revert mutant; a cache needs a planted-sentinel test (kept while unchanged, dropped when it grows), and a rule that must not count (a pre-refusal is not a try) needs a sequence where the count would show (two refusals, then one failed prompt). | UNPROMOTED |
 | 2026-11-07 | [t-15d0](.tickets/t-15d0/learnings.md) | A panel laid over a view (fixed overlay) must shrink the view it covers, or its scroll areas end under it and a list that fits the full height has nothing to scroll; reproduce a "platform" bug in the other engine at a smaller window before blaming the platform, and measure the box the user sees (#board/#header edges), not the wrapper's own width (the reviewer caught the assertion that passed on the broken layout). | UNPROMOTED |
 | 2026-11-07 | [t-4456](.tickets/t-4456/learnings.md) | A second animation on an element that already animates (card-in on first render) loses on equal specificity when its sheet loads later, and a resend loop in the spec hides it: put the old class back in the test; read the evidence result before saying the suite passed | UNPROMOTED |
 | 2026-11-06 | [t-e28c](.tickets/t-e28c/learnings.md) | Copy a user's own numbering into the criterion verbatim: the ticket said the click was step 0, the user had said step 1, and a correct doc failed the evaluator on the gap | UNPROMOTED |
