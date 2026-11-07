@@ -42,6 +42,8 @@ N=0
 fresh; candidate t-xxxx "Keep both rows" "No blocking findings."
 out="$(run t-xxxx)"
 assert_contains "$out" "added its LEARNINGS.md row for t-xxxx (uncommitted): Keep both rows"
+[[ "$out" != *"no LEARNINGS.md row added"* ]] || fail "a successful add also printed the refusal line: $out"
+[[ -z "$(ls "$TMPDIR" | grep tkt-learn-row || true)" ]] || fail "the temp file was left behind in $TMPDIR"
 ROW_NEW='| 2026-11-07 | [t-xxxx](.tickets/t-xxxx/learnings.md) | Keep both rows | UNPROMOTED |'
 assert_eq "$ROW_NEW" "$(sed -n 8p "$R/LEARNINGS.md")"          # lines 1-7: title, blank, stamp, blank, BEGIN, header, separator
 assert_eq "$ROW_A" "$(sed -n 9p "$R/LEARNINGS.md")"; assert_eq "$ROW_B" "$(sed -n 10p "$R/LEARNINGS.md")"
@@ -58,6 +60,21 @@ cmp -s "$R/LEARNINGS.before" "$R/LEARNINGS.md" || fail "a second import changed 
 fresh; candidate t-yyyy - "No blocking findings. Non-blocking observations follow."
 run t-yyyy >/dev/null
 assert_eq '| 2026-11-07 | [t-yyyy](.tickets/t-yyyy/learnings.md) | No blocking findings. Non-blocking observations follow. | UNPROMOTED |' "$(sed -n 8p "$R/LEARNINGS.md")"
+
+
+# 2b. the first body line wins over later ones; a checkbox outside Candidate lessons is not a lesson; an empty lesson item is skipped
+fresh; candidate t-two1 - "First finding.
+Second finding.
+- [ ] a checkbox in the findings, not a lesson"
+run t-two1 >/dev/null; assert_contains "$(sed -n 8p "$R/LEARNINGS.md")" "| First finding. |"
+fresh; candidate t-two2 "" "Plain finding."          # an empty lesson item: "- [ ] " with nothing after it
+run t-two2 >/dev/null; assert_contains "$(sed -n 8p "$R/LEARNINGS.md")" "| Plain finding. |"
+
+# 2c. the date: the candidate's generated: day; today's when it has none
+fresh; candidate t-dat1 "x" "x"; sed -i.bak 's/^generated: .*/generated: 2026-10-01T00:00:00Z/' "$R/.tickets/t-dat1/learnings.md"
+run t-dat1 >/dev/null; assert_contains "$(sed -n 8p "$R/LEARNINGS.md")" "| 2026-10-01 | [t-dat1]"
+fresh; candidate t-dat2 "x" "x"; grep -v '^generated:' "$R/.tickets/t-dat2/learnings.md" > "$R/x" && mv "$R/x" "$R/.tickets/t-dat2/learnings.md"
+run t-dat2 >/dev/null; assert_contains "$(sed -n 8p "$R/LEARNINGS.md")" "| $(date +%Y-%m-%d) | [t-dat2]"
 
 # 3. nothing to say: see learnings.md
 fresh; candidate t-zzzz - "_none_"
@@ -85,6 +102,14 @@ fresh; candidate t-fiv5 "x" "x"; grep -v '^|---' "$R/LEARNINGS.md" > "$R/x" && m
 cp "$R/LEARNINGS.md" "$R/LEARNINGS.orig"; out="$(run t-fiv5)"; refused "LEARNINGS.md has no single canon:learnings table"      # no separator row
 fresh; candidate t-six6 "x" "x"; grep -v 'canon:learnings:END' "$R/LEARNINGS.md" > "$R/x" && mv "$R/x" "$R/LEARNINGS.md"
 cp "$R/LEARNINGS.md" "$R/LEARNINGS.orig"; out="$(run t-six6)"; refused "LEARNINGS.md has no single canon:learnings table"      # no END marker
+fresh; candidate t-sev7 "x" "x"; mv "$R/.tickets/t-sev7/learnings.md" "$R/real-candidate.md"; ln -s ../../real-candidate.md "$R/.tickets/t-sev7/learnings.md"
+out="$(run t-sev7)"; refused "t-sev7 has no learnings.md"                  # a symlinked candidate is not read
+fresh; candidate t-eig8 "x" "x"; { printf '<!-- canon:learnings:BEGIN -->\n'; cat "$R/LEARNINGS.md"; } > "$R/x" && mv "$R/x" "$R/LEARNINGS.md"
+cp "$R/LEARNINGS.md" "$R/LEARNINGS.orig"; out="$(run t-eig8)"; refused "LEARNINGS.md has no single canon:learnings table"      # a second BEGIN marker, far from the table
+fresh; candidate t-nin9 "x" "x"; printf '<!-- canon:learnings:END -->\n' >> "$R/LEARNINGS.md"
+cp "$R/LEARNINGS.md" "$R/LEARNINGS.orig"; out="$(run t-nin9)"; refused "LEARNINGS.md has no single canon:learnings table"      # a second END marker after the table
+fresh; candidate t-ten0 "x" "x"; printf '# Learnings\n<!-- canon:learnings:BEGIN -->\n<!-- canon:learnings:END -->\n|---|---|---|---|\n' > "$R/LEARNINGS.md"
+cp "$R/LEARNINGS.md" "$R/LEARNINGS.orig"; out="$(run t-ten0)"; refused "LEARNINGS.md has no single canon:learnings table"      # an empty block with a separator-looking line after it
 
 # 6. the two instruction lines that keep the row off a cloud PR (a prompt edit: the evaluator reads the wording, this pins that it exists)
 grep -qi "runs: github" "$ROOT/skills/sprint/reference/complete.md" && grep -qi "does not run the .learnings-sweep" "$ROOT/skills/sprint/reference/complete.md" \
