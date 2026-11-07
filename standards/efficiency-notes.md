@@ -4,8 +4,8 @@ description: On-demand domain rules moved out of the always-loaded efficiency st
 category: agent-ops
 tags: [coding, testing, security, shell, windows]
 hidden: true
-version: 1.0.5
-updated: 2026-10-30
+version: 1.0.6
+updated: 2026-11-07
 ---
 
 # Agent Standards: domain notes
@@ -22,6 +22,7 @@ The always-on rules are "same fact in several files → one owner" and "a third 
 ## Editing
 
 - Inserting a block mid-file: check you aren't landing between an existing comment and the code it describes.
+- Trimming a capped doc to fit its word cap keeps each clause's check, command and failure report: cut elsewhere or raise the cap, never hollow out an instruction (t-e75d; class: cap-trim-drops-instruction).
 
 ## Shell strict mode and traps
 
@@ -35,6 +36,11 @@ The always-on rules are "same fact in several files → one owner" and "a third 
 - Concurrent `printf >> file` writers tear lines over about 1 KB: append a shared log with one write per line (Go `O_APPEND`) or under a lock (`t-f182`). A flag parser that reads `${2:-}` takes a trailing bare `--tokens` as "not given": check `$# -ge 2` and fail (`t-5ef3`).
 - `IFS=$'\t' read a b c` collapses empty fields (tab is IFS whitespace) and shifts the rest: map empty to a placeholder upstream (`jq` `// "-"`) and test for the one expected value (`== false`), never `!= true` (t-a463; class: ifs-whitespace-collapses-empty).
 - A line added to a script's ending (a message, a next step) is checked on every exit: each `return`/`exit`, the bootstrap path included (t-5738; class: every-exit-path).
+- `"$d"/* "$d"/.[!.]*` misses names starting with `..`: a "folder holds only X" check built on it passes a folder with user data, then deletes it. Enumerate with `find "$d" -mindepth 1 -maxdepth 1` and plant a `..x` entry in the test (t-38ab; class: glob-misses-dotdot-names).
+- `mktemp` + `mv` resets a file's mode to 0600: restore the original mode, or write in place (t-acfa).
+- A sourced library's guarantee must not depend on the caller's `set -e`/`pipefail`: check each status itself and test it from a plain `bash` that sources it (t-3abc; class: lib-relies-on-caller-shell-opts).
+- A helper that takes parameters as an env prefix (`GD_GROUP=x _gd …`) also reads them from the caller's environment: unset them at entry and test with them exported (t-d287).
+- Never match `git`/`gh` human text (`Everything up-to-date`, `not found`) under the user's locale: run with `LC_ALL=C`, or use porcelain output or exit codes (t-10ac).
 
 ## Tests, guards and hermetic runs
 
@@ -57,6 +63,12 @@ The always-on rules are "same fact in several files → one owner" and "a third 
 - A test that reads source text (greps a file for a branch, slices a page between two literal lines, counts colours per file) is a reader of that text: grep `tests/` before replacing or moving a line, scope the search to the handler it guards with comments stripped, and count the real thing (`len(actions) == 0`), not a typed copy of today's 8 (t-6aaf, t-bb1b, t-be64; class: source-grep-test-fragility).
 - Tests that copy a fixed list of files or tools into a fake install break when a launcher sources a new sibling or a tool joins `tools/`: give the list one owner in `tests/helpers.sh`, or grep `tests/` for copies before adding a file the launcher loads (t-b2ff, t-187e; class: fixed-file-list-in-test-fixture).
 - A runner that globs its output folder for reports clears it first or refuses a non-empty one: a reused `--out` kept an earlier run's reports for the guard to judge (t-43a2; class: stale-output-dir).
+- A before/after trial proves a fix only if the before run shows the symptom; if it does not, the criterion is unproven: say so, never count it as passed (t-e115, t-39a8; class: trial-without-control).
+- "Tracked or ignored" is read from committed state (`git ls-files`, `git cat-file -e HEAD:<path>`), never `git check-ignore` (also reads `info/exclude` and the global excludes) or `ls-files --error-unmatch` (reads the index: staged-only, `--assume-unchanged` and `--skip-worktree` pass); test with a local-only ignore and a staged-only file (t-43a7, t-c91a; class: local-vs-committed-git-state).
+- A linked worktree is `--git-dir` ≠ `--git-common-dir`, never "`.git` is a file" (a submodule has one) or "the common dir is named `.git`"; test from a submodule and a `--separate-git-dir` repo. A linked worktree's `info/exclude` is repo-wide (t-74d8, t-2db7).
+- A test of a local-clock time never assumes a fixed hour gap (DST shifts it): compute the expected value with the same clock call, or pin `TZ=UTC` (t-11e6).
+- A unit test never runs the real OS auth (`dscl -authonly`, `su`, `sudo`/UAC): inject the auth hook, and run the real one only in a named manual check (t-353a).
+- A new per-machine runtime file under `.tickets/<id>/` joins the `.tickets/.gitignore` seed (`tools/tkt`) and the `docs/setup.md` list in the same change (t-10ac).
 
 ## Security checks and gates
 
@@ -76,6 +88,12 @@ The always-on rules are "same fact in several files → one owner" and "a third 
 - File names from a list, a PR or a user reach git as pathspecs: pass `--literal-pathspecs` (or `:(literal)`) to `add`, `checkout` and `rm`, and check no parent folder is a symlink before deleting (t-32f9, t-41ff; class: git-pathspec-from-data).
 - Docs and acceptance state a mechanism's limit (a keyless chain detects a changed middle line, not a removed newest one) and claim "verified" only for what was run (t-3137, t-3488; class: security-claim-overstated).
 - An audit line records only what the emitter can know: leave `actor` absent on a route a local script can drive (token-free, or empty Origin accepted), and let the viewer say unknown (t-4c09; class: audit-log-overclaims-actor).
+- A command printed for the user to paste quotes every argument for the shell (single quotes with `'\''`, or `printf %q`), never raw inside `"…"`; run the printed line in a shell with names holding a space, `$`, a backtick, `"`, `'` and `!` (t-11e6; class: pasted-command-injection).
+- Path containment is never a string prefix: `case $t in $ROOT/*` admits `$ROOT/../x`, and Go `HasPrefix(rel, "..")` refuses `..foo`. Resolve first (`realpath`, `filepath.Rel` then `rel == ".." || HasPrefix(rel, "../")`), through the filesystem (`cd -P`, `-ef`), never by popping `..` as text before symlinks are followed; test `..`, `..foo`, `link/nx/../..` and a symlinked parent (t-38ab, t-f5e4, t-9fb1; class: containment-by-string).
+- File names derived from data go after `--` for any command, not only git (`--list` is an option otherwise) (t-cc88).
+- A GitHub list read (`per_page=100`) paginates, or treats a full page as "maybe more" and says so; a truncated list never answers "none" (t-4b34).
+- A guard keeps its state where the guarded caller cannot move it: a registry under the caller's `TMPDIR` is invisible to a gate that pins its own. A file a gate script sources joins `scripts/integrity-list.sh` `GATE_FILES` (t-b7df).
+- A command that gains a write drops every "read-only" label it carries: help text, header comment, docs, and any allow-list that runs it unconfirmed (`term.go` `readOnlyTkt`) (t-c990, t-7c89; class: stale-readonly-label).
 
 ## Destructive commands and user files
 
@@ -85,11 +103,14 @@ The always-on rules are "same fact in several files → one owner" and "a third 
 - Editing a user-owned structured file (JSON/TOML) with `sed`/`awk` → guard the invariant, not the patterns: a signature of everything outside the edited member plus a validity check, and restore the original on any difference. A managed-block edit (BEGIN/END markers) changes only lines between them, matches the markers with a trailing `\r` stripped, and says "added" only when the file changed; its tests include a user line outside the block and a CRLF file (`t-5c4b`). A prune outside the markers recognises only canon's own exact lines, never a pattern (`@*/standards/*.md`) that a user's import also matches (t-351c; class: prune-matches-user-lookalike).
 - Never `pkill`/`kill` by matching a process name, script path, or command-line pattern shared with anything the user might independently be running (a dev server, an agent daemon, a shared script invoked from elsewhere) — a pattern match can hit the user's own live, unrelated process and kill in-progress work with no undo. Resolve the exact PID first (a lockfile/state-file's recorded PID, the port a service publishes, or `$!` from a process this session itself started) and kill only that PID.
 - A list that feeds a delete never emits a path built from an empty substitution (a failed `cygpath` turned `$(cygpath -u …)/canon-cockpit` into `/canon-cockpit`): skip the entry when the conversion fails, and test that failure (t-4872; class: empty-substitution-in-delete-path).
+- A merge resolver for a canon-managed file resolves only canon's own block: it refuses when text outside the block conflicts, keeps every non-row line inside it, and dedupes by row key (ticket id), not the whole line, so a status change on one side cannot bring back the old row. A commit labelled as canon's record diffs each file and refuses hunks that are not canon's own fields; "the file changed" is not that check (t-27bc; class: resolver-widens-scope).
+- Fix text that names something to delete names the narrowest offender (`.claude/skills/<name>`), never a folder kept because it holds user files; a test asserts the exact path (t-38ab).
 
 ## Renames and doc sweeps
 
 - Moving, changing the contract of, retiring or renaming a file or mechanism → sweep every doc surface by concept and paraphrase (cross-references, anchors, README prose, other skills), not only the known phrase; an exact-phrase grep proves only known spots; for a "nothing else" or "already in docs" claim, state the search scope and run it unrestricted (`git grep`, no file-type globs) and recompute counts. A rename by string also hits identifiers that only share the prefix: classify each hit, list the kept ones in `acceptance.md`, and exclude exactly that list from the evidence grep. A doc claim about a UI or a tool's flow is checked against the surface the reader sees (render it) and the tool's own printed next step (`t-e6d2`). An inventory of "every way X happens" searches by capability (every way a process or remote session starts) and names its patterns in the file (t-d42a); review a global `sed` per touched file (t-0aa7; class: inventory-by-pattern-incomplete).
 - Before renaming a field to match a plan, read what its published contract promises (`docs/plugins.md`: v1 only gains fields); add the new thing as an optional field instead (t-15b5; class: breaks-published-contract).
+- A command's printed line is a contract: before rewording it, `git grep` `tools/` for readers that match it (a `/^Local [^:]+: /` regex, a `tkt finish` substring), and feed each reader the real output in a test, not a stub (t-e7fb, t-607a; class: printed-text-has-readers).
 
 ## Cross-backend parity
 
@@ -107,6 +128,7 @@ canon runs on four: every session's AGENTS.md carries a one-line pointer here (t
 - **Linux:** GNU coreutils and bash 5; the reference for CI.
 - **Claude cloud container:** Linux, running as root, so `chmod` cannot make a folder unwritable (point a test at a path
   under a regular file instead); set it up with `tkt cloud-env` (domains, setup script). It is no stand-in for a performance symptom: profile on the OS that shows it, with its real gitignored data (the cloud and a clone both measured 0 tickets) (`t-1699`, `t-3b90`).
+- A size cap measures content bytes (`wc -c`, `find -type f` sizes), never `du`: its block counts differ by filesystem, so a cap that passes on APFS fails on the cloud's Linux (t-0d96).
 
 ## Go
 
@@ -114,6 +136,8 @@ canon runs on four: every session's AGENTS.md carries a one-line pointer here (t
 - Go test with a background goroutine that writes into `t.TempDir()` → teardown waits on the WaitGroup it joins, or `go test` flakes on cleanup; a cached `ok` hides it, so reproduce with `-count=N` and read every failure message.
 - Go ignores SIGALRM, so `perl -e 'alarm N; exec …'` cannot time-limit a Go binary: fork, then SIGKILL the child (`t-8020`). Any new file under a released Go module's folder, a `_test.go` included, changes its source key (`tools/src-key.sh`) and needs a new binary release: check it before committing, or keep the file outside the folder (`t-15d8`).
 - A writer never produces what its own reader refuses (re-check the cap after `MarshalIndent`, before the rename); an atomic-write test holds a hard link across the write; a parser of a file others write refuses trailing data (`json.Decoder` stops after one value); a document is read whole under a cap, not tail-kept like a log (t-dba0, t-862e, t-3137; class: writer-reader-contract).
+- `filepath.WalkDir` Lstats its root: a symlinked root measures as one non-regular entry (0 KB), so resolve the root first (`os.Stat`/`EvalSymlinks`). A `--json` mode answers JSON on every branch (not capped, not present, `--list`), or a caller that parses it gets text on exactly the edge case (t-19bb).
+- A Go test that swaps package state (a cache) takes the same mutex and resets in-flight flags; run it under `-race -count=3`, since `-count=1` hides the race (t-761b).
 
 ## Commit messages for prompt changes
 
