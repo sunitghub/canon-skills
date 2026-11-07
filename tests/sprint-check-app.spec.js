@@ -7838,7 +7838,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.waitForLoadState('networkidle');
       const lane = page.locator('.column-body[data-status="closed"]');
       await expect.poll(() => lane.locator('.card').count()).toBeGreaterThanOrEqual(5);   // the lane shows a capped list
-      const geo = () => page.evaluate(() => { const l = document.querySelector('.column-body[data-status="closed"]'), o = document.getElementById('cockpit-overlay'); return { laneBottom: l.getBoundingClientRect().bottom, scrollH: l.scrollHeight, clientH: l.clientHeight, ovTop: o.getBoundingClientRect().top, appW: document.getElementById('app').getBoundingClientRect().width, ovLeft: o.getBoundingClientRect().left }; });
+      const geo = () => page.evaluate(() => { const l = document.querySelector('.column-body[data-status="closed"]'), o = document.getElementById('cockpit-overlay'); return { laneBottom: l.getBoundingClientRect().bottom, scrollH: l.scrollHeight, clientH: l.clientHeight, ovTop: o.getBoundingClientRect().top, boardRight: document.getElementById('board').getBoundingClientRect().right, headerRight: document.getElementById('header').getBoundingClientRect().right, ovLeft: o.getBoundingClientRect().left }; });
       await askBoard(page, { type: 'open-terminal-request', placement: 'below' });
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/ck-pane-below/);
       await expect.poll(async () => { const g = await geo(); return g.laneBottom <= g.ovTop; }).toBe(true);
@@ -7849,7 +7849,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect.poll(() => lane.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
       await askBoard(page, { type: 'open-terminal-request', placement: 'beside' });
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/ck-pane-beside/);
-      await expect.poll(async () => { const b = await geo(); return b.appW <= b.ovLeft + 1; }).toBe(true);
+      await expect.poll(async () => { const b = await geo(); return b.boardRight <= b.ovLeft && b.headerRight <= b.ovLeft; }).toBe(true);
       await page.locator('#cockpit-overlay .ck-tab-pill-close').first().click();
       await expect.poll(() => page.evaluate(() => document.documentElement.className.includes('pane-board') || document.documentElement.style.getPropertyValue('--ckr'))).toBeFalsy();
       expect((await geo()).laneBottom).toBeGreaterThan(800);                              // the Board has the whole window again
