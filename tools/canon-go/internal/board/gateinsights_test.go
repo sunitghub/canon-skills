@@ -225,9 +225,7 @@ var giFixedNow = time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
 
 // the whole text of the seeded log, once: formats, order (project, host, role, model), the no-host and no-reviewer shapes
 func TestGateInsightsTextOfTheSeededLog(t *testing.T) {
-	r := gateInsights(giHome(t), 30, giFixedNow)
-	var b bytes.Buffer
-	giText(r, &b)
+	home := giHome(t)
 	want := `gate insights, last 30 days (2026-10-09 to 2026-11-08): as recorded in the activity log
 days read: 4 (4 unsealed); events: 23
 
@@ -256,8 +254,12 @@ days read: 4 (4 unsealed); events: 23
   reviewer  m2                         1 runs     0.5 min          7 tokens
   reviewer: YES 1, NO 0, no verdict 0; act_on: not recorded
 `
-	if b.String() != want {
-		t.Errorf("text differs:\n%s\nwant:\n%s", b.String(), want)
+	for i := 0; i < 20; i++ { // Go randomises map order: an unsorted report would differ in some run
+		var b bytes.Buffer
+		giText(gateInsights(home, 30, giFixedNow), &b)
+		if b.String() != want {
+			t.Fatalf("run %d: text differs:\n%s\nwant:\n%s", i, b.String(), want)
+		}
 	}
 }
 
