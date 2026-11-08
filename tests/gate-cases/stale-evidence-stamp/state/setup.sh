@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # a tiny repo, a ticket, a passing stamp taken at the first commit, then one more tracked commit: the stamp no longer names the graded head
 set -euo pipefail
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
