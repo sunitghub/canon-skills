@@ -159,7 +159,7 @@ assert_eq 1 "$(grep -c 'dup part' "$D")"
 # an archive with no final newline, and an empty one: the moved row starts its own line
 before="$(grep -c '' "$D")"; printf '# Decisions — Archive\n\n| Date | Decision | Reason |\n|---|---|---|\n| 2026-01-01 | **`t-old1`: no newline at the end** | gone |' > "$A"
 rc "$S" decisions archive "$again" --by t-zzzz; assert_eq 0 "$code"
-[[ "$(tail -2 "$A" | head -1)" == '| 2026-01-01 | **`t-old1`: no newline at the end** | gone |' && "$(tail -1 "$A")" == *"t-bb02"* ]] || fail "archive: the moved row was glued to an archive that had no final newline: $(tail -3 "$A")"
+last2="$(tail -2 "$A")"; [[ "${last2%%$'\n'*}" == '| 2026-01-01 | **`t-old1`: no newline at the end** | gone |' && "$(tail -1 "$A")" == *"t-bb02"* ]] || fail "archive: the moved row was glued to an archive that had no final newline: $(tail -3 "$A")"
 row 2026-06-01 t-ie01 'for the empty archive.' r >> "$D"
 : > "$A"; id2="$(first_id t-ie01)"; rc "$S" decisions archive "$id2" --by t-zzzz; assert_eq 0 "$code"; assert_eq 1 "$(grep -c 't-ie01' "$A")"
 [[ "$(grep -c '' "$D")" == "$((before - 1))" ]] || fail "the two archives moved something other than one row each"
