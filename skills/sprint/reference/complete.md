@@ -97,6 +97,14 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    **A Claude cloud session closes Lite too (t-4d39):** `tkt send-issue` marks a `demo: true` ticket with a `<!-- canon:lite -->` line and a Lite step 5, and `sprint import-issue` sets `demo: true` from that line, so the cloud close takes this path (an interactive session, not headless). The line counts only directly above the issue's closing `canon:ticket` marker, where `send-issue` writes it: the same text in a ticket's notes or an issue `tkt sync-issues` wraps never sets Lite.
 
 
+   **Pre-gate check (deterministic, binding on tool failure, t-014f).** Before the mutation sweep and any gate, on the clean
+   interim commit, run `tools/pre-gate-check.sh <id>`. It runs `shellcheck` on the changed `.sh`, `node --check` on the changed
+   `.js` and `go vet` on the changed Go packages, stamped through `evidence.sh` as `evidence/pre-gate.log`, and prints one
+   line. A failing tool exits non-zero: fix it and re-run before dispatching anything (`sprint check-evidence` refuses the
+   non-zero log). A missing tool prints `<tool> skipped | no <tool>`, never a pass. The line also lists unreferenced symbols
+   in the changed files and every changed file the dead-code scan cannot read ("not scanned"); both are advisory and never
+   refuse. Re-stamp after any later tracked change.
+
    **Mutation sweep (pre-evaluator, non-binding, normal+ tier, t-1fac, t-087c).** When the sprint changed shell, JS, Python
    or Go logic files, run the `mutation-test` skill here, before the reviewer and evaluator, so they grade a suite that
    already has teeth: evaluators failed sprints on guards no test could catch that a builder sweep finds in minutes

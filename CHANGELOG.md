@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+- Added (sprint close): `tools/pre-gate-check.sh <id>` runs `shellcheck`, `node --check` and `go vet` on the sprint's changed files before any gate and stamps one line as `evidence/pre-gate.log`; a failing tool stops the close, a missing tool reads `skipped | no <tool>`. The same line lists unreferenced symbols in changed files and every changed file the dead-code scan cannot read (advisory). `dead-code-scan.sh --changed <file>` reads declarations from the named files and references from the whole tree (t-014f).
+
 ## [0.47.16] - 2026-11-07
 
 Run `canon update`. Issues you send from now on carry the new instruction; a cloud session already running keeps the old one.
