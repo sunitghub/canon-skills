@@ -6,7 +6,7 @@
 set -euo pipefail
 export SPRINT_CHECK_NO_BROWSER=1   # the board starts here
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
-export CANON_GATE_SCOPE_DIR="$(mktemp -d)/registry"   # t-b7df: gate-snapshot pre registers a gate scope; keep it out of the shared /tmp
+CANON_GATE_SCOPE_DIR="$(mktemp -d)/registry"; export CANON_GATE_SCOPE_DIR   # t-b7df: gate-snapshot pre registers a gate scope; keep it out of the shared /tmp
 command -v python3 >/dev/null 2>&1 || fail "events: python3 is required (this test's JSON reader)"
 
 W="$(mktemp -d)"; W="$(cd "$W" && pwd -P)"
@@ -173,7 +173,7 @@ assert_contains "$errs" 'has no field "t-bare"'; assert_contains "$errs" 'has no
 
 # 6. 16 writer processes at once: whole lines, none lost
 CH="$W/conc"; writers=(); for w in $(seq 1 16); do
-  ( for i in $(seq 1 50); do CANON_HOME="$CH" "$SPRINT_CHECK_BIN" event ticket.created --source tkt --project "$P" "ticket=t-w$w" "title=$(head -c 190 /dev/zero | tr '\0' t)"; done ) &
+  ( for _ in $(seq 1 50); do CANON_HOME="$CH" "$SPRINT_CHECK_BIN" event ticket.created --source tkt --project "$P" "ticket=t-w$w" "title=$(head -c 190 /dev/zero | tr '\0' t)"; done ) &
   writers+=("$!")
 done; wait "${writers[@]}"   # not a bare wait: the board from step 3 is a background job too
 assert_eq 800 "$(EV="$CH/events"; cat "$EV"/*.jsonl | python3 -c 'import json,sys; print(sum(1 for l in sys.stdin if json.loads(l)))')"
@@ -181,7 +181,7 @@ assert_eq 800 "$(EV="$CH/events"; cat "$EV"/*.jsonl | python3 -c 'import json,sy
 # 7. across midnight: each event in its UTC day's file
 MH="$W/mid"
 for ts in 2026-10-19T23:59:59.500Z 2026-10-20T00:00:00.500Z; do CANON_HOME="$MH" CANON_EVENTS_CLOCK="$ts" "$SPRINT_CHECK_BIN" event ticket.closed --source tkt --project "$P" ticket=t-mid; done
-assert_eq "2026-10-19.jsonl 2026-10-20.jsonl" "$(ls "$MH/events" | grep jsonl | tr '\n' ' ' | sed 's/ $//')"
+assert_eq "2026-10-19.jsonl 2026-10-20.jsonl" "$(cd "$MH/events" && printf '%s ' *.jsonl | sed 's/ $//')"
 
 # 8. close gates (t-8854): gate.started from `gate-snapshot.sh pre --role`, gate.finished from subagent-log.sh with the report's
 # verdict, gate.rejected from the check commands; and each tool behaves the same with an unusable events folder
@@ -225,7 +225,7 @@ chmod +x "$FB/with" "$FB/without"
 actors() { ( source "$ROOT/tools/platform-lib.sh"
   rc=0; board_bin() { echo "$FB/$FBIN"; }
   CANON_EVENT_ACTOR=system canon_event k1 src "$FB" a=1 || rc=1
-  CANON_EVENT_ACTOR= canon_event k2 src "$FB" a=2 || rc=1
+  CANON_EVENT_ACTOR='' canon_event k2 src "$FB" a=2 || rc=1
   unset CANON_EVENT_ACTOR; canon_event k3 src "$FB" a=3 || rc=1
   echo "rc=$rc" >> "$FB/args" ); }
 : > "$FB/args"; FBIN=with actors; a="$(cat "$FB/args")"
@@ -276,7 +276,6 @@ assert_eq "$n0" "$(cat "$EV"/*.jsonl | grep -c '"kind":"gate.started"')"
 sed -i.bak 's/^eval_fail_count: 2$/eval_fail_count: lots/' "$gt/ticket.md"; rm -f "$gt/ticket.md.bak"
 (cd "$G" && "$ROOT/tools/gate-snapshot.sh" pre ".tickets/$gid/gate-snapshot.txt" --role reviewer >/dev/null)
 assert_contains "$(event_line gate.started "$gid")" '"attempt":"1"'
-n_before="$(cat "$EV"/*.jsonl | wc -l | tr -d ' ')"
 for tool in pre log review evidence; do
   case $tool in
     pre) cmd=("$ROOT/tools/gate-snapshot.sh" pre ".tickets/$gid/gate-snapshot.txt" --role evaluator) ;;
