@@ -332,8 +332,20 @@ assert_eq 40 "$(grep -c '^- \[ \] .*(eval-report.md)$' ".tickets/$nt2_id/learnin
 nt3_id="$("$TKT" create "Deviation only")"
 cp ".tickets/$clean_id/eval-report.md" ".tickets/$nt3_id/eval-report.md"
 printf '# Summary\n\n| Item | Status | Notes |\n|---|---|---|\n| thing | deferred | later |\n' > ".tickets/$nt3_id/summary.md"
-"$TKT" learn "$nt3_id" >/dev/null
+nt3_out="$("$TKT" learn "$nt3_id" 2>&1)"   # no review-notes.md here: reading a missing report must not print an error
+[[ "$nt3_out" != *"No such file"* && "$nt3_out" != *"can't open"* && "$nt3_out" != *"cannot open"* ]] || fail "tkt learn complained about a missing report: $nt3_out"
+assert_file_exists ".tickets/$nt3_id/learnings.md"
 grep -q "Noticed and not checked" ".tickets/$nt3_id/learnings.md" && fail "a section appeared with no noticed line" || true
+grep -q "Lesson from the noticed lines above" ".tickets/$nt3_id/learnings.md" && fail "a noticed lesson line appeared with no noticed line" || true
+# each other source alone still writes a candidate (the clean-sprint exit needs all four to be empty)
+nt4_id="$("$TKT" create "Evaluator finding only")"
+cp ".tickets/$clean_id/summary.md" ".tickets/$nt4_id/summary.md"
+printf 'evaluator-run-id: t-2\n## Findings\nFound a real problem at x:1.\n## Verdict\npass: ok\n' > ".tickets/$nt4_id/eval-report.md"
+"$TKT" learn "$nt4_id" >/dev/null; assert_file_exists ".tickets/$nt4_id/learnings.md"
+nt5_id="$("$TKT" create "Reviewer finding only")"
+cp ".tickets/$clean_id/summary.md" ".tickets/$nt5_id/summary.md"; cp ".tickets/$clean_id/eval-report.md" ".tickets/$nt5_id/eval-report.md"
+printf '# Review Notes\n\n## Findings\n\nA real defect at y:2 [severity: low]\n\n## Verdict\n\nNO\n' > ".tickets/$nt5_id/review-notes.md"
+"$TKT" learn "$nt5_id" >/dev/null; assert_file_exists ".tickets/$nt5_id/learnings.md"
 
 # 7. Malformed review-notes.md never errors or emits garbage: CRLF, empty, no bullets, a 5000-char line.
 mal_id="$("$TKT" create "Malformed review notes")"
