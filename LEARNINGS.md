@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-07-2026 19:46
+learnings-sweep last run: 11-08-2026 07:15
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-08 | [t-b99b](.tickets/t-b99b/learnings.md) | A suite red on the clean release commit is the machine, not the change: prove it at the base first. Here Python `HTTPServer` bind did a 35 s reverse-DNS lookup (Tailscale split DNS) and Homebrew python drops `exec -a`, so stub-server tests failed; a touched file is also shellchecked whole, so old warnings block the close (t-fde8). | UNPROMOTED |
 | 2026-11-08 | [t-08ea](.tickets/t-08ea/learnings.md) | A wrapper must read where a tool put its output from the tool's own message, never recompute the path: pre-gate-check rebuilt the log path under the checkout while evidence.sh honours CANON_TICKETS_DIR, so in a land worktree a correct stamp was followed by a failed sed and exit 1 (which stops a close). The test could not see it because its scratch repo always had its own .tickets/: test the shape that differs (no .tickets/, CANON_TICKETS_DIR set), and cover an unreachable branch with a stub of the tool, shown to fail by reverting the guard. Also: gate-snapshot post flags your own edits made between the gate finishing and the post call, so take the post snapshot before editing. | UNPROMOTED |
 | 2026-11-07 | [t-014f](.tickets/t-014f/learnings.md) | A new test only protects once it is registered in `scripts/test.sh`: four full-suite stamps passed without running `tests/pre-gate-check.sh` until the evaluator grepped the stamped log for its `ok` line, so grep for it. Piping the suite through `tail` also hid a failing exit code, and the check run on its own sprint found its shellcheck default failed on info notes. | UNPROMOTED |
 | 2026-11-07 | [t-8a0d](.tickets/t-8a0d/learnings.md) | Key a cloud-session rule on the artifact the cloud actually holds: a cloud ticket.md has no `runs: github` until a PR exists (`import-issue` sets it only then; `send-issue` sets it on the laptop), so the first design, keyed on that field, would never have fired and the reviewer found it by reading the code path, not the tests. Text a script takes from an untrusted file goes to awk through ENVIRON, never `-v` (it processes backslash escapes such as `\n`), and a marker-like string in it is stripped (`<`, `>`, `|`) before it lands in a table the resolver finds by those markers. | UNPROMOTED |
