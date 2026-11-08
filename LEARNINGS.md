@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-08-2026 11:10
+learnings-sweep last run: 11-08-2026 15:43
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-08 | [t-2178](.tickets/t-2178/learnings.md) | An assertion that something is hidden or absent passes vacuously unless the page first showed it: a fresh page starts hidden, so deleting the code that hides it changed nothing and two evaluators failed the sprint for it. Reach the state from a visible one on the same page (open, see 3, reopen with the request held) and revert-prove every state's line before dispatching an evaluator; a gate case that runs a repo script must run under `env -i` or a caller's CANON_TICKETS_DIR/GIT_DIR writes into the caller's tickets and repo. | UNPROMOTED |
 | 2026-11-08 | [t-b360](.tickets/t-b360/learnings.md) | Any awk or grep a close path runs on a file under `set -e` must be guarded (`LC_ALL=C`, `2>/dev/null`, `|| fallback`): macOS awk exits 2 on a non-UTF-8 byte or an unreadable file and a print-only helper then aborts `sprint start` or a finished close; and a substring match on prose ("not checked") flags the feature's own description (7 bogus bullets on its own close, t-7da5), so match a marker at the start of a line. | UNPROMOTED |
 | 2026-11-08 | [t-9113](.tickets/t-9113/learnings.md) | Go's `ParseFloat` reads `Inf`, `NaN` and `1e308` inside an 8-character field, so any number read from an untrusted log needs a finite bound, and a dropped `json.Marshal` error prints an empty line with exit 0; the advisory reviewer found both, the 400-mutant sweep found none of it, and a pre-gate shellcheck scans a touched file whole, so old warnings in it block the close. | UNPROMOTED |
 | 2026-11-08 | [t-b99b](.tickets/t-b99b/learnings.md) | A suite red on the clean release commit is the machine, not the change: prove it at the base first. Here Python `HTTPServer` bind did a 35 s reverse-DNS lookup (Tailscale split DNS) and Homebrew python drops `exec -a`, so stub-server tests failed; a touched file is also shellchecked whole, so old warnings block the close (t-fde8). | UNPROMOTED |
