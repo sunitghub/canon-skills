@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.47.22] - 2026-11-08
+
+Run `canon update`.
+
 - Added (sprint start and close, any project): `DECISIONS.md` is read by what applies and pruned by commands. `sprint decisions related <path|t-xxxx>...` lists the rows that name those files or tickets; `sprint start` prints the related rows (at most 8) for what the ticket names instead of asking the agent to scan the whole file (canon's is 706 KB); `archive <row-id> --by <t-xxxx>` moves one whole row to `DECISIONS-archive.md` byte for byte and `mark <row-id> <date> "<fragment>"` marks a partly superseded row, so neither is a hand edit; `sprint complete` prints a line when the closing ticket's row is over 600 characters. Nothing blocks (t-79bf).
 
 ## [0.47.21] - 2026-11-08
