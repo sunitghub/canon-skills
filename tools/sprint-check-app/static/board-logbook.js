@@ -178,7 +178,7 @@ function render() {
   if (!data) { body.innerHTML = '<div class="lb-empty">Loading…</div>'; count.hidden = true; pcount.hidden = true; return; }
   if (data.fetchError) {
     body.innerHTML = '<div class="lb-empty lb-err" role="alert"><b>The Logbook could not be loaded</b>' + esc(data.fetchError) + '<div><button type="button" class="lb-chip" data-reload="1">Try again</button></div></div>';
-    count.hidden = true; pcount.hidden = true;
+    count.hidden = true;
     return;
   }
   const un = data.learnings && data.learnings.text ? parseLearnings(data.learnings.text).filter(r => r.kind === 'un').length : 0;

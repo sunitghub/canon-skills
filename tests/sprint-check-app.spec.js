@@ -19968,6 +19968,37 @@ test.describe('Logbook (t-c6bb)', () => {
     await page.unrouteAll({ behavior: 'ignoreErrors' });
   });
 
+  // t-2178 (evaluator): a fresh page hides the bubble whatever the code does, so the loading and failed-request states are checked on ONE page that
+  // already showed a number: reopening the Logbook must not show the old number beside "Loading…" or beside an error.
+  test('Promoted tab count: reopening hides the old number while loading and when the reload fails (t-2178)', async ({ page }) => {
+    await serve(page, undefined, undefined, { promoted: file(PROMOTED_MD) });
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await open(page);
+    await expect(page.locator('#lb-count-p')).toBeVisible();
+    await expect(page.locator('#lb-count-p')).toHaveText('3');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#logbook-overlay')).not.toHaveClass(/open/);
+    // reopen with the request held: the old 3 is gone beside "Loading…", and back when it answers
+    let release;
+    const held = new Promise(r => { release = r; });
+    await page.route(/\/api\/logbook(\?|$)/, async r => { await held; await r.fallback(); });
+    await open(page);
+    await expect(page.locator('#lb-body')).toContainText('Loading');
+    await expect(page.locator('#lb-count-p')).toBeHidden();
+    release();
+    await expect(page.locator('#lb-count-p')).toHaveText('3');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#logbook-overlay')).not.toHaveClass(/open/);
+    // reopen with the request failing: the error screen, and no number beside it
+    await page.route(/\/api\/logbook(\?|$)/, r => r.fulfill({ status: 500, contentType: 'text/plain', body: 'x' }));
+    await open(page);
+    await expect(page.locator('#lb-body [role="alert"]')).toContainText('could not be loaded');
+    await expect(page.locator('#lb-count-p')).toBeHidden();
+    await page.keyboard.press('Escape');
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
   test('Promoted tab count: both bubbles fit the tab bar at 480 px, and at 360 px the bar scrolls instead of clipping a tab (t-2178) @webkit', async ({ page, browserName }) => {
     await serve(page, undefined, undefined, { promoted: file(PROMOTED_MD.replace('<!-- canon:promoted:END -->', Array.from({ length: 120 }, (_, i) => '- Rule ' + i + '\n').join('') + '<!-- canon:promoted:END -->')) });
     await page.goto(BASE);
