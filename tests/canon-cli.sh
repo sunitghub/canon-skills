@@ -239,6 +239,14 @@ PY
   ( cd "$stuck" && PYTHONHOME="$py_home" exec -a "$(cd "$ROOT" && pwd -P)/tools/canon-go-bin/canon-go" python3 board "$PORT" >/dev/null 2>&1 ) &
   bp=$!; disown "$bp" 2>/dev/null || true; PIDS+=("$bp")
   wait_for "http://127.0.0.1:$PORT/api/version" || fail "canon-cli: the SIGTERM-proof board did not start"
+  # Homebrew's python on macOS re-execs through Python.app and drops the command line `exec -a` sets, so canon cannot verify the stub as
+  # ours and this check has nothing to test: skip it there (t-fde8); Linux and Windows still run it
+  if [[ "$(ps -o command= -p "$bp" 2>/dev/null)" != "$(cd "$ROOT" && pwd -P)/tools/canon-go-bin/canon-go "* ]]; then
+    echo "canon-cli: stuck-board stop check skipped: this python drops the disguised command line (t-fde8)"
+    touch "$stuck/release"; kill "$bp" 2>/dev/null || true; stuck=""
+  fi
+fi
+if [[ -n "${stuck:-}" ]]; then
   set +e; out="$(CANON_STOP_WAIT=1 run stop 2>&1)"; code=$?; set -e
   touch "$stuck/release"; kill "$bp" 2>/dev/null || true
   assert_eq "1" "$code"
