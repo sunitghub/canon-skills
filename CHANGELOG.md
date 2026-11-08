@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.47.18] - 2026-11-08
+
+Run `canon update`, then restart the daemon (Admin's **Restart Daemon**): the board changed.
+
 - Fixed (Cloud rows): after Import results on a cloud ticket whose sprint did not finish, its Agents-list row and card no longer show a spinning "working" state. The row is dim and says "imported; the cloud sprint did not finish: Continue here", and the card chip reads "PR #N · imported, sprint did not finish", with Continue here as before. A PR with no import still shows as working (t-b99b).
 
 ## [0.47.17] - 2026-11-08
