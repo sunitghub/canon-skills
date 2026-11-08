@@ -4,6 +4,7 @@
 # change prints exactly one line, a missing shellcheck is `skipped | no shellcheck` and never a pass, an unreadable .css is named
 # under "not scanned", an unreferenced Bash function is listed as dead code while one an UNCHANGED file calls is not, and dead
 # code never fails the check. Needs shellcheck installed: it fails loudly, never skips, when it is missing.
+# t-08ea: also in a checkout with no .tickets/ of its own (CANON_TICKETS_DIR), and, with a stub evidence.sh, when no readable log is named.
 # Protects the pre-gate step of `sprint complete` (skills/sprint/reference/complete.md).
 
 set -euo pipefail
@@ -150,6 +151,10 @@ if [[ "$(id -u)" != 0 ]]; then
   assert_eq 0 "$code" "pre-gate-check: a named but unreadable log keeps the stamp's exit code"; assert_contains "$out" "did not name a readable log" "pre-gate-check: the unreadable log is said"
 fi
 chmod 644 "$WORK/unreadable.log"
+mkdir -p "$WORK/dir.log"   # a named log that is a directory is not a log: the same message, the stamp's code, no sed on it
+printf '#!/usr/bin/env bash\necho "evidence: wrote %s (HEAD abc1234, exit 0)" >&2\nexit 0\n' "$WORK/dir.log" > "$S/evidence.sh"
+set +e; out="$(cd "$R2" && bash "$S/pre-gate-check.sh" "$ID" 2>&1)"; code=$?; set -e
+assert_eq 0 "$code" "pre-gate-check: a log that is a directory keeps the stamp's exit code"; assert_contains "$out" "did not name a readable log" "pre-gate-check: a directory is not read as a log"
 cd "$R"
 
 [[ -f "$CANON_HOME/canary" && -z "$(ls -A "$TMPDIR")" ]] || fail "pre-gate-check: left a temp file behind"

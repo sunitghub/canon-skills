@@ -7,7 +7,7 @@
 #   Advisory only (never a refusal): symbols declared in a changed file and referenced nowhere (dead-code-scan.sh
 #   --changed), and every changed file the scan cannot read ("not scanned").
 # Output: the one stamped line (plus the failing tool's output when a check fails); the full log is
-# .tickets/<id>/evidence/pre-gate.log, written through evidence.sh stamp.
+# <tickets dir>/<id>/evidence/pre-gate.log (the checkout's .tickets/, or CANON_TICKETS_DIR when it has none), written through evidence.sh stamp.
 # Changed files = committed diff from PRE_GATE_BASE (default: merge-base HEAD origin/main) to HEAD. Complexity is not
 # checked: no tool in canon's stack measures it (go vet, shellcheck and node --check do not), and none is added.
 set -euo pipefail
@@ -85,6 +85,6 @@ if [[ $rc -eq 125 || ( $rc -eq 2 && "$msg" != "evidence: wrote "* ) ]]; then pri
 # Show the stamped result: everything between the three header lines and the final `exit` line. The log's path is evidence.sh's to name (it honours
 # CANON_TICKETS_DIR, so a land worktree or a plain clone with no .tickets/ of its own stamps into the project's): read it from its own line, never recompute it.
 log="$(awk '/^evidence: wrote / { sub(/^evidence: wrote /, ""); sub(/ \(HEAD [^)]*\)$/, ""); print; exit }' <<<"$msg")"
-if [[ -z "$log" || ! -r "$log" ]]; then echo "pre-gate-check: stamped, but evidence.sh did not name a readable log: $msg" >&2; exit "$rc"; fi
+if [[ -z "$log" || ! -f "$log" || ! -r "$log" ]]; then echo "pre-gate-check: stamped, but evidence.sh did not name a readable log: $msg" >&2; exit "$rc"; fi
 sed -e '1,3d' -e '$d' "$log"
 exit "$rc"
