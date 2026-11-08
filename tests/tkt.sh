@@ -316,7 +316,8 @@ assert_grep "^- \[ \] NOTICED: tools/x:4 .* a flake seen once \\(review-notes.md
 assert_grep "^- \[ \] NOTICED: a bulleted one \\(review-notes.md\\)$" "$nt_f"
 assert_grep "^- \[ \] Not Checked: the Windows VM \\(review-notes.md\\)$" "$nt_f"
 assert_eq 4 "$(grep -c '^- \[ \] .*(review-notes.md)$' "$nt_f")"
-sed -n '/^## Noticed and not checked$/,/^## Candidate lessons$/p' "$nt_f" | grep -q "lower case is not the marker\|Dead code" && fail "a line that is not NOTICED: or not checked reached the list" || true
+nt_sec="$(sed -n '/^## Noticed and not checked$/,/^## Candidate lessons$/p' "$nt_f")"   # no `| grep -q`: an early-exit reader SIGPIPEs its writer under pipefail
+[[ "$nt_sec" != *"lower case is not the marker"* && "$nt_sec" != *"Dead code"* ]] || fail "a line that is not NOTICED: or not checked reached the list"
 long_line="$(grep '^- \[ \] NOTICED: AAA' "$nt_f")"
 [[ "${#long_line}" -le 460 && "$long_line" == *"(see review-notes.md)"* ]] || fail "a 500-character line was not cut to 400"
 assert_grep "^- \[ \] Lesson from the noticed lines above$" "$nt_f"
