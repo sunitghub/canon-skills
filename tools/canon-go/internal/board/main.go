@@ -5199,6 +5199,13 @@ func remoteAgents(root string) []map[string]any {
 					state = "sent"
 				case "branch", "pr-open":
 					state = "working"
+					// t-b99b: results were imported (land: a local eval-report.md, the ticket still open, the PR open) and the cloud sprint did not finish: nothing runs,
+					// a person has the ticket. close_here is the other pr-open shape (nothing came back), which keeps its state.
+					if land, _ := st["land"].(bool); stage == "pr-open" && land {
+						if closeHere, _ := st["close_here"].(bool); !closeHere {
+							state = "unfinished"
+						}
+					}
 				case "results-ready":
 					state = "results-ready"
 				case "results-in":

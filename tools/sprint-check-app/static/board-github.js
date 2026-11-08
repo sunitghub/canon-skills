@@ -92,6 +92,7 @@ export function ghChipHTML(t) {
   let text = n, title = String(t.github);
   if (closedHere(t, st)) { text += ' · closed here'; title = `Closed here; nothing is open on GitHub (tkt take-back ${t.id} clears this)`; }   // t-1148
   else if (st.stage === 'sent') text += ' · sent';
+  else if (st.stage === 'pr-open' && st.land && !st.close_here) { text += `${prOf(st) ? ` · PR #${prOf(st)}` : ' · PR open'} · imported, sprint did not finish`; title = `Results are imported but the cloud sprint did not finish: Continue here (tkt land ${t.id})`; }   // t-b99b
   else if (st.stage === 'pr-open') text += prOf(st) ? ` · PR #${prOf(st)}` : ' · PR open';
   else if (st.stage === 'branch' && cloudWorking(st)) { text += ' · cloud session working'; title = `${st.branch} is pushed; the session opens its PR when it finishes`; }
   else if (st.stage === 'branch') { text += ' · branch, no PR'; title = `${st.branch} is on GitHub with no PR`; }

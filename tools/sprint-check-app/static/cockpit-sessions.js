@@ -309,7 +309,7 @@ function syncSharedWarnings(views){
 // The board server owns the state (/api/remote-agents, project-scoped, an empty 304 when nothing changed, never waiting on GitHub); the
 // shell only asks. One answer per open project is kept: a failed poll keeps it. A hidden page does not poll.
 const CLOUD_POLL_MS=60000, CLOUD_FAST_MS=5000, CLOUD_FAST_MAX=12;   // fast while a row's status is still loading on the server
-const CLOUD_STATES={sent:'st-idle',working:'st-working',unknown:'st-unknown','results-ready':'','imported':'','closed-here':'st-idle',stalled:'st-idle'};   // the row's colour class; the two pills carry their own accent
+const CLOUD_STATES={sent:'st-idle',working:'st-working',unknown:'st-unknown','results-ready':'','imported':'','closed-here':'st-idle',stalled:'st-idle',unfinished:'st-idle'};   // the row's colour class; the two pills carry their own accent
 const cloudRows=new Map();   // project id -> {rows:[{pid,id,title,state,issue,since,pending}], at}
 let cloudTimer=0, cloudFast=0;
 // The bare GitHub mark (Octicons mark-github, MIT, (c) GitHub): currentColor, no disc, centred in the 18px icon slot.
@@ -354,8 +354,8 @@ export function startCloudPolling(){
   document.addEventListener('visibilitychange',()=>{ if(!document.hidden){ clearTimeout(cloudTimer); cloudTimer=0; pollCloud(); } });
   pollCloud();
 }
-// t-1148: closed-here (the ticket is closed here and only a branch or a send is left on GitHub) and stalled (7 days without activity) are dim, never "working"
-const CLOUD_LABEL={sent:'sent to GitHub, waiting for a cloud session',working:'working on GitHub','results-ready':'results ready: Import results',imported:'imported: Check & merge','closed-here':'closed here; nothing is open on GitHub (tkt take-back <id> clears this)',stalled:'no activity for 7 days; if the session is gone, tkt take-back <id> clears this'};
+// t-1148: closed-here (the ticket is closed here and only a branch or a send is left on GitHub) and stalled (7 days without activity) are dim, never "working"; t-b99b: so is unfinished (results imported, the ticket still open)
+const CLOUD_LABEL={sent:'sent to GitHub, waiting for a cloud session',working:'working on GitHub',unfinished:'imported; the cloud sprint did not finish: Continue here (tkt land <id>)','results-ready':'results ready: Import results',imported:'imported: Check & merge','closed-here':'closed here; nothing is open on GitHub (tkt take-back <id> clears this)',stalled:'no activity for 7 days; if the session is gone, tkt take-back <id> clears this'};
 function cloudHtml(rows){
   if(!rows.length) return '';
   return `<div class="ag-cloudh"><b>Cloud</b><span>${rows.length}</span></div>`+rows.map(r=>{
