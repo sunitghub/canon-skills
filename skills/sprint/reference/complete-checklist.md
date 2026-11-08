@@ -54,7 +54,7 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
    escape `|`), plus a paragraph naming gate models, any reviewer NO. Run `tkt learn <id>`;
    if it writes a file, run `/learnings-sweep <id>`. Say which in chat and summary. Route each Noticed bullet: ticket `[t-xxxx]` or `[dismissed: why]`.
 9. **Close:** `sprint complete <id>`, never a hand-edited status. On refusal, report and stop.
-10. **Commit & push:** stage specific files plus DECISIONS/HANDOFF/LEARNINGS, even new, unless gitignored; `Closes: <id>` in the body; show; ask. "No remote is configured: committed locally, nothing pushed" if none; "pushed" only after a successful push. Worktree: no PR;
+10. **Commit & push:** stage specific files plus DECISIONS/HANDOFF/LEARNINGS, even new, unless gitignored; `Closes: <id>` in the body; show; ask. "No remote is configured: committed locally, nothing pushed" if none; "pushed" only after a push that succeeded. Worktree: no PR;
     **Check & merge**, then `tkt worktree-reset`. Canon: `public` only via `tkt push-main`; a push is not a release.
 
 ## Gate dispatch inputs
