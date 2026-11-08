@@ -2264,7 +2264,14 @@ func TestRemoteAgentsClosedHereAndStalled(t *testing.T) {
 		{"t-cc0a", "open", "branch", ago(time.Hour), "working"},
 		{"t-cc0b", "open", "pr-open", "", "working"},
 		{"t-cc0c", "open", "pr-open", ago(30 * day), "working"}, // a PR waiting on review is not a dead session, however old
+		// t-b99b: results were imported (land) but the ticket did not close: nothing runs, so no ring; close_here (nothing came back) and a PR with no import keep theirs
+		{"t-cc0d", "open", "pr-open", ago(2 * time.Hour), "unfinished"},
+		{"t-cc0e", "open", "pr-open", ago(2 * time.Hour), "working"},
+		{"t-cc0f", "open", "pr-open", ago(2 * time.Hour), "working"},
+		{"t-cc10", "open", "branch", ago(2 * time.Hour), "working"},
 	}
+	// extra fields of `tkt github-status --json` per row
+	extra := map[string]string{"t-cc0d": `,"land":true,"close_here":false`, "t-cc0e": `,"land":true,"close_here":true`, "t-cc0f": `,"land":false`, "t-cc10": `,"land":true`}
 	script := "#!/bin/sh\ncase \"$2\" in\n"
 	for _, r := range rows {
 		dir := filepath.Join(root, ".tickets", r.id)
@@ -2283,7 +2290,7 @@ func TestRemoteAgentsClosedHereAndStalled(t *testing.T) {
 		if r.started != "" {
 			js += `,"started":"` + r.started + `"`
 		}
-		script += r.id + ") echo '" + js + "}';;\n"
+		script += r.id + ") echo '" + js + extra[r.id] + "}';;\n"
 	}
 	script += "esac\n"
 	stub := filepath.Join(t.TempDir(), "tkt")

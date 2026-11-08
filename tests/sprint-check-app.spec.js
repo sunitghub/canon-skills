@@ -6388,6 +6388,26 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
+    // Prod path: the Agents list's Cloud group after Import results (t-b99b). VM: the cloud sprint ended without closing, the user imported its results,
+    // and the row kept spinning although nothing runs. The server now says `unfinished` for that state.
+    test('t-b99b: an imported ticket whose cloud sprint did not finish is a dim row with no ring that says what is left; a working row keeps its ring', async ({ page }) => {
+      const rows = [
+        { id: 't-cl02', title: 'Tighten address validation', state: 'working', issue: '12', get since() { return ago(480); }, pending: false },
+        { id: 't-cl08', title: 'Imported, sprint did not finish', state: 'unfinished', issue: '43', get since() { return ago(660); }, pending: false },
+      ];
+      await cloudRoute(page, () => rows);
+      await stubTicketDocs(page);
+      await openShell(page, stateRows());
+      await page.evaluate(async () => (await import('/static/cockpit-sessions.js')).pollSessions());
+      await expect(cloudRow(page, 't-cl02').locator('.sdot.ag-ring')).toHaveCount(1);
+      await expect(cloudRow(page, 't-cl08').locator('.ag-ring, .ag-pill')).toHaveCount(0);
+      await expect(cloudRow(page, 't-cl08')).toHaveClass(/st-idle/);
+      await expect(cloudRow(page, 't-cl08').locator('.sdot')).toBeVisible();
+      await expect(cloudRow(page, 't-cl08')).toHaveAttribute('title', /imported; the cloud sprint did not finish: Continue here \(tkt land <id>\)/);
+      await expect(cloudRow(page, 't-cl08')).toHaveAttribute('aria-label', /imported; the cloud sprint did not finish/);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     test('t-761b: at rail widths 200, 230 and 300 a Cloud row keeps its id, age and glyph; the pill shortens before anything is cut', async ({ page }) => {
       await cloudRoute(page, () => CLOUD_ROWS);
       await stubTicketDocs(page);
@@ -18486,6 +18506,26 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(steps.nth(0)).toContainText('push the branch to the PR');
     await expect(steps.nth(1)).toContainText('Open a session in the worktree');
     expect(bodies).toEqual([{ pr: 58 }]);
+  });
+
+  // Prod path: the card's GitHub chip for a ticket whose results were imported but whose cloud sprint did not finish (t-b99b). It says so, keeps the
+  // Continue here button and take back, and nothing animates; a PR with no import reads as before.
+  test('an imported ticket whose cloud sprint did not finish says so on its chip and offers Continue here (t-b99b)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh41'), other = newTicketId(PROJECT_ROOT, 'gh42');
+    ghTicket(id, { github: 'acme/app#57', status: 'open' }); ghTicket(other, { github: 'acme/app#58', status: 'open' });
+    await routeStatus(page, id, { stage: 'pr-open', pr: 2, land: true, close_here: false });
+    await routeStatus(page, other, { stage: 'pr-open', pr: 3, land: false });
+    await openBoard(page, id);
+    const card = page.locator(`.card[data-id="${id}"]`);
+    await expect(card.locator('.card-gh-chip')).toContainText('PR #2 · imported, sprint did not finish');
+    await expect(card.locator('.card-gh-chip')).toHaveAttribute('title', new RegExp(`tkt land ${id}`));
+    await expect(card.locator('.card-gh-btn')).toHaveText('Continue here');
+    await expect(card.locator('.card-gh-takeback')).toHaveCount(1);
+    expect(await card.evaluate(el => el.getAnimations({ subtree: true }).length)).toBe(0);
+    await page.locator('#board-search').fill(other);   // control: a PR with no import reads as before
+    const oc = page.locator(`.card[data-id="${other}"]`);
+    await expect(oc.locator('.card-gh-chip')).toContainText('PR #3');
+    await expect(oc.locator('.card-gh-chip')).not.toContainText('imported');
   });
 
   // Prod path: the card's stage button and the Cockpit rail for a ticket tkt land made a worktree for (t-92f2). Until the close
