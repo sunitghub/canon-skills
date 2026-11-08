@@ -79,10 +79,12 @@ if [[ "${1-}" == --run ]]; then run_checks; exit $?; fi
 
 id="${1-}"
 [[ "$id" =~ ^t-[a-z0-9]{4}$ ]] || { echo "usage: pre-gate-check.sh <ticket-id>" >&2; exit 2; }
-log="$(git rev-parse --show-toplevel)/.tickets/$id/evidence/pre-gate.log"
 set +e; msg="$("$SCRIPT_DIR/evidence.sh" stamp "$id" pre-gate -- bash "$SCRIPT_DIR/pre-gate-check.sh" --run 2>&1)"; rc=$?; set -e
 # 125 or 2 from evidence.sh itself (a refusal, a missing ticket): nothing was stamped, say why.
 if [[ $rc -eq 125 || ( $rc -eq 2 && "$msg" != "evidence: wrote "* ) ]]; then printf '%s\n' "$msg" >&2; exit "$rc"; fi
-# Show the stamped result: everything between the three header lines and the final `exit` line.
+# Show the stamped result: everything between the three header lines and the final `exit` line. The log's path is evidence.sh's to name (it honours
+# CANON_TICKETS_DIR, so a land worktree or a plain clone with no .tickets/ of its own stamps into the project's): read it from its own line, never recompute it.
+log="$(awk '/^evidence: wrote / { sub(/^evidence: wrote /, ""); sub(/ \(HEAD [^)]*\)$/, ""); print; exit }' <<<"$msg")"
+if [[ -z "$log" || ! -r "$log" ]]; then echo "pre-gate-check: stamped, but evidence.sh did not name a readable log: $msg" >&2; exit "$rc"; fi
 sed -e '1,3d' -e '$d' "$log"
 exit "$rc"
