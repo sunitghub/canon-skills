@@ -117,5 +117,25 @@ reset
 { printf '#!/usr/bin/env bash\n'; for i in 1 2 3 4 5 6 7 8 9 10; do printf 'dead_fn_%s() { :; }\n' "$i"; done; } > tools/many.sh; commit
 run "$ID"; assert_eq 0 "$code"; assert_contains "$out" "+2 more" "pre-gate-check: dead-code list capped with a count"
 
+# --- t-08ea: a checkout with NO .tickets/ of its own (a land worktree, a plain clone) stamps into the project's folder via CANON_TICKETS_DIR; the wrapper
+# reads the log where evidence.sh wrote it, so a clean change still prints one line and exits 0 (it once recomputed the path under the checkout and exited 1) ---
+PT="$WORK/project-tickets"; mkdir -p "$PT/$ID"; echo '# t' > "$PT/$ID/ticket.md"
+R2="$WORK/clone"; mkdir -p "$R2/tools" && cd "$R2"
+git init -q -b main . && git config user.name t && git config user.email t@t
+echo base > base.txt; git add base.txt && git commit -qm base; BASE2="$(git rev-parse HEAD)"
+printf '#!/usr/bin/env bash\necho ok\n' > tools/clean.sh; git add tools && git commit -qm change
+[[ ! -e .tickets ]] || fail "pre-gate-check: the clone must have no .tickets/ for this case"
+set +e; out="$(cd "$R2" && CANON_TICKETS_DIR="$PT" PRE_GATE_BASE="$BASE2" bash "$PG" "$ID" 2>&1)"; code=$?; set -e
+assert_eq 0 "$code" "pre-gate-check: a clean change in a checkout with no .tickets/ exits 0 (output: $out)"
+assert_eq 1 "$(wc -l <<<"$out" | tr -d ' ')" "pre-gate-check: that run prints exactly one line (output: $out)"
+[[ -f "$PT/$ID/evidence/pre-gate.log" && ! -e "$R2/.tickets" ]] || fail "pre-gate-check: the log must be under CANON_TICKETS_DIR and nothing under the checkout"
+assert_eq "exit 0" "$(tail -1 "$PT/$ID/evidence/pre-gate.log")"
+# the same checkout with a seeded shellcheck error still fails, and says what failed
+printf '#!/usr/bin/env bash\ncd /nonexistent\nrm -rf *\n' > tools/bad.sh; git add tools && git commit -qm bad
+set +e; out="$(cd "$R2" && CANON_TICKETS_DIR="$PT" PRE_GATE_BASE="$BASE2" bash "$PG" "$ID" 2>&1)"; code=$?; set -e
+assert_eq 1 "$code" "pre-gate-check: a seeded shellcheck error in that checkout still exits 1 (output: $out)"
+assert_contains "$out" "shellcheck FAIL" "pre-gate-check: the failure is named"
+cd "$R"
+
 [[ -f "$CANON_HOME/canary" && -z "$(ls -A "$TMPDIR")" ]] || fail "pre-gate-check: left a temp file behind"
 echo "pre-gate-check: ok"
