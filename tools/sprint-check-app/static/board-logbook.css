@@ -12,6 +12,7 @@
   color: var(--text-muted); padding: 9px 2px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
 }
 .lb-tabs [role="tab"]:hover { color: var(--text); }
+.lb-tabs [role="tab"]:focus-visible { outline-offset: -2px; }   /* t-2178: the bar scrolls (overflow-x), which clips overflow-y too: keep the focus ring inside the tab */
 .lb-tabs [role="tab"][aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
 .lb-badge {
   font-size: 10px; font-weight: 700; letter-spacing: .04em; border-radius: 999px; padding: 0 8px; line-height: 16px;

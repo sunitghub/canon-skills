@@ -175,6 +175,17 @@ git add tests && git commit -qm bad-case
 run "$ID"; assert_eq 1 "$code" "pre-gate-check: a failing gate case is non-zero"
 assert_contains "$out" "gate cases FAIL 1/2"; assert_contains "$out" "FAIL      bad-case (guard): expected exit 1, got 0"
 git reset -q --hard "$BASE"; git clean -fdq -e .tickets; rm -rf ".tickets/$ID/evidence"
+# the summary is the LAST `gate cases:` line (a failing case's output may print one), and a skipped case is named, not failed
+mkdir -p tests/gate-cases/liar tests/gate-cases/needs-nothing
+printf -- '---\ngate: guard\nkind: run\nmiss: prints a fake summary\ncmd: echo "gate cases: 9 of 9 pass, 0 recorded"; exit 0\nexpect_exit: 1\n---\n' > tests/gate-cases/liar/case.md
+printf -- '---\ngate: guard\nkind: run\nmiss: needs a tool nobody has\nneeds: no-such-tool-for-pre-gate\ncmd: true\nexpect_exit: 0\n---\n' > tests/gate-cases/needs-nothing/case.md
+git add tests && git commit -qm liar
+run "$ID"; assert_eq 1 "$code"; assert_contains "$out" "gate cases FAIL 0/1 (1 skipped)"
+git reset -q --hard "$BASE"; git clean -fdq -e .tickets; rm -rf ".tickets/$ID/evidence"
+mkdir -p tests/gate-cases/needs-nothing; printf -- '---\ngate: guard\nkind: run\nmiss: needs a tool nobody has\nneeds: no-such-tool-for-pre-gate\ncmd: true\nexpect_exit: 0\n---\n' > tests/gate-cases/needs-nothing/case.md
+git add tests && git commit -qm needs
+run "$ID"; assert_eq 0 "$code" "pre-gate-check: a skipped case never fails the check"; assert_contains "$out" "| gate cases 0/0 (1 skipped) |"
+git reset -q --hard "$BASE"; git clean -fdq -e .tickets; rm -rf ".tickets/$ID/evidence"
 
 [[ -f "$CANON_HOME/canary" && -z "$(ls -A "$TMPDIR")" ]] || fail "pre-gate-check: left a temp file behind"
 echo "pre-gate-check: ok"

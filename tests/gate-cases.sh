@@ -94,7 +94,7 @@ rm -rf "$CASES"
 
 # no cases folder: text and JSON say so and exit 0; a folder inside the cases folder with no case.md is ignored
 rc "$G" run; assert_eq 0 "$code"; assert_eq "gate cases: none (no $CASES)" "$out"
-rc "$G" run --json; assert_eq 0 "$code"; assert_eq '{"pass":0,"run":0,"recorded":0,"cases":[]}' "$out"
+rc "$G" run --json; assert_eq 0 "$code"; assert_eq '{"pass":0,"run":0,"recorded":0,"skipped":0,"cases":[]}' "$out"
 rc "$G" ls; assert_eq 0 "$code"; assert_eq "gate cases: none (no $CASES)" "$out"
 mkdir -p "$CASES/not-a-case" "$CASES/frontmatter-only"
 rc "$G" run; assert_eq 0 "$code"; assert_eq "gate cases: 0 of 0 pass, 0 recorded" "$out"
@@ -159,6 +159,38 @@ set +e; out="$(cd "$WORK/gitrepo" && env -u GATE_CASES_DIR "$G" add --gate revie
 assert_eq 0 "$code"; assert_file_exists "$WORK/gitrepo/tests/gate-cases/in-repo/case.md"; assert_contains "$out" "gate-cases: added in-repo (reviewer, recorded) → $(cd "$WORK/gitrepo" && pwd -P)/tests/gate-cases/in-repo"
 set +e; out="$(cd "$WORK/nogit" && env -u GATE_CASES_DIR GIT_CEILING_DIRECTORIES="$WORK" "$G" run 2>&1)"; code=$?; set -e
 assert_eq 2 "$code"; assert_contains "$out" "not inside a git repository"
+rm -rf "$CASES"
+
+# --- review findings (t-2178): a clean environment, a missing tool is a skip, valid JSON for any text, the refusals added with them ---
+rc "$G" add --gate guard --slug a --miss m --cmd true --expect-exit 0 --expect e; assert_eq 2 "$code"; assert_contains "$out" "--expect belongs to a recorded case"
+rc "$G" add --gate guard --slug a --miss m --cmd true --expect-exit 256;          assert_eq 2 "$code"; assert_contains "$out" "from 0 to 255"
+rc "$G" add --gate guard --slug a --miss m --cmd true --expect-exit 0 --needs "a b"; assert_eq 2 "$code"; assert_contains "$out" "--needs must be one command name"
+rc "$G" add --gate reviewer --slug a --miss m --expect e --needs node;            assert_eq 2 "$code"; assert_contains "$out" "--needs belongs to a run case"
+mkdir -p "$WORK/st2"; chmod 000 "$WORK/st2"
+if [[ "$(id -u)" != 0 ]]; then
+  rc "$G" add --gate guard --slug half --miss m --cmd true --expect-exit 0 --state "$WORK/st2"; assert_eq 2 "$code"
+  [[ ! -e "$CASES/half" ]] || fail "gate-cases: a failed copy of --state left a half-written case"
+fi
+chmod 755 "$WORK/st2"; rm -rf "$CASES"
+# a missing tool skips a run case, never fails it
+rc "$G" add --gate guard --slug needs-tool --miss "needs a tool nobody has" --cmd true --expect-exit 0 --needs no-such-tool-for-gate-cases; assert_eq 0 "$code"
+assert_grep "^needs: no-such-tool-for-gate-cases$" "$CASES/needs-tool/case.md"
+rc "$G" run; assert_eq 0 "$code"; assert_contains "$out" "  skipped   needs-tool (guard): needs no-such-tool-for-gate-cases, which is not installed"
+assert_contains "$out" "gate cases: 0 of 0 pass, 0 recorded, 1 skipped"
+rc "$G" run --json; assert_contains "$out" '"skipped":1'; assert_contains "$out" '"result":"skipped"'
+rm -rf "$CASES"
+# the clean environment: a caller's CANON_TICKETS_DIR and GIT_DIR never reach a case, setup or command; nothing is written into them
+mkdir -p "$CASES/clean-env/state" "$WORK/caller-tickets" "$WORK/caller-gitdir"
+printf '#!/usr/bin/env bash\nprintf "S[%%s][%%s][%%s]\\n" "${CANON_TICKETS_DIR-}" "${GIT_DIR-}" "${COCKPIT_STATE_DIR-}" > setup-env.txt\n' > "$CASES/clean-env/state/setup.sh"
+printf -- '---\ngate: guard\nkind: run\nmiss: m\ncmd: cat setup-env.txt; printf "C[%%s][%%s][%%s]\\n" "${CANON_TICKETS_DIR-}" "${GIT_DIR-}" "${COCKPIT_STATE_DIR-}"\nexpect_exit: 0\nexpect_text: C[][][]\n---\n' > "$CASES/clean-env/case.md"
+set +e; out="$(CANON_TICKETS_DIR="$WORK/caller-tickets" GIT_DIR="$WORK/caller-gitdir" COCKPIT_STATE_DIR="$WORK/caller-cockpit" "$G" run 2>&1)"; code=$?; set -e
+assert_eq 0 "$code" "gate-cases: a case saw the caller's environment: $out"
+rm -rf "$CASES"
+# JSON stays valid for any text: quotes, backslashes, tabs, newlines and control characters in a miss
+rc "$G" add --gate reviewer --slug json-text --miss 'quote " backslash \ tab '$'\t'' esc '$'\033''[31m bell '$'\001'' end' --expect 'x'
+assert_eq 0 "$code"
+rc "$G" run --json; assert_eq 0 "$code"
+printf '%s' "$out" | python3 -c 'import json,sys; d=json.load(sys.stdin); m=d["cases"][0]["miss"]; assert "quote \" backslash \\ tab" in m and "\x1b" not in m and "\x01" not in m, m' || fail "gate-cases: --json is invalid or kept a control character: $out"
 rm -rf "$CASES"
 
 # --- the real set: it passes on the real guards, and a weakened guard fails its case ---

@@ -63,11 +63,13 @@ run_checks() {
   fi
 
   # t-2178: the gate eval set. A project with tests/gate-cases/ runs it here, before any gate: a guard that stopped catching its recorded miss fails the close.
-  local gcroot gc gcrc=0 gsum
+  local gcroot gc gcrc=0 gsum gskip
   gcroot="$(git rev-parse --show-toplevel 2>/dev/null)" || gcroot=""
   if [[ -n "$gcroot" && -d "$gcroot/tests/gate-cases" ]]; then
     gc="$(GATE_CASES_DIR="$gcroot/tests/gate-cases" "$SCRIPT_DIR/gate-cases.sh" run 2>&1)" || gcrc=$?
-    gsum="$(sed -n 's/^gate cases: \([0-9]*\) of \([0-9]*\) pass.*/\1\/\2/p' <<<"$gc")"
+    gsum="$(sed -n 's/^gate cases: \([0-9]*\) of \([0-9]*\) pass.*/\1\/\2/p' <<<"$gc" | tail -n 1)"   # the summary is the last such line: a failing case's own output may print one
+    gskip="$(sed -n 's/^gate cases: .*, \([0-9]*\) skipped$/\1/p' <<<"$gc" | tail -n 1)"
+    [[ -z "$gskip" ]] || gsum+=" (${gskip} skipped)"
     if ((gcrc)); then line+=" | gate cases FAIL ${gsum:-?}"; fails+="$gc"$'\n'; rc=1; else line+=" | gate cases ${gsum:-?}"; fi
   fi
 

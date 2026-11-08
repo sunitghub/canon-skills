@@ -19965,7 +19965,7 @@ test.describe('Logbook (t-c6bb)', () => {
     await page.unrouteAll({ behavior: 'ignoreErrors' });
   });
 
-  test('Promoted tab count: both bubbles fit the tab bar at 480 px, and at 360 px the bar scrolls instead of clipping a tab (t-2178) @webkit', async ({ page }) => {
+  test('Promoted tab count: both bubbles fit the tab bar at 480 px, and at 360 px the bar scrolls instead of clipping a tab (t-2178) @webkit', async ({ page, browserName }) => {
     await serve(page, undefined, undefined, { promoted: file(PROMOTED_MD.replace('<!-- canon:promoted:END -->', Array.from({ length: 120 }, (_, i) => '- Rule ' + i + '\n').join('') + '<!-- canon:promoted:END -->')) });
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
@@ -19981,6 +19981,15 @@ test.describe('Logbook (t-c6bb)', () => {
     expect(wide.overflow, '480 px: the tab bar does not scroll').toBeLessThanOrEqual(0);
     expect(wide.badgeInside, '480 px: the bubble sits inside its tab').toBe(true);
     expect(wide.oneLine, '480 px: the tab stays one line').toBe(true);
+    // the bar clips what leaves it (overflow-x makes overflow-y clip too): the keyboard focus ring sits inside the tab, so it is not cut at the top or bottom
+    await page.locator('#lb-tab-l').focus();
+    await page.keyboard.press(browserName === 'webkit' ? 'Alt+Tab' : 'Tab');   // a real keyboard move, so :focus-visible applies (Safari skips buttons on a plain Tab)
+    await expect(page.locator('#lb-tab-p')).toBeFocused();
+    const ring = await page.evaluate(() => { const t = document.getElementById('lb-tab-p'), c = getComputedStyle(t), tr = t.getBoundingClientRect(), br = document.querySelector('.lb-tabs').getBoundingClientRect();
+      return { style: c.outlineStyle, offset: c.outlineOffset, width: parseFloat(c.outlineWidth), top: tr.top - br.top, bottom: br.bottom - tr.bottom }; });
+    expect(ring.style, 'a focused tab shows a ring').not.toBe('none');
+    expect(ring.offset, 'the ring is drawn inside the tab').toBe('-2px');
+    expect(ring.top + 2, 'the ring is not cut at the top of the bar').toBeGreaterThanOrEqual(0);
     await page.setViewportSize({ width: 360, height: 700 });
     const narrow = await measure();
     expect(narrow.scrolls, '360 px: the bar scrolls sideways').toBe('auto');
