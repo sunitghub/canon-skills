@@ -83,6 +83,15 @@ rc "$G" add --gate reviewer --slug a --miss m --expect "a"$'\r'"b";             
 rc "$G" add --gate guard --slug a --miss m --cmd "a"$'\n'"b" --expect-exit 0;    assert_eq 2 "$code"; assert_contains "$out" "--cmd must be one line"
 [[ ! -e "$CASES" ]] || fail "gate-cases: a refused add wrote a folder"
 
+# an option nobody gave writes no line; the frontmatter is closed; one expectation is enough; the JSON is valid and a pass carries no "why"
+rc "$G" add --gate guard --slug only-text --cmd 'echo hi' --miss m --expect-text hi;  assert_eq 0 "$code"
+rc "$G" add --gate guard --slug only-exit --cmd true --miss m --expect-exit 0;       assert_eq 0 "$code"
+for c in only-text only-exit; do assert_eq 2 "$(grep -c '^---$' "$CASES/$c/case.md")"; assert_eq 0 "$(grep -c '^source:' "$CASES/$c/case.md")"; done
+assert_eq 0 "$(grep -c '^expect_exit:' "$CASES/only-text/case.md")"; assert_eq 0 "$(grep -c '^expect_text:' "$CASES/only-exit/case.md")"
+rc "$G" run --json; assert_eq 0 "$code"
+printf '%s' "$out" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["run"] == 2 and len(d["cases"]) == 2 and all("why" not in c for c in d["cases"])' || fail "gate-cases: the JSON of two passing cases is not valid or carries a why: $out"
+rm -rf "$CASES"
+
 # no cases folder: text and JSON say so and exit 0; a folder inside the cases folder with no case.md is ignored
 rc "$G" run; assert_eq 0 "$code"; assert_eq "gate cases: none (no $CASES)" "$out"
 rc "$G" run --json; assert_eq 0 "$code"; assert_eq '{"pass":0,"run":0,"recorded":0,"cases":[]}' "$out"
@@ -107,6 +116,8 @@ mal $'gate: guard\nkind: maybe\nmiss: m\ncmd: true\nexpect_exit: 0' guard "it ne
 mal $'gate: reviewer\nkind: recorded\nmiss: m' reviewer "a recorded case needs expect"
 mal $'gate: guard\nkind: run\nmiss: m\nexpect_exit: 0' guard "a run case needs cmd"
 mal $'gate: guard\nkind: run\nmiss: m\ncmd: true' guard "a run case needs cmd"
+mal $'gate: reviewer\nkind: recorded\nmiss: m\nexpect_exit: 0' reviewer "a recorded case needs expect"   # expect_exit is not expect
+mal $'gate: guard\nkind: run\ncmd: true\nexpect_exit: 0\n---\nmiss: only in the body' guard "it needs gate"                  # the body is not frontmatter
 
 # a command's output is shown only for a failure; a case with only expect_text, or only expect_exit, passes on that alone
 mkdir -p "$CASES/text-only" "$CASES/exit-only" "$CASES/shows-output"
@@ -137,9 +148,10 @@ done
 rm -rf "$CASES/env-shown"
 
 # CANON_ROOT defaults to the repo the script lives in, also when it is run through a symlink; and the cases folder is found from the git repo you are in
-ln -s "$G" "$WORK/gc-link"
+mkdir -p "$WORK/bin"; phys_bin="$(cd "$WORK/bin" && pwd -P)"   # physical path: a relative link is resolved against the real folder, not through /var -> /private/var
+ln -s "$(python3 -c 'import os,sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$G" "$phys_bin")" "$WORK/bin/gc-link"   # a RELATIVE link, so the script must resolve it against the link's folder
 mkdir -p "$CASES/root-default"; printf -- '---\ngate: guard\nkind: run\nmiss: m\ncmd: test -f "$CANON_ROOT/tools/gate-cases.sh"\nexpect_exit: 0\n---\n' > "$CASES/root-default/case.md"
-set +e; out="$(cd "$WORK" && env -u CANON_ROOT "$WORK/gc-link" run 2>&1)"; code=$?; set -e
+set +e; out="$(cd "$WORK" && env -u CANON_ROOT "$WORK/bin/gc-link" run 2>&1)"; code=$?; set -e
 assert_eq 0 "$code"; assert_contains "$out" "  ok        root-default (guard)"
 rm -rf "$CASES/root-default"
 mkdir -p "$WORK/gitrepo" "$WORK/nogit"; git -C "$WORK/gitrepo" init -q
