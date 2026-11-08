@@ -155,6 +155,33 @@ Agent next steps:
 2. Fill in acceptance.md — add criteria and test-plan checklist items.
 3. Fill in plan.md — write the approach, then wait for explicit approval before coding.
 EOF
+  _unpromoted_line "$root"
+}
+
+# _unpromoted_line <root> — t-b360: one line when 5 or more rows of the project's LEARNINGS.md are still UNPROMOTED, so a pile of lessons is
+# offered for promotion; nothing when there are fewer or no file. Read-only, never blocks, no canon-only path (a user project has the same file).
+_unpromoted_line() {
+  local f="$1/LEARNINGS.md" n
+  [[ -f "$f" ]] || return 0
+  n="$(awk '/\| UNPROMOTED \|[ \t\r]*$/ { n++ } END { print n + 0 }' "$f")"
+  [[ "$n" -ge 5 ]] && echo "$n UNPROMOTED learnings: /promote-learnings reviews them"
+  return 0
+}
+
+# _findings_line <ticket dir> — t-b360: after a close, how the sprint's noticed and not-checked lines were routed (learnings.md's
+# `## Noticed and not checked` bullets: `[t-xxxx]` a ticket, `[dismissed: why]`, `[ ]` left as a lesson). One line, nothing when there is
+# no such section; read-only, and the close is already done, so it can never refuse.
+_findings_line() {
+  local f="$1/learnings.md"
+  [[ -f "$f" ]] || return 0
+  awk '
+    /^##[ \t]+Noticed and not checked[ \t\r]*$/ { on = 1; next }
+    on && /^##[ \t]/ { on = 0 }
+    on && /^[ \t]*[-*][ \t]+\[t-[a-z0-9]+\]/ { t++; n++; next }
+    on && /^[ \t]*[-*][ \t]+\[dismissed:/ { d++; n++; next }
+    on && /^[ \t]*[-*][ \t]+\[ \]/ { l++; n++ }
+    END { if (n > 0) printf "Findings: %d noticed (%d routed to a ticket, %d dismissed, %d left as lessons)\n", n, t, d, l }
+  ' "$f"
 }
 
 # _gate_agents_check <root> — t-ff14: are canon's gate agents loaded in this Claude Code session? Claude Code loads agents
@@ -1090,6 +1117,7 @@ cmd_complete() {
   canon_event close.confirmed sprint "$(project_root)" "ticket=$id" ${_tier:+"tier=$_tier"}
   handoff_recent "$(project_root)"   # t-2db7: the main checkout's HANDOFF.md Recent activity
   echo "Sprint completed: $id"
+  _findings_line "$tdir"
   # t-8f48, t-2906: in a linked worktree, the step after the close is Check & merge.
   local gd common f
   if gd="$(git rev-parse --absolute-git-dir 2>/dev/null)" && common="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" \

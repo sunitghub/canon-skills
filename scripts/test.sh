@@ -39,6 +39,7 @@ fi
 tests=(
   "$ROOT/tests/tkt.sh"
   "$ROOT/tests/tkt-compact.sh"
+  "$ROOT/tests/finding-routes.sh"
   "$ROOT/tests/tkt-send-issue.sh"
   "$ROOT/tests/cloud-round-trip.sh"
   "$ROOT/tests/tkt-export-warn.sh"

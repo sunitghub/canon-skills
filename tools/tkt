@@ -897,7 +897,21 @@ cmd_learn() {
     ' "$revn")"
   fi
 
-  if [[ -z "$deviations" && -z "$findings" && -z "$rfindings" ]]; then
+  # t-b360: a line the agent or a gate wrote down on the way, `NOTICED: <what>` (standards/efficiency.md) or a "not checked" item, from the three
+  # close reports. One list per sprint, one bullet per line (a person routes it by editing the bullet's `[ ]`); capped like the reviewer findings.
+  # The cap is awk, not head: head closing the pipe early would make a pipefail run fail.
+  local noticed="" nf
+  noticed="$(
+    for nf in review-notes.md eval-report.md summary.md; do
+      [[ -f "$tdir/$nf" ]] || continue
+      awk -v src="$nf" '
+        { sub(/\r$/, ""); l = $0; sub(/^[ \t]*[-*][ \t]+/, "", l); sub(/^[ \t]+/, "", l)
+          if (l ~ /^NOTICED:/ || tolower(l) ~ /not checked/) print "- [ ] " (length(l) > 400 ? substr(l, 1, 400) " … (see " src ")" : l) " (" src ")" }
+      ' "$tdir/$nf"
+    done | awk 'NR <= 40'
+  )"
+
+  if [[ -z "$deviations" && -z "$findings" && -z "$rfindings" && -z "$noticed" ]]; then
     echo "$id: clean sprint — no non-delivered rows in summary.md and no evaluator or reviewer findings; nothing to distill."
     echo "(No learnings candidate written.)"
     return 0
@@ -940,6 +954,11 @@ cmd_learn() {
       printf "_none_\n\n"
     fi
 
+    if [[ -n "$noticed" ]]; then
+      printf "## Noticed and not checked\n\n"
+      printf "Route each line before the close: a ticket (\`tkt create\`, then write \`[t-xxxx]\` in place of the \`[ ]\`), \`[dismissed: <why>]\`, or leave \`[ ]\` as a lesson.\n\n%s\n\n" "$noticed"
+    fi
+
     printf "## Candidate lessons\n"
     printf "<!-- One durable lesson per kept item; a non-builder fills in and promotes these. -->\n"
     while IFS= read -r it; do
@@ -947,6 +966,7 @@ cmd_learn() {
     done <<< "$dev_items"
     [[ -n "$findings" ]] && printf -- "- [ ] Lesson from the evaluator findings above\n"
     [[ -n "$rfindings" ]] && printf -- "- [ ] Lesson from the reviewer findings above\n"
+    [[ -n "$noticed" ]] && printf -- "- [ ] Lesson from the noticed lines above\n"
     printf -- "- [ ] (other)\n"
   } > "$out"
 

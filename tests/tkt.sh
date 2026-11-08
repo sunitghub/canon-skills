@@ -298,6 +298,42 @@ revclean_out="$("$TKT" learn "$revclean_id")"
 assert_contains "$revclean_out" "nothing to distill"
 [[ -f ".tickets/$revclean_id/learnings.md" ]] && fail "tkt learn wrote a candidate for a reviewer-clean sprint" || true
 
+# 6b. t-b360: NOTICED: lines and "not checked" items from the close reports are one list, `## Noticed and not checked`, and a sprint whose only
+# findings are these still writes a candidate. A lower-case "noticed:", "checked" without "not", and a code line mentioning neither stay out.
+nt_id="$("$TKT" create "Noticed lines")"
+cp ".tickets/$clean_id/summary.md" ".tickets/$nt_id/summary.md"
+cp ".tickets/$clean_id/eval-report.md" ".tickets/$nt_id/eval-report.md"
+{
+  printf '# Review Notes\n\n## Findings\n\nNo findings.\nDead code: none \xe2\x80\x94 checked tools/x:1\nnoticed: lower case is not the marker\n'
+  printf 'NOTICED: tools/x:4 \xe2\x80\x94 a flake seen once\n- NOTICED: a bulleted one\n* Not Checked: the Windows VM\n'
+  printf 'NOTICED: %s\n\n## Verdict\n\nYES\n' "$(head -c 500 /dev/zero | tr '\0' A)"
+} > ".tickets/$nt_id/review-notes.md"
+nt_out="$("$TKT" learn "$nt_id")"
+[[ "$nt_out" != *"nothing to distill"* ]] || fail "a sprint with only NOTICED lines was called clean"
+nt_f=".tickets/$nt_id/learnings.md"; assert_file_exists "$nt_f"
+assert_grep "^## Noticed and not checked$" "$nt_f"
+assert_grep "^- \[ \] NOTICED: tools/x:4 .* a flake seen once \\(review-notes.md\\)$" "$nt_f"
+assert_grep "^- \[ \] NOTICED: a bulleted one \\(review-notes.md\\)$" "$nt_f"
+assert_grep "^- \[ \] Not Checked: the Windows VM \\(review-notes.md\\)$" "$nt_f"
+assert_eq 4 "$(grep -c '^- \[ \] .*(review-notes.md)$' "$nt_f")"
+sed -n '/^## Noticed and not checked$/,/^## Candidate lessons$/p' "$nt_f" | grep -q "lower case is not the marker\|Dead code" && fail "a line that is not NOTICED: or not checked reached the list" || true
+long_line="$(grep '^- \[ \] NOTICED: AAA' "$nt_f")"
+[[ "${#long_line}" -le 460 && "$long_line" == *"(see review-notes.md)"* ]] || fail "a 500-character line was not cut to 400"
+assert_grep "^- \[ \] Lesson from the noticed lines above$" "$nt_f"
+# the other two reports are read too, and more than 40 lines are cut
+nt2_id="$("$TKT" create "Many noticed")"
+cp ".tickets/$clean_id/summary.md" ".tickets/$nt2_id/summary.md"
+{ printf 'evaluator-run-id: t-1\n## Findings\nNo findings.\n'; for i in $(seq 1 45); do printf 'NOTICED: item %s\n' "$i"; done; printf '## Verdict\npass: ok\n'; } > ".tickets/$nt2_id/eval-report.md"
+printf '\n| Not checked: the macOS 27 path | delivered | ok |\n' >> ".tickets/$nt2_id/summary.md"
+"$TKT" learn "$nt2_id" >/dev/null
+assert_eq 40 "$(grep -c '^- \[ \] .*(eval-report.md)$' ".tickets/$nt2_id/learnings.md")"
+# a sprint with a deviation and no such line gets no new section
+nt3_id="$("$TKT" create "Deviation only")"
+cp ".tickets/$clean_id/eval-report.md" ".tickets/$nt3_id/eval-report.md"
+printf '# Summary\n\n| Item | Status | Notes |\n|---|---|---|\n| thing | deferred | later |\n' > ".tickets/$nt3_id/summary.md"
+"$TKT" learn "$nt3_id" >/dev/null
+grep -q "Noticed and not checked" ".tickets/$nt3_id/learnings.md" && fail "a section appeared with no noticed line" || true
+
 # 7. Malformed review-notes.md never errors or emits garbage: CRLF, empty, no bullets, a 5000-char line.
 mal_id="$("$TKT" create "Malformed review notes")"
 cp ".tickets/$rev_id/summary.md" ".tickets/$mal_id/summary.md"

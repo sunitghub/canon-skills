@@ -562,8 +562,26 @@ cat > ".claude/subagent-runs.jsonl" <<'EOF'
 {"ts":"2001-09-09T02:16:40Z","session_id":"s1","agent_id":"agent-real2","agent_type":"general-purpose","transcript_path":"/tmp/eval2.jsonl","tokens":5,"outcome":"pass","model":"claude-sonnet-5"}
 EOF
 [[ -z "$(event_line close.confirmed "$fresh_id")" ]] || fail "a refused close wrote close.confirmed"   # t-4c09: every refusal above left no audit line
+# t-b360: the close prints how the sprint's noticed lines were routed (a ticket, dismissed, left as a lesson); read-only, after the close
+cat > ".tickets/$fresh_id/learnings.md" <<'EOF'
+---
+ticket: x
+status: UNPROMOTED
+---
+# Learnings candidate
+
+## Noticed and not checked
+
+- [ ] NOTICED: left as a lesson (review-notes.md)
+- [t-abcd] NOTICED: filed as a ticket (review-notes.md)
+- [dismissed: a duplicate of t-1234] not checked: the VM (eval-report.md)
+
+## Candidate lessons
+- [ ] (other)
+EOF
 complete_output="$("$SPRINT" complete)"
 assert_contains "$complete_output" "Sprint completed: $fresh_id"
+assert_contains "$complete_output" "Findings: 3 noticed (1 routed to a ticket, 1 dismissed, 1 left as lessons)"
 cc="$(event_line close.confirmed "$fresh_id")"   # t-4c09: the audit line of a real close: the plan's tier, no actor (a command cannot know)
 assert_contains "$cc" '"source":"sprint"'; assert_contains "$cc" '"tier":"normal"'; [[ "$cc" != *'"actor"'* ]] || fail "a CLI close claimed an actor: $cc"
 assert_contains "$(event_line sprint.completed "$fresh_id")" '"source":"sprint"'   # t-f182: after the close, never before
@@ -615,6 +633,7 @@ EOF
 ms_complete_output="$("$SPRINT" complete 2>&1 || true)"
 [[ "$ms_complete_output" == *"no matching subagent entry"* ]] && fail "millisecond run-id should normalize to seconds and match: $ms_complete_output"
 assert_contains "$ms_complete_output" "Sprint completed: $ms_id"
+[[ "$ms_complete_output" != *"Findings:"* ]] || fail "a close with no noticed lines printed a Findings line"   # t-b360
 
 # ── t-072d: HARD RULE — the report-body `Model:` line is mandatory ───────────
 model_start_output="$("$SPRINT" start "Model line HARD RULE test")"
