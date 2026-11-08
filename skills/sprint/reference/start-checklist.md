@@ -21,7 +21,7 @@ names for a case that applies.
 3. **Tier:** normal or high-risk (`skills/sprint/SKILL.md` "Workflow tiers"). Never trivial or bugfix at
    start: those are close-time downgrades.
 4. **Context:** `DECISIONS.md`: scan every live entry for a constraint or conflict, skipping fragments
-   marked `superseded-by:`; `HANDOFF.md`; `LEARNINGS.md`; closed tickets that touched the files you will
+   marked `superseded-by:`; `HANDOFF.md`; `LEARNINGS.md` (when `sprint start` says 5 or more rows are UNPROMOTED, tell the user and offer `/promote-learnings`); closed tickets that touched the files you will
    change.
 5. **Research:** inspect the files and callers; confirm the ticket's premise in the code (the bug reproduces, the thing is missing); write a few bullets in `research.md` before the approach.
 6. **acceptance.md:**

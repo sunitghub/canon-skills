@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+- Added (sprint close and start, any project): every finding is recorded. `tkt learn` now also collects `NOTICED:` lines and "not checked" items from review-notes.md, eval-report.md and summary.md into a `## Noticed and not checked` list in the learnings candidate (a sprint whose only findings are these now writes one), and `sprint complete` prints how many were routed to a ticket (`[t-xxxx]`), dismissed (`[dismissed: why]`) or left as lessons. `sprint start` prints one line offering `/promote-learnings` when the project's `LEARNINGS.md` has 5 or more UNPROMOTED rows. Nothing blocks; the close and start are otherwise unchanged (t-b360).
+
 ## [0.47.19] - 2026-11-08
 
 Run `canon update`, then restart the daemon (Admin's **Restart Daemon**): the board changed.

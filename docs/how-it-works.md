@@ -115,7 +115,7 @@ Each sprint produces up to eight docs:
 | `review-notes.md` | sprint complete (normal+) | Advisory reviewer findings — code quality, scope, standards — with a YES/NO verdict |
 | `eval-report.md` | sprint complete (normal+, incl. bugfix) | Adversarial criterion grades · pass/fail with file:line evidence |
 | `mutation-report.md` | sprint complete, before the evaluator, when logic files changed | Non-binding: surviving mutants and their triage (the final sweep is stamped in `evidence/`) — never close-gated |
-| `learnings.md` | sprint complete (optional, via `tkt learn`) | UNPROMOTED lessons candidate — the sprint's deviations + evaluator and reviewer findings, for a non-builder to promote |
+| `learnings.md` | sprint complete (optional, via `tkt learn`) | UNPROMOTED lessons candidate — the sprint's deviations + evaluator and reviewer findings + `NOTICED:` and "not checked" lines, for a non-builder to promote |
 | `summary.md` | sprint complete | Plan-vs-actual table · close prose |
 
 Root `LEARNINGS.md` keeps a capped, always-current index of every open `learnings.md` candidate —

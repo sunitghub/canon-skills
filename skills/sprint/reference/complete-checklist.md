@@ -8,7 +8,7 @@ hidden: true
 
 # Sprint Complete — checklist
 
-The normal path; every tool named is on PATH. Other cases: read only the last table's `complete.md` section.
+The normal path. Other cases: read only the last table's `complete.md` section.
 
 **First** ask "Ready to close sprint `<id>`? This will run wrapup and move the ticket to Done.
 Confirm to proceed." A broad "continue"/"finish" is not close approval.
@@ -52,7 +52,7 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
 7. **Conventions:** propose a new convention line; ask first.
 8. **Summary:** `.tickets/<id>/summary.md`, one row per criterion (`delivered`/`waived`/`deferred`/`partial`;
    escape `|`), plus a paragraph naming gate models, any reviewer NO. Run `tkt learn <id>`;
-   if it writes a file, run `/learnings-sweep <id>`. Say which in chat and summary.
+   if it writes a file, run `/learnings-sweep <id>`. Say which in chat and summary. Route each Noticed bullet: `tkt create` + `[t-xxxx]`, or `[dismissed: why]`.
 9. **Close:** `sprint complete <id>`, never a hand-edited status. On refusal, report and stop.
 10. **Commit & push:** stage specific files plus DECISIONS/HANDOFF/LEARNINGS, even new, unless gitignored; `Closes: <id>` in the body; show; ask. "No remote is configured: committed locally, nothing pushed" if none; "pushed" only after a push that succeeded. Worktree: no PR;
     **Check & merge**, then `tkt worktree-reset`. Canon: `public` only via `tkt push-main`; a push is not a release.
@@ -69,7 +69,7 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
   `.tickets/<id>/review-notes.md` / `eval-report.md` and return the verdict line; read-only except
   that report; never kill by name or pattern; evaluator only: take the
   `evaluator-run-id` as the very last command. Never pass a changed-files list.
-- `Plan` fallback: `sprint relay-report <id> [reviewer]` writes its report (the main session never types one).
+- `Plan` fallback: `sprint relay-report <id> [reviewer]` writes its report.
 
 ## Read the detail when
 

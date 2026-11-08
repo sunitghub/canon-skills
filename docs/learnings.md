@@ -29,6 +29,13 @@ full text stays in `review-notes.md`), plus a `- [ ] Lesson from the reviewer fi
 The XSS finding reaches the candidate mechanically. A reviewer "No findings." with no deviations and no
 evaluator findings still writes nothing.
 
+**Noticed and not checked (`t-b360`).** A line starting `NOTICED:`, or containing "not checked", in `review-notes.md`,
+`eval-report.md` or `summary.md` is collected into a `## Noticed and not checked` section, one `- [ ] <text> (<file>)`
+bullet each (400 characters, at most 40). A sprint whose only findings are such lines now writes a candidate. Route each
+bullet before the close: `tkt create` and write `[t-xxxx]` in place of `[ ]`, `[dismissed: <why>]`, or leave `[ ]` as a
+lesson. `sprint complete` then prints how many went where; it never refuses. At the next `sprint start`, 5 or more
+UNPROMOTED rows in the project's `LEARNINGS.md` print one line offering `/promote-learnings`.
+
 > **History.** Before `t-13b3`, `tkt learn` never opened `review-notes.md`: the `t-6328` candidate read
 > "No findings" with blank lessons, and the XSS lesson only reached `LEARNINGS.md` because the closing agent
 > hand-wrote it. Section 5's real run below was made against that older behavior.

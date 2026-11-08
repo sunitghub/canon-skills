@@ -724,6 +724,12 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    universally — `CLAUDE.md`/`AGENTS.md`; a consumer project: its own `PROMOTED.md`). It proposes, never promotes.
    A defect traced to a skill's own instructions can go to that skill's `evals/evals.json` as a regression case (one of `promote-learnings`' destinations); the next sprint that edits the skill then runs it (step 1, skill eval).
 
+   **Route every finding (t-b360).** When the candidate has a `## Noticed and not checked` section (a `NOTICED:` or "not checked"
+   line from the gate reports or summary.md), give each bullet a route before step 9: work gets `tkt create`, then `[t-xxxx]` in
+   place of its `[ ]`; a lesson stays `[ ]`; anything else is `[dismissed: <why>]`. `sprint complete` then prints how many went
+   where, and never refuses over it. `sprint start` prints one line offering `/promote-learnings` when 5 or more rows of the
+   project's `LEARNINGS.md` are still UNPROMOTED.
+
    **Never silent.** State in the chat reply and in `summary.md`'s own paragraph that `tkt learn`
    ran and name the file it wrote (or, on a clean sprint, that it found nothing to distill —
    `tkt learn`'s own skip logic, unchanged, is what makes running it unattended safe). In a
