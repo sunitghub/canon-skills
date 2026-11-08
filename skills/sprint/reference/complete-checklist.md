@@ -47,8 +47,7 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
 4. **Tests:** each criterion has a Test Plan line exercising it; each item ✓ with dated evidence. Re-run any
    "pre-existing failure" the evaluator claims, in the real tree.
 5. **Acceptance:** every criterion and QA "Tested locally" box truly met.
-6. **DECISIONS.md:** durable choices and why; archive a superseded entry, mark a retired fragment
-   `superseded-by: <date>`.
+6. **DECISIONS.md:** one short row (rule, falsifier, id); `sprint decisions related` routes the rest.
 7. **Conventions:** propose a new convention line; ask first.
 8. **Summary:** `.tickets/<id>/summary.md`, one row per criterion (`delivered`/`waived`/`deferred`/`partial`;
    escape `|`), plus a paragraph naming gate models, any reviewer NO. Run `tkt learn <id>`;

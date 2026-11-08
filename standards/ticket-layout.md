@@ -147,6 +147,8 @@ The board (`sprint-check-app`) derives all rendering from the ticket JSON produc
 `skills/sprint/SKILL.md`'s `## DECISIONS.md` and `complete.md` step 6). One row per decision in a
 `| Date | Decision | Reason |` table; newest on top; write the WHY, not the what.
 
+**Both mechanisms are commands (t-79bf):** `sprint decisions archive <row-id> --by <t-xxxx>` moves a whole row byte for byte to `DECISIONS-archive.md`, `sprint decisions mark <row-id> <YYYY-MM-DD> "<fragment>"` appends the marker to one row, and `sprint decisions related <path|t-xxxx>...` finds the rows that name a file or a ticket (the row id is an 8-hex hash of the row). A row is short: the rule, its falsifier and the ticket id (about 400 characters).
+
 **Supersession — two mechanisms, by scope:**
 
 - **Whole-entry supersession → archive-move.** When a later decision retires an *entire* earlier

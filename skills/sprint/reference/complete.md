@@ -664,7 +664,16 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
 
 6. **DECISIONS.md.** Append any durable decisions made during this sprint — non-obvious
    architectural choices, explicit tradeoffs, out-of-scope calls. One row per decision. Write
-   the WHY, not the what. Skip if no new decisions were made. If this sprint's decision cleanly
+   the WHY, not the what, and keep the row short (t-79bf): the rule, its falsifier and the ticket id,
+   about 400 characters; the reasoning stays in the ticket's plan.md and research.md. `sprint complete`
+   prints a line for a row of this ticket over 600 characters. Skip if no new decisions were made.
+   **Prune on write (t-79bf).** Before you add the row, run `sprint decisions related <the files and
+   tickets this sprint changed>`: it lists the rows that name them, each with an 8-hex row id. Answer
+   each one in `summary.md`: live (leave it), superseded (`sprint decisions archive <row-id> --by <this
+   ticket>` moves the whole row, byte for byte, to `DECISIONS-archive.md`), or partly superseded
+   (`sprint decisions mark <row-id> <YYYY-MM-DD> "<which fragment>"`). The move and the marker are
+   commands, never a hand edit. The lookup matches the text of a row, so it is a floor: a decision that
+   never names its file is not listed. Section entries (`## date`) are not rows and are left alone. If this sprint's decision cleanly
    supersedes or retires an *entire* earlier entry (not a fragment of a composite, multi-topic
    one), move that earlier entry's row to `DECISIONS-archive.md` instead of leaving it in
    `DECISIONS.md` forever — this is what keeps the file `sprint start` actively scans from
