@@ -43,6 +43,15 @@ rows 7 2 crlf
 out="$(start "seven rows, CRLF file")"; assert_contains "$out" "7 UNPROMOTED learnings: /promote-learnings reviews them"
 assert_contains "$out" "Sprint started:"   # the line is an addition: the start itself is unchanged
 
+# an unreadable file and a byte awk cannot decode never change sprint start's exit status (set -e)
+rows 5 0; printf '| 2026-11-09 | [t-c001](z) | caf\xe9 \xff\xfe | UNPROMOTED |\n' >> LEARNINGS.md
+out="$(start "odd bytes")"; assert_eq 0 "$(cat "$rcfile")"; assert_contains "$out" "6 UNPROMOTED learnings: /promote-learnings reviews them"
+if [[ "$(id -u)" != 0 ]]; then
+  rows 5 0; chmod 000 LEARNINGS.md
+  out="$(start "unreadable")"; chmod 644 LEARNINGS.md
+  assert_eq 0 "$(cat "$rcfile")"; [[ "$out" != *"UNPROMOTED learnings"* && "$out" != *"can't open"* ]] || fail "an unreadable LEARNINGS.md was reported or counted: $out"
+fi
+
 # --- sprint complete: the routed counts, and nothing when there is no such section ---
 close_with() { # <title> <learnings body or empty>: a trivial-tier close, the output of sprint complete
   local o id; o="$("$SPRINT" start "$1" 2>&1)"; id="$(awk '/Sprint started:/ { print $3 }' <<<"$o")"
@@ -54,12 +63,27 @@ close_with() { # <title> <learnings body or empty>: a trivial-tier close, the ou
   git -c user.name=t -c user.email=t@example.com commit -q --allow-empty -m fixture
   set +e; local c; c="$("$SPRINT" complete 2>&1)"; printf '%s' "$?" > "$rcfile"; set -e; printf '%s\n' "$c"
 }
+close_with_locked() { # like close_with, with learnings.md present but unreadable
+  local o id; o="$("$SPRINT" start "$1" 2>&1)"; id="$(awk '/Sprint started:/ { print $3 }' <<<"$o")"
+  printf '# Summary\n| Item | Status |\n|---|---|\n| x | delivered |\n' > ".tickets/$id/summary.md"
+  printf '# Acceptance\n## Criteria\n- [x] Done.\n## Test Plan\n- [x] npm test\n## Wrapup Gates\n| Gate | Status | Reason |\n|------|--------|--------|\n| security-review | ran | no trust boundary touched |\n' > ".tickets/$id/acceptance.md"
+  printf '# Plan\n## Sign-off\nTier: trivial | Risk: one-liner\n- [x] Plan approved \xe2\x80\x94 proceed to implementation\n## Approach\nNone needed.\n' > ".tickets/$id/plan.md"
+  printf '# L\n\n## Noticed and not checked\n\n- [ ] one (review-notes.md)\n' > ".tickets/$id/learnings.md"; chmod 000 ".tickets/$id/learnings.md"
+  git -c user.name=t -c user.email=t@example.com commit -q --allow-empty -m fixture
+  set +e; local c; c="$("$SPRINT" complete 2>&1)"; printf '%s' "$?" > "$rcfile"; set -e; chmod 644 ".tickets/$id/learnings.md"; printf '%s\n' "$c"
+}
 out="$(close_with "routed close" "$(printf '# L\n\n## Evaluator findings\n\n- [dismissed: outside the section] not counted\n\n## Noticed and not checked\n\n- [ ] one (review-notes.md)\n- [ ] two (review-notes.md)\n- [t-abcd] three (eval-report.md)\n* [dismissed: a duplicate] four (summary.md)\n- plain text, not a route\n\n## Candidate lessons\n- [t-zzzz] outside the section\n- [ ] (other)\n')")"
 assert_eq 0 "$(cat "$rcfile")"   # the line never changes a close's exit status
 assert_contains "$out" "Findings: 4 noticed (1 routed to a ticket, 1 dismissed, 2 left as lessons)"
 out="$(close_with "no section" "$(printf '# L\n\n## Evaluator findings\n\n- [ ] not in the noticed list\n')")"
 [[ "$out" != *"Findings:"* ]] || fail "a candidate with no noticed section printed a Findings line: $out"
 assert_eq 0 "$(cat "$rcfile")"
+out="$(close_with "odd bytes" "$(printf '# L\n\n## Noticed and not checked\n\n- [ ] caf\xe9 \xff\xfe (review-notes.md)\n')")"
+assert_eq 0 "$(cat "$rcfile")"; assert_contains "$out" "Findings: 1 noticed (0 routed to a ticket, 0 dismissed, 1 left as lessons)"
+if [[ "$(id -u)" != 0 ]]; then
+  out="$(close_with_locked "unreadable")"
+  assert_eq 0 "$(cat "$rcfile")"; [[ "$out" == *"closed"* && "$out" != *"Findings:"* && "$out" != *"can't open"* ]] || fail "an unreadable learnings.md changed the close: $out"
+fi
 out="$(close_with "no file" "")"
 [[ "$out" == *"closed"* && "$out" != *"Findings:"* ]] || fail "a close with no learnings.md printed a Findings line, or did not close: $out"
 assert_eq 0 "$(cat "$rcfile")"

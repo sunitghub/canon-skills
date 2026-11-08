@@ -306,6 +306,7 @@ cp ".tickets/$clean_id/eval-report.md" ".tickets/$nt_id/eval-report.md"
 {
   printf '# Review Notes\n\n## Findings\n\nNo findings.\nDead code: none \xe2\x80\x94 checked tools/x:1\nnoticed: lower case is not the marker\n'
   printf 'NOTICED: tools/x:4 \xe2\x80\x94 a flake seen once\n- NOTICED: a bulleted one\n* Not Checked: the Windows VM\n'
+  printf '```\nNOTICED: inside a code block\nnot checked in a block either\n```\n## Not checked\n'
   printf 'NOTICED: %s\n\n## Verdict\n\nYES\n' "$(head -c 500 /dev/zero | tr '\0' A)"
 } > ".tickets/$nt_id/review-notes.md"
 nt_out="$("$TKT" learn "$nt_id")"
@@ -317,7 +318,7 @@ assert_grep "^- \[ \] NOTICED: a bulleted one \\(review-notes.md\\)$" "$nt_f"
 assert_grep "^- \[ \] Not Checked: the Windows VM \\(review-notes.md\\)$" "$nt_f"
 assert_eq 4 "$(grep -c '^- \[ \] .*(review-notes.md)$' "$nt_f")"
 nt_sec="$(sed -n '/^## Noticed and not checked$/,/^## Candidate lessons$/p' "$nt_f")"   # no `| grep -q`: an early-exit reader SIGPIPEs its writer under pipefail
-[[ "$nt_sec" != *"lower case is not the marker"* && "$nt_sec" != *"Dead code"* ]] || fail "a line that is not NOTICED: or not checked reached the list"
+[[ "$nt_sec" != *"lower case is not the marker"* && "$nt_sec" != *"Dead code"* && "$nt_sec" != *"code block"* && "$nt_sec" != *"## Not checked"* ]] || fail "a line that is not NOTICED: or not checked reached the list"
 long_line="$(grep '^- \[ \] NOTICED: AAA' "$nt_f")"
 [[ "${#long_line}" -le 460 && "$long_line" == *"(see review-notes.md)"* ]] || fail "a 500-character line was not cut to 400"
 assert_grep "^- \[ \] Lesson from the noticed lines above$" "$nt_f"

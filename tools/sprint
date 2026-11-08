@@ -163,7 +163,8 @@ EOF
 _unpromoted_line() {
   local f="$1/LEARNINGS.md" n
   [[ -f "$f" ]] || return 0
-  n="$(awk '/\| UNPROMOTED \|[ \t\r]*$/ { n++ } END { print n + 0 }' "$f")"
+  # LC_ALL=C and no stderr: an unreadable file or a byte awk cannot decode (macOS awk, UTF-8 locale) must not abort the start under set -e
+  n="$(LC_ALL=C awk '/\| UNPROMOTED \|[ \t\r]*$/ { n++ } END { print n + 0 }' "$f" 2>/dev/null)" || n=0
   [[ "$n" -ge 5 ]] && echo "$n UNPROMOTED learnings: /promote-learnings reviews them"
   return 0
 }
@@ -174,14 +175,16 @@ _unpromoted_line() {
 _findings_line() {
   local f="$1/learnings.md"
   [[ -f "$f" ]] || return 0
-  awk '
+  # same guard as _unpromoted_line: nothing here may change the exit status of a close that is already done
+  LC_ALL=C awk '
     /^##[ \t]+Noticed and not checked[ \t\r]*$/ { on = 1; next }
     on && /^##[ \t]/ { on = 0 }
     on && /^[ \t]*[-*][ \t]+\[t-[a-z0-9]+\]/ { t++; n++; next }
     on && /^[ \t]*[-*][ \t]+\[dismissed:/ { d++; n++; next }
     on && /^[ \t]*[-*][ \t]+\[ \]/ { l++; n++ }
     END { if (n > 0) printf "Findings: %d noticed (%d routed to a ticket, %d dismissed, %d left as lessons)\n", n, t, d, l }
-  ' "$f"
+  ' "$f" 2>/dev/null || true
+  return 0
 }
 
 # _gate_agents_check <root> — t-ff14: are canon's gate agents loaded in this Claude Code session? Claude Code loads agents

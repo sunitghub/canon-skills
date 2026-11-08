@@ -29,7 +29,7 @@ full text stays in `review-notes.md`), plus a `- [ ] Lesson from the reviewer fi
 The XSS finding reaches the candidate mechanically. A reviewer "No findings." with no deviations and no
 evaluator findings still writes nothing.
 
-**Noticed and not checked (`t-b360`).** A line starting `NOTICED:`, or containing "not checked", in `review-notes.md`,
+**Noticed and not checked (`t-b360`).** A line starting `NOTICED:`, or containing "not checked" (outside a code block, and not a heading), in `review-notes.md`,
 `eval-report.md` or `summary.md` is collected into a `## Noticed and not checked` section, one `- [ ] <text> (<file>)`
 bullet each (400 characters, at most 40). A sprint whose only findings are such lines now writes a candidate. Route each
 bullet before the close: `tkt create` and write `[t-xxxx]` in place of `[ ]`, `[dismissed: <why>]`, or leave `[ ]` as a

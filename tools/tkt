@@ -905,7 +905,9 @@ cmd_learn() {
     for nf in review-notes.md eval-report.md summary.md; do
       [[ -f "$tdir/$nf" ]] || continue
       awk -v src="$nf" '
+        /^[ \t]*```/ { fence = !fence; next }   # a code block quotes text, it does not report it
         { sub(/\r$/, ""); l = $0; sub(/^[ \t]*[-*][ \t]+/, "", l); sub(/^[ \t]+/, "", l)
+          if (fence || l ~ /^#/) next            # nor does a heading such as "## Not checked"
           if (l ~ /^NOTICED:/ || tolower(l) ~ /not checked/) print "- [ ] " (length(l) > 400 ? substr(l, 1, 400) " … (see " src ")" : l) " (" src ")" }
       ' "$tdir/$nf"
     done | awk 'NR <= 40'
