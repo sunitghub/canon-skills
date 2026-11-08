@@ -55,11 +55,17 @@ ticket "$REPO" t-bnd1 open               # bound; open on main, in progress in i
 ticket "$REPO" t-cls1 closed             # closed, bound to the dirty worktree
 ticket "$REPO" t-mine open              # the requester in the own-view checks (owns sprint/mine by name)
 ticket "$REPO" t-want open              # unrelated ticket viewing a worktree another ticket is running in
+ticket "$REPO" t-lnd1 in_progress       # t-8be9: tkt land's worktree is on land/<id>; its .cockpit-cwd binding is gone
+ticket "$REPO" t-lnd2 in_progress       # the same, with uncommitted work in it
 mkdir -p "$REPO/.tickets/t-leg1"   # a legacy ticket file: the retired field must load and hold nothing
 printf -- '---\nid: t-leg1\nstatus: open\ntype: task\npriority: 2\nworktree_preference: sprint/res\n---\n# t-leg1\n' > "$REPO/.tickets/t-leg1/ticket.md"
 echo a > "$REPO/a.txt"
 git -C "$REPO" add -A && git -C "$REPO" commit -q -m init
 for b in bnd res dirty unmerged noise free mine gone lnk jnc cfg extra trk; do git -C "$REPO" worktree add -q -b "sprint/$b" "$WT/$b"; done
+# t-8be9: land/<id> worktrees, deliberately with NO .cockpit-cwd binding: owned by the branch name alone (nope = no such ticket)
+for b in t-lnd1 t-lnd2 t-nope; do git -C "$REPO" worktree add -q -b "land/$b" "$WT/land-$b"; done
+for b in t-lnd1 t-nope; do echo l > "$WT/land-$b/l.txt"; git -C "$WT/land-$b" add l.txt; git -C "$WT/land-$b" commit -q -m l; done
+echo wip > "$WT/land-t-lnd2/wip.txt"
 rm -rf "$WT/gone"                                                       # deleted folder: git lists it as prunable
 # t-07a8: canon links its skills into every new worktree (.agents/skills, .claude/skills); a project that does
 # not gitignore them sees them untracked. lnk = real symlinks, jnc = real dirs with files (what a Windows
@@ -122,6 +128,24 @@ b = by_branch(bnd)
 assert b['sprint/bnd'].get('own') is True and 'held_by' not in b['sprint/bnd'], f'{label}: the bound ticket must see its worktree as own: {b["sprint/bnd"]}'
 w = by_branch(want_view)
 assert 'own' not in w['sprint/bnd'] and w['sprint/bnd'].get('held_by') == want['sprint/bnd'], f'{label}: an unrelated ticket must not claim a worktree another ticket is running in: {w["sprint/bnd"]}'
+EOF
+
+  # t-8be9: land/<id> is that ticket's by name, with no binding. Hand-computed: land/t-lnd1 holds one unmerged commit (clean), land/t-lnd2 holds
+  # uncommitted work (no commit), land/t-nope names no ticket here.
+  python3 - "$label" "$(curl -s "$base/api/worktrees")" "$(curl -s "$base/api/worktrees?ticket=t-lnd1")" "$(curl -s "$base/api/worktrees?ticket=t-lnd2")" "$(curl -s "$base/api/worktrees?ticket=t-mine")" <<'EOF'
+import json, sys
+label, anon, l1, l2, mine = sys.argv[1], *[json.loads(a) for a in sys.argv[2:]]
+def by_branch(lst): return {e.get('branch'): e for e in lst if not e.get('is_main')}
+a = by_branch(anon)
+assert a['land/t-lnd1'].get('held_by') == {'ticket': 't-lnd1', 'reason': 'branch not merged'}, f'{label}: land/t-lnd1 anon: {a["land/t-lnd1"]}'
+assert a['land/t-lnd2'].get('held_by') == {'ticket': 't-lnd2', 'reason': 'uncommitted changes'}, f'{label}: land/t-lnd2 anon: {a["land/t-lnd2"]}'
+assert a['land/t-nope'].get('held_by') == {'ticket': '', 'reason': 'branch not merged'}, f'{label}: land/t-nope names no ticket: {a["land/t-nope"]}'
+x = by_branch(l1)['land/t-lnd1']
+assert x.get('own') is True and 'held_by' not in x, f'{label}: t-lnd1 must see land/t-lnd1 as its own, not held: {x}'
+y = by_branch(l2)['land/t-lnd2']
+assert y.get('own') is True and 'held_by' not in y, f'{label}: t-lnd2 must see land/t-lnd2 as its own, not held: {y}'
+m = by_branch(mine)
+assert 'own' not in m['land/t-lnd1'] and m['land/t-lnd1'].get('held_by') == {'ticket': 't-lnd1', 'reason': 'branch not merged'}, f'{label}: another ticket must not claim land/t-lnd1: {m["land/t-lnd1"]}'
 EOF
 
   # Footer signal: t-bnd1 is in_progress only in its worktree's uncommitted copy → dirty.

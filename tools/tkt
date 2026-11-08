@@ -1342,6 +1342,9 @@ cmd_send_issue() {
     else
       printf '5. Run `sprint complete`: a fresh reviewer and a fresh evaluator are dispatched, and neither is skipped or written by hand.\n'
     fi
+    # t-8a0d: this body is the one thing a cloud session reads first (its own ticket.md has no runs: github yet, import-issue sets it only once a PR exists)
+    printf '   Close step 8: let `tkt learn %s` write .tickets/%s/learnings.md, but do NOT run the learnings-sweep skill and do not edit LEARNINGS.md.\n' "$id" "$id"
+    printf '   The user'"'"'s `tkt import-results` adds its row on their machine, so this PR cannot conflict there.\n'
     if _tickets_tracked "$root" "$id"; then   # t-43a7: export pushes nothing here; the folder (docs, reports, machine log) rides in the PR
       printf '6. Run `tkt export %s`: .tickets/ is tracked in this repository, so it only writes the machine log. Then commit .tickets/%s/\n' "$id" "$id"
       printf '   (the sprint docs, reports and that log) on the PR branch and push it.\n'
@@ -3465,6 +3468,55 @@ _evidence_os_lines() {
   return 0
 }
 
+# _import_learnings_row <root> <ticket dir> <id> — t-8a0d: a cloud session no longer runs learnings-sweep, so its PR carries no LEARNINGS.md row (that
+# commit was the guaranteed conflict with main). The row is added here instead, from the imported .tickets/<id>/learnings.md: one row at the top of the
+# canon:learnings table, the stamp line rewritten, nothing else touched, left uncommitted. The finding is the first filled Candidate lessons item, else the first body
+# line of the candidate, else "see learnings.md"; learnings-sweep (its --full mode) still owns the wording and the cap. It adds nothing, and says why on one
+# line, when the candidate or LEARNINGS.md is missing, LEARNINGS.md is a symlink or has no single canon:learnings block, or the id already has a row. Advisory: never fails an import.
+_import_learnings_row() {
+  local root="$1" tdir="$2" id="$3" cand="$2/learnings.md" lf="$1/LEARNINGS.md" why="" date finding row tmp
+  if [[ ! -f "$cand" || -L "$cand" ]]; then why="$id has no learnings.md"
+  elif [[ -L "$lf" ]]; then why="LEARNINGS.md is a symlink"
+  elif [[ ! -f "$lf" ]]; then why="there is no LEARNINGS.md here"
+  elif grep -qF "[$id](.tickets/$id/learnings.md)" "$lf"; then why="it already has a row for $id"
+  fi
+  if [[ -z "$why" ]]; then
+    date="$(awk 'match($0, /^generated: *[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/) { d = substr($0, RSTART, RLENGTH); sub(/^generated: */, "", d); print d; exit }' "$cand")"
+    [[ -n "$date" ]] || date="$(date +%Y-%m-%d)"
+    finding="$(awk '
+      { sub(/\r$/, "") }
+      /^## Candidate lessons/ { cl = 1; next }
+      /^## / { cl = 0 }
+      cl && /^- \[[ xX]\] / { t = $0; sub(/^- \[[ xX]\] */, "", t)
+        if (t != "" && t != "Lesson from the evaluator findings above" && t != "Lesson from the reviewer findings above" && t != "(other)") { print t; found = 1; exit } }
+      !cl && !body && !/^(---|#|>|<!--|_none_|ticket:|generated:|status:)/ && NF { first = $0; body = 1 }
+      END { if (!found && body) print first }' "$cand")"
+    [[ -n "$finding" ]] || finding="see learnings.md"
+    finding="$(printf '%s' "$finding" | tr -d '|<>' | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//' | cut -c1-200)"
+    row="| $date | [$id](.tickets/$id/learnings.md) | $finding | UNPROMOTED |"
+    tmp="$(mktemp "${TMPDIR:-/tmp}/tkt-learn-row.XXXXXX")" || return 0
+    if row="$row" awk -v stamp="$(date +'%m-%d-%Y %H:%M')" '
+        { L[NR] = $0 }
+        END {
+          row = ENVIRON["row"]   # not -v: awk -v would process backslash escapes in the finding (\n, \|)
+          for (i = 1; i <= NR; i++) {
+            if (L[i] == "<!-- canon:learnings:BEGIN -->") { nb++; bi = i }
+            if (L[i] == "<!-- canon:learnings:END -->") { ne++; ei = i }
+          }
+          if (nb != 1 || ne != 1 || bi + 2 >= ei || L[bi + 2] !~ /^\|---/) exit 1
+          for (i = 1; i <= NR; i++) {
+            if (!st && L[i] ~ /^learnings-sweep last run: /) { print "learnings-sweep last run: " stamp; st = 1; continue }
+            print L[i]; if (i == bi + 2) print row
+          }
+        }' "$lf" > "$tmp" 2>/dev/null; then
+      if cat "$tmp" > "$lf" 2>/dev/null; then echo "  added its LEARNINGS.md row for $id (uncommitted): $finding"; else why="LEARNINGS.md is not writable"; fi
+    else why="LEARNINGS.md has no single canon:learnings table"; fi
+    rm -f "$tmp"
+  fi
+  [[ -z "$why" ]] || echo "  no LEARNINGS.md row added: $why (learnings-sweep for $id adds it by hand)"
+  return 0
+}
+
 # cmd_import_results <id> [--pr N] — t-554c: brings a cloud sprint's .tickets/<id>/ back from canon-results/<id> (t-07b5: or, with no branch, from the PR's head, which is where a tracked .tickets/ goes). Files
 # arrive byte-for-byte (but an in_progress ticket.md comes back open, t-1cf5); a differing local file is kept in
 # .before-import/; the close already happened in the cloud, so this only reports it. The remote branch is deleted only
@@ -3585,7 +3637,7 @@ cmd_import_results() {
   else
     echo "  $([[ "$src" == canon-results/* ]] && echo "kept $src on origin, since a check failed: fix it and" || echo "a check failed:") run import-results again" >&2
   fi
-  echo "  Add its LEARNINGS.md row locally (learnings-sweep for $id) if it wrote learnings.md."
+  [[ "$rc" != 0 ]] || _import_learnings_row "$root" "$tdir" "$id"   # t-8a0d
   if [[ "$rc" == 0 ]]; then canon_event github.results_imported tkt "$root" "ticket=$id" $([[ "$pr" =~ ^[0-9]+$ ]] && printf %s "pr=$pr"); fi   # t-4c09: only a clean import
   return "$rc"
 }

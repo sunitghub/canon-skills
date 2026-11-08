@@ -48,6 +48,7 @@ tests=(
   "$ROOT/tests/tkt-merge-pr.sh"
   "$ROOT/tests/tkt-merge-branch.sh"
   "$ROOT/tests/tkt-merge-learnings.sh"
+  "$ROOT/tests/tkt-import-learnings.sh"
   "$ROOT/tests/tkt-finish.sh"
   "$ROOT/tests/tkt-finish-record.sh"
   "$ROOT/tests/handoff-recent.sh"

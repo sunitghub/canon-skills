@@ -28,6 +28,8 @@ names for a case that applies.
    - `## Criteria`: binary conditions naming the exact field, value or output. Never cite `summary.md` or
      `eval-report.md`, which do not exist when the evaluator grades. A gitignored file
      (`DECISIONS.md`) is named as such, with "read it directly".
+   - A criterion that needs a machine the grader does not have (the Windows VM) fails as not-run: plan it as a
+     checklist item on a separate follow-up ticket (t-e566, t-353a).
    - `## Test Plan`: a command or check per criterion. Each line names the prod path it protects (a shipped
      command, a board or daemon route a user hits, the release, or a close gate); a test with no prod path, or
      one that repeats another, is not added. Each path, variant or theme a line names is graded on its own.

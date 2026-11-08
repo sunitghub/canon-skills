@@ -8,6 +8,24 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 - Added (sprint close): `tools/pre-gate-check.sh <id>` runs `shellcheck`, `node --check` and `go vet` on the sprint's changed files before any gate and stamps one line as `evidence/pre-gate.log`; a failing tool stops the close, a missing tool reads `skipped | no <tool>`. The same line lists unreferenced symbols in changed files and every changed file the dead-code scan cannot read (advisory). `dead-code-scan.sh --changed <file>` reads declarations from the named files and references from the whole tree (t-014f).
 
+## [0.47.16] - 2026-11-07
+
+Run `canon update`. Issues you send from now on carry the new instruction; a cloud session already running keeps the old one.
+
+- Changed (cloud tickets): a Claude cloud session no longer commits a `LEARNINGS.md` row, so its PR stops conflicting with every release that lands first; `tkt import-results` (and the board's Import results) adds the row on your machine instead, at the top of the table, uncommitted, and tells you which row it added or why it did not (t-8a0d).
+
+## [0.47.15] - 2026-11-07
+
+Board page: run `canon update`, restart the board (`canon`) and reload.
+
+- Fixed (Cockpit): opening another ticket's tab while a ticket's Worktree picker is still loading no longer writes that ticket's worktree choice and lock into the other tab (t-c505).
+
+## [0.47.14] - 2026-11-07
+
+Board page and daemon: run `canon update`, end your sessions, restart the board (`canon`) and reload.
+
+- Fixed (Continue here): a ticket closing in its `land/<id>` worktree now opens its session there. The Worktree picker no longer lists that worktree as "unavailable (branch not merged)" with no owner, and a new tab for it starts in that worktree, not on the main checkout, even when its saved worktree (`.cockpit-cwd`) is missing; a saved worktree or a later pick of Main still wins (t-8be9).
+
 ## [0.47.13] - 2026-11-07
 
 Board page and daemon: run `canon update`, end your sessions, restart the board (`canon`) and reload.

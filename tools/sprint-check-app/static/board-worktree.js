@@ -104,7 +104,7 @@ export async function renderCockpitWorktree(t) {
     // row rendered selected on a fresh OPEN start while the terminal stayed gated
     // ("Select a worktree above") — a contradictory highlight. No row is selected
     // until worktreeCwd is set by selectCockpitWorktree (or the in_progress lock).
-    const selected = cockpitState.worktreeCwd !== null && cockpitPathKey(cockpitState.worktreeCwd) === cockpitPathKey(cwd);
+    const selected = tab.worktreeCwd !== null && cockpitPathKey(tab.worktreeCwd) === cockpitPathKey(cwd);
     return `<div class="ck-worktree-row${selected ? ' selected' : ''}" data-cwd="${esc(cwd)}"${extraAttr || ''}>
       <div class="ck-worktree-radio"></div>
       <div class="ck-worktree-labels">
@@ -129,16 +129,16 @@ export async function renderCockpitWorktree(t) {
     if (hit) return hit.branch || '(detached)';
     return String(cwd).replace(/[\\/]+$/, '').split(/[\\/]/).pop() || cwd;
   };
-  cockpitState.worktreeLabel = worktreeLabelForCwd;   // t-ccd6: selectCockpitWorktree names worktrees too
+  tab.worktreeLabel = worktreeLabelForCwd;   // t-ccd6: selectCockpitWorktree names worktrees too
 
   // t-e5ff: track which worktree cwds can actually see the ticket. The daemon
   // reports tickets_visible=false for a non-main worktree when .tickets/ is
   // gitignored (git only materializes tracked files there). Default to visible
   // when the field is absent (older daemon) so we never over-block. The main
   // checkout uses cwd '' in this rail and is always visible.
-  cockpitState.worktreeVisibleByCwd = {};
-  cockpitState.worktreeVisibleByCwd[''] = !mainEntry || mainEntry.tickets_visible !== false;
-  for (const e of others) cockpitState.worktreeVisibleByCwd[e.path] = e.tickets_visible !== false;
+  tab.worktreeVisibleByCwd = {};
+  tab.worktreeVisibleByCwd[''] = !mainEntry || mainEntry.tickets_visible !== false;
+  for (const e of others) tab.worktreeVisibleByCwd[e.path] = e.tickets_visible !== false;
   const anyBlocked = others.some(e => e.tickets_visible === false);
 
   // t-2a1c: physical presence of .tickets/<id> per worktree (ticket-scoped),
@@ -148,11 +148,11 @@ export async function renderCockpitWorktree(t) {
   // uncommitted case that check-ignore reports as "visible". Default to present
   // when the field is absent (older backend that doesn't report it) so we never
   // over-block. Main ('') always holds .tickets/ (daemon exempts it).
-  cockpitState.worktreePresentByCwd = {};
-  cockpitState.worktreePresentByCwd[''] = true;
-  for (const e of others) cockpitState.worktreePresentByCwd[e.path] = e.ticket_present !== false;
-  cockpitState.worktreeMainPath = mainEntry ? mainEntry.path : null;
-  cockpitState.worktreeMainBranch = mainEntry ? mainEntry.branch : null; // t-d254: named in the missing-ticket fix-up
+  tab.worktreePresentByCwd = {};
+  tab.worktreePresentByCwd[''] = true;
+  for (const e of others) tab.worktreePresentByCwd[e.path] = e.ticket_present !== false;
+  tab.worktreeMainPath = mainEntry ? mainEntry.path : null;
+  tab.worktreeMainBranch = mainEntry ? mainEntry.branch : null; // t-d254: named in the missing-ticket fix-up
 
   // t-cd06: an already-locked in_progress ticket's real worktree must show
   // as selected here — the daemon uses the locked cwd regardless of what's
@@ -165,24 +165,30 @@ export async function renderCockpitWorktree(t) {
   if (t.status === 'in_progress') {
     lock = await fetchWorktreeLock(t.id);
     if (lock.locked && lock.cwd) {
-      cockpitState.worktreeCwd = (mainEntry && cockpitPathKey(lock.cwd) === cockpitPathKey(mainEntry.path)) ? '' : lock.cwd;
+      tab.worktreeCwd = (mainEntry && cockpitPathKey(lock.cwd) === cockpitPathKey(mainEntry.path)) ? '' : lock.cwd;
     }
   }
   // t-2a1c: remember the lock so maybeMountCockpitTerminal can gate on the
   // EFFECTIVE run cwd (the daemon reuses this locked cwd and ignores the picker).
-  cockpitState.worktreeLock = lock;
+  tab.worktreeLock = lock;
 
   const running = worktreeRun(t);
   const runRow = running ? others.find(e => e.branch === running.branch) : null;
   if (!lock.locked && runRow) {
     // t-19d1: the sprint is already in progress in this worktree (see worktreeRun) — Resume goes there.
-    if (cockpitState.worktreeCwd === null) cockpitState.worktreeCwd = runRow.path;
+    if (tab.worktreeCwd === null) tab.worktreeCwd = runRow.path;
+  }
+  // t-8be9: a ticket closing here (tkt land made land/<id>) opens in that worktree. openCockpit starts an in_progress tab at '' (the
+  // daemon reuses its saved cwd), which with no saved cwd means Main, so '' is the placeholder replaced here. Once per tab: a later pick of Main stays.
+  if (!lock.locked && !tab.landDefaultDone && !tab.ghPick && ghClosingHere(t) && (tab.worktreeCwd === null || tab.worktreeCwd === '')) {
+    const landRow = others.find(e => e.own && !e.held_by && e.branch === `land/${t.id}`);
+    if (landRow) { tab.worktreeCwd = landRow.path; tab.landDefaultDone = true; }
   }
   // t-19d1: the main checkout is the only worktree — there's no real choice to
   // protect (t-cd06/t-470d's explicit pick guards against the WRONG checkout), so preselect Main.
   // A GitHub pick (t-718b) leaves worktreeCwd null on purpose: that is not "nothing picked yet".
-  if (!lock.locked && mainEntry && others.length === 0 && cockpitState.worktreeCwd === null && !tab.ghPick) {
-    cockpitState.worktreeCwd = '';
+  if (!lock.locked && mainEntry && others.length === 0 && tab.worktreeCwd === null && !tab.ghPick) {
+    tab.worktreeCwd = '';
   }
 
   // t-2241: rows only for worktrees this ticket can use — Main, its own, and free
@@ -205,7 +211,7 @@ export async function renderCockpitWorktree(t) {
   html += rowHTML('', 'Main checkout (current)', mainEntry ? mainEntry.path : '');
   // t-c8f6: only the rows this ticket is likely to want stay in view (Main, its own worktree, the selected one); every other usable worktree
   // folds under one "N other worktrees" line, as "N worktrees unavailable" does. A worktree whose work already landed in main (server `merged`) says so and stays pickable.
-  const inView = e => e.own || (cockpitState.worktreeCwd && cockpitPathKey(e.path) === cockpitPathKey(cockpitState.worktreeCwd));
+  const inView = e => e.own || (tab.worktreeCwd && cockpitPathKey(e.path) === cockpitPathKey(tab.worktreeCwd));
   const wtRow = e => rowHTML(e.path, e.branch || '(detached)', e.path, '', e.merged === true);
   const folded = usable.filter(e => !inView(e));
   for (const e of usable) {

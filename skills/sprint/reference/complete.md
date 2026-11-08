@@ -753,6 +753,12 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    promotion into the durable store is the one step that stays manual and fresh-context, exactly
    as before — `promote-learnings` runs with no memory of this sprint, per its own SKILL.md.
 
+   **A cloud session does not run the sweep (t-8a0d).** When the issue that started the session (`tkt send-issue`'s body, close step 8) says to
+   leave root `LEARNINGS.md` alone, the session still runs `tkt learn <id>`, so `.tickets/<id>/learnings.md` exists, but it does not run the `learnings-sweep`
+   skill and commits no change to root `LEARNINGS.md`: that commit conflicts with every release that lands on main first.
+   `tkt import-results` on the user's machine adds the row from the candidate instead. The signal is the issue's text, not a ticket field: the
+   cloud's own `ticket.md` has no `runs: github` until a PR exists.
+
 9. **Close.** Run `sprint complete` — never write `ticket.md` status directly. If it refuses
    because a required file is missing or checklist items remain unchecked, report the blockers
    and stop. After closing it runs `tkt compact` (`t-2fb6`), which shrinks `evidence/` of tickets
@@ -788,6 +794,7 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
       section), run `scripts/release.sh --dry-run` after the push to `public`, show the user its output, and run
       `scripts/release.sh` only on their explicit yes: it pushes a tag to the public repo. Then publish its two canon-site lines and the badge (`docs/releasing.md` step 5, on the user's yes) and run the `scripts/check-release-live.sh` command it printed last; the release is done when that passes (t-ea3a). Nothing mechanical refuses a push
       while the ticket is open (that would need a hook, `t-f01d`); step 9 already precedes this step. `docs/releasing.md`.
+    - **Sprint docs name no future version (t-607a, t-e1a2).** Sprint work writes `CHANGELOG.md` under `[Unreleased]` and never writes the next version in docs ("Since 0.45.0"); the release commit adds the number and date.
     - **Worktree (t-8f48, t-2906).** A sprint run in a linked worktree commits on its branch and opens no PR: the user
       merges it into the main checkout's branch with the card's **Check & merge** (`tkt merge <id>`: the evaluator's
       graded head, a conflict check, the tests on main + branch, then one merge commit), the same dialog as a PR's. After

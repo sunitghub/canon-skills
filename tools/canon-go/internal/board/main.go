@@ -3485,9 +3485,12 @@ func annotateWorktreeHolds(entries []map[string]any, ticketID, root string) {
 			}
 		}
 		named := ""
-		if strings.HasPrefix(branch, "sprint/") {
-			if _, ok := mainStatus[strings.TrimPrefix(branch, "sprint/")]; ok {
-				named = strings.TrimPrefix(branch, "sprint/")
+		// t-8be9: tkt land's worktree is on land/<id>; it is that ticket's by name even when its .cockpit-cwd binding is gone
+		for _, prefix := range []string{"sprint/", "land/"} {
+			if id := strings.TrimPrefix(branch, prefix); id != branch {
+				if _, ok := mainStatus[id]; ok {
+					named = id
+				}
 			}
 		}
 		if ticketID != "" {

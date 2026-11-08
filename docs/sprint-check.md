@@ -342,7 +342,8 @@ sprint agent without leaving the browser — no second terminal.
   Main is preselected instead when it's the only worktree; a
   project that isn't a git repo has no WORKTREE section and no gate (`t-19d1`). An
   open ticket already in progress in a worktree shows in **IN PROGRESS** with
-  **Resume**, which preselects that worktree. The worktree
+  **Resume**, which preselects that worktree. A ticket closing in its `land/<id>` worktree (Continue here) opens in it
+  the same way, unless a saved worktree or a pick of yours says otherwise (`t-8be9`). The worktree
   choice is made here, not in **New Ticket** (`t-fe82`): nothing is created until you click
   **+ New** (which asks to confirm); the default `sprint/<id>` suggestion stays inert
   until you do. A ticket file that still carries an old `worktree_preference` line is

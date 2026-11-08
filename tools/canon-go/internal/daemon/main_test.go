@@ -3792,6 +3792,36 @@ func TestSpawnResumeReusesPersistedCwd(t *testing.T) {
 	}
 }
 
+// t-8be9: a ticket tkt land started (in_progress) whose .cockpit-cwd is gone: the next start in the worktree the board picked saves it, so the
+// resume after that, and `sprint complete` run there, keep the same folder.
+func TestSpawnRebindsInProgressTicketWithNoSavedCwd(t *testing.T) {
+	bin, cwdFile := fakeSprintCwd(t)
+	root := t.TempDir()
+	writeTicketStatus(t, root, "t-ab12", "in_progress")
+	wt := gitWorktreeFixture(t, root)
+	seedTicketDir(t, wt, "t-ab12")
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	saved := filepath.Join(root, ".tickets", "t-ab12", ".cockpit-cwd")
+	if _, err := os.Stat(saved); err == nil {
+		t.Fatalf("premise: %s must not exist before the start", saved)
+	}
+	resp := startSessionCwd(t, ts.URL, "t-ab12", wt, bootTok)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("start: %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+	if got := strings.TrimSpace(waitFile(t, cwdFile, 2*time.Second)); got != wt {
+		t.Fatalf("started in %q, want the picked worktree %q", got, wt)
+	}
+	b, err := os.ReadFile(saved)
+	if err != nil || strings.TrimSpace(string(b)) != wt {
+		t.Fatalf("saved cwd = %q (%v), want %q", b, err, wt)
+	}
+}
+
 // t-7590: /session/start must echo the cwd the daemon actually resolved and
 // spawned in — for a worktree request and for the main checkout — so the board
 // can display the real "Working in:" folder and flag a wrong-tree mismatch,
