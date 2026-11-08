@@ -139,6 +139,14 @@
       ],
       "ticket": "t-8aa6",
       "reason": "failed 1 of 3 (webkit) in the t-d287 full run at 83ad65b1 (2026-11-06, load ~3 on 10 CPUs, 3 runs per browser): the promoted banner stayed hidden for the 5 s expect; passed 3 of 3 alone on that head and on 4efed52a; a scratch-tab test, not in the code this change touches (board-github.js, cockpit-factory.js, tools/tkt)"
+    },
+    {
+      "title": "cockpit leave-session confirm (t-f6b6) > End on a tab whose session is already gone ends at once, without waiting out the fallback (t-27bc) @webkit",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-2178",
+      "reason": "failed 1 of 3 (webkit) in t-2178's full run at 855e2a9 (2026-11-08, load ~3 on 10 CPUs, the divider test failed in the same run); passed 3 of 3 alone on that head right after; t-2178 changes the Logbook tab bar and gate-cases, not the Cockpit leave-session path"
     }
   ],
   "skipped": []
