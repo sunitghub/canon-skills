@@ -233,6 +233,7 @@ Helpers (used by canon's shell tools; see helpers.go):
   transcript-report <agent-transcript.jsonl> <first-line-prefix>
   integrity [--json] [--gate] [--online]
   gate-clusters [--days N] [--json]
+  gate-insights [--days N] [--json]
   caps [--json] [--table <file>] <name|path> [path] | caps --list   a capped file's use (tools/caps.tsv)
   machine [--json]         this machine's OS, chip, cores and RAM (no hostname)
   recent --project <root> [--n N] [--handoff <file>] | recent --strip   a project's recent stage events

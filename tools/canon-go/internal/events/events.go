@@ -47,8 +47,9 @@ var kinds = map[string][]field{
 	"sprint.completed":      {{"ticket", 64}},
 	// t-8854: close gates and Cockpit sessions
 	"gate.started":      {{"ticket", 64}, {"role", 16}, {"attempt", 4}, {"docs", 12}},
-	"gate.finished":     {{"ticket", 64}, {"role", 16}, {"verdict", 16}, {"model", 80}, {"tokens", 12}, {"minutes", 8}, {"tier", 16}, {"agent", 32}}, // t-ff14: agent = the transcript's agentType
+	"gate.finished":     {{"ticket", 64}, {"role", 16}, {"verdict", 16}, {"model", 80}, {"tokens", 12}, {"minutes", 8}, {"tier", 16}, {"agent", 32}, {"act_on", 4}}, // t-ff14: agent = the transcript's agentType; t-9113: act_on = the reviewer's Act On items
 	"gate.rejected":     {{"ticket", 64}, {"role", 16}, {"reason", 32}},
+	"evidence.stamped":  {{"ticket", 64}, {"name", 32}, {"exit", 4}, {"seconds", 8}}, // t-9113: one per stamp, so reruns can be counted
 	"session.needs_you": {{"session", 64}, {"ticket", 64}, {"agent", 16}},
 	"session.exited": {{"session", 64}, {"ticket", 64}, {"agent", 16}, {"reason", 16},
 		{"models", 120}, {"peak_context_pct", 4}, {"tokens_new", 12}, {"turns", 6}},
@@ -90,7 +91,7 @@ var kinds = map[string][]field{
 const hostMax = 253
 
 // Sources are the programs that write events.
-var sources = map[string]bool{"tkt": true, "sprint": true, "board": true, "gate-snapshot": true, "subagent-log": true, "daemon": true}
+var sources = map[string]bool{"tkt": true, "sprint": true, "board": true, "gate-snapshot": true, "subagent-log": true, "daemon": true, "evidence": true}
 
 const projectMax = 1024
 

@@ -131,6 +131,13 @@ if [[ $SEEN -eq 0 && -n "$TICKET" && ( "$AGENT_TYPE" == reviewer || "$AGENT_TYPE
   [[ "$_verdict" =~ ^(YES|NO|pass|fail|partial|not-run)$ ]] || _verdict=unknown
   # t-ff14: which agent really ran the evaluator (canon-evaluator, or a general-purpose/Plan fallback), from the harness's own
   # transcript holding its run-id (the agent id here), never from what the caller says. Absent when none is found.
+  # t-9113: how many Act On items the reviewer raised (an `Act On: none` line is 0; the rule of tools/sprint's review check), so the log can say
+  # whether the reviewer changed the outcome. Absent when the report has no Act On line (an evaluator run, or no report).
+  _act=""
+  if [[ "$AGENT_TYPE" == reviewer && -f "$_tdir/review-notes.md" ]]; then
+    _acts="$(grep -E "^[[:space:]]*[-*]?[[:space:]]*Act On:[[:space:]]*[^[:space:]]" "$_tdir/review-notes.md" | sed -E 's/^[[:space:]]*[-*]?[[:space:]]*Act On:[[:space:]]*//; s/\r$//' | tr '[:upper:]' '[:lower:]')" || _acts=""
+    [[ -z "$_acts" ]] || _act="$(grep -cvE '^none([^[:alnum:]_]|$)' <<< "$_acts" || true)"
+  fi
   _agent=""
   if [[ "$AGENT_TYPE" == evaluator && -n "${CLAUDECODE:-}" ]]; then
     _cfg="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}"
@@ -138,5 +145,5 @@ if [[ $SEEN -eq 0 && -n "$TICKET" && ( "$AGENT_TYPE" == reviewer || "$AGENT_TYPE
     [[ -n "$_tx" && -f "${_tx%.jsonl}.meta.json" ]] && _agent="$(sed -nE 's/.*"agentType"[[:space:]]*:[[:space:]]*"([A-Za-z0-9-]{1,32})".*/\1/p' "${_tx%.jsonl}.meta.json" | head -1)"
   fi
   canon_event gate.finished subagent-log "$REPO_ROOT" "ticket=$TICKET" "role=$AGENT_TYPE" "verdict=$_verdict" \
-    "model=$MODEL" "tokens=$TOKENS" "minutes=$MINUTES" ${_agent:+"agent=$_agent"}
+    "model=$MODEL" "tokens=$TOKENS" "minutes=$MINUTES" ${_agent:+"agent=$_agent"} ${_act:+"act_on=$_act"}
 fi

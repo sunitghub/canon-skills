@@ -165,7 +165,7 @@ func TestHomeAndKinds(t *testing.T) {
 	if got := Home(); got != "/pinned" {
 		t.Errorf("Home() with CANON_HOME = %q", got)
 	}
-	want := "branch.merged budget.exceeded budget.warned close.confirmed context.threshold gate.finished gate.rejected gate.started github.merged github.results_imported github.sent github.synced integrity.restored log.deleted log.pruned machine.seen plan.approved plan.written session.exited session.needs_you session.saved setting.changed sprint.completed sprint.started terminal.su_denied terminal.su_expired terminal.su_granted terminal.su_prompted terminal.tkt ticket.closed ticket.created ticket.status_changed wrapup.gate_finished wrapup.gate_started"
+	want := "branch.merged budget.exceeded budget.warned close.confirmed context.threshold evidence.stamped gate.finished gate.rejected gate.started github.merged github.results_imported github.sent github.synced integrity.restored log.deleted log.pruned machine.seen plan.approved plan.written session.exited session.needs_you session.saved setting.changed sprint.completed sprint.started terminal.su_denied terminal.su_expired terminal.su_granted terminal.su_prompted terminal.tkt ticket.closed ticket.created ticket.status_changed wrapup.gate_finished wrapup.gate_started"
 	if got := strings.Join(Kinds(), " "); got != want {
 		t.Errorf("kinds %q, want %q", got, want)
 	}
@@ -198,7 +198,8 @@ func TestKindFieldsAndSources(t *testing.T) {
 		"sprint.started":        {"ticket", "gate_agents"},
 		"sprint.completed":      {"ticket"},
 		"gate.started":          {"ticket", "role", "attempt", "docs"},
-		"gate.finished":         {"ticket", "role", "verdict", "model", "tokens", "minutes", "tier", "agent"},
+		"gate.finished":         {"ticket", "role", "verdict", "model", "tokens", "minutes", "tier", "agent", "act_on"},
+		"evidence.stamped":      {"ticket", "name", "exit", "seconds"}, // t-9113
 		"gate.rejected":         {"ticket", "role", "reason"},
 		"budget.warned":         {"ticket", "cap", "used", "limit", "unit", "stage"}, // t-c990
 		"budget.exceeded":       {"ticket", "cap", "used", "limit", "unit", "stage"},
@@ -239,7 +240,7 @@ func TestKindFieldsAndSources(t *testing.T) {
 			t.Errorf("%s accepted an undocumented field", kind)
 		}
 	}
-	for _, src := range []string{"tkt", "sprint", "board", "gate-snapshot", "subagent-log", "daemon"} {
+	for _, src := range []string{"tkt", "sprint", "board", "gate-snapshot", "subagent-log", "daemon", "evidence"} {
 		if _, err := Line("ticket.closed", src, "/p", nil, at); err != nil {
 			t.Errorf("source %s refused: %v", src, err)
 		}

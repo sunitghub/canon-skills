@@ -289,4 +289,30 @@ for tool in pre log review evidence; do
   assert_eq "$a_rc:$(sed 's/[0-9a-f]\{40\}/H/g' <<<"$a")" "$b_rc:$(sed 's/[0-9a-f]\{40\}/H/g' <<<"$b")"
 done
 
+# 9. t-9113: the two facts a sealed day cannot be backfilled with. The reviewer's gate.finished carries act_on (the Act On items; `none` is 0;
+# absent without such a line), and every written evidence stamp is an evidence.stamped event, whatever the command's exit; a refusal writes none.
+A="$W/act"; mkproj "$A"; aid="$(cd "$A" && "$TKT" create "Acted")"; at="$A/.tickets/$aid"
+printf '# Review\n\n## Triage\n\nAct On: a.go:1 — x\nAct On: b.go:2 — y\nConsider: none\n\n## Verdict\n\nNO\n' > "$at/review-notes.md"
+(cd "$A" && "$ROOT/tools/subagent-log.sh" --agent-id act-1 --agent-type reviewer --ticket "$aid" >/dev/null)
+assert_contains "$(event_line gate.finished "$aid")" '"act_on":"2"'
+printf '# Review\n\n## Triage\n\nAct On: none\n\n## Verdict\n\nYES\n' > "$at/review-notes.md"
+(cd "$A" && "$ROOT/tools/subagent-log.sh" --agent-id act-2 --agent-type reviewer --ticket "$aid" >/dev/null)
+assert_contains "$(event_line gate.finished "$aid")" '"act_on":"0"'
+printf '# Review\n\n## Verdict\n\nYES\n' > "$at/review-notes.md"   # no Act On line at all: not recorded, not 0
+(cd "$A" && "$ROOT/tools/subagent-log.sh" --agent-id act-3 --agent-type reviewer --ticket "$aid" >/dev/null)
+[[ "$(event_line gate.finished "$aid")" != *act_on* ]] || fail "a review with no Act On line recorded act_on"
+printf 'evaluator-run-id: 1-3\n\npass: ok\n' > "$at/eval-report.md"
+(cd "$A" && "$ROOT/tools/subagent-log.sh" --agent-id act-4 --agent-type evaluator --ticket "$aid" >/dev/null)
+[[ "$(event_line gate.finished "$aid")" != *act_on* ]] || fail "an evaluator run recorded act_on"
+git -C "$A" add -A; git -C "$A" -c user.email=t@t -c user.name=t commit -qm acted
+rc=0; (cd "$A" && "$ROOT/tools/evidence.sh" stamp "$aid" suite -- bash -c 'exit 0' >/dev/null 2>&1) || rc=$?; assert_eq 0 "$rc"
+assert_contains "$(event_line evidence.stamped "$aid")" '"data":{"exit":"0","name":"suite","seconds":"0","ticket":"'"$aid"'"}'
+assert_contains "$(event_line evidence.stamped "$aid")" '"source":"evidence"'
+rc=0; (cd "$A" && "$ROOT/tools/evidence.sh" stamp "$aid" suite -- bash -c 'exit 7' >/dev/null 2>&1) || rc=$?; assert_eq 7 "$rc"
+assert_contains "$(event_line evidence.stamped "$aid")" '"exit":"7"'
+assert_eq 2 "$(cat "$EV"/*.jsonl | grep -c '"kind":"evidence.stamped"')"
+echo dirty >> "$A/.gitignore"; git -C "$A" add .gitignore; rc=0; (cd "$A" && "$ROOT/tools/evidence.sh" stamp "$aid" suite -- true >/dev/null 2>&1) || rc=$?
+assert_eq 125 "$rc"   # a dirty tracked tree refuses: nothing ran, no event
+assert_eq 2 "$(cat "$EV"/*.jsonl | grep -c '"kind":"evidence.stamped"')"
+
 echo "events: ok (tkt, sprint and board writers; parity; 60 KB body kept out; observer-only; 16 writers; day files)"

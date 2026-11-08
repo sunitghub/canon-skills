@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+- Added (activity log): `canon-go gate-insights [--days N] [--json]` reads the log and reports, per project and machine, gate runs, minutes and tokens, the evaluator's first-pass rate and retries, the reviewer's verdicts and Act On items, evidence stamps and reruns, rejections and over-cap files (once per file per day). Two things are now recorded for it: an `evidence.stamped` event on every evidence stamp, and `act_on` on a reviewer's `gate.finished`. Read-only; the Tower panel, the propose step and the weekly run come later (t-9113).
+
 ## [0.47.18] - 2026-11-08
 
 Run `canon update`, then restart the daemon (Admin's **Restart Daemon**): the board changed.

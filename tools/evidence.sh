@@ -83,7 +83,9 @@ if [[ "$mode" == stamp ]]; then
   os="$(machine_line)" && [[ -n "$os" ]] || os="$(uname -srm 2>/dev/null)" || os=unknown   # t-c542: canon-go machine, else uname
   printf 'HEAD %s %s\n$ %s\n# on %s; bash %s.%s.%s\n' "$head_sha" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$cmd_text" "${os:-unknown}" \
     "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}" "${BASH_VERSINFO[2]}" > "$tmp"
+  t0=$SECONDS
   set +e; "$@" < /dev/null >> "$tmp" 2>&1; rc=$?; set -e
+  secs=$((SECONDS - t0))
   if tracked_dirty || [[ "$(git -C "$root" rev-parse HEAD)" != "$head_sha" ]]; then
     refuse "tracked files or HEAD changed while the command ran, so the stamp would name a tree that was not tested; nothing was written"
   fi
@@ -91,6 +93,8 @@ if [[ "$mode" == stamp ]]; then
   printf 'exit %s\n' "$rc" >> "$tmp"
   chmod 644 "$tmp"; mv -f "$tmp" "$log"; trap - EXIT   # mktemp makes it 0600; the other logs are 0644
   echo "evidence: wrote $log (HEAD ${head_sha:0:7}, exit $rc)" >&2
+  # t-9113: one event per written stamp (the command ran, whatever its exit), so the activity log can count reruns; observer-only
+  canon_event evidence.stamped evidence "$root" "ticket=$id" "name=$name" "exit=$rc" "seconds=$secs"
   exit "$rc"
 fi
 
