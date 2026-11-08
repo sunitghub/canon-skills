@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.47.17] - 2026-11-08
+
+Run `canon update`.
+
 - Fixed (sprint close): `tools/pre-gate-check.sh` no longer exits 1 after a correct stamp when it runs in a checkout with no `.tickets/` of its own (a Continue here worktree, or a plain clone with `CANON_TICKETS_DIR`); it reads the log from the path `evidence.sh` reports, so a clean change prints its one line and exits 0 (t-08ea).
 - Added (sprint close): `tools/pre-gate-check.sh <id>` runs `shellcheck`, `node --check` and `go vet` on the sprint's changed files before any gate and stamps one line as `evidence/pre-gate.log`; a failing tool stops the close, a missing tool reads `skipped | no <tool>`. The same line lists unreferenced symbols in changed files and every changed file the dead-code scan cannot read (advisory). `dead-code-scan.sh --changed <file>` reads declarations from the named files and references from the whole tree (t-014f).
 
