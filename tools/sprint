@@ -156,6 +156,7 @@ Agent next steps:
 3. Fill in plan.md — write the approach, then wait for explicit approval before coding.
 EOF
   _unpromoted_line "$root"
+  _decisions_start_lines "$tdir/ticket.md" "$id"
 }
 
 # _unpromoted_line <root> — t-b360: one line when 5 or more rows of the project's LEARNINGS.md are still UNPROMOTED, so a pile of lessons is
@@ -1121,6 +1122,7 @@ cmd_complete() {
   handoff_recent "$(project_root)"   # t-2db7: the main checkout's HANDOFF.md Recent activity
   echo "Sprint completed: $id"
   _findings_line "$tdir"
+  _decisions_row_length_line "$id"
   # t-8f48, t-2906: in a linked worktree, the step after the close is Check & merge.
   local gd common f
   if gd="$(git rev-parse --absolute-git-dir 2>/dev/null)" && common="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" \
@@ -1611,6 +1613,163 @@ cmd_token_spend() {
     }'
 }
 
+# ---------------------------------------------------------------------------------------------------------------------------------------
+# sprint decisions (t-79bf): DECISIONS.md is read by what applies, never whole, and pruned on write by commands, not hand edits.
+#   related <path|t-xxxx>... [--limit N | --all]   the table rows that name any of them (read-only)
+#   archive <row-id> --by <t-xxxx>                  move one whole row, byte for byte, to DECISIONS-archive.md
+#   mark <row-id> <YYYY-MM-DD> "<fragment>"         append `superseded-by: <date> (<fragment>)` to one row's Reason cell, in place
+# A row is a table line `| YYYY-MM-DD | ... |`; its id is an 8-hex hash of the line (a line number moves when a row is added on top).
+# Section entries (`## date`) are not rows: they are left alone. awk runs under LC_ALL=C so a byte is a character and an odd byte cannot abort it.
+_DEC_LIB='
+function hid(s,   i, h) { h = 5381; for (i = 1; i <= length(s); i++) h = (h * 33 + ORD[substr(s, i, 1)]) % 4294967296; return sprintf("%08x", h) }
+function isrow(l) { return l ~ /^\| [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] \|/ }
+BEGIN { for (i = 1; i < 256; i++) ORD[sprintf("%c", i)] = i }'
+
+_dec_files() { DEC_FILE="$(project_root)/DECISIONS.md"; DEC_ARCHIVE="$(project_root)/DECISIONS-archive.md"; }
+
+# _dec_related <limit|all> <token>... : the related lines (id, date, the rule's first 160 characters); tokens are matched as written, and a path
+# also by its basename when that has 3 or more characters. Prints nothing when none match. Returns 0 whatever it finds.
+_dec_related() {
+  local limit="$1"; shift
+  _dec_files
+  [[ -f "$DEC_FILE" && -r "$DEC_FILE" ]] || return 0
+  local toks=() t b
+  for t in "$@"; do
+    [[ -n "$t" && ${#t} -ge 3 ]] || continue
+    toks+=("$t")
+    if [[ "$t" == */* ]]; then b="${t##*/}"; [[ ${#b} -ge 3 && "$b" != "$t" ]] && toks+=("$b"); fi
+  done
+  [[ ${#toks[@]} -gt 0 ]] || return 0
+  # the tokens go through the environment: awk -v would eat a backslash and cannot hold a newline
+  DEC_TOKS="$(printf '%s\n' "${toks[@]}")" LC_ALL=C awk -v limit="$limit" "$_DEC_LIB"'
+    BEGIN { n = split(ENVIRON["DEC_TOKS"], T, "\n") }
+    isrow($0) {
+      hit = 0
+      for (k = 1; k <= n; k++) if (T[k] != "" && index($0, T[k])) { hit = 1; break }
+      if (!hit) next
+      total++
+      if (limit != "all" && total > limit + 0) next
+      d = substr($0, 3, 10); r = substr($0, 16, 400); gsub(/[\001-\037\177]/, " ", r); gsub(/\*\*/, "", r); gsub(/ +/, " ", r)
+      r = substr(r, 1, 160)
+      printf "%s  %s  %s%s\n", hid($0), d, r, (index($0, "superseded-by:") ? "  [fragment superseded]" : "")
+    }
+    END { if (limit != "all" && total > limit + 0) printf "... and %d more rows name them: sprint decisions related <the same> --all\n", total - limit }
+  ' "$DEC_FILE" 2>/dev/null || true
+  return 0
+}
+
+cmd_decisions() {
+  local sub="${1:-}"; shift || true
+  case "$sub" in
+    related)
+      local limit=12 args=() a
+      while [[ $# -gt 0 ]]; do
+        a="$1"; shift
+        case "$a" in
+          --all) limit=all ;;
+          --limit) limit="${1:-}"; shift || true; [[ "$limit" =~ ^[0-9]+$ && "$limit" -ge 1 ]] || { echo "sprint decisions related: --limit needs a number" >&2; exit 2; } ;;
+          -*) echo "sprint decisions related: unknown option $a" >&2; exit 2 ;;
+          *) args+=("$a") ;;
+        esac
+      done
+      [[ ${#args[@]} -gt 0 ]] || { echo "usage: sprint decisions related <path|t-xxxx>... [--limit N | --all]" >&2; exit 2; }
+      _dec_files
+      [[ -f "$DEC_FILE" ]] || { echo "No DECISIONS.md in this project."; return 0; }
+      local out; out="$(_dec_related "$limit" "${args[@]}")"
+      if [[ -n "$out" ]]; then printf '%s\n' "$out"; else echo "No DECISIONS.md row names ${args[*]}."; fi
+      ;;
+    archive|mark) _dec_rewrite "$sub" "$@" ;;
+    *) echo "usage: sprint decisions related <path|t-xxxx>... [--limit N | --all] | archive <row-id> --by <t-xxxx> | mark <row-id> <YYYY-MM-DD> \"<fragment>\"" >&2; exit 2 ;;
+  esac
+}
+
+# _dec_rewrite archive|mark ...: the two commands that change DECISIONS.md. Every refusal happens before anything is written; the new files are built
+# beside the old ones, their line counts are checked, and only then renamed, the archive first (a failure after that leaves a duplicate, never a loss).
+_dec_rewrite() {
+  local mode="$1"; shift
+  local id="${1:-}" by="" date="" frag=""
+  shift || true
+  [[ "$id" =~ ^[0-9a-f]{8}$ ]] || { echo "sprint decisions $mode: the first argument is an 8-hex row id (from: sprint decisions related <path>)" >&2; exit 2; }
+  if [[ "$mode" == archive ]]; then
+    [[ "${1:-}" == --by && "${2:-}" =~ ^t-[a-z0-9]{4}$ ]] || { echo "sprint decisions archive: say which ticket's decision supersedes it: --by <t-xxxx>" >&2; exit 2; }
+    by="$2"
+  else
+    date="${1:-}"; frag="${2:-}"
+    [[ "$date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || { echo "sprint decisions mark: the second argument is the retiring decision's date, YYYY-MM-DD" >&2; exit 2; }
+    [[ -n "$frag" && "$frag" != *"|"* && "$frag" != *$'\n'* && "$frag" != *$'\r'* ]] || { echo "sprint decisions mark: name the retired fragment in one line without a |" >&2; exit 2; }
+  fi
+  _dec_files
+  [[ -f "$DEC_FILE" && -r "$DEC_FILE" && ! -L "$DEC_FILE" ]] || { echo "sprint decisions $mode: no readable DECISIONS.md here (a symbolic link is refused)" >&2; exit 2; }
+  local hits row
+  hits="$(LC_ALL=C awk -v id="$id" "$_DEC_LIB"' isrow($0) && hid($0) == id { n++; ln = NR } END { print n + 0, ln + 0 }' "$DEC_FILE")"
+  case "${hits%% *}" in
+    0) echo "sprint decisions $mode: no DECISIONS.md row has the id $id" >&2; exit 2 ;;
+    1) ;;
+    *) echo "sprint decisions $mode: the id $id matches ${hits%% *} rows; nothing was changed" >&2; exit 2 ;;
+  esac
+  local ln="${hits##* }" dir tmpd tmpa="" before after
+  dir="$(dirname "$DEC_FILE")"
+  before="$(wc -l < "$DEC_FILE" | tr -d ' ')"
+  row="$(LC_ALL=C awk -v ln="$ln" 'NR == ln { print; exit }' "$DEC_FILE")"
+  if [[ "$mode" == mark ]]; then
+    [[ "$row" != *"superseded-by: $date ($frag)"* ]] || { echo "sprint decisions mark: that row already carries superseded-by: $date ($frag)" >&2; exit 2; }
+    tmpd="$(mktemp "$dir/.decisions.XXXXXX")"
+    DEC_ADD="superseded-by: $date ($frag)" LC_ALL=C awk -v ln="$ln" '
+      NR == ln { cr = ($0 ~ /\r$/) ? "\r" : ""; l = $0; sub(/\r$/, "", l); sub(/[ \t]*\|[ \t]*$/, "", l); printf "%s %s |%s\n", l, ENVIRON["DEC_ADD"], cr; next }
+      { print }' "$DEC_FILE" > "$tmpd"
+    after="$(wc -l < "$tmpd" | tr -d ' ')"
+    [[ "$after" == "$before" ]] || { rm -f "$tmpd"; echo "sprint decisions mark: refusing, the rewrite changed the line count ($before -> $after); nothing was changed" >&2; exit 1; }
+    [[ "$(cmp -l "$DEC_FILE" "$tmpd" 2>/dev/null | wc -l | tr -d ' ')" != 0 ]] || { rm -f "$tmpd"; echo "sprint decisions mark: row $id is not a table row with a closing |; nothing was changed" >&2; exit 2; }
+    mv -f "$tmpd" "$DEC_FILE"
+    echo "marked $id: superseded-by: $date ($frag)"
+    return 0
+  fi
+  # archive: the whole row, byte for byte, to the end of the archive's table
+  [[ ! -L "$DEC_ARCHIVE" ]] || { echo "sprint decisions archive: DECISIONS-archive.md is a symbolic link; refused" >&2; exit 2; }
+  tmpd="$(mktemp "$dir/.decisions.XXXXXX")"; tmpa="$(mktemp "$dir/.decisions-archive.XXXXXX")"
+  if [[ -f "$DEC_ARCHIVE" ]]; then cat "$DEC_ARCHIVE" > "$tmpa"; [[ ! -s "$tmpa" || -z "$(tail -c1 "$tmpa")" ]] || printf '\n' >> "$tmpa"
+  else printf '# Decisions — Archive\n\nRows moved out of `DECISIONS.md` by `sprint decisions archive`, byte for byte.\n\n| Date | Decision | Reason |\n|---|---|---|\n' > "$tmpa"; fi
+  local abefore; abefore="$(wc -l < "$tmpa" | tr -d ' ')"
+  printf '%s\n' "$row" >> "$tmpa"
+  LC_ALL=C awk -v ln="$ln" 'NR != ln { print }' "$DEC_FILE" > "$tmpd"
+  after="$(wc -l < "$tmpd" | tr -d ' ')"
+  [[ "$after" == $((before - 1)) && "$(wc -l < "$tmpa" | tr -d ' ')" == $((abefore + 1)) ]] || { rm -f "$tmpd" "$tmpa"; echo "sprint decisions archive: refusing, the line counts do not add up; nothing was changed" >&2; exit 1; }
+  mv -f "$tmpa" "$DEC_ARCHIVE" && mv -f "$tmpd" "$DEC_FILE"
+  echo "archived $id (by $by): ${row:16:100}"
+}
+
+# _decisions_row_length_line <ticket id> — t-79bf: after a close, one line for a row whose rule starts with the closing ticket's id and is over 600
+# characters (a row is the rule, its falsifier and the ticket id, about 400; the reasoning lives in the ticket's plan.md and research.md). Read-only,
+# prints nothing otherwise, and cannot change the exit status of a close that is already done.
+_decisions_row_length_line() {
+  local id="$1"
+  _dec_files
+  [[ -f "$DEC_FILE" && -r "$DEC_FILE" ]] || return 0
+  LC_ALL=C awk -v id="$id" "$_DEC_LIB"'
+    isrow($0) && index($0, "`" id "`") && index($0, "`" id "`") < 30 && length($0) > 600 {
+      if (++n <= 3) printf "DECISIONS.md: the row for %s is %d characters; keep a row to its rule, its falsifier and the ticket id (about 400), and the reasoning in plan.md\n", id, length($0)
+    }' "$DEC_FILE" 2>/dev/null || true
+  return 0
+}
+
+# _decisions_start_lines <ticket.md> <own id> — t-79bf: the rows that name the files and tickets this ticket names, at most 8, so a start reads what
+# applies instead of a 700 KB file. Nothing when none match; read-only.
+_decisions_start_lines() {
+  local tmd="$1" own="$2" toks out
+  [[ -f "$tmd" && -r "$tmd" ]] || return 0
+  toks="$(LC_ALL=C tr -c 'A-Za-z0-9_./-' '\n' < "$tmd" 2>/dev/null | LC_ALL=C awk -v own="$own" '
+    /^t-[a-z0-9][a-z0-9][a-z0-9][a-z0-9]$/ { if ($0 != own && !seen[$0]++ && ++n <= 12) print; next }
+    /\.(sh|go|js|css|html|md|json|py|tsv|yml)$/ && length($0) >= 6 && !seen[$0]++ && ++n <= 12 { print }
+  ' 2>/dev/null)" || toks=""
+  [[ -n "$toks" ]] || return 0
+  local arr=() line; while IFS= read -r line; do [[ -n "$line" ]] && arr+=("$line"); done <<<"$toks"
+  [[ ${#arr[@]} -gt 0 ]] || return 0
+  out="$(_dec_related 8 "${arr[@]}")"
+  [[ -n "$out" ]] || return 0
+  printf 'Related decisions (read these, not the whole DECISIONS.md; more: sprint decisions related <path> --all):\n%s\n' "$out"
+  return 0
+}
+
 cmd_help() {
   cat <<'EOF'
 sprint — canon workflow spine
@@ -1649,6 +1808,10 @@ Usage:
   sprint token-spend [--last N] [--ticket <id>]  Where the last N (10) closed sprints'
                             tokens went: planning / implementation / gates, by model,
                             from Claude Code transcripts (read-only; stores nothing)
+  sprint decisions related <path|t-xxxx>... [--limit N | --all]  The DECISIONS.md rows that name
+                            those files or tickets (id, date, the rule); archive <row-id> --by
+                            <t-xxxx> moves one whole row to DECISIONS-archive.md; mark <row-id>
+                            <date> "<fragment>" appends superseded-by to one row (t-79bf)
   sprint check-evidence <id>  Pre-flight before the evaluator: every stamped
                             evidence log is fresh with exit 0, or covered
                             (read-only; exit 1 names each log and the fix)
@@ -1679,6 +1842,7 @@ main() {
     check-evidence) cmd_check_evidence "$@" ;;
     gate-cost) cmd_gate_cost "$@" ;;
     token-spend) cmd_token_spend "$@" ;;
+    decisions) cmd_decisions "$@" ;;
     help|--help|-h) cmd_help ;;
     *) echo "Unknown command: $cmd" >&2; cmd_help; exit 1 ;;
   esac
