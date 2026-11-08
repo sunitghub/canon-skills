@@ -673,18 +673,7 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    ticket>` moves the whole row, byte for byte, to `DECISIONS-archive.md`), or partly superseded
    (`sprint decisions mark <row-id> <YYYY-MM-DD> "<which fragment>"`). The move and the marker are
    commands, never a hand edit. The lookup matches the text of a row, so it is a floor: a decision that
-   never names its file is not listed. Section entries (`## date`) are not rows and are left alone. If this sprint's decision cleanly
-   supersedes or retires an *entire* earlier entry (not a fragment of a composite, multi-topic
-   one), move that earlier entry's row to `DECISIONS-archive.md` instead of leaving it in
-   `DECISIONS.md` forever — this is what keeps the file `sprint start` actively scans from
-   growing unbounded. Never split a multi-topic entry to archive part of it. When this sprint's
-   decision instead retires only **one fragment** of a composite, multi-topic entry (so the
-   whole-entry archive-move above does not apply), do not archive or split it — mark the retired
-   fragment in place by appending `superseded-by: <YYYY-MM-DD>` (this sprint's decision date) to
-   that entry's Reason cell, naming which fragment is retired. The entry stays in `DECISIONS.md`
-   (its other topics are still live), but the marker makes the dead fragment greppable and tells
-   `start.md`'s scan (step 5) not to treat it as a live constraint. See
-   `standards/ticket-layout.md`'s DECISIONS record contract for the marker's exact shape.
+   never names its file is not listed. Section entries (`## date`) are not rows and are left alone. Archive only an *entire* superseded entry and never split a multi-topic one; when this sprint retires just one fragment of a composite entry, `mark` it (its other topics stay live, and the marker tells `start.md`'s step 5 not to treat that fragment as a live constraint). The marker's exact shape is in `standards/ticket-layout.md`'s DECISIONS record contract.
 
 7. **Conventions.** While context is fresh: did any convention-level learning emerge — pattern,
    naming norm, non-obvious file relationship, gotcha — worth a future agent knowing? Distinct

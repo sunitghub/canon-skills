@@ -214,9 +214,12 @@ Start checklist — rules that need no reference read (each owned by the step na
 
 5. **Context.** Read in order:
    - For `type: bug` tickets: grep the repo's bug-pattern log, if present, for similar symptoms before diagnosing. Known patterns reduce time-to-root-cause and avoid repeating past fixes.
-   - `DECISIONS.md` at repo root — create with empty log table if absent. After reading,
-     actively scan every entry: identify any that constrain or conflict with this sprint's
-     request. A conflict is not a passive note — it must be surfaced in the brief and
+   - `DECISIONS.md` at repo root — create with empty log table if absent. Do not read it whole
+     (canon's is 700 KB): `sprint start` prints the rows that name the files and tickets the
+     ticket names, and `sprint decisions related <path or t-id>` lists more (t-79bf). Read those
+     rows and identify any that constrain or conflict with this sprint's
+     request. The lookup matches text, so also grep the file for a component the ticket governs
+     but does not name. A conflict is not a passive note — it must be surfaced in the brief and
      resolved by the user before any implementation proceeds. `DECISIONS-archive.md` (if
      present) holds entries already superseded — historical reference, not part of this scan.
      Within a still-live entry, ignore any fragment tagged `superseded-by: <YYYY-MM-DD>` in its

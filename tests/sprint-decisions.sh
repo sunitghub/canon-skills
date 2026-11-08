@@ -68,7 +68,6 @@ nid="$(first_id t-bb02)"
 rc "$S" decisions mark "$nid" 2026-13-1 x; assert_eq 2 "$code"; assert_contains "$out" "YYYY-MM-DD"
 rc "$S" decisions mark "$nid" 2026-11-08 'a | pipe'; assert_eq 2 "$code"; assert_contains "$out" "without a |"
 rc "$S" decisions mark "$nid" 2026-11-08 ""; assert_eq 2 "$code"
-cmp -s "$D" <(cat "$D") || true
 # a CRLF row keeps its \r
 cp "$D" "$D.lf"; sed -i.b 's/$/\r/' "$D"; rm -f "$D.b"
 cid="$(first_id t-bb02)"
@@ -102,7 +101,7 @@ rm "$A"; did="$(first_id t-cc03)"
 rc "$S" decisions archive "$did" --by t-zzzz; assert_eq 0 "$code"; assert_grep '^# Decisions — Archive$' "$A"; assert_grep '^\| Date \| Decision \| Reason \|$' "$A"
 ln -s "$A" "$project/link-archive"; mv "$A" "$A.real"; ln -s "$A.real" "$A"
 did="$(first_id t-aa01)"
-rc "$S" decisions archive "$did" --by t-zzzz; assert_eq 2 "$code"; assert_contains "$out" "symbolic link"
+rc "$S" decisions archive "$did" --by t-zzzz; assert_eq 2 "$code"; assert_contains "$out" "not a regular file"
 rm "$A"; mv "$A.real" "$A"; rm -f "$project/link-archive" "$project/the-row.txt"
 mv "$D" "$D.real"; ln -s "$D.real" "$D"; rc "$S" decisions mark "$did" 2026-11-08 x; assert_eq 2 "$code"; assert_contains "$out" "symbolic link"; rm "$D"; mv "$D.real" "$D"
 
@@ -117,12 +116,16 @@ mv "$D" "$D.bak"; start_out "touch start-lookup.sh"; [[ "$out" != *"Related deci
 assert_eq 0 "$(cat "$rcfile")"; rm -f "$D"; mv "$D.bak" "$D"
 
 # --- guards and edges (each was a surviving mutant of the first version) ---
+row 2026-08-04 t-if01 'the sprint workflow, said in words only.' r >> "$D"; row 2026-08-05 t-ig01 'tools/zzz-tool is the whole path.' r >> "$D"
+rc "$S" decisions related tools/zzz-tool; assert_contains "$out" "t-ig01"; [[ "$out" != *"t-if01"* ]] || fail "an extensionless path matched by its basename"
+rc "$S" decisions related tools/sprint; [[ "$out" != *"t-if01"* ]] || fail "tools/sprint matched every row that says sprint: $out"
+
 rc "$S" help; assert_contains "$out" "sprint decisions related <path|t-xxxx>..."; assert_contains "$out" "mark <row-id>"
 # ids differ for distinct rows of the same length; a token of exactly 3 characters (or a 3-character basename) matches, 2 does not
 cp "$D" "$D.keep"
-row 2026-08-01 t-ia01 'aaaa tkx here.' r >> "$D"; row 2026-08-02 t-ib01 'bbbb tky here.' r >> "$D"
+row 2026-08-01 t-ia01 'aaaa tkx here.' r >> "$D"; row 2026-08-02 t-ib01 'bbbb t.k here.' r >> "$D"
 [[ "$(first_id t-ia01)" != "$(first_id t-ib01)" ]] || fail "two different rows of the same length got the same id"
-rc "$S" decisions related tkx; assert_contains "$out" "t-ia01"; rc "$S" decisions related x/tky; assert_contains "$out" "t-ib01"
+rc "$S" decisions related tkx; assert_contains "$out" "t-ia01"; rc "$S" decisions related x/t.k; assert_contains "$out" "t-ib01"
 rc "$S" decisions related tk; assert_contains "$out" "No DECISIONS.md row names"
 # the rule is cut at 160 characters, and a row without superseded-by has no fragment tag
 row 2026-08-03 t-ic01 "$(head -c 400 /dev/zero | tr '\0' w) lengthneedle.sh" r >> "$D"
@@ -151,6 +154,18 @@ rc "$S" decisions mark "$good" 2026-11-08 x; assert_eq 2 "$code"; assert_contain
 if [[ "$(id -u)" != 0 ]]; then
   chmod 000 "$D"; rc "$S" decisions mark "$good" 2026-11-08 x; chmod 644 "$D"; assert_eq 2 "$code"; assert_contains "$out" "no readable DECISIONS.md"
 fi
+# the mode of both files is kept; a directory in the archive's place is refused; a DECISIONS.md with no final newline is refused with a reason; the echo has no ESC
+chmod 640 "$D"; chmod 640 "$A" 2>/dev/null || true
+mid="$(first_id t-aa01)"; rc "$S" decisions mark "$mid" 2026-11-09 'mode part'; assert_eq 0 "$code"
+[[ "$(ls -ld "$D" | cut -c1-10)" == "-rw-r-----" ]] || fail "mark changed DECISIONS.md's mode: $(ls -ld "$D")"
+row 2026-05-01 t-ih01 $'has an escape \033[31mred\033[0m inside.' r >> "$D"
+eid="$(first_id t-ih01)"; rc "$S" decisions archive "$eid" --by t-zzzz; assert_eq 0 "$code"
+[[ "$out" != *$'\033'* ]] || fail "archive echoed an escape sequence: $out"; assert_contains "$out" "t-ih01"
+[[ "$(ls -ld "$D" | cut -c1-10)" == "-rw-r-----" && "$(ls -ld "$A" | cut -c1-10)" == "-rw-r-----" ]] || fail "archive changed a file's mode: $(ls -ld "$D" "$A")"
+chmod 644 "$D" "$A"
+mv "$A" "$A.keep"; mkdir "$A"; rc "$S" decisions archive "$(first_id t-aa01)" --by t-zzzz; assert_eq 2 "$code"; assert_contains "$out" "not a regular file"; rmdir "$A"; mv "$A.keep" "$A"
+printf 'no newline' >> "$D"; rc "$S" decisions mark deadbeef 2026-11-08 x; assert_eq 2 "$code"; assert_contains "$out" "does not end with a newline"
+sed -i.b '$ s/no newline$//' "$D"; rm -f "$D.b"; [[ -z "$(tail -c1 "$D")" ]] || printf '\n' >> "$D"
 # the same mark twice: the second names the row by its new id and is refused as a duplicate
 rc "$S" decisions mark "$good" 2026-11-08 'dup part'; assert_eq 0 "$code"
 again="$(first_id t-bb02)"; [[ "$again" != "$good" ]] || fail "a marked row kept its id"
@@ -165,6 +180,9 @@ row 2026-06-01 t-ie01 'for the empty archive.' r >> "$D"
 [[ "$(grep -c '' "$D")" == "$((before - 1))" ]] || fail "the two archives moved something other than one row each"
 # the start lookup reads only file names with a known extension of 6 or more characters, and ticket ids; not other words
 row 2026-07-01 t-id01 'the notes live in notes.txt and in a.sh and in plain words.' r >> "$D"
+start_out "fix tools/zzz-tool. Then t-aa01."; assert_eq 0 "$(cat "$rcfile")"; assert_contains "$out" "t-ig01"; assert_contains "$out" "t-aa01"   # a sentence-final period, an extensionless path
+for i in $(seq 1 10); do row "2026-04-$(printf '%02d' "$i")" "t-j$(printf '%03d' "$i")" 'every row names plan.md and ticket.md.' r >> "$D"; done
+start_out "update plan.md and ticket.md"; [[ "$out" != *"Related decisions"* ]] || fail "start looked up a file almost every row names: $out"
 start_out "see notes.txt and a.sh now"; assert_eq 0 "$(cat "$rcfile")"; [[ "$out" != *"Related decisions"* ]] || fail "start looked up a token it should not extract: $out"
 # --- sprint complete: one non-blocking line for a long row of the closing ticket ---
 close_with() { # <title> <row length: 0 none | N>: a trivial-tier close; the output of sprint complete, its status in $rcfile

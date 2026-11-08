@@ -1621,7 +1621,7 @@ cmd_token_spend() {
 # A row is a table line `| YYYY-MM-DD | ... |`; its id is an 8-hex hash of the line (a line number moves when a row is added on top).
 # Section entries (`## date`) are not rows: they are left alone. awk runs under LC_ALL=C so a byte is a character and an odd byte cannot abort it.
 _DEC_LIB='
-function hid(s,   i, h) { h = 5381; for (i = 1; i <= length(s); i++) h = (h * 33 + ORD[substr(s, i, 1)]) % 4294967296; return sprintf("%08x", h) }
+function hid(s,   i, h) { h = 5381; for (i = 1; i <= length(s); i++) h = (h * 33 + ORD[substr(s, i, 1)]) % 2147483648; return sprintf("%08x", h) }
 function isrow(l) { return l ~ /^\| [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] \|/ }
 BEGIN { for (i = 1; i < 256; i++) ORD[sprintf("%c", i)] = i }'
 
@@ -1637,7 +1637,7 @@ _dec_related() {
   for t in "$@"; do
     [[ -n "$t" && ${#t} -ge 3 ]] || continue
     toks+=("$t")
-    if [[ "$t" == */* ]]; then b="${t##*/}"; [[ ${#b} -ge 3 && "$b" != "$t" ]] && toks+=("$b"); fi
+    if [[ "$t" == */* ]]; then b="${t##*/}"; [[ ${#b} -ge 3 && "$b" == *.* && "$b" != "$t" ]] && toks+=("$b"); fi
   done
   [[ ${#toks[@]} -gt 0 ]] || return 0
   # the tokens go through the environment: awk -v would eat a backslash and cannot hold a newline
@@ -1700,6 +1700,8 @@ _dec_rewrite() {
   fi
   _dec_files
   [[ -f "$DEC_FILE" && -r "$DEC_FILE" && ! -L "$DEC_FILE" ]] || { echo "sprint decisions $mode: no readable DECISIONS.md here (a symbolic link is refused)" >&2; exit 2; }
+  [[ -z "$(tail -c1 "$DEC_FILE")" ]] || { echo "sprint decisions $mode: DECISIONS.md does not end with a newline; add one first, nothing was changed" >&2; exit 2; }
+  [[ ! -e "$DEC_ARCHIVE" || ( -f "$DEC_ARCHIVE" && ! -L "$DEC_ARCHIVE" ) ]] || { echo "sprint decisions $mode: DECISIONS-archive.md is not a regular file; refused" >&2; exit 2; }
   local hits row
   hits="$(LC_ALL=C awk -v id="$id" "$_DEC_LIB"' isrow($0) && hid($0) == id { n++; ln = NR } END { print n + 0, ln + 0 }' "$DEC_FILE")"
   case "${hits%% *}" in
@@ -1713,29 +1715,29 @@ _dec_rewrite() {
   row="$(LC_ALL=C awk -v ln="$ln" 'NR == ln { print; exit }' "$DEC_FILE")"
   if [[ "$mode" == mark ]]; then
     [[ "$row" != *"superseded-by: $date ($frag)"* ]] || { echo "sprint decisions mark: that row already carries superseded-by: $date ($frag)" >&2; exit 2; }
-    tmpd="$(mktemp "$dir/.decisions.XXXXXX")"
+    tmpd="$(mktemp "$dir/.decisions.XXXXXX")"; cp -p "$DEC_FILE" "$tmpd"   # the copy keeps the file's mode; the awk below rewrites its content
     DEC_ADD="superseded-by: $date ($frag)" LC_ALL=C awk -v ln="$ln" '
       NR == ln { cr = ($0 ~ /\r$/) ? "\r" : ""; l = $0; sub(/\r$/, "", l); sub(/[ \t]*\|[ \t]*$/, "", l); printf "%s %s |%s\n", l, ENVIRON["DEC_ADD"], cr; next }
       { print }' "$DEC_FILE" > "$tmpd"
     after="$(wc -l < "$tmpd" | tr -d ' ')"
     [[ "$after" == "$before" ]] || { rm -f "$tmpd"; echo "sprint decisions mark: refusing, the rewrite changed the line count ($before -> $after); nothing was changed" >&2; exit 1; }
-    [[ "$(cmp -l "$DEC_FILE" "$tmpd" 2>/dev/null | wc -l | tr -d ' ')" != 0 ]] || { rm -f "$tmpd"; echo "sprint decisions mark: row $id is not a table row with a closing |; nothing was changed" >&2; exit 2; }
-    mv -f "$tmpd" "$DEC_FILE"
+    mv -f "$tmpd" "$DEC_FILE" || { rm -f "$tmpd"; echo "sprint decisions mark: could not replace DECISIONS.md; nothing was changed" >&2; exit 1; }
     echo "marked $id: superseded-by: $date ($frag)"
     return 0
   fi
   # archive: the whole row, byte for byte, to the end of the archive's table
-  [[ ! -L "$DEC_ARCHIVE" ]] || { echo "sprint decisions archive: DECISIONS-archive.md is a symbolic link; refused" >&2; exit 2; }
-  tmpd="$(mktemp "$dir/.decisions.XXXXXX")"; tmpa="$(mktemp "$dir/.decisions-archive.XXXXXX")"
-  if [[ -f "$DEC_ARCHIVE" ]]; then cat "$DEC_ARCHIVE" > "$tmpa"; [[ ! -s "$tmpa" || -z "$(tail -c1 "$tmpa")" ]] || printf '\n' >> "$tmpa"
-  else printf '# Decisions — Archive\n\nRows moved out of `DECISIONS.md` by `sprint decisions archive`, byte for byte.\n\n| Date | Decision | Reason |\n|---|---|---|\n' > "$tmpa"; fi
+  tmpd="$(mktemp "$dir/.decisions.XXXXXX")"; cp -p "$DEC_FILE" "$tmpd"; tmpa="$(mktemp "$dir/.decisions-archive.XXXXXX")"
+  if [[ -f "$DEC_ARCHIVE" ]]; then cp -p "$DEC_ARCHIVE" "$tmpa"; [[ ! -s "$tmpa" || -z "$(tail -c1 "$tmpa")" ]] || printf '\n' >> "$tmpa"
+  else chmod 644 "$tmpa"; printf '# Decisions — Archive\n\nRows moved out of `DECISIONS.md` by `sprint decisions archive`, byte for byte.\n\n| Date | Decision | Reason |\n|---|---|---|\n' > "$tmpa"; fi
   local abefore; abefore="$(wc -l < "$tmpa" | tr -d ' ')"
   printf '%s\n' "$row" >> "$tmpa"
   LC_ALL=C awk -v ln="$ln" 'NR != ln { print }' "$DEC_FILE" > "$tmpd"
   after="$(wc -l < "$tmpd" | tr -d ' ')"
   [[ "$after" == $((before - 1)) && "$(wc -l < "$tmpa" | tr -d ' ')" == $((abefore + 1)) ]] || { rm -f "$tmpd" "$tmpa"; echo "sprint decisions archive: refusing, the line counts do not add up; nothing was changed" >&2; exit 1; }
-  mv -f "$tmpa" "$DEC_ARCHIVE" && mv -f "$tmpd" "$DEC_FILE"
-  echo "archived $id (by $by): ${row:16:100}"
+  mv -f "$tmpa" "$DEC_ARCHIVE" || { rm -f "$tmpd" "$tmpa"; echo "sprint decisions archive: could not write DECISIONS-archive.md; nothing was changed" >&2; exit 1; }
+  mv -f "$tmpd" "$DEC_FILE" || { rm -f "$tmpd"; echo "sprint decisions archive: the row is in DECISIONS-archive.md but could not be removed from DECISIONS.md; remove it by hand" >&2; exit 1; }
+  local shown; shown="$(printf '%s' "${row:15:100}" | LC_ALL=C tr '\001-\037\177' ' ' | LC_ALL=C sed 's/\*\*//g')"
+  echo "archived $id (by $by): $shown"
 }
 
 # _decisions_row_length_line <ticket id> — t-79bf: after a close, one line for a row whose rule starts with the closing ticket's id and is over 600
@@ -1757,9 +1759,11 @@ _decisions_row_length_line() {
 _decisions_start_lines() {
   local tmd="$1" own="$2" toks out
   [[ -f "$tmd" && -r "$tmd" ]] || return 0
-  toks="$(LC_ALL=C tr -c 'A-Za-z0-9_./-' '\n' < "$tmd" 2>/dev/null | LC_ALL=C awk -v own="$own" '
+  toks="$(LC_ALL=C tr -c 'A-Za-z0-9_./-' '\n' < "$tmd" 2>/dev/null | LC_ALL=C sed -e 's/[.]*$//' | LC_ALL=C awk -v own="$own" '
+    /^(plan|ticket|acceptance|research|summary|DECISIONS|HANDOFF|LEARNINGS|CHANGELOG|README|AGENTS|CLAUDE|SKILL)\.md$/ { next }   # named by nearly every row: they would fill the cap
     /^t-[a-z0-9][a-z0-9][a-z0-9][a-z0-9]$/ { if ($0 != own && !seen[$0]++ && ++n <= 12) print; next }
-    /\.(sh|go|js|css|html|md|json|py|tsv|yml)$/ && length($0) >= 6 && !seen[$0]++ && ++n <= 12 { print }
+    /\.(sh|go|js|css|html|md|json|py|tsv|yml)$/ && length($0) >= 6 && !seen[$0]++ && ++n <= 12 { print; next }
+    /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.\/-]+$/ && length($0) >= 6 && !seen[$0]++ && ++n <= 12 { print }   # a path with no known extension: tools/sprint
   ' 2>/dev/null)" || toks=""
   [[ -n "$toks" ]] || return 0
   local arr=() line; while IFS= read -r line; do [[ -n "$line" ]] && arr+=("$line"); done <<<"$toks"
