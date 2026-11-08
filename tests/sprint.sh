@@ -1649,7 +1649,7 @@ fr_project="$(make_project)"
   # t-7301: on Windows `git rev-parse --show-toplevel` spells the repo "C:/..." while the shell's `pwd -P` says "/tmp/...". The
   # gate compared the two, never matched, built a bogus pathspec and passed every stale edit (failed open). A git stub that
   # rewrites only the `git -C <project> rev-parse --show-toplevel` answer (the compared one; a C:/ root would not exist off Windows) reproduces the mismatch on any OS; the refusal must hold under it.
-  wgit="$(mktemp -d)"; export REAL_GIT="$(command -v git)"
+  wgit="$(mktemp -d)"; REAL_GIT="$(command -v git)"; export REAL_GIT
   cat > "$wgit/git" <<'STUB'
 #!/bin/sh
 for a in "$@"; do
@@ -1868,7 +1868,7 @@ cg_project="$(make_project)"
   fr_gate_docs ".tickets/$cid" ".claude/subagent-runs.jsonl" "$(date +%s)-7000" "$(git rev-parse HEAD)"
   printf 'node_modules/\nb\na\nd\nc\n/.claude/skills\n' > .gitignore; cg_refused .gitignore "lines moved twice"
   # a graded copy git cannot give (cat-file fails, or answers nothing) refuses rather than passing canon's lines unread
-  cg_git="$(mktemp -d)"; export REAL_GIT="$(command -v git)"
+  cg_git="$(mktemp -d)"; REAL_GIT="$(command -v git)"; export REAL_GIT
   printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = --filters ] && { "$REAL_GIT" "$@"; exit 1; }; done\nexec "$REAL_GIT" "$@"\n' > "$cg_git/git"; chmod +x "$cg_git/git"
   canon_setup "$PWD"; PATH="$cg_git:$PATH" cg_refuses .gitignore "git cat-file fails"
   printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = --filters ] && exit 0; done\nexec "$REAL_GIT" "$@"\n' > "$cg_git/git"
