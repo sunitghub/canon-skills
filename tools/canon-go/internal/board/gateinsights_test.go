@@ -276,6 +276,9 @@ func TestGateInsightsStrictReading(t *testing.T) {
 		ev("2026-11-08T03:00:00.000Z", "gate.finished", "subagent-log", map[string]string{"role": "reviewer", "ticket": "t-aaaa", "verdict": "unknown", "model": "m", "act_on": "0"}),
 		ev("2026-11-08T04:00:00.000Z", "gate.finished", "subagent-log", map[string]string{"role": "reviewer", "ticket": "t-bbbb", "verdict": "NO", "model": "m", "act_on": "-1"}),
 		ev("2026-11-08T05:00:00.000Z", "gate.finished", "subagent-log", map[string]string{"role": "reviewer", "ticket": "t-cccc", "verdict": "NO", "model": "m", "act_on": "many"}),
+		ev("2026-11-08T05:30:00.000Z", "gate.finished", "subagent-log", map[string]string{"role": "evaluator", "ticket": "t-dddd", "verdict": "pass", "model": "m", "minutes": "Inf", "tokens": "1"}),
+		ev("2026-11-08T05:31:00.000Z", "gate.finished", "subagent-log", map[string]string{"role": "evaluator", "ticket": "t-eeee", "verdict": "pass", "model": "m", "minutes": "1e308", "tokens": "1"}),
+		ev("2026-11-08T05:32:00.000Z", "gate.finished", "subagent-log", map[string]string{"role": "evaluator", "ticket": "t-ffff", "verdict": "pass", "model": "m", "minutes": "NaN", "tokens": "1"}),
 		ev("2026-11-08T06:00:00.000Z", "evidence.stamped", "evidence", map[string]string{"ticket": "t-aaaa", "name": "suite", "exit": "0", "seconds": "-3"}),
 	}, ""))
 	r := gateInsights(home, 30, giFixedNow)
@@ -283,11 +286,14 @@ func TestGateInsightsStrictReading(t *testing.T) {
 		t.Fatalf("groups = %+v", r.Groups)
 	}
 	g := r.Groups[0]
-	if g.Host != "" || g.EvalTickets != 2 || g.EvalFirstPass != 0 || g.EvalRetries != 0 {
+	if g.Host != "" || g.EvalTickets != 5 || g.EvalFirstPass != 3 || g.EvalRetries != 0 {
 		t.Errorf("evaluator = %+v", g)
 	}
-	if g.Runs[0].Minutes != 0 || g.Runs[0].Tokens != 0 || g.Runs[0].Runs != 2 {
-		t.Errorf("a negative or non-numeric minutes/tokens must add nothing: %+v", g.Runs[0])
+	if g.Runs[0].Minutes != 0 || g.Runs[0].Tokens != 3 || g.Runs[0].Runs != 5 {
+		t.Errorf("a negative, non-numeric, Inf, NaN or absurd minutes/tokens must add nothing: %+v", g.Runs[0])
+	}
+	if b, err := json.Marshal(r); err != nil || !strings.Contains(string(b), `"minutes":0`) {
+		t.Errorf("the report must stay valid JSON whatever the log holds: %v %s", err, b)
 	}
 	if g.Reviewer != (giReviewer{No: 2, Unknown: 1, ActOnRecorded: 1, ActOn: 0}) {
 		t.Errorf("reviewer = %+v (act_on 0 recorded; -1 and 'many' ignored)", g.Reviewer)
@@ -297,7 +303,7 @@ func TestGateInsightsStrictReading(t *testing.T) {
 	}
 	var b bytes.Buffer
 	giText(r, &b)
-	for _, want := range []string{"/p/x on (no host recorded)", "act_on items: 0 (recorded on 1 of 3 runs)", "no verdict 1", "evaluator first pass: 0 of 2 tickets (0%); retries: 0"} {
+	for _, want := range []string{"/p/x on (no host recorded)", "act_on items: 0 (recorded on 1 of 3 runs)", "no verdict 1", "evaluator first pass: 3 of 5 tickets (60%); retries: 0"} {
 		if !strings.Contains(b.String(), want) {
 			t.Errorf("text lacks %q:\n%s", want, b.String())
 		}
@@ -337,12 +343,17 @@ func TestGateInsightsSealState(t *testing.T) {
 		t.Fatal(err)
 	}
 	r = gateInsights(home, 30, giFixedNow)
-	if r.DaysSealed["not checked"] != 4 || len(r.DaysSealed) != 1 {
-		t.Errorf("seals that cannot be read give no day a verdict: %v", r.DaysSealed)
+	if r.DaysSealed["not checked"] != 4 || len(r.DaysSealed) != 1 || !strings.Contains(r.SealsIssue, "broken") {
+		t.Errorf("seals that cannot be read give no day a verdict and say why: %v %q", r.DaysSealed, r.SealsIssue)
+	}
+	os.Remove(seals)
+	gcWrite(t, seals, "garbage line\n") // a damaged seals file is shown as such, not as a quiet "not checked"
+	if r := gateInsights(home, 30, giFixedNow); r.SealsIssue == "" || r.DaysSealed["not checked"] != 4 {
+		t.Errorf("a damaged seals file: %v %q", r.DaysSealed, r.SealsIssue)
 	}
 	b.Reset()
 	giText(r, &b)
-	if !strings.Contains(b.String(), "days read: 4 (4 not checked)") {
+	if !strings.Contains(b.String(), "days read: 4 (4 not checked)") || !strings.Contains(b.String(), "\nseals: broken") {
 		t.Errorf("text:\n%s", b.String())
 	}
 }

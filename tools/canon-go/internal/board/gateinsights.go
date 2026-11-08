@@ -17,9 +17,12 @@ import (
 // canon-go gate-insights (t-9113 stage 1): are the close gates earning their cost? Counts and sums over the activity log, per project and
 // per machine (a Mac and a VM are never added together). Read-only and local: nothing is written and nothing leaves the machine. Every
 // line of the log is untrusted (anyone who can append to the folder can write one), so the report says "recorded", never "verified", and
-// prints only ids, numbers and the words of a fixed list, capped (gcClean).
+// prints only ids, numbers and words taken from the log, control characters dropped and each capped (gcClean).
 
 const giDefaultDays = 30
+
+// giMaxMinutes bounds one run's minutes: ParseFloat reads "Inf" and "1e308", which fit the field and would turn a sum into +Inf
+const giMaxMinutes = 1e6
 
 var giNow = time.Now // the CLI's clock; a test sets it so a seeded log stays inside the window
 
@@ -70,7 +73,8 @@ type giReport struct {
 	Days       int            `json:"days"`
 	Window     string         `json:"window"`
 	DaysRead   int            `json:"days_read"`
-	DaysSealed map[string]int `json:"days_by_seal"` // Verify's word for each day read: intact, unsealed, broken, or not checked
+	DaysSealed map[string]int `json:"days_by_seal"`          // Verify's word for each day read: intact, unsealed, broken, or not checked
+	SealsIssue string         `json:"seals_issue,omitempty"` // when the seals could not be read or checked: Verify's own words, capped
 	Events     int            `json:"events"`
 	Groups     []giGroup      `json:"groups"`
 }
@@ -91,8 +95,9 @@ func gateInsights(home string, days int, now time.Time) giReport {
 	if res, _ := events.Verify(home, now); res != nil {
 		for _, r := range res {
 			verdicts[r.Day] = r.Result
-			if r.Day == "seals.jsonl" { // the seals could not be read or another run holds the log: no day has a verdict
+			if r.Day == "seals.jsonl" { // the seals could not be read, are damaged, or another run holds the log: no day has a verdict
 				notChecked = true
+				rep.SealsIssue = gcClean(r.Result+": "+r.Why, 120)
 			}
 		}
 	}
@@ -133,7 +138,7 @@ func gateInsights(home string, days int, now time.Time) giReport {
 					w.runs[[2]string{role, model}] = r
 				}
 				r.Runs++
-				if m, err := strconv.ParseFloat(e.Data["minutes"], 64); err == nil && m >= 0 {
+				if m, err := strconv.ParseFloat(e.Data["minutes"], 64); err == nil && m >= 0 && m <= giMaxMinutes {
 					r.Minutes += m
 				}
 				if n, err := strconv.ParseInt(e.Data["tokens"], 10, 64); err == nil && n >= 0 {
@@ -247,6 +252,9 @@ func giText(r giReport, w io.Writer) {
 		}
 	}
 	fmt.Fprintf(w, "days read: %d (%s); events: %d\n", r.DaysRead, strings.Join(seal, ", "), r.Events)
+	if r.SealsIssue != "" {
+		fmt.Fprintf(w, "seals: %s\n", r.SealsIssue)
+	}
 	for _, g := range r.Groups {
 		host := g.Host
 		if host == "" {
@@ -310,7 +318,11 @@ func gateInsightsCLI(args []string, stdout, stderr io.Writer) int {
 	}
 	rep := gateInsights(home, days, giNow())
 	if asJSON {
-		b, _ := json.Marshal(rep)
+		b, err := json.Marshal(rep)
+		if err != nil {
+			fmt.Fprintln(stderr, "gate-insights: cannot write the report:", err)
+			return 1
+		}
 		fmt.Fprintln(stdout, string(b))
 		return 0
 	}
