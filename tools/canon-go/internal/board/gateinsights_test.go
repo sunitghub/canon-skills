@@ -64,6 +64,10 @@ func giHome(t *testing.T) string {
 		st("2026-11-06T12:10:00.000Z", mac, one, "t-aaaa", "mutant-sweep", "0", "20"),
 		giEv("2026-11-06T12:20:00.000Z", mac, one, "gate.rejected", "sprint", map[string]string{"ticket": "t-aaaa", "role": "evaluator", "reason": "stale_evidence"}),
 		giEv("2026-11-06T12:19:00.000Z", mac, "/p/noise", "ticket.created", "tkt", map[string]string{"ticket": "t-zzzz"}), // not this report's kind: no group, not counted
+		gf("2026-11-06T11:10:00.000Z", mac, one, "evaluator", "t-ffff", "unknown", "a0", "5", "0.5", ""),                  // a second evaluator model, listed before m1
+		gf("2026-11-06T11:15:00.000Z", mac, one, "reviewer", "t-gggg", "unknown", "a0", "", "", ""),                       // a reviewer model that sorts before the evaluator's m1: role, then model
+		giEv("2026-11-06T12:22:00.000Z", mac, one, "gate.rejected", "sprint", map[string]string{"ticket": "t-aaaa", "role": "evaluator", "reason": "unverified_run"}),
+		giEv("2026-11-06T12:23:00.000Z", mac, one, "gate.rejected", "sprint", map[string]string{"ticket": "t-aaaa", "role": "reviewer", "reason": "review_shape"}),
 		giEv("2026-11-06T12:21:00.000Z", mac, one, "gate.rejected", "sprint", map[string]string{"ticket": "t-aaaa", "role": "evaluator", "reason": "stale_evidence"}),
 		gf("2026-11-06T13:00:00.000Z", vm, one, "evaluator", "t-aaaa", "pass", "m1", "10", "0.5", ""), // another machine: its own group
 	)
@@ -89,29 +93,30 @@ func giGroupOf(t *testing.T, r giReport, project, host string) giGroup {
 func TestGateInsightsCountsEqualAHandCount(t *testing.T) {
 	home := giHome(t)
 	r := gateInsights(home, 30, time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC))
-	if r.Events != 19 || r.DaysRead != 4 {
-		t.Fatalf("events %d days %d, want 19 and 4", r.Events, r.DaysRead)
+	if r.Events != 23 || r.DaysRead != 4 {
+		t.Fatalf("events %d days %d, want 23 and 4", r.Events, r.DaysRead)
 	}
 	if len(r.Groups) != 4 {
 		t.Fatalf("groups = %d, want 4 (one/mac, one/vm, two/mac, the hostile one)", len(r.Groups))
 	}
 	g := giGroupOf(t, r, "/p/one", "mac")
 	// evaluator m1: 4 runs (the unknown one counts as a run), 2.5+3.5+1 min, 1000+2000+500 tokens; reviewer m2: 2 runs, 1 min, 100 tokens
-	if len(g.Runs) != 2 || g.Runs[0] != (giRun{"evaluator", "m1", 4, 7, 3500}) || g.Runs[1] != (giRun{"reviewer", "m2", 2, 1, 100}) {
+	// plus evaluator a0 (1 run, 0.5 min, 5 tokens) and reviewer a0 (1 run): sorted by role, then model
+	if len(g.Runs) != 4 || g.Runs[0] != (giRun{"evaluator", "a0", 1, 0.5, 5}) || g.Runs[1] != (giRun{"evaluator", "m1", 4, 7, 3500}) || g.Runs[2] != (giRun{"reviewer", "a0", 1, 0, 0}) || g.Runs[3] != (giRun{"reviewer", "m2", 2, 1, 100}) {
 		t.Errorf("runs = %+v", g.Runs)
 	}
 	// t-aaaa failed then passed, t-bbbb passed first time, t-cccc has no verdict: 1 of 2 tickets first pass, 1 retry
 	if g.EvalTickets != 2 || g.EvalFirstPass != 1 || g.EvalRetries != 1 {
 		t.Errorf("evaluator = %d tickets, %d first pass, %d retries", g.EvalTickets, g.EvalFirstPass, g.EvalRetries)
 	}
-	if g.Reviewer != (giReviewer{Yes: 1, No: 1, ActOnRecorded: 1, ActOn: 2}) {
+	if g.Reviewer != (giReviewer{Yes: 1, No: 1, Unknown: 1, ActOnRecorded: 1, ActOn: 2}) {
 		t.Errorf("reviewer = %+v", g.Reviewer)
 	}
 	// t-aaaa suite twice (a rerun, one failing) and mutant-sweep once: 3 stamps, 170 s
 	if g.Evidence != (giEvidence{Stamps: 3, Reruns: 1, Failing: 1, Seconds: 170}) {
 		t.Errorf("evidence = %+v", g.Evidence)
 	}
-	if g.Rejected["evaluator stale_evidence"] != 2 || len(g.Rejected) != 1 {
+	if g.Rejected["evaluator stale_evidence"] != 2 || g.Rejected["evaluator unverified_run"] != 1 || g.Rejected["reviewer review_shape"] != 1 || len(g.Rejected) != 3 {
 		t.Errorf("rejected = %v", g.Rejected)
 	}
 	// HANDOFF.md 3 events on one day and 1 on the next, LEARNINGS.md 1: 5 events, 3 file-days
@@ -137,13 +142,13 @@ func TestGateInsightsNoActOnIsNotRecordedNotZero(t *testing.T) {
 	if !strings.Contains(two, "act_on: not recorded") || strings.Contains(two, "act_on items") {
 		t.Errorf("a project whose reviewer events have no act_on must say not recorded:\n%s", two)
 	}
-	if !strings.Contains(out, "act_on items: 2 (recorded on 1 of 2 runs)") {
+	if !strings.Contains(out, "act_on items: 2 (recorded on 1 of 3 runs)") {
 		t.Errorf("a partly recorded project must say how many runs carry it:\n%s", out)
 	}
 	if !strings.Contains(out, "evaluator first pass: 1 of 2 tickets (50%); retries: 1") || !strings.Contains(out, "evidence stamps: 3 (1 reruns, 1 failing), 170 s") {
 		t.Errorf("text lacks the first-pass or evidence line:\n%s", out)
 	}
-	for _, bad := range []string{"verified", "authenticated"} {
+	for _, bad := range []string{" verified", "authenticated"} { // not the reason word `unverified_run`
 		if strings.Contains(out, bad) {
 			t.Errorf("the report says %q; the log is recorded, never verified", bad)
 		}
@@ -180,8 +185,8 @@ func TestGateInsightsWindowAndEmpty(t *testing.T) {
 	}
 	var b bytes.Buffer
 	giText(gateInsights(t.TempDir(), 30, now), &b)
-	if !strings.Contains(b.String(), "no events in this window") {
-		t.Errorf("an empty log must say so:\n%s", b.String())
+	if b.String() != "gate insights, last 30 days (2026-10-09 to 2026-11-08): as recorded in the activity log\nno events in this window\n" {
+		t.Errorf("an empty log must say so and print nothing else:\n%s", b.String())
 	}
 	var out, errb bytes.Buffer
 	t.Setenv("CANON_HOME", t.TempDir())
@@ -224,15 +229,19 @@ func TestGateInsightsTextOfTheSeededLog(t *testing.T) {
 	var b bytes.Buffer
 	giText(r, &b)
 	want := `gate insights, last 30 days (2026-10-09 to 2026-11-08): as recorded in the activity log
-days read: 4 (4 unsealed); events: 19
+days read: 4 (4 unsealed); events: 23
 
 /p/one on mac
+  evaluator a0                         1 runs     0.5 min          5 tokens
   evaluator m1                         4 runs     7.0 min       3500 tokens
+  reviewer  a0                         1 runs     0.0 min          0 tokens
   reviewer  m2                         2 runs     1.0 min        100 tokens
   evaluator first pass: 1 of 2 tickets (50%); retries: 1
-  reviewer: YES 1, NO 1, no verdict 0; act_on items: 2 (recorded on 1 of 2 runs)
+  reviewer: YES 1, NO 1, no verdict 1; act_on items: 2 (recorded on 1 of 3 runs)
   evidence stamps: 3 (1 reruns, 1 failing), 170 s
   rejected evaluator stale_evidence: 2
+  rejected evaluator unverified_run: 1
+  rejected reviewer review_shape: 1
   budget exceeded: 3 file-days (5 events)
 
 /p/one on vm
@@ -305,14 +314,20 @@ func TestGateInsightsSealState(t *testing.T) {
 	}
 	var b bytes.Buffer
 	giText(r, &b)
-	if !strings.Contains(b.String(), "days read: 4 (3 intact, 1 unsealed); events: 19") {
+	if !strings.Contains(b.String(), "days read: 4 (3 intact, 1 unsealed); events: 23") {
 		t.Errorf("text:\n%s", b.String())
 	}
 	f, _ := os.OpenFile(filepath.Join(home, "events", "2026-11-06.jsonl"), os.O_APPEND|os.O_WRONLY, 0o644)
 	f.WriteString("tampered\n")
 	f.Close()
-	if r := gateInsights(home, 30, giFixedNow); r.DaysSealed["broken"] != 1 || r.DaysSealed["intact"] != 2 {
+	r = gateInsights(home, 30, giFixedNow)
+	if r.DaysSealed["broken"] != 1 || r.DaysSealed["intact"] != 2 {
 		t.Errorf("after an edit to a sealed day: %v", r.DaysSealed)
+	}
+	b.Reset()
+	giText(r, &b)
+	if !strings.Contains(b.String(), "days read: 4 (2 intact, 1 unsealed, 1 broken); events: 23") {
+		t.Errorf("text:\n%s", b.String())
 	}
 	seals := filepath.Join(home, "events", "seals.jsonl")
 	os.Remove(seals)
@@ -361,6 +376,10 @@ func TestGateInsightsCLI(t *testing.T) {
 	if keys(g["reviewer"].(map[string]any)) != "act_on_runs_recorded,act_on_total,no,no_verdict,yes" || keys(g["evidence"].(map[string]any)) != "failing,reruns,seconds,stamps" ||
 		keys(g["runs"].([]any)[0].(map[string]any)) != "minutes,model,role,runs,tokens" {
 		t.Errorf("json nested keys: %s", out.String())
+	}
+	out.Reset()
+	if rc := gateInsightsCLI([]string{"--days", "3650"}, &out, &errb); rc != 0 {
+		t.Errorf("--days 3650 is the largest window: rc %d %s", rc, errb.String())
 	}
 	out.Reset()
 	if rc := gateInsightsCLI([]string{"--days", "1"}, &out, &errb); rc != 0 || !strings.Contains(out.String(), "last 1 days") || !strings.Contains(out.String(), "events: 3") {

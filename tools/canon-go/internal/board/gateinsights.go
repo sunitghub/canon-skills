@@ -70,7 +70,7 @@ type giReport struct {
 	Days       int            `json:"days"`
 	Window     string         `json:"window"`
 	DaysRead   int            `json:"days_read"`
-	DaysSealed map[string]int `json:"days_by_seal"` // Verify's word for each day read: intact, unsealed, broken, missing, or not checked
+	DaysSealed map[string]int `json:"days_by_seal"` // Verify's word for each day read: intact, unsealed, broken, or not checked
 	Events     int            `json:"events"`
 	Groups     []giGroup      `json:"groups"`
 }
@@ -241,7 +241,7 @@ func giText(r giReport, w io.Writer) {
 		return
 	}
 	var seal []string
-	for _, k := range []string{"intact", "unsealed", "broken", "missing", "not checked"} {
+	for _, k := range []string{"intact", "unsealed", "broken", "not checked"} {
 		if n := r.DaysSealed[k]; n > 0 {
 			seal = append(seal, fmt.Sprintf("%d %s", n, k))
 		}
