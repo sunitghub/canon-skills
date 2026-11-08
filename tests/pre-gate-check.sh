@@ -157,5 +157,24 @@ set +e; out="$(cd "$R2" && bash "$S/pre-gate-check.sh" "$ID" 2>&1)"; code=$?; se
 assert_eq 0 "$code" "pre-gate-check: a log that is a directory keeps the stamp's exit code"; assert_contains "$out" "did not name a readable log" "pre-gate-check: a directory is not read as a log"
 cd "$R"
 
+# --- t-2178: the gate eval set. No tests/gate-cases/: nothing added. A passing run case: `gate cases 1/1` (a recorded case is not counted). A failing case:
+# non-zero, stamped, named in the output. Protects the pre-gate line that every close prints.
+reset
+printf '#!/usr/bin/env bash\necho ok\n' > tools/clean.sh; commit
+run "$ID"; assert_eq 0 "$code" "pre-gate-check: without tests/gate-cases/ the check is unchanged"
+[[ "$out" != *"gate cases"* ]] || fail "pre-gate-check: a project with no gate cases printed a gate cases field: $out"
+mkdir -p tests/gate-cases/ok-case tests/gate-cases/note-case
+printf -- '---\ngate: guard\nkind: run\nmiss: a guard that must exit 3\ncmd: exit 3\nexpect_exit: 3\n---\n' > tests/gate-cases/ok-case/case.md
+printf -- '---\ngate: reviewer\nkind: recorded\nmiss: a false positive\nexpect: no finding\n---\n' > tests/gate-cases/note-case/case.md
+git add tests && git commit -qm cases
+run "$ID"; assert_eq 0 "$code" "pre-gate-check: passing gate cases keep the exit code"; assert_contains "$out" "| gate cases 1/1 |"
+rm -rf ".tickets/$ID/evidence"
+mkdir -p tests/gate-cases/bad-case
+printf -- '---\ngate: guard\nkind: run\nmiss: a guard that stopped catching its miss\ncmd: exit 0\nexpect_exit: 1\n---\n' > tests/gate-cases/bad-case/case.md
+git add tests && git commit -qm bad-case
+run "$ID"; assert_eq 1 "$code" "pre-gate-check: a failing gate case is non-zero"
+assert_contains "$out" "gate cases FAIL 1/2"; assert_contains "$out" "FAIL      bad-case (guard): expected exit 1, got 0"
+git reset -q --hard "$BASE"; git clean -fdq -e .tickets; rm -rf ".tickets/$ID/evidence"
+
 [[ -f "$CANON_HOME/canary" && -z "$(ls -A "$TMPDIR")" ]] || fail "pre-gate-check: left a temp file behind"
 echo "pre-gate-check: ok"

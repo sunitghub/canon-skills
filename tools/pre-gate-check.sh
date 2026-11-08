@@ -4,6 +4,7 @@
 #   Runs shellcheck (warning severity and up: info notes such as SC1091 must not refuse a close) on changed .sh, node --check on changed .js, go vet on the changed Go packages. A failing tool exits
 #   non-zero (the stamped log then ends `exit 1`, which `sprint check-evidence` refuses). A MISSING tool is never a
 #   pass: the line says `<tool> skipped | no <tool>`.
+#   A project with tests/gate-cases/ also runs the gate eval set (gate-cases.sh run) and says `gate cases N/N`; a failing case is non-zero (t-2178).
 #   Advisory only (never a refusal): symbols declared in a changed file and referenced nowhere (dead-code-scan.sh
 #   --changed), and every changed file the scan cannot read ("not scanned").
 # Output: the one stamped line (plus the failing tool's output when a check fails); the full log is
@@ -59,6 +60,15 @@ run_checks() {
       done
       if ((bad)); then line+=" | go vet FAIL"; rc=1; else line+=" | go vet ${#gd[@]} pkg ok"; fi
     else line+=" | go vet skipped | no go"; fi
+  fi
+
+  # t-2178: the gate eval set. A project with tests/gate-cases/ runs it here, before any gate: a guard that stopped catching its recorded miss fails the close.
+  local gcroot gc gcrc=0 gsum
+  gcroot="$(git rev-parse --show-toplevel 2>/dev/null)" || gcroot=""
+  if [[ -n "$gcroot" && -d "$gcroot/tests/gate-cases" ]]; then
+    gc="$(GATE_CASES_DIR="$gcroot/tests/gate-cases" "$SCRIPT_DIR/gate-cases.sh" run 2>&1)" || gcrc=$?
+    gsum="$(sed -n 's/^gate cases: \([0-9]*\) of \([0-9]*\) pass.*/\1\/\2/p' <<<"$gc")"
+    if ((gcrc)); then line+=" | gate cases FAIL ${gsum:-?}"; fails+="$gc"$'\n'; rc=1; else line+=" | gate cases ${gsum:-?}"; fi
   fi
 
   # Advisory: dead code in changed files (declarations from them, references from every tracked file).
