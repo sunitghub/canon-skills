@@ -24,7 +24,7 @@ cleanup() {
 trap cleanup EXIT
 
 free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'; }
-wait_for() { local i; for i in $(seq 1 50); do curl -s -o /dev/null "$1" && return 0; sleep 0.1; done; return 1; }
+wait_for() { for _ in $(seq 1 50); do curl -s -o /dev/null "$1" && return 0; sleep 0.1; done; return 1; }
 TOKEN="SECRET-daemon-token-$$"
 
 # stub_daemon <state-dir> <sessions-json>: /healthz + /sessions; daemon.json holds its pid,
@@ -32,7 +32,7 @@ TOKEN="SECRET-daemon-token-$$"
 stub_daemon() {
   local sd="$1" sessions="$2" port
   port="$(free_port)"
-  mkdir -p -m 700 "$sd"; printf '%s' "$sessions" > "$sd/stub-sessions.json"   # re-read per request, so a test can change it
+  mkdir -p "$sd"; chmod 700 "$sd"; printf '%s' "$sessions" > "$sd/stub-sessions.json"   # re-read per request, so a test can change it
   python3 - "$port" "$sd/stub-sessions.json" <<'PY' >/dev/null 2>&1 &
 import http.server, sys
 port, path = int(sys.argv[1]), sys.argv[2]
@@ -44,7 +44,7 @@ class H(http.server.BaseHTTPRequestHandler):
 http.server.HTTPServer(("127.0.0.1", port), H).serve_forever()
 PY
   local pid=$!; disown "$pid" 2>/dev/null || true; PIDS+=("$pid")
-  mkdir -p -m 700 "$sd"
+  mkdir -p "$sd"; chmod 700 "$sd"
   printf '{"addr":"127.0.0.1:%s","token":"%s","pid":"%s"}' "$port" "$TOKEN" "$pid" > "$sd/daemon.json"
   wait_for "http://127.0.0.1:$port/healthz" || fail "canon-cli: stub daemon did not start"
 }
@@ -74,7 +74,7 @@ for f in canon canon.cmd canon-win canon-win.cmd; do [[ -f "$ROOT/tools/$f" ]] |
 PORT="$(free_port)"
 set +e
 out="$(run status 2>&1)"; code=$?
-wout="$(run wait t-wt01 --until done 2>&1)"; wcode=$?
+wout="$(run wait t-wt01 --until "done" 2>&1)"; wcode=$?
 set -e
 assert_eq "2" "$wcode"
 assert_eq "The Cockpit is not running on port $PORT. Start it with: canon" "$wout"   # t-9a2d: canon wait, board down
@@ -106,10 +106,11 @@ for c in status sessions; do
   [[ "$out" != *"<html"* && "$out" != *"<!DOCTYPE"* ]] || fail "canon-cli: a stale board's error page was printed as output"
 done
 # t-9a2d: canon wait on a stale board exits 2 and says what to do
-set +e; out="$(run wait t-wt01 --until done --timeout 2000 2>&1)"; code=$?; set -e
+set +e; out="$(run wait t-wt01 --until "done" --timeout 2000 2>&1)"; code=$?; set -e
 assert_eq "2" "$code"
 assert_eq "The board on port $PORT does not support 'canon wait' (it predates it, or failed). Close its window, then run canon." "$out"
 
+# shellcheck disable=SC2043  # one board today; the loop keeps the per-board stub dirs
 for b in main.go; do
   sd="$WORK/sd-$b"
   stub_daemon "$sd" "$SESSIONS"
@@ -137,7 +138,7 @@ for b in main.go; do
   out="$(run wait t-wt01 --until needs-you --timeout 9000)"; no_token "$out"
   assert_eq "needs-you" "$out"
   (( SECONDS - t0 >= 2 && SECONDS - t0 < 9 )) || fail "canon-cli: wait returned at the wrong time ($((SECONDS - t0))s)"
-  set +e; out="$(run wait t-wt01 --until done --timeout 2000 2>&1)"; code=$?; set -e
+  set +e; out="$(run wait t-wt01 --until "done" --timeout 2000 2>&1)"; code=$?; set -e
   assert_eq "1" "$code"; assert_contains "$out" "timed out after 2000ms. t-wt01 is needs-you"
   assert_eq "needs-you" "$(run wait t-wt01 --until working,needs-you --timeout 3000)"
   j="$(run wait t-wt01 --until needs-you --json)"; no_token "$j"
