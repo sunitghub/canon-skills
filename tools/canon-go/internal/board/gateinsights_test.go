@@ -9,9 +9,12 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
+
+	"canon/internal/events"
 )
 
 // Protects `canon-go gate-insights` (t-9113), the report on the activity log: every number of a seeded log equals a hand count, a machine
@@ -211,4 +214,174 @@ func giHashTree(t *testing.T, root string) string {
 		return nil
 	})
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+var giFixedNow = time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
+
+// the whole text of the seeded log, once: formats, order (project, host, role, model), the no-host and no-reviewer shapes
+func TestGateInsightsTextOfTheSeededLog(t *testing.T) {
+	r := gateInsights(giHome(t), 30, giFixedNow)
+	var b bytes.Buffer
+	giText(r, &b)
+	want := `gate insights, last 30 days (2026-10-09 to 2026-11-08): as recorded in the activity log
+days read: 4 (4 unsealed); events: 19
+
+/p/one on mac
+  evaluator m1                         4 runs     7.0 min       3500 tokens
+  reviewer  m2                         2 runs     1.0 min        100 tokens
+  evaluator first pass: 1 of 2 tickets (50%); retries: 1
+  reviewer: YES 1, NO 1, no verdict 0; act_on items: 2 (recorded on 1 of 2 runs)
+  evidence stamps: 3 (1 reruns, 1 failing), 170 s
+  rejected evaluator stale_evidence: 2
+  budget exceeded: 3 file-days (5 events)
+
+/p/one on vm
+  evaluator m1                         1 runs     0.5 min         10 tokens
+  evaluator first pass: 1 of 1 tickets (100%); retries: 0
+
+/p/three [31m on h [2Jx z
+  evaluator m [2Jodel                  1 runs     1.0 min          1 tokens
+  evaluator first pass: 1 of 1 tickets (100%); retries: 0
+
+/p/two on mac
+  reviewer  m2                         1 runs     0.5 min          7 tokens
+  reviewer: YES 1, NO 0, no verdict 0; act_on: not recorded
+`
+	if b.String() != want {
+		t.Errorf("text differs:\n%s\nwant:\n%s", b.String(), want)
+	}
+}
+
+// numbers the report must refuse or read strictly: partial and not-run are evaluator verdicts, an unnamed reviewer verdict is "no verdict",
+// act_on 0 is recorded (not absent), a negative or non-numeric value is ignored, and a line with no host reads "(no host recorded)"
+func TestGateInsightsStrictReading(t *testing.T) {
+	home := t.TempDir()
+	ev := func(ts, kind, source string, data map[string]string) string {
+		return giEv(ts, "", "/p/x", kind, source, data)
+	}
+	gcWrite(t, filepath.Join(home, "events", "2026-11-08.jsonl"), strings.Join([]string{
+		ev("2026-11-08T01:00:00.000Z", "gate.finished", "subagent-log", map[string]string{"role": "evaluator", "ticket": "t-aaaa", "verdict": "partial", "model": "m", "minutes": "-5", "tokens": "x"}),
+		ev("2026-11-08T02:00:00.000Z", "gate.finished", "subagent-log", map[string]string{"role": "evaluator", "ticket": "t-bbbb", "verdict": "not-run", "model": "m", "minutes": "0", "tokens": "-9"}),
+		ev("2026-11-08T03:00:00.000Z", "gate.finished", "subagent-log", map[string]string{"role": "reviewer", "ticket": "t-aaaa", "verdict": "unknown", "model": "m", "act_on": "0"}),
+		ev("2026-11-08T04:00:00.000Z", "gate.finished", "subagent-log", map[string]string{"role": "reviewer", "ticket": "t-bbbb", "verdict": "NO", "model": "m", "act_on": "-1"}),
+		ev("2026-11-08T05:00:00.000Z", "gate.finished", "subagent-log", map[string]string{"role": "reviewer", "ticket": "t-cccc", "verdict": "NO", "model": "m", "act_on": "many"}),
+		ev("2026-11-08T06:00:00.000Z", "evidence.stamped", "evidence", map[string]string{"ticket": "t-aaaa", "name": "suite", "exit": "0", "seconds": "-3"}),
+	}, ""))
+	r := gateInsights(home, 30, giFixedNow)
+	if len(r.Groups) != 1 {
+		t.Fatalf("groups = %+v", r.Groups)
+	}
+	g := r.Groups[0]
+	if g.Host != "" || g.EvalTickets != 2 || g.EvalFirstPass != 0 || g.EvalRetries != 0 {
+		t.Errorf("evaluator = %+v", g)
+	}
+	if g.Runs[0].Minutes != 0 || g.Runs[0].Tokens != 0 || g.Runs[0].Runs != 2 {
+		t.Errorf("a negative or non-numeric minutes/tokens must add nothing: %+v", g.Runs[0])
+	}
+	if g.Reviewer != (giReviewer{No: 2, Unknown: 1, ActOnRecorded: 1, ActOn: 0}) {
+		t.Errorf("reviewer = %+v (act_on 0 recorded; -1 and 'many' ignored)", g.Reviewer)
+	}
+	if g.Evidence.Seconds != 0 || g.Evidence.Stamps != 1 {
+		t.Errorf("a negative seconds must add nothing: %+v", g.Evidence)
+	}
+	var b bytes.Buffer
+	giText(r, &b)
+	for _, want := range []string{"/p/x on (no host recorded)", "act_on items: 0 (recorded on 1 of 3 runs)", "no verdict 1", "evaluator first pass: 0 of 2 tickets (0%); retries: 0"} {
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("text lacks %q:\n%s", want, b.String())
+		}
+	}
+}
+
+// the seal word for each day read: sealed and intact, inside the grace period (unsealed), broken, and "not checked" when the seals cannot be read
+func TestGateInsightsSealState(t *testing.T) {
+	home := giHome(t)
+	if n, err := events.Seal(home, giFixedNow); err != nil || n != 3 {
+		t.Fatalf("seal: %d days, %v (want 11-05, 11-06, 11-07 sealed; 11-08 is inside the grace hour rules of its own day)", n, err)
+	}
+	r := gateInsights(home, 30, giFixedNow)
+	if r.DaysSealed["intact"] != 3 || r.DaysSealed["unsealed"] != 1 || len(r.DaysSealed) != 2 {
+		t.Errorf("sealed log: %v", r.DaysSealed)
+	}
+	var b bytes.Buffer
+	giText(r, &b)
+	if !strings.Contains(b.String(), "days read: 4 (3 intact, 1 unsealed); events: 19") {
+		t.Errorf("text:\n%s", b.String())
+	}
+	f, _ := os.OpenFile(filepath.Join(home, "events", "2026-11-06.jsonl"), os.O_APPEND|os.O_WRONLY, 0o644)
+	f.WriteString("tampered\n")
+	f.Close()
+	if r := gateInsights(home, 30, giFixedNow); r.DaysSealed["broken"] != 1 || r.DaysSealed["intact"] != 2 {
+		t.Errorf("after an edit to a sealed day: %v", r.DaysSealed)
+	}
+	seals := filepath.Join(home, "events", "seals.jsonl")
+	os.Remove(seals)
+	if err := os.Mkdir(seals, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r = gateInsights(home, 30, giFixedNow)
+	if r.DaysSealed["not checked"] != 4 || len(r.DaysSealed) != 1 {
+		t.Errorf("seals that cannot be read give no day a verdict: %v", r.DaysSealed)
+	}
+	b.Reset()
+	giText(r, &b)
+	if !strings.Contains(b.String(), "days read: 4 (4 not checked)") {
+		t.Errorf("text:\n%s", b.String())
+	}
+}
+
+func TestGateInsightsCLI(t *testing.T) {
+	home := giHome(t)
+	t.Setenv("CANON_HOME", home)
+	giNow = func() time.Time { return giFixedNow }
+	defer func() { giNow = time.Now }()
+	var out, errb bytes.Buffer
+	if rc := gateInsightsCLI([]string{"--json"}, &out, &errb); rc != 0 {
+		t.Fatalf("rc %d %s", rc, errb.String())
+	}
+	var rep map[string]any
+	if err := json.Unmarshal(out.Bytes(), &rep); err != nil {
+		t.Fatal(err)
+	}
+	keys := func(m map[string]any) string {
+		var k []string
+		for x := range m {
+			k = append(k, x)
+		}
+		sort.Strings(k)
+		return strings.Join(k, ",")
+	}
+	if keys(rep) != "days,days_by_seal,days_read,events,groups,window" || rep["days"] != float64(30) || rep["window"] != "2026-10-09 to 2026-11-08" {
+		t.Errorf("json top level: %s", out.String())
+	}
+	g := rep["groups"].([]any)[0].(map[string]any)
+	if keys(g) != "budget_exceeded_events,budget_exceeded_file_days,evaluator_first_pass,evaluator_retries,evaluator_tickets,evidence,host,project,reviewer,rejected,runs" && keys(g) != "budget_exceeded_events,budget_exceeded_file_days,evaluator_first_pass,evaluator_retries,evaluator_tickets,evidence,host,project,rejected,reviewer,runs" {
+		t.Errorf("json group keys: %s", keys(g))
+	}
+	if keys(g["reviewer"].(map[string]any)) != "act_on_runs_recorded,act_on_total,no,no_verdict,yes" || keys(g["evidence"].(map[string]any)) != "failing,reruns,seconds,stamps" ||
+		keys(g["runs"].([]any)[0].(map[string]any)) != "minutes,model,role,runs,tokens" {
+		t.Errorf("json nested keys: %s", out.String())
+	}
+	out.Reset()
+	if rc := gateInsightsCLI([]string{"--days", "1"}, &out, &errb); rc != 0 || !strings.Contains(out.String(), "last 1 days") || !strings.Contains(out.String(), "events: 3") {
+		t.Errorf("--days 1: rc %d\n%s", rc, out.String())
+	}
+	for _, args := range [][]string{{"--days", "0"}, {"--days", "3651"}, {"--days", "x"}, {"--days"}, {"--bogus"}} {
+		errb.Reset()
+		if rc := gateInsightsCLI(args, &out, &errb); rc != 2 || !strings.Contains(errb.String(), "usage: canon-go gate-insights") {
+			t.Errorf("%v: rc %d, %q", args, rc, errb.String())
+		}
+	}
+	// a canon home that cannot be read is an error, not an empty report
+	locked := filepath.Join(t.TempDir(), "locked")
+	os.Mkdir(locked, 0o755)
+	t.Setenv("CANON_HOME", filepath.Join(locked, "home"))
+	os.Chmod(locked, 0)
+	defer os.Chmod(locked, 0o755)
+	errb.Reset()
+	if os.Geteuid() != 0 {
+		if rc := gateInsightsCLI(nil, &out, &errb); rc != 1 || !strings.Contains(errb.String(), "cannot read the canon home") {
+			t.Errorf("unreadable home: rc %d, %q", rc, errb.String())
+		}
+	}
 }

@@ -294,15 +294,15 @@ A="$W/act"; mkproj "$A"; aid="$(cd "$A" && "$TKT" create "Acted")"; at="$A/.tick
 printf '# Review\n\n## Triage\n\nAct On: a.go:1 — x\nAct On: b.go:2 — y\nConsider: none\n\n## Verdict\n\nNO\n' > "$at/review-notes.md"
 (cd "$A" && "$ROOT/tools/subagent-log.sh" --agent-id act-1 --agent-type reviewer --ticket "$aid" >/dev/null)
 assert_contains "$(event_line gate.finished "$aid")" '"act_on":"2"'
+printf 'evaluator-run-id: 1-3\n\npass: ok\n' > "$at/eval-report.md"
+(cd "$A" && "$ROOT/tools/subagent-log.sh" --agent-id act-4 --agent-type evaluator --ticket "$aid" >/dev/null)
+[[ "$(event_line gate.finished "$aid")" != *act_on* ]] || fail "an evaluator run recorded act_on (review-notes.md with Act On items sits beside it)"
 printf '# Review\n\n## Triage\n\nAct On: none\n\n## Verdict\n\nYES\n' > "$at/review-notes.md"
 (cd "$A" && "$ROOT/tools/subagent-log.sh" --agent-id act-2 --agent-type reviewer --ticket "$aid" >/dev/null)
 assert_contains "$(event_line gate.finished "$aid")" '"act_on":"0"'
 printf '# Review\n\n## Verdict\n\nYES\n' > "$at/review-notes.md"   # no Act On line at all: not recorded, not 0
 (cd "$A" && "$ROOT/tools/subagent-log.sh" --agent-id act-3 --agent-type reviewer --ticket "$aid" >/dev/null)
 [[ "$(event_line gate.finished "$aid")" != *act_on* ]] || fail "a review with no Act On line recorded act_on"
-printf 'evaluator-run-id: 1-3\n\npass: ok\n' > "$at/eval-report.md"
-(cd "$A" && "$ROOT/tools/subagent-log.sh" --agent-id act-4 --agent-type evaluator --ticket "$aid" >/dev/null)
-[[ "$(event_line gate.finished "$aid")" != *act_on* ]] || fail "an evaluator run recorded act_on"
 git -C "$A" add -A; git -C "$A" -c user.email=t@t -c user.name=t commit -qm acted
 rc=0; (cd "$A" && "$ROOT/tools/evidence.sh" stamp "$aid" suite -- bash -c 'exit 0' >/dev/null 2>&1) || rc=$?; assert_eq 0 "$rc"
 assert_contains "$(event_line evidence.stamped "$aid")" '"data":{"exit":"0","name":"suite","seconds":"0","ticket":"'"$aid"'"}'

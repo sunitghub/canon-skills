@@ -21,6 +21,8 @@ import (
 
 const giDefaultDays = 30
 
+var giNow = time.Now // the CLI's clock; a test sets it so a seeded log stays inside the window
+
 type giKey struct{ Project, Host string }
 
 type giRun struct {
@@ -306,7 +308,7 @@ func gateInsightsCLI(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "gate-insights: cannot read the canon home:", err)
 		return 1
 	}
-	rep := gateInsights(home, days, time.Now())
+	rep := gateInsights(home, days, giNow())
 	if asJSON {
 		b, _ := json.Marshal(rep)
 		fmt.Fprintln(stdout, string(b))
