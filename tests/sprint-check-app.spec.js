@@ -19902,6 +19902,7 @@ test.describe('Logbook (t-c6bb)', () => {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
     await open(page);
+    await expect(page.locator('#lb-count-p')).toBeVisible();
     await expect(page.locator('#lb-count-p')).toHaveText('3');
     await expect(page.locator('#lb-count-p')).toHaveAttribute('title', '3 promoted');
     await expect(page.locator('.lb-tabs [role="tab"]')).toHaveText(['Handoff', 'Learnings 2', 'Promoted 3', 'Decisions']);
@@ -19937,6 +19938,7 @@ test.describe('Logbook (t-c6bb)', () => {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
     await open(page);
+    await expect(page.locator('#lb-count')).toHaveText('1');   // loaded first
     await expect(page.locator('#lb-count-p')).toBeHidden();
     await expect(page.locator('.lb-tabs [role="tab"]')).toHaveText(['Handoff', 'Learnings 1', 'Promoted', 'Decisions']);
     await page.keyboard.press('Escape');
@@ -19945,6 +19947,7 @@ test.describe('Logbook (t-c6bb)', () => {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
     await open(page);
+    await expect(page.locator('#lb-count')).toHaveText('2');   // loaded: the Learnings badge is up, so "hidden" below is the loaded state, not the first paint
     await expect(page.locator('#lb-count-p')).toBeHidden();
     await page.keyboard.press('Escape');
     await page.unrouteAll({ behavior: 'ignoreErrors' });

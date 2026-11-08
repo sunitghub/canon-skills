@@ -70,7 +70,7 @@ rc "$G";                              assert_eq 2 "$code"; assert_contains "$out
 rc "$G" bogus;                        assert_eq 2 "$code"; assert_contains "$out" "usage: gate-cases.sh add"
 rc "$G" add --bogus x;                assert_eq 2 "$code"; assert_contains "$out" "unknown option: --bogus"
 rc "$G" run --bogus;                  assert_eq 2 "$code"; assert_contains "$out" "unknown option: --bogus"
-for flag in gate slug miss source cmd expect-exit expect-text expect state; do   # a flag with no value after it
+for flag in gate slug miss source cmd expect-exit expect-text expect needs state; do   # a flag with no value after it
   rc "$G" add "--$flag"; assert_eq 2 "$code"; assert_contains "$out" "--$flag needs a value"
 done
 rc "$G" add --gate guard --slug "ok!" --miss m --cmd true --expect-exit 0;       assert_eq 2 "$code"; assert_contains "$out" "--slug must be"
@@ -163,12 +163,13 @@ rm -rf "$CASES"
 
 # --- review findings (t-2178): a clean environment, a missing tool is a skip, valid JSON for any text, the refusals added with them ---
 rc "$G" add --gate guard --slug a --miss m --cmd true --expect-exit 0 --expect e; assert_eq 2 "$code"; assert_contains "$out" "--expect belongs to a recorded case"
+rc "$G" add --gate guard --slug edge-255 --miss m --cmd true --expect-exit 255; assert_eq 0 "$code"; rm -rf "$CASES"   # 255 is the largest exit code
 rc "$G" add --gate guard --slug a --miss m --cmd true --expect-exit 256;          assert_eq 2 "$code"; assert_contains "$out" "from 0 to 255"
 rc "$G" add --gate guard --slug a --miss m --cmd true --expect-exit 0 --needs "a b"; assert_eq 2 "$code"; assert_contains "$out" "--needs must be one command name"
 rc "$G" add --gate reviewer --slug a --miss m --expect e --needs node;            assert_eq 2 "$code"; assert_contains "$out" "--needs belongs to a run case"
 mkdir -p "$WORK/st2"; chmod 000 "$WORK/st2"
 if [[ "$(id -u)" != 0 ]]; then
-  rc "$G" add --gate guard --slug half --miss m --cmd true --expect-exit 0 --state "$WORK/st2"; assert_eq 2 "$code"
+  rc "$G" add --gate guard --slug half --miss m --cmd true --expect-exit 0 --state "$WORK/st2"; assert_eq 2 "$code"; assert_contains "$out" "could not copy --state: nothing was added"
   [[ ! -e "$CASES/half" ]] || fail "gate-cases: a failed copy of --state left a half-written case"
 fi
 chmod 755 "$WORK/st2"; rm -rf "$CASES"
@@ -185,6 +186,9 @@ printf '#!/usr/bin/env bash\nprintf "S[%%s][%%s][%%s]\\n" "${CANON_TICKETS_DIR-}
 printf -- '---\ngate: guard\nkind: run\nmiss: m\ncmd: cat setup-env.txt; printf "C[%%s][%%s][%%s]\\n" "${CANON_TICKETS_DIR-}" "${GIT_DIR-}" "${COCKPIT_STATE_DIR-}"\nexpect_exit: 0\nexpect_text: C[][][]\n---\n' > "$CASES/clean-env/case.md"
 set +e; out="$(CANON_TICKETS_DIR="$WORK/caller-tickets" GIT_DIR="$WORK/caller-gitdir" COCKPIT_STATE_DIR="$WORK/caller-cockpit" "$G" run 2>&1)"; code=$?; set -e
 assert_eq 0 "$code" "gate-cases: a case saw the caller's environment: $out"
+mkdir -p "$CASES/xdg-pinned"; printf -- '---\ngate: guard\nkind: run\nmiss: m\ncmd: echo "X[${XDG_CONFIG_HOME##*gate-case.}]"\nexpect_exit: 1\n---\n' > "$CASES/xdg-pinned/case.md"
+rc "$G" run; assert_contains "$out" "X[" ; [[ "$out" =~ X\[[A-Za-z0-9]{6}/xdg\] ]] || fail "gate-cases: XDG_CONFIG_HOME is not pinned inside the scratch folder: $out"
+rm -rf "$CASES/xdg-pinned"
 rm -rf "$CASES"
 # JSON stays valid for any text: quotes, backslashes, tabs, newlines and control characters in a miss
 rc "$G" add --gate reviewer --slug json-text --miss 'quote " backslash \ tab '$'\t'' esc '$'\033''[31m bell '$'\001'' end' --expect 'x'
