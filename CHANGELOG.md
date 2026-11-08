@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.47.16] - 2026-11-07
+
+Run `canon update`. Issues you send from now on carry the new instruction; a cloud session already running keeps the old one.
+
 - Changed (cloud tickets): a Claude cloud session no longer commits a `LEARNINGS.md` row, so its PR stops conflicting with every release that lands first; `tkt import-results` (and the board's Import results) adds the row on your machine instead, at the top of the table, uncommitted, and tells you which row it added or why it did not (t-8a0d).
 
 ## [0.47.15] - 2026-11-07
