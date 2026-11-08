@@ -135,6 +135,21 @@ printf '#!/usr/bin/env bash\ncd /nonexistent\nrm -rf *\n' > tools/bad.sh; git ad
 set +e; out="$(cd "$R2" && CANON_TICKETS_DIR="$PT" PRE_GATE_BASE="$BASE2" bash "$PG" "$ID" 2>&1)"; code=$?; set -e
 assert_eq 1 "$code" "pre-gate-check: a seeded shellcheck error in that checkout still exits 1 (output: $out)"
 assert_contains "$out" "shellcheck FAIL" "pre-gate-check: the failure is named"
+# when evidence.sh stamps but names no log (a stub playing it), the wrapper says so on stderr and exits with the stamp's code, never on a failed sed
+S="$WORK/stub"; mkdir -p "$S"; cp "$PG" "$S/pre-gate-check.sh"; printf '#!/usr/bin/env bash\nexit "${STUB_RC:-0}"\n' > "$S/evidence.sh"; chmod +x "$S/evidence.sh"
+set +e; out="$(cd "$R2" && STUB_RC=0 bash "$S/pre-gate-check.sh" "$ID" 2>&1)"; code=$?; set -e
+assert_eq 0 "$code" "pre-gate-check: a stamp that succeeded keeps its exit code when no log is named (output: $out)"
+assert_contains "$out" "evidence.sh did not name a readable log" "pre-gate-check: the missing log is said, not a sed error"
+[[ "$out" != *"sed:"* ]] || fail "pre-gate-check: a sed error leaked: $out"
+set +e; out="$(cd "$R2" && STUB_RC=1 bash "$S/pre-gate-check.sh" "$ID" 2>&1)"; code=$?; set -e
+assert_eq 1 "$code" "pre-gate-check: a failed check's exit code survives a missing log (output: $out)"
+printf 'HEAD x\n$ y\n# z\nok\nexit 0\n' > "$WORK/unreadable.log"; chmod 000 "$WORK/unreadable.log"
+printf '#!/usr/bin/env bash\necho "evidence: wrote %s (HEAD abc1234, exit 0)" >&2\nexit 0\n' "$WORK/unreadable.log" > "$S/evidence.sh"
+if [[ "$(id -u)" != 0 ]]; then
+  set +e; out="$(cd "$R2" && bash "$S/pre-gate-check.sh" "$ID" 2>&1)"; code=$?; set -e
+  assert_eq 0 "$code" "pre-gate-check: a named but unreadable log keeps the stamp's exit code"; assert_contains "$out" "did not name a readable log" "pre-gate-check: the unreadable log is said"
+fi
+chmod 644 "$WORK/unreadable.log"
 cd "$R"
 
 [[ -f "$CANON_HOME/canary" && -z "$(ls -A "$TMPDIR")" ]] || fail "pre-gate-check: left a temp file behind"
