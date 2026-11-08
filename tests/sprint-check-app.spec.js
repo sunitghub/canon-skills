@@ -19676,7 +19676,7 @@ test.describe('Logbook (t-c6bb)', () => {
     }
     await page.evaluate(() => document.documentElement.removeAttribute('data-theme'));
     // Learnings (t-7f7c): badge = unpromoted rows, only those rows listed, no filter pills; the tabs are in order
-    await expect(page.locator('.lb-tabs [role="tab"]')).toHaveText(['Handoff', 'Learnings 2', 'Promoted', 'Decisions']);
+    await expect(page.locator('.lb-tabs [role="tab"]')).toHaveText(['Handoff', 'Learnings 2', 'Promoted 1', 'Decisions']);
     await page.locator('#lb-tab-l').click();
     await expect(page.locator('#lb-note')).toHaveText('LEARNINGS.md · written by tkt learn, reviewed by promote-learnings');
     await expect(page.locator('#lb-intro')).toContainText('/promote-learnings');
@@ -19887,6 +19887,106 @@ test.describe('Logbook (t-c6bb)', () => {
     const target = page.locator('.lb-target').first();
     const lines = await target.evaluate(e => Math.round(e.getBoundingClientRect().height / parseFloat(getComputedStyle(e).lineHeight || '16')));
     expect(lines).toBe(1);   // "PROMOTED.md" is one line
+    await page.keyboard.press('Escape');
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
+  // t-2178 (user, Logbook screenshot): the Promoted tab carries a count bubble like Learnings does. Prod path: the Logbook's tab bar, which every
+  // Logbook open draws. The number is what the tab lists; it is a record, so it is neutral where the Learnings badge is amber.
+  const PROMOTED_MD = '# Promoted\n\n<!-- canon:promoted:BEGIN -->\n- Rule one (t-aaaa)\n- Rule two, on two\n  lines\n- Rule three (t-bbbb)\n<!-- canon:promoted:END -->\n';
+  const learnFile = rows => file('# Learnings\n\n<!-- canon:learnings:BEGIN -->\n| Date | Ticket | Finding | Status |\n|---|---|---|---|\n' + rows + '<!-- canon:learnings:END -->\n');
+  test('Promoted tab count: PROMOTED.md entries, else the promoted rows of LEARNINGS.md and its archive; neutral, hidden at 0, loading and on error (t-2178)', async ({ page }) => {
+    // 1. a PROMOTED.md with three entries (one wraps over two lines): 3, and the tab reads "Promoted 3"
+    await serve(page, undefined, undefined, { promoted: file(PROMOTED_MD) });
+    await page.setViewportSize({ width: 1000, height: 700 });
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await open(page);
+    await expect(page.locator('#lb-count-p')).toHaveText('3');
+    await expect(page.locator('#lb-count-p')).toHaveAttribute('title', '3 promoted');
+    await expect(page.locator('.lb-tabs [role="tab"]')).toHaveText(['Handoff', 'Learnings 2', 'Promoted 3', 'Decisions']);
+    await page.locator('#lb-tab-p').click();
+    await expect(page.locator('.lb-rules li')).toHaveCount(3);   // the bubble equals what the tab lists
+    // neutral, not the Learnings badge's amber, in both themes
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate(t => { if (t === 'light') document.documentElement.dataset.theme = 'light'; else document.documentElement.removeAttribute('data-theme'); }, theme);
+      const c = await page.evaluate(() => ({ p: getComputedStyle(document.getElementById('lb-count-p')).borderTopColor, l: getComputedStyle(document.getElementById('lb-count')).borderTopColor }));
+      expect(c.p, theme + ': Promoted bubble is not the amber of the Learnings badge').not.toBe(c.l);
+    }
+    await page.evaluate(() => document.documentElement.removeAttribute('data-theme'));
+    await page.keyboard.press('Escape');
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+
+    // 2. no PROMOTED.md: two promoted rows with a destination in LEARNINGS.md, one more in the archive, and rows that do not count (no destination, dismissed, unpromoted)
+    await serve(page, undefined, learnFile(
+      row('2026-10-22', 't-bbbb', 'Promoted here.', '`promoted → standards/efficiency-notes.md`') + row('2026-10-21', 't-cccc', 'And here.', '`promoted → PROMOTED.md`')
+      + row('2026-10-20', 't-dddd', 'Promoted, no destination.', 'promoted') + row('2026-10-19', 't-eeee', 'Dismissed.', 'dismissed') + row('2026-10-18', 't-ffff', 'Waiting.', 'UNPROMOTED')),
+      { learnings_archive: learnFile(row('2026-09-01', 't-0001', 'Archived and promoted.', '`promoted → docs/learnings.md`')) });
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await open(page);
+    await expect(page.locator('#lb-count-p')).toHaveText('3');
+    await expect(page.locator('#lb-count')).toHaveText('1');   // the Learnings badge is its own number, unchanged
+    await page.locator('#lb-tab-p').click();
+    await expect(page.locator('.lb-table tbody tr')).toHaveCount(3);
+    await page.keyboard.press('Escape');
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+
+    // 3. nothing promoted: no bubble (and no "0"); a PROMOTED.md that cannot be read: no bubble either
+    await serve(page, undefined, learnFile(row('2026-10-18', 't-ffff', 'Waiting.', 'UNPROMOTED')));
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await open(page);
+    await expect(page.locator('#lb-count-p')).toBeHidden();
+    await expect(page.locator('.lb-tabs [role="tab"]')).toHaveText(['Handoff', 'Learnings 1', 'Promoted', 'Decisions']);
+    await page.keyboard.press('Escape');
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+    await serve(page, undefined, undefined, { promoted: { error: 'PROMOTED.md is a symbolic link; the Logbook reads regular files only' } });
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await open(page);
+    await expect(page.locator('#lb-count-p')).toBeHidden();
+    await page.keyboard.press('Escape');
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+
+    // 4. while the Logbook loads, and when its request fails: no bubble
+    let release;
+    const held = new Promise(r => { release = r; });
+    await page.route(/\/api\/logbook(\?|$)/, async r => { await held; await r.fulfill({ status: 500, contentType: 'text/plain', body: 'x' }); });
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await open(page);
+    await expect(page.locator('#lb-body')).toContainText('Loading');
+    await expect(page.locator('#lb-count-p')).toBeHidden();
+    release();
+    await expect(page.locator('#lb-body [role="alert"]')).toContainText('could not be loaded');
+    await expect(page.locator('#lb-count-p')).toBeHidden();
+    await page.keyboard.press('Escape');
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
+
+  test('Promoted tab count: both bubbles fit the tab bar at 480 px, and at 360 px the bar scrolls instead of clipping a tab (t-2178) @webkit', async ({ page }) => {
+    await serve(page, undefined, undefined, { promoted: file(PROMOTED_MD.replace('<!-- canon:promoted:END -->', Array.from({ length: 120 }, (_, i) => '- Rule ' + i + '\n').join('') + '<!-- canon:promoted:END -->')) });
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    const measure = () => page.evaluate(() => {
+      const bar = document.querySelector('.lb-tabs'), tab = document.getElementById('lb-tab-p'), badge = document.getElementById('lb-count-p');
+      const t = tab.getBoundingClientRect(), b = badge.getBoundingClientRect();
+      return { overflow: bar.scrollWidth - bar.clientWidth, badgeInside: b.left >= t.left - 1 && b.right <= t.right + 1, oneLine: Math.round(t.height) <= 48, scrolls: getComputedStyle(bar).overflowX };
+    });
+    await page.setViewportSize({ width: 480, height: 700 });
+    await open(page);
+    await expect(page.locator('#lb-count-p')).toHaveText('123');
+    const wide = await measure();
+    expect(wide.overflow, '480 px: the tab bar does not scroll').toBeLessThanOrEqual(0);
+    expect(wide.badgeInside, '480 px: the bubble sits inside its tab').toBe(true);
+    expect(wide.oneLine, '480 px: the tab stays one line').toBe(true);
+    await page.setViewportSize({ width: 360, height: 700 });
+    const narrow = await measure();
+    expect(narrow.scrolls, '360 px: the bar scrolls sideways').toBe('auto');
+    expect(narrow.oneLine, '360 px: the tab stays one line').toBe(true);
+    await page.locator('#lb-tab-p').click();   // the last-but-one tab is still reachable
+    await expect(page.locator('#lb-tab-p')).toHaveAttribute('aria-selected', 'true');
     await page.keyboard.press('Escape');
     await page.unrouteAll({ behavior: 'ignoreErrors' });
   });

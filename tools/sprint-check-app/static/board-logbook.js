@@ -95,6 +95,14 @@ function renderLearnings() {
   return learnTable(rows.map(r => learnRow(r, false)), 'Status');
 }
 
+// the promoted rows of LEARNINGS.md and its archive that name where they went (a project with no PROMOTED.md lists these)
+const promotedRows = () => rowsOf(data.learnings).concat(rowsOf(data.learnings_archive)).filter(r => r.kind === 'pr' && r.target);
+// t-2178: what the Promoted tab lists, as a number for its bubble: the entries of PROMOTED.md, else the promoted rows; 0 when the file cannot be read
+function promotedCount() {
+  if (hasPromotedFile()) return parsePromoted(data.promoted.text).entries.length;
+  return data.promoted && data.promoted.error ? 0 : promotedRows().length;
+}
+
 function renderPromoted() {
   if (hasPromotedFile()) {
     const { entries, lines } = parsePromoted(data.promoted.text);
@@ -106,7 +114,7 @@ function renderPromoted() {
   }
   const st = data.promoted && data.promoted.error ? fileState(data.promoted, 'PROMOTED.md') : '';
   if (st) return st;
-  const rows = rowsOf(data.learnings).concat(rowsOf(data.learnings_archive)).filter(r => r.kind === 'pr' && r.target);
+  const rows = promotedRows();
   if (!rows.length) return '<div class="lb-empty"><b>Nothing promoted yet</b>Rows appear here once a review marks them promoted.</div>';
   return learnTable(rows.map(r => learnRow(r, true)), 'Promoted to');
 }
@@ -166,17 +174,21 @@ function render() {
   el('lb-note').textContent = tab === 'p' ? NOTES.p(pf) : NOTES[tab];
   el('lb-intro').textContent = tab === 'l' ? INTROS.l(pf ? 'PROMOTED.md' : 'canon\'s standards and reference docs') : tab === 'p' ? INTROS.p(pf) : INTROS[tab];
   const body = el('lb-body');
-  const count = el('lb-count');
-  if (!data) { body.innerHTML = '<div class="lb-empty">Loading…</div>'; count.hidden = true; return; }
+  const count = el('lb-count'), pcount = el('lb-count-p');
+  if (!data) { body.innerHTML = '<div class="lb-empty">Loading…</div>'; count.hidden = true; pcount.hidden = true; return; }
   if (data.fetchError) {
     body.innerHTML = '<div class="lb-empty lb-err" role="alert"><b>The Logbook could not be loaded</b>' + esc(data.fetchError) + '<div><button type="button" class="lb-chip" data-reload="1">Try again</button></div></div>';
-    count.hidden = true;
+    count.hidden = true; pcount.hidden = true;
     return;
   }
   const un = data.learnings && data.learnings.text ? parseLearnings(data.learnings.text).filter(r => r.kind === 'un').length : 0;
   count.textContent = un;
   count.hidden = !un;   // the badge is the number still to review: nothing to review, no badge
   count.title = un + ' unpromoted';
+  const pn = promotedCount();
+  pcount.textContent = pn || '';
+  pcount.hidden = !pn;   // a record, not a to-do: nothing promoted, no bubble
+  pcount.title = pn + ' promoted';
   body.innerHTML = { h: renderHandoff, l: renderLearnings, p: renderPromoted, d: renderDecisions }[tab]();
 }
 

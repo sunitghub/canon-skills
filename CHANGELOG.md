@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+- Added (Logbook): the Promoted tab has a count bubble beside its name, like Learnings does: the number of entries the tab lists (the entries of PROMOTED.md, else the promoted rows with a destination in LEARNINGS.md and its archive), in a neutral colour because it is a record, where the Learnings number is amber because it is work waiting. Hidden at 0. The tab bar now scrolls sideways in a phone-width window instead of clipping a tab (t-2178).
+
 - Added (sprint close): a gate eval set. `tools/gate-cases.sh add` turns a gate's miss into a case in `tests/gate-cases/` (a guard case runs offline in a scratch copy with the environment pinned; a reviewer or evaluator miss is recorded as data), `run` reports `gate cases N of N pass`, and `tools/pre-gate-check.sh` runs the set before any gate and fails the close when a guard stops catching its recorded miss. Three cases to start: the board spec's 0-test run, a stale evidence stamp, and the reviewer's mirror-push false positive; a fourth, `sprint eval-verdict` counting a stale report in a worktree's own `.tickets/` copy, is recorded and filed as t-6be7 (t-2178).
 
 ## [0.47.20] - 2026-11-08
