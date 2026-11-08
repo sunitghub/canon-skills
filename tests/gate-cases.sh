@@ -66,13 +66,13 @@ rm -rf "$CASES"
 rc "$G" run; assert_eq 0 "$code"; assert_contains "$out" "gate cases: none"
 
 # --- the real set: it passes on the real guards, and a weakened guard fails its case ---
-unset GATE_CASES_DIR
+export GATE_CASES_DIR="$ROOT/tests/gate-cases"   # explicit: this test also runs in a scratch copy that has no .git
 rc "$G" run; assert_eq 0 "$code" "gate-cases: the real set fails: $out"
 assert_contains "$out" "  ok        board-spec-zero-tests (guard)"; assert_contains "$out" "  ok        stale-evidence-stamp (guard)"
 assert_contains "$out" "recorded  reviewer-mirror-push-false-positive"; assert_contains "$out" "recorded  eval-verdict-worktree-copy"
 
 # a scratch tree of the guards, weakened one line each: the case that records the miss must fail
-copy_tree() { mkdir -p "$1"; (cd "$ROOT" && git ls-files tools tests/board-spec-guard.js tests/board-spec-baseline.json | grep -v '^tools/canon-go/' | tar -cf - -T -) | tar -xf - -C "$1"; }
+copy_tree() { mkdir -p "$1"; (cd "$ROOT" && tar -cf - --exclude=tools/canon-go --exclude=tools/canon-go-bin tools tests/board-spec-guard.js tests/board-spec-baseline.json) | tar -xf - -C "$1"; }
 weak="$WORK/weak-guard"; copy_tree "$weak"
 sed -i.bak 's/^\(.*\)!Object.keys(r.tests).length) violations.push(/\1false) violations.push(/' "$weak/tests/board-spec-guard.js"; rm -f "$weak/tests/board-spec-guard.js.bak"
 cmp -s "$ROOT/tests/board-spec-guard.js" "$weak/tests/board-spec-guard.js" && fail "gate-cases: the weakened board-spec guard is identical to the real one"
