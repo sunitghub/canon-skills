@@ -18137,7 +18137,9 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#fac-gh')).toBeHidden();
     for (const t of ['Planned · not built yet', 't-347a', 't-47f4', 't-f279', 't-074e', 'Factory: Off']) await expect(page.locator('#fac-line')).toContainText(t);
     await expect(page.locator('#fac-line input, #fac-line select, #fac-line button')).toHaveCount(0);
-    await page.locator('#fac-tab-line').press('ArrowLeft');
+    await page.locator('#fac-tab-line').press('ArrowLeft');   // t-3a58: Pipeline sits between GitHub and Agentic factory
+    await expect(page.locator('#fac-tab-pipe')).toHaveAttribute('aria-selected', 'true');
+    await page.locator('#fac-tab-pipe').press('ArrowLeft');
     await expect(page.locator('#fac-tab-gh')).toHaveAttribute('aria-selected', 'true');
     await expect(page.locator('#fac-tab-gh')).toBeFocused();
     await page.locator('#nav-admin').click();
