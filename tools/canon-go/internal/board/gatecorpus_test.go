@@ -45,9 +45,9 @@ func gcoSeed(t *testing.T) string {
 		}
 		t.Cleanup(func() { os.Chmod(filepath.Join(root, ".tickets", "t-0010", "eval-report.md"), 0o644) })
 	}
-	put("t-0012", "review-notes.md", "\ufeffModel: claude-sonnet-5\nReviewed: 2026-10-20\n\n## Verdict: YES\n") // a BOM, and the heading form of the verdict
-	put("t-0013", "review-notes.md", "## Findings\n\nnone\n\n## Verdict\n\nNo blocking findings here.\n")       // prose, not a verdict
-	put("t-0014", "review-notes.md", "Model: sonnet\nReviewed: 0000-99\n\n## Verdict\n\nYES\n")                 // a forged date is undated
+	put("t-0012", "review-notes.md", "\ufeffModel: claude-sonnet-5\nReviewed: 2026-10-20\n\n## Findings\n\nGuards that cannot fail: t.go:3 — an assertion that passes reverted\nHygiene: none — checked plan.md, plan.md:2\nError handling: a.go:9 — a swallowed error\n\n## Verdict: YES\n") // a BOM, and the heading form of the verdict
+	put("t-0013", "review-notes.md", "## Findings\n\nnone\n\n## Verdict\n\nNo blocking findings here.\n")                                                                                                                                                                                     // prose, not a verdict
+	put("t-0014", "review-notes.md", "Model: sonnet\nReviewed: 0000-99\n\n## Verdict\n\nYES\n")                                                                                                                                                                                               // a forged date is undated
 	put("notaticket", "review-notes.md", "## Triage\nAct On: ignored\n")
 	put("T-0099", "review-notes.md", "## Triage\nAct On: ignored\n")
 	return root
@@ -69,7 +69,7 @@ func TestGateCorpusCountsEqualAHandCount(t *testing.T) {
 	if tot.Triaged != 4 || tot.WithActOn != 2 || tot.Lines["Act On"] != 3 || tot.Lines["Consider"] != 0 || tot.Lines["Noted"] != 3 || tot.Lines["Dismissed"] != 1 {
 		t.Errorf("triaged %d with act on %d lines %v", tot.Triaged, tot.WithActOn, tot.Lines)
 	}
-	want := map[string]int{"Standards violations": 1, "Dead code": 1, "Scope creep": 1, "Unnecessary complexity": 1}
+	want := map[string]int{"Standards violations": 1, "Dead code": 1, "Scope creep": 1, "Unnecessary complexity": 1, "Guards that cannot fail": 1, "Error handling": 1}
 	for _, c := range gcoConcerns {
 		if tot.Concerns[c] != want[c] {
 			t.Errorf("concern %s = %d, want %d (%v)", c, tot.Concerns[c], want[c], tot.Concerns)
@@ -207,7 +207,7 @@ unreadable: 1 larger than 256 KB, 1 not a regular file, 1 unreadable
 reviewer: YES 4, NO 1, other 4
   triaged reviews (with a ## Triage section): 4; with an Act On line: 2 (50%)
   bucket lines (not none): Act On 3, Consider 0, Noted 3, Dismissed 1
-  template concern lines (not none, in a ## Findings section): Scope creep 1, Visual regression 0, Dead code 1, Unnecessary complexity 1, Standards violations 1
+  concern lines (not none, in a ## Findings section): Correctness 0, Guards that cannot fail 1, Security and trust boundaries 0, Error handling 1, Visual regression 0, Portability 0, Hygiene 0, Scope creep 1, Dead code 1, Unnecessary complexity 1, Standards violations 1
 
 evaluator: pass 1, fail 0, partial 1, not-run 0, other 0
   criteria rows: pass 4, fail 1, partial 1, not-run 1, other 1

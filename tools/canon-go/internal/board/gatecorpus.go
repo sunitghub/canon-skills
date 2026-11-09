@@ -12,7 +12,7 @@ import (
 )
 
 // canon-go gate-corpus (t-a05d stage 1): what the closed tickets' gate reports say, counted from their FIXED shapes only. The reviewer's triage
-// buckets (Act On, Consider, Noted, Dismissed) and its five template concern labels are line prefixes; the model and the date are header lines; the
+// buckets (Act On, Consider, Noted, Dismissed) and its concern labels (the current seven and the five before t-0ca2) are line prefixes; the model and the date are header lines; the
 // evaluator's verdict and its criteria table are a heading and pipe rows. A concern read out of a free-text finding is a judgement, so it is not
 // attempted here (the analysts' labels live in the ticket's local corpus file). Read-only, local, no model call. Every file is untrusted: nothing a
 // file says is printed except a count under a fixed word (a model is one of opus, sonnet, haiku, other, unknown; a month is digits; a label is one of
@@ -22,7 +22,7 @@ const gcoMaxFile = 256 << 10
 
 var (
 	gcoBucketRe  = regexp.MustCompile(`^(Act On|Consider|Noted|Dismissed):[ \t]*(.*)$`)
-	gcoConcernRe = regexp.MustCompile(`^[-*]?[ \t]*(Scope creep|Visual regression|Dead code|Unnecessary complexity|Standards violations)[^:]{0,30}:[ \t]*(.*)$`)
+	gcoConcernRe = regexp.MustCompile(`^[-*]?[ \t]*(Correctness|Guards that cannot fail|Security and trust boundaries|Error handling|Portability|Hygiene|Scope creep|Visual regression|Dead code|Unnecessary complexity|Standards violations)[^:]{0,30}:[ \t]*(.*)$`)
 	gcoNoneRe    = regexp.MustCompile(`(?i)^none([^a-z0-9_]|$)`)
 	gcoMonthRe   = regexp.MustCompile(`^(Reviewed|Evaluated):[ \t]*([0-9]{4}-[0-9]{2})`)
 	gcoModelRe   = regexp.MustCompile(`^Model:[ \t]*(.*)$`)
@@ -43,7 +43,7 @@ func gcoMonth(m string) string {
 }
 
 var gcoBuckets = []string{"Act On", "Consider", "Noted", "Dismissed"}
-var gcoConcerns = []string{"Scope creep", "Visual regression", "Dead code", "Unnecessary complexity", "Standards violations"}
+var gcoConcerns = []string{"Correctness", "Guards that cannot fail", "Security and trust boundaries", "Error handling", "Visual regression", "Portability", "Hygiene", "Scope creep", "Dead code", "Unnecessary complexity", "Standards violations"} // the list since t-0ca2, then the five before it
 
 // gcoSlice is every count for one cut of the data (everything, one model or one month).
 type gcoSlice struct {
@@ -309,7 +309,7 @@ func gcoText(r gcoReport, w io.Writer) {
 	for _, c := range gcoConcerns {
 		cl = append(cl, fmt.Sprintf("%s %d", c, t.Concerns[c]))
 	}
-	fmt.Fprintf(w, "  template concern lines (not none, in a ## Findings section): %s\n", strings.Join(cl, ", "))
+	fmt.Fprintf(w, "  concern lines (not none, in a ## Findings section): %s\n", strings.Join(cl, ", "))
 	fmt.Fprintf(w, "\nevaluator: pass %d, fail %d, partial %d, not-run %d, other %d\n", t.EvalVerdicts["pass"], t.EvalVerdicts["fail"], t.EvalVerdicts["partial"], t.EvalVerdicts["not-run"], t.EvalVerdicts["other"])
 	fmt.Fprintf(w, "  criteria rows: pass %d, fail %d, partial %d, not-run %d, other %d\n", t.Criteria["pass"], t.Criteria["fail"], t.Criteria["partial"], t.Criteria["not-run"], t.Criteria["other"])
 	table := func(title string, m map[string]*gcoSlice) {
