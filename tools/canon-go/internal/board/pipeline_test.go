@@ -512,6 +512,7 @@ func TestPipelineRefusesARegisteredPathThatIsNotAbsolute(t *testing.T) {
 	_, _ = pipelineEnv(t)
 	cwd := t.TempDir()
 	t.Chdir(cwd)
+	os.MkdirAll(filepath.Join(cwd, "rel", "canon-config"), 0o755)   // a write relative to the cwd would succeed, so only the refusal keeps the tree still
 	reg, _ := json.Marshal([]registryProject{{ID: "emptyempty01", Path: "", Name: "n"}, {ID: "relativerel02", Path: "rel", Name: "n"}})
 	os.WriteFile(registryFile(), reg, 0o644)
 	before := treeDigest(t, cwd)
