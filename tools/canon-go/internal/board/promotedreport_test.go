@@ -293,8 +293,10 @@ func TestPromotedReportCountsAnIDCitation(t *testing.T) {
 	if two := prFind(r, "slug-two"); two.BySlug != 0 || two.Verdict != "Not mentioned" {
 		t.Errorf("slug-two = %+v: P-0020 must not count as P-002", two)
 	}
-	if !prCitesID("x P-7", "P-7") || prCitesID("x P-70", "P-7") || !prCitesID("P-70 P-7", "P-7") {
-		t.Error("prCitesID token boundary")
+	for text, want := range map[string]bool{"x P-7": true, "P-7": true, "x P-70": false, "P-70 P-7": true, "XP-7": false, "AP-7x": false, "(P-7)": true, "p-7": false, "XP-7 P-7": true, "P-7P-7": false} {
+		if got := prCitesID(text, "P-7"); got != want {
+			t.Errorf("prCitesID(%q) = %v, want %v", text, got, want)
+		}
 	}
 }
 
@@ -316,4 +318,33 @@ func TestPromotedReportHeaderReasonOrder(t *testing.T) {
 			t.Fatalf("run %d differs", i)
 		}
 	}
+}
+
+// a commit listed in .git-blame-ignore-revs (one that only added ids) does not reset a line's promotion date; without the file it does
+func TestPromotedReportIgnoresTheIDBackfillCommit(t *testing.T) {
+	root := t.TempDir()
+	prGit(t, root, "2026-10-01T12:00:00Z", "init", "-q")
+	prPut(t, root, "standards/efficiency-notes.md", "- rule A (t-aaaa; class: slug-one)\n")
+	prGit(t, root, "2026-10-01T12:00:00Z", "add", "-A")
+	prGit(t, root, "2026-10-01T12:00:00Z", "commit", "-q", "-m", "one")
+	prPut(t, root, "standards/efficiency-notes.md", "- rule A (t-aaaa; class: slug-one; id: P-001)\n")
+	prGit(t, root, "2026-11-09T12:00:00Z", "add", "-A")
+	prGit(t, root, "2026-11-09T12:00:00Z", "commit", "-q", "-m", "ids")
+	if e := prFind(promotedReport(root), "slug-one"); e.Date != "2026-11-09" {
+		t.Fatalf("without an ignore file the id commit owns the line: date %q", e.Date)
+	}
+	sha := strings.TrimSpace(prOut(t, root, "rev-parse", "HEAD"))
+	prPut(t, root, ".git-blame-ignore-revs", "# ids only\n"+sha+"\n")
+	if e := prFind(promotedReport(root), "slug-one"); e.Date != "2026-10-01" || e.ID != "P-001" {
+		t.Errorf("with the ignore file the line keeps its promotion date: %+v", e)
+	}
+}
+
+func prOut(t *testing.T, root string, args ...string) string {
+	t.Helper()
+	out, err := exec.Command("git", append([]string{"-C", root}, args...)...).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(out)
 }

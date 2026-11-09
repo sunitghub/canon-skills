@@ -132,12 +132,14 @@ Model: <the model designation received in Inputs>
 
 ## Findings
 
-<If all pass: "No findings." Otherwise: numbered list of fail/partial items — specific, actionable, what is missing or wrong. Then the `Evidence reuse:` line from step 5b. When a finding falls under a promoted rule (a placed line tagged `id: P-nnn`), name that id in it.>
+<If all pass: "No findings." Otherwise: numbered list of fail/partial items — specific, actionable, what is missing or wrong. Then the `Evidence reuse:` line from step 5b.>
 
 ## Verdict
 
 pass: <one sentence> — OR — fail: <one sentence>
 ```
+
+When a finding falls under a promoted rule (a placed line tagged `id: P-nnn`), name that id in the finding.
 
 The verdict line is binary — there is no `partial:` or `not-run:` line. If any criterion or test-plan item graded `partial` **or `not-run`** in the tables above, the verdict line must be `fail:`, summarizing what's partial or could-not-run; `pass:` requires every criterion and test-plan item to be `pass` — no `partial`, no `not-run`. `not-run` is **distinct from `fail`** — it means a load-bearing check *could not execute* (missing interpreter/dependency, un-renderable, un-runnable), not that it ran and failed — but it is **equally blocking**: a check whose result is unknown is not evidence of success, so it can never be silently coerced to `pass`. The close gate accepts only `^pass:` and rejects a `pass:` contradicted by any `not-run`/`partial` row. Reserve `not-run` for a genuinely un-executable check and say why in Findings; if a re-run could resolve it, the fresh evaluator re-dispatch (step 1 overwrites this report with a new run-id each time) is the safe re-attempt.
 

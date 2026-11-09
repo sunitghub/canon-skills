@@ -95,7 +95,12 @@ func prFiles(root string) []string {
 func prBlameDates(root, rel string) []string {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", "-C", root, "blame", "--line-porcelain", "--", rel)
+	args := []string{"-C", root, "blame", "--line-porcelain"}
+	if fi, err := os.Lstat(filepath.Join(root, ".git-blame-ignore-revs")); err == nil && fi.Mode().IsRegular() {
+		args = append(args, "--ignore-revs-file", ".git-blame-ignore-revs") // a commit that only added ids must not reset a line's promotion date
+	}
+	cmd := exec.CommandContext(ctx, "git", append(args, "--", rel)...)
+	cmd.Dir = root
 	for _, e := range os.Environ() {
 		if !strings.HasPrefix(e, "GIT_DIR=") && !strings.HasPrefix(e, "GIT_WORK_TREE=") {
 			cmd.Env = append(cmd.Env, e)
@@ -279,19 +284,23 @@ func prSafeName(f string) string {
 	}, f)
 }
 
-// prCitesID reports whether text names the id as a whole token: P-001 is not found in P-0010.
+// prCitesID reports whether text names the id as a whole token: P-001 is not found in P-0010 or XP-001.
 func prCitesID(text, id string) bool {
 	for i := 0; ; {
 		j := strings.Index(text[i:], id)
 		if j < 0 {
 			return false
 		}
-		end := i + j + len(id)
-		if end >= len(text) || text[end] < '0' || text[end] > '9' {
+		start, end := i+j, i+j+len(id)
+		if (start == 0 || !prAlnum(text[start-1])) && (end >= len(text) || !prAlnum(text[end])) {
 			return true
 		}
-		i = end
+		i = start + 1
 	}
+}
+
+func prAlnum(c byte) bool {
+	return c >= '0' && c <= '9' || c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z'
 }
 
 func prHas(ids []string, id string) bool {
