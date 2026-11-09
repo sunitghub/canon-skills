@@ -244,6 +244,19 @@ assert_grep '^Pipeline: sha256:keep-me$' ".tickets/$ID/plan.md"
 assert_eq "- [x] Plan approved" "$(sed -n 4p ".tickets/$ID/plan.md")"
 [[ "$(sed -n 5p ".tickets/$ID/plan.md")" == "Approved: sha256:"* && "$(sed -n 6p ".tickets/$ID/plan.md")" == "Pipeline: sha256:"* ]] || fail "the Approved and Pipeline pins are not right under the box: $(sed -n 3,7p ".tickets/$ID/plan.md")"
 
+# the summary line the refusal suggests (ids joined by commas, no spaces) is accepted as printed
+new_project; override 'extends: canon-default\noff: [mutation-test, break-it]\n'; new_sprint
+"$SPRINT" approve "$ID" >/dev/null
+close_docs "$ROW_MT$ROW_BI" 'Pipeline: removed break-it,mutation-test (canon-config/pipeline.yaml)\n'
+assert_contains "$("$SPRINT" complete 2>&1)" "Sprint completed: $ID"
+# approve ticks only the first approval box under Sign-off: a second box there, and a box in another section, stay as written
+new_project; new_sprint
+printf '# Plan\n## Sign-off\nTier: normal | Risk: low\n- [ ] Plan approved\n- [ ] Plan approved (second box)\n## Approach\n- [ ] Plan approved (elsewhere)\ntest\n' > ".tickets/$ID/plan.md"
+"$SPRINT" approve "$ID" >/dev/null
+assert_grep '^- \[ \] Plan approved \(second box\)$' ".tickets/$ID/plan.md"
+assert_grep '^- \[ \] Plan approved \(elsewhere\)$' ".tickets/$ID/plan.md"
+assert_eq "1" "$(grep -c '^- \[x\] Plan approved$' ".tickets/$ID/plan.md")"
+
 # ── an install with no pipeline.sh (an older one): the gate is skipped, approve writes no pin, nothing refuses ──
 T2="$(mktemp -d)"; DIRS+=("$T2"); cp "$ROOT"/tools/* "$T2/" 2>/dev/null || true; rm -f "$T2/pipeline.sh"
 SPRINT_REAL="$SPRINT"; SPRINT="$T2/sprint"
