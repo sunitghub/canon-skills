@@ -251,10 +251,11 @@ close_docs "$ROW_MT$ROW_BI" 'Pipeline: removed break-it,mutation-test (canon-con
 assert_contains "$("$SPRINT" complete 2>&1)" "Sprint completed: $ID"
 # approve ticks only the first approval box under Sign-off: a second box there, and a box in another section, stay as written
 new_project; new_sprint
-printf '# Plan\n## Sign-off\nTier: normal | Risk: low\n- [ ] Plan approved\n- [ ] Plan approved (second box)\n## Approach\n- [ ] Plan approved (elsewhere)\ntest\n' > ".tickets/$ID/plan.md"
+printf '# Plan\n## Notes\n- [ ] Plan approved (before)\n## Sign-off\nTier: normal | Risk: low\n- [ ] Plan approved\n- [ ] Plan approved (second box)\n## Approach\n- [ ] Plan approved (elsewhere)\ntest\n' > ".tickets/$ID/plan.md"
 "$SPRINT" approve "$ID" >/dev/null
 assert_grep '^- \[ \] Plan approved \(second box\)$' ".tickets/$ID/plan.md"
 assert_grep '^- \[ \] Plan approved \(elsewhere\)$' ".tickets/$ID/plan.md"
+assert_grep '^- \[ \] Plan approved \(before\)$' ".tickets/$ID/plan.md"
 assert_eq "1" "$(grep -c '^- \[x\] Plan approved$' ".tickets/$ID/plan.md")"
 
 # ── an install with no pipeline.sh (an older one): the gate is skipped, approve writes no pin, nothing refuses ──
