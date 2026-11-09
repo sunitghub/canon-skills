@@ -1,0 +1,101 @@
+# canon's default sprint pipeline (t-00e0): the one list of the sprint's steps and gates.
+# Read by tools/pipeline.sh, which accepts only the YAML subset written here:
+#   nodes:                      once, first
+#     - id: <lowercase-id>      starts a node (letters, digits and '-', starting with a letter)
+#       kind: step|gate|agent|you
+#       order: <number>         unique; the run order, gaps are left on purpose
+#       locked: true|false      a locked node cannot be switched off; it needs a reason
+#       reason: "<why>"         quoted text, no inner quotes
+#       group: wrapup           optional; the nodes a project may reorder among themselves
+#       when: "<condition>"     optional; the automatic skip condition (a node that does not apply is skipped, not removed)
+#       prompt: <path>          optional; the file a node's View prompt opens (relative to canon's folder)
+# A project override lives at <project>/canon-config/pipeline.yaml and holds only what differs (see tools/pipeline.sh):
+#   extends: canon-default
+#   off: [mutation-test]
+#   wrapup-order: [doc-audit, code-reviewer, code-simplifier]
+# Gate names here are the rows of acceptance.md's "## Wrapup Gates" table; tests/pipeline.sh fails when a doc names one this file lacks.
+nodes:
+  - id: start
+    kind: step
+    order: 10
+    locked: true
+    reason: "Always runs: every sprint starts with a ticket and a plan."
+    prompt: skills/sprint/reference/start-checklist.md
+  - id: plan
+    kind: step
+    order: 20
+    locked: true
+    reason: "Always runs: the plan is the contract the gates grade."
+    prompt: skills/sprint/reference/start-checklist.md
+  - id: approve-plan
+    kind: you
+    order: 30
+    locked: true
+    reason: "Always runs: no code before the user approves the plan."
+  - id: build
+    kind: step
+    order: 40
+    locked: true
+    reason: "Always runs: it is the sprint's own work."
+  - id: code-simplifier
+    kind: gate
+    order: 50
+    locked: false
+    group: wrapup
+    when: "code changed (not docs, comments or config only)"
+    prompt: skills/wrapup/gates/simplifier.md
+  - id: code-reviewer
+    kind: gate
+    order: 52
+    locked: false
+    group: wrapup
+    when: "not a single-line or mechanical change"
+    prompt: skills/wrapup/gates/reviewer.md
+  - id: doc-audit
+    kind: gate
+    order: 54
+    locked: false
+    group: wrapup
+    when: "user-facing docs or skill frontmatter changed"
+    prompt: skills/doc-audit/SKILL.md
+  - id: skill-eval
+    kind: gate
+    order: 60
+    locked: false
+    when: "a skill or gate agent changed (tools/skill-eval-scope.sh)"
+    prompt: skills/skill-eval/SKILL.md
+  - id: break-it
+    kind: agent
+    order: 62
+    locked: false
+    when: "high-risk or untrusted-input sprint"
+    prompt: skills/sprint/reference/break-it.md
+  - id: reviewer
+    kind: agent
+    order: 70
+    locked: false
+    prompt: skills/sprint/reference/review.md
+  - id: security-review
+    kind: gate
+    order: 80
+    locked: true
+    reason: "Always runs: it reviews the final diff for input, secrets and trust-boundary problems."
+    prompt: skills/wrapup/gates/security-review.md
+  - id: mutation-test
+    kind: gate
+    order: 90
+    locked: false
+    when: "shell, JS, Python or Go logic files changed"
+    prompt: skills/mutation-test/SKILL.md
+  - id: eval
+    kind: agent
+    order: 100
+    locked: true
+    reason: "Always runs: the binding evaluator is the floor of every close."
+    prompt: skills/sprint/reference/eval.md
+  - id: close
+    kind: step
+    order: 110
+    locked: true
+    reason: "Always runs: sprint complete is how a ticket closes."
+    prompt: skills/sprint/reference/complete-checklist.md

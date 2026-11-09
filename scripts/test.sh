@@ -41,6 +41,7 @@ tests=(
   "$ROOT/tests/tkt-compact.sh"
   "$ROOT/tests/finding-routes.sh"
   "$ROOT/tests/gate-cases.sh"
+  "$ROOT/tests/pipeline.sh"
   "$ROOT/tests/sprint-decisions.sh"
   "$ROOT/tests/tkt-send-issue.sh"
   "$ROOT/tests/cloud-round-trip.sh"

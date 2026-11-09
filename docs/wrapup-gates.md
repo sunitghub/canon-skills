@@ -13,7 +13,8 @@ close-path logic. Each gate's own definition lives in `skills/wrapup/gates/*.md`
 `skills/doc-audit/SKILL.md`, `skills/sprint/reference/review.md` (the advisory `reviewer` gate), and `skills/sprint/reference/eval.md`.
 
 The wrapup pipeline itself is `code-simplifier → code-reviewer → doc-audit → refresh docs`;
-`security-review` runs after the advisory `reviewer` and its fixes, on the final diff, just before the `evaluator`. The `reviewer`, `evaluator`, and the advisory `skill-eval` and non-binding `mutation-test` gates are driven
+`security-review` runs after the advisory `reviewer` and its fixes, on the final diff, just before the `evaluator`.
+The gate and step names live in one file, `skills/sprint/pipeline.yaml`, read with `tools/pipeline.sh resolve`; a project can switch off an optional node or reorder the three wrapup gates in `canon-config/pipeline.yaml` (`tools/pipeline.sh` says how), and `tests/pipeline.sh` fails when a doc names a gate the file lacks. `sprint complete` does not read it yet (t-7e76). The `reviewer`, `evaluator`, and the advisory `skill-eval` and non-binding `mutation-test` gates are driven
 from `complete.md`, not the wrapup pipeline, but they surface together on the board's **Wrapup Gates**
 table, so they're included here.
 
