@@ -181,6 +181,31 @@ if [[ "$(id -u)" != 0 ]]; then   # root reads anything (the cloud container), so
   chmod 600 "$d/canon-config/pipeline.yaml"
 fi
 
+# ── survivors of the mutation sweep: line numbers, exact messages, list shapes, blank lines, a relative symlink ──
+refuse "line 2: bad node id 'Break_It'" 'extends: canon-default\noff: [Break_It]\n'
+refuse "line 2: node 'break-it' listed twice in off" 'extends: canon-default\noff: [break-it, break-it]\n'
+refuse "line 2: node 'doc-audit' listed twice in wrapup-order" 'extends: canon-default\nwrapup-order: [doc-audit, doc-audit]\n'
+refuse "wrapup-order twice" 'extends: canon-default\nwrapup-order: []\nwrapup-order: []\n'
+refuse "line 3: bad node id 'Break It'" 'extends: canon-default\noff:\n  - Break It\n'
+refuse "line 2: off must be [id, id]" 'extends: canon-default\noff: a]\n'
+refuse "line 2: off must be [id, id]" 'extends: canon-default\noff: [a]b]\n'
+refuse "line 3: unsupported line" 'extends: canon-default\noff:\nbreak-it\n'
+d="$(mkproj 'extends: canon-default\n\n   \n# note\n\noff: [break-it]\n\t\n')"
+got="$("$P" resolve --project "$d" 2>&1)" || fail "pipeline: blank or whitespace-only lines in a project file were refused: $got"
+[[ "$got" == *"62 break-it agent off open"* ]] || fail "pipeline: blank or whitespace-only lines in a project file were refused: $got"
+fakedef 'x: 1\n' resolve
+[[ "$FOUT" == *"line 1: expected 'nodes:' first"* ]] || fail "pipeline: a bad default did not name its line: $FOUT"
+fakedef 'nodes:\n  - id: a\n    kind: step\n    order: 1\n    locked: false\n    color: red\n' resolve
+[[ "$FOUT" == *"line 6: unknown field 'color'"* ]] || fail "pipeline: a bad default field did not name line 6: $FOUT"
+fakedef '\n\n# c\nnodes:\n  - id: a\n    kind: step\n    order: 1\n    locked: false\n' resolve
+[[ "$FRC" == 0 ]] || fail "pipeline: blank and comment lines in the default were refused: $FOUT"
+usage_out="$("$P" --help)"
+[[ "$usage_out" != "#"* && "$usage_out" != *$'\n#'* ]] || fail "pipeline: --help prints raw comment markers: $usage_out"
+# run through a RELATIVE symlink (the readlink result is relative to the link's folder)
+fakedef 'nodes:\n  - id: a\n    kind: step\n    order: 1\n    locked: false\n' resolve
+ln -s tools/pipeline.sh "$T/fk/rel-link"
+assert_eq "1 a step on open" "$(cd "$T/cwd" && "$T/fk/rel-link" resolve)"
+
 # ── nothing in a file is ever run (cwd is a scratch folder: a stray `touch` would land there) ──
 mkdir -p "$T/cwd"
 for body in 'extends: canon-default\noff: [$(touch PWNED)]\n' 'extends: canon-default\noff: [`touch PWNED`]\n' 'extends: canon-default\n# $(touch PWNED)\noff: [break-it]\n' 'extends: canon-default\noff: ["$(touch PWNED)"]\n'; do
