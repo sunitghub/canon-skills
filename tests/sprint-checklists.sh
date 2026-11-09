@@ -39,4 +39,14 @@ for f in "$REF/complete-checklist.md" "$REF/complete.md"; do
   grep -qF -- 'only after a push that succeeded' "$f" || fail "sprint-checklists: ${f#"$ROOT"/} lost the 'pushed only after a push that succeeded' rule from close step 10 (t-e75d)"
 done
 
+# t-52a1 — security-review runs last: on the final diff, after the Reviewer step and before the Evaluator dispatch, so no fix lands after it
+# unreviewed. In the close checklist it is absent from step 1, present after step 2 (Reviewer) and ahead of the evaluator's dispatch line.
+CC="$REF/complete-checklist.md"
+step1="$(awk '/^1\. \*\*Wrapup/{f=1} /^2\. \*\*Reviewer/{f=0} f' "$CC")"
+after2="$(awk '/^2\. \*\*Reviewer/{f=1;next} f' "$CC")"
+[[ "$step1" != *security-review* ]] || fail "sprint-checklists: complete-checklist.md step 1 names security-review again; it runs after the Reviewer (t-52a1)"
+sec_line="$(printf '%s\n' "$after2" | grep -n 'security-review' | head -1 | cut -d: -f1)"
+eval_line="$(printf '%s\n' "$after2" | grep -n 'canon-evaluator' | head -1 | cut -d: -f1)"
+[[ -n "$sec_line" && -n "$eval_line" && "$sec_line" -le "$eval_line" ]] || fail "sprint-checklists: complete-checklist.md must run security-review after the Reviewer and before the canon-evaluator dispatch (t-52a1)"
+
 echo "PASS: sprint-checklists"

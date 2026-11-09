@@ -5,7 +5,7 @@
       "id": 1,
       "case_type": "control",
       "prompt": "Run wrapup after adding a new feature: a 40-line function in tools/sprint that validates ticket IDs. README.md was also updated to document the new behavior.",
-      "expected_output": "The skill runs simplifier, reviewer, and doc-audit (since README changed). Security-review is skipped (no security-sensitive patterns). The pipeline produces findings for each gate that ran, then refreshes docs. Committing is not wrapup's own step — that happens later, in sprint complete.",
+      "expected_output": "The skill runs simplifier, reviewer, and doc-audit (since README changed). Security-review is not run here: sprint complete runs it last, after the reviewer. The pipeline produces findings for each gate that ran, then refreshes docs. Committing is not wrapup's own step — that happens later, in sprint complete.",
       "expectations": [
         "Runs or describes running code-simplifier on the changed function",
         "Runs or describes running code-reviewer",
@@ -18,7 +18,7 @@
       "id": 2,
       "case_type": "compliance",
       "prompt": "In the canon repo itself (tools/skill-eval-scope.sh exists), run wrapup. The session only changed README.md — a single sentence was reworded. No code was modified.",
-      "expected_output": "The skill skips code-simplifier and code-reviewer (doc-only change) and skips security-review, but runs doc-audit: tools/doc-check first, then the judgment pass. There is no repo-check gate. It explains the skip reason for each skipped gate.",
+      "expected_output": "The skill skips code-simplifier and code-reviewer (doc-only change) and does not run security-review (sprint complete runs it last), but runs doc-audit: tools/doc-check first, then the judgment pass. There is no repo-check gate. It explains the skip reason for each skipped gate.",
       "expectations": [
         "Skips code-simplifier with a stated reason",
         "Skips code-reviewer with a stated reason",

@@ -12,8 +12,8 @@ See the [README](how-it-works.md#the-two-commands) for the lifecycle overview,
 close-path logic. Each gate's own definition lives in `skills/wrapup/gates/*.md`,
 `skills/doc-audit/SKILL.md`, `skills/sprint/reference/review.md` (the advisory `reviewer` gate), and `skills/sprint/reference/eval.md`.
 
-The wrapup pipeline itself is `code-simplifier → code-reviewer → security-review →
-doc-audit → refresh docs`. The `reviewer`, `evaluator`, and the advisory `skill-eval` and non-binding `mutation-test` gates are driven
+The wrapup pipeline itself is `code-simplifier → code-reviewer → doc-audit → refresh docs`;
+`security-review` runs after the advisory `reviewer` and its fixes, on the final diff, just before the `evaluator`. The `reviewer`, `evaluator`, and the advisory `skill-eval` and non-binding `mutation-test` gates are driven
 from `complete.md`, not the wrapup pipeline, but they surface together on the board's **Wrapup Gates**
 table, so they're included here.
 

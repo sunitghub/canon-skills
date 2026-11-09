@@ -295,7 +295,7 @@ grep -qF -- '**Pin the environment**' "$SHARED" || fail "doc-mirror-parity: shar
 # deleted, doc-audit hands its mechanical checks to tools/doc-check, and code-reviewer holds the syntax check and the canon-checkout-only
 # checks (skills lint, catalog drift, orphan scripts, board render). complete.md's skill-eval skip keeps the canon-checkout test (t-b215).
 COMPLETE_MD="$ROOT/skills/sprint/reference/complete.md"
-grep -qF -- 'security-review → doc-audit → refresh docs' "$WRAPUP" || fail "doc-mirror-parity: wrapup/SKILL.md's pipeline is not code-simplifier → code-reviewer → security-review → doc-audit → refresh docs (t-0a7c, Check N)"
+grep -qF -- 'code-reviewer → doc-audit → refresh docs' "$WRAPUP" || fail "doc-mirror-parity: wrapup/SKILL.md's pipeline is not code-simplifier → code-reviewer → doc-audit → refresh docs (t-0a7c, t-52a1, Check N)"
 [[ ! -e "$ROOT/skills/wrapup/gates/repo-check.md" ]] || fail "doc-mirror-parity: skills/wrapup/gates/repo-check.md is back; the gate was removed (t-0a7c, Check N)"
 for frag in '`tools/skill-eval-scope.sh`' '`skipped | not a canon checkout`'; do
   grep -qF -- "$frag" "$COMPLETE_MD" || fail "doc-mirror-parity: complete.md's skill-eval skip lost '$frag' (t-b215, Check N)"

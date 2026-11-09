@@ -22,8 +22,10 @@ consumer project, resolve via `.claude/skills/...` (Claude Code) or `.agents/ski
 ## Pipeline
 
 ```
-code-simplifier → code-reviewer → security-review → doc-audit → refresh docs
+code-simplifier → code-reviewer → doc-audit → refresh docs
 ```
+
+`security-review` is not in this line: `sprint complete` runs it last, after the advisory reviewer and its fixes, on the final diff (`complete.md` step 1, "Security review runs last"). Its gate file and skip rule below are unchanged.
 
 Commit & Push belongs to `sprint complete`'s own step 10, not this pipeline — see
 `skills/sprint/reference/complete.md`.
@@ -57,7 +59,7 @@ Before each step, assess and skip if criteria apply — state why in one line, n
 
 1. Read `skills/wrapup/gates/simplifier.md`, then apply the simplifier to code touched in this session.
 2. Read `skills/wrapup/gates/reviewer.md`, then apply the code-reviewer across all eight dimensions; defer deep security analysis to Step 3.
-3. Read `skills/wrapup/gates/security-review.md`, then apply the security review. Optional scanners can inform the review, but their absence does not skip the gate.
+3. (Run by `sprint complete` after the reviewer, not here.) Read `skills/wrapup/gates/security-review.md`, then apply the security review. Optional scanners can inform the review, but their absence does not skip the gate.
 4. Read `skills/doc-audit/SKILL.md`, then apply the doc audit (`tools/doc-check` first, then the judgment pass). Do not write to `doc-findings.md` without explicit confirmation. Fix command accuracy issues before committing. A file this step edits must be listed in `plan.md ## Files` in the same step — the reviewer grades scope against that list, and a close-time doc edit missing from it was flagged in four sprints (`t-b999`, `t-533f`, `t-824e`, `t-bdce`).
 5. Read `tools/handoff.md` — plain relative path inside the canon repo itself, or via `command -v sprint`'s containing directory inside a consumer project where `tools/` isn't symlinked in (or `where sprint` on Windows if `command -v` returns nothing) — then refresh docs:
 

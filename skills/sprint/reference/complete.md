@@ -32,7 +32,9 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
 - 9. Close
 - 10. Commit & Push
 
-1. **Wrapup.** Read `skills/wrapup/SKILL.md`, run the wrapup pipeline (code-simplifier, code-reviewer, security-review, doc-audit, then refresh docs) over the sprint's changed files — scope varies by gate: wrapup's memory-scoped gates (code-simplifier, code-reviewer) only see "code touched this session", so a multi-session sprint won't get earlier-session files re-checked by those two; security-review derives scope from git instead. `reviewer`/`evaluator` (steps 2-3 below, not part of this pipeline) also diff against `origin/main`, so they cover the full sprint regardless of session boundaries.
+1. **Wrapup.** Read `skills/wrapup/SKILL.md`, run the wrapup pipeline (code-simplifier, code-reviewer, doc-audit, then refresh docs) over the sprint's changed files — scope varies by gate: wrapup's memory-scoped gates (code-simplifier, code-reviewer) only see "code touched this session", so a multi-session sprint won't get earlier-session files re-checked by those two; security-review (run last, below) derives scope from git instead. `reviewer`/`evaluator` (steps 2-3 below, not part of this pipeline) also diff against `origin/main`, so they cover the full sprint regardless of session boundaries.
+
+   **Security review runs last (t-52a1).** `security-review` is not part of the step 1 pipeline: it runs inline (session model) at the start of step 3, after the reviewer (step 2) and every fix its findings or the pipeline caused, so it sees the final diff and no fix lands after it unreviewed. Commit its fixes, then run ONE mutation sweep and ONE `test-sh` stamp on that final commit, then dispatch the evaluator. A fix made after the sweep restamps once, never per gate. Bugfix and demo keep it before the evaluator in the same relative order.
 
    **Bugfix tier — lighter wrapup.** For a `Tier: bugfix` sprint (eval-only), run a reduced
    wrapup: keep `security-review` (a fix can still touch a trust boundary) and
@@ -106,7 +108,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    refuse. Re-stamp after any later tracked change.
 
    **Mutation sweep (pre-evaluator, non-binding, normal+ tier, t-1fac, t-087c).** When the sprint changed shell, JS, Python
-   or Go logic files, run the `mutation-test` skill here, before the reviewer and evaluator, so they grade a suite that
+   or Go logic files, run the `mutation-test` skill after `security-review` and its fixes (step 3's opening), before the evaluator, so it grades a suite that
    already has teeth: evaluators failed sprints on guards no test could catch that a builder sweep finds in minutes
    (t-9641, t-b860). First run `mutant-sweep --check`: exit 3 means no working Python 3 on this machine (none, Windows'
    Store alias, Python 2), so record `mutation-test | skipped | no python3` and go on without reading the skill (t-a5f6).
@@ -148,7 +150,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
 
    **Soft freeze on `origin/main` once gates are dispatched.** Both gates derive their base ref *live* via `git merge-base HEAD origin/main` (see `shared-gate-protocol.md ## Base-ref derivation`), so do not push further commits to `origin/main` between dispatching a reviewer/evaluator (steps 2-3) and reading back its report — a mid-run push shifts that ref, and if the pushed commit is the sprint's own HEAD the diff goes empty and the gate grades nothing. Hold all pushes until both gates have reported (step 10).
 
-   The "Wrapup Gates" table also records `reviewer`/`eval` — the two close-time gates outside the wrapup pipeline (steps 2-3). After assessing each gate, append a `## Wrapup Gates` section to `acceptance.md` (row order below is an illustrative record, not the execution order — `reviewer`/`eval` actually run at steps 2-3, after the pipeline gates):
+   The "Wrapup Gates" table also records `reviewer`/`eval` — the two close-time gates outside the wrapup pipeline (steps 2-3). After assessing each gate, append a `## Wrapup Gates` section to `acceptance.md` (rows below follow the execution order: pipeline gates, `reviewer`, `security-review`, then `eval`):
 
    ```markdown
    ## Wrapup Gates
@@ -156,9 +158,9 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    |------|--------|--------|
    | code-simplifier | skipped | docs-only change |
    | code-reviewer | ran | no findings — reviewed the 8-dimension checklist in-context |
+   | doc-audit | ran | README updated |
    | reviewer | ran | verdict: YES (model: sonnet (claude-sonnet-5-5) — Admin Review & Eval default) |
    | security-review | skipped | no security-sensitive patterns |
-   | doc-audit | ran | README updated |
    | eval | ran | verdict: pass — eval-report.md written (model: sonnet (claude-sonnet-5-5) — Admin Review & Eval default; 12m) |
    | skill-eval | skipped | advisory — no skill or gate agent changed |
    | mutation-test | skipped | no logic files changed |
@@ -495,7 +497,7 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
 
    **What to pass for `<id>`:** see shared gate mechanics (5) above.
 
-3. **Evaluator review (non-trivial tiers — normal, high-risk, bugfix).** Skip only if `plan.md`'s `## Sign-off` `Tier:` field
+3. **Evaluator review (non-trivial tiers — normal, high-risk, bugfix).** Before dispatch, run `security-review`, its fixes and the mutation sweep and `test-sh` stamp (step 1's "Security review runs last"). Skip only if `plan.md`'s `## Sign-off` `Tier:` field
    value is `trivial` (which can never apply to `SKILL.md`'s four categorical not-trivial
    triggers). **Unlike the reviewer gate, `Tier: bugfix` does NOT skip this gate** — bugfix is
    eval-only, so the binding evaluator always runs; that is exactly what makes the reviewer-skip

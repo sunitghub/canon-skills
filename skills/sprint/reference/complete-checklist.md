@@ -8,35 +8,36 @@ hidden: true
 
 # Sprint Complete — checklist
 
-The normal path. Other cases: see the last table.
+The normal path; other cases: last table.
 
 **First** ask "Ready to close sprint `<id>`? This will run wrapup and move the ticket to Done.
 Confirm to proceed." A broad "continue"/"finish" is not close approval.
 
 ## Steps
 
-1. **Wrapup** (`skills/wrapup/SKILL.md`): code-simplifier, code-reviewer (inline), security-review,
-   doc-audit (`tools/doc-check` first), then refresh docs.
+1. **Wrapup** (`skills/wrapup/SKILL.md`): code-simplifier, code-reviewer (inline), doc-audit (`tools/doc-check` first), then
+   refresh docs.
    - **Pre-gate:** `tools/pre-gate-check.sh <id>` first; non-zero stops the close.
-   - **Mutation sweep** (pre-evaluator) for shell, JS, Python or Go logic: `skills/mutation-test/SKILL.md`
-     (`mutant-sweep --check` first), triage every survivor; after the interim commit
-     `evidence.sh stamp <id> mutant-sweep -- mutant-sweep …`. Non-binding; not skippable without a reason:
-     `mutation-test | skipped | <reason>`.
-   - **Skill eval** if a skill or gate agent changed `tools/skill-eval-scope.sh`; for each `run <skill>`
+   - **Skill eval** if `tools/skill-eval-scope.sh` lists a changed skill or gate agent: for each `run <skill>`
      follow `skills/skill-eval/SKILL.md`; advisory. Commit its `history.jsonl` line.
    - **Interim commit** (specific paths, no `git add -A`) before any gate.
-   - **Evidence:** in a clone of the final commit, run
-     `CANON_TICKETS_DIR=<project>/.tickets evidence.sh stamp <id> test-sh -- <project test command>`
-     (`scripts/test.sh` in canon); re-stamp after tracked changes.
-   - `## Wrapup Gates` in `acceptance.md`: a row per gate (`ran`/`skipped` + evidence);
-     `reviewer` and `code-reviewer` are separate.
-   - No push to `origin/main` from first dispatch until both gates report.
-2. **Reviewer** (advisory). Model check below, then `gate-snapshot.sh pre .tickets/<id>/gate-snapshot.txt --role reviewer`;
+   - `## Wrapup Gates` in `acceptance.md`: a row per gate (`ran`/`skipped` + evidence); `reviewer` and
+     `code-reviewer` are separate.
+   - No push to `origin/main` until both gates report.
+2. **Reviewer** (advisory). Model check below; `gate-snapshot.sh pre .tickets/<id>/gate-snapshot.txt --role reviewer`;
    `Agent` with `subagent_type: "canon-reviewer"`; after: `gate-snapshot.sh post …` (any difference: stop,
    show the PRE recovery hash), `subagent-log.sh --agent-id reviewer-<id> --agent-type reviewer` + cost flags, `--model` (complete.md),
    `sprint check-review-notes <id>` (`shape refused`: re-dispatch). Row: `verdict: YES|NO — …
    (model: <m> — <source>)`. A NO is surfaced, not blocking.
-3. **Evaluator** (binding). `mutation-test` row filled; `sprint check-evidence <id>` ok; `eval_fail_count` below 3; snapshot
+3. **Evaluator** (binding). First `security-review` (inline) on the final diff, after the reviewer's fixes; commit its fixes. Then once:
+   - **Mutation sweep** for shell, JS, Python or Go logic: `skills/mutation-test/SKILL.md`
+     (`mutant-sweep --check` first), triage every survivor; then
+     `evidence.sh stamp <id> mutant-sweep -- mutant-sweep …`. Non-binding; not skippable without a reason:
+     `mutation-test | skipped | <reason>`.
+   - **Evidence:** in a clone of the final commit run
+     `CANON_TICKETS_DIR=<project>/.tickets evidence.sh stamp <id> test-sh -- <project test command>`
+     (canon: `scripts/test.sh`); re-stamp after tracked changes.
+   `mutation-test` row filled; `sprint check-evidence <id>` ok; `eval_fail_count` below 3; snapshot
    pre (`--role evaluator`); `Agent` with `subagent_type: "canon-evaluator"`; snapshot post:
    - Line 1 `evaluator-run-id: <epoch>-<n>`: run `date +%s`; skew over 300 s → discard, re-dispatch. Never
      write a run-id yourself.
@@ -44,11 +45,10 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
    - `fail`, `partial` or `not-run`: surface it, stop. A tracked change after grading needs a fresh
      evaluator (`graded-head:`), except the late docs (`.tickets/`, LEARNINGS, DECISIONS, HANDOFF).
    - Row: `verdict: pass — … (model: <m> — <source>; <N>m)`.
-4. **Tests:** each criterion has a Test Plan line exercising it; each item ✓ with dated evidence. Re-run any
-   "pre-existing failure" the evaluator claims, in the real tree.
+4. **Tests:** each criterion has a Test Plan line exercising it; each item ✓ with dated evidence. Re-run any evaluator-claimed "pre-existing failure" in the real tree.
 5. **Acceptance:** every criterion and QA "Tested locally" box truly met.
 6. **DECISIONS.md:** one short row (rule, falsifier, id); `sprint decisions related|archive|mark` routes the rest.
-7. **Conventions:** propose a new convention line; ask first.
+7. **Conventions:** propose a convention line; ask first.
 8. **Summary:** `.tickets/<id>/summary.md`, one row per criterion (`delivered`/`waived`/`deferred`/`partial`;
    escape `|`), plus a paragraph naming gate models, any reviewer NO. Run `tkt learn <id>`;
    if it writes a file, run `/learnings-sweep <id>`. Say which in chat and summary. Route each Noticed bullet: ticket `[t-xxxx]` or `[dismissed: why]`.
