@@ -6,6 +6,12 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.47.27] - 2026-11-09
+
+Run `canon update`.
+
+- Changed (sprint close order): `security-review` now runs last, after the advisory reviewer and its fixes, on the final diff, so a fix made after it no longer ships unreviewed. The close is wrapup (code-simplifier, code-reviewer, doc-audit), reviewer, `security-review`, one mutation sweep and one suite stamp, then the evaluator. Step numbers are unchanged; the Wrapup Gates example, `wrapup/SKILL.md` and `docs/wrapup-gates.md` follow the same order, and a test fails if `security-review` returns to step 1.
+
 ## [0.47.26] - 2026-11-09
 
 Run `canon update`.
