@@ -40,7 +40,7 @@ assert_grep "## Approach" ".tickets/$id/plan.md"
 assert_grep "## Criteria" ".tickets/$id/acceptance.md"
 assert_grep "## Test Plan" ".tickets/$id/acceptance.md"
 # t-77e0: `sprint start` seeds the When/Then style as a comment, never as an item (the close gates count every "- [ ]" line)
-seed_when_line="$(grep -F 'Optional style for behavior: When <trigger>, <system> <does response>.' ".tickets/$id/acceptance.md")"
+seed_when_line="$(grep -F 'Optional style for behavior: When <trigger>, <system> <does response>.' ".tickets/$id/acceptance.md" || true)"
 [[ -n "$seed_when_line" && "$seed_when_line" == "<!--"* ]] || fail "sprint start did not seed the When/Then style as a comment line in acceptance.md"
 
 second_start_output="$(run_fail "$SPRINT" start "Another sprint")"
