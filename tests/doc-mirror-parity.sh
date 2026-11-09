@@ -170,6 +170,13 @@ grep -qF "$EVAL_SCENARIO_NOTRUN" "$EVAL" || fail "doc-mirror-parity: eval.md is 
 grep -qF "$START_SCENARIO" "$START" || fail "doc-mirror-parity: start.md is missing the scenario-backed acceptance-criteria guidance verbatim (\"$START_SCENARIO\") (t-c67e)"
 grep -qF "$START_ORDERING" "$START" || fail "doc-mirror-parity: start.md is missing the before-implementation ordering norm verbatim (\"$START_ORDERING\") (t-c67e)"
 
+# ── Check R: the When/Then criterion style (t-77e0). `sprint start` seeds the style as a comment (never an unchecked item: the
+# close gates count every `- [ ]` line), start-checklist.md says it is optional and to ask about an ambiguous trigger, and eval.md
+# grades it by performing the trigger and quoting both the trigger and the response.
+grep -qF -- 'performing the trigger' "$EVAL" || fail "doc-mirror-parity: eval.md lost the When/Then grading rule ('performing the trigger') (t-77e0, Check R)"
+grep -qF -- 'quotes both the trigger you performed and the response you saw' "$EVAL" || fail "doc-mirror-parity: eval.md lost 'quotes both the trigger you performed and the response you saw' (t-77e0, Check R)"
+grep -qF -- 'Ask about an ambiguous trigger, never guess it.' "$ROOT/skills/sprint/reference/start-checklist.md" || fail "doc-mirror-parity: start-checklist.md lost the ambiguous-trigger line (t-77e0, Check R)"
+
 # ── Check H: the design-fit tag set (t-d92e) must stay identical between the
 # code-reviewer gate definition (reviewer.md dim.3) and its user-facing doc row
 # (docs/wrapup-gates.md). The two are hand-synced; this locks the principle

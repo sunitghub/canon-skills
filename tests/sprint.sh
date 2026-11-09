@@ -39,6 +39,9 @@ assert_grep "## Sign-off" ".tickets/$id/plan.md"
 assert_grep "## Approach" ".tickets/$id/plan.md"
 assert_grep "## Criteria" ".tickets/$id/acceptance.md"
 assert_grep "## Test Plan" ".tickets/$id/acceptance.md"
+# t-77e0: `sprint start` seeds the When/Then style as a comment, never as an item (the close gates count every "- [ ]" line)
+seed_when_line="$(grep -F 'Optional style for behavior: When <trigger>, <system> <does response>.' ".tickets/$id/acceptance.md")"
+[[ -n "$seed_when_line" && "$seed_when_line" == "<!--"* ]] || fail "sprint start did not seed the When/Then style as a comment line in acceptance.md"
 
 second_start_output="$(run_fail "$SPRINT" start "Another sprint")"
 assert_contains "$second_start_output" "Active sprint already exists:"
@@ -142,6 +145,15 @@ EOF
 
 missing_wrapup_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$missing_wrapup_output" "missing ## Wrapup Gates section"
+
+# t-77e0: the seeded comment alone is no criterion; a "- [x] When <trigger>, <system> <does response>." item is one
+printf '# Acceptance\n\n## Criteria\n%s\n\n## Test Plan\n- [x] npm test\n' "$seed_when_line" > ".tickets/$id/acceptance.md"
+comment_only_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$comment_only_output" "acceptance.md ## Criteria has no checklist items"
+printf '# Acceptance\n\n## Criteria\n%s\n- [x] When tkt gets an unknown id, it exits 2 and names the id.\n\n## Test Plan\n- [x] npm test\n' "$seed_when_line" > ".tickets/$id/acceptance.md"
+when_then_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$when_then_output" "missing ## Wrapup Gates section"
+[[ "$when_then_output" != *"has no checklist items"* && "$when_then_output" != *"Unchecked acceptance/test items remain"* ]] || fail "a When/Then criterion tripped an acceptance gate: $when_then_output"
 
 # Wrapup Gates section exists but table has no data rows (header/separator only)
 cat > ".tickets/$id/acceptance.md" <<'EOF'

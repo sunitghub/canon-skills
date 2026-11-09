@@ -28,6 +28,7 @@ names for a case that applies.
    - `## Criteria`: binary conditions naming the exact field, value or output. Never cite `summary.md` or
      `eval-report.md`, which do not exist when the evaluator grades. A gitignored file
      (`DECISIONS.md`) is named as such, with "read it directly".
+     A behavior criterion may read `When <trigger>, <system> <does response>.`; a doc or file stays free text. Ask about an ambiguous trigger, never guess it.
    - A criterion that needs a machine the grader does not have (the Windows VM) fails as not-run: plan it as a
      checklist item on a separate follow-up ticket (t-e566, t-353a).
    - `## Test Plan`: a command or check per criterion. Each line names the prod path it protects (a shipped
