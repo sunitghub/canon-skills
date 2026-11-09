@@ -15,6 +15,7 @@ DIRS=()
 cleanup() { local d; for d in ${DIRS[@]+"${DIRS[@]}"}; do rm -rf "$d"; done; }
 trap cleanup EXIT
 
+SPRINT_REAL_ALL="$SPRINT"
 ID=""
 new_project() { local d; d="$(make_project)"; DIRS+=("$d"); cd "$d"; }
 new_sprint() {   # start a sprint here with a plan that waits for `sprint approve`
@@ -178,6 +179,70 @@ before="$(fingerprint)"
 out="$(run_fail "$SPRINT" complete)"
 assert_contains "$out" "missing 'extends: canon-default'"
 assert_eq "$before" "$(fingerprint)"
+
+# ── survivors of the mutation sweep and the reviewer's CRLF finding ──
+# CRLF: a Windows checkout ends every line with \r; the summary line, the table rows and the pin must still match
+new_project; override 'extends: canon-default\noff: [mutation-test]\n'; new_sprint
+"$SPRINT" approve "$ID" >/dev/null
+sed -i.bak 's/$/\r/' ".tickets/$ID/plan.md"; rm -f ".tickets/$ID/plan.md.bak"
+close_docs "$ROW_MT" 'Pipeline: removed mutation-test (canon-config/pipeline.yaml)\n'
+sed -i.bak 's/$/\r/' ".tickets/$ID/acceptance.md" ".tickets/$ID/summary.md"; rm -f ".tickets/$ID/acceptance.md.bak" ".tickets/$ID/summary.md.bak"
+out="$("$SPRINT" complete 2>&1)" || fail "a CRLF summary, table and pin refused a correct close: $out"
+assert_contains "$out" "Sprint completed: $ID"
+ev="$(events_of)"; assert_contains "$ev" "\"project\":\"$(pwd -P)\""
+# every problem is on its own line, and a resolver refusal prints its fix line and stops there (nothing later in the gate runs)
+new_project; override 'extends: canon-default\noff: [mutation-test, break-it]\n'; new_sprint
+"$SPRINT" approve "$ID" >/dev/null
+close_docs '' ''
+out="$(run_fail "$SPRINT" complete)"
+[[ "$(printf '%s\n' "$out" | grep -c 'needs')" == 4 ]] || fail "the four missing rows and lines are not four separate lines: $out"
+# a summary line that names only one of two removed nodes, or one whose name merely starts with a removed node's, does not count
+close_docs "$ROW_MT$ROW_BI" 'Pipeline: removed mutation-test\n'
+out="$(run_fail "$SPRINT" complete)"
+assert_contains "$out" "summary.md needs a line naming break-it"; [[ "$out" != *"naming mutation-test"* ]] || fail "a node the summary names was demanded again: $out"
+close_docs "$ROW_MT$ROW_BI" 'Pipeline: removed mutation-testx, break-itx\n'
+out="$(run_fail "$SPRINT" complete)"
+assert_contains "$out" "summary.md needs a line naming break-it"; assert_contains "$out" "summary.md needs a line naming mutation-test"
+# drift names exactly the nodes that were added or removed since the pin, once each
+new_project; override 'extends: canon-default\noff: [mutation-test, break-it]\n'; new_sprint
+"$SPRINT" approve "$ID" >/dev/null
+override 'extends: canon-default\noff: [break-it, skill-eval]\n'
+close_docs '| break-it | skipped | removed in this project'"'"'s pipeline |\n| skill-eval | skipped | removed in this project'"'"'s pipeline |\n' 'Pipeline: removed break-it, skill-eval\n'
+out="$(run_fail "$SPRINT" complete)"
+assert_contains "$out" "the pipeline changed after approval (mutation-test, skill-eval)."
+# a resolver refusal prints its fix line and nothing from the later checks
+new_project; new_sprint
+"$SPRINT" approve "$ID" >/dev/null
+close_docs '' ''
+override 'extends: canon-default\noff: [eval]\n'
+out="$(run_fail "$SPRINT" complete)"
+assert_contains "$out" "Fix canon-config/pipeline.yaml (or restore it); a locked node cannot be switched off."
+[[ "$out" != *"changed after approval"* && "$out" != *"malformed"* && "$out" != *"needs the row"* ]] || fail "the gate went on after the resolver refused: $out"
+# a malformed pin is refused outright (never only noticed), including one with junk in front of a well-shaped pin
+for pin in 'x' 'junk 000000000000 off=- wrapup=code-simplifier,code-reviewer,doc-audit' '000000000000 off=- wrapup=a;'; do
+  new_project; new_sprint
+  printf '# Plan\n## Sign-off\nTier: normal | Risk: low\n- [x] Plan approved\nPipeline: sha256:%s\n## Approach\ntest\n' "$pin" > ".tickets/$ID/plan.md"
+  close_docs '' ''
+  out="$(run_fail "$SPRINT" complete)"
+  assert_contains "$out" "'Pipeline:' pin is malformed"
+done
+# canon's own default changed after approval (a canon update): the same refusal, naming the change; a copy of the install holds its own default
+T3="$(mktemp -d)"; DIRS+=("$T3"); mkdir -p "$T3/tools" "$T3/skills/sprint"; cp "$ROOT"/tools/* "$T3/tools/" 2>/dev/null || true; cp "$ROOT/skills/sprint/pipeline.yaml" "$T3/skills/sprint/"
+SPRINT="$T3/tools/sprint"
+new_project; new_sprint
+"$SPRINT" approve "$ID" >/dev/null
+sed -i.bak 's/order: 90$/order: 91/' "$T3/skills/sprint/pipeline.yaml"; rm -f "$T3/skills/sprint/pipeline.yaml.bak"
+close_docs '' ''
+out="$(run_fail "$SPRINT" complete)"
+assert_contains "$out" "the pipeline changed after approval (the resolved order (a canon default or a node order changed))"
+SPRINT="$SPRINT_REAL_ALL"
+# approve touches only the Sign-off: a Pipeline: line elsewhere in plan.md stays, and the pins sit right under the box
+new_project; new_sprint
+printf '# Plan\n## Sign-off\nTier: normal | Risk: low\n- [ ] Plan approved\n## Approach\nPipeline: sha256:keep-me\ntest\n' > ".tickets/$ID/plan.md"
+"$SPRINT" approve "$ID" >/dev/null
+assert_grep '^Pipeline: sha256:keep-me$' ".tickets/$ID/plan.md"
+assert_eq "- [x] Plan approved" "$(sed -n 4p ".tickets/$ID/plan.md")"
+[[ "$(sed -n 5p ".tickets/$ID/plan.md")" == "Approved: sha256:"* && "$(sed -n 6p ".tickets/$ID/plan.md")" == "Pipeline: sha256:"* ]] || fail "the Approved and Pipeline pins are not right under the box: $(sed -n 3,7p ".tickets/$ID/plan.md")"
 
 # ── an install with no pipeline.sh (an older one): the gate is skipped, approve writes no pin, nothing refuses ──
 T2="$(mktemp -d)"; DIRS+=("$T2"); cp "$ROOT"/tools/* "$T2/" 2>/dev/null || true; rm -f "$T2/pipeline.sh"

@@ -493,6 +493,7 @@ _gate_pipeline() {
         problems+="  - acceptance.md ## Wrapup Gates needs the row: | $node | skipped | $PIPELINE_REMOVED_PHRASE |"$'\n'
       fi
       if [[ ! -f "$tdir/summary.md" ]] || ! awk -v n="$node" '
+        { sub(/\r$/, "") }
         /^Pipeline: removed/ { gsub(/[,()]/, " "); k = split($0, w, " "); for (i = 1; i <= k; i++) if (w[i] == n) f = 1 }
         END { exit !f }' "$tdir/summary.md"; then
         problems+="  - summary.md needs a line naming $node: Pipeline: removed $off (canon-config/pipeline.yaml)"$'\n'
