@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-08-2026 17:24
+learnings-sweep last run: 11-09-2026 01:45
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-09 | [t-a05d](.tickets/t-a05d/learnings.md) | A reader that skips a failed directory read reports an empty corpus: `os.ReadDir` on a mode-000 `.tickets/` returned an empty report with exit 0 until the reviewer reproduced it; count a failed read under its own line and exit 1. A prose "No blocking findings" also counted as a reviewer NO until verdicts matched case-exactly. | UNPROMOTED |
 | 2026-11-08 | [t-79bf](.tickets/t-79bf/learnings.md) | A command that rewrites a gitignored file with no other copy needs the same care as a database write: a mktemp temp file silently drops the target's mode to 0600, `mv` onto a directory 'succeeds' and loses the row inside it, and a missing final newline breaks line-count self-checks; copy the file with `cp -p` first, refuse a non-regular target up front, check every `mv`, and keep untrusted row text out of the terminal. The advisory reviewer (YES, no Act On) still found six real defects in the Considers: read the Considers, not only the verdict. | UNPROMOTED |
 | 2026-11-08 | [t-2178](.tickets/t-2178/learnings.md) | An assertion that something is hidden or absent passes vacuously unless the page first showed it: a fresh page starts hidden, so deleting the code that hides it changed nothing and two evaluators failed the sprint for it. Reach the state from a visible one on the same page (open, see 3, reopen with the request held) and revert-prove every state's line before dispatching an evaluator; a gate case that runs a repo script must run under `env -i` or a caller's CANON_TICKETS_DIR/GIT_DIR writes into the caller's tickets and repo. | UNPROMOTED |
 | 2026-11-08 | [t-b360](.tickets/t-b360/learnings.md) | Any awk or grep a close path runs on a file under `set -e` must be guarded (`LC_ALL=C`, `2>/dev/null`, `|| fallback`): macOS awk exits 2 on a non-UTF-8 byte or an unreadable file and a print-only helper then aborts `sprint start` or a finished close; and a substring match on prose ("not checked") flags the feature's own description (7 bogus bullets on its own close, t-7da5), so match a marker at the start of a line. | UNPROMOTED |
