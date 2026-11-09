@@ -581,6 +581,10 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			sendJSON(w, map[string]string{"content": string(data)})
 			return
 		}
+		if path == "/api/pipeline" { // t-3a58: runs tools/pipeline.sh, so it has the cross-site refusal too
+			handlePipelineGet(w, r)
+			return
+		}
 		if m := apiGitHubGetRe.FindStringSubmatch(path); m != nil || path == "/api/github/doctor" || path == "/api/github/intake" {
 			// t-d271: these run git and gh, so a page on another site must not fire them blind.
 			if !originOK(r.Header.Get("Origin")) || r.Header.Get("Sec-Fetch-Site") == "cross-site" {
@@ -688,6 +692,10 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 func handlePost(w http.ResponseWriter, r *http.Request) {
 	if !originOK(r.Header.Get("Origin")) {
 		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if r.URL.Path == "/api/pipeline" { // t-3a58: Factory > Pipeline; reads its own body (size cap, strict fields) and is Origin-required
+		handlePipelinePost(w, r)
 		return
 	}
 	// t-f889: Open themes folder reads no body, before the shared parse (mirrors server.py: the two parsers disagree

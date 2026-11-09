@@ -21,7 +21,7 @@ func postAgentRoute(path, origin, body string) *httptest.ResponseRecorder {
 }
 
 func TestAgentRoutesRefuseMissingOrigin(t *testing.T) {
-	for _, path := range []string{"/api/skill-eval/run", "/api/ticket/t-ab12/headless-run"} {
+	for _, path := range []string{"/api/skill-eval/run", "/api/ticket/t-ab12/headless-run", "/api/pipeline"} { // t-3a58: Factory > Pipeline writes a file in the project
 		if w := postAgentRoute(path, "", `{"base_ref":"main","confirm":true,"confirm_cost":true}`); w.Code != http.StatusForbidden {
 			t.Errorf("%s with no Origin = %d, want 403", path, w.Code)
 		}
