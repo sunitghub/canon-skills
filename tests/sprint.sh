@@ -691,7 +691,7 @@ bare_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$bare_output" "does not show the reviewer's passes"
 assert_gate_notice "$bare_output" review-notes.md reviewer
 assert_contains "$bare_output" 'no `Changed files:` line'
-assert_contains "$bare_output" 'no line for the "Scope creep" concern'
+assert_contains "$bare_output" 'no line for the "Correctness" concern'
 
 good_review() {
   # $1 = Changed files value, $2 = Scope creep line value (the rest are well-formed)
@@ -757,6 +757,43 @@ gate_lines="$(run_fail "$SPRINT" complete | grep -E '^  - ' || true)"
 check_lines="$(run_fail "$SPRINT" check-review-notes "$model_id" | grep -E '^  - ' || true)"
 [ "$(printf '%s\n' "$gate_lines" | grep -c .)" -eq 2 ] || fail "expected 2 problem lines from sprint complete, got: $gate_lines"
 assert_eq "$gate_lines" "$check_lines"
+# t-0ca2: the current seven-concern shape passes, an uncited `none` and a missing label are named in it, and a mixed report
+# is judged by the current list; the five-concern reports above are the old shape and still pass (closed tickets keep theirs)
+new_review() {
+  # $1 = Correctness line value (the rest are well-formed)
+  cat > "$rn" <<EOF
+# Review Notes
+Model: test-model
+Changed files: tools/sprint, tests/sprint.sh
+## Findings
+Correctness: $1
+Guards that cannot fail: none — checked the new assertions fail on the reverted line, tests/sprint.sh:700
+Security and trust boundaries: none — checked no untrusted input, tools/sprint:1010
+Error handling: none — checked every read reports, tools/sprint:1012
+Visual regression: none — checked no UI files changed, tools/sprint:1
+Portability: none — checked bash 3.2 forms only, tools/sprint:1008
+Hygiene: none — checked scope against plan.md, plan.md:20
+## Triage
+Act On: none
+Consider: none
+Noted: none
+Dismissed: none
+## Verdict
+YES
+EOF
+}
+new_review "none — checked the shape check against both lists, tools/sprint:1020"
+assert_contains "$("$SPRINT" check-review-notes "$model_id")" 'shape ok'
+new_review "none"
+assert_contains "$(run_fail "$SPRINT" check-review-notes "$model_id")" 'the "Correctness" `none` line must say what was checked'
+new_review "none — checked the shape check against both lists, tools/sprint:1020"
+grep -v '^Portability:' "$rn" > "$rn.tmp" && mv "$rn.tmp" "$rn"
+assert_contains "$(run_fail "$SPRINT" check-review-notes "$model_id")" 'no line for the "Portability" concern'
+# a report that has one current-only label and is missing another is judged by the current list, not passed as old
+new_review "none — checked the shape check against both lists, tools/sprint:1020"
+grep -v '^Hygiene:' "$rn" > "$rn.tmp" && mv "$rn.tmp" "$rn"
+mixed_out="$(run_fail "$SPRINT" check-review-notes "$model_id")"
+assert_contains "$mixed_out" 'no line for the "Hygiene" concern'
 # t-f13a: every triage bucket needs a line, and the verdict must match Act On (YES exactly when `Act On: none`)
 good_review "tools/sprint, tests/sprint.sh" "none — checked plan.md Files vs diff, plan.md:20"
 grep -v '^Noted:' "$rn" > "$rn.tmp" && mv "$rn.tmp" "$rn"

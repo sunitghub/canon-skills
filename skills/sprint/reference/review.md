@@ -52,11 +52,13 @@ The review-notes template below is the whole return shape for this gate.
 3. **Read changed files.** Read each file from step 2. Do not read files not on that list. **If that list is empty, stop:** do not write "No findings" — write the report with `Changed files: none (empty diff)` and tell the caller the base ref is probably wrong (the sprint's commits may already be on `origin/main`); `sprint complete` rejects such a report (t-de16).
 
 4. **Check each concern.** For every changed file, look for:
-   - **Scope creep** — changes beyond what `plan.md` describes
+   - **Correctness** — a defect you can see in the code: wrong logic, an unhandled input or state, a break to an adjacent caller or reader (not the per-criterion grading, which is the evaluator's)
+   - **Guards that cannot fail** — an assertion that passes with the fix reverted, a mutant that survives, a branch no test reaches, a test that protects no prod path or repeats another (the rule: `skills/sprint/reference/start-checklist.md` step 6)
+   - **Security and trust boundaries** — untrusted input reaching a path, command, parser or output; a check that can be skipped; a secret or credential
+   - **Error handling** — a swallowed error, a failed read that looks like a normal result, a wrong exit status, a `set -e` or pipefail trap
    - **Visual regression** — a change (even an in-scope, behaviorally-correct one) that alters the *rendered* appearance of an affected or adjacent element: styling/CSS (including CSS-in-code), layout, theme, or a widget swap that changes a rendered testid so styling defined elsewhere stops matching (`t-b75f`). If the change touches rendered UI, verify against actual rendered output ("## Self-serve visual verification"), not just the diff — a selector present in code is not proof it matches the rendered element.
-   - **Dead code** — code made unreachable or unused by this change
-   - **Unnecessary complexity** — abstractions, layers, or indirection added without a clear reason
-   - **Standards violations** — no comments unless WHY is non-obvious, no feature flags, no backwards-compat shims, no mocking what can be integration-tested cheaply, no reformatting adjacent code, no new or changed test that protects no prod path or repeats another test (the rule: `skills/sprint/reference/start-checklist.md` step 6); if the project registered efficiency, also anything that conflicts with `standards/efficiency.md` or its domain notes `standards/efficiency-notes.md`
+   - **Portability** — behaviour that differs on macOS, Linux or Windows Git Bash (BSD vs GNU tools, bash 3.2, path and line-ending forms, case-insensitive filesystems)
+   - **Hygiene** — scope creep (changes beyond what `plan.md` describes), dead code made unreachable or unused by this change, unnecessary complexity (abstractions, layers or indirection added without a clear reason), and standards violations: no comments unless WHY is non-obvious, no feature flags, no backwards-compat shims, no mocking what can be integration-tested cheaply, no reformatting adjacent code, if the project registered efficiency, also anything that conflicts with `standards/efficiency.md` or its domain notes `standards/efficiency-notes.md` Hygiene is Noted by default; it is Act On only when it breaks a rule in `standards/`.
 
 5. **Save findings.** Save via Bash to `.tickets/<id>/review-notes.md` — write it in sections, verify each append, and follow the retry pattern in "Report-writing safety" above. Keep the `Model:` line below: `sprint complete` blocks a `review-notes.md` without a `^Model:` line, even if you write the rest free-form.
 
@@ -71,11 +73,13 @@ Changed files: <the paths you diffed at step 2, comma-separated — never empty>
 
 ## Findings
 
-Scope creep: <finding, or `none — checked <what>, <file:line>`>
+Correctness: <finding, or `none — checked <what>, <file:line>`>
+Guards that cannot fail: <finding, or `none — checked <what>, <file:line>`>
+Security and trust boundaries: <finding, or `none — checked <what>, <file:line>`>
+Error handling: <finding, or `none — checked <what>, <file:line>`>
 Visual regression: <finding, or `none — checked <what>, <file:line>`>
-Dead code: <finding, or `none — checked <what>, <file:line>`>
-Unnecessary complexity: <finding, or `none — checked <what>, <file:line>`>
-Standards violations: <finding, or `none — checked <what>, <file:line>`>
+Portability: <finding, or `none — checked <what>, <file:line>`>
+Hygiene: <finding, or `none — checked <what>, <file:line>`>
 
 ## Triage
 
@@ -105,6 +109,6 @@ YES
 
 ## Disposition
 
-Your mandate is code quality and scope — not correctness against acceptance criteria (that is the evaluator's job). Flag what you see; the verdict is advisory. The sprint can close with a `NO` verdict — the agent will surface findings to the user before proceeding.
+Your mandate is code quality, scope and defects you can see in the diff — not grading each acceptance criterion (that is the evaluator's job). Flag what you see; the verdict is advisory. The sprint can close with a `NO` verdict — the agent will surface findings to the user before proceeding.
 
-Report for coverage, not confidence. Every real problem you find — bug, scope creep, dead code, unnecessary complexity, visual regression, or standards violation — must be reported with specific evidence (`file:line — <issue>`), **including low-confidence and low-severity ones**; tag each with its severity and confidence (`[severity: … · confidence: …]`) so the agent and the user can rank and filter downstream. Do not silently drop a real finding because you judge it minor or are unsure — surfacing one that later gets filtered out is cheaper than missing a real defect, and the human surfacing step plus the binding evaluator are the downstream filter, not you. This coverage rule is about *correctness and scope* findings; it does not license subjective style nagging — still do not flag pure style preferences, pre-existing issues you were not asked to fix, or items outside the changed-files list — except a rendered-output regression on an adjacent/related element per `shared-gate-protocol.md`'s "Check adjacent/related elements" rule, which is explicitly in scope even though the element itself is outside the changed-files list. If citing source text that itself contains a backtick, escape it as `` \` `` — the board's renderer treats a backslash-escaped backtick as literal, so the citation still renders as one code span.
+Report for coverage, not confidence. Every real problem you find — bug, guard that cannot fail, security or trust-boundary gap, swallowed error, visual regression, portability break, or hygiene lapse (scope creep, dead code, unnecessary complexity, standards) — must be reported with specific evidence (`file:line — <issue>`), **including low-confidence and low-severity ones**; tag each with its severity and confidence (`[severity: … · confidence: …]`) so the agent and the user can rank and filter downstream. Do not silently drop a real finding because you judge it minor or are unsure — surfacing one that later gets filtered out is cheaper than missing a real defect, and the human surfacing step plus the binding evaluator are the downstream filter, not you. This coverage rule is about *correctness and scope* findings; it does not license subjective style nagging — still do not flag pure style preferences, pre-existing issues you were not asked to fix, or items outside the changed-files list — except a rendered-output regression on an adjacent/related element per `shared-gate-protocol.md`'s "Check adjacent/related elements" rule, which is explicitly in scope even though the element itself is outside the changed-files list. If citing source text that itself contains a backtick, escape it as `` \` `` — the board's renderer treats a backslash-escaped backtick as literal, so the citation still renders as one code span.
