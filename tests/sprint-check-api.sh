@@ -247,8 +247,8 @@ GO_PID=$!
 disown "$GO_PID" 2>/dev/null || true
 
 wait_for_port() {
-  local port="$1" i
-  for i in $(seq 1 50); do
+  local port="$1"
+  for _ in $(seq 1 50); do
     curl -s -o /dev/null "http://127.0.0.1:$port/api/tickets" && return 0
     sleep 0.1
   done
