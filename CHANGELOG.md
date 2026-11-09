@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.47.25] - 2026-11-09
+
+Run `canon update`.
+
 - Added (sprint close data): `canon-go promoted-report [--json]` lists each promoted line tagged `(t-…; class: …)`, the day it last changed (git blame) and how many later tickets name its class in their review, eval or learnings text (a promoting ticket id alone is shown as a reference, not a recurrence). Read-only, no model call, no finding text printed; 0 means never written down, not never recurred. First slice of the promoted-rules report (t-1219).
 
 ## [0.47.24] - 2026-11-09
