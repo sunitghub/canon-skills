@@ -150,7 +150,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
 
    **Soft freeze on `origin/main` once gates are dispatched.** Both gates derive their base ref *live* via `git merge-base HEAD origin/main` (see `shared-gate-protocol.md ## Base-ref derivation`), so do not push further commits to `origin/main` between dispatching a reviewer/evaluator (steps 2-3) and reading back its report — a mid-run push shifts that ref, and if the pushed commit is the sprint's own HEAD the diff goes empty and the gate grades nothing. Hold all pushes until both gates have reported (step 10).
 
-   The "Wrapup Gates" table also records `reviewer`/`eval` — the two close-time gates outside the wrapup pipeline (steps 2-3). After assessing each gate, append a `## Wrapup Gates` section to `acceptance.md` (rows below follow the execution order: pipeline gates, `reviewer`, `security-review`, then `eval`):
+   The "Wrapup Gates" table also records `reviewer`/`eval` — the two close-time gates outside the wrapup pipeline (steps 2-3). After assessing each gate, append a `## Wrapup Gates` section to `acceptance.md` (rows below follow the execution order: pipeline gates, `skill-eval`, `reviewer`, `security-review`, `mutation-test`, then `eval`):
 
    ```markdown
    ## Wrapup Gates
@@ -159,11 +159,11 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    | code-simplifier | skipped | docs-only change |
    | code-reviewer | ran | no findings — reviewed the 8-dimension checklist in-context |
    | doc-audit | ran | README updated |
+   | skill-eval | skipped | advisory — no skill or gate agent changed |
    | reviewer | ran | verdict: YES (model: sonnet (claude-sonnet-5-5) — Admin Review & Eval default) |
    | security-review | skipped | no security-sensitive patterns |
-   | eval | ran | verdict: pass — eval-report.md written (model: sonnet (claude-sonnet-5-5) — Admin Review & Eval default; 12m) |
-   | skill-eval | skipped | advisory — no skill or gate agent changed |
    | mutation-test | skipped | no logic files changed |
+   | eval | ran | verdict: pass — eval-report.md written (model: sonnet (claude-sonnet-5-5) — Admin Review & Eval default; 12m) |
    | break-it | skipped | advisory — not high-risk, no untrusted-input surface |
    ```
 
