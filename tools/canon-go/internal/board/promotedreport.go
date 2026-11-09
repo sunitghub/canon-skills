@@ -24,7 +24,7 @@ import (
 // Read-only, local, no model call. Every file is untrusted: only slugs and ids that match the tag's character set, dates and counts are printed.
 
 var (
-	prTagRe     = regexp.MustCompile(`\(((?:t-[0-9a-f]{4})(?:, t-[0-9a-f]{4}){0,9}); class: ([a-z0-9][a-z0-9-]{0,80})(?:; id: (P-[0-9]{1,5}))?\)`)
+	prTagRe     = regexp.MustCompile(`\(((?:t-[a-z0-9]{4})(?:, t-[a-z0-9]{4}){0,9}); class: ([a-z0-9][a-z0-9-]{0,80})(?:; id: (P-[0-9]{1,5}))?\)`)
 	prCreatedRe = regexp.MustCompile(`^created:[ \t]*([0-9]{4}-[0-9]{2}-[0-9]{2})`)
 )
 
