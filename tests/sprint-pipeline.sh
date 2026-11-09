@@ -185,7 +185,7 @@ assert_eq "$before" "$(fingerprint)"
 new_project; override 'extends: canon-default\noff: [mutation-test]\n'; new_sprint
 "$SPRINT" approve "$ID" >/dev/null
 sed -i.bak 's/$/\r/' ".tickets/$ID/plan.md"; rm -f ".tickets/$ID/plan.md.bak"
-close_docs "$ROW_MT" 'Pipeline: removed mutation-test (canon-config/pipeline.yaml)\n'
+close_docs "$ROW_MT" 'Pipeline: removed mutation-test\n'   # the node is the last word on the line, where a trailing \r sticks to it
 sed -i.bak 's/$/\r/' ".tickets/$ID/acceptance.md" ".tickets/$ID/summary.md"; rm -f ".tickets/$ID/acceptance.md.bak" ".tickets/$ID/summary.md.bak"
 out="$("$SPRINT" complete 2>&1)" || fail "a CRLF summary, table and pin refused a correct close: $out"
 assert_contains "$out" "Sprint completed: $ID"

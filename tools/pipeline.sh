@@ -29,7 +29,7 @@ die() { echo "pipeline: $*" >&2; exit 2; }
 
 # read -d '' (not $(cat <<…)): bash 3.2 mis-parses a quote inside a heredoc in a command substitution; read returns 1 at EOF, hence || true
 read -r -d '' PROG <<'AWK' || true
-function fail(f, n, msg) { printf "pipeline: %s: line %d: %s\n", f, n, msg > "/dev/stderr"; exit 2 }
+function fail(f, n, msg) { gsub(/[^ -~]/, "?", msg); printf "pipeline: %s: line %d: %s\n", f, n, msg > "/dev/stderr"; exit 2 }   # msg may echo hostile bytes (a bad id): printable ASCII only
 function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
 function okid(s) { return s ~ /^[a-z][a-z0-9-]*$/ && length(s) <= 40 }
 function val(f, n, s,   v) {

@@ -206,6 +206,13 @@ fakedef 'nodes:\n  - id: a\n    kind: step\n    order: 1\n    locked: false\n' r
 ln -s tools/pipeline.sh "$T/fk/rel-link"
 assert_eq "1 a step on open" "$(cd "$T/cwd" && "$T/fk/rel-link" resolve)"
 
+# ── a refusal never echoes control bytes (a hostile id with an escape sequence must not reach the user's terminal) ──
+for bad in $'\033[31mred' $'\033]8;;http://x\007link' $'a\x01b' $'tab\there' $'\xe2\x80\xaeevil'; do
+  d="$(mkproj 'extends: canon-default\n')"; printf 'extends: canon-default\noff: [%s]\n' "$bad" > "$d/canon-config/pipeline.yaml"
+  out="$("$P" resolve --project "$d" 2>&1)" && fail "pipeline: a hostile id was accepted: $(printf '%q' "$bad")"
+  [[ "$out" == "pipeline: "* && -z "$(printf '%s' "$out" | LC_ALL=C tr -d '[:print:]')" ]] || fail "pipeline: a refusal echoed non-printable bytes for $(printf '%q' "$bad"): $(printf '%q' "$out")"
+done
+
 # ── nothing in a file is ever run (cwd is a scratch folder: a stray `touch` would land there) ──
 mkdir -p "$T/cwd"
 for body in 'extends: canon-default\noff: [$(touch PWNED)]\n' 'extends: canon-default\noff: [`touch PWNED`]\n' 'extends: canon-default\n# $(touch PWNED)\noff: [break-it]\n' 'extends: canon-default\noff: ["$(touch PWNED)"]\n'; do
