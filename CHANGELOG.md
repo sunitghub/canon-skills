@@ -6,6 +6,12 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.47.28] - 2026-11-09
+
+Run `canon update`.
+
+- Added (acceptance criteria): a behavior criterion may now read `When <trigger>, <system> <does response>.` `sprint start` seeds the style as a comment in `acceptance.md` (and the board's New-doc template carries it), the start checklist says to ask about an ambiguous trigger instead of guessing it, and the evaluator grades such a criterion by performing the trigger and quoting both the trigger and the response. It is optional: docs and files stay free text and nothing rejects free text.
+
 ## [0.47.27] - 2026-11-09
 
 Run `canon update`.
