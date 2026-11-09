@@ -60,6 +60,13 @@ func prSeed(t *testing.T) string {
 	prPut(t, root, "skills/x/SKILL.md", "# x\n- rule C (t-dddd; class: slug-three)\n")
 	prGit(t, root, "2026-10-10T12:00:00Z", "add", "-A")
 	prGit(t, root, "2026-10-10T12:00:00Z", "commit", "-q", "-m", "two")
+	// two commits to one file: each tagged line keeps the date of the commit that wrote it, whatever its position
+	prPut(t, root, "docs/releasing.md", "- first (t-iiii; class: slug-five)\n")
+	prGit(t, root, "2026-10-02T12:00:00Z", "add", "-A")
+	prGit(t, root, "2026-10-02T12:00:00Z", "commit", "-q", "-m", "three")
+	prPut(t, root, "docs/releasing.md", "- first (t-iiii; class: slug-five)\n- second (t-jjjj; class: slug-six)\n")
+	prGit(t, root, "2026-10-03T12:00:00Z", "add", "-A")
+	prGit(t, root, "2026-10-03T12:00:00Z", "commit", "-q", "-m", "four")
 	prTicket(t, root, "t-0001", "2026-10-05", map[string]string{"review-notes.md": "the slug-one failure again\n"})
 	prTicket(t, root, "t-0002", "2026-10-06", map[string]string{"eval-report.md": "see t-aaaa for the history\n"})
 	prTicket(t, root, "t-0003", "2026-09-20", map[string]string{"review-notes.md": "slug-one before the promotion\n"})
@@ -101,8 +108,11 @@ func prFind(r *prReport, slug string) prEntry {
 
 func TestPromotedReportCountsEqualAHandCount(t *testing.T) {
 	r := promotedReport(prSeed(t))
-	if len(r.Entries) != 4 {
-		t.Fatalf("entries = %d, want 4 (the fenced tag, the .txt file, the oversize file and the symlink add none): %+v", len(r.Entries), r.Entries)
+	if five, six := prFind(r, "slug-five"), prFind(r, "slug-six"); five.Date != "2026-10-02" || six.Date != "2026-10-03" {
+		t.Errorf("dates of a two-commit file: slug-five %q slug-six %q, want 2026-10-02 and 2026-10-03", five.Date, six.Date)
+	}
+	if len(r.Entries) != 6 {
+		t.Fatalf("entries = %d, want 6 (the fenced tag, the .txt file, the oversize file and the symlink add none): %+v", len(r.Entries), r.Entries)
 	}
 	one, two, three := prFind(r, "slug-one"), prFind(r, "slug-two"), prFind(r, "slug-three")
 	// slug-one promoted 2026-10-01: t-0001 names it, t-0002 only the ticket id, t-0003 is older, t-aaaa is the promoting ticket, t-0007 has no date, t-0009 is oversize
@@ -132,13 +142,15 @@ func TestPromotedReportTextAndJSON(t *testing.T) {
 	root := prSeed(t)
 	var b bytes.Buffer
 	prText(promotedReport(root), &b)
-	want := `promoted lines, from their (t-…; class: …) tags: 4 lines, 9 tickets read for a later mention of the class or the promoting ticket
+	want := `promoted lines, from their (t-…; class: …) tags: 6 lines, 9 tickets read for a later mention of the class or the promoting ticket
 1 not counted: tag inside a code fence; 2 not counted: ticket without a created date; 2 unreadable: larger than 256 KB; 1 unreadable: not a regular file
 A later ticket counts when its review, eval or learnings text names the class itself (class N, which drives the verdict) or only a promoting ticket id (ref M: it was mentioned, which is not a recurrence). 0 means never written down, not never recurred.
 
   Failing again  class 2   ref 2   -      slug-four (t-ffff, 2026-10-01)  PROMOTED.md
   Mentioned once class 1   ref 2   -      slug-one (t-aaaa, 2026-10-01)  standards/efficiency-notes.md
   Failing again  class 2   ref 2   P-007  slug-two (t-bbbb t-cccc, 2026-10-01)  standards/efficiency-notes.md
+  Not mentioned  class 0   ref 0   -      slug-five (t-iiii, 2026-10-02)  docs/releasing.md
+  Not mentioned  class 0   ref 0   -      slug-six (t-jjjj, 2026-10-03)  docs/releasing.md
   Not mentioned  class 0   ref 0   -      slug-three (t-dddd, 2026-10-10)  skills/x/SKILL.md
 `
 	if b.String() != want {
@@ -248,5 +260,18 @@ func TestPromotedReportIgnoresGitDirAndPrintsNoDate(t *testing.T) {
 	prText(promotedReport(nogit), &b)
 	if !strings.Contains(b.String(), "No date") || !strings.Contains(b.String(), "slug-one (t-aaaa, no date)") || !strings.Contains(b.String(), "1 not counted: no git date for the line") {
 		t.Errorf("no-git text:\n%s", b.String())
+	}
+}
+
+// a file name with a control byte cannot forge a line in the text view, and a tag on a fence line is counted, not dropped
+func TestPromotedReportNamesAndFenceLines(t *testing.T) {
+	if got := prSafeName("standards/a\nb\x1b[31m.md"); got != "standards/a?b?[31m.md" {
+		t.Errorf("prSafeName = %q", got)
+	}
+	root := t.TempDir()
+	prPut(t, root, "standards/efficiency-notes.md", "```go (t-aaaa; class: slug-one)\n- in a fence (t-bbbb; class: slug-two)\n```\n")
+	r := promotedReport(root)
+	if len(r.Entries) != 0 || r.Skipped["tag on a code fence line"] != 1 || r.Skipped["tag inside a code fence"] != 1 {
+		t.Errorf("fence handling: entries %+v skipped %v", r.Entries, r.Skipped)
 	}
 }

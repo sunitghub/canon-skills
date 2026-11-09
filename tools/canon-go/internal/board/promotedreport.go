@@ -135,11 +135,14 @@ func promotedReport(root string) *prReport {
 		blamed := false
 		fence := false
 		for i, ln := range lines {
+			ms := prTagRe.FindAllStringSubmatch(ln, -1)
 			if strings.HasPrefix(strings.TrimSpace(ln), "```") {
 				fence = !fence
+				if len(ms) > 0 {
+					r.Skipped["tag on a code fence line"] += len(ms)
+				}
 				continue
 			}
-			ms := prTagRe.FindAllStringSubmatch(ln, -1)
 			if len(ms) == 0 {
 				continue
 			}
@@ -262,8 +265,18 @@ func prText(r *prReport, w io.Writer) {
 		if date == "" {
 			date = "no date"
 		}
-		fmt.Fprintf(w, "  %-14s class %-3d ref %-3d %-6s %s (%s, %s)  %s\n", e.Verdict, e.BySlug, e.Mentions, id, e.Slug, strings.Join(e.Tickets, " "), date, e.File)
+		fmt.Fprintf(w, "  %-14s class %-3d ref %-3d %-6s %s (%s, %s)  %s\n", e.Verdict, e.BySlug, e.Mentions, id, e.Slug, strings.Join(e.Tickets, " "), date, prSafeName(e.File))
 	}
+}
+
+// prSafeName keeps a repo-controlled file name from forging a line or sending an escape code in the text view (JSON escapes it already).
+func prSafeName(f string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return '?'
+		}
+		return r
+	}, f)
 }
 
 func prHas(ids []string, id string) bool {
