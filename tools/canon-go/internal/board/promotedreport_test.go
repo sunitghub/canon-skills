@@ -293,6 +293,17 @@ func TestPromotedReportCountsAnIDCitation(t *testing.T) {
 	if two := prFind(r, "slug-two"); two.BySlug != 0 || two.Verdict != "Not mentioned" {
 		t.Errorf("slug-two = %+v: P-0020 must not count as P-002", two)
 	}
+	// the edges of each alphanumeric range: these characters touch an id and it is not a whole token; the ones just outside each range do not
+	for _, c := range []string{"0", "9", "A", "Z", "a", "z"} {
+		if prCitesID(c+"P-7", "P-7") || prCitesID("P-7"+c, "P-7") {
+			t.Errorf("an id touching %q counted as a whole token", c)
+		}
+	}
+	for _, c := range []string{"/", ":", "@", "[", "`", "{", "-", " ", "(", ".", ","} {
+		if !prCitesID(c+"P-7", "P-7") || !prCitesID("P-7"+c, "P-7") {
+			t.Errorf("an id next to %q was not counted", c)
+		}
+	}
 	for text, want := range map[string]bool{"x P-7": true, "P-7": true, "x P-70": false, "P-70 P-7": true, "XP-7": false, "AP-7x": false, "(P-7)": true, "p-7": false, "XP-7 P-7": true, "P-7P-7": false} {
 		if got := prCitesID(text, "P-7"); got != want {
 			t.Errorf("prCitesID(%q) = %v, want %v", text, got, want)
