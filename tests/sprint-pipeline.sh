@@ -160,6 +160,11 @@ for pin in "${pins[@]}"; do
   if (( rc != 0 )); then
     assert_eq "$before" "$(fingerprint)"
     [[ "$out" == *"cannot close"* && "$out" != *"syntax error"* && "$out" != *"unbound variable"* ]] || fail "a bad pin ended in a shell error: $out"
+    if [[ "$pin" =~ ^[0-9a-f]{12}\ off=[a-z0-9,-]+\ wrapup=[a-z0-9,-]+$ ]]; then
+      [[ "$out" == *"changed after approval"* ]] || fail "a well-shaped pin that differs did not say the pipeline changed: $out"
+    else
+      [[ "$out" == *"'Pipeline:' pin is malformed"* ]] || fail "a malformed pin did not say so: $pin -> $out"
+    fi
   fi
   [[ ! -e EXECUTED ]] || fail "a pin line ran a command: $pin"
 done
