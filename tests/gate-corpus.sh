@@ -6,7 +6,7 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 
 work="$(mktemp -d)"; trap 'chmod -R u+rwx "$work" 2>/dev/null || true; rm -rf "$work"' EXIT
-export HOME="$work/home" CANON_HOME="$work/canon" TMPDIR="$work/tmp"; mkdir -p "$HOME" "$CANON_HOME" "$TMPDIR"
+export SPRINT_CHECK_NO_BROWSER=1 HOME="$work/home" CANON_HOME="$work/canon" TMPDIR="$work/tmp"; mkdir -p "$HOME" "$CANON_HOME" "$TMPDIR"
 board="$(build_board "$work/board")"
 proj="$work/proj"; mkdir -p "$proj/.tickets/t-aaaa" "$proj/.tickets/t-bbbb"
 tree_hash() { (cd "$proj" && find . -type f | LC_ALL=C sort | xargs cat | { sha256sum 2>/dev/null || shasum -a 256; }); }
