@@ -71,6 +71,8 @@ func runHelper(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 		return gateClustersCLI(args[1:], stdout, stderr), true
 	case "gate-insights": // t-9113: first-pass rate, retries, cost and reruns from the activity log; read-only
 		return gateInsightsCLI(args[1:], stdout, stderr), true
+	case "gate-corpus": // t-a05d: what the closed tickets' gate reports say, counted from their fixed shapes; read-only
+		return gateCorpusCLI(args[1:], stdout, stderr), true
 	case "skill-check":
 		return skillCheckCLI(args[1:], stdout, stderr), true
 	case "link-worktree": // t-74d8: the Go side of the worktree-link rule, for tests/worktree-links-parity.sh
