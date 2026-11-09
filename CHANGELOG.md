@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.47.24] - 2026-11-09
+
+Run `canon update`.
+
 - Changed (reviewer gate): the reviewer asks about the concerns whose findings actually block: Correctness, Guards that cannot fail (an assertion that passes with the fix reverted, a surviving mutant, a branch no test reaches), Security and trust boundaries, Error handling, Visual regression and Portability. Scope creep, dead code, unnecessary complexity and standards fold into one Hygiene line, Noted by default and Act On only for a broken rule in `standards/`. `sprint check-review-notes` and the close accept a report in the new shape or the old five-line one, so closed tickets keep valid reports; `canon-go gate-corpus` counts both sets of labels (t-0ca2).
 
 ## [0.47.23] - 2026-11-09
