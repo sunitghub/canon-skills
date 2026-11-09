@@ -236,7 +236,7 @@ func TestPipelineRefusalsLeaveTheTreeAlone(t *testing.T) {
 		{"on is a string", `{"op":"toggle","id":"skill-eval","on":"false"}`, "bad request body", 400},
 		{"fake op", `{"op":"delete"}`, "op must be", 400},
 		{"empty op", `{}`, "op must be", 400},
-		{"null body", `null`, "op must be", 400},
+		{"null body", `null`, "bad request body", 400},
 		{"array body", `[]`, "bad request body", 400},
 		{"number body", `5`, "bad request body", 400},
 		{"unknown field", `{"op":"reset","path":"/etc"}`, "bad request body", 400},
@@ -451,5 +451,83 @@ func TestPipelineWriteLogsOneSettingChanged(t *testing.T) {
 	}
 	if strings.Count(all, `"name":"pipeline.toggle"`) != 1 {
 		t.Fatalf("expected one line, got: %q", all)
+	}
+}
+
+// break-it (t-3a58): a request's keys are exact and unique, and nothing may trail the object.
+func TestPipelineRequestKeysAreStrict(t *testing.T) {
+	id, root := pipelineEnv(t)
+	post(id, `{"op":"toggle","id":"break-it","on":false}`)
+	before := treeDigest(t, root)
+	for name, body := range map[string]string{
+		"upper-case keys": `{"OP":"toggle","ID":"doc-audit","On":false}`,
+		"mixed-case key":  `{"op":"toggle","Id":"doc-audit","on":false}`,
+		"duplicate op":    `{"op":"toggle","op":"reset"}`,
+		"duplicate id":    `{"op":"toggle","id":"doc-audit","id":"skill-eval","on":false}`,
+		"trailing brace":  `{"op":"reset"}}`,
+		"trailing text":   `{"op":"reset"} x`,
+		"trailing array":  `{"op":"reset"}[]`,
+		"null body":       `null`,
+	} {
+		code, m := post(id, body)
+		if code != 400 || !strings.Contains(fmt.Sprint(m["error"]), "bad request body") {
+			t.Errorf("%s: %d %v, want 400 bad request body", name, code, m)
+		}
+		if treeDigest(t, root) != before {
+			t.Errorf("%s: the project changed", name)
+		}
+	}
+	// whitespace around a good body is fine
+	if code, _ := post(id, " \n{\"op\":\"reset\"}\r\n "); code != 200 {
+		t.Errorf("a well-formed body with surrounding whitespace = %d, want 200", code)
+	}
+}
+
+// break-it (t-3a58): a file over 64 KB is refused by the reader, and Reset still repairs it (it is a regular file the page may rewrite).
+func TestPipelineOversizeFileIsRepairedByReset(t *testing.T) {
+	id, root := pipelineEnv(t)
+	os.MkdirAll(filepath.Join(root, "canon-config"), 0o755)
+	big := "extends: canon-default\n" + strings.Repeat("# padding padding padding padding padding\n", 3000)
+	os.WriteFile(filepath.Join(root, "canon-config", "pipeline.yaml"), []byte(big), 0o644)
+	_, g := pipelineGetReq(id)
+	if g["ok"] != false || g["can_reset"] != true || !strings.Contains(fmt.Sprint(g["error"]), "over 65536 bytes") {
+		t.Fatalf("GET with an oversize file = %v", g)
+	}
+	if code, _ := post(id, `{"op":"toggle","id":"skill-eval","on":false}`); code != 400 {
+		t.Fatalf("toggle on an oversize file = %d, want 400", code)
+	}
+	if got := pipelineFileText(root); got != big {
+		t.Fatal("a refused toggle changed the oversize file")
+	}
+	if code, m := post(id, `{"op":"reset"}`); code != 200 || m["ok"] != true {
+		t.Fatalf("Reset on an oversize file = %d %v", code, m)
+	}
+	if got := pipelineFileText(root); got != "extends: canon-default\n" {
+		t.Fatalf("file after Reset = %q", got)
+	}
+}
+
+// break-it (t-3a58): a registered path that is empty or relative is not a project root: nothing is written relative to the board's cwd.
+func TestPipelineRefusesARegisteredPathThatIsNotAbsolute(t *testing.T) {
+	_, _ = pipelineEnv(t)
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+	reg, _ := json.Marshal([]registryProject{{ID: "emptyempty01", Path: "", Name: "n"}, {ID: "relativerel02", Path: "rel", Name: "n"}})
+	os.WriteFile(registryFile(), reg, 0o644)
+	before := treeDigest(t, cwd)
+	for _, p := range []string{"emptyempty01", "relativerel02"} {
+		if code, _ := post(p, `{"op":"toggle","id":"skill-eval","on":false}`); code != 400 {
+			t.Errorf("POST for registered path of %s = %d, want 400", p, code)
+		}
+		req := httptest.NewRequest(http.MethodGet, "/api/pipeline?project="+p, nil)
+		req.Header.Set("Origin", pipelineOrigin)
+		w := httptest.NewRecorder()
+		handleGet(w, req)
+		if w.Code != 400 {
+			t.Errorf("GET for registered path of %s = %d, want 400", p, w.Code)
+		}
+	}
+	if treeDigest(t, cwd) != before {
+		t.Fatal("a request wrote relative to the board's working directory")
 	}
 }

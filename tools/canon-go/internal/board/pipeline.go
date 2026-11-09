@@ -193,7 +193,7 @@ func pipelineFileState(root string) (exists bool, text string, problem string) {
 		return false, "", "canon-config/pipeline.yaml is not a plain file (a symlink or a folder), so it is left alone"
 	}
 	if fi.Size() > pipelineFileMax {
-		return true, "", "canon-config/pipeline.yaml is over 64 KB"
+		return true, "", "" // not read here: the reader refuses it by name, and Reset rewrites it
 	}
 	data, err := os.ReadFile(file)
 	if err != nil {
@@ -252,6 +252,16 @@ func pipelineView(root string) map[string]any {
 	return out
 }
 
+// pipelineRoot is the project root for ?project=: a registered path that is empty or relative is not a root (a join onto it would
+// land in the board's working directory), so it is refused like an unknown project.
+func pipelineRoot(r *http.Request) (string, bool) {
+	root, ok := effectiveRoot(r)
+	if !ok || root == "" || !filepath.IsAbs(root) {
+		return "", false
+	}
+	return root, true
+}
+
 func pipelineCrossSite(r *http.Request) bool {
 	return r.Header.Get("Sec-Fetch-Site") == "cross-site"
 }
@@ -262,7 +272,7 @@ func handlePipelineGet(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	root, ok := effectiveRoot(r)
+	root, ok := pipelineRoot(r)
 	if !ok {
 		http.Error(w, "unknown project", http.StatusBadRequest)
 		return
@@ -291,7 +301,7 @@ func handlePipelinePost(w http.ResponseWriter, r *http.Request) {
 		pipelineFail(w, http.StatusUnsupportedMediaType, "expected application/json")
 		return
 	}
-	root, ok := effectiveRoot(r)
+	root, ok := pipelineRoot(r)
 	if !ok {
 		http.Error(w, "unknown project", http.StatusBadRequest)
 		return
@@ -304,7 +314,7 @@ func handlePipelinePost(w http.ResponseWriter, r *http.Request) {
 	var req pipelineRequest
 	dec := json.NewDecoder(bytes.NewReader(body))
 	dec.DisallowUnknownFields()
-	if dec.Decode(&req) != nil || dec.More() {
+	if !pipelineKeysExact(body) || dec.Decode(&req) != nil {
 		pipelineFail(w, http.StatusBadRequest, "bad request body")
 		return
 	}
@@ -312,6 +322,33 @@ func handlePipelinePost(w http.ResponseWriter, r *http.Request) {
 	defer pipelineMu.Unlock()
 	res, status := pipelineApply(r, root, req)
 	sendJSONStatus(w, res, status)
+}
+
+// pipelineKeysExact is true for one JSON object whose keys are exactly op, id, on or wrapup, each once, with nothing after it.
+// encoding/json alone matches key names case-insensitively, keeps the last of a repeated key and ignores a stray closing brace.
+func pipelineKeysExact(body []byte) bool {
+	dec := json.NewDecoder(bytes.NewReader(body))
+	if t, err := dec.Token(); err != nil || t != json.Delim('{') {
+		return false
+	}
+	seen := map[string]bool{}
+	for dec.More() {
+		kt, err := dec.Token()
+		k, isKey := kt.(string)
+		if err != nil || !isKey || (k != "op" && k != "id" && k != "on" && k != "wrapup") || seen[k] {
+			return false
+		}
+		seen[k] = true
+		var skip json.RawMessage
+		if dec.Decode(&skip) != nil {
+			return false
+		}
+	}
+	if t, err := dec.Token(); err != nil || t != json.Delim('}') {
+		return false
+	}
+	_, err := dec.Token()
+	return err == io.EOF
 }
 
 // pipelineRender is the file for a state: only what differs from canon's default, from ids the resolver listed.
