@@ -167,6 +167,7 @@ project_file() {
   if [[ -L "$f" ]]; then die "$f: refusing a symlink"; fi
   [[ -e "$f" ]] || return 0
   [[ -f "$f" ]] || die "$f: not a regular file"
+  [[ -r "$f" ]] || die "$f: not readable"
   size="$(wc -c < "$f" | tr -d ' ')"
   (( size <= MAX_BYTES )) || die "$f: over $MAX_BYTES bytes"
   clean="$(tr -d '\000' < "$f" | wc -c | tr -d ' ')"

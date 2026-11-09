@@ -101,8 +101,88 @@ out="$("$P" resolve --bogus 2>&1)" && fail "pipeline: an unknown option was acce
 d="$(mkproj 'extends: canon-default\n')"; for n in $(seq 1 2100); do printf '# c\n'; done >> "$d/canon-config/pipeline.yaml"
 out="$("$P" resolve --project "$d" 2>&1)" && fail "pipeline: a 2100-line project file was read" || [[ "$out" == *"more than 2000 lines"* ]] || fail "pipeline: line-count refusal said: $out"
 
+# ── the default file is validated too (a bad edit to canon's own file is refused, never half-read) ──
+mkdir -p "$T/fk/tools" "$T/fk/skills/sprint" "$T/cwd"; cp "$P" "$T/fk/tools/pipeline.sh"
+fakedef() {   # fakedef <default file content, printf %b> <pipeline.sh args...>: sets FOUT (stdout+stderr) and FRC (exit code)
+  printf '%b' "$1" > "$T/fk/skills/sprint/pipeline.yaml"; shift
+  FRC=0; FOUT="$(cd "$T/cwd" && "$T/fk/tools/pipeline.sh" "$@" 2>&1)" || FRC=$?
+}
+refuse_default() {   # refuse_default <expected text> <default file content>
+  fakedef "$2" resolve
+  [[ "$FRC" == 2 && "$FOUT" == *"$1"* ]] || fail "pipeline: a bad default $(printf '%q' "$2") did not exit 2 saying '$1' (exit $FRC): $FOUT"
+  [[ "$(printf '%s\n' "$FOUT" | wc -l | tr -d ' ')" == 1 ]] || fail "pipeline: the refusal for a bad default $(printf '%q' "$2") is not one line: $FOUT"
+}
+N1='nodes:\n  - id: a\n    kind: step\n    order: 1\n    locked: false\n'
+refuse_default "expected 'nodes:' first" 'x: 1\n'
+refuse_default "nodes: twice" 'nodes:\nnodes:\n'
+refuse_default "no nodes" 'nodes:\n'
+refuse_default "a field before any '- id:'" 'nodes:\n    kind: step\n'
+refuse_default "unknown field 'color'" "${N1}    color: red\n"
+refuse_default "field 'kind' twice in node 'a'" "${N1}    kind: step\n"
+refuse_default "node 'a' listed twice" "${N1}  - id: a\n"
+refuse_default "bad node id 'Bad'" 'nodes:\n  - id: Bad\n'
+refuse_default "unsupported line" "${N1}garbage\n"
+refuse_default "node 'a' needs kind" 'nodes:\n  - id: a\n    order: 1\n    locked: false\n'
+refuse_default "node 'a' needs kind" 'nodes:\n  - id: a\n    kind: bogus\n    order: 1\n    locked: false\n'
+refuse_default "node 'a' needs a numeric order" 'nodes:\n  - id: a\n    kind: step\n    locked: false\n'
+refuse_default "node 'a' needs a numeric order" 'nodes:\n  - id: a\n    kind: step\n    order: x\n    locked: false\n'
+refuse_default "nodes 'a' and 'b' share order 1" "${N1}  - id: b\n    kind: step\n    order: 1\n    locked: false\n"
+refuse_default "node 'a' needs locked: true or false" 'nodes:\n  - id: a\n    kind: step\n    order: 1\n'
+refuse_default "node 'a' needs locked: true or false" 'nodes:\n  - id: a\n    kind: step\n    order: 1\n    locked: maybe\n'
+refuse_default "locked node 'a' needs a reason" 'nodes:\n  - id: a\n    kind: step\n    order: 1\n    locked: true\n'
+refuse_default "node 'a': group must be wrapup" "${N1}    group: other\n"
+refuse_default "must be one double-quoted string" "${N1}    when: it's\n"
+refuse_default "must be one double-quoted string" "${N1}    when: a # b\n"
+refuse_default "more than 200 nodes" "nodes:\n$(for n in $(seq 1 201); do printf '  - id: n%s\n    kind: step\n    order: %s\n    locked: false\n' "$(printf 'a%.0s' $(seq 1 "$((n % 9 + 1))"))x$n" "$n"; done | tr '\n' '~' | sed 's/~/\\n/g')"
+fakedef "${N1}  - id: b\n    kind: step\n    order: 2\n    locked: false\n" resolve --full
+[[ "$FRC" == 0 ]] || fail "pipeline: a valid two-node default was refused: $FOUT"
+fakedef 'nodes:\n  - id: late\n    kind: gate\n    order: 20\n    locked: true\n    reason: "r"\n  - id: early\n    kind: "step"\n    order: 5\n    locked: false\n    group: wrapup\n    when: "w"\n    prompt: p.md\n' resolve --full
+assert_eq "5	early	step	on	open	wrapup	w	p.md	-
+20	late	gate	on	locked	-	-	-	r" "$FOUT"
+rm "$T/fk/skills/sprint/pipeline.yaml"
+FRC=0; FOUT="$("$T/fk/tools/pipeline.sh" resolve 2>&1)" || FRC=$?
+[[ "$FRC" == 2 && "$FOUT" == *"default pipeline is missing"* ]] || fail "pipeline: a missing default said: $FOUT"
+# the script run through a symlink finds canon's default the same way
+ln -s "$P" "$T/linked-pipeline"
+assert_eq "$expect" "$("$T/linked-pipeline" resolve)"
+
+# ── command line ──
+cli() {   # cli <expected text> <args...>: exit 2 and the text
+  local want="$1" out rc=0; shift
+  out="$("$P" "$@" 2>&1)" || rc=$?
+  [[ "$rc" == 2 && "$out" == *"$want"* ]] || fail "pipeline: '$*' did not exit 2 saying '$want' (exit $rc): $out"
+}
+cli "--full is for resolve" check --full
+cli "--project needs a folder" resolve --project
+cli "ids takes no arguments" ids x
+cli "pipeline.sh resolve" bogus
+cli "pipeline.sh resolve"
+out="$("$P" --help)"; [[ "$out" == *"the sprint pipeline's one reader"* && "$out" == *"pipeline.sh check"* ]] || fail "pipeline: --help did not print the usage header: $out"
+out="$("$P" resolve --project "$T" --full | sed -n 4p)"; [[ "$(printf '%s' "$out" | tr -cd '\t' | wc -c | tr -d ' ')" == 8 ]] || fail "pipeline: resolve --full lines do not carry 9 tab-separated fields: $out"
+
+# ── more project-file shapes ──
+d="$(mkproj 'extends: canon-default\noff: [ ]\nwrapup-order: [doc-audit, code-reviewer, code-simplifier]\n')"
+got="$("$P" resolve --project "$d" --full | sed -n 5,7p | cut -f1,2,6)"
+assert_eq "50	doc-audit	wrapup
+52	code-reviewer	wrapup
+54	code-simplifier	wrapup" "$got"
+refuse "unknown node 'nope'" 'extends: canon-default\nwrapup-order: [doc-audit, nope, code-reviewer]\n'
+refuse "listed twice in wrapup-order" 'extends: canon-default\nwrapup-order: [doc-audit, doc-audit, code-reviewer]\n'
+refuse "must be [id, id]" 'extends: canon-default\noff: [break-it\n'
+refuse "must be [id, id]" 'extends: canon-default\noff: [a[b]\n'
+refuse "unsupported line" 'extends: canon-default\n  - break-it\n'
+refuse "unsupported line" 'extends: canon-default\noff:\n  - break-it\nwrapup-order: [doc-audit, code-reviewer, code-simplifier]\n  - doc-audit\n'
+refuse "bad node id" 'extends: canon-default\noff:\n  - Break It\n'
+d="$(mkproj 'extends: canon-default\n')"; rm "$d/canon-config/pipeline.yaml"; mkdir "$d/canon-config/pipeline.yaml"
+out="$("$P" resolve --project "$d" 2>&1)" && fail "pipeline: a folder named pipeline.yaml was read" || [[ "$out" == *"not a regular file"* ]] || fail "pipeline: folder-as-file refusal said: $out"
+if [[ "$(id -u)" != 0 ]]; then   # root reads anything (the cloud container), so the check cannot be shown there
+  d="$(mkproj 'extends: canon-default\n')"; chmod 000 "$d/canon-config/pipeline.yaml"
+  out="$("$P" resolve --project "$d" 2>&1)" && fail "pipeline: an unreadable project file was read" || [[ "$out" == "pipeline: "*"not readable" ]] || fail "pipeline: unreadable refusal said: $out"
+  chmod 600 "$d/canon-config/pipeline.yaml"
+fi
+
 # ── nothing in a file is ever run (cwd is a scratch folder: a stray `touch` would land there) ──
-mkdir "$T/cwd"
+mkdir -p "$T/cwd"
 for body in 'extends: canon-default\noff: [$(touch PWNED)]\n' 'extends: canon-default\noff: [`touch PWNED`]\n' 'extends: canon-default\n# $(touch PWNED)\noff: [break-it]\n' 'extends: canon-default\noff: ["$(touch PWNED)"]\n'; do
   d="$(mkproj "$body")"; (cd "$T/cwd" && "$P" resolve --project "$d" >/dev/null 2>&1) || true
   [[ ! -e "$T/cwd/PWNED" ]] || fail "pipeline: a project file ran a command ($body)"
