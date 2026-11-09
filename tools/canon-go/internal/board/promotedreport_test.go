@@ -144,7 +144,7 @@ func TestPromotedReportTextAndJSON(t *testing.T) {
 	prText(promotedReport(root), &b)
 	want := `promoted lines, from their (t-…; class: …) tags: 6 lines, 9 tickets read for a later mention of the class or the promoting ticket
 1 not counted: tag inside a code fence; 2 not counted: ticket without a created date; 2 unreadable: larger than 256 KB; 1 unreadable: not a regular file
-A later ticket counts when its review, eval or learnings text names the class itself (class N, which drives the verdict) or only a promoting ticket id (ref M: it was mentioned, which is not a recurrence). 0 means never written down, not never recurred.
+A later ticket counts when its review, eval or learnings text names the class itself or cites its P-id (class N, which drives the verdict) or only a promoting ticket id (ref M: it was mentioned, which is not a recurrence). 0 means never written down, not never recurred.
 
   Failing again  class 2   ref 2   -      slug-four (t-ffff, 2026-10-01)  PROMOTED.md
   Mentioned once class 1   ref 2   -      slug-one (t-aaaa, 2026-10-01)  standards/efficiency-notes.md
@@ -273,5 +273,47 @@ func TestPromotedReportNamesAndFenceLines(t *testing.T) {
 	r := promotedReport(root)
 	if len(r.Entries) != 0 || r.Skipped["tag on a code fence line"] != 1 || r.Skipped["tag inside a code fence"] != 1 {
 		t.Errorf("fence handling: entries %+v skipped %v", r.Entries, r.Skipped)
+	}
+}
+
+// a later ticket that cites the entry's P-id counts as naming it; an id on another entry, or a longer id that starts the same, does not
+func TestPromotedReportCountsAnIDCitation(t *testing.T) {
+	root := t.TempDir()
+	prGit(t, root, "2026-10-01T12:00:00Z", "init", "-q")
+	prPut(t, root, "standards/efficiency-notes.md", "- rule A (t-aaaa; class: slug-one; id: P-001)\n- rule B (t-bbbb; class: slug-two; id: P-002)\n")
+	prGit(t, root, "2026-10-01T12:00:00Z", "add", "-A")
+	prGit(t, root, "2026-10-01T12:00:00Z", "commit", "-q", "-m", "one")
+	prTicket(t, root, "t-0001", "2026-10-05", map[string]string{"review-notes.md": "Correctness: a.go:1 — falls under P-001\n"})
+	prTicket(t, root, "t-0002", "2026-10-06", map[string]string{"eval-report.md": "see P-0010 and P-001.\n"})
+	prTicket(t, root, "t-0003", "2026-10-07", map[string]string{"learnings.md": "P-0020 is another rule\n"})
+	r := promotedReport(root)
+	if one := prFind(r, "slug-one"); one.BySlug != 2 || one.Verdict != "Failing again" || one.ID != "P-001" {
+		t.Errorf("slug-one = %+v, want two citing tickets", one)
+	}
+	if two := prFind(r, "slug-two"); two.BySlug != 0 || two.Verdict != "Not mentioned" {
+		t.Errorf("slug-two = %+v: P-0020 must not count as P-002", two)
+	}
+	if !prCitesID("x P-7", "P-7") || prCitesID("x P-70", "P-7") || !prCitesID("P-70 P-7", "P-7") {
+		t.Error("prCitesID token boundary")
+	}
+}
+
+// the header's skip reasons are in a fixed order, so two runs over the same tree print the same text
+func TestPromotedReportHeaderReasonOrder(t *testing.T) {
+	r := &prReport{Entries: []prEntry{}, Tickets: 0,
+		Skipped:    map[string]int{"tag on a code fence line": 1, "no git date for the line": 1, "ticket without a created date": 1},
+		Unreadable: map[string]int{"unreadable": 1, "larger than 256 KB": 1, "not a regular file": 1}}
+	var first bytes.Buffer
+	prText(r, &first)
+	want := "1 not counted: no git date for the line; 1 not counted: tag on a code fence line; 1 not counted: ticket without a created date; 1 unreadable: larger than 256 KB; 1 unreadable: not a regular file; 1 unreadable: unreadable"
+	if !strings.Contains(first.String(), want) {
+		t.Errorf("header order:\n%s", first.String())
+	}
+	for i := 0; i < 20; i++ {
+		var b bytes.Buffer
+		prText(r, &b)
+		if b.String() != first.String() {
+			t.Fatalf("run %d differs", i)
+		}
 	}
 }

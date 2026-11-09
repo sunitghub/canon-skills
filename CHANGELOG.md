@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+- Changed (promoted rules): the 58 placed lines tagged `(t-…; class: …)` now carry a unique `id: P-nnn` (oldest promotion first); `promote-learnings` says how a line is tagged and how the next id is found, and the reviewer and evaluator prompts tell the agent to name the id when a finding falls under that rule. `canon-go promoted-report` counts a later ticket that cites the id as naming the class, so a rule that keeps failing can show as Failing again (t-f74e).
+
 ## [0.47.25] - 2026-11-09
 
 Run `canon update`.

@@ -132,7 +132,7 @@ Model: <the model designation received in Inputs>
 
 ## Findings
 
-<If all pass: "No findings." Otherwise: numbered list of fail/partial items — specific, actionable, what is missing or wrong. Then the `Evidence reuse:` line from step 5b.>
+<If all pass: "No findings." Otherwise: numbered list of fail/partial items — specific, actionable, what is missing or wrong. Then the `Evidence reuse:` line from step 5b. When a finding falls under a promoted rule (a placed line tagged `id: P-nnn`), name that id in it.>
 
 ## Verdict
 

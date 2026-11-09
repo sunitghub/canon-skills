@@ -60,6 +60,8 @@ The review-notes template below is the whole return shape for this gate.
    - **Portability** — behaviour that differs on macOS, Linux or Windows Git Bash (BSD vs GNU tools, bash 3.2, path and line-ending forms, case-insensitive filesystems)
    - **Hygiene** — scope creep (changes beyond what `plan.md` describes), dead code made unreachable or unused by this change, unnecessary complexity (abstractions, layers or indirection added without a clear reason), and standards violations: no comments unless WHY is non-obvious, no feature flags, no backwards-compat shims, no mocking what can be integration-tested cheaply, no reformatting adjacent code, if the project registered efficiency, also anything that conflicts with `standards/efficiency.md` or its domain notes `standards/efficiency-notes.md`. Hygiene is Noted by default; it is Act On only when it breaks a rule in `standards/`.
 
+   When a finding falls under a promoted rule (a placed line tagged `id: P-nnn`), name that id in the finding.
+
 5. **Save findings.** Save via Bash to `.tickets/<id>/review-notes.md` — write it in sections, verify each append, and follow the retry pattern in "Report-writing safety" above. Keep the `Model:` line below: `sprint complete` blocks a `review-notes.md` without a `^Model:` line, even if you write the rest free-form.
 
 ```markdown

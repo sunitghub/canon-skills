@@ -12,7 +12,7 @@ board="$(build_board "$work/board")"
 proj="$work/proj"; mkdir -p "$proj/standards" "$proj/.tickets/t-0001"
 tree_hash() { (cd "$proj" && find . -path ./.git -prune -o -type f -print | LC_ALL=C sort | xargs cat | { sha256sum 2>/dev/null || shasum -a 256; }); }
 
-printf -- '- a rule (t-aaaa; class: slug-one)\n' > "$proj/standards/efficiency-notes.md"
+printf -- '- a rule (t-aaaa; class: slug-one; id: P-001)\n' > "$proj/standards/efficiency-notes.md"
 printf -- '---\nid: t-0001\ncreated: 2026-10-05T10:00:00Z\n---\n' > "$proj/.tickets/t-0001/ticket.md"
 printf 'slug-one came back\n' > "$proj/.tickets/t-0001/review-notes.md"
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t GIT_AUTHOR_DATE=2026-10-01T12:00:00Z GIT_COMMITTER_DATE=2026-10-01T12:00:00Z

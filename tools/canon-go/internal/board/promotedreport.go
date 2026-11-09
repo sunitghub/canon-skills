@@ -215,7 +215,7 @@ func promotedReport(root string) *prReport {
 			if t.created <= e.Date || prHas(e.Tickets, t.id) {
 				continue
 			}
-			slug := strings.Contains(t.text, e.Slug)
+			slug := strings.Contains(t.text, e.Slug) || (e.ID != "" && prCitesID(t.text, e.ID)) // a reviewer or evaluator naming the id says the failure the line was meant to stop happened again
 			hit := slug
 			for _, id := range e.Tickets {
 				hit = hit || strings.Contains(t.text, id)
@@ -254,7 +254,7 @@ func prText(r *prReport, w io.Writer) {
 		}
 		fmt.Fprintf(w, "%s\n", strings.Join(parts, "; "))
 	}
-	fmt.Fprintln(w, "A later ticket counts when its review, eval or learnings text names the class itself (class N, which drives the verdict) or only a promoting ticket id (ref M: it was mentioned, which is not a recurrence). 0 means never written down, not never recurred.")
+	fmt.Fprintln(w, "A later ticket counts when its review, eval or learnings text names the class itself or cites its P-id (class N, which drives the verdict) or only a promoting ticket id (ref M: it was mentioned, which is not a recurrence). 0 means never written down, not never recurred.")
 	fmt.Fprintln(w)
 	for _, e := range r.Entries {
 		id := e.ID
@@ -277,6 +277,21 @@ func prSafeName(f string) string {
 		}
 		return r
 	}, f)
+}
+
+// prCitesID reports whether text names the id as a whole token: P-001 is not found in P-0010.
+func prCitesID(text, id string) bool {
+	for i := 0; ; {
+		j := strings.Index(text[i:], id)
+		if j < 0 {
+			return false
+		}
+		end := i + j + len(id)
+		if end >= len(text) || text[end] < '0' || text[end] > '9' {
+			return true
+		}
+		i = end
+	}
 }
 
 func prHas(ids []string, id string) bool {

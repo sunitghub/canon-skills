@@ -101,6 +101,11 @@ while IFS= read -r label; do
 done < <(grep -oE '"[^"]+"' <<<"$buckets_line" | tr -d '"')
 [[ "$bucket_count" -eq 4 ]] || fail "doc-mirror-parity: expected 4 triage buckets in tools/sprint, found $bucket_count (t-f13a)"
 
+# t-f74e: both gate prompts tell the agent to name a promoted rule's id (`id: P-nnn`) in a finding it falls under; promoted-report counts those citations.
+for f in "$ROOT/skills/sprint/reference/review.md" "$ROOT/skills/sprint/reference/eval.md"; do
+  grep -qF 'name that id in' "$f" || fail "doc-mirror-parity: $(basename "$f") lost the phrase telling the agent to name a promoted rule's P-id in a finding (t-f74e)"
+done
+
 # ── Check D: base-ref branching commands must match between
 # shared-gate-protocol.md and security-review.md.
 base_ref_commands() {
