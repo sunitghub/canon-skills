@@ -115,6 +115,9 @@ func pipelineResolve(root string) ([]pipelineNode, error) {
 	if err != nil {
 		return nil, err
 	}
+	if strings.TrimSpace(out) == "" {
+		return nil, errors.New("pipeline: the reader printed no nodes")
+	}
 	var nodes []pipelineNode
 	for _, line := range strings.Split(strings.TrimRight(out, "\r\n"), "\n") {
 		line = strings.TrimSuffix(line, "\r")
@@ -134,9 +137,6 @@ func pipelineResolve(root string) ([]pipelineNode, error) {
 		}
 		nodes = append(nodes, pipelineNode{ID: f[1], Kind: pipelineClean(f[2]), Order: order, On: f[3] == "on", Locked: f[4] == "locked",
 			Group: none(f[5]), When: none(f[6]), Prompt: none(f[7]), Reason: none(f[8])})
-	}
-	if len(nodes) == 0 {
-		return nil, errors.New("pipeline: the reader printed no nodes")
 	}
 	return nodes, nil
 }

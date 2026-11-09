@@ -531,3 +531,349 @@ func TestPipelineRefusesARegisteredPathThatIsNotAbsolute(t *testing.T) {
 		t.Fatal("a request wrote relative to the board's working directory")
 	}
 }
+
+// ── mutation sweep survivors (t-3a58): the response's every field, the helpers, the boundaries and the messages ──
+
+func TestPipelineReplyCarriesEveryField(t *testing.T) {
+	id, root := pipelineEnv(t)
+	tiers := filepath.Join(t.TempDir(), "model-tiers.json")
+	os.WriteFile(tiers, []byte(`{"defaults":{"eval":{"anthropic":"claude-sonnet-5"}},"models":{"anthropic":[{"id":"other","name":"Other"},{"id":"claude-sonnet-5","name":"Claude Sonnet 5"}]}}`), 0o644)
+	old := modelTiersPath
+	modelTiersPath = tiers
+	defer func() { modelTiersPath = old }()
+	_, g := pipelineGetReq(id)
+	nodes := g["nodes"].([]any)
+	by := map[string]map[string]any{}
+	for _, n := range nodes {
+		m := n.(map[string]any)
+		by[m["id"].(string)] = m
+	}
+	sk := by["skill-eval"]
+	if sk["kind"] != "gate" || sk["order"] != float64(60) || sk["on"] != true || sk["locked"] != false || sk["when"] != "a skill or gate agent changed (tools/skill-eval-scope.sh)" || sk["prompt"] != "skills/skill-eval/SKILL.md" {
+		t.Fatalf("skill-eval = %v", sk)
+	}
+	if _, has := sk["group"]; has {
+		t.Errorf("a node outside the group carries a group: %v", sk)
+	}
+	if _, has := sk["reason"]; has {
+		t.Errorf("an open node carries a reason (the placeholder dash leaked): %v", sk)
+	}
+	st := by["start"]
+	if st["locked"] != true || st["reason"] != "Always runs: every sprint starts with a ticket and a plan." {
+		t.Fatalf("start = %v", st)
+	}
+	if _, has := st["when"]; has {
+		t.Errorf("a node with no condition carries a when: %v", st)
+	}
+	if by["doc-audit"]["group"] != "wrapup" {
+		t.Errorf("doc-audit group = %v", by["doc-audit"]["group"])
+	}
+	// the Admin default model is shown on reviewer and eval only, with its registry name and source
+	for _, nid := range []string{"reviewer", "eval"} {
+		m, _ := by[nid]["model"].(map[string]any)
+		if m == nil || m["id"] != "claude-sonnet-5" || m["name"] != "Claude Sonnet 5" || m["source"] != "Admin > Model tiers > Review & Eval default" {
+			t.Errorf("%s model = %v", nid, by[nid]["model"])
+		}
+	}
+	for _, nid := range []string{"break-it", "start", "code-reviewer", "security-review", "mutation-test"} {
+		if _, has := by[nid]["model"]; has {
+			t.Errorf("%s shows a model", nid)
+		}
+	}
+	// no Admin default: no model at all
+	os.WriteFile(tiers, []byte(`{"defaults":{"eval":{}},"models":{"anthropic":[]}}`), 0o644)
+	_, g = pipelineGetReq(id)
+	for _, n := range g["nodes"].([]any) {
+		if _, has := n.(map[string]any)["model"]; has {
+			t.Fatalf("a model without an Admin default: %v", n)
+		}
+	}
+	// a default whose id is not in the registry shows the id as its name
+	os.WriteFile(tiers, []byte(`{"defaults":{"eval":{"anthropic":"claude-x"}},"models":{"anthropic":[]}}`), 0o644)
+	_, g = pipelineGetReq(id)
+	for _, n := range g["nodes"].([]any) {
+		m := n.(map[string]any)
+		if m["id"] == "reviewer" && m["model"].(map[string]any)["name"] != "claude-x" {
+			t.Fatalf("model name fallback = %v", m["model"])
+		}
+	}
+	if g["file"] != "canon-config/pipeline.yaml" || g["exists"] != false || g["can_reset"] != false || g["text"] != "" {
+		t.Fatalf("view fields = %v", g)
+	}
+	// a file in place: text (CR removed), can_reset, exists
+	os.MkdirAll(filepath.Join(root, "canon-config"), 0o755)
+	os.WriteFile(filepath.Join(root, "canon-config", "pipeline.yaml"), []byte("extends: canon-default\r\noff: [skill-eval]\r\n"), 0o644)
+	_, g = pipelineGetReq(id)
+	if g["exists"] != true || g["can_reset"] != true || g["text"] != "extends: canon-default\noff: [skill-eval]\n" || g["changed"] != true {
+		t.Fatalf("view with a CRLF file = %v", g)
+	}
+	// a folder with no file: not a file, not a problem
+	os.Remove(filepath.Join(root, "canon-config", "pipeline.yaml"))
+	_, g = pipelineGetReq(id)
+	if g["ok"] != true || g["exists"] != false || g["can_reset"] != false {
+		t.Fatalf("view with an empty canon-config = %v", g)
+	}
+}
+
+func TestPipelineViewFlagsAProblemFileAsExistingOrNot(t *testing.T) {
+	id, root := pipelineEnv(t)
+	outside := t.TempDir()
+	os.Symlink(outside, filepath.Join(root, "canon-config"))
+	if _, g := pipelineGetReq(id); g["exists"] != false || g["can_reset"] != false || g["ok"] != false {
+		t.Fatalf("symlinked folder view = %v", g)
+	}
+	os.Remove(filepath.Join(root, "canon-config"))
+	os.Mkdir(filepath.Join(root, "canon-config"), 0o755)
+	os.Mkdir(filepath.Join(root, "canon-config", "pipeline.yaml"), 0o755)
+	if _, g := pipelineGetReq(id); g["exists"] != false || g["can_reset"] != false || g["ok"] != false || !strings.Contains(fmt.Sprint(g["error"]), "not a plain file") {
+		t.Fatalf("folder-as-file view = %v", g)
+	}
+}
+
+func TestPipelineFileSizeBoundary(t *testing.T) {
+	id, root := pipelineEnv(t)
+	os.MkdirAll(filepath.Join(root, "canon-config"), 0o755)
+	file := filepath.Join(root, "canon-config", "pipeline.yaml")
+	head := "extends: canon-default\n"
+	pad := func(n int) string { // short comment lines (the reader refuses a line over 400 characters), n bytes in all
+		b := head
+		for len(b) < n {
+			b += "#" + strings.Repeat("x", 60) + "\n"
+		}
+		return b[:n-1] + "\n"
+	}
+	os.WriteFile(file, []byte(pad(pipelineFileMax)), 0o644) // exactly 64 KB: read and accepted
+	if _, g := pipelineGetReq(id); g["ok"] != true || len(fmt.Sprint(g["text"])) != pipelineFileMax {
+		t.Fatalf("a 64 KB file = ok %v, text %d bytes", g["ok"], len(fmt.Sprint(g["text"])))
+	}
+	os.WriteFile(file, []byte(pad(pipelineFileMax+1)), 0o644) // one byte over: the reader refuses it by name, text is not read
+	if _, g := pipelineGetReq(id); g["ok"] != false || g["text"] != "" || !strings.Contains(fmt.Sprint(g["error"]), "over 65536 bytes") {
+		t.Fatalf("a 64 KB + 1 file = %v", g)
+	}
+}
+
+func TestPipelineMessagesAndFlagsOfRefusals(t *testing.T) {
+	id, root := pipelineEnv(t)
+	for _, body := range []string{`{"op":"toggle","id":"eval","on":false}`, `{"op":"delete"}`, `bad`} {
+		if code, m := post(id, body); code != 400 || m["ok"] != false {
+			t.Errorf("%s: %d ok=%v, want a 400 with ok:false", body, code, m["ok"])
+		}
+	}
+	for _, c := range []struct{ origin, want string }{{"", "forbidden"}, {"http://evil.example", "forbidden"}} {
+		req := httptest.NewRequest(http.MethodPost, "/api/pipeline?project="+id, strings.NewReader(`{"op":"reset"}`))
+		req.Header.Set("Content-Type", "application/json")
+		if c.origin != "" {
+			req.Header.Set("Origin", c.origin)
+		}
+		w := httptest.NewRecorder()
+		handlePost(w, req)
+		if w.Code != 403 || !strings.Contains(w.Body.String(), c.want) {
+			t.Errorf("origin %q = %d %q", c.origin, w.Code, w.Body.String())
+		}
+	}
+	if code, m := pipelinePostReq(id, pipelineOrigin, "text/plain", `{"op":"reset"}`); code != 415 || !strings.Contains(fmt.Sprint(m["error"]), "expected application/json") || m["ok"] != false {
+		t.Errorf("wrong content type = %d %v", code, m)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/pipeline?project=ffffffffffff", strings.NewReader(`{"op":"reset"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", pipelineOrigin)
+	w := httptest.NewRecorder()
+	handlePost(w, req)
+	if w.Code != 400 || !strings.Contains(w.Body.String(), "unknown project") {
+		t.Errorf("unknown project = %d %q", w.Code, w.Body.String())
+	}
+	// the permutation refusal names the group in order
+	post(id, `{"op":"toggle","id":"break-it","on":false}`)
+	if code, m := post(id, `{"op":"order","wrapup":["doc-audit","code-reviewer","reviewer"]}`); code != 400 || fmt.Sprint(m["error"]) != "wrapup must list exactly: code-simplifier, code-reviewer, doc-audit" {
+		t.Errorf("permutation refusal = %d %v", code, m)
+	}
+	_ = root
+}
+
+func TestPipelineOrderKeepsTheOffList(t *testing.T) {
+	id, root := pipelineEnv(t)
+	post(id, `{"op":"toggle","id":"skill-eval","on":false}`)
+	post(id, `{"op":"toggle","id":"mutation-test","on":false}`)
+	if code, _ := post(id, `{"op":"order","wrapup":["doc-audit","code-reviewer","code-simplifier"]}`); code != 200 {
+		t.Fatal("order refused")
+	}
+	if got := pipelineFileText(root); got != "extends: canon-default\noff: [skill-eval, mutation-test]\nwrapup-order: [doc-audit, code-reviewer, code-simplifier]\n" {
+		t.Fatalf("an order change dropped or reordered the off list: %q", got)
+	}
+	// a toggle keeps the wrapup order
+	post(id, `{"op":"toggle","id":"mutation-test","on":true}`)
+	if got := pipelineFileText(root); got != "extends: canon-default\noff: [skill-eval]\nwrapup-order: [doc-audit, code-reviewer, code-simplifier]\n" {
+		t.Fatalf("a toggle dropped the wrapup order: %q", got)
+	}
+}
+
+func TestPipelineNoOpOnAnExistingFileWritesNothing(t *testing.T) {
+	id, root := pipelineEnv(t)
+	post(id, `{"op":"toggle","id":"skill-eval","on":false}`)
+	before := treeDigest(t, root)
+	code, m := post(id, `{"op":"toggle","id":"skill-eval","on":false}`)
+	if code != 200 || m["created"] != false || m["ok"] != true {
+		t.Fatalf("a repeated toggle = %d %v", code, m)
+	}
+	if treeDigest(t, root) != before {
+		t.Fatal("a repeated toggle rewrote the file or left a temp file")
+	}
+}
+
+func TestPipelineEventRecordsOldAndNew(t *testing.T) {
+	id, _ := pipelineEnv(t)
+	post(id, `{"op":"toggle","id":"skill-eval","on":false}`)
+	post(id, `{"op":"toggle","id":"mutation-test","on":false}`)
+	post(id, `{"op":"reset"}`)
+	var all string
+	files, _ := filepath.Glob(filepath.Join(os.Getenv("CANON_HOME"), "events", "*.jsonl"))
+	for _, f := range files {
+		b, _ := os.ReadFile(f)
+		all += string(b)
+	}
+	for _, want := range []string{`"old":"off=-"`, `"new":"off=skill-eval"`, `"old":"off=skill-eval"`, `"new":"off=skill-eval,mutation-test"`, `"name":"pipeline.reset"`, `"new":"off=-"`} {
+		if !strings.Contains(all, want) {
+			t.Errorf("the activity log lacks %s in %q", want, all)
+		}
+	}
+	// the summary stays within the event field's 64 characters
+	if got := pipelineSummary([]string{"code-simplifier", "code-reviewer", "doc-audit", "skill-eval", "break-it", "reviewer", "mutation-test"}); len(got) != 60 || !strings.HasPrefix(got, "off=code-simplifier,code-reviewer,doc-audit,skill-eval,break") {
+		t.Errorf("summary = %q (%d)", got, len(got))
+	}
+	if pipelineSummary(nil) != "off=-" || pipelineSummary([]string{"a"}) != "off=a" {
+		t.Error("summary of none or one")
+	}
+}
+
+func TestPipelineHelpers(t *testing.T) {
+	for in, want := range map[string]string{"plain": "plain", "a\x1bb": "a?b", "é": "?", "tab\t": "tab?", "~ !": "~ !", "\x7f": "?"} {
+		if got := pipelineClean(in); got != want {
+			t.Errorf("pipelineClean(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if got := pipelineClean(strings.Repeat("a", 400)); len(got) != 400 {
+		t.Errorf("400 characters came back as %d", len(got))
+	}
+	if got := pipelineClean(strings.Repeat("a", 401)); len(got) != 400 {
+		t.Errorf("401 characters came back as %d", len(got))
+	}
+	if !pipelineSame([]string{"a", "b"}, []string{"a", "b"}) || pipelineSame([]string{"a"}, []string{"a", "b"}) || pipelineSame([]string{"a", "b"}, []string{"a", "c"}) || pipelineSame([]string{"b"}, nil) || !pipelineSame(nil, []string{}) {
+		t.Error("pipelineSame")
+	}
+	good := []string{`{}`, `{"op":"reset"}`, ` {"op":"toggle","id":"x","on":true}`, `{"op":"order","wrapup":["a","b"]}`, "{\"op\":\"reset\"}\n"}
+	bad := []string{``, `{`, `{"op"`, `{"op":}`, `{"op":"reset"`, `{1:2}`, `{"op":"reset","x":1}`, `{"op":"reset","op":"reset"}`, `{"OP":"reset"}`, `[]`, `null`, `5`, `"x"`, `{"op":"reset"}}`, `{"op":"reset"}{}`, `{"op":"reset"} 1`, `{"op":"reset",}`, `{"op":"reset" "id":"x"}`}
+	for _, b := range good {
+		if !pipelineKeysExact([]byte(b)) {
+			t.Errorf("pipelineKeysExact(%q) = false", b)
+		}
+	}
+	for _, b := range bad {
+		if pipelineKeysExact([]byte(b)) {
+			t.Errorf("pipelineKeysExact(%q) = true", b)
+		}
+	}
+}
+
+// the reader's output is read line by line: CRLF is trimmed, the placeholder dash is no value, a short or hostile line is an error with its message
+func TestPipelineReaderOutputIsParsedStrictly(t *testing.T) {
+	id, _ := pipelineEnv(t)
+	stub := filepath.Join(t.TempDir(), "stub.sh")
+	run := func(script string) map[string]any {
+		os.WriteFile(stub, []byte("#!/usr/bin/env bash\n"+script), 0o755)
+		t.Setenv("PIPELINE_BIN", stub)
+		_, g := pipelineGetReq(id)
+		return g
+	}
+	g := run("printf '10\\tstart\\tstep\\ton\\tlocked\\t-\\t-\\t-\\tr\\r\\n20\\tx\\tgate\\toff\\topen\\twrapup\\t-\\t-\\t-\\r\\n'\n")
+	nodes, _ := g["nodes"].([]any)
+	if len(nodes) != 2 {
+		t.Fatalf("CRLF lines = %v", g)
+	}
+	n0 := nodes[0].(map[string]any)
+	if n0["reason"] != "r" || n0["locked"] != true {
+		t.Errorf("a CRLF line kept its carriage return: %v", n0)
+	}
+	for _, k := range []string{"when", "prompt"} {
+		if _, has := n0[k]; has {
+			t.Errorf("the placeholder dash leaked into %s: %v", k, n0)
+		}
+	}
+	if g := run("echo one\n"); g["ok"] != false || g["error"] != "pipeline: the reader printed a line this page cannot read" {
+		t.Errorf("short line = %v", g)
+	}
+	if g := run("printf '10\\tstart\\tstep\\ton\\tlocked\\t-\\t-\\t-\\tr\\textra\\n'\n"); g["ok"] != false || g["error"] != "pipeline: the reader printed a line this page cannot read" {
+		t.Errorf("ten fields = %v", g)
+	}
+	if g := run("printf 'ten\\tstart\\tstep\\ton\\tlocked\\t-\\t-\\t-\\tr\\n'\n"); g["ok"] != false || g["error"] != "pipeline: the reader printed a line this page cannot read" {
+		t.Errorf("a non-numeric order = %v", g)
+	}
+	if g := run("printf ''\n"); g["ok"] != false || g["error"] != "pipeline: the reader printed no nodes" {
+		t.Errorf("no output = %v", g)
+	}
+	// 200 lines are fine, 201 are refused
+	many := func(n int) string {
+		return "for i in $(seq 1 " + fmt.Sprint(n) + "); do printf '%s\\tn%s\\tstep\\ton\\topen\\t-\\t-\\t-\\t-\\n' \"$i\" \"x$i\"; done\n"
+	}
+	if g := run(many(200)); g["ok"] != true {
+		t.Errorf("200 lines = %v", g)
+	}
+	if g := run(many(201)); g["ok"] != false {
+		t.Errorf("201 lines were accepted")
+	}
+	// a reader that fails with no message still says so; with a message, its first line is shown
+	if g := run("exit 3\n"); g["ok"] != false || !strings.HasPrefix(fmt.Sprint(g["error"]), "pipeline: the reader failed: ") {
+		t.Errorf("a silent failure = %v", g)
+	}
+	if g := run("echo 'pipeline: first line' >&2; echo second >&2; exit 2\n"); g["error"] != "pipeline: first line" {
+		t.Errorf("a refusal = %v", g)
+	}
+	// the default failing: no list can be judged against it, and a change is not made
+	if g := run("case \"$*\" in *--project*) printf '10\\tstart\\tstep\\ton\\tlocked\\t-\\t-\\t-\\tr\\n';; *) echo 'pipeline: default is missing' >&2; exit 2;; esac\n"); g["ok"] != false || g["error"] != "pipeline: default is missing" {
+		t.Errorf("a failing default = %v", g)
+	}
+	code, m := post(id, `{"op":"toggle","id":"start","on":false}`)
+	if code != 500 || m["error"] != "pipeline: default is missing" {
+		t.Errorf("a change with a failing default = %d %v", code, m)
+	}
+}
+
+func TestPipelineLeavesNoScratchFolderOrTempFile(t *testing.T) {
+	id, root := pipelineEnv(t)
+	scratch := t.TempDir()
+	t.Setenv("TMPDIR", scratch)
+	post(id, `{"op":"toggle","id":"skill-eval","on":false}`)
+	post(id, `{"op":"toggle","id":"skill-eval","on":true}`)
+	if left, _ := filepath.Glob(filepath.Join(scratch, "canon-pipeline-*")); len(left) != 0 {
+		t.Errorf("the scratch project was left behind: %v", left)
+	}
+	entries, _ := os.ReadDir(filepath.Join(root, "canon-config"))
+	if len(entries) != 1 {
+		t.Errorf("canon-config holds %v", entries)
+	}
+}
+
+func TestPipelineWriteIntoAReadOnlyFolderIsRefusedCleanly(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root writes anywhere")
+	}
+	id, root := pipelineEnv(t)
+	os.MkdirAll(filepath.Join(root, "canon-config"), 0o755)
+	os.WriteFile(filepath.Join(root, "canon-config", "pipeline.yaml"), []byte("extends: canon-default\n"), 0o644)
+	os.Chmod(filepath.Join(root, "canon-config"), 0o555)
+	defer os.Chmod(filepath.Join(root, "canon-config"), 0o755)
+	code, m := post(id, `{"op":"toggle","id":"skill-eval","on":false}`)
+	if code != 409 || !strings.Contains(fmt.Sprint(m["error"]), "could not be written") {
+		t.Fatalf("a read-only folder = %d %v", code, m)
+	}
+	if got := pipelineFileText(root); got != "extends: canon-default\n" {
+		t.Fatalf("the file changed: %q", got)
+	}
+	// a project whose root cannot hold canon-config at all: the folder is not made
+	os.Chmod(filepath.Join(root, "canon-config"), 0o755)
+	os.RemoveAll(filepath.Join(root, "canon-config"))
+	os.Chmod(root, 0o555)
+	defer os.Chmod(root, 0o755)
+	if code, m := post(id, `{"op":"toggle","id":"skill-eval","on":false}`); code != 409 || !strings.Contains(fmt.Sprint(m["error"]), "could not be created") {
+		t.Fatalf("a root that cannot hold canon-config = %d %v", code, m)
+	}
+}
