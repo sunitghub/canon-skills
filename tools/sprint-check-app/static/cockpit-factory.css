@@ -83,7 +83,7 @@
   .pl-sw[aria-checked="true"]{background:var(--accent);border-color:var(--accent)}
   .pl-sw[aria-checked="true"]::after{left:18px;background:var(--panel)}
   .pl-sw:disabled{opacity:.45;cursor:not-allowed}
-  .pl-busy .pl-sw,.pl-busy .pl-mv,.pl-busy #fac-pipe-reset{pointer-events:none;opacity:.6}
+  .pl-busy .pl-sw,.pl-busy .pl-mv,.pl-busy button.pl-reset{pointer-events:none;opacity:.6}
   .pl-yaml{margin:8px 0 0;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);font:11.5px/1.5 'JetBrains Mono','Fira Code',ui-monospace,monospace;white-space:pre;overflow:auto;max-height:230px}
   .pl-link{font:inherit;font-size:11px;color:var(--accent);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline}
   .pl-file summary{cursor:pointer}
