@@ -5,6 +5,7 @@ import { withBusy } from './busy.js';
 import { activeTab, isProjectTab, openProject } from './cockpit-tabs.js';
 import { getProjects } from './cockpit-projects.js';
 import { showView } from './cockpit-views.js';
+import { loadPipeline, syncPipelineProject } from './cockpit-pipeline.js';
 
 // ── Doctor cache ─────────────────────────────────────────────────────────
 // `tkt github-doctor --json` via GET /api/github/doctor, the one readiness source (t-90a3). gh runs per check, so each
@@ -47,7 +48,10 @@ function refreshCardRow(pid){
 let ghPid=null, ghDoctor=null, ghGen=0, ghWant='';
 // t-24b1: a board's "GitHub · set up first" row, or a Projects card's Factory row, asks for that project's checks.
 export function openFactoryGithub(pid){ ghWant=pid; ghPid=null; facTab('gh'); showView('factory'); }
-export function loadFactory(){ ghLoad(false); }
+export function loadFactory(){   // opening the Factory page loads the tab that is showing
+  const a=document.querySelector('[data-fac-tab][aria-selected="true"]'), w=a&&a.dataset.facTab;
+  if(w==='pipe') loadPipeline(false); else if(w!=='line') ghLoad(false);
+}
 function ghPickProject(){
   const sel=document.getElementById('fac-gh-project'), projects=getProjects();
   const want=ghWant||sel.value||(isProjectTab(activeTab)?activeTab:'')||(projects[0]&&projects[0].id)||'';
@@ -145,7 +149,10 @@ function facTab(which){
     t.classList.toggle('active',on); t.setAttribute('aria-selected',String(on)); t.tabIndex=on?0:-1;
   });
   document.getElementById('fac-gh').hidden=which!=='gh';
+  document.getElementById('fac-pipe').hidden=which!=='pipe';   // t-3a58
   document.getElementById('fac-line').hidden=which!=='line';
+  if(which==='gh') ghLoad(false);   // follows the project the Pipeline tab may have changed
+  if(which==='pipe') loadPipeline(false);
 }
 
 // t-9641: factory's load-time code, run once at the end.
@@ -153,14 +160,15 @@ export function initFactory(){
 document.addEventListener('DOMContentLoaded',()=>{
   document.querySelectorAll('[data-fac-tab]').forEach(t=>{
     t.addEventListener('click',()=>facTab(t.dataset.facTab));
-    t.addEventListener('keydown',e=>{
+    t.addEventListener('keydown',e=>{   // Left and Right walk the tabs in order and wrap (t-3a58: three of them now)
       if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight') return;
       e.preventDefault();
-      const other=document.querySelector('[data-fac-tab]:not([aria-selected="true"])');
-      facTab(other.dataset.facTab); other.focus();
+      const tabs=[...document.querySelectorAll('[data-fac-tab]')], i=tabs.indexOf(t);
+      const next=tabs[(i+(e.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length];
+      facTab(next.dataset.facTab); next.focus();
     });
   });
-  document.getElementById('fac-gh-project').addEventListener('change',()=>ghLoad(false));
+  document.getElementById('fac-gh-project').addEventListener('change',()=>{ syncPipelineProject(document.getElementById('fac-gh-project').value); ghLoad(false); });
   document.getElementById('fac-gh-recheck').addEventListener('click',()=>ghLoad(true));
   document.getElementById('fac-gh-checks').addEventListener('click',e=>{ const b=e.target.closest('[data-gh-copy]'); if(b) ghCopy(b.dataset.ghCopy); });
   document.getElementById('fac-gh-copy-domains').addEventListener('click',()=>ghCopy(((ghDoctor&&ghDoctor.cloud&&ghDoctor.cloud.domains)||[]).join('\n')));

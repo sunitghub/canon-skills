@@ -190,6 +190,7 @@
             <h1 class="admin-h1">Factory</h1>
             <div class="fac-tabs" role="tablist" aria-label="Factory sections">
               <button type="button" class="fac-tab active" role="tab" id="fac-tab-gh" data-fac-tab="gh" aria-selected="true" aria-controls="fac-gh">GitHub</button>
+              <button type="button" class="fac-tab" role="tab" id="fac-tab-pipe" data-fac-tab="pipe" aria-selected="false" aria-controls="fac-pipe" tabindex="-1">Pipeline</button>
               <button type="button" class="fac-tab" role="tab" id="fac-tab-line" data-fac-tab="line" aria-selected="false" aria-controls="fac-line" tabindex="-1">Agentic factory <span class="fac-planned">Planned</span></button>
             </div>
             <div class="gh-wrap" id="fac-gh" role="tabpanel" aria-labelledby="fac-tab-gh">
@@ -246,6 +247,20 @@
                 <div class="setting-d">Full recipe: <code>docs/setup.md</code> &rsaquo; Claude cloud sessions.</div>
               </div>
             </div>
+            <div class="gh-wrap" id="fac-pipe" role="tabpanel" aria-labelledby="fac-tab-pipe" hidden>
+              <div class="gh-head"><span class="setting-d fac-proj" id="fac-pipe-proj"></span><select id="fac-pipe-project" aria-label="Project"></select></div>
+              <div class="gh-card" id="fac-pipe-card">
+                <div class="pl-head">
+                  <div class="setting-k">Pipeline &middot; the steps and gates of a sprint</div>
+                  <span class="pl-src" id="fac-pipe-src"></span>
+                  <button type="button" class="btn b-neutral" id="fac-pipe-reset" disabled>Reset to canon&rsquo;s default</button>
+                </div>
+                <div class="setting-d">Reorder the gates inside Wrapup and switch the optional ones off. Locked rows always run; hover or focus <b>locked &middot; why</b>. A gate you switch off reads <code>skipped | removed in this project&rsquo;s pipeline</code> in the Wrapup Gates table and in summary.md, and leaves an activity-log event.</div>
+                <div id="fac-pipe-rows" aria-live="polite"></div>
+                <div class="setting-d">Nothing is written until your first change. The file lists only what differs from canon&rsquo;s default, so canon&rsquo;s later defaults still apply, and this page rewrites the whole file: comments you add by hand are not kept. Reset rewrites it as canon&rsquo;s default.</div>
+                <details class="pl-file"><summary class="setting-d" id="fac-pipe-file-sum">The file a first change would write</summary><pre class="pl-yaml" id="fac-pipe-yaml"></pre></details>
+              </div>
+            </div>
             <div class="gh-wrap" id="fac-line" role="tabpanel" aria-labelledby="fac-tab-line" hidden>
               <div class="gh-card">
                 <div class="setting-k">Planned &middot; not built yet</div>
@@ -298,6 +313,14 @@
 <!-- Close-tab warning (t-0db3): the tab has a LIVE agent session. Never orphan or
      kill it silently — offer Save & End / End without saving / Keep working.
      Shown only for a live tab; an idle tab closes straight to Projects. -->
+<!-- Factory > Pipeline (t-3a58): shown once, by the change that creates canon-config/pipeline.yaml. -->
+<div class="scrim" id="pipe-saved">
+  <div class="cmodal" role="dialog" aria-modal="true" aria-labelledby="pipe-saved-t">
+    <h2 id="pipe-saved-t">Pipeline saved</h2>
+    <p>Saved in <code>canon-config/pipeline.yaml</code>. Commit it (<code>git add canon-config/pipeline.yaml</code>) so teammates and cloud sessions use it.</p>
+    <div class="cfoot"><button class="btn b-primary" id="pipe-saved-ok">OK</button></div>
+  </div>
+</div>
 <div class="scrim" id="closeWarn">
   <div class="cmodal">
     <div class="ci">&#9654;</div>

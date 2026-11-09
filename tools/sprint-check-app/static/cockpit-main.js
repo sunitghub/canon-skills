@@ -10,6 +10,7 @@ import { initViews } from './cockpit-views.js';
 import { initSkillEval } from './cockpit-skill-eval.js';
 import { initAdmin } from './cockpit-admin.js';
 import { initFactory } from './cockpit-factory.js';
+import { initPipeline } from './cockpit-pipeline.js';
 import { initTabs } from './cockpit-tabs.js';
 import { initProjects } from './cockpit-projects.js';
 
@@ -22,5 +23,6 @@ initViews();
 initSkillEval();
 initAdmin();
 initFactory();
+initPipeline();
 initTabs();
 initProjects();

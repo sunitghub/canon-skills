@@ -56,3 +56,36 @@
   .fac-subtab{font:inherit;font-size:12px;font-weight:600;padding:5px 14px;border:1px solid var(--border);border-bottom-color:transparent;border-radius:8px 8px 0 0;background:transparent;color:var(--text-muted);cursor:default}
   .fac-subtab.active{color:var(--text);background:var(--bg)}
   .fac-subpanel{border:1px solid var(--border);border-radius:0 8px 8px 8px;background:var(--bg);padding:12px 14px}
+
+  /* t-3a58: the Pipeline tab. Rows are a grid of tag, name and why, the wrapup arrows and the switch (or the locked note). */
+  .pl-head{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
+  .pl-head .setting-k{flex:1;min-width:200px}
+  .pl-src{font-size:12px;color:var(--text-muted)}
+  .pl-src b{color:var(--text)}
+  .pl-row{display:grid;grid-template-columns:54px minmax(0,1fr) auto auto;gap:4px 10px;align-items:center;padding:7px 0;border-top:1px solid var(--border-muted)}
+  .pl-row:first-child{border-top:0}
+  .pl-row.sub{padding-left:22px}
+  .pl-row.off .pl-n{text-decoration:line-through;color:var(--text-muted)}
+  .pl-row.pl-err{grid-template-columns:minmax(0,1fr)}
+  .pl-row.pl-err .pl-n{color:var(--col-discarded)}
+  .pl-n{display:block;font-weight:600;font-size:13px;color:var(--text)}
+  .pl-w{display:block;font-size:11px;color:var(--text-muted)}
+  .pl-w code{font-family:'JetBrains Mono','Fira Code',ui-monospace,monospace;font-size:11px}
+  .pl-md{font-family:'JetBrains Mono','Fira Code',ui-monospace,monospace;font-size:11px;color:var(--text);border:1px solid var(--border);background:var(--bg);border-radius:6px;padding:0 6px;cursor:help}
+  .pl-k{font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border:1px solid var(--border-hover);border-radius:999px;padding:1px 7px;color:var(--text-muted);white-space:nowrap}
+  .pl-k.you{color:var(--amber)}
+  .pl-k.agent{color:var(--accent)}
+  .pl-lock{font-size:11px;color:var(--text-muted);cursor:help;border-bottom:1px dotted var(--text-muted);white-space:nowrap}
+  .pl-mv{font:inherit;border:1px solid var(--border);background:var(--bg);color:var(--text);border-radius:6px;padding:0 7px;cursor:pointer;line-height:20px}
+  .pl-mv:disabled{opacity:.35;cursor:default}
+  .pl-sw{font:inherit;width:34px;height:18px;border-radius:999px;border:1px solid var(--border-hover);background:var(--bg);position:relative;cursor:pointer;padding:0}
+  .pl-sw::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:var(--text-muted)}
+  .pl-sw[aria-checked="true"]{background:var(--accent);border-color:var(--accent)}
+  .pl-sw[aria-checked="true"]::after{left:18px;background:var(--panel)}
+  .pl-sw:disabled{opacity:.45;cursor:not-allowed}
+  .pl-busy .pl-sw,.pl-busy .pl-mv,.pl-busy #fac-pipe-reset{pointer-events:none;opacity:.6}
+  .pl-yaml{margin:8px 0 0;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);font:11.5px/1.5 'JetBrains Mono','Fira Code',ui-monospace,monospace;white-space:pre;overflow:auto;max-height:230px}
+  .pl-file summary{cursor:pointer}
+  #pipe-saved .cmodal{text-align:left}
+  #pipe-saved .cmodal code{font-family:'JetBrains Mono','Fira Code',ui-monospace,monospace;font-size:12px;color:var(--accent);white-space:nowrap}
+  #pipe-saved .cfoot{justify-content:flex-end}
