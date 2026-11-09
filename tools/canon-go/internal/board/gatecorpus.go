@@ -29,7 +29,18 @@ var (
 	gcoVerdictRe = regexp.MustCompile(`^(pass|fail|partial|not-run):`)
 	gcoIDRe      = regexp.MustCompile(`^t-[a-z0-9]+$`)
 	gcoHeadVerRe = regexp.MustCompile(`^## Verdict:?[ \t]*(pass|fail|partial|not-run)\b`)
+	gcoRevVerRe  = regexp.MustCompile(`^(?:## )?Verdict:[ \t]*\**(YES|NO)\**[ \t.]*$`)
 )
+
+// gcoMonth keeps a month key to a real year and month, so a forged date cannot make a new row for every file.
+func gcoMonth(m string) string {
+	if len(m) == 7 && m[:2] == "20" && m[5] >= '0' && m[5] <= '1' {
+		if mm := m[5:]; mm >= "01" && mm <= "12" {
+			return m
+		}
+	}
+	return "undated"
+}
 
 var gcoBuckets = []string{"Act On", "Consider", "Noted", "Dismissed"}
 var gcoConcerns = []string{"Scope creep", "Visual regression", "Dead code", "Unnecessary complexity", "Standards violations"}
@@ -54,6 +65,7 @@ func newGcoSlice() *gcoSlice {
 type gcoReport struct {
 	Tickets    int                  `json:"tickets"`
 	Unreadable map[string]int       `json:"unreadable"` // reason -> files
+	RootError  bool                 `json:"tickets_folder_unreadable,omitempty"`
 	Total      *gcoSlice            `json:"total"`
 	ByModel    map[string]*gcoSlice `json:"by_model"`
 	ByMonth    map[string]*gcoSlice `json:"by_month"`
@@ -93,7 +105,8 @@ func gcoRead(path string) ([]string, string) {
 	if err != nil {
 		return nil, "unreadable"
 	}
-	return strings.Split(strings.ReplaceAll(string(b), "\r\n", "\n"), "\n"), ""
+	txt := strings.TrimPrefix(string(b), "\ufeff")
+	return strings.Split(strings.ReplaceAll(txt, "\r\n", "\n"), "\n"), ""
 }
 
 func (r *gcoReport) cut(model, month string) []*gcoSlice {
@@ -111,7 +124,7 @@ func (r *gcoReport) cut(model, month string) []*gcoSlice {
 
 func gcoReview(lines []string, r *gcoReport) {
 	model, month, verdict := "unknown", "undated", "other"
-	triaged, inFindings, inVerdict := false, false, false
+	triaged, inTriage, inFindings, inVerdict := false, false, false, false
 	lineCount := map[string]int{}
 	concern := map[string]int{}
 	for _, ln := range lines {
@@ -119,7 +132,11 @@ func gcoReview(lines []string, r *gcoReport) {
 		case strings.HasPrefix(ln, "## "):
 			inFindings = strings.HasPrefix(ln, "## Findings")
 			inVerdict = strings.HasPrefix(ln, "## Verdict")
-			if strings.HasPrefix(ln, "## Triage") {
+			if m := gcoRevVerRe.FindStringSubmatch(ln); m != nil { // the heading form: ## Verdict: YES
+				verdict = m[1]
+			}
+			inTriage = strings.HasPrefix(ln, "## Triage")
+			if inTriage {
 				triaged = true
 			}
 			continue
@@ -128,14 +145,16 @@ func gcoReview(lines []string, r *gcoReport) {
 			model = gcoModel(m[1])
 		}
 		if m := gcoMonthRe.FindStringSubmatch(ln); m != nil && month == "undated" {
-			month = m[2]
+			month = gcoMonth(m[2])
+		}
+		if m := gcoRevVerRe.FindStringSubmatch(ln); m != nil {
+			verdict = m[1]
 		}
 		if inVerdict && strings.TrimSpace(ln) != "" {
-			w := strings.Fields(strings.ReplaceAll(ln, "*", ""))
-			if len(w) > 0 {
-				switch strings.ToUpper(w[0]) {
+			if w := strings.Fields(strings.ReplaceAll(ln, "*", "")); len(w) > 0 {
+				switch strings.TrimRight(w[0], ".:,") { // exactly YES or NO: a prose "No blocking findings" is not a verdict
 				case "YES", "NO":
-					verdict = strings.ToUpper(w[0])
+					verdict = strings.TrimRight(w[0], ".:,")
 				}
 			}
 			inVerdict = false
@@ -145,7 +164,7 @@ func gcoReview(lines []string, r *gcoReport) {
 				concern[m[1]]++
 			}
 		}
-		if m := gcoBucketRe.FindStringSubmatch(ln); m != nil && !gcoNoneRe.MatchString(strings.TrimSpace(m[2])) {
+		if m := gcoBucketRe.FindStringSubmatch(ln); inTriage && m != nil && !gcoNoneRe.MatchString(strings.TrimSpace(m[2])) {
 			lineCount[m[1]]++
 		}
 	}
@@ -183,13 +202,13 @@ func gcoEval(lines []string, r *gcoReport) {
 			model = gcoModel(m[1])
 		}
 		if m := gcoMonthRe.FindStringSubmatch(ln); m != nil && month == "undated" {
-			month = m[2]
+			month = gcoMonth(m[2])
 		}
 		if m := gcoVerdictRe.FindStringSubmatch(ln); m != nil && verdict == "other" {
 			verdict = m[1]
 		}
 		if inCriteria && strings.HasPrefix(strings.TrimSpace(ln), "|") {
-			cells := strings.Split(strings.Trim(strings.TrimSpace(ln), "|"), "|")
+			cells := strings.Split(strings.ReplaceAll(strings.Trim(strings.TrimSpace(ln), "|"), `\|`, "\x00"), "|") // an escaped pipe is part of a cell
 			if len(cells) < 3 {
 				continue
 			}
@@ -224,6 +243,10 @@ func gateCorpus(root string) gcoReport {
 	r := gcoReport{Unreadable: map[string]int{}, Total: newGcoSlice(), ByModel: map[string]*gcoSlice{}, ByMonth: map[string]*gcoSlice{}}
 	entries, err := os.ReadDir(filepath.Join(root, ".tickets"))
 	if err != nil {
+		if !os.IsNotExist(err) {
+			r.RootError = true // a folder that is there but cannot be read is not an empty one
+			r.Unreadable[".tickets/ itself"]++
+		}
 		return r
 	}
 	for _, e := range entries {
@@ -258,11 +281,15 @@ func gcoPct(a, b int) string {
 
 func gcoText(r gcoReport, w io.Writer) {
 	t := r.Total
+	if r.RootError {
+		fmt.Fprintln(w, "gate corpus: this project's .tickets/ exists but cannot be read")
+		return
+	}
 	if r.Tickets == 0 {
 		fmt.Fprintln(w, "gate corpus: no tickets in this project's .tickets/")
 		return
 	}
-	fmt.Fprintf(w, "gate corpus, from the closed tickets' own reports (counts of fixed shapes only): %d tickets, %d review-notes.md, %d eval-report.md\n", r.Tickets, t.Reviews, t.Evals)
+	fmt.Fprintf(w, "gate corpus, from the tickets' own reports (counts of fixed shapes only): %d tickets, %d review-notes.md, %d eval-report.md\n", r.Tickets, t.Reviews, t.Evals)
 	if len(r.Unreadable) > 0 {
 		var u []string
 		for k, n := range r.Unreadable {
@@ -282,7 +309,7 @@ func gcoText(r gcoReport, w io.Writer) {
 	for _, c := range gcoConcerns {
 		cl = append(cl, fmt.Sprintf("%s %d", c, t.Concerns[c]))
 	}
-	fmt.Fprintf(w, "  template concern lines (not none, older reports): %s\n", strings.Join(cl, ", "))
+	fmt.Fprintf(w, "  template concern lines (not none, in a ## Findings section): %s\n", strings.Join(cl, ", "))
 	fmt.Fprintf(w, "\nevaluator: pass %d, fail %d, partial %d, not-run %d, other %d\n", t.EvalVerdicts["pass"], t.EvalVerdicts["fail"], t.EvalVerdicts["partial"], t.EvalVerdicts["not-run"], t.EvalVerdicts["other"])
 	fmt.Fprintf(w, "  criteria rows: pass %d, fail %d, partial %d, not-run %d, other %d\n", t.Criteria["pass"], t.Criteria["fail"], t.Criteria["partial"], t.Criteria["not-run"], t.Criteria["other"])
 	table := func(title string, m map[string]*gcoSlice) {
@@ -317,6 +344,10 @@ func gateCorpusCLI(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	rep := gateCorpus(root)
+	if rep.RootError {
+		fmt.Fprintln(stderr, "gate-corpus: .tickets/ exists but cannot be read")
+		return 1
+	}
 	if asJSON {
 		b, err := json.Marshal(rep)
 		if err != nil {

@@ -6,7 +6,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
-- Added (sprint close data): `canon-go gate-corpus [--json]` reads the project's closed tickets and counts, from the fixed shapes of their review-notes.md and eval-report.md, the reviewer's verdicts and triage buckets (Act On, Consider, Noted, Dismissed), the template concern labels, the evaluator's verdicts and criteria statuses, by gate model and by month. Read-only, no finding text printed, no model call. It is the first stage of mining our own history into rubrics and a labelled data set (t-a05d).
+- Added (sprint close data): `canon-go gate-corpus [--json]` reads the project's tickets and counts, from the fixed shapes of their review-notes.md and eval-report.md, the reviewer's verdicts and triage buckets (Act On, Consider, Noted, Dismissed), the template concern labels, the evaluator's verdicts and criteria statuses, by gate model and by month. Read-only, no finding text printed, no model call. It is the first stage of mining our own history into rubrics and a labelled data set (t-a05d).
 
 ## [0.47.22] - 2026-11-08
 
