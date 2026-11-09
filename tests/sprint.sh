@@ -794,6 +794,15 @@ new_review "none — checked the shape check against both lists, tools/sprint:10
 grep -v '^Hygiene:' "$rn" > "$rn.tmp" && mv "$rn.tmp" "$rn"
 mixed_out="$(run_fail "$SPRINT" check-review-notes "$model_id")"
 assert_contains "$mixed_out" 'no line for the "Hygiene" concern'
+# a report with an old-only label AND a current-only label is still judged by the current list; one with only the label both lists share is too
+new_review "none — checked the shape check against both lists, tools/sprint:1020"
+grep -v '^Hygiene:' "$rn" > "$rn.tmp" && mv "$rn.tmp" "$rn"
+printf 'Scope creep: none — checked plan.md, plan.md:2\n' >> "$rn"
+assert_contains "$(run_fail "$SPRINT" check-review-notes "$model_id")" 'no line for the "Hygiene" concern'
+printf '# Review Notes\nModel: test-model\nChanged files: tools/sprint, tests/sprint.sh\n## Findings\nVisual regression: none — checked no UI files changed, tools/sprint:1\n' > "$rn"
+shared_out="$(run_fail "$SPRINT" check-review-notes "$model_id")"
+assert_contains "$shared_out" 'no line for the "Correctness" concern'
+case "$shared_out" in *'"Scope creep"'*) fail "a report with only the shared label was judged by the old list" ;; esac
 # t-f13a: every triage bucket needs a line, and the verdict must match Act On (YES exactly when `Act On: none`)
 good_review "tools/sprint, tests/sprint.sh" "none — checked plan.md Files vs diff, plan.md:20"
 grep -v '^Noted:' "$rn" > "$rn.tmp" && mv "$rn.tmp" "$rn"
