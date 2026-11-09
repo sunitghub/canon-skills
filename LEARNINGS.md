@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-09-2026 11:50
+learnings-sweep last run: 11-09-2026 08:58
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-09 | [t-52a1](.tickets/t-52a1/learnings.md) | Reordering a pipeline leaves restated copies stale: the reviewer found the Wrapup Gates example rows and a wrapup-gates.md note still in the old order, and the full suite (not the targeted tests) flagged the new order assertion's `grep \| head` under pipefail-early-exit; grep every restatement of the order before the reviewer, and run the full suite on a new test line before the stamp. | UNPROMOTED |
 | 2026-11-09 | [t-f74e](.tickets/t-f74e/learnings.md) | Editing every line of a tracked file to add an id resets `git blame` for those lines (the promotion dates all read today until the id commits were listed in `.git-blame-ignore-revs`); and a review that quotes example ids is itself a citation to a counter that greps for them. Check a derived date and a derived count on the real data after a mass edit. | UNPROMOTED |
 | 2026-11-09 | [t-1219](.tickets/t-1219/learnings.md) | A recurrence count that matches on a ticket id reports references as recurrences: the first real run read 7 promoted lines Failing again on 0 mentions of their class. Run a new measure on the real data before trusting its verdict word, and keep the weaker signal beside it, not in it. | UNPROMOTED |
 | 2026-11-09 | [t-0ca2](.tickets/t-0ca2/learnings.md) | When a gate prompt's label list changes, the shape check that enforces it must accept both lists or closed tickets' reports start failing: choose the list by the labels a report started with, and run the check over every closed report before and after (800 reports, same result). A mandate line in the same prompt ("not correctness") can contradict the new list: read the whole file. | UNPROMOTED |
