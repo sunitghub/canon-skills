@@ -99,7 +99,7 @@ Ticket: \`$id\`
 ## Criteria
 The checklist of behavior that must be true before the sprint can close.
 <!-- Add or edit checklist items below. Keep this heading unchanged. -->
-<!-- Optional style for behavior: When <trigger>, <system> <does response>. Example: When tkt gets an unknown id, it exits 2 and names the id. Docs and files stay free text. -->
+<!-- Optional style for behavior: When <trigger>, <system> <does response>. Example: When tkt gets an unknown id, it exits 1 and names the id. Docs and files stay free text. -->
 
 - [ ]
 
