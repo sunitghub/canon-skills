@@ -446,6 +446,83 @@ _approach_digest() {
     | { sha256sum 2>/dev/null || shasum -a 256; } | cut -d' ' -f1
 }
 
+# _pipeline_state <project root> — t-7e76: this project's resolved pipeline (canon's default plus canon-config/pipeline.yaml) in the one
+# line the approve-time pin and the close compare: "<12 hex of the resolved order> off=<comma ids, or -> wrapup=<comma ids in run order>".
+# Exit 0 and the line; exit 2 and the resolver's own one-line message (a locked node, a bad file); exit 3 and nothing when this install
+# has no pipeline.sh (the gate then skips). tools/pipeline.sh is the one reader (t-00e0): nothing here parses the YAML.
+_pipeline_state() {
+  local root="$1" plain full rc=0 digest off wrapup
+  [[ -x "$SCRIPT_DIR/pipeline.sh" ]] || return 3
+  plain="$("$SCRIPT_DIR/pipeline.sh" resolve --project "$root" 2>&1)" || rc=$?
+  if (( rc != 0 )); then printf '%s\n' "$plain"; return 2; fi
+  full="$("$SCRIPT_DIR/pipeline.sh" resolve --full --project "$root" 2>&1)" || { printf '%s\n' "$full"; return 2; }
+  digest="$(printf '%s\n' "$plain" | { sha256sum 2>/dev/null || shasum -a 256; } | cut -c1-12)"
+  off="$(printf '%s\n' "$plain" | awk '$4 == "off" { printf "%s%s", (n++ ? "," : ""), $2 }')"
+  wrapup="$(printf '%s\n' "$full" | awk -F'\t' '$6 == "wrapup" { printf "%s%s", (n++ ? "," : ""), $2 }')"
+  printf '%s off=%s wrapup=%s\n' "$digest" "${off:--}" "${wrapup:--}"
+}
+
+PIPELINE_REMOVED_PHRASE="removed in this project's pipeline"
+PIPELINE_OFF_NODES=""   # set by _gate_pipeline: the removed nodes of a close that passed it, for the events written after the close
+
+# _gate_pipeline <id> <ticket dir> <acceptance.md> <project root> — t-7e76: sprint complete reads the project's pipeline. A node the
+# project removed must be visible: its Wrapup Gates row (skipped, reason containing the phrase above) and a `Pipeline: removed <ids>` line
+# in summary.md. The pipeline is pinned by `sprint approve` (plan.md Sign-off, `Pipeline:`); a close whose resolved pipeline differs is
+# refused naming what changed, and a ticket approved before the pin only gets a notice. A project with no override has no removed node,
+# so this prints nothing and refuses nothing. Locked nodes (the resolver refuses them), a malformed file and a malformed pin are refused.
+_gate_pipeline() {
+  local id="$1" tdir="$2" acceptance="$3" root="$4" state rc=0 off node problems="" pin pin_off pin_wrapup now_off now_wrapup changed="" n
+  local -a offs
+  PIPELINE_OFF_NODES=""
+  state="$(_pipeline_state "$root")" || rc=$?
+  case "$rc" in
+    0) ;;
+    3) return 0 ;;
+    *) echo "Sprint $id cannot close: $state"
+       echo "Fix canon-config/pipeline.yaml (or restore it); a locked node cannot be switched off."
+       return 1 ;;
+  esac
+  off="${state#* off=}"; off="${off%% wrapup=*}"
+  if [[ "$off" != "-" ]]; then
+    IFS=, read -r -a offs <<< "$off"
+    for node in "${offs[@]}"; do
+      if ! _acceptance_section "Wrapup Gates" "$acceptance" | awk -F'|' -v n="$node" -v p="$PIPELINE_REMOVED_PHRASE" '
+        { g = $2; s = $3; r = $4; gsub(/^[[:space:]]+|[[:space:]]+$/, "", g); gsub(/^[[:space:]]+|[[:space:]]+$/, "", s)
+          if (g == n && s == "skipped" && index(r, p)) f = 1 }
+        END { exit !f }'; then
+        problems+="  - acceptance.md ## Wrapup Gates needs the row: | $node | skipped | $PIPELINE_REMOVED_PHRASE |"$'\n'
+      fi
+      if [[ ! -f "$tdir/summary.md" ]] || ! awk -v n="$node" '
+        /^Pipeline: removed/ { gsub(/[,()]/, " "); k = split($0, w, " "); for (i = 1; i <= k; i++) if (w[i] == n) f = 1 }
+        END { exit !f }' "$tdir/summary.md"; then
+        problems+="  - summary.md needs a line naming $node: Pipeline: removed $off (canon-config/pipeline.yaml)"$'\n'
+      fi
+    done
+    if [[ -n "$problems" ]]; then
+      echo "Sprint $id cannot close: this project's pipeline removes $off, and the close must show it."
+      printf '%s' "$problems"
+      return 1
+    fi
+  fi
+  pin="$(_acceptance_section "Sign-off" "$tdir/plan.md" 2>/dev/null | sed -n 's/^[[:space:]]*Pipeline:[[:space:]]*sha256:\(.*\)$/\1/p' | sed 's/[[:space:]]*$//' | tail -1)"
+  if [[ -z "$pin" ]]; then
+    echo "[sprint] notice: plan.md has no 'Pipeline:' pin (approved before it), so pipeline drift is unchecked; run sprint approve $id to pin it."
+  elif [[ ! "$pin" =~ ^[0-9a-f]{12}\ off=[a-z0-9,-]+\ wrapup=[a-z0-9,-]+$ ]]; then
+    echo "Sprint $id cannot close: plan.md's 'Pipeline:' pin is malformed; show the user, then run sprint approve $id."
+    return 1
+  elif [[ "$pin" != "$state" ]]; then
+    pin_off="${pin#* off=}"; pin_off="${pin_off%% wrapup=*}"; pin_wrapup="${pin##* wrapup=}"
+    now_off="$off"; now_wrapup="${state##* wrapup=}"
+    for n in $(printf '%s\n%s\n' "${pin_off//,/ }" "${now_off//,/ }" | tr ' ' '\n' | grep -v '^-$' | sort | uniq -u); do changed+="${changed:+, }$n"; done
+    [[ "$pin_wrapup" == "$now_wrapup" ]] || changed+="${changed:+, }wrapup order"
+    [[ -n "$changed" ]] || changed="the resolved order (a canon default or a node order changed)"
+    echo "Sprint $id cannot close: the pipeline changed after approval ($changed)."
+    echo "Restore canon-config/pipeline.yaml (or undo the canon update), or show the user the change and run sprint approve $id."
+    return 1
+  fi
+  PIPELINE_OFF_NODES="$off"
+}
+
 # _signoff_tier <plan.md> — the word after "Tier:" in ## Sign-off (trivial, bugfix, normal, high-risk), or nothing.
 _signoff_tier() {
   local t; t="$(_acceptance_section "Sign-off" "$1" 2>/dev/null | sed 's/\*//g' | tr 'A-Z' 'a-z' | sed -nE 's/^[[:space:]]*tier[[:space:]]*:[[:space:]]*(trivial|bugfix|normal|high-risk).*/\1/p' || true)"
@@ -453,7 +530,7 @@ _signoff_tier() {
 }
 
 cmd_approve() {
-  local id="${1:-}" root plan digest stamp tmp signoff
+  local id="${1:-}" root plan digest stamp tmp signoff pstate="" prc=0
   [[ -n "$id" ]] || { echo "Usage: sprint approve <ticket-id>" >&2; exit 1; }
   root="$(project_root)"
   plan="$root/.tickets/$id/plan.md"
@@ -462,13 +539,18 @@ cmd_approve() {
   grep -qE '^[[:space:]]*[-*] \[[ xX]\] Plan approved' <<< "$signoff" \
     || { echo "sprint approve: plan.md has no '- [ ] Plan approved' box under ## Sign-off" >&2; exit 1; }
   digest="$(_approach_digest "$plan")"
+  # t-7e76: the project's pipeline is pinned with the plan; a pipeline the resolver refuses is not approved (nothing written)
+  pstate="$(_pipeline_state "$root")" || prc=$?
+  if (( prc == 2 )); then echo "sprint approve: $pstate" >&2; exit 1; fi
+  (( prc == 0 )) || pstate=""
   stamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   tmp="$(mktemp)"
-  # Tick the first approval box, drop any old pin, and write the new one right under the box.
-  awk -v line="Approved: sha256:$digest $stamp" '
+  # Tick the first approval box, drop any old pins, and write the new ones right under the box.
+  awk -v line="Approved: sha256:$digest $stamp" -v pline="${pstate:+Pipeline: sha256:$pstate}" '
     /^##[[:space:]]/ { insign = ($0 ~ /^##[[:space:]]+Sign-off[[:space:]]*$/) }
     insign && /^[[:space:]]*Approved:[[:space:]]*sha256:/ { next }
-    insign && !done && /^[[:space:]]*[-*] \[[ xX]\] Plan approved/ { sub(/\[ \]/, "[x]"); print; print line; done=1; next }
+    insign && /^[[:space:]]*Pipeline:[[:space:]]*sha256:/ { next }
+    insign && !done && /^[[:space:]]*[-*] \[[ xX]\] Plan approved/ { sub(/\[ \]/, "[x]"); print; print line; if (pline != "") print pline; done=1; next }
     { print }' "$plan" > "$tmp" && cat "$tmp" > "$plan"
   rm -f "$tmp"
   echo "Approved $id: pinned ## Approach as sha256:${digest:0:12} at $stamp"
@@ -1135,6 +1217,7 @@ cmd_complete() {
   _gate_plan_content        "$id" "$tdir/plan.md"        || exit 1
   _gate_visual_embed        "$id" "$tdir/plan.md" "$acceptance" || exit 1
   _gate_plan_signoff        "$id" "$tdir/plan.md"        || exit 1
+  _gate_pipeline            "$id" "$tdir" "$acceptance" "$(project_root)" || { _gate_reject "$id" "$tdir" sprint pipeline; exit 1; }
   _gate_eval_report         "$id" "$tdir"                || exit 1
   _gate_review_notes_model  "$id" "$tdir"                || { _gate_reject "$id" "$tdir" reviewer review_model; exit 1; }
   _gate_review_notes_shape  "$id" "$tdir"                || { _gate_reject "$id" "$tdir" reviewer review_shape; exit 1; }
@@ -1144,6 +1227,11 @@ cmd_complete() {
   # t-4c09: the audit line for the close: the plan's tier (the word after "Tier:" in the Sign-off), when it names one
   local _tier; _tier="$(_signoff_tier "$tdir/plan.md")"
   canon_event close.confirmed sprint "$(project_root)" "ticket=$id" ${_tier:+"tier=$_tier"}
+  # t-7e76: a node this project's pipeline removed leaves one event each (the declared wrapup.gate_finished, result=removed)
+  if [[ -n "$PIPELINE_OFF_NODES" && "$PIPELINE_OFF_NODES" != "-" ]]; then
+    local _po _pn; IFS=, read -r -a _po <<< "$PIPELINE_OFF_NODES"
+    for _pn in "${_po[@]}"; do canon_event wrapup.gate_finished sprint "$(project_root)" "ticket=$id" "gate=$_pn" "result=removed"; done
+  fi
   handoff_recent "$(project_root)"   # t-2db7: the main checkout's HANDOFF.md Recent activity
   echo "Sprint completed: $id"
   _findings_line "$tdir"

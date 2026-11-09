@@ -137,6 +137,7 @@ cat > "$WORK/.tickets/t-model/acceptance.md" <<'EOF'
 |------|--------|--------|
 | reviewer | ran | verdict: YES (model: claude-sonnet-5) |
 | eval | ran | verdict: pass (model: HAIKU) |
+| mutation-test | skipped | removed in this project's pipeline |
 EOF
 
 # Dedicated fixture for ci: true/false (t-978c) — asserted on /api/tickets below.
@@ -263,6 +264,7 @@ n = {t["id"]: t for t in json.loads(sys.argv[1])}
 for tid in ("t-model", "t-cion", "t-cioff", "t-gate", "t-ocopen"):
     if tid not in n:
         print(f"sprint-check-api: FAIL — /api/tickets lacks fixture ticket {tid}: {sorted(n)}"); sys.exit(1)
+# t-7e76: the removed-node row above (a project's pipeline) names no model, so models_used below is unchanged by it.
 # t-1720 regression: a Criteria line describing the (model: X) convention itself must never leak into models_used —
 # only real Wrapup Gates rows count. Exact equality, so any other stray extraction fails loud too.
 if n["t-model"]["models_used"] != ["claude-sonnet-5", "haiku"]:

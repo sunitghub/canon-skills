@@ -23,7 +23,7 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
 Steps run in order (2-3 are the fresh-context gates; the rest run in the main session):
 - 1. Wrapup (pipeline gates)
 - 2. Reviewer gate (normal+)
-- 3. Evaluator review (non-trivial tiers — normal, high-risk, bugfix) — advisory break-it may run after
+- 3. Evaluator review (non-trivial tiers — normal, high-risk, bugfix) — advisory break-it runs before the reviewer
 - 4. Test verification
 - 5. Acceptance check
 - 6. DECISIONS.md
@@ -35,6 +35,16 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
 1. **Wrapup.** Read `skills/wrapup/SKILL.md`, run the wrapup pipeline (code-simplifier, code-reviewer, doc-audit, then refresh docs) over the sprint's changed files — scope varies by gate: wrapup's memory-scoped gates (code-simplifier, code-reviewer) only see "code touched this session", so a multi-session sprint won't get earlier-session files re-checked by those two; security-review (run last, below) derives scope from git instead. `reviewer`/`evaluator` (steps 2-3 below, not part of this pipeline) also diff against `origin/main`, so they cover the full sprint regardless of session boundaries.
 
    **Security review runs last (t-52a1).** `security-review` is not part of the step 1 pipeline: it runs inline (session model) at the start of step 3, after the reviewer (step 2) and every fix its findings or the pipeline caused, so it sees the final diff and no fix lands after it unreviewed. Commit its fixes, then run ONE mutation sweep and ONE `test-sh` stamp on that final commit, then dispatch the evaluator. A fix made after the sweep restamps once, never per gate. Bugfix and demo keep it before the evaluator in the same relative order.
+
+   **Project pipeline (t-7e76).** A project may remove an optional node (`code-simplifier`, `code-reviewer`, `doc-audit`, `skill-eval`, `break-it`,
+   `reviewer`, `mutation-test`) or reorder the three wrapup gates in `canon-config/pipeline.yaml`; `tools/pipeline.sh` reads it, and canon's own
+   `skills/sprint/pipeline.yaml` is the default (locked, so never removable: start, plan, approve-plan, build, `security-review`, `eval`, close).
+   `sprint approve` pins the resolved pipeline (a `Pipeline:` line under `Approved:`) and refuses a file the resolver refuses. `sprint complete`
+   then refuses unless each removed node has its Wrapup Gates row `| <node> | skipped | removed in this project's pipeline |` and summary.md has a
+   `Pipeline: removed <ids> (canon-config/pipeline.yaml)` line naming it, and refuses a pipeline that differs from the pin (restore the file, or
+   show the user and run `sprint approve` again); a ticket approved before the pin only gets a notice. A passing close writes one
+   `wrapup.gate_finished` event with `result=removed` per removed node. A removed node is a user-elected reduction, the same class as Lite and
+   `eval_override`: the evaluator floor stays, and headless/CI ignores the file as it ignores `demo`. The refusals print the exact row or line to add.
 
    **Bugfix tier — lighter wrapup.** For a `Tier: bugfix` sprint (eval-only), run a reduced
    wrapup: keep `security-review` (a fix can still touch a trust boundary) and
@@ -610,7 +620,8 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    verdict were `pass`. Record the eval outcome in the Wrapup Gates table with the Reason
    prefixed `verdict:` (e.g. `verdict: pass` or `verdict: fail — <one-line summary>`).
 
-   **Break-it (advisory, high-risk or untrusted-input sprints).** Optionally dispatch an isolated
+   **Break-it (advisory, high-risk or untrusted-input sprints).** Optionally dispatch, after the wrapup gates and
+   before the reviewer (the pipeline file's order, `t-7e76`: a fix it causes still gets the reviewer and security-review passes), an isolated
    hostile-input subagent on a history-free snapshot of the changed code — read
    `skills/sprint/reference/break-it.md` and follow it. It never blocks close; re-run every claim it
    makes yourself, triage each reproduced defect (fix with a regression test / ticket / accept with a
