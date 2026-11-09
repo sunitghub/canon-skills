@@ -147,6 +147,9 @@ test.beforeEach(async ({ context }) => {
   const ghStub = r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: false, exit_code: 1, output: 'stubbed: no GitHub in tests' }) });
   await context.route('**/api/ticket/*/github/**', ghStub);
   await context.route('**/api/github/**', ghStub);
+  // t-3a58: no test reads or writes a project's canon-config/pipeline.yaml. Factory > Pipeline's routes answer "stubbed" unless a test
+  // routes them itself (a page route wins over this one).
+  await context.route('**/api/pipeline**', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: false, error: 'stubbed: no pipeline in tests', exists: false, can_reset: false, text: '' }) }));
   await context.route(u => u.pathname === '/', route => {
     const req = route.request();
     const u = new URL(req.url());
@@ -21023,5 +21026,243 @@ test.describe('Logbook Handoff: Recent activity (t-eecb)', () => {
     await open(page);
     await expect(page.locator('.lb-recent')).toHaveCount(0);                 // in-progress bullets are not shown as canon's activity
     await expect(page.locator('#logbook-overlay')).not.toContainText('Recent activity');
+  });
+});
+
+// t-3a58: the Cockpit's Factory > Pipeline tab. Prod path: a person opens Factory, picks Pipeline, and switches a node off or moves a wrapup
+// gate; the page sends an op to POST /api/pipeline (the board writes canon-config/pipeline.yaml) and draws the reply. The routes here are
+// a small stateful stand-in for the board (the Go tests and tests/pipeline-api.sh run the real ones).
+test.describe('Factory Pipeline (t-3a58)', () => {
+  const RSN = { start: 'Always runs: every sprint starts with a ticket and a plan.', plan: 'Always runs: the plan is the contract the gates grade.',
+    'approve-plan': 'Always runs: no code before the user approves the plan.', build: "Always runs: it is the sprint's own work.",
+    'security-review': 'Always runs: it reviews the final diff for input, secrets and trust-boundary problems.',
+    eval: 'Always runs: the binding evaluator is the floor of every close.', close: 'Always runs: sprint complete is how a ticket closes.' };
+  const DEF = [['start', 'step', 10], ['plan', 'step', 20], ['approve-plan', 'you', 30], ['build', 'step', 40], ['code-simplifier', 'gate', 50, 'wrapup'],
+    ['code-reviewer', 'gate', 52, 'wrapup'], ['doc-audit', 'gate', 54, 'wrapup'], ['skill-eval', 'gate', 60], ['break-it', 'agent', 62], ['reviewer', 'agent', 70],
+    ['security-review', 'gate', 80], ['mutation-test', 'gate', 90], ['eval', 'agent', 100], ['close', 'step', 110]];
+  const projects = [
+    { id: 'proj-a', path: '/tmp/proj-a', name: 'proj-a', description: '', added: '2026-09-26' },
+    { id: 'proj-b', path: '/tmp/proj-b', name: 'proj-b', description: '', added: '2026-09-26' },
+  ];
+  const wrapupIds = DEF.filter(n => n[3]).map(n => n[0]);
+
+  // one project's state and the routes that serve it; `log` collects every call
+  function board(page, per = {}) {
+    const st = {}; const log = [];
+    const of = pid => (st[pid] = st[pid] || { off: new Set(), wrapup: [...wrapupIds], exists: false, bad: '', text: '' });
+    const view = (pid, created = false) => {
+      const s = of(pid);
+      if (s.bad) return { ok: false, error: s.bad, exists: true, can_reset: true, text: '' };
+      const slots = DEF.filter(n => n[3]).map(n => n[2]); let k = 0;
+      const nodes = DEF.map(([id, kind, order, group]) => {
+        const nid = group ? s.wrapup[k++] : id, d = DEF.find(x => x[0] === nid);
+        const n = { id: nid, kind: d[1], order: group ? slots[k - 1] : order, on: !s.off.has(nid), locked: !!RSN[nid], group: group || '', when: '', prompt: '', reason: RSN[nid] || '' };
+        if (nid === 'skill-eval') n.when = 'a skill or gate agent changed (tools/skill-eval-scope.sh)';
+        if (nid === 'reviewer' || nid === 'eval') n.model = { id: 'claude-sonnet-5', name: 'Claude Sonnet 5', source: 'Admin > Model tiers > Review & Eval default' };
+        return n;
+      });
+      const changed = s.off.size > 0 || s.wrapup.join() !== wrapupIds.join();
+      return { ok: true, file: 'canon-config/pipeline.yaml', exists: s.exists, text: s.text, can_reset: s.exists, changed, nodes, created };
+    };
+    const render = s => { s.text = 'extends: canon-default\n' + (s.off.size ? `off: [${[...s.off].join(', ')}]\n` : '') + (s.wrapup.join() !== wrapupIds.join() ? `wrapup-order: [${s.wrapup.join(', ')}]\n` : ''); };
+    return page.route('**/api/pipeline**', async r => {
+      const u = new URL(r.request().url()), pid = u.searchParams.get('project'), s = of(pid);
+      if (r.request().method() === 'GET') { log.push(['GET', pid]); return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(view(pid)) }); }
+      const body = JSON.parse(r.request().postData() || '{}'); log.push(['POST', pid, body]);
+      if (per.refuse) return r.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ ok: false, error: per.refuse }) });
+      const had = s.exists;
+      if (body.op === 'toggle') { if (body.on) s.off.delete(body.id); else s.off.add(body.id); }
+      else if (body.op === 'order') s.wrapup = body.wrapup;
+      else if (body.op === 'reset') { s.off = new Set(); s.wrapup = [...wrapupIds]; s.bad = ''; if (!had) return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(view(pid)) }); }
+      s.exists = true; render(s);
+      return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(view(pid, !had)) });
+    }).then(() => ({ st, log, of }));
+  }
+  async function open(page) {
+    await page.route('**/api/projects', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(projects) }));
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    await page.locator('#nav-factory').click();
+    await page.locator('#fac-tab-pipe').click();
+    await expect(page.locator('#fac-pipe-rows .pl-row').first()).toBeVisible();
+  }
+
+  test('lists the 14 nodes with tags, locked reasons and models, and follows the project dropdown @webkit', async ({ page }) => {
+    const b = await board(page);
+    await open(page);
+    await expect(page.locator('#fac-pipe-rows .pl-row')).toHaveCount(14);
+    await expect(page.locator('#fac-pipe-src')).toContainText("canon's default");
+    await expect(page.locator('#fac-pipe-src')).toContainText('no project file');
+    await expect(page.locator('#fac-pipe-reset')).toBeDisabled();
+    // tags
+    await expect(page.locator('[data-pl-row="approve-plan"] .pl-k')).toHaveText('You');
+    await expect(page.locator('[data-pl-row="reviewer"] .pl-k')).toHaveText('Agent');
+    await expect(page.locator('[data-pl-row="skill-eval"] .pl-k')).toHaveText('Gate');
+    await expect(page.locator('[data-pl-row="start"] .pl-k')).toHaveText('Step');
+    // locked rows: no switch, a "locked · why" note carrying the reason
+    for (const id of ['start', 'plan', 'approve-plan', 'build', 'security-review', 'eval', 'close']) {
+      await expect(page.locator(`[data-pl-row="${id}"] .pl-sw`)).toHaveCount(0);
+      await expect(page.locator(`[data-pl-row="${id}"] .pl-lock`)).toHaveAttribute('title', RSN[id]);
+    }
+    await expect(page.locator('[data-pl-row="security-review"] .pl-lock')).toHaveAttribute('title', /^Always runs: it reviews the final diff/);
+    // the seven removable rows have a switch, all on
+    for (const id of ['code-simplifier', 'code-reviewer', 'doc-audit', 'skill-eval', 'break-it', 'reviewer', 'mutation-test'])
+      await expect(page.locator(`[data-pl-row="${id}"] .pl-sw`)).toHaveAttribute('aria-checked', 'true');
+    // arrows only on the three wrapup gates
+    await expect(page.locator('.pl-mv')).toHaveCount(6);
+    await expect(page.locator('[data-pl-row="skill-eval"] .pl-mv')).toHaveCount(0);
+    // models: display only, on the agent rows that run on the Admin default; inline gates read "session model"
+    await expect(page.locator('[data-pl-row="reviewer"] .pl-md')).toContainText('Claude Sonnet 5');
+    await expect(page.locator('[data-pl-row="eval"] .pl-w').last()).toContainText('Lite ticket runs it on Haiku');
+    await expect(page.locator('[data-pl-row="reviewer"]')).not.toContainText('Lite ticket');
+    await expect(page.locator('[data-pl-row="security-review"]')).toContainText('session model');
+    await expect(page.locator('[data-pl-row="break-it"] .pl-md')).toHaveCount(0);
+    // the project dropdown: each project reads its own pipeline, and the GitHub tab follows the same choice
+    await b.of('proj-b').off.add('skill-eval'); b.of('proj-b').exists = true; b.of('proj-b').text = 'extends: canon-default\noff: [skill-eval]\n';
+    await page.locator('#fac-pipe-project').selectOption('proj-b');
+    await expect(page.locator('[data-pl-row="skill-eval"] .pl-sw')).toHaveAttribute('aria-checked', 'false');
+    await expect(page.locator('#fac-pipe-src')).toContainText('canon-config/pipeline.yaml');
+    expect(b.log.filter(c => c[0] === 'GET').map(c => c[1])).toEqual(['proj-a', 'proj-b']);
+    await page.locator('#fac-tab-gh').click();
+    await expect(page.locator('#fac-gh-project')).toHaveValue('proj-b');
+  });
+
+  test('a switch writes through the board, and only the creating change opens the saved dialog @webkit', async ({ page }) => {
+    const b = await board(page);
+    await open(page);
+    const sw = page.locator('[data-pl-row="mutation-test"] .pl-sw');
+    await sw.click();
+    await expect.poll(() => b.log.filter(c => c[0] === 'POST').length).toBe(1);
+    expect(b.log.find(c => c[0] === 'POST')).toEqual(['POST', 'proj-a', { op: 'toggle', id: 'mutation-test', on: false }]);
+    const dlg = page.locator('#pipe-saved');
+    await expect(dlg).toHaveClass(/show/);
+    await expect(dlg).toContainText('canon-config/pipeline.yaml');
+    await expect(dlg).toContainText('git add canon-config/pipeline.yaml');
+    await expect(page.locator('#pipe-saved-ok')).toBeFocused();
+    await expect(page.locator('[data-pl-row="mutation-test"]')).toHaveClass(/off/);
+    await expect(page.locator('#fac-pipe-src')).toContainText('your changes');
+    await expect(page.locator('#fac-pipe-reset')).toBeEnabled();
+    // Escape closes it and focus goes back into the rows
+    await page.keyboard.press('Escape');
+    await expect(dlg).not.toHaveClass(/show/);
+    // a second change does not open it again
+    await page.locator('[data-pl-row="break-it"] .pl-sw').click();
+    await expect.poll(() => b.log.filter(c => c[0] === 'POST').length).toBe(2);
+    await expect(page.locator('[data-pl-row="break-it"]')).toHaveClass(/off/);
+    await expect(dlg).not.toHaveClass(/show/);
+    // the file preview shows what was written
+    await page.locator('details.pl-file summary').click();
+    await expect(page.locator('#fac-pipe-yaml')).toHaveText('extends: canon-default\noff: [break-it, mutation-test]\n'.replace('break-it, mutation-test', [...b.of('proj-a').off].join(', ')));
+    // switching it back on is a toggle with on: true
+    await page.locator('[data-pl-row="break-it"] .pl-sw').click();
+    await expect.poll(() => b.log.filter(c => c[0] === 'POST').length).toBe(3);
+    expect(b.log[b.log.length - 1][2]).toEqual({ op: 'toggle', id: 'break-it', on: true });
+    // the OK button also closes the dialog (a first change in the other project opens it again: its file is new)
+    await page.locator('#fac-pipe-project').selectOption('proj-b');
+    await page.locator('[data-pl-row="skill-eval"] .pl-sw').click();
+    await expect(dlg).toHaveClass(/show/);
+    await page.locator('#pipe-saved-ok').click();
+    await expect(dlg).not.toHaveClass(/show/);
+  });
+
+  test('arrows move the wrapup gates, stop at the ends, and send the whole order @webkit', async ({ page }) => {
+    const b = await board(page);
+    await open(page);
+    const order = () => page.locator('#fac-pipe-rows .pl-row.sub .pl-n').allInnerTexts();
+    expect(await order()).toEqual(['code-simplifier', 'code-reviewer', 'doc-audit']);
+    await expect(page.locator('[data-pl-mv="code-simplifier:-1"]')).toBeDisabled();
+    await expect(page.locator('[data-pl-mv="doc-audit:1"]')).toBeDisabled();
+    await page.locator('[data-pl-mv="code-simplifier:1"]').click();
+    await expect.poll(order).toEqual(['code-reviewer', 'code-simplifier', 'doc-audit']);
+    expect(b.log.find(c => c[0] === 'POST')[2]).toEqual({ op: 'order', wrapup: ['code-reviewer', 'code-simplifier', 'doc-audit'] });
+    await expect(page.locator('[data-pl-mv="code-reviewer:-1"]')).toBeDisabled();
+    await expect(page.locator('[data-pl-mv="code-simplifier:-1"]')).toBeEnabled();
+    await expect(page.locator('#pipe-saved')).toHaveClass(/show/);   // the first change made the file
+    await page.locator('#pipe-saved-ok').click();
+    // keyboard: Enter on an arrow moves the row it names, and focus stays on that control
+    await page.locator('[data-pl-mv="doc-audit:-1"]').focus();
+    await page.keyboard.press('Enter');
+    await expect.poll(order).toEqual(['code-reviewer', 'doc-audit', 'code-simplifier']);
+    await expect(page.locator('[data-pl-mv="doc-audit:-1"]')).toBeFocused();
+    // the rows between and around the group keep their place
+    const all = await page.locator('#fac-pipe-rows .pl-row .pl-n').allInnerTexts();
+    expect(all.slice(0, 4)).toEqual(['Start', 'Plan', 'Approve plan', 'Build']);
+    expect(all.slice(7)).toEqual(['skill-eval', 'break-it', 'Reviewer', 'security-review', 'mutation-test', 'Evaluator', 'Close']);
+  });
+
+  test('Reset is enabled only when something differs, rewrites the file, and creates none when there is none', async ({ page }) => {
+    const b = await board(page);
+    await open(page);
+    await expect(page.locator('#fac-pipe-reset')).toBeDisabled();
+    await page.locator('[data-pl-row="skill-eval"] .pl-sw').click();
+    await page.locator('#pipe-saved-ok').click();
+    await expect(page.locator('#fac-pipe-reset')).toBeEnabled();
+    await page.locator('#fac-pipe-reset').click();
+    await expect.poll(() => b.log[b.log.length - 1][2]).toEqual({ op: 'reset' });
+    await expect(page.locator('[data-pl-row="skill-eval"]')).not.toHaveClass(/off/);
+    await expect(page.locator('#fac-pipe-src')).toContainText('canon-config/pipeline.yaml');
+    await expect(page.locator('#fac-pipe-src')).toContainText('no changes');
+    await expect(page.locator('#fac-pipe-reset')).toBeDisabled();
+    await expect(page.locator('#pipe-saved')).not.toHaveClass(/show/);   // Reset never opens the dialog
+    await page.locator('details.pl-file summary').click();
+    await expect(page.locator('#fac-pipe-yaml')).toHaveText('extends: canon-default\n');
+  });
+
+  test('a file the reader refuses shows its message instead of a list, and Reset repairs it', async ({ page }) => {
+    const b = await board(page);
+    b.of('proj-a').bad = 'pipeline: /tmp/proj-a/canon-config/pipeline.yaml: line 2: unsupported line (see the header of skills/sprint/pipeline.yaml)'; b.of('proj-a').exists = true;
+    await page.route('**/api/projects', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(projects) }));
+    await page.goto(BASE + '/cockpit'); await page.waitForLoadState('networkidle');
+    await page.locator('#nav-factory').click(); await page.locator('#fac-tab-pipe').click();
+    await expect(page.locator('#fac-pipe-rows .pl-err')).toContainText('line 2: unsupported line');
+    await expect(page.locator('#fac-pipe-rows .pl-sw')).toHaveCount(0);
+    await expect(page.locator('#fac-pipe-reset')).toBeEnabled();
+    await page.locator('#fac-pipe-reset').click();
+    await expect(page.locator('#fac-pipe-rows .pl-row')).toHaveCount(14);
+    await expect(page.locator('#fac-pipe-rows .pl-err')).toHaveCount(0);
+  });
+
+  test('a refused change shows the board\'s message and redraws from the file', async ({ page }) => {
+    const b = await board(page, { refuse: "node 'mutation-test' is locked: refused for the test" });
+    await open(page);
+    await page.locator('[data-pl-row="mutation-test"] .pl-sw').click();
+    await expect(page.locator('#toast')).toContainText("node 'mutation-test' is locked");
+    await expect.poll(() => b.log.filter(c => c[0] === 'GET').length).toBe(2);   // read again, to show what is really on disk
+    await expect(page.locator('[data-pl-row="mutation-test"]')).not.toHaveClass(/off/);
+    await expect(page.locator('#pipe-saved')).not.toHaveClass(/show/);
+  });
+
+  test('server text is shown as text, never as markup', async ({ page }) => {
+    await page.route('**/api/pipeline**', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, exists: false, can_reset: false, changed: false, text: '', nodes: [
+      { id: 'start', kind: 'step', order: 10, on: true, locked: true, group: '', when: '', prompt: '', reason: '<img src=x onerror="window.__pwn=1">"><b>x</b>' },
+      { id: 'skill-eval', kind: 'gate', order: 60, on: true, locked: false, group: '', when: '<script>window.__pwn=1</script>', prompt: '', reason: '' }] }) }));
+    await page.route('**/api/projects', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(projects) }));
+    await page.goto(BASE + '/cockpit'); await page.waitForLoadState('networkidle');
+    await page.locator('#nav-factory').click(); await page.locator('#fac-tab-pipe').click();
+    await expect(page.locator('#fac-pipe-rows .pl-row')).toHaveCount(2);
+    await expect(page.locator('#fac-pipe-rows img, #fac-pipe-rows b, #fac-pipe-rows script')).toHaveCount(0);
+    await expect(page.locator('[data-pl-row="start"] .pl-w')).toContainText('<img src=x');
+    expect(await page.evaluate(() => window.__pwn)).toBeUndefined();
+  });
+
+  test('the Factory tabs walk with the arrow keys in order and wrap @webkit', async ({ page }) => {
+    await board(page);
+    await page.route('**/api/projects', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(projects) }));
+    await page.goto(BASE + '/cockpit'); await page.waitForLoadState('networkidle');
+    await page.locator('#nav-factory').click();
+    const selected = () => page.locator('[data-fac-tab][aria-selected="true"]').getAttribute('id');
+    await expect.poll(selected).toBe('fac-tab-gh');
+    await page.locator('#fac-tab-gh').focus();
+    await page.keyboard.press('ArrowRight');
+    await expect.poll(selected).toBe('fac-tab-pipe');
+    await expect(page.locator('#fac-pipe')).toBeVisible();
+    await expect(page.locator('#fac-gh')).toBeHidden();
+    await page.keyboard.press('ArrowRight');
+    await expect.poll(selected).toBe('fac-tab-line');
+    await page.keyboard.press('ArrowRight');
+    await expect.poll(selected).toBe('fac-tab-gh');
+    await page.keyboard.press('ArrowLeft');
+    await expect.poll(selected).toBe('fac-tab-line');
+    await expect(page.locator('#fac-tab-line')).toBeFocused();
   });
 });
