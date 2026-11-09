@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-09-2026 10:56
+learnings-sweep last run: 11-09-2026 11:57
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-09 | [t-7e76](.tickets/t-7e76/learnings.md) | A regression test for a reviewer's CRLF finding passed on the unfixed code because its sample line ended in a path, not the node name where the carriage return sticks; run every new test against the code without the fix before trusting it. The same sprint: a parser that echoes a hostile id in its refusal puts escape bytes on the user's terminal (print printable ASCII only), and touching an old test file puts its pre-existing shellcheck warnings in the pre-gate. | UNPROMOTED |
 | 2026-11-09 | [t-00e0](.tickets/t-00e0/learnings.md) | A new parser's first tests left 149 of 443 mutants alive (default-file validation, argument guards, line numbers and exact messages, a relative symlink) and exposed a real gap (an unreadable file exited through a bare shell error); run the mutation sweep before the reviewer, not after, pin line numbers and full messages, and note that bash 3.2 cannot parse a quote inside a heredoc in `$( )` (use `read -r -d ''`). | UNPROMOTED |
 | 2026-11-09 | [t-77e0](.tickets/t-77e0/learnings.md) | A worked example written from memory shipped a wrong fact (tkt exits 1 on an unknown id, not 2) until the reviewer ran it, and a seed text I planned to leave in one place was pinned identical to the board's copy by tests/ticket-skeleton.sh, which only the full suite ran; run the example's command before writing it, and grep tests for the exact text before choosing which copies to change. | UNPROMOTED |
 | 2026-11-09 | [t-52a1](.tickets/t-52a1/learnings.md) | Reordering a pipeline leaves restated copies stale: the reviewer found the Wrapup Gates example rows and a wrapup-gates.md note still in the old order, and the full suite (not the targeted tests) flagged the new order assertion's `grep \| head` under pipefail-early-exit; grep every restatement of the order before the reviewer, and run the full suite on a new test line before the stamp. | UNPROMOTED |
