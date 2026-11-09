@@ -4,6 +4,7 @@
 // Declarations only; initPipeline() is run by cockpit-main.js with the other modules' load-time code.
 import { esc, escAttr, toast } from './cockpit-core.js';
 import { getProjects } from './cockpit-projects.js';
+import { showView } from './cockpit-views.js';
 
 const LABEL = { start: 'Start', plan: 'Plan', 'approve-plan': 'Approve plan', build: 'Build', reviewer: 'Reviewer', eval: 'Evaluator', close: 'Close' };
 const TAG = { step: 'Step', gate: 'Gate', agent: 'Agent', you: 'You' };
@@ -67,7 +68,7 @@ function rowHtml(n, group) {
     : `<button type="button" class="pl-sw" role="switch" data-pl-tg="${escAttr(n.id)}" aria-checked="${n.on}" aria-label="${escAttr(label(n.id))} runs"></button>`;
   const why = n.locked ? n.reason : (n.when ? 'Runs only when: ' + n.when : '');
   const model = n.model
-    ? `<span class="pl-w"><span class="pl-md" title="${escAttr(n.model.source)}" tabindex="0">model &middot; ${esc(n.model.name)}</span> ${esc(n.model.source)};${n.id === 'eval' ? ' a Lite ticket runs it on Haiku, and' : ''} a ticket's <code>Gate model:</code> wins</span>`
+    ? `<span class="pl-w"><span class="pl-md" title="${escAttr(n.model.source)}" tabindex="0">model &middot; ${esc(n.model.name)}</span> ${esc(n.model.source)};${n.id === 'eval' ? ' a Lite ticket runs it on Haiku, and' : ''} a ticket's <code>Gate model:</code> wins &middot; <button type="button" class="pl-link" data-pl-admin>change in Admin</button></span>`
     : INLINE.has(n.id) ? '<span class="pl-w">runs in your session &middot; session model</span>' : '';
   return `<div class="pl-row${n.on ? '' : ' off'}${n.group === 'wrapup' ? ' sub' : ''}" data-pl-row="${escAttr(n.id)}"><span>${tag}</span><div><span class="pl-n">${esc(label(n.id))}</span>${why ? `<span class="pl-w">${esc(why)}</span>` : ''}${model}</div>${mv}${sw}</div>`;
 }
@@ -131,6 +132,7 @@ export function initPipeline() {
     $('pipe-saved').addEventListener('click', e => { if (e.target === $('pipe-saved')) hideSaved(); });
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && hideSaved()) e.stopPropagation(); }, true);
     $('fac-pipe-rows').addEventListener('click', e => {
+      if (e.target.closest('[data-pl-admin]')) { showView('admin'); return; }   // the models are Admin's: this page only shows them
       const tg = e.target.closest('[data-pl-tg]');
       if (tg && pipeData && pipeData.nodes) {
         const id = tg.dataset.plTg, n = pipeData.nodes.find(x => x.id === id);

@@ -85,7 +85,7 @@ nodes:
     kind: gate
     order: 90
     locked: false
-    when: "shell, JS, Python or Go logic files changed"
+    when: "shell, JS, Python or Go logic files changed; needs python3 (skipped with a reason when it is missing)"
     prompt: skills/mutation-test/SKILL.md
   - id: eval
     kind: agent

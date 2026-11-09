@@ -558,6 +558,9 @@ func TestPipelineReplyCarriesEveryField(t *testing.T) {
 	if _, has := sk["reason"]; has {
 		t.Errorf("an open node carries a reason (the placeholder dash leaked): %v", sk)
 	}
+	if mt := fmt.Sprint(by["mutation-test"]["when"]); !strings.Contains(mt, "needs python3") {
+		t.Errorf("mutation-test says nothing about python3: %q", mt)
+	}
 	st := by["start"]
 	if st["locked"] != true || st["reason"] != "Always runs: every sprint starts with a ticket and a plan." {
 		t.Fatalf("start = %v", st)

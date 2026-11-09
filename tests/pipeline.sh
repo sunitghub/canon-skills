@@ -37,6 +37,7 @@ assert_eq "$expect" "$("$P" resolve)"
 [[ "$("$P" check)" == "pipeline: ok (14 nodes)" ]] || fail "pipeline: check on the default did not say ok (14 nodes)"
 ids="$("$P" ids | tr '\n' ' ')"
 [[ "$ids" != *repo-check* ]] || fail "pipeline: repo-check is a node again (removed in t-0a7c)"
+mt="$("$P" resolve --full | grep -F "	mutation-test	")"; [[ "$mt" == *"needs python3 (skipped with a reason when it is missing)"* ]] || fail "pipeline: mutation-test does not say it needs python3: $mt"
 # --full: nine tab-separated fields, '-' for none; a locked node carries its reason; every prompt path exists in canon's folder
 while IFS=$'\t' read -r _ id _ _ lk _ _ prompt reason; do
   [[ -n "$reason" ]] || fail "pipeline: --full line for $id has fewer than 9 fields"

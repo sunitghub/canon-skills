@@ -21058,6 +21058,7 @@ test.describe('Factory Pipeline (t-3a58)', () => {
         const nid = group ? s.wrapup[k++] : id, d = DEF.find(x => x[0] === nid);
         const n = { id: nid, kind: d[1], order: group ? slots[k - 1] : order, on: !s.off.has(nid), locked: !!RSN[nid], group: group || '', when: '', prompt: '', reason: RSN[nid] || '' };
         if (nid === 'skill-eval') n.when = 'a skill or gate agent changed (tools/skill-eval-scope.sh)';
+        if (nid === 'mutation-test') n.when = 'shell, JS, Python or Go logic files changed; needs python3 (skipped with a reason when it is missing)';
         if (nid === 'reviewer' || nid === 'eval') n.model = { id: 'claude-sonnet-5', name: 'Claude Sonnet 5', source: 'Admin > Model tiers > Review & Eval default' };
         return n;
       });
@@ -21116,8 +21117,17 @@ test.describe('Factory Pipeline (t-3a58)', () => {
     await expect(page.locator('[data-pl-row="eval"] .pl-w').last()).toContainText('Lite ticket runs it on Haiku');
     await expect(page.locator('[data-pl-row="reviewer"]')).not.toContainText('Lite ticket');
     await expect(page.locator('[data-pl-row="security-review"]')).toContainText('session model');
+    // mutation-test says it needs python3 (a machine without it records a skip with a reason at close)
+    await expect(page.locator('[data-pl-row="mutation-test"] .pl-w')).toContainText('needs python3');
+    // the models are Admin's: a link on each agent row that shows one opens Admin, nothing else has it
+    await expect(page.locator('.pl-link')).toHaveCount(2);
+    await expect(page.locator('[data-pl-row="break-it"] .pl-link')).toHaveCount(0);
     await expect(page.locator('[data-pl-row="break-it"] .pl-md')).toHaveCount(0);
     // the project dropdown: each project reads its own pipeline, and the GitHub tab follows the same choice
+    await page.locator('[data-pl-row="reviewer"] .pl-link').click();
+    await expect(page.locator('#view-admin')).toBeVisible();
+    await page.locator('#nav-factory').click();
+    await expect(page.locator('#fac-pipe-rows .pl-row').first()).toBeVisible();
     await b.of('proj-b').off.add('skill-eval'); b.of('proj-b').exists = true; b.of('proj-b').text = 'extends: canon-default\noff: [skill-eval]\n';
     await page.locator('#fac-pipe-project').selectOption('proj-b');
     await expect(page.locator('[data-pl-row="skill-eval"] .pl-sw')).toHaveAttribute('aria-checked', 'false');
