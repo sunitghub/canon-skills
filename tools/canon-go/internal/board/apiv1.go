@@ -10,16 +10,22 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
+	"unicode/utf8"
 
 	"canon/internal/common"
 	"canon/internal/events"
 )
 
 const apiV1Schema = 1
+
+// v1FieldMax caps a served ticket string: a title is a line of text, and a hostile file must not make a 20 MB reply.
+const v1FieldMax = 200
 
 var v1TicketIDRe = regexp.MustCompile(`^t-[a-z0-9]{4}$`)
 
@@ -58,6 +64,8 @@ func v1Send(w http.ResponseWriter, v map[string]any) {
 // no Access-Control-Allow-* header on any response, errors included.
 func handleAPIv1(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Allow", "GET, OPTIONS")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Cache-Control", "no-store")
 	switch r.Method {
 	case http.MethodOptions:
 		w.WriteHeader(http.StatusNoContent)
@@ -108,6 +116,9 @@ func handleAPIv1(w http.ResponseWriter, r *http.Request) {
 		}
 		list := []map[string]any{}
 		for _, t := range loadTickets(root) {
+			if !v1TicketIDRe.MatchString(fmt.Sprint(t["id"])) { // the id is front-matter text: only a real ticket id is served
+				continue
+			}
 			if len(seg) == 2 && fmt.Sprint(t["id"]) != seg[1] {
 				continue
 			}
@@ -133,7 +144,13 @@ func handleAPIv1(w http.ResponseWriter, r *http.Request) {
 			v1Error(w, http.StatusBadRequest, "bad ticket id")
 			return
 		}
-		v1Send(w, map[string]any{"ticket": seg[1], "events": v1Sprint(events.Home(), root, seg[1])})
+		evs, ok := v1Sprint(events.Home(), root, seg[1])
+		if !ok {
+			w.Header().Set("Retry-After", "1")
+			v1Error(w, http.StatusServiceUnavailable, "busy: try again")
+			return
+		}
+		v1Send(w, map[string]any{"ticket": seg[1], "events": evs})
 	default:
 		v1Error(w, http.StatusNotFound, "no such route")
 	}
@@ -144,16 +161,63 @@ func v1TicketOf(t ticket) map[string]any {
 	out := map[string]any{}
 	for _, k := range v1Ticket {
 		if v, ok := t[k]; ok {
+			if str, isStr := v.(string); isStr && utf8.RuneCountInString(str) > v1FieldMax {
+				v = string([]rune(str)[:v1FieldMax])
+			}
 			out[k] = v
 		}
 	}
 	return out
 }
 
+// v1SprintGate bounds the day-file scans running at once: a scan reads up to the retained days, and the route needs no token.
+var v1SprintGate = make(chan struct{}, 2)
+
+var (
+	v1SprintMu    sync.Mutex
+	v1SprintCache = map[string][]map[string]any{} // root|ticket|day-file signature -> the answer; a changed file is a new key
+)
+
+// v1Signature names the day files as they are now (name, size, mtime), so an unchanged log is not scanned twice.
+func v1Signature(files []string) string {
+	var b strings.Builder
+	for _, f := range files {
+		if fi, err := os.Stat(f); err == nil {
+			fmt.Fprintf(&b, "%s:%d:%d;", filepath.Base(f), fi.Size(), fi.ModTime().UnixNano())
+		}
+	}
+	return b.String()
+}
+
 // v1Sprint is the latest valid event of each lifecycle kind for one ticket of one project, in log order. Lines that fail the events
-// schema are skipped by the reader; the values are text from the log, served as data.
-func v1Sprint(home, root, ticketID string) []map[string]any {
+// schema are skipped by the reader; the values are text from the log, served as data. ok is false when two scans are already running.
+func v1Sprint(home, root, ticketID string) (out []map[string]any, ok bool) {
 	root = resolvedOrAbs(root) // events carry the resolved path (emitEvent)
+	files := events.DayFiles(home)
+	key := root + "|" + ticketID + "|" + v1Signature(files)
+	v1SprintMu.Lock()
+	cached, hit := v1SprintCache[key]
+	v1SprintMu.Unlock()
+	if hit {
+		return cached, true
+	}
+	select {
+	case v1SprintGate <- struct{}{}:
+		defer func() { <-v1SprintGate }()
+	default:
+		return nil, false
+	}
+	out = v1SprintScan(files, root, ticketID)
+	v1SprintMu.Lock()
+	if len(v1SprintCache) >= 128 {
+		v1SprintCache = map[string][]map[string]any{}
+	}
+	v1SprintCache[key] = out
+	v1SprintMu.Unlock()
+	return out, true
+}
+
+func v1SprintScan(files []string, root, ticketID string) []map[string]any {
 	live := map[string]bool{}
 	for _, e := range registeredWorktrees(root) {
 		live[resolvedOrAbs(fmt.Sprint(e["path"]))] = true
@@ -162,28 +226,37 @@ func v1Sprint(home, root, ticketID string) []map[string]any {
 	for _, k := range v1SprintKinds {
 		want[k] = true
 	}
+	var days []string // newest first
+	byDay := map[string][]string{}
+	for _, path := range files {
+		day := strings.TrimSuffix(filepath.Base(path), ".gz")
+		if _, seen := byDay[day]; !seen {
+			days = append(days, day)
+		}
+		byDay[day] = append(byDay[day], path) // a day with a .gz twin lists the .gz first
+	}
 	latest := map[string]events.Event{}
 	order := map[string]string{} // kind -> "<day>/<line no>": log order across days
-	read := map[string]bool{}
-	for _, path := range events.DayFiles(home) { // newest day first: a kind found in a later day needs no older one
-		day := strings.TrimSuffix(filepath.Base(path), ".gz")
-		if read[day] {
-			continue
-		}
-		read[day] = true
-		n := 0
-		inDay := map[string]events.Event{}
-		events.EachIn(path, func(ev events.Event) {
-			n++
-			if want[ev.Kind] && ev.Data["ticket"] == ticketID && belongsTo(ev.Project, root, live) {
-				inDay[ev.Kind] = ev
-				order[ev.Kind+"@"+day] = fmt.Sprintf("%s/%09d", day, n)
+	for _, day := range days {   // a kind found in a later day needs no older one
+		var inDay map[string]events.Event
+		var pos map[string]string
+		for _, path := range byDay[day] { // the twin holds the same lines; when the .gz cannot be read to its end, the plain file is the day
+			inDay, pos = map[string]events.Event{}, map[string]string{}
+			n := 0
+			err := events.EachIn(path, func(ev events.Event) {
+				n++
+				if want[ev.Kind] && ev.Data["ticket"] == ticketID && belongsTo(ev.Project, root, live) {
+					inDay[ev.Kind] = ev
+					pos[ev.Kind] = fmt.Sprintf("%s/%09d", day, n)
+				}
+			})
+			if err == nil {
+				break
 			}
-		})
+		}
 		for k, ev := range inDay {
 			if _, have := latest[k]; !have {
-				latest[k] = ev
-				order[k] = order[k+"@"+day]
+				latest[k], order[k] = ev, pos[k]
 			}
 		}
 		if len(latest) == len(want) {

@@ -2,9 +2,11 @@ package board
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -194,5 +196,322 @@ func TestAPIv1ResponseKeysMatchPublishedSchema(t *testing.T) {
 				t.Errorf("%s: schema key %q missing from the response", target, k)
 			}
 		}
+	}
+}
+
+func v1Daemon(t *testing.T, addr string) {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "ck") // the board reads a daemon.json only from a private (0700) folder
+	os.Mkdir(dir, 0o700)
+	os.WriteFile(filepath.Join(dir, "daemon.json"), []byte(`{"addr":"`+addr+`","pid":"1"}`), 0o600)
+	t.Setenv("COCKPIT_STATE_DIR", dir)
+}
+
+func TestAPIv1SessionsWrapTheDaemonsAnswer(t *testing.T) {
+	setupTestProject(t)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
+	mux.HandleFunc("/sessions", func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`[{"session":"s1","ticket":"t-aaaa","state":"needs-you"},{"session":"s2","ticket":"t-bbbb","state":""}]`))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	v1Daemon(t, strings.TrimPrefix(srv.URL, "http://"))
+
+	w := v1Get(t, "GET", "/api/v1/sessions", "")
+	if w.Header().Get("X-Cockpit-Daemon") != "up" || w.Header().Get("Content-Type") != "application/json" {
+		t.Errorf("headers %v", w.Header())
+	}
+	if b := v1Body(t, w); b["schema"] != float64(1) || len(b["sessions"].([]any)) != 2 {
+		t.Errorf("list: %s", w.Body)
+	}
+	one := v1Get(t, "GET", "/api/v1/sessions/t-aaaa", "")
+	if s := v1Body(t, one)["session"].(map[string]any); s["session"] != "s1" || one.Header().Get("X-Cockpit-Daemon") != "up" {
+		t.Errorf("one: %s", one.Body)
+	}
+	for id, want := range map[string]string{"t-aaaa": "needs-you", "t-bbbb": "running", "t-cccc": "exited"} {
+		st := v1Get(t, "GET", "/api/v1/sessions/"+id+"/state", "")
+		if b := v1Body(t, st); b["state"] != want || b["id"] != id || st.Header().Get("X-Cockpit-Daemon") != "up" {
+			t.Errorf("state of %s: %s, want %s", id, st.Body, want)
+		}
+	}
+	nf := v1Get(t, "GET", "/api/v1/sessions/t-cccc", "")
+	if nf.Code != 404 || v1Body(t, nf)["error"] != "no such session" {
+		t.Errorf("unknown session: %d %s", nf.Code, nf.Body)
+	}
+
+	v1Daemon(t, "127.0.0.1:1") // no daemon: an empty list that says so, never a null
+	w = v1Get(t, "GET", "/api/v1/sessions", "")
+	if w.Header().Get("X-Cockpit-Daemon") != "down" || !strings.Contains(w.Body.String(), `"sessions":[]`) {
+		t.Errorf("daemon down: %v %s", w.Header(), w.Body)
+	}
+	if h := v1Get(t, "GET", "/api/v1/sessions/t-aaaa/state", "").Header().Get("X-Cockpit-Daemon"); h != "down" {
+		t.Errorf("state with the daemon down: %q", h)
+	}
+}
+
+func TestAPIv1ErrorsAreOneJSONDocumentWithTheirReason(t *testing.T) {
+	setupTestProject(t)
+	cases := []struct {
+		method, target string
+		code           int
+		msg            string
+	}{
+		{"GET", "/api/v1/sessions/x-1", 400, "bad session id"},
+		{"GET", "/api/v1/sessions/x-1/state", 400, "bad session id"},
+		{"GET", "/api/v1/tickets/T-AAAA", 400, "bad ticket id"},
+		{"GET", "/api/v1/sprint/T-AAAA", 400, "bad ticket id"},
+		{"GET", "/api/v1/tickets?project=ffffffffffff", 400, "unknown project"},
+		{"GET", "/api/v1/sprint/t-aaaa?project=ffffffffffff", 400, "unknown project"},
+		{"GET", "/api/v1/tickets/t-zzzz", 404, "no such ticket"},
+		{"GET", "/api/v1/nope", 404, "no such route"},
+		{"GET", "/api/v1", 404, "no such route"},
+		{"GET", "/api/v1/sessions/t-aaaa/other", 404, "no such route"},
+		{"GET", "/api/v1/sessions/t-aaaa/state/extra", 404, "no such route"},
+		{"GET", "/api/v1/tickets/t-aaaa/extra", 404, "no such route"},
+		{"GET", "/api/v1/sprint", 404, "no such route"},
+		{"POST", "/api/v1/tickets", 405, "read only: GET"},
+	}
+	for _, c := range cases {
+		w := v1Get(t, c.method, c.target, "")
+		dec := json.NewDecoder(bytes.NewReader(w.Body.Bytes()))
+		var m map[string]any
+		if err := dec.Decode(&m); err != nil || dec.More() {
+			t.Errorf("%s %s: not exactly one JSON document: %q", c.method, c.target, w.Body)
+			continue
+		}
+		if w.Code != c.code || m["error"] != c.msg || m["schema"] != float64(1) || w.Header().Get("Content-Type") != "application/json" || w.Header().Get("Allow") != "GET, OPTIONS" {
+			t.Errorf("%s %s: %d %q (%v) allow=%q, want %d %q", c.method, c.target, w.Code, m["error"], w.Header().Get("Content-Type"), w.Header().Get("Allow"), c.code, c.msg)
+		}
+	}
+	if w := v1Get(t, "GET", "/api/v1/sessions/t-aaaa/", ""); w.Code == 400 { // a trailing slash is the same route
+		t.Errorf("trailing slash refused: %s", w.Body)
+	}
+	for _, p := range []string{"/api/v10", "/api/v1x/tickets", "/api/v"} { // only /api/v1 and /api/v1/... belong to the API
+		if w := v1Get(t, "GET", p, ""); strings.Contains(w.Header().Get("Allow"), "OPTIONS") {
+			t.Errorf("%s was routed to the API", p)
+		}
+	}
+	if w := v1Get(t, "GET", "/api/version", ""); strings.Contains(w.Header().Get("Allow"), "OPTIONS") {
+		t.Errorf("/api/version was routed to the API")
+	}
+}
+
+func TestAPIv1TicketFieldsAndListRules(t *testing.T) {
+	root := setupTestProject(t)
+	writeFile(t, filepath.Join(root, ".tickets", "t-aaaa", "ticket.md"), "---\nid: t-aaaa\nstatus: closed\ntype: bug\npriority: 2\ncreated: 2026-11-01T00:00:00Z\nclosed: 2026-11-02T00:00:00Z\n---\n# Title A\n")
+	writeFile(t, filepath.Join(root, ".tickets", "t-bbbb", "ticket.md"), "---\nid: t-bbbb\nstatus: archived\n---\n# Title B\n")
+	writeFile(t, filepath.Join(root, ".tickets", "t-cccc", "ticket.md"), "---\nid: t-cccc\nstatus: open\n---\n# Title C\n")
+	one := v1Body(t, v1Get(t, "GET", "/api/v1/tickets/t-aaaa", ""))["ticket"].(map[string]any)
+	want := map[string]any{"id": "t-aaaa", "title": "Title A", "status": "closed", "type": "bug", "priority": float64(2), "created": "2026-11-01T00:00:00Z", "closed": "2026-11-02T00:00:00Z"}
+	if len(one) != len(want) {
+		t.Errorf("ticket %v, want exactly %v", one, want)
+	}
+	for k, v := range want {
+		if one[k] != v {
+			t.Errorf("ticket[%q] = %v, want %v", k, one[k], v)
+		}
+	}
+	if w := v1Get(t, "GET", "/api/v1/tickets/t-bbbb", ""); w.Code != 200 { // archived is hidden from the list, not from a lookup by id
+		t.Errorf("archived by id: %d", w.Code)
+	}
+	list := v1Body(t, v1Get(t, "GET", "/api/v1/tickets", ""))["tickets"].([]any)
+	if len(list) != 2 {
+		t.Errorf("list should hold t-aaaa and t-cccc, not the archived t-bbbb: %v", list)
+	}
+	if w := v1Get(t, "GET", "/api/v1/tickets/t-cccc", ""); strings.Contains(w.Body.String(), "t-aaaa") {
+		t.Errorf("one ticket returned another: %s", w.Body)
+	}
+}
+
+func TestAPIv1SprintEnvelopeActorOrderAndDays(t *testing.T) {
+	root := setupTestProject(t)
+	home := t.TempDir()
+	t.Setenv("CANON_HOME", home)
+	proj := resolvedOrAbs(root)
+	line := func(id, ts, kind, extra string) string {
+		return `{"schema":1,"id":"` + id + `","ts":"` + ts + `","kind":"` + kind + `","source":"sprint",` + extra + `"project":"` + proj + `","data":{"ticket":"t-aaaa"}}` + "\n"
+	}
+	// day 1 holds every lifecycle kind; day 2 holds a newer gate.started and the unrelated ticket.created
+	writeFile(t, filepath.Join(home, "events", "2026-11-01.jsonl"),
+		line("0000000000000001", "2026-11-01T01:00:00.000Z", "sprint.started", "")+line("0000000000000002", "2026-11-01T02:00:00.000Z", "plan.approved", `"actor":"user",`)+
+			line("0000000000000003", "2026-11-01T03:00:00.000Z", "gate.started", "")+line("0000000000000004", "2026-11-01T04:00:00.000Z", "gate.finished", "")+
+			line("0000000000000005", "2026-11-01T05:00:00.000Z", "gate.rejected", "")+line("0000000000000006", "2026-11-01T06:00:00.000Z", "close.confirmed", "")+
+			line("0000000000000007", "2026-11-01T07:00:00.000Z", "sprint.completed", "")+line("0000000000000008", "2026-11-01T08:00:00.000Z", "ticket.created", ""))
+	writeFile(t, filepath.Join(home, "events", "2026-11-02.jsonl"), line("0000000000000009", "2026-11-02T09:00:00.000Z", "gate.started", ""))
+	b := v1Body(t, v1Get(t, "GET", "/api/v1/sprint/t-aaaa", ""))
+	evs := b["events"].([]any)
+	var kinds, ids []string
+	for _, e := range evs {
+		m := e.(map[string]any)
+		kinds, ids = append(kinds, m["kind"].(string)), append(ids, m["id"].(string))
+	}
+	if got := strings.Join(kinds, " "); got != "sprint.started plan.approved gate.finished gate.rejected close.confirmed sprint.completed gate.started" {
+		t.Errorf("kinds in log order: %s", got)
+	}
+	if ids[len(ids)-1] != "0000000000000009" {
+		t.Errorf("the newer gate.started should win: %v", ids)
+	}
+	plan := evs[1].(map[string]any)
+	if plan["actor"] != "user" || plan["ts"] != "2026-11-01T02:00:00.000Z" || plan["source"] != "sprint" || plan["project"] != proj || plan["schema"] != float64(1) {
+		t.Errorf("envelope: %v", plan)
+	}
+	if _, has := evs[0].(map[string]any)["actor"]; has {
+		t.Errorf("a line with no actor must not get one: %v", evs[0])
+	}
+	if b["ticket"] != "t-aaaa" {
+		t.Errorf("ticket echo: %v", b["ticket"])
+	}
+	empty := v1Body(t, v1Get(t, "GET", "/api/v1/sprint/t-zzzz", ""))
+	if len(empty["events"].([]any)) != 0 || !strings.Contains(v1Get(t, "GET", "/api/v1/sprint/t-zzzz", "").Body.String(), `"events":[]`) {
+		t.Errorf("a ticket with no events is an empty list, never null: %v", empty)
+	}
+}
+
+func TestAPIv1SchemaCommandOutputAndUsage(t *testing.T) {
+	var out, errb bytes.Buffer
+	if rc := apiCLI([]string{"schema"}, &out, &errb); rc != 0 || !strings.HasPrefix(out.String(), "{\n  \"") {
+		t.Fatalf("schema without --json: rc %d %q", rc, out.String())
+	}
+	var s map[string]any
+	if err := json.Unmarshal(out.Bytes(), &s); err != nil {
+		t.Fatal(err)
+	}
+	ev := s["events"].(map[string]any)
+	if s["schema"] != float64(1) || ev["schema"] != float64(events.Schema) || len(ev["envelope"].([]any)) != len(v1EventKeys) || len(s["ticket"].([]any)) != len(v1Ticket) {
+		t.Errorf("schema document: %v", s)
+	}
+	for _, args := range [][]string{nil, {}, {"bogus"}, {"schema", "--yaml"}, {"schema", "--json", "x"}, {"--json"}} {
+		out.Reset()
+		errb.Reset()
+		if rc := apiCLI(args, &out, &errb); rc != 2 || errb.String() != "usage: canon-go api schema [--json]\n" || out.Len() != 0 {
+			t.Errorf("%v: rc %d stderr %q stdout %q", args, rc, errb.String(), out.String())
+		}
+	}
+	out.Reset()
+	if rc, handled := runHelper([]string{"api", "schema", "--json"}, nil, &out, &errb); !handled || rc != 0 || !strings.Contains(out.String(), `"responses"`) {
+		t.Errorf("runHelper api: handled=%v rc=%d", handled, rc)
+	}
+}
+
+func TestAPIv1TicketIDPatternIsAnchored(t *testing.T) {
+	for id, ok := range map[string]bool{"t-aaaa": true, "t-a1b2": true, "xt-aaaa": false, "t-aaaax": false, "t-aaa": false, "t-AAAA": false, "": false, "t-aaaa\n": false} {
+		if v1TicketIDRe.MatchString(id) != ok {
+			t.Errorf("%q: want %v", id, ok)
+		}
+	}
+}
+
+func TestAPIv1SprintReadsAGzippedDayOnceAndSchemaNamesItsFields(t *testing.T) {
+	root := setupTestProject(t)
+	home := t.TempDir()
+	t.Setenv("CANON_HOME", home)
+	proj := resolvedOrAbs(root)
+	line := func(id string) string {
+		return `{"schema":1,"id":"` + id + `","ts":"2026-11-03T01:00:00.000Z","kind":"plan.approved","source":"sprint","project":"` + proj + `","data":{"ticket":"t-aaaa"}}` + "\n"
+	}
+	writeFile(t, filepath.Join(home, "events", "2026-11-03.jsonl"), line("00000000000000aa")) // the plain file a crashed gzip left behind
+	f, err := os.Create(filepath.Join(home, "events", "2026-11-03.jsonl.gz"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	zw := gzip.NewWriter(f)
+	zw.Write([]byte(line("00000000000000bb")))
+	zw.Close()
+	f.Close()
+	evs := v1Body(t, v1Get(t, "GET", "/api/v1/sprint/t-aaaa", ""))["events"].([]any)
+	if len(evs) != 1 || evs[0].(map[string]any)["id"] != "00000000000000bb" {
+		t.Errorf("a day with a .gz twin is read once, from the .gz: %v", evs)
+	}
+	var out, errb bytes.Buffer
+	apiCLI([]string{"schema", "--json"}, &out, &errb)
+	var s struct {
+		Events struct {
+			Kinds map[string][]map[string]any `json:"kinds"`
+		} `json:"events"`
+	}
+	json.Unmarshal(out.Bytes(), &s)
+	f0 := s.Events.Kinds["plan.approved"][0]
+	if f0["name"] != "ticket" || f0["max"] != float64(64) {
+		t.Errorf("a kind's fields are {name, max}: %v", s.Events.Kinds["plan.approved"])
+	}
+}
+
+// Break-it findings (t-0b89): each test below fails without its fix.
+
+func TestAPIv1SprintFallsBackToThePlainDayWhenTheGzTwinIsBroken(t *testing.T) {
+	root := setupTestProject(t)
+	home := t.TempDir()
+	t.Setenv("CANON_HOME", home)
+	proj := resolvedOrAbs(root)
+	ln := `{"schema":1,"id":"00000000000000cc","ts":"2026-11-04T01:00:00.000Z","kind":"plan.approved","source":"sprint","project":"` + proj + `","data":{"ticket":"t-aaaa"}}` + "\n"
+	writeFile(t, filepath.Join(home, "events", "2026-11-04.jsonl"), ln)
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	zw.Write([]byte(ln))
+	zw.Close()
+	for name, body := range map[string][]byte{"empty": nil, "truncated": buf.Bytes()[:buf.Len()-12]} {
+		writeFile(t, filepath.Join(home, "events", "2026-11-04.jsonl.gz"), string(body))
+		v1SprintCache = map[string][]map[string]any{}
+		evs := v1Body(t, v1Get(t, "GET", "/api/v1/sprint/t-aaaa", ""))["events"].([]any)
+		if len(evs) != 1 || evs[0].(map[string]any)["id"] != "00000000000000cc" {
+			t.Errorf("%s .gz twin hid the plain day: %v", name, evs)
+		}
+	}
+}
+
+func TestAPIv1SprintScansAreBoundedAndCachedByFileState(t *testing.T) {
+	root := setupTestProject(t)
+	home := t.TempDir()
+	t.Setenv("CANON_HOME", home)
+	proj := resolvedOrAbs(root)
+	day := filepath.Join(home, "events", "2026-11-05.jsonl")
+	line := func(id string) string {
+		return `{"schema":1,"id":"` + id + `","ts":"2026-11-05T01:00:00.000Z","kind":"plan.approved","source":"sprint","project":"` + proj + `","data":{"ticket":"t-aaaa"}}` + "\n"
+	}
+	writeFile(t, day, line("00000000000000d1"))
+	v1SprintCache = map[string][]map[string]any{}
+	first := v1Get(t, "GET", "/api/v1/sprint/t-aaaa", "")
+	writeFile(t, day, line("00000000000000d1")+line("00000000000000d2")) // a changed file is a new key, not a stale hit
+	second := v1Get(t, "GET", "/api/v1/sprint/t-aaaa", "")
+	if !strings.Contains(first.Body.String(), "d1") || !strings.Contains(second.Body.String(), "d2") {
+		t.Errorf("cache served a stale answer: %s / %s", first.Body, second.Body)
+	}
+	if len(v1SprintCache) != 2 {
+		t.Errorf("want one cache entry per file state, got %d", len(v1SprintCache))
+	}
+	if again := v1Get(t, "GET", "/api/v1/sprint/t-aaaa", ""); again.Body.String() != second.Body.String() {
+		t.Errorf("an unchanged log gave a different answer")
+	}
+	v1SprintCache = map[string][]map[string]any{}
+	for i := 0; i < cap(v1SprintGate); i++ {
+		v1SprintGate <- struct{}{}
+	}
+	busy := v1Get(t, "GET", "/api/v1/sprint/t-aaaa", "")
+	for i := 0; i < cap(v1SprintGate); i++ {
+		<-v1SprintGate
+	}
+	if busy.Code != 503 || busy.Header().Get("Retry-After") != "1" || v1Body(t, busy)["error"] != "busy: try again" {
+		t.Errorf("a third scan should be refused: %d %s", busy.Code, busy.Body)
+	}
+	if ok := v1Get(t, "GET", "/api/v1/sprint/t-aaaa", ""); ok.Code != 200 {
+		t.Errorf("the gate was not released: %d", ok.Code)
+	}
+}
+
+func TestAPIv1TicketsCapLongTextSkipSpoofedIdsAndSetSafeHeaders(t *testing.T) {
+	root := setupTestProject(t)
+	writeFile(t, filepath.Join(root, ".tickets", "t-aaaa", "ticket.md"), "---\nid: t-aaaa\nstatus: open\n---\n# "+strings.Repeat("x", 5000)+"\n")
+	writeFile(t, filepath.Join(root, ".tickets", "t-bbbb", "ticket.md"), "---\nid: ../../etc/passwd\nstatus: open\n---\n# Spoof\n")
+	w := v1Get(t, "GET", "/api/v1/tickets", "")
+	list := v1Body(t, w)["tickets"].([]any)
+	if len(list) != 1 || len([]rune(list[0].(map[string]any)["title"].(string))) != v1FieldMax {
+		t.Errorf("want one ticket with a %d-rune title: %s", v1FieldMax, strings.ReplaceAll(w.Body.String(), strings.Repeat("x", 300), "x…"))
+	}
+	if strings.Contains(w.Body.String(), "passwd") {
+		t.Errorf("an id that is not a ticket id was served")
+	}
+	if w.Header().Get("X-Content-Type-Options") != "nosniff" || w.Header().Get("Cache-Control") != "no-store" {
+		t.Errorf("headers: %v", w.Header())
 	}
 }
