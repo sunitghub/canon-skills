@@ -21061,7 +21061,7 @@ test.describe('Factory Pipeline (t-3a58)', () => {
         const n = { id: nid, kind: d[1], order: group ? slots[k - 1] : order, on: !s.off.has(nid), locked: !!RSN[nid], group: group || '', when: '', prompt: '', reason: RSN[nid] || '' };
         if (nid === 'skill-eval') n.when = 'a skill or gate agent changed (tools/skill-eval-scope.sh)';
         if (nid === 'mutation-test') n.when = 'shell, JS, Python or Go logic files changed; needs python3 (skipped with a reason when it is missing)';
-        if (nid === 'reviewer' || nid === 'eval') n.model = { id: 'claude-sonnet-5', name: 'Claude Sonnet 5', source: 'Admin > Model tiers > Review & Eval default' };
+        if (nid === 'reviewer' || nid === 'eval') n.model = { id: 'claude-sonnet-5', name: (per.model && per.model.name) || 'Claude Sonnet 5', source: 'Admin > Model tiers > Review & Eval default' };
         return n;
       });
       const changed = s.off.size > 0 || s.wrapup.join() !== wrapupIds.join();
@@ -21090,6 +21090,25 @@ test.describe('Factory Pipeline (t-3a58)', () => {
     await expect(page.locator('#fac-pipe-rows .pl-row').first()).toBeVisible();
   }
 
+
+  // t-c543: the tab drew its cached copy after Admin changed the model default. Protects the Pipeline tab's rows being what GET /api/pipeline
+  // answers each time the tab is shown (back from Admin, or from the GitHub tab), so a model change in Admin is never shown stale.
+  test('the Pipeline tab reads the model again each time it is shown, after Admin or the GitHub tab (t-c543) @webkit', async ({ page }) => {
+    const per = { model: { name: 'Claude Sonnet 5' } };
+    await board(page, per);
+    await open(page);
+    const reviewerModel = page.locator('[data-pl-row="reviewer"] .pl-md');
+    await expect(reviewerModel).toHaveText('model \u00b7 Claude Sonnet 5');
+    await page.locator('#nav-admin').click();
+    per.model.name = 'Claude Sonnet 5.5';
+    await page.locator('#nav-factory').click();
+    await expect(reviewerModel).toHaveText('model \u00b7 Claude Sonnet 5.5');
+    await expect(page.locator('[data-pl-row="eval"] .pl-md')).toHaveText('model \u00b7 Claude Sonnet 5.5');
+    await page.locator('#fac-tab-gh').click();
+    per.model.name = 'Claude Sonnet 6';
+    await page.locator('#fac-tab-pipe').click();
+    await expect(reviewerModel).toHaveText('model \u00b7 Claude Sonnet 6');
+  });
   test('lists the 14 nodes with tags, locked reasons and models, and follows the project dropdown @webkit', async ({ page }) => {
     const b = await board(page);
     await open(page);
@@ -21134,7 +21153,7 @@ test.describe('Factory Pipeline (t-3a58)', () => {
     await page.locator('#fac-pipe-project').selectOption('proj-b');
     await expect(page.locator('[data-pl-row="skill-eval"] .pl-sw')).toHaveAttribute('aria-checked', 'false');
     await expect(page.locator('#fac-pipe-src')).toContainText('canon-config/pipeline.yaml');
-    expect(b.log.filter(c => c[0] === 'GET').map(c => c[1])).toEqual(['proj-a', 'proj-b']);
+    expect(b.log.filter(c => c[0] === 'GET').map(c => c[1])).toEqual(['proj-a', 'proj-a', 'proj-b']);   // t-c543: the return from Admin reads proj-a again
     await page.locator('#fac-tab-gh').click();
     await expect(page.locator('#fac-gh-project')).toHaveValue('proj-b');
   });

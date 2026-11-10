@@ -50,7 +50,7 @@ let ghPid=null, ghDoctor=null, ghGen=0, ghWant='';
 export function openFactoryGithub(pid){ ghWant=pid; ghPid=null; facTab('gh'); showView('factory'); }
 export function loadFactory(){   // opening the Factory page loads the tab that is showing
   const a=document.querySelector('[data-fac-tab][aria-selected="true"]'), w=a&&a.dataset.facTab;
-  if(w==='pipe') loadPipeline(false); else if(w!=='line') ghLoad(false);
+  if(w==='pipe') loadPipeline(true); else if(w!=='line') ghLoad(false);
 }
 function ghPickProject(){
   const sel=document.getElementById('fac-gh-project'), projects=getProjects();
@@ -152,7 +152,7 @@ function facTab(which){
   document.getElementById('fac-pipe').hidden=which!=='pipe';   // t-3a58
   document.getElementById('fac-line').hidden=which!=='line';
   if(which==='gh') ghLoad(false);   // follows the project the Pipeline tab may have changed
-  if(which==='pipe') loadPipeline(false);
+  if(which==='pipe') loadPipeline(true);   // t-c543: Admin's model and the file are read again on every visit
 }
 
 // t-9641: factory's load-time code, run once at the end.
