@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -551,5 +552,134 @@ func TestPromotedReportSizeTableEscapesFileNames(t *testing.T) {
 	}
 	if !strings.Contains(b.String(), "on demand") || !strings.Contains(b.String(), "red.md") {
 		t.Errorf("the escaped name has no row: %q", b.String())
+	}
+}
+
+// Prod path: the Size table of `canon-go promoted-report` read as a whole (t-3620, mutation sweep): rows are unique and the on-demand rows sorted, the text layout
+// has its blank line, header and always-on/on-demand labels, every JSON key of a row is there, and `--since 2026-10-03` as two words works while a bare day does not.
+func TestPromotedReportSizeTableAsAWhole(t *testing.T) {
+	root := prSeed(t)
+	r := promotedReport(root)
+	seen := map[string]bool{}
+	var rest []string
+	for i, z := range r.Sizes {
+		if seen[z.File] {
+			t.Errorf("a file has two rows: %s", z.File)
+		}
+		seen[z.File] = true
+		if i >= len(prAlwaysOn) {
+			rest = append(rest, z.File)
+		}
+	}
+	if !sort.StringsAreSorted(rest) || len(rest) < 3 {
+		t.Errorf("the on-demand rows are sorted by name: %v", rest)
+	}
+	var b bytes.Buffer
+	prText(r, &b)
+	got := b.String()
+	for _, want := range []string{"\n\nSize: lines, words (the cap meter's count) and tokens", "  always-on AGENTS.md: not in this project\n", "  on demand docs/releasing.md "} {
+		if !strings.Contains(got, want) {
+			t.Errorf("text has no %q:\n%s", want, got)
+		}
+	}
+	if n := strings.Count(got, "standards/efficiency.md"); n != 1 {
+		t.Errorf("an absent file is one note line, not a note and a row of zeros: %d lines name it", n)
+	}
+	cwd, _ := os.Getwd()
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(cwd)
+	var out, errb bytes.Buffer
+	if rc := promotedReportCLI([]string{"--since", "2026-10-03", "--json"}, &out, &errb); rc != 0 {
+		t.Fatalf("--since as two words: rc %d err %q", rc, errb.String())
+	}
+	var rep map[string]json.RawMessage
+	if err := json.Unmarshal(out.Bytes(), &rep); err != nil || len(rep["sizes"]) == 0 {
+		t.Fatalf("json has no sizes: %v %s", err, out.String())
+	}
+	for _, k := range []string{`"note":"not in this project"`, `"file":"PROMOTED.md","always_on":true`, `"since_words":`} {
+		if !bytes.Contains(rep["sizes"], []byte(k)) {
+			t.Errorf("sizes has no %s: %s", k, rep["sizes"])
+		}
+	}
+	out.Reset()
+	errb.Reset()
+	if rc := promotedReportCLI([]string{"2026-10-03"}, &out, &errb); rc != 2 || out.Len() != 0 {
+		t.Errorf("a bare day is not --since: rc %d out %q", rc, out.String())
+	}
+}
+
+// Prod path: the consumer view's JSON and its block reader (t-3620, mutation sweep): the PROMOTED.md row carries the cap keys and no_class_tags, a `- ` line
+// outside the managed block or a non-entry line inside it is not an entry, and a project's own tools/caps.tsv is not canon's table.
+func TestPromotedReportConsumerJSONAndBlockEdges(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is required")
+	}
+	root := t.TempDir()
+	prGit(t, root, "2026-10-01T12:00:00Z", "init", "-q")
+	prPut(t, root, "AGENTS.md", "@PROMOTED.md\n")
+	prPut(t, root, "PROMOTED.md", "- stray entry before the block\n<!-- canon:promoted:BEGIN -->\nnot an entry\n- When a, do b. (t-1234)\n<!-- canon:promoted:END -->\n- stray entry after the block\n")
+	prPut(t, root, "tools/caps.tsv", "x\tAGENTS.md\t1\twords\t-\n") // a project's own table: never read as canon's
+	prGit(t, root, "2026-10-01T12:00:00Z", "add", "-A")
+	prGit(t, root, "2026-10-01T12:00:00Z", "commit", "-q", "-m", "one")
+	cwd, _ := os.Getwd()
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(cwd)
+	var out, errb bytes.Buffer
+	if rc := promotedReportCLI([]string{"--json"}, &out, &errb); rc != 0 {
+		t.Fatalf("rc %d err %q", rc, errb.String())
+	}
+	var rep struct {
+		Sizes []map[string]any `json:"sizes"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &rep); err != nil {
+		t.Fatal(err)
+	}
+	var p, a map[string]any
+	for _, z := range rep.Sizes {
+		switch z["file"] {
+		case "PROMOTED.md":
+			p = z
+		case "AGENTS.md":
+			a = z
+		}
+	}
+	if p["promoted_lines"] != float64(1) || p["no_class_tags"] != true || p["cap_used"] != float64(2) || p["cap_limit"] != float64(60) || p["cap_unit"] != "block-lines" {
+		t.Errorf("PROMOTED.md row: %v", p) // 2 = the lines between the markers: a text line and an entry
+	}
+	if _, ok := a["cap_used"]; ok {
+		t.Errorf("a project's own tools/caps.tsv was read as canon's table: %v", a)
+	}
+}
+
+// Prod path: the cap shown for a promoted file comes from the matching row of canon's tools/caps.tsv only, for both units, and a marker-less file shows no cap.
+func TestPromotedReportSizeCapsMatchTheirOwnRows(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is required")
+	}
+	root := t.TempDir()
+	prGit(t, root, "2026-10-01T12:00:00Z", "init", "-q")
+	prPut(t, root, "tools/src-key.sh", "#!/bin/sh\n")
+	prPut(t, root, "tools/caps.tsv", "x\tskills/x.md\t10\twords\t-\ny\tskills/y.md\t5\tblock-lines\tm\nz\tskills/z.md\t5\tblock-lines\tm\n")
+	prPut(t, root, "skills/x.md", "- rule (t-aaaa; class: slug-one)\n")
+	prPut(t, root, "skills/y.md", "<!-- m:BEGIN -->\none\ntwo\n<!-- m:END -->\n- rule (t-bbbb; class: slug-two)\n")
+	prPut(t, root, "skills/z.md", "- no marker here (t-cccc; class: slug-three)\n")
+	cwd, _ := os.Getwd()
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(cwd)
+	r := promotedReport(root)
+	if x := prSizeOf(t, r, "skills/x.md"); x.CapUsed == nil || *x.CapUsed != 5 || x.CapLimit != 10 || x.CapUnit != "words" {
+		t.Errorf("x keeps its own words row: %+v", x)
+	}
+	if y := prSizeOf(t, r, "skills/y.md"); y.CapUsed == nil || *y.CapUsed != 2 || y.CapLimit != 5 || y.CapUnit != "lines" {
+		t.Errorf("y shows its block-lines row: %+v", y)
+	}
+	if z := prSizeOf(t, r, "skills/z.md"); z.CapUsed != nil || z.Words == 0 {
+		t.Errorf("a file without its marker shows no cap and is still measured: %+v", z)
 	}
 }
