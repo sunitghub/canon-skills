@@ -2,10 +2,13 @@ package board
 
 import (
 	"bufio"
+	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -175,6 +178,9 @@ func TestAPIv1EventsSnapshot(t *testing.T) {
 	if c, _ := two["cursor"].(string); !strings.HasPrefix(c, "2026-11-10:") || c == "2026-11-10:0" || c < fmt.Sprintf("2026-11-10:%d", size/10) {
 		t.Errorf("the cursor is the end of the newest day: %v", two["cursor"])
 	}
+	if one := v1Body(t, v1Get(t, "GET", "/api/v1/events?limit=1", ""))["events"].([]any); len(one) != 1 || one[0].(map[string]any)["id"] != "0000000000000005" {
+		t.Errorf("limit 1 is the newest event: %v", one)
+	}
 	if len(v1Body(t, v1Get(t, "GET", "/api/v1/events?limit=500", ""))["events"].([]any)) != 5 {
 		t.Error("limit 500 is allowed")
 	}
@@ -215,7 +221,7 @@ func TestAPIv1EventsStreamResumesWithoutDuplicatesOrGaps(t *testing.T) {
 	f.append("2026-11-09", f.line(1, f.proj)+f.line(2, f.proj))
 	snap := v1Body(t, v1Get(t, "GET", "/api/v1/events", ""))
 	first := f.get("/api/v1/events/stream?cursor="+snap["cursor"].(string), nil)
-	if first.StatusCode != 200 || first.Header.Get("Content-Type") != "text/event-stream" || first.Header.Get("Cache-Control") != "no-store" || first.Header.Get("Access-Control-Allow-Origin") != "" {
+	if first.StatusCode != 200 || first.Header.Get("Content-Type") != "text/event-stream" || first.Header.Get("Cache-Control") != "no-store" || first.Header.Get("X-Accel-Buffering") != "no" || first.Header.Get("Access-Control-Allow-Origin") != "" {
 		t.Fatalf("stream headers: %d %v", first.StatusCode, first.Header)
 	}
 	f.append("2026-11-09", f.line(3, f.proj))
@@ -333,8 +339,8 @@ func TestAPIv1EventsStreamKeepAliveAndLifetime(t *testing.T) {
 	go func() { b, _ := io.ReadAll(resp.Body); done <- string(b) }()
 	select {
 	case body := <-done:
-		if !strings.Contains(body, "retry: 3000") || strings.Count(body, ": keep-alive\n\n") < 2 || strings.Contains(body, "data:") {
-			t.Errorf("an idle stream: %q", body)
+		if n := strings.Count(body, ": keep-alive\n\n"); !strings.Contains(body, "retry: 3000") || n < 5 || n > 12 || strings.Contains(body, "data:") {
+			t.Errorf("an idle stream: %d keep-alives (a 400 ms life at 40 ms: about 8) in %q", n, body)
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("the stream did not end after its lifetime")
@@ -351,6 +357,14 @@ func TestAPIv1SchemaListsTheEventsRoutes(t *testing.T) {
 	st := s["streams"].(map[string]map[string]any)["/api/v1/events/stream"]
 	if st["content_type"] != "text/event-stream" || st["max_streams"] != v1StreamMax || st["lifetime_s"] != 900 {
 		t.Errorf("stream schema: %v", st)
+	}
+	for _, k := range []string{"frame", "resume", "keep_alive"} {
+		if text, _ := st[k].(string); len(text) < 20 {
+			t.Errorf("the schema's %s text is %q", k, text)
+		}
+	}
+	if !strings.Contains(fmt.Sprint(st["keep_alive"]), fmt.Sprint(int(v1StreamKeepAlive/time.Second))) {
+		t.Errorf("the keep-alive text must carry the variable's value: %v", st["keep_alive"])
 	}
 }
 
@@ -441,5 +455,164 @@ func TestAPIv1EventsStreamOpeningFrameCarriesTheStartCursor(t *testing.T) {
 	given := "2026-11-10:" + fmt.Sprint(len(f.line(1, f.proj)))
 	if got := openingFrame(t, f.get("/api/v1/events/stream?cursor="+given, nil)); strings.Join(got, "|") != "retry: 3000|id: "+given {
 		t.Errorf("with a cursor: %v, want %s", got, given)
+	}
+}
+
+// oneJSON decodes a body that must be exactly one JSON document: a handler that writes a second response after the first leaves trailing data.
+func oneJSON(t *testing.T, body []byte) map[string]any {
+	t.Helper()
+	dec := json.NewDecoder(bytes.NewReader(body))
+	var m map[string]any
+	if err := dec.Decode(&m); err != nil || dec.More() {
+		t.Fatalf("not exactly one JSON document: %q", body)
+	}
+	return m
+}
+
+// Prod path: every refusal of the events routes is one JSON error with its fixed text (t-8d45, mutation sweep): an unknown project, a bad limit, a
+// bad cursor, a full scan gate and a full stream table. A handler that went on after refusing would leave a second document in the body.
+func TestAPIv1EventsRefusalsAreOneJSONError(t *testing.T) {
+	f := newEvFix(t)
+	f.append("2026-11-10", f.line(1, f.proj))
+	check := func(what string, code int, retry, msg string, resp *http.Response, rec *httptest.ResponseRecorder) {
+		t.Helper()
+		var body []byte
+		if rec != nil {
+			resp = rec.Result()
+		}
+		body, _ = io.ReadAll(resp.Body)
+		m := oneJSON(t, body)
+		if resp.StatusCode != code || m["error"] != msg || resp.Header.Get("Retry-After") != retry {
+			t.Errorf("%s: %d Retry-After=%q %v", what, resp.StatusCode, resp.Header.Get("Retry-After"), m)
+		}
+	}
+	check("snapshot, unknown project", 400, "", "unknown project", nil, v1Get(t, "GET", "/api/v1/events?project=nope", ""))
+	check("stream, unknown project", 400, "", "unknown project", f.get("/api/v1/events/stream?project=nope", nil), nil)
+	check("bad limit", 400, "", "bad limit", nil, v1Get(t, "GET", "/api/v1/events?limit=0", ""))
+	if resp := f.get("/api/v1/events/stream?cursor=2026-11-10:999999", nil); resp.StatusCode != 400 {
+		t.Errorf("bad cursor: %d", resp.StatusCode)
+	} else {
+		body, _ := io.ReadAll(resp.Body)
+		if m := oneJSON(t, body); !strings.HasPrefix(fmt.Sprint(m["error"]), "bad cursor") {
+			t.Errorf("bad cursor: %v", m)
+		}
+	}
+	for i := 0; i < cap(v1ScanGate); i++ {
+		v1ScanGate <- struct{}{}
+	}
+	check("snapshot while scans are busy", 503, "1", "busy: try again", nil, v1Get(t, "GET", "/api/v1/events", ""))
+	for i := 0; i < cap(v1ScanGate); i++ {
+		<-v1ScanGate
+	}
+	for i := 0; i < v1StreamMax; i++ {
+		v1StreamSlots <- struct{}{}
+	}
+	check("stream while the table is full", 503, "5", "too many streams: try again", f.get("/api/v1/events/stream", nil), nil)
+	for i := 0; i < v1StreamMax; i++ {
+		<-v1StreamSlots
+	}
+}
+
+// Prod path: only the two routes exist (t-8d45): a longer or different path under /events, or the stream's name under another prefix, is a 404 and
+// never a stream.
+func TestAPIv1EventsRoutesAreExact(t *testing.T) {
+	newEvFix(t)
+	for _, target := range []string{"/api/v1/events/stream/extra", "/api/v1/events/other", "/api/v1/foo/stream", "/api/v1/events/stream/x/y", "/api/v1/stream"} {
+		if w := v1Get(t, "GET", target, ""); w.Code != 404 {
+			t.Errorf("%s: %d, want 404", target, w.Code)
+		}
+	}
+}
+
+// Prod path: a day file replaced by a shorter one under a running stream ends the stream (t-8d45): the client resumes or takes a snapshot, and no
+// slot is held for bytes that will never come.
+func TestAPIv1EventsStreamEndsWhenItsFileShrinks(t *testing.T) {
+	f := newEvFix(t)
+	f.append("2026-11-10", f.line(1, f.proj)+f.line(2, f.proj))
+	end := fmt.Sprintf("2026-11-10:%d", len(f.line(1, f.proj))*2)
+	resp := f.get("/api/v1/events/stream?cursor="+end, nil)
+	newSSE(resp) // read the opening frame in the background
+	os.WriteFile(filepath.Join(f.home, "events", "2026-11-10.jsonl"), []byte(f.line(9, f.proj)), 0o600)
+	waitFor(t, "the stream to end after its file shrank", func() bool { return len(v1StreamSlots) == 0 })
+}
+
+// Prod path: a client that stops reading is cut after the write deadline and its slot freed (t-8d45): four of them must not hold the table. A raw
+// connection with a tiny receive buffer asks for a backlog far larger than the socket buffers and then never reads.
+func TestAPIv1EventsStreamCutsAStalledClient(t *testing.T) {
+	f := newEvFix(t)
+	v1StreamWrite = 100 * time.Millisecond
+	var b strings.Builder
+	line := f.line(1, f.proj)
+	for i := 0; i < 60000; i++ { // about 16 MB
+		b.WriteString(line)
+	}
+	f.append("2026-11-10", b.String())
+	conn, err := net.DialTimeout("tcp", f.srv.Listener.Addr().String(), 2*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	conn.(*net.TCPConn).SetReadBuffer(1024)
+	fmt.Fprint(conn, "GET /api/v1/events/stream?cursor=2026-11-10:0 HTTP/1.1\r\nHost: 127.0.0.1:8423\r\n\r\n")
+	waitFor(t, "the stream to take its slot", func() bool { return len(v1StreamSlots) == 1 })
+	waitFor(t, "the stalled client to be cut", func() bool { return len(v1StreamSlots) == 0 })
+}
+
+// Prod path: an idle stream says it is alive only when it has been silent (t-8d45): events flowing every 30 ms keep a 150 ms keep-alive from ever
+// being written between them.
+func TestAPIv1EventsKeepAliveWaitsForSilence(t *testing.T) {
+	f := newEvFix(t)
+	f.append("2026-11-10", f.line(1, f.proj))
+	v1StreamKeepAlive, v1StreamLifetime = 150*time.Millisecond, 700*time.Millisecond
+	resp := f.get("/api/v1/events/stream", nil)
+	done := make(chan string)
+	go func() { b, _ := io.ReadAll(resp.Body); done <- string(b) }()
+	for i := 2; i < 14; i++ {
+		time.Sleep(30 * time.Millisecond)
+		f.append("2026-11-10", f.line(i, f.proj))
+	}
+	body := <-done
+	if first, last := strings.Index(body, ": keep-alive"), strings.LastIndex(body, "data:"); first >= 0 && first < last {
+		t.Errorf("a keep-alive was written while events were flowing: %q", body)
+	}
+	if strings.Count(body, "data:") != 12 {
+		t.Errorf("events: %d of 12", strings.Count(body, "data:"))
+	}
+}
+
+// Prod path: a backlog is read without sleeping between pages (t-8d45): 250 events at 100 a page arrive at once even with a poll of a second.
+func TestAPIv1EventsStreamCatchesUpWithoutWaitingAPoll(t *testing.T) {
+	f := newEvFix(t)
+	v1StreamPoll = time.Second
+	var b strings.Builder
+	for i := 1; i <= 250; i++ {
+		b.WriteString(f.line(i, f.proj))
+	}
+	f.append("2026-11-10", b.String())
+	start := time.Now()
+	got := newSSE(f.get("/api/v1/events/stream?cursor=2026-11-10:0", nil)).next(t, 250)
+	if len(got) != 250 || time.Since(start) > 700*time.Millisecond {
+		t.Errorf("%d frames in %v", len(got), time.Since(start))
+	}
+}
+
+// Prod path: the lifetime ends a stream that is working through a backlog of events that are not its project's (t-8d45): nothing is written, so no
+// failed write would end it. 100 000 such events, one per page, and a lifetime of 100 ms: it must end long before the backlog is read.
+func TestAPIv1EventsLifetimeEndsAStreamReadingAnOutOfScopeBacklog(t *testing.T) {
+	f := newEvFix(t)
+	v1StreamBatch = 1
+	t.Cleanup(func() { v1StreamBatch = 100 })
+	var b strings.Builder
+	line := f.line(1, "/elsewhere")
+	for i := 0; i < 100000; i++ {
+		b.WriteString(line)
+	}
+	f.append("2026-11-10", b.String())
+	v1StreamLifetime = 100 * time.Millisecond
+	start := time.Now()
+	resp := f.get("/api/v1/events/stream?cursor=2026-11-10:0", nil)
+	io.ReadAll(resp.Body)
+	if took := time.Since(start); took > 1500*time.Millisecond {
+		t.Errorf("the stream outlived its 100 ms lifetime by reading the backlog: %v", took)
 	}
 }

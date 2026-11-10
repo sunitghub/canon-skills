@@ -4,7 +4,9 @@ package board
 
 import (
 	"io"
+	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -34,5 +36,29 @@ func TestAPIv1EventsDoNotOpenAFifoNamedLikeADay(t *testing.T) {
 	case <-done:
 	case <-time.After(3 * time.Second):
 		t.Fatal("the request hung: a FIFO was opened")
+	}
+}
+
+// Prod path: a log that cannot be read is a 500 with a fixed message and one JSON document, never an empty answer (t-8d45): the snapshot, and a stream
+// that has to find the end of the log.
+func TestAPIv1EventsAnUnreadableLogIsAFixedFiveHundred(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads anything")
+	}
+	f := newEvFix(t)
+	f.append("2026-11-10", f.line(1, f.proj))
+	day := filepath.Join(f.home, "events", "2026-11-10.jsonl")
+	if err := os.Chmod(day, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(day, 0o600) })
+	snap := v1Get(t, "GET", "/api/v1/events", "")
+	if snap.Code != 500 || oneJSON(t, snap.Body.Bytes())["error"] != "cannot read the event log" {
+		t.Errorf("snapshot: %d %s", snap.Code, snap.Body)
+	}
+	resp := f.get("/api/v1/events/stream", nil)
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 500 || oneJSON(t, body)["error"] != "cannot read the event log" || strings.Contains(string(body), f.home) {
+		t.Errorf("stream: %d %s", resp.StatusCode, body)
 	}
 }

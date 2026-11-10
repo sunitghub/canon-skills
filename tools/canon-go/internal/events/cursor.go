@@ -160,10 +160,7 @@ func ReadSince(home string, from Cursor, limit int) ([]Positioned, Cursor, error
 		if err != nil {
 			return out, cur, err
 		}
-		cur = Cursor{d.Day, end}
-		if len(out) >= limit { // stopped inside the day: resume right after the last event handed out
-			return out, out[len(out)-1].Next, nil
-		}
+		cur = Cursor{d.Day, end} // scanDay stops right after the limit-th event's line, so this is also where a full page resumes
 	}
 	return out, cur, nil
 }

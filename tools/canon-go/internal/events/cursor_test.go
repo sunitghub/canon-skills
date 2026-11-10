@@ -273,3 +273,158 @@ func TestPositionedCursorsCarryTheExactOffset(t *testing.T) {
 		t.Errorf("Newest carries the same cursors: %v %v", got[0].Next, got[3].Next)
 	}
 }
+
+// Prod path: every refusal of a cursor says `bad cursor` (t-8d45, mutation sweep): the board returns that text as the 400's error.
+func TestEveryCursorRefusalIsNamedBadCursor(t *testing.T) {
+	home, _ := logWith(t, map[string]string{"2026-11-10.jsonl": evLine(1, "/p")})
+	_, perr := ParseCursor("x")
+	for what, err := range map[string]error{"parse": perr, "unknown day": CheckCursor(home, Cursor{"2026-11-01", 0}), "offset": CheckCursor(home, Cursor{"2026-11-10", 99999})} {
+		if !errors.Is(err, ErrBadCursor) || !strings.HasPrefix(err.Error(), "bad cursor") {
+			t.Errorf("%s: %v", what, err)
+		}
+	}
+}
+
+// Prod path: a day that has both a plain file and a gzipped twin (a crashed gzip) is one day (t-8d45): its events are read once, from the plain file.
+func TestADayWithAGzipTwinIsReadOnce(t *testing.T) {
+	home, dir := logWith(t, map[string]string{"2026-11-10.jsonl": evLine(1, "/p") + evLine(2, "/p")})
+	writeGz(t, filepath.Join(dir, "2026-11-10.jsonl.gz"), evLine(1, "/p")+evLine(2, "/p"))
+	if d := daysAscending(home); len(d) != 1 || filepath.Base(d[0].Path) != "2026-11-10.jsonl" {
+		t.Fatalf("days: %v", d)
+	}
+	got, _, err := ReadSince(home, Cursor{}, 10)
+	if err != nil || ids(got) != "1,2" {
+		t.Errorf("read through a twin: %s %v", ids(got), err)
+	}
+	if err := CheckCursor(home, Cursor{"2026-11-10", 0}); err != nil {
+		t.Errorf("a cursor into a day with a plain file: %v", err)
+	}
+}
+
+// Prod path: the checks behind a refused cursor (t-8d45, mutation sweep) on hand-made day entries, which DayFiles would never list but a race can
+// produce: a file gone by the time it is measured, a folder, a link, and an offset one past the end are each refused by resolve and by startAt, a
+// gzipped day by resolve only (startAt reads through it), and an offset at the end is fine.
+func TestResolveAndStartAtRefuseWhatIsNotAReadablePlainFile(t *testing.T) {
+	dir := t.TempDir()
+	plain := filepath.Join(dir, "plain.jsonl")
+	os.WriteFile(plain, []byte("12345"), 0o600)
+	link := filepath.Join(dir, "link.jsonl")
+	if os.Symlink(plain, link) != nil {
+		link = ""
+	}
+	os.Mkdir(filepath.Join(dir, "folder.jsonl"), 0o700)
+	gz := filepath.Join(dir, "g.jsonl.gz")
+	writeGz(t, gz, "12345")
+	bad := map[string]string{"missing": filepath.Join(dir, "gone.jsonl"), "folder": filepath.Join(dir, "folder.jsonl")}
+	if link != "" {
+		bad["link"] = link
+	}
+	for name, path := range bad {
+		days := []dayFile{{"2026-11-10", path}}
+		if _, err := resolve(days, Cursor{"2026-11-10", 0}); !errors.Is(err, ErrBadCursor) {
+			t.Errorf("resolve %s: %v", name, err)
+		}
+		if _, err := startAt(days, Cursor{"2026-11-10", 0}); !errors.Is(err, ErrBadCursor) {
+			t.Errorf("startAt %s: %v", name, err)
+		}
+	}
+	days := []dayFile{{"2026-11-10", plain}}
+	for _, off := range []int64{0, 5} {
+		if i, err := resolve(days, Cursor{"2026-11-10", off}); err != nil || i != 0 {
+			t.Errorf("resolve at %d: %d %v", off, i, err)
+		}
+		if i, err := startAt(days, Cursor{"2026-11-10", off}); err != nil || i != 0 {
+			t.Errorf("startAt at %d: %d %v", off, i, err)
+		}
+	}
+	if _, err := resolve(days, Cursor{"2026-11-10", 6}); !errors.Is(err, ErrBadCursor) {
+		t.Errorf("resolve past the end: %v", err)
+	}
+	if _, err := startAt(days, Cursor{"2026-11-10", 6}); !errors.Is(err, ErrBadCursor) {
+		t.Errorf("startAt past the end: %v", err)
+	}
+	gzd := []dayFile{{"2026-11-10", gz}}
+	if _, err := resolve(gzd, Cursor{"2026-11-10", 0}); !errors.Is(err, ErrBadCursor) {
+		t.Errorf("resolve into a gzipped day: %v", err)
+	}
+	if i, err := startAt(gzd, Cursor{"2026-11-10", 3}); err != nil || i != 0 {
+		t.Errorf("startAt into a gzipped day: %d %v", i, err)
+	}
+	if i, err := startAt(days, Cursor{"2026-11-11", 0}); err != nil || i != 1 {
+		t.Errorf("startAt after every day is len(days): %d %v", i, err)
+	}
+}
+
+// Prod path: a cursor against an empty log, and against a newest day with a junk name (t-8d45): refused, never a panic and never an invented day.
+func TestCheckCursorOnAnEmptyLogAndAJunkDayName(t *testing.T) {
+	empty := t.TempDir()
+	for _, c := range []Cursor{{"2026-11-10", 0}, {}, {"0001-01-01", 0}} {
+		if err := CheckCursor(empty, c); !errors.Is(err, ErrBadCursor) {
+			t.Errorf("%v on an empty log: %v", c, err)
+		}
+	}
+	home, _ := logWith(t, map[string]string{"2026-99-99.jsonl": evLine(1, "/p")}) // matches the day pattern, is not a date
+	if err := CheckCursor(home, Cursor{"0001-01-02", 0}); !errors.Is(err, ErrBadCursor) {
+		t.Errorf("a day invented from a junk name: %v", err)
+	}
+}
+
+// Prod path: Newest and ReadSince on a log with more than one line per day (t-8d45, mutation sweep): a zero limit hands out nothing, an exact page
+// stops without opening an older day, a longer day is trimmed to its last events, and End is the end of every line.
+func TestNewestAndReadSinceHonourTheLimitAndEnd(t *testing.T) {
+	home, dir := logWith(t, map[string]string{"2026-11-10.jsonl": evLine(1, "/p") + evLine(2, "/p") + evLine(3, "/p")})
+	if got, _, err := ReadSince(home, Cursor{"2026-11-10", 0}, 0); err != nil || len(got) != 0 {
+		t.Errorf("limit 0: %s %v", ids(got), err)
+	}
+	if got, _, _ := Newest(home, 2, func(Event) bool { return true }); ids(got) != "2,3" {
+		t.Errorf("a day longer than the limit is trimmed to its last events: %s", ids(got))
+	}
+	n := int64(len(evLine(1, "/p")))
+	if end, err := End(home); err != nil || end != (Cursor{"2026-11-10", 3 * n}) {
+		t.Errorf("End covers every line: %v %v", end, err)
+	}
+	// an older day that cannot be read is never opened when the newest day already fills the page
+	os.WriteFile(filepath.Join(dir, "2026-11-09.jsonl.gz"), []byte("not gzip"), 0o600)
+	if got, _, err := Newest(home, 3, func(Event) bool { return true }); err != nil || ids(got) != "1,2,3" {
+		t.Errorf("an exact page must not read the older day: %s %v", ids(got), err)
+	}
+	if _, _, err := Newest(home, 4, func(Event) bool { return true }); err == nil {
+		t.Error("a page that needs the corrupt older day must say so, not hand out a short page")
+	}
+}
+
+// Prod path: a day that cannot be read to its end is an error, never a shorter log (t-8d45): a corrupt gzipped day, whether it is read from its
+// start, from an offset inside it, or reached while reading on.
+func TestACorruptDayIsAnErrorNotAShortLog(t *testing.T) {
+	home, dir := logWith(t, map[string]string{"2026-11-10.jsonl": evLine(3, "/p")})
+	good := filepath.Join(dir, "good.gz")
+	writeGz(t, good, strings.Repeat(evLine(1, "/p"), 50))
+	b, _ := os.ReadFile(good)
+	os.Remove(good)
+	os.WriteFile(filepath.Join(dir, "2026-11-09.jsonl.gz"), b[:len(b)-12], 0o600) // a truncated stream
+	if err := EachIn(filepath.Join(dir, "2026-11-09.jsonl.gz"), func(Event) {}); err == nil {
+		t.Error("EachIn: a truncated gz read as complete")
+	}
+	if _, _, err := ReadSince(home, Cursor{}, 1000); err == nil {
+		t.Error("ReadSince through a truncated day gave no error")
+	}
+	if _, err := scanDay(filepath.Join(dir, "2026-11-09.jsonl.gz"), 40, func(Event, int64, bool) bool { return true }); err == nil {
+		t.Error("an offset inside a truncated gz gave no error")
+	}
+}
+
+// Prod path: openDayAt (t-8d45): a file that is not there is an error at any offset, and an offset beyond a gzipped day's length is an empty read,
+// not an error (a stream whose day was archived while it caught up).
+func TestOpenDayAt(t *testing.T) {
+	dir := t.TempDir()
+	if rc, err := openDayAt(filepath.Join(dir, "none.jsonl"), 7); err == nil {
+		rc.Close()
+		t.Error("a missing day opened")
+	}
+	gz := filepath.Join(dir, "d.jsonl.gz")
+	writeGz(t, gz, evLine(1, "/p"))
+	end, err := scanDay(gz, 100000, func(Event, int64, bool) bool { return true })
+	if err != nil || end != 100000 {
+		t.Errorf("an offset past the end of a gzipped day: end %d err %v", end, err)
+	}
+}
