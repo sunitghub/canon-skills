@@ -6,6 +6,12 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.48.1] - 2026-11-10
+
+Run `canon update`.
+
+- Fixed (Factory > Pipeline): the tab showed its earlier copy after you changed a model in Admin (Admin's Review & Eval default read "Claude Sonnet 5" after you had set Sonnet 5.5). The tab now reads again each time you open it or switch to it. No Refresh button is needed.
+
 ## [0.48.0] - 2026-11-10
 
 Run `canon update`. The board and Cockpit programs changed, so the Cockpit restarts on the next `canon update`.
