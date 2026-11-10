@@ -1194,8 +1194,40 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 	http.NotFound(w, r)
 }
 
+// ticketFileMax caps what the loader reads from one ticket file (t-ca73).
+const ticketFileMax = 4 << 20
+
+// readTicketFile reads one file of a ticket folder (t-ca73): a regular, non-link file of at most ticketFileMax bytes, opened without
+// blocking. .tickets/ can come from a cloned repo, and a symlink there reads a file outside the project while a FIFO blocks the read
+// (and the request) forever. A file that fails any check is an error, which the callers treat as absent.
+func readTicketFile(path string) ([]byte, error) {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is not a regular file", filepath.Base(path))
+	}
+	if fi.Size() > ticketFileMax {
+		return nil, fmt.Errorf("%s is larger than 4 MB", filepath.Base(path))
+	}
+	f, err := themeOpen(path) // O_NONBLOCK: a file swapped for a FIFO after the Lstat cannot block
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	if fi2, err := f.Stat(); err != nil || !os.SameFile(fi, fi2) {
+		return nil, fmt.Errorf("%s changed while it was opened", filepath.Base(path))
+	}
+	raw, err := io.ReadAll(io.LimitReader(f, ticketFileMax+1))
+	if err == nil && len(raw) > ticketFileMax {
+		return nil, fmt.Errorf("%s is larger than 4 MB", filepath.Base(path))
+	}
+	return raw, err
+}
+
 func parseTicket(path string) (ticket, error) {
-	raw, err := os.ReadFile(path)
+	raw, err := readTicketFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -1247,7 +1279,7 @@ func parseTicket(path string) (ticket, error) {
 		t["acceptance_unchecked"] = nil
 		t["unchecked_count"] = nil
 		t["models_used"] = []string{}
-		if acc, err := os.ReadFile(filepath.Join(filepath.Dir(path), "acceptance.md")); err == nil {
+		if acc, err := readTicketFile(filepath.Join(filepath.Dir(path), "acceptance.md")); err == nil {
 			accText := string(acc)
 			t["acceptance_has_items"] = checkboxItemRe.MatchString(section(accText, "Criteria")) && checkboxItemRe.MatchString(section(accText, "Test Plan"))
 			t["acceptance_unchecked"] = uncheckedItemRe.MatchString(accText)
@@ -1256,7 +1288,7 @@ func parseTicket(path string) (ticket, error) {
 		}
 		t["plan_has_approach"] = nil
 		t["plan_approved"] = nil
-		if plan, err := os.ReadFile(filepath.Join(filepath.Dir(path), "plan.md")); err == nil {
+		if plan, err := readTicketFile(filepath.Join(filepath.Dir(path), "plan.md")); err == nil {
 			planText := string(plan)
 			if n, ok := t["unchecked_count"].(int); ok {
 				t["unchecked_count"] = n + len(uncheckedItemRe.FindAllStringIndex(planText, -1))

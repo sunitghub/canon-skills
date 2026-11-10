@@ -22,6 +22,13 @@ ev() { printf '{"schema":1,"id":"%s","ts":"%s","kind":"%s","source":"sprint","pr
   ev 0000000000000002 2026-11-01T11:00:00.000Z gate.finished ',"role":"reviewer","verdict":"pass"'
   ev 0000000000000003 2026-11-01T12:00:00.000Z gate.rejected ',"evil":"<script>"'; } > "$T/home/events/2026-11-01.jsonl"
 
+# a cloned repo can ship a symlinked ticket.md and a FIFO doc (t-ca73): neither may be read or hang the loader
+mkdir -p "$PROJECT/.tickets/t-eeee" "$PROJECT/.tickets/t-gggg" "$T/outside"
+printf -- '---\nid: t-eeee\nstatus: open\n---\n# OUTSIDEMARKER\n' > "$T/outside/real.md"
+ln -s "$T/outside/real.md" "$PROJECT/.tickets/t-eeee/ticket.md"
+printf -- '---\nid: t-gggg\nstatus: open\n---\n# Title G\n' > "$PROJECT/.tickets/t-gggg/ticket.md"
+mkfifo "$PROJECT/.tickets/t-gggg/plan.md"
+
 free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'; }
 jget() { python3 -c 'import json,sys; d=json.load(sys.stdin)
 for k in sys.argv[1:]: d=d[k] if not k.isdigit() else d[int(k)]
@@ -45,6 +52,12 @@ for route in tickets tickets/t-aaaa; do
   assert_contains "$body" '"title":"Title A"'
 done
 assert_eq "1" "$(curl -s "$B/tickets/t-aaaa" | jget ticket priority)"
+
+# the loader answers (curl -m 5 would give 000 on a hang), shows the FIFO's ticket, and never reads the link's target
+assert_eq "200" "$(curl -s -m 5 -o "$T/list" -w "%{http_code}" "$B/tickets")"
+assert_contains "$(cat "$T/list")" '"title":"Title G"'
+[[ "$(cat "$T/list")" != *OUTSIDEMARKER* ]] || fail "api-v1: a symlinked ticket.md was read"
+assert_eq "404" "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "$B/tickets/t-eeee")"
 
 # ── sprint: the latest valid event per kind, bad lines never served ──
 sp="$(curl -s "$B/sprint/t-aaaa")"
