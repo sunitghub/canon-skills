@@ -192,10 +192,17 @@ scope_suites() {
   done
 }
 
+# join_names <names...> — sets JOINED_N (how many) and JOINED: the first five names, printed with `safe`, then ` (+N more)` for the rest
+join_names() {
+  local p; JOINED=""; JOINED_N=0
+  for p in "$@"; do JOINED_N=$((JOINED_N + 1)); if [[ $JOINED_N -le 5 ]]; then JOINED+="${JOINED:+, }$(safe "$p")"; fi; done
+  if [[ $JOINED_N -gt 5 ]]; then JOINED+=" (+$((JOINED_N - 5)) more)"; fi
+}
+
 # classify_one <file> — sets LINE (the output line), KIND (its first word), CODE and BASEONLY (1 when the only non-neutral tracked change since
 # the stamp is tests/board-spec-baseline.json, optionally with QUARANTINE-comment-only edits to the spec (t-7f5f): the one case `covered` may lift). Called directly, never in $(...), so the globals survive.
 classify_one() {
-  local f="$1" first last sha when cmdline osline shown full names p list n more readers dropped kept ign
+  local f="$1" first last sha when cmdline osline shown full names p readers dropped kept ign wtline
   BASEONLY=0; SPECQ=0; CODE="?"; STAMP=""; SHOWN=""
   base="$(safe "${f##*/}")"
   if [[ -L "$f" || ! -f "$f" ]]; then KIND=unstamped; LINE="unstamped $base exit=?"; return 0; fi
@@ -209,10 +216,11 @@ classify_one() {
   osline="$(head -c 16384 -- "$f" | LC_ALL=C tr -d '\000' | sed -n '3p' | tr -d '\r')" || osline=""   # t-a83a; an old log has none. Bound as line2_of: a long line 2 must not cut it
   if [[ "$osline" == '# on '* && "${osline:5}" =~ [^[:space:]] ]]; then osline="${osline:5:80}"; shown=" on: $(safe "${osline//; /, }")$shown"; fi
   SHOWN="$shown"; STAMP="${sha:0:7}"
+  wtline="stale $base exit=$CODE (HEAD ${sha:0:7}; tracked files are modified in the working tree since)$shown"   # tracked files differ from HEAD in the working tree
   KIND=stale
   full="$(git -C "$root" rev-parse --verify -q "$sha^{commit}" 2>/dev/null)" || { LINE="stale $base exit=$CODE (unknown commit $sha)$shown"; return 0; }
   if [[ "$full" == "$graded" ]]; then
-    if (( wt_dirty )); then LINE="stale $base exit=$CODE (HEAD ${sha:0:7}; tracked files are modified in the working tree since)$shown"
+    if (( wt_dirty )); then LINE="$wtline"
     else KIND=fresh; LINE="fresh $base exit=$CODE (HEAD ${sha:0:7} = graded, $when)$shown"; fi
     return 0
   fi
@@ -235,15 +243,13 @@ classify_one() {
     names=(); [[ ${#kept[@]} -eq 0 ]] || names=("${kept[@]}")
   fi
   if [[ ${#names[@]} -eq 0 && ${#dropped[@]} -gt 0 ]]; then   # t-29ee: everything that changed is outside this log's scope
-    list=""; n=0
-    for p in "${dropped[@]}"; do n=$((n + 1)); if [[ $n -le 5 ]]; then list+="${list:+, }$(safe "$p")"; fi; done
-    more=""; if [[ $n -gt 5 ]]; then more=" (+$((n - 5)) more)"; fi
-    if (( wt_dirty )); then LINE="stale $base exit=$CODE (HEAD ${sha:0:7}; tracked files are modified in the working tree since)$shown"
-    else KIND=fresh; LINE="fresh $base exit=$CODE (HEAD ${sha:0:7}; only files outside its scope changed since: $list$more; $when)$shown"; fi
+    join_names "${dropped[@]}"
+    if (( wt_dirty )); then LINE="$wtline"
+    else KIND=fresh; LINE="fresh $base exit=$CODE (HEAD ${sha:0:7}; only files outside its scope changed since: $JOINED; $when)$shown"; fi
     return 0
   fi
   if [[ ${#names[@]} -eq 0 ]]; then
-    if (( wt_dirty )); then LINE="stale $base exit=$CODE (HEAD ${sha:0:7}; tracked files are modified in the working tree since)$shown"
+    if (( wt_dirty )); then LINE="$wtline"
     elif git -C "$root" diff --quiet --no-renames "$full" "$graded" -- . ':(exclude).tickets' 2>/dev/null; then
       KIND=fresh; LINE="fresh $base exit=$CODE (HEAD ${sha:0:7}, only .tickets/ changed since, $when)$shown"
     else KIND=fresh; LINE="fresh $base exit=$CODE (HEAD ${sha:0:7}, only .tickets/ and evidence-neutral files changed since, $when)$shown"; fi
@@ -257,11 +263,9 @@ classify_one() {
     done
     if (( BASEONLY && SPECQ )) && ! quarantine_only_diff "$full" "$graded"; then BASEONLY=0; fi
   fi
-  list=""; n=0
-  for p in "${names[@]}"; do n=$((n + 1)); if [[ $n -le 5 ]]; then list+="${list:+, }$(safe "$p")"; fi; done
-  more=""; if [[ $n -gt 5 ]]; then more=" (+$((n - 5)) more)"; fi
+  join_names "${names[@]}"
   ign=""; if [[ ${#dropped[@]} -gt 0 ]]; then ign=" (+${#dropped[@]} outside its scope ignored)"; fi
-  LINE="stale $base exit=$CODE (HEAD ${sha:0:7}; $n tracked file(s) changed since: $list$more$ign)$shown"
+  LINE="stale $base exit=$CODE (HEAD ${sha:0:7}; $JOINED_N tracked file(s) changed since: $JOINED$ign)$shown"
 }
 
 # covered_by <run-log> — t-a3d7: prints "<guard log> <report count>" when a fresh exit-0 guard log re-judges this run's reports at the
