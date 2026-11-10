@@ -605,8 +605,10 @@ scope_repo; ev stamp "$ID" bs -- bash tests/run-board-spec.sh; chg tests/unnamed
 
 # The rule is sound only while no reader source globs or builds a `tests/` path at run time; the tool audits itself (the two classification lines in
 # tools/sprint and tools/tkt are allow-listed inside it). Prod path: a new such line fails this suite instead of silently widening what a log may skip.
-out="$(cd "$ROOT" && bash "$EV" scope-audit 2>&1)" || fail "evidence: $out"
-assert_eq "scope-audit: ok" "$out"
+if git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then   # a mutant-sweep copy of the project has no .git; every real run and every clone stamp does
+  out="$(cd "$ROOT" && bash "$EV" scope-audit 2>&1)" || fail "evidence: $out"
+  assert_eq "scope-audit: ok" "$out"
+fi
 
 # --- t-29ee, break-it findings: every case below was a false "fresh" (or a gap) in the first version ---------------------------------
 # a suite deleted since the stamp may have been run by it: stale when it was named (directly or through a suite), fresh when nothing named it
