@@ -47,7 +47,40 @@ type prReport struct {
 	Tickets    int            `json:"tickets_read"`
 	Skipped    map[string]int `json:"skipped"`    // reason -> lines or tickets not counted
 	Unreadable map[string]int `json:"unreadable"` // reason -> files
+	Sizes      []prSize       `json:"sizes"`      // t-3620: what the promoted files and the always-on files cost to read
+
+	tagged map[string][]prLine // file -> its promoted lines, once each however many tags they carry
+	noted  map[string]string   // file -> why it could not be read
 }
+
+// prLine is one promoted line: its words and the day it last changed (empty when git cannot say).
+type prLine struct {
+	words int
+	day   string
+}
+
+// prSize is one row of the size table. Words follow the cap meter's rule (capWords: ASCII whitespace, byte-wise), so a row agrees with `canon-go caps`.
+type prSize struct {
+	File          string `json:"file"`
+	AlwaysOn      bool   `json:"always_on"`      // read in every session, so every line is paid every session
+	Note          string `json:"note,omitempty"` // why a row has no numbers
+	Lines         int    `json:"lines"`          // newline count, as wc -l
+	Words         int    `json:"words"`
+	Tokens        int    `json:"tokens_estimate"` // words x 1.3: an estimate, not a tokenizer's count
+	PromotedLines int    `json:"promoted_lines"`
+	PromotedWords int    `json:"promoted_words"`
+	SinceWords    *int   `json:"since_words,omitempty"`   // with --since: words of promoted lines last changed on or after the day
+	NoClassTags   bool   `json:"no_class_tags,omitempty"` // promoted lines without a class tag (a consumer's PROMOTED.md): recurrence is n/a, not 0
+	CapUsed       *int64 `json:"cap_used,omitempty"`
+	CapLimit      int64  `json:"cap_limit,omitempty"`
+	CapUnit       string `json:"cap_unit,omitempty"`
+}
+
+// prAlwaysOn are the files a session reads whatever it does (canon's own standards file, the project's agent files and a consumer's PROMOTED.md).
+var prAlwaysOn = []string{"standards/efficiency.md", "AGENTS.md", "CLAUDE.md", "PROMOTED.md"}
+
+// prPromotedCap is PROMOTED.md's advisory block cap (owner: skills/promote-learnings/SKILL.md). It is not in tools/caps.tsv on purpose: that table gates a close.
+const prPromotedCap = 60
 
 func prVerdict(n int) string {
 	switch {
@@ -129,11 +162,12 @@ func prBlameDates(root, rel string) []string {
 }
 
 func promotedReport(root string) *prReport {
-	r := &prReport{Entries: []prEntry{}, Skipped: map[string]int{}, Unreadable: map[string]int{}}
+	r := &prReport{Entries: []prEntry{}, Skipped: map[string]int{}, Unreadable: map[string]int{}, tagged: map[string][]prLine{}, noted: map[string]string{}}
 	for _, rel := range prFiles(root) {
 		lines, why := gcoRead(filepath.Join(root, rel))
 		if why != "" {
 			r.Unreadable[why]++
+			r.noted[rel] = why
 			continue
 		}
 		var days []string
@@ -168,6 +202,7 @@ func promotedReport(root string) *prReport {
 				}
 				r.Entries = append(r.Entries, prEntry{File: rel, Slug: m[2], Tickets: strings.Split(m[1], ", "), ID: m[3], Date: day})
 			}
+			r.tagged[rel] = append(r.tagged[rel], prLine{words: int(capWords([]byte(ln))), day: day})
 		}
 	}
 
@@ -244,7 +279,127 @@ func promotedReport(root string) *prReport {
 		}
 		return x.Slug < y.Slug
 	})
+	r.addSizes(root)
 	return r
+}
+
+// prCapRows reads canon's cap table (tools/caps.tsv of the install or checkout the binary runs from); nil when there is none.
+func prCapRows() []capRow {
+	root := cliCanonRoot()
+	if root == "" {
+		return nil
+	}
+	rows, err := loadCaps(filepath.Join(root, "tools", "caps.tsv"))
+	if err != nil {
+		return nil
+	}
+	return rows
+}
+
+// addSizes fills the size table: the always-on files first, then every other file that holds a promoted line or could not be read. A file
+// that is absent says so, and one that cannot be read says why: never a zero.
+func (r *prReport) addSizes(root string) {
+	files := append([]string{}, prAlwaysOn...)
+	seen := map[string]bool{}
+	for _, f := range files {
+		seen[f] = true
+	}
+	var rest []string
+	for f := range r.tagged {
+		if !seen[f] {
+			seen[f] = true
+			rest = append(rest, f)
+		}
+	}
+	for f := range r.noted {
+		if !seen[f] {
+			seen[f] = true
+			rest = append(rest, f)
+		}
+	}
+	sort.Strings(rest)
+	caps := prCapRows()
+	r.Sizes = []prSize{}
+	for _, rel := range append(files, rest...) {
+		sz := prSize{File: rel, AlwaysOn: prHas(prAlwaysOn, rel)}
+		lines, why := gcoRead(filepath.Join(root, rel))
+		switch {
+		case why != "":
+			sz.Note = why
+		case lines == nil:
+			sz.Note = "not in this project"
+		default:
+			body := strings.Join(lines, "\n")
+			sz.Lines = len(lines) - 1
+			sz.Words = int(capWords([]byte(body)))
+			sz.Tokens = sz.Words * 13 / 10
+			if rel == "PROMOTED.md" && len(r.tagged[rel]) == 0 {
+				r.promotedBlock(root, rel, lines)
+				sz.NoClassTags = len(r.tagged[rel]) > 0
+				if used, err := capBlockLines([]byte(body), "canon:promoted"); err == nil {
+					sz.CapUsed, sz.CapLimit, sz.CapUnit = &used, prPromotedCap, "block-lines"
+				}
+			}
+			for _, l := range r.tagged[rel] {
+				sz.PromotedLines++
+				sz.PromotedWords += l.words
+			}
+			for _, c := range caps {
+				if c.Path != rel || (c.Unit != "words" && c.Unit != "block-lines") {
+					continue
+				}
+				var used int64
+				if c.Unit == "words" {
+					used = capWords([]byte(body))
+				} else if u, err := capBlockLines([]byte(body), c.Marker); err == nil {
+					used = u
+				} else {
+					continue
+				}
+				sz.CapUsed, sz.CapLimit, sz.CapUnit = &used, c.Limit, capUnits[c.Unit]
+			}
+		}
+		r.Sizes = append(r.Sizes, sz)
+	}
+}
+
+// promotedBlock reads a consumer's PROMOTED.md: its entries (`- ` lines between the managed markers) are the promoted lines, though they carry no class tag.
+func (r *prReport) promotedBlock(root, rel string, lines []string) {
+	var days []string
+	in := false
+	for i, ln := range lines {
+		switch {
+		case strings.Contains(ln, "<!-- canon:promoted:BEGIN -->"):
+			in = true
+		case strings.Contains(ln, "<!-- canon:promoted:END -->"):
+			return
+		case in && strings.HasPrefix(strings.TrimSpace(ln), "- "):
+			if days == nil {
+				days = prBlameDates(root, rel)
+			}
+			day := ""
+			if i < len(days) {
+				day = days[i]
+			}
+			r.tagged[rel] = append(r.tagged[rel], prLine{words: int(capWords([]byte(ln))), day: day})
+		}
+	}
+}
+
+// applySince fills each row's since_words: the words of its promoted lines last changed on or after day (YYYY-MM-DD).
+func (r *prReport) applySince(day string) {
+	for i := range r.Sizes {
+		if r.Sizes[i].Note != "" {
+			continue
+		}
+		n := 0
+		for _, l := range r.tagged[r.Sizes[i].File] {
+			if l.day != "" && l.day >= day {
+				n += l.words
+			}
+		}
+		r.Sizes[i].SinceWords = &n
+	}
 }
 
 func prText(r *prReport, w io.Writer) {
@@ -271,6 +426,34 @@ func prText(r *prReport, w io.Writer) {
 			date = "no date"
 		}
 		fmt.Fprintf(w, "  %-14s class %-3d ref %-3d %-6s %s (%s, %s)  %s\n", e.Verdict, e.BySlug, e.Mentions, id, e.Slug, strings.Join(e.Tickets, " "), date, prSafeName(e.File))
+	}
+	prSizeText(r, w)
+}
+
+// prSizeText prints the size table (t-3620): what each promoted file and each always-on file costs to read.
+func prSizeText(r *prReport, w io.Writer) {
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Size: lines, words (the cap meter's count) and tokens (words x 1.3, an estimate). always-on files are read in every session, so every line there is paid every session.")
+	for _, z := range r.Sizes {
+		kind := "on demand"
+		if z.AlwaysOn {
+			kind = "always-on"
+		}
+		if z.Note != "" {
+			fmt.Fprintf(w, "  %-9s %s: %s\n", kind, prSafeName(z.File), z.Note)
+			continue
+		}
+		line := fmt.Sprintf("  %-9s %-52s %5d lines %6d words ~%6d tokens  promoted %d lines, %d words", kind, prSafeName(z.File), z.Lines, z.Words, z.Tokens, z.PromotedLines, z.PromotedWords)
+		if z.SinceWords != nil {
+			line += fmt.Sprintf(", +%d since", *z.SinceWords)
+		}
+		if z.CapUsed != nil {
+			line += fmt.Sprintf("; cap %d of %d %s", *z.CapUsed, z.CapLimit, z.CapUnit)
+		}
+		if z.NoClassTags {
+			line += "; no class tags, recurrence n/a"
+		}
+		fmt.Fprintln(w, line)
 	}
 }
 
@@ -322,14 +505,27 @@ func prKeys(m map[string]int) []string {
 }
 
 func promotedReportCLI(args []string, stdout, stderr io.Writer) int {
-	asJSON := false
-	for _, a := range args {
-		if a == "--json" {
+	const usage = "usage: canon-go promoted-report [--json] [--since YYYY-MM-DD]"
+	asJSON, since := false, ""
+	for i := 0; i < len(args); i++ {
+		switch a := args[i]; {
+		case a == "--json":
 			asJSON = true
-			continue
+		case a == "--since" && i+1 < len(args):
+			i++
+			since = args[i]
+		case strings.HasPrefix(a, "--since="):
+			since = strings.TrimPrefix(a, "--since=")
+		default:
+			fmt.Fprintln(stderr, usage)
+			return 2
 		}
-		fmt.Fprintln(stderr, "usage: canon-go promoted-report [--json]")
-		return 2
+	}
+	if since != "" {
+		if _, err := time.Parse("2006-01-02", since); err != nil {
+			fmt.Fprintln(stderr, usage)
+			return 2
+		}
 	}
 	root, err := os.Getwd()
 	if err != nil {
@@ -337,6 +533,9 @@ func promotedReportCLI(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	rep := promotedReport(root)
+	if since != "" {
+		rep.applySince(since)
+	}
 	if rep.Unreadable[".tickets/ itself"] > 0 {
 		fmt.Fprintln(stderr, "promoted-report: .tickets/ exists but cannot be read")
 		return 1

@@ -235,7 +235,7 @@ Helpers (used by canon's shell tools; see helpers.go):
   gate-clusters [--days N] [--json]
   gate-insights [--days N] [--json]
   gate-corpus [--json]
-  promoted-report [--json]
+  promoted-report [--json] [--since YYYY-MM-DD]   promoted lines, recurrence and the size table
   api schema [--json]      the /api/v1 and event schemas (t-0b89)
   caps [--json] [--table <file>] <name|path> [path] | caps --list   a capped file's use (tools/caps.tsv)
   machine [--json]         this machine's OS, chip, cores and RAM (no hostname)

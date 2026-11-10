@@ -153,7 +153,7 @@ A later ticket counts when its review, eval or learnings text names the class it
   Not mentioned  class 0   ref 0   -      slug-six (t-jjjj, 2026-10-03)  docs/releasing.md
   Not mentioned  class 0   ref 0   -      slug-three (t-dddd, 2026-10-10)  skills/x/SKILL.md
 `
-	if b.String() != want {
+	if !strings.HasPrefix(b.String(), want) { // the entries come first; the size table after them has its own tests
 		t.Errorf("text differs:\n%s\nwant:\n%s", b.String(), want)
 	}
 	before := prTreeHash(t, root)
@@ -358,4 +358,158 @@ func prOut(t *testing.T, root string, args ...string) string {
 		t.Fatal(err)
 	}
 	return string(out)
+}
+
+func prSizeOf(t *testing.T, r *prReport, file string) prSize {
+	t.Helper()
+	for _, z := range r.Sizes {
+		if z.File == file {
+			return z
+		}
+	}
+	t.Fatalf("no size row for %s: %+v", file, r.Sizes)
+	return prSize{}
+}
+
+// Prod path: the Size table of `canon-go promoted-report` (t-3620): each row's lines and words equal a hand count of the file, tokens are words x 1.3,
+// the always-on files come first and an absent or unreadable file says why instead of reading as zero.
+func TestPromotedReportSizeRowsEqualAHandCount(t *testing.T) {
+	root := prSeed(t)
+	r := promotedReport(root)
+	var order []string
+	for _, z := range r.Sizes {
+		order = append(order, z.File)
+	}
+	if got, want := strings.Join(order[:4], " "), "standards/efficiency.md AGENTS.md CLAUDE.md PROMOTED.md"; got != want {
+		t.Errorf("always-on rows come first, in order: got %q want %q", got, want)
+	}
+	z := prSizeOf(t, r, "standards/efficiency-notes.md") // 7 lines, 28 words by hand; two promoted lines of 6 and 9 words (the fenced one is not promoted)
+	if z.Lines != 7 || z.Words != 28 || z.Tokens != 36 || z.PromotedLines != 2 || z.PromotedWords != 15 || z.AlwaysOn || z.Note != "" {
+		t.Errorf("efficiency-notes row: %+v", z)
+	}
+	body, _ := os.ReadFile(filepath.Join(root, "standards", "efficiency-notes.md"))
+	if len(strings.Fields(string(body))) != z.Words || bytes.Count(body, []byte("\n")) != z.Lines {
+		t.Errorf("row disagrees with an independent count: %+v", z)
+	}
+	if p := prSizeOf(t, r, "PROMOTED.md"); p.Words != 6 || p.Lines != 1 || p.PromotedLines != 1 || p.PromotedWords != 6 || !p.AlwaysOn || p.NoClassTags {
+		t.Errorf("PROMOTED.md with a tagged line: %+v", p)
+	}
+	if a := prSizeOf(t, r, "AGENTS.md"); a.Note != "not in this project" || a.Words != 0 || !a.AlwaysOn {
+		t.Errorf("an absent always-on file says so: %+v", a)
+	}
+	if b := prSizeOf(t, r, "standards/big.md"); b.Note != "larger than 256 KB" || b.Words != 0 {
+		t.Errorf("an oversize file says why: %+v", b)
+	}
+}
+
+// Prod path: `canon-go promoted-report --since` (t-3620): the words of promoted lines last changed on or after the day; a bad day is a usage error.
+func TestPromotedReportSinceAndItsUsageErrors(t *testing.T) {
+	root := prSeed(t)
+	before := prTreeHash(t, root)
+	r := promotedReport(root)
+	r.applySince("2026-10-03")
+	want := map[string]int{"docs/releasing.md": 5, "skills/x/SKILL.md": 6, "standards/efficiency-notes.md": 0, "PROMOTED.md": 0}
+	for f, n := range want {
+		if z := prSizeOf(t, r, f); z.SinceWords == nil || *z.SinceWords != n {
+			t.Errorf("%s since 2026-10-03: %v want %d", f, z.SinceWords, n)
+		}
+	}
+	if z := prSizeOf(t, r, "standards/big.md"); z.SinceWords != nil {
+		t.Errorf("a row with no numbers has no since figure: %+v", z)
+	}
+	cwd, _ := os.Getwd()
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(cwd)
+	for _, bad := range [][]string{{"--since"}, {"--since", "yesterday"}, {"--since=2026-13-40"}, {"--since=2026-10-1"}} {
+		var out, errb bytes.Buffer
+		if rc := promotedReportCLI(bad, &out, &errb); rc != 2 || !strings.Contains(errb.String(), "usage: canon-go promoted-report [--json] [--since YYYY-MM-DD]") || out.Len() != 0 {
+			t.Errorf("%v: rc %d out %q err %q", bad, rc, out.String(), errb.String())
+		}
+	}
+	var out, errb bytes.Buffer
+	if rc := promotedReportCLI([]string{"--since=2026-10-03", "--json"}, &out, &errb); rc != 0 {
+		t.Fatalf("rc %d err %q", rc, errb.String())
+	}
+	var rep struct {
+		Sizes []map[string]any `json:"sizes"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &rep); err != nil || len(rep.Sizes) == 0 {
+		t.Fatalf("json: %v %s", err, out.String())
+	}
+	for _, k := range []string{"file", "always_on", "lines", "words", "tokens_estimate", "promoted_lines", "promoted_words", "since_words"} {
+		if _, ok := rep.Sizes[3][k]; !ok { // PROMOTED.md: a readable row
+			t.Errorf("a size row has no %q: %v", k, rep.Sizes[3])
+		}
+	}
+	if after := prTreeHash(t, root); after != before {
+		t.Error("the command changed the tree")
+	}
+}
+
+// Prod path: `canon-go promoted-report` in an end user's project (t-3620): its PROMOTED.md entries carry no class tag, so the row counts the block's entries
+// against the 60-line advisory cap, says recurrence is n/a, names the canon-only files as absent and exits 0.
+func TestPromotedReportInAConsumerProject(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is required")
+	}
+	root := t.TempDir()
+	prGit(t, root, "2026-10-01T12:00:00Z", "init", "-q")
+	prPut(t, root, "AGENTS.md", "@PROMOTED.md\n")
+	prPut(t, root, "PROMOTED.md", "# Promoted\n<!-- canon:promoted:BEGIN -->\n- When a, do b. (t-1234)\n- When c, do d. (t-5678)\n<!-- canon:promoted:END -->\n")
+	if err := os.Symlink(filepath.Join(root, "AGENTS.md"), filepath.Join(root, "CLAUDE.md")); err != nil {
+		t.Fatal(err)
+	}
+	prGit(t, root, "2026-10-01T12:00:00Z", "add", "-A")
+	prGit(t, root, "2026-10-01T12:00:00Z", "commit", "-q", "-m", "one")
+	cwd, _ := os.Getwd()
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(cwd)
+	var out, errb bytes.Buffer
+	if rc := promotedReportCLI([]string{"--since=2026-10-01"}, &out, &errb); rc != 0 || errb.Len() != 0 {
+		t.Fatalf("rc %d err %q", rc, errb.String())
+	}
+	r := promotedReport(root)
+	p := prSizeOf(t, r, "PROMOTED.md")
+	if p.PromotedLines != 2 || p.PromotedWords != 12 || !p.NoClassTags || p.CapUsed == nil || *p.CapUsed != 2 || p.CapLimit != 60 || p.CapUnit != "block-lines" {
+		t.Errorf("consumer PROMOTED.md row: %+v", p)
+	}
+	if e := prSizeOf(t, r, "standards/efficiency.md"); e.Note != "not in this project" {
+		t.Errorf("a canon-only file is absent, not an error: %+v", e)
+	}
+	if c := prSizeOf(t, r, "CLAUDE.md"); c.Note != "not a regular file" {
+		t.Errorf("a symlinked agent file is named, never followed: %+v", c)
+	}
+	got := out.String()
+	if !strings.Contains(got, "no class tags, recurrence n/a") || !strings.Contains(got, "cap 2 of 60 block-lines") || !strings.Contains(got, "+12 since") || !strings.Contains(got, "standards/efficiency.md: not in this project") {
+		t.Errorf("consumer text:\n%s", got)
+	}
+	if len(r.Entries) != 0 {
+		t.Errorf("untagged entries are not recurrence entries: %+v", r.Entries)
+	}
+}
+
+// Prod path: the Size table shows a capped file's use from canon's own tools/caps.tsv, the one table of caps (t-19bb), so the report and
+// `canon-go caps` cannot disagree.
+func TestPromotedReportSizeShowsTheCapFromCapsTSV(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is required")
+	}
+	root := t.TempDir()
+	prGit(t, root, "2026-10-01T12:00:00Z", "init", "-q")
+	prPut(t, root, "tools/src-key.sh", "#!/bin/sh\n")
+	prPut(t, root, "tools/caps.tsv", "x\tskills/x.md\t10\twords\t-\n")
+	prPut(t, root, "skills/x.md", "- rule (t-aaaa; class: slug-one)\n")
+	cwd, _ := os.Getwd()
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(cwd)
+	z := prSizeOf(t, promotedReport(root), "skills/x.md")
+	if z.CapUsed == nil || *z.CapUsed != 5 || z.CapLimit != 10 || z.CapUnit != "words" {
+		t.Errorf("cap of a promoted file from caps.tsv: %+v", z)
+	}
 }

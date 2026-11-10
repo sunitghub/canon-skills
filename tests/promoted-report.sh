@@ -26,7 +26,16 @@ assert_contains "$out" "Mentioned once class 1"
 assert_contains "$out" "slug-one (t-aaaa, 2026-10-01)  standards/efficiency-notes.md"
 js="$("$board" promoted-report --json)"
 assert_contains "$js" '"tickets_read":1'
+# t-3620: the Size table from the shipped binary: always-on files first (absent ones say so), the promoted file's own row by hand (1 line, 8 words), --since
+assert_contains "$out" "Size: lines, words"
+assert_contains "$out" "always-on AGENTS.md: not in this project"
+assert_contains "$out" "on demand standards/efficiency-notes.md"
+assert_contains "$js" '"file":"standards/efficiency-notes.md","always_on":false,"lines":1,"words":8,"tokens_estimate":10,"promoted_lines":1,"promoted_words":8'
+assert_contains "$("$board" promoted-report --since 2026-10-01 --json)" '"since_words":8'
 assert_eq "$before" "$(tree_hash)"
+set +e; "$board" promoted-report --since yesterday >/dev/null 2>"$work/err"; code=$?; set -e
+assert_eq "2" "$code"
+assert_contains "$(cat "$work/err")" "[--since YYYY-MM-DD]"
 
 set +e; "$board" promoted-report --nope >/dev/null 2>"$work/err"; code=$?; set -e
 assert_eq "2" "$code"
