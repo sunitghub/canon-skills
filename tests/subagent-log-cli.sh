@@ -67,9 +67,10 @@ assert_grep '"agent_id":"same1","agent_type":"evaluator","tokens":5,"ticket":"t-
 
 # ── A bad cost value fails loudly and writes nothing ─────────────────────────
 rows_before="$(wc -l < "$log" | tr -d " ")"
+# shellcheck disable=SC2089  # the quoted case is passed literally, on purpose
 for bad in "--tokens 12k" "--tool-uses -1" "--minutes 1e3" "--minutes 01.5" "--outcome partial" "--tier a\"b" "--ticket .." "--ticket ../x" "--tokens" "--outcome"; do
   set +e
-  # shellcheck disable=SC2086  # split on purpose: flag and value
+  # shellcheck disable=SC2086,SC2090  # split on purpose: flag and value
   (cd "$project" && "$SUBAGENT_LOG" --agent-id bad1 $bad 2>"$project/bad-err"); rc=$?
   set -e
   assert_eq 1 "$rc"
