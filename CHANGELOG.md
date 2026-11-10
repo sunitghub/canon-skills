@@ -6,6 +6,12 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.49.1] - 2026-11-10
+
+Run `canon update`. The board and Cockpit programs changed, so the Cockpit restarts on the next `canon update`.
+
+- Fixed (board): a ticket folder from a cloned repo could make the board misbehave. A `ticket.md` that was a symlink to a file outside the project was read (its first heading and `status:` lines were shown), and a FIFO named `ticket.md`, `acceptance.md` or `plan.md` made every ticket list request wait forever. The board now reads only a regular file of at most 4 MB from a ticket folder: a symlinked, non-regular or oversize `ticket.md` leaves the ticket out of the list, and such an `acceptance.md` or `plan.md` is treated as missing. Found by the break-it check of the new `/api/v1`.
+
 ## [0.49.0] - 2026-11-10
 
 Run `canon update`. The board and Cockpit programs changed, so the Cockpit restarts on the next `canon update`.
