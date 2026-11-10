@@ -48,6 +48,11 @@ var v1Responses = map[string][]string{
 	"/api/v1/sprint/{ticket}":     {"schema", "ticket", "events"},
 }
 
+// v1DaemonHeader says whether the daemon answered: a down daemon gives an empty list, which is not "no sessions".
+func v1DaemonHeader(w http.ResponseWriter, up bool) {
+	w.Header().Set("X-Cockpit-Daemon", map[bool]string{true: "up", false: "down"}[up])
+}
+
 func v1Error(w http.ResponseWriter, code int, msg string) {
 	body, _ := json.Marshal(map[string]any{"schema": apiV1Schema, "error": msg})
 	w.Header().Set("Content-Type", "application/json")
@@ -79,7 +84,7 @@ func handleAPIv1(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case len(seg) == 1 && seg[0] == "sessions":
 		sessions, up := cockpitSessionsAnswer()
-		w.Header().Set("X-Cockpit-Daemon", map[bool]string{true: "up", false: "down"}[up])
+		v1DaemonHeader(w, up)
 		v1Send(w, map[string]any{"sessions": sessions})
 	case len(seg) >= 2 && len(seg) <= 3 && seg[0] == "sessions" && (len(seg) == 2 || seg[2] == "state"):
 		if !common.SessionIDRe.MatchString(seg[1]) {
@@ -87,7 +92,7 @@ func handleAPIv1(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		sessions, up := cockpitSessionsAnswer()
-		w.Header().Set("X-Cockpit-Daemon", map[bool]string{true: "up", false: "down"}[up])
+		v1DaemonHeader(w, up)
 		sessions = cockpitSessionsFor(sessions, seg[1], "")
 		if len(seg) == 3 {
 			state := "exited"

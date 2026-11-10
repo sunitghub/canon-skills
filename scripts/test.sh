@@ -167,6 +167,7 @@ tests=(
   "$ROOT/tests/worktree-links-parity.sh"
   "$ROOT/tests/helpers-sweep.sh"
   "$ROOT/tests/sprint-check-api.sh"
+  "$ROOT/tests/api-v1.sh"
   "$ROOT/tests/theme-files-parity.sh"
   "$ROOT/tests/board-branch-divergence.sh"
   "$ROOT/tests/canon.sh"
