@@ -6,6 +6,13 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.49.3] - 2026-11-10
+
+Run `canon update`. Sprint instructions and standards changed; no program did.
+
+- Changed (sprint): the start checklist now says a new `tests/*.sh` is added to `scripts/test.sh` in the same commit, and that a sprint editing a gate file cannot close until a release carries it. The close checklist says to run the pre-gate check early on a touched file with old shellcheck warnings, and that a reviewer `YES` does not clear its `Consider` items.
+- Changed (standards): `efficiency-notes.md` gains nine rules from recent sprints (reads of repo-controlled paths, a changed gate label list, macOS bash 3.2 heredocs and awk locale, `git blame` dates after a mass edit, sentinel defaults, awk `ENVIRON`, bounded float parsing, rewriting a gitignored file).
+
 ## [0.49.2] - 2026-11-10
 
 Run `canon update`. Shell tests and one sprint checklist step changed; the board and Cockpit programs did not.
