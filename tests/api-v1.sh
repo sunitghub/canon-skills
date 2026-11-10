@@ -53,7 +53,7 @@ assert_eq "0000000000000002" "$(printf '%s' "$sp" | jget events 0 id)"
 [[ "$sp" != *script* ]] || fail "api-v1: a line that fails the events schema was served"
 
 # ── every route's keys are the published schema's ──
-"$BIN" api schema --json > "$T/schema.json" || fail "api-v1: canon-go api schema failed"
+SPRINT_CHECK_NO_BROWSER=1 "$BIN" api schema --json > "$T/schema.json" || fail "api-v1: canon-go api schema failed"
 check_keys() { # <route pattern> <url>
   want="$(python3 -c 'import json,sys; print(" ".join(sorted(json.load(open(sys.argv[1]))["responses"][sys.argv[2]])))' "$T/schema.json" "$1")"
   got="$(curl -s "$2" | python3 -c 'import json,sys; print(" ".join(sorted(json.load(sys.stdin))))')"
@@ -73,7 +73,8 @@ done
 assert_eq "204" "$(code -X OPTIONS -H 'Origin: http://evil.example' -H 'Access-Control-Request-Method: GET' "$B/tickets")"
 for target in tickets sessions sprint/t-aaaa tickets/nope tickets/t-zzzz; do
   for m in GET OPTIONS POST; do
-    if curl -s -D - -o /dev/null -X "$m" -H 'Origin: http://evil.example' "$B/$target" | grep -qi '^access-control-'; then fail "api-v1: $m /$target sent an Access-Control header"; fi
+    hdr="$(curl -s -D - -o /dev/null -X "$m" -H 'Origin: http://evil.example' "$B/$target")"
+    if grep -qi '^access-control-' <<<"$hdr"; then fail "api-v1: $m /$target sent an Access-Control header"; fi
   done
 done
 assert_eq "400" "$(code "$B/tickets?project=ffffffffffff")"
