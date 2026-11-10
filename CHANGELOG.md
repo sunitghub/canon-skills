@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.50.0] - 2026-11-10
+
+Run `canon update`, then restart the daemon (Admin's **Restart Daemon**): the `canon-go` program changed, and a running daemon stays on the old one until restarted.
+
 - Added (reports): `canon-go promoted-report` now ends with a Size table: the lines, words and approximate tokens of each file that holds a promoted rule and of the files read in every session (`standards/efficiency.md`, `AGENTS.md`, `CLAUDE.md`, `PROMOTED.md`), the lines and words that are promoted rules, and each file's cap where `tools/caps.tsv` has one. `--since YYYY-MM-DD` adds the words promoted since that day. Read-only; in your own project it shows `PROMOTED.md` against its 60-line advisory cap. The Go program changed, so the release needs the daemon release.
 - Fixed (standards): the start checklist's P-071 tag now reads as a promoted line in `promoted-report` (it was never counted).
 
