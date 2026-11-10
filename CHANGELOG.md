@@ -6,6 +6,13 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.49.2] - 2026-11-10
+
+Run `canon update`. Shell tests and one sprint checklist step changed; the board and Cockpit programs did not.
+
+- Changed (sprint): the start checklist now says to read an existing `plan.md` and `acceptance.md` before writing either, and to write no planning file for a ticket whose `sprint start` was refused (non-zero exit). `sprint start` already refused without touching the files; the missing piece was telling the agent to stop.
+- Tested: a refused `sprint start` exits non-zero and leaves a `plan.md` with content unchanged, and a gate-log row written from a linked worktree lands in the main checkout's `.claude/subagent-runs.jsonl`, where `sprint complete` reads it.
+
 ## [0.49.1] - 2026-11-10
 
 Run `canon update`. The board and Cockpit programs changed, so the Cockpit restarts on the next `canon update`.
