@@ -690,6 +690,11 @@ GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=grep.threads GIT_CONFIG_VALUE_0=bogus ev che
 scope_repo; ev stamp "$ID" sw -- tools/mutant-sweep --map "$GO1"; chg tests/unnamed.sh
 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=grep.threads GIT_CONFIG_VALUE_0=bogus ev check "$ID"; stale_with sw "1 tracked file(s) changed since: tests/unnamed.sh)"
 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=grep.threads GIT_CONFIG_VALUE_0=bogus ev scope-audit; assert_eq 1 "$code"; assert_contains "$out" "git grep failed"   # an unreadable source is not a clean one
+# the audit prints repo text, so it prints no control byte and no long line (an escape code in a source must not reach the terminal)
+scope_repo; printf 'bash tests/*.sh \033[31mred\033[0m %s\n' "$(head -c 600 /dev/zero | tr '\0' z)" > tools/tool.sh; git add tools; git commit -qm "escape in a glob line"
+ev scope-audit; assert_eq 1 "$code"; assert_contains "$out" "tools/tool.sh:1:"
+[[ "$out" != *$'\033'* ]] || fail "evidence: scope-audit printed a raw escape byte"
+[[ "$(printf '%s\n' "$out" | awk '{ if (length($0) > m) m = length($0) } END { print m }')" -lt 340 ]] || fail "evidence: scope-audit printed a long line"
 # a git error confined to the transitive read of a named suite (so the glob valve does not fire): the suites that machine-load.sh names go unseen, and
 # nothing may be dropped on that blindness. A shim for `git` fails only a `grep` of tests/machine-load.sh.
 mkdir -p "$WORK/shim"; printf '%s\n' '#!/bin/sh' 'case " $* " in *" grep "*tests/machine-load.sh*) echo "fatal: injected" >&2; exit 128 ;; esac' 'exec "$REAL_GIT" "$@"' > "$WORK/shim/git"; chmod +x "$WORK/shim/git"

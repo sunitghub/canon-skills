@@ -160,7 +160,7 @@ scope_audit() {
   local kind p bad="" out; local -a rd
   for kind in board go; do
     rd=(); while IFS= read -r p; do rd+=("$p"); done < <(readers_$kind)
-    out="$(computed_suite_refs HEAD "${rd[@]}")"
+    out="$(computed_suite_refs HEAD "${rd[@]}" | LC_ALL=C tr -c '[:print:]\n' '?' | cut -c1-300)"   # repo text: no control byte, no long line
     if [[ -n "$out" ]]; then bad+="$out"$'\n'; fi
   done
   if [[ -n "$bad" ]]; then printf 'scope-audit: a reader source builds a suite path at run time, so an unnamed suite may be run; update the scope rule, then the allow-list in computed_suite_refs:\n%s' "$bad" >&2; return 1; fi
