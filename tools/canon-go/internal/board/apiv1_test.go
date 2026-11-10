@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -410,7 +412,7 @@ func TestAPIv1SprintReadsAGzippedDayOnceAndSchemaNamesItsFields(t *testing.T) {
 	line := func(id string) string {
 		return `{"schema":1,"id":"` + id + `","ts":"2026-11-03T01:00:00.000Z","kind":"plan.approved","source":"sprint","project":"` + proj + `","data":{"ticket":"t-aaaa"}}` + "\n"
 	}
-	writeFile(t, filepath.Join(home, "events", "2026-11-03.jsonl"), line("00000000000000aa")) // the plain file a crashed gzip left behind
+	writeFile(t, filepath.Join(home, "events", "2026-11-03.jsonl"), line("00000000000000aa")+strings.Replace(line("00000000000000ab"), "plan.approved", "close.confirmed", 1)) // the plain file a crashed gzip left behind: the .gz is the day, so this extra line is not read
 	f, err := os.Create(filepath.Join(home, "events", "2026-11-03.jsonl.gz"))
 	if err != nil {
 		t.Fatal(err)
@@ -513,5 +515,88 @@ func TestAPIv1TicketsCapLongTextSkipSpoofedIdsAndSetSafeHeaders(t *testing.T) {
 	}
 	if w.Header().Get("X-Content-Type-Options") != "nosniff" || w.Header().Get("Cache-Control") != "no-store" {
 		t.Errorf("headers: %v", w.Header())
+	}
+}
+
+func TestAPIv1RemainingGuards(t *testing.T) {
+	root := setupTestProject(t)
+	home := t.TempDir()
+	t.Setenv("CANON_HOME", home)
+	proj := resolvedOrAbs(root)
+	// OPTIONS answers 204 with no body; a trailing slash is the same route
+	if w := v1Get(t, "OPTIONS", "/api/v1/tickets", ""); w.Code != 204 || w.Body.Len() != 0 {
+		t.Errorf("OPTIONS: %d %q", w.Code, w.Body)
+	}
+	if w := v1Get(t, "GET", "/api/v1/tickets/", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"tickets"`) {
+		t.Errorf("trailing slash: %d %s", w.Code, w.Body)
+	}
+	// every published route's keys, the one-session route included, come from a real response
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
+	mux.HandleFunc("/sessions", func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`[{"session":"s1","ticket":"t-aaaa","state":"working"}]`))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	v1Daemon(t, strings.TrimPrefix(srv.URL, "http://"))
+	got := v1Body(t, v1Get(t, "GET", "/api/v1/sessions/t-aaaa", ""))
+	if len(got) != len(v1Responses["/api/v1/sessions/{id}"]) {
+		t.Errorf("one-session keys %v vs schema %v", got, v1Responses["/api/v1/sessions/{id}"])
+	}
+	for _, k := range v1Responses["/api/v1/sessions/{id}"] {
+		if _, ok := got[k]; !ok {
+			t.Errorf("schema key %q missing", k)
+		}
+	}
+	// an event with an actor uses only published envelope keys, and the published list names actor
+	writeFile(t, filepath.Join(home, "events", "2026-11-06.jsonl"), `{"schema":1,"id":"00000000000000e1","ts":"2026-11-06T01:00:00.000Z","kind":"plan.approved","source":"sprint","actor":"user","project":"`+proj+`","data":{"ticket":"t-aaaa"}}`+"\n"+
+		`{"schema":1,"id":"00000000000000e2","ts":"2026-11-06T02:00:00.000Z","kind":"plan.approved","source":"sprint","project":"`+proj+`-worktrees/wt1","data":{"ticket":"t-bbbb"}}`+"\n")
+	ev := v1Body(t, v1Get(t, "GET", "/api/v1/sprint/t-aaaa", ""))["events"].([]any)[0].(map[string]any)
+	pub := map[string]bool{}
+	for _, k := range v1EventKeys {
+		pub[k] = true
+	}
+	for k := range ev {
+		if !pub[k] {
+			t.Errorf("served key %q is not published", k)
+		}
+	}
+	if !pub["actor"] {
+		t.Errorf("the published envelope omits actor")
+	}
+	// a sprint run in a worktree folder of the project (<root>-worktrees/...) belongs to the project
+	if w := v1Get(t, "GET", "/api/v1/sprint/t-bbbb", ""); !strings.Contains(w.Body.String(), "00000000000000e2") {
+		t.Errorf("a worktree's event is missing: %s", w.Body)
+	}
+	// the answer cache is bounded
+	for i := 0; i < 140; i++ {
+		v1Get(t, "GET", fmt.Sprintf("/api/v1/sprint/t-%04x", 0x1000+i), "")
+	}
+	if len(v1SprintCache) > 128 {
+		t.Errorf("cache grew to %d", len(v1SprintCache))
+	}
+}
+
+func TestAPIv1SprintIncludesALiveWorktreesEvents(t *testing.T) {
+	root := setupTestProject(t)
+	home := t.TempDir()
+	t.Setenv("CANON_HOME", home)
+	git := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"}, args...)...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	git(root, "init", "-q")
+	writeFile(t, filepath.Join(root, "f.txt"), "x")
+	git(root, "add", "f.txt")
+	git(root, "commit", "-q", "-m", "x")
+	wt := filepath.Join(t.TempDir(), "elsewhere") // not under <root>-worktrees: only the live worktree list can match it
+	git(root, "worktree", "add", "-q", wt)
+	writeFile(t, filepath.Join(home, "events", "2026-11-07.jsonl"), `{"schema":1,"id":"00000000000000f9","ts":"2026-11-07T01:00:00.000Z","kind":"plan.approved","source":"sprint","project":"`+resolvedOrAbs(wt)+`","data":{"ticket":"t-aaaa"}}`+"\n")
+	if w := v1Get(t, "GET", "/api/v1/sprint/t-aaaa", ""); !strings.Contains(w.Body.String(), "00000000000000f9") {
+		t.Errorf("a live worktree's event is missing: %s", w.Body)
 	}
 }
