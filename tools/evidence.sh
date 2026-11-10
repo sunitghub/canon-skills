@@ -47,7 +47,9 @@ mode="${1-}"
 [[ "$mode" == stamp || "$mode" == check || "$mode" == scope-audit ]] || usage
 shift
 id=""
-if [[ "$mode" != scope-audit ]]; then
+if [[ "$mode" == scope-audit ]]; then
+  [[ $# -eq 0 ]] || usage
+else
   [[ $# -ge 1 && "${1-}" =~ $id_re ]] || usage
   id="$1"; shift
 fi
@@ -109,7 +111,7 @@ go_test_ok() {
 
 # reader_sources <line 2 of a log> prints the pathspecs, one per line, or nothing: then there is no scope.
 reader_sources() {
-  local c="${1#\$ }" ph=$'\001' t maps=0 want=0 bad=0 first rest=1 file
+  local c="${1#\$ }" ph=$'\001' t maps=0 want="" bad=0 first rest=1 file
   local -a toks=() files=()
   c="${c//\\ /$ph}"
   read -r -a toks <<< "$c" || true
@@ -121,17 +123,20 @@ reader_sources() {
       for t in "${toks[@]:$rest}"; do t="${t//$ph/ }"; t="${t//\\/}"; [[ "$t" =~ ^[A-Za-z0-9_./=,:@%+-]+$ ]] || return 0; done   # %q escapes a comma; an escaped & or quote is still refused
       readers_board; return 0 ;;
     mutant-sweep|tools/mutant-sweep|./tools/mutant-sweep)
-      for t in "${toks[@]:1}"; do
+      for t in "${toks[@]:1}"; do   # only the flags mutant-sweep takes, each with a plain value: argparse also takes --map=X and abbreviations, which this does not
         t="${t//$ph/ }"
-        if (( want )); then
-          want=0; maps=$((maps + 1)); file="${t%%=*}"
-          go_test_ok "${t#*=}" || bad=1
-          [[ "$file" =~ ^[A-Za-z0-9_./-]+$ ]] || bad=1
-          files+=("$file")
-        elif [[ "$t" == --map ]]; then want=1
+        if [[ -n "$want" ]]; then
+          case "$want" in
+            map) maps=$((maps + 1)); file="${t%%=*}"; go_test_ok "${t#*=}" || bad=1; [[ "$file" =~ ^[A-Za-z0-9_./-]+$ ]] || bad=1; files+=("$file") ;;
+            timeout|jobs) [[ "$t" =~ ^[0-9]+$ ]] || bad=1 ;;
+            *) [[ "$t" =~ ^[A-Za-z0-9_./-]+$ ]] || bad=1 ;;   # report, base
+          esac
+          want=""
+        else
+          case "$t" in --map) want=map ;; --timeout) want=timeout ;; --jobs) want=jobs ;; --report) want=report ;; --base) want=base ;; *) bad=1 ;; esac
         fi
       done
-      (( maps > 0 && ! bad && ! want )) || return 0
+      [[ $maps -gt 0 && $bad -eq 0 && -z "$want" ]] || return 0
       readers_go
       for file in "${files[@]}"; do printf '%s\n' "$file"; done   # a mapped file is mutated and read by its test: in scope itself
       return 0 ;;
@@ -144,9 +149,10 @@ reader_sources() {
 # names the patterns, runs no suite, and is left out. Text mode (-a): a NUL byte must not hide a line. A name assembled from pieces (`"s"".sh"`, `${n}.sh`)
 # is beyond any static scan: that residual risk is accepted, and the evaluator floor and the full suite still run.
 computed_suite_refs() {
-  local g="$1"; shift
-  git -C "$root" grep -a -n -E 'tests/[^[:space:]"'"'"']*[$*?{]|tests/"' "$g" -- "$@" ':(exclude)tools/evidence.sh' 2>/dev/null \
-    | grep -vF -e 'tests/*|test/*|spec/*' -e 'tests/sprint-check-app.spec.js|tests/run-board-spec.sh|tests/board-spec-*)' || true
+  local g="$1" out rc=0; shift
+  out="$(git -C "$root" grep -a -n -E 'tests/[^[:space:]"'"'"']*[$*?{]|tests/"' "$g" -- "$@" ':(exclude)tools/evidence.sh' 2>/dev/null)" || rc=$?
+  if [[ $rc -gt 1 ]]; then echo "git grep failed (exit $rc): the sources could not be read"; return 0; fi   # an unreadable source is not a clean one
+  printf '%s\n' "$out" | grep -vF -e 'tests/*|test/*|spec/*' -e 'tests/sprint-check-app.spec.js|tests/run-board-spec.sh|tests/board-spec-*)' || true
 }
 
 # scope_audit — `evidence.sh scope-audit`: the offending lines for both shapes at HEAD, exit 1 when there are any. tests/evidence.sh runs it on the real repo.
@@ -161,22 +167,32 @@ scope_audit() {
   echo "scope-audit: ok"
 }
 
+# gg_words <tree> -- <pathspec>... — sets WORDS to the `<name>.sh` words in those files (text mode, so a NUL byte does not hide a name) and SCOPE_FAIL=1
+# when git itself fails (exit above 1; 1 only means no match).
+gg_words() {
+  local rc=0
+  WORDS="$(git -C "$root" grep -a -h -o -E '[A-Za-z0-9_.-]+\.sh' "$@" 2>/dev/null)" || rc=$?
+  [[ $rc -le 1 ]] || SCOPE_FAIL=1
+  WORDS="$(printf '%s\n' "$WORDS" | sort -u)"
+}
+
 # scope_suites <tree> <pathspec>... — fills SCOPED: the shell suites (basenames in tests/ of that tree) that the reader sources name, and those the
 # named suites name in turn, until nothing new is named. A name counts wherever it appears as a word `<name>.sh` (a path, a `source`, a comment):
-# over-reading only keeps a log stale. Text mode (-a), so a NUL byte in a source does not hide the names.
+# over-reading only keeps a log stale. A git error sets SCOPE_FAIL, and then no suite is dropped.
 scope_suites() {
-  local g="$1" all words queue next w s
+  local g="$1" ls all queue next s
   shift
   SCOPED=""
-  all="$(git -C "$root" ls-tree --name-only "$g" tests/ 2>/dev/null | sed -n 's|^tests/||p' | grep -E '^[A-Za-z0-9_.-]+\.sh$')" || all=""
-  words="$(git -C "$root" grep -a -h -o -E '[A-Za-z0-9_.-]+\.sh' "$g" -- "$@" 2>/dev/null | sort -u)" || words=""
-  queue="$(printf '%s\n' "$all" | grep -Fx -f <(printf '%s\n' "$words") || true)"
+  if ! ls="$(git -C "$root" ls-tree --name-only "$g" tests/ 2>/dev/null)"; then SCOPE_FAIL=1; ls=""; fi
+  all="$(printf '%s\n' "$ls" | sed -n 's|^tests/||p' | grep -E '^[A-Za-z0-9_.-]+\.sh$' || true)"
+  gg_words "$g" -- "$@"
+  queue="$(printf '%s\n' "$all" | grep -Fx -f <(printf '%s\n' "$WORDS") || true)"
   while [[ -n "$queue" ]]; do
     SCOPED+="$queue"$'\n'
     next=""
     for s in $queue; do
-      w="$(git -C "$root" grep -a -h -o -E '[A-Za-z0-9_.-]+\.sh' "$g" -- "tests/$s" 2>/dev/null | sort -u)" || w=""
-      next+="$(printf '%s\n' "$all" | grep -Fx -f <(printf '%s\n' "$w") || true)"$'\n'
+      gg_words "$g" -- "tests/$s"
+      next+="$(printf '%s\n' "$all" | grep -Fx -f <(printf '%s\n' "$WORDS") || true)"$'\n'
     done
     queue="$(printf '%s' "$next" | sed '/^$/d' | sort -u | grep -Fvx -f <(printf '%s' "$SCOPED") || true)"
   done
@@ -264,7 +280,7 @@ join_names() {
 # classify_one <file> — sets LINE (the output line), KIND (its first word), CODE and BASEONLY (1 when the only non-neutral tracked change since
 # the stamp is tests/board-spec-baseline.json, optionally with QUARANTINE-comment-only edits to the spec (t-7f5f): the one case `covered` may lift). Called directly, never in $(...), so the globals survive.
 classify_one() {
-  local f="$1" first last sha when cmdline osline shown full names p readers dropped kept ign wtline stamped_scope
+  local f="$1" first last sha when cmdline osline shown full names p readers dropped kept ign wtline stamped_scope scopecmd
   BASEONLY=0; SPECQ=0; CODE="?"; STAMP=""; SHOWN=""
   base="$(safe "${f##*/}")"
   if [[ -L "$f" || ! -f "$f" ]]; then KIND=unstamped; LINE="unstamped $base exit=?"; return 0; fi
@@ -294,14 +310,17 @@ classify_one() {
   fi
   names=(); while IFS= read -r -d '' p; do names+=("$p"); done < "$nfile"
   dropped=(); kept=(); readers=()   # t-29ee: shell suites this log's command cannot run are not a reason to rerun it
-  while IFS= read -r p; do [[ -n "$p" ]] && readers+=("$p"); done < <(reader_sources "$cmdline")
+  scopecmd="$(line2_of "$f")"   # the whole line (cmdline above is cut at 512 bytes); a line that may itself be cut gives no scope
+  if (( ${#scopecmd} < 16000 )); then while IFS= read -r p; do [[ -n "$p" ]] && readers+=("$p"); done < <(reader_sources "$scopecmd"); fi
   if [[ ${#readers[@]} -gt 0 && ${#names[@]} -gt 0 ]]; then
     if [[ -n "$(computed_suite_refs "$graded" "${readers[@]}")" ]]; then readers=(); fi   # a source builds suite paths at run time: no scope
   fi
   if [[ ${#readers[@]} -gt 0 && ${#names[@]} -gt 0 ]]; then
+    SCOPE_FAIL=0
     scope_suites "$full" "${readers[@]}"; stamped_scope="$SCOPED"   # the tree that was tested: a suite deleted since then was one it may have run
     scope_suites "$graded" "${readers[@]}"; SCOPED="$stamped_scope$SCOPED"
     for p in "${names[@]}"; do
+      if (( SCOPE_FAIL )); then kept+=("$p"); continue; fi   # git failed while reading the sources: drop nothing
       # a reader source is in scope itself, named or not; any other suite is out only when no source names it
       if [[ "$p" =~ ^tests/([A-Za-z0-9_.-]+\.sh)$ ]] && ! printf '%s\n' "${readers[@]}" | grep -Fxq -- "$p" \
          && ! printf '%s' "$SCOPED" | grep -Fxq -- "${BASH_REMATCH[1]}"; then dropped+=("$p"); else kept+=("$p"); fi

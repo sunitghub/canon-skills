@@ -655,6 +655,47 @@ ev scope-audit; assert_eq 0 "$code"; assert_eq "scope-audit: ok" "$out"
 ev stamp "$ID" bs -- bash tests/run-board-spec.sh; chg tests/unnamed.sh; ev check "$ID"; fresh_scope bs tests/unnamed.sh
 # a Go sweep's readers are audited too, and a glob there is found
 scope_repo; printf 'package x\n// bash tests/*.sh\n' > tools/canon-go/internal/x/x.go; git add tools; git commit -qm "go glob"; ev scope-audit; assert_eq 1 "$code"; assert_contains "$out" "tools/canon-go/internal/x/x.go:2:"
-ev scope-audit extra; assert_eq 1 "$code"   # no argument is taken: the usage is not a shortcut to the audit
+# `scope-audit` takes no argument, and says so on a clean repo too (the old check passed only because a glob fixture was still in place)
+scope_repo; ev scope-audit; assert_eq 0 "$code"; assert_eq "scope-audit: ok" "$out"
+ev scope-audit extra; assert_eq 2 "$code"; assert_contains "$out" "usage: evidence.sh"
+ev scope-audit t-abcd; assert_eq 2 "$code"
+
+# --- t-29ee, reviewer findings: a long line, other spellings of --map, and a git error --------------------------------------------------------
+# a sweep line longer than 512 bytes is read whole: a bash map after nine Go maps is seen, and an all-Go line of the same length is still a scope
+many=(); for i in 1 2 3 4 5 6 7 8 9; do many+=(--map "tools/canon-go/internal/x/x$i.go=$GO_MAP"); done
+scope_repo; ev stamp "$ID" sw -- tools/mutant-sweep "${many[@]}" --map "tools/y.go=bash tests/unnamed.sh"; assert_eq 0 "$code"
+[[ "$(sed -n 2p "$ED/sw.log" | wc -c | tr -d ' ')" -gt 600 ]] || fail "evidence: the long-line fixture is not long enough"
+chg tests/unnamed.sh; ev check "$ID"; stale_with sw "1 tracked file(s) changed since: tests/unnamed.sh)"
+scope_repo; ev stamp "$ID" sw -- tools/mutant-sweep "${many[@]}"; chg tests/unnamed.sh; ev check "$ID"; fresh_scope sw tests/unnamed.sh
+huge=(); for i in $(seq 1 300); do huge+=(--map "tools/canon-go/internal/x/x.go=$GO_MAP"); done      # a line past the read bound may be cut: no scope
+scope_repo; ev stamp "$ID" sw -- tools/mutant-sweep "${huge[@]}"; assert_eq 0 "$code"
+[[ "$(sed -n 2p "$ED/sw.log" | wc -c | tr -d ' ')" -gt 16000 ]] || fail "evidence: the huge-line fixture is not past the read bound"
+chg tests/unnamed.sh; ev check "$ID"; stale_with sw "1 tracked file(s) changed since: tests/unnamed.sh)"
+# the cut is still a valid all-Go line (a long --report value fills the read bound), so only the length bound keeps the bash map after it unseen
+pad="$(head -c 16350 /dev/zero | tr '\0' a)"
+scope_repo; ev stamp "$ID" sw -- tools/mutant-sweep --map "tools/canon-go/internal/x/x.go=$GO_MAP" --report "$pad" --map "tools/y.go=bash tests/unnamed.sh"; assert_eq 0 "$code"
+chg tests/unnamed.sh; ev check "$ID"; stale_with sw "1 tracked file(s) changed since: tests/unnamed.sh)"
+# only the flags mutant-sweep takes, in the spelling this reads: --map=X, an abbreviation, an unknown flag, -h and a stray argument give no scope
+GO1="tools/canon-go/internal/x/x.go=$GO_MAP"
+for extra in "--map=tools/y.go=bash tests/unnamed.sh" "--ma tools/y.go=bash tests/unnamed.sh" "--m tools/y.go=bash tests/unnamed.sh" "--foo" "-h" "stray" "--timeout abc" "--jobs x" "--report a;b" "--base" "--timeout"; do
+  scope_repo; read -r -a ex <<< "$extra"
+  if [[ "$extra" == "--map="* ]]; then ev stamp "$ID" sw -- tools/mutant-sweep --map "$GO1" "$extra"; else ev stamp "$ID" sw -- tools/mutant-sweep --map "$GO1" "${ex[@]}"; fi
+  assert_eq 0 "$code"; chg tests/unnamed.sh; ev check "$ID"; stale_with sw "1 tracked file(s) changed since: tests/unnamed.sh)"
+done
+scope_repo; ev stamp "$ID" sw -- tools/mutant-sweep --timeout 150 --jobs 8 --base origin/main --map "$GO1" --report .tickets/t-abcd/mutation-report.md; chg tests/unnamed.sh; ev check "$ID"; fresh_scope sw tests/unnamed.sh
+# a git error while reading the sources is no scope, never "nothing names this suite": git grep is made to fail (exit 128) and the log stays stale
+scope_repo; ev stamp "$ID" bs -- bash tests/run-board-spec.sh; chg tests/unnamed.sh
+ev check "$ID"; fresh_scope bs tests/unnamed.sh                                                       # the control: without the fault it is fresh
+GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=grep.threads GIT_CONFIG_VALUE_0=bogus ev check "$ID"; stale_with bs "1 tracked file(s) changed since: tests/unnamed.sh)"
+scope_repo; ev stamp "$ID" sw -- tools/mutant-sweep --map "$GO1"; chg tests/unnamed.sh
+GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=grep.threads GIT_CONFIG_VALUE_0=bogus ev check "$ID"; stale_with sw "1 tracked file(s) changed since: tests/unnamed.sh)"
+GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=grep.threads GIT_CONFIG_VALUE_0=bogus ev scope-audit; assert_eq 1 "$code"; assert_contains "$out" "git grep failed"   # an unreadable source is not a clean one
+# a git error confined to the transitive read of a named suite (so the glob valve does not fire): the suites that machine-load.sh names go unseen, and
+# nothing may be dropped on that blindness. A shim for `git` fails only a `grep` of tests/machine-load.sh.
+mkdir -p "$WORK/shim"; printf '%s\n' '#!/bin/sh' 'case " $* " in *" grep "*tests/machine-load.sh*) echo "fatal: injected" >&2; exit 128 ;; esac' 'exec "$REAL_GIT" "$@"' > "$WORK/shim/git"; chmod +x "$WORK/shim/git"
+scope_repo; ev stamp "$ID" bs -- bash tests/run-board-spec.sh; chg tests/helpers.sh   # helpers.sh is named only by machine-load.sh, which the runner names
+REAL_GIT="$(command -v git)" PATH="$WORK/shim:$PATH" ev check "$ID"; stale_with bs "1 tracked file(s) changed since: tests/helpers.sh)"
+scope_repo; ev stamp "$ID" bs -- bash tests/run-board-spec.sh; chg tests/unnamed.sh
+REAL_GIT="$(command -v git)" PATH="$WORK/shim:$PATH" ev check "$ID"; stale_with bs "1 tracked file(s) changed since: tests/unnamed.sh)"   # blind reads drop nothing, not even an unrelated suite
 
 echo "evidence: ok"

@@ -48,7 +48,7 @@ Use Read, Grep, Glob, LS and your shell tool (`Bash` in Claude Code, `execute` i
 
 **Never write into `tools/` outside this ticket's own files** (gates have twice corrupted the real
 `tools/sprint-headless` with a stub-shaped replacement). If a Test Plan item runs a suite that itself swaps a
-real `tools/` file for a stub, run the suite's own command as written (backgrounded if long) and report what
+real `tools/` file for a stub, run the suite's own command as written (in the foreground with a timeout, even if long) and report what
 it shows; never hand-write a replacement.
 
 **Never run `git checkout`, `git reset`, `git clean`, or any other command that discards
