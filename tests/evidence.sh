@@ -523,4 +523,90 @@ need skills/sprint/reference/complete.md 'On exit 1, do not dispatch' "a refused
 need skills/sprint/reference/eval.md 'A `covered` run log stands in for the full board spec' "covered is reusable"
 need skills/sprint/reference/start.md 'with `--out .tickets/<id>/evidence/<dir>`' "the full spec is stamped with its reports in evidence/"
 
+# --- t-29ee: the scope of a log ---------------------------------------------------------------------------------------------------
+# Prod path: every `evidence.sh check`, read by `sprint check-evidence` before the evaluator is dispatched. A shell suite `tests/<x>.sh` that a
+# stamped board spec or Go mutation sweep cannot run is not a reason to rerun it; anything else, and every other command, stays stale.
+scope_repo() {   # resets, builds a small tree, commits it as CB
+  reset_repo
+  mkdir -p tests/sub tools/canon-go/internal/x tools/sprint-check-app/static
+  printf 'spec names machine-load.sh\n' > tests/sprint-check-app.spec.js
+  printf '#!/bin/sh\nexit 0\n# source tests/machine-load.sh\n' > tests/run-board-spec.sh
+  chmod +x tests/run-board-spec.sh
+  printf 'source helpers.sh\n' > tests/machine-load.sh
+  echo h > tests/helpers.sh; echo o > tests/unnamed.sh; echo d > tests/docnamed.sh; echo g > tests/named-by-go.sh; echo t > tests/named-by-tool.sh
+  echo s > tests/sub/deep.sh; echo n > tests/notes.txt
+  printf 'package x\n' > tools/canon-go/internal/x/x.go
+  printf 'package x\n// see tests/named-by-go.sh\n' > tools/canon-go/internal/x/x_test.go
+  printf '#!/bin/sh\nexit 0\n' > tools/mutant-sweep; chmod +x tools/mutant-sweep
+  printf '# runs tests/named-by-tool.sh\n' > tools/tool.sh
+  printf 'see tests/docnamed.sh\n' > tools/note.md
+  echo js > tools/sprint-check-app/static/a.js
+  git add tests tools; git commit -qm scope-base; CB="$(git rev-parse HEAD)"
+}
+chg() {   # chg <file>...: one commit that changes them
+  local f; for f in "$@"; do mkdir -p "$(dirname "$f")"; echo "x$RANDOM" >> "$f"; done
+  git add "$@"; git commit -qm "change $*"
+}
+GO_MAP='go -C tools/canon-go test ./internal/x -count=1'
+fresh_scope() { assert_contains "$out" "fresh $1.log exit=0 (HEAD ${CB:0:7}; only files outside its scope changed since: $2;"; }
+stale_with()  { assert_contains "$out" "stale $1.log exit=0 (HEAD ${CB:0:7}; $2"; }
+
+# the board spec: a suite nobody names is out of scope; one the runner names, one a named suite names, and anything else are in
+scope_repo; ev stamp "$ID" bs -- bash tests/run-board-spec.sh --runs 1; assert_eq 0 "$code"
+chg tests/unnamed.sh; ev check "$ID"; fresh_scope bs tests/unnamed.sh
+chg tests/docnamed.sh; ev check "$ID"; fresh_scope bs "tests/docnamed.sh, tests/unnamed.sh"      # named only in a *.md: a doc is not run (git lists files in name order)
+scope_repo; ev stamp "$ID" bs -- bash tests/run-board-spec.sh; chg tests/machine-load.sh; ev check "$ID"; stale_with bs "1 tracked file(s) changed since: tests/machine-load.sh)"
+scope_repo; ev stamp "$ID" bs -- tests/run-board-spec.sh; chg tests/helpers.sh; ev check "$ID"; stale_with bs "1 tracked file(s) changed since: tests/helpers.sh)"   # named only by machine-load.sh: through the runner, transitively
+scope_repo; ev stamp "$ID" bs -- ./tests/run-board-spec.sh; chg tests/named-by-tool.sh; ev check "$ID"; stale_with bs "1 tracked file(s) changed since: tests/named-by-tool.sh)"   # named in tools/
+for f in tools/sprint-check-app/static/a.js tests/sprint-check-app.spec.js tests/run-board-spec.sh tools/canon-go/internal/x/x.go tools/tool.sh tests/sub/deep.sh tests/notes.txt; do
+  scope_repo; ev stamp "$ID" bs -- bash tests/run-board-spec.sh; chg "$f"; ev check "$ID"; stale_with bs "1 tracked file(s) changed since: $f)"
+done
+scope_repo; ev stamp "$ID" bs -- bash tests/run-board-spec.sh; chg tests/new-suite.sh; ev check "$ID"; fresh_scope bs tests/new-suite.sh   # a new suite nothing names cannot be run by it
+scope_repo; ev stamp "$ID" bs -- bash tests/run-board-spec.sh; chg tests/unnamed.sh tools/sprint-check-app/static/a.js tests/other-new.sh; ev check "$ID"
+stale_with bs "1 tracked file(s) changed since: tools/sprint-check-app/static/a.js (+2 outside its scope ignored))"
+
+# a Go mutation sweep: the readers are tools/canon-go, not the runner's sources
+scope_repo; ev stamp "$ID" sw -- tools/mutant-sweep --timeout 150 --map "tools/canon-go/internal/x/x.go=$GO_MAP" --report r.md; assert_eq 0 "$code"
+chg tests/unnamed.sh tests/machine-load.sh; ev check "$ID"; fresh_scope sw "tests/machine-load.sh, tests/unnamed.sh"
+for f in tools/canon-go/internal/x/x.go tools/canon-go/internal/x/x_test.go tests/named-by-go.sh tools/tool.sh; do
+  scope_repo; ev stamp "$ID" sw -- tools/mutant-sweep --map "tools/canon-go/internal/x/x.go=$GO_MAP"; chg "$f"; ev check "$ID"; stale_with sw "1 tracked file(s) changed since: $f)"
+done
+mkdir -p "$WORK/bin"; printf '#!/bin/sh\nexit 0\n' > "$WORK/bin/mutant-sweep"; chmod +x "$WORK/bin/mutant-sweep"   # the bare name, as an installed canon has it
+scope_repo; PATH="$WORK/bin:$PATH" ev stamp "$ID" sw -- mutant-sweep --map "tools/canon-go/internal/x/x.go=go test ./internal/x" --map "tools/canon-go/internal/x/x_test.go=go -C tools/canon-go test ./internal/x"; assert_eq 0 "$code"
+chg tests/unnamed.sh; ev check "$ID"; fresh_scope sw tests/unnamed.sh   # `go test` with no -C is still a Go test
+
+# any other command, a map that is not (only) a Go test, a test command that chains another command, and a log with no command: today's rule
+scope_repo; ev stamp "$ID" a -- tools/mutant-sweep --map "tools/x.sh=bash tests/other.sh"
+ev stamp "$ID" b -- tools/mutant-sweep --map "tools/canon-go/internal/x/x.go=$GO_MAP" --map "tools/x.sh=bash tests/other.sh"
+ev stamp "$ID" c -- tools/mutant-sweep --map "tools/canon-go/internal/x/x.go=$GO_MAP; bash tests/unnamed.sh"
+ev stamp "$ID" d -- tools/mutant-sweep --map "tools/canon-go/internal/x/x.go=$GO_MAP && bash tests/unnamed.sh"
+ev stamp "$ID" e -- tools/mutant-sweep --map "tools/canon-go/internal/x/x.go=$GO_MAP | cat"
+ev stamp "$ID" f -- tools/mutant-sweep --map "tools/canon-go/internal/x/x.go=$GO_MAP \$(echo hi)"
+ev stamp "$ID" g -- tools/mutant-sweep --timeout 150 --report r.md
+ev stamp "$ID" h -- tools/mutant-sweep --map "tools/canon-go/internal/x/x.go=go -C elsewhere test ./x"
+ev stamp "$ID" suite -- bash -c 'true'
+ev stamp "$ID" pre -- bash tools/tool.sh
+printf '%b' "HEAD $CB $T\nexit 0\n" > "$ED/bare.log"
+chg tests/unnamed.sh; ev check "$ID"
+for n in a b c d e f g h suite pre bare; do assert_contains "$out" "stale $n.log exit=0 (HEAD ${CB:0:7}; 1 tracked file(s) changed since: tests/unnamed.sh)"; done
+# the stamped line is only split, never run: a command text that would create a file does nothing when read
+scope_repo; mkdir -p "$ED"; marker="$WORK/ran-marker"; rm -f "$marker"
+printf '%b' "HEAD $CB $T\n\$ tools/mutant-sweep --map x=go\\\\ test\\\\ \$(touch\\\\ $marker)\nexit 0\n" > "$ED/h.log"
+chg tests/unnamed.sh; ev check "$ID"; [[ ! -e "$marker" ]] || fail "evidence: a stamped command line was run while being read"
+assert_contains "$out" "stale h.log exit=0"
+# uncommitted edit at the graded head: the working tree is not what was stamped, scope or not
+scope_repo; ev stamp "$ID" bs -- bash tests/run-board-spec.sh; echo more >> tests/unnamed.sh; ev check "$ID"
+assert_contains "$out" "stale bs.log exit=0 (HEAD ${CB:0:7}; tracked files are modified in the working tree since)"; git checkout -q -- tests/unnamed.sh
+# neutral files still behave as before when mixed with an out-of-scope suite
+scope_repo; ev stamp "$ID" bs -- bash tests/run-board-spec.sh; chg tests/unnamed.sh LEARNINGS.md; ev check "$ID"; fresh_scope bs tests/unnamed.sh
+# a changed baseline next to an out-of-scope suite is still the baseline-only case, not stale
+scope_repo; ev stamp "$ID" bs -- bash tests/run-board-spec.sh; chg tests/unnamed.sh tests/board-spec-baseline.json; ev check "$ID"; stale_with bs "1 tracked file(s) changed since: tests/board-spec-baseline.json (+1 outside its scope ignored))"
+
+# The rule is sound only while no reader source builds a suite path at run time (`tests/$x.sh`, `tests/*.sh`): the sources are scanned in the
+# real repo, and the two classification patterns that name paths without running them are the only ones allowed (tools/evidence.sh only matches
+# suite names, it runs none). A new one fails this suite.
+bad="$(git -C "$ROOT" grep -nE 'tests/[^[:space:]"'"'"']*[$*]|tests/"' -- tools tests/run-board-spec.sh tests/sprint-check-app.spec.js 'tests/board-spec-*.js' ':(exclude,glob)**/*.md' ':(exclude)tools/evidence.sh' \
+  | grep -vF -e 'tests/*|test/*|spec/*' -e 'tests/sprint-check-app.spec.js|tests/run-board-spec.sh|tests/board-spec-*)' || true)"
+[[ -z "$bad" ]] || fail "evidence: a reader source of the log scope builds a suite path at run time, so an unnamed suite may be run; update reader_sources in tools/evidence.sh, then this allow-list: $bad"
+
 echo "evidence: ok"

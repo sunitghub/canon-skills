@@ -374,7 +374,7 @@ Opus` default, scoped only to the two close-gate dispatches below.
    YES → pass, NO → fail; evaluator `pass` → pass, anything else → fail). A dispatch that dies
    on its budget is logged too, `--outcome budget`. Omit a number the hand-back does not give,
    never guess one. In Claude Code the totals are in the background task's completion notice
-   (`<usage>`), which can arrive after the agent's report: wait for it before logging (`subagent-log.sh` warns when a Claude Code gate row has no `--tokens`).
+   (`<usage>`), which can arrive after the agent's report: wait for it before logging (`subagent-log.sh` warns when a Claude Code gate row has no `--tokens`). Log from the notification that says the agent completed; one that says it "stopped with background work of its own still running" is interim and its figures are partial. A row logged early is replaced by calling `subagent-log.sh` again with the same `--agent-id`.
    Pass `--model <id>` too (t-3a14): the model this dispatch resolved to and passed (the Admin
    default's registry id, e.g. `claude-sonnet-5-5`, never its alias; the ticket's `Gate model:`; or the agent's floor), not one read back from the report.
    Leave it out when the model is unknown; never write a guessed one.
@@ -526,6 +526,10 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    `fresh` with `exit=0` or `covered`. On exit 1, do not dispatch: re-stamp or fix what it names, and move a log kept for history or
    produced off-tree (a probe commit, a deliberate mutant run) into a subfolder of `evidence/`, which `check` never scans. A stale
    or failing log otherwise costs a failed evaluator run and a point of `eval_fail_count` (t-f889).
+   A log is stale after any non-neutral tracked change, with one exception (t-29ee): a shell suite `tests/<x>.sh` that the stamped command cannot run. For a
+   board-spec log (`tests/run-board-spec.sh`) and a mutation sweep whose `--map` tests are all `go ... test`, a suite that none of that command's
+   sources names, directly or through another suite, leaves the log `fresh`, and the line says which files were outside its scope. The full suite,
+   pre-gate and every other command stay stale on any change, and the evaluator is still dispatched on every tracked change to the graded head.
 
    **Retry budget.** Before dispatching, read `eval_fail_count` from `.tickets/<id>/ticket.md`
    (absent on tickets predating this field means 0). If it is already 3, do not dispatch

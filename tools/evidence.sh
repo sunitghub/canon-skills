@@ -136,10 +136,66 @@ quarantine_only_diff() {
   return 0
 }
 
+# --- t-29ee: the scope of a log -------------------------------------------------------------------------------------------------------
+# A log is stale after any non-neutral tracked change, except that a change to a shell suite `tests/<x>.sh` does not matter to a stamped
+# command that cannot run it. Only two command shapes are known to read little of the tree, and the rule is conservative: when in doubt
+# (any other command, a suite the command's sources name directly or through another suite) the log stays stale.
+#   board spec  `[bash] tests/run-board-spec.sh ...`   reads the spec, the runner, tests/board-spec-*.js and tools/ (no *.md)
+#   Go sweep    `mutant-sweep ... --map FILE=go [-C tools/canon-go] test ...` for EVERY map   reads tools/canon-go (no *.md)
+# reader_sources <line 2 of a log> prints the pathspecs, one per line, or nothing: then there is no scope. The line is %q text from a file an
+# agent can write, so it is only split (never evaluated) and matched strictly.
+reader_sources() {
+  local c="${1#\$ }" ph=$'\001' t maps=0 want=0 bad=0 first
+  local -a toks=()
+  c="${c//\\ /$ph}"
+  read -r -a toks <<< "$c" || true
+  [[ ${#toks[@]} -gt 0 ]] || return 0
+  first="${toks[0]//$ph/ }"
+  if [[ "$first" == bash && ${#toks[@]} -gt 1 ]]; then first="${toks[1]//$ph/ }"; fi
+  case "$first" in
+    tests/run-board-spec.sh|./tests/run-board-spec.sh)
+      printf '%s\n' tests/sprint-check-app.spec.js tests/run-board-spec.sh ':(glob)tests/board-spec-*.js' tools ':(exclude,glob)**/*.md'; return 0 ;;
+    mutant-sweep|tools/mutant-sweep|./tools/mutant-sweep)
+      for t in "${toks[@]:1}"; do
+        t="${t//$ph/ }"
+        if (( want )); then
+          want=0; maps=$((maps + 1))
+          [[ "${t#*=}" =~ ^go\ (-C\ tools/canon-go\ )?test(\ |$) ]] || bad=1
+          case "${t#*=}" in *[\;\&\|\(\)\<\>\$\`]*) bad=1 ;; esac   # a chained or substituted command may run anything: no scope
+        elif [[ "$t" == --map ]]; then want=1
+        fi
+      done
+      (( maps > 0 && ! bad && ! want )) || return 0
+      printf '%s\n' tools/canon-go ':(exclude,glob)**/*.md'; return 0 ;;
+  esac
+  return 0
+}
+
+# scope_suites <graded> <pathspec>... — fills SCOPED: the shell suites (basenames in tests/) that the reader sources name, and those the named
+# suites name in turn, until nothing new is named. A name counts wherever it appears as a word `<name>.sh` (a path, a `source`, a comment):
+# over-reading only keeps a log stale.
+scope_suites() {
+  local g="$1" all words queue next w s
+  shift
+  SCOPED=""
+  all="$(git -C "$root" ls-tree --name-only "$g" tests/ 2>/dev/null | sed -n 's|^tests/||p' | grep -E '^[A-Za-z0-9_.-]+\.sh$')" || all=""
+  words="$(git -C "$root" grep -h -o -E '[A-Za-z0-9_.-]+\.sh' "$g" -- "$@" 2>/dev/null | sort -u)" || words=""
+  queue="$(printf '%s\n' "$all" | grep -Fx -f <(printf '%s\n' "$words") || true)"
+  while [[ -n "$queue" ]]; do
+    SCOPED+="$queue"$'\n'
+    next=""
+    for s in $queue; do
+      w="$(git -C "$root" grep -h -o -E '[A-Za-z0-9_.-]+\.sh' "$g" -- "tests/$s" 2>/dev/null | sort -u)" || w=""
+      next+="$(printf '%s\n' "$all" | grep -Fx -f <(printf '%s\n' "$w") || true)"$'\n'
+    done
+    queue="$(printf '%s' "$next" | sed '/^$/d' | sort -u | grep -Fvx -f <(printf '%s' "$SCOPED") || true)"
+  done
+}
+
 # classify_one <file> — sets LINE (the output line), KIND (its first word), CODE and BASEONLY (1 when the only non-neutral tracked change since
 # the stamp is tests/board-spec-baseline.json, optionally with QUARANTINE-comment-only edits to the spec (t-7f5f): the one case `covered` may lift). Called directly, never in $(...), so the globals survive.
 classify_one() {
-  local f="$1" first last sha when cmdline osline shown full names p list n more
+  local f="$1" first last sha when cmdline osline shown full names p list n more readers dropped kept ign
   BASEONLY=0; SPECQ=0; CODE="?"; STAMP=""; SHOWN=""
   base="$(safe "${f##*/}")"
   if [[ -L "$f" || ! -f "$f" ]]; then KIND=unstamped; LINE="unstamped $base exit=?"; return 0; fi
@@ -167,6 +223,25 @@ classify_one() {
     LINE="stale $base exit=$CODE (HEAD ${sha:0:7}; git could not compare it with ${graded:0:7})$shown"; return 0
   fi
   names=(); while IFS= read -r -d '' p; do names+=("$p"); done < "$nfile"
+  dropped=(); kept=(); readers=()   # t-29ee: shell suites this log's command cannot run are not a reason to rerun it
+  while IFS= read -r p; do [[ -n "$p" ]] && readers+=("$p"); done < <(reader_sources "$cmdline")
+  if [[ ${#readers[@]} -gt 0 && ${#names[@]} -gt 0 ]]; then
+    scope_suites "$graded" "${readers[@]}"
+    for p in "${names[@]}"; do
+      # a reader source is in scope itself, named or not; any other suite is out only when no source names it
+      if [[ "$p" =~ ^tests/([A-Za-z0-9_.-]+\.sh)$ ]] && ! printf '%s\n' "${readers[@]}" | grep -Fxq -- "$p" \
+         && ! printf '%s' "$SCOPED" | grep -Fxq -- "${BASH_REMATCH[1]}"; then dropped+=("$p"); else kept+=("$p"); fi
+    done
+    names=(); [[ ${#kept[@]} -eq 0 ]] || names=("${kept[@]}")
+  fi
+  if [[ ${#names[@]} -eq 0 && ${#dropped[@]} -gt 0 ]]; then   # t-29ee: everything that changed is outside this log's scope
+    list=""; n=0
+    for p in "${dropped[@]}"; do n=$((n + 1)); if [[ $n -le 5 ]]; then list+="${list:+, }$(safe "$p")"; fi; done
+    more=""; if [[ $n -gt 5 ]]; then more=" (+$((n - 5)) more)"; fi
+    if (( wt_dirty )); then LINE="stale $base exit=$CODE (HEAD ${sha:0:7}; tracked files are modified in the working tree since)$shown"
+    else KIND=fresh; LINE="fresh $base exit=$CODE (HEAD ${sha:0:7}; only files outside its scope changed since: $list$more; $when)$shown"; fi
+    return 0
+  fi
   if [[ ${#names[@]} -eq 0 ]]; then
     if (( wt_dirty )); then LINE="stale $base exit=$CODE (HEAD ${sha:0:7}; tracked files are modified in the working tree since)$shown"
     elif git -C "$root" diff --quiet --no-renames "$full" "$graded" -- . ':(exclude).tickets' 2>/dev/null; then
@@ -185,7 +260,8 @@ classify_one() {
   list=""; n=0
   for p in "${names[@]}"; do n=$((n + 1)); if [[ $n -le 5 ]]; then list+="${list:+, }$(safe "$p")"; fi; done
   more=""; if [[ $n -gt 5 ]]; then more=" (+$((n - 5)) more)"; fi
-  LINE="stale $base exit=$CODE (HEAD ${sha:0:7}; $n tracked file(s) changed since: $list$more)$shown"
+  ign=""; if [[ ${#dropped[@]} -gt 0 ]]; then ign=" (+${#dropped[@]} outside its scope ignored)"; fi
+  LINE="stale $base exit=$CODE (HEAD ${sha:0:7}; $n tracked file(s) changed since: $list$more$ign)$shown"
 }
 
 # covered_by <run-log> — t-a3d7: prints "<guard log> <report count>" when a fresh exit-0 guard log re-judges this run's reports at the

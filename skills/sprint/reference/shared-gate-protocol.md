@@ -44,6 +44,8 @@ Use Read, Grep, Glob, LS and your shell tool (`Bash` in Claude Code, `execute` i
 
 **Start and stop any server you launch in the same Bash call** — shell state, `$!` included, does not survive between calls (a gate that lost its daemon PID fell back to `pkill -f`). Never kill by name, and a process that is new since your baseline is not necessarily yours: kill only PIDs you started yourself.
 
+**Leave nothing running when you return.** Run every long command (a suite, a mutation sweep, a build) in the foreground with a timeout, start no background process you cannot stop, and wait for anything you started before you answer. A gate that returns with work still running sends two completion notices, the first marked interim with partial usage, so the orchestrator logs a cost that is too small (t-85dc: an evaluator's first notice showed 13 minutes against its final 23).
+
 **Never write into `tools/` outside this ticket's own files** (gates have twice corrupted the real
 `tools/sprint-headless` with a stub-shaped replacement). If a Test Plan item runs a suite that itself swaps a
 real `tools/` file for a stub, run the suite's own command as written (backgrounded if long) and report what

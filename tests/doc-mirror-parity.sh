@@ -296,6 +296,12 @@ grep -qF -- "**Read canon's docs without a regex \`sed\`**" "$SHARED" || fail "d
 for file in "$ROOT/agents/canon-reviewer.md" "$ROOT/agents/canon-evaluator.md" "$ROOT/agents/codex/canon-reviewer.toml" "$ROOT/agents/codex/canon-evaluator.toml"; do
   grep -qF -- 'never `sed` with a `/regex/` address' "$file" || fail "doc-mirror-parity: ${file#"$ROOT"/} lost the no-regex-sed sentence (t-5d4e, Check M)"
 done
+# t-85dc: a gate returns with nothing it started still running, or its first completion notice is interim and the logged cost is too small. The
+# owner holds the paragraph; the two agent files and the two Codex files carry the same sentence (a gate may read only its agent file).
+grep -qF -- '**Leave nothing running when you return.**' "$SHARED" || fail "doc-mirror-parity: shared-gate-protocol.md lost the '**Leave nothing running when you return.**' paragraph (t-85dc, Check M)"
+for file in "$ROOT/agents/canon-reviewer.md" "$ROOT/agents/canon-evaluator.md" "$ROOT/agents/codex/canon-reviewer.toml" "$ROOT/agents/codex/canon-evaluator.toml"; do
+  grep -qF -- 'Return only when nothing you started is still running: run every long command in the foreground with a timeout, and start no background process you cannot stop' "$file" || fail "doc-mirror-parity: ${file#"$ROOT"/} lost the 'leave nothing running' sentence (t-85dc, Check M)"
+done
 grep -qF -- '**Pin the environment**' "$SHARED" || fail "doc-mirror-parity: shared-gate-protocol.md is missing the '**Pin the environment**' paragraph (t-ce0b, Check M)"
 
 # ── Check N: the repo-check gate is gone (t-0a7c); its checks live elsewhere. The wrapup pipeline no longer names it, the gate file is
