@@ -170,13 +170,16 @@ func TestAPIv1EventsSnapshot(t *testing.T) {
 			}
 		}
 	}
-	size := int64(len(f.line(4, f.proj) + f.line(9, "/elsewhere") + f.line(5, f.proj)))
 	two := v1Body(t, v1Get(t, "GET", "/api/v1/events?limit=2", ""))
 	if ids := two["events"].([]any); len(ids) != 2 || ids[0].(map[string]any)["id"] != "0000000000000004" || ids[1].(map[string]any)["id"] != "0000000000000005" {
 		t.Errorf("limit 2: %v", two["events"])
 	}
-	if c, _ := two["cursor"].(string); !strings.HasPrefix(c, "2026-11-10:") || c == "2026-11-10:0" || c < fmt.Sprintf("2026-11-10:%d", size/10) {
-		t.Errorf("the cursor is the end of the newest day: %v", two["cursor"])
+	day, err := os.Stat(filepath.Join(f.home, "events", "2026-11-10.jsonl")) // every line is complete, so the end of the log is the file's size
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := fmt.Sprintf("2026-11-10:%d", day.Size()); two["cursor"] != want {
+		t.Errorf("the cursor is the end of the newest day: %v, want %s", two["cursor"], want)
 	}
 	if one := v1Body(t, v1Get(t, "GET", "/api/v1/events?limit=1", ""))["events"].([]any); len(one) != 1 || one[0].(map[string]any)["id"] != "0000000000000005" {
 		t.Errorf("limit 1 is the newest event: %v", one)
