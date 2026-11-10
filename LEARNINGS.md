@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-09-2026 20:00
+learnings-sweep last run: 11-10-2026 12:00
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-10 | [t-0b89](.tickets/t-0b89/learnings.md) | A new shell test was green alone but missing from `scripts/test.sh` (the reviewer saw it) and broke two repo guards (no-browser, pipefail) that only the full stamp ran; and 103 first-sweep survivors showed loose assertions (a field list that only checks a subset, error bodies never parsed), so assert exact bodies, headers and every allowlisted field. | UNPROMOTED |
 | 2026-11-10 | [t-c543](.tickets/t-c543/learnings.md) | A page that caches what it fetched for "the same project" goes stale on anything the server reads from elsewhere (here Admin's model): a cache needs a visit-time reload, and a test that pinned "no extra GET" had to change with it. Prove each call site separately by reverting it alone. | UNPROMOTED |
 | 2026-11-10 | [t-3a58](.tickets/t-3a58/learnings.md) | Adding a tab, a route and CSS broke three neighbours that only the full stamps found (the old tab-arrow test, the /api route list, the colour check that reads `#fac-…` as hex), each costing a 1.5 h restamp: before stamping, grep the tests that pin the thing you extend (tab order, route list, CSS colours). A test written for a guard can pass because another check refuses first; revert the guard in a scratch copy, and give the test a case where only that guard stands between the input and a write. | UNPROMOTED |
 | 2026-11-09 | [t-7e76](.tickets/t-7e76/learnings.md) | A regression test for a reviewer's CRLF finding passed on the unfixed code because its sample line ended in a path, not the node name where the carriage return sticks; run every new test against the code without the fix before trusting it. The same sprint: a parser that echoes a hostile id in its refusal puts escape bytes on the user's terminal (print printable ASCII only), and touching an old test file puts its pre-existing shellcheck warnings in the pre-gate. | UNPROMOTED |
