@@ -527,8 +527,10 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    produced off-tree (a probe commit, a deliberate mutant run) into a subfolder of `evidence/`, which `check` never scans. A stale
    or failing log otherwise costs a failed evaluator run and a point of `eval_fail_count` (t-f889).
    A log is stale after any non-neutral tracked change, with one exception (t-29ee): a shell suite `tests/<x>.sh` that the stamped command cannot run. For a
-   board-spec log (`tests/run-board-spec.sh`) and a mutation sweep whose `--map` tests are all `go ... test`, a suite that none of that command's
-   sources names, directly or through another suite, leaves the log `fresh`, and the line says which files were outside its scope. The full suite,
+   board-spec log (`tests/run-board-spec.sh` with plain flags) and a mutation sweep whose `--map` tests are all `go -C tools/canon-go test` with plain arguments
+   (package paths, `-v`, `-race`, `-short`, `-count`, `-timeout`, `-run NAME`), a suite that none of that command's sources names, directly or through
+   another suite, leaves the log `fresh`, and the line says which files were outside its scope. A deleted suite, a mapped file, a source that builds a
+   `tests/` path at run time (`evidence.sh scope-audit` lists it) and any other argument keep the log stale. The full suite,
    pre-gate and every other command stay stale on any change, and the evaluator is still dispatched on every tracked change to the graded head.
 
    **Retry budget.** Before dispatching, read `eval_fail_count` from `.tickets/<id>/ticket.md`

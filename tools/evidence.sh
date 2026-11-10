@@ -2,6 +2,7 @@
 # evidence.sh — builder evidence a gate can check instead of re-running (t-e3cd).
 #   evidence.sh stamp <ticket-id> <name> -- <command...>
 #   evidence.sh check <ticket-id> [<graded-head>]
+#   evidence.sh scope-audit      (t-29ee) exit 1 and name the lines when a source of a log's scope builds a suite path at run time
 # stamp runs the command and writes .tickets/<id>/evidence/<name>.log: line 1 `HEAD <sha> <UTC time>`, line 2 `$ <command>`, line 3
 # `# on <machine>; bash <x.y.z>` (t-c542: `canon-go machine`, e.g. "macOS 26.1, Darwin 25.1.0, arm64, 10 cores, 32 GB", else
 # `uname -srm` when the board binary is missing or older; t-a83a: the machine, never its hostname; the bash running this script, which a `bash <script>` command
@@ -37,23 +38,28 @@ SCRIPT_DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
 source "$SCRIPT_DIR/ticket-root.sh"
 source "$SCRIPT_DIR/platform-lib.sh"   # machine_line (t-c542)
 
-usage() { echo "usage: evidence.sh stamp <ticket-id> <name> -- <command...> | evidence.sh check <ticket-id> [<graded-head>]" >&2; exit 2; }
+usage() { echo "usage: evidence.sh stamp <ticket-id> <name> -- <command...> | evidence.sh check <ticket-id> [<graded-head>] | evidence.sh scope-audit" >&2; exit 2; }
 refuse() { echo "evidence: $*" >&2; exit 125; }
 die() { echo "evidence: $*" >&2; exit 2; }
 
 id_re='^t-[a-z0-9]{4}$'
 mode="${1-}"
-[[ "$mode" == stamp || "$mode" == check ]] || usage
+[[ "$mode" == stamp || "$mode" == check || "$mode" == scope-audit ]] || usage
 shift
-[[ $# -ge 1 && "${1-}" =~ $id_re ]] || usage
-id="$1"; shift
+id=""
+if [[ "$mode" != scope-audit ]]; then
+  [[ $# -ge 1 && "${1-}" =~ $id_re ]] || usage
+  id="$1"; shift
+fi
 
 root="$(git rev-parse --show-toplevel 2>/dev/null)" || die "not inside a git repository"
 git -C "$root" rev-parse --verify -q HEAD >/dev/null 2>&1 || die "this repository has no commit yet"
-"$SCRIPT_DIR/work-beat" touch || true   # t-187e
-tdir="${CANON_TICKETS_DIR:-$(tickets_dir)}"   # a plain clone has its own empty .tickets/: point this at the project's, and the stamp still names the clone's HEAD
-[[ -d "$tdir/$id" && ! -L "$tdir/$id" ]] || die "no ticket folder $id under $tdir"
-edir="$tdir/$id/evidence"
+if [[ "$mode" != scope-audit ]]; then
+  "$SCRIPT_DIR/work-beat" touch || true   # t-187e
+  tdir="${CANON_TICKETS_DIR:-$(tickets_dir)}"   # a plain clone has its own empty .tickets/: point this at the project's, and the stamp still names the clone's HEAD
+  [[ -d "$tdir/$id" && ! -L "$tdir/$id" ]] || die "no ticket folder $id under $tdir"
+  edir="$tdir/$id/evidence"
+fi
 
 # Evidence-neutral paths (t-a3d7): written at close, and read by no test (tests/evidence.sh greps the suite to prove it), so a change to
 # them cannot change what a stamped command saw. Repo root only. Narrower than the stale-eval guard's late-doc list in tools/sprint on
@@ -65,6 +71,118 @@ NEUTRAL=(':(exclude).tickets' ':(exclude,literal)LEARNINGS.md' ':(exclude,litera
 tracked_dirty() {   # tracked files (worktree or index) differ from HEAD, outside the evidence-neutral paths
   ! git -C "$root" diff --quiet HEAD -- . "${NEUTRAL[@]}" 2>/dev/null
 }
+
+# --- t-29ee: the scope of a log -------------------------------------------------------------------------------------------------------
+# A log is stale after any non-neutral tracked change, except that a change to a shell suite `tests/<x>.sh` does not matter to a stamped
+# command that cannot run it. Only two command shapes are known to read little of the tree, and the rule is conservative: when in doubt
+# (any other command, a suite a source of the command names directly or through another suite, a deleted suite, a source that builds a suite
+# path at run time) the log stays stale.
+#   board spec  `[bash] tests/run-board-spec.sh [plain flags]`   reads the spec, the runner, tests/board-spec-*.js and tools/ (no *.md)
+#   Go sweep    `mutant-sweep ... --map FILE=go -C tools/canon-go test [plain args] ...` for EVERY map   reads tools/canon-go (no *.md) and each FILE
+# The stamped line is %q text from a file an agent can write, so it is only split (never evaluated) and matched strictly.
+readers_board() { printf '%s\n' tests/sprint-check-app.spec.js tests/run-board-spec.sh ':(glob)tests/board-spec-*.js' tools ':(exclude,glob)**/*.md'; }
+readers_go()    { printf '%s\n' tools/canon-go ':(exclude,glob)**/*.md'; }
+
+# go_test_ok <test command> — 0 only for `go -C tools/canon-go test` with arguments from a short list: package paths inside that module (no `..`
+# segment), -v -race -short, -count=N, -timeout D, -run NAME. Anything else is 1: -exec, -toolexec, a second -C, -overlay, -modfile, -o or a shell
+# control character can run or read files the Go sources do not name.
+go_test_ok() {
+  local -a a=(); local i=4 t v
+  read -r -a a <<< "$1" || true
+  [[ "${a[0]-}" == go && "${a[1]-}" == -C && "${a[2]-}" == tools/canon-go && "${a[3]-}" == test ]] || return 1
+  case "$1" in *[\;\&\|\(\)\<\>\$\`]*) return 1 ;; esac
+  while (( i < ${#a[@]} )); do
+    t="${a[$i]}"; i=$((i + 1))
+    case "$t" in
+      -v|-race|-short) ;;
+      -count=*|-timeout=*) [[ "$t" =~ ^-(count|timeout)=[0-9]+[smh]?$ ]] || return 1 ;;
+      -timeout) [[ "${a[$i]-}" =~ ^[0-9]+[smh]?$ ]] || return 1; i=$((i + 1)) ;;
+      -run=*|-run)
+        if [[ "$t" == -run ]]; then v="${a[$i]-}"; i=$((i + 1)); else v="${t#-run=}"; fi
+        v="${v//\\\'/}"   # %q writes a quote as \'
+        [[ "$v" =~ ^[A-Za-z0-9_]+$ ]] || return 1 ;;
+      ./*) [[ "$t" =~ ^\./[A-Za-z0-9_./-]*$ && "/$t/" != */../* ]] || return 1 ;;
+      *) return 1 ;;
+    esac
+  done
+}
+
+# reader_sources <line 2 of a log> prints the pathspecs, one per line, or nothing: then there is no scope.
+reader_sources() {
+  local c="${1#\$ }" ph=$'\001' t maps=0 want=0 bad=0 first rest=1 file
+  local -a toks=() files=()
+  c="${c//\\ /$ph}"
+  read -r -a toks <<< "$c" || true
+  [[ ${#toks[@]} -gt 0 ]] || return 0
+  first="${toks[0]//$ph/ }"
+  if [[ "$first" == bash && ${#toks[@]} -gt 1 ]]; then first="${toks[1]//$ph/ }"; rest=2; fi
+  case "$first" in
+    tests/run-board-spec.sh|./tests/run-board-spec.sh)
+      for t in "${toks[@]:$rest}"; do t="${t//$ph/ }"; t="${t//\\/}"; [[ "$t" =~ ^[A-Za-z0-9_./=,:@%+-]+$ ]] || return 0; done   # %q escapes a comma; an escaped & or quote is still refused
+      readers_board; return 0 ;;
+    mutant-sweep|tools/mutant-sweep|./tools/mutant-sweep)
+      for t in "${toks[@]:1}"; do
+        t="${t//$ph/ }"
+        if (( want )); then
+          want=0; maps=$((maps + 1)); file="${t%%=*}"
+          go_test_ok "${t#*=}" || bad=1
+          [[ "$file" =~ ^[A-Za-z0-9_./-]+$ ]] || bad=1
+          files+=("$file")
+        elif [[ "$t" == --map ]]; then want=1
+        fi
+      done
+      (( maps > 0 && ! bad && ! want )) || return 0
+      readers_go
+      for file in "${files[@]}"; do printf '%s\n' "$file"; done   # a mapped file is mutated and read by its test: in scope itself
+      return 0 ;;
+  esac
+  return 0
+}
+
+# computed_suite_refs <tree> <pathspec>... — the lines of the reader sources that glob or build a `tests/` path at run time (`tests/*.sh`, `tests/$x`,
+# `tests/"$x"`), which the names found by scope_suites would miss. The two lines that only CLASSIFY paths (tools/sprint, tools/tkt) are allowed; this file
+# names the patterns, runs no suite, and is left out. Text mode (-a): a NUL byte must not hide a line. A name assembled from pieces (`"s"".sh"`, `${n}.sh`)
+# is beyond any static scan: that residual risk is accepted, and the evaluator floor and the full suite still run.
+computed_suite_refs() {
+  local g="$1"; shift
+  git -C "$root" grep -a -n -E 'tests/[^[:space:]"'"'"']*[$*?{]|tests/"' "$g" -- "$@" ':(exclude)tools/evidence.sh' 2>/dev/null \
+    | grep -vF -e 'tests/*|test/*|spec/*' -e 'tests/sprint-check-app.spec.js|tests/run-board-spec.sh|tests/board-spec-*)' || true
+}
+
+# scope_audit — `evidence.sh scope-audit`: the offending lines for both shapes at HEAD, exit 1 when there are any. tests/evidence.sh runs it on the real repo.
+scope_audit() {
+  local kind p bad="" out; local -a rd
+  for kind in board go; do
+    rd=(); while IFS= read -r p; do rd+=("$p"); done < <(readers_$kind)
+    out="$(computed_suite_refs HEAD "${rd[@]}")"
+    if [[ -n "$out" ]]; then bad+="$out"$'\n'; fi
+  done
+  if [[ -n "$bad" ]]; then printf 'scope-audit: a reader source builds a suite path at run time, so an unnamed suite may be run; update the scope rule, then the allow-list in computed_suite_refs:\n%s' "$bad" >&2; return 1; fi
+  echo "scope-audit: ok"
+}
+
+# scope_suites <tree> <pathspec>... — fills SCOPED: the shell suites (basenames in tests/ of that tree) that the reader sources name, and those the
+# named suites name in turn, until nothing new is named. A name counts wherever it appears as a word `<name>.sh` (a path, a `source`, a comment):
+# over-reading only keeps a log stale. Text mode (-a), so a NUL byte in a source does not hide the names.
+scope_suites() {
+  local g="$1" all words queue next w s
+  shift
+  SCOPED=""
+  all="$(git -C "$root" ls-tree --name-only "$g" tests/ 2>/dev/null | sed -n 's|^tests/||p' | grep -E '^[A-Za-z0-9_.-]+\.sh$')" || all=""
+  words="$(git -C "$root" grep -a -h -o -E '[A-Za-z0-9_.-]+\.sh' "$g" -- "$@" 2>/dev/null | sort -u)" || words=""
+  queue="$(printf '%s\n' "$all" | grep -Fx -f <(printf '%s\n' "$words") || true)"
+  while [[ -n "$queue" ]]; do
+    SCOPED+="$queue"$'\n'
+    next=""
+    for s in $queue; do
+      w="$(git -C "$root" grep -a -h -o -E '[A-Za-z0-9_.-]+\.sh' "$g" -- "tests/$s" 2>/dev/null | sort -u)" || w=""
+      next+="$(printf '%s\n' "$all" | grep -Fx -f <(printf '%s\n' "$w") || true)"$'\n'
+    done
+    queue="$(printf '%s' "$next" | sed '/^$/d' | sort -u | grep -Fvx -f <(printf '%s' "$SCOPED") || true)"
+  done
+}
+
+if [[ "$mode" == scope-audit ]]; then scope_audit; exit $?; fi
 
 if [[ "$mode" == stamp ]]; then
   [[ $# -ge 3 && "$2" == -- ]] || usage
@@ -136,62 +254,6 @@ quarantine_only_diff() {
   return 0
 }
 
-# --- t-29ee: the scope of a log -------------------------------------------------------------------------------------------------------
-# A log is stale after any non-neutral tracked change, except that a change to a shell suite `tests/<x>.sh` does not matter to a stamped
-# command that cannot run it. Only two command shapes are known to read little of the tree, and the rule is conservative: when in doubt
-# (any other command, a suite the command's sources name directly or through another suite) the log stays stale.
-#   board spec  `[bash] tests/run-board-spec.sh ...`   reads the spec, the runner, tests/board-spec-*.js and tools/ (no *.md)
-#   Go sweep    `mutant-sweep ... --map FILE=go [-C tools/canon-go] test ...` for EVERY map   reads tools/canon-go (no *.md)
-# reader_sources <line 2 of a log> prints the pathspecs, one per line, or nothing: then there is no scope. The line is %q text from a file an
-# agent can write, so it is only split (never evaluated) and matched strictly.
-reader_sources() {
-  local c="${1#\$ }" ph=$'\001' t maps=0 want=0 bad=0 first
-  local -a toks=()
-  c="${c//\\ /$ph}"
-  read -r -a toks <<< "$c" || true
-  [[ ${#toks[@]} -gt 0 ]] || return 0
-  first="${toks[0]//$ph/ }"
-  if [[ "$first" == bash && ${#toks[@]} -gt 1 ]]; then first="${toks[1]//$ph/ }"; fi
-  case "$first" in
-    tests/run-board-spec.sh|./tests/run-board-spec.sh)
-      printf '%s\n' tests/sprint-check-app.spec.js tests/run-board-spec.sh ':(glob)tests/board-spec-*.js' tools ':(exclude,glob)**/*.md'; return 0 ;;
-    mutant-sweep|tools/mutant-sweep|./tools/mutant-sweep)
-      for t in "${toks[@]:1}"; do
-        t="${t//$ph/ }"
-        if (( want )); then
-          want=0; maps=$((maps + 1))
-          [[ "${t#*=}" =~ ^go\ (-C\ tools/canon-go\ )?test(\ |$) ]] || bad=1
-          case "${t#*=}" in *[\;\&\|\(\)\<\>\$\`]*) bad=1 ;; esac   # a chained or substituted command may run anything: no scope
-        elif [[ "$t" == --map ]]; then want=1
-        fi
-      done
-      (( maps > 0 && ! bad && ! want )) || return 0
-      printf '%s\n' tools/canon-go ':(exclude,glob)**/*.md'; return 0 ;;
-  esac
-  return 0
-}
-
-# scope_suites <graded> <pathspec>... — fills SCOPED: the shell suites (basenames in tests/) that the reader sources name, and those the named
-# suites name in turn, until nothing new is named. A name counts wherever it appears as a word `<name>.sh` (a path, a `source`, a comment):
-# over-reading only keeps a log stale.
-scope_suites() {
-  local g="$1" all words queue next w s
-  shift
-  SCOPED=""
-  all="$(git -C "$root" ls-tree --name-only "$g" tests/ 2>/dev/null | sed -n 's|^tests/||p' | grep -E '^[A-Za-z0-9_.-]+\.sh$')" || all=""
-  words="$(git -C "$root" grep -h -o -E '[A-Za-z0-9_.-]+\.sh' "$g" -- "$@" 2>/dev/null | sort -u)" || words=""
-  queue="$(printf '%s\n' "$all" | grep -Fx -f <(printf '%s\n' "$words") || true)"
-  while [[ -n "$queue" ]]; do
-    SCOPED+="$queue"$'\n'
-    next=""
-    for s in $queue; do
-      w="$(git -C "$root" grep -h -o -E '[A-Za-z0-9_.-]+\.sh' "$g" -- "tests/$s" 2>/dev/null | sort -u)" || w=""
-      next+="$(printf '%s\n' "$all" | grep -Fx -f <(printf '%s\n' "$w") || true)"$'\n'
-    done
-    queue="$(printf '%s' "$next" | sed '/^$/d' | sort -u | grep -Fvx -f <(printf '%s' "$SCOPED") || true)"
-  done
-}
-
 # join_names <names...> — sets JOINED_N (how many) and JOINED: the first five names, printed with `safe`, then ` (+N more)` for the rest
 join_names() {
   local p; JOINED=""; JOINED_N=0
@@ -202,7 +264,7 @@ join_names() {
 # classify_one <file> — sets LINE (the output line), KIND (its first word), CODE and BASEONLY (1 when the only non-neutral tracked change since
 # the stamp is tests/board-spec-baseline.json, optionally with QUARANTINE-comment-only edits to the spec (t-7f5f): the one case `covered` may lift). Called directly, never in $(...), so the globals survive.
 classify_one() {
-  local f="$1" first last sha when cmdline osline shown full names p readers dropped kept ign wtline
+  local f="$1" first last sha when cmdline osline shown full names p readers dropped kept ign wtline stamped_scope
   BASEONLY=0; SPECQ=0; CODE="?"; STAMP=""; SHOWN=""
   base="$(safe "${f##*/}")"
   if [[ -L "$f" || ! -f "$f" ]]; then KIND=unstamped; LINE="unstamped $base exit=?"; return 0; fi
@@ -234,7 +296,11 @@ classify_one() {
   dropped=(); kept=(); readers=()   # t-29ee: shell suites this log's command cannot run are not a reason to rerun it
   while IFS= read -r p; do [[ -n "$p" ]] && readers+=("$p"); done < <(reader_sources "$cmdline")
   if [[ ${#readers[@]} -gt 0 && ${#names[@]} -gt 0 ]]; then
-    scope_suites "$graded" "${readers[@]}"
+    if [[ -n "$(computed_suite_refs "$graded" "${readers[@]}")" ]]; then readers=(); fi   # a source builds suite paths at run time: no scope
+  fi
+  if [[ ${#readers[@]} -gt 0 && ${#names[@]} -gt 0 ]]; then
+    scope_suites "$full" "${readers[@]}"; stamped_scope="$SCOPED"   # the tree that was tested: a suite deleted since then was one it may have run
+    scope_suites "$graded" "${readers[@]}"; SCOPED="$stamped_scope$SCOPED"
     for p in "${names[@]}"; do
       # a reader source is in scope itself, named or not; any other suite is out only when no source names it
       if [[ "$p" =~ ^tests/([A-Za-z0-9_.-]+\.sh)$ ]] && ! printf '%s\n' "${readers[@]}" | grep -Fxq -- "$p" \

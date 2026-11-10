@@ -573,7 +573,7 @@ for f in tools/canon-go/internal/x/x.go tools/canon-go/internal/x/x_test.go test
 done
 mkdir -p "$WORK/bin"; printf '#!/bin/sh\nexit 0\n' > "$WORK/bin/mutant-sweep"; chmod +x "$WORK/bin/mutant-sweep"   # the bare name, as an installed canon has it
 scope_repo; PATH="$WORK/bin:$PATH" ev stamp "$ID" sw -- mutant-sweep --map "tools/canon-go/internal/x/x.go=go test ./internal/x" --map "tools/canon-go/internal/x/x_test.go=go -C tools/canon-go test ./internal/x"; assert_eq 0 "$code"
-chg tests/unnamed.sh; ev check "$ID"; fresh_scope sw tests/unnamed.sh   # `go test` with no -C is still a Go test
+chg tests/unnamed.sh; ev check "$ID"; stale_with sw "1 tracked file(s) changed since: tests/unnamed.sh)"   # a bare `go test` (no -C tools/canon-go) is not a form canon stamps: no scope
 
 # any other command, a map that is not (only) a Go test, a test command that chains another command, and a log with no command: today's rule
 scope_repo; ev stamp "$ID" a -- tools/mutant-sweep --map "tools/x.sh=bash tests/other.sh"
@@ -602,11 +602,58 @@ scope_repo; ev stamp "$ID" bs -- bash tests/run-board-spec.sh; chg tests/unnamed
 # a changed baseline next to an out-of-scope suite is still the baseline-only case, not stale
 scope_repo; ev stamp "$ID" bs -- bash tests/run-board-spec.sh; chg tests/unnamed.sh tests/board-spec-baseline.json; ev check "$ID"; stale_with bs "1 tracked file(s) changed since: tests/board-spec-baseline.json (+1 outside its scope ignored))"
 
-# The rule is sound only while no reader source builds a suite path at run time (`tests/$x.sh`, `tests/*.sh`): the sources are scanned in the
-# real repo, and the two classification patterns that name paths without running them are the only ones allowed (tools/evidence.sh only matches
-# suite names, it runs none). A new one fails this suite.
-bad="$(git -C "$ROOT" grep -nE 'tests/[^[:space:]"'"'"']*[$*]|tests/"' -- tools tests/run-board-spec.sh tests/sprint-check-app.spec.js 'tests/board-spec-*.js' ':(exclude,glob)**/*.md' ':(exclude)tools/evidence.sh' \
-  | grep -vF -e 'tests/*|test/*|spec/*' -e 'tests/sprint-check-app.spec.js|tests/run-board-spec.sh|tests/board-spec-*)' || true)"
-[[ -z "$bad" ]] || fail "evidence: a reader source of the log scope builds a suite path at run time, so an unnamed suite may be run; update reader_sources in tools/evidence.sh, then this allow-list: $bad"
+# The rule is sound only while no reader source globs or builds a `tests/` path at run time; the tool audits itself (the two classification lines in
+# tools/sprint and tools/tkt are allow-listed inside it). Prod path: a new such line fails this suite instead of silently widening what a log may skip.
+out="$(cd "$ROOT" && bash "$EV" scope-audit 2>&1)" || fail "evidence: $out"
+assert_eq "scope-audit: ok" "$out"
+
+# --- t-29ee, break-it findings: every case below was a false "fresh" (or a gap) in the first version ---------------------------------
+# a suite deleted since the stamp may have been run by it: stale when it was named (directly or through a suite), fresh when nothing named it
+for f in tests/machine-load.sh tests/helpers.sh; do
+  scope_repo; ev stamp "$ID" bs -- bash tests/run-board-spec.sh; git rm -q "$f"; git commit -qm "delete $f"; ev check "$ID"; stale_with bs "1 tracked file(s) changed since: $f)"
+done
+scope_repo; ev stamp "$ID" bs -- bash tests/run-board-spec.sh; git rm -q tests/unnamed.sh; git commit -qm "delete unnamed"; ev check "$ID"; fresh_scope bs tests/unnamed.sh
+# a binary reader source (a NUL byte) must not hide the suite it names
+scope_repo; printf 'bash tests/named-by-tool.sh\n\0\n' > tools/tool.sh; git add tools; git commit -qm "binary tool"; CB="$(git rev-parse HEAD)"
+ev stamp "$ID" bs -- bash tests/run-board-spec.sh; chg tests/named-by-tool.sh; ev check "$ID"; stale_with bs "1 tracked file(s) changed since: tests/named-by-tool.sh)"
+# go test arguments: a short list is a scope; anything that can run or read another file is not
+for args in "-count=1" "-run 'APIv1' -count=1" "-run=APIv1 -v -race -short -timeout 120s" "-timeout=90s ./..." "./internal/x ./internal/..."; do
+  scope_repo; ev stamp "$ID" sw -- tools/mutant-sweep --map "tools/canon-go/internal/x/x.go=go -C tools/canon-go test $args"
+  chg tests/unnamed.sh; ev check "$ID"; fresh_scope sw tests/unnamed.sh
+done
+for args in "-exec ../../tests/unnamed.sh ./..." "-toolexec=../../tests/unnamed.sh ./..." "-C ../.. ./..." "-overlay x.json ./..." "-modfile=x.mod ./..." "-o x ./..." \
+            "./../../tests" "../x" "-run A|B" "-run a\ b" "-vet=off" "-count=x" "-timeout" "-run" "./x/../../y" "/abs/path"; do
+  scope_repo; ev stamp "$ID" sw -- tools/mutant-sweep --map "tools/canon-go/internal/x/x.go=go -C tools/canon-go test $args"
+  chg tests/unnamed.sh; ev check "$ID"; stale_with sw "1 tracked file(s) changed since: tests/unnamed.sh)"
+done
+scope_repo; ev stamp "$ID" sw -- tools/mutant-sweep --map "tools/canon-go/internal/x/x.go=go -C tools/canon-go -v test ./..."; chg tests/unnamed.sh; ev check "$ID"
+stale_with sw "1 tracked file(s) changed since: tests/unnamed.sh)"                      # a flag before `test`
+# a mapped file is mutated and run by its test, so a change to it is in scope even when it is a suite nobody names; an odd file name is no scope
+scope_repo; ev stamp "$ID" sw -- tools/mutant-sweep --map "tests/unnamed.sh=go -C tools/canon-go test ./..."; chg tests/unnamed.sh; ev check "$ID"
+stale_with sw "1 tracked file(s) changed since: tests/unnamed.sh)"
+scope_repo; ev stamp "$ID" sw -- tools/mutant-sweep --map "tools/a b.go=go -C tools/canon-go test ./..."; chg tests/unnamed.sh; ev check "$ID"
+stale_with sw "1 tracked file(s) changed since: tests/unnamed.sh)"
+# the board-spec line: plain flags are a scope; a chained command, a quoted or odd argument is not (a hand-written line is not %q text)
+scope_repo; ev stamp "$ID" bs -- bash tests/run-board-spec.sh --runs 2 --browsers chromium,webkit --out .tickets/t-abcd/evidence/spec --strict
+chg tests/unnamed.sh; ev check "$ID"; fresh_scope bs tests/unnamed.sh
+for line in 'tests/run-board-spec.sh && bash tests/unnamed.sh' 'tests/run-board-spec.sh ; bash tests/unnamed.sh' 'tests/run-board-spec.sh | cat' 'tests/run-board-spec.sh $(bash tests/unnamed.sh)' \
+            'bash tests/run-board-spec.sh --grep "a b"' 'tests/run-board-spec.sh \&\&\ bash\ tests/unnamed.sh' 'bash tests/run-board-spec.sh `x`' 'tests/run-board-spec.sh >out'; do
+  scope_repo; mkdir -p "$ED"; printf '%s\n%s\nexit 0\n' "HEAD $CB $T" "\$ $line" > "$ED/l.log"
+  chg tests/unnamed.sh; ev check "$ID"; stale_with l "1 tracked file(s) changed since: tests/unnamed.sh)"
+done
+# a reader that globs or builds a suite path at run time is no scope (here the stamp itself is taken after the glob appeared); the classification
+# lines the real tools carry do not count, and `scope-audit` names the offender
+for body in 'for t in tests/*.sh; do bash "$t"; done' 'bash "tests/$1.sh"' 'bash tests/"$n".sh' 'bash tests/${n}.sh' 'ls tests/?.sh'; do
+  scope_repo; printf '%s\n' "$body" > tools/tool.sh; git add tools; git commit -qm "glob"; CB="$(git rev-parse HEAD)"
+  ev stamp "$ID" bs -- bash tests/run-board-spec.sh; chg tests/unnamed.sh; ev check "$ID"; stale_with bs "1 tracked file(s) changed since: tests/unnamed.sh)"
+  ev scope-audit; assert_eq 1 "$code"; assert_contains "$out" "tools/tool.sh:1:"
+done
+scope_repo; printf '%s\n' 'case $p in tests/*|test/*|spec/*|*/tests/*) return 0 ;; esac' 'tests/sprint-check-app.spec.js|tests/run-board-spec.sh|tests/board-spec-*) board=1 ;;' > tools/tool.sh
+git add tools; git commit -qm "classification only"; CB="$(git rev-parse HEAD)"
+ev scope-audit; assert_eq 0 "$code"; assert_eq "scope-audit: ok" "$out"
+ev stamp "$ID" bs -- bash tests/run-board-spec.sh; chg tests/unnamed.sh; ev check "$ID"; fresh_scope bs tests/unnamed.sh
+# a Go sweep's readers are audited too, and a glob there is found
+scope_repo; printf 'package x\n// bash tests/*.sh\n' > tools/canon-go/internal/x/x.go; git add tools; git commit -qm "go glob"; ev scope-audit; assert_eq 1 "$code"; assert_contains "$out" "tools/canon-go/internal/x/x.go:2:"
+ev scope-audit extra; assert_eq 1 "$code"   # no argument is taken: the usage is not a shortcut to the audit
 
 echo "evidence: ok"
