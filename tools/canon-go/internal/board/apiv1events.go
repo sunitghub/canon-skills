@@ -40,7 +40,7 @@ var v1Streams = map[string]map[string]any{
 		"content_type": "text/event-stream",
 		"frame":        "id: <cursor after the event>, data: <the event as in v1EventKeys, one JSON line>",
 		"resume":       "the Last-Event-ID header, or ?cursor= (opaque: only what a snapshot or an id returned); neither starts at the end of the log",
-		"keep_alive":   ": keep-alive comment after every 15 s without an event",
+		"keep_alive":   fmt.Sprintf(": keep-alive comment after every %d s without an event", int(v1StreamKeepAlive/time.Second)),
 		"max_streams":  v1StreamMax,
 		"lifetime_s":   int(v1StreamLifetime / time.Second),
 	},

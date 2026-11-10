@@ -106,11 +106,11 @@ func ReadSince(home string, from Cursor, limit int) ([]Positioned, Cursor, error
 	var out []Positioned
 	cur := from
 	for ; i < len(days) && len(out) < limit; i++ {
+		d := days[i]
 		off := int64(0)
-		if days[i].Day == from.Day { // only the cursor's own day starts part way in
+		if d.Day == from.Day { // only the cursor's own day starts part way in
 			off = from.Offset
 		}
-		d := days[i]
 		end, err := scanDay(d.Path, off, func(ev Event, e int64, terminated bool) bool {
 			if terminated {
 				out = append(out, Positioned{ev, Cursor{d.Day, e}})
