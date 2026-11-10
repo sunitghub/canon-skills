@@ -100,6 +100,12 @@ check_keys '/api/v1/sprint/{ticket}' "$B/sprint/t-aaaa"; check_keys /api/v1/sess
 check_keys '/api/v1/sessions/{id}/state' "$B/sessions/t-aaaa/state"
 check_keys /api/v1/events "$B/events"
 assert_contains "$(cat "$T/schema.json")" '"gate.finished"'
+# the stream route is published too: its content type, its frame (id and data lines), and the stream cap come from the handler's own variables
+stream_schema="$(python3 -c 'import json,sys; s=json.load(open(sys.argv[1]))["streams"]["/api/v1/events/stream"]; print(s["content_type"]); print(s["frame"]); print(s["max_streams"]); print(s["lifetime_s"])' "$T/schema.json")" || fail "api-v1: the schema has no stream entry for /api/v1/events/stream"
+assert_contains "$stream_schema" "text/event-stream"
+assert_contains "$stream_schema" "id: "
+assert_contains "$stream_schema" "data: "
+assert_eq "4 900" "$(printf '%s\n' "$stream_schema" | tail -2 | paste -sd' ' -)"
 
 # ── refusals: Host, verbs, CORS, bad ids ──
 code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
