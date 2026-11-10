@@ -21090,10 +21090,9 @@ test.describe('Factory Pipeline (t-3a58)', () => {
     await expect(page.locator('#fac-pipe-rows .pl-row').first()).toBeVisible();
   }
 
-
   // t-c543: the tab drew its cached copy after Admin changed the model default. Protects the Pipeline tab's rows being what GET /api/pipeline
   // answers each time the tab is shown (back from Admin, or from the GitHub tab), so a model change in Admin is never shown stale.
-  test('the Pipeline tab reads the model again each time it is shown, after Admin or the GitHub tab (t-c543) @webkit', async ({ page }) => {
+  test('the Pipeline tab reads the model again each time it is shown, after Admin or the GitHub tab (t-c543)', async ({ page }) => {
     const per = { model: { name: 'Claude Sonnet 5' } };
     await board(page, per);
     await open(page);
@@ -21109,6 +21108,7 @@ test.describe('Factory Pipeline (t-3a58)', () => {
     await page.locator('#fac-tab-pipe').click();
     await expect(reviewerModel).toHaveText('model \u00b7 Claude Sonnet 6');
   });
+
   test('lists the 14 nodes with tags, locked reasons and models, and follows the project dropdown @webkit', async ({ page }) => {
     const b = await board(page);
     await open(page);
