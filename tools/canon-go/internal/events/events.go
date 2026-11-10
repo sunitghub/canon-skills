@@ -355,16 +355,28 @@ func DayFiles(home string) []string {
 // EachIn calls fn for every valid v1 line of one day file, in append order (t-c542: the ticket's Machines node). Lines that
 // fail the schema, or are longer than any Emit writes, are skipped as Latest skips them.
 func EachIn(path string, fn func(Event)) error {
-	f, err := openDay(path)
+	_, err := scanDay(path, 0, func(ev Event, _ int64, _ bool) bool { fn(ev); return true })
+	return err
+}
+
+// scanDay is the one line reader of a day file (t-8d45): it reads from byte offset from of the uncompressed stream and calls fn for every
+// valid line with the offset just after it and whether the line ended in a newline (a writer may be mid-append: a caller that must not
+// skip it ignores an unterminated line). fn returning false stops the scan. It returns the offset after the last newline-terminated line
+// it read, which also moves past lines that failed the schema or were too long.
+func scanDay(path string, from int64, fn func(ev Event, end int64, terminated bool) bool) (end int64, err error) {
+	f, err := openDayAt(path, from)
 	if err != nil {
-		return err
+		return from, err
 	}
 	defer f.Close()
 	r := bufio.NewReaderSize(f, 4096)
 	var buf []byte
 	long := false
+	pos := from
+	end = from
 	for {
 		chunk, err := r.ReadSlice('\n')
+		pos += int64(len(chunk))
 		if !long && len(buf)+len(chunk) <= lineMax {
 			buf = append(buf, chunk...)
 		} else {
@@ -373,17 +385,21 @@ func EachIn(path string, fn func(Event)) error {
 		if err == bufio.ErrBufferFull {
 			continue
 		}
+		terminated := len(chunk) > 0 && chunk[len(chunk)-1] == '\n'
+		if terminated {
+			end = pos
+		}
 		if !long {
-			if ev, good := parseAny(buf); good {
-				fn(ev)
+			if ev, good := parseAny(buf); good && !fn(ev, pos, terminated) {
+				return end, nil
 			}
 		}
 		buf, long = buf[:0], false
 		if err == io.EOF {
-			return nil
+			return end, nil
 		}
 		if err != nil {
-			return err
+			return end, err
 		}
 	}
 }

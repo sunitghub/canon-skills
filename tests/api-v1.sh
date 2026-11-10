@@ -2,7 +2,8 @@
 # api-v1 (t-0b89 slice 1) — the public read surface end to end: a real board over HTTP on a temp project and a temp CANON_HOME.
 # Ticket metadata comes out without the body, the sprint snapshot is the latest valid event per kind, every route's keys match
 # `canon-go api schema`, a non-loopback Host is 403, every verb but GET (and OPTIONS) is 405, no response of any status carries
-# an Access-Control header, and a bad id is refused. Protects GET /api/v1/* and the `canon-go api schema` command.
+# an Access-Control header, and a bad id is refused. t-8d45: the events snapshot and a stream that resumes from its last id with no
+# duplicate and no gap, and a hostile cursor is a 400. Protects GET /api/v1/* and the `canon-go api schema` command.
 set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
@@ -65,6 +66,28 @@ assert_eq "1" "$(printf '%s' "$sp" | python3 -c 'import json,sys; print(len(json
 assert_eq "0000000000000002" "$(printf '%s' "$sp" | jget events 0 id)"
 [[ "$sp" != *script* ]] || fail "api-v1: a line that fails the events schema was served"
 
+# ── events (t-8d45): the snapshot is the project's valid events with a cursor; a stream resumes from its last id with no duplicate and no gap ──
+snap="$(curl -s "$B/events")"
+assert_eq "2" "$(printf '%s' "$snap" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["events"]))')"   # ids 1 and 2: id 3 fails the schema, 'not json' is skipped
+[[ "$snap" != *script* ]] || fail "api-v1: the events snapshot served a line that fails the schema"
+cursor="$(printf '%s' "$snap" | jget cursor)"
+[[ "$cursor" =~ ^20[0-9]{2}-[0-9]{2}-[0-9]{2}:[0-9]+$ ]] || fail "api-v1: snapshot cursor is $cursor"
+newest="$T/home/events/${cursor%%:*}.jsonl"   # the cursor names the newest day (the board writes its own events there): new events are appended to it
+assert_eq "0000000000000002" "$(curl -s "$B/events?limit=1" | jget events 0 id)"
+for bad in 0 501 abc -1; do assert_eq "400" "$(curl -s -o /dev/null -w '%{http_code}' "$B/events?limit=$bad")"; done
+for c in '../../x:0' '2026-11-01:-1' '2026-13-45:0' '2026-10-31:0' '2026-11-01:99999999' x; do
+  assert_eq "400" "$(curl -s -o /dev/null -w '%{http_code}' -H "Last-Event-ID: $c" "$B/events/stream")"
+done
+stream_ids() { grep '^data: ' "$1" | sed -E 's/.*"id":"0*([0-9a-f]+)".*/\1/' | paste -sd, -; }
+ev_id() { printf '{"schema":1,"id":"%016x","ts":"2026-11-01T13:00:00.000Z","kind":"gate.finished","source":"sprint","project":"%s","data":{"ticket":"t-aaaa","role":"reviewer","verdict":"pass"}}\n' "$1" "$PROJECT"; }
+curl -sN -m 3 "$B/events/stream?cursor=$cursor" > "$T/s1" & S1=$!
+sleep 1; ev_id 4 >> "$newest"; wait "$S1" || true
+assert_eq "4" "$(stream_ids "$T/s1")"
+last="$(grep '^id: ' "$T/s1" | tail -1 | sed 's/^id: //')"
+ev_id 5 >> "$newest"; echo 'not json' >> "$newest"; ev_id 6 >> "$newest"
+curl -sN -m 2 -H "Last-Event-ID: $last" "$B/events/stream" > "$T/s2" || true
+assert_eq "5,6" "$(stream_ids "$T/s2")"   # every missed event once, in order, and not 4 again
+
 # ── every route's keys are the published schema's ──
 SPRINT_CHECK_NO_BROWSER=1 "$BIN" api schema --json > "$T/schema.json" || fail "api-v1: canon-go api schema failed"
 check_keys() { # <route pattern> <url>
@@ -75,16 +98,21 @@ check_keys() { # <route pattern> <url>
 check_keys /api/v1/tickets "$B/tickets"; check_keys '/api/v1/tickets/{id}' "$B/tickets/t-aaaa"
 check_keys '/api/v1/sprint/{ticket}' "$B/sprint/t-aaaa"; check_keys /api/v1/sessions "$B/sessions"
 check_keys '/api/v1/sessions/{id}/state' "$B/sessions/t-aaaa/state"
+check_keys /api/v1/events "$B/events"
 assert_contains "$(cat "$T/schema.json")" '"gate.finished"'
 
 # ── refusals: Host, verbs, CORS, bad ids ──
 code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
-for route in sessions sessions/t-aaaa tickets tickets/t-aaaa sprint/t-aaaa; do
+for route in sessions sessions/t-aaaa tickets tickets/t-aaaa sprint/t-aaaa events events/stream; do
   assert_eq "403" "$(code -H 'Host: evil.example' "$B/$route")"
   for m in POST PUT DELETE; do assert_eq "405" "$(code -X "$m" "$B/$route")"; done
 done
 assert_eq "204" "$(code -X OPTIONS -H 'Origin: http://evil.example' -H 'Access-Control-Request-Method: GET' "$B/tickets")"
-for target in tickets sessions sprint/t-aaaa tickets/nope tickets/t-zzzz; do
+for m in OPTIONS POST; do   # a GET of the stream would stream: only its refusals are checked here
+  hdr="$(curl -s -D - -o /dev/null -X "$m" -H 'Origin: http://evil.example' "$B/events/stream")"
+  if grep -qi '^access-control-' <<<"$hdr"; then fail "api-v1: $m /events/stream sent an Access-Control header"; fi
+done
+for target in tickets sessions sprint/t-aaaa events tickets/nope tickets/t-zzzz; do
   for m in GET OPTIONS POST; do
     hdr="$(curl -s -D - -o /dev/null -X "$m" -H 'Origin: http://evil.example' "$B/$target")"
     if grep -qi '^access-control-' <<<"$hdr"; then fail "api-v1: $m /$target sent an Access-Control header"; fi

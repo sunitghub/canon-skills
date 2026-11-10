@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+- Added (API): `GET /api/v1/events` (the newest events of the project) and `GET /api/v1/events/stream` (server-sent events). A client that drops the stream and resumes from its last event id receives every event it missed, once, in order. Read only and local like the rest of `/api/v1`: no token, no CORS, at most 4 streams, and a cursor is checked before any file is read. `canon-go api schema` lists both. The Go program changed, so the release needs the daemon release.
+
 ## [0.50.0] - 2026-11-10
 
 Run `canon update`, then restart the daemon (Admin's **Restart Daemon**): the `canon-go` program changed, and a running daemon stays on the old one until restarted.

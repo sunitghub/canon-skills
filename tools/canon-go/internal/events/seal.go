@@ -128,6 +128,27 @@ func openDay(path string) (io.ReadCloser, error) {
 	return readCloser{io.LimitReader(z, dayMaxBytes+1), []io.Closer{z, f}}, nil
 }
 
+// openDayAt opens a day file at byte offset from of its uncompressed stream (t-8d45): a plain file seeks, a gzipped one reads and drops
+// the first bytes, so the same size limits as openDay apply either way.
+func openDayAt(path string, from int64) (io.ReadCloser, error) {
+	rc, err := openDay(path)
+	if err != nil || from <= 0 {
+		return rc, err
+	}
+	if f, ok := rc.(*os.File); ok {
+		if _, err := f.Seek(from, io.SeekStart); err != nil {
+			f.Close()
+			return nil, err
+		}
+		return f, nil
+	}
+	if _, err := io.CopyN(io.Discard, rc, from); err != nil && err != io.EOF {
+		rc.Close()
+		return nil, err
+	}
+	return rc, nil
+}
+
 // hashDay is the SHA-256 and line count of a day file's uncompressed bytes.
 func hashDay(path string) (sum string, lines int, err error) {
 	r, err := openDay(path)

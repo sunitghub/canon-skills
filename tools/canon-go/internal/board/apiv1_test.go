@@ -91,7 +91,7 @@ func TestAPIv1RefusesBadInputBeforeUse(t *testing.T) {
 
 func TestAPIv1ReadOnlyHostAndNoCORS(t *testing.T) {
 	setupTestProject(t)
-	routes := []string{"/api/v1/sessions", "/api/v1/sessions/t-aaaa", "/api/v1/sessions/t-aaaa/state", "/api/v1/tickets", "/api/v1/tickets/t-aaaa", "/api/v1/sprint/t-aaaa", "/api/v1/nope", "/api/v1/tickets/bad"}
+	routes := []string{"/api/v1/sessions", "/api/v1/sessions/t-aaaa", "/api/v1/sessions/t-aaaa/state", "/api/v1/tickets", "/api/v1/tickets/t-aaaa", "/api/v1/sprint/t-aaaa", "/api/v1/events", "/api/v1/nope", "/api/v1/tickets/bad"}
 	for _, route := range routes {
 		for _, method := range []string{"GET", "OPTIONS", "POST", "PUT", "DELETE"} {
 			w := v1Get(t, method, route, "")
@@ -486,12 +486,12 @@ func TestAPIv1SprintScansAreBoundedAndCachedByFileState(t *testing.T) {
 		t.Errorf("an unchanged log gave a different answer")
 	}
 	v1SprintCache = map[string][]map[string]any{}
-	for i := 0; i < cap(v1SprintGate); i++ {
-		v1SprintGate <- struct{}{}
+	for i := 0; i < cap(v1ScanGate); i++ {
+		v1ScanGate <- struct{}{}
 	}
 	busy := v1Get(t, "GET", "/api/v1/sprint/t-aaaa", "")
-	for i := 0; i < cap(v1SprintGate); i++ {
-		<-v1SprintGate
+	for i := 0; i < cap(v1ScanGate); i++ {
+		<-v1ScanGate
 	}
 	if busy.Code != 503 || busy.Header().Get("Retry-After") != "1" || v1Body(t, busy)["error"] != "busy: try again" {
 		t.Errorf("a third scan should be refused: %d %s", busy.Code, busy.Body)

@@ -46,6 +46,7 @@ var v1Responses = map[string][]string{
 	"/api/v1/tickets":             {"schema", "tickets"},
 	"/api/v1/tickets/{id}":        {"schema", "ticket"},
 	"/api/v1/sprint/{ticket}":     {"schema", "ticket", "events"},
+	"/api/v1/events":              {"schema", "events", "cursor"},
 }
 
 // v1DaemonHeader says whether the daemon answered: a down daemon gives an empty list, which is not "no sessions".
@@ -139,6 +140,10 @@ func handleAPIv1(w http.ResponseWriter, r *http.Request) {
 		} else {
 			v1Send(w, map[string]any{"ticket": list[0]})
 		}
+	case len(seg) == 1 && seg[0] == "events":
+		v1EventsSnapshot(w, r)
+	case len(seg) == 2 && seg[0] == "events" && seg[1] == "stream":
+		v1EventsStream(w, r)
 	case len(seg) == 2 && seg[0] == "sprint":
 		root, ok := effectiveRoot(r)
 		if !ok {
@@ -175,8 +180,23 @@ func v1TicketOf(t ticket) map[string]any {
 	return out
 }
 
-// v1SprintGate bounds the day-file scans running at once: a scan reads up to the retained days, and the route needs no token.
-var v1SprintGate = make(chan struct{}, 2)
+// v1Slots bounds how many of one kind of work run at once (t-8d45): a route that needs no token must not let a client start unbounded scans or
+// streams. acquire says whether a slot was free; every acquire is paired with a release.
+type v1Slots chan struct{}
+
+func (s v1Slots) acquire() bool {
+	select {
+	case s <- struct{}{}:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s v1Slots) release() { <-s }
+
+// v1ScanGate bounds the day-file scans running at once, the sprint snapshot's and the events snapshot's: a scan reads up to the retained days.
+var v1ScanGate = make(v1Slots, 2)
 
 var (
 	v1SprintMu    sync.Mutex
@@ -206,12 +226,10 @@ func v1Sprint(home, root, ticketID string) (out []map[string]any, ok bool) {
 	if hit {
 		return cached, true
 	}
-	select {
-	case v1SprintGate <- struct{}{}:
-		defer func() { <-v1SprintGate }()
-	default:
+	if !v1ScanGate.acquire() {
 		return nil, false
 	}
+	defer v1ScanGate.release()
 	out = v1SprintScan(files, root, ticketID)
 	v1SprintMu.Lock()
 	if len(v1SprintCache) >= 128 {
@@ -222,11 +240,27 @@ func v1Sprint(home, root, ticketID string) (out []map[string]any, ok bool) {
 	return out, true
 }
 
-func v1SprintScan(files []string, root, ticketID string) []map[string]any {
+// v1Scope says whether an event's project is the root or one of its live worktrees: the one filter every events route applies, so no route can
+// serve another project's events.
+func v1Scope(root string) func(project string) bool {
 	live := map[string]bool{}
 	for _, e := range registeredWorktrees(root) {
 		live[resolvedOrAbs(fmt.Sprint(e["path"]))] = true
 	}
+	return func(project string) bool { return belongsTo(project, root, live) }
+}
+
+// v1EventOf is an event as every events route serves it: the envelope keys of v1EventKeys and nothing else (the machine's host name is not served).
+func v1EventOf(ev events.Event) map[string]any {
+	m := map[string]any{"schema": events.Schema, "id": ev.ID, "ts": ev.TS.Format("2006-01-02T15:04:05.000Z"), "kind": ev.Kind, "source": ev.Source, "project": ev.Project, "data": ev.Data}
+	if ev.Actor != "" {
+		m["actor"] = ev.Actor
+	}
+	return m
+}
+
+func v1SprintScan(files []string, root, ticketID string) []map[string]any {
+	inScope := v1Scope(root)
 	want := map[string]bool{}
 	for _, k := range v1SprintKinds {
 		want[k] = true
@@ -250,7 +284,7 @@ func v1SprintScan(files []string, root, ticketID string) []map[string]any {
 			n := 0
 			err := events.EachIn(path, func(ev events.Event) {
 				n++
-				if want[ev.Kind] && ev.Data["ticket"] == ticketID && belongsTo(ev.Project, root, live) {
+				if want[ev.Kind] && ev.Data["ticket"] == ticketID && inScope(ev.Project) {
 					inDay[ev.Kind] = ev
 					pos[ev.Kind] = fmt.Sprintf("%s/%09d", day, n)
 				}
@@ -275,12 +309,7 @@ func v1SprintScan(files []string, root, ticketID string) []map[string]any {
 	sort.Slice(kinds, func(i, j int) bool { return order[kinds[i]] < order[kinds[j]] })
 	out := []map[string]any{}
 	for _, k := range kinds {
-		ev := latest[k]
-		m := map[string]any{"schema": events.Schema, "id": ev.ID, "ts": ev.TS.Format("2006-01-02T15:04:05.000Z"), "kind": ev.Kind, "source": ev.Source, "project": ev.Project, "data": ev.Data}
-		if ev.Actor != "" {
-			m["actor"] = ev.Actor
-		}
-		out = append(out, m)
+		out = append(out, v1EventOf(latest[k]))
 	}
 	return out
 }
@@ -293,7 +322,7 @@ func apiSchema() map[string]any {
 		kinds[k] = events.Fields(k)
 	}
 	return map[string]any{"schema": apiV1Schema, "events": map[string]any{"schema": events.Schema, "envelope": v1EventKeys, "kinds": kinds},
-		"ticket": v1Ticket, "responses": v1Responses}
+		"ticket": v1Ticket, "responses": v1Responses, "streams": v1Streams}
 }
 
 func apiCLI(args []string, stdout, stderr io.Writer) int {
