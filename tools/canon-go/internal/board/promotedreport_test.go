@@ -683,3 +683,23 @@ func TestPromotedReportSizeCapsMatchTheirOwnRows(t *testing.T) {
 		t.Errorf("a file without its marker shows no cap and is still measured: %+v", z)
 	}
 }
+
+// Prod path: a caps.tsv the reader cannot finish (a line over the scanner's limit) is no table at all, never its rows so far (t-3620, mutation sweep).
+func TestPromotedReportSizeIgnoresAHalfReadCapsTable(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is required")
+	}
+	root := t.TempDir()
+	prGit(t, root, "2026-10-01T12:00:00Z", "init", "-q")
+	prPut(t, root, "tools/src-key.sh", "#!/bin/sh\n")
+	prPut(t, root, "tools/caps.tsv", "x\tskills/x.md\t10\twords\t-\n#"+strings.Repeat("a", 70<<10)+"\n")
+	prPut(t, root, "skills/x.md", "- rule (t-aaaa; class: slug-one)\n")
+	cwd, _ := os.Getwd()
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(cwd)
+	if x := prSizeOf(t, promotedReport(root), "skills/x.md"); x.CapUsed != nil {
+		t.Errorf("a half-read table gave a cap: %+v", x)
+	}
+}
