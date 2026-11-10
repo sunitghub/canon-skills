@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-10-2026 12:00
+learnings-sweep last run: 11-10-2026 14:00
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-10 | [t-ca73](.tickets/t-ca73/learnings.md) | A reader of any path inside a cloned repo's `.tickets/` needs Lstat (regular only), a size cap and an O_NONBLOCK open: the loader read a symlink's target and a FIFO hung every tickets request, and no earlier test used anything but regular files; the sibling readers (a themed file, the logbook) already had the check, so grep for bare `os.ReadFile` on repo-controlled paths when adding a route. | UNPROMOTED |
 | 2026-11-10 | [t-0b89](.tickets/t-0b89/learnings.md) | A new shell test was green alone but missing from `scripts/test.sh` (the reviewer saw it) and broke two repo guards (no-browser, pipefail) that only the full stamp ran; and 103 first-sweep survivors showed loose assertions (a field list that only checks a subset, error bodies never parsed), so assert exact bodies, headers and every allowlisted field. | UNPROMOTED |
 | 2026-11-10 | [t-c543](.tickets/t-c543/learnings.md) | A page that caches what it fetched for "the same project" goes stale on anything the server reads from elsewhere (here Admin's model): a cache needs a visit-time reload, and a test that pinned "no extra GET" had to change with it. Prove each call site separately by reverting it alone. | UNPROMOTED |
 | 2026-11-10 | [t-3a58](.tickets/t-3a58/learnings.md) | Adding a tab, a route and CSS broke three neighbours that only the full stamps found (the old tab-arrow test, the /api route list, the colour check that reads `#fac-…` as hex), each costing a 1.5 h restamp: before stamping, grep the tests that pin the thing you extend (tab order, route list, CSS colours). A test written for a guard can pass because another check refuses first; revert the guard in a scratch copy, and give the test a case where only that guard stands between the input and a write. | UNPROMOTED |
