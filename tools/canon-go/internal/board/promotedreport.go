@@ -299,28 +299,27 @@ func prCapRows() []capRow {
 // addSizes fills the size table: the always-on files first, then every other file that holds a promoted line or could not be read. A file
 // that is absent says so, and one that cannot be read says why: never a zero.
 func (r *prReport) addSizes(root string) {
-	files := append([]string{}, prAlwaysOn...)
 	seen := map[string]bool{}
-	for _, f := range files {
+	for _, f := range prAlwaysOn {
 		seen[f] = true
 	}
 	var rest []string
-	for f := range r.tagged {
+	addRest := func(f string) {
 		if !seen[f] {
 			seen[f] = true
 			rest = append(rest, f)
 		}
 	}
+	for f := range r.tagged {
+		addRest(f)
+	}
 	for f := range r.noted {
-		if !seen[f] {
-			seen[f] = true
-			rest = append(rest, f)
-		}
+		addRest(f)
 	}
 	sort.Strings(rest)
 	caps := prCapRows()
 	r.Sizes = []prSize{}
-	for _, rel := range append(files, rest...) {
+	for _, rel := range append(append([]string{}, prAlwaysOn...), rest...) {
 		sz := prSize{File: rel, AlwaysOn: prHas(prAlwaysOn, rel)}
 		lines, why := gcoRead(filepath.Join(root, rel))
 		switch {
@@ -389,16 +388,17 @@ func (r *prReport) promotedBlock(root, rel string, lines []string) {
 // applySince fills each row's since_words: the words of its promoted lines last changed on or after day (YYYY-MM-DD).
 func (r *prReport) applySince(day string) {
 	for i := range r.Sizes {
-		if r.Sizes[i].Note != "" {
+		sz := &r.Sizes[i]
+		if sz.Note != "" {
 			continue
 		}
 		n := 0
-		for _, l := range r.tagged[r.Sizes[i].File] {
+		for _, l := range r.tagged[sz.File] {
 			if l.day != "" && l.day >= day {
 				n += l.words
 			}
 		}
-		r.Sizes[i].SinceWords = &n
+		sz.SinceWords = &n
 	}
 }
 
@@ -506,23 +506,23 @@ func prKeys(m map[string]int) []string {
 
 func promotedReportCLI(args []string, stdout, stderr io.Writer) int {
 	const usage = "usage: canon-go promoted-report [--json] [--since YYYY-MM-DD]"
-	asJSON, since := false, ""
+	asJSON, since, sinceGiven := false, "", false
 	for i := 0; i < len(args); i++ {
 		switch a := args[i]; {
 		case a == "--json":
 			asJSON = true
 		case a == "--since" && i+1 < len(args):
 			i++
-			since = args[i]
+			since, sinceGiven = args[i], true
 		case strings.HasPrefix(a, "--since="):
-			since = strings.TrimPrefix(a, "--since=")
+			since, sinceGiven = strings.TrimPrefix(a, "--since="), true
 		default:
 			fmt.Fprintln(stderr, usage)
 			return 2
 		}
 	}
-	if since != "" {
-		if _, err := time.Parse("2006-01-02", since); err != nil {
+	if sinceGiven {
+		if _, err := time.Parse("2006-01-02", since); err != nil { // an empty value is a bad day, never "no --since"
 			fmt.Fprintln(stderr, usage)
 			return 2
 		}
@@ -533,7 +533,7 @@ func promotedReportCLI(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	rep := promotedReport(root)
-	if since != "" {
+	if sinceGiven {
 		rep.applySince(since)
 	}
 	if rep.Unreadable[".tickets/ itself"] > 0 {

@@ -422,7 +422,7 @@ func TestPromotedReportSinceAndItsUsageErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.Chdir(cwd)
-	for _, bad := range [][]string{{"--since"}, {"--since", "yesterday"}, {"--since=2026-13-40"}, {"--since=2026-10-1"}} {
+	for _, bad := range [][]string{{"--since"}, {"--since", "yesterday"}, {"--since=2026-13-40"}, {"--since=2026-10-1"}, {"--since="}, {"--since", ""}} {
 		var out, errb bytes.Buffer
 		if rc := promotedReportCLI(bad, &out, &errb); rc != 2 || !strings.Contains(errb.String(), "usage: canon-go promoted-report [--json] [--since YYYY-MM-DD]") || out.Len() != 0 {
 			t.Errorf("%v: rc %d out %q err %q", bad, rc, out.String(), errb.String())
