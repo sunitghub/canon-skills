@@ -513,3 +513,43 @@ func TestPromotedReportSizeShowsTheCapFromCapsTSV(t *testing.T) {
 		t.Errorf("cap of a promoted file from caps.tsv: %+v", z)
 	}
 }
+
+// Prod path: the Size table's PROMOTED.md row (t-3620, reviewer): a block that mixes tagged and untagged entries counts them all and still shows the cap row.
+func TestPromotedReportMixedPromotedBlockKeepsTheCap(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is required")
+	}
+	root := t.TempDir()
+	prGit(t, root, "2026-10-01T12:00:00Z", "init", "-q")
+	prPut(t, root, "PROMOTED.md", "<!-- canon:promoted:BEGIN -->\n- tagged rule (t-aaaa; class: slug-one)\n- When a, do b. (t-1234)\n<!-- canon:promoted:END -->\n")
+	prGit(t, root, "2026-10-01T12:00:00Z", "add", "-A")
+	prGit(t, root, "2026-10-01T12:00:00Z", "commit", "-q", "-m", "one")
+	p := prSizeOf(t, promotedReport(root), "PROMOTED.md")
+	if p.PromotedLines != 2 || p.NoClassTags || p.CapUsed == nil || *p.CapUsed != 2 || p.CapLimit != 60 {
+		t.Errorf("mixed block: %+v", p)
+	}
+}
+
+// Prod path: the Size table is printed from repo-controlled file names (t-3620, reviewer): an escape code in a name never reaches the terminal.
+func TestPromotedReportSizeTableEscapesFileNames(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is required")
+	}
+	root := t.TempDir()
+	prGit(t, root, "2026-10-01T12:00:00Z", "init", "-q")
+	name := "skills/a\x1b[31mred.md"
+	if err := os.MkdirAll(filepath.Join(root, "skills"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, name), []byte("- rule (t-aaaa; class: slug-one)\n"), 0o644); err != nil {
+		t.Skip("this file system refuses an escape byte in a name")
+	}
+	var b bytes.Buffer
+	prText(promotedReport(root), &b)
+	if strings.Contains(b.String(), "\x1b") {
+		t.Errorf("an escape byte reached the text view: %q", b.String())
+	}
+	if !strings.Contains(b.String(), "on demand") || !strings.Contains(b.String(), "red.md") {
+		t.Errorf("the escaped name has no row: %q", b.String())
+	}
+}

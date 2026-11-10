@@ -332,9 +332,8 @@ func (r *prReport) addSizes(root string) {
 			sz.Lines = len(lines) - 1
 			sz.Words = int(capWords([]byte(body)))
 			sz.Tokens = sz.Words * 13 / 10
-			if rel == "PROMOTED.md" && len(r.tagged[rel]) == 0 {
-				r.promotedBlock(root, rel, lines)
-				sz.NoClassTags = len(r.tagged[rel]) > 0
+			if rel == "PROMOTED.md" {
+				sz.NoClassTags = r.promotedBlock(root, rel, lines)
 				if used, err := capBlockLines([]byte(body), "canon:promoted"); err == nil {
 					sz.CapUsed, sz.CapLimit, sz.CapUnit = &used, prPromotedCap, "block-lines"
 				}
@@ -362,16 +361,19 @@ func (r *prReport) addSizes(root string) {
 	}
 }
 
-// promotedBlock reads a consumer's PROMOTED.md: its entries (`- ` lines between the managed markers) are the promoted lines, though they carry no class tag.
-func (r *prReport) promotedBlock(root, rel string, lines []string) {
+// promotedBlock reads a PROMOTED.md: its entries (`- ` lines between the managed markers) are the promoted lines, tagged or not, so a block that mixes
+// the two counts them all. It reports whether none of them carries a class tag (a consumer's own entries do not), when recurrence is n/a.
+func (r *prReport) promotedBlock(root, rel string, lines []string) bool {
 	var days []string
-	in := false
+	var entries []prLine
+	tagged, in := false, false
+scan:
 	for i, ln := range lines {
 		switch {
 		case strings.Contains(ln, "<!-- canon:promoted:BEGIN -->"):
 			in = true
 		case strings.Contains(ln, "<!-- canon:promoted:END -->"):
-			return
+			break scan
 		case in && strings.HasPrefix(strings.TrimSpace(ln), "- "):
 			if days == nil {
 				days = prBlameDates(root, rel)
@@ -380,9 +382,15 @@ func (r *prReport) promotedBlock(root, rel string, lines []string) {
 			if i < len(days) {
 				day = days[i]
 			}
-			r.tagged[rel] = append(r.tagged[rel], prLine{words: int(capWords([]byte(ln))), day: day})
+			entries = append(entries, prLine{words: int(capWords([]byte(ln))), day: day})
+			tagged = tagged || prTagRe.MatchString(ln)
 		}
 	}
+	if len(entries) == 0 {
+		return false
+	}
+	r.tagged[rel] = entries
+	return !tagged
 }
 
 // applySince fills each row's since_words: the words of its promoted lines last changed on or after day (YYYY-MM-DD).
