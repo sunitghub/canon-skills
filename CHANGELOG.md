@@ -6,6 +6,14 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.49.0] - 2026-11-10
+
+Run `canon update`. The board and Cockpit programs changed, so the Cockpit restarts on the next `canon update`.
+
+- Added (read API, slice 1): the board serves a read-only, versioned API at `/api/v1` on its loopback port, with no token: `sessions`, `sessions/<id>`, `sessions/<id>/state`, `tickets`, `tickets/<id>` and `sprint/<ticket>` (the latest recorded event of each of sprint.started, plan.approved, gate.started, gate.finished, gate.rejected, close.confirmed and sprint.completed). Tickets show only id, title, status, type, priority, created and closed: never a ticket's body, plan or acceptance text. Only GET works, a non-loopback Host is refused, and no response carries a CORS header, so a web page cannot read it.
+- Added (`canon-go api schema [--json]`): prints the event kinds and fields and each route's response keys, from the same lists the board uses.
+- Not yet: the event stream (snapshot, subscribe, resume) and the Cockpit's move onto these routes come in the next slices.
+
 ## [0.48.1] - 2026-11-10
 
 Run `canon update`.
