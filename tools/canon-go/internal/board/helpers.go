@@ -73,6 +73,8 @@ func runHelper(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 		return gateInsightsCLI(args[1:], stdout, stderr), true
 	case "gate-corpus": // t-a05d: what the closed tickets' gate reports say, counted from their fixed shapes; read-only
 		return gateCorpusCLI(args[1:], stdout, stderr), true
+	case "api": // t-0b89: `api schema [--json]` prints the /api/v1 and event schemas; read-only
+		return apiCLI(args[1:], stdout, stderr), true
 	case "promoted-report": // t-1219: promoted lines and the later tickets that name their class; read-only
 		return promotedReportCLI(args[1:], stdout, stderr), true
 	case "skill-check":

@@ -105,6 +105,21 @@ func Kinds() []string {
 	return out
 }
 
+// FieldInfo is one data field of a kind and the longest value Emit writes for it.
+type FieldInfo struct {
+	Name string `json:"name"`
+	Max  int    `json:"max"`
+}
+
+// Fields is a kind's data fields from the kinds table, the one source `canon api schema` prints (t-0b89); nil for an unknown kind.
+func Fields(kind string) []FieldInfo {
+	var out []FieldInfo
+	for _, f := range kinds[kind] {
+		out = append(out, FieldInfo{f.name, f.max})
+	}
+	return out
+}
+
 // Home is canon's per-user folder: $CANON_HOME, else ~/.canon.
 func Home() string {
 	if h := os.Getenv("CANON_HOME"); h != "" {

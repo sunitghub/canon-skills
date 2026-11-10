@@ -236,6 +236,7 @@ Helpers (used by canon's shell tools; see helpers.go):
   gate-insights [--days N] [--json]
   gate-corpus [--json]
   promoted-report [--json]
+  api schema [--json]      the /api/v1 and event schemas (t-0b89)
   caps [--json] [--table <file>] <name|path> [path] | caps --list   a capped file's use (tools/caps.tsv)
   machine [--json]         this machine's OS, chip, cores and RAM (no hostname)
   recent --project <root> [--n N] [--handoff <file>] | recent --strip   a project's recent stage events
@@ -254,6 +255,10 @@ func handle(w http.ResponseWriter, r *http.Request) {
 	// preview's own sandbox CSP (also added) and this one are both enforced.
 	w.Header().Set("X-Frame-Options", "SAMEORIGIN")
 	w.Header().Add("Content-Security-Policy", "frame-ancestors 'self'")
+	if r.URL.Path == "/api/v1" || strings.HasPrefix(r.URL.Path, "/api/v1/") { // t-0b89: read only, whatever the method
+		handleAPIv1(w, r)
+		return
+	}
 	if r.Method == http.MethodGet {
 		handleGet(w, r)
 		return
