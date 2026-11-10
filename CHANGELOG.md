@@ -6,6 +6,15 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.48.0] - 2026-11-10
+
+Run `canon update`. The board and Cockpit programs changed, so the Cockpit restarts on the next `canon update`.
+
+- Added (Factory > Pipeline): the Cockpit's Factory page has a Pipeline tab. It lists the project's sprint pipeline in run order, lets you switch an optional step off, move the three wrapup gates (code-simplifier, code-reviewer, doc-audit) with their arrows, and Reset to canon's default. A change is saved in `canon-config/pipeline.yaml` at the project root (created on the first change; a dialog says so once). Locked steps show why they cannot be switched off, and each agent step shows its model from Admin with a link to change it. The board writes the file only after a scratch-project check, refuses a symlinked folder or file, and does not accept requests from other sites (403).
+- Added (pipeline file): `skills/sprint/pipeline.yaml` is the one list of the sprint's steps and gates, read by `tools/pipeline.sh` (a project override `canon-config/pipeline.yaml` holds only what differs: `extends: canon-default`, `off: [..]`, `wrapup-order: [..]`). `sprint approve` pins the project's pipeline in `plan.md`, and `sprint complete` refuses a close where a removed step lacks its skipped row, its `Pipeline: removed` summary line or its event, or where the pipeline drifted from the pin. A ticket approved before the pin only gets a notice.
+- Added (Windows): `tools/pipeline.cmd` starts the reader through Git Bash. The Windows run of the Pipeline tab is not yet checked.
+- Changed: the mutation-test step says it needs python3 and is skipped with a reason when it is missing.
+
 ## [0.47.28] - 2026-11-09
 
 Run `canon update`.
