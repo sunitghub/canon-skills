@@ -133,7 +133,7 @@ reader_sources() {
           esac
           want=""
         else
-          case "$t" in --map) want=map ;; --timeout) want=timeout ;; --jobs) want=jobs ;; --report) want=report ;; --base) want=base ;; *) bad=1 ;; esac
+          case "$t" in --map) want="map" ;; --timeout) want="timeout" ;; --jobs) want="jobs" ;; --report) want="report" ;; --base) want="base" ;; *) bad=1 ;; esac
         fi
       done
       [[ $maps -gt 0 && $bad -eq 0 && -z "$want" ]] || return 0
