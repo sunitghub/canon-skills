@@ -15,7 +15,8 @@ names for a case that applies.
 
 1. **Start:** `sprint start <ticket-id>` with the real id (a title only when no ticket exists). Then read the
    ticket's `ticket.md`, `acceptance.md`, `plan.md` and `research.md`. A template-only description is not
-   "unspecified" when acceptance.md or plan.md hold the contract. Resuming an in_progress ticket:
+   "unspecified" when acceptance.md or plan.md hold the contract. Read an existing plan.md and acceptance.md before
+   writing either. If the start is refused (non-zero exit), write no planning file for that ticket and stop. Resuming an in_progress ticket:
    `sprint continue <id>`, then carry on from the first unchecked item.
 2. **Skill check:** `tools/skills.sh list`; use a skill that covers the work.
 3. **Tier:** normal or high-risk (`skills/sprint/SKILL.md` "Workflow tiers"). Never trivial or bugfix at

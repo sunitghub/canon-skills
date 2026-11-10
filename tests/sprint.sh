@@ -45,6 +45,11 @@ seed_when_line="$(grep -F 'Optional style for behavior: When <trigger>, <system>
 
 second_start_output="$(run_fail "$SPRINT" start "Another sprint")"
 assert_contains "$second_start_output" "Active sprint already exists:"
+# t-e151: a refused start exits non-zero and a plan with content is untouched
+printf 'real plan\n' >> ".tickets/$id/plan.md"
+plan_before="$(cat ".tickets/$id/plan.md")"
+run_fail "$SPRINT" start "Another sprint" >/dev/null
+assert_eq "$plan_before" "$(cat ".tickets/$id/plan.md")"
 
 # t-577e: sprint continue resumes an in_progress ticket read-only; start refuses it.
 before_continue="$(cat ".tickets/$id/ticket.md" ".tickets/$id/plan.md" ".tickets/ACTIVE")"

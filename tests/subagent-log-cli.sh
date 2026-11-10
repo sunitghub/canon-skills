@@ -140,4 +140,13 @@ assert_eq 0 "$rc"
 assert_count 1 'Usage:' "$help_file"
 assert_count 1 '[--model <id>]' "$help_file"   # t-3a14: the usage text names the flag
 
+# ── t-e151: from a linked worktree the row lands in the main checkout, where `sprint complete` reads it ──
+wt="$project-wt"
+git -C "$project" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+git -C "$project" worktree add -q -b e151 "$wt"
+(cd "$wt" && "$SUBAGENT_LOG" --agent-id wt0001 --agent-type evaluator)
+assert_count 1 '"agent_id":"wt0001"' "$log"
+[[ ! -e "$wt/.claude/subagent-runs.jsonl" ]] || fail "worktree got its own subagent-runs.jsonl"
+rm -rf "$wt"
+
 printf 'subagent-log-cli: ok\n'
