@@ -4,8 +4,8 @@ description: On-demand domain rules moved out of the always-loaded efficiency st
 category: agent-ops
 tags: [coding, testing, security, shell, windows]
 hidden: true
-version: 1.0.6
-updated: 2026-11-07
+version: 1.0.7
+updated: 2026-11-10
 ---
 
 # Agent Standards: domain notes
@@ -23,6 +23,8 @@ The always-on rules are "same fact in several files → one owner" and "a third 
 
 - Inserting a block mid-file: check you aren't landing between an existing comment and the code it describes.
 - Trimming a capped doc to fit its word cap keeps each clause's check, command and failure report: cut elsewhere or raise the cap, never hollow out an instruction (t-e75d; class: cap-trim-drops-instruction; id: P-047).
+- A mass edit of lines whose `git blame` date a tool reads (promoted-report) lists its commits in `.git-blame-ignore-revs` in the same change; afterwards check the derived dates and counts on the real data (t-f74e; class: mass-edit-resets-blame; id: P-063).
+- Before keying a default on a sentinel value (`=== null`), grep every writer of that state: a writer that stores another placeholder (`''`) means the default never runs (t-8be9; class: sentinel-not-written; id: P-070).
 
 ## Shell strict mode and traps
 
@@ -37,10 +39,11 @@ The always-on rules are "same fact in several files → one owner" and "a third 
 - `IFS=$'\t' read a b c` collapses empty fields (tab is IFS whitespace) and shifts the rest: map empty to a placeholder upstream (`jq` `// "-"`) and test for the one expected value (`== false`), never `!= true` (t-a463; class: ifs-whitespace-collapses-empty; id: P-021).
 - A line added to a script's ending (a message, a next step) is checked on every exit: each `return`/`exit`, the bootstrap path included (t-5738; class: every-exit-path; id: P-015).
 - `"$d"/* "$d"/.[!.]*` misses names starting with `..`: a "folder holds only X" check built on it passes a folder with user data, then deletes it. Enumerate with `find "$d" -mindepth 1 -maxdepth 1` and plant a `..x` entry in the test (t-38ab; class: glob-misses-dotdot-names; id: P-049).
-- `mktemp` + `mv` resets a file's mode to 0600: restore the original mode, or write in place (t-acfa).
+- `mktemp` + `mv` resets a file's mode to 0600: restore the original mode, or write in place (t-acfa). A command that rewrites a gitignored file with no other copy (DECISIONS.md) also keeps a `cp -p` copy until its self-check passes, refuses a non-regular target up front, checks every `mv`, and lets a line-count self-check tolerate a missing final newline (t-79bf; class: unbacked-file-rewrite; id: P-065).
 - A sourced library's guarantee must not depend on the caller's `set -e`/`pipefail`: check each status itself and test it from a plain `bash` that sources it (t-3abc; class: lib-relies-on-caller-shell-opts; id: P-050).
 - A helper that takes parameters as an env prefix (`GD_GROUP=x _gd …`) also reads them from the caller's environment: unset them at entry and test with them exported (t-d287).
 - Never match `git`/`gh` human text (`Everything up-to-date`, `not found`) under the user's locale: run with `LC_ALL=C`, or use porcelain output or exit codes (t-10ac).
+- Untrusted text goes to awk through `ENVIRON`, never `-v`: `-v` processes backslash escapes (`\n` splits a table row, `\|` vanishes) (t-8a0d; class: awk-v-escapes; id: P-069).
 
 ## Tests, guards and hermetic runs
 
@@ -94,6 +97,8 @@ The always-on rules are "same fact in several files → one owner" and "a third 
 - A GitHub list read (`per_page=100`) paginates, or treats a full page as "maybe more" and says so; a truncated list never answers "none" (t-4b34).
 - A guard keeps its state where the guarded caller cannot move it: a registry under the caller's `TMPDIR` is invisible to a gate that pins its own. A file a gate script sources joins `scripts/integrity-list.sh` `GATE_FILES` (t-b7df).
 - A command that gains a write drops every "read-only" label it carries: help text, header comment, docs, and any allow-list that runs it unconfirmed (`term.go` `readOnlyTkt`) (t-c990, t-7c89; class: stale-readonly-label; id: P-055).
+- A reader of any path under a repo-controlled tree (`.tickets/`) Lstats it, reads regular files only, caps the size and opens with O_NONBLOCK, so a symlink is never followed and a FIFO never hangs the route. Adding a route: grep for bare `os.ReadFile` on repo paths; test with a symlink, a FIFO and a cap+1 file (t-ca73; class: repo-path-read-unguarded; id: P-060).
+- When a gate prompt's required label list changes, the shape check keeps accepting reports already written to the old list (choose the list by the labels a report starts with); run the check over every existing report before and after: 0 differences (t-0ca2; class: format-change-breaks-old-artifacts; id: P-064).
 
 ## Destructive commands and user files
 
@@ -129,6 +134,8 @@ canon runs on four: every session's AGENTS.md carries a one-line pointer here (t
 - **Claude cloud container:** Linux, running as root, so `chmod` cannot make a folder unwritable (point a test at a path
   under a regular file instead); set it up with `tkt cloud-env` (domains, setup script). It is no stand-in for a performance symptom: profile on the OS that shows it, with its real gitignored data (the cloud and a clone both measured 0 tickets) (`t-1699`, `t-3b90`).
 - A size cap measures content bytes (`wc -c`, `find -type f` sizes), never `du`: its block counts differ by filesystem, so a cap that passes on APFS fails on the cloud's Linux (t-0d96).
+- **macOS bash 3.2:** it cannot parse a quote inside a heredoc inside `$( )`; read the text with `read -r -d '' v <<'EOF'` instead (t-00e0; class: bash32-heredoc-in-subst; id: P-062).
+- **macOS awk:** in a UTF-8 locale it exits 2 on a non-UTF-8 byte or an unreadable file. Run awk over agent-written files with `LC_ALL=C … 2>/dev/null` and a one-line `|| fallback`, most of all in a print-only helper on a close or start path (t-b360; class: macos-awk-multibyte-exit; id: P-067).
 
 ## Go
 
@@ -138,6 +145,7 @@ canon runs on four: every session's AGENTS.md carries a one-line pointer here (t
 - A writer never produces what its own reader refuses (re-check the cap after `MarshalIndent`, before the rename); an atomic-write test holds a hard link across the write; a parser of a file others write refuses trailing data (`json.Decoder` stops after one value); a document is read whole under a cap, not tail-kept like a log (t-dba0, t-862e, t-3137; class: writer-reader-contract; id: P-037).
 - `filepath.WalkDir` Lstats its root: a symlinked root measures as one non-regular entry (0 KB), so resolve the root first (`os.Stat`/`EvalSymlinks`). A `--json` mode answers JSON on every branch (not capped, not present, `--list`), or a caller that parses it gets text on exactly the edge case (t-19bb).
 - A Go test that swaps package state (a cache) takes the same mutex and resets in-flight flags; run it under `-race -count=3`, since `-count=1` hides the race (t-761b).
+- `strconv.ParseFloat` accepts `Inf`, `NaN` and `1e308` within a short field: a number read from an untrusted log is checked with `math.IsInf`/`IsNaN` and bounded to a finite range before it is summed (t-9113; class: untrusted-float-unbounded; id: P-068).
 
 ## Commit messages for prompt changes
 

@@ -116,6 +116,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    non-zero log). A missing tool prints `<tool> skipped | no <tool>`, never a pass. The line also lists unreferenced symbols
    in the changed files and every changed file the dead-code scan cannot read ("not scanned"); both are advisory and never
    refuse. Re-stamp after any later tracked change.
+   `shellcheck` scans each touched file whole, so old warnings in an old test file block the close: when you touch one, run the pre-gate check early and fix or scope (one `disable` per line, with the reason) its existing warnings in a separate commit (t-7e76, t-9113, t-b99b; class: touched-file-old-lint; id: P-061).
 
    **Mutation sweep (pre-evaluator, non-binding, normal+ tier, t-1fac, t-087c).** When the sprint changed shell, JS, Python
    or Go logic files, run the `mutation-test` skill after `security-review` and its fixes (step 3's opening), before the evaluator, so it grades a suite that
@@ -495,6 +496,7 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    `shape refused`, re-dispatch a fresh reviewer then, naming the problems it printed.
    The evaluator (step 3) owns the binding gate. Record the reviewer outcome in the Wrapup
    Gates table with the Reason prefixed `verdict:` (e.g. `verdict: YES` or `verdict: NO — <one-line summary>`).
+   A `YES` does not clear its `Consider` items: reproduce each one, then fix it, ticket it or dismiss it with a reason (t-79bf; class: verdict-read-not-considers; id: P-066).
 
    **Log the subagent run.** Immediately after the reviewer subagent completes (and after `gate-snapshot.sh post`, step 7), run
    `subagent-log.sh --agent-id <id> --agent-type reviewer <cost flags, (5)>` (bare — it's on PATH, same as

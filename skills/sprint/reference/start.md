@@ -211,6 +211,7 @@ Start checklist — rules that need no reference read (each owned by the step na
        produce a reversible dependency graph before touching code; log the graph in `plan.md`.
        (Refactor is recognized as a job shape here, not a ticket `type`.)
      - any other type → no extra planning step.
+   - A sprint that edits a gate file (`tools/sprint`, a gate prompt) cannot close until a release carries it (`sprint complete` refuses while a gate file differs from the release): plan it as commit, release, then close (t-e151; class: gate-file-edit-blocks-close; id: P-059).
 
 5. **Context.** Read in order:
    - For `type: bug` tickets: grep the repo's bug-pattern log, if present, for similar symptoms before diagnosing. Known patterns reduce time-to-root-cause and avoid repeating past fixes.
