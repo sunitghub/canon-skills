@@ -109,6 +109,7 @@ git checkout -q -- src/a.txt
 ev stamp "$ID" moved -- git commit -q --allow-empty -m moved; assert_eq 125 "$code"
 [[ ! -e "$ED/moved.log" ]] || fail "evidence: wrote a stamp for a command that moved HEAD"
 git reset -q --hard "$C1"
+# shellcheck disable=SC2010  # a pattern on a listing, not a parse of file names: it asks whether any .stamp.* temp file is left
 ls -A "$ED" 2>/dev/null | grep '^\.stamp\.' >/dev/null && fail "evidence: left a temp file behind" || true
 # symlinks: never write through one
 mkdir -p "$WORK/outside"; echo keep > "$WORK/outside/x.log"; rm -rf "$ED"
