@@ -6,6 +6,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+- Fixed (sprint): the start checklist said a sprint that edits a gate file cannot close until a release carries it. That holds only while the edit is uncommitted on top of the release commit; once committed the integrity check is a notice (`not-from-release`) and the close goes on. The rule now says to commit the edit first.
 - Changed (sprint): `sprint check-evidence` no longer calls a board-spec log or a Go mutation-sweep log stale because a shell suite changed that the command cannot run. A change to `tests/<x>.sh` that none of the log's sources names, directly or through another suite, leaves the log fresh and the line names the files; every other change, the full-suite and pre-gate logs and any other command stay stale as before, and the evaluator is still re-dispatched on any change to the graded head. Saves the reruns measured at about 18 minutes of stamps (and up to 35 minutes of board spec) per rerun.
 - Changed (gates): a gate agent now returns only when nothing it started is still running, so its first completion notice is the final one, and the close logs a gate's usage from the final notice. The owner is `shared-gate-protocol.md`; both agent definitions and their Codex copies carry the same sentence, pinned by `tests/doc-mirror-parity.sh`.
 
