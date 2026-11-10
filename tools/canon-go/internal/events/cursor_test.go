@@ -251,3 +251,25 @@ func TestReadSinceRefusesAnOffsetBeyondAReplacedFile(t *testing.T) {
 		t.Errorf("a shorter file: %v", err)
 	}
 }
+
+// Prod path: the id a client is given is the exact byte after its event (reviewer, t-8d45): one byte short would resume on the previous newline,
+// one past would skip a character of the next line. Hand count: three equal lines, so the ids sit at 1, 2 and 3 line lengths, across a day change.
+func TestPositionedCursorsCarryTheExactOffset(t *testing.T) {
+	n := int64(len(evLine(1, "/p")))
+	home, _ := logWith(t, map[string]string{"2026-11-09.jsonl": evLine(1, "/p") + evLine(2, "/p") + evLine(3, "/p"), "2026-11-10.jsonl": evLine(4, "/p")})
+	got, end, err := ReadSince(home, Cursor{"2026-11-09", 0}, 10)
+	if err != nil || len(got) != 4 {
+		t.Fatal(ids(got), err)
+	}
+	for i, want := range []Cursor{{"2026-11-09", n}, {"2026-11-09", 2 * n}, {"2026-11-09", 3 * n}, {"2026-11-10", n}} {
+		if got[i].Next != want {
+			t.Errorf("event %d: cursor %v, want %v", i+1, got[i].Next, want)
+		}
+	}
+	if end != (Cursor{"2026-11-10", n}) {
+		t.Errorf("the cursor to ask next: %v", end)
+	}
+	if got, _, _ := Newest(home, 4, func(Event) bool { return true }); got[0].Next != (Cursor{"2026-11-09", n}) || got[3].Next != (Cursor{"2026-11-10", n}) {
+		t.Errorf("Newest carries the same cursors: %v %v", got[0].Next, got[3].Next)
+	}
+}

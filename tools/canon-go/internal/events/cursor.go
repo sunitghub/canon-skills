@@ -12,7 +12,7 @@ import (
 )
 
 // A Cursor is a place in the event stream (t-8d45): a day and a byte offset into that day's uncompressed stream. It is opaque to a client,
-// which only hands back what it was given, and it is client input here: ParseCursor checks its syntax and Resolve checks it against the
+// which only hands back what it was given, and it is client input here: ParseCursor checks its syntax and CheckCursor checks it against the
 // day files the reader may read, so a request string is never joined into a path.
 type Cursor struct {
 	Day    string

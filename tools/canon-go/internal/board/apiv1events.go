@@ -1,6 +1,7 @@
 package board
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -137,16 +138,23 @@ func v1EventsStream(w http.ResponseWriter, r *http.Request) {
 		}
 		return rc.Flush() == nil
 	}
-	if !send("retry: 3000\n\n") {
+	opening := "retry: 3000\n"
+	if cur != (events.Cursor{}) { // a client that drops before its first event reconnects from this id, not from a later end of the log
+		opening += "id: " + cur.String() + "\n"
+	}
+	if !send(opening + "\n") {
 		return
 	}
 	inScope := v1Scope(resolvedOrAbs(root))
 	tick := time.NewTicker(v1StreamPoll)
 	defer tick.Stop()
-	end := time.NewTimer(v1StreamLifetime)
-	defer end.Stop()
+	ctx, cancel := context.WithTimeout(r.Context(), v1StreamLifetime) // the client going away and the lifetime ending are one condition
+	defer cancel()
 	lastWrite := time.Now()
 	for {
+		if ctx.Err() != nil { // also checked here: a long backlog of events out of scope must not outlive either
+			return
+		}
 		got, next, err := events.ReadSince(events.Home(), cur, v1StreamBatch)
 		if err != nil { // the day was removed or the log became unreadable: end the stream, the client resumes or snapshots
 			return
@@ -172,9 +180,7 @@ func v1EventsStream(w http.ResponseWriter, r *http.Request) {
 			lastWrite = time.Now()
 		}
 		select {
-		case <-r.Context().Done():
-			return
-		case <-end.C:
+		case <-ctx.Done():
 			return
 		case <-tick.C:
 		}

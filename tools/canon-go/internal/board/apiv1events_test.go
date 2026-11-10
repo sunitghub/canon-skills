@@ -410,3 +410,36 @@ func TestAPIv1EventsStreamWhenTheNewestDayIsArchived(t *testing.T) {
 		t.Errorf("snapshot cursor: %v", got)
 	}
 }
+
+// openingFrame reads a stream's first frame (up to the blank line), as raw lines.
+func openingFrame(t *testing.T, resp *http.Response) []string {
+	t.Helper()
+	sc := bufio.NewScanner(resp.Body)
+	var out []string
+	for sc.Scan() {
+		if sc.Text() == "" {
+			return out
+		}
+		out = append(out, sc.Text())
+	}
+	t.Fatalf("no opening frame: %v", out)
+	return nil
+}
+
+// Prod path: a stream names its starting place in the first frame (reviewer, t-8d45): a client that drops before its first event reconnects from that
+// id and loses nothing appended meanwhile. The id is the snapshot's cursor, or the one the client sent; with no log yet there is none to send.
+func TestAPIv1EventsStreamOpeningFrameCarriesTheStartCursor(t *testing.T) {
+	f := newEvFix(t)
+	if got := openingFrame(t, f.get("/api/v1/events/stream", nil)); strings.Join(got, "|") != "retry: 3000" {
+		t.Errorf("no log yet: %v", got)
+	}
+	f.append("2026-11-10", f.line(1, f.proj)+f.line(2, f.proj))
+	snap := v1Body(t, v1Get(t, "GET", "/api/v1/events", ""))["cursor"].(string)
+	if got := openingFrame(t, f.get("/api/v1/events/stream", nil)); strings.Join(got, "|") != "retry: 3000|id: "+snap {
+		t.Errorf("no cursor: %v, want the snapshot's %s", got, snap)
+	}
+	given := "2026-11-10:" + fmt.Sprint(len(f.line(1, f.proj)))
+	if got := openingFrame(t, f.get("/api/v1/events/stream?cursor="+given, nil)); strings.Join(got, "|") != "retry: 3000|id: "+given {
+		t.Errorf("with a cursor: %v, want %s", got, given)
+	}
+}
