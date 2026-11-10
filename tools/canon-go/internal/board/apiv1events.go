@@ -32,7 +32,7 @@ var (
 	v1StreamSlots     = make(v1Slots, v1StreamMax)
 )
 
-var v1LimitRe = regexp.MustCompile(`^[0-9]{1,4}$`)
+var v1LimitRe = regexp.MustCompile(`^[0-9]{1,9}$`) // digits only; the value, not the string length, is what is ranged below
 
 // v1Streams publishes each stream route's frame, from the same values the handler uses (`canon-go api schema`).
 var v1Streams = map[string]map[string]any{

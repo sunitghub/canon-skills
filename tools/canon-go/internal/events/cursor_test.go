@@ -186,3 +186,68 @@ func TestNewestKeepsTheLastMatchingAndReturnsTheEnd(t *testing.T) {
 		t.Errorf("after the snapshot: %s %v", ids(more), err)
 	}
 }
+
+// Prod path: a stream that starts when the newest day is only archived (break-it, t-8d45): End must hand out a cursor the stream accepts, the start of
+// the next day, and the first file that appears is read from its start even when days were skipped.
+func TestEndOnAnArchivedNewestDayIsTheStartOfTheNextDay(t *testing.T) {
+	home, dir := logWith(t, nil)
+	writeGz(t, filepath.Join(dir, "2026-11-01.jsonl.gz"), evLine(1, "/p"))
+	end, err := End(home)
+	if err != nil || end != (Cursor{"2026-11-02", 0}) {
+		t.Fatalf("End = %v %v", end, err)
+	}
+	if err := CheckCursor(home, end); err != nil {
+		t.Errorf("the stream refuses the cursor End handed out: %v", err)
+	}
+	if _, snapEnd, _ := Newest(home, 10, func(Event) bool { return true }); snapEnd != end {
+		t.Errorf("the snapshot's cursor %v differs from End %v", snapEnd, end)
+	}
+	if evs, next, err := ReadSince(home, end, 10); err != nil || len(evs) != 0 || next != end {
+		t.Fatalf("nothing yet: %v %v %v", evs, next, err)
+	}
+	os.WriteFile(filepath.Join(dir, "2026-11-04.jsonl"), []byte(evLine(2, "/p")), 0o600) // two days were skipped
+	if evs, _, err := ReadSince(home, end, 10); err != nil || ids(evs) != "2" {
+		t.Errorf("the first file after the end: %s %v", ids(evs), err)
+	}
+}
+
+// Prod path: the one cursor beyond the newest day that a client may send is End's (t-8d45): the next day at offset 0, nothing else.
+func TestCheckCursorAcceptsOnlyTheDayAfterTheNewestAtZero(t *testing.T) {
+	home, _ := logWith(t, map[string]string{"2026-11-10.jsonl": evLine(1, "/p")})
+	if err := CheckCursor(home, Cursor{"2026-11-11", 0}); err != nil {
+		t.Errorf("the next day at 0: %v", err)
+	}
+	for _, c := range []Cursor{{"2026-11-11", 1}, {"2026-11-12", 0}, {"2999-01-01", 0}, {"2026-11-09", 0}} {
+		if err := CheckCursor(home, c); !errors.Is(err, ErrBadCursor) {
+			t.Errorf("%v: %v", c, err)
+		}
+	}
+}
+
+// Prod path: a stream that is reading a day when it is archived keeps going (break-it, t-8d45): the offset is read through the gzipped copy.
+func TestReadSinceContinuesInsideADayThatWasArchived(t *testing.T) {
+	home, dir := logWith(t, map[string]string{"2026-11-10.jsonl": evLine(1, "/p") + evLine(2, "/p")})
+	first, _, err := ReadSince(home, Cursor{"2026-11-10", 0}, 1)
+	if err != nil || ids(first) != "1" {
+		t.Fatal(ids(first), err)
+	}
+	os.Remove(filepath.Join(dir, "2026-11-10.jsonl"))
+	writeGz(t, filepath.Join(dir, "2026-11-10.jsonl.gz"), evLine(1, "/p")+evLine(2, "/p"))
+	rest, _, err := ReadSince(home, first[0].Next, 10)
+	if err != nil || ids(rest) != "2" {
+		t.Errorf("after the day was archived: %s %v", ids(rest), err)
+	}
+	if err := CheckCursor(home, first[0].Next); !errors.Is(err, ErrBadCursor) {
+		t.Errorf("a client's cursor into an archived day is still refused: %v", err)
+	}
+}
+
+// Prod path: a plain day file replaced by a shorter one must not leave a stream waiting for bytes that will never come (t-8d45).
+func TestReadSinceRefusesAnOffsetBeyondAReplacedFile(t *testing.T) {
+	home, dir := logWith(t, map[string]string{"2026-11-10.jsonl": evLine(1, "/p") + evLine(2, "/p")})
+	first, _, _ := ReadSince(home, Cursor{"2026-11-10", 0}, 2)
+	os.WriteFile(filepath.Join(dir, "2026-11-10.jsonl"), []byte(evLine(9, "/p")), 0o600)
+	if _, _, err := ReadSince(home, first[1].Next, 10); !errors.Is(err, ErrBadCursor) {
+		t.Errorf("a shorter file: %v", err)
+	}
+}

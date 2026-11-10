@@ -178,7 +178,12 @@ func TestAPIv1EventsSnapshot(t *testing.T) {
 	if len(v1Body(t, v1Get(t, "GET", "/api/v1/events?limit=500", ""))["events"].([]any)) != 5 {
 		t.Error("limit 500 is allowed")
 	}
-	for _, bad := range []string{"0", "501", "abc", "-1", "+5", "1e2", "5%20", "99999", "1.5", "%00"} {
+	for _, ok := range []string{"5", "05", "00005", "0500", "000000500"} { // the value is what counts, not the digits typed
+		if w := v1Get(t, "GET", "/api/v1/events?limit="+ok, ""); w.Code != 200 {
+			t.Errorf("limit=%q: %d %s", ok, w.Code, w.Body)
+		}
+	}
+	for _, bad := range []string{"0", "501", "abc", "-1", "+5", "1e2", "5%20", "99999", "1.5", "%00", "0501", "000000000500", "9999999999"} {
 		if w := v1Get(t, "GET", "/api/v1/events?limit="+bad, ""); w.Code != 400 || v1Body(t, w)["error"] != "bad limit" {
 			t.Errorf("limit=%q: %d %s", bad, w.Code, w.Body)
 		}
@@ -382,5 +387,26 @@ func TestAPIv1EventsStreamIsReadOnlyHostCheckedAndNoCORS(t *testing.T) {
 	}
 	if w := v1Get(t, "GET", "/api/v1/events/stream", "evil.example"); w.Code != 403 {
 		t.Errorf("a foreign Host: %d, want 403", w.Code)
+	}
+}
+
+// Prod path: a stream that starts when the newest day is only archived (break-it, t-8d45) stays open and delivers the first event of the file that
+// appears; the snapshot's cursor for such a log is one the stream accepts.
+func TestAPIv1EventsStreamWhenTheNewestDayIsArchived(t *testing.T) {
+	f := newEvFix(t)
+	os.MkdirAll(filepath.Join(f.home, "events"), 0o700)
+	writeGzDay(t, filepath.Join(f.home, "events", "2026-11-01.jsonl.gz"), f.line(1, f.proj))
+	snap := v1Body(t, v1Get(t, "GET", "/api/v1/events", ""))
+	if snap["cursor"] != "2026-11-02:0" {
+		t.Fatalf("snapshot cursor: %v", snap["cursor"])
+	}
+	bare := newSSE(f.get("/api/v1/events/stream", nil))
+	withCursor := newSSE(f.get("/api/v1/events/stream?cursor="+snap["cursor"].(string), nil))
+	f.append("2026-11-04", f.line(2, f.proj))
+	if got := bare.next(t, 1); frameIDs(got) != "2" {
+		t.Errorf("no cursor: %v", got)
+	}
+	if got := withCursor.next(t, 1); frameIDs(got) != "2" {
+		t.Errorf("snapshot cursor: %v", got)
 	}
 }
