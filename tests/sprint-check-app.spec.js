@@ -5868,7 +5868,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] c'] });
         await stubCockpit(page);
         await page.route('**/api/worktrees**', route => route.fulfill({ status: 200, contentType: 'application/json',
-          body: v1SessionsBody([{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true },
+          body: JSON.stringify([{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true },
             { path: wtPath, branch: XSS_ATTR, is_main: false, tickets_visible: true, ticket_present: true }]) }));
         await page.route(`**/api/worktree-lock/${id}`, route => route.fulfill({ status: 200, contentType: 'application/json',
           body: JSON.stringify({ locked: true, cwd: wtPath, main_dirty: false }) }));
@@ -6947,7 +6947,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       window.parent.postMessage({source:'canon-cockpit', type:'status', status:'running'}, '*');
     </script></body></html>`;
     // The embedded board asks /api/cockpit?project=… — stub that form too, so no real daemon is involved.
-    const stubEmbeddedCockpit = page => page.route(/\/api\/cockpit(\?|$)/, r => r.fulfill({ status: 200, contentType: 'application/json', body: v1SessionsBody({ running: true, addr: FAKE_DAEMON_ADDR, launched: true }) }));
+    const stubEmbeddedCockpit = page => page.route(/\/api\/cockpit(\?|$)/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR, launched: true }) }));
     const scratchRow = (id, root, title) => ({ session: 'sx', ticket: id, project_root: root, cwd: root, agent: 'claude', status: 'running', state: 'working', state_secs: 4, idle_secs: 4, idle_limit_secs: 1800, signal: 'hook', ...(title ? { title } : {}) });
 
     // t-6a05: a stopped session's banner sits under its own project's tab; Admin lists them all.

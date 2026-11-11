@@ -973,4 +973,12 @@ if grep -rn '/api/cockpit-sessions' "$STATIC/static" "$STATIC/app.html" 2>/dev/n
 direct="$(grep -rlE "fetch\([^)]*/api/v1/sessions" "$STATIC/static" "$STATIC/app.html" | sed "s|$STATIC/||" | sort || true)"
 [[ -z "$direct" ]] || fail "sprint-check-api: only static/sessions-api.js may fetch the sessions route (t-ad6f); found: $(printf '%s' "$direct" | tr '\n' ' ')"
 
+# t-ad6f: every page module must parse (a redeclared name in one module stopped the End menu loading and took 60 board specs down with it).
+# The browser run is the only other place this shows, 25 to 35 minutes later. Prod path: the board and the Cockpit load every file in static/.
+if command -v node >/dev/null 2>&1; then
+  for f in "$STATIC"/static/*.js; do
+    node --input-type=module --check < "$f" >/dev/null 2>&1 || fail "sprint-check-api: ${f#$ROOT/} does not parse as a module"
+  done
+fi
+
 echo "sprint-check-api: ok ($route_count routes pinned; /api/tickets models_used + ci + gate + type_outcome + doc names; ticket-image/-feature serve the fixture and refuse traversal/wrong type/missing; /visual refusals, >8MB cap, collision suffix; headless-run idle/running/done + gate:eval dispatch; create writes gate/eval_override/skills/demo/ISO created; demo toggle; ci-workflow template + refuse-on-exists; worktrees ticket_present; cockpit-docs worktree-only; cockpit stale + build stamp; version; registry + scoped reads/writes; register-skill allowlist + ASSUME_YES; model tiers in the data dir; /static/ refusals + 300 hostile names)"
