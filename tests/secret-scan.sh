@@ -189,10 +189,11 @@ mkdir -p "$W/shim"; printf '#!/bin/sh\nexit 2\n' > "$W/shim/grep"; chmod +x "$W/
 r="$(newrepo)"; put "$r" a.cfg "k = $AWS"; rc=0; out="$(cd "$r" && PATH="$W/shim:$PATH" bash "$SCAN" --staged 2>&1)" || rc=$?
 assert_eq 2 "$rc"; assert_contains "$out" "secret-scan: grep failed (exit 2) on rule"
 # usage, and not a repository
-rc=0; out="$(bash "$SCAN" 2>&1)" || rc=$?; assert_eq 2 "$rc"
-rc=0; out="$(bash "$SCAN" --bogus 2>&1)" || rc=$?; assert_eq 2 "$rc"
-rc=0; out="$(bash "$SCAN" --staged extra 2>&1)" || rc=$?; assert_eq 2 "$rc"
-rc=0; out="$(bash "$SCAN" --range 2>&1)" || rc=$?; assert_eq 2 "$rc"
+ur="$(newrepo)"   # inside a repository: outside one every call exits 2 for "not a repository", which would hide a missing usage check
+rc=0; out="$(cd "$ur" && bash "$SCAN" 2>&1)" || rc=$?; assert_eq 2 "$rc"
+rc=0; out="$(cd "$ur" && bash "$SCAN" --bogus 2>&1)" || rc=$?; assert_eq 2 "$rc"; assert_contains "$out" "usage: secret-scan.sh"
+rc=0; out="$(cd "$ur" && bash "$SCAN" --staged extra 2>&1)" || rc=$?; assert_eq 2 "$rc"; assert_contains "$out" "usage: secret-scan.sh"
+rc=0; out="$(cd "$ur" && bash "$SCAN" --range 2>&1)" || rc=$?; assert_eq 2 "$rc"; assert_contains "$out" "usage: secret-scan.sh"
 rc=0; out="$(cd "$W" && bash "$SCAN" --staged 2>&1)" || rc=$?; assert_eq 2 "$rc"; assert_contains "$out" "not inside a git repository"
 
 # ── --range: every commit in it, including a secret added and removed again inside the range ──
