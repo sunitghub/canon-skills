@@ -6,6 +6,10 @@ const { execFileSync, spawn } = require('child_process');
 const net = require('net');
 const { newTicketId, claimTicketId, adoptBoardTicket, removeTestTicket } = require('./board-spec-ids');
 
+// t-ad6f: the UI reads the sessions from /api/v1/sessions, an envelope around the row list the stubs below build; no daemon header, as the stubs always sent none.
+const v1Sessions = rows => ({ schema: 1, sessions: rows });
+const v1SessionsBody = rows => JSON.stringify(v1Sessions(rows));
+
 const BASE = process.env.SPRINT_CHECK_BASE || 'http://localhost:8423';
 // t-ae96: a busy button's spinner is its ::before; read it the way the page paints it.
 const busySpin = loc => loc.evaluate(e => { const c = getComputedStyle(e, '::before'); return { shown: c.content !== 'none' && c.content !== 'normal' && c.display !== 'none', animation: c.animationName, duration: c.animationDuration, top: c.borderTopColor }; });
@@ -699,9 +703,9 @@ test.describe('board modal', () => {
   });
 
   test('status badges use light text on saturated fills in light mode via --badge-fg (t-2d8e)', async ({ page }) => {
-    await page.route('**/api/cockpit-sessions', r => r.fulfill({
+    await page.route('**/api/v1/sessions', r => r.fulfill({
       status: 200, contentType: 'application/json',
-      body: JSON.stringify([{ session: 's1', ticket: 't-2lv7', project_root: '/Users/me/p', cwd: '/Users/me/p', agent: 'claude', status: 'running', started: '2026-09-10T00:00:00Z' }]),
+      body: v1SessionsBody([{ session: 's1', ticket: 't-2lv7', project_root: '/Users/me/p', cwd: '/Users/me/p', agent: 'claude', status: 'running', started: '2026-09-10T00:00:00Z' }]),
     }));
     await page.route('**/api/cockpit', r => r.fulfill({
       status: 200, contentType: 'application/json',
@@ -3829,9 +3833,9 @@ test.describe('cockpit in board (t-ddc8)', () => {
         plan: ['# Plan', '', '## Sign-off', 'Tier: normal', '', '- [x] Plan approved', '', '## Approach', 'x', ''],
       });
       await stubCockpit(page);
-      await page.route('**/api/cockpit-sessions', route => route.fulfill({
+      await page.route('**/api/v1/sessions', route => route.fulfill({
         status: 200, contentType: 'application/json',
-        body: JSON.stringify([
+        body: v1SessionsBody([
           { session: 's1', ticket: idA, project_root: PROJECT_ROOT, cwd: PROJECT_ROOT, agent: 'claude', status: 'running', started: '2026-09-10T00:00:00Z' },
           { session: 's2', ticket: 't-othr', project_root: 'C:\\Users\\me\\projB', cwd: 'C:\\Users\\me\\projB', agent: 'pi', status: 'needs-you', started: '2026-09-10T00:00:00Z' },
         ]),
@@ -3861,12 +3865,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
   // t-2d2e: a Sessions row for ANOTHER project must not silently no-op.
   test.describe('cross-project Sessions row (t-2d2e)', () => {
     const XID = claimTicketId(PROJECT_ROOT, 't-zz2d');   // the hostile-id probes below spell this id out
-    const sessionsBody = rows => route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rows) });
+    const sessionsBody = rows => route => route.fulfill({ status: 200, contentType: 'application/json', body: v1SessionsBody(rows) });
     const row = (ticket, project_root) => ({ session: 's1', ticket, project_root, cwd: project_root, agent: 'claude', status: 'running', started: '2026-09-26T00:00:00Z' });
 
     test('standalone board: cross-project row toasts the project and opens nothing', async ({ page }) => {
       await stubCockpit(page);
-      await page.route('**/api/cockpit-sessions', sessionsBody([row(XID, '/tmp/other-proj')]));
+      await page.route('**/api/v1/sessions', sessionsBody([row(XID, '/tmp/other-proj')]));
       await page.goto(BASE);
       await page.waitForLoadState('networkidle');
       await page.locator(`.cockpit-session-row[data-ticket="${XID}"]`).click();
@@ -3879,7 +3883,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       try {
         await stubCockpit(page);
         const variant = PROJECT_ROOT.replace(/\/+$/, '').toUpperCase() + '/';
-        await page.route('**/api/cockpit-sessions', sessionsBody([row(XID, variant)]));
+        await page.route('**/api/v1/sessions', sessionsBody([row(XID, variant)]));
         await page.goto(BASE);
         await page.waitForLoadState('networkidle');
         await page.evaluate(() => { window.__posted = 0; const o = window.parent.postMessage; window.parent.postMessage = (...a) => { window.__posted++; return o.apply(window.parent, a); }; });
@@ -3900,7 +3904,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         const r = { ...row(XID, PROJECT_ROOT), state: 'working', idle_secs: 0, signal: 'hook' };
         const board = await openShell(page, [r]);
         let boardFetches = 0;
-        page.on('request', rq => { if (rq.url().includes('/api/cockpit-sessions') && rq.frame() && rq.frame().parentFrame()) boardFetches++; });
+        page.on('request', rq => { if (rq.url().includes('/api/v1/sessions') && rq.frame() && rq.frame().parentFrame()) boardFetches++; });
         const pollNow = () => page.evaluate(async () => (await import('/static/cockpit-sessions.js')).pollSessions());
         await pollNow();
         const card = board.locator(`.card-state[data-id="${XID}"]`);
@@ -3945,7 +3949,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       try {
         writeTicket(id, 'in_progress');
         const base = { session: 's1', ticket: id, project_root: PROJECT_ROOT, cwd: PROJECT_ROOT, agent: 'claude', status: 'running', idle_limit_secs: 300, signal: 'hook' };
-        await page.route('**/api/cockpit-sessions', rt => rt.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ ...base, state: 'working', idle_secs: 0 }]) }));
+        await page.route('**/api/v1/sessions', rt => rt.fulfill({ status: 200, contentType: 'application/json', body: v1SessionsBody([{ ...base, state: 'working', idle_secs: 0 }]) }));
         await page.route('**/api/cockpit', rt => rt.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR, launched: true }) }));
         await page.route('**/cockpit?**', rt => rt.fulfill({ status: 200, contentType: 'text/html', body: `<!doctype html><script>parent.postMessage({ source: 'canon-cockpit', type: 'status', status: 'running' }, '*');</script>` }));   // a live session page
         await page.route('**/__host90f5', rt => rt.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><iframe id="b" src="/" style="width:1200px;height:800px"></iframe>' }));
@@ -3974,7 +3978,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         { id: 'proj-x', path: 'C:\\Users\\me\\Proj-X', name: 'proj-x', description: '', added: '2026-09-26' },
       ];
       await page.route('**/api/projects', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(projects) }));
-      await page.route('**/api/cockpit-sessions', sessionsBody(sessions));
+      await page.route('**/api/v1/sessions', sessionsBody(sessions));
       // t-6a05: Admin now lists stopped sessions, so a test that didn't stub them must not see this machine's real ones.
       if (!interruptedStubbed.has(page)) await page.route('**/api/cockpit-interrupted', r => r.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
       // t-e69b: the shell looks up ticket titles; unless a test stubbed them (stubTicketDocs), none exist.
@@ -5472,7 +5476,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const x1 = row('x1', 't-xxx1', X, 50), a1 = row('a1', 't-aaa1', A, 40), x2 = row('x2', 't-xxx2', X, 30), a2 = row('a2', 't-aaa2', A, 20), x3 = row('x3', 't-xxx3', X, 5);
       let current = [];
       await openShell(page, current);
-      await page.route('**/api/cockpit-sessions', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(current) }));
+      await page.route('**/api/v1/sessions', r => r.fulfill({ status: 200, contentType: 'application/json', body: v1SessionsBody(current) }));
       const show = async rows => { current = rows; await page.evaluate(async () => (await import('/static/cockpit-sessions.js')).pollSessions()); };
       const order = () => page.evaluate(() => [...document.querySelectorAll('#ag-list .ag-proj b, #ag-list .ag-row')].map(e => e.matches('b') ? e.textContent.trim() : (e.querySelector('.ag-id') ? e.querySelector('.ag-id').textContent.trim() : 'scratch')).join(' '));
       // the first list arrives newest first: the order still comes from the start times
@@ -5582,7 +5586,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         const { getProjects } = await import('/static/cockpit-projects.js');
         getProjects()[0].name = 'a-rather-long-project-name-for-t-aca6';
       });
-      await page.route('**/api/cockpit-sessions', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ session: 'a2', ticket: 't-bbb2', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', status: 'running', state: 'working', state_secs: 3, idle_secs: 3, idle_limit_secs: 1800, signal: 'hook', started: agoIso(65) }]) }));
+      await page.route('**/api/v1/sessions', r => r.fulfill({ status: 200, contentType: 'application/json', body: v1SessionsBody([{ session: 'a2', ticket: 't-bbb2', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', status: 'running', state: 'working', state_secs: 3, idle_secs: 3, idle_limit_secs: 1800, signal: 'hook', started: agoIso(65) }]) }));
       await page.evaluate(async () => (await import('/static/cockpit-sessions.js')).pollSessions());
       const row = page.locator('#ag-list .ag-row', { hasText: 't-bbb2' });
       await expect(row).toHaveAttribute('aria-label', /a-rather-long-project-name-for-t-aca6 \u2014 1h 5m in session \(started .+\)/);
@@ -5761,11 +5765,11 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await reply('t-bbb2');
       await expect(page.locator('#tabmenu button').nth(1)).toBeDisabled();                 // working
       await page.keyboard.press('Escape');
-      await page.route('**/api/cockpit-sessions', sessionsBody(endRows().filter(r => r.session === 'e2')));   // one session left in proj-a
+      await page.route('**/api/v1/sessions', sessionsBody(endRows().filter(r => r.session === 'e2')));   // one session left in proj-a
       await reply('');
       await expect(page.locator('#tabmenu')).toBeVisible();
       await page.keyboard.press('Escape');
-      await page.route('**/api/cockpit-sessions', sessionsBody([]));
+      await page.route('**/api/v1/sessions', sessionsBody([]));
       await reply('');
       await expect(page.locator('#toast')).toHaveText('No agent session in proj-a.');
       await page.evaluate(async () => (await import('/static/cockpit-tabs.js')).activateTab('projects'));
@@ -5842,14 +5846,14 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const row = id => page.locator('#ad-sessions tbody tr', { hasText: id });
       await row('t-bbb2').locator('.ad-end', { hasText: 'Kill' }).click();
       await expect(page.locator('#cconfirm')).toHaveClass(/show/);
-      await page.route('**/api/cockpit-sessions', sessionsBody(endRows().filter(r => r.session !== 'e2')));   // it ends while the dialog is open
+      await page.route('**/api/v1/sessions', sessionsBody(endRows().filter(r => r.session !== 'e2')));   // it ends while the dialog is open
       await page.locator('#cc-ok').click();
       await expect(page.locator('#toast')).toHaveText('“t-bbb2” has already ended.');
-      await page.route('**/api/cockpit-sessions', sessionsBody(endRows()));
+      await page.route('**/api/v1/sessions', sessionsBody(endRows()));
       await page.evaluate(async () => (await import('/static/cockpit-sessions.js')).pollSessions());
       await row('t-aaa1').locator('.ad-end', { hasText: 'Reap now' }).click();
       await expect(page.locator('#cconfirm')).toHaveClass(/show/);
-      await page.route('**/api/cockpit-sessions', sessionsBody(endRows().map(r => r.session === 'e1' ? { ...r, state: 'working', state_secs: 1, idle_secs: 1 } : r)));
+      await page.route('**/api/v1/sessions', sessionsBody(endRows().map(r => r.session === 'e1' ? { ...r, state: 'working', state_secs: 1, idle_secs: 1 } : r)));
       await page.locator('#cc-ok').click();
       await expect(page.locator('#toast')).toHaveText('Can’t reap “t-aaa1” now: working — the agent isn’t at its prompt.');
       await page.waitForTimeout(300);
@@ -5864,7 +5868,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] c'] });
         await stubCockpit(page);
         await page.route('**/api/worktrees**', route => route.fulfill({ status: 200, contentType: 'application/json',
-          body: JSON.stringify([{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true },
+          body: v1SessionsBody([{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true },
             { path: wtPath, branch: XSS_ATTR, is_main: false, tickets_visible: true, ticket_present: true }]) }));
         await page.route(`**/api/worktree-lock/${id}`, route => route.fulfill({ status: 200, contentType: 'application/json',
           body: JSON.stringify({ locked: true, cwd: wtPath, main_dirty: false }) }));
@@ -5974,7 +5978,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       // t-a1ac: for good means after a reload too, and only for the project dismissed. The route keeps the sharing in every poll,
       // so the shell's own refresh cannot clear a banner behind the assertion's back; proj-x's banner is the control.
       const both = [mk('s-aaaa', true), mk('s-bbbb', true), { ...mk('s-cccc', true), project_root: 'C:\\Users\\me\\Proj-X', cwd: 'C:\\Users\\me\\Proj-X' }, { ...mk('s-dddd', true), project_root: 'C:\\Users\\me\\Proj-X', cwd: 'C:\\Users\\me\\Proj-X' }];
-      await page.route('**/api/cockpit-sessions', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(both) }));
+      await page.route('**/api/v1/sessions', r => r.fulfill({ status: 200, contentType: 'application/json', body: v1SessionsBody(both) }));
       await page.reload();
       await page.waitForLoadState('networkidle');
       await page.evaluate(async () => {
@@ -6164,8 +6168,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await expect(page.locator('#view-proj-x')).toHaveClass(/active/);
         await expect(page.frameLocator('#view-proj-x iframe').locator('#cockpit-overlay')).toHaveClass(/open/, { timeout: 8000 });
         // With nothing waiting no row is pink and the Sessions row hides for an idle project.
-        await page.unroute('**/api/cockpit-sessions');
-        await page.route('**/api/cockpit-sessions', sessionsBody(stateRows().filter(r => r.state !== 'needs-you' && r.project_root !== '/tmp/proj-a')));
+        await page.unroute('**/api/v1/sessions');
+        await page.route('**/api/v1/sessions', sessionsBody(stateRows().filter(r => r.state !== 'needs-you' && r.project_root !== '/tmp/proj-a')));
         await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
         await expect(list.locator('.ag-row.st-needs-you')).toHaveCount(0);
         await expect(page.locator('.tab[data-tab="proj-a"] .live')).not.toHaveClass(/needs/);
@@ -6238,8 +6242,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator('#nav-admin').click();
       await expect(page.locator('#ad-sessions tbody tr td').nth(2)).toHaveText('paused · waiting on you');
       await expect(page.locator('#ad-reaper')).toBeHidden(); // no timeouts from an old daemon
-      await page.unroute('**/api/cockpit-sessions');
-      await page.route('**/api/cockpit-sessions', sessionsBody([]));
+      await page.unroute('**/api/v1/sessions');
+      await page.route('**/api/v1/sessions', sessionsBody([]));
       await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
       await expect(page.locator('#ag-list .ag-row.st-needs-you')).toHaveCount(0);
       await expect(page.locator('#ag-label')).toBeVisible();   // t-e69b: the section is always there
@@ -6677,7 +6681,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         let working = { at: Math.floor(Date.now() / 1000) - 240, host: 'this-mac', here: true, pid: 4242 };
         let rows = [];
         await stubCockpit(page);
-        await page.route('**/api/cockpit-sessions', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rows) }));
+        await page.route('**/api/v1/sessions', route => route.fulfill({ status: 200, contentType: 'application/json', body: v1SessionsBody(rows) }));
         await page.route(u => u.pathname === '/api/tickets', async route => {
           const res = await fetchFull(route); const list = await res.json();
           for (const t of list) if (t.id === id && working) t.working = working;
@@ -6718,7 +6722,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       try {
         let rows = cardRows();
         await stubCockpit(page);
-        await page.route('**/api/cockpit-sessions', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rows) }));
+        await page.route('**/api/v1/sessions', route => route.fulfill({ status: 200, contentType: 'application/json', body: v1SessionsBody(rows) }));
         await page.goto(BASE);
         await page.waitForLoadState('networkidle');
         const card = id => page.locator(`.card[data-id="${id}"]`);
@@ -6935,7 +6939,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    const setRows = async (page, rows) => { await page.unroute('**/api/cockpit-sessions'); await page.route('**/api/cockpit-sessions', sessionsBody(rows)); };
+    const setRows = async (page, rows) => { await page.unroute('**/api/v1/sessions'); await page.route('**/api/v1/sessions', sessionsBody(rows)); };
     const one = (state, extra = {}) => ({ session: 's1', ticket: 't-aaa1', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', status: state === 'needs-you' ? 'needs-you' : 'running', state, state_secs: 1, idle_secs: 1, idle_limit_secs: 1800, signal: 'hook', ...extra });
 
     // t-47f1: scratch sessions — an agent in a project with no ticket.
@@ -6943,7 +6947,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       window.parent.postMessage({source:'canon-cockpit', type:'status', status:'running'}, '*');
     </script></body></html>`;
     // The embedded board asks /api/cockpit?project=… — stub that form too, so no real daemon is involved.
-    const stubEmbeddedCockpit = page => page.route(/\/api\/cockpit(\?|$)/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR, launched: true }) }));
+    const stubEmbeddedCockpit = page => page.route(/\/api\/cockpit(\?|$)/, r => r.fulfill({ status: 200, contentType: 'application/json', body: v1SessionsBody({ running: true, addr: FAKE_DAEMON_ADDR, launched: true }) }));
     const scratchRow = (id, root, title) => ({ session: 'sx', ticket: id, project_root: root, cwd: root, agent: 'claude', status: 'running', state: 'working', state_secs: 4, idle_secs: 4, idle_limit_secs: 1800, signal: 'hook', ...(title ? { title } : {}) });
 
     // t-6a05: a stopped session's banner sits under its own project's tab; Admin lists them all.
@@ -7342,13 +7346,13 @@ test.describe('cockpit in board (t-ddc8)', () => {
       fs.mkdirSync(path.join(PROJECT_ROOT, '.tickets', 't-f553', 'visuals'), { recursive: true });
       await page.locator('aside.side').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-f553', 'visuals', 'rail-not-started.png') });
       // Once the daemon reports it, the one row is the live one.
-      await page.unroute('**/api/cockpit-sessions');
-      await page.route('**/api/cockpit-sessions', sessionsBody([scratchRow(id, '/tmp/proj-a')]));
+      await page.unroute('**/api/v1/sessions');
+      await page.route('**/api/v1/sessions', sessionsBody([scratchRow(id, '/tmp/proj-a')]));
       await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
       await expect(row).toHaveCount(1);
       await expect(row).toHaveClass(/st-working/);
-      await page.unroute('**/api/cockpit-sessions');
-      await page.route('**/api/cockpit-sessions', sessionsBody([]));
+      await page.unroute('**/api/v1/sessions');
+      await page.route('**/api/v1/sessions', sessionsBody([]));
       await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
       await expect(row).toHaveClass(/st-not-started/);
       // Closing the tab drops the row.
@@ -7396,8 +7400,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-47f1', 'visuals', 'scratch-view.png') });
       await board.locator('#ck-leave-cancel').click();
       // t-e162: even with a live scratch in proj-a, + Scratch starts a new one (several per project).
-      await page.unroute('**/api/cockpit-sessions');
-      await page.route('**/api/cockpit-sessions', sessionsBody([scratchRow('s-q7s1', '/tmp/proj-a')]));
+      await page.unroute('**/api/v1/sessions');
+      await page.route('**/api/v1/sessions', sessionsBody([scratchRow('s-q7s1', '/tmp/proj-a')]));
       await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
       await page.locator('.tab.pinned').click();
       await page.locator('.scratchbtn[data-scratch="proj-a"]').click();
@@ -7474,7 +7478,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.evaluate(() => { document.querySelector('#ag-list .ag-su').dataset.su = String(Date.now() - 1000); });     // the time is up
       await expect(line).toHaveCount(0);
       rows[0].su_until = until(60000);
-      await page.route('**/api/cockpit-sessions', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rows) }));
+      await page.route('**/api/v1/sessions', r => r.fulfill({ status: 200, contentType: 'application/json', body: v1SessionsBody(rows) }));
       await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return pollSessions(); });
       await expect(line).toHaveCount(1);
       delete rows[0].su_until;                                                              // su exited: the next answer has no field
@@ -8444,7 +8448,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     test('board Cockpit sessions panel (t-824e): shows the daemon state, never the raw awaiting-input status', async ({ page }) => {
       await stubCockpit(page);
       const rows = stateRows().filter(r => ['s3', 's4', 's5'].includes(r.session)).map(r => ({ ...r, project_root: PROJECT_ROOT }));
-      await page.route('**/api/cockpit-sessions', sessionsBody(rows));
+      await page.route('**/api/v1/sessions', sessionsBody(rows));
       await page.goto(BASE);
       await page.waitForLoadState('networkidle');
       const badges = page.locator('#cockpit-sessions .cs-status');
@@ -9045,8 +9049,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
   });
 
   test('Cockpit sessions rows show where each session runs: Main checkout or the worktree folder (t-19d1)', async ({ page }) => {
-    await page.route('**/api/cockpit-sessions', route => route.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify([
+    await page.route('**/api/v1/sessions', route => route.fulfill({ status: 200, contentType: 'application/json',
+      body: v1SessionsBody([
         { ticket: 't-aaaa', project_root: 'C:\\Users\\u\\Documents\\ToDo', cwd: 'C:\\Users\\u\\Documents\\ToDo', agent: 'claude', status: 'running' },
         { ticket: 't-bbbb', project_root: 'C:\\Users\\u\\Documents\\ToDo', cwd: 'C:\\Users\\u\\Documents\\ToDo-worktrees\\sprint-update-ui-styling', agent: 'claude', status: 'running' },
       ]) }));
@@ -9065,8 +9069,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
   test('a session cwd holding a quote cannot break out of the row title attribute (t-19d1)', async ({ page }) => {
     const hostile = '/tmp/a"onmouseover="window.__pwned=1"x';
-    await page.route('**/api/cockpit-sessions', route => route.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify([{ ticket: 't-cccc"x="1', project_root: '/tmp/p', cwd: hostile, agent: 'claude', status: 'running' }]) }));
+    await page.route('**/api/v1/sessions', route => route.fulfill({ status: 200, contentType: 'application/json',
+      body: v1SessionsBody([{ ticket: 't-cccc"x="1', project_root: '/tmp/p', cwd: hostile, agent: 'claude', status: 'running' }]) }));
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
     const row = page.locator('#cockpit-sessions .cockpit-session-row');
@@ -10627,8 +10631,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
     await page.route('**/api/tickets**', route => route.request().method() === 'GET'
       ? route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(tickets) })
       : route.continue());
-    if (working) await page.route('**/api/cockpit-sessions**', route => route.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify([{ ticket: live, project_root: PROJECT_ROOT, agent: 'claude', state: 'working', status: 'running', cwd: '/tmp/wt' }]) }));
+    if (working) await page.route('**/api/v1/sessions**', route => route.fulfill({ status: 200, contentType: 'application/json',
+      body: v1SessionsBody([{ ticket: live, project_root: PROJECT_ROOT, agent: 'claude', state: 'working', status: 'running', cwd: '/tmp/wt' }]) }));
     const gets = [], posts = [];
     const plan = '# Plan\n\n## Sign-off\nTier: normal | Risk: low\n\n- [x] Plan approved\n- [ ] second box\n\n## Approach\n\nlive approach from the worktree\n';
     await page.route('**/api/doc/**', route => {
@@ -11761,8 +11765,8 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
 
   // t-2687: End Session on a tab that never attached (status not running) while the daemon still lists
   // a live session for the ticket must not silently close the tab.
-  const stubSessions = (page, list) => page.route('**/api/cockpit-sessions', route => route.fulfill({
-    status: 200, contentType: 'application/json', body: JSON.stringify(list),
+  const stubSessions = (page, list) => page.route('**/api/v1/sessions', route => route.fulfill({
+    status: 200, contentType: 'application/json', body: v1SessionsBody(list),
   }));
 
   test('End Session on an unattached tab with a live daemon session explains instead of closing (t-2687)', async ({ page }) => {
@@ -11844,9 +11848,9 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       const id = newTicketId(PROJECT_ROOT, 'lcnone');
       try {
         writeTicket(id, 'in_progress');
-        await page.route('**/api/cockpit-sessions', route => route.fulfill({
+        await page.route('**/api/v1/sessions', route => route.fulfill({
           status, contentType: 'application/json',
-          body: JSON.stringify(list ? list.map(x => ({ ...x, ticket: id })) : { error: 'x' }),
+          body: v1SessionsBody(list ? list.map(x => ({ ...x, ticket: id })) : { error: 'x' }),
         }));
         await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'idle' }));
         await page.waitForTimeout(100);
@@ -11900,9 +11904,9 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
         await stubSessions(page, []);
         await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'idle' }));
         await page.waitForTimeout(100);
-        await page.route('**/api/cockpit-sessions', async route => {
+        await page.route('**/api/v1/sessions', async route => {
           await gate;
-          await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(
+          await route.fulfill({ status: 200, contentType: 'application/json', body: v1SessionsBody(
             list === 'DETACHED' ? [{ session: 's1', ticket: id, project_root: PROJECT_ROOT, agent: 'claude', status: 'running' }] : list) });
         });
         await page.locator('#ck-end-session').click();               // lookup pending; tab still un-attached
@@ -11930,9 +11934,9 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await openResumedCockpit(page, idA, fakeCockpitPage({ initialStatus: 'idle' }));
       await page.waitForTimeout(100);
       // Gate the lookup only now (the most recently registered route wins).
-      await page.route('**/api/cockpit-sessions', async route => {
+      await page.route('**/api/v1/sessions', async route => {
         await gate;
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([
+        await route.fulfill({ status: 200, contentType: 'application/json', body: v1SessionsBody([
           { session: 's1', ticket: idA, project_root: PROJECT_ROOT, agent: 'claude', status: 'running' }]) });
       });
       await page.locator('#ck-end-session').click();          // lookup for A now pending
@@ -12360,7 +12364,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
     let rows = [];
     try {
       writeTicket(id, 'in_progress');
-      await page.route('**/api/cockpit-sessions', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rows) }));
+      await page.route('**/api/v1/sessions', route => route.fulfill({ status: 200, contentType: 'application/json', body: v1SessionsBody(rows) }));
       const base = { session: 's1', ticket: id, project_root: PROJECT_ROOT, cwd: PROJECT_ROOT, agent: 'claude', status: 'running' };
       rows = [{ ...base, state: 'working', state_secs: 4, idle_secs: 10, idle_limit_secs: 300, signal: 'hook', meter: { cache_pct: 87, llm_calls: 42, tool_calls: 130, sub_agents: 2 } }];
       await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running' }));
@@ -13294,7 +13298,7 @@ test.describe('cockpit rendered-output preview (t-8f9d)', () => {
     const sid = await startReal(request, base);
     const json = (r, b) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(b) });
     await page.route('**/api/cockpit', r => json(r, { running: true, addr, launched: false }));
-    await page.route('**/api/cockpit-sessions', async r => json(r, await (await page.request.get(`${base}/sessions`)).json()));
+    await page.route('**/api/v1/sessions', async r => json(r, v1Sessions(await (await page.request.get(`${base}/sessions`)).json())));
     await page.route('**/api/cockpit-interrupted', r => json(r, []));
     await page.route('**/api/projects', r => json(r, [{ id: 'pv', path: work, name: 'pv', description: '', added: '2026-10-12' }]));
     await page.goto(BASE + '/cockpit');
@@ -17207,7 +17211,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     ghTicket(id, { github: 'acme/app#57' });
     await routeStatus(page, id, { stage: 'sent' });
     await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
-    await page.route('**/api/cockpit-sessions', r => json(r, [{ session: 'c1', ticket: id, project_root: PROJECT_ROOT, cwd: PROJECT_ROOT, agent: 'claude', status: 'needs-you', state: 'needs-you', state_secs: 4, idle_secs: 4, idle_limit_secs: 1800, signal: 'hook' }]));
+    await page.route('**/api/v1/sessions', r => json(r, v1Sessions([{ session: 'c1', ticket: id, project_root: PROJECT_ROOT, cwd: PROJECT_ROOT, agent: 'claude', status: 'needs-you', state: 'needs-you', state_secs: 4, idle_secs: 4, idle_limit_secs: 1800, signal: 'hook' }])));
     await openBoard(page, id);
     const card = page.locator(`.card[data-id="${id}"]`);
     await expect(card.locator('.card-start')).toHaveText('Answer ▸');
@@ -19276,11 +19280,11 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
 
   // ── t-3741: Commit and push never ticks a file an agent may still be writing ──
   // Prod path for the six tests below: showCommitPush (static/board-github.js), the Send panel's Commit and push form, fed by
-  // tkt commit-push --dry-run's "file:" and "mtime:" lines; the sessions come from /api/cockpit-sessions like the rail's.
+  // tkt commit-push --dry-run's "file:" and "mtime:" lines; the sessions come from /api/v1/sessions like the rail's.
   const SESSION_ID = 't-9z41';   // a Cockpit session needs a t-xxxx id; it is never opened, so no ticket file backs it
   const sessionRow = project => ({ session: 's1', ticket: SESSION_ID, project_root: project, cwd: project, agent: 'claude', status: 'running', state: 'working', started: '2026-10-29T00:00:00Z' });
   async function commitPushForm(page, id, { sessions, files }) {
-    await page.route('**/api/cockpit-sessions', r => json(r, sessions));
+    await page.route('**/api/v1/sessions', r => json(r, v1Sessions(sessions)));
     await sendPanel(page, id, { preview: () => ({ ok: true, exit_code: 0, output: DIRTY }), files });
     await page.locator('#ck-gh-cp-open').click();
     await expect(page.locator('#ck-gh-cp-files')).toBeVisible();

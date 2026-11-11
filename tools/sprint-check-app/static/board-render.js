@@ -8,6 +8,7 @@ import { openCockpit, renderSidebarChanges } from './board-cockpit-rail.js';
 import { cockpitForwardSlash, fetchWorktreeLock } from './board-worktree.js';
 import { openCommitPanel } from './board-panels.js';
 import { applySearch, setText } from './board-ui.js';
+import { fetchSessions } from './sessions-api.js';
 import { bindGithubCardButtons, ensureGithubStatus, ghButtonHTML, ghChipHTML, ghOut, openDialog, wtFinish, wtMerge } from './board-github.js';
 
 // ── Render ────────────────────────────────────────────────────────────────
@@ -31,7 +32,7 @@ export const normProjectPath = p => String(p || '').replace(/\\/g, '/').replace(
 export const COCKPIT_TICKET_ID = /^t-[a-z0-9]{4}$/;
 // t-391a: the "Cockpit sessions" panel lists active sessions across ALL projects
 // the one daemon serves (nebula's model — one daemon, many projects). Read-only
-// fetch of /api/cockpit-sessions (token-free, like /api/cockpit); clicking a row
+// fetch of /api/v1/sessions (token-free, like /api/cockpit); clicking a row
 // opens/attaches that session in the cockpit overlay, where the tokened Kill /
 // Save & End live. No token-free kill is added — the board never holds the daemon
 // token (t-ddc8). Basename split uses [\\/] so a Windows project path renders too.
@@ -48,13 +49,8 @@ export async function refreshCockpitSessions() {
   if (!panel) return;
   let sessions = freshShellSessions();   // t-90f5: inside the Cockpit, the shell's answer (the one its Agents list shows)
   if (!sessions) {
-    sessions = [];
-    try {
-      const r = await fetch('/api/cockpit-sessions');
-      if (r.ok) sessions = await r.json();
-    } catch (e) { /* daemon absent → empty panel */ }
+    sessions = (await fetchSessions()).rows;   // daemon absent → no rows → empty panel
   }
-  if (!Array.isArray(sessions)) sessions = [];
   applyCardSessions(sessions);
   // t-d34e: inside a Cockpit tab the Agents rail, the card strips (applied above) and Admin already
   // show every session, so the embedded board has no panel. A standalone board keeps the

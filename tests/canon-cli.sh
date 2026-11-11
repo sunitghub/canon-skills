@@ -83,6 +83,11 @@ assert_contains "$out" "The Cockpit is not running on port $PORT. Start it with:
 set +e; out="$(run stop 2>&1)"; scode=$?; set -e
 assert_eq "0" "$scode"
 assert_eq "The Cockpit is not running on port $PORT. Nothing to stop." "$out"
+# t-ad6f: canon events / canon sprint with no board exit 2 and say how to start it
+for c in "events" "sprint t-d9e6"; do
+  set +e; out="$(run $c 2>&1)"; code=$?; set -e
+  assert_eq "2" "$code"; assert_eq "The Cockpit is not running on port $PORT. Start it with: canon" "$out"
+done
 
 # A board that predates these subcommands: /api/version answers, the new routes 404.
 PORT="$(free_port)"
@@ -105,6 +110,10 @@ for c in status sessions; do
   assert_contains "$out" "does not support 'canon $c'"
   [[ "$out" != *"<html"* && "$out" != *"<!DOCTYPE"* ]] || fail "canon-cli: a stale board's error page was printed as output"
 done
+for c in "events" "sprint t-d9e6"; do   # t-ad6f: a board without the v1 routes
+  set +e; out="$(run $c 2>&1)"; code=$?; set -e
+  assert_eq "1" "$code"; assert_contains "$out" "answered 404 to 'canon ${c%% *}'"
+done
 # t-9a2d: canon wait on a stale board exits 2 and says what to do
 set +e; out="$(run wait t-wt01 --until "done" --timeout 2000 2>&1)"; code=$?; set -e
 assert_eq "2" "$code"
@@ -121,6 +130,25 @@ for b in main.go; do
   assert_contains "$st" "sessions: 2 (1 needs-you, 1 working)"
   sj="$(run status --json)"; no_token "$sj"
   assert_eq "2 True" "$(python3 -c 'import json,sys;d=json.loads(sys.argv[1]);print(d["sessions"]["total"],d["daemon"]["running"])' "$sj")"
+
+  # t-ad6f: events and sprint print the public read API's body unchanged (one JSON line), --json changes nothing
+  ev="$(run events)"; no_token "$ev"
+  assert_eq '{"cursor":"' "$(printf '%s' "$ev" | cut -c1-11)"; assert_contains "$ev" '"events":['; assert_contains "$ev" '"schema":1'
+  assert_eq 1 "$(printf '%s\n' "$ev" | wc -l | tr -d ' ')"
+  assert_eq "$ev" "$(run events --json)"
+  assert_eq "$(curl -s "http://127.0.0.1:$PORT/api/v1/events?limit=5")" "$(run events --limit 5)"
+  for bad in "--limit 0" "--limit 501" "--limit x" "--limit" "--limit 1x" "extra" "--nope" "--limit 5 --limit"; do
+    set +e; out="$(run events $bad 2>&1)"; code=$?; set -e
+    assert_eq "2" "$code"; [[ "$out" == "canon events: "* ]] || fail "canon-cli: canon events $bad said: $out"
+  done
+  sp="$(run sprint t-d9e6)"; no_token "$sp"
+  assert_eq "$(curl -s "http://127.0.0.1:$PORT/api/v1/sprint/t-d9e6")" "$sp"
+  assert_contains "$sp" '"ticket":"t-d9e6"'
+  assert_eq "$sp" "$(run sprint t-d9e6 --json)"
+  for bad in "" "t-D9E6" "t-d9e" "../x" "t-d9e6 t-d9e7" "t-d9e6 --nope" "--limit 5"; do
+    set +e; out="$(run sprint $bad 2>&1)"; code=$?; set -e
+    assert_eq "2" "$code"; [[ "$out" == "canon sprint: "* ]] || fail "canon-cli: canon sprint $bad said: $out"
+  done
 
   tbl="$(run sessions)"; no_token "$tbl"
   assert_contains "$tbl" "t-d9e6  needs-you  4m   claude   canon    hook    Resume offer ?[31mred"
@@ -266,4 +294,4 @@ if [[ -x "$ROOT/tools/canon-go-bin/canon-go" ]]; then
   ! kill -0 "$bp" 2>/dev/null || fail "canon-cli: canon stop left this install's board running"
 fi
 
-echo "canon-cli: ok (status/sessions text + --json, wait (reach/timeout/exited/list/--json/--project/bad input), escapes neutralised, busy refusal, --force stop, board down, no token)"
+echo "canon-cli: ok (status/sessions text + --json, events and sprint (the v1 body, bad input, no board, old board), wait (reach/timeout/exited/list/--json/--project/bad input), escapes neutralised, busy refusal, --force stop, board down, no token)"

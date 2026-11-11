@@ -1,6 +1,7 @@
 // t-565f: the Cockpit shell's admin code (was part of cockpit.html's one script). Declarations only: the
 // load-time code is initAdmin(), which cockpit-main.js runs in order once every module has loaded.
 import { cockpitConfirm, esc, escAttr, fillVersions, toast } from './cockpit-core.js';
+import { fetchSessions } from './sessions-api.js';
 import { scratchIcon, TICKET_ID_RE, _projKey, dismissInterrupted, fmtDur, interrupted, intrProj, intrSince, renderSessionSurfaces, resumeInterrupted, sessionTime, sessionView, setLastSessions, ticketTitle } from './cockpit-sessions.js';
 import { openSessionInTab, openTabs } from './cockpit-tabs.js';
 import { getProjects } from './cockpit-projects.js';
@@ -85,8 +86,7 @@ export async function loadAdmin(){
     dbgToggle.disabled=!ck.running;
   }
   // sessions (cross-project) → running agents count + list
-  let sessions=[]; try{ const s=await fetch('/api/cockpit-sessions'); if(s.ok) sessions=await s.json(); }catch(e){}
-  if(!Array.isArray(sessions)) sessions=[];
+  const { rows: sessions } = await fetchSessions();
   setLastSessions(sessions);
   renderSessionSurfaces();
   // Reaper settings, read-only (a daemon older than t-824e doesn't report them).
@@ -468,8 +468,7 @@ async function onDebugToggleChange(e){
   box.disabled=false;
 }
 async function _cockpitLiveSessionCount(){
-  let sessions=[]; try{ const s=await fetch('/api/cockpit-sessions'); if(s.ok) sessions=await s.json(); }catch(e){}
-  return Array.isArray(sessions)?sessions.length:0;
+  return (await fetchSessions()).rows.length;
 }
 async function restartDaemon(){
   const n=await _cockpitLiveSessionCount();

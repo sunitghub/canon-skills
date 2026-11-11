@@ -1,6 +1,7 @@
 // t-565f: the Cockpit shell's sessions code (was part of cockpit.html's one script). Declarations only: the
 // load-time code is initSessions(), which cockpit-main.js runs in order once every module has loaded.
 import { esc, escAttr, toast } from './cockpit-core.js';
+import { fetchSessions } from './sessions-api.js';
 import { fmtUptime, renderAdminSessions } from './cockpit-admin.js';
 import { _removeTab, activeTab, boardActive, openSessionInTab, openTabs, renderTabs } from './cockpit-tabs.js';
 import { getProjects } from './cockpit-projects.js';
@@ -10,21 +11,19 @@ const groupRank=new Map();   // t-7456: project key -> the rank its sidebar grou
 let nextGroupRank=0;
 export let liveTabIds=new Set();   // t-0db3: open tab ids whose project has a live agent session
 export let needsTabIds=new Set();  // t-824e: open tab ids whose project has a session waiting on you
-let lastSessions=[];        // t-824e: last /api/cockpit-sessions rows, shared by every surface
+let lastSessions=[];        // t-824e: last /api/v1/sessions rows, shared by every surface
 let pendingCloseId=null;    // tab awaiting the close-warn decision
 let closingTabs=new Set();  // tabs told to Save&End/End — removed once their session ends
 
 // ── Live agent-session guard (t-0db3) ──────────────────────────────────────
 // Detect which open tabs have a running agent by polling the existing
-// /api/cockpit-sessions (daemon truth across all projects) and matching a
+// /api/v1/sessions (daemon truth across all projects) and matching a
 // session's project_root to the tab's registered project path. No cross-origin
 // messaging needed for detection. Drives the tab .live dot + the close/refresh
 // guard. Idle tabs are never trapped.
 export function _normPath(p){ return String(p||'').replace(/[\\/]+$/,''); }
 export async function pollSessions(){
-  let sessions=[], up=false;   // up: the daemon really answered (t-27bc), so an empty list means no sessions and not a failed poll
-  try{ const s=await fetch('/api/cockpit-sessions'); if(s.ok){ sessions=await s.json(); up=s.headers.get('X-Cockpit-Daemon')==='up'; } }catch(e){}
-  if(!Array.isArray(sessions)) sessions=[];
+  const { rows: sessions, up } = await fetchSessions();   // up: the daemon really answered (t-27bc), so an empty list means no sessions and not a failed poll
   const liveRoots=new Set(sessions.map(s=>_normPath(s&&s.project_root)).filter(Boolean));
   const needRoots=new Set(sessions.filter(s=>sessionView(s).state==='needs-you').map(s=>_normPath(s.project_root)).filter(Boolean));
   const byId=new Map(getProjects().map(p=>[p.id,_normPath(p.path)]));

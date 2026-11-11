@@ -277,6 +277,7 @@ if (( DRY )) || command -v node >/dev/null 2>&1; then
   suite tests/board-spec-ids-unit.js node "$ROOT/tests/board-spec-ids-unit.js"
   suite tests/split-handle-unit.js node "$ROOT/tests/split-handle-unit.js"
   suite tests/busy-unit.js node "$ROOT/tests/busy-unit.js"
+  suite tests/sessions-api-unit.js node "$ROOT/tests/sessions-api-unit.js"
   suite tests/sprint-check-api-scoping.js node "$ROOT/tests/sprint-check-api-scoping.js"
 else
   skipped "tests/sprint-check-gherkin.js skipped (node absent)"

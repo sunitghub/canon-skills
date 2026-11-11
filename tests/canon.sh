@@ -176,7 +176,7 @@ grep -qF "running_build" <<<"$page" || fail "canon: Admin uptime should read coc
 # t-a30c: Admin's Stop is a genuinely new capability (stop WITHOUT relaunch,
 # distinct from Restart's kill+relaunch) — /api/cockpit-stop is a deliberate
 # addition here, not a violation of Admin reusing existing endpoints below.
-for ep in "/api/cockpit" "/api/cockpit-sessions" "/api/cockpit-restart" "/api/cockpit-stop" "/api/version" "/api/projects"; do
+for ep in "/api/cockpit" "/api/v1/sessions" "/api/cockpit-restart" "/api/cockpit-stop" "/api/version" "/api/projects"; do
   grep -qF "$ep" <<<"$page" || fail "canon: Admin should use existing endpoint $ep"
 done
 # Stop button must never call the daemon's token-gated /shutdown or reference
@@ -230,9 +230,9 @@ for hidden in "card-start" "#cockpit-overlay" "\.resume"; do
   grep -qE "html\.canon-proj-embed [^{]*${hidden}" <<<"$board" && fail "canon: canon-proj-embed must NOT hide the in-tab agent affordance ($hidden)"
 done
 grep -q "canon-proj-embed" <<<"$board" || fail "canon: board embed marker missing (Part A relies on the ?project tab)"
-# (b) Live-session detection: the shell polls /api/cockpit-sessions and matches a
+# (b) Live-session detection: the shell polls /api/v1/sessions (through sessions-api.js) and matches a
 #     session's project_root to the tab's project path.
-grep -qF "/api/cockpit-sessions" <<<"$page" || fail "canon: 2b-iii live detection must poll /api/cockpit-sessions"
+grep -qF "/api/v1/sessions" <<<"$page" || fail "canon: 2b-iii live detection must poll /api/v1/sessions"
 grep -qF "project_root" <<<"$page" || fail "canon: 2b-iii must match session project_root to the tab"
 grep -qE "liveTabIds" <<<"$page" || fail "canon: 2b-iii missing the live-tab set"
 grep -qE "function pollSessions|pollSessions *=" <<<"$page" || fail "canon: 2b-iii missing the session poller"

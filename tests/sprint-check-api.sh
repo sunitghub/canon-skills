@@ -965,4 +965,12 @@ while IFS= read -r name; do
 done <<<"$static_names"
 [[ "$static_count" -eq 300 ]] || fail "sprint-check-api: the hostile loop ran $static_count names, want 300"
 
+# t-ad6f: the UI asks for sessions only through the public read API, and only sessions-api.js knows the URL. The private /api/cockpit-sessions
+# stays for tools/canon (t-5b80 moves the CLI and retires it); a UI file that fetches it, or that fetches /api/v1/sessions itself, fails here.
+STATIC="$ROOT/tools/sprint-check-app"
+if grep -rn '/api/cockpit-sessions' "$STATIC/static" "$STATIC/app.html" 2>/dev/null | grep . >&2; then fail "sprint-check-api: the UI must not use the private /api/cockpit-sessions (t-ad6f): use sessions-api.js"; fi
+[[ "$(grep -c "fetch(SESSIONS_URL" "$STATIC/static/sessions-api.js")" -eq 1 ]] || fail "sprint-check-api: static/sessions-api.js no longer fetches SESSIONS_URL (t-ad6f)"
+direct="$(grep -rlE "fetch\([^)]*/api/v1/sessions" "$STATIC/static" "$STATIC/app.html" | sed "s|$STATIC/||" | sort || true)"
+[[ -z "$direct" ]] || fail "sprint-check-api: only static/sessions-api.js may fetch the sessions route (t-ad6f); found: $(printf '%s' "$direct" | tr '\n' ' ')"
+
 echo "sprint-check-api: ok ($route_count routes pinned; /api/tickets models_used + ci + gate + type_outcome + doc names; ticket-image/-feature serve the fixture and refuse traversal/wrong type/missing; /visual refusals, >8MB cap, collision suffix; headless-run idle/running/done + gate:eval dispatch; create writes gate/eval_override/skills/demo/ISO created; demo toggle; ci-workflow template + refuse-on-exists; worktrees ticket_present; cockpit-docs worktree-only; cockpit stale + build stamp; version; registry + scoped reads/writes; register-skill allowlist + ASSUME_YES; model tiers in the data dir; /static/ refusals + 300 hostile names)"

@@ -33,6 +33,10 @@ Usage:
   canon <port>             Use a specific port (default 8899)
   canon status [--json]    Board and daemon state, version, sessions by state
   canon sessions [--json]  Every live agent session across projects
+  canon events [--limit N] [--json]
+                           The newest N (1 to 500, default 100) activity-log events, oldest first
+  canon sprint <id> [--json]
+                           A ticket's sprint snapshot: the latest lifecycle event of each kind
   canon stop [--force]     Stop the cockpit daemon and the board (--force ends live sessions)
   canon restart [--force]  Restart the cockpit daemon (--force ends live sessions)
   canon wait <id> --until <state>[,<state>...] [--timeout MS] [--project PATH] [--json]
@@ -504,15 +508,16 @@ _canon() {
   local cur prev w
   cur="${COMP_WORDS[COMP_CWORD]}"; prev="${COMP_WORDS[COMP_CWORD-1]}"
   if [ "$COMP_CWORD" -eq 1 ]; then
-    COMPREPLY=($(compgen -W "status sessions stop restart wait update uninstall log completion version help" -- "$cur")); return
+    COMPREPLY=($(compgen -W "status sessions events sprint stop restart wait update uninstall log completion version help" -- "$cur")); return
   fi
   case "$prev" in
     --until) COMPREPLY=($(compgen -W "needs-you working done idle exited" -- "$cur")); return ;;
     --project) COMPREPLY=($(compgen -d -- "$cur")); return ;;
-    --timeout) COMPREPLY=(); return ;;
+    --timeout|--limit) COMPREPLY=(); return ;;
   esac
   case "${COMP_WORDS[1]}" in
-    status|sessions) w="--json" ;;
+    status|sessions|sprint) w="--json" ;;
+    events) w="--limit --json" ;;
     stop|restart) w="--force" ;;
     wait) w="--until --timeout --project --json" ;;
     completion) w="bash zsh powershell" ;;
@@ -535,10 +540,10 @@ Register-ArgumentCompleter -Native -CommandName canon, canon.cmd -ScriptBlock {
   $pos = if ($wordToComplete) { $n - 1 } else { $n }
   $prev = if ($pos -ge 1) { $el[$pos - 1] } else { '' }
   $sub = if ($n -ge 2 -and $pos -gt 1) { $el[1] } else { '' }
-  $cands = if ($pos -eq 1) { 'status','sessions','stop','restart','wait','update','uninstall','log','completion','version','help' }
+  $cands = if ($pos -eq 1) { 'status','sessions','events','sprint','stop','restart','wait','update','uninstall','log','completion','version','help' }
     elseif ($prev -eq '--until') { 'needs-you','working','done','idle','exited' }
     else { switch ($sub) {
-      'status' { '--json' } 'sessions' { '--json' } 'stop' { '--force' } 'restart' { '--force' }
+      'status' { '--json' } 'sessions' { '--json' } 'sprint' { '--json' } 'events' { '--limit','--json' } 'stop' { '--force' } 'restart' { '--force' }
       'wait' { '--until','--timeout','--project','--json' } 'completion' { 'bash','zsh','powershell' } 'log' { 'verify','seal' } 'uninstall' { '--dry-run','--yes','--keep-data','--force' }
       default { @() } } }
   $cands | Where-Object { $_ -like "$wordToComplete*" } |
@@ -632,6 +637,47 @@ stop_board() {
   esac
 }
 
+# t-ad6f: `canon events` and `canon sprint` print the board's public read API (/api/v1/events, /api/v1/sprint/<id>) body unchanged: JSON,
+# one line, so a script reads it with whatever it has (curl-only here: no jq, no Python). --json is accepted for parity with status and
+# sessions and changes nothing. Exit 0 on the body, 2 on bad input or no board, 1 when the board answers with an error.
+v1_read_cmd() {
+  local cmd="$1"; shift
+  local limit="" id="" a
+  while [[ $# -gt 0 ]]; do
+    a="$1"; shift
+    case "$a" in
+      --json) ;;
+      --limit)
+        [[ "$cmd" == events ]] || { echo "canon $cmd: unknown option: $a" >&2; exit 2; }
+        [[ $# -gt 0 ]] || { echo "canon events: --limit needs a number" >&2; exit 2; }
+        limit="$1"; shift ;;
+      -*) echo "canon $cmd: unknown option: $a" >&2; exit 2 ;;
+      *)
+        [[ "$cmd" == sprint && -z "$id" ]] || { echo "canon $cmd: unexpected argument: $a" >&2; exit 2; }
+        id="$a" ;;
+    esac
+  done
+  local route
+  case "$cmd" in
+    events)
+      [[ -z "$limit" || ( "$limit" =~ ^[0-9]+$ && "$limit" -ge 1 && "$limit" -le 500 ) ]] || { echo "canon events: --limit is 1 to 500, got '$limit'" >&2; exit 2; }
+      route="/api/v1/events${limit:+?limit=$limit}" ;;
+    sprint)
+      [[ "$id" =~ ^t-[a-z0-9]{4}$ ]] || { echo "canon sprint: expected a ticket id (t-xxxx), got '${id}'" >&2; exit 2; }
+      route="/api/v1/sprint/$id" ;;
+  esac
+  local port="${CANON_COCKPIT_PORT:-8899}"
+  local base="http://127.0.0.1:$port" out code
+  curl -s -o /dev/null --max-time 3 "$base/api/version" || { echo "The Cockpit is not running on port $port. Start it with: canon" >&2; exit 2; }
+  out="$(curl -s --max-time 10 -w $'\n%{http_code}' "$base$route")" || out=$'\n000'
+  code="${out##*$'\n'}"
+  if [[ "$code" != 200 ]]; then
+    echo "The board on port $port answered $code to 'canon $cmd' (it may predate this command: close its window, then run canon): ${out%$'\n'*}" >&2
+    exit 1
+  fi
+  printf '%s\n' "${out%$'\n'*}"
+}
+
 # t-03a8: the read and control subcommands go through the running board's own API — it
 # renders the text (?format=text), so this stays curl-only: no Python, no jq (a Git-only
 # Windows machine has neither).
@@ -695,6 +741,7 @@ main() {
       if [ "$({ tr -d '[:space:]' < "$(install_home)/.canon-track"; } 2>/dev/null)" = main ]; then main_track_note "$v"; else echo "$v"; fi
       exit 0 ;;
     status|sessions|stop|restart) board_cmd "$@"; exit 0 ;;
+    events|sprint) v1_read_cmd "$@"; exit $? ;;
     wait) shift; wait_cmd "$@"; exit $? ;;       # t-b2ff: a subcommand never falls through to the start path and its folder guard
     update) shift; update_cmd "$@"; exit $? ;;
     uninstall) shift; exec bash "$SCRIPT_DIR/canon-uninstall.sh" "$@" ;;

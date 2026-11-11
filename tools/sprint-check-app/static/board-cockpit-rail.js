@@ -2,6 +2,7 @@ import { SHELL_TAB, docSlug, freshShellSessions, state } from './board-core.js';
 import { displayTicketId, effectiveStatus, esc, escAttr } from './board-helpers.js';
 import { SCRATCH_ID, announceScratchTabs, findTicketById, normProjectPath, postWrite, renderScratchWhere, showToast } from './board-render.js';
 import { activateDoc, modalState, openModal } from './board-modal.js';
+import { fetchSessions } from './sessions-api.js';
 import { hasFilledCheckbox, hasUsefulSectionText, sectionContent } from './board-docs.js';
 import { applyPane, initPane } from './board-pane.js';
 import { activeTabId, announceActiveSession, closeTab, cockpitState, cockpitTabs, newCockpitTabState, openLeaveConfirm, openTerminalCloseConfirm, refreshSessionStateChip, renderSessionStateChip, sessionIsLive, setActiveTab, teardownCockpit } from './board-cockpit.js';
@@ -404,15 +405,15 @@ export async function findLiveDaemonSession(ticketId, { live = false } = {}) {
   try {
     let list = live ? null : freshShellSessions();   // t-90f5: the shell's answer when there is one, so the chip agrees with the Agents list
     if (!list) {
-      const r = await fetch('/api/cockpit-sessions');
-      if (!r.ok) return null;
-      list = await r.json();
+      const answer = await fetchSessions();
+      if (!answer.ok) return null;
+      list = answer.rows;
     }
     if (!Array.isArray(list)) return null;
     const root = state.git && state.git.root ? cockpitPathKey(state.git.root) : '';
     // Match the project too so two projects sharing a ticket id don't collide — but when either root is
     // unknown (e.g. the board fell back to mock git data) it can't be checked, so the ticket id decides.
-    // /api/cockpit-sessions lists only non-exited sessions (daemon handleSessions).
+    // /api/v1/sessions lists only non-exited sessions (daemon handleSessions).
     return list.find(s => String(s.ticket) === ticketId
       && (!root || !s.project_root || cockpitPathKey(s.project_root) === root)) || null;
   } catch { return null; }

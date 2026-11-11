@@ -223,11 +223,11 @@ export const state = {
   hiddenLanes: null, hiddenLanesKey: '',        // t-0447: lanes folded to a strip, read from localStorage on first use (per project root, t-71c8)
   boardFirstRender: true, query: '', queryMode: 'search', why: null,
   cockpitRows: new Map(), cockpitRowsKey: '',   // t-28ec: this project's live sessions by ticket id
-  shellSessions: null,                          // t-90f5: the Cockpit shell's last /api/cockpit-sessions rows {rows, at}
+  shellSessions: null,                          // t-90f5: the Cockpit shell's last /api/v1/sessions rows {rows, at}
   scratch: new Map(),                           // t-47f1: open scratch sessions (s-xxxx) — no ticket behind them
 };
 
-// t-90f5: one owner for session state inside the Cockpit. The shell polls /api/cockpit-sessions and posts every answer to
+// t-90f5: one owner for session state inside the Cockpit. The shell polls /api/v1/sessions and posts every answer to
 // each board; the header chip, the cards and the shell's Agents list then show the same answer. Rows older than two polls
 // (or a board with no shell) fall back to the board's own fetch.
 export const SHELL_SESSIONS_FRESH_MS = 12000;

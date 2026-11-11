@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+- Changed (board): the board and the Cockpit now read the live sessions from the public `/api/v1/sessions` through one helper instead of the private `/api/cockpit-sessions`; the rows, the polling and what you see are the same. A test fails if a page file fetches either route itself. The private route stays for the `canon` command until it moves to the public API.
+- Added (canon): `canon events [--limit N]` prints the newest activity-log events from `/api/v1/events` and `canon sprint <id>` prints a ticket's sprint snapshot from `/api/v1/sprint/<id>`, each as the API's JSON (`--json` is accepted); both are in the shell completions.
+
 ## [0.51.1] - 2026-11-10
 
 - Fixed (sprint): the start checklist said a sprint that edits a gate file cannot close until a release carries it. That holds only while the edit is uncommitted on top of the release commit; once committed the integrity check is a notice (`not-from-release`) and the close goes on. The rule now says to commit the edit first.

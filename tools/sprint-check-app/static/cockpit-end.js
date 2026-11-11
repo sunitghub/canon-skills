@@ -2,6 +2,7 @@
 // (t-ddc8): it frames the daemon's /relay page hidden and asks it, by postMessage, to call /end-session. The daemon
 // re-checks everything; the shell re-checks the session after the confirm so an answer about one state can't act on another.
 import { cockpitConfirm, toast } from './cockpit-core.js';
+import { fetchSessions } from './sessions-api.js';
 import { openMenu, openSessionInTab } from './cockpit-tabs.js';
 import { _projKey, fmtDur, pollSessions, sessionView, ticketTitle } from './cockpit-sessions.js';
 import { getProjects } from './cockpit-projects.js';
@@ -88,9 +89,8 @@ export async function confirmEnd(v,mode){
           : 'Asks '+where+' to save its state, then ends it \u2014 what the idle reaper would do'+(v.reapIn!==null?' in '+fmtDur(v.reapIn):'')+'.'});
   if(!ok) return;
   // Re-check after the confirm: the session may have ended, or started working or asking, while the dialog was open.
-  let rows=null;
-  try{ const r=await fetch('/api/cockpit-sessions'); if(r.ok) rows=await r.json(); }catch(e){}
-  if(!Array.isArray(rows)){ toast('Couldn\u2019t check \u201c'+name+'\u201d with the Cockpit daemon; nothing was ended.'); return; }
+  const { ok, rows } = await fetchSessions();
+  if(!ok){ toast('Couldn\u2019t check \u201c'+name+'\u201d with the Cockpit daemon; nothing was ended.'); return; }
   const now=rows.map(sessionView).find(x=>x.sid===v.sid);
   if(!now){ toast('\u201c'+name+'\u201d has already ended.'); pollSessions(); return; }
   if(mode==='reap'&&!canReap(now)){ toast('Can\u2019t reap \u201c'+name+'\u201d now: '+reapWhyNot(now).toLowerCase()+'.'); pollSessions(); return; }
@@ -125,9 +125,8 @@ export function openSessionMenu(v,x,y){
 // board has open (a ticket or scratch id, or '' for none); with none open, a project with one live session uses it.
 export async function openTabSessionMenu(pid,id){
   const proj=getProjects().find(p=>p.id===pid); if(!proj) return;
-  let rows=null;
-  try{ const r=await fetch('/api/cockpit-sessions'); if(r.ok) rows=await r.json(); }catch(e){}
-  if(!Array.isArray(rows)){ toast('Couldn\u2019t reach the Cockpit daemon.'); return; }
+  const { ok, rows } = await fetchSessions();
+  if(!ok){ toast('Couldn\u2019t reach the Cockpit daemon.'); return; }
   const here=rows.map(sessionView).filter(v=>v.sid&&_projKey(v.proot)===_projKey(proj.path));
   const v=(id&&here.find(x=>x.ticket===id||x.scratch===id))||(here.length===1?here[0]:null);
   if(!v){ toast(here.length ? 'Several agent sessions in '+proj.name+': open one in this tab, or right-click its row under Agents.' : 'No agent session in '+proj.name+'.'); return; }
