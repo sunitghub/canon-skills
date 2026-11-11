@@ -229,7 +229,7 @@ stub_bin="$WORK/old-canon-go"; printf '#!/usr/bin/env bash\necho "usage: canon-g
 set +e; out="$(CANON_COCKPIT_PORT="$PORT" SPRINT_CHECK_BIN="$stub_bin" "$CANON" sessions 2>&1)"; code=$?; set -e
 assert_eq "1" "$code"; assert_contains "$out" "canon sessions: the board binary ($stub_bin) is older than this command; run canon update."
 # a leading zero is refused, but 0 and a plain number are timeouts: the board answers "working", so --until done times out (exit 1), not usage
-set +e; out="$(run wait t-wt01 --until done --timeout 0 2>&1)"; code=$?; set -e
+set +e; out="$(run wait t-wt01 --until "done" --timeout 0 2>&1)"; code=$?; set -e
 assert_eq "1" "$code"; assert_contains "$out" "timed out after 0ms"
 
 # shellcheck disable=SC2043  # one board today; the loop keeps the per-board stub dirs
