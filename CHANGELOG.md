@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.54.1] - 2026-11-11
+
+Run `canon update`. The secret scan changed; no program did, so no daemon restart is needed.
+
 - Fixed (security): the secret scan no longer refuses an ordinary assignment whose variable name holds `secret`, `token`, `password` or `api_key` and whose value is a path (`SECRET_SCAN="$CANON_ROOT/tools/secret-scan.sh"`, `TOKEN_FILE="$HOME/.token"`, `secret_path="/etc/app/secret.pem"`). A value that only resembles a variable or a path at its start (`$DB_PASS-realsecret9`, `$uperSecret99`, `$HOME/Zq8vN2mK9xLp4Rt7`, `/Zq8vN2mK9xLp4Rt7`) is still refused, and a `Bearer` token is never exempt as a path. Shell only: no daemon restart is needed.
 
 ## [0.54.0] - 2026-11-11
