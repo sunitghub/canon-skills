@@ -297,7 +297,7 @@ func TestSessionsTableCLIPrintsTheTableOfAV1Body(t *testing.T) {
 	if rc := sessionsTableCLI(strings.NewReader(`{"schema":1,"sessions":[]}`), &out, &errb); rc != 0 || out.String() != "No sessions running.\n" {
 		t.Errorf("empty: rc=%d out=%q", rc, out.String())
 	}
-	for _, bad := range []string{``, `not json`, `[]`, `{"schema":1}`, `{"schema":1,"sessions":null}`, `{"schema":1,"error":"x"}`} {
+	for _, bad := range []string{``, `not json`, `[]`, `{"schema":1}`, `{"schema":1,"sessions":null}`, `{"schema":1,"error":"x"}`, `{"schema":1,"sessions":[null]}`} {
 		out.Reset()
 		if rc := sessionsTableCLI(strings.NewReader(bad), &out, &errb); rc != 1 || out.Len() != 0 {
 			t.Errorf("%q: rc=%d out=%q, want 1 and nothing", bad, rc, out.String())
@@ -651,5 +651,29 @@ func TestAPIv1SprintIncludesALiveWorktreesEvents(t *testing.T) {
 	writeFile(t, filepath.Join(home, "events", "2026-11-07.jsonl"), `{"schema":1,"id":"00000000000000f9","ts":"2026-11-07T01:00:00.000Z","kind":"plan.approved","source":"sprint","project":"`+resolvedOrAbs(wt)+`","data":{"ticket":"t-aaaa"}}`+"\n")
 	if w := v1Get(t, "GET", "/api/v1/sprint/t-aaaa", ""); !strings.Contains(w.Body.String(), "00000000000000f9") {
 		t.Errorf("a live worktree's event is missing: %s", w.Body)
+	}
+}
+
+// Protects `canon sessions` and `canon status` output: board data never reaches the terminal as a control (C0, DEL, C1, line/paragraph or
+// bidi override), and a state_secs that is not a duration prints "-" instead of an overflowed number (t-5b80, break-it).
+func TestTermSafeAndFmtSecsHoldOnHostileValues(t *testing.T) {
+	for _, in := range []string{"a\x1b[31m", "a\u009bb", "a\u0085b", "a\u202eb", "a\u2066b", "a\u2028b", "a\x7fb"} {
+		out := termSafe(in, 0)
+		for _, r := range out {
+			if r < 32 || (r >= 127 && r < 160) || (r >= 0x2028 && r <= 0x202e) || (r >= 0x2066 && r <= 0x2069) {
+				t.Errorf("termSafe(%q) kept a control: %q", in, out)
+			}
+		}
+	}
+	if got := termSafe("caf\u00e9 \u65e5\u672c", 0); got != "caf\u00e9 \u65e5\u672c" {
+		t.Errorf("termSafe must keep ordinary text: %q", got)
+	}
+	for _, v := range []any{9.3e18, 1e300, float64(2e12), -1.0, "x", nil} {
+		if got := fmtSecs(v); got != "-" {
+			t.Errorf("fmtSecs(%v) = %q, want -", v, got)
+		}
+	}
+	if fmtSecs(65.0) != "1m 5s" && !strings.HasPrefix(fmtSecs(65.0), "1m") {
+		t.Errorf("fmtSecs(65) = %q", fmtSecs(65.0))
 	}
 }

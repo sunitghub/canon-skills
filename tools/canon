@@ -576,18 +576,21 @@ wait_cmd() {
     case "$1" in
       --until) until="${2:-}"; shift 2 || { echo "canon wait: --until needs a value" >&2; exit 2; } ;;
       --timeout) timeout="${2:-}"; shift 2 || { echo "canon wait: --timeout needs a value" >&2; exit 2; } ;;
-      --project) root="${2:-}"; shift 2 || { echo "canon wait: --project needs a path" >&2; exit 2; } ;;
+      --project) root="${2:-}"; shift 2 || { echo "canon wait: --project needs a path" >&2; exit 2; }
+        [[ -n "$root" ]] || { echo "canon wait: --project needs a path, got an empty value" >&2; exit 2; } ;;
       --json) json=1; shift ;;
       *) echo "canon wait: unknown option: $1" >&2; exit 2 ;;
     esac
   done
   [[ "$id" =~ ^[ts]-[a-z0-9]{4}$ ]] || { echo "canon wait: expected a ticket or scratch id (t-xxxx or s-xxxx), got '$id'" >&2; exit 2; }
   [[ -n "$until" ]] || { echo "canon wait: --until <state> is required" >&2; exit 2; }
-  local st
+  local st n=0
   for st in ${until//,/ }; do
-    case "$st" in needs-you|working|done|idle|exited) ;; *) echo "canon wait: unknown state '$st' (needs-you, working, done, idle, exited)" >&2; exit 2 ;; esac
+    case "$st" in needs-you|working|done|idle|exited) n=$((n + 1)) ;; *) echo "canon wait: unknown state '$st' (needs-you, working, done, idle, exited)" >&2; exit 2 ;; esac
   done
-  [[ -z "$timeout" || "$timeout" =~ ^[0-9]+$ ]] || { echo "canon wait: --timeout is milliseconds, got '$timeout'" >&2; exit 2; }
+  [[ "$n" -gt 0 ]] || { echo "canon wait: --until names no state (needs-you, working, done, idle, exited), got '$until'" >&2; exit 2; }
+  # milliseconds: a plain decimal (0 allowed), so bash never reads 08 as a bad octal or wraps a 20-digit value
+  [[ -z "$timeout" || "$timeout" == 0 ]] || in_range "$timeout" 999999999999999 || { echo "canon wait: --timeout is milliseconds, got '$timeout'" >&2; exit 2; }
   local port base
   require_board 2
   local q=() v1="$base/api/v1/sessions" start=$SECONDS now

@@ -62,12 +62,20 @@ start_board() {   # start_board <name> <state-dir> → sets PORT
 }
 
 run() { CANON_COCKPIT_PORT="$PORT" SPRINT_CHECK_BIN="$GO_BIN" "$CANON" "$@"; }   # t-5b80: the table is the test build's sessions-table
+# run_bounded: run, but a command that would loop (a validation that failed to refuse) is stopped after 8 s and fails the assertion on its status (143), not the suite on a hang.
+run_bounded() {
+  CANON_COCKPIT_PORT="$PORT" SPRINT_CHECK_BIN="$GO_BIN" "$CANON" "$@" & local p=$!
+  ( sleep 8; kill "$p" 2>/dev/null ) & local w=$!
+  local c=0; wait "$p" || c=$?
+  kill "$w" 2>/dev/null; wait "$w" 2>/dev/null || true
+  return "$c"
+}
 no_token() { [[ "$1" != *"$TOKEN"* ]] || fail "canon-cli: a token appeared in canon output"; }
 
-# t-5b80: every probe of the board's /api/version goes through board_curl (curl --noproxy '*'): a proxy variable must not answer for the board.
-# The libraries and scripts that probe it (canon, canon-uninstall.sh, cockpit-launch-lib.sh, pkg-lib.sh) are all covered by this one scan.
-bare="$(grep -nE 'curl[^|]*/api/version' "$ROOT"/tools/canon "$ROOT"/tools/*.sh | grep -v 'board_curl' || true)"
-[[ -z "$bare" ]] || fail "canon-cli: a board probe calls curl without board_curl (--noproxy): $bare"
+# t-5b80: every request to the board goes through board_curl (curl --noproxy '*'): a proxy variable must not see or answer for the board. One scan
+# of the CLI and the libraries (canon, canon-uninstall.sh, cockpit-launch-lib.sh, pkg-lib.sh) for a bare curl naming an /api/ path or 127.0.0.1.
+bare="$(grep -nE '(^|[^_a-zA-Z])curl .*(/api/|127\.0\.0\.1)' "$ROOT"/tools/canon "$ROOT"/tools/*.sh | grep -v 'board_curl' || true)"
+[[ -z "$bare" ]] || fail "canon-cli: a board request calls curl without board_curl (--noproxy): $bare"
 
 GO_BIN="$(build_board "$WORK/bin")"
 
@@ -201,6 +209,19 @@ assert_eq "2" "$code"; assert_contains "$out" "does not support 'canon wait --pr
 PORT="$(free_port)"; v1_stub "$PORT" nostate
 set +e; out="$(run wait t-wt01 --until done --timeout 3000 2>&1)"; code=$?; set -e
 assert_eq "2" "$code"; assert_contains "$out" "does not support 'canon wait'"
+
+# t-5b80 (break-it): wait refuses what can never work, before it asks the board anything (this board answers "working", so exit 2 can only be the check)
+PORT="$(free_port)"; v1_stub "$PORT" noroot
+for bad in "--until done --timeout 08" "--until done --timeout 09" "--until done --timeout 18446744073709551617" "--until done --timeout 0x10" "--until done --timeout -1" "--until ," "--until ,,"; do
+  # shellcheck disable=SC2086  # split on purpose: flag and value
+  set +e; run_bounded wait t-wt01 $bad >/dev/null 2>&1; code=$?; set -e
+  assert_eq "2" "$code"
+done
+set +e; run_bounded wait t-wt01 --until done --project "" >/dev/null 2>&1; code=$?; set -e
+assert_eq "2" "$code"   # an empty project is not "any project"
+# a leading zero is refused, but 0 and a plain number are timeouts: the board answers "working", so --until done times out (exit 1), not usage
+set +e; out="$(run wait t-wt01 --until done --timeout 0 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"; assert_contains "$out" "timed out after 0ms"
 
 # shellcheck disable=SC2043  # one board today; the loop keeps the per-board stub dirs
 for b in main.go; do

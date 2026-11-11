@@ -100,7 +100,7 @@ cockpit_register_project() {
   command -v curl >/dev/null 2>&1 || return 1
   local base="http://127.0.0.1:$port" esc resp id
   esc="$(_json_escape "$path")"
-  resp="$(curl -s -X POST "$base/api/projects" \
+  resp="$(board_curl -s -X POST "$base/api/projects" \
     -H 'Content-Type: application/json' -H "Origin: $base" \
     -d "{\"path\": \"$esc\"}" 2>/dev/null)" || return 1
   if printf '%s' "$resp" | grep -q '"ok": *true'; then
@@ -112,7 +112,7 @@ cockpit_register_project() {
   fi
   # Already registered — look it up by resolved path instead of reimplementing
   # the registry's path-hash id locally: one object per record, match its exact "path".
-  curl -s "$base/api/projects" -H "Origin: $base" 2>/dev/null | tr '\n' ' ' |
+  board_curl -s "$base/api/projects" -H "Origin: $base" 2>/dev/null | tr '\n' ' ' |
     WANT="\"$esc\"" awk 'BEGIN { RS = "}"; want = ENVIRON["WANT"] } {   # ENVIRON: -v would unescape \"
       if (match($0, /"path": *"([^"\\]|\\.)*"/)) {
         p = substr($0, RSTART, RLENGTH); sub(/^"path": */, "", p)

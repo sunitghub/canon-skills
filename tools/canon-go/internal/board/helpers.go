@@ -596,6 +596,12 @@ func sessionsTableCLI(stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "canon-go sessions-table: stdin is not a /api/v1/sessions body")
 		return 1
 	}
+	for _, row := range body.Sessions {
+		if row == nil { // a null row is not a session
+			fmt.Fprintln(stderr, "canon-go sessions-table: stdin is not a /api/v1/sessions body")
+			return 1
+		}
+	}
 	fmt.Fprint(stdout, cockpitSessionsText(body.Sessions))
 	return 0
 }

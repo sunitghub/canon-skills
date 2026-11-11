@@ -4307,7 +4307,7 @@ func fmtSecs(v any) string {
 	if i, isInt := v.(int64); isInt {
 		f, ok = float64(i), true
 	}
-	if !ok || f < 0 {
+	if !ok || f < 0 || f > 1e12 { // 1e12 s is 31,000 years: not a duration, and int64(f) is undefined past 9.2e18
 		return "-"
 	}
 	n := int64(f)
@@ -4331,7 +4331,7 @@ func termSafe(v any, width int) string {
 	}
 	out := make([]rune, 0, len(s))
 	for _, c := range s {
-		if c < 32 || c == 127 {
+		if c < 32 || (c >= 127 && c < 160) || (c >= 0x2028 && c <= 0x202e) || (c >= 0x2066 && c <= 0x2069) { // C0, DEL, C1, line/paragraph and bidi controls
 			c = '?'
 		}
 		out = append(out, c)
