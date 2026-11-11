@@ -15,6 +15,44 @@ sprint: usually a `toolchain` bump in `tools/canon-go/go.mod` for a standard-lib
 Any go.mod change moves the daemon's and the board's source keys (`tools/src-key.sh`), so it needs a release; a
 dependency bump also needs its new version named in `THIRD-PARTY-NOTICES.md` (`tests/fetch-daemon.sh` check 10).
 
+## How it finds a vulnerability
+
+govulncheck does three things, in this order:
+
+1. **Which Go built this.** The workflow installs the Go that `tools/canon-go/go.mod` pins (`toolchain goX.Y.Z`, through
+   `setup-go`'s `go-version-file`). The standard library is part of the toolchain, so that pin decides which `net/http`,
+   `crypto/x509` and so on canon is built with.
+2. **Which advisories match.** It downloads the Go vulnerability database (`vuln.go.dev`) and keeps the entries whose
+   affected versions include the pinned toolchain or a module canon requires.
+3. **Whether canon can reach it.** It builds the call graph of `tools/canon-go` and keeps an entry only when some path
+   leads from canon's code to the vulnerable function; the report prints example traces (`file:line: A calls B, which
+   eventually calls C`). A matching advisory canon never calls is listed as a note, not a failure. Exit code 0 is clean,
+   3 means a reachable vulnerability.
+
+A new advisory can therefore turn the job red on a tree nobody touched. That is the weekly run's job, and it is also
+why a release push can fail: GO-2026-6859 (`net/http` in go1.27.3, fixed in go1.27.4) was published the day 0.53.0 was
+released, and the 0.51.0 run, from before the entry existed, was green. Reachable means the symbol is in the call graph,
+not that the bug can be triggered: say which in the ticket (t-2c06 records the handler that reads a body under
+`http.MaxBytesReader`).
+
+## When it fails
+
+Treat it as a P0 bug: the released binaries carry the flaw. The steps, as done for `t-8bcd` (GO-2026-6809, go1.27.3)
+and `t-2c06` (GO-2026-6859, go1.27.4):
+
+1. Read the advisory (`https://pkg.go.dev/vuln/<id>`) for the fixed version, then run it locally before changing
+   anything: `GOTOOLCHAIN=go<old> govulncheck ./...` must show the finding; save the output in the ticket's `evidence/`.
+2. Raise only the `toolchain` line of `tools/canon-go/go.mod` (a module dependency finding bumps that module instead and
+   its version is named in `THIRD-PARTY-NOTICES.md`). Run `GOTOOLCHAIN=go<new> govulncheck ./...`: it must report that
+   the code is affected by 0 vulnerabilities. A required-module finding the code does not call is recorded in the
+   ticket, never suppressed, and the workflow is never weakened to pass.
+3. Upgrade the Go on your machine to the pin (`brew upgrade go` on macOS): a Go older than the pin makes every hermetic
+   test home download the toolchain. Run `go test ./...` in `tools/canon-go` and the full suite.
+4. Release the binaries first, then the version (`docs/releasing.md` steps 2 and 3): the go.mod change moves both source
+   keys, so `scripts/release-daemon.sh` publishes a new `canon-go-<key>` built with the new pin (it checks every binary
+   with `go version -m`), and the CHANGELOG section tells users to restart the daemon. A patch release is enough.
+5. Confirm the workflow on the public repo (Actions › govulncheck) is green for the release commit.
+
 ## Safe on the public mirror
 
 canon-skills mirrors every canon commit (`tkt push-main`), so the workflow runs there too. It has
