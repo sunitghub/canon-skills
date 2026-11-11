@@ -7,7 +7,7 @@
 # Passes: a line carrying `canon:allow-secret`, and a match that is a placeholder (xxxx, example, your_..., <...>, ${...}, changeme, redacted).
 # Overrides, on purpose: `git commit --no-verify` / `git push --no-verify`. There is no environment switch: an agent could set one.
 # Rules are patterns for known shapes, not entropy: a secret of an unlisted shape passes. The table below is the one place to extend.
-# Input is hostile: file names with spaces, quotes or a newline (git quotes them), a long line (read in overlapping 20 KB pieces), at most 200 hits a rule, a binary file or a .gitattributes `-diff`
+# Input is hostile: file names with spaces, quotes or a newline (git quotes them), a long line (read in overlapping 20 KB pieces), at most 200 real hits a rule (placeholders do not count), a binary file or a .gitattributes `-diff`
 # (--text, --no-textconv, --no-ext-diff: an attribute cannot hide the lines or pick a program that rewrites them), paths in any letter case (.ENV, Server.PEM).
 set -euo pipefail
 export LC_ALL=C   # bytes, not characters: an invalid UTF-8 byte must neither stop awk nor make grep call the file binary
@@ -30,30 +30,47 @@ anthropic-key	sk-ant-[A-Za-z0-9_-]{20,}
 openai-key	(^|[^A-Za-z0-9_-])sk-(proj-)?[A-Za-z0-9_-]{32,}
 google-api-key	AIza[0-9A-Za-z_-]{35}
 private-key	-----BEGIN ([A-Z]+ )*PRIVATE KEY( BLOCK)?-----
-url-credentials	[a-z][a-z0-9+.-]*://[^/[:space:]:@]+:[^/[:space:]@]{3,}@
+url-credentials	[a-z][a-z0-9+.-]*://[^/[:space:]:@]+:[^/[:space:]@]{3,}@	i
 jwt	eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}
 bearer-token	Bearer[[:space:]]+[A-Za-z0-9._~+/=-]{20,}	i
 generic-secret	(password|passwd|secret|token|api[_-]?key|apikey)[A-Za-z0-9_-]*["']?[[:space:]]*[:=][[:space:]]*["'][^"'[:space:]]{12,}["']	i
 TABLE
-# A placeholder is judged on the VALUE (not the key name or the whole match): xxxx, example, your_..., placeholder, dummy, changeme, redacted, ****,
-# <...>, or a variable reference at its start (${X}, $X). A real password that merely contains a $ is not one.
-PLACEHOLDER='x{4,}|example|your[_-]|placeholder|dummy|changeme|redacted|\*{4,}|^<.*>$|^\$[{A-Za-z_]'
-value_of() { # <rule> <match>: the part of a match that is the secret itself (sed: bash 3.2 mishandles quotes inside ${...})
+# A placeholder is judged on the VALUE, never the key name. Key-shaped secrets (AWS, GitHub, ...): xxxx, example or **** anywhere in the match.
+# A password, token or Bearer value or a URL password (free text, so a real one may contain such a word): only when it STARTS or ENDS as a placeholder
+# (xxxx, your_..., changeme, example, placeholder, dummy, redacted, ****, <...>, ${X}, $X), is only digits (a port, a count), a bare word like
+# "password", or an npm integrity hash (sha512-...). A real secret that merely contains "example" in the middle is still refused.
+PH_KEY='x{4,}|example|\*{4,}'
+PH_FREE='^(x{4,}|your[_-]|changeme|example|placeholder|dummy|redacted|\*{4,}|<.*>$|\$[{A-Za-z_]|sha(256|384|512)-)|(example|x{4,}|\*{4,})$|^[0-9]+$|^(password|passwd|pass|secret|token|user|username|apikey|api_key)$'
+dq='"'; sq="'"
+value_of() { # <rule> <match>: the part of a match that is the secret itself. Builtins only: this runs once per hit, and a file can have 100,000 of them
+  local v="$2"
   case "$1" in
-    generic-secret) printf '%s' "$2" | sed -e 's/^[^:=]*[:=][[:space:]]*//' -e "s/^[\"']//" -e "s/[\"']\$//" ;;
-    bearer-token) printf '%s' "$2" | sed -e 's/^[Bb]earer[[:space:]]*//' ;;
-    url-credentials) printf '%s' "$2" | sed -e 's|^[^:]*://||' -e 's|^[^:]*:||' -e 's|@$||' ;;
-    *) printf '%s' "$2" ;;
+    generic-secret)
+      v="${v#*[:=]}"; while [[ "$v" == [[:space:]]* ]]; do v="${v#?}"; done
+      case "$v" in "$dq"*|"$sq"*) v="${v#?}" ;; esac
+      case "$v" in *"$dq"|*"$sq") v="${v%?}" ;; esac ;;
+    bearer-token) v="${v#[Bb]earer}"; while [[ "$v" == [[:space:]]* ]]; do v="${v#?}"; done ;;
+    url-credentials) v="${v#*://}"; v="${v#*:}"; v="${v%@}" ;;
   esac
+  VALUE="$v"
+}
+is_placeholder() { # <rule> <value>
+  local re="$PH_KEY" r=1
+  case "$1" in generic-secret|bearer-token|url-credentials) re="$PH_FREE" ;; esac
+  shopt -s nocasematch; [[ "$2" =~ $re ]] && r=0; shopt -u nocasematch; return "$r"
 }
 
 repo="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "secret-scan: not inside a git repository" >&2; exit 2; }
 work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
 US=$'\x1f'
 
+# Flags that make the diff the same whatever the repo's or the user's git config says: prefixes (diff.dstPrefix, noprefix, mnemonicPrefix), the
+# root commit (log.showRoot), replace refs (git replace), quoting (core.quotepath), the lines themselves (--text, no textconv, no external driver).
+GITF=(--no-replace-objects -c core.quotepath=false -c diff.noprefix=false -c diff.mnemonicPrefix=false -c log.showRoot=true)
+DIFFF=(--no-color --text --no-textconv --no-ext-diff --src-prefix=a/ --dst-prefix=b/ -U0 --diff-filter=d)
 case "$mode" in
-  --staged) git -C "$repo" -c core.quotepath=false diff --cached --no-color --text --no-textconv --no-ext-diff -U0 --diff-filter=d > "$work/diff" || exit 2 ;;
-  --range)  git -C "$repo" -c core.quotepath=false log -p -m --no-color --text --no-textconv --no-ext-diff -U0 --diff-filter=d --format='@@COMMIT %H' "$@" > "$work/diff" || exit 2 ;;
+  --staged) git -C "$repo" "${GITF[@]}" diff --cached "${DIFFF[@]}" > "$work/diff" || exit 2 ;;
+  --range)  git -C "$repo" "${GITF[@]}" log -p -m --root "${DIFFF[@]}" --format='@@COMMIT %H' "$@" > "$work/diff" || exit 2 ;;
 esac
 
 tr -d '\000' < "$work/diff" > "$work/diff.clean"   # a NUL would end a line early in some awks and make grep call the whole file binary
@@ -73,6 +90,7 @@ awk -v R="$work/R" -v T="$work/T" -v P="$work/P" -v US="$US" '
   /^@@ / {
     inhdr = 0; n = $3; sub(/^\+/, "", n); sub(/,.*/, "", n); ln = n + 0; next
   }
+  !inhdr && /^ / { ln++; next }   # a context line (GIT_DIFF_OPTS can ask for some): it has a line number too
   !inhdr && /^\+/ {
     if (file != "") {
       line = substr($0, 2)
@@ -114,15 +132,19 @@ done < "$work/P"
 while IFS="$(printf '\t')" read -r name re flags; do
   [[ -n "$name" ]] || continue
   opts="-noE"; [[ "$flags" != *i* ]] || opts="-noiE"
-  grc=0; grep -a -m 200 $opts -e "$re" "$work/T" > "$work/hits" || grc=$?
+  grc=0; grep -a $opts -e "$re" "$work/T" > "$work/hits" || grc=$?
   [[ "$grc" -le 1 ]] || { echo "secret-scan: grep failed (exit $grc) on rule $name; nothing was scanned for it" >&2; exit 2; }   # never read a failed scan as clean
+  # every hit is judged (a cap applied before the placeholder filter would let 200 placeholders hide a real secret); the work is bounded after it:
+  # a hit that is a placeholder costs builtins only, and a rule stops at 200 real hits (only the first 50 are ever printed)
+  real=0
   while IFS= read -r hit; do
     idx="${hit%%:*}"; m="${hit#*:}"
-    v="$(value_of "$name" "$m")"
-    if grep -qiE -e "$PLACEHOLDER" <<<"$v"; then continue; fi
+    value_of "$name" "$m"
+    if is_placeholder "$name" "$VALUE"; then continue; fi
     rec="$(sed -n "${idx}p" "$work/R")"
     IFS="$US" read -r c p l _ <<<"$rec"
     say "$c" "$p" "$l" "$name"
+    real=$((real + 1)); [[ "$real" -lt 200 ]] || break
   done < "$work/hits"
 done <<<"$RULES"
 

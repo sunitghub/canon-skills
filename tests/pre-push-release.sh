@@ -16,6 +16,7 @@ git remote add public "$W/public.git"; git config --add canon.mirror public
 mkdir -p tools scripts .git/hooks
 printf '#!/usr/bin/env bash\nexec bash "%s/tools/tkt" "$@"\n' "$ROOT" > tools/tkt
 cp "$ROOT/scripts/install-hooks.sh" scripts/install-hooks.sh   # its own copy: it installs into the repo it sits in
+cp "$ROOT/tools/secret-scan.sh" tools/secret-scan.sh              # t-5988: the hook refuses a push when its scanner is missing
 cat > scripts/check-binaries-released.sh <<'STUB'
 #!/usr/bin/env bash
 [ "$1" = --rev ] || exit 2

@@ -12,18 +12,22 @@ fi
 # ── Secret scan (t-5988) ─────────────────────────────────────────────────────
 # A credential in a commit is in history for good: refuse it before the commit exists. `git commit --no-verify` is the deliberate override.
 SECRET_SCAN="$CANON_ROOT/tools/secret-scan.sh"
-if [ -f "$SECRET_SCAN" ]; then
-  _scan_rc=0; bash "$SECRET_SCAN" --staged || _scan_rc=$?
-  if [ "$_scan_rc" -ne 0 ]; then
-    echo ""
-    if [ "$_scan_rc" -eq 1 ]; then
-      echo "[pre-commit] BLOCKED — the staged change adds what looks like a secret (above)."
-    else
-      echo "[pre-commit] BLOCKED — the secret scan could not run (exit $_scan_rc, above): a scan that failed is not a clean one."
-    fi
-    echo "  Fix it, or commit with --no-verify on purpose."
-    exit 1
+if [ ! -f "$SECRET_SCAN" ]; then
+  echo ""
+  echo "[pre-commit] BLOCKED — the secret scan is missing ($SECRET_SCAN): a scan that cannot run is not a clean one."
+  echo "  Run canon update (it refreshes this hook), or commit with --no-verify on purpose."
+  exit 1
+fi
+_scan_rc=0; bash "$SECRET_SCAN" --staged || _scan_rc=$?
+if [ "$_scan_rc" -ne 0 ]; then
+  echo ""
+  if [ "$_scan_rc" -eq 1 ]; then
+    echo "[pre-commit] BLOCKED — the staged change adds what looks like a secret (above)."
+  else
+    echo "[pre-commit] BLOCKED — the secret scan could not run (exit $_scan_rc, above): a scan that failed is not a clean one."
   fi
+  echo "  Fix it, or commit with --no-verify on purpose."
+  exit 1
 fi
 
 TKT_BIN="$CANON_ROOT/tools/tkt"

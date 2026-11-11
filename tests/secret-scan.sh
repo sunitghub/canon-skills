@@ -93,7 +93,7 @@ r="$(newrepo)"; put "$r" plus.txt "++$AWS";              expect_hit "$r" plus-li
 r="$(newrepo)"; put "$r" plus3.txt "++ $AWS";            expect_hit "$r" plus-plus-space aws-access-key plus3.txt:1
 r="$(newrepo)"; { printf 'k=%s ' "$AWS"; head -c 200000 /dev/zero | tr '\0' 'a'; printf '\n'; } > "$r/long.txt"; git -C "$r" add long.txt
 t0=$SECONDS; expect_hit "$r" long-line aws-access-key long.txt:1; (( SECONDS - t0 < 20 )) || fail "secret-scan: a 200 KB line took $((SECONDS - t0)) s"
-r="$(newrepo)"; { for i in $(seq 1 100000); do echo "line $i"; done; printf 'k=%s\n' "$AWS"; } > "$r/big.txt"; git -C "$r" add big.txt
+r="$(newrepo)"; { awk 'BEGIN { for (i = 1; i <= 100000; i++) print "line " i }'; printf 'k=%s\n' "$AWS"; } > "$r/big.txt"; git -C "$r" add big.txt
 t0=$SECONDS; expect_hit "$r" big-diff aws-access-key big.txt:100001; (( SECONDS - t0 < 20 )) || fail "secret-scan: a 100,000-line diff took $((SECONDS - t0)) s"
 # (break-it) bytes that are not UTF-8 must neither stop the scan nor hide a later line; a NUL in an earlier line must not turn the rest into "binary"
 r="$(newrepo)"; printf 'caf\xe9 \xff\xfe latin-1 text\n' > "$r/l1.txt"; git -C "$r" add l1.txt; expect_clean "$r" "a Latin-1 file with no secret blocks nothing"
@@ -119,8 +119,34 @@ r="$(newrepo)"; put "$r" a.cfg 'u=postgres://u:Zq8vN2$mK9@h/db';                
 r="$(newrepo)"; put "$r" a.cfg 'pass''word = "$DB_PASSWORD_FROM_ENV"';              expect_clean "$r" "a variable reference"
 r="$(newrepo)"; put "$r" a.cfg 'u=postgres://app:${DB_PASS_FROM_ENV}@h/db';         expect_clean "$r" "a variable reference in a URL"
 # (break-it) many hits stay bounded: 4,000 lines that each hold a key
-r="$(newrepo)"; for i in $(seq 1 4000); do printf 'k%s=%s\n' "$i" "$AWS"; done > "$r/many.txt"; git -C "$r" add many.txt
+r="$(newrepo)"; awk -v k="$AWS" 'BEGIN { for (i = 1; i <= 4000; i++) print "k" i "=" k }' > "$r/many.txt"; git -C "$r" add many.txt
 t0=$SECONDS; expect_hit "$r" many-hits aws-access-key many.txt:1; (( SECONDS - t0 < 15 )) || fail "secret-scan: 4,000 hits took $((SECONDS - t0)) s"
+# (security review) 300 placeholder hits before a real secret must not hide it: the cap counts real hits only
+r="$(newrepo)"; awk -v ph="AKIA$(rep X 16)" -v k="$AWS" 'BEGIN { for (i = 1; i <= 300; i++) print "p" i "=" ph; print "real=" k; for (i = 1; i <= 300; i++) print "q" i "=" ph }' > "$r/ph.txt"; git -C "$r" add ph.txt
+t0=$SECONDS; expect_hit "$r" real-after-300-placeholders aws-access-key ph.txt:301; (( SECONDS - t0 < 15 )) || fail "secret-scan: 600 placeholder hits took $((SECONDS - t0)) s"
+r="$(newrepo)"; awk -v ph="ghp_$(rep x 36)" -v k="$AWS" 'BEGIN { for (i = 1; i <= 30000; i++) print "k=" ph; print "real=" k }' > "$r/ph30k.txt"; git -C "$r" add ph30k.txt
+t0=$SECONDS; expect_hit "$r" real-after-30k-placeholders aws-access-key ph30k.txt:30001; (( SECONDS - t0 < 30 )) || fail "secret-scan: 30,000 placeholder hits took $((SECONDS - t0)) s"
+# (break-it 2) a placeholder is judged on the value: a word in the MIDDLE of a real secret does not exempt it; a placeholder start or end does
+r="$(newrepo)"; put "$r" a.cfg 'pass''word = "Tr0ub4dor-example-9Zq"';                    expect_hit "$r" example-in-the-middle generic-secret a.cfg:1
+r="$(newrepo)"; put "$r" a.cfg 'pass''word = "Pa55word-xxx-Realvalue"';                   expect_hit "$r" xxx-in-the-middle generic-secret a.cfg:1
+r="$(newrepo)"; put "$r" a.cfg 'pass''word = "your-database-password-1"';                  expect_clean "$r" "a value that starts your-"
+r="$(newrepo)"; put "$r" a.cfg 'token = "abcdefghijklmnop-example"';                      expect_clean "$r" "a value that ends example"
+r="$(newrepo)"; put "$r" a.cfg 'max_tokens: "1000000000000"';                             expect_clean "$r" "a number"
+r="$(newrepo)"; put "$r" a.json '"integrity": "sha512-abcdefghijklmnopqrstuvwx", "token": "sha512-abcdefghijklmnopqrstuvwx"'; expect_clean "$r" "an npm integrity hash"
+r="$(newrepo)"; put "$r" a.sh 'curl https://user:password@example.org/x';                  expect_clean "$r" "the literal word password in a URL"
+r="$(newrepo)"; put "$r" a.sh 'http://host:8080@v2/x';                                     expect_clean "$r" "a port in a URL"
+# (break-it 2) the diff does not depend on the repo's git config: dstPrefix, showRoot, replace refs, an uppercase scheme, context lines
+r="$(newrepo)"; mkdir -p "$r/.claude"; put "$r" .claude/settings.local.json '{}'; git -C "$r" config diff.dstPrefix w-
+expect_hit "$r" dstPrefix-config claude-local-settings .claude/settings.local.json
+r="$(newrepo)"; git -C "$r" config diff.mnemonicPrefix true; put "$r" server.pem x; expect_hit "$r" mnemonicPrefix key-file server.pem
+r="$(newrepo)"; put "$r" a.cfg 'u=HTTPS://admin:hunter22xx@host.com/x';                     expect_hit "$r" uppercase-scheme url-credentials a.cfg:1
+r="$(newrepo)"; printf 'one\ntwo\n' > "$r/f.txt"; git -C "$r" add f.txt; git -C "$r" commit -qm f; printf 'one\nk=%s\n' "$AWS" > "$r/f.txt"; git -C "$r" add f.txt
+rc=0; out="$(cd "$r" && GIT_DIFF_OPTS=-u9 bash "$SCAN" --staged 2>&1)" || rc=$?; assert_eq 1 "$rc"; assert_contains "$out" "f.txt:2: aws-access-key"
+r="$(mktemp -d "$W/r.XXXXXX")"; git init -q "$r"; printf 'k=%s\n' "$AWS" > "$r/root.txt"; git -C "$r" add root.txt; git -C "$r" commit -qm root; put "$r" b.txt b; git -C "$r" commit -qm second
+git -C "$r" config log.showRoot false; rc=0; out="$(cd "$r" && bash "$SCAN" --range HEAD 2>&1)" || rc=$?; assert_eq 1 "$rc"; assert_contains "$out" "root.txt:1: aws-access-key"   # the root commit of a first push
+r="$(newrepo)"; b0="$(git -C "$r" rev-parse HEAD)"; put "$r" sec.txt "k=$AWS"; git -C "$r" commit -qm sec; sec="$(git -C "$r" rev-parse HEAD)"
+clean="$(git -C "$r" commit-tree -p "$b0" -m clean "$b0^{tree}")"; git -C "$r" replace "$sec" "$clean"
+rc=0; out="$(cd "$r" && bash "$SCAN" --range "$b0..$sec" 2>&1)" || rc=$?; assert_eq 1 "$rc"; assert_contains "$out" "sec.txt:1: aws-access-key"   # a replace ref cannot hide the real commit
 # a rename of a clean file into a secret path is refused; a plain rename of a clean file passes
 r="$(newrepo)"; put "$r" plain.txt "hello"; git -C "$r" commit -qm p; git -C "$r" mv plain.txt .env; staged "$r"; [[ "$RC" == 1 ]] || fail "secret-scan: a rename to .env passed: $OUT"
 r="$(newrepo)"; put "$r" plain.txt "hello"; git -C "$r" commit -qm p; git -C "$r" mv plain.txt other.txt; expect_clean "$r" "a plain rename"
@@ -166,6 +192,9 @@ assert_contains "$out" "a.cfg:1: aws-access-key"; assert_contains "$out" "BLOCKE
 [[ -z "$(git -C "$r" log --format=%s | grep '^bad$' || true)" ]] || fail "secret-scan: the refused commit exists"
 rc=0; out="$(cd "$r" && git commit -qm forced --no-verify 2>&1)" || rc=$?; assert_eq 0 "$rc"            # the deliberate override
 put "$r" b.txt "clean"; rc=0; out="$(cd "$r" && git commit -qm ok 2>&1)" || rc=$?; assert_eq 0 "$rc"      # a clean commit is not slowed or refused
+mv "$r/tools/secret-scan.sh" "$r/tools/secret-scan.off"; put "$r" d.txt "clean three"; rc=0; out="$(cd "$r" && git commit -qm noscan 2>&1)" || rc=$?
+[[ "$rc" != 0 ]] || fail "secret-scan: the pre-commit hook let a commit through with the scanner missing"; assert_contains "$out" "the secret scan is missing"
+mv "$r/tools/secret-scan.off" "$r/tools/secret-scan.sh"; git -C "$r" reset -q; git -C "$r" checkout -q -- . 2>/dev/null || true
 put "$r" c.txt "clean again"; rc=0; out="$(cd "$r" && PATH="$W/shim:$PATH" git commit -qm broken-scan 2>&1)" || rc=$?   # a scan that cannot run blocks, and says so
 [[ "$rc" != 0 ]] || fail "secret-scan: the pre-commit hook let a commit through when the scan could not run"
 assert_contains "$out" "the secret scan could not run"; git -C "$r" reset -q; git -C "$r" checkout -q -- . 2>/dev/null || true
@@ -195,7 +224,10 @@ git remote add other "$W/other.git" 2>/dev/null || true; git init -q --bare "$W/
 rc=0; out="$(git push --no-verify other main:refs/heads/viaother 2>&1)" || rc=$?; assert_eq 0 "$rc"; git fetch -q other
 rc=0; out="$(git push public main:refs/heads/viaother 2>&1)" || rc=$?; [[ "$rc" != 0 ]] || fail "secret-scan: a secret already on remote 'other' reached 'public' on a new branch"
 assert_contains "$out" "leak.cfg:1: aws-access-key"
+rc=0; out="$(git push "$W/public.git" main:refs/heads/viaurl 2>&1)" || rc=$?; [[ "$rc" != 0 ]] || fail "secret-scan: a new branch pushed by URL skipped a commit another remote holds"   # the URL of 'public'
 git push -q --no-verify other :refs/heads/viaother 2>/dev/null || true
+mv tools/secret-scan.sh tools/secret-scan.off; rc=0; out="$(git push origin main:refs/heads/noscan 2>&1)" || rc=$?; mv tools/secret-scan.off tools/secret-scan.sh
+[[ "$rc" != 0 ]] || fail "secret-scan: the pre-push hook let a push through with the scanner missing"; assert_contains "$out" "tools/secret-scan.sh is missing"
 rc=0; out="$(git push origin main:refs/heads/side 2>&1)" || rc=$?; [[ "$rc" != 0 ]] || fail "secret-scan: a new branch with a secret reached origin"
 assert_eq none "$(at origin side)"
 rc=0; out="$(git push --no-verify origin main 2>&1)" || rc=$?; assert_eq 0 "$rc"                               # the deliberate override

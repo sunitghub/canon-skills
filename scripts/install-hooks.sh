@@ -51,10 +51,19 @@ while read -r _lref lsha _rref rsha; do
   # </dev/null: the ref lines are this loop's stdin; a child that read it would leave later refs unchecked
   # a new branch: the commits THIS remote has not got (a commit another remote already holds is still new to this one); a URL has no tracking refs
   if [[ "$rsha" =~ ^0+$ ]]; then
-    if git remote 2>/dev/null | grep -qxF -- "$remote"; then range=("$lsha" --not "--remotes=$remote"); else range=("$lsha" --not --remotes); fi
+    # a push by URL: find the remote that has this URL, so a commit another remote holds is still new to it
+    rname="$remote"
+    if ! git remote 2>/dev/null | grep -qxF -- "$remote"; then
+      rname=""; while IFS= read -r m; do [[ "$(git remote get-url "$m" 2>/dev/null || true)" == "$url" ]] && { rname="$m"; break; }; done < <(git remote 2>/dev/null || true)
+    fi
+    if [[ -n "$rname" ]]; then range=("$lsha" --not "--remotes=$rname"); else range=("$lsha" --not --remotes); fi
   else range=("$rsha..$lsha"); fi
-  if [[ -f "$REPO_ROOT/tools/secret-scan.sh" ]] && ! bash "$REPO_ROOT/tools/secret-scan.sh" --range "${range[@]}" </dev/null; then
-    echo "pre-push: refused the push to $remote (t-5988): remove the secret and rotate it, or 'git push --no-verify' to override on purpose" >&2
+  if [[ ! -f "$REPO_ROOT/tools/secret-scan.sh" ]]; then
+    echo "pre-push: refused the push to $remote (t-5988): tools/secret-scan.sh is missing, and a scan that cannot run is not a clean one; or 'git push --no-verify' to override on purpose" >&2
+    exit 1
+  fi
+  if ! bash "$REPO_ROOT/tools/secret-scan.sh" --range "${range[@]}" </dev/null; then
+    echo "pre-push: refused the push to $remote (t-5988): remove the secret and rotate it (exit 2: the scan itself failed), or 'git push --no-verify' to override on purpose" >&2
     exit 1
   fi
   [[ -n "$mirror" ]] || continue
