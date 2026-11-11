@@ -280,7 +280,7 @@ join_names() {
 # classify_one <file> — sets LINE (the output line), KIND (its first word), CODE and BASEONLY (1 when the only non-neutral tracked change since
 # the stamp is tests/board-spec-baseline.json, optionally with QUARANTINE-comment-only edits to the spec (t-7f5f): the one case `covered` may lift). Called directly, never in $(...), so the globals survive.
 classify_one() {
-  local f="$1" first last sha when cmdline osline shown full names p readers dropped kept ign wtline stamped_scope scopecmd
+  local f="$1" first last sha when cmdline osline shown full names p readers dropped kept ign wtline stamped_scope scopecmd readers_nl scoped_nl
   BASEONLY=0; SPECQ=0; CODE="?"; STAMP=""; SHOWN=""
   base="$(safe "${f##*/}")"
   if [[ -L "$f" || ! -f "$f" ]]; then KIND=unstamped; LINE="unstamped $base exit=?"; return 0; fi
@@ -319,11 +319,11 @@ classify_one() {
     SCOPE_FAIL=0
     scope_suites "$full" "${readers[@]}"; stamped_scope="$SCOPED"   # the tree that was tested: a suite deleted since then was one it may have run
     scope_suites "$graded" "${readers[@]}"; SCOPED="$stamped_scope$SCOPED"
+    readers_nl=$'\n'"$(printf '%s\n' "${readers[@]}")"$'\n'; scoped_nl=$'\n'"$SCOPED"   # whole-line lookups by pattern: a pipe into grep -q can SIGPIPE its writer
     for p in "${names[@]}"; do
       if (( SCOPE_FAIL )); then kept+=("$p"); continue; fi   # git failed while reading the sources: drop nothing
       # a reader source is in scope itself, named or not; any other suite is out only when no source names it
-      if [[ "$p" =~ ^tests/([A-Za-z0-9_.-]+\.sh)$ ]] && ! printf '%s\n' "${readers[@]}" | grep -Fxq -- "$p" \
-         && ! printf '%s' "$SCOPED" | grep -Fxq -- "${BASH_REMATCH[1]}"; then dropped+=("$p"); else kept+=("$p"); fi
+      if [[ "$p" =~ ^tests/([A-Za-z0-9_.-]+\.sh)$ && "$readers_nl" != *$'\n'"$p"$'\n'* && "$scoped_nl" != *$'\n'"${BASH_REMATCH[1]}"$'\n'* ]]; then dropped+=("$p"); else kept+=("$p"); fi
     done
     names=(); [[ ${#kept[@]} -eq 0 ]] || names=("${kept[@]}")
   fi
