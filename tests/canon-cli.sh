@@ -204,11 +204,11 @@ assert_eq "2" "$code"
 assert_eq "The board on port $PORT does not support 'canon wait --project' (it predates it, or failed). Close its window, then run canon." "$out"
 # t-5b80: the same board with no session at the first poll: the refusal comes at the poll where a row appears, not never
 PORT="$(free_port)"; v1_stub "$PORT" lateroot
-set +e; out="$(run wait t-wt01 --until done --timeout 6000 --project /work/a 2>&1)"; code=$?; set -e
+set +e; out="$(run wait t-wt01 --until "done" --timeout 6000 --project /work/a 2>&1)"; code=$?; set -e
 assert_eq "2" "$code"; assert_contains "$out" "does not support 'canon wait --project'"
 # t-5b80: a 200 answer that carries no state is the board failing: canon wait exits 2 and says so, it does not wait it out
 PORT="$(free_port)"; v1_stub "$PORT" nostate
-set +e; out="$(run wait t-wt01 --until done --timeout 3000 2>&1)"; code=$?; set -e
+set +e; out="$(run wait t-wt01 --until "done" --timeout 3000 2>&1)"; code=$?; set -e
 assert_eq "2" "$code"; assert_contains "$out" "does not support 'canon wait'"
 
 # t-5b80 (break-it): wait refuses what can never work, before it asks the board anything (this board answers "working", so exit 2 can only be the check)
@@ -218,9 +218,9 @@ for bad in "--until done --timeout 08" "--until done --timeout 09" "--until done
   set +e; out="$(run_bounded wait t-wt01 $bad 2>&1)"; code=$?; set -e
   assert_eq "2" "$code"; [[ "$out" == "canon wait: "* ]] || fail "canon-cli: canon wait $bad said: $out"
 done
-set +e; out="$(run_bounded wait t-wt01 --until done --project "" 2>&1)"; code=$?; set -e
+set +e; out="$(run_bounded wait t-wt01 --until "done" --project "" 2>&1)"; code=$?; set -e
 assert_eq "2" "$code"; assert_contains "$out" "canon wait: --project needs a path"   # an empty project is not "any project"
-set +e; out="$(run_bounded wait t-wt01 --until done --project 2>&1)"; code=$?; set -e
+set +e; out="$(run_bounded wait t-wt01 --until "done" --project 2>&1)"; code=$?; set -e
 assert_eq "2" "$code"; assert_contains "$out" "canon wait: --project needs a path"
 set +e; out="$(run_bounded wait t-wt01 --until sleeping 2>&1)"; code=$?; set -e
 assert_eq "2" "$code"; assert_contains "$out" "canon wait: unknown state 'sleeping'"
