@@ -568,6 +568,15 @@ log_cmd() {
   exec "$b" log "$@"
 }
 
+# The Cockpit's board: board_probe sets `port` and `base` in the caller's scope (declare them local) and succeeds when the board answers;
+# require_board <exit code> does the same and, when it does not, says so and exits with that code.
+board_probe() {
+  port="${CANON_COCKPIT_PORT:-8899}"   # it goes into a URL: a value like 1@host or 8899/x would reach another host or path
+  [[ "$port" =~ ^[0-9]{1,5}$ && "$port" -ge 1 && "$port" -le 65535 ]] || { echo "canon: CANON_COCKPIT_PORT must be a port number (1 to 65535), got '$port'" >&2; exit 2; }
+  base="http://127.0.0.1:$port"; curl -s -o /dev/null --max-time 3 "$base/api/version"
+}
+require_board() { board_probe || { echo "The Cockpit is not running on port $port. Start it with: canon" >&2; exit "$1"; }; }
+
 # t-180d: poll the board for one session's state (it answers with the state word, so no
 # JSON parsing here) until it's one of the wanted ones. Exit 0 reached, 1 timeout, 2 usage.
 wait_cmd() {
@@ -589,9 +598,8 @@ wait_cmd() {
     case "$st" in needs-you|working|done|idle|exited) ;; *) echo "canon wait: unknown state '$st' (needs-you, working, done, idle, exited)" >&2; exit 2 ;; esac
   done
   [[ -z "$timeout" || "$timeout" =~ ^[0-9]+$ ]] || { echo "canon wait: --timeout is milliseconds, got '$timeout'" >&2; exit 2; }
-  local port="${CANON_COCKPIT_PORT:-8899}"
-  local base="http://127.0.0.1:$port"
-  curl -s -o /dev/null --max-time 3 "$base/api/version" || { echo "The Cockpit is not running on port $port. Start it with: canon" >&2; exit 2; }
+  local port base
+  require_board 2
   local q=(--data-urlencode "id=$id")
   [[ -n "$root" ]] && q+=(--data-urlencode "root=$root")
   local start=$SECONDS now
@@ -667,9 +675,8 @@ v1_read_cmd() {
       [[ "$id" =~ ^t-[a-z0-9]{4}$ ]] || { echo "canon sprint: expected a ticket id (t-xxxx), got '${id}'" >&2; exit 2; }
       route="/api/v1/sprint/$id" ;;
   esac
-  local port="${CANON_COCKPIT_PORT:-8899}"
-  local base="http://127.0.0.1:$port" out code
-  curl -s -o /dev/null --max-time 3 "$base/api/version" || { echo "The Cockpit is not running on port $port. Start it with: canon" >&2; exit 2; }
+  local port base out code
+  require_board 2
   out="$(curl -s --max-time 10 -w $'\n%{http_code}' "$base$route")" || out=$'\n000'
   code="${out##*$'\n'}"
   if [[ "$code" != 200 ]]; then
@@ -692,9 +699,8 @@ board_cmd() {
       *) echo "Unknown option for canon $cmd: $a" >&2; exit 1 ;;
     esac
   done
-  local port="${CANON_COCKPIT_PORT:-8899}"
-  local base="http://127.0.0.1:$port"
-  if ! curl -s -o /dev/null --max-time 3 "$base/api/version"; then
+  local port base
+  if ! board_probe; then
     case "$cmd" in
       stop) echo "The Cockpit is not running on port $port. Nothing to stop."; exit 0 ;;
       *) echo "The Cockpit is not running on port $port. Start it with: canon" >&2; exit 1 ;;

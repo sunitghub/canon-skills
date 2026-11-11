@@ -89,6 +89,14 @@ for c in "events" "sprint t-d9e6"; do
   assert_eq "2" "$code"; assert_eq "The Cockpit is not running on port $PORT. Start it with: canon" "$out"
 done
 
+# t-ad6f: the port goes into a URL, so only a port number is accepted, by every command that talks to the board (status, sessions, stop, events, sprint, wait)
+for badport in '1@127.0.0.1' '8899/x' '88 99' '8899?x=1' 'x' '70000' '0'; do
+  for c in "status" "sessions" "stop" "events" "sprint t-d9e6" "wait t-wt01 --until done"; do
+    set +e; out="$(CANON_COCKPIT_PORT="$badport" "$CANON" $c 2>&1)"; code=$?; set -e
+    assert_eq "2" "$code"; assert_eq "canon: CANON_COCKPIT_PORT must be a port number (1 to 65535), got '$badport'" "$out"
+  done
+done
+
 # A board that predates these subcommands: /api/version answers, the new routes 404.
 PORT="$(free_port)"
 python3 - "$PORT" <<'PY' >/dev/null 2>&1 &

@@ -7,6 +7,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 ## [Unreleased]
 
 - Changed (board): the board and the Cockpit now read the live sessions from the public `/api/v1/sessions` through one helper instead of the private `/api/cockpit-sessions`; the rows, the polling and what you see are the same. A test fails if a page file fetches either route itself. The private route stays for the `canon` command until it moves to the public API.
+- Fixed (canon): a `CANON_COCKPIT_PORT` that is not a port number (`8899/x`, `1@host`) is refused by every `canon` command that talks to the board, with exit 2, instead of being put into the URL.
 - Added (canon): `canon events [--limit N]` prints the newest activity-log events from `/api/v1/events` and `canon sprint <id>` prints a ticket's sprint snapshot from `/api/v1/sprint/<id>`, each as the API's JSON (`--json` is accepted); both are in the shell completions.
 
 ## [0.51.1] - 2026-11-10
