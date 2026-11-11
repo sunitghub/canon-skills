@@ -176,6 +176,9 @@ gg_words() {
   WORDS="$(printf '%s\n' "$WORDS" | sort -u)"
 }
 
+# suites_in_words <suite names> — those of them that WORDS (from gg_words) names, one per line
+suites_in_words() { printf '%s\n' "$1" | grep -Fx -f <(printf '%s\n' "$WORDS") || true; }
+
 # scope_suites <tree> <pathspec>... — fills SCOPED: the shell suites (basenames in tests/ of that tree) that the reader sources name, and those the
 # named suites name in turn, until nothing new is named. A name counts wherever it appears as a word `<name>.sh` (a path, a `source`, a comment):
 # over-reading only keeps a log stale. A git error sets SCOPE_FAIL, and then no suite is dropped.
@@ -186,13 +189,13 @@ scope_suites() {
   if ! ls="$(git -C "$root" ls-tree --name-only "$g" tests/ 2>/dev/null)"; then SCOPE_FAIL=1; ls=""; fi
   all="$(printf '%s\n' "$ls" | sed -n 's|^tests/||p' | grep -E '^[A-Za-z0-9_.-]+\.sh$' || true)"
   gg_words "$g" -- "$@"
-  queue="$(printf '%s\n' "$all" | grep -Fx -f <(printf '%s\n' "$WORDS") || true)"
+  queue="$(suites_in_words "$all")"
   while [[ -n "$queue" ]]; do
     SCOPED+="$queue"$'\n'
     next=""
     for s in $queue; do
       gg_words "$g" -- "tests/$s"
-      next+="$(printf '%s\n' "$all" | grep -Fx -f <(printf '%s\n' "$WORDS") || true)"$'\n'
+      next+="$(suites_in_words "$all")"$'\n'
     done
     queue="$(printf '%s' "$next" | sed '/^$/d' | sort -u | grep -Fvx -f <(printf '%s' "$SCOPED") || true)"
   done
