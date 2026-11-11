@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-10-2026 19:45
+learnings-sweep last run: 11-10-2026 23:31
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-10 | [t-ad6f](.tickets/t-ad6f/learnings.md) | A script that rewrites test stubs by "the next call within N characters" wraps a neighbour's (list every changed site with its route before running); a shell client must pattern-check an env value before it goes into a URL (digits, no leading zero, bounded) and use `--noproxy '*'` for loopback, in one wrapper; shipping new commands can push the capped release zip over its cap. | UNPROMOTED |
 | 2026-11-10 | [t-29ee](.tickets/t-29ee/learnings.md) | A rule that decides "fresh" must treat every input it cannot fully read (a cut line, an unknown flag spelling, a failed git call) as no scope, and each needs a test where the unread part holds the change that matters; an edit script that replaces between markers can delete a block `bash -n` accepts, so assert every landmark appears once. | UNPROMOTED |
 | 2026-11-10 | [t-8d45](.tickets/t-8d45/learnings.md) | A test that compares numbers as strings passes or fails with the length of the temp path inside every fixture line: only the full suite in a clean clone caught it, so compare numbers as numbers and run a changed test once under a long TMPDIR; and a stream's first frame must carry its start cursor, or a client that drops before its first event loses what arrived meanwhile. | UNPROMOTED |
 | 2026-11-10 | [t-3620](.tickets/t-3620/learnings.md) | A promoted line whose tag has text after `id: P-nnn` is silently not counted by `promoted-report`: after placing a rule, run the report and find its id; and a YES review plus a mutation sweep still held real gaps (a guard no test fails on, a mixed PROMOTED.md block) that only reading each Consider, Noted and survivor found. | UNPROMOTED |
@@ -80,5 +81,4 @@ learnings-sweep last run: 11-10-2026 19:45
 | 2026-11-02 | [t-4d39](.tickets/t-4d39/learnings.md) | A marker that changes behavior must count only where its writer puts it (above the closing ticket marker), never anywhere in a body: a plain ticket quoting the marker line in its notes imported as Lite until the reviewer caught it. | `dismissed (covered: standards/efficiency-notes.md)` |
 | 2026-11-01 | [t-90f5](.tickets/t-90f5/learnings.md) | A negative UI check that retries (toHaveClass for 5 s) can be undone by the next real poll and pass with the guard deleted: record every state with a MutationObserver, and stop the background timer when a test means to prove the message itself redraws | `promoted → tools/sprint-check-app/CLAUDE.md, skills/sprint/reference/shared-gate-protocol.md` |
 | 2026-11-01 | [t-5036](.tickets/t-5036/learnings.md) | A layout guard needs a fixture the rule alone holds: a test string that wraps at spaces or hyphens passes with the width cap removed, so use an unbreakable token and revert each CSS rule on its own | `dismissed (covered: skills/sprint/reference/shared-gate-protocol.md)` |
-| 2026-11-01 | [t-c8f6](.tickets/t-c8f6/learnings.md) | Hiding UI elements (a fold) broke ten older specs that clicked the now-hidden rows: before the full run, grep the spec for selectors of everything the change hides and give those tests the user's path (open the fold first) | `dismissed` |
 <!-- canon:learnings:END -->
