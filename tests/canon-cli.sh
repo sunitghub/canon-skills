@@ -149,11 +149,12 @@ for c in "events" "sprint t-d9e6"; do   # t-ad6f: a board without the v1 routes
 done
 # t-ad6f (break-it): a board that answers 500 with escape bytes in the body, and one that drops the connection on the v1 routes. The first must
 # not put a raw escape on the terminal; the second must be named as not answering, not as having "answered 000".
-v1_stub() {   # v1_stub <port> <500|500long|drop|noroot|nostate|lateroot>
+v1_stub() {   # v1_stub <port> <500|500long|drop|noroot|nostate|lateroot|down|flipdown>
   python3 - "$1" "$2" <<'PY' >/dev/null 2>&1 &
 import http.server, sys
 mode = sys.argv[2]
 seen = 0
+polls = 0
 class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/api/version":
@@ -169,6 +170,13 @@ class H(http.server.BaseHTTPRequestHandler):
             else:
                 b = b'{"schema":1,"id":"t-wt01","state":"working"}'
             self.send_response(200); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b); return
+        if mode in ("down", "flipdown") and self.path.startswith("/api/v1/sessions"):   # t-46b9: 200 and an empty list, marked daemon-down (flipdown: after the first state poll)
+            global polls
+            marked = mode == "down" or polls >= 1
+            if self.path.endswith("/state"): polls += 1
+            hdr = "x-cockpit-daemon" if mode == "down" else "X-COCKPIT-DAEMON"
+            b = b'{"schema":1,"id":"t-wt01","state":"exited"}' if self.path.endswith("/state") else b'{"schema":1,"sessions":[]}'
+            self.send_response(200); self.send_header(hdr, "Down" if marked else "up"); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b); return
         if mode == "nostate" and self.path.startswith("/api/v1/sessions"):   # 200 with no state in it
             b = b'{"schema":1,"error":"x"}'; self.send_response(200); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b); return
         if mode == "drop":
@@ -231,6 +239,23 @@ assert_eq "1" "$code"; assert_contains "$out" "canon sessions: the board binary 
 # a leading zero is refused, but 0 and a plain number are timeouts: the board answers "working", so --until done times out (exit 1), not usage
 set +e; out="$(run wait t-wt01 --until "done" --timeout 0 2>&1)"; code=$?; set -e
 assert_eq "1" "$code"; assert_contains "$out" "timed out after 0ms"
+
+# t-46b9: a board whose answer is marked daemon-down (header in any case): nothing is derived from the empty list
+PORT="$(free_port)"; v1_stub "$PORT" down
+for a in "wait t-wt01 --until exited --timeout 3000" "wait t-wt01 --until working --timeout 3000" "wait t-wt01 --until exited --json --timeout 3000"; do
+  # shellcheck disable=SC2086  # split on purpose
+  set +e; out="$(run_bounded $a 2>"$WORK/dn-err")"; code=$?; set -e
+  assert_eq "2" "$code"; assert_eq "" "$out"; assert_contains "$(cat "$WORK/dn-err")" "The Cockpit daemon is not answering (the board on port $PORT is up): t-wt01's state is unknown"
+done
+for a in "sessions" "sessions --json"; do
+  # shellcheck disable=SC2086
+  set +e; out="$(run_bounded $a 2>"$WORK/dn-err")"; code=$?; set -e
+  assert_eq "1" "$code"; assert_eq "" "$out"; assert_contains "$(cat "$WORK/dn-err")" "the live sessions are unknown, not none"
+done
+# the daemon goes down while canon wait is polling: the next poll refuses (the first answer is up and not the wanted state)
+PORT="$(free_port)"; v1_stub "$PORT" flipdown
+set +e; out="$(run_bounded wait t-wt01 --until working --timeout 6000 2>"$WORK/dn-err")"; code=$?; set -e
+assert_eq "2" "$code"; assert_eq "" "$out"; assert_contains "$(cat "$WORK/dn-err")" "state is unknown"
 
 # shellcheck disable=SC2043  # one board today; the loop keeps the per-board stub dirs
 for b in main.go; do
@@ -318,6 +343,7 @@ PY
   assert_eq "1" "$code"
   setsess ""
   assert_eq "exited" "$(run wait t-wt01 --until exited --timeout 3000)"
+  assert_eq "No sessions running." "$(run sessions)"   # t-46b9: a live daemon with no session still says none
   assert_eq "1 t-wt01 exited" "$(python3 -c 'import json,sys;d=json.loads(sys.argv[1]);print(d["schema"],d["id"],d["state"])' "$(run wait t-wt01 --until exited --json)")"
   for bad in "t-../x --until done" "t-wt01 --until sleeping" "t-wt01" "t-wt01 --until done --timeout soon"; do
     set +e; run wait $bad >/dev/null 2>&1; code=$?; set -e
@@ -344,7 +370,13 @@ PY
   # this test's board is built outside the install, so canon stop must name it and leave it running (an install's own board is stopped: see below)
   assert_eq "Stopped the daemon. The board on port $PORT is not from this install, or cannot be identified, so it was left running. Press Ctrl+C in the terminal running canon, or close its window." "$out"
   assert_contains "$(run status)" "daemon:   not running"
-  assert_eq "No sessions running." "$(run sessions)"
+  # t-46b9: the daemon is stopped now: the board's empty list is marked daemon-down, so it is "unknown", never "none" or "exited"
+  set +e; out="$(run sessions 2>"$WORK/dn-err")"; code=$?; set -e
+  assert_eq "1" "$code"; assert_eq "" "$out"; assert_contains "$(cat "$WORK/dn-err")" "The Cockpit daemon is not answering"
+  set +e; out="$(run sessions --json 2>/dev/null)"; code=$?; set -e
+  assert_eq "1" "$code"; assert_eq "" "$out"
+  set +e; out="$(run_bounded wait t-wt01 --until exited --timeout 3000 2>"$WORK/dn-err")"; code=$?; set -e
+  assert_eq "2" "$code"; assert_eq "" "$out"; assert_contains "$(cat "$WORK/dn-err")" "t-wt01's state is unknown"
   echo "canon-cli: $b ok"
 done
 

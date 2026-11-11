@@ -603,15 +603,20 @@ wait_cmd() {
       exit 2
     fi
     # an answer with no state in it is the board failing, not a state to wait out
-    if ! now="$(board_curl -sfG --max-time 10 ${q[@]+"${q[@]}"} "$v1/$id/state")" || ! now="$(sed -n 's/.*"state": *"\([a-z-]*\)".*/\1/p' <<<"$now")" || [[ -z "$now" ]]; then
+    if ! v1_get ${q[@]+"${q[@]}"} "$v1/$id/state" || ! now="$(sed -n 's/.*"state": *"\([a-z-]*\)".*/\1/p' <<<"$V1_BODY")" || [[ -z "$now" ]]; then
       echo "The board on port $port does not support 'canon wait' (it predates it, or failed). Close its window, then run canon." >&2
+      exit 2
+    fi
+    # t-46b9: a daemon-down answer is an empty list, which reads as "exited": it says nothing about the session
+    if v1_daemon_down; then
+      echo "The Cockpit daemon is not answering (the board on port $port is up): $id's state is unknown. Start it with: canon" >&2
       exit 2
     fi
     if [[ ",$until," == *",$now,"* ]]; then
       if [[ "$json" -eq 0 ]]; then echo "$now"
       else
         # the v1 body unchanged: the session's row, or the state document once it has exited (its route answers 404)
-        local row; row="$(board_curl -sfG --max-time 10 ${q[@]+"${q[@]}"} "$v1/$id")" || row="$(board_curl -sfG --max-time 10 ${q[@]+"${q[@]}"} "$v1/$id/state")" || row=""
+        local row=""; if v1_get ${q[@]+"${q[@]}"} "$v1/$id" || v1_get ${q[@]+"${q[@]}"} "$v1/$id/state"; then row="$V1_BODY"; fi
         printf '%s\n' "${row%$'\n'}"
       fi
       exit 0
@@ -691,10 +696,16 @@ v1_read_cmd() {
 sessions_cmd() {
   local json="$1" body b h
   # --fail: a board from before the v1 API answers 404 here; say so, don't print its error page.
-  if ! body="$(board_curl -sf --max-time 10 "$base/api/v1/sessions")"; then
+  if ! v1_get "$base/api/v1/sessions"; then
     echo "The board on port $port does not support 'canon sessions' (it predates it, or failed). Close its window, then run canon." >&2
     exit 1
   fi
+  # t-46b9: a daemon-down answer is an empty list, which reads as "no sessions": the sessions are unknown
+  if v1_daemon_down; then
+    echo "The Cockpit daemon is not answering (the board on port $port is up): the live sessions are unknown, not none. Start it with: canon" >&2
+    exit 1
+  fi
+  body="$V1_BODY"
   if [[ "$json" -eq 1 ]]; then printf '%s\n' "${body%$'\n'}"; return; fi
   b="$(board_bin)"; h="$("$b" --help 2>/dev/null)" || h=""
   case "$h" in *sessions-table*) ;; *) echo "canon sessions: the board binary ($b) is older than this command; run canon update." >&2; exit 1 ;; esac

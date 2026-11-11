@@ -181,3 +181,14 @@ board_probe() {
   base="http://127.0.0.1:$port"; board_curl -s -o /dev/null --max-time 3 "$base/api/version"
 }
 require_board() { board_probe || { echo "The Cockpit is not running on port $port. Start it with: canon" >&2; exit "$1"; }; }
+# v1_get <args...> <url>: GET a v1 route of the board (args go to board_curl). An error status fails (-f). Sets V1_HDR (the response header lines) and V1_BODY (the
+# body as sent) for the caller; returns curl's status. v1_daemon_down says whether that answer was marked daemon-down (t-46b9): the board answers
+# 200 with an empty list when the Cockpit daemon did not answer, and only this header (X-Cockpit-Daemon: down) tells that from "no sessions".
+v1_get() {
+  local out
+  out="$(board_curl -sfGi --max-time 10 "$@")" || return $?
+  V1_HDR="${out%%$'\r\n\r\n'*}"
+  # shellcheck disable=SC2034  # read by the callers
+  V1_BODY="${out#*$'\r\n\r\n'}"
+}
+v1_daemon_down() { local h; h="$(printf '%s' "${V1_HDR:-}" | tr 'A-Z' 'a-z')"; [[ "$h" =~ x-cockpit-daemon:[[:space:]]*down ]]; }
