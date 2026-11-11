@@ -406,7 +406,7 @@ export async function findLiveDaemonSession(ticketId, { live = false } = {}) {
     let list = live ? null : freshShellSessions();   // t-90f5: the shell's answer when there is one, so the chip agrees with the Agents list
     if (!list) {
       const answer = await fetchSessions();
-      if (!answer.ok) return null;
+      if (!answer.answered) return null;
       list = answer.rows;
     }
     if (!Array.isArray(list)) return null;
