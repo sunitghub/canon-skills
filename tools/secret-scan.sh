@@ -10,6 +10,7 @@
 # Input is hostile: file names with spaces, quotes or a newline (git quotes them), a 200 KB line (read to 20 KB), a binary file or a .gitattributes `-diff`
 # (--text, --no-textconv, --no-ext-diff: an attribute cannot hide the lines or pick a program that rewrites them), paths in any letter case (.ENV, Server.PEM).
 set -euo pipefail
+export LC_ALL=C   # bytes, not characters: an invalid UTF-8 byte must neither stop awk nor make grep call the file binary
 
 usage() { echo "usage: secret-scan.sh --staged | --range <rev-list args...>" >&2; exit 2; }
 [[ $# -ge 1 ]] || usage
@@ -42,10 +43,12 @@ work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
 US=$'\x1f'
 
 case "$mode" in
-  --staged) git -C "$repo" -c core.quotepath=false diff --cached --no-color --text --no-textconv --no-ext-diff -U0 --diff-filter=ACMR > "$work/diff" || exit 2 ;;
-  --range)  git -C "$repo" -c core.quotepath=false log -p --no-color --text --no-textconv --no-ext-diff -U0 --diff-filter=ACMR --format='@@COMMIT %H' "$@" > "$work/diff" || exit 2 ;;
+  --staged) git -C "$repo" -c core.quotepath=false diff --cached --no-color --text --no-textconv --no-ext-diff -U0 --diff-filter=d > "$work/diff" || exit 2 ;;
+  --range)  git -C "$repo" -c core.quotepath=false log -p -m --no-color --text --no-textconv --no-ext-diff -U0 --diff-filter=d --format='@@COMMIT %H' "$@" > "$work/diff" || exit 2 ;;
 esac
 
+tr -d '\000' < "$work/diff" > "$work/diff.clean"   # a NUL would end a line early in some awks and make grep call the whole file binary
+mv "$work/diff.clean" "$work/diff"
 # One pass over the diff: R holds `sha US path US line US text` for every added line, T just the text (same order), P `sha US path` for every
 # added or renamed-to path. `+++ ` is a header only before the first hunk of a file (an added line "++ x" looks the same), a line over 20 KB is cut.
 awk -v R="$work/R" -v T="$work/T" -v P="$work/P" -v US="$US" '
@@ -97,13 +100,15 @@ done < "$work/P"
 while IFS="$(printf '\t')" read -r name re flags; do
   [[ -n "$name" ]] || continue
   opts="-noE"; [[ "$flags" != *i* ]] || opts="-noiE"
+  grc=0; grep -a $opts -e "$re" "$work/T" > "$work/hits" || grc=$?
+  [[ "$grc" -le 1 ]] || { echo "secret-scan: grep failed (exit $grc) on rule $name; nothing was scanned for it" >&2; exit 2; }   # never read a failed scan as clean
   while IFS= read -r hit; do
     idx="${hit%%:*}"; m="${hit#*:}"
     if grep -qiE -e "$PLACEHOLDER" <<<"$m"; then continue; fi
     rec="$(sed -n "${idx}p" "$work/R")"
     IFS="$US" read -r c p l _ <<<"$rec"
     say "$c" "$p" "$l" "$name"
-  done < <(grep $opts -e "$re" "$work/T" || true)
+  done < "$work/hits"
 done <<<"$RULES"
 
 n="$(awk '!seen[$0]++' "$findings" | wc -l | tr -d ' ')"

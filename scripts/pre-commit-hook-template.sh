@@ -13,9 +13,15 @@ fi
 # A credential in a commit is in history for good: refuse it before the commit exists. `git commit --no-verify` is the deliberate override.
 SECRET_SCAN="$CANON_ROOT/tools/secret-scan.sh"
 if [ -f "$SECRET_SCAN" ]; then
-  if ! bash "$SECRET_SCAN" --staged; then
+  _scan_rc=0; bash "$SECRET_SCAN" --staged || _scan_rc=$?
+  if [ "$_scan_rc" -ne 0 ]; then
     echo ""
-    echo "[pre-commit] BLOCKED — the staged change adds what looks like a secret (above)."
+    if [ "$_scan_rc" -eq 1 ]; then
+      echo "[pre-commit] BLOCKED — the staged change adds what looks like a secret (above)."
+    else
+      echo "[pre-commit] BLOCKED — the secret scan could not run (exit $_scan_rc, above): a scan that failed is not a clean one."
+    fi
+    echo "  Fix it, or commit with --no-verify on purpose."
     exit 1
   fi
 fi

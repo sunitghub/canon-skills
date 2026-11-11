@@ -95,9 +95,20 @@ r="$(newrepo)"; { printf 'k=%s ' "$AWS"; head -c 200000 /dev/zero | tr '\0' 'a';
 t0=$SECONDS; expect_hit "$r" long-line aws-access-key long.txt:1; (( SECONDS - t0 < 20 )) || fail "secret-scan: a 200 KB line took $((SECONDS - t0)) s"
 r="$(newrepo)"; { for i in $(seq 1 100000); do echo "line $i"; done; printf 'k=%s\n' "$AWS"; } > "$r/big.txt"; git -C "$r" add big.txt
 t0=$SECONDS; expect_hit "$r" big-diff aws-access-key big.txt:100001; (( SECONDS - t0 < 20 )) || fail "secret-scan: a 100,000-line diff took $((SECONDS - t0)) s"
+# (break-it) bytes that are not UTF-8 must neither stop the scan nor hide a later line; a NUL in an earlier line must not turn the rest into "binary"
+r="$(newrepo)"; printf 'caf\xe9 \xff\xfe latin-1 text\n' > "$r/l1.txt"; git -C "$r" add l1.txt; expect_clean "$r" "a Latin-1 file with no secret blocks nothing"
+r="$(newrepo)"; printf 'caf\xe9 \xff\xfe\nk=%s\n' "$AWS" > "$r/l1.txt"; git -C "$r" add l1.txt; expect_hit "$r" invalid-utf8 aws-access-key l1.txt:2
+r="$(newrepo)"; printf 'a\0b\nk=%s\n' "$AWS" > "$r/nul.dat"; git -C "$r" add nul.dat; expect_hit "$r" nul-earlier-line aws-access-key nul.dat:2
+# (break-it) a symlink that becomes a regular file is a type change: its new lines are additions
+r="$(newrepo)"; ln -s /etc/hostname "$r/lnk"; git -C "$r" add lnk; git -C "$r" commit -qm lnk; rm "$r/lnk"; printf 'k=%s\n' "$AWS" > "$r/lnk"; git -C "$r" add lnk
+expect_hit "$r" typechange aws-access-key lnk:1
 # a rename of a clean file into a secret path is refused; a plain rename of a clean file passes
 r="$(newrepo)"; put "$r" plain.txt "hello"; git -C "$r" commit -qm p; git -C "$r" mv plain.txt .env; staged "$r"; [[ "$RC" == 1 ]] || fail "secret-scan: a rename to .env passed: $OUT"
 r="$(newrepo)"; put "$r" plain.txt "hello"; git -C "$r" commit -qm p; git -C "$r" mv plain.txt other.txt; expect_clean "$r" "a plain rename"
+# (break-it) a grep that fails must never read as a clean scan: exit 2, naming the rule
+mkdir -p "$W/shim"; printf '#!/bin/sh\nexit 2\n' > "$W/shim/grep"; chmod +x "$W/shim/grep"
+r="$(newrepo)"; put "$r" a.cfg "k = $AWS"; rc=0; out="$(cd "$r" && PATH="$W/shim:$PATH" bash "$SCAN" --staged 2>&1)" || rc=$?
+assert_eq 2 "$rc"; assert_contains "$out" "secret-scan: grep failed (exit 2) on rule"
 # usage, and not a repository
 rc=0; out="$(bash "$SCAN" 2>&1)" || rc=$?; assert_eq 2 "$rc"
 rc=0; out="$(bash "$SCAN" --bogus 2>&1)" || rc=$?; assert_eq 2 "$rc"
@@ -115,6 +126,10 @@ rc=0; out="$(cd "$r" && bash "$SCAN" --range "HEAD..HEAD" 2>&1)" || rc=$?; asser
 rc=0; out="$(cd "$r" && bash "$SCAN" --range "HEAD" --not --remotes 2>&1)" || rc=$?; assert_eq 1 "$rc"   # a new branch: the commits no remote has
 git -C "$r" remote add o "$W/none.git" 2>/dev/null; git -C "$r" update-ref refs/remotes/o/main HEAD
 rc=0; out="$(cd "$r" && bash "$SCAN" --range "HEAD" --not --remotes 2>&1)" || rc=$?; assert_eq 0 "$rc"  # once a remote has them
+# (break-it) a secret that only an evil merge adds (in neither parent) is in the pushed range
+r="$(newrepo)"; git -C "$r" checkout -q -b side; put "$r" m.txt x; git -C "$r" commit -qm side; git -C "$r" checkout -q main; put "$r" n.txt y; git -C "$r" commit -qm mainc
+base="$(git -C "$r" rev-parse HEAD)"; git -C "$r" merge --no-commit --no-ff side >/dev/null 2>&1; put "$r" evil.cfg "k=$AWS"; git -C "$r" commit -qm merge
+rc=0; out="$(cd "$r" && bash "$SCAN" --range "$base..HEAD" 2>&1)" || rc=$?; assert_eq 1 "$rc"; assert_contains "$out" "evil.cfg:1: aws-access-key"
 r="$(newrepo)"; base="$(git -C "$r" rev-parse HEAD)"; put "$r" .env "x=1"; git -C "$r" commit -qm env
 rc=0; out="$(cd "$r" && bash "$SCAN" --range "$base..HEAD" 2>&1)" || rc=$?; assert_eq 1 "$rc"; assert_contains "$out" ".env: env-file"
 
@@ -132,6 +147,9 @@ assert_contains "$out" "a.cfg:1: aws-access-key"; assert_contains "$out" "BLOCKE
 [[ -z "$(git -C "$r" log --format=%s | grep '^bad$' || true)" ]] || fail "secret-scan: the refused commit exists"
 rc=0; out="$(cd "$r" && git commit -qm forced --no-verify 2>&1)" || rc=$?; assert_eq 0 "$rc"            # the deliberate override
 put "$r" b.txt "clean"; rc=0; out="$(cd "$r" && git commit -qm ok 2>&1)" || rc=$?; assert_eq 0 "$rc"      # a clean commit is not slowed or refused
+put "$r" c.txt "clean again"; rc=0; out="$(cd "$r" && PATH="$W/shim:$PATH" git commit -qm broken-scan 2>&1)" || rc=$?   # a scan that cannot run blocks, and says so
+[[ "$rc" != 0 ]] || fail "secret-scan: the pre-commit hook let a commit through when the scan could not run"
+assert_contains "$out" "the secret scan could not run"; git -C "$r" reset -q; git -C "$r" checkout -q -- . 2>/dev/null || true
 
 # ── canon's pre-push hook: any remote, a new branch, the release check still runs for a mirror ──
 P="$W/p"; for x in origin public; do git init -q --bare "$W/$x.git"; done
