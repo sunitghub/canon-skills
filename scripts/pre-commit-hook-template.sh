@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # ── Chained hook (t-2194) ───────────────────────────────────────────────────
 # A hook that was in place before canon's moves to pre-commit.local; it runs first, always, with the same
 # arguments and stdin, from the repo root. Its non-zero exit fails the commit before any canon check.

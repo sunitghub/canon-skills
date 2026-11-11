@@ -122,6 +122,7 @@ rc=0; out="$(cd "$r" && bash "$SCAN" --range "$base..HEAD" 2>&1)" || rc=$?; asse
 # shellcheck source=tools/hooks-lib.sh
 source "$ROOT/tools/hooks-lib.sh"
 r="$(newrepo)"; mkdir -p "$r/tools" "$r/scripts"; cp "$SCAN" "$r/tools/secret-scan.sh"; cp "$ROOT/scripts/pre-commit-hook-template.sh" "$r/scripts/"   # the repo is its own canon root
+# shellcheck disable=SC2034  # SKILLS_ROOT is read by _init_git_precommit
 ( SKILLS_ROOT="$r"; _init_git_precommit "$r" >/dev/null )
 [[ -x "$r/.git/hooks/pre-commit" ]] || fail "secret-scan: the canon pre-commit hook was not installed"
 put "$r" a.cfg "k = $AWS"
@@ -144,7 +145,7 @@ printf '.tickets/\n' > .gitignore; echo OK > tools/cockpit-daemon.sha256
 git add -A; git commit -qm base; git push -q origin main 2>/dev/null; git push -q public main 2>/dev/null
 bash scripts/install-hooks.sh >/dev/null; rm -f .git/hooks/post-commit
 at() { git --git-dir="$W/$1.git" rev-parse -q --verify "refs/heads/$2" || echo none; }
-printf 'k = %s\n' "$AWS" > leak.cfg; git add leak.cfg; git commit -qm leak; LEAK="$(git rev-parse HEAD)"
+printf 'k = %s\n' "$AWS" > leak.cfg; git add leak.cfg; git commit -qm leak
 printf 'clean\n' > leak.cfg; git commit -qam "remove it"                                               # gone from the tip, still in the pushed history
 for remote in origin public; do
   rc=0; out="$(git push "$remote" main 2>&1)" || rc=$?
