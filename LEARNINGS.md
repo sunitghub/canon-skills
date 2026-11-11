@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-11-2026 09:12
+learnings-sweep last run: 11-11-2026 13:04
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-11 | [t-5988](.tickets/t-5988/learnings.md) | A scanner that reads git output must fix every flag the repo's config can change (prefixes, showRoot, replace refs, textconv, quoting) and must apply a cap AFTER its filter; a usage check tested outside a repository is hidden by the sweep's .git-less copy, so test failure paths inside one. |
 | 2026-11-11 | [t-46b9](.tickets/t-46b9/learnings.md) | A bug that a test already asserts as normal ("No sessions running." with the daemon stopped) survives every suite: when a symptom is reported, grep the tests for the old output and treat a passing assertion of it as the bug's own evidence. |
 | 2026-11-11 | [t-2c06](.tickets/t-2c06/learnings.md) | A plan that lists the release (push, tag, a green workflow on the public repo) as a sprint deliverable cannot pass the close-time evaluator, because canon releases only after the close: put the release under a post-close heading from the start. |
 | 2026-11-11 | [t-5b80](.tickets/t-5b80/learnings.md) | A new validation or probe needs a test that runs it against a stub that would otherwise succeed (a board that answers `working`, a probe that returns rows later): exit 2 from a stub that always refuses proves nothing, and a revert-proof that can loop must run under a bounded runner. |
@@ -82,5 +83,4 @@ learnings-sweep last run: 11-11-2026 09:12
 | 2026-11-02 | [t-c542](.tickets/t-c542/learnings.md) | A new owner of shared facts (an event envelope field) must update every place that pins the old shape in one pass: the release key, its five test fixtures, the API key set and the export docs each failed separately. | `dismissed (covered: standards/efficiency-notes.md)` |
 | 2026-11-02 | [t-1ed8](.tickets/t-1ed8/learnings.md) | A doc sweep for a removed feature must grep every doc, not only the plan's file list: docs/fresh-machine-test.md still described the removed offer until the reviewer caught it. | `dismissed (covered: standards/efficiency-notes.md)` |
 | 2026-11-02 | [t-4d39](.tickets/t-4d39/learnings.md) | A marker that changes behavior must count only where its writer puts it (above the closing ticket marker), never anywhere in a body: a plain ticket quoting the marker line in its notes imported as Lite until the reviewer caught it. | `dismissed (covered: standards/efficiency-notes.md)` |
-| 2026-11-01 | [t-90f5](.tickets/t-90f5/learnings.md) | A negative UI check that retries (toHaveClass for 5 s) can be undone by the next real poll and pass with the guard deleted: record every state with a MutationObserver, and stop the background timer when a test means to prove the message itself redraws | `promoted → tools/sprint-check-app/CLAUDE.md, skills/sprint/reference/shared-gate-protocol.md` |
 <!-- canon:learnings:END -->
