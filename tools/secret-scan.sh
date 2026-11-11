@@ -64,7 +64,7 @@ is_placeholder() { # <rule> <value>
 }
 
 repo="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "secret-scan: not inside a git repository" >&2; exit 2; }
-work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
+work="$(mktemp -d "${TMPDIR:-/tmp}/secret-scan.XXXXXX")"; trap 'rm -rf "$work"' EXIT
 US=$'\x1f'
 
 # Flags that make the diff the same whatever the repo's or the user's git config says: prefixes (diff.dstPrefix, noprefix, mnemonicPrefix), the

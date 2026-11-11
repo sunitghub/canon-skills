@@ -164,6 +164,23 @@ r="$(newrepo)"; put "$r" a.cfg 'pass''word = "${DB_PASSWORD_FROM_ENV}"';        
 r="$(newrepo)"; put "$r" a.sh "curl -H 'Authorization: BEARER $(rep Z 30)' https://x.test"; expect_hit "$r" bearer-capitals bearer-token a.sh:1
 r="$(newrepo)"; put "$r" a.sh "curl -H 'Authorization: BEARER YOUR_TOKEN_GOES_HERE_1234' https://x.test"; expect_clean "$r" "a capitalised BEARER with a placeholder"
 for p in id_ecdsa id_dsa keystore.p12 cert.pfx .netrc; do r="$(newrepo)"; put "$r" "$p" "x"; staged "$r"; [[ "$RC" == 1 ]] || fail "secret-scan: the path $p was not refused: $OUT"; done
+# (sweep) git failing is exit 2 with nothing on stdout, never a clean pass
+rc=0; out="$(cd "$(newrepo)" && bash "$SCAN" --range no-such-ref-anywhere 2>/dev/null)" || rc=$?; assert_eq 2 "$rc"; assert_eq "" "$out"
+r="$(newrepo)"; put "$r" a.cfg "x"; head -c 64 /dev/urandom > "$W/bad-index"
+rc=0; out="$(cd "$r" && GIT_INDEX_FILE="$W/bad-index" bash "$SCAN" --staged 2>/dev/null)" || rc=$?; assert_eq 2 "$rc"; assert_eq "" "$out"
+# (sweep) the key rules are case-sensitive (lowercase look-alikes pass); the free-text placeholder words are anchored; a variable reference is a WHOLE one
+r="$(newrepo)"; put "$r" a.cfg "k = akia""abcdefghijklmnop"; expect_clean "$r" "a lowercase look-alike of an AWS key"
+r="$(newrepo)"; put "$r" a.cfg 'pass''word = "password-Hunter22xyz9"';          expect_hit "$r" starts-with-the-word-password generic-secret a.cfg:1
+r="$(newrepo)"; put "$r" a.cfg 'pass''word = "Real-Secret-$DB_PASS"';          expect_hit "$r" ends-with-a-var-ref generic-secret a.cfg:1
+r="$(newrepo)"; put "$r" a.cfg 'pass''word = "$DB_PASS-realsecret9"';          expect_hit "$r" starts-with-a-var-ref generic-secret a.cfg:1
+# (sweep) at most 50 findings are listed: exactly 50 has no "more" line, 51 has one
+r="$(newrepo)"; awk -v a="$AWS" 'BEGIN { for (i = 1; i <= 50; i++) print "k" i "=" a }' > "$r/f50.txt"; git -C "$r" add f50.txt; staged "$r"; [[ "$RC" == 1 && "$OUT" != *"... and"* ]] || fail "secret-scan: 50 findings must list all 50: $OUT"
+r="$(newrepo)"; awk -v a="$AWS" 'BEGIN { for (i = 1; i <= 51; i++) print "k" i "=" a }' > "$r/f51.txt"; git -C "$r" add f51.txt; staged "$r"; assert_contains "$OUT" "... and 1 more"
+# (sweep) nothing is left behind in the temp dir
+mkdir -p "$W/tmpchk"; r="$(newrepo)"; put "$r" a.cfg "k = $AWS"; (cd "$r" && TMPDIR="$W/tmpchk" bash "$SCAN" --staged >/dev/null 2>&1) || true
+[[ -z "$(ls -A "$W/tmpchk")" ]] || fail "secret-scan: the scan left a temp dir behind: $(ls "$W/tmpchk")"
+# (sweep) usage text
+out="$(bash "$SCAN" 2>&1 || true)"; assert_contains "$out" "usage: secret-scan.sh --staged | --range"
 # a rename of a clean file into a secret path is refused; a plain rename of a clean file passes
 r="$(newrepo)"; put "$r" plain.txt "hello"; git -C "$r" commit -qm p; git -C "$r" mv plain.txt .env; staged "$r"; [[ "$RC" == 1 ]] || fail "secret-scan: a rename to .env passed: $OUT"
 r="$(newrepo)"; put "$r" plain.txt "hello"; git -C "$r" commit -qm p; git -C "$r" mv plain.txt other.txt; expect_clean "$r" "a plain rename"
@@ -205,12 +222,12 @@ r="$(newrepo)"; mkdir -p "$r/tools" "$r/scripts"; cp "$SCAN" "$r/tools/secret-sc
 put "$r" a.cfg "k = $AWS"
 rc=0; out="$(cd "$r" && git commit -qm bad 2>&1)" || rc=$?
 [[ "$rc" != 0 ]] || fail "secret-scan: the pre-commit hook let a commit with a secret through"
-assert_contains "$out" "a.cfg:1: aws-access-key"; assert_contains "$out" "BLOCKED"
+assert_contains "$out" "a.cfg:1: aws-access-key"; assert_contains "$out" "BLOCKED"; assert_contains "$out" "--no-verify"
 [[ -z "$(git -C "$r" log --format=%s | grep '^bad$' || true)" ]] || fail "secret-scan: the refused commit exists"
 rc=0; out="$(cd "$r" && git commit -qm forced --no-verify 2>&1)" || rc=$?; assert_eq 0 "$rc"            # the deliberate override
 put "$r" b.txt "clean"; rc=0; out="$(cd "$r" && git commit -qm ok 2>&1)" || rc=$?; assert_eq 0 "$rc"      # a clean commit is not slowed or refused
 mv "$r/tools/secret-scan.sh" "$r/tools/secret-scan.off"; put "$r" d.txt "clean three"; rc=0; out="$(cd "$r" && git commit -qm noscan 2>&1)" || rc=$?
-[[ "$rc" != 0 ]] || fail "secret-scan: the pre-commit hook let a commit through with the scanner missing"; assert_contains "$out" "the secret scan is missing"
+[[ "$rc" != 0 ]] || fail "secret-scan: the pre-commit hook let a commit through with the scanner missing"; assert_contains "$out" "the secret scan is missing"; assert_contains "$out" "--no-verify"
 mv "$r/tools/secret-scan.off" "$r/tools/secret-scan.sh"; git -C "$r" reset -q; git -C "$r" checkout -q -- . 2>/dev/null || true
 put "$r" c.txt "clean again"; rc=0; out="$(cd "$r" && PATH="$W/shim:$PATH" git commit -qm broken-scan 2>&1)" || rc=$?   # a scan that cannot run blocks, and says so
 [[ "$rc" != 0 ]] || fail "secret-scan: the pre-commit hook let a commit through when the scan could not run"
