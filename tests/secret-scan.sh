@@ -194,6 +194,12 @@ r="$(newrepo)"; put "$r" a.cfg 'pass''word = "$uper/Secret99Zq123"';            
 r="$(newrepo)"; put "$r" a.cfg 'pass''word = "Zq8vN2mK9xLp4Rt7/more"';                      expect_hit "$r" slash-in-the-middle generic-secret a.cfg:1
 r="$(newrepo)"; put "$r" a.cfg 'pass''word = "${db_pass}/Secret99Zq123"';                   expect_hit "$r" lowercase-braced-var-then-slash generic-secret a.cfg:1
 r="$(newrepo)"; put "$r" a.cfg 'pass''word = "Real-Secret9$DB_PASS/more"';                   expect_hit "$r" var-ref-in-the-middle generic-secret a.cfg:1
+r="$(newrepo)"; put "$r" a.cfg 'pass''word = "$HOME/Zq8vN2mK9xLp4Rt7"';                      expect_hit "$r" var-then-secret-shaped-remainder generic-secret a.cfg:1
+r="$(newrepo)"; put "$r" a.cfg 'pass''word = "/Zq8vN2mK9xLp4Rt7Wb3Yc5"';                    expect_hit "$r" slash-then-secret-shaped-remainder generic-secret a.cfg:1
+r="$(newrepo)"; put "$r" a.cfg 'pass''word = "~/Zq8vN2mK9xLp4Rt7Wb3Yc5"';                   expect_hit "$r" tilde-then-secret-shaped-remainder generic-secret a.cfg:1
+r="$(newrepo)"; put "$r" a.sh "curl -H 'Authorization: Bearer /Zq8vN2mK9xLp4Rt7Wb3Yc5Hd' https://x.test"; expect_hit "$r" bearer-starting-with-slash bearer-token a.sh:1   # canon:allow-secret (a fake fixture)
+r="$(newrepo)"; put "$r" a.sh "curl -H 'Authorization: Bearer /Zq8vN2mK9xLp/4Rt7Wb3Yc5Hd' https://x.test"; expect_hit "$r" bearer-with-a-later-slash bearer-token a.sh:1   # a base64 token is never exempt as a path   # canon:allow-secret (a fake fixture)
+r="$(newrepo)"; put "$r" a.cfg 'pass''word = "$uper/Secret99Zq.x1"';                       expect_hit "$r" lowercase-var-then-slash-and-dot generic-secret a.cfg:1
 # a rename of a clean file into a secret path is refused; a plain rename of a clean file passes
 r="$(newrepo)"; put "$r" plain.txt "hello"; git -C "$r" commit -qm p; git -C "$r" mv plain.txt .env; staged "$r"; [[ "$RC" == 1 ]] || fail "secret-scan: a rename to .env passed: $OUT"
 r="$(newrepo)"; put "$r" plain.txt "hello"; git -C "$r" commit -qm p; git -C "$r" mv plain.txt other.txt; expect_clean "$r" "a plain rename"
