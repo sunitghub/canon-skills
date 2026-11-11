@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-10-2026 23:31
+learnings-sweep last run: 11-11-2026 07:02
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-11 | [t-5b80](.tickets/t-5b80/learnings.md) | A new validation or probe needs a test that runs it against a stub that would otherwise succeed (a board that answers `working`, a probe that returns rows later): exit 2 from a stub that always refuses proves nothing, and a revert-proof that can loop must run under a bounded runner. |
 | 2026-11-10 | [t-ad6f](.tickets/t-ad6f/learnings.md) | A script that rewrites test stubs by "the next call within N characters" wraps a neighbour's (list every changed site with its route before running); a shell client must pattern-check an env value before it goes into a URL (digits, no leading zero, bounded) and use `--noproxy '*'` for loopback, in one wrapper; shipping new commands can push the capped release zip over its cap. | UNPROMOTED |
 | 2026-11-10 | [t-29ee](.tickets/t-29ee/learnings.md) | A rule that decides "fresh" must treat every input it cannot fully read (a cut line, an unknown flag spelling, a failed git call) as no scope, and each needs a test where the unread part holds the change that matters; an edit script that replaces between markers can delete a block `bash -n` accepts, so assert every landmark appears once. | UNPROMOTED |
 | 2026-11-10 | [t-8d45](.tickets/t-8d45/learnings.md) | A test that compares numbers as strings passes or fails with the length of the temp path inside every fixture line: only the full suite in a clean clone caught it, so compare numbers as numbers and run a changed test once under a long TMPDIR; and a stream's first frame must carry its start cursor, or a client that drops before its first event loses what arrived meanwhile. | UNPROMOTED |
