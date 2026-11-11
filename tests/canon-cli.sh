@@ -89,6 +89,17 @@ for c in "events" "sprint t-d9e6"; do
   assert_eq "2" "$code"; assert_eq "The Cockpit is not running on port $PORT. Start it with: canon" "$out"
 done
 
+# t-ad6f: --help lists the two commands with their options
+help_out="$("$CANON" --help)"
+assert_contains "$help_out" "canon events [--limit N] [--json]"; assert_contains "$help_out" "canon sprint <id> [--json]"
+assert_contains "$help_out" "The newest N (1 to 500, default 100) activity-log events, oldest first"
+assert_contains "$help_out" "A ticket's sprint snapshot: the latest lifecycle event of each kind"
+# the limits of the port: 1 and 65535 pass the check (and then find no board), 0 and 65536 do not
+for okport in 1 65535; do
+  set +e; out="$(CANON_COCKPIT_PORT="$okport" "$CANON" events 2>&1)"; code=$?; set -e
+  assert_eq "2" "$code"; assert_eq "The Cockpit is not running on port $okport. Start it with: canon" "$out"
+done
+
 # t-ad6f: the port goes into a URL, so only a port number is accepted, by every command that talks to the board (status, sessions, stop, events, sprint, wait)
 for badport in '1@127.0.0.1' '8899/x' '88 99' '8899?x=1' 'x' '70000' '0' '08899' '08' '65536' '123456'; do
   for c in "status" "sessions" "stop" "events" "sprint t-d9e6" "wait t-wt01 --until done"; do
@@ -134,7 +145,7 @@ class H(http.server.BaseHTTPRequestHandler):
             self.send_response(200); self.end_headers(); self.wfile.write(b'{"version":"0.2.0"}'); return
         if mode == "drop":
             self.connection.shutdown(2); return
-        body = b"bad \x1b[31mred\x1b[0m " + b"z" * 600
+        body = b"bad \x1b[31mred\x1b[0m " + (b"z" * 600 if mode == "500long" else b"end")
         self.send_response(500); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
     def log_message(self, *a): pass
 http.server.HTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
@@ -144,7 +155,10 @@ PY
 }
 PORT="$(free_port)"; v1_stub "$PORT" 500
 set +e; out="$(run events 2>&1)"; code=$?; set -e
-assert_eq "1" "$code"; assert_contains "$out" "answered 500 to 'canon events'"; assert_contains "$out" "bad ?[31mred?[0m zzz"
+assert_eq "1" "$code"; assert_contains "$out" "answered 500 to 'canon events'"; [[ "$out" == *"close its window, then run canon): bad ?[31mred?[0m end" ]] || fail "canon-cli: the board's short error body was not shown as it was: $out"
+PORT="$(free_port)"; v1_stub "$PORT" 500long
+set +e; out="$(run events 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"; assert_contains "$out" "bad ?[31mred?[0m zzz"
 [[ "$out" != *$'\x1b'* ]] || fail "canon-cli: an escape byte from the board's error body reached the terminal"
 [[ "${#out}" -lt 500 ]] || fail "canon-cli: the board's error body was echoed whole (${#out} characters)"
 PORT="$(free_port)"; v1_stub "$PORT" drop
@@ -173,6 +187,13 @@ for b in main.go; do
   assert_eq 1 "$(printf '%s\n' "$ev" | wc -l | tr -d ' ')"
   assert_eq "$ev" "$(run events --json)"
   assert_eq "$(curl -s "http://127.0.0.1:$PORT/api/v1/events?limit=5")" "$(run events --limit 5)"
+  for good in 1 500 "5 --json"; do   # the limits themselves are valid
+    set +e; out="$(run events --limit $good 2>&1)"; code=$?; set -e
+    assert_eq "0" "$code"; assert_contains "$out" '"events":['
+  done
+  set +e; out="$(run events --nope 2>&1)"; set -e; assert_eq "canon events: unknown option: --nope" "$out"
+  set +e; out="$(run events stray 2>&1)"; set -e; assert_eq "canon events: unexpected argument: stray" "$out"
+  set +e; out="$(run sprint t-d9e6 --limit 5 2>&1)"; set -e; assert_eq "canon sprint: unknown option: --limit" "$out"
   for bad in "--limit 0" "--limit 501" "--limit x" "--limit" "--limit 1x" "extra" "--nope" "--limit 5 --limit" "--limit 18446744073709551617" "--limit 08" "--limit 0500" "--limit 1000"; do
     set +e; out="$(run events $bad 2>&1)"; code=$?; set -e
     assert_eq "2" "$code"; [[ "$out" == "canon events: "* ]] || fail "canon-cli: canon events $bad said: $out"
@@ -200,7 +221,7 @@ PY
   assert_eq "$(curl -s "http://127.0.0.1:$PORT/api/v1/sprint/t-d9e6")" "$sp"
   assert_contains "$sp" '"ticket":"t-d9e6"'
   assert_eq "$sp" "$(run sprint t-d9e6 --json)"
-  for bad in "" "t-D9E6" "t-d9e" "../x" "t-d9e6 t-d9e7" "t-d9e6 --nope" "--limit 5"; do
+  for bad in "" "t-D9E6" "t-d9e" "t-d9e66" "xt-d9e6" "../x" "t-d9e6 t-d9e7" "t-d9e6 --nope" "--limit 5"; do
     set +e; out="$(run sprint $bad 2>&1)"; code=$?; set -e
     assert_eq "2" "$code"; [[ "$out" == "canon sprint: "* ]] || fail "canon-cli: canon sprint $bad said: $out"
   done

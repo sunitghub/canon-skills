@@ -28,6 +28,8 @@ const { pathToFileURL } = require('url');
 
   global.fetch = reply(503, { error: 'x' }, 'up');                      // not ok, even with the header
   assert.deepStrictEqual(await fetchSessions(), none);
+  global.fetch = reply(503, { sessions: [{ ticket: 't-aaaa' }] }, 'up'); // not ok, even with a sessions array in the body
+  assert.deepStrictEqual(await fetchSessions(), none);
   global.fetch = reply(200, undefined, 'up');                           // not JSON
   assert.deepStrictEqual(await fetchSessions(), none);
   for (const body of [null, 'x', 5, [], {}, { sessions: null }, { sessions: {} }]) {   // no `sessions` array (the old bare array is not one)
