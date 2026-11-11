@@ -61,7 +61,7 @@ func TestLinkWorktreeFresh(t *testing.T) {
 		}
 	}
 	gi, _ := os.ReadFile(filepath.Join(wt, ".gitignore"))
-	want := "/.claude/agents\n/.claude/skills\n/.agents/skills\n/.claude/subagent-runs.jsonl\n/.tickets/*/gate-snapshot.txt*\n"
+	want := "/.claude/agents\n/.claude/skills\n/.agents/skills\n/.claude/subagent-runs.jsonl\n/.tickets/*/gate-snapshot.txt*\n/.claude/settings.local.json\n"
 	if string(gi) != want {
 		t.Errorf(".gitignore = %q, want %q (skills.sh's order)", gi, want)
 	}

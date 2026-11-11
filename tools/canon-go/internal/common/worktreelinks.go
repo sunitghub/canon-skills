@@ -169,7 +169,8 @@ func ensureMirrorGitignored(wt string) []string {
 			did = append(did, "gitignore: untracked previously-committed mirror: "+rel)
 		}
 	}
-	for _, entry := range []string{"/.claude/subagent-runs.jsonl", "/.tickets/*/gate-snapshot.txt*"} {
+	// t-5988: saved approvals (with any password in them) are never committed; the same entry skills.sh's _ensure_mirror_gitignored writes
+	for _, entry := range []string{"/.claude/subagent-runs.jsonl", "/.tickets/*/gate-snapshot.txt*", "/.claude/settings.local.json"} {
 		did = append(did, ensureLine(wt, entry)...)
 	}
 	return did

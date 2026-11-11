@@ -53,8 +53,9 @@ while read -r _lref lsha _rref rsha; do
   if [[ "$rsha" =~ ^0+$ ]]; then
     # a push by URL: find the remote that has this URL, so a commit another remote holds is still new to it
     rname="$remote"
-    if ! git remote 2>/dev/null | grep -qxF -- "$remote"; then
-      rname=""; while IFS= read -r m; do [[ "$(git remote get-url "$m" 2>/dev/null || true)" == "$url" ]] && { rname="$m"; break; }; done < <(git remote 2>/dev/null || true)
+    remotes="$(git remote 2>/dev/null || true)"   # a variable and a here-string: a pipe into grep -q can SIGPIPE its writer under pipefail
+    if ! grep -qxF -- "$remote" <<<"$remotes"; then
+      rname=""; while IFS= read -r m; do [[ -n "$m" && "$(git remote get-url "$m" 2>/dev/null || true)" == "$url" ]] && { rname="$m"; break; }; done <<<"$remotes"
     fi
     if [[ -n "$rname" ]]; then range=("$lsha" --not "--remotes=$rname"); else range=("$lsha" --not --remotes); fi
   else range=("$rsha..$lsha"); fi
