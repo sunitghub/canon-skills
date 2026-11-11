@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.52.0] - 2026-11-11
+
+Run `canon update`. Board pages and the `canon` command changed; no daemon program did.
+
 - Changed (board): the board and the Cockpit now read the live sessions from the public `/api/v1/sessions` through one helper instead of the private `/api/cockpit-sessions`; the rows, the polling and what you see are the same. A test fails if a page file fetches either route itself. The private route stays for the `canon` command until it moves to the public API.
 - Changed (release): the size cap on the end-user zip is 4224 KB (it was 4096 KB, in `tools/caps.tsv`); the zip had reached it, and this release adds the `canon events` and `canon sprint` commands and the sessions helper.
 - Fixed (canon): a `CANON_COCKPIT_PORT` that is not a port number (`8899/x`, `1@host`) is refused by every `canon` command that talks to the board, with exit 2, instead of being put into the URL.
