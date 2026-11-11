@@ -590,17 +590,15 @@ wait_cmd() {
   [[ -z "$timeout" || "$timeout" =~ ^[0-9]+$ ]] || { echo "canon wait: --timeout is milliseconds, got '$timeout'" >&2; exit 2; }
   local port base
   require_board 2
-  # t-5b80: v1 only. A board that predates the root filter would ignore it and answer for another project: ask it once for a project
-  # that cannot exist, and refuse when rows come back.
   local q=() v1="$base/api/v1/sessions" start=$SECONDS now
-  if [[ -n "$root" ]]; then
-    q=(--data-urlencode "root=$root")
-    if ! now="$(board_curl -sfG --max-time 10 --data-urlencode "root=/.canon-no-such-project" "$v1")" || [[ "$now" == *'"ticket"'* ]]; then
+  [[ -z "$root" ]] || q=(--data-urlencode "root=$root")
+  while :; do
+    # t-5b80: v1 only. A board that predates the root filter would ignore it and answer for another project: on every poll, ask it for a
+    # project that cannot exist, and refuse when rows come back (a stale board with no session yet is caught when one appears).
+    if [[ -n "$root" ]] && { ! now="$(board_curl -sfG --max-time 10 --data-urlencode "root=/.canon-no-such-project" "$v1")" || [[ "$now" == *'"ticket"'* ]]; }; then
       echo "The board on port $port does not support 'canon wait --project' (it predates it, or failed). Close its window, then run canon." >&2
       exit 2
     fi
-  fi
-  while :; do
     # an answer with no state in it is the board failing, not a state to wait out
     if ! now="$(board_curl -sfG --max-time 10 ${q[@]+"${q[@]}"} "$v1/$id/state")" || ! now="$(sed -n 's/.*"state": *"\([a-z-]*\)".*/\1/p' <<<"$now")" || [[ -z "$now" ]]; then
       echo "The board on port $port does not support 'canon wait' (it predates it, or failed). Close its window, then run canon." >&2
@@ -685,9 +683,6 @@ v1_read_cmd() {
   printf '%s\n' "${out%$'\n'*}"
 }
 
-# t-03a8: the read and control subcommands go through the running board's own API — it
-# renders the text (?format=text), so this stays curl-only: no Python, no jq (a Git-only
-# Windows machine has neither).
 # t-5b80: `canon sessions` reads /api/v1/sessions only. --json prints that body unchanged; the table is canon-go's (one formatter, no JSON in bash).
 # Uses board_cmd's `port` and `base`.
 sessions_cmd() {
@@ -703,6 +698,9 @@ sessions_cmd() {
   "$b" sessions-table <<<"$body"
 }
 
+# t-03a8: the read and control subcommands go through the running board's own API — status renders its text (?format=text) and sessions
+# prints canon-go's table, so this stays curl-only: no Python, no jq (a Git-only
+# Windows machine has neither).
 board_cmd() {
   local cmd="$1"; shift
   local json=0 force=0 a
