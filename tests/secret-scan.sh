@@ -20,7 +20,7 @@ ANT="sk-""ant-api03-abcdefghijklmnopqrstuv"
 OAI="sk-""$(rep r 40)"
 GOOG="AIza""$(rep Q 35)"
 PK="-----BEGIN ""RSA PRIVATE KEY-----"
-URL="postgres://app:s3cretPassw0rd""@db.internal/x"
+URL="postgres://app:s3cretPassw0rd""@db.internal/x"   # canon:allow-secret (a fake fixture)
 JWT="eyJ""hbGciOiJIUzI1NiJ9.eyJ""zdWIiOiIxMjM0NTY3ODkwIn0.abcdefghijk"
 BEARER="Authorization: Bearer ""$(rep Z 30)"
 GEN="pass""word = \"hunter2hunter2hunter2\""
@@ -108,17 +108,17 @@ else echo "secret-scan: skipped on Windows: a symlink type change"; fi
 # (break-it) quoted keys (JSON, YAML), a secret deep in a long line or across a piece boundary, UTF-16 files (PowerShell redirection)
 r="$(newrepo)"; put "$r" a.json '{"pass''word": "Zq8vN2mK9xLp4Rt7"}';             expect_hit "$r" json-key generic-secret a.json:1
 r="$(newrepo)"; put "$r" b.yml 'db:
-  "api_key": "Zq8vN2mK9xLp4Rt7"';                                                    expect_hit "$r" yaml-quoted-key generic-secret b.yml:2
+  "api_key": "Zq8vN2mK9xLp4Rt7"';                                                    expect_hit "$r" yaml-quoted-key generic-secret b.yml:2   # canon:allow-secret (a fake fixture)
 r="$(newrepo)"; put "$r" c.toml '"pass''word" = "Zq8vN2mK9xLp4Rt7"';                expect_hit "$r" toml-quoted-key generic-secret c.toml:1
 r="$(newrepo)"; { head -c 25000 /dev/zero | tr '\0' 'a'; printf ' k=%s\n' "$AWS"; } > "$r/min.js"; git -C "$r" add min.js; expect_hit "$r" deep-in-long-line aws-access-key min.js:1
 r="$(newrepo)"; { head -c 19990 /dev/zero | tr '\0' 'a'; printf ' k=%s\n' "$AWS"; } > "$r/cut.js"; git -C "$r" add cut.js; expect_hit "$r" across-a-piece-boundary aws-access-key cut.js:1
 r="$(newrepo)"; printf 'k=%s\n' "$AWS" | iconv -f UTF-8 -t UTF-16LE > "$r/u16le.txt"; git -C "$r" add u16le.txt; expect_hit "$r" utf16le aws-access-key u16le.txt:1
 r="$(newrepo)"; printf 'k=%s\n' "$AWS" | iconv -f UTF-8 -t UTF-16BE > "$r/u16be.txt"; git -C "$r" add u16be.txt; expect_hit "$r" utf16be aws-access-key u16be.txt:1
 # (break-it) a placeholder is judged on the VALUE: a key NAME or a $ inside a real value does not exempt it; a variable reference or <...> still does
-r="$(newrepo)"; put "$r" a.cfg 'password_example = "Zq8vN2mK9xLp4Rt7"';             expect_hit "$r" key-name-example generic-secret a.cfg:1
-r="$(newrepo)"; put "$r" a.cfg 'api_key_dummy: "Zq8vN2mK9xLp4Rt7"';                 expect_hit "$r" key-name-dummy generic-secret a.cfg:1
+r="$(newrepo)"; put "$r" a.cfg 'password_example = "Zq8vN2mK9xLp4Rt7"';             expect_hit "$r" key-name-example generic-secret a.cfg:1   # canon:allow-secret (a fake fixture)
+r="$(newrepo)"; put "$r" a.cfg 'api_key_dummy: "Zq8vN2mK9xLp4Rt7"';                 expect_hit "$r" key-name-dummy generic-secret a.cfg:1   # canon:allow-secret (a fake fixture)
 r="$(newrepo)"; put "$r" a.cfg 'pass''word = "Zq8vN2mK$9xLp4Rt7"';                  expect_hit "$r" dollar-in-value generic-secret a.cfg:1
-r="$(newrepo)"; put "$r" a.cfg 'u=postgres://u:Zq8vN2$mK9@h/db';                    expect_hit "$r" dollar-in-url-password url-credentials a.cfg:1
+r="$(newrepo)"; put "$r" a.cfg 'u=postgres://u:Zq8vN2$mK9@h/db';                    expect_hit "$r" dollar-in-url-password url-credentials a.cfg:1   # canon:allow-secret (a fake fixture)
 r="$(newrepo)"; put "$r" a.cfg 'pass''word = "$DB_PASSWORD_FROM_ENV"';              expect_clean "$r" "a variable reference"
 r="$(newrepo)"; put "$r" a.cfg 'u=postgres://app:${DB_PASS_FROM_ENV}@h/db';         expect_clean "$r" "a variable reference in a URL"
 # (break-it) many hits stay bounded: 4,000 lines that each hold a key
@@ -142,7 +142,7 @@ r="$(newrepo)"; put "$r" a.sh 'http://host:8080@v2/x';                          
 r="$(newrepo)"; mkdir -p "$r/.claude"; put "$r" .claude/settings.local.json '{}'; git -C "$r" config diff.dstPrefix w-
 expect_hit "$r" dstPrefix-config claude-local-settings .claude/settings.local.json
 r="$(newrepo)"; git -C "$r" config diff.mnemonicPrefix true; put "$r" server.pem x; expect_hit "$r" mnemonicPrefix key-file server.pem
-r="$(newrepo)"; put "$r" a.cfg 'u=HTTPS://admin:hunter22xx@host.com/x';                     expect_hit "$r" uppercase-scheme url-credentials a.cfg:1
+r="$(newrepo)"; put "$r" a.cfg 'u=HTTPS://admin:hunter22xx@host.com/x';                     expect_hit "$r" uppercase-scheme url-credentials a.cfg:1   # canon:allow-secret (a fake fixture)
 r="$(newrepo)"; printf 'one\ntwo\n' > "$r/f.txt"; git -C "$r" add f.txt; git -C "$r" commit -qm f; printf 'one\nk=%s\n' "$AWS" > "$r/f.txt"; git -C "$r" add f.txt
 rc=0; out="$(cd "$r" && GIT_DIFF_OPTS=-u9 bash "$SCAN" --staged 2>&1)" || rc=$?; assert_eq 1 "$rc"; assert_contains "$out" "f.txt:2: aws-access-key"
 r="$(mktemp -d "$W/r.XXXXXX")"; git init -q "$r"; printf 'k=%s\n' "$AWS" > "$r/root.txt"; git -C "$r" add root.txt; git -C "$r" commit -qm root; put "$r" b.txt b; git -C "$r" commit -qm second
@@ -181,6 +181,18 @@ mkdir -p "$W/tmpchk"; r="$(newrepo)"; put "$r" a.cfg "k = $AWS"; (cd "$r" && TMP
 [[ -z "$(ls -A "$W/tmpchk")" ]] || fail "secret-scan: the scan left a temp dir behind: $(ls "$W/tmpchk")"
 # (sweep) usage text
 out="$(bash "$SCAN" 2>&1 || true)"; assert_contains "$out" "usage: secret-scan.sh --staged | --range"
+# (t-27e5) a value that is a path is not a credential; one that only resembles a variable or a path at its start still is
+r="$(newrepo)"; put "$r" a.sh 'SECRET_SCAN="$CANON_ROOT/tools/secret-scan.sh"';            expect_clean "$r" "a capitalised variable then a path"
+r="$(newrepo)"; put "$r" a.sh 'TOKEN_FILE="${HOME}/.config/app/token-file"';                expect_clean "$r" "a braced variable then a path"
+r="$(newrepo)"; put "$r" a.sh 'secret_path="/etc/app/secret-material.pem"';                 expect_clean "$r" "an absolute path"
+r="$(newrepo)"; put "$r" a.sh 'api_key_file = "./relative/path/api-key.txt"';               expect_clean "$r" "a ./ path"
+r="$(newrepo)"; put "$r" a.sh 'api_key_file = "../shared/config/api-key.txt"';              expect_clean "$r" "a ../ path"
+r="$(newrepo)"; put "$r" a.sh 'token_dir = "~/.secrets/token-directory"';                   expect_clean "$r" "a ~/ path"
+r="$(newrepo)"; put "$r" a.cfg 'pass''word = "$DB_PASS-realsecret9"';                       expect_hit "$r" var-then-dash generic-secret a.cfg:1
+r="$(newrepo)"; put "$r" a.cfg 'pass''word = "$uperSecret99Zq"';                            expect_hit "$r" lowercase-var-start generic-secret a.cfg:1
+r="$(newrepo)"; put "$r" a.cfg 'pass''word = "$uper/Secret99Zq123"';                        expect_hit "$r" lowercase-var-then-slash generic-secret a.cfg:1
+r="$(newrepo)"; put "$r" a.cfg 'pass''word = "Zq8vN2mK9xLp4Rt7/more"';                      expect_hit "$r" slash-in-the-middle generic-secret a.cfg:1
+r="$(newrepo)"; put "$r" a.cfg 'pass''word = "${db_pass}/Secret99Zq123"';                   expect_hit "$r" lowercase-braced-var-then-slash generic-secret a.cfg:1
 # a rename of a clean file into a secret path is refused; a plain rename of a clean file passes
 r="$(newrepo)"; put "$r" plain.txt "hello"; git -C "$r" commit -qm p; git -C "$r" mv plain.txt .env; staged "$r"; [[ "$RC" == 1 ]] || fail "secret-scan: a rename to .env passed: $OUT"
 r="$(newrepo)"; put "$r" plain.txt "hello"; git -C "$r" commit -qm p; git -C "$r" mv plain.txt other.txt; expect_clean "$r" "a plain rename"

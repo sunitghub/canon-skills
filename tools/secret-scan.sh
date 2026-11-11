@@ -38,9 +38,9 @@ TABLE
 # A placeholder is judged on the VALUE, never the key name. Key-shaped secrets (AWS, GitHub, ...): xxxx, example or **** anywhere in the match.
 # A password, token or Bearer value or a URL password (free text, so a real one may contain such a word): only when it STARTS or ENDS as a placeholder
 # (xxxx, your_..., changeme, example, placeholder, dummy, redacted, ****, <...>) or is a whole environment-variable reference in capitals (${X}, $X), is only digits (a port, a count), a bare word like
-# "password", or an npm integrity hash (sha512-...). A real secret that merely contains "example" in the middle is still refused.
+# "password", an npm integrity hash (sha512-...), or a path (starts /, ./, ../, ~/ or $VAR/). A real secret that merely contains "example" in the middle is still refused.
 PH_KEY='x{4,}|example|\*{4,}'
-PH_FREE='^(x{4,}|your[_-]|changeme|example|placeholder|dummy|redacted|\*{4,}|<.*>$|sha(256|384|512)-)|(example|x{4,}|\*{4,})$|^[0-9]+$|^(password|passwd|pass|secret|token|user|username|apikey|api_key)$'
+PH_FREE='^(x{4,}|your[_-]|changeme|example|placeholder|dummy|redacted|\*{4,}|<.*>$|sha(256|384|512)-)|(example|x{4,}|\*{4,})$|^[0-9]+$|^(password|passwd|pass|secret|token|user|username|apikey|api_key)$|^(\.{1,2}/|/|~/)'
 dq='"'; sq="'"
 value_of() { # <rule> <match>: the part of a match that is the secret itself. Builtins only: this runs once per hit, and a file can have 100,000 of them
   local v="$2"
@@ -58,7 +58,9 @@ is_placeholder() { # <rule> <value>
   local re="$PH_KEY" r=1
   case "$1" in generic-secret|bearer-token|url-credentials) re="$PH_FREE"
     # a whole variable reference, in capitals as an environment variable is (${DB_PASS}, $DB_PASS); case-sensitive, so $uperSecret99 is a password
-    [[ "$2" =~ ^\$([A-Z_][A-Z0-9_]*|\{[^}]*\})$ ]] && return 0 ;;
+    [[ "$2" =~ ^\$([A-Z_][A-Z0-9_]*|\{[^}]*\})$ ]] && return 0
+    # a capitalised variable then a slash is a path ($HOME/.token, ${CANON_ROOT}/tools/x), not a password (t-27e5)
+    [[ "$2" =~ ^\$([A-Z_][A-Z0-9_]*|\{[A-Z_][A-Z0-9_]*\})/ ]] && return 0 ;;
   esac
   shopt -s nocasematch; [[ "$2" =~ $re ]] && r=0; shopt -u nocasematch; return "$r"
 }

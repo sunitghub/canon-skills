@@ -6,6 +6,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+- Fixed (security): the secret scan no longer refuses an ordinary assignment whose variable name holds `secret`, `token`, `password` or `api_key` and whose value is a path (`SECRET_SCAN="$CANON_ROOT/tools/secret-scan.sh"`, `TOKEN_FILE="$HOME/.token"`, `secret_path="/etc/app/secret.pem"`). A value that only resembles a variable or a path at its start (`$DB_PASS-realsecret9`, `$uperSecret99`) is still refused. Shell only: no daemon restart is needed.
 ## [0.54.0] - 2026-11-11
 
 Run `canon update`, then restart the daemon (Admin's **Restart Daemon**): the `canon-go` program changed (the worktree ignore list), and a running daemon stays on the old one until restarted. `canon update` also refreshes the pre-commit hook in your registered projects, which is how they get the secret scan.
