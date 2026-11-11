@@ -140,7 +140,7 @@ for c in "events" "sprint t-d9e6"; do   # t-ad6f: a board without the v1 routes
 done
 # t-ad6f (break-it): a board that answers 500 with escape bytes in the body, and one that drops the connection on the v1 routes. The first must
 # not put a raw escape on the terminal; the second must be named as not answering, not as having "answered 000".
-v1_stub() {   # v1_stub <port> <500|500long|drop|noroot>
+v1_stub() {   # v1_stub <port> <500|500long|drop|noroot|nostate>
   python3 - "$1" "$2" <<'PY' >/dev/null 2>&1 &
 import http.server, sys
 mode = sys.argv[2]
@@ -151,6 +151,8 @@ class H(http.server.BaseHTTPRequestHandler):
         if mode == "noroot" and self.path.startswith("/api/v1/sessions"):   # rows whatever root= says
             b = b'{"schema":1,"sessions":[{"ticket":"t-wt01","state":"working"}]}' if self.path.startswith("/api/v1/sessions?") else b'{"schema":1,"id":"t-wt01","state":"working"}'
             self.send_response(200); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b); return
+        if mode == "nostate" and self.path.startswith("/api/v1/sessions"):   # 200 with no state in it
+            b = b'{"schema":1,"error":"x"}'; self.send_response(200); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b); return
         if mode == "drop":
             self.connection.shutdown(2); return
         body = b"bad \x1b[31mred\x1b[0m " + (b"z" * 600 if mode == "500long" else b"end")
@@ -182,6 +184,11 @@ PORT="$(free_port)"; v1_stub "$PORT" noroot
 set +e; out="$(run wait t-wt01 --until "done" --timeout 2000 --project /work/a 2>&1)"; code=$?; set -e
 assert_eq "2" "$code"
 assert_eq "The board on port $PORT does not support 'canon wait --project' (it predates it, or failed). Close its window, then run canon." "$out"
+# t-5b80: a 200 answer that carries no state is the board failing: canon wait exits 2 and says so, it does not wait it out
+PORT="$(free_port)"; v1_stub "$PORT" nostate
+set +e; out="$(run wait t-wt01 --until done --timeout 3000 2>&1)"; code=$?; set -e
+assert_eq "2" "$code"; assert_contains "$out" "does not support 'canon wait'"
+
 # shellcheck disable=SC2043  # one board today; the loop keeps the per-board stub dirs
 for b in main.go; do
   sd="$WORK/sd-$b"

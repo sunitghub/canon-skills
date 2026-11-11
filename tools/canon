@@ -601,11 +601,11 @@ wait_cmd() {
     fi
   fi
   while :; do
-    if ! now="$(board_curl -sfG --max-time 10 ${q[@]+"${q[@]}"} "$v1/$id/state")"; then
+    # an answer with no state in it is the board failing, not a state to wait out
+    if ! now="$(board_curl -sfG --max-time 10 ${q[@]+"${q[@]}"} "$v1/$id/state")" || ! now="$(sed -n 's/.*"state": *"\([a-z-]*\)".*/\1/p' <<<"$now")" || [[ -z "$now" ]]; then
       echo "The board on port $port does not support 'canon wait' (it predates it, or failed). Close its window, then run canon." >&2
       exit 2
     fi
-    now="$(sed -n 's/.*"state": *"\([a-z-]*\)".*/\1/p' <<<"$now")"
     if [[ ",$until," == *",$now,"* ]]; then
       if [[ "$json" -eq 0 ]]; then echo "$now"
       else
