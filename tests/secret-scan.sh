@@ -185,6 +185,8 @@ out="$(bash "$SCAN" 2>&1 || true)"; assert_contains "$out" "usage: secret-scan.s
 r="$(newrepo)"; put "$r" a.sh 'SECRET_SCAN="$CANON_ROOT/tools/secret-scan.sh"';            expect_clean "$r" "a capitalised variable then a path"
 r="$(newrepo)"; put "$r" a.sh 'TOKEN_FILE="${HOME}/.config/app/token-file"';                expect_clean "$r" "a braced variable then a path"
 r="$(newrepo)"; put "$r" a.sh 'secret_path="/etc/app/secret-material.pem"';                 expect_clean "$r" "an absolute path"
+r="$(newrepo)"; put "$r" a.sh 'TOKEN_FILE="$HOME/.token"';                                  expect_clean "$r" "a variable then a dotfile (the . branch of the remainder alone)"
+r="$(newrepo)"; put "$r" a.sh 'secret_dir="~/.secret-material"';                            expect_clean "$r" "a ~/ dotfile"
 r="$(newrepo)"; put "$r" a.sh 'api_key_file = "./relative/path/api-key.txt"';               expect_clean "$r" "a ./ path"
 r="$(newrepo)"; put "$r" a.sh 'api_key_file = "../shared/config/api-key.txt"';              expect_clean "$r" "a ../ path"
 r="$(newrepo)"; put "$r" a.sh 'token_dir = "~/.secrets/token-directory"';                   expect_clean "$r" "a ~/ path"
