@@ -30,7 +30,7 @@ trap 'rm -rf "$WORK"; [[ -n "${SRV:-}" ]] && kill "$SRV" 2>/dev/null || true' EX
 BOARD="$(build_board "$WORK/bin")"
 CANON_HOME="$WORK/.canon" COCKPIT_STATE_DIR="$WORK/state" SPRINT_CHECK_NO_BROWSER=1 SPRINT_CHECK_ROOT="$ROOT" "$BOARD" "$PORT" >/dev/null 2>&1 &
 SRV=$!
-for i in $(seq 1 50); do curl -s -o /dev/null "http://127.0.0.1:$PORT/api/projects" && break; sleep 0.1; done
+for _ in $(seq 1 50); do curl -s -o /dev/null "http://127.0.0.1:$PORT/api/projects" && break; sleep 0.1; done
 
 # launcher with a stubbed browser opener on PATH so it can't actually open a browser
 STUBDIR="$WORK/stub"; mkdir -p "$STUBDIR"

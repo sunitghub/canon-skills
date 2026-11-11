@@ -294,6 +294,7 @@ for n in cockpit-daemon sprint-check; do echo "old-$n" > "$INSTALL/tools/$n-win.
 echo more6 > "$WORK/seed/NEWS6"; git -C "$WORK/seed" "${ident[@]}" add NEWS6; git -C "$WORK/seed" "${ident[@]}" commit -qm news7 && git -C "$WORK/seed" push -q origin main 2>/dev/null
 set +e; out="$(STUB_FETCH_RMOLD=1 PATH="$WSTUB:$PATH" "$CANON" update 2>&1)"; code=$?; set -e
 assert_eq "0" "$code"; refute_contains "$out" "kept your previous"; refute_contains "$out" "could not be fetched"
+# shellcheck disable=SC2010  # a listing for the failure message only
 [[ ! -e "$INSTALL/tools/cockpit-daemon-win.exe" && ! -e "$INSTALL/tools/sprint-check-win.exe" && -f "$INSTALL/tools/canon-go-win.exe" ]] || fail "the update brought back the exes canon-go replaced: $(ls "$INSTALL/tools" | grep win.exe)"
 # the same state on macOS/Linux is NOT an error (no Windows exes exist there)
 echo more5 > "$WORK/seed/NEWS5"; git -C "$WORK/seed" "${ident[@]}" add NEWS5; git -C "$WORK/seed" "${ident[@]}" commit -qm news6 && git -C "$WORK/seed" push -q origin main 2>/dev/null
@@ -554,7 +555,7 @@ git -C "$I5" checkout -q -- NEWS 2>/dev/null || rm -f "$I5/NEWS"
 echo "canon-update: a stale tkt ahead on PATH is named once after an update; a match, no tkt, a link or a refused update say nothing (t-b213)"
 
 ps="$("$CANON" completion powershell)"
-for w in Register-ArgumentCompleter status sessions stop restart wait update uninstall --dry-run --keep-data --yes completion version help needs-you working done idle exited --json --force --until --timeout --project; do
+for w in Register-ArgumentCompleter status sessions stop restart wait update uninstall --dry-run --keep-data --yes completion version help needs-you working "done" idle exited --json --force --until --timeout --project; do
   assert_contains "$ps" "$w"
 done
 set +e; "$CANON" completion fish >/dev/null 2>&1; code=$?; set -e
