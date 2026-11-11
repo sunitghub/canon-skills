@@ -18,7 +18,7 @@ assert_eq "start-checklist 900 words
 complete-checklist 900 words
 handoff 80 block-lines
 learnings 80 block-lines
-release-zip 4096 kb
+release-zip 4224 kb
 release-zip-files 300 files" "$rows"
 
 # --help names the helper: a bash caller checks for it, as canon_event checks for `event <kind>` (an older board takes a word for a port)
@@ -52,7 +52,7 @@ assert_eq "x: 4 of 3 words, over by 1" "$(cd "$T" && "$BOARD" caps --table "$T/t
 rc=0; "$BOARD" caps --table "$T/missing.tsv" x >/dev/null 2>&1 || rc=$?; assert_eq 2 "$rc"
 rc=0; "$BOARD" caps --table "$T/t.tsv" >/dev/null 2>&1 || rc=$?; assert_eq 2 "$rc"
 list="$(cd "$ROOT" && "$BOARD" caps --list --table "$CAPS")"
-[[ "$list" == *"complete-checklist: "*" of 900 words, "* && "$list" == *"release-zip: 4096 KB (the caller gives the path)"* ]] || fail "caps: --list is wrong: $list"
+[[ "$list" == *"complete-checklist: "*" of 900 words, "* && "$list" == *"release-zip: 4224 KB (the caller gives the path)"* ]] || fail "caps: --list is wrong: $list"
 
 # cap_check (tests/helpers.sh) fails on a missing row instead of reading it as no cap
 mkdir -p "$T/root/tools"; grep -v '^start-checklist' "$CAPS" > "$T/root/tools/caps.tsv"

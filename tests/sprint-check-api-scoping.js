@@ -17,7 +17,7 @@ const html = [fs.readFileSync(APP, 'utf8'), ...boardScripts(APP).map((s) => s.so
 // A key matches the path exactly or as a `<key>/...` prefix.
 const UNSCOPED = {
   '/api/cockpit': 'the one shared daemon, not per-project',
-  '/api/cockpit-sessions': 'lists sessions across ALL projects (t-391a)',
+  '/api/v1/sessions': 'lists sessions across ALL projects (t-391a), read through static/sessions-api.js (t-ad6f)',
   '/api/cockpit-docs': 'resolves its project from the explicit ?cwd',
   '/api/version': 'install-wide build info',
   '/api/ci-workflow': 'install-wide CI workflow toggle',
