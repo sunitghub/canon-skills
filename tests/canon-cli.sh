@@ -61,10 +61,10 @@ start_board() {   # start_board <name> <state-dir> → sets PORT
   wait_for "http://127.0.0.1:$PORT/api/version" || fail "canon-cli: $name did not start"
 }
 
-run() { CANON_COCKPIT_PORT="$PORT" SPRINT_CHECK_BIN="$GO_BIN" "$CANON" "$@"; }   # t-5b80: the table is the test build's sessions-table
+run() { CANON_COCKPIT_PORT="$PORT" SPRINT_CHECK_BIN="$CLI_BIN" "$CANON" "$@"; }   # t-5b80: the table is the test build's sessions-table
 # run_bounded: run, but a command that would loop (a validation that failed to refuse) is stopped after 8 s and fails the assertion on its status (143), not the suite on a hang.
 run_bounded() {
-  CANON_COCKPIT_PORT="$PORT" SPRINT_CHECK_BIN="$GO_BIN" "$CANON" "$@" & local p=$!
+  CANON_COCKPIT_PORT="$PORT" SPRINT_CHECK_BIN="$CLI_BIN" "$CANON" "$@" & local p=$!
   ( sleep 8; kill "$p" 2>/dev/null ) & local w=$!
   local c=0; wait "$p" || c=$?
   kill "$w" 2>/dev/null; wait "$w" 2>/dev/null || true
@@ -77,7 +77,7 @@ no_token() { [[ "$1" != *"$TOKEN"* ]] || fail "canon-cli: a token appeared in ca
 bare="$(grep -nE '(^|[^_a-zA-Z])curl .*(/api/|127\.0\.0\.1)' "$ROOT"/tools/canon "$ROOT"/tools/*.sh | grep -v 'board_curl' || true)"
 [[ -z "$bare" ]] || fail "canon-cli: a board request calls curl without board_curl (--noproxy): $bare"
 
-GO_BIN="$(build_board "$WORK/bin")"
+GO_BIN="$(build_board "$WORK/bin")"; CLI_BIN="$GO_BIN"   # CLI_BIN: the build canon runs its sessions-table from (canon starts no server)
 
 # The Windows wrappers run this same script (they can't run here; t-03a8's VM check covers them).
 grep -qF 'set "SCRIPT=%~dp0canon"' "$ROOT/tools/canon.cmd" || fail "canon-cli: tools/canon.cmd must run tools/canon"
