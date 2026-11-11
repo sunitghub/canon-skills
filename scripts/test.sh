@@ -155,6 +155,7 @@ tests=(
   "$ROOT/tests/sprint-gate-agents.sh"
   "$ROOT/tests/doc-check.sh"
   "$ROOT/tests/pre-push-release.sh"
+  "$ROOT/tests/secret-scan.sh"
   "$ROOT/tests/sprint-check-worktrees.sh"
   "$ROOT/tests/sprint-check-ticket-commit.sh"
   "$ROOT/tests/sprint-check-track-changes.sh"

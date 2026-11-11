@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# secret-scan.sh — refuse a commit or a push that adds a credential (t-5988). One owner of the rules, no dependency beyond git, grep and awk.
+#   secret-scan.sh --staged                      the lines and paths the staged change adds (the pre-commit hook)
+#   secret-scan.sh --range <rev-list args...>    every commit in the range (git log -p), so a secret added and removed again inside it is still found
+#                                                (the pre-push hook: A..B, or `<sha> --not --remotes` for a new branch)
+# Exit 0 clean, 1 findings, 2 usage or a git failure. Findings go to stderr as `[<sha>:]path:line: rule`: the value is never printed.
+# Passes: a line carrying `canon:allow-secret`, and a match that is a placeholder (xxxx, example, your_..., <...>, ${...}, changeme, redacted).
+# Overrides, on purpose: `git commit --no-verify` / `git push --no-verify`. There is no environment switch: an agent could set one.
+# Rules are patterns for known shapes, not entropy: a secret of an unlisted shape passes. The table below is the one place to extend.
+# Input is hostile: file names with spaces, quotes or a newline (git quotes them), a 200 KB line (read to 20 KB), a binary file or a .gitattributes `-diff`
+# (--text, --no-textconv, --no-ext-diff: an attribute cannot hide the lines or pick a program that rewrites them), paths in any letter case (.ENV, Server.PEM).
+set -euo pipefail
+
+usage() { echo "usage: secret-scan.sh --staged | --range <rev-list args...>" >&2; exit 2; }
+[[ $# -ge 1 ]] || usage
+mode="$1"; shift
+case "$mode" in
+  --staged) [[ $# -eq 0 ]] || usage ;;
+  --range) [[ $# -ge 1 ]] || usage ;;
+  *) usage ;;
+esac
+
+# name <TAB> grep -E pattern <TAB> flags (i = ignore case)
+RULES="$(cat <<'TABLE'
+aws-access-key	(AKIA|ASIA)[0-9A-Z]{16}
+github-token	gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,}
+slack-token	xox[baprs]-[A-Za-z0-9-]{10,}
+anthropic-key	sk-ant-[A-Za-z0-9_-]{20,}
+openai-key	(^|[^A-Za-z0-9_-])sk-(proj-)?[A-Za-z0-9_-]{32,}
+google-api-key	AIza[0-9A-Za-z_-]{35}
+private-key	-----BEGIN ([A-Z]+ )*PRIVATE KEY( BLOCK)?-----
+url-credentials	[a-z][a-z0-9+.-]*://[^/[:space:]:@]+:[^/[:space:]@]{3,}@
+jwt	eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}
+bearer-token	Bearer[[:space:]]+[A-Za-z0-9._~+/=-]{20,}	i
+generic-secret	(password|passwd|secret|token|api[_-]?key|apikey)[A-Za-z0-9_-]*[[:space:]]*[:=][[:space:]]*["'][^"'[:space:]]{12,}["']	i
+TABLE
+)"
+PLACEHOLDER='x{4,}|example|your[_-]|placeholder|dummy|changeme|redacted|\*{4,}|<[^>]*>|\$'
+
+repo="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "secret-scan: not inside a git repository" >&2; exit 2; }
+work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
+US=$'\x1f'
+
+case "$mode" in
+  --staged) git -C "$repo" -c core.quotepath=false diff --cached --no-color --text --no-textconv --no-ext-diff -U0 --diff-filter=ACMR > "$work/diff" || exit 2 ;;
+  --range)  git -C "$repo" -c core.quotepath=false log -p --no-color --text --no-textconv --no-ext-diff -U0 --diff-filter=ACMR --format='@@COMMIT %H' "$@" > "$work/diff" || exit 2 ;;
+esac
+
+# One pass over the diff: R holds `sha US path US line US text` for every added line, T just the text (same order), P `sha US path` for every
+# added or renamed-to path. `+++ ` is a header only before the first hunk of a file (an added line "++ x" looks the same), a line over 20 KB is cut.
+awk -v R="$work/R" -v T="$work/T" -v P="$work/P" -v US="$US" '
+  /^@@COMMIT / { commit = substr($2, 1, 7); file = ""; inhdr = 0; next }
+  /^diff --git / { inhdr = 1; file = ""; next }
+  inhdr && /^rename to / { p = substr($0, 11); gsub(/^"|"$/, "", p); print commit US p > P; next }
+  inhdr && /^\+\+\+ / {
+    p = substr($0, 5); sub(/\t.*$/, "", p)
+    if (p == "/dev/null") { file = ""; next }
+    gsub(/^"|"$/, "", p); sub(/^b\//, "", p); file = p
+    print commit US file > P; next
+  }
+  /^@@ / {
+    inhdr = 0; n = $3; sub(/^\+/, "", n); sub(/,.*/, "", n); ln = n + 0; next
+  }
+  !inhdr && /^\+/ {
+    if (file != "") {
+      line = substr($0, 2)
+      if (index(line, "canon:allow-secret") == 0) {
+        if (length(line) > 20000) line = substr(line, 1, 20000)
+        print commit US file US ln US line > R
+        print line > T
+      }
+    }
+    ln++
+  }
+' "$work/diff"
+: >> "$work/R"; : >> "$work/T"; : >> "$work/P"
+
+findings="$work/findings"; : > "$findings"
+say() { # <commit> <path> <line-or-empty> <rule>: one finding; the path is cut and made printable, the value never appears
+  local c="$1" p="$2" l="$3" r="$4" at
+  p="$(printf '%s' "${p:0:200}" | tr -c '[:print:]' '?')"
+  at="${c:+$c:}$p"; [[ -z "$l" ]] || at="$at:$l"
+  printf '%s: %s\n' "$at" "$r" >> "$findings"
+}
+
+# path rules, from the added paths
+while IFS="$US" read -r c p; do
+  [[ -n "$p" ]] || continue
+  lp="$(printf '%s' "$p" | tr 'A-Z' 'a-z')"   # macOS and Windows: .ENV and Server.PEM are the same files
+  base="${lp##*/}"
+  case "$base" in .env.example|.env.sample|.env.template|.env.dist) ;; .env|.env.*) say "$c" "$p" "" "env-file" ;; esac
+  case "$lp" in .claude/settings.local.json|*/.claude/settings.local.json) say "$c" "$p" "" "claude-local-settings (saved approvals can hold a password)" ;; esac
+  case "$base" in *.pem|id_rsa|id_ed25519) say "$c" "$p" "" "key-file" ;; esac
+done < "$work/P"
+
+# content rules, over the added lines
+while IFS="$(printf '\t')" read -r name re flags; do
+  [[ -n "$name" ]] || continue
+  opts="-noE"; [[ "$flags" != *i* ]] || opts="-noiE"
+  while IFS= read -r hit; do
+    idx="${hit%%:*}"; m="${hit#*:}"
+    if grep -qiE -e "$PLACEHOLDER" <<<"$m"; then continue; fi
+    rec="$(sed -n "${idx}p" "$work/R")"
+    IFS="$US" read -r c p l _ <<<"$rec"
+    say "$c" "$p" "$l" "$name"
+  done < <(grep $opts -e "$re" "$work/T" || true)
+done <<<"$RULES"
+
+n="$(awk '!seen[$0]++' "$findings" | wc -l | tr -d ' ')"
+if [[ "$n" -eq 0 ]]; then exit 0; fi
+awk '!seen[$0]++' "$findings" | head -50 >&2
+[[ "$n" -le 50 ]] || echo "... and $((n - 50)) more" >&2
+echo "secret-scan: $n finding(s). Remove the secret and rotate it; put canon:allow-secret on a line that is not one; or --no-verify to override on purpose." >&2
+exit 1

@@ -8,6 +8,17 @@ if [ -n "$_CHAIN_HOOK" ] && [ -x "$_CHAIN_HOOK" ]; then
   "$_CHAIN_HOOK" "$@" || exit $?
 fi
 
+# ── Secret scan (t-5988) ─────────────────────────────────────────────────────
+# A credential in a commit is in history for good: refuse it before the commit exists. `git commit --no-verify` is the deliberate override.
+SECRET_SCAN="$CANON_ROOT/tools/secret-scan.sh"
+if [ -f "$SECRET_SCAN" ]; then
+  if ! bash "$SECRET_SCAN" --staged; then
+    echo ""
+    echo "[pre-commit] BLOCKED — the staged change adds what looks like a secret (above)."
+    exit 1
+  fi
+fi
+
 TKT_BIN="$CANON_ROOT/tools/tkt"
 [ -f "$TKT_BIN" ] || TKT_BIN=$(command -v tkt 2>/dev/null || command -v tk 2>/dev/null || true)
 

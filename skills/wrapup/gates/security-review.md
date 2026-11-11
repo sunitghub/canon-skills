@@ -67,6 +67,10 @@ sign-in") all belong to the operational side — see `docs/production-incident-p
 AI/LLM systems, `skills/ai-audit/SKILL.md`'s `agency-scope` / `resource-control` / `observability`
 surfaces cover the AI-app analogues (still static). Flag only code-visible sinks here.
 
+## Credentials and New Dependencies
+
+Look in the diff for a hard-coded credential (a key, a token, a password in a string, a URL with `user:password@`, a `Bearer` value in a saved command) and for a saved approval or settings file that holds one (`.claude/settings.local.json`). The mechanical scan (`tools/secret-scan.sh`, run by the pre-commit and pre-push hooks) catches known shapes; a secret of another shape is yours to find. Name every new dependency the diff adds (a manifest or lockfile line) and say why existing tools were not enough (`standards/efficiency.md`: no new dependencies for problems existing tools solve); a name you cannot place is a lead, not a finding, until you have checked it exists.
+
 ## Optional Scanner Evidence
 
 If the repo already provides a scanner or rule set, run it when it is relevant to

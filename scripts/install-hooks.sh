@@ -30,8 +30,9 @@ HOOK
 chmod +x "$POST_COMMIT"
 echo "  [ok]    post-commit hook installed → $POST_COMMIT"
 
-# ── pre-push: nothing reaches a canon.mirror remote (public) before its binaries are released (t-4ea4) ─────────
-# `tkt push-main` already checks (t-b6b6); this covers every other route (a plain `git push public`, an agent's push).
+# ── pre-push: no credential reaches any remote (t-5988), and nothing reaches a canon.mirror remote (public) before its binaries are released (t-4ea4) ─────────
+# The secret scan reads every commit being pushed (`tools/secret-scan.sh --range`; a new branch: the commits no remote has) for EVERY remote.
+# `tkt push-main` already checks the release (t-b6b6); the second part covers every other route to a mirror (a plain `git push public`, an agent's push).
 # Each pushed commit goes through the same guard (`tkt release-check`); a deletion pushes nothing and is skipped.
 # `git push --no-verify` is the deliberate override (docs/releasing.md).
 PRE_PUSH="$HOOKS_DIR/pre-push"
@@ -45,10 +46,15 @@ while IFS= read -r m; do
   [[ -n "$m" ]] || continue
   if [[ "$remote" == "$m" || "$url" == "$(git remote get-url "$m" 2>/dev/null || true)" ]]; then mirror="$m"; break; fi
 done < <(git config --get-all canon.mirror 2>/dev/null || true)
-[[ -n "$mirror" ]] || exit 0
-while read -r _lref lsha _rref _rsha; do
+while read -r _lref lsha _rref rsha; do
   [[ -n "$lsha" && ! "$lsha" =~ ^0+$ ]] || continue
   # </dev/null: the ref lines are this loop's stdin; a child that read it would leave later refs unchecked
+  if [[ "$rsha" =~ ^0+$ ]]; then range=("$lsha" --not --remotes); else range=("$rsha..$lsha"); fi
+  if [[ -f "$REPO_ROOT/tools/secret-scan.sh" ]] && ! bash "$REPO_ROOT/tools/secret-scan.sh" --range "${range[@]}" </dev/null; then
+    echo "pre-push: refused the push to $remote (t-5988): remove the secret and rotate it, or 'git push --no-verify' to override on purpose" >&2
+    exit 1
+  fi
+  [[ -n "$mirror" ]] || continue
   if ! bash "$REPO_ROOT/tools/tkt" release-check "$lsha" </dev/null; then
     echo "pre-push: refused the push to $mirror (t-4ea4): publish with 'tkt push-main' once released, or 'git push --no-verify' to override on purpose" >&2
     exit 1

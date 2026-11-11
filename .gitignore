@@ -42,6 +42,8 @@ doc-findings.md
 # .claude/settings.json IS tracked (canonical project-local hook config for all contributors).
 .claude/skills
 .claude/subagent-runs.jsonl
+# Saved approvals can hold a password (t-5988): never committed, whatever a contributor's global ignore says.
+.claude/settings.local.json
 .agents/
 
 node_modules/

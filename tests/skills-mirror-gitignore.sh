@@ -35,6 +35,7 @@ _ensure_mirror_gitignored "$PROJ"
 
 grep -qxF "/.agents/skills" "$PROJ/.gitignore" || fail "gitignore missing /.agents/skills"
 grep -qxF "/.claude/skills" "$PROJ/.gitignore" || fail "gitignore missing /.claude/skills"
+grep -qxF "/.claude/settings.local.json" "$PROJ/.gitignore" || fail "gitignore missing /.claude/settings.local.json (t-5988: saved approvals can hold a password)"
 [ -z "$(git -C "$PROJ" ls-files .agents/skills)" ] || fail "mirror still tracked after untrack"
 # idempotent: second run adds no duplicate lines
 _ensure_mirror_gitignored "$PROJ" >/dev/null
@@ -83,7 +84,7 @@ upsert_skills_symlinks "$SYM" >/dev/null; _ensure_mirror_gitignored "$SYM" >/dev
 _is_dir_link "$SYM/.claude/skills" && _is_dir_link "$SYM/.agents/skills" || fail "symlink fixture: mirror links not created"
 [ -z "$(mirror_listed "$SYM")" ] || fail "symlinked mirror listed by git status: $(mirror_listed "$SYM")"
 git -C "$SYM" check-ignore -q .claude/skills && git -C "$SYM" check-ignore -q .agents/skills || fail "git check-ignore misses a symlinked mirror"
-[ "$(cat "$SYM/.gitignore")" = "$(printf '/.claude/skills\n/.agents/skills\n/.claude/subagent-runs.jsonl\n/.tickets/*/gate-snapshot.txt*')" ] || fail "fresh .gitignore content: $(cat "$SYM/.gitignore")"
+[ "$(cat "$SYM/.gitignore")" = "$(printf '/.claude/skills\n/.agents/skills\n/.claude/subagent-runs.jsonl\n/.tickets/*/gate-snapshot.txt*\n/.claude/settings.local.json')" ] || fail "fresh .gitignore content: $(cat "$SYM/.gitignore")"
 RD="$(mktemp -d)"; git -C "$RD" init -q
 mkdir -p "$RD/.claude/skills/x" "$RD/.agents/skills/x"; echo s > "$RD/.claude/skills/x/f"; echo s > "$RD/.agents/skills/x/f"
 _ensure_mirror_gitignored "$RD" >/dev/null
@@ -100,7 +101,7 @@ done
 RP="$(mktemp -d)"; git -C "$RP" init -q
 printf 'node_modules/\n/.claude/skills/\ndist/\n' > "$RP/.gitignore"
 _ensure_mirror_gitignored "$RP" >/dev/null
-[ "$(cat "$RP/.gitignore")" = "$(printf 'node_modules/\n/.claude/skills\ndist/\n/.agents/skills\n/.claude/subagent-runs.jsonl\n/.tickets/*/gate-snapshot.txt*')" ] || fail "repaired .gitignore: $(cat "$RP/.gitignore")"
+[ "$(cat "$RP/.gitignore")" = "$(printf 'node_modules/\n/.claude/skills\ndist/\n/.agents/skills\n/.claude/subagent-runs.jsonl\n/.tickets/*/gate-snapshot.txt*\n/.claude/settings.local.json')" ] || fail "repaired .gitignore: $(cat "$RP/.gitignore")"
 before="$(cksum < "$RP/.gitignore")"; _ensure_mirror_gitignored "$RP" >/dev/null
 [ "$(cksum < "$RP/.gitignore")" = "$before" ] || fail "repair is not idempotent"
 printf '/.claude/skills/\n/.claude/skills\n' > "$RP/.gitignore"        # both forms already present
@@ -112,10 +113,10 @@ grep -qxF "/.claude/skills/" "$RP/.gitignore" && fail "both forms: directory-onl
 NN="$(mktemp -d)"; git -C "$NN" init -q
 printf 'dist/' > "$NN/.gitignore"
 _ensure_mirror_gitignored "$NN" >/dev/null
-[ "$(cat "$NN/.gitignore")" = "$(printf 'dist/\n/.claude/skills\n/.agents/skills\n/.claude/subagent-runs.jsonl\n/.tickets/*/gate-snapshot.txt*')" ] || fail "no-trailing-newline .gitignore: $(cat "$NN/.gitignore")"
+[ "$(cat "$NN/.gitignore")" = "$(printf 'dist/\n/.claude/skills\n/.agents/skills\n/.claude/subagent-runs.jsonl\n/.tickets/*/gate-snapshot.txt*\n/.claude/settings.local.json')" ] || fail "no-trailing-newline .gitignore: $(cat "$NN/.gitignore")"
 # t-ba62: an older install's file (mirror lines present, no trailing newline) gets the run-record lines on their own lines
 printf '/.claude/skills\n/.agents/skills' > "$NN/.gitignore"; _ensure_mirror_gitignored "$NN" >/dev/null
-[ "$(cat "$NN/.gitignore")" = "$(printf '/.claude/skills\n/.agents/skills\n/.claude/subagent-runs.jsonl\n/.tickets/*/gate-snapshot.txt*')" ] || fail "run-record lines glued to an unterminated line: $(cat "$NN/.gitignore")"
+[ "$(cat "$NN/.gitignore")" = "$(printf '/.claude/skills\n/.agents/skills\n/.claude/subagent-runs.jsonl\n/.tickets/*/gate-snapshot.txt*\n/.claude/settings.local.json')" ] || fail "run-record lines glued to an unterminated line: $(cat "$NN/.gitignore")"
 
 # ── 9. t-c433 end to end through the real client: skills.sh add, then refresh over the old lines ──
 E2E="$(mktemp -d)"; E2E_HOME="$(mktemp -d)"

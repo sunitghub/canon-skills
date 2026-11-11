@@ -53,6 +53,18 @@ and `t-2c06` (GO-2026-6859, go1.27.4):
    with `go version -m`), and the CHANGELOG section tells users to restart the daemon. A patch release is enough.
 5. Confirm the workflow on the public repo (Actions › govulncheck) is green for the release commit.
 
+## Secrets in a commit or a push (t-5988)
+
+A credential that reaches a commit is in history for good, and one that reaches a public repo is public. `tools/secret-scan.sh` reads the lines a change adds and refuses it before it exists:
+
+- **Pre-commit (every project canon is added to):** the canon-managed `.git/hooks/pre-commit` runs `secret-scan.sh --staged` first. A refused commit says `BLOCKED` and lists `path:line: rule`; the value is never printed. `skills.sh refresh` (and `canon update`) rewrites the hook in your projects, so an older project gets the scan after its next refresh.
+- **Pre-push (canon's own checkout):** `scripts/install-hooks.sh` installs a hook that runs `secret-scan.sh --range` over every commit being pushed, to **any** remote (a new branch: the commits no remote has), so a secret added and removed again inside the range is still found. `tkt push-main` pushes with git, so it goes through it too. The release check for a `canon.mirror` remote still runs after it.
+- **What it looks for:** AWS, GitHub, Slack, Anthropic, OpenAI and Google keys; private-key blocks; `scheme://user:password@`; JWTs; `Bearer` tokens (the shape of a saved command); a quoted 12+ character value assigned to `password`, `secret`, `token` or `api_key`; and files that are a secret by their name in any letter case: `.env` and `.env.<x>` (not `.env.example`, `.sample`, `.template`, `.dist`), `.claude/settings.local.json` (Claude Code saves the commands you approve there, with any password in them), `*.pem`, `id_rsa`, `id_ed25519`. A binary file or a `.gitattributes` `-diff` does not hide its lines.
+- **What passes:** a match that is a placeholder (`xxxx`, `example`, `your_…`, `<…>`, `${…}`, `changeme`, `redacted`) and a line carrying `canon:allow-secret`. A false positive on a path has no marker: use the override below.
+- **Overrides, on purpose:** `git commit --no-verify` and `git push --no-verify`. There is no environment switch (an agent could set one). The rules are patterns for known shapes, not entropy: a secret of another shape passes. The rule table is at the top of the script, the one place to extend it.
+- **Rotate what leaked:** refusing a commit protects the future. A secret that was already pushed is compromised: revoke it first, then clean the history if it matters (`t-2f9d` plans a history scrub).
+- `.claude/settings.local.json` is also in canon's `.gitignore`, and `skills.sh add`/`refresh` adds `/.claude/settings.local.json` to a project's ignore file, so the file is not staged by `git add -A`.
+
 ## Safe on the public mirror
 
 canon-skills mirrors every canon commit (`tkt push-main`), so the workflow runs there too. It has
