@@ -721,6 +721,12 @@ ev stamp "$ID" bs -- bash tests/run-board-spec.sh; chg tests/s.sh; ev check "$ID
 # only an exact `tests/<name>.sh` is a suite: a backup copy and a nested tests/ folder are not dropped
 scope_repo; ev stamp "$ID" bs -- bash tests/run-board-spec.sh; chg tests/unnamed.sh.bak; ev check "$ID"; stale_with bs "1 tracked file(s) changed since: tests/unnamed.sh.bak)"
 scope_repo; ev stamp "$ID" bs -- bash tests/run-board-spec.sh; chg sub/tests/unnamed.sh; ev check "$ID"; stale_with bs "1 tracked file(s) changed since: sub/tests/unnamed.sh)"
+# a lookup is by whole line: a suite whose name sits inside another (load.sh in machine-load.sh, x.sh before x.sh.sh) is not in scope because of it
+scope_repo; echo l > tests/load.sh; echo x > tests/x.sh; echo xx > tests/x.sh.sh; printf '# tests/x.sh.sh\n' >> tests/run-board-spec.sh; git add tests; git commit -qm names; CB="$(git rev-parse HEAD)"
+ev stamp "$ID" bs -- bash tests/run-board-spec.sh; chg tests/load.sh tests/x.sh; ev check "$ID"; fresh_scope bs "tests/load.sh, tests/x.sh"
+# and likewise for a mapped file: sub/tests/unnamed.sh and tests/unnamed.sh.bak are readers, tests/unnamed.sh is not
+scope_repo; ev stamp "$ID" sw -- tools/mutant-sweep --map "sub/tests/unnamed.sh=$GO_MAP" --map "tests/unnamed.sh.bak=$GO_MAP"; assert_eq 0 "$code"
+chg tests/unnamed.sh; ev check "$ID"; fresh_scope sw tests/unnamed.sh
 # the list of ignored files shows five names, then the count of the rest
 scope_repo; ev stamp "$ID" bs -- bash tests/run-board-spec.sh; chg tests/f1.sh tests/f2.sh tests/f3.sh tests/f4.sh tests/f5.sh; ev check "$ID"
 fresh_scope bs "tests/f1.sh, tests/f2.sh, tests/f3.sh, tests/f4.sh, tests/f5.sh"; [[ "$out" != *"more"* ]] || fail "evidence: five names must not say more: $out"
