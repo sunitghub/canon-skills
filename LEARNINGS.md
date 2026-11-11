@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-11-2026 13:04
+learnings-sweep last run: 11-11-2026 14:10
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-11 | [t-27e5](.tickets/t-27e5/learnings.md) | Loosening a security check needs a test for each branch of the loosening alone (the dot of a path remainder passed no test until an evaluator reverted it), and a criterion that is narrowed by a review must be reworded in the same pass, or the evaluator grades the old wording. |
 | 2026-11-11 | [t-5988](.tickets/t-5988/learnings.md) | A scanner that reads git output must fix every flag the repo's config can change (prefixes, showRoot, replace refs, textconv, quoting) and must apply a cap AFTER its filter; a usage check tested outside a repository is hidden by the sweep's .git-less copy, so test failure paths inside one. |
 | 2026-11-11 | [t-46b9](.tickets/t-46b9/learnings.md) | A bug that a test already asserts as normal ("No sessions running." with the daemon stopped) survives every suite: when a symptom is reported, grep the tests for the old output and treat a passing assertion of it as the bug's own evidence. |
 | 2026-11-11 | [t-2c06](.tickets/t-2c06/learnings.md) | A plan that lists the release (push, tag, a green workflow on the public repo) as a sprint deliverable cannot pass the close-time evaluator, because canon releases only after the close: put the release under a post-close heading from the start. |
@@ -82,5 +83,4 @@ learnings-sweep last run: 11-11-2026 13:04
 | 2026-11-02 | [t-8381](.tickets/t-8381/learnings.md) | A layout fix pinned only by a combined assertion can lose its own rule: the Host label stayed on one line because its value got short, so removing `white-space:nowrap` alone survived. | `dismissed (covered: standards/efficiency.md)` |
 | 2026-11-02 | [t-c542](.tickets/t-c542/learnings.md) | A new owner of shared facts (an event envelope field) must update every place that pins the old shape in one pass: the release key, its five test fixtures, the API key set and the export docs each failed separately. | `dismissed (covered: standards/efficiency-notes.md)` |
 | 2026-11-02 | [t-1ed8](.tickets/t-1ed8/learnings.md) | A doc sweep for a removed feature must grep every doc, not only the plan's file list: docs/fresh-machine-test.md still described the removed offer until the reviewer caught it. | `dismissed (covered: standards/efficiency-notes.md)` |
-| 2026-11-02 | [t-4d39](.tickets/t-4d39/learnings.md) | A marker that changes behavior must count only where its writer puts it (above the closing ticket marker), never anywhere in a body: a plain ticket quoting the marker line in its notes imported as Lite until the reviewer caught it. | `dismissed (covered: standards/efficiency-notes.md)` |
 <!-- canon:learnings:END -->
