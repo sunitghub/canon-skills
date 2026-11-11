@@ -81,6 +81,7 @@ pkg_lock() {
   rm -rf -- "$grave"
   mkdir "$lock" 2>/dev/null || { PKG_ERR="another canon update just took the lock ($lock)"; return 1; }
   printf '%s\n' "$$" > "$lock/pid"; PKG_LOCK="$lock"
+  # shellcheck disable=SC2034  # read by the sourcing canon update
   PKG_NOTE="took over the update lock of an update that is no longer running (pid ${pid:-unknown})"
 }
 
@@ -129,6 +130,7 @@ pkg_install() {
   [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { PKG_ERR="not a release tag: $tag"; return 1; }  # the tag becomes a folder name and a download path
   [ ! -e "$pk/$dest" ] || { PKG_ERR="$pk/$dest already exists"; return 1; }
   mkdir -p "$pk" || { PKG_ERR="could not create $pk"; return 1; }
+  # shellcheck disable=SC2034  # read by the sourcing canon update
   tmp="$(mktemp -d "$pk/.tmp-$tag.XXXXXX")" || { tmp=""; PKG_ERR="could not create a temp folder in $pk"; return 1; }
   zip="$tmp/canon.zip"; url="$PKG_RELEASE_BASE/$tag/canon-${tag#v}.zip"
   command -v curl >/dev/null 2>&1 || { _pkg_fail "curl is required to download $tag"; return 1; }
@@ -196,6 +198,7 @@ pkg_running() (
   source "$_PKG_LIB_DIR/platform-lib.sh"
   # shellcheck source=cockpit-stop-lib.sh
   source "$_PKG_LIB_DIR/cockpit-stop-lib.sh"
+  # shellcheck disable=SC2034  # read by the sourced stop library
   INSTALL="$1"; PORT="${CANON_COCKPIT_PORT:-8899}"
   board_up() { board_curl -s -o /dev/null --max-time 3 "http://127.0.0.1:$PORT/api/version" 2>/dev/null; }
   local out=""

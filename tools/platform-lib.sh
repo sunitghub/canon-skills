@@ -60,8 +60,11 @@ board_helper_bin() {
 # RESULT_TEXT for tools/sprint-headless and tools/sprint-headless-eval.
 headless_parse() {
   local parsed; parsed="$("$1" headless-json)"
+  # shellcheck disable=SC2034  # set for the caller: headless_parse's contract
   IS_ERROR="$(printf '%s\n' "$parsed" | cut -f1)"
+  # shellcheck disable=SC2034  # set for the caller
   SESSION_ID="$(printf '%s\n' "$parsed" | cut -f2)"
+  # shellcheck disable=SC2034  # set for the caller
   RESULT_TEXT="$(printf '%s\n' "$parsed" | cut -f3- | tr '\002' '\n')"
 }
 

@@ -121,6 +121,7 @@ install_verdict() {
     rec="$(cd "$(cat "$ip")" 2>/dev/null && pwd -P)" || rec=""
     # in the layout install_path names <home>/current (a package, physically); before an install moved into it, <home> itself
     case "$LAYOUT:$rec" in "1:$INSTALL/packages/"*) rec="$INSTALL" ;; esac
+    # shellcheck disable=SC2088  # the message names the path as the user writes it
     if [ "$rec" != "$INSTALL" ]; then VERDICT_WHY="~/.config/canon/install_path names a different folder ($(cat "$ip"))"; return 0; fi
   fi
   # t-50f7: in the versioned layout every package that is a git clone (packages/main, and a release clone moved in from the single-tree

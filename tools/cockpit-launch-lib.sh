@@ -60,6 +60,7 @@ start_cockpit_server() {
     return 1
   fi
   SPRINT_CHECK_NO_BROWSER=1 "$bin" board "$port" &   # t-bdb0: the mode word, so canon stop knows the board by it
+  # shellcheck disable=SC2034  # read by the sourcing launcher
   SERVER_PID=$!
 }
 
