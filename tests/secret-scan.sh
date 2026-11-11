@@ -193,6 +193,7 @@ r="$(newrepo)"; put "$r" a.cfg 'pass''word = "$uperSecret99Zq"';                
 r="$(newrepo)"; put "$r" a.cfg 'pass''word = "$uper/Secret99Zq123"';                        expect_hit "$r" lowercase-var-then-slash generic-secret a.cfg:1
 r="$(newrepo)"; put "$r" a.cfg 'pass''word = "Zq8vN2mK9xLp4Rt7/more"';                      expect_hit "$r" slash-in-the-middle generic-secret a.cfg:1
 r="$(newrepo)"; put "$r" a.cfg 'pass''word = "${db_pass}/Secret99Zq123"';                   expect_hit "$r" lowercase-braced-var-then-slash generic-secret a.cfg:1
+r="$(newrepo)"; put "$r" a.cfg 'pass''word = "Real-Secret9$DB_PASS/more"';                   expect_hit "$r" var-ref-in-the-middle generic-secret a.cfg:1
 # a rename of a clean file into a secret path is refused; a plain rename of a clean file passes
 r="$(newrepo)"; put "$r" plain.txt "hello"; git -C "$r" commit -qm p; git -C "$r" mv plain.txt .env; staged "$r"; [[ "$RC" == 1 ]] || fail "secret-scan: a rename to .env passed: $OUT"
 r="$(newrepo)"; put "$r" plain.txt "hello"; git -C "$r" commit -qm p; git -C "$r" mv plain.txt other.txt; expect_clean "$r" "a plain rename"
