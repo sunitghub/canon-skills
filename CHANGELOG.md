@@ -6,7 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.53.2] - 2026-11-11
+
 - Fixed (canon): with the Cockpit daemon down, `canon wait` no longer prints `exited` and `canon sessions` no longer prints "No sessions running." The board answers an empty list marked `X-Cockpit-Daemon: down` and `canon` ignored the mark. Now `canon wait` exits 2 and `canon sessions` (also `--json`) exits 1, each saying the daemon is not answering and that the sessions are unknown, not none; a `canon wait` that is polling when the daemon goes down stops at the next poll. A live daemon with no session still gives "No sessions running." and `exited`. Shell only: no daemon restart is needed.
+
 ## [0.53.1] - 2026-11-11
 
 Run `canon update`, then restart the daemon (Admin's **Restart Daemon**): the `canon-go` program changed, and a running daemon stays on the old one until restarted.
