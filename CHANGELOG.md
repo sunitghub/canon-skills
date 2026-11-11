@@ -6,9 +6,11 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.53.1] - 2026-11-11
+
 Run `canon update`, then restart the daemon (Admin's **Restart Daemon**): the `canon-go` program changed, and a running daemon stays on the old one until restarted.
 
-- Fixed (security): canon-go is built with Go 1.27.4 (the pin in `tools/canon-go/go.mod`), which fixes GO-2026-6859 in `net/http` (an HTTP/1 server using `MaxBytesReader` could panic when a handler read the request body while the response header was written). The board reads one request body that way (`internal/board/pipeline.go`), and govulncheck reported it reachable. The Go program changed, so the release needs the daemon release.
+- Fixed (security): canon-go is built with Go 1.27.4 (the pin in `tools/canon-go/go.mod`), which fixes GO-2026-6859 in `net/http` (an HTTP/1 server using `MaxBytesReader` could panic when a handler read the request body while the response header was written). The board reads one request body that way (`internal/board/pipeline.go:309`, read in full before any header is written, so it does not itself race), and govulncheck reported the function reachable and failed the check on the public repo. The Go program changed, so the release needs the daemon release.
 
 ## [0.53.0] - 2026-11-11
 
