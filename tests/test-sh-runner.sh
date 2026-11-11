@@ -92,6 +92,7 @@ assert_contains "$out" "==> tests/a.sh"$'\n'"A-out"$'\n'"==> tests/b.sh"$'\n'"B-
 assert_contains "$out" "C-out"; assert_contains "$out" "E-ok"; assert_contains "$out" "F-ok"
 assert_contains "$out" "FAILED: tests/b.sh (exit 4)"$'\n'"FAILED: tests/d.sh (exit 5)"
 assert_contains "$out" "0 tests/b.sh (failed)"; [[ "$out" != *"tests/c.sh (failed)"* ]] || fail "a passing suite was marked failed"
+# shellcheck disable=SC2010  # a listing of the run folder names, for the failure message only
 assert_eq "" "$(ls "$TMPDIR" | grep '^test-sh-run\.' || true)"                    # the run folder is removed
 # a TMPDIR ending in "/" (macOS's own) gives no suite a "//" path; t.TempDir() keeps it, filepath.Join drops it (cockpit-daemon failed)
 T2="$WORK/slash"; runner_copy "$T2" tests/a.sh tests/b.sh; echo 'echo "dir=$TMPDIR"' > "$T2/tests/a.sh"; echo true > "$T2/tests/b.sh"
