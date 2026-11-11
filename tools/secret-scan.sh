@@ -7,7 +7,7 @@
 # Passes: a line carrying `canon:allow-secret`, and a match that is a placeholder (xxxx, example, your_..., <...>, ${...}, changeme, redacted).
 # Overrides, on purpose: `git commit --no-verify` / `git push --no-verify`. There is no environment switch: an agent could set one.
 # Rules are patterns for known shapes, not entropy: a secret of an unlisted shape passes. The table below is the one place to extend.
-# Input is hostile: file names with spaces, quotes or a newline (git quotes them), a 200 KB line (read to 20 KB), a binary file or a .gitattributes `-diff`
+# Input is hostile: file names with spaces, quotes or a newline (git quotes them), a long line (read in overlapping 20 KB pieces), at most 200 hits a rule, a binary file or a .gitattributes `-diff`
 # (--text, --no-textconv, --no-ext-diff: an attribute cannot hide the lines or pick a program that rewrites them), paths in any letter case (.ENV, Server.PEM).
 set -euo pipefail
 export LC_ALL=C   # bytes, not characters: an invalid UTF-8 byte must neither stop awk nor make grep call the file binary
@@ -22,7 +22,7 @@ case "$mode" in
 esac
 
 # name <TAB> grep -E pattern <TAB> flags (i = ignore case)
-RULES="$(cat <<'TABLE'
+IFS= read -r -d '' RULES <<'TABLE' || true   # not $(cat <<...): bash 3.2 miscounts the quotes of a heredoc inside a command substitution
 aws-access-key	(AKIA|ASIA)[0-9A-Z]{16}
 github-token	gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,}
 slack-token	xox[baprs]-[A-Za-z0-9-]{10,}
@@ -33,10 +33,19 @@ private-key	-----BEGIN ([A-Z]+ )*PRIVATE KEY( BLOCK)?-----
 url-credentials	[a-z][a-z0-9+.-]*://[^/[:space:]:@]+:[^/[:space:]@]{3,}@
 jwt	eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}
 bearer-token	Bearer[[:space:]]+[A-Za-z0-9._~+/=-]{20,}	i
-generic-secret	(password|passwd|secret|token|api[_-]?key|apikey)[A-Za-z0-9_-]*[[:space:]]*[:=][[:space:]]*["'][^"'[:space:]]{12,}["']	i
+generic-secret	(password|passwd|secret|token|api[_-]?key|apikey)[A-Za-z0-9_-]*["']?[[:space:]]*[:=][[:space:]]*["'][^"'[:space:]]{12,}["']	i
 TABLE
-)"
-PLACEHOLDER='x{4,}|example|your[_-]|placeholder|dummy|changeme|redacted|\*{4,}|<[^>]*>|\$'
+# A placeholder is judged on the VALUE (not the key name or the whole match): xxxx, example, your_..., placeholder, dummy, changeme, redacted, ****,
+# <...>, or a variable reference at its start (${X}, $X). A real password that merely contains a $ is not one.
+PLACEHOLDER='x{4,}|example|your[_-]|placeholder|dummy|changeme|redacted|\*{4,}|^<.*>$|^\$[{A-Za-z_]'
+value_of() { # <rule> <match>: the part of a match that is the secret itself (sed: bash 3.2 mishandles quotes inside ${...})
+  case "$1" in
+    generic-secret) printf '%s' "$2" | sed -e 's/^[^:=]*[:=][[:space:]]*//' -e "s/^[\"']//" -e "s/[\"']\$//" ;;
+    bearer-token) printf '%s' "$2" | sed -e 's/^[Bb]earer[[:space:]]*//' ;;
+    url-credentials) printf '%s' "$2" | sed -e 's|^[^:]*://||' -e 's|^[^:]*:||' -e 's|@$||' ;;
+    *) printf '%s' "$2" ;;
+  esac
+}
 
 repo="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "secret-scan: not inside a git repository" >&2; exit 2; }
 work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
@@ -68,9 +77,14 @@ awk -v R="$work/R" -v T="$work/T" -v P="$work/P" -v US="$US" '
     if (file != "") {
       line = substr($0, 2)
       if (index(line, "canon:allow-secret") == 0) {
-        if (length(line) > 20000) line = substr(line, 1, 20000)
-        print commit US file US ln US line > R
-        print line > T
+        # a long line (minified JS, one-line JSON) is read in 20 KB pieces that overlap by 200 bytes, so a secret anywhere in it, or across a cut, is seen
+        len = length(line); i = 1
+        do {
+          piece = (len > 20000) ? substr(line, i, 20000) : line
+          print commit US file US ln US piece > R
+          print piece > T
+          i += 19800
+        } while (i <= len)
       }
     }
     ln++
@@ -100,11 +114,12 @@ done < "$work/P"
 while IFS="$(printf '\t')" read -r name re flags; do
   [[ -n "$name" ]] || continue
   opts="-noE"; [[ "$flags" != *i* ]] || opts="-noiE"
-  grc=0; grep -a $opts -e "$re" "$work/T" > "$work/hits" || grc=$?
+  grc=0; grep -a -m 200 $opts -e "$re" "$work/T" > "$work/hits" || grc=$?
   [[ "$grc" -le 1 ]] || { echo "secret-scan: grep failed (exit $grc) on rule $name; nothing was scanned for it" >&2; exit 2; }   # never read a failed scan as clean
   while IFS= read -r hit; do
     idx="${hit%%:*}"; m="${hit#*:}"
-    if grep -qiE -e "$PLACEHOLDER" <<<"$m"; then continue; fi
+    v="$(value_of "$name" "$m")"
+    if grep -qiE -e "$PLACEHOLDER" <<<"$v"; then continue; fi
     rec="$(sed -n "${idx}p" "$work/R")"
     IFS="$US" read -r c p l _ <<<"$rec"
     say "$c" "$p" "$l" "$name"

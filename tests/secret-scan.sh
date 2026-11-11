@@ -102,6 +102,25 @@ r="$(newrepo)"; printf 'a\0b\nk=%s\n' "$AWS" > "$r/nul.dat"; git -C "$r" add nul
 # (break-it) a symlink that becomes a regular file is a type change: its new lines are additions
 r="$(newrepo)"; ln -s /etc/hostname "$r/lnk"; git -C "$r" add lnk; git -C "$r" commit -qm lnk; rm "$r/lnk"; printf 'k=%s\n' "$AWS" > "$r/lnk"; git -C "$r" add lnk
 expect_hit "$r" typechange aws-access-key lnk:1
+# (break-it) quoted keys (JSON, YAML), a secret deep in a long line or across a piece boundary, UTF-16 files (PowerShell redirection)
+r="$(newrepo)"; put "$r" a.json '{"pass''word": "Zq8vN2mK9xLp4Rt7"}';             expect_hit "$r" json-key generic-secret a.json:1
+r="$(newrepo)"; put "$r" b.yml 'db:
+  "api_key": "Zq8vN2mK9xLp4Rt7"';                                                    expect_hit "$r" yaml-quoted-key generic-secret b.yml:2
+r="$(newrepo)"; put "$r" c.toml '"pass''word" = "Zq8vN2mK9xLp4Rt7"';                expect_hit "$r" toml-quoted-key generic-secret c.toml:1
+r="$(newrepo)"; { head -c 25000 /dev/zero | tr '\0' 'a'; printf ' k=%s\n' "$AWS"; } > "$r/min.js"; git -C "$r" add min.js; expect_hit "$r" deep-in-long-line aws-access-key min.js:1
+r="$(newrepo)"; { head -c 19990 /dev/zero | tr '\0' 'a'; printf ' k=%s\n' "$AWS"; } > "$r/cut.js"; git -C "$r" add cut.js; expect_hit "$r" across-a-piece-boundary aws-access-key cut.js:1
+r="$(newrepo)"; printf 'k=%s\n' "$AWS" | iconv -f UTF-8 -t UTF-16LE > "$r/u16le.txt"; git -C "$r" add u16le.txt; expect_hit "$r" utf16le aws-access-key u16le.txt:1
+r="$(newrepo)"; printf 'k=%s\n' "$AWS" | iconv -f UTF-8 -t UTF-16BE > "$r/u16be.txt"; git -C "$r" add u16be.txt; expect_hit "$r" utf16be aws-access-key u16be.txt:1
+# (break-it) a placeholder is judged on the VALUE: a key NAME or a $ inside a real value does not exempt it; a variable reference or <...> still does
+r="$(newrepo)"; put "$r" a.cfg 'password_example = "Zq8vN2mK9xLp4Rt7"';             expect_hit "$r" key-name-example generic-secret a.cfg:1
+r="$(newrepo)"; put "$r" a.cfg 'api_key_dummy: "Zq8vN2mK9xLp4Rt7"';                 expect_hit "$r" key-name-dummy generic-secret a.cfg:1
+r="$(newrepo)"; put "$r" a.cfg 'pass''word = "Zq8vN2mK$9xLp4Rt7"';                  expect_hit "$r" dollar-in-value generic-secret a.cfg:1
+r="$(newrepo)"; put "$r" a.cfg 'u=postgres://u:Zq8vN2$mK9@h/db';                    expect_hit "$r" dollar-in-url-password url-credentials a.cfg:1
+r="$(newrepo)"; put "$r" a.cfg 'pass''word = "$DB_PASSWORD_FROM_ENV"';              expect_clean "$r" "a variable reference"
+r="$(newrepo)"; put "$r" a.cfg 'u=postgres://app:${DB_PASS_FROM_ENV}@h/db';         expect_clean "$r" "a variable reference in a URL"
+# (break-it) many hits stay bounded: 4,000 lines that each hold a key
+r="$(newrepo)"; for i in $(seq 1 4000); do printf 'k%s=%s\n' "$i" "$AWS"; done > "$r/many.txt"; git -C "$r" add many.txt
+t0=$SECONDS; expect_hit "$r" many-hits aws-access-key many.txt:1; (( SECONDS - t0 < 15 )) || fail "secret-scan: 4,000 hits took $((SECONDS - t0)) s"
 # a rename of a clean file into a secret path is refused; a plain rename of a clean file passes
 r="$(newrepo)"; put "$r" plain.txt "hello"; git -C "$r" commit -qm p; git -C "$r" mv plain.txt .env; staged "$r"; [[ "$RC" == 1 ]] || fail "secret-scan: a rename to .env passed: $OUT"
 r="$(newrepo)"; put "$r" plain.txt "hello"; git -C "$r" commit -qm p; git -C "$r" mv plain.txt other.txt; expect_clean "$r" "a plain rename"
@@ -171,6 +190,12 @@ for remote in origin public; do
   assert_contains "$out" "leak.cfg:1: aws-access-key"; assert_contains "$out" "refused the push to $remote (t-5988)"
   assert_eq "$(git rev-parse origin/main)" "$(at "$remote" main)"
 done
+# (break-it) a commit another remote already holds is still new to THIS remote: a new branch to the second remote is scanned too
+git remote add other "$W/other.git" 2>/dev/null || true; git init -q --bare "$W/other.git"
+rc=0; out="$(git push --no-verify other main:refs/heads/viaother 2>&1)" || rc=$?; assert_eq 0 "$rc"; git fetch -q other
+rc=0; out="$(git push public main:refs/heads/viaother 2>&1)" || rc=$?; [[ "$rc" != 0 ]] || fail "secret-scan: a secret already on remote 'other' reached 'public' on a new branch"
+assert_contains "$out" "leak.cfg:1: aws-access-key"
+git push -q --no-verify other :refs/heads/viaother 2>/dev/null || true
 rc=0; out="$(git push origin main:refs/heads/side 2>&1)" || rc=$?; [[ "$rc" != 0 ]] || fail "secret-scan: a new branch with a secret reached origin"
 assert_eq none "$(at origin side)"
 rc=0; out="$(git push --no-verify origin main 2>&1)" || rc=$?; assert_eq 0 "$rc"                               # the deliberate override

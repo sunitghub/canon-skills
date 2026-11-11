@@ -49,7 +49,10 @@ done < <(git config --get-all canon.mirror 2>/dev/null || true)
 while read -r _lref lsha _rref rsha; do
   [[ -n "$lsha" && ! "$lsha" =~ ^0+$ ]] || continue
   # </dev/null: the ref lines are this loop's stdin; a child that read it would leave later refs unchecked
-  if [[ "$rsha" =~ ^0+$ ]]; then range=("$lsha" --not --remotes); else range=("$rsha..$lsha"); fi
+  # a new branch: the commits THIS remote has not got (a commit another remote already holds is still new to this one); a URL has no tracking refs
+  if [[ "$rsha" =~ ^0+$ ]]; then
+    if git remote 2>/dev/null | grep -qxF -- "$remote"; then range=("$lsha" --not "--remotes=$remote"); else range=("$lsha" --not --remotes); fi
+  else range=("$rsha..$lsha"); fi
   if [[ -f "$REPO_ROOT/tools/secret-scan.sh" ]] && ! bash "$REPO_ROOT/tools/secret-scan.sh" --range "${range[@]}" </dev/null; then
     echo "pre-push: refused the push to $remote (t-5988): remove the secret and rotate it, or 'git push --no-verify' to override on purpose" >&2
     exit 1
