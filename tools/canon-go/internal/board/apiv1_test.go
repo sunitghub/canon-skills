@@ -299,9 +299,15 @@ func TestSessionsTableCLIPrintsTheTableOfAV1Body(t *testing.T) {
 	}
 	for _, bad := range []string{``, `not json`, `[]`, `{"schema":1}`, `{"schema":1,"sessions":null}`, `{"schema":1,"error":"x"}`, `{"schema":1,"sessions":[null]}`} {
 		out.Reset()
-		if rc := sessionsTableCLI(strings.NewReader(bad), &out, &errb); rc != 1 || out.Len() != 0 {
-			t.Errorf("%q: rc=%d out=%q, want 1 and nothing", bad, rc, out.String())
+		errb.Reset()
+		if rc := sessionsTableCLI(strings.NewReader(bad), &out, &errb); rc != 1 || out.Len() != 0 || !strings.Contains(errb.String(), "canon-go sessions-table: stdin is not a /api/v1/sessions body") {
+			t.Errorf("%q: rc=%d out=%q err=%q, want 1, nothing on stdout and the reason on stderr", bad, rc, out.String(), errb.String())
 		}
+	}
+	// the helper word reaches it: `canon-go sessions-table` is what `canon sessions` runs
+	out.Reset()
+	if rc, handled := runHelper([]string{"sessions-table"}, strings.NewReader(`{"schema":1,"sessions":[]}`), &out, &errb); !handled || rc != 0 || out.String() != "No sessions running.\n" {
+		t.Errorf("runHelper sessions-table: handled=%v rc=%d out=%q", handled, rc, out.String())
 	}
 }
 
@@ -667,6 +673,14 @@ func TestTermSafeAndFmtSecsHoldOnHostileValues(t *testing.T) {
 	}
 	if got := termSafe("caf\u00e9 \u65e5\u672c", 0); got != "caf\u00e9 \u65e5\u672c" {
 		t.Errorf("termSafe must keep ordinary text: %q", got)
+	}
+	for r, want := range map[rune]bool{0x1f: true, ' ': false, 0x7e: false, 0x7f: true, 0x9f: true, 0xa0: false, 0x2027: false, 0x2028: true, 0x2029: true, 0x202e: true, 0x202f: false, 0x2065: false, 0x2066: true, 0x2069: true, 0x206a: false} {
+		if got := termSafe(string(r), 0) == "?"; got != want {
+			t.Errorf("termSafe(U+%04X) replaced = %v, want %v", r, got, want)
+		}
+	}
+	if fmtSecs(0.0) != "0s" || fmtSecs(1e12) == "-" || fmtSecs(1e12+1e6) != "-" {
+		t.Errorf("fmtSecs bounds: 0 -> %q, 1e12 -> %q, past it -> %q", fmtSecs(0.0), fmtSecs(1e12), fmtSecs(1e12+1e6))
 	}
 	for _, v := range []any{9.3e18, 1e300, float64(2e12), -1.0, "x", nil} {
 		if got := fmtSecs(v); got != "-" {

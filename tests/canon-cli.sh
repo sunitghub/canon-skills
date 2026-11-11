@@ -140,6 +140,7 @@ for c in status sessions; do
   set +e; out="$(run "$c" 2>&1)"; code=$?; set -e
   assert_eq "1" "$code"
   assert_contains "$out" "does not support 'canon $c'"
+  [[ "$out" != *sessions-table* ]] || fail "canon-cli: canon $c went on to the table after the board refused: $out"
   [[ "$out" != *"<html"* && "$out" != *"<!DOCTYPE"* ]] || fail "canon-cli: a stale board's error page was printed as output"
 done
 for c in "events" "sprint t-d9e6"; do   # t-ad6f: a board without the v1 routes
@@ -214,11 +215,19 @@ assert_eq "2" "$code"; assert_contains "$out" "does not support 'canon wait'"
 PORT="$(free_port)"; v1_stub "$PORT" noroot
 for bad in "--until done --timeout 08" "--until done --timeout 09" "--until done --timeout 18446744073709551617" "--until done --timeout 0x10" "--until done --timeout -1" "--until ," "--until ,,"; do
   # shellcheck disable=SC2086  # split on purpose: flag and value
-  set +e; run_bounded wait t-wt01 $bad >/dev/null 2>&1; code=$?; set -e
-  assert_eq "2" "$code"
+  set +e; out="$(run_bounded wait t-wt01 $bad 2>&1)"; code=$?; set -e
+  assert_eq "2" "$code"; [[ "$out" == "canon wait: "* ]] || fail "canon-cli: canon wait $bad said: $out"
 done
-set +e; run_bounded wait t-wt01 --until done --project "" >/dev/null 2>&1; code=$?; set -e
-assert_eq "2" "$code"   # an empty project is not "any project"
+set +e; out="$(run_bounded wait t-wt01 --until done --project "" 2>&1)"; code=$?; set -e
+assert_eq "2" "$code"; assert_contains "$out" "canon wait: --project needs a path"   # an empty project is not "any project"
+set +e; out="$(run_bounded wait t-wt01 --until done --project 2>&1)"; code=$?; set -e
+assert_eq "2" "$code"; assert_contains "$out" "canon wait: --project needs a path"
+set +e; out="$(run_bounded wait t-wt01 --until sleeping 2>&1)"; code=$?; set -e
+assert_eq "2" "$code"; assert_contains "$out" "canon wait: unknown state 'sleeping'"
+# t-5b80: the table needs this install's board binary to have sessions-table; one that does not (an older install) is named, never run as a port
+stub_bin="$WORK/old-canon-go"; printf '#!/usr/bin/env bash\necho "usage: canon-go (an older one)"\n' > "$stub_bin"; chmod +x "$stub_bin"
+set +e; out="$(CANON_COCKPIT_PORT="$PORT" SPRINT_CHECK_BIN="$stub_bin" "$CANON" sessions 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"; assert_contains "$out" "canon sessions: the board binary ($stub_bin) is older than this command; run canon update."
 # a leading zero is refused, but 0 and a plain number are timeouts: the board answers "working", so --until done times out (exit 1), not usage
 set +e; out="$(run wait t-wt01 --until done --timeout 0 2>&1)"; code=$?; set -e
 assert_eq "1" "$code"; assert_contains "$out" "timed out after 0ms"
