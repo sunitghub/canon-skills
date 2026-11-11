@@ -1,5 +1,5 @@
 // apiv1.go — t-0b89 slice 1: the read-only /api/v1 surface (sessions, ticket metadata, a sprint snapshot) and `canon api schema`.
-// Reads are token-free on loopback like /api/cockpit-sessions: the Host check in handle() runs first, GET is the only method that
+// Reads are token-free on loopback like the board's other reads: the Host check in handle() runs first, GET is the only method that
 // does anything, and no response carries a CORS header, so a web page cannot read it. What it serves is chosen from allowlists (a
 // ticket's metadata fields, an event line that passed the events schema), never filtered from something richer: ticket bodies are
 // not served (they wait for t-e2c4's token). Every id is matched before a path or a lookup is built from it.
@@ -86,7 +86,7 @@ func handleAPIv1(w http.ResponseWriter, r *http.Request) {
 	case len(seg) == 1 && seg[0] == "sessions":
 		sessions, up := cockpitSessionsAnswer()
 		v1DaemonHeader(w, up)
-		v1Send(w, map[string]any{"sessions": sessions})
+		v1Send(w, map[string]any{"sessions": cockpitSessionsIn(sessions, r.URL.Query().Get("root"))})
 	case len(seg) >= 2 && len(seg) <= 3 && seg[0] == "sessions" && (len(seg) == 2 || seg[2] == "state"):
 		if !common.SessionIDRe.MatchString(seg[1]) {
 			v1Error(w, http.StatusBadRequest, "bad session id")
@@ -94,7 +94,7 @@ func handleAPIv1(w http.ResponseWriter, r *http.Request) {
 		}
 		sessions, up := cockpitSessionsAnswer()
 		v1DaemonHeader(w, up)
-		sessions = cockpitSessionsFor(sessions, seg[1], "")
+		sessions = cockpitSessionsFor(sessions, seg[1], r.URL.Query().Get("root"))
 		if len(seg) == 3 {
 			state := "exited"
 			if len(sessions) > 0 {

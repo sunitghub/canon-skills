@@ -80,7 +80,7 @@ if [[ -n "$MEASURE" ]]; then
   start_board "$MEASURE" real
   echo "| Poll | Median | p95 | Processes per request | Reply | Unchanged poll |"
   echo "|---|---|---|---|---|---|"
-  for ep in '/api/tickets?all=1' /api/handoff /api/git /api/cockpit /api/cockpit-sessions /api/cockpit-interrupted /api/project-stats /api/remote-agents; do
+  for ep in '/api/tickets?all=1' /api/handoff /api/git /api/cockpit /api/v1/sessions /api/cockpit-interrupted /api/project-stats /api/remote-agents; do
     p="$(procs "$ep" 15)"
     times=""; for _ in $(seq 1 15); do times+="$(curl -s -o /dev/null -w '%{time_total}' "$BASE$ep") "; done
     size="$(curl -s -o /dev/null -w '%{size_download}' "$BASE$ep")"

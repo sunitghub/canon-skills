@@ -252,6 +252,59 @@ func TestAPIv1SessionsWrapTheDaemonsAnswer(t *testing.T) {
 	}
 }
 
+// Protects `canon wait --project` and any v1 client that asks for one project: ?root= narrows the list, one session and its state
+// (t-5b80), compared the way the old private route did (case, trailing slash, backslashes); no root keeps every row.
+func TestAPIv1SessionsTakeARootFilter(t *testing.T) {
+	setupTestProject(t)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
+	mux.HandleFunc("/sessions", func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(`[{"session":"s1","ticket":"t-aaaa","state":"working","project_root":"/Work/A"},{"session":"s2","ticket":"t-aaaa","state":"needs-you","project_root":"/work/b"}]`))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	v1Daemon(t, strings.TrimPrefix(srv.URL, "http://"))
+
+	n := func(target string) int { return len(v1Body(t, v1Get(t, "GET", target, ""))["sessions"].([]any)) }
+	if n("/api/v1/sessions") != 2 || n("/api/v1/sessions?root=") != 2 {
+		t.Error("no root must keep every row")
+	}
+	if n("/api/v1/sessions?root=/work/a/") != 1 || n("/api/v1/sessions?root=/WORK/B") != 1 || n("/api/v1/sessions?root=/work/c") != 0 {
+		t.Error("root must keep one project's rows, however it is spelled")
+	}
+	st := func(root string) string {
+		return v1Body(t, v1Get(t, "GET", "/api/v1/sessions/t-aaaa/state?root="+root, ""))["state"].(string)
+	}
+	if st("/work/a") != "working" || st("/work/b") != "needs-you" || st("/work/c") != "exited" {
+		t.Error("the state route must follow root")
+	}
+	if one := v1Body(t, v1Get(t, "GET", "/api/v1/sessions/t-aaaa?root=/work/b", ""))["session"].(map[string]any); one["session"] != "s2" {
+		t.Errorf("the session route must follow root: %v", one)
+	}
+	if nf := v1Get(t, "GET", "/api/v1/sessions/t-aaaa?root=/work/c", ""); nf.Code != 404 {
+		t.Errorf("a session in no such project: %d", nf.Code)
+	}
+}
+
+// Protects `canon sessions`: the one table formatter, fed a v1 body on stdin; anything else is exit 1 with nothing on stdout.
+func TestSessionsTableCLIPrintsTheTableOfAV1Body(t *testing.T) {
+	var out, errb bytes.Buffer
+	body := `{"schema":1,"sessions":[{"ticket":"t-wt01","state":"working","state_secs":65,"agent":"claude","project_root":"/work/a","title":"a \"quoted\" title"}]}`
+	if rc := sessionsTableCLI(strings.NewReader(body), &out, &errb); rc != 0 || !strings.Contains(out.String(), "t-wt01  working  ") || !strings.Contains(out.String(), `a "quoted" title`) {
+		t.Errorf("rc=%d out=%q err=%q", rc, out.String(), errb.String())
+	}
+	out.Reset()
+	if rc := sessionsTableCLI(strings.NewReader(`{"schema":1,"sessions":[]}`), &out, &errb); rc != 0 || out.String() != "No sessions running.\n" {
+		t.Errorf("empty: rc=%d out=%q", rc, out.String())
+	}
+	for _, bad := range []string{``, `not json`, `[]`, `{"schema":1}`, `{"schema":1,"sessions":null}`, `{"schema":1,"error":"x"}`} {
+		out.Reset()
+		if rc := sessionsTableCLI(strings.NewReader(bad), &out, &errb); rc != 1 || out.Len() != 0 {
+			t.Errorf("%q: rc=%d out=%q, want 1 and nothing", bad, rc, out.String())
+		}
+	}
+}
+
 func TestAPIv1ErrorsAreOneJSONDocumentWithTheirReason(t *testing.T) {
 	setupTestProject(t)
 	cases := []struct {

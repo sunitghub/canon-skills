@@ -435,7 +435,7 @@ Before → after are the same script's runs on the same tree: 6fb90b9f (v0.41.0)
 | `GET /api/handoff` | board, 8 s per shown tab | <1 / <1 ms → <1 / 1 ms | 0 → 0 | 32.7 KB | 32.7 KB → 0 B (304) |
 | `GET /api/git` | board, 8 s per shown tab | 51 / 53 ms → 13 / 13 ms | 5 git → 1 (`status --porcelain=v2 --branch`; the log and count are read once per HEAD) | 676 B | 676 B → 0 B (304) |
 | branch divergence scan (inside `/api/tickets`) | at most every 10 s (`SPRINT_CHECK_DIVERGENCE_TTL`) | — | 2 git, more per linked worktree and unmerged branch when `.tickets/` is tracked (unchanged) | — | — |
-| `GET /api/cockpit-sessions` (the UI polls `/api/v1/sessions` instead since t-ad6f: same rows, same cost; this route serves `canon`) | board render, 8 s; Cockpit, 5 s | <1 / 1 ms → <1 / <1 ms | 0 (the daemon's `/sessions`) | 2 B with no session | full reply (unchanged) |
+| `GET /api/v1/sessions` (the UI since t-ad6f and `canon` since t-5b80; `?root=` narrows it to one project) | board render, 8 s; Cockpit, 5 s | <1 / 1 ms → <1 / <1 ms | 0 (the daemon's `/sessions`) | 27 B with no session | full reply (unchanged) |
 | daemon meter (inside `/sessions`, per Claude session) | 5 s | — | 0 | — | the whole transcript (8 MB for a long session) → only the bytes added since the last poll; 0 B when unchanged |
 | `GET /api/cockpit` | Cockpit rail, 5 s while a session tab is open | <1 / 1 ms (unchanged) | 0 | 319 B | full reply (unchanged) |
 | `GET /api/cockpit-interrupted` | Cockpit, 15 s | <1 / <1 ms (unchanged) | 0 | 2 B with none | full reply (unchanged) |

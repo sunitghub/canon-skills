@@ -219,7 +219,7 @@ install_processes() {
   done || true
 }
 
-board_up() { curl -s -o /dev/null --max-time 3 "http://127.0.0.1:$PORT/api/version" 2>/dev/null; }
+board_up() { board_curl -s -o /dev/null --max-time 3 "http://127.0.0.1:$PORT/api/version" 2>/dev/null; }
 
 human_size() { du -sk "$1" 2>/dev/null | awk '{ s=$1; if (s>=1048576) printf "%.1f GB", s/1048576; else if (s>=1024) printf "%.1f MB", s/1024; else printf "%d KB", s }'; }
 

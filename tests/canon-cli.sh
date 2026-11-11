@@ -61,8 +61,13 @@ start_board() {   # start_board <name> <state-dir> → sets PORT
   wait_for "http://127.0.0.1:$PORT/api/version" || fail "canon-cli: $name did not start"
 }
 
-run() { CANON_COCKPIT_PORT="$PORT" "$CANON" "$@"; }
+run() { CANON_COCKPIT_PORT="$PORT" SPRINT_CHECK_BIN="$GO_BIN" "$CANON" "$@"; }   # t-5b80: the table is the test build's sessions-table
 no_token() { [[ "$1" != *"$TOKEN"* ]] || fail "canon-cli: a token appeared in canon output"; }
+
+# t-5b80: every probe of the board's /api/version goes through board_curl (curl --noproxy '*'): a proxy variable must not answer for the board.
+# The libraries and scripts that probe it (canon, canon-uninstall.sh, cockpit-launch-lib.sh, pkg-lib.sh) are all covered by this one scan.
+bare="$(grep -nE 'curl[^|]*/api/version' "$ROOT"/tools/canon "$ROOT"/tools/*.sh | grep -v 'board_curl' || true)"
+[[ -z "$bare" ]] || fail "canon-cli: a board probe calls curl without board_curl (--noproxy): $bare"
 
 GO_BIN="$(build_board "$WORK/bin")"
 
@@ -135,7 +140,7 @@ for c in "events" "sprint t-d9e6"; do   # t-ad6f: a board without the v1 routes
 done
 # t-ad6f (break-it): a board that answers 500 with escape bytes in the body, and one that drops the connection on the v1 routes. The first must
 # not put a raw escape on the terminal; the second must be named as not answering, not as having "answered 000".
-v1_stub() {   # v1_stub <port> <500|drop>
+v1_stub() {   # v1_stub <port> <500|500long|drop|noroot>
   python3 - "$1" "$2" <<'PY' >/dev/null 2>&1 &
 import http.server, sys
 mode = sys.argv[2]
@@ -143,6 +148,9 @@ class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/api/version":
             self.send_response(200); self.end_headers(); self.wfile.write(b'{"version":"0.2.0"}'); return
+        if mode == "noroot" and self.path.startswith("/api/v1/sessions"):   # rows whatever root= says
+            b = b'{"schema":1,"sessions":[{"ticket":"t-wt01","state":"working"}]}' if self.path.startswith("/api/v1/sessions?") else b'{"schema":1,"id":"t-wt01","state":"working"}'
+            self.send_response(200); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b); return
         if mode == "drop":
             self.connection.shutdown(2); return
         body = b"bad \x1b[31mred\x1b[0m " + (b"z" * 600 if mode == "500long" else b"end")
@@ -169,6 +177,11 @@ set +e; out="$(run wait t-wt01 --until "done" --timeout 2000 2>&1)"; code=$?; se
 assert_eq "2" "$code"
 assert_eq "The board on port $PORT does not support 'canon wait' (it predates it, or failed). Close its window, then run canon." "$out"
 
+# t-5b80: a board with v1 sessions but no root filter would answer for another project: canon wait --project refuses, it does not guess
+PORT="$(free_port)"; v1_stub "$PORT" noroot
+set +e; out="$(run wait t-wt01 --until "done" --timeout 2000 --project /work/a 2>&1)"; code=$?; set -e
+assert_eq "2" "$code"
+assert_eq "The board on port $PORT does not support 'canon wait --project' (it predates it, or failed). Close its window, then run canon." "$out"
 # shellcheck disable=SC2043  # one board today; the loop keeps the per-board stub dirs
 for b in main.go; do
   sd="$WORK/sd-$b"
@@ -212,7 +225,7 @@ class H(http.server.BaseHTTPRequestHandler):
 http.server.HTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
 PY
   ppid=$!; disown "$ppid" 2>/dev/null || true; PIDS+=("$ppid"); wait_for "http://127.0.0.1:$proxy_port/" || true
-  for c in "events" "sprint t-d9e6" "status" "sessions"; do
+  for c in "events" "sprint t-d9e6" "status" "sessions" "sessions --json" "wait t-wt01 --until exited --timeout 1000" "wait t-wt01 --until exited --timeout 1000 --project /work/a"; do
     via="$(http_proxy="http://127.0.0.1:$proxy_port" HTTP_PROXY="http://127.0.0.1:$proxy_port" ALL_PROXY="http://127.0.0.1:$proxy_port" all_proxy="http://127.0.0.1:$proxy_port" run $c)"
     [[ "$via" != *proxied* ]] || fail "canon-cli: canon $c went through the environment's proxy"
   done
@@ -230,8 +243,10 @@ PY
   assert_contains "$tbl" "t-d9e6  needs-you  4m   claude   canon    hook    Resume offer ?[31mred"
   assert_contains "$tbl" "s-ab12  working    5s   copilot  ToDo     output"
   [[ "$tbl" != *$'\x1b'* ]] || fail "canon-cli: an escape sequence reached the terminal"
-  raw="$(curl -s "http://127.0.0.1:$PORT/api/cockpit-sessions")"
+  raw="$(curl -s "http://127.0.0.1:$PORT/api/v1/sessions")"   # t-5b80: --json is the v1 body, unchanged
   assert_eq "$raw" "$(run sessions --json)"
+  assert_contains "$raw" '"schema":1'; assert_contains "$raw" '"sessions":['
+  assert_eq "404" "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/api/cockpit-sessions")"   # the private route is gone
 
   # t-180d: canon wait — the stub's session list changes under it.
   row() { printf '{"session":"sw%s","ticket":"t-wt01","project_root":"%s","cwd":"%s","agent":"claude","state":"%s","state_secs":3,"signal":"hook","title":""}' "$1" "$2" "$2" "$3"; }
@@ -246,25 +261,25 @@ PY
   assert_eq "1" "$code"; assert_contains "$out" "timed out after 2000ms. t-wt01 is needs-you"
   assert_eq "needs-you" "$(run wait t-wt01 --until working,needs-you --timeout 3000)"
   j="$(run wait t-wt01 --until needs-you --json)"; no_token "$j"
-  assert_eq "t-wt01 needs-you" "$(python3 -c 'import json,sys;d=json.loads(sys.argv[1]);print(d["ticket"],d["state"])' "$j")"
+  assert_eq "t-wt01 needs-you" "$(python3 -c 'import json,sys;d=json.loads(sys.argv[1])["session"];print(d["ticket"],d["state"])' "$j")"   # t-5b80: the v1 session body
   setsess "$(row 1 /work/a working),$(row 2 /work/b needs-you)"
   assert_eq "needs-you" "$(run wait t-wt01 --until needs-you --project /work/b --timeout 3000)"
   set +e; run wait t-wt01 --until needs-you --project /work/a --timeout 2000 >/dev/null 2>&1; code=$?; set -e
   assert_eq "1" "$code"
   setsess ""
   assert_eq "exited" "$(run wait t-wt01 --until exited --timeout 3000)"
-  assert_eq '{"ticket": "t-wt01", "state": "exited"}' "$(run wait t-wt01 --until exited --json)"
+  assert_eq "1 t-wt01 exited" "$(python3 -c 'import json,sys;d=json.loads(sys.argv[1]);print(d["schema"],d["id"],d["state"])' "$(run wait t-wt01 --until exited --json)")"
   for bad in "t-../x --until done" "t-wt01 --until sleeping" "t-wt01" "t-wt01 --until done --timeout soon"; do
     set +e; run wait $bad >/dev/null 2>&1; code=$?; set -e
     assert_eq "2" "$code"
   done
-  assert_eq "400" "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/api/cockpit-sessions?id=t-../x&format=state")"
   setsess "$(row 1 /work/a working)"
-  # format=state: the live state, "exited" for a ticket with no session; root matches case- and trailing-slash-insensitively
-  # (these were compared py == go before t-15d8; now explicit)
-  assert_eq "working" "$(curl -s "http://127.0.0.1:$PORT/api/cockpit-sessions?id=t-wt01&format=state")"
-  assert_eq "exited" "$(curl -s "http://127.0.0.1:$PORT/api/cockpit-sessions?id=t-zz99&format=state")"
-  assert_contains "$(curl -s "http://127.0.0.1:$PORT/api/cockpit-sessions?id=t-wt01&root=/WORK/a/&format=text")" "t-wt01  working  "
+  # the v1 state route: the live state, "exited" for a ticket with no session; root matches case- and trailing-slash-insensitively
+  v1s() { curl -s "http://127.0.0.1:$PORT/api/v1/sessions/$1/state?root=$2" | sed -n 's/.*"state":"\([a-z-]*\)".*/\1/p'; }
+  assert_eq "working" "$(v1s t-wt01 '')"
+  assert_eq "exited" "$(v1s t-zz99 '')"
+  assert_eq "working" "$(v1s t-wt01 /WORK/a/)"
+  assert_eq "exited" "$(v1s t-wt01 /work/c)"
   printf '%s' "$SESSIONS" > "$sd/stub-sessions.json"
 
   # Busy: stop/restart refuse without --force and name the count.

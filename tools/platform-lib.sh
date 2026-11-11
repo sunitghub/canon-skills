@@ -162,3 +162,19 @@ cap_headroom() {
   rm -f "$err"
   return 0
 }
+
+# ── Talking to the Cockpit's board (t-5b80: one owner; canon, canon-uninstall.sh, cockpit-launch-lib.sh and pkg-lib.sh all use it) ──
+# The Cockpit's board: board_probe sets `port` and `base` in the caller's scope (declare them local) and succeeds when the board answers;
+# require_board <exit code> does the same and, when it does not, says so and exits with that code.
+# board_curl is curl for the board, which is on 127.0.0.1: never through a proxy named in the environment (http_proxy, ALL_PROXY), which would see
+# every request and could answer in the board's place.
+board_curl() { curl --noproxy '*' "$@"; }
+# in_range <value> <max>: a plain decimal from 1 to max. Digits only, no leading zero (bash reads 08 as a bad octal) and no more digits than max has
+# (2^64+1 would wrap to 1 in bash arithmetic); a value that goes into a URL as written is checked with this, never with a bare -le.
+in_range() { [[ "$1" =~ ^[1-9][0-9]*$ && ${#1} -le ${#2} && "$1" -le "$2" ]]; }
+board_probe() {
+  port="${CANON_COCKPIT_PORT:-8899}"   # it goes into a URL: a value like 1@host or 8899/x would reach another host or path
+  in_range "$port" 65535 || { echo "canon: CANON_COCKPIT_PORT must be a port number (1 to 65535), got '$port'" >&2; exit 2; }
+  base="http://127.0.0.1:$port"; board_curl -s -o /dev/null --max-time 3 "$base/api/version"
+}
+require_board() { board_probe || { echo "The Cockpit is not running on port $port. Start it with: canon" >&2; exit "$1"; }; }

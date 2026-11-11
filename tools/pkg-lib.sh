@@ -197,7 +197,7 @@ pkg_running() (
   # shellcheck source=cockpit-stop-lib.sh
   source "$_PKG_LIB_DIR/cockpit-stop-lib.sh"
   INSTALL="$1"; PORT="${CANON_COCKPIT_PORT:-8899}"
-  board_up() { curl -s -o /dev/null --max-time 3 "http://127.0.0.1:$PORT/api/version" 2>/dev/null; }
+  board_up() { board_curl -s -o /dev/null --max-time 3 "http://127.0.0.1:$PORT/api/version" 2>/dev/null; }
   local out=""
   probe_daemon; [ "$DAEMON_STATUS" != ours ] || out="the Cockpit daemon (pid $DAEMON_PID)"
   probe_board; [ "$BOARD_STATUS" != ours ] || out="${out:+$out, }the board (pid $BOARD_PID)"

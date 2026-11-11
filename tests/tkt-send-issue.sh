@@ -463,7 +463,7 @@ PYEOF
   cat > "$stub/canon" <<'CEOF'
 #!/usr/bin/env bash
 [[ "${STUB_CANON:-}" == fail ]] && exit 1
-[[ "$1 $2" == "sessions --json" ]] && echo "${STUB_SESSIONS:-[]}"
+[[ "$1 $2" == "sessions --json" ]] && echo "{\"schema\":1,\"sessions\":${STUB_SESSIONS:-[]}}"   # t-5b80: canon sessions --json prints the v1 body
 CEOF
   chmod +x "$stub/canon"
   idp="$(fresh planned)"; "$TKT" start "$idp" >/dev/null; : > "$STUB_LOG"

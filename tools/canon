@@ -568,23 +568,7 @@ log_cmd() {
   exec "$b" log "$@"
 }
 
-# The Cockpit's board: board_probe sets `port` and `base` in the caller's scope (declare them local) and succeeds when the board answers;
-# require_board <exit code> does the same and, when it does not, says so and exits with that code.
-# board_curl is curl for the board, which is on 127.0.0.1: never through a proxy named in the environment (http_proxy, ALL_PROXY), which would see
-# every request and could answer in the board's place.
-board_curl() { curl --noproxy '*' "$@"; }
-# in_range <value> <max>: a plain decimal from 1 to max. Digits only, no leading zero (bash reads 08 as a bad octal) and no more digits than max has
-# (2^64+1 would wrap to 1 in bash arithmetic); a value that goes into a URL as written is checked with this, never with a bare -le.
-in_range() { [[ "$1" =~ ^[1-9][0-9]*$ && ${#1} -le ${#2} && "$1" -le "$2" ]]; }
-board_probe() {
-  port="${CANON_COCKPIT_PORT:-8899}"   # it goes into a URL: a value like 1@host or 8899/x would reach another host or path
-  in_range "$port" 65535 || { echo "canon: CANON_COCKPIT_PORT must be a port number (1 to 65535), got '$port'" >&2; exit 2; }
-  base="http://127.0.0.1:$port"; board_curl -s -o /dev/null --max-time 3 "$base/api/version"
-}
-require_board() { board_probe || { echo "The Cockpit is not running on port $port. Start it with: canon" >&2; exit "$1"; }; }
-
-# t-180d: poll the board for one session's state (it answers with the state word, so no
-# JSON parsing here) until it's one of the wanted ones. Exit 0 reached, 1 timeout, 2 usage.
+# t-180d: poll the board for one session's state until it's one of the wanted ones (the state is one word: a sed, no JSON parser). Exit 0 reached, 1 timeout, 2 usage.
 wait_cmd() {
   local id="${1:-}"; shift || true
   local until="" timeout="" root="" json=0
@@ -606,21 +590,28 @@ wait_cmd() {
   [[ -z "$timeout" || "$timeout" =~ ^[0-9]+$ ]] || { echo "canon wait: --timeout is milliseconds, got '$timeout'" >&2; exit 2; }
   local port base
   require_board 2
-  local q=(--data-urlencode "id=$id")
-  [[ -n "$root" ]] && q+=(--data-urlencode "root=$root")
-  local start=$SECONDS now
+  # t-5b80: v1 only. A board that predates the root filter would ignore it and answer for another project: ask it once for a project
+  # that cannot exist, and refuse when rows come back.
+  local q=() v1="$base/api/v1/sessions" start=$SECONDS now
+  if [[ -n "$root" ]]; then
+    q=(--data-urlencode "root=$root")
+    if ! now="$(board_curl -sfG --max-time 10 --data-urlencode "root=/.canon-no-such-project" "$v1")" || [[ "$now" == *'"ticket"'* ]]; then
+      echo "The board on port $port does not support 'canon wait --project' (it predates it, or failed). Close its window, then run canon." >&2
+      exit 2
+    fi
+  fi
   while :; do
-    if ! now="$(board_curl -sfG --max-time 10 "${q[@]}" --data format=state "$base/api/cockpit-sessions")"; then
+    if ! now="$(board_curl -sfG --max-time 10 ${q[@]+"${q[@]}"} "$v1/$id/state")"; then
       echo "The board on port $port does not support 'canon wait' (it predates it, or failed). Close its window, then run canon." >&2
       exit 2
     fi
+    now="$(sed -n 's/.*"state": *"\([a-z-]*\)".*/\1/p' <<<"$now")"
     if [[ ",$until," == *",$now,"* ]]; then
       if [[ "$json" -eq 0 ]]; then echo "$now"
-      elif [[ "$now" == exited ]]; then printf '{"ticket": "%s", "state": "exited"}\n' "$id"
       else
-        local row; row="$(board_curl -sfG --max-time 10 "${q[@]}" "$base/api/cockpit-sessions")" || row="[]"
-        [[ "$row" == \[\{*\}\] && "$row" != *'},{'* && "$row" != *'}, {'* ]] && row="${row:1:${#row}-2}"
-        printf '%s\n' "$row"
+        # the v1 body unchanged: the session's row, or the state document once it has exited (its route answers 404)
+        local row; row="$(board_curl -sfG --max-time 10 ${q[@]+"${q[@]}"} "$v1/$id")" || row="$(board_curl -sfG --max-time 10 ${q[@]+"${q[@]}"} "$v1/$id/state")" || row=""
+        printf '%s\n' "${row%$'\n'}"
       fi
       exit 0
     fi
@@ -697,6 +688,21 @@ v1_read_cmd() {
 # t-03a8: the read and control subcommands go through the running board's own API — it
 # renders the text (?format=text), so this stays curl-only: no Python, no jq (a Git-only
 # Windows machine has neither).
+# t-5b80: `canon sessions` reads /api/v1/sessions only. --json prints that body unchanged; the table is canon-go's (one formatter, no JSON in bash).
+# Uses board_cmd's `port` and `base`.
+sessions_cmd() {
+  local json="$1" body b h
+  # --fail: a board from before the v1 API answers 404 here; say so, don't print its error page.
+  if ! body="$(board_curl -sf --max-time 10 "$base/api/v1/sessions")"; then
+    echo "The board on port $port does not support 'canon sessions' (it predates it, or failed). Close its window, then run canon." >&2
+    exit 1
+  fi
+  if [[ "$json" -eq 1 ]]; then printf '%s\n' "${body%$'\n'}"; return; fi
+  b="$(board_bin)"; h="$("$b" --help 2>/dev/null)" || h=""
+  case "$h" in *sessions-table*) ;; *) echo "canon sessions: the board binary ($b) is older than this command; run canon update." >&2; exit 1 ;; esac
+  "$b" sessions-table <<<"$body"
+}
+
 board_cmd() {
   local cmd="$1"; shift
   local json=0 force=0 a
@@ -715,18 +721,16 @@ board_cmd() {
     esac
   fi
   case "$cmd" in
-    status|sessions)
-      local route="/api/cockpit-status"
-      [[ "$cmd" == sessions ]] && route="/api/cockpit-sessions"
-      [[ "$json" -eq 1 ]] || route="$route?format=text"
+    status)
       local out
       # --fail: a board started before this command existed answers 404 here; say so, don't print its error page.
-      if ! out="$(board_curl -sf --max-time 10 "$base$route")"; then
+      if ! out="$(board_curl -sf --max-time 10 "$base/api/cockpit-status$([[ "$json" -eq 1 ]] || echo '?format=text')")"; then
         echo "The board on port $port does not support 'canon $cmd' (it predates it, or failed). Close its window, then run canon." >&2
         exit 1
       fi
       printf '%s\n' "${out%$'\n'}"
       ;;
+    sessions) sessions_cmd "$json" ;;
     stop|restart)
       local out
       out="$(board_curl -s --max-time 60 -X POST -H 'Content-Type: application/json' \

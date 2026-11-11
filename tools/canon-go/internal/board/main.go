@@ -237,6 +237,7 @@ Helpers (used by canon's shell tools; see helpers.go):
   gate-corpus [--json]
   promoted-report [--json] [--since YYYY-MM-DD]   promoted lines, recurrence and the size table
   api schema [--json]      the /api/v1 and event schemas (t-0b89)
+  sessions-table           a /api/v1/sessions body on stdin as canon's table (t-5b80)
   caps [--json] [--table <file>] <name|path> [path] | caps --list   a capped file's use (tools/caps.tsv)
   machine [--json]         this machine's OS, chip, cores and RAM (no hostname)
   recent --project <root> [--n N] [--handoff <file>] | recent --strip   a project's recent stage events
@@ -435,33 +436,6 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		sendJSON(w, cockpitChanges(root, id))
-	case "/api/cockpit-sessions":
-		q := r.URL.Query()
-		sessions, up := cockpitSessionsAnswer()
-		// t-27bc: an empty list from a daemon that did not answer is not "no sessions"
-		w.Header().Set("X-Cockpit-Daemon", map[bool]string{true: "up", false: "down"}[up])
-		if sid := q.Get("id"); sid != "" { // t-180d: one session (canon wait); root= narrows it to one project
-			if !common.SessionIDRe.MatchString(sid) {
-				http.Error(w, "bad request", http.StatusBadRequest)
-				return
-			}
-			sessions = cockpitSessionsFor(sessions, sid, q.Get("root"))
-		}
-		switch q.Get("format") {
-		case "state":
-			state := "exited"
-			if len(sessions) > 0 {
-				state, _ = sessions[0]["state"].(string)
-				if state == "" {
-					state = "running"
-				}
-			}
-			sendText(w, state)
-		case "text":
-			sendText(w, cockpitSessionsText(sessions))
-		default:
-			sendJSON(w, sessions)
-		}
 	case "/api/cockpit-status":
 		st := cockpitStatus()
 		if r.URL.Query().Get("format") == "text" {
@@ -4428,13 +4402,25 @@ func rootKey(p string) string {
 	return strings.ToLower(strings.TrimRight(strings.ReplaceAll(p, "\\", "/"), "/"))
 }
 
+// cockpitSessionsIn keeps the rows of one project (root, compared as rootKey; "" keeps all) for /api/v1/sessions (t-5b80).
+func cockpitSessionsIn(sessions []map[string]any, root string) []map[string]any {
+	if root == "" {
+		return sessions
+	}
+	out := []map[string]any{}
+	for _, x := range sessions {
+		if pr, _ := x["project_root"].(string); rootKey(pr) == rootKey(root) {
+			out = append(out, x)
+		}
+	}
+	return out
+}
+
 // cockpitSessionsFor is the live rows for one ticket/scratch id, optionally in one project (t-180d).
 func cockpitSessionsFor(sessions []map[string]any, sid, root string) []map[string]any {
 	out := []map[string]any{}
-	for _, x := range sessions {
-		t, _ := x["ticket"].(string)
-		pr, _ := x["project_root"].(string)
-		if t == sid && (root == "" || rootKey(pr) == rootKey(root)) {
+	for _, x := range cockpitSessionsIn(sessions, root) {
+		if t, _ := x["ticket"].(string); t == sid {
 			out = append(out, x)
 		}
 	}

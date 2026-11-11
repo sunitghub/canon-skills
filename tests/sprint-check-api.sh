@@ -25,7 +25,7 @@ go_routes() {
 # The pinned set: a route that disappears (or appears) changes what the board and the Cockpit can call, so it must
 # be an edit here too, never a silent change.
 want_routes="/api/admin/model-tiers /api/admin/model-tiers/apply /api/admin/model-tiers/refresh /api/admin/model-tiers/remove /api/admin/model-tiers/retire /api/browse-dirs /api/ci-workflow /api/cockpit /api/cockpit-changes /api/cockpit-debug
-/api/cockpit-docs /api/cockpit-interrupted /api/cockpit-interrupted-dismiss /api/cockpit-restart /api/cockpit-sessions
+/api/cockpit-docs /api/cockpit-interrupted /api/cockpit-interrupted-dismiss /api/cockpit-restart
 /api/cockpit-status /api/cockpit-stop /api/commit /api/doc /api/git /api/github/doctor /api/github/intake /api/github/push-main /api/github/sync
 /api/handoff /api/integrity /api/logbook /api/pipeline /api/project-stats /api/projects /api/register-skill /api/remote-agents /api/settings /api/skill-eval/check
 /api/skill-eval/report /api/skill-eval/report.html /api/skill-eval/run /api/skill-eval/status /api/skills-health /api/skills-refresh /api/tags /api/themes /api/themes/open
@@ -965,10 +965,11 @@ while IFS= read -r name; do
 done <<<"$static_names"
 [[ "$static_count" -eq 300 ]] || fail "sprint-check-api: the hostile loop ran $static_count names, want 300"
 
-# t-ad6f: the UI asks for sessions only through the public read API, and only sessions-api.js knows the URL. The private /api/cockpit-sessions
-# stays for tools/canon (t-5b80 moves the CLI and retires it); a UI file that fetches it, or that fetches /api/v1/sessions itself, fails here.
+# t-ad6f: the UI asks for sessions only through the public read API, and only sessions-api.js knows the URL. t-5b80 removed the private
+# /api/cockpit-sessions (the CLI reads /api/v1 too): no file under tools/ names it, and the board answers it with 404. A UI file that fetches
+# /api/v1/sessions itself fails here.
 STATIC="$ROOT/tools/sprint-check-app"
-if grep -rn '/api/cockpit-sessions' "$STATIC/static" "$STATIC/app.html" 2>/dev/null | grep . >&2; then fail "sprint-check-api: the UI must not use the private /api/cockpit-sessions (t-ad6f): use sessions-api.js"; fi
+if grep -rnI '/api/cockpit-sessions' "$ROOT/tools" --exclude='*.md' --exclude-dir=__pycache__ 2>/dev/null | grep . >&2; then fail "sprint-check-api: /api/cockpit-sessions is gone (t-5b80): read /api/v1/sessions (the UI through sessions-api.js)"; fi
 [[ "$(grep -c "fetch(SESSIONS_URL" "$STATIC/static/sessions-api.js")" -eq 1 ]] || fail "sprint-check-api: static/sessions-api.js no longer fetches SESSIONS_URL (t-ad6f)"
 direct="$(grep -rlE "fetch\([^)]*/api/v1/sessions" "$STATIC/static" "$STATIC/app.html" | sed "s|$STATIC/||" | sort || true)"
 [[ -z "$direct" ]] || fail "sprint-check-api: only static/sessions-api.js may fetch the sessions route (t-ad6f); found: $(printf '%s' "$direct" | tr '\n' ' ')"

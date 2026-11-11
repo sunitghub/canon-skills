@@ -75,6 +75,8 @@ func runHelper(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 		return gateCorpusCLI(args[1:], stdout, stderr), true
 	case "api": // t-0b89: `api schema [--json]` prints the /api/v1 and event schemas; read-only
 		return apiCLI(args[1:], stdout, stderr), true
+	case "sessions-table": // t-5b80: `canon sessions` prints a /api/v1/sessions body (stdin) as its table
+		return sessionsTableCLI(stdin, stdout, stderr), true
 	case "promoted-report": // t-1219: promoted lines and the later tickets that name their class; read-only
 		return promotedReportCLI(args[1:], stdout, stderr), true
 	case "skill-check":
@@ -582,4 +584,18 @@ func reportStart(msg, prefix string) int {
 		i += j + 1
 	}
 	return -1
+}
+
+// sessionsTableCLI reads a /api/v1/sessions body from stdin and prints cockpitSessionsText: the one table formatter, so `canon`
+// needs no JSON parsing in bash. Exit 1 and nothing on stdout when the input is not that body.
+func sessionsTableCLI(stdin io.Reader, stdout, stderr io.Writer) int {
+	var body struct {
+		Sessions []map[string]any `json:"sessions"`
+	}
+	if err := json.NewDecoder(io.LimitReader(stdin, 8<<20)).Decode(&body); err != nil || body.Sessions == nil {
+		fmt.Fprintln(stderr, "canon-go sessions-table: stdin is not a /api/v1/sessions body")
+		return 1
+	}
+	fmt.Fprint(stdout, cockpitSessionsText(body.Sessions))
+	return 0
 }

@@ -78,7 +78,7 @@ wait_for_board() {
   for ((i = 0; i < tries; i++)); do
     kill -0 "$pid" 2>/dev/null || return 1
     if command -v curl >/dev/null 2>&1; then
-      curl -s -f -o /dev/null --max-time 1 "http://127.0.0.1:$port/api/version" && return 0
+      board_curl -s -f -o /dev/null --max-time 1 "http://127.0.0.1:$port/api/version" && return 0
     else
       _port_in_use "$port" && return 0
     fi

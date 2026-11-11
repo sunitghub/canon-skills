@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// Protects /api/cockpit-sessions' X-Cockpit-Daemon header (t-27bc): an empty list is "no sessions" only when the daemon really answered. A
+// Protects the X-Cockpit-Daemon header of /api/v1/sessions (t-27bc): an empty list is "no sessions" only when the daemon really answered. A
 // daemon that is down, unhealthy, erroring or sending a body that is not a list gives the same empty list, and the page that reads
 // it as "this session is gone" would drop the tab of a session that is still running. cockpitSessionsAnswer is what the route sends.
 func TestCockpitSessionsAnswerSaysWhetherTheDaemonAnswered(t *testing.T) {
