@@ -570,10 +570,14 @@ log_cmd() {
 
 # The Cockpit's board: board_probe sets `port` and `base` in the caller's scope (declare them local) and succeeds when the board answers;
 # require_board <exit code> does the same and, when it does not, says so and exits with that code.
+# board_curl is curl for the board, which is on 127.0.0.1: never through a proxy named in the environment (http_proxy, ALL_PROXY), which would see
+# every request and could answer in the board's place.
+board_curl() { curl --noproxy '*' "$@"; }
 board_probe() {
   port="${CANON_COCKPIT_PORT:-8899}"   # it goes into a URL: a value like 1@host or 8899/x would reach another host or path
-  [[ "$port" =~ ^[0-9]{1,5}$ && "$port" -ge 1 && "$port" -le 65535 ]] || { echo "canon: CANON_COCKPIT_PORT must be a port number (1 to 65535), got '$port'" >&2; exit 2; }
-  base="http://127.0.0.1:$port"; curl -s -o /dev/null --max-time 3 "$base/api/version"
+  # digits only, no leading zero (bash reads 08 as a bad octal and 2^64+1 wraps to 1), at most five of them
+  [[ "$port" =~ ^[1-9][0-9]{0,4}$ && "$port" -le 65535 ]] || { echo "canon: CANON_COCKPIT_PORT must be a port number (1 to 65535), got '$port'" >&2; exit 2; }
+  base="http://127.0.0.1:$port"; board_curl -s -o /dev/null --max-time 3 "$base/api/version"
 }
 require_board() { board_probe || { echo "The Cockpit is not running on port $port. Start it with: canon" >&2; exit "$1"; }; }
 
@@ -604,7 +608,7 @@ wait_cmd() {
   [[ -n "$root" ]] && q+=(--data-urlencode "root=$root")
   local start=$SECONDS now
   while :; do
-    if ! now="$(curl -sfG --max-time 10 "${q[@]}" --data format=state "$base/api/cockpit-sessions")"; then
+    if ! now="$(board_curl -sfG --max-time 10 "${q[@]}" --data format=state "$base/api/cockpit-sessions")"; then
       echo "The board on port $port does not support 'canon wait' (it predates it, or failed). Close its window, then run canon." >&2
       exit 2
     fi
@@ -612,7 +616,7 @@ wait_cmd() {
       if [[ "$json" -eq 0 ]]; then echo "$now"
       elif [[ "$now" == exited ]]; then printf '{"ticket": "%s", "state": "exited"}\n' "$id"
       else
-        local row; row="$(curl -sfG --max-time 10 "${q[@]}" "$base/api/cockpit-sessions")" || row="[]"
+        local row; row="$(board_curl -sfG --max-time 10 "${q[@]}" "$base/api/cockpit-sessions")" || row="[]"
         [[ "$row" == \[\{*\}\] && "$row" != *'},{'* && "$row" != *'}, {'* ]] && row="${row:1:${#row}-2}"
         printf '%s\n' "$row"
       fi
@@ -631,7 +635,7 @@ wait_cmd() {
 stop_board() {
   # shellcheck disable=SC2034  # INSTALL is read by the sourced stop libraries
   INSTALL="$(cd "$SCRIPT_DIR/.." && pwd -P)"; PORT="$1"
-  board_up() { curl -s -o /dev/null --max-time 3 "http://127.0.0.1:$PORT/api/version" 2>/dev/null; }
+  board_up() { board_curl -s -o /dev/null --max-time 3 "http://127.0.0.1:$PORT/api/version" 2>/dev/null; }
   # shellcheck source=platform-lib.sh
   source "$SCRIPT_DIR/platform-lib.sh"
   # shellcheck source=cockpit-stop-lib.sh
@@ -651,7 +655,7 @@ stop_board() {
 # sessions and changes nothing. Exit 0 on the body, 2 on bad input or no board, 1 when the board answers with an error.
 v1_read_cmd() {
   local cmd="$1"; shift
-  local limit="" id="" a
+  local limit="" has_limit=0 id="" a
   while [[ $# -gt 0 ]]; do
     a="$1"; shift
     case "$a" in
@@ -659,7 +663,7 @@ v1_read_cmd() {
       --limit)
         [[ "$cmd" == events ]] || { echo "canon $cmd: unknown option: $a" >&2; exit 2; }
         [[ $# -gt 0 ]] || { echo "canon events: --limit needs a number" >&2; exit 2; }
-        limit="$1"; shift ;;
+        limit="$1"; has_limit=1; shift ;;
       -*) echo "canon $cmd: unknown option: $a" >&2; exit 2 ;;
       *)
         [[ "$cmd" == sprint && -z "$id" ]] || { echo "canon $cmd: unexpected argument: $a" >&2; exit 2; }
@@ -669,7 +673,8 @@ v1_read_cmd() {
   local route
   case "$cmd" in
     events)
-      [[ -z "$limit" || ( "$limit" =~ ^[0-9]+$ && "$limit" -ge 1 && "$limit" -le 500 ) ]] || { echo "canon events: --limit is 1 to 500, got '$limit'" >&2; exit 2; }
+      # three digits at most and no leading zero: bash reads 08 as a bad octal and 2^64+1 wraps to 1, and the value goes into the URL as written
+      [[ "$has_limit" -eq 0 || ( "$limit" =~ ^[1-9][0-9]{0,2}$ && "$limit" -le 500 ) ]] || { echo "canon events: --limit is 1 to 500, got '$limit'" >&2; exit 2; }
       route="/api/v1/events${limit:+?limit=$limit}" ;;
     sprint)
       [[ "$id" =~ ^t-[a-z0-9]{4}$ ]] || { echo "canon sprint: expected a ticket id (t-xxxx), got '${id}'" >&2; exit 2; }
@@ -677,10 +682,12 @@ v1_read_cmd() {
   esac
   local port base out code
   require_board 2
-  out="$(curl -s --max-time 10 -w $'\n%{http_code}' "$base$route")" || out=$'\n000'
+  out="$(board_curl -s --max-time 10 -w $'\n%{http_code}' "$base$route")" || out=$'\n000'
   code="${out##*$'\n'}"
+  if [[ "$code" == 000 ]]; then echo "The board on port $port did not answer 'canon $cmd' (no reply within 10 seconds, or the connection dropped)." >&2; exit 1; fi
   if [[ "$code" != 200 ]]; then
-    echo "The board on port $port answered $code to 'canon $cmd' (it may predate this command: close its window, then run canon): ${out%$'\n'*}" >&2
+    # the body is the board's text: no control byte reaches the terminal and no long line
+    echo "The board on port $port answered $code to 'canon $cmd' (it may predate this command: close its window, then run canon): $(printf '%s' "${out%$'\n'*}" | LC_ALL=C tr -c '[:print:]' '?' | cut -c1-300)" >&2
     exit 1
   fi
   printf '%s\n' "${out%$'\n'*}"
@@ -713,7 +720,7 @@ board_cmd() {
       [[ "$json" -eq 1 ]] || route="$route?format=text"
       local out
       # --fail: a board started before this command existed answers 404 here; say so, don't print its error page.
-      if ! out="$(curl -sf --max-time 10 "$base$route")"; then
+      if ! out="$(board_curl -sf --max-time 10 "$base$route")"; then
         echo "The board on port $port does not support 'canon $cmd' (it predates it, or failed). Close its window, then run canon." >&2
         exit 1
       fi
@@ -721,7 +728,7 @@ board_cmd() {
       ;;
     stop|restart)
       local out
-      out="$(curl -s --max-time 60 -X POST -H 'Content-Type: application/json' \
+      out="$(board_curl -s --max-time 60 -X POST -H 'Content-Type: application/json' \
         -d "{\"force\": $([[ "$force" -eq 1 ]] && echo true || echo false)}" "$base/api/cockpit-$cmd")"
       if grep -qE '"busy": ?true' <<<"$out"; then
         local n; n="$(sed -nE 's/.*"sessions": ?([0-9]+).*/\1/p' <<<"$out")"

@@ -37,5 +37,24 @@ const { pathToFileURL } = require('url');
   global.fetch = async () => { throw new TypeError('network'); };       // the request itself fails
   assert.deepStrictEqual(await fetchSessions(), none);
 
-  console.log('sessions-api-unit: ok (url, unwrap, daemon flag, 10 failure shapes)');
+  // rows that are not objects are dropped (a hostile or broken daemon): the consumers read fields off every row
+  global.fetch = reply(200, { sessions: [null, 1, 'x', [], { ticket: 't-aaaa' }, undefined, true] }, 'up');
+  assert.deepStrictEqual(await fetchSessions(), { answered: true, rows: [{ ticket: 't-aaaa' }], up: true });
+
+  // a board that never answers, or answers the headers and stalls the body, gives up after timeoutMs: the End menu must not wait forever
+  // a fake that only ends when the caller's signal aborts it (with no signal it hangs, like a dead board), and a wait that cannot hang the test
+  const aborts = signal => new Promise((_, rej) => { if (signal) signal.addEventListener('abort', () => rej(new Error('aborted'))); });
+  const within = (ms, p) => Promise.race([p, new Promise(r => setTimeout(() => r('HUNG'), ms))]);
+  global.fetch = (url, opts) => aborts(opts.signal);
+  let t0 = Date.now();
+  assert.deepStrictEqual(await within(1500, fetchSessions({ timeoutMs: 30 })), none);
+  assert.ok(Date.now() - t0 < 1400, 'a hung request must end after the timeout');
+  global.fetch = async (url, opts) => ({ ok: true, status: 200, headers: { get: () => 'up' }, json: () => aborts(opts.signal) });
+  t0 = Date.now();
+  assert.deepStrictEqual(await within(1500, fetchSessions({ timeoutMs: 30 })), none);
+  assert.ok(Date.now() - t0 < 1400, 'a stalled body must end after the timeout');
+  global.fetch = reply(200, { sessions: [{ ticket: 't-aaaa' }] }, 'up');   // a quick answer is not cut short and leaves no timer behind
+  assert.deepStrictEqual(await fetchSessions({ timeoutMs: 30 }), { answered: true, rows: [{ ticket: 't-aaaa' }], up: true });
+
+  console.log('sessions-api-unit: ok (url, unwrap, daemon flag, 10 failure shapes, object rows only, timeout)');
 })().catch(e => { console.error('FAIL: sessions-api-unit:', e.message); process.exit(1); });

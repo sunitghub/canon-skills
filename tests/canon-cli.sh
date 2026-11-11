@@ -90,7 +90,7 @@ for c in "events" "sprint t-d9e6"; do
 done
 
 # t-ad6f: the port goes into a URL, so only a port number is accepted, by every command that talks to the board (status, sessions, stop, events, sprint, wait)
-for badport in '1@127.0.0.1' '8899/x' '88 99' '8899?x=1' 'x' '70000' '0'; do
+for badport in '1@127.0.0.1' '8899/x' '88 99' '8899?x=1' 'x' '70000' '0' '08899' '08' '65536' '123456'; do
   for c in "status" "sessions" "stop" "events" "sprint t-d9e6" "wait t-wt01 --until done"; do
     set +e; out="$(CANON_COCKPIT_PORT="$badport" "$CANON" $c 2>&1)"; code=$?; set -e
     assert_eq "2" "$code"; assert_eq "canon: CANON_COCKPIT_PORT must be a port number (1 to 65535), got '$badport'" "$out"
@@ -122,6 +122,34 @@ for c in "events" "sprint t-d9e6"; do   # t-ad6f: a board without the v1 routes
   set +e; out="$(run $c 2>&1)"; code=$?; set -e
   assert_eq "1" "$code"; assert_contains "$out" "answered 404 to 'canon ${c%% *}'"
 done
+# t-ad6f (break-it): a board that answers 500 with escape bytes in the body, and one that drops the connection on the v1 routes. The first must
+# not put a raw escape on the terminal; the second must be named as not answering, not as having "answered 000".
+v1_stub() {   # v1_stub <port> <500|drop>
+  python3 - "$1" "$2" <<'PY' >/dev/null 2>&1 &
+import http.server, sys
+mode = sys.argv[2]
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == "/api/version":
+            self.send_response(200); self.end_headers(); self.wfile.write(b'{"version":"0.2.0"}'); return
+        if mode == "drop":
+            self.connection.shutdown(2); return
+        body = b"bad \x1b[31mred\x1b[0m " + b"z" * 600
+        self.send_response(500); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
+    def log_message(self, *a): pass
+http.server.HTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
+PY
+  local pid=$!; disown "$pid" 2>/dev/null || true; PIDS+=("$pid")
+  wait_for "http://127.0.0.1:$1/api/version" || fail "canon-cli: v1 stub did not start"
+}
+PORT="$(free_port)"; v1_stub "$PORT" 500
+set +e; out="$(run events 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"; assert_contains "$out" "answered 500 to 'canon events'"; assert_contains "$out" "bad ?[31mred?[0m zzz"
+[[ "$out" != *$'\x1b'* ]] || fail "canon-cli: an escape byte from the board's error body reached the terminal"
+[[ "${#out}" -lt 500 ]] || fail "canon-cli: the board's error body was echoed whole (${#out} characters)"
+PORT="$(free_port)"; v1_stub "$PORT" drop
+set +e; out="$(run events 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"; assert_contains "$out" "did not answer 'canon events'"; [[ "$out" != *"answered 000"* ]] || fail "canon-cli: a dropped connection was reported as an answer"
 # t-9a2d: canon wait on a stale board exits 2 and says what to do
 set +e; out="$(run wait t-wt01 --until "done" --timeout 2000 2>&1)"; code=$?; set -e
 assert_eq "2" "$code"
@@ -145,10 +173,29 @@ for b in main.go; do
   assert_eq 1 "$(printf '%s\n' "$ev" | wc -l | tr -d ' ')"
   assert_eq "$ev" "$(run events --json)"
   assert_eq "$(curl -s "http://127.0.0.1:$PORT/api/v1/events?limit=5")" "$(run events --limit 5)"
-  for bad in "--limit 0" "--limit 501" "--limit x" "--limit" "--limit 1x" "extra" "--nope" "--limit 5 --limit"; do
+  for bad in "--limit 0" "--limit 501" "--limit x" "--limit" "--limit 1x" "extra" "--nope" "--limit 5 --limit" "--limit 18446744073709551617" "--limit 08" "--limit 0500" "--limit 1000"; do
     set +e; out="$(run events $bad 2>&1)"; code=$?; set -e
     assert_eq "2" "$code"; [[ "$out" == "canon events: "* ]] || fail "canon-cli: canon events $bad said: $out"
   done
+  set +e; out="$(run events --limit "" 2>&1)"; code=$?; set -e   # an empty value is not "no limit"
+  assert_eq "2" "$code"; [[ "$out" == "canon events: "* ]] || fail "canon-cli: canon events --limit '' said: $out"
+  # a proxy named in the environment is never used for the board (it is on 127.0.0.1): every request would reach it otherwise
+  proxy_log="$WORK/proxy-hits"; : > "$proxy_log"; proxy_port="$(free_port)"
+  python3 - "$proxy_port" "$proxy_log" <<'PY' >/dev/null 2>&1 &
+import http.server, sys
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        open(sys.argv[2], "a").write(self.path + "\n")
+        b = b'{"proxied":1}'; self.send_response(200); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+    def log_message(self, *a): pass
+http.server.HTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
+PY
+  ppid=$!; disown "$ppid" 2>/dev/null || true; PIDS+=("$ppid"); wait_for "http://127.0.0.1:$proxy_port/" || true
+  for c in "events" "sprint t-d9e6" "status" "sessions"; do
+    via="$(http_proxy="http://127.0.0.1:$proxy_port" HTTP_PROXY="http://127.0.0.1:$proxy_port" ALL_PROXY="http://127.0.0.1:$proxy_port" all_proxy="http://127.0.0.1:$proxy_port" run $c)"
+    [[ "$via" != *proxied* ]] || fail "canon-cli: canon $c went through the environment's proxy"
+  done
+  assert_eq "" "$(grep -v '^/$' "$proxy_log" || true)"   # the "/" is wait_for's own readiness request
   sp="$(run sprint t-d9e6)"; no_token "$sp"
   assert_eq "$(curl -s "http://127.0.0.1:$PORT/api/v1/sprint/t-d9e6")" "$sp"
   assert_contains "$sp" '"ticket":"t-d9e6"'
