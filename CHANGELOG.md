@@ -6,11 +6,14 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.53.0] - 2026-11-11
+
 Run `canon update`, then restart the daemon (Admin's **Restart Daemon**): the `canon-go` program changed, and a running daemon stays on the old one until restarted.
 
 - Removed (API): `GET /api/cockpit-sessions` (the board's private sessions route) now answers 404. Everything reads `GET /api/v1/sessions`, which also takes `?root=<project path>` (and so do `/api/v1/sessions/{id}` and `/api/v1/sessions/{id}/state`) to keep one project's rows. The Go program changed, so the release needs the daemon release.
 - Changed (canon): `canon sessions` and `canon wait` read `/api/v1/sessions`. `canon sessions --json` now prints the v1 body, `{"schema":1,"sessions":[...]}`, not the bare list; `canon wait --json` prints the v1 session body (`{"schema":1,"session":{...}}`, or `{"schema":1,"id":…,"state":"exited"}` once it has exited). The table and the state word are as before. A board that does not filter by project makes `canon wait --project` exit 2 instead of answering for another project. New helper `canon-go sessions-table`.
-- Fixed (canon): every probe of the board's `/api/version` (`canon uninstall`, the package update, the launcher's wait for the board) ignores a proxy named in the environment, as the `canon` commands did since 0.52.0; the probe helpers live in `tools/platform-lib.sh`.
+- Fixed (canon): every probe of the board's `/api/version` (`canon uninstall`, the package update, the launcher's wait for the board) ignores a proxy named in the environment, as the `canon` commands do since 0.52.0; the probe helpers live in `tools/platform-lib.sh`.
+
 ## [0.52.0] - 2026-11-11
 
 Run `canon update`. Board pages and the `canon` command changed; no daemon program did.
