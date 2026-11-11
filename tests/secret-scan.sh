@@ -10,6 +10,7 @@ W="$(mktemp -d)"; trap 'rm -rf "$W"' EXIT
 export HOME="$W/home" XDG_CONFIG_HOME="$W/home/.config" GIT_CONFIG_NOSYSTEM=1; mkdir -p "$HOME"
 git config --global user.name t; git config --global user.email t@e; git config --global init.defaultBranch main
 
+WIN=0; case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) WIN=1 ;; esac   # NTFS cannot hold a name with a quote, a tab or a newline, and Git Bash has no symlinks
 rep() { local i s=""; for ((i = 0; i < $2; i++)); do s+="$1"; done; printf '%s' "$s"; }
 AWS="AKIA""ABCDEFGHIJKLMNOP"
 GH="ghp_""$(rep a 36)"
@@ -81,10 +82,10 @@ r="$(newrepo)"; staged "$r"; [[ "$RC" == 0 && -z "$OUT" ]] || fail "secret-scan:
 r="$(newrepo)"; put "$r" "dé f.txt" "k=$AWS";            expect_hit "$r" nonascii-name aws-access-key
 r="$(newrepo)"; put "$r" "a b.txt" "k=$AWS";             expect_hit "$r" space-name aws-access-key "a b.txt:1"
 r="$(newrepo)"; put "$r" "-lead.txt" "k=$AWS";           expect_hit "$r" dash-name aws-access-key
-r="$(newrepo)"; put "$r" 'q"uote.txt' "k=$AWS";          expect_hit "$r" quote-name aws-access-key
-r="$(newrepo)"; put "$r" "$(printf 'tab\tname.txt')" "k=$AWS"; expect_hit "$r" tab-name aws-access-key
-r="$(newrepo)"; put "$r" "$(printf 'new\nline.txt')" "k=$AWS"; expect_hit "$r" newline-name aws-access-key
-[[ "$OUT" != *$'\n'line.txt* || "$OUT" == *"?"* ]] || fail "secret-scan: a newline in a path reached the output raw: $OUT"
+if [[ "$WIN" == 0 ]]; then r="$(newrepo)"; put "$r" 'q"uote.txt' "k=$AWS";          expect_hit "$r" quote-name aws-access-key; else echo "secret-scan: skipped on Windows: a name with a quote, tab or newline"; fi
+if [[ "$WIN" == 0 ]]; then r="$(newrepo)"; put "$r" "$(printf 'tab\tname.txt')" "k=$AWS"; expect_hit "$r" tab-name aws-access-key; else echo "secret-scan: skipped on Windows: a name with a quote, tab or newline"; fi
+if [[ "$WIN" == 0 ]]; then r="$(newrepo)"; put "$r" "$(printf 'new\nline.txt')" "k=$AWS"; expect_hit "$r" newline-name aws-access-key; else echo "secret-scan: skipped on Windows: a name with a quote, tab or newline"; fi
+[[ "$WIN" == 1 || "$OUT" != *$'\n'line.txt* || "$OUT" == *"?"* ]] || fail "secret-scan: a newline in a path reached the output raw: $OUT"
 r="$(newrepo)"; printf 'hidden.txt -diff\n' > "$r/.gitattributes"; put "$r" hidden.txt "k=$AWS"; git -C "$r" add .gitattributes
 expect_hit "$r" gitattributes-diff aws-access-key hidden.txt:1                       # a -diff attribute cannot hide the lines
 r="$(newrepo)"; { printf 'k=%s\0binary tail\n' "$AWS"; } > "$r/blob.dat"; git -C "$r" add blob.dat
@@ -100,8 +101,10 @@ r="$(newrepo)"; printf 'caf\xe9 \xff\xfe latin-1 text\n' > "$r/l1.txt"; git -C "
 r="$(newrepo)"; printf 'caf\xe9 \xff\xfe\nk=%s\n' "$AWS" > "$r/l1.txt"; git -C "$r" add l1.txt; expect_hit "$r" invalid-utf8 aws-access-key l1.txt:2
 r="$(newrepo)"; printf 'a\0b\nk=%s\n' "$AWS" > "$r/nul.dat"; git -C "$r" add nul.dat; expect_hit "$r" nul-earlier-line aws-access-key nul.dat:2
 # (break-it) a symlink that becomes a regular file is a type change: its new lines are additions
+if [[ "$WIN" == 0 ]]; then
 r="$(newrepo)"; ln -s /etc/hostname "$r/lnk"; git -C "$r" add lnk; git -C "$r" commit -qm lnk; rm "$r/lnk"; printf 'k=%s\n' "$AWS" > "$r/lnk"; git -C "$r" add lnk
 expect_hit "$r" typechange aws-access-key lnk:1
+else echo "secret-scan: skipped on Windows: a symlink type change"; fi
 # (break-it) quoted keys (JSON, YAML), a secret deep in a long line or across a piece boundary, UTF-16 files (PowerShell redirection)
 r="$(newrepo)"; put "$r" a.json '{"pass''word": "Zq8vN2mK9xLp4Rt7"}';             expect_hit "$r" json-key generic-secret a.json:1
 r="$(newrepo)"; put "$r" b.yml 'db:
@@ -147,6 +150,20 @@ git -C "$r" config log.showRoot false; rc=0; out="$(cd "$r" && bash "$SCAN" --ra
 r="$(newrepo)"; b0="$(git -C "$r" rev-parse HEAD)"; put "$r" sec.txt "k=$AWS"; git -C "$r" commit -qm sec; sec="$(git -C "$r" rev-parse HEAD)"
 clean="$(git -C "$r" commit-tree -p "$b0" -m clean "$b0^{tree}")"; git -C "$r" replace "$sec" "$clean"
 rc=0; out="$(cd "$r" && bash "$SCAN" --range "$b0..$sec" 2>&1)" || rc=$?; assert_eq 1 "$rc"; assert_contains "$out" "sec.txt:1: aws-access-key"   # a replace ref cannot hide the real commit
+# (review) an external diff driver or a textconv filter cannot make the diff print nothing: the scan passes --no-ext-diff and --no-textconv
+printf '#!/bin/sh\nexit 0\n' > "$W/quiet-diff"; chmod +x "$W/quiet-diff"
+r="$(newrepo)"; put "$r" a.cfg "k=$AWS"; rc=0; out="$(cd "$r" && GIT_EXTERNAL_DIFF="$W/quiet-diff" bash "$SCAN" --staged 2>&1)" || rc=$?; assert_eq 1 "$rc"; assert_contains "$out" "a.cfg:1: aws-access-key"
+r="$(newrepo)"; printf '*.cfg diff=clean\n' > "$r/.gitattributes"; git -C "$r" add .gitattributes; git -C "$r" config diff.clean.textconv "echo clean"; put "$r" a.cfg "k=$AWS"
+rc=0; out="$(cd "$r" && bash "$SCAN" --staged 2>&1)" || rc=$?; assert_eq 1 "$rc"; assert_contains "$out" "a.cfg:1: aws-access-key"
+# (review) a large findings list ends with its summary, not a SIGPIPE (rc 141) that the hook would call "could not run"
+r="$(newrepo)"; awk -v a="$AWS" -v g="ghp_$(rep a 36)" -v o="sk-$(rep r 40)" -v k="AIza$(rep Q 35)" 'BEGIN { for (i = 1; i <= 400; i++) { print "a" i "=" a; print "b" i "=" g; print "c" i "=" o; print "d" i "=" k } }' > "$r/many4.txt"; git -C "$r" add many4.txt
+for _ in 1 2 3; do staged "$r"; [[ "$RC" == 1 ]] || fail "secret-scan: a large findings list ended with rc $RC, not 1"; assert_contains "$OUT" "secret-scan: "; assert_contains "$OUT" "... and "; done
+# (review) a value that starts with $ and a lowercase letter is a password, a capitalised variable reference is not; Bearer in capitals; more key files
+r="$(newrepo)"; put "$r" a.cfg 'pass''word = "$uperSecret99Zq"';                          expect_hit "$r" dollar-lowercase generic-secret a.cfg:1
+r="$(newrepo)"; put "$r" a.cfg 'pass''word = "${DB_PASSWORD_FROM_ENV}"';                  expect_clean "$r" "a braced variable reference"
+r="$(newrepo)"; put "$r" a.sh "curl -H 'Authorization: BEARER $(rep Z 30)' https://x.test"; expect_hit "$r" bearer-capitals bearer-token a.sh:1
+r="$(newrepo)"; put "$r" a.sh "curl -H 'Authorization: BEARER YOUR_TOKEN_GOES_HERE_1234' https://x.test"; expect_clean "$r" "a capitalised BEARER with a placeholder"
+for p in id_ecdsa id_dsa keystore.p12 cert.pfx .netrc; do r="$(newrepo)"; put "$r" "$p" "x"; staged "$r"; [[ "$RC" == 1 ]] || fail "secret-scan: the path $p was not refused: $OUT"; done
 # a rename of a clean file into a secret path is refused; a plain rename of a clean file passes
 r="$(newrepo)"; put "$r" plain.txt "hello"; git -C "$r" commit -qm p; git -C "$r" mv plain.txt .env; staged "$r"; [[ "$RC" == 1 ]] || fail "secret-scan: a rename to .env passed: $OUT"
 r="$(newrepo)"; put "$r" plain.txt "hello"; git -C "$r" commit -qm p; git -C "$r" mv plain.txt other.txt; expect_clean "$r" "a plain rename"

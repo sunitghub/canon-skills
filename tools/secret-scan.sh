@@ -37,10 +37,10 @@ generic-secret	(password|passwd|secret|token|api[_-]?key|apikey)[A-Za-z0-9_-]*["
 TABLE
 # A placeholder is judged on the VALUE, never the key name. Key-shaped secrets (AWS, GitHub, ...): xxxx, example or **** anywhere in the match.
 # A password, token or Bearer value or a URL password (free text, so a real one may contain such a word): only when it STARTS or ENDS as a placeholder
-# (xxxx, your_..., changeme, example, placeholder, dummy, redacted, ****, <...>, ${X}, $X), is only digits (a port, a count), a bare word like
+# (xxxx, your_..., changeme, example, placeholder, dummy, redacted, ****, <...>) or is a whole environment-variable reference in capitals (${X}, $X), is only digits (a port, a count), a bare word like
 # "password", or an npm integrity hash (sha512-...). A real secret that merely contains "example" in the middle is still refused.
 PH_KEY='x{4,}|example|\*{4,}'
-PH_FREE='^(x{4,}|your[_-]|changeme|example|placeholder|dummy|redacted|\*{4,}|<.*>$|\$[{A-Za-z_]|sha(256|384|512)-)|(example|x{4,}|\*{4,})$|^[0-9]+$|^(password|passwd|pass|secret|token|user|username|apikey|api_key)$'
+PH_FREE='^(x{4,}|your[_-]|changeme|example|placeholder|dummy|redacted|\*{4,}|<.*>$|sha(256|384|512)-)|(example|x{4,}|\*{4,})$|^[0-9]+$|^(password|passwd|pass|secret|token|user|username|apikey|api_key)$'
 dq='"'; sq="'"
 value_of() { # <rule> <match>: the part of a match that is the secret itself. Builtins only: this runs once per hit, and a file can have 100,000 of them
   local v="$2"
@@ -49,14 +49,17 @@ value_of() { # <rule> <match>: the part of a match that is the secret itself. Bu
       v="${v#*[:=]}"; while [[ "$v" == [[:space:]]* ]]; do v="${v#?}"; done
       case "$v" in "$dq"*|"$sq"*) v="${v#?}" ;; esac
       case "$v" in *"$dq"|*"$sq") v="${v%?}" ;; esac ;;
-    bearer-token) v="${v#[Bb]earer}"; while [[ "$v" == [[:space:]]* ]]; do v="${v#?}"; done ;;
+    bearer-token) v="${v#[Bb][Ee][Aa][Rr][Ee][Rr]}"; while [[ "$v" == [[:space:]]* ]]; do v="${v#?}"; done ;;
     url-credentials) v="${v#*://}"; v="${v#*:}"; v="${v%@}" ;;
   esac
   VALUE="$v"
 }
 is_placeholder() { # <rule> <value>
   local re="$PH_KEY" r=1
-  case "$1" in generic-secret|bearer-token|url-credentials) re="$PH_FREE" ;; esac
+  case "$1" in generic-secret|bearer-token|url-credentials) re="$PH_FREE"
+    # a whole variable reference, in capitals as an environment variable is (${DB_PASS}, $DB_PASS); case-sensitive, so $uperSecret99 is a password
+    [[ "$2" =~ ^\$([A-Z_][A-Z0-9_]*|\{[^}]*\})$ ]] && return 0 ;;
+  esac
   shopt -s nocasematch; [[ "$2" =~ $re ]] && r=0; shopt -u nocasematch; return "$r"
 }
 
@@ -125,7 +128,7 @@ while IFS="$US" read -r c p; do
   base="${lp##*/}"
   case "$base" in .env.example|.env.sample|.env.template|.env.dist) ;; .env|.env.*) say "$c" "$p" "" "env-file" ;; esac
   case "$lp" in .claude/settings.local.json|*/.claude/settings.local.json) say "$c" "$p" "" "claude-local-settings (saved approvals can hold a password)" ;; esac
-  case "$base" in *.pem|id_rsa|id_ed25519) say "$c" "$p" "" "key-file" ;; esac
+  case "$base" in *.pem|*.p12|*.pfx|id_rsa|id_ecdsa|id_dsa|id_ed25519|.netrc) say "$c" "$p" "" "key-file" ;; esac
 done < "$work/P"
 
 # content rules, over the added lines
@@ -148,9 +151,10 @@ while IFS="$(printf '\t')" read -r name re flags; do
   done < "$work/hits"
 done <<<"$RULES"
 
-n="$(awk '!seen[$0]++' "$findings" | wc -l | tr -d ' ')"
+awk '!seen[$0]++' "$findings" > "$findings.u"   # a file, not a pipe into head: under pipefail a closed pipe would kill the script (141) before its summary
+n="$(wc -l < "$findings.u" | tr -d ' ')"
 if [[ "$n" -eq 0 ]]; then exit 0; fi
-awk '!seen[$0]++' "$findings" | head -50 >&2
+head -50 "$findings.u" >&2
 [[ "$n" -le 50 ]] || echo "... and $((n - 50)) more" >&2
 echo "secret-scan: $n finding(s). Remove the secret and rotate it; put canon:allow-secret on a line that is not one; or --no-verify to override on purpose." >&2
 exit 1
