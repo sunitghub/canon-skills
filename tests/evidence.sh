@@ -692,6 +692,44 @@ GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=grep.threads GIT_CONFIG_VALUE_0=bogus ev che
 scope_repo; ev stamp "$ID" sw -- tools/mutant-sweep --map "$GO1"; chg tests/unnamed.sh
 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=grep.threads GIT_CONFIG_VALUE_0=bogus ev check "$ID"; stale_with sw "1 tracked file(s) changed since: tests/unnamed.sh)"
 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=grep.threads GIT_CONFIG_VALUE_0=bogus ev scope-audit; assert_eq 1 "$code"; assert_contains "$out" "git grep failed"   # an unreadable source is not a clean one
+# --- t-29ee, sweep survivors: the rules a mutant of a guard line could weaken -------------------------------------------------------------
+# a mode is exactly stamp, check or scope-audit; a ticket folder that is a symlink is refused
+ev scope-audits; assert_eq 2 "$code"; ev scope-x "$ID"; assert_eq 2 "$code"
+scope_repo; mv "$REPO/.tickets/$ID" "$REPO/.tickets/real"; ln -s real "$REPO/.tickets/$ID"
+ev check "$ID"; assert_eq 2 "$code"; assert_contains "$out" "no ticket folder"; rm "$REPO/.tickets/$ID"; mv "$REPO/.tickets/real" "$REPO/.tickets/$ID"
+# every command a map may carry is checked whole: another tool, another module, another flag spelling and a value with a tail all give no scope
+for cmd in "go -C tools/other test ./internal/x" "go -X tools/canon-go test ./internal/x" "go -C tools/canon-go-evil test ./internal/x" "go -C tools/canon-go build ./internal/x" \
+           "bash -C tools/canon-go test ./internal/x" "go -C tools/canon-go test ./internal/x -count=5x" "go -C tools/canon-go test ./internal/x -count=x5" \
+           "go -C tools/canon-go test ./internal/x -timeout=5ss" "go -C tools/canon-go test ./internal/x -timeout 5ss" "go -C tools/canon-go test ./internal/x -run=a.b" \
+           "go -C tools/canon-go test ./internal/x -run a-b" "go -C tools/canon-go test ./internal/x -run=a*" "go -C tools/canon-go test ./a@b" \
+           "go -C tools/canon-go test ./a/../b" "go -C tools/canon-go test ./../x"; do
+  scope_repo; ev stamp "$ID" sw -- tools/mutant-sweep --map "tools/canon-go/internal/x/x.go=$cmd"; assert_eq 0 "$code"
+  chg tests/unnamed.sh; ev check "$ID"; stale_with sw "1 tracked file(s) changed since: tests/unnamed.sh)"
+done
+# board-spec arguments and sweep numbers are matched whole
+for arg in 'x*' 'a?b'; do
+  scope_repo; ev stamp "$ID" bs -- bash tests/run-board-spec.sh "$arg"; assert_eq 0 "$code"; chg tests/unnamed.sh; ev check "$ID"; stale_with bs "1 tracked file(s) changed since: tests/unnamed.sh)"
+done
+for num in "--timeout 5x" "--timeout x5" "--jobs 8x" "--jobs x8"; do
+  scope_repo; read -r -a ex <<< "$num"; ev stamp "$ID" sw -- tools/mutant-sweep --map "tools/canon-go/internal/x/x.go=$GO_MAP" "${ex[@]}"; assert_eq 0 "$code"
+  chg tests/unnamed.sh; ev check "$ID"; stale_with sw "1 tracked file(s) changed since: tests/unnamed.sh)"
+done
+# a suite named by two suites at one level, each naming another: both second-level suites are in scope
+scope_repo; printf '# tests/p.sh tests/q.sh\n' >> tests/run-board-spec.sh; printf '# tests/r.sh\n' > tests/p.sh; printf '# tests/s.sh\n' > tests/q.sh; echo r > tests/r.sh; echo s > tests/s.sh
+git add tests; git commit -qm two-level; CB="$(git rev-parse HEAD)"
+ev stamp "$ID" bs -- bash tests/run-board-spec.sh; chg tests/s.sh; ev check "$ID"; stale_with bs "1 tracked file(s) changed since: tests/s.sh)"
+# only an exact `tests/<name>.sh` is a suite: a backup copy and a nested tests/ folder are not dropped
+scope_repo; ev stamp "$ID" bs -- bash tests/run-board-spec.sh; chg tests/unnamed.sh.bak; ev check "$ID"; stale_with bs "1 tracked file(s) changed since: tests/unnamed.sh.bak)"
+scope_repo; ev stamp "$ID" bs -- bash tests/run-board-spec.sh; chg sub/tests/unnamed.sh; ev check "$ID"; stale_with bs "1 tracked file(s) changed since: sub/tests/unnamed.sh)"
+# the list of ignored files shows five names, then the count of the rest
+scope_repo; ev stamp "$ID" bs -- bash tests/run-board-spec.sh; chg tests/f1.sh tests/f2.sh tests/f3.sh tests/f4.sh tests/f5.sh; ev check "$ID"
+fresh_scope bs "tests/f1.sh, tests/f2.sh, tests/f3.sh, tests/f4.sh, tests/f5.sh"; [[ "$out" != *"more"* ]] || fail "evidence: five names must not say more: $out"
+chg tests/f6.sh; ev check "$ID"; fresh_scope bs "tests/f1.sh, tests/f2.sh, tests/f3.sh, tests/f4.sh, tests/f5.sh (+1 more)"
+# each kind prints its offending lines on a line of their own (the Go file is a reader of both kinds)
+scope_repo; printf 'x tests/$y\n' >> tools/tool.sh; printf '// tests/$z\n' >> tools/canon-go/internal/x/x.go; git add tools; git commit -qm two-globs
+ev scope-audit; assert_eq 1 "$code"
+[[ "$(printf '%s\n' "$out" | grep -c '^HEAD:tools/tool.sh:')" -eq 1 && "$(printf '%s\n' "$out" | grep -c '^HEAD:tools/canon-go/internal/x/x.go:')" -eq 2 ]] || fail "evidence: scope-audit did not print one line per offending source: $out"
+
 # the audit prints repo text, so it prints no control byte and no long line (an escape code in a source must not reach the terminal)
 scope_repo; printf 'bash tests/*.sh \033[31mred\033[0m %s\n' "$(head -c 600 /dev/zero | tr '\0' z)" > tools/tool.sh; git add tools; git commit -qm "escape in a glob line"
 ev scope-audit; assert_eq 1 "$code"; assert_contains "$out" "tools/tool.sh:1:"
