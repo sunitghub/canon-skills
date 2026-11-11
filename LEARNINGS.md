@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-10-2026 12:45
+learnings-sweep last run: 11-10-2026 19:45
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-10 | [t-29ee](.tickets/t-29ee/learnings.md) | A rule that decides "fresh" must treat every input it cannot fully read (a cut line, an unknown flag spelling, a failed git call) as no scope, and each needs a test where the unread part holds the change that matters; an edit script that replaces between markers can delete a block `bash -n` accepts, so assert every landmark appears once. | UNPROMOTED |
 | 2026-11-10 | [t-8d45](.tickets/t-8d45/learnings.md) | A test that compares numbers as strings passes or fails with the length of the temp path inside every fixture line: only the full suite in a clean clone caught it, so compare numbers as numbers and run a changed test once under a long TMPDIR; and a stream's first frame must carry its start cursor, or a client that drops before its first event loses what arrived meanwhile. | UNPROMOTED |
 | 2026-11-10 | [t-3620](.tickets/t-3620/learnings.md) | A promoted line whose tag has text after `id: P-nnn` is silently not counted by `promoted-report`: after placing a rule, run the report and find its id; and a YES review plus a mutation sweep still held real gaps (a guard no test fails on, a mixed PROMOTED.md block) that only reading each Consider, Noted and survivor found. | UNPROMOTED |
 | 2026-11-10 | [t-e151](.tickets/t-e151/learnings.md) | A ticket filed from an old sighting may already be fixed (reproduce first), and an edit to a gate file such as `tools/sprint` makes `sprint complete` refuse until a release carries it, so plan a gate-file fix as commit, release, then close; the new `run_fail` test cannot tell stdout from stderr. | `promoted → skills/sprint/reference/start.md` |
@@ -80,7 +81,4 @@ learnings-sweep last run: 11-10-2026 12:45
 | 2026-11-01 | [t-90f5](.tickets/t-90f5/learnings.md) | A negative UI check that retries (toHaveClass for 5 s) can be undone by the next real poll and pass with the guard deleted: record every state with a MutationObserver, and stop the background timer when a test means to prove the message itself redraws | `promoted → tools/sprint-check-app/CLAUDE.md, skills/sprint/reference/shared-gate-protocol.md` |
 | 2026-11-01 | [t-5036](.tickets/t-5036/learnings.md) | A layout guard needs a fixture the rule alone holds: a test string that wraps at spaces or hyphens passes with the width cap removed, so use an unbreakable token and revert each CSS rule on its own | `dismissed (covered: skills/sprint/reference/shared-gate-protocol.md)` |
 | 2026-11-01 | [t-c8f6](.tickets/t-c8f6/learnings.md) | Hiding UI elements (a fold) broke ten older specs that clicked the now-hidden rows: before the full run, grep the spec for selectors of everything the change hides and give those tests the user's path (open the fold first) | `dismissed` |
-| 2026-11-01 | [t-e115](.tickets/t-e115/learnings.md) | A live check of a conditional UI feature needs a control that shows the feature first: the 'before' run showed no prompt suggestion either, so the trial proved nothing; decide how to reproduce the condition before building the before/after | `promoted → standards/efficiency-notes.md` |
-| 2026-11-01 | [t-c8ff](.tickets/t-c8ff/learnings.md) | A criterion broader than its Test Plan command fails at the gate ("vet ./..." vs the planned "vet ./internal/term/"): write the criterion from the exact command, and cross-compile the whole module for the target OS early (an untagged test file broke the Windows test build) | `dismissed (covered: standards/efficiency-notes.md)` |
-| 2026-11-01 | [t-d7b7](.tickets/t-d7b7/learnings.md) | An action reachable from only one transient panel strands every other way into the same state (a ticket sent from a terminal had no To Claude Cloud); put an action on the durable object (the card) and share one handler with the panel | `dismissed` |
 <!-- canon:learnings:END -->
