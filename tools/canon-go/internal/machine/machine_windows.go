@@ -24,6 +24,16 @@ type memoryStatusEx struct {
 
 var globalMemoryStatusEx = windows.NewLazySystemDLL("kernel32.dll").NewProc("GlobalMemoryStatusEx")
 
+// nativeArch is the machine's own architecture. IsWow64Process2 reports the process machine (0 when the process runs natively) and
+// the native one; "" when the call fails or the constant is unknown, which keeps runtime.GOARCH.
+func nativeArch() string {
+	var process, native uint16
+	if err := windows.IsWow64Process2(windows.CurrentProcess(), &process, &native); err != nil {
+		return ""
+	}
+	return winMachineArch(native)
+}
+
 func readOS(f *Facts) {
 	v := windows.RtlGetVersion()
 	if v.MajorVersion != 0 {

@@ -23,7 +23,7 @@ type Facts struct {
 	OSName    string `json:"os_name"`    // macOS, Windows 11, Ubuntu 24.04.1 LTS
 	OSVersion string `json:"os_version"` // 26.1, 10.0.26100, 24.04
 	Kernel    string `json:"kernel"`     // Darwin 25.1.0, Linux 6.8.0-49-generic, NT 10.0.26100
-	Arch      string `json:"arch"`       // runtime.GOARCH
+	Arch      string `json:"arch"`       // the machine's architecture; "arm64 (canon runs as amd64, emulated)" when canon runs emulated (t-0317)
 	CPUs      string `json:"cpus"`       // logical cores
 	RAMGB     string `json:"ram_gb"`     // total, whole GB
 }
@@ -43,13 +43,35 @@ func Get() Facts {
 func Host() string { return Get().Host }
 
 func read() Facts {
-	f := Facts{Host: Unknown, OS: runtime.GOOS, Arch: runtime.GOARCH, CPUs: strconv.Itoa(runtime.NumCPU()),
+	f := Facts{Host: Unknown, OS: runtime.GOOS, Arch: archLabel(nativeArch(), runtime.GOARCH), CPUs: strconv.Itoa(runtime.NumCPU()),
 		OSName: Unknown, OSVersion: Unknown, Kernel: Unknown, RAMGB: Unknown}
 	if h, err := os.Hostname(); err == nil && strings.TrimSpace(h) != "" {
 		f.Host = strings.TrimSpace(h)
 	}
 	readOS(&f) // per platform: machine_<goos>.go
 	return f
+}
+
+// archLabel is the architecture to report: runtime.GOARCH is the binary's build target, which on an ARM64 Windows VM (x64
+// emulation) or under Rosetta is not the machine's. native "" (not readable) keeps the process architecture. Pure, so every OS tests it.
+func archLabel(native, process string) string {
+	if native == "" || native == process {
+		return process
+	}
+	return native + " (canon runs as " + process + ", emulated)"
+}
+
+// winMachineArch maps an IMAGE_FILE_MACHINE constant (IsWow64Process2) to a GOARCH name; "" for one canon does not know.
+func winMachineArch(m uint16) string {
+	switch m {
+	case 0xAA64:
+		return "arm64"
+	case 0x8664:
+		return "amd64"
+	case 0x14c:
+		return "386"
+	}
+	return ""
 }
 
 // gb is total bytes as whole GB (rounded), or "unknown" for 0.

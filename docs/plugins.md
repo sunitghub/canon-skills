@@ -52,7 +52,7 @@ renamed or removed.
 | `session.saved` | `session`, `ticket`, `agent`, `by` (`marker` or `file-settle`) | Save & End saved the session's state |
 | `budget.warned` | `ticket`, `cap` (the `tools/caps.tsv` row name, never a path), `used`, `limit`, `unit`, `stage` (`plan` or `send`) | a capped file the plan lists has under 10% left: `sprint approve` (`plan`), `tkt send-issue` (`send`) (t-c990) |
 | `budget.exceeded` | the same fields; `stage` is `plan`, `send` or `close` | a capped file is over its cap: at those two commands, and at `sprint check-evidence` / `sprint complete` (`close`), which refuse when this branch changed that file (t-c990) |
-| `machine.seen` | `host`, `os` (`darwin`, `linux`, `windows`), `os_name`, `os_version`, `kernel`, `arch`, `cpus` (logical cores), `ram_gb` (total, whole GB); a fact canon cannot read is `unknown` | the board starts and this machine's facts differ from the newest `machine.seen` for its host (t-c542); its `project` is empty |
+| `machine.seen` | `host`, `os` (`darwin`, `linux`, `windows`), `os_name`, `os_version`, `kernel`, `arch` (`arm64 (canon runs as amd64, emulated)` when canon runs under x64 emulation or Rosetta, t-0317), `cpus` (logical cores), `ram_gb` (total, whole GB); a fact canon cannot read is `unknown` | the board starts and this machine's facts differ from the newest `machine.seen` for its host (t-c542); its `project` is empty |
 
 Audit kinds (t-4c09; the schema is fixed here, each emitter is built by the ticket named):
 

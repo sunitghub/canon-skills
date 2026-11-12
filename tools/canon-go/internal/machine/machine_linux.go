@@ -8,6 +8,9 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// nativeArch: no emulation layer canon detects here; "" keeps runtime.GOARCH.
+func nativeArch() string { return "" }
+
 func readOS(f *Facts) {
 	f.OSName = "Linux"
 	if b, err := os.ReadFile("/etc/os-release"); err == nil {

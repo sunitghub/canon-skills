@@ -84,7 +84,7 @@ var kinds = map[string][]field{
 	"budget.warned":   {{"ticket", 64}, {"cap", 48}, {"used", 12}, {"limit", 12}, {"unit", 8}, {"stage", 8}},
 	"budget.exceeded": {{"ticket", 64}, {"cap", 48}, {"used", 12}, {"limit", 12}, {"unit", 8}, {"stage", 8}},
 	// t-c542: this machine's facts (internal/machine), written by the board at start when they differ from the newest for this host.
-	"machine.seen": {{"host", hostMax}, {"os", 16}, {"os_name", 64}, {"os_version", 32}, {"kernel", 64}, {"arch", 16}, {"cpus", 6}, {"ram_gb", 8}},
+	"machine.seen": {{"host", hostMax}, {"os", 16}, {"os_name", 64}, {"os_version", 32}, {"kernel", 64}, {"arch", 48}, {"cpus", 6}, {"ram_gb", 8}},
 }
 
 // hostMax caps the envelope host (t-c542): DNS allows 253 characters.

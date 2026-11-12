@@ -75,3 +75,24 @@ func TestOSReleaseAndWindowsName(t *testing.T) {
 		t.Fatalf("gb rounding: %s %s %s", gb(0), gb(34359738368), gb(17179869184-(1<<28)))
 	}
 }
+
+// t-0317: the architecture reported is the machine's, not the binary's: an amd64 canon on an ARM64 Windows VM (x64 emulation) or under
+// Rosetta says so. Prod path: machine.seen, evidence headers and the By-machine table all print Facts.Arch.
+func TestArchLabelAndWindowsMachineMap(t *testing.T) {
+	for _, c := range []struct{ native, process, want string }{
+		{"arm64", "amd64", "arm64 (canon runs as amd64, emulated)"},
+		{"arm64", "arm64", "arm64"},
+		{"amd64", "amd64", "amd64"},
+		{"", "amd64", "amd64"}, // not readable: keep what the binary says
+		{"amd64", "386", "amd64 (canon runs as 386, emulated)"},
+	} {
+		if got := archLabel(c.native, c.process); got != c.want {
+			t.Errorf("archLabel(%q, %q) = %q, want %q", c.native, c.process, got, c.want)
+		}
+	}
+	for m, want := range map[uint16]string{0xAA64: "arm64", 0x8664: "amd64", 0x14c: "386", 0: "", 0x1c4: ""} {
+		if got := winMachineArch(m); got != want {
+			t.Errorf("winMachineArch(%#x) = %q, want %q", m, got, want)
+		}
+	}
+}

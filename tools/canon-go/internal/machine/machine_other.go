@@ -2,4 +2,6 @@
 
 package machine
 
+func nativeArch() string { return "" }
+
 func readOS(*Facts) {}

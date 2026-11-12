@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Fixed
+- Machine facts now report the machine's architecture, not the binary's: canon ships only an amd64 Windows program, so an ARM64 Windows VM showed as `amd64` and its timings sat beside real x86 PCs. When canon runs emulated (x64 emulation on Windows ARM64, Rosetta on a Mac) `arch` reads `arm64 (canon runs as amd64, emulated)` in `canon-go machine`, evidence headers, `machine.seen` and the By-machine tables; a VM's row corrects itself on the next board start. A native Windows ARM64 build is not part of this (t-0317). Go changed: daemon release.
+
 ## [0.55.3] - 2026-11-12
 
 Run `canon update`, then restart the daemon (Admin's **Restart Daemon** button): `canon update` fetches the new `canon-go`, but a running daemon stays on the old version.

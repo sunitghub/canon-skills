@@ -258,3 +258,23 @@ func TestTicketMachinesEvidenceRows(t *testing.T) {
 		t.Fatalf("cloud log = %+v, want the host then a cloud row", rows)
 	}
 }
+
+// t-0317: an existing VM row says amd64; once the board reports the emulated label that is a changed fact, written once and stored whole
+// (the arch field is 48 wide, so the 37-character label is not cut). Prod path: the board's start-up machine.seen.
+func TestNoteMachineSeenEmulatedArchCorrectsAVMRow(t *testing.T) {
+	home := t.TempDir()
+	old := machine.Get()
+	old.Host, old.Arch = "win-vm", "amd64"
+	if !noteMachineSeenFor(home, old) {
+		t.Fatal("first start wrote nothing")
+	}
+	now := old
+	now.Arch = "arm64 (canon runs as amd64, emulated)"
+	if !noteMachineSeenFor(home, now) || noteMachineSeenFor(home, now) {
+		t.Fatal("the corrected arch must write one machine.seen and then none")
+	}
+	ev, _ := events.Latest(home, "machine.seen", "", func(e events.Event) bool { return e.Data["host"] == "win-vm" })
+	if ev.Data["arch"] != now.Arch {
+		t.Fatalf("stored arch = %q, want the whole label", ev.Data["arch"])
+	}
+}
