@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-11-2026 20:40
+learnings-sweep last run: 11-12-2026 11:13
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-12 | [t-045f](.tickets/t-045f/learnings.md) | The "longest first" order of `LONGEST` is unguarded (`tests/test-sh-runner.sh:117` sorts only the first two started suites), so a reordered list stays green; it costs speed only. Also: a timing driver started with `nohup` ignores SIGHUP and fails the merge-pr HUP check, so run it plainly. | UNPROMOTED |
 | 2026-11-12 | [t-a94c](.tickets/t-a94c/ticket.md) | Replay a cache or carry-forward rule over the recorded history before building it: the sound version of the incremental mutation sweep (carry only if the logic file is identical and tests only appended) qualified for 2 of 59 reruns (0.5%), after a reviewer NO had already narrowed it three times; the replay would have taken ten minutes and saved the sprint. | UNPROMOTED |
 | 2026-11-12 | [t-c923](.tickets/t-c923/learnings.md) | A mutation sweep mapped to a test file slower than its timeout (`tests/evidence.sh` 523 s against the 300 s default) fails at the baseline and mutates nothing: map a focused command (the file's setup plus the new block, about 4 s), prove by hand that one mutant fails it, and keep the whole file for the one full-suite stamp (t-045f splits it). | UNPROMOTED |
 | 2026-11-12 | [t-07b9](.tickets/t-07b9/learnings.md) | A mutation sweep or full-suite stamp taken before the reviewer is stale the moment the reviewer's fixes land: 39 of 81 sweeps and 18 of 32 suites in four days (6.2 h of 18.8 h stamped) ran first. Order the close reviewer, security-review, then one sweep and one suite on the final commit (t-c923 adds the warning). | UNPROMOTED |
@@ -82,5 +83,4 @@ learnings-sweep last run: 11-11-2026 20:40
 | 2026-11-03 | [t-7f7c](.tickets/t-7f7c/learnings.md) | A UI rename must grep every string that names the old set: after the Logbook went from two tabs to four, the header button and the Projects card tooltips still said "Handoff and Learnings" (app.html:60, cockpit-projects.js:55). | `dismissed (covered: standards/efficiency-notes.md)` |
 | 2026-11-03 | [t-92f2](.tickets/t-92f2/learnings.md) | A check written before a later redesign keeps enforcing the old rule: the daemon's t-e5ff "ticket must be in the worktree" guard predated t-cd06 (tkt resolves main's .tickets/), so a land worktree could not be resumed; when a resolution rule changes, grep every place that re-implements it (daemon guard, board API field, rail text, comments). | `dismissed (covered: standards/efficiency-notes.md)` |
 | 2026-11-03 | [t-68dd](.tickets/t-68dd/learnings.md) | A new exception to a skill rule must grep the skill for the old wording: Apply still said "extend that entry" next to the new "covered → write nothing" rule until the reviewer caught it. | `dismissed (covered: standards/efficiency.md)` |
-| 2026-11-02 | [t-2906](.tickets/t-2906/learnings.md) | When a board feature adds work to a polled route (GET /api/tickets runs every 8 s per tab), measure the route against main before the gates: a git call per request slowed it 65 to 90 ms and made an unrelated board spec time out 4 of 5 runs; read files first and run git only when a candidate is real. | `dismissed (covered: standards/efficiency-notes.md)` |
 <!-- canon:learnings:END -->
