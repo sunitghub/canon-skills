@@ -218,6 +218,12 @@ printf '# Plan\n\n## Files\ntools/caller.sh\n' > ".tickets/$ID/plan.md"; git add
 run "$ID"; assert_contains "$out" "size (advisory): planned 1 files, changed 1, +1/-0; flags none" "pre-gate-check: no test file in the diff, no new source file: no flag"
 printf '#!/usr/bin/env bash\ntrue\n' > "tools/ü.sh"; commit
 run "$ID"; assert_contains "$out" "no test: tools/ü.sh" "pre-gate-check: a new non-ASCII source file with no test is named as is"
+# a new doc alone is not a new source file; a new *_test.go counts as the test for a new source file
+reset
+mkdir -p docs; printf '# d\n' > docs/n.md; printf '# Plan\n\n## Files\ndocs/n.md\n' > ".tickets/$ID/plan.md"; git add -A -f . && git commit -qm doconly
+run "$ID"; assert_contains "$out" "planned 1 files, changed 1, +1/-0; flags none" "pre-gate-check: a new .md is not a new source file"
+printf '#!/usr/bin/env bash\ntrue\n' > tools/n.sh; printf 'package x\n' > x_test.go; commit
+run "$ID"; [[ "$out" != *"no test:"* ]] || fail "pre-gate-check: a *_test.go in the diff must clear no test: $out"
 # more than 8 unplanned files: the first 8 are named, the rest counted; no limits table beside the script: skipped, not a pass
 reset
 for i in 1 2 3 4 5 6 7 8 9 10; do printf '#!/usr/bin/env bash\ntrue\n' > "tools/u$i.sh"; done; mkdir -p tests; printf '#!/usr/bin/env bash\ntrue\n' > tests/t.sh; commit
