@@ -1,2 +1,3 @@
 
 | 2026-11-02 | [t-4d39](.tickets/t-4d39/learnings.md) | A marker that changes behavior must count only where its writer puts it (above the closing ticket marker), never anywhere in a body: a plain ticket quoting the marker line in its notes imported as Lite until the reviewer caught it. | `dismissed (covered: standards/efficiency-notes.md)` |
+| 2026-11-02 | [t-1ed8](.tickets/t-1ed8/learnings.md) | A doc sweep for a removed feature must grep every doc, not only the plan's file list: docs/fresh-machine-test.md still described the removed offer until the reviewer caught it. | `dismissed (covered: standards/efficiency-notes.md)` |
