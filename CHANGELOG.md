@@ -6,14 +6,14 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.55.5] - 2026-11-12
+
+Run `canon update`, then restart the daemon (Admin's **Restart Daemon** button): `canon update` fetches the new `canon-go`, but a running daemon stays on the old version. Five fixes, most of them found on the Windows VM.
+
 - Fixed: `sprint token-spend` printed "No transcript turns inside these sprints" for every Windows sprint. The events' `project` was stored as `C:/Users/...` (Git Bash converts a `/c/...` argument when it starts the native `canon-go`), while the project path and the transcripts' `cwd` were compared as `/c/Users/...`, so no turn matched. One awk function, `canon_awk_pkey` in `tools/platform-lib.sh`, now joins `C:\\x`, `C:/x` and `/c/x` (and a trailing slash) before any comparison, and the message says how many turns were read and which folders were compared when none match (t-134b). Shell only: `canon update` is enough.
-
 - Fixed: the three Windows launchers of the gate files (`tools/sprint.cmd`, `tools/sprint-headless.cmd`, `tools/sprint-headless-eval.cmd`) are gate files now: they show under Gate files with the gate badge and a changed or missing one blocks `sprint complete`, like `tools/sprint`. On Windows the close runs through `sprint.cmd`, so an edited launcher could run a different script while `tools/sprint` still matched. The other launchers stay flag-only; the total of files checked does not change. Takes effect with the release that carries the new list (t-ee92). Go changed: daemon release.
-
 - Fixed: Admin > Integrity's "Put it back" command now fits the install. A flat Windows zip install was told `canon update --reinstall`, which only repairs the versioned layout and refused with "this install is a git checkout" (it is not one). A git checkout shows `git -C <root> checkout -- <file>`, a versioned package `canon update --reinstall`, a flat Windows install `canon update` (it re-runs the installer, puts every file back and moves to the latest release), and any other flat install the `install.sh` line. `canon update --reinstall` on a flat install now says what that install is and names that command (t-a582). Go changed: daemon release.
-
 - Fixed: Admin > Integrity stayed green ("Verified · 93 of 94 files match") when a file differed, with the red group and its note far down the page. The strip now turns the warning colour, reads "Files differ" with the count of differing files, and a note right under it names the first three files and says whether `sprint complete` is blocked (a gate file or prompt) or the change is only flagged (a script or launcher). A clean install is unchanged (t-dccb). Go changed: the page script is embedded in the board, so this ships with the next daemon release.
-
 - Fixed: `sprint eval-verdict` in a linked worktree that holds its own `.tickets/` copy now says so on stderr, naming both paths, when that copy's `eval-report.md` differs from the main checkout's. A stale failing report there used to count a failure main never had (the 2026-11-05 false failures); which copy is read is unchanged. The gate case `eval-verdict-worktree-copy` is now a run case (t-6be7). Shell only.
 
 ## [0.55.4] - 2026-11-12
