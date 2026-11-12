@@ -75,26 +75,37 @@ var ticketIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 // folder recreated at the same path inherits the old project's events, and their tickets are not here. A closed, cancelled, archived or
 // compacted ticket keeps its folder. The id is validated before it reaches the filesystem, a link is not followed, and an error other than
 // "does not exist" (an unreadable .tickets/) says yes: hiding a user's history on an error would look like data loss. seen caches one Lstat per id.
-func ticketHere(root, id string, seen map[string]bool) bool {
+func ticketHere(root, project, id string, seen map[string]bool) bool {
 	if !ticketIDRe.MatchString(id) {
 		return false
 	}
-	if v, ok := seen[id]; ok {
+	key := project + "\x00" + id
+	if v, ok := seen[key]; ok {
 		return v
 	}
-	fi, err := os.Lstat(filepath.Join(ticketsDirForRoot(root), id))
-	here := true
-	if err != nil {
-		here = !os.IsNotExist(err)
-	} else if !fi.IsDir() {
-		here = false // a link or a file is not a ticket folder
+	here := false
+	// root's .tickets/ first; then the event's own project (a worktree belongsTo already vouched for): a project that tracks .tickets/ in git
+	// keeps a ticket created in a worktree there until the branch merges, and its lines must show meanwhile
+	for _, base := range []string{root, project} {
+		fi, err := os.Lstat(filepath.Join(ticketsDirForRoot(base), id))
+		if err != nil {
+			if !os.IsNotExist(err) {
+				here = true // an unreadable .tickets/: keep the line
+			}
+		} else if fi.IsDir() {
+			here = true // a link or a file is not a ticket folder
+		}
+		if here || project == root {
+			break
+		}
 	}
-	seen[id] = here
+	seen[key] = here
 	return here
 }
 
 // recentLines are the project's last n stage events, newest first: events whose project is root, a live worktree of it, or a
-// folder in <root>-worktrees/ (belongsTo, the Machines node's rule), and whose ticket still exists in root's .tickets/ (ticketHere).
+// folder in <root>-worktrees/ (belongsTo, the Machines node's rule), and whose ticket still exists in root's .tickets/ or in the event's own
+// worktree's (ticketHere).
 func recentLines(home, root string, n int) []string {
 	live := map[string]bool{}
 	for _, e := range registeredWorktrees(root) {
@@ -119,7 +130,7 @@ func recentLines(home, root string, n int) []string {
 			t := ev.Data["ticket"]
 			if t == "" {
 				t = "-" // a PR merged outside canon names no ticket: nothing to check it against, shown as before
-			} else if !ticketHere(root, t, here) {
+			} else if !ticketHere(root, ev.Project, t, here) {
 				return
 			}
 			all = append(all, recentLine{ev.TS, seq, fmt.Sprintf("%s · %s · %s", ev.TS.Local().Format("01-02 15:04"), t, render(ev.Data))})

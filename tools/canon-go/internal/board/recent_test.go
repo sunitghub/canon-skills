@@ -240,6 +240,10 @@ func TestRecentLinesNeedTheirTicketHere(t *testing.T) {
 	emit("sprint.completed", root, map[string]string{"ticket": "../outside"})
 	emit("sprint.completed", root, map[string]string{"ticket": "a/b"})
 	emit("github.merged", root, map[string]string{"pr": "5"}) // a PR merged outside canon names no ticket: shown as before
+	// a project that tracks .tickets/ in git: a ticket created in a worktree has its folder THERE until the branch merges; another ticket is in neither
+	os.MkdirAll(filepath.Join(wt, ".tickets", "t-inwt"), 0o755)
+	emit("plan.approved", wt, map[string]string{"ticket": "t-inwt", "tier": "normal"})
+	emit("plan.approved", wt, map[string]string{"ticket": "t-nowhere", "tier": "normal"})
 	got := recentLines(home, root, 20)
 	joined := strings.Join(got, "\n")
 	for _, bad := range []string{"t-gone", "t-link", "t-file", "outside", "a/b"} {
@@ -247,7 +251,10 @@ func TestRecentLinesNeedTheirTicketHere(t *testing.T) {
 			t.Fatalf("a line for %q was shown: %q", bad, got)
 		}
 	}
-	if len(got) != 4 || !strings.Contains(joined, "t-here · sprint completed") || !strings.Contains(joined, "t-here · plan approved") ||
+	if strings.Contains(joined, "t-nowhere") || !strings.Contains(joined, "t-inwt · plan approved") {
+		t.Fatalf("a worktree's own ticket folder: %q", got)
+	}
+	if len(got) != 5 || !strings.Contains(joined, "t-here · sprint completed") || !strings.Contains(joined, "t-here · plan approved") ||
 		!strings.Contains(joined, "t-closed · sprint completed") || !strings.Contains(joined, "· - · merged (PR #5)") {
 		t.Fatalf("recentLines = %q, want the existing tickets' lines and the ticketless merge", got)
 	}
