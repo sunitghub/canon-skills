@@ -504,7 +504,7 @@ const IG_STATE={
   'list-pending':['mute','List pending','This release has no published hash list yet.'],
 };
 const igCardFiles=r=>new Set((r.agents||[]).map(a=>a.graded_by));   // a protocol file shown in an agent's card is not listed twice
-const IG_GROUPS=[['agents','Agents'],['prompts','Prompts and protocol'],['tools','Gate files'],['programs','Programs']];
+const IG_GROUPS=[['agents','Agents'],['prompts','Prompts and protocol'],['tools','Gate files'],['programs','Programs'],['scripts','Scripts and launchers']];
 async function igLoad(refresh){
   const box=document.getElementById('ig-body'); if(!box) return;
   box.innerHTML='<div class="setting-d">Checking\u2026</div>';
@@ -539,10 +539,15 @@ async function igLoad(refresh){
         }).join('')||rows.map(fileRow).join('');
         const shown=new Set((r.agents||[]).flatMap(a=>[a.file,a.graded_by]));
         const rest=rows.filter(x=>!shown.has(x.path)); if(rest.length) body+=`<div class="ig-card"><div class="ig-files">${rest.map(fileRow).join('')}</div></div>`;
+      } else if(g==='scripts'){   // t-16f5: about 240 files; a differing one is always on show, the rest sit in a closed list
+        const bad=rows.filter(x=>x.status!=='match'), ok=rows.filter(x=>x.status==='match');
+        body=`<div class="ig-card"><div class="ig-files">${bad.map(fileRow).join('')}</div>`+(ok.length?`<details class="ig-prompt"><summary>${bad.length?'Matching':'All'} ${ok.length} file${ok.length===1?'':'s'}</summary><div class="ig-files">${ok.map(fileRow).join('')}</div></details>`:'')+`</div>`;
       } else body=`<div class="ig-card"><div class="ig-files">${rows.map(fileRow).join('')}</div></div>`;
       const inAgents=g==='agents'?rows.concat(files.filter(x=>(r.agents||[]).some(a=>a.graded_by===x.path))):rows;
       return `<div class="ig-ghead"><span class="ig-group">${esc(name)}</span><span class="ig-count">${rows.length} file${rows.length===1?'':'s'}</span>${pill(inAgents)}</div>${body}`;
     }).join('');
+    if(r.state==='verified'&&r.flagged&&!r.blocking) h+='<div class="setting-d ig-block">A script or launcher differs from the release. It was changed after install: put it back unless you made the change.</div>';
+    if(r.state==='verified'&&!r.scripts_listed) h+='<div class="setting-d">This release\u2019s list does not name its scripts, so they are not checked.</div>';
     if(r.state==='verified'&&r.blocking) h+='<div class="setting-d ig-block">A gate file or gate prompt differs, so <code>sprint complete</code> will refuse to close until it is put back.</div>';
   }
   box.innerHTML=h;

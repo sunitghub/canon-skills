@@ -736,3 +736,70 @@ func TestIntegrityOversizedPinFileIsNotUsed(t *testing.T) {
 		t.Errorf("an integrity.txt over the cap: %+v", r)
 	}
 }
+
+// withExec adds executable files to the install and to the signed list (exec_files, t-16f5), then re-pins the list.
+func (f *integFx) withExec(paths ...string) {
+	f.t.Helper()
+	var l integrityList
+	if err := json.Unmarshal(f.list, &l); err != nil {
+		f.t.Fatal(err)
+	}
+	for _, p := range paths {
+		f.edit2(p, "echo "+p+"\n")
+		l.Files[p] = sha256Hex([]byte("echo " + p + "\n"))
+		l.ExecFiles = append(l.ExecFiles, p)
+	}
+	f.list, _ = json.Marshal(l)
+	f.pin = sha256Hex(f.list)
+	f.pinTx = "# integrity\nv1.2.3 " + f.pin + "\n"
+}
+
+func (f *integFx) edit2(p, content string) {
+	f.t.Helper()
+	full := filepath.Join(f.root, filepath.FromSlash(p))
+	_ = os.MkdirAll(filepath.Dir(full), 0o755)
+	f.edit(p, content)
+}
+
+// Protects GET /api/integrity and `sprint-check integrity`: an edited launcher that is not a gate file used to read "Matches" (t-16f5).
+func TestIntegrityEditedLauncherIsFlaggedNotBlocking(t *testing.T) {
+	f := newIntegFx(t)
+	f.withExec("tools/sprint.cmd", "tools/skills/lib.sh", "tools/sprint") // tools/sprint is a gate file too: it keeps its group
+	r := checkIntegrity(f.deps)
+	if r.State != integrityVerified || r.Flagged || r.Blocking || !r.ScriptsListed || r.Total != 16 || r.Match != 16 {
+		t.Fatalf("a clean install counts the scripts once each: %+v", r)
+	}
+	f.edit("tools/sprint.cmd", "@echo Updated\n")
+	os.Remove(filepath.Join(f.root, "tools/skills/lib.sh"))
+	r = checkIntegrity(f.deps)
+	if f.status(r, "tools/sprint.cmd") != "changed" || f.status(r, "tools/skills/lib.sh") != "missing" || !r.Flagged || r.Blocking || r.Match != 14 {
+		t.Fatalf("an edited and a deleted script are flagged, neither blocks: %+v", r)
+	}
+	for _, x := range r.Files {
+		if (x.Path == "tools/sprint.cmd" || x.Path == "tools/skills/lib.sh") && (x.Group != "scripts" || x.Gate || x.Restore == "") {
+			t.Errorf("%s: %+v", x.Path, x)
+		}
+		if x.Path == "tools/sprint" && (x.Group != "tools" || !x.Gate) {
+			t.Errorf("a gate file that is also an executable keeps its group: %+v", x)
+		}
+	}
+	if s := integritySummary(r); !strings.Contains(s, "tools/sprint.cmd differs") {
+		t.Errorf("the summary names the first differing file: %q", s)
+	}
+	f.edit("tools/sprint", "x") // a gate file still blocks
+	if r = checkIntegrity(f.deps); !r.Blocking {
+		t.Errorf("a changed gate file still blocks: %+v", r)
+	}
+}
+
+func TestIntegrityListWithoutScriptsAndHostileScriptPath(t *testing.T) {
+	f := newIntegFx(t)
+	if r := checkIntegrity(f.deps); r.ScriptsListed {
+		t.Errorf("a list written before exec_files says so: %+v", r)
+	}
+	f = newIntegFx(t)
+	f.withExec("../outside.sh")
+	if r := checkIntegrity(f.deps); r.State != integrityNotChecked || !strings.Contains(r.Reason, "../outside.sh") {
+		t.Errorf("an unsafe script path is not-checked, named: %+v", r)
+	}
+}

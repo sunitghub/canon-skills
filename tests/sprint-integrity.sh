@@ -29,8 +29,8 @@ new_install() {
     sep=""; for p in "${GATE_FILES[@]}"; do printf '%s"%s"' "$sep" "$p"; sep=,; done
     printf '],"gate_prompts":['
     sep=""; for p in "${GATE_PROMPTS[@]}"; do printf '%s"%s"' "$sep" "$p"; sep=,; done
-    printf '],"files":{'
-    sep=""; for p in "${GATE_FILES[@]}" "${GATE_PROMPTS[@]}" tools/cockpit-daemon.sha256; do printf '%s"%s":"%s"' "$sep" "$p" "$(sha "$inst/$p")"; sep=,; done
+    printf '],"exec_files":["tools/sprint.cmd","tools/canon.cmd"],"files":{'   # t-16f5: launchers that are not gate files
+    sep=""; for p in "${GATE_FILES[@]}" "${GATE_PROMPTS[@]}" tools/cockpit-daemon.sha256 tools/sprint.cmd tools/canon.cmd; do printf '%s"%s":"%s"' "$sep" "$p" "$(sha "$inst/$p")"; sep=,; done
     printf '}}\n'
   } > "$CANON_HOME/integrity/v$ver.json"
   sha "$CANON_HOME/integrity/v$ver.json" > "$CANON_HOME/integrity/v$ver.pin"
@@ -53,7 +53,7 @@ not_refused() {
 # Clean install: the gate passes with one line; the close stops later, at a gate that has nothing to do with integrity.
 complete
 not_refused "a clean install"
-assert_contains "$out" "integrity: 14 of 14 files match release v9.8.7"
+assert_contains "$out" "integrity: 16 of 16 files match release v9.8.7"
 
 # One byte appended to a gate file: refused, with the file and the restore command, and an event.
 printf '#' >> "$inst/tools/gate-model.sh"
@@ -69,9 +69,14 @@ new_install "$inst"; rm "$inst/agents/canon-evaluator.md"
 complete
 [[ "$rc" -eq 1 ]] && [[ "$out" == *"agents/canon-evaluator.md: missing"* ]] || fail "a missing gate prompt must refuse: rc=$rc $out"
 
-# A changed non-gate file, and a changed programs manifest, never refuse.
-new_install "$inst"; printf '#' >> "$inst/README.md"; printf '#' >> "$inst/tools/cockpit-daemon.sha256"
+# t-16f5: an edited launcher (not a gate file, as on the Windows VM: tools/sprint.cmd) and a changed programs manifest never refuse, but the
+# close names the launcher on its one integrity line. Before this ticket the line said every file matched.
+new_install "$inst"; printf '@echo Updated\n' >> "$inst/tools/sprint.cmd"; printf '#' >> "$inst/tools/cockpit-daemon.sha256"
 complete; not_refused "a non-gate change"
+assert_contains "$out" "integrity: 14 of 16 files match release v9.8.7; tools/cockpit-daemon.sha256 differs"
+new_install "$inst"; printf '@echo Updated\n' >> "$inst/tools/sprint.cmd"
+complete; not_refused "an edited launcher"
+assert_contains "$out" "integrity: 15 of 16 files match release v9.8.7; tools/sprint.cmd differs"
 
 # Fail open, even with a changed gate file in the install:
 new_install "$inst"; printf '#' >> "$inst/tools/gate-model.sh"

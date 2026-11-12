@@ -14589,6 +14589,37 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
     await expect(page.locator('#ad-notify-toggle')).toHaveCount(0);
   });
 
+  // t-16f5. Protects Admin > Integrity: an edited launcher that is not a gate file (the Windows sprint.cmd) shows red under "Scripts and launchers",
+  // named, with its restore command, and is never described as blocking; a clean install shows that group as matching; an old list says so.
+  test('Admin > Integrity: an edited launcher is flagged in Scripts and launchers (t-16f5)', async ({ page }) => {
+    let body = { state: 'verified', tag: 'v1.2.3', source: 'online', match: 3, total: 4, blocking: false, flagged: true, scripts_listed: true, files: [
+      { path: 'tools/sprint', group: 'tools', gate: true, status: 'match' },
+      { path: 'tools/sprint.cmd', group: 'scripts', gate: false, status: 'changed', restore: "canon update --reinstall" },
+      { path: 'tools/tkt.cmd', group: 'scripts', gate: false, status: 'match' },
+      { path: 'tools/skills/lib.sh', group: 'scripts', gate: false, status: 'match' }] };
+    await page.route('**/api/admin/model-tiers', route => route.fulfill({ json: { defaults: { eval: {} }, models: { anthropic: [] } } }));
+    await page.route('**/api/integrity**', route => route.fulfill({ json: body }));
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    await page.locator('#nav-admin').click();
+    await page.locator('#ad-tab-integrity').click();
+    await expect(page.locator('.ig-group')).toHaveText(['Gate files', 'Scripts and launchers']);
+    await expect(page.locator('.ig-ghead').nth(1).locator('.ig-pill-bad')).toHaveText('1 differs');
+    await expect(page.locator('.ig-frow.ig-changed')).toContainText('tools/sprint.cmd');
+    await expect(page.locator('.ig-frow.ig-changed .ig-fix code')).toHaveText('canon update --reinstall');
+    await expect(page.locator('.ig-block')).toContainText('A script or launcher differs');
+    await expect(page.locator('.ig-block')).not.toContainText('sprint complete');            // flagged, never blocking
+    await expect(page.locator('.ig-prompt summary')).toHaveText('Matching 2 files');           // the matching ones sit in a closed list
+    body = { ...body, match: 4, flagged: false, files: body.files.map(f => ({ ...f, status: 'match', restore: undefined })) };
+    await page.locator('#ig-again').click();
+    await expect(page.locator('.ig-ghead .ig-pill-bad')).toHaveCount(0);
+    await expect(page.locator('.ig-ghead').nth(1).locator('.ig-pill-ok')).toHaveText('Matches v1.2.3');
+    await expect(page.locator('.ig-block')).toHaveCount(0);
+    body = { ...body, scripts_listed: false, files: body.files.filter(f => f.group !== 'scripts'), total: 1, match: 1 };
+    await page.locator('#ig-again').click();
+    await expect(page.locator('#ig-body')).toContainText('does not name its scripts');
+  });
+
   // t-2af0. Protects Admin > Integrity: the four states each say what they are and only a verified install lists files; a changed
   // gate file shows red with its restore command as copyable text; "Check again" asks for a refresh; and the page makes no write call.
   test('Admin > Integrity: states, a changed gate file with its restore command, Check again, and no write route (t-2af0)', async ({ page }) => {
@@ -14645,7 +14676,7 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
     // the route answers GET only: a POST changes nothing and is refused
     const post = await page.request.post(BASE + '/api/integrity', { data: {} });
     expect([404, 405]).toContain(post.status());   // POSTs have no Integrity route at all
-    await expect(page.locator('#ad-panel-integrity')).toContainText('install.ps1');   // what is not covered yet is stated
+    await expect(page.locator('#ad-panel-integrity')).toContainText('git hooks');   // what is not covered yet is stated
     // both themes: the match pill and the changed row stay readable (a colour of their own, not the page's)
     for (const theme of ['dark', 'light']) {
       await page.evaluate(t => { document.documentElement.dataset.theme = t; }, theme);

@@ -53,7 +53,7 @@ const (
 
 type integrityFile struct {
 	Path    string `json:"path"`
-	Group   string `json:"group"` // agents | prompts | tools | programs
+	Group   string `json:"group"` // agents | prompts | tools | programs | scripts
 	Gate    bool   `json:"gate"`
 	Status  string `json:"status"`            // match | changed | missing
 	Restore string `json:"restore,omitempty"` // the command that puts it back, for a changed or missing file
@@ -84,6 +84,9 @@ type integrityResult struct {
 	Match    int              `json:"match"`
 	Total    int              `json:"total"`
 	Blocking bool             `json:"blocking"` // a gate file or gate prompt differs in a verified install
+	// t-16f5: any executable file differs (flagged red, never blocking); ScriptsListed is false for a release list written before exec_files.
+	Flagged       bool `json:"flagged"`
+	ScriptsListed bool `json:"scripts_listed"`
 }
 
 type integrityDeps struct {
@@ -101,6 +104,7 @@ type integrityList struct {
 	Commit      string            `json:"commit"`
 	GateFiles   []string          `json:"gate_files"`
 	GatePrompts []string          `json:"gate_prompts"`
+	ExecFiles   []string          `json:"exec_files"`
 	Files       map[string]string `json:"files"`
 }
 
@@ -397,6 +401,17 @@ func checkIntegrityCore(d integrityDeps) integrityResult {
 		paths = append(paths, p)
 	}
 	paths = append(paths, integrityManifest)
+	seen := map[string]bool{}
+	for _, p := range paths {
+		seen[p] = true
+	}
+	for _, p := range l.ExecFiles { // t-16f5: every file the release says an install can run, after the gate files so a gate file keeps its group
+		if !seen[p] {
+			seen[p] = true
+			paths = append(paths, p)
+		}
+	}
+	res.ScriptsListed = len(l.ExecFiles) > 0
 	res.State, res.Source = integrityVerified, source
 	_, gitErr := os.Lstat(filepath.Join(root, ".git")) // nil: a git checkout
 	for _, p := range paths {
@@ -407,6 +422,9 @@ func checkIntegrityCore(d integrityDeps) integrityResult {
 			return res
 		}
 		f := integrityFile{Path: p, Group: integrityGroup(p, prompt[p]), Gate: gate[p]}
+		if !gate[p] && p != integrityManifest && !strings.HasPrefix(p, "agents/") {
+			f.Group = "scripts"
+		}
 		got, st := hashFile(filepath.Join(root, filepath.FromSlash(p)))
 		switch {
 		case st != "":
@@ -419,6 +437,7 @@ func checkIntegrityCore(d integrityDeps) integrityResult {
 		if f.Status == "match" {
 			res.Match++
 		} else {
+			res.Flagged = true
 			if gitErr == nil {
 				f.Restore = "git -C " + shellQuote(root) + " checkout -- " + p
 			} else {
@@ -568,8 +587,20 @@ func integritySummary(r integrityResult) string {
 		if r.Blocking {
 			return fmt.Sprintf("integrity: a gate file or gate prompt differs from release %s (%d of %d files match)", r.Tag, r.Match, r.Total)
 		}
+		if r.Flagged {
+			return fmt.Sprintf("integrity: %d of %d files match release %s; %s differs", r.Match, r.Total, r.Tag, firstDiffering(r))
+		}
 		return fmt.Sprintf("integrity: %d of %d files match release %s", r.Match, r.Total, r.Tag)
 	default:
 		return fmt.Sprintf("integrity: %s (%s)", r.State, r.Reason)
 	}
+}
+
+func firstDiffering(r integrityResult) string {
+	for _, f := range r.Files {
+		if f.Status != "match" {
+			return f.Path
+		}
+	}
+	return "a file"
 }

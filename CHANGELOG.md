@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Fixed
+- Admin > Integrity checked only the 13 gate files and prompts, so an edited `tools/sprint.cmd` (or any other launcher or script) still read "Matches". It now compares every script and launcher the release ships (`exec_files` in the release's integrity list) on every platform and flags a changed or missing one in a "Scripts and launchers" group; only gate files and prompts still block `sprint complete` (t-16f5). Go changed: daemon release.
+
 ## [0.55.2] - 2026-11-12
 
 Run `canon update`. Shell only: no daemon restart is needed.

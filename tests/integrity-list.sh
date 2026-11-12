@@ -32,6 +32,17 @@ def verify(d):
   assert d["gate_prompts"] == ["agents/canon-reviewer.md", "agents/canon-evaluator.md", "skills/sprint/reference/review.md", "skills/sprint/reference/eval.md", "skills/sprint/reference/shared-gate-protocol.md", "skills/sprint/reference/visual-verify.md"], d["gate_prompts"]
   for p in d["gate_files"] + d["gate_prompts"]:
       assert p in d["files"], p
+  # t-16f5: exec_files is every file an install can run: a script extension, a shebang, or git mode 100755
+  modes = {}
+  for rec in subprocess.check_output(["git", "-C", root, "ls-tree", "-r", "-z", "HEAD"]).decode().split("\0")[:-1]:
+      meta, name = rec.split("\t", 1); modes[name] = meta.split()[0]
+  def runs(p):
+      blob = subprocess.check_output(["git", "-C", root, "cat-file", "blob", "HEAD:" + p])
+      return p.endswith((".sh", ".cmd", ".ps1", ".bat")) or blob[:2] == b"#!" or modes[p] == "100755"
+  slim = subprocess.check_output(["git", "-C", root, "show", "HEAD:scripts/release-zip.sh"]).decode()
+  slim = next(l for l in slim.splitlines() if l.startswith("SLIM_EXCLUDE=(")).split("(")[1].rstrip(")").split()   # what a zip install leaves out
+  assert not any(p == x or p.startswith(x + "/") for p in d["exec_files"] for x in slim), "exec_files names a file a zip install lacks"
+  assert d["exec_files"] == sorted((p for p in tree if runs(p) and not any(p == x or p.startswith(x + "/") for x in slim)), key=lambda p: p.encode()), "exec_files differs from the tree"
   return len(tree)
 n = verify(d0)
 # the comparison itself must be able to fail: one extra, one missing and one changed file are each caught
@@ -39,7 +50,8 @@ import copy
 extra = copy.deepcopy(d0); extra["files"]["zz-extra-file"] = "0" * 64
 missing = copy.deepcopy(d0); del missing["files"][sorted(d0["files"])[0]]
 changed = copy.deepcopy(d0); k = sorted(d0["files"])[0]; changed["files"][k] = "1" * 64
-for name, bad in (("one extra", extra), ("one missing", missing), ("one changed", changed)):
+nolaunch = copy.deepcopy(d0); nolaunch["exec_files"].remove("tools/sprint.cmd")
+for name, bad in (("one extra", extra), ("one missing", missing), ("one changed", changed), ("a launcher left out of exec_files,", nolaunch)):
     try:
         verify(bad)
     except AssertionError:
@@ -64,7 +76,11 @@ g=(tools/sprint tools/gate-snapshot.sh tools/subagent-log.sh tools/evidence.sh t
 for f in "${g[@]}"; do mkdir -p "$W/repo/$(dirname "$f")"; echo x > "$W/repo/$f"; done
 git -C "$W/repo" init -q -b main; git -C "$W/repo" -c user.email=t@t -c user.name=t add -A
 git -C "$W/repo" -c user.email=t@t -c user.name=t commit -qm base
-mkdir "$W/o2"; "$W/repo/scripts/integrity-list.sh" v1.0.0 "$W/o2" HEAD >/dev/null || fail "integrity-list: a clean fixture repo was refused"
+mkdir "$W/o2"
+r="$("$W/repo/scripts/integrity-list.sh" v1.0.0 "$W/o2" HEAD 2>&1)" && fail "integrity-list: a tree whose release-zip.sh has no SLIM_EXCLUDE was accepted (t-16f5)"
+assert_contains "$r" "has no SLIM_EXCLUDE list to read"
+echo 'SLIM_EXCLUDE=(tests tools/canon-go/internal)' > "$W/repo/scripts/release-zip.sh"; git -C "$W/repo" -c user.email=t@t -c user.name=t add -A; git -C "$W/repo" -c user.email=t@t -c user.name=t commit -qm zip
+"$W/repo/scripts/integrity-list.sh" v1.0.0 "$W/o2" HEAD >/dev/null || fail "integrity-list: a clean fixture repo was refused"
 echo y > "$W/repo/has space.txt"; git -C "$W/repo" -c user.email=t@t -c user.name=t add -A; git -C "$W/repo" -c user.email=t@t -c user.name=t commit -qm odd
 r="$("$W/repo/scripts/integrity-list.sh" v1.0.1 "$W/o2" HEAD 2>&1)" && fail "integrity-list: a path with a space was accepted"
 assert_contains "$r" "has a character the list does not allow"
