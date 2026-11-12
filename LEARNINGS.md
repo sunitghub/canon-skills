@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-12-2026 12:41
+learnings-sweep last run: 11-12-2026 13:10
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-12 | [t-6be7](.tickets/t-6be7/learnings.md) | A new warning needs its quiet variants tested, not only the case that fires: the first version ran only "differs" and left 18 mutants alive. Flipping a gate case from `recorded` to `run` also breaks any test that pins its old state (`tests/gate-cases.sh` named it): grep the slug in tests/ before flipping. | UNPROMOTED |
 | 2026-11-12 | [t-0317](.tickets/t-0317/learnings.md) | A value that grows (an arch label from 5 to 37 characters) is cut silently by a width-limited event field (`machine.seen` arch was 16) and by display code (`check-evidence` cut at 80 and printed brackets as ?): grep every writer's limit and every reader's filter when a fact's text gets longer. | UNPROMOTED |
 | 2026-11-12 | [t-16f5](.tickets/t-16f5/learnings.md) | A check that lists "every file the release ships" must be built from what an install carries, not the tag's tree: the zip leaves out tests/ and the Go source, so the first design would have shown every zip install as missing files (`SLIM_EXCLUDE` in release-zip.sh is the owner). Also: `read -N` is bash 4.1+ and macOS ships 3.2, so a shebang test found nothing until a git-derived expected list was compared. | UNPROMOTED |
 | 2026-11-12 | [t-045f](.tickets/t-045f/learnings.md) | The "longest first" order of `LONGEST` is unguarded (`tests/test-sh-runner.sh:117` sorts only the first two started suites), so a reordered list stays green; it costs speed only. Also: a timing driver started with `nohup` ignores SIGHUP and fails the merge-pr HUP check, so run it plainly. | UNPROMOTED |
@@ -82,5 +83,4 @@ learnings-sweep last run: 11-12-2026 12:41
 | 2026-11-03 | [t-0d77](.tickets/t-0d77/learnings.md) | A test for a "not on screen" guard must build the exact state the guard tells apart: Admin and Factory opened from Projects left `activeTab` off the project, so dropping the view-active check still passed (evaluator round 1); and on WebKit a direct `showView()` from a test leaves focus in the hidden board, so the next key never reaches the shell (round 2). | `dismissed (covered: tools/sprint-check-app/CLAUDE.md)` |
 | 2026-11-03 | [t-c21a](.tickets/t-c21a/learnings.md) | Before answering a polled route with an ETag and an empty 304, check that nothing in the reply changes with the clock alone (`working.age_s` changed every second, so no poll ever matched) and that every test route that forwards the request to the real server either passes the 304 through or clears `If-None-Match` (ten spec handlers crashed parsing the empty body, three tests failed every run). | `promoted → tools/sprint-check-app/CLAUDE.md` |
 | 2026-11-03 | [t-cb0a](.tickets/t-cb0a/learnings.md) | Inserting a line after an anchor in help text must check what follows the anchor: the new copy-back line landed between `close` and its continuation lines, so close's refusal note read as copy-back's; a test that asserts presence passed, only one that asserts position catches it. | `dismissed (covered: standards/efficiency-notes.md)` |
-| 2026-11-03 | [t-7f7c](.tickets/t-7f7c/learnings.md) | A UI rename must grep every string that names the old set: after the Logbook went from two tabs to four, the header button and the Projects card tooltips still said "Handoff and Learnings" (app.html:60, cockpit-projects.js:55). | `dismissed (covered: standards/efficiency-notes.md)` |
 <!-- canon:learnings:END -->
