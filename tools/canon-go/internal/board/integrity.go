@@ -329,7 +329,7 @@ func checkIntegrity(d integrityDeps) integrityResult {
 // "unchecked", none is ever shown as matching. The paths a check compares always come from the verified list, never from here.
 // tests read scripts/integrity-list.sh and fail when these drift from its GATE_FILES and GATE_PROMPTS.
 var (
-	previewGateFiles   = []string{"tools/sprint", "tools/gate-snapshot.sh", "tools/subagent-log.sh", "tools/evidence.sh", "tools/sprint-headless", "tools/sprint-headless-eval", "tools/gate-model.sh"}
+	previewGateFiles   = []string{"tools/sprint", "tools/gate-snapshot.sh", "tools/subagent-log.sh", "tools/evidence.sh", "tools/sprint-headless", "tools/sprint-headless-eval", "tools/gate-model.sh", "tools/sprint.cmd", "tools/sprint-headless.cmd", "tools/sprint-headless-eval.cmd"}
 	previewGatePrompts = []string{"agents/canon-reviewer.md", "agents/canon-evaluator.md", "skills/sprint/reference/review.md", "skills/sprint/reference/eval.md", "skills/sprint/reference/shared-gate-protocol.md", "skills/sprint/reference/visual-verify.md"}
 )
 

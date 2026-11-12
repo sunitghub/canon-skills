@@ -19,7 +19,7 @@ import (
 // whose hash equals the published pin is ever used, that a changed gate file is found and a hostile list is not followed out of the
 // install, and that nothing but a verified release install can block.
 
-var gateFiles = []string{"tools/sprint", "tools/gate-snapshot.sh", "tools/subagent-log.sh", "tools/evidence.sh", "tools/sprint-headless", "tools/sprint-headless-eval", "tools/gate-model.sh"}
+var gateFiles = []string{"tools/sprint", "tools/gate-snapshot.sh", "tools/subagent-log.sh", "tools/evidence.sh", "tools/sprint-headless", "tools/sprint-headless-eval", "tools/gate-model.sh", "tools/sprint.cmd", "tools/sprint-headless.cmd", "tools/sprint-headless-eval.cmd"}
 var gatePrompts = []string{"agents/canon-reviewer.md", "agents/canon-evaluator.md", "skills/sprint/reference/review.md", "skills/sprint/reference/eval.md", "skills/sprint/reference/shared-gate-protocol.md", "skills/sprint/reference/visual-verify.md"}
 
 type integFx struct {
@@ -107,7 +107,7 @@ func (f *integFx) status(r integrityResult, p string) string {
 func TestIntegrityVerifiedMatchesEverything(t *testing.T) {
 	f := newIntegFx(t)
 	r := checkIntegrity(f.deps)
-	if r.State != integrityVerified || r.Source != "online" || r.Blocking || r.Match != 14 || r.Total != 14 {
+	if r.State != integrityVerified || r.Source != "online" || r.Blocking || r.Match != 17 || r.Total != 17 {
 		t.Fatalf("a clean release install: %+v", r)
 	}
 	for _, g := range gateFiles {
@@ -130,7 +130,7 @@ func TestIntegrityOneByteInAGateFileBlocks(t *testing.T) {
 		f := newIntegFx(t)
 		f.edit(gate, "content of "+gate+"!\n") // one byte more
 		r := checkIntegrity(f.deps)
-		if r.State != integrityVerified || !r.Blocking || f.status(r, gate) != "changed" || r.Match != 13 {
+		if r.State != integrityVerified || !r.Blocking || f.status(r, gate) != "changed" || r.Match != 16 {
 			t.Errorf("%s: %+v", gate, r)
 		}
 		for _, x := range r.Files {
@@ -468,11 +468,11 @@ func TestIntegrityAssetFetchFailureFallsBackOnlyToAGoodSavedList(t *testing.T) {
 func TestIntegrityRunExitCodesAndOutput(t *testing.T) {
 	f := newIntegFx(t)
 	var out bytes.Buffer
-	if code := integrityRun(false, true, f.deps, &out); code != 0 || !strings.Contains(out.String(), "14 of 14 files match release v1.2.3") || strings.Count(out.String(), "\n") != 1 {
+	if code := integrityRun(false, true, f.deps, &out); code != 0 || !strings.Contains(out.String(), "17 of 17 files match release v1.2.3") || strings.Count(out.String(), "\n") != 1 {
 		t.Errorf("a clean verified gate check prints one line and exits 0: %d %q", code, out.String())
 	}
 	out.Reset()
-	if code := integrityRun(false, false, f.deps, &out); code != 0 || !strings.Contains(out.String(), "14 of 14 files match release v1.2.3") {
+	if code := integrityRun(false, false, f.deps, &out); code != 0 || !strings.Contains(out.String(), "17 of 17 files match release v1.2.3") {
 		t.Errorf("without --gate the summary prints: %d %q", code, out.String())
 	}
 	out.Reset()
@@ -482,7 +482,7 @@ func TestIntegrityRunExitCodesAndOutput(t *testing.T) {
 	f.edit("tools/gate-model.sh", "x")
 	f.edit(integrityManifest, "x")
 	out.Reset()
-	if code := integrityRun(false, true, f.deps, &out); code != 3 || !strings.Contains(out.String(), "differs from release v1.2.3 (12 of 14") ||
+	if code := integrityRun(false, true, f.deps, &out); code != 3 || !strings.Contains(out.String(), "differs from release v1.2.3 (15 of 17") ||
 		!strings.Contains(out.String(), "tools/gate-model.sh: changed. Put it back: ") || strings.Contains(out.String(), integrityManifest) {
 		t.Errorf("a changed gate file exits 3 and names only the gate file: %d %q", code, out.String())
 	}
@@ -615,7 +615,7 @@ func TestIntegrityGroupsAndJSONKeys(t *testing.T) {
 		}
 	}
 	b, _ := json.Marshal(r) // the page reads these names
-	for _, k := range []string{`"state":"verified"`, `"tag":"v1.2.3"`, `"source":"online"`, `"match":13`, `"total":14`, `"blocking":true`, `"files":[`, `"path":"tools/sprint"`, `"group":"tools"`, `"gate":true`, `"status":"changed"`, `"restore":"`} {
+	for _, k := range []string{`"state":"verified"`, `"tag":"v1.2.3"`, `"source":"online"`, `"match":16`, `"total":17`, `"blocking":true`, `"files":[`, `"path":"tools/sprint"`, `"group":"tools"`, `"gate":true`, `"status":"changed"`, `"restore":"`} {
 		if !strings.Contains(string(b), k) {
 			t.Errorf("the JSON lacks %s: %s", k, b)
 		}
@@ -721,14 +721,14 @@ func TestIntegrityPreviewListsFilesWithoutClaimingAnything(t *testing.T) {
 	f.deps.atTag = func(string, string) (bool, bool, error) { return true, false, nil }
 	f.edit("tools/sprint", "edited")
 	r := checkIntegrity(f.deps)
-	if r.State != integrityNotFromRelease || len(r.Files) != 14 || anyChecked(r) || len(r.Agents) != 2 {
+	if r.State != integrityNotFromRelease || len(r.Files) != 17 || anyChecked(r) || len(r.Agents) != 2 {
 		t.Fatalf("preview: %+v", r)
 	}
 	groups := map[string]int{}
 	for _, x := range r.Files {
 		groups[x.Group]++
 	}
-	if groups["agents"] != 2 || groups["prompts"] != 4 || groups["tools"] != 7 || groups["programs"] != 1 {
+	if groups["agents"] != 2 || groups["prompts"] != 4 || groups["tools"] != 10 || groups["programs"] != 1 {
 		t.Errorf("groups: %v", groups)
 	}
 	h := newIntegFx(t)
@@ -796,26 +796,26 @@ func (f *integFx) edit2(p, content string) {
 // Protects GET /api/integrity and `sprint-check integrity`: an edited launcher that is not a gate file used to read "Matches" (t-16f5).
 func TestIntegrityEditedLauncherIsFlaggedNotBlocking(t *testing.T) {
 	f := newIntegFx(t)
-	f.withExec("tools/sprint.cmd", "tools/skills/lib.sh", "tools/sprint") // tools/sprint is a gate file too: it keeps its group
+	f.withExec("tools/tkt.cmd", "tools/skills/lib.sh", "tools/sprint") // tools/sprint is a gate file too: it keeps its group
 	r := checkIntegrity(f.deps)
-	if r.State != integrityVerified || r.Flagged || r.Blocking || !r.ScriptsListed || r.Total != 16 || r.Match != 16 {
+	if r.State != integrityVerified || r.Flagged || r.Blocking || !r.ScriptsListed || r.Total != 19 || r.Match != 19 {
 		t.Fatalf("a clean install counts the scripts once each: %+v", r)
 	}
-	f.edit("tools/sprint.cmd", "@echo Updated\n")
+	f.edit("tools/tkt.cmd", "@echo Updated\n")
 	os.Remove(filepath.Join(f.root, "tools/skills/lib.sh"))
 	r = checkIntegrity(f.deps)
-	if f.status(r, "tools/sprint.cmd") != "changed" || f.status(r, "tools/skills/lib.sh") != "missing" || !r.Flagged || r.Blocking || r.Match != 14 {
+	if f.status(r, "tools/tkt.cmd") != "changed" || f.status(r, "tools/skills/lib.sh") != "missing" || !r.Flagged || r.Blocking || r.Match != 17 {
 		t.Fatalf("an edited and a deleted script are flagged, neither blocks: %+v", r)
 	}
 	for _, x := range r.Files {
-		if (x.Path == "tools/sprint.cmd" || x.Path == "tools/skills/lib.sh") && (x.Group != "scripts" || x.Gate || x.Restore == "") {
+		if (x.Path == "tools/tkt.cmd" || x.Path == "tools/skills/lib.sh") && (x.Group != "scripts" || x.Gate || x.Restore == "") {
 			t.Errorf("%s: %+v", x.Path, x)
 		}
 		if x.Path == "tools/sprint" && (x.Group != "tools" || !x.Gate) {
 			t.Errorf("a gate file that is also an executable keeps its group: %+v", x)
 		}
 	}
-	if s := integritySummary(r); !strings.Contains(s, "tools/sprint.cmd differs") {
+	if s := integritySummary(r); !strings.Contains(s, "tools/tkt.cmd differs") {
 		t.Errorf("the summary names the first differing file: %q", s)
 	}
 	f.edit("tools/sprint", "x") // a gate file still blocks
@@ -853,8 +853,37 @@ func TestIntegrityExecKeysAreTheScriptsAndThePages(t *testing.T) {
 
 func TestIntegrityScriptListedTwiceCountsOnce(t *testing.T) {
 	f := newIntegFx(t)
-	f.withExec("tools/sprint.cmd", "tools/sprint.cmd", "tools/sprint") // a repeat, and a gate file
-	if r := checkIntegrity(f.deps); r.Total != 15 || r.Match != 15 {
-		t.Fatalf("13 gate paths + the manifest + one launcher, each once: %+v", r)
+	f.withExec("tools/sprint.cmd", "tools/sprint.cmd", "tools/sprint") // a repeat of a gate launcher, and a gate file
+	if r := checkIntegrity(f.deps); r.Total != 17 || r.Match != 17 {
+		t.Fatalf("16 gate paths + the manifest, each once (a repeated launcher and a gate file add nothing): %+v", r)
+	}
+}
+
+// t-ee92: on Windows the close runs through a .cmd launcher that starts the gate file's program, so a changed or deleted launcher blocks
+// like its twin (an edited sprint.cmd could run a different script while tools/sprint still matched). tkt.cmd, which starts no gate file, does not.
+func TestIntegrityGateLaunchersBlock(t *testing.T) {
+	f := newIntegFx(t)
+	f.withExec("tools/tkt.cmd")
+	for _, p := range []string{"tools/sprint.cmd", "tools/sprint-headless.cmd", "tools/sprint-headless-eval.cmd"} {
+		f.edit(p, "@echo different\n")
+		r := checkIntegrity(f.deps)
+		var x integrityFile
+		for _, y := range r.Files {
+			if y.Path == p {
+				x = y
+			}
+		}
+		if !r.Blocking || !x.Gate || x.Group != "tools" || x.Status != "changed" {
+			t.Errorf("an edited %s blocks as a gate file: %+v", p, x)
+		}
+		os.Remove(filepath.Join(f.root, filepath.FromSlash(p)))
+		if r = checkIntegrity(f.deps); !r.Blocking || f.status(r, p) != "missing" {
+			t.Errorf("a deleted %s blocks: %+v", p, r.Blocking)
+		}
+		f.edit(p, "content of "+p+"\n") // back to what the list holds
+	}
+	f.edit("tools/tkt.cmd", "@echo different\n")
+	if r := checkIntegrity(f.deps); r.Blocking || !r.Flagged || f.status(r, "tools/tkt.cmd") != "changed" {
+		t.Errorf("a launcher of no gate file is flagged and never blocks: %+v", r)
 	}
 }

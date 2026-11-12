@@ -28,7 +28,7 @@ def verify(d):
   for p in tree:
       blob = subprocess.check_output(["git", "-C", root, "cat-file", "blob", "HEAD:" + p])
       assert hashlib.sha256(blob).hexdigest() == d["files"][p], p
-  assert d["gate_files"] == ["tools/sprint", "tools/gate-snapshot.sh", "tools/subagent-log.sh", "tools/evidence.sh", "tools/sprint-headless", "tools/sprint-headless-eval", "tools/gate-model.sh"], d["gate_files"]
+  assert d["gate_files"] == ["tools/sprint", "tools/gate-snapshot.sh", "tools/subagent-log.sh", "tools/evidence.sh", "tools/sprint-headless", "tools/sprint-headless-eval", "tools/gate-model.sh", "tools/sprint.cmd", "tools/sprint-headless.cmd", "tools/sprint-headless-eval.cmd"], d["gate_files"]
   assert d["gate_prompts"] == ["agents/canon-reviewer.md", "agents/canon-evaluator.md", "skills/sprint/reference/review.md", "skills/sprint/reference/eval.md", "skills/sprint/reference/shared-gate-protocol.md", "skills/sprint/reference/visual-verify.md"], d["gate_prompts"]
   for p in d["gate_files"] + d["gate_prompts"]:
       assert p in d["files"], p
@@ -72,7 +72,7 @@ assert_contains "$r" "does not exist here"
 
 # 3. An odd file name (a space) stops the build: the JSON is hand-written, so the name is seen before it ships.
 mkdir -p "$W/repo/scripts" && cp "$LIST" "$W/repo/scripts/"
-g=(tools/sprint tools/gate-snapshot.sh tools/subagent-log.sh tools/evidence.sh tools/sprint-headless tools/sprint-headless-eval tools/gate-model.sh agents/canon-reviewer.md agents/canon-evaluator.md skills/sprint/reference/review.md skills/sprint/reference/eval.md skills/sprint/reference/shared-gate-protocol.md skills/sprint/reference/visual-verify.md)
+g=(tools/sprint tools/gate-snapshot.sh tools/subagent-log.sh tools/evidence.sh tools/sprint-headless tools/sprint-headless-eval tools/gate-model.sh tools/sprint.cmd tools/sprint-headless.cmd tools/sprint-headless-eval.cmd agents/canon-reviewer.md agents/canon-evaluator.md skills/sprint/reference/review.md skills/sprint/reference/eval.md skills/sprint/reference/shared-gate-protocol.md skills/sprint/reference/visual-verify.md)
 for f in "${g[@]}"; do mkdir -p "$W/repo/$(dirname "$f")"; echo x > "$W/repo/$f"; done
 # t-16f5: a shebang alone and the executable bit alone each make a file executable (in the real tree both always coincide, so only a fixture can tell the rules apart)
 printf '#!/bin/sh\n' > "$W/repo/tools/shebang-only"; echo x > "$W/repo/tools/mode-only"; chmod 755 "$W/repo/tools/mode-only"; echo x > "$W/repo/tools/plain-data"
@@ -93,6 +93,10 @@ git -C "$W/repo" rm -q "tools/gate-model.sh"; git -C "$W/repo" -c user.email=t@t
 git -C "$W/repo" rm -q "has space.txt"; git -C "$W/repo" -c user.email=t@t -c user.name=t commit -qm clean
 r="$("$W/repo/scripts/integrity-list.sh" v1.0.2 "$W/o2" HEAD 2>&1)" && fail "integrity-list: a tree without a gate file was accepted"
 assert_contains "$r" "gate path 'tools/gate-model.sh' is not in the tree"
+# t-ee92: a Windows launcher of a gate file is a gate path too: a tree without tools/sprint.cmd refuses to build
+echo x > "$W/repo/tools/gate-model.sh"; git -C "$W/repo" rm -q "tools/sprint.cmd"; git -C "$W/repo" -c user.email=t@t -c user.name=t add -A; git -C "$W/repo" -c user.email=t@t -c user.name=t commit -qm nolauncher
+r="$("$W/repo/scripts/integrity-list.sh" v1.0.3 "$W/o2" HEAD 2>&1)" && fail "integrity-list: a tree without a gate launcher was accepted"
+assert_contains "$r" "gate path 'tools/sprint.cmd' is not in the tree"
 
 # 4. releases.txt stays three fields: a line with a fourth is something release-manifest.sh refuses, which is why the list is pinned
 #    in a file of its own.

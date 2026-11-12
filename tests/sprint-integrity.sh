@@ -14,7 +14,7 @@ export SPRINT_CHECK_NO_BROWSER=1
 board_bin="$(build_board "$work/board")"   # copied into each install
 sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
 
-GATE_FILES=(tools/sprint tools/gate-snapshot.sh tools/subagent-log.sh tools/evidence.sh tools/sprint-headless tools/sprint-headless-eval tools/gate-model.sh)
+GATE_FILES=(tools/sprint tools/gate-snapshot.sh tools/subagent-log.sh tools/evidence.sh tools/sprint-headless tools/sprint-headless-eval tools/gate-model.sh tools/sprint.cmd tools/sprint-headless.cmd tools/sprint-headless-eval.cmd)
 GATE_PROMPTS=(agents/canon-reviewer.md agents/canon-evaluator.md skills/sprint/reference/review.md skills/sprint/reference/eval.md skills/sprint/reference/shared-gate-protocol.md skills/sprint/reference/visual-verify.md)
 
 # An install copy whose list (saved under CANON_HOME/integrity, as a first online check would) matches the copy exactly.
@@ -29,8 +29,8 @@ new_install() {
     sep=""; for p in "${GATE_FILES[@]}"; do printf '%s"%s"' "$sep" "$p"; sep=,; done
     printf '],"gate_prompts":['
     sep=""; for p in "${GATE_PROMPTS[@]}"; do printf '%s"%s"' "$sep" "$p"; sep=,; done
-    printf '],"exec_files":["tools/sprint.cmd","tools/canon.cmd"],"files":{'   # t-16f5: launchers that are not gate files
-    sep=""; for p in "${GATE_FILES[@]}" "${GATE_PROMPTS[@]}" tools/cockpit-daemon.sha256 tools/sprint.cmd tools/canon.cmd; do printf '%s"%s":"%s"' "$sep" "$p" "$(sha "$inst/$p")"; sep=,; done
+    printf '],"exec_files":["tools/tkt.cmd","tools/canon.cmd"],"files":{'   # t-16f5: launchers that are not gate files (t-ee92: the three that start a gate file's program are gate files)
+    sep=""; for p in "${GATE_FILES[@]}" "${GATE_PROMPTS[@]}" tools/cockpit-daemon.sha256 tools/tkt.cmd tools/canon.cmd; do printf '%s"%s":"%s"' "$sep" "$p" "$(sha "$inst/$p")"; sep=,; done
     printf '}}\n'
   } > "$CANON_HOME/integrity/v$ver.json"
   sha "$CANON_HOME/integrity/v$ver.json" > "$CANON_HOME/integrity/v$ver.pin"
@@ -53,7 +53,7 @@ not_refused() {
 # Clean install: the gate passes with one line; the close stops later, at a gate that has nothing to do with integrity.
 complete
 not_refused "a clean install"
-assert_contains "$out" "integrity: 16 of 16 files match release v9.8.7"
+assert_contains "$out" "integrity: 19 of 19 files match release v9.8.7"
 
 # One byte appended to a gate file: refused, with the file and the restore command, and an event.
 printf '#' >> "$inst/tools/gate-model.sh"
@@ -69,14 +69,24 @@ new_install "$inst"; rm "$inst/agents/canon-evaluator.md"
 complete
 [[ "$rc" -eq 1 ]] && [[ "$out" == *"agents/canon-evaluator.md: missing"* ]] || fail "a missing gate prompt must refuse: rc=$rc $out"
 
-# t-16f5: an edited launcher (not a gate file, as on the Windows VM: tools/sprint.cmd) and a changed programs manifest never refuse, but the
+# t-16f5: an edited launcher that starts no gate file (tools/tkt.cmd) and a changed programs manifest never refuse, but the
 # close names the launcher on its one integrity line. Before this ticket the line said every file matched.
 new_install "$inst"; printf '#' >> "$inst/tools/cockpit-daemon.sha256"
 complete; not_refused "a changed programs manifest"
-assert_contains "$out" "integrity: 15 of 16 files match release v9.8.7"
-new_install "$inst"; printf '@echo Updated\n' >> "$inst/tools/sprint.cmd"
+assert_contains "$out" "integrity: 18 of 19 files match release v9.8.7"
+new_install "$inst"; printf '@echo Updated\n' >> "$inst/tools/tkt.cmd"
 complete; not_refused "an edited launcher"
-assert_contains "$out" "integrity: 15 of 16 files match release v9.8.7; tools/sprint.cmd differs"
+assert_contains "$out" "integrity: 18 of 19 files match release v9.8.7; tools/tkt.cmd differs"
+# t-ee92: the launchers of the gate files ARE gate files. On Windows `sprint complete` runs through tools/sprint.cmd, so one that is edited (it could
+# run a different script while tools/sprint still matched) refuses the close like its twin; so does a deleted one.
+for l in tools/sprint.cmd tools/sprint-headless.cmd tools/sprint-headless-eval.cmd; do
+  new_install "$inst"; printf '@echo Updated\n' >> "$inst/$l"
+  complete; [[ "$rc" -eq 1 ]] || fail "an edited $l must refuse the close, got $rc: $out"
+  assert_contains "$out" "cannot close: a gate file or gate prompt in this canon install differs"; assert_contains "$out" "$l: changed"
+done
+new_install "$inst"; rm "$inst/tools/sprint.cmd"
+complete; [[ "$rc" -eq 1 && "$out" == *"tools/sprint.cmd: missing"* ]] || fail "a missing tools/sprint.cmd must refuse: rc=$rc $out"
+assert_contains "$(event_line gate.rejected "$id")" '"reason":"integrity"'
 
 # Fail open, even with a changed gate file in the install:
 new_install "$inst"; printf '#' >> "$inst/tools/gate-model.sh"

@@ -24,9 +24,9 @@ if command -v sha256sum >/dev/null 2>&1; then sha() { sha256sum "$1" | cut -d' '
 elif command -v shasum >/dev/null 2>&1; then sha() { shasum -a 256 "$1" | cut -d' ' -f1; }
 else die "no sha256sum or shasum on this machine"; fi
 
-# The seven files that decide a close or choose who grades it, and the prompts and protocol the gates read. One owner: the Go check
+# The ten files that decide a close or choose who grades it (t-ee92: the three Windows launchers that start a gate file's program count as much as the program), and the prompts and protocol the gates read. One owner: the Go check
 # reads these lists from the signed-off JSON, never from the install it is checking.
-GATE_FILES=(tools/sprint tools/gate-snapshot.sh tools/subagent-log.sh tools/evidence.sh tools/sprint-headless tools/sprint-headless-eval tools/gate-model.sh)
+GATE_FILES=(tools/sprint tools/gate-snapshot.sh tools/subagent-log.sh tools/evidence.sh tools/sprint-headless tools/sprint-headless-eval tools/gate-model.sh tools/sprint.cmd tools/sprint-headless.cmd tools/sprint-headless-eval.cmd)
 GATE_PROMPTS=(agents/canon-reviewer.md agents/canon-evaluator.md skills/sprint/reference/review.md skills/sprint/reference/eval.md skills/sprint/reference/shared-gate-protocol.md skills/sprint/reference/visual-verify.md)
 
 work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
@@ -41,7 +41,7 @@ done < <(cd "$work" && find . -type f -print0 | LC_ALL=C sort -z)
 for g in "${GATE_FILES[@]}" "${GATE_PROMPTS[@]}"; do grep -q " $g\$" "$rows" || { rm -f "$rows"; die "gate path '$g' is not in the tree of $rev"; }; done
 
 # The files an install can run: a script by extension, a shebang, or the executable bit (an extensionless tools/ launcher). t-16f5: Admin >
-# Integrity compares these too, so an edited launcher on any platform shows, not only the thirteen gate files and prompts.
+# Integrity compares these too, so an edited launcher on any platform shows, not only the gate files and prompts.
 # A zip install leaves out what release-zip.sh's SLIM_EXCLUDE names (tests/, the Go source): listing those would show every zip install as
 # missing files. One owner: the array is read from release-zip.sh at $rev, never copied here.
 slim="$(git -C "$REPO_ROOT" show "$rev:scripts/release-zip.sh" 2>/dev/null | grep -m1 '^SLIM_EXCLUDE=(')" || slim=""
