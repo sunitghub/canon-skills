@@ -380,15 +380,21 @@ func TestFindingClassesFlagBounds(t *testing.T) {
 }
 
 func TestFindingClassesDefaultTable(t *testing.T) {
-	// no --table inside a canon checkout (this package's directory is one): the install's own tools/finding-classes.tsv is read
+	// no --table: the install's own tools/finding-classes.tsv, found from the project folder (a canon root has tools/src-key.sh)
+	root := t.TempDir()
+	os.MkdirAll(filepath.Join(root, ".tickets"), 0o755)
+	os.MkdirAll(filepath.Join(root, "tools"), 0o755)
+	os.WriteFile(filepath.Join(root, "tools", "src-key.sh"), []byte("#!/bin/sh\n"), 0o644)
+	os.WriteFile(filepath.Join(root, "tools", "finding-classes.tsv"), []byte("bloat\tx\tHygiene\n"), 0o644)
+	old, _ := os.Getwd()
+	os.Chdir(root)
+	defer os.Chdir(old)
 	var o, e bytes.Buffer
 	if c := findingClassesCLI([]string{"--last", "1"}, &o, &e); c != 0 || !strings.HasPrefix(o.String(), "finding classes:") {
 		t.Fatalf("default table: %d %q %q", c, o.String(), e.String())
 	}
-	// outside any canon install (and the test binary is not one): exit 2 naming --table
-	old, _ := os.Getwd()
-	os.Chdir(t.TempDir())
-	defer os.Chdir(old)
+	// a project that is not a canon install (and the test binary is not one): exit 2 naming --table
+	os.Remove(filepath.Join(root, "tools", "src-key.sh"))
 	o.Reset()
 	e.Reset()
 	if c := findingClassesCLI(nil, &o, &e); c != 2 || !strings.Contains(e.String(), "no canon install found; pass --table <file>") {
