@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Added
+
+- `tools/pre-gate-check.sh` now prints a size field before every close: `planned N files, changed M, +A/-D`, with the files `plan.md` does not name, any file or diff over `tools/size-caps.tsv`, and a new file with no test in the diff. It is advisory and never fails the check (t-835f).
+
 ## [0.54.1] - 2026-11-11
 
 Run `canon update`. The secret scan changed; no program did, so no daemon restart is needed.

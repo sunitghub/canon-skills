@@ -1,0 +1,4 @@
+# size-caps.tsv (t-835f) — advisory limits for pre-gate-check.sh's size field: name, net added lines (added minus removed). Tab-separated.
+# file-net: one file; total-net: the whole diff against the merge base. Lower a limit; never raise one to hide a flag. Line count is not quality: a flag asks for a look, it never blocks.
+file-net	400
+total-net	1000

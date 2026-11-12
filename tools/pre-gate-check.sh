@@ -7,6 +7,9 @@
 #   A project with tests/gate-cases/ also runs the gate eval set (gate-cases.sh run) and says `gate cases N/N`; a failing case is non-zero (t-2178).
 #   Advisory only (never a refusal): symbols declared in a changed file and referenced nowhere (dead-code-scan.sh
 #   --changed), and every changed file the scan cannot read ("not scanned").
+#   t-835f: also advisory, a `size` field: `planned N files, changed M, +A/-D` from the same diff, with `unplanned:` (a changed file plan.md's
+#   `## Files` does not name; a `dir/` entry names all under it), `large:` / `total` (net lines over tools/size-caps.tsv) and `no test:` (a new
+#   non-doc file when the diff holds no test file). Line count is not quality, so it never changes the exit code.
 # Output: the one stamped line (plus the failing tool's output when a check fails); the full log is
 # <tickets dir>/<id>/evidence/pre-gate.log (the checkout's .tickets/, or CANON_TICKETS_DIR when it has none), written through evidence.sh stamp.
 # Changed files = committed diff from PRE_GATE_BASE (default: merge-base HEAD origin/main) to HEAD. Complexity is not
@@ -20,6 +23,40 @@ while [ -L "$_SOURCE" ]; do
   [[ "$_SOURCE" != /* ]] && _SOURCE="$_DIR/$_SOURCE"
 done
 SCRIPT_DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
+
+# t-835f: size_report <base> prints the `size (advisory)` text. Flags are advisory; a missing plan, limit table or diff says skipped, never a pass.
+size_report() {
+  local base="$1" root td plan sect fnet tnet a d f n=0 m=0 ta=0 tdl=0 dirs="" tok planned unp="" nu=0 large="" newsrc="" nn=0 hastest=0 st flags
+  root="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "size: skipped | not a git checkout"; return; }
+  td="$root/.tickets"; [[ -d "$td" ]] || td="${CANON_TICKETS_DIR-}"
+  plan="$td/${PRE_GATE_ID-}/plan.md"
+  [[ -n "${PRE_GATE_ID-}" && -f "$plan" ]] || { echo "size: skipped | no plan.md"; return; }
+  fnet="$(awk -F'\t' '$1=="file-net" { print $2 }' "$SCRIPT_DIR/size-caps.tsv" 2>/dev/null)"
+  tnet="$(awk -F'\t' '$1=="total-net" { print $2 }' "$SCRIPT_DIR/size-caps.tsv" 2>/dev/null)"
+  [[ "$fnet" =~ ^[0-9]+$ && "$tnet" =~ ^[0-9]+$ ]] || { echo "size: skipped | no limits in size-caps.tsv"; return; }
+  sect="$(awk '/^## Files/ { on = 1; next } /^## / { on = 0 } on' "$plan")"
+  while IFS= read -r tok; do [[ "$tok" == */ ]] && dirs+=" $tok"; done < <(tr -s ' ;,`\t' '\n' <<<"$sect")
+  while IFS=$'\t' read -r a d f; do
+    [[ -n "$f" && "$f" != .tickets/* ]] || continue
+    [[ "$a" =~ ^[0-9]+$ ]] || { a=0; d=0; }
+    m=$((m + 1)); ta=$((ta + a)); tdl=$((tdl + d)); planned=0
+    [[ "$sect" == *"$f"* ]] && planned=1
+    for tok in $dirs; do [[ "$f" == "$tok"* ]] && planned=1; done
+    if ((planned)); then n=$((n + 1)); else nu=$((nu + 1)); ((nu > 8)) || unp+=" $f"; fi
+    ((a - d > fnet)) && large+=" $f +$((a - d))"
+    case "$f" in tests/*|*_test.go|*.test.js|*.spec.js) hastest=1 ;; esac
+  done < <(git -c core.quotePath=false diff --numstat --no-renames "$base" HEAD)
+  while IFS=$'\t' read -r st f; do
+    [[ "$st" == A && "$f" != .tickets/* ]] || continue
+    case "$f" in *.md|tests/*|*_test.go|*.test.js|*.spec.js) ;; *) nn=$((nn + 1)); ((nn > 8)) || newsrc+=" $f" ;; esac
+  done < <(git -c core.quotePath=false diff --name-status --no-renames "$base" HEAD)
+  flags=""
+  ((nu)) && flags+="; unplanned:$unp$( ((nu > 8)) && echo " +$((nu - 8)) more")"
+  [[ -z "$large" ]] || flags+="; large:$large"
+  ((ta - tdl > tnet)) && flags+="; total +$((ta - tdl))"
+  ((nn && !hastest)) && flags+="; no test:$newsrc$( ((nn > 8)) && echo " +$((nn - 8)) more")"
+  echo "size (advisory): planned $n files, changed $m, +$ta/-$tdl${flags:-; flags none}"
+}
 
 run_checks() {
   local base files f line="pre-gate" fails="" out rc=0 sc=() nd=() gd=() d
@@ -82,6 +119,7 @@ run_checks() {
     ns="$(sed -n 's/^# not scanned: //p' <<<"$scan")"
   fi
   line+=" | dead code (advisory): ${dead:-none} | not scanned: ${ns:-none}"
+  line+=" | $(size_report "$base")"
   printf '%s\n' "$line"
   [[ -z "$fails" ]] || printf '%s' "$fails"
   return "$rc"
@@ -91,6 +129,7 @@ if [[ "${1-}" == --run ]]; then run_checks; exit $?; fi
 
 id="${1-}"
 [[ "$id" =~ ^t-[a-z0-9]{4}$ ]] || { echo "usage: pre-gate-check.sh <ticket-id>" >&2; exit 2; }
+export PRE_GATE_ID="$id"
 set +e; msg="$("$SCRIPT_DIR/evidence.sh" stamp "$id" pre-gate -- bash "$SCRIPT_DIR/pre-gate-check.sh" --run 2>&1)"; rc=$?; set -e
 # 125 or 2 from evidence.sh itself (a refusal, a missing ticket): nothing was stamped, say why.
 if [[ $rc -eq 125 || ( $rc -eq 2 && "$msg" != "evidence: wrote "* ) ]]; then printf '%s\n' "$msg" >&2; exit "$rc"; fi

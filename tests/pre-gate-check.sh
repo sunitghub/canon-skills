@@ -187,5 +187,38 @@ git add tests && git commit -qm needs
 run "$ID"; assert_eq 0 "$code" "pre-gate-check: a skipped case never fails the check"; assert_contains "$out" "| gate cases 0/0 (1 skipped) |"
 git reset -q --hard "$BASE"; git clean -fdq -e .tickets; rm -rf ".tickets/$ID/evidence"
 
+# --- t-835f: the advisory size field. Protects the pre-gate line every close prints (the reviewer quotes it). No plan.md: skipped, exit 0.
+reset
+printf '#!/usr/bin/env bash\necho ok\n' > tools/clean.sh; commit
+run "$ID"; assert_eq 0 "$code"; assert_contains "$out" "| size: skipped | no plan.md" "pre-gate-check: no plan.md is skipped, never a pass"
+# the repo's tools/ has no size-caps.tsv: the script's own table is read from its own directory, so a stub dir without one says so
+reset
+printf '#!/usr/bin/env bash\necho ok\n' > tools/planned.sh
+printf '#!/usr/bin/env bash\necho ok\n' > tools/stray.sh
+mkdir -p lib; printf 'x\n' > lib/under.txt
+seq 1 600 | sed 's/^/echo /' | { printf '#!/usr/bin/env bash\n'; cat; } > tools/big.sh
+commit
+printf '# Plan\n\n## Files\ntools/planned.sh; tools/big.sh; lib/\n\n## Decisions\ntools/stray.sh is named here, outside Files\n' > ".tickets/$ID/plan.md"
+run "$ID"; assert_eq 0 "$code" "pre-gate-check: size flags never change the exit code"
+assert_contains "$out" "size (advisory): planned 3 files, changed 4, +606/-0;" "pre-gate-check: planned/changed/+A/-D"
+assert_contains "$out" "unplanned: tools/stray.sh" "pre-gate-check: a file only named outside ## Files is unplanned"
+[[ "$out" == *"unplanned: tools/stray.sh;"* ]] || fail "pre-gate-check: a dir/ entry must name the files under it: $out"
+assert_contains "$out" "large: tools/big.sh +601" "pre-gate-check: a file over file-net"
+assert_contains "$out" "no test: lib/under.txt tools/big.sh tools/planned.sh tools/stray.sh" "pre-gate-check: new source files and no test in the diff"
+grep -q "size (advisory)" ".tickets/$ID/evidence/pre-gate.log" || fail "pre-gate-check: the size field is not in the stamped log"
+# a test file in the diff clears no-test; a total over total-net is named
+mkdir -p tests; printf '#!/usr/bin/env bash\ntrue\n' > tests/one.sh; commit
+run "$ID"; [[ "$out" != *"no test:"* ]] || fail "pre-gate-check: a test file in the diff must clear no test: $out"
+seq 1 450 | sed 's/^/echo /' > tools/more.txt; seq 1 450 | sed 's/^/echo /' > tools/more2.txt; commit
+run "$ID"; assert_contains "$out" "; total +1" "pre-gate-check: total over total-net"
+# more than 8 unplanned files: the first 8 are named, the rest counted; no limits table beside the script: skipped, not a pass
+reset
+for i in 1 2 3 4 5 6 7 8 9 10; do printf '#!/usr/bin/env bash\ntrue\n' > "tools/u$i.sh"; done; mkdir -p tests; printf '#!/usr/bin/env bash\ntrue\n' > tests/t.sh; commit
+printf '# Plan\n\n## Files\ntests/t.sh\n' > ".tickets/$ID/plan.md"
+run "$ID"; assert_contains "$out" "+2 more" "pre-gate-check: unplanned beyond 8 is counted"
+set +e; out="$(cd "$R" && PRE_GATE_BASE="$BASE" PRE_GATE_ID="$ID" bash "$S/pre-gate-check.sh" --run 2>&1)"; set -e
+assert_contains "$out" "size: skipped | no limits in size-caps.tsv" "pre-gate-check: a missing limits table is skipped"
+rm -f ".tickets/$ID/plan.md"; reset
+
 [[ -f "$CANON_HOME/canary" && -z "$(ls -A "$TMPDIR")" ]] || fail "pre-gate-check: left a temp file behind"
 echo "pre-gate-check: ok"
