@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.55.1] - 2026-11-12
+
+Run `canon update`. Shell only: no daemon restart is needed.
+
 - Added: `tools/pre-gate-check.sh` now names an edit to an always-on agent file (`CLAUDE.md`, `AGENTS.md`, `PROMOTED.md`, `standards/efficiency.md`) with its first added lines, so a deployment note written into an agent-private file is seen at the close. Advisory; the watched files are `agent-file` rows in `tools/size-caps.tsv` (t-dc18).
 
 ## [0.55.0] - 2026-11-11
