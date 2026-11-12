@@ -6,8 +6,12 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
-### Fixed
-- Admin > Integrity checked only the 13 gate files and prompts, so an edited `tools/sprint.cmd` (or any other launcher or script) still read "Matches". It now compares every script and launcher the release ships (`exec_files` in the release's integrity list) on every platform and flags a changed or missing one in a "Scripts and launchers" group; only gate files and prompts still block `sprint complete` (t-16f5). Go changed: daemon release.
+## [0.55.3] - 2026-11-12
+
+Run `canon update`, then restart the daemon (Admin's **Restart Daemon** button): `canon update` fetches the new `canon-go`, but a running daemon stays on the old version.
+
+- Fixed: Admin > Integrity checked only the 13 gate files and prompts, so an edited `tools/sprint.cmd` (or any other launcher or script) still read "Matches". It now compares every script and launcher the release ships (`exec_files` in the release's integrity list: `.sh`, `.cmd`, `.ps1`, `.bat`, shebang or executable-bit files a zip install carries) on every platform and flags a changed or missing one in a "Scripts and launchers" group, naming the file. Only gate files and prompts still block `sprint complete` (t-16f5). A script added to an install is not detected yet. The Windows check of this is on t-f066.
+- Changed: `scripts/test.sh` starts the 20 longest suites first, so the full suite's median wall went from 360 s to 317 s on this Mac (-11.9%, 3 runs each); `--jobs` stays 8 (t-045f).
 
 ## [0.55.2] - 2026-11-12
 
