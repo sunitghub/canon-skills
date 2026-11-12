@@ -224,6 +224,12 @@ mkdir -p docs; printf '# d\n' > docs/n.md; printf '# Plan\n\n## Files\ndocs/n.md
 run "$ID"; assert_contains "$out" "planned 1 files, changed 1, +1/-0; flags none" "pre-gate-check: a new .md is not a new source file"
 printf '#!/usr/bin/env bash\ntrue\n' > tools/n.sh; printf 'package x\n' > x_test.go; commit
 run "$ID"; [[ "$out" != *"no test:"* ]] || fail "pre-gate-check: a *_test.go in the diff must clear no test: $out"
+# a plan saved with CRLF line endings (Windows) still names a dir/ entry; a glob character in a dir entry is literal, never expanded against the checkout
+reset
+mkdir -p generated lib; printf 'x\n' > generated/x.txt; printf 'x\n' > lib/y.txt
+printf '# Plan\r\n\r\n## Files\r\nlib/\r\nge*/\r\n' > ".tickets/$ID/plan.md"; git add -A -f . && git commit -qm crlf
+run "$ID"; assert_contains "$out" "planned 1 files, changed 2," "pre-gate-check: a CRLF plan names lib/, and ge*/ is not a glob"
+assert_contains "$out" "unplanned: generated/x.txt" "pre-gate-check: a glob in a dir entry must not name generated/"
 # more than 8 unplanned files: the first 8 are named, the rest counted; no limits table beside the script: skipped, not a pass
 reset
 for i in 1 2 3 4 5 6 7 8 9 10; do printf '#!/usr/bin/env bash\ntrue\n' > "tools/u$i.sh"; done; mkdir -p tests; printf '#!/usr/bin/env bash\ntrue\n' > tests/t.sh; commit

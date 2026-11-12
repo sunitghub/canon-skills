@@ -38,13 +38,13 @@ size_report() {
   tnet="$(awk -F'\t' '$1=="total-net" { print $2 }' "$SCRIPT_DIR/size-caps.tsv" 2>/dev/null)"
   [[ "$fnet" =~ ^[0-9]+$ && "$tnet" =~ ^[0-9]+$ ]] || { echo "size: skipped | no limits in size-caps.tsv"; return; }
   sect="$(awk '/^## Files/ { on = 1; next } /^## / { on = 0 } on' "$plan")"
-  while IFS= read -r tok; do [[ "$tok" == */ ]] && dirs+=" $tok"; done < <(tr -s ' ;,`\t' '\n' <<<"$sect")
+  while IFS= read -r tok; do [[ "$tok" == */ ]] && dirs+="$tok"$'\n'; done < <(tr -s ' ;,`\t\r' '\n' <<<"$sect")
   while IFS=$'\t' read -r a d f; do
     [[ -n "$f" && "$f" != .tickets/* ]] || continue
     [[ "$a" =~ ^[0-9]+$ ]] || { a=0; d=0; }
     m=$((m + 1)); ta=$((ta + a)); tdl=$((tdl + d)); planned=0
     [[ "$sect" == *"$f"* ]] && planned=1
-    for tok in $dirs; do [[ "$f" == "$tok"* ]] && planned=1; done
+    while IFS= read -r tok; do [[ -n "$tok" && "$f" == "$tok"* ]] && planned=1; done <<<"$dirs"
     if ((planned)); then n=$((n + 1)); else nu=$((nu + 1)); ((nu > 8)) || unp+=" $f"; fi
     ((a - d > fnet)) && large+=" $f +$((a - d))"
     ! is_test_path "$f" || hastest=1
