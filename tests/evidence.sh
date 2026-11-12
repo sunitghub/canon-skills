@@ -45,6 +45,13 @@ for n in mutant-sweep test-sh board-spec; do
   assert_count 0 "before the reviewer" "$ED/$n.log"
 done
 ev stamp "$ID" pre-gate -- bash -c 'echo ran'; [[ "$out" != *"before the reviewer"* ]] || fail "evidence: pre-gate must not be warned: $out"
+# the line is on stderr, not stdout; a name outside the three is silent; a closed stderr does not stop the stamp
+so="$(cd "$REPO" && bash "$EV" stamp "$ID" test-sh -- bash -c 'echo ran' 2>/dev/null)"; [[ "$so" != *"before the reviewer"* ]] || fail "evidence: the warning must be on stderr: $so"
+se="$(cd "$REPO" && bash "$EV" stamp "$ID" test-sh -- bash -c 'echo ran' 2>&1 >/dev/null)"; [[ "$se" == *"stamping test-sh before the reviewer"* ]] || fail "evidence: the warning is not on stderr: $se"
+ev stamp "$ID" suite -- bash -c 'echo ran'; [[ "$out" != *"before the reviewer"* ]] || fail "evidence: a name outside the three must not be warned: $out"
+rm -f "$ED/mutant-sweep.log"
+(cd "$REPO" && bash "$EV" stamp "$ID" mutant-sweep -- bash -c 'echo ran' 2>&- >/dev/null) || true   # the final "wrote" line fails on a closed stderr as before; the warning must not stop the stamp earlier
+assert_file_exists "$ED/mutant-sweep.log" "evidence: a closed stderr must not stop the stamp before it is written"
 ev stamp "$ID" mutant-sweep -- bash -c 'exit 7'; assert_eq 7 "$code" "evidence: the warning does not change the command's exit code"
 assert_contains "$out" "before the reviewer"
 printf 'x\n' > ".tickets/$ID/review-notes.md"

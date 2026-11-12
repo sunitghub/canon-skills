@@ -8,6 +8,7 @@
 # `uname -srm` when the board binary is missing or older; t-a83a: the machine, never its hostname; the bash running this script, which a `bash <script>` command
 # also uses, not a shebang's own interpreter), the combined output, and a last line `exit <rc>` (never the command's own output: ours is
 # appended after it). It exits with the command's own code.
+# t-c923: stamping mutant-sweep, test-sh or board-spec while the ticket has no review-notes.md prints one advisory line on stderr (never in the log): the reviewer's fixes would make it stale.
 # It refuses, running nothing and writing nothing, with 125 (like `timeout`, so a command's own exit 2 is not mistaken for a refusal) when
 # tracked files are modified (a stamp names the commit that was tested, so the tree must BE that commit; untracked files, .tickets/ and
 # the evidence-neutral close-time docs below are ignored), and again, writing nothing, if tracked files changed while the command ran.
@@ -217,7 +218,7 @@ if [[ "$mode" == stamp ]]; then
   head_sha="$(git -C "$root" rev-parse HEAD)"
   # t-c923: advisory, stderr only, never in the log: the stamp, the exit code and the event are the same with or without it.
   if [[ " $LATE_STAMPS " == *" $name "* && ! -f "$tdir/$id/review-notes.md" ]]; then
-    echo "evidence: stamping $name before the reviewer: its fixes will make this log stale; run the reviewer first unless this tier skips it" >&2
+    echo "evidence: stamping $name before the reviewer: its fixes will make this log stale; run the reviewer first unless this tier skips it" >&2 || true   # a closed stderr must not stop the stamp under set -e
   fi
   mkdir -p "$edir"
   tmp="$(mktemp "$edir/.stamp.XXXXXX")"; trap 'rm -f "$tmp"' EXIT
