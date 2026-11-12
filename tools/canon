@@ -374,7 +374,15 @@ update_cmd() {
   if [ "$refresh_only" = 1 ]; then refresh_projects; fi
   local home; home="$(install_home)"
   if [ "$home" != "$repo" ]; then update_packages "$home" "$repo" "$to" "$reinstall"; fi
-  if [ "$reinstall" = 1 ]; then echo "canon update: --reinstall repairs a release package; this install is a git checkout: use git -C $repo checkout -- <file>. Nothing was changed." >&2; exit 1; fi
+  if [ "$reinstall" = 1 ]; then
+    # t-a582: only a versioned package is repaired this way. A git checkout restores from git; a flat zip install (no .git, no packages/) is put
+    # back by re-running its installer, which a plain `canon update` does on Windows; elsewhere the install.sh line (update_without_git's).
+    if [ -e "$repo/.git" ]; then echo "canon update: --reinstall repairs a release package; this install is a git checkout: use git -C $repo checkout -- <file>. Nothing was changed." >&2
+    elif _is_windows; then echo "canon update: --reinstall repairs a versioned release package; this is a flat zip install ($repo). Run canon update: it re-runs the installer and puts every file back (and moves you to the latest release). Nothing was changed." >&2
+    else echo "canon update: --reinstall repairs a versioned release package; $repo is neither one nor a git clone. Reinstall with: curl -fsSL https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.sh | bash. Nothing was changed." >&2
+    fi
+    exit 1
+  fi
   if ! git -C "$repo" rev-parse --git-dir >/dev/null 2>&1; then
     update_without_git "$repo" "$to"
   fi

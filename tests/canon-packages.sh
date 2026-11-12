@@ -300,6 +300,16 @@ set +e; out="$(run "$C" update --reinstall --to latest 2>&1)"; code=$?; set -e
 assert_eq 2 "$code"; assert_contains "$out" "--reinstall takes a release tag"; assert_eq "$CUR" "$(tree_hash "$PK")"
 set +e; out="$(run "$ROOT/tools/canon" update --reinstall 2>&1)"; code=$?; set -e
 assert_eq 1 "$code"; assert_contains "$out" "this install is a git checkout"; assert_contains "$out" "checkout -- <file>"
+# t-a582: a FLAT install without .git (the Windows zip install) is not a git checkout and not a versioned package: --reinstall refuses it, names what
+# really restores it (canon update re-runs the installer on Windows; the install.sh line elsewhere), and changes nothing. uname is stubbed for Windows.
+FLAT="$W/flat"; copy_canon_tree "$FLAT"; [ ! -e "$FLAT/.git" ] || rm -rf "$FLAT/.git"
+FLATSUM="$(tree_hash "$FLAT/tools")"
+set +e; out="$(run "$FLAT/tools/canon" update --reinstall 2>&1)"; code=$?; set -e
+assert_eq 1 "$code"; assert_contains "$out" "install.sh | bash"; assert_contains "$out" "Nothing was changed"; refute_contains "$out" "git checkout"
+mkdir -p "$W/unamestub"; printf '#!/bin/sh\n[ "$1" = -s ] && { echo MINGW64_NT-10.0-26200; exit 0; }\nexec /usr/bin/uname "$@"\n' > "$W/unamestub/uname"; chmod +x "$W/unamestub/uname"
+set +e; out="$(PATH="$W/unamestub:$PATH" run "$FLAT/tools/canon" update --reinstall 2>&1)"; code=$?; set -e
+assert_eq 1 "$code"; assert_contains "$out" "flat zip install"; assert_contains "$out" "Run canon update"; assert_contains "$out" "Nothing was changed"; refute_contains "$out" "git checkout"
+assert_eq "$FLATSUM" "$(tree_hash "$FLAT/tools")"
 bash -c 'exec -a "$0" sleep 120' "$PK/tools/stub-running" & KP=$!; PIDS+=("$KP")
 sleep 0.5
 out="$(run "$C" update --reinstall 2>&1)" || fail "reinstall with a running program failed: $out"

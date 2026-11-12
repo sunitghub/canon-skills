@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 
@@ -440,11 +441,7 @@ func checkIntegrityCore(d integrityDeps) integrityResult {
 			if f.Group == "scripts" {
 				res.Flagged = true
 			}
-			if gitErr == nil {
-				f.Restore = "git -C " + shellQuote(root) + " checkout -- " + p
-			} else {
-				f.Restore = "canon update --reinstall"
-			}
+			f.Restore = restoreCommand(root, p, gitErr == nil, trackDir(root) != root, runtime.GOOS)
 			if f.Gate {
 				res.Blocking = true
 			}
@@ -523,6 +520,25 @@ func trackDir(root string) string {
 		}
 	}
 	return root
+}
+
+// installShLine is what `canon update` prints for a flat install on a system with no installer to re-run (tools/canon update_without_git).
+const installShLine = "curl -fsSL https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.sh | bash"
+
+// restoreCommand is the command that puts a changed or missing file back, by what the install is (t-a582): a git checkout restores from
+// git; a versioned release package is repaired by `canon update --reinstall`, which refuses everything else; a flat zip install is
+// updated by re-running its installer, which is what a plain `canon update` does on Windows (the user ran it on the VM and the edited
+// file came back). Pure, so every layout and OS is tested on any machine.
+func restoreCommand(root, path string, hasGit, versioned bool, goos string) string {
+	switch {
+	case hasGit:
+		return "git -C " + shellQuote(root) + " checkout -- " + path
+	case versioned:
+		return "canon update --reinstall"
+	case goos == "windows":
+		return "canon update"
+	}
+	return installShLine
 }
 
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }

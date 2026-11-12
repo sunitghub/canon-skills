@@ -61,7 +61,7 @@ complete
 [[ "$rc" -eq 1 ]] || fail "a changed gate file must exit 1, got $rc: $out"
 assert_contains "$out" "cannot close: a gate file or gate prompt in this canon install differs"
 assert_contains "$out" "tools/gate-model.sh: changed"
-assert_contains "$out" "canon update"
+assert_contains "$out" "Put it back: "   # t-a582: the command follows the install (a flat fixture: install.sh here, canon update on Windows)
 assert_contains "$(event_line gate.rejected "$id")" '"reason":"integrity"'
 
 # A deleted gate prompt: refused too.

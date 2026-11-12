@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -162,20 +163,51 @@ func TestIntegrityManifestChangeShowsButDoesNotBlock(t *testing.T) {
 	}
 }
 
+// t-a582: the "Put it back" command follows what the install is. A flat zip install (the Windows installer's, no .git and no packages/) used to
+// get `canon update --reinstall`, which repairs only the versioned layout and refused it on the user's VM. Prod path: Admin > Integrity.
 func TestIntegrityRestoreCommand(t *testing.T) {
+	const sh = "curl -fsSL https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.sh | bash"
+	for _, c := range []struct {
+		name              string
+		hasGit, versioned bool
+		goos, want        string
+	}{
+		{"git checkout", true, false, "linux", "git -C '/r' checkout -- tools/sprint"},
+		{"git checkout on windows", true, false, "windows", "git -C '/r' checkout -- tools/sprint"},
+		{"versioned package", false, true, "darwin", "canon update --reinstall"},
+		{"versioned package on windows", false, true, "windows", "canon update --reinstall"},
+		{"flat zip install on windows", false, false, "windows", "canon update"},
+		{"flat install elsewhere", false, false, "linux", sh},
+		{"flat install on a mac", false, false, "darwin", sh},
+	} {
+		if got := restoreCommand("/r", "tools/sprint", c.hasGit, c.versioned, c.goos); got != c.want {
+			t.Errorf("%s: %q, want %q", c.name, got, c.want)
+		}
+	}
+	// the real layouts, through checkIntegrity: the first fixture is a flat install (a plain folder), the second the versioned layout, the third a git checkout
 	f := newIntegFx(t)
 	f.edit("tools/sprint", "x")
-	r := checkIntegrity(f.deps)
-	if got := r.Files[0].Restore; got != "canon update --reinstall" {
-		t.Errorf("a release package is put back with canon update --reinstall, got %q", got)
+	flat := "canon update"
+	if runtime.GOOS != "windows" {
+		flat = sh
 	}
+	if got := checkIntegrity(f.deps).Files[0].Restore; got != flat {
+		t.Errorf("a flat install is put back with %q on %s, got %q", flat, runtime.GOOS, got)
+	}
+	f = newIntegFx(t)
+	f.edit("tools/sprint", "x")
+	f.intoLayout("v1.2.3")
+	if got := checkIntegrity(f.deps).Files[0].Restore; got != "canon update --reinstall" {
+		t.Errorf("a versioned release package is put back with canon update --reinstall, got %q", got)
+	}
+	f = newIntegFx(t)
+	f.edit("tools/sprint", "x")
 	if err := os.Mkdir(filepath.Join(f.root, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	f.deps.atTag = func(string, string) (bool, bool, error) { return true, true, nil }
-	r = checkIntegrity(f.deps)
 	want := "git -C '" + realPath(t, f.root) + "' checkout -- tools/sprint"
-	if got := r.Files[0].Restore; got != want {
+	if got := checkIntegrity(f.deps).Files[0].Restore; got != want {
 		t.Errorf("a git install is put back with git checkout, got %q want %q", got, want)
 	}
 }
@@ -451,7 +483,7 @@ func TestIntegrityRunExitCodesAndOutput(t *testing.T) {
 	f.edit(integrityManifest, "x")
 	out.Reset()
 	if code := integrityRun(false, true, f.deps, &out); code != 3 || !strings.Contains(out.String(), "differs from release v1.2.3 (12 of 14") ||
-		!strings.Contains(out.String(), "tools/gate-model.sh: changed. Put it back: canon update") || strings.Contains(out.String(), integrityManifest) {
+		!strings.Contains(out.String(), "tools/gate-model.sh: changed. Put it back: ") || strings.Contains(out.String(), integrityManifest) {
 		t.Errorf("a changed gate file exits 3 and names only the gate file: %d %q", code, out.String())
 	}
 	out.Reset()
@@ -583,7 +615,7 @@ func TestIntegrityGroupsAndJSONKeys(t *testing.T) {
 		}
 	}
 	b, _ := json.Marshal(r) // the page reads these names
-	for _, k := range []string{`"state":"verified"`, `"tag":"v1.2.3"`, `"source":"online"`, `"match":13`, `"total":14`, `"blocking":true`, `"files":[`, `"path":"tools/sprint"`, `"group":"tools"`, `"gate":true`, `"status":"changed"`, `"restore":"canon update --reinstall"`} {
+	for _, k := range []string{`"state":"verified"`, `"tag":"v1.2.3"`, `"source":"online"`, `"match":13`, `"total":14`, `"blocking":true`, `"files":[`, `"path":"tools/sprint"`, `"group":"tools"`, `"gate":true`, `"status":"changed"`, `"restore":"`} {
 		if !strings.Contains(string(b), k) {
 			t.Errorf("the JSON lacks %s: %s", k, b)
 		}
