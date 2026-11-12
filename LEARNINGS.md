@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-12-2026 11:13
+learnings-sweep last run: 11-12-2026 12:05
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-12 | [t-16f5](.tickets/t-16f5/learnings.md) | A check that lists "every file the release ships" must be built from what an install carries, not the tag's tree: the zip leaves out tests/ and the Go source, so the first design would have shown every zip install as missing files (`SLIM_EXCLUDE` in release-zip.sh is the owner). Also: `read -N` is bash 4.1+ and macOS ships 3.2, so a shebang test found nothing until a git-derived expected list was compared. | UNPROMOTED |
 | 2026-11-12 | [t-045f](.tickets/t-045f/learnings.md) | The "longest first" order of `LONGEST` is unguarded (`tests/test-sh-runner.sh:117` sorts only the first two started suites), so a reordered list stays green; it costs speed only. Also: a timing driver started with `nohup` ignores SIGHUP and fails the merge-pr HUP check, so run it plainly. | UNPROMOTED |
 | 2026-11-12 | [t-a94c](.tickets/t-a94c/ticket.md) | Replay a cache or carry-forward rule over the recorded history before building it: the sound version of the incremental mutation sweep (carry only if the logic file is identical and tests only appended) qualified for 2 of 59 reruns (0.5%), after a reviewer NO had already narrowed it three times; the replay would have taken ten minutes and saved the sprint. | UNPROMOTED |
 | 2026-11-12 | [t-c923](.tickets/t-c923/learnings.md) | A mutation sweep mapped to a test file slower than its timeout (`tests/evidence.sh` 523 s against the 300 s default) fails at the baseline and mutates nothing: map a focused command (the file's setup plus the new block, about 4 s), prove by hand that one mutant fails it, and keep the whole file for the one full-suite stamp (t-045f splits it). | UNPROMOTED |
@@ -82,5 +83,4 @@ learnings-sweep last run: 11-12-2026 11:13
 | 2026-11-03 | [t-cb0a](.tickets/t-cb0a/learnings.md) | Inserting a line after an anchor in help text must check what follows the anchor: the new copy-back line landed between `close` and its continuation lines, so close's refusal note read as copy-back's; a test that asserts presence passed, only one that asserts position catches it. | `dismissed (covered: standards/efficiency-notes.md)` |
 | 2026-11-03 | [t-7f7c](.tickets/t-7f7c/learnings.md) | A UI rename must grep every string that names the old set: after the Logbook went from two tabs to four, the header button and the Projects card tooltips still said "Handoff and Learnings" (app.html:60, cockpit-projects.js:55). | `dismissed (covered: standards/efficiency-notes.md)` |
 | 2026-11-03 | [t-92f2](.tickets/t-92f2/learnings.md) | A check written before a later redesign keeps enforcing the old rule: the daemon's t-e5ff "ticket must be in the worktree" guard predated t-cd06 (tkt resolves main's .tickets/), so a land worktree could not be resumed; when a resolution rule changes, grep every place that re-implements it (daemon guard, board API field, rail text, comments). | `dismissed (covered: standards/efficiency-notes.md)` |
-| 2026-11-03 | [t-68dd](.tickets/t-68dd/learnings.md) | A new exception to a skill rule must grep the skill for the old wording: Apply still said "extend that entry" next to the new "covered → write nothing" rule until the reviewer caught it. | `dismissed (covered: standards/efficiency.md)` |
 <!-- canon:learnings:END -->
