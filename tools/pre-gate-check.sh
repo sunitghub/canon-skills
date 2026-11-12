@@ -64,7 +64,7 @@ size_report() {
   echo "size (advisory): planned $n files, changed $m, +$ta/-$tdl${flags:-; flags none}"
 }
 
-# t-dc18: agent_file_report <base> prints the `agent files (advisory)` text: each changed file the `agent-file` rows of size-caps.tsv watch (a name with a `/` matches that path, a bare name at any depth), with +A/-D and its first 3 added lines (80 characters each). Advisory: the reviewer judges, a missing row says skipped, never none.
+# t-dc18: agent_file_report <base> prints the `agent files (advisory)` text: each changed file the `agent-file` rows of size-caps.tsv watch (a name with a `/` matches that path, a bare name at any depth), with +A/-D and its first 3 added lines (80 characters each, control characters such as an escape sequence replaced by a space: the lines are repo text and reach the terminal). Advisory: the reviewer judges, a missing row says skipped, never none.
 agent_file_report() {
   local base="$1" names w a d f ln n=0 k out="" hit
   names="$(awk -F'\t' '$1=="agent-file" && $2!="" { print $2 }' "$SCRIPT_DIR/size-caps.tsv" 2>/dev/null)"
@@ -78,10 +78,10 @@ agent_file_report() {
     n=$((n + 1)); ((n > 8)) && continue
     out+="; $f +$a/-$d"; k=0
     while IFS= read -r ln; do
-      ln="${ln//$'\r'/}"; [[ -n "${ln//[[:space:]]/}" ]] || continue
+      [[ -n "${ln//[[:space:]]/}" ]] || continue
       k=$((k + 1)); ((k > 3)) && continue
       out+=" \"${ln:0:80}\""
-    done < <(git -c core.quotePath=false diff -U0 --no-renames "$base" HEAD -- "$f" | awk '/^@@/ { h = 1; next } h && /^\+/ { print substr($0, 2) }')
+    done < <(git -c core.quotePath=false diff -U0 --no-renames "$base" HEAD -- "$f" | awk '/^@@/ { h = 1; next } h && /^\+/ { l = substr($0, 2); gsub(/[[:cntrl:]]/, " ", l); print l }')
     ((k > 3)) && out+=" +$((k - 3)) more"
   done < <(git -c core.quotePath=false diff --numstat --no-renames "$base" HEAD)
   ((n > 8)) && out+="; +$((n - 8)) more files"

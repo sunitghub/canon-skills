@@ -285,6 +285,11 @@ reset
 for i in 1 2 3 4 5 6 7 8 9 10; do mkdir -p "d$i"; printf 'n\n' > "d$i/AGENTS.md"; done; commit
 run "$ID"; assert_contains "$out" "; +2 more files" "pre-gate-check: files beyond 8 are counted"
 [[ "$out" != *"d8/AGENTS.md +"* && "$out" != *"d9/AGENTS.md +"* ]] || fail "pre-gate-check: the 9th and later files are counted, not listed: $out"
+# a control character in an added line (an escape sequence) never reaches the stamped line or the terminal
+reset
+printf 'a\033[31mred\tb\r\n' > CLAUDE.md; commit
+run "$ID"; assert_contains "$out" 'CLAUDE.md +1/-0 "a [31mred b "' "pre-gate-check: a control character in an added line is replaced by a space"
+[[ "$out" != *$'\033'* ]] || fail "pre-gate-check: an escape byte reached the output"
 # a path row does not match deeper; a binary file reads +0/-0; a non-ASCII directory is matched as is, not git-quoted
 reset
 mkdir -p x/standards "é"; printf 'n\n' > x/standards/efficiency.md; printf '\0\1\2' > AGENTS.md; printf 'n\n' > "é/CLAUDE.md"; commit
