@@ -84,4 +84,28 @@ rel_dir="$(mktemp -d)"; printf 'gitdir: ../main/.git/worktrees/w\n' > "$rel_dir/
 assert_eq "$rel_dir/../main/.tickets" "$(cd "$rel_dir" && PATH="$STUBS/map:$PATH" && source "$ROOT/tools/ticket-root.sh" && tickets_dir)"
 rm -rf "$rel_dir"
 
+# t-6be7: `sprint eval-verdict` in a worktree that holds its own .tickets/ copy reads that copy (unchanged) and now says so when its report
+# differs from main's. Prod path: the `sprint complete` retry budget (eval_fail_count, complete.md step 3). Each variant that must stay quiet
+# is here too: the first version of the guard survived 18 mutants because only the "differs" case was run.
+ev_main="$WORK/.tickets/t-abcd"
+printf -- '---\nid: t-abcd\nstatus: in_progress\neval_fail_count: 0\n---\n# t\n' > "$ev_main/ticket.md"
+ev_verdict() { (cd "$1" && bash "$ROOT/tools/sprint" eval-verdict t-abcd 2>&1); }   # stdout and stderr together
+WT="$WORK-worktrees/feat-x"
+printf 'evaluator-run-id: 1-1\npass: the real one\n' > "$ev_main/eval-report.md"
+mkdir -p "$WT/.tickets/t-abcd"; cp "$ev_main/ticket.md" "$WT/.tickets/t-abcd/ticket.md"
+printf 'evaluator-run-id: 0-0\nfail: stale old failure\n' > "$WT/.tickets/t-abcd/eval-report.md"
+out="$(ev_verdict "$WT")"
+assert_contains "$out" "eval-report.md differs between this worktree ($WT/.tickets/t-abcd/eval-report.md) and the main checkout"
+assert_contains "$out" "t-abcd: eval_fail_count=1"      # still the worktree's copy: the line says so, it does not change the count
+out="$(ev_verdict "$WT/.tickets")"; assert_contains "$out" "eval-report.md differs"   # from a subfolder too
+cp "$ev_main/eval-report.md" "$WT/.tickets/t-abcd/eval-report.md"
+out="$(ev_verdict "$WT")"; [[ "$out" == "t-abcd: eval_fail_count=0" ]] || fail "identical reports must stay quiet: $out"
+printf 'evaluator-run-id: 0-0\nfail: stale old failure\n' > "$WT/.tickets/t-abcd/eval-report.md"
+out="$(ev_verdict "$WORK")"; [[ "$out" == "t-abcd: eval_fail_count=0" ]] || fail "the main checkout must stay quiet: $out"
+mv "$ev_main/eval-report.md" "$ev_main/eval-report.md.off"
+out="$(ev_verdict "$WT")"; [[ "$out" == "t-abcd: eval_fail_count="* && "$out" != *differs* ]] || fail "no report in main must stay quiet: $out"
+mv "$ev_main/eval-report.md.off" "$ev_main/eval-report.md"
+rm -rf "$WT/.tickets"
+out="$(ev_verdict "$WT")"; [[ "$out" == "t-abcd: eval_fail_count=0" ]] || fail "a worktree with no .tickets/ of its own reads main's and must stay quiet: $out"
+
 printf 'ticket-root-worktree: ok\n'
