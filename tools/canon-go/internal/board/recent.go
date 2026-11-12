@@ -15,6 +15,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -67,14 +68,40 @@ type recentLine struct {
 	text string
 }
 
+// ticketIDRe is the shape of a ticket id taken from an event before it becomes a path (the rule tools/sprint applies to ids from events).
+var ticketIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+
+// ticketHere reports whether ticket id still has a folder in root's .tickets/ (t-154b): the activity log is keyed by project path, so a
+// folder recreated at the same path inherits the old project's events, and their tickets are not here. A closed, cancelled, archived or
+// compacted ticket keeps its folder. The id is validated before it reaches the filesystem, a link is not followed, and an error other than
+// "does not exist" (an unreadable .tickets/) says yes: hiding a user's history on an error would look like data loss. seen caches one Lstat per id.
+func ticketHere(root, id string, seen map[string]bool) bool {
+	if !ticketIDRe.MatchString(id) {
+		return false
+	}
+	if v, ok := seen[id]; ok {
+		return v
+	}
+	fi, err := os.Lstat(filepath.Join(ticketsDirForRoot(root), id))
+	here := true
+	if err != nil {
+		here = !os.IsNotExist(err)
+	} else if !fi.IsDir() {
+		here = false // a link or a file is not a ticket folder
+	}
+	seen[id] = here
+	return here
+}
+
 // recentLines are the project's last n stage events, newest first: events whose project is root, a live worktree of it, or a
-// folder in <root>-worktrees/ (belongsTo, the Machines node's rule).
+// folder in <root>-worktrees/ (belongsTo, the Machines node's rule), and whose ticket still exists in root's .tickets/ (ticketHere).
 func recentLines(home, root string, n int) []string {
 	live := map[string]bool{}
 	for _, e := range registeredWorktrees(root) {
 		live[resolvedOrAbs(fmt.Sprint(e["path"]))] = true
 	}
 	var all []recentLine
+	here := map[string]bool{}
 	read := map[string]bool{}
 	seq := 0
 	for _, p := range events.DayFiles(home) {
@@ -91,7 +118,9 @@ func recentLines(home, root string, n int) []string {
 			}
 			t := ev.Data["ticket"]
 			if t == "" {
-				t = "-"
+				t = "-" // a PR merged outside canon names no ticket: nothing to check it against, shown as before
+			} else if !ticketHere(root, t, here) {
+				return
 			}
 			all = append(all, recentLine{ev.TS, seq, fmt.Sprintf("%s · %s · %s", ev.TS.Local().Format("01-02 15:04"), t, render(ev.Data))})
 		})

@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+- Fixed: a project recreated at the same folder path inherited the old project's history in HANDOFF.md's "Recent activity" block and in `sprint recent`, because the activity log is keyed by project path (the user's new ToDo-Demo showed three tickets that were not in it). A line now needs its ticket's folder in the project's `.tickets/`; closed, archived and compacted tickets keep their folder and their lines. An event with no ticket (a PR merged outside canon) is shown as before; an unreadable `.tickets/` keeps the lines (t-154b). Go changed: daemon release.
+
 - Fixed: the ticket's Machines tab listed one cloud machine twice, a "cloud" row and an "other machine" row with the same Linux line: the cloud session's logs sit in `evidence/cloud/` (`tkt import-results`) and in `evidence/` (the merged PR). A log in `evidence/` that names a cloud row's machine now joins that row (its count added), so the tab reads one row, "2 evidence logs". A log of a different machine still gets its own row (t-42ed).
 - Fixed: `tkt import-results` named "this machine" in its trail through `uname`, which under Git Bash on an ARM64 Windows VM mixes `ARM64` and `x86_64`. It now uses the same machine line as the evidence headers (`canon-go machine`, e.g. `Windows 11 10.0.26200, arm64 (canon runs as amd64, emulated), 4 cores, 6 GB`), `uname` only when the board has no `machine` (t-42ed). Go changed: daemon release.
 

@@ -13,6 +13,7 @@ M="$W/app"; mkdir -p "$M"; M="$(cd -P "$M" && pwd -P)"; git -C "$M" init -q -b m
 printf '# Handoff\n\n<!-- canon:handoff:BEGIN -->\n## Current Focus\nmine\n<!-- canon:handoff:END -->\n' > "$M/HANDOFF.md"
 git -C "$M" add HANDOFF.md && git -C "$M" commit -qm base
 WT="$W/app-worktrees/feat-x"; git -C "$M" worktree add -q "$WT" -b feat-x
+mkdir -p "$M/.tickets/t-aaaa"   # t-154b: a line needs its ticket's folder in this project: t-aaaa is here, t-gone (below) is another incarnation's
 lib() { ( source "$ROOT/tools/platform-lib.sh"; "$@" ); }
 
 # an event from the worktree, then the refresh run from inside it: main's HANDOFF.md gets the block, the worktree's copy does not
@@ -20,6 +21,10 @@ lib() { ( source "$ROOT/tools/platform-lib.sh"; "$@" ); }
 (cd "$WT" && lib handoff_recent "$WT")
 assert_grep '· t-aaaa · plan approved \(normal\)$' "$M/HANDOFF.md"
 assert_count 0 'canon:recent' "$WT/HANDOFF.md"
+# t-154b: the log is keyed by project path, so a folder recreated here inherits an old project's events: a ticket with no folder here is not shown
+"$SPRINT_CHECK_BIN" event plan.approved --project "$(cd -P "$WT" && pwd -P)" --source sprint ticket=t-gone tier=normal
+(cd "$WT" && lib handoff_recent "$WT")
+assert_count 0 't-gone' "$M/HANDOFF.md"; assert_grep '· t-aaaa · plan approved \(normal\)$' "$M/HANDOFF.md"
 [[ -z "$(git -C "$WT" status --porcelain)" ]] || fail "the worktree changed: $(git -C "$WT" status --porcelain)"
 assert_eq "$(lib main_checkout "$WT")" "$M"
 

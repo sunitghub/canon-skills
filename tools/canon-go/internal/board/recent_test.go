@@ -23,6 +23,9 @@ func TestRecentLines(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	for _, id := range []string{"t-aaaa", "t-cccc"} { // t-154b: a line needs its ticket folder in this project (t-bbbb is another project's)
+		os.MkdirAll(filepath.Join(root, ".tickets", id), 0o755)
+	}
 	emit("plan.approved", root, map[string]string{"ticket": "t-aaaa", "tier": "normal"})
 	emit("gate.finished", wt, map[string]string{"ticket": "t-aaaa", "role": "evaluator", "verdict": "pass", "model": "claude-sonnet-5-5"})
 	emit("ticket.status_changed", root, map[string]string{"ticket": "t-aaaa", "from": "open", "to": "in_progress"}) // not a stage
@@ -126,6 +129,7 @@ func TestRecentKindsTwinsAndLiveWorktree(t *testing.T) {
 	}
 	far = resolvedOrAbs(far)
 	home := t.TempDir()
+	os.MkdirAll(filepath.Join(root, ".tickets", "t-aaaa"), 0o755)
 	emit := func(kind, project string, d map[string]string) {
 		if err := events.Emit(home, kind, "tkt", project, d); err != nil {
 			t.Fatal(err)
@@ -203,5 +207,83 @@ func TestWorktreeDirtyIgnoresTheBlock(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "HANDOFF.md"), []byte(setRecent(strings.Replace(narrative, "x\n", "mine\n", 1), []string{"a"})), 0o644)
 	if !worktreeDirty(dir) {
 		t.Fatal("a narrative edit must still count")
+	}
+}
+
+// t-154b: the activity log is keyed by project path, so a folder recreated at the same path inherits the old project's events (the user's
+// ToDo-Demo showed t-4zbo, t-aep3 and t-rjsx next to its own t-32ah). A line needs its ticket's folder in this project's .tickets/. Prod path:
+// `sprint recent` and the HANDOFF.md block written at plan approval, close and merge.
+func TestRecentLinesNeedTheirTicketHere(t *testing.T) {
+	root := resolvedOrAbs(t.TempDir())
+	home := t.TempDir()
+	wt := filepath.Join(filepath.Dir(root), filepath.Base(root)+"-worktrees", "feat-x")
+	emit := func(kind, project string, d map[string]string) {
+		if err := events.Emit(home, kind, "sprint", project, d); err != nil {
+			t.Fatal(err)
+		}
+	}
+	os.MkdirAll(filepath.Join(root, ".tickets", "t-here"), 0o755)
+	os.MkdirAll(filepath.Join(root, ".tickets", "t-closed"), 0o755) // closed, archived and compacted tickets keep their folder
+	other := t.TempDir()
+	os.MkdirAll(filepath.Join(other, "elsewhere"), 0o755)
+	os.Symlink(filepath.Join(other, "elsewhere"), filepath.Join(root, ".tickets", "t-link")) // a link is not a ticket folder
+	os.WriteFile(filepath.Join(root, ".tickets", "t-file"), []byte("x"), 0o644)              // nor is a file
+	os.MkdirAll(filepath.Join(root, "outside"), 0o755)                                       // "../outside" would resolve to a real folder if the id reached the filesystem unchecked
+	os.MkdirAll(filepath.Join(root, ".tickets", "a", "b"), 0o755)
+	emit("plan.approved", root, map[string]string{"ticket": "t-gone", "tier": "normal"}) // the old incarnation's ticket
+	emit("sprint.completed", root, map[string]string{"ticket": "t-gone"})
+	emit("plan.approved", root, map[string]string{"ticket": "t-here", "tier": "normal"})
+	emit("sprint.completed", wt, map[string]string{"ticket": "t-here"}) // a worktree sprint: checked against the MAIN checkout's .tickets/
+	emit("sprint.completed", root, map[string]string{"ticket": "t-closed"})
+	emit("sprint.completed", root, map[string]string{"ticket": "t-link"})
+	emit("sprint.completed", root, map[string]string{"ticket": "t-file"})
+	emit("sprint.completed", root, map[string]string{"ticket": "../outside"})
+	emit("sprint.completed", root, map[string]string{"ticket": "a/b"})
+	emit("github.merged", root, map[string]string{"pr": "5"}) // a PR merged outside canon names no ticket: shown as before
+	got := recentLines(home, root, 20)
+	joined := strings.Join(got, "\n")
+	for _, bad := range []string{"t-gone", "t-link", "t-file", "outside", "a/b"} {
+		if strings.Contains(joined, bad) {
+			t.Fatalf("a line for %q was shown: %q", bad, got)
+		}
+	}
+	if len(got) != 4 || !strings.Contains(joined, "t-here · sprint completed") || !strings.Contains(joined, "t-here · plan approved") ||
+		!strings.Contains(joined, "t-closed · sprint completed") || !strings.Contains(joined, "· - · merged (PR #5)") {
+		t.Fatalf("recentLines = %q, want the existing tickets' lines and the ticketless merge", got)
+	}
+	// the HANDOFF block holds the same lines
+	hf := filepath.Join(t.TempDir(), "HANDOFF.md")
+	os.WriteFile(hf, []byte("# Handoff\n\n"+recentBegin+"\n"+recentEnd+"\n"), 0o644)
+	t.Setenv("CANON_HOME", home) // recentCLI reads the machine's log
+	var out, errb bytes.Buffer
+	if code := recentCLI([]string{"--project", root, "--handoff", hf}, strings.NewReader(""), &out, &errb); code != 0 {
+		t.Fatalf("recent --handoff = %d %s", code, errb.String())
+	}
+	if b, _ := os.ReadFile(hf); strings.Contains(string(b), "t-gone") || !strings.Contains(string(b), "t-here") {
+		t.Fatalf("the HANDOFF block = %q", b)
+	}
+	// a project recreated at a path with old events and no tickets yet: nothing but a ticketless line
+	fresh := resolvedOrAbs(t.TempDir())
+	emit("plan.approved", fresh, map[string]string{"ticket": "t-old1", "tier": "normal"})
+	if l := recentLines(home, fresh, 10); len(l) != 0 {
+		t.Fatalf("a recreated project shows the old history: %q", l)
+	}
+}
+
+// An unreadable .tickets/ must not hide the user's history: the answer on an error other than "does not exist" is yes.
+func TestRecentLinesFailOpenOnAnUnreadableTicketsFolder(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root reads a folder with no permissions")
+	}
+	root := resolvedOrAbs(t.TempDir())
+	home := t.TempDir()
+	os.MkdirAll(filepath.Join(root, ".tickets", "t-here"), 0o755)
+	if err := events.Emit(home, "sprint.completed", "sprint", root, map[string]string{"ticket": "t-here"}); err != nil {
+		t.Fatal(err)
+	}
+	os.Chmod(filepath.Join(root, ".tickets"), 0)
+	t.Cleanup(func() { os.Chmod(filepath.Join(root, ".tickets"), 0o755) })
+	if l := recentLines(home, root, 10); len(l) != 1 {
+		t.Fatalf("an unreadable .tickets/ hid the line: %q", l)
 	}
 }
