@@ -197,3 +197,20 @@ v1_get() {
   V1_BODY="${out#*$'\r\n\r\n'}"
 }
 v1_daemon_down() { local h; h="$(printf '%s' "${V1_HDR:-}" | tr 'A-Z' 'a-z')"; [[ "$h" =~ x-cockpit-daemon:[[:space:]]*down ]]; }
+
+# canon_awk_pkey — t-134b: the awk source of pkey(p), ONE definition of "the same folder" for awk programs that compare paths (sprint token-spend).
+# A folder has several spellings on Windows: C:\x and the JSON-escaped C:\\x (native tools, Claude Code transcripts), C:/x (git and native programs:
+# Git Bash converts a /c/x argument for a native exe, so canon-go stores it so) and /c/x (Git Bash): all become /c/x. A trailing slash is dropped
+# (the root / stays), a UNC path stays //host/share, a POSIX path is otherwise unchanged. Only the drive letter is lower-cased: Windows paths are
+# case-insensitive, but lower-casing a whole path would merge /c/Foo and /c/foo on macOS and Linux. NOT handled: \\?\ and device paths,
+# drive-relative C:x, 8.3 names, per-folder case sensitivity. A key is for comparing, never a path to hand to another program. t-141a gives the
+# shell side the same contract. Use: awk "$canon_awk_pkey"'...program...' (the text ends in a newline).
+canon_awk_pkey='function pkey(p,   unc) {
+  unc = (p ~ /^\\\\+[^\\]/)
+  gsub(/\\+/, "/", p)
+  if (unc) p = "/" p
+  if (p ~ /^[A-Za-z]:(\/|$)/) p = "/" tolower(substr(p, 1, 1)) substr(p, 3)
+  if (length(p) > 1) sub(/\/+$/, "", p)
+  return p
+}
+'

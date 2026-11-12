@@ -130,6 +130,35 @@ assert_eq "t-aaaa normal 0^ 170 343 1k" "$(row t-aaaa)"
 out="$("$SPRINT" token-spend --ticket t-zzzz)"
 assert_contains "$out" "No completed sprint for t-zzzz."
 
+# t-134b: one folder, several spellings. On Windows the events' project reached the log as C:/Users/x/p (a native exe got Git Bash's converted argument)
+# while the path list said /c/Users/x/p, so every turn was dropped. canon_awk_pkey is the one definition; the table is the spellings it must join (and not).
+source "$ROOT/tools/platform-lib.sh"
+pk() { printf '%s\n' "$1" | awk "$canon_awk_pkey"'{ print pkey($0) }'; }
+for sp in 'C:\\Users\\x\\p' 'C:\Users\x\p' 'C:/Users/x/p' 'c:/Users/x/p' 'C:/Users/x/p/' '/c/Users/x/p' '/c/Users/x/p/'; do
+  assert_eq "/c/Users/x/p" "$(pk "$sp")"
+done
+assert_eq "/Users/x/p" "$(pk '/Users/x/p/')"; assert_eq "/" "$(pk '/')"; assert_eq "" "$(pk '')"; assert_eq "/c" "$(pk 'C:/')"
+assert_eq "/Users/X/p" "$(pk '/Users/X/p')"            # only the drive letter is lower-cased: /Users/X and /Users/x are two folders on a case-sensitive system
+assert_eq "//host/share" "$(pk '\\\\host\\share')"       # a JSON-escaped UNC path stays distinguishable from /host/share
+[[ "$(pk 'C:/Users/x/p')" != "$(pk 'D:/Users/x/p')" ]] || fail "another drive is another folder"
+
+# End to end: the events' project and the turns' cwd are spelled differently from the project path (a trailing slash here; on Windows C:/ against /c/).
+p2="$(make_project)"; r2="$(cd "$p2" && pwd -P)"; trap 'rm -rf "$project" "$cfg" "$wt" "$CANON_HOME" "$p2" "${p3:-}"' EXIT
+mkdir -p "$cfg/projects/$(printf '%s' "$r2" | sed 's/[^A-Za-z0-9]/-/g')"
+{ printf '{"schema":1,"ts":"2026-10-02T14:00:00.000Z","kind":"sprint.started","project":"%s/","data":{"ticket":"t-wwww"}}\n' "$r2"
+  printf '{"schema":1,"ts":"2026-10-02T14:30:00.000Z","kind":"sprint.completed","project":"%s/","data":{"ticket":"t-wwww"}}\n' "$r2"; } > "$events/2026-10-02.jsonl"
+turn2() { printf '{"parentUuid":null,"isSidechain":false,"type":"assistant","message":{"model":"claude-sonnet-5-5","id":"%s","type":"message","role":"assistant","content":[{"type":"text","text":"x"}],"usage":{"input_tokens":100,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":20}},"timestamp":"2026-10-02T%s.000Z","cwd":"%s"}\n' "$1" "$2" "$3"; }
+turn2 msg_w1 14:10:00 "$r2/" > "$cfg/projects/$(printf '%s' "$r2" | sed 's/[^A-Za-z0-9]/-/g')/w.jsonl"
+out="$(cd "$p2" && "$SPRINT" token-spend --ticket t-wwww)"
+assert_contains "$out" "t-wwww"; [[ "$out" != *"No transcript turns"* ]] || fail "a sprint whose project and cwd are spelled differently found no turns: $out"
+# turns that match no sprint: the message now says how many were read and which folders were compared
+p3="$(make_project)"; r3="$(cd "$p3" && pwd -P)"; mkdir -p "$cfg/projects/$(printf '%s' "$r3" | sed 's/[^A-Za-z0-9]/-/g')"
+{ printf '{"schema":1,"ts":"2026-10-03T14:00:00.000Z","kind":"sprint.started","project":"%s","data":{"ticket":"t-vvvv"}}\n' "$r3"
+  printf '{"schema":1,"ts":"2026-10-03T14:30:00.000Z","kind":"sprint.completed","project":"%s","data":{"ticket":"t-vvvv"}}\n' "$r3"; } > "$events/2026-10-03.jsonl"
+turn2 msg_v1 18:00:00 "$r3" | sed 's/2026-10-02/2026-10-03/' > "$cfg/projects/$(printf '%s' "$r3" | sed 's/[^A-Za-z0-9]/-/g')/v.jsonl"
+out="$(cd "$p3" && "$SPRINT" token-spend --ticket t-vvvv)"
+assert_contains "$out" "No transcript turns inside these sprints"; assert_contains "$out" "read 1 turns in $r3; the sprints ran in $r3"
+
 for bad in "--last 0" "--last x" "--last x1" "--last 1x" "--last" "--ticket" "--bogus"; do
   set +e
   # shellcheck disable=SC2086  # split on purpose
