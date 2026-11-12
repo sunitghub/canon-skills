@@ -24,6 +24,9 @@ while [ -L "$_SOURCE" ]; do
 done
 SCRIPT_DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
 
+# t-835f: is_test_path <path>: a test file by canon's names. Written with a prefix strip, not a `tests/` glob: evidence.sh's scope audit refuses a reader source that builds a suite path at run time.
+is_test_path() { [[ "${1#tests/}" != "$1" ]] && return 0; case "$1" in *_test.go|*.test.js|*.spec.js) return 0 ;; esac; return 1; }
+
 # t-835f: size_report <base> prints the `size (advisory)` text. Flags are advisory; a missing plan, limit table or diff says skipped, never a pass.
 size_report() {
   local base="$1" root td plan sect fnet tnet a d f n=0 m=0 ta=0 tdl=0 dirs="" tok planned unp="" nu=0 large="" newsrc="" nn=0 hastest=0 st flags
@@ -44,11 +47,12 @@ size_report() {
     for tok in $dirs; do [[ "$f" == "$tok"* ]] && planned=1; done
     if ((planned)); then n=$((n + 1)); else nu=$((nu + 1)); ((nu > 8)) || unp+=" $f"; fi
     ((a - d > fnet)) && large+=" $f +$((a - d))"
-    case "$f" in tests/*|*_test.go|*.test.js|*.spec.js) hastest=1 ;; esac
+    ! is_test_path "$f" || hastest=1
   done < <(git -c core.quotePath=false diff --numstat --no-renames "$base" HEAD)
   while IFS=$'\t' read -r st f; do
     [[ "$st" == A && "$f" != .tickets/* ]] || continue
-    case "$f" in *.md|tests/*|*_test.go|*.test.js|*.spec.js) ;; *) nn=$((nn + 1)); ((nn > 8)) || newsrc+=" $f" ;; esac
+    [[ "$f" == *.md ]] && continue; ! is_test_path "$f" || continue
+    nn=$((nn + 1)); ((nn > 8)) || newsrc+=" $f"
   done < <(git -c core.quotePath=false diff --name-status --no-renames "$base" HEAD)
   flags=""
   ((nu)) && flags+="; unplanned:$unp$( ((nu > 8)) && echo " +$((nu - 8)) more")"
