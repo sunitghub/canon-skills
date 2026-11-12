@@ -201,7 +201,7 @@ rm -rf "$CASES"
 export GATE_CASES_DIR="$ROOT/tests/gate-cases"   # explicit: this test also runs in a scratch copy that has no .git
 rc "$G" run; assert_eq 0 "$code" "gate-cases: the real set fails: $out"
 assert_contains "$out" "  ok        board-spec-zero-tests (guard)"; assert_contains "$out" "  ok        stale-evidence-stamp (guard)"
-assert_contains "$out" "recorded  reviewer-mirror-push-false-positive"; assert_contains "$out" "recorded  eval-verdict-worktree-copy"
+assert_contains "$out" "recorded  reviewer-mirror-push-false-positive"; assert_contains "$out" "  ok        eval-verdict-worktree-copy (guard)"   # t-6be7: a run case since the warning exists
 
 # a scratch tree of the guards, weakened one line each: the case that records the miss must fail
 copy_tree() { mkdir -p "$1"; (cd "$ROOT" && tar -cf - --exclude=tools/canon-go --exclude=tools/canon-go-bin tools tests/board-spec-guard.js tests/board-spec-baseline.json) | tar -xf - -C "$1"; }
@@ -215,6 +215,11 @@ sed -i.bak 's/^  if \[\[ \${#names\[@\]} -eq 0 \]\]; then$/  if true; then/' "$w
 cmp -s "$ROOT/tools/evidence.sh" "$weak2/tools/evidence.sh" && fail "gate-cases: the weakened evidence.sh is identical to the real one"
 set +e; out="$(CANON_ROOT="$weak2" "$G" run 2>&1)"; code=$?; set -e
 assert_eq 1 "$code"; assert_contains "$out" "FAIL      stale-evidence-stamp (guard)"
+weak3="$WORK/weak-eval-verdict"; copy_tree "$weak3"   # t-6be7: without the warning line the worktree-copy case fails
+sed -i.bak 's/^    echo "Sprint \$id: eval-report.md differs between this worktree.*$/    :/' "$weak3/tools/sprint"; rm -f "$weak3/tools/sprint.bak"
+cmp -s "$ROOT/tools/sprint" "$weak3/tools/sprint" && fail "gate-cases: the weakened sprint is identical to the real one"
+set +e; out="$(CANON_ROOT="$weak3" "$G" run 2>&1)"; code=$?; set -e
+assert_eq 1 "$code"; assert_contains "$out" "FAIL      eval-verdict-worktree-copy (guard)"
 
 [[ -f "$HOME/canary" && -z "$(ls -A "$TMPDIR")" ]] || fail "gate-cases: left a temp file behind, or touched the pinned home"
-echo "gate-cases: ok (add refusals, run pass/exit/text/recorded/malformed/setup, JSON, pinned environment, the real set, two weakened guards fail their cases)"
+echo "gate-cases: ok (add refusals, run pass/exit/text/recorded/malformed/setup, JSON, pinned environment, the real set, three weakened guards fail their cases)"
