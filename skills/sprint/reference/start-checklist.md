@@ -32,6 +32,7 @@ names for a case that applies.
      A behavior criterion may read `When <trigger>, <system> <does response>.`; a doc or file stays free text. Ask about an ambiguous trigger, never guess it.
    - A criterion that needs a machine the grader does not have (the Windows VM) fails as not-run: plan it as a
      checklist item on a separate follow-up ticket (t-e566, t-353a).
+   - A criterion only a person can judge starts with `[manual]` (`sprint manual-qa` records it). A fix changing a criterion amends it, same step.
    - `## Test Plan`: a command or check per criterion. Each line names the prod path it protects (a shipped
      command, a board or daemon route a user hits, the release, or a close gate); a test with no prod path, or
      one that repeats another, is not added. Each path, variant or theme a line names is graded on its own.

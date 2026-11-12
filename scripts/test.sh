@@ -121,6 +121,7 @@ tests=(
   "$ROOT/tests/work-beat.sh"
   "$ROOT/tests/folder-guard.sh"
   "$ROOT/tests/sprint-check-evidence.sh"
+  "$ROOT/tests/sprint-manual-qa.sh"
   "$ROOT/tests/test-sh-runner.sh"
   "$ROOT/tests/build-zip-go-package.sh"
   "$ROOT/tests/sprint-check-server.sh"

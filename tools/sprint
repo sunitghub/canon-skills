@@ -1292,6 +1292,112 @@ cmd_check_review_notes() {
   echo "review-notes.md: shape ok"
 }
 
+# --- manual QA (t-aa24) --------------------------------------------------------------------------------------------------
+# The evaluator learns about evidence from `evidence.sh check`, which reads only *.log builder logs: a user's manual testing had no recorded
+# place, so it reached the evaluator only when the session agent remembered to say so (ToDo-Demo t-32ah: three evaluator runs). The record is
+# .tickets/<id>/evidence/manual-qa.md, written by `sprint manual-qa` (a fixed header the pre-flight can check for freshness), listed by
+# `sprint check-evidence`, and read by the evaluator (eval.md step 5b). A criterion tagged [manual] in acceptance.md needs it before the dispatch.
+
+# _mqa_clean <text> <max> — one line of printable text: control characters become a space, | becomes /, trimmed, cut at <max>.
+_mqa_clean() {
+  local t
+  t="$(printf '%s' "$1" | LC_ALL=C tr '\000-\037\177' ' ' | LC_ALL=C tr '|' '/' | sed 's/^ *//; s/ *$//')"   # tr pads a short second set with its last character: one character each
+  printf '%s' "${t:0:$2}"
+}
+
+# cmd_manual_qa <id> --by "<who>" --step "<what>|pass|fail|n/a" [--step ...] — writes .tickets/<id>/evidence/manual-qa.md (replacing it).
+cmd_manual_qa() {
+  local usage='usage: sprint manual-qa <ticket-id> --by "<who>" --step "<what>|pass" [--step "<what>|fail|n/a" ...]'
+  local id="${1:-}" by="" raw what res n=0 pass=0 fail=0 tdir edir target tmp root sha when mline row
+  local -a rows=()
+  [[ -n "$id" ]] || { echo "$usage" >&2; exit 1; }
+  shift
+  [[ "$id" =~ ^t-[a-z0-9]{4}$ ]] || { echo "sprint manual-qa: the ticket id must look like t-abcd" >&2; exit 1; }
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --by) [[ $# -ge 2 ]] || { echo "sprint manual-qa: --by needs a name" >&2; exit 1; }; by="$2"; shift 2 ;;
+      --step)
+        [[ $# -ge 2 ]] || { echo "sprint manual-qa: --step needs \"<what>|pass\"" >&2; exit 1; }
+        raw="$2"; shift 2
+        [[ "$raw" == *"|"* ]] || { echo "sprint manual-qa: a step is \"<what>|pass\", \"<what>|fail\" or \"<what>|n/a\" (no | in: ${raw:0:60})" >&2; exit 1; }
+        res="$(printf '%s' "${raw##*|}" | tr 'A-Z' 'a-z' | sed 's/^ *//; s/ *$//')"
+        case "$res" in pass|fail|n/a) ;; *) echo "sprint manual-qa: a step's result is pass, fail or n/a, not '${res:0:20}'" >&2; exit 1 ;; esac
+        what="$(_mqa_clean "${raw%|*}" 200)"
+        [[ -n "$what" ]] || { echo "sprint manual-qa: a step needs a description before the |" >&2; exit 1; }
+        n=$((n + 1))
+        (( n <= 60 )) || { echo "sprint manual-qa: at most 60 steps (group them)" >&2; exit 1; }
+        [[ "$res" == pass ]] && pass=$((pass + 1)); [[ "$res" == fail ]] && fail=$((fail + 1))
+        rows+=("| $what | $res |") ;;
+      *) echo "sprint manual-qa: unknown argument: ${1:0:40}" >&2; echo "$usage" >&2; exit 1 ;;
+    esac
+  done
+  by="$(_mqa_clean "$by" 80)"
+  [[ -n "$by" ]] || { echo "sprint manual-qa: --by \"<who tested>\" is required" >&2; exit 1; }
+  (( n > 0 )) || { echo "sprint manual-qa: at least one --step is required: what was tested by hand, and its result" >&2; exit 1; }
+  tdir="$(ticket_dir_for "$id")"
+  [[ -d "$tdir" && ! -L "$tdir" ]] || { echo "sprint manual-qa: no ticket folder for $id here" >&2; exit 1; }
+  edir="$tdir/evidence"
+  [[ ! -L "$edir" ]] || { echo "sprint manual-qa: $edir is a symlink: refused" >&2; exit 1; }
+  target="$edir/manual-qa.md"
+  [[ ! -L "$target" && ( ! -e "$target" || -f "$target" ) ]] || { echo "sprint manual-qa: $target is not a plain file: refused" >&2; exit 1; }
+  root="$(worktree_root 2>/dev/null)" || root="$(project_root)"
+  sha="$(git -C "$root" rev-parse HEAD 2>/dev/null)" || sha=unknown
+  when="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  mline="$(machine_line 2>/dev/null)" && [[ -n "$mline" ]] || mline="$(uname -srm 2>/dev/null)" || mline=unknown
+  mline="$(_mqa_clean "$mline" 120)"
+  mkdir -p "$edir" || { echo "sprint manual-qa: could not create $edir" >&2; exit 1; }
+  tmp="$edir/.manual-qa.$$"
+  { printf '# Manual QA: %s\nHEAD %s %s\nBy: %s on %s\n\n| Step | Result |\n|---|---|\n' "$id" "$sha" "$when" "$by" "$mline"
+    for row in "${rows[@]}"; do printf '%s\n' "$row"; done; } > "$tmp" || { rm -f "$tmp"; echo "sprint manual-qa: could not write $tmp" >&2; exit 1; }
+  mv -f "$tmp" "$target" || { rm -f "$tmp"; echo "sprint manual-qa: could not replace $target" >&2; exit 1; }
+  echo "manual-qa: wrote .tickets/$id/evidence/manual-qa.md ($n steps: $pass pass, $fail fail, $((n - pass - fail)) n/a) at HEAD ${sha:0:7}"
+}
+
+# _manual_qa_state <id> — sets MQA_STATE to absent | fresh | stale | failing | bad and MQA_MSG to the detail. Fresh follows evidence.sh check's rule for logs:
+# recorded at the graded commit, or at an ancestor with no tracked change since (the ticket folder excluded).
+_manual_qa_state() {
+  local id="$1" f head l n=0 fails=0 pass=0 in_t=0 sha who root
+  MQA_STATE=absent; MQA_MSG=""
+  f="${CANON_TICKETS_DIR:-$(tickets_dir)}/$id/evidence/manual-qa.md"
+  [[ -e "$f" || -L "$f" ]] || return 0
+  if [[ -L "$f" || ! -f "$f" ]]; then MQA_STATE=bad; MQA_MSG="it is a symlink or not a plain file"; return 0; fi
+  head="$(head -c 65536 -- "$f" | LC_ALL=C tr -d '\000\r')"
+  l="$(printf '%s\n' "$head" | sed -n '1p')"; [[ "$l" == "# Manual QA: $id" ]] || { MQA_STATE=bad; MQA_MSG="line 1 is not '# Manual QA: $id'"; return 0; }
+  l="$(printf '%s\n' "$head" | sed -n '2p')"
+  [[ "$l" =~ ^HEAD\ ([0-9a-f]{7,40}|unknown)\ [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z$ ]] || { MQA_STATE=bad; MQA_MSG="line 2 is not 'HEAD <sha> <UTC time>'"; return 0; }
+  sha="${BASH_REMATCH[1]}"
+  l="$(printf '%s\n' "$head" | sed -n '3p')"
+  [[ "$l" =~ ^By:\ (.+)\ on\ (.+)$ ]] || { MQA_STATE=bad; MQA_MSG="line 3 is not 'By: <who> on <machine>'"; return 0; }
+  who="${BASH_REMATCH[1]}"
+  while IFS= read -r l; do
+    if [[ "$l" == '|---|---|' ]]; then in_t=1; continue; fi
+    (( in_t )) || continue
+    [[ -n "$l" ]] || continue
+    if [[ "$l" =~ ^\|\ .+\ \|\ (pass|fail|n/a)\ \|$ ]]; then
+      n=$((n + 1)); [[ "${BASH_REMATCH[1]}" == fail ]] && fails=$((fails + 1)); [[ "${BASH_REMATCH[1]}" == pass ]] && pass=$((pass + 1))
+    else MQA_STATE=bad; MQA_MSG="a table row is not '| <what> | pass|fail|n/a |'"; return 0; fi
+  done <<< "$(printf '%s\n' "$head" | sed -n '4,$p')"
+  (( n > 0 )) || { MQA_STATE=bad; MQA_MSG="no step rows"; return 0; }
+  if (( fails > 0 )); then MQA_STATE=failing; MQA_MSG="$fails failing step(s) recorded by $who"; return 0; fi
+  root="$(worktree_root 2>/dev/null)" || root="$(project_root)"
+  if [[ "$sha" != unknown ]]; then
+    if ! git -C "$root" cat-file -e "$sha^{commit}" 2>/dev/null || ! git -C "$root" merge-base --is-ancestor "$sha" HEAD 2>/dev/null ||
+       ! git -C "$root" diff --quiet "$sha" HEAD -- . ':(exclude).tickets' 2>/dev/null; then
+      MQA_STATE=stale; MQA_MSG="recorded at ${sha:0:7} by $who; tracked files changed since"; return 0
+    fi
+  fi
+  MQA_STATE=fresh; MQA_MSG="HEAD ${sha:0:7} = graded, by $who, $n steps: $pass pass"
+}
+
+# _manual_criteria <id> — one line per criterion under `## Criteria` whose text starts with [manual]: "<number>\t<text>" (numbered among all criteria).
+_manual_criteria() {
+  local f; f="$(ticket_dir_for "$1")/acceptance.md"
+  [[ -f "$f" && ! -L "$f" ]] || return 0
+  head -c 262144 -- "$f" | LC_ALL=C tr -d '\r' | awk '
+    /^## / { inc = ($0 == "## Criteria"); next }
+    inc && /^- \[[ xX]\] / { n++; t = $0; sub(/^- \[[ xX]\] /, "", t); if (t ~ /^\[manual\]/) { sub(/^\[manual\] */, "", t); print n "\t" substr(t, 1, 100) } }'
+}
+
 # cmd_check_evidence <id> — t-a3d7: the pre-flight complete.md step 3 runs before dispatching the evaluator. Reads `evidence.sh check`
 # (the one owner of what fresh/covered mean) at HEAD and refuses unless every top-level evidence log is `fresh` with exit 0 or
 # `covered`; logs kept for history or produced off-tree belong in a subfolder of evidence/, which check never scans. Read-only.
@@ -1312,26 +1418,46 @@ cmd_check_evidence() {
       echo "  REFUSE  $(printf '%s' "$name" | LC_ALL=C tr -c 'A-Za-z0-9._-' '?'): a name evidence.sh stamp never writes; rename it, or move it into a subfolder"
     fi
   done
-  if [[ -z "$out" ]] && (( ! bad )); then
+  # t-aa24: the user's manual-QA record (not a log: evidence.sh check never lists it) and the criteria tagged [manual] that need it
+  local mcrit mq=0 mbad=0 mnum mtxt
+  mcrit="$(_manual_criteria "$id")"; _manual_qa_state "$id"
+  case "$MQA_STATE" in
+    fresh) n=$((n + 1)); mq=1; echo "  ok      manual-qa.md ($MQA_MSG)" ;;
+    stale|failing|bad) n=$((n + 1)); mq=1; bad=$((bad + 1)); mbad=1; echo "  REFUSE  manual-qa.md $MQA_STATE: $MQA_MSG" ;;
+    absent)
+      if [[ -n "$mcrit" ]]; then
+        while IFS=$'\t' read -r mnum mtxt; do
+          n=$((n + 1)); bad=$((bad + 1)); mbad=1
+          echo "  REFUSE  manual-qa.md missing: criterion $mnum is tagged [manual] ($(printf '%s' "$mtxt" | LC_ALL=C tr -c 'A-Za-z0-9._ /=:+,()-' '?'))"
+        done <<< "$mcrit"
+      fi ;;
+  esac
+  if [[ -z "$out" ]] && (( ! bad )) && (( ! mq )); then
     echo "check-evidence: no stamped logs in .tickets/$id/evidence/ (nothing to reuse: the evaluator runs every check itself)"
     exit 0
   fi
+  if [[ -n "$out" ]]; then
   while IFS= read -r line; do
     [[ "$line" =~ ^[a-z]+\ ([^\ ]+)\  ]] && [[ ! "${BASH_REMATCH[1]}" =~ ^[a-z0-9][a-z0-9._-]*\.log$ ]] && continue   # refused above by name
     n=$((n + 1))
     if [[ "$line" =~ ^fresh\ [a-z0-9][a-z0-9._-]*\.log\ exit=0\ \( || "$line" =~ ^covered\ [a-z0-9][a-z0-9._-]*\.log\ exit=[0-9?]+\ \( ]]; then echo "  ok      $line"
     else bad=$((bad + 1)); echo "  REFUSE  $line"; fi
   done <<< "$out"
+  fi
   if (( bad )); then
     echo "check-evidence: $bad of $n log(s) would fail or mislead the evaluator; do not dispatch it yet."
     echo "  stale      re-stamp at HEAD (evidence.sh stamp, from a plain clone for the full suite)"
     echo "  exit=N     fix the failure and re-stamp; for a full board spec failing only on new flakes, list them, then stamp"
     echo "             \`node tests/board-spec-guard.js <the run's --out dir>/board-spec-*-run*.json\` at HEAD (the run log becomes covered)"
     echo "  unstamped  stamp it, or move a history or off-tree log into a subfolder of evidence/ (never scanned)"
-    _gate_reject "$id" "$(dirname "$edir")" evaluator stale_evidence
+    if (( mbad )); then
+      echo "  manual-qa  ask the user what they tested by hand and what they saw, then record it: sprint manual-qa $id --by \"<name>\" --step \"<what>|pass\" [--step ...]"
+      echo "             (stale: the code changed after they tested: ask them to re-test; failing: fix the work, or record the corrected result)"
+    fi
+    _gate_reject "$id" "$(dirname "$edir")" evaluator "$( (( mbad )) && echo manual_qa || echo stale_evidence )"
     exit 1
   fi
-  echo "check-evidence: ok ($n log(s) fresh with exit 0 or covered)"
+  echo "check-evidence: ok ($n log(s) fresh with exit 0 or covered$( (( mq )) && echo ", plus the user's manual QA" ))"
 }
 
 # cmd_relay_report <id> [evaluator|reviewer] — t-ff14: a read-only `Plan` fallback gate cannot write its report, and the main
@@ -1960,7 +2086,12 @@ Usage:
                             <date> "<fragment>" appends superseded-by to one row (t-79bf)
   sprint check-evidence <id>  Pre-flight before the evaluator: every stamped
                             evidence log is fresh with exit 0, or covered
-                            (read-only; exit 1 names each log and the fix)
+                            (read-only; exit 1 names each log and the fix);
+                            also lists evidence/manual-qa.md and refuses a
+                            [manual] criterion with no fresh record (t-aa24)
+  sprint manual-qa <id> --by "<who>" --step "<what>|pass|fail|n/a" ...
+                            Records the user's manual testing in
+                            evidence/manual-qa.md for the evaluator (t-aa24)
 
 The CLI owns deterministic workflow state. The agent still owns orientation,
 gray-area resolution, impact analysis, implementation, review, and test judgment.
@@ -1986,6 +2117,7 @@ main() {
     relay-report) cmd_relay_report "$@" ;;
     check-review-notes) cmd_check_review_notes "$@" ;;
     check-evidence) cmd_check_evidence "$@" ;;
+    manual-qa) cmd_manual_qa "$@" ;;
     gate-cost) cmd_gate_cost "$@" ;;
     token-spend) cmd_token_spend "$@" ;;
     decisions) cmd_decisions "$@" ;;
