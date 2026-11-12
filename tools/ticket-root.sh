@@ -221,7 +221,7 @@ require_project_folder() {
   shown="$(cd "$dir" 2>/dev/null && pwd -P || printf '%s' "$dir")"; home_shown="${HOME:-~}"; mk="mkdir -p"
   case "${CANON_HOST_OS:-$(uname -s 2>/dev/null)}" in
     MINGW*|MSYS*|CYGWIN*)
-      sep='\'; mk=mkdir
+      sep='\'; mk='mkdir'
       if command -v cygpath >/dev/null 2>&1; then shown="$(cygpath -w "$shown" 2>/dev/null || printf '%s' "$shown")"; home_shown="$(cygpath -w "$home_shown" 2>/dev/null || printf '%s' "$home_shown")"; fi ;;
   esac
   demo="$home_shown${sep}projects${sep}demo"
