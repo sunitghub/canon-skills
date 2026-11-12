@@ -262,5 +262,35 @@ done
 rm -f "$S/size-caps.tsv"
 rm -f ".tickets/$ID/plan.md"; reset
 
+# --- t-dc18: the advisory agent-files field. Protects the pre-gate line every close prints (the reviewer quotes it): an always-on agent file edit is named, never blocking.
+reset
+printf '#!/usr/bin/env bash\ntrue\n' > tools/x.sh; commit
+run "$ID"; assert_eq 0 "$code"; assert_contains "$out" "| agent files (advisory): none" "pre-gate-check: no watched file changed reads none"
+reset
+mkdir -p sub docs standards; printf 'a\n' > CLAUDE.md; printf 'one\n\ntwo\nthree\nfour\nfive\n' > sub/AGENTS.md
+printf 'Deploy the Playwright server with %s\r\n' "$(printf 'x%.0s' $(seq 1 100))" > PROMOTED.md
+printf 'n\n' > docs/CLAUDE.md.txt; printf 'n\n' > standards/efficiency.md; printf 'n\n' > standards/other.md; printf 'n\n' > xCLAUDE.md
+commit
+run "$ID"; assert_eq 0 "$code" "pre-gate-check: agent file flags never change the exit code"
+assert_contains "$out" 'agent files (advisory): CLAUDE.md +1/-0 "a"; PROMOTED.md +1/-0 "Deploy the Playwright server with ' "pre-gate-check: a root file and a PROMOTED.md are named with the added line"
+assert_contains "$out" 'sub/AGENTS.md +6/-0 "one" "two" "three" +2 more' "pre-gate-check: a nested bare name matches; blank lines skipped; 3 lines then +N more"
+assert_contains "$out" 'standards/efficiency.md +1/-0 "n"' "pre-gate-check: a path row matches that path"
+[[ "$out" != *"standards/other.md +"* && "$out" != *"xCLAUDE.md +"* && "$out" != *"CLAUDE.md.txt +"* ]] || fail "pre-gate-check: an unwatched name must not match: $out"
+[[ "$out" != *"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"* ]] || fail "pre-gate-check: an added line is cut to 80 characters: $out"
+grep -q "agent files (advisory)" ".tickets/$ID/evidence/pre-gate.log" || fail "pre-gate-check: the agent files field is not in the stamped log"
+# a deletion-only edit is named with no lines; a 9th file is counted, not listed
+printf '' > sub/AGENTS.md; git add -A && git commit -qm del
+run "$ID"; assert_contains "$out" 'sub/AGENTS.md +0/-0' "pre-gate-check: an emptied file is named"
+reset
+for i in 1 2 3 4 5 6 7 8 9 10; do mkdir -p "d$i"; printf 'n\n' > "d$i/AGENTS.md"; done; commit
+run "$ID"; assert_contains "$out" "; +2 more files" "pre-gate-check: files beyond 8 are counted"
+# no agent-file row: skipped, never none
+reset
+printf 'n\n' > CLAUDE.md; commit
+printf 'file-net\t400\ntotal-net\t1000\n' > "$S/size-caps.tsv"
+set +e; out="$(cd "$R" && PRE_GATE_BASE="$BASE" PRE_GATE_ID="$ID" bash "$S/pre-gate-check.sh" --run 2>&1)"; set -e
+assert_contains "$out" "agent files: skipped | no agent-file rows in size-caps.tsv" "pre-gate-check: a table with no agent-file row is skipped"
+rm -f "$S/size-caps.tsv"; reset
+
 [[ -f "$CANON_HOME/canary" && -z "$(ls -A "$TMPDIR")" ]] || fail "pre-gate-check: left a temp file behind"
 echo "pre-gate-check: ok"

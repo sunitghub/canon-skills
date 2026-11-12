@@ -17,7 +17,7 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
 
 1. **Wrapup** (`skills/wrapup/SKILL.md`): code-simplifier, code-reviewer (inline), doc-audit (`tools/doc-check` first), then
    refresh docs.
-   - **Pre-gate:** `tools/pre-gate-check.sh <id>` first; non-zero stops the close. Summary quotes its `size`.
+   - **Pre-gate:** `tools/pre-gate-check.sh <id>` first; non-zero stops the close. Summary quotes its fields.
    - **Skill eval** if `tools/skill-eval-scope.sh` lists a changed skill or gate agent: for each `run <skill>`
      follow `skills/skill-eval/SKILL.md`; advisory. Commit its `history.jsonl` line.
    - **Interim commit** (specific paths, no `git add -A`) before any gate.

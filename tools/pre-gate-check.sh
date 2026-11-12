@@ -10,6 +10,8 @@
 #   t-835f: also advisory, a `size` field: `planned N files, changed M, +A/-D` from the same diff, with `unplanned:` (a changed file plan.md's
 #   `## Files` does not name; a `dir/` entry names all under it), `large:` / `total` (net lines over tools/size-caps.tsv) and `no test:` (a new
 #   non-doc file when the diff holds no test file). Line count is not quality, so it never changes the exit code.
+#   t-dc18: also advisory, an `agent files` field naming each changed always-on agent file (rows `agent-file` in size-caps.tsv: CLAUDE.md, AGENTS.md, PROMOTED.md, standards/efficiency.md) with its first added lines, so a deployment note
+#   written into an agent-private file is seen at the close instead of after the word cap trips.
 # Output: the one stamped line (plus the failing tool's output when a check fails); the full log is
 # <tickets dir>/<id>/evidence/pre-gate.log (the checkout's .tickets/, or CANON_TICKETS_DIR when it has none), written through evidence.sh stamp.
 # Changed files = committed diff from PRE_GATE_BASE (default: merge-base HEAD origin/main) to HEAD. Complexity is not
@@ -60,6 +62,30 @@ size_report() {
   ((ta - tdl > tnet)) && flags+="; total +$((ta - tdl))"
   ((nn && !hastest)) && flags+="; no test:$newsrc$( ((nn > 8)) && echo " +$((nn - 8)) more")"
   echo "size (advisory): planned $n files, changed $m, +$ta/-$tdl${flags:-; flags none}"
+}
+
+# t-dc18: agent_file_report <base> prints the `agent files (advisory)` text: each changed file the `agent-file` rows of size-caps.tsv watch (a name with a `/` matches that path, a bare name at any depth), with +A/-D and its first 3 added lines (80 characters each). Advisory: the reviewer judges, a missing row says skipped, never none.
+agent_file_report() {
+  local base="$1" names w a d f ln n=0 k out="" hit
+  names="$(awk -F'\t' '$1=="agent-file" && $2!="" { print $2 }' "$SCRIPT_DIR/size-caps.tsv" 2>/dev/null)"
+  [[ -n "$names" ]] || { echo "agent files: skipped | no agent-file rows in size-caps.tsv"; return; }
+  while IFS=$'\t' read -r a d f; do
+    [[ -n "$f" ]] || continue
+    hit=0
+    while IFS= read -r w; do [[ "$f" == "$w" || ( "$w" != */* && "$f" == */"$w" ) ]] && hit=1; done <<<"$names"
+    ((hit)) || continue
+    [[ "$a" =~ ^[0-9]+$ ]] || { a=0; d=0; }
+    n=$((n + 1)); ((n > 8)) && continue
+    out+="; $f +$a/-$d"; k=0
+    while IFS= read -r ln; do
+      ln="${ln//$'\r'/}"; [[ -n "${ln//[[:space:]]/}" ]] || continue
+      k=$((k + 1)); ((k > 3)) && continue
+      out+=" \"${ln:0:80}\""
+    done < <(git -c core.quotePath=false diff -U0 --no-renames "$base" HEAD -- "$f" | awk '/^@@/ { h = 1; next } h && /^\+/ { print substr($0, 2) }')
+    ((k > 3)) && out+=" +$((k - 3)) more"
+  done < <(git -c core.quotePath=false diff --numstat --no-renames "$base" HEAD)
+  ((n > 8)) && out+="; +$((n - 8)) more files"
+  echo "agent files (advisory): $([[ -n "$out" ]] && echo "${out#; }" || echo none)"
 }
 
 run_checks() {
@@ -124,6 +150,7 @@ run_checks() {
   fi
   line+=" | dead code (advisory): ${dead:-none} | not scanned: ${ns:-none}"
   line+=" | $(size_report "$base")"
+  line+=" | $(agent_file_report "$base")"
   printf '%s\n' "$line"
   [[ -z "$fails" ]] || printf '%s' "$fails"
   return "$rc"
