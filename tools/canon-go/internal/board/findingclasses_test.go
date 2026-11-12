@@ -2,7 +2,9 @@ package board
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -141,5 +143,154 @@ func TestFindingClassesCLI(t *testing.T) {
 	}
 	if _, out, _ = run("--table", tbl, "--start"); out != "" {
 		t.Fatalf("--start with nothing to say must print nothing: %q", out)
+	}
+}
+
+func fcRun(root, tbl string, args ...string) (int, string, string) {
+	old, _ := os.Getwd()
+	os.Chdir(root)
+	defer os.Chdir(old)
+	var o, e bytes.Buffer
+	c := findingClassesCLI(append([]string{"--table", tbl}, args...), &o, &e)
+	return c, o.String(), e.String()
+}
+
+func TestFindingClassesLineShapes(t *testing.T) {
+	root := t.TempDir()
+	slugs, _ := fcLoadTable(fcTable(t, root))
+	// a concern line before any heading is not under ## Findings; "## Findings and more" is another section; a tag with trailing blanks is a tag;
+	// an uppercase or over-long slug is no tag (untagged), a well-formed slug outside the table is unknown; an eval line that is not a list item ("see 1. x") is not a finding; "No findings." is none
+	rv := "Hygiene: before any heading [severity: low · confidence: high · class: bloat]\n## Findings and more\nHygiene: wrong section [severity: low · confidence: high · class: bloat]\n## Findings\nHygiene: ok [severity: low · confidence: high · class: bloat]  \t\nHygiene: up [severity: low · confidence: high · class: Bloat]\nHygiene: long [severity: low · confidence: high · class: " + strings.Repeat("a", 60) + "]\nHygiene: nosuch [severity: low · confidence: high · class: nosuch]\n"
+	ev := "## Findings\nsee 1. not an item [class: bloat]\n- a bullet item [class: hardcoding]\n3) another [class: other]\nNo findings.\n"
+	fcTicketFiles(t, root, "t-ddd1", "2026-11-01", rv, ev)
+	r := findingClasses(root, slugs, 10)
+	got := map[string]int{}
+	for _, c := range r.Classes {
+		got[c.Slug] = c.Findings
+	}
+	if got["bloat"] != 1 || got["hardcoding"] != 1 || got["other"] != 1 || len(got) != 3 || r.Unknown != 1 || r.Untagged != 2 {
+		t.Fatalf("shapes: classes %v unknown %d untagged %d", got, r.Unknown, r.Untagged)
+	}
+}
+
+func TestFindingClassesOrderAndTicketFolders(t *testing.T) {
+	root := t.TempDir()
+	slugs, _ := fcLoadTable(fcTable(t, root))
+	// same created day: the higher id is newer; a class with more tickets sorts first, ties by slug; non-ticket entries are ignored; a ticket
+	// with no created date is still read (oldest)
+	fcTicketFiles(t, root, "t-eee1", "2026-11-05", review("hardcoding"), "")
+	fcTicketFiles(t, root, "t-eee2", "2026-11-05", review("bloat"), "")
+	fcTicketFiles(t, root, "t-eee3", "2026-11-05", review("bloat"), "")
+	fcTicketFiles(t, root, "t-eee4", "", review("other"), "")
+	os.MkdirAll(filepath.Join(root, ".tickets", "notes"), 0o755)
+	os.WriteFile(filepath.Join(root, ".tickets", "t-fff1"), []byte("a file, not a ticket"), 0o644)
+	os.Symlink(filepath.Join(root, ".tickets", "t-eee1"), filepath.Join(root, ".tickets", "t-ggg1"))
+	r := findingClasses(root, slugs, 10)
+	if r.Tickets != 4 || len(r.Classes) != 3 {
+		t.Fatalf("report = %+v", r)
+	}
+	if r.Classes[0].Slug != "bloat" || strings.Join(r.Classes[0].Tickets, " ") != "t-eee3 t-eee2" {
+		t.Fatalf("most tickets first, newest id first: %+v", r.Classes[0])
+	}
+	if r.Classes[1].Slug != "hardcoding" || r.Classes[2].Slug != "other" {
+		t.Fatalf("ties by slug: %+v", r.Classes)
+	}
+	r = findingClasses(root, slugs, 3)
+	if r.Tickets != 3 || len(r.Classes) != 2 {
+		t.Fatalf("--last 3 must drop the undated ticket: %+v", r)
+	}
+}
+
+func TestFindingClassesTableErrors(t *testing.T) {
+	dir := t.TempDir()
+	for name, body := range map[string]string{
+		"two.tsv":     "bloat\tonly two\n",
+		"badslug.tsv": "Bloat\tx\tHygiene\n",
+		"empty.tsv":   "# nothing\n\n",
+	} {
+		p := filepath.Join(dir, name)
+		os.WriteFile(p, []byte(body), 0o644)
+		if _, err := fcLoadTable(p); err == nil {
+			t.Fatalf("%s must be refused", name)
+		}
+	}
+	if _, err := fcLoadTable(filepath.Join(dir, "missing.tsv")); err == nil || !strings.Contains(err.Error(), "missing.tsv") {
+		t.Fatalf("a missing table must name the file: %v", err)
+	}
+	root := t.TempDir()
+	if c, _, e := fcRun(root, filepath.Join(dir, "missing.tsv")); c != 2 || !strings.HasPrefix(e, "finding-classes: ") {
+		t.Fatalf("a missing table exits 2 naming the command: %d %q", c, e)
+	}
+}
+
+func TestFindingClassesCLIOutput(t *testing.T) {
+	root := t.TempDir()
+	tbl := fcTable(t, root)
+	fcTicketFiles(t, root, "t-hhh1", "2026-11-01", review("bloat"), "")
+	fcTicketFiles(t, root, "t-hhh2", "2026-11-02", review("bloat"), "")
+	fcTicketFiles(t, root, "t-hhh3", "2026-11-03", review("hardcoding"), "")
+	c, out, _ := fcRun(root, tbl, "--last", "2")
+	if c != 0 || !strings.HasPrefix(out, "finding classes: 2 tickets with a gate report (newest 2); 2 tagged findings, 0 untagged, 0 with a class not in the table\n") {
+		t.Fatalf("--last 2 header: %d %q", c, out)
+	}
+	if strings.Contains(out, "propose") {
+		t.Fatalf("two tickets, two classes once each: no ladder: %q", out)
+	}
+	c, out, _ = fcRun(root, tbl)
+	if !strings.Contains(out, "bloat                  2 tickets, 2 findings: t-hhh2 t-hhh1  -> propose a rule\n") {
+		t.Fatalf("text row: %q", out)
+	}
+	_, out, _ = fcRun(root, tbl, "--start")
+	if out != "Recurring finding class: bloat in 2 tickets (t-hhh2 t-hhh1): propose a rule. Details: canon-go finding-classes\n" {
+		t.Fatalf("start line: %q", out)
+	}
+	var m map[string]any
+	_, out, _ = fcRun(root, tbl, "--json")
+	if err := json.Unmarshal([]byte(out), &m); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"last", "tickets_read", "tagged_findings", "untagged_findings", "unknown_class_findings", "classes", "promoted_rules_recurred"} {
+		if _, ok := m[k]; !ok {
+			t.Fatalf("json lost %q: %v", k, m)
+		}
+	}
+	cl := m["classes"].([]any)[0].(map[string]any)
+	for _, k := range []string{"class", "tickets", "findings", "step"} {
+		if _, ok := cl[k]; !ok {
+			t.Fatalf("a class lost %q: %v", k, cl)
+		}
+	}
+}
+
+// a promoted rule that a later ticket named again is listed with the check step (promoted-report's own count, one owner)
+func TestFindingClassesListsRecurredPromotedRule(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("no git")
+	}
+	root := t.TempDir()
+	tbl := fcTable(t, root)
+	os.MkdirAll(filepath.Join(root, "standards"), 0o755)
+	os.WriteFile(filepath.Join(root, "standards", "efficiency-notes.md"), []byte("- a rule (t-aaaa; class: the-old-slug; id: P-001)\n- another (t-aaaa; class: no-id-slug)\n"), 0o644)
+	env := append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t", "GIT_AUTHOR_DATE=2026-10-01T12:00:00Z", "GIT_COMMITTER_DATE=2026-10-01T12:00:00Z", "GIT_CONFIG_GLOBAL=/dev/null")
+	for _, a := range [][]string{{"init", "-q"}, {"add", "standards"}, {"commit", "-q", "-m", "one"}} {
+		cmd := exec.Command("git", a...)
+		cmd.Dir, cmd.Env = root, env
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", a, err, out)
+		}
+	}
+	fcTicketFiles(t, root, "t-iii1", "2026-11-01", "## Findings\nCorrectness: x [severity: low · confidence: high · class: other] the-old-slug and no-id-slug came back\n", "")
+	_, out, _ := fcRun(root, tbl)
+	for _, want := range []string{
+		"promoted rule the-old-slug (P-001) was named again by 1 later tickets  -> propose a mechanical check (a ticket stub, never auto-filed)\n",
+		"promoted rule no-id-slug (no id) was named again by 1 later tickets  -> propose a mechanical check",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in %q", want, out)
+		}
+	}
+	_, out, _ = fcRun(root, tbl, "--start")
+	if out != "" {
+		t.Fatalf("a recurred promoted rule must not repeat in the start line: %q", out)
 	}
 }
