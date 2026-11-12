@@ -284,6 +284,13 @@ run "$ID"; assert_contains "$out" 'sub/AGENTS.md +0/-0' "pre-gate-check: an empt
 reset
 for i in 1 2 3 4 5 6 7 8 9 10; do mkdir -p "d$i"; printf 'n\n' > "d$i/AGENTS.md"; done; commit
 run "$ID"; assert_contains "$out" "; +2 more files" "pre-gate-check: files beyond 8 are counted"
+[[ "$out" != *"d8/AGENTS.md +"* && "$out" != *"d9/AGENTS.md +"* ]] || fail "pre-gate-check: the 9th and later files are counted, not listed: $out"
+# a path row does not match deeper; a binary file reads +0/-0; a non-ASCII directory is matched as is, not git-quoted
+reset
+mkdir -p x/standards "é"; printf 'n\n' > x/standards/efficiency.md; printf '\0\1\2' > AGENTS.md; printf 'n\n' > "é/CLAUDE.md"; commit
+run "$ID"; [[ "$out" != *"x/standards/efficiency.md +"* ]] || fail "pre-gate-check: a path row matches that path only: $out"
+assert_contains "$out" "AGENTS.md +0/-0;" "pre-gate-check: a binary agent file reads +0/-0"
+assert_contains "$out" 'é/CLAUDE.md +1/-0 "n"' "pre-gate-check: a non-ASCII directory is not git-quoted"
 # no agent-file row: skipped, never none
 reset
 printf 'n\n' > CLAUDE.md; commit
