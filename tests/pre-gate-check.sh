@@ -218,6 +218,29 @@ printf '# Plan\n\n## Files\ntests/t.sh\n' > ".tickets/$ID/plan.md"
 run "$ID"; assert_contains "$out" "+2 more" "pre-gate-check: unplanned beyond 8 is counted"
 set +e; out="$(cd "$R" && PRE_GATE_BASE="$BASE" PRE_GATE_ID="$ID" bash "$S/pre-gate-check.sh" --run 2>&1)"; set -e
 assert_contains "$out" "size: skipped | no limits in size-caps.tsv" "pre-gate-check: a missing limits table is skipped"
+# clean diff with every exclusion at once: a modified (not new) source file, a binary (numstat `-`), a .tickets file, the plan naming files
+# with commas and backticks. Expect `flags none` and the exact counts; then a non-ASCII unplanned name is printed as is, not git-quoted.
+reset
+printf '# c\n' >> tools/caller.sh; mkdir -p tests; printf '\0\1\2' > tests/data.bin; printf 'x\n' > ".tickets/$ID/extra.txt"
+printf '# Plan\n\n## Files\n`tools/caller.sh`, `tests/`\n' > ".tickets/$ID/plan.md"; git add -A -f . && git commit -qm clean
+run "$ID"; assert_eq 0 "$code"
+assert_contains "$out" "size (advisory): planned 2 files, changed 2, +1/-0; flags none" "pre-gate-check: a modified file, a binary and a .tickets file add no flag"
+printf '#!/usr/bin/env bash\ntrue\n' > "tools/é.sh"; commit
+run "$ID"; assert_contains "$out" "unplanned: tools/é.sh" "pre-gate-check: a non-ASCII name is not git-quoted"
+# no .tickets/ in the checkout: the plan is read from CANON_TICKETS_DIR
+reset
+printf '#!/usr/bin/env bash\necho ok\n' > tools/a.sh; commit
+mkdir -p "$WORK/tk/$ID"; printf '# Plan\n\n## Files\ntools/a.sh\n' > "$WORK/tk/$ID/plan.md"; mv .tickets "$WORK/tk-away"
+CANON_TICKETS_DIR="$WORK/tk" run "$ID"; mv "$WORK/tk-away" .tickets
+assert_contains "$out" "planned 1 files, changed 1," "pre-gate-check: the plan is read from CANON_TICKETS_DIR when the checkout has no .tickets/"
+# a malformed limit is skipped, whichever limit and whichever end
+printf '# Plan\n\n## Files\ntools/a.sh\n' > ".tickets/$ID/plan.md"
+for bad in "abc	5" "5	abc" "x12	5" "12x	5"; do
+  printf 'file-net\t%s\ntotal-net\t%s\n' "${bad%%$'\t'*}" "${bad##*$'\t'}" > "$S/size-caps.tsv"
+  set +e; out="$(cd "$R" && PRE_GATE_BASE="$BASE" PRE_GATE_ID="$ID" bash "$S/pre-gate-check.sh" --run 2>&1)"; set -e
+  assert_contains "$out" "size: skipped | no limits in size-caps.tsv" "pre-gate-check: limits '$bad' are skipped"
+done
+rm -f "$S/size-caps.tsv"
 rm -f ".tickets/$ID/plan.md"; reset
 
 [[ -f "$CANON_HOME/canary" && -z "$(ls -A "$TMPDIR")" ]] || fail "pre-gate-check: left a temp file behind"
