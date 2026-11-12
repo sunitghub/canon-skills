@@ -157,7 +157,19 @@ Agent next steps:
 3. Fill in plan.md — write the approach, then wait for explicit approval before coding.
 EOF
   _unpromoted_line "$root"
+  _recurrence_line "$root"
   _decisions_start_lines "$tdir/ticket.md" "$id"
+}
+
+# _recurrence_line <root> — t-70f2: one line per finding class that repeated across the project's last tickets (2 propose a rule, 3 a mechanical
+# check), from `canon-go finding-classes --start`. Silent when nothing repeats, when this install's canon-go predates the command (an older
+# board would serve on an unknown word, so --help is asked first), or on any error: a start never fails or waits on it.
+_recurrence_line() {
+  local b out
+  b="$(board_has 'finding-classes [' 2>/dev/null)" || return 0
+  out="$(cd "$1" && "$b" finding-classes --start --table "$(class_table)" 2>/dev/null </dev/null)" || return 0
+  [[ -z "$out" ]] || printf '%s\n' "$out"
+  return 0
 }
 
 # _unpromoted_line <root> — t-b360: one line when 5 or more rows of the project's LEARNINGS.md are still UNPROMOTED, so a pile of lessons is

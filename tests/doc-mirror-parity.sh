@@ -106,6 +106,13 @@ for f in "$ROOT/skills/sprint/reference/review.md" "$ROOT/skills/sprint/referenc
   grep -qF 'name that id in the finding' "$f" || fail "doc-mirror-parity: $(basename "$f") lost the phrase telling the agent to name a promoted rule's P-id in a finding (t-f74e)"
 done
 
+# t-70f2: the finding classes have one owner, tools/finding-classes.tsv; review.md lists the same slugs (the gate picks one per finding) and eval.md points at them.
+fc_tsv="$(grep -v '^#' "$ROOT/tools/finding-classes.tsv" | cut -f1 | LC_ALL=C sort)"
+fc_doc="$(grep -m1 '^   \*\*Finding classes\*\*' "$ROOT/skills/sprint/reference/review.md" | sed 's/^.*): //; s/\.$//' | tr -d ' ' | tr ',' '\n' | LC_ALL=C sort)"
+[[ -n "$fc_tsv" && "$fc_tsv" == "$fc_doc" ]] || fail "doc-mirror-parity: review.md's Finding classes list differs from tools/finding-classes.tsv (t-70f2)"
+grep -qF '[class: <slug>]' "$ROOT/skills/sprint/reference/eval.md" || fail "doc-mirror-parity: eval.md lost the [class: <slug>] tag on a finding (t-70f2)"
+grep -qF 'class: <slug>]` (repeat the label' "$ROOT/skills/sprint/reference/review.md" || fail "doc-mirror-parity: review.md's finding grammar lost the class tag (t-70f2)"
+
 # ── Check D: base-ref branching commands must match between
 # shared-gate-protocol.md and security-review.md.
 base_ref_commands() {

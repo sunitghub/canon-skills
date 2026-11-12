@@ -126,10 +126,15 @@ handoff_recent() {
 }
 
 # cap_board — the board binary when it has `caps` (checked through --help: an older board takes the word for a port and serves); else fails.
-cap_board() {
+cap_board() { board_has "caps [--json]"; }
+# board_has <needle> — board_bin when its --help lists <needle> (a helper this install's binary has); else fails. Through --help because an older
+# board takes an unknown first word for a port and would start serving instead of answering (see board_helper_bin).
+board_has() {
   local b h; b="$(board_bin)"; h="$("$b" --help 2>/dev/null)" || h=""
-  case "$h" in *"caps [--json]"*) echo "$b" ;; *) return 1 ;; esac
+  case "$h" in *"$1"*) echo "$b" ;; *) return 1 ;; esac
 }
+# class_table — this install's tools/finding-classes.tsv (t-70f2), the one table of finding classes.
+class_table() { echo "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/finding-classes.tsv"; }
 # cap_table — this install's tools/caps.tsv (t-19bb), the table the tools that run here enforce.
 cap_table() { echo "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/caps.tsv"; }
 # cap_read <caps --json output> — sets CAP_NAME CAP_USED CAP_LIMIT CAP_UNIT CAP_LEFT CAP_OVER; fails unless it is a reading:

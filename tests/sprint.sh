@@ -801,6 +801,9 @@ EOF
 }
 new_review "none — checked the shape check against both lists, tools/sprint:1020"
 assert_contains "$("$SPRINT" check-review-notes "$model_id")" 'shape ok'
+# t-70f2: a finding ending in the class tag passes the same shape check (the tag is read by canon-go finding-classes, never by this rule)
+new_review "tools/sprint:12 — an oversized helper [severity: low · confidence: high · class: bloat]"
+assert_contains "$("$SPRINT" check-review-notes "$model_id")" 'shape ok'
 new_review "none"
 assert_contains "$(run_fail "$SPRINT" check-review-notes "$model_id")" 'the "Correctness" `none` line must say what was checked'
 new_review "none — checked the shape check against both lists, tools/sprint:1020"

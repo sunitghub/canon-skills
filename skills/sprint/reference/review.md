@@ -62,6 +62,8 @@ The review-notes template below is the whole return shape for this gate.
 
    When a finding falls under a promoted rule (a placed line tagged `id: P-nnn`), name that id in the finding.
 
+   **Finding classes** (one table: `tools/finding-classes.tsv`; pick the closest, `other` when none fits): bloat, hardcoding, unplanned-file, duplicated-logic, doc-drift, guard-cannot-fail, missing-test, swallowed-error, untrusted-input, portability, other.
+
 5. **Save findings.** Save via Bash to `.tickets/<id>/review-notes.md` — write it in sections, verify each append, and follow the retry pattern in "Report-writing safety" above. Keep the `Model:` line below: `sprint complete` blocks a `review-notes.md` without a `^Model:` line, even if you write the rest free-form.
 
 ```markdown
@@ -95,7 +97,7 @@ Dismissed: <file:line — one-line why, or `none`>
 YES
 ```
 
-   Every step-4 concern gets at least one line, so each pass is visible. A finding is `<Concern>: file:line — <issue> [severity: high|med|low · confidence: high|med|low]` (repeat the label for more than one). "None" must show what you checked and where, with a `file:line` — a bare "No findings." is rejected at close. **`sprint complete` blocks a `review-notes.md` with no path in `Changed files:`, a missing or empty concern line, or a `none` line without `checked` and a `file:line` (t-de16).**
+   Every step-4 concern gets at least one line, so each pass is visible. A finding is `<Concern>: file:line — <issue> [severity: high|med|low · confidence: high|med|low · class: <slug>]` (repeat the label for more than one; the class is last in the bracket). "None" must show what you checked and where, with a `file:line` — a bare "No findings." is rejected at close. **`sprint complete` blocks a `review-notes.md` with no path in `Changed files:`, a missing or empty concern line, or a `none` line without `checked` and a `file:line` (t-de16).**
 
    **Triage every finding (t-f13a).** Put each finding from `## Findings` in exactly one bucket, as `file:line — <one-line why>` (repeat the label for more than one; `none` when a bucket is empty):
    - **Act On** — blocks: a correctness, security or maintainability problem to fix before merge. A Hygiene finding is Act On only when it breaks a rule in `standards/`; otherwise Noted.

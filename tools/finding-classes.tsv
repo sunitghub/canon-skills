@@ -1,0 +1,13 @@
+# finding-classes.tsv (t-70f2) — the one table of finding classes: slug, meaning, the reviewer concern it falls under. Tab-separated; a slug is lowercase letters, digits and hyphens.
+# A gate ends each finding with `class: <slug>` from here; `canon-go finding-classes` counts them across tickets. skills/sprint/reference/review.md lists the same slugs and tests/doc-mirror-parity.sh fails when the two differ. Add a slug in both places.
+bloat	more code, files or abstraction than the change needs	Hygiene
+hardcoding	a path, id, limit or value written in code that a table, argument or the environment owns	Hygiene
+unplanned-file	a changed file the plan did not name	Hygiene
+duplicated-logic	the same fact or logic in a second place instead of one owner	Hygiene
+doc-drift	a doc, comment or mirror that no longer matches the code	Hygiene
+guard-cannot-fail	a test or check that passes whatever the code does	Guards that cannot fail
+missing-test	changed behavior no test exercises	Guards that cannot fail
+swallowed-error	a failure turned into a normal-looking result	Error handling
+untrusted-input	input the code does not control is trusted, executed or printed	Security and trust boundaries
+portability	a path, shell, platform or tool difference that breaks on another machine	Portability
+other	a real finding that fits no class above	Correctness

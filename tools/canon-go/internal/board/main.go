@@ -235,6 +235,7 @@ Helpers (used by canon's shell tools; see helpers.go):
   gate-clusters [--days N] [--json]
   gate-insights [--days N] [--json]
   gate-corpus [--json]
+  finding-classes [--last N] [--json] [--start] [--table <file>]   finding classes that repeat across tickets (t-70f2)
   promoted-report [--json] [--since YYYY-MM-DD]   promoted lines, recurrence and the size table
   api schema [--json]      the /api/v1 and event schemas (t-0b89)
   sessions-table           a /api/v1/sessions body on stdin as canon's table (t-5b80)

@@ -9,6 +9,7 @@
 //	sprint-check skill-check <skill-dir>           the Skill Eval checks as JSON (was tools/skill-check)
 //	sprint-check event <kind> --project <dir> --source <name> key=value...   (sources: internal/events)
 //	                                               one event line (t-f182); always exits 0, prints nothing
+//	sprint-check finding-classes [--last N] [--json] [--start] [--table <file>]   finding classes that repeat across tickets (t-70f2)
 //	sprint-check integrity [--json] [--gate] [--online]   do the gate files still match their release (t-2af0); --gate exits 3 only when verified and a gate file differs
 //	sprint-check gate-clusters [--days N] [--json]   repeated gate failures grouped by cause (t-b874); prints only
 //	sprint-check transcript-report <transcript> <prefix>   a gate's report from its subagent transcript (t-ff14)
@@ -77,6 +78,8 @@ func runHelper(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 		return apiCLI(args[1:], stdout, stderr), true
 	case "sessions-table": // t-5b80: `canon sessions` prints a /api/v1/sessions body (stdin) as its table
 		return sessionsTableCLI(stdin, stdout, stderr), true
+	case "finding-classes": // t-70f2: how often each finding class repeats across tickets, with the escalation ladder; read-only
+		return findingClassesCLI(args[1:], stdout, stderr), true
 	case "promoted-report": // t-1219: promoted lines and the later tickets that name their class; read-only
 		return promotedReportCLI(args[1:], stdout, stderr), true
 	case "skill-check":

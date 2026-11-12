@@ -52,6 +52,33 @@ if [[ "$(id -u)" != 0 ]]; then
   assert_eq 0 "$(cat "$rcfile")"; [[ "$out" != *"UNPROMOTED learnings"* && "$out" != *"can't open"* ]] || fail "an unreadable LEARNINGS.md was reported or counted: $out"
 fi
 
+# --- t-70f2: the recurrence line. One line per finding class seen in 2+ of the last tickets' gate reports; nothing otherwise, nothing from a canon-go
+# that predates the command (an older board would serve on an unknown word, so the shell asks --help first), nothing when canon-go is missing.
+rows 0 0; rm -f LEARNINGS.md
+tagged() { # <id> <created> <slug>: a ticket whose review-notes carries one class-tagged finding
+  mkdir -p ".tickets/$1"; printf -- '---\nid: %s\nstatus: closed\ncreated: %s\n---\n# t\n' "$1" "$2" > ".tickets/$1/ticket.md"
+  printf '## Findings\nHygiene: a.sh:3 \xe2\x80\x94 big [severity: low \xc2\xb7 confidence: high \xc2\xb7 class: %s]\nCorrectness: none \xe2\x80\x94 checked b.sh:4\n' "$3" > ".tickets/$1/review-notes.md"
+}
+out="$(start "no tagged findings")"; assert_eq 0 "$(cat "$rcfile")"
+[[ "$out" != *"Recurring finding class"* ]] || fail "a project with no tagged findings printed a recurrence line: $out"
+tagged t-f001 2026-11-01 bloat; tagged t-f002 2026-11-02 hardcoding
+out="$(start "each class once")"; [[ "$out" != *"Recurring finding class"* ]] || fail "a class seen once printed a recurrence line: $out"
+tagged t-f003 2026-11-03 bloat
+out="$(start "bloat twice")"; assert_eq 0 "$(cat "$rcfile")"
+assert_contains "$out" "Recurring finding class: bloat in 2 tickets (t-f003 t-f001): propose a rule"
+assert_eq 1 "$(grep -c 'Recurring finding class' <<<"$out")"
+assert_contains "$out" "Sprint started:"
+tagged t-f004 2026-11-04 bloat
+out="$(start "bloat thrice")"; assert_contains "$out" "bloat in 3 tickets (t-f004 t-f003 t-f001): propose a mechanical check (a ticket stub, never auto-filed)"
+real_bin="$SPRINT_CHECK_BIN"; calls="$(mktemp)"
+printf '#!/usr/bin/env bash\n[[ "${1-}" == --help ]] && { echo "canon-go (older): headless-json caps [--json]"; exit 0; }\necho "$*" >> %q\necho "SERVING on a port"; exit 0\n' "$calls" > "$calls.bin"; chmod +x "$calls.bin"
+SPRINT_CHECK_BIN="$calls.bin" out="$(start "older canon-go")"; assert_eq 0 "$(cat "$rcfile")"
+[[ "$out" != *"Recurring finding class"* && "$out" != *"SERVING"* ]] || fail "an older canon-go answered the recurrence line: $out"
+[[ ! -s "$calls" ]] || fail "an older canon-go was run with a command it does not have: $(cat "$calls")"
+SPRINT_CHECK_BIN=/nonexistent/canon-go out="$(start "no canon-go")"; assert_eq 0 "$(cat "$rcfile")"
+[[ "$out" != *"Recurring finding class"* ]] || fail "a missing canon-go printed a recurrence line: $out"
+SPRINT_CHECK_BIN="$real_bin"; rm -f "$calls" "$calls.bin"; rm -rf .tickets/t-f00[1-4]
+
 # --- sprint complete: the routed counts, and nothing when there is no such section ---
 close_with() { # <title> <learnings body or empty>: a trivial-tier close, the output of sprint complete
   local o id; o="$("$SPRINT" start "$1" 2>&1)"; id="$(awk '/Sprint started:/ { print $3 }' <<<"$o")"

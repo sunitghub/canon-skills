@@ -133,7 +133,7 @@ Model: <the model designation received in Inputs>
 
 ## Findings
 
-<If all pass: "No findings." Otherwise: numbered list of fail/partial items — specific, actionable, what is missing or wrong. Then the `Evidence reuse:` line from step 5b.>
+<If all pass: "No findings." Otherwise: numbered list of fail/partial items — specific, actionable, what is missing or wrong, each ending `[class: <slug>]` (the finding classes in `review.md` step 4). Then the `Evidence reuse:` line from step 5b.>
 
 ## Verdict
 
