@@ -86,7 +86,7 @@ func TestFindingClassesUnknownAndHostileFiles(t *testing.T) {
 	root := t.TempDir()
 	slugs, _ := fcLoadTable(fcTable(t, root))
 	// an unknown slug is counted, its text never kept; a class tag in prose (not the trailing bracket) is not a tag
-	rv := "## Findings\nHygiene: a [severity: low · confidence: high · class: ../../etc/passwd]\nHygiene: b says class: bloat in prose\nHygiene: c [severity: low · confidence: high · class: nosuch]\n"
+	rv := "## Findings\nHygiene: a [severity: low · confidence: high · class: ../../etc/passwd]\nHygiene: b says class: bloat in prose\nHygiene: c [severity: low · confidence: high · class: nosuch]\n##\nHygiene: after a bare heading [severity: low · confidence: high · class: bloat]\n"
 	fcTicketFiles(t, root, "t-bbb1", "2026-11-01", rv, "")
 	// a symlinked report and an oversized one are not read
 	fcTicketFiles(t, root, "t-bbb2", "2026-11-02", "", "")
@@ -270,7 +270,7 @@ func TestFindingClassesListsRecurredPromotedRule(t *testing.T) {
 	root := t.TempDir()
 	tbl := fcTable(t, root)
 	os.MkdirAll(filepath.Join(root, "standards"), 0o755)
-	os.WriteFile(filepath.Join(root, "standards", "efficiency-notes.md"), []byte("- a rule (t-aaaa; class: the-old-slug; id: P-001)\n- another (t-aaaa; class: no-id-slug)\n"), 0o644)
+	os.WriteFile(filepath.Join(root, "standards", "efficiency-notes.md"), []byte("- a rule (t-aaaa; class: the-old-slug; id: P-001)\n- another (t-aaaa; class: no-id-slug)\n- quiet (t-aaaa; class: never-named-again)\n"), 0o644)
 	env := append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t", "GIT_AUTHOR_DATE=2026-10-01T12:00:00Z", "GIT_COMMITTER_DATE=2026-10-01T12:00:00Z", "GIT_CONFIG_GLOBAL=/dev/null")
 	for _, a := range [][]string{{"init", "-q"}, {"add", "standards"}, {"commit", "-q", "-m", "one"}} {
 		cmd := exec.Command("git", a...)
@@ -289,8 +289,109 @@ func TestFindingClassesListsRecurredPromotedRule(t *testing.T) {
 			t.Fatalf("missing %q in %q", want, out)
 		}
 	}
+	if strings.Contains(out, "never-named-again") {
+		t.Fatalf("a promoted rule no later ticket named must not be listed: %q", out)
+	}
 	_, out, _ = fcRun(root, tbl, "--start")
 	if out != "" {
 		t.Fatalf("a recurred promoted rule must not repeat in the start line: %q", out)
+	}
+	var m map[string]any
+	_, js, _ := fcRun(root, tbl, "--json")
+	if err := json.Unmarshal([]byte(js), &m); err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range m["promoted_rules_recurred"].([]any) {
+		row := r.(map[string]any)
+		if row["class"] != "the-old-slug" {
+			continue
+		}
+		for _, k := range []string{"class", "id", "later_tickets_naming_the_class"} {
+			if _, ok := row[k]; !ok {
+				t.Fatalf("a promoted row lost %q: %v", k, row)
+			}
+		}
+	}
+}
+
+func TestFindingClassesNewestByCreatedAndManyTies(t *testing.T) {
+	root := t.TempDir()
+	tbl := filepath.Join(root, "ties.tsv")
+	os.WriteFile(tbl, []byte("alpha\tx\tHygiene\nbravo\tx\tHygiene\ncharlie\tx\tHygiene\ndelta\tx\tHygiene\necho\tx\tHygiene\nfoxtrot\tx\tHygiene\ngolf\tx\tHygiene\nhotel\tx\tHygiene\n"), 0o644)
+	slugs, err := fcLoadTable(tbl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// the newest ticket is the one created last, not the one with the highest id
+	fcTicketFiles(t, root, "t-zzz1", "2026-11-01", review("hotel"), "")
+	fcTicketFiles(t, root, "t-aaa1", "2026-11-09", review("golf"), "")
+	if r := findingClasses(root, slugs, 1); len(r.Classes) != 1 || r.Classes[0].Slug != "golf" {
+		t.Fatalf("--last 1 must take the ticket created last: %+v", r.Classes)
+	}
+	// non-ticket folders and a linked ticket folder are not read, even with a report inside
+	os.MkdirAll(filepath.Join(root, ".tickets", "notes"), 0o755)
+	os.WriteFile(filepath.Join(root, ".tickets", "notes", "review-notes.md"), []byte(review("alpha")), 0o644)
+	os.Symlink(filepath.Join(root, ".tickets", "t-zzz1"), filepath.Join(root, ".tickets", "t-yyy1"))
+	r := findingClasses(root, slugs, 10)
+	if r.Tickets != 2 {
+		t.Fatalf("a notes folder or a symlinked ticket was read: %+v", r)
+	}
+	// more tickets first; ties by slug, whatever the map order
+	for i, sl := range []string{"alpha", "bravo", "charlie", "delta", "echo", "foxtrot"} {
+		fcTicketFiles(t, root, "t-ttt"+string(rune('a'+i)), "2026-10-0"+string(rune('1'+i)), review(sl), "")
+	}
+	fcTicketFiles(t, root, "t-ttt9", "2026-10-09", review("hotel"), "")
+	got := []string{}
+	for _, c := range findingClasses(root, slugs, 20).Classes {
+		got = append(got, c.Slug)
+	}
+	if strings.Join(got, " ") != "hotel alpha bravo charlie delta echo foxtrot golf" {
+		t.Fatalf("order = %v", got)
+	}
+}
+
+func TestFindingClassesFlagBounds(t *testing.T) {
+	root := t.TempDir()
+	tbl := fcTable(t, root)
+	for _, ok := range []string{"1", "200"} {
+		if c, _, e := fcRun(root, tbl, "--last", ok); c != 0 {
+			t.Fatalf("--last %s must be accepted: %d %q", ok, c, e)
+		}
+	}
+	for _, args := range [][]string{{"--last"}, {"--table"}} {
+		old, _ := os.Getwd()
+		os.Chdir(root)
+		var o, e bytes.Buffer
+		c := findingClassesCLI(append([]string{"--table", tbl}, args...), &o, &e)
+		if args[0] == "--table" { // the flag with no value after the real --table: it is the value of nothing
+			c = findingClassesCLI([]string{"--table"}, &o, &e)
+		}
+		os.Chdir(old)
+		if c != 2 || !strings.Contains(e.String(), "usage:") {
+			t.Fatalf("%v with no value must exit 2 with usage: %d %q", args, c, e.String())
+		}
+	}
+	// a slug with trailing junk is not a slug
+	bad := filepath.Join(root, "junk.tsv")
+	os.WriteFile(bad, []byte("bloat!\tx\tHygiene\n"), 0o644)
+	if _, err := fcLoadTable(bad); err == nil {
+		t.Fatal("a slug with a trailing character must be refused")
+	}
+}
+
+func TestFindingClassesDefaultTable(t *testing.T) {
+	// no --table inside a canon checkout (this package's directory is one): the install's own tools/finding-classes.tsv is read
+	var o, e bytes.Buffer
+	if c := findingClassesCLI([]string{"--last", "1"}, &o, &e); c != 0 || !strings.HasPrefix(o.String(), "finding classes:") {
+		t.Fatalf("default table: %d %q %q", c, o.String(), e.String())
+	}
+	// outside any canon install (and the test binary is not one): exit 2 naming --table
+	old, _ := os.Getwd()
+	os.Chdir(t.TempDir())
+	defer os.Chdir(old)
+	o.Reset()
+	e.Reset()
+	if c := findingClassesCLI(nil, &o, &e); c != 2 || !strings.Contains(e.String(), "no canon install found; pass --table <file>") {
+		t.Fatalf("no install: %d %q", c, e.String())
 	}
 }

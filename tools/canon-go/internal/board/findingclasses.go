@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -101,7 +100,7 @@ func fcFindings(lines []string, review bool) []string {
 			}
 			body = m[1]
 		}
-		if t := fcTagRe.FindStringSubmatch(strings.TrimRight(body, " \t")); t != nil {
+		if t := fcTagRe.FindStringSubmatch(body); t != nil {
 			out = append(out, t[1])
 		} else {
 			out = append(out, "")
@@ -120,7 +119,7 @@ func fcTickets(root string) []fcTicket {
 	}
 	var ts []fcTicket
 	for _, d := range dirs {
-		if !gcoIDRe.MatchString(d.Name()) || !d.IsDir() || d.Type()&fs.ModeSymlink != 0 {
+		if !gcoIDRe.MatchString(d.Name()) || !d.IsDir() { // IsDir is false for a symlink, so a linked folder is never followed
 			continue
 		}
 		created := ""
