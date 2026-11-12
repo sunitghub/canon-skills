@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-11-2026 19:31
+learnings-sweep last run: 11-11-2026 20:40
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-12 | [t-70f2](.tickets/t-70f2/learnings.md) | A test that loops over rows and `continue`s past the ones that do not match passes vacuously when the key it selects on is renamed (a JSON `class` tag emptied killed nothing until the mutation sweep showed it): count the matched rows and fail unless it is the expected number. | UNPROMOTED |
 | 2026-11-12 | [t-835f](.tickets/t-835f/learnings.md) | Two slips surfaced only in the 6-minute full suite, each costing a rerun: a `tests/*` glob in a script `evidence.sh` reads fails its scope-audit (use a prefix strip), and `git add -f .tickets/<id>` tracks local-only files; run `tests/evidence.sh` and `tests/local-only-dirs.sh` before the stamp, and never force-add a ticket folder. | UNPROMOTED |
 | 2026-11-11 | [t-27e5](.tickets/t-27e5/learnings.md) | Loosening a security check needs a test for each branch of the loosening alone (the dot of a path remainder passed no test until an evaluator reverted it), and a criterion that is narrowed by a review must be reworded in the same pass, or the evaluator grades the old wording. |
 | 2026-11-11 | [t-5988](.tickets/t-5988/learnings.md) | A scanner that reads git output must fix every flag the repo's config can change (prefixes, showRoot, replace refs, textconv, quoting) and must apply a cap AFTER its filter; a usage check tested outside a repository is hidden by the sweep's .git-less copy, so test failure paths inside one. |
@@ -82,5 +83,4 @@ learnings-sweep last run: 11-11-2026 19:31
 | 2026-11-02 | [t-2560](.tickets/t-2560/learnings.md) | A board state read from GitHub alone cannot tell a cloud session still working from one that stopped: use the ticket's own trail time (launched/sent) before offering an action that would race the session. | `dismissed` |
 | 2026-11-02 | [t-2db7](.tickets/t-2db7/learnings.md) | A file canon writes in a tracked file must compare and match the way git does on Windows: CRLF on disk vs LF in git, and C:\ vs C:/ for one project, each hid a working feature until a Windows run. Also: never create a branch or worktree while a gate runs (the snapshot STOPs). | `promoted → standards/efficiency-notes.md` |
 | 2026-11-02 | [t-8381](.tickets/t-8381/learnings.md) | A layout fix pinned only by a combined assertion can lose its own rule: the Host label stayed on one line because its value got short, so removing `white-space:nowrap` alone survived. | `dismissed (covered: standards/efficiency.md)` |
-| 2026-11-02 | [t-c542](.tickets/t-c542/learnings.md) | A new owner of shared facts (an event envelope field) must update every place that pins the old shape in one pass: the release key, its five test fixtures, the API key set and the export docs each failed separately. | `dismissed (covered: standards/efficiency-notes.md)` |
 <!-- canon:learnings:END -->
