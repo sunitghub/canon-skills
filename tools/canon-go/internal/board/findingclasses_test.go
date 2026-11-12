@@ -160,7 +160,7 @@ func TestFindingClassesLineShapes(t *testing.T) {
 	slugs, _ := fcLoadTable(fcTable(t, root))
 	// a concern line before any heading is not under ## Findings; "## Findings and more" is another section; a tag with trailing blanks is a tag;
 	// an uppercase or over-long slug is no tag (untagged), a well-formed slug outside the table is unknown; an eval line that is not a list item ("see 1. x") is not a finding; "No findings." is none
-	rv := "Hygiene: before any heading [severity: low · confidence: high · class: bloat]\n## Findings and more\nHygiene: wrong section [severity: low · confidence: high · class: bloat]\n## Findings\nHygiene: ok [severity: low · confidence: high · class: bloat]  \t\nHygiene: up [severity: low · confidence: high · class: Bloat]\nHygiene: long [severity: low · confidence: high · class: " + strings.Repeat("a", 60) + "]\nHygiene: nosuch [severity: low · confidence: high · class: nosuch]\n"
+	rv := "Hygiene: before any heading [severity: low · confidence: high · class: bloat]\n## Findings and more\nHygiene: wrong section [severity: low · confidence: high · class: bloat]\n## Findings\nHygiene: ok [severity: low · confidence: high · class: bloat]  \t\nHygiene: dot [severity: low · confidence: high · class: bloat].\nHygiene: tick [severity: low · confidence: high · class: bloat]`\nHygiene: up [severity: low · confidence: high · class: Bloat]\nHygiene: long [severity: low · confidence: high · class: " + strings.Repeat("a", 60) + "]\nHygiene: nosuch [severity: low · confidence: high · class: nosuch]\n"
 	ev := "## Findings\nsee 1. not an item [class: bloat]\n- a bullet item [class: hardcoding]\n3) another [class: other]\nNo findings.\n"
 	fcTicketFiles(t, root, "t-ddd1", "2026-11-01", rv, ev)
 	r := findingClasses(root, slugs, 10)
@@ -168,7 +168,7 @@ func TestFindingClassesLineShapes(t *testing.T) {
 	for _, c := range r.Classes {
 		got[c.Slug] = c.Findings
 	}
-	if got["bloat"] != 1 || got["hardcoding"] != 1 || got["other"] != 1 || len(got) != 3 || r.Unknown != 1 || r.Untagged != 2 {
+	if got["bloat"] != 3 || got["hardcoding"] != 1 || got["other"] != 1 || len(got) != 3 || r.Unknown != 1 || r.Untagged != 2 {
 		t.Fatalf("shapes: classes %v unknown %d untagged %d", got, r.Unknown, r.Untagged)
 	}
 }
@@ -414,5 +414,23 @@ func TestFindingClassesFirstCreatedLineWins(t *testing.T) {
 	os.WriteFile(filepath.Join(root, ".tickets", "t-jjj1", "ticket.md"), []byte("---\nid: t-jjj1\ncreated: 2026-11-01\n---\n# t\ncreated: 2030-01-01\n"), 0o644)
 	if r := findingClasses(root, slugs, 1); len(r.Classes) != 1 || r.Classes[0].Slug != "hardcoding" {
 		t.Fatalf("the first created line decides: %+v", r.Classes)
+	}
+}
+
+// a tag changes nothing for gate-corpus: the same counts with and without class: on every finding (one owner of the shapes: the tag rides inside the bracket)
+func TestFindingClassesDoNotChangeGateCorpus(t *testing.T) {
+	plain := "## Findings\nHygiene: a.sh:3 — big [severity: low · confidence: high]\nCorrectness: none — checked b.sh:4\n\n## Triage\nNoted: a.sh:3 — big\n\n## Verdict\nYES\n"
+	tagged := strings.Replace(plain, "confidence: high]", "confidence: high · class: bloat]", 1)
+	count := func(body string) string {
+		root := t.TempDir()
+		fcTicketFiles(t, root, "t-kkk1", "2026-11-01", body, "")
+		b, err := json.Marshal(gateCorpus(root))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	if a, b := count(plain), count(tagged); a != b || !strings.Contains(a, `"concern_lines"`) {
+		t.Fatalf("gate-corpus changed with the tag:\n%s\n%s", a, b)
 	}
 }

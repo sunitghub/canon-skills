@@ -21,7 +21,7 @@ import (
 // named again (promoted-report's own count) is listed in the report, never in the `sprint start` line (that would repeat forever).
 
 var (
-	fcTagRe    = regexp.MustCompile(`\[(?:[^\]]*· )?class: ([a-z][a-z0-9-]{0,40})\][ \t]*$`)
+	fcTagRe    = regexp.MustCompile(`\[(?:[^\]]*· )?class: ([a-z][a-z0-9-]{0,40})\][ \t.\x60]*$`)
 	fcItemRe   = regexp.MustCompile(`^[ \t]*(?:[0-9]+[.)]|[-*])[ \t]+(.*)$`)
 	fcSlugRe   = regexp.MustCompile(`^[a-z][a-z0-9-]{0,40}$`)
 	fcFindHead = regexp.MustCompile(`^##[ \t]+Findings[ \t]*$`)
@@ -199,12 +199,19 @@ func findingClasses(root string, slugs map[string]bool, last int) *fcReport {
 		}
 		return r.Classes[i].Slug < r.Classes[j].Slug
 	})
+	return r
+}
+
+// fcPromotedRecurred lists the promoted rules a later ticket named again, from promoted-report's own count. It reads git blame for every
+// tagged file, so `--start` (which runs at every sprint start and never prints it) does not call it.
+func fcPromotedRecurred(root string) []fcPromoted {
+	out := []fcPromoted{}
 	for _, e := range promotedReport(root).Entries {
 		if e.BySlug > 0 {
-			r.Promoted = append(r.Promoted, fcPromoted{e.Slug, e.ID, e.BySlug})
+			out = append(out, fcPromoted{e.Slug, e.ID, e.BySlug})
 		}
 	}
-	return r
+	return out
 }
 
 var fcStepText = map[string]string{
@@ -258,6 +265,9 @@ func findingClassesCLI(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	rep := findingClasses(root, slugs, last)
+	if !start {
+		rep.Promoted = fcPromotedRecurred(root)
+	}
 	switch {
 	case start:
 		for _, c := range rep.Classes {
